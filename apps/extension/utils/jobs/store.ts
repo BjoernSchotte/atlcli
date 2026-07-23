@@ -1,127 +1,52 @@
 /**
- * The durable-jobs port (spec 010 T5.6).
+ * Format-neutral Activity port for durable browser exports.
  *
- * What the Jobs UI is written against: a list of export jobs for **this site**,
- * plus the four things a user can do with one — show/download the result, cancel
- * a running one, dismiss a finished one. Everything underneath is the durable
- * records in the common `atlcli-export-jobs` catalog plus the transitional
- * `atlcli-pdf` store; nothing here holds state of its own, which makes
- * re-attachment after a panel close (or a service-worker restart) a plain read.
- *
- * ## Bytes never cross `sendMessage`
- *
- * The only legacy message this port sends is `{ kind: "pdf:cancel", jobId }`.
- * Artifact bytes travel exclusively through IndexedDB and are read only by the
- * UI host when a user explicitly downloads a completed result.
- *
- * ## Copy honesty
- *
- * A job listed here survives page navigation, closing the panel and a
- * service-worker restart. It does **not** survive closing the browser: there is
- * no server side to this, and the UI must never suggest otherwise
- * (`jobs.durabilityNote`).
+ * Common DOCX/PDF jobs are projected directly from `ExportJobSnapshotV1`.
+ * Legacy PDF records remain a read/action compatibility source for one
+ * retention window, but they no longer define the UI model.
  */
-import type { PdfJobKind } from "../messages.js";
-import type { ExportJobState } from "@atlcli/export-jobs";
+import {
+  deriveExportJobReplayV1,
+  isExportJobTerminal,
+  type ExportJobReplayRelationV1,
+  type ExportJobState,
+} from "@atlcli/export-jobs";
 import {
   cancelPdfJob,
   deletePdfJob,
   getPdfJob,
   listPdfJobMeta,
   markPdfJobConsumed,
-  type PdfJobProgress,
-  type PdfJobStatus,
   type StoredPdfJobMeta,
 } from "../pdf/job-store.js";
-import { isPdfJobInFlight, siteOriginFromSourceIdentity } from "./model.js";
-import { listExtensionExportActivity, type ExtensionExportActivityRowV1 } from "../export-jobs/activity.js";
+import {
+  legacyPdfActivityRow,
+  listExtensionExportActivity,
+  type ExtensionExportActivityRowV1,
+} from "../export-jobs/activity.js";
 import { IndexedDbExportJobCatalog } from "../export-jobs/catalog.js";
 import { IndexedDbExportByteStore } from "../export-jobs/chunk-store.js";
 
-/** One row of the Jobs list. */
-export interface DurableJob {
-  /** Stable action route. Common and legacy ids may otherwise collide. */
-  id: string;
-  jobId?: string;
-  source?: "common" | "legacy-pdf";
-  format?: "pdf" | "docx";
-  status: PdfJobStatus;
-  kind: PdfJobKind;
-  /** Site the job belongs to, or `null` when its identity carried no URL. */
-  siteOrigin: string | null;
-  title: string | null;
-  filename: string | null;
-  scopeLabel: string | null;
-  progress: PdfJobProgress | null;
-  createdAt: number;
-  bytes: number;
-  error: string | null;
-  /** True while a compiler still owns it. */
-  running: boolean;
-  /** True when a result is stored and nobody has collected it yet. */
-  collectable: boolean;
-}
+export type ExportActivityJob = ExtensionExportActivityRowV1;
 
-function statusOfCommon(state: ExportJobState): PdfJobStatus {
-  switch (state) {
-    case "queued":
-    case "waiting":
-      return "prepared";
-    case "running":
-    case "cancelling":
-      return "compiling";
-    case "succeeded":
-      return "complete";
-    case "failed":
-    case "interrupted":
-      return "failed";
-    case "cancelled":
-      return "cancelled";
-  }
-}
-
-function activityRowToDurableJob(row: ExtensionExportActivityRowV1): DurableJob {
-  const active = row.state === "queued" || row.state === "waiting" || row.state === "running" || row.state === "cancelling";
-  return {
-    id: row.key,
-    jobId: row.id,
-    source: row.source,
-    format: row.format,
-    status: statusOfCommon(row.state),
-    kind: "export",
-    siteOrigin: row.siteOrigin,
-    title: row.displayName,
-    filename: null,
-    scopeLabel: row.stage ? `${row.format.toUpperCase()} · ${row.stage}` : row.format.toUpperCase(),
-    progress: row.progress && row.progress.total !== null
-      ? { done: row.progress.done, total: row.progress.total }
-      : null,
-    createdAt: row.createdAt,
-    bytes: row.bytes,
-    error: row.error ?? null,
-    running: active,
-    collectable: row.collectable,
-  };
+export interface ExportActivityListOptions {
+  /** Omit to include all sites. */
+  siteOrigin?: string;
+  formats?: Array<"pdf" | "docx">;
+  states?: ExportJobState[];
+  createdAfter?: number;
 }
 
 export interface DurableJobsPort {
-  /**
-   * Jobs for one site, newest first.
-   *
-   * Previews are excluded: they are panel-owned transients that the user never
-   * asked to keep, and listing them would turn a debounced preview loop into a
-   * scrolling activity feed.
-   */
-  list(options?: { siteOrigin?: string | null }): Promise<DurableJob[]>;
-  /** Abort a running job (message to the compiler; the record becomes `cancelled`). */
-  cancel(id: string): Promise<void>;
-  /** Forget a finished job and its bytes. */
-  dismiss(id: string): Promise<void>;
-  /**
-   * Hand the result to the user: emit the download, mark the record consumed and
-   * delete it. Resolves `false` when the job has no stored result.
-   */
-  download(id: string): Promise<boolean>;
+  list(options?: ExportActivityListOptions): Promise<ExportActivityJob[]>;
+  cancel(route: string): Promise<void>;
+  retry(route: string, actionKey: string): Promise<string | undefined>;
+  rerun(route: string, actionKey: string): Promise<string | undefined>;
+  /** Resume the same checkpointed waiting/auth job after the user signs in. */
+  resume(route: string): Promise<boolean>;
+  acknowledge(route: string): Promise<void>;
+  dismiss(route: string): Promise<void>;
+  download(route: string): Promise<boolean>;
 }
 
 export interface DurableJobsDeps {
@@ -130,63 +55,73 @@ export interface DurableJobsDeps {
   cancelJob: typeof cancelPdfJob;
   deleteJob: typeof deletePdfJob;
   consume: typeof markPdfJobConsumed;
-  /** Ask the compiler to stop. Best-effort: the record transition is what counts. */
   requestCancel: (jobId: string) => Promise<void>;
-  /** Deliver bytes to the user (a download, a save dialog, a Forge attachment…). */
   emit: (filename: string, bytes: Uint8Array) => Promise<void>;
 }
 
-/** Map a stored record onto the row the UI renders. */
-export function toDurableJob(meta: StoredPdfJobMeta): DurableJob {
-  const running = isPdfJobInFlight(meta.status);
-  return {
-    id: meta.id,
-    status: meta.status,
-    kind: meta.kind ?? "export",
-    siteOrigin: meta.siteOrigin ?? siteOriginFromSourceIdentity(meta.sourceIdentity),
-    title: meta.title ?? null,
-    filename: meta.filename ?? null,
-    scopeLabel: meta.scopeLabel ?? null,
-    progress: meta.progress ?? null,
-    createdAt: meta.createdAt,
-    bytes: meta.inputBytes + meta.outputBytes,
-    error: meta.error ?? null,
-    running,
-    collectable: meta.status === "complete" && meta.outputBytes > 0 && meta.consumed !== true,
-  };
+function legacyJobId(route: string): string {
+  return route.startsWith("legacy-pdf:") ? route.slice("legacy-pdf:".length) : route;
 }
 
+function matchesListOptions(
+  job: ExportActivityJob,
+  options: ExportActivityListOptions,
+): boolean {
+  return (
+    (options.siteOrigin === undefined || job.siteOrigin === options.siteOrigin) &&
+    (!options.formats || options.formats.includes(job.format)) &&
+    (!options.states || options.states.includes(job.state)) &&
+    (options.createdAfter === undefined || job.createdAt > options.createdAfter)
+  );
+}
+
+/**
+ * Compatibility adapter for pre-common PDF rows.
+ *
+ * Retry/Run-again cannot be truthful because the legacy record did not retain
+ * a replay-safe common request. Those actions are therefore unavailable.
+ */
 export function createDurableJobsStore(deps: DurableJobsDeps): DurableJobsPort {
   return {
-    async list(options = {}): Promise<DurableJob[]> {
-      const wanted = options.siteOrigin ?? null;
+    async list(options = {}): Promise<ExportActivityJob[]> {
       return (await deps.list())
         .filter((meta) => meta.activityVisibility !== "private")
-        .map(toDurableJob)
-        .filter((job) => job.kind === "export")
-        .filter((job) => wanted === null || job.siteOrigin === wanted)
-        .sort((a, b) => b.createdAt - a.createdAt);
+        .filter((meta) => (meta.kind ?? "export") === "export")
+        .map(legacyPdfActivityRow)
+        .filter((job) => matchesListOptions(job, options));
     },
 
-    async cancel(id: string): Promise<void> {
+    async cancel(route: string): Promise<void> {
+      const id = legacyJobId(route);
       await deps.requestCancel(id).catch(() => undefined);
-      // The compiler host cancels the record when it owns the job; doing it here
-      // too covers the case where it does not (queued behind a restart), and the
-      // transition is idempotent.
       await deps.cancelJob(id).catch(() => undefined);
     },
 
-    async dismiss(id: string): Promise<void> {
-      await deps.deleteJob(id);
+    async retry(): Promise<undefined> {
+      return undefined;
     },
 
-    async download(id: string): Promise<boolean> {
+    async rerun(): Promise<undefined> {
+      return undefined;
+    },
+
+    async resume(): Promise<boolean> {
+      return false;
+    },
+
+    async acknowledge(): Promise<void> {
+      // Legacy rows have no non-destructive acknowledgement field.
+    },
+
+    async dismiss(route: string): Promise<void> {
+      await deps.deleteJob(legacyJobId(route));
+    },
+
+    async download(route: string): Promise<boolean> {
+      const id = legacyJobId(route);
       const job = await deps.read(id, undefined, { bundle: false, pdf: true });
       if (!job?.pdf || job.status !== "complete") return false;
       await deps.emit(job.filename ?? `${job.title ?? "export"}.pdf`, job.pdf);
-      // Consume first, then delete: if the delete is lost to a teardown, the
-      // sweep still removes a record flagged as collected, whereas a lost
-      // consume would leave the badge counting bytes the user already has.
       await deps.consume(id).catch(() => undefined);
       await deps.deleteJob(id).catch(() => undefined);
       return true;
@@ -200,14 +135,26 @@ export interface ExtensionDurableJobsDeps {
   legacy: DurableJobsPort;
   listLegacyPdf?: () => Promise<StoredPdfJobMeta[]>;
   emit: (filename: string, bytes: Uint8Array, mimeType: string) => Promise<void>;
+  wake?: (
+    jobIds: string[],
+    options?: { resumeWaiting?: boolean },
+  ) => Promise<{ claimedJobId?: string; error?: string }>;
+  randomUUID?: () => string;
   now?: () => number;
 }
 
-function splitActivityRoute(route: string): { source: "common" | "legacy-pdf"; jobId: string } {
+function splitActivityRoute(route: string): {
+  source: "common" | "legacy-pdf";
+  jobId: string;
+} {
   const separator = route.indexOf(":");
   const source = route.slice(0, separator);
   const jobId = route.slice(separator + 1);
-  if ((source !== "common" && source !== "legacy-pdf") || separator < 1 || jobId.length === 0) {
+  if (
+    (source !== "common" && source !== "legacy-pdf") ||
+    separator < 1 ||
+    jobId.length === 0
+  ) {
     throw new TypeError("Activity action requires a namespaced job id.");
   }
   return { source, jobId };
@@ -229,26 +176,127 @@ async function collectBytes(source: AsyncIterable<Uint8Array>): Promise<Uint8Arr
   return result;
 }
 
-/** Productive Activity port: one projection and routed actions over common plus legacy stores. */
-export function createExtensionDurableJobsStore(deps: ExtensionDurableJobsDeps): DurableJobsPort {
+function assertActionKey(actionKey: string): void {
+  if (actionKey.trim().length === 0 || actionKey.length > 4_096) {
+    throw new TypeError("Activity replay requires a non-empty bounded action key.");
+  }
+}
+
+async function updateTerminalMetadata(
+  catalog: IndexedDbExportJobCatalog,
+  jobId: string,
+  operation: "acknowledge" | "dismiss" | "deliver",
+  at: number,
+): Promise<void> {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const current = await catalog.get(jobId);
+    if (!current || !isExportJobTerminal(current.state)) return;
+    if (operation === "acknowledge" && current.acknowledgedAt !== undefined) return;
+    if (operation === "dismiss" && current.dismissedAt !== undefined) return;
+    if (operation === "deliver" && current.deliveredAt !== undefined) return;
+    try {
+      await catalog[operation](jobId, current.revision, at);
+      return;
+    } catch (error) {
+      if (attempt === 2) throw error;
+    }
+  }
+}
+
+/** Productive Activity port over common snapshots plus the temporary legacy reader. */
+export function createExtensionDurableJobsStore(
+  deps: ExtensionDurableJobsDeps,
+): DurableJobsPort {
   const now = deps.now ?? Date.now;
+  const randomUUID = deps.randomUUID ?? (() => crypto.randomUUID());
+
+  const replay = async (
+    route: string,
+    relation: ExportJobReplayRelationV1,
+    actionKey: string,
+  ): Promise<string | undefined> => {
+    const { source, jobId } = splitActivityRoute(route);
+    if (source === "legacy-pdf") {
+      return relation === "retry"
+        ? deps.legacy.retry(route, actionKey)
+        : deps.legacy.rerun(route, actionKey);
+    }
+    assertActionKey(actionKey);
+    const origin = await deps.catalog.get(jobId);
+    if (!origin) return undefined;
+    const originRequest = await deps.catalog.getRequest(origin.requestRef);
+    if (!originRequest) {
+      throw new Error(`Retained request for export ${jobId} is unavailable.`);
+    }
+
+    const candidates = (await deps.catalog.list({
+      includeDismissed: true,
+      limit: 500,
+    })).filter(
+      (candidate) =>
+        candidate.derivedFrom?.jobId === origin.id &&
+        candidate.derivedFrom.relation === relation,
+    );
+    const candidateRequests = (
+      await Promise.all(
+        candidates.map((candidate) =>
+          deps.catalog.getRequest(candidate.requestRef),
+        ),
+      )
+    ).filter((request): request is NonNullable<typeof request> => request !== undefined);
+    const id = randomUUID();
+    const derivation = deriveExportJobReplayV1({
+      origin,
+      originRequest,
+      input: {
+        relation,
+        actionKey,
+        newJobId: id,
+        newIdempotencyKey: `extension:${relation}:${id}`,
+        createdAt: now(),
+      },
+      existingDerived: candidates,
+      existingDerivedRequests: candidateRequests,
+    });
+    if (derivation.kind === "not-allowed") {
+      throw new Error(
+        `${relation === "retry" ? "Retry" : "Run again"} is unavailable for a ${origin.state} export.`,
+      );
+    }
+    const snapshot =
+      derivation.kind === "existing"
+        ? derivation.snapshot
+        : await deps.catalog.create({
+            request: derivation.request,
+            derivedFrom: derivation.derivedFrom,
+          });
+    await deps.wake?.([snapshot.id]).catch(() => undefined);
+    return `common:${snapshot.id}`;
+  };
+
   return {
-    async list(options = {}): Promise<DurableJob[]> {
-      const wanted = options.siteOrigin ?? null;
-      return (await listExtensionExportActivity({
-        listCommon: deps.catalog.list.bind(deps.catalog),
-        listLegacyPdf: deps.listLegacyPdf ?? listPdfJobMeta,
-        listLegacyBridges: deps.catalog.listLegacyBridges.bind(deps.catalog),
-      }))
-        .filter((row) => wanted === null || row.siteOrigin === wanted)
-        .map(activityRowToDurableJob);
+    async list(options = {}): Promise<ExportActivityJob[]> {
+      return (
+        await listExtensionExportActivity({
+          listCommon: deps.catalog.list.bind(deps.catalog),
+          listLegacyPdf: deps.listLegacyPdf ?? listPdfJobMeta,
+          listLegacyBridges: deps.catalog.listLegacyBridges.bind(deps.catalog),
+        })
+      ).filter((job) => matchesListOptions(job, options));
     },
 
     async cancel(route: string): Promise<void> {
       const { source, jobId } = splitActivityRoute(route);
-      if (source === "legacy-pdf") return deps.legacy.cancel(jobId);
+      if (source === "legacy-pdf") return deps.legacy.cancel(route);
       const current = await deps.catalog.get(jobId);
-      if (!current || ["succeeded", "failed", "cancelled", "interrupted", "cancelling"].includes(current.state)) return;
+      if (
+        !current ||
+        ["succeeded", "failed", "cancelled", "interrupted", "cancelling"].includes(
+          current.state,
+        )
+      ) {
+        return;
+      }
       await deps.catalog.compareAndSet({
         id: jobId,
         kind: "transition",
@@ -258,33 +306,54 @@ export function createExtensionDurableJobsStore(deps: ExtensionDurableJobsDeps):
       });
     },
 
+    retry: (route, actionKey) => replay(route, "retry", actionKey),
+    rerun: (route, actionKey) => replay(route, "rerun", actionKey),
+
+    async resume(route: string): Promise<boolean> {
+      const { source, jobId } = splitActivityRoute(route);
+      if (source === "legacy-pdf") return deps.legacy.resume(route);
+      const current = await deps.catalog.get(jobId);
+      if (
+        current?.state !== "waiting" ||
+        current.waiting?.reason !== "auth" ||
+        !deps.wake
+      ) {
+        return false;
+      }
+      const result = await deps.wake([jobId], { resumeWaiting: true });
+      return result.error === undefined;
+    },
+
+    async acknowledge(route: string): Promise<void> {
+      const { source, jobId } = splitActivityRoute(route);
+      if (source === "legacy-pdf") return deps.legacy.acknowledge(route);
+      await updateTerminalMetadata(deps.catalog, jobId, "acknowledge", now());
+    },
+
     async dismiss(route: string): Promise<void> {
       const { source, jobId } = splitActivityRoute(route);
-      if (source === "legacy-pdf") return deps.legacy.dismiss(jobId);
-      const current = await deps.catalog.get(jobId);
-      if (!current) return;
-      await deps.catalog.dismiss(jobId, current.revision, now());
+      if (source === "legacy-pdf") return deps.legacy.dismiss(route);
+      await updateTerminalMetadata(deps.catalog, jobId, "dismiss", now());
     },
 
     async download(route: string): Promise<boolean> {
       const { source, jobId } = splitActivityRoute(route);
-      if (source === "legacy-pdf") return deps.legacy.download(jobId);
+      if (source === "legacy-pdf") return deps.legacy.download(route);
       const current = await deps.catalog.get(jobId);
-      if (current?.state !== "succeeded" || !current.artifact || current.deliveredAt !== undefined) return false;
+      if (current?.state !== "succeeded" || !current.artifact) return false;
       const bytes = await collectBytes(deps.bytes.read(current.artifact.ref));
-      await deps.emit(current.artifact.filename, bytes, current.artifact.mediaType);
-      await deps.catalog.deliver(jobId, current.revision, now());
+      await deps.emit(
+        current.artifact.filename,
+        bytes,
+        current.artifact.mediaType,
+      );
+      await updateTerminalMetadata(deps.catalog, jobId, "deliver", now());
       return true;
     },
   };
 }
 
-/**
- * The Chrome binding: durable records plus the one scalar message.
- *
- * Built lazily by the host seam (`utils/jobs/context.tsx`), never at module
- * scope, so importing this file outside an extension stays free.
- */
+/** Lazy Chrome binding. Artifact bytes remain in IndexedDB until Download. */
 export function chromeDurableJobsStore(): DurableJobsPort {
   const legacy = createDurableJobsStore({
     list: listPdfJobMeta,
@@ -297,13 +366,40 @@ export function chromeDurableJobsStore(): DurableJobsPort {
     },
     emit: async (filename, bytes) => {
       const { downloadBytes } = await import("../download.js");
-      await downloadBytes({ name: filename, bytes, mimeType: "application/pdf" });
+      await downloadBytes({
+        name: filename,
+        bytes,
+        mimeType: "application/pdf",
+      });
     },
   });
   return createExtensionDurableJobsStore({
     catalog: new IndexedDbExportJobCatalog(),
     bytes: new IndexedDbExportByteStore(),
     legacy,
+    wake: async (jobIds, options) => {
+      const response = (await chrome.runtime.sendMessage({
+        kind: "jobs:wake",
+        jobIds,
+        ...(options?.resumeWaiting ? { resumeWaiting: true } : {}),
+      })) as
+        | {
+            kind?: string;
+            claimedJobId?: string;
+            error?: string;
+          }
+        | undefined;
+      if (response?.kind !== "jobs:wake-result") {
+        return { error: "Background export queue returned no result." };
+      }
+      return response.error === undefined
+        ? {
+            ...(response.claimedJobId
+              ? { claimedJobId: response.claimedJobId }
+              : {}),
+          }
+        : { error: response.error };
+    },
     emit: async (filename, bytes, mimeType) => {
       const { downloadBytes } = await import("../download.js");
       await downloadBytes({ name: filename, bytes, mimeType });

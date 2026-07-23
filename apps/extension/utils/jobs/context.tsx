@@ -13,7 +13,11 @@
  * with neither simply has no jobs, which is also the correct answer.
  */
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { chromeDurableJobsStore, type DurableJob, type DurableJobsPort } from "./store.js";
+import {
+  chromeDurableJobsStore,
+  type DurableJobsPort,
+  type ExportActivityJob,
+} from "./store.js";
 
 const DurableJobsContext = createContext<DurableJobsPort | null | undefined>(undefined);
 
@@ -62,7 +66,7 @@ export function useDurableJobsPort(): DurableJobsPort | null {
 }
 
 export interface DurableJobsView {
-  jobs: readonly DurableJob[];
+  jobs: readonly ExportActivityJob[];
   /** False until the first read settles, so an empty list is never shown too early. */
   loaded: boolean;
   error: string | null;
@@ -70,6 +74,10 @@ export interface DurableJobsView {
   cancel: (id: string) => void;
   dismiss: (id: string) => void;
   download: (id: string) => void;
+  retry: (id: string, actionKey: string) => void;
+  rerun: (id: string, actionKey: string) => void;
+  resume: (id: string) => void;
+  acknowledge: (id: string) => void;
 }
 
 /** Poll cadence while at least one job is running. */
@@ -89,7 +97,7 @@ export const JOBS_IDLE_POLL_MS = 5_000;
  */
 export function useDurableJobs(siteOrigin: string | null): DurableJobsView {
   const port = useDurableJobsPort();
-  const [jobs, setJobs] = useState<readonly DurableJob[]>([]);
+  const [jobs, setJobs] = useState<readonly ExportActivityJob[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
@@ -115,14 +123,18 @@ export function useDurableJobs(siteOrigin: string | null): DurableJobsView {
 
     const read = async (): Promise<void> => {
       try {
-        const next = await port.list({ siteOrigin });
+        const next = await port.list({
+          ...(siteOrigin === null ? {} : { siteOrigin }),
+        });
         if (cancelled) return;
         setJobs(next);
         setError(null);
         setLoaded(true);
         timer = setTimeout(
           () => void read(),
-          next.some((job) => job.running) ? JOBS_POLL_MS : JOBS_IDLE_POLL_MS
+          next.some((job) => job.actions.cancel)
+            ? JOBS_POLL_MS
+            : JOBS_IDLE_POLL_MS
         );
       } catch (reason) {
         if (cancelled) return;
@@ -162,6 +174,10 @@ export function useDurableJobs(siteOrigin: string | null): DurableJobsView {
       cancel: (id) => act((p) => p.cancel(id)),
       dismiss: (id) => act((p) => p.dismiss(id)),
       download: (id) => act((p) => p.download(id)),
+      retry: (id, actionKey) => act((p) => p.retry(id, actionKey)),
+      rerun: (id, actionKey) => act((p) => p.rerun(id, actionKey)),
+      resume: (id) => act((p) => p.resume(id)),
+      acknowledge: (id) => act((p) => p.acknowledge(id)),
     }),
     [jobs, loaded, error, refresh, act]
   );

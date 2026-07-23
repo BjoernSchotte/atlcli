@@ -558,7 +558,12 @@ export class IndexedDbExportJobCatalog implements ExportJobStore, ExportJobEvent
       const eligibilityAt = this.#now();
       const claimable = rows.filter((row) => {
         const job = row.snapshot;
-        return (job.state === "queued" || (job.state === "waiting" && job.waiting?.until !== undefined && job.waiting.until <= eligibilityAt))
+        return (job.state === "queued" ||
+          (job.state === "waiting" &&
+            ((job.waiting?.until !== undefined &&
+              job.waiting.until <= eligibilityAt) ||
+              (claim.resumeWaitingIds?.includes(job.id) === true &&
+                claim.ids?.includes(job.id) === true))))
           && (!claim.ids || claim.ids.includes(job.id))
           && (!claim.formats || claim.formats.includes(job.format))
           && (!claim.authRefs || claim.authRefs.includes(row.authRef));
@@ -927,6 +932,7 @@ export interface RecoverExtensionExportJobsOptions {
   ownerId: string;
   leaseDurationMs: number;
   ids?: string[];
+  resumeWaitingIds?: string[];
   formats?: Array<"pdf" | "docx">;
   authRefs?: string[];
 }

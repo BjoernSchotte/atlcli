@@ -27,7 +27,10 @@ export interface OffscreenListenerDeps {
     hints?: PdfCompileHints
   ) => Promise<{ ok: true } | { ok: false; error: string }>;
   runPdfCancel: (jobId: string) => Promise<boolean>;
-  runJobsWake?: (jobIds?: string[]) => Promise<string | undefined>;
+  runJobsWake?: (
+    jobIds?: string[],
+    options?: { resumeWaiting?: boolean },
+  ) => Promise<string | undefined>;
 }
 
 const toMessage = (err: unknown): string =>
@@ -108,7 +111,9 @@ export function handleOffscreenMessage(
         .catch(() => sendResponse({ kind: "offscreen:pdf-cancel-result", jobId: message.jobId, cancelled: false }));
       break;
     case "offscreen:jobs-wake":
-      (deps.runJobsWake?.(message.jobIds) ?? Promise.resolve(undefined))
+      (deps.runJobsWake?.(message.jobIds, {
+        resumeWaiting: message.resumeWaiting,
+      }) ?? Promise.resolve(undefined))
         .then((claimedJobId) => sendResponse({
           kind: "offscreen:jobs-wake-result",
           ...(claimedJobId ? { claimedJobId } : {}),

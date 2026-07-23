@@ -102,6 +102,6 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) =>
       return result.ok ? { ok: true } : { ok: false, error: result.error };
     },
     runPdfCancel: (jobId) => pdfHost.cancel(jobId),
-    runJobsWake: (jobIds) => exportQueue.wake(jobIds),
+    runJobsWake: (jobIds, options) => exportQueue.wake(jobIds, options),
   })
 );

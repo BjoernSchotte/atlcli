@@ -130,6 +130,25 @@ describe("routeMessage (pure router)", () => {
     });
   });
 
+  it("forwards explicit waiting-job resume authority without broadening the id set", async () => {
+    const observed: unknown[] = [];
+    const jobId = "job-auth";
+    expect(await routeMessage(
+      { kind: "jobs:wake", jobIds: [jobId], resumeWaiting: true },
+      {
+        ...okDeps,
+        runJobsWake: async (jobIds, options) => {
+          observed.push(jobIds, options);
+          return jobIds?.[0];
+        },
+      },
+    )).toEqual({
+      kind: "jobs:wake-result",
+      claimedJobId: jobId,
+    });
+    expect(observed).toEqual([[jobId], { resumeWaiting: true }]);
+  });
+
   it("returns a distinguishable common queue wake failure", async () => {
     expect(await routeMessage(
       { kind: "jobs:wake", jobIds: ["job-1"] },

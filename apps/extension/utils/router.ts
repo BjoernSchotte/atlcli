@@ -32,7 +32,10 @@ export interface RouterDeps {
   /** Cancels a queued or active PDF job. */
   runPdfCancel: (jobId: string) => Promise<boolean>;
   /** Wakes the common offscreen queue using opaque job ids only. */
-  runJobsWake?: (jobIds?: string[]) => Promise<string | undefined>;
+  runJobsWake?: (
+    jobIds?: string[],
+    options?: { resumeWaiting?: boolean },
+  ) => Promise<string | undefined>;
 }
 
 /**
@@ -87,7 +90,9 @@ export async function routeMessage(
         return { kind: "jobs:wake-result", error: "Common export queue is not configured." };
       }
       try {
-        const claimedJobId = await deps.runJobsWake(msg.jobIds);
+        const claimedJobId = await deps.runJobsWake(msg.jobIds, {
+          resumeWaiting: msg.resumeWaiting,
+        });
         return { kind: "jobs:wake-result", ...(claimedJobId ? { claimedJobId } : {}) };
       } catch (error) {
         return {

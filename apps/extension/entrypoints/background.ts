@@ -233,7 +233,10 @@ async function runPdfCancel(jobId: string): Promise<boolean> {
   );
 }
 
-async function runJobsWake(jobIds?: string[]): Promise<string | undefined> {
+async function runJobsWake(
+  jobIds?: string[],
+  options?: { resumeWaiting?: boolean },
+): Promise<string | undefined> {
   // Unlike the legacy compile call, the queue response returns immediately
   // after claim. Durable state, rather than the tracker's in-memory counter,
   // owns the remainder of the execution lifetime.
@@ -244,6 +247,7 @@ async function runJobsWake(jobIds?: string[]): Promise<string | undefined> {
     const response = (await chrome.runtime.sendMessage({
       kind: "offscreen:jobs-wake",
       ...(jobIds ? { jobIds } : {}),
+      ...(options?.resumeWaiting ? { resumeWaiting: true } : {}),
     })) as OffscreenResponse | undefined;
     if (!response || response.kind !== "offscreen:jobs-wake-result") {
       throw new Error("Offscreen export queue returned no result.");

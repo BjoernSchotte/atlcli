@@ -18,7 +18,10 @@ export interface ExtensionExportQueueRunnerOptionsV1 {
 
 export interface ExtensionExportQueueRunnerV1 {
   startup(): Promise<void>;
-  wake(jobIds?: string[]): Promise<string | undefined>;
+  wake(
+    jobIds?: string[],
+    options?: { resumeWaiting?: boolean },
+  ): Promise<string | undefined>;
   activeJobId(): string | undefined;
 }
 
@@ -66,7 +69,10 @@ export function createExtensionExportQueueRunner(
     active = { jobId: claimed.id, execution };
   };
 
-  const claimAndStart = async (jobIds?: string[]): Promise<string | undefined> => {
+  const claimAndStart = async (
+    jobIds?: string[],
+    wakeOptions?: { resumeWaiting?: boolean },
+  ): Promise<string | undefined> => {
     await ensureStartup();
     if (active) return undefined;
     const claimed = await recoverAndClaimExtensionExportJob(options.catalog, {
@@ -74,15 +80,21 @@ export function createExtensionExportQueueRunner(
       ownerId,
       leaseDurationMs,
       ...(jobIds ? { ids: jobIds } : {}),
+      ...(jobIds && wakeOptions?.resumeWaiting
+        ? { resumeWaitingIds: jobIds }
+        : {}),
     });
     if (!claimed) return undefined;
     startExecution(claimed);
     return claimed.id;
   };
 
-  const wake = (jobIds?: string[]): Promise<string | undefined> => {
+  const wake = (
+    jobIds?: string[],
+    wakeOptions?: { resumeWaiting?: boolean },
+  ): Promise<string | undefined> => {
     if (active || claiming) return Promise.resolve(undefined);
-    const operation = claimAndStart(jobIds);
+    const operation = claimAndStart(jobIds, wakeOptions);
     claiming = operation;
     const clearClaim = (): void => {
       if (claiming === operation) claiming = undefined;

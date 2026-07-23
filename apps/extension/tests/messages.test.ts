@@ -19,6 +19,9 @@ describe("message guards", () => {
     expect(isExtRequest({ kind: "pdf:compile", jobId })).toBe(true);
     expect(isExtRequest({ kind: "pdf:cancel", jobId })).toBe(true);
     expect(isExtRequest({ kind: "jobs:wake", jobIds: [jobId] })).toBe(true);
+    expect(isExtRequest({ kind: "jobs:wake", jobIds: [jobId], resumeWaiting: true })).toBe(true);
+    expect(isExtRequest({ kind: "jobs:wake", resumeWaiting: true })).toBe(false);
+    expect(isExtRequest({ kind: "jobs:wake", jobIds: [jobId], resumeWaiting: "yes" })).toBe(false);
     expect(isExtRequest({ kind: "jobs:wake", jobIds: [opaqueJobId] })).toBe(true);
     expect(isExtRequest({ kind: "jobs:wake", jobIds: ["   "] })).toBe(false);
     expect(isExtRequest({ kind: "jobs:wake", jobIds: ["x".repeat(4_097)] })).toBe(false);
@@ -66,6 +69,15 @@ describe("message guards", () => {
     expect(isOffscreenRequest({ kind: "offscreen:pdf-compile", jobId })).toBe(true);
     expect(isOffscreenRequest({ kind: "offscreen:pdf-cancel", jobId })).toBe(true);
     expect(isOffscreenRequest({ kind: "offscreen:jobs-wake", jobIds: [jobId] })).toBe(true);
+    expect(isOffscreenRequest({
+      kind: "offscreen:jobs-wake",
+      jobIds: [jobId],
+      resumeWaiting: true,
+    })).toBe(true);
+    expect(isOffscreenRequest({
+      kind: "offscreen:jobs-wake",
+      resumeWaiting: true,
+    })).toBe(false);
     expect(isOffscreenRequest({ kind: "offscreen:jobs-wake", jobIds: ["job-1"] })).toBe(true);
     expect(isOffscreenRequest({ kind: "offscreen:jobs-wake", bytes: new Uint8Array([1]) })).toBe(false);
     expect(isOffscreenRequest({ kind: "offscreen:pdf-compile", jobId: "bad" })).toBe(false);

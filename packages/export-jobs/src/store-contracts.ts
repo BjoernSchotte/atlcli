@@ -126,6 +126,13 @@ export interface ExportJobClaimV1 {
   leaseDurationMs: number;
   /** Optional exact job allow-list for invocation-scoped runners. */
   ids?: string[];
+  /**
+   * Explicit user-authorized resume of checkpointed waiting jobs.
+   *
+   * The subset must also be present in `ids`; otherwise an indefinite
+   * auth/quota/host wait remains unclaimable.
+   */
+  resumeWaitingIds?: string[];
   formats?: ExportFormat[];
   /** Host-resolvable credential references; prevents claiming work it cannot authenticate. */
   authRefs?: string[];

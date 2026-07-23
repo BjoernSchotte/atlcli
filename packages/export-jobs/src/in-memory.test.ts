@@ -238,6 +238,25 @@ describe("InMemoryExportJobStore", () => {
       checkpointRef: "checkpoint:auth",
     });
     expect(await due.claimNext({ ownerId: "runner", now: 1_000, leaseDurationMs: 100 })).toBeUndefined();
+    expect(await due.claimNext({
+      ownerId: "runner",
+      now: 55,
+      leaseDurationMs: 100,
+      resumeWaitingIds: ["timed"],
+    })).toBeUndefined();
+    expect(await due.claimNext({
+      ownerId: "runner",
+      now: 55,
+      leaseDurationMs: 100,
+      ids: ["timed"],
+      resumeWaitingIds: ["timed"],
+    })).toMatchObject({
+      id: "timed",
+      state: "running",
+      attempt: 3,
+      leaseEpoch: 3,
+      checkpointRef: "checkpoint:auth",
+    });
   });
 
   it("keeps a round-robin cursor across individual claims", async () => {

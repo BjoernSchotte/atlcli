@@ -358,8 +358,10 @@ export class InMemoryExportJobStore implements ExportJobStore, ExportJobEventRea
       (job) =>
         (job.state === "queued" ||
           (job.state === "waiting" &&
-            job.waiting?.until !== undefined &&
-            job.waiting.until <= observedAt)) &&
+            ((job.waiting?.until !== undefined &&
+              job.waiting.until <= observedAt) ||
+              (claim.resumeWaitingIds?.includes(job.id) === true &&
+                claim.ids?.includes(job.id) === true)))) &&
         (!claim.ids || claim.ids.includes(job.id)) &&
         (!claim.formats || claim.formats.includes(job.format)) &&
         (!claim.authRefs || claim.authRefs.includes(this.#requests.get(job.requestRef)?.authRef ?? "")),

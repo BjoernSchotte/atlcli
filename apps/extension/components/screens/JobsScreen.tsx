@@ -24,7 +24,7 @@
 import React from "react";
 import { ClipboardList } from "lucide-react";
 import type { ScreenDefinition, ScreenProps } from "../../utils/screens/registry.js";
-import type { DurableJob } from "../../utils/jobs/store.js";
+import type { ExportActivityJob } from "../../utils/jobs/store.js";
 import { useDurableJobs } from "../../utils/jobs/context.js";
 import { jobAgeMinutes } from "../../utils/jobs/model.js";
 import { useT, type I18n } from "../../utils/i18n/context.js";
@@ -50,20 +50,26 @@ export function siteOriginOf(page: ScreenProps["page"]): string | null {
   }
 }
 
-function statusLabel(t: I18n["t"], job: DurableJob): string {
-  if (job.status === "complete") return t("jobs.status.complete");
-  if (job.status === "failed") return t("jobs.status.failed");
-  if (job.status === "cancelled") return t("jobs.status.cancelled");
-  if (job.progress && job.progress.total > 0) {
+function statusLabel(t: I18n["t"], job: ExportActivityJob): string {
+  if (job.state === "succeeded") return t("jobs.status.complete");
+  if (job.state === "failed" || job.state === "interrupted") return t("jobs.status.failed");
+  if (job.state === "cancelled") return t("jobs.status.cancelled");
+  if (
+    job.progress &&
+    job.progress.total !== null &&
+    job.progress.total > 0
+  ) {
     return t("jobs.status.progress", {
       done: String(job.progress.done),
       total: String(job.progress.total),
     });
   }
-  return job.status === "compiling" ? t("jobs.status.compiling") : t("jobs.status.queued");
+  return job.state === "running" || job.state === "cancelling"
+    ? t("jobs.status.compiling")
+    : t("jobs.status.queued");
 }
 
-function ageLabel(t: I18n["t"], job: DurableJob, now: number): string {
+function ageLabel(t: I18n["t"], job: ExportActivityJob, now: number): string {
   const minutes = jobAgeMinutes(job.createdAt, now);
   if (minutes < 1) return t("jobs.age.justNow");
   if (minutes < 60) return t("jobs.age.minutes", { minutes: String(minutes) });
@@ -77,7 +83,7 @@ function JobRow({
   onDownload,
   onDismiss,
 }: {
-  job: DurableJob;
+  job: ExportActivityJob;
   now: number;
   onCancel: (id: string) => void;
   onDownload: (id: string) => void;
@@ -85,33 +91,39 @@ function JobRow({
 }): React.JSX.Element {
   const t = useT();
   return (
-    <li className="flex flex-col gap-1 border-b py-2 last:border-b-0" data-testid="job-row" data-job-id={job.id}>
+    <li className="flex flex-col gap-1 border-b py-2 last:border-b-0" data-testid="job-row" data-job-id={job.key}>
       <div className="flex items-baseline justify-between gap-2">
-        <span className="truncate text-sm font-medium">{job.title ?? t("jobs.untitled")}</span>
+        <span className="truncate text-sm font-medium">
+          {job.displayName || t("jobs.untitled")}
+        </span>
         <span className="shrink-0 text-xs text-muted-foreground">{ageLabel(t, job, now)}</span>
       </div>
       <div className="flex items-baseline gap-2 text-xs text-muted-foreground">
-        {job.scopeLabel && <span data-testid="job-scope">{job.scopeLabel}</span>}
+        <span data-testid="job-scope">
+          {job.source === "common"
+            ? `${job.format.toUpperCase()}${job.stage ? ` · ${job.stage}` : ""}`
+            : job.scopeKind}
+        </span>
         <span data-testid="job-status">{statusLabel(t, job)}</span>
       </div>
-      {job.error && !job.running && (
+      {job.error && !job.actions.cancel && (
         <p className="m-0 text-xs text-destructive" data-testid="job-error">
-          {job.error}
+          {job.error.message}
         </p>
       )}
       <div className="flex items-center gap-2">
-        {job.running && (
-          <Button variant="outline" onClick={() => onCancel(job.id)} data-testid="job-cancel">
+        {job.actions.cancel && (
+          <Button variant="outline" onClick={() => onCancel(job.key)} data-testid="job-cancel">
             {t("jobs.cancel")}
           </Button>
         )}
-        {job.collectable && (
-          <Button onClick={() => onDownload(job.id)} data-testid="job-download">
+        {job.actions.download && (
+          <Button onClick={() => onDownload(job.key)} data-testid="job-download">
             {t("jobs.download")}
           </Button>
         )}
-        {!job.running && (
-          <Button variant="outline" onClick={() => onDismiss(job.id)} data-testid="job-dismiss">
+        {job.actions.dismiss && (
+          <Button variant="outline" onClick={() => onDismiss(job.key)} data-testid="job-dismiss">
             {t("jobs.dismiss")}
           </Button>
         )}
@@ -121,7 +133,7 @@ function JobRow({
 }
 
 export interface JobsListProps {
-  jobs: readonly DurableJob[];
+  jobs: readonly ExportActivityJob[];
   error?: string | null;
   now?: number;
   onCancel: (id: string) => void;

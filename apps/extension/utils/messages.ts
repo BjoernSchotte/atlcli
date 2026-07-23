@@ -67,7 +67,7 @@ export type ExtRequest =
   | { kind: "get-current-entity"; windowId: number }
   | ({ kind: "pdf:compile"; jobId: string } & PdfCompileHints)
   | { kind: "pdf:cancel"; jobId: string }
-  | { kind: "jobs:wake"; jobIds?: string[] };
+  | { kind: "jobs:wake"; jobIds?: string[]; resumeWaiting?: boolean };
 
 /** Response messages returned to the panel. */
 export type ExtResponse =
@@ -98,7 +98,7 @@ export type OffscreenRequest =
   | { kind: "offscreen:wasm-add"; a: number; b: number }
   | ({ kind: "offscreen:pdf-compile"; jobId: string } & PdfCompileHints)
   | { kind: "offscreen:pdf-cancel"; jobId: string }
-  | { kind: "offscreen:jobs-wake"; jobIds?: string[] };
+  | { kind: "offscreen:jobs-wake"; jobIds?: string[]; resumeWaiting?: boolean };
 export type OffscreenResponse =
   | { kind: "offscreen:wasm-add-result"; ok: true; result: number }
   | { kind: "offscreen:wasm-add-result"; ok: false; error: string }
@@ -141,7 +141,13 @@ export function isExtRequest(value: unknown): value is ExtRequest {
   const kind = candidate.kind;
   if (kind === "pdf:compile") return hasOnlyKeys(value, ["kind", "jobId", "job", "pages"]) && isPdfJobId(candidate.jobId) && hasValidCompileHints(value);
   if (kind === "pdf:cancel") return hasOnlyKeys(value, ["kind", "jobId"]) && isPdfJobId(candidate.jobId);
-  if (kind === "jobs:wake") return hasOnlyKeys(value, ["kind", "jobIds"]) && hasValidJobIds((value as { jobIds?: unknown }).jobIds);
+  if (kind === "jobs:wake") {
+    const wake = value as { jobIds?: unknown; resumeWaiting?: unknown };
+    return hasOnlyKeys(value, ["kind", "jobIds", "resumeWaiting"]) &&
+      hasValidJobIds(wake.jobIds) &&
+      (wake.resumeWaiting === undefined || typeof wake.resumeWaiting === "boolean") &&
+      (wake.resumeWaiting !== true || Array.isArray(wake.jobIds));
+  }
   if (kind === "get-current-entity") return hasOnlyKeys(value, ["kind", "windowId"]) && isWindowId(candidate.windowId);
   if (kind === "ping") return hasOnlyKeys(value, ["kind"]);
   return kind === "wasm-smoke"
@@ -172,7 +178,13 @@ export function isOffscreenRequest(value: unknown): value is OffscreenRequest {
     return hasOnlyKeys(value, ["kind", "jobId", "job", "pages"]) && isPdfJobId(candidate.jobId) && hasValidCompileHints(value);
   }
   if (candidate.kind === "offscreen:pdf-cancel") return hasOnlyKeys(value, ["kind", "jobId"]) && isPdfJobId(candidate.jobId);
-  if (candidate.kind === "offscreen:jobs-wake") return hasOnlyKeys(value, ["kind", "jobIds"]) && hasValidJobIds((value as { jobIds?: unknown }).jobIds);
+  if (candidate.kind === "offscreen:jobs-wake") {
+    const wake = value as { jobIds?: unknown; resumeWaiting?: unknown };
+    return hasOnlyKeys(value, ["kind", "jobIds", "resumeWaiting"]) &&
+      hasValidJobIds(wake.jobIds) &&
+      (wake.resumeWaiting === undefined || typeof wake.resumeWaiting === "boolean") &&
+      (wake.resumeWaiting !== true || Array.isArray(wake.jobIds));
+  }
   return candidate.kind === "offscreen:wasm-add"
     && hasOnlyKeys(value, ["kind", "a", "b"])
     && hasFiniteOperands(value);

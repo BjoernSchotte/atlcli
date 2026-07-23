@@ -278,6 +278,7 @@ export interface ExportJobClaimV1 {
     now: number;
     leaseDurationMs: number;
     ids?: string[];
+    resumeWaitingIds?: string[];
     formats?: ExportFormat[];
     authRefs?: string[];
 }
