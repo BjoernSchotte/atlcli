@@ -39,6 +39,7 @@
 import PizZip from "pizzip";
 import Docxtemplater from "docxtemplater";
 import {
+  createAdfAnnotationResolver,
   createAdfMediaAttachmentResolver,
   AssetBudget,
   assertSafeSvg,
@@ -73,6 +74,7 @@ import {
 } from "./resolver.js";
 import {
   serializeBlocks,
+  WordCommentRegistry,
   type CodeBlock,
   type DiagramEmbedSeam,
   type ImageBlock,
@@ -522,6 +524,7 @@ export async function prepareDocxExport(input: ExportInput): Promise<PreparedDoc
   // post-render scan would be too late (see PLAN "Numbering inventory happens
   // before serialization"). A malformed part degrades to a safe zero base.
   const numbering = new NumberingAllocator(inspectNumberingPart(zip));
+  const comments = new WordCommentRegistry();
   // One embedder per export owns the unique-id counters for images AND
   // diagrams (spec 005a: "unique element ids reused from 005 — no collisions
   // with page images"). Attachment images additionally need an asset fetcher;
@@ -589,6 +592,7 @@ export async function prepareDocxExport(input: ExportInput): Promise<PreparedDoc
   const body = await serializeBlocks(blocks, {
     styleNames,
     numbering,
+    comments,
     images,
     diagrams,
     ...(bodySectPr ? { bodySectPr } : {}),
@@ -688,6 +692,7 @@ export async function prepareDocxExport(input: ExportInput): Promise<PreparedDoc
     ...(input.captionLang !== undefined ? { dateLocale: input.captionLang } : {}),
     timings,
     notes: flowNotes,
+    comments,
   });
 
   if (!contentFound) {
@@ -737,6 +742,7 @@ export async function prepareDocxExport(input: ExportInput): Promise<PreparedDoc
       });
     }
   }
+  if (comments.isUsed) ensureCommentsPart(zip, comments);
   // Everything below this point is small, serializable report/checkpoint data.
   // The mutable PizZip archive itself is frozen into bytes so a worker crash
   // cannot leave a durable checkpoint pointing at a half-mutated object.
@@ -1806,6 +1812,7 @@ interface IncludePassDeps {
   timings: ExportTimings;
   /** Sink for the pass's report notes (part of the export's flow notes). */
   notes: ExportNote[];
+  comments: WordCommentRegistry;
 }
 
 /**
@@ -1986,6 +1993,8 @@ async function runIncludePass(pass: IncludePassDeps): Promise<Map<string, string
         ? pageBodyToBlocks(exportSource, {
             exporter: "word",
             resolveMediaAttachment: createAdfMediaAttachmentResolver(page.mediaAttachments),
+            resolveAnnotation: createAdfAnnotationResolver(page.inlineComments),
+            annotationCommentsComplete: page.inlineCommentsComplete,
             pageContext: {
               id: page.id,
               title: page.title,
@@ -2034,6 +2043,7 @@ async function runIncludePass(pass: IncludePassDeps): Promise<Map<string, string
         : undefined;
     const serialized = await serializeBlocks(walked.blocks, {
       styleNames: pass.styleNames,
+      comments: pass.comments,
       ...(images ? { images } : {}),
       ...(diagrams ? { diagrams } : {}),
       captionLang: pass.captionLang,
@@ -2246,6 +2256,40 @@ export function ensureNumberingPart(zip: PizZip, allocator: NumberingAllocator):
         "</Relationships>",
         `<Relationship Id="${rid}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering" Target="numbering.xml"/></Relationships>`
       )
+    );
+  }
+}
+
+/** Register the native Word comment part emitted by ADF annotation ranges. */
+export function ensureCommentsPart(zip: PizZip, comments: WordCommentRegistry): void {
+  if (!comments.isUsed) return;
+  zip.file("word/comments.xml", comments.toXml());
+
+  const ctPath = "[Content_Types].xml";
+  const ct = zip.file(ctPath)?.asText();
+  if (ct && !ct.includes("word/comments.xml")) {
+    zip.file(
+      ctPath,
+      ct.replace(
+        "</Types>",
+        `<Override PartName="/word/comments.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml"/></Types>`,
+      ),
+    );
+  }
+
+  const relsPath = relsPathFor("word/document.xml");
+  const rels =
+    zip.file(relsPath)?.asText() ??
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>`;
+  if (!/relationships\/comments/.test(rels)) {
+    const ids = [...rels.matchAll(/Id=["']rId(\d+)["']/g)].map((match) => Number(match[1]));
+    const rid = `rId${(ids.length ? Math.max(...ids) : 0) + 1}`;
+    zip.file(
+      relsPath,
+      rels.replace(
+        "</Relationships>",
+        `<Relationship Id="${rid}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments" Target="comments.xml"/></Relationships>`,
+      ),
     );
   }
 }

@@ -216,6 +216,39 @@ describe("BrowserPdfCompiler package", () => {
     expect(result.pdf).toBeDefined();
     expect(validatePdfOutput(result.pdf!).pageCount).toBeGreaterThanOrEqual(1);
   }, 30_000);
+
+  it("compiles the static PDF projection of a correlated ADF inline comment", async () => {
+    const blocks: ExportBlock[] = [{
+      type: "paragraph",
+      content: [{
+        type: "text",
+        text: "Annotated value",
+        annotations: [{
+          id: "marker-private",
+          annotationType: "inlineComment",
+          comment: {
+            bodyText: "Review this value",
+            status: "resolved",
+            replies: [{ bodyText: "Reviewed" }],
+          },
+        }],
+      }],
+    }];
+    const prepared = await preparePdfDocument(blocks, {
+      resolve: async () => {
+        throw new Error("unused");
+      },
+    });
+    const source = serializePdfDocument(prepared, {
+      metadata: { title: "Inline comments", exportedAt: new Date("2026-07-19T00:00:00Z") },
+    });
+    const compiler = await createCompiler();
+    const result = await compiler.compile(source);
+
+    expect(result.diagnostics.filter((diagnostic) => diagnostic.severity === "error")).toEqual([]);
+    expect(result.pdf).toBeDefined();
+    expect(validatePdfOutput(result.pdf!).pageCount).toBeGreaterThanOrEqual(2);
+  }, 30_000);
 });
 
 describe("template settings compiled output", () => {

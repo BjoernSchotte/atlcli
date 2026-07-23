@@ -1,4 +1,5 @@
 import type {
+  AdfAnnotationIdentity,
   BlockPresentation,
   CaptionKind,
   ExportNote,
@@ -350,6 +351,34 @@ type TableDensity = "normal" | "dense";
 /** The layout container the current block renders inside (spec 003 C5/C6). */
 type RenderContainer = "body" | "tableCell" | "calloutCell";
 
+class PdfCommentRegistry {
+  private readonly byMarkerRef = new Map<string, {
+    number: number;
+    annotation: AdfAnnotationIdentity & { comment: NonNullable<AdfAnnotationIdentity["comment"]> };
+  }>();
+
+  register(annotation: AdfAnnotationIdentity): number | undefined {
+    if (!annotation.comment) return undefined;
+    const existing = this.byMarkerRef.get(annotation.id);
+    if (existing) return existing.number;
+    const number = this.byMarkerRef.size + 1;
+    this.byMarkerRef.set(annotation.id, {
+      number,
+      annotation: annotation as AdfAnnotationIdentity & {
+        comment: NonNullable<AdfAnnotationIdentity["comment"]>;
+      },
+    });
+    return number;
+  }
+
+  entries(): Array<{
+    number: number;
+    annotation: AdfAnnotationIdentity & { comment: NonNullable<AdfAnnotationIdentity["comment"]> };
+  }> {
+    return [...this.byMarkerRef.values()];
+  }
+}
+
 interface RenderContext {
   tableDensity: TableDensity;
   /**
@@ -389,11 +418,16 @@ interface RenderContext {
   design: ResolvedPdfDesign;
   /** BCP-47 locale for semantic inline dates. */
   locale: string;
+  comments: PdfCommentRegistry;
 }
 
 /** The root render context for a document rendered with `design`. */
-function rootContext(design: ResolvedPdfDesign, locale = "en"): RenderContext {
-  return { tableDensity: "normal", design, locale };
+function rootContext(
+  design: ResolvedPdfDesign,
+  locale = "en",
+  comments = new PdfCommentRegistry(),
+): RenderContext {
+  return { tableDensity: "normal", design, locale, comments };
 }
 const DENSE_TABLE_COLUMN_THRESHOLD = 9;
 
@@ -513,7 +547,7 @@ function captionFigureArgs(caption: PreparedPdfCaption, writer: Writer): string 
     caption.content,
     writer.labels,
     writer.notes,
-    rootContext(writer.design, writer.locale),
+    rootContext(writer.design, writer.locale, writer.comments),
   );
   return `caption: [${inline}], kind: ${typstFigureKind(caption.kind)}`;
 }
@@ -704,6 +738,55 @@ function serializeMention(
   return `#text(fill: rgb(${typstString(color)}))[${content}]`;
 }
 
+function annotationMarkers(
+  annotations: readonly AdfAnnotationIdentity[] | undefined,
+  comments: PdfCommentRegistry,
+): string {
+  const numbers = (annotations ?? [])
+    .map((annotation) => comments.register(annotation))
+    .filter((number): number is number => number !== undefined);
+  return numbers.map((number) =>
+    `#super[${literalText(`[${number}]`)}]`
+  ).join("");
+}
+
+function endingAnnotations(
+  nodes: readonly PreparedPdfInlineNode[],
+  index: number,
+): readonly AdfAnnotationIdentity[] | undefined {
+  const node = nodes[index];
+  if (!node || !("annotations" in node) || !node.annotations) return undefined;
+  const next = nodes[index + 1];
+  const nextIds = new Set(
+    next && "annotations" in next
+      ? (next.annotations ?? []).map((annotation) => annotation.id)
+      : [],
+  );
+  return node.annotations.filter((annotation) => !nextIds.has(annotation.id));
+}
+
+function serializeCommentAppendix(
+  comments: PdfCommentRegistry,
+  design: ResolvedPdfDesign,
+): string {
+  const entries = comments.entries();
+  if (entries.length === 0) return "";
+  const replyIndent = designLength(design, "listBodyIndent");
+  const itemSpacing = designLength(design, "paragraphSpacing");
+  const items = entries.map(({ number, annotation }) => {
+    const resource = annotation.comment;
+    const status = resource.status === "resolved" ? "Resolved — " : "";
+    const replies = resource.replies
+      .map((reply) =>
+        `#block(inset: (left: ${replyIndent}))[#emph[Reply:] ${literalText(reply.bodyText)}]`
+      )
+      .join("\n");
+    return `#block(above: ${itemSpacing})[#strong[${literalText(`[${number}]`)}] ` +
+      `${literalText(`${status}${resource.bodyText}`)}${replies ? `\n${replies}` : ""}]`;
+  }).join("\n");
+  return `\n#pagebreak()\n#heading(level: 1, outlined: false)[Comments]\n${items}\n`;
+}
+
 function serializeInline(
   nodes: PreparedPdfInlineNode[],
   labels: Map<string, string>,
@@ -711,10 +794,11 @@ function serializeInline(
   context: RenderContext
 ): string {
   return nodes
-    .map((node) => {
+    .map((node, index) => {
       switch (node.type) {
         case "text": {
-          return serializeText(node, context);
+          return serializeText(node, context) +
+            annotationMarkers(endingAnnotations(nodes, index), context.comments);
         }
         case "lineBreak":
           return "#linebreak()";
@@ -734,6 +818,7 @@ function serializeInline(
         case "smartCard":
           return serializeSmartCardInline(node.card, labels, context.design);
         case "media": {
+          let rendered: string;
           if (node.assetPath) {
             const dimensions = [
               node.width !== undefined ? `width: ${node.width * 0.75}pt` : undefined,
@@ -748,13 +833,19 @@ function serializeInline(
             const drawing =
               `#box(baseline: ${designLength(context.design, "inlineMediaBaseline")}${border}, ` +
               `inset: ${designLength(context.design, "inlineMediaInset")})[${image}]`;
-            if (!node.link) return drawing;
-            const href = resolveLink(node.link.target, labels);
-            return href
+            if (!node.link) rendered = drawing;
+            else {
+              const href = resolveLink(node.link.target, labels);
+              rendered = href
               ? href.startsWith("<")
                 ? `#link(${href})[${drawing}]`
                 : `#link(${typstString(href)})[${drawing}]`
               : drawing;
+            }
+            return rendered + annotationMarkers(
+              endingAnnotations(nodes, index),
+              context.comments,
+            );
           }
           const label = literalText(`[${inlineMediaDisplayText(node)}]`);
           const color = node.border?.color.slice(0, 7) ?? context.design.tokens.colors.hairline;
@@ -765,13 +856,19 @@ function serializeInline(
             `y: ${designLength(context.design, "inlineMediaChipInsetY")}), ` +
             `radius: ${designLength(context.design, "inlineMediaChipRadius")})` +
             `[${label}]`;
-          if (!node.link) return chip;
-          const href = resolveLink(node.link.target, labels);
-          return href
+          if (!node.link) rendered = chip;
+          else {
+            const href = resolveLink(node.link.target, labels);
+            rendered = href
             ? href.startsWith("<")
               ? `#link(${href})[${chip}]`
               : `#link(${typstString(href)})[${chip}]`
             : chip;
+          }
+          return rendered + annotationMarkers(
+            endingAnnotations(nodes, index),
+            context.comments,
+          );
         }
         case "placeholder":
           return "";
@@ -936,6 +1033,7 @@ interface Writer {
   design: ResolvedPdfDesign;
   /** BCP-47 locale for semantic inline dates. */
   locale: string;
+  comments: PdfCommentRegistry;
 }
 
 function serializeDecisionItem(
@@ -1030,7 +1128,7 @@ function serializeBlocks(
   blocks: PreparedPdfBlock[],
   writer: Writer,
   parentPath = "blocks",
-  context: RenderContext = rootContext(writer.design, writer.locale),
+  context: RenderContext = rootContext(writer.design, writer.locale, writer.comments),
   startIndex = 0,
 ): string {
   const serialized: string[] = [];
@@ -1443,6 +1541,7 @@ function serializeBlock(
         container: "tableCell",
         design: context.design,
         locale: context.locale,
+        comments: context.comments,
       };
       const columns = tableColumns(columnCount, block.columnWidths, block.rows);
       const serializedRows = grid.rows.map((row, rowIndex) => {
@@ -1642,6 +1741,9 @@ function serializeBlock(
       });
     }
   }
+  if (block.type === "image" || block.type === "mediaFallback") {
+    value += annotationMarkers(block.annotations, context.comments);
+  }
   return writeMapped(block, writer, path, value, summary);
 }
 
@@ -1750,8 +1852,15 @@ export function serializePdfDocument(
     contrastWarnings: new Set(),
     design: settings.design,
     locale: documentLocale(options.metadata.language, options.metadata.region),
+    comments: new PdfCommentRegistry(),
   };
-  const body = serializeBlocks(document.blocks, writer);
+  const body = serializeBlocks(
+    document.blocks,
+    writer,
+    "blocks",
+    rootContext(writer.design, writer.locale, writer.comments),
+  );
+  const commentAppendix = serializeCommentAppendix(writer.comments, writer.design);
   // The validated logo travels as a virtual asset file the compiler maps into
   // its filesystem — the same path-emission pattern prepared image assets use.
   // The "atlcli-logo" name cannot collide with prepared assets, whose paths
@@ -1780,7 +1889,7 @@ export function serializePdfDocument(
   exported-label: ${typstString(exportedLabel)},
 ), settings: ${typstSettingsDict(settings, { logoPath: logoAsset?.path })})
 
-${body}
+${body}${commentAppendix}
 `;
 
   return {

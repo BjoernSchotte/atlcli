@@ -20,9 +20,11 @@ import {
 } from "./export-blocks.js";
 import { AdfValidationError } from "./adf-types.js";
 import {
+  createAdfAnnotationResolver,
   createAdfMediaAttachmentResolver,
   type AdfMediaAttachment,
 } from "./adf-to-blocks.js";
+import type { InlineComment } from "./client.js";
 import { pageBodyToBlocks } from "./page-body-to-blocks.js";
 import type {
   BlocksResult,
@@ -64,6 +66,8 @@ export interface TreeSourcePageMetadata {
   /** Exact v2 `fileId` metadata, prefetched only when the ADF references media. */
   mediaAttachments?: AdfMediaAttachment[];
   mediaAttachmentsComplete?: boolean;
+  inlineComments?: InlineComment[];
+  inlineCommentsComplete?: boolean;
 }
 
 /**
@@ -1255,6 +1259,11 @@ export async function fetchExportTree(
           resolveMediaAttachment:
             createAdfMediaAttachmentResolver(page.mediaAttachments) ??
             opts.bodyOptions?.resolveMediaAttachment,
+          resolveAnnotation:
+            createAdfAnnotationResolver(page.inlineComments) ??
+            opts.bodyOptions?.resolveAnnotation,
+          annotationCommentsComplete:
+            page.inlineCommentsComplete ?? opts.bodyOptions?.annotationCommentsComplete,
           pageContext: {
             id: node.pageId,
             title: node.title,
@@ -1548,6 +1557,8 @@ export function confluenceTreeSource(client: TreeSourceClient): TreeSource {
           spaceKey: page.spaceKey,
           mediaAttachments: page.mediaAttachments,
           mediaAttachmentsComplete: page.mediaAttachmentsComplete,
+          inlineComments: page.inlineComments,
+          inlineCommentsComplete: page.inlineCommentsComplete,
         };
       }
       const page = await client.getPageDetails(id, { signal: context.signal });

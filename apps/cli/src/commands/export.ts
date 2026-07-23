@@ -25,6 +25,7 @@ import {
   SpaceHomepageError,
   composeChapters,
   confluenceTreeSource,
+  createAdfAnnotationResolver,
   createAdfMediaAttachmentResolver,
   exportSourcePolicyFromFlag,
   fetchExportTree,
@@ -1217,6 +1218,8 @@ export function decodeTsPageSource(
   return pageBodyToBlocks(page.exportSource, {
     exporter: "word",
     resolveMediaAttachment: createAdfMediaAttachmentResolver(page.mediaAttachments),
+    resolveAnnotation: createAdfAnnotationResolver(page.inlineComments),
+    annotationCommentsComplete: page.inlineCommentsComplete,
     ...(keepIgnored ? { exportControls: "passthrough" as const } : {}),
     pageContext: {
       id: page.id,

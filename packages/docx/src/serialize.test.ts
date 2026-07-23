@@ -21,6 +21,36 @@ function diagramSeamOver(
   return { embed };
 }
 
+describe("ADF inline comments", () => {
+  it("emits native Word ranges and a deduplicated comments part model", async () => {
+    const annotation = {
+      id: "opaque-marker-not-rendered",
+      annotationType: "inlineComment" as const,
+      comment: {
+        bodyText: "Review <this> value",
+        status: "resolved" as const,
+        created: "2026-01-01T00:00:00.000Z",
+        replies: [{ bodyText: "Updated & verified" }],
+      },
+    };
+    const { xml, comments } = await serializeBlocks([{
+      type: "paragraph",
+      content: [
+        { type: "text", text: "first", annotations: [annotation] },
+        { type: "text", text: " second", annotations: [annotation] },
+      ],
+    }], { styleNames: noStyles });
+
+    expect(xml.match(/<w:commentRangeStart w:id="0"\/>/g)).toHaveLength(1);
+    expect(xml.match(/<w:commentReference w:id="0"\/>/g)).toHaveLength(1);
+    const commentsXml = comments.toXml();
+    expect(commentsXml.match(/<w:comment w:id="0"/g)).toHaveLength(1);
+    expect(commentsXml).toContain("[Resolved] Review &lt;this&gt; value");
+    expect(commentsXml).toContain("Reply: Updated &amp; verified");
+    expect(commentsXml).not.toContain("opaque-marker-not-rendered");
+  });
+});
+
 describe("serializeInline", () => {
   it("emits marks, foreground colors, and arbitrary background colors as run properties", () => {
     const xml = serializeInline([

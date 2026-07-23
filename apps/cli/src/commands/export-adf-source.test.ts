@@ -98,6 +98,47 @@ describe("CLI PDF source resolution is ADF-primary", () => {
     expect(result.sourceNotes.map((note) => note.code)).not.toContain("adf-media-unresolved");
   });
 
+  it("correlates ADF annotation ranges through the prefetched comment sidecar", async () => {
+    const page = {
+      ...adfPage([{
+        type: "paragraph",
+        content: [{
+          type: "text",
+          text: "Annotated",
+          marks: [{
+            type: "annotation",
+            attrs: { id: "marker-1", annotationType: "inlineComment" },
+          }],
+        }],
+      }]),
+      inlineComments: [{
+        id: "comment-resource-1",
+        author: { displayName: "Fixture" },
+        created: "2026-01-01T00:00:00.000Z",
+        body: "<p>Review this</p>",
+        status: "open" as const,
+        replies: [],
+        textSelection: "Annotated",
+        inlineMarkerRef: "marker-1",
+      }],
+      inlineCommentsComplete: true,
+    };
+    const client = {
+      getExportPageDetailsWithMedia: async () => page,
+    } as unknown as ConfluenceClient;
+
+    const result = await resolveScope(args(client), new AbortController().signal, () => undefined);
+    expect(result.blocks[0]).toMatchObject({
+      content: [{
+        annotations: [{
+          id: "marker-1",
+          comment: { bodyText: "Review this", status: "open", replies: [] },
+        }],
+      }],
+    });
+    expect(result.sourceNotes.map((note) => note.code)).not.toContain("adf-annotation-unresolved");
+  });
+
   it("threads the PDF exporter identity through the shared tree source", async () => {
     const control = (target: string, text: string) => ({
       type: "bodiedExtension",
@@ -185,5 +226,40 @@ describe("CLI TypeScript DOCX prewalk is ADF-primary", () => {
       },
       mediaPresentation: { layout: "center" },
     }]);
+  });
+
+  it("uses the same inline-comment correlation in the DOCX prewalk", () => {
+    const page = {
+      ...adfPage([{
+        type: "paragraph",
+        content: [{
+          type: "text",
+          text: "Annotated",
+          marks: [{
+            type: "annotation",
+            attrs: { id: "marker-2", annotationType: "inlineComment" },
+          }],
+        }],
+      }]),
+      inlineComments: [{
+        id: "comment-resource-2",
+        author: { displayName: "Fixture" },
+        created: "2026-01-01T00:00:00.000Z",
+        body: "<p>DOCX review</p>",
+        status: "resolved" as const,
+        replies: [],
+        textSelection: "Annotated",
+        inlineMarkerRef: "marker-2",
+      }],
+      inlineCommentsComplete: true,
+    };
+    expect(decodeTsPageSource(page).blocks[0]).toMatchObject({
+      content: [{
+        annotations: [{
+          id: "marker-2",
+          comment: { bodyText: "DOCX review", status: "resolved", replies: [] },
+        }],
+      }],
+    });
   });
 });

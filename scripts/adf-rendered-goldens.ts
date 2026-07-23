@@ -69,6 +69,9 @@ const REQUIRED_TEXT = Object.freeze([
 const FORBIDDEN_TEXT = Object.freeze([
   "editor-only-secret",
   "1709510400000",
+  "annotation-inline-code",
+  "comment-resource-1",
+  "comment-reply-1",
   "unsupported-block-private-provenance",
   "unsupported-inline-private-provenance",
   "static-extension-private-local-id",
@@ -334,6 +337,7 @@ async function manifestFor(
     sourceSha256: sourceHash(),
     features: [
       "inline-code",
+      "annotation-native-docx-static-pdf",
       "docx-embedded-code-font",
       "unicode-emoji",
       "custom-emoji-fallback",
@@ -379,7 +383,14 @@ async function manifestFor(
       },
       pdf: {
         pages: await copyPages("pdf", pdfPages),
-        requiredText: [...REQUIRED_TEXT, "4 Mar 2024", "READY", "Keep Case"],
+        requiredText: [
+          ...REQUIRED_TEXT,
+          "4 Mar 2024",
+          "READY",
+          "Keep Case",
+          "Review the inline token",
+          "Reviewed",
+        ],
         forbiddenText: [...FORBIDDEN_TEXT],
       },
     },

@@ -6,6 +6,7 @@ import { unzipDocx } from "@atlcli/docx/scan";
 import {
   ADF_CODE_BLOCK_SOURCE,
   ADF_CONFORMANCE_MEDIA_ATTACHMENTS,
+  ADF_CONFORMANCE_INLINE_COMMENTS,
   ADF_CONFORMANCE_DETAILS,
   ADF_CONFORMANCE_METADATA,
   ADF_CONFORMANCE_SOURCE,
@@ -82,6 +83,7 @@ export interface AdfSourceCaseResult {
   docxHasTaskAndDecisionSemantics: boolean;
   docxHasCodeLineNumbers: boolean;
   docxHasCustomPanelPresentation: boolean;
+  docxHasNativeInlineComment: boolean;
   neutralHasBlockLocalIdentities: boolean;
   neutralHasCodeBlockSemantics: boolean;
   neutralHasCustomPanelSemantics: boolean;
@@ -154,6 +156,16 @@ function sourcePort(): ConfluenceSourceResolverPortV1 {
               ...attachment,
             })),
             mediaAttachmentsComplete: true,
+            inlineComments: ADF_CONFORMANCE_INLINE_COMMENTS.map((comment) => ({
+              ...comment,
+              author: { ...comment.author },
+              replies: comment.replies.map((reply) => ({
+                ...reply,
+                author: { ...reply.author },
+                replies: [],
+              })),
+            })),
+            inlineCommentsComplete: true,
           };
         },
         async getPageVersion(id) {
@@ -279,6 +291,7 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
   const zip = unzipDocx(output.single.bytes);
   const documentXml = zip.file("word/document.xml")?.asText() ?? "";
   const relationships = zip.file("word/_rels/document.xml.rels")?.asText() ?? "";
+  const commentsXml = zip.file("word/comments.xml")?.asText() ?? "";
   const numberingXml = zip.file("word/numbering.xml")?.asText() ?? "";
   const fontTableXml = zip.file("word/fontTable.xml")?.asText() ?? "";
   const fontTableRels = zip.file("word/_rels/fontTable.xml.rels")?.asText() ?? "";
@@ -475,6 +488,12 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
       && documentXml.includes("★")
       && documentXml.includes("ADF custom panel")
       && !documentXml.includes(":star:"),
+    docxHasNativeInlineComment:
+      documentXml.includes("<w:commentRangeStart")
+      && documentXml.includes("<w:commentReference")
+      && commentsXml.includes("Review the inline token")
+      && commentsXml.includes("Reply: Reviewed")
+      && !commentsXml.includes("annotation-inline-code"),
     neutralHasBlockLocalIdentities:
       JSON.stringify(pdfSource.blocks).includes('"localId":"heading-local"')
       && JSON.stringify(pdfSource.blocks).includes('"localId":"paragraph-local"')

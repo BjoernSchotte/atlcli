@@ -78,10 +78,25 @@ export declare const ADF_NODE_DECODE_MODES: Readonly<{
     readonly text: "native";
 }>;
 
+// export: AdfAnnotationComment
+export interface AdfAnnotationComment {
+    bodyText: string;
+    status: "open" | "resolved";
+    created?: string;
+    replies: AdfAnnotationReply[];
+}
+
 // export: AdfAnnotationIdentity
 export interface AdfAnnotationIdentity {
     id: string;
     annotationType: "inlineComment";
+    comment?: AdfAnnotationComment;
+}
+
+// export: AdfAnnotationReply
+export interface AdfAnnotationReply {
+    bodyText: string;
+    created?: string;
 }
 
 // export: AdfCoverageLevel
@@ -214,6 +229,8 @@ export declare function adfToBlocks(input: string | unknown, options?: AdfToBloc
 export interface AdfToBlocksOptions extends Omit<StorageToBlocksOptions, "parseBudget"> {
     parseBudget?: Partial<AdfParseBudget>;
     resolveMediaAttachment?: (reference: AdfMediaReference) => AdfResolvedMediaAttachment | undefined;
+    resolveAnnotation?: (markerRef: string) => AdfAnnotationComment | undefined;
+    annotationCommentsComplete?: boolean;
 }
 
 // export: AdfUnsupportedAttribute
@@ -413,6 +430,9 @@ export interface CommentAuthor {
     email?: string;
 }
 
+// export: commentBodyToText
+export declare function commentBodyToText(storageBody: string): string;
+
 // export: CompletenessCode
 export type CompletenessCode = "page-unreadable" | "subtree-unreadable" | "page-ambiguous-404" | "page-version-changed";
 
@@ -503,6 +523,7 @@ export declare class ConfluenceClient {
     getExportPageDetailsWithMedia(id: string, options?: {
         signal?: AbortSignal;
         maxAttachments?: number;
+        maxInlineComments?: number;
     }): Promise<ConfluenceExportPageDetails>;
     getAncestors(pageId: string): Promise<{
         id: string;
@@ -670,6 +691,10 @@ export declare class ConfluenceClient {
     getInlineCommentReplies(commentId: string, options?: {
         limit?: number;
     }): Promise<InlineComment[]>;
+    listPageInlineCommentsForExport(pageId: string, options?: {
+        signal?: AbortSignal;
+        maxInlineComments?: number;
+    }): Promise<PageInlineCommentsExportResult>;
     getAllComments(pageId: string, options?: {
         limit?: number;
     }): Promise<PageComments>;
@@ -740,6 +765,8 @@ export type ConfluenceExportPageDetails = ConfluencePageDetails & {
     exportSource: ExportPageSource;
     mediaAttachments?: AdfMediaAttachment[];
     mediaAttachmentsComplete?: boolean;
+    inlineComments?: InlineComment[];
+    inlineCommentsComplete?: boolean;
 };
 
 // export: ConfluenceFolder
@@ -847,6 +874,9 @@ export interface ConversionOptions {
     emitWarnings?: boolean;
     onWarning?: (message: string) => void;
 }
+
+// export: createAdfAnnotationResolver
+export declare function createAdfAnnotationResolver(comments: readonly InlineComment[] | undefined): AdfToBlocksOptions["resolveAnnotation"] | undefined;
 
 // export: createAdfMediaAttachmentResolver
 export declare function createAdfMediaAttachmentResolver(attachments: readonly AdfMediaAttachment[] | undefined): AdfToBlocksOptions["resolveMediaAttachment"] | undefined;
@@ -982,6 +1012,8 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "adf-mark-degraded",
     "adf-attribute-dropped",
     "adf-media-unresolved",
+    "adf-annotation-unresolved",
+    "adf-annotation-comments-truncated",
     "adf-storage-fallback",
     "datasource-invalid",
     "datasource-provider-unknown",
@@ -1511,6 +1543,8 @@ export interface InlineComment extends BaseComment {
     textSelection: string;
     textSelectionMatchCount?: number;
     textSelectionMatchIndex?: number;
+    inlineMarkerRef?: string;
+    inlineOriginalSelection?: string;
     replies: InlineComment[];
 }
 
@@ -1806,6 +1840,8 @@ export interface PageBodyToBlocksOptions extends Omit<StorageToBlocksOptions, "p
     storageParseBudget?: StorageParseBudget;
     adfParseBudget?: Partial<AdfParseBudget>;
     resolveMediaAttachment?: (reference: AdfMediaReference) => AdfResolvedMediaAttachment | undefined;
+    resolveAnnotation?: import("./adf-to-blocks.js").AdfToBlocksOptions["resolveAnnotation"];
+    annotationCommentsComplete?: boolean;
 }
 
 // export: PageChangeInfo
@@ -1830,6 +1866,12 @@ export interface PageHistory {
     pageId: string;
     versions: PageVersion[];
     latest: number;
+}
+
+// export: PageInlineCommentsExportResult
+export interface PageInlineCommentsExportResult {
+    comments: InlineComment[];
+    complete: boolean;
 }
 
 // export: PageLayout
@@ -2301,6 +2343,8 @@ export interface TreeSourcePageMetadata {
     spaceKey?: string;
     mediaAttachments?: AdfMediaAttachment[];
     mediaAttachmentsComplete?: boolean;
+    inlineComments?: InlineComment[];
+    inlineCommentsComplete?: boolean;
 }
 
 // export: TreeSourceSummary
@@ -2475,10 +2519,25 @@ export declare const ADF_NODE_DECODE_MODES: Readonly<{
     readonly text: "native";
 }>;
 
+// export: AdfAnnotationComment
+export interface AdfAnnotationComment {
+    bodyText: string;
+    status: "open" | "resolved";
+    created?: string;
+    replies: AdfAnnotationReply[];
+}
+
 // export: AdfAnnotationIdentity
 export interface AdfAnnotationIdentity {
     id: string;
     annotationType: "inlineComment";
+    comment?: AdfAnnotationComment;
+}
+
+// export: AdfAnnotationReply
+export interface AdfAnnotationReply {
+    bodyText: string;
+    created?: string;
 }
 
 // export: AdfCoverageLevel
@@ -2611,6 +2670,8 @@ export declare function adfToBlocks(input: string | unknown, options?: AdfToBloc
 export interface AdfToBlocksOptions extends Omit<StorageToBlocksOptions, "parseBudget"> {
     parseBudget?: Partial<AdfParseBudget>;
     resolveMediaAttachment?: (reference: AdfMediaReference) => AdfResolvedMediaAttachment | undefined;
+    resolveAnnotation?: (markerRef: string) => AdfAnnotationComment | undefined;
+    annotationCommentsComplete?: boolean;
 }
 
 // export: AdfUnsupportedAttribute
@@ -2810,6 +2871,9 @@ export interface CommentAuthor {
     email?: string;
 }
 
+// export: commentBodyToText
+export declare function commentBodyToText(storageBody: string): string;
+
 // export: CompletenessCode
 export type CompletenessCode = "page-unreadable" | "subtree-unreadable" | "page-ambiguous-404" | "page-version-changed";
 
@@ -2900,6 +2964,7 @@ export declare class ConfluenceClient {
     getExportPageDetailsWithMedia(id: string, options?: {
         signal?: AbortSignal;
         maxAttachments?: number;
+        maxInlineComments?: number;
     }): Promise<ConfluenceExportPageDetails>;
     getAncestors(pageId: string): Promise<{
         id: string;
@@ -3067,6 +3132,10 @@ export declare class ConfluenceClient {
     getInlineCommentReplies(commentId: string, options?: {
         limit?: number;
     }): Promise<InlineComment[]>;
+    listPageInlineCommentsForExport(pageId: string, options?: {
+        signal?: AbortSignal;
+        maxInlineComments?: number;
+    }): Promise<PageInlineCommentsExportResult>;
     getAllComments(pageId: string, options?: {
         limit?: number;
     }): Promise<PageComments>;
@@ -3137,6 +3206,8 @@ export type ConfluenceExportPageDetails = ConfluencePageDetails & {
     exportSource: ExportPageSource;
     mediaAttachments?: AdfMediaAttachment[];
     mediaAttachmentsComplete?: boolean;
+    inlineComments?: InlineComment[];
+    inlineCommentsComplete?: boolean;
 };
 
 // export: ConfluenceFolder
@@ -3244,6 +3315,9 @@ export interface ConversionOptions {
     emitWarnings?: boolean;
     onWarning?: (message: string) => void;
 }
+
+// export: createAdfAnnotationResolver
+export declare function createAdfAnnotationResolver(comments: readonly InlineComment[] | undefined): AdfToBlocksOptions["resolveAnnotation"] | undefined;
 
 // export: createAdfMediaAttachmentResolver
 export declare function createAdfMediaAttachmentResolver(attachments: readonly AdfMediaAttachment[] | undefined): AdfToBlocksOptions["resolveMediaAttachment"] | undefined;
@@ -3379,6 +3453,8 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "adf-mark-degraded",
     "adf-attribute-dropped",
     "adf-media-unresolved",
+    "adf-annotation-unresolved",
+    "adf-annotation-comments-truncated",
     "adf-storage-fallback",
     "datasource-invalid",
     "datasource-provider-unknown",
@@ -3908,6 +3984,8 @@ export interface InlineComment extends BaseComment {
     textSelection: string;
     textSelectionMatchCount?: number;
     textSelectionMatchIndex?: number;
+    inlineMarkerRef?: string;
+    inlineOriginalSelection?: string;
     replies: InlineComment[];
 }
 
@@ -4203,6 +4281,8 @@ export interface PageBodyToBlocksOptions extends Omit<StorageToBlocksOptions, "p
     storageParseBudget?: StorageParseBudget;
     adfParseBudget?: Partial<AdfParseBudget>;
     resolveMediaAttachment?: (reference: AdfMediaReference) => AdfResolvedMediaAttachment | undefined;
+    resolveAnnotation?: import("./adf-to-blocks.js").AdfToBlocksOptions["resolveAnnotation"];
+    annotationCommentsComplete?: boolean;
 }
 
 // export: PageChangeInfo
@@ -4227,6 +4307,12 @@ export interface PageHistory {
     pageId: string;
     versions: PageVersion[];
     latest: number;
+}
+
+// export: PageInlineCommentsExportResult
+export interface PageInlineCommentsExportResult {
+    comments: InlineComment[];
+    complete: boolean;
 }
 
 // export: PageLayout
@@ -4698,6 +4784,8 @@ export interface TreeSourcePageMetadata {
     spaceKey?: string;
     mediaAttachments?: AdfMediaAttachment[];
     mediaAttachmentsComplete?: boolean;
+    inlineComments?: InlineComment[];
+    inlineCommentsComplete?: boolean;
 }
 
 // export: TreeSourceSummary
@@ -4872,10 +4960,25 @@ export declare const ADF_NODE_DECODE_MODES: Readonly<{
     readonly text: "native";
 }>;
 
+// export: AdfAnnotationComment
+export interface AdfAnnotationComment {
+    bodyText: string;
+    status: "open" | "resolved";
+    created?: string;
+    replies: AdfAnnotationReply[];
+}
+
 // export: AdfAnnotationIdentity
 export interface AdfAnnotationIdentity {
     id: string;
     annotationType: "inlineComment";
+    comment?: AdfAnnotationComment;
+}
+
+// export: AdfAnnotationReply
+export interface AdfAnnotationReply {
+    bodyText: string;
+    created?: string;
 }
 
 // export: AdfCoverageLevel
@@ -5008,6 +5111,8 @@ export declare function adfToBlocks(input: string | unknown, options?: AdfToBloc
 export interface AdfToBlocksOptions extends Omit<StorageToBlocksOptions, "parseBudget"> {
     parseBudget?: Partial<AdfParseBudget>;
     resolveMediaAttachment?: (reference: AdfMediaReference) => AdfResolvedMediaAttachment | undefined;
+    resolveAnnotation?: (markerRef: string) => AdfAnnotationComment | undefined;
+    annotationCommentsComplete?: boolean;
 }
 
 // export: AdfUnsupportedAttribute
@@ -5207,6 +5312,9 @@ export interface CommentAuthor {
     email?: string;
 }
 
+// export: commentBodyToText
+export declare function commentBodyToText(storageBody: string): string;
+
 // export: CompletenessCode
 export type CompletenessCode = "page-unreadable" | "subtree-unreadable" | "page-ambiguous-404" | "page-version-changed";
 
@@ -5297,6 +5405,7 @@ export declare class ConfluenceClient {
     getExportPageDetailsWithMedia(id: string, options?: {
         signal?: AbortSignal;
         maxAttachments?: number;
+        maxInlineComments?: number;
     }): Promise<ConfluenceExportPageDetails>;
     getAncestors(pageId: string): Promise<{
         id: string;
@@ -5464,6 +5573,10 @@ export declare class ConfluenceClient {
     getInlineCommentReplies(commentId: string, options?: {
         limit?: number;
     }): Promise<InlineComment[]>;
+    listPageInlineCommentsForExport(pageId: string, options?: {
+        signal?: AbortSignal;
+        maxInlineComments?: number;
+    }): Promise<PageInlineCommentsExportResult>;
     getAllComments(pageId: string, options?: {
         limit?: number;
     }): Promise<PageComments>;
@@ -5534,6 +5647,8 @@ export type ConfluenceExportPageDetails = ConfluencePageDetails & {
     exportSource: ExportPageSource;
     mediaAttachments?: AdfMediaAttachment[];
     mediaAttachmentsComplete?: boolean;
+    inlineComments?: InlineComment[];
+    inlineCommentsComplete?: boolean;
 };
 
 // export: ConfluenceFolder
@@ -5641,6 +5756,9 @@ export interface ConversionOptions {
     emitWarnings?: boolean;
     onWarning?: (message: string) => void;
 }
+
+// export: createAdfAnnotationResolver
+export declare function createAdfAnnotationResolver(comments: readonly InlineComment[] | undefined): AdfToBlocksOptions["resolveAnnotation"] | undefined;
 
 // export: createAdfMediaAttachmentResolver
 export declare function createAdfMediaAttachmentResolver(attachments: readonly AdfMediaAttachment[] | undefined): AdfToBlocksOptions["resolveMediaAttachment"] | undefined;
@@ -5776,6 +5894,8 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "adf-mark-degraded",
     "adf-attribute-dropped",
     "adf-media-unresolved",
+    "adf-annotation-unresolved",
+    "adf-annotation-comments-truncated",
     "adf-storage-fallback",
     "datasource-invalid",
     "datasource-provider-unknown",
@@ -6305,6 +6425,8 @@ export interface InlineComment extends BaseComment {
     textSelection: string;
     textSelectionMatchCount?: number;
     textSelectionMatchIndex?: number;
+    inlineMarkerRef?: string;
+    inlineOriginalSelection?: string;
     replies: InlineComment[];
 }
 
@@ -6600,6 +6722,8 @@ export interface PageBodyToBlocksOptions extends Omit<StorageToBlocksOptions, "p
     storageParseBudget?: StorageParseBudget;
     adfParseBudget?: Partial<AdfParseBudget>;
     resolveMediaAttachment?: (reference: AdfMediaReference) => AdfResolvedMediaAttachment | undefined;
+    resolveAnnotation?: import("./adf-to-blocks.js").AdfToBlocksOptions["resolveAnnotation"];
+    annotationCommentsComplete?: boolean;
 }
 
 // export: PageChangeInfo
@@ -6624,6 +6748,12 @@ export interface PageHistory {
     pageId: string;
     versions: PageVersion[];
     latest: number;
+}
+
+// export: PageInlineCommentsExportResult
+export interface PageInlineCommentsExportResult {
+    comments: InlineComment[];
+    complete: boolean;
 }
 
 // export: PageLayout
@@ -7095,6 +7225,8 @@ export interface TreeSourcePageMetadata {
     spaceKey?: string;
     mediaAttachments?: AdfMediaAttachment[];
     mediaAttachmentsComplete?: boolean;
+    inlineComments?: InlineComment[];
+    inlineCommentsComplete?: boolean;
 }
 
 // export: TreeSourceSummary
@@ -7204,10 +7336,25 @@ export type AdapterType = "sqlite" | "postgres" | "json";
 // export: addFrontmatter
 export declare function addFrontmatter(content: string, frontmatter: AtlcliFrontmatter): string;
 
+// export: AdfAnnotationComment
+export interface AdfAnnotationComment {
+    bodyText: string;
+    status: "open" | "resolved";
+    created?: string;
+    replies: AdfAnnotationReply[];
+}
+
 // export: AdfAnnotationIdentity
 export interface AdfAnnotationIdentity {
     id: string;
     annotationType: "inlineComment";
+    comment?: AdfAnnotationComment;
+}
+
+// export: AdfAnnotationReply
+export interface AdfAnnotationReply {
+    bodyText: string;
+    created?: string;
 }
 
 // export: AdfDataConsumerProvenance
@@ -7543,6 +7690,7 @@ export declare class ConfluenceClient {
     getExportPageDetailsWithMedia(id: string, options?: {
         signal?: AbortSignal;
         maxAttachments?: number;
+        maxInlineComments?: number;
     }): Promise<ConfluenceExportPageDetails>;
     getAncestors(pageId: string): Promise<{
         id: string;
@@ -7710,6 +7858,10 @@ export declare class ConfluenceClient {
     getInlineCommentReplies(commentId: string, options?: {
         limit?: number;
     }): Promise<InlineComment[]>;
+    listPageInlineCommentsForExport(pageId: string, options?: {
+        signal?: AbortSignal;
+        maxInlineComments?: number;
+    }): Promise<PageInlineCommentsExportResult>;
     getAllComments(pageId: string, options?: {
         limit?: number;
     }): Promise<PageComments>;
@@ -8072,6 +8224,8 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "adf-mark-degraded",
     "adf-attribute-dropped",
     "adf-media-unresolved",
+    "adf-annotation-unresolved",
+    "adf-annotation-comments-truncated",
     "adf-storage-fallback",
     "datasource-invalid",
     "datasource-provider-unknown",
@@ -8649,6 +8803,8 @@ export interface InlineComment extends BaseComment {
     textSelection: string;
     textSelectionMatchCount?: number;
     textSelectionMatchIndex?: number;
+    inlineMarkerRef?: string;
+    inlineOriginalSelection?: string;
     replies: InlineComment[];
 }
 
@@ -9149,6 +9305,12 @@ export interface PageHistory {
     pageId: string;
     versions: PageVersion[];
     latest: number;
+}
+
+// export: PageInlineCommentsExportResult
+export interface PageInlineCommentsExportResult {
+    comments: InlineComment[];
+    complete: boolean;
 }
 
 // export: PageLayout
@@ -10128,10 +10290,25 @@ export declare const ADF_NODE_DECODE_MODES: Readonly<{
     readonly text: "native";
 }>;
 
+// export: AdfAnnotationComment
+export interface AdfAnnotationComment {
+    bodyText: string;
+    status: "open" | "resolved";
+    created?: string;
+    replies: AdfAnnotationReply[];
+}
+
 // export: AdfAnnotationIdentity
 export interface AdfAnnotationIdentity {
     id: string;
     annotationType: "inlineComment";
+    comment?: AdfAnnotationComment;
+}
+
+// export: AdfAnnotationReply
+export interface AdfAnnotationReply {
+    bodyText: string;
+    created?: string;
 }
 
 // export: AdfCoverageLevel
@@ -10264,6 +10441,8 @@ export declare function adfToBlocks(input: string | unknown, options?: AdfToBloc
 export interface AdfToBlocksOptions extends Omit<StorageToBlocksOptions, "parseBudget"> {
     parseBudget?: Partial<AdfParseBudget>;
     resolveMediaAttachment?: (reference: AdfMediaReference) => AdfResolvedMediaAttachment | undefined;
+    resolveAnnotation?: (markerRef: string) => AdfAnnotationComment | undefined;
+    annotationCommentsComplete?: boolean;
 }
 
 // export: AdfUnsupportedAttribute
@@ -10463,6 +10642,9 @@ export interface CommentAuthor {
     email?: string;
 }
 
+// export: commentBodyToText
+export declare function commentBodyToText(storageBody: string): string;
+
 // export: CompletenessCode
 export type CompletenessCode = "page-unreadable" | "subtree-unreadable" | "page-ambiguous-404" | "page-version-changed";
 
@@ -10553,6 +10735,7 @@ export declare class ConfluenceClient {
     getExportPageDetailsWithMedia(id: string, options?: {
         signal?: AbortSignal;
         maxAttachments?: number;
+        maxInlineComments?: number;
     }): Promise<ConfluenceExportPageDetails>;
     getAncestors(pageId: string): Promise<{
         id: string;
@@ -10720,6 +10903,10 @@ export declare class ConfluenceClient {
     getInlineCommentReplies(commentId: string, options?: {
         limit?: number;
     }): Promise<InlineComment[]>;
+    listPageInlineCommentsForExport(pageId: string, options?: {
+        signal?: AbortSignal;
+        maxInlineComments?: number;
+    }): Promise<PageInlineCommentsExportResult>;
     getAllComments(pageId: string, options?: {
         limit?: number;
     }): Promise<PageComments>;
@@ -10790,6 +10977,8 @@ export type ConfluenceExportPageDetails = ConfluencePageDetails & {
     exportSource: ExportPageSource;
     mediaAttachments?: AdfMediaAttachment[];
     mediaAttachmentsComplete?: boolean;
+    inlineComments?: InlineComment[];
+    inlineCommentsComplete?: boolean;
 };
 
 // export: ConfluenceFolder
@@ -10897,6 +11086,9 @@ export interface ConversionOptions {
     emitWarnings?: boolean;
     onWarning?: (message: string) => void;
 }
+
+// export: createAdfAnnotationResolver
+export declare function createAdfAnnotationResolver(comments: readonly InlineComment[] | undefined): AdfToBlocksOptions["resolveAnnotation"] | undefined;
 
 // export: createAdfMediaAttachmentResolver
 export declare function createAdfMediaAttachmentResolver(attachments: readonly AdfMediaAttachment[] | undefined): AdfToBlocksOptions["resolveMediaAttachment"] | undefined;
@@ -11032,6 +11224,8 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "adf-mark-degraded",
     "adf-attribute-dropped",
     "adf-media-unresolved",
+    "adf-annotation-unresolved",
+    "adf-annotation-comments-truncated",
     "adf-storage-fallback",
     "datasource-invalid",
     "datasource-provider-unknown",
@@ -11561,6 +11755,8 @@ export interface InlineComment extends BaseComment {
     textSelection: string;
     textSelectionMatchCount?: number;
     textSelectionMatchIndex?: number;
+    inlineMarkerRef?: string;
+    inlineOriginalSelection?: string;
     replies: InlineComment[];
 }
 
@@ -11856,6 +12052,8 @@ export interface PageBodyToBlocksOptions extends Omit<StorageToBlocksOptions, "p
     storageParseBudget?: StorageParseBudget;
     adfParseBudget?: Partial<AdfParseBudget>;
     resolveMediaAttachment?: (reference: AdfMediaReference) => AdfResolvedMediaAttachment | undefined;
+    resolveAnnotation?: import("./adf-to-blocks.js").AdfToBlocksOptions["resolveAnnotation"];
+    annotationCommentsComplete?: boolean;
 }
 
 // export: PageChangeInfo
@@ -11880,6 +12078,12 @@ export interface PageHistory {
     pageId: string;
     versions: PageVersion[];
     latest: number;
+}
+
+// export: PageInlineCommentsExportResult
+export interface PageInlineCommentsExportResult {
+    comments: InlineComment[];
+    complete: boolean;
 }
 
 // export: PageLayout
@@ -12351,6 +12555,8 @@ export interface TreeSourcePageMetadata {
     spaceKey?: string;
     mediaAttachments?: AdfMediaAttachment[];
     mediaAttachmentsComplete?: boolean;
+    inlineComments?: InlineComment[];
+    inlineCommentsComplete?: boolean;
 }
 
 // export: TreeSourceSummary

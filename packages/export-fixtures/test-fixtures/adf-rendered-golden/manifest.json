@@ -1,8 +1,9 @@
 {
   "schemaVersion": 1,
-  "sourceSha256": "d6ddac479cd2a18439430b47298788f67de67659f0ffc745d4ff7a27310851dd",
+  "sourceSha256": "6e8175f473ed8254d1e1eb3b78d870aadd338c0731f52e70bad79680d7f029f2",
   "features": [
     "inline-code",
+    "annotation-native-docx-static-pdf",
     "docx-embedded-code-font",
     "unicode-emoji",
     "custom-emoji-fallback",
@@ -96,6 +97,9 @@
       "forbiddenText": [
         "editor-only-secret",
         "1709510400000",
+        "annotation-inline-code",
+        "comment-resource-1",
+        "comment-reply-1",
         "unsupported-block-private-provenance",
         "unsupported-inline-private-provenance",
         "static-extension-private-local-id",
@@ -114,7 +118,7 @@
         },
         {
           "file": "pdf-page-3.png",
-          "sha256": "091f45d7567b06c9ff14586cac62165e8b0b74958469925d437abec0c14c16c4"
+          "sha256": "e19803bcc7dd4b393f9e11b605ff9c5a44aa7a702259183488c51e5594e6375b"
         },
         {
           "file": "pdf-page-4.png",
@@ -122,7 +126,11 @@
         },
         {
           "file": "pdf-page-5.png",
-          "sha256": "155544d4b2521b74124563722858a3c63b67132851c34f4e045d85c13cd4d2ec"
+          "sha256": "084bb942b2613d7ed49a79654c7faa2ff4113021a0df180e68b2259e40c297ba"
+        },
+        {
+          "file": "pdf-page-6.png",
+          "sha256": "e92f186d6843a16d09d50aa83c5fd0e4c2b6ec9c391d519f7efe32501e30d6f8"
         }
       ],
       "requiredText": [
@@ -164,11 +172,16 @@
         "Extension: static-extension",
         "4 Mar 2024",
         "READY",
-        "Keep Case"
+        "Keep Case",
+        "Review the inline token",
+        "Reviewed"
       ],
       "forbiddenText": [
         "editor-only-secret",
         "1709510400000",
+        "annotation-inline-code",
+        "comment-resource-1",
+        "comment-reply-1",
         "unsupported-block-private-provenance",
         "unsupported-inline-private-provenance",
         "static-extension-private-local-id",

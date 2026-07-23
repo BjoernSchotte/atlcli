@@ -26,6 +26,38 @@ function pngBytes(): Uint8Array {
 }
 
 describe("PDF preparation and serialization", () => {
+  it("renders correlated ADF annotations as numbered ranges and a static comment appendix", async () => {
+    const annotation = {
+      id: "opaque-marker-not-rendered",
+      annotationType: "inlineComment" as const,
+      comment: {
+        bodyText: "Please verify this value",
+        status: "resolved" as const,
+        replies: [{ bodyText: "Verified" }],
+      },
+    };
+    const blocks: ExportBlock[] = [{
+      type: "paragraph",
+      content: [
+        { type: "text", text: "First", annotations: [annotation] },
+        { type: "text", text: " and second", annotations: [annotation] },
+      ],
+    }];
+    const prepared = await preparePdfDocument(blocks, {
+      resolve: async () => {
+        throw new Error("unused");
+      },
+    });
+    const bundle = serializePdfDocument(prepared, { metadata });
+
+    expect(bundle.main.split('#super[#text("[1]")]')).toHaveLength(2);
+    expect(bundle.main).toContain("Comments");
+    expect(bundle.main).toContain("Resolved — Please verify this value");
+    expect(bundle.main).toContain("Reply:");
+    expect(bundle.main).toContain("Verified");
+    expect(bundle.main).not.toContain("opaque-marker-not-rendered");
+  });
+
   it("promotes headings and serializes every common semantic block", async () => {
     const blocks: ExportBlock[] = [
       { type: "heading", level: 2, content: [{ type: "text", text: "Overview" }] },

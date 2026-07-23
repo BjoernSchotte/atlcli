@@ -243,6 +243,115 @@ describe("ConfluenceClient ADF page reads", () => {
     expect(calls.some((url) => url.includes("/attachments"))).toBe(false);
   });
 
+  test("prefetches and correlates privacy-safe inline-comment sidecars only for annotated ADF", async () => {
+    const sink = new CaptureSink();
+    const sentinel = "PRIVATE COMMENT BODY";
+    const calls: string[] = [];
+    Logger.configure({ level: "debug", sink, enableGlobal: false, enableProject: false });
+    const adf = JSON.stringify({
+      type: "doc",
+      version: 1,
+      content: [{
+        type: "paragraph",
+        content: [{
+          type: "text",
+          text: "annotated",
+          marks: [{
+            type: "annotation",
+            attrs: { id: "marker-1", annotationType: "inlineComment" },
+          }],
+        }],
+      }],
+    });
+    globalThis.fetch = (async (input: string | URL | Request) => {
+      const url = String(input);
+      calls.push(url);
+      if (url.includes("/rest/api/content/")) return storageResponse();
+      if (url.includes("/inline-comments/root-1/children")) {
+        return new Response(JSON.stringify({
+          results: [{
+            id: "reply-1",
+            body: { storage: { value: "<p>Reply body</p>" } },
+            version: { createdAt: "2026-01-02T00:00:00.000Z", authorId: "account-2" },
+            resolutionStatus: "open",
+            parentCommentId: "root-1",
+          }],
+          _links: {},
+        }), { status: 200, headers: { "content-type": "application/json" } });
+      }
+      if (url.includes("/pages/123/inline-comments")) {
+        return new Response(JSON.stringify({
+          results: [{
+            id: "root-1",
+            body: { storage: { value: `<p>${sentinel}</p>` } },
+            version: { createdAt: "2026-01-01T00:00:00.000Z", authorId: "account-1" },
+            resolutionStatus: "resolved",
+            properties: {
+              inlineMarkerRef: "marker-1",
+              inlineOriginalSelection: "annotated",
+            },
+          }],
+          _links: {},
+        }), { status: 200, headers: { "content-type": "application/json" } });
+      }
+      return adfResponse("123", 7, adf);
+    }) as typeof fetch;
+
+    const result = await new ConfluenceClient(
+      cloudProfile("https://comment-sidecar.example.invalid"),
+    ).getExportPageDetailsWithMedia("123");
+
+    expect(result.inlineCommentsComplete).toBe(true);
+    expect(result.inlineComments).toEqual([
+      expect.objectContaining({
+        id: "root-1",
+        body: `<p>${sentinel}</p>`,
+        status: "resolved",
+        inlineMarkerRef: "marker-1",
+        inlineOriginalSelection: "annotated",
+        replies: [expect.objectContaining({ id: "reply-1", body: "<p>Reply body</p>" })],
+      }),
+    ]);
+    expect(calls.some((url) => url.includes("/attachments"))).toBe(false);
+    expect(calls.filter((url) => url.includes("/inline-comments"))).toHaveLength(2);
+    expect(calls.filter((url) => url.includes("/inline-comments")).every((url) =>
+      new URL(url).searchParams.get("body-format") === "storage"
+    )).toBe(true);
+    const rootCommentUrl = new URL(
+      calls.find((url) => url.includes("/pages/123/inline-comments"))!,
+    );
+    expect(rootCommentUrl.searchParams.getAll("status")).toEqual(["current"]);
+    expect(rootCommentUrl.searchParams.getAll("resolution-status")).toEqual([
+      "open",
+      "resolved",
+    ]);
+    const replyUrl = new URL(
+      calls.find((url) => url.includes("/inline-comments/root-1/children"))!,
+    );
+    expect(replyUrl.searchParams.has("status")).toBe(false);
+    expect(replyUrl.searchParams.has("resolution-status")).toBe(false);
+    expect(JSON.stringify(sink.entries)).not.toContain(sentinel);
+    expect(JSON.stringify(sink.entries)).not.toContain("Reply body");
+  });
+
+  test("marks the inline-comment sidecar incomplete at its item budget", async () => {
+    globalThis.fetch = (async () => new Response(JSON.stringify({
+      results: [{
+        id: "root-1",
+        body: { storage: { value: "<p>One</p>" } },
+        properties: { inlineMarkerRef: "marker-1" },
+      }],
+      _links: { next: "/wiki/api/v2/pages/123/inline-comments?cursor=more" },
+    }), { status: 200, headers: { "content-type": "application/json" } })) as unknown as typeof fetch;
+
+    const result = await new ConfluenceClient(
+      cloudProfile("https://comment-budget.example.invalid"),
+    ).listPageInlineCommentsForExport("123", { maxInlineComments: 1 });
+
+    expect(result.comments).toHaveLength(1);
+    expect(result.complete).toBe(false);
+  });
+
   test("bounds attachment metadata and marks a truncated index incomplete", async () => {
     globalThis.fetch = (async () => new Response(JSON.stringify({
       results: [

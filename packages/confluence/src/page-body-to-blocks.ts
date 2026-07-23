@@ -37,6 +37,10 @@ export function pageBodyToBlocks(
         ...common,
         ...(options.adfParseBudget ? { parseBudget: options.adfParseBudget } : {}),
         ...(options.resolveMediaAttachment ? { resolveMediaAttachment: options.resolveMediaAttachment } : {}),
+        ...(options.resolveAnnotation ? { resolveAnnotation: options.resolveAnnotation } : {}),
+        ...(options.annotationCommentsComplete !== undefined
+          ? { annotationCommentsComplete: options.annotationCommentsComplete }
+          : {}),
       });
     case "storage": {
       const decoded = storageToBlocks(source.primary.value, {

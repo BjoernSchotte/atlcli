@@ -19,6 +19,7 @@ describe("ADF rendered goldens", () => {
     expect(manifest.schemaVersion).toBe(1);
     expect(manifest.features).toEqual([
       "inline-code",
+      "annotation-native-docx-static-pdf",
       "docx-embedded-code-font",
       "unicode-emoji",
       "custom-emoji-fallback",
@@ -70,7 +71,7 @@ describe("ADF rendered goldens", () => {
     expect(result).toMatchObject({
       updated: false,
       docxPages: 2,
-      pdfPages: 5,
+      pdfPages: 6,
       docxCodeFontEmbedded: true,
     });
     expect(result.maxMeanPixelDifference).toBeLessThanOrEqual(0.08);

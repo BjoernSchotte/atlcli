@@ -570,15 +570,25 @@ export interface AdfExtensionIdentity {
   localId?: string;
 }
 
-/**
- * Identity of an ADF inline-comment annotation mark.
- *
- * The comment body is a separate Confluence resource and is intentionally not
- * conflated with this source-range identity.
- */
+/** One reply attached to an ADF inline comment. */
+export interface AdfAnnotationReply {
+  bodyText: string;
+  created?: string;
+}
+
+/** Portable projection of the separately fetched Confluence comment resource. */
+export interface AdfAnnotationComment {
+  bodyText: string;
+  status: "open" | "resolved";
+  created?: string;
+  replies: AdfAnnotationReply[];
+}
+
+/** Identity of an ADF inline-comment annotation mark and correlated resource. */
 export interface AdfAnnotationIdentity {
   id: string;
   annotationType: "inlineComment";
+  comment?: AdfAnnotationComment;
 }
 
 /**
@@ -976,6 +986,8 @@ export const EXPORT_NOTE_CODES = [
   "adf-mark-degraded",
   "adf-attribute-dropped",
   "adf-media-unresolved",
+  "adf-annotation-unresolved",
+  "adf-annotation-comments-truncated",
   "adf-storage-fallback",
   // Datasource smart links (`<a data-datasource>`, the modern Cloud replacement
   // for the Jira table macro). Every degradation is typed and visible: the

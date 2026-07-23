@@ -11,6 +11,7 @@
  */
 import {
   composeChapters,
+  createAdfAnnotationResolver,
   createAdfMediaAttachmentResolver,
   pageBodyToBlocks,
   storageToBlocks,
@@ -19,6 +20,7 @@ import {
   type ConfluencePageDetails,
   type ExportBlock,
   type ExportNode,
+  type InlineComment,
   type StorageToBlocksResult,
 } from "@atlcli/confluence/browser";
 import { buildDocx, para, stylesXml } from "@atlcli/docx/fixtures";
@@ -635,6 +637,27 @@ export const ADF_CONFORMANCE_MEDIA_ATTACHMENTS = [{
   mediaType: "image/png",
 }] as const;
 
+/** Deterministic sidecar proving exact ADF marker-to-comment correlation. */
+export const ADF_CONFORMANCE_INLINE_COMMENTS: InlineComment[] = [{
+  id: "comment-resource-1",
+  author: { displayName: "Fixture author" },
+  created: "2026-07-22T08:00:00.000Z",
+  body: "<p>Review the inline token</p>",
+  status: "resolved",
+  replies: [{
+    id: "comment-reply-1",
+    author: { displayName: "Fixture reviewer" },
+    created: "2026-07-22T08:01:00.000Z",
+    body: "<p>Reviewed</p>",
+    status: "open",
+    parentId: "comment-resource-1",
+    replies: [],
+    textSelection: "",
+  }],
+  textSelection: "INLINE_TOKEN",
+  inlineMarkerRef: "annotation-inline-code",
+}];
+
 /** Decode the real ADF fixture through the production representation dispatcher. */
 export function adfConformanceBlocks(exporter: "pdf" | "word"): BlocksResult {
   return pageBodyToBlocks(
@@ -654,6 +677,10 @@ export function adfConformanceBlocks(exporter: "pdf" | "word"): BlocksResult {
       resolveMediaAttachment: createAdfMediaAttachmentResolver(
         ADF_CONFORMANCE_MEDIA_ATTACHMENTS,
       ),
+      resolveAnnotation: createAdfAnnotationResolver(
+        ADF_CONFORMANCE_INLINE_COMMENTS,
+      ),
+      annotationCommentsComplete: true,
     },
   );
 }

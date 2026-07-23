@@ -135,6 +135,8 @@ export type IncludePageDetails = ConfluencePageDetails & {
     exportSource?: ExportPageSource;
     mediaAttachments?: AdfMediaAttachment[];
     mediaAttachmentsComplete?: boolean;
+    inlineComments?: InlineComment[];
+    inlineCommentsComplete?: boolean;
 };
 
 // export: IncludePageRef
@@ -434,6 +436,8 @@ export type IncludePageDetails = ConfluencePageDetails & {
     exportSource?: ExportPageSource;
     mediaAttachments?: AdfMediaAttachment[];
     mediaAttachmentsComplete?: boolean;
+    inlineComments?: InlineComment[];
+    inlineCommentsComplete?: boolean;
 };
 
 // export: IncludePageRef
@@ -737,6 +741,8 @@ export type IncludePageDetails = ConfluencePageDetails & {
     exportSource?: ExportPageSource;
     mediaAttachments?: AdfMediaAttachment[];
     mediaAttachmentsComplete?: boolean;
+    inlineComments?: InlineComment[];
+    inlineCommentsComplete?: boolean;
 };
 
 // export: IncludePageRef
@@ -1271,6 +1277,9 @@ export declare function ensureCaptionStyle(zip: PizZip): void;
 // export: ensureCodeStyle
 export declare function ensureCodeStyle(zip: PizZip): void;
 
+// export: ensureCommentsPart
+export declare function ensureCommentsPart(zip: PizZip, comments: WordCommentRegistry): void;
+
 // export: ensureContentTypeDefault
 export declare function ensureContentTypeDefault(zip: PizZip, ext: string, mime: string): void;
 
@@ -1496,6 +1505,8 @@ export type IncludePageDetails = ConfluencePageDetails & {
     exportSource?: ExportPageSource;
     mediaAttachments?: AdfMediaAttachment[];
     mediaAttachmentsComplete?: boolean;
+    inlineComments?: InlineComment[];
+    inlineCommentsComplete?: boolean;
 };
 
 // export: IncludePageRef
@@ -1859,6 +1870,7 @@ export declare function serializeBlocks(blocks: ExportBlock[], ctx: SerializeCon
 export interface SerializeContext {
     styleNames: Map<string, string>;
     numbering?: NumberingAllocator;
+    comments?: WordCommentRegistry;
     images?: ImageEmbedSeam;
     diagrams?: DiagramEmbedSeam;
     bodySectPr?: string;
@@ -1875,6 +1887,7 @@ export interface SerializeResult {
     xml: string;
     notes: ExportNote[];
     headingStyleIds: string[];
+    comments: WordCommentRegistry;
 }
 
 // export: statusBadgeRun
@@ -1922,6 +1935,14 @@ export declare function toPortraitSectPr(baseSectPr: string): string;
 
 // export: unzipDocx
 export declare function unzipDocx(bytes: Uint8Array, budget?: ArchiveBudget): PizZip;
+
+// export: WordCommentRegistry
+export declare class WordCommentRegistry {
+    private readonly byMarkerRef;
+    register(annotation: AdfAnnotationIdentity): number | undefined;
+    get isUsed(): boolean;
+    toXml(): string;
+}
 ```
 
 ### Entry point `./node`
@@ -2064,6 +2085,8 @@ export type IncludePageDetails = ConfluencePageDetails & {
     exportSource?: ExportPageSource;
     mediaAttachments?: AdfMediaAttachment[];
     mediaAttachmentsComplete?: boolean;
+    inlineComments?: InlineComment[];
+    inlineCommentsComplete?: boolean;
 };
 
 // export: IncludePageRef

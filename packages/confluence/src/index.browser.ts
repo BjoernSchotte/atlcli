@@ -17,6 +17,7 @@
  */
 
 export * from "./client.js";
+export * from "./comment-text.js";
 export * from "./page-body.js";
 export * from "./page-body-to-blocks.js";
 export * from "./adf-types.js";

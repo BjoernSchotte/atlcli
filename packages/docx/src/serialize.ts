@@ -13,6 +13,7 @@
  * a dangling relationship (the spec-004 skip-path invariant).
  */
 import type {
+  AdfAnnotationIdentity,
   BlockPresentation,
   ExportBlock,
   ExportLink,
@@ -150,6 +151,8 @@ export interface SerializeContext {
    * numbering part so ids never collide.
    */
   numbering?: NumberingAllocator;
+  /** Export-wide allocator for native Word comment ranges and comments.xml. */
+  comments?: WordCommentRegistry;
   /** Image embedding seam; absent → images degrade to report notes. */
   images?: ImageEmbedSeam;
   /** Diagram embedding seam; absent → mermaid stays a source code block. */
@@ -189,6 +192,7 @@ interface InternalContext extends SerializeContext {
   headingOffset: number;
   /** The active numbering allocator (always present inside the walk). */
   numbering: NumberingAllocator;
+  comments: WordCommentRegistry;
   /** Default ink inherited by plain text inside a colored table cell. */
   defaultTextColor?: string;
   /**
@@ -242,6 +246,54 @@ export interface SerializeResult {
    * style no heading in THIS export ends up using.
    */
   headingStyleIds: string[];
+  comments: WordCommentRegistry;
+}
+
+/** Export-wide native Word comment registry, shared with included pages. */
+export class WordCommentRegistry {
+  private readonly byMarkerRef = new Map<string, {
+    id: number;
+    annotation: AdfAnnotationIdentity & { comment: NonNullable<AdfAnnotationIdentity["comment"]> };
+  }>();
+
+  register(annotation: AdfAnnotationIdentity): number | undefined {
+    if (!annotation.comment) return undefined;
+    const existing = this.byMarkerRef.get(annotation.id);
+    if (existing) return existing.id;
+    const id = this.byMarkerRef.size;
+    this.byMarkerRef.set(annotation.id, {
+      id,
+      annotation: annotation as AdfAnnotationIdentity & {
+        comment: NonNullable<AdfAnnotationIdentity["comment"]>;
+      },
+    });
+    return id;
+  }
+
+  get isUsed(): boolean {
+    return this.byMarkerRef.size > 0;
+  }
+
+  toXml(): string {
+    const comments = [...this.byMarkerRef.values()].map(({ id, annotation }) => {
+      const resource = annotation.comment;
+      const status = resource.status === "resolved" ? "[Resolved] " : "";
+      const replies = resource.replies
+        .map((reply) => paragraph(run(`Reply: ${reply.bodyText}`)))
+        .join("");
+      const created = resource.created && !Number.isNaN(Date.parse(resource.created))
+        ? ` w:date="${new Date(resource.created).toISOString()}"`
+        : "";
+      return `<w:comment w:id="${id}" w:author="Confluence"${created}>` +
+        paragraph(run(`${status}${resource.bodyText}`)) +
+        replies +
+        `</w:comment>`;
+    }).join("");
+    return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+      `<w:comments xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">` +
+      comments +
+      `</w:comments>`;
+  }
 }
 
 /** Twips of indent per list nesting level. */
@@ -276,6 +328,47 @@ function styleFromInline(
     backgroundColor: node.backgroundColor ?? (code ? INLINE_CODE_BACKGROUND : undefined),
     fontSizeHalfPoints,
   };
+}
+
+function wrapCommentRanges(
+  xml: string,
+  annotations: readonly AdfAnnotationIdentity[] | undefined,
+  registry: WordCommentRegistry,
+): string {
+  const ids = (annotations ?? [])
+    .map((annotation) => registry.register(annotation))
+    .filter((id): id is number => id !== undefined);
+  if (ids.length === 0) return xml;
+  const starts = ids.map((id) => `<w:commentRangeStart w:id="${id}"/>`).join("");
+  const ends = [...ids].reverse()
+    .map((id) => `<w:commentRangeEnd w:id="${id}"/>`)
+    .join("");
+  const refs = ids.map((id) =>
+    `<w:r><w:rPr><w:rStyle w:val="CommentReference"/></w:rPr>` +
+    `<w:commentReference w:id="${id}"/></w:r>`
+  ).join("");
+  return `${starts}${xml}${ends}${refs}`;
+}
+
+function wrapCommentRangesInFirstParagraph(
+  xml: string,
+  annotations: readonly AdfAnnotationIdentity[] | undefined,
+  registry: WordCommentRegistry,
+): string {
+  if (!annotations?.some((annotation) => annotation.comment)) return xml;
+  return xml.replace(
+    /^(<w:p\b[^>]*>(?:<w:pPr>[\s\S]*?<\/w:pPr>)?)([\s\S]*?)(<\/w:p>)/,
+    (_match, open: string, content: string, close: string) =>
+      `${open}${wrapCommentRanges(content, annotations, registry)}${close}`,
+  );
+}
+
+function coalesceAdjacentCommentRanges(xml: string): string {
+  return xml.replace(
+    /<w:commentRangeEnd w:id="(\d+)"\/><w:r><w:rPr><w:rStyle w:val="CommentReference"\/><\/w:rPr><w:commentReference w:id="(\d+)"\/><\/w:r><w:commentRangeStart w:id="(\d+)"\/>/g,
+    (boundary, endId: string, referenceId: string, startId: string) =>
+      endId === referenceId && endId === startId ? "" : boundary,
+  );
 }
 
 /** Serialize inline nodes to run XML. */
@@ -384,20 +477,32 @@ async function serializeInlineWithAssets(
           code: "image-skipped",
           message: `Inline image "${inlineMediaDisplayText(node)}" skipped — inline image embedding is unavailable in this export.`,
         });
-        out += serializeInline([node], defaultTextColor, fontSizeHalfPoints, ctx.dateLocale);
+        out += wrapCommentRanges(
+          serializeInline([node], defaultTextColor, fontSizeHalfPoints, ctx.dateLocale),
+          node.annotations,
+          ctx.comments,
+        );
         continue;
       }
       const outcome = await ctx.images.embedInline(node as InlineImageNode);
       if (outcome.ok) {
         if (outcome.notes) notes.push(...outcome.notes);
-        out += linkRuns(node.link, outcome.xml);
+        out += wrapCommentRanges(
+          linkRuns(node.link, outcome.xml),
+          node.annotations,
+          ctx.comments,
+        );
       } else {
         notes.push({
           level: outcome.level ?? "warning",
           code: outcome.code ?? "image-embed-failed",
           message: `Inline image "${inlineMediaDisplayText(node)}" could not be embedded (${outcome.reason}).`,
         });
-        out += serializeInline([node], defaultTextColor, fontSizeHalfPoints, ctx.dateLocale);
+        out += wrapCommentRanges(
+          serializeInline([node], defaultTextColor, fontSizeHalfPoints, ctx.dateLocale),
+          node.annotations,
+          ctx.comments,
+        );
       }
       continue;
     }
@@ -430,16 +535,20 @@ async function serializeInlineWithAssets(
       continue;
     }
     if (linkStyle && node.type === "text") {
-      out += run(node.text, {
+      out += wrapCommentRanges(run(node.text, {
         ...styleFromInline(node, defaultTextColor, fontSizeHalfPoints),
         color: "0563C1",
         underline: true,
-      });
+      }), node.annotations, ctx.comments);
       continue;
     }
-    out += serializeInline([node], defaultTextColor, fontSizeHalfPoints, ctx.dateLocale);
+    out += wrapCommentRanges(
+      serializeInline([node], defaultTextColor, fontSizeHalfPoints, ctx.dateLocale),
+      "annotations" in node ? node.annotations : undefined,
+      ctx.comments,
+    );
   }
-  return out;
+  return coalesceAdjacentCommentRanges(out);
 }
 
 /** Render link content as underlined blue runs (Word Hyperlink look). */
@@ -610,6 +719,7 @@ export async function serializeBlocks(
     ...ctx,
     headingOffset: computeHeadingOffset(blocks),
     numbering: ctx.numbering ?? new NumberingAllocator({ abstractNumId: 0, numId: 0 }),
+    comments: ctx.comments ?? new WordCommentRegistry(),
     bookmarks: { next: 1, used: new Set() },
     captionSeq: new Map<string, number>(),
     emittedHeadingStyles: new Set<string>(),
@@ -623,6 +733,7 @@ export async function serializeBlocks(
     xml: coalesceSectPrParagraphs(parts.join("")),
     notes,
     headingStyleIds: [...internal.emittedHeadingStyles],
+    comments: internal.comments,
   };
 }
 
@@ -826,8 +937,19 @@ async function serializeBlock(
       // number is not skipped and downstream captions stay correctly numbered
       // (spec 003 C3). Caption below figures (established convention).
       const cap = block.caption ? await captionXml(block.caption, ctx, notes) : "";
-      const fallback = () =>
-        block.caption ? mediaParagraph(imageUnavailablePara(block), block) + cap : "";
+      const fallback = () => {
+        const placeholder = mediaParagraph(imageUnavailablePara(block), block);
+        const ranged = wrapCommentRangesInFirstParagraph(
+          placeholder,
+          block.annotations,
+          ctx.comments,
+        );
+        return block.caption
+          ? ranged + cap
+          : block.annotations?.some((annotation) => annotation.comment)
+            ? ranged
+            : "";
+      };
       // DOCX-ONLY fact (spec 010): NO image pipeline was configured for this
       // export, so every image degrades at once. It is `info`, not `warning`,
       // because nothing went wrong — the export was asked to run this way.
@@ -847,7 +969,12 @@ async function serializeBlock(
       const outcome = await ctx.images.embed(block);
       if (outcome.ok) {
         if (outcome.notes) notes.push(...outcome.notes);
-        return mediaParagraph(linkDrawingParagraph(outcome.xml, block.link), block) + cap;
+        const drawing = mediaParagraph(linkDrawingParagraph(outcome.xml, block.link), block);
+        return wrapCommentRangesInFirstParagraph(
+          drawing,
+          block.annotations,
+          ctx.comments,
+        ) + cap;
       }
       // Failure branch: no drawing (no dangling relationship, spec 005 / 004-F3),
       // but keep a numbered fallback when a caption is present. The seam may name
@@ -868,7 +995,12 @@ async function serializeBlock(
 
     case "mediaFallback": {
       const fallback = mediaParagraph(mediaFallbackUnavailablePara(block), block);
-      return block.caption ? fallback + await captionXml(block.caption, ctx, notes) : fallback;
+      const ranged = wrapCommentRangesInFirstParagraph(
+        fallback,
+        block.annotations,
+        ctx.comments,
+      );
+      return block.caption ? ranged + await captionXml(block.caption, ctx, notes) : ranged;
     }
 
     case "unknown": {

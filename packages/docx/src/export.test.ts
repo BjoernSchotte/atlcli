@@ -96,6 +96,44 @@ function fullTemplate(withScrollHeadings: boolean): Uint8Array {
 }
 
 describe("exportDocx — full pipeline", () => {
+  it("packages correlated ADF annotations as native Word comments", async () => {
+    const { bytes } = await exportDocx({
+      templateBytes: fullTemplate(true),
+      details,
+      blocks: [{
+        type: "paragraph",
+        content: [{
+          type: "text",
+          text: "Annotated text",
+          annotations: [{
+            id: "marker-private",
+            annotationType: "inlineComment",
+            comment: {
+              bodyText: "Please verify this value",
+              status: "open",
+              replies: [{ bodyText: "Verified" }],
+            },
+          }],
+        }],
+      }],
+      template,
+      deps,
+    });
+
+    const zip = new PizZip(bytes);
+    const document = zip.file("word/document.xml")?.asText() ?? "";
+    const comments = zip.file("word/comments.xml")?.asText() ?? "";
+    const rels = zip.file("word/_rels/document.xml.rels")?.asText() ?? "";
+    const contentTypes = zip.file("[Content_Types].xml")?.asText() ?? "";
+    expect(document).toContain('<w:commentRangeStart w:id="0"/>');
+    expect(document).toContain('<w:commentReference w:id="0"/>');
+    expect(comments).toContain("Please verify this value");
+    expect(comments).toContain("Reply: Verified");
+    expect(comments).not.toContain("marker-private");
+    expect(rels).toContain("/relationships/comments");
+    expect(contentTypes).toContain("/word/comments.xml");
+  });
+
   it("produces a docx with no $scroll literals and expected style refs", async () => {
     const { bytes, report } = await exportDocx({
       templateBytes: fullTemplate(true),

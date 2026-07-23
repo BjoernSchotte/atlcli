@@ -28,6 +28,7 @@ import {
   type ConfluenceSpace,
   type ExportPageSource,
   type AdfMediaAttachment,
+  type InlineComment,
   type ExportNote,
   type PagePropertiesMacro,
 } from "@atlcli/confluence";
@@ -64,6 +65,8 @@ export type IncludePageDetails = ConfluencePageDetails & {
   exportSource?: ExportPageSource;
   mediaAttachments?: AdfMediaAttachment[];
   mediaAttachmentsComplete?: boolean;
+  inlineComments?: InlineComment[];
+  inlineCommentsComplete?: boolean;
 };
 
 /**

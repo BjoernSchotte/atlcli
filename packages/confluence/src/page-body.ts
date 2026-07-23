@@ -1,4 +1,4 @@
-import type { ConfluencePageDetails } from "./client.js";
+import type { ConfluencePageDetails, InlineComment } from "./client.js";
 import type {
   ExportBlock,
   ExportNote,
@@ -66,6 +66,10 @@ export type ConfluenceExportPageDetails = ConfluencePageDetails & {
   mediaAttachments?: AdfMediaAttachment[];
   /** False only when the configured attachment metadata budget truncated. */
   mediaAttachmentsComplete?: boolean;
+  /** Privacy-safe, transient v2 sidecar for exact ADF annotation correlation. */
+  inlineComments?: InlineComment[];
+  /** False only when the configured comment/request budget truncated. */
+  inlineCommentsComplete?: boolean;
 };
 
 /** Validated transport result of the Cloud v2 ADF page read. */
@@ -92,6 +96,8 @@ export interface PageBodyToBlocksOptions
   resolveMediaAttachment?: (
     reference: AdfMediaReference,
   ) => AdfResolvedMediaAttachment | undefined;
+  resolveAnnotation?: import("./adf-to-blocks.js").AdfToBlocksOptions["resolveAnnotation"];
+  annotationCommentsComplete?: boolean;
 }
 
 /** Stable, body-free failure classification for export-specific page reads. */

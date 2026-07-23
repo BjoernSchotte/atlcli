@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import {
   adfToBlocks,
+  createAdfAnnotationResolver,
   createAdfMediaAttachmentResolver,
 } from "./adf-to-blocks.js";
 import {
@@ -1287,7 +1288,10 @@ describe("adfToBlocks", () => {
         border: { color: "#0052CC", size: 1 },
       }],
     });
-    expect(result.notes.map((note) => note.code)).toEqual(["adf-media-unresolved"]);
+    expect(result.notes.map((note) => note.code)).toEqual([
+      "adf-media-unresolved",
+      "adf-annotation-unresolved",
+    ]);
   });
 
   it("preserves annotation and fragment identities without inventing target semantics", () => {
@@ -1422,12 +1426,15 @@ describe("adfToBlocks", () => {
       }),
     ]);
     expect(result.notes.map((note) => note.code)).toEqual([
+      "adf-annotation-unresolved",
       "inline-extension-not-rendered",
       "adf-mark-degraded",
       "macro-not-rendered",
       "adf-mark-degraded",
       "adf-mark-degraded",
+      "adf-annotation-unresolved",
       "adf-media-unresolved",
+      "adf-annotation-unresolved",
     ]);
   });
 
@@ -1496,6 +1503,90 @@ describe("adfToBlocks", () => {
     expect(resolve?.({ id: "media-file-id" })).toEqual({ filename: "diagram.png", pageId: "page-2" });
     expect(resolve?.({ id: "diagram.png" })).toBeUndefined();
     expect(resolve?.({ id: "content-id" })).toBeUndefined();
+  });
+
+  it("correlates annotation marker refs to portable comment text, status, and replies", () => {
+    const resolveAnnotation = createAdfAnnotationResolver([{
+      id: "comment-resource-9",
+      author: { displayName: "not exported", accountId: "account-private" },
+      created: "2026-01-01T00:00:00.000Z",
+      body: "<p>Review <strong>this</strong> value</p>",
+      status: "resolved",
+      replies: [{
+        id: "reply-resource-1",
+        author: { displayName: "not exported" },
+        created: "2026-01-02T00:00:00.000Z",
+        body: "<p>Updated</p>",
+        status: "open",
+        parentId: "comment-resource-9",
+        replies: [],
+        textSelection: "",
+      }],
+      textSelection: "annotated",
+      inlineMarkerRef: "marker-9",
+    }]);
+    const result = adfToBlocks(doc([{
+      type: "paragraph",
+      content: [{
+        type: "text",
+        text: "annotated",
+        marks: [{
+          type: "annotation",
+          attrs: { id: "marker-9", annotationType: "inlineComment" },
+        }],
+      }],
+    }]), { resolveAnnotation, annotationCommentsComplete: true });
+
+    expect(result.blocks).toEqual([{
+      type: "paragraph",
+      content: [{
+        type: "text",
+        text: "annotated",
+        annotations: [{
+          id: "marker-9",
+          annotationType: "inlineComment",
+          comment: {
+            bodyText: "Review this value",
+            status: "resolved",
+            created: "2026-01-01T00:00:00.000Z",
+            replies: [{
+              bodyText: "Updated",
+              created: "2026-01-02T00:00:00.000Z",
+            }],
+          },
+        }],
+      }],
+    }]);
+    expect(result.notes).toEqual([]);
+    expect(JSON.stringify(result.blocks)).not.toContain("account-private");
+    expect(JSON.stringify(result.blocks)).not.toContain("comment-resource-9");
+  });
+
+  it("reports unresolved and truncated annotation resources without dropping the range", () => {
+    const result = adfToBlocks(doc([{
+      type: "paragraph",
+      content: [{
+        type: "text",
+        text: "annotated",
+        marks: [{
+          type: "annotation",
+          attrs: { id: "missing-marker", annotationType: "inlineComment" },
+        }],
+      }],
+    }]), {
+      resolveAnnotation: () => undefined,
+      annotationCommentsComplete: false,
+    });
+
+    expect(result.blocks[0]).toMatchObject({
+      content: [{
+        annotations: [{ id: "missing-marker", annotationType: "inlineComment" }],
+      }],
+    });
+    expect(result.notes.map((note) => note.code)).toEqual([
+      "adf-annotation-unresolved",
+      "adf-annotation-comments-truncated",
+    ]);
   });
 
   it("keeps block, bodied, and inline extensions visible without claiming a Storage macro id", () => {

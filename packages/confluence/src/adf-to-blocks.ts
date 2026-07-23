@@ -9,6 +9,7 @@ import type {
 import { DEFAULT_ADF_PARSE_BUDGET } from "./adf-types.js";
 import { validateAdf } from "./adf-validate.js";
 import type {
+  AdfAnnotationComment,
   AdfAnnotationIdentity,
   AdfDataConsumerProvenance,
   Caption,
@@ -47,6 +48,8 @@ import {
   statusDisplayText,
 } from "./export-blocks.js";
 import { translateDatasourceLink } from "./datasource.js";
+import { commentBodyToText } from "./comment-text.js";
+import type { InlineComment } from "./client.js";
 import { sanitizeLinkHref, unsafeLinkMessage } from "./link-safety.js";
 import type { BlocksResult } from "./page-body.js";
 
@@ -61,6 +64,10 @@ export interface AdfToBlocksOptions
   resolveMediaAttachment?: (
     reference: AdfMediaReference,
   ) => AdfResolvedMediaAttachment | undefined;
+  /** Exact ADF marker-ref to separately fetched Confluence comment resource. */
+  resolveAnnotation?: (markerRef: string) => AdfAnnotationComment | undefined;
+  /** False when the comment-sidecar pagination/budget was truncated. */
+  annotationCommentsComplete?: boolean;
 }
 
 export interface AdfMediaReference {
@@ -109,10 +116,34 @@ export function createAdfMediaAttachmentResolver(
   return (reference) => byFileId.get(reference.id);
 }
 
+/** Build an exact annotation resolver from a privacy-safe, transient sidecar. */
+export function createAdfAnnotationResolver(
+  comments: readonly InlineComment[] | undefined,
+): AdfToBlocksOptions["resolveAnnotation"] | undefined {
+  if (!comments) return undefined;
+  const byMarkerRef = new Map<string, AdfAnnotationComment>();
+  for (const comment of comments) {
+    const markerRef = comment.inlineMarkerRef?.trim();
+    if (!markerRef || byMarkerRef.has(markerRef)) continue;
+    byMarkerRef.set(markerRef, {
+      bodyText: commentBodyToText(comment.body),
+      status: comment.status,
+      ...(comment.created ? { created: comment.created } : {}),
+      replies: comment.replies.map((reply) => ({
+        bodyText: commentBodyToText(reply.body),
+        ...(reply.created ? { created: reply.created } : {}),
+      })),
+    });
+  }
+  return (markerRef) => byMarkerRef.get(markerRef);
+}
+
 interface DecodeContext {
   notes: NoteCollector;
   pageContext?: StorageToBlocksOptions["pageContext"];
   resolveMediaAttachment?: AdfToBlocksOptions["resolveMediaAttachment"];
+  resolveAnnotation?: AdfToBlocksOptions["resolveAnnotation"];
+  annotationCommentsComplete?: boolean;
   exporter?: StorageToBlocksOptions["exporter"];
   exportControls: NonNullable<StorageToBlocksOptions["exportControls"]>;
 }
@@ -279,6 +310,8 @@ export function adfToBlocks(
     notes: new NoteCollector(maxDiagnostics),
     pageContext: options.pageContext,
     resolveMediaAttachment: options.resolveMediaAttachment,
+    resolveAnnotation: options.resolveAnnotation,
+    annotationCommentsComplete: options.annotationCommentsComplete,
     exporter: options.exporter,
     exportControls: options.exportControls ?? "apply",
   };
@@ -774,7 +807,7 @@ function applyMarks(
         break;
       }
       case "annotation": {
-        const annotation = annotationMark(mark);
+        const annotation = annotationMark(mark, ctx, path);
         if (annotation) annotations.push(annotation);
         break;
       }
@@ -1282,7 +1315,7 @@ function decodeMediaBlock(node: AdfNode, ctx: DecodeContext, path: string): Expo
           : {}),
         ...(width ? { width } : {}),
         ...(height ? { height } : {}),
-        ...annotationFields(node.marks),
+        ...annotationFields(node.marks, ctx, path),
         ...(mediaBorder(node.marks) ? { border: mediaBorder(node.marks) } : {}),
         ...(link ? { link } : {}),
       };
@@ -1318,7 +1351,7 @@ function decodeMediaBlock(node: AdfNode, ctx: DecodeContext, path: string): Expo
     ...(stringAttr(node, "alt") ? { alt: stringAttr(node, "alt") } : {}),
     ...(width ? { width } : {}),
     ...(height ? { height } : {}),
-    ...annotationFields(node.marks),
+    ...annotationFields(node.marks, ctx, path),
     ...(mediaBorder(node.marks) ? { border: mediaBorder(node.marks) } : {}),
     ...(link ? { link } : {}),
   };
@@ -1356,7 +1389,7 @@ function decodeInlineMedia(node: AdfNode, ctx: DecodeContext, path: string): Inl
       : {}),
     ...(width ? { width } : {}),
     ...(height ? { height } : {}),
-    ...annotationFields(node.marks),
+    ...annotationFields(node.marks, ctx, path),
     ...(mediaBorder(node.marks) ? { border: mediaBorder(node.marks) } : {}),
     ...(link ? { link } : {}),
   };
@@ -1383,7 +1416,7 @@ function mediaFallbackBlock(
       : {}),
     ...(width ? { width } : {}),
     ...(height ? { height } : {}),
-    ...annotationFields(node.marks),
+    ...annotationFields(node.marks, ctx, path),
     ...(mediaBorder(node.marks) ? { border: mediaBorder(node.marks) } : {}),
     ...(link ? { link } : {}),
   };
@@ -1797,21 +1830,57 @@ function decodeBreakoutIntent(
   return breakout;
 }
 
-function annotationMark(mark: AdfMark): AdfAnnotationIdentity | undefined {
+function annotationMark(
+  mark: AdfMark,
+  ctx: DecodeContext,
+  path: string,
+): AdfAnnotationIdentity | undefined {
   if (mark.type !== "annotation") return undefined;
   const id = mark.attrs?.id;
-  return typeof id === "string" && mark.attrs?.annotationType === "inlineComment"
-    ? { id, annotationType: "inlineComment" }
-    : undefined;
+  if (typeof id !== "string" || mark.attrs?.annotationType !== "inlineComment") {
+    return undefined;
+  }
+  const comment = id ? ctx.resolveAnnotation?.(id) : undefined;
+  if (!comment) {
+    ctx.notes.add(
+      {
+        level: "warning",
+        code: "adf-annotation-unresolved",
+        message:
+          "An ADF inline-comment range could not be correlated to its Confluence comment resource; the range identity was retained.",
+        source: sourceFor(ctx, path),
+      },
+      `annotation-unresolved|${path}|${id}`,
+    );
+    if (ctx.annotationCommentsComplete === false) {
+      ctx.notes.add(
+        {
+          level: "warning",
+          code: "adf-annotation-comments-truncated",
+          message:
+            "Inline-comment pagination reached its configured export budget; some ADF annotation resources may be absent.",
+          source: sourceFor(ctx, "blocks"),
+        },
+        "annotation-comments-truncated",
+      );
+    }
+  }
+  return {
+    id,
+    annotationType: "inlineComment",
+    ...(comment ? { comment } : {}),
+  };
 }
 
 function annotationFields(
   marks: readonly AdfMark[] | undefined,
+  ctx: DecodeContext,
+  path: string,
 ): { annotations?: AdfAnnotationIdentity[] } {
   const annotations = (marks ?? [])
     .slice()
     .sort((left, right) => markKey(left).localeCompare(markKey(right)))
-    .map(annotationMark)
+    .map((mark) => annotationMark(mark, ctx, path))
     .filter((value): value is AdfAnnotationIdentity => value !== undefined);
   return annotations.length > 0 ? { annotations } : {};
 }

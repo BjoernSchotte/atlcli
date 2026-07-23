@@ -18,6 +18,7 @@ import { basename, join, resolve } from "node:path";
 import { buildConfluenceUrl, type OutputOptions, type Profile } from "@atlcli/core";
 import type { MacroResolutionOptions } from "@atlcli/export-macros";
 import {
+  createAdfAnnotationResolver,
   createAdfMediaAttachmentResolver,
   SpaceHomepageError,
   composeChapters,
@@ -310,6 +311,8 @@ export async function resolveScope(
     const walked = pageBodyToBlocks(page.exportSource, {
       exporter: "pdf",
       resolveMediaAttachment: createAdfMediaAttachmentResolver(page.mediaAttachments),
+      resolveAnnotation: createAdfAnnotationResolver(page.inlineComments),
+      annotationCommentsComplete: page.inlineCommentsComplete,
       pageContext: {
         id: pageId,
         title: page.title,

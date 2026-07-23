@@ -50,7 +50,7 @@ platform-rendered export view enters the shared block converter. Live inline
 extension output now uses a dedicated second resolver pass that replaces only
 one paragraph-local run, rejects block-shaped output, and retains the exact
 static fallback on every unresolved path.
-See [E1], [E2], [E3], [E4], [E46], and [E47].
+See [E1], [E2], [E3], [E4], [E46], [E47], and [E48].
 
 Consequences:
 
@@ -80,7 +80,10 @@ Consequences:
 ### Out of scope
 
 - Treating the ADF superset as proof that every node is accepted in every Confluence context. Atlassian explicitly warns that schema members may not be valid in a particular product implementation.
-- Comments, unpublished drafts, space selection, page ordering, headers/footers, and other document-scope behavior except where it changes content-node fidelity.
+- Footer comments, unpublished drafts, space selection, page ordering,
+  headers/footers, and other document-scope behavior except where it changes
+  content-node fidelity. Inline comments referenced by ADF `annotation` marks
+  are in scope because their ranges are page-content semantics.
 - Reproducing interactive behavior in a static document. The requirement is a meaningful static representation plus an explicit report when behavior cannot survive.
 - Data Center Storage XHTML parity. This analysis targets Confluence Cloud ADF semantics; Cloud and Data Center need distinct source adapters.
 
@@ -110,7 +113,7 @@ update both its matrix rows and the checklist below in the same commit:
 - `[ ]` plus **Partial** is permitted only when the remaining sub-gap names its
   external contract or parallel-work dependency.
 
-Current matrix orientation: **79 of 84 rows closed; 5 rows open.** This count
+Current matrix orientation: **80 of 84 rows closed; 4 rows open.** This count
 must change in the same commit as any row checkbox.
 `scripts/adf-gap-register.test.ts` enforces the checkbox shape, reconciles
 these counters with every progress-table row, and rejects an unchecked
@@ -203,9 +206,12 @@ Current closed foundations and feature slices:
   wrappers receive an explicit fallback. Both targets render the same bounded
   fallback without publishing opaque attributes, and these wrappers never
   masquerade as live macros.
-- [ ] **Open:** annotation identities are validated and retained through the
-  neutral model, composition, and packed-browser source resolution; native
-  comments/PDF notes and separately fetched comment bodies remain open.
+- [x] Annotation marks are correlated exactly through the v2
+  `properties.inlineMarkerRef` sidecar. DOCX emits native Word comment ranges
+  plus `comments.xml`; PDF emits a numbered range reference and deterministic
+  static comments appendix because the selected Typst/PDF API exposes no
+  portable text-comment annotation primitive. Bodies, status, replies, and
+  dates survive without publishing comment-resource, account, or marker IDs.
 
 Current cross-cutting residuals:
 
@@ -409,7 +415,7 @@ This covers all 17 marks in the pinned schema.
 | [x] | `backgroundColor` | Direct ADF and Storage span background become normalized static RGB. | Native | Native | Closed for schema-valid mark placement and static target color. |
 | [x] | `fontSize` | The schema-defined paragraph value `small` becomes target-neutral block presentation. | Native | Native | Validation rejects other values; DOCX emits explicit 9 pt runs and PDF uses the template's `adfSmallText` role with a safe 9 pt fallback. |
 | [x] | `link` | The exact safe href becomes a typed external/page/attachment/anchor target; optional `title`, `id`, `collection`, and `occurrenceKey` remain distinct provenance. Unsafe schemes keep visible content and a warning. | Native | Native | Closed for every pinned mark placement: text and media links are clickable in both targets, in-scope pages prefer collision-safe internal anchors, page/attachment/media fallbacks retain their exact safe href, DOCX uses `title` as a ScreenTip, and composition preserves the remaining ADF attributes. Smart-card nodes are complete in their separate checked rows. |
-| [ ] | `annotation` | Required `id` and exact `inlineComment` type are validated and retained on text/media ranges. | Open | Open | **Open:** fetch/correlate comment bodies and implement native Word-comment/PDF-note output under an explicit export policy. |
+| [x] | `annotation` | Required `id` and exact `inlineComment` type are validated and retained on text/media ranges. A bounded, log-redacted v2 sidecar correlates comment resources only through `properties.inlineMarkerRef`; body, status, date, and replies enter a portable neutral projection without author/account/resource IDs. | Native Word comments | Native static notes | Closed for the complete pinned static-export contract. DOCX emits deduplicated native comment ranges, `word/comments.xml`, content type, and relationship. PDF emits one numbered marker per contiguous range plus a deterministic static comments appendix; this is the strongest supported Typst/PDF projection, not a Partial. Missing or budget-truncated resources retain the range identity and emit typed diagnostics. CLI/browser, page/tree/space, direct/background, real PDF compilation, and privacy-log fixtures use the same resolver. |
 | [x] | `alignment` | ADF `center`/`end` becomes target-neutral block presentation on paragraphs/headings. | Native | Native | DOCX emits logical `w:jc`; PDF emits Typst `align`. |
 | [x] | `indentation` | ADF levels 1–6 become bounded target-neutral block indentation. | Native | Native | DOCX and PDF use target-owned, deterministic per-level steps distinct from list nesting. |
 | [x] | `breakout` | Exact `wide`/`full-width` mode and optional numeric width are validated and retained on every pinned placement: root `codeBlock`, root `expand`, `layoutSection`, `syncBlock`, and `bodiedSyncBlock`. | Approximation | Approximation | Closed for the pinned schema and static targets. The intent survives decoding, composition, CLI/browser direct and background paths, DOCX/PDF preparation, and the conformance fixture. A fixed page cannot reproduce an editor viewport wider than itself, so both renderers preserve ordinary page-bounded visible output and emit a source-located `adf-mark-degraded` fact instead of silently dropping or falsely claiming viewport geometry. |
@@ -417,7 +423,7 @@ This covers all 17 marks in the pinned schema.
 | [x] | `dataConsumer` | The exact ordered mark boundaries and each non-empty source array are validated and retained on `media`/`mediaInline` identity. | Native non-visual provenance | Native non-visual provenance | Closed for the pinned schema: DOCX/PDF intentionally render no consumer binding or opaque source ID, while the shared source-located report states that product-internal execution is unavailable. Composition, PDF preparation, packed-browser parity, and a no-pixel-drift rendered golden prove retention without publication. |
 | [x] | `fragment` | Every required non-empty `localId` and exact optional `name` is retained in source order on inline/block/bodied extensions and tables, including duplicates and empty names. | Native non-visual provenance | Native non-visual provenance | Closed for the pinned schema. The mark declares product-owned fragment identity, not a user-authored hyperlink target; therefore DOCX/PDF intentionally emit no bookmark, link, or opaque ID. Source-located projection facts, composition, full PDF preparation, CLI/browser direct/background parity, and no-pixel-drift goldens prove retention without publication. Consumed export-control wrappers produce an explicit fact rather than reassigning identity to an unrelated child. |
 
-Evidence: [E2], [E5], [E7], [E8], [E20], [E21], [E26], [E43], [E44].
+Evidence: [E2], [E5], [E7], [E8], [E20], [E21], [E26], [E43], [E44], [E48].
 
 ## 8. Editor notation mapping
 
@@ -428,7 +434,7 @@ Official Confluence documentation describes these input shortcuts. They are edit
 | [x] | `**Bold**` | `strong` | Native after Confluence materializes it. | Direct ADF, Storage, and target fixtures are complete. |
 | [x] | `*Italic*` | `em` | Native after materialization. | Direct ADF, Storage, and target fixtures are complete. |
 | [x] | `~~Strike~~` | `strike` | Native after materialization. | Direct ADF, Storage, and target fixtures are complete. |
-| [x] | Backtick-delimited text | `text` + `code` mark | Exact text plus a distinct inline-code chip in both targets, with a portable embedded DOCX code face. | Closed after Confluence materializes the mark: exact token/underscore text, surrounding adjacency, source-highlight precedence, code-plus-annotation metadata retention, browser/job parity, and real rendering are pinned. Native comment output remains isolated to the separate `annotation` row. |
+| [x] | Backtick-delimited text | `text` + `code` mark | Exact text plus a distinct inline-code chip in both targets, with a portable embedded DOCX code face. | Closed after Confluence materializes the mark: exact token/underscore text, surrounding adjacency, source-highlight precedence, code-plus-annotation coexistence, browser/job parity, and real rendering are pinned. Correlated annotations now also render through the checked `annotation` row. |
 | [x] | `# ` … `###### ` | `heading.level` | Levels, content, and local identity survive natively. | Closed; composed-export level rebasing remains explicit and retains source identity. |
 | [x] | `1. ` | `orderedList` | Native, including non-1 starts and nested restarts. | ADF/Storage differential, DOCX numbering-part, PDF source/source-map, packed-browser parity, and rendered-golden gates are closed. |
 | [x] | `* ` | `bulletList` | Native, including nested bullet ownership and visual levels. | ADF/Storage differential, DOCX/PDF structure, packed-browser parity, and rendered-golden gates are closed. |
@@ -482,8 +488,8 @@ Required acceptance contract:
 - [x] Add predictable horizontal padding where the target format allows it.
 - [x] Preserve underscores, token-like identifiers, whitespace, punctuation, and adjacent line wrapping.
 - [x] Preserve the pinned code-plus-annotation combination without letting one
-  mark erase the other; native comment rendering remains scoped to the separate
-  unchecked `annotation` row.
+  mark erase the other; native comment rendering is covered by the separate,
+  checked `annotation` row.
 - [x] Keep separate regression coverage for inline code and block code.
 
 ### 9.2 Emoji and emoticons
@@ -532,7 +538,6 @@ Required acceptance contract:
 - [x] **Inline code.** Exact code-mark text, adjacency, highlight precedence,
   annotation coexistence, target-specific chip treatment, portable DOCX font
   embedding, PDF font use, browser/job parity, and real rendering are complete.
-  Native comment output remains independently tracked by `annotation`.
 - [ ] **Partial — external asset contract for emoji/custom emoji.** Identity, exact text, deterministic
   fallback, reporting, and both TS engines are complete; authorized custom
   assets and complete font/glyph coverage remain.
@@ -600,9 +605,10 @@ Required acceptance contract:
   targets.
 - [x] **Synced-content snapshot/reference policy.** Embedded snapshots and
   reference-only projections are complete for the pinned static contract.
-- [ ] **Open — annotation marks.** Exact source identities, validation,
-  composition, and browser parity are complete; comment-resource correlation
-  and native target output remain.
+- [x] **Annotation marks.** Exact range identity, bounded v2 comment-resource
+  correlation, privacy-safe neutral projection, native Word comments, static
+  PDF notes, typed truncation/unresolved diagnostics, and CLI/browser parity
+  are complete.
 - [x] **Data-consumer and fragment product provenance.** Both marks retain their
   exact product-owned metadata without publishing opaque IDs or inventing
   executable/navigation semantics in static artifacts.
@@ -623,16 +629,14 @@ Required acceptance contract:
 ### Phase 1 - High-value inline fidelity
 
 - [x] Inline code, including portable DOCX font embedding and retained
-  code-plus-annotation combinations; native comment output remains a separate
-  annotation gap.
+  code-plus-annotation combinations.
 - [ ] **Partial — external asset contract:** emoji/custom emoji assets and
   complete glyph coverage remain.
 - [x] Alignment, indentation, and the schema-defined small paragraph font size.
 - [x] Date/status/placeholder semantics and target projections.
 - [x] Link/card identity and complete pinned Smart Card projection.
 - [x] Fragment provenance and complete non-visual static projection.
-- [ ] **Open:** annotation identity is retained; native target semantics and
-  comment-resource correlation remain.
+- [x] Annotation comment-resource correlation and target projections.
 
 ### Phase 2 - Structural fidelity
 
@@ -673,20 +677,22 @@ Required acceptance contract:
 
 ## 12. Definition of done per feature
 
-A matrix row can be marked complete only when all applicable checks pass:
+A matrix row can be marked complete only when all applicable criteria below
+pass. These bullets define the acceptance gate; they are not an additional
+progress register:
 
-- [ ] Valid pinned-schema ADF fixture.
-- [ ] Observed Confluence Cloud fixture or an explicit “schema-only” label.
-- [ ] Direct ADF parse path.
-- [ ] Storage compatibility fixture where Confluence exposes an equivalent projection.
-- [ ] Typed neutral-model representation.
-- [ ] DOCX semantic test and OOXML assertion.
-- [ ] PDF semantic test and Typst assertion.
-- [ ] Rendered DOCX/PDF visual golden where presentation matters.
-- [ ] Browser and Node/Bun host coverage.
-- [ ] Deterministic fallback and typed report note for unresolved dependencies.
-- [ ] Resource-budget, cancellation, unsafe-link, and malformed-input coverage where applicable.
-- [ ] Documentation and coverage-manifest update.
+- Valid pinned-schema ADF fixture.
+- Observed Confluence Cloud fixture or an explicit “schema-only” label.
+- Direct ADF parse path.
+- Storage compatibility fixture where Confluence exposes an equivalent projection.
+- Typed neutral-model representation.
+- DOCX semantic test and OOXML assertion.
+- PDF semantic test and Typst assertion.
+- Rendered DOCX/PDF visual golden where presentation matters.
+- Browser and Node/Bun host coverage.
+- Deterministic fallback and typed report note for unresolved dependencies.
+- Resource-budget, cancellation, unsafe-link, and malformed-input coverage where applicable.
+- Documentation and coverage-manifest update.
 
 “The text is still visible” is insufficient for nodes whose identity, state, link target, asset, or layout is semantically relevant.
 
@@ -760,7 +766,7 @@ Focused missing gates:
 - [x] Sync-block snapshot/reference tests.
 - [x] Fragment and data-consumer preservation, non-publication, report,
   preparation, browser-parity, and no-pixel-drift tests.
-- [ ] Native annotation comment-body/target-rendering tests.
+- [x] Native annotation comment-body/target-rendering tests.
 - [ ] Broad paired live Confluence ADF-versus-Storage projection fixtures.
 
 At the initial documentation-only analysis baseline, workspace dependencies were not installed and existing tests were inspected rather than freshly executed. Subsequent implementation evidence and current gates are recorded in `PLAN.md`.
@@ -815,6 +821,8 @@ Accessed 2026-07-22 and 2026-07-23:
 42. [ADF document structure and inline-node ordering](https://developer.atlassian.com/cloud/jira/platform/apis/document/structure/)
 43. [Typst inline `box` layout and baseline contract](https://typst.app/docs/reference/layout/box/)
 44. [Atlassian editor data-consumer plugin](https://www.npmjs.com/package/%40atlaskit/editor-plugin-data-consumer)
+45. [Confluence REST v2 inline comments](https://developer.atlassian.com/cloud/confluence/rest/v2/api-group-comment/)
+46. [Typst PDF reference](https://typst.app/docs/reference/pdf/)
 
 ## 15. Repository evidence index
 
@@ -865,6 +873,7 @@ Accessed 2026-07-22 and 2026-07-23:
 - **[E45] Typed unsupported-ADF preservation and visible static fallback:** `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/adf-to-blocks.test.ts`, `packages/confluence/src/export-blocks.test.ts`, `packages/export-macros/src/resolve.ts`, `packages/export-macros/src/resolve.test.ts`, `packages/docx/src/serialize.ts`, `packages/docx/src/serialize.test.ts`, `packages/pdf/src/prepare.ts`, `packages/pdf/src/serialize.ts`, `packages/pdf/src/serialize.test.ts`, `packages/export-fixtures/src/index.ts`, `packages/export-fixtures/src/adf-fixtures.test.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `apps/browser-export-harness/tests/exports.e2e.ts`, `scripts/adf-rendered-goldens.ts`, `scripts/adf-rendered-goldens.test.ts`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
 - **[E46] Complete block/bodied extension static and platform-export contract:** `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/adf-to-blocks.test.ts`, `packages/export-macros/src/types.ts`, `packages/export-macros/src/export-view.ts`, `packages/export-macros/src/resolve.ts`, `packages/export-macros/src/resolve.test.ts`, `packages/export-wiring/src/ports.ts`, `packages/export-wiring/src/ports.test.ts`, `apps/extension/utils/macros/session-ports.ts`, `apps/extension/tests/macros/session-ports.test.ts`, `apps/cli/src/commands/engine-parity.test.ts`, `packages/docx/src/serialize.ts`, `packages/docx/src/serialize.test.ts`, `packages/pdf/src/serialize.ts`, `packages/pdf/src/serialize.test.ts`, `packages/export-fixtures/src/macro-fixtures.ts`, `packages/export-fixtures/src/macro-fixtures.test.ts`, `packages/export-fixtures/src/index.ts`, `packages/export-fixtures/src/adf-fixtures.test.ts`, `apps/browser-export-harness/src/macro-case.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `apps/browser-export-harness/tests/exports.e2e.ts`, `apps/browser-export-harness/scripts/check-parity.ts`, `scripts/adf-rendered-goldens.ts`, `scripts/adf-rendered-goldens.test.ts`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
 - **[E47] Complete paragraph-local inline-extension platform-export contract:** `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/adf-to-blocks.test.ts`, `packages/export-macros/src/export-view.ts`, `packages/export-macros/src/resolve.ts`, `packages/export-macros/src/resolve.test.ts`, `packages/export-fixtures/src/macro-fixtures.ts`, `packages/export-fixtures/src/macro-fixtures.test.ts`, `apps/browser-export-harness/src/macro-case.ts`, `apps/browser-export-harness/tests/exports.e2e.ts`, `apps/browser-export-harness/scripts/check-parity.ts`
+- **[E48] Complete ADF annotation sidecar and static-target contract:** `packages/confluence/src/client.ts`, `packages/confluence/src/comment-text.ts`, `packages/confluence/src/page-body.ts`, `packages/confluence/src/page-body-to-blocks.ts`, `packages/confluence/src/tree-fetch.ts`, `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/client-adf.test.ts`, `packages/confluence/src/adf-to-blocks.test.ts`, `packages/docx/src/serialize.ts`, `packages/docx/src/export.ts`, `packages/docx/src/serialize.test.ts`, `packages/docx/src/export.test.ts`, `packages/pdf/src/serialize.ts`, `packages/pdf/src/serialize.test.ts`, `packages/pdf-compiler-browser/src/compiler.test.ts`, `packages/export-fixtures/src/index.ts`, `packages/export-fixtures/src/adf-fixtures.test.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `apps/browser-export-harness/tests/exports.e2e.ts`
 
 ## 16. Review questions
 
@@ -880,12 +889,12 @@ Accessed 2026-07-22 and 2026-07-23:
    semantics. Thumbnails/provider execution are not invented when the pinned
    node exposes no such contract; future observed attributes enter the weekly
    drift lane.
-5. **Resolved for fragments; open for annotations:** fragment identities are
-   exact non-visual product provenance, not document navigation, and consumed
+5. **Resolved for fragments and annotations:** fragment identities are exact
+   non-visual product provenance, not document navigation, and consumed
    export-control wrappers are explicitly reported rather than reassigned.
-   Annotation identities remain on their exact source positions while native
-   Word comments/PDF notes still require separately fetched comment bodies and
-   an export policy.
+   Annotation identities remain on their exact source positions; comment
+   resources correlate only through `inlineMarkerRef`, Word receives native
+   comments, and PDF receives numbered static notes without opaque IDs.
 6. **Resolved for tasks and decisions:** target-appropriate open/done task
    markers and a distinct decision marker are the static floor; exact
    identities/states remain in the neutral model and nonstandard decision

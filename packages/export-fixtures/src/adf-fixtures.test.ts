@@ -199,6 +199,15 @@ describe("ADF browser conformance fixture", () => {
           annotations: [{
             id: "annotation-inline-code",
             annotationType: "inlineComment",
+            comment: {
+              bodyText: "Review the inline token",
+              status: "resolved",
+              created: "2026-07-22T08:00:00.000Z",
+              replies: [{
+                bodyText: "Reviewed",
+                created: "2026-07-22T08:01:00.000Z",
+              }],
+            },
           }],
         },
         {

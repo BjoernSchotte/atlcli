@@ -309,14 +309,13 @@ The coverage source of truth remains the complete matrices in `GAP-ANALYSIS.md`.
 
 ### 5.2 Explicitly classify, preserve, and defer native rendering
 
-The remaining schema rows—including annotations, generic extension
-output, unsupported wrappers, and externally resolved custom emoji—must retain
+The remaining schema rows—including generic extension output, unsupported
+wrappers, and externally resolved custom emoji—must retain
 a coverage-manifest status and deterministic fallback.
 Decisions, block tasks, layouts, native captions, block-media geometry and
 grouping, media borders, fragment provenance, alignment, indentation, and the
-schema-defined small paragraph font size now have completed contracts recorded
-in the gap analysis. Annotation identity retention is complete, but native
-comment output remains open.
+schema-defined small paragraph font size, and annotation comment-resource
+projection now have completed contracts recorded in the gap analysis.
 
 The ADF adapter must never infer semantics from raw text. Literal `:warning:`, backticks, `[]`, `<>`, and slash-command text remain literal unless Confluence stored a typed ADF node or mark.
 
@@ -1275,9 +1274,9 @@ retains its already-bundled code face.
 
 The pinned source fixture combines code with annotation metadata and surrounding
 ordinary text, so the mark slice proves exact underscores, adjacency,
-source-highlight precedence, and coexistence without pretending that native
-comment rendering is complete. That remaining behavior stays isolated in the
-separate `annotation` row. The production browser bundle contains no Node
+source-highlight precedence, and coexistence. The later annotation follow-on
+also correlates and renders its synthetic comment resource. The production
+browser bundle contains no Node
 builtin, direct and background DOCX jobs compare the complete decompressed
 archive including the font binary, and the packed Vite consumer requires the
 hashed font asset. A real LibreOffice conversion on a host without the system
@@ -1566,20 +1565,42 @@ entrypoints, extension/harness output gates, packed Chromium E2E, exact
 artifact/report parity, pinned-schema consistency, and repeat-rendered DOCX/PDF
 goldens passed. The unrestricted workspace suite passed 5,039 tests with 13
 intentional skips and zero failures across 317 files.
-The matrix now records 79 of 84 rows closed and 5 open.
+Completed annotation-output follow-on evidence recorded on 2026-07-23:
+ADF annotation IDs are now joined to Confluence v2 inline-comment resources
+only through the documented `properties.inlineMarkerRef`. The export-specific
+sidecar paginates roots and replies under explicit item/request budgets, carries
+abort signals, and uses metadata-only API logging so comment bodies never enter
+request logs. The neutral model retains body text, resolution status, creation
+date, and replies while omitting author account IDs, comment resource IDs, and
+opaque marker IDs from visible output.
+
+TypeScript DOCX emits native, contiguous Word comment ranges, a deduplicated
+`word/comments.xml`, and the required content-type and document relationship;
+included pages share the same export-wide registry. Typst/PDF emits a numbered
+range marker and deterministic static comments appendix. This is the complete
+portable projection for the selected PDF engine: its public PDF API documents
+PDF metadata/tagging/attachment capabilities but no text-comment annotation
+primitive, so the static note is an intentional target contract rather than a
+Partial. Missing correlation and truncated sidecars remain visible through
+stable typed diagnostics.
+
+Focused client privacy/pagination, decoder, DOCX archive, PDF source, real
+Typst compiler, shared fixture, and packed-browser assertions cover this
+contract. CLI page reads, tree/space walks, include-page decoding, browser
+source resolution, and both output engines use the same resolver seam.
+The unrestricted workspace suite passed 5,050 tests with 13 intentional skips
+and zero failures across 317 files. The matrix now records 80 of 84 rows closed
+and 4 open.
 
 After this migration proves the source boundary, the remaining matrix backlog is:
 
 1. custom-emoji assets after a documented Atlassian resolver contract and
    complete emoji-font coverage (portable DOCX mono-font embedding is complete);
-2. annotation comment-resource correlation/native target output (fragment
-   provenance, alignment, indentation, and schema-defined small text are
-   complete);
-3. observed `multiBodiedExtension` handling if Confluence emits that
+2. observed `multiBodiedExtension` handling if Confluence emits that
    product-specific wrapper;
-4. observed `extensionFrame` handling if Confluence emits that
+3. observed `extensionFrame` handling if Confluence emits that
    product-specific wrapper;
-5. the emoji-picker row, which shares the same external custom-emoji asset
+4. the emoji-picker row, which shares the same external custom-emoji asset
    contract as item 1 rather than representing separate local implementation.
 
 ## 14. Resolved rollout decisions and unresolved question

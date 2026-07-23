@@ -70,9 +70,15 @@ function collectV2ErrorText(value: unknown): string {
   return parts.join("\n");
 }
 
+type V2QueryValue =
+  | string
+  | number
+  | readonly (string | number)[]
+  | undefined;
+
 function classifyV2Failure(
   path: string,
-  query: Record<string, string | number | undefined> | undefined,
+  query: Record<string, V2QueryValue> | undefined,
   status: number,
   data: unknown,
 ): V2FailureClassification | undefined {
@@ -353,12 +359,22 @@ export interface PageAttachmentMediaResult {
 const DEFAULT_PAGE_ATTACHMENT_MEDIA_LIMIT = 1_000;
 const MAX_PAGE_ATTACHMENT_MEDIA_LIMIT = 5_000;
 const MAX_PAGE_ATTACHMENT_MEDIA_REQUESTS = 20;
+const DEFAULT_PAGE_INLINE_COMMENT_LIMIT = 1_000;
+const MAX_PAGE_INLINE_COMMENT_LIMIT = 5_000;
+const MAX_PAGE_INLINE_COMMENT_REQUESTS = 100;
 
 function adfMayReferenceMedia(value: string): boolean {
   // This gates an optional metadata request only; the bounded validator remains
   // authoritative. Atlassian serializes node `type` names literally, while
   // arbitrary whitespace is allowed between JSON tokens.
   return /"type"\s*:\s*"(?:media|mediaInline)"/u.test(value);
+}
+
+function adfMayReferenceInlineComments(value: string): boolean {
+  // Optional-sidecar request gate only. The bounded ADF validator remains
+  // authoritative for the exact annotation mark shape.
+  return /"type"\s*:\s*"annotation"/u.test(value) &&
+    /"annotationType"\s*:\s*"inlineComment"/u.test(value);
 }
 
 /**
@@ -762,7 +778,7 @@ export class ConfluenceClient {
     path: string,
     options: {
       method?: string;
-      query?: Record<string, string | number | undefined>;
+      query?: Record<string, V2QueryValue>;
       body?: unknown;
       signal?: AbortSignal;
       /** See {@link request}; body endpoints must use `"meta-only"`. */
@@ -773,7 +789,11 @@ export class ConfluenceClient {
     if (options.query) {
       for (const [key, value] of Object.entries(options.query)) {
         if (value === undefined) continue;
-        url.searchParams.set(key, String(value));
+        if (Array.isArray(value)) {
+          for (const item of value) url.searchParams.append(key, String(item));
+        } else {
+          url.searchParams.set(key, String(value));
+        }
       }
     }
 
@@ -1233,20 +1253,35 @@ export class ConfluenceClient {
    */
   async getExportPageDetailsWithMedia(
     id: string,
-    options: { signal?: AbortSignal; maxAttachments?: number } = {},
+    options: {
+      signal?: AbortSignal;
+      maxAttachments?: number;
+      maxInlineComments?: number;
+    } = {},
   ): Promise<ConfluenceExportPageDetails> {
     const page = await this.getExportPageDetails(id, options);
-    if (
-      page.exportSource.primary.representation !== "atlas_doc_format" ||
-      !adfMayReferenceMedia(page.exportSource.primary.value)
-    ) {
+    if (page.exportSource.primary.representation !== "atlas_doc_format") {
       return page;
     }
-    const media = await this.listPageAttachmentMedia(id, options);
+    const value = page.exportSource.primary.value;
+    const mediaPromise = adfMayReferenceMedia(value)
+      ? this.listPageAttachmentMedia(id, options)
+      : undefined;
+    const commentsPromise = adfMayReferenceInlineComments(value)
+      ? this.listPageInlineCommentsForExport(id, options)
+      : undefined;
+    if (!mediaPromise && !commentsPromise) return page;
+    const [media, comments] = await Promise.all([mediaPromise, commentsPromise]);
     return {
       ...page,
-      mediaAttachments: media.attachments,
-      mediaAttachmentsComplete: media.complete,
+      ...(media ? {
+        mediaAttachments: media.attachments,
+        mediaAttachmentsComplete: media.complete,
+      } : {}),
+      ...(comments ? {
+        inlineComments: comments.comments,
+        inlineCommentsComplete: comments.complete,
+      } : {}),
     };
   }
 
@@ -3110,6 +3145,111 @@ export class ConfluenceClient {
   }
 
   /**
+   * Fetch the privacy-sensitive inline-comment sidecar used by ADF export.
+   *
+   * Root comments and replies are cursor-paginated, bounded together, and
+   * response bodies are never copied into API logs. `complete:false` is an
+   * explicit export fact when either the item or request budget is exhausted.
+   */
+  async listPageInlineCommentsForExport(
+    pageId: string,
+    options: { signal?: AbortSignal; maxInlineComments?: number } = {},
+  ): Promise<PageInlineCommentsExportResult> {
+    const requested = options.maxInlineComments ?? DEFAULT_PAGE_INLINE_COMMENT_LIMIT;
+    const maxComments = Math.max(0, Math.min(requested, MAX_PAGE_INLINE_COMMENT_LIMIT));
+    if (maxComments === 0) return { comments: [], complete: false };
+
+    let requests = 0;
+    let observed = 0;
+    let complete = true;
+    const roots: InlineComment[] = [];
+
+    const fetchPage = async (
+      path: string,
+      cursor: string | undefined,
+      includeRootFilters: boolean,
+    ): Promise<{ items: InlineComment[]; next?: string }> => {
+      if (requests >= MAX_PAGE_INLINE_COMMENT_REQUESTS) {
+        complete = false;
+        return { items: [] };
+      }
+      requests += 1;
+      const remaining = maxComments - observed;
+      if (remaining <= 0) {
+        complete = false;
+        return { items: [] };
+      }
+      const data = (await this.requestV2(path, {
+        query: {
+          limit: Math.min(250, remaining),
+          cursor,
+          "body-format": "storage",
+          ...(includeRootFilters
+            ? {
+                status: ["current"],
+                "resolution-status": ["open", "resolved"],
+              }
+            : {}),
+        },
+        signal: options.signal,
+        logBody: "meta-only",
+      })) as any;
+      const raw = Array.isArray(data.results) ? data.results : [];
+      const items = raw
+        .slice(0, remaining)
+        .map((item: any) => this.parseInlineComment(item));
+      observed += items.length;
+      const next = extractCursor(data._links?.next, this.confluenceBaseUrl);
+      if (raw.length > items.length || (observed >= maxComments && next)) complete = false;
+      return { items, next };
+    };
+
+    let rootCursor: string | undefined;
+    const seenRootCursors = new Set<string>();
+    for (;;) {
+      const page = await fetchPage(
+        `/pages/${pageId}/inline-comments`,
+        rootCursor,
+        true,
+      );
+      roots.push(...page.items);
+      if (!page.next || observed >= maxComments || requests >= MAX_PAGE_INLINE_COMMENT_REQUESTS) {
+        if (page.next) complete = false;
+        break;
+      }
+      if (seenRootCursors.has(page.next)) throw new PaginationLoopError(page.next);
+      seenRootCursors.add(page.next);
+      rootCursor = page.next;
+    }
+
+    for (const root of roots) {
+      if (observed >= maxComments || requests >= MAX_PAGE_INLINE_COMMENT_REQUESTS) {
+        complete = false;
+        break;
+      }
+      let cursor: string | undefined;
+      const seen = new Set<string>();
+      for (;;) {
+        const page = await fetchPage(
+          `/inline-comments/${root.id}/children`,
+          cursor,
+          false,
+        );
+        root.replies.push(...page.items);
+        if (!page.next || observed >= maxComments || requests >= MAX_PAGE_INLINE_COMMENT_REQUESTS) {
+          if (page.next) complete = false;
+          break;
+        }
+        if (seen.has(page.next)) throw new PaginationLoopError(page.next);
+        seen.add(page.next);
+        cursor = page.next;
+      }
+    }
+
+    return { comments: roots, complete };
+  }
+
+  /**
    * Get all comments (footer + inline) for a page.
    */
   async getAllComments(
@@ -3151,7 +3291,7 @@ export class ConfluenceClient {
    * Parse inline comment from v2 API response.
    */
   private parseInlineComment(item: any): InlineComment {
-    const props = item.inlineCommentProperties ?? {};
+    const props = item.properties ?? item.inlineCommentProperties ?? {};
     return {
       id: item.id,
       author: {
@@ -3166,6 +3306,8 @@ export class ConfluenceClient {
       textSelection: props.textSelection ?? "",
       textSelectionMatchCount: props.textSelectionMatchCount,
       textSelectionMatchIndex: props.textSelectionMatchIndex,
+      inlineMarkerRef: props.inlineMarkerRef,
+      inlineOriginalSelection: props.inlineOriginalSelection,
     };
   }
 
@@ -3940,7 +4082,17 @@ export interface InlineComment extends BaseComment {
   textSelectionMatchCount?: number;
   /** Which occurrence (0-indexed) this comment is attached to */
   textSelectionMatchIndex?: number;
+  /** Exact correlation key used by the ADF annotation mark `attrs.id`. */
+  inlineMarkerRef?: string;
+  /** Original selected text reported by the v2 comment resource. */
+  inlineOriginalSelection?: string;
   replies: InlineComment[];
+}
+
+/** Bounded inline-comment sidecar for ADF export. */
+export interface PageInlineCommentsExportResult {
+  comments: InlineComment[];
+  complete: boolean;
 }
 
 /** All comments for a page */
