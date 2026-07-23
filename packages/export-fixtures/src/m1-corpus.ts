@@ -4,12 +4,12 @@
  * A versioned 50-page `ExportPageNode[]` tree assembled from the SAME building
  * blocks as harness cases 002/003/004: tree scope (a root + 49 chapters),
  * labels on a subset of pages, the `scroll-*` content macros (page break,
- * landscape, caption table), a live-Jira-table macro, and a draw.io diagram
- * macro (settles on the placeholder floor offline — no PNG bytes, so the corpus
- * stays byte-stable and tenant-free). This is the concrete evidence behind
- * UMSETZUNGSPLAN's "CLI **and** harness" M1 acceptance line — NOT the
- * engine-only bench fixture, which starts from raw blocks and skips parsing +
- * macro resolution.
+ * landscape, caption table), a live-Jira-table macro, Forge ADF block, bodied,
+ * and inline extensions, and a draw.io diagram macro (settles on the
+ * placeholder floor offline — no PNG bytes, so the corpus stays byte-stable and
+ * tenant-free). This is the concrete evidence behind UMSETZUNGSPLAN's "CLI
+ * **and** harness" M1 acceptance line — NOT the engine-only bench fixture,
+ * which starts from raw blocks and skips parsing + macro resolution.
  *
  * `buildM1Corpus()` is deterministic (fixed content, no PRNG-dependent shape):
  * the same version always yields byte-identical JSON, so `corpusDigest` is a
@@ -27,7 +27,7 @@ import {
 } from "@atlcli/confluence/browser";
 import { resolveMacroFixtureBlocks } from "./macro-fixtures.js";
 
-export const M1_CORPUS_VERSION = 1 as const;
+export const M1_CORPUS_VERSION = 2 as const;
 export const M1_CORPUS_PAGES = 50;
 
 /** A compact scroll-macro story (small table — NOT the 200-row case fixture). */

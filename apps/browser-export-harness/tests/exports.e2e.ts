@@ -126,6 +126,7 @@ test("every registered conformance case passes from nested production output", a
   );
   expect(macros.adfExportResolved).toBe(true);
   expect(macros.docxHasAdfExport).toBe(true);
+  expect(macros.docxHasInlineAdfExport).toBe(true);
 
   mkdirSync(dirname(DIGEST_MANIFEST), { recursive: true });
   writeFileSync(DIGEST_MANIFEST, JSON.stringify(digestManifest, null, 2));

@@ -1422,7 +1422,7 @@ describe("adfToBlocks", () => {
       }),
     ]);
     expect(result.notes.map((note) => note.code)).toEqual([
-      "adf-node-degraded",
+      "inline-extension-not-rendered",
       "adf-mark-degraded",
       "macro-not-rendered",
       "adf-mark-degraded",
@@ -1536,7 +1536,10 @@ describe("adfToBlocks", () => {
         sourcePage: { id: "page-1", version: 3, spaceKey: "S" },
       }],
     });
-    expect(result.notes.map((note) => note.code)).toEqual(["macro-not-rendered", "adf-node-degraded"]);
+    expect(result.notes.map((note) => note.code)).toEqual([
+      "macro-not-rendered",
+      "inline-extension-not-rendered",
+    ]);
   });
 
   it("keeps unresolved extension-body diagnostics on the block until fallback rendering", () => {

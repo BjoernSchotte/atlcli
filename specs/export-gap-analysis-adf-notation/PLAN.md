@@ -1540,20 +1540,47 @@ zero failures across 317 files. The matrix now records 78 of 84 rows closed and
 `inlineExtension` replacement remains a separate open slice because its async
 result must not split the owning paragraph.
 
-After this migration proves the source boundary, close the gap-analysis backlog in separate feature slices:
+Completed inline-extension follow-on evidence recorded on 2026-07-23:
+`resolveMacroBlocks()` now performs a second, paragraph-local resolution pass
+after block macros settle. This ordering resolves inline extensions inside
+visible retained macro bodies without calling the platform for body content
+that a successful block renderer superseded. The pass uses only the registry's
+platform catch-all, the documented Forge `localId`, and the exact owning
+source-page version. It accepts only one non-empty paragraph with visible text;
+multi-paragraph/block/empty output cannot split or reorder its owner and
+therefore retains the exact authored text or deterministic label with one
+source-located terminal note. Successful output replaces only the inline run,
+keeps surrounding runs in the same paragraph, and transfers fragment
+provenance to the first returned text leaf.
+
+The shared deterministic conformance fixture now carries block, bodied, and
+inline Forge extensions through both engines and both Bun/CLI and packed-browser
+execution. It fails on a wrong page version, proves the inline fallback is gone,
+and asserts that the DOCX keeps before/output/after in one paragraph; the same
+resolved blocks compile to a tagged PDF and remain under byte/report parity.
+The integrated 50-page M1 corpus was advanced to version 2 so this richer
+fixture is part of its pinned product story; its block count, structural digest,
+and explicit inline-output assertion now guard that intentional change. Focused
+decoder/resolver/fixture/M1 tests, typecheck, production build, all 20 browser
+entrypoints, extension/harness output gates, packed Chromium E2E, exact
+artifact/report parity, pinned-schema consistency, and repeat-rendered DOCX/PDF
+goldens passed. The unrestricted workspace suite passed 5,039 tests with 13
+intentional skips and zero failures across 317 files.
+The matrix now records 79 of 84 rows closed and 5 open.
+
+After this migration proves the source boundary, the remaining matrix backlog is:
 
 1. custom-emoji assets after a documented Atlassian resolver contract and
    complete emoji-font coverage (portable DOCX mono-font embedding is complete);
 2. annotation comment-resource correlation/native target output (fragment
    provenance, alignment, indentation, and schema-defined small text are
    complete);
-3. observed product-specific task/decision metadata beyond the pinned schema, if the sanitized Cloud corpus discovers any;
-4. page-bound wide-table pagination/overflow policies beyond the now-complete
-   pinned table-attribute contract;
-5. ADF-native definitions for excerpts/Page Properties and removal of their Storage sidecar;
-6. live inline-extension replacement without splitting paragraph ownership;
-7. lazy sidecar reads and eventual Storage removal from Cloud export only after every dependency is retired.
-8. legacy Storage-only code-macro title/collapse static projection.
+3. observed `multiBodiedExtension` handling if Confluence emits that
+   product-specific wrapper;
+4. observed `extensionFrame` handling if Confluence emits that
+   product-specific wrapper;
+5. the emoji-picker row, which shares the same external custom-emoji asset
+   contract as item 1 rather than representing separate local implementation.
 
 ## 14. Resolved rollout decisions and unresolved question
 

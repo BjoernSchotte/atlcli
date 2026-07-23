@@ -23,6 +23,7 @@ import {
   hasMacroAdfExport,
   MACRO_ADF_BLOCK_EXPORT_TEXT,
   MACRO_ADF_BODIED_EXPORT_TEXT,
+  MACRO_ADF_INLINE_EXPORT_TEXT,
   MACRO_METADATA,
   resolveMacroFixtureBlocks,
 } from "@atlcli/export-fixtures";
@@ -44,6 +45,7 @@ export interface MacroCaseResult {
   tagged: boolean;
   docxHasTable: boolean;
   docxHasAdfExport: boolean;
+  docxHasInlineAdfExport: boolean;
   reportNotes: ReportNoteProjection[];
   digests: Record<string, string>;
 }
@@ -104,9 +106,19 @@ export async function runMacroCase(): Promise<MacroCaseResult> {
   const docxHasTable = documentXml.includes("<w:tbl");
   const docxHasAdfExport =
     documentXml.includes(MACRO_ADF_BLOCK_EXPORT_TEXT) &&
-    documentXml.includes(MACRO_ADF_BODIED_EXPORT_TEXT);
+    documentXml.includes(MACRO_ADF_BODIED_EXPORT_TEXT) &&
+    documentXml.includes(MACRO_ADF_INLINE_EXPORT_TEXT);
+  const docxHasInlineAdfExport = (documentXml.match(/<w:p\b[\s\S]*?<\/w:p>/gu) ?? []).some(
+    (paragraph) =>
+      paragraph.includes("Before inline export ") &&
+      paragraph.includes(MACRO_ADF_INLINE_EXPORT_TEXT) &&
+      paragraph.includes(" after inline export"),
+  );
   if (!docxHasTable) throw new Error("DOCX did not render the Jira table.");
   if (!docxHasAdfExport) throw new Error("DOCX did not render the platform-projected Forge ADF export.");
+  if (!docxHasInlineAdfExport) {
+    throw new Error("DOCX did not preserve paragraph ownership around the Forge inline ADF export.");
+  }
 
   return {
     compilerVersion: pdf.report.compilerVersion,
@@ -118,6 +130,7 @@ export async function runMacroCase(): Promise<MacroCaseResult> {
     tagged: inspection.tagged,
     docxHasTable,
     docxHasAdfExport,
+    docxHasInlineAdfExport,
     reportNotes: projectReportNotes(pdf.report.notes),
     digests: { "macros.pdf": await sha256Hex(pdf.bytes) },
   };

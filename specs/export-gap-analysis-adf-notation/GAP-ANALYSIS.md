@@ -47,9 +47,10 @@ Third-party block and bodied `adfExport` output is now consumed through
 Confluence's documented platform export: Forge ADF `localId` is projected to
 the macro export ID, Confluence invokes the app function, and the returned
 platform-rendered export view enters the shared block converter. Live inline
-extension output remains open because replacing a paragraph-local range
-without splitting that paragraph needs an inline async-resolution contract.
-See [E1], [E2], [E3], [E4], and [E46].
+extension output now uses a dedicated second resolver pass that replaces only
+one paragraph-local run, rejects block-shaped output, and retains the exact
+static fallback on every unresolved path.
+See [E1], [E2], [E3], [E4], [E46], and [E47].
 
 Consequences:
 
@@ -109,7 +110,7 @@ update both its matrix rows and the checklist below in the same commit:
 - `[ ]` plus **Partial** is permitted only when the remaining sub-gap names its
   external contract or parallel-work dependency.
 
-Current matrix orientation: **78 of 84 rows closed; 6 rows open.** This count
+Current matrix orientation: **79 of 84 rows closed; 5 rows open.** This count
 must change in the same commit as any row checkbox.
 `scripts/adf-gap-register.test.ts` enforces the checkbox shape, reconciles
 these counters with every progress-table row, and rejects an unchecked
@@ -356,7 +357,7 @@ Evidence: [E2], [E7], [E8], [E17], [E39], [E40].
 | Done | ADF node | Current source mapping | DOCX | PDF | Primary gap |
 |---|---|---|---|---|---|
 | [x] | `extension` | ADF and Storage retain extension/macro identity, structured parameters, fragments, and source page context before the live renderer chain. Forge ADF `localId` stays distinct from Storage `macroId` and is projected only at the documented export-view port. | Native/Conditional | Native/Conditional | Closed for the public static-export contract: CLI and browser first share one cached platform export per page and then use the same versioned single-macro conversion when the batch omits a Forge extension. Live mode consumes Confluence's platform-rendered `adfExport`/`export_view` result; offline, permission, missing-output, and unknown-app outcomes retain an explicit `[Extension: key]` fallback plus a typed report note without exposing IDs or parameters. |
-| [ ] | `inlineExtension` | ADF retains inline placement, extension identity/parameters/fragments, and a visible label; export controls are consumed semantically. | Open/Fallback | Open/Fallback | **Open:** render a richer inline body/text fallback without splitting the paragraph and integrate third-party `adfExport`. |
+| [x] | `inlineExtension` | ADF retains inline placement, extension identity/parameters/fragments, exact optional text, source-page version, and a deterministic visible label; export controls are consumed semantically. The shared resolver projects only the documented Forge `localId` into the platform port. | Native/Conditional | Native/Conditional | Closed for the complete pinned static-export contract: one-paragraph Confluence `adfExport` output replaces exactly the owning inline run while preserving all surrounding paragraph content and fragment provenance. Block/multi-paragraph, empty, offline, denied, and missing output retain the authored text or `[Extension: key]` label in place with one source-located terminal note. CLI/browser and DOCX/PDF use the same resolver and versioned port. |
 | [x] | `bodiedExtension` | ADF/Storage identity, rich/plain body, structured parameters, fragments, and source context survive before resolution. Forge ADF `localId` and the owning source-page version reach the platform export port without being copied into Storage identity. | Native/Conditional | Native/Conditional | Closed for the public static-export contract: successful Confluence `adfExport` output replaces the source body in both targets; every unresolved/offline outcome shows the explicit extension label followed by the retained rich/plain body, with source-located diagnostics and no opaque identity/parameter publication. |
 | [x] | `syncBlock` | The reference-only node retains exact resource/local identity, projection kind, and optional breakout intent as non-visual provenance. Because the pinned contract carries no embedded body and no public resolver contract is documented, both targets render a deterministic unavailable-content callout without exposing opaque IDs. | Approximation | Approximation | Closed for every pinned attribute and its strongest safe static projection; executing Confluence-internal synchronization is outside the documented ADF export contract. |
 | [x] | `bodiedSyncBlock` | Exact resource/local identity, embedded snapshot blocks, projection kind, and optional breakout intent survive validation, decoding, composition, CLI/browser resolution, and both static targets. Synchronization is not executed; the embedded ADF body is the exported snapshot. | Approximation | Approximation | Closed for every pinned attribute and embedded child. Both targets visibly label the snapshot, preserve its rich body, keep opaque IDs non-visual, and report page-bounded breakout behavior. |
@@ -442,7 +443,7 @@ Official Confluence documentation describes these input shortcuts. They are edit
 | [x] | Raw `:shortname:` text | Not a stable documented ADF contract | Remains literal unless Confluence converted it first. | Closed invariant: never reinterpret ordinary text in the exporter. |
 | [x] | `@ ` | `mention` | Native typed mention with source or host-resolved visible name. | Closed for the pinned ADF contract: identity/presentation metadata survives, unresolved/deactivated output is privacy-safe, and no unsupported profile URL is invented. |
 | [x] | `!` | media picker | Block image/file/link/external media, static audio/video attachment cards, groups, inline images, authored dimensions/layout, alt text, captions, borders, and links are complete. | Closed for every pinned materialized media outcome: correlated block and inline images render as real target images; file/link/unresolved outcomes remain visible, typed, clickable where safe, and diagnostic. |
-| [x] | `{` | macro autocomplete | `extension*` or legacy macro projection | Closed selection mapping: core renderers, Connect/Storage export views, Forge block/bodied `adfExport`, unknown apps, and offline fallbacks are explicit. Live paragraph-local replacement remains tracked only in the open `inlineExtension` row. |
+| [x] | `{` | macro autocomplete | `extension*` or legacy macro projection | Closed selection mapping: core renderers, Connect/Storage export views, Forge block/bodied/inline `adfExport`, paragraph-local replacement, unknown apps, and offline fallbacks are explicit. |
 | [x] | `//` | `date` | Native localized static date chip. | UTC calendar semantics, locale formatting, invalid-value reporting, and deterministic browser/render fixtures are complete. |
 | [x] | `/...` | Selected node/macro | Determined by the resulting typed ADF node, never by reparsing slash text. | Closed classification policy; the selected result remains tracked in its own checked row. |
 
@@ -593,9 +594,10 @@ Required acceptance contract:
   visible fallback, export controls, documented Forge-local-ID lookup, and
   Confluence-rendered `adfExport` ingestion are complete across CLI/browser and
   DOCX/PDF.
-- [ ] **Open — inline extension live output.** Paragraph-local identity,
-  parameters, fragments, visible text, and static output are retained; an
-  async rich replacement must preserve paragraph ownership.
+- [x] **Inline extension live output.** Paragraph-local identity, parameters,
+  fragments, visible text/fallback, source-page version, live platform output,
+  and surrounding paragraph ownership are complete across both hosts and
+  targets.
 - [x] **Synced-content snapshot/reference policy.** Embedded snapshots and
   reference-only projections are complete for the pinned static contract.
 - [ ] **Open — annotation marks.** Exact source identities, validation,
@@ -653,7 +655,8 @@ Required acceptance contract:
   correlated images, and static image/file/audio/video/link/external fallbacks.
 - [x] ADF-native block/bodied extension forms, Forge `adfExport` platform
   ingestion, and deterministic static fallbacks.
-- [ ] **Open:** live `inlineExtension` replacement without paragraph splitting.
+- [x] Live `inlineExtension` replacement without paragraph splitting, including
+  deterministic block-output rejection and static fallback.
 - [x] Synced content policy for both pinned reference-only and embedded forms.
 
 ### Phase 4 - Conformance and release gate
@@ -708,6 +711,9 @@ Closed gates:
   composition, both target markers, real render goldens, and packed browser
   parity.
 - [x] Generic inline-extension placement and visible fallback.
+- [x] Live paragraph-local inline-extension `adfExport` resolution with exact
+  surrounding-run ownership, source-version routing, fragment retention,
+  deterministic fallback, packed browser execution, and CLI/browser parity.
 - [x] Block/bodied extension identity, parameters, body, static privacy-safe
   fallback, Forge-local-ID export-view resolution, platform-rendered
   `adfExport` conversion, both targets, packed browser execution, and CLI
@@ -858,6 +864,7 @@ Accessed 2026-07-22 and 2026-07-23:
 - **[E44] Complete fragment provenance without invented navigation:** `packages/confluence/src/adf-validate.ts`, `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/adf-validate.test.ts`, `packages/confluence/src/adf-to-blocks.test.ts`, `packages/confluence/src/adf-direct-fixtures.test.ts`, `packages/confluence/src/compose-document.test.ts`, `packages/docx/src/serialize.test.ts`, `packages/pdf/src/types.ts`, `packages/pdf/src/prepare.ts`, `packages/pdf/src/serialize.test.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `apps/browser-export-harness/tests/exports.e2e.ts`, `scripts/adf-rendered-goldens.ts`, `scripts/adf-rendered-goldens.test.ts`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
 - **[E45] Typed unsupported-ADF preservation and visible static fallback:** `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/adf-to-blocks.test.ts`, `packages/confluence/src/export-blocks.test.ts`, `packages/export-macros/src/resolve.ts`, `packages/export-macros/src/resolve.test.ts`, `packages/docx/src/serialize.ts`, `packages/docx/src/serialize.test.ts`, `packages/pdf/src/prepare.ts`, `packages/pdf/src/serialize.ts`, `packages/pdf/src/serialize.test.ts`, `packages/export-fixtures/src/index.ts`, `packages/export-fixtures/src/adf-fixtures.test.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `apps/browser-export-harness/tests/exports.e2e.ts`, `scripts/adf-rendered-goldens.ts`, `scripts/adf-rendered-goldens.test.ts`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
 - **[E46] Complete block/bodied extension static and platform-export contract:** `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/adf-to-blocks.test.ts`, `packages/export-macros/src/types.ts`, `packages/export-macros/src/export-view.ts`, `packages/export-macros/src/resolve.ts`, `packages/export-macros/src/resolve.test.ts`, `packages/export-wiring/src/ports.ts`, `packages/export-wiring/src/ports.test.ts`, `apps/extension/utils/macros/session-ports.ts`, `apps/extension/tests/macros/session-ports.test.ts`, `apps/cli/src/commands/engine-parity.test.ts`, `packages/docx/src/serialize.ts`, `packages/docx/src/serialize.test.ts`, `packages/pdf/src/serialize.ts`, `packages/pdf/src/serialize.test.ts`, `packages/export-fixtures/src/macro-fixtures.ts`, `packages/export-fixtures/src/macro-fixtures.test.ts`, `packages/export-fixtures/src/index.ts`, `packages/export-fixtures/src/adf-fixtures.test.ts`, `apps/browser-export-harness/src/macro-case.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `apps/browser-export-harness/tests/exports.e2e.ts`, `apps/browser-export-harness/scripts/check-parity.ts`, `scripts/adf-rendered-goldens.ts`, `scripts/adf-rendered-goldens.test.ts`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
+- **[E47] Complete paragraph-local inline-extension platform-export contract:** `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/adf-to-blocks.test.ts`, `packages/export-macros/src/export-view.ts`, `packages/export-macros/src/resolve.ts`, `packages/export-macros/src/resolve.test.ts`, `packages/export-fixtures/src/macro-fixtures.ts`, `packages/export-fixtures/src/macro-fixtures.test.ts`, `apps/browser-export-harness/src/macro-case.ts`, `apps/browser-export-harness/tests/exports.e2e.ts`, `apps/browser-export-harness/scripts/check-parity.ts`
 
 ## 16. Review questions
 

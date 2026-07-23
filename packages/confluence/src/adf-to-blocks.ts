@@ -201,6 +201,24 @@ function addExtensionResolutionNote(
   );
 }
 
+function addInlineExtensionResolutionNote(
+  ctx: DecodeContext,
+  path: string,
+  extensionKey: string,
+): void {
+  ctx.notes.add(
+    {
+      level: "warning",
+      code: "inline-extension-not-rendered",
+      message:
+        `ADF inlineExtension "${extensionKey}" retained its paragraph-local fallback and awaits macro resolution.`,
+      macroName: extensionKey,
+      source: sourceFor(ctx, path),
+    },
+    `inline-extension|${path}|${extensionKey}`,
+  );
+}
+
 function addMarkNote(
   ctx: DecodeContext,
   path: string,
@@ -612,8 +630,8 @@ function decodeInlineNode(node: AdfNode, ctx: DecodeContext, path: string): Inli
     case "inlineExtension": {
       const controlled = decodeInlineExportControl(node, ctx, path);
       if (controlled) return controlled.content;
-      addNodeNote(ctx, path, node.type, "was preserved as a visible inline extension label.");
       const extensionKey = stringAttr(node, "extensionKey") ?? "adf-extension";
+      addInlineExtensionResolutionNote(ctx, path, extensionKey);
       const params = extensionParams(node.attrs?.parameters);
       const fragments = fragmentMarks(node.marks);
       addFragmentProjectionNote(ctx, path, fragments);

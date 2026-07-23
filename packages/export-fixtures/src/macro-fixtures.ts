@@ -117,6 +117,7 @@ export const MACRO_STORAGE: string =
 /** Forge-shaped ADF extensions whose local IDs are their documented export REST IDs. */
 export const MACRO_ADF_BLOCK_EXTENSION_LOCAL_ID = "forge-block-extension-local-id";
 export const MACRO_ADF_BODIED_EXTENSION_LOCAL_ID = "forge-bodied-extension-local-id";
+export const MACRO_ADF_INLINE_EXTENSION_LOCAL_ID = "forge-inline-extension-local-id";
 export const MACRO_ADF_EXTENSION = {
   type: "doc",
   version: 1,
@@ -143,21 +144,43 @@ export const MACRO_ADF_EXTENSION = {
         content: [{ type: "text", text: "Forge body fallback" }],
       }],
     },
+    {
+      type: "paragraph",
+      content: [
+        { type: "text", text: "Before inline export " },
+        {
+          type: "inlineExtension",
+          attrs: {
+            extensionType: "com.atlassian.ecosystem",
+            extensionKey: "forge-inline-export-widget",
+            localId: MACRO_ADF_INLINE_EXTENSION_LOCAL_ID,
+            parameters: { mode: "print" },
+            text: "Forge inline fallback",
+          },
+        },
+        { type: "text", text: " after inline export" },
+      ],
+    },
   ],
 } as const;
 
 export const MACRO_ADF_BLOCK_EXPORT_TEXT = "Platform-rendered Forge block ADF export";
 export const MACRO_ADF_BODIED_EXPORT_TEXT = "Platform-rendered Forge bodied ADF export";
+export const MACRO_ADF_INLINE_EXPORT_TEXT = "Platform-rendered Forge inline ADF export";
 
 /** Deterministic replay of Confluence's platform-rendered `adfExport` result. */
 export function macroExportViewPort(): ExportViewPort {
   return {
-    async renderMacroHtml(_pageId, macroId): Promise<string | undefined> {
+    async renderMacroHtml(_pageId, macroId, pageVersion): Promise<string | undefined> {
+      if (pageVersion !== 5) throw new Error(`unexpected fixture page version ${pageVersion}`);
       if (macroId === MACRO_ADF_BLOCK_EXTENSION_LOCAL_ID) {
         return `<p><strong>${MACRO_ADF_BLOCK_EXPORT_TEXT}</strong></p>`;
       }
       if (macroId === MACRO_ADF_BODIED_EXTENSION_LOCAL_ID) {
         return `<p><strong>${MACRO_ADF_BODIED_EXPORT_TEXT}</strong></p>`;
+      }
+      if (macroId === MACRO_ADF_INLINE_EXTENSION_LOCAL_ID) {
+        return `<span><strong>${MACRO_ADF_INLINE_EXPORT_TEXT}</strong></span>`;
       }
       return undefined;
     },
@@ -166,7 +189,7 @@ export function macroExportViewPort(): ExportViewPort {
 
 function macroContext(): MacroExportContext {
   return {
-    page: { id: "macro-page", spaceKey: "TEST" },
+    page: { id: "macro-page", version: 5, spaceKey: "TEST" },
     jira: macroJiraPort(),
     attachments: macroAttachmentsPort(),
     exportView: macroExportViewPort(),
@@ -191,11 +214,11 @@ export async function resolveMacroFixtureBlocks(
   });
   const storage = storageToBlocks(MACRO_STORAGE, {
     exporter: targetEngine === "pdf" ? "pdf" : "word",
-    pageContext: { id: "macro-page", spaceKey: "TEST", title: "Macro Coverage" },
+    pageContext: { id: "macro-page", version: 5, spaceKey: "TEST", title: "Macro Coverage" },
   });
   const adf = adfToBlocks(MACRO_ADF_EXTENSION, {
     exporter: targetEngine === "pdf" ? "pdf" : "word",
-    pageContext: { id: "macro-page", spaceKey: "TEST", title: "Macro Coverage" },
+    pageContext: { id: "macro-page", version: 5, spaceKey: "TEST", title: "Macro Coverage" },
   });
   const parsed: StorageToBlocksResult = {
     blocks: [...storage.blocks, ...adf.blocks],
@@ -218,5 +241,6 @@ export function countUnknown(blocks: readonly ExportBlock[]): number {
 export function hasMacroAdfExport(blocks: readonly ExportBlock[]): boolean {
   const serialized = JSON.stringify(blocks);
   return serialized.includes(MACRO_ADF_BLOCK_EXPORT_TEXT) &&
-    serialized.includes(MACRO_ADF_BODIED_EXPORT_TEXT);
+    serialized.includes(MACRO_ADF_BODIED_EXPORT_TEXT) &&
+    serialized.includes(MACRO_ADF_INLINE_EXPORT_TEXT);
 }

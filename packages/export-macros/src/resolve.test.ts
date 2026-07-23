@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import type { ExportBlock, ExportNote, StorageToBlocksResult } from "@atlcli/confluence";
+import type {
+  ExportBlock,
+  ExportNote,
+  InlineNode,
+  StorageToBlocksResult,
+} from "@atlcli/confluence";
 import { resolveMacroBlocks } from "./resolve.js";
 import { createRegistry } from "./registry.js";
 import { exportViewFallbackRenderer } from "./export-view.js";
@@ -188,6 +193,267 @@ describe("resolveMacroBlocks — fallback chain", () => {
       "macro not found"
     );
     expect(out.notes.some((note) => note.code === "macro-not-rendered")).toBe(false);
+  });
+
+  test("replaces an inline extension inside its owning paragraph via Forge adfExport", async () => {
+    const calls: Array<{ pageId: string; macroId: string; pageVersion?: number }> = [];
+    const inlineExtension: Extract<InlineNode, { type: "text" }> = {
+      type: "text",
+      text: "Static inline fallback",
+      adfExtension: {
+        extensionType: "com.atlassian.ecosystem",
+        extensionKey: "inline-widget",
+        localId: "inline-local-id",
+      },
+      extensionParams: [{ name: "mode", text: "compact" }],
+      sourcePage: { id: "child", version: 9, spaceKey: "SPACE" },
+      fragments: [{ localId: "fragment-local", name: "fragment-name" }],
+    };
+    const registry = createRegistry([exportViewFallbackRenderer({
+      htmlToExportBlocks: () => ({
+        blocks: [{
+          type: "paragraph",
+          content: [{ type: "text", text: "Live inline output", marks: ["bold"] }],
+        }],
+        notes: [],
+      }),
+    })]);
+    const input: StorageToBlocksResult = {
+      blocks: [{
+        type: "paragraph",
+        content: [
+          { type: "text", text: "Before " },
+          inlineExtension,
+          { type: "text", text: " after" },
+        ],
+      }],
+      notes: [{
+        level: "warning",
+        code: "inline-extension-not-rendered",
+        message: "pending",
+        macroName: "inline-widget",
+        source: { pageId: "child", blockPath: "content[0].content[1]" },
+      }],
+    };
+    const out = await resolveMacroBlocks(input, registry, ctx(), {
+      contextFor: (page) => ctx({
+        page: page ?? { id: "1" },
+        exportView: {
+          async renderMacroHtml(pageId, macroId, pageVersion) {
+            calls.push({ pageId, macroId, pageVersion });
+            return "<span>Live inline output</span>";
+          },
+        },
+      }),
+    });
+
+    expect(out.blocks).toEqual([{
+      type: "paragraph",
+      content: [
+        { type: "text", text: "Before " },
+        {
+          type: "text",
+          text: "Live inline output",
+          marks: ["bold"],
+          fragments: [{ localId: "fragment-local", name: "fragment-name" }],
+        },
+        { type: "text", text: " after" },
+      ],
+    }]);
+    expect(calls).toEqual([{
+      pageId: "child",
+      macroId: "inline-local-id",
+      pageVersion: 9,
+    }]);
+    expect(out.notes).toEqual([{
+      level: "info",
+      code: "macro-rendered-via",
+      message: 'The "inline-widget" macro was rendered via Confluence export_view.',
+      macroName: "inline-widget",
+      source: { pageId: "child", blockPath: "content[0].content[1]" },
+    }]);
+  });
+
+  test("retains the inline fallback when platform output is not paragraph-local", async () => {
+    const inlineExtension: Extract<InlineNode, { type: "text" }> = {
+      type: "text",
+      text: "Static inline fallback",
+      adfExtension: {
+        extensionType: "com.atlassian.ecosystem",
+        extensionKey: "inline-widget",
+        localId: "inline-local-id",
+      },
+    };
+    const registry = createRegistry([exportViewFallbackRenderer({
+      htmlToExportBlocks: () => ({
+        blocks: [
+          { type: "paragraph", content: [{ type: "text", text: "First" }] },
+          { type: "paragraph", content: [{ type: "text", text: "Second" }] },
+        ],
+        notes: [],
+      }),
+    })]);
+    const input: StorageToBlocksResult = {
+      blocks: [{ type: "paragraph", content: [inlineExtension] }],
+      notes: [{
+        level: "warning",
+        code: "inline-extension-not-rendered",
+        message: "pending",
+        macroName: "inline-widget",
+      }],
+    };
+    const out = await resolveMacroBlocks(input, registry, ctx({
+      exportView: {
+        async renderMacroHtml() {
+          return "<p>First</p><p>Second</p>";
+        },
+      },
+    }));
+
+    expect(out.blocks).toEqual(input.blocks);
+    expect(out.notes.filter((note) => note.code === "macro-degraded")).toHaveLength(1);
+    expect(out.notes[0]?.message).toContain("block-level platform output");
+    expect(out.notes.some((note) => note.code === "macro-rendered-via")).toBe(false);
+  });
+
+  test("retains the inline fallback when a platform paragraph has no visible text", async () => {
+    const inlineExtension: Extract<InlineNode, { type: "text" }> = {
+      type: "text",
+      text: "Static inline fallback",
+      adfExtension: {
+        extensionType: "com.atlassian.ecosystem",
+        extensionKey: "inline-widget",
+        localId: "inline-local-id",
+      },
+    };
+    const registry = createRegistry([exportViewFallbackRenderer({
+      htmlToExportBlocks: () => ({
+        blocks: [{
+          type: "paragraph",
+          content: [{ type: "lineBreak" }],
+        }],
+        notes: [],
+      }),
+    })]);
+    const input: StorageToBlocksResult = {
+      blocks: [{ type: "paragraph", content: [inlineExtension] }],
+      notes: [{
+        level: "warning",
+        code: "inline-extension-not-rendered",
+        message: "pending",
+        macroName: "inline-widget",
+      }],
+    };
+    const out = await resolveMacroBlocks(input, registry, ctx({
+      exportView: {
+        async renderMacroHtml() {
+          return "<br>";
+        },
+      },
+    }));
+
+    expect(out.blocks).toEqual(input.blocks);
+    expect(out.notes.filter((note) => note.code === "macro-degraded")).toHaveLength(1);
+    expect(out.notes[0]?.message).toContain("block-level platform output");
+    expect(out.notes.some((note) => note.code === "macro-rendered-via")).toBe(false);
+  });
+
+  test("retains an inline extension without a platform call when live resolution is disabled", async () => {
+    let calls = 0;
+    const inlineExtension: Extract<InlineNode, { type: "text" }> = {
+      type: "text",
+      text: "Static inline fallback",
+      adfExtension: {
+        extensionType: "com.atlassian.ecosystem",
+        extensionKey: "Inline-Widget",
+        localId: "inline-local-id",
+      },
+    };
+    const registry = createRegistry([exportViewFallbackRenderer({
+      htmlToExportBlocks: () => ({
+        blocks: [{ type: "paragraph", content: [{ type: "text", text: "Live output" }] }],
+        notes: [],
+      }),
+    })]);
+    const input: StorageToBlocksResult = {
+      blocks: [{ type: "paragraph", content: [inlineExtension] }],
+      notes: [{
+        level: "warning",
+        code: "inline-extension-not-rendered",
+        message: "pending",
+        macroName: "inline-widget",
+      }],
+    };
+    const out = await resolveMacroBlocks(input, registry, ctx({
+      exportView: {
+        async renderMacroHtml() {
+          calls += 1;
+          return "<span>Live output</span>";
+        },
+      },
+    }), { live: false });
+
+    expect(calls).toBe(0);
+    expect(out.blocks).toEqual(input.blocks);
+    expect(out.notes).toEqual([{
+      level: "info",
+      code: "macro-skipped-by-config",
+      message:
+        'The "inline-widget" inline extension was not resolved live (dynamic macro resolution disabled); its visible fallback was retained.',
+      macroName: "Inline-Widget",
+    }]);
+  });
+
+  test("classifies an inline deadline reached inside the platform renderer as skipped", async () => {
+    let clockReads = 0;
+    let portCalls = 0;
+    const inlineExtension: Extract<InlineNode, { type: "text" }> = {
+      type: "text",
+      text: "Static inline fallback",
+      adfExtension: {
+        extensionType: "com.atlassian.ecosystem",
+        extensionKey: "inline-widget",
+        localId: "inline-local-id",
+      },
+    };
+    const registry = createRegistry([exportViewFallbackRenderer({
+      htmlToExportBlocks: () => ({
+        blocks: [{ type: "paragraph", content: [{ type: "text", text: "Live output" }] }],
+        notes: [],
+      }),
+    })]);
+    const out = await resolveMacroBlocks({
+      blocks: [{ type: "paragraph", content: [inlineExtension] }],
+      notes: [{
+        level: "warning",
+        code: "inline-extension-not-rendered",
+        message: "pending",
+        macroName: "inline-widget",
+      }],
+    }, registry, ctx({
+      budget: {
+        deadlineMs: 1,
+        now: () => {
+          clockReads += 1;
+          return clockReads < 3 ? 0 : 2;
+        },
+      },
+      exportView: {
+        async renderMacroHtml() {
+          portCalls += 1;
+          return "<span>Live output</span>";
+        },
+      },
+    }));
+
+    expect(portCalls).toBe(0);
+    expect(out.blocks).toEqual([{ type: "paragraph", content: [inlineExtension] }]);
+    expect(out.notes).toEqual([{
+      level: "info",
+      code: "macro-skipped-by-config",
+      message: "Skipped: macro-resolution deadline exceeded.",
+      macroName: "inline-widget",
+    }]);
   });
 
   test("first matching renderer wins", async () => {

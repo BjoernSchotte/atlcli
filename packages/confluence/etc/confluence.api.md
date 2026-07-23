@@ -971,6 +971,7 @@ export declare function escapeCqlValue(value: string): string;
 export declare const EXPORT_NOTE_CODES: readonly [
     "unknown-macro",
     "macro-not-rendered",
+    "inline-extension-not-rendered",
     "image-unresolved",
     "inline-image-skipped",
     "layout-geometry-fallback",
@@ -3367,6 +3368,7 @@ export declare function escapeCqlValue(value: string): string;
 export declare const EXPORT_NOTE_CODES: readonly [
     "unknown-macro",
     "macro-not-rendered",
+    "inline-extension-not-rendered",
     "image-unresolved",
     "inline-image-skipped",
     "layout-geometry-fallback",
@@ -5763,6 +5765,7 @@ export declare function escapeCqlValue(value: string): string;
 export declare const EXPORT_NOTE_CODES: readonly [
     "unknown-macro",
     "macro-not-rendered",
+    "inline-extension-not-rendered",
     "image-unresolved",
     "inline-image-skipped",
     "layout-geometry-fallback",
@@ -8058,6 +8061,7 @@ export declare function escapeCqlValue(value: string): string;
 export declare const EXPORT_NOTE_CODES: readonly [
     "unknown-macro",
     "macro-not-rendered",
+    "inline-extension-not-rendered",
     "image-unresolved",
     "inline-image-skipped",
     "layout-geometry-fallback",
@@ -11017,6 +11021,7 @@ export declare function escapeCqlValue(value: string): string;
 export declare const EXPORT_NOTE_CODES: readonly [
     "unknown-macro",
     "macro-not-rendered",
+    "inline-extension-not-rendered",
     "image-unresolved",
     "inline-image-skipped",
     "layout-geometry-fallback",

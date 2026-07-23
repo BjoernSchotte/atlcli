@@ -959,6 +959,7 @@ export const EXPORT_NOTE_CODES = [
   // Confluence storage walk (storageToBlocks)
   "unknown-macro",
   "macro-not-rendered",
+  "inline-extension-not-rendered",
   "image-unresolved",
   "inline-image-skipped",
   "layout-geometry-fallback",
