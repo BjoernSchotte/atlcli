@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import type { ExportBlock } from "./export-blocks.js";
+import { mentionDisplayText, type ExportBlock } from "./export-blocks.js";
 import { resolveExportMentions } from "./resolve-mentions.js";
 
 const nestedBlocks: ExportBlock[] = [{
@@ -71,6 +71,7 @@ describe("resolveExportMentions", () => {
     const result = await resolveExportMentions(blocks, async () => new Map([["a", "   "]]));
     expect(result.unresolved).toBe(2);
     expect(result.blocks).toEqual(blocks);
+    expect(mentionDisplayText({})).toBe("Unknown user");
   });
 
   it("propagates lookup failures", async () => {

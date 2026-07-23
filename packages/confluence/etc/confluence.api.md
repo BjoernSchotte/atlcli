@@ -1480,6 +1480,10 @@ export type InlineNode = {
     type: "mention";
     accountId: string;
     displayName?: string;
+    sourceText?: string;
+    localId?: string;
+    accessLevel?: string;
+    userType?: "DEFAULT" | "SPECIAL" | "APP";
 } | {
     type: "date";
     timestamp: string;
@@ -1639,6 +1643,11 @@ export declare function materializeTable(table: Extract<ExportBlock, {
 
 // export: MAX_ANCHOR_ID_LENGTH
 export declare const MAX_ANCHOR_ID_LENGTH = 40;
+
+// export: mentionDisplayText
+export declare function mentionDisplayText(mention: Pick<Extract<InlineNode, {
+    type: "mention";
+}>, "displayName" | "userType">): string;
 
 // export: minHeadingLevel
 export declare function minHeadingLevel(blocks: readonly HeadingScanBlock[]): number;
@@ -3720,6 +3729,10 @@ export type InlineNode = {
     type: "mention";
     accountId: string;
     displayName?: string;
+    sourceText?: string;
+    localId?: string;
+    accessLevel?: string;
+    userType?: "DEFAULT" | "SPECIAL" | "APP";
 } | {
     type: "date";
     timestamp: string;
@@ -3879,6 +3892,11 @@ export declare function materializeTable(table: Extract<ExportBlock, {
 
 // export: MAX_ANCHOR_ID_LENGTH
 export declare const MAX_ANCHOR_ID_LENGTH = 40;
+
+// export: mentionDisplayText
+export declare function mentionDisplayText(mention: Pick<Extract<InlineNode, {
+    type: "mention";
+}>, "displayName" | "userType">): string;
 
 // export: minHeadingLevel
 export declare function minHeadingLevel(blocks: readonly HeadingScanBlock[]): number;
@@ -5960,6 +5978,10 @@ export type InlineNode = {
     type: "mention";
     accountId: string;
     displayName?: string;
+    sourceText?: string;
+    localId?: string;
+    accessLevel?: string;
+    userType?: "DEFAULT" | "SPECIAL" | "APP";
 } | {
     type: "date";
     timestamp: string;
@@ -6119,6 +6141,11 @@ export declare function materializeTable(table: Extract<ExportBlock, {
 
 // export: MAX_ANCHOR_ID_LENGTH
 export declare const MAX_ANCHOR_ID_LENGTH = 40;
+
+// export: mentionDisplayText
+export declare function mentionDisplayText(mention: Pick<Extract<InlineNode, {
+    type: "mention";
+}>, "displayName" | "userType">): string;
 
 // export: minHeadingLevel
 export declare function minHeadingLevel(blocks: readonly HeadingScanBlock[]): number;
@@ -8153,6 +8180,10 @@ export type InlineNode = {
     type: "mention";
     accountId: string;
     displayName?: string;
+    sourceText?: string;
+    localId?: string;
+    accessLevel?: string;
+    userType?: "DEFAULT" | "SPECIAL" | "APP";
 } | {
     type: "date";
     timestamp: string;
@@ -8427,6 +8458,11 @@ export interface MaterializedTable {
 export declare function materializeTable(table: Extract<ExportBlock, {
     type: "table";
 }>): MaterializedTable;
+
+// export: mentionDisplayText
+export declare function mentionDisplayText(mention: Pick<Extract<InlineNode, {
+    type: "mention";
+}>, "displayName" | "userType">): string;
 
 // export: MergeResult
 export interface MergeResult {
@@ -10908,6 +10944,10 @@ export type InlineNode = {
     type: "mention";
     accountId: string;
     displayName?: string;
+    sourceText?: string;
+    localId?: string;
+    accessLevel?: string;
+    userType?: "DEFAULT" | "SPECIAL" | "APP";
 } | {
     type: "date";
     timestamp: string;
@@ -11067,6 +11107,11 @@ export declare function materializeTable(table: Extract<ExportBlock, {
 
 // export: MAX_ANCHOR_ID_LENGTH
 export declare const MAX_ANCHOR_ID_LENGTH = 40;
+
+// export: mentionDisplayText
+export declare function mentionDisplayText(mention: Pick<Extract<InlineNode, {
+    type: "mention";
+}>, "displayName" | "userType">): string;
 
 // export: minHeadingLevel
 export declare function minHeadingLevel(blocks: readonly HeadingScanBlock[]): number;

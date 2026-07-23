@@ -57,6 +57,7 @@ export interface AdfSourceCaseResult {
   neutralHasBlockLocalIdentities: boolean;
   neutralHasCodeBlockSemantics: boolean;
   neutralHasCustomPanelSemantics: boolean;
+  neutralHasMentionSemantics: boolean;
   neutralHasDateStatusPlaceholderSemantics: boolean;
   neutralHasAnnotationAndFragmentIdentity: boolean;
   neutralHasTablePresentation: boolean;
@@ -67,6 +68,7 @@ export interface AdfSourceCaseResult {
   docxHasLayoutPresentation: boolean;
   docxHasDisclosureSemantics: boolean;
   docxHasDateStatusPlaceholderSemantics: boolean;
+  docxHasMentionPresentation: boolean;
   docxHasCardTitle: boolean;
   docxHasExtensionBody: boolean;
   docxHasVisibleMediaFallback: boolean;
@@ -426,6 +428,10 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
       && neutralCustomPanel.panelIcon === ":star:"
       && neutralCustomPanel.panelIconId === "custom-panel-icon"
       && neutralCustomPanel.panelIconText === "★",
+    neutralHasMentionSemantics:
+      JSON.stringify(pdfSource.blocks).includes(
+        '"type":"mention","accountId":"mention-account-1","sourceText":"@Example Person","displayName":"Example Person","localId":"mention-local","accessLevel":"SITE","userType":"DEFAULT"',
+      ),
     neutralHasDateStatusPlaceholderSemantics:
       JSON.stringify(pdfSource.blocks).includes(
         '"type":"date","timestamp":"1709510400000","localId":"date-local"',
@@ -498,6 +504,9 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
       && documentXml.includes('w:fill="EAE6FF"')
       && !documentXml.includes("editor-only-secret")
       && !documentXml.includes("1709510400000"),
+    docxHasMentionPresentation:
+      documentXml.includes("@Example Person")
+      && !documentXml.includes("mention-account-1"),
     docxHasCardTitle:
       documentXml.includes("Local card title")
       && (documentXml.includes("https://example.invalid/adf-card")
@@ -546,6 +555,9 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
   }
   if (!result.neutralHasCustomPanelSemantics) {
     throw new Error("ADF-source custom-panel presentation or identity was lost in the packed browser.");
+  }
+  if (!result.neutralHasMentionSemantics || !result.docxHasMentionPresentation) {
+    throw new Error("ADF-source mention semantics or privacy-safe presentation was lost in the packed browser.");
   }
   if (!result.neutralHasDateStatusPlaceholderSemantics) {
     throw new Error("ADF-source date, status, or placeholder semantics were lost in the packed browser.");

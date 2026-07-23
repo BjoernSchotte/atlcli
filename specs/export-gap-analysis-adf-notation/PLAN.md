@@ -560,7 +560,7 @@ Required semantic cases:
   presentation/identity attributes, numbered rows, and vertical alignment;
 - [x] safe/unsafe external, page, attachment, anchor, and card links;
 - [x] Unicode emoji, missing text, custom emoji, and literal colon text;
-- [x] user/team/unresolved mentions;
+- [x] user/collection/unresolved mentions;
 - [x] known, unknown, bodied, and inline extensions;
 - [x] media with correlated and uncorrelated IDs;
 - [x] unknown block/inline/mark with visible fallback and provenance;
@@ -963,7 +963,7 @@ Paired ADF/Storage fixtures compare:
 - list/task state and nesting;
 - table shape, spans, widths, and background;
 - safe link target identity;
-- mention account/team identity;
+- mention account/collection identity;
 - macro identity, parameters, body, and source page;
 - image/media source identity and alt text;
 - source note code, level, message category, and provenance;
@@ -1209,8 +1209,30 @@ output integrity, the 15-case manifest, the complete packed Chromium run, and
 direct/background byte/report parity. The deterministic real-render check
 reproduced one DOCX and four PDF pages within the reviewed visual budgets
 (maximum mean pixel difference 0.0063; minimum content-bounds IoU 0.9868).
-The matrix now records 54 of 84 rows closed and 30 open; the unrestricted suite
-remains the remote-CI gate.
+At that checkpoint the matrix recorded 54 of 84 rows closed and 30 open; the
+unrestricted suite remained the remote-CI gate.
+
+Completed mention follow-on evidence recorded on 2026-07-23: the bounded
+validator now enforces the complete pinned mention contract. The shared inline
+model retains the exact account-or-collection ID, optional source text
+including an empty string, local identity, access level, and exact
+`DEFAULT`/`SPECIAL`/`APP` user type. Source text or the existing host resolver
+provides the visible name without replacing source metadata. When lookup is
+unavailable, empty, or represents a deactivated identity, both TypeScript
+targets render deterministic `Unknown user`/`Unknown app` labels and never
+publish the raw technical ID. No profile hyperlink is invented because the
+pinned node contains no profile URL. Composition, nested/caption resolver
+traversal, packed direct/background browser parity, and reviewed real DOCX/PDF
+goldens retain the full contract. This closes both the ADF node and editor `@`
+rows. The slice passed 258 focused tests with one intentional rendered-golden
+skip, the six-test public API/closure guard with zero
+reachable-but-unexported gaps, the offline 43-node/17-mark/84-definition pin,
+full typecheck, the 16-task production build, all 20 browser-isomorphism
+entrypoints, browser/extension output integrity, the 15-case manifest, the
+complete packed Chromium run, and direct/background byte/report parity. The
+deterministic real-render check reproduced one DOCX and four PDF pages with
+zero pixel difference and content-bounds IoU 1. The matrix now records 56 of
+84 rows closed and 28 open; the unrestricted suite remains the remote-CI gate.
 
 After this migration proves the source boundary, close the gap-analysis backlog in separate feature slices:
 

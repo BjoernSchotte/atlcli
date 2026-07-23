@@ -91,11 +91,24 @@ export type InlineNode =
     }
   | { type: "link"; target: LinkTarget; content: InlineNode[] }
   /**
-   * A user mention. Carries `accountId` always; `displayName` is optional and is
-   * the clean slot for the upcoming display-name resolution feature — when the
-   * storage lacks a name the serializer/resolver fills it from `accountId`.
+   * A user or collection mention. The source identity and presentation
+   * attributes remain metadata; renderers never expose `accountId` merely
+   * because a display-name lookup failed.
    */
-  | { type: "mention"; accountId: string; displayName?: string }
+  | {
+      type: "mention";
+      accountId: string;
+      /** Resolved or source-derived visible name without the leading `@`. */
+      displayName?: string;
+      /** Exact optional ADF textual representation, including an empty string. */
+      sourceText?: string;
+      /** Stable editor identity, retained as non-visual metadata. */
+      localId?: string;
+      /** Exact optional product access scope from the pinned ADF node. */
+      accessLevel?: string;
+      /** Exact pinned mention category. */
+      userType?: "DEFAULT" | "SPECIAL" | "APP";
+    }
   /**
    * A semantic calendar date. ADF stores Unix epoch milliseconds as a string;
    * keeping that source value avoids baking one viewer's locale into the
@@ -152,6 +165,22 @@ export function statusDisplayText(
 ): string {
   const text = status.text || status.color;
   return status.style === "mixedCase" ? text : text.toUpperCase();
+}
+
+/**
+ * Deterministic, privacy-safe mention text shared by both static renderers.
+ * The account/collection ID remains available to resolvers but is never used
+ * as an accidental published label.
+ */
+export function mentionDisplayText(
+  mention: Pick<
+    Extract<InlineNode, { type: "mention" }>,
+    "displayName" | "userType"
+  >,
+): string {
+  const resolved = mention.displayName?.trim();
+  if (resolved) return resolved;
+  return mention.userType === "APP" ? "Unknown app" : "Unknown user";
 }
 
 export type TableVerticalAlignment = "top" | "middle" | "bottom";

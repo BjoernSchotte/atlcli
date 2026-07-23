@@ -324,7 +324,24 @@ function validateKnownNodeShape(
     assertStringAttribute(attrs, "localId", path, false);
   }
   if (type === "emoji") assertStringAttribute(attrs, "shortName", path);
-  if (type === "mention") assertStringAttribute(attrs, "id", path);
+  if (type === "mention") {
+    assertStringAttribute(attrs, "id", path);
+    assertStringAttribute(attrs, "localId", path, false);
+    assertStringAttribute(attrs, "text", path, false);
+    assertStringAttribute(attrs, "accessLevel", path, false);
+    if (
+      attrs?.userType !== undefined &&
+      attrs.userType !== "DEFAULT" &&
+      attrs.userType !== "SPECIAL" &&
+      attrs.userType !== "APP"
+    ) {
+      throw new AdfValidationError(
+        "invalid-attributes",
+        "ADF mention userType must be DEFAULT, SPECIAL, or APP.",
+        `${path}.attrs.userType`,
+      );
+    }
+  }
   if (type === "placeholder") {
     assertStringAttribute(attrs, "text", path);
     assertStringAttribute(attrs, "localId", path, false);

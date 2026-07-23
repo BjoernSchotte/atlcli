@@ -74,9 +74,18 @@ describe("serializeInline", () => {
     expect(xml).toContain("https://x.com");
   });
 
-  it("renders a mention with @ and no literal accountId leak when named", () => {
-    const xml = serializeInline([{ type: "mention", accountId: "u1", displayName: "Jo" }]);
+  it("renders resolved and unresolved mentions without leaking account IDs", () => {
+    const xml = serializeInline([
+      { type: "mention", accountId: "private-user-id", displayName: "Jo" },
+      { type: "mention", accountId: "private-unresolved-id" },
+      { type: "mention", accountId: "private-app-id", userType: "APP" },
+    ]);
     expect(xml).toContain("@Jo");
+    expect(xml).toContain("@Unknown user");
+    expect(xml).toContain("@Unknown app");
+    expect(xml).not.toContain("private-user-id");
+    expect(xml).not.toContain("private-unresolved-id");
+    expect(xml).not.toContain("private-app-id");
   });
 
   it("renders localized date and semantic status chips while hiding template placeholders", () => {

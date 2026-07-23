@@ -333,6 +333,36 @@ describe("composeChapters — chapter structure", () => {
     });
   });
 
+  test("preserves complete mention identity and source presentation through composition", () => {
+    const source = page("mentions", "Mentions", 0, null, "");
+    source.blocks = [{
+      type: "paragraph",
+      content: [{
+        type: "mention",
+        accountId: "account-1",
+        sourceText: "@Example Person",
+        displayName: "Example Person",
+        localId: "mention-local",
+        accessLevel: "SITE",
+        userType: "DEFAULT",
+      }],
+    }];
+
+    const { blocks } = composeChapters([source], { chapterBreak: "none" });
+    expect(blocks).toContainEqual({
+      type: "paragraph",
+      content: [{
+        type: "mention",
+        accountId: "account-1",
+        sourceText: "@Example Person",
+        displayName: "Example Person",
+        localId: "mention-local",
+        accessLevel: "SITE",
+        userType: "DEFAULT",
+      }],
+    });
+  });
+
   test("preserves nested ordered/task lists and decision identity through composition", () => {
     const source = page("semantic-lists", "Semantic lists", 0, null, "");
     source.blocks = [

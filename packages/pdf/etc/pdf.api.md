@@ -194,6 +194,10 @@ export type InlineNode = {
     type: "mention";
     accountId: string;
     displayName?: string;
+    sourceText?: string;
+    localId?: string;
+    accessLevel?: string;
+    userType?: "DEFAULT" | "SPECIAL" | "APP";
 } | {
     type: "date";
     timestamp: string;
@@ -961,6 +965,10 @@ export type InlineNode = {
     type: "mention";
     accountId: string;
     displayName?: string;
+    sourceText?: string;
+    localId?: string;
+    accessLevel?: string;
+    userType?: "DEFAULT" | "SPECIAL" | "APP";
 } | {
     type: "date";
     timestamp: string;
@@ -1728,6 +1736,10 @@ export type InlineNode = {
     type: "mention";
     accountId: string;
     displayName?: string;
+    sourceText?: string;
+    localId?: string;
+    accessLevel?: string;
+    userType?: "DEFAULT" | "SPECIAL" | "APP";
 } | {
     type: "date";
     timestamp: string;

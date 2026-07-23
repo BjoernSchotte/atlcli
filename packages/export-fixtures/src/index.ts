@@ -162,6 +162,17 @@ export const ADF_CONFORMANCE_SOURCE = JSON.stringify({
         { type: "placeholder", attrs: { text: "editor-only-secret", localId: "placeholder-local" } },
         { type: "text", text: " " },
         {
+          type: "mention",
+          attrs: {
+            id: "mention-account-1",
+            text: "@Example Person",
+            localId: "mention-local",
+            accessLevel: "SITE",
+            userType: "DEFAULT",
+          },
+        },
+        { type: "text", text: " " },
+        {
           type: "inlineCard",
           attrs: {
             data: {

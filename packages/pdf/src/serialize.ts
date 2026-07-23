@@ -12,6 +12,7 @@ import {
   computeHeadingOffset,
   formatAdfDateTimestamp,
   isSafeLinkScheme,
+  mentionDisplayText,
   statusDisplayText,
   uniqueAnchorId,
 } from "@atlcli/confluence";
@@ -44,7 +45,7 @@ function inlinePlainText(nodes: InlineNode[]): string {
         case "link":
           return inlinePlainText(node.content);
         case "mention":
-          return `@${node.displayName ?? node.accountId}`;
+          return `@${mentionDisplayText(node)}`;
         case "date":
           return formatAdfDateTimestamp(node.timestamp);
         case "status":
@@ -642,7 +643,7 @@ function serializeMention(
   node: Extract<InlineNode, { type: "mention" }>,
   context: RenderContext
 ): string {
-  const label = node.displayName ?? node.accountId;
+  const label = mentionDisplayText(node);
   const color =
     effectiveCellTextColor(context.design.tokens.colors.mention, context) ??
     context.design.tokens.colors.mention;

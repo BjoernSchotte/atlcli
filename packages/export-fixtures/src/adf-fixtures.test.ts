@@ -133,6 +133,15 @@ describe("ADF browser conformance fixture", () => {
         { type: "status", text: "Ready", color: "purple", localId: "status-local" },
         { type: "status", text: "Keep Case", color: "neutral", style: "mixedCase" },
         { type: "placeholder", text: "editor-only-secret", localId: "placeholder-local" },
+        {
+          type: "mention",
+          accountId: "mention-account-1",
+          sourceText: "@Example Person",
+          displayName: "Example Person",
+          localId: "mention-local",
+          accessLevel: "SITE",
+          userType: "DEFAULT",
+        },
       ]),
     });
     expect(pdf.blocks[12]).toMatchObject({

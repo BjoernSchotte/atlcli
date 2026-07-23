@@ -29,6 +29,7 @@ import type {
 } from "./export-blocks.js";
 import {
   formatAdfDateTimestamp,
+  mentionDisplayText,
   statusDisplayText,
 } from "./export-blocks.js";
 import type {
@@ -329,7 +330,7 @@ function inlinePlainText(nodes: readonly InlineNode[]): string {
         out += inlinePlainText(node.content);
         break;
       case "mention":
-        out += node.displayName ?? "";
+        out += mentionDisplayText(node);
         break;
       case "date":
         out += formatAdfDateTimestamp(node.timestamp);

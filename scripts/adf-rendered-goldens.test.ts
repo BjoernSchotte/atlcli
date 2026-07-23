@@ -22,6 +22,7 @@ describe("ADF rendered goldens", () => {
       "localized-date-chip",
       "semantic-status-colors-and-casing",
       "hidden-template-placeholder",
+      "mention-semantics-and-private-fallback",
       "block-alignment",
       "block-indentation",
       "paragraph-font-size",

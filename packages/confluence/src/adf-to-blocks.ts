@@ -32,6 +32,7 @@ import type {
 } from "./export-blocks.js";
 import {
   formatAdfDateTimestamp,
+  mentionDisplayText,
   parseAdfDateTimestamp,
   statusDisplayText,
 } from "./export-blocks.js";
@@ -526,12 +527,23 @@ function decodeInlineNode(node: AdfNode, ctx: DecodeContext, path: string): Inli
           : {}),
       }];
     }
-    case "mention":
+    case "mention": {
+      const sourceText = optionalStringAttr(node, "text");
+      const localId = optionalStringAttr(node, "localId");
+      const accessLevel = optionalStringAttr(node, "accessLevel");
+      const userType = node.attrs?.userType;
       return [{
         type: "mention",
         accountId: stringAttr(node, "id") ?? "",
-        ...(stringAttr(node, "text") ? { displayName: stripMentionPrefix(stringAttr(node, "text")!) } : {}),
+        ...(sourceText !== undefined ? { sourceText } : {}),
+        ...(sourceText?.trim() ? { displayName: stripMentionPrefix(sourceText) } : {}),
+        ...(localId !== undefined ? { localId } : {}),
+        ...(accessLevel !== undefined ? { accessLevel } : {}),
+        ...(userType === "DEFAULT" || userType === "SPECIAL" || userType === "APP"
+          ? { userType }
+          : {}),
       }];
+    }
     case "status":
       return [{
         type: "status",
@@ -1299,7 +1311,7 @@ function inlineText(nodes: readonly InlineNode[]): string {
   return nodes.map((node) => {
     if (node.type === "text") return node.text;
     if (node.type === "link") return inlineText(node.content);
-    if (node.type === "mention") return node.displayName ?? node.accountId;
+    if (node.type === "mention") return mentionDisplayText(node);
     if (node.type === "date") return formatAdfDateTimestamp(node.timestamp);
     if (node.type === "status") return statusDisplayText(node);
     if (node.type === "placeholder") return "";

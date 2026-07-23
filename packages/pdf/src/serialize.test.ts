@@ -793,7 +793,7 @@ describe("PDF preparation and serialization", () => {
     expect(bundle.main).toContain("columns: (1fr, 1fr, 1fr, 1fr, 1fr, 1fr, 1fr, 1fr, 1fr,), inset: (x: 2pt, y: 7pt)");
   });
 
-  it("bounds resolved display names and accountId-only mentions without changing table prose", async () => {
+  it("bounds mention labels without leaking account IDs or changing table prose", async () => {
     const paragraph = (content: ExportBlock & { type: "paragraph" }): ExportBlock => content;
     const cell = (content: Extract<ExportBlock, { type: "paragraph" }> ["content"]) => ({
       header: false,
@@ -824,7 +824,13 @@ describe("PDF preparation and serialization", () => {
       return cell([{ type: "text", text: `Dense ${index + 1}` }]);
     });
     const prepared = await preparePdfDocument([
-      { type: "paragraph", content: [{ type: "mention", accountId: technicalId }] },
+      {
+        type: "paragraph",
+        content: [
+          { type: "mention", accountId: technicalId },
+          { type: "mention", accountId: "private-app-id", userType: "APP" },
+        ],
+      },
       { type: "table", rows: [{ cells: normalCells }] },
       { type: "table", rows: [{ cells: denseCells }] },
     ], {
@@ -833,12 +839,11 @@ describe("PDF preparation and serialization", () => {
     const bundle = serializePdfDocument(prepared, { metadata });
     const breakOpportunity = "\u200B";
 
-    expect(bundle.main).toContain(`#text("@${technicalId}")`);
-    expect(bundle.main).toContain(`#text("@${breakOpportunity}")#dense-token(available-width, [#text("team.alpha-beta_user?role=reader&scope:wiki/path")]`);
-    expect(bundle.main).toContain(`team.${breakOpportunity}alph${breakOpportunity}a-`);
-    expect(bundle.main).toContain(`read${breakOpportunity}er&${breakOpportunity}`);
-    expect(bundle.main).toContain(`#text("@${breakOpportunity}")#dense-token(available-width, [#text("مرحبا:δοκιμή_用户")]`);
-    expect(bundle.main).toContain(`مرحب${breakOpportunity}ا:${breakOpportunity}`);
+    expect(bundle.main).not.toContain(technicalId);
+    expect(bundle.main).not.toContain(unicodeId);
+    expect(bundle.main).not.toContain("private-app-id");
+    expect(bundle.main).toContain("Unknown user");
+    expect(bundle.main).toContain("Unknown app");
     expect(bundle.main).toContain(`#dense-token(available-width, [#text("Alexanderson")], [#text("Alex${breakOpportunity}ande${breakOpportunity}rson")])`);
     expect(bundle.main).toContain(`#dense-token(available-width, [#text("Exampleton")], [#text("Exam${breakOpportunity}plet${breakOpportunity}on")])`);
     expect(bundle.main).toContain('#dense-token(available-width, [#text("Ordinary")], [#text("Ordi\u200Bnary")])');

@@ -159,6 +159,36 @@ describe("validateAdf", () => {
     }
   });
 
+  test("validates the complete pinned mention attribute contract", () => {
+    expect(() => validateAdf(doc([{
+      type: "paragraph",
+      content: [{
+        type: "mention",
+        attrs: {
+          id: "collection-1",
+          localId: "",
+          text: "",
+          accessLevel: "SITE",
+          userType: "SPECIAL",
+        },
+      }],
+    }]))).not.toThrow();
+
+    for (const attrs of [
+      {},
+      { id: 1 },
+      { id: "user-1", localId: 1 },
+      { id: "user-1", text: 1 },
+      { id: "user-1", accessLevel: 1 },
+      { id: "user-1", userType: "TEAM" },
+    ]) {
+      expect(errorCode(() => validateAdf(doc([{
+        type: "paragraph",
+        content: [{ type: "mention", attrs }],
+      }])))).toBe("invalid-attributes");
+    }
+  });
+
   test("validates pinned caption and disclosure contracts", () => {
     expect(() => validateAdf(doc([{
       type: "mediaSingle",

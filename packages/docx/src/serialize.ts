@@ -26,6 +26,7 @@ import {
   computeHeadingOffset,
   formatAdfDateTimestamp,
   materializeTable,
+  mentionDisplayText,
   readableTextColor,
   sanitizeAnchorId,
   statusDisplayText,
@@ -291,7 +292,7 @@ export function serializeInline(
       case "placeholder":
         break;
       case "mention":
-        out += run(`@${node.displayName ?? node.accountId}`, {
+        out += run(`@${mentionDisplayText(node)}`, {
           color: "0747A6",
           fontSizeHalfPoints,
         });

@@ -105,7 +105,7 @@ update both its matrix rows and the checklist below in the same commit:
 - `[ ]` plus **Partial** is permitted only when the remaining sub-gap names its
   external contract or parallel-work dependency.
 
-Current matrix orientation: **54 of 84 rows closed; 30 rows open.** This count
+Current matrix orientation: **56 of 84 rows closed; 28 rows open.** This count
 must change in the same commit as any row checkbox.
 
 Current closed foundations and feature slices:
@@ -130,6 +130,9 @@ Current closed foundations and feature slices:
   retained and produce explicit fallback diagnostics.
 - [x] Emoji identity, exact source text, deterministic short-name fallback, and
   typed fallback reporting.
+- [x] Mention account/collection identity, exact optional source text, local
+  identity, access scope, pinned user type, resolver behavior, and
+  privacy-safe unresolved labels across both TypeScript targets.
 - [x] Inline-code background treatment and exact token preservation in both
   targets.
 - [x] Pinned-schema task lists, inline and block task items, nested tasks,
@@ -275,11 +278,11 @@ Evidence: [E2], [E5], [E7], [E8], [E13], [E28], [E33].
 |---|---|---|---|---|---|
 | [x] | `date` | ADF epoch-millisecond timestamp/local identity and Storage `<time>` or legacy `date` macro values become one typed date. | Native | Native | Both targets render a neutral date chip with document-locale formatting in UTC. Invalid but schema-valid timestamps remain exact visible source text and emit `date-invalid`; units are never guessed. |
 | [ ] | `emoji` | ADF and Storage both retain `shortName`, optional service `id`, the exact optional source text (including empty text), and whether the visible run came from text or the short-name fallback. Raw colon text is never reinterpreted. | Partial/Conditional | Partial/Conditional | **Partial — external contract:** Unicode text and deterministic fallback are native, but custom/Atlassian emoji require a documented, authorized portable asset resolver and complete glyph policy. |
-| [ ] | `mention` | ADF/Storage identities become typed mentions and visible names can be host-resolved. | Open/Conditional | Open/Conditional | **Open:** retain user/team distinction and define unresolved/deactivated display plus profile-link policy; exercise the resolver through both hosts. |
+| [x] | `mention` | ADF retains exact account-or-collection ID, optional source text (including empty), local identity, access level, and pinned `DEFAULT`/`SPECIAL`/`APP` user type. Storage retains its available identity/name form. Host resolution may enrich the visible display name without replacing source metadata. | Native static projection | Native static projection | Closed for the pinned schema. Both targets render the source/resolved name; unresolved or deactivated identities use deterministic `Unknown user`/`Unknown app` labels and never leak the raw ID. No profile hyperlink is invented because the pinned ADF node carries no profile URL. Product-specific attributes enter the drift lane. |
 | [x] | `status` | ADF text, exact semantic color, optional local identity/style, and Storage status macros become one typed status. | Native static projection | Native static projection | The pinned ADF color enum is validated; `mixedCase` preserves casing and other styles use Confluence-style uppercase. Both targets have explicit neutral/purple palettes plus deterministic legacy/unknown-color fallback. |
 | [x] | `placeholder` | ADF text/local identity and Storage `<ac:placeholder>` text/type become a typed editor instruction. | Native hidden projection | Native hidden projection | Confluence hides template placeholders in published view, so both targets intentionally emit no visible text while the neutral model retains identity for tooling/composition. No degradation is reported for this correct projection. |
 
-Evidence: [E2], [E5], [E7], [E8], [E14], [E23], [E30].
+Evidence: [E2], [E5], [E7], [E8], [E14], [E23], [E30], [E34].
 
 ### 6.6 Cards and links
 
@@ -380,7 +383,7 @@ Official Confluence documentation describes these input shortcuts. They are edit
 | [ ] | `:` / emoji picker | `emoji` node or text | Partial/conditional. | **Partial — external asset contract:** Unicode/fallback is complete; Atlassian/site-custom assets and complete glyph coverage remain blocked. |
 | [x] | `:)` auto-conversion | Emoji/editor transformation | Correctly consumes the materialized emoji/text result and performs no exporter-side editor emulation. | Closed exporter policy; the live corpus records enabled/disabled editor outcomes without reinterpreting raw text. |
 | [x] | Raw `:shortname:` text | Not a stable documented ADF contract | Remains literal unless Confluence converted it first. | Closed invariant: never reinterpret ordinary text in the exporter. |
-| [ ] | `@ ` | `mention` | Typed mention with host-resolved visible fallback where available. | **Open:** user/team/deactivated/unresolved mentions and profile-link policy. |
+| [x] | `@ ` | `mention` | Native typed mention with source or host-resolved visible name. | Closed for the pinned ADF contract: identity/presentation metadata survives, unresolved/deactivated output is privacy-safe, and no unsupported profile URL is invented. |
 | [ ] | `!` | media picker | Selected image/media paths work; the complete media family does not. | **Open:** image/file/video/audio, inline/block, dimensions, alt, layout, crop, border, and link. |
 | [ ] | `{` | macro autocomplete | `extension*` or legacy macro projection | **Open/conditional:** core, Forge `adfExport`, Connect/migrated, unknown, and offline behavior. |
 | [x] | `//` | `date` | Native localized static date chip. | UTC calendar semantics, locale formatting, invalid-value reporting, and deterministic browser/render fixtures are complete. |
@@ -624,6 +627,9 @@ Closed gates:
 - [x] Pinned standard/custom panel validation, complete custom attribute
   preservation, portable color/icon projection in both targets, packed-browser
   parity, typed non-portable fallbacks, and real render goldens.
+- [x] Pinned mention validation, exact ADF metadata preservation, resolver and
+  composition traversal, privacy-safe unresolved output, both target
+  serializers, packed-browser parity, and real render goldens.
 
 Focused missing gates:
 
@@ -680,6 +686,7 @@ Accessed 2026-07-22 and 2026-07-23:
 29. [ADF codeBlock node](https://developer.atlassian.com/cloud/jira/platform/apis/document/nodes/codeBlock/)
 30. [Confluence Code Block macro](https://confluence.atlassian.com/display/DOCM/Code%2BBlock%2BMacro)
 31. [Typst raw text/code and `raw.line`](https://typst.app/docs/reference/text/raw/)
+32. [ADF mention node](https://developer.atlassian.com/cloud/jira/platform/apis/document/nodes/mention/)
 
 ## 15. Repository evidence index
 
@@ -716,6 +723,7 @@ Accessed 2026-07-22 and 2026-07-23:
 - **[E31] Paragraph/heading/ordinary-list-item local identity preservation:** `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/adf-validate.ts`, `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/page-body.test.ts`, `packages/confluence/src/compose-document.ts`, `packages/confluence/test-fixtures/adf-pairs/basic.adf.json`, `packages/confluence/test-fixtures/adf-pairs/basic.storage.xml`, `packages/export-fixtures/src/index.ts`, `packages/export-fixtures/src/adf-fixtures.test.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `apps/browser-export-harness/tests/exports.e2e.ts`
 - **[E32] Complete pinned ADF code-block semantics and static projection:** `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/adf-validate.ts`, `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/compose-document.test.ts`, `packages/confluence/src/export-blocks.test.ts`, `packages/docx/src/highlight.ts`, `packages/docx/src/highlight.test.ts`, `packages/docx/src/ooxml.ts`, `packages/docx/src/serialize.ts`, `packages/pdf/src/prepare.ts`, `packages/pdf/src/serialize.ts`, `packages/export-fixtures/src/index.ts`, `packages/export-fixtures/src/adf-fixtures.test.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `apps/browser-export-harness/tests/exports.e2e.ts`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
 - **[E33] Complete pinned custom-panel semantics and static projection:** `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/adf-validate.ts`, `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/compose-document.ts`, `packages/docx/src/ooxml.ts`, `packages/docx/src/serialize.ts`, `packages/pdf/src/types.ts`, `packages/pdf/src/template.ts`, `packages/pdf/src/serialize.ts`, `packages/export-fixtures/src/index.ts`, `packages/export-fixtures/src/adf-fixtures.test.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `apps/browser-export-harness/tests/exports.e2e.ts`, `scripts/adf-rendered-goldens.ts`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
+- **[E34] Complete pinned mention semantics and privacy-safe static projection:** `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/adf-validate.ts`, `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/resolve-mentions.ts`, `packages/confluence/src/compose-document.ts`, `packages/docx/src/serialize.ts`, `packages/pdf/src/serialize.ts`, `packages/export-fixtures/src/index.ts`, `packages/export-fixtures/src/adf-fixtures.test.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `apps/browser-export-harness/tests/exports.e2e.ts`, `scripts/adf-rendered-goldens.ts`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
 
 ## 16. Review questions
 

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "sourceSha256": "63b5253549ec4770158f651bbc04de659b28da71c61af6d3666f19e374ea6071",
+  "sourceSha256": "60e8133ea6b4da8c4cda5d693ec74effe27ef7c25ad51d96ca6e9bd1ecc984d5",
   "features": [
     "inline-code",
     "unicode-emoji",
@@ -8,6 +8,7 @@
     "localized-date-chip",
     "semantic-status-colors-and-casing",
     "hidden-template-placeholder",
+    "mention-semantics-and-private-fallback",
     "block-alignment",
     "block-indentation",
     "paragraph-font-size",
@@ -34,7 +35,7 @@
       "pages": [
         {
           "file": "docx-page-1.png",
-          "sha256": "382f1819595c6e0738cfd4b8718ac1887f695753494fbf21f4e07b1fe0c09461"
+          "sha256": "8200131ebf0b9a1bdc0a16251309e70e24f38302734e3028a708b933706a8d3b"
         }
       ],
       "requiredText": [
@@ -49,6 +50,7 @@
         "ADF error panel",
         "★",
         "ADF custom panel",
+        "@Example Person",
         "Third item",
         "Eighth nested item",
         "Bullet parent",
@@ -87,7 +89,7 @@
         },
         {
           "file": "pdf-page-3.png",
-          "sha256": "844f204e243a62ac2575ee611e8ff01c6c3eb92c1625d2497f20a7a005f3c763"
+          "sha256": "3fc21a5494274b555edc47fa42684211d707a58cd22bc55547ec910e9c15e2a6"
         },
         {
           "file": "pdf-page-4.png",
@@ -106,6 +108,7 @@
         "ADF error panel",
         "★",
         "ADF custom panel",
+        "@Example Person",
         "Third item",
         "Eighth nested item",
         "Bullet parent",
