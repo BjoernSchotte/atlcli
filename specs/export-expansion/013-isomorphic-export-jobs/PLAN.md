@@ -1767,8 +1767,19 @@ multiple commits is allowed, but its final commit must retain the slice's gate.
     proving that only the uncommitted image is refetched; and the read-only
     `mayflower`/`DOCSY` CLI E2E succeeds from the current source resolver with
     93 source pages, 8 images, 195 PDF pages, and a 4,114,021-byte PDF.
-  - [ ] Remaining PR-I increments: documentation/CHANGELOG and the final
-    non-cleanup audit and gates.
+  - [x] Node post-queue benchmark increment: the deterministic 50-/500-page
+    DOCX/PDF corpus now runs through the real file journal, normalized-source
+    spool, content-addressed asset spool, ready store, global render lock, result
+    store, artifact finalization, and both productive job executors. The raw
+    three-repetition matrix records request, source/asset/prepared spool,
+    artifact, physical-state, time, heap, and RSS checkpoints in
+    `baselines/node-post-queue.json`. At 500 pages the median complete spool is
+    6,176,041 bytes for DOCX and 7,670,571 bytes for PDF; the documented
+    19,509.8 ms DOCX and 14,076.8 ms PDF job times expose rather than hide the
+    cost of per-page atomic durability. The 50-page DOCX/PDF regression smoke
+    and root typecheck pass.
+  - [ ] Remaining PR-I increments: Chrome post-queue benchmark,
+    documentation/CHANGELOG, and the final non-cleanup audit and gates.
   - Acceptance: packed Chrome covers DOCX/PDF mixed states, `9+`, `✓`, `!`, pulse
     bound, acknowledgement persistence, Retry and Run again; retained request/
     template refs remain replayable; unavailable metrics and expired reports have
