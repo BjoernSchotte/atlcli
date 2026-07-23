@@ -357,10 +357,11 @@ function validateDocxExportJobRequestV1(request: Record<string, unknown>): void 
     fail("request.renderer", "DOCX requires docx-typescript");
   }
   const template = record(request.template, "request.template");
-  onlyKeys(template, ["recordKey", "sha256", "name"], "request.template");
+  onlyKeys(template, ["recordKey", "sha256", "name", "uploadedAt"], "request.template");
   text(template.recordKey, "request.template.recordKey", MAX_REF_LENGTH);
   sha256(template.sha256, "request.template.sha256");
   text(template.name, "request.template.name");
+  optionalInteger(template.uploadedAt, "request.template.uploadedAt");
   const options = record(request.options, "request.options");
   onlyKeys(
     options,

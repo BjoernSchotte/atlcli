@@ -60,6 +60,7 @@ describe("extension DOCX job submission", () => {
       template: {
         recordKey: "https://site.atlassian.net|docx|mayflower|global|",
         name: "mayflower.docx",
+        uploadedAt: 10,
       },
       options: { embedImages: true, resolveMacros: false },
     });

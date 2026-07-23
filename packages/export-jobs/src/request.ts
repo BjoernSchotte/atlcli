@@ -30,7 +30,13 @@ export interface ExportJobRequestBaseV1 {
 export interface DocxExportJobRequestV1 extends ExportJobRequestBaseV1 {
   format: "docx";
   renderer: "docx-typescript";
-  template: { recordKey: string; sha256: string; name: string };
+  template: {
+    recordKey: string;
+    sha256: string;
+    name: string;
+    /** Pinned upload timestamp for deterministic template placeholders. */
+    uploadedAt?: number;
+  };
   options: {
     embedImages: boolean;
     resolveMacros: boolean;

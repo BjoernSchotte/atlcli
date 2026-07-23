@@ -279,6 +279,7 @@ describe("parseDocxExportJobRequestV1", () => {
     ["unknown top-level field", (request: any) => (request.accessToken = "secret")],
     ["mismatched renderer", (request: any) => (request.renderer = "pdf-typst")],
     ["invalid template hash", (request: any) => (request.template.sha256 = "bad")],
+    ["invalid template upload timestamp", (request: any) => (request.template.uploadedAt = -1)],
     ["inline template bytes", (request: any) => (request.template.bytes = [1, 2, 3])],
     ["invalid update-fields mode", (request: any) => (request.options.updateFields = "later")],
     ["invalid keep-ignored mode", (request: any) => (request.options.keepIgnored = 1)],

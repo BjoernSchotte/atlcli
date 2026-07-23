@@ -51,6 +51,7 @@ export async function createExtensionDocxJobRequest(
       recordKey,
       sha256: expectedSha256,
       name: request.template.name,
+      uploadedAt: request.template.uploadedAt,
     },
     options: {
       embedImages: true,
