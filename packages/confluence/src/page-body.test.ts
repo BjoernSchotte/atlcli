@@ -94,6 +94,97 @@ describe("pageBodyToBlocks", () => {
     expect(storage.notes).toEqual([]);
   });
 
+  it("projects ADF and body.storage disclosures to the same recursive neutral tree", () => {
+    const adf = JSON.stringify({
+      version: 1,
+      type: "doc",
+      content: [
+        {
+          type: "expand",
+          attrs: { title: "Outer details" },
+          content: [
+            {
+              type: "paragraph",
+              content: [{ type: "text", text: "Outer body" }],
+            },
+            {
+              type: "nestedExpand",
+              attrs: { title: "Child details" },
+              content: [{
+                type: "paragraph",
+                content: [{ type: "text", text: "Child body" }],
+              }],
+            },
+          ],
+        },
+        {
+          type: "table",
+          content: [{
+            type: "tableRow",
+            content: [{
+              type: "tableCell",
+              content: [{
+                type: "nestedExpand",
+                attrs: { title: "Nested details" },
+                content: [{
+                  type: "paragraph",
+                  content: [{ type: "text", text: "Nested body" }],
+                }],
+              }],
+            }],
+          }],
+        },
+      ],
+    });
+    const storage =
+      '<ac:structured-macro ac:name="expand">' +
+        '<ac:parameter ac:name="title">Outer details</ac:parameter>' +
+        '<ac:rich-text-body><p>Outer body</p>' +
+          '<ac:structured-macro ac:name="expand">' +
+            '<ac:parameter ac:name="title">Child details</ac:parameter>' +
+            '<ac:rich-text-body><p>Child body</p></ac:rich-text-body>' +
+          '</ac:structured-macro>' +
+        '</ac:rich-text-body>' +
+      '</ac:structured-macro>' +
+      '<table><tbody><tr><td>' +
+        '<ac:structured-macro ac:name="expand">' +
+          '<ac:parameter ac:name="title">Nested details</ac:parameter>' +
+          '<ac:rich-text-body><p>Nested body</p></ac:rich-text-body>' +
+        '</ac:structured-macro>' +
+      '</td></tr></tbody></table>';
+    const pageContext = { id: "page-1", title: "Synthetic disclosure pair" };
+    const fromAdf = pageBodyToBlocks({
+      primary: { representation: "atlas_doc_format", value: adf },
+      storageSidecar: storage,
+    }, { pageContext });
+    const fromStorage = pageBodyToBlocks({
+      primary: { representation: "storage", value: storage },
+    }, { pageContext });
+
+    expect(fromAdf.blocks).toEqual(fromStorage.blocks);
+    expect(fromAdf.blocks).toMatchObject([
+      { type: "expand", nested: false, title: "Outer details" },
+      {
+        type: "table",
+        rows: [{
+          cells: [{
+            content: [{ type: "expand", nested: true, title: "Nested details" }],
+          }],
+        }],
+      },
+    ]);
+    expect(fromAdf.notes.map((note) => note.code)).toEqual([
+      "expand-static",
+      "expand-static",
+      "expand-static",
+    ]);
+    expect(fromStorage.notes.map((note) => note.code)).toEqual([
+      "expand-static",
+      "expand-static",
+      "expand-static",
+    ]);
+  });
+
   it("preserves direct Storage output and adds no fallback note without an explicit reason", async () => {
     const { storage } = await pairedFeatureZooFixture();
     const direct = storageToBlocks(storage, { exporter: "word" });

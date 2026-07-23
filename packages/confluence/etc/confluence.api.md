@@ -39,7 +39,7 @@ export declare const ADF_NODE_DECODE_MODES: Readonly<{
     readonly bodiedExtension: "approximation";
     readonly bodiedSyncBlock: "visible-fallback";
     readonly bulletList: "native";
-    readonly caption: "approximation";
+    readonly caption: "native";
     readonly codeBlock: "native";
     readonly date: "approximation";
     readonly decisionItem: "native";
@@ -358,6 +358,7 @@ export declare function canonicalExportNoteCode(code: string): ExportNoteCode | 
 export interface Caption {
     kind: CaptionKind;
     content: InlineNode[];
+    localId?: string;
 }
 
 // export: CaptionableBlockType
@@ -934,6 +935,7 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "image-unresolved",
     "inline-image-skipped",
     "layout-geometry-fallback",
+    "expand-static",
     "emoji-text-fallback",
     "adf-node-degraded",
     "adf-mark-degraded",
@@ -1075,6 +1077,13 @@ export type ExportBlock = {
     title?: string;
     content: ExportBlock[];
 } | {
+    type: "expand";
+    nested: boolean;
+    content: ExportBlock[];
+    title?: string;
+    localId?: string;
+    macroId?: string;
+} | {
     type: "list";
     ordered: boolean;
     items: ListItem[];
@@ -1097,6 +1106,15 @@ export type ExportBlock = {
     width?: number;
     height?: number;
     caption?: Caption;
+    annotations?: AdfAnnotationIdentity[];
+} | {
+    type: "mediaFallback";
+    label: string;
+    media: UnresolvedMediaIdentity;
+    caption?: Caption;
+    alt?: string;
+    width?: number;
+    height?: number;
     annotations?: AdfAnnotationIdentity[];
 } | {
     type: "blockquote";
@@ -2115,6 +2133,15 @@ export interface TreeSourceVersion {
 
 // export: uniqueAnchorId
 export declare function uniqueAnchorId(rawName: string, used: ReadonlySet<string>): string;
+
+// export: UnresolvedMediaIdentity
+export interface UnresolvedMediaIdentity {
+    mediaType?: string;
+    id?: string;
+    collection?: string;
+    occurrenceKey?: string;
+    localId?: string;
+}
 
 // export: UNSAFE_LINK_NOTE_CODE
 export declare const UNSAFE_LINK_NOTE_CODE = "unsafe-link-skipped";
@@ -2216,7 +2243,7 @@ export declare const ADF_NODE_DECODE_MODES: Readonly<{
     readonly bodiedExtension: "approximation";
     readonly bodiedSyncBlock: "visible-fallback";
     readonly bulletList: "native";
-    readonly caption: "approximation";
+    readonly caption: "native";
     readonly codeBlock: "native";
     readonly date: "approximation";
     readonly decisionItem: "native";
@@ -2535,6 +2562,7 @@ export declare function canonicalExportNoteCode(code: string): ExportNoteCode | 
 export interface Caption {
     kind: CaptionKind;
     content: InlineNode[];
+    localId?: string;
 }
 
 // export: CaptionableBlockType
@@ -3111,6 +3139,7 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "image-unresolved",
     "inline-image-skipped",
     "layout-geometry-fallback",
+    "expand-static",
     "emoji-text-fallback",
     "adf-node-degraded",
     "adf-mark-degraded",
@@ -3252,6 +3281,13 @@ export type ExportBlock = {
     title?: string;
     content: ExportBlock[];
 } | {
+    type: "expand";
+    nested: boolean;
+    content: ExportBlock[];
+    title?: string;
+    localId?: string;
+    macroId?: string;
+} | {
     type: "list";
     ordered: boolean;
     items: ListItem[];
@@ -3274,6 +3310,15 @@ export type ExportBlock = {
     width?: number;
     height?: number;
     caption?: Caption;
+    annotations?: AdfAnnotationIdentity[];
+} | {
+    type: "mediaFallback";
+    label: string;
+    media: UnresolvedMediaIdentity;
+    caption?: Caption;
+    alt?: string;
+    width?: number;
+    height?: number;
     annotations?: AdfAnnotationIdentity[];
 } | {
     type: "blockquote";
@@ -4292,6 +4337,15 @@ export interface TreeSourceVersion {
 
 // export: uniqueAnchorId
 export declare function uniqueAnchorId(rawName: string, used: ReadonlySet<string>): string;
+
+// export: UnresolvedMediaIdentity
+export interface UnresolvedMediaIdentity {
+    mediaType?: string;
+    id?: string;
+    collection?: string;
+    occurrenceKey?: string;
+    localId?: string;
+}
 
 // export: UNSAFE_LINK_NOTE_CODE
 export declare const UNSAFE_LINK_NOTE_CODE = "unsafe-link-skipped";
@@ -4393,7 +4447,7 @@ export declare const ADF_NODE_DECODE_MODES: Readonly<{
     readonly bodiedExtension: "approximation";
     readonly bodiedSyncBlock: "visible-fallback";
     readonly bulletList: "native";
-    readonly caption: "approximation";
+    readonly caption: "native";
     readonly codeBlock: "native";
     readonly date: "approximation";
     readonly decisionItem: "native";
@@ -4712,6 +4766,7 @@ export declare function canonicalExportNoteCode(code: string): ExportNoteCode | 
 export interface Caption {
     kind: CaptionKind;
     content: InlineNode[];
+    localId?: string;
 }
 
 // export: CaptionableBlockType
@@ -5288,6 +5343,7 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "image-unresolved",
     "inline-image-skipped",
     "layout-geometry-fallback",
+    "expand-static",
     "emoji-text-fallback",
     "adf-node-degraded",
     "adf-mark-degraded",
@@ -5429,6 +5485,13 @@ export type ExportBlock = {
     title?: string;
     content: ExportBlock[];
 } | {
+    type: "expand";
+    nested: boolean;
+    content: ExportBlock[];
+    title?: string;
+    localId?: string;
+    macroId?: string;
+} | {
     type: "list";
     ordered: boolean;
     items: ListItem[];
@@ -5451,6 +5514,15 @@ export type ExportBlock = {
     width?: number;
     height?: number;
     caption?: Caption;
+    annotations?: AdfAnnotationIdentity[];
+} | {
+    type: "mediaFallback";
+    label: string;
+    media: UnresolvedMediaIdentity;
+    caption?: Caption;
+    alt?: string;
+    width?: number;
+    height?: number;
     annotations?: AdfAnnotationIdentity[];
 } | {
     type: "blockquote";
@@ -6469,6 +6541,15 @@ export interface TreeSourceVersion {
 
 // export: uniqueAnchorId
 export declare function uniqueAnchorId(rawName: string, used: ReadonlySet<string>): string;
+
+// export: UnresolvedMediaIdentity
+export interface UnresolvedMediaIdentity {
+    mediaType?: string;
+    id?: string;
+    collection?: string;
+    occurrenceKey?: string;
+    localId?: string;
+}
 
 // export: UNSAFE_LINK_NOTE_CODE
 export declare const UNSAFE_LINK_NOTE_CODE = "unsafe-link-skipped";
@@ -6718,6 +6799,7 @@ export declare function canonicalExportNoteCode(code: string): ExportNoteCode | 
 export interface Caption {
     kind: CaptionKind;
     content: InlineNode[];
+    localId?: string;
 }
 
 // export: CaptionableBlockType
@@ -7370,6 +7452,7 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "image-unresolved",
     "inline-image-skipped",
     "layout-geometry-fallback",
+    "expand-static",
     "emoji-text-fallback",
     "adf-node-degraded",
     "adf-mark-degraded",
@@ -7511,6 +7594,13 @@ export type ExportBlock = {
     title?: string;
     content: ExportBlock[];
 } | {
+    type: "expand";
+    nested: boolean;
+    content: ExportBlock[];
+    title?: string;
+    localId?: string;
+    macroId?: string;
+} | {
     type: "list";
     ordered: boolean;
     items: ListItem[];
@@ -7533,6 +7623,15 @@ export type ExportBlock = {
     width?: number;
     height?: number;
     caption?: Caption;
+    annotations?: AdfAnnotationIdentity[];
+} | {
+    type: "mediaFallback";
+    label: string;
+    media: UnresolvedMediaIdentity;
+    caption?: Caption;
+    alt?: string;
+    width?: number;
+    height?: number;
     annotations?: AdfAnnotationIdentity[];
 } | {
     type: "blockquote";
@@ -8962,6 +9061,15 @@ export type TableVerticalAlignment = "top" | "middle" | "bottom";
 // export: threeWayMerge
 export declare function threeWayMerge(base: string, local: string, remote: string): MergeResult;
 
+// export: UnresolvedMediaIdentity
+export interface UnresolvedMediaIdentity {
+    mediaType?: string;
+    id?: string;
+    collection?: string;
+    occurrenceKey?: string;
+    localId?: string;
+}
+
 // export: updateAttachmentState
 export declare function updateAttachmentState(state: AtlcliState, pageId: string, attachmentId: string, update: Partial<AttachmentState>): void;
 
@@ -9215,7 +9323,7 @@ export declare const ADF_NODE_DECODE_MODES: Readonly<{
     readonly bodiedExtension: "approximation";
     readonly bodiedSyncBlock: "visible-fallback";
     readonly bulletList: "native";
-    readonly caption: "approximation";
+    readonly caption: "native";
     readonly codeBlock: "native";
     readonly date: "approximation";
     readonly decisionItem: "native";
@@ -9534,6 +9642,7 @@ export declare function canonicalExportNoteCode(code: string): ExportNoteCode | 
 export interface Caption {
     kind: CaptionKind;
     content: InlineNode[];
+    localId?: string;
 }
 
 // export: CaptionableBlockType
@@ -10110,6 +10219,7 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "image-unresolved",
     "inline-image-skipped",
     "layout-geometry-fallback",
+    "expand-static",
     "emoji-text-fallback",
     "adf-node-degraded",
     "adf-mark-degraded",
@@ -10251,6 +10361,13 @@ export type ExportBlock = {
     title?: string;
     content: ExportBlock[];
 } | {
+    type: "expand";
+    nested: boolean;
+    content: ExportBlock[];
+    title?: string;
+    localId?: string;
+    macroId?: string;
+} | {
     type: "list";
     ordered: boolean;
     items: ListItem[];
@@ -10273,6 +10390,15 @@ export type ExportBlock = {
     width?: number;
     height?: number;
     caption?: Caption;
+    annotations?: AdfAnnotationIdentity[];
+} | {
+    type: "mediaFallback";
+    label: string;
+    media: UnresolvedMediaIdentity;
+    caption?: Caption;
+    alt?: string;
+    width?: number;
+    height?: number;
     annotations?: AdfAnnotationIdentity[];
 } | {
     type: "blockquote";
@@ -11291,6 +11417,15 @@ export interface TreeSourceVersion {
 
 // export: uniqueAnchorId
 export declare function uniqueAnchorId(rawName: string, used: ReadonlySet<string>): string;
+
+// export: UnresolvedMediaIdentity
+export interface UnresolvedMediaIdentity {
+    mediaType?: string;
+    id?: string;
+    collection?: string;
+    occurrenceKey?: string;
+    localId?: string;
+}
 
 // export: UNSAFE_LINK_NOTE_CODE
 export declare const UNSAFE_LINK_NOTE_CODE = "unsafe-link-skipped";

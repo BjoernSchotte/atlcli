@@ -54,9 +54,11 @@ export interface AdfSourceCaseResult {
   neutralHasAnnotationAndFragmentIdentity: boolean;
   neutralHasTablePresentation: boolean;
   neutralHasLayoutPresentation: boolean;
+  neutralHasDisclosureSemantics: boolean;
   docxHasTable: boolean;
   docxHasTablePresentation: boolean;
   docxHasLayoutPresentation: boolean;
+  docxHasDisclosureSemantics: boolean;
   docxHasCardTitle: boolean;
   docxHasExtensionBody: boolean;
   docxHasVisibleMediaFallback: boolean;
@@ -364,6 +366,19 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
       && JSON.stringify(pdfSource.blocks).includes(
         '"localId":"layout-local","breakout":{"mode":"wide","width":960}',
       ),
+    neutralHasDisclosureSemantics:
+      JSON.stringify(pdfSource.blocks).includes(
+        '"type":"expand","nested":false,"title":"Expanded title","localId":"expand-local"',
+      )
+      && JSON.stringify(pdfSource.blocks).includes(
+        '"type":"expand","nested":true,"title":"Nested expanded title","localId":""',
+      )
+      && JSON.stringify(pdfSource.blocks).includes(
+        '"type":"mediaFallback","label":"Visible media fallback","media":{"mediaType":"file","id":"unresolved-media"}',
+      )
+      && JSON.stringify(pdfSource.blocks).includes(
+        '"caption":{"kind":"figure","content":[{"type":"text","text":"Media caption"}],"localId":"media-caption-local"}',
+      ),
     docxHasTable: documentXml.includes("<w:tbl"),
     docxHasTablePresentation:
       documentXml.includes('<w:tblW w:w="7200" w:type="dxa"/>')
@@ -378,6 +393,11 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
       && documentXml.includes('<w:tblLook w:val="0000"')
       && documentXml.includes("Layout sidebar")
       && documentXml.includes("Layout main"),
+    docxHasDisclosureSemantics:
+      documentXml.includes("[-] Expanded title")
+      && documentXml.includes("Expanded body")
+      && documentXml.includes("[-] Nested expanded title")
+      && documentXml.includes("Nested expanded body"),
     docxHasCardTitle:
       documentXml.includes("Local card title")
       && (documentXml.includes("https://example.invalid/adf-card")
@@ -403,6 +423,9 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
   if (!result.sourceNoteCodes.includes("emoji-text-fallback")) {
     throw new Error("ADF-source case lost the custom-emoji textual fallback note.");
   }
+  if (result.sourceNoteCodes.filter((code) => code === "expand-static").length !== 2) {
+    throw new Error("ADF-source case lost a static-disclosure report fact.");
+  }
   if (!result.pdfJobArtifactAndReportParity || !result.docxJobArtifactAndReportParity) {
     throw new Error("ADF-source direct/background artifact or report parity failed.");
   }
@@ -414,6 +437,9 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
   }
   if (!result.neutralHasLayoutPresentation) {
     throw new Error("ADF-source layout presentation was lost in the packed browser.");
+  }
+  if (!result.neutralHasDisclosureSemantics) {
+    throw new Error("ADF-source disclosure or caption semantics were lost in the packed browser.");
   }
   return result;
 }

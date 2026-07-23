@@ -128,6 +128,11 @@ Current closed foundations and feature slices:
 - [x] Pinned ADF layout sections/columns and documented Storage layout sections
   retain column ownership, proportions, vertical alignment, and available local
   identity through both static TypeScript targets.
+- [x] Native ADF media captions retain inline content/local identity and remain
+  attached to a numbered figure even when the media ID cannot be resolved.
+  ADF `expand`/`nestedExpand` and Storage `expand` retain their recursive
+  boundary, title, identity, and nesting context in a deterministic open static
+  projection for DOCX/PDF.
 - [ ] **Partial:** `breakout` intent is retained on ADF layout sections and
   explicitly reported as page-bounded; breakout on other schema-valid block
   types and true wide/full-width section geometry remain open.
@@ -224,9 +229,9 @@ Evidence: [E10], [E11], [E12], [E27].
 | `layoutSection` | ADF becomes a typed layout with exact optional local identity and retained breakout intent. Storage `ac:layout-section` maps the documented `single`, `two_*`, and `three_*` arrangements to explicit portable tracks; missing/mismatched geometry uses equal tracks with a source-located note. | Native for pinned columns | Native for pinned columns | DOCX uses a borderless fixed OOXML table and PDF uses a semantic-free Typst grid. The pinned ADF schema and documented Storage shapes are closed; Cloud editor layouts beyond the pinned schema remain in the drift/observed-product lane. |
 | `layoutColumn` | Required ADF percentage width, optional exact local identity, top/middle/bottom alignment, and recursively nested content survive. Storage cells inherit the section's documented proportions. | Native | Native | Schema-valid zero-width tracks remain visible through a bounded minimum and are reported. Nested headings/anchors, mentions, macros, assets, lists/tasks, and export controls traverse the column rather than being flattened or skipped. |
 | `panel` | ADF `info`, `note`, `warning`, `tip`, `success`, and `error` remain distinct callout kinds; Storage callouts use the same neutral model. `custom` stays a visible generic panel with a degradation note. | Partial | Partial | Standard success/error semantics and distinct target palettes are native. Custom panel color/icon attributes still need a portable presentation contract. |
-| `expand` | Known macro body is emitted transparently. | Partial | Partial | Title and collapsed/expanded affordance are lost. |
-| `nestedExpand` | No distinct mapping; content may survive transparent descent. | Fallback | Fallback | Preserve title and nesting context; choose a deterministic static disclosure treatment. |
-| `caption` | No native ADF-caption input mapping. Scroll `scroll-title` can attach an exporter caption. | Partial workaround | Partial workaround | Implement native caption node and media association; keep Scroll compatibility as a separate source adapter. |
+| `expand` | ADF and Storage become a recursive `expand` block retaining exact optional title/local identity; Storage additionally retains macro identity. | Partial: native static projection | Partial: native static projection | Both targets render a visibly open disclosure panel and emit `expand-static`; interactivity/collapsed state is inapplicable to a static artifact. Storage and ADF are differentially tested. |
+| `nestedExpand` | A distinct nested disclosure survives with title, local identity, body ownership, and nesting context. Storage expands inside table cells or another expand use the same neutral shape. | Partial: native static projection | Partial: native static projection | Closed for the pinned static-export contract. The editor's interactive toggle is intentionally not claimed. |
+| `caption` | A pinned-schema ADF caption's direct inline children and exact optional local identity remain attached to its `mediaSingle`. Scroll `scroll-title` remains a separate Storage adapter. | Native | Native | Closed for native caption association and numbering. Unresolved media renders as a visible numbered fallback instead of detaching the caption; broader media layout/crop/group semantics remain separate gaps. |
 
 The layout renderers intentionally use target-owned static geometry. They do
 not claim browser-responsive behavior, and `wide`/`full-width` breakout cannot
@@ -263,9 +268,9 @@ Evidence: [E5], [E7], [E8], [E15], [E16].
 
 | ADF node | Current source mapping | DOCX | PDF | Primary gap |
 |---|---|---|---|---|
-| `media` | Only image-shaped Storage (`<ac:image>`) has a typed source. | Partial | Partial | General file/link media, collection/id lookup, occurrence key, crop, link/border marks, and non-image media are absent. |
+| `media` | Storage `<ac:image>` maps to a typed image. ADF media resolves only through exact host-proven file-ID correlation; otherwise a typed visible fallback retains media type/id/collection/occurrence/local identity, alt, dimensions, annotations, and any caption without attempting a fetch. | Partial/Conditional | Partial/Conditional | General file/link rendering, crop, link/border marks, and non-image media output remain absent. |
 | `mediaGroup` | No grouping model. | Missing/Fallback | Missing/Fallback | Preserve attachment/gallery grouping and define a static file-list/gallery representation. |
-| `mediaSingle` | Image reference, alt, and numeric width/height reach `ExportBlock`. | Partial | Partial | Container layout, percent/pixel width type, crop, and native caption association are lost; PDF currently ignores carried width/height at emission. |
+| `mediaSingle` | Image reference, alt, numeric width/height, and native caption association reach `ExportBlock`; caption inline content and local identity survive. | Partial | Partial | Container layout, percent/pixel width type, crop, and PDF use of carried image dimensions remain open. |
 | `mediaInline` | Inline image is either promoted to a block or replaced by alt text with a note. | Missing as inline | Missing as inline | Add true inline-media model and baseline/alignment/size rules. |
 
 Image byte support, SVG rasterization, external-asset policy, and missing-alt reporting exist, but those operational strengths do not fill the missing ADF media semantics.
@@ -444,8 +449,11 @@ Required acceptance contract:
 - [ ] **Partial — breakout.** Layout-section intent survives and is explicitly
   page-bounded; non-layout placements and actual wide/full-width page geometry
   remain open.
-- [ ] **Partial — captions and nested expands.** Visible fallbacks exist;
-  native association, title, nesting, and static disclosure treatment remain.
+- [x] **Captions and nested expands for static DOCX/PDF.** Native ADF caption
+  association/local identity and numbering are complete. ADF and
+  `body.storage` disclosures retain title, identity, recursive ownership, and
+  nesting; both targets render the body visibly open with an explicit report
+  fact because static files cannot preserve the editor toggle.
 - [ ] **Partial — card/embed metadata.** Deterministic visible URL fallbacks
   exist; native title/provider/poster metadata remains.
 - [ ] **Partial — media family.** Selected image/media paths exist; group,
@@ -497,7 +505,7 @@ Required acceptance contract:
   a measured renderer policy rather than an ADF decoding gap.
 - [x] Layout columns for pinned ADF and documented Storage shapes.
 - [ ] Breakout beyond page-bounded layout-section intent.
-- [ ] Captions/nested expands.
+- [x] Captions and nested expands for the pinned static-export contract.
 
 ### Phase 3 - Media and extensions
 
@@ -572,7 +580,9 @@ Focused missing gates:
 - [x] Layout width/column tests for pinned ADF and documented Storage shapes.
 - [ ] Breakout rendering beyond the page-bounded layout-section approximation.
 - [ ] Media group/inline/file/video/audio completeness tests.
-- [ ] Native ADF caption/nested-expand tests.
+- [x] Native ADF caption plus ADF/Storage expand/nested-expand validation,
+  decoding, recursive traversal, both-target, browser-parity, and rendered
+  golden tests.
 - [ ] Sync-block snapshot/reference tests.
 - [ ] Native annotation comment-body/target-rendering tests, documented
   fragment-to-bookmark policy tests, and data-consumer preservation tests.
@@ -606,6 +616,9 @@ Accessed 2026-07-22 and 2026-07-23:
 20. [Confluence Data Center storage format: page layouts](https://confluence.atlassian.com/doc/confluence-storage-format-790796544.html)
 21. [Typst grid](https://typst.app/docs/reference/layout/grid/)
 22. [Microsoft: Working with WordprocessingML tables](https://learn.microsoft.com/en-us/office/open-xml/word/working-with-wordprocessingml-tables)
+23. [ADF expand node](https://developer.atlassian.com/cloud/jira/platform/apis/document/nodes/expand/)
+24. [ADF nestedExpand node](https://developer.atlassian.com/cloud/jira/platform/apis/document/nodes/nestedExpand/)
+25. [Confluence: Display files and images](https://support.atlassian.com/confluence-cloud/docs/display-files-and-images/)
 
 ## 15. Repository evidence index
 
@@ -637,6 +650,7 @@ Accessed 2026-07-22 and 2026-07-23:
 - **[E26] Annotation/fragment identity preservation:** `packages/confluence/src/export-blocks.ts:235-248`, `packages/confluence/src/adf-validate.ts:225-247`, `packages/confluence/src/adf-to-blocks.ts:396-535`, `packages/confluence/src/adf-to-blocks.ts:965-999`, `packages/confluence/src/adf-validate.test.ts:139-172`, `packages/confluence/src/adf-to-blocks.test.ts:486-638`, `packages/confluence/src/adf-direct-fixtures.test.ts:143-218`, `packages/confluence/src/compose-document.test.ts:537-580`, `packages/export-fixtures/src/index.ts:128-263`, `packages/export-fixtures/src/adf-fixtures.test.ts:80-114`, `apps/browser-export-harness/src/adf-source-case.ts:315-377`, `apps/browser-export-harness/tests/exports.e2e.ts:90-95`
 - **[E27] Complete pinned table-attribute preservation and static rendering:** `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/adf-validate.ts`, `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/compose-document.ts`, `packages/docx/src/ooxml.ts`, `packages/docx/src/serialize.ts`, `packages/pdf/src/prepare.ts`, `packages/pdf/src/serialize.ts`, `packages/export-fixtures/src/index.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
 - **[E28] Native layout columns and explicit breakout residual:** `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/adf-validate.ts`, `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/compose-document.ts`, `packages/confluence/src/resolve-mentions.ts`, `packages/export-macros/src/resolve.ts`, `packages/docx/src/ooxml.ts`, `packages/docx/src/serialize.ts`, `packages/pdf/src/prepare.ts`, `packages/pdf/src/serialize.ts`, `packages/export-fixtures/src/index.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
+- **[E29] Native captions and recursive static disclosures across ADF/Storage and both targets:** `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/adf-validate.ts`, `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/page-body.test.ts`, `packages/confluence/src/compose-document.ts`, `packages/confluence/src/resolve-mentions.ts`, `packages/export-macros/src/resolve.ts`, `packages/docx/src/serialize.ts`, `packages/pdf/src/prepare.ts`, `packages/pdf/src/serialize.ts`, `packages/export-fixtures/src/index.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
 
 ## 16. Review questions
 
@@ -654,6 +668,6 @@ Accessed 2026-07-22 and 2026-07-23:
 6. **Resolved for tasks and decisions:** target-appropriate open/done task
    markers and a distinct decision marker are the static floor; exact
    identities/states remain in the neutral model and nonstandard decision
-   states are visibly labeled. Nested expands, synced blocks, audio, and video
-   remain open.
+   states are visibly labeled. Nested expands are resolved for the pinned
+   static-export contract; synced blocks, audio, and video remain open.
 7. Is visual parity measured against a curated atlcli design system, Confluence's standard export appearance, or configurable target templates? Semantic parity can be target-independent; pixel parity cannot.

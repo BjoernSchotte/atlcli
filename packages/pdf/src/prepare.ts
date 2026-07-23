@@ -202,6 +202,7 @@ export async function preparePdfDocument(
         const path = `${parentPath}[${index}]`;
         switch (block.type) {
           case "callout":
+          case "expand":
             return { ...block, content: await walk(block.content, `${path}.content`) };
           case "blockquote":
             return { ...block, content: await walk(block.content, `${path}.content`) };
@@ -387,6 +388,7 @@ export async function preparePdfDocument(
           }
           case "heading":
           case "paragraph":
+          case "mediaFallback":
           case "divider":
           case "pageBreak":
           case "anchor":
@@ -415,6 +417,7 @@ function countAssetBlocks(blocks: ExportBlock[]): number {
           if ((block.language ?? "").trim().toLowerCase() === "mermaid") count += 1;
           break;
         case "callout":
+        case "expand":
         case "blockquote":
         case "orientation":
           walk(block.content);

@@ -134,6 +134,55 @@ describe("PDF asset preparation", () => {
     });
   });
 
+  it("recurses through expands while unresolved media stays non-fetching and captioned", async () => {
+    const seen: string[] = [];
+    const blocks: ExportBlock[] = [{
+      type: "expand",
+      nested: false,
+      title: "Assets",
+      content: [
+        {
+          type: "image",
+          source: { kind: "attachment", filename: "inside.png" },
+          alt: "Inside",
+        },
+        {
+          type: "mediaFallback",
+          label: "unresolved-media",
+          media: { mediaType: "file", id: "media-1" },
+          caption: {
+            kind: "figure",
+            localId: "caption-1",
+            content: [{ type: "text", text: "Unresolved caption" }],
+          },
+        },
+      ],
+    }];
+    const prepared = await preparePdfDocument(blocks, {
+      resolve: async (reference) => {
+        seen.push(reference.filename ?? "");
+        return { bytes: pngBytes(), mediaType: "image/png" };
+      },
+    });
+
+    expect(seen).toEqual(["inside.png"]);
+    expect(prepared.assets).toHaveLength(1);
+    expect(prepared.blocks[0]).toMatchObject({
+      type: "expand",
+      content: [
+        { type: "image", assetPath: prepared.assets[0]!.path },
+        {
+          type: "mediaFallback",
+          media: { id: "media-1" },
+          caption: {
+            localId: "caption-1",
+            content: [{ type: "text", text: "Unresolved caption" }],
+          },
+        },
+      ],
+    });
+  });
+
   it("carries caption fields through preparation on table/codeBlock/image", async () => {
     const blocks: ExportBlock[] = [
       { type: "codeBlock", code: "x=1", caption: { kind: "code", content: [{ type: "text", text: "Listing 1" }] } },

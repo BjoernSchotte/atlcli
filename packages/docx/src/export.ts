@@ -950,6 +950,7 @@ function countImageBlocks(blocks: ExportBlock[]): number {
           count += 1;
           break;
         case "callout":
+        case "expand":
         case "blockquote":
         case "orientation":
           walk(block.content);

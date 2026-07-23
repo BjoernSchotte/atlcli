@@ -64,6 +64,7 @@ export function minHeadingLevel(blocks: readonly HeadingScanBlock[]): number {
         if (typeof block.level === "number" && block.level < min) min = block.level;
         break;
       case "callout":
+      case "expand":
       case "blockquote":
       case "orientation":
         if (block.content) {
@@ -374,6 +375,7 @@ function registerPageAnchors(
           break;
         }
         case "callout":
+        case "expand":
         case "blockquote":
         case "orientation":
           walk(block.content);
@@ -390,6 +392,7 @@ function registerPageAnchors(
         case "paragraph":
         case "codeBlock":
         case "image":
+        case "mediaFallback":
         case "divider":
         case "pageBreak":
         case "unknown":
@@ -585,12 +588,11 @@ function rewriteLink(
 
 /**
  * A caption's `content` is typed inline nodes — including links — so it goes
- * through the same rewrite pass as any other inline content (no walker emits
- * captions yet, spec 003/T1.4, but the seam is wired so the gap can't ship
- * silently once one does).
+ * through the same rewrite pass as any other inline content. Native ADF media
+ * captions and Storage `scroll-title` captions share this path.
  */
 function transformCaption(caption: Caption, ctx: EmitCtx): Caption {
-  return { kind: caption.kind, content: transformInline(caption.content, ctx) };
+  return { ...caption, content: transformInline(caption.content, ctx) };
 }
 
 /** Deep-transform one block: shift heading levels + rewrite links/anchors. */
@@ -626,6 +628,11 @@ function transformBlock(block: ExportBlock, ctx: EmitCtx): ExportBlock {
         type: "callout",
         kind: block.kind,
         ...(block.title !== undefined ? { title: block.title } : {}),
+        content: block.content.map((b) => transformBlock(b, ctx)),
+      };
+    case "expand":
+      return {
+        ...block,
         content: block.content.map((b) => transformBlock(b, ctx)),
       };
     case "blockquote":
@@ -679,6 +686,7 @@ function transformBlock(block: ExportBlock, ctx: EmitCtx): ExportBlock {
         ? { ...block, caption: transformCaption(block.caption, ctx) }
         : block;
     case "image":
+    case "mediaFallback":
       return block.caption !== undefined
         ? { ...block, caption: transformCaption(block.caption, ctx) }
         : block;

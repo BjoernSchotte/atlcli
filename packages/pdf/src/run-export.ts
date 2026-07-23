@@ -185,6 +185,7 @@ function countPrepared(blocks: PreparedPdfBlock[]): { images: number; diagrams: 
           total.diagrams += 1;
           break;
         case "callout":
+        case "expand":
         case "blockquote":
         case "orientation":
           walk(block.content);

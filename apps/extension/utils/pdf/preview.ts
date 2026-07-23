@@ -133,6 +133,7 @@ export function countImageRefs(blocks: readonly ExportBlock[]): number {
           count += 1;
           break;
         case "callout":
+        case "expand":
         case "blockquote":
           walk(block.content);
           break;

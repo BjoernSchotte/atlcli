@@ -363,6 +363,34 @@ describe("serializeBlocks — callouts, code, tables, images", () => {
     expect(xml).toContain("Failed");
   });
 
+  it("renders expand and nested-expand bodies open with a visible disclosure title", async () => {
+    const blocks: ExportBlock[] = [{
+      type: "expand",
+      nested: false,
+      title: "Outer details",
+      content: [
+        { type: "paragraph", content: [{ type: "text", text: "Outer body" }] },
+        {
+          type: "expand",
+          nested: true,
+          title: "",
+          content: [{
+            type: "paragraph",
+            content: [{ type: "text", text: "Nested body" }],
+          }],
+        },
+      ],
+    }];
+    const { xml } = await serializeBlocks(blocks, { styleNames: noStyles });
+
+    expect(xml.match(/<w:tbl>/g)).toHaveLength(2);
+    expect(xml).toContain("[-] Outer details");
+    expect(xml).toContain("[-] ");
+    expect(xml).toContain("Outer body");
+    expect(xml).toContain("Nested body");
+    expect(xml.indexOf("Outer body")).toBeLessThan(xml.indexOf("Nested body"));
+  });
+
   it("colors code via Shiki (multiple colored runs)", async () => {
     const blocks: ExportBlock[] = [
       { type: "codeBlock", language: "ts", code: 'const x: number = 1;\nconsole.log(x);' },
@@ -885,6 +913,43 @@ describe("serializeBlocks — new ExportBlock variants (spec 002 real renderings
     expect(imagePrefetched).toEqual(["column.png"]);
     expect(diagramPrefetched).toEqual(["graph TD\n L-->R"]);
   });
+
+  it("prefetches real assets through expands but never treats unresolved media as fetchable", async () => {
+    const imagePrefetched: string[] = [];
+    const blocks: ExportBlock[] = [{
+      type: "expand",
+      nested: false,
+      content: [
+        {
+          type: "image",
+          source: { kind: "attachment", filename: "expand.png" },
+          alt: "Embedded",
+        },
+        {
+          type: "mediaFallback",
+          label: "unresolved-media",
+          media: { mediaType: "file", id: "media-1" },
+          caption: {
+            kind: "figure",
+            content: [{ type: "text", text: "Unavailable" }],
+          },
+        },
+      ],
+    }];
+
+    await serializeBlocks(blocks, {
+      styleNames: noStyles,
+      images: {
+        embed: async () => ({ ok: false, reason: "unused" }),
+        prefetch: (block) =>
+          imagePrefetched.push(
+            block.source.kind === "attachment" ? block.source.filename : block.source.url,
+          ),
+      },
+    });
+
+    expect(imagePrefetched).toEqual(["expand.png"]);
+  });
 });
 
 describe("serializeBlocks — multi-page composed document (T1.3 engine golden)", () => {
@@ -1214,6 +1279,25 @@ describe("serializeBlocks — C3 captions", () => {
     expect(xml).toContain("[Image unavailable: arch.png]");
     expect(xml).toContain("SEQ Figure");
     expect(notes.map((n) => n.code)).toContain("image-skipped");
+  });
+
+  it("keeps an unresolved ADF media caption attached to its visible placeholder", async () => {
+    const { xml, notes } = await serializeBlocks([{
+      type: "mediaFallback",
+      label: "media-1",
+      media: { mediaType: "file", id: "media-1" },
+      alt: "Architecture",
+      caption: {
+        kind: "figure",
+        localId: "",
+        content: [{ type: "text", text: "System overview" }],
+      },
+    }], { styleNames: noStyles, captionLang: "en" });
+
+    expect(xml).toContain("[Media unavailable: Architecture]");
+    expect(xml).toContain("System overview");
+    expect(seqCachedResults(xml)).toEqual([["Figure", "1"]]);
+    expect(notes).toEqual([]);
   });
 
   // -------------------------------------------------------------------------

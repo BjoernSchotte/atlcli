@@ -56,7 +56,12 @@ function allHeadings(blocks: ExportBlock[]): Extract<ExportBlock, { type: "headi
   const walk = (list: ExportBlock[]): void => {
     for (const b of list) {
       if (b.type === "heading") out.push(b);
-      else if (b.type === "callout" || b.type === "blockquote" || b.type === "orientation") walk(b.content);
+      else if (
+        b.type === "callout" ||
+        b.type === "expand" ||
+        b.type === "blockquote" ||
+        b.type === "orientation"
+      ) walk(b.content);
       else if (b.type === "list") for (const it of b.items) walk(it.content);
       else if (b.type === "table") for (const r of b.rows) for (const c of r.cells) walk(c.content);
       else if (b.type === "layout") for (const column of b.columns) walk(column.content);
@@ -84,6 +89,7 @@ function allLinkTargets(blocks: ExportBlock[]): LinkTarget[] {
           inline(b.content);
           break;
         case "callout":
+        case "expand":
         case "blockquote":
         case "orientation":
           walk(b.content);
@@ -177,6 +183,20 @@ describe("computeHeadingOffset / minHeadingLevel (shared helper)", () => {
 
   test("no headings → offset 0", () => {
     expect(computeHeadingOffset([{ type: "paragraph", content: [] }])).toBe(0);
+  });
+
+  test("finds headings recursively inside expands", () => {
+    const blocks: ExportBlock[] = [{
+      type: "expand",
+      nested: true,
+      content: [{
+        type: "heading",
+        level: 4,
+        content: [{ type: "text", text: "Hidden in editor, visible in export" }],
+      }],
+    }];
+    expect(minHeadingLevel(blocks)).toBe(4);
+    expect(computeHeadingOffset(blocks)).toBe(3);
   });
 
   test("a composed document always yields offset 0 (chapters start at level 1)", () => {
@@ -518,9 +538,9 @@ describe("composeChapters — anchor namespacing & link rewrite", () => {
     expect(targets.some((t) => t.kind === "external")).toBe(false);
   });
 
-  test("caption links pass through the same rewrite (table/codeBlock/image captions)", () => {
-    // No walker emits captions yet (spec 003/T1.4), so build the blocks
-    // programmatically: each caption carries a cross-page link to page 2.
+  test("caption links pass through the same rewrite, including unresolved media inside expands", () => {
+    // Build all captionable block variants programmatically: each caption
+    // carries a cross-page link to page 2.
     const captionLink = (text: string): InlineNode => ({
       type: "link",
       target: { kind: "page", contentTitle: "Target", contentId: "2", spaceKey: "DOC" },
@@ -538,6 +558,22 @@ describe("composeChapters — anchor namespacing & link rewrite", () => {
         type: "image",
         source: { kind: "attachment", filename: "a.png" },
         caption: { kind: "figure", content: [captionLink("fig")] },
+      },
+      {
+        type: "expand",
+        nested: true,
+        title: "Details",
+        localId: "",
+        content: [{
+          type: "mediaFallback",
+          label: "unresolved",
+          media: { mediaType: "file", id: "media-1" },
+          caption: {
+            kind: "figure",
+            localId: "caption-1",
+            content: [captionLink("fallback")],
+          },
+        }],
       }
     );
     const target = page("2", "Target", 1, "1", "<p>t</p>");
@@ -557,6 +593,23 @@ describe("composeChapters — anchor namespacing & link rewrite", () => {
       // Rewritten to the chapter-start anchor, not left as an unresolved page link.
       expect(link.target).toEqual({ kind: "anchor", anchor: "page-2" });
     }
+    const expand = blocks.find((block) => block.type === "expand");
+    expect(expand).toMatchObject({
+      type: "expand",
+      nested: true,
+      title: "Details",
+      localId: "",
+      content: [{
+        type: "mediaFallback",
+        caption: {
+          localId: "caption-1",
+          content: [{
+            type: "link",
+            target: { kind: "anchor", anchor: "page-2" },
+          }],
+        },
+      }],
+    });
   });
 
   test("missing target anchor → link-anchor-missing + page-only text", () => {

@@ -469,6 +469,7 @@ function collectUnknown(blocks: ExportBlock[], out: UnknownBlock[]): void {
         out.push(b);
         break;
       case "callout":
+      case "expand":
       case "blockquote":
       case "orientation":
         collectUnknown(b.content, out);
@@ -499,6 +500,7 @@ function rebuild(blocks: ExportBlock[], resolutions: Map<UnknownBlock, Resolutio
         break;
       }
       case "callout":
+      case "expand":
         out.push({ ...b, content: rebuild(b.content, resolutions) });
         break;
       case "blockquote":

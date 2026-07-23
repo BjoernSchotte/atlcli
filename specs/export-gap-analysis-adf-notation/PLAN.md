@@ -280,7 +280,9 @@ The coverage source of truth remains the complete matrices in `GAP-ANALYSIS.md`.
 - Root/basic: `doc`, `paragraph`, `heading`, `text`, `hardBreak`, `rule`, `blockquote`, `codeBlock`.
 - Lists/tasks: `bulletList`, `orderedList`, `listItem`, `taskList`, `taskItem` using the existing static checklist representation.
 - Tables: `table`, `tableRow`, `tableHeader`, `tableCell` for attributes already represented by the current table model.
-- Containers: `panel`; `expand`/`nestedExpand` with visible title/body approximation where the existing model permits it.
+- Containers: `panel`; `expand`/`nestedExpand` as a recursive neutral
+  disclosure retaining title, identity, body ownership, and nested context,
+  with an explicitly open static target projection.
 - Inline: `date`, `emoji`, `mention`, `status` with deterministic visible fallbacks for unresolved external data.
 - Cards: `inlineCard`, `blockCard`, `embedCard` as safe clickable URL/title fallbacks until native card appearance is modeled.
 - Extensions: `extension`, `inlineExtension`, `bodiedExtension` projected into the existing macro-resolution contract when identity correlation is proven.
@@ -289,7 +291,12 @@ The coverage source of truth remains the complete matrices in `GAP-ANALYSIS.md`.
 
 ### 5.2 Explicitly classify, preserve, and defer native rendering
 
-The remaining schema rows—including decisions, block tasks, layouts, native captions, advanced media, sync content, placeholders, annotation, breakout, border, data-consumer, and fragment semantics—must receive a coverage-manifest status and deterministic fallback. Native fidelity work remains in the prioritized backlog in the gap analysis; alignment, indentation, and the schema-defined small paragraph font size are now native.
+The remaining schema rows—including advanced media, sync content, placeholders,
+breakout beyond layout sections, border, and data-consumer semantics—must retain
+a coverage-manifest status and deterministic fallback. Decisions, block tasks,
+layouts, native captions, annotations/fragments, alignment, indentation, and
+the schema-defined small paragraph font size now have the completed contracts
+recorded in the gap analysis.
 
 The ADF adapter must never infer semantics from raw text. Literal `:warning:`, backticks, `[]`, `<>`, and slash-command text remain literal unless Confluence stored a typed ADF node or mark.
 
@@ -1081,6 +1088,32 @@ with visible 30/70 columns in both formats. `wide`/`full-width` remains an
 explicit page-bounded approximation, and breakout on other schema-valid block
 types remains open.
 
+Completed caption/disclosure follow-on evidence recorded on 2026-07-23: the
+pinned validator now enforces the actual direct-inline ADF `caption` shape and
+the required non-empty `expand`/`nestedExpand` bodies, including exact optional
+titles/local identities and the nested node's required attributes. Native ADF
+captions stay attached to resolved images or to a typed, non-fetching media
+fallback that retains the original media identity; both targets number the
+caption normally instead of emitting detached prose. ADF `expand` and
+`nestedExpand` plus Storage `expand` now share a recursive neutral disclosure
+block. Storage preserves macro/local identity and marks an expand inside a
+table cell or another expand as nested, while a differential fixture proves
+the same recursive tree as ADF. Composition, heading/anchor discovery, mention and caption-link
+resolution, macro resolution, asset traversal, CLI and extension PDF
+preparation all recurse through the disclosure boundary. TypeScript DOCX and
+Typst/PDF render a deterministic visibly open panel and report `expand-static`
+because an interactive collapsed state cannot survive a static file. The
+packed ADF browser fixture proves direct/background block, report, and artifact
+parity. Reviewed LibreOffice and Typst/Poppler references visibly contain the
+outer and nested titles/bodies plus a numbered unresolved-media caption without
+clipping, overlap, or detached content. The slice passed 546 focused tests with
+one intentional skip, the reviewed 43-node/17-mark offline pin, public API and
+closure generation, full workspace/browser typecheck, the 16-task production
+build, all 20 browser-isomorphism entrypoints, the 15-case manifest guard, and
+the complete packed Chromium conformance run. The deterministic golden check
+reproduced one DOCX and four PDF pages with zero pixel difference and content
+bounds IoU 1. The unrestricted suite remains the remote-CI gate.
+
 The completed slice passed 494 focused decoder/Storage/composition/macro/DOCX/
 PDF tests, the generated public API and closure guards, the offline 43-node/
 17-mark pin check, full typecheck, the 16-task production build, all 20
@@ -1097,8 +1130,8 @@ After this migration proves the source boundary, close the gap-analysis backlog 
 3. observed product-specific task/decision metadata beyond the pinned schema, if the sanitized Cloud corpus discovers any;
 4. page-bound wide-table pagination/overflow policies beyond the now-complete
    pinned table-attribute contract;
-5. breakout beyond page-bounded layout sections, captions, and nested expands
-   (pinned ADF and documented Storage layout columns are complete);
+5. breakout beyond page-bounded layout sections (pinned ADF/documented Storage
+   layout columns and the static caption/disclosure contract are complete);
 6. full card/embed/media family;
 7. ADF-native definitions for excerpts/Page Properties and removal of their Storage sidecar;
 8. advanced extensions, Forge `adfExport` ingestion policy, and synced-content snapshots;

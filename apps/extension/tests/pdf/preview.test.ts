@@ -122,8 +122,9 @@ describe("planPreviewTruncation", () => {
       },
       { type: "callout", kind: "info", content: images(2) },
       { type: "list", ordered: false, items: [{ content: images(1) }] },
+      { type: "expand", nested: true, content: images(1) },
     ];
-    expect(countImageRefs(nested)).toBe(6);
+    expect(countImageRefs(nested)).toBe(7);
   });
 });
 

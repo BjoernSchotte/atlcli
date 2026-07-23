@@ -64,7 +64,7 @@ export interface PreparedPdfAsset {
 }
 
 export type PreparedPdfBlock =
-  | Exclude<ExportBlock, { type: "callout" | "list" | "layout" | "table" | "image" | "blockquote" | "codeBlock" | "orientation" | "unknown" }>
+  | Exclude<ExportBlock, { type: "callout" | "expand" | "list" | "layout" | "table" | "image" | "blockquote" | "codeBlock" | "orientation" | "unknown" }>
   /**
    * An unresolved macro (spec 004 placeholder floor). `body` is prepared
    * recursively so images/tables inside an unresolved third-party macro still
@@ -72,6 +72,9 @@ export type PreparedPdfBlock =
    */
   | { type: "unknown"; macroName: string; body?: PreparedPdfBlock[]; plainBody?: string }
   | { type: "callout"; kind: Extract<ExportBlock, { type: "callout" }>["kind"]; title?: string; content: PreparedPdfBlock[] }
+  | Omit<Extract<ExportBlock, { type: "expand" }>, "content"> & {
+      content: PreparedPdfBlock[];
+    }
   | Omit<Extract<ExportBlock, { type: "list" }>, "items"> & {
       items: Array<Omit<ListItem, "content"> & { content: PreparedPdfBlock[] }>;
     }

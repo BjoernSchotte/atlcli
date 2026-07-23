@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "sourceSha256": "c840c36cd58f4c5514b37eaf2bde40a2cfa20437a1d4a29bb55a5b41820a842c",
+  "sourceSha256": "8dcae4c06637142bccb07310390b7f43a1557d7951314f30c786508e35c12532",
   "features": [
     "inline-code",
     "unicode-emoji",
@@ -30,7 +30,7 @@
       "pages": [
         {
           "file": "docx-page-1.png",
-          "sha256": "db2d889c4ef09225335f1a5ff818e53d881e998fa45bdf7f9b76aeaa17192b83"
+          "sha256": "7e48809edf84f69c10031039fa5d9e51a9e273ad07363f2547a7bf04776113de"
         }
       ],
       "requiredText": [
@@ -74,7 +74,7 @@
         },
         {
           "file": "pdf-page-3.png",
-          "sha256": "e0723de859f28a0a67fcd3cd0fa18d0ab1d4d7d63aa92af43b88f271477c5681"
+          "sha256": "fca4d8ff3a49028e3ae9e7ffb1d02e59b06261b76883ff02b47eab92b4fcb2a6"
         },
         {
           "file": "pdf-page-4.png",

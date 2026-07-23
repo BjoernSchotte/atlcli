@@ -122,7 +122,7 @@ describe("resolveExportMentions", () => {
     }]);
   });
 
-  it("resolves a mention inside a caption on codeBlock, image and table", async () => {
+  it("resolves caption mentions on every captionable block, including inside expands", async () => {
     const caption = (accountId: string) => ({
       kind: "figure" as const,
       content: [{ type: "mention" as const, accountId }],
@@ -131,18 +131,29 @@ describe("resolveExportMentions", () => {
       { type: "codeBlock", code: "x=1", caption: { ...caption("a"), kind: "code" } },
       { type: "image", source: { kind: "external", url: "https://x.test/i.png" }, caption: caption("b") },
       { type: "table", rows: [], caption: { ...caption("c"), kind: "table" } },
+      {
+        type: "expand",
+        nested: false,
+        content: [{
+          type: "mediaFallback",
+          label: "unresolved",
+          media: { mediaType: "file", id: "media-1" },
+          caption: caption("d"),
+        }],
+      },
     ];
     let requested: string[] = [];
     const result = await resolveExportMentions(blocks, async (ids) => {
       requested = ids;
-      return new Map([["a", "Ada"], ["b", "Bo"], ["c", "Cy"]]);
+      return new Map([["a", "Ada"], ["b", "Bo"], ["c", "Cy"], ["d", "Di"]]);
     });
-    expect(requested.sort()).toEqual(["a", "b", "c"]);
+    expect(requested.sort()).toEqual(["a", "b", "c", "d"]);
     expect(result.unresolved).toBe(0);
     const json = JSON.stringify(result.blocks);
     expect(json).toContain('"displayName":"Ada"');
     expect(json).toContain('"displayName":"Bo"');
     expect(json).toContain('"displayName":"Cy"');
+    expect(json).toContain('"displayName":"Di"');
   });
 
   it("traverses unknown.body — spec 004 renders it, so mentions must resolve", async () => {

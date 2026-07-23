@@ -416,6 +416,7 @@ function prefetchBlocks(blocks: ExportBlock[], ctx: SerializeContext): void {
           break;
         }
         case "callout":
+        case "expand":
         case "blockquote":
         case "orientation":
           walk(block.content);
@@ -565,6 +566,17 @@ async function serializeBlock(
       return calloutTable(block.kind, title, body);
     }
 
+    case "expand": {
+      const label = block.title === undefined ? "[-]" : `[-] ${block.title}`;
+      const body = await serializeChildren(
+        block.content,
+        { ...ctx, container: "calloutCell" },
+        notes,
+        depth + 1
+      );
+      return calloutTable("panel", run(label, { bold: true }), body);
+    }
+
     case "list":
       // `listLevel` starts at 0 for every list, independent of container
       // `depth` (callouts/blockquotes/table cells don't deepen list nesting).
@@ -641,6 +653,11 @@ async function serializeBlock(
         message: `Image ${describeImage(block)} could not be embedded (${outcome.reason}).`,
       });
       return fallback();
+    }
+
+    case "mediaFallback": {
+      const fallback = mediaFallbackUnavailablePara(block);
+      return block.caption ? fallback + captionXml(block.caption, ctx) : fallback;
     }
 
     case "unknown": {
@@ -769,6 +786,18 @@ function captionXml(caption: Caption, ctx: InternalContext): string {
 function imageUnavailablePara(block: ImageBlock): string {
   const label = block.alt ?? (block.source.kind === "attachment" ? block.source.filename : block.source.url);
   return paragraph(run(`[Image unavailable: ${label}]`, { italic: true, color: "97A0AF" }));
+}
+
+/** Visible non-fetching placeholder for an uncorrelated ADF media identity. */
+function mediaFallbackUnavailablePara(
+  block: Extract<ExportBlock, { type: "mediaFallback" }>
+): string {
+  return paragraph(
+    run(`[Media unavailable: ${block.alt ?? block.label}]`, {
+      italic: true,
+      color: "97A0AF",
+    })
+  );
 }
 
 /**

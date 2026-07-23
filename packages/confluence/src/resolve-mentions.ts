@@ -28,6 +28,7 @@ function collectUnresolvedMentionIds(blocks: ExportBlock[]): string[] {
           visitInline(block.content);
           break;
         case "callout":
+        case "expand":
         case "blockquote":
           visitBlocks(block.content);
           break;
@@ -48,6 +49,7 @@ function collectUnresolvedMentionIds(blocks: ExportBlock[]): string[] {
           break;
         case "codeBlock":
         case "image":
+        case "mediaFallback":
           if (block.caption) visitInline(block.caption.content);
           break;
         case "unknown":
@@ -92,6 +94,7 @@ function resolveBlockMentions(
       case "paragraph":
         return { ...block, content: resolveInlineMentions(block.content, displayNames) };
       case "callout":
+      case "expand":
       case "blockquote":
         return { ...block, content: resolveBlockMentions(block.content, displayNames) };
       case "orientation":
@@ -126,6 +129,7 @@ function resolveBlockMentions(
         };
       case "codeBlock":
       case "image":
+      case "mediaFallback":
         return block.caption ? { ...block, caption: resolveCaption(block.caption) } : block;
       case "unknown":
         // spec 004: `unknown.body` is now rendered by the placeholder floor, so

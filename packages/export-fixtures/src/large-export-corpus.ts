@@ -278,7 +278,7 @@ function countBlocks(blocks: readonly ExportBlock[]): number {
   let count = 0;
   const visit = (block: ExportBlock): void => {
     count += 1;
-    if (block.type === "callout" || block.type === "orientation") {
+    if (block.type === "callout" || block.type === "expand" || block.type === "orientation") {
       block.content.forEach(visit);
     } else if (block.type === "list") {
       block.items.forEach((item) => item.content.forEach(visit));

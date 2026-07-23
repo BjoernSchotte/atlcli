@@ -146,6 +146,7 @@ function blocksPlainText(blocks: PreparedPdfBlock[]): string {
         case "codeBlock":
           return block.code;
         case "callout":
+        case "expand":
         case "blockquote":
         case "orientation":
           return blocksPlainText(block.content);
@@ -159,6 +160,8 @@ function blocksPlainText(blocks: PreparedPdfBlock[]): string {
             .join(" ");
         case "image":
           return block.alt ?? block.fallbackLabel;
+        case "mediaFallback":
+          return block.alt ?? block.label;
         case "diagram":
           return block.alt ?? "Diagram";
         case "divider":
@@ -725,6 +728,7 @@ function collectHeadingLabels(blocks: PreparedPdfBlock[]): CollectedLabels {
           break;
         }
         case "callout":
+        case "expand":
         case "blockquote":
         case "orientation":
           walkSlugs(block.content);
@@ -767,6 +771,7 @@ function collectHeadingLabels(blocks: PreparedPdfBlock[]): CollectedLabels {
           break;
         }
         case "callout":
+        case "expand":
         case "blockquote":
         case "orientation":
           walkAnchors(block.content);
@@ -1060,10 +1065,28 @@ function serializeBlock(
           : `#figure(${img})`;
       }
       break;
+    case "mediaFallback": {
+      const fallbackExpr = `emph[${literalText(`[Media unavailable: ${block.label}]`)}]`;
+      value = block.caption
+        ? `#figure(${fallbackExpr}, ${captionFigureArgs(block.caption, writer)})`
+        : `#par[#${fallbackExpr}]`;
+      break;
+    }
     case "callout": {
       const title = block.title ? `[${literalText(block.title)}]` : "none";
       const calloutContext: RenderContext = { ...context, container: "calloutCell" };
       value = `#callout(kind: ${typstString(block.kind)}, title: ${title})[\n${serializeBlocks(block.content, writer, `${path}.content`, calloutContext)}\n]`;
+      break;
+    }
+    case "expand": {
+      const titleText = block.title === undefined ? "[-]" : `[-] ${block.title}`;
+      const calloutContext: RenderContext = { ...context, container: "calloutCell" };
+      const disclosure =
+        `#callout(kind: "panel", title: [${literalText(titleText)}])[\n` +
+        `${serializeBlocks(block.content, writer, `${path}.content`, calloutContext)}\n]`;
+      value = block.nested
+        ? `#block(inset: (left: ${writer.design.tokens.layout.adfBlockIndentStep}))[${disclosure}]`
+        : disclosure;
       break;
     }
     case "blockquote":

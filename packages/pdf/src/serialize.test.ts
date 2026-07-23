@@ -127,6 +127,32 @@ describe("PDF preparation and serialization", () => {
     expect(main).toContain('#callout(kind: "error"');
   });
 
+  it("renders expand and nested-expand bodies open with a visible disclosure title", async () => {
+    const { main } = await toMain([{
+      type: "expand",
+      nested: false,
+      title: "Outer details",
+      content: [
+        { type: "paragraph", content: [{ type: "text", text: "Outer body" }] },
+        {
+          type: "expand",
+          nested: true,
+          title: "",
+          content: [{
+            type: "paragraph",
+            content: [{ type: "text", text: "Nested body" }],
+          }],
+        },
+      ],
+    }]);
+
+    expect(main.match(/#callout\(kind: "panel"/g)).toHaveLength(2);
+    expect(main).toContain("[-] Outer details");
+    expect(main).toContain("Outer body");
+    expect(main).toContain("Nested body");
+    expect(main).toContain("#block(inset: (left:");
+  });
+
   it("preserves independent ordered-list starts at every nesting level", async () => {
     const blocks: ExportBlock[] = [
       {
@@ -1491,6 +1517,26 @@ describe("serialize — C3 captions", () => {
     expect(main).toContain("Image unavailable");
     expect(main).toContain("caption: [");
     expect(notes.map((n) => n.code)).toContain("image-embed-failed");
+  });
+
+  it("keeps an unresolved ADF media caption attached to its visible placeholder", async () => {
+    const { main, notes } = await toMain([{
+      type: "mediaFallback",
+      label: "media-1",
+      media: { mediaType: "file", id: "media-1" },
+      alt: "Architecture",
+      caption: {
+        kind: "figure",
+        localId: "",
+        content: [{ type: "text", text: "System overview" }],
+      },
+    }]);
+
+    expect(main).toContain("#figure(emph[");
+    expect(main).toContain("Media unavailable");
+    expect(main).toContain("System overview");
+    expect(main).toContain("kind: image");
+    expect(notes).toEqual([]);
   });
 
   it("wraps a captioned table in a figure with kind table (declared kind wins)", async () => {

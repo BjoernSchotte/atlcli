@@ -25,10 +25,9 @@ describe("ADF browser conformance fixture", () => {
       "list",
       "table",
       "layout",
-      "callout",
+      "expand",
       "unknown",
-      "paragraph",
-      "paragraph",
+      "mediaFallback",
     ]);
     expect(pdf.blocks[7]).toMatchObject({
       type: "list",
@@ -153,8 +152,41 @@ describe("ADF browser conformance fixture", () => {
         },
       ],
     });
+    expect(pdf.blocks[13]).toEqual({
+      type: "expand",
+      nested: false,
+      title: "Expanded title",
+      localId: "expand-local",
+      content: [
+        {
+          type: "paragraph",
+          content: [{ type: "text", text: "Expanded body" }],
+        },
+        {
+          type: "expand",
+          nested: true,
+          title: "Nested expanded title",
+          localId: "",
+          content: [{
+            type: "paragraph",
+            content: [{ type: "text", text: "Nested expanded body" }],
+          }],
+        },
+      ],
+    });
+    expect(pdf.blocks[15]).toMatchObject({
+      type: "mediaFallback",
+      label: "Visible media fallback",
+      media: { mediaType: "file", id: "unresolved-media" },
+      caption: {
+        kind: "figure",
+        localId: "media-caption-local",
+        content: [{ type: "text", text: "Media caption" }],
+      },
+    });
     expect(pdf.notes.map((note) => note.code)).toContain("emoji-text-fallback");
     expect(pdf.notes.map((note) => note.code)).toContain("adf-media-unresolved");
+    expect(pdf.notes.filter((note) => note.code === "expand-static")).toHaveLength(2);
     expect(pdf.notes.map((note) => note.code)).toContain("adf-node-degraded");
     expect(pdf.notes.map((note) => note.code)).toContain("adf-mark-degraded");
   });

@@ -17,6 +17,16 @@ const utf8 = new TextEncoder();
 const forbiddenKeys = new Set(["__proto__", "prototype", "constructor"]);
 const nodeEnvelopeKeys = new Set(["type", "attrs", "content", "marks", "text", "version"]);
 const markEnvelopeKeys = new Set(["type", "attrs"]);
+const captionInlineNodeTypes = new Set([
+  "date",
+  "emoji",
+  "hardBreak",
+  "inlineCard",
+  "mention",
+  "placeholder",
+  "status",
+  "text",
+]);
 
 const nodeAttributeKeys: Readonly<Record<string, ReadonlySet<string>>> = Object.freeze({
   blockCard: new Set(["localId", "url"]),
@@ -186,6 +196,59 @@ function validateKnownNodeShape(
         "ADF panel type must be info, note, tip, warning, error, success, or custom.",
         `${path}.attrs.panelType`,
       );
+    }
+  }
+  if (type === "caption") {
+    assertStringAttribute(attrs, "localId", path, false);
+    if (node.content !== undefined) {
+      if (!Array.isArray(node.content)) {
+        throw new AdfValidationError(
+          "invalid-node",
+          "ADF caption content must be an array when present.",
+          `${path}.content`,
+        );
+      }
+      for (let index = 0; index < node.content.length; index += 1) {
+        const child = node.content[index];
+        if (
+          !isPlainObject(child) ||
+          typeof child.type !== "string" ||
+          !captionInlineNodeTypes.has(child.type)
+        ) {
+          throw new AdfValidationError(
+            "invalid-node",
+            "ADF caption content must contain only pinned inline nodes.",
+            `${path}.content[${index}]`,
+          );
+        }
+      }
+    }
+  }
+  if (type === "expand" || type === "nestedExpand") {
+    assertStringAttribute(attrs, "title", path, false);
+    assertStringAttribute(attrs, "localId", path, false);
+    if (!Array.isArray(node.content) || node.content.length === 0) {
+      throw new AdfValidationError(
+        "invalid-node",
+        `ADF ${type} requires at least one child block.`,
+        `${path}.content`,
+      );
+    }
+    if (type === "nestedExpand") {
+      if (attrs === undefined) {
+        throw new AdfValidationError(
+          "invalid-attributes",
+          "ADF nestedExpand requires an attrs object.",
+          `${path}.attrs`,
+        );
+      }
+      if (Array.isArray(node.marks) && node.marks.length > 0) {
+        throw new AdfValidationError(
+          "invalid-node",
+          "ADF nestedExpand does not accept non-empty marks.",
+          `${path}.marks`,
+        );
+      }
     }
   }
   if (type === "date") assertStringAttribute(attrs, "timestamp", path);

@@ -598,6 +598,94 @@ describe("storageToBlocks — callouts", () => {
       },
     ]);
   });
+
+  test("retains Storage expand identity and marks table-cell expands as nested", () => {
+    const result = storageToBlocks(
+      '<ac:structured-macro ac:name="expand" ac:local-id="" ac:macro-id="expand-root">' +
+        '<ac:parameter ac:name="title"></ac:parameter>' +
+        '<ac:rich-text-body><p>Outer body</p>' +
+          '<ac:structured-macro ac:name="expand" ac:macro-id="expand-child">' +
+            '<ac:parameter ac:name="title">Child details</ac:parameter>' +
+            '<ac:rich-text-body><p>Child body</p></ac:rich-text-body>' +
+          '</ac:structured-macro>' +
+        '</ac:rich-text-body>' +
+      '</ac:structured-macro>' +
+      '<table><tbody><tr><td>' +
+        '<ac:structured-macro ac:name="expand" ac:local-id="nested-local" ac:macro-id="expand-nested">' +
+          '<ac:parameter ac:name="title">Nested details</ac:parameter>' +
+          '<ac:rich-text-body><p>Nested body</p></ac:rich-text-body>' +
+        '</ac:structured-macro>' +
+      '</td></tr></tbody></table>',
+      { pageContext: { id: "page-1", version: 4 } },
+    );
+
+    expect(result.blocks).toEqual([
+      {
+        type: "expand",
+        nested: false,
+        title: "",
+        localId: "",
+        macroId: "expand-root",
+        content: [{
+          type: "paragraph",
+          content: [{ type: "text", text: "Outer body" }],
+        }, {
+          type: "expand",
+          nested: true,
+          title: "Child details",
+          macroId: "expand-child",
+          content: [{
+            type: "paragraph",
+            content: [{ type: "text", text: "Child body" }],
+          }],
+        }],
+      },
+      {
+        type: "table",
+        rows: [{
+          cells: [{
+            header: false,
+            colspan: 1,
+            rowspan: 1,
+            content: [{
+              type: "expand",
+              nested: true,
+              title: "Nested details",
+              localId: "nested-local",
+              macroId: "expand-nested",
+              content: [{
+                type: "paragraph",
+                content: [{ type: "text", text: "Nested body" }],
+              }],
+            }],
+          }],
+        }],
+      },
+    ]);
+    expect(result.notes).toEqual([
+      expect.objectContaining({
+        level: "info",
+        code: "expand-static",
+        source: expect.objectContaining({ pageId: "page-1", blockPath: "blocks[0]" }),
+      }),
+      expect.objectContaining({
+        level: "info",
+        code: "expand-static",
+        source: expect.objectContaining({
+          pageId: "page-1",
+          blockPath: "blocks[0].content[1]",
+        }),
+      }),
+      expect.objectContaining({
+        level: "info",
+        code: "expand-static",
+        source: expect.objectContaining({
+          pageId: "page-1",
+          blockPath: "blocks[1].content[0]",
+        }),
+      }),
+    ]);
+  });
 });
 
 describe("storageToBlocks — images", () => {

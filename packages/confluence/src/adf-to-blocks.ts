@@ -342,14 +342,25 @@ function decodeBlockNode(node: AdfNode, ctx: DecodeContext, path: string): Expor
       }];
     }
     case "expand":
-    case "nestedExpand":
-      addNodeNote(ctx, path, node.type, "was expanded into a visible panel.");
+    case "nestedExpand": {
+      ctx.notes.add({
+        level: "info",
+        code: "expand-static",
+        message: "Interactive expand content was rendered open in the static export.",
+        source: sourceFor(ctx, path),
+      }, `expand-static|${path}`);
       return [{
-        type: "callout",
-        kind: "panel",
-        ...(stringAttr(node, "title") ? { title: stringAttr(node, "title") } : {}),
+        type: "expand",
+        nested: node.type === "nestedExpand",
+        ...(optionalStringAttr(node, "title") !== undefined
+          ? { title: optionalStringAttr(node, "title") }
+          : {}),
+        ...(optionalStringAttr(node, "localId") !== undefined
+          ? { localId: optionalStringAttr(node, "localId") }
+          : {}),
         content: decodeBlockChildren(node.content, ctx, `${path}.content`),
       }];
+    }
     case "layoutSection":
       return [decodeLayoutSection(node, ctx, path)];
     case "layoutColumn":
@@ -774,7 +785,12 @@ function decodeMediaContainer(node: AdfNode, ctx: DecodeContext, path: string): 
   if (captionNode && blocks.length > 0) {
     const caption = decodeCaption(captionNode, ctx, `${path}.caption`);
     const last = blocks[blocks.length - 1]!;
-    if (last.type === "table" || last.type === "codeBlock" || last.type === "image") {
+    if (
+      last.type === "table" ||
+      last.type === "codeBlock" ||
+      last.type === "image" ||
+      last.type === "mediaFallback"
+    ) {
       blocks[blocks.length - 1] = { ...last, caption };
     } else {
       blocks.push({ type: "paragraph", content: caption.content });
@@ -809,13 +825,34 @@ function decodeMediaBlock(node: AdfNode, ctx: DecodeContext, path: string): Expo
 
 function mediaFallbackBlock(node: AdfNode, ctx: DecodeContext, path: string): ExportBlock {
   addMediaNote(ctx, node, path);
+  const width = positiveDimension(node.attrs?.width);
+  const height = positiveDimension(node.attrs?.height);
   return {
-    type: "paragraph",
-    content: [{
-      type: "text",
-      text: mediaLabel(node),
-      ...annotationFields(node.marks),
-    }],
+    type: "mediaFallback",
+    label: mediaLabel(node),
+    media: {
+      ...(optionalStringAttr(node, "type") !== undefined
+        ? { mediaType: optionalStringAttr(node, "type") }
+        : {}),
+      ...(optionalStringAttr(node, "id") !== undefined
+        ? { id: optionalStringAttr(node, "id") }
+        : {}),
+      ...(optionalStringAttr(node, "collection") !== undefined
+        ? { collection: optionalStringAttr(node, "collection") }
+        : {}),
+      ...(optionalStringAttr(node, "occurrenceKey") !== undefined
+        ? { occurrenceKey: optionalStringAttr(node, "occurrenceKey") }
+        : {}),
+      ...(optionalStringAttr(node, "localId") !== undefined
+        ? { localId: optionalStringAttr(node, "localId") }
+        : {}),
+    },
+    ...(optionalStringAttr(node, "alt") !== undefined
+      ? { alt: optionalStringAttr(node, "alt") }
+      : {}),
+    ...(width ? { width } : {}),
+    ...(height ? { height } : {}),
+    ...annotationFields(node.marks),
   };
 }
 
@@ -992,7 +1029,13 @@ function decodeActionItem(
 }
 
 function decodeCaption(node: AdfNode, ctx: DecodeContext, path: string): Caption {
-  return { kind: "figure", content: decodeInlineDescendants(node.content, ctx, `${path}.content`) };
+  return {
+    kind: "figure",
+    content: decodeInlineDescendants(node.content, ctx, `${path}.content`),
+    ...(optionalStringAttr(node, "localId") !== undefined
+      ? { localId: optionalStringAttr(node, "localId") }
+      : {}),
+  };
 }
 
 function fallbackParagraph(node: AdfNode, label: string): ExportBlock {

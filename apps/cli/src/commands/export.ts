@@ -1567,6 +1567,7 @@ function blocksNeedRasterizer(blocks: readonly ExportBlock[]): boolean {
       case "image":
         return true;
       case "callout":
+      case "expand":
       case "blockquote":
       case "orientation":
         if (blocksNeedRasterizer(block.content)) return true;

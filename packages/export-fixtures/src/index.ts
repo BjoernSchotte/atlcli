@@ -319,8 +319,18 @@ export const ADF_CONFORMANCE_SOURCE = JSON.stringify({
     },
     {
       type: "expand",
-      attrs: { title: "Expanded title" },
-      content: [{ type: "paragraph", content: [{ type: "text", text: "Expanded body" }] }],
+      attrs: { title: "Expanded title", localId: "expand-local" },
+      content: [
+        { type: "paragraph", content: [{ type: "text", text: "Expanded body" }] },
+        {
+          type: "nestedExpand",
+          attrs: { title: "Nested expanded title", localId: "" },
+          content: [{
+            type: "paragraph",
+            content: [{ type: "text", text: "Nested expanded body" }],
+          }],
+        },
+      ],
     },
     {
       type: "bodiedExtension",
@@ -336,7 +346,11 @@ export const ADF_CONFORMANCE_SOURCE = JSON.stringify({
       type: "mediaSingle",
       content: [
         { type: "media", attrs: { type: "file", id: "unresolved-media", alt: "Visible media fallback" } },
-        { type: "caption", content: [{ type: "paragraph", content: [{ type: "text", text: "Media caption" }] }] },
+        {
+          type: "caption",
+          attrs: { localId: "media-caption-local" },
+          content: [{ type: "text", text: "Media caption" }],
+        },
       ],
     },
   ],

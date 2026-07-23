@@ -94,7 +94,7 @@ export const ADF_NODE_DECODE_MODES = Object.freeze({
   bodiedExtension: "approximation",
   bodiedSyncBlock: "visible-fallback",
   bulletList: "native",
-  caption: "approximation",
+  caption: "native",
   codeBlock: "native",
   date: "approximation",
   decisionItem: "native",

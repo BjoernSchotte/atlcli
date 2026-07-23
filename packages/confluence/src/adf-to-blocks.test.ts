@@ -171,6 +171,59 @@ describe("adfToBlocks", () => {
     expect(result.notes.map((note) => note.code)).not.toContain("adf-node-degraded");
   });
 
+  it("retains expand boundaries, identities, titles, and nested disclosure context", () => {
+    const result = adfToBlocks(doc([{
+      type: "expand",
+      attrs: { title: "", localId: "expand-root" },
+      content: [
+        { type: "paragraph", content: [{ type: "text", text: "Outer body" }] },
+        {
+          type: "nestedExpand",
+          attrs: { title: "Nested details", localId: "" },
+          content: [{ type: "paragraph", content: [{ type: "text", text: "Nested body" }] }],
+        },
+      ],
+    }]), { pageContext: { id: "page-1", version: 4 } });
+
+    expect(result.blocks).toEqual([{
+      type: "expand",
+      nested: false,
+      title: "",
+      localId: "expand-root",
+      content: [
+        { type: "paragraph", content: [{ type: "text", text: "Outer body" }] },
+        {
+          type: "expand",
+          nested: true,
+          title: "Nested details",
+          localId: "",
+          content: [{
+            type: "paragraph",
+            content: [{ type: "text", text: "Nested body" }],
+          }],
+        },
+      ],
+    }]);
+    expect(result.notes).toEqual([
+      expect.objectContaining({
+        level: "info",
+        code: "expand-static",
+        source: expect.objectContaining({
+          pageId: "page-1",
+          blockPath: "blocks[0]",
+        }),
+      }),
+      expect.objectContaining({
+        level: "info",
+        code: "expand-static",
+        source: expect.objectContaining({
+          pageId: "page-1",
+          blockPath: "blocks[0].content[1]",
+        }),
+      }),
+    ]);
+  });
+
   it("preserves a zero start and bounds starts above the portable target maximum", () => {
     const result = adfToBlocks(doc([
       { type: "orderedList", attrs: { order: 0 }, content: [] },
@@ -525,7 +578,7 @@ describe("adfToBlocks", () => {
         type: "mediaSingle",
         content: [
           { type: "media", attrs: { type: "file", id: "media-1", collection: "contentId-1", alt: "diagram.png" } },
-          { type: "caption", content: [{ type: "paragraph", content: [{ type: "text", text: "Caption" }] }] },
+          { type: "caption", attrs: { localId: "" }, content: [{ type: "text", text: "Caption" }] },
         ],
       },
     ]), { pageContext: { id: "page-1", version: 7, spaceKey: "TEST" } });
@@ -543,10 +596,17 @@ describe("adfToBlocks", () => {
       sourcePage: { id: "page-1", version: 7, spaceKey: "TEST" },
     });
     expect(result.blocks[0]).not.toHaveProperty("macroId");
-    expect(result.blocks.slice(1)).toEqual([
-      { type: "paragraph", content: [{ type: "text", text: "diagram.png" }] },
-      { type: "paragraph", content: [{ type: "text", text: "Caption" }] },
-    ]);
+    expect(result.blocks.slice(1)).toEqual([{
+      type: "mediaFallback",
+      label: "diagram.png",
+      media: { mediaType: "file", id: "media-1", collection: "contentId-1" },
+      alt: "diagram.png",
+      caption: {
+        kind: "figure",
+        content: [{ type: "text", text: "Caption" }],
+        localId: "",
+      },
+    }]);
     expect(result.notes.map((note) => note.code)).toContain("adf-media-unresolved");
     expect(result.notes.every((note) => note.source?.pageId === "page-1")).toBe(true);
   });
@@ -565,7 +625,7 @@ describe("adfToBlocks", () => {
           width: 640,
           height: 480,
         } },
-        { type: "caption", content: [{ type: "paragraph", content: [{ type: "text", text: "Figure caption" }] }] },
+        { type: "caption", attrs: { localId: "caption-1" }, content: [{ type: "text", text: "Figure caption" }] },
       ],
     }]), {
       pageContext: { id: "page-2" },
@@ -582,7 +642,11 @@ describe("adfToBlocks", () => {
       alt: "Architecture",
       width: 640,
       height: 480,
-      caption: { kind: "figure", content: [{ type: "text", text: "Figure caption" }] },
+      caption: {
+        kind: "figure",
+        content: [{ type: "text", text: "Figure caption" }],
+        localId: "caption-1",
+      },
     }]);
     expect(result.notes).toEqual([]);
   });
@@ -682,12 +746,11 @@ describe("adfToBlocks", () => {
         annotations: [{ id: "media-comment", annotationType: "inlineComment" }],
       },
       {
-        type: "paragraph",
-        content: [{
-          type: "text",
-          text: "unresolved",
-          annotations: [{ id: "fallback-comment", annotationType: "inlineComment" }],
-        }],
+        type: "mediaFallback",
+        label: "unresolved",
+        media: { mediaType: "file", id: "unresolved-media" },
+        alt: "unresolved",
+        annotations: [{ id: "fallback-comment", annotationType: "inlineComment" }],
       },
     ]);
     expect(result.notes.filter((note) => note.code === "adf-mark-degraded")).toEqual([]);

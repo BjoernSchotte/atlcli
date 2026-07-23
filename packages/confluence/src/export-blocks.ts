@@ -240,12 +240,23 @@ export type CaptionKind = "figure" | "table" | "code" | "equation";
 /**
  * A caption attached to a captionable block (figure/table/code/equation). Its
  * `content` is typed inline nodes so a mention inside a caption resolves the
- * same way as anywhere else (see `resolve-mentions.ts`). No walker emits a
- * caption yet — that arrives with `scroll-title` (T1.4).
+ * same way as anywhere else (see `resolve-mentions.ts`). Native ADF
+ * `mediaSingle` captions and Storage `scroll-title` macros both use this shape.
  */
 export interface Caption {
   kind: CaptionKind;
   content: InlineNode[];
+  /** Stable ADF editor identity, including an explicitly empty value. */
+  localId?: string;
+}
+
+/** Source identity retained for an ADF media node that could not be correlated. */
+export interface UnresolvedMediaIdentity {
+  mediaType?: string;
+  id?: string;
+  collection?: string;
+  occurrenceKey?: string;
+  localId?: string;
 }
 
 /**
@@ -360,6 +371,21 @@ export type ExportBlock =
   | { type: "codeBlock"; language?: string; code: string; caption?: Caption }
   | { type: "callout"; kind: CalloutKind; title?: string; content: ExportBlock[] }
   | {
+      /**
+       * A static export of Confluence's disclosure/accordion container.
+       * `nested` distinguishes ADF `nestedExpand` (and Storage expands inside
+       * table cells) without coupling either renderer to the source format.
+       */
+      type: "expand";
+      nested: boolean;
+      content: ExportBlock[];
+      title?: string;
+      /** Stable ADF editor identity, including an explicitly empty value. */
+      localId?: string;
+      /** Storage macro identity; deliberately distinct from ADF `localId`. */
+      macroId?: string;
+    }
+  | {
       type: "list";
       ordered: boolean;
       items: ListItem[];
@@ -386,6 +412,21 @@ export type ExportBlock =
       width?: number;
       height?: number;
       caption?: Caption;
+      annotations?: AdfAnnotationIdentity[];
+    }
+  | {
+      /**
+       * Visible, non-fetching projection of an ADF media node whose Media
+       * Services ID could not be correlated to an attachment. Keeping this as
+       * a block lets a native ADF caption remain associated and numbered.
+       */
+      type: "mediaFallback";
+      label: string;
+      media: UnresolvedMediaIdentity;
+      caption?: Caption;
+      alt?: string;
+      width?: number;
+      height?: number;
       annotations?: AdfAnnotationIdentity[];
     }
   | { type: "blockquote"; content: ExportBlock[] }
@@ -551,6 +592,8 @@ export const EXPORT_NOTE_CODES = [
   "image-unresolved",
   "inline-image-skipped",
   "layout-geometry-fallback",
+  // Shared static-target projection of Confluence's interactive disclosure.
+  "expand-static",
   // Shared ADF/Storage fact: no portable Unicode display was available.
   "emoji-text-fallback",
   // ADF adapter degradations. These are representation facts shared by every
@@ -1187,6 +1230,10 @@ interface WalkCtx {
    * Threaded into attachment {@link ImageSource}s and `unknown` blocks.
    */
   pageContext?: { id: string; version?: number; spaceKey?: string; title?: string; url?: string };
+  /** True while walking direct content of a Storage table cell/header. */
+  inTableCell?: boolean;
+  /** True while walking the rich-text body of a Storage expand macro. */
+  inExpand?: boolean;
   /**
    * The tree position of the block currently being walked (spec 003
    * provenance), e.g. `blocks[3]` / `blocks[3].content[0]`. Maintained by
@@ -1896,7 +1943,7 @@ function walkTable(el: XmlElement, ctx: WalkCtx): ExportBlock {
         ...(backgroundColor ? { backgroundColor } : {}),
         ...(verticalAlignment ? { verticalAlignment } : {}),
         ...(cell.attrs["ac:local-id"] !== undefined ? { localId: cell.attrs["ac:local-id"] } : {}),
-        content: walkBlocks(cell.children, ctx),
+        content: walkBlocks(cell.children, { ...ctx, inTableCell: true }),
       });
     }
     rows.push({
@@ -1994,10 +2041,28 @@ function walkMacro(el: XmlElement, ctx: WalkCtx): ExportBlock[] {
     return [{ type: "codeBlock", language: language || undefined, code }];
   }
 
-  // Expand: no dedicated block type — surface its body transparently.
+  // Expand: retain the disclosure boundary and title. Static targets render
+  // the body open; an expand inside a table cell or another expand is the
+  // Storage counterpart of ADF `nestedExpand`.
   if (macroName === "expand") {
     const body = childByName(el, "ac:rich-text-body");
-    return body ? walkBlocks(body.children, ctx) : [];
+    ctx.notes.push(withSource(ctx, {
+      level: "info",
+      code: "expand-static",
+      message: "Interactive expand content was rendered open in the static export.",
+    }));
+    return [{
+      type: "expand",
+      nested: ctx.inTableCell === true || ctx.inExpand === true,
+      ...(macroParam(el, "title") !== undefined ? { title: macroParam(el, "title") } : {}),
+      ...(el.attrs["ac:local-id"] !== undefined
+        ? { localId: el.attrs["ac:local-id"] }
+        : {}),
+      ...(el.attrs["ac:macro-id"] !== undefined
+        ? { macroId: el.attrs["ac:macro-id"] }
+        : {}),
+      content: body ? walkBlocks(body.children, { ...ctx, inExpand: true }) : [],
+    }];
   }
 
   // Multiexcerpt DEFINITION (`multiexcerpt-macro`/`multiexcerpt`, spec 004 E4):
@@ -2341,6 +2406,7 @@ function stripNestedOrientation(blocks: ExportBlock[]): { blocks: ExportBlock[];
           found = true;
           return walk(block.content);
         case "callout":
+        case "expand":
         case "blockquote":
           return [{ ...block, content: walk(block.content) }];
         case "list":

@@ -70,7 +70,10 @@ const NODE_FIXTURES = {
   bulletList: block({ type: "bulletList", content: [listItem("node-bulletList")] }),
   caption: block({
     type: "mediaSingle",
-    content: [media("node-caption-media"), { type: "caption", content: [paragraph("node-caption")] }],
+    content: [
+      media("node-caption-media"),
+      { type: "caption", attrs: { localId: "node-caption-local" }, content: [text("node-caption")] },
+    ],
   }),
   codeBlock: block({ type: "codeBlock", attrs: { language: "text" }, content: [text("node-codeBlock")] }),
   date: inline({ type: "date", attrs: { timestamp: "1704067200000" } }),

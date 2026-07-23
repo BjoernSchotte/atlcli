@@ -123,6 +123,13 @@ describe("resolveMacroBlocks — fallback chain", () => {
         },
         { type: "callout", kind: "info", content: [unknownBlock("widget")] },
         {
+          type: "expand",
+          nested: true,
+          title: "Details",
+          localId: "",
+          content: [unknownBlock("widget")],
+        },
+        {
           type: "layout",
           localId: "layout-local",
           breakout: { mode: "wide", width: 960 },
@@ -134,7 +141,12 @@ describe("resolveMacroBlocks — fallback chain", () => {
           }],
         },
       ],
-      notes: [walkerNote("widget"), walkerNote("widget"), walkerNote("widget")],
+      notes: [
+        walkerNote("widget"),
+        walkerNote("widget"),
+        walkerNote("widget"),
+        walkerNote("widget"),
+      ],
     };
     const out = await resolveMacroBlocks(input, registry, ctx());
     const table = out.blocks[0] as Extract<ExportBlock, { type: "table" }>;
@@ -145,7 +157,14 @@ describe("resolveMacroBlocks — fallback chain", () => {
     expect(table.rows[0].localId).toBe("row-local");
     const callout = out.blocks[1] as Extract<ExportBlock, { type: "callout" }>;
     expect(callout.content[0]).toEqual({ type: "paragraph", content: [{ type: "text", text: "OK" }] });
-    expect(out.blocks[2]).toMatchObject({
+    expect(out.blocks[2]).toEqual({
+      type: "expand",
+      nested: true,
+      title: "Details",
+      localId: "",
+      content: [{ type: "paragraph", content: [{ type: "text", text: "OK" }] }],
+    });
+    expect(out.blocks[3]).toMatchObject({
       type: "layout",
       localId: "layout-local",
       breakout: { mode: "wide", width: 960 },

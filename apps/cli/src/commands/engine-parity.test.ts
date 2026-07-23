@@ -52,6 +52,7 @@ function collectTypes(blocks: ExportBlock[]): Set<string> {
       types.add(block.type);
       switch (block.type) {
         case "callout":
+        case "expand":
         case "blockquote":
         case "orientation":
           walk(block.content);

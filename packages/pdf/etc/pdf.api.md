@@ -38,6 +38,13 @@ export type ExportBlock = {
     title?: string;
     content: ExportBlock[];
 } | {
+    type: "expand";
+    nested: boolean;
+    content: ExportBlock[];
+    title?: string;
+    localId?: string;
+    macroId?: string;
+} | {
     type: "list";
     ordered: boolean;
     items: ListItem[];
@@ -60,6 +67,15 @@ export type ExportBlock = {
     width?: number;
     height?: number;
     caption?: Caption;
+    annotations?: AdfAnnotationIdentity[];
+} | {
+    type: "mediaFallback";
+    label: string;
+    media: UnresolvedMediaIdentity;
+    caption?: Caption;
+    alt?: string;
+    width?: number;
+    height?: number;
     annotations?: AdfAnnotationIdentity[];
 } | {
     type: "blockquote";
@@ -496,7 +512,7 @@ export interface PreparedPdfAsset {
 
 // export: PreparedPdfBlock
 export type PreparedPdfBlock = Exclude<ExportBlock, {
-    type: "callout" | "list" | "layout" | "table" | "image" | "blockquote" | "codeBlock" | "orientation" | "unknown";
+    type: "callout" | "expand" | "list" | "layout" | "table" | "image" | "blockquote" | "codeBlock" | "orientation" | "unknown";
 }> | {
     type: "unknown";
     macroName: string;
@@ -508,6 +524,10 @@ export type PreparedPdfBlock = Exclude<ExportBlock, {
         type: "callout";
     }>["kind"];
     title?: string;
+    content: PreparedPdfBlock[];
+} | Omit<Extract<ExportBlock, {
+    type: "expand";
+}>, "content"> & {
     content: PreparedPdfBlock[];
 } | Omit<Extract<ExportBlock, {
     type: "list";
@@ -763,6 +783,13 @@ export type ExportBlock = {
     title?: string;
     content: ExportBlock[];
 } | {
+    type: "expand";
+    nested: boolean;
+    content: ExportBlock[];
+    title?: string;
+    localId?: string;
+    macroId?: string;
+} | {
     type: "list";
     ordered: boolean;
     items: ListItem[];
@@ -785,6 +812,15 @@ export type ExportBlock = {
     width?: number;
     height?: number;
     caption?: Caption;
+    annotations?: AdfAnnotationIdentity[];
+} | {
+    type: "mediaFallback";
+    label: string;
+    media: UnresolvedMediaIdentity;
+    caption?: Caption;
+    alt?: string;
+    width?: number;
+    height?: number;
     annotations?: AdfAnnotationIdentity[];
 } | {
     type: "blockquote";
@@ -1221,7 +1257,7 @@ export interface PreparedPdfAsset {
 
 // export: PreparedPdfBlock
 export type PreparedPdfBlock = Exclude<ExportBlock, {
-    type: "callout" | "list" | "layout" | "table" | "image" | "blockquote" | "codeBlock" | "orientation" | "unknown";
+    type: "callout" | "expand" | "list" | "layout" | "table" | "image" | "blockquote" | "codeBlock" | "orientation" | "unknown";
 }> | {
     type: "unknown";
     macroName: string;
@@ -1233,6 +1269,10 @@ export type PreparedPdfBlock = Exclude<ExportBlock, {
         type: "callout";
     }>["kind"];
     title?: string;
+    content: PreparedPdfBlock[];
+} | Omit<Extract<ExportBlock, {
+    type: "expand";
+}>, "content"> & {
     content: PreparedPdfBlock[];
 } | Omit<Extract<ExportBlock, {
     type: "list";
@@ -1488,6 +1528,13 @@ export type ExportBlock = {
     title?: string;
     content: ExportBlock[];
 } | {
+    type: "expand";
+    nested: boolean;
+    content: ExportBlock[];
+    title?: string;
+    localId?: string;
+    macroId?: string;
+} | {
     type: "list";
     ordered: boolean;
     items: ListItem[];
@@ -1510,6 +1557,15 @@ export type ExportBlock = {
     width?: number;
     height?: number;
     caption?: Caption;
+    annotations?: AdfAnnotationIdentity[];
+} | {
+    type: "mediaFallback";
+    label: string;
+    media: UnresolvedMediaIdentity;
+    caption?: Caption;
+    alt?: string;
+    width?: number;
+    height?: number;
     annotations?: AdfAnnotationIdentity[];
 } | {
     type: "blockquote";
@@ -1946,7 +2002,7 @@ export interface PreparedPdfAsset {
 
 // export: PreparedPdfBlock
 export type PreparedPdfBlock = Exclude<ExportBlock, {
-    type: "callout" | "list" | "layout" | "table" | "image" | "blockquote" | "codeBlock" | "orientation" | "unknown";
+    type: "callout" | "expand" | "list" | "layout" | "table" | "image" | "blockquote" | "codeBlock" | "orientation" | "unknown";
 }> | {
     type: "unknown";
     macroName: string;
@@ -1958,6 +2014,10 @@ export type PreparedPdfBlock = Exclude<ExportBlock, {
         type: "callout";
     }>["kind"];
     title?: string;
+    content: PreparedPdfBlock[];
+} | Omit<Extract<ExportBlock, {
+    type: "expand";
+}>, "content"> & {
     content: PreparedPdfBlock[];
 } | Omit<Extract<ExportBlock, {
     type: "list";

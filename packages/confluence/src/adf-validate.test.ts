@@ -46,6 +46,58 @@ describe("validateAdf", () => {
     expect(errorCode(() => validateAdf(doc([{ type: "text", text: "x", marks: [{ type: "subsup", attrs: { type: "sideways" } }] }])))).toBe("invalid-attributes");
   });
 
+  test("validates pinned caption and disclosure contracts", () => {
+    expect(() => validateAdf(doc([{
+      type: "mediaSingle",
+      content: [
+        { type: "media", attrs: { type: "file", id: "media-1" } },
+        {
+          type: "caption",
+          attrs: { localId: "" },
+          content: [
+            { type: "text", text: "Figure ", marks: [{ type: "strong" }] },
+            { type: "mention", attrs: { id: "user-1" } },
+            { type: "hardBreak" },
+            { type: "emoji", attrs: { shortName: ":warning:" } },
+          ],
+        },
+      ],
+    }, {
+      type: "expand",
+      attrs: { title: "", localId: "expand-1" },
+      content: [{
+        type: "nestedExpand",
+        attrs: { title: "Nested", localId: "" },
+        marks: [],
+        content: [{ type: "paragraph", content: [{ type: "text", text: "Body" }] }],
+      }],
+    }]))).not.toThrow();
+
+    expect(errorCode(() => validateAdf(doc([{
+      type: "caption",
+      content: [{ type: "paragraph", content: [] }],
+    }])))).toBe("invalid-node");
+    expect(errorCode(() => validateAdf(doc([{
+      type: "expand",
+      attrs: { title: 1 },
+      content: [{ type: "paragraph", content: [] }],
+    }])))).toBe("invalid-attributes");
+    expect(errorCode(() => validateAdf(doc([{
+      type: "expand",
+      content: [],
+    }])))).toBe("invalid-node");
+    expect(errorCode(() => validateAdf(doc([{
+      type: "nestedExpand",
+      content: [{ type: "paragraph", content: [] }],
+    }])))).toBe("invalid-attributes");
+    expect(errorCode(() => validateAdf(doc([{
+      type: "nestedExpand",
+      attrs: {},
+      marks: [{ type: "breakout", attrs: { mode: "wide" } }],
+      content: [{ type: "paragraph", content: [] }],
+    }])))).toBe("invalid-node");
+  });
+
   test("accepts the schema-defined zero ordered-list start and rejects negative or fractional starts", () => {
     expect(() => validateAdf(doc([{ type: "orderedList", attrs: { order: 0 }, content: [] }]))).not.toThrow();
     expect(errorCode(() => validateAdf(doc([{ type: "orderedList", attrs: { order: -1 }, content: [] }]))))
