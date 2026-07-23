@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import type { ConfluencePageDetails } from "@atlcli/confluence";
+import type { ConfluencePageDetails, TreeSource } from "@atlcli/confluence";
 import { buildDocx, para, pngFixtureBytes, readPart } from "@atlcli/docx/fixtures";
 import type { ExportReport, PreparedDocxExportV1 } from "@atlcli/docx";
 import type {
@@ -9,6 +9,9 @@ import type {
   ResourceEstimateV1,
   StagedArtifactV1,
 } from "@atlcli/export-jobs";
+import {
+  createConfluenceDocxResolveInputV1,
+} from "./confluence-job-resolve-input.js";
 import {
   createTypescriptDocxExportJobExecutor,
   DocxRenderRestartLimitError,
@@ -342,6 +345,63 @@ describe("createTypescriptDocxExportJobExecutor", () => {
       DocxRenderRestartLimitError,
     );
     expect(ready.materializations).toBe(2);
+  });
+
+  it("checkpoints shared ADF resolver state and performs zero source reads on render recovery", async () => {
+    const ready = new MemoryReadyStore();
+    ready.failMaterializeOnce = true;
+    let sourceReads = 0;
+    const treeSource: TreeSource = {
+      async getPage(id) {
+        sourceReads += 1;
+        return {
+          id,
+          title: "Root",
+          version: 1,
+          exportSource: {
+            primary: {
+              representation: "atlas_doc_format",
+              value: JSON.stringify({
+                type: "doc",
+                version: 1,
+                content: [{
+                  type: "extension",
+                  attrs: { extensionType: "example", extensionKey: "widget" },
+                  content: [{ type: "paragraph", content: [{ type: "text", text: "Visible" }] }],
+                }],
+              }),
+            },
+            storageSidecar: "<p>RAW-SIDECAR</p>",
+            sourceVersion: 1,
+          },
+        };
+      },
+      async getPageVersion() { return { title: "Root", version: 1 }; },
+      async getChildren() { return []; },
+      async getSpaceHomepageId() { return null; },
+    };
+    const resolveInput = createConfluenceDocxResolveInputV1({
+      port: { createTreeSource: () => treeSource },
+      build() {
+        return {
+          input: {
+            template: { name: "template.docx", modificationDate: new Date(0) },
+          },
+        };
+      },
+    });
+    const setup = executorOptions({ ready, noRecovery: true, resolveInput });
+    const ctx = executionContext(setup.order);
+    const executor = createTypescriptDocxExportJobExecutor(setup.options);
+
+    await expect(executor.execute(await request(), ctx.context)).rejects.toThrow("worker lost");
+    expect(sourceReads).toBe(1);
+    expect(ready.prepared?.sourceNotes.some((note) => note.code === "adf-node-degraded")).toBe(true);
+    expect(JSON.stringify(ready.prepared)).not.toContain("RAW-SIDECAR");
+
+    await executor.execute(await request(), ctx.context);
+    expect(sourceReads).toBe(1);
+    expect(ready.commits).toBe(1);
   });
 
   it("recovers a lost staged-result return in O(1) before reservation/materialization", async () => {

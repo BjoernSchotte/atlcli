@@ -710,8 +710,8 @@ Tasks:
 - [ ] Run fetch, validation, decode, sidecar reads, tree composition, mention/macro resolution, and asset preparation inside background `resolveInput`.
 - [ ] Use the ordered source/checkpoint pipeline for tree/space pages rather than buffering raw full-tree ADF.
 - [ ] Pin/verify page versions so pre-checkpoint retry cannot silently export newer content.
-- [ ] Ensure the ready-to-render checkpoint contains prepared engine state and diagnostics, not the original page body.
-- [ ] On ready-to-render recovery, perform zero ADF/Storage refetches.
+- [x] Ensure the ready-to-render checkpoint contains prepared engine state and diagnostics, not the original page body.
+- [x] On ready-to-render recovery, perform zero ADF/Storage refetches.
 - [ ] Thread job cancellation through every ADF, sidecar, macro, attachment, and identity request.
 - [ ] Preserve ADF degradation notes and `complete=false` through preparation, checkpoint fingerprinting, report staging, and final activity UI.
 - [ ] Keep page content out of job progress/events and error summaries.
@@ -722,14 +722,16 @@ Required job tests:
 - [ ] job row exists before first ADF GET;
 - [ ] cancellation during ADF and sidecar reads aborts all outstanding requests;
 - [ ] crash before ready-to-render refetches only version-pinned source;
-- [ ] crash/recovery after ready-to-render performs no source reads;
+- [x] crash/recovery after ready-to-render performs no source reads;
 - [ ] direct-vs-job blocks/notes/completeness and final PDF/DOCX report parity;
 - [ ] panel closure/navigation does not abort the job;
-- [ ] malformed ADF fails or becomes a partial page according to completeness mode, never Storage-hidden success;
-- [ ] bounded page pipeline does not retain complete raw tree bodies;
-- [ ] packed browser consumer imports the ADF adapter without Node/Bun/dynamic-code leakage.
+- [x] malformed ADF fails or becomes a partial page according to completeness mode, never Storage-hidden success;
+- [x] bounded page pipeline does not retain complete raw tree bodies;
+- [x] packed browser consumer imports the ADF adapter without Node/Bun/dynamic-code leakage.
 
 Incremental WP8 evidence recorded on 2026-07-23: `@atlcli/export-wiring/jobs` now exposes one browser-safe, engine-neutral Confluence source resolver over the durable locator/scope contract. Its host port owns authentication and representation policy, so request v1 remains unchanged and cannot select ADF versus Storage. Page/content/space locators map to the shared `TreeSource` walk; optional durable page-version pins are verified before the first body read and the same snapshot is reused for the body-version race check. Both renderer adapters can consume the exact same blocks, notes, completeness verdict, root metadata and chapter-anchor map. Resolver progress contains counts only, resolver errors are sanitized before the durable boundary, malformed ADF never succeeds through its Storage sidecar, and the cancellation signal reaches all in-flight page reads. The tree fetch no longer retains complete `TreeSourcePage` objects after decoding: only version/labels/space metadata survives in the ordered settled slots, so raw ADF and sidecars leave the bounded decode slot promptly. Focused resolver/tree/executor tests, API and closure guards, full typecheck, the production build, and all 20 browser-isomorphism entrypoints passed. A read-only live run returned one ADF-primary page with a complete result through the new resolver while emitting aggregate counters only. The remaining unchecked items are production host routing, source checkpoints/recovery, macro/asset preparation inside the claimed job, and end-to-end direct/background artifact-report parity.
+
+Executor-adapter evidence recorded on 2026-07-23: format-specific factories now bind that shared resolver directly to the existing PDF and TypeScript-DOCX `resolveInput()` contracts. They force the canonical blocks, notes, completeness verdict and root identity into both engines; the DOCX adapter synthesizes body-free root details (`storage: ""`) because precomposed blocks make the legacy body fallback unreachable. PDF and DOCX recovery tests deliberately lose the first render attempt after committing `ready-to-render`, then prove the second lease performs zero source reads, creates no second prepared checkpoint, retains ADF degradation notes and contains no Storage sidecar. The browser bundle gate imports the published jobs entrypoint without Node/Bun or dynamic-code leakage. A read-only live comparison returned equal PDF/DOCX source shapes and a zero-byte DOCX root body while emitting aggregate counters only.
 
 Current sequencing status (2026-07-23): WP8 is now in progress on this main-based branch without copying the moving background-runtime implementation. The shared source boundary is ready for that runtime to consume; durable extension host routing and its recovery/activity integration remain deliberately separate until their owning branch is synchronized.
 

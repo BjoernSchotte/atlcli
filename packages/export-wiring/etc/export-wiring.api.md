@@ -96,6 +96,37 @@ export declare class ConfluenceSourceVersionMismatchError extends Error {
     constructor(pageId: string, expectedVersion: number, observedVersion: number | undefined);
 }
 
+// export: CreateConfluenceDocxResolveInputOptionsV1
+export interface CreateConfluenceDocxResolveInputOptionsV1 extends SharedSourceOptionsV1 {
+    build(resolved: ResolvedConfluenceSourceV1, request: DocxExportJobRequestV1, context: ExportJobExecutionContext): Promise<{
+        input: DocxConfluenceResolvedInputExtrasV1;
+        rootDetails?: DocxConfluenceRootDetailsV1;
+    }> | {
+        input: DocxConfluenceResolvedInputExtrasV1;
+        rootDetails?: DocxConfluenceRootDetailsV1;
+    };
+}
+
+// export: createConfluenceDocxResolveInputV1
+export declare function createConfluenceDocxResolveInputV1(options: CreateConfluenceDocxResolveInputOptionsV1): (request: DocxExportJobRequestV1, context: ExportJobExecutionContext) => Promise<TypescriptDocxExportJobEngineInputV1>;
+
+// export: CreateConfluencePdfResolveInputOptionsV1
+export interface CreateConfluencePdfResolveInputOptionsV1 extends SharedSourceOptionsV1 {
+    build(resolved: ResolvedConfluenceSourceV1, request: PdfExportJobRequestV1, context: ExportJobExecutionContext): Promise<{
+        input: PdfConfluenceResolvedInputExtrasV1;
+        env: Omit<PreparePdfExportEnv, "now">;
+    }> | {
+        input: PdfConfluenceResolvedInputExtrasV1;
+        env: Omit<PreparePdfExportEnv, "now">;
+    };
+}
+
+// export: createConfluencePdfResolveInputV1
+export declare function createConfluencePdfResolveInputV1(options: CreateConfluencePdfResolveInputOptionsV1): (request: PdfExportJobRequestV1, context: ExportJobExecutionContext) => Promise<{
+    input: PdfExportJobEngineInputV1;
+    env: Omit<PreparePdfExportEnv, "now">;
+}>;
+
 // export: createExternalAssetFetcher
 export declare function createExternalAssetFetcher(policy: ExternalAssetPolicy, deps?: ExternalAssetFetcherDeps): ExternalAssetFetcher;
 
@@ -110,6 +141,12 @@ export declare function defaultExternalAssetFetcher(policy: ExternalAssetPolicy,
 
 // export: defaultExternalAssetPolicy
 export declare function defaultExternalAssetPolicy(siteBaseUrl: string): ExternalAssetPolicy;
+
+// export: DocxConfluenceResolvedInputExtrasV1
+export type DocxConfluenceResolvedInputExtrasV1 = Omit<TypescriptDocxExportJobEngineInputV1, "blocks" | "sourceNotes" | "complete" | "details">;
+
+// export: DocxConfluenceRootDetailsV1
+export type DocxConfluenceRootDetailsV1 = Omit<ConfluencePageDetails, "id" | "title" | "version" | "spaceKey" | "storage">;
 
 // export: ExportAssetResponseV1
 export interface ExportAssetResponseV1 {
@@ -285,6 +322,9 @@ export interface OrderedSourcePortV1<Value, Cursor> {
 
 // export: parseIpv6
 export declare function parseIpv6(value: string): number[] | undefined;
+
+// export: PdfConfluenceResolvedInputExtrasV1
+export type PdfConfluenceResolvedInputExtrasV1 = Omit<PdfExportJobEngineInputV1, "blocks" | "sourceNotes" | "complete" | "page">;
 
 // export: PersistedOrderedSourceCheckpointV1
 export interface PersistedOrderedSourceCheckpointV1<Cursor> {
@@ -482,6 +522,37 @@ export declare class ConfluenceSourceVersionMismatchError extends Error {
     constructor(pageId: string, expectedVersion: number, observedVersion: number | undefined);
 }
 
+// export: CreateConfluenceDocxResolveInputOptionsV1
+export interface CreateConfluenceDocxResolveInputOptionsV1 extends SharedSourceOptionsV1 {
+    build(resolved: ResolvedConfluenceSourceV1, request: DocxExportJobRequestV1, context: ExportJobExecutionContext): Promise<{
+        input: DocxConfluenceResolvedInputExtrasV1;
+        rootDetails?: DocxConfluenceRootDetailsV1;
+    }> | {
+        input: DocxConfluenceResolvedInputExtrasV1;
+        rootDetails?: DocxConfluenceRootDetailsV1;
+    };
+}
+
+// export: createConfluenceDocxResolveInputV1
+export declare function createConfluenceDocxResolveInputV1(options: CreateConfluenceDocxResolveInputOptionsV1): (request: DocxExportJobRequestV1, context: ExportJobExecutionContext) => Promise<TypescriptDocxExportJobEngineInputV1>;
+
+// export: CreateConfluencePdfResolveInputOptionsV1
+export interface CreateConfluencePdfResolveInputOptionsV1 extends SharedSourceOptionsV1 {
+    build(resolved: ResolvedConfluenceSourceV1, request: PdfExportJobRequestV1, context: ExportJobExecutionContext): Promise<{
+        input: PdfConfluenceResolvedInputExtrasV1;
+        env: Omit<PreparePdfExportEnv, "now">;
+    }> | {
+        input: PdfConfluenceResolvedInputExtrasV1;
+        env: Omit<PreparePdfExportEnv, "now">;
+    };
+}
+
+// export: createConfluencePdfResolveInputV1
+export declare function createConfluencePdfResolveInputV1(options: CreateConfluencePdfResolveInputOptionsV1): (request: PdfExportJobRequestV1, context: ExportJobExecutionContext) => Promise<{
+    input: PdfExportJobEngineInputV1;
+    env: Omit<PreparePdfExportEnv, "now">;
+}>;
+
 // export: createPdfExportJobExecutor
 export declare function createPdfExportJobExecutor(options: CreatePdfExportJobExecutorOptionsV1): ExportJobExecutor<PdfExportJobRequestV1>;
 
@@ -512,6 +583,12 @@ export interface CreateTypescriptDocxExportJobExecutorOptionsV1 {
     results: DocxExportResultStoreV1;
     now?: () => number;
 }
+
+// export: DocxConfluenceResolvedInputExtrasV1
+export type DocxConfluenceResolvedInputExtrasV1 = Omit<TypescriptDocxExportJobEngineInputV1, "blocks" | "sourceNotes" | "complete" | "details">;
+
+// export: DocxConfluenceRootDetailsV1
+export type DocxConfluenceRootDetailsV1 = Omit<ConfluencePageDetails, "id" | "title" | "version" | "spaceKey" | "storage">;
 
 // export: DocxExportResultIntentV1
 export interface DocxExportResultIntentV1 {
@@ -716,6 +793,9 @@ export interface OrderedSourcePortV1<Value, Cursor> {
         signal: AbortSignal;
     }): Promise<OrderedSourceDiscoveryV1<Value, Cursor>>;
 }
+
+// export: PdfConfluenceResolvedInputExtrasV1
+export type PdfConfluenceResolvedInputExtrasV1 = Omit<PdfExportJobEngineInputV1, "blocks" | "sourceNotes" | "complete" | "page">;
 
 // export: PdfExportJobEngineInputV1
 export type PdfExportJobEngineInputV1 = Omit<RunPdfExportInput, "signal" | "onPhase" | "onProgress">;

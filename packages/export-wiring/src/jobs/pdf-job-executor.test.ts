@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import type { TreeSource } from "@atlcli/confluence";
 import {
   runPdfExport,
   type PdfCompilePort,
@@ -12,6 +13,9 @@ import type {
   ResourceEstimateV1,
   StagedArtifactV1,
 } from "@atlcli/export-jobs";
+import {
+  createConfluencePdfResolveInputV1,
+} from "./confluence-job-resolve-input.js";
 import {
   createPdfExportJobExecutor,
   PdfRenderRestartLimitError,
@@ -175,6 +179,7 @@ function executorOptions(input: {
   order?: string[];
   reports?: PdfExportReport[];
   resolveCalls?: { count: number };
+  resolveInput?: CreatePdfExportJobExecutorOptionsV1["resolveInput"];
   resultStageHook?: () => void;
 }) {
   const order = input.order ?? [];
@@ -191,8 +196,12 @@ function executorOptions(input: {
     ready,
     storedResult: () => latestStoredResult,
     options: {
-      async resolveInput() {
+      async resolveInput(
+        request: PdfExportJobRequestV1,
+        context: ExportJobExecutionContext,
+      ) {
         if (input.resolveCalls) input.resolveCalls.count += 1;
+        if (input.resolveInput) return input.resolveInput(request, context);
         return engineInput();
       },
       readyToRender: ready,
@@ -363,6 +372,80 @@ describe("createPdfExportJobExecutor", () => {
     );
     expect(recovered.stagedArtifact.leaseEpoch).toBe(3);
     expect(compileCalls).toBe(2);
+  });
+
+  it("checkpoints shared ADF resolver state and performs zero source reads on render recovery", async () => {
+    const order: string[] = [];
+    const ready = new MemoryReadyStore(order);
+    let sourceReads = 0;
+    const treeSource: TreeSource = {
+      async getPage(id) {
+        sourceReads += 1;
+        return {
+          id,
+          title: "Root",
+          version: 1,
+          exportSource: {
+            primary: {
+              representation: "atlas_doc_format",
+              value: JSON.stringify({
+                type: "doc",
+                version: 1,
+                content: [{
+                  type: "extension",
+                  attrs: { extensionType: "example", extensionKey: "widget" },
+                  content: [{ type: "paragraph", content: [{ type: "text", text: "Visible" }] }],
+                }],
+              }),
+            },
+            storageSidecar: "<p>RAW-SIDECAR</p>",
+            sourceVersion: 1,
+          },
+        };
+      },
+      async getPageVersion() { return { title: "Root", version: 1 }; },
+      async getChildren() { return []; },
+      async getSpaceHomepageId() { return null; },
+    };
+    const resolveInput = createConfluencePdfResolveInputV1({
+      port: { createTreeSource: () => treeSource },
+      build() {
+        return {
+          input: {
+            metadata: { title: "Root", exportedAt: new Date(0) },
+            filename: "test.pdf",
+          },
+          env: { assets: { async resolve() { throw new Error("unused"); } } },
+        };
+      },
+    });
+    let compileCalls = 0;
+    const fixture = executorOptions({
+      ready,
+      order,
+      resolveInput,
+      compiler: {
+        async compile() {
+          compileCalls += 1;
+          if (compileCalls === 1) throw new Error("worker lost");
+          return { pdf: validPdf, diagnostics: [], compilerVersion: "test" };
+        },
+      },
+    });
+
+    await expect(
+      createPdfExportJobExecutor(fixture.options).execute(request(), executionContext({ order }).context),
+    ).rejects.toThrow("worker lost");
+    expect(sourceReads).toBe(1);
+    expect(ready.prepared?.sourceNotes.some((note) => note.code === "adf-node-degraded")).toBe(true);
+    expect(JSON.stringify(ready.prepared)).not.toContain("RAW-SIDECAR");
+
+    await createPdfExportJobExecutor(fixture.options).execute(
+      request(),
+      executionContext({ leaseEpoch: 2, order }).context,
+    );
+    expect(sourceReads).toBe(1);
+    expect(ready.commits).toBe(1);
   });
 
   it("counts materialization loss as a render attempt and stops after one restart", async () => {
