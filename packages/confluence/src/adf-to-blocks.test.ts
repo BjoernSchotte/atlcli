@@ -165,6 +165,49 @@ describe("adfToBlocks", () => {
     expect(result.notes).toEqual([]);
   });
 
+  it("preserves success and error panel semantics while custom panels use the generic fallback", () => {
+    const result = adfToBlocks(doc([
+      {
+        type: "panel",
+        attrs: { panelType: "success" },
+        content: [{ type: "paragraph", content: [{ type: "text", text: "Passed" }] }],
+      },
+      {
+        type: "panel",
+        attrs: { panelType: "error" },
+        content: [{ type: "paragraph", content: [{ type: "text", text: "Failed" }] }],
+      },
+      {
+        type: "panel",
+        attrs: { panelType: "custom", panelColor: "#123456", panelIconText: "★" },
+        content: [{ type: "paragraph", content: [{ type: "text", text: "Custom" }] }],
+      },
+    ]));
+
+    expect(result.blocks).toEqual([
+      {
+        type: "callout",
+        kind: "success",
+        content: [{ type: "paragraph", content: [{ type: "text", text: "Passed" }] }],
+      },
+      {
+        type: "callout",
+        kind: "error",
+        content: [{ type: "paragraph", content: [{ type: "text", text: "Failed" }] }],
+      },
+      {
+        type: "callout",
+        kind: "panel",
+        content: [{ type: "paragraph", content: [{ type: "text", text: "Custom" }] }],
+      },
+    ]);
+    expect(result.notes).toHaveLength(1);
+    expect(result.notes[0]).toMatchObject({
+      code: "adf-node-degraded",
+      source: { blockPath: "blocks[2]" },
+    });
+  });
+
   it("preserves table spans, backgrounds, widths, and reports ADF-only geometry", () => {
     const result = adfToBlocks(doc([{
       type: "table",

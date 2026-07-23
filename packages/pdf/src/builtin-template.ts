@@ -165,6 +165,8 @@ const DESIGN: WikiPdfTemplateDesignV1 = {
       note: { background: "#EAE6FF", foreground: "#403294" },
       warning: { background: "#FFFAE6", foreground: "#974F0C" },
       tip: { background: "#E3FCEF", foreground: "#006644" },
+      success: { background: "#E3FCEF", foreground: "#006644" },
+      error: { background: "#FFEBE6", foreground: "#BF2600" },
       panel: { background: "#F4F5F7", foreground: "#42526E" },
     },
     statuses: {

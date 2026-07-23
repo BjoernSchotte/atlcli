@@ -22,6 +22,7 @@ describe("ADF rendered goldens", () => {
       "block-alignment",
       "block-indentation",
       "paragraph-font-size",
+      "semantic-success-error-panels",
       "ordered-list-start",
       "nested-list-restart",
       "table",

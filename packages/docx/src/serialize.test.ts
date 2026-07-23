@@ -341,6 +341,28 @@ describe("serializeBlocks — callouts, code, tables, images", () => {
     expect(xml).toContain("danger");
   });
 
+  it("renders success and error callouts with distinct semantic palettes", async () => {
+    const blocks: ExportBlock[] = [
+      {
+        type: "callout",
+        kind: "success",
+        content: [{ type: "paragraph", content: [{ type: "text", text: "Passed" }] }],
+      },
+      {
+        type: "callout",
+        kind: "error",
+        content: [{ type: "paragraph", content: [{ type: "text", text: "Failed" }] }],
+      },
+    ];
+    const { xml } = await serializeBlocks(blocks, { styleNames: noStyles });
+    expect(xml).toContain('w:fill="E3FCEF"');
+    expect(xml).toContain('w:color="36B37E"');
+    expect(xml).toContain('w:fill="FFEBE6"');
+    expect(xml).toContain('w:color="DE350B"');
+    expect(xml).toContain("Passed");
+    expect(xml).toContain("Failed");
+  });
+
   it("colors code via Shiki (multiple colored runs)", async () => {
     const blocks: ExportBlock[] = [
       { type: "codeBlock", language: "ts", code: 'const x: number = 1;\nconsole.log(x);' },

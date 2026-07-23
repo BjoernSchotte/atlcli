@@ -514,6 +514,8 @@ export function calloutTable(
     note: { fill: "EAE6FF", accent: "6554C0" },
     warning: { fill: "FFFAE6", accent: "FFAB00" },
     tip: { fill: "E3FCEF", accent: "36B37E" },
+    success: { fill: "E3FCEF", accent: "36B37E" },
+    error: { fill: "FFEBE6", accent: "DE350B" },
     panel: { fill: "F4F5F7", accent: "97A0AF" },
   };
   const c = palette[kind] ?? palette.panel;

@@ -157,6 +157,10 @@ export function createAtlcliTypstTemplate(
   const note = callout("note");
   const warning = callout("warning");
   const tip = callout("tip");
+  // New semantic roles remain backward compatible with existing v1 template
+  // manifests: success inherits tip and error inherits warning when omitted.
+  const success = callouts.success ? callout("success") : tip;
+  const error = callouts.error ? callout("error") : warning;
   const panel = callout("panel");
 
   return String.raw`
@@ -416,6 +420,8 @@ ${headerResolution}
     note: (rgb("${note.bg}"), rgb("${note.fg}")),
     warning: (rgb("${warning.bg}"), rgb("${warning.fg}")),
     tip: (rgb("${tip.bg}"), rgb("${tip.fg}")),
+    success: (rgb("${success.bg}"), rgb("${success.fg}")),
+    error: (rgb("${error.bg}"), rgb("${error.fg}")),
     panel: (rgb("${panel.bg}"), rgb("${panel.fg}")),
   )
   let colors = palette.at(kind, default: palette.panel)

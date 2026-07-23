@@ -17,6 +17,8 @@ describe("ADF browser conformance fixture", () => {
       "paragraph",
       "paragraph",
       "callout",
+      "callout",
+      "callout",
       "list",
       "table",
       "paragraph",
@@ -25,7 +27,7 @@ describe("ADF browser conformance fixture", () => {
       "paragraph",
       "paragraph",
     ]);
-    expect(pdf.blocks[5]).toMatchObject({
+    expect(pdf.blocks[7]).toMatchObject({
       type: "list",
       ordered: true,
       start: 3,
@@ -42,6 +44,8 @@ describe("ADF browser conformance fixture", () => {
       type: "paragraph",
       presentation: { indentation: 2 },
     });
+    expect(pdf.blocks[5]).toMatchObject({ type: "callout", kind: "success" });
+    expect(pdf.blocks[6]).toMatchObject({ type: "callout", kind: "error" });
     expect(pdf.notes.map((note) => note.code)).toContain("adf-media-unresolved");
   });
 });

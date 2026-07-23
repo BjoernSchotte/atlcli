@@ -54,6 +54,26 @@ describe("validateAdf", () => {
       .toBe("invalid-attributes");
   });
 
+  test("accepts every pinned panel type and rejects unknown panel semantics", () => {
+    for (const panelType of ["info", "note", "tip", "warning", "error", "success", "custom"]) {
+      expect(() => validateAdf(doc([{
+        type: "panel",
+        attrs: { panelType },
+        content: [{ type: "paragraph", content: [] }],
+      }]))).not.toThrow();
+    }
+    expect(errorCode(() => validateAdf(doc([{
+      type: "panel",
+      attrs: { panelType: "danger" },
+      content: [{ type: "paragraph", content: [] }],
+    }])))).toBe("invalid-attributes");
+    expect(errorCode(() => validateAdf(doc([{
+      type: "panel",
+      attrs: {},
+      content: [{ type: "paragraph", content: [] }],
+    }])))).toBe("invalid-attributes");
+  });
+
   test("accepts schema-defined block presentation marks and rejects invalid values", () => {
     const paragraph = (marks: unknown[]) => doc([{
       type: "paragraph",

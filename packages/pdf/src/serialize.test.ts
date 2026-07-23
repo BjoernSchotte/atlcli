@@ -95,6 +95,23 @@ describe("PDF preparation and serialization", () => {
     expect(bundle.main).toContain('exported-label: "July 16, 2026"');
   });
 
+  it("preserves success and error callout kinds for the Typst semantic palette", async () => {
+    const { main } = await toMain([
+      {
+        type: "callout",
+        kind: "success",
+        content: [{ type: "paragraph", content: [{ type: "text", text: "Passed" }] }],
+      },
+      {
+        type: "callout",
+        kind: "error",
+        content: [{ type: "paragraph", content: [{ type: "text", text: "Failed" }] }],
+      },
+    ]);
+    expect(main).toContain('#callout(kind: "success"');
+    expect(main).toContain('#callout(kind: "error"');
+  });
+
   it("preserves independent ordered-list starts at every nesting level", async () => {
     const blocks: ExportBlock[] = [
       {

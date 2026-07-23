@@ -1021,6 +1021,8 @@ Completed follow-on evidence recorded on 2026-07-23: ADF block `alignment` (`cen
 
 Completed follow-on evidence recorded on 2026-07-23: ADF paragraph `fontSize: "small"` now survives validation, decoding, composition, DOCX, and PDF through the shared `BlockPresentation` contract. Arbitrary size values fail validation. DOCX writes explicit 18-half-point run sizes; PDF resolves the template-owned `adfSmallText` role with a bounded 9 pt fallback. The packed source fixture and real render goldens prove visibly smaller text in both formats, and the mark row is pinned as native.
 
+Completed follow-on evidence recorded on 2026-07-23: ADF `success` and `error` panels now survive as distinct neutral callout kinds and render with explicit semantic palettes in TypeScript DOCX and Typst/PDF. Validation accepts exactly the seven panel types in the pinned schema and rejects missing or unknown types. Custom panels remain a visible generic panel and now emit an explicit degradation note for their unmodeled color/icon attributes. Existing PDF template-v1 manifests stay compatible by inheriting the `tip` palette for success and `warning` for error when the new optional roles are absent. Focused decoder/renderer tests, the hardcoding ledger, full typecheck, the production browser build and packed 15-case Chromium conformance run passed. Real LibreOffice and Typst/Poppler goldens visibly prove blue information, green success and red error panels without overlap or clipping; a deterministic rerender produced zero pixel difference.
+
 After this migration proves the source boundary, close the gap-analysis backlog in separate feature slices:
 
 1. emoji/custom-emoji assets and a guaranteed DOCX mono font;

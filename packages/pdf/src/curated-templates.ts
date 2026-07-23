@@ -177,6 +177,8 @@ const MANUSCRIPT_DESIGN: WikiPdfTemplateDesignV1 = {
       note: { background: "#EDEAF4", foreground: "#3F317C" },
       warning: { background: "#FBF1E0", foreground: "#8A5218" },
       tip: { background: "#E4F3EC", foreground: "#0B6E4F" },
+      success: { background: "#E4F3EC", foreground: "#0B6E4F" },
+      error: { background: "#FBE8E6", foreground: "#A63A32" },
       panel: { background: "#F2F0EB", foreground: "#48505B" },
     },
     statuses: {

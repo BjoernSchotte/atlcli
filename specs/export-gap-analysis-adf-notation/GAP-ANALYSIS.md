@@ -146,7 +146,7 @@ Evidence: [E10], [E11], [E12].
 |---|---|---|---|---|
 | `layoutSection` | Storage layout wrappers are traversed transparently. | Partial | Partial | Multi-column layout is linearized; section width/layout mode is lost. |
 | `layoutColumn` | Cell content survives in document order. | Partial | Partial | Width and vertical alignment are lost. |
-| `panel` | `info`, `note`, `warning`, `tip`, and generic `panel` become callouts. | Partial | Partial | ADF `error`, `success`, and `custom` semantics plus icon/color attributes are not represented generically. |
+| `panel` | ADF `info`, `note`, `warning`, `tip`, `success`, and `error` remain distinct callout kinds; Storage callouts use the same neutral model. `custom` stays a visible generic panel with a degradation note. | Partial | Partial | Standard success/error semantics and distinct target palettes are native. Custom panel color/icon attributes still need a portable presentation contract. |
 | `expand` | Known macro body is emitted transparently. | Partial | Partial | Title and collapsed/expanded affordance are lost. |
 | `nestedExpand` | No distinct mapping; content may survive transparent descent. | Fallback | Fallback | Preserve title and nesting context; choose a deterministic static disclosure treatment. |
 | `caption` | No native ADF-caption input mapping. Scroll `scroll-title` can attach an exporter caption. | Partial workaround | Partial workaround | Implement native caption node and media association; keep Scroll compatibility as a separate source adapter. |
@@ -441,6 +441,7 @@ Accessed 2026-07-22 and 2026-07-23:
 13. [Forge ADF renderer](https://developer.atlassian.com/platform/forge/ui-kit/components/adf-renderer/)
 14. [Confluence export Word/PDF/HTML/XML](https://support.atlassian.com/confluence-cloud/docs/export-content-to-word-pdf-html-and-xml/)
 15. [Atlassian Design System typography scale](https://atlassian.design/foundations/typography/)
+16. [ADF panel node](https://developer.atlassian.com/cloud/jira/platform/apis/document/nodes/panel/)
 
 ## 15. Repository evidence index
 

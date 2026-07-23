@@ -337,7 +337,7 @@ export interface BulkOperationResult {
 }
 
 // export: CalloutKind
-export type CalloutKind = "info" | "note" | "warning" | "tip" | "panel";
+export type CalloutKind = "info" | "note" | "warning" | "tip" | "success" | "error" | "panel";
 
 // export: canonicalExportNoteCode
 export declare function canonicalExportNoteCode(code: string): ExportNoteCode | undefined;
@@ -2420,7 +2420,7 @@ export interface BulkOperationResult {
 }
 
 // export: CalloutKind
-export type CalloutKind = "info" | "note" | "warning" | "tip" | "panel";
+export type CalloutKind = "info" | "note" | "warning" | "tip" | "success" | "error" | "panel";
 
 // export: canonicalExportNoteCode
 export declare function canonicalExportNoteCode(code: string): ExportNoteCode | undefined;
@@ -4503,7 +4503,7 @@ export interface BulkOperationResult {
 }
 
 // export: CalloutKind
-export type CalloutKind = "info" | "note" | "warning" | "tip" | "panel";
+export type CalloutKind = "info" | "note" | "warning" | "tip" | "success" | "error" | "panel";
 
 // export: canonicalExportNoteCode
 export declare function canonicalExportNoteCode(code: string): ExportNoteCode | undefined;
@@ -6415,7 +6415,7 @@ export interface BulkOperationResult {
 }
 
 // export: CalloutKind
-export type CalloutKind = "info" | "note" | "warning" | "tip" | "panel";
+export type CalloutKind = "info" | "note" | "warning" | "tip" | "success" | "error" | "panel";
 
 // export: canonicalExportNoteCode
 export declare function canonicalExportNoteCode(code: string): ExportNoteCode | undefined;
@@ -9140,7 +9140,7 @@ export interface BulkOperationResult {
 }
 
 // export: CalloutKind
-export type CalloutKind = "info" | "note" | "warning" | "tip" | "panel";
+export type CalloutKind = "info" | "note" | "warning" | "tip" | "success" | "error" | "panel";
 
 // export: canonicalExportNoteCode
 export declare function canonicalExportNoteCode(code: string): ExportNoteCode | undefined;

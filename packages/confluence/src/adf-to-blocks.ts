@@ -305,12 +305,22 @@ function decodeBlockNode(node: AdfNode, ctx: DecodeContext, path: string): Expor
     case "tableCell":
     case "tableHeader":
       return decodeBlockChildren(node.content, ctx, `${path}.content`);
-    case "panel":
+    case "panel": {
+      const type = stringAttr(node, "panelType");
+      if (type === "custom") {
+        addNodeNote(
+          ctx,
+          path,
+          node.type,
+          "custom color and icon attributes were approximated by the generic panel style.",
+        );
+      }
       return [{
         type: "callout",
-        kind: panelKind(stringAttr(node, "panelType")),
+        kind: panelKind(type),
         content: decodeBlockChildren(node.content, ctx, `${path}.content`),
       }];
+    }
     case "expand":
     case "nestedExpand":
       addNodeNote(ctx, path, node.type, "was expanded into a visible panel.");
@@ -784,8 +794,17 @@ function fallbackParagraph(node: AdfNode, label: string): ExportBlock {
   return { type: "paragraph", content: [{ type: "text", text: visible }] };
 }
 
-function panelKind(value: string | undefined): "info" | "note" | "warning" | "tip" | "panel" {
-  return value === "info" || value === "note" || value === "warning" || value === "tip" ? value : "panel";
+function panelKind(
+  value: string | undefined,
+): "info" | "note" | "warning" | "tip" | "success" | "error" | "panel" {
+  return value === "info" ||
+    value === "note" ||
+    value === "warning" ||
+    value === "tip" ||
+    value === "success" ||
+    value === "error"
+    ? value
+    : "panel";
 }
 
 const INLINE_NODE_TYPES = new Set([

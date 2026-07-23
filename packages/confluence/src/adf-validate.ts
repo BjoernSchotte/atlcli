@@ -144,6 +144,24 @@ function validateKnownNodeShape(
       throw new AdfValidationError("invalid-attributes", "ADF task state must be TODO or DONE.", `${path}.attrs.state`);
     }
   }
+  if (type === "panel") {
+    const panelType = attrs?.panelType;
+    if (
+      panelType !== "info" &&
+      panelType !== "note" &&
+      panelType !== "tip" &&
+      panelType !== "warning" &&
+      panelType !== "error" &&
+      panelType !== "success" &&
+      panelType !== "custom"
+    ) {
+      throw new AdfValidationError(
+        "invalid-attributes",
+        "ADF panel type must be info, note, tip, warning, error, success, or custom.",
+        `${path}.attrs.panelType`,
+      );
+    }
+  }
   if (type === "date") assertStringAttribute(attrs, "timestamp", path);
   if (type === "emoji") assertStringAttribute(attrs, "shortName", path);
   if (type === "mention") assertStringAttribute(attrs, "id", path);

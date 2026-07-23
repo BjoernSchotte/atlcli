@@ -143,8 +143,8 @@ export type ImageSource =
    */
   | { kind: "external"; url: string; trust?: "page" | "export-view" };
 
-/** Confluence callout kinds plus the generic titled panel. */
-export type CalloutKind = "info" | "note" | "warning" | "tip" | "panel";
+/** Confluence callout kinds plus the generic/custom titled panel fallback. */
+export type CalloutKind = "info" | "note" | "warning" | "tip" | "success" | "error" | "panel";
 
 /** What a {@link Caption} labels — drives the serializer's numbering prefix (Figure/Table/…). */
 export type CaptionKind = "figure" | "table" | "code" | "equation";
@@ -1636,7 +1636,15 @@ function walkImage(el: XmlElement, ctx: WalkCtx): ExportBlock[] {
 
 // ---- Macros (block) -------------------------------------------------------
 
-const CALLOUT_KINDS = new Set<CalloutKind>(["info", "note", "warning", "tip", "panel"]);
+const CALLOUT_KINDS = new Set<CalloutKind>([
+  "info",
+  "note",
+  "warning",
+  "tip",
+  "success",
+  "error",
+  "panel",
+]);
 
 function walkMacro(el: XmlElement, ctx: WalkCtx): ExportBlock[] {
   const macroName = (el.attrs["ac:name"] ?? "").toLowerCase();
