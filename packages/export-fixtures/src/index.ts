@@ -128,7 +128,17 @@ export const ADF_CONFORMANCE_SOURCE = JSON.stringify({
     {
       type: "paragraph",
       content: [
-        { type: "text", text: "INLINE_TOKEN", marks: [{ type: "code" }] },
+        {
+          type: "text",
+          text: "INLINE_TOKEN",
+          marks: [
+            { type: "code" },
+            {
+              type: "annotation",
+              attrs: { id: "annotation-inline-code", annotationType: "inlineComment" },
+            },
+          ],
+        },
         { type: "text", text: " remains literal; " },
         { type: "emoji", attrs: { shortName: ":warning:", text: "⚠️" } },
         { type: "text", text: " and custom " },
@@ -243,6 +253,10 @@ export const ADF_CONFORMANCE_SOURCE = JSON.stringify({
     },
     {
       type: "table",
+      marks: [{
+        type: "fragment",
+        attrs: { localId: "table-fragment", name: "semantic-table" },
+      }],
       content: [{
         type: "tableRow",
         content: [

@@ -84,6 +84,10 @@ export type InlineNode =
       extensionParams?: MacroParameter[];
       /** Source page of an approximated inline extension. */
       sourcePage?: { id: string; version?: number; spaceKey?: string };
+      /** ADF inline-comment source ranges retained independently of comment bodies. */
+      annotations?: AdfAnnotationIdentity[];
+      /** ADF fragment identities retained without inventing bookmark semantics. */
+      fragments?: AdfFragmentIdentity[];
     }
   | { type: "link"; target: LinkTarget; content: InlineNode[] }
   /**
@@ -222,6 +226,27 @@ export interface AdfExtensionIdentity {
   localId?: string;
 }
 
+/**
+ * Identity of an ADF inline-comment annotation mark.
+ *
+ * The comment body is a separate Confluence resource and is intentionally not
+ * conflated with this source-range identity.
+ */
+export interface AdfAnnotationIdentity {
+  id: string;
+  annotationType: "inlineComment";
+}
+
+/**
+ * Identity of an ADF fragment mark. This stays source metadata until a
+ * documented target bookmark/link policy defines its rendering semantics.
+ */
+export interface AdfFragmentIdentity {
+  localId: string;
+  /** Optional source name, including the schema-valid empty string. */
+  name?: string;
+}
+
 /** Portable identity and fallback provenance for an ADF/Storage emoji node. */
 export interface EmojiSemantics {
   shortName: string;
@@ -280,8 +305,22 @@ export type ExportBlock =
       /** Stable ADF/Storage editor identity when the representation exposes it. */
       localId?: string;
     }
-  | { type: "table"; rows: TableRow[]; columnWidths?: number[]; caption?: Caption }
-  | { type: "image"; source: ImageSource; alt?: string; width?: number; height?: number; caption?: Caption }
+  | {
+      type: "table";
+      rows: TableRow[];
+      columnWidths?: number[];
+      caption?: Caption;
+      fragments?: AdfFragmentIdentity[];
+    }
+  | {
+      type: "image";
+      source: ImageSource;
+      alt?: string;
+      width?: number;
+      height?: number;
+      caption?: Caption;
+      annotations?: AdfAnnotationIdentity[];
+    }
   | { type: "blockquote"; content: ExportBlock[] }
   | { type: "divider" }
   /** A hard page break (`scroll-pagebreak`). Engines render nothing until T1.3/T1.5. */
@@ -311,6 +350,8 @@ export type ExportBlock =
       macroId?: string;
       /** ADF editor-extension identity; never substituted for `macroId`. */
       adfExtension?: AdfExtensionIdentity;
+      /** ADF fragment identities retained without inventing bookmark semantics. */
+      fragments?: AdfFragmentIdentity[];
       /**
        * Notes the scratch walk of `body` produced but did NOT merge into the
        * top-level report — preserved on the block for a later consumer (Lane E,

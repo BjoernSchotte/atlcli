@@ -9,8 +9,10 @@ import type {
 import { DEFAULT_ADF_PARSE_BUDGET } from "./adf-types.js";
 import { validateAdf } from "./adf-validate.js";
 import type {
+  AdfAnnotationIdentity,
   Caption,
   AdfExtensionIdentity,
+  AdfFragmentIdentity,
   BlockPresentation,
   EmojiSemantics,
   ExportBlock,
@@ -393,7 +395,9 @@ function decodeInlineChildren(
 
 function decodeInlineNode(node: AdfNode, ctx: DecodeContext, path: string): InlineNode[] {
   if (node.type !== "text" && node.type !== "emoji" && node.type !== "date" && node.type !== "placeholder") {
-    for (const mark of node.marks ?? []) addMarkNote(ctx, path, mark.type);
+    for (const mark of node.marks ?? []) {
+      if (!markHandledByNode(node.type, mark.type)) addMarkNote(ctx, path, mark.type);
+    }
   }
   switch (node.type) {
     case "text":
@@ -448,6 +452,7 @@ function decodeInlineNode(node: AdfNode, ctx: DecodeContext, path: string): Inli
       addNodeNote(ctx, path, node.type, "was preserved as a visible inline extension label.");
       const extensionKey = stringAttr(node, "extensionKey") ?? "adf-extension";
       const params = extensionParams(node.attrs?.parameters);
+      const fragments = fragmentMarks(node.marks);
       return [{
         type: "text",
         text: extensionLabel(node),
@@ -457,6 +462,7 @@ function decodeInlineNode(node: AdfNode, ctx: DecodeContext, path: string): Inli
           ...(stringAttr(node, "localId") ? { localId: stringAttr(node, "localId") } : {}),
         },
         ...(params.length > 0 ? { extensionParams: params } : {}),
+        ...(fragments.length > 0 ? { fragments } : {}),
         ...(ctx.pageContext ? {
           sourcePage: {
             id: ctx.pageContext.id,
@@ -469,7 +475,11 @@ function decodeInlineNode(node: AdfNode, ctx: DecodeContext, path: string): Inli
     case "mediaInline":
     case "media":
       addMediaNote(ctx, node, path);
-      return [{ type: "text", text: mediaLabel(node) }];
+      return [{
+        type: "text",
+        text: mediaLabel(node),
+        ...annotationFields(node.marks),
+      }];
     case "placeholder":
       addNodeNote(ctx, path, node.type, "was preserved as visible placeholder text.");
       return applyMarks(stringAttr(node, "text") ?? "[Placeholder]", node.marks ?? [], ctx, path);
@@ -493,6 +503,7 @@ function applyMarks(
   let color: string | undefined;
   let backgroundColor: string | undefined;
   let link: string | undefined;
+  const annotations: AdfAnnotationIdentity[] = [];
   for (const mark of sorted) {
     switch (mark.type) {
       case "strong": inlineMarks.add("bold"); break;
@@ -504,6 +515,11 @@ function applyMarks(
       case "textColor": color = normalizeColor(mark.attrs?.color); break;
       case "backgroundColor": backgroundColor = normalizeColor(mark.attrs?.color); break;
       case "link": link ??= stringJson(mark.attrs?.href); break;
+      case "annotation": {
+        const annotation = annotationMark(mark);
+        if (annotation) annotations.push(annotation);
+        break;
+      }
       default: addMarkNote(ctx, path, mark.type); break;
     }
   }
@@ -514,6 +530,7 @@ function applyMarks(
     ...(color ? { color } : {}),
     ...(backgroundColor ? { backgroundColor } : {}),
     ...(emoji ? { emoji } : {}),
+    ...(annotations.length > 0 ? { annotations } : {}),
   };
   if (!link) return [node];
   return wrapLink(link, [node], ctx, path);
@@ -621,10 +638,12 @@ function decodeExtension(node: AdfNode, ctx: DecodeContext, path: string): Expor
     extensionKey,
     ...(stringAttr(node, "localId") ? { localId: stringAttr(node, "localId") } : {}),
   };
+  const fragments = fragmentMarks(node.marks);
   return {
     type: "unknown",
     macroName: extensionKey,
     adfExtension,
+    ...(fragments.length > 0 ? { fragments } : {}),
     ...(params.length > 0 ? { params } : {}),
     ...(body.length > 0 ? { body } : {}),
     ...(bodyNotes.length > 0 ? { bodyNotes } : {}),
@@ -646,6 +665,11 @@ function decodeBlockExportControl(
   const macro = (stringAttr(node, "extensionKey") ?? "").toLowerCase();
   if (macro !== "scroll-only" && macro !== "scroll-ignore") return undefined;
   if (!exportControlKeeps(macro, node, ctx, path)) return { blocks: [] };
+  // Applying a block export-control deliberately removes its extension
+  // wrapper. The neutral model has no invisible wrapper slot on which to keep
+  // that wrapper's fragment mark, so report the residual instead of silently
+  // pretending the identity survived on one arbitrary child.
+  if (fragmentMarks(node.marks).length > 0) addMarkNote(ctx, path, "fragment");
   return { blocks: decodeBlockChildren(node.content, ctx, `${path}.content`) };
 }
 
@@ -657,7 +681,14 @@ function decodeInlineExportControl(
   const macro = (stringAttr(node, "extensionKey") ?? "").toLowerCase();
   if (macro !== "scroll-only-inline" && macro !== "scroll-ignore-inline") return undefined;
   const text = stringAttr(node, "text") ?? descendantText(node);
-  const content = text ? [{ type: "text" as const, text }] : [];
+  const fragments = fragmentMarks(node.marks);
+  const content = text
+    ? [{
+        type: "text" as const,
+        text,
+        ...(fragments.length > 0 ? { fragments } : {}),
+      }]
+    : [];
   return { content: exportControlKeeps(macro, node, ctx, path) ? content : [] };
 }
 
@@ -763,12 +794,20 @@ function decodeMediaBlock(node: AdfNode, ctx: DecodeContext, path: string): Expo
     ...(stringAttr(node, "alt") ? { alt: stringAttr(node, "alt") } : {}),
     ...(width ? { width } : {}),
     ...(height ? { height } : {}),
+    ...annotationFields(node.marks),
   };
 }
 
 function mediaFallbackBlock(node: AdfNode, ctx: DecodeContext, path: string): ExportBlock {
   addMediaNote(ctx, node, path);
-  return { type: "paragraph", content: [{ type: "text", text: mediaLabel(node) }] };
+  return {
+    type: "paragraph",
+    content: [{
+      type: "text",
+      text: mediaLabel(node),
+      ...annotationFields(node.marks),
+    }],
+  };
 }
 
 function addMediaNote(ctx: DecodeContext, node: AdfNode, path: string): void {
@@ -793,7 +832,13 @@ function decodeTable(node: AdfNode, ctx: DecodeContext, path: string): ExportBlo
   if (node.attrs?.layout !== undefined || node.attrs?.width !== undefined || node.attrs?.displayMode !== undefined) {
     addNodeNote(ctx, path, node.type, "layout-only attributes were approximated by the neutral table model.");
   }
-  return { type: "table", rows, ...(hasWidths ? { columnWidths: widths } : {}) };
+  const fragments = fragmentMarks(node.marks);
+  return {
+    type: "table",
+    rows,
+    ...(hasWidths ? { columnWidths: widths } : {}),
+    ...(fragments.length > 0 ? { fragments } : {}),
+  };
 }
 
 function decodeCell(node: AdfNode, ctx: DecodeContext, path: string): TableCell {
@@ -899,7 +944,56 @@ function isInlineNodeType(type: string): boolean {
 
 function noteUnhandledNodeMarks(node: AdfNode, ctx: DecodeContext, path: string): void {
   if (!node.marks || node.type === "text") return;
-  for (const mark of node.marks) addMarkNote(ctx, path, mark.type);
+  for (const mark of node.marks) {
+    if (!markHandledByNode(node.type, mark.type)) addMarkNote(ctx, path, mark.type);
+  }
+}
+
+function markHandledByNode(nodeType: string, markType: string): boolean {
+  if (markType === "annotation") {
+    return nodeType === "media" || nodeType === "mediaInline";
+  }
+  if (markType === "fragment") {
+    return nodeType === "extension" ||
+      nodeType === "bodiedExtension" ||
+      nodeType === "inlineExtension" ||
+      nodeType === "table";
+  }
+  return false;
+}
+
+function annotationMark(mark: AdfMark): AdfAnnotationIdentity | undefined {
+  if (mark.type !== "annotation") return undefined;
+  const id = mark.attrs?.id;
+  return typeof id === "string" && mark.attrs?.annotationType === "inlineComment"
+    ? { id, annotationType: "inlineComment" }
+    : undefined;
+}
+
+function annotationFields(
+  marks: readonly AdfMark[] | undefined,
+): { annotations?: AdfAnnotationIdentity[] } {
+  const annotations = (marks ?? [])
+    .slice()
+    .sort((left, right) => markKey(left).localeCompare(markKey(right)))
+    .map(annotationMark)
+    .filter((value): value is AdfAnnotationIdentity => value !== undefined);
+  return annotations.length > 0 ? { annotations } : {};
+}
+
+function fragmentMarks(marks: readonly AdfMark[] | undefined): AdfFragmentIdentity[] {
+  const fragments: AdfFragmentIdentity[] = [];
+  for (const mark of [...(marks ?? [])].sort((left, right) => markKey(left).localeCompare(markKey(right)))) {
+    if (mark.type !== "fragment") continue;
+    const localId = mark.attrs?.localId;
+    if (typeof localId !== "string" || localId.length === 0) continue;
+    const name = mark.attrs?.name;
+    fragments.push({
+      localId,
+      ...(typeof name === "string" ? { name } : {}),
+    });
+  }
+  return fragments;
 }
 
 function decodeInlineDescendants(

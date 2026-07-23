@@ -125,6 +125,11 @@ Current closed foundations and feature slices:
   targets.
 - [x] Pinned-schema task lists, inline and block task items, nested tasks,
   decision lists/items, local identities, and exact states.
+- [ ] **Partial:** annotation and fragment identities are validated and retained
+  through the neutral model, composition, and packed-browser source resolution;
+  native comments/PDF notes, separately fetched comment bodies, and a documented
+  fragment-to-bookmark policy remain open. Applying a block export-control
+  removes its marked wrapper by design and now emits an explicit residual note.
 
 Current cross-cutting residuals:
 
@@ -295,15 +300,15 @@ This covers all 17 marks in the pinned schema.
 | `backgroundColor` | Span CSS background -> normalized RGB. | Native | Native | ADF disallows some combinations such as code; validate rather than synthesize invalid combinations. |
 | `fontSize` | The schema-defined paragraph value `small` becomes target-neutral block presentation. | Native | Native | Validation rejects other values; DOCX emits explicit 9 pt runs and PDF uses the template's `adfSmallText` role with a safe 9 pt fallback. |
 | `link` | HTML/Confluence link -> typed target. | Partial | Partial | Page/attachment/card links are not uniformly resolvable/clickable; collection/media attributes are lost. |
-| `annotation` | Not modeled. | Missing | Missing | Preserve annotation identity separately from comment-export policy; underlying text must remain. |
+| `annotation` | Required `id` and exact `inlineComment` type are validated and retained on text/media ranges. | Partial | Partial | The underlying content remains visible, but comment bodies are separate Confluence resources and native Word-comment/PDF-note rendering is not implemented. |
 | `alignment` | ADF `center`/`end` becomes target-neutral block presentation on paragraphs/headings. | Native | Native | DOCX emits logical `w:jc`; PDF emits Typst `align`. |
 | `indentation` | ADF levels 1–6 become bounded target-neutral block indentation. | Native | Native | DOCX and PDF use target-owned, deterministic per-level steps distinct from list nesting. |
 | `breakout` | Not modeled. | Missing | Missing | Map wide/full-width intent to page/section/table policy with deterministic static fallback. |
 | `border` | Not modeled. | Missing | Missing | Preserve media border color/size where the target supports it. |
 | `dataConsumer` | Not modeled. | Missing | Missing | Preserve structured data provenance or explicitly report it as non-visual metadata. |
-| `fragment` | Not modeled as an ADF mark. Separate anchor macros exist. | Missing | Missing | Preserve named fragment/local ID and connect it to bookmark/link composition. |
+| `fragment` | Required non-empty `localId` and exact optional `name` are retained on inline/block extensions and tables. | Partial | Partial | Identity survives composition, but it is not reinterpreted as a bookmark until Atlassian semantics and collision/link policy are documented. |
 
-Evidence: [E2], [E5], [E7], [E8], [E20], [E21].
+Evidence: [E2], [E5], [E7], [E8], [E20], [E21], [E26].
 
 ## 8. Editor notation mapping
 
@@ -399,7 +404,7 @@ Required acceptance contract:
 
 - [ ] **Partial — inline code.** Visual treatment, exact token preservation,
   serializer tests, and rendered goldens are complete; guaranteed DOCX
-  monospace embedding and the code-plus-annotation combination remain.
+  monospace embedding and native comment output for code-plus-annotation remain.
 - [ ] **Partial — emoji/custom emoji.** Identity, exact text, deterministic
   fallback, reporting, and both TS engines are complete; authorized custom
   assets and complete font/glyph coverage remain.
@@ -431,8 +436,10 @@ Required acceptance contract:
   visible fallbacks, and export controls are decoded; Forge `adfExport`
   ingestion before HTML fallback remains.
 - [ ] **Open — sync-block snapshot/reference policy.**
-- [ ] **Open — annotation, fragment, data-consumer, and product metadata
-  policy.**
+- [ ] **Partial — annotation and fragment marks.** Exact source identities,
+  validation, composition, and browser parity are complete; comment-resource
+  correlation, native target output, and fragment/bookmark policy remain.
+- [ ] **Open — data-consumer and product metadata policy.**
 - [x] **Schema-drift lane.** The pinned offline contract and non-blocking weekly
   upstream plus observed-product watchguard are complete.
 
@@ -455,6 +462,8 @@ Required acceptance contract:
   remain.
 - [x] Alignment, indentation, and the schema-defined small paragraph font size.
 - [ ] Link/card identity and date semantics.
+- [ ] **Partial:** annotation/fragment identity is retained; native target
+  semantics and comment-resource correlation remain.
 
 ### Phase 2 - Structural fidelity
 
@@ -523,6 +532,10 @@ Closed gates:
   composition, both target markers, real render goldens, and packed browser
   parity.
 - [x] Generic inline-extension placement and visible fallback.
+- [x] Annotation/fragment attribute validation and identity preservation through
+  decoding, composition, coverage classification, and packed-browser
+  direct/background parity, plus explicit reporting when a consumed block
+  export-control wrapper cannot retain its fragment.
 
 Focused missing gates:
 
@@ -532,7 +545,8 @@ Focused missing gates:
 - [ ] Media group/inline/file/video/audio completeness tests.
 - [ ] Native ADF caption/nested-expand tests.
 - [ ] Sync-block snapshot/reference tests.
-- [ ] Annotation/fragment/data-consumer preservation tests.
+- [ ] Native annotation comment-body/target-rendering tests, documented
+  fragment-to-bookmark policy tests, and data-consumer preservation tests.
 - [ ] Broad paired live Confluence ADF-versus-Storage projection fixtures.
 
 At the initial documentation-only analysis baseline, workspace dependencies were not installed and existing tests were inspected rather than freshly executed. Subsequent implementation evidence and current gates are recorded in `PLAN.md`.
@@ -585,6 +599,7 @@ Accessed 2026-07-22 and 2026-07-23:
 - **[E23] Shared emoji semantics, fallbacks, and parity:** `packages/confluence/src/export-blocks.ts:65-96`, `packages/confluence/src/export-blocks.ts:213-219`, `packages/confluence/src/export-blocks.ts:2266-2295`, `packages/confluence/src/adf-to-blocks.ts:394-418`, `packages/confluence/src/adf-to-blocks.test.ts:277-340`, `packages/confluence/src/export-blocks.test.ts:63-115`, `packages/export-fixtures/src/adf-fixtures.test.ts:49-65`, `apps/browser-export-harness/src/adf-source-case.ts:341-353`
 - **[E24] Native task/decision semantics and target proof:** `packages/confluence/src/export-blocks.ts:117-130`, `packages/confluence/src/export-blocks.ts:270-281`, `packages/confluence/src/export-blocks.ts:1480-1507`, `packages/confluence/src/adf-validate.ts:142-159`, `packages/confluence/src/adf-to-blocks.ts:296-311`, `packages/confluence/src/adf-to-blocks.ts:819-872`, `packages/confluence/src/compose-document.ts:628-638`, `packages/docx/src/serialize.ts:872-934`, `packages/pdf/src/serialize.ts:772-797`, `packages/pdf/src/serialize.ts:1039-1074`, `packages/export-fixtures/src/adf-fixtures.test.ts:38-68`, `apps/browser-export-harness/src/adf-source-case.ts:327-332`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
 - **[E25] Nested list parity across both source representations and targets:** `packages/confluence/src/export-blocks.ts:1460-1510`, `packages/confluence/src/adf-to-blocks.ts:270-311`, `packages/confluence/src/adf-to-blocks.ts:819-850`, `packages/confluence/src/page-body.test.ts:18-83`, `packages/confluence/src/compose-document.test.ts:254-350`, `packages/confluence/test-fixtures/adf-pairs/basic.adf.json`, `packages/confluence/test-fixtures/adf-pairs/basic.storage.xml`, `packages/docx/src/numbering.test.ts:190-230`, `packages/pdf/src/serialize.test.ts:129-230`, `packages/pdf/src/serialize.ts:860-870`, `packages/pdf/src/serialize.ts:1037-1074`, `packages/export-fixtures/src/index.ts:177-231`, `apps/browser-export-harness/src/adf-source-case.ts:320-343`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
+- **[E26] Annotation/fragment identity preservation:** `packages/confluence/src/export-blocks.ts:235-248`, `packages/confluence/src/adf-validate.ts:225-247`, `packages/confluence/src/adf-to-blocks.ts:396-535`, `packages/confluence/src/adf-to-blocks.ts:965-999`, `packages/confluence/src/adf-validate.test.ts:139-172`, `packages/confluence/src/adf-to-blocks.test.ts:486-638`, `packages/confluence/src/adf-direct-fixtures.test.ts:143-218`, `packages/confluence/src/compose-document.test.ts:537-580`, `packages/export-fixtures/src/index.ts:128-263`, `packages/export-fixtures/src/adf-fixtures.test.ts:80-114`, `apps/browser-export-harness/src/adf-source-case.ts:315-377`, `apps/browser-export-harness/tests/exports.e2e.ts:90-95`
 
 ## 16. Review questions
 
@@ -592,7 +607,13 @@ Accessed 2026-07-22 and 2026-07-23:
 2. Should direct ADF become the primary Cloud input with Storage retained as a compatibility/fallback adapter, or should both adapters remain first-class and be differentially tested?
 3. **Resolved for this migration:** short-name/text fallback with a typed warning is the portable floor; authorized asset retrieval waits for a documented Atlassian contract.
 4. For cards and embeds, is a stable title + URL representation sufficient for the first fidelity milestone, or are thumbnails/provider metadata required?
-5. Should annotations/comments be exported as Word comments/PDF notes, or only preserved as metadata while the underlying text remains visible?
+5. **Partially resolved for this migration:** annotation/fragment identities are
+   preserved as metadata on retained source positions while underlying content
+   remains visible; a consumed block export-control wrapper is explicitly
+   reported rather than silently reassigned to an arbitrary child.
+   Native Word comments/PDF notes still require a decision plus separately
+   fetched comment bodies; fragment-to-bookmark rendering still requires a
+   documented semantic and collision policy.
 6. **Resolved for tasks and decisions:** target-appropriate open/done task
    markers and a distinct decision marker are the static floor; exact
    identities/states remain in the neutral model and nonstandard decision

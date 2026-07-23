@@ -222,6 +222,27 @@ function validateKnownMarkShape(
       `${path}.attrs.fontSize`,
     );
   }
+  if (type === "annotation") {
+    assertStringAttribute(attrs, "id", path);
+    if (attrs?.annotationType !== "inlineComment") {
+      throw new AdfValidationError(
+        "invalid-attributes",
+        'ADF annotationType must be "inlineComment".',
+        `${path}.attrs.annotationType`,
+      );
+    }
+  }
+  if (type === "fragment") {
+    assertStringAttribute(attrs, "localId", path);
+    if ((attrs?.localId as string).length === 0) {
+      throw new AdfValidationError(
+        "invalid-attributes",
+        "ADF fragment localId must be non-empty.",
+        `${path}.attrs.localId`,
+      );
+    }
+    assertStringAttribute(attrs, "name", path, false);
+  }
   if (type === "link") assertStringAttribute(attrs, "href", path);
   if (type === "textColor" || type === "backgroundColor") {
     assertStringAttribute(attrs, "color", path);

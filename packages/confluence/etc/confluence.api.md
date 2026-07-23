@@ -13,7 +13,7 @@ export declare const ADF_COVERAGE: readonly AdfCoverageRow[];
 // export: ADF_MARK_DECODE_MODES
 export declare const ADF_MARK_DECODE_MODES: Readonly<{
     readonly alignment: "native";
-    readonly annotation: "visible-fallback";
+    readonly annotation: "approximation";
     readonly backgroundColor: "native";
     readonly border: "visible-fallback";
     readonly breakout: "visible-fallback";
@@ -21,7 +21,7 @@ export declare const ADF_MARK_DECODE_MODES: Readonly<{
     readonly dataConsumer: "visible-fallback";
     readonly em: "native";
     readonly fontSize: "native";
-    readonly fragment: "visible-fallback";
+    readonly fragment: "approximation";
     readonly indentation: "native";
     readonly link: "native";
     readonly strike: "native";
@@ -78,6 +78,12 @@ export declare const ADF_NODE_DECODE_MODES: Readonly<{
     readonly text: "native";
 }>;
 
+// export: AdfAnnotationIdentity
+export interface AdfAnnotationIdentity {
+    id: string;
+    annotationType: "inlineComment";
+}
+
 // export: AdfCoverageLevel
 export type AdfCoverageLevel = "native" | "partial" | "fallback" | "missing";
 
@@ -122,6 +128,12 @@ export interface AdfExtensionIdentity {
     extensionType: string;
     extensionKey: string;
     localId?: string;
+}
+
+// export: AdfFragmentIdentity
+export interface AdfFragmentIdentity {
+    localId: string;
+    name?: string;
 }
 
 // export: AdfJsonValue
@@ -1073,6 +1085,7 @@ export type ExportBlock = {
     rows: TableRow[];
     columnWidths?: number[];
     caption?: Caption;
+    fragments?: AdfFragmentIdentity[];
 } | {
     type: "image";
     source: ImageSource;
@@ -1080,6 +1093,7 @@ export type ExportBlock = {
     width?: number;
     height?: number;
     caption?: Caption;
+    annotations?: AdfAnnotationIdentity[];
 } | {
     type: "blockquote";
     content: ExportBlock[];
@@ -1102,6 +1116,7 @@ export type ExportBlock = {
     plainBody?: string;
     macroId?: string;
     adfExtension?: AdfExtensionIdentity;
+    fragments?: AdfFragmentIdentity[];
     bodyNotes?: ExportNote[];
     sourcePage?: {
         id: string;
@@ -1413,6 +1428,8 @@ export type InlineNode = {
         version?: number;
         spaceKey?: string;
     };
+    annotations?: AdfAnnotationIdentity[];
+    fragments?: AdfFragmentIdentity[];
 } | {
     type: "link";
     target: LinkTarget;
@@ -2112,7 +2129,7 @@ export declare const ADF_COVERAGE: readonly AdfCoverageRow[];
 // export: ADF_MARK_DECODE_MODES
 export declare const ADF_MARK_DECODE_MODES: Readonly<{
     readonly alignment: "native";
-    readonly annotation: "visible-fallback";
+    readonly annotation: "approximation";
     readonly backgroundColor: "native";
     readonly border: "visible-fallback";
     readonly breakout: "visible-fallback";
@@ -2120,7 +2137,7 @@ export declare const ADF_MARK_DECODE_MODES: Readonly<{
     readonly dataConsumer: "visible-fallback";
     readonly em: "native";
     readonly fontSize: "native";
-    readonly fragment: "visible-fallback";
+    readonly fragment: "approximation";
     readonly indentation: "native";
     readonly link: "native";
     readonly strike: "native";
@@ -2177,6 +2194,12 @@ export declare const ADF_NODE_DECODE_MODES: Readonly<{
     readonly text: "native";
 }>;
 
+// export: AdfAnnotationIdentity
+export interface AdfAnnotationIdentity {
+    id: string;
+    annotationType: "inlineComment";
+}
+
 // export: AdfCoverageLevel
 export type AdfCoverageLevel = "native" | "partial" | "fallback" | "missing";
 
@@ -2221,6 +2244,12 @@ export interface AdfExtensionIdentity {
     extensionType: string;
     extensionKey: string;
     localId?: string;
+}
+
+// export: AdfFragmentIdentity
+export interface AdfFragmentIdentity {
+    localId: string;
+    name?: string;
 }
 
 // export: AdfJsonValue
@@ -3172,6 +3201,7 @@ export type ExportBlock = {
     rows: TableRow[];
     columnWidths?: number[];
     caption?: Caption;
+    fragments?: AdfFragmentIdentity[];
 } | {
     type: "image";
     source: ImageSource;
@@ -3179,6 +3209,7 @@ export type ExportBlock = {
     width?: number;
     height?: number;
     caption?: Caption;
+    annotations?: AdfAnnotationIdentity[];
 } | {
     type: "blockquote";
     content: ExportBlock[];
@@ -3201,6 +3232,7 @@ export type ExportBlock = {
     plainBody?: string;
     macroId?: string;
     adfExtension?: AdfExtensionIdentity;
+    fragments?: AdfFragmentIdentity[];
     bodyNotes?: ExportNote[];
     sourcePage?: {
         id: string;
@@ -3512,6 +3544,8 @@ export type InlineNode = {
         version?: number;
         spaceKey?: string;
     };
+    annotations?: AdfAnnotationIdentity[];
+    fragments?: AdfFragmentIdentity[];
 } | {
     type: "link";
     target: LinkTarget;
@@ -4211,7 +4245,7 @@ export declare const ADF_COVERAGE: readonly AdfCoverageRow[];
 // export: ADF_MARK_DECODE_MODES
 export declare const ADF_MARK_DECODE_MODES: Readonly<{
     readonly alignment: "native";
-    readonly annotation: "visible-fallback";
+    readonly annotation: "approximation";
     readonly backgroundColor: "native";
     readonly border: "visible-fallback";
     readonly breakout: "visible-fallback";
@@ -4219,7 +4253,7 @@ export declare const ADF_MARK_DECODE_MODES: Readonly<{
     readonly dataConsumer: "visible-fallback";
     readonly em: "native";
     readonly fontSize: "native";
-    readonly fragment: "visible-fallback";
+    readonly fragment: "approximation";
     readonly indentation: "native";
     readonly link: "native";
     readonly strike: "native";
@@ -4276,6 +4310,12 @@ export declare const ADF_NODE_DECODE_MODES: Readonly<{
     readonly text: "native";
 }>;
 
+// export: AdfAnnotationIdentity
+export interface AdfAnnotationIdentity {
+    id: string;
+    annotationType: "inlineComment";
+}
+
 // export: AdfCoverageLevel
 export type AdfCoverageLevel = "native" | "partial" | "fallback" | "missing";
 
@@ -4320,6 +4360,12 @@ export interface AdfExtensionIdentity {
     extensionType: string;
     extensionKey: string;
     localId?: string;
+}
+
+// export: AdfFragmentIdentity
+export interface AdfFragmentIdentity {
+    localId: string;
+    name?: string;
 }
 
 // export: AdfJsonValue
@@ -5271,6 +5317,7 @@ export type ExportBlock = {
     rows: TableRow[];
     columnWidths?: number[];
     caption?: Caption;
+    fragments?: AdfFragmentIdentity[];
 } | {
     type: "image";
     source: ImageSource;
@@ -5278,6 +5325,7 @@ export type ExportBlock = {
     width?: number;
     height?: number;
     caption?: Caption;
+    annotations?: AdfAnnotationIdentity[];
 } | {
     type: "blockquote";
     content: ExportBlock[];
@@ -5300,6 +5348,7 @@ export type ExportBlock = {
     plainBody?: string;
     macroId?: string;
     adfExtension?: AdfExtensionIdentity;
+    fragments?: AdfFragmentIdentity[];
     bodyNotes?: ExportNote[];
     sourcePage?: {
         id: string;
@@ -5611,6 +5660,8 @@ export type InlineNode = {
         version?: number;
         spaceKey?: string;
     };
+    annotations?: AdfAnnotationIdentity[];
+    fragments?: AdfFragmentIdentity[];
 } | {
     type: "link";
     target: LinkTarget;
@@ -6310,11 +6361,23 @@ export type AdapterType = "sqlite" | "postgres" | "json";
 // export: addFrontmatter
 export declare function addFrontmatter(content: string, frontmatter: AtlcliFrontmatter): string;
 
+// export: AdfAnnotationIdentity
+export interface AdfAnnotationIdentity {
+    id: string;
+    annotationType: "inlineComment";
+}
+
 // export: AdfExtensionIdentity
 export interface AdfExtensionIdentity {
     extensionType: string;
     extensionKey: string;
     localId?: string;
+}
+
+// export: AdfFragmentIdentity
+export interface AdfFragmentIdentity {
+    localId: string;
+    name?: string;
 }
 
 // export: AtlcliConfig
@@ -7275,6 +7338,7 @@ export type ExportBlock = {
     rows: TableRow[];
     columnWidths?: number[];
     caption?: Caption;
+    fragments?: AdfFragmentIdentity[];
 } | {
     type: "image";
     source: ImageSource;
@@ -7282,6 +7346,7 @@ export type ExportBlock = {
     width?: number;
     height?: number;
     caption?: Caption;
+    annotations?: AdfAnnotationIdentity[];
 } | {
     type: "blockquote";
     content: ExportBlock[];
@@ -7304,6 +7369,7 @@ export type ExportBlock = {
     plainBody?: string;
     macroId?: string;
     adfExtension?: AdfExtensionIdentity;
+    fragments?: AdfFragmentIdentity[];
     bodyNotes?: ExportNote[];
     sourcePage?: {
         id: string;
@@ -7666,6 +7732,8 @@ export type InlineNode = {
         version?: number;
         spaceKey?: string;
     };
+    annotations?: AdfAnnotationIdentity[];
+    fragments?: AdfFragmentIdentity[];
 } | {
     type: "link";
     target: LinkTarget;
@@ -8880,7 +8948,7 @@ export declare const ADF_COVERAGE: readonly AdfCoverageRow[];
 // export: ADF_MARK_DECODE_MODES
 export declare const ADF_MARK_DECODE_MODES: Readonly<{
     readonly alignment: "native";
-    readonly annotation: "visible-fallback";
+    readonly annotation: "approximation";
     readonly backgroundColor: "native";
     readonly border: "visible-fallback";
     readonly breakout: "visible-fallback";
@@ -8888,7 +8956,7 @@ export declare const ADF_MARK_DECODE_MODES: Readonly<{
     readonly dataConsumer: "visible-fallback";
     readonly em: "native";
     readonly fontSize: "native";
-    readonly fragment: "visible-fallback";
+    readonly fragment: "approximation";
     readonly indentation: "native";
     readonly link: "native";
     readonly strike: "native";
@@ -8945,6 +9013,12 @@ export declare const ADF_NODE_DECODE_MODES: Readonly<{
     readonly text: "native";
 }>;
 
+// export: AdfAnnotationIdentity
+export interface AdfAnnotationIdentity {
+    id: string;
+    annotationType: "inlineComment";
+}
+
 // export: AdfCoverageLevel
 export type AdfCoverageLevel = "native" | "partial" | "fallback" | "missing";
 
@@ -8989,6 +9063,12 @@ export interface AdfExtensionIdentity {
     extensionType: string;
     extensionKey: string;
     localId?: string;
+}
+
+// export: AdfFragmentIdentity
+export interface AdfFragmentIdentity {
+    localId: string;
+    name?: string;
 }
 
 // export: AdfJsonValue
@@ -9940,6 +10020,7 @@ export type ExportBlock = {
     rows: TableRow[];
     columnWidths?: number[];
     caption?: Caption;
+    fragments?: AdfFragmentIdentity[];
 } | {
     type: "image";
     source: ImageSource;
@@ -9947,6 +10028,7 @@ export type ExportBlock = {
     width?: number;
     height?: number;
     caption?: Caption;
+    annotations?: AdfAnnotationIdentity[];
 } | {
     type: "blockquote";
     content: ExportBlock[];
@@ -9969,6 +10051,7 @@ export type ExportBlock = {
     plainBody?: string;
     macroId?: string;
     adfExtension?: AdfExtensionIdentity;
+    fragments?: AdfFragmentIdentity[];
     bodyNotes?: ExportNote[];
     sourcePage?: {
         id: string;
@@ -10280,6 +10363,8 @@ export type InlineNode = {
         version?: number;
         spaceKey?: string;
     };
+    annotations?: AdfAnnotationIdentity[];
+    fragments?: AdfFragmentIdentity[];
 } | {
     type: "link";
     target: LinkTarget;

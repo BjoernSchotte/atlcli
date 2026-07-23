@@ -92,6 +92,7 @@ test("every registered conformance case passes from nested production output", a
   );
   expect(adfSource.pdfJobArtifactAndReportParity).toBe(true);
   expect(adfSource.docxJobArtifactAndReportParity).toBe(true);
+  expect(adfSource.neutralHasAnnotationAndFragmentIdentity).toBe(true);
 
   mkdirSync(dirname(DIGEST_MANIFEST), { recursive: true });
   writeFileSync(DIGEST_MANIFEST, JSON.stringify(digestManifest, null, 2));

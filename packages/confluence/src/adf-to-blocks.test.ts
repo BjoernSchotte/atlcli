@@ -483,6 +483,117 @@ describe("adfToBlocks", () => {
     expect(result.notes).toEqual([]);
   });
 
+  it("preserves annotation and fragment identities without inventing target semantics", () => {
+    const annotation = (id: string) => ({
+      type: "annotation",
+      attrs: { id, annotationType: "inlineComment" },
+    });
+    const fragment = (localId: string, name?: string) => ({
+      type: "fragment",
+      attrs: { localId, ...(name !== undefined ? { name } : {}) },
+    });
+    const result = adfToBlocks(doc([
+      {
+        type: "paragraph",
+        content: [
+          { type: "text", text: "commented", marks: [annotation("")] },
+          {
+            type: "inlineExtension",
+            attrs: { extensionType: "x", extensionKey: "inline", text: "fragmented" },
+            marks: [fragment("inline-fragment", "")],
+          },
+        ],
+      },
+      {
+        type: "extension",
+        attrs: { extensionType: "x", extensionKey: "block" },
+        marks: [fragment("block-fragment", "named")],
+      },
+      {
+        type: "table",
+        marks: [fragment("table-fragment")],
+        content: [{
+          type: "tableRow",
+          content: [{
+            type: "tableCell",
+            attrs: { colspan: 1, rowspan: 1 },
+            content: [{ type: "paragraph", content: [{ type: "text", text: "cell" }] }],
+          }],
+        }],
+      },
+      {
+        type: "media",
+        attrs: { type: "file", id: "resolved-media", alt: "resolved" },
+        marks: [annotation("media-comment")],
+      },
+      {
+        type: "media",
+        attrs: { type: "file", id: "unresolved-media", alt: "unresolved" },
+        marks: [annotation("fallback-comment")],
+      },
+    ]), {
+      resolveMediaAttachment: (reference) =>
+        reference.id === "resolved-media" ? { filename: "resolved.png" } : undefined,
+    });
+
+    expect(result.blocks).toEqual([
+      {
+        type: "paragraph",
+        content: [
+          {
+            type: "text",
+            text: "commented",
+            annotations: [{ id: "", annotationType: "inlineComment" }],
+          },
+          {
+            type: "text",
+            text: "fragmented",
+            adfExtension: { extensionType: "x", extensionKey: "inline" },
+            fragments: [{ localId: "inline-fragment", name: "" }],
+          },
+        ],
+      },
+      {
+        type: "unknown",
+        macroName: "block",
+        adfExtension: { extensionType: "x", extensionKey: "block" },
+        fragments: [{ localId: "block-fragment", name: "named" }],
+      },
+      {
+        type: "table",
+        rows: [{
+          cells: [{
+            header: false,
+            colspan: 1,
+            rowspan: 1,
+            content: [{ type: "paragraph", content: [{ type: "text", text: "cell" }] }],
+          }],
+        }],
+        fragments: [{ localId: "table-fragment" }],
+      },
+      {
+        type: "image",
+        source: { kind: "attachment", filename: "resolved.png" },
+        alt: "resolved",
+        annotations: [{ id: "media-comment", annotationType: "inlineComment" }],
+      },
+      {
+        type: "paragraph",
+        content: [{
+          type: "text",
+          text: "unresolved",
+          annotations: [{ id: "fallback-comment", annotationType: "inlineComment" }],
+        }],
+      },
+    ]);
+    expect(result.notes.filter((note) => note.code === "adf-mark-degraded")).toEqual([]);
+    expect(result.notes.map((note) => note.code)).toEqual([
+      "adf-node-degraded",
+      "adf-node-degraded",
+      "adf-media-unresolved",
+    ]);
+  });
+
   it("builds an exact fileId resolver without guessing from filename or content id", () => {
     const resolve = createAdfMediaAttachmentResolver([
       { fileId: "media-file-id", filename: "diagram.png", pageId: "page-2" },
@@ -599,6 +710,55 @@ describe("adfToBlocks", () => {
       "export-controls-passthrough",
       "export-controls-passthrough",
       "export-controls-passthrough",
+    ]);
+  });
+
+  it("retains inline export-control fragments and reports the block-wrapper residual", () => {
+    const fragment = () => ({
+      type: "fragment",
+      attrs: { localId: "control-fragment", name: "controlled" },
+    });
+    const result = adfToBlocks(doc([
+      {
+        type: "bodiedExtension",
+        attrs: {
+          extensionType: "x",
+          extensionKey: "scroll-only",
+          parameters: { exporter: "word" },
+        },
+        marks: [fragment()],
+        content: [{ type: "paragraph", content: [{ type: "text", text: "block" }] }],
+      },
+      {
+        type: "paragraph",
+        content: [{
+          type: "inlineExtension",
+          attrs: {
+            extensionType: "x",
+            extensionKey: "scroll-only-inline",
+            parameters: { exporter: "word" },
+            text: "inline",
+          },
+          marks: [fragment()],
+        }],
+      },
+    ]), { exporter: "word" });
+
+    expect(result.blocks).toEqual([
+      { type: "paragraph", content: [{ type: "text", text: "block" }] },
+      {
+        type: "paragraph",
+        content: [{
+          type: "text",
+          text: "inline",
+          fragments: [{ localId: "control-fragment", name: "controlled" }],
+        }],
+      },
+    ]);
+    expect(result.notes.map((note) => note.code)).toEqual([
+      "scroll-only-applied",
+      "adf-mark-degraded",
+      "scroll-only-applied",
     ]);
   });
 

@@ -647,6 +647,7 @@ function transformBlock(block: ExportBlock, ctx: EmitCtx): ExportBlock {
         })),
         ...(block.columnWidths !== undefined ? { columnWidths: block.columnWidths } : {}),
         ...(block.caption !== undefined ? { caption: transformCaption(block.caption, ctx) } : {}),
+        ...(block.fragments !== undefined ? { fragments: block.fragments } : {}),
       };
     case "codeBlock":
       // Only the caption carries inline nodes (and thus rewritable links).

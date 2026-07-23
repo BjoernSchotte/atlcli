@@ -167,6 +167,16 @@ const MARK_FIXTURES = Object.fromEntries(PINNED_ADF_MARK_TYPES.map((type) => {
     type,
     type === "alignment" || type === "indentation" || type === "fontSize"
       ? block({ ...paragraph(`mark-${type}`), marks: [mark] })
+      : type === "fragment"
+        ? inline({
+            type: "inlineExtension",
+            attrs: {
+              extensionType: "synthetic",
+              extensionKey: "fragment-fixture",
+              text: "mark-fragment",
+            },
+            marks: [mark],
+          })
       : block(paragraph([text(`mark-${type}`, [mark])])),
   ];
 })) as Record<PinnedAdfMarkType, string>;
@@ -198,6 +208,12 @@ describe("direct ADF decoder fixtures", () => {
       expect(JSON.stringify(result.blocks)).toContain(`mark-${type}`);
       if (ADF_MARK_DECODE_MODES[type] === "visible-fallback") {
         expect(result.notes.some((note) => note.code === "adf-mark-degraded"), `${type} fallback was silent`).toBe(true);
+      }
+      if (type === "annotation") {
+        expect(JSON.stringify(result.blocks)).toContain('"annotations":[{"id":"annotation-1","annotationType":"inlineComment"}]');
+      }
+      if (type === "fragment") {
+        expect(JSON.stringify(result.blocks)).toContain('"fragments":[{"localId":"fragment-1","name":"node-fragment"}]');
       }
       expect(result.notes.every((note) => note.source?.pageId === "fixture-page")).toBe(true);
     });

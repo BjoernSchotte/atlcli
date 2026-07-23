@@ -136,6 +136,38 @@ describe("validateAdf", () => {
     }
   });
 
+  test("validates exact annotation and fragment identity shapes", () => {
+    const markedText = (mark: unknown) => doc([{
+      type: "paragraph",
+      content: [{ type: "text", text: "marked", marks: [mark] }],
+    }]);
+    expect(() => validateAdf(markedText({
+      type: "annotation",
+      attrs: { id: "", annotationType: "inlineComment" },
+    }))).not.toThrow();
+    expect(() => validateAdf(markedText({
+      type: "fragment",
+      attrs: { localId: "fragment-1", name: "" },
+    }))).not.toThrow();
+
+    for (const attrs of [
+      { annotationType: "inlineComment" },
+      { id: "annotation-1" },
+      { id: "annotation-1", annotationType: "unsupported" },
+    ]) {
+      expect(errorCode(() => validateAdf(markedText({ type: "annotation", attrs }))))
+        .toBe("invalid-attributes");
+    }
+    for (const attrs of [
+      {},
+      { localId: "" },
+      { localId: "fragment-1", name: 1 },
+    ]) {
+      expect(errorCode(() => validateAdf(markedText({ type: "fragment", attrs }))))
+        .toBe("invalid-attributes");
+    }
+  });
+
   test("checks UTF-8 input bytes before parsing", () => {
     const raw = JSON.stringify(doc([{ type: "text", text: "🙂" }]));
     expect(errorCode(() => validateAdf(raw, { budget: { maxInputBytes: raw.length } })))

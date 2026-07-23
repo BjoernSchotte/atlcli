@@ -91,6 +91,15 @@ describe("ADF browser conformance fixture", () => {
       content: expect.arrayContaining([
         {
           type: "text",
+          text: "INLINE_TOKEN",
+          marks: ["code"],
+          annotations: [{
+            id: "annotation-inline-code",
+            annotationType: "inlineComment",
+          }],
+        },
+        {
+          type: "text",
           text: ":custom_party:",
           emoji: {
             shortName: ":custom_party:",
@@ -100,6 +109,10 @@ describe("ADF browser conformance fixture", () => {
           },
         },
       ]),
+    });
+    expect(pdf.blocks[11]).toMatchObject({
+      type: "table",
+      fragments: [{ localId: "table-fragment", name: "semantic-table" }],
     });
     expect(pdf.notes.map((note) => note.code)).toContain("emoji-text-fallback");
     expect(pdf.notes.map((note) => note.code)).toContain("adf-media-unresolved");

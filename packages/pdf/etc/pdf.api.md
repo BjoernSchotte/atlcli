@@ -49,6 +49,7 @@ export type ExportBlock = {
     rows: TableRow[];
     columnWidths?: number[];
     caption?: Caption;
+    fragments?: AdfFragmentIdentity[];
 } | {
     type: "image";
     source: ImageSource;
@@ -56,6 +57,7 @@ export type ExportBlock = {
     width?: number;
     height?: number;
     caption?: Caption;
+    annotations?: AdfAnnotationIdentity[];
 } | {
     type: "blockquote";
     content: ExportBlock[];
@@ -78,6 +80,7 @@ export type ExportBlock = {
     plainBody?: string;
     macroId?: string;
     adfExtension?: AdfExtensionIdentity;
+    fragments?: AdfFragmentIdentity[];
     bodyNotes?: ExportNote[];
     sourcePage?: {
         id: string;
@@ -150,6 +153,8 @@ export type InlineNode = {
         version?: number;
         spaceKey?: string;
     };
+    annotations?: AdfAnnotationIdentity[];
+    fragments?: AdfFragmentIdentity[];
 } | {
     type: "link";
     target: LinkTarget;
@@ -765,6 +770,7 @@ export type ExportBlock = {
     rows: TableRow[];
     columnWidths?: number[];
     caption?: Caption;
+    fragments?: AdfFragmentIdentity[];
 } | {
     type: "image";
     source: ImageSource;
@@ -772,6 +778,7 @@ export type ExportBlock = {
     width?: number;
     height?: number;
     caption?: Caption;
+    annotations?: AdfAnnotationIdentity[];
 } | {
     type: "blockquote";
     content: ExportBlock[];
@@ -794,6 +801,7 @@ export type ExportBlock = {
     plainBody?: string;
     macroId?: string;
     adfExtension?: AdfExtensionIdentity;
+    fragments?: AdfFragmentIdentity[];
     bodyNotes?: ExportNote[];
     sourcePage?: {
         id: string;
@@ -866,6 +874,8 @@ export type InlineNode = {
         version?: number;
         spaceKey?: string;
     };
+    annotations?: AdfAnnotationIdentity[];
+    fragments?: AdfFragmentIdentity[];
 } | {
     type: "link";
     target: LinkTarget;
@@ -1481,6 +1491,7 @@ export type ExportBlock = {
     rows: TableRow[];
     columnWidths?: number[];
     caption?: Caption;
+    fragments?: AdfFragmentIdentity[];
 } | {
     type: "image";
     source: ImageSource;
@@ -1488,6 +1499,7 @@ export type ExportBlock = {
     width?: number;
     height?: number;
     caption?: Caption;
+    annotations?: AdfAnnotationIdentity[];
 } | {
     type: "blockquote";
     content: ExportBlock[];
@@ -1510,6 +1522,7 @@ export type ExportBlock = {
     plainBody?: string;
     macroId?: string;
     adfExtension?: AdfExtensionIdentity;
+    fragments?: AdfFragmentIdentity[];
     bodyNotes?: ExportNote[];
     sourcePage?: {
         id: string;
@@ -1582,6 +1595,8 @@ export type InlineNode = {
         version?: number;
         spaceKey?: string;
     };
+    annotations?: AdfAnnotationIdentity[];
+    fragments?: AdfFragmentIdentity[];
 } | {
     type: "link";
     target: LinkTarget;

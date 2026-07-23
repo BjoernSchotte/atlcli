@@ -51,6 +51,7 @@ export interface AdfSourceCaseResult {
   docxHasSmallParagraphText: boolean;
   docxHasNestedListSemantics: boolean;
   docxHasTaskAndDecisionSemantics: boolean;
+  neutralHasAnnotationAndFragmentIdentity: boolean;
   docxHasTable: boolean;
   docxHasCardTitle: boolean;
   docxHasExtensionBody: boolean;
@@ -339,6 +340,9 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
       && documentXml.includes("☑")
       && documentXml.includes("◆")
       && documentXml.includes("Nested task"),
+    neutralHasAnnotationAndFragmentIdentity:
+      JSON.stringify(pdfSource.blocks).includes('"id":"annotation-inline-code","annotationType":"inlineComment"')
+      && JSON.stringify(pdfSource.blocks).includes('"localId":"table-fragment","name":"semantic-table"'),
     docxHasTable: documentXml.includes("<w:tbl"),
     docxHasCardTitle:
       documentXml.includes("Local card title")
@@ -367,6 +371,9 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
   }
   if (!result.pdfJobArtifactAndReportParity || !result.docxJobArtifactAndReportParity) {
     throw new Error("ADF-source direct/background artifact or report parity failed.");
+  }
+  if (!result.neutralHasAnnotationAndFragmentIdentity) {
+    throw new Error("ADF-source annotation or fragment identity was lost in the packed browser.");
   }
   return result;
 }

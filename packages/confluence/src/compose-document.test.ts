@@ -534,6 +534,52 @@ describe("composeChapters — anchor namespacing & link rewrite", () => {
   });
 });
 
+describe("composeChapters — retained ADF mark identities", () => {
+  test("preserves annotation and fragment metadata while rewriting document structure", () => {
+    const source = page("1", "Source", 0, null, "<p>body</p>");
+    source.blocks.push(
+      {
+        type: "paragraph",
+        content: [{
+          type: "text",
+          text: "commented",
+          annotations: [{ id: "comment-1", annotationType: "inlineComment" }],
+        }],
+      },
+      {
+        type: "table",
+        rows: [],
+        fragments: [{ localId: "table-fragment", name: "" }],
+      },
+      {
+        type: "unknown",
+        macroName: "extension",
+        fragments: [{ localId: "extension-fragment", name: "named" }],
+      },
+    );
+
+    const { blocks } = composeChapters([source], { chapterBreak: "none" });
+    expect(blocks).toContainEqual({
+      type: "paragraph",
+      content: [{
+        type: "text",
+        text: "commented",
+        annotations: [{ id: "comment-1", annotationType: "inlineComment" }],
+      }],
+    });
+    expect(blocks).toContainEqual({
+      type: "table",
+      rows: [],
+      fragments: [{ localId: "table-fragment", name: "" }],
+    });
+    expect(blocks).toContainEqual({
+      type: "unknown",
+      macroName: "extension",
+      fragments: [{ localId: "extension-fragment", name: "named" }],
+    });
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Determinism
 // ---------------------------------------------------------------------------
