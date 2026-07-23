@@ -658,6 +658,32 @@ describe("PDF preparation and serialization", () => {
     );
   });
 
+  it("renders exact inline-code tokens through the themed non-block raw chip", async () => {
+    const prepared = await preparePdfDocument(
+      [
+        {
+          type: "paragraph",
+          content: [
+            { type: "text", text: "before " },
+            { type: "text", text: "CONFIG_TOKEN_A", marks: ["code"] },
+            { type: "text", text: " after" },
+          ],
+        },
+      ],
+      {
+        resolve: async () => {
+          throw new Error("unused");
+        },
+      }
+    );
+    const bundle = serializePdfDocument(prepared, { metadata });
+    expect(bundle.main).toContain('#raw("CONFIG_TOKEN_A")');
+    expect(bundle.main).not.toContain("CONFIG TOKEN A");
+    expect(bundle.template).toContain("show raw.where(block: false): it => box(");
+    expect(bundle.template).toContain('fill: rgb("#F4F5F7")');
+    expect(bundle.template).toContain("inset: (x: 0.2em, y: 0.06em)");
+  });
+
   it("maps generated main.typ lines to the most specific nested block", async () => {
     const blocks: ExportBlock[] = [
       {

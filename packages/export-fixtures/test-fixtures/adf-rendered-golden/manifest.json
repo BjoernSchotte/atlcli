@@ -16,7 +16,7 @@
       "pages": [
         {
           "file": "docx-page-1.png",
-          "sha256": "64fab51ed572973f6666f1084ac4292f2fbedc45d915ee19002ef7ec3323bc4c"
+          "sha256": "be496a459d5d7486084766bcb9e45dcd112bbc7853f0efef3d48e8b2c5592676"
         }
       ],
       "requiredText": [
@@ -47,7 +47,7 @@
         },
         {
           "file": "pdf-page-3.png",
-          "sha256": "496bd2a83cb8b6ab6f1af7cfa9c30920ab4535959b2cb7d0930c8302572a8472"
+          "sha256": "eacae2cde3a3e34feef4913c176cebb4d668605fb017dee1ad17479090fa3347"
         },
         {
           "file": "pdf-page-4.png",

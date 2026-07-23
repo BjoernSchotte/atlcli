@@ -220,6 +220,8 @@ export interface SerializeResult {
 
 /** Twips of indent per list nesting level. */
 const INDENT_STEP = 360;
+/** Neutral background used when ADF/Storage code marks carry no explicit fill. */
+const INLINE_CODE_BACKGROUND = "F4F5F7";
 
 // ---------------------------------------------------------------------------
 // Inline
@@ -230,16 +232,17 @@ function styleFromInline(
   defaultTextColor?: string
 ): RunStyle {
   const marks = node.marks ?? [];
+  const code = marks.includes("code");
   return {
     bold: marks.includes("bold"),
     italic: marks.includes("italic"),
-    code: marks.includes("code"),
+    code,
     strike: marks.includes("strike"),
     underline: marks.includes("underline"),
     subscript: marks.includes("subscript"),
     superscript: marks.includes("superscript"),
     color: node.color ?? defaultTextColor,
-    backgroundColor: node.backgroundColor,
+    backgroundColor: node.backgroundColor ?? (code ? INLINE_CODE_BACKGROUND : undefined),
   };
 }
 

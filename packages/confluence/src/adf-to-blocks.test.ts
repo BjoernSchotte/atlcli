@@ -35,7 +35,7 @@ describe("adfToBlocks", () => {
       {
         type: "paragraph",
         content: [
-          { type: "text", text: ":warning: OUTLOOK_MCP_TOKEN `literal` ", marks: [
+          { type: "text", text: ":warning: CONFIG_TOKEN_A `literal` ", marks: [
             { type: "em" },
             { type: "code" },
             { type: "strong" },
@@ -55,7 +55,7 @@ describe("adfToBlocks", () => {
     expect(result.blocks).toEqual([
       { type: "heading", level: 2, content: [{ type: "text", text: "Heading" }] },
       { type: "paragraph", content: [
-        { type: "text", text: ":warning: OUTLOOK_MCP_TOKEN `literal` ", marks: ["bold", "code", "italic"] },
+        { type: "text", text: ":warning: CONFIG_TOKEN_A `literal` ", marks: ["bold", "code", "italic"] },
         { type: "text", text: "colored", marks: ["superscript"], color: "#123456", backgroundColor: "#AABBCC" },
       ] },
       { type: "codeBlock", language: "text", code: "line 1\nline 2\n" },

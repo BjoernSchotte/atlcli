@@ -311,6 +311,12 @@ ${headerResolution}
     set text(font: ${fontStack(F("heading"))}, size: ${rsize("h3")}, weight: "${rweight("h3")}", fill: rgb("${C("heading3")}"))
     block(above: ${L("h3Above")}, below: ${L("h3Below")}, sticky: true, it)
   }
+  show raw.where(block: false): it => box(
+    fill: rgb("${C("codeBackground")}"),
+    inset: (x: 0.2em, y: 0.06em),
+    radius: 2pt,
+    text(font: ${fontStack(F("mono"))}, size: ${rsize("code")}, it),
+  )
   show raw.where(block: true): it => block(
     fill: rgb("${C("codeBackground")}"),
     inset: ${L("codeInset")},

@@ -226,7 +226,7 @@ This covers all 17 marks in the pinned schema.
 | `em` | `<em>`/`<i>` -> `italic`. | Native | Native | Add engine-specific regression assertions. |
 | `underline` | `<u>` -> `underline`. | Native | Native | Add direct ADF fixture. |
 | `strike` | `<s>`/`<del>`/`<strike>` -> `strike`. | Native | Native | Add engine-specific regression assertions. |
-| `code` | `<code>` -> `code`. | **Partial** | **Partial** | Both engines render monospace/raw, but neither automatically applies the expected inline-code background/padding. DOCX sets only run fonts; PDF's styled raw rule applies only to block raw. |
+| `code` | `<code>` -> `code`. | **Partial+** | **Native visual treatment** | DOCX now adds deterministic run shading and preserves explicit source shading; it still names a host font rather than embedding the bundled mono font. PDF renders a theme-colored inline chip with bounded padding/radius and the bundled mono font. Both retain exact token text. |
 | `subsup` | `<sub>`/`<sup>` -> separate sub/sup marks. | Native | Native | Preserve ADF enum exactly and test combinations. |
 | `textColor` | Span CSS color -> normalized RGB. | Native | Native | Theme-token mapping is intentionally flattened to static print color; add contrast policy. |
 | `backgroundColor` | Span CSS background -> normalized RGB. | Native | Native | ADF disallows some combinations such as code; validate rather than synthesize invalid combinations. |
@@ -251,7 +251,7 @@ Official Confluence documentation describes these input shortcuts. They are edit
 | `**Bold**` | `strong` | Native after Confluence materializes it. | ADF + live Storage fixture. |
 | `*Italic*` | `em` | Native after materialization. | ADF + live Storage fixture. |
 | `~~Strike~~` | `strike` | Native after materialization. | ADF + live Storage fixture. |
-| Backtick-delimited text | `text` + `code` mark | Semantics partial; visual treatment incomplete. | Preserve underscores/spaces exactly; assert gray background, mono font, adjacency, escaping, links/annotations. |
+| Backtick-delimited text | `text` + `code` mark | Exact text plus a distinct inline-code chip in both targets; DOCX font embedding remains open. | Preserve underscores/spaces exactly; assert gray background, mono font, adjacency, escaping, links/annotations. |
 | `# ` … `###### ` | `heading.level` | Native after materialization. | H1-H6 corpus plus composed-export level policy. |
 | `1. ` | `orderedList` | Partial. | Preserve non-1 start/order and nested restart semantics. |
 | `* ` | `bulletList` | Native. | Mixed nested ordered/unordered corpus. |
@@ -272,23 +272,24 @@ Official Confluence documentation describes these input shortcuts. They are edit
 
 ## 9. Two high-signal visual gaps
 
-### 9.1 Inline code
+### 9.1 Inline code — visual gap closed, DOCX font embedding remains
 
-Current shared parsing correctly distinguishes inline code from a code block. The renderers do not yet reproduce a visually distinct inline-code chip:
+The shared parser distinguishes inline code from code blocks and both targets now reproduce the visible inline-code treatment:
 
-- DOCX sets a monospace run font but no automatic run shading.
-- PDF emits inline Typst `raw(...)`, while the template's background/inset/radius rule is scoped to `raw.where(block: true)`.
-- Existing background-color support does not solve this: ADF inline code is a `code` mark and is not expected to carry an additional background-color mark.
-- There is no focused DOCX/PDF regression test that pins inline-code shading, padding, and adjacent text behavior.
+- DOCX emits a monospace run with deterministic `w:shd` background. An explicit neutral-model background still overrides the default rather than creating nested fills.
+- PDF applies a non-block `raw` rule with the resolved template's code background, bounded horizontal/vertical inset, radius, bundled mono font, and code size. Block raw retains its separate full-width rule.
+- Focused semantic tests pin underscores, exact token text, surrounding prose, default fill, and source-fill precedence.
+- The synthetic ADF feature-zoo references were regenerated through real DOCX/LibreOffice and Typst/PDF/Poppler rendering. All pages were visually inspected without clipping, overlap, missing glyphs, or broken wrapping.
 
 Required acceptance contract:
 
-- monospace bundled font, not a host-dependent default;
-- subtle theme-controlled background;
-- predictable horizontal padding where the target format allows it;
-- exact preservation of underscores, token-like identifiers, whitespace, punctuation, and adjacent line wrapping;
-- safe combinations with link and annotation per the pinned schema;
-- separate tests for inline code and block code.
+- [ ] Embed or otherwise guarantee the DOCX mono font instead of relying on the recipient's host-font substitution.
+- [x] Use the bundled mono font in PDF.
+- [x] Apply a subtle target-appropriate background.
+- [x] Add predictable horizontal padding where the target format allows it.
+- [x] Preserve underscores, token-like identifiers, whitespace, punctuation, and adjacent line wrapping.
+- [ ] Close annotation export before claiming the pinned code+annotation combination.
+- [x] Keep separate regression coverage for inline code and block code.
 
 ### 9.2 Emoji and emoticons
 
@@ -323,7 +324,7 @@ Required acceptance contract:
 
 ### P1 - Close user-visible core gaps
 
-6. Inline-code visual treatment and regression goldens.
+6. **Completed except DOCX font embedding:** inline-code visual treatment and regression goldens.
 7. Emoji/custom-emoji semantics, asset fallback, and font/glyph coverage.
 8. Paragraph/heading alignment, indentation, and font size.
 9. Decisions and full task semantics.
@@ -407,7 +408,6 @@ Focused missing gates include:
 - schema-derived enumeration asserting all 43 nodes and 17 marks are classified;
 - direct ADF-to-model fixtures;
 - emoji/emoticon walker and both-engine render tests;
-- inline-code DOCX and PDF visual/semantic tests;
 - date localization tests;
 - decision list/item tests;
 - ordered-list non-1 start tests;

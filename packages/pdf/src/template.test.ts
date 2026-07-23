@@ -70,6 +70,13 @@ describe("atlcli Typst template settings rendering", () => {
     expect(template).toContain('info: (rgb("#DEEBFF"), rgb("#0747A6"))');
   });
 
+  it("styles inline raw separately from block code with the theme background", () => {
+    expect(template).toContain("show raw.where(block: false): it => box(");
+    expect(template).toContain('fill: rgb("#F4F5F7")');
+    expect(template).toContain("inset: (x: 0.2em, y: 0.06em)");
+    expect(template).toContain("show raw.where(block: true): it => block(");
+  });
+
   it("contains no unescaped template-literal leftovers", () => {
     expect(template).not.toContain("${");
   });

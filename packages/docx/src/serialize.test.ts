@@ -37,6 +37,35 @@ describe("serializeInline", () => {
     expect(xml).toContain("<w:br/>");
   });
 
+  it("renders inline code as an exact monospace token with default shading", () => {
+    const xml = serializeInline([
+      { type: "text", text: "before " },
+      { type: "text", text: "CONFIG_TOKEN_A", marks: ["code"] },
+      { type: "text", text: " after" },
+    ]);
+    expect(xml).toContain(
+      '<w:rFonts w:ascii="Consolas" w:hAnsi="Consolas" w:cs="Consolas"/>'
+    );
+    expect(xml).toContain(
+      '<w:shd w:val="clear" w:color="auto" w:fill="F4F5F7"/>'
+    );
+    expect(xml).toContain(">CONFIG_TOKEN_A</w:t>");
+    expect(xml).not.toContain("CONFIG TOKEN A");
+  });
+
+  it("lets an explicit source highlight override the inline-code default", () => {
+    const xml = serializeInline([
+      {
+        type: "text",
+        text: "code",
+        marks: ["code"],
+        backgroundColor: "#BAF3DB",
+      },
+    ]);
+    expect(xml).toContain('w:fill="BAF3DB"');
+    expect(xml).not.toContain('w:fill="F4F5F7"');
+  });
+
   it("renders an external link as a HYPERLINK field", () => {
     const xml = serializeInline([
       { type: "link", target: { kind: "external", href: "https://x.com" }, content: [{ type: "text", text: "site" }] },

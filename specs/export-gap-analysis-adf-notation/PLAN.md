@@ -1003,9 +1003,11 @@ Rollback switches only the source adapter to Storage-primary. It must not bypass
 
 ## 13. Follow-on work, deliberately not hidden in this plan
 
+Completed follow-on evidence recorded on 2026-07-23: inline code now has deterministic DOCX run shading and a theme-colored PDF inline chip with bounded inset/radius. Exact synthetic underscore tokens remain unchanged, explicit DOCX source shading wins over the default, and block-code styling remains separate. Focused DOCX/PDF semantic tests passed. The ADF feature zoo was regenerated through the real DOCX/LibreOffice and Typst/PDF/Poppler stacks; one DOCX page and all four PDF pages were visually inspected without clipping, overlap, broken wrapping or missing glyphs. PDF uses the bundled mono font; embedding or otherwise guaranteeing the DOCX mono font remains an explicit residual gap.
+
 After this migration proves the source boundary, close the gap-analysis backlog in separate feature slices:
 
-1. inline-code visual treatment and emoji/custom-emoji assets;
+1. emoji/custom-emoji assets and a guaranteed DOCX mono font;
 2. paragraph alignment, indentation, font size, annotation, and fragment marks;
 3. decisions, block tasks, ordered-list starts, and richer task metadata;
 4. table layout/display/number-column/vertical-alignment attributes;
