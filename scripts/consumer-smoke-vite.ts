@@ -254,9 +254,6 @@ export async function runViteSmoke(baseDir?: string): Promise<ViteSmokeResult> {
   if (wasmAssets.length !== 1) {
     throw new Error(`expected exactly one hashed .wasm asset, found: ${wasmAssets.join(", ")}`);
   }
-  if (ttfAssets.length !== 10) {
-    throw new Error(`expected 10 hashed .ttf assets, found ${ttfAssets.length}: ${ttfAssets.join(", ")}`);
-  }
 
   const javaScriptAssets = assets.filter((asset) => asset.endsWith(".js"));
   const chunkName = javaScriptAssets.find((asset) =>
@@ -303,6 +300,12 @@ export async function runViteSmoke(baseDir?: string): Promise<ViteSmokeResult> {
   if (!hook.jobsEntrypointLoaded) {
     throw new Error(
       "packed @atlcli/export-wiring/jobs did not expose both PDF and TypeScript DOCX executors",
+    );
+  }
+  if (ttfAssets.length !== hook.expectedFonts.length) {
+    throw new Error(
+      `expected ${hook.expectedFonts.length} hashed .ttf assets from PDF_RUNTIME_ASSETS, ` +
+      `found ${ttfAssets.length}: ${ttfAssets.join(", ")}`,
     );
   }
 
