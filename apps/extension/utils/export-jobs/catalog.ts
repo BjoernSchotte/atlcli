@@ -221,6 +221,10 @@ function initialSnapshot(
     attempt: 0,
     recoveryCount: 0,
     leaseEpoch: 0,
+    // The accepted durable request is the first safe recovery boundary. An
+    // offscreen context may disappear immediately after claiming the job,
+    // before an engine publishes a more specific checkpoint.
+    checkpointRef: requestRef(request),
     stats: emptyStats(),
     createdAt: request.createdAt,
     ...(derivedFrom ? { derivedFrom } : {}),

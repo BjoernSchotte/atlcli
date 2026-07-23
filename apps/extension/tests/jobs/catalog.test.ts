@@ -158,6 +158,29 @@ describe("IndexedDbExportJobCatalog", () => {
     })).rejects.toMatchObject({ code: "revision-conflict" });
   });
 
+  it("replays from the durable request when the owner dies immediately after claim", async () => {
+    let now = 10;
+    const store = new IndexedDbExportJobCatalog({ factory, now: () => now });
+    const queued = await store.create({ request: request("job-request-checkpoint") });
+    expect(queued.checkpointRef).toBe(queued.requestRef);
+    await store.claimNext({ ownerId: "runner-a", now, leaseDurationMs: 10 });
+
+    now = 21;
+    const recovered = await recoverAndClaimExtensionExportJob(store, {
+      now,
+      ownerId: "runner-b",
+      leaseDurationMs: 10,
+    });
+
+    expect(recovered).toMatchObject({
+      id: "job-request-checkpoint",
+      state: "running",
+      leaseEpoch: 2,
+      recoveryCount: 1,
+      checkpointRef: "request:job-request-checkpoint",
+    });
+  });
+
   it("commits job metadata and its staged IDB artifact atomically", async () => {
     const catalog = new IndexedDbExportJobCatalog({ factory, now: () => 10 });
     const artifacts = new IndexedDbExportByteStore({ factory, now: () => 10, randomUUID: () => "artifact-id" });
