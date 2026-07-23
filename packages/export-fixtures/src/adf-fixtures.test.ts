@@ -29,11 +29,13 @@ describe("ADF browser conformance fixture", () => {
       "unknown",
       "mediaFallback",
     ]);
+    expect(pdf.blocks[0]).toMatchObject({ type: "heading", localId: "heading-local" });
+    expect(pdf.blocks[1]).toMatchObject({ type: "paragraph", localId: "paragraph-local" });
     expect(pdf.blocks[7]).toMatchObject({
       type: "list",
       ordered: true,
       start: 3,
-      items: [{ content: [
+      items: [{ localId: "ordered-item-local", content: [
         { type: "paragraph" },
         { type: "list", ordered: true, start: 8 },
       ] }],
@@ -42,6 +44,7 @@ describe("ADF browser conformance fixture", () => {
       type: "list",
       ordered: false,
       items: [{
+        localId: "bullet-item-local",
         content: [
           { type: "paragraph" },
           { type: "list", ordered: false },

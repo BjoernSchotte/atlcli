@@ -276,7 +276,14 @@ function decodeBlockNode(node: AdfNode, ctx: DecodeContext, path: string): Expor
       // authored empty ADF paragraph remains representable.
       return content.length === 0 && (node.content?.length ?? 0) > 0
         ? []
-        : [{ type: "paragraph", content, ...(presentation ? { presentation } : {}) }];
+        : [{
+            type: "paragraph",
+            content,
+            ...(presentation ? { presentation } : {}),
+            ...(optionalStringAttr(node, "localId") !== undefined
+              ? { localId: optionalStringAttr(node, "localId") }
+              : {}),
+          }];
     }
     case "heading":
       return [{
@@ -284,6 +291,9 @@ function decodeBlockNode(node: AdfNode, ctx: DecodeContext, path: string): Expor
         level: numberInRange(node.attrs?.level, 1, 6, 1) as 1 | 2 | 3 | 4 | 5 | 6,
         content: decodeInlineChildren(node.content, ctx, `${path}.content`),
         ...(presentation ? { presentation } : {}),
+        ...(optionalStringAttr(node, "localId") !== undefined
+          ? { localId: optionalStringAttr(node, "localId") }
+          : {}),
       }];
     case "codeBlock":
       return [{
@@ -1015,6 +1025,9 @@ function decodeCell(node: AdfNode, ctx: DecodeContext, path: string): TableCell 
 function decodeListItems(node: AdfNode, ctx: DecodeContext, path: string) {
   return (node.content ?? []).map((item, index) => ({
     content: decodeBlockChildren(item.content, ctx, `${path}.items[${index}].content`),
+    ...(optionalStringAttr(item, "localId") !== undefined
+      ? { localId: optionalStringAttr(item, "localId") }
+      : {}),
   }));
 }
 

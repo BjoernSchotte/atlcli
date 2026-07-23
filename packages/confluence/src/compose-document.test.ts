@@ -751,6 +751,55 @@ describe("composeChapters — retained ADF mark identities", () => {
       }],
     });
   });
+
+  test("preserves paragraph, heading, and ordinary-list-item identities through composition", () => {
+    const source = page("identity-page", "Identity", 0, null, "<p>unused</p>");
+    source.blocks = [
+      {
+        type: "heading",
+        level: 2,
+        localId: "heading-local",
+        content: [{ type: "text", text: "Heading" }],
+      },
+      {
+        type: "paragraph",
+        localId: "",
+        content: [{ type: "text", text: "Paragraph" }],
+      },
+      {
+        type: "list",
+        ordered: false,
+        items: [{
+          localId: "item-local",
+          content: [{
+            type: "paragraph",
+            localId: "item-paragraph-local",
+            content: [{ type: "text", text: "Item" }],
+          }],
+        }],
+      },
+    ];
+
+    const { blocks } = composeChapters([source], { chapterBreak: "none" });
+    expect(blocks.find(
+      (block) => block.type === "heading" && block.localId === "heading-local"
+    )).toBeDefined();
+    expect(blocks.find(
+      (block) => block.type === "paragraph" && block.localId === ""
+    )).toBeDefined();
+    expect(blocks.find(
+      (block) => block.type === "list"
+    )).toMatchObject({
+      type: "list",
+      items: [{
+        localId: "item-local",
+        content: [{
+          type: "paragraph",
+          localId: "item-paragraph-local",
+        }],
+      }],
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------

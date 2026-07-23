@@ -46,6 +46,29 @@ describe("validateAdf", () => {
     expect(errorCode(() => validateAdf(doc([{ type: "text", text: "x", marks: [{ type: "subsup", attrs: { type: "sideways" } }] }])))).toBe("invalid-attributes");
   });
 
+  test("validates optional paragraph, heading, and ordinary-list-item identities", () => {
+    expect(() => validateAdf(doc([
+      { type: "heading", attrs: { level: 2, localId: "" }, content: [] },
+      { type: "paragraph", attrs: { localId: "paragraph-1" }, content: [] },
+      {
+        type: "bulletList",
+        content: [{
+          type: "listItem",
+          attrs: { localId: "item-1" },
+          content: [{ type: "paragraph", content: [] }],
+        }],
+      },
+    ]))).not.toThrow();
+
+    for (const node of [
+      { type: "heading", attrs: { level: 2, localId: 1 }, content: [] },
+      { type: "paragraph", attrs: { localId: 1 }, content: [] },
+      { type: "listItem", attrs: { localId: 1 }, content: [] },
+    ]) {
+      expect(errorCode(() => validateAdf(doc([node])))).toBe("invalid-attributes");
+    }
+  });
+
   test("validates exact date, status, and placeholder attribute contracts", () => {
     expect(() => validateAdf(doc([{
       type: "paragraph",

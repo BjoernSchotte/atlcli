@@ -51,6 +51,7 @@ export interface AdfSourceCaseResult {
   docxHasSmallParagraphText: boolean;
   docxHasNestedListSemantics: boolean;
   docxHasTaskAndDecisionSemantics: boolean;
+  neutralHasBlockLocalIdentities: boolean;
   neutralHasDateStatusPlaceholderSemantics: boolean;
   neutralHasAnnotationAndFragmentIdentity: boolean;
   neutralHasTablePresentation: boolean;
@@ -352,6 +353,11 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
       && documentXml.includes("☑")
       && documentXml.includes("◆")
       && documentXml.includes("Nested task"),
+    neutralHasBlockLocalIdentities:
+      JSON.stringify(pdfSource.blocks).includes('"localId":"heading-local"')
+      && JSON.stringify(pdfSource.blocks).includes('"localId":"paragraph-local"')
+      && JSON.stringify(pdfSource.blocks).includes('"localId":"ordered-item-local"')
+      && JSON.stringify(pdfSource.blocks).includes('"localId":"bullet-item-local"'),
     neutralHasDateStatusPlaceholderSemantics:
       JSON.stringify(pdfSource.blocks).includes(
         '"type":"date","timestamp":"1709510400000","localId":"date-local"',
@@ -457,6 +463,9 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
   }
   if (!result.neutralHasAnnotationAndFragmentIdentity) {
     throw new Error("ADF-source annotation or fragment identity was lost in the packed browser.");
+  }
+  if (!result.neutralHasBlockLocalIdentities) {
+    throw new Error("ADF-source paragraph, heading, or list-item identity was lost in the packed browser.");
   }
   if (!result.neutralHasDateStatusPlaceholderSemantics) {
     throw new Error("ADF-source date, status, or placeholder semantics were lost in the packed browser.");

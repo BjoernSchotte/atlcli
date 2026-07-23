@@ -32,9 +32,14 @@ describe("adfToBlocks", () => {
 
   it("preserves headings, nested marks, literal shorthand, code identifiers, and final newlines", () => {
     const result = adfToBlocks(doc([
-      { type: "heading", attrs: { level: 2 }, content: [{ type: "text", text: "Heading" }] },
+      {
+        type: "heading",
+        attrs: { level: 2, localId: "heading-1" },
+        content: [{ type: "text", text: "Heading" }],
+      },
       {
         type: "paragraph",
+        attrs: { localId: "" },
         content: [
           { type: "text", text: ":warning: CONFIG_TOKEN_A `literal` ", marks: [
             { type: "em" },
@@ -54,8 +59,13 @@ describe("adfToBlocks", () => {
     expect(result.representation).toBe("atlas_doc_format");
     expect(result.degraded).toBeUndefined();
     expect(result.blocks).toEqual([
-      { type: "heading", level: 2, content: [{ type: "text", text: "Heading" }] },
-      { type: "paragraph", content: [
+      {
+        type: "heading",
+        level: 2,
+        localId: "heading-1",
+        content: [{ type: "text", text: "Heading" }],
+      },
+      { type: "paragraph", localId: "", content: [
         { type: "text", text: ":warning: CONFIG_TOKEN_A `literal` ", marks: ["bold", "code", "italic"] },
         { type: "text", text: "colored", marks: ["superscript"], color: "#123456", backgroundColor: "#AABBCC" },
       ] },
@@ -71,6 +81,7 @@ describe("adfToBlocks", () => {
         attrs: { order: 3 },
         content: [{
           type: "listItem",
+          attrs: { localId: "ordinary-item-1" },
           content: [
             { type: "paragraph", content: [{ type: "text", text: "first" }] },
             { type: "bulletList", content: [{ type: "listItem", content: [{ type: "paragraph", content: [{ type: "text", text: "nested" }] }] }] },
@@ -113,7 +124,7 @@ describe("adfToBlocks", () => {
       type: "list",
       ordered: true,
       start: 3,
-      items: [{ content: [
+      items: [{ localId: "ordinary-item-1", content: [
         { type: "paragraph", content: [{ type: "text", text: "first" }] },
         { type: "list", ordered: false },
       ] }],

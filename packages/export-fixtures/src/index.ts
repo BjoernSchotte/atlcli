@@ -122,11 +122,12 @@ export const ADF_CONFORMANCE_SOURCE = JSON.stringify({
   content: [
     {
       type: "heading",
-      attrs: { level: 1 },
+      attrs: { level: 1, localId: "heading-local" },
       content: [{ type: "text", text: "ADF browser conformance" }],
     },
     {
       type: "paragraph",
+      attrs: { localId: "paragraph-local" },
       content: [
         {
           type: "text",
@@ -198,6 +199,7 @@ export const ADF_CONFORMANCE_SOURCE = JSON.stringify({
       attrs: { order: 3 },
       content: [{
         type: "listItem",
+        attrs: { localId: "ordered-item-local" },
         content: [
           { type: "paragraph", content: [{ type: "text", text: "Third item" }] },
           {
@@ -215,6 +217,7 @@ export const ADF_CONFORMANCE_SOURCE = JSON.stringify({
       type: "bulletList",
       content: [{
         type: "listItem",
+        attrs: { localId: "bullet-item-local" },
         content: [
           { type: "paragraph", content: [{ type: "text", text: "Bullet parent" }] },
           {

@@ -4,11 +4,12 @@
   "content": [
     {
       "type": "heading",
-      "attrs": { "level": 2 },
+      "attrs": { "level": 2, "localId": "paired-heading" },
       "content": [{ "type": "text", "text": "Paired fixture" }]
     },
     {
       "type": "paragraph",
+      "attrs": { "localId": "paired-paragraph" },
       "content": [
         { "type": "text", "text": "Bold", "marks": [{ "type": "strong" }] },
         { "type": "text", "text": " and " },
@@ -25,6 +26,7 @@
       "type": "bulletList",
       "content": [{
         "type": "listItem",
+        "attrs": { "localId": "paired-bullet-item" },
         "content": [
           { "type": "paragraph", "content": [{ "type": "text", "text": "Bullet" }] },
           {

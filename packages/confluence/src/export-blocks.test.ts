@@ -43,6 +43,41 @@ describe("storageToBlocks — headings", () => {
       ],
     });
   });
+
+  test("retains heading, paragraph, and ordinary-list-item local identities", () => {
+    const result = storageToBlocks(
+      '<h2 local-id="heading-1">Heading</h2>' +
+        '<p ac:local-id="">Paragraph</p>' +
+        '<ul><li local-id="item-1"><p>Item</p></li></ul>'
+    );
+    expect(result).toEqual({
+      blocks: [
+        {
+          type: "heading",
+          level: 2,
+          localId: "heading-1",
+          content: [{ type: "text", text: "Heading" }],
+        },
+        {
+          type: "paragraph",
+          localId: "",
+          content: [{ type: "text", text: "Paragraph" }],
+        },
+        {
+          type: "list",
+          ordered: false,
+          items: [{
+            localId: "item-1",
+            content: [{
+              type: "paragraph",
+              content: [{ type: "text", text: "Item" }],
+            }],
+          }],
+        },
+      ],
+      notes: [],
+    });
+  });
 });
 
 describe("storageToBlocks — paragraphs & marks", () => {
@@ -536,10 +571,10 @@ describe("storageToBlocks — tables", () => {
     expect(table.rows).toHaveLength(2);
     expect(table.rows[0].cells.every((c) => c.header)).toBe(true);
     expect(table.rows[0].cells[0].content).toEqual([
-      { type: "paragraph", content: [{ type: "text", text: "Name" }] },
+      { type: "paragraph", localId: "a1", content: [{ type: "text", text: "Name" }] },
     ]);
     expect(table.rows[1].cells[1].content).toEqual([
-      { type: "paragraph", content: [{ type: "text", text: "Engineer" }] },
+      { type: "paragraph", localId: "b2", content: [{ type: "text", text: "Engineer" }] },
     ]);
   });
 

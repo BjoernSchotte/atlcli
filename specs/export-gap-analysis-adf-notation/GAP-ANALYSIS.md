@@ -140,6 +140,10 @@ Current closed foundations and feature slices:
   status, and placeholder forms map to the same contract; both targets localize
   dates in UTC, preserve status style/color semantics, and hide editor-only
   placeholder text.
+- [x] Paragraph, heading, and ordinary list-item local identities survive
+  validation, direct ADF and available Storage forms, composition, both
+  renderer inputs, and packed direct/background source resolution without
+  changing visible output.
 - [ ] **Open:** `breakout` intent is retained on ADF layout sections and
   explicitly reported as page-bounded; breakout on other schema-valid block
   types and true wide/full-width section geometry remain open.
@@ -190,8 +194,8 @@ plus the distinct Storage/export-view compatibility adapters.
 | Done | ADF node | Current source mapping | DOCX | PDF | Primary gap |
 |---|---|---|---|---|---|
 | [x] | `doc` | Cloud ADF version 1 is bounded and validated before decoding; Storage remains a separate compatibility adapter. | N/A | N/A | Native source contract is complete; observed-product corpus breadth remains tracked separately. |
-| [ ] | `paragraph` | `<p>` or loose inline content becomes a typed paragraph; direct ADF additionally retains logical alignment, indentation, and the schema-defined `small` font size. | Native subset | Native subset | **Open:** preserve the pinned local identity instead of dropping it. |
-| [ ] | `heading` | `<h1>`…`<h6>` retains level and inline content; direct ADF additionally retains logical alignment and indentation. | Native subset | Native subset | **Open:** preserve the pinned local identity. Composed level rebasing remains an explicit document policy. |
+| [x] | `paragraph` | `<p>` or loose inline content becomes a typed paragraph; direct ADF additionally retains local identity, logical alignment, indentation, and the schema-defined `small` font size. Storage paragraph identity is retained when the wrapper maps to one semantic paragraph. | Native | Native | Closed for the pinned schema; local identity remains non-visual metadata by design. |
+| [x] | `heading` | `<h1>`…`<h6>` retains level, inline content, and local identity; direct ADF additionally retains logical alignment and indentation. | Native | Native | Closed for the pinned schema. Composed level rebasing remains an explicit document policy and does not discard source identity. |
 | [x] | `text` | Unicode text is retained and XML/Typst escaped. | Native | Native | Closed semantically; target font fallback is a renderer/platform constraint tracked separately where a guaranteed bundled font is required. |
 | [x] | `hardBreak` | ADF `hardBreak` and Storage `<br>` become `lineBreak`. | Native | Native | Closed with direct ADF and Storage coverage. |
 | [x] | `rule` | ADF `rule` and Storage `<hr>` become `divider`. | Native | Native | Closed with direct ADF and Storage coverage. |
@@ -206,7 +210,7 @@ Evidence: [E2], [E5], [E6], [E7], [E8].
 |---|---|---|---|---|---|
 | [x] | `bulletList` | ADF `bulletList` and Storage `<ul>` become `list { ordered: false }`; child lists remain inside the owning item. | Native | Native | Nested ADF/Storage differential fixtures, target structure tests, packed-browser assertions, and real render goldens are complete. Maximum nesting and resource budgets remain exporter constraints. |
 | [x] | `orderedList` | Storage `<ol start>` and ADF `orderedList.order` become `list { ordered: true, start? }`; child lists remain inside the owning item. | Native | Native | Authored starts, including zero, survive the neutral model. DOCX emits a self-contained single-level numbering definition per ordered-list node; PDF emits Typst `enum(start:)`. Each nested node owns an independent restart, visual indent, and correctly indexed PDF source-map path. |
-| [ ] | `listItem` | Child blocks are recursively preserved. | Native subset | Native subset | **Open:** preserve the pinned local identity. |
+| [x] | `listItem` | Child blocks and exact optional local identity are recursively preserved for direct ADF and available Storage list markup. | Native | Native | Closed through nested composition and both renderer inputs. |
 | [x] | `taskList` | ADF and Storage become a typed task list with list identity where exposed. ADF sibling task lists attach to the preceding owning item; Storage task lists inside `<ac:task-body>` remain child blocks of that task. | Native | Native | Paired ADF/Storage nesting, both target markers/indents, browser parity, and real render goldens are complete; any future observed product-specific attributes enter the drift lane. |
 | [x] | `taskItem` | Required `localId`, exact `TODO`/`DONE` state, direct inline content, and checkbox projection are retained. | Native | Native | Closed with distinct open/done markers, composition, browser parity, and real render goldens. |
 | [x] | `blockTaskItem` | Required identity/state and one-or-more block children remain a distinct typed task item. | Native | Native | Closed with block-content and nested-list coverage. |
@@ -348,7 +352,7 @@ Official Confluence documentation describes these input shortcuts. They are edit
 | [x] | `*Italic*` | `em` | Native after materialization. | Direct ADF, Storage, and target fixtures are complete. |
 | [x] | `~~Strike~~` | `strike` | Native after materialization. | Direct ADF, Storage, and target fixtures are complete. |
 | [ ] | Backtick-delimited text | `text` + `code` mark | Exact text plus a distinct inline-code chip in both targets; DOCX font embedding remains open. | **Open:** guarantee the bundled DOCX mono font, then close adjacency/escaping/annotation combinations. |
-| [ ] | `# ` … `###### ` | `heading.level` | Levels and content render natively. | **Open:** retain the pinned heading local identity; keep composed-export level rebasing explicit. |
+| [x] | `# ` … `###### ` | `heading.level` | Levels, content, and local identity survive natively. | Closed; composed-export level rebasing remains explicit and retains source identity. |
 | [x] | `1. ` | `orderedList` | Native, including non-1 starts and nested restarts. | ADF/Storage differential, DOCX numbering-part, PDF source/source-map, packed-browser parity, and rendered-golden gates are closed. |
 | [x] | `* ` | `bulletList` | Native, including nested bullet ownership and visual levels. | ADF/Storage differential, DOCX/PDF structure, packed-browser parity, and rendered-golden gates are closed. |
 | [x] | `> ` | `blockquote` | Native static projection. | Closed with deterministic target-owned styling. |
@@ -468,6 +472,9 @@ Required acceptance contract:
   survive composition and browser/background execution. DOCX/PDF localize
   dates with a deterministic UTC policy, render status palettes/casing, and
   intentionally hide editor-only placeholder text.
+- [x] **Core block identities.** Paragraph, heading, and ordinary list-item
+  local IDs survive direct ADF, available Storage equivalents, composition,
+  both renderer inputs, and packed direct/background source parity.
 - [ ] **Open — card/embed metadata.** Deterministic visible URL fallbacks
   exist; native title/provider/poster metadata remains.
 - [ ] **Open — media family.** Selected image/media paths exist; group,
@@ -516,6 +523,7 @@ Required acceptance contract:
 - [x] Tasks and decisions.
 - [x] Ordered-list authored starts and nested restarts.
 - [x] Nested bullet/numbered/task parity across ADF and Storage.
+- [x] Paragraph, heading, and ordinary list-item local identity preservation.
 - [x] Table attributes for static DOCX/PDF; page-bound wide-table layout remains
   a measured renderer policy rather than an ADF decoding gap.
 - [x] Layout columns for pinned ADF and documented Storage shapes.
@@ -674,6 +682,7 @@ Accessed 2026-07-22 and 2026-07-23:
 - **[E28] Native layout columns and explicit breakout residual:** `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/adf-validate.ts`, `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/compose-document.ts`, `packages/confluence/src/resolve-mentions.ts`, `packages/export-macros/src/resolve.ts`, `packages/docx/src/ooxml.ts`, `packages/docx/src/serialize.ts`, `packages/pdf/src/prepare.ts`, `packages/pdf/src/serialize.ts`, `packages/export-fixtures/src/index.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
 - **[E29] Native captions and recursive static disclosures across ADF/Storage and both targets:** `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/adf-validate.ts`, `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/page-body.test.ts`, `packages/confluence/src/compose-document.ts`, `packages/confluence/src/resolve-mentions.ts`, `packages/export-macros/src/resolve.ts`, `packages/docx/src/serialize.ts`, `packages/pdf/src/prepare.ts`, `packages/pdf/src/serialize.ts`, `packages/export-fixtures/src/index.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
 - **[E30] Native date/status/placeholder semantics across ADF/Storage and both targets:** `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/adf-validate.ts`, `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/page-body.test.ts`, `packages/confluence/src/compose-document.ts`, `packages/confluence/test-fixtures/adf-pairs/basic.adf.json`, `packages/confluence/test-fixtures/adf-pairs/basic.storage.xml`, `packages/docx/src/serialize.ts`, `packages/pdf/src/serialize.ts`, `packages/export-fixtures/src/index.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `apps/browser-export-harness/tests/exports.e2e.ts`, `scripts/adf-rendered-goldens.ts`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
+- **[E31] Paragraph/heading/ordinary-list-item local identity preservation:** `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/adf-validate.ts`, `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/page-body.test.ts`, `packages/confluence/src/compose-document.ts`, `packages/confluence/test-fixtures/adf-pairs/basic.adf.json`, `packages/confluence/test-fixtures/adf-pairs/basic.storage.xml`, `packages/export-fixtures/src/index.ts`, `packages/export-fixtures/src/adf-fixtures.test.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `apps/browser-export-harness/tests/exports.e2e.ts`
 
 ## 16. Review questions
 

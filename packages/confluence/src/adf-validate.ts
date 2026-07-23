@@ -160,6 +160,9 @@ function validateKnownNodeShape(
       throw new AdfValidationError("invalid-attributes", "ADF heading level must be 1..6.", `${path}.attrs.level`);
     }
   }
+  if (type === "paragraph" || type === "heading" || type === "listItem") {
+    assertStringAttribute(attrs, "localId", path, false);
+  }
   if (type === "orderedList" && attrs?.order !== undefined && !nonnegativeInteger(attrs.order)) {
     throw new AdfValidationError("invalid-attributes", "ADF ordered-list order must be non-negative.", `${path}.attrs.order`);
   }

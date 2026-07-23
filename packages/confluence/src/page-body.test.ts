@@ -48,6 +48,8 @@ describe("pageBodyToBlocks", () => {
     expect(JSON.stringify(adf.blocks)).toContain('"checked":false');
     expect(JSON.stringify(adf.blocks)).toContain('"backgroundColor":"#AABBCC"');
     expect(JSON.stringify(adf.blocks)).toContain('"type":"status"');
+    expect(adf.blocks[0]).toMatchObject({ type: "heading", localId: "paired-heading" });
+    expect(adf.blocks[1]).toMatchObject({ type: "paragraph", localId: "paired-paragraph" });
     expect(adf.blocks.find((block) => block.type === "list" && block.ordered)).toMatchObject({
       type: "list",
       ordered: true,
@@ -63,6 +65,7 @@ describe("pageBodyToBlocks", () => {
       type: "list",
       ordered: false,
       items: [{
+        localId: "paired-bullet-item",
         content: [
           { type: "paragraph" },
           { type: "list", ordered: false },

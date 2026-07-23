@@ -421,8 +421,16 @@ export type ExportBlock =
       content: InlineNode[];
       explicitAnchor?: string;
       presentation?: BlockPresentation;
+      /** Stable ADF/Storage editor identity, retained as non-visual metadata. */
+      localId?: string;
     }
-  | { type: "paragraph"; content: InlineNode[]; presentation?: BlockPresentation }
+  | {
+      type: "paragraph";
+      content: InlineNode[];
+      presentation?: BlockPresentation;
+      /** Stable ADF/Storage editor identity, retained as non-visual metadata. */
+      localId?: string;
+    }
   | { type: "codeBlock"; language?: string; code: string; caption?: Caption }
   | { type: "callout"; kind: CalloutKind; title?: string; content: ExportBlock[] }
   | {
@@ -1546,17 +1554,34 @@ function isInlineMacro(node: XmlElement): boolean {
   return name === "status" || name === "date" || INLINE_SCROLL_MACROS.has(name);
 }
 
+function storageLocalId(el: XmlElement): string | undefined {
+  return el.attrs["ac:local-id"] ?? el.attrs["local-id"];
+}
+
 /** Dispatch a single block-level element to zero or more {@link ExportBlock}s. */
 function handleBlockElement(el: XmlElement, ctx: WalkCtx): ExportBlock[] {
   const name = el.name;
 
   const headingLevel = HEADING_TAGS[name];
   if (headingLevel) {
-    return [{ type: "heading", level: headingLevel, content: trimInline(walkInline(el.children, ctx)) }];
+    const localId = storageLocalId(el);
+    return [{
+      type: "heading",
+      level: headingLevel,
+      content: trimInline(walkInline(el.children, ctx)),
+      ...(localId !== undefined ? { localId } : {}),
+    }];
   }
 
   switch (name) {
-    case "p":
+    case "p": {
+      const blocks = walkBlocks(el.children, ctx);
+      const localId = storageLocalId(el);
+      if (localId !== undefined && blocks.length === 1 && blocks[0]?.type === "paragraph") {
+        return [{ ...blocks[0], localId }];
+      }
+      return blocks;
+    }
     case "ac:layout-cell":
       // A paragraph is a transparent block container: this splits an image (or
       // any embedded block) inside a <p> out into its own block while a plain
@@ -1807,7 +1832,11 @@ function walkList(el: XmlElement, ctx: WalkCtx): ExportBlock {
   const ordered = el.name === "ol";
   const items: ListItem[] = [];
   for (const li of childrenByName(el, "li")) {
-    items.push({ content: walkBlocks(li.children, ctx) });
+    const localId = storageLocalId(li);
+    items.push({
+      content: walkBlocks(li.children, ctx),
+      ...(localId !== undefined ? { localId } : {}),
+    });
   }
   const rawStart = ordered ? el.attrs.start?.trim() : undefined;
   const parsedStart = rawStart !== undefined && /^\d+$/u.test(rawStart)

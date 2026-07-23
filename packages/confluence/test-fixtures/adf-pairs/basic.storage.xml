@@ -1,7 +1,7 @@
-<h2>Paired fixture</h2>
-<p><strong>Bold</strong> and <code>code</code><br/><ac:emoticon ac:name="warning" ac:emoji-fallback="⚠️"/></p>
+<h2 local-id="paired-heading">Paired fixture</h2>
+<p local-id="paired-paragraph"><strong>Bold</strong> and <code>code</code><br/><ac:emoticon ac:name="warning" ac:emoji-fallback="⚠️"/></p>
 <blockquote><p>Quoted</p></blockquote>
-<ul><li><p>Bullet</p><ul><li><p>Nested bullet</p></li></ul></li></ul>
+<ul><li local-id="paired-bullet-item"><p>Bullet</p><ul><li><p>Nested bullet</p></li></ul></li></ul>
 <ol start="3"><li><p>Number</p><ol start="8"><li><p>Nested number</p></li></ol></li></ol>
 <ac:task-list ac:local-id="tasks-root">
   <ac:task><ac:task-id>task-done</ac:task-id><ac:task-status>complete</ac:task-status><ac:task-body>Done</ac:task-body></ac:task>

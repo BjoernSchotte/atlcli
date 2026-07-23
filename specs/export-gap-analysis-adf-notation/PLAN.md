@@ -1147,6 +1147,16 @@ contract. Paired ADF/Storage fixtures, focused validation/decoder/composition/
 TOC/DOCX/PDF tests, packed direct/background browser conformance, and real
 LibreOffice plus Typst/Poppler goldens prove the semantic and visual contract.
 
+Completed core block-identity follow-on evidence recorded on 2026-07-23:
+paragraph, heading, and ordinary list-item `localId` attributes now pass through
+bounded validation, direct ADF decoding, available `body.storage` equivalents,
+the shared neutral model, document composition, and both renderer input trees.
+Exact optional values, including an explicitly empty string, remain non-visual
+metadata and therefore do not invent bookmarks or alter DOCX/PDF appearance.
+Paired ADF/Storage fixtures, the modern Cloud `<p local-id>` regression,
+composition tests, the target-neutral browser fixture, and packed
+direct/background source parity guard the contract.
+
 The completed slice passed 494 focused decoder/Storage/composition/macro/DOCX/
 PDF tests, the generated public API and closure guards, the offline 43-node/
 17-mark pin check, full typecheck, the 16-task production build, all 20

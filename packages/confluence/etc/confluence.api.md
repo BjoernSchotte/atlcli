@@ -1063,10 +1063,12 @@ export type ExportBlock = {
     content: InlineNode[];
     explicitAnchor?: string;
     presentation?: BlockPresentation;
+    localId?: string;
 } | {
     type: "paragraph";
     content: InlineNode[];
     presentation?: BlockPresentation;
+    localId?: string;
 } | {
     type: "codeBlock";
     language?: string;
@@ -3290,10 +3292,12 @@ export type ExportBlock = {
     content: InlineNode[];
     explicitAnchor?: string;
     presentation?: BlockPresentation;
+    localId?: string;
 } | {
     type: "paragraph";
     content: InlineNode[];
     presentation?: BlockPresentation;
+    localId?: string;
 } | {
     type: "codeBlock";
     language?: string;
@@ -5517,10 +5521,12 @@ export type ExportBlock = {
     content: InlineNode[];
     explicitAnchor?: string;
     presentation?: BlockPresentation;
+    localId?: string;
 } | {
     type: "paragraph";
     content: InlineNode[];
     presentation?: BlockPresentation;
+    localId?: string;
 } | {
     type: "codeBlock";
     language?: string;
@@ -7649,10 +7655,12 @@ export type ExportBlock = {
     content: InlineNode[];
     explicitAnchor?: string;
     presentation?: BlockPresentation;
+    localId?: string;
 } | {
     type: "paragraph";
     content: InlineNode[];
     presentation?: BlockPresentation;
+    localId?: string;
 } | {
     type: "codeBlock";
     language?: string;
@@ -10439,10 +10447,12 @@ export type ExportBlock = {
     content: InlineNode[];
     explicitAnchor?: string;
     presentation?: BlockPresentation;
+    localId?: string;
 } | {
     type: "paragraph";
     content: InlineNode[];
     presentation?: BlockPresentation;
+    localId?: string;
 } | {
     type: "codeBlock";
     language?: string;
