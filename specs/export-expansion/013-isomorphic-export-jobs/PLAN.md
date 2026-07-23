@@ -1778,8 +1778,23 @@ multiple commits is allowed, but its final commit must retain the slice's gate.
     19,509.8 ms DOCX and 14,076.8 ms PDF job times expose rather than hide the
     cost of per-page atomic durability. The 50-page DOCX/PDF regression smoke
     and root typecheck pass.
-  - [ ] Remaining PR-I increments: Chrome post-queue benchmark,
-    documentation/CHANGELOG, and the final non-cleanup audit and gates.
+  - [x] Chrome post-queue benchmark increment: a production MV3 build now runs
+    the same deterministic 50-/500-page DOCX/PDF, three-repetition matrix in
+    real Chromium through the productive IndexedDB catalog and byte store,
+    normalized-source and asset checkpoints, ready payload, shared render
+    reservation, both real engines, report/result persistence, and retained
+    artifact. All 12 cells succeed with exact artifact-record byte parity and
+    non-empty source/asset/prepared spools. At 500 pages the median complete
+    spool is 6,187,659 bytes for DOCX and 7,678,789 bytes for PDF; median complete
+    job time is 2,391.0 ms and 4,275.2 ms respectively. The raw provenance,
+    timings, origin estimates, logical IndexedDB payload, output hashes, and
+    extension-page CDP heap checkpoints are recorded in
+    `baselines/chrome-post-queue.json`; offscreen/worker memory remains explicitly
+    unavailable rather than inferred. The benchmark corpus is synthetic and
+    performs no tenant request; packed persistent-profile Chromium independently
+    proves the production offscreen/service-worker lifecycle.
+  - [ ] Remaining PR-I increments: documentation/CHANGELOG and the final
+    non-cleanup audit and gates.
   - Acceptance: packed Chrome covers DOCX/PDF mixed states, `9+`, `✓`, `!`, pulse
     bound, acknowledgement persistence, Retry and Run again; retained request/
     template refs remain replayable; unavailable metrics and expired reports have

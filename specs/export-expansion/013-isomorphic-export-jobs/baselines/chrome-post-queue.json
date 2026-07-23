@@ -1,0 +1,1405 @@
+{
+  "schema": "atlcli.post-queue-export-baseline/1",
+  "measuredAt": "2026-07-23T10:41:05.430Z",
+  "shape": "browser-extension-job-harness",
+  "state": "post-queue",
+  "provenance": {
+    "schema": "atlcli.post-queue-export-provenance/1",
+    "gitCommit": "ab6c9ec6c62423bfa72172706ea04d8139b61d1c",
+    "workingTreeDirty": true,
+    "treeFingerprint": "b6cda4d06f9f8dc240caacb95af4ebf146823cfe898404c4db8cd1a39019ebd1",
+    "harnessDigest": "81552e238246199b078917dd6e4216b5cab01c224f920ee1f17de285b92f0c07",
+    "browser": {
+      "protocolVersion": "1.3",
+      "product": "Chrome/140.0.7339.16",
+      "revision": "@b50d93d6db089ce82ddf985f059aa524051fcb2a",
+      "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/140.0.0.0 Safari/537.36",
+      "jsVersion": "14.0.365.1"
+    },
+    "platform": "darwin",
+    "release": "25.4.0",
+    "architecture": "arm64",
+    "configuration": {
+      "pages": [
+        50,
+        500
+      ],
+      "formats": [
+        "docx",
+        "pdf"
+      ],
+      "repeat": 3,
+      "seed": 2654435769
+    },
+    "fingerprint": "3f332cb9665af17aaaf9c32e02f9c8910295511ec116978d465871a839113260"
+  },
+  "environment": {
+    "gitCommit": "ab6c9ec6c62423bfa72172706ea04d8139b61d1c",
+    "workingTreeDirty": true,
+    "treeFingerprint": "b6cda4d06f9f8dc240caacb95af4ebf146823cfe898404c4db8cd1a39019ebd1",
+    "harnessDigest": "81552e238246199b078917dd6e4216b5cab01c224f920ee1f17de285b92f0c07",
+    "browser": {
+      "protocolVersion": "1.3",
+      "product": "Chrome/140.0.7339.16",
+      "revision": "@b50d93d6db089ce82ddf985f059aa524051fcb2a",
+      "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/140.0.0.0 Safari/537.36",
+      "jsVersion": "14.0.365.1"
+    },
+    "playwright": "1.55.0",
+    "platform": "darwin",
+    "release": "25.4.0",
+    "architecture": "arm64",
+    "hostname": "MBPnerd-6550.local",
+    "cpu": "Apple M5 Max",
+    "logicalCpuCount": 18,
+    "totalMemoryBytes": 137438953472
+  },
+  "configuration": {
+    "pages": [
+      50,
+      500
+    ],
+    "formats": [
+      "docx",
+      "pdf"
+    ],
+    "repeat": 3,
+    "seed": 2654435769
+  },
+  "observability": {
+    "heapBuckets": "extension-page CDP Runtime.getHeapUsage checkpoints after forced V8 GC",
+    "rssBytes": null,
+    "rssPeakBytes": null,
+    "rssReason": "CDP Runtime.getHeapUsage does not expose process RSS",
+    "indexedDbPayloadBytes": "exact committed spool and artifact payload byteLength from productive IndexedDB rows",
+    "originUsageBytes": "navigator.storage.estimate origin usage; browser estimate, not a per-job exact value",
+    "dedicatedWorkerHeap": null,
+    "offscreenDocumentHeap": null,
+    "workerHeapReason": "the deterministic benchmark rehosts the productive executor/runtime in one extension page; packed MV3 lifecycle tests separately prove the offscreen owner",
+    "wasmLinearMemoryBytes": null,
+    "wasmReason": "CDP Runtime.getHeapUsage does not expose compiler WASM linear memory separately",
+    "sourceTransport": "deterministic synthetic corpus; every normalized page is committed to productive IndexedDB before composition"
+  },
+  "results": [
+    {
+      "repetition": 1,
+      "provenanceFingerprint": "3f332cb9665af17aaaf9c32e02f9c8910295511ec116978d465871a839113260",
+      "pages": 50,
+      "seed": 2654435769,
+      "corpusDigest": "72465d58c376bedbc2c8d492d0cec5fda9c682b95eeea2cc9d164444fbc15686",
+      "counts": {
+        "pages": 50,
+        "blocks": 689,
+        "tables": 12,
+        "tableRows": 101,
+        "resolvedMacros": 10,
+        "imageAssets": 10,
+        "diagramAssets": 5,
+        "assetBytes": 168547,
+        "labelledPages": 8,
+        "maxDepth": 3
+      },
+      "composedBlocks": 279,
+      "logicalInputBytes": 274388,
+      "corpusAndComposeMs": 9,
+      "corpusFingerprintMs": 5.900000002235174,
+      "format": "docx",
+      "jobExecutionMs": 253.10000000149012,
+      "durableRequestBytes": 836,
+      "artifactBytes": 157198,
+      "artifactSha256": "c9ce6eb9fcb188e71e32c5033280470197df08b50387864322bf4783e403d7a6",
+      "persistedArtifactBytes": 157198,
+      "indexedDbPayloadBytes": 777281,
+      "spool": {
+        "totalBytes": 620083,
+        "sourceBytes": 128893,
+        "assetBytes": 178968,
+        "preparedBytes": 310422,
+        "otherBytes": 1800,
+        "objectCount": 84,
+        "namespaces": {
+          "source-pages": 124003,
+          "assets": 168547,
+          "result-docx-report": 1800,
+          "asset-checkpoints": 10421,
+          "source-manifest": 4890,
+          "ready-docx": 310422
+        }
+      },
+      "originUsageBeforeBytes": 57,
+      "originUsageAfterBytes": 2080485,
+      "originQuotaBytes": 1197099442176,
+      "compilerVersion": null,
+      "reportSummary": {
+        "issues": {
+          "info": 1,
+          "warning": 5,
+          "error": 0
+        },
+        "topCodes": [
+          {
+            "code": "image-svg-no-rasterizer",
+            "count": 5
+          },
+          {
+            "code": "perf-timing",
+            "count": 1
+          }
+        ],
+        "completeness": "complete"
+      },
+      "reportSha256": "6b8f6398e765e26dae025a6a52189c604ef45c7d9fd14e4f3807ccb96d2277ce",
+      "state": "succeeded",
+      "setupMs": 0,
+      "pageLoadMs": 81.44045800000004,
+      "heap": {
+        "surface": "extension-page",
+        "checkpoints": {
+          "ready": {
+            "jsHeapUsedBytes": 2812656,
+            "jsHeapTotalBytes": 3702784,
+            "embedderHeapUsedBytes": 296800,
+            "backingStorageBytes": 1954312,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          },
+          "engineReady": {
+            "jsHeapUsedBytes": 2839204,
+            "jsHeapTotalBytes": 3440640,
+            "embedderHeapUsedBytes": 296800,
+            "backingStorageBytes": 1954312,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          },
+          "corpusPrepared": {
+            "jsHeapUsedBytes": 3164812,
+            "jsHeapTotalBytes": 3702784,
+            "embedderHeapUsedBytes": 297696,
+            "backingStorageBytes": 2122878,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          },
+          "jobCompleted": {
+            "jsHeapUsedBytes": 5905620,
+            "jsHeapTotalBytes": 6782976,
+            "embedderHeapUsedBytes": 495464,
+            "backingStorageBytes": 21033556,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          }
+        },
+        "dedicatedWorker": null,
+        "offscreenDocument": null,
+        "wasmLinearMemoryBytes": null
+      }
+    },
+    {
+      "repetition": 2,
+      "provenanceFingerprint": "3f332cb9665af17aaaf9c32e02f9c8910295511ec116978d465871a839113260",
+      "pages": 50,
+      "seed": 2654435769,
+      "corpusDigest": "72465d58c376bedbc2c8d492d0cec5fda9c682b95eeea2cc9d164444fbc15686",
+      "counts": {
+        "pages": 50,
+        "blocks": 689,
+        "tables": 12,
+        "tableRows": 101,
+        "resolvedMacros": 10,
+        "imageAssets": 10,
+        "diagramAssets": 5,
+        "assetBytes": 168547,
+        "labelledPages": 8,
+        "maxDepth": 3
+      },
+      "composedBlocks": 279,
+      "logicalInputBytes": 274388,
+      "corpusAndComposeMs": 8.800000000745058,
+      "corpusFingerprintMs": 5.600000001490116,
+      "format": "docx",
+      "jobExecutionMs": 236.89999999850988,
+      "durableRequestBytes": 836,
+      "artifactBytes": 157198,
+      "artifactSha256": "c9ce6eb9fcb188e71e32c5033280470197df08b50387864322bf4783e403d7a6",
+      "persistedArtifactBytes": 157198,
+      "indexedDbPayloadBytes": 777281,
+      "spool": {
+        "totalBytes": 620083,
+        "sourceBytes": 128893,
+        "assetBytes": 178968,
+        "preparedBytes": 310422,
+        "otherBytes": 1800,
+        "objectCount": 84,
+        "namespaces": {
+          "source-pages": 124003,
+          "asset-checkpoints": 10421,
+          "ready-docx": 310422,
+          "assets": 168547,
+          "source-manifest": 4890,
+          "result-docx-report": 1800
+        }
+      },
+      "originUsageBeforeBytes": 57,
+      "originUsageAfterBytes": 2080486,
+      "originQuotaBytes": 1197099442176,
+      "compilerVersion": null,
+      "reportSummary": {
+        "issues": {
+          "info": 1,
+          "warning": 5,
+          "error": 0
+        },
+        "topCodes": [
+          {
+            "code": "image-svg-no-rasterizer",
+            "count": 5
+          },
+          {
+            "code": "perf-timing",
+            "count": 1
+          }
+        ],
+        "completeness": "complete"
+      },
+      "reportSha256": "6b8f6398e765e26dae025a6a52189c604ef45c7d9fd14e4f3807ccb96d2277ce",
+      "state": "succeeded",
+      "setupMs": 0,
+      "pageLoadMs": 87.99908300000016,
+      "heap": {
+        "surface": "extension-page",
+        "checkpoints": {
+          "ready": {
+            "jsHeapUsedBytes": 2812656,
+            "jsHeapTotalBytes": 3702784,
+            "embedderHeapUsedBytes": 294712,
+            "backingStorageBytes": 1954312,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          },
+          "engineReady": {
+            "jsHeapUsedBytes": 2839204,
+            "jsHeapTotalBytes": 3440640,
+            "embedderHeapUsedBytes": 294712,
+            "backingStorageBytes": 1954312,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          },
+          "corpusPrepared": {
+            "jsHeapUsedBytes": 3164828,
+            "jsHeapTotalBytes": 3702784,
+            "embedderHeapUsedBytes": 897688,
+            "backingStorageBytes": 2122878,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          },
+          "jobCompleted": {
+            "jsHeapUsedBytes": 5911692,
+            "jsHeapTotalBytes": 7045120,
+            "embedderHeapUsedBytes": 493376,
+            "backingStorageBytes": 21033556,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          }
+        },
+        "dedicatedWorker": null,
+        "offscreenDocument": null,
+        "wasmLinearMemoryBytes": null
+      }
+    },
+    {
+      "repetition": 3,
+      "provenanceFingerprint": "3f332cb9665af17aaaf9c32e02f9c8910295511ec116978d465871a839113260",
+      "pages": 50,
+      "seed": 2654435769,
+      "corpusDigest": "72465d58c376bedbc2c8d492d0cec5fda9c682b95eeea2cc9d164444fbc15686",
+      "counts": {
+        "pages": 50,
+        "blocks": 689,
+        "tables": 12,
+        "tableRows": 101,
+        "resolvedMacros": 10,
+        "imageAssets": 10,
+        "diagramAssets": 5,
+        "assetBytes": 168547,
+        "labelledPages": 8,
+        "maxDepth": 3
+      },
+      "composedBlocks": 279,
+      "logicalInputBytes": 274388,
+      "corpusAndComposeMs": 8.899999998509884,
+      "corpusFingerprintMs": 5.5,
+      "format": "docx",
+      "jobExecutionMs": 244.10000000149012,
+      "durableRequestBytes": 836,
+      "artifactBytes": 157198,
+      "artifactSha256": "c9ce6eb9fcb188e71e32c5033280470197df08b50387864322bf4783e403d7a6",
+      "persistedArtifactBytes": 157198,
+      "indexedDbPayloadBytes": 777281,
+      "spool": {
+        "totalBytes": 620083,
+        "sourceBytes": 128893,
+        "assetBytes": 178968,
+        "preparedBytes": 310422,
+        "otherBytes": 1800,
+        "objectCount": 84,
+        "namespaces": {
+          "source-pages": 124003,
+          "asset-checkpoints": 10421,
+          "assets": 168547,
+          "result-docx-report": 1800,
+          "ready-docx": 310422,
+          "source-manifest": 4890
+        }
+      },
+      "originUsageBeforeBytes": 57,
+      "originUsageAfterBytes": 2080486,
+      "originQuotaBytes": 1197099442176,
+      "compilerVersion": null,
+      "reportSummary": {
+        "issues": {
+          "info": 1,
+          "warning": 5,
+          "error": 0
+        },
+        "topCodes": [
+          {
+            "code": "image-svg-no-rasterizer",
+            "count": 5
+          },
+          {
+            "code": "perf-timing",
+            "count": 1
+          }
+        ],
+        "completeness": "complete"
+      },
+      "reportSha256": "6b8f6398e765e26dae025a6a52189c604ef45c7d9fd14e4f3807ccb96d2277ce",
+      "state": "succeeded",
+      "setupMs": 0,
+      "pageLoadMs": 72.5619999999999,
+      "heap": {
+        "surface": "extension-page",
+        "checkpoints": {
+          "ready": {
+            "jsHeapUsedBytes": 2812656,
+            "jsHeapTotalBytes": 3702784,
+            "embedderHeapUsedBytes": 296800,
+            "backingStorageBytes": 1954312,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          },
+          "engineReady": {
+            "jsHeapUsedBytes": 2839204,
+            "jsHeapTotalBytes": 3440640,
+            "embedderHeapUsedBytes": 296800,
+            "backingStorageBytes": 1954312,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          },
+          "corpusPrepared": {
+            "jsHeapUsedBytes": 3164792,
+            "jsHeapTotalBytes": 3702784,
+            "embedderHeapUsedBytes": 297696,
+            "backingStorageBytes": 2122878,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          },
+          "jobCompleted": {
+            "jsHeapUsedBytes": 5909220,
+            "jsHeapTotalBytes": 7569408,
+            "embedderHeapUsedBytes": 495464,
+            "backingStorageBytes": 21033556,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          }
+        },
+        "dedicatedWorker": null,
+        "offscreenDocument": null,
+        "wasmLinearMemoryBytes": null
+      }
+    },
+    {
+      "repetition": 1,
+      "provenanceFingerprint": "3f332cb9665af17aaaf9c32e02f9c8910295511ec116978d465871a839113260",
+      "pages": 50,
+      "seed": 2654435769,
+      "corpusDigest": "72465d58c376bedbc2c8d492d0cec5fda9c682b95eeea2cc9d164444fbc15686",
+      "counts": {
+        "pages": 50,
+        "blocks": 689,
+        "tables": 12,
+        "tableRows": 101,
+        "resolvedMacros": 10,
+        "imageAssets": 10,
+        "diagramAssets": 5,
+        "assetBytes": 168547,
+        "labelledPages": 8,
+        "maxDepth": 3
+      },
+      "composedBlocks": 279,
+      "logicalInputBytes": 274388,
+      "corpusAndComposeMs": 9.699999999254942,
+      "corpusFingerprintMs": 6.099999997764826,
+      "format": "pdf",
+      "jobExecutionMs": 637.5,
+      "durableRequestBytes": 724,
+      "artifactBytes": 562555,
+      "artifactSha256": "a456851c0568e82e773cc606971ce839771a3b486375da7589f35ef3a96d4c5a",
+      "persistedArtifactBytes": 562555,
+      "indexedDbPayloadBytes": 1336235,
+      "spool": {
+        "totalBytes": 773680,
+        "sourceBytes": 128690,
+        "assetBytes": 179697,
+        "preparedBytes": 464692,
+        "otherBytes": 601,
+        "objectCount": 98,
+        "namespaces": {
+          "source-pages": 123803,
+          "asset-checkpoints": 11150,
+          "assets": 168547,
+          "ready-pdf": 464692,
+          "result-pdf-report": 601,
+          "source-manifest": 4887
+        }
+      },
+      "originUsageBeforeBytes": 57,
+      "originUsageAfterBytes": 2262183,
+      "originQuotaBytes": 1197099442176,
+      "compilerVersion": "typst.ts 0.7.0 / Typst 0.14.2",
+      "reportSummary": {
+        "issues": {
+          "info": 0,
+          "warning": 1,
+          "error": 0
+        },
+        "topCodes": [
+          {
+            "code": "pdf-language-missing",
+            "count": 1
+          }
+        ],
+        "completeness": "complete"
+      },
+      "reportSha256": "d7b3ebae03946c9a9d2a773126b7aa83bbe8a6eec72a5f49213bbde2d3023030",
+      "state": "succeeded",
+      "setupMs": 18.399999998509884,
+      "pageLoadMs": 104.72933399999965,
+      "heap": {
+        "surface": "extension-page",
+        "checkpoints": {
+          "ready": {
+            "jsHeapUsedBytes": 2812692,
+            "jsHeapTotalBytes": 3702784,
+            "embedderHeapUsedBytes": 297288,
+            "backingStorageBytes": 1954312,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          },
+          "engineReady": {
+            "jsHeapUsedBytes": 2848132,
+            "jsHeapTotalBytes": 3440640,
+            "embedderHeapUsedBytes": 303760,
+            "backingStorageBytes": 33291026,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          },
+          "corpusPrepared": {
+            "jsHeapUsedBytes": 3175440,
+            "jsHeapTotalBytes": 3702784,
+            "embedderHeapUsedBytes": 303352,
+            "backingStorageBytes": 33459592,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          },
+          "jobCompleted": {
+            "jsHeapUsedBytes": 5133860,
+            "jsHeapTotalBytes": 5750784,
+            "embedderHeapUsedBytes": 317368,
+            "backingStorageBytes": 119312006,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          }
+        },
+        "dedicatedWorker": null,
+        "offscreenDocument": null,
+        "wasmLinearMemoryBytes": null
+      }
+    },
+    {
+      "repetition": 2,
+      "provenanceFingerprint": "3f332cb9665af17aaaf9c32e02f9c8910295511ec116978d465871a839113260",
+      "pages": 50,
+      "seed": 2654435769,
+      "corpusDigest": "72465d58c376bedbc2c8d492d0cec5fda9c682b95eeea2cc9d164444fbc15686",
+      "counts": {
+        "pages": 50,
+        "blocks": 689,
+        "tables": 12,
+        "tableRows": 101,
+        "resolvedMacros": 10,
+        "imageAssets": 10,
+        "diagramAssets": 5,
+        "assetBytes": 168547,
+        "labelledPages": 8,
+        "maxDepth": 3
+      },
+      "composedBlocks": 279,
+      "logicalInputBytes": 274388,
+      "corpusAndComposeMs": 8.899999998509884,
+      "corpusFingerprintMs": 5.700000002980232,
+      "format": "pdf",
+      "jobExecutionMs": 585.6000000014901,
+      "durableRequestBytes": 724,
+      "artifactBytes": 562555,
+      "artifactSha256": "a456851c0568e82e773cc606971ce839771a3b486375da7589f35ef3a96d4c5a",
+      "persistedArtifactBytes": 562555,
+      "indexedDbPayloadBytes": 1336235,
+      "spool": {
+        "totalBytes": 773680,
+        "sourceBytes": 128690,
+        "assetBytes": 179697,
+        "preparedBytes": 464692,
+        "otherBytes": 601,
+        "objectCount": 98,
+        "namespaces": {
+          "ready-pdf": 464692,
+          "source-pages": 123803,
+          "asset-checkpoints": 11150,
+          "assets": 168547,
+          "result-pdf-report": 601,
+          "source-manifest": 4887
+        }
+      },
+      "originUsageBeforeBytes": 57,
+      "originUsageAfterBytes": 2262164,
+      "originQuotaBytes": 1197099442176,
+      "compilerVersion": "typst.ts 0.7.0 / Typst 0.14.2",
+      "reportSummary": {
+        "issues": {
+          "info": 0,
+          "warning": 1,
+          "error": 0
+        },
+        "topCodes": [
+          {
+            "code": "pdf-language-missing",
+            "count": 1
+          }
+        ],
+        "completeness": "complete"
+      },
+      "reportSha256": "d7b3ebae03946c9a9d2a773126b7aa83bbe8a6eec72a5f49213bbde2d3023030",
+      "state": "succeeded",
+      "setupMs": 15.899999998509884,
+      "pageLoadMs": 87.94858300000033,
+      "heap": {
+        "surface": "extension-page",
+        "checkpoints": {
+          "ready": {
+            "jsHeapUsedBytes": 2812692,
+            "jsHeapTotalBytes": 3440640,
+            "embedderHeapUsedBytes": 296800,
+            "backingStorageBytes": 1954312,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          },
+          "engineReady": {
+            "jsHeapUsedBytes": 2848132,
+            "jsHeapTotalBytes": 3440640,
+            "embedderHeapUsedBytes": 303312,
+            "backingStorageBytes": 33291026,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          },
+          "corpusPrepared": {
+            "jsHeapUsedBytes": 3175328,
+            "jsHeapTotalBytes": 3702784,
+            "embedderHeapUsedBytes": 302888,
+            "backingStorageBytes": 33459592,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          },
+          "jobCompleted": {
+            "jsHeapUsedBytes": 5128948,
+            "jsHeapTotalBytes": 5750784,
+            "embedderHeapUsedBytes": 316744,
+            "backingStorageBytes": 119312006,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          }
+        },
+        "dedicatedWorker": null,
+        "offscreenDocument": null,
+        "wasmLinearMemoryBytes": null
+      }
+    },
+    {
+      "repetition": 3,
+      "provenanceFingerprint": "3f332cb9665af17aaaf9c32e02f9c8910295511ec116978d465871a839113260",
+      "pages": 50,
+      "seed": 2654435769,
+      "corpusDigest": "72465d58c376bedbc2c8d492d0cec5fda9c682b95eeea2cc9d164444fbc15686",
+      "counts": {
+        "pages": 50,
+        "blocks": 689,
+        "tables": 12,
+        "tableRows": 101,
+        "resolvedMacros": 10,
+        "imageAssets": 10,
+        "diagramAssets": 5,
+        "assetBytes": 168547,
+        "labelledPages": 8,
+        "maxDepth": 3
+      },
+      "composedBlocks": 279,
+      "logicalInputBytes": 274388,
+      "corpusAndComposeMs": 8.5,
+      "corpusFingerprintMs": 5.5,
+      "format": "pdf",
+      "jobExecutionMs": 580.5,
+      "durableRequestBytes": 724,
+      "artifactBytes": 562555,
+      "artifactSha256": "a456851c0568e82e773cc606971ce839771a3b486375da7589f35ef3a96d4c5a",
+      "persistedArtifactBytes": 562555,
+      "indexedDbPayloadBytes": 1336235,
+      "spool": {
+        "totalBytes": 773680,
+        "sourceBytes": 128690,
+        "assetBytes": 179697,
+        "preparedBytes": 464692,
+        "otherBytes": 601,
+        "objectCount": 98,
+        "namespaces": {
+          "assets": 168547,
+          "source-pages": 123803,
+          "asset-checkpoints": 11150,
+          "ready-pdf": 464692,
+          "result-pdf-report": 601,
+          "source-manifest": 4887
+        }
+      },
+      "originUsageBeforeBytes": 57,
+      "originUsageAfterBytes": 2262165,
+      "originQuotaBytes": 1197099442176,
+      "compilerVersion": "typst.ts 0.7.0 / Typst 0.14.2",
+      "reportSummary": {
+        "issues": {
+          "info": 0,
+          "warning": 1,
+          "error": 0
+        },
+        "topCodes": [
+          {
+            "code": "pdf-language-missing",
+            "count": 1
+          }
+        ],
+        "completeness": "complete"
+      },
+      "reportSha256": "d7b3ebae03946c9a9d2a773126b7aa83bbe8a6eec72a5f49213bbde2d3023030",
+      "state": "succeeded",
+      "setupMs": 15.5,
+      "pageLoadMs": 79.03512499999943,
+      "heap": {
+        "surface": "extension-page",
+        "checkpoints": {
+          "ready": {
+            "jsHeapUsedBytes": 2812656,
+            "jsHeapTotalBytes": 3440640,
+            "embedderHeapUsedBytes": 296800,
+            "backingStorageBytes": 1954312,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          },
+          "engineReady": {
+            "jsHeapUsedBytes": 2848096,
+            "jsHeapTotalBytes": 3440640,
+            "embedderHeapUsedBytes": 303312,
+            "backingStorageBytes": 33291026,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          },
+          "corpusPrepared": {
+            "jsHeapUsedBytes": 3176936,
+            "jsHeapTotalBytes": 3702784,
+            "embedderHeapUsedBytes": 302888,
+            "backingStorageBytes": 33459592,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          },
+          "jobCompleted": {
+            "jsHeapUsedBytes": 5128756,
+            "jsHeapTotalBytes": 5750784,
+            "embedderHeapUsedBytes": 316712,
+            "backingStorageBytes": 119312006,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          }
+        },
+        "dedicatedWorker": null,
+        "offscreenDocument": null,
+        "wasmLinearMemoryBytes": null
+      }
+    },
+    {
+      "repetition": 1,
+      "provenanceFingerprint": "3f332cb9665af17aaaf9c32e02f9c8910295511ec116978d465871a839113260",
+      "pages": 500,
+      "seed": 2654435769,
+      "corpusDigest": "82da8edb1d0a4bcdd5f47dd8fbcf14278170749071dc4c7916c714c782a8ed94",
+      "counts": {
+        "pages": 500,
+        "blocks": 6932,
+        "tables": 126,
+        "tableRows": 1041,
+        "resolvedMacros": 105,
+        "imageAssets": 100,
+        "diagramAssets": 50,
+        "assetBytes": 1685499,
+        "labelledPages": 83,
+        "maxDepth": 3
+      },
+      "composedBlocks": 2813,
+      "logicalInputBytes": 2749527,
+      "corpusAndComposeMs": 43.19999999925494,
+      "corpusFingerprintMs": 50.80000000074506,
+      "format": "docx",
+      "jobExecutionMs": 2391,
+      "durableRequestBytes": 841,
+      "artifactBytes": 1535763,
+      "artifactSha256": "0a19d0ee12e1bea8c44137e21e2a5ff71b5ba5f8014a19a4399b5fa179241c58",
+      "persistedArtifactBytes": 1535763,
+      "indexedDbPayloadBytes": 7723422,
+      "spool": {
+        "totalBytes": 6187659,
+        "sourceBytes": 1298430,
+        "assetBytes": 1790675,
+        "preparedBytes": 3088287,
+        "otherBytes": 10267,
+        "objectCount": 804,
+        "namespaces": {
+          "asset-checkpoints": 105176,
+          "source-pages": 1248976,
+          "assets": 1685499,
+          "result-docx-report": 10267,
+          "source-manifest": 49454,
+          "ready-docx": 3088287
+        }
+      },
+      "originUsageBeforeBytes": 57,
+      "originUsageAfterBytes": 10348213,
+      "originQuotaBytes": 1197099442176,
+      "compilerVersion": null,
+      "reportSummary": {
+        "issues": {
+          "info": 1,
+          "warning": 50,
+          "error": 0
+        },
+        "topCodes": [
+          {
+            "code": "image-svg-no-rasterizer",
+            "count": 50
+          },
+          {
+            "code": "perf-timing",
+            "count": 1
+          }
+        ],
+        "completeness": "complete"
+      },
+      "reportSha256": "597e6cdb4291f3a231ac856d3c73c98548f962c69f198ace9db1a497ad7d4676",
+      "state": "succeeded",
+      "setupMs": 0,
+      "pageLoadMs": 85.13366599999972,
+      "heap": {
+        "surface": "extension-page",
+        "checkpoints": {
+          "ready": {
+            "jsHeapUsedBytes": 2812692,
+            "jsHeapTotalBytes": 3440640,
+            "embedderHeapUsedBytes": 296800,
+            "backingStorageBytes": 1954312,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          },
+          "engineReady": {
+            "jsHeapUsedBytes": 2839240,
+            "jsHeapTotalBytes": 3440640,
+            "embedderHeapUsedBytes": 296800,
+            "backingStorageBytes": 1954312,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          },
+          "corpusPrepared": {
+            "jsHeapUsedBytes": 4493500,
+            "jsHeapTotalBytes": 5537792,
+            "embedderHeapUsedBytes": 303104,
+            "backingStorageBytes": 3639830,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          },
+          "jobCompleted": {
+            "jsHeapUsedBytes": 7092964,
+            "jsHeapTotalBytes": 8093696,
+            "embedderHeapUsedBytes": 322176,
+            "backingStorageBytes": 22550318,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          }
+        },
+        "dedicatedWorker": null,
+        "offscreenDocument": null,
+        "wasmLinearMemoryBytes": null
+      }
+    },
+    {
+      "repetition": 2,
+      "provenanceFingerprint": "3f332cb9665af17aaaf9c32e02f9c8910295511ec116978d465871a839113260",
+      "pages": 500,
+      "seed": 2654435769,
+      "corpusDigest": "82da8edb1d0a4bcdd5f47dd8fbcf14278170749071dc4c7916c714c782a8ed94",
+      "counts": {
+        "pages": 500,
+        "blocks": 6932,
+        "tables": 126,
+        "tableRows": 1041,
+        "resolvedMacros": 105,
+        "imageAssets": 100,
+        "diagramAssets": 50,
+        "assetBytes": 1685499,
+        "labelledPages": 83,
+        "maxDepth": 3
+      },
+      "composedBlocks": 2813,
+      "logicalInputBytes": 2749527,
+      "corpusAndComposeMs": 43.5,
+      "corpusFingerprintMs": 52.19999999925494,
+      "format": "docx",
+      "jobExecutionMs": 2448.599999997765,
+      "durableRequestBytes": 841,
+      "artifactBytes": 1535763,
+      "artifactSha256": "0a19d0ee12e1bea8c44137e21e2a5ff71b5ba5f8014a19a4399b5fa179241c58",
+      "persistedArtifactBytes": 1535763,
+      "indexedDbPayloadBytes": 7723422,
+      "spool": {
+        "totalBytes": 6187659,
+        "sourceBytes": 1298430,
+        "assetBytes": 1790675,
+        "preparedBytes": 3088287,
+        "otherBytes": 10267,
+        "objectCount": 804,
+        "namespaces": {
+          "assets": 1685499,
+          "source-pages": 1248976,
+          "asset-checkpoints": 105176,
+          "ready-docx": 3088287,
+          "source-manifest": 49454,
+          "result-docx-report": 10267
+        }
+      },
+      "originUsageBeforeBytes": 57,
+      "originUsageAfterBytes": 6920338,
+      "originQuotaBytes": 1197099442176,
+      "compilerVersion": null,
+      "reportSummary": {
+        "issues": {
+          "info": 1,
+          "warning": 50,
+          "error": 0
+        },
+        "topCodes": [
+          {
+            "code": "image-svg-no-rasterizer",
+            "count": 50
+          },
+          {
+            "code": "perf-timing",
+            "count": 1
+          }
+        ],
+        "completeness": "complete"
+      },
+      "reportSha256": "597e6cdb4291f3a231ac856d3c73c98548f962c69f198ace9db1a497ad7d4676",
+      "state": "succeeded",
+      "setupMs": 0,
+      "pageLoadMs": 75.79316700000163,
+      "heap": {
+        "surface": "extension-page",
+        "checkpoints": {
+          "ready": {
+            "jsHeapUsedBytes": 2812656,
+            "jsHeapTotalBytes": 3440640,
+            "embedderHeapUsedBytes": 296800,
+            "backingStorageBytes": 1954312,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          },
+          "engineReady": {
+            "jsHeapUsedBytes": 2839204,
+            "jsHeapTotalBytes": 3440640,
+            "embedderHeapUsedBytes": 296800,
+            "backingStorageBytes": 1954312,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          },
+          "corpusPrepared": {
+            "jsHeapUsedBytes": 4493300,
+            "jsHeapTotalBytes": 5537792,
+            "embedderHeapUsedBytes": 303104,
+            "backingStorageBytes": 3639830,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          },
+          "jobCompleted": {
+            "jsHeapUsedBytes": 7095564,
+            "jsHeapTotalBytes": 8093696,
+            "embedderHeapUsedBytes": 322328,
+            "backingStorageBytes": 22550318,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          }
+        },
+        "dedicatedWorker": null,
+        "offscreenDocument": null,
+        "wasmLinearMemoryBytes": null
+      }
+    },
+    {
+      "repetition": 3,
+      "provenanceFingerprint": "3f332cb9665af17aaaf9c32e02f9c8910295511ec116978d465871a839113260",
+      "pages": 500,
+      "seed": 2654435769,
+      "corpusDigest": "82da8edb1d0a4bcdd5f47dd8fbcf14278170749071dc4c7916c714c782a8ed94",
+      "counts": {
+        "pages": 500,
+        "blocks": 6932,
+        "tables": 126,
+        "tableRows": 1041,
+        "resolvedMacros": 105,
+        "imageAssets": 100,
+        "diagramAssets": 50,
+        "assetBytes": 1685499,
+        "labelledPages": 83,
+        "maxDepth": 3
+      },
+      "composedBlocks": 2813,
+      "logicalInputBytes": 2749527,
+      "corpusAndComposeMs": 42.600000001490116,
+      "corpusFingerprintMs": 52.5,
+      "format": "docx",
+      "jobExecutionMs": 2356,
+      "durableRequestBytes": 841,
+      "artifactBytes": 1535763,
+      "artifactSha256": "0a19d0ee12e1bea8c44137e21e2a5ff71b5ba5f8014a19a4399b5fa179241c58",
+      "persistedArtifactBytes": 1535763,
+      "indexedDbPayloadBytes": 7723422,
+      "spool": {
+        "totalBytes": 6187659,
+        "sourceBytes": 1298430,
+        "assetBytes": 1790675,
+        "preparedBytes": 3088287,
+        "otherBytes": 10267,
+        "objectCount": 804,
+        "namespaces": {
+          "source-pages": 1248976,
+          "asset-checkpoints": 105176,
+          "assets": 1685499,
+          "ready-docx": 3088287,
+          "source-manifest": 49454,
+          "result-docx-report": 10267
+        }
+      },
+      "originUsageBeforeBytes": 57,
+      "originUsageAfterBytes": 10357952,
+      "originQuotaBytes": 1197099442176,
+      "compilerVersion": null,
+      "reportSummary": {
+        "issues": {
+          "info": 1,
+          "warning": 50,
+          "error": 0
+        },
+        "topCodes": [
+          {
+            "code": "image-svg-no-rasterizer",
+            "count": 50
+          },
+          {
+            "code": "perf-timing",
+            "count": 1
+          }
+        ],
+        "completeness": "complete"
+      },
+      "reportSha256": "597e6cdb4291f3a231ac856d3c73c98548f962c69f198ace9db1a497ad7d4676",
+      "state": "succeeded",
+      "setupMs": 0,
+      "pageLoadMs": 93.04941700000018,
+      "heap": {
+        "surface": "extension-page",
+        "checkpoints": {
+          "ready": {
+            "jsHeapUsedBytes": 2812656,
+            "jsHeapTotalBytes": 3440640,
+            "embedderHeapUsedBytes": 296800,
+            "backingStorageBytes": 1954312,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          },
+          "engineReady": {
+            "jsHeapUsedBytes": 2839204,
+            "jsHeapTotalBytes": 3440640,
+            "embedderHeapUsedBytes": 296800,
+            "backingStorageBytes": 1954312,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          },
+          "corpusPrepared": {
+            "jsHeapUsedBytes": 4493100,
+            "jsHeapTotalBytes": 5275648,
+            "embedderHeapUsedBytes": 303104,
+            "backingStorageBytes": 3639830,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          },
+          "jobCompleted": {
+            "jsHeapUsedBytes": 7093568,
+            "jsHeapTotalBytes": 8355840,
+            "embedderHeapUsedBytes": 337528,
+            "backingStorageBytes": 22550318,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          }
+        },
+        "dedicatedWorker": null,
+        "offscreenDocument": null,
+        "wasmLinearMemoryBytes": null
+      }
+    },
+    {
+      "repetition": 1,
+      "provenanceFingerprint": "3f332cb9665af17aaaf9c32e02f9c8910295511ec116978d465871a839113260",
+      "pages": 500,
+      "seed": 2654435769,
+      "corpusDigest": "82da8edb1d0a4bcdd5f47dd8fbcf14278170749071dc4c7916c714c782a8ed94",
+      "counts": {
+        "pages": 500,
+        "blocks": 6932,
+        "tables": 126,
+        "tableRows": 1041,
+        "resolvedMacros": 105,
+        "imageAssets": 100,
+        "diagramAssets": 50,
+        "assetBytes": 1685499,
+        "labelledPages": 83,
+        "maxDepth": 3
+      },
+      "composedBlocks": 2813,
+      "logicalInputBytes": 2749527,
+      "corpusAndComposeMs": 42.5,
+      "corpusFingerprintMs": 53.19999999925494,
+      "format": "pdf",
+      "jobExecutionMs": 4333.60000000149,
+      "durableRequestBytes": 729,
+      "artifactBytes": 5141748,
+      "artifactSha256": "9cbb20a4e077771258f1faaa3eb8cea0cb1bd0e936c9a5e342a6e09acadd992c",
+      "persistedArtifactBytes": 5141748,
+      "indexedDbPayloadBytes": 12820537,
+      "spool": {
+        "totalBytes": 7678789,
+        "sourceBytes": 1296427,
+        "assetBytes": 1798096,
+        "preparedBytes": 4583659,
+        "otherBytes": 607,
+        "objectCount": 953,
+        "namespaces": {
+          "ready-pdf": 4583659,
+          "source-pages": 1246976,
+          "asset-checkpoints": 112597,
+          "assets": 1685499,
+          "source-manifest": 49451,
+          "result-pdf-report": 607
+        }
+      },
+      "originUsageBeforeBytes": 57,
+      "originUsageAfterBytes": 13242945,
+      "originQuotaBytes": 1197099442176,
+      "compilerVersion": "typst.ts 0.7.0 / Typst 0.14.2",
+      "reportSummary": {
+        "issues": {
+          "info": 0,
+          "warning": 1,
+          "error": 0
+        },
+        "topCodes": [
+          {
+            "code": "pdf-language-missing",
+            "count": 1
+          }
+        ],
+        "completeness": "complete"
+      },
+      "reportSha256": "d7b3ebae03946c9a9d2a773126b7aa83bbe8a6eec72a5f49213bbde2d3023030",
+      "state": "succeeded",
+      "setupMs": 17,
+      "pageLoadMs": 75.13687500000015,
+      "heap": {
+        "surface": "extension-page",
+        "checkpoints": {
+          "ready": {
+            "jsHeapUsedBytes": 2812656,
+            "jsHeapTotalBytes": 3440640,
+            "embedderHeapUsedBytes": 297288,
+            "backingStorageBytes": 1954312,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          },
+          "engineReady": {
+            "jsHeapUsedBytes": 2848096,
+            "jsHeapTotalBytes": 3178496,
+            "embedderHeapUsedBytes": 303760,
+            "backingStorageBytes": 33291026,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          },
+          "corpusPrepared": {
+            "jsHeapUsedBytes": 4500416,
+            "jsHeapTotalBytes": 5799936,
+            "embedderHeapUsedBytes": 308760,
+            "backingStorageBytes": 34976544,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          },
+          "jobCompleted": {
+            "jsHeapUsedBytes": 6471064,
+            "jsHeapTotalBytes": 7323648,
+            "embedderHeapUsedBytes": 316392,
+            "backingStorageBytes": 461550622,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          }
+        },
+        "dedicatedWorker": null,
+        "offscreenDocument": null,
+        "wasmLinearMemoryBytes": null
+      }
+    },
+    {
+      "repetition": 2,
+      "provenanceFingerprint": "3f332cb9665af17aaaf9c32e02f9c8910295511ec116978d465871a839113260",
+      "pages": 500,
+      "seed": 2654435769,
+      "corpusDigest": "82da8edb1d0a4bcdd5f47dd8fbcf14278170749071dc4c7916c714c782a8ed94",
+      "counts": {
+        "pages": 500,
+        "blocks": 6932,
+        "tables": 126,
+        "tableRows": 1041,
+        "resolvedMacros": 105,
+        "imageAssets": 100,
+        "diagramAssets": 50,
+        "assetBytes": 1685499,
+        "labelledPages": 83,
+        "maxDepth": 3
+      },
+      "composedBlocks": 2813,
+      "logicalInputBytes": 2749527,
+      "corpusAndComposeMs": 43.399999998509884,
+      "corpusFingerprintMs": 52.600000001490116,
+      "format": "pdf",
+      "jobExecutionMs": 4186.89999999851,
+      "durableRequestBytes": 729,
+      "artifactBytes": 5141748,
+      "artifactSha256": "9cbb20a4e077771258f1faaa3eb8cea0cb1bd0e936c9a5e342a6e09acadd992c",
+      "persistedArtifactBytes": 5141748,
+      "indexedDbPayloadBytes": 12820537,
+      "spool": {
+        "totalBytes": 7678789,
+        "sourceBytes": 1296427,
+        "assetBytes": 1798096,
+        "preparedBytes": 4583659,
+        "otherBytes": 607,
+        "objectCount": 953,
+        "namespaces": {
+          "source-pages": 1246976,
+          "ready-pdf": 4583659,
+          "assets": 1685499,
+          "asset-checkpoints": 112597,
+          "source-manifest": 49451,
+          "result-pdf-report": 607
+        }
+      },
+      "originUsageBeforeBytes": 57,
+      "originUsageAfterBytes": 13220165,
+      "originQuotaBytes": 1197099442176,
+      "compilerVersion": "typst.ts 0.7.0 / Typst 0.14.2",
+      "reportSummary": {
+        "issues": {
+          "info": 0,
+          "warning": 1,
+          "error": 0
+        },
+        "topCodes": [
+          {
+            "code": "pdf-language-missing",
+            "count": 1
+          }
+        ],
+        "completeness": "complete"
+      },
+      "reportSha256": "d7b3ebae03946c9a9d2a773126b7aa83bbe8a6eec72a5f49213bbde2d3023030",
+      "state": "succeeded",
+      "setupMs": 17.400000002235174,
+      "pageLoadMs": 75.59520799999882,
+      "heap": {
+        "surface": "extension-page",
+        "checkpoints": {
+          "ready": {
+            "jsHeapUsedBytes": 2812656,
+            "jsHeapTotalBytes": 3440640,
+            "embedderHeapUsedBytes": 296800,
+            "backingStorageBytes": 1954312,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          },
+          "engineReady": {
+            "jsHeapUsedBytes": 2848096,
+            "jsHeapTotalBytes": 3440640,
+            "embedderHeapUsedBytes": 303312,
+            "backingStorageBytes": 33291026,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          },
+          "corpusPrepared": {
+            "jsHeapUsedBytes": 4501596,
+            "jsHeapTotalBytes": 5275648,
+            "embedderHeapUsedBytes": 308296,
+            "backingStorageBytes": 34976544,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          },
+          "jobCompleted": {
+            "jsHeapUsedBytes": 6494832,
+            "jsHeapTotalBytes": 7585792,
+            "embedderHeapUsedBytes": 315712,
+            "backingStorageBytes": 461550622,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          }
+        },
+        "dedicatedWorker": null,
+        "offscreenDocument": null,
+        "wasmLinearMemoryBytes": null
+      }
+    },
+    {
+      "repetition": 3,
+      "provenanceFingerprint": "3f332cb9665af17aaaf9c32e02f9c8910295511ec116978d465871a839113260",
+      "pages": 500,
+      "seed": 2654435769,
+      "corpusDigest": "82da8edb1d0a4bcdd5f47dd8fbcf14278170749071dc4c7916c714c782a8ed94",
+      "counts": {
+        "pages": 500,
+        "blocks": 6932,
+        "tables": 126,
+        "tableRows": 1041,
+        "resolvedMacros": 105,
+        "imageAssets": 100,
+        "diagramAssets": 50,
+        "assetBytes": 1685499,
+        "labelledPages": 83,
+        "maxDepth": 3
+      },
+      "composedBlocks": 2813,
+      "logicalInputBytes": 2749527,
+      "corpusAndComposeMs": 42.600000001490116,
+      "corpusFingerprintMs": 51.5,
+      "format": "pdf",
+      "jobExecutionMs": 4275.199999999255,
+      "durableRequestBytes": 729,
+      "artifactBytes": 5141748,
+      "artifactSha256": "9cbb20a4e077771258f1faaa3eb8cea0cb1bd0e936c9a5e342a6e09acadd992c",
+      "persistedArtifactBytes": 5141748,
+      "indexedDbPayloadBytes": 12820537,
+      "spool": {
+        "totalBytes": 7678789,
+        "sourceBytes": 1296427,
+        "assetBytes": 1798096,
+        "preparedBytes": 4583659,
+        "otherBytes": 607,
+        "objectCount": 953,
+        "namespaces": {
+          "source-pages": 1246976,
+          "ready-pdf": 4583659,
+          "asset-checkpoints": 112597,
+          "assets": 1685499,
+          "result-pdf-report": 607,
+          "source-manifest": 49451
+        }
+      },
+      "originUsageBeforeBytes": 57,
+      "originUsageAfterBytes": 13261957,
+      "originQuotaBytes": 1197099442176,
+      "compilerVersion": "typst.ts 0.7.0 / Typst 0.14.2",
+      "reportSummary": {
+        "issues": {
+          "info": 0,
+          "warning": 1,
+          "error": 0
+        },
+        "topCodes": [
+          {
+            "code": "pdf-language-missing",
+            "count": 1
+          }
+        ],
+        "completeness": "complete"
+      },
+      "reportSha256": "d7b3ebae03946c9a9d2a773126b7aa83bbe8a6eec72a5f49213bbde2d3023030",
+      "state": "succeeded",
+      "setupMs": 14.300000000745058,
+      "pageLoadMs": 74.50508300000001,
+      "heap": {
+        "surface": "extension-page",
+        "checkpoints": {
+          "ready": {
+            "jsHeapUsedBytes": 2812692,
+            "jsHeapTotalBytes": 3702784,
+            "embedderHeapUsedBytes": 296800,
+            "backingStorageBytes": 1954312,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          },
+          "engineReady": {
+            "jsHeapUsedBytes": 2848132,
+            "jsHeapTotalBytes": 3440640,
+            "embedderHeapUsedBytes": 303312,
+            "backingStorageBytes": 33291026,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          },
+          "corpusPrepared": {
+            "jsHeapUsedBytes": 4502396,
+            "jsHeapTotalBytes": 6062080,
+            "embedderHeapUsedBytes": 308296,
+            "backingStorageBytes": 34976544,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          },
+          "jobCompleted": {
+            "jsHeapUsedBytes": 6472940,
+            "jsHeapTotalBytes": 7323648,
+            "embedderHeapUsedBytes": 315712,
+            "backingStorageBytes": 461550622,
+            "rssBytes": null,
+            "rssPeakBytes": null
+          }
+        },
+        "dedicatedWorker": null,
+        "offscreenDocument": null,
+        "wasmLinearMemoryBytes": null
+      }
+    }
+  ]
+}

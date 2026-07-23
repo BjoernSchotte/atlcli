@@ -21,6 +21,8 @@
     "bench:memory-chrome": "playwright test --config tests/pdf/memory/playwright.config.ts",
     "prebench:export-baseline-chrome": "bun run --cwd ../.. fonts:ensure && bun run --cwd ../.. vendor:typst && vite build --config tests/export-baseline/vite.config.ts",
     "bench:export-baseline-chrome": "playwright test --config tests/export-baseline/playwright.config.ts",
+    "prebench:export-jobs-chrome": "bun run --cwd ../.. fonts:ensure && bun run --cwd ../.. vendor:typst && vite build --config tests/export-job-baseline/vite.config.ts",
+    "bench:export-jobs-chrome": "playwright test --config tests/export-job-baseline/playwright.config.ts",
     "postinstall": "wxt prepare",
     "pretypecheck": "bun run --cwd ../.. fonts:ensure",
     "typecheck": "wxt prepare && tsc --noEmit",

@@ -112,6 +112,55 @@ Interpretation:
   production source bodies remain live. The bounded 4-fetch/8-ready source test
   separately proves the productive issue window.
 
+## POST-QUEUE Chrome/extension baseline
+
+[`chrome-post-queue.json`](./chrome-post-queue.json) runs the same deterministic
+matrix in real headless Chromium from a production MV3 build. Each isolated
+extension profile creates and claims a real IndexedDB job, commits normalized
+source pages and content-addressed assets, persists the ready-to-render payload,
+acquires the shared browser render reservation, executes the productive
+TypeScript DOCX or Typst/WASM PDF executor, persists the result/report, and
+retains the artifact in the common byte store. The source corpus and assets are
+synthetic and deterministic; the benchmark issues no tenant request and includes
+no authentication or network latency.
+
+Reproduce from the repository root:
+
+```bash
+bun run bench:export-jobs-chrome --pages 50,500 --formats docx,pdf --repeat 3 --seed 2654435769
+```
+
+Median measurements from 2026-07-23 on the same Apple M5 Max/Bun 1.3.14 host:
+
+| Pages | Format | PRE direct `exportMs` | POST `jobExecutionMs` | Artifact | Source spool | Asset spool | Prepared spool | IndexedDB payload |
+|---:|---|---:|---:|---:|---:|---:|---:|---:|
+| 50 | DOCX | 88.5 ms | 244.1 ms | 157,198 B | 128,893 B | 178,968 B | 310,422 B | 777,281 B |
+| 50 | PDF | 466.1 ms | 585.6 ms | 562,555 B | 128,690 B | 179,697 B | 464,692 B | 1,336,235 B |
+| 500 | DOCX | 298.7 ms | 2,391.0 ms | 1,535,763 B | 1,298,430 B | 1,790,675 B | 3,088,287 B | 7,723,422 B |
+| 500 | PDF | 2,995.4 ms | 4,275.2 ms | 5,141,748 B | 1,296,427 B | 1,798,096 B | 4,583,659 B | 12,820,537 B |
+
+Interpretation:
+
+- All 12 matrix cells succeeded. Every run has non-empty source, asset, and
+  prepared spools, and its persisted artifact byte count exactly matches the
+  catalog artifact record.
+- POST time includes the durable IndexedDB pipeline and engine call, but not
+  deterministic corpus generation, compiler/font/WASM setup, page load, or
+  hashing. Those phases remain separate raw fields.
+- Complete spool payload grows approximately linearly: at 500 pages it is
+  6,187,659 B for DOCX and 7,678,789 B for PDF. `indexedDbPayloadBytes` also
+  includes the finalized artifact.
+- `navigator.storage.estimate()` is recorded before and after every isolated
+  run. Its origin-level usage is allocator/accounting evidence, not an exact
+  sum of logical records; exact byte-store payload totals come from the
+  productive IndexedDB rows.
+- CDP heap checkpoints observe the extension page that hosts this deterministic
+  benchmark. The productive executor/catalog/byte-store code is used, but this
+  measurement deliberately rehosts execution in that page so a single stable
+  target can be sampled. Offscreen/service-worker lifecycle and recovery are
+  proven separately by the packed persistent-profile suite; no offscreen or
+  worker heap is inferred here.
+
 ## Reading the raw results
 
 - `artifactSha256` hashes the actual emitted bytes. The DOCX ZIP container hash
