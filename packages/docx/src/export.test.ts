@@ -150,6 +150,34 @@ describe("exportDocx — full pipeline", () => {
     expect(report.durationMs).toBeGreaterThanOrEqual(0);
   });
 
+  it("flattens legacy section/column layouts without visible macro placeholders", async () => {
+    const layoutDetails: ConfluencePageDetails = {
+      ...details,
+      storage:
+        '<ac:structured-macro ac:name="section"><ac:rich-text-body>' +
+        '<ac:structured-macro ac:name="column"><ac:rich-text-body>' +
+        "<p>Column A body</p>" +
+        "</ac:rich-text-body></ac:structured-macro>" +
+        '<ac:structured-macro ac:name="column"><ac:rich-text-body>' +
+        "<p>Column B body</p>" +
+        "</ac:rich-text-body></ac:structured-macro>" +
+        "</ac:rich-text-body></ac:structured-macro>",
+    };
+    const { bytes, report } = await exportDocx({
+      templateBytes: fullTemplate(false),
+      details: layoutDetails,
+      template,
+      deps,
+    });
+    const doc = readPart(bytes, "word/document.xml");
+
+    expect(doc).toContain("Column A body");
+    expect(doc).toContain("Column B body");
+    expect(doc).not.toContain("section macro not rendered");
+    expect(doc).not.toContain("column macro not rendered");
+    expect(report.notes.some((note) => note.code === "macro-not-rendered")).toBe(false);
+  });
+
   it("turns a Confluence ac:link / ri:url from page storage into a Word HYPERLINK field", async () => {
     const href = "https://obi.atlassian.net/wiki/x/CACFFg";
     const linkedDetails: ConfluencePageDetails = {
