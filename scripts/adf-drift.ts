@@ -8,6 +8,7 @@ import {
   ADF_COVERAGE,
   PINNED_ADF_MARK_TYPES,
   PINNED_ADF_NODE_TYPES,
+  PINNED_ADF_STAGE0_NODE_TYPES,
   PINNED_ADF_SCHEMA_PACKAGE,
   PINNED_ADF_SCHEMA_VERSION,
   validateAdf,
@@ -21,16 +22,23 @@ export const ADF_FIXTURE_DIR = resolve(
 );
 export const ADF_SCHEMA_PATH = resolve(ADF_FIXTURE_DIR, "upstream-schema.json");
 export const ADF_BASELINE_PATH = resolve(ADF_FIXTURE_DIR, "upstream-baseline.json");
+export const ADF_STAGE0_EXTENSIONS_PATH = resolve(
+  ADF_FIXTURE_DIR,
+  "upstream-stage0-extensions.json",
+);
 export const ADF_FIXTURE_MANIFEST_PATH = resolve(ADF_FIXTURE_DIR, "fixtures.json");
 
 export const PINNED_PACKAGE_METADATA = Object.freeze({
   name: PINNED_ADF_SCHEMA_PACKAGE,
   version: PINNED_ADF_SCHEMA_VERSION,
-  integrity: "sha512-ZOPvvSUhty+m/ZgdgKm86hrsvGfq0VcleUoZv78EnPLEwvXn+obWzwTasKtNvl/44ANS4PCHFS1UUubKvvlBsQ==",
-  shasum: "453e67828b1f602233640cca9bb2b97fe21186a1",
-  tarball: "https://registry.npmjs.org/@atlaskit/adf-schema/-/adf-schema-56.1.13.tgz",
+  integrity: "sha512-boR3IAsr/2SITxTm/tswhL+Z3KCDxShJB7E31JqWmq2nbkQYv7CRRTvmmVh7RU0ndqo79NAQRPkCcTsAfErMRg==",
+  shasum: "33b9a9aee50b138bba60bfd1b7c797dba340de27",
+  tarball: "https://registry.npmjs.org/@atlaskit/adf-schema/-/adf-schema-56.1.15.tgz",
   schemaPath: "package/dist/json-schema/v1/full.json",
 });
+
+export const PINNED_STAGE0_SCHEMA_PATH =
+  "package/dist/json-schema/v1/stage-0.json";
 
 export const PINNED_REFERENCE_INDEX = Object.freeze({
   nodes: [
@@ -68,6 +76,11 @@ export interface AdfUpstreamBaseline {
     schemaPath: string;
   };
   hashes: { rawSha256: string; canonicalSha256: string };
+  stage0Extensions: {
+    schemaPath: string;
+    definitions: string[];
+    canonicalSha256: string;
+  };
   inventory: AdfSchemaInventory;
   coverageSha256: string;
   fixturesSha256: string;
@@ -138,6 +151,7 @@ export interface AdfUpstreamObservation {
   canonicalSchema: string;
   versionedSchema: string;
   packageSchema: string;
+  stage0Schema: string;
   canonicalRedirects: string[];
   canonicalFinalUrl: string;
   referenceIndex: { nodes: string[]; marks: string[] };
@@ -149,11 +163,22 @@ export interface AdfUpstreamReport {
   checkedAt: string;
   findings: AdfDriftFinding[];
   transientFindings: AdfDriftFinding[];
-  observation?: Omit<AdfUpstreamObservation, "canonicalSchema" | "versionedSchema" | "packageSchema"> & {
+  observation?: Omit<AdfUpstreamObservation, "canonicalSchema" | "versionedSchema" | "packageSchema" | "stage0Schema"> & {
     canonicalHashes: { rawSha256: string; canonicalSha256: string };
     versionedHashes: { rawSha256: string; canonicalSha256: string };
     packageHashes: { rawSha256: string; canonicalSha256: string };
+    stage0ExtensionDefinitionsSha256: string;
   };
+}
+
+export interface AdfStage0ExtensionContract {
+  schemaVersion: 1;
+  package: {
+    name: string;
+    version: string;
+    schemaPath: string;
+  };
+  definitions: Record<string, unknown>;
 }
 
 export interface AdfObservedCloudReport {
@@ -437,6 +462,9 @@ export async function observeUpstream(
     throw error;
   }
   const packageSchema = decodeUtf8(extractTarFile(tarballResult.bytes, packageMetadata.schemaPath));
+  const stage0Schema = decodeUtf8(
+    extractTarFile(tarballResult.bytes, PINNED_STAGE0_SCHEMA_PATH),
+  );
   const canonicalSchema = decodeUtf8(canonical.bytes);
   const versionedSchema = decodeUtf8(versionedResult.bytes);
   for (const [label, raw] of [["canonical", canonicalSchema], ["versioned", versionedSchema], ["package", packageSchema]] as const) {
@@ -450,6 +478,7 @@ export async function observeUpstream(
     canonicalSchema,
     versionedSchema,
     packageSchema,
+    stage0Schema,
     canonicalRedirects: canonical.redirects,
     canonicalFinalUrl: canonical.finalUrl,
     referenceIndex: extractReferenceIndex(decodeUtf8(referenceResult.bytes)),
@@ -489,6 +518,19 @@ async function findingsForObservation(
   ]));
   findings.push(...classifySchemaDrift(pinnedSchema, JSON.parse(observation.packageSchema) as unknown)
     .filter(({ classification }) => classification !== "no-drift"));
+  const observedStage0 = stage0ExtensionContract(
+    observation.stage0Schema,
+    observation.packageMetadata,
+  );
+  if (
+    stage0ExtensionDefinitionsHash(observedStage0) !==
+      baseline.stage0Extensions.canonicalSha256
+  ) {
+    findings.push({
+      classification: "definition-changed",
+      detail: "Pinned Stage-0 multi-bodied extension definitions changed.",
+    });
+  }
   if (canonicalJson(observation.referenceIndex) !== canonicalJson(baseline.referenceIndex)) {
     findings.push({ classification: "reference-index-drift", detail: "Official ADF node/mark link slugs changed." });
   }
@@ -543,6 +585,9 @@ export async function checkUpstream(options: {
     const canonicalHashes = schemaHashes(observation.canonicalSchema);
     const versionedHashes = schemaHashes(observation.versionedSchema);
     const packageHashes = schemaHashes(observation.packageSchema);
+    const stage0ExtensionDefinitionsSha256 = stage0ExtensionDefinitionsHash(
+      stage0ExtensionContract(observation.stage0Schema, observation.packageMetadata),
+    );
     return {
       ok: findings.every(({ classification }) => classification === "no-drift"),
       checkedAt: new Date().toISOString(),
@@ -558,6 +603,7 @@ export async function checkUpstream(options: {
         canonicalHashes,
         versionedHashes,
         packageHashes,
+        stage0ExtensionDefinitionsSha256,
       },
     };
   } catch (error) {
@@ -901,6 +947,39 @@ export function canonicalJson(value: unknown): string {
   return canonicalValue(value, new Set());
 }
 
+export function stage0ExtensionContract(
+  rawSchema: string,
+  packageMetadata: AdfUpstreamBaseline["package"],
+): AdfStage0ExtensionContract {
+  const schema = JSON.parse(rawSchema) as unknown;
+  if (!isRecord(schema) || !isRecord(schema.definitions)) {
+    throw new TypeError("ADF Stage-0 schema must contain a definitions object.");
+  }
+  const definitions: Record<string, unknown> = {};
+  for (const type of PINNED_ADF_STAGE0_NODE_TYPES) {
+    const name = `${type}_node`;
+    if (schema.definitions[name] === undefined) {
+      throw new TypeError(`ADF Stage-0 schema is missing ${name}.`);
+    }
+    definitions[name] = schema.definitions[name];
+  }
+  return {
+    schemaVersion: 1,
+    package: {
+      name: packageMetadata.name,
+      version: packageMetadata.version,
+      schemaPath: PINNED_STAGE0_SCHEMA_PATH,
+    },
+    definitions,
+  };
+}
+
+export function stage0ExtensionDefinitionsHash(
+  value: AdfStage0ExtensionContract,
+): string {
+  return sha256(canonicalJson(value.definitions));
+}
+
 function definitionType(value: unknown): string | undefined {
   if (!isRecord(value) || !isRecord(value.properties) || !isRecord(value.properties.type)) {
     return undefined;
@@ -1068,18 +1147,25 @@ export async function checkPinned(paths: {
   schema?: string;
   baseline?: string;
   fixtures?: string;
+  stage0Extensions?: string;
 } = {}): Promise<AdfPinnedCheckReport> {
   const schemaPath = paths.schema ?? ADF_SCHEMA_PATH;
   const baselinePath = paths.baseline ?? ADF_BASELINE_PATH;
   const fixtureManifestPath = paths.fixtures ?? ADF_FIXTURE_MANIFEST_PATH;
-  const [rawSchema, rawBaseline, rawFixtures] = await Promise.all([
+  const stage0ExtensionsPath =
+    paths.stage0Extensions ?? ADF_STAGE0_EXTENSIONS_PATH;
+  const [rawSchema, rawBaseline, rawFixtures, rawStage0Extensions] = await Promise.all([
     readFile(schemaPath, "utf8"),
     readFile(baselinePath, "utf8"),
     readFile(fixtureManifestPath, "utf8"),
+    readFile(stage0ExtensionsPath, "utf8"),
   ]);
   const schema = JSON.parse(rawSchema) as unknown;
   const baseline = JSON.parse(rawBaseline) as AdfUpstreamBaseline;
   const fixtureManifest = JSON.parse(rawFixtures) as AdfFixtureManifest;
+  const stage0Extensions = JSON.parse(
+    rawStage0Extensions,
+  ) as AdfStage0ExtensionContract;
   const hashes = schemaHashes(rawSchema);
   const inventory = inventoryAdfSchema(schema);
   const findings: AdfDriftFinding[] = [];
@@ -1097,6 +1183,40 @@ export async function checkPinned(paths: {
     baseline.package.version !== PINNED_ADF_SCHEMA_VERSION
   ) {
     findings.push({ classification: "definition-changed", detail: "ADF baseline package pin differs from the reviewed source contract." });
+  }
+  if (
+    stage0Extensions.package.name !== PINNED_ADF_SCHEMA_PACKAGE ||
+    stage0Extensions.package.version !== PINNED_ADF_SCHEMA_VERSION ||
+    stage0Extensions.package.schemaPath !== PINNED_STAGE0_SCHEMA_PATH ||
+    baseline.stage0Extensions.schemaPath !== PINNED_STAGE0_SCHEMA_PATH
+  ) {
+    findings.push({
+      classification: "definition-changed",
+      detail: "ADF Stage-0 extension pin differs from the reviewed package contract.",
+    });
+  }
+  const expectedStage0Definitions = PINNED_ADF_STAGE0_NODE_TYPES
+    .map((type) => `${type}_node`)
+    .sort();
+  if (
+    canonicalJson(Object.keys(stage0Extensions.definitions).sort()) !==
+      canonicalJson(expectedStage0Definitions) ||
+    canonicalJson([...baseline.stage0Extensions.definitions].sort()) !==
+      canonicalJson(expectedStage0Definitions)
+  ) {
+    findings.push({
+      classification: "definition-changed",
+      detail: "ADF Stage-0 extension definitions are not classified exactly once.",
+    });
+  }
+  if (
+    stage0ExtensionDefinitionsHash(stage0Extensions) !==
+      baseline.stage0Extensions.canonicalSha256
+  ) {
+    findings.push({
+      classification: "definition-changed",
+      detail: "Pinned Stage-0 extension definitions differ from their baseline.",
+    });
   }
   if (coverageHash() !== baseline.coverageSha256) {
     findings.push({ classification: "definition-changed", detail: "ADF coverage manifest differs from its reviewed baseline." });
@@ -1146,11 +1266,16 @@ export async function checkPinned(paths: {
 
 export function makeBaseline(
   rawSchema: string,
+  rawStage0Schema: string,
   fixtureManifest: AdfFixtureManifest,
   packageMetadata: AdfUpstreamBaseline["package"],
   reviewedAt: string,
 ): AdfUpstreamBaseline {
   const schema = JSON.parse(rawSchema) as unknown;
+  const stage0Extensions = stage0ExtensionContract(
+    rawStage0Schema,
+    packageMetadata,
+  );
   return {
     schemaVersion: 1,
     reviewedAt,
@@ -1158,6 +1283,11 @@ export function makeBaseline(
     resolvedVersionedUrl: `https://unpkg.com/@atlaskit/adf-schema@${packageMetadata.version}/dist/json-schema/v1/full.json`,
     package: packageMetadata,
     hashes: schemaHashes(rawSchema),
+    stage0Extensions: {
+      schemaPath: PINNED_STAGE0_SCHEMA_PATH,
+      definitions: Object.keys(stage0Extensions.definitions).sort(),
+      canonicalSha256: stage0ExtensionDefinitionsHash(stage0Extensions),
+    },
     inventory: inventoryAdfSchema(schema),
     coverageSha256: coverageHash(),
     fixturesSha256: sha256(canonicalJson(fixtureManifest)),
@@ -1228,12 +1358,26 @@ async function runCli(): Promise<void> {
     const fixtures = JSON.parse(await readFile(ADF_FIXTURE_MANIFEST_PATH, "utf8")) as AdfFixtureManifest;
     const observation = await observeUpstream();
     const rawSchema = observation.packageSchema;
-    const candidate = makeBaseline(rawSchema, fixtures, observation.packageMetadata, new Date().toISOString());
+    const candidate = makeBaseline(
+      rawSchema,
+      observation.stage0Schema,
+      fixtures,
+      observation.packageMetadata,
+      new Date().toISOString(),
+    );
+    const stage0Extensions = stage0ExtensionContract(
+      observation.stage0Schema,
+      observation.packageMetadata,
+    );
     candidate.resolvedVersionedUrl = observation.canonicalFinalUrl;
     candidate.referenceIndex = observation.referenceIndex;
     await mkdir(candidateDir, { recursive: true });
     await writeJson(resolve(candidateDir, "upstream-baseline.candidate.json"), candidate);
     await writeFile(resolve(candidateDir, "upstream-schema.candidate.json"), rawSchema, { encoding: "utf8", flag: "w" });
+    await writeJson(
+      resolve(candidateDir, "upstream-stage0-extensions.candidate.json"),
+      stage0Extensions,
+    );
     console.log("Wrote candidate files only; review their diff before replacing the committed pin.");
     return;
   }

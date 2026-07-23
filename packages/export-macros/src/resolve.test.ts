@@ -853,6 +853,45 @@ describe("resolveMacroBlocks — bodyNotes promotion (001 deferral)", () => {
     expect(out.notes.some((n) => n.message === "in body")).toBe(true);
   });
 
+  test("presents Stage-0 extension frames to transparent macro renderers in source order", async () => {
+    const passthrough: MacroRenderer = {
+      id: "pass",
+      macros: ["multi-frame"],
+      requiresLivePort: false,
+      async render(m) {
+        return { kind: "blocks", blocks: m.body ?? [], bodyConsumed: true };
+      },
+    };
+    const input: StorageToBlocksResult = {
+      blocks: [unknownBlock("multi-frame", {
+        extensionFrames: [
+          {
+            content: [{
+              type: "paragraph",
+              content: [{ type: "text", text: "first" }],
+            }],
+          },
+          {
+            content: [{
+              type: "paragraph",
+              content: [{ type: "text", text: "second" }],
+            }],
+          },
+        ],
+        bodyNotes: [bodyNote],
+      })],
+      notes: [walkerNote("multi-frame")],
+    };
+
+    const out = await resolveMacroBlocks(input, createRegistry([passthrough]), ctx());
+
+    expect(out.blocks).toEqual([
+      { type: "paragraph", content: [{ type: "text", text: "first" }] },
+      { type: "paragraph", content: [{ type: "text", text: "second" }] },
+    ]);
+    expect(out.notes.some((note) => note.message === "in body")).toBe(true);
+  });
+
   test("a port-backed renderer that supersedes the body drops bodyNotes", async () => {
     const registry = createRegistry([paraRenderer("w", "widget", "PORT")]); // no bodyConsumed
     const input: StorageToBlocksResult = {

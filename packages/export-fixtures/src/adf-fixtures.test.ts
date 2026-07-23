@@ -31,6 +31,7 @@ describe("ADF browser conformance fixture", () => {
       "layout",
       "expand",
       "unknown",
+      "unknown",
       "mediaFallback",
       "paragraph",
       "mediaFallback",
@@ -110,7 +111,7 @@ describe("ADF browser conformance fixture", () => {
       panelIconId: "custom-panel-icon",
       panelIconText: "★",
     });
-    expect(pdf.blocks[24]).toMatchObject({
+    expect(pdf.blocks[25]).toMatchObject({
       type: "codeBlock",
       language: "typescript",
       wrap: false,
@@ -119,7 +120,7 @@ describe("ADF browser conformance fixture", () => {
       uniqueId: "code-unique",
       breakout: { mode: "wide", width: 880 },
     });
-    expect(pdf.blocks[25]).toMatchObject({
+    expect(pdf.blocks[26]).toMatchObject({
       type: "callout",
       title: "Synced content snapshot",
       syncedContent: {
@@ -133,7 +134,7 @@ describe("ADF browser conformance fixture", () => {
         content: [{ type: "text", text: "Synced snapshot body" }],
       }],
     });
-    expect(pdf.blocks[26]).toMatchObject({
+    expect(pdf.blocks[27]).toMatchObject({
       type: "callout",
       title: "Synced content",
       syncedContent: {
@@ -143,7 +144,7 @@ describe("ADF browser conformance fixture", () => {
         breakout: { mode: "full-width" },
       },
     });
-    expect(pdf.blocks[27]).toMatchObject({
+    expect(pdf.blocks[28]).toMatchObject({
       type: "unknown",
       macroName: "unsupportedBlock",
       unsupportedAdf: {
@@ -171,7 +172,7 @@ describe("ADF browser conformance fixture", () => {
         }]),
       }],
     });
-    expect(pdf.blocks[28]).toEqual({
+    expect(pdf.blocks[29]).toEqual({
       type: "unknown",
       macroName: "static-extension",
       adfExtension: {
@@ -302,6 +303,37 @@ describe("ADF browser conformance fixture", () => {
       ],
     });
     expect(pdf.blocks[19]).toMatchObject({
+      type: "unknown",
+      macroName: "multi-frame-extension",
+      adfExtension: {
+        extensionType: "com.example.stage0",
+        extensionKey: "multi-frame-extension",
+        localId: "multi-frame-local",
+      },
+      params: [{ name: "mode", text: "portable" }],
+      extensionFrames: [
+        {
+          fragments: [{ localId: "multi-frame-fragment", name: "" }],
+          dataConsumers: [{ sources: ["multi-frame-consumer"] }],
+          content: [{
+            type: "paragraph",
+            content: [{ type: "text", text: "Multi frame first body" }],
+          }],
+        },
+        {
+          content: [{
+            type: "paragraph",
+            content: [{ type: "text", text: "Multi frame second body" }],
+          }],
+        },
+      ],
+      sourcePage: {
+        id: "adf-conformance-page",
+        version: 1,
+        spaceKey: "TEST",
+      },
+    });
+    expect(pdf.blocks[20]).toMatchObject({
       type: "mediaFallback",
       label: "Visible media fallback",
       media: {
@@ -322,24 +354,24 @@ describe("ADF browser conformance fixture", () => {
         content: [{ type: "text", text: "Media caption" }],
       },
     });
-    expect(pdf.blocks[20]).toMatchObject({
+    expect(pdf.blocks[21]).toMatchObject({
       type: "paragraph",
       content: [{
         type: "text",
         text: "This paragraph demonstrates bounded text wrapping beside authored media.",
       }],
     });
-    expect(pdf.blocks[21]).toMatchObject({
+    expect(pdf.blocks[22]).toMatchObject({
       type: "mediaFallback",
       label: "Grouped attachment one",
       mediaGroup: { index: 0, size: 2 },
     });
-    expect(pdf.blocks[22]).toMatchObject({
+    expect(pdf.blocks[23]).toMatchObject({
       type: "mediaFallback",
       label: "Grouped attachment two",
       mediaGroup: { index: 1, size: 2 },
     });
-    expect(pdf.blocks[23]).toMatchObject({
+    expect(pdf.blocks[24]).toMatchObject({
       type: "paragraph",
       content: [{
         type: "text",
@@ -372,11 +404,21 @@ describe("ADF browser conformance fixture", () => {
       macroName: "static-extension",
     }));
     expect(pdf.notes).toContainEqual(expect.objectContaining({
+      code: "macro-not-rendered",
+      macroName: "multi-frame-extension",
+    }));
+    expect(pdf.notes).toContainEqual(expect.objectContaining({
+      code: "adf-node-degraded",
+      message: expect.stringContaining("every Stage-0 extensionFrame boundary"),
+    }));
+    expect(pdf.notes).toContainEqual(expect.objectContaining({
       code: "adf-mark-degraded",
       message: expect.stringContaining("non-visual provenance"),
     }));
     expect(pdf.notes.some((note) => note.message.includes("synthetic-consumer"))).toBe(false);
     expect(pdf.notes.some((note) => note.message.includes("synthetic-sync"))).toBe(false);
     expect(JSON.stringify(pdf.notes)).not.toContain("static-extension-private");
+    expect(JSON.stringify(pdf.notes)).not.toContain("multi-frame-fragment");
+    expect(JSON.stringify(pdf.notes)).not.toContain("multi-frame-consumer");
   });
 });

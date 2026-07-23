@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "sourceSha256": "6e8175f473ed8254d1e1eb3b78d870aadd338c0731f52e70bad79680d7f029f2",
+  "sourceSha256": "968e82ab3c870e8672292ab2abea0eeef0dcb46e68ca161caecad2f6edf52a32",
   "features": [
     "inline-code",
     "annotation-native-docx-static-pdf",
@@ -39,18 +39,19 @@
     "unsupported-adf-typed-fallback",
     "media-wrap-source-order",
     "synced-content-snapshot-and-reference",
-    "extension-static-fallback"
+    "extension-static-fallback",
+    "stage0-multi-bodied-extension-frames"
   ],
   "formats": {
     "docx": {
       "pages": [
         {
           "file": "docx-page-1.png",
-          "sha256": "4706dee6c0a663b481241eaee1d04cf75ae3def1dd0320bfc574ab84510f4461"
+          "sha256": "79da5765c39434206e6b11135bb5e72707c9636151c43e73060d4e96f3cb3b06"
         },
         {
           "file": "docx-page-2.png",
-          "sha256": "0cbcfc65eccffa61cfab460cb4357852cc7c67b923d1f0fe1710edbc165d7ee3"
+          "sha256": "9346c7566dc77924ecee19c2e39d00d00c6f2b6b2e0a4ee21a0a63c514115349"
         }
       ],
       "requiredText": [
@@ -81,6 +82,11 @@
         "Expanded title",
         "Expanded body",
         "Extension body",
+        "Extension: multi-frame-extension",
+        "Frame 1",
+        "Multi frame first body",
+        "Frame 2",
+        "Multi frame second body",
         "Visible media fallback",
         "Media caption",
         "Synced content snapshot",
@@ -103,7 +109,10 @@
         "unsupported-block-private-provenance",
         "unsupported-inline-private-provenance",
         "static-extension-private-local-id",
-        "static-extension-private-parameter"
+        "static-extension-private-parameter",
+        "multi-frame-local",
+        "multi-frame-fragment",
+        "multi-frame-consumer"
       ]
     },
     "pdf": {
@@ -118,11 +127,11 @@
         },
         {
           "file": "pdf-page-3.png",
-          "sha256": "e19803bcc7dd4b393f9e11b605ff9c5a44aa7a702259183488c51e5594e6375b"
+          "sha256": "fe708b73accd07fa8103825b707cfcee397530dd837edfb97fa9b6cfc2b72368"
         },
         {
           "file": "pdf-page-4.png",
-          "sha256": "8cef2bc07d1fad5eb2b4971dbce5dd60b0eef93522ed488daf78406458cb160f"
+          "sha256": "fc9132ed1a8077e3d02d81389e569cfc196d273534278fcf04ab1ac56dfe4610"
         },
         {
           "file": "pdf-page-5.png",
@@ -161,6 +170,11 @@
         "Expanded title",
         "Expanded body",
         "Extension body",
+        "Extension: multi-frame-extension",
+        "Frame 1",
+        "Multi frame first body",
+        "Frame 2",
+        "Multi frame second body",
         "Visible media fallback",
         "Media caption",
         "Synced content snapshot",
@@ -185,7 +199,10 @@
         "unsupported-block-private-provenance",
         "unsupported-inline-private-provenance",
         "static-extension-private-local-id",
-        "static-extension-private-parameter"
+        "static-extension-private-parameter",
+        "multi-frame-local",
+        "multi-frame-fragment",
+        "multi-frame-consumer"
       ]
     }
   }

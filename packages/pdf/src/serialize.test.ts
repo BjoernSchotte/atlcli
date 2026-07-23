@@ -1994,6 +1994,47 @@ describe("serialize — C3 captions", () => {
     expect(bundle.notes).toEqual([]);
   });
 
+  it("renders ordered Stage-0 extension frames without publishing opaque provenance", async () => {
+    const prepared = await preparePdfDocument([{
+      type: "unknown",
+      macroName: "multi-frame",
+      adfExtension: {
+        extensionType: "com.example.stage0",
+        extensionKey: "multi-frame",
+        localId: "opaque-multi-local",
+      },
+      extensionFrames: [
+        {
+          fragments: [{ localId: "opaque-fragment", name: "opaque-name" }],
+          dataConsumers: [{ sources: ["opaque-consumer"] }],
+          content: [{
+            type: "paragraph",
+            content: [{ type: "text", text: "Visible frame one" }],
+          }],
+        },
+        {
+          content: [{
+            type: "paragraph",
+            content: [{ type: "text", text: "Visible frame two" }],
+          }],
+        },
+      ],
+    }], {
+      resolve: async () => { throw new Error("unused"); },
+    });
+
+    const bundle = serializePdfDocument(prepared, { metadata });
+    expect(bundle.main).toContain("Extension: multi-frame");
+    expect(bundle.main).toContain("Frame 1");
+    expect(bundle.main).toContain("Visible frame one");
+    expect(bundle.main).toContain("Frame 2");
+    expect(bundle.main).toContain("Visible frame two");
+    expect(bundle.main).not.toContain("opaque-multi-local");
+    expect(bundle.main).not.toContain("opaque-fragment");
+    expect(bundle.main).not.toContain("opaque-consumer");
+    expect(bundle.notes).toEqual([]);
+  });
+
   it("preserves synced-content provenance without publishing opaque identity", async () => {
     const snapshot: ExportBlock = {
       type: "callout",

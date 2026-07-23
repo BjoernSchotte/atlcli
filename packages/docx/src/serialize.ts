@@ -1016,6 +1016,26 @@ async function serializeBlock(
         run(`[${fallbackLabel}]`, { italic: true, color: "97A0AF" })
       );
       const MAX_BODY_DEPTH = 20;
+      if (block.extensionFrames) {
+        if (depth >= MAX_BODY_DEPTH) {
+          notes.push({
+            level: "warning",
+            code: "macro-body-truncated",
+            message: `The "${block.macroName}" multi-bodied extension was too deeply nested and was truncated.`,
+            macroName: block.macroName,
+          });
+          return placeholder;
+        }
+        const frames: string[] = [];
+        for (let index = 0; index < block.extensionFrames.length; index += 1) {
+          const frame = block.extensionFrames[index]!;
+          frames.push(paragraph(
+            run(`Frame ${index + 1}`, { italic: true, color: "6B778C" }),
+          ));
+          frames.push(await serializeChildren(frame.content, ctx, notes, depth + 1));
+        }
+        return placeholder + frames.join("");
+      }
       if (block.body && block.body.length > 0) {
         if (depth >= MAX_BODY_DEPTH) {
           notes.push({

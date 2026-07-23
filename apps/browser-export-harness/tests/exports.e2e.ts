@@ -115,7 +115,9 @@ test("every registered conformance case passes from nested production output", a
   expect(adfSource.neutralHasMentionSemantics).toBe(true);
   expect(adfSource.docxHasMentionPresentation).toBe(true);
   expect(adfSource.neutralHasSmartCardSemantics).toBe(true);
+  expect(adfSource.neutralHasMultiBodiedExtensionSemantics).toBe(true);
   expect(adfSource.docxHasSmartCardPresentation).toBe(true);
+  expect(adfSource.docxHasMultiBodiedExtensionProjection).toBe(true);
   expect(adfSource.neutralHasTablePresentation).toBe(true);
   expect(adfSource.neutralHasLayoutPresentation).toBe(true);
   expect(adfSource.docxHasTablePresentation).toBe(true);

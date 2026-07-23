@@ -78,6 +78,12 @@ export declare const ADF_NODE_DECODE_MODES: Readonly<{
     readonly text: "native";
 }>;
 
+// export: ADF_STAGE0_NODE_DECODE_MODES
+export declare const ADF_STAGE0_NODE_DECODE_MODES: Readonly<{
+    readonly extensionFrame: "approximation";
+    readonly multiBodiedExtension: "approximation";
+}>;
+
 // export: AdfAnnotationComment
 export interface AdfAnnotationComment {
     bodyText: string;
@@ -141,6 +147,14 @@ export interface AdfDocument extends AdfNode {
     type: "doc";
     version: 1;
     content: AdfNode[];
+}
+
+// export: AdfExtensionFrame
+export interface AdfExtensionFrame {
+    content: ExportBlock[];
+    fragments?: AdfFragmentIdentity[];
+    dataConsumers?: AdfDataConsumerProvenance[];
+    bodyNotes?: ExportNote[];
 }
 
 // export: AdfExtensionIdentity
@@ -1239,6 +1253,7 @@ export type ExportBlock = {
     plainBody?: string;
     macroId?: string;
     adfExtension?: AdfExtensionIdentity;
+    extensionFrames?: AdfExtensionFrame[];
     fragments?: AdfFragmentIdentity[];
     unsupportedAdf?: AdfUnsupportedNodeProvenance;
     bodyNotes?: ExportNote[];
@@ -1626,8 +1641,14 @@ export declare function isPinnedAdfMarkType(type: string): type is PinnedAdfMark
 // export: isPinnedAdfNodeType
 export declare function isPinnedAdfNodeType(type: string): type is PinnedAdfNodeType;
 
+// export: isPinnedAdfStage0NodeType
+export declare function isPinnedAdfStage0NodeType(type: string): type is PinnedAdfStage0NodeType;
+
 // export: isSafeLinkScheme
 export declare function isSafeLinkScheme(href: string): boolean;
+
+// export: isSupportedAdfNodeType
+export declare function isSupportedAdfNodeType(type: string): type is SupportedAdfNodeType;
 
 // export: JIRA_DATASOURCE_ID
 export declare const JIRA_DATASOURCE_ID = "d8b75300-dfda-4519-b6cd-e49abbd50401";
@@ -1998,13 +2019,22 @@ export declare const PINNED_ADF_NODE_TYPES: readonly [
 export declare const PINNED_ADF_SCHEMA_PACKAGE = "@atlaskit/adf-schema";
 
 // export: PINNED_ADF_SCHEMA_VERSION
-export declare const PINNED_ADF_SCHEMA_VERSION = "56.1.13";
+export declare const PINNED_ADF_SCHEMA_VERSION = "56.1.15";
+
+// export: PINNED_ADF_STAGE0_NODE_TYPES
+export declare const PINNED_ADF_STAGE0_NODE_TYPES: readonly [
+    "extensionFrame",
+    "multiBodiedExtension"
+];
 
 // export: PinnedAdfMarkType
 export type PinnedAdfMarkType = (typeof PINNED_ADF_MARK_TYPES)[number];
 
 // export: PinnedAdfNodeType
 export type PinnedAdfNodeType = (typeof PINNED_ADF_NODE_TYPES)[number];
+
+// export: PinnedAdfStage0NodeType
+export type PinnedAdfStage0NodeType = (typeof PINNED_ADF_STAGE0_NODE_TYPES)[number];
 
 // export: readableTextColor
 export declare function readableTextColor(backgroundColor: string): "#FFFFFF" | "#172B4D";
@@ -2135,6 +2165,9 @@ export declare function storageToMarkdown(storage: string, options?: ConversionO
 
 // export: stripTableColumnMetadata
 export declare function stripTableColumnMetadata(storage: string): string;
+
+// export: SupportedAdfNodeType
+export type SupportedAdfNodeType = PinnedAdfNodeType | PinnedAdfStage0NodeType;
 
 // export: SVG_UNSAFE_MESSAGE
 export declare const SVG_UNSAFE_MESSAGE = "SVG contains active or externally loaded content";
@@ -2519,6 +2552,12 @@ export declare const ADF_NODE_DECODE_MODES: Readonly<{
     readonly text: "native";
 }>;
 
+// export: ADF_STAGE0_NODE_DECODE_MODES
+export declare const ADF_STAGE0_NODE_DECODE_MODES: Readonly<{
+    readonly extensionFrame: "approximation";
+    readonly multiBodiedExtension: "approximation";
+}>;
+
 // export: AdfAnnotationComment
 export interface AdfAnnotationComment {
     bodyText: string;
@@ -2582,6 +2621,14 @@ export interface AdfDocument extends AdfNode {
     type: "doc";
     version: 1;
     content: AdfNode[];
+}
+
+// export: AdfExtensionFrame
+export interface AdfExtensionFrame {
+    content: ExportBlock[];
+    fragments?: AdfFragmentIdentity[];
+    dataConsumers?: AdfDataConsumerProvenance[];
+    bodyNotes?: ExportNote[];
 }
 
 // export: AdfExtensionIdentity
@@ -3680,6 +3727,7 @@ export type ExportBlock = {
     plainBody?: string;
     macroId?: string;
     adfExtension?: AdfExtensionIdentity;
+    extensionFrames?: AdfExtensionFrame[];
     fragments?: AdfFragmentIdentity[];
     unsupportedAdf?: AdfUnsupportedNodeProvenance;
     bodyNotes?: ExportNote[];
@@ -4067,8 +4115,14 @@ export declare function isPinnedAdfMarkType(type: string): type is PinnedAdfMark
 // export: isPinnedAdfNodeType
 export declare function isPinnedAdfNodeType(type: string): type is PinnedAdfNodeType;
 
+// export: isPinnedAdfStage0NodeType
+export declare function isPinnedAdfStage0NodeType(type: string): type is PinnedAdfStage0NodeType;
+
 // export: isSafeLinkScheme
 export declare function isSafeLinkScheme(href: string): boolean;
+
+// export: isSupportedAdfNodeType
+export declare function isSupportedAdfNodeType(type: string): type is SupportedAdfNodeType;
 
 // export: JIRA_DATASOURCE_ID
 export declare const JIRA_DATASOURCE_ID = "d8b75300-dfda-4519-b6cd-e49abbd50401";
@@ -4439,13 +4493,22 @@ export declare const PINNED_ADF_NODE_TYPES: readonly [
 export declare const PINNED_ADF_SCHEMA_PACKAGE = "@atlaskit/adf-schema";
 
 // export: PINNED_ADF_SCHEMA_VERSION
-export declare const PINNED_ADF_SCHEMA_VERSION = "56.1.13";
+export declare const PINNED_ADF_SCHEMA_VERSION = "56.1.15";
+
+// export: PINNED_ADF_STAGE0_NODE_TYPES
+export declare const PINNED_ADF_STAGE0_NODE_TYPES: readonly [
+    "extensionFrame",
+    "multiBodiedExtension"
+];
 
 // export: PinnedAdfMarkType
 export type PinnedAdfMarkType = (typeof PINNED_ADF_MARK_TYPES)[number];
 
 // export: PinnedAdfNodeType
 export type PinnedAdfNodeType = (typeof PINNED_ADF_NODE_TYPES)[number];
+
+// export: PinnedAdfStage0NodeType
+export type PinnedAdfStage0NodeType = (typeof PINNED_ADF_STAGE0_NODE_TYPES)[number];
 
 // export: readableTextColor
 export declare function readableTextColor(backgroundColor: string): "#FFFFFF" | "#172B4D";
@@ -4576,6 +4639,9 @@ export declare function storageToMarkdown(storage: string, options?: ConversionO
 
 // export: stripTableColumnMetadata
 export declare function stripTableColumnMetadata(storage: string): string;
+
+// export: SupportedAdfNodeType
+export type SupportedAdfNodeType = PinnedAdfNodeType | PinnedAdfStage0NodeType;
 
 // export: SVG_UNSAFE_MESSAGE
 export declare const SVG_UNSAFE_MESSAGE = "SVG contains active or externally loaded content";
@@ -4960,6 +5026,12 @@ export declare const ADF_NODE_DECODE_MODES: Readonly<{
     readonly text: "native";
 }>;
 
+// export: ADF_STAGE0_NODE_DECODE_MODES
+export declare const ADF_STAGE0_NODE_DECODE_MODES: Readonly<{
+    readonly extensionFrame: "approximation";
+    readonly multiBodiedExtension: "approximation";
+}>;
+
 // export: AdfAnnotationComment
 export interface AdfAnnotationComment {
     bodyText: string;
@@ -5023,6 +5095,14 @@ export interface AdfDocument extends AdfNode {
     type: "doc";
     version: 1;
     content: AdfNode[];
+}
+
+// export: AdfExtensionFrame
+export interface AdfExtensionFrame {
+    content: ExportBlock[];
+    fragments?: AdfFragmentIdentity[];
+    dataConsumers?: AdfDataConsumerProvenance[];
+    bodyNotes?: ExportNote[];
 }
 
 // export: AdfExtensionIdentity
@@ -6121,6 +6201,7 @@ export type ExportBlock = {
     plainBody?: string;
     macroId?: string;
     adfExtension?: AdfExtensionIdentity;
+    extensionFrames?: AdfExtensionFrame[];
     fragments?: AdfFragmentIdentity[];
     unsupportedAdf?: AdfUnsupportedNodeProvenance;
     bodyNotes?: ExportNote[];
@@ -6508,8 +6589,14 @@ export declare function isPinnedAdfMarkType(type: string): type is PinnedAdfMark
 // export: isPinnedAdfNodeType
 export declare function isPinnedAdfNodeType(type: string): type is PinnedAdfNodeType;
 
+// export: isPinnedAdfStage0NodeType
+export declare function isPinnedAdfStage0NodeType(type: string): type is PinnedAdfStage0NodeType;
+
 // export: isSafeLinkScheme
 export declare function isSafeLinkScheme(href: string): boolean;
+
+// export: isSupportedAdfNodeType
+export declare function isSupportedAdfNodeType(type: string): type is SupportedAdfNodeType;
 
 // export: JIRA_DATASOURCE_ID
 export declare const JIRA_DATASOURCE_ID = "d8b75300-dfda-4519-b6cd-e49abbd50401";
@@ -6880,13 +6967,22 @@ export declare const PINNED_ADF_NODE_TYPES: readonly [
 export declare const PINNED_ADF_SCHEMA_PACKAGE = "@atlaskit/adf-schema";
 
 // export: PINNED_ADF_SCHEMA_VERSION
-export declare const PINNED_ADF_SCHEMA_VERSION = "56.1.13";
+export declare const PINNED_ADF_SCHEMA_VERSION = "56.1.15";
+
+// export: PINNED_ADF_STAGE0_NODE_TYPES
+export declare const PINNED_ADF_STAGE0_NODE_TYPES: readonly [
+    "extensionFrame",
+    "multiBodiedExtension"
+];
 
 // export: PinnedAdfMarkType
 export type PinnedAdfMarkType = (typeof PINNED_ADF_MARK_TYPES)[number];
 
 // export: PinnedAdfNodeType
 export type PinnedAdfNodeType = (typeof PINNED_ADF_NODE_TYPES)[number];
+
+// export: PinnedAdfStage0NodeType
+export type PinnedAdfStage0NodeType = (typeof PINNED_ADF_STAGE0_NODE_TYPES)[number];
 
 // export: readableTextColor
 export declare function readableTextColor(backgroundColor: string): "#FFFFFF" | "#172B4D";
@@ -7017,6 +7113,9 @@ export declare function storageToMarkdown(storage: string, options?: ConversionO
 
 // export: stripTableColumnMetadata
 export declare function stripTableColumnMetadata(storage: string): string;
+
+// export: SupportedAdfNodeType
+export type SupportedAdfNodeType = PinnedAdfNodeType | PinnedAdfStage0NodeType;
 
 // export: SVG_UNSAFE_MESSAGE
 export declare const SVG_UNSAFE_MESSAGE = "SVG contains active or externally loaded content";
@@ -7360,6 +7459,14 @@ export interface AdfAnnotationReply {
 // export: AdfDataConsumerProvenance
 export interface AdfDataConsumerProvenance {
     sources: string[];
+}
+
+// export: AdfExtensionFrame
+export interface AdfExtensionFrame {
+    content: ExportBlock[];
+    fragments?: AdfFragmentIdentity[];
+    dataConsumers?: AdfDataConsumerProvenance[];
+    bodyNotes?: ExportNote[];
 }
 
 // export: AdfExtensionIdentity
@@ -8451,6 +8558,7 @@ export type ExportBlock = {
     plainBody?: string;
     macroId?: string;
     adfExtension?: AdfExtensionIdentity;
+    extensionFrames?: AdfExtensionFrame[];
     fragments?: AdfFragmentIdentity[];
     unsupportedAdf?: AdfUnsupportedNodeProvenance;
     bodyNotes?: ExportNote[];
@@ -10290,6 +10398,12 @@ export declare const ADF_NODE_DECODE_MODES: Readonly<{
     readonly text: "native";
 }>;
 
+// export: ADF_STAGE0_NODE_DECODE_MODES
+export declare const ADF_STAGE0_NODE_DECODE_MODES: Readonly<{
+    readonly extensionFrame: "approximation";
+    readonly multiBodiedExtension: "approximation";
+}>;
+
 // export: AdfAnnotationComment
 export interface AdfAnnotationComment {
     bodyText: string;
@@ -10353,6 +10467,14 @@ export interface AdfDocument extends AdfNode {
     type: "doc";
     version: 1;
     content: AdfNode[];
+}
+
+// export: AdfExtensionFrame
+export interface AdfExtensionFrame {
+    content: ExportBlock[];
+    fragments?: AdfFragmentIdentity[];
+    dataConsumers?: AdfDataConsumerProvenance[];
+    bodyNotes?: ExportNote[];
 }
 
 // export: AdfExtensionIdentity
@@ -11451,6 +11573,7 @@ export type ExportBlock = {
     plainBody?: string;
     macroId?: string;
     adfExtension?: AdfExtensionIdentity;
+    extensionFrames?: AdfExtensionFrame[];
     fragments?: AdfFragmentIdentity[];
     unsupportedAdf?: AdfUnsupportedNodeProvenance;
     bodyNotes?: ExportNote[];
@@ -11838,8 +11961,14 @@ export declare function isPinnedAdfMarkType(type: string): type is PinnedAdfMark
 // export: isPinnedAdfNodeType
 export declare function isPinnedAdfNodeType(type: string): type is PinnedAdfNodeType;
 
+// export: isPinnedAdfStage0NodeType
+export declare function isPinnedAdfStage0NodeType(type: string): type is PinnedAdfStage0NodeType;
+
 // export: isSafeLinkScheme
 export declare function isSafeLinkScheme(href: string): boolean;
+
+// export: isSupportedAdfNodeType
+export declare function isSupportedAdfNodeType(type: string): type is SupportedAdfNodeType;
 
 // export: JIRA_DATASOURCE_ID
 export declare const JIRA_DATASOURCE_ID = "d8b75300-dfda-4519-b6cd-e49abbd50401";
@@ -12210,13 +12339,22 @@ export declare const PINNED_ADF_NODE_TYPES: readonly [
 export declare const PINNED_ADF_SCHEMA_PACKAGE = "@atlaskit/adf-schema";
 
 // export: PINNED_ADF_SCHEMA_VERSION
-export declare const PINNED_ADF_SCHEMA_VERSION = "56.1.13";
+export declare const PINNED_ADF_SCHEMA_VERSION = "56.1.15";
+
+// export: PINNED_ADF_STAGE0_NODE_TYPES
+export declare const PINNED_ADF_STAGE0_NODE_TYPES: readonly [
+    "extensionFrame",
+    "multiBodiedExtension"
+];
 
 // export: PinnedAdfMarkType
 export type PinnedAdfMarkType = (typeof PINNED_ADF_MARK_TYPES)[number];
 
 // export: PinnedAdfNodeType
 export type PinnedAdfNodeType = (typeof PINNED_ADF_NODE_TYPES)[number];
+
+// export: PinnedAdfStage0NodeType
+export type PinnedAdfStage0NodeType = (typeof PINNED_ADF_STAGE0_NODE_TYPES)[number];
 
 // export: readableTextColor
 export declare function readableTextColor(backgroundColor: string): "#FFFFFF" | "#172B4D";
@@ -12347,6 +12485,9 @@ export declare function storageToMarkdown(storage: string, options?: ConversionO
 
 // export: stripTableColumnMetadata
 export declare function stripTableColumnMetadata(storage: string): string;
+
+// export: SupportedAdfNodeType
+export type SupportedAdfNodeType = PinnedAdfNodeType | PinnedAdfStage0NodeType;
 
 // export: SVG_UNSAFE_MESSAGE
 export declare const SVG_UNSAFE_MESSAGE = "SVG contains active or externally loaded content";

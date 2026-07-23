@@ -4,7 +4,7 @@ Status: active implementation and progress register
 Analysis date: 2026-07-22
 Progress last reconciled: 2026-07-23
 Repository baseline: `75b7379` (`main` at implementation-branch start)
-Official schema baseline: `@atlaskit/adf-schema@56.1.13`, resolved from Atlassian's canonical ADF schema URL on 2026-07-22
+Official schema baseline: `@atlaskit/adf-schema@56.1.15`, resolved from Atlassian's canonical ADF schema URL and verified npm package on 2026-07-23
 
 ## 1. Objective
 
@@ -113,7 +113,7 @@ update both its matrix rows and the checklist below in the same commit:
 - `[ ]` plus **Partial** is permitted only when the remaining sub-gap names its
   external contract or parallel-work dependency.
 
-Current matrix orientation: **80 of 84 rows closed; 4 rows open.** This count
+Current matrix orientation: **82 of 84 rows closed; 2 rows open.** This count
 must change in the same commit as any row checkbox.
 `scripts/adf-gap-register.test.ts` enforces the checkbox shape, reconciles
 these counters with every progress-table row, and rejects an unchecked
@@ -235,20 +235,31 @@ The pinned full schema contains:
 - **17 marks**;
 - schema variants that restrict context or allowed marks but do not introduce additional semantic node types.
 
-The human node index and the machine-readable schema drift. For example, the human page currently mentions `multiBodiedExtension` and `extensionFrame`, while neither is in the pinned full schema. Conversely, the schema contains Confluence-relevant layouts, tasks, decisions, cards, extensions, captions, synced content, placeholders, and additional marks that the human index does not enumerate completely.
+The human node index and the stable machine-readable schema drift. The human
+page mentions `multiBodiedExtension` and `extensionFrame`; both are absent from
+`full.json` but have exact definitions in the same package's `stage-0.json`.
+The exporter therefore pins those two definitions as a separate Stage-0
+contract instead of pretending they belong to the 43-node stable inventory.
+Conversely, the stable schema contains Confluence-relevant layouts, tasks,
+decisions, cards, extensions, captions, synced content, placeholders, and
+additional marks that the human index does not enumerate completely.
 
 Therefore the coverage contract must pin both:
 
-1. a canonical schema version; and
-2. an observed Confluence Cloud feature corpus.
+1. a canonical stable schema version;
+2. any explicitly selected Stage-0 definitions from the same verified package;
+   and
+3. an observed Confluence Cloud feature corpus.
 
 Neither alone is a complete Confluence export contract.
 
 ## 6. Complete ADF node matrix
 
-The matrix covers every semantic node type in
-`@atlaskit/adf-schema@56.1.13`. “Source” describes the current direct ADF path
-plus the distinct Storage/export-view compatibility adapters.
+The matrix covers every semantic node type in the stable
+`@atlaskit/adf-schema@56.1.15` `full.json` plus the separately pinned
+`multiBodiedExtension`/`extensionFrame` definitions from `stage-0.json`.
+“Source” describes the current direct ADF path plus the distinct
+Storage/export-view compatibility adapters.
 
 ### 6.1 Root and basic content
 
@@ -393,11 +404,11 @@ These types are mentioned by the human ADF documentation or may appear in produc
 
 | Done | Type/family | Current handling | Required policy |
 |---|---|---|---|
-| [ ] | `multiBodiedExtension` | No typed model; may arrive as wrapper/macro/export-view content. | **Partial — external observation:** keep a product-corpus fixture and support behind an observed-version gate if Confluence emits it. |
-| [ ] | `extensionFrame` | No typed model. | **Partial — external observation:** preserve visible body and extension identity if the observed-product corpus proves that Confluence emits it. |
+| [x] | `multiBodiedExtension` | The exact Stage-0 wrapper attributes, empty-mark contract, root-only placement, ordered frames, parameters, local identity, and extension identity are bounded and validated separately from the stable schema. | Closed static/export-view contract: the neutral macro block retains all ordered frames; macro renderers receive their flattened body in source order, while unresolved DOCX/PDF output keeps explicit frame boundaries. |
+| [x] | `extensionFrame` | The exact parent constraint, non-empty permitted block body, and `fragment`/`dataConsumer` mark set are validated. Each frame has a typed neutral representation with body-local diagnostics and non-visual provenance. | Closed schema-only static projection: both targets emit ordered `Frame N` boundaries plus the complete visible body without publishing opaque product identifiers. Packed browser direct/background parity and real render goldens use the same path. |
 | [x] | `unsupportedBlock` / `unsupportedInline` and `ac:adf-node` wrappers | Direct and legacy Storage wrappers retain exact node type, ordered structured attributes, marks where present, source representation, visible rich children, and wrapper boundaries. | Closed typed fallback: DOCX/PDF show an explicit unsupported-ADF label plus retained body/inline content, never publish opaque provenance, and never route the wrapper through the macro registry. Packed CLI/browser direct/background parity and real renders cover the same model. |
 
-Evidence: [E45].
+Evidence: [E45], [E49].
 
 ## 7. Complete ADF mark matrix
 
@@ -521,9 +532,10 @@ Required acceptance contract:
 - [x] **ADF-native source adapter.** `adfToBlocks()` and
   `pageBodyToBlocks()` validate `doc.version` against the pinned schema while
   keeping Storage as a separate compatibility adapter.
-- [ ] **Open — extend the neutral model before serializers.** Supported
-  semantics use typed representations and every unsupported path has visible,
-  bounded diagnostics; native representations for the open matrix rows remain.
+- [x] **Typed neutral model before serializers.** Every locally actionable
+  stable and selected Stage-0 semantic has a typed representation or complete
+  typed fallback; the only open rows share the external custom-emoji asset
+  contract.
 - [x] **Versioned coverage manifest.** All pinned nodes and marks are
   classified, and CI rejects unreviewed schema/coverage drift.
 - [ ] **Open — real Confluence feature corpus.** Sanitized observed fixtures
@@ -776,7 +788,7 @@ At the initial documentation-only analysis baseline, workspace dependencies were
 Accessed 2026-07-22 and 2026-07-23:
 
 1. [Atlassian Document Format structure](https://developer.atlassian.com/cloud/jira/platform/apis/document/structure/)
-2. [Canonical ADF JSON schema](https://go.atlassian.com/adf-json-schema) -> pinned for this analysis to [`@atlaskit/adf-schema@56.1.13`](https://unpkg.com/@atlaskit/adf-schema@56.1.13/dist/json-schema/v1/full.json)
+2. [Canonical ADF JSON schema](https://go.atlassian.com/adf-json-schema) -> pinned for this analysis to [`@atlaskit/adf-schema@56.1.15`](https://unpkg.com/@atlaskit/adf-schema@56.1.15/dist/json-schema/v1/full.json)
 3. [Confluence Cloud REST v2 Page API](https://developer.atlassian.com/cloud/confluence/rest/v2/api-group-page/)
 4. [Confluence: Format text](https://support.atlassian.com/confluence-cloud/docs/format-text/)
 5. [Confluence: Add elements to a page or live doc](https://support.atlassian.com/confluence-cloud/docs/insert-elements-into-a-page/)
@@ -823,6 +835,7 @@ Accessed 2026-07-22 and 2026-07-23:
 44. [Atlassian editor data-consumer plugin](https://www.npmjs.com/package/%40atlaskit/editor-plugin-data-consumer)
 45. [Confluence REST v2 inline comments](https://developer.atlassian.com/cloud/confluence/rest/v2/api-group-comment/)
 46. [Typst PDF reference](https://typst.app/docs/reference/pdf/)
+47. [`@atlaskit/adf-schema@56.1.15` Stage-0 schema](https://unpkg.com/@atlaskit/adf-schema@56.1.15/dist/json-schema/v1/stage-0.json)
 
 ## 15. Repository evidence index
 
@@ -874,6 +887,7 @@ Accessed 2026-07-22 and 2026-07-23:
 - **[E46] Complete block/bodied extension static and platform-export contract:** `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/adf-to-blocks.test.ts`, `packages/export-macros/src/types.ts`, `packages/export-macros/src/export-view.ts`, `packages/export-macros/src/resolve.ts`, `packages/export-macros/src/resolve.test.ts`, `packages/export-wiring/src/ports.ts`, `packages/export-wiring/src/ports.test.ts`, `apps/extension/utils/macros/session-ports.ts`, `apps/extension/tests/macros/session-ports.test.ts`, `apps/cli/src/commands/engine-parity.test.ts`, `packages/docx/src/serialize.ts`, `packages/docx/src/serialize.test.ts`, `packages/pdf/src/serialize.ts`, `packages/pdf/src/serialize.test.ts`, `packages/export-fixtures/src/macro-fixtures.ts`, `packages/export-fixtures/src/macro-fixtures.test.ts`, `packages/export-fixtures/src/index.ts`, `packages/export-fixtures/src/adf-fixtures.test.ts`, `apps/browser-export-harness/src/macro-case.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `apps/browser-export-harness/tests/exports.e2e.ts`, `apps/browser-export-harness/scripts/check-parity.ts`, `scripts/adf-rendered-goldens.ts`, `scripts/adf-rendered-goldens.test.ts`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
 - **[E47] Complete paragraph-local inline-extension platform-export contract:** `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/adf-to-blocks.test.ts`, `packages/export-macros/src/export-view.ts`, `packages/export-macros/src/resolve.ts`, `packages/export-macros/src/resolve.test.ts`, `packages/export-fixtures/src/macro-fixtures.ts`, `packages/export-fixtures/src/macro-fixtures.test.ts`, `apps/browser-export-harness/src/macro-case.ts`, `apps/browser-export-harness/tests/exports.e2e.ts`, `apps/browser-export-harness/scripts/check-parity.ts`
 - **[E48] Complete ADF annotation sidecar and static-target contract:** `packages/confluence/src/client.ts`, `packages/confluence/src/comment-text.ts`, `packages/confluence/src/page-body.ts`, `packages/confluence/src/page-body-to-blocks.ts`, `packages/confluence/src/tree-fetch.ts`, `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/client-adf.test.ts`, `packages/confluence/src/adf-to-blocks.test.ts`, `packages/docx/src/serialize.ts`, `packages/docx/src/export.ts`, `packages/docx/src/serialize.test.ts`, `packages/docx/src/export.test.ts`, `packages/pdf/src/serialize.ts`, `packages/pdf/src/serialize.test.ts`, `packages/pdf-compiler-browser/src/compiler.test.ts`, `packages/export-fixtures/src/index.ts`, `packages/export-fixtures/src/adf-fixtures.test.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `apps/browser-export-harness/tests/exports.e2e.ts`
+- **[E49] Pinned Stage-0 multi-bodied extension contract and target parity:** `packages/confluence/test-fixtures/adf/upstream-stage0-extensions.json`, `packages/confluence/test-fixtures/adf/upstream-baseline.json`, `scripts/adf-drift.ts`, `scripts/adf-drift.test.ts`, `packages/confluence/src/adf-coverage.ts`, `packages/confluence/src/adf-validate.ts`, `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/export-blocks.ts`, `packages/export-macros/src/resolve.ts`, `packages/docx/src/serialize.ts`, `packages/pdf/src/types.ts`, `packages/pdf/src/prepare.ts`, `packages/pdf/src/serialize.ts`, `packages/export-fixtures/src/index.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `apps/browser-export-harness/tests/exports.e2e.ts`, `scripts/adf-rendered-goldens.ts`
 
 ## 16. Review questions
 

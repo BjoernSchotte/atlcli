@@ -102,6 +102,7 @@ export interface AdfSourceCaseResult {
   neutralHasMediaLinkSemantics: boolean;
   neutralHasMediaPresentation: boolean;
   neutralHasSmartCardSemantics: boolean;
+  neutralHasMultiBodiedExtensionSemantics: boolean;
   docxHasTable: boolean;
   docxHasTablePresentation: boolean;
   docxHasLayoutPresentation: boolean;
@@ -113,6 +114,7 @@ export interface AdfSourceCaseResult {
   docxHasCardTitle: boolean;
   docxHasSmartCardPresentation: boolean;
   docxHasExtensionBody: boolean;
+  docxHasMultiBodiedExtensionProjection: boolean;
   docxHasVisibleMediaFallback: boolean;
   docxHasMediaLink: boolean;
   docxHasMediaPresentation: boolean;
@@ -539,9 +541,10 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
         (note) =>
           note.code === "adf-mark-degraded"
           && note.message.startsWith("ADF mark fragment "),
-      ).length === 1
+      ).length === 2
       && !documentXml.includes("table-fragment")
-      && !documentXml.includes("semantic-table"),
+      && !documentXml.includes("semantic-table")
+      && !documentXml.includes("multi-frame-fragment"),
     neutralHasDataConsumerProvenance:
       neutralJson.includes(
         '"dataConsumers":[{"sources":["synthetic-consumer-primary","synthetic-consumer-secondary"]}]',
@@ -632,6 +635,16 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
       && neutralJson.includes(
         '"appearance":"embed","source":"url","url":"https://example.invalid/adf-embed-card","target":{"kind":"external","href":"https://example.invalid/adf-embed-card"},"localId":"embed-card-local","layout":"full-width","width":80,"originalHeight":720,"originalWidth":1280',
       ),
+    neutralHasMultiBodiedExtensionSemantics:
+      neutralJson.includes(
+        '"macroName":"multi-frame-extension","adfExtension":{"extensionType":"com.example.stage0","extensionKey":"multi-frame-extension","localId":"multi-frame-local"}',
+      )
+      && neutralJson.includes(
+        '"extensionFrames":[{"content":[{"type":"paragraph","content":[{"type":"text","text":"Multi frame first body"}]}],"fragments":[{"localId":"multi-frame-fragment","name":""}],"dataConsumers":[{"sources":["multi-frame-consumer"]}]}',
+      )
+      && neutralJson.includes(
+        '{"content":[{"type":"paragraph","content":[{"type":"text","text":"Multi frame second body"}]}]}]',
+      ),
     docxHasTable: documentXml.includes("<w:tbl"),
     docxHasTablePresentation:
       documentXml.includes('<w:tblW w:w="7200" w:type="dxa"/>')
@@ -687,6 +700,15 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
       && documentXml.includes("Extension: static-extension")
       && !documentXml.includes("static-extension-private-local-id")
       && !documentXml.includes("static-extension-private-parameter"),
+    docxHasMultiBodiedExtensionProjection:
+      documentXml.includes("Extension: multi-frame-extension")
+      && documentXml.includes("Frame 1")
+      && documentXml.includes("Multi frame first body")
+      && documentXml.includes("Frame 2")
+      && documentXml.includes("Multi frame second body")
+      && !documentXml.includes("multi-frame-local")
+      && !documentXml.includes("multi-frame-fragment")
+      && !documentXml.includes("multi-frame-consumer"),
     docxHasVisibleMediaFallback: documentXml.includes("Visible media fallback") && documentXml.includes("Media caption"),
     docxHasMediaLink:
       documentXml.includes('HYPERLINK "https://example.invalid/adf-media"')

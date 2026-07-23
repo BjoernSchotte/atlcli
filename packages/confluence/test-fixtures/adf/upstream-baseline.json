@@ -1,19 +1,27 @@
 {
   "schemaVersion": 1,
-  "reviewedAt": "2026-07-23T09:25:31.000Z",
+  "reviewedAt": "2026-07-23T19:11:14.412Z",
   "canonicalUrl": "https://go.atlassian.com/adf-json-schema",
-  "resolvedVersionedUrl": "https://unpkg.com/@atlaskit/adf-schema@56.1.13/dist/json-schema/v1/full.json",
+  "resolvedVersionedUrl": "https://unpkg.com/@atlaskit/adf-schema@56.1.15/dist/json-schema/v1/full.json",
   "package": {
     "name": "@atlaskit/adf-schema",
-    "version": "56.1.13",
-    "integrity": "sha512-ZOPvvSUhty+m/ZgdgKm86hrsvGfq0VcleUoZv78EnPLEwvXn+obWzwTasKtNvl/44ANS4PCHFS1UUubKvvlBsQ==",
-    "shasum": "453e67828b1f602233640cca9bb2b97fe21186a1",
-    "tarball": "https://registry.npmjs.org/@atlaskit/adf-schema/-/adf-schema-56.1.13.tgz",
+    "version": "56.1.15",
+    "integrity": "sha512-boR3IAsr/2SITxTm/tswhL+Z3KCDxShJB7E31JqWmq2nbkQYv7CRRTvmmVh7RU0ndqo79NAQRPkCcTsAfErMRg==",
+    "shasum": "33b9a9aee50b138bba60bfd1b7c797dba340de27",
+    "tarball": "https://registry.npmjs.org/@atlaskit/adf-schema/-/adf-schema-56.1.15.tgz",
     "schemaPath": "package/dist/json-schema/v1/full.json"
   },
   "hashes": {
     "rawSha256": "75f080928a970250eb8289e9cae5374e3c2a6c0ac3ca22478acaa9d3f39484a3",
     "canonicalSha256": "762ecde4f2c06a70c7e08a62c69e70632768c2e03893f7c8bb44f901899cb291"
+  },
+  "stage0Extensions": {
+    "schemaPath": "package/dist/json-schema/v1/stage-0.json",
+    "definitions": [
+      "extensionFrame_node",
+      "multiBodiedExtension_node"
+    ],
+    "canonicalSha256": "9278b8348e10bde016bf32cfbd3396a71d1234f8dfef3e3658e62763030e78ef"
   },
   "inventory": {
     "nodes": [
@@ -253,7 +261,7 @@
       "underline_mark": "132db45c39cae3e0c2c064b9b51514645f7aa848cdee3609fef0c60ec566cbf0"
     }
   },
-  "coverageSha256": "a5014f94437c2366acbb8716c03d652d4aade0b20eb121a5663025d5c9b9d3d3",
+  "coverageSha256": "93bafb1cfb0df8fd9225bd78cded902989ddc548cfcaeb5b2772ae1edc943d32",
   "fixturesSha256": "fe7327230611bf9ee1e752b8ec5a2d6aefe6522b5f80a5976eda0e8a7f629d58",
   "referenceIndex": {
     "nodes": [

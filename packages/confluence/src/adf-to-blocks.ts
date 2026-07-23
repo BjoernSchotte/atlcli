@@ -13,6 +13,7 @@ import type {
   AdfAnnotationIdentity,
   AdfDataConsumerProvenance,
   Caption,
+  AdfExtensionFrame,
   AdfExtensionIdentity,
   AdfFragmentIdentity,
   AdfLinkAttributes,
@@ -522,6 +523,16 @@ function decodeBlockNode(node: AdfNode, ctx: DecodeContext, path: string): Expor
       if (controlled) return controlled.blocks;
       return [decodeExtension(node, ctx, path)];
     }
+    case "multiBodiedExtension":
+      return [decodeMultiBodiedExtension(node, ctx, path)];
+    case "extensionFrame":
+      addNodeNote(
+        ctx,
+        path,
+        node.type,
+        "appeared outside its required multiBodiedExtension parent; its visible body was preserved.",
+      );
+      return decodeBlockChildren(node.content, ctx, `${path}.content`);
     case "blockCard":
       return decodeBlockCard(node, ctx, path);
     case "embedCard":
@@ -1102,6 +1113,61 @@ function decodeExtension(node: AdfNode, ctx: DecodeContext, path: string): Expor
     ...(fragments.length > 0 ? { fragments } : {}),
     ...(params.length > 0 ? { params } : {}),
     ...(body.length > 0 ? { body } : {}),
+    ...(bodyNotes.length > 0 ? { bodyNotes } : {}),
+    ...(ctx.pageContext ? {
+      sourcePage: {
+        id: ctx.pageContext.id,
+        ...(ctx.pageContext.version !== undefined ? { version: ctx.pageContext.version } : {}),
+        ...(ctx.pageContext.spaceKey ? { spaceKey: ctx.pageContext.spaceKey } : {}),
+      },
+    } : {}),
+  };
+}
+
+function decodeMultiBodiedExtension(
+  node: AdfNode,
+  ctx: DecodeContext,
+  path: string,
+): ExportBlock {
+  const extensionType = stringAttr(node, "extensionType") ?? "unknown";
+  const extensionKey = stringAttr(node, "extensionKey") ?? "adf-multi-bodied-extension";
+  const params = extensionParams(node.attrs?.parameters);
+  const extensionFrames: AdfExtensionFrame[] = (node.content ?? []).map((frame, index) => {
+    const framePath = `${path}.content[${index}]`;
+    const fragments = fragmentMarks(frame.marks);
+    const dataConsumers = dataConsumerMarks(frame.marks);
+    addFragmentProjectionNote(ctx, framePath, fragments);
+    noteDataConsumerProvenance(frame, ctx, framePath);
+
+    const bodyCollector = new NoteCollector(ctx.notes.limit);
+    const bodyCtx: DecodeContext = { ...ctx, notes: bodyCollector };
+    const content = decodeBlockChildren(frame.content, bodyCtx, `${framePath}.content`);
+    const bodyNotes = bodyCollector.finish(sourceFor(bodyCtx, `${framePath}.content`));
+    return {
+      content,
+      ...(fragments.length > 0 ? { fragments } : {}),
+      ...(dataConsumers.length > 0 ? { dataConsumers } : {}),
+      ...(bodyNotes.length > 0 ? { bodyNotes } : {}),
+    };
+  });
+  const bodyNotes = extensionFrames.flatMap((frame) => frame.bodyNotes ?? []);
+  addExtensionResolutionNote(ctx, path, node.type, extensionKey);
+  addNodeNote(
+    ctx,
+    path,
+    node.type,
+    "retained every Stage-0 extensionFrame boundary and renders the frames sequentially in static output.",
+  );
+  return {
+    type: "unknown",
+    macroName: extensionKey,
+    adfExtension: {
+      extensionType,
+      extensionKey,
+      ...(stringAttr(node, "localId") ? { localId: stringAttr(node, "localId") } : {}),
+    },
+    ...(params.length > 0 ? { params } : {}),
+    extensionFrames,
     ...(bodyNotes.length > 0 ? { bodyNotes } : {}),
     ...(ctx.pageContext ? {
       sourcePage: {
@@ -1749,6 +1815,7 @@ function markHandledByNode(nodeType: string, markType: string): boolean {
     return nodeType === "extension" ||
       nodeType === "bodiedExtension" ||
       nodeType === "inlineExtension" ||
+      nodeType === "extensionFrame" ||
       nodeType === "table";
   }
   if (markType === "link") {
@@ -1760,7 +1827,9 @@ function markHandledByNode(nodeType: string, markType: string): boolean {
     return nodeType === "media" || nodeType === "mediaInline";
   }
   if (markType === "dataConsumer") {
-    return nodeType === "media" || nodeType === "mediaInline";
+    return nodeType === "media" ||
+      nodeType === "mediaInline" ||
+      nodeType === "extensionFrame";
   }
   if (markType === "breakout") {
     return nodeType === "layoutSection" ||

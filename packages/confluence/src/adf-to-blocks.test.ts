@@ -7,8 +7,10 @@ import {
 import {
   ADF_MARK_DECODE_MODES,
   ADF_NODE_DECODE_MODES,
+  ADF_STAGE0_NODE_DECODE_MODES,
   PINNED_ADF_MARK_TYPES,
   PINNED_ADF_NODE_TYPES,
+  PINNED_ADF_STAGE0_NODE_TYPES,
 } from "./adf-coverage.js";
 import { JIRA_DATASOURCE_ID } from "./datasource.js";
 import type { ExportBlock } from "./export-blocks.js";
@@ -1633,6 +1635,80 @@ describe("adfToBlocks", () => {
     ]);
   });
 
+  it("retains every Stage-0 multi-bodied extension frame and its non-visual provenance", () => {
+    const result = adfToBlocks(doc([{
+      type: "multiBodiedExtension",
+      attrs: {
+        extensionType: "com.example.stage0",
+        extensionKey: "multi-frame",
+        localId: "multi-local",
+        parameters: { mode: "portable" },
+      },
+      content: [
+        {
+          type: "extensionFrame",
+          marks: [
+            { type: "fragment", attrs: { localId: "frame-fragment", name: "" } },
+            { type: "dataConsumer", attrs: { sources: ["source-a", "source-b"] } },
+          ],
+          content: [{
+            type: "paragraph",
+            content: [{ type: "text", text: "Frame one" }],
+          }],
+        },
+        {
+          type: "extensionFrame",
+          content: [{
+            type: "panel",
+            attrs: { panelType: "info" },
+            content: [{
+              type: "paragraph",
+              content: [{ type: "text", text: "Frame two" }],
+            }],
+          }],
+        },
+      ],
+    }]), { pageContext: { id: "page-1", version: 3, spaceKey: "S" } });
+
+    expect(result.blocks).toEqual([{
+      type: "unknown",
+      macroName: "multi-frame",
+      adfExtension: {
+        extensionType: "com.example.stage0",
+        extensionKey: "multi-frame",
+        localId: "multi-local",
+      },
+      params: [{ name: "mode", text: "portable" }],
+      extensionFrames: [
+        {
+          content: [{
+            type: "paragraph",
+            content: [{ type: "text", text: "Frame one" }],
+          }],
+          fragments: [{ localId: "frame-fragment", name: "" }],
+          dataConsumers: [{ sources: ["source-a", "source-b"] }],
+        },
+        {
+          content: [{
+            type: "callout",
+            kind: "info",
+            content: [{
+              type: "paragraph",
+              content: [{ type: "text", text: "Frame two" }],
+            }],
+          }],
+        },
+      ],
+      sourcePage: { id: "page-1", version: 3, spaceKey: "S" },
+    }]);
+    expect(result.notes.map((note) => note.code)).toEqual([
+      "adf-mark-degraded",
+      "adf-mark-degraded",
+      "macro-not-rendered",
+      "adf-node-degraded",
+    ]);
+  });
+
   it("keeps unresolved extension-body diagnostics on the block until fallback rendering", () => {
     const result = adfToBlocks(doc([{
       type: "bodiedExtension",
@@ -1955,8 +2031,11 @@ describe("adfToBlocks", () => {
 
   it("classifies every pinned node and mark exactly once", () => {
     expect(Object.keys(ADF_NODE_DECODE_MODES).sort()).toEqual([...PINNED_ADF_NODE_TYPES].sort());
+    expect(Object.keys(ADF_STAGE0_NODE_DECODE_MODES).sort())
+      .toEqual([...PINNED_ADF_STAGE0_NODE_TYPES].sort());
     expect(Object.keys(ADF_MARK_DECODE_MODES).sort()).toEqual([...PINNED_ADF_MARK_TYPES].sort());
     expect(Object.values(ADF_NODE_DECODE_MODES).every((mode) => ["native", "approximation", "visible-fallback"].includes(mode))).toBe(true);
+    expect(Object.values(ADF_STAGE0_NODE_DECODE_MODES).every((mode) => ["native", "approximation", "visible-fallback"].includes(mode))).toBe(true);
     expect(Object.values(ADF_MARK_DECODE_MODES).every((mode) => ["native", "approximation", "visible-fallback"].includes(mode))).toBe(true);
   });
 

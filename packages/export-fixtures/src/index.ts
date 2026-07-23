@@ -421,6 +421,35 @@ export const ADF_CONFORMANCE_SOURCE = JSON.stringify({
       content: [{ type: "paragraph", content: [{ type: "text", text: "Extension body" }] }],
     },
     {
+      type: "multiBodiedExtension",
+      attrs: {
+        extensionType: "com.example.stage0",
+        extensionKey: "multi-frame-extension",
+        localId: "multi-frame-local",
+        parameters: { mode: "portable" },
+      },
+      content: [
+        {
+          type: "extensionFrame",
+          marks: [
+            { type: "fragment", attrs: { localId: "multi-frame-fragment", name: "" } },
+            { type: "dataConsumer", attrs: { sources: ["multi-frame-consumer"] } },
+          ],
+          content: [{
+            type: "paragraph",
+            content: [{ type: "text", text: "Multi frame first body" }],
+          }],
+        },
+        {
+          type: "extensionFrame",
+          content: [{
+            type: "paragraph",
+            content: [{ type: "text", text: "Multi frame second body" }],
+          }],
+        },
+      ],
+    },
+    {
       type: "mediaSingle",
       attrs: {
         layout: "wrap-left",

@@ -52,7 +52,10 @@ This is an additive source migration, not a rewrite of the DOCX/OOXML or Typst/P
 The plan is grounded in these contracts:
 
 - Confluence REST v2 exposes `GET /api/v2/pages/{id}?body-format=atlas_doc_format`; `body.atlas_doc_format.value` is a JSON string.
-- The pinned schema baseline in the gap analysis is `@atlaskit/adf-schema@56.1.13`, containing 43 semantic nodes and 17 marks.
+- The pinned stable-schema baseline in the gap analysis is
+  `@atlaskit/adf-schema@56.1.15`, containing 43 semantic nodes and 17 marks;
+  the same verified package's exact `multiBodiedExtension` and
+  `extensionFrame` definitions are pinned separately from `stage-0.json`.
 - `packages/confluence/src/export-blocks.ts` owns the shared `ExportBlock`, `InlineNode`, `ExportNote`, and Storage walker contracts.
 - DOCX and PDF already consume `ExportBlock[]`. They must not learn how to fetch or parse ADF.
 - `ConfluencePageDetails.storage` is a public cross-cutting contract used outside export. It remains source-compatible in this wave.
@@ -1589,19 +1592,33 @@ Typst compiler, shared fixture, and packed-browser assertions cover this
 contract. CLI page reads, tree/space walks, include-page decoding, browser
 source resolution, and both output engines use the same resolver seam.
 The unrestricted workspace suite passed 5,050 tests with 13 intentional skips
-and zero failures across 317 files. The matrix now records 80 of 84 rows closed
-and 4 open.
+and zero failures across 317 files. The matrix at that checkpoint recorded
+80 of 84 rows closed and 4 open.
 
-After this migration proves the source boundary, the remaining matrix backlog is:
+Completed Stage-0 multi-bodied extension follow-on recorded on 2026-07-23:
+the weekly watchguard detected `@atlaskit/adf-schema@56.1.15`; reviewed package
+artifacts proved its stable `full.json` is semantically byte-identical to the
+previous pin while `stage-0.json` contains exact `multiBodiedExtension` and
+`extensionFrame` definitions linked by the official ADF structure index. The
+pin now records and independently drift-checks those two definitions without
+inflating the 43-node stable inventory.
 
-1. custom-emoji assets after a documented Atlassian resolver contract and
-   complete emoji-font coverage (portable DOCX mono-font embedding is complete);
-2. observed `multiBodiedExtension` handling if Confluence emits that
-   product-specific wrapper;
-3. observed `extensionFrame` handling if Confluence emits that
-   product-specific wrapper;
-4. the emoji-picker row, which shares the same external custom-emoji asset
-   contract as item 1 rather than representing separate local implementation.
+The bounded validator enforces root/parent placement, exact attributes, marks,
+and child families. The neutral model retains ordered frame boundaries,
+extension identity, parameters, fragment/data-consumer provenance, body-local
+diagnostics, and complete visible bodies. Macro renderers receive a flattened
+compatibility body in source order; unresolved DOCX and PDF projections retain
+explicit `Frame N` boundaries without publishing opaque identifiers. Direct
+decoder, macro resolver, DOCX, PDF, packed-browser direct/background, real
+Typst, and rendered-golden gates cover the same contract.
+The unrestricted workspace suite passed 5,056 tests with 13 intentional skips
+and zero failures across 317 files; the production Chromium conformance case,
+all 20 browser-isomorphism entrypoints, full typecheck, and the complete
+workspace build also passed.
+
+The matrix now records 82 of 84 rows closed and 2 open. Both remaining rows
+share one external dependency: custom-emoji assets and complete emoji glyph
+coverage require a documented, authorized Atlassian resolver contract.
 
 ## 14. Resolved rollout decisions and unresolved question
 

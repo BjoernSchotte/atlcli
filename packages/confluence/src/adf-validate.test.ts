@@ -3,6 +3,7 @@ import {
   ADF_COVERAGE,
   PINNED_ADF_MARK_TYPES,
   PINNED_ADF_NODE_TYPES,
+  PINNED_ADF_STAGE0_NODE_TYPES,
 } from "./adf-coverage.js";
 import { AdfValidationError } from "./adf-types.js";
 import { validateAdf } from "./adf-validate.js";
@@ -756,6 +757,69 @@ describe("validateAdf", () => {
     ]);
   });
 
+  test("validates the separately pinned multi-bodied Stage-0 extension contract", () => {
+    const valid = validateAdf(doc([{
+      type: "multiBodiedExtension",
+      attrs: {
+        extensionType: "com.example.stage0",
+        extensionKey: "multi-frame",
+        layout: "wide",
+        localId: "multi-local",
+        parameters: { mode: "portable" },
+        text: "fallback",
+      },
+      content: [
+        {
+          type: "extensionFrame",
+          marks: [
+            { type: "fragment", attrs: { localId: "frame-fragment", name: "" } },
+            { type: "dataConsumer", attrs: { sources: ["source-a"] } },
+          ],
+          content: [{
+            type: "paragraph",
+            content: [{ type: "text", text: "Frame one" }],
+          }],
+        },
+        {
+          type: "extensionFrame",
+          content: [{
+            type: "panel",
+            attrs: { panelType: "info" },
+            content: [{
+              type: "paragraph",
+              content: [{ type: "text", text: "Frame two" }],
+            }],
+          }],
+        },
+      ],
+    }]));
+    expect(valid.diagnostics).toEqual([]);
+
+    expect(errorCode(() => validateAdf(doc([{
+      type: "extensionFrame",
+      content: [{ type: "paragraph", content: [] }],
+    }])))).toBe("invalid-node");
+    expect(errorCode(() => validateAdf(doc([{
+      type: "multiBodiedExtension",
+      attrs: { extensionType: "x", extensionKey: "y" },
+      content: [{ type: "paragraph", content: [] }],
+    }])))).toBe("invalid-node");
+    expect(errorCode(() => validateAdf(doc([{
+      type: "multiBodiedExtension",
+      attrs: { extensionType: "x", extensionKey: "y", layout: "center" },
+      content: [],
+    }])))).toBe("invalid-attributes");
+    expect(errorCode(() => validateAdf(doc([{
+      type: "multiBodiedExtension",
+      attrs: { extensionType: "x", extensionKey: "y" },
+      content: [{
+        type: "extensionFrame",
+        marks: [{ type: "strong" }],
+        content: [{ type: "paragraph", content: [] }],
+      }],
+    }])))).toBe("invalid-node");
+  });
+
   test("rejects prototype-polluting keys, non-plain objects, cycles, shared objects, and non-finite numbers", () => {
     const polluted = JSON.parse('{"version":1,"type":"doc","content":[{"type":"future","attrs":{"__proto__":{"x":1}}}]}');
     expect(errorCode(() => validateAdf(polluted))).toBe("invalid-attributes");
@@ -779,11 +843,13 @@ describe("validateAdf", () => {
 
   test("classifies every pinned schema node and mark exactly once", () => {
     expect(PINNED_ADF_NODE_TYPES).toHaveLength(43);
+    expect(PINNED_ADF_STAGE0_NODE_TYPES).toHaveLength(2);
     expect(PINNED_ADF_MARK_TYPES).toHaveLength(17);
     expect(new Set(PINNED_ADF_NODE_TYPES).size).toBe(43);
+    expect(new Set(PINNED_ADF_STAGE0_NODE_TYPES).size).toBe(2);
     expect(new Set(PINNED_ADF_MARK_TYPES).size).toBe(17);
     expect(ADF_COVERAGE.filter(({ kind }) => kind === "node").map(({ type }) => type).sort())
-      .toEqual([...PINNED_ADF_NODE_TYPES].sort());
+      .toEqual([...PINNED_ADF_NODE_TYPES, ...PINNED_ADF_STAGE0_NODE_TYPES].sort());
     expect(ADF_COVERAGE.filter(({ kind }) => kind === "mark").map(({ type }) => type).sort())
       .toEqual([...PINNED_ADF_MARK_TYPES].sort());
   });

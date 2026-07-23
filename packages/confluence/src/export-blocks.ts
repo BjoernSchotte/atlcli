@@ -570,6 +570,19 @@ export interface AdfExtensionIdentity {
   localId?: string;
 }
 
+/**
+ * One Stage-0 `extensionFrame` inside a multi-bodied extension.
+ *
+ * Static exporters retain frame boundaries and visible child blocks while
+ * keeping product-internal fragment/data-consumer bindings non-visual.
+ */
+export interface AdfExtensionFrame {
+  content: ExportBlock[];
+  fragments?: AdfFragmentIdentity[];
+  dataConsumers?: AdfDataConsumerProvenance[];
+  bodyNotes?: ExportNote[];
+}
+
 /** One reply attached to an ADF inline comment. */
 export interface AdfAnnotationReply {
   bodyText: string;
@@ -836,6 +849,12 @@ export type ExportBlock =
        * `macroId`; the live Forge export port may use its documented `localId`.
        */
       adfExtension?: AdfExtensionIdentity;
+      /**
+       * Ordered Stage-0 multi-bodied extension frames. `body`, when also
+       * present, is their flattened compatibility projection for macro
+       * renderers; DOCX/PDF use these frames to retain the authored grouping.
+       */
+      extensionFrames?: AdfExtensionFrame[];
       /** ADF fragment identities retained without inventing bookmark semantics. */
       fragments?: AdfFragmentIdentity[];
       /** Unsupported ADF wrapper type/attributes retained as exact provenance. */

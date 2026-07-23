@@ -56,6 +56,11 @@ const REQUIRED_TEXT = Object.freeze([
   "Expanded title",
   "Expanded body",
   "Extension body",
+  "Extension: multi-frame-extension",
+  "Frame 1",
+  "Multi frame first body",
+  "Frame 2",
+  "Multi frame second body",
   "Visible media fallback",
   "Media caption",
   "Synced content snapshot",
@@ -76,6 +81,9 @@ const FORBIDDEN_TEXT = Object.freeze([
   "unsupported-inline-private-provenance",
   "static-extension-private-local-id",
   "static-extension-private-parameter",
+  "multi-frame-local",
+  "multi-frame-fragment",
+  "multi-frame-consumer",
 ]);
 
 const MAX_MEAN_PIXEL_DIFFERENCE = 0.08;
@@ -374,6 +382,7 @@ async function manifestFor(
       "media-wrap-source-order",
       "synced-content-snapshot-and-reference",
       "extension-static-fallback",
+      "stage0-multi-bodied-extension-frames",
     ],
     formats: {
       docx: {

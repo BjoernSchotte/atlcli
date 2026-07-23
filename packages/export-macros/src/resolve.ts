@@ -187,10 +187,15 @@ async function resolveInstance(
   shared: SharedState
 ): Promise<Resolution> {
   const name = block.macroName.toLowerCase();
+  const framedBody = block.extensionFrames?.flatMap((frame) => frame.content);
   const m: MacroInstance = {
     name,
     params: block.params ?? [],
-    ...(block.body ? { body: block.body } : {}),
+    ...(block.body
+      ? { body: block.body }
+      : framedBody
+        ? { body: framedBody }
+        : {}),
     ...(block.plainBody !== undefined ? { plainBody: block.plainBody } : {}),
     ...(block.macroId !== undefined ? { macroId: block.macroId } : {}),
     ...(block.adfExtension !== undefined ? { adfExtension: block.adfExtension } : {}),

@@ -126,6 +126,7 @@ export type ExportBlock = {
     plainBody?: string;
     macroId?: string;
     adfExtension?: AdfExtensionIdentity;
+    extensionFrames?: AdfExtensionFrame[];
     fragments?: AdfFragmentIdentity[];
     unsupportedAdf?: AdfUnsupportedNodeProvenance;
     bodyNotes?: ExportNote[];
@@ -581,8 +582,11 @@ export type PreparedPdfBlock = Exclude<ExportBlock, {
     content: PreparedPdfInlineNode[];
 }) | (Omit<Extract<ExportBlock, {
     type: "unknown";
-}>, "body"> & {
+}>, "body" | "extensionFrames"> & {
     body?: PreparedPdfBlock[];
+    extensionFrames?: Array<Omit<AdfExtensionFrame, "content"> & {
+        content: PreparedPdfBlock[];
+    }>;
 }) | Omit<Extract<ExportBlock, {
     type: "callout";
 }>, "content"> & {
@@ -977,6 +981,7 @@ export type ExportBlock = {
     plainBody?: string;
     macroId?: string;
     adfExtension?: AdfExtensionIdentity;
+    extensionFrames?: AdfExtensionFrame[];
     fragments?: AdfFragmentIdentity[];
     unsupportedAdf?: AdfUnsupportedNodeProvenance;
     bodyNotes?: ExportNote[];
@@ -1432,8 +1437,11 @@ export type PreparedPdfBlock = Exclude<ExportBlock, {
     content: PreparedPdfInlineNode[];
 }) | (Omit<Extract<ExportBlock, {
     type: "unknown";
-}>, "body"> & {
+}>, "body" | "extensionFrames"> & {
     body?: PreparedPdfBlock[];
+    extensionFrames?: Array<Omit<AdfExtensionFrame, "content"> & {
+        content: PreparedPdfBlock[];
+    }>;
 }) | Omit<Extract<ExportBlock, {
     type: "callout";
 }>, "content"> & {
@@ -1828,6 +1836,7 @@ export type ExportBlock = {
     plainBody?: string;
     macroId?: string;
     adfExtension?: AdfExtensionIdentity;
+    extensionFrames?: AdfExtensionFrame[];
     fragments?: AdfFragmentIdentity[];
     unsupportedAdf?: AdfUnsupportedNodeProvenance;
     bodyNotes?: ExportNote[];
@@ -2283,8 +2292,11 @@ export type PreparedPdfBlock = Exclude<ExportBlock, {
     content: PreparedPdfInlineNode[];
 }) | (Omit<Extract<ExportBlock, {
     type: "unknown";
-}>, "body"> & {
+}>, "body" | "extensionFrames"> & {
     body?: PreparedPdfBlock[];
+    extensionFrames?: Array<Omit<AdfExtensionFrame, "content"> & {
+        content: PreparedPdfBlock[];
+    }>;
 }) | Omit<Extract<ExportBlock, {
     type: "callout";
 }>, "content"> & {

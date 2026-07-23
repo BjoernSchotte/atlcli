@@ -1,6 +1,8 @@
 import {
   isPinnedAdfMarkType,
   isPinnedAdfNodeType,
+  isPinnedAdfStage0NodeType,
+  isSupportedAdfNodeType,
 } from "./adf-coverage.js";
 import {
   AdfValidationError,
@@ -55,6 +57,7 @@ const nodeAttributeKeys: Readonly<Record<string, ReadonlySet<string>>> = Object.
   mediaInline: new Set(["alt", "collection", "data", "height", "id", "localId", "occurrenceKey", "type", "width"]),
   mediaSingle: new Set(["layout", "localId", "width", "widthType"]),
   mention: new Set(["accessLevel", "id", "localId", "text", "userType"]),
+  multiBodiedExtension: new Set(["extensionKey", "extensionType", "layout", "localId", "parameters", "text"]),
   nestedExpand: new Set(["localId", "title"]),
   orderedList: new Set(["localId", "order"]),
   panel: new Set(["localId", "panelColor", "panelIcon", "panelIconId", "panelIconText", "panelType"]),
@@ -153,6 +156,26 @@ const bodiedSyncBlockChildTypes = new Set([
   "rule",
   "table",
   "taskList",
+]);
+
+const extensionFrameChildTypes = new Set([
+  "paragraph",
+  "panel",
+  "blockquote",
+  "orderedList",
+  "bulletList",
+  "rule",
+  "heading",
+  "codeBlock",
+  "mediaGroup",
+  "mediaSingle",
+  "decisionList",
+  "taskList",
+  "table",
+  "extension",
+  "bodiedExtension",
+  "blockCard",
+  "embedCard",
 ]);
 
 function assertSmartCardLayout(
@@ -317,6 +340,7 @@ function validateKnownNodeShape(
   node: Record<string, unknown>,
   attrs: Record<string, unknown> | undefined,
   path: string,
+  parentType?: string,
 ): void {
   if (type === "text") {
     if (typeof node.text !== "string" || node.content !== undefined) {
@@ -688,6 +712,121 @@ function validateKnownNodeShape(
     assertStringAttribute(attrs, "extensionType", path);
     assertStringAttribute(attrs, "extensionKey", path);
   }
+  if (type === "multiBodiedExtension") {
+    if (parentType !== "doc") {
+      throw new AdfValidationError(
+        "invalid-node",
+        "ADF multiBodiedExtension is a root-only Stage-0 node.",
+        path,
+      );
+    }
+    assertStringAttribute(attrs, "extensionType", path);
+    assertStringAttribute(attrs, "extensionKey", path);
+    if ((attrs?.extensionType as string).length === 0 || (attrs?.extensionKey as string).length === 0) {
+      throw new AdfValidationError(
+        "invalid-attributes",
+        "ADF multiBodiedExtension extensionType and extensionKey must be non-empty.",
+        `${path}.attrs`,
+      );
+    }
+    assertStringAttribute(attrs, "text", path, false);
+    assertStringAttribute(attrs, "localId", path, false);
+    if (attrs?.localId === "") {
+      throw new AdfValidationError(
+        "invalid-attributes",
+        "ADF multiBodiedExtension localId must be non-empty when present.",
+        `${path}.attrs.localId`,
+      );
+    }
+    const layout = attrs?.layout;
+    if (
+      layout !== undefined &&
+      layout !== "default" &&
+      layout !== "wide" &&
+      layout !== "full-width"
+    ) {
+      throw new AdfValidationError(
+        "invalid-attributes",
+        "ADF multiBodiedExtension layout must be default, wide, or full-width.",
+        `${path}.attrs.layout`,
+      );
+    }
+    if (node.text !== undefined || node.version !== undefined) {
+      throw new AdfValidationError(
+        "invalid-node",
+        "ADF multiBodiedExtension accepts only type, attrs, content, and an empty marks array.",
+        path,
+      );
+    }
+    if (node.marks !== undefined && (!Array.isArray(node.marks) || node.marks.length > 0)) {
+      throw new AdfValidationError(
+        "invalid-node",
+        "ADF multiBodiedExtension accepts only an empty marks array.",
+        `${path}.marks`,
+      );
+    }
+    if (
+      !Array.isArray(node.content) ||
+      node.content.some((child) => !isPlainObject(child) || child.type !== "extensionFrame")
+    ) {
+      throw new AdfValidationError(
+        "invalid-node",
+        "ADF multiBodiedExtension content must contain only extensionFrame nodes.",
+        `${path}.content`,
+      );
+    }
+  }
+  if (type === "extensionFrame") {
+    if (parentType !== "multiBodiedExtension") {
+      throw new AdfValidationError(
+        "invalid-node",
+        "ADF extensionFrame is valid only inside multiBodiedExtension.",
+        path,
+      );
+    }
+    if (attrs !== undefined || node.text !== undefined || node.version !== undefined) {
+      throw new AdfValidationError(
+        "invalid-node",
+        "ADF extensionFrame accepts only type, content, and optional dataConsumer/fragment marks.",
+        path,
+      );
+    }
+    if (!Array.isArray(node.content) || node.content.length === 0) {
+      throw new AdfValidationError(
+        "invalid-node",
+        "ADF extensionFrame requires at least one child block.",
+        `${path}.content`,
+      );
+    }
+    if (
+      node.content.some(
+        (child) =>
+          !isPlainObject(child) ||
+          typeof child.type !== "string" ||
+          !extensionFrameChildTypes.has(child.type),
+      )
+    ) {
+      throw new AdfValidationError(
+        "invalid-node",
+        "ADF extensionFrame contains a child type outside the pinned Stage-0 contract.",
+        `${path}.content`,
+      );
+    }
+    if (
+      Array.isArray(node.marks) &&
+      node.marks.some(
+        (mark) =>
+          !isPlainObject(mark) ||
+          (mark.type !== "dataConsumer" && mark.type !== "fragment"),
+      )
+    ) {
+      throw new AdfValidationError(
+        "invalid-node",
+        "ADF extensionFrame accepts dataConsumer and fragment marks only.",
+        `${path}.marks`,
+      );
+    }
+  }
   if (type === "table") {
     const displayMode = attrs?.displayMode;
     if (displayMode !== undefined && displayMode !== "default" && displayMode !== "fixed") {
@@ -940,13 +1079,19 @@ export function validateAdf(
   };
 
   claim(value, "$", "invalid-node");
-  const stack: Array<{ node: Record<string, unknown>; path: string; depth: number; claimed: boolean }> = [
+  const stack: Array<{
+    node: Record<string, unknown>;
+    path: string;
+    depth: number;
+    claimed: boolean;
+    parentType?: string;
+  }> = [
     { node: value, path: "$", depth: 0, claimed: true },
   ];
 
   while (stack.length > 0) {
     const current = stack.pop()!;
-    const { node, path, depth } = current;
+    const { node, path, depth, parentType } = current;
     if (!current.claimed) claim(node, path, "invalid-node");
     stats.nodes += 1;
     if (stats.nodes > budget.maxNodes) {
@@ -969,7 +1114,7 @@ export function validateAdf(
         addDiagnostic({ kind: "unknown-attribute", path, type, attribute: key });
       }
     }
-    if (!isPinnedAdfNodeType(type)) addDiagnostic({ kind: "unknown-node", path, type });
+    if (!isSupportedAdfNodeType(type)) addDiagnostic({ kind: "unknown-node", path, type });
 
     if (node.text !== undefined) {
       if (typeof node.text !== "string") {
@@ -993,7 +1138,9 @@ export function validateAdf(
       }
       validateAttributeGraph(attrs, `${path}.attrs`, budget, stats, claim);
     }
-    if (isPinnedAdfNodeType(type)) validateKnownNodeShape(type, node, attrs, path);
+    if (isPinnedAdfNodeType(type) || isPinnedAdfStage0NodeType(type)) {
+      validateKnownNodeShape(type, node, attrs, path, parentType);
+    }
 
     if (node.marks !== undefined) {
       if (!Array.isArray(node.marks)) {
@@ -1054,7 +1201,13 @@ export function validateAdf(
         if (!isPlainObject(child)) {
           throw new AdfValidationError("invalid-node", "ADF child must be a plain object.", childPath);
         }
-        stack.push({ node: child, path: childPath, depth: depth + 1, claimed: false });
+        stack.push({
+          node: child,
+          path: childPath,
+          depth: depth + 1,
+          claimed: false,
+          parentType: type,
+        });
       }
     }
   }

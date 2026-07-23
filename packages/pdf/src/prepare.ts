@@ -511,11 +511,24 @@ export async function preparePdfDocument(
             // Placeholder floor (spec 004): prepare the preserved body so images
             // /tables inside an unresolved macro still render. Every non-body
             // field is provenance and must survive this target preparation.
-            const { body, ...metadata } = block;
+            const { body, extensionFrames, ...metadata } = block;
             return {
               ...metadata,
               ...(body
                 ? { body: await walk(body, `${path}.body`) }
+                : {}),
+              ...(extensionFrames
+                ? {
+                    extensionFrames: await Promise.all(
+                      extensionFrames.map(async (frame, index) => ({
+                        ...frame,
+                        content: await walk(
+                          frame.content,
+                          `${path}.extensionFrames[${index}].content`,
+                        ),
+                      })),
+                    ),
+                  }
                 : {}),
             };
           }

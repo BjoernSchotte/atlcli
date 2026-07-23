@@ -186,7 +186,13 @@ function blocksPlainText(blocks: PreparedPdfBlock[]): string {
         case "divider":
           return "";
         case "unknown":
-          return block.macroName;
+          return block.extensionFrames
+            ? block.extensionFrames
+              .map((frame) => blocksPlainText(frame.content))
+              .join(" ")
+            : block.body
+              ? blocksPlainText(block.body)
+              : block.macroName;
         case "pageBreak":
         case "anchor":
           return "";
@@ -1641,7 +1647,19 @@ function serializeBlock(
         `[${fallbackLabel}]`
       )}]`;
       const parts = [`#par[${placeholder}]`];
-      if (block.body && block.body.length > 0) {
+      if (block.extensionFrames) {
+        block.extensionFrames.forEach((frame, index) => {
+          parts.push(
+            `#par[#text(style: "italic", fill: rgb(${typstString(writer.design.tokens.colors.muted)}))[${literalText(`Frame ${index + 1}`)}]]`,
+          );
+          parts.push(serializeBlocks(
+            frame.content,
+            writer,
+            `${path}.extensionFrames[${index}].content`,
+            context,
+          ));
+        });
+      } else if (block.body && block.body.length > 0) {
         parts.push(serializeBlocks(block.body, writer, `${path}.body`, context));
       } else if (block.plainBody) {
         const MAX_PLAIN = 20000;

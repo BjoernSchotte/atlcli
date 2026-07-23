@@ -1765,6 +1765,44 @@ describe("serializeBlocks — C3 captions", () => {
     expect(notes).toEqual([]);
   });
 
+  it("renders ordered Stage-0 extension frames without publishing opaque provenance", async () => {
+    const { xml, notes } = await serializeBlocks([{
+      type: "unknown",
+      macroName: "multi-frame",
+      adfExtension: {
+        extensionType: "com.example.stage0",
+        extensionKey: "multi-frame",
+        localId: "opaque-multi-local",
+      },
+      extensionFrames: [
+        {
+          fragments: [{ localId: "opaque-fragment", name: "opaque-name" }],
+          dataConsumers: [{ sources: ["opaque-consumer"] }],
+          content: [{
+            type: "paragraph",
+            content: [{ type: "text", text: "Visible frame one" }],
+          }],
+        },
+        {
+          content: [{
+            type: "paragraph",
+            content: [{ type: "text", text: "Visible frame two" }],
+          }],
+        },
+      ],
+    }], { styleNames: noStyles });
+
+    expect(xml).toContain("Extension: multi-frame");
+    expect(xml).toContain("Frame 1");
+    expect(xml).toContain("Visible frame one");
+    expect(xml).toContain("Frame 2");
+    expect(xml).toContain("Visible frame two");
+    expect(xml).not.toContain("opaque-multi-local");
+    expect(xml).not.toContain("opaque-fragment");
+    expect(xml).not.toContain("opaque-consumer");
+    expect(notes).toEqual([]);
+  });
+
   it("renders synced-content projections without publishing opaque identity", async () => {
     const snapshot: ExportBlock = {
       type: "callout",

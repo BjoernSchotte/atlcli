@@ -1,5 +1,5 @@
 export const PINNED_ADF_SCHEMA_PACKAGE = "@atlaskit/adf-schema";
-export const PINNED_ADF_SCHEMA_VERSION = "56.1.13";
+export const PINNED_ADF_SCHEMA_VERSION = "56.1.15";
 
 export const PINNED_ADF_NODE_TYPES = [
   "blockCard",
@@ -47,6 +47,17 @@ export const PINNED_ADF_NODE_TYPES = [
   "text",
 ] as const;
 
+/**
+ * Nodes published by the same pinned Atlassian package in `stage-0.json` and
+ * linked from the official ADF structure index, but deliberately omitted from
+ * `full.json`. They are a separate reviewed contract so the stable-schema
+ * inventory remains exact.
+ */
+export const PINNED_ADF_STAGE0_NODE_TYPES = [
+  "extensionFrame",
+  "multiBodiedExtension",
+] as const;
+
 export const PINNED_ADF_MARK_TYPES = [
   "alignment",
   "annotation",
@@ -68,6 +79,8 @@ export const PINNED_ADF_MARK_TYPES = [
 ] as const;
 
 export type PinnedAdfNodeType = (typeof PINNED_ADF_NODE_TYPES)[number];
+export type PinnedAdfStage0NodeType = (typeof PINNED_ADF_STAGE0_NODE_TYPES)[number];
+export type SupportedAdfNodeType = PinnedAdfNodeType | PinnedAdfStage0NodeType;
 export type PinnedAdfMarkType = (typeof PINNED_ADF_MARK_TYPES)[number];
 export type AdfCoverageProvenance =
   | "schema-only"
@@ -133,6 +146,12 @@ export const ADF_NODE_DECODE_MODES = Object.freeze({
   text: "native",
 } as const satisfies Record<PinnedAdfNodeType, AdfDecoderMode>);
 
+/** Exhaustive implementation classification for the separately pinned Stage-0 slice. */
+export const ADF_STAGE0_NODE_DECODE_MODES = Object.freeze({
+  extensionFrame: "approximation",
+  multiBodiedExtension: "approximation",
+} as const satisfies Record<PinnedAdfStage0NodeType, AdfDecoderMode>);
+
 /** Exhaustive implementation classification consumed by the mark normalizer. */
 export const ADF_MARK_DECODE_MODES = Object.freeze({
   alignment: "native",
@@ -170,6 +189,15 @@ export const ADF_COVERAGE: readonly AdfCoverageRow[] = Object.freeze([
     pdf: type === "doc" ? "not-applicable" : coverageLevel(ADF_NODE_DECODE_MODES[type]),
     provenance: ["schema-only"],
   })),
+  ...PINNED_ADF_STAGE0_NODE_TYPES.map((type): AdfCoverageRow => ({
+    kind: "node",
+    type,
+    parser: "validated",
+    decoder: coverageLevel(ADF_STAGE0_NODE_DECODE_MODES[type]),
+    docx: coverageLevel(ADF_STAGE0_NODE_DECODE_MODES[type]),
+    pdf: coverageLevel(ADF_STAGE0_NODE_DECODE_MODES[type]),
+    provenance: ["schema-only"],
+  })),
   ...PINNED_ADF_MARK_TYPES.map((type): AdfCoverageRow => ({
     kind: "mark",
     type,
@@ -182,10 +210,19 @@ export const ADF_COVERAGE: readonly AdfCoverageRow[] = Object.freeze([
 ]);
 
 const nodeTypeSet: ReadonlySet<string> = new Set(PINNED_ADF_NODE_TYPES);
+const stage0NodeTypeSet: ReadonlySet<string> = new Set(PINNED_ADF_STAGE0_NODE_TYPES);
 const markTypeSet: ReadonlySet<string> = new Set(PINNED_ADF_MARK_TYPES);
 
 export function isPinnedAdfNodeType(type: string): type is PinnedAdfNodeType {
   return nodeTypeSet.has(type);
+}
+
+export function isPinnedAdfStage0NodeType(type: string): type is PinnedAdfStage0NodeType {
+  return stage0NodeTypeSet.has(type);
+}
+
+export function isSupportedAdfNodeType(type: string): type is SupportedAdfNodeType {
+  return nodeTypeSet.has(type) || stage0NodeTypeSet.has(type);
 }
 
 export function isPinnedAdfMarkType(type: string): type is PinnedAdfMarkType {

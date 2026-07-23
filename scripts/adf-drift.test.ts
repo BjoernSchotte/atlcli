@@ -5,6 +5,7 @@ import { gzipSync } from "node:zlib";
 import {
   ADF_BASELINE_PATH,
   ADF_SCHEMA_PATH,
+  ADF_STAGE0_EXTENSIONS_PATH,
   canonicalJson,
   checkObservedCloud,
   checkPinned,
@@ -181,6 +182,7 @@ describe("ADF pinned drift guard", () => {
         canonicalSchema: schemaRaw,
         versionedSchema: schemaRaw,
         packageSchema: schemaRaw,
+        stage0Schema: await readFile(ADF_STAGE0_EXTENSIONS_PATH, "utf8"),
         canonicalRedirects: [baseline.canonicalUrl],
         canonicalFinalUrl: baseline.resolvedVersionedUrl,
         referenceIndex: baseline.referenceIndex,
@@ -190,6 +192,39 @@ describe("ADF pinned drift guard", () => {
     expect(report.ok).toBe(true);
     expect(await readFile(ADF_BASELINE_PATH, "utf8")).toBe(baselineRaw);
     expect(await readFile(ADF_SCHEMA_PATH, "utf8")).toBe(schemaRaw);
+  });
+
+  test("the online checker detects Stage-0 extension definition drift independently", async () => {
+    const [baselineRaw, schemaRaw, stage0Raw] = await Promise.all([
+      readFile(ADF_BASELINE_PATH, "utf8"),
+      readFile(ADF_SCHEMA_PATH, "utf8"),
+      readFile(ADF_STAGE0_EXTENSIONS_PATH, "utf8"),
+    ]);
+    const baseline = JSON.parse(baselineRaw) as AdfUpstreamBaseline;
+    const stage0 = JSON.parse(stage0Raw) as {
+      definitions: Record<string, Record<string, unknown>>;
+    };
+    stage0.definitions.extensionFrame_node!.changedConstraint = true;
+    const observation = async () => ({
+      packageVersion: baseline.package.version,
+      packageMetadata: baseline.package,
+      canonicalSchema: schemaRaw,
+      versionedSchema: schemaRaw,
+      packageSchema: schemaRaw,
+      stage0Schema: JSON.stringify(stage0),
+      canonicalRedirects: [baseline.canonicalUrl],
+      canonicalFinalUrl: baseline.resolvedVersionedUrl,
+      referenceIndex: baseline.referenceIndex,
+      restContractOk: true,
+    });
+
+    const report = await checkUpstream({ observe: observation });
+
+    expect(report.ok).toBe(false);
+    expect(report.findings).toContainEqual({
+      classification: "definition-changed",
+      detail: "Pinned Stage-0 multi-bodied extension definitions changed.",
+    });
   });
 
   test("the optional observed-Cloud check skips cleanly without credentials", async () => {
@@ -230,6 +265,7 @@ describe("ADF pinned drift guard", () => {
         canonicalSchema: schemaRaw,
         versionedSchema: schemaRaw,
         packageSchema: schemaRaw,
+        stage0Schema: await readFile(ADF_STAGE0_EXTENSIONS_PATH, "utf8"),
         canonicalRedirects: [baseline.canonicalUrl],
         canonicalFinalUrl: baseline.resolvedVersionedUrl,
         referenceIndex: baseline.referenceIndex,
@@ -293,6 +329,7 @@ describe("ADF pinned drift guard", () => {
         canonicalSchema: schemaRaw,
         versionedSchema: schemaRaw,
         packageSchema: schemaRaw,
+        stage0Schema: await readFile(ADF_STAGE0_EXTENSIONS_PATH, "utf8"),
         canonicalRedirects: [baseline.canonicalUrl],
         canonicalFinalUrl: baseline.resolvedVersionedUrl,
         referenceIndex: baseline.referenceIndex,
@@ -377,6 +414,7 @@ describe("ADF pinned drift guard", () => {
         canonicalSchema: JSON.stringify(currentSchema),
         versionedSchema: JSON.stringify(currentSchema),
         packageSchema: JSON.stringify(currentSchema),
+        stage0Schema: await readFile(ADF_STAGE0_EXTENSIONS_PATH, "utf8"),
         canonicalRedirects: [baseline.canonicalUrl],
         canonicalFinalUrl: baseline.resolvedVersionedUrl,
         referenceIndex: baseline.referenceIndex,

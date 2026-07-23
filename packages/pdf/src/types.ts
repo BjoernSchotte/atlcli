@@ -1,4 +1,5 @@
 import type {
+  AdfExtensionFrame,
   Caption,
   ExportBlock,
   ExportLink,
@@ -93,8 +94,11 @@ export type PreparedPdfBlock =
    * recursively so images/tables inside an unresolved third-party macro still
    * render; `plainBody` is the verbatim plain-text body.
    */
-  | (Omit<Extract<ExportBlock, { type: "unknown" }>, "body"> & {
+  | (Omit<Extract<ExportBlock, { type: "unknown" }>, "body" | "extensionFrames"> & {
       body?: PreparedPdfBlock[];
+      extensionFrames?: Array<Omit<AdfExtensionFrame, "content"> & {
+        content: PreparedPdfBlock[];
+      }>;
     })
   | Omit<Extract<ExportBlock, { type: "callout" }>, "content"> & {
       content: PreparedPdfBlock[];
