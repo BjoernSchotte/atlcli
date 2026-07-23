@@ -117,6 +117,31 @@ describe("serializeBlocks — heading style mapping", () => {
   });
 });
 
+describe("serializeBlocks — ADF block presentation", () => {
+  it("renders logical alignment and bounded indentation on paragraphs and headings", async () => {
+    const { xml } = await serializeBlocks([
+      {
+        type: "paragraph",
+        presentation: { alignment: "center", indentation: 2 },
+        content: [{ type: "text", text: "Centered" }],
+      },
+      {
+        type: "heading",
+        level: 2,
+        presentation: { alignment: "end", indentation: 6 },
+        content: [{ type: "text", text: "Logical end" }],
+      },
+    ], { styleNames: noStyles });
+
+    expect(xml).toContain(
+      '<w:pPr><w:ind w:start="1440"/><w:jc w:val="center"/></w:pPr>',
+    );
+    expect(xml).toContain(
+      '<w:pStyle w:val="Heading1"/><w:ind w:start="4320"/><w:jc w:val="end"/><w:outlineLvl w:val="0"/>',
+    );
+  });
+});
+
 describe("serializeBlocks — heading outline levels (TOC \\o robustness)", () => {
   // A `TOC \o "1-3"` field collects paragraphs by OUTLINE LEVEL, not style name,
   // so headings must carry <w:outlineLvl> to populate a TOC on ANY template —

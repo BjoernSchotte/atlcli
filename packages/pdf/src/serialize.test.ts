@@ -133,6 +133,37 @@ describe("PDF preparation and serialization", () => {
     expect(bundle.main).toContain("#enum(start: 0,");
   });
 
+  it("renders logical alignment and bounded indentation on paragraphs and headings", async () => {
+    const blocks: ExportBlock[] = [
+      {
+        type: "paragraph",
+        presentation: { alignment: "center", indentation: 2 },
+        content: [{ type: "text", text: "Centered" }],
+      },
+      {
+        type: "heading",
+        level: 2,
+        presentation: { alignment: "end", indentation: 6 },
+        content: [{ type: "text", text: "Logical end" }],
+      },
+    ];
+    const bundle = serializePdfDocument(
+      await preparePdfDocument(blocks, {
+        resolve: async () => {
+          throw new Error("unused");
+        },
+      }),
+      { metadata },
+    );
+
+    expect(bundle.main).toContain(
+      '#block(inset: (left: 1.5em * 2))[#align(center)[#par[#text("Centered")]]]',
+    );
+    expect(bundle.main).toContain(
+      "#block(inset: (left: 1.5em * 6))[#align(end)[#atlcli-outline-title.update",
+    );
+  });
+
   it("localizes the editorial cover and integrity-page export date", () => {
     const bundle = serializePdfDocument(
       { blocks: [], assets: [], notes: [] },

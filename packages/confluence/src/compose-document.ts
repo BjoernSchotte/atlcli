@@ -598,7 +598,7 @@ function transformBlock(block: ExportBlock, ctx: EmitCtx): ExportBlock {
       if (level < 1) level = 1;
       const dest = ctx.destByBlock.get(block);
       return {
-        type: "heading",
+        ...block,
         level: level as 1 | 2 | 3 | 4 | 5 | 6,
         content: transformInline(block.content, ctx),
         ...(dest ? { explicitAnchor: dest } : {}),
@@ -609,7 +609,7 @@ function transformBlock(block: ExportBlock, ctx: EmitCtx): ExportBlock {
       return { type: "anchor", name: dest ?? block.name };
     }
     case "paragraph":
-      return { type: "paragraph", content: transformInline(block.content, ctx) };
+      return { ...block, content: transformInline(block.content, ctx) };
     case "callout":
       return {
         type: "callout",

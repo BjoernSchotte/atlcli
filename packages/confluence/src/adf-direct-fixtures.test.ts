@@ -137,7 +137,12 @@ const MARK_ATTRS: Record<PinnedAdfMarkType, Record<string, unknown> | undefined>
 const MARK_FIXTURES = Object.fromEntries(PINNED_ADF_MARK_TYPES.map((type) => {
   const attrs = MARK_ATTRS[type];
   const mark = { type, ...(attrs ? { attrs } : {}) };
-  return [type, block(paragraph([text(`mark-${type}`, [mark])]))];
+  return [
+    type,
+    type === "alignment" || type === "indentation"
+      ? block({ ...paragraph(`mark-${type}`), marks: [mark] })
+      : block(paragraph([text(`mark-${type}`, [mark])])),
+  ];
 })) as Record<PinnedAdfMarkType, string>;
 
 describe("direct ADF decoder fixtures", () => {

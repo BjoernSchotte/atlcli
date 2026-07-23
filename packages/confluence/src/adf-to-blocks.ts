@@ -11,6 +11,7 @@ import { validateAdf } from "./adf-validate.js";
 import type {
   Caption,
   AdfExtensionIdentity,
+  BlockPresentation,
   ExportBlock,
   ExportNote,
   ExportNoteSource,
@@ -241,7 +242,13 @@ function decodeBlockChildren(
 }
 
 function decodeBlockNode(node: AdfNode, ctx: DecodeContext, path: string): ExportBlock[] {
-  noteUnhandledNodeMarks(node, ctx, path);
+  const presentation =
+    node.type === "paragraph" || node.type === "heading"
+      ? decodeBlockPresentation(node.marks, ctx, path)
+      : undefined;
+  if (node.type !== "paragraph" && node.type !== "heading") {
+    noteUnhandledNodeMarks(node, ctx, path);
+  }
   switch (node.type) {
     case "doc":
       return decodeBlockChildren(node.content, ctx, `${path}.content`);
@@ -252,13 +259,14 @@ function decodeBlockNode(node: AdfNode, ctx: DecodeContext, path: string): Expor
       // authored empty ADF paragraph remains representable.
       return content.length === 0 && (node.content?.length ?? 0) > 0
         ? []
-        : [{ type: "paragraph", content }];
+        : [{ type: "paragraph", content, ...(presentation ? { presentation } : {}) }];
     }
     case "heading":
       return [{
         type: "heading",
         level: numberInRange(node.attrs?.level, 1, 6, 1) as 1 | 2 | 3 | 4 | 5 | 6,
         content: decodeInlineChildren(node.content, ctx, `${path}.content`),
+        ...(presentation ? { presentation } : {}),
       }];
     case "codeBlock":
       return [{
@@ -466,6 +474,35 @@ function applyMarks(
   };
   if (!link) return [node];
   return wrapLink(link, [node], ctx, path);
+}
+
+function decodeBlockPresentation(
+  marks: readonly AdfMark[] | undefined,
+  ctx: DecodeContext,
+  path: string,
+): BlockPresentation | undefined {
+  if (!marks || marks.length === 0) return undefined;
+  const presentation: BlockPresentation = {};
+  for (const mark of [...marks].sort((left, right) => markKey(left).localeCompare(markKey(right)))) {
+    if (mark.type === "alignment") {
+      const alignment = mark.attrs?.align;
+      if (alignment === "center" || alignment === "end") {
+        presentation.alignment ??= alignment;
+      }
+      continue;
+    }
+    if (mark.type === "indentation") {
+      const level = mark.attrs?.level;
+      if (Number.isInteger(level) && (level as number) >= 1 && (level as number) <= 6) {
+        presentation.indentation ??= level as BlockPresentation["indentation"];
+      }
+      continue;
+    }
+    addMarkNote(ctx, path, mark.type);
+  }
+  return presentation.alignment !== undefined || presentation.indentation !== undefined
+    ? presentation
+    : undefined;
 }
 
 function wrapLink(href: string, content: InlineNode[], ctx: DecodeContext, path: string): InlineNode[] {

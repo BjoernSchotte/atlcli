@@ -22,9 +22,11 @@ export type ExportBlock = {
     level: 1 | 2 | 3 | 4 | 5 | 6;
     content: InlineNode[];
     explicitAnchor?: string;
+    presentation?: BlockPresentation;
 } | {
     type: "paragraph";
     content: InlineNode[];
+    presentation?: BlockPresentation;
 } | {
     type: "codeBlock";
     language?: string;
@@ -735,9 +737,11 @@ export type ExportBlock = {
     level: 1 | 2 | 3 | 4 | 5 | 6;
     content: InlineNode[];
     explicitAnchor?: string;
+    presentation?: BlockPresentation;
 } | {
     type: "paragraph";
     content: InlineNode[];
+    presentation?: BlockPresentation;
 } | {
     type: "codeBlock";
     language?: string;
@@ -1448,9 +1452,11 @@ export type ExportBlock = {
     level: 1 | 2 | 3 | 4 | 5 | 6;
     content: InlineNode[];
     explicitAnchor?: string;
+    presentation?: BlockPresentation;
 } | {
     type: "paragraph";
     content: InlineNode[];
+    presentation?: BlockPresentation;
 } | {
     type: "codeBlock";
     language?: string;

@@ -220,6 +220,37 @@ describe("composeChapters — chapter structure", () => {
     expect(sub.level).toBe(4);
   });
 
+  test("preserves authored block presentation while shifting headings and rewriting inline content", () => {
+    const source = page("presented", "Presented", 0, null, "");
+    source.blocks = [
+      {
+        type: "heading",
+        level: 2,
+        presentation: { alignment: "end", indentation: 1 },
+        content: [{ type: "text", text: "Presented heading" }],
+      },
+      {
+        type: "paragraph",
+        presentation: { alignment: "center", indentation: 2 },
+        content: [{ type: "text", text: "Presented paragraph" }],
+      },
+    ];
+
+    const { blocks } = composeChapters([source], { chapterBreak: "none" });
+    expect(blocks.find(
+      (block) => block.type === "heading" && plainText(block.content) === "Presented heading",
+    )).toMatchObject({
+      type: "heading",
+      presentation: { alignment: "end", indentation: 1 },
+    });
+    expect(blocks.find(
+      (block) => block.type === "paragraph" && plainText(block.content) === "Presented paragraph",
+    )).toMatchObject({
+      type: "paragraph",
+      presentation: { alignment: "center", indentation: 2 },
+    });
+  });
+
   test("clamp at level 6 emits heading-depth-clamped note", () => {
     const { blocks, notes } = composeChapters(fixtureTree(), { chapterBreak: "none" });
     // Guide(3): chapterLevel 3, offset 1 (min H2), shift 2 → H6 Deep → 8 → clamp 6.

@@ -13,6 +13,7 @@
  * a dangling relationship (the spec-004 skip-path invariant).
  */
 import type {
+  BlockPresentation,
   ExportBlock,
   InlineNode,
   ExportNote,
@@ -220,6 +221,8 @@ export interface SerializeResult {
 
 /** Twips of indent per list nesting level. */
 const INDENT_STEP = 360;
+/** Half an inch per authored ADF indentation level. */
+const ADF_BLOCK_INDENT_STEP = 720;
 /** Neutral background used when ADF/Storage code marks carry no explicit fill. */
 const INLINE_CODE_BACKGROUND = "F4F5F7";
 
@@ -298,6 +301,19 @@ function linkStyledRuns(nodes: InlineNode[]): string {
     }
   }
   return out;
+}
+
+function blockPresentationPPr(
+  presentation: BlockPresentation | undefined,
+): string {
+  if (!presentation) return "";
+  const indentation = presentation.indentation === undefined
+    ? ""
+    : `<w:ind w:start="${Math.max(1, Math.min(6, presentation.indentation)) * ADF_BLOCK_INDENT_STEP}"/>`;
+  const alignment = presentation.alignment === undefined
+    ? ""
+    : `<w:jc w:val="${presentation.alignment}"/>`;
+  return `${indentation}${alignment}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -471,7 +487,7 @@ async function serializeBlock(
       ctx.emittedHeadingStyles.add(headingStyleId);
       const headingPara = paragraph(serializeInline(block.content, ctx.defaultTextColor), {
         styleId: headingStyleId,
-        extraPPr: `<w:outlineLvl w:val="${outlineLvl}"/>`,
+        extraPPr: `${blockPresentationPPr(block.presentation)}<w:outlineLvl w:val="${outlineLvl}"/>`,
       });
       // An explicit anchor (chapter start / in-page heading anchor, spec 002)
       // wraps the heading paragraph in a real bookmark so `w:hyperlink w:anchor`
@@ -488,7 +504,9 @@ async function serializeBlock(
     }
 
     case "paragraph":
-      return paragraph(serializeInline(block.content, ctx.defaultTextColor));
+      return paragraph(serializeInline(block.content, ctx.defaultTextColor), {
+        extraPPr: blockPresentationPPr(block.presentation),
+      });
 
     case "codeBlock": {
       // A ```mermaid block takes the diagram path (spec 005a); every other

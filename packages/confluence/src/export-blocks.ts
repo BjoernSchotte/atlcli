@@ -111,6 +111,16 @@ export interface ListItem {
   checked?: boolean;
 }
 
+/**
+ * Presentation semantics authored on an ADF block. These remain logical and
+ * target-neutral: serializers decide the physical indent and how logical
+ * `end` alignment maps into their own writing-direction model.
+ */
+export interface BlockPresentation {
+  alignment?: "center" | "end";
+  indentation?: 1 | 2 | 3 | 4 | 5 | 6;
+}
+
 /** Where an image's bytes come from. */
 export type ImageSource =
   /**
@@ -220,8 +230,14 @@ export function macroParamText(
  * its `content` children rendered transparently, never dropped).
  */
 export type ExportBlock =
-  | { type: "heading"; level: 1 | 2 | 3 | 4 | 5 | 6; content: InlineNode[]; explicitAnchor?: string }
-  | { type: "paragraph"; content: InlineNode[] }
+  | {
+      type: "heading";
+      level: 1 | 2 | 3 | 4 | 5 | 6;
+      content: InlineNode[];
+      explicitAnchor?: string;
+      presentation?: BlockPresentation;
+    }
+  | { type: "paragraph"; content: InlineNode[]; presentation?: BlockPresentation }
   | { type: "codeBlock"; language?: string; code: string; caption?: Caption }
   | { type: "callout"; kind: CalloutKind; title?: string; content: ExportBlock[] }
   | {

@@ -146,6 +146,16 @@ export const ADF_CONFORMANCE_SOURCE = JSON.stringify({
       ],
     },
     {
+      type: "paragraph",
+      marks: [{ type: "alignment", attrs: { align: "center" } }],
+      content: [{ type: "text", text: "Centered paragraph" }],
+    },
+    {
+      type: "paragraph",
+      marks: [{ type: "indentation", attrs: { level: 2 } }],
+      content: [{ type: "text", text: "Indented paragraph" }],
+    },
+    {
       type: "panel",
       attrs: { panelType: "info" },
       content: [{ type: "paragraph", content: [{ type: "text", text: "ADF panel body" }] }],

@@ -127,6 +127,43 @@ describe("adfToBlocks", () => {
     expect(result.blocks.map((block) => block.type === "heading" ? block.level : 0)).toEqual([1, 2, 3, 4, 5, 6]);
   });
 
+  it("preserves logical alignment and bounded indentation on paragraphs and headings", () => {
+    const result = adfToBlocks(doc([
+      {
+        type: "paragraph",
+        marks: [
+          { type: "alignment", attrs: { align: "center" } },
+          { type: "indentation", attrs: { level: 2 } },
+        ],
+        content: [{ type: "text", text: "Centered and indented" }],
+      },
+      {
+        type: "heading",
+        attrs: { level: 2 },
+        marks: [
+          { type: "alignment", attrs: { align: "end" } },
+          { type: "indentation", attrs: { level: 6 } },
+        ],
+        content: [{ type: "text", text: "Logical end" }],
+      },
+    ]));
+
+    expect(result.blocks).toEqual([
+      {
+        type: "paragraph",
+        content: [{ type: "text", text: "Centered and indented" }],
+        presentation: { alignment: "center", indentation: 2 },
+      },
+      {
+        type: "heading",
+        level: 2,
+        content: [{ type: "text", text: "Logical end" }],
+        presentation: { alignment: "end", indentation: 6 },
+      },
+    ]);
+    expect(result.notes).toEqual([]);
+  });
+
   it("preserves table spans, backgrounds, widths, and reports ADF-only geometry", () => {
     const result = adfToBlocks(doc([{
       type: "table",

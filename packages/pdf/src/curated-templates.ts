@@ -100,6 +100,7 @@ const MANUSCRIPT_DESIGN: WikiPdfTemplateDesignV1 = {
       // Looser vertical rhythm and larger heading gaps than the built-in.
       paragraphLeading: "0.8em",
       paragraphSpacing: "11pt",
+      adfBlockIndentStep: "1.5em",
       listBodyIndent: "0.8em",
       listSpacing: "9pt",
       enumBodyIndent: "0.8em",

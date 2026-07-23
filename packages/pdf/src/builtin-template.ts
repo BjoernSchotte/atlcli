@@ -90,6 +90,7 @@ const DESIGN: WikiPdfTemplateDesignV1 = {
     layout: {
       paragraphLeading: "0.74em",
       paragraphSpacing: "10pt",
+      adfBlockIndentStep: "1.5em",
       listBodyIndent: "0.7em",
       listSpacing: "8pt",
       enumBodyIndent: "0.7em",

@@ -168,6 +168,23 @@ function validateKnownMarkShape(
   attrs: Record<string, unknown> | undefined,
   path: string,
 ): void {
+  if (type === "alignment" && attrs?.align !== "center" && attrs?.align !== "end") {
+    throw new AdfValidationError(
+      "invalid-attributes",
+      "ADF alignment must be center or end.",
+      `${path}.attrs.align`,
+    );
+  }
+  if (type === "indentation") {
+    const level = attrs?.level;
+    if (!Number.isInteger(level) || (level as number) < 1 || (level as number) > 6) {
+      throw new AdfValidationError(
+        "invalid-attributes",
+        "ADF indentation level must be an integer from 1 through 6.",
+        `${path}.attrs.level`,
+      );
+    }
+  }
   if (type === "link") assertStringAttribute(attrs, "href", path);
   if (type === "textColor" || type === "backgroundColor") {
     assertStringAttribute(attrs, "color", path);

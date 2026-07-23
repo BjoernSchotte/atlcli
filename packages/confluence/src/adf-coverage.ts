@@ -135,7 +135,7 @@ export const ADF_NODE_DECODE_MODES = Object.freeze({
 
 /** Exhaustive implementation classification consumed by the mark normalizer. */
 export const ADF_MARK_DECODE_MODES = Object.freeze({
-  alignment: "visible-fallback",
+  alignment: "native",
   annotation: "visible-fallback",
   backgroundColor: "native",
   border: "visible-fallback",
@@ -145,7 +145,7 @@ export const ADF_MARK_DECODE_MODES = Object.freeze({
   em: "native",
   fontSize: "visible-fallback",
   fragment: "visible-fallback",
-  indentation: "visible-fallback",
+  indentation: "native",
   link: "native",
   strike: "native",
   strong: "native",

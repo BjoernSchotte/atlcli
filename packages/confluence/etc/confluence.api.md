@@ -12,7 +12,7 @@ export declare const ADF_COVERAGE: readonly AdfCoverageRow[];
 
 // export: ADF_MARK_DECODE_MODES
 export declare const ADF_MARK_DECODE_MODES: Readonly<{
-    readonly alignment: "visible-fallback";
+    readonly alignment: "native";
     readonly annotation: "visible-fallback";
     readonly backgroundColor: "native";
     readonly border: "visible-fallback";
@@ -22,7 +22,7 @@ export declare const ADF_MARK_DECODE_MODES: Readonly<{
     readonly em: "native";
     readonly fontSize: "visible-fallback";
     readonly fragment: "visible-fallback";
-    readonly indentation: "visible-fallback";
+    readonly indentation: "native";
     readonly link: "native";
     readonly strike: "native";
     readonly strong: "native";
@@ -307,6 +307,12 @@ export interface BaseComment {
     status: "open" | "resolved";
     parentId?: string;
     replies: BaseComment[];
+}
+
+// export: BlockPresentation
+export interface BlockPresentation {
+    alignment?: "center" | "end";
+    indentation?: 1 | 2 | 3 | 4 | 5 | 6;
 }
 
 // export: BlocksResult
@@ -1030,9 +1036,11 @@ export type ExportBlock = {
     level: 1 | 2 | 3 | 4 | 5 | 6;
     content: InlineNode[];
     explicitAnchor?: string;
+    presentation?: BlockPresentation;
 } | {
     type: "paragraph";
     content: InlineNode[];
+    presentation?: BlockPresentation;
 } | {
     type: "codeBlock";
     language?: string;
@@ -2086,7 +2094,7 @@ export declare const ADF_COVERAGE: readonly AdfCoverageRow[];
 
 // export: ADF_MARK_DECODE_MODES
 export declare const ADF_MARK_DECODE_MODES: Readonly<{
-    readonly alignment: "visible-fallback";
+    readonly alignment: "native";
     readonly annotation: "visible-fallback";
     readonly backgroundColor: "native";
     readonly border: "visible-fallback";
@@ -2096,7 +2104,7 @@ export declare const ADF_MARK_DECODE_MODES: Readonly<{
     readonly em: "native";
     readonly fontSize: "visible-fallback";
     readonly fragment: "visible-fallback";
-    readonly indentation: "visible-fallback";
+    readonly indentation: "native";
     readonly link: "native";
     readonly strike: "native";
     readonly strong: "native";
@@ -2381,6 +2389,12 @@ export interface BaseComment {
     status: "open" | "resolved";
     parentId?: string;
     replies: BaseComment[];
+}
+
+// export: BlockPresentation
+export interface BlockPresentation {
+    alignment?: "center" | "end";
+    indentation?: 1 | 2 | 3 | 4 | 5 | 6;
 }
 
 // export: BlocksResult
@@ -3104,9 +3118,11 @@ export type ExportBlock = {
     level: 1 | 2 | 3 | 4 | 5 | 6;
     content: InlineNode[];
     explicitAnchor?: string;
+    presentation?: BlockPresentation;
 } | {
     type: "paragraph";
     content: InlineNode[];
+    presentation?: BlockPresentation;
 } | {
     type: "codeBlock";
     language?: string;
@@ -4160,7 +4176,7 @@ export declare const ADF_COVERAGE: readonly AdfCoverageRow[];
 
 // export: ADF_MARK_DECODE_MODES
 export declare const ADF_MARK_DECODE_MODES: Readonly<{
-    readonly alignment: "visible-fallback";
+    readonly alignment: "native";
     readonly annotation: "visible-fallback";
     readonly backgroundColor: "native";
     readonly border: "visible-fallback";
@@ -4170,7 +4186,7 @@ export declare const ADF_MARK_DECODE_MODES: Readonly<{
     readonly em: "native";
     readonly fontSize: "visible-fallback";
     readonly fragment: "visible-fallback";
-    readonly indentation: "visible-fallback";
+    readonly indentation: "native";
     readonly link: "native";
     readonly strike: "native";
     readonly strong: "native";
@@ -4455,6 +4471,12 @@ export interface BaseComment {
     status: "open" | "resolved";
     parentId?: string;
     replies: BaseComment[];
+}
+
+// export: BlockPresentation
+export interface BlockPresentation {
+    alignment?: "center" | "end";
+    indentation?: 1 | 2 | 3 | 4 | 5 | 6;
 }
 
 // export: BlocksResult
@@ -5178,9 +5200,11 @@ export type ExportBlock = {
     level: 1 | 2 | 3 | 4 | 5 | 6;
     content: InlineNode[];
     explicitAnchor?: string;
+    presentation?: BlockPresentation;
 } | {
     type: "paragraph";
     content: InlineNode[];
+    presentation?: BlockPresentation;
 } | {
     type: "codeBlock";
     language?: string;
@@ -6348,6 +6372,12 @@ export interface BaseComment {
     replies: BaseComment[];
 }
 
+// export: BlockPresentation
+export interface BlockPresentation {
+    alignment?: "center" | "end";
+    indentation?: 1 | 2 | 3 | 4 | 5 | 6;
+}
+
 // export: BrokenLinkSummary
 export interface BrokenLinkSummary {
     totalBroken: number;
@@ -7157,9 +7187,11 @@ export type ExportBlock = {
     level: 1 | 2 | 3 | 4 | 5 | 6;
     content: InlineNode[];
     explicitAnchor?: string;
+    presentation?: BlockPresentation;
 } | {
     type: "paragraph";
     content: InlineNode[];
+    presentation?: BlockPresentation;
 } | {
     type: "codeBlock";
     language?: string;
@@ -8779,7 +8811,7 @@ export declare const ADF_COVERAGE: readonly AdfCoverageRow[];
 
 // export: ADF_MARK_DECODE_MODES
 export declare const ADF_MARK_DECODE_MODES: Readonly<{
-    readonly alignment: "visible-fallback";
+    readonly alignment: "native";
     readonly annotation: "visible-fallback";
     readonly backgroundColor: "native";
     readonly border: "visible-fallback";
@@ -8789,7 +8821,7 @@ export declare const ADF_MARK_DECODE_MODES: Readonly<{
     readonly em: "native";
     readonly fontSize: "visible-fallback";
     readonly fragment: "visible-fallback";
-    readonly indentation: "visible-fallback";
+    readonly indentation: "native";
     readonly link: "native";
     readonly strike: "native";
     readonly strong: "native";
@@ -9074,6 +9106,12 @@ export interface BaseComment {
     status: "open" | "resolved";
     parentId?: string;
     replies: BaseComment[];
+}
+
+// export: BlockPresentation
+export interface BlockPresentation {
+    alignment?: "center" | "end";
+    indentation?: 1 | 2 | 3 | 4 | 5 | 6;
 }
 
 // export: BlocksResult
@@ -9797,9 +9835,11 @@ export type ExportBlock = {
     level: 1 | 2 | 3 | 4 | 5 | 6;
     content: InlineNode[];
     explicitAnchor?: string;
+    presentation?: BlockPresentation;
 } | {
     type: "paragraph";
     content: InlineNode[];
+    presentation?: BlockPresentation;
 } | {
     type: "codeBlock";
     language?: string;

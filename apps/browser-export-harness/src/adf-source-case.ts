@@ -46,6 +46,8 @@ export interface AdfSourceCaseResult {
   docxHasInlineCode: boolean;
   docxHasEmoji: boolean;
   docxHasCustomEmojiFallback: boolean;
+  docxHasBlockAlignment: boolean;
+  docxHasBlockIndentation: boolean;
   docxHasTable: boolean;
   docxHasCardTitle: boolean;
   docxHasExtensionBody: boolean;
@@ -315,6 +317,8 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
     docxHasInlineCode: documentXml.includes('w:rFonts w:ascii="Consolas"'),
     docxHasEmoji: documentXml.includes("⚠️"),
     docxHasCustomEmojiFallback: documentXml.includes(":custom_party:"),
+    docxHasBlockAlignment: documentXml.includes('<w:jc w:val="center"/>'),
+    docxHasBlockIndentation: documentXml.includes('<w:ind w:start="1440"/>'),
     docxHasTable: documentXml.includes("<w:tbl"),
     docxHasCardTitle:
       documentXml.includes("Local card title")

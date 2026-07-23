@@ -14,6 +14,8 @@ describe("ADF browser conformance fixture", () => {
     expect(pdf.blocks.map((block) => block.type)).toEqual([
       "heading",
       "paragraph",
+      "paragraph",
+      "paragraph",
       "callout",
       "list",
       "table",
@@ -23,7 +25,7 @@ describe("ADF browser conformance fixture", () => {
       "paragraph",
       "paragraph",
     ]);
-    expect(pdf.blocks[3]).toMatchObject({
+    expect(pdf.blocks[5]).toMatchObject({
       type: "list",
       ordered: true,
       start: 3,
@@ -31,6 +33,14 @@ describe("ADF browser conformance fixture", () => {
         { type: "paragraph" },
         { type: "list", ordered: true, start: 8 },
       ] }],
+    });
+    expect(pdf.blocks[2]).toMatchObject({
+      type: "paragraph",
+      presentation: { alignment: "center" },
+    });
+    expect(pdf.blocks[3]).toMatchObject({
+      type: "paragraph",
+      presentation: { indentation: 2 },
     });
     expect(pdf.notes.map((note) => note.code)).toContain("adf-media-unresolved");
   });

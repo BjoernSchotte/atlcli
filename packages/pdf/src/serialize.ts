@@ -1,4 +1,11 @@
-import type { Caption, CaptionKind, ExportNote, InlineNode, LinkTarget } from "@atlcli/confluence";
+import type {
+  BlockPresentation,
+  Caption,
+  CaptionKind,
+  ExportNote,
+  InlineNode,
+  LinkTarget,
+} from "@atlcli/confluence";
 import {
   UNSAFE_LINK_NOTE_CODE,
   computeHeadingOffset,
@@ -798,6 +805,24 @@ function serializeParagraphInline(
   return wrapInParagraph ? `#par[${inline}]` : inline;
 }
 
+function applyBlockPresentation(
+  value: string,
+  presentation: BlockPresentation | undefined,
+  design: ResolvedPdfDesign,
+): string {
+  if (!presentation) return value;
+  let presented = value;
+  if (presentation.alignment !== undefined) {
+    presented = `#align(${presentation.alignment})[${presented}]`;
+  }
+  if (presentation.indentation !== undefined) {
+    const level = Math.max(1, Math.min(6, presentation.indentation));
+    presented =
+      `#block(inset: (left: ${design.tokens.layout.adfBlockIndentStep} * ${level}))[${presented}]`;
+  }
+  return presented;
+}
+
 function serializeBlocks(
   blocks: PreparedPdfBlock[],
   writer: Writer,
@@ -908,10 +933,15 @@ function serializeBlock(
       } else {
         value = `${heading(serializeInline(block.content, writer.labels, writer.notes, context))} <${label}>`;
       }
+      value = applyBlockPresentation(value, block.presentation, writer.design);
       break;
     }
     case "paragraph":
-      value = serializeParagraphInline(block.content, writer, context, true);
+      value = applyBlockPresentation(
+        serializeParagraphInline(block.content, writer, context, true),
+        block.presentation,
+        writer.design,
+      );
       break;
     case "codeBlock": {
       // NOTE: inside `#figure(...)` arguments Typst is in CODE mode, where a

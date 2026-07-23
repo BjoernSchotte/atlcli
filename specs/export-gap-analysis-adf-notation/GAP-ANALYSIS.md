@@ -102,8 +102,8 @@ The matrix covers every semantic node type in `@atlaskit/adf-schema@56.1.13`. �
 | ADF node | Current source mapping | DOCX | PDF | Primary gap |
 |---|---|---|---|---|
 | `doc` | No ADF root is parsed; Storage fragment becomes `ExportBlock[]`. | N/A | N/A | Add validated ADF document entry point with schema/version diagnostics. |
-| `paragraph` | `<p>` or loose inline content becomes a typed paragraph. | Native | Native | Alignment, indentation, font size, local ID, and other ADF attributes are outside the model. |
-| `heading` | `<h1>`…`<h6>` retains level and inline content. | Native | Native | Composed exports may rebase levels; alignment/indentation marks are missing. |
+| `paragraph` | `<p>` or loose inline content becomes a typed paragraph; direct ADF additionally retains logical alignment and indentation. | Native | Native | Font size, local ID, and other ADF attributes remain outside the model. |
+| `heading` | `<h1>`…`<h6>` retains level and inline content; direct ADF additionally retains logical alignment and indentation. | Native | Native | Composed exports may rebase levels; local ID remains outside the model. |
 | `text` | Unicode text is retained and XML/Typst escaped. | Native | Native | Rendering still depends on target font glyph coverage. |
 | `hardBreak` | `<br>` becomes `lineBreak`. | Native | Native | Add direct ADF fixture; Storage path is covered. |
 | `rule` | `<hr>` becomes `divider`. | Native | Native | Add direct ADF fixture. |
@@ -233,8 +233,8 @@ This covers all 17 marks in the pinned schema.
 | `fontSize` | No `InlineMark` variant or source mapping. | Missing | Missing | Add a bounded, theme-aware size model and prevent pathological sizes. |
 | `link` | HTML/Confluence link -> typed target. | Partial | Partial | Page/attachment/card links are not uniformly resolvable/clickable; collection/media attributes are lost. |
 | `annotation` | Not modeled. | Missing | Missing | Preserve annotation identity separately from comment-export policy; underlying text must remain. |
-| `alignment` | Not modeled. | Missing | Missing | Add block alignment and target-specific paragraph alignment. |
-| `indentation` | Not modeled. | Missing | Missing | Add bounded block indentation distinct from list nesting. |
+| `alignment` | ADF `center`/`end` becomes target-neutral block presentation on paragraphs/headings. | Native | Native | DOCX emits logical `w:jc`; PDF emits Typst `align`. |
+| `indentation` | ADF levels 1–6 become bounded target-neutral block indentation. | Native | Native | DOCX and PDF use target-owned, deterministic per-level steps distinct from list nesting. |
 | `breakout` | Not modeled. | Missing | Missing | Map wide/full-width intent to page/section/table policy with deterministic static fallback. |
 | `border` | Not modeled. | Missing | Missing | Preserve media border color/size where the target supports it. |
 | `dataConsumer` | Not modeled. | Missing | Missing | Preserve structured data provenance or explicitly report it as non-visual metadata. |
@@ -326,7 +326,7 @@ Required acceptance contract:
 
 6. **Completed except DOCX font embedding:** inline-code visual treatment and regression goldens.
 7. Emoji/custom-emoji semantics, asset fallback, and font/glyph coverage.
-8. Paragraph/heading alignment, indentation, and font size.
+8. **Completed for alignment and indentation; font size remains.**
 9. Decisions and full task semantics.
 10. **Completed:** ordered-list start and nested restart behavior.
 11. Table layout/display mode/numbered column/vertical alignment/width.
@@ -356,7 +356,7 @@ Required acceptance contract:
 
 - Inline code.
 - Emoji/custom emoji.
-- Alignment, indentation, font size.
+- Font size (alignment and indentation are complete).
 - Link/card identity and date semantics.
 
 ### Phase 2 - Structural fidelity
@@ -414,14 +414,14 @@ Focused missing gates include:
 - generic inline/block/embed card tests;
 - layout width/column tests;
 - media group/inline/file/video/audio tests;
-- alignment/indentation/font-size tests;
+- font-size tests;
 - native ADF caption/nested-expand tests;
 - sync-block tests;
 - generic inline extension placement tests;
 - annotation/fragment/data-consumer preservation tests;
 - paired live Confluence ADF-versus-Storage projection fixtures.
 
-The current checkout has no installed workspace dependencies, so the focused source tests could not be executed during this documentation-only analysis. Existing tests were inspected as evidence; they were not reported as freshly passing.
+At the initial documentation-only analysis baseline, workspace dependencies were not installed and existing tests were inspected rather than freshly executed. Subsequent implementation evidence and current gates are recorded in `PLAN.md`.
 
 ## 14. Official sources
 

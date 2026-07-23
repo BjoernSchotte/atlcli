@@ -54,6 +54,26 @@ describe("validateAdf", () => {
       .toBe("invalid-attributes");
   });
 
+  test("accepts schema-defined block presentation marks and rejects invalid values", () => {
+    const paragraph = (marks: unknown[]) => doc([{
+      type: "paragraph",
+      marks,
+      content: [{ type: "text", text: "presented" }],
+    }]);
+    expect(() => validateAdf(paragraph([
+      { type: "alignment", attrs: { align: "center" } },
+      { type: "indentation", attrs: { level: 6 } },
+    ]))).not.toThrow();
+    expect(errorCode(() => validateAdf(paragraph([
+      { type: "alignment", attrs: { align: "justify" } },
+    ])))).toBe("invalid-attributes");
+    for (const level of [0, 7, 1.5]) {
+      expect(errorCode(() => validateAdf(paragraph([
+        { type: "indentation", attrs: { level } },
+      ])))).toBe("invalid-attributes");
+    }
+  });
+
   test("checks UTF-8 input bytes before parsing", () => {
     const raw = JSON.stringify(doc([{ type: "text", text: "🙂" }]));
     expect(errorCode(() => validateAdf(raw, { budget: { maxInputBytes: raw.length } })))
