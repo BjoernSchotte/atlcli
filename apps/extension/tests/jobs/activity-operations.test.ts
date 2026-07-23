@@ -89,6 +89,8 @@ function unavailableLegacy(): DurableJobsPort {
     acknowledge: async () => undefined,
     dismiss: async () => undefined,
     download: async () => false,
+    getPreferences: async () => ({ pulseEnabled: true }),
+    setPulseEnabled: async () => undefined,
   };
 }
 
@@ -354,6 +356,7 @@ describe("format-neutral extension Activity operations", () => {
 
   it("loads only normalized retained report/request detail and acknowledges viewing", async () => {
     let now = 30;
+    const notifications: string[] = [];
     const catalog = new IndexedDbExportJobCatalog({
       factory,
       now: () => now,
@@ -391,6 +394,9 @@ describe("format-neutral extension Activity operations", () => {
           },
         ],
       }),
+      notifyChanged: async (jobId) => {
+        notifications.push(jobId);
+      },
       emit: async () => undefined,
     });
 
@@ -425,5 +431,43 @@ describe("format-neutral extension Activity operations", () => {
     expect(JSON.stringify(detail)).not.toContain("must not surface");
     expect(detail?.job.unread).toBe(false);
     expect((await catalog.get(PDF))?.acknowledgedAt).toBe(41);
+    expect(notifications).toEqual([PDF]);
+  });
+
+  it("notifies the toolbar projection after durable actions and preference changes", async () => {
+    const notifications: string[] = [];
+    const preferenceWrites: boolean[] = [];
+    const catalog = new IndexedDbExportJobCatalog({
+      factory,
+      now: () => 10,
+    });
+    const bytes = new IndexedDbExportByteStore({
+      factory,
+      now: () => 10,
+    });
+    await succeed(catalog, bytes, pdfRequest(PDF));
+
+    const port = createExtensionDurableJobsStore({
+      catalog,
+      bytes,
+      legacy: unavailableLegacy(),
+      listLegacyPdf: async () => [],
+      notifyChanged: async (jobId) => {
+        notifications.push(jobId);
+      },
+      getPulseEnabled: async () => false,
+      setPulseEnabled: async (enabled) => {
+        preferenceWrites.push(enabled);
+      },
+      emit: async () => undefined,
+      now: () => 30,
+    });
+
+    expect(await port.getPreferences()).toEqual({ pulseEnabled: false });
+    await port.acknowledge(`common:${PDF}`);
+    await port.setPulseEnabled(true);
+
+    expect(notifications).toEqual([PDF, "badge-preference"]);
+    expect(preferenceWrites).toEqual([true]);
   });
 });

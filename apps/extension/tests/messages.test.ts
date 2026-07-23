@@ -3,6 +3,7 @@ import {
   isEntityChanged,
   isEntityChangedForWindow,
   isExtRequest,
+  isExportJobsChanged,
   isOffscreenRequest,
 } from "../utils/messages.js";
 
@@ -61,6 +62,31 @@ describe("message guards", () => {
     expect(isEntityChangedForWindow(message, 7)).toBe(true);
     expect(isEntityChangedForWindow(message, 8)).toBe(false);
     expect(isEntityChangedForWindow({ kind: "ping" }, 7)).toBe(false);
+  });
+
+  it("accepts only bounded export-job change hints", () => {
+    expect(isExportJobsChanged({
+      kind: "jobs:changed",
+      jobId: "123e4567-e89b-42d3-a456-426614174000",
+    })).toBe(true);
+    expect(isExportJobsChanged({
+      kind: "jobs:changed",
+      jobId: "badge-preference",
+    })).toBe(true);
+    expect(isExportJobsChanged({
+      kind: "jobs:changed",
+      jobId: " ",
+    })).toBe(false);
+    expect(isExportJobsChanged({
+      kind: "jobs:changed",
+      jobId: "x".repeat(4_097),
+    })).toBe(false);
+    expect(isExportJobsChanged({
+      kind: "jobs:changed",
+      jobId: "job-1",
+      unexpected: true,
+    })).toBe(false);
+    expect(isExportJobsChanged({ kind: "ping" })).toBe(false);
   });
 
   it("isOffscreenRequest accepts offscreen-bound requests only", () => {

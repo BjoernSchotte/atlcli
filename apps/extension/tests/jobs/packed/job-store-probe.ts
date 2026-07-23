@@ -12,8 +12,101 @@ import { readExtensionDocxExportReport } from "../../../utils/export-jobs/docx-e
 import { submitExtensionDocxExport } from "../../../utils/export-jobs/docx-submit.js";
 import { submitExtensionPdfExport } from "../../../utils/export-jobs/pdf-submit.js";
 import { idbTemplateLibrary } from "../../../utils/templates/library.js";
-import { chromeDurableJobsStore } from "../../../utils/jobs/store.js";
+import {
+  chromeDurableJobsStore,
+  createExtensionDurableJobsStore,
+  type DurableJobsPort,
+} from "../../../utils/jobs/store.js";
 import { deletePdfJob } from "../../../utils/pdf/job-store.js";
+import type {
+  DocxExportJobRequestV1,
+  ExportJobRequestV1,
+  PdfExportJobRequestV1,
+} from "@atlcli/export-jobs";
+
+const PACKED_BADGE_STATE_KEY = "export-activity-badge-state-v1";
+const PACKED_BADGE_PULSE_KEY = "export-activity-badge-pulse-enabled-v1";
+const SHA_ABC =
+  "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+
+function badgeRequest(
+  id: string,
+  format: "pdf" | "docx",
+  createdAt: number,
+): ExportJobRequestV1 {
+  const source = {
+    kind: "confluence" as const,
+    siteOrigin: "https://site.atlassian.net",
+    locator: { kind: "page-id" as const, id: `source-${id}`, version: 1 },
+    scope: { kind: "page" as const },
+  };
+  if (format === "docx") {
+    return {
+      schema: "atlcli.export-job-request/1",
+      id,
+      idempotencyKey: `packed-badge:${id}`,
+      format,
+      renderer: "docx-typescript",
+      source,
+      authRef: "session:https://site.atlassian.net",
+      displayName: `Packed DOCX ${id}`,
+      requestedFilename: `${id}.docx`,
+      createdAt,
+      priority: "interactive",
+      output: { policy: "collect" },
+      template: {
+        recordKey: "packed:badge-template",
+        sha256: "1".repeat(64),
+        name: "Packed badge template",
+        uploadedAt: 1,
+      },
+      options: { embedImages: true, resolveMacros: false },
+    } satisfies DocxExportJobRequestV1;
+  }
+  return {
+    schema: "atlcli.export-job-request/1",
+    id,
+    idempotencyKey: `packed-badge:${id}`,
+    format,
+    renderer: "pdf-typst",
+    source,
+    authRef: "session:https://site.atlassian.net",
+    displayName: `Packed PDF ${id}`,
+    requestedFilename: `${id}.pdf`,
+    createdAt,
+    priority: "interactive",
+    output: { policy: "collect" },
+    template: {
+      id: "builtin.editorial-indigo",
+      manifestVersion: "1.0.0",
+    },
+    settings: {},
+    options: { resolveMacros: false, exportedAt: createdAt },
+  } satisfies PdfExportJobRequestV1;
+}
+
+function unavailableLegacy(): DurableJobsPort {
+  return {
+    list: async () => [],
+    detail: async () => undefined,
+    cancel: async () => undefined,
+    retry: async () => undefined,
+    rerun: async () => undefined,
+    resume: async () => false,
+    acknowledge: async () => undefined,
+    dismiss: async () => undefined,
+    download: async () => false,
+    getPreferences: async () => ({ pulseEnabled: true }),
+    setPulseEnabled: async () => undefined,
+  };
+}
+
+async function notifyBadge(jobId: string): Promise<void> {
+  await chrome.runtime.sendMessage({
+    kind: "jobs:changed",
+    jobId,
+  }).catch(() => undefined);
+}
 
 async function* bytes(size: number, failAfterFirst = false): AsyncIterable<Uint8Array> {
   const first = new Uint8Array(Math.min(size, 1024));
@@ -132,7 +225,238 @@ const probe = {
     await deletePdfJob(legacyJobId);
   },
   async activityKeys(): Promise<string[]> {
-    return (await chromeDurableJobsStore().list()).map((row) => row.id);
+    return (await chromeDurableJobsStore().list()).map((row) => row.key);
+  },
+  async resetBadge(initialize = true): Promise<void> {
+    await chrome.storage.local.remove([
+      PACKED_BADGE_STATE_KEY,
+      PACKED_BADGE_PULSE_KEY,
+    ]);
+    await chrome.action.setBadgeText({ text: "" });
+    if (initialize) await notifyBadge("packed-reset");
+  },
+  async badgeSnapshot(): Promise<{
+    text: string;
+    color: number[];
+    state?: {
+      initialized?: boolean;
+      pulseSequence?: number;
+      seenTransitions?: string[];
+    };
+    pulseEnabled: boolean;
+  }> {
+    const [text, color, stored] = await Promise.all([
+      chrome.action.getBadgeText({}),
+      chrome.action.getBadgeBackgroundColor({}),
+      chrome.storage.local.get([
+        PACKED_BADGE_STATE_KEY,
+        PACKED_BADGE_PULSE_KEY,
+      ]),
+    ]);
+    return {
+      text,
+      color,
+      ...(stored[PACKED_BADGE_STATE_KEY]
+        ? { state: stored[PACKED_BADGE_STATE_KEY] }
+        : {}),
+      pulseEnabled: stored[PACKED_BADGE_PULSE_KEY] !== false,
+    };
+  },
+  async seedBadgeScenario(): Promise<{
+    activeIds: string[];
+    failedId: string;
+    succeededId: string;
+  }> {
+    const createdAt = Date.now() - 1_000;
+    const catalog = new IndexedDbExportJobCatalog();
+    const byteStore = new IndexedDbExportByteStore();
+    const activeIds = Array.from(
+      { length: 10 },
+      (_, index) => `packed-badge-active-${index}`,
+    );
+    for (const [index, id] of activeIds.entries()) {
+      await catalog.create({
+        request: badgeRequest(
+          id,
+          index % 2 === 0 ? "pdf" : "docx",
+          createdAt + index,
+        ),
+      });
+    }
+
+    const failedId = "packed-badge-failed-docx";
+    await catalog.create({
+      request: badgeRequest(failedId, "docx", createdAt + 20),
+    });
+    const failedStartedAt = Date.now();
+    const failedClaim = await catalog.claimNext({
+      ids: [failedId],
+      ownerId: "packed-badge-failure",
+      now: failedStartedAt,
+      leaseDurationMs: 10_000,
+    });
+    if (!failedClaim) throw new Error("Packed failure fixture was not claimed.");
+    await catalog.compareAndSet({
+      id: failedId,
+      kind: "transition",
+      expectedRevision: failedClaim.revision,
+      leaseEpoch: failedClaim.leaseEpoch,
+      to: "failed",
+      at: failedStartedAt + 1,
+      error: {
+        code: "packed-failure",
+        message: "Synthetic packed failure.",
+        category: "network",
+        retryable: true,
+        stage: "fetch",
+        occurredAt: failedStartedAt + 1,
+      },
+    });
+
+    const succeededId = "packed-badge-succeeded-pdf";
+    await catalog.create({
+      request: badgeRequest(succeededId, "pdf", createdAt + 30),
+    });
+    const succeededStartedAt = Date.now();
+    const succeededClaim = await catalog.claimNext({
+      ids: [succeededId],
+      ownerId: "packed-badge-success",
+      now: succeededStartedAt,
+      leaseDurationMs: 10_000,
+    });
+    if (!succeededClaim) throw new Error("Packed success fixture was not claimed.");
+    const staged = await byteStore.stage(
+      succeededId,
+      succeededClaim.leaseEpoch,
+      {
+        mediaType: "application/pdf",
+        filename: "packed-badge-success.pdf",
+        byteLength: 3,
+        sha256: SHA_ABC,
+        bytes: (async function* () {
+          yield Uint8Array.from([97, 98, 99]);
+        })(),
+      },
+    );
+    await catalog.finalizeArtifact({
+      id: succeededId,
+      expectedRevision: succeededClaim.revision,
+      leaseEpoch: succeededClaim.leaseEpoch,
+      stagedArtifact: staged,
+      reportRef: "report:packed-badge-success",
+      reportSummary: {
+        issues: { info: 0, warning: 0, error: 0 },
+        topCodes: [],
+        completeness: "complete",
+      },
+      finishedAt: Math.max(Date.now(), staged.stagedAt),
+    });
+    await notifyBadge("packed-badge-seeded");
+    return { activeIds, failedId, succeededId };
+  },
+  async cancelBadgeJobs(ids: string[]): Promise<void> {
+    const store = chromeDurableJobsStore();
+    for (const id of ids) {
+      await store.cancel(`common:${id}`);
+    }
+  },
+  async acknowledgeBadgeJob(id: string): Promise<void> {
+    await chromeDurableJobsStore().acknowledge(`common:${id}`);
+  },
+  async setBadgePulseEnabled(enabled: boolean): Promise<void> {
+    await chromeDurableJobsStore().setPulseEnabled(enabled);
+  },
+  async panelPing(): Promise<void> {
+    await chrome.runtime.sendMessage({ kind: "ping" });
+  },
+  async replayBadgeJobs(
+    failedId: string,
+    succeededId: string,
+  ): Promise<{
+    retry: {
+      route: string;
+      format: string;
+      template: unknown;
+      derivedFrom: unknown;
+    };
+    rerun: {
+      route: string;
+      format: string;
+      template: unknown;
+      derivedFrom: unknown;
+    };
+    original: {
+      failureState?: string;
+      successState?: string;
+      artifactRef?: string;
+      reportRef?: string;
+      acknowledgedAt?: number;
+    };
+  }> {
+    const catalog = new IndexedDbExportJobCatalog();
+    const byteStore = new IndexedDbExportByteStore();
+    let serial = 0;
+    const store = createExtensionDurableJobsStore({
+      catalog,
+      bytes: byteStore,
+      legacy: unavailableLegacy(),
+      listLegacyPdf: async () => [],
+      wake: async () => ({}),
+      emit: async () => undefined,
+      randomUUID: () => `packed-derived-${++serial}`,
+      now: () => Date.now() + serial,
+    });
+    await store.acknowledge(`common:${succeededId}`);
+    const retryRoute = await store.retry(
+      `common:${failedId}`,
+      "packed-retry-action",
+    );
+    const rerunRoute = await store.rerun(
+      `common:${succeededId}`,
+      "packed-rerun-action",
+    );
+    if (!retryRoute || !rerunRoute) {
+      throw new Error("Packed replay actions did not create derived jobs.");
+    }
+    const retryId = retryRoute.slice("common:".length);
+    const rerunId = rerunRoute.slice("common:".length);
+    const [retrySnapshot, rerunSnapshot, failure, success] = await Promise.all([
+      catalog.get(retryId),
+      catalog.get(rerunId),
+      catalog.get(failedId),
+      catalog.get(succeededId),
+    ]);
+    if (!retrySnapshot || !rerunSnapshot || !failure || !success) {
+      throw new Error("Packed replay snapshots were not retained.");
+    }
+    const [retryRequest, rerunRequest] = await Promise.all([
+      catalog.getRequest(retrySnapshot.requestRef),
+      catalog.getRequest(rerunSnapshot.requestRef),
+    ]);
+    if (!retryRequest || !rerunRequest) {
+      throw new Error("Packed replay requests were not retained.");
+    }
+    return {
+      retry: {
+        route: retryRoute,
+        format: retrySnapshot.format,
+        template: retryRequest.template,
+        derivedFrom: retrySnapshot.derivedFrom,
+      },
+      rerun: {
+        route: rerunRoute,
+        format: rerunSnapshot.format,
+        template: rerunRequest.template,
+        derivedFrom: rerunSnapshot.derivedFrom,
+      },
+      original: {
+        failureState: failure.state,
+        successState: success.state,
+        artifactRef: success.artifact?.ref,
+        reportRef: success.reportRef,
+        acknowledgedAt: success.acknowledgedAt,
+      },
+    };
   },
   async retainedPdf(
     artifactRef: string,

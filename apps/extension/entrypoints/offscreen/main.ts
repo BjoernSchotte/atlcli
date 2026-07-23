@@ -83,6 +83,12 @@ const exportQueue = createExtensionExportQueueRunner({
   execute: executeClaimedExport,
   onExecutionError: (error, jobId) =>
     console.error(`Common export job ${jobId} failed outside its executor`, error),
+  onSettled: async (jobId) => {
+    await chrome.runtime.sendMessage({
+      kind: "jobs:changed",
+      jobId,
+    }).catch(() => undefined);
+  },
 });
 void exportQueue.startup()
   .then(() => exportQueue.wake())

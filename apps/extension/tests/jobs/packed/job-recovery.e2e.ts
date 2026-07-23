@@ -189,6 +189,12 @@ test.beforeEach(async () => {
     await deleteDatabase("atlcli-pdf");
     await deleteDatabase("atlcli-docx");
   });
+  await page.evaluate(async () => {
+    const probe = (globalThis as unknown as {
+      exportJobStoreProbe: { resetBadge(initialize?: boolean): Promise<void> };
+    }).exportJobStoreProbe;
+    await probe.resetBadge(false);
+  });
 });
 
 test.afterAll(async () => {
@@ -206,6 +212,66 @@ async function sendWake(ids?: string[]): Promise<{ kind: string; claimedJobId?: 
 
 async function ensureCatalog(): Promise<void> {
   await expect(sendWake()).resolves.toEqual({ kind: "jobs:wake-result" });
+}
+
+interface PackedBadgeSnapshot {
+  text: string;
+  color: number[];
+  state?: {
+    initialized?: boolean;
+    pulseSequence?: number;
+    seenTransitions?: string[];
+  };
+  pulseEnabled: boolean;
+}
+
+interface PackedBadgeScenario {
+  activeIds: string[];
+  failedId: string;
+  succeededId: string;
+}
+
+async function readBadge(): Promise<PackedBadgeSnapshot> {
+  return page.evaluate(async () => {
+    const probe = (globalThis as unknown as {
+      exportJobStoreProbe: {
+        badgeSnapshot(): Promise<PackedBadgeSnapshot>;
+      };
+    }).exportJobStoreProbe;
+    return probe.badgeSnapshot();
+  });
+}
+
+async function seedBadgeScenario(): Promise<PackedBadgeScenario> {
+  return page.evaluate(async () => {
+    const probe = (globalThis as unknown as {
+      exportJobStoreProbe: {
+        seedBadgeScenario(): Promise<PackedBadgeScenario>;
+      };
+    }).exportJobStoreProbe;
+    return probe.seedBadgeScenario();
+  });
+}
+
+async function initializeBadge(): Promise<void> {
+  await page.evaluate(async () => {
+    const probe = (globalThis as unknown as {
+      exportJobStoreProbe: { resetBadge(initialize?: boolean): Promise<void> };
+    }).exportJobStoreProbe;
+    await probe.resetBadge(true);
+  });
+  await expect.poll(async () => {
+    const snapshot = await readBadge();
+    return {
+      text: snapshot.text,
+      initialized: snapshot.state?.initialized,
+      pulseSequence: snapshot.state?.pulseSequence,
+    };
+  }).toEqual({
+    text: "",
+    initialized: true,
+    pulseSequence: 0,
+  });
 }
 
 async function submitPackedDocx(
@@ -467,7 +533,7 @@ test("upgrades after a real blocked connection is released", async () => {
   expect(stores).toContain("executor-results");
 });
 
-test("a blocked upgrade timeout cannot commit later after the blocker closes", async () => {
+test("parallel blocked upgrade opens time out and cannot commit after the blocker closes", async () => {
   await page.evaluate(async () => {
     const old = await new Promise<IDBDatabase>((resolve, reject) => {
       const open = indexedDB.open("atlcli-export-jobs", 1);
@@ -481,6 +547,12 @@ test("a blocked upgrade timeout cannot commit later after the blocker closes", a
       open.onerror = () => reject(open.error);
     });
     (globalThis as unknown as { oldExportDb: IDBDatabase }).oldExportDb = old;
+    const probe = (globalThis as unknown as {
+      exportJobStoreProbe: { resetBadge(initialize?: boolean): Promise<void> };
+    }).exportJobStoreProbe;
+    // Badge projection and queue wake now contend for the same intentionally
+    // blocked upgrade. Both opens need an independent bounded failure.
+    await probe.resetBadge(true);
   });
 
   const startedAt = Date.now();
@@ -723,6 +795,187 @@ test("a submitted PDF survives extension-surface navigation, tab change, and clo
     artifact: { filename: `Packed page ${JOB_D}.pdf` },
   });
   expect(succeeded.snapshot.deliveredAt).toBeUndefined();
+});
+
+test("packed Activity and toolbar project mixed PDF/DOCX states durably", async () => {
+  await initializeBadge();
+  const fixture = await seedBadgeScenario();
+  await expect.poll(async () => {
+    const snapshot = await readBadge();
+    return {
+      text: snapshot.text,
+      pulseSequence: snapshot.state?.pulseSequence,
+    };
+  }).toEqual({ text: "9+", pulseSequence: 1 });
+
+  // Four 160 ms color frames are finite. Afterwards the active color remains
+  // stable while the one durable pulse checkpoint stays at sequence 1.
+  await new Promise((resolve) => setTimeout(resolve, 850));
+  const settled = await readBadge();
+  expect(settled).toMatchObject({
+    text: "9+",
+    color: [12, 102, 228, 255],
+    state: { pulseSequence: 1 },
+  });
+  await new Promise((resolve) => setTimeout(resolve, 250));
+  expect(await readBadge()).toMatchObject({
+    text: "9+",
+    color: [12, 102, 228, 255],
+    state: { pulseSequence: 1 },
+  });
+
+  const activity = await context.newPage();
+  await activity.goto(`chrome-extension://${extensionId}/sidepanel.html`);
+  await activity.getByTestId("nav-activity").click();
+  await expect(activity.getByTestId("activity-screen")).toBeVisible();
+  await expect(activity.getByTestId("job-row")).toHaveCount(12);
+  const activityText = await activity.getByTestId("activity-screen").innerText();
+  expect(activityText).toContain("PDF");
+  expect(activityText).toContain("DOCX");
+
+  // Opening and reading Activity is not acknowledgement.
+  expect(await readBadge()).toMatchObject({
+    text: "9+",
+    state: { pulseSequence: 1 },
+  });
+  await page.evaluate(async (ids) => {
+    const probe = (globalThis as unknown as {
+      exportJobStoreProbe: {
+        cancelBadgeJobs(jobIds: string[]): Promise<void>;
+      };
+    }).exportJobStoreProbe;
+    await probe.cancelBadgeJobs(ids);
+  }, fixture.activeIds);
+  await expect.poll(async () => (await readBadge()).text).toBe("!");
+
+  const failureRow = activity.locator(
+    `[data-job-id="common:${fixture.failedId}"]`,
+  );
+  await failureRow.getByTestId("job-detail-open").click();
+  await expect(activity.getByTestId("job-detail")).toBeVisible();
+  await expect.poll(async () => (await readBadge()).text).toBe("✓");
+  await activity.getByTestId("job-detail-close").click();
+
+  const successRow = activity.locator(
+    `[data-job-id="common:${fixture.succeededId}"]`,
+  );
+  const download = activity.waitForEvent("download");
+  await successRow.getByTestId("job-download").click();
+  expect((await download).suggestedFilename()).toBe(
+    "packed-badge-success.pdf",
+  );
+  await expect.poll(async () => (await readBadge()).text).toBe("");
+  await activity.close();
+});
+
+test("packed toolbar pulse preference preserves static truth without animation", async () => {
+  await initializeBadge();
+  await page.evaluate(async () => {
+    const probe = (globalThis as unknown as {
+      exportJobStoreProbe: {
+        setBadgePulseEnabled(enabled: boolean): Promise<void>;
+      };
+    }).exportJobStoreProbe;
+    await probe.setBadgePulseEnabled(false);
+  });
+  const fixture = await seedBadgeScenario();
+  await expect.poll(async () => {
+    const snapshot = await readBadge();
+    return {
+      text: snapshot.text,
+      pulseEnabled: snapshot.pulseEnabled,
+      pulseSequence: snapshot.state?.pulseSequence,
+    };
+  }).toEqual({
+    text: "9+",
+    pulseEnabled: false,
+    pulseSequence: 0,
+  });
+  await page.evaluate(async (ids) => {
+    const probe = (globalThis as unknown as {
+      exportJobStoreProbe: {
+        cancelBadgeJobs(jobIds: string[]): Promise<void>;
+      };
+    }).exportJobStoreProbe;
+    await probe.cancelBadgeJobs(ids);
+  }, fixture.activeIds);
+  await expect.poll(async () => {
+    const snapshot = await readBadge();
+    return {
+      text: snapshot.text,
+      pulseSequence: snapshot.state?.pulseSequence,
+    };
+  }).toEqual({ text: "!", pulseSequence: 0 });
+});
+
+test("packed Retry and Run again preserve originals and replay retained requests", async () => {
+  await initializeBadge();
+  const fixture = await seedBadgeScenario();
+  const result = await page.evaluate(async ({ failedId, succeededId }) => {
+    const probe = (globalThis as unknown as {
+      exportJobStoreProbe: {
+        replayBadgeJobs(
+          failure: string,
+          success: string,
+        ): Promise<{
+          retry: {
+            route: string;
+            format: string;
+            template: unknown;
+            derivedFrom: unknown;
+          };
+          rerun: {
+            route: string;
+            format: string;
+            template: unknown;
+            derivedFrom: unknown;
+          };
+          original: {
+            failureState?: string;
+            successState?: string;
+            artifactRef?: string;
+            reportRef?: string;
+            acknowledgedAt?: number;
+          };
+        }>;
+      };
+    }).exportJobStoreProbe;
+    return probe.replayBadgeJobs(failedId, succeededId);
+  }, fixture);
+
+  expect(result.retry).toMatchObject({
+    route: "common:packed-derived-1",
+    format: "docx",
+    template: {
+      recordKey: "packed:badge-template",
+      sha256: "1".repeat(64),
+    },
+    derivedFrom: {
+      jobId: fixture.failedId,
+      relation: "retry",
+      actionKey: "packed-retry-action",
+    },
+  });
+  expect(result.rerun).toMatchObject({
+    route: "common:packed-derived-2",
+    format: "pdf",
+    template: {
+      id: "builtin.editorial-indigo",
+      manifestVersion: "1.0.0",
+    },
+    derivedFrom: {
+      jobId: fixture.succeededId,
+      relation: "rerun",
+      actionKey: "packed-rerun-action",
+    },
+  });
+  expect(result.original).toMatchObject({
+    failureState: "failed",
+    successState: "succeeded",
+    artifactRef: expect.any(String),
+    reportRef: "report:packed-badge-success",
+    acknowledgedAt: expect.any(Number),
+  });
 });
 
 test("a packed offscreen DOCX runs PizZip, docxtemplater, and canvas diagram rasterization", async () => {

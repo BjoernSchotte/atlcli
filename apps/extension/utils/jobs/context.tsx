@@ -83,6 +83,8 @@ export interface DurableJobsView {
   detailLoading: boolean;
   viewDetail: (id: string) => void;
   closeDetail: () => void;
+  pulseEnabled: boolean;
+  setPulseEnabled: (enabled: boolean) => void;
 }
 
 /** Poll cadence while at least one job is running. */
@@ -108,6 +110,7 @@ export function useDurableJobs(siteOrigin: string | null): DurableJobsView {
   const [tick, setTick] = useState(0);
   const [detail, setDetail] = useState<ExportActivityDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [pulseEnabled, setPulseEnabledState] = useState(true);
   const alive = useRef(true);
 
   const refresh = useCallback(() => setTick((value) => value + 1), []);
@@ -155,6 +158,19 @@ export function useDurableJobs(siteOrigin: string | null): DurableJobsView {
       if (timer !== null) clearTimeout(timer);
     };
   }, [port, siteOrigin, tick]);
+
+  useEffect(() => {
+    if (!port) return;
+    let cancelled = false;
+    void port.getPreferences()
+      .then((preferences) => {
+        if (!cancelled) setPulseEnabledState(preferences.pulseEnabled);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [port]);
 
   const act = useCallback(
     (run: (port: DurableJobsPort) => Promise<unknown>) => {
@@ -215,6 +231,11 @@ export function useDurableJobs(siteOrigin: string | null): DurableJobsView {
       detailLoading,
       viewDetail,
       closeDetail,
+      pulseEnabled,
+      setPulseEnabled: (enabled) => {
+        setPulseEnabledState(enabled);
+        act((p) => p.setPulseEnabled(enabled));
+      },
     }),
     [
       jobs,
@@ -226,6 +247,7 @@ export function useDurableJobs(siteOrigin: string | null): DurableJobsView {
       detailLoading,
       viewDetail,
       closeDetail,
+      pulseEnabled,
     ]
   );
 }

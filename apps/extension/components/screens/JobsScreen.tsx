@@ -14,7 +14,12 @@ import { jobAgeMinutes } from "../../utils/jobs/model.js";
 import { useT, type I18n } from "../../utils/i18n/context.js";
 import { Alert } from "../ui/alert.js";
 import { Button } from "../ui/button.js";
-import { Label, SectionHeading, Select } from "../ui/field.js";
+import {
+  CheckboxField,
+  Label,
+  SectionHeading,
+  Select,
+} from "../ui/field.js";
 
 export const JOBS_SCREEN_ID = "activity";
 
@@ -693,6 +698,13 @@ export function JobsScreen({ page }: ScreenProps): React.JSX.Element {
           </Select>
         </Label>
       </div>
+      <CheckboxField
+        checked={jobs.pulseEnabled}
+        onChange={(event) => jobs.setPulseEnabled(event.target.checked)}
+        label={t("jobs.pulse.label")}
+        help={t("jobs.pulse.help")}
+        data-testid="jobs-pulse-enabled"
+      />
 
       {boundList(jobs, filtered, now)}
       {empty && jobs.loaded && (

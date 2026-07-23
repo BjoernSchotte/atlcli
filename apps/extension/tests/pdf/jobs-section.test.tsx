@@ -196,6 +196,16 @@ async function select(testId: string, value: string): Promise<void> {
   await flush();
 }
 
+async function toggle(testId: string, checked: boolean): Promise<void> {
+  const { act } = await import("react");
+  const element = find(testId) as HTMLInputElement;
+  if (element.checked === checked) return;
+  await act(async () => {
+    element.click();
+  });
+  await flush();
+}
+
 function rows(): HTMLElement[] {
   return [...container!.querySelectorAll('[data-testid="job-row"]')] as unknown as HTMLElement[];
 }
@@ -296,6 +306,8 @@ function unifiedPort(
       jobIds: string[],
       options?: { resumeWaiting?: boolean },
     ) => Promise<{ claimedJobId?: string; error?: string }>;
+    getPulseEnabled?: () => Promise<boolean>;
+    setPulseEnabled?: (enabled: boolean) => Promise<void>;
   } = {},
 ): DurableJobsPort {
   return createExtensionDurableJobsStore({
@@ -306,6 +318,12 @@ function unifiedPort(
     ...(options.readReport ? { readReport: options.readReport } : {}),
     ...(options.randomUUID ? { randomUUID: options.randomUUID } : {}),
     ...(options.wake ? { wake: options.wake } : {}),
+    ...(options.getPulseEnabled
+      ? { getPulseEnabled: options.getPulseEnabled }
+      : {}),
+    ...(options.setPulseEnabled
+      ? { setPulseEnabled: options.setPulseEnabled }
+      : {}),
     emit: async (filename, bytes) => {
       emitted.push({ filename, bytes: bytes.byteLength });
     },
@@ -472,6 +490,29 @@ describe("the Jobs screen", () => {
     expect(copy).toContain("closing the browser");
     expect(copy.toLowerCase()).not.toContain("server");
     expect(copy.toLowerCase()).not.toContain("cloud");
+  });
+
+  it("loads and persists the toolbar pulse preference through the host port", async () => {
+    const catalog = new IndexedDbExportJobCatalog({ factory, now: () => 30 });
+    const writes: boolean[] = [];
+    await render(
+      <DurableJobsProvider
+        port={unifiedPort(catalog, {
+          getPulseEnabled: async () => false,
+          setPulseEnabled: async (enabled) => {
+            writes.push(enabled);
+          },
+        })}
+      >
+        <JobsScreen {...screenProps()} />
+      </DurableJobsProvider>,
+    );
+
+    const checkbox = find("jobs-pulse-enabled") as HTMLInputElement;
+    expect(checkbox.checked).toBe(false);
+    await toggle("jobs-pulse-enabled", true);
+    expect(checkbox.checked).toBe(true);
+    expect(writes).toEqual([true]);
   });
 
   it("filters common PDF and DOCX history by current/all sites, format, status, and time", async () => {

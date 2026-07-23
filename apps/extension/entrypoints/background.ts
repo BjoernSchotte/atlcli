@@ -17,19 +17,29 @@ import {
   type EntityDetection,
   type OffscreenResponse,
   type PdfCompileHints,
+  isExportJobsChanged,
 } from "../utils/messages.js";
 import { handleExtMessage } from "../utils/listeners.js";
 import { closeOffscreen, ensureOffscreen } from "../utils/offscreen.js";
 import { createIdleTimer } from "../utils/idle-timer.js";
 import { createOffscreenActivityTracker } from "../utils/pdf/offscreen-activity.js";
 import { createDurableIdleGate } from "../utils/jobs/idle-gate.js";
-import { jobBadgeText } from "../utils/jobs/model.js";
 import {
   countInFlightPdfJobs,
   listPdfJobMeta,
   sweepPdfJobs,
 } from "../utils/pdf/job-store.js";
 import { IndexedDbExportJobCatalog } from "../utils/export-jobs/catalog.js";
+import { listExtensionExportActivity } from "../utils/export-jobs/activity.js";
+import {
+  EXTENSION_EXPORT_BADGE_PULSE_ENABLED_KEY,
+  EXTENSION_EXPORT_BADGE_PULSE_FRAME_MS,
+  EXTENSION_EXPORT_BADGE_STATE_KEY,
+  exportBadgeColor,
+  exportBadgePulseFrames,
+  parseExtensionExportBadgeState,
+  planExtensionExportBadge,
+} from "../utils/export-jobs/badge.js";
 import { createObserverSession } from "../utils/observer-session.js";
 import {
   currentDetection,
@@ -106,44 +116,72 @@ const durableIdle = createDurableIdleGate({
 const offscreenActivity = createOffscreenActivityTracker(durableIdle);
 
 /**
- * Toolbar badge: the only notification channel this folder may use.
- *
- * `chrome.notifications` would need a new manifest permission and this folder
- * ships none (`tests/manifest.test.ts`). The badge shows how many finished
- * exports are waiting to be collected, is set when a job finishes with **no side
- * panel open**, and is cleared the moment the panel talks to the worker again.
- * Optional-chained throughout: a host without an `action` key simply has no
- * badge, and losing a notification must never take a compile down with it.
+ * Toolbar badge is a projection of durable common + migration snapshots.
+ * Storage is written before animation, so a service-worker restart cannot
+ * replay the same terminal transition. Opening Activity never clears it.
  */
-async function isPanelOpen(): Promise<boolean> {
-  try {
-    const contexts = await chrome.runtime.getContexts({ contextTypes: ["SIDE_PANEL"] });
-    return contexts.length > 0;
-  } catch {
-    // Older Chrome, or a filter it does not know: assume open, which only ever
-    // costs a badge that was not shown.
-    return true;
-  }
+const delay = (ms: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, ms));
+
+async function renderStaticBadge(
+  text: string,
+  color: string,
+): Promise<void> {
+  await Promise.all([
+    Promise.resolve(chrome.action?.setBadgeText?.({ text })),
+    Promise.resolve(
+      chrome.action?.setBadgeBackgroundColor?.({ color }),
+    ),
+  ]);
 }
 
-async function setJobBadge(): Promise<void> {
+async function updateExportBadge(): Promise<void> {
+  const rows = await listExtensionExportActivity({
+    listCommon: commonExportCatalog.list.bind(commonExportCatalog),
+    listLegacyPdf: () => listPdfJobMeta(),
+    listLegacyBridges:
+      commonExportCatalog.listLegacyBridges.bind(commonExportCatalog),
+  });
+  const stored = await chrome.storage.local.get([
+    EXTENSION_EXPORT_BADGE_STATE_KEY,
+    EXTENSION_EXPORT_BADGE_PULSE_ENABLED_KEY,
+  ]);
+  const state = parseExtensionExportBadgeState(
+    stored[EXTENSION_EXPORT_BADGE_STATE_KEY],
+  );
+  const pulseEnabled =
+    stored[EXTENSION_EXPORT_BADGE_PULSE_ENABLED_KEY] !== false;
+  const plan = planExtensionExportBadge(rows, state, pulseEnabled);
+  let pulseDurable = false;
   try {
-    const all = await listPdfJobMeta();
-    const waiting = all.filter(
-      (meta) =>
-        (meta.kind ?? "export") === "export" &&
-        meta.status === "complete" &&
-        meta.outputBytes > 0 &&
-        meta.consumed !== true
-    ).length;
-    await chrome.action?.setBadgeText?.({ text: jobBadgeText(waiting) });
+    await chrome.storage.local.set({
+      [EXTENSION_EXPORT_BADGE_STATE_KEY]: plan.nextState,
+    });
+    pulseDurable = true;
   } catch (error) {
-    console.debug("[atlcli] badge update skipped", error);
+    console.debug("[atlcli] badge pulse checkpoint skipped", error);
+  }
+  await renderStaticBadge(
+    plan.projection.text,
+    exportBadgeColor(plan.projection.kind),
+  );
+  if (!plan.pulse || !pulseDurable) return;
+  for (const color of exportBadgePulseFrames(plan.pulse, plan.projection)) {
+    await Promise.resolve(
+      chrome.action?.setBadgeBackgroundColor?.({ color }),
+    );
+    await delay(EXTENSION_EXPORT_BADGE_PULSE_FRAME_MS);
   }
 }
 
-function clearJobBadge(): void {
-  void Promise.resolve(chrome.action?.setBadgeText?.({ text: "" })).catch(() => undefined);
+let badgeRefreshTail: Promise<void> = Promise.resolve();
+function refreshExportBadge(): void {
+  badgeRefreshTail = badgeRefreshTail
+    .catch(() => undefined)
+    .then(updateExportBadge);
+  void badgeRefreshTail.catch((error) =>
+    console.debug("[atlcli] badge update skipped", error)
+  );
 }
 
 /**
@@ -206,16 +244,7 @@ async function runPdfCompile(
     return response.ok ? { ok: true } : { ok: false, error: response.error };
   } finally {
     offscreenActivity.end();
-    // A job that finished while nobody was watching is the whole point of
-    // durable jobs — say so on the toolbar rather than losing it silently.
-    // Previews are excluded: they are never retained, so there is nothing to
-    // collect, and a debounced preview loop would poll `getContexts` per
-    // keystroke for an answer that is always "nothing to show".
-    if (hints?.job !== "preview") {
-      void isPanelOpen().then((open) => {
-        if (!open) void setJobBadge();
-      });
-    }
+    if (hints?.job !== "preview") refreshExportBadge();
   }
 }
 
@@ -254,6 +283,10 @@ async function runJobsWake(
     }
     if (response.error !== undefined) throw new Error(response.error);
     claimed = response.claimedJobId !== undefined;
+    // Refresh only after the offscreen catalog open/claim has settled. Starting
+    // a second version upgrade in parallel can queue behind a deliberately
+    // blocked open without receiving its own `onblocked` event.
+    refreshExportBadge();
     return response.claimedJobId;
   } finally {
     if (claimed) {
@@ -346,10 +379,15 @@ export default defineBackground({
   // Start-up pass: a worker that just woke may be looking at records whose
   // compile died with the previous one.
   sweepJobs(true);
+  refreshExportBadge();
 
   // The `true` return from handleExtMessage keeps the channel open for the
   // async sendResponse — see utils/listeners.ts (covered by listeners.test.ts).
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+    if (isExportJobsChanged(message)) {
+      refreshExportBadge();
+      return false;
+    }
     const handled = handleExtMessage(message, sendResponse, {
       runWasmSmoke,
       getCurrentEntity,
@@ -358,9 +396,9 @@ export default defineBackground({
       runJobsWake,
     });
     if (handled) {
-      // A panel-facing request means a panel is open and looking: the badge has
-      // done its job, and this is a cheap moment to run the watchdog.
-      clearJobBadge();
+      // Opening or reading the panel is not acknowledgement. Productive queue
+      // wakes refresh after their catalog operation; durable actions and queue
+      // settlements send `jobs:changed`.
       sweepJobs();
     }
     return handled;

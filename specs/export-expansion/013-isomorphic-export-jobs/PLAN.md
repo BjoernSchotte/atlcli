@@ -1518,16 +1518,31 @@ API report guard 5/5, production extension build, packed Chromium 14/14.
 
 ### Phase 6 / T7.7 — Unified Activity, badge, docs, and cleanup
 
-- [ ] Replace PDF-specific Activity types/store with common snapshots.
-- [ ] Add format/status/site/time filters and job detail timeline/statistics/log.
-- [ ] Add Retry, Run again, Resume after sign-in, Download/Reveal, Acknowledge,
+- [x] Replace PDF-specific Activity types/store with common snapshots.
+- [x] Add format/status/site/time filters and job detail timeline/statistics/log.
+- [x] Add Retry, Run again, Resume after sign-in, Download/Reveal, Acknowledge,
       and Dismiss.
-- [ ] Add active-count badge, durable completed/failed state, and bounded pulse.
+- [x] Add active-count badge, durable completed/failed state, and bounded pulse.
 - [ ] Remove obsolete panel-owned DOCX run state and legacy PDF job reader after
       its retention plus one release.
 - [ ] Update extension, CLI, operations, troubleshooting, and architecture docs.
 - [ ] Update CHANGELOG only when the feature is release-ready; never release from
       this plan automatically.
+
+Progress evidence (2026-07-23): Activity reads common PDF/DOCX snapshots through
+one format-neutral port, exposes the required filters, bounded detail protocol,
+statistics, replay/resume/delivery/acknowledgement/dismissal operations, and
+truthful unavailable/expired states. The toolbar projects durable active and
+unread records as `1`–`9+`, `!`, `✓`, or empty; terminal transitions can produce
+one finite color pulse, checkpointed before animation, with a persisted opt-out.
+Opening Activity does not acknowledge work, while viewing the relevant detail,
+downloading it, or **Mark as read** does. Packed persistent-profile Chromium
+proves mixed PDF/DOCX rows, the full badge transition sequence, finite pulse and
+opt-out, acknowledgement persistence, retained Retry/Run-again requests and
+original artifact/report preservation, plus bounded parallel blocked-upgrade
+opens. Gates: affected unit/UI/catalog matrix 64/64, full typecheck, production
+extension build/output scan, packed Chromium 17/17. Documentation, CHANGELOG,
+the final non-cleanup audit, and deferred PR-J cleanup remain open.
 
 ### PR delivery checklist and merge ledger
 

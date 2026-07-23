@@ -264,6 +264,7 @@ export function openExtensionExportDb(
   return new Promise((resolve, reject) => {
     const request = factory.open(EXTENSION_EXPORT_DB_NAME, EXTENSION_EXPORT_DB_VERSION);
     let settled = false;
+    const openTimeout = options.blockedTimeoutMs ?? 5_000;
     let blockedTimer: ReturnType<typeof setTimeout> | undefined;
     const settleReject = (error: unknown): void => {
       if (settled) return;
@@ -271,6 +272,20 @@ export function openExtensionExportDb(
       if (blockedTimer !== undefined) clearTimeout(blockedTimer);
       reject(error);
     };
+    const rejectBlocked = (): void => settleReject(
+      new ExtensionExportCatalogError(
+        "blocked",
+        "The export catalog upgrade is blocked by an older extension context.",
+      ),
+    );
+    // Chromium may queue a second open behind the first blocked version
+    // upgrade without delivering a second `onblocked` event. Give that queued
+    // request a fallback bound; a request that does receive `onblocked` keeps
+    // the configured (shorter) bound.
+    blockedTimer = setTimeout(
+      rejectBlocked,
+      Math.max(openTimeout * 2, openTimeout + 100),
+    );
     request.onupgradeneeded = () => {
       const db = request.result;
       const upgrade = request.transaction!;
@@ -322,12 +337,9 @@ export function openExtensionExportDb(
     };
     request.onblocked = () => {
       options.onBlocked?.();
-      if (blockedTimer !== undefined || settled) return;
-      const timeout = options.blockedTimeoutMs ?? 5_000;
-      blockedTimer = setTimeout(() => settleReject(new ExtensionExportCatalogError(
-        "blocked",
-        "The export catalog upgrade is blocked by an older extension context.",
-      )), timeout);
+      if (settled) return;
+      if (blockedTimer !== undefined) clearTimeout(blockedTimer);
+      blockedTimer = setTimeout(rejectBlocked, openTimeout);
     };
     request.onerror = () => {
       settleReject(request.error ?? new Error("Opening the export catalog failed."));

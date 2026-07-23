@@ -88,6 +88,8 @@ export type ExtResponse =
  * for it with {@link isEntityChanged}.
  */
 export type EntityChanged = { kind: "entity-changed"; detection: EntityDetection };
+/** Fire-and-forget hint; durable snapshots remain the badge correctness path. */
+export type ExportJobsChanged = { kind: "jobs:changed"; jobId: string };
 
 /**
  * Internal messages the service worker forwards to the offscreen document.
@@ -113,6 +115,7 @@ export type ExtMessage =
   | ExtRequest
   | ExtResponse
   | EntityChanged
+  | ExportJobsChanged
   | OffscreenRequest
   | OffscreenResponse;
 
@@ -160,6 +163,14 @@ export function isEntityChanged(value: unknown): value is EntityChanged {
   if (typeof value !== "object" || value === null) return false;
   const candidate = value as { kind?: unknown; detection?: { windowId?: unknown } };
   return candidate.kind === "entity-changed" && isWindowId(candidate.detection?.windowId);
+}
+
+export function isExportJobsChanged(value: unknown): value is ExportJobsChanged {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as { kind?: unknown; jobId?: unknown };
+  return candidate.kind === "jobs:changed" &&
+    hasOnlyKeys(value, ["kind", "jobId"]) &&
+    isOpaqueExportJobId(candidate.jobId);
 }
 
 /** Narrow a broadcast push to the Chrome window owned by one side panel. */

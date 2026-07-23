@@ -27,6 +27,7 @@ import {
   listExtensionExportActivity,
   type ExtensionExportActivityRowV1,
 } from "../export-jobs/activity.js";
+import { EXTENSION_EXPORT_BADGE_PULSE_ENABLED_KEY } from "../export-jobs/badge.js";
 import { IndexedDbExportJobCatalog } from "../export-jobs/catalog.js";
 import { IndexedDbExportByteStore } from "../export-jobs/chunk-store.js";
 
@@ -63,6 +64,10 @@ export interface ExportActivityListOptions {
   createdAfter?: number;
 }
 
+export interface ExportActivityPreferences {
+  pulseEnabled: boolean;
+}
+
 export interface DurableJobsPort {
   list(options?: ExportActivityListOptions): Promise<ExportActivityJob[]>;
   detail(route: string): Promise<ExportActivityDetail | undefined>;
@@ -74,6 +79,8 @@ export interface DurableJobsPort {
   acknowledge(route: string): Promise<void>;
   dismiss(route: string): Promise<void>;
   download(route: string): Promise<boolean>;
+  getPreferences(): Promise<ExportActivityPreferences>;
+  setPulseEnabled(enabled: boolean): Promise<void>;
 }
 
 export interface DurableJobsDeps {
@@ -178,6 +185,14 @@ export function createDurableJobsStore(deps: DurableJobsDeps): DurableJobsPort {
       await deps.deleteJob(id).catch(() => undefined);
       return true;
     },
+
+    async getPreferences(): Promise<ExportActivityPreferences> {
+      return { pulseEnabled: true };
+    },
+
+    async setPulseEnabled(): Promise<void> {
+      // The legacy-only adapter has no toolbar host.
+    },
   };
 }
 
@@ -195,6 +210,9 @@ export interface ExtensionDurableJobsDeps {
     format: "pdf" | "docx",
     reportRef: string,
   ) => Promise<unknown | undefined>;
+  notifyChanged?: (jobId: string) => Promise<void>;
+  getPulseEnabled?: () => Promise<boolean>;
+  setPulseEnabled?: (enabled: boolean) => Promise<void>;
   randomUUID?: () => string;
   now?: () => number;
 }
@@ -377,6 +395,9 @@ export function createExtensionDurableJobsStore(
 ): DurableJobsPort {
   const now = deps.now ?? Date.now;
   const randomUUID = deps.randomUUID ?? (() => crypto.randomUUID());
+  const notifyChanged = async (jobId: string): Promise<void> => {
+    await deps.notifyChanged?.(jobId).catch(() => undefined);
+  };
 
   const replay = async (
     route: string,
@@ -439,6 +460,7 @@ export function createExtensionDurableJobsStore(
             derivedFrom: derivation.derivedFrom,
           });
     await deps.wake?.([snapshot.id]).catch(() => undefined);
+    await notifyChanged(snapshot.id);
     return `common:${snapshot.id}`;
   };
 
@@ -468,6 +490,7 @@ export function createExtensionDurableJobsStore(
       if (isExportJobTerminal(snapshot.state) && snapshot.acknowledgedAt === undefined) {
         await updateTerminalMetadata(deps.catalog, jobId, "acknowledge", now());
         snapshot = (await deps.catalog.get(jobId)) ?? snapshot;
+        await notifyChanged(jobId);
       }
       const reportAvailability =
         snapshot.reportRef === undefined
@@ -490,7 +513,11 @@ export function createExtensionDurableJobsStore(
 
     async cancel(route: string): Promise<void> {
       const { source, jobId } = splitActivityRoute(route);
-      if (source === "legacy-pdf") return deps.legacy.cancel(route);
+      if (source === "legacy-pdf") {
+        await deps.legacy.cancel(route);
+        await notifyChanged(jobId);
+        return;
+      }
       const current = await deps.catalog.get(jobId);
       if (
         !current ||
@@ -507,6 +534,7 @@ export function createExtensionDurableJobsStore(
         to: current.state === "running" ? "cancelling" : "cancelled",
         at: now(),
       });
+      await notifyChanged(jobId);
     },
 
     retry: (route, actionKey) => replay(route, "retry", actionKey),
@@ -524,24 +552,39 @@ export function createExtensionDurableJobsStore(
         return false;
       }
       const result = await deps.wake([jobId], { resumeWaiting: true });
+      await notifyChanged(jobId);
       return result.error === undefined;
     },
 
     async acknowledge(route: string): Promise<void> {
       const { source, jobId } = splitActivityRoute(route);
-      if (source === "legacy-pdf") return deps.legacy.acknowledge(route);
+      if (source === "legacy-pdf") {
+        await deps.legacy.acknowledge(route);
+        await notifyChanged(jobId);
+        return;
+      }
       await updateTerminalMetadata(deps.catalog, jobId, "acknowledge", now());
+      await notifyChanged(jobId);
     },
 
     async dismiss(route: string): Promise<void> {
       const { source, jobId } = splitActivityRoute(route);
-      if (source === "legacy-pdf") return deps.legacy.dismiss(route);
+      if (source === "legacy-pdf") {
+        await deps.legacy.dismiss(route);
+        await notifyChanged(jobId);
+        return;
+      }
       await updateTerminalMetadata(deps.catalog, jobId, "dismiss", now());
+      await notifyChanged(jobId);
     },
 
     async download(route: string): Promise<boolean> {
       const { source, jobId } = splitActivityRoute(route);
-      if (source === "legacy-pdf") return deps.legacy.download(route);
+      if (source === "legacy-pdf") {
+        const downloaded = await deps.legacy.download(route);
+        if (downloaded) await notifyChanged(jobId);
+        return downloaded;
+      }
       const current = await deps.catalog.get(jobId);
       if (current?.state !== "succeeded" || !current.artifact) return false;
       const bytes = await collectBytes(deps.bytes.read(current.artifact.ref));
@@ -551,7 +594,19 @@ export function createExtensionDurableJobsStore(
         current.artifact.mediaType,
       );
       await updateTerminalMetadata(deps.catalog, jobId, "deliver", now());
+      await notifyChanged(jobId);
       return true;
+    },
+
+    async getPreferences(): Promise<ExportActivityPreferences> {
+      return {
+        pulseEnabled: await deps.getPulseEnabled?.() ?? true,
+      };
+    },
+
+    async setPulseEnabled(enabled: boolean): Promise<void> {
+      await deps.setPulseEnabled?.(enabled);
+      await notifyChanged("badge-preference");
     },
   };
 }
@@ -580,6 +635,23 @@ export function chromeDurableJobsStore(): DurableJobsPort {
     catalog: new IndexedDbExportJobCatalog(),
     bytes: new IndexedDbExportByteStore(),
     legacy,
+    notifyChanged: async (jobId) => {
+      await chrome.runtime.sendMessage({
+        kind: "jobs:changed",
+        jobId,
+      });
+    },
+    getPulseEnabled: async () => {
+      const stored = await chrome.storage.local.get(
+        EXTENSION_EXPORT_BADGE_PULSE_ENABLED_KEY,
+      );
+      return stored[EXTENSION_EXPORT_BADGE_PULSE_ENABLED_KEY] !== false;
+    },
+    setPulseEnabled: async (enabled) => {
+      await chrome.storage.local.set({
+        [EXTENSION_EXPORT_BADGE_PULSE_ENABLED_KEY]: enabled,
+      });
+    },
     readReport: async (format, reportRef) => {
       if (format === "docx") {
         const { readExtensionDocxExportReport } = await import(
