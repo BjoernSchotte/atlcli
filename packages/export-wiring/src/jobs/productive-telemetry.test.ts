@@ -101,4 +101,3 @@ describe("buildProductiveExportTelemetryV1", () => {
     ).toThrow("telemetry.pageCount");
   });
 });
-
