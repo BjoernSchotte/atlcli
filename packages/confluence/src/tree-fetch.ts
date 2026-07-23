@@ -209,6 +209,11 @@ export interface TreeFetchOptions {
    * background host can atomically persist the plan and publish its ref here.
    */
   onPlanPrepared?: (plan: ExportTreePlanV1) => void | Promise<void>;
+  /**
+   * Called after a recovered plan passes all scope/policy/budget validation and
+   * before its first page body read.
+   */
+  onPlanRecovered?: (plan: ExportTreePlanV1) => void | Promise<void>;
   /** Maximum serialized size accepted for a durable body-free plan. */
   maxPlanBytes?: number;
 }
@@ -1156,6 +1161,10 @@ export async function fetchExportTree(
     });
     assertPlanByteBudget(plan, maxPlanBytes);
     await opts.onPlanPrepared(plan);
+    throwIfAborted(signal);
+  }
+  if (recoveredPlan && opts.onPlanRecovered) {
+    await opts.onPlanRecovered(opts.preparedPlan!);
     throwIfAborted(signal);
   }
 

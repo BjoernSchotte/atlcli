@@ -16,6 +16,11 @@ import type {
 import {
   createConfluencePdfResolveInputV1,
 } from "./confluence-job-resolve-input.js";
+import type {
+  ConfluenceSourcePlanCheckpointV1,
+  ConfluenceSourcePlanStoreV1,
+  PersistedConfluenceSourcePlanV1,
+} from "./confluence-source-plan-checkpoint.js";
 import {
   createPdfExportJobExecutor,
   PdfRenderRestartLimitError,
@@ -131,6 +136,7 @@ function executionContext(options: {
   signal?: AbortSignal;
   leaseEpoch?: number;
   order?: string[];
+  checkpoint?: (ref: string) => void | Promise<void>;
 } = {}): { context: ExportJobExecutionContext; artifactBytes: () => Uint8Array | undefined } {
   let artifact: Uint8Array | undefined;
   const order = options.order ?? [];
@@ -166,6 +172,10 @@ function executionContext(options: {
     async updateProgress() {},
     async appendEvent() {},
     async checkpoint(ref) {
+      if (options.checkpoint) {
+        await options.checkpoint(ref);
+        return;
+      }
       expect(ref).toBe("render/job-1/manifest.json");
       order.push("checkpoint-publish");
     },
@@ -446,6 +456,110 @@ describe("createPdfExportJobExecutor", () => {
     );
     expect(sourceReads).toBe(1);
     expect(ready.commits).toBe(1);
+  });
+
+  it("recovers a version-pinned source plan before ready-to-render", async () => {
+    const order: string[] = [];
+    let persisted: PersistedConfluenceSourcePlanV1 | undefined;
+    const sourcePlans: ConfluenceSourcePlanStoreV1 = {
+      async load() {
+        order.push("source-plan-load");
+        return persisted ? structuredClone(persisted) : undefined;
+      },
+      async commit(checkpoint: ConfluenceSourcePlanCheckpointV1) {
+        order.push("source-plan-commit");
+        persisted = {
+          checkpoint: structuredClone(checkpoint),
+          ref: "source-plan:job-1",
+        };
+        return persisted.ref;
+      },
+    };
+    let metadataReads = 0;
+    let bodyReads = 0;
+    const treeSource: TreeSource = {
+      async getPage(id) {
+        bodyReads += 1;
+        order.push(`body-${bodyReads}`);
+        if (bodyReads === 1) throw new Error("worker lost before ready");
+        return {
+          id,
+          title: "Root",
+          version: 3,
+          exportSource: {
+            primary: {
+              representation: "atlas_doc_format",
+              value: JSON.stringify({
+                type: "doc",
+                version: 1,
+                content: [{
+                  type: "paragraph",
+                  content: [{ type: "text", text: "Recovered" }],
+                }],
+              }),
+            },
+            storageSidecar: "<p>RAW-SIDECAR</p>",
+            sourceVersion: 3,
+          },
+        };
+      },
+      async getPageVersion() {
+        metadataReads += 1;
+        order.push("version");
+        return { title: "Root", version: 3 };
+      },
+      async getChildren() {
+        metadataReads += 1;
+        throw new Error("page scope must not discover children");
+      },
+      async getSpaceHomepageId() { return null; },
+    };
+    const resolveInput = createConfluencePdfResolveInputV1({
+      port: { createTreeSource: () => treeSource },
+      sourcePlan: { store: sourcePlans, sourcePolicyKey: "adf-primary:v1" },
+      build() {
+        return {
+          input: {
+            metadata: { title: "Root", exportedAt: new Date(0) },
+            filename: "test.pdf",
+          },
+          env: { assets: { async resolve() { throw new Error("unused"); } } },
+        };
+      },
+    });
+    const ready = new MemoryReadyStore(order);
+    const fixture = executorOptions({ ready, order, resolveInput });
+    const published: string[] = [];
+    const checkpoint = async (ref: string): Promise<void> => {
+      published.push(ref);
+      order.push(ref.startsWith("source-plan:") ? "source-plan-publish" : "ready-publish");
+    };
+
+    await expect(
+      createPdfExportJobExecutor(fixture.options).execute(
+        request(),
+        executionContext({ order, checkpoint }).context,
+      ),
+    ).rejects.toThrow("could not be resolved");
+    expect(ready.commits).toBe(0);
+    expect(order.indexOf("source-plan-commit")).toBeLessThan(order.indexOf("source-plan-publish"));
+    expect(order.indexOf("source-plan-publish")).toBeLessThan(order.indexOf("body-1"));
+    expect(JSON.stringify(persisted)).not.toContain("Recovered");
+    expect(JSON.stringify(persisted)).not.toContain("RAW-SIDECAR");
+
+    await createPdfExportJobExecutor(fixture.options).execute(
+      request(),
+      executionContext({ leaseEpoch: 2, order, checkpoint }).context,
+    );
+
+    expect({ metadataReads, bodyReads, readyCommits: ready.commits }).toEqual({
+      metadataReads: 1,
+      bodyReads: 2,
+      readyCommits: 1,
+    });
+    expect(persisted?.checkpoint.committedLeaseEpoch).toBe(1);
+    expect(published.filter((ref) => ref === "source-plan:job-1")).toHaveLength(2);
+    expect(published).toContain("render/job-1/manifest.json");
   });
 
   it("counts materialization loss as a render attempt and stops after one restart", async () => {

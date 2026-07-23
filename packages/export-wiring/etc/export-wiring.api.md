@@ -340,6 +340,7 @@ export interface ResolveConfluenceSourceOptionsV1 {
     resolveExternalUrl?: NonNullable<ComposeOptions["resolveExternalUrl"]>;
     onProgress?: (progress: ConfluenceSourceProgressV1) => void;
     bodyOptions?: Omit<PageBodyToBlocksOptions, "exporter" | "pageContext">;
+    sourcePlanCheckpoint?: ConfluenceSourcePlanCheckpointOptionsV1;
 }
 
 // export: resolveConfluenceSourceV1
@@ -486,6 +487,45 @@ export interface CheckpointedOrderedSourcePipelineOptionsV1<Value, Cursor, Resul
 export interface CheckpointedOrderedSourcePipelineResultV1<Cursor> {
     committedCount: number;
     latestCheckpoint?: PersistedOrderedSourceCheckpointV1<Cursor>;
+}
+
+// export: ConfluenceSourcePlanCheckpointOptionsV1
+export interface ConfluenceSourcePlanCheckpointOptionsV1 extends ConfluenceSourcePlanIdentityV1 {
+    leaseEpoch: number;
+    store: ConfluenceSourcePlanStoreV1;
+    publishCheckpointRef(ref: string, context: {
+        signal: AbortSignal;
+    }): Promise<void>;
+}
+
+// export: ConfluenceSourcePlanCheckpointV1
+export interface ConfluenceSourcePlanCheckpointV1 extends ConfluenceSourcePlanIdentityV1 {
+    schema: "atlcli.confluence-source-plan-checkpoint/1";
+    committedLeaseEpoch: number;
+    root: {
+        id: string;
+        title: string;
+        version?: number;
+    };
+    plan: ExportTreePlanV1;
+}
+
+// export: ConfluenceSourcePlanIdentityV1
+export interface ConfluenceSourcePlanIdentityV1 {
+    jobId: string;
+    requestKey: string;
+    sourcePolicyKey: string;
+}
+
+// export: ConfluenceSourcePlanStoreV1
+export interface ConfluenceSourcePlanStoreV1 {
+    load(identity: ConfluenceSourcePlanIdentityV1, context: {
+        signal: AbortSignal;
+    }): Promise<PersistedConfluenceSourcePlanV1 | undefined>;
+    commit(checkpoint: ConfluenceSourcePlanCheckpointV1, context: {
+        leaseEpoch: number;
+        signal: AbortSignal;
+    }): Promise<string>;
 }
 
 // export: ConfluenceSourceProgressV1
@@ -923,6 +963,12 @@ export declare class PdfRenderRestartLimitError extends Error {
     constructor();
 }
 
+// export: PersistedConfluenceSourcePlanV1
+export interface PersistedConfluenceSourcePlanV1 {
+    checkpoint: ConfluenceSourcePlanCheckpointV1;
+    ref: string;
+}
+
 // export: PersistedOrderedSourceCheckpointV1
 export interface PersistedOrderedSourceCheckpointV1<Cursor> {
     checkpoint: OrderedSourceCheckpointV1<Cursor>;
@@ -937,6 +983,7 @@ export interface ResolveConfluenceSourceOptionsV1 {
     resolveExternalUrl?: NonNullable<ComposeOptions["resolveExternalUrl"]>;
     onProgress?: (progress: ConfluenceSourceProgressV1) => void;
     bodyOptions?: Omit<PageBodyToBlocksOptions, "exporter" | "pageContext">;
+    sourcePlanCheckpoint?: ConfluenceSourcePlanCheckpointOptionsV1;
 }
 
 // export: resolveConfluenceSourceV1

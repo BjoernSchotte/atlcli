@@ -5,12 +5,21 @@ import {
   type ExportBlock,
   type ExportNote,
   type ExportScope,
+  type ExportTreePlanV1,
   type PageBodyToBlocksOptions,
   type TreeSource,
   type TreeSourceSummary,
   type TreeSourceVersion,
 } from "@atlcli/confluence";
 import type { ExportSourceV1 } from "@atlcli/export-jobs";
+import {
+  rootSnapshotFromPlanV1,
+  validateConfluenceSourcePlanCheckpointOptionsV1,
+  validatePersistedConfluenceSourcePlanV1,
+  type ConfluenceSourcePlanCheckpointOptionsV1,
+  type ConfluenceSourcePlanCheckpointV1,
+  type PersistedConfluenceSourcePlanV1,
+} from "./confluence-source-plan-checkpoint.js";
 
 /** Metadata-only context supplied to host source ports. */
 export interface ConfluenceSourceReadContextV1 {
@@ -42,6 +51,8 @@ export interface ResolveConfluenceSourceOptionsV1 {
   /** Job-safe aggregate progress; page titles and body data are excluded. */
   onProgress?: (progress: ConfluenceSourceProgressV1) => void;
   bodyOptions?: Omit<PageBodyToBlocksOptions, "exporter" | "pageContext">;
+  /** Optional durable pre-body plan owned by the claimed export-job host. */
+  sourcePlanCheckpoint?: ConfluenceSourcePlanCheckpointOptionsV1;
 }
 
 export interface ConfluenceSourceProgressV1 {
@@ -124,11 +135,59 @@ function withRootSnapshot(
   return wrapped;
 }
 
+function scopeFromPreparedPlan(
+  source: ExportSourceV1,
+  plan: ExportTreePlanV1,
+): { scope: ExportScope; rootId?: string; expectedVersion?: number } {
+  if (source.locator.kind === "space-key") {
+    if (
+      source.scope.kind !== "space" ||
+      plan.scope.kind !== "space" ||
+      plan.scope.spaceKey !== source.locator.spaceKey
+    ) {
+      throw new TypeError("The recovered source plan does not match the requested space.");
+    }
+    return { scope: plan.scope, rootId: plan.rootId };
+  }
+  if (source.scope.kind === "space" || plan.scope.kind === "space") {
+    throw new TypeError("The recovered source plan has an incompatible scope.");
+  }
+  if (
+    source.scope.kind === "page" &&
+    plan.scope.kind !== "page"
+  ) {
+    throw new TypeError("The recovered source plan is not a page scope.");
+  }
+  if (
+    source.scope.kind === "tree" &&
+    (plan.scope.kind !== "tree" ||
+      (plan.scope.includeRoot ?? true) !== (source.scope.includeRoot ?? true) ||
+      plan.scope.maxDepth !== source.scope.maxDepth)
+  ) {
+    throw new TypeError("The recovered source plan is not the requested tree scope.");
+  }
+  if (
+    source.locator.kind === "page-id" &&
+    plan.rootId !== source.locator.id
+  ) {
+    throw new TypeError("The recovered source plan root does not match the page locator.");
+  }
+  return {
+    scope: plan.scope,
+    rootId: plan.rootId,
+    ...(source.locator.kind === "page-id" && source.locator.version !== undefined
+      ? { expectedVersion: source.locator.version }
+      : {}),
+  };
+}
+
 async function resolveScope(
   source: ExportSourceV1,
   port: ConfluenceSourceResolverPortV1,
   context: ConfluenceSourceReadContextV1,
+  preparedPlan?: ExportTreePlanV1,
 ): Promise<{ scope: ExportScope; rootId?: string; expectedVersion?: number }> {
+  if (preparedPlan) return scopeFromPreparedPlan(source, preparedPlan);
   if (source.locator.kind === "space-key") {
     if (source.scope.kind !== "space") {
       throw new TypeError("A Confluence space-key locator requires a space scope.");
@@ -184,16 +243,62 @@ async function resolveConfluenceSourceUnsafeV1(
   options: ResolveConfluenceSourceOptionsV1,
 ): Promise<ResolvedConfluenceSourceV1> {
   throwIfAborted(options.signal);
+  let persistedPlan: PersistedConfluenceSourcePlanV1 | undefined;
+  if (options.sourcePlanCheckpoint) {
+    const checkpoint = validateConfluenceSourcePlanCheckpointOptionsV1(
+      options.sourcePlanCheckpoint,
+    );
+    persistedPlan = await checkpoint.store.load(
+      {
+        jobId: checkpoint.jobId,
+        requestKey: checkpoint.requestKey,
+        sourcePolicyKey: checkpoint.sourcePolicyKey,
+      },
+      { signal: options.signal },
+    );
+    throwIfAborted(options.signal);
+    if (persistedPlan) {
+      persistedPlan = validatePersistedConfluenceSourcePlanV1(persistedPlan, {
+        jobId: checkpoint.jobId,
+        requestKey: checkpoint.requestKey,
+        sourcePolicyKey: checkpoint.sourcePolicyKey,
+        leaseEpoch: checkpoint.leaseEpoch,
+      });
+    }
+  }
   const context: ConfluenceSourceReadContextV1 = {
     siteOrigin: sourceRequest.siteOrigin,
     signal: options.signal,
   };
-  const resolved = await resolveScope(sourceRequest, options.port, context);
+  const resolved = await resolveScope(
+    sourceRequest,
+    options.port,
+    context,
+    persistedPlan?.checkpoint.plan,
+  );
   throwIfAborted(options.signal);
 
   let treeSource = options.port.createTreeSource(context);
-  let rootSnapshot: TreeSourceVersion | undefined;
-  if (resolved.rootId !== undefined) {
+  let rootSnapshot: TreeSourceVersion | undefined = persistedPlan
+    ? {
+        title: persistedPlan.checkpoint.root.title,
+        ...(persistedPlan.checkpoint.root.version !== undefined
+          ? { version: persistedPlan.checkpoint.root.version }
+          : {}),
+      }
+    : undefined;
+  if (persistedPlan) {
+    if (
+      resolved.expectedVersion !== undefined &&
+      rootSnapshot?.version !== resolved.expectedVersion
+    ) {
+      throw new ConfluenceSourceVersionMismatchError(
+        resolved.rootId!,
+        resolved.expectedVersion,
+        rootSnapshot?.version,
+      );
+    }
+  } else if (resolved.rootId !== undefined) {
     rootSnapshot = await treeSource.getPageVersion(resolved.rootId, {
       signal: options.signal,
     });
@@ -212,6 +317,9 @@ async function resolveConfluenceSourceUnsafeV1(
     // its representation version against this snapshot, closing the read race.
     treeSource = withRootSnapshot(treeSource, resolved.rootId, rootSnapshot);
   }
+  if (persistedPlan && resolved.rootId !== undefined && rootSnapshot) {
+    treeSource = withRootSnapshot(treeSource, resolved.rootId, rootSnapshot);
+  }
 
   const fetched = await fetchExportTree(treeSource, resolved.scope, {
     ...(sourceRequest.labels ? { labels: sourceRequest.labels } : {}),
@@ -224,6 +332,51 @@ async function resolveConfluenceSourceUnsafeV1(
       exporter: options.exporter,
     },
     signal: options.signal,
+    ...(persistedPlan
+      ? {
+          preparedPlan: persistedPlan.checkpoint.plan,
+          onPlanRecovered: async () => {
+            await options.sourcePlanCheckpoint!.publishCheckpointRef(
+              persistedPlan!.ref,
+              { signal: options.signal },
+            );
+            throwIfAborted(options.signal);
+          },
+        }
+      : options.sourcePlanCheckpoint
+        ? {
+            onPlanPrepared: async (plan: ExportTreePlanV1) => {
+              const root = rootSnapshot ?? rootSnapshotFromPlanV1(plan);
+              rootSnapshot = root;
+              const checkpointOptions = options.sourcePlanCheckpoint!;
+              const checkpoint: ConfluenceSourcePlanCheckpointV1 = {
+                schema: "atlcli.confluence-source-plan-checkpoint/1",
+                jobId: checkpointOptions.jobId,
+                requestKey: checkpointOptions.requestKey,
+                sourcePolicyKey: checkpointOptions.sourcePolicyKey,
+                committedLeaseEpoch: checkpointOptions.leaseEpoch,
+                root: {
+                  id: plan.rootId,
+                  title: root.title,
+                  ...(root.version !== undefined ? { version: root.version } : {}),
+                },
+                plan,
+              };
+              const ref = await checkpointOptions.store.commit(checkpoint, {
+                leaseEpoch: checkpointOptions.leaseEpoch,
+                signal: options.signal,
+              });
+              throwIfAborted(options.signal);
+              if (typeof ref !== "string" || ref.trim().length === 0) {
+                throw new Error("The source plan store returned an empty ref.");
+              }
+              await checkpointOptions.publishCheckpointRef(ref, {
+                signal: options.signal,
+              });
+              throwIfAborted(options.signal);
+            },
+          }
+        : {}),
     ...(options.onProgress
       ? {
           onProgress: (progress: { fetched: number; total: number | null }) =>

@@ -12,6 +12,11 @@ import type {
 import {
   createConfluenceDocxResolveInputV1,
 } from "./confluence-job-resolve-input.js";
+import type {
+  ConfluenceSourcePlanCheckpointV1,
+  ConfluenceSourcePlanStoreV1,
+  PersistedConfluenceSourcePlanV1,
+} from "./confluence-source-plan-checkpoint.js";
 import {
   createTypescriptDocxExportJobExecutor,
   DocxRenderRestartLimitError,
@@ -141,11 +146,18 @@ class MemoryReadyStore implements DocxReadyToRenderStoreV1 {
   }
 }
 
-function executionContext(order: string[] = [], signal = new AbortController().signal) {
+function executionContext(
+  order: string[] = [],
+  signal = new AbortController().signal,
+  options: {
+    leaseEpoch?: number;
+    checkpoint?: (ref: string) => void | Promise<void>;
+  } = {},
+) {
   let artifactBytes: Uint8Array | undefined;
   const context: ExportJobExecutionContext = {
     jobId: "job-1",
-    leaseEpoch: 1,
+    leaseEpoch: options.leaseEpoch ?? 1,
     signal,
     spool: {
       async put() { throw new Error("unused"); },
@@ -165,7 +177,7 @@ function executionContext(order: string[] = [], signal = new AbortController().s
           byteLength: pending.byteLength,
           sha256: pending.sha256,
           jobId: "job-1",
-          leaseEpoch: 1,
+          leaseEpoch: options.leaseEpoch ?? 1,
           stagedAt: 10,
         };
       },
@@ -173,7 +185,13 @@ function executionContext(order: string[] = [], signal = new AbortController().s
     },
     async updateProgress() {},
     async appendEvent() {},
-    async checkpoint() { order.push("checkpoint-publish"); },
+    async checkpoint(ref) {
+      if (options.checkpoint) {
+        await options.checkpoint(ref);
+        return;
+      }
+      order.push("checkpoint-publish");
+    },
   };
   return { context, artifactBytes: () => artifactBytes };
 }
@@ -402,6 +420,112 @@ describe("createTypescriptDocxExportJobExecutor", () => {
     await executor.execute(await request(), ctx.context);
     expect(sourceReads).toBe(1);
     expect(ready.commits).toBe(1);
+  });
+
+  it("recovers a version-pinned source plan before ready-to-render", async () => {
+    const order: string[] = [];
+    let persisted: PersistedConfluenceSourcePlanV1 | undefined;
+    const sourcePlans: ConfluenceSourcePlanStoreV1 = {
+      async load() {
+        order.push("source-plan-load");
+        return persisted ? structuredClone(persisted) : undefined;
+      },
+      async commit(checkpoint: ConfluenceSourcePlanCheckpointV1) {
+        order.push("source-plan-commit");
+        persisted = {
+          checkpoint: structuredClone(checkpoint),
+          ref: "source-plan:job-1",
+        };
+        return persisted.ref;
+      },
+    };
+    let metadataReads = 0;
+    let bodyReads = 0;
+    const treeSource: TreeSource = {
+      async getPage(id) {
+        bodyReads += 1;
+        order.push(`body-${bodyReads}`);
+        if (bodyReads === 1) throw new Error("worker lost before ready");
+        return {
+          id,
+          title: "Root",
+          version: 5,
+          exportSource: {
+            primary: {
+              representation: "atlas_doc_format",
+              value: JSON.stringify({
+                type: "doc",
+                version: 1,
+                content: [{
+                  type: "paragraph",
+                  content: [{ type: "text", text: "Recovered" }],
+                }],
+              }),
+            },
+            storageSidecar: "<p>RAW-SIDECAR</p>",
+            sourceVersion: 5,
+          },
+        };
+      },
+      async getPageVersion() {
+        metadataReads += 1;
+        order.push("version");
+        return { title: "Root", version: 5 };
+      },
+      async getChildren() {
+        metadataReads += 1;
+        throw new Error("page scope must not discover children");
+      },
+      async getSpaceHomepageId() { return null; },
+    };
+    const resolveInput = createConfluenceDocxResolveInputV1({
+      port: { createTreeSource: () => treeSource },
+      sourcePlan: { store: sourcePlans, sourcePolicyKey: "adf-primary:v1" },
+      build() {
+        return {
+          input: {
+            template: { name: "template.docx", modificationDate: new Date(0) },
+          },
+        };
+      },
+    });
+    const ready = new MemoryReadyStore(order);
+    const setup = executorOptions({ ready, order, resolveInput, noRecovery: true });
+    const executor = createTypescriptDocxExportJobExecutor(setup.options);
+    const published: string[] = [];
+    const checkpoint = async (ref: string): Promise<void> => {
+      published.push(ref);
+      order.push(ref.startsWith("source-plan:") ? "source-plan-publish" : "ready-publish");
+    };
+
+    await expect(
+      executor.execute(
+        await request(),
+        executionContext(order, new AbortController().signal, { checkpoint }).context,
+      ),
+    ).rejects.toThrow("could not be resolved");
+    expect(ready.commits).toBe(0);
+    expect(order.indexOf("source-plan-commit")).toBeLessThan(order.indexOf("source-plan-publish"));
+    expect(order.indexOf("source-plan-publish")).toBeLessThan(order.indexOf("body-1"));
+    expect(JSON.stringify(persisted)).not.toContain("Recovered");
+    expect(JSON.stringify(persisted)).not.toContain("RAW-SIDECAR");
+
+    await executor.execute(
+      await request(),
+      executionContext(order, new AbortController().signal, {
+        leaseEpoch: 2,
+        checkpoint,
+      }).context,
+    );
+
+    expect({ metadataReads, bodyReads, readyCommits: ready.commits }).toEqual({
+      metadataReads: 1,
+      bodyReads: 2,
+      readyCommits: 1,
+    });
+    expect(persisted?.checkpoint.committedLeaseEpoch).toBe(1);
+    expect(published.filter((ref) => ref === "source-plan:job-1")).toHaveLength(2);
+    expect(published).toContain("render/job-1/manifest.json");
   });
 
   it("recovers a lost staged-result return in O(1) before reservation/materialization", async () => {

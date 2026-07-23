@@ -9,6 +9,10 @@ import {
   createConfluenceDocxResolveInputV1,
   createConfluencePdfResolveInputV1,
 } from "./confluence-job-resolve-input.js";
+import type {
+  ConfluenceSourcePlanCheckpointV1,
+  ConfluenceSourcePlanStoreV1,
+} from "./confluence-source-plan-checkpoint.js";
 
 const body: ExportPageSource = {
   primary: {
@@ -58,10 +62,17 @@ function source(reads: { pages: number }): TreeSource {
   };
 }
 
-function context(signal = new AbortController().signal): ExportJobExecutionContext {
+function context(
+  signal = new AbortController().signal,
+  options: {
+    jobId?: string;
+    leaseEpoch?: number;
+    checkpoint?: (ref: string) => void | Promise<void>;
+  } = {},
+): ExportJobExecutionContext {
   return {
-    jobId: "job",
-    leaseEpoch: 1,
+    jobId: options.jobId ?? "job",
+    leaseEpoch: options.leaseEpoch ?? 1,
     signal,
     spool: {
       async put() { throw new Error("unused"); },
@@ -74,7 +85,7 @@ function context(signal = new AbortController().signal): ExportJobExecutionConte
     },
     async updateProgress() {},
     async appendEvent() {},
-    async checkpoint() {},
+    async checkpoint(ref) { await options.checkpoint?.(ref); },
   };
 }
 
@@ -201,6 +212,89 @@ describe("Confluence job resolveInput adapters", () => {
     expect(result.sourceNotes?.some((note) => note.code === "adf-node-degraded")).toBe(true);
     expect(result.complete).toBe(true);
     expect(JSON.stringify(result)).not.toContain("RAW-STORAGE");
+  });
+
+  it("binds the claimed job identity and publishes the source plan before PDF body IO", async () => {
+    const order: string[] = [];
+    let committed: ConfluenceSourcePlanCheckpointV1 | undefined;
+    const store: ConfluenceSourcePlanStoreV1 = {
+      async load(identity) {
+        order.push(`load:${identity.jobId}:${identity.requestKey}`);
+        return undefined;
+      },
+      async commit(checkpoint, commitContext) {
+        order.push(`commit:${commitContext.leaseEpoch}`);
+        committed = structuredClone(checkpoint);
+        return "source-plan:pdf";
+      },
+    };
+    const port = {
+      createTreeSource(): TreeSource {
+        return {
+          async getPage(id) {
+            order.push("body");
+            return {
+              id,
+              title: "Root",
+              version: 4,
+              exportSource: body,
+            };
+          },
+          async getPageVersion() {
+            order.push("version");
+            return { title: "Root", version: 4 };
+          },
+          async getChildren() { return []; },
+          async getSpaceHomepageId() { return null; },
+        };
+      },
+    };
+    const resolveInput = createConfluencePdfResolveInputV1({
+      port,
+      sourcePlan: { store, sourcePolicyKey: "adf-primary:v1" },
+      build() {
+        order.push("build");
+        return {
+          input: {
+            metadata: { title: "Root", exportedAt: new Date(0) },
+            filename: "output.pdf",
+          },
+          env: {
+            assets: {
+              async resolve(): Promise<never> { throw new Error("unused"); },
+            },
+          },
+        };
+      },
+    });
+
+    await resolveInput(
+      pdfRequest(),
+      context(new AbortController().signal, {
+        jobId: "claimed-job",
+        leaseEpoch: 7,
+        checkpoint(ref) {
+          expect(ref).toBe("source-plan:pdf");
+          order.push("publish");
+        },
+      }),
+    );
+
+    expect(order).toEqual([
+      "load:claimed-job:pdf-action",
+      "version",
+      "commit:7",
+      "publish",
+      "body",
+      "build",
+    ]);
+    expect(committed).toMatchObject({
+      jobId: "claimed-job",
+      requestKey: "pdf-action",
+      sourcePolicyKey: "adf-primary:v1",
+      committedLeaseEpoch: 7,
+    });
+    expect(JSON.stringify(committed)).not.toContain("RAW-STORAGE");
   });
 
   it("does not run host builders after cancellation", async () => {

@@ -13,6 +13,35 @@ import {
   type ConfluenceSourceResolverPortV1,
   type ResolvedConfluenceSourceV1,
 } from "./confluence-source-resolver.js";
+import type {
+  ConfluenceSourcePlanCheckpointV1,
+  ConfluenceSourcePlanIdentityV1,
+  ConfluenceSourcePlanStoreV1,
+  PersistedConfluenceSourcePlanV1,
+} from "./confluence-source-plan-checkpoint.js";
+
+class MemorySourcePlanStore implements ConfluenceSourcePlanStoreV1 {
+  persisted?: PersistedConfluenceSourcePlanV1;
+  readonly order: string[] = [];
+
+  async load(identity: ConfluenceSourcePlanIdentityV1): Promise<PersistedConfluenceSourcePlanV1 | undefined> {
+    this.order.push(`load:${identity.jobId}`);
+    return this.persisted ? structuredClone(this.persisted) : undefined;
+  }
+
+  async commit(
+    checkpoint: ConfluenceSourcePlanCheckpointV1,
+    context: { leaseEpoch: number },
+  ): Promise<string> {
+    this.order.push(`commit:${context.leaseEpoch}`);
+    expect(checkpoint.committedLeaseEpoch).toBe(context.leaseEpoch);
+    this.persisted = {
+      checkpoint: structuredClone(checkpoint),
+      ref: "source-plan:checkpoint",
+    };
+    return this.persisted.ref;
+  }
+}
 
 function adfSource(
   text: string,
@@ -156,6 +185,169 @@ describe("resolveConfluenceSourceV1", () => {
     expect(calls.every((call) => call.signal === controller.signal)).toBe(true);
     expect(calls.filter((call) => call.method === "getPageVersion")).toHaveLength(1);
     expect(calls.filter((call) => call.method === "getPage")).toHaveLength(1);
+  });
+
+  it("commits and publishes a body-free plan before body IO, then resumes it on a new lease", async () => {
+    const store = new MemorySourcePlanStore();
+    const firstOrder = store.order;
+    const page: FixturePage = {
+      id: "root",
+      title: "Root",
+      version: 1,
+      parent: null,
+      position: 0,
+      source: adfSource("Recovered body"),
+    };
+    const first = await resolveConfluenceSourceV1(pageRequest(), {
+      exporter: "pdf",
+      port: fixturePort([page], {
+        onCall(method) { firstOrder.push(method); },
+        async getPage() {
+          firstOrder.push("body:lost");
+          throw new Error("worker lost");
+        },
+      }),
+      signal: new AbortController().signal,
+      sourcePlanCheckpoint: {
+        jobId: "job",
+        requestKey: "request",
+        sourcePolicyKey: "adf-primary:v1",
+        leaseEpoch: 1,
+        store,
+        async publishCheckpointRef(ref) {
+          expect(ref).toBe("source-plan:checkpoint");
+          firstOrder.push("publish:1");
+        },
+      },
+    }).catch((error: unknown) => error);
+    expect(first).toBeInstanceOf(ConfluenceSourceResolutionError);
+    expect(firstOrder.indexOf("commit:1")).toBeLessThan(firstOrder.indexOf("publish:1"));
+    expect(firstOrder.indexOf("publish:1")).toBeLessThan(firstOrder.indexOf("body:lost"));
+    expect(JSON.stringify(store.persisted)).not.toContain("Recovered body");
+    expect(JSON.stringify(store.persisted)).not.toContain("POISONED-STORAGE");
+
+    const recoveryCalls: string[] = [];
+    const recovered = await resolveConfluenceSourceV1(pageRequest(), {
+      exporter: "pdf",
+      port: fixturePort([page], {
+        onCall(method) {
+          recoveryCalls.push(method);
+          if (method === "getPageVersion" || method === "getChildren") {
+            throw new Error("recovery rediscovered source metadata");
+          }
+        },
+      }),
+      signal: new AbortController().signal,
+      sourcePlanCheckpoint: {
+        jobId: "job",
+        requestKey: "request",
+        sourcePolicyKey: "adf-primary:v1",
+        leaseEpoch: 2,
+        store,
+        async publishCheckpointRef(ref) {
+          expect(ref).toBe("source-plan:checkpoint");
+          recoveryCalls.push("publish:2");
+        },
+      },
+    });
+
+    expect(recovered.blocks).toEqual([
+      { type: "paragraph", content: [{ type: "text", text: "Recovered body" }] },
+    ]);
+    expect(recoveryCalls).toEqual([
+      "createTreeSource",
+      "publish:2",
+      "getPage",
+    ]);
+    expect(store.persisted?.checkpoint.committedLeaseEpoch).toBe(1);
+  });
+
+  it("rejects a foreign source-plan policy before constructing a source port", async () => {
+    const store = new MemorySourcePlanStore();
+    const page: FixturePage = {
+      id: "root",
+      title: "Root",
+      version: 1,
+      parent: null,
+      position: 0,
+      source: adfSource("unused"),
+    };
+    await resolveConfluenceSourceV1(pageRequest(), {
+      exporter: "word",
+      port: fixturePort([page]),
+      signal: new AbortController().signal,
+      sourcePlanCheckpoint: {
+        jobId: "job",
+        requestKey: "request",
+        sourcePolicyKey: "adf-primary:v1",
+        leaseEpoch: 1,
+        store,
+        async publishCheckpointRef() {},
+      },
+    });
+    let created = 0;
+    const failure = await resolveConfluenceSourceV1(pageRequest(), {
+      exporter: "word",
+      port: fixturePort([page], {
+        onCall(method) {
+          if (method === "createTreeSource") created += 1;
+        },
+      }),
+      signal: new AbortController().signal,
+      sourcePlanCheckpoint: {
+        jobId: "job",
+        requestKey: "request",
+        sourcePolicyKey: "storage-primary:v1",
+        leaseEpoch: 2,
+        store,
+        async publishCheckpointRef() {},
+      },
+    }).catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(ConfluenceSourceResolutionError);
+    expect(created).toBe(0);
+  });
+
+  it("stops after cancellation during source-plan commit without publishing or reading a body", async () => {
+    const controller = new AbortController();
+    let published = 0;
+    let bodyReads = 0;
+    const page: FixturePage = {
+      id: "root",
+      title: "Root",
+      version: 1,
+      parent: null,
+      position: 0,
+      source: adfSource("must-not-be-read"),
+    };
+    const store: ConfluenceSourcePlanStoreV1 = {
+      async load() { return undefined; },
+      async commit() {
+        controller.abort(new DOMException("cancelled during source-plan commit", "AbortError"));
+        return "source-plan:cancelled";
+      },
+    };
+
+    const failure = await resolveConfluenceSourceV1(pageRequest(), {
+      exporter: "pdf",
+      port: fixturePort([page], {
+        async getPage() {
+          bodyReads += 1;
+          throw new Error("body should not be read");
+        },
+      }),
+      signal: controller.signal,
+      sourcePlanCheckpoint: {
+        jobId: "job",
+        requestKey: "request",
+        sourcePolicyKey: "adf-primary:v1",
+        leaseEpoch: 1,
+        store,
+        async publishCheckpointRef() { published += 1; },
+      },
+    }).catch((error: unknown) => error);
+
+    expect(failure).toBe(controller.signal.reason);
+    expect({ published, bodyReads }).toEqual({ published: 0, bodyReads: 0 });
   });
 
   it("emits aggregate progress and sanitizes source failures before the job boundary", async () => {

@@ -1885,6 +1885,7 @@ export interface TreeFetchOptions {
     bodyOptions?: Omit<PageBodyToBlocksOptions, "pageContext">;
     preparedPlan?: ExportTreePlanV1;
     onPlanPrepared?: (plan: ExportTreePlanV1) => void | Promise<void>;
+    onPlanRecovered?: (plan: ExportTreePlanV1) => void | Promise<void>;
     maxPlanBytes?: number;
 }
 
@@ -3957,6 +3958,7 @@ export interface TreeFetchOptions {
     bodyOptions?: Omit<PageBodyToBlocksOptions, "pageContext">;
     preparedPlan?: ExportTreePlanV1;
     onPlanPrepared?: (plan: ExportTreePlanV1) => void | Promise<void>;
+    onPlanRecovered?: (plan: ExportTreePlanV1) => void | Promise<void>;
     maxPlanBytes?: number;
 }
 
@@ -6029,6 +6031,7 @@ export interface TreeFetchOptions {
     bodyOptions?: Omit<PageBodyToBlocksOptions, "pageContext">;
     preparedPlan?: ExportTreePlanV1;
     onPlanPrepared?: (plan: ExportTreePlanV1) => void | Promise<void>;
+    onPlanRecovered?: (plan: ExportTreePlanV1) => void | Promise<void>;
     maxPlanBytes?: number;
 }
 
@@ -10645,6 +10648,7 @@ export interface TreeFetchOptions {
     bodyOptions?: Omit<PageBodyToBlocksOptions, "pageContext">;
     preparedPlan?: ExportTreePlanV1;
     onPlanPrepared?: (plan: ExportTreePlanV1) => void | Promise<void>;
+    onPlanRecovered?: (plan: ExportTreePlanV1) => void | Promise<void>;
     maxPlanBytes?: number;
 }
 

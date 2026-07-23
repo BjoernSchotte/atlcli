@@ -14,6 +14,7 @@ import {
 } from "./confluence-source-resolver.js";
 import type { PdfExportJobEngineInputV1 } from "./pdf-job-executor.js";
 import type { TypescriptDocxExportJobEngineInputV1 } from "./typescript-docx-job-executor.js";
+import type { ConfluenceSourcePlanStoreV1 } from "./confluence-source-plan-checkpoint.js";
 
 type SharedSourceOptionsV1 = Pick<
   ResolveConfluenceSourceOptionsV1,
@@ -25,6 +26,11 @@ type SharedSourceOptionsV1 = Pick<
     context: ExportJobExecutionContext,
     progress: ConfluenceSourceProgressV1,
   ) => void;
+  sourcePlan?: {
+    store: ConfluenceSourcePlanStoreV1;
+    /** Stable host capability/representation policy identity. */
+    sourcePolicyKey: string;
+  };
 };
 
 export type PdfConfluenceResolvedInputExtrasV1 = Omit<
@@ -85,6 +91,18 @@ function sourceOptions<Request extends PdfExportJobRequestV1 | DocxExportJobRequ
     ...(options.onProgress
       ? {
           onProgress: (progress) => options.onProgress!(request, context, progress),
+        }
+      : {}),
+    ...(options.sourcePlan
+      ? {
+          sourcePlanCheckpoint: {
+            jobId: context.jobId,
+            requestKey: request.idempotencyKey,
+            sourcePolicyKey: options.sourcePlan.sourcePolicyKey,
+            leaseEpoch: context.leaseEpoch,
+            store: options.sourcePlan.store,
+            publishCheckpointRef: (ref: string) => context.checkpoint(ref),
+          },
         }
       : {}),
   };
