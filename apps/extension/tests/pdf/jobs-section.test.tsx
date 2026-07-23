@@ -16,7 +16,10 @@ import React from "react";
 import { Window } from "happy-dom";
 import { IDBFactory, IDBKeyRange } from "fake-indexeddb";
 import type { PdfSourceBundle } from "@atlcli/pdf/browser";
-import type { DocxExportJobRequestV1 } from "@atlcli/export-jobs";
+import type {
+  DocxExportJobRequestV1,
+  PdfExportJobRequestV1,
+} from "@atlcli/export-jobs";
 import {
   cancelPdfJob,
   claimPdfJob,
@@ -62,6 +65,8 @@ const OTHER_SITE = "https://staging.atlassian.net";
 const JOB_HERE = "123e4567-e89b-42d3-a456-426614174000";
 const JOB_ELSEWHERE = "223e4567-e89b-42d3-a456-426614174000";
 const COMMON_JOB = "common-docx-1";
+const COMMON_PDF = "common-pdf-1";
+const SHA_ABC = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
 
 let saved: { key: string; descriptor: PropertyDescriptor | undefined }[] = [];
 let win: Window | null = null;
@@ -168,6 +173,39 @@ async function click(testId: string): Promise<void> {
   await flush();
 }
 
+async function clickElement(element: Element): Promise<void> {
+  const { act } = await import("react");
+  await act(async () => {
+    element.dispatchEvent(
+      new (win as unknown as { MouseEvent: typeof MouseEvent }).MouseEvent("click", {
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+  });
+  await flush();
+}
+
+async function select(testId: string, value: string): Promise<void> {
+  const { act } = await import("react");
+  const element = find(testId) as HTMLSelectElement;
+  await act(async () => {
+    element.value = value;
+    element.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+  await flush();
+}
+
+function rows(): HTMLElement[] {
+  return [...container!.querySelectorAll('[data-testid="job-row"]')] as unknown as HTMLElement[];
+}
+
+function row(route: string): HTMLElement {
+  const found = container!.querySelector(`[data-job-id="${route}"]`);
+  if (!found) throw new Error(`no row ${route} in:\n${container!.innerHTML}`);
+  return found as unknown as HTMLElement;
+}
+
 function bundle(size = 512): PdfSourceBundle {
   return {
     main: "= Job",
@@ -194,21 +232,24 @@ function port(): DurableJobsPort {
   });
 }
 
-function commonRequest(): DocxExportJobRequestV1 {
+function commonRequest(
+  id = COMMON_JOB,
+  siteOrigin = SITE,
+): DocxExportJobRequestV1 {
   return {
     schema: "atlcli.export-job-request/1",
-    id: COMMON_JOB,
-    idempotencyKey: `idem:${COMMON_JOB}`,
+    id,
+    idempotencyKey: `idem:${id}`,
     format: "docx",
     renderer: "docx-typescript",
     source: {
       kind: "confluence",
-      siteOrigin: SITE,
+      siteOrigin,
       locator: { kind: "space-key", spaceKey: "DOCSY" },
       scope: { kind: "space" },
     },
     authRef: "profile:default",
-    displayName: "Common DOCX export",
+    displayName: `Common DOCX ${id}`,
     createdAt: 20,
     priority: "interactive",
     output: { policy: "collect" },
@@ -217,16 +258,58 @@ function commonRequest(): DocxExportJobRequestV1 {
   };
 }
 
-function unifiedPort(catalog: IndexedDbExportJobCatalog): DurableJobsPort {
+function commonPdfRequest(
+  id = COMMON_PDF,
+  siteOrigin = SITE,
+): PdfExportJobRequestV1 {
+  return {
+    schema: "atlcli.export-job-request/1",
+    id,
+    idempotencyKey: `idem:${id}`,
+    format: "pdf",
+    renderer: "pdf-typst",
+    source: {
+      kind: "confluence",
+      siteOrigin,
+      locator: { kind: "page-id", id: "42" },
+      scope: { kind: "page" },
+    },
+    authRef: `session:${siteOrigin}`,
+    displayName: `Common PDF ${id}`,
+    createdAt: 21,
+    priority: "interactive",
+    output: { policy: "collect" },
+    template: { id: "default", manifestVersion: "1" },
+    settings: {},
+    options: { resolveMacros: true, exportedAt: 21 },
+  };
+}
+
+function unifiedPort(
+  catalog: IndexedDbExportJobCatalog,
+  options: {
+    bytes?: IndexedDbExportByteStore;
+    readReport?: (format: "pdf" | "docx", ref: string) => Promise<unknown | undefined>;
+    now?: () => number;
+    randomUUID?: () => string;
+    wake?: (
+      jobIds: string[],
+      options?: { resumeWaiting?: boolean },
+    ) => Promise<{ claimedJobId?: string; error?: string }>;
+  } = {},
+): DurableJobsPort {
   return createExtensionDurableJobsStore({
     catalog,
-    bytes: new IndexedDbExportByteStore({ factory }),
+    bytes: options.bytes ?? new IndexedDbExportByteStore({ factory }),
     legacy: port(),
     listLegacyPdf: () => listPdfJobMeta(factory),
+    ...(options.readReport ? { readReport: options.readReport } : {}),
+    ...(options.randomUUID ? { randomUUID: options.randomUUID } : {}),
+    ...(options.wake ? { wake: options.wake } : {}),
     emit: async (filename, bytes) => {
       emitted.push({ filename, bytes: bytes.byteLength });
     },
-    now: () => 30,
+    now: options.now ?? (() => 30),
   });
 }
 
@@ -300,7 +383,7 @@ describe("the Jobs screen", () => {
 
     expect(find("job-row").getAttribute("data-job-id")).toBe(`common:${COMMON_JOB}`);
     expect(find("job-status").textContent).toBe("Queued");
-    expect(find("job-scope").textContent).toBe("DOCX");
+    expect(find("job-scope").textContent).toBe("space");
 
     await click("job-cancel");
     expect((await catalog.get(COMMON_JOB))?.state).toBe("cancelled");
@@ -389,6 +472,248 @@ describe("the Jobs screen", () => {
     expect(copy).toContain("closing the browser");
     expect(copy.toLowerCase()).not.toContain("server");
     expect(copy.toLowerCase()).not.toContain("cloud");
+  });
+
+  it("filters common PDF and DOCX history by current/all sites, format, status, and time", async () => {
+    const catalog = new IndexedDbExportJobCatalog({ factory, now: () => 30 });
+    await catalog.create({ request: commonRequest() });
+    await catalog.create({
+      request: commonPdfRequest(COMMON_PDF, OTHER_SITE),
+    });
+    await render(
+      <DurableJobsProvider port={unifiedPort(catalog)}>
+        <JobsScreen {...screenProps()} />
+      </DurableJobsProvider>,
+    );
+
+    expect(rows().map((item) => item.getAttribute("data-job-id"))).toEqual([
+      `common:${COMMON_JOB}`,
+    ]);
+    await select("jobs-filter-site", "all");
+    expect(rows()).toHaveLength(2);
+    await select("jobs-filter-format", "pdf");
+    expect(rows().map((item) => item.getAttribute("data-job-id"))).toEqual([
+      `common:${COMMON_PDF}`,
+    ]);
+    await select("jobs-filter-status", "succeeded");
+    expect(rows()).toHaveLength(0);
+    await select("jobs-filter-status", "all");
+    await select("jobs-filter-time", "day");
+    expect(rows()).toHaveLength(0);
+  });
+
+  it("shows acknowledged detail with timeline and truthful expired report/metrics", async () => {
+    let now = 30;
+    const catalog = new IndexedDbExportJobCatalog({
+      factory,
+      now: () => now,
+    });
+    const bytes = new IndexedDbExportByteStore({
+      factory,
+      now: () => now,
+      randomUUID: () => "activity-artifact",
+    });
+    await catalog.create({ request: commonPdfRequest() });
+    const claimed = (await catalog.claimNext({
+      ids: [COMMON_PDF],
+      ownerId: "runner",
+      now,
+      leaseDurationMs: 100,
+    }))!;
+    await catalog.appendEvent(COMMON_PDF, {
+      expectedRevision: claimed.revision,
+      leaseEpoch: claimed.leaseEpoch,
+      event: {
+        kind: "state",
+        seq: 1,
+        at: 30,
+        from: "queued",
+        to: "running",
+      },
+    });
+    const staged = await bytes.stage(COMMON_PDF, claimed.leaseEpoch, {
+      mediaType: "application/pdf",
+      filename: "activity.pdf",
+      byteLength: 3,
+      sha256: SHA_ABC,
+      bytes: (async function* () {
+        yield Uint8Array.from([97, 98, 99]);
+      })(),
+    });
+    now = 40;
+    await catalog.finalizeArtifact({
+      id: COMMON_PDF,
+      expectedRevision: claimed.revision,
+      leaseEpoch: claimed.leaseEpoch,
+      stagedArtifact: staged,
+      reportRef: "report:expired",
+      reportSummary: {
+        issues: { info: 0, warning: 1, error: 0 },
+        topCodes: [{ code: "image-skipped", count: 1 }],
+        completeness: "partial",
+      },
+      finishedAt: now,
+    });
+
+    await render(
+      <DurableJobsProvider
+        port={unifiedPort(catalog, {
+          bytes,
+          readReport: async () => undefined,
+          now: () => now,
+        })}
+      >
+        <JobsScreen {...screenProps()} />
+      </DurableJobsProvider>,
+    );
+    await clickElement(
+      row(`common:${COMMON_PDF}`).querySelector(
+        '[data-testid="job-detail-open"]',
+      )!,
+    );
+
+    expect(find("job-detail")).toBeDefined();
+    expect(find("job-report-expired").textContent).toContain("expired");
+    expect(find("job-metric-spool").textContent).toBe("Unavailable");
+    expect(find("job-metric-heap").textContent).toBe("Unavailable");
+    expect(find("job-detail").textContent).toContain("queued → running");
+    expect((await catalog.get(COMMON_PDF))?.acknowledgedAt).toBe(40);
+  });
+
+  it("routes Retry, Run again, Resume, Acknowledge, and Dismiss from their rows", async () => {
+    let now = 30;
+    let serial = 0;
+    const waitingId = "common-auth-1";
+    const wakes: Array<{
+      ids: string[];
+      resumeWaiting?: boolean;
+    }> = [];
+    const catalog = new IndexedDbExportJobCatalog({
+      factory,
+      now: () => now,
+    });
+    const bytes = new IndexedDbExportByteStore({
+      factory,
+      now: () => now,
+      randomUUID: () => `artifact-${++serial}`,
+    });
+
+    await catalog.create({ request: commonRequest() });
+    const failedClaim = (await catalog.claimNext({
+      ids: [COMMON_JOB],
+      ownerId: "failed-runner",
+      now,
+      leaseDurationMs: 100,
+    }))!;
+    await catalog.compareAndSet({
+      id: COMMON_JOB,
+      kind: "transition",
+      expectedRevision: failedClaim.revision,
+      leaseEpoch: failedClaim.leaseEpoch,
+      to: "failed",
+      at: 31,
+      error: {
+        code: "fixture-failure",
+        message: "Retry me.",
+        category: "network",
+        retryable: true,
+        occurredAt: 31,
+      },
+    });
+
+    await catalog.create({ request: commonPdfRequest() });
+    const successClaim = (await catalog.claimNext({
+      ids: [COMMON_PDF],
+      ownerId: "success-runner",
+      now,
+      leaseDurationMs: 100,
+    }))!;
+    const staged = await bytes.stage(COMMON_PDF, successClaim.leaseEpoch, {
+      mediaType: "application/pdf",
+      filename: "success.pdf",
+      byteLength: 3,
+      sha256: SHA_ABC,
+      bytes: (async function* () {
+        yield Uint8Array.from([97, 98, 99]);
+      })(),
+    });
+    now = 32;
+    await catalog.finalizeArtifact({
+      id: COMMON_PDF,
+      expectedRevision: successClaim.revision,
+      leaseEpoch: successClaim.leaseEpoch,
+      stagedArtifact: staged,
+      finishedAt: now,
+    });
+
+    await catalog.create({ request: commonRequest(waitingId) });
+    const waitingClaim = (await catalog.claimNext({
+      ids: [waitingId],
+      ownerId: "auth-runner",
+      now,
+      leaseDurationMs: 100,
+    }))!;
+    await catalog.compareAndSet({
+      id: waitingId,
+      kind: "transition",
+      expectedRevision: waitingClaim.revision,
+      leaseEpoch: waitingClaim.leaseEpoch,
+      to: "waiting",
+      waiting: { reason: "auth" },
+      checkpointRef: "checkpoint:auth-ui",
+      at: 33,
+    });
+    now = 40;
+
+    await render(
+      <DurableJobsProvider
+        port={unifiedPort(catalog, {
+          bytes,
+          now: () => ++now,
+          randomUUID: () => `ui-derived-${++serial}`,
+          wake: async (ids, options) => {
+            wakes.push({
+              ids,
+              ...(options?.resumeWaiting ? { resumeWaiting: true } : {}),
+            });
+            return {};
+          },
+        })}
+      >
+        <JobsScreen {...screenProps()} />
+      </DurableJobsProvider>,
+    );
+
+    await clickElement(
+      row(`common:${COMMON_JOB}`).querySelector('[data-testid="job-retry"]')!,
+    );
+    await clickElement(
+      row(`common:${COMMON_PDF}`).querySelector('[data-testid="job-rerun"]')!,
+    );
+    await clickElement(
+      row(`common:${waitingId}`).querySelector('[data-testid="job-resume"]')!,
+    );
+    await clickElement(
+      row(`common:${COMMON_JOB}`).querySelector(
+        '[data-testid="job-acknowledge"]',
+      )!,
+    );
+    await clickElement(
+      row(`common:${COMMON_JOB}`).querySelector('[data-testid="job-dismiss"]')!,
+    );
+
+    const derived = (await catalog.list({ includeDismissed: true }))
+      .filter((snapshot) => snapshot.derivedFrom !== undefined);
+    expect(derived.map((snapshot) => snapshot.derivedFrom?.relation).sort())
+      .toEqual(["rerun", "retry"]);
+    expect(wakes.some((entry) =>
+      entry.ids[0] === waitingId && entry.resumeWaiting === true
+    )).toBe(true);
+    expect(await catalog.get(COMMON_JOB)).toMatchObject({
+      acknowledgedAt: expect.any(Number),
+      dismissedAt: expect.any(Number),
+    });
+    expect(container!.innerHTML).not.toContain(`data-job-id="common:${COMMON_JOB}"`);
   });
 });
 

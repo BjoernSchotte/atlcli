@@ -8,6 +8,8 @@
 import {
   deriveExportJobReplayV1,
   isExportJobTerminal,
+  type ExportJobEventV1,
+  type ExportJobRequestV1,
   type ExportJobReplayRelationV1,
   type ExportJobState,
 } from "@atlcli/export-jobs";
@@ -20,6 +22,7 @@ import {
   type StoredPdfJobMeta,
 } from "../pdf/job-store.js";
 import {
+  commonExportActivityRow,
   legacyPdfActivityRow,
   listExtensionExportActivity,
   type ExtensionExportActivityRowV1,
@@ -28,6 +31,29 @@ import { IndexedDbExportJobCatalog } from "../export-jobs/catalog.js";
 import { IndexedDbExportByteStore } from "../export-jobs/chunk-store.js";
 
 export type ExportActivityJob = ExtensionExportActivityRowV1;
+
+export interface ExportActivityReportIssue {
+  level: "info" | "warning" | "error";
+  code: string;
+  message: string;
+  source?: string;
+}
+
+export interface ExportActivityDetail {
+  job: ExportActivityJob;
+  events: ExportJobEventV1[];
+  request: {
+    availability: "retained" | "expired" | "unsupported";
+    renderer?: string;
+    template?: string;
+    fingerprint?: string;
+  };
+  report: {
+    availability: "retained" | "expired" | "not-produced" | "unsupported";
+    issues: ExportActivityReportIssue[];
+    facts: Array<{ label: string; value: string }>;
+  };
+}
 
 export interface ExportActivityListOptions {
   /** Omit to include all sites. */
@@ -39,6 +65,7 @@ export interface ExportActivityListOptions {
 
 export interface DurableJobsPort {
   list(options?: ExportActivityListOptions): Promise<ExportActivityJob[]>;
+  detail(route: string): Promise<ExportActivityDetail | undefined>;
   cancel(route: string): Promise<void>;
   retry(route: string, actionKey: string): Promise<string | undefined>;
   rerun(route: string, actionKey: string): Promise<string | undefined>;
@@ -91,6 +118,31 @@ export function createDurableJobsStore(deps: DurableJobsDeps): DurableJobsPort {
         .filter((job) => matchesListOptions(job, options));
     },
 
+    async detail(route: string): Promise<ExportActivityDetail | undefined> {
+      const job = (await this.list()).find(
+        (candidate) => candidate.key === `legacy-pdf:${legacyJobId(route)}`,
+      );
+      if (!job) return undefined;
+      return {
+        job,
+        events: [],
+        request: { availability: "unsupported" },
+        report: {
+          availability: "unsupported",
+          issues: job.error
+            ? [
+                {
+                  level: "error",
+                  code: job.error.code,
+                  message: job.error.message,
+                },
+              ]
+            : [],
+          facts: [],
+        },
+      };
+    },
+
     async cancel(route: string): Promise<void> {
       const id = legacyJobId(route);
       await deps.requestCancel(id).catch(() => undefined);
@@ -139,6 +191,10 @@ export interface ExtensionDurableJobsDeps {
     jobIds: string[],
     options?: { resumeWaiting?: boolean },
   ) => Promise<{ claimedJobId?: string; error?: string }>;
+  readReport?: (
+    format: "pdf" | "docx",
+    reportRef: string,
+  ) => Promise<unknown | undefined>;
   randomUUID?: () => string;
   now?: () => number;
 }
@@ -179,6 +235,118 @@ async function collectBytes(source: AsyncIterable<Uint8Array>): Promise<Uint8Arr
 function assertActionKey(actionKey: string): void {
   if (actionKey.trim().length === 0 || actionKey.length > 4_096) {
     throw new TypeError("Activity replay requires a non-empty bounded action key.");
+  }
+}
+
+function reportSource(value: unknown): string | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const source = value as Record<string, unknown>;
+  const parts = [
+    typeof source.pageTitle === "string" ? source.pageTitle : undefined,
+    typeof source.pageId === "string" ? `page ${source.pageId}` : undefined,
+    typeof source.blockId === "string" ? `block ${source.blockId}` : undefined,
+    typeof source.assetRef === "string" ? source.assetRef : undefined,
+  ].filter((part): part is string => part !== undefined);
+  return parts.length > 0 ? parts.join(" · ") : undefined;
+}
+
+function normalizeReport(report: unknown): {
+  issues: ExportActivityReportIssue[];
+  facts: Array<{ label: string; value: string }>;
+} {
+  if (!report || typeof report !== "object") return { issues: [], facts: [] };
+  const value = report as Record<string, unknown>;
+  const issues: ExportActivityReportIssue[] = [];
+  if (Array.isArray(value.notes)) {
+    for (const note of value.notes) {
+      if (!note || typeof note !== "object") continue;
+      const entry = note as Record<string, unknown>;
+      if (
+        (entry.level !== "info" && entry.level !== "warning") ||
+        typeof entry.code !== "string" ||
+        typeof entry.message !== "string"
+      ) {
+        continue;
+      }
+      const source = reportSource(entry.source);
+      issues.push({
+        level: entry.level,
+        code: entry.code,
+        message: entry.message,
+        ...(source ? { source } : {}),
+      });
+    }
+  }
+  if (Array.isArray(value.compilerDiagnostics)) {
+    for (const diagnostic of value.compilerDiagnostics) {
+      if (!diagnostic || typeof diagnostic !== "object") continue;
+      const entry = diagnostic as Record<string, unknown>;
+      if (
+        (entry.severity !== "warning" && entry.severity !== "error") ||
+        typeof entry.message !== "string"
+      ) {
+        continue;
+      }
+      issues.push({
+        level: entry.severity,
+        code: "compiler-diagnostic",
+        message: entry.message,
+        ...(typeof entry.path === "string" ? { source: entry.path } : {}),
+      });
+    }
+  }
+  const factFields: Array<[string, string]> = [
+    ["compilerVersion", "Compiler"],
+    ["pageCount", "PDF pages"],
+    ["embeddedImages", "Embedded images"],
+    ["renderedDiagrams", "Rendered diagrams"],
+    ["skippedAssets", "Skipped assets"],
+    ["resolvedCount", "Resolved placeholders"],
+    ["skippedImages", "Skipped images"],
+    ["durationMs", "Engine duration (ms)"],
+  ];
+  const facts = factFields.flatMap(([key, label]) => {
+    const fact = value[key];
+    return typeof fact === "string" || typeof fact === "number"
+      ? [{ label, value: String(fact) }]
+      : [];
+  });
+  return { issues, facts };
+}
+
+function requestSummary(
+  request: ExportJobRequestV1 | undefined,
+): ExportActivityDetail["request"] {
+  if (!request) return { availability: "expired" };
+  return request.format === "docx"
+    ? {
+        availability: "retained",
+        renderer: request.renderer,
+        template: request.template.name,
+        fingerprint: request.template.sha256,
+      }
+    : {
+        availability: "retained",
+        renderer: request.renderer,
+        template: request.template.id,
+        fingerprint: `${request.template.id}@${request.template.manifestVersion}`,
+      };
+}
+
+async function readAllEvents(
+  catalog: IndexedDbExportJobCatalog,
+  jobId: string,
+): Promise<ExportJobEventV1[]> {
+  const events: ExportJobEventV1[] = [];
+  let afterSeq = 0;
+  for (;;) {
+    const page = await catalog.readEvents(jobId, { afterSeq, limit: 100 });
+    events.push(...page.events);
+    if (!page.hasMore) return events;
+    if (page.nextAfterSeq <= afterSeq) {
+      throw new Error(`Activity event cursor stalled for export ${jobId}.`);
+    }
+    afterSeq = page.nextAfterSeq;
   }
 }
 
@@ -285,6 +453,41 @@ export function createExtensionDurableJobsStore(
       ).filter((job) => matchesListOptions(job, options));
     },
 
+    async detail(route: string): Promise<ExportActivityDetail | undefined> {
+      const { source, jobId } = splitActivityRoute(route);
+      if (source === "legacy-pdf") return deps.legacy.detail(route);
+      let snapshot = await deps.catalog.get(jobId);
+      if (!snapshot) return undefined;
+      const [request, events, reportValue] = await Promise.all([
+        deps.catalog.getRequest(snapshot.requestRef),
+        readAllEvents(deps.catalog, jobId),
+        snapshot.reportRef && deps.readReport
+          ? deps.readReport(snapshot.format, snapshot.reportRef)
+          : Promise.resolve(undefined),
+      ]);
+      if (isExportJobTerminal(snapshot.state) && snapshot.acknowledgedAt === undefined) {
+        await updateTerminalMetadata(deps.catalog, jobId, "acknowledge", now());
+        snapshot = (await deps.catalog.get(jobId)) ?? snapshot;
+      }
+      const reportAvailability =
+        snapshot.reportRef === undefined
+          ? "not-produced"
+          : reportValue === undefined
+            ? "expired"
+            : "retained";
+      const normalized = normalizeReport(reportValue);
+      return {
+        job: commonExportActivityRow(snapshot),
+        events,
+        request: requestSummary(request),
+        report: {
+          availability: reportAvailability,
+          issues: normalized.issues,
+          facts: normalized.facts,
+        },
+      };
+    },
+
     async cancel(route: string): Promise<void> {
       const { source, jobId } = splitActivityRoute(route);
       if (source === "legacy-pdf") return deps.legacy.cancel(route);
@@ -377,6 +580,18 @@ export function chromeDurableJobsStore(): DurableJobsPort {
     catalog: new IndexedDbExportJobCatalog(),
     bytes: new IndexedDbExportByteStore(),
     legacy,
+    readReport: async (format, reportRef) => {
+      if (format === "docx") {
+        const { readExtensionDocxExportReport } = await import(
+          "../export-jobs/docx-executor-store.js"
+        );
+        return readExtensionDocxExportReport(reportRef);
+      }
+      const { readExtensionPdfExportReport } = await import(
+        "../export-jobs/executor-store.js"
+      );
+      return readExtensionPdfExportReport(reportRef);
+    },
     wake: async (jobIds, options) => {
       const response = (await chrome.runtime.sendMessage({
         kind: "jobs:wake",

@@ -81,6 +81,7 @@ function pdfRequest(id: string): PdfExportJobRequestV1 {
 function unavailableLegacy(): DurableJobsPort {
   return {
     list: async () => [],
+    detail: async () => undefined,
     cancel: async () => undefined,
     retry: async () => undefined,
     rerun: async () => undefined,
@@ -100,6 +101,7 @@ async function succeed(
   bytes: IndexedDbExportByteStore,
   request: PdfExportJobRequestV1,
   finishedAt = 20,
+  reportRef?: string,
 ): Promise<ExportJobSnapshotV1> {
   await catalog.create({ request });
   const claimed = (await catalog.claimNext({
@@ -120,6 +122,16 @@ async function succeed(
     expectedRevision: claimed.revision,
     leaseEpoch: claimed.leaseEpoch,
     stagedArtifact: staged,
+    ...(reportRef
+      ? {
+          reportRef,
+          reportSummary: {
+            issues: { info: 1, warning: 1, error: 1 },
+            topCodes: [{ code: "fixture", count: 3 }],
+            completeness: "partial" as const,
+          },
+        }
+      : {}),
     finishedAt,
   });
 }
@@ -338,5 +350,80 @@ describe("format-neutral extension Activity operations", () => {
       attempt: 2,
       checkpointRef: "checkpoint:waiting-auth",
     });
+  });
+
+  it("loads only normalized retained report/request detail and acknowledges viewing", async () => {
+    let now = 30;
+    const catalog = new IndexedDbExportJobCatalog({
+      factory,
+      now: () => now,
+    });
+    const bytes = new IndexedDbExportByteStore({
+      factory,
+      now: () => now,
+    });
+    await succeed(catalog, bytes, pdfRequest(PDF), 40, "report:pdf");
+    now = 40;
+    const port = createExtensionDurableJobsStore({
+      catalog,
+      bytes,
+      legacy: unavailableLegacy(),
+      listLegacyPdf: async () => [],
+      now: () => ++now,
+      readReport: async () => ({
+        filename: "result.pdf",
+        compilerVersion: "typst-fixture",
+        pageCount: 7,
+        notes: [
+          {
+            level: "warning",
+            code: "image-skipped",
+            message: "An image was skipped.",
+            source: { pageId: "42", pageTitle: "Guide" },
+            rawContent: "must not surface",
+          },
+        ],
+        compilerDiagnostics: [
+          {
+            severity: "error",
+            message: "Fixture diagnostic.",
+            path: "template.typ",
+          },
+        ],
+      }),
+      emit: async () => undefined,
+    });
+
+    const detail = await port.detail(`common:${PDF}`);
+    expect(detail?.request).toEqual({
+      availability: "retained",
+      renderer: "pdf-typst",
+      template: "default",
+      fingerprint: "default@1",
+    });
+    expect(detail?.report).toEqual({
+      availability: "retained",
+      issues: [
+        {
+          level: "warning",
+          code: "image-skipped",
+          message: "An image was skipped.",
+          source: "Guide · page 42",
+        },
+        {
+          level: "error",
+          code: "compiler-diagnostic",
+          message: "Fixture diagnostic.",
+          source: "template.typ",
+        },
+      ],
+      facts: [
+        { label: "Compiler", value: "typst-fixture" },
+        { label: "PDF pages", value: "7" },
+      ],
+    });
+    expect(JSON.stringify(detail)).not.toContain("must not surface");
+    expect(detail?.job.unread).toBe(false);
+    expect((await catalog.get(PDF))?.acknowledgedAt).toBe(41);
   });
 });

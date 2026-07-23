@@ -58,7 +58,9 @@ export interface ExtensionExportActivityDeps {
   listLegacyBridges: () => Promise<LegacyPdfBridgeV1[]>;
 }
 
-function commonRow(snapshot: ExportJobSnapshotV1): ExtensionExportActivityRowV1 {
+export function commonExportActivityRow(
+  snapshot: ExportJobSnapshotV1,
+): ExtensionExportActivityRowV1 {
   const terminal = isExportJobTerminal(snapshot.state);
   return {
     key: `common:${snapshot.id}`,
@@ -203,7 +205,7 @@ export async function listExtensionExportActivity(
   const commonIds = new Set(common.map((snapshot) => snapshot.id));
 
   return [
-    ...common.map(commonRow),
+    ...common.map(commonExportActivityRow),
     ...legacy
       .filter((meta) => (meta.kind ?? "export") === "export")
       .filter((meta) => meta.activityVisibility !== "private")

@@ -1,43 +1,45 @@
-/**
- * The re-attach UI for background exports (spec 010 T5.6).
- *
- * What it is for: a tree or space export takes minutes, and the workflow
- * CONFCLOUD-83694 describes — "start it, navigate away, come back, find it" — is
- * only real if there is somewhere to come back to. That is this screen. It reads
- * the durable records on mount, so re-attaching after a page navigation, a panel
- * close or a service-worker restart is the same code path as the steady state.
- *
- * ## No jobs, no UI
- *
- * {@link JobsList} renders `null` when the list is empty. Roughly nine exports
- * in ten are a single page that finishes in seconds and is never listed at all,
- * and those users must not be handed a permanently empty panel section. The
- * screen wrapper adds one muted sentence so the nav entry is not a blank page —
- * the list itself stays absent.
- *
- * ## Copy honesty
- *
- * `jobs.durability` states plainly what "background" means here: navigation,
- * panel close and extension restart are survived; **closing the browser is not**.
- * There is no server side to this and no wording may imply one.
- */
-import React from "react";
+import React, { useMemo, useState } from "react";
 import { ClipboardList } from "lucide-react";
-import type { ScreenDefinition, ScreenProps } from "../../utils/screens/registry.js";
-import type { ExportActivityJob } from "../../utils/jobs/store.js";
+import type { ExportJobEventV1, ExportJobState } from "@atlcli/export-jobs";
+import type {
+  ScreenDefinition,
+  ScreenProps,
+} from "../../utils/screens/registry.js";
+import type {
+  ExportActivityDetail,
+  ExportActivityJob,
+} from "../../utils/jobs/store.js";
 import { useDurableJobs } from "../../utils/jobs/context.js";
 import { jobAgeMinutes } from "../../utils/jobs/model.js";
 import { useT, type I18n } from "../../utils/i18n/context.js";
 import { Alert } from "../ui/alert.js";
 import { Button } from "../ui/button.js";
-import { SectionHeading } from "../ui/field.js";
+import { Label, SectionHeading, Select } from "../ui/field.js";
 
 export const JOBS_SCREEN_ID = "activity";
+
+type StatusFilter =
+  | "all"
+  | "active"
+  | "succeeded"
+  | "failed"
+  | "cancelled";
+type FormatFilter = "all" | "pdf" | "docx";
+type TimeFilter = "all" | "day" | "week";
+
+const ACTIVE_STATES: ReadonlySet<ExportJobState> = new Set([
+  "queued",
+  "running",
+  "waiting",
+  "cancelling",
+]);
 
 /** Origin of the page the host is currently showing, or `null`. */
 export function siteOriginOf(page: ScreenProps["page"]): string | null {
   const url =
-    page.status === "loaded" || page.status === "loading" || page.status === "error"
+    page.status === "loaded" ||
+    page.status === "loading" ||
+    page.status === "error"
       ? page.ref.url
       : page.status === "unsupported"
         ? page.url
@@ -52,8 +54,16 @@ export function siteOriginOf(page: ScreenProps["page"]): string | null {
 
 function statusLabel(t: I18n["t"], job: ExportActivityJob): string {
   if (job.state === "succeeded") return t("jobs.status.complete");
-  if (job.state === "failed" || job.state === "interrupted") return t("jobs.status.failed");
+  if (job.state === "failed" || job.state === "interrupted") {
+    return t("jobs.status.failed");
+  }
   if (job.state === "cancelled") return t("jobs.status.cancelled");
+  if (job.state === "waiting") {
+    return t("jobs.status.waiting", {
+      reason: job.waiting?.reason ?? "host",
+    });
+  }
+  if (job.state === "cancelling") return t("jobs.status.cancelling");
   if (
     job.progress &&
     job.progress.total !== null &&
@@ -64,66 +74,423 @@ function statusLabel(t: I18n["t"], job: ExportActivityJob): string {
       total: String(job.progress.total),
     });
   }
-  return job.state === "running" || job.state === "cancelling"
-    ? t("jobs.status.compiling")
+  return job.state === "running"
+    ? job.stage
+      ? `${job.stage}…`
+      : t("jobs.status.compiling")
     : t("jobs.status.queued");
 }
 
-function ageLabel(t: I18n["t"], job: ExportActivityJob, now: number): string {
-  const minutes = jobAgeMinutes(job.createdAt, now);
+function ageLabel(t: I18n["t"], createdAt: number, now: number): string {
+  const minutes = jobAgeMinutes(createdAt, now);
   if (minutes < 1) return t("jobs.age.justNow");
-  if (minutes < 60) return t("jobs.age.minutes", { minutes: String(minutes) });
-  return t("jobs.age.hours", { hours: String(Math.floor(minutes / 60)) });
+  if (minutes < 60) {
+    return t("jobs.age.minutes", { minutes: String(minutes) });
+  }
+  return t("jobs.age.hours", {
+    hours: String(Math.floor(minutes / 60)),
+  });
+}
+
+function elapsedSeconds(job: ExportActivityJob, now: number): number {
+  const start = job.startedAt ?? job.createdAt;
+  return Math.max(0, Math.round(((job.finishedAt ?? now) - start) / 1_000));
+}
+
+function replayActionKey(relation: "retry" | "rerun", jobId: string): string {
+  const uuid = globalThis.crypto?.randomUUID?.() ??
+    `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  return `extension:${relation}:${jobId}:${uuid}`;
+}
+
+function EventLine({ event }: { event: ExportJobEventV1 }): React.JSX.Element {
+  let text: string;
+  switch (event.kind) {
+    case "state":
+      text = `${event.from} → ${event.to}`;
+      break;
+    case "stage":
+      text = `Stage: ${event.stage}`;
+      break;
+    case "progress":
+      text = `${event.progress.stage}: ${event.progress.done}/${event.progress.total ?? "?"}`;
+      break;
+    case "retry":
+      text = `Retry: ${event.code}`;
+      break;
+    case "issue":
+      text = `${event.level}: ${event.code}`;
+      break;
+    case "recovery":
+      text = `Recovery lease ${event.leaseEpoch}`;
+      break;
+    case "artifact":
+      text = `Artifact: ${event.artifact.filename}`;
+      break;
+  }
+  return (
+    <li className="flex justify-between gap-2 text-xs">
+      <span>{text}</span>
+      <time className="shrink-0 text-muted-foreground">
+        {new Date(event.at).toLocaleTimeString()}
+      </time>
+    </li>
+  );
+}
+
+function metric(
+  value: number | null,
+  unavailable: string,
+): string {
+  return value === null ? unavailable : String(value);
+}
+
+function JobDetail({
+  detail,
+  onClose,
+}: {
+  detail: ExportActivityDetail;
+  onClose: () => void;
+}): React.JSX.Element {
+  const t = useT();
+  const { job } = detail;
+  const unavailable = t("jobs.detail.unavailable");
+  return (
+    <section
+      className="flex flex-col gap-3 rounded-md border bg-background p-3"
+      aria-labelledby="activity-detail-title"
+      data-testid="job-detail"
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <h2 id="activity-detail-title" className="m-0 text-sm font-semibold">
+            {t("jobs.detail.title")}
+          </h2>
+          <p className="m-0 text-xs text-muted-foreground">
+            {job.format.toUpperCase()} · {job.displayName}
+          </p>
+        </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onClose}
+          data-testid="job-detail-close"
+        >
+          {t("jobs.detail.close")}
+        </Button>
+      </div>
+
+      <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+        <span className="text-muted-foreground">Renderer</span>
+        <span>{detail.request.renderer ?? unavailable}</span>
+        <span className="text-muted-foreground">Template</span>
+        <span>{detail.request.template ?? unavailable}</span>
+        <span className="text-muted-foreground">Fingerprint</span>
+        <code className="break-all text-[11px]">
+          {detail.request.fingerprint ?? unavailable}
+        </code>
+      </div>
+      {detail.request.availability === "expired" && (
+        <Alert tone="warning" data-testid="job-request-expired">
+          {t("jobs.detail.requestExpired")}
+        </Alert>
+      )}
+      {detail.request.availability === "unsupported" && (
+        <Alert tone="warning">{t("jobs.detail.unsupported")}</Alert>
+      )}
+
+      <div>
+        <h3 className="mb-1 mt-0 text-xs font-semibold">
+          {t("jobs.detail.timeline")}
+        </h3>
+        {detail.events.length === 0 ? (
+          <p className="m-0 text-xs text-muted-foreground">
+            {t("jobs.detail.noEvents")}
+          </p>
+        ) : (
+          <ol className="m-0 flex list-none flex-col gap-1 p-0">
+            {detail.events.map((event) => (
+              <EventLine key={`${event.seq}:${event.kind}`} event={event} />
+            ))}
+          </ol>
+        )}
+      </div>
+
+      <div>
+        <h3 className="mb-1 mt-0 text-xs font-semibold">
+          {t("jobs.detail.statistics")}
+        </h3>
+        {job.stats === null ? (
+          <p className="m-0 text-xs text-muted-foreground">{unavailable}</p>
+        ) : (
+          <dl className="m-0 grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+            <dt className="text-muted-foreground">Pages fetched</dt>
+            <dd className="m-0">{job.stats.pages.fetched}</dd>
+            <dt className="text-muted-foreground">Assets embedded</dt>
+            <dd className="m-0">{job.stats.assets.embedded}</dd>
+            <dt className="text-muted-foreground">Diagrams rendered</dt>
+            <dd className="m-0">{job.stats.diagrams.rendered}</dd>
+            <dt className="text-muted-foreground">Macros unresolved</dt>
+            <dd className="m-0">{job.stats.macros.unresolved}</dd>
+            <dt className="text-muted-foreground">Spool peak bytes</dt>
+            <dd className="m-0" data-testid="job-metric-spool">
+              {metric(job.stats.storage.spoolPeakBytes, unavailable)}
+            </dd>
+            <dt className="text-muted-foreground">Heap peak bytes</dt>
+            <dd className="m-0" data-testid="job-metric-heap">
+              {metric(job.stats.memory.heapPeakBytes, unavailable)}
+            </dd>
+          </dl>
+        )}
+      </div>
+
+      <div>
+        <h3 className="mb-1 mt-0 text-xs font-semibold">
+          {t("jobs.detail.report")}
+        </h3>
+        {detail.report.availability === "expired" && (
+          <Alert tone="warning" data-testid="job-report-expired">
+            {t("jobs.detail.reportExpired")}
+          </Alert>
+        )}
+        {detail.report.availability === "not-produced" && (
+          <p className="m-0 text-xs text-muted-foreground">
+            {t("jobs.detail.reportMissing")}
+          </p>
+        )}
+        {detail.report.availability === "unsupported" && (
+          <p className="m-0 text-xs text-muted-foreground">
+            {t("jobs.detail.unsupported")}
+          </p>
+        )}
+        {detail.report.facts.length > 0 && (
+          <dl className="my-2 grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+            {detail.report.facts.map((fact) => (
+              <React.Fragment key={fact.label}>
+                <dt className="text-muted-foreground">{fact.label}</dt>
+                <dd className="m-0">{fact.value}</dd>
+              </React.Fragment>
+            ))}
+          </dl>
+        )}
+        {detail.report.issues.length === 0 ? (
+          <p className="m-0 text-xs text-muted-foreground">
+            {t("jobs.detail.noIssues")}
+          </p>
+        ) : (
+          <ul className="m-0 flex list-none flex-col gap-1 p-0">
+            {detail.report.issues.map((issue, index) => (
+              <li
+                key={`${issue.code}:${index}`}
+                className="rounded border p-2 text-xs"
+              >
+                <strong>{issue.level}: {issue.code}</strong>
+                <span className="block">{issue.message}</span>
+                {issue.source && (
+                  <span className="block text-muted-foreground">
+                    {issue.source}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+        {job.reportSummary && (
+          <p className="mb-0 mt-2 text-xs text-muted-foreground">
+            {job.reportSummary.completeness} · {job.reportSummary.issues.info} info ·{" "}
+            {job.reportSummary.issues.warning} warning ·{" "}
+            {job.reportSummary.issues.error} error
+          </p>
+        )}
+      </div>
+
+      <details className="text-xs">
+        <summary className="cursor-pointer font-medium">
+          {t("jobs.detail.diagnostics")}
+        </summary>
+        <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1">
+          <dt className="text-muted-foreground">Job</dt>
+          <dd className="m-0 break-all">{job.id}</dd>
+          <dt className="text-muted-foreground">Attempt</dt>
+          <dd className="m-0">{job.attempt}</dd>
+          <dt className="text-muted-foreground">Recoveries</dt>
+          <dd className="m-0">{job.recoveryCount}</dd>
+          <dt className="text-muted-foreground">Stage</dt>
+          <dd className="m-0">{job.stage ?? unavailable}</dd>
+          <dt className="text-muted-foreground">Artifact SHA-256</dt>
+          <dd className="m-0 break-all">
+            {job.artifact?.sha256 ?? unavailable}
+          </dd>
+        </dl>
+      </details>
+    </section>
+  );
 }
 
 function JobRow({
   job,
   now,
+  queuePosition,
   onCancel,
   onDownload,
   onDismiss,
+  onRetry,
+  onRerun,
+  onResume,
+  onAcknowledge,
+  onView,
 }: {
   job: ExportActivityJob;
   now: number;
-  onCancel: (id: string) => void;
-  onDownload: (id: string) => void;
-  onDismiss: (id: string) => void;
+  queuePosition?: number;
+  onCancel: (route: string) => void;
+  onDownload: (route: string) => void;
+  onDismiss: (route: string) => void;
+  onRetry: (route: string, actionKey: string) => void;
+  onRerun: (route: string, actionKey: string) => void;
+  onResume: (route: string) => void;
+  onAcknowledge: (route: string) => void;
+  onView: (route: string) => void;
 }): React.JSX.Element {
   const t = useT();
+  const progress = job.progress;
   return (
-    <li className="flex flex-col gap-1 border-b py-2 last:border-b-0" data-testid="job-row" data-job-id={job.key}>
+    <li
+      className="flex flex-col gap-2 border-b py-3 last:border-b-0"
+      data-testid="job-row"
+      data-job-id={job.key}
+    >
       <div className="flex items-baseline justify-between gap-2">
-        <span className="truncate text-sm font-medium">
+        <span className="min-w-0 truncate text-sm font-medium">
           {job.displayName || t("jobs.untitled")}
         </span>
-        <span className="shrink-0 text-xs text-muted-foreground">{ageLabel(t, job, now)}</span>
-      </div>
-      <div className="flex items-baseline gap-2 text-xs text-muted-foreground">
-        <span data-testid="job-scope">
-          {job.source === "common"
-            ? `${job.format.toUpperCase()}${job.stage ? ` · ${job.stage}` : ""}`
-            : job.scopeKind}
+        <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] font-semibold">
+          {job.format.toUpperCase()}
         </span>
-        <span data-testid="job-status">{statusLabel(t, job)}</span>
+      </div>
+      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-xs text-muted-foreground">
+        <span>{job.siteOrigin ?? job.sourceLabel}</span>
+        {job.profileLabel && <span>{job.profileLabel}</span>}
+        <span data-testid="job-scope">{job.scopeKind}</span>
+        <time>{ageLabel(t, job.createdAt, now)}</time>
+      </div>
+      <div aria-live="polite" className="text-xs" data-testid="job-status">
+        {statusLabel(t, job)}
+      </div>
+      {progress && progress.total !== null && progress.total > 0 && (
+        <progress
+          className="h-1.5 w-full"
+          max={progress.total}
+          value={progress.done}
+          aria-label={statusLabel(t, job)}
+          data-testid="job-progress"
+        />
+      )}
+      {queuePosition !== undefined && (
+        <span className="text-xs text-muted-foreground">
+          {t("jobs.queue.estimated", { position: String(queuePosition) })}
+        </span>
+      )}
+      <div className="flex flex-wrap gap-x-2 gap-y-1 text-[11px] text-muted-foreground">
+        <span>{t("jobs.meta.elapsed", {
+          seconds: String(elapsedSeconds(job, now)),
+        })}</span>
+        <span>{t("jobs.meta.warnings", {
+          count: String(job.stats?.warnings ?? job.reportSummary?.issues.warning ?? 0),
+        })}</span>
+        <span>{t("jobs.meta.retries", {
+          count: String(job.stats?.retries.total ?? 0),
+        })}</span>
+        <span>{t("jobs.meta.recoveries", {
+          count: String(job.recoveryCount),
+        })}</span>
+        {job.artifact && (
+          <span>{t("jobs.meta.bytes", {
+            bytes: String(job.artifact.byteLength),
+          })}</span>
+        )}
       </div>
       {job.error && !job.actions.cancel && (
         <p className="m-0 text-xs text-destructive" data-testid="job-error">
+          {job.error.stage ? `${job.error.stage}: ` : ""}
           {job.error.message}
         </p>
       )}
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => onView(job.key)}
+          data-testid="job-detail-open"
+        >
+          {t("jobs.detail")}
+        </Button>
         {job.actions.cancel && (
-          <Button variant="outline" onClick={() => onCancel(job.key)} data-testid="job-cancel">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => onCancel(job.key)}
+            data-testid="job-cancel"
+          >
             {t("jobs.cancel")}
           </Button>
         )}
+        {job.actions.resume && (
+          <Button
+            size="sm"
+            onClick={() => onResume(job.key)}
+            data-testid="job-resume"
+          >
+            {t("jobs.resume")}
+          </Button>
+        )}
+        {job.actions.retry && (
+          <Button
+            size="sm"
+            onClick={() =>
+              onRetry(job.key, replayActionKey("retry", job.id))}
+            data-testid="job-retry"
+          >
+            {t("jobs.retry")}
+          </Button>
+        )}
+        {job.actions.rerun && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() =>
+              onRerun(job.key, replayActionKey("rerun", job.id))}
+            data-testid="job-rerun"
+          >
+            {t("jobs.rerun")}
+          </Button>
+        )}
         {job.actions.download && (
-          <Button onClick={() => onDownload(job.key)} data-testid="job-download">
+          <Button
+            size="sm"
+            onClick={() => onDownload(job.key)}
+            data-testid="job-download"
+          >
             {t("jobs.download")}
           </Button>
         )}
+        {job.actions.acknowledge && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onAcknowledge(job.key)}
+            data-testid="job-acknowledge"
+          >
+            {t("jobs.acknowledge")}
+          </Button>
+        )}
         {job.actions.dismiss && (
-          <Button variant="outline" onClick={() => onDismiss(job.key)} data-testid="job-dismiss">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onDismiss(job.key)}
+            data-testid="job-dismiss"
+          >
             {t("jobs.dismiss")}
           </Button>
         )}
@@ -136,28 +503,25 @@ export interface JobsListProps {
   jobs: readonly ExportActivityJob[];
   error?: string | null;
   now?: number;
-  onCancel: (id: string) => void;
-  onDownload: (id: string) => void;
-  onDismiss: (id: string) => void;
+  onCancel: (route: string) => void;
+  onDownload: (route: string) => void;
+  onDismiss: (route: string) => void;
+  onRetry: (route: string, actionKey: string) => void;
+  onRerun: (route: string, actionKey: string) => void;
+  onResume: (route: string) => void;
+  onAcknowledge: (route: string) => void;
+  onView: (route: string) => void;
 }
 
-/**
- * The list itself — **`null` when there is nothing to show**.
- *
- * Presentational and stateless, so the same markup serves the screen and (later)
- * an embedded section on the Export screen, without either growing a
- * permanently empty block for the single-page case.
- */
 export function JobsList({
   jobs,
   error = null,
   now = Date.now(),
-  onCancel,
-  onDownload,
-  onDismiss,
+  ...actions
 }: JobsListProps): React.JSX.Element | null {
   const t = useT();
   if (jobs.length === 0 && !error) return null;
+  let queuePosition = 0;
   return (
     <section className="flex flex-col gap-2" data-testid="jobs-list">
       <SectionHeading>{t("jobs.title")}</SectionHeading>
@@ -167,16 +531,18 @@ export function JobsList({
         </Alert>
       )}
       <ul className="m-0 flex list-none flex-col p-0">
-        {jobs.map((job) => (
-          <JobRow
-            key={job.id}
-            job={job}
-            now={now}
-            onCancel={onCancel}
-            onDownload={onDownload}
-            onDismiss={onDismiss}
-          />
-        ))}
+        {jobs.map((job) => {
+          if (job.state === "queued") queuePosition += 1;
+          return (
+            <JobRow
+              key={job.key}
+              job={job}
+              now={now}
+              {...(job.state === "queued" ? { queuePosition } : {})}
+              {...actions}
+            />
+          );
+        })}
       </ul>
       <p className="m-0 text-xs text-muted-foreground" data-testid="jobs-durability">
         {t("jobs.durability")}
@@ -185,7 +551,55 @@ export function JobsList({
   );
 }
 
-/** The list bound to the durable records for one site. Renders nothing when empty. */
+function filterJobs(
+  jobs: readonly ExportActivityJob[],
+  format: FormatFilter,
+  status: StatusFilter,
+  time: TimeFilter,
+  now: number,
+): ExportActivityJob[] {
+  const createdAfter =
+    time === "day"
+      ? now - 24 * 60 * 60 * 1_000
+      : time === "week"
+        ? now - 7 * 24 * 60 * 60 * 1_000
+        : undefined;
+  return jobs.filter((job) => {
+    if (format !== "all" && job.format !== format) return false;
+    if (createdAfter !== undefined && job.createdAt <= createdAfter) return false;
+    if (status === "active") return ACTIVE_STATES.has(job.state);
+    if (status === "succeeded") return job.state === "succeeded";
+    if (status === "failed") {
+      return job.state === "failed" || job.state === "interrupted";
+    }
+    if (status === "cancelled") return job.state === "cancelled";
+    return true;
+  });
+}
+
+function boundList(
+  jobs: ReturnType<typeof useDurableJobs>,
+  filtered: readonly ExportActivityJob[],
+  now?: number,
+): React.JSX.Element | null {
+  return (
+    <JobsList
+      jobs={filtered}
+      error={jobs.error}
+      {...(now === undefined ? {} : { now })}
+      onCancel={jobs.cancel}
+      onDownload={jobs.download}
+      onDismiss={jobs.dismiss}
+      onRetry={jobs.retry}
+      onRerun={jobs.rerun}
+      onResume={jobs.resume}
+      onAcknowledge={jobs.acknowledge}
+      onView={jobs.viewDetail}
+    />
+  );
+}
+
+/** Compact list for the Export screen; the full monitor lives on Activity. */
 export function JobsSection({
   siteOrigin,
   now,
@@ -193,53 +607,111 @@ export function JobsSection({
   siteOrigin: string | null;
   now?: number;
 }): React.JSX.Element | null {
-  const { jobs, error, cancel, dismiss, download } = useDurableJobs(siteOrigin);
+  const jobs = useDurableJobs(siteOrigin);
+  const list = boundList(jobs, jobs.jobs, now);
+  if (!list && !jobs.detail) return null;
   return (
-    <JobsList
-      jobs={jobs}
-      error={error}
-      {...(now === undefined ? {} : { now })}
-      onCancel={cancel}
-      onDownload={download}
-      onDismiss={dismiss}
-    />
+    <>
+      {list}
+      {jobs.detail && (
+        <JobDetail detail={jobs.detail} onClose={jobs.closeDetail} />
+      )}
+    </>
   );
 }
 
 export function JobsScreen({ page }: ScreenProps): React.JSX.Element {
   const t = useT();
   const siteOrigin = siteOriginOf(page);
-  const { jobs, error, loaded, cancel, dismiss, download } = useDurableJobs(siteOrigin);
-  const empty = jobs.length === 0 && !error;
+  const [allSites, setAllSites] = useState(siteOrigin === null);
+  const [format, setFormat] = useState<FormatFilter>("all");
+  const [status, setStatus] = useState<StatusFilter>("all");
+  const [time, setTime] = useState<TimeFilter>("all");
+  const jobs = useDurableJobs(allSites ? null : siteOrigin);
+  const now = Date.now();
+  const filtered = useMemo(
+    () => filterJobs(jobs.jobs, format, status, time, now),
+    [jobs.jobs, format, status, time, now],
+  );
+  const empty = filtered.length === 0 && !jobs.error;
+
   return (
-    // `data-testid` is the screen-mounted contract the registry/portability
-    // tests assert against; it replaced the Phase 0 placeholder's identical id
-    // when this screen took over the Activity route.
     <div className="flex flex-col gap-4" data-testid="activity-screen">
-      <JobsList
-        jobs={jobs}
-        error={error}
-        onCancel={cancel}
-        onDownload={download}
-        onDismiss={dismiss}
-      />
-      {empty && loaded && (
+      <div
+        className="grid grid-cols-2 gap-2 rounded-md border p-2"
+        data-testid="jobs-filters"
+      >
+        <Label>
+          {t("jobs.filter.site")}
+          <Select
+            value={allSites ? "all" : "current"}
+            onChange={(event) => setAllSites(event.target.value === "all")}
+            data-testid="jobs-filter-site"
+          >
+            <option value="current" disabled={siteOrigin === null}>
+              {t("jobs.filter.currentSite")}
+            </option>
+            <option value="all">{t("jobs.filter.allSites")}</option>
+          </Select>
+        </Label>
+        <Label>
+          {t("jobs.filter.format")}
+          <Select
+            value={format}
+            onChange={(event) => setFormat(event.target.value as FormatFilter)}
+            data-testid="jobs-filter-format"
+          >
+            <option value="all">{t("jobs.filter.all")}</option>
+            <option value="pdf">PDF</option>
+            <option value="docx">DOCX</option>
+          </Select>
+        </Label>
+        <Label>
+          {t("jobs.filter.status")}
+          <Select
+            value={status}
+            onChange={(event) => setStatus(event.target.value as StatusFilter)}
+            data-testid="jobs-filter-status"
+          >
+            <option value="all">{t("jobs.filter.all")}</option>
+            <option value="active">{t("jobs.filter.active")}</option>
+            <option value="succeeded">{t("jobs.filter.success")}</option>
+            <option value="failed">{t("jobs.filter.failure")}</option>
+            <option value="cancelled">{t("jobs.filter.cancelled")}</option>
+          </Select>
+        </Label>
+        <Label>
+          {t("jobs.filter.time")}
+          <Select
+            value={time}
+            onChange={(event) => setTime(event.target.value as TimeFilter)}
+            data-testid="jobs-filter-time"
+          >
+            <option value="all">{t("jobs.filter.all")}</option>
+            <option value="day">{t("jobs.filter.day")}</option>
+            <option value="week">{t("jobs.filter.week")}</option>
+          </Select>
+        </Label>
+      </div>
+
+      {boundList(jobs, filtered, now)}
+      {empty && jobs.loaded && (
         <p className="m-0 text-xs text-muted-foreground" data-testid="jobs-empty">
           {t("jobs.empty")}
         </p>
+      )}
+      {jobs.detailLoading && (
+        <p className="m-0 text-xs text-muted-foreground" role="status">
+          {t("jobs.detail.loading")}
+        </p>
+      )}
+      {jobs.detail && (
+        <JobDetail detail={jobs.detail} onClose={jobs.closeDetail} />
       )}
     </div>
   );
 }
 
-/**
- * Ready to be dropped into `defaultScreens`.
- *
- * The `durable-jobs` requirement was declared by the Phase 0 registry before any
- * host advertised it, which is precisely how a screen is meant to arrive: the
- * entry becomes available the moment `createChromePorts` lists the capability —
- * no shell change, no navigation code.
- */
 export const jobsScreenDefinition: ScreenDefinition = {
   id: JOBS_SCREEN_ID,
   labelKey: "screen.activity.label",

@@ -16,6 +16,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 import {
   chromeDurableJobsStore,
   type DurableJobsPort,
+  type ExportActivityDetail,
   type ExportActivityJob,
 } from "./store.js";
 
@@ -78,6 +79,10 @@ export interface DurableJobsView {
   rerun: (id: string, actionKey: string) => void;
   resume: (id: string) => void;
   acknowledge: (id: string) => void;
+  detail: ExportActivityDetail | null;
+  detailLoading: boolean;
+  viewDetail: (id: string) => void;
+  closeDetail: () => void;
 }
 
 /** Poll cadence while at least one job is running. */
@@ -101,6 +106,8 @@ export function useDurableJobs(siteOrigin: string | null): DurableJobsView {
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
+  const [detail, setDetail] = useState<ExportActivityDetail | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
   const alive = useRef(true);
 
   const refresh = useCallback(() => setTick((value) => value + 1), []);
@@ -165,6 +172,32 @@ export function useDurableJobs(siteOrigin: string | null): DurableJobsView {
     [port, refresh]
   );
 
+  const viewDetail = useCallback(
+    (id: string) => {
+      if (!port) return;
+      setDetailLoading(true);
+      void port
+        .detail(id)
+        .then((next) => {
+          if (alive.current) setDetail(next ?? null);
+        })
+        .catch((reason) => {
+          if (alive.current) {
+            setError(reason instanceof Error ? reason.message : String(reason));
+          }
+        })
+        .finally(() => {
+          if (alive.current) {
+            setDetailLoading(false);
+            refresh();
+          }
+        });
+    },
+    [port, refresh],
+  );
+
+  const closeDetail = useCallback(() => setDetail(null), []);
+
   return useMemo<DurableJobsView>(
     () => ({
       jobs,
@@ -178,7 +211,21 @@ export function useDurableJobs(siteOrigin: string | null): DurableJobsView {
       rerun: (id, actionKey) => act((p) => p.rerun(id, actionKey)),
       resume: (id) => act((p) => p.resume(id)),
       acknowledge: (id) => act((p) => p.acknowledge(id)),
+      detail,
+      detailLoading,
+      viewDetail,
+      closeDetail,
     }),
-    [jobs, loaded, error, refresh, act]
+    [
+      jobs,
+      loaded,
+      error,
+      refresh,
+      act,
+      detail,
+      detailLoading,
+      viewDetail,
+      closeDetail,
+    ]
   );
 }
