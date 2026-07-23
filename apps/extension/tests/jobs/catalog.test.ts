@@ -3,6 +3,9 @@ import { IDBFactory, IDBKeyRange } from "fake-indexeddb";
 import type { DocxExportJobRequestV1 } from "@atlcli/export-jobs";
 import {
   EXTENSION_EXPORT_DB_NAME,
+  EXTENSION_EXPORT_DB_VERSION,
+  EXTENSION_EXPORT_EXECUTOR_CHECKPOINTS_STORE,
+  EXTENSION_EXPORT_EXECUTOR_RESULTS_STORE,
   IndexedDbExportJobCatalog,
   openExtensionExportDb,
   recoverAndClaimExtensionExportJob,
@@ -213,6 +216,72 @@ describe("IndexedDbExportJobCatalog", () => {
     const delivered: number[] = [];
     for await (const chunk of artifacts.read(staged.ref)) delivered.push(...chunk);
     expect(delivered).toEqual([97, 98, 99]);
+  });
+
+  it("upgrades the complete v2 byte schema to executor metadata stores without data loss", async () => {
+    const old = await rawOpen(2, (db) => {
+      const jobs = db.createObjectStore("jobs", { keyPath: "id" });
+      jobs.createIndex("idempotencyKey", "idempotencyKey", { unique: true });
+      jobs.createIndex("derivationKey", "derivationKey", { unique: true });
+      db.createObjectStore("requests", { keyPath: "ref" });
+      const events = db.createObjectStore("events", { keyPath: ["jobId", "seq"] });
+      events.createIndex("jobId", "jobId", { unique: false });
+      db.createObjectStore("tombstones", { keyPath: "jobId" });
+      db.createObjectStore("cursors", { keyPath: "key" });
+      const bridges = db.createObjectStore("legacy-bridges", { keyPath: ["outerJobId", "outerLeaseEpoch"] });
+      bridges.createIndex("legacyJobId", "legacyJobId", { unique: true });
+      bridges.createIndex("outerJobId", "outerJobId", { unique: false });
+      const objects = db.createObjectStore("byte-objects", { keyPath: "id" });
+      objects.createIndex("jobId", "jobId", { unique: false });
+      objects.createIndex("jobEpoch", ["jobId", "leaseEpoch"], { unique: false });
+      objects.createIndex("spoolRef", ["jobId", "leaseEpoch", "namespace", "key"], { unique: true });
+      objects.createIndex("artifactRef", "ref", { unique: true });
+      const chunks = db.createObjectStore("byte-chunks", { keyPath: ["objectId", "index"] });
+      chunks.createIndex("objectId", "objectId", { unique: false });
+    });
+    const seed = old.transaction(["byte-objects", "byte-chunks"], "readwrite");
+    seed.objectStore("byte-objects").put({
+      id: "v2-object",
+      kind: "spool",
+      state: "committed",
+      jobId: "v2-job",
+      leaseEpoch: 1,
+      namespace: "ready-pdf",
+      key: "manifest",
+      byteLength: 1,
+      chunkCount: 1,
+      sha256: "0".repeat(64),
+      createdAt: 1,
+      committedAt: 1,
+    });
+    seed.objectStore("byte-chunks").put({
+      objectId: "v2-object",
+      index: 0,
+      bytes: Uint8Array.from([7]),
+    });
+    await new Promise<void>((resolve, reject) => {
+      seed.oncomplete = () => resolve();
+      seed.onerror = () => reject(seed.error);
+      seed.onabort = () => reject(seed.error);
+    });
+    old.close();
+
+    const upgraded = await openExtensionExportDb({ factory });
+    expect(upgraded.version).toBe(EXTENSION_EXPORT_DB_VERSION);
+    expect([...upgraded.objectStoreNames]).toContain(EXTENSION_EXPORT_EXECUTOR_CHECKPOINTS_STORE);
+    expect([...upgraded.objectStoreNames]).toContain(EXTENSION_EXPORT_EXECUTOR_RESULTS_STORE);
+    const read = upgraded.transaction(["byte-objects", "byte-chunks"], "readonly");
+    expect(await new Promise<number>((resolve, reject) => {
+      const operation = read.objectStore("byte-objects").get("v2-object");
+      operation.onsuccess = () => resolve(operation.result?.byteLength);
+      operation.onerror = () => reject(operation.error);
+    })).toBe(1);
+    expect(await new Promise<number[]>((resolve, reject) => {
+      const operation = read.objectStore("byte-chunks").get(["v2-object", 0]);
+      operation.onsuccess = () => resolve([...operation.result.bytes]);
+      operation.onerror = () => reject(operation.error);
+    })).toEqual([7]);
+    upgraded.close();
   });
 
   it("waits for a blocked v1 connection and upgrades without losing supported stores", async () => {

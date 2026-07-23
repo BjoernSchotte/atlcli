@@ -128,7 +128,7 @@ function epochFenceKey(jobId: string, leaseEpoch: number): string {
   return `byte-fence:epoch:${encodedJobId(jobId)}:${leaseEpoch}`;
 }
 
-function artifactRef(jobId: string, leaseEpoch: number): string {
+export function extensionExportArtifactRef(jobId: string, leaseEpoch: number): string {
   return `artifact:${encodedJobId(jobId)}:${leaseEpoch}`;
 }
 
@@ -421,6 +421,23 @@ export class IndexedDbExportByteStore implements ExportSpoolStore, ExportArtifac
     return { ref: cloneSpoolRef(ref), byteLength: row.byteLength, sha256: row.sha256, committedAt: row.committedAt };
   }
 
+  /** Enumerate committed spool ownership without reading any stored byte chunks. */
+  async listNamespaceRefs(jobId: string, leaseEpoch: number): Promise<SpoolRefV1[]> {
+    const rows = await withExtensionExportTransaction(
+      this.#options,
+      [EXTENSION_EXPORT_BYTE_OBJECTS_STORE],
+      "readonly",
+      async (tx) => extensionExportRequestResult(
+        tx.objectStore(EXTENSION_EXPORT_BYTE_OBJECTS_STORE)
+          .index("jobEpoch")
+          .getAll([jobId, leaseEpoch]),
+      ) as Promise<ByteObjectRow[]>,
+    );
+    return rows
+      .filter((row) => row.kind === "spool" && row.state === "committed")
+      .map(spoolRefOf);
+  }
+
   async stage(
     jobId: string,
     leaseEpoch: number,
@@ -433,7 +450,7 @@ export class IndexedDbExportByteStore implements ExportSpoolStore, ExportArtifac
       maxJobBytes: positiveLimit(this.#options.maxJobBytes ?? maxObjectBytes, "Job byte limit"),
       maxTotalBytes: positiveLimit(this.#options.maxTotalBytes ?? 512 * 1024 * 1024, "Total byte limit"),
     };
-    const ref = artifactRef(jobId, leaseEpoch);
+    const ref = extensionExportArtifactRef(jobId, leaseEpoch);
     const existing = await this.#findArtifact(ref);
     if (existing?.state === "staged") {
       if (existing.jobId !== jobId || existing.leaseEpoch !== leaseEpoch) {
@@ -483,7 +500,7 @@ export class IndexedDbExportByteStore implements ExportSpoolStore, ExportArtifac
   }
 
   async getStaged(jobId: string, leaseEpoch: number): Promise<StagedArtifactV1 | undefined> {
-    const row = await this.#findArtifact(artifactRef(jobId, leaseEpoch));
+    const row = await this.#findArtifact(extensionExportArtifactRef(jobId, leaseEpoch));
     if (row && (row.jobId !== jobId || row.leaseEpoch !== leaseEpoch || row.kind !== "artifact")) {
       throw new ExtensionExportByteStoreError("ownership-mismatch", "The artifact ref belongs to another executor epoch.");
     }

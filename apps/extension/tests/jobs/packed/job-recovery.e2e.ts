@@ -138,7 +138,7 @@ async function seedJob(id: string, state: "queued" | "running"): Promise<void> {
       createdAt: 1,
     };
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
-      const open = indexedDB.open("atlcli-export-jobs", 2);
+      const open = indexedDB.open("atlcli-export-jobs", 3);
       open.onsuccess = () => resolve(open.result);
       open.onerror = () => reject(open.error);
     });
@@ -176,7 +176,7 @@ interface PackedJobRow {
 async function readJob(id: string): Promise<PackedJobRow> {
   return page.evaluate(async (jobId) => {
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
-      const open = indexedDB.open("atlcli-export-jobs", 2);
+      const open = indexedDB.open("atlcli-export-jobs", 3);
       open.onsuccess = () => resolve(open.result);
       open.onerror = () => reject(open.error);
     });
@@ -193,7 +193,7 @@ async function readJob(id: string): Promise<PackedJobRow> {
 async function checkpointAndExpire(id: string): Promise<PackedJobRow> {
   await page.evaluate(async (jobId) => {
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
-      const open = indexedDB.open("atlcli-export-jobs", 2);
+      const open = indexedDB.open("atlcli-export-jobs", 3);
       open.onsuccess = () => resolve(open.result);
       open.onerror = () => reject(open.error);
     });
@@ -278,7 +278,7 @@ test("upgrades after a real blocked connection is released", async () => {
   expect(Date.now() - startedAt).toBeGreaterThanOrEqual(75);
   const stores = await page.evaluate(async () => {
     const db = await new Promise<IDBDatabase>((resolve) => {
-      const open = indexedDB.open("atlcli-export-jobs", 2);
+      const open = indexedDB.open("atlcli-export-jobs", 3);
       open.onsuccess = () => resolve(open.result);
     });
     const result = [...db.objectStoreNames];
@@ -287,6 +287,8 @@ test("upgrades after a real blocked connection is released", async () => {
   });
   expect(stores).toContain("byte-chunks");
   expect(stores).toContain("legacy-bridges");
+  expect(stores).toContain("executor-checkpoints");
+  expect(stores).toContain("executor-results");
 });
 
 test("a blocked upgrade timeout cannot commit later after the blocker closes", async () => {

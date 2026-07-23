@@ -33,10 +33,11 @@ import {
 } from "@atlcli/export-jobs";
 
 export const EXTENSION_EXPORT_DB_NAME = "atlcli-export-jobs";
-/** v1 was the pre-merge spike schema; v2 adds events, byte stores and bridges. */
-export const EXTENSION_EXPORT_DB_VERSION = 2;
+/** v1 spike; v2 events/bytes/bridges; v3 durable executor checkpoints/results. */
+export const EXTENSION_EXPORT_DB_VERSION = 3;
 
 const JOBS = "jobs";
+export const EXTENSION_EXPORT_JOBS_STORE = JOBS;
 const REQUESTS = "requests";
 const EVENTS = "events";
 const TOMBSTONES = "tombstones";
@@ -46,6 +47,8 @@ export const EXTENSION_EXPORT_COORDINATION_STORE = CURSORS;
 const LEGACY_BRIDGES = "legacy-bridges";
 export const EXTENSION_EXPORT_BYTE_OBJECTS_STORE = "byte-objects";
 export const EXTENSION_EXPORT_BYTE_CHUNKS_STORE = "byte-chunks";
+export const EXTENSION_EXPORT_EXECUTOR_CHECKPOINTS_STORE = "executor-checkpoints";
+export const EXTENSION_EXPORT_EXECUTOR_RESULTS_STORE = "executor-results";
 const DEFAULT_LIST_LIMIT = 100;
 const MAX_LIST_LIMIT = 500;
 const DEFAULT_EVENT_LIMIT = 100;
@@ -59,7 +62,9 @@ type StoreName =
   | typeof CURSORS
   | typeof LEGACY_BRIDGES
   | typeof EXTENSION_EXPORT_BYTE_OBJECTS_STORE
-  | typeof EXTENSION_EXPORT_BYTE_CHUNKS_STORE;
+  | typeof EXTENSION_EXPORT_BYTE_CHUNKS_STORE
+  | typeof EXTENSION_EXPORT_EXECUTOR_CHECKPOINTS_STORE
+  | typeof EXTENSION_EXPORT_EXECUTOR_RESULTS_STORE;
 
 interface JobRow {
   id: string;
@@ -304,6 +309,15 @@ export function openExtensionExportDb(
       if (!db.objectStoreNames.contains(EXTENSION_EXPORT_BYTE_CHUNKS_STORE)) {
         const chunks = db.createObjectStore(EXTENSION_EXPORT_BYTE_CHUNKS_STORE, { keyPath: ["objectId", "index"] });
         chunks.createIndex("objectId", "objectId", { unique: false });
+      }
+      if (!db.objectStoreNames.contains(EXTENSION_EXPORT_EXECUTOR_CHECKPOINTS_STORE)) {
+        const checkpoints = db.createObjectStore(EXTENSION_EXPORT_EXECUTOR_CHECKPOINTS_STORE, { keyPath: "key" });
+        checkpoints.createIndex("jobId", "jobId", { unique: false });
+      }
+      if (!db.objectStoreNames.contains(EXTENSION_EXPORT_EXECUTOR_RESULTS_STORE)) {
+        const results = db.createObjectStore(EXTENSION_EXPORT_EXECUTOR_RESULTS_STORE, { keyPath: "key" });
+        results.createIndex("jobId", "jobId", { unique: false });
+        results.createIndex("reportRef", "reportRef", { unique: true });
       }
     };
     request.onblocked = () => {
@@ -721,7 +735,18 @@ export class IndexedDbExportJobCatalog implements ExportJobStore, ExportJobEvent
 
   async deleteTerminal(query: ExportJobDeleteQueryV1): Promise<ExportJobDeleteResultV1> {
     const limit = boundedLimit(query.limit, DEFAULT_LIST_LIMIT, MAX_LIST_LIMIT);
-    return withExtensionExportTransaction(this.#options, [JOBS, REQUESTS, EVENTS, TOMBSTONES], "readwrite", async (tx) => {
+    return withExtensionExportTransaction(
+      this.#options,
+      [
+        JOBS,
+        REQUESTS,
+        EVENTS,
+        TOMBSTONES,
+        EXTENSION_EXPORT_EXECUTOR_CHECKPOINTS_STORE,
+        EXTENSION_EXPORT_EXECUTOR_RESULTS_STORE,
+      ],
+      "readwrite",
+      async (tx) => {
       const jobs = tx.objectStore(JOBS);
       const requests = tx.objectStore(REQUESTS);
       const events = tx.objectStore(EVENTS);
@@ -754,13 +779,23 @@ export class IndexedDbExportJobCatalog implements ExportJobStore, ExportJobEvent
         for (const event of await extensionExportRequestResult(events.index("jobId").getAll(row.id)) as EventRow[]) {
           await extensionExportRequestResult(events.delete([event.jobId, event.seq]));
         }
+        for (const storeName of [
+          EXTENSION_EXPORT_EXECUTOR_CHECKPOINTS_STORE,
+          EXTENSION_EXPORT_EXECUTOR_RESULTS_STORE,
+        ] as const) {
+          const store = tx.objectStore(storeName);
+          for (const key of await extensionExportRequestResult(store.index("jobId").getAllKeys(row.id))) {
+            await extensionExportRequestResult(store.delete(key));
+          }
+        }
         await extensionExportRequestResult(jobs.delete(row.id));
         await extensionExportRequestResult(requests.delete(row.snapshot.requestRef));
         deletedJobIds.push(row.id);
         tombstoneRefs.push(ref);
       }
       return { deletedJobIds, tombstoneRefs };
-    });
+      },
+    );
   }
 
   async getTombstone(jobId: string): Promise<ExportJobTombstoneV1 | undefined> {

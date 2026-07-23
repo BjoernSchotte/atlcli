@@ -140,6 +140,7 @@ describe("IndexedDbExportByteStore", () => {
     await store.put(epochOne, chunks(Uint8Array.from([1])), limits);
     await store.put(epochTwo, chunks(Uint8Array.from([2])), limits);
 
+    expect(await store.listNamespaceRefs("job-1", 1)).toEqual([epochOne]);
     expect(await store.deleteNamespace("job-1", 1)).toEqual({ objectsDeleted: 1, bytesDeleted: 1 });
     expect(await store.stat(epochOne)).toBeUndefined();
     expect(await store.stat(epochTwo)).toBeDefined();
