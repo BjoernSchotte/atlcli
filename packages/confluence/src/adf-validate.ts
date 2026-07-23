@@ -135,6 +135,26 @@ const smartCardLayouts = new Set([
   "align-start",
 ]);
 
+const bodiedSyncBlockChildTypes = new Set([
+  "paragraph",
+  "blockCard",
+  "blockquote",
+  "bulletList",
+  "codeBlock",
+  "decisionList",
+  "embedCard",
+  "expand",
+  "heading",
+  "layoutSection",
+  "mediaGroup",
+  "mediaSingle",
+  "orderedList",
+  "panel",
+  "rule",
+  "table",
+  "taskList",
+]);
+
 function assertSmartCardLayout(
   attrs: Record<string, unknown> | undefined,
   path: string,
@@ -315,6 +335,53 @@ function validateKnownNodeShape(
   }
   if (type === "paragraph" || type === "heading" || type === "listItem") {
     assertStringAttribute(attrs, "localId", path, false);
+  }
+  if (type === "syncBlock" || type === "bodiedSyncBlock") {
+    assertStringAttribute(attrs, "resourceId", path);
+    assertStringAttribute(attrs, "localId", path);
+    if (
+      Array.isArray(node.marks) &&
+      node.marks.some((mark) => !isPlainObject(mark) || mark.type !== "breakout")
+    ) {
+      throw new AdfValidationError(
+        "invalid-node",
+        `ADF ${type} nodes accept breakout marks only.`,
+        `${path}.marks`,
+      );
+    }
+    if (type === "syncBlock" && node.content !== undefined) {
+      throw new AdfValidationError(
+        "invalid-node",
+        "ADF syncBlock is a reference-only node and cannot contain child content.",
+        `${path}.content`,
+      );
+    }
+    if (
+      type === "bodiedSyncBlock" &&
+      (!Array.isArray(node.content) || node.content.length === 0)
+    ) {
+      throw new AdfValidationError(
+        "invalid-node",
+        "ADF bodiedSyncBlock requires at least one embedded snapshot block.",
+        `${path}.content`,
+      );
+    }
+    if (
+      type === "bodiedSyncBlock" &&
+      Array.isArray(node.content) &&
+      node.content.some(
+        (child) =>
+          !isPlainObject(child) ||
+          typeof child.type !== "string" ||
+          !bodiedSyncBlockChildTypes.has(child.type),
+      )
+    ) {
+      throw new AdfValidationError(
+        "invalid-node",
+        "ADF bodiedSyncBlock content must contain schema-defined top-level snapshot blocks.",
+        `${path}.content`,
+      );
+    }
   }
   if (type === "codeBlock") {
     assertStringAttribute(attrs, "language", path, false);

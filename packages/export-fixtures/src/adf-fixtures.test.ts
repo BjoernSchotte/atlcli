@@ -37,6 +37,8 @@ describe("ADF browser conformance fixture", () => {
       "mediaFallback",
       "paragraph",
       "codeBlock",
+      "callout",
+      "callout",
     ]);
     expect(pdf.blocks[0]).toMatchObject({ type: "heading", localId: "heading-local" });
     expect(pdf.blocks[1]).toMatchObject({ type: "paragraph", localId: "paragraph-local" });
@@ -113,6 +115,30 @@ describe("ADF browser conformance fixture", () => {
       hideLineNumbers: false,
       localId: "code-local",
       uniqueId: "code-unique",
+    });
+    expect(pdf.blocks[25]).toMatchObject({
+      type: "callout",
+      title: "Synced content snapshot",
+      syncedContent: {
+        resourceId: "synthetic-sync-snapshot-resource",
+        localId: "synthetic-sync-snapshot-local",
+        projection: "embedded-snapshot",
+        breakout: { mode: "wide", width: 840 },
+      },
+      content: [{
+        type: "paragraph",
+        content: [{ type: "text", text: "Synced snapshot body" }],
+      }],
+    });
+    expect(pdf.blocks[26]).toMatchObject({
+      type: "callout",
+      title: "Synced content",
+      syncedContent: {
+        resourceId: "synthetic-sync-reference-resource",
+        localId: "synthetic-sync-reference-local",
+        projection: "unresolved-reference",
+        breakout: { mode: "full-width" },
+      },
     });
     expect(pdf.blocks[1]).toMatchObject({
       type: "paragraph",
@@ -287,5 +313,6 @@ describe("ADF browser conformance fixture", () => {
       message: expect.stringContaining("non-visual provenance"),
     }));
     expect(pdf.notes.some((note) => note.message.includes("synthetic-consumer"))).toBe(false);
+    expect(pdf.notes.some((note) => note.message.includes("synthetic-sync"))).toBe(false);
   });
 });

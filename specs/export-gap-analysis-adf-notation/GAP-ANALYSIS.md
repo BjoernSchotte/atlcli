@@ -105,7 +105,7 @@ update both its matrix rows and the checklist below in the same commit:
 - `[ ]` plus **Partial** is permitted only when the remaining sub-gap names its
   external contract or parallel-work dependency.
 
-Current matrix orientation: **70 of 84 rows closed; 14 rows open.** This count
+Current matrix orientation: **72 of 84 rows closed; 12 rows open.** This count
 must change in the same commit as any row checkbox.
 `scripts/adf-gap-register.test.ts` enforces the checkbox shape, reconciles
 these counters with every progress-table row, and rejects an unchecked
@@ -173,6 +173,12 @@ Current closed foundations and feature slices:
   source array as non-visual provenance. Both targets omit opaque source IDs
   from published content and the shared report states the bounded static
   projection without echoing those identifiers.
+- [x] Pinned `bodiedSyncBlock` snapshots retain embedded block content, exact
+  opaque identity, projection provenance, and breakout intent. Reference-only
+  `syncBlock` nodes retain the same identity and render a deterministic
+  unavailable-content projection. Both TypeScript targets keep the opaque IDs
+  non-visual, and composition plus direct/background browser parity preserve
+  the neutral contract.
 - [ ] **Open:** `breakout` intent is retained on ADF layout sections and
   explicitly reported as page-bounded; breakout on other schema-valid block
   types and true wide/full-width section geometry remain open.
@@ -334,14 +340,14 @@ Evidence: [E2], [E7], [E8], [E17], [E39], [E40].
 | [ ] | `extension` | ADF and Storage retain extension/macro identity, structured parameters, body where present, fragments, and source page context before the live renderer chain. | Open/Conditional | Open/Conditional | **Open:** define native/fallback projection for generic extension output and complete `adfExport` ingestion; registry or `export_view` resolution remains conditional. |
 | [ ] | `inlineExtension` | ADF retains inline placement, extension identity/parameters/fragments, and a visible label; export controls are consumed semantically. | Open/Fallback | Open/Fallback | **Open:** render a richer inline body/text fallback without splitting the paragraph and integrate third-party `adfExport`. |
 | [ ] | `bodiedExtension` | ADF/Storage identity, rich/plain body, structured parameters, fragments, and source context are retained before resolution. | Open/Conditional | Open/Conditional | **Open:** complete generic native/fallback presentation and third-party `adfExport` ingestion independent of live registry success. |
-| [ ] | `syncBlock` | Visible child content survives, but synchronization identity is reported as dropped. | Open/Fallback | Open/Fallback | **Open:** define snapshot/reference policy and stale/unavailable fallback. |
-| [ ] | `bodiedSyncBlock` | Embedded body content survives, but resource identity and snapshot provenance do not. | Open/Fallback | Open/Fallback | **Open:** preserve resource ID plus body and report whether the export used embedded or resolved content. |
+| [x] | `syncBlock` | The reference-only node retains exact resource/local identity, projection kind, and optional breakout intent as non-visual provenance. Because the pinned contract carries no embedded body and no public resolver contract is documented, both targets render a deterministic unavailable-content callout without exposing opaque IDs. | Approximation | Approximation | Closed for every pinned attribute and its strongest safe static projection; executing Confluence-internal synchronization is outside the documented ADF export contract. |
+| [x] | `bodiedSyncBlock` | Exact resource/local identity, embedded snapshot blocks, projection kind, and optional breakout intent survive validation, decoding, composition, CLI/browser resolution, and both static targets. Synchronization is not executed; the embedded ADF body is the exported snapshot. | Approximation | Approximation | Closed for every pinned attribute and embedded child. Both targets visibly label the snapshot, preserve its rich body, keep opaque IDs non-visual, and report page-bounded breakout behavior. |
 
 The async registry currently covers TOC, Jira/JiraIssues, Confluence datasource lists, draw.io/Gliffy, multiexcerpt include, Scroll table layout, children, include/excerpt, page-properties report, and then an `export_view` catch-all. Every other macro falls to a visible placeholder with preserved body where available. This is good loss visibility, but it is not generic ADF extension support.
 
 Forge macros may provide an `adfExport` function for `pdf`, `word`, or `other`. That output should ultimately be ingested as ADF, not only as flattened `export_view` HTML.
 
-Evidence: [E2], [E3], [E4], [E18], [E19].
+Evidence: [E2], [E3], [E4], [E18], [E19], [E42].
 
 ### 6.9 Schema/documentation drift watchlist
 
@@ -790,6 +796,7 @@ Accessed 2026-07-22 and 2026-07-23:
 - **[E39] Complete pinned block-media/group/single/border semantics and typed inline-media boundary:** `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/adf-validate.ts`, `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/client.ts`, `packages/confluence/src/adf-validate.test.ts`, `packages/confluence/src/adf-to-blocks.test.ts`, `packages/confluence/src/client-adf.test.ts`, `packages/confluence/src/compose-document.ts`, `packages/docx/src/image.ts`, `packages/docx/src/export.ts`, `packages/docx/src/serialize.ts`, `packages/docx/src/image.test.ts`, `packages/docx/src/export.test.ts`, `packages/docx/src/serialize.test.ts`, `packages/pdf/src/prepare.ts`, `packages/pdf/src/serialize.ts`, `packages/pdf/src/serialize.test.ts`, `packages/export-fixtures/src/index.ts`, `packages/export-fixtures/src/adf-fixtures.test.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
 - **[E40] Native correlated `mediaInline` output and host parity:** `packages/docx/src/image.ts`, `packages/docx/src/serialize.ts`, `packages/docx/src/export.ts`, `packages/docx/src/image.test.ts`, `packages/docx/src/serialize.test.ts`, `packages/docx/src/export.test.ts`, `packages/pdf/src/types.ts`, `packages/pdf/src/prepare.ts`, `packages/pdf/src/serialize.ts`, `packages/pdf/src/prepare.test.ts`, `packages/pdf/src/serialize.test.ts`, `packages/export-fixtures/src/index.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `apps/browser-export-harness/src/pdf-job-parity-case.ts`, `apps/browser-export-harness/tests/exports.e2e.ts`, `scripts/adf-rendered-goldens.ts`, `scripts/adf-rendered-goldens.test.ts`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
 - **[E41] Complete pinned `dataConsumer` provenance without identifier publication:** `packages/confluence/src/adf-validate.ts`, `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/adf-coverage.ts`, `packages/confluence/src/adf-validate.test.ts`, `packages/confluence/src/adf-to-blocks.test.ts`, `packages/confluence/src/adf-direct-fixtures.test.ts`, `packages/confluence/src/compose-document.ts`, `packages/docx/src/serialize.test.ts`, `packages/pdf/src/serialize.test.ts`, `packages/export-fixtures/src/index.ts`, `packages/export-fixtures/src/adf-fixtures.test.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `apps/browser-export-harness/tests/exports.e2e.ts`, `scripts/adf-rendered-goldens.ts`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
+- **[E42] Complete pinned synced-content identity and safe static projection:** `packages/confluence/src/adf-validate.ts`, `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/adf-coverage.ts`, `packages/confluence/src/adf-validate.test.ts`, `packages/confluence/src/adf-to-blocks.test.ts`, `packages/confluence/src/adf-direct-fixtures.test.ts`, `packages/confluence/src/compose-document.test.ts`, `packages/docx/src/serialize.test.ts`, `packages/pdf/src/serialize.test.ts`, `packages/export-fixtures/src/index.ts`, `packages/export-fixtures/src/adf-fixtures.test.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `apps/browser-export-harness/tests/exports.e2e.ts`, `scripts/adf-rendered-goldens.ts`, `scripts/adf-rendered-goldens.test.ts`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
 
 ## 16. Review questions
 

@@ -58,6 +58,9 @@ const REQUIRED_TEXT = Object.freeze([
   "Extension body",
   "Visible media fallback",
   "Media caption",
+  "Synced content snapshot",
+  "Synced snapshot body",
+  "Synced content is unavailable in this static export.",
 ]);
 const FORBIDDEN_TEXT = Object.freeze([
   "editor-only-secret",
@@ -354,6 +357,7 @@ async function manifestFor(
       "media-inline-image-and-fallback-chip",
       "media-data-consumer-provenance-nonvisual",
       "media-wrap-source-order",
+      "synced-content-snapshot-and-reference",
       "extension",
     ],
     formats: {

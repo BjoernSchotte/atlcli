@@ -352,6 +352,20 @@ export interface PageLayout {
 }
 
 /**
+ * Exact ADF synchronization identity attached to a static callout projection.
+ *
+ * Static exports never execute Confluence's product-internal synchronization.
+ * A bodied block carries the embedded snapshot; a reference-only block carries
+ * a visible unavailable-content fallback. Opaque IDs remain non-visual.
+ */
+export interface SyncedContentProvenance {
+  resourceId: string;
+  localId: string;
+  projection: "embedded-snapshot" | "unresolved-reference";
+  breakout?: LayoutBreakout;
+}
+
+/**
  * A list item. `checked` is the backwards-compatible task checkbox projection;
  * typed task/decision identity and exact state live in the adjacent fields.
  * A normal bullet/number item leaves all semantic fields undefined.
@@ -672,6 +686,8 @@ export type ExportBlock =
       panelIconId?: string;
       /** Exact custom-panel visible icon text, preferred by static renderers. */
       panelIconText?: string;
+      /** Exact ADF synced-content identity retained behind the static projection. */
+      syncedContent?: SyncedContentProvenance;
     }
   | {
       /**

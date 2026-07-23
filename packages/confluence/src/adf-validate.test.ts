@@ -543,6 +543,40 @@ describe("validateAdf", () => {
     }
   });
 
+  test("validates reference-only and embedded synced-content shapes exactly", () => {
+    const attrs = { resourceId: "resource-1", localId: "" };
+    expect(() => validateAdf(doc([{
+      type: "syncBlock",
+      attrs,
+      marks: [{ type: "breakout", attrs: { mode: "wide", width: 720 } }],
+    }]))).not.toThrow();
+    expect(() => validateAdf(doc([{
+      type: "bodiedSyncBlock",
+      attrs,
+      content: [{ type: "paragraph", content: [{ type: "text", text: "snapshot" }] }],
+    }]))).not.toThrow();
+
+    for (const node of [
+      { type: "syncBlock", attrs: { localId: "local-1" } },
+      { type: "syncBlock", attrs: { resourceId: "resource-1" } },
+      { type: "syncBlock", attrs, content: [] },
+      {
+        type: "syncBlock",
+        attrs,
+        marks: [{ type: "strong" }],
+      },
+      { type: "bodiedSyncBlock", attrs, content: [] },
+      { type: "bodiedSyncBlock", attrs },
+      {
+        type: "bodiedSyncBlock",
+        attrs,
+        content: [{ type: "text", text: "inline child" }],
+      },
+    ]) {
+      expect(errorCode(() => validateAdf(doc([node])))).toBeDefined();
+    }
+  });
+
   test("validates the pinned table, row, and cell attribute contracts", () => {
     const table = (tableAttrs: Record<string, unknown>, cellAttrs: Record<string, unknown> = {}) =>
       doc([{

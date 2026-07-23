@@ -1423,6 +1423,28 @@ content-bounds IoU 1, proving the newly retained non-visual provenance did not
 alter published content. The matrix now records 70 of 84 rows closed and 14
 open.
 
+Completed synced-content follow-on evidence recorded on 2026-07-23: the pinned
+reference-only `syncBlock` and embedded `bodiedSyncBlock` contracts now validate
+their required resource/local identities, exact child rules, and schema-valid
+breakout mark. The neutral model retains those opaque IDs, the static projection
+kind, embedded snapshot blocks where available, and breakout intent through
+composition and direct/background source resolution. A bodied node exports its
+embedded ADF snapshot in a labeled callout; a reference-only node exports a
+deterministic unavailable-content callout because neither the pinned document
+nor the official public ADF structure contract provides a synchronization
+resolver. Neither TypeScript target publishes the opaque identifiers.
+
+Focused validator/decoder/composition/DOCX/PDF tests, full typecheck, the
+production build, public API/closure generation, browser unit/output/manifest
+gates, exact CLI/browser direct/background parity, and packed Chromium E2E
+passed. The reviewed real-render baseline contains two DOCX and five PDF pages:
+the added DOCX page keeps the two sync projections together instead of splitting
+the preceding code block, while the PDF keeps both page-bounded callouts after
+the code. A second LibreOffice and Typst/Poppler render reproduced every page
+with zero mean pixel difference and content-bounds IoU 1. The unrestricted
+workspace suite then passed with 5,016 tests, 13 intentional skips, and zero
+failures. The matrix now records 72 of 84 rows closed and 12 open.
+
 After this migration proves the source boundary, close the gap-analysis backlog in separate feature slices:
 
 1. custom-emoji assets after a documented Atlassian resolver contract and
@@ -1434,7 +1456,7 @@ After this migration proves the source boundary, close the gap-analysis backlog 
 5. breakout beyond page-bounded layout sections (pinned ADF/documented Storage
    layout columns and the static caption/disclosure contract are complete);
 6. ADF-native definitions for excerpts/Page Properties and removal of their Storage sidecar;
-7. advanced extensions, Forge `adfExport` ingestion policy, and synced-content snapshots;
+7. advanced extensions and Forge `adfExport` ingestion policy;
 8. lazy sidecar reads and eventual Storage removal from Cloud export only after every dependency is retired.
 9. legacy Storage-only code-macro title/collapse static projection.
 

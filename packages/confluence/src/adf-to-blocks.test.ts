@@ -1496,6 +1496,67 @@ describe("adfToBlocks", () => {
     });
   });
 
+  it("retains synced-content identity, embedded snapshots, references, and breakout intent", () => {
+    const result = adfToBlocks(doc([
+      {
+        type: "bodiedSyncBlock",
+        attrs: { resourceId: "opaque-resource-snapshot", localId: "" },
+        marks: [{ type: "breakout", attrs: { mode: "wide", width: 720 } }],
+        content: [{
+          type: "paragraph",
+          content: [{ type: "text", text: "Embedded synced snapshot" }],
+        }],
+      },
+      {
+        type: "syncBlock",
+        attrs: {
+          resourceId: "opaque-resource-reference",
+          localId: "sync-reference-local",
+        },
+        marks: [{ type: "breakout", attrs: { mode: "full-width" } }],
+      },
+    ]));
+
+    expect(result.blocks).toEqual([
+      {
+        type: "callout",
+        kind: "panel",
+        title: "Synced content snapshot",
+        content: [{
+          type: "paragraph",
+          content: [{ type: "text", text: "Embedded synced snapshot" }],
+        }],
+        syncedContent: {
+          resourceId: "opaque-resource-snapshot",
+          localId: "",
+          projection: "embedded-snapshot",
+          breakout: { mode: "wide", width: 720 },
+        },
+      },
+      {
+        type: "callout",
+        kind: "panel",
+        title: "Synced content",
+        content: [{
+          type: "paragraph",
+          content: [{
+            type: "text",
+            text: "Synced content is unavailable in this static export.",
+          }],
+        }],
+        syncedContent: {
+          resourceId: "opaque-resource-reference",
+          localId: "sync-reference-local",
+          projection: "unresolved-reference",
+          breakout: { mode: "full-width" },
+        },
+      },
+    ]);
+    expect(result.notes.filter((note) => note.code === "adf-node-degraded")).toHaveLength(2);
+    expect(result.notes.filter((note) => note.code === "adf-mark-degraded")).toHaveLength(2);
+    expect(JSON.stringify(result.notes)).not.toContain("opaque-resource");
+  });
+
   it("preserves Storage export-control semantics for recognized ADF extensions", () => {
     const control = (extensionKey: string, text: string) => ({
       type: "bodiedExtension",

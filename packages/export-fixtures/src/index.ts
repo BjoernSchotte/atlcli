@@ -533,6 +533,32 @@ export const ADF_CONFORMANCE_SOURCE = JSON.stringify({
         text: ADF_CODE_BLOCK_SOURCE,
       }],
     },
+    {
+      type: "bodiedSyncBlock",
+      attrs: {
+        resourceId: "synthetic-sync-snapshot-resource",
+        localId: "synthetic-sync-snapshot-local",
+      },
+      marks: [{
+        type: "breakout",
+        attrs: { mode: "wide", width: 840 },
+      }],
+      content: [{
+        type: "paragraph",
+        content: [{ type: "text", text: "Synced snapshot body" }],
+      }],
+    },
+    {
+      type: "syncBlock",
+      attrs: {
+        resourceId: "synthetic-sync-reference-resource",
+        localId: "synthetic-sync-reference-local",
+      },
+      marks: [{
+        type: "breakout",
+        attrs: { mode: "full-width" },
+      }],
+    },
   ],
 });
 

@@ -37,7 +37,7 @@ export declare const ADF_NODE_DECODE_MODES: Readonly<{
     readonly blockTaskItem: "native";
     readonly blockquote: "native";
     readonly bodiedExtension: "approximation";
-    readonly bodiedSyncBlock: "visible-fallback";
+    readonly bodiedSyncBlock: "approximation";
     readonly bulletList: "native";
     readonly caption: "native";
     readonly codeBlock: "native";
@@ -68,7 +68,7 @@ export declare const ADF_NODE_DECODE_MODES: Readonly<{
     readonly placeholder: "native";
     readonly rule: "native";
     readonly status: "native";
-    readonly syncBlock: "visible-fallback";
+    readonly syncBlock: "approximation";
     readonly table: "approximation";
     readonly tableCell: "approximation";
     readonly tableHeader: "approximation";
@@ -1112,6 +1112,7 @@ export type ExportBlock = {
     panelIcon?: string;
     panelIconId?: string;
     panelIconText?: string;
+    syncedContent?: SyncedContentProvenance;
 } | {
     type: "expand";
     nested: boolean;
@@ -2075,6 +2076,14 @@ export declare const SVG_UNSAFE_MESSAGE = "SVG contains active or externally loa
 export interface SvgSafetyViolation {
     rule: "doctype-or-entity" | "blocked-element" | "event-handler-attribute" | "non-fragment-reference" | "css-external-reference";
     detail: string;
+}
+
+// export: SyncedContentProvenance
+export interface SyncedContentProvenance {
+    resourceId: string;
+    localId: string;
+    projection: "embedded-snapshot" | "unresolved-reference";
+    breakout?: LayoutBreakout;
 }
 
 // export: SyncScope
@@ -2400,7 +2409,7 @@ export declare const ADF_NODE_DECODE_MODES: Readonly<{
     readonly blockTaskItem: "native";
     readonly blockquote: "native";
     readonly bodiedExtension: "approximation";
-    readonly bodiedSyncBlock: "visible-fallback";
+    readonly bodiedSyncBlock: "approximation";
     readonly bulletList: "native";
     readonly caption: "native";
     readonly codeBlock: "native";
@@ -2431,7 +2440,7 @@ export declare const ADF_NODE_DECODE_MODES: Readonly<{
     readonly placeholder: "native";
     readonly rule: "native";
     readonly status: "native";
-    readonly syncBlock: "visible-fallback";
+    readonly syncBlock: "approximation";
     readonly table: "approximation";
     readonly tableCell: "approximation";
     readonly tableHeader: "approximation";
@@ -3475,6 +3484,7 @@ export type ExportBlock = {
     panelIcon?: string;
     panelIconId?: string;
     panelIconText?: string;
+    syncedContent?: SyncedContentProvenance;
 } | {
     type: "expand";
     nested: boolean;
@@ -4438,6 +4448,14 @@ export declare const SVG_UNSAFE_MESSAGE = "SVG contains active or externally loa
 export interface SvgSafetyViolation {
     rule: "doctype-or-entity" | "blocked-element" | "event-handler-attribute" | "non-fragment-reference" | "css-external-reference";
     detail: string;
+}
+
+// export: SyncedContentProvenance
+export interface SyncedContentProvenance {
+    resourceId: string;
+    localId: string;
+    projection: "embedded-snapshot" | "unresolved-reference";
+    breakout?: LayoutBreakout;
 }
 
 // export: SyncScope
@@ -4763,7 +4781,7 @@ export declare const ADF_NODE_DECODE_MODES: Readonly<{
     readonly blockTaskItem: "native";
     readonly blockquote: "native";
     readonly bodiedExtension: "approximation";
-    readonly bodiedSyncBlock: "visible-fallback";
+    readonly bodiedSyncBlock: "approximation";
     readonly bulletList: "native";
     readonly caption: "native";
     readonly codeBlock: "native";
@@ -4794,7 +4812,7 @@ export declare const ADF_NODE_DECODE_MODES: Readonly<{
     readonly placeholder: "native";
     readonly rule: "native";
     readonly status: "native";
-    readonly syncBlock: "visible-fallback";
+    readonly syncBlock: "approximation";
     readonly table: "approximation";
     readonly tableCell: "approximation";
     readonly tableHeader: "approximation";
@@ -5838,6 +5856,7 @@ export type ExportBlock = {
     panelIcon?: string;
     panelIconId?: string;
     panelIconText?: string;
+    syncedContent?: SyncedContentProvenance;
 } | {
     type: "expand";
     nested: boolean;
@@ -6801,6 +6820,14 @@ export declare const SVG_UNSAFE_MESSAGE = "SVG contains active or externally loa
 export interface SvgSafetyViolation {
     rule: "doctype-or-entity" | "blocked-element" | "event-handler-attribute" | "non-fragment-reference" | "css-external-reference";
     detail: string;
+}
+
+// export: SyncedContentProvenance
+export interface SyncedContentProvenance {
+    resourceId: string;
+    localId: string;
+    projection: "embedded-snapshot" | "unresolved-reference";
+    breakout?: LayoutBreakout;
 }
 
 // export: SyncScope
@@ -8100,6 +8127,7 @@ export type ExportBlock = {
     panelIcon?: string;
     panelIconId?: string;
     panelIconText?: string;
+    syncedContent?: SyncedContentProvenance;
 } | {
     type: "expand";
     nested: boolean;
@@ -9590,6 +9618,14 @@ export interface SyncDbExport {
     contentProperties: ContentPropertyRecord[];
 }
 
+// export: SyncedContentProvenance
+export interface SyncedContentProvenance {
+    resourceId: string;
+    localId: string;
+    projection: "embedded-snapshot" | "unresolved-reference";
+    breakout?: LayoutBreakout;
+}
+
 // export: SyncScope
 export type SyncScope = {
     type: "page";
@@ -9951,7 +9987,7 @@ export declare const ADF_NODE_DECODE_MODES: Readonly<{
     readonly blockTaskItem: "native";
     readonly blockquote: "native";
     readonly bodiedExtension: "approximation";
-    readonly bodiedSyncBlock: "visible-fallback";
+    readonly bodiedSyncBlock: "approximation";
     readonly bulletList: "native";
     readonly caption: "native";
     readonly codeBlock: "native";
@@ -9982,7 +10018,7 @@ export declare const ADF_NODE_DECODE_MODES: Readonly<{
     readonly placeholder: "native";
     readonly rule: "native";
     readonly status: "native";
-    readonly syncBlock: "visible-fallback";
+    readonly syncBlock: "approximation";
     readonly table: "approximation";
     readonly tableCell: "approximation";
     readonly tableHeader: "approximation";
@@ -11026,6 +11062,7 @@ export type ExportBlock = {
     panelIcon?: string;
     panelIconId?: string;
     panelIconText?: string;
+    syncedContent?: SyncedContentProvenance;
 } | {
     type: "expand";
     nested: boolean;
@@ -11989,6 +12026,14 @@ export declare const SVG_UNSAFE_MESSAGE = "SVG contains active or externally loa
 export interface SvgSafetyViolation {
     rule: "doctype-or-entity" | "blocked-element" | "event-handler-attribute" | "non-fragment-reference" | "css-external-reference";
     detail: string;
+}
+
+// export: SyncedContentProvenance
+export interface SyncedContentProvenance {
+    resourceId: string;
+    localId: string;
+    projection: "embedded-snapshot" | "unresolved-reference";
+    breakout?: LayoutBreakout;
 }
 
 // export: SyncScope

@@ -454,11 +454,8 @@ function decodeBlockNode(node: AdfNode, ctx: DecodeContext, path: string): Expor
     case "media":
       return [decodeMediaBlock(node, ctx, path)];
     case "syncBlock":
-    case "bodiedSyncBlock": {
-      addNodeNote(ctx, path, node.type, "synchronization metadata was dropped while visible content was preserved.");
-      const children = decodeBlockChildren(node.content, ctx, `${path}.content`);
-      return children.length > 0 ? children : [fallbackParagraph(node, `Unsupported ${node.type}`)];
-    }
+    case "bodiedSyncBlock":
+      return [decodeSyncedContent(node, ctx, path)];
     case "caption":
       addNodeNote(ctx, path, node.type, "could not be attached to a captionable parent and was kept as prose.");
       return [{ type: "paragraph", content: decodeInlineChildren(node.content, ctx, `${path}.content`) }];
@@ -1414,6 +1411,54 @@ function decodeLayoutSection(node: AdfNode, ctx: DecodeContext, path: string): E
   };
 }
 
+function decodeSyncedContent(
+  node: AdfNode,
+  ctx: DecodeContext,
+  path: string,
+): ExportBlock {
+  const embedded = node.type === "bodiedSyncBlock";
+  const breakout = breakoutMark(node.marks);
+  if (breakout) {
+    addMarkNote(
+      ctx,
+      path,
+      "breakout",
+      breakout.width !== undefined && breakout.width <= 0
+        ? "has a non-positive width; the source value was retained and exporters use page-bounded width."
+        : `retains ${breakout.mode} intent but is bounded to the physical output page.`,
+    );
+  }
+  addNodeNote(
+    ctx,
+    path,
+    node.type,
+    embedded
+      ? "was exported from its embedded static snapshot; synchronization was not executed and opaque identity remains non-visual."
+      : "was retained as an unresolved static reference; no public resolver contract is available and opaque identity remains non-visual.",
+  );
+  const content = embedded
+    ? decodeBlockChildren(node.content, ctx, `${path}.content`)
+    : [{
+        type: "paragraph" as const,
+        content: [{
+          type: "text" as const,
+          text: "Synced content is unavailable in this static export.",
+        }],
+      }];
+  return {
+    type: "callout",
+    kind: "panel",
+    title: embedded ? "Synced content snapshot" : "Synced content",
+    content,
+    syncedContent: {
+      resourceId: optionalStringAttr(node, "resourceId") ?? "",
+      localId: optionalStringAttr(node, "localId") ?? "",
+      projection: embedded ? "embedded-snapshot" : "unresolved-reference",
+      ...(breakout ? { breakout } : {}),
+    },
+  };
+}
+
 function decodeCell(node: AdfNode, ctx: DecodeContext, path: string): TableCell {
   const colspan = numberInRange(node.attrs?.colspan, 1, 1_000, 1);
   const rowspan = numberInRange(node.attrs?.rowspan, 1, 1_000, 1);
@@ -1559,7 +1604,11 @@ function markHandledByNode(nodeType: string, markType: string): boolean {
   if (markType === "dataConsumer") {
     return nodeType === "media" || nodeType === "mediaInline";
   }
-  if (markType === "breakout") return nodeType === "layoutSection";
+  if (markType === "breakout") {
+    return nodeType === "layoutSection" ||
+      nodeType === "syncBlock" ||
+      nodeType === "bodiedSyncBlock";
+  }
   return false;
 }
 

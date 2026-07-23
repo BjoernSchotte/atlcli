@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "sourceSha256": "684d1534eccd395459702767aa39b5fbb8f909de58e1e8d4a83753aec274403d",
+  "sourceSha256": "c8ddf76b19f7f7dd15e2472fc612b777cd7e540a2841487804368b01f4ec4302",
   "features": [
     "inline-code",
     "docx-embedded-code-font",
@@ -34,6 +34,7 @@
     "media-inline-image-and-fallback-chip",
     "media-data-consumer-provenance-nonvisual",
     "media-wrap-source-order",
+    "synced-content-snapshot-and-reference",
     "extension"
   ],
   "formats": {
@@ -42,6 +43,10 @@
         {
           "file": "docx-page-1.png",
           "sha256": "4d482e8d4ea045374b1ba9e48b3ab5aa678fcd22d1e463547c541a92bb2e8543"
+        },
+        {
+          "file": "docx-page-2.png",
+          "sha256": "cb1ac5dcedef8701ed46c0fc4787410d73689d772c631dd9234737202002d785"
         }
       ],
       "requiredText": [
@@ -74,6 +79,9 @@
         "Extension body",
         "Visible media fallback",
         "Media caption",
+        "Synced content snapshot",
+        "Synced snapshot body",
+        "Synced content is unavailable in this static export.",
         "Mar 4, 2024",
         "READY",
         "Keep Case"
@@ -99,7 +107,7 @@
         },
         {
           "file": "pdf-page-4.png",
-          "sha256": "58942b733861da647b4854bce8a74514414aef7fa6162c1933b8ae6469be35f8"
+          "sha256": "00ce98257a74994d305269d0a5354abb09e335259b24817f3581429d855df58b"
         },
         {
           "file": "pdf-page-5.png",
@@ -136,6 +144,9 @@
         "Extension body",
         "Visible media fallback",
         "Media caption",
+        "Synced content snapshot",
+        "Synced snapshot body",
+        "Synced content is unavailable in this static export.",
         "4 Mar 2024",
         "READY",
         "Keep Case"

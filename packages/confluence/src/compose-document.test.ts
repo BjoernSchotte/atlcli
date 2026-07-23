@@ -782,6 +782,33 @@ describe("composeChapters — retained ADF mark identities", () => {
     });
   });
 
+  test("preserves synced-content identity and projection through composition", () => {
+    const source = page("1", "Source", 0, null, "<p>body</p>");
+    source.blocks.push({
+      type: "callout",
+      kind: "panel",
+      title: "Synced content snapshot",
+      content: [{ type: "paragraph", content: [{ type: "text", text: "Snapshot" }] }],
+      syncedContent: {
+        resourceId: "opaque-sync-resource",
+        localId: "opaque-sync-local",
+        projection: "embedded-snapshot",
+        breakout: { mode: "wide", width: 720 },
+      },
+    });
+
+    const { blocks } = composeChapters([source], { chapterBreak: "none" });
+    expect(blocks.find((block) => block.type === "callout")).toMatchObject({
+      type: "callout",
+      syncedContent: {
+        resourceId: "opaque-sync-resource",
+        localId: "opaque-sync-local",
+        projection: "embedded-snapshot",
+        breakout: { mode: "wide", width: 720 },
+      },
+    });
+  });
+
   test("preserves annotation and fragment metadata while rewriting document structure", () => {
     const source = page("1", "Source", 0, null, "<p>body</p>");
     source.blocks.push(

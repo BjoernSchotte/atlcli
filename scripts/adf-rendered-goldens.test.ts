@@ -50,6 +50,7 @@ describe("ADF rendered goldens", () => {
       "media-inline-image-and-fallback-chip",
       "media-data-consumer-provenance-nonvisual",
       "media-wrap-source-order",
+      "synced-content-snapshot-and-reference",
       "extension",
     ]);
     for (const format of ["docx", "pdf"] as const) {
@@ -65,7 +66,7 @@ describe("ADF rendered goldens", () => {
     const result = await checkAdfRenderedGoldens();
     expect(result).toMatchObject({
       updated: false,
-      docxPages: 1,
+      docxPages: 2,
       pdfPages: 5,
       docxCodeFontEmbedded: true,
     });

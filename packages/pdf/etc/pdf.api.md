@@ -52,6 +52,7 @@ export type ExportBlock = {
     panelIcon?: string;
     panelIconId?: string;
     panelIconText?: string;
+    syncedContent?: SyncedContentProvenance;
 } | {
     type: "expand";
     nested: boolean;
@@ -899,6 +900,7 @@ export type ExportBlock = {
     panelIcon?: string;
     panelIconId?: string;
     panelIconText?: string;
+    syncedContent?: SyncedContentProvenance;
 } | {
     type: "expand";
     nested: boolean;
@@ -1746,6 +1748,7 @@ export type ExportBlock = {
     panelIcon?: string;
     panelIconId?: string;
     panelIconText?: string;
+    syncedContent?: SyncedContentProvenance;
 } | {
     type: "expand";
     nested: boolean;

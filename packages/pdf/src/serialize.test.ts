@@ -1835,6 +1835,62 @@ describe("serialize — C3 captions", () => {
     expect(retainedBundle.notes).toEqual([]);
   });
 
+  it("preserves synced-content provenance without publishing opaque identity", async () => {
+    const snapshot: ExportBlock = {
+      type: "callout",
+      kind: "panel",
+      title: "Synced content snapshot",
+      content: [{
+        type: "paragraph",
+        content: [{ type: "text", text: "Embedded synced snapshot" }],
+      }],
+      syncedContent: {
+        resourceId: "opaque-snapshot-resource",
+        localId: "opaque-snapshot-local",
+        projection: "embedded-snapshot",
+        breakout: { mode: "wide", width: 720 },
+      },
+    };
+    const reference: ExportBlock = {
+      type: "callout",
+      kind: "panel",
+      title: "Synced content",
+      content: [{
+        type: "paragraph",
+        content: [{
+          type: "text",
+          text: "Synced content is unavailable in this static export.",
+        }],
+      }],
+      syncedContent: {
+        resourceId: "opaque-reference-resource",
+        localId: "opaque-reference-local",
+        projection: "unresolved-reference",
+        breakout: { mode: "full-width" },
+      },
+    };
+    const withoutProvenance = [snapshot, reference].map((block) => {
+      const { syncedContent: _syncedContent, ...plain } = block;
+      return plain;
+    });
+    const plain = await preparePdfDocument(withoutProvenance, {
+      resolve: async () => { throw new Error("unused"); },
+    });
+    const retained = await preparePdfDocument([snapshot, reference], {
+      resolve: async () => { throw new Error("unused"); },
+    });
+    expect(retained.blocks).toMatchObject([snapshot, reference]);
+
+    const plainBundle = serializePdfDocument(plain, { metadata });
+    const retainedBundle = serializePdfDocument(retained, { metadata });
+    expect(retainedBundle.main).toBe(plainBundle.main);
+    expect(retainedBundle.main).toContain("Synced content snapshot");
+    expect(retainedBundle.main).toContain("Embedded synced snapshot");
+    expect(retainedBundle.main).toContain("Synced content is unavailable in this static export.");
+    expect(retainedBundle.main).not.toContain("opaque-");
+    expect(retainedBundle.notes).toEqual([]);
+  });
+
   it("wraps ADF media output in its exact safe link", async () => {
     const { main, notes } = await toMain([{
       type: "mediaFallback",

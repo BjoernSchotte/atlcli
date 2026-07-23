@@ -89,6 +89,7 @@ export interface AdfSourceCaseResult {
   neutralHasDateStatusPlaceholderSemantics: boolean;
   neutralHasAnnotationAndFragmentIdentity: boolean;
   neutralHasDataConsumerProvenance: boolean;
+  neutralHasSyncedContentSemantics: boolean;
   neutralHasTablePresentation: boolean;
   neutralHasLayoutPresentation: boolean;
   neutralHasDisclosureSemantics: boolean;
@@ -99,6 +100,7 @@ export interface AdfSourceCaseResult {
   docxHasTablePresentation: boolean;
   docxHasLayoutPresentation: boolean;
   docxHasDisclosureSemantics: boolean;
+  docxHasSyncedContentProjection: boolean;
   docxHasDateStatusPlaceholderSemantics: boolean;
   docxHasMentionPresentation: boolean;
   docxHasCardTitle: boolean;
@@ -510,6 +512,14 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
         '"dataConsumers":[{"sources":["synthetic-consumer-primary","synthetic-consumer-secondary"]}]',
       )
       && !documentXml.includes("synthetic-consumer"),
+    neutralHasSyncedContentSemantics:
+      neutralJson.includes(
+        '"syncedContent":{"resourceId":"synthetic-sync-snapshot-resource","localId":"synthetic-sync-snapshot-local","projection":"embedded-snapshot","breakout":{"mode":"wide","width":840}}',
+      )
+      && neutralJson.includes(
+        '"syncedContent":{"resourceId":"synthetic-sync-reference-resource","localId":"synthetic-sync-reference-local","projection":"unresolved-reference","breakout":{"mode":"full-width"}}',
+      )
+      && !documentXml.includes("synthetic-sync"),
     neutralHasTablePresentation:
       JSON.stringify(pdfSource.blocks).includes(
         '"presentation":{"layout":"align-end","width":480,"displayMode":"fixed","numberedColumn":true,"localId":"table-local"}',
@@ -586,6 +596,11 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
       && documentXml.includes("Expanded body")
       && documentXml.includes("[-] Nested expanded title")
       && documentXml.includes("Nested expanded body"),
+    docxHasSyncedContentProjection:
+      documentXml.includes("Synced content snapshot")
+      && documentXml.includes("Synced snapshot body")
+      && documentXml.includes("Synced content is unavailable in this static export.")
+      && !documentXml.includes("synthetic-sync"),
     docxHasDateStatusPlaceholderSemantics:
       documentXml.includes("4. März 2024")
       && documentXml.includes("> READY </w:t>")
@@ -658,6 +673,9 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
   }
   if (!result.neutralHasDataConsumerProvenance) {
     throw new Error("ADF-source data-consumer provenance was lost or published visibly.");
+  }
+  if (!result.neutralHasSyncedContentSemantics) {
+    throw new Error("ADF-source synced-content identity, projection, or privacy was lost.");
   }
   if (!result.neutralHasMediaLinkSemantics) {
     throw new Error("ADF-source media-link target or provenance was lost in the packed browser.");

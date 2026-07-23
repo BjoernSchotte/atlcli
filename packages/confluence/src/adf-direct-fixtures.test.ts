@@ -1,7 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import {
   ADF_MARK_DECODE_MODES,
-  ADF_NODE_DECODE_MODES,
   PINNED_ADF_MARK_TYPES,
   PINNED_ADF_NODE_TYPES,
   type PinnedAdfMarkType,
@@ -71,7 +70,12 @@ const NODE_FIXTURES = {
     attrs: { extensionType: "synthetic", extensionKey: "node-bodiedExtension", parameters: {} },
     content: [paragraph("node-bodiedExtension")],
   }),
-  bodiedSyncBlock: block({ type: "bodiedSyncBlock", attrs: { localId: "sync-1" }, content: [paragraph("node-bodiedSyncBlock")] }),
+  bodiedSyncBlock: block({
+    type: "bodiedSyncBlock",
+    attrs: { localId: "sync-1", resourceId: "resource-1" },
+    marks: [{ type: "breakout", attrs: { mode: "wide", width: 720 } }],
+    content: [paragraph("node-bodiedSyncBlock")],
+  }),
   bulletList: block({ type: "bulletList", content: [listItem("node-bulletList")] }),
   caption: block({
     type: "mediaSingle",
@@ -149,7 +153,11 @@ const NODE_FIXTURES = {
   placeholder: inline({ type: "placeholder", attrs: { text: "node-placeholder" } }),
   rule: block({ type: "rule" }),
   status: inline({ type: "status", attrs: { text: "node-status", color: "green" } }),
-  syncBlock: block({ type: "syncBlock", attrs: { localId: "sync-2" }, content: [paragraph("node-syncBlock")] }),
+  syncBlock: block({
+    type: "syncBlock",
+    attrs: { localId: "sync-2", resourceId: "resource-2" },
+    marks: [{ type: "breakout", attrs: { mode: "full-width" } }],
+  }),
   table: block(table([tableCell("tableCell", "node-table")])),
   tableCell: block(table([tableCell("tableCell", "node-tableCell")])),
   tableHeader: block(table([tableCell("tableHeader", "node-tableHeader")])),
@@ -231,9 +239,6 @@ describe("direct ADF decoder fixtures", () => {
         pageContext: { id: "fixture-page", title: "Direct decoder fixture" },
       });
       expect(result.blocks.length, `${type} disappeared`).toBeGreaterThan(0);
-      if (ADF_NODE_DECODE_MODES[type] === "visible-fallback") {
-        expect(result.notes.length, `${type} fallback was silent`).toBeGreaterThan(0);
-      }
       expect(result.notes.every((note) => note.source?.pageId === "fixture-page")).toBe(true);
     });
   }
