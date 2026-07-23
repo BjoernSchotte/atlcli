@@ -46,6 +46,38 @@ describe("validateAdf", () => {
     expect(errorCode(() => validateAdf(doc([{ type: "text", text: "x", marks: [{ type: "subsup", attrs: { type: "sideways" } }] }])))).toBe("invalid-attributes");
   });
 
+  test("validates exact date, status, and placeholder attribute contracts", () => {
+    expect(() => validateAdf(doc([{
+      type: "paragraph",
+      content: [
+        { type: "date", attrs: { timestamp: "1704067200000", localId: "" } },
+        {
+          type: "status",
+          attrs: { text: "Ready", color: "purple", localId: "", style: "mixedCase" },
+        },
+        { type: "placeholder", attrs: { text: "", localId: "" } },
+      ],
+    }]))).not.toThrow();
+
+    for (const node of [
+      { type: "date", attrs: { timestamp: "" } },
+      { type: "date", attrs: { timestamp: "1704067200000", localId: 1 } },
+      { type: "status", attrs: { text: "", color: "green" } },
+      { type: "status", attrs: { text: "Ready", color: "GREEN" } },
+      { type: "status", attrs: { text: "Ready", color: "teal" } },
+      { type: "status", attrs: { text: "Ready", color: "green", style: 1 } },
+      { type: "status", attrs: { text: "Ready", color: "green", localId: 1 } },
+      { type: "placeholder", attrs: {} },
+      { type: "placeholder", attrs: { text: 1 } },
+      { type: "placeholder", attrs: { text: "", localId: 1 } },
+    ]) {
+      expect(errorCode(() => validateAdf(doc([{
+        type: "paragraph",
+        content: [node],
+      }])))).toBe("invalid-attributes");
+    }
+  });
+
   test("validates pinned caption and disclosure contracts", () => {
     expect(() => validateAdf(doc([{
       type: "mediaSingle",

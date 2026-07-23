@@ -54,6 +54,10 @@ const REQUIRED_TEXT = Object.freeze([
   "Visible media fallback",
   "Media caption",
 ]);
+const FORBIDDEN_TEXT = Object.freeze([
+  "editor-only-secret",
+  "1709510400000",
+]);
 
 const MAX_MEAN_PIXEL_DIFFERENCE = 0.08;
 const MIN_CONTENT_BOUNDS_IOU = 0.8;
@@ -66,6 +70,7 @@ interface GoldenPage {
 interface GoldenFormat {
   pages: GoldenPage[];
   requiredText: string[];
+  forbiddenText: string[];
 }
 
 export interface AdfRenderedGoldenManifest {
@@ -278,6 +283,9 @@ async function manifestFor(
       "inline-code",
       "unicode-emoji",
       "custom-emoji-fallback",
+      "localized-date-chip",
+      "semantic-status-colors-and-casing",
+      "hidden-template-placeholder",
       "block-alignment",
       "block-indentation",
       "paragraph-font-size",
@@ -299,15 +307,35 @@ async function manifestFor(
       "extension",
     ],
     formats: {
-      docx: { pages: await copyPages("docx", docxPages), requiredText: [...REQUIRED_TEXT] },
-      pdf: { pages: await copyPages("pdf", pdfPages), requiredText: [...REQUIRED_TEXT] },
+      docx: {
+        pages: await copyPages("docx", docxPages),
+        requiredText: [...REQUIRED_TEXT, "Mar 4, 2024", "READY", "Keep Case"],
+        forbiddenText: [...FORBIDDEN_TEXT],
+      },
+      pdf: {
+        pages: await copyPages("pdf", pdfPages),
+        requiredText: [...REQUIRED_TEXT, "4 Mar 2024", "READY", "Keep Case"],
+        forbiddenText: [...FORBIDDEN_TEXT],
+      },
     },
   };
 }
 
 function assertRequiredText(format: string, actual: string, required: string[]): void {
+  const normalized = actual.replace(/\s+/gu, " ");
   for (const text of required) {
-    if (!actual.includes(text)) throw new Error(`${format} rendered golden is missing required text: ${JSON.stringify(text)}.`);
+    if (!normalized.includes(text.replace(/\s+/gu, " "))) {
+      throw new Error(`${format} rendered golden is missing required text: ${JSON.stringify(text)}.`);
+    }
+  }
+}
+
+function assertForbiddenText(format: string, actual: string, forbidden: string[]): void {
+  const normalized = actual.replace(/\s+/gu, " ");
+  for (const text of forbidden) {
+    if (normalized.includes(text.replace(/\s+/gu, " "))) {
+      throw new Error(`${format} rendered golden contains forbidden text: ${JSON.stringify(text)}.`);
+    }
   }
 }
 
@@ -355,6 +383,8 @@ export async function checkAdfRenderedGoldens(options: { update?: boolean } = {}
     }
     assertRequiredText("DOCX", rendered.docxText, manifest.formats.docx.requiredText);
     assertRequiredText("PDF", rendered.pdfText, manifest.formats.pdf.requiredText);
+    assertForbiddenText("DOCX", rendered.docxText, manifest.formats.docx.forbiddenText);
+    assertForbiddenText("PDF", rendered.pdfText, manifest.formats.pdf.forbiddenText);
 
     let maxDifference = 0;
     let minIou = 1;

@@ -96,8 +96,63 @@ export type InlineNode =
    * storage lacks a name the serializer/resolver fills it from `accountId`.
    */
   | { type: "mention"; accountId: string; displayName?: string }
-  | { type: "status"; text: string; color: string }
+  /**
+   * A semantic calendar date. ADF stores Unix epoch milliseconds as a string;
+   * keeping that source value avoids baking one viewer's locale into the
+   * target-neutral document model.
+   */
+  | { type: "date"; timestamp: string; localId?: string }
+  /**
+   * A Confluence status lozenge. Storage may expose legacy color names in
+   * addition to ADF's pinned semantic colors, so `color` remains an exact
+   * string while the ADF validator enforces its narrower source contract.
+   */
+  | { type: "status"; text: string; color: string; localId?: string; style?: string }
+  /**
+   * Template instruction text. Confluence hides placeholders in published
+   * view; exporters retain the identity but deliberately render no visible
+   * text.
+   */
+  | { type: "placeholder"; text: string; localId?: string; placeholderType?: string }
   | { type: "lineBreak" };
+
+/** Parse an ADF date timestamp (Unix epoch milliseconds) without guessing units. */
+export function parseAdfDateTimestamp(timestamp: string): Date | undefined {
+  if (!/^-?\d+$/u.test(timestamp)) return undefined;
+  const milliseconds = Number(timestamp);
+  if (!Number.isSafeInteger(milliseconds)) return undefined;
+  const date = new Date(milliseconds);
+  return Number.isFinite(date.getTime()) ? date : undefined;
+}
+
+/**
+ * Format an ADF date in the document locale while keeping UTC calendar
+ * semantics stable across Node, browsers, and developer time zones.
+ */
+export function formatAdfDateTimestamp(timestamp: string, locale = "en"): string {
+  const date = parseAdfDateTimestamp(timestamp);
+  if (!date) return timestamp;
+  const requested = locale.trim().replace(/_/gu, "-") || "en";
+  const options: Intl.DateTimeFormatOptions = {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  };
+  try {
+    return new Intl.DateTimeFormat(requested, options).format(date);
+  } catch {
+    return new Intl.DateTimeFormat("en", options).format(date);
+  }
+}
+
+/** Match Atlassian's published-view casing while retaining the exact source text. */
+export function statusDisplayText(
+  status: Pick<Extract<InlineNode, { type: "status" }>, "text" | "color" | "style">,
+): string {
+  const text = status.text || status.color;
+  return status.style === "mixedCase" ? text : text.toUpperCase();
+}
 
 export type TableVerticalAlignment = "top" | "middle" | "bottom";
 
@@ -596,6 +651,9 @@ export const EXPORT_NOTE_CODES = [
   "expand-static",
   // Shared ADF/Storage fact: no portable Unicode display was available.
   "emoji-text-fallback",
+  // Shared ADF/Storage fact: a semantic date could not be interpreted as an
+  // epoch-millisecond calendar value and is therefore shown as source text.
+  "date-invalid",
   // ADF adapter degradations. These are representation facts shared by every
   // host/renderer; DOCX and PDF receive the same notes with the same paths.
   "adf-node-degraded",
@@ -1282,6 +1340,7 @@ const INLINE_TAGS = new Set([
   "br",
   "ac:link",
   "ac:emoticon",
+  "ac:placeholder",
   "time",
 ]);
 
@@ -1476,14 +1535,15 @@ function normalizeOrientationMarkers(blocks: ExportBlock[], ctx: WalkCtx): Expor
 const INLINE_SCROLL_MACROS = new Set(["scroll-only-inline", "scroll-ignore-inline"]);
 
 /**
- * Inline-level structured macros: the `status` badge and the C4 export-control
- * inline variants (`scroll-only-inline`/`scroll-ignore-inline`). A block-level
- * walk buffers these into the enclosing implicit paragraph instead of flushing.
+ * Inline-level structured macros: `status`, legacy `date`, and the C4
+ * export-control inline variants (`scroll-only-inline`/`scroll-ignore-inline`).
+ * A block-level walk buffers these into the enclosing implicit paragraph
+ * instead of flushing.
  */
 function isInlineMacro(node: XmlElement): boolean {
   if (node.name !== "ac:structured-macro") return false;
   const name = (node.attrs["ac:name"] ?? "").toLowerCase();
-  return name === "status" || INLINE_SCROLL_MACROS.has(name);
+  return name === "status" || name === "date" || INLINE_SCROLL_MACROS.has(name);
 }
 
 /** Dispatch a single block-level element to zero or more {@link ExportBlock}s. */
@@ -2599,6 +2659,51 @@ function isColonEmojiFallback(value: string): boolean {
   return value.length >= 3 && value.startsWith(":") && value.endsWith(":") && !/\s/u.test(value);
 }
 
+/** Normalize Storage's calendar-date representations to ADF epoch milliseconds. */
+function storageDateTimestamp(value: string): string {
+  const source = value.trim();
+  if (parseAdfDateTimestamp(source)) return source;
+  const calendar = source.match(/^(\d{4})-(\d{2})-(\d{2})$/u);
+  if (calendar) {
+    const year = Number(calendar[1]);
+    const month = Number(calendar[2]);
+    const day = Number(calendar[3]);
+    const date = new Date(0);
+    date.setUTCHours(0, 0, 0, 0);
+    date.setUTCFullYear(year, month - 1, day);
+    const milliseconds = date.getTime();
+    if (
+      date.getUTCFullYear() === year &&
+      date.getUTCMonth() === month - 1 &&
+      date.getUTCDate() === day
+    ) {
+      return String(milliseconds);
+    }
+  }
+  // Accept only ISO timestamps with an explicit zone. Date.parse() also
+  // accepts locale-shaped and implementation-specific values (for example
+  // 03/04/2024), which would make an export depend on the host environment.
+  const zonedIso =
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)?(?:Z|[+-]\d{2}:\d{2})$/u;
+  if (!zonedIso.test(source)) return source;
+  const milliseconds = Date.parse(source);
+  return Number.isFinite(milliseconds) ? String(milliseconds) : source;
+}
+
+function storageDateInline(value: string, ctx: WalkCtx): InlineNode[] {
+  const source = value.trim();
+  if (!source) return [];
+  const timestamp = storageDateTimestamp(source);
+  if (!parseAdfDateTimestamp(timestamp)) {
+    ctx.notes.push(withSource(ctx, {
+      level: "warning",
+      code: "date-invalid",
+      message: "A semantic date timestamp was invalid; its exact source text was preserved.",
+    }));
+  }
+  return [{ type: "date", timestamp }];
+}
+
 function walkInlineElement(el: XmlElement, ctx: WalkCtx): InlineNode[] {
   const name = el.name;
 
@@ -2675,7 +2780,15 @@ function walkInlineElement(el: XmlElement, ctx: WalkCtx): InlineNode[] {
 
   if (name === "time") {
     const datetime = el.attrs.datetime ?? elementText(el).trim();
-    return datetime ? [{ type: "text", text: datetime }] : [];
+    return storageDateInline(datetime, ctx);
+  }
+
+  if (name === "ac:placeholder") {
+    return [{
+      type: "placeholder",
+      text: elementText(el),
+      ...(el.attrs["ac:type"] !== undefined ? { placeholderType: el.attrs["ac:type"] } : {}),
+    }];
   }
 
   if (name === "ac:structured-macro") {
@@ -2683,7 +2796,22 @@ function walkInlineElement(el: XmlElement, ctx: WalkCtx): InlineNode[] {
     if (macroName === "status") {
       const color = (macroParam(el, "colour") ?? macroParam(el, "color") ?? "grey").toLowerCase();
       const title = macroParam(el, "title") ?? "";
-      return [{ type: "status", text: title, color }];
+      const style =
+        macroParam(el, "style") ??
+        (macroParam(el, "subtle")?.toLowerCase() === "true" ? "subtle" : undefined);
+      return [{
+        type: "status",
+        text: title,
+        color,
+        ...(style !== undefined ? { style } : {}),
+      }];
+    }
+    if (macroName === "date") {
+      const value =
+        macroParam(el, "date") ??
+        macroParam(el, "") ??
+        elementText(el);
+      return storageDateInline(value, ctx);
     }
     if (INLINE_SCROLL_MACROS.has(macroName)) {
       return walkInlineExportControlMacro(

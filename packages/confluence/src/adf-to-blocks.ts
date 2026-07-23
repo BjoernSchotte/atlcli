@@ -30,6 +30,11 @@ import type {
   TablePresentation,
   TableRow,
 } from "./export-blocks.js";
+import {
+  formatAdfDateTimestamp,
+  parseAdfDateTimestamp,
+  statusDisplayText,
+} from "./export-blocks.js";
 import { sanitizeLinkHref, unsafeLinkMessage } from "./link-safety.js";
 import type { BlocksResult } from "./page-body.js";
 
@@ -390,8 +395,16 @@ function decodeBlockNode(node: AdfNode, ctx: DecodeContext, path: string): Expor
       addNodeNote(ctx, path, node.type, "could not be attached to a captionable parent and was kept as prose.");
       return [{ type: "paragraph", content: decodeInlineChildren(node.content, ctx, `${path}.content`) }];
     case "placeholder":
-      addNodeNote(ctx, path, node.type, "was preserved as visible placeholder text.");
-      return [fallbackParagraph(node, "Placeholder")];
+      return [{
+        type: "paragraph",
+        content: [{
+          type: "placeholder",
+          text: optionalStringAttr(node, "text") ?? "",
+          ...(optionalStringAttr(node, "localId") !== undefined
+            ? { localId: optionalStringAttr(node, "localId") }
+            : {}),
+        }],
+      }];
     default: {
       addNodeNote(ctx, path, node.type, "has no native block mapping; its visible content was preserved.");
       const children = decodeBlockChildren(node.content, ctx, `${path}.content`);
@@ -450,8 +463,24 @@ function decodeInlineNode(node: AdfNode, ctx: DecodeContext, path: string): Inli
       }
       return applyMarks(text, node.marks ?? [], ctx, path, emoji);
     }
-    case "date":
-      return applyMarks(renderDate(stringAttr(node, "timestamp")), node.marks ?? [], ctx, path);
+    case "date": {
+      const timestamp = stringAttr(node, "timestamp") ?? "";
+      if (!parseAdfDateTimestamp(timestamp)) {
+        ctx.notes.add({
+          level: "warning",
+          code: "date-invalid",
+          message: "A semantic date timestamp was invalid; its exact source text was preserved.",
+          source: sourceFor(ctx, path),
+        });
+      }
+      return [{
+        type: "date",
+        timestamp,
+        ...(optionalStringAttr(node, "localId") !== undefined
+          ? { localId: optionalStringAttr(node, "localId") }
+          : {}),
+      }];
+    }
     case "mention":
       return [{
         type: "mention",
@@ -463,6 +492,12 @@ function decodeInlineNode(node: AdfNode, ctx: DecodeContext, path: string): Inli
         type: "status",
         text: stringAttr(node, "text") ?? "",
         color: (stringAttr(node, "color") ?? "neutral").toLowerCase(),
+        ...(optionalStringAttr(node, "localId") !== undefined
+          ? { localId: optionalStringAttr(node, "localId") }
+          : {}),
+        ...(optionalStringAttr(node, "style") !== undefined
+          ? { style: optionalStringAttr(node, "style") }
+          : {}),
       }];
     case "inlineCard":
       return cardInline(node, ctx, path);
@@ -501,8 +536,13 @@ function decodeInlineNode(node: AdfNode, ctx: DecodeContext, path: string): Inli
         ...annotationFields(node.marks),
       }];
     case "placeholder":
-      addNodeNote(ctx, path, node.type, "was preserved as visible placeholder text.");
-      return applyMarks(stringAttr(node, "text") ?? "[Placeholder]", node.marks ?? [], ctx, path);
+      return [{
+        type: "placeholder",
+        text: optionalStringAttr(node, "text") ?? "",
+        ...(optionalStringAttr(node, "localId") !== undefined
+          ? { localId: optionalStringAttr(node, "localId") }
+          : {}),
+      }];
     default: {
       addNodeNote(ctx, path, node.type, "has no native inline mapping; its visible content was preserved.");
       const children = decodeInlineChildren(node.content, ctx, `${path}.content`);
@@ -1202,13 +1242,6 @@ function normalizeColor(value: AdfJsonValue | undefined): string | undefined {
   return short ? `#${short[1]}${short[1]}${short[2]}${short[2]}${short[3]}${short[3]}`.toUpperCase() : undefined;
 }
 
-function renderDate(timestamp: string | undefined): string {
-  if (!timestamp) return "[date]";
-  if (!/^\d+$/.test(timestamp)) return timestamp;
-  const date = new Date(Number(timestamp));
-  return Number.isFinite(date.getTime()) ? date.toISOString().slice(0, 10) : timestamp;
-}
-
 function descendantText(node: AdfNode): string {
   if (node.type === "text") return node.text ?? "";
   return (node.content ?? []).map(descendantText).join("");
@@ -1219,7 +1252,9 @@ function inlineText(nodes: readonly InlineNode[]): string {
     if (node.type === "text") return node.text;
     if (node.type === "link") return inlineText(node.content);
     if (node.type === "mention") return node.displayName ?? node.accountId;
-    if (node.type === "status") return node.text;
+    if (node.type === "date") return formatAdfDateTimestamp(node.timestamp);
+    if (node.type === "status") return statusDisplayText(node);
+    if (node.type === "placeholder") return "";
     return "\n";
   }).join("");
 }

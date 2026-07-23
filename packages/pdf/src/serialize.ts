@@ -10,7 +10,9 @@ import type {
 import {
   UNSAFE_LINK_NOTE_CODE,
   computeHeadingOffset,
+  formatAdfDateTimestamp,
   isSafeLinkScheme,
+  statusDisplayText,
   uniqueAnchorId,
 } from "@atlcli/confluence";
 import { BUILTIN_PDF_DESIGN } from "./builtin-template.js";
@@ -43,8 +45,12 @@ function inlinePlainText(nodes: InlineNode[]): string {
           return inlinePlainText(node.content);
         case "mention":
           return `@${node.displayName ?? node.accountId}`;
+        case "date":
+          return formatAdfDateTimestamp(node.timestamp);
         case "status":
-          return node.text;
+          return statusDisplayText(node);
+        case "placeholder":
+          return "";
         case "lineBreak":
           return " ";
         default: {
@@ -333,11 +339,13 @@ interface RenderContext {
    * genuinely apply instead of silently rendering the built-in's.
    */
   design: ResolvedPdfDesign;
+  /** BCP-47 locale for semantic inline dates. */
+  locale: string;
 }
 
 /** The root render context for a document rendered with `design`. */
-function rootContext(design: ResolvedPdfDesign): RenderContext {
-  return { tableDensity: "normal", design };
+function rootContext(design: ResolvedPdfDesign, locale = "en"): RenderContext {
+  return { tableDensity: "normal", design, locale };
 }
 const DENSE_TABLE_COLUMN_THRESHOLD = 9;
 
@@ -453,7 +461,12 @@ function typstFigureKind(kind: CaptionKind): string {
  * agree and C2's `#outline(target: figure.where(kind: …))` groups correctly.
  */
 function captionFigureArgs(caption: Caption, writer: Writer): string {
-  const inline = serializeInline(caption.content, writer.labels, writer.notes, rootContext(writer.design));
+  const inline = serializeInline(
+    caption.content,
+    writer.labels,
+    writer.notes,
+    rootContext(writer.design, writer.locale),
+  );
   return `caption: [${inline}], kind: ${typstFigureKind(caption.kind)}`;
 }
 const DENSE_BREAK_OPPORTUNITY = "\u200B";
@@ -484,7 +497,34 @@ function denseStatusLabel(value: string): string {
 function statusColor(value: string | undefined, design: ResolvedPdfDesign): string {
   const semantic = value?.trim().toLowerCase();
   // The Confluence status palette is per-template data (semanticPalettes.statuses).
-  return (semantic && design.semanticPalettes.statuses[semantic]) ?? safeColor(value);
+  const fallback: Readonly<Record<string, string>> = {
+    neutral: "#42526E",
+    grey: "#42526E",
+    gray: "#42526E",
+    purple: "#403294",
+    blue: "#0052CC",
+    red: "#DE350B",
+    yellow: "#FF991F",
+    green: "#00875A",
+  };
+  return (
+    (semantic && design.semanticPalettes.statuses[semantic]) ??
+    (semantic && fallback[semantic]) ??
+    safeColor(value)
+  );
+}
+
+function serializeDate(
+  node: Extract<InlineNode, { type: "date" }>,
+  context: RenderContext,
+): string {
+  const label = formatAdfDateTimestamp(node.timestamp, context.locale);
+  const tokens = context.design.tokens;
+  return `#box(
+  fill: rgb(${typstString(tokens.colors.codeBackground)}),
+  inset: (x: ${tokens.layout.inlineCodeInsetX}, y: ${tokens.layout.inlineCodeInsetY}),
+  radius: ${tokens.layout.inlineCodeRadius},
+)[${literalText(label)}]`;
 }
 
 function denseHostLabel(value: string): string {
@@ -639,14 +679,18 @@ function serializeInline(
         case "mention": {
           return serializeMention(node, context);
         }
+        case "date":
+          return serializeDate(node, context);
         case "status": {
-          const label = node.text || node.color;
+          const label = statusDisplayText(node);
           const color = statusColor(node.color, context.design);
           if (context.availableWidth) {
             return `#dense-status-badge(${context.availableWidth}, ${typstString(label)}, ${typstString(denseStatusLabel(label))}, color: ${typstString(color)})`;
           }
           return `#status-badge(${typstString(label)}, color: ${typstString(color)})`;
         }
+        case "placeholder":
+          return "";
         case "link": {
           const content = serializeInline(node.content, labels, notes, context);
           const href = resolveLink(node.target, labels);
@@ -806,6 +850,8 @@ interface Writer {
   contrastWarnings: Set<string>;
   /** The ACTIVE template design driving serializer-emitted presentation. */
   design: ResolvedPdfDesign;
+  /** BCP-47 locale for semantic inline dates. */
+  locale: string;
 }
 
 function serializeDecisionItem(
@@ -900,7 +946,7 @@ function serializeBlocks(
   blocks: PreparedPdfBlock[],
   writer: Writer,
   parentPath = "blocks",
-  context: RenderContext = rootContext(writer.design),
+  context: RenderContext = rootContext(writer.design, writer.locale),
   startIndex = 0,
 ): string {
   return blocks
@@ -1225,6 +1271,7 @@ function serializeBlock(
         inTable: true,
         container: "tableCell",
         design: context.design,
+        locale: context.locale,
       };
       const columns = tableColumns(columnCount, block.columnWidths, block.rows);
       const serializedRows = grid.rows.map((row, rowIndex) => {
@@ -1413,6 +1460,18 @@ function exportedDateLabel(date: Date, language?: string, region?: string): stri
   }).format(date);
 }
 
+function documentLocale(language?: string, region?: string): string {
+  const requested = language
+    ? region && !language.includes("-") ? `${language}-${region}` : language
+    : "en";
+  try {
+    new Intl.DateTimeFormat(requested);
+    return requested;
+  } catch {
+    return "en";
+  }
+}
+
 export function serializePdfDocument(
   document: PreparedPdfDocument,
   options: PdfSerializeOptions
@@ -1438,6 +1497,7 @@ export function serializePdfDocument(
     theme,
     contrastWarnings: new Set(),
     design: settings.design,
+    locale: documentLocale(options.metadata.language, options.metadata.region),
   };
   const body = serializeBlocks(document.blocks, writer);
   // The validated logo travels as a virtual asset file the compiler maps into

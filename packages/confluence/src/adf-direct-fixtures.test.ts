@@ -130,7 +130,7 @@ const NODE_FIXTURES = {
   orderedList: block({ type: "orderedList", attrs: { order: 2 }, content: [listItem("node-orderedList")] }),
   panel: block({ type: "panel", attrs: { panelType: "info" }, content: [paragraph("node-panel")] }),
   paragraph: block(paragraph("node-paragraph")),
-  placeholder: block({ type: "placeholder", attrs: { text: "node-placeholder" } }),
+  placeholder: inline({ type: "placeholder", attrs: { text: "node-placeholder" } }),
   rule: block({ type: "rule" }),
   status: inline({ type: "status", attrs: { text: "node-status", color: "green" } }),
   syncBlock: block({ type: "syncBlock", attrs: { localId: "sync-2" }, content: [paragraph("node-syncBlock")] }),

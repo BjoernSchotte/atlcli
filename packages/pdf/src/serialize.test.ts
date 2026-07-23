@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import type { ExportBlock, ExportNode, ExportNote } from "@atlcli/confluence";
 import { composeChapters } from "@atlcli/confluence";
+import { BUILTIN_PDF_TEMPLATE_MANIFEST } from "./builtin-template.js";
 import { preparePdfDocument } from "./prepare.js";
 import { mapPdfDiagnostics, serializePdfDocument } from "./serialize.js";
 import type { PreparedPdfBlock } from "./types.js";
@@ -108,6 +109,57 @@ describe("PDF preparation and serialization", () => {
     expect(bundle.template).toContain('link("https://atlcli.sh/")');
     expect(bundle.template).toContain("counter(page).final().first()");
     expect(bundle.main).toContain('exported-label: "July 16, 2026"');
+  });
+
+  it("renders localized date and semantic status chips while hiding template placeholders", async () => {
+    const prepared = await preparePdfDocument([{
+      type: "paragraph",
+      content: [
+        { type: "date", timestamp: "1709510400000", localId: "date-1" },
+        { type: "status", text: "Ready", color: "purple" },
+        { type: "status", text: "Keep Case", color: "neutral", style: "mixedCase" },
+        { type: "placeholder", text: "editor-only", localId: "placeholder-1" },
+      ],
+    }], {
+      resolve: async () => {
+        throw new Error("unused");
+      },
+    });
+    const bundle = serializePdfDocument(prepared, {
+      metadata: { ...metadata, language: "de", region: "DE" },
+    });
+
+    expect(bundle.main).toContain('#text("4. März 2024")');
+    expect(bundle.main).toContain('fill: rgb("#F4F5F7")');
+    expect(bundle.main).toContain('#status-badge("READY", color: "#403294")');
+    expect(bundle.main).toContain('#status-badge("Keep Case", color: "#42526E")');
+    expect(bundle.main).not.toContain("editor-only");
+    expect(bundle.main).not.toContain("1709510400000");
+  });
+
+  it("keeps neutral and purple statuses compatible with older template-v1 palettes", async () => {
+    const legacyManifest = structuredClone(BUILTIN_PDF_TEMPLATE_MANIFEST);
+    delete legacyManifest.design!.semanticPalettes.statuses.neutral;
+    delete legacyManifest.design!.semanticPalettes.statuses.purple;
+    const prepared = await preparePdfDocument([{
+      type: "paragraph",
+      content: [
+        { type: "status", text: "Ready", color: "purple" },
+        { type: "status", text: "Queued", color: "neutral" },
+      ],
+    }], {
+      resolve: async () => {
+        throw new Error("unused");
+      },
+    });
+
+    const bundle = serializePdfDocument(prepared, {
+      metadata,
+      templateManifest: legacyManifest,
+    });
+
+    expect(bundle.main).toContain('#status-badge("READY", color: "#403294")');
+    expect(bundle.main).toContain('#status-badge("QUEUED", color: "#42526E")');
   });
 
   it("preserves success and error callout kinds for the Typst semantic palette", async () => {

@@ -27,6 +27,10 @@ import type {
   InlineNode,
   LinkTarget,
 } from "./export-blocks.js";
+import {
+  formatAdfDateTimestamp,
+  statusDisplayText,
+} from "./export-blocks.js";
 import type {
   ExportNode,
   ExportPageNode,
@@ -327,8 +331,13 @@ function inlinePlainText(nodes: readonly InlineNode[]): string {
       case "mention":
         out += node.displayName ?? "";
         break;
+      case "date":
+        out += formatAdfDateTimestamp(node.timestamp);
+        break;
       case "status":
-        out += node.text;
+        out += statusDisplayText(node);
+        break;
+      case "placeholder":
         break;
       case "lineBreak":
         out += " ";
@@ -485,7 +494,9 @@ function transformInline(nodes: readonly InlineNode[], ctx: EmitCtx): InlineNode
     switch (node.type) {
       case "text":
       case "mention":
+      case "date":
       case "status":
+      case "placeholder":
       case "lineBreak":
         out.push(node);
         break;

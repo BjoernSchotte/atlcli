@@ -283,7 +283,9 @@ The coverage source of truth remains the complete matrices in `GAP-ANALYSIS.md`.
 - Containers: `panel`; `expand`/`nestedExpand` as a recursive neutral
   disclosure retaining title, identity, body ownership, and nested context,
   with an explicitly open static target projection.
-- Inline: `date`, `emoji`, `mention`, `status` with deterministic visible fallbacks for unresolved external data.
+- Inline: `date`, `status`, and `placeholder` as typed semantic nodes;
+  `emoji` and `mention` with deterministic visible fallbacks for unresolved
+  external data.
 - Cards: `inlineCard`, `blockCard`, `embedCard` as safe clickable URL/title fallbacks until native card appearance is modeled.
 - Extensions: `extension`, `inlineExtension`, `bodiedExtension` projected into the existing macro-resolution contract when identity correlation is proven.
 - Media: `mediaSingle`, `mediaGroup`, and `media` only after Media-ID/attachment correlation is proven; otherwise visible fallback plus `adf-media-unresolved`.
@@ -291,7 +293,7 @@ The coverage source of truth remains the complete matrices in `GAP-ANALYSIS.md`.
 
 ### 5.2 Explicitly classify, preserve, and defer native rendering
 
-The remaining schema rows—including advanced media, sync content, placeholders,
+The remaining schema rows—including advanced media, sync content,
 breakout beyond layout sections, border, and data-consumer semantics—must retain
 a coverage-manifest status and deterministic fallback. Decisions, block tasks,
 layouts, native captions, annotations/fragments, alignment, indentation, and
@@ -1113,6 +1115,21 @@ build, all 20 browser-isomorphism entrypoints, the 15-case manifest guard, and
 the complete packed Chromium conformance run. The deterministic golden check
 reproduced one DOCX and four PDF pages with zero pixel difference and content
 bounds IoU 1. The unrestricted suite remains the remote-CI gate.
+
+Completed date/status/placeholder follow-on evidence recorded on 2026-07-23:
+the bounded validator and both source adapters now preserve pinned ADF date,
+status, and template-placeholder semantics in the shared neutral model. Dates
+remain exact epoch-millisecond strings, are formatted in UTC using the document
+locale, and never guess seconds or locale-shaped Storage input; malformed values
+stay visible with a source-located `date-invalid` note. Statuses retain exact
+color, local identity, and optional style, including Confluence-compatible
+`mixedCase` casing. DOCX and PDF use explicit neutral/purple palettes, with a
+compatibility fallback for older PDF template-v1 manifests that do not define
+those roles. Template placeholders retain editor identity while intentionally
+emitting no visible published-output text, matching Confluence's static-view
+contract. Paired ADF/Storage fixtures, focused validation/decoder/composition/
+TOC/DOCX/PDF tests, packed direct/background browser conformance, and real
+LibreOffice plus Typst/Poppler goldens prove the semantic and visual contract.
 
 The completed slice passed 494 focused decoder/Storage/composition/macro/DOCX/
 PDF tests, the generated public API and closure guards, the offline 43-node/

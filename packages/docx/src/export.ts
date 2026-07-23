@@ -586,6 +586,7 @@ export async function prepareDocxExport(input: ExportInput): Promise<PreparedDoc
     diagrams,
     ...(bodySectPr ? { bodySectPr } : {}),
     captionLang: captionLocale.lang,
+    ...(input.captionLang !== undefined ? { dateLocale: input.captionLang } : {}),
     tableStyle: tableStyleResolution.tableStyle,
   });
   timings.bodyMs = Date.now() - bodyStart;
@@ -677,6 +678,7 @@ export async function prepareDocxExport(input: ExportInput): Promise<PreparedDoc
     budget,
     styleNames,
     captionLang: captionLocale.lang,
+    ...(input.captionLang !== undefined ? { dateLocale: input.captionLang } : {}),
     timings,
     notes: flowNotes,
   });
@@ -1716,6 +1718,7 @@ interface IncludePassDeps {
   budget: AssetBudget;
   styleNames: Map<string, string>;
   captionLang: CaptionLang;
+  dateLocale?: string;
   timings: ExportTimings;
   /** Sink for the pass's report notes (part of the export's flow notes). */
   notes: ExportNote[];
@@ -1950,6 +1953,7 @@ async function runIncludePass(pass: IncludePassDeps): Promise<Map<string, string
       ...(images ? { images } : {}),
       ...(diagrams ? { diagrams } : {}),
       captionLang: pass.captionLang,
+      ...(pass.dateLocale !== undefined ? { dateLocale: pass.dateLocale } : {}),
     });
     notes.push(...serialized.notes);
 

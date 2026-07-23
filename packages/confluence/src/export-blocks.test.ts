@@ -5,10 +5,12 @@ import {
   RETIRED_EXPORT_NOTE_CODES,
   StorageParseError,
   canonicalExportNoteCode,
+  formatAdfDateTimestamp,
   macroParamText,
   materializeTable,
   normalizeCaptionKind,
   parseXml,
+  parseAdfDateTimestamp,
   storageToBlocks,
   type ExportBlock,
   type InlineNode,
@@ -193,6 +195,20 @@ describe("storageToBlocks — paragraphs & marks", () => {
     expect(blocks("<p></p><p>  </p><p>real</p>")).toEqual([
       { type: "paragraph", content: [{ type: "text", text: "real" }] },
     ]);
+  });
+});
+
+describe("semantic date helpers", () => {
+  test("interpret timestamps as exact epoch milliseconds and format in UTC", () => {
+    expect(parseAdfDateTimestamp("1709510400000")?.toISOString()).toBe("2024-03-04T00:00:00.000Z");
+    expect(formatAdfDateTimestamp("1709510400000", "de-DE")).toBe("4. März 2024");
+    expect(formatAdfDateTimestamp("1709510400000", "[]")).toBe("Mar 4, 2024");
+  });
+
+  test("does not guess units or rewrite invalid source text", () => {
+    expect(parseAdfDateTimestamp("1709510400")?.toISOString()).toBe("1970-01-20T18:51:50.400Z");
+    expect(parseAdfDateTimestamp("1709510400.5")).toBeUndefined();
+    expect(formatAdfDateTimestamp("not-a-timestamp", "de-DE")).toBe("not-a-timestamp");
   });
 });
 
@@ -733,6 +749,91 @@ describe("storageToBlocks — status macro", () => {
       { type: "text", text: "state: " },
       { type: "status", text: "Done", color: "green" },
     ]);
+  });
+
+  test("retains subtle status style", () => {
+    const out = blocks(
+      '<p><ac:structured-macro ac:name="status">' +
+        '<ac:parameter ac:name="colour">Purple</ac:parameter>' +
+        '<ac:parameter ac:name="title">Mixed source</ac:parameter>' +
+        '<ac:parameter ac:name="subtle">true</ac:parameter>' +
+      '</ac:structured-macro></p>'
+    );
+    expect((out[0] as { content: InlineNode[] }).content).toEqual([
+      { type: "status", text: "Mixed source", color: "purple", style: "subtle" },
+    ]);
+  });
+});
+
+describe("storageToBlocks — semantic dates and template placeholders", () => {
+  test("normalizes time and legacy date macro values to epoch milliseconds", () => {
+    const result = storageToBlocks(
+      '<p><time datetime="2024-01-01"/> ' +
+        '<ac:structured-macro ac:name="date">' +
+          '<ac:parameter ac:name="">2024-01-02</ac:parameter>' +
+        '</ac:structured-macro></p>'
+    );
+    expect(result.blocks).toEqual([{
+      type: "paragraph",
+      content: [
+        { type: "date", timestamp: "1704067200000" },
+        { type: "text", text: " " },
+        { type: "date", timestamp: "1704153600000" },
+      ],
+    }]);
+    expect(result.notes).toEqual([]);
+  });
+
+  test("retains placeholder identity but treats it as editor-only content", () => {
+    const result = storageToBlocks(
+      '<p>before<ac:placeholder ac:type="mention">Choose a person</ac:placeholder>after</p>'
+    );
+    expect(result).toEqual({
+      blocks: [{
+        type: "paragraph",
+        content: [
+          { type: "text", text: "before" },
+          { type: "placeholder", text: "Choose a person", placeholderType: "mention" },
+          { type: "text", text: "after" },
+        ],
+      }],
+      notes: [],
+    });
+  });
+
+  test("retains invalid date source text with a typed warning", () => {
+    const result = storageToBlocks(
+      '<p><time datetime="not-a-date"/></p>',
+      { pageContext: { id: "page-1" } }
+    );
+    expect(result.blocks).toEqual([{
+      type: "paragraph",
+      content: [{ type: "date", timestamp: "not-a-date" }],
+    }]);
+    expect(result.notes).toEqual([expect.objectContaining({
+      level: "warning",
+      code: "date-invalid",
+      source: expect.objectContaining({ pageId: "page-1", blockPath: "blocks[0].content[0]" }),
+    })]);
+  });
+
+  test("does not guess locale-shaped dates but accepts explicitly zoned ISO timestamps", () => {
+    const result = storageToBlocks(
+      '<p><time datetime="03/04/2024"/> ' +
+        '<time datetime="2024-03-04T10:30:00+01:00"/></p>'
+    );
+    expect(result.blocks).toEqual([{
+      type: "paragraph",
+      content: [
+        { type: "date", timestamp: "03/04/2024" },
+        { type: "text", text: " " },
+        { type: "date", timestamp: "1709544600000" },
+      ],
+    }]);
+    expect(result.notes).toEqual([expect.objectContaining({
+      level: "warning",
+      code: "date-invalid",
+    })]);
   });
 });
 

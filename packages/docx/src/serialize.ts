@@ -24,9 +24,11 @@ import type {
 } from "@atlcli/confluence";
 import {
   computeHeadingOffset,
+  formatAdfDateTimestamp,
   materializeTable,
   readableTextColor,
   sanitizeAnchorId,
+  statusDisplayText,
   uniqueAnchorId,
 } from "@atlcli/confluence";
 import { highlightCode, warmHighlight } from "./highlight.js";
@@ -150,6 +152,11 @@ export interface SerializeContext {
    */
   captionLang?: CaptionLang;
   /**
+   * BCP-47 locale used for semantic ADF dates. Unlike `captionLang`, this is
+   * not narrowed to the currently translated caption-label set.
+   */
+  dateLocale?: string;
+  /**
    * Table style source (spec 006 G3b / B9): `"confluence"` (default) keeps the
    * built-in grid + borders + per-cell shading; `"template"` defers appearance
    * to the resolved template style id. The export orchestrator resolves the
@@ -261,6 +268,7 @@ export function serializeInline(
   nodes: InlineNode[],
   defaultTextColor?: string,
   fontSizeHalfPoints?: number,
+  dateLocale = "en",
 ): string {
   let out = "";
   for (const node of nodes) {
@@ -271,8 +279,16 @@ export function serializeInline(
       case "lineBreak":
         out += lineBreakRun();
         break;
+      case "date":
+        out += run(` ${formatAdfDateTimestamp(node.timestamp, dateLocale)} `, {
+          backgroundColor: "DFE1E6",
+          fontSizeHalfPoints,
+        });
+        break;
       case "status":
-        out += statusBadgeRun(node.text || node.color, node.color, fontSizeHalfPoints);
+        out += statusBadgeRun(statusDisplayText(node), node.color, fontSizeHalfPoints);
+        break;
+      case "placeholder":
         break;
       case "mention":
         out += run(`@${node.displayName ?? node.accountId}`, {
@@ -285,11 +301,12 @@ export function serializeInline(
           node.content.length ? node.content : [{ type: "text", text: "" }],
           defaultTextColor,
           fontSizeHalfPoints,
+          dateLocale,
         );
-        const styled = linkStyledRuns(node.content, fontSizeHalfPoints) || innerRuns;
+        const styled = linkStyledRuns(node.content, fontSizeHalfPoints, dateLocale) || innerRuns;
         if (node.target.kind === "external" && node.target.href) {
           // Style inner runs link-like by re-emitting as hyperlink-colored.
-          out += hyperlinkField(node.target.href, linkStyledRuns(node.content, fontSizeHalfPoints));
+          out += hyperlinkField(node.target.href, linkStyledRuns(node.content, fontSizeHalfPoints, dateLocale));
         } else if (node.target.kind === "anchor") {
           // Internal anchor link → a real in-document jump (spec 002). The
           // anchor is the sanitized destination id compose-document assigned;
@@ -307,7 +324,7 @@ export function serializeInline(
 }
 
 /** Render link content as underlined blue runs (Word Hyperlink look). */
-function linkStyledRuns(nodes: InlineNode[], fontSizeHalfPoints?: number): string {
+function linkStyledRuns(nodes: InlineNode[], fontSizeHalfPoints?: number, dateLocale = "en"): string {
   let out = "";
   for (const node of nodes) {
     if (node.type === "text") {
@@ -317,7 +334,7 @@ function linkStyledRuns(nodes: InlineNode[], fontSizeHalfPoints?: number): strin
         underline: true,
       });
     } else {
-      out += serializeInline([node], undefined, fontSizeHalfPoints);
+      out += serializeInline([node], undefined, fontSizeHalfPoints, dateLocale);
     }
   }
   return out;
@@ -509,7 +526,7 @@ async function serializeBlock(
       const outlineLvl = Math.max(0, Math.min(8, effective - 1));
       const headingStyleId = resolveHeadingStyleId(ctx.styleNames, styleLevel);
       ctx.emittedHeadingStyles.add(headingStyleId);
-      const headingPara = paragraph(serializeInline(block.content, ctx.defaultTextColor), {
+      const headingPara = paragraph(serializeInline(block.content, ctx.defaultTextColor, undefined, ctx.dateLocale), {
         styleId: headingStyleId,
         extraPPr: `${blockPresentationPPr(block.presentation)}<w:outlineLvl w:val="${outlineLvl}"/>`,
       });
@@ -532,6 +549,7 @@ async function serializeBlock(
         block.content,
         ctx.defaultTextColor,
         block.presentation?.fontSize === "small" ? ADF_SMALL_TEXT_HALF_POINTS : undefined,
+        ctx.dateLocale,
       ), {
         extraPPr: blockPresentationPPr(block.presentation),
       });
@@ -777,7 +795,7 @@ function captionXml(caption: Caption, ctx: InternalContext): string {
     resolveCaptionStyleId(ctx.styleNames),
     caption.kind,
     ctx.captionLang ?? "en",
-    serializeInline(caption.content),
+    serializeInline(caption.content, undefined, undefined, ctx.dateLocale),
     ordinal
   );
 }

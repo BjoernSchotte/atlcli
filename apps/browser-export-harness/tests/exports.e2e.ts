@@ -92,6 +92,8 @@ test("every registered conformance case passes from nested production output", a
   );
   expect(adfSource.pdfJobArtifactAndReportParity).toBe(true);
   expect(adfSource.docxJobArtifactAndReportParity).toBe(true);
+  expect(adfSource.neutralHasDateStatusPlaceholderSemantics).toBe(true);
+  expect(adfSource.docxHasDateStatusPlaceholderSemantics).toBe(true);
   expect(adfSource.neutralHasAnnotationAndFragmentIdentity).toBe(true);
   expect(adfSource.neutralHasTablePresentation).toBe(true);
   expect(adfSource.neutralHasLayoutPresentation).toBe(true);

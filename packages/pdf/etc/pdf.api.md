@@ -183,9 +183,20 @@ export type InlineNode = {
     accountId: string;
     displayName?: string;
 } | {
+    type: "date";
+    timestamp: string;
+    localId?: string;
+} | {
     type: "status";
     text: string;
     color: string;
+    localId?: string;
+    style?: string;
+} | {
+    type: "placeholder";
+    text: string;
+    localId?: string;
+    placeholderType?: string;
 } | {
     type: "lineBreak";
 };
@@ -928,9 +939,20 @@ export type InlineNode = {
     accountId: string;
     displayName?: string;
 } | {
+    type: "date";
+    timestamp: string;
+    localId?: string;
+} | {
     type: "status";
     text: string;
     color: string;
+    localId?: string;
+    style?: string;
+} | {
+    type: "placeholder";
+    text: string;
+    localId?: string;
+    placeholderType?: string;
 } | {
     type: "lineBreak";
 };
@@ -1673,9 +1695,20 @@ export type InlineNode = {
     accountId: string;
     displayName?: string;
 } | {
+    type: "date";
+    timestamp: string;
+    localId?: string;
+} | {
     type: "status";
     text: string;
     color: string;
+    localId?: string;
+    style?: string;
+} | {
+    type: "placeholder";
+    text: string;
+    localId?: string;
+    placeholderType?: string;
 } | {
     type: "lineBreak";
 };

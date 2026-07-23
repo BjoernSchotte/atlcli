@@ -79,6 +79,23 @@ describe("serializeInline", () => {
     expect(xml).toContain("@Jo");
   });
 
+  it("renders localized date and semantic status chips while hiding template placeholders", () => {
+    const xml = serializeInline([
+      { type: "date", timestamp: "1709510400000", localId: "date-1" },
+      { type: "status", text: "Ready", color: "purple" },
+      { type: "status", text: "Keep Case", color: "neutral", style: "mixedCase" },
+      { type: "placeholder", text: "editor-only", localId: "placeholder-1" },
+    ], undefined, undefined, "de-DE");
+
+    expect(xml).toContain("> 4. März 2024 </w:t>");
+    expect(xml).toContain('w:fill="DFE1E6"');
+    expect(xml).toContain("> READY </w:t>");
+    expect(xml).toContain('w:fill="EAE6FF"');
+    expect(xml).toContain("> Keep Case </w:t>");
+    expect(xml).not.toContain("editor-only");
+    expect(xml).not.toContain("1709510400000");
+  });
+
   it("round-trips named HTML entities from storage into real UTF-8 <w:t> text", () => {
     // Regression: DOCX export previously showed literal `drei &uuml;berlappende`
     // because the storage walker only decoded a dozen hand-listed entities.

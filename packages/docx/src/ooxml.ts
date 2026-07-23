@@ -663,6 +663,7 @@ export function tableCell(
 /** Status badge as a shaded, colored inline run inside its own paragraph. */
 export function statusBadgeRun(text: string, color: string, fontSizeHalfPoints?: number): string {
   const fillByColor: Record<string, string> = {
+    neutral: "DFE1E6",
     grey: "DFE1E6",
     gray: "DFE1E6",
     green: "E3FCEF",

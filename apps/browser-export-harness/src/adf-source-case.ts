@@ -51,6 +51,7 @@ export interface AdfSourceCaseResult {
   docxHasSmallParagraphText: boolean;
   docxHasNestedListSemantics: boolean;
   docxHasTaskAndDecisionSemantics: boolean;
+  neutralHasDateStatusPlaceholderSemantics: boolean;
   neutralHasAnnotationAndFragmentIdentity: boolean;
   neutralHasTablePresentation: boolean;
   neutralHasLayoutPresentation: boolean;
@@ -59,6 +60,7 @@ export interface AdfSourceCaseResult {
   docxHasTablePresentation: boolean;
   docxHasLayoutPresentation: boolean;
   docxHasDisclosureSemantics: boolean;
+  docxHasDateStatusPlaceholderSemantics: boolean;
   docxHasCardTitle: boolean;
   docxHasExtensionBody: boolean;
   docxHasVisibleMediaFallback: boolean;
@@ -185,6 +187,7 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
         modificationDate: new Date("2026-07-22T08:00:00.000Z"),
       },
       exportDate: new Date("2026-07-22T08:00:00.000Z"),
+      captionLang: "de-DE",
     },
     { templates: memoryTemplateSource(DOCX_TEMPLATE_BYTES), output },
   );
@@ -272,6 +275,7 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
       embedImages: true,
       resolveMacros: false,
       updateFields: "auto",
+      captionLang: "de-DE",
     },
   });
   const docxFixture: DocxJobParityFixtureV1 = {
@@ -289,6 +293,7 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
         modificationDate: new Date("2026-07-22T08:00:00.000Z"),
       },
       exportDate: new Date("2026-07-22T08:00:00.000Z"),
+      captionLang: "de-DE",
       rasterizer,
     }),
     resolveInput: (rasterizer) => createConfluenceDocxResolveInputV1({
@@ -310,6 +315,7 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
               modificationDate: new Date("2026-07-22T08:00:00.000Z"),
             },
             exportDate: new Date("2026-07-22T08:00:00.000Z"),
+            captionLang: "de-DE",
             rasterizer,
           },
           rootDetails,
@@ -346,6 +352,19 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
       && documentXml.includes("☑")
       && documentXml.includes("◆")
       && documentXml.includes("Nested task"),
+    neutralHasDateStatusPlaceholderSemantics:
+      JSON.stringify(pdfSource.blocks).includes(
+        '"type":"date","timestamp":"1709510400000","localId":"date-local"',
+      )
+      && JSON.stringify(pdfSource.blocks).includes(
+        '"type":"status","text":"Ready","color":"purple","localId":"status-local"',
+      )
+      && JSON.stringify(pdfSource.blocks).includes(
+        '"type":"status","text":"Keep Case","color":"neutral","style":"mixedCase"',
+      )
+      && JSON.stringify(pdfSource.blocks).includes(
+        '"type":"placeholder","text":"editor-only-secret","localId":"placeholder-local"',
+      ),
     neutralHasAnnotationAndFragmentIdentity:
       JSON.stringify(pdfSource.blocks).includes('"id":"annotation-inline-code","annotationType":"inlineComment"')
       && JSON.stringify(pdfSource.blocks).includes('"localId":"table-fragment","name":"semantic-table"'),
@@ -398,6 +417,13 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
       && documentXml.includes("Expanded body")
       && documentXml.includes("[-] Nested expanded title")
       && documentXml.includes("Nested expanded body"),
+    docxHasDateStatusPlaceholderSemantics:
+      documentXml.includes("4. März 2024")
+      && documentXml.includes("> READY </w:t>")
+      && documentXml.includes("> Keep Case </w:t>")
+      && documentXml.includes('w:fill="EAE6FF"')
+      && !documentXml.includes("editor-only-secret")
+      && !documentXml.includes("1709510400000"),
     docxHasCardTitle:
       documentXml.includes("Local card title")
       && (documentXml.includes("https://example.invalid/adf-card")
@@ -431,6 +457,9 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
   }
   if (!result.neutralHasAnnotationAndFragmentIdentity) {
     throw new Error("ADF-source annotation or fragment identity was lost in the packed browser.");
+  }
+  if (!result.neutralHasDateStatusPlaceholderSemantics) {
+    throw new Error("ADF-source date, status, or placeholder semantics were lost in the packed browser.");
   }
   if (!result.neutralHasTablePresentation) {
     throw new Error("ADF-source table presentation was lost in the packed browser.");

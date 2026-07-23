@@ -184,8 +184,10 @@ const MANUSCRIPT_DESIGN: WikiPdfTemplateDesignV1 = {
       panel: { background: "#F2F0EB", foreground: "#48505B" },
     },
     statuses: {
+      neutral: "#48505B",
       grey: "#48505B",
       gray: "#48505B",
+      purple: "#3F317C",
       red: "#B23B3B",
       yellow: "#C6871A",
       green: "#0B6E4F",

@@ -251,12 +251,49 @@ function validateKnownNodeShape(
       }
     }
   }
-  if (type === "date") assertStringAttribute(attrs, "timestamp", path);
+  if (type === "date") {
+    assertStringAttribute(attrs, "timestamp", path);
+    if ((attrs?.timestamp as string).length === 0) {
+      throw new AdfValidationError(
+        "invalid-attributes",
+        "ADF date timestamp must be non-empty.",
+        `${path}.attrs.timestamp`,
+      );
+    }
+    assertStringAttribute(attrs, "localId", path, false);
+  }
   if (type === "emoji") assertStringAttribute(attrs, "shortName", path);
   if (type === "mention") assertStringAttribute(attrs, "id", path);
+  if (type === "placeholder") {
+    assertStringAttribute(attrs, "text", path);
+    assertStringAttribute(attrs, "localId", path, false);
+  }
   if (type === "status") {
     assertStringAttribute(attrs, "text", path);
-    assertStringAttribute(attrs, "color", path);
+    if ((attrs?.text as string).length === 0) {
+      throw new AdfValidationError(
+        "invalid-attributes",
+        "ADF status text must be non-empty.",
+        `${path}.attrs.text`,
+      );
+    }
+    const color = attrs?.color;
+    if (
+      color !== "neutral" &&
+      color !== "purple" &&
+      color !== "blue" &&
+      color !== "red" &&
+      color !== "yellow" &&
+      color !== "green"
+    ) {
+      throw new AdfValidationError(
+        "invalid-attributes",
+        "ADF status color must be neutral, purple, blue, red, yellow, or green.",
+        `${path}.attrs.color`,
+      );
+    }
+    assertStringAttribute(attrs, "localId", path, false);
+    assertStringAttribute(attrs, "style", path, false);
   }
   if (type === "inlineCard" || type === "blockCard" || type === "embedCard") {
     if (attrs?.url === undefined && attrs?.data === undefined) {

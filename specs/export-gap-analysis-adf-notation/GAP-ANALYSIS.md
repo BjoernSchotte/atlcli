@@ -133,6 +133,11 @@ Current closed foundations and feature slices:
   ADF `expand`/`nestedExpand` and Storage `expand` retain their recursive
   boundary, title, identity, and nesting context in a deterministic open static
   projection for DOCX/PDF.
+- [x] Semantic dates, status lozenges, and template placeholders retain their
+  pinned ADF identity through the neutral model. `body.storage` time/date,
+  status, and placeholder forms map to the same contract; both targets localize
+  dates in UTC, preserve status style/color semantics, and hide editor-only
+  placeholder text.
 - [ ] **Partial:** `breakout` intent is retained on ADF layout sections and
   explicitly reported as page-bounded; breakout on other schema-valid block
   types and true wide/full-width section geometry remain open.
@@ -244,13 +249,13 @@ Evidence: [E2], [E5], [E7], [E8], [E13], [E28].
 
 | ADF node | Current source mapping | DOCX | PDF | Primary gap |
 |---|---|---|---|---|
-| `date` | `<time>` becomes raw `datetime` or visible text. | Partial | Partial | Retain timestamp semantically and format by document locale/time policy. |
+| `date` | ADF epoch-millisecond timestamp/local identity and Storage `<time>` or legacy `date` macro values become one typed date. | Native | Native | Both targets render a neutral date chip with document-locale formatting in UTC. Invalid but schema-valid timestamps remain exact visible source text and emit `date-invalid`; units are never guessed. |
 | `emoji` | ADF and Storage both retain `shortName`, optional service `id`, the exact optional source text (including empty text), and whether the visible run came from text or the short-name fallback. Raw colon text is never reinterpreted. | Partial/Conditional | Partial/Conditional | Unicode text and deterministic text fallback are native in the shared model and both TS engines; custom/Atlassian emoji still lack a documented portable asset resolver and full emoji-font guarantee. |
 | `mention` | Storage user links become `mention { accountId, displayName? }`. | Partial/Conditional | Partial/Conditional | Static text only; display name needs host resolution, team/user distinction and profile-link policy are absent. |
-| `status` | Status macro becomes typed text + color. | Native/approx. | Native/approx. | Pin ADF color/style mapping and unknown-color fallback; current output is a static badge. |
-| `placeholder` | No typed model; unknown inline wrappers are traversed. | Missing/Fallback | Missing/Fallback | Preserve placeholder identity/text and emit explicit fallback rather than accidental text-only behavior. |
+| `status` | ADF text, exact semantic color, optional local identity/style, and Storage status macros become one typed status. | Native static projection | Native static projection | The pinned ADF color enum is validated; `mixedCase` preserves casing and other styles use Confluence-style uppercase. Both targets have explicit neutral/purple palettes plus deterministic legacy/unknown-color fallback. |
+| `placeholder` | ADF text/local identity and Storage `<ac:placeholder>` text/type become a typed editor instruction. | Native hidden projection | Native hidden projection | Confluence hides template placeholders in published view, so both targets intentionally emit no visible text while the neutral model retains identity for tooling/composition. No degradation is reported for this correct projection. |
 
-Evidence: [E2], [E5], [E7], [E8], [E14], [E23].
+Evidence: [E2], [E5], [E7], [E8], [E14], [E23], [E30].
 
 ### 6.6 Cards and links
 
@@ -454,6 +459,11 @@ Required acceptance contract:
   `body.storage` disclosures retain title, identity, recursive ownership, and
   nesting; both targets render the body visibly open with an explicit report
   fact because static files cannot preserve the editor toggle.
+- [x] **Dates, statuses, and placeholders.** ADF and `body.storage` share typed
+  date/status/placeholder shapes; timestamps, identities, colors, and styles
+  survive composition and browser/background execution. DOCX/PDF localize
+  dates with a deterministic UTC policy, render status palettes/casing, and
+  intentionally hide editor-only placeholder text.
 - [ ] **Partial — card/embed metadata.** Deterministic visible URL fallbacks
   exist; native title/provider/poster metadata remains.
 - [ ] **Partial — media family.** Selected image/media paths exist; group,
@@ -492,7 +502,8 @@ Required acceptance contract:
 - [ ] **Partial:** emoji/custom emoji; custom assets and complete glyph coverage
   remain.
 - [x] Alignment, indentation, and the schema-defined small paragraph font size.
-- [ ] Link/card identity and date semantics.
+- [x] Date/status/placeholder semantics and target projections.
+- [ ] Link/card identity.
 - [ ] **Partial:** annotation/fragment identity is retained; native target
   semantics and comment-resource correlation remain.
 
@@ -583,6 +594,9 @@ Focused missing gates:
 - [x] Native ADF caption plus ADF/Storage expand/nested-expand validation,
   decoding, recursive traversal, both-target, browser-parity, and rendered
   golden tests.
+- [x] Date/status/placeholder validation, ADF/Storage differential decoding,
+  composition, both target renderers, packed-browser direct/background parity,
+  and real render goldens with explicit placeholder-absence assertions.
 - [ ] Sync-block snapshot/reference tests.
 - [ ] Native annotation comment-body/target-rendering tests, documented
   fragment-to-bookmark policy tests, and data-consumer preservation tests.
@@ -619,6 +633,9 @@ Accessed 2026-07-22 and 2026-07-23:
 23. [ADF expand node](https://developer.atlassian.com/cloud/jira/platform/apis/document/nodes/expand/)
 24. [ADF nestedExpand node](https://developer.atlassian.com/cloud/jira/platform/apis/document/nodes/nestedExpand/)
 25. [Confluence: Display files and images](https://support.atlassian.com/confluence-cloud/docs/display-files-and-images/)
+26. [ADF date node](https://developer.atlassian.com/cloud/jira/platform/apis/document/nodes/date/)
+27. [ADF status node](https://developer.atlassian.com/cloud/jira/platform/apis/document/nodes/status/)
+28. [Confluence: Edit a template](https://support.atlassian.com/confluence-cloud/docs/edit-a-template/)
 
 ## 15. Repository evidence index
 
@@ -651,6 +668,7 @@ Accessed 2026-07-22 and 2026-07-23:
 - **[E27] Complete pinned table-attribute preservation and static rendering:** `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/adf-validate.ts`, `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/compose-document.ts`, `packages/docx/src/ooxml.ts`, `packages/docx/src/serialize.ts`, `packages/pdf/src/prepare.ts`, `packages/pdf/src/serialize.ts`, `packages/export-fixtures/src/index.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
 - **[E28] Native layout columns and explicit breakout residual:** `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/adf-validate.ts`, `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/compose-document.ts`, `packages/confluence/src/resolve-mentions.ts`, `packages/export-macros/src/resolve.ts`, `packages/docx/src/ooxml.ts`, `packages/docx/src/serialize.ts`, `packages/pdf/src/prepare.ts`, `packages/pdf/src/serialize.ts`, `packages/export-fixtures/src/index.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
 - **[E29] Native captions and recursive static disclosures across ADF/Storage and both targets:** `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/adf-validate.ts`, `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/page-body.test.ts`, `packages/confluence/src/compose-document.ts`, `packages/confluence/src/resolve-mentions.ts`, `packages/export-macros/src/resolve.ts`, `packages/docx/src/serialize.ts`, `packages/pdf/src/prepare.ts`, `packages/pdf/src/serialize.ts`, `packages/export-fixtures/src/index.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
+- **[E30] Native date/status/placeholder semantics across ADF/Storage and both targets:** `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/adf-validate.ts`, `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/page-body.test.ts`, `packages/confluence/src/compose-document.ts`, `packages/confluence/test-fixtures/adf-pairs/basic.adf.json`, `packages/confluence/test-fixtures/adf-pairs/basic.storage.xml`, `packages/docx/src/serialize.ts`, `packages/pdf/src/serialize.ts`, `packages/export-fixtures/src/index.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `apps/browser-export-harness/tests/exports.e2e.ts`, `scripts/adf-rendered-goldens.ts`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
 
 ## 16. Review questions
 

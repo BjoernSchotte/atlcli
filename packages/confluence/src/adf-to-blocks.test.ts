@@ -508,7 +508,11 @@ describe("adfToBlocks", () => {
           { type: "date", attrs: { timestamp: "1704067200000" } },
           { type: "mention", attrs: { id: "user-1", text: "@Ada" } },
           { type: "mention", attrs: { id: "team-1", userType: "TEAM" } },
-          { type: "status", attrs: { text: "READY", color: "GREEN" } },
+          {
+            type: "status",
+            attrs: { text: "Ready", color: "green", localId: "", style: "mixedCase" },
+          },
+          { type: "placeholder", attrs: { text: "editor-only", localId: "" } },
           { type: "inlineCard", attrs: { url: "https://example.invalid/card" } },
           { type: "inlineCard", attrs: { data: { url: "https://example.invalid/data-card", name: "Visible card title" } } },
         ],
@@ -546,10 +550,11 @@ describe("adfToBlocks", () => {
           renderedFrom: "short-name",
         },
       },
-      { type: "text", text: "2024-01-01" },
+      { type: "date", timestamp: "1704067200000" },
       { type: "mention", accountId: "user-1", displayName: "Ada" },
       { type: "mention", accountId: "team-1" },
-      { type: "status", text: "READY", color: "green" },
+      { type: "status", text: "Ready", color: "green", localId: "", style: "mixedCase" },
+      { type: "placeholder", text: "editor-only", localId: "" },
       { type: "link", target: { kind: "external", href: "https://example.invalid/card" } },
       {
         type: "link",
@@ -609,6 +614,24 @@ describe("adfToBlocks", () => {
     }]);
     expect(result.notes.map((note) => note.code)).toContain("adf-media-unresolved");
     expect(result.notes.every((note) => note.source?.pageId === "page-1")).toBe(true);
+  });
+
+  it("retains invalid semantic date source text with a typed warning", () => {
+    const result = adfToBlocks(doc([{
+      type: "paragraph",
+      content: [{ type: "date", attrs: { timestamp: "not-a-timestamp", localId: "date-1" } }],
+    }]), { pageContext: { id: "page-1" } });
+
+    expect(result.blocks).toEqual([{
+      type: "paragraph",
+      content: [{ type: "date", timestamp: "not-a-timestamp", localId: "date-1" }],
+    }]);
+    expect(result.notes).toEqual([expect.objectContaining({
+      level: "warning",
+      code: "date-invalid",
+      source: expect.objectContaining({ pageId: "page-1", blockPath: "blocks[0].content[0]" }),
+    })]);
+    expect(result.degraded).toBe(true);
   });
 
   it("maps only explicitly correlated media IDs to attachment images", () => {
@@ -983,7 +1006,10 @@ describe("adfToBlocks", () => {
   });
 
   it("records degradation even when the note budget is zero", () => {
-    const result = adfToBlocks(doc([{ type: "placeholder", attrs: { text: "visible" } }]), {
+    const result = adfToBlocks(doc([{
+      type: "futureNode",
+      content: [{ type: "paragraph", content: [{ type: "text", text: "visible" }] }],
+    }]), {
       parseBudget: { maxDiagnostics: 0 },
     });
     expect(result.blocks).toEqual([{ type: "paragraph", content: [{ type: "text", text: "visible" }] }]);

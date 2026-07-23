@@ -305,6 +305,34 @@ describe("composeChapters — chapter structure", () => {
     });
   });
 
+  test("retains date/status/placeholder identity while deriving visible heading anchors", () => {
+    const source = page("semantic", "Semantic", 0, null, "");
+    source.blocks = [{
+      type: "heading",
+      level: 2,
+      content: [
+        { type: "date", timestamp: "1709510400000", localId: "date-1" },
+        { type: "text", text: " " },
+        { type: "status", text: "Ready", color: "purple", localId: "status-1" },
+        { type: "placeholder", text: "editor-only", localId: "placeholder-1" },
+      ],
+    }];
+
+    const { blocks } = composeChapters([source], { chapterBreak: "none" });
+    const heading = blocks.find(
+      (block) => block.type === "heading" && block.explicitAnchor === "psemantic-mar-4-2024-ready",
+    );
+    expect(heading).toMatchObject({
+      type: "heading",
+      content: [
+        { type: "date", timestamp: "1709510400000", localId: "date-1" },
+        { type: "text", text: " " },
+        { type: "status", text: "Ready", color: "purple", localId: "status-1" },
+        { type: "placeholder", text: "editor-only", localId: "placeholder-1" },
+      ],
+    });
+  });
+
   test("preserves nested ordered/task lists and decision identity through composition", () => {
     const source = page("semantic-lists", "Semantic lists", 0, null, "");
     source.blocks = [

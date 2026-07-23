@@ -1,10 +1,13 @@
 {
   "schemaVersion": 1,
-  "sourceSha256": "8dcae4c06637142bccb07310390b7f43a1557d7951314f30c786508e35c12532",
+  "sourceSha256": "3b5c13fde84187a48689dda94247a1d95789da8db3f32c7b0099a6a32362c799",
   "features": [
     "inline-code",
     "unicode-emoji",
     "custom-emoji-fallback",
+    "localized-date-chip",
+    "semantic-status-colors-and-casing",
+    "hidden-template-placeholder",
     "block-alignment",
     "block-indentation",
     "paragraph-font-size",
@@ -30,7 +33,7 @@
       "pages": [
         {
           "file": "docx-page-1.png",
-          "sha256": "7e48809edf84f69c10031039fa5d9e51a9e273ad07363f2547a7bf04776113de"
+          "sha256": "9da2eb035db524fd192e2a851b1f750909c29f0dc59b95cba118a58a8e88d288"
         }
       ],
       "requiredText": [
@@ -59,7 +62,14 @@
         "Expanded body",
         "Extension body",
         "Visible media fallback",
-        "Media caption"
+        "Media caption",
+        "Mar 4, 2024",
+        "READY",
+        "Keep Case"
+      ],
+      "forbiddenText": [
+        "editor-only-secret",
+        "1709510400000"
       ]
     },
     "pdf": {
@@ -74,7 +84,7 @@
         },
         {
           "file": "pdf-page-3.png",
-          "sha256": "fca4d8ff3a49028e3ae9e7ffb1d02e59b06261b76883ff02b47eab92b4fcb2a6"
+          "sha256": "50932209842c95531fd6c04d31b1c6191e6054b1d40c57768d5c716fcfcf3639"
         },
         {
           "file": "pdf-page-4.png",
@@ -107,7 +117,14 @@
         "Expanded body",
         "Extension body",
         "Visible media fallback",
-        "Media caption"
+        "Media caption",
+        "4 Mar 2024",
+        "READY",
+        "Keep Case"
+      ],
+      "forbiddenText": [
+        "editor-only-secret",
+        "1709510400000"
       ]
     }
   }

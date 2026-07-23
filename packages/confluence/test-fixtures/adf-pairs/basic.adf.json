@@ -122,7 +122,10 @@
       "type": "paragraph",
       "content": [
         { "type": "text", "text": "state: " },
-        { "type": "status", "attrs": { "text": "Done", "color": "green" } }
+        { "type": "status", "attrs": { "text": "Done", "color": "green" } },
+        { "type": "text", "text": " date: " },
+        { "type": "date", "attrs": { "timestamp": "1704067200000" } },
+        { "type": "placeholder", "attrs": { "text": "editor-only" } }
       ]
     },
     { "type": "rule" }

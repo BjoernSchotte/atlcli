@@ -1799,11 +1799,12 @@ export interface SerializeContext {
     diagrams?: DiagramEmbedSeam;
     bodySectPr?: string;
     captionLang?: CaptionLang;
+    dateLocale?: string;
     tableStyle?: TableStyleSource;
 }
 
 // export: serializeInline
-export declare function serializeInline(nodes: InlineNode[], defaultTextColor?: string, fontSizeHalfPoints?: number): string;
+export declare function serializeInline(nodes: InlineNode[], defaultTextColor?: string, fontSizeHalfPoints?: number, dateLocale?: string): string;
 
 // export: SerializeResult
 export interface SerializeResult {

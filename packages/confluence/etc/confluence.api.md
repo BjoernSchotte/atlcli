@@ -41,7 +41,7 @@ export declare const ADF_NODE_DECODE_MODES: Readonly<{
     readonly bulletList: "native";
     readonly caption: "native";
     readonly codeBlock: "native";
-    readonly date: "approximation";
+    readonly date: "native";
     readonly decisionItem: "native";
     readonly decisionList: "native";
     readonly doc: "native";
@@ -65,7 +65,7 @@ export declare const ADF_NODE_DECODE_MODES: Readonly<{
     readonly orderedList: "native";
     readonly panel: "approximation";
     readonly paragraph: "native";
-    readonly placeholder: "visible-fallback";
+    readonly placeholder: "native";
     readonly rule: "native";
     readonly status: "native";
     readonly syncBlock: "visible-fallback";
@@ -937,6 +937,7 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "layout-geometry-fallback",
     "expand-static",
     "emoji-text-fallback",
+    "date-invalid",
     "adf-node-degraded",
     "adf-mark-degraded",
     "adf-attribute-dropped",
@@ -1376,6 +1377,9 @@ export interface FooterComment extends BaseComment {
     replies: FooterComment[];
 }
 
+// export: formatAdfDateTimestamp
+export declare function formatAdfDateTimestamp(timestamp: string, locale?: string): string;
+
 // export: hasActiveLabelFilter
 export declare function hasActiveLabelFilter(filter: LabelFilter | undefined): boolean;
 
@@ -1464,9 +1468,20 @@ export type InlineNode = {
     accountId: string;
     displayName?: string;
 } | {
+    type: "date";
+    timestamp: string;
+    localId?: string;
+} | {
     type: "status";
     text: string;
     color: string;
+    localId?: string;
+    style?: string;
+} | {
+    type: "placeholder";
+    text: string;
+    localId?: string;
+    placeholderType?: string;
 } | {
     type: "lineBreak";
 };
@@ -1725,6 +1740,9 @@ export declare class PaginationLoopError extends Error {
     constructor(token: string);
 }
 
+// export: parseAdfDateTimestamp
+export declare function parseAdfDateTimestamp(timestamp: string): Date | undefined;
+
 // export: parseDatasourceAttribute
 export declare function parseDatasourceAttribute(raw: string): DatasourceParseResult;
 
@@ -1874,6 +1892,11 @@ export type SpaceIcon = {
     height?: number;
     isDefault?: boolean;
 };
+
+// export: statusDisplayText
+export declare function statusDisplayText(status: Pick<Extract<InlineNode, {
+    type: "status";
+}>, "text" | "color" | "style">): string;
 
 // export: StorageParseBudget
 export interface StorageParseBudget {
@@ -2245,7 +2268,7 @@ export declare const ADF_NODE_DECODE_MODES: Readonly<{
     readonly bulletList: "native";
     readonly caption: "native";
     readonly codeBlock: "native";
-    readonly date: "approximation";
+    readonly date: "native";
     readonly decisionItem: "native";
     readonly decisionList: "native";
     readonly doc: "native";
@@ -2269,7 +2292,7 @@ export declare const ADF_NODE_DECODE_MODES: Readonly<{
     readonly orderedList: "native";
     readonly panel: "approximation";
     readonly paragraph: "native";
-    readonly placeholder: "visible-fallback";
+    readonly placeholder: "native";
     readonly rule: "native";
     readonly status: "native";
     readonly syncBlock: "visible-fallback";
@@ -3141,6 +3164,7 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "layout-geometry-fallback",
     "expand-static",
     "emoji-text-fallback",
+    "date-invalid",
     "adf-node-degraded",
     "adf-mark-degraded",
     "adf-attribute-dropped",
@@ -3580,6 +3604,9 @@ export interface FooterComment extends BaseComment {
     replies: FooterComment[];
 }
 
+// export: formatAdfDateTimestamp
+export declare function formatAdfDateTimestamp(timestamp: string, locale?: string): string;
+
 // export: hasActiveLabelFilter
 export declare function hasActiveLabelFilter(filter: LabelFilter | undefined): boolean;
 
@@ -3668,9 +3695,20 @@ export type InlineNode = {
     accountId: string;
     displayName?: string;
 } | {
+    type: "date";
+    timestamp: string;
+    localId?: string;
+} | {
     type: "status";
     text: string;
     color: string;
+    localId?: string;
+    style?: string;
+} | {
+    type: "placeholder";
+    text: string;
+    localId?: string;
+    placeholderType?: string;
 } | {
     type: "lineBreak";
 };
@@ -3929,6 +3967,9 @@ export declare class PaginationLoopError extends Error {
     constructor(token: string);
 }
 
+// export: parseAdfDateTimestamp
+export declare function parseAdfDateTimestamp(timestamp: string): Date | undefined;
+
 // export: parseDatasourceAttribute
 export declare function parseDatasourceAttribute(raw: string): DatasourceParseResult;
 
@@ -4078,6 +4119,11 @@ export type SpaceIcon = {
     height?: number;
     isDefault?: boolean;
 };
+
+// export: statusDisplayText
+export declare function statusDisplayText(status: Pick<Extract<InlineNode, {
+    type: "status";
+}>, "text" | "color" | "style">): string;
 
 // export: StorageParseBudget
 export interface StorageParseBudget {
@@ -4449,7 +4495,7 @@ export declare const ADF_NODE_DECODE_MODES: Readonly<{
     readonly bulletList: "native";
     readonly caption: "native";
     readonly codeBlock: "native";
-    readonly date: "approximation";
+    readonly date: "native";
     readonly decisionItem: "native";
     readonly decisionList: "native";
     readonly doc: "native";
@@ -4473,7 +4519,7 @@ export declare const ADF_NODE_DECODE_MODES: Readonly<{
     readonly orderedList: "native";
     readonly panel: "approximation";
     readonly paragraph: "native";
-    readonly placeholder: "visible-fallback";
+    readonly placeholder: "native";
     readonly rule: "native";
     readonly status: "native";
     readonly syncBlock: "visible-fallback";
@@ -5345,6 +5391,7 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "layout-geometry-fallback",
     "expand-static",
     "emoji-text-fallback",
+    "date-invalid",
     "adf-node-degraded",
     "adf-mark-degraded",
     "adf-attribute-dropped",
@@ -5784,6 +5831,9 @@ export interface FooterComment extends BaseComment {
     replies: FooterComment[];
 }
 
+// export: formatAdfDateTimestamp
+export declare function formatAdfDateTimestamp(timestamp: string, locale?: string): string;
+
 // export: hasActiveLabelFilter
 export declare function hasActiveLabelFilter(filter: LabelFilter | undefined): boolean;
 
@@ -5872,9 +5922,20 @@ export type InlineNode = {
     accountId: string;
     displayName?: string;
 } | {
+    type: "date";
+    timestamp: string;
+    localId?: string;
+} | {
     type: "status";
     text: string;
     color: string;
+    localId?: string;
+    style?: string;
+} | {
+    type: "placeholder";
+    text: string;
+    localId?: string;
+    placeholderType?: string;
 } | {
     type: "lineBreak";
 };
@@ -6133,6 +6194,9 @@ export declare class PaginationLoopError extends Error {
     constructor(token: string);
 }
 
+// export: parseAdfDateTimestamp
+export declare function parseAdfDateTimestamp(timestamp: string): Date | undefined;
+
 // export: parseDatasourceAttribute
 export declare function parseDatasourceAttribute(raw: string): DatasourceParseResult;
 
@@ -6282,6 +6346,11 @@ export type SpaceIcon = {
     height?: number;
     isDefault?: boolean;
 };
+
+// export: statusDisplayText
+export declare function statusDisplayText(status: Pick<Extract<InlineNode, {
+    type: "status";
+}>, "text" | "color" | "style">): string;
 
 // export: StorageParseBudget
 export interface StorageParseBudget {
@@ -7454,6 +7523,7 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "layout-geometry-fallback",
     "expand-static",
     "emoji-text-fallback",
+    "date-invalid",
     "adf-node-degraded",
     "adf-mark-degraded",
     "adf-attribute-dropped",
@@ -7791,6 +7861,9 @@ export interface FooterComment extends BaseComment {
     replies: FooterComment[];
 }
 
+// export: formatAdfDateTimestamp
+export declare function formatAdfDateTimestamp(timestamp: string, locale?: string): string;
+
 // export: formatComment
 export declare function formatComment(comment: FooterComment | InlineComment, indent?: number): string;
 
@@ -8029,9 +8102,20 @@ export type InlineNode = {
     accountId: string;
     displayName?: string;
 } | {
+    type: "date";
+    timestamp: string;
+    localId?: string;
+} | {
     type: "status";
     text: string;
     color: string;
+    localId?: string;
+    style?: string;
+} | {
+    type: "placeholder";
+    text: string;
+    localId?: string;
+    placeholderType?: string;
 } | {
     type: "lineBreak";
 };
@@ -8516,6 +8600,9 @@ export type PageWithPosition = ConfluencePage & {
     position: number | null;
 };
 
+// export: parseAdfDateTimestamp
+export declare function parseAdfDateTimestamp(timestamp: string): Date | undefined;
+
 // export: parseConflictMarkers
 export declare function parseConflictMarkers(content: string): ConflictRegion[];
 
@@ -8815,6 +8902,11 @@ export interface SqliteAdapterConfig {
     enableVectors?: boolean;
     customSqlitePath?: string;
 }
+
+// export: statusDisplayText
+export declare function statusDisplayText(status: Pick<Extract<InlineNode, {
+    type: "status";
+}>, "text" | "color" | "style">): string;
 
 // export: StorageLink
 export interface StorageLink {
@@ -9325,7 +9417,7 @@ export declare const ADF_NODE_DECODE_MODES: Readonly<{
     readonly bulletList: "native";
     readonly caption: "native";
     readonly codeBlock: "native";
-    readonly date: "approximation";
+    readonly date: "native";
     readonly decisionItem: "native";
     readonly decisionList: "native";
     readonly doc: "native";
@@ -9349,7 +9441,7 @@ export declare const ADF_NODE_DECODE_MODES: Readonly<{
     readonly orderedList: "native";
     readonly panel: "approximation";
     readonly paragraph: "native";
-    readonly placeholder: "visible-fallback";
+    readonly placeholder: "native";
     readonly rule: "native";
     readonly status: "native";
     readonly syncBlock: "visible-fallback";
@@ -10221,6 +10313,7 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "layout-geometry-fallback",
     "expand-static",
     "emoji-text-fallback",
+    "date-invalid",
     "adf-node-degraded",
     "adf-mark-degraded",
     "adf-attribute-dropped",
@@ -10660,6 +10753,9 @@ export interface FooterComment extends BaseComment {
     replies: FooterComment[];
 }
 
+// export: formatAdfDateTimestamp
+export declare function formatAdfDateTimestamp(timestamp: string, locale?: string): string;
+
 // export: hasActiveLabelFilter
 export declare function hasActiveLabelFilter(filter: LabelFilter | undefined): boolean;
 
@@ -10748,9 +10844,20 @@ export type InlineNode = {
     accountId: string;
     displayName?: string;
 } | {
+    type: "date";
+    timestamp: string;
+    localId?: string;
+} | {
     type: "status";
     text: string;
     color: string;
+    localId?: string;
+    style?: string;
+} | {
+    type: "placeholder";
+    text: string;
+    localId?: string;
+    placeholderType?: string;
 } | {
     type: "lineBreak";
 };
@@ -11009,6 +11116,9 @@ export declare class PaginationLoopError extends Error {
     constructor(token: string);
 }
 
+// export: parseAdfDateTimestamp
+export declare function parseAdfDateTimestamp(timestamp: string): Date | undefined;
+
 // export: parseDatasourceAttribute
 export declare function parseDatasourceAttribute(raw: string): DatasourceParseResult;
 
@@ -11158,6 +11268,11 @@ export type SpaceIcon = {
     height?: number;
     isDefault?: boolean;
 };
+
+// export: statusDisplayText
+export declare function statusDisplayText(status: Pick<Extract<InlineNode, {
+    type: "status";
+}>, "text" | "color" | "style">): string;
 
 // export: StorageParseBudget
 export interface StorageParseBudget {

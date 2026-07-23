@@ -144,6 +144,16 @@ export const ADF_CONFORMANCE_SOURCE = JSON.stringify({
         { type: "text", text: " and custom " },
         { type: "emoji", attrs: { shortName: ":custom_party:", id: "custom-emoji", text: "" } },
         { type: "text", text: " " },
+        { type: "date", attrs: { timestamp: "1709510400000", localId: "date-local" } },
+        { type: "text", text: " " },
+        { type: "status", attrs: { text: "Ready", color: "purple", localId: "status-local" } },
+        { type: "text", text: " " },
+        {
+          type: "status",
+          attrs: { text: "Keep Case", color: "neutral", style: "mixedCase" },
+        },
+        { type: "placeholder", attrs: { text: "editor-only-secret", localId: "placeholder-local" } },
+        { type: "text", text: " " },
         {
           type: "inlineCard",
           attrs: {
