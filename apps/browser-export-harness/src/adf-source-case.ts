@@ -49,6 +49,7 @@ export interface AdfSourceCaseResult {
   docxHasBlockAlignment: boolean;
   docxHasBlockIndentation: boolean;
   docxHasSmallParagraphText: boolean;
+  docxHasNestedListSemantics: boolean;
   docxHasTaskAndDecisionSemantics: boolean;
   docxHasTable: boolean;
   docxHasCardTitle: boolean;
@@ -183,6 +184,7 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
   const zip = unzipDocx(output.single.bytes);
   const documentXml = zip.file("word/document.xml")?.asText() ?? "";
   const relationships = zip.file("word/_rels/document.xml.rels")?.asText() ?? "";
+  const numberingXml = zip.file("word/numbering.xml")?.asText() ?? "";
   const pdfRequest: PdfExportJobRequestV1 = {
     schema: "atlcli.export-job-request/1",
     id: "adf-pdf-job",
@@ -324,6 +326,14 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
     docxHasSmallParagraphText:
       documentXml.includes('<w:sz w:val="18"/>') &&
       documentXml.includes('<w:szCs w:val="18"/>'),
+    docxHasNestedListSemantics:
+      documentXml.includes("Third item")
+      && documentXml.includes("Eighth nested item")
+      && numberingXml.includes('<w:start w:val="3"/>')
+      && numberingXml.includes('<w:start w:val="8"/>')
+      && documentXml.includes("Bullet parent")
+      && documentXml.includes("Bullet child")
+      && documentXml.includes('<w:ilvl w:val="1"/>'),
     docxHasTaskAndDecisionSemantics:
       documentXml.includes("☐")
       && documentXml.includes("☑")

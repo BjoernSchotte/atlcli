@@ -112,6 +112,9 @@ Current closed foundations and feature slices:
 - [x] Shared Node/Bun and browser decoding/rendering shapes with packed
   conformance and direct/background artifact/report parity.
 - [x] Ordered-list authored starts and independent nested restarts.
+- [x] Nested bullet, numbered, and task lists retain parent ownership across
+  direct ADF and `body.storage`, both TypeScript targets, composition, browser
+  execution, and rendered artifacts.
 - [x] Paragraph/heading alignment and indentation, plus schema-defined small
   paragraph text.
 - [x] Standard panel kinds including distinct success/error semantics and
@@ -176,10 +179,10 @@ Evidence: [E2], [E5], [E6], [E7], [E8].
 
 | ADF node | Current source mapping | DOCX | PDF | Primary gap |
 |---|---|---|---|---|
-| `bulletList` | `<ul>` becomes `list { ordered: false }`. | Native | Native | Maximum nesting and resource budgets remain exporter constraints. |
-| `orderedList` | `<ol start>` and ADF `order` become `list { ordered: true, start? }`. | Native | Native | Authored starts, including zero, survive the neutral model. DOCX emits a self-contained single-level numbering definition per ordered-list node; PDF emits Typst `enum(start:)`. Each nested node owns an independent restart and visual indent. |
+| `bulletList` | ADF `bulletList` and Storage `<ul>` become `list { ordered: false }`; child lists remain inside the owning item. | Native | Native | Nested ADF/Storage differential fixtures, target structure tests, packed-browser assertions, and real render goldens are complete. Maximum nesting and resource budgets remain exporter constraints. |
+| `orderedList` | Storage `<ol start>` and ADF `orderedList.order` become `list { ordered: true, start? }`; child lists remain inside the owning item. | Native | Native | Authored starts, including zero, survive the neutral model. DOCX emits a self-contained single-level numbering definition per ordered-list node; PDF emits Typst `enum(start:)`. Each nested node owns an independent restart, visual indent, and correctly indexed PDF source-map path. |
 | `listItem` | Child blocks are recursively preserved. | Native | Native | Local IDs are not retained. |
-| `taskList` | ADF and Storage become a typed task list with list identity where exposed; nested ADF task lists attach to their owning item. | Native | Native | Closed for the pinned schema; any future observed product-specific attributes enter the drift lane. |
+| `taskList` | ADF and Storage become a typed task list with list identity where exposed. ADF sibling task lists attach to the preceding owning item; Storage task lists inside `<ac:task-body>` remain child blocks of that task. | Native | Native | Paired ADF/Storage nesting, both target markers/indents, browser parity, and real render goldens are complete; any future observed product-specific attributes enter the drift lane. |
 | `taskItem` | Required `localId`, exact `TODO`/`DONE` state, direct inline content, and checkbox projection are retained. | Native | Native | Closed with distinct open/done markers, composition, browser parity, and real render goldens. |
 | `blockTaskItem` | Required identity/state and one-or-more block children remain a distinct typed task item. | Native | Native | Closed with block-content and nested-list coverage. |
 | `decisionList` | Required list identity and decision grouping are retained directly from ADF. | Native | Native | Schema-only source contract; no equivalent Storage projection is claimed. |
@@ -313,8 +316,8 @@ Official Confluence documentation describes these input shortcuts. They are edit
 | `~~Strike~~` | `strike` | Native after materialization. | ADF + live Storage fixture. |
 | Backtick-delimited text | `text` + `code` mark | Exact text plus a distinct inline-code chip in both targets; DOCX font embedding remains open. | Preserve underscores/spaces exactly; assert gray background, mono font, adjacency, escaping, links/annotations. |
 | `# ` … `###### ` | `heading.level` | Native after materialization. | H1-H6 corpus plus composed-export level policy. |
-| `1. ` | `orderedList` | Native, including non-1 starts and nested restarts. | Keep ADF/Storage differential, DOCX numbering-part, PDF source, and packed-browser parity gates. |
-| `* ` | `bulletList` | Native. | Mixed nested ordered/unordered corpus. |
+| `1. ` | `orderedList` | Native, including non-1 starts and nested restarts. | ADF/Storage differential, DOCX numbering-part, PDF source/source-map, packed-browser parity, and rendered-golden gates are closed. |
+| `* ` | `bulletList` | Native, including nested bullet ownership and visual levels. | ADF/Storage differential, DOCX/PDF structure, packed-browser parity, and rendered-golden gates are closed. |
 | `> ` | `blockquote` | Native/approx. | Static styling golden. |
 | Triple backticks + space | `codeBlock` | Partial. | Language, wrap, line numbers, long lines, empty/final newline. |
 | `--- ` | `rule` | Native. | Semantic and visual golden. |
@@ -407,6 +410,9 @@ Required acceptance contract:
   parity, and both rendered targets are complete.
 - [x] **Ordered-list starts.** Authored starts and independent nested restarts
   are complete.
+- [x] **Nested list parity.** Bullet, numbered, and task children remain attached
+  to their owning item in direct ADF and `body.storage`; DOCX, PDF, composition,
+  browser execution, and real render artifacts preserve the hierarchy.
 - [ ] **Open — table attributes.** Layout, display mode, numbered column,
   vertical alignment, and width remain.
 - [ ] **Open — layout columns and breakout.**
@@ -454,6 +460,7 @@ Required acceptance contract:
 
 - [x] Tasks and decisions.
 - [x] Ordered-list authored starts and nested restarts.
+- [x] Nested bullet/numbered/task parity across ADF and Storage.
 - [ ] Table attributes.
 - [ ] Layouts/breakout.
 - [ ] Captions/nested expands.
@@ -510,6 +517,8 @@ Closed gates:
 - [x] Emoji/emoticon decoding, both-engine semantics, packed browser parity,
   report parity, and deterministic render goldens.
 - [x] Ordered-list non-1 starts and nested restarts.
+- [x] Nested bullet/numbered/task ownership across paired ADF/Storage,
+  composition, both serializers, packed browser execution, and real renders.
 - [x] Task/decision identity, exact state, inline/block content, nested tasks,
   composition, both target markers, real render goldens, and packed browser
   parity.
@@ -575,6 +584,7 @@ Accessed 2026-07-22 and 2026-07-23:
 - **[E22] Colon-shaped Storage emoji fallback fixture:** `packages/confluence/src/markdown.test.ts:214-225`
 - **[E23] Shared emoji semantics, fallbacks, and parity:** `packages/confluence/src/export-blocks.ts:65-96`, `packages/confluence/src/export-blocks.ts:213-219`, `packages/confluence/src/export-blocks.ts:2266-2295`, `packages/confluence/src/adf-to-blocks.ts:394-418`, `packages/confluence/src/adf-to-blocks.test.ts:277-340`, `packages/confluence/src/export-blocks.test.ts:63-115`, `packages/export-fixtures/src/adf-fixtures.test.ts:49-65`, `apps/browser-export-harness/src/adf-source-case.ts:341-353`
 - **[E24] Native task/decision semantics and target proof:** `packages/confluence/src/export-blocks.ts:117-130`, `packages/confluence/src/export-blocks.ts:270-281`, `packages/confluence/src/export-blocks.ts:1480-1507`, `packages/confluence/src/adf-validate.ts:142-159`, `packages/confluence/src/adf-to-blocks.ts:296-311`, `packages/confluence/src/adf-to-blocks.ts:819-872`, `packages/confluence/src/compose-document.ts:628-638`, `packages/docx/src/serialize.ts:872-934`, `packages/pdf/src/serialize.ts:772-797`, `packages/pdf/src/serialize.ts:1039-1074`, `packages/export-fixtures/src/adf-fixtures.test.ts:38-68`, `apps/browser-export-harness/src/adf-source-case.ts:327-332`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
+- **[E25] Nested list parity across both source representations and targets:** `packages/confluence/src/export-blocks.ts:1460-1510`, `packages/confluence/src/adf-to-blocks.ts:270-311`, `packages/confluence/src/adf-to-blocks.ts:819-850`, `packages/confluence/src/page-body.test.ts:18-83`, `packages/confluence/src/compose-document.test.ts:254-350`, `packages/confluence/test-fixtures/adf-pairs/basic.adf.json`, `packages/confluence/test-fixtures/adf-pairs/basic.storage.xml`, `packages/docx/src/numbering.test.ts:190-230`, `packages/pdf/src/serialize.test.ts:129-230`, `packages/pdf/src/serialize.ts:860-870`, `packages/pdf/src/serialize.ts:1037-1074`, `packages/export-fixtures/src/index.ts:177-231`, `apps/browser-export-harness/src/adf-source-case.ts:320-343`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
 
 ## 16. Review questions
 

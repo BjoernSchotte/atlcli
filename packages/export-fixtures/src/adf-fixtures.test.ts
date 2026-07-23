@@ -22,6 +22,7 @@ describe("ADF browser conformance fixture", () => {
       "list",
       "list",
       "list",
+      "list",
       "table",
       "paragraph",
       "callout",
@@ -41,6 +42,16 @@ describe("ADF browser conformance fixture", () => {
     expect(pdf.blocks[8]).toMatchObject({
       type: "list",
       ordered: false,
+      items: [{
+        content: [
+          { type: "paragraph" },
+          { type: "list", ordered: false },
+        ],
+      }],
+    });
+    expect(pdf.blocks[9]).toMatchObject({
+      type: "list",
+      ordered: false,
       listKind: "task",
       localId: "tasks-root",
       items: [
@@ -58,7 +69,7 @@ describe("ADF browser conformance fixture", () => {
         },
       ],
     });
-    expect(pdf.blocks[9]).toMatchObject({
+    expect(pdf.blocks[10]).toMatchObject({
       type: "list",
       ordered: false,
       listKind: "decision",

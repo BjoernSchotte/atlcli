@@ -251,14 +251,54 @@ describe("composeChapters — chapter structure", () => {
     });
   });
 
-  test("preserves task/decision list identity, state, and ordered starts through composition", () => {
+  test("preserves nested ordered/task lists and decision identity through composition", () => {
     const source = page("semantic-lists", "Semantic lists", 0, null, "");
     source.blocks = [
       {
         type: "list",
         ordered: true,
         start: 4,
-        items: [{ content: [{ type: "paragraph", content: [{ type: "text", text: "four" }] }] }],
+        items: [{
+          content: [
+            { type: "paragraph", content: [{ type: "text", text: "four" }] },
+            {
+              type: "list",
+              ordered: true,
+              start: 8,
+              items: [{
+                content: [{ type: "paragraph", content: [{ type: "text", text: "eight" }] }],
+              }],
+            },
+          ],
+        }],
+      },
+      {
+        type: "list",
+        ordered: false,
+        listKind: "task",
+        localId: "tasks",
+        items: [{
+          kind: "task",
+          state: "TODO",
+          localId: "task-parent",
+          checked: false,
+          content: [
+            { type: "paragraph", content: [{ type: "text", text: "parent task" }] },
+            {
+              type: "list",
+              ordered: false,
+              listKind: "task",
+              localId: "nested-tasks",
+              items: [{
+                kind: "task",
+                state: "DONE",
+                localId: "task-child",
+                checked: true,
+                content: [{ type: "paragraph", content: [{ type: "text", text: "child task" }] }],
+              }],
+            },
+          ],
+        }],
       },
       {
         type: "list",
@@ -279,6 +319,37 @@ describe("composeChapters — chapter structure", () => {
       type: "list",
       ordered: true,
       start: 4,
+      items: [{
+        content: [
+          { type: "paragraph" },
+          { type: "list", ordered: true, start: 8 },
+        ],
+      }],
+    });
+    expect(blocks.find(
+      (block) => block.type === "list" && block.listKind === "task",
+    )).toMatchObject({
+      type: "list",
+      listKind: "task",
+      localId: "tasks",
+      items: [{
+        kind: "task",
+        state: "TODO",
+        localId: "task-parent",
+        content: [
+          { type: "paragraph" },
+          {
+            type: "list",
+            listKind: "task",
+            localId: "nested-tasks",
+            items: [{
+              kind: "task",
+              state: "DONE",
+              localId: "task-child",
+            }],
+          },
+        ],
+      }],
     });
     expect(blocks.find(
       (block) => block.type === "list" && block.listKind === "decision",

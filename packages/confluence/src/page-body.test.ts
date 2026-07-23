@@ -51,6 +51,36 @@ describe("pageBodyToBlocks", () => {
       type: "list",
       ordered: true,
       start: 3,
+      items: [{
+        content: [
+          { type: "paragraph" },
+          { type: "list", ordered: true, start: 8 },
+        ],
+      }],
+    });
+    expect(adf.blocks.find((block) => block.type === "list" && !block.ordered && !block.listKind)).toMatchObject({
+      type: "list",
+      ordered: false,
+      items: [{
+        content: [
+          { type: "paragraph" },
+          { type: "list", ordered: false },
+        ],
+      }],
+    });
+    expect(adf.blocks.find((block) => block.type === "list" && block.listKind === "task")).toMatchObject({
+      type: "list",
+      listKind: "task",
+      items: [
+        { localId: "task-done" },
+        {
+          localId: "task-open",
+          content: [
+            { type: "paragraph" },
+            { type: "list", listKind: "task", localId: "tasks-nested" },
+          ],
+        },
+      ],
     });
     expect(adf.notes).toEqual([]);
     expect(storage.notes).toEqual([]);

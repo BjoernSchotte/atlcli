@@ -164,6 +164,70 @@ describe("PDF preparation and serialization", () => {
     expect(bundle.main).toContain("#enum(start: 0,");
   });
 
+  it("serializes nested bullet and task lists as child list blocks", async () => {
+    const blocks: ExportBlock[] = [
+      {
+        type: "list",
+        ordered: false,
+        items: [{
+          content: [
+            { type: "paragraph", content: [{ type: "text", text: "Bullet parent" }] },
+            {
+              type: "list",
+              ordered: false,
+              items: [{
+                content: [{ type: "paragraph", content: [{ type: "text", text: "Bullet child" }] }],
+              }],
+            },
+          ],
+        }],
+      },
+      {
+        type: "list",
+        ordered: false,
+        listKind: "task",
+        items: [{
+          kind: "task",
+          state: "TODO",
+          checked: false,
+          content: [
+            { type: "paragraph", content: [{ type: "text", text: "Task parent" }] },
+            {
+              type: "list",
+              ordered: false,
+              listKind: "task",
+              items: [{
+                kind: "task",
+                state: "DONE",
+                checked: true,
+                content: [{ type: "paragraph", content: [{ type: "text", text: "Task child" }] }],
+              }],
+            },
+          ],
+        }],
+      },
+    ];
+    const bundle = serializePdfDocument(
+      await preparePdfDocument(blocks, {
+        resolve: async () => {
+          throw new Error("unused");
+        },
+      }),
+      { metadata },
+    );
+
+    expect(bundle.main).toContain('#text("Bullet parent")');
+    expect(bundle.main).toContain('#text("Bullet child")');
+    expect(bundle.main).toContain("#task-item(false)[");
+    expect(bundle.main).toContain('#text("Task parent")');
+    expect(bundle.main).toContain("#task-item(true)[");
+    expect(bundle.main).toContain('#text("Task child")');
+    expect(bundle.sourceMap.map((entry) => entry.blockPath)).toEqual(expect.arrayContaining([
+      "blocks[0].items[0].content[1]",
+      "blocks[1].items[0].content[1]",
+    ]));
+  });
+
   it("renders logical alignment and bounded indentation on paragraphs and headings", async () => {
     const blocks: ExportBlock[] = [
       {

@@ -195,6 +195,42 @@ describe("serializeBlocks — native numbering (spec 006 G2)", () => {
     expect(xml).toContain('<w:pStyle w:val="ListParagraph"/>');
   });
 
+  it("nested task lists keep both semantic markers at distinct visual levels", async () => {
+    const blocks: ExportBlock[] = [{
+      type: "list",
+      ordered: false,
+      listKind: "task",
+      items: [{
+        kind: "task",
+        state: "TODO",
+        checked: false,
+        content: [
+          p("Parent task"),
+          {
+            type: "list",
+            ordered: false,
+            listKind: "task",
+            items: [{
+              kind: "task",
+              state: "DONE",
+              checked: true,
+              content: [p("Nested task")],
+            }],
+          },
+        ],
+      }],
+    }];
+    const { xml } = await serializeBlocks(blocks, { styleNames: noStyles });
+
+    expect(xml).toContain("Parent task");
+    expect(xml).toContain("Nested task");
+    expect(xml).toContain("☐");
+    expect(xml).toContain("☑");
+    expect(xml).toContain('<w:ind w:left="720"/>');
+    expect(xml).toContain('<w:ind w:left="1440"/>');
+    expect(xml).not.toContain("<w:numPr>");
+  });
+
   it("decision items use distinct static markers and retain nonstandard state visibly", async () => {
     const blocks: ExportBlock[] = [{
       type: "list",

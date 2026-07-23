@@ -861,10 +861,11 @@ function serializeBlocks(
   blocks: PreparedPdfBlock[],
   writer: Writer,
   parentPath = "blocks",
-  context: RenderContext = rootContext(writer.design)
+  context: RenderContext = rootContext(writer.design),
+  startIndex = 0,
 ): string {
   return blocks
-    .map((block, index) => serializeBlock(block, writer, `${parentPath}[${index}]`, context))
+    .map((block, index) => serializeBlock(block, writer, `${parentPath}[${index + startIndex}]`, context))
     .join("\n");
 }
 
@@ -1051,7 +1052,7 @@ function serializeBlock(
             `${itemPath}[0]`,
             serializeParagraphInline(first.content, writer, context, false)
           );
-          const tail = rest.length > 0 ? serializeBlocks(rest, writer, itemPath, context) : "";
+          const tail = rest.length > 0 ? serializeBlocks(rest, writer, itemPath, context, 1) : "";
           content = `${inline}${tail}`;
         } else {
           content = serializeBlocks(item.content, writer, itemPath, context);

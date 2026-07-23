@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "sourceSha256": "caf706b124546c156ff428c375ed890d6555884cca07ea42804d5f85c2906703",
+  "sourceSha256": "eeb3c523b7df7df1db61116f5f5c457b097f1d56c37104a0c7b60beea4c2ec80",
   "features": [
     "inline-code",
     "unicode-emoji",
@@ -10,7 +10,10 @@
     "paragraph-font-size",
     "semantic-success-error-panels",
     "ordered-list-start",
-    "nested-list-restart",
+    "nested-ordered-list-restart",
+    "nested-bullet-list",
+    "nested-task-list",
+    "decision-list",
     "table",
     "layout-degradation",
     "smart-link",
@@ -22,7 +25,7 @@
       "pages": [
         {
           "file": "docx-page-1.png",
-          "sha256": "ca4cbe72bb805828fb25901c6d4fa4fb0fdf2dd689776d9d6e6db36bd9e8c5d0"
+          "sha256": "d38adbba945ca84c823477c5a60e103203b74085388ffb6f938f9633397f3a90"
         }
       ],
       "requiredText": [
@@ -37,6 +40,12 @@
         "ADF error panel",
         "Third item",
         "Eighth nested item",
+        "Bullet parent",
+        "Bullet child",
+        "Open task",
+        "Completed block task",
+        "Nested task",
+        "Ship the release",
         "Header",
         "Cell",
         "Flattened layout content",
@@ -59,7 +68,7 @@
         },
         {
           "file": "pdf-page-3.png",
-          "sha256": "b2136d96731a3b4e3346dda4e0c5e84375f03adfc57cb40dad80774f1622887a"
+          "sha256": "d0e75e4347c932b8aea2fd15449379a4180846dc388a800153ac2ca41d245a0a"
         },
         {
           "file": "pdf-page-4.png",
@@ -78,6 +87,12 @@
         "ADF error panel",
         "Third item",
         "Eighth nested item",
+        "Bullet parent",
+        "Bullet child",
+        "Open task",
+        "Completed block task",
+        "Nested task",
+        "Ship the release",
         "Header",
         "Cell",
         "Flattened layout content",

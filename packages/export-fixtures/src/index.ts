@@ -192,6 +192,22 @@ export const ADF_CONFORMANCE_SOURCE = JSON.stringify({
       }],
     },
     {
+      type: "bulletList",
+      content: [{
+        type: "listItem",
+        content: [
+          { type: "paragraph", content: [{ type: "text", text: "Bullet parent" }] },
+          {
+            type: "bulletList",
+            content: [{
+              type: "listItem",
+              content: [{ type: "paragraph", content: [{ type: "text", text: "Bullet child" }] }],
+            }],
+          },
+        ],
+      }],
+    },
+    {
       type: "taskList",
       attrs: { localId: "tasks-root" },
       content: [
