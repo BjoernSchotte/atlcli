@@ -203,10 +203,13 @@ async function readPinnedLogo(
 ): Promise<PdfTemplateSettings["logo"] | undefined> {
   const logo = request.settings.logo;
   if (!logo) return undefined;
-  const expectedRef = `extension-spool:${encodeURIComponent(request.id)}:0:request-assets:pdf-logo`;
-  if (logo.assetRef !== expectedRef) {
-    throw new Error("Pinned PDF logo reference does not belong to this request.");
+  if (
+    !/^extension-spool:.+:0:request-assets:pdf-logo$/.test(logo.assetRef)
+  ) {
+    throw new Error("Pinned PDF logo reference is not a durable extension asset.");
   }
+  // `assetRef` is immutable replay metadata. Each derived job owns a physical
+  // copy under its new job id, so cleanup of an ancestor cannot invalidate it.
   const ref = extensionPdfLogoSpoolRef(request.id);
   const stored = await bytes.stat(ref);
   if (

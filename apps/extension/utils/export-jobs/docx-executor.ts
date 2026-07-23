@@ -84,9 +84,8 @@ export function createProductiveExtensionDocxExecutor(
     spoolLimits,
   };
   const resolveInput = options.resolveInput ?? createExtensionDocxJobInputResolver();
-  const templates = options.templates ?? createExtensionDocxPinnedTemplatePort(
-    options.storageOptions?.factory,
-  );
+  const templates = options.templates
+    ?? createExtensionDocxPinnedTemplatePort(options.bytes);
   const readyToRender = options.readyToRender
     ?? createExtensionDocxReadyToRenderStore(storeOptions);
   const results = options.results

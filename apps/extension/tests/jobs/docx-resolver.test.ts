@@ -6,9 +6,13 @@ import type {
   ExportJobExecutionContext,
   ExportJobProgressV1,
 } from "@atlcli/export-jobs";
-import { putTemplate } from "../../utils/docx/template-store.js";
+import { IndexedDbExportByteStore } from "../../utils/export-jobs/chunk-store.js";
 import { createExtensionDocxJobInputResolver } from "../../utils/export-jobs/docx-resolver.js";
-import { createExtensionDocxPinnedTemplatePort } from "../../utils/export-jobs/docx-template.js";
+import {
+  EXTENSION_DOCX_TEMPLATE_LIMITS_V1,
+  createExtensionDocxPinnedTemplatePort,
+  extensionDocxTemplateSpoolRef,
+} from "../../utils/export-jobs/docx-template.js";
 
 globalThis.IDBKeyRange = IDBKeyRange;
 
@@ -141,34 +145,29 @@ describe("extension DOCX durable input resolver", () => {
     }]);
   });
 
-  it("loads only the exact physical template row and verifies its bytes", async () => {
+  it("loads only the immutable job-owned template copy and verifies its bytes", async () => {
     const factory = new IDBFactory();
-    const bytes = new TextEncoder().encode("docx template bytes");
-    const sha256 = await sha256Hex(bytes);
+    const templateBytes = new TextEncoder().encode("docx template bytes");
+    const sha256 = await sha256Hex(templateBytes);
     const recordKey = "https://site.atlassian.net|docx|mayflower|global";
-    await putTemplate({
-      recordKey,
-      templateId: "mayflower",
-      siteOrigin: "https://site.atlassian.net",
-      displayName: "Mayflower",
-      engine: "docx",
-      scope: "global",
-      name: "mayflower.docx",
-      bytes: bytes.buffer,
-      uploadedAt: 10,
-      sha256,
-      size: bytes.byteLength,
-    }, factory);
+    const byteStore = new IndexedDbExportByteStore({ factory });
+    await byteStore.put(
+      extensionDocxTemplateSpoolRef("docx-job"),
+      (async function* () { yield templateBytes; })(),
+      EXTENSION_DOCX_TEMPLATE_LIMITS_V1,
+    );
 
-    const templates = createExtensionDocxPinnedTemplatePort(factory);
+    const templates = createExtensionDocxPinnedTemplatePort(byteStore);
     const resolved = await templates.resolve({
+      jobId: "docx-job",
       recordKey,
       expectedSha256: sha256,
       signal: new AbortController().signal,
     });
-    expect([...resolved.bytes]).toEqual([...bytes]);
+    expect([...resolved.bytes]).toEqual([...templateBytes]);
 
     await expect(templates.resolve({
+      jobId: "docx-job",
       recordKey,
       expectedSha256: "f".repeat(64),
       signal: new AbortController().signal,

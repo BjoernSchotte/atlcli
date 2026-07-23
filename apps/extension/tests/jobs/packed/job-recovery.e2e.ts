@@ -18,6 +18,8 @@ const JOB_F = "923e4567-e89b-42d3-a456-426614174000";
 const JOB_G = "a23e4567-e89b-42d3-a456-426614174000";
 const JOB_H = "b23e4567-e89b-42d3-a456-426614174000";
 const JOB_I = "c23e4567-e89b-42d3-a456-426614174000";
+const SHA_ABC =
+  "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
 
 let context: BrowserContext;
 let extensionId: string;
@@ -990,6 +992,7 @@ test("packed Retry and Run again preserve originals and replay retained requests
             format: string;
             template: unknown;
             derivedFrom: unknown;
+            pin: unknown;
           };
           rerun: {
             route: string;
@@ -1015,8 +1018,9 @@ test("packed Retry and Run again preserve originals and replay retained requests
     format: "docx",
     template: {
       recordKey: "packed:badge-template",
-      sha256: "1".repeat(64),
+      sha256: SHA_ABC,
     },
+    pin: { sha256: SHA_ABC, byteLength: 3 },
     derivedFrom: {
       jobId: fixture.failedId,
       relation: "retry",
@@ -1052,12 +1056,22 @@ test("a packed offscreen DOCX runs PizZip, docxtemplater, and canvas diagram ras
     '<ac:parameter ac:name="language">mermaid</ac:parameter>' +
     '<ac:plain-text-body><![CDATA[graph TD\n  A --> B]]></ac:plain-text-body>' +
     '</ac:structured-macro>';
-  await installOffscreenFetchStub([], { [JOB_F]: storage });
+  await installOffscreenFetchStub([JOB_F], { [JOB_F]: storage });
   const templateBytes = buildDocx({
     body: para("$scroll.title") + para("$scroll.content"),
     date: new Date("2026-07-23T00:00:00.000Z"),
   });
   await expect(submitPackedDocx(JOB_F, templateBytes)).resolves.toBe(JOB_F);
+  await waitForJobState(JOB_F, "running");
+  await expect(page.evaluate(async (jobId) => {
+    const probe = (globalThis as unknown as {
+      exportJobStoreProbe: {
+        removeDocxLibraryTemplate(id: string): Promise<boolean>;
+      };
+    }).exportJobStoreProbe;
+    return probe.removeDocxLibraryTemplate(jobId);
+  }, JOB_F)).resolves.toBe(true);
+  await releaseOffscreenFetch(JOB_F);
 
   const succeeded = await waitForJobState(JOB_F, "succeeded");
   expect(succeeded.snapshot).toMatchObject({
@@ -1098,6 +1112,32 @@ test("a packed offscreen DOCX runs PizZip, docxtemplater, and canvas diagram ras
     filename: `Packed page ${JOB_F}.docx`,
     complete: true,
     renderedDiagrams: 1,
+  });
+
+  await installOffscreenFetchStub([], { [JOB_F]: storage });
+  const rerunRoute = await page.evaluate(async (jobId) => {
+    const probe = (globalThis as unknown as {
+      exportJobStoreProbe: {
+        rerunJob(id: string, actionKey: string): Promise<string | undefined>;
+      };
+    }).exportJobStoreProbe;
+    return probe.rerunJob(jobId, "packed-deleted-library-rerun");
+  }, JOB_F);
+  expect(rerunRoute).toMatch(/^common:/);
+  const rerunId = rerunRoute!.slice("common:".length);
+  const rerun = await waitForJobState(rerunId, "succeeded");
+  expect(rerun.snapshot).toMatchObject({
+    state: "succeeded",
+    format: "docx",
+    derivedFrom: {
+      jobId: JOB_F,
+      relation: "rerun",
+      actionKey: "packed-deleted-library-rerun",
+    },
+    artifact: {
+      filename: `Packed page ${JOB_F}.docx`,
+      mediaType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    },
   });
 });
 

@@ -10,6 +10,10 @@ import { createExtensionExportQueueRunner } from "../../../utils/export-jobs/que
 import { readExtensionPdfExportReport } from "../../../utils/export-jobs/executor-store.js";
 import { readExtensionDocxExportReport } from "../../../utils/export-jobs/docx-executor-store.js";
 import { submitExtensionDocxExport } from "../../../utils/export-jobs/docx-submit.js";
+import {
+  EXTENSION_DOCX_TEMPLATE_LIMITS_V1,
+  extensionDocxTemplateSpoolRef,
+} from "../../../utils/export-jobs/docx-template.js";
 import { submitExtensionPdfExport } from "../../../utils/export-jobs/pdf-submit.js";
 import { idbTemplateLibrary } from "../../../utils/templates/library.js";
 import {
@@ -56,7 +60,7 @@ function badgeRequest(
       output: { policy: "collect" },
       template: {
         recordKey: "packed:badge-template",
-        sha256: "1".repeat(64),
+        sha256: SHA_ABC,
         name: "Packed badge template",
         uploadedAt: 1,
       },
@@ -285,6 +289,11 @@ const probe = {
     }
 
     const failedId = "packed-badge-failed-docx";
+    await byteStore.put(
+      extensionDocxTemplateSpoolRef(failedId),
+      (async function* () { yield Uint8Array.from([97, 98, 99]); })(),
+      EXTENSION_DOCX_TEMPLATE_LIMITS_V1,
+    );
     await catalog.create({
       request: badgeRequest(failedId, "docx", createdAt + 20),
     });
@@ -379,6 +388,7 @@ const probe = {
       format: string;
       template: unknown;
       derivedFrom: unknown;
+      pin: unknown;
     };
     rerun: {
       route: string;
@@ -443,6 +453,7 @@ const probe = {
         format: retrySnapshot.format,
         template: retryRequest.template,
         derivedFrom: retrySnapshot.derivedFrom,
+        pin: await byteStore.stat(extensionDocxTemplateSpoolRef(retryId)),
       },
       rerun: {
         route: rerunRoute,
@@ -553,6 +564,7 @@ const probe = {
       templateId: `packed-${id}`,
     });
     const catalog = new IndexedDbExportJobCatalog();
+    const bytes = new IndexedDbExportByteStore();
     const submitted = await submitExtensionDocxExport({
       pageUrl: `https://site.atlassian.net/wiki/spaces/DOCS/pages/${sourcePageId}/Packed`,
       page: {
@@ -577,6 +589,7 @@ const probe = {
       resolveMacros: false,
     }, {
       catalog,
+      bytes,
       requestId: id,
       wake: async (jobIds) => {
         const response = await chrome.runtime.sendMessage({
@@ -597,6 +610,23 @@ const probe = {
   },
   async resumeJob(id: string): Promise<boolean> {
     return chromeDurableJobsStore().resume(`common:${id}`);
+  },
+  async rerunJob(
+    id: string,
+    actionKey: string,
+  ): Promise<string | undefined> {
+    return chromeDurableJobsStore().rerun(`common:${id}`, actionKey);
+  },
+  async removeDocxLibraryTemplate(id: string): Promise<boolean> {
+    const library = idbTemplateLibrary({
+      siteOrigin: "https://site.atlassian.net",
+    });
+    const entry = (await library.listAll("docx")).find(
+      (candidate) => candidate.id === `packed-${id}`,
+    );
+    if (!entry) return false;
+    await library.remove(entry.recordKey);
+    return true;
   },
   async renderReservations(): Promise<{
     secondWaited: boolean;

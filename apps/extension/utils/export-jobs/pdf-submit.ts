@@ -22,7 +22,11 @@ export interface SubmittedExtensionPdfExportV1 {
   wakeWarning?: string;
 }
 
-const LOGO_LIMIT_BYTES = 5 * 1024 * 1024;
+export const EXTENSION_PDF_LOGO_LIMITS_V1 = Object.freeze({
+  maxObjectBytes: 5 * 1024 * 1024,
+  maxJobBytes: 256 * 1024 * 1024,
+  maxTotalBytes: 512 * 1024 * 1024,
+});
 
 export function extensionPdfLogoSpoolRef(jobId: string): SpoolRefV1 {
   return { jobId, leaseEpoch: 0, namespace: "request-assets", key: "pdf-logo" };
@@ -46,11 +50,7 @@ async function pinLogo(
   const stored = await bytes.put(
     extensionPdfLogoSpoolRef(jobId),
     (async function* () { yield logo.bytes; })(),
-    {
-      maxObjectBytes: LOGO_LIMIT_BYTES,
-      maxJobBytes: 256 * 1024 * 1024,
-      maxTotalBytes: 512 * 1024 * 1024,
-    },
+    EXTENSION_PDF_LOGO_LIMITS_V1,
     { signal: input.signal },
   );
   return {

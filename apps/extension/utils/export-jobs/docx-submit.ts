@@ -6,14 +6,20 @@ import type { DocxExportRequest } from "../ports/export.js";
 import {
   IndexedDbExportJobCatalog,
 } from "./catalog.js";
+import { IndexedDbExportByteStore } from "./chunk-store.js";
 import {
   createExtensionDocxJobRequest,
   type CreateExtensionDocxJobRequestOptions,
 } from "./docx-request.js";
+import {
+  EXTENSION_DOCX_TEMPLATE_LIMITS_V1,
+  extensionDocxTemplateSpoolRef,
+} from "./docx-template.js";
 
 export interface SubmitExtensionDocxExportDeps
   extends CreateExtensionDocxJobRequestOptions {
   catalog: Pick<IndexedDbExportJobCatalog, "create" | "get" | "compareAndSet">;
+  bytes: Pick<IndexedDbExportByteStore, "put" | "cleanupJob">;
   wake(jobIds: string[]): Promise<{ claimedJobId?: string; error?: string }>;
 }
 
@@ -30,8 +36,31 @@ export async function submitExtensionDocxExport(
   deps: SubmitExtensionDocxExportDeps,
 ): Promise<SubmittedExtensionDocxExportV1> {
   input.signal?.throwIfAborted();
-  const request = await createExtensionDocxJobRequest(input, deps);
-  const snapshot = await deps.catalog.create({ request });
+  const requestId =
+    deps.requestId ?? (deps.randomUUID ?? (() => crypto.randomUUID()))();
+  const request = await createExtensionDocxJobRequest(input, {
+    ...deps,
+    requestId,
+  });
+  const pinned = await deps.bytes.put(
+    extensionDocxTemplateSpoolRef(requestId),
+    (async function* () {
+      yield new Uint8Array(input.template.bytes);
+    })(),
+    EXTENSION_DOCX_TEMPLATE_LIMITS_V1,
+    { signal: input.signal },
+  );
+  if (pinned.sha256 !== request.template.sha256) {
+    await deps.bytes.cleanupJob(requestId).catch(() => undefined);
+    throw new Error("Pinned DOCX template storage changed the template digest.");
+  }
+  let snapshot: ExportJobSnapshotV1;
+  try {
+    snapshot = await deps.catalog.create({ request });
+  } catch (error) {
+    await deps.bytes.cleanupJob(requestId).catch(() => undefined);
+    throw error;
+  }
   if (input.signal?.aborted) {
     const current = await deps.catalog.get(snapshot.id);
     if (current && (current.state === "queued" || current.state === "waiting")) {
@@ -55,8 +84,10 @@ export async function submitExtensionDocxExport(
 
 export function chromeDocxExportSubmissionDeps(): SubmitExtensionDocxExportDeps {
   const catalog = new IndexedDbExportJobCatalog();
+  const bytes = new IndexedDbExportByteStore();
   return {
     catalog,
+    bytes,
     wake: async (jobIds) => {
       const response = await chrome.runtime.sendMessage({ kind: "jobs:wake", jobIds }) as {
         kind?: string;

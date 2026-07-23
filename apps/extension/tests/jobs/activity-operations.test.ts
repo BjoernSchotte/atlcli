@@ -8,6 +8,15 @@ import type {
 import { IndexedDbExportByteStore } from "../../utils/export-jobs/chunk-store.js";
 import { IndexedDbExportJobCatalog } from "../../utils/export-jobs/catalog.js";
 import {
+  EXTENSION_DOCX_TEMPLATE_LIMITS_V1,
+  extensionDocxTemplateSpoolRef,
+} from "../../utils/export-jobs/docx-template.js";
+import {
+  EXTENSION_PDF_LOGO_LIMITS_V1,
+  extensionPdfLogoAssetRef,
+  extensionPdfLogoSpoolRef,
+} from "../../utils/export-jobs/pdf-submit.js";
+import {
   createExtensionDurableJobsStore,
   type DurableJobsPort,
 } from "../../utils/jobs/store.js";
@@ -46,7 +55,7 @@ function docxRequest(id: string): DocxExportJobRequestV1 {
     output: { policy: "collect" },
     template: {
       recordKey: "site:template",
-      sha256: "0".repeat(64),
+      sha256: SHA_ABC,
       name: "Site template",
       uploadedAt: 1,
     },
@@ -152,6 +161,11 @@ describe("format-neutral extension Activity operations", () => {
       now: () => now,
     });
 
+    await bytes.put(
+      extensionDocxTemplateSpoolRef(DOCX),
+      abc(),
+      EXTENSION_DOCX_TEMPLATE_LIMITS_V1,
+    );
     await catalog.create({ request: docxRequest(DOCX) });
     const claimed = (await catalog.claimNext({
       ids: [DOCX],
@@ -200,11 +214,11 @@ describe("format-neutral extension Activity operations", () => {
 
     expect(retry).toBe("common:derived-1");
     expect(duplicateRetry).toBe(retry);
-    expect(rerun).toBe("common:derived-3");
+    expect(rerun).toBe("common:derived-2");
     expect(wakes).toEqual([
       ["derived-1"],
       ["derived-1"],
-      ["derived-3"],
+      ["derived-2"],
     ]);
 
     const retried = await catalog.get("derived-1");
@@ -220,12 +234,15 @@ describe("format-neutral extension Activity operations", () => {
       priority: "retry",
       template: {
         recordKey: "site:template",
-        sha256: "0".repeat(64),
+        sha256: SHA_ABC,
         uploadedAt: 1,
       },
     });
+    expect(
+      await bytes.stat(extensionDocxTemplateSpoolRef("derived-1")),
+    ).toMatchObject({ sha256: SHA_ABC, byteLength: 3 });
 
-    const rerunSnapshot = await catalog.get("derived-3");
+    const rerunSnapshot = await catalog.get("derived-2");
     const rerunRequest = await catalog.getRequest(
       rerunSnapshot!.requestRef,
     );
@@ -235,7 +252,7 @@ describe("format-neutral extension Activity operations", () => {
       actionKey: "rerun-click-1",
     });
     expect(rerunRequest).toMatchObject({
-      id: "derived-3",
+      id: "derived-2",
       format: "pdf",
       priority: "interactive",
       template: { id: "default", manifestVersion: "1" },
@@ -288,6 +305,60 @@ describe("format-neutral extension Activity operations", () => {
     expect((await catalog.get(PDF))?.dismissedAt).toBe(44);
     expect(await port.list()).toEqual([]);
     expect((await catalog.get(PDF))?.artifact?.ref).toBeDefined();
+  });
+
+  it("copies a pinned PDF logo into an idempotent Run-again job", async () => {
+    let now = 20;
+    let serial = 0;
+    const catalog = new IndexedDbExportJobCatalog({
+      factory,
+      now: () => now,
+    });
+    const bytes = new IndexedDbExportByteStore({
+      factory,
+      now: () => now,
+    });
+    const requestWithLogo = pdfRequest(PDF);
+    requestWithLogo.settings.logo = {
+      assetRef: extensionPdfLogoAssetRef(PDF),
+      sha256: SHA_ABC,
+      byteLength: 3,
+      mediaType: "image/png",
+      alt: "Product logo",
+    };
+    await bytes.put(
+      extensionPdfLogoSpoolRef(PDF),
+      abc(),
+      EXTENSION_PDF_LOGO_LIMITS_V1,
+    );
+    await succeed(catalog, bytes, requestWithLogo);
+    const port = createExtensionDurableJobsStore({
+      catalog,
+      bytes,
+      legacy: unavailableLegacy(),
+      listLegacyPdf: async () => [],
+      now: () => ++now,
+      randomUUID: () => `logo-rerun-${++serial}`,
+      wake: async () => ({}),
+      emit: async () => undefined,
+    });
+
+    const first = await port.rerun(`common:${PDF}`, "logo-action");
+    const repeated = await port.rerun(`common:${PDF}`, "logo-action");
+    expect(first).toBe("common:logo-rerun-1");
+    expect(repeated).toBe(first);
+    expect(serial).toBe(1);
+    const derived = await catalog.getRequest("request:logo-rerun-1");
+    expect(
+      derived?.format === "pdf" ? derived.settings.logo : undefined,
+    ).toMatchObject({
+      assetRef: extensionPdfLogoAssetRef(PDF),
+      sha256: SHA_ABC,
+      byteLength: 3,
+    });
+    expect(
+      await bytes.stat(extensionPdfLogoSpoolRef("logo-rerun-1")),
+    ).toMatchObject({ sha256: SHA_ABC, byteLength: 3 });
   });
 
   it("resumes only an explicitly selected waiting/auth checkpoint", async () => {

@@ -452,6 +452,7 @@ export interface DocxExportResultStoreV1 {
 // export: DocxPinnedTemplatePortV1
 export interface DocxPinnedTemplatePortV1 {
     resolve(input: {
+        jobId: string;
         recordKey: string;
         expectedSha256: string;
         signal: AbortSignal;

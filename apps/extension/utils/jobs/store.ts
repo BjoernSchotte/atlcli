@@ -11,6 +11,7 @@ import {
   type ExportJobEventV1,
   type ExportJobRequestV1,
   type ExportJobReplayRelationV1,
+  type ExportJobSnapshotV1,
   type ExportJobState,
 } from "@atlcli/export-jobs";
 import {
@@ -30,6 +31,14 @@ import {
 import { EXTENSION_EXPORT_BADGE_PULSE_ENABLED_KEY } from "../export-jobs/badge.js";
 import { IndexedDbExportJobCatalog } from "../export-jobs/catalog.js";
 import { IndexedDbExportByteStore } from "../export-jobs/chunk-store.js";
+import {
+  EXTENSION_DOCX_TEMPLATE_LIMITS_V1,
+  extensionDocxTemplateSpoolRef,
+} from "../export-jobs/docx-template.js";
+import {
+  EXTENSION_PDF_LOGO_LIMITS_V1,
+  extensionPdfLogoSpoolRef,
+} from "../export-jobs/pdf-submit.js";
 
 export type ExportActivityJob = ExtensionExportActivityRowV1;
 
@@ -256,6 +265,57 @@ function assertActionKey(actionKey: string): void {
   }
 }
 
+async function copyReplayRequestPins(
+  request: ExportJobRequestV1,
+  targetJobId: string,
+  bytes: IndexedDbExportByteStore,
+): Promise<boolean> {
+  const source =
+    request.format === "docx"
+      ? extensionDocxTemplateSpoolRef(request.id)
+      : request.settings.logo
+        ? extensionPdfLogoSpoolRef(request.id)
+        : undefined;
+  if (!source) return false;
+  const retained = await bytes.stat(source);
+  const expectedSha256 =
+    request.format === "docx"
+      ? request.template.sha256
+      : request.settings.logo!.sha256;
+  const expectedByteLength =
+    request.format === "pdf"
+      ? request.settings.logo!.byteLength
+      : retained?.byteLength;
+  if (
+    !retained
+    || retained.sha256 !== expectedSha256
+    || retained.byteLength !== expectedByteLength
+  ) {
+    throw new Error(
+      `Pinned ${request.format.toUpperCase()} request asset for export ${request.id} is unavailable or changed.`,
+    );
+  }
+  const target =
+    request.format === "docx"
+      ? extensionDocxTemplateSpoolRef(targetJobId)
+      : extensionPdfLogoSpoolRef(targetJobId);
+  const copied = await bytes.put(
+    target,
+    bytes.read(source),
+    request.format === "docx"
+      ? EXTENSION_DOCX_TEMPLATE_LIMITS_V1
+      : EXTENSION_PDF_LOGO_LIMITS_V1,
+  );
+  if (
+    copied.sha256 !== expectedSha256
+    || copied.byteLength !== retained.byteLength
+  ) {
+    await bytes.cleanupJob(targetJobId).catch(() => undefined);
+    throw new Error("Copied replay request asset failed its integrity binding.");
+  }
+  return true;
+}
+
 function reportSource(value: unknown): string | undefined {
   if (!value || typeof value !== "object") return undefined;
   const source = value as Record<string, unknown>;
@@ -433,7 +493,12 @@ export function createExtensionDurableJobsStore(
         ),
       )
     ).filter((request): request is NonNullable<typeof request> => request !== undefined);
-    const id = randomUUID();
+    const existingAction = candidates.find(
+      (candidate) =>
+        candidate.derivedFrom?.relation === relation
+        && candidate.derivedFrom.actionKey === actionKey,
+    );
+    const id = existingAction?.id ?? randomUUID();
     const derivation = deriveExportJobReplayV1({
       origin,
       originRequest,
@@ -452,13 +517,30 @@ export function createExtensionDurableJobsStore(
         `${relation === "retry" ? "Retry" : "Run again"} is unavailable for a ${origin.state} export.`,
       );
     }
-    const snapshot =
-      derivation.kind === "existing"
-        ? derivation.snapshot
-        : await deps.catalog.create({
-            request: derivation.request,
-            derivedFrom: derivation.derivedFrom,
-          });
+    let snapshot: ExportJobSnapshotV1;
+    if (derivation.kind === "existing") {
+      snapshot = derivation.snapshot;
+    } else {
+      let copiedPin = false;
+      try {
+        copiedPin = await copyReplayRequestPins(
+          originRequest,
+          derivation.request.id,
+          deps.bytes,
+        );
+        snapshot = await deps.catalog.create({
+          request: derivation.request,
+          derivedFrom: derivation.derivedFrom,
+        });
+      } catch (error) {
+        if (copiedPin) {
+          await deps.bytes.cleanupJob(derivation.request.id).catch(
+            () => undefined,
+          );
+        }
+        throw error;
+      }
+    }
     await deps.wake?.([snapshot.id]).catch(() => undefined);
     await notifyChanged(snapshot.id);
     return `common:${snapshot.id}`;

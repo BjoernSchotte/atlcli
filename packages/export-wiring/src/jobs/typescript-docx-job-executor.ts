@@ -35,6 +35,7 @@ export interface DocxPinnedTemplateV1 {
 
 export interface DocxPinnedTemplatePortV1 {
   resolve(input: {
+    jobId: string;
     recordKey: string;
     expectedSha256: string;
     signal: AbortSignal;
@@ -717,6 +718,7 @@ export function createTypescriptDocxExportJobExecutor(
           // The heavy reservation deliberately precedes template bytes, PizZip,
           // asset fetch/decode, rasterization, and prepared-archive generation.
           let pinned = await options.templates.resolve({
+            jobId: context.jobId,
             recordKey: request.template.recordKey,
             expectedSha256: request.template.sha256.toLowerCase(),
             signal: context.signal,
