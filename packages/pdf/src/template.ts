@@ -313,8 +313,8 @@ ${headerResolution}
   }
   show raw.where(block: false): it => box(
     fill: rgb("${C("codeBackground")}"),
-    inset: (x: 0.2em, y: 0.06em),
-    radius: 2pt,
+    inset: (x: ${L("inlineCodeInsetX")}, y: ${L("inlineCodeInsetY")}),
+    radius: ${L("inlineCodeRadius")},
     text(font: ${fontStack(F("mono"))}, size: ${rsize("code")}, it),
   )
   show raw.where(block: true): it => block(

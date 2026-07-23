@@ -580,13 +580,14 @@ describe("serializeBlocks — callouts, code, tables, images", () => {
     const { xml } = await serializeBlocks(blocks, { styleNames: noStyles });
     expect(xml).toContain("top");
     expect(xml).toContain("nested");
-    // Native numbering: the outer bullet is ilvl 0, the nested <ol> is ilvl 1
-    // and gets its OWN (decimal) numId, distinct from the bullet's.
+    // Every list node owns one self-contained level-0 definition. Nesting is
+    // encoded in that definition's indent, so renderers do not have to resolve
+    // a sparse multilevel definition inherited from an unrelated parent list.
     const numIds = [...xml.matchAll(/<w:numId w:val="(\d+)"\/>/g)].map((m) => m[1]);
     expect(numIds).toHaveLength(2);
     expect(new Set(numIds).size).toBe(2);
-    expect(xml).toContain('<w:ilvl w:val="0"/>');
-    expect(xml).toContain('<w:ilvl w:val="1"/>');
+    expect(xml.match(/<w:ilvl w:val="0"\/>/g)).toHaveLength(2);
+    expect(xml).not.toContain('<w:ilvl w:val="1"/>');
     expect(xml).not.toContain("•");
   });
 });

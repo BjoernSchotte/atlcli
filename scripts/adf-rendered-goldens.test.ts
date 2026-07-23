@@ -19,6 +19,8 @@ describe("ADF rendered goldens", () => {
       "inline-code",
       "unicode-emoji",
       "custom-emoji-fallback",
+      "ordered-list-start",
+      "nested-list-restart",
       "table",
       "layout-degradation",
       "smart-link",
