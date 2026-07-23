@@ -290,16 +290,30 @@ The coverage source of truth remains the complete matrices in `GAP-ANALYSIS.md`.
   contract with complete pinned attributes, safe targets, deterministic static
   rendering, and reuse of the existing datasource live-resolution chain.
 - Extensions: `extension`, `inlineExtension`, `bodiedExtension` projected into the existing macro-resolution contract when identity correlation is proven.
-- Media: `mediaSingle`, `mediaGroup`, and `media` only after Media-ID/attachment correlation is proven; otherwise visible fallback plus `adf-media-unresolved`.
-- Existing marks: `strong`, `em`, `underline`, `strike`, `code`, `subsup`, `textColor`, `backgroundColor`, and `link`.
+- Media: the complete pinned `media`, `mediaGroup`, and `mediaSingle` block
+  contracts retain Media Services/local identity, attachment metadata,
+  file/link/external variants, authored geometry/layout, grouping, captions,
+  safe links, annotations, and borders. Correlated images enter the bounded
+  asset pipeline; correlated non-images become named clickable static
+  attachment cards; unresolved identities remain visible without guessing.
+  DOCX projects wrap layouts as native anchored drawings. Because the selected
+  Typst engine supports only top/bottom floats and no contour wrapping, PDF
+  uses a source-ordered authored-width grid with the directly following
+  paragraph, or the requested side alignment when no paragraph follows.
+  `mediaInline` retains the same typed identity and renders a deterministic
+  inline chip, with actual baseline-aligned correlated-image embedding tracked
+  as the remaining target gap.
+- Existing marks: `strong`, `em`, `underline`, `strike`, `code`, `subsup`,
+  `textColor`, `backgroundColor`, `link`, and media `border`.
 
 ### 5.2 Explicitly classify, preserve, and defer native rendering
 
-The remaining schema rows—including advanced media, sync content,
-breakout beyond layout sections, border, and data-consumer semantics—must retain
-a coverage-manifest status and deterministic fallback. Decisions, block tasks,
-layouts, native captions, annotations/fragments, alignment, indentation, and
-the schema-defined small paragraph font size now have the completed contracts
+The remaining schema rows—including inline-image projection for `mediaInline`,
+sync content, breakout beyond layout sections, and data-consumer
+semantics—must retain a coverage-manifest status and deterministic fallback.
+Decisions, block tasks, layouts, native captions, block-media geometry and
+grouping, media borders, annotations/fragments, alignment, indentation, and the
+schema-defined small paragraph font size now have the completed contracts
 recorded in the gap analysis.
 
 The ADF adapter must never infer semantics from raw text. Literal `:warning:`, backticks, `[]`, `<>`, and slash-command text remain literal unless Confluence stored a typed ADF node or mark.
@@ -1331,6 +1345,45 @@ DOCX code font, and a structurally valid multipage PDF. No live identifier is
 stored in the repository. The matrix now records 63 of 84 rows closed and 21
 open; the unrestricted suite remains the remote-CI gate.
 
+Completed block-media follow-on evidence recorded on 2026-07-23: the pinned
+`media`, `mediaGroup`, `mediaSingle`, and `border` contracts now retain their
+exact file/link/external union, Media Services and local identity, opaque data,
+alt text, intrinsic dimensions, annotations, authored layout/width/width type,
+captions, safe links, borders, and group position. The bounded Confluence v2
+attachment index carries exact `fileId`, filename, MIME type, UI link, and
+download link metadata. Correlated images enter the existing asset pipeline;
+correlated non-images—including audio/video—become named clickable static
+attachment cards; unresolved identities remain visible and never trigger
+filename/content-ID guessing. The pinned schema and official media contract
+contain no crop attribute, so no exporter-side crop syntax is invented.
+
+DOCX uses authored dimensions and native inline or anchored square-wrap
+drawings. PDF uses authored sizing/alignment and, for wrap-left/right plus a
+directly following paragraph, a source-ordered side-by-side grid. This is the
+strongest deterministic projection supported by the selected Typst engine,
+whose placement contract has top/bottom floats but no contour text wrapping;
+a visually rejected float implementation was removed because it could move
+media ahead of earlier headings. Block/group/single/border semantics are
+therefore closed, while `mediaInline` deliberately remains open until
+correlated image bytes render as an actual baseline-aligned inline image rather
+than the now-complete typed image/file/link chip.
+
+The slice passed the 456-test focused validator/decoder/composition/CLI/DOCX/PDF
+set, the exact progress-register guard, fresh public API and closure generation
+with zero reachable-but-unexported gaps, full workspace/browser typecheck, the
+16-task production build, all 20 browser-isomorphism entrypoints, extension and
+harness output checks, the 15-case manifest, packed Chromium E2E, and exact
+direct/background report and artifact parity. Pack inspection plus Bun
+tarball/filesystem-link, plain-Node/npm, and Vite consumers passed. The reviewed
+real-render baseline contains one DOCX and five PDF pages; the repeat render
+has zero mean pixel difference and content-bounds IoU 1, and visual inspection
+confirms source order, bounded wrap approximation, borders, group boundaries,
+captions, file/link fallbacks, and inline chips. The retained persistent live
+tree re-exported through the built TypeScript CLI to structurally valid DOCX
+and tagged PDF; temporary artifacts were removed and no environment identifier
+was emitted or stored. The matrix now records 67 of 84 rows closed and 17 open;
+the unrestricted suite remains the remote-CI gate.
+
 After this migration proves the source boundary, close the gap-analysis backlog in separate feature slices:
 
 1. custom-emoji assets after a documented Atlassian resolver contract and
@@ -1341,7 +1394,9 @@ After this migration proves the source boundary, close the gap-analysis backlog 
    pinned table-attribute contract;
 5. breakout beyond page-bounded layout sections (pinned ADF/documented Storage
    layout columns and the static caption/disclosure contract are complete);
-6. full media family;
+6. actual correlated-image embedding for the now-typed `mediaInline` node; the
+   complete pinned block `media`, `mediaGroup`, `mediaSingle`, and `border`
+   contracts are closed;
 7. ADF-native definitions for excerpts/Page Properties and removal of their Storage sidecar;
 8. advanced extensions, Forge `adfExport` ingestion policy, and synced-content snapshots;
 9. lazy sidecar reads and eventual Storage removal from Cloud export only after every dependency is retired.

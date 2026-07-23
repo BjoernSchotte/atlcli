@@ -159,6 +159,10 @@ export interface RunStyle {
   color?: string;
   /** Arbitrary run shading color; unlike `w:highlight`, this preserves `#RRGGBB`. */
   backgroundColor?: string;
+  /** Optional inline border color without leading `#`. */
+  borderColor?: string;
+  /** OOXML eighth-point border size. */
+  borderSize?: number;
   /** Explicit OOXML half-point size, used for bounded source typography semantics. */
   fontSizeHalfPoints?: number;
 }
@@ -177,6 +181,12 @@ function runPropsXml(style: RunStyle): string {
   if (style.underline) parts.push('<w:u w:val="single"/>');
   if (style.subscript) parts.push('<w:vertAlign w:val="subscript"/>');
   if (style.superscript) parts.push('<w:vertAlign w:val="superscript"/>');
+  if (style.borderColor) {
+    const size = Math.max(2, Math.min(96, Math.round(style.borderSize ?? 8)));
+    parts.push(
+      `<w:bdr w:val="single" w:sz="${size}" w:space="1" w:color="${normalizeColor(style.borderColor)}"/>`,
+    );
+  }
   if (style.code) {
     parts.push(
       `<w:rFonts w:ascii="${CODE_FONT_FAMILY}" w:hAnsi="${CODE_FONT_FAMILY}" w:cs="${CODE_FONT_FAMILY}"/>`,

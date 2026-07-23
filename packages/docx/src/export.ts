@@ -1441,11 +1441,14 @@ function imageSeam(
         return outcome;
       }
       try {
+        const wanted = mediaTargetSize(block);
+        const wrap = mediaWrap(block);
         const xml = embedder.embed(bytes, {
           alt: block.alt,
           name,
-          widthPx: block.width,
-          heightPx: block.height,
+          widthPx: wanted.widthPx,
+          heightPx: wanted.heightPx,
+          ...(wrap ? { wrap } : {}),
           ...(partPath ? { partPath } : {}),
         });
         reportDone(name);
@@ -1502,7 +1505,7 @@ function imageSeam(
     }
     const display = resolveTargetSize(
       { width: intrinsic.widthPx, height: intrinsic.heightPx },
-      { widthPx: block.width, heightPx: block.height },
+      mediaTargetSize(block),
       MAX_CONTENT_WIDTH_PX
     );
     const raster = boundRasterTarget({ widthPx: display.widthPx * 2, heightPx: display.heightPx * 2 });
@@ -1535,12 +1538,39 @@ function imageSeam(
         name,
         widthPx: display.widthPx,
         heightPx: display.heightPx,
+        ...(mediaWrap(block) ? { wrap: mediaWrap(block) } : {}),
       });
       return { ok: true as const, xml, ...(sideNotes.length ? { notes: sideNotes } : {}) };
     } catch (err) {
       return { ok: false as const, reason: err instanceof Error ? err.message : String(err) };
     }
   }
+}
+
+function mediaTargetSize(
+  block: ImageBlock,
+): { widthPx?: number; heightPx?: number } {
+  const presentation = block.mediaPresentation;
+  if (!presentation) return { widthPx: block.width, heightPx: block.height };
+  if (presentation.layout === "wide" || presentation.layout === "full-width") {
+    return { widthPx: MAX_CONTENT_WIDTH_PX };
+  }
+  if (presentation.width !== undefined) {
+    const widthPx =
+      presentation.widthType === "pixel"
+        ? presentation.width
+        : (MAX_CONTENT_WIDTH_PX * presentation.width) / 100;
+    return { widthPx };
+  }
+  return { widthPx: block.width, heightPx: block.height };
+}
+
+function mediaWrap(block: ImageBlock): "left" | "right" | undefined {
+  return block.mediaPresentation?.layout === "wrap-left"
+    ? "left"
+    : block.mediaPresentation?.layout === "wrap-right"
+      ? "right"
+      : undefined;
 }
 
 /** Human label for an image block in a note (attachment filename or URL). */

@@ -30,6 +30,7 @@ import type {
 } from "./export-blocks.js";
 import {
   formatAdfDateTimestamp,
+  inlineMediaDisplayText,
   mentionDisplayText,
   smartCardDisplayText,
   statusDisplayText,
@@ -343,6 +344,9 @@ function inlinePlainText(nodes: readonly InlineNode[]): string {
       case "smartCard":
         out += smartCardDisplayText(node.card);
         break;
+      case "media":
+        out += inlineMediaDisplayText(node);
+        break;
       case "placeholder":
         break;
       case "lineBreak":
@@ -510,6 +514,14 @@ function transformInline(nodes: readonly InlineNode[], ctx: EmitCtx): InlineNode
       case "smartCard":
         out.push({ ...node, card: rewriteSmartCard(node.card, ctx) });
         break;
+      case "media": {
+        const link = node.link ? rewriteExportLink(node.link, ctx) : undefined;
+        const rewritten = { ...node };
+        if (link) rewritten.link = link;
+        else delete rewritten.link;
+        out.push(rewritten);
+        break;
+      }
       case "link": {
         const content = transformInline(node.content, ctx);
         const rewritten = rewriteLink(node.target, content, ctx);

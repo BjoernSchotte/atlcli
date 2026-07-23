@@ -290,6 +290,20 @@ describe("ImageEmbedder", () => {
     assertBalancedXml(xml);
   });
 
+  it("emits a Word anchor with square text wrapping for wrapped ADF media", () => {
+    const zip = templateZip();
+    const left = new ImageEmbedder(zip).embed(pngBytes(100, 50), { wrap: "left" });
+
+    expect(left).toContain("<wp:anchor ");
+    expect(left).not.toContain("<wp:inline ");
+    expect(left).toContain(
+      '<wp:positionH relativeFrom="column"><wp:align>left</wp:align></wp:positionH>',
+    );
+    expect(left).toContain('<wp:wrapSquare wrapText="right"/>');
+    expect(left).toContain("</wp:anchor>");
+    assertBalancedXml(left);
+  });
+
   it("caps oversized images to the content width", () => {
     const zip = templateZip();
     const xml = new ImageEmbedder(zip).embed(pngBytes(1200, 600));

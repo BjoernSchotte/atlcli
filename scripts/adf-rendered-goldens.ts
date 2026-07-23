@@ -324,6 +324,10 @@ async function manifestFor(
       "layout-breakout-page-bound",
       "smart-link",
       "media-fallback",
+      "media-single-layout-width-caption-border",
+      "media-group",
+      "media-inline-chip",
+      "media-wrap-source-order",
       "extension",
     ],
     formats: {

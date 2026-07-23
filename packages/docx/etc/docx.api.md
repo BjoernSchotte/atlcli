@@ -1228,6 +1228,7 @@ export interface DrawingParams {
     descr: string;
     cxEmu: number;
     cyEmu: number;
+    wrap?: "left" | "right";
     pPrXml?: string;
     svgRelId?: string;
 }
@@ -1238,6 +1239,7 @@ export interface EmbedImageOptions {
     name?: string;
     widthPx?: number;
     heightPx?: number;
+    wrap?: "left" | "right";
     partPath?: string;
     pPrXml?: string;
 }
@@ -1248,6 +1250,7 @@ export interface EmbedSvgOptions {
     name?: string;
     widthPx: number;
     heightPx: number;
+    wrap?: "left" | "right";
     partPath?: string;
     pPrXml?: string;
     origin?: "image" | "diagram";
@@ -1789,6 +1792,8 @@ export interface RunStyle {
     superscript?: boolean;
     color?: string;
     backgroundColor?: string;
+    borderColor?: string;
+    borderSize?: number;
     fontSizeHalfPoints?: number;
 }
 

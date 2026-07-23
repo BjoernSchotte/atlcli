@@ -65,6 +65,7 @@ export interface AdfSourceCaseResult {
   neutralHasLayoutPresentation: boolean;
   neutralHasDisclosureSemantics: boolean;
   neutralHasMediaLinkSemantics: boolean;
+  neutralHasMediaPresentation: boolean;
   neutralHasSmartCardSemantics: boolean;
   docxHasTable: boolean;
   docxHasTablePresentation: boolean;
@@ -77,6 +78,7 @@ export interface AdfSourceCaseResult {
   docxHasExtensionBody: boolean;
   docxHasVisibleMediaFallback: boolean;
   docxHasMediaLink: boolean;
+  docxHasMediaPresentation: boolean;
   pdfJobArtifactAndReportParity: boolean;
   docxJobArtifactAndReportParity: boolean;
 }
@@ -489,7 +491,7 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
         '"type":"expand","nested":true,"title":"Nested expanded title","localId":""',
       )
       && JSON.stringify(pdfSource.blocks).includes(
-        '"type":"mediaFallback","label":"Visible media fallback","media":{"mediaType":"file","id":"unresolved-media"}',
+        '"type":"mediaFallback","label":"Visible media fallback","media":{"mediaType":"file","id":"unresolved-media","collection":"contentId-1"}',
       )
       && JSON.stringify(pdfSource.blocks).includes(
         '"caption":{"kind":"figure","content":[{"type":"text","text":"Media caption"}],"localId":"media-caption-local"}',
@@ -497,6 +499,16 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
     neutralHasMediaLinkSemantics:
       neutralJson.includes(
         '"link":{"target":{"kind":"external","href":"https://example.invalid/adf-media"},"adfAttributes":{"title":"Open media","id":"media-link-id","collection":"contentId-1","occurrenceKey":"media-link-occurrence"}}',
+      ),
+    neutralHasMediaPresentation:
+      neutralJson.includes(
+        '"mediaPresentation":{"layout":"wrap-left","width":40,"widthType":"percentage","localId":"media-single-local"}',
+      )
+      && neutralJson.includes('"border":{"color":"#091E4224","size":2}')
+      && neutralJson.includes('"mediaGroup":{"index":0,"size":2}')
+      && neutralJson.includes('"mediaGroup":{"index":1,"size":2}')
+      && neutralJson.includes(
+        '"type":"media","media":{"mediaType":"image","id":"inline-media-1","collection":"contentId-1","localId":"inline-media-local","dataJson":"{\\"source\\":\\"fixture\\"}"}',
       ),
     neutralHasSmartCardSemantics:
       neutralJson.includes(
@@ -555,6 +567,12 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
     docxHasMediaLink:
       documentXml.includes('HYPERLINK "https://example.invalid/adf-media"')
       && documentXml.includes('\\o "Open media"'),
+    docxHasMediaPresentation:
+      documentXml.includes("Inline media chip")
+      && documentXml.includes("Grouped attachment one")
+      && documentXml.includes("Grouped attachment two")
+      && documentXml.includes('w:color="091E42"')
+      && documentXml.includes('w:fill="F7F8F9"'),
     pdfJobArtifactAndReportParity:
       pdfJobParity.byteIdentical && pdfJobParity.reportIdentical,
     docxJobArtifactAndReportParity:
@@ -591,6 +609,9 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
   }
   if (!result.neutralHasMediaLinkSemantics) {
     throw new Error("ADF-source media-link target or provenance was lost in the packed browser.");
+  }
+  if (!result.neutralHasMediaPresentation) {
+    throw new Error("ADF-source media geometry, grouping, border, or inline identity was lost.");
   }
   if (!result.neutralHasSmartCardSemantics) {
     throw new Error("ADF-source Smart Card attributes were lost in the packed browser.");

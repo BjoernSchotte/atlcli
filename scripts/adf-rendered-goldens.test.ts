@@ -45,6 +45,10 @@ describe("ADF rendered goldens", () => {
       "layout-breakout-page-bound",
       "smart-link",
       "media-fallback",
+      "media-single-layout-width-caption-border",
+      "media-group",
+      "media-inline-chip",
+      "media-wrap-source-order",
       "extension",
     ]);
     for (const format of ["docx", "pdf"] as const) {
@@ -61,7 +65,7 @@ describe("ADF rendered goldens", () => {
     expect(result).toMatchObject({
       updated: false,
       docxPages: 1,
-      pdfPages: 4,
+      pdfPages: 5,
       docxCodeFontEmbedded: true,
     });
     expect(result.maxMeanPixelDifference).toBeLessThanOrEqual(0.08);

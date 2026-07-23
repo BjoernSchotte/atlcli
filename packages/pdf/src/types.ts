@@ -96,6 +96,11 @@ export type PreparedPdfBlock =
       width?: number;
       height?: number;
       fallbackLabel: string;
+      media?: Extract<ExportBlock, { type: "image" }>["media"];
+      mediaPresentation?: Extract<ExportBlock, { type: "image" }>["mediaPresentation"];
+      mediaGroup?: Extract<ExportBlock, { type: "image" }>["mediaGroup"];
+      border?: Extract<ExportBlock, { type: "image" }>["border"];
+      annotations?: Extract<ExportBlock, { type: "image" }>["annotations"];
       caption?: Caption;
       link?: ExportLink;
     }

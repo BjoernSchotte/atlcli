@@ -275,7 +275,10 @@ describe("pageBodyToBlocks", () => {
       primary: { representation: "atlas_doc_format", value: JSON.stringify({
         version: 1,
         type: "doc",
-        content: [{ type: "media", attrs: { type: "file", id: "media-1", alt: "Synthetic" } }],
+        content: [{
+          type: "media",
+          attrs: { type: "file", id: "media-1", collection: "content-1", alt: "Synthetic" },
+        }],
       }) },
     };
     const seen: unknown[] = [];
@@ -287,10 +290,16 @@ describe("pageBodyToBlocks", () => {
         return { filename: "synthetic.png" };
       },
     });
-    expect(seen).toEqual([{ id: "media-1" }]);
+    expect(seen).toEqual([{ id: "media-1", collection: "content-1" }]);
     expect(result.blocks).toEqual([{
       type: "image",
       source: { kind: "attachment", filename: "synthetic.png", pageId: "page-2" },
+      media: {
+        mediaType: "file",
+        id: "media-1",
+        collection: "content-1",
+        filename: "synthetic.png",
+      },
       alt: "Synthetic",
     }]);
   });

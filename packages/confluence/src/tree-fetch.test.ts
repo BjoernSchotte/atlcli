@@ -1040,7 +1040,10 @@ describe("fetchExportTree — representation-neutral sources", () => {
         },
         {
           type: "mediaSingle",
-          content: [{ type: "media", attrs: { type: "file", id: "media-1", alt: "Image" } }],
+          content: [{
+            type: "media",
+            attrs: { type: "file", id: "media-1", collection: "content-1", alt: "Image" },
+          }],
         },
         {
           type: "paragraph",

@@ -1717,6 +1717,71 @@ describe("serialize — C3 captions", () => {
     expect(notes).toEqual([]);
   });
 
+  it("renders ADF media geometry, borders, groups, inline chips, and typed files", async () => {
+    const prepared = await preparePdfDocument([
+      {
+        type: "paragraph",
+        content: [{
+          type: "media",
+          media: {
+            mediaType: "image",
+            id: "inline-1",
+            filename: "inline.png",
+          },
+          alt: "Inline architecture",
+          border: { color: "#0052CC", size: 1 },
+          link: { target: { kind: "external", href: "https://example.invalid/inline" } },
+        }],
+      },
+      {
+        type: "image",
+        source: { kind: "attachment", filename: "architecture.png" },
+        alt: "Architecture",
+        mediaPresentation: {
+          layout: "wrap-right",
+          width: 40,
+          widthType: "percentage",
+        },
+        mediaGroup: { index: 0, size: 2 },
+        border: { color: "#091E4224", size: 2 },
+      },
+      {
+        type: "paragraph",
+        content: [{ type: "text", text: "Text wrapped beside the authored media." }],
+      },
+      {
+        type: "mediaFallback",
+        label: "runbook.pdf",
+        media: {
+          mediaType: "file",
+          filename: "runbook.pdf",
+          attachmentMediaType: "application/pdf",
+        },
+        mediaGroup: { index: 1, size: 2 },
+      },
+    ], {
+      resolve: async () => ({
+        bytes: pngBytes(),
+        mediaType: "image/png",
+        filename: "architecture.png",
+      }),
+    });
+    const bundle = serializePdfDocument(prepared, { metadata });
+
+    expect(bundle.main).toContain("[Inline architecture]");
+    expect(bundle.main).toContain('#link("https://example.invalid/inline")');
+    expect(bundle.main).toContain('stroke: 1pt + rgb("#0052CC")');
+    expect(bundle.main).toContain("width: 100%");
+    expect(bundle.main).toContain(
+      '#grid(columns: (1fr, 40%), column-gutter: 8pt, [/* atlcli:start:blocks[2] */',
+    );
+    expect(bundle.main).not.toContain("float: true");
+    expect(bundle.main).toContain('stroke: 2pt + rgb("#091E42")');
+    expect(bundle.main).toContain('fill: rgb("#F7F8F9")');
+    expect(bundle.main).toContain("[Attachment: runbook.pdf (application/pdf)]");
+    expect(bundle.notes).toEqual([]);
+  });
+
   it("wraps ADF media output in its exact safe link", async () => {
     const { main, notes } = await toMain([{
       type: "mediaFallback",

@@ -322,6 +322,11 @@ export async function preparePdfDocument(
                 width: block.width,
                 height: block.height,
                 fallbackLabel,
+                ...(block.media ? { media: block.media } : {}),
+                ...(block.mediaPresentation ? { mediaPresentation: block.mediaPresentation } : {}),
+                ...(block.mediaGroup ? { mediaGroup: block.mediaGroup } : {}),
+                ...(block.border ? { border: block.border } : {}),
+                ...(block.annotations ? { annotations: block.annotations } : {}),
                 caption: block.caption,
                 ...(block.link ? { link: block.link } : {}),
               };
@@ -353,7 +358,14 @@ export async function preparePdfDocument(
               return {
                 type: "image",
                 alt: block.alt,
+                width: block.width,
+                height: block.height,
                 fallbackLabel,
+                ...(block.media ? { media: block.media } : {}),
+                ...(block.mediaPresentation ? { mediaPresentation: block.mediaPresentation } : {}),
+                ...(block.mediaGroup ? { mediaGroup: block.mediaGroup } : {}),
+                ...(block.border ? { border: block.border } : {}),
+                ...(block.annotations ? { annotations: block.annotations } : {}),
                 caption: block.caption,
                 ...(block.link ? { link: block.link } : {}),
               };

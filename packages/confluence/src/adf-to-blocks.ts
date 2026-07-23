@@ -27,12 +27,15 @@ import type {
   LinkTarget,
   ListItem,
   MacroParameter,
+  MediaBorder,
+  MediaPresentation,
   SmartCardAppearance,
   SmartCardSemantics,
   StorageToBlocksOptions,
   TableCell,
   TablePresentation,
   TableRow,
+  UnresolvedMediaIdentity,
 } from "./export-blocks.js";
 import {
   formatAdfDateTimestamp,
@@ -66,6 +69,9 @@ export interface AdfMediaReference {
 export interface AdfResolvedMediaAttachment {
   filename: string;
   pageId?: string;
+  mediaType?: string;
+  webuiLink?: string;
+  downloadLink?: string;
 }
 
 /** Attachment metadata proven to correlate ADF media `id` with v2 `fileId`. */
@@ -73,6 +79,9 @@ export interface AdfMediaAttachment {
   fileId: string;
   filename: string;
   pageId: string;
+  mediaType?: string;
+  webuiLink?: string;
+  downloadLink?: string;
 }
 
 /** Build an exact, synchronous decoder resolver from prefetched page metadata. */
@@ -86,7 +95,13 @@ export function createAdfMediaAttachmentResolver(
     const filename = attachment.filename.trim();
     const pageId = attachment.pageId.trim();
     if (!fileId || !filename || !pageId || byFileId.has(fileId)) continue;
-    byFileId.set(fileId, { filename, pageId });
+    byFileId.set(fileId, {
+      filename,
+      pageId,
+      ...(attachment.mediaType?.trim() ? { mediaType: attachment.mediaType.trim() } : {}),
+      ...(attachment.webuiLink?.trim() ? { webuiLink: attachment.webuiLink.trim() } : {}),
+      ...(attachment.downloadLink?.trim() ? { downloadLink: attachment.downloadLink.trim() } : {}),
+    });
   }
   return (reference) => byFileId.get(reference.id);
 }
@@ -592,14 +607,7 @@ function decodeInlineNode(node: AdfNode, ctx: DecodeContext, path: string): Inli
     }
     case "mediaInline":
     case "media": {
-      addMediaNote(ctx, node, path);
-      const content: InlineNode[] = [{
-        type: "text",
-        text: mediaLabel(node),
-        ...annotationFields(node.marks),
-      }];
-      const link = mediaLink(node.marks, ctx, path, mediaLabel(node));
-      return link ? [{ type: "link", ...link, content }] : content;
+      return [decodeInlineMedia(node, ctx, path)];
     }
     case "placeholder":
       return [{
@@ -1071,6 +1079,26 @@ function decodeMediaContainer(node: AdfNode, ctx: DecodeContext, path: string): 
         : block
     );
   }
+  if (node.type === "mediaSingle") {
+    const mediaPresentation = decodeMediaPresentation(node);
+    blocks = blocks.map((block) =>
+      block.type === "image" || block.type === "mediaFallback"
+        ? { ...block, mediaPresentation }
+        : block
+    );
+  }
+  if (node.type === "mediaGroup") {
+    const size = blocks.filter(
+      (block) => block.type === "image" || block.type === "mediaFallback",
+    ).length;
+    let index = 0;
+    blocks = blocks.map((block) => {
+      if (block.type !== "image" && block.type !== "mediaFallback") return block;
+      const grouped = { ...block, mediaGroup: { index, size } };
+      index += 1;
+      return grouped;
+    });
+  }
   if (captionNode && blocks.length > 0) {
     const caption = decodeCaption(captionNode, ctx, `${path}.caption`);
     const last = blocks[blocks.length - 1]!;
@@ -1089,6 +1117,35 @@ function decodeMediaContainer(node: AdfNode, ctx: DecodeContext, path: string): 
 }
 
 function decodeMediaBlock(node: AdfNode, ctx: DecodeContext, path: string): ExportBlock {
+  const externalUrl =
+    stringAttr(node, "type") === "external" ? optionalStringAttr(node, "url") : undefined;
+  if (externalUrl !== undefined) {
+    const verdict = sanitizeLinkHref(externalUrl);
+    if (verdict.safe) {
+      const width = positiveDimension(node.attrs?.width);
+      const height = positiveDimension(node.attrs?.height);
+      const link = mediaLink(node.marks, ctx, path, stringAttr(node, "alt") ?? externalUrl);
+      return {
+        type: "image",
+        source: { kind: "external", url: verdict.href },
+        media: mediaIdentity(node),
+        ...(optionalStringAttr(node, "alt") !== undefined
+          ? { alt: optionalStringAttr(node, "alt") }
+          : {}),
+        ...(width ? { width } : {}),
+        ...(height ? { height } : {}),
+        ...annotationFields(node.marks),
+        ...(mediaBorder(node.marks) ? { border: mediaBorder(node.marks) } : {}),
+        ...(link ? { link } : {}),
+      };
+    }
+    ctx.notes.add({
+      level: "warning",
+      code: "unsafe-link-skipped",
+      message: unsafeLinkMessage(verdict, stringAttr(node, "alt") ?? "external media"),
+      source: sourceFor(ctx, path),
+    });
+  }
   const id = stringAttr(node, "id");
   const resolved = id ? ctx.resolveMediaAttachment?.({
     id,
@@ -1096,6 +1153,9 @@ function decodeMediaBlock(node: AdfNode, ctx: DecodeContext, path: string): Expo
     ...(stringAttr(node, "occurrenceKey") ? { occurrenceKey: stringAttr(node, "occurrenceKey") } : {}),
   }) : undefined;
   if (!resolved?.filename.trim()) return mediaFallbackBlock(node, ctx, path);
+  if (resolved.mediaType && !resolved.mediaType.toLowerCase().startsWith("image/")) {
+    return mediaFallbackBlock(node, ctx, path, resolved);
+  }
   const width = positiveDimension(node.attrs?.width);
   const height = positiveDimension(node.attrs?.height);
   const link = mediaLink(node.marks, ctx, path, stringAttr(node, "alt") ?? "media");
@@ -1106,47 +1166,152 @@ function decodeMediaBlock(node: AdfNode, ctx: DecodeContext, path: string): Expo
       filename: resolved.filename,
       ...(resolved.pageId ?? ctx.pageContext?.id ? { pageId: resolved.pageId ?? ctx.pageContext?.id } : {}),
     },
+    media: mediaIdentity(node, resolved),
     ...(stringAttr(node, "alt") ? { alt: stringAttr(node, "alt") } : {}),
     ...(width ? { width } : {}),
     ...(height ? { height } : {}),
     ...annotationFields(node.marks),
+    ...(mediaBorder(node.marks) ? { border: mediaBorder(node.marks) } : {}),
     ...(link ? { link } : {}),
   };
 }
 
-function mediaFallbackBlock(node: AdfNode, ctx: DecodeContext, path: string): ExportBlock {
-  addMediaNote(ctx, node, path);
+function decodeInlineMedia(node: AdfNode, ctx: DecodeContext, path: string): InlineNode {
+  const id = stringAttr(node, "id");
+  const resolved = id ? ctx.resolveMediaAttachment?.({
+    id,
+    ...(stringAttr(node, "collection") ? { collection: stringAttr(node, "collection") } : {}),
+    ...(stringAttr(node, "occurrenceKey") ? { occurrenceKey: stringAttr(node, "occurrenceKey") } : {}),
+  }) : undefined;
+  if (!resolved) addMediaNote(ctx, node, path);
+  const isImage = resolved &&
+    (resolved.mediaType === undefined || resolved.mediaType.toLowerCase().startsWith("image/"));
+  const authoredLink = mediaLink(node.marks, ctx, path, mediaLabel(node));
+  const link = authoredLink ?? resolvedAttachmentLink(resolved);
   const width = positiveDimension(node.attrs?.width);
   const height = positiveDimension(node.attrs?.height);
-  const link = mediaLink(node.marks, ctx, path, mediaLabel(node));
   return {
-    type: "mediaFallback",
-    label: mediaLabel(node),
-    media: {
-      ...(optionalStringAttr(node, "type") !== undefined
-        ? { mediaType: optionalStringAttr(node, "type") }
-        : {}),
-      ...(optionalStringAttr(node, "id") !== undefined
-        ? { id: optionalStringAttr(node, "id") }
-        : {}),
-      ...(optionalStringAttr(node, "collection") !== undefined
-        ? { collection: optionalStringAttr(node, "collection") }
-        : {}),
-      ...(optionalStringAttr(node, "occurrenceKey") !== undefined
-        ? { occurrenceKey: optionalStringAttr(node, "occurrenceKey") }
-        : {}),
-      ...(optionalStringAttr(node, "localId") !== undefined
-        ? { localId: optionalStringAttr(node, "localId") }
-        : {}),
-    },
+    type: "media",
+    media: mediaIdentity(node, resolved),
+    ...(isImage ? {
+      source: {
+        kind: "attachment",
+        filename: resolved.filename,
+        ...(resolved.pageId ?? ctx.pageContext?.id
+          ? { pageId: resolved.pageId ?? ctx.pageContext?.id }
+          : {}),
+      } as const,
+    } : {}),
     ...(optionalStringAttr(node, "alt") !== undefined
       ? { alt: optionalStringAttr(node, "alt") }
       : {}),
     ...(width ? { width } : {}),
     ...(height ? { height } : {}),
     ...annotationFields(node.marks),
+    ...(mediaBorder(node.marks) ? { border: mediaBorder(node.marks) } : {}),
     ...(link ? { link } : {}),
   };
+}
+
+function mediaFallbackBlock(
+  node: AdfNode,
+  ctx: DecodeContext,
+  path: string,
+  resolved?: AdfResolvedMediaAttachment,
+): ExportBlock {
+  if (!resolved) addMediaNote(ctx, node, path);
+  const width = positiveDimension(node.attrs?.width);
+  const height = positiveDimension(node.attrs?.height);
+  const authoredLink = mediaLink(node.marks, ctx, path, mediaLabel(node));
+  const attachmentLink = resolvedAttachmentLink(resolved);
+  const link = authoredLink ?? attachmentLink;
+  return {
+    type: "mediaFallback",
+    label: resolved?.filename ?? mediaLabel(node),
+    media: mediaIdentity(node, resolved),
+    ...(optionalStringAttr(node, "alt") !== undefined
+      ? { alt: optionalStringAttr(node, "alt") }
+      : {}),
+    ...(width ? { width } : {}),
+    ...(height ? { height } : {}),
+    ...annotationFields(node.marks),
+    ...(mediaBorder(node.marks) ? { border: mediaBorder(node.marks) } : {}),
+    ...(link ? { link } : {}),
+  };
+}
+
+function mediaIdentity(
+  node: AdfNode,
+  resolved?: AdfResolvedMediaAttachment,
+): UnresolvedMediaIdentity {
+  return {
+    ...(optionalStringAttr(node, "type") !== undefined
+      ? { mediaType: optionalStringAttr(node, "type") }
+      : {}),
+    ...(optionalStringAttr(node, "id") !== undefined
+      ? { id: optionalStringAttr(node, "id") }
+      : {}),
+    ...(optionalStringAttr(node, "collection") !== undefined
+      ? { collection: optionalStringAttr(node, "collection") }
+      : {}),
+    ...(optionalStringAttr(node, "occurrenceKey") !== undefined
+      ? { occurrenceKey: optionalStringAttr(node, "occurrenceKey") }
+      : {}),
+    ...(optionalStringAttr(node, "localId") !== undefined
+      ? { localId: optionalStringAttr(node, "localId") }
+      : {}),
+    ...(optionalStringAttr(node, "url") !== undefined
+      ? { url: optionalStringAttr(node, "url") }
+      : {}),
+    ...(node.attrs?.data !== undefined ? { dataJson: stableJson(node.attrs.data) } : {}),
+    ...(resolved?.filename ? { filename: resolved.filename } : {}),
+    ...(resolved?.pageId ? { pageId: resolved.pageId } : {}),
+    ...(resolved?.mediaType ? { attachmentMediaType: resolved.mediaType } : {}),
+    ...(resolved?.webuiLink ? { webuiLink: resolved.webuiLink } : {}),
+    ...(resolved?.downloadLink ? { downloadLink: resolved.downloadLink } : {}),
+  };
+}
+
+function resolvedAttachmentLink(
+  resolved: AdfResolvedMediaAttachment | undefined,
+): ExportLink | undefined {
+  const href = resolved?.webuiLink ?? resolved?.downloadLink;
+  if (!href) return undefined;
+  const verdict = sanitizeLinkHref(href);
+  return verdict.safe ? { target: { kind: "external", href: verdict.href } } : undefined;
+}
+
+function decodeMediaPresentation(node: AdfNode): MediaPresentation {
+  const layout = stringAttr(node, "layout");
+  const width = node.attrs?.width;
+  const widthType = stringAttr(node, "widthType");
+  return {
+    layout:
+      layout === "wide" ||
+      layout === "full-width" ||
+      layout === "wrap-right" ||
+      layout === "wrap-left" ||
+      layout === "align-end" ||
+      layout === "align-start"
+        ? layout
+        : "center",
+    ...(typeof width === "number" && Number.isFinite(width) ? { width } : {}),
+    ...(widthType === "pixel" || widthType === "percentage" ? { widthType } : {}),
+    ...(optionalStringAttr(node, "localId") !== undefined
+      ? { localId: optionalStringAttr(node, "localId") }
+      : {}),
+  };
+}
+
+function mediaBorder(marks: readonly AdfMark[] | undefined): MediaBorder | undefined {
+  const mark = marks?.find((candidate) => candidate.type === "border");
+  const color = mark?.attrs?.color;
+  const size = mark?.attrs?.size;
+  return typeof color === "string" &&
+      /^#[0-9a-f]{6}(?:[0-9a-f]{2})?$/iu.test(color) &&
+      (size === 1 || size === 2 || size === 3)
+    ? { color: color.toUpperCase(), size }
+    : undefined;
 }
 
 function addMediaNote(ctx: DecodeContext, node: AdfNode, path: string): void {
@@ -1382,6 +1547,9 @@ function markHandledByNode(nodeType: string, markType: string): boolean {
     return nodeType === "media" ||
       nodeType === "mediaInline" ||
       nodeType === "mediaSingle";
+  }
+  if (markType === "border") {
+    return nodeType === "media" || nodeType === "mediaInline";
   }
   if (markType === "breakout") return nodeType === "layoutSection";
   return false;

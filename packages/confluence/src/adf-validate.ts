@@ -515,6 +515,95 @@ function validateKnownNodeShape(
   if (type === "inlineCard") validateInlineCardAttributes(attrs, path);
   if (type === "blockCard") validateBlockCardAttributes(attrs, path);
   if (type === "embedCard") validateEmbedCardAttributes(attrs, path);
+  if (type === "media" || type === "mediaInline") {
+    const mediaType = attrs?.type;
+    const allowedTypes =
+      type === "media"
+        ? new Set(["file", "link", "external"])
+        : new Set(["file", "link", "image"]);
+    if (typeof mediaType !== "string" || !allowedTypes.has(mediaType)) {
+      throw new AdfValidationError(
+        "invalid-attributes",
+        `ADF ${type} type is not part of the pinned schema.`,
+        `${path}.attrs.type`,
+      );
+    }
+    assertStringAttribute(attrs, "localId", path, false);
+    assertStringAttribute(attrs, "alt", path, false);
+    assertOptionalNumberAttribute(attrs, "width", path);
+    assertOptionalNumberAttribute(attrs, "height", path);
+    if (type === "media" && mediaType === "external") {
+      assertStringAttribute(attrs, "url", path);
+    } else {
+      assertStringAttribute(attrs, "id", path);
+      assertStringAttribute(attrs, "collection", path);
+      if ((attrs?.id as string).length === 0) {
+        throw new AdfValidationError(
+          "invalid-attributes",
+          `ADF ${type} id must be non-empty.`,
+          `${path}.attrs.id`,
+        );
+      }
+    }
+    assertStringAttribute(attrs, "occurrenceKey", path, false);
+    if (attrs?.occurrenceKey === "") {
+      throw new AdfValidationError(
+        "invalid-attributes",
+        `ADF ${type} occurrenceKey must be non-empty when present.`,
+        `${path}.attrs.occurrenceKey`,
+      );
+    }
+  }
+  if (type === "mediaSingle" && attrs !== undefined) {
+    const layout = attrs.layout;
+    if (
+      layout !== "wide" &&
+      layout !== "full-width" &&
+      layout !== "center" &&
+      layout !== "wrap-right" &&
+      layout !== "wrap-left" &&
+      layout !== "align-end" &&
+      layout !== "align-start"
+    ) {
+      throw new AdfValidationError(
+        "invalid-attributes",
+        "ADF mediaSingle layout is not part of the pinned schema.",
+        `${path}.attrs.layout`,
+      );
+    }
+    assertStringAttribute(attrs, "localId", path, false);
+    assertOptionalNumberAttribute(attrs, "width", path);
+    const widthType = attrs.widthType;
+    if (
+      widthType !== undefined &&
+      widthType !== "percentage" &&
+      widthType !== "pixel"
+    ) {
+      throw new AdfValidationError(
+        "invalid-attributes",
+        "ADF mediaSingle widthType must be percentage or pixel.",
+        `${path}.attrs.widthType`,
+      );
+    }
+    if (widthType === "pixel" && typeof attrs.width !== "number") {
+      throw new AdfValidationError(
+        "invalid-attributes",
+        "ADF pixel mediaSingle requires a numeric width.",
+        `${path}.attrs.width`,
+      );
+    }
+    if (
+      widthType !== "pixel" &&
+      typeof attrs.width === "number" &&
+      (attrs.width < 0 || attrs.width > 100)
+    ) {
+      throw new AdfValidationError(
+        "invalid-attributes",
+        "ADF percentage mediaSingle width must be from 0 through 100.",
+        `${path}.attrs.width`,
+      );
+    }
+  }
   if (type === "extension" || type === "inlineExtension" || type === "bodiedExtension") {
     assertStringAttribute(attrs, "extensionType", path);
     assertStringAttribute(attrs, "extensionKey", path);
@@ -674,6 +763,24 @@ function validateKnownMarkShape(
     assertOptionalNumberAttribute(attrs, "width", path);
   }
   if (type === "link") assertStringAttribute(attrs, "href", path);
+  if (type === "border") {
+    const size = attrs?.size;
+    const color = attrs?.color;
+    if (size !== 1 && size !== 2 && size !== 3) {
+      throw new AdfValidationError(
+        "invalid-attributes",
+        "ADF media border size must be 1, 2, or 3.",
+        `${path}.attrs.size`,
+      );
+    }
+    if (typeof color !== "string" || !/^#[0-9a-f]{6}(?:[0-9a-f]{2})?$/iu.test(color)) {
+      throw new AdfValidationError(
+        "invalid-attributes",
+        "ADF media border color must be a six- or eight-digit hex color.",
+        `${path}.attrs.color`,
+      );
+    }
+  }
   if (type === "textColor" || type === "backgroundColor") {
     assertStringAttribute(attrs, "color", path);
   }

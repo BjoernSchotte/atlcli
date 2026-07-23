@@ -971,6 +971,7 @@ describe("adfToBlocks", () => {
       label: "diagram.png",
       media: { mediaType: "file", id: "media-1", collection: "contentId-1" },
       alt: "diagram.png",
+      mediaPresentation: { layout: "center" },
       link: {
         target: { kind: "external", href: "https://example.invalid/media" },
         adfAttributes: {
@@ -1043,9 +1044,17 @@ describe("adfToBlocks", () => {
     expect(result.blocks).toEqual([{
       type: "image",
       source: { kind: "attachment", filename: "architecture.png", pageId: "page-2" },
+      media: {
+        mediaType: "file",
+        id: "media-1",
+        collection: "collection-1",
+        occurrenceKey: "occurrence-1",
+        filename: "architecture.png",
+      },
       alt: "Architecture",
       width: 640,
       height: 480,
+      mediaPresentation: { layout: "center" },
       link: {
         target: { kind: "external", href: "https://example.invalid/architecture" },
         adfAttributes: { title: "" },
@@ -1057,6 +1066,193 @@ describe("adfToBlocks", () => {
       },
     }]);
     expect(result.notes).toEqual([]);
+  });
+
+  it("retains complete media geometry, grouping, inline identity, borders, and attachment types", () => {
+    const result = adfToBlocks(doc([
+      {
+        type: "mediaSingle",
+        attrs: {
+          layout: "wrap-right",
+          width: 42,
+          widthType: "percentage",
+          localId: "single-1",
+        },
+        content: [{
+          type: "media",
+          attrs: {
+            type: "file",
+            id: "image-1",
+            collection: "content-1",
+            occurrenceKey: "occurrence-1",
+            alt: "Architecture",
+            width: 800,
+            height: 600,
+          },
+          marks: [{ type: "border", attrs: { color: "#091e4224", size: 2 } }],
+        }],
+      },
+      {
+        type: "mediaGroup",
+        content: [
+          {
+            type: "media",
+            attrs: {
+              type: "file",
+              id: "file-1",
+              collection: "content-1",
+              alt: "Runbook",
+            },
+          },
+          {
+            type: "media",
+            attrs: {
+              type: "file",
+              id: "missing-1",
+              collection: "content-1",
+              alt: "Missing",
+            },
+          },
+        ],
+      },
+      {
+        type: "mediaSingle",
+        attrs: { layout: "center" },
+        content: [{
+          type: "media",
+          attrs: {
+            type: "external",
+            url: "https://assets.example.invalid/image.png",
+            alt: "External",
+            width: 320,
+            height: 200,
+          },
+        }],
+      },
+      {
+        type: "paragraph",
+        content: [{
+          type: "mediaInline",
+          attrs: {
+            type: "image",
+            id: "inline-1",
+            collection: "content-1",
+            localId: "",
+            occurrenceKey: "inline-occurrence",
+            alt: "Inline architecture",
+            width: 24,
+            height: 16,
+            data: { zeta: 2, alpha: true },
+          },
+          marks: [
+            { type: "border", attrs: { color: "#0052CC", size: 1 } },
+            { type: "annotation", attrs: { id: "inline-comment", annotationType: "inlineComment" } },
+          ],
+        }],
+      },
+    ]), {
+      pageContext: { id: "page-1" },
+      resolveMediaAttachment: (reference) => {
+        if (reference.id === "image-1") {
+          return {
+            filename: "architecture.png",
+            pageId: "page-1",
+            mediaType: "image/png",
+          };
+        }
+        if (reference.id === "file-1") {
+          return {
+            filename: "runbook.pdf",
+            pageId: "page-1",
+            mediaType: "application/pdf",
+            webuiLink: "/wiki/attachments/runbook",
+            downloadLink: "/download/runbook",
+          };
+        }
+        if (reference.id === "inline-1") {
+          return {
+            filename: "inline.png",
+            pageId: "page-1",
+            mediaType: "image/png",
+          };
+        }
+        return undefined;
+      },
+    });
+
+    expect(result.blocks[0]).toMatchObject({
+      type: "image",
+      source: { kind: "attachment", filename: "architecture.png", pageId: "page-1" },
+      media: {
+        mediaType: "file",
+        id: "image-1",
+        collection: "content-1",
+        occurrenceKey: "occurrence-1",
+        filename: "architecture.png",
+        attachmentMediaType: "image/png",
+      },
+      mediaPresentation: {
+        layout: "wrap-right",
+        width: 42,
+        widthType: "percentage",
+        localId: "single-1",
+      },
+      border: { color: "#091E4224", size: 2 },
+    });
+    expect(result.blocks[1]).toMatchObject({
+      type: "mediaFallback",
+      label: "runbook.pdf",
+      media: {
+        filename: "runbook.pdf",
+        attachmentMediaType: "application/pdf",
+        webuiLink: "/wiki/attachments/runbook",
+        downloadLink: "/download/runbook",
+      },
+      mediaGroup: { index: 0, size: 2 },
+      link: { target: { kind: "external", href: "/wiki/attachments/runbook" } },
+    });
+    expect(result.blocks[2]).toMatchObject({
+      type: "mediaFallback",
+      label: "Missing",
+      mediaGroup: { index: 1, size: 2 },
+    });
+    expect(result.blocks[3]).toMatchObject({
+      type: "image",
+      source: { kind: "external", url: "https://assets.example.invalid/image.png" },
+      media: {
+        mediaType: "external",
+        url: "https://assets.example.invalid/image.png",
+      },
+      mediaPresentation: { layout: "center" },
+    });
+    expect(result.blocks[4]).toEqual({
+      type: "paragraph",
+      content: [{
+        type: "media",
+        media: {
+          mediaType: "image",
+          id: "inline-1",
+          collection: "content-1",
+          occurrenceKey: "inline-occurrence",
+          localId: "",
+          dataJson: '{"alpha":true,"zeta":2}',
+          filename: "inline.png",
+          pageId: "page-1",
+          attachmentMediaType: "image/png",
+        },
+        source: {
+          kind: "attachment",
+          filename: "inline.png",
+          pageId: "page-1",
+        },
+        alt: "Inline architecture",
+        width: 24,
+        height: 16,
+        annotations: [{ id: "inline-comment", annotationType: "inlineComment" }],
+        border: { color: "#0052CC", size: 1 },
+      }],
+    });
+    expect(result.notes.map((note) => note.code)).toEqual(["adf-media-unresolved"]);
   });
 
   it("preserves annotation and fragment identities without inventing target semantics", () => {
@@ -1099,12 +1295,12 @@ describe("adfToBlocks", () => {
       },
       {
         type: "media",
-        attrs: { type: "file", id: "resolved-media", alt: "resolved" },
+        attrs: { type: "file", id: "resolved-media", collection: "content-1", alt: "resolved" },
         marks: [annotation("media-comment")],
       },
       {
         type: "media",
-        attrs: { type: "file", id: "unresolved-media", alt: "unresolved" },
+        attrs: { type: "file", id: "unresolved-media", collection: "content-1", alt: "unresolved" },
         marks: [annotation("fallback-comment")],
       },
     ]), {
@@ -1150,13 +1346,19 @@ describe("adfToBlocks", () => {
       {
         type: "image",
         source: { kind: "attachment", filename: "resolved.png" },
+        media: {
+          mediaType: "file",
+          id: "resolved-media",
+          collection: "content-1",
+          filename: "resolved.png",
+        },
         alt: "resolved",
         annotations: [{ id: "media-comment", annotationType: "inlineComment" }],
       },
       {
         type: "mediaFallback",
         label: "unresolved",
-        media: { mediaType: "file", id: "unresolved-media" },
+        media: { mediaType: "file", id: "unresolved-media", collection: "content-1" },
         alt: "unresolved",
         annotations: [{ id: "fallback-comment", annotationType: "inlineComment" }],
       },
@@ -1224,7 +1426,10 @@ describe("adfToBlocks", () => {
     const result = adfToBlocks(doc([{
       type: "bodiedExtension",
       attrs: { extensionType: "x", extensionKey: "body-notes" },
-      content: [{ type: "media", attrs: { type: "file", id: "unresolved" } }],
+      content: [{
+        type: "media",
+        attrs: { type: "file", id: "unresolved", collection: "content-1" },
+      }],
     }]));
     expect(result.notes.map((note) => note.code)).toEqual(["adf-node-degraded"]);
     expect(result.blocks[0]).toMatchObject({

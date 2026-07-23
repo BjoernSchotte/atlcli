@@ -12,6 +12,8 @@ import {
   UNSAFE_LINK_NOTE_CODE,
   computeHeadingOffset,
   formatAdfDateTimestamp,
+  inlineMediaDisplayText,
+  mediaFallbackDisplayText,
   isSafeLinkScheme,
   mentionDisplayText,
   smartCardDisplayText,
@@ -54,6 +56,8 @@ function inlinePlainText(nodes: InlineNode[]): string {
           return statusDisplayText(node);
         case "smartCard":
           return smartCardDisplayText(node.card);
+        case "media":
+          return inlineMediaDisplayText(node);
         case "placeholder":
           return "";
         case "lineBreak":
@@ -335,6 +339,14 @@ type RenderContainer = "body" | "tableCell" | "calloutCell";
 
 interface RenderContext {
   tableDensity: TableDensity;
+  /**
+   * A wrap-left/right media block may enter a serializer-owned side-by-side
+   * grid with its following paragraph. Typst has no native contour wrapping;
+   * the bounded grid keeps source order and approximates the authored intent.
+   */
+  mediaInWrapGrid?: boolean;
+  /** Override authored media width after the grid has allocated its column. */
+  mediaWidthOverride?: string;
   inTable?: boolean;
   availableWidth?: string;
   coloredCell?: {
@@ -714,6 +726,21 @@ function serializeInline(
         }
         case "smartCard":
           return serializeSmartCardInline(node.card, labels);
+        case "media": {
+          const label = literalText(`[${inlineMediaDisplayText(node)}]`);
+          const color = node.border?.color.slice(0, 7) ?? "#DFE1E6";
+          const size = node.border?.size ?? 1;
+          const chip =
+            `#box(stroke: ${size}pt + rgb(${typstString(color)}), inset: (x: 3pt, y: 1pt), radius: 2pt)` +
+            `[${label}]`;
+          if (!node.link) return chip;
+          const href = resolveLink(node.link.target, labels);
+          return href
+            ? href.startsWith("<")
+              ? `#link(${href})[${chip}]`
+              : `#link(${typstString(href)})[${chip}]`
+            : chip;
+        }
         case "placeholder":
           return "";
         case "link": {
@@ -974,9 +1001,57 @@ function serializeBlocks(
   context: RenderContext = rootContext(writer.design, writer.locale),
   startIndex = 0,
 ): string {
-  return blocks
-    .map((block, index) => serializeBlock(block, writer, `${parentPath}[${index + startIndex}]`, context))
-    .join("\n");
+  const serialized: string[] = [];
+  for (let index = 0; index < blocks.length; index += 1) {
+    const block = blocks[index]!;
+    const path = `${parentPath}[${index + startIndex}]`;
+    const presentation =
+      block.type === "image" || block.type === "mediaFallback"
+        ? block.mediaPresentation
+        : undefined;
+    const layout = presentation?.layout;
+    const following = blocks[index + 1];
+    if (
+      (block.type === "image" || block.type === "mediaFallback") &&
+      (layout === "wrap-left" || layout === "wrap-right") &&
+      following?.type === "paragraph" &&
+      !context.inTable
+    ) {
+      const mediaTrack =
+        presentation?.widthType === "pixel" && presentation.width !== undefined
+          ? `${presentation.width * 0.75}pt`
+          : presentation?.width !== undefined
+            ? `${presentation.width}%`
+            : "40%";
+      const boundedContext = {
+        ...context,
+        mediaInWrapGrid: true,
+        mediaWidthOverride: "100%",
+      };
+      const media = serializeBlock(block, writer, path, boundedContext);
+      const paragraph = serializeBlock(
+        following,
+        writer,
+        `${parentPath}[${index + 1 + startIndex}]`,
+        boundedContext,
+      );
+      const cells =
+        layout === "wrap-left"
+          ? `[${media}], [${paragraph}]`
+          : `[${paragraph}], [${media}]`;
+      const columns =
+        layout === "wrap-left"
+          ? `(${mediaTrack}, 1fr)`
+          : `(1fr, ${mediaTrack})`;
+      serialized.push(
+        `#grid(columns: ${columns}, column-gutter: 8pt, ${cells})`,
+      );
+      index += 1;
+      continue;
+    }
+    serialized.push(serializeBlock(block, writer, path, context));
+  }
+  return serialized.join("\n");
 }
 
 function writeMapped(block: PreparedPdfBlock, writer: Writer, path: string, value: string, summary?: string): string {
@@ -1155,14 +1230,18 @@ function serializeBlock(
             message: `${block.fallbackLabel} uses a technical filename fallback for alternative text.`,
           });
         }
-        const img = `image(${typstString(block.assetPath)}, alt: ${typstString(block.alt ?? block.fallbackLabel)})`;
+        const width = mediaImageWidth(block, context);
+        const img =
+          `image(${typstString(block.assetPath)}, alt: ${typstString(block.alt ?? block.fallbackLabel)}` +
+          `${width ? `, width: ${width}` : ""})`;
         value = block.caption
           ? `#figure(${img}, ${captionFigureArgs(block.caption, writer)})`
           : `#figure(${img})`;
       }
       break;
     case "mediaFallback": {
-      const fallbackExpr = `emph[${literalText(`[Media unavailable: ${block.label}]`)}]`;
+      const fallbackExpr =
+        `emph[${literalText(`[${mediaFallbackDisplayText(block)}]`)}]`;
       value = block.caption
         ? `#figure(${fallbackExpr}, ${captionFigureArgs(block.caption, writer)})`
         : `#par[#${fallbackExpr}]`;
@@ -1501,6 +1580,9 @@ function serializeBlock(
       return exhaustive;
     }
   }
+  if (block.type === "image" || block.type === "mediaFallback") {
+    value = mediaFrame(value, block, context);
+  }
   if ((block.type === "image" || block.type === "mediaFallback") && block.link) {
     const href = resolveLink(block.link.target, writer.labels);
     if (href) {
@@ -1522,6 +1604,53 @@ function serializeBlock(
     }
   }
   return writeMapped(block, writer, path, value, summary);
+}
+
+function mediaImageWidth(
+  block: Extract<PreparedPdfBlock, { type: "image" }>,
+  context: RenderContext,
+): string | undefined {
+  if (context.mediaWidthOverride) return context.mediaWidthOverride;
+  const presentation = block.mediaPresentation;
+  if (presentation?.layout === "wide" || presentation?.layout === "full-width") {
+    return "100%";
+  }
+  if (presentation?.width !== undefined) {
+    return presentation.widthType === "pixel"
+      ? `${presentation.width * 0.75}pt`
+      : `${presentation.width}%`;
+  }
+  return block.width !== undefined ? `${block.width * 0.75}pt` : undefined;
+}
+
+function mediaFrame(
+  value: string,
+  block: Extract<PreparedPdfBlock, { type: "image" | "mediaFallback" }>,
+  context: RenderContext,
+): string {
+  let framed = value;
+  if (block.border || block.mediaGroup) {
+    const color = block.border?.color.slice(0, 7) ?? "#DFE1E6";
+    const size = block.border?.size ?? 0.5;
+    framed =
+      `#block(stroke: ${size}pt + rgb(${typstString(color)}), inset: 3pt` +
+      `${block.mediaGroup ? ', fill: rgb("#F7F8F9")' : ""})` +
+      `[${framed}]`;
+  }
+  const layout = block.mediaPresentation?.layout;
+  if (layout === "wrap-left" || layout === "wrap-right") {
+    const side = layout === "wrap-left" ? "left" : "right";
+    return context.mediaInWrapGrid ? framed : `#align(${side})[${framed}]`;
+  }
+  const alignment =
+    layout === "align-start"
+      ? "left"
+      : layout === "align-end"
+        ? "right"
+        : layout
+          ? "center"
+          : undefined;
+  return alignment ? `#align(${alignment})[${framed}]` : framed;
 }
 
 function typstDate(date: Date): string {

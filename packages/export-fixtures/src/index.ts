@@ -418,6 +418,12 @@ export const ADF_CONFORMANCE_SOURCE = JSON.stringify({
     },
     {
       type: "mediaSingle",
+      attrs: {
+        layout: "wrap-left",
+        width: 40,
+        widthType: "percentage",
+        localId: "media-single-local",
+      },
       marks: [{
         type: "link",
         attrs: {
@@ -429,11 +435,78 @@ export const ADF_CONFORMANCE_SOURCE = JSON.stringify({
         },
       }],
       content: [
-        { type: "media", attrs: { type: "file", id: "unresolved-media", alt: "Visible media fallback" } },
+        {
+          type: "media",
+          attrs: {
+            type: "file",
+            id: "unresolved-media",
+            collection: "contentId-1",
+            alt: "Visible media fallback",
+            width: 640,
+            height: 480,
+          },
+          marks: [{
+            type: "border",
+            attrs: { color: "#091e4224", size: 2 },
+          }],
+        },
         {
           type: "caption",
           attrs: { localId: "media-caption-local" },
           content: [{ type: "text", text: "Media caption" }],
+        },
+      ],
+    },
+    {
+      type: "paragraph",
+      content: [{
+        type: "text",
+        text: "This paragraph demonstrates bounded text wrapping beside authored media.",
+      }],
+    },
+    {
+      type: "mediaGroup",
+      content: [
+        {
+          type: "media",
+          attrs: {
+            type: "file",
+            id: "group-media-1",
+            collection: "contentId-1",
+            alt: "Grouped attachment one",
+          },
+        },
+        {
+          type: "media",
+          attrs: {
+            type: "link",
+            id: "group-media-2",
+            collection: "contentId-1",
+            alt: "Grouped attachment two",
+          },
+        },
+      ],
+    },
+    {
+      type: "paragraph",
+      content: [
+        { type: "text", text: "Inline media: " },
+        {
+          type: "mediaInline",
+          attrs: {
+            type: "image",
+            id: "inline-media-1",
+            collection: "contentId-1",
+            localId: "inline-media-local",
+            alt: "Inline media chip",
+            width: 24,
+            height: 16,
+            data: { source: "fixture" },
+          },
+          marks: [{
+            type: "border",
+            attrs: { color: "#0052CC", size: 1 },
+          }],
         },
       ],
     },

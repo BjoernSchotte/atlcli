@@ -105,7 +105,7 @@ update both its matrix rows and the checklist below in the same commit:
 - `[ ]` plus **Partial** is permitted only when the remaining sub-gap names its
   external contract or parallel-work dependency.
 
-Current matrix orientation: **63 of 84 rows closed; 21 rows open.** This count
+Current matrix orientation: **67 of 84 rows closed; 17 rows open.** This count
 must change in the same commit as any row checkbox.
 `scripts/adf-gap-register.test.ts` enforces the checkbox shape, reconciles
 these counters with every progress-table row, and rejects an unchecked
@@ -270,7 +270,7 @@ Evidence: [E10], [E11], [E12], [E27].
 | [x] | `panel` | ADF `info`, `note`, `warning`, `tip`, `success`, and `error` remain distinct callout kinds; Storage callouts use the same neutral model. Custom panels additionally retain exact optional local identity, emoji short name, custom-emoji identity, visible icon text, and a canonical portable color (including normalized short hex); non-portable source colors remain exact. | Native bounded projection | Native bounded projection | Closed for the pinned schema. Both targets use the authored portable color as an accent with a contrast-safe tinted background and prefer visible icon text over a short name. A non-portable color or ID-only custom emoji remains visible with source metadata plus a typed degradation note rather than silently claiming native rendering. |
 | [x] | `expand` | ADF and Storage become a recursive `expand` block retaining exact optional title/local identity; Storage additionally retains macro identity. | Native static projection | Native static projection | Closed for static export: both targets render the full body visibly open and report that interaction/collapsed state is inapplicable. Storage and ADF are differentially tested. |
 | [x] | `nestedExpand` | A distinct nested disclosure survives with title, local identity, body ownership, and nesting context. Storage expands inside table cells or another expand use the same neutral shape. | Native static projection | Native static projection | Closed for the pinned static-export contract; the editor's interactive toggle is intentionally not claimed. |
-| [x] | `caption` | A pinned-schema ADF caption's direct inline children and exact optional local identity remain attached to its `mediaSingle`. Scroll `scroll-title` remains a separate Storage adapter. | Native | Native | Closed for native caption association and numbering. Unresolved media renders as a visible numbered fallback instead of detaching the caption; broader media layout/crop/group semantics remain separate gaps. |
+| [x] | `caption` | A pinned-schema ADF caption's direct inline children and exact optional local identity remain attached to its `mediaSingle`. Scroll `scroll-title` remains a separate Storage adapter. | Native | Native | Closed for native caption association and numbering. Unresolved media renders as a visible numbered fallback instead of detaching the caption; media layout/group semantics are covered by their own checked rows. |
 
 The layout renderers intentionally use target-owned static geometry. They do
 not claim browser-responsive behavior, and `wide`/`full-width` breakout cannot
@@ -311,14 +311,14 @@ Evidence: [E5], [E7], [E8], [E15], [E16], [E38].
 
 | Done | ADF node | Current source mapping | DOCX | PDF | Primary gap |
 |---|---|---|---|---|---|
-| [ ] | `media` | Storage `<ac:image>` maps to a typed image. ADF media resolves only through exact host-proven file-ID correlation; otherwise a typed visible fallback retains media type/id/collection/occurrence/local identity, alt, dimensions, annotations, any caption, and clickable link marks without attempting a fetch. | Open/Conditional | Open/Conditional | **Open:** add general file rendering, crop, border marks, and non-image media output. Link marks are complete independently. |
-| [ ] | `mediaGroup` | Visible children survive, but grouping identity and presentation do not. | Open/Fallback | Open/Fallback | **Open:** preserve attachment/gallery grouping and define a static file-list/gallery representation. |
-| [ ] | `mediaSingle` | Image reference, alt, numeric width/height, native caption association, and container link marks reach `ExportBlock`; caption inline content and local identity survive. | Open | Open | **Open:** retain container layout, percent/pixel width type and crop; make both renderers consume the complete geometry contract. |
-| [ ] | `mediaInline` | Inline image is either promoted to a block or replaced by alt text with a note. | Open/Fallback | Open/Fallback | **Open:** add a true inline-media model and baseline/alignment/size rules. |
+| [x] | `media` | The exact pinned file/link/external union, Media Services identity, alt/dimensions, annotations, border/link marks, and correlated attachment metadata survive. Official v2 MIME/UI/download metadata distinguishes images from files; images enter the bounded asset pipeline, non-images become named clickable static attachment cards, and unresolved identities remain visible without guessing or fetching. | Native/Conditional | Native/Conditional | Closed for the complete pinned node. Conditional byte availability is an asset-resolution outcome, not lost ADF syntax; the pinned schema contains no crop attribute. |
+| [x] | `mediaGroup` | Every child retains its exact group index/size boundary. Both targets render a deterministic shaded attachment/gallery cluster while preserving each image, file card, link, border, and diagnostic independently. | Native | Native | Closed with multi-item decoder, target, packed-browser, and visual-fixture coverage. |
+| [x] | `mediaSingle` | Layout, exact optional local identity, percent/pixel width and width type, child dimensions, caption, link, and border survive. DOCX uses native inline/anchored drawings with square left/right text wrapping. Typst has no native contour/text-wrap layout: PDF therefore keeps source order and projects a wrap layout plus its directly following paragraph into an authored-width side-by-side grid; without a following paragraph it preserves the requested side alignment. Wide/full-width use the bounded target content width. | Native | Approximation | Closed for every pinned layout/geometry attribute and for the strongest deterministic static PDF projection the selected Typst engine supports. A real render proves that PDF media never floats ahead of earlier headings/content. Native PDF contour wrapping is an explicit renderer dependency, not locally omitted ADF decoding. The pinned schema and official node contract expose no crop attribute. |
+| [ ] | `mediaInline` | A true typed inline-media node now retains file/link/image type, Media Services and local identity, opaque data, alt, dimensions, annotations, border, safe link, and correlated image source. DOCX/PDF render deterministic bordered inline chips without changing paragraph placement. | Open | Open | **Open:** embed correlated image bytes as an actual baseline-aligned inline drawing in both targets; file/link chips are complete, but an image-capable host should not stop at the chip approximation. |
 
 Image byte support, SVG rasterization, external-asset policy, and missing-alt reporting exist, but those operational strengths do not fill the missing ADF media semantics.
 
-Evidence: [E2], [E7], [E8], [E17].
+Evidence: [E2], [E7], [E8], [E17], [E39].
 
 ### 6.8 Extensions, macros, and synced content
 
@@ -366,7 +366,7 @@ This covers all 17 marks in the pinned schema.
 | [x] | `alignment` | ADF `center`/`end` becomes target-neutral block presentation on paragraphs/headings. | Native | Native | DOCX emits logical `w:jc`; PDF emits Typst `align`. |
 | [x] | `indentation` | ADF levels 1–6 become bounded target-neutral block indentation. | Native | Native | DOCX and PDF use target-owned, deterministic per-level steps distinct from list nesting. |
 | [ ] | `breakout` | `wide`/`full-width` mode and optional numeric width are validated and retained on layout sections. Other schema-valid block placements still degrade visibly. | Open | Open | **Open:** generalize the retained mark to code/expand/sync blocks and define the target-owned page/section widening policy. |
-| [ ] | `border` | The validator recognizes the pinned mark, but no neutral presentation model exists. | Open/Missing | Open/Missing | **Open:** preserve media border color/size and render it where the target supports it. |
+| [x] | `border` | Exact pinned six/eight-digit color and size 1–3 are validated and retained on block/inline media. DOCX emits run/paragraph borders and PDF emits target-native strokes; alpha-bearing source colors retain their exact neutral value and use their portable RGB component for print. | Native | Native | Closed with invalid-shape, block, inline, group, DOCX, PDF, and packed-browser fixtures. |
 | [ ] | `dataConsumer` | The validator recognizes the pinned mark, but no neutral provenance model exists. | Open/Missing | Open/Missing | **Open:** preserve structured data provenance or explicitly report it as non-visual metadata. |
 | [ ] | `fragment` | Required non-empty `localId` and exact optional `name` are retained on inline/block extensions and tables. | Open | Open | **Open:** define documented fragment semantics and a collision-safe bookmark/link projection instead of leaving identity non-visual. |
 
@@ -395,7 +395,7 @@ Official Confluence documentation describes these input shortcuts. They are edit
 | [x] | `:)` auto-conversion | Emoji/editor transformation | Correctly consumes the materialized emoji/text result and performs no exporter-side editor emulation. | Closed exporter policy; the live corpus records enabled/disabled editor outcomes without reinterpreting raw text. |
 | [x] | Raw `:shortname:` text | Not a stable documented ADF contract | Remains literal unless Confluence converted it first. | Closed invariant: never reinterpret ordinary text in the exporter. |
 | [x] | `@ ` | `mention` | Native typed mention with source or host-resolved visible name. | Closed for the pinned ADF contract: identity/presentation metadata survives, unresolved/deactivated output is privacy-safe, and no unsupported profile URL is invented. |
-| [ ] | `!` | media picker | Selected image/media paths work; the complete media family does not. | **Open:** image/file/video/audio, inline/block, dimensions, alt, layout, crop, border, and link. |
+| [ ] | `!` | media picker | Block image/file/link/external media, static audio/video attachment cards, groups, authored dimensions/layout, alt text, captions, borders, and links are complete. | **Open:** a correlated image stored as `mediaInline` still renders as a typed inline chip instead of an actual baseline-aligned drawing in DOCX/PDF. This materialized editor outcome stays open with the `mediaInline` row. |
 | [ ] | `{` | macro autocomplete | `extension*` or legacy macro projection | **Open/conditional:** core, Forge `adfExport`, Connect/migrated, unknown, and offline behavior. |
 | [x] | `//` | `date` | Native localized static date chip. | UTC calendar semantics, locale formatting, invalid-value reporting, and deterministic browser/render fixtures are complete. |
 | [x] | `/...` | Selected node/macro | Determined by the resulting typed ADF node, never by reparsing slash text. | Closed classification policy; the selected result remains tracked in its own checked row. |
@@ -532,9 +532,11 @@ Required acceptance contract:
   data/datasource payload, safe target, local identity, layout, and authored
   geometry survives. Both targets render deterministic static cards; supported
   datasource providers additionally reuse the existing live macro chain.
-- [ ] **Open — media family.** Selected image/media paths exist; group,
-  inline, file/video/audio, crop, and border coverage remains. Media link marks
-  are complete.
+- [ ] **Open — media family.** Pinned block media, attachment/file cards,
+  external images, grouping, `mediaSingle` geometry/wrapping, captions, links,
+  and borders are complete. `mediaInline` retains its full typed contract and
+  renders a bordered chip, but correlated inline image bytes still need actual
+  baseline-aligned drawing/image output in both targets.
 - [x] **Page/attachment/media hyperlinks.** Exact safe href fallbacks,
   in-scope internal anchors, pinned ADF provenance, DOCX ScreenTips, and both
   targets' clickable text/image/fallback/card output are complete.
@@ -572,7 +574,7 @@ Required acceptance contract:
   complete glyph coverage remain.
 - [x] Alignment, indentation, and the schema-defined small paragraph font size.
 - [x] Date/status/placeholder semantics and target projections.
-- [ ] Link/card identity.
+- [x] Link/card identity and complete pinned Smart Card projection.
 - [ ] **Open:** annotation/fragment identity is retained; native target
   semantics and comment-resource correlation remain.
 
@@ -592,7 +594,9 @@ Required acceptance contract:
 
 ### Phase 3 - Media and extensions
 
-- [ ] Full media family and static embed fallbacks.
+- [ ] Full media family: pinned block media/group/single and static
+  image/file/audio/video/link/external fallbacks are complete; native
+  correlated-image output for `mediaInline` remains.
 - [ ] **Open:** ADF-native extension forms are decoded; Forge `adfExport`
   ingestion remains.
 - [ ] Synced content policy.
@@ -669,10 +673,11 @@ Closed gates:
 Focused missing gates:
 
 - [x] Date localization and deterministic time-zone policy.
-- [ ] Generic inline/block/embed card metadata tests.
+- [x] Generic inline/block/embed card metadata tests.
 - [x] Layout width/column tests for pinned ADF and documented Storage shapes.
 - [ ] Breakout rendering beyond the page-bounded layout-section approximation.
-- [ ] Media group/inline/file/video/audio completeness tests.
+- [ ] Media completeness tests: block/group/file/link/external/border/layout
+  coverage is complete; actual inline-image byte embedding remains open.
 - [x] Native ADF caption plus ADF/Storage expand/nested-expand validation,
   decoding, recursive traversal, both-target, browser-parity, and rendered
   golden tests.
@@ -724,6 +729,13 @@ Accessed 2026-07-22 and 2026-07-23:
 32. [ADF mention node](https://developer.atlassian.com/cloud/jira/platform/apis/document/nodes/mention/)
 33. [ECMA-376 WordprocessingML embedded fonts](https://c-rex.net/samples/ooxml/e1/Part4/OOXML_P4_DOCX_Font_topic_ID0ERNCU.html)
 34. [Microsoft Open Specifications: embedded font part](https://learn.microsoft.com/en-us/openspecs/office_standards/ms-oe376/1663dabc-5d98-463f-889e-bcd9b77c3d34)
+35. [Confluence REST v2 Attachment API](https://developer.atlassian.com/cloud/confluence/rest/v2/api-group-attachment/)
+36. [ADF media node](https://developer.atlassian.com/cloud/jira/platform/apis/document/nodes/media/)
+37. [ADF mediaSingle node](https://developer.atlassian.com/cloud/jira/platform/apis/document/nodes/mediaSingle/)
+38. [ADF mediaGroup node](https://developer.atlassian.com/cloud/jira/platform/apis/document/nodes/mediaGroup/)
+39. [ADF mediaInline node](https://developer.atlassian.com/cloud/jira/platform/apis/document/nodes/mediaInline/)
+40. [ADF border mark](https://developer.atlassian.com/cloud/jira/platform/apis/document/marks/border/)
+41. [Typst `place` layout contract](https://typst.app/docs/reference/layout/place/)
 
 ## 15. Repository evidence index
 
@@ -765,6 +777,7 @@ Accessed 2026-07-22 and 2026-07-23:
 - **[E36] Portable inline/code-block font embedding across DOCX hosts:** `packages/docx/src/font-embedding.ts`, `packages/docx/src/font-embedding.test.ts`, `packages/docx/src/node-code-font.ts`, `packages/docx/src/export.ts`, `packages/docx/src/export.test.ts`, `packages/docx/src/golden.test.ts`, `apps/cli/src/commands/export-code-font.ts`, `apps/cli/src/commands/export-code-font-build-modes.test.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `apps/browser-export-harness/tests/exports.e2e.ts`, `scripts/adf-rendered-goldens.ts`, `scripts/adf-rendered-goldens.test.ts`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
 - **[E37] Complete pinned ADF link-mark semantics:** `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/adf-to-blocks.test.ts`, `packages/confluence/src/compose-document.ts`, `packages/confluence/src/compose-document.test.ts`, `packages/docx/src/ooxml.ts`, `packages/docx/src/serialize.ts`, `packages/docx/src/serialize.test.ts`, `packages/pdf/src/prepare.ts`, `packages/pdf/src/serialize.ts`, `packages/pdf/src/serialize.test.ts`, `packages/export-fixtures/src/index.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
 - **[E38] Complete pinned Smart Card semantics and static/live projection:** `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/adf-validate.ts`, `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/adf-validate.test.ts`, `packages/confluence/src/adf-to-blocks.test.ts`, `packages/confluence/src/compose-document.ts`, `packages/confluence/src/compose-document.test.ts`, `packages/confluence/src/datasource.ts`, `packages/docx/src/serialize.ts`, `packages/docx/src/serialize.test.ts`, `packages/pdf/src/prepare.ts`, `packages/pdf/src/serialize.ts`, `packages/pdf/src/serialize.test.ts`, `packages/export-fixtures/src/index.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
+- **[E39] Complete pinned block-media/group/single/border semantics and typed inline-media boundary:** `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/adf-validate.ts`, `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/client.ts`, `packages/confluence/src/adf-validate.test.ts`, `packages/confluence/src/adf-to-blocks.test.ts`, `packages/confluence/src/client-adf.test.ts`, `packages/confluence/src/compose-document.ts`, `packages/docx/src/image.ts`, `packages/docx/src/export.ts`, `packages/docx/src/serialize.ts`, `packages/docx/src/image.test.ts`, `packages/docx/src/export.test.ts`, `packages/docx/src/serialize.test.ts`, `packages/pdf/src/prepare.ts`, `packages/pdf/src/serialize.ts`, `packages/pdf/src/serialize.test.ts`, `packages/export-fixtures/src/index.ts`, `packages/export-fixtures/src/adf-fixtures.test.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
 
 ## 16. Review questions
 

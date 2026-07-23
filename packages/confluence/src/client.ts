@@ -2226,7 +2226,32 @@ export class ConfluenceClient {
         const filename = item.title.trim();
         if (!fileId || !filename || seenFileIds.has(fileId)) continue;
         seenFileIds.add(fileId);
-        attachments.push({ fileId, filename, pageId });
+        const webuiLink =
+          typeof item.webuiLink === "string"
+            ? item.webuiLink
+            : typeof item._links?.webui === "string"
+              ? item._links.webui
+              : undefined;
+        const downloadLink =
+          typeof item.downloadLink === "string"
+            ? item.downloadLink
+            : typeof item._links?.download === "string"
+              ? item._links.download
+              : undefined;
+        attachments.push({
+          fileId,
+          filename,
+          pageId,
+          ...(typeof item.mediaType === "string" && item.mediaType.trim()
+            ? { mediaType: item.mediaType.trim() }
+            : {}),
+          ...(webuiLink?.trim()
+            ? { webuiLink: webuiLink.trim() }
+            : {}),
+          ...(downloadLink?.trim()
+            ? { downloadLink: downloadLink.trim() }
+            : {}),
+        });
       }
 
       const next = extractCursor(data._links?.next, this.confluenceBaseUrl);

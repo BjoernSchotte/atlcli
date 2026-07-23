@@ -1496,6 +1496,58 @@ describe("serializeBlocks — C3 captions", () => {
     expect(notes).toEqual([]);
   });
 
+  it("renders ADF media geometry, borders, groups, inline chips, and typed files", async () => {
+    const { xml, notes } = await serializeBlocks([
+      {
+        type: "paragraph",
+        content: [{
+          type: "media",
+          media: {
+            mediaType: "image",
+            id: "inline-1",
+            filename: "inline.png",
+          },
+          alt: "Inline architecture",
+          border: { color: "#0052CC", size: 1 },
+          link: { target: { kind: "external", href: "https://example.invalid/inline" } },
+        }],
+      },
+      {
+        type: "image",
+        source: { kind: "attachment", filename: "architecture.png" },
+        mediaPresentation: {
+          layout: "wrap-right",
+          width: 40,
+          widthType: "percentage",
+        },
+        mediaGroup: { index: 0, size: 2 },
+        border: { color: "#091E4224", size: 2 },
+      },
+      {
+        type: "mediaFallback",
+        label: "runbook.pdf",
+        media: {
+          mediaType: "file",
+          filename: "runbook.pdf",
+          attachmentMediaType: "application/pdf",
+        },
+        mediaGroup: { index: 1, size: 2 },
+      },
+    ], {
+      styleNames: noStyles,
+      images: { embed: async () => ({ ok: true, xml: "<w:p>IMG</w:p>" }) },
+    });
+
+    expect(xml).toContain("[Inline architecture]");
+    expect(xml).toContain('w:color="0052CC"');
+    expect(xml).toContain('HYPERLINK "https://example.invalid/inline"');
+    expect(xml).toContain('<w:jc w:val="right"/>');
+    expect(xml).toContain('w:color="091E42"');
+    expect(xml).toContain('w:fill="F7F8F9"');
+    expect(xml).toContain("[Attachment: runbook.pdf (application/pdf)]");
+    expect(notes).toEqual([]);
+  });
+
   // -------------------------------------------------------------------------
   // Caption ordinals — the SEQ field's CACHED RESULT
   //

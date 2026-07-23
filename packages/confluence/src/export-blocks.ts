@@ -198,6 +198,18 @@ export type InlineNode =
    */
   | { type: "status"; text: string; color: string; localId?: string; style?: string }
   | { type: "smartCard"; card: SmartCardSemantics }
+  | {
+      type: "media";
+      media: UnresolvedMediaIdentity;
+      /** Correlated image source. Non-image files deliberately omit it. */
+      source?: ImageSource;
+      alt?: string;
+      width?: number;
+      height?: number;
+      border?: MediaBorder;
+      annotations?: AdfAnnotationIdentity[];
+      link?: ExportLink;
+    }
   /**
    * Template instruction text. Confluence hides placeholders in published
    * view; exporters retain the identity but deliberately render no visible
@@ -418,6 +430,79 @@ export interface UnresolvedMediaIdentity {
   collection?: string;
   occurrenceKey?: string;
   localId?: string;
+  /** Exact external-media URL from ADF, retained independently from live-link policy. */
+  url?: string;
+  /** Stable JSON serialization of the schema-permitted opaque `mediaInline.data` payload. */
+  dataJson?: string;
+  /** Host-proven attachment filename for a correlated Media Services file ID. */
+  filename?: string;
+  /** Page that owns the correlated attachment. */
+  pageId?: string;
+  /** MIME type returned by the official Confluence v2 attachment resource. */
+  attachmentMediaType?: string;
+  /** Exact safe attachment UI/download targets returned by Confluence. */
+  webuiLink?: string;
+  downloadLink?: string;
+}
+
+/** Static border authored on an ADF `media` or `mediaInline` node. */
+export interface MediaBorder {
+  /** Canonical source color. Eight-digit ADF colors retain their alpha channel. */
+  color: string;
+  size: 1 | 2 | 3;
+}
+
+export type MediaLayout =
+  | "wide"
+  | "full-width"
+  | "center"
+  | "wrap-right"
+  | "wrap-left"
+  | "align-end"
+  | "align-start";
+
+/**
+ * Presentation owned by an ADF `mediaSingle` container. Source dimensions on
+ * the child media remain separate so renderers can apply the container width
+ * without destroying the media's intrinsic geometry.
+ */
+export interface MediaPresentation {
+  layout: MediaLayout;
+  width?: number;
+  widthType?: "percentage" | "pixel";
+  localId?: string;
+}
+
+/** Position of one item inside an ADF `mediaGroup` attachment/gallery boundary. */
+export interface MediaGroupPosition {
+  index: number;
+  size: number;
+}
+
+/** Deterministic visible fallback for inline media in static text flows. */
+export function inlineMediaDisplayText(
+  media: Pick<Extract<InlineNode, { type: "media" }>, "media" | "alt">,
+): string {
+  return media.alt?.trim() ||
+    media.media.filename?.trim() ||
+    media.media.id?.trim() ||
+    "Media";
+}
+
+/** Visible static label for a block media card or unresolved media fallback. */
+export function mediaFallbackDisplayText(
+  block: Pick<
+    Extract<ExportBlock, { type: "mediaFallback" }>,
+    "media" | "alt" | "label"
+  >,
+): string {
+  const label = block.alt?.trim() || block.media.filename?.trim() || block.label;
+  if (block.media.filename) {
+    const mediaType = block.media.attachmentMediaType?.trim();
+    return `Attachment: ${label}${mediaType ? ` (${mediaType})` : ""}`;
+  }
+  if (block.media.mediaType === "link") return `Linked media: ${label}`;
+  return `Media unavailable: ${label}`;
 }
 
 /**
@@ -615,9 +700,14 @@ export type ExportBlock =
   | {
       type: "image";
       source: ImageSource;
+      /** Complete ADF media identity, when this image came from an ADF media node. */
+      media?: UnresolvedMediaIdentity;
       alt?: string;
       width?: number;
       height?: number;
+      mediaPresentation?: MediaPresentation;
+      mediaGroup?: MediaGroupPosition;
+      border?: MediaBorder;
       caption?: Caption;
       annotations?: AdfAnnotationIdentity[];
       /** Media or media-container link mark, retained for clickable output. */
@@ -636,6 +726,9 @@ export type ExportBlock =
       alt?: string;
       width?: number;
       height?: number;
+      mediaPresentation?: MediaPresentation;
+      mediaGroup?: MediaGroupPosition;
+      border?: MediaBorder;
       annotations?: AdfAnnotationIdentity[];
       /** Media or media-container link mark, retained for clickable fallback output. */
       link?: ExportLink;

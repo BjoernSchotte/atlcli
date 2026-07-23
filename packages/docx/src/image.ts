@@ -344,6 +344,8 @@ export interface DrawingParams {
   descr: string;
   cxEmu: number;
   cyEmu: number;
+  /** Float the drawing to one side and let following body text wrap around it. */
+  wrap?: "left" | "right";
   /**
    * Optional `<w:pPr>…</w:pPr>` carried onto the emitted paragraph — used by
    * the logo pass to preserve the replaced placeholder paragraph's alignment.
@@ -368,11 +370,22 @@ export interface DrawingParams {
 export function inlineImageParagraph(p: DrawingParams): string {
   const name = escAttr(p.name);
   const descr = escAttr(p.descr);
+  const drawingOpen = p.wrap
+    ? `<wp:anchor distT="0" distB="0" distL="114300" distR="114300" simplePos="0" relativeHeight="0" behindDoc="0" locked="0" layoutInCell="1" allowOverlap="1" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing">` +
+      `<wp:simplePos x="0" y="0"/>` +
+      `<wp:positionH relativeFrom="column"><wp:align>${p.wrap}</wp:align></wp:positionH>` +
+      `<wp:positionV relativeFrom="paragraph"><wp:posOffset>0</wp:posOffset></wp:positionV>`
+    : `<wp:inline distT="0" distB="0" distL="0" distR="0" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing">`;
+  const wrap = p.wrap
+    ? `<wp:wrapSquare wrapText="${p.wrap === "left" ? "right" : "left"}"/>`
+    : "";
+  const drawingClose = p.wrap ? "</wp:anchor>" : "</wp:inline>";
   return (
     `<w:p>${p.pPrXml ?? ""}<w:r><w:drawing>` +
-    `<wp:inline distT="0" distB="0" distL="0" distR="0" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing">` +
+    drawingOpen +
     `<wp:extent cx="${p.cxEmu}" cy="${p.cyEmu}"/>` +
     `<wp:effectExtent l="0" t="0" r="0" b="0"/>` +
+    wrap +
     `<wp:docPr id="${p.docPrId}" name="${name}" descr="${descr}"/>` +
     `<wp:cNvGraphicFramePr>` +
     `<a:graphicFrameLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noChangeAspect="1"/>` +
@@ -403,7 +416,7 @@ export function inlineImageParagraph(p: DrawingParams): string {
     `<a:prstGeom prst="rect"><a:avLst/></a:prstGeom>` +
     `<a:noFill/><a:ln><a:noFill/></a:ln>` +
     `</pic:spPr>` +
-    `</pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>`
+    `</pic:pic></a:graphicData></a:graphic>${drawingClose}</w:drawing></w:r></w:p>`
   );
 }
 
@@ -425,6 +438,8 @@ export interface EmbedImageOptions {
   widthPx?: number;
   /** Author-specified rendered height in px. */
   heightPx?: number;
+  /** ADF media wrapping side. */
+  wrap?: "left" | "right";
   /**
    * The document part whose XML will carry the returned drawing (default
    * `word/document.xml`). An `r:embed` relationship is only valid in the rels
@@ -446,6 +461,8 @@ export interface EmbedSvgOptions {
   widthPx: number;
   /** Intrinsic pixel height of the SVG. */
   heightPx: number;
+  /** ADF media wrapping side. */
+  wrap?: "left" | "right";
   /** Document part whose rels carry the relationships (default `word/document.xml`). */
   partPath?: string;
   /** `<w:pPr>…</w:pPr>` to preserve on the emitted paragraph. */
@@ -540,6 +557,7 @@ export class ImageEmbedder {
       descr: opts.alt || opts.name || "image",
       cxEmu: pxToEmu(size.widthPx),
       cyEmu: pxToEmu(size.heightPx),
+      wrap: opts.wrap,
       pPrXml: opts.pPrXml,
     });
   }
@@ -597,6 +615,7 @@ export class ImageEmbedder {
       descr: opts.alt || opts.name || "diagram",
       cxEmu: pxToEmu(size.widthPx),
       cyEmu: pxToEmu(size.heightPx),
+      wrap: opts.wrap,
       pPrXml: opts.pPrXml,
     });
   }

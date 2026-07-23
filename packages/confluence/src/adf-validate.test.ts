@@ -193,7 +193,7 @@ describe("validateAdf", () => {
     expect(() => validateAdf(doc([{
       type: "mediaSingle",
       content: [
-        { type: "media", attrs: { type: "file", id: "media-1" } },
+        { type: "media", attrs: { type: "file", id: "media-1", collection: "content-1" } },
         {
           type: "caption",
           attrs: { localId: "" },
@@ -239,6 +239,101 @@ describe("validateAdf", () => {
       marks: [{ type: "breakout", attrs: { mode: "wide" } }],
       content: [{ type: "paragraph", content: [] }],
     }])))).toBe("invalid-node");
+  });
+
+  test("validates pinned media variants, container geometry, and border marks", () => {
+    expect(() => validateAdf(doc([
+      {
+        type: "mediaSingle",
+        attrs: {
+          layout: "wrap-left",
+          width: 45,
+          widthType: "percentage",
+          localId: "",
+        },
+        content: [{
+          type: "media",
+          attrs: {
+            type: "file",
+            id: "file-1",
+            collection: "content-1",
+            occurrenceKey: "occurrence-1",
+            alt: "",
+            width: 640,
+            height: 480,
+          },
+          marks: [{ type: "border", attrs: { color: "#091e4224", size: 3 } }],
+        }],
+      },
+      {
+        type: "mediaSingle",
+        attrs: { layout: "center" },
+        content: [{
+          type: "media",
+          attrs: {
+            type: "external",
+            url: "https://assets.example.invalid/image.png",
+          },
+        }],
+      },
+      {
+        type: "paragraph",
+        content: [{
+          type: "mediaInline",
+          attrs: {
+            type: "image",
+            id: "inline-1",
+            collection: "content-1",
+            data: { opaque: true },
+          },
+        }],
+      },
+    ]))).not.toThrow();
+
+    const invalidMediaAttrs = [
+      { type: "file", id: "file-1" },
+      { type: "file", id: "", collection: "content-1" },
+      { type: "external" },
+      { type: "video", id: "file-1", collection: "content-1" },
+      { type: "file", id: "file-1", collection: "content-1", occurrenceKey: "" },
+    ];
+    for (const attrs of invalidMediaAttrs) {
+      expect(errorCode(() => validateAdf(doc([{
+        type: "mediaSingle",
+        content: [{ type: "media", attrs }],
+      }])))).toBe("invalid-attributes");
+    }
+
+    for (const attrs of [
+      { layout: "floating" },
+      { layout: "center", widthType: "pixel" },
+      { layout: "center", width: 101, widthType: "percentage" },
+      { layout: "center", widthType: "rem" },
+    ]) {
+      expect(errorCode(() => validateAdf(doc([{
+        type: "mediaSingle",
+        attrs,
+        content: [{
+          type: "media",
+          attrs: { type: "file", id: "file-1", collection: "content-1" },
+        }],
+      }])))).toBe("invalid-attributes");
+    }
+
+    for (const attrs of [
+      { color: "#0052CC", size: 0 },
+      { color: "#GG52CC", size: 1 },
+      { color: "#0052CC", size: 4 },
+    ]) {
+      expect(errorCode(() => validateAdf(doc([{
+        type: "mediaSingle",
+        content: [{
+          type: "media",
+          attrs: { type: "file", id: "file-1", collection: "content-1" },
+          marks: [{ type: "border", attrs }],
+        }],
+      }])))).toBe("invalid-attributes");
+    }
   });
 
   test("accepts the schema-defined zero ordered-list start and rejects negative or fractional starts", () => {

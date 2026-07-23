@@ -31,7 +31,12 @@ const taskItem = (value: string): AdfValue => ({
 });
 const media = (value: string): AdfValue => ({
   type: "media",
-  attrs: { type: "file", id: `media-${value}`, alt: value },
+  attrs: {
+    type: "file",
+    id: `media-${value}`,
+    collection: "content-1",
+    alt: value,
+  },
 });
 const tableCell = (type: "tableCell" | "tableHeader", value: string): AdfValue => ({
   type,
@@ -126,7 +131,15 @@ const NODE_FIXTURES = {
   listItem: block({ type: "bulletList", content: [listItem("node-listItem")] }),
   media: block(media("node-media")),
   mediaGroup: block({ type: "mediaGroup", content: [media("node-mediaGroup")] }),
-  mediaInline: inline({ type: "mediaInline", attrs: { type: "file", id: "media-inline", alt: "node-mediaInline" } }),
+  mediaInline: inline({
+    type: "mediaInline",
+    attrs: {
+      type: "file",
+      id: "media-inline",
+      collection: "content-1",
+      alt: "node-mediaInline",
+    },
+  }),
   mediaSingle: block({ type: "mediaSingle", content: [media("node-mediaSingle")] }),
   mention: inline({ type: "mention", attrs: { id: "account-1", text: "@node-mention" } }),
   nestedExpand: block({ type: "nestedExpand", attrs: { title: "node-nestedExpand" }, content: [paragraph("node-nestedExpand-body")] }),

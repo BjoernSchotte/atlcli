@@ -167,13 +167,36 @@ describe("ConfluenceClient ADF page reads", () => {
         return new Response(JSON.stringify(cursor
           ? {
               results: [
-                { id: "content-a-new-version", fileId: "file-a", title: "a.png" },
-                { id: "content-b", fileId: "file-b", title: "b.png" },
+                {
+                  id: "content-a-new-version",
+                  fileId: "file-a",
+                  title: "a.png",
+                  mediaType: "image/png",
+                  webuiLink: "/wiki/attachments/a",
+                  downloadLink: "/download/a",
+                },
+                {
+                  id: "content-b",
+                  fileId: "file-b",
+                  title: "b.pdf",
+                  mediaType: "application/pdf",
+                  _links: {
+                    webui: "/wiki/attachments/b",
+                    download: "/download/b",
+                  },
+                },
               ],
               _links: {},
             }
           : {
-              results: [{ id: "content-a", fileId: "file-a", title: "a.png" }],
+              results: [{
+                id: "content-a",
+                fileId: "file-a",
+                title: "a.png",
+                mediaType: "image/png",
+                webuiLink: "/wiki/attachments/a",
+                downloadLink: "/download/a",
+              }],
               _links: { next: "/wiki/api/v2/pages/123/attachments?cursor=next" },
             }), { status: 200, headers: { "content-type": "application/json" } });
       }
@@ -187,8 +210,22 @@ describe("ConfluenceClient ADF page reads", () => {
 
     expect(result.mediaAttachmentsComplete).toBe(true);
     expect(result.mediaAttachments).toEqual([
-      { fileId: "file-a", filename: "a.png", pageId: "123" },
-      { fileId: "file-b", filename: "b.png", pageId: "123" },
+      {
+        fileId: "file-a",
+        filename: "a.png",
+        pageId: "123",
+        mediaType: "image/png",
+        webuiLink: "/wiki/attachments/a",
+        downloadLink: "/download/a",
+      },
+      {
+        fileId: "file-b",
+        filename: "b.pdf",
+        pageId: "123",
+        mediaType: "application/pdf",
+        webuiLink: "/wiki/attachments/b",
+        downloadLink: "/download/b",
+      },
     ]);
     expect(calls.filter((url) => url.includes("/attachments"))).toHaveLength(2);
   });

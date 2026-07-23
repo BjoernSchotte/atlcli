@@ -78,9 +78,13 @@ export type ExportBlock = {
 } | {
     type: "image";
     source: ImageSource;
+    media?: UnresolvedMediaIdentity;
     alt?: string;
     width?: number;
     height?: number;
+    mediaPresentation?: MediaPresentation;
+    mediaGroup?: MediaGroupPosition;
+    border?: MediaBorder;
     caption?: Caption;
     annotations?: AdfAnnotationIdentity[];
     link?: ExportLink;
@@ -92,6 +96,9 @@ export type ExportBlock = {
     alt?: string;
     width?: number;
     height?: number;
+    mediaPresentation?: MediaPresentation;
+    mediaGroup?: MediaGroupPosition;
+    border?: MediaBorder;
     annotations?: AdfAnnotationIdentity[];
     link?: ExportLink;
 } | {
@@ -215,6 +222,16 @@ export type InlineNode = {
 } | {
     type: "smartCard";
     card: SmartCardSemantics;
+} | {
+    type: "media";
+    media: UnresolvedMediaIdentity;
+    source?: ImageSource;
+    alt?: string;
+    width?: number;
+    height?: number;
+    border?: MediaBorder;
+    annotations?: AdfAnnotationIdentity[];
+    link?: ExportLink;
 } | {
     type: "placeholder";
     text: string;
@@ -589,6 +606,21 @@ export type PreparedPdfBlock = Exclude<ExportBlock, {
     width?: number;
     height?: number;
     fallbackLabel: string;
+    media?: Extract<ExportBlock, {
+        type: "image";
+    }>["media"];
+    mediaPresentation?: Extract<ExportBlock, {
+        type: "image";
+    }>["mediaPresentation"];
+    mediaGroup?: Extract<ExportBlock, {
+        type: "image";
+    }>["mediaGroup"];
+    border?: Extract<ExportBlock, {
+        type: "image";
+    }>["border"];
+    annotations?: Extract<ExportBlock, {
+        type: "image";
+    }>["annotations"];
     caption?: Caption;
     link?: ExportLink;
 } | {
@@ -859,9 +891,13 @@ export type ExportBlock = {
 } | {
     type: "image";
     source: ImageSource;
+    media?: UnresolvedMediaIdentity;
     alt?: string;
     width?: number;
     height?: number;
+    mediaPresentation?: MediaPresentation;
+    mediaGroup?: MediaGroupPosition;
+    border?: MediaBorder;
     caption?: Caption;
     annotations?: AdfAnnotationIdentity[];
     link?: ExportLink;
@@ -873,6 +909,9 @@ export type ExportBlock = {
     alt?: string;
     width?: number;
     height?: number;
+    mediaPresentation?: MediaPresentation;
+    mediaGroup?: MediaGroupPosition;
+    border?: MediaBorder;
     annotations?: AdfAnnotationIdentity[];
     link?: ExportLink;
 } | {
@@ -996,6 +1035,16 @@ export type InlineNode = {
 } | {
     type: "smartCard";
     card: SmartCardSemantics;
+} | {
+    type: "media";
+    media: UnresolvedMediaIdentity;
+    source?: ImageSource;
+    alt?: string;
+    width?: number;
+    height?: number;
+    border?: MediaBorder;
+    annotations?: AdfAnnotationIdentity[];
+    link?: ExportLink;
 } | {
     type: "placeholder";
     text: string;
@@ -1370,6 +1419,21 @@ export type PreparedPdfBlock = Exclude<ExportBlock, {
     width?: number;
     height?: number;
     fallbackLabel: string;
+    media?: Extract<ExportBlock, {
+        type: "image";
+    }>["media"];
+    mediaPresentation?: Extract<ExportBlock, {
+        type: "image";
+    }>["mediaPresentation"];
+    mediaGroup?: Extract<ExportBlock, {
+        type: "image";
+    }>["mediaGroup"];
+    border?: Extract<ExportBlock, {
+        type: "image";
+    }>["border"];
+    annotations?: Extract<ExportBlock, {
+        type: "image";
+    }>["annotations"];
     caption?: Caption;
     link?: ExportLink;
 } | {
@@ -1640,9 +1704,13 @@ export type ExportBlock = {
 } | {
     type: "image";
     source: ImageSource;
+    media?: UnresolvedMediaIdentity;
     alt?: string;
     width?: number;
     height?: number;
+    mediaPresentation?: MediaPresentation;
+    mediaGroup?: MediaGroupPosition;
+    border?: MediaBorder;
     caption?: Caption;
     annotations?: AdfAnnotationIdentity[];
     link?: ExportLink;
@@ -1654,6 +1722,9 @@ export type ExportBlock = {
     alt?: string;
     width?: number;
     height?: number;
+    mediaPresentation?: MediaPresentation;
+    mediaGroup?: MediaGroupPosition;
+    border?: MediaBorder;
     annotations?: AdfAnnotationIdentity[];
     link?: ExportLink;
 } | {
@@ -1777,6 +1848,16 @@ export type InlineNode = {
 } | {
     type: "smartCard";
     card: SmartCardSemantics;
+} | {
+    type: "media";
+    media: UnresolvedMediaIdentity;
+    source?: ImageSource;
+    alt?: string;
+    width?: number;
+    height?: number;
+    border?: MediaBorder;
+    annotations?: AdfAnnotationIdentity[];
+    link?: ExportLink;
 } | {
     type: "placeholder";
     text: string;
@@ -2151,6 +2232,21 @@ export type PreparedPdfBlock = Exclude<ExportBlock, {
     width?: number;
     height?: number;
     fallbackLabel: string;
+    media?: Extract<ExportBlock, {
+        type: "image";
+    }>["media"];
+    mediaPresentation?: Extract<ExportBlock, {
+        type: "image";
+    }>["mediaPresentation"];
+    mediaGroup?: Extract<ExportBlock, {
+        type: "image";
+    }>["mediaGroup"];
+    border?: Extract<ExportBlock, {
+        type: "image";
+    }>["border"];
+    annotations?: Extract<ExportBlock, {
+        type: "image";
+    }>["annotations"];
     caption?: Caption;
     link?: ExportLink;
 } | {

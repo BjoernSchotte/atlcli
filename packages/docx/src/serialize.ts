@@ -27,7 +27,9 @@ import type {
 import {
   computeHeadingOffset,
   formatAdfDateTimestamp,
+  inlineMediaDisplayText,
   materializeTable,
+  mediaFallbackDisplayText,
   mentionDisplayText,
   readableTextColor,
   sanitizeAnchorId,
@@ -303,6 +305,18 @@ export function serializeInline(
       case "smartCard":
         out += smartCardRuns(node.card, fontSizeHalfPoints);
         break;
+      case "media": {
+        const inner = run(`[${inlineMediaDisplayText(node)}]`, {
+          color: node.link ? "0563C1" : "42526E",
+          underline: node.link !== undefined,
+          backgroundColor: "F4F5F7",
+          borderColor: node.border?.color.slice(1, 7),
+          borderSize: node.border ? node.border.size * 8 : undefined,
+          fontSizeHalfPoints,
+        });
+        out += linkRuns(node.link, inner);
+        break;
+      }
       case "link": {
         const innerRuns = serializeInline(
           node.content.length ? node.content : [{ type: "text", text: "" }],
@@ -696,7 +710,8 @@ async function serializeBlock(
       // number is not skipped and downstream captions stay correctly numbered
       // (spec 003 C3). Caption below figures (established convention).
       const cap = block.caption ? captionXml(block.caption, ctx) : "";
-      const fallback = () => (block.caption ? imageUnavailablePara(block) + cap : "");
+      const fallback = () =>
+        block.caption ? mediaParagraph(imageUnavailablePara(block), block) + cap : "";
       // DOCX-ONLY fact (spec 010): NO image pipeline was configured for this
       // export, so every image degrades at once. It is `info`, not `warning`,
       // because nothing went wrong — the export was asked to run this way.
@@ -716,7 +731,7 @@ async function serializeBlock(
       const outcome = await ctx.images.embed(block);
       if (outcome.ok) {
         if (outcome.notes) notes.push(...outcome.notes);
-        return linkDrawingParagraph(outcome.xml, block.link) + cap;
+        return mediaParagraph(linkDrawingParagraph(outcome.xml, block.link), block) + cap;
       }
       // Failure branch: no drawing (no dangling relationship, spec 005 / 004-F3),
       // but keep a numbered fallback when a caption is present. The seam may name
@@ -736,7 +751,7 @@ async function serializeBlock(
     }
 
     case "mediaFallback": {
-      const fallback = mediaFallbackUnavailablePara(block);
+      const fallback = mediaParagraph(mediaFallbackUnavailablePara(block), block);
       return block.caption ? fallback + captionXml(block.caption, ctx) : fallback;
     }
 
@@ -877,11 +892,46 @@ function mediaFallbackUnavailablePara(
 ): string {
   return paragraph(linkRuns(
     block.link,
-    run(`[Media unavailable: ${block.alt ?? block.label}]`, {
+    run(`[${mediaFallbackDisplayText(block)}]`, {
       italic: true,
       color: "97A0AF",
     }),
   ));
+}
+
+function mediaParagraph(
+  xml: string,
+  block: Extract<ExportBlock, { type: "image" | "mediaFallback" }>,
+): string {
+  const layout = block.mediaPresentation?.layout;
+  const alignment =
+    layout === "center" || layout === "wide" || layout === "full-width"
+      ? "center"
+      : layout === "wrap-right" || layout === "align-end"
+        ? "right"
+        : layout === "wrap-left" || layout === "align-start"
+          ? "left"
+          : undefined;
+  const border = block.border;
+  const group = block.mediaGroup;
+  const groupBorderXml = group
+    ? `<w:pBdr>` +
+      `${group.index === 0 ? '<w:top w:val="single" w:sz="4" w:space="4" w:color="DFE1E6"/>' : ""}` +
+      `<w:left w:val="single" w:sz="4" w:space="4" w:color="DFE1E6"/>` +
+      `${group.index === group.size - 1 ? '<w:bottom w:val="single" w:sz="4" w:space="4" w:color="DFE1E6"/>' : ""}` +
+      `<w:right w:val="single" w:sz="4" w:space="4" w:color="DFE1E6"/></w:pBdr>`
+    : "";
+  const authoredBorderXml = border
+    ? `<w:pBdr><w:top w:val="single" w:sz="${border.size * 8}" w:space="4" w:color="${border.color.slice(1, 7)}"/>` +
+      `<w:left w:val="single" w:sz="${border.size * 8}" w:space="4" w:color="${border.color.slice(1, 7)}"/>` +
+      `<w:bottom w:val="single" w:sz="${border.size * 8}" w:space="4" w:color="${border.color.slice(1, 7)}"/>` +
+      `<w:right w:val="single" w:sz="${border.size * 8}" w:space="4" w:color="${border.color.slice(1, 7)}"/></w:pBdr>`
+    : "";
+  const props =
+    `${alignment ? `<w:jc w:val="${alignment}"/>` : ""}` +
+    `${group ? '<w:shd w:val="clear" w:color="auto" w:fill="F7F8F9"/>' : ""}` +
+    `${authoredBorderXml || groupBorderXml}`;
+  return props ? addParagraphProps(xml, props) : xml;
 }
 
 function linkRuns(link: ExportLink | undefined, innerRuns: string): string {

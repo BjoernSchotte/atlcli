@@ -69,7 +69,10 @@ describe("CLI PDF source resolution is ADF-primary", () => {
     const page = {
       ...adfPage([{
         type: "mediaSingle",
-        content: [{ type: "media", attrs: { type: "file", id: "file-1", alt: "Diagram" } }],
+        content: [{
+          type: "media",
+          attrs: { type: "file", id: "file-1", collection: "content-1", alt: "Diagram" },
+        }],
       }]),
       mediaAttachments: [{ fileId: "file-1", filename: "diagram.png", pageId: "1" }],
       mediaAttachmentsComplete: true,
@@ -82,7 +85,15 @@ describe("CLI PDF source resolution is ADF-primary", () => {
     expect(result.blocks).toEqual([{
       type: "image",
       source: { kind: "attachment", filename: "diagram.png", pageId: "1" },
+      media: {
+        mediaType: "file",
+        id: "file-1",
+        collection: "content-1",
+        filename: "diagram.png",
+        pageId: "1",
+      },
       alt: "Diagram",
+      mediaPresentation: { layout: "center" },
     }]);
     expect(result.sourceNotes.map((note) => note.code)).not.toContain("adf-media-unresolved");
   });
@@ -155,13 +166,24 @@ describe("CLI TypeScript DOCX prewalk is ADF-primary", () => {
     const page = {
       ...adfPage([{
         type: "mediaSingle",
-        content: [{ type: "media", attrs: { type: "file", id: "file-2" } }],
+        content: [{
+          type: "media",
+          attrs: { type: "file", id: "file-2", collection: "content-1" },
+        }],
       }]),
       mediaAttachments: [{ fileId: "file-2", filename: "docx-image.png", pageId: "1" }],
     };
     expect(decodeTsPageSource(page).blocks).toEqual([{
       type: "image",
       source: { kind: "attachment", filename: "docx-image.png", pageId: "1" },
+      media: {
+        mediaType: "file",
+        id: "file-2",
+        collection: "content-1",
+        filename: "docx-image.png",
+        pageId: "1",
+      },
+      mediaPresentation: { layout: "center" },
     }]);
   });
 });

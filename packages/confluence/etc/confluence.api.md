@@ -15,7 +15,7 @@ export declare const ADF_MARK_DECODE_MODES: Readonly<{
     readonly alignment: "native";
     readonly annotation: "approximation";
     readonly backgroundColor: "native";
-    readonly border: "visible-fallback";
+    readonly border: "native";
     readonly breakout: "visible-fallback";
     readonly code: "native";
     readonly dataConsumer: "visible-fallback";
@@ -56,10 +56,10 @@ export declare const ADF_NODE_DECODE_MODES: Readonly<{
     readonly layoutColumn: "native";
     readonly layoutSection: "native";
     readonly listItem: "native";
-    readonly media: "visible-fallback";
-    readonly mediaGroup: "visible-fallback";
-    readonly mediaInline: "visible-fallback";
-    readonly mediaSingle: "visible-fallback";
+    readonly media: "native";
+    readonly mediaGroup: "native";
+    readonly mediaInline: "approximation";
+    readonly mediaSingle: "native";
     readonly mention: "native";
     readonly nestedExpand: "approximation";
     readonly orderedList: "native";
@@ -160,6 +160,9 @@ export interface AdfMediaAttachment {
     fileId: string;
     filename: string;
     pageId: string;
+    mediaType?: string;
+    webuiLink?: string;
+    downloadLink?: string;
 }
 
 // export: AdfMediaReference
@@ -194,6 +197,9 @@ export interface AdfParseBudget {
 export interface AdfResolvedMediaAttachment {
     filename: string;
     pageId?: string;
+    mediaType?: string;
+    webuiLink?: string;
+    downloadLink?: string;
 }
 
 // export: adfToBlocks
@@ -1127,9 +1133,13 @@ export type ExportBlock = {
 } | {
     type: "image";
     source: ImageSource;
+    media?: UnresolvedMediaIdentity;
     alt?: string;
     width?: number;
     height?: number;
+    mediaPresentation?: MediaPresentation;
+    mediaGroup?: MediaGroupPosition;
+    border?: MediaBorder;
     caption?: Caption;
     annotations?: AdfAnnotationIdentity[];
     link?: ExportLink;
@@ -1141,6 +1151,9 @@ export type ExportBlock = {
     alt?: string;
     width?: number;
     height?: number;
+    mediaPresentation?: MediaPresentation;
+    mediaGroup?: MediaGroupPosition;
+    border?: MediaBorder;
     annotations?: AdfAnnotationIdentity[];
     link?: ExportLink;
 } | {
@@ -1474,6 +1487,11 @@ export interface InlineComment extends BaseComment {
 // export: InlineMark
 export type InlineMark = "bold" | "italic" | "code" | "strike" | "underline" | "subscript" | "superscript";
 
+// export: inlineMediaDisplayText
+export declare function inlineMediaDisplayText(media: Pick<Extract<InlineNode, {
+    type: "media";
+}>, "media" | "alt">): string;
+
 // export: InlineNode
 export type InlineNode = {
     type: "text";
@@ -1515,6 +1533,16 @@ export type InlineNode = {
 } | {
     type: "smartCard";
     card: SmartCardSemantics;
+} | {
+    type: "media";
+    media: UnresolvedMediaIdentity;
+    source?: ImageSource;
+    alt?: string;
+    width?: number;
+    height?: number;
+    border?: MediaBorder;
+    annotations?: AdfAnnotationIdentity[];
+    link?: ExportLink;
 } | {
     type: "placeholder";
     text: string;
@@ -1666,6 +1694,34 @@ export declare function materializeTable(table: Extract<ExportBlock, {
 
 // export: MAX_ANCHOR_ID_LENGTH
 export declare const MAX_ANCHOR_ID_LENGTH = 40;
+
+// export: MediaBorder
+export interface MediaBorder {
+    color: string;
+    size: 1 | 2 | 3;
+}
+
+// export: mediaFallbackDisplayText
+export declare function mediaFallbackDisplayText(block: Pick<Extract<ExportBlock, {
+    type: "mediaFallback";
+}>, "media" | "alt" | "label">): string;
+
+// export: MediaGroupPosition
+export interface MediaGroupPosition {
+    index: number;
+    size: number;
+}
+
+// export: MediaLayout
+export type MediaLayout = "wide" | "full-width" | "center" | "wrap-right" | "wrap-left" | "align-end" | "align-start";
+
+// export: MediaPresentation
+export interface MediaPresentation {
+    layout: MediaLayout;
+    width?: number;
+    widthType?: "percentage" | "pixel";
+    localId?: string;
+}
 
 // export: mentionDisplayText
 export declare function mentionDisplayText(mention: Pick<Extract<InlineNode, {
@@ -2231,6 +2287,13 @@ export interface UnresolvedMediaIdentity {
     collection?: string;
     occurrenceKey?: string;
     localId?: string;
+    url?: string;
+    dataJson?: string;
+    filename?: string;
+    pageId?: string;
+    attachmentMediaType?: string;
+    webuiLink?: string;
+    downloadLink?: string;
 }
 
 // export: UNSAFE_LINK_NOTE_CODE
@@ -2309,7 +2372,7 @@ export declare const ADF_MARK_DECODE_MODES: Readonly<{
     readonly alignment: "native";
     readonly annotation: "approximation";
     readonly backgroundColor: "native";
-    readonly border: "visible-fallback";
+    readonly border: "native";
     readonly breakout: "visible-fallback";
     readonly code: "native";
     readonly dataConsumer: "visible-fallback";
@@ -2350,10 +2413,10 @@ export declare const ADF_NODE_DECODE_MODES: Readonly<{
     readonly layoutColumn: "native";
     readonly layoutSection: "native";
     readonly listItem: "native";
-    readonly media: "visible-fallback";
-    readonly mediaGroup: "visible-fallback";
-    readonly mediaInline: "visible-fallback";
-    readonly mediaSingle: "visible-fallback";
+    readonly media: "native";
+    readonly mediaGroup: "native";
+    readonly mediaInline: "approximation";
+    readonly mediaSingle: "native";
     readonly mention: "native";
     readonly nestedExpand: "approximation";
     readonly orderedList: "native";
@@ -2454,6 +2517,9 @@ export interface AdfMediaAttachment {
     fileId: string;
     filename: string;
     pageId: string;
+    mediaType?: string;
+    webuiLink?: string;
+    downloadLink?: string;
 }
 
 // export: AdfMediaReference
@@ -2488,6 +2554,9 @@ export interface AdfParseBudget {
 export interface AdfResolvedMediaAttachment {
     filename: string;
     pageId?: string;
+    mediaType?: string;
+    webuiLink?: string;
+    downloadLink?: string;
 }
 
 // export: adfToBlocks
@@ -3421,9 +3490,13 @@ export type ExportBlock = {
 } | {
     type: "image";
     source: ImageSource;
+    media?: UnresolvedMediaIdentity;
     alt?: string;
     width?: number;
     height?: number;
+    mediaPresentation?: MediaPresentation;
+    mediaGroup?: MediaGroupPosition;
+    border?: MediaBorder;
     caption?: Caption;
     annotations?: AdfAnnotationIdentity[];
     link?: ExportLink;
@@ -3435,6 +3508,9 @@ export type ExportBlock = {
     alt?: string;
     width?: number;
     height?: number;
+    mediaPresentation?: MediaPresentation;
+    mediaGroup?: MediaGroupPosition;
+    border?: MediaBorder;
     annotations?: AdfAnnotationIdentity[];
     link?: ExportLink;
 } | {
@@ -3768,6 +3844,11 @@ export interface InlineComment extends BaseComment {
 // export: InlineMark
 export type InlineMark = "bold" | "italic" | "code" | "strike" | "underline" | "subscript" | "superscript";
 
+// export: inlineMediaDisplayText
+export declare function inlineMediaDisplayText(media: Pick<Extract<InlineNode, {
+    type: "media";
+}>, "media" | "alt">): string;
+
 // export: InlineNode
 export type InlineNode = {
     type: "text";
@@ -3809,6 +3890,16 @@ export type InlineNode = {
 } | {
     type: "smartCard";
     card: SmartCardSemantics;
+} | {
+    type: "media";
+    media: UnresolvedMediaIdentity;
+    source?: ImageSource;
+    alt?: string;
+    width?: number;
+    height?: number;
+    border?: MediaBorder;
+    annotations?: AdfAnnotationIdentity[];
+    link?: ExportLink;
 } | {
     type: "placeholder";
     text: string;
@@ -3960,6 +4051,34 @@ export declare function materializeTable(table: Extract<ExportBlock, {
 
 // export: MAX_ANCHOR_ID_LENGTH
 export declare const MAX_ANCHOR_ID_LENGTH = 40;
+
+// export: MediaBorder
+export interface MediaBorder {
+    color: string;
+    size: 1 | 2 | 3;
+}
+
+// export: mediaFallbackDisplayText
+export declare function mediaFallbackDisplayText(block: Pick<Extract<ExportBlock, {
+    type: "mediaFallback";
+}>, "media" | "alt" | "label">): string;
+
+// export: MediaGroupPosition
+export interface MediaGroupPosition {
+    index: number;
+    size: number;
+}
+
+// export: MediaLayout
+export type MediaLayout = "wide" | "full-width" | "center" | "wrap-right" | "wrap-left" | "align-end" | "align-start";
+
+// export: MediaPresentation
+export interface MediaPresentation {
+    layout: MediaLayout;
+    width?: number;
+    widthType?: "percentage" | "pixel";
+    localId?: string;
+}
 
 // export: mentionDisplayText
 export declare function mentionDisplayText(mention: Pick<Extract<InlineNode, {
@@ -4525,6 +4644,13 @@ export interface UnresolvedMediaIdentity {
     collection?: string;
     occurrenceKey?: string;
     localId?: string;
+    url?: string;
+    dataJson?: string;
+    filename?: string;
+    pageId?: string;
+    attachmentMediaType?: string;
+    webuiLink?: string;
+    downloadLink?: string;
 }
 
 // export: UNSAFE_LINK_NOTE_CODE
@@ -4603,7 +4729,7 @@ export declare const ADF_MARK_DECODE_MODES: Readonly<{
     readonly alignment: "native";
     readonly annotation: "approximation";
     readonly backgroundColor: "native";
-    readonly border: "visible-fallback";
+    readonly border: "native";
     readonly breakout: "visible-fallback";
     readonly code: "native";
     readonly dataConsumer: "visible-fallback";
@@ -4644,10 +4770,10 @@ export declare const ADF_NODE_DECODE_MODES: Readonly<{
     readonly layoutColumn: "native";
     readonly layoutSection: "native";
     readonly listItem: "native";
-    readonly media: "visible-fallback";
-    readonly mediaGroup: "visible-fallback";
-    readonly mediaInline: "visible-fallback";
-    readonly mediaSingle: "visible-fallback";
+    readonly media: "native";
+    readonly mediaGroup: "native";
+    readonly mediaInline: "approximation";
+    readonly mediaSingle: "native";
     readonly mention: "native";
     readonly nestedExpand: "approximation";
     readonly orderedList: "native";
@@ -4748,6 +4874,9 @@ export interface AdfMediaAttachment {
     fileId: string;
     filename: string;
     pageId: string;
+    mediaType?: string;
+    webuiLink?: string;
+    downloadLink?: string;
 }
 
 // export: AdfMediaReference
@@ -4782,6 +4911,9 @@ export interface AdfParseBudget {
 export interface AdfResolvedMediaAttachment {
     filename: string;
     pageId?: string;
+    mediaType?: string;
+    webuiLink?: string;
+    downloadLink?: string;
 }
 
 // export: adfToBlocks
@@ -5715,9 +5847,13 @@ export type ExportBlock = {
 } | {
     type: "image";
     source: ImageSource;
+    media?: UnresolvedMediaIdentity;
     alt?: string;
     width?: number;
     height?: number;
+    mediaPresentation?: MediaPresentation;
+    mediaGroup?: MediaGroupPosition;
+    border?: MediaBorder;
     caption?: Caption;
     annotations?: AdfAnnotationIdentity[];
     link?: ExportLink;
@@ -5729,6 +5865,9 @@ export type ExportBlock = {
     alt?: string;
     width?: number;
     height?: number;
+    mediaPresentation?: MediaPresentation;
+    mediaGroup?: MediaGroupPosition;
+    border?: MediaBorder;
     annotations?: AdfAnnotationIdentity[];
     link?: ExportLink;
 } | {
@@ -6062,6 +6201,11 @@ export interface InlineComment extends BaseComment {
 // export: InlineMark
 export type InlineMark = "bold" | "italic" | "code" | "strike" | "underline" | "subscript" | "superscript";
 
+// export: inlineMediaDisplayText
+export declare function inlineMediaDisplayText(media: Pick<Extract<InlineNode, {
+    type: "media";
+}>, "media" | "alt">): string;
+
 // export: InlineNode
 export type InlineNode = {
     type: "text";
@@ -6103,6 +6247,16 @@ export type InlineNode = {
 } | {
     type: "smartCard";
     card: SmartCardSemantics;
+} | {
+    type: "media";
+    media: UnresolvedMediaIdentity;
+    source?: ImageSource;
+    alt?: string;
+    width?: number;
+    height?: number;
+    border?: MediaBorder;
+    annotations?: AdfAnnotationIdentity[];
+    link?: ExportLink;
 } | {
     type: "placeholder";
     text: string;
@@ -6254,6 +6408,34 @@ export declare function materializeTable(table: Extract<ExportBlock, {
 
 // export: MAX_ANCHOR_ID_LENGTH
 export declare const MAX_ANCHOR_ID_LENGTH = 40;
+
+// export: MediaBorder
+export interface MediaBorder {
+    color: string;
+    size: 1 | 2 | 3;
+}
+
+// export: mediaFallbackDisplayText
+export declare function mediaFallbackDisplayText(block: Pick<Extract<ExportBlock, {
+    type: "mediaFallback";
+}>, "media" | "alt" | "label">): string;
+
+// export: MediaGroupPosition
+export interface MediaGroupPosition {
+    index: number;
+    size: number;
+}
+
+// export: MediaLayout
+export type MediaLayout = "wide" | "full-width" | "center" | "wrap-right" | "wrap-left" | "align-end" | "align-start";
+
+// export: MediaPresentation
+export interface MediaPresentation {
+    layout: MediaLayout;
+    width?: number;
+    widthType?: "percentage" | "pixel";
+    localId?: string;
+}
 
 // export: mentionDisplayText
 export declare function mentionDisplayText(mention: Pick<Extract<InlineNode, {
@@ -6819,6 +7001,13 @@ export interface UnresolvedMediaIdentity {
     collection?: string;
     occurrenceKey?: string;
     localId?: string;
+    url?: string;
+    dataJson?: string;
+    filename?: string;
+    pageId?: string;
+    attachmentMediaType?: string;
+    webuiLink?: string;
+    downloadLink?: string;
 }
 
 // export: UNSAFE_LINK_NOTE_CODE
@@ -7914,9 +8103,13 @@ export type ExportBlock = {
 } | {
     type: "image";
     source: ImageSource;
+    media?: UnresolvedMediaIdentity;
     alt?: string;
     width?: number;
     height?: number;
+    mediaPresentation?: MediaPresentation;
+    mediaGroup?: MediaGroupPosition;
+    border?: MediaBorder;
     caption?: Caption;
     annotations?: AdfAnnotationIdentity[];
     link?: ExportLink;
@@ -7928,6 +8121,9 @@ export type ExportBlock = {
     alt?: string;
     width?: number;
     height?: number;
+    mediaPresentation?: MediaPresentation;
+    mediaGroup?: MediaGroupPosition;
+    border?: MediaBorder;
     annotations?: AdfAnnotationIdentity[];
     link?: ExportLink;
 } | {
@@ -8309,6 +8505,11 @@ export interface InlineComment extends BaseComment {
 // export: InlineMark
 export type InlineMark = "bold" | "italic" | "code" | "strike" | "underline" | "subscript" | "superscript";
 
+// export: inlineMediaDisplayText
+export declare function inlineMediaDisplayText(media: Pick<Extract<InlineNode, {
+    type: "media";
+}>, "media" | "alt">): string;
+
 // export: InlineNode
 export type InlineNode = {
     type: "text";
@@ -8350,6 +8551,16 @@ export type InlineNode = {
 } | {
     type: "smartCard";
     card: SmartCardSemantics;
+} | {
+    type: "media";
+    media: UnresolvedMediaIdentity;
+    source?: ImageSource;
+    alt?: string;
+    width?: number;
+    height?: number;
+    border?: MediaBorder;
+    annotations?: AdfAnnotationIdentity[];
+    link?: ExportLink;
 } | {
     type: "placeholder";
     text: string;
@@ -8616,6 +8827,34 @@ export interface MaterializedTable {
 export declare function materializeTable(table: Extract<ExportBlock, {
     type: "table";
 }>): MaterializedTable;
+
+// export: MediaBorder
+export interface MediaBorder {
+    color: string;
+    size: 1 | 2 | 3;
+}
+
+// export: mediaFallbackDisplayText
+export declare function mediaFallbackDisplayText(block: Pick<Extract<ExportBlock, {
+    type: "mediaFallback";
+}>, "media" | "alt" | "label">): string;
+
+// export: MediaGroupPosition
+export interface MediaGroupPosition {
+    index: number;
+    size: number;
+}
+
+// export: MediaLayout
+export type MediaLayout = "wide" | "full-width" | "center" | "wrap-right" | "wrap-left" | "align-end" | "align-start";
+
+// export: MediaPresentation
+export interface MediaPresentation {
+    layout: MediaLayout;
+    width?: number;
+    widthType?: "percentage" | "pixel";
+    localId?: string;
+}
 
 // export: mentionDisplayText
 export declare function mentionDisplayText(mention: Pick<Extract<InlineNode, {
@@ -9428,6 +9667,13 @@ export interface UnresolvedMediaIdentity {
     collection?: string;
     occurrenceKey?: string;
     localId?: string;
+    url?: string;
+    dataJson?: string;
+    filename?: string;
+    pageId?: string;
+    attachmentMediaType?: string;
+    webuiLink?: string;
+    downloadLink?: string;
 }
 
 // export: updateAttachmentState
@@ -9659,7 +9905,7 @@ export declare const ADF_MARK_DECODE_MODES: Readonly<{
     readonly alignment: "native";
     readonly annotation: "approximation";
     readonly backgroundColor: "native";
-    readonly border: "visible-fallback";
+    readonly border: "native";
     readonly breakout: "visible-fallback";
     readonly code: "native";
     readonly dataConsumer: "visible-fallback";
@@ -9700,10 +9946,10 @@ export declare const ADF_NODE_DECODE_MODES: Readonly<{
     readonly layoutColumn: "native";
     readonly layoutSection: "native";
     readonly listItem: "native";
-    readonly media: "visible-fallback";
-    readonly mediaGroup: "visible-fallback";
-    readonly mediaInline: "visible-fallback";
-    readonly mediaSingle: "visible-fallback";
+    readonly media: "native";
+    readonly mediaGroup: "native";
+    readonly mediaInline: "approximation";
+    readonly mediaSingle: "native";
     readonly mention: "native";
     readonly nestedExpand: "approximation";
     readonly orderedList: "native";
@@ -9804,6 +10050,9 @@ export interface AdfMediaAttachment {
     fileId: string;
     filename: string;
     pageId: string;
+    mediaType?: string;
+    webuiLink?: string;
+    downloadLink?: string;
 }
 
 // export: AdfMediaReference
@@ -9838,6 +10087,9 @@ export interface AdfParseBudget {
 export interface AdfResolvedMediaAttachment {
     filename: string;
     pageId?: string;
+    mediaType?: string;
+    webuiLink?: string;
+    downloadLink?: string;
 }
 
 // export: adfToBlocks
@@ -10771,9 +11023,13 @@ export type ExportBlock = {
 } | {
     type: "image";
     source: ImageSource;
+    media?: UnresolvedMediaIdentity;
     alt?: string;
     width?: number;
     height?: number;
+    mediaPresentation?: MediaPresentation;
+    mediaGroup?: MediaGroupPosition;
+    border?: MediaBorder;
     caption?: Caption;
     annotations?: AdfAnnotationIdentity[];
     link?: ExportLink;
@@ -10785,6 +11041,9 @@ export type ExportBlock = {
     alt?: string;
     width?: number;
     height?: number;
+    mediaPresentation?: MediaPresentation;
+    mediaGroup?: MediaGroupPosition;
+    border?: MediaBorder;
     annotations?: AdfAnnotationIdentity[];
     link?: ExportLink;
 } | {
@@ -11118,6 +11377,11 @@ export interface InlineComment extends BaseComment {
 // export: InlineMark
 export type InlineMark = "bold" | "italic" | "code" | "strike" | "underline" | "subscript" | "superscript";
 
+// export: inlineMediaDisplayText
+export declare function inlineMediaDisplayText(media: Pick<Extract<InlineNode, {
+    type: "media";
+}>, "media" | "alt">): string;
+
 // export: InlineNode
 export type InlineNode = {
     type: "text";
@@ -11159,6 +11423,16 @@ export type InlineNode = {
 } | {
     type: "smartCard";
     card: SmartCardSemantics;
+} | {
+    type: "media";
+    media: UnresolvedMediaIdentity;
+    source?: ImageSource;
+    alt?: string;
+    width?: number;
+    height?: number;
+    border?: MediaBorder;
+    annotations?: AdfAnnotationIdentity[];
+    link?: ExportLink;
 } | {
     type: "placeholder";
     text: string;
@@ -11310,6 +11584,34 @@ export declare function materializeTable(table: Extract<ExportBlock, {
 
 // export: MAX_ANCHOR_ID_LENGTH
 export declare const MAX_ANCHOR_ID_LENGTH = 40;
+
+// export: MediaBorder
+export interface MediaBorder {
+    color: string;
+    size: 1 | 2 | 3;
+}
+
+// export: mediaFallbackDisplayText
+export declare function mediaFallbackDisplayText(block: Pick<Extract<ExportBlock, {
+    type: "mediaFallback";
+}>, "media" | "alt" | "label">): string;
+
+// export: MediaGroupPosition
+export interface MediaGroupPosition {
+    index: number;
+    size: number;
+}
+
+// export: MediaLayout
+export type MediaLayout = "wide" | "full-width" | "center" | "wrap-right" | "wrap-left" | "align-end" | "align-start";
+
+// export: MediaPresentation
+export interface MediaPresentation {
+    layout: MediaLayout;
+    width?: number;
+    widthType?: "percentage" | "pixel";
+    localId?: string;
+}
 
 // export: mentionDisplayText
 export declare function mentionDisplayText(mention: Pick<Extract<InlineNode, {
@@ -11875,6 +12177,13 @@ export interface UnresolvedMediaIdentity {
     collection?: string;
     occurrenceKey?: string;
     localId?: string;
+    url?: string;
+    dataJson?: string;
+    filename?: string;
+    pageId?: string;
+    attachmentMediaType?: string;
+    webuiLink?: string;
+    downloadLink?: string;
 }
 
 // export: UNSAFE_LINK_NOTE_CODE

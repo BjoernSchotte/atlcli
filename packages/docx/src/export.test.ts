@@ -659,6 +659,39 @@ describe("exportDocx — image embedding (spec 005)", () => {
     expect(report.notes.some((n) => n.code.startsWith("image"))).toBe(false);
   });
 
+  it("applies ADF mediaSingle percentage width and native Word text wrapping", async () => {
+    const { fetcher } = recordingFetcher();
+    const { bytes } = await exportDocx({
+      templateBytes: imageTemplate(),
+      details,
+      blocks: [{
+        type: "image",
+        source: {
+          kind: "attachment",
+          filename: "diagram.png",
+          pageId: "123",
+        },
+        alt: "Wrapped diagram",
+        mediaPresentation: {
+          layout: "wrap-right",
+          width: 40,
+          widthType: "percentage",
+        },
+      }],
+      template,
+      deps,
+      assets: fetcher,
+    });
+
+    const doc = readPart(bytes, "word/document.xml");
+    expect(doc).toContain(`<wp:extent cx="${240 * 9525}" cy="${120 * 9525}"/>`);
+    expect(doc).toContain("<wp:anchor ");
+    expect(doc).toContain(
+      '<wp:positionH relativeFrom="column"><wp:align>right</wp:align></wp:positionH>',
+    );
+    expect(doc).toContain('<wp:wrapSquare wrapText="left"/>');
+  });
+
   it("passes external image URLs through to the fetcher unchanged", async () => {
     const { refs, fetcher } = recordingFetcher();
     const { report } = await exportDocx({
@@ -1687,7 +1720,15 @@ describe("exportDocx — $scroll.includepage (spec 005 D1)", () => {
             version: 1,
             content: [{
               type: "mediaSingle",
-              content: [{ type: "media", attrs: { type: "file", id: "file-1", alt: "Included image" } }],
+              content: [{
+                type: "media",
+                attrs: {
+                  type: "file",
+                  id: "file-1",
+                  collection: "content-1",
+                  alt: "Included image",
+                },
+              }],
             }],
           }),
         },
