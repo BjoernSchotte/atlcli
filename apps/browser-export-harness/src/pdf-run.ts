@@ -38,11 +38,12 @@ export async function compilePdf(
   metadata: PdfExportMetadata,
   filename: string,
   sourceNotes: ExportNote[] = [],
+  assets: PdfAssetResolver = noPdfAssets,
 ): Promise<{ report: PdfExportReport; bytes: Uint8Array }> {
   const output = new MemoryOutputSink();
   const report = await runPdfExport(
     { blocks, metadata, profile: "tagged", filename, sourceNotes },
-    { assets: noPdfAssets, compiler, output, now: deterministicClock() },
+    { assets, compiler, output, now: deterministicClock() },
   );
   return { report, bytes: output.single.bytes };
 }

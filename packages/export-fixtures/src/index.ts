@@ -11,6 +11,7 @@
  */
 import {
   composeChapters,
+  createAdfMediaAttachmentResolver,
   pageBodyToBlocks,
   storageToBlocks,
   type BlocksResult,
@@ -552,6 +553,18 @@ export const ADF_CONFORMANCE_METADATA: PdfExportMetadata = {
   exportedAt: new Date("2026-07-22T08:00:00.000Z"),
 };
 
+export const ADF_INLINE_MEDIA_FILENAME = "inline-media.png";
+export const ADF_INLINE_MEDIA_BYTES = Uint8Array.from(
+  atob("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="),
+  (character) => character.charCodeAt(0),
+);
+export const ADF_CONFORMANCE_MEDIA_ATTACHMENTS = [{
+  fileId: "inline-media-1",
+  filename: ADF_INLINE_MEDIA_FILENAME,
+  pageId: ADF_CONFORMANCE_DETAILS.id,
+  mediaType: "image/png",
+}] as const;
+
 /** Decode the real ADF fixture through the production representation dispatcher. */
 export function adfConformanceBlocks(exporter: "pdf" | "word"): BlocksResult {
   return pageBodyToBlocks(
@@ -568,6 +581,9 @@ export function adfConformanceBlocks(exporter: "pdf" | "word"): BlocksResult {
         version: ADF_CONFORMANCE_DETAILS.version,
         spaceKey: ADF_CONFORMANCE_DETAILS.spaceKey,
       },
+      resolveMediaAttachment: createAdfMediaAttachmentResolver(
+        ADF_CONFORMANCE_MEDIA_ATTACHMENTS,
+      ),
     },
   );
 }

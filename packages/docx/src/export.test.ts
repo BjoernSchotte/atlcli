@@ -659,6 +659,50 @@ describe("exportDocx — image embedding (spec 005)", () => {
     expect(report.notes.some((n) => n.code.startsWith("image"))).toBe(false);
   });
 
+  it("embeds correlated ADF inline media inside its paragraph with authored geometry and link", async () => {
+    const { refs, fetcher } = recordingFetcher(pngFixtureBytes(200, 100));
+    const { bytes, report } = await exportDocx({
+      templateBytes: imageTemplate(),
+      details,
+      blocks: [{
+        type: "paragraph",
+        content: [
+          { type: "text", text: "before" },
+          {
+            type: "media",
+            media: { mediaType: "image", id: "inline-1", filename: "inline.png" },
+            source: { kind: "attachment", filename: "inline.png", pageId: "123" },
+            alt: "Inline architecture",
+            width: 40,
+            height: 20,
+            border: { color: "#0052CC", size: 2 },
+            link: { target: { kind: "external", href: "https://example.invalid/inline" } },
+          },
+          { type: "text", text: "after" },
+        ],
+      }],
+      template,
+      deps,
+      assets: fetcher,
+    });
+
+    expect(refs).toEqual([
+      { url: "/download/attachments/123/inline.png", pageId: "123", filename: "inline.png" },
+    ]);
+    const doc = readPart(bytes, "word/document.xml");
+    const paragraphXml = doc.match(/<w:p>[\s\S]*?before[\s\S]*?after[\s\S]*?<\/w:p>/)?.[0];
+    expect(paragraphXml).toBeDefined();
+    expect(paragraphXml!.indexOf("before")).toBeLessThan(paragraphXml!.indexOf("<w:drawing>"));
+    expect(paragraphXml!.indexOf("<w:drawing>")).toBeLessThan(paragraphXml!.indexOf("after"));
+    expect(paragraphXml).toContain(`<wp:extent cx="${40 * 9525}" cy="${20 * 9525}"/>`);
+    expect(paragraphXml).toContain('<a:ln w="25400">');
+    expect(paragraphXml).toContain('<a:srgbClr val="0052CC">');
+    expect(paragraphXml).toContain('HYPERLINK "https://example.invalid/inline"');
+    expect(paragraphXml).not.toContain("[Inline architecture]");
+    expect(report.embeddedImages).toBe(1);
+    expect(report.skippedImages).toBe(0);
+  });
+
   it("applies ADF mediaSingle percentage width and native Word text wrapping", async () => {
     const { fetcher } = recordingFetcher();
     const { bytes } = await exportDocx({

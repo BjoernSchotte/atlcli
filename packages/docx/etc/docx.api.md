@@ -1231,6 +1231,7 @@ export interface DrawingParams {
     wrap?: "left" | "right";
     pPrXml?: string;
     svgRelId?: string;
+    border?: MediaBorder;
 }
 
 // export: EmbedImageOptions
@@ -1242,6 +1243,7 @@ export interface EmbedImageOptions {
     wrap?: "left" | "right";
     partPath?: string;
     pPrXml?: string;
+    border?: MediaBorder;
 }
 
 // export: EmbedSvgOptions
@@ -1254,6 +1256,7 @@ export interface EmbedSvgOptions {
     partPath?: string;
     pPrXml?: string;
     origin?: "image" | "diagram";
+    border?: MediaBorder;
 }
 
 // export: EMU_PER_PX
@@ -1408,7 +1411,11 @@ export declare class ImageEmbedder {
     get embeddedCount(): number;
     get diagramCount(): number;
     embed(bytes: Uint8Array, opts?: EmbedImageOptions): string;
+    embedInline(bytes: Uint8Array, opts?: EmbedImageOptions): string;
+    private embedRaster;
     embedSvg(svg: string | Uint8Array, pngFallback: Uint8Array, opts: EmbedSvgOptions): string;
+    embedSvgInline(svg: string | Uint8Array, pngFallback: Uint8Array, opts: EmbedSvgOptions): string;
+    private embedSvgDrawing;
     private findOrCreateMedia;
     private writeMedia;
     private ensureRelationship;
@@ -1439,7 +1446,9 @@ export type ImageEmbedOutcome = {
 // export: ImageEmbedSeam
 export interface ImageEmbedSeam {
     embed(block: ImageBlock): Promise<ImageEmbedOutcome>;
+    embedInline?(node: InlineImageNode): Promise<ImageEmbedOutcome>;
     prefetch?(block: ImageBlock): void;
+    prefetchInline?(node: InlineImageNode): void;
 }
 
 // export: ImageFormat
@@ -1496,8 +1505,20 @@ export interface IncludePageRef {
     pageId?: string;
 }
 
+// export: InlineImageNode
+export type InlineImageNode = Extract<InlineNode, {
+    type: "media";
+}> & {
+    source: NonNullable<Extract<InlineNode, {
+        type: "media";
+    }>["source"]>;
+};
+
 // export: inlineImageParagraph
 export declare function inlineImageParagraph(p: DrawingParams): string;
+
+// export: inlineImageRun
+export declare function inlineImageRun(p: DrawingParams): string;
 
 // export: inspectNumberingPart
 export declare function inspectNumberingPart(zip: PizZip): {

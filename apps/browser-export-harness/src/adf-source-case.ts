@@ -5,9 +5,12 @@ import { memoryTemplateSource } from "@atlcli/docx/browser-runtime";
 import { unzipDocx } from "@atlcli/docx/scan";
 import {
   ADF_CODE_BLOCK_SOURCE,
+  ADF_CONFORMANCE_MEDIA_ATTACHMENTS,
   ADF_CONFORMANCE_DETAILS,
   ADF_CONFORMANCE_METADATA,
   ADF_CONFORMANCE_SOURCE,
+  ADF_INLINE_MEDIA_BYTES,
+  ADF_INLINE_MEDIA_FILENAME,
   DOCX_TEMPLATE_BYTES,
   adfConformanceBlocks,
 } from "@atlcli/export-fixtures";
@@ -37,6 +40,30 @@ import { HarnessPdfWorkerClient } from "./pdf-worker-client.js";
 import { compilePdf } from "./pdf-run.js";
 
 const compiler = new HarnessPdfWorkerClient();
+let pdfInlineAssetResolutions = 0;
+let docxInlineAssetFetches = 0;
+const pdfInlineAssets = {
+  async resolve(ref: { kind: string; filename?: string }) {
+    if (ref.kind !== "attachment" || ref.filename !== ADF_INLINE_MEDIA_FILENAME) {
+      throw new Error("Unknown ADF conformance asset.");
+    }
+    pdfInlineAssetResolutions += 1;
+    return {
+      bytes: ADF_INLINE_MEDIA_BYTES.slice(),
+      mediaType: "image/png",
+      filename: ADF_INLINE_MEDIA_FILENAME,
+    };
+  },
+};
+const docxInlineAssets = {
+  async fetch(ref: { filename?: string }) {
+    if (ref.filename !== ADF_INLINE_MEDIA_FILENAME) {
+      throw new Error("Unknown ADF conformance asset.");
+    }
+    docxInlineAssetFetches += 1;
+    return ADF_INLINE_MEDIA_BYTES.slice();
+  },
+};
 
 export interface AdfSourceCaseResult {
   representation: "atlas_doc_format";
@@ -79,6 +106,7 @@ export interface AdfSourceCaseResult {
   docxHasVisibleMediaFallback: boolean;
   docxHasMediaLink: boolean;
   docxHasMediaPresentation: boolean;
+  pdfHasInlineMediaPresentation: boolean;
   pdfJobArtifactAndReportParity: boolean;
   docxJobArtifactAndReportParity: boolean;
 }
@@ -114,6 +142,10 @@ function sourcePort(): ConfluenceSourceResolverPortV1 {
               },
               sourceVersion: ADF_CONFORMANCE_DETAILS.version,
             },
+            mediaAttachments: ADF_CONFORMANCE_MEDIA_ATTACHMENTS.map((attachment) => ({
+              ...attachment,
+            })),
+            mediaAttachmentsComplete: true,
           };
         },
         async getPageVersion(id) {
@@ -210,6 +242,7 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
     ADF_CONFORMANCE_METADATA,
     "ADF Browser Conformance.pdf",
     pdfSource.sourceNotes,
+    pdfInlineAssets,
   );
   const inspection = validatePdfOutput(pdf.bytes);
   if (!inspection.tagged || inspection.pageCount < 1) {
@@ -229,7 +262,11 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
       exportDate: new Date("2026-07-22T08:00:00.000Z"),
       captionLang: "de-DE",
     },
-    { templates: memoryTemplateSource(DOCX_TEMPLATE_BYTES), output },
+    {
+      templates: memoryTemplateSource(DOCX_TEMPLATE_BYTES),
+      output,
+      assets: docxInlineAssets,
+    },
   );
   const zip = unzipDocx(output.single.bytes);
   const documentXml = zip.file("word/document.xml")?.asText() ?? "";
@@ -267,9 +304,7 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
           profile: "tagged",
         },
         env: {
-          assets: {
-            async resolve(): Promise<never> { throw new Error("unused"); },
-          },
+          assets: pdfInlineAssets,
         },
       };
     },
@@ -294,6 +329,7 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
       },
     },
     resolveInput: pdfResolveInput,
+    assets: pdfInlineAssets,
   };
   const pdfJobParity = await runPdfJobParityCase({ fixture: pdfFixture });
 
@@ -325,7 +361,7 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
   const docxFixture: DocxJobParityFixtureV1 = {
     request: docxRequest,
     templateBytes: DOCX_TEMPLATE_BYTES,
-    requireMediaPart: false,
+    requireMediaPart: true,
     input: (rasterizer) => ({
       details: ADF_CONFORMANCE_DETAILS,
       blocks: wordSource.blocks,
@@ -339,6 +375,7 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
       exportDate: new Date("2026-07-22T08:00:00.000Z"),
       captionLang: "de-DE",
       rasterizer,
+      assets: docxInlineAssets,
     }),
     resolveInput: (rasterizer) => createConfluenceDocxResolveInputV1({
       port: sourcePort(),
@@ -361,6 +398,7 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
             exportDate: new Date("2026-07-22T08:00:00.000Z"),
             captionLang: "de-DE",
             rasterizer,
+            assets: docxInlineAssets,
           },
           rootDetails,
         };
@@ -508,7 +546,7 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
       && neutralJson.includes('"mediaGroup":{"index":0,"size":2}')
       && neutralJson.includes('"mediaGroup":{"index":1,"size":2}')
       && neutralJson.includes(
-        '"type":"media","media":{"mediaType":"image","id":"inline-media-1","collection":"contentId-1","localId":"inline-media-local","dataJson":"{\\"source\\":\\"fixture\\"}"}',
+        '"type":"media","media":{"mediaType":"image","id":"inline-media-1","collection":"contentId-1","localId":"inline-media-local","dataJson":"{\\"source\\":\\"fixture\\"}","filename":"inline-media.png"',
       ),
     neutralHasSmartCardSemantics:
       neutralJson.includes(
@@ -568,11 +606,16 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
       documentXml.includes('HYPERLINK "https://example.invalid/adf-media"')
       && documentXml.includes('\\o "Open media"'),
     docxHasMediaPresentation:
-      documentXml.includes("Inline media chip")
+      documentXml.includes('descr="Inline media chip"')
+      && documentXml.includes("<w:drawing>")
+      && documentXml.includes(`<wp:extent cx="${24 * 9525}" cy="${16 * 9525}"/>`)
+      && documentXml.includes('<a:srgbClr val="0052CC">')
       && documentXml.includes("Grouped attachment one")
       && documentXml.includes("Grouped attachment two")
       && documentXml.includes('w:color="091E42"')
-      && documentXml.includes('w:fill="F7F8F9"'),
+      && documentXml.includes('w:fill="F7F8F9"')
+      && docxInlineAssetFetches > 0,
+    pdfHasInlineMediaPresentation: pdfInlineAssetResolutions > 0,
     pdfJobArtifactAndReportParity:
       pdfJobParity.byteIdentical && pdfJobParity.reportIdentical,
     docxJobArtifactAndReportParity:
@@ -612,6 +655,9 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
   }
   if (!result.neutralHasMediaPresentation) {
     throw new Error("ADF-source media geometry, grouping, border, or inline identity was lost.");
+  }
+  if (!result.pdfHasInlineMediaPresentation) {
+    throw new Error("ADF-source PDF inline media was not resolved in the packed browser.");
   }
   if (!result.neutralHasSmartCardSemantics) {
     throw new Error("ADF-source Smart Card attributes were lost in the packed browser.");

@@ -475,7 +475,8 @@ describe("spec 003 captioned figures (real compiler, code-context regression)", 
     expect(result.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
     expect(result.pdf).toBeDefined();
     expect(source.main).toContain("#figure(block(width: 100%)[");
-    expect(source.main).toContain("#figure(raw(");
+    expect(source.main).toContain("#figure({ show raw.line:");
+    expect(source.main).toContain('raw("const x = 1;", lang: "ts", block: true)');
   }, 60_000);
 
   it("a wide table nested inside a landscape region compiles and escalates against the landscape width", async () => {

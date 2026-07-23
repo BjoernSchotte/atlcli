@@ -88,6 +88,8 @@ export type {
   PdfResolvedAsset,
   PdfAssetResolver,
   PreparedPdfAsset,
+  PreparedPdfInlineNode,
+  PreparedPdfCaption,
   PreparedPdfBlock,
   PreparedPdfDocument,
   PdfSourceMapEntry,

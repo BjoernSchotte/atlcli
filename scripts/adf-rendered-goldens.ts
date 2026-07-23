@@ -12,6 +12,8 @@ import {
   ADF_CONFORMANCE_DETAILS,
   ADF_CONFORMANCE_METADATA,
   ADF_CONFORMANCE_SOURCE,
+  ADF_INLINE_MEDIA_BYTES,
+  ADF_INLINE_MEDIA_FILENAME,
   adfConformanceBlocks,
 } from "@atlcli/export-fixtures";
 import { runPdfExport } from "@atlcli/pdf";
@@ -175,7 +177,19 @@ async function renderCurrent(tempDir: string): Promise<{
       template: { name: "adf-rendered.docx", modificationDate: new Date("2026-07-22T08:00:00.000Z") },
       exportDate: new Date("2026-07-22T08:00:00.000Z"),
     },
-    nodeDocxEnv({ outPath: docxPath }),
+    nodeDocxEnv({
+      outPath: docxPath,
+      extras: {
+        assets: {
+          async fetch(ref) {
+            if (ref.filename !== ADF_INLINE_MEDIA_FILENAME) {
+              throw new Error("Rendered golden received an unknown asset.");
+            }
+            return ADF_INLINE_MEDIA_BYTES.slice();
+          },
+        },
+      },
+    }),
   );
   await runPdfExport(
     {
@@ -187,7 +201,18 @@ async function renderCurrent(tempDir: string): Promise<{
     },
     nodePdfEnv(profile, {
       outDir: tempDir,
-      assets: { async resolve() { throw new Error("Rendered golden has no external assets."); } },
+      assets: {
+        async resolve(ref) {
+          if (ref.kind !== "attachment" || ref.filename !== ADF_INLINE_MEDIA_FILENAME) {
+            throw new Error("Rendered golden received an unknown asset.");
+          }
+          return {
+            bytes: ADF_INLINE_MEDIA_BYTES.slice(),
+            mediaType: "image/png",
+            filename: ADF_INLINE_MEDIA_FILENAME,
+          };
+        },
+      },
     }),
   );
 
@@ -326,7 +351,7 @@ async function manifestFor(
       "media-fallback",
       "media-single-layout-width-caption-border",
       "media-group",
-      "media-inline-chip",
+      "media-inline-image-and-fallback-chip",
       "media-wrap-source-order",
       "extension",
     ],

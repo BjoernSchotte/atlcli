@@ -14,6 +14,7 @@ import {
 } from "@atlcli/export-wiring/jobs";
 import {
   runPdfExport,
+  type PdfAssetResolver,
   type PdfCompilePort,
   type PdfExportReport,
 } from "@atlcli/pdf/browser";
@@ -65,6 +66,7 @@ export interface PdfJobParityFixtureV1 {
   request: PdfExportJobRequestV1;
   input: PdfExportJobEngineInputV1;
   resolveInput?: CreatePdfExportJobExecutorOptionsV1["resolveInput"];
+  assets?: PdfAssetResolver;
 }
 
 const DEFAULT_FIXTURE: PdfJobParityFixtureV1 = {
@@ -105,7 +107,7 @@ async function directRun(
 ) {
   const output = new MemoryOutputSink();
   const report = await runPdfExport(fixture.input, {
-    assets: noPdfAssets,
+    assets: fixture.assets ?? noPdfAssets,
     compiler,
     output,
     now: deterministicClock(),

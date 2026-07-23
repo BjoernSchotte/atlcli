@@ -300,16 +300,17 @@ The coverage source of truth remains the complete matrices in `GAP-ANALYSIS.md`.
   Typst engine supports only top/bottom floats and no contour wrapping, PDF
   uses a source-ordered authored-width grid with the directly following
   paragraph, or the requested side alignment when no paragraph follows.
-  `mediaInline` retains the same typed identity and renders a deterministic
-  inline chip, with actual baseline-aligned correlated-image embedding tracked
-  as the remaining target gap.
+  `mediaInline` retains the same typed identity. Correlated image bytes render
+  as a paragraph-local DOCX drawing run and a baseline-aligned Typst inline
+  image, while file/link/unresolved variants retain the deterministic chip
+  floor and shared diagnostics.
 - Existing marks: `strong`, `em`, `underline`, `strike`, `code`, `subsup`,
   `textColor`, `backgroundColor`, `link`, and media `border`.
 
 ### 5.2 Explicitly classify, preserve, and defer native rendering
 
-The remaining schema rows—including inline-image projection for `mediaInline`,
-sync content, breakout beyond layout sections, and data-consumer
+The remaining schema rows—including sync content, breakout beyond layout
+sections, and data-consumer
 semantics—must retain a coverage-manifest status and deterministic fallback.
 Decisions, block tasks, layouts, native captions, block-media geometry and
 grouping, media borders, annotations/fragments, alignment, indentation, and the
@@ -1364,9 +1365,7 @@ strongest deterministic projection supported by the selected Typst engine,
 whose placement contract has top/bottom floats but no contour text wrapping;
 a visually rejected float implementation was removed because it could move
 media ahead of earlier headings. Block/group/single/border semantics are
-therefore closed, while `mediaInline` deliberately remains open until
-correlated image bytes render as an actual baseline-aligned inline image rather
-than the now-complete typed image/file/link chip.
+therefore closed.
 
 The slice passed the 456-test focused validator/decoder/composition/CLI/DOCX/PDF
 set, the exact progress-register guard, fresh public API and closure generation
@@ -1381,8 +1380,31 @@ confirms source order, bounded wrap approximation, borders, group boundaries,
 captions, file/link fallbacks, and inline chips. The retained persistent live
 tree re-exported through the built TypeScript CLI to structurally valid DOCX
 and tagged PDF; temporary artifacts were removed and no environment identifier
-was emitted or stored. The matrix now records 67 of 84 rows closed and 17 open;
+was emitted or stored. The matrix then recorded 67 of 84 rows closed and 17 open;
 the unrestricted suite remains the remote-CI gate.
+
+Completed inline-media follow-on evidence recorded on 2026-07-23: correlated
+ADF `mediaInline` images now reuse the bounded, deduplicated image resolver in
+both TypeScript engines. DOCX emits a drawing run inside the surrounding
+paragraph, including authored dimensions, alt text, safe hyperlink, and
+picture-shape border/alpha; raster and SVG-plus-PNG-fallback paths are both
+covered. PDF preparation resolves inline assets recursively in paragraphs,
+links, and captions, shares byte deduplication and budgets with block images,
+and serializes a baseline-aligned Typst box/image at the exact inline position.
+Fetch/decode failures retain the typed bordered chip and shared diagnostic.
+
+Focused renderer/export tests, full workspace typecheck, the production browser
+build, exact direct/background PDF and DOCX artifact/report parity, and packed
+Chromium E2E passed. A persistent runtime-only live page with a real uploaded
+attachment and materialized `mediaInline` ADF exported through the TypeScript
+CLI to both formats; DOCX inspection proved inline drawing geometry and border,
+and the PDF was structurally valid. The live resource remains in the existing
+test tree, while temporary local artifacts were removed and no environment
+identifier was stored. The matrix now records 69 of 84 rows closed and 15 open;
+the unrestricted local suite passed after the earlier code-block slice's
+compiler assertion and intentional PDF digest were brought in sync with its
+scoped `raw.line` output. The opt-in registry-backed consumer/install matrix
+remains a remote-CI gate.
 
 After this migration proves the source boundary, close the gap-analysis backlog in separate feature slices:
 
@@ -1394,13 +1416,10 @@ After this migration proves the source boundary, close the gap-analysis backlog 
    pinned table-attribute contract;
 5. breakout beyond page-bounded layout sections (pinned ADF/documented Storage
    layout columns and the static caption/disclosure contract are complete);
-6. actual correlated-image embedding for the now-typed `mediaInline` node; the
-   complete pinned block `media`, `mediaGroup`, `mediaSingle`, and `border`
-   contracts are closed;
-7. ADF-native definitions for excerpts/Page Properties and removal of their Storage sidecar;
-8. advanced extensions, Forge `adfExport` ingestion policy, and synced-content snapshots;
-9. lazy sidecar reads and eventual Storage removal from Cloud export only after every dependency is retired.
-10. legacy Storage-only code-macro title/collapse static projection.
+6. ADF-native definitions for excerpts/Page Properties and removal of their Storage sidecar;
+7. advanced extensions, Forge `adfExport` ingestion policy, and synced-content snapshots;
+8. lazy sidecar reads and eventual Storage removal from Cloud export only after every dependency is retired.
+9. legacy Storage-only code-macro title/collapse static projection.
 
 ## 14. Resolved rollout decisions and unresolved question
 

@@ -47,7 +47,7 @@ describe("ADF rendered goldens", () => {
       "media-fallback",
       "media-single-layout-width-caption-border",
       "media-group",
-      "media-inline-chip",
+      "media-inline-image-and-fallback-chip",
       "media-wrap-source-order",
       "extension",
     ]);

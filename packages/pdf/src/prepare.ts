@@ -5,10 +5,11 @@ import {
   AssetBudget,
   AssetBudgetExceededError,
   createInOrderLimiter,
+  inlineMediaDisplayText,
   materializeTable,
   type ExportProgressCallback,
 } from "@atlcli/confluence";
-import type { ExportBlock, ExportNote } from "@atlcli/confluence";
+import type { Caption, ExportBlock, ExportNote, InlineNode } from "@atlcli/confluence";
 import { assertSafeSvg } from "./svg-safety.js";
 import { decodeSvgSource } from "@atlcli/confluence";
 import type {
@@ -16,7 +17,9 @@ import type {
   PdfResolvedAsset,
   PreparedPdfAsset,
   PreparedPdfBlock,
+  PreparedPdfCaption,
   PreparedPdfDocument,
+  PreparedPdfInlineNode,
 } from "./types.js";
 
 const EXTENSIONS: Record<string, string> = {
@@ -192,6 +195,91 @@ export async function preparePdfDocument(
     return path;
   };
 
+  const prepareInline = async (
+    nodes: InlineNode[],
+    parentPath: string,
+  ): Promise<PreparedPdfInlineNode[]> =>
+    Promise.all(nodes.map(async (node, index): Promise<PreparedPdfInlineNode> => {
+      const path = `${parentPath}[${index}]`;
+      if (node.type === "link") {
+        return { ...node, content: await prepareInline(node.content, `${path}.content`) };
+      }
+      if (node.type !== "media") return node;
+
+      const fallbackLabel = inlineMediaDisplayText(node);
+      if (!node.source) return { ...node, fallbackLabel };
+      const filename =
+        node.source.kind === "attachment" ? node.source.filename : node.source.url;
+      const owningPage =
+        node.source.kind === "attachment" ? node.source.pageId : undefined;
+      if (isMissingAltText(node.alt)) {
+        const pageId = owningPage ?? options.pageContext?.pageId;
+        notes.push({
+          level: "warning",
+          code: "image-missing-alt",
+          message:
+            `The inline image "${filename}" has no alternative text; the exported PDF falls back to ` +
+            `a technical label, which assistive technology cannot use. Add alt text on the source page.`,
+          source: {
+            ...(pageId ? { pageId } : {}),
+            ...(options.pageContext?.pageTitle
+              ? { pageTitle: options.pageContext.pageTitle }
+              : {}),
+            ...(options.pageContext?.pageUrl ? { pageUrl: options.pageContext.pageUrl } : {}),
+            blockPath: path,
+            assetName: filename,
+          },
+        });
+      }
+      try {
+        const resolved = await limit(() =>
+          resolver.resolve(
+            node.source!.kind === "attachment"
+              ? {
+                  kind: "attachment",
+                  filename: node.source!.filename,
+                  ...(owningPage ? { pageId: owningPage } : {}),
+                }
+              : {
+                  kind: "external",
+                  url: node.source!.url,
+                  ...(node.source!.trust ? { trust: node.source!.trust } : {}),
+                },
+            options.signal ? { signal: options.signal } : {},
+          ),
+        );
+        const assetPath = addAsset(resolved, "inline-image", {
+          filename,
+          ...(owningPage ? { pageId: owningPage } : {}),
+        });
+        reportAsset(filename);
+        return { ...node, assetPath, fallbackLabel };
+      } catch (error) {
+        if (error instanceof AssetBudgetExceededError) throw error;
+        if (isAbortError(error)) throw error;
+        reportAsset(filename);
+        notes.push({
+          level: "warning",
+          code: "image-embed-failed",
+          message: `${fallbackLabel} was not embedded: ${error instanceof Error ? error.message : String(error)}`,
+          source: {
+            ...(owningPage ? { pageId: owningPage } : {}),
+            blockPath: path,
+            assetName: filename,
+          },
+        });
+        return { ...node, fallbackLabel };
+      }
+    }));
+
+  const prepareCaption = async (
+    caption: Caption | undefined,
+    path: string,
+  ): Promise<PreparedPdfCaption | undefined> =>
+    caption
+      ? { ...caption, content: await prepareInline(caption.content, `${path}.content`) }
+      : undefined;
+
   // Block paths mirror the serializer's convention (`blocks[0].content[1]`,
   // `blocks[2].rows[0].cells[1].content[0]`) so a note's `source.blockPath` is
   // comparable across the prepare and serialize stages and against the PDF
@@ -231,8 +319,10 @@ export async function preparePdfDocument(
             };
           case "table": {
             const materialized = materializeTable(block);
+            const caption = await prepareCaption(block.caption, `${path}.caption`);
+            const { caption: _sourceCaption, ...table } = block;
             return {
-              ...block,
+              ...table,
               rows: await Promise.all(
                 materialized.rows.map(async (row, rowIndex) => ({
                   ...row,
@@ -250,9 +340,11 @@ export async function preparePdfDocument(
               ...(materialized.columnWidths !== undefined
                 ? { columnWidths: materialized.columnWidths }
                 : {}),
+              ...(caption ? { caption } : {}),
             };
           }
           case "image": {
+            const caption = await prepareCaption(block.caption, `${path}.caption`);
             const fallbackLabel =
               block.alt ?? (block.source.kind === "attachment" ? block.source.filename : "Image");
             const filename = block.source.kind === "attachment" ? block.source.filename : block.source.url;
@@ -327,7 +419,7 @@ export async function preparePdfDocument(
                 ...(block.mediaGroup ? { mediaGroup: block.mediaGroup } : {}),
                 ...(block.border ? { border: block.border } : {}),
                 ...(block.annotations ? { annotations: block.annotations } : {}),
-                caption: block.caption,
+                ...(caption ? { caption } : {}),
                 ...(block.link ? { link: block.link } : {}),
               };
             } catch (error) {
@@ -366,13 +458,17 @@ export async function preparePdfDocument(
                 ...(block.mediaGroup ? { mediaGroup: block.mediaGroup } : {}),
                 ...(block.border ? { border: block.border } : {}),
                 ...(block.annotations ? { annotations: block.annotations } : {}),
-                caption: block.caption,
+                ...(caption ? { caption } : {}),
                 ...(block.link ? { link: block.link } : {}),
               };
             }
           }
           case "codeBlock": {
-            if ((block.language ?? "").trim().toLowerCase() !== "mermaid") return block;
+            const caption = await prepareCaption(block.caption, `${path}.caption`);
+            const { caption: _sourceCaption, ...codeBlock } = block;
+            if ((block.language ?? "").trim().toLowerCase() !== "mermaid") {
+              return { ...codeBlock, ...(caption ? { caption } : {}) };
+            }
             const rendered = await renderDiagram(block.code);
             if (rendered.kind === "svg") {
               const bytes = new TextEncoder().encode(rendered.svg);
@@ -386,7 +482,7 @@ export async function preparePdfDocument(
                 type: "diagram",
                 assetPath,
                 source: block.code,
-                caption: block.caption,
+                ...(caption ? { caption } : {}),
                 ...(block.wrap !== undefined ? { wrap: block.wrap } : {}),
                 ...(block.hideLineNumbers !== undefined
                   ? { hideLineNumbers: block.hideLineNumbers }
@@ -409,7 +505,7 @@ export async function preparePdfDocument(
                   ? `${rendered.diagramType} diagram rendered as source code.`
                   : `Diagram rendered as source code: ${rendered.reason}`,
             });
-            return block;
+            return { ...codeBlock, ...(caption ? { caption } : {}) };
           }
           case "unknown": {
             // Placeholder floor (spec 004): prepare the preserved body so images
@@ -421,8 +517,16 @@ export async function preparePdfDocument(
           }
           case "heading":
           case "paragraph":
+            return {
+              ...block,
+              content: await prepareInline(block.content, `${path}.content`),
+            };
+          case "mediaFallback": {
+            const caption = await prepareCaption(block.caption, `${path}.caption`);
+            const { caption: _sourceCaption, ...fallback } = block;
+            return { ...fallback, ...(caption ? { caption } : {}) };
+          }
           case "smartCard":
-          case "mediaFallback":
           case "divider":
           case "pageBreak":
           case "anchor":
@@ -441,14 +545,32 @@ export async function preparePdfDocument(
 /** Count asset-bearing blocks (images + mermaid code) for progress totals. */
 function countAssetBlocks(blocks: ExportBlock[]): number {
   let count = 0;
+  const countInline = (nodes: InlineNode[]): void => {
+    for (const node of nodes) {
+      if (node.type === "link") countInline(node.content);
+      else if (node.type === "media" && node.source) count += 1;
+    }
+  };
+  const countCaption = (caption: Caption | undefined): void => {
+    if (caption) countInline(caption.content);
+  };
   const walk = (list: ExportBlock[]): void => {
     for (const block of list) {
       switch (block.type) {
+        case "heading":
+        case "paragraph":
+          countInline(block.content);
+          break;
         case "image":
           count += 1;
+          countCaption(block.caption);
           break;
         case "codeBlock":
+          countCaption(block.caption);
           if ((block.language ?? "").trim().toLowerCase() === "mermaid") count += 1;
+          break;
+        case "mediaFallback":
+          countCaption(block.caption);
           break;
         case "callout":
         case "expand":
@@ -463,6 +585,7 @@ function countAssetBlocks(blocks: ExportBlock[]): number {
           for (const column of block.columns) walk(column.content);
           break;
         case "table":
+          countCaption(block.caption);
           for (const row of block.rows) for (const cell of row.cells) walk(cell.content);
           break;
       }

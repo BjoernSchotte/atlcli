@@ -1721,17 +1721,24 @@ describe("serialize — C3 captions", () => {
     const prepared = await preparePdfDocument([
       {
         type: "paragraph",
-        content: [{
-          type: "media",
-          media: {
-            mediaType: "image",
-            id: "inline-1",
-            filename: "inline.png",
+        content: [
+          { type: "text", text: "before" },
+          {
+            type: "media",
+            media: {
+              mediaType: "image",
+              id: "inline-1",
+              filename: "inline.png",
+            },
+            source: { kind: "attachment", filename: "inline.png" },
+            alt: "Inline architecture",
+            width: 40,
+            height: 20,
+            border: { color: "#0052CC", size: 1 },
+            link: { target: { kind: "external", href: "https://example.invalid/inline" } },
           },
-          alt: "Inline architecture",
-          border: { color: "#0052CC", size: 1 },
-          link: { target: { kind: "external", href: "https://example.invalid/inline" } },
-        }],
+          { type: "text", text: "after" },
+        ],
       },
       {
         type: "image",
@@ -1768,7 +1775,14 @@ describe("serialize — C3 captions", () => {
     });
     const bundle = serializePdfDocument(prepared, { metadata });
 
-    expect(bundle.main).toContain("[Inline architecture]");
+    const before = bundle.main.indexOf("#text(\"before\")");
+    const inline = bundle.main.indexOf("#box(baseline: 0pt");
+    const after = bundle.main.indexOf("#text(\"after\")");
+    expect(before).toBeLessThan(inline);
+    expect(inline).toBeLessThan(after);
+    expect(bundle.main).toContain("#image(\"assets/inline-image-");
+    expect(bundle.main).toContain("width: 30pt, height: 15pt");
+    expect(bundle.main).not.toContain("[Inline architecture]");
     expect(bundle.main).toContain('#link("https://example.invalid/inline")');
     expect(bundle.main).toContain('stroke: 1pt + rgb("#0052CC")');
     expect(bundle.main).toContain("width: 100%");

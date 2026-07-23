@@ -105,7 +105,7 @@ update both its matrix rows and the checklist below in the same commit:
 - `[ ]` plus **Partial** is permitted only when the remaining sub-gap names its
   external contract or parallel-work dependency.
 
-Current matrix orientation: **67 of 84 rows closed; 17 rows open.** This count
+Current matrix orientation: **69 of 84 rows closed; 15 rows open.** This count
 must change in the same commit as any row checkbox.
 `scripts/adf-gap-register.test.ts` enforces the checkbox shape, reconciles
 these counters with every progress-table row, and rejects an unchecked
@@ -314,11 +314,14 @@ Evidence: [E5], [E7], [E8], [E15], [E16], [E38].
 | [x] | `media` | The exact pinned file/link/external union, Media Services identity, alt/dimensions, annotations, border/link marks, and correlated attachment metadata survive. Official v2 MIME/UI/download metadata distinguishes images from files; images enter the bounded asset pipeline, non-images become named clickable static attachment cards, and unresolved identities remain visible without guessing or fetching. | Native/Conditional | Native/Conditional | Closed for the complete pinned node. Conditional byte availability is an asset-resolution outcome, not lost ADF syntax; the pinned schema contains no crop attribute. |
 | [x] | `mediaGroup` | Every child retains its exact group index/size boundary. Both targets render a deterministic shaded attachment/gallery cluster while preserving each image, file card, link, border, and diagnostic independently. | Native | Native | Closed with multi-item decoder, target, packed-browser, and visual-fixture coverage. |
 | [x] | `mediaSingle` | Layout, exact optional local identity, percent/pixel width and width type, child dimensions, caption, link, and border survive. DOCX uses native inline/anchored drawings with square left/right text wrapping. Typst has no native contour/text-wrap layout: PDF therefore keeps source order and projects a wrap layout plus its directly following paragraph into an authored-width side-by-side grid; without a following paragraph it preserves the requested side alignment. Wide/full-width use the bounded target content width. | Native | Approximation | Closed for every pinned layout/geometry attribute and for the strongest deterministic static PDF projection the selected Typst engine supports. A real render proves that PDF media never floats ahead of earlier headings/content. Native PDF contour wrapping is an explicit renderer dependency, not locally omitted ADF decoding. The pinned schema and official node contract expose no crop attribute. |
-| [ ] | `mediaInline` | A true typed inline-media node now retains file/link/image type, Media Services and local identity, opaque data, alt, dimensions, annotations, border, safe link, and correlated image source. DOCX/PDF render deterministic bordered inline chips without changing paragraph placement. | Open | Open | **Open:** embed correlated image bytes as an actual baseline-aligned inline drawing in both targets; file/link chips are complete, but an image-capable host should not stop at the chip approximation. |
+| [x] | `mediaInline` | A true typed inline-media node retains file/link/image type, Media Services and local identity, opaque data, alt, dimensions, annotations, border, safe link, and correlated image source. Image bytes enter the same bounded, deduplicated asset pipeline as block media; file/link/unresolved variants remain deterministic inline chips. | Native/Conditional | Native/Conditional | Closed for the complete pinned node. DOCX emits a real paragraph-local drawing run with authored size, picture-shape border/alpha, alt text, and hyperlink. PDF emits a baseline-aligned Typst `box(image(...))` with authored size, border, alt text, and hyperlink. Asset-resolution failure preserves the typed chip and emits the shared image diagnostic rather than changing paragraph order. |
 
-Image byte support, SVG rasterization, external-asset policy, and missing-alt reporting exist, but those operational strengths do not fill the missing ADF media semantics.
+Image byte support, SVG rasterization, external-asset policy, missing-alt
+reporting, and visible failure fallbacks now cover the operational side of the
+pinned media contract; unavailable bytes remain a conditional host outcome,
+not an unchecked syntax gap.
 
-Evidence: [E2], [E7], [E8], [E17], [E39].
+Evidence: [E2], [E7], [E8], [E17], [E39], [E40].
 
 ### 6.8 Extensions, macros, and synced content
 
@@ -395,7 +398,7 @@ Official Confluence documentation describes these input shortcuts. They are edit
 | [x] | `:)` auto-conversion | Emoji/editor transformation | Correctly consumes the materialized emoji/text result and performs no exporter-side editor emulation. | Closed exporter policy; the live corpus records enabled/disabled editor outcomes without reinterpreting raw text. |
 | [x] | Raw `:shortname:` text | Not a stable documented ADF contract | Remains literal unless Confluence converted it first. | Closed invariant: never reinterpret ordinary text in the exporter. |
 | [x] | `@ ` | `mention` | Native typed mention with source or host-resolved visible name. | Closed for the pinned ADF contract: identity/presentation metadata survives, unresolved/deactivated output is privacy-safe, and no unsupported profile URL is invented. |
-| [ ] | `!` | media picker | Block image/file/link/external media, static audio/video attachment cards, groups, authored dimensions/layout, alt text, captions, borders, and links are complete. | **Open:** a correlated image stored as `mediaInline` still renders as a typed inline chip instead of an actual baseline-aligned drawing in DOCX/PDF. This materialized editor outcome stays open with the `mediaInline` row. |
+| [x] | `!` | media picker | Block image/file/link/external media, static audio/video attachment cards, groups, inline images, authored dimensions/layout, alt text, captions, borders, and links are complete. | Closed for every pinned materialized media outcome: correlated block and inline images render as real target images; file/link/unresolved outcomes remain visible, typed, clickable where safe, and diagnostic. |
 | [ ] | `{` | macro autocomplete | `extension*` or legacy macro projection | **Open/conditional:** core, Forge `adfExport`, Connect/migrated, unknown, and offline behavior. |
 | [x] | `//` | `date` | Native localized static date chip. | UTC calendar semantics, locale formatting, invalid-value reporting, and deterministic browser/render fixtures are complete. |
 | [x] | `/...` | Selected node/macro | Determined by the resulting typed ADF node, never by reparsing slash text. | Closed classification policy; the selected result remains tracked in its own checked row. |
@@ -532,11 +535,11 @@ Required acceptance contract:
   data/datasource payload, safe target, local identity, layout, and authored
   geometry survives. Both targets render deterministic static cards; supported
   datasource providers additionally reuse the existing live macro chain.
-- [ ] **Open — media family.** Pinned block media, attachment/file cards,
-  external images, grouping, `mediaSingle` geometry/wrapping, captions, links,
-  and borders are complete. `mediaInline` retains its full typed contract and
-  renders a bordered chip, but correlated inline image bytes still need actual
-  baseline-aligned drawing/image output in both targets.
+- [x] **Media family.** Pinned block media, attachment/file cards, external
+  images, grouping, `mediaSingle` geometry/wrapping, captions, links, borders,
+  and `mediaInline` are complete. Correlated inline images render at their
+  paragraph position in both targets; unresolved/file/link variants retain the
+  deterministic inline-chip floor.
 - [x] **Page/attachment/media hyperlinks.** Exact safe href fallbacks,
   in-scope internal anchors, pinned ADF provenance, DOCX ScreenTips, and both
   targets' clickable text/image/fallback/card output are complete.
@@ -594,9 +597,8 @@ Required acceptance contract:
 
 ### Phase 3 - Media and extensions
 
-- [ ] Full media family: pinned block media/group/single and static
-  image/file/audio/video/link/external fallbacks are complete; native
-  correlated-image output for `mediaInline` remains.
+- [x] Full media family: pinned block media/group/single/inline, native
+  correlated images, and static image/file/audio/video/link/external fallbacks.
 - [ ] **Open:** ADF-native extension forms are decoded; Forge `adfExport`
   ingestion remains.
 - [ ] Synced content policy.
@@ -609,9 +611,9 @@ Required acceptance contract:
 - [x] Typst source assertions and rasterized PDF visual goldens for completed
   feature slices.
 - [x] Browser-host and CLI-host parity for the shared TS engine shapes.
-- [ ] **Open:** live Confluence E2E exists for selected slices; create one
-  persistent, runtime-only feature-tree resource for repeatable CLI DOCX/PDF
-  subtree exports and expand it to the full feature-zoo corpus.
+- [ ] **Open:** a persistent runtime-only feature tree now proves repeatable
+  CLI DOCX/PDF subtree exports and real correlated `mediaInline` output without
+  repository identifiers. Expand it to the remaining full feature-zoo corpus.
 
 ## 12. Definition of done per feature
 
@@ -676,8 +678,9 @@ Focused missing gates:
 - [x] Generic inline/block/embed card metadata tests.
 - [x] Layout width/column tests for pinned ADF and documented Storage shapes.
 - [ ] Breakout rendering beyond the page-bounded layout-section approximation.
-- [ ] Media completeness tests: block/group/file/link/external/border/layout
-  coverage is complete; actual inline-image byte embedding remains open.
+- [x] Media completeness tests: block/group/inline/file/link/external/border/
+  layout coverage, bounded asset handling, target-native image output,
+  browser/background parity, and persistent live CLI proof are complete.
 - [x] Native ADF caption plus ADF/Storage expand/nested-expand validation,
   decoding, recursive traversal, both-target, browser-parity, and rendered
   golden tests.
@@ -736,6 +739,8 @@ Accessed 2026-07-22 and 2026-07-23:
 39. [ADF mediaInline node](https://developer.atlassian.com/cloud/jira/platform/apis/document/nodes/mediaInline/)
 40. [ADF border mark](https://developer.atlassian.com/cloud/jira/platform/apis/document/marks/border/)
 41. [Typst `place` layout contract](https://typst.app/docs/reference/layout/place/)
+42. [ADF document structure and inline-node ordering](https://developer.atlassian.com/cloud/jira/platform/apis/document/structure/)
+43. [Typst inline `box` layout and baseline contract](https://typst.app/docs/reference/layout/box/)
 
 ## 15. Repository evidence index
 
@@ -770,7 +775,7 @@ Accessed 2026-07-22 and 2026-07-23:
 - **[E29] Native captions and recursive static disclosures across ADF/Storage and both targets:** `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/adf-validate.ts`, `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/page-body.test.ts`, `packages/confluence/src/compose-document.ts`, `packages/confluence/src/resolve-mentions.ts`, `packages/export-macros/src/resolve.ts`, `packages/docx/src/serialize.ts`, `packages/pdf/src/prepare.ts`, `packages/pdf/src/serialize.ts`, `packages/export-fixtures/src/index.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
 - **[E30] Native date/status/placeholder semantics across ADF/Storage and both targets:** `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/adf-validate.ts`, `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/page-body.test.ts`, `packages/confluence/src/compose-document.ts`, `packages/confluence/test-fixtures/adf-pairs/basic.adf.json`, `packages/confluence/test-fixtures/adf-pairs/basic.storage.xml`, `packages/docx/src/serialize.ts`, `packages/pdf/src/serialize.ts`, `packages/export-fixtures/src/index.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `apps/browser-export-harness/tests/exports.e2e.ts`, `scripts/adf-rendered-goldens.ts`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
 - **[E31] Paragraph/heading/ordinary-list-item local identity preservation:** `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/adf-validate.ts`, `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/page-body.test.ts`, `packages/confluence/src/compose-document.ts`, `packages/confluence/test-fixtures/adf-pairs/basic.adf.json`, `packages/confluence/test-fixtures/adf-pairs/basic.storage.xml`, `packages/export-fixtures/src/index.ts`, `packages/export-fixtures/src/adf-fixtures.test.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `apps/browser-export-harness/tests/exports.e2e.ts`
-- **[E32] Complete pinned ADF code-block semantics and static projection:** `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/adf-validate.ts`, `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/compose-document.test.ts`, `packages/confluence/src/export-blocks.test.ts`, `packages/docx/src/highlight.ts`, `packages/docx/src/highlight.test.ts`, `packages/docx/src/ooxml.ts`, `packages/docx/src/serialize.ts`, `packages/pdf/src/prepare.ts`, `packages/pdf/src/serialize.ts`, `packages/export-fixtures/src/index.ts`, `packages/export-fixtures/src/adf-fixtures.test.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `apps/browser-export-harness/tests/exports.e2e.ts`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
+- **[E32] Complete pinned ADF code-block semantics and static projection:** `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/adf-validate.ts`, `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/compose-document.test.ts`, `packages/confluence/src/export-blocks.test.ts`, `packages/docx/src/highlight.ts`, `packages/docx/src/highlight.test.ts`, `packages/docx/src/ooxml.ts`, `packages/docx/src/serialize.ts`, `packages/pdf/src/prepare.ts`, `packages/pdf/src/serialize.ts`, `packages/pdf-compiler-browser/src/compiler.test.ts`, `packages/pdf-compiler-browser/src/template-migration-parity.test.ts`, `packages/export-fixtures/src/index.ts`, `packages/export-fixtures/src/adf-fixtures.test.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `apps/browser-export-harness/tests/exports.e2e.ts`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
 - **[E33] Complete pinned custom-panel semantics and static projection:** `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/adf-validate.ts`, `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/compose-document.ts`, `packages/docx/src/ooxml.ts`, `packages/docx/src/serialize.ts`, `packages/pdf/src/types.ts`, `packages/pdf/src/template.ts`, `packages/pdf/src/serialize.ts`, `packages/export-fixtures/src/index.ts`, `packages/export-fixtures/src/adf-fixtures.test.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `apps/browser-export-harness/tests/exports.e2e.ts`, `scripts/adf-rendered-goldens.ts`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
 - **[E34] Complete pinned mention semantics and privacy-safe static projection:** `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/adf-validate.ts`, `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/resolve-mentions.ts`, `packages/confluence/src/compose-document.ts`, `packages/docx/src/serialize.ts`, `packages/pdf/src/serialize.ts`, `packages/export-fixtures/src/index.ts`, `packages/export-fixtures/src/adf-fixtures.test.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `apps/browser-export-harness/tests/exports.e2e.ts`, `scripts/adf-rendered-goldens.ts`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
 - **[E35] Executable progress-register consistency guard:** `scripts/adf-gap-register.test.ts`
@@ -778,6 +783,7 @@ Accessed 2026-07-22 and 2026-07-23:
 - **[E37] Complete pinned ADF link-mark semantics:** `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/adf-to-blocks.test.ts`, `packages/confluence/src/compose-document.ts`, `packages/confluence/src/compose-document.test.ts`, `packages/docx/src/ooxml.ts`, `packages/docx/src/serialize.ts`, `packages/docx/src/serialize.test.ts`, `packages/pdf/src/prepare.ts`, `packages/pdf/src/serialize.ts`, `packages/pdf/src/serialize.test.ts`, `packages/export-fixtures/src/index.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
 - **[E38] Complete pinned Smart Card semantics and static/live projection:** `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/adf-validate.ts`, `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/adf-validate.test.ts`, `packages/confluence/src/adf-to-blocks.test.ts`, `packages/confluence/src/compose-document.ts`, `packages/confluence/src/compose-document.test.ts`, `packages/confluence/src/datasource.ts`, `packages/docx/src/serialize.ts`, `packages/docx/src/serialize.test.ts`, `packages/pdf/src/prepare.ts`, `packages/pdf/src/serialize.ts`, `packages/pdf/src/serialize.test.ts`, `packages/export-fixtures/src/index.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
 - **[E39] Complete pinned block-media/group/single/border semantics and typed inline-media boundary:** `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/adf-validate.ts`, `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/client.ts`, `packages/confluence/src/adf-validate.test.ts`, `packages/confluence/src/adf-to-blocks.test.ts`, `packages/confluence/src/client-adf.test.ts`, `packages/confluence/src/compose-document.ts`, `packages/docx/src/image.ts`, `packages/docx/src/export.ts`, `packages/docx/src/serialize.ts`, `packages/docx/src/image.test.ts`, `packages/docx/src/export.test.ts`, `packages/docx/src/serialize.test.ts`, `packages/pdf/src/prepare.ts`, `packages/pdf/src/serialize.ts`, `packages/pdf/src/serialize.test.ts`, `packages/export-fixtures/src/index.ts`, `packages/export-fixtures/src/adf-fixtures.test.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
+- **[E40] Native correlated `mediaInline` output and host parity:** `packages/docx/src/image.ts`, `packages/docx/src/serialize.ts`, `packages/docx/src/export.ts`, `packages/docx/src/image.test.ts`, `packages/docx/src/serialize.test.ts`, `packages/docx/src/export.test.ts`, `packages/pdf/src/types.ts`, `packages/pdf/src/prepare.ts`, `packages/pdf/src/serialize.ts`, `packages/pdf/src/prepare.test.ts`, `packages/pdf/src/serialize.test.ts`, `packages/export-fixtures/src/index.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `apps/browser-export-harness/src/pdf-job-parity-case.ts`, `apps/browser-export-harness/tests/exports.e2e.ts`, `scripts/adf-rendered-goldens.ts`, `scripts/adf-rendered-goldens.test.ts`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
 
 ## 16. Review questions
 

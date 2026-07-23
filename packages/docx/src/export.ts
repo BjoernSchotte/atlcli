@@ -78,6 +78,7 @@ import {
   type ImageBlock,
   type ImageEmbedOutcome,
   type ImageEmbedSeam,
+  type InlineImageNode,
 } from "./serialize.js";
 import {
   auditImageAltText,
@@ -959,11 +960,29 @@ function validateStylerefFields(
 /** Count `image` blocks anywhere in the tree (for asset-phase progress totals). */
 function countImageBlocks(blocks: ExportBlock[]): number {
   let count = 0;
+  const countInline = (nodes: import("@atlcli/confluence").InlineNode[]): void => {
+    for (const node of nodes) {
+      if (node.type === "link") countInline(node.content);
+      else if (node.type === "media" && node.source) count += 1;
+    }
+  };
+  const countCaption = (caption: import("@atlcli/confluence").Caption | undefined): void => {
+    if (caption) countInline(caption.content);
+  };
   const walk = (list: ExportBlock[]): void => {
     for (const block of list) {
       switch (block.type) {
+        case "heading":
+        case "paragraph":
+          countInline(block.content);
+          break;
         case "image":
           count += 1;
+          countCaption(block.caption);
+          break;
+        case "codeBlock":
+        case "mediaFallback":
+          countCaption(block.caption);
           break;
         case "callout":
         case "expand":
@@ -978,6 +997,7 @@ function countImageBlocks(blocks: ExportBlock[]): number {
           for (const column of block.columns) walk(column.content);
           break;
         case "table":
+          countCaption(block.caption);
           for (const row of block.rows) for (const cell of row.cells) walk(cell.content);
           break;
       }
@@ -1334,6 +1354,7 @@ interface ImageSeamOptions {
 
 /** The default display size for an SVG whose intrinsic size is undeterminable. */
 const SVG_FALLBACK_SIZE = { widthPx: 600, heightPx: 400 };
+type ImageAssetNode = ImageBlock | InlineImageNode;
 
 function imageSeam(
   embedder: ImageEmbedder,
@@ -1357,7 +1378,7 @@ function imageSeam(
   // the same attachment twice downloads it once (the embedder already
   // deduplicates the media part; this deduplicates the network fetch).
   const fetches = new Map<string, Promise<Uint8Array>>();
-  const fetchBytes = (block: ImageBlock): Promise<Uint8Array> => {
+  const fetchBytes = (block: ImageAssetNode): Promise<Uint8Array> => {
     const ref = assetRefFor(block, pageId);
     let p = fetches.get(ref.url);
     if (!p) {
@@ -1380,7 +1401,7 @@ function imageSeam(
     }
     return p;
   };
-  const budgetMeta = (block: ImageBlock): { filename: string; pageId?: string } => {
+  const budgetMeta = (block: ImageAssetNode): { filename: string; pageId?: string } => {
     const filename = block.source.kind === "attachment" ? block.source.filename : block.source.url;
     const owningPage = block.source.kind === "attachment" ? block.source.pageId ?? pageId : pageId;
     return { filename, ...(owningPage ? { pageId: owningPage } : {}) };
@@ -1393,7 +1414,7 @@ function imageSeam(
    * asset budget would blame: one notion of "which page is this image from",
    * not two.
    */
-  const auditAlt = (block: ImageBlock): void => {
+  const auditAlt = (block: ImageAssetNode): void => {
     if (!auditNotes) return;
     const meta = budgetMeta(block);
     const note = auditImageAltText({
@@ -1411,52 +1432,64 @@ function imageSeam(
     done += 1;
     onProgress?.({ phase: "assets", done, total, ...(detail !== undefined ? { detail } : {}) });
   };
+  const embed = async (
+    block: ImageAssetNode,
+    inline: boolean,
+  ): Promise<ImageEmbedOutcome> => {
+    const name = block.source.kind === "attachment" ? block.source.filename : undefined;
+    // Audit the SOURCE node first: the defect belongs to the page, not to the
+    // embed attempt, so it is reported whether or not the bytes resolve.
+    auditAlt(block);
+    let bytes: Uint8Array;
+    try {
+      bytes = await fetchBytes(block);
+    } catch (err) {
+      rethrowCancellation(err, signal);
+      reportDone(name);
+      return { ok: false as const, reason: err instanceof Error ? err.message : String(err) };
+    }
+    // Budget accounting BEFORE embed: a total-cap breach is fatal and must
+    // abort the whole export (never a per-image warning).
+    budget.account(bytes, budgetMeta(block));
+    if (isSvg(bytes)) {
+      const outcome = await embedSvgAttachment(block, bytes, name, inline);
+      reportDone(name);
+      return outcome;
+    }
+    try {
+      const wanted = mediaTargetSize(block);
+      const wrap = inline ? undefined : mediaWrap(block);
+      const options = {
+        alt: block.alt,
+        name,
+        widthPx: wanted.widthPx,
+        heightPx: wanted.heightPx,
+        ...(wrap ? { wrap } : {}),
+        ...(partPath ? { partPath } : {}),
+        ...(inline && block.border ? { border: block.border } : {}),
+      };
+      const xml = inline
+        ? embedder.embedInline(bytes, options)
+        : embedder.embed(bytes, options);
+      reportDone(name);
+      return { ok: true as const, xml };
+    } catch (err) {
+      reportDone(name);
+      return { ok: false as const, reason: err instanceof Error ? err.message : String(err) };
+    }
+  };
   return {
     prefetch(block: ImageBlock) {
       void fetchBytes(block);
     },
-    async embed(block: ImageBlock) {
-      const name = block.source.kind === "attachment" ? block.source.filename : undefined;
-      // Audit the SOURCE block first: the defect belongs to the page, not to
-      // the embed attempt, so it is reported whether or not the bytes resolve.
-      auditAlt(block);
-      let bytes: Uint8Array;
-      try {
-        bytes = await fetchBytes(block);
-      } catch (err) {
-        rethrowCancellation(err, signal);
-        reportDone(name);
-        return { ok: false as const, reason: err instanceof Error ? err.message : String(err) };
-      }
-      // Budget accounting BEFORE embed: a total-cap breach is fatal and must
-      // abort the whole export (never a per-image warning), so it is NOT caught
-      // by the per-image failure branch below — it propagates out of the seam.
-      budget.account(bytes, budgetMeta(block));
-      // SVG attachment path (spec 006 G4): embed vector-sharp via svgBlip with a
-      // 2× PNG fallback. Detected here before the raster embedder is reached, so
-      // the deferral throw in ImageEmbedder.embed is never hit for this path.
-      if (isSvg(bytes)) {
-        const outcome = await embedSvgAttachment(block, bytes, name);
-        reportDone(name);
-        return outcome;
-      }
-      try {
-        const wanted = mediaTargetSize(block);
-        const wrap = mediaWrap(block);
-        const xml = embedder.embed(bytes, {
-          alt: block.alt,
-          name,
-          widthPx: wanted.widthPx,
-          heightPx: wanted.heightPx,
-          ...(wrap ? { wrap } : {}),
-          ...(partPath ? { partPath } : {}),
-        });
-        reportDone(name);
-        return { ok: true as const, xml };
-      } catch (err) {
-        reportDone(name);
-        return { ok: false as const, reason: err instanceof Error ? err.message : String(err) };
-      }
+    prefetchInline(block: InlineImageNode) {
+      void fetchBytes(block);
+    },
+    embed(block: ImageBlock) {
+      return embed(block, false);
+    },
+    embedInline(block: InlineImageNode) {
+      return embed(block, true);
     },
   };
 
@@ -1470,9 +1503,10 @@ function imageSeam(
    * target degrades with a precise note code instead of embedding.
    */
   async function embedSvgAttachment(
-    block: ImageBlock,
+    block: ImageAssetNode,
     bytes: Uint8Array,
-    name: string | undefined
+    name: string | undefined,
+    inline: boolean,
   ): Promise<ImageEmbedOutcome> {
     if (!rasterizer) {
       return {
@@ -1532,14 +1566,19 @@ function imageSeam(
     // accounted above). A breach is fatal — propagate out of the seam.
     budget.account(png, { filename: (name ?? "image") + ".png" });
     try {
-      const xml = embedder.embedSvg(source, png, {
+      const svgOptions = {
         origin: "image",
         alt: block.alt ?? name,
         name,
         widthPx: display.widthPx,
         heightPx: display.heightPx,
-        ...(mediaWrap(block) ? { wrap: mediaWrap(block) } : {}),
-      });
+        ...(!inline && mediaWrap(block) ? { wrap: mediaWrap(block) } : {}),
+        ...(partPath ? { partPath } : {}),
+        ...(inline && block.border ? { border: block.border } : {}),
+      } as const;
+      const xml = inline
+        ? embedder.embedSvgInline(source, png, svgOptions)
+        : embedder.embedSvg(source, png, svgOptions);
       return { ok: true as const, xml, ...(sideNotes.length ? { notes: sideNotes } : {}) };
     } catch (err) {
       return { ok: false as const, reason: err instanceof Error ? err.message : String(err) };
@@ -1548,9 +1587,9 @@ function imageSeam(
 }
 
 function mediaTargetSize(
-  block: ImageBlock,
+  block: ImageAssetNode,
 ): { widthPx?: number; heightPx?: number } {
-  const presentation = block.mediaPresentation;
+  const presentation = "mediaPresentation" in block ? block.mediaPresentation : undefined;
   if (!presentation) return { widthPx: block.width, heightPx: block.height };
   if (presentation.layout === "wide" || presentation.layout === "full-width") {
     return { widthPx: MAX_CONTENT_WIDTH_PX };
@@ -1565,16 +1604,17 @@ function mediaTargetSize(
   return { widthPx: block.width, heightPx: block.height };
 }
 
-function mediaWrap(block: ImageBlock): "left" | "right" | undefined {
-  return block.mediaPresentation?.layout === "wrap-left"
+function mediaWrap(block: ImageAssetNode): "left" | "right" | undefined {
+  const presentation = "mediaPresentation" in block ? block.mediaPresentation : undefined;
+  return presentation?.layout === "wrap-left"
     ? "left"
-    : block.mediaPresentation?.layout === "wrap-right"
+    : presentation?.layout === "wrap-right"
       ? "right"
       : undefined;
 }
 
 /** Human label for an image block in a note (attachment filename or URL). */
-function describeImageBlock(block: ImageBlock): string {
+function describeImageBlock(block: ImageAssetNode): string {
   return block.source.kind === "attachment"
     ? `"${block.source.filename}"`
     : `"${block.source.url}"`;
@@ -2024,7 +2064,7 @@ async function runIncludePass(pass: IncludePassDeps): Promise<Map<string, string
  * feed it straight to its binary-request helper and a session host prefixes
  * its wiki base. External images pass their absolute URL through.
  */
-function assetRefFor(block: ImageBlock, pageId: string): AssetRef {
+function assetRefFor(block: ImageAssetNode, pageId: string): AssetRef {
   if (block.source.kind === "attachment") {
     // Composed tree/space documents carry the owning page on the block
     // (ImageSource.pageId, spec 002); an attachment must be fetched from the

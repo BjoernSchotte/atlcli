@@ -1,6 +1,5 @@
 import type {
   BlockPresentation,
-  Caption,
   CaptionKind,
   ExportNote,
   InlineNode,
@@ -37,10 +36,12 @@ import type {
   PdfTheme,
   PreparedPdfAsset,
   PreparedPdfBlock,
+  PreparedPdfCaption,
   PreparedPdfDocument,
+  PreparedPdfInlineNode,
 } from "./types.js";
 
-function inlinePlainText(nodes: InlineNode[]): string {
+function inlinePlainText(nodes: PreparedPdfInlineNode[]): string {
   return nodes
     .map((node) => {
       switch (node.type) {
@@ -495,7 +496,7 @@ function typstFigureKind(kind: CaptionKind): string {
  * walker-normalized {@link CaptionKind}, so DOCX SEQ labels and PDF figure kinds
  * agree and C2's `#outline(target: figure.where(kind: …))` groups correctly.
  */
-function captionFigureArgs(caption: Caption, writer: Writer): string {
+function captionFigureArgs(caption: PreparedPdfCaption, writer: Writer): string {
   const inline = serializeInline(
     caption.content,
     writer.labels,
@@ -566,7 +567,7 @@ function denseHostLabel(value: string): string {
   return denseAtomicToken(value);
 }
 
-function plainUnmarkedText(nodes: InlineNode[]): string | null {
+function plainUnmarkedText(nodes: PreparedPdfInlineNode[]): string | null {
   if (nodes.length !== 1) return null;
   const [node] = nodes;
   if (
@@ -698,7 +699,7 @@ function serializeMention(
 }
 
 function serializeInline(
-  nodes: InlineNode[],
+  nodes: PreparedPdfInlineNode[],
   labels: Map<string, string>,
   notes: ExportNote[],
   context: RenderContext
@@ -727,6 +728,26 @@ function serializeInline(
         case "smartCard":
           return serializeSmartCardInline(node.card, labels);
         case "media": {
+          if (node.assetPath) {
+            const dimensions = [
+              node.width !== undefined ? `width: ${node.width * 0.75}pt` : undefined,
+              node.height !== undefined ? `height: ${node.height * 0.75}pt` : undefined,
+            ].filter((value): value is string => value !== undefined);
+            const image =
+              `#image(${typstString(node.assetPath)}, alt: ${typstString(node.alt ?? node.fallbackLabel)}` +
+              `${dimensions.length ? `, ${dimensions.join(", ")}` : ""})`;
+            const border = node.border
+              ? `, stroke: ${node.border.size}pt + rgb(${typstString(node.border.color.slice(0, 7))})`
+              : "";
+            const drawing = `#box(baseline: 0pt${border}, inset: 0pt)[${image}]`;
+            if (!node.link) return drawing;
+            const href = resolveLink(node.link.target, labels);
+            return href
+              ? href.startsWith("<")
+                ? `#link(${href})[${drawing}]`
+                : `#link(${typstString(href)})[${drawing}]`
+              : drawing;
+          }
           const label = literalText(`[${inlineMediaDisplayText(node)}]`);
           const color = node.border?.color.slice(0, 7) ?? "#DFE1E6";
           const size = node.border?.size ?? 1;
@@ -952,7 +973,7 @@ function noteLowCellContrast(
 }
 
 function serializeParagraphInline(
-  content: InlineNode[],
+  content: PreparedPdfInlineNode[],
   writer: Writer,
   context: RenderContext,
   wrapInParagraph: boolean

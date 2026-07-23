@@ -749,6 +749,72 @@ describe("serializeBlocks — callouts, code, tables, images", () => {
     expect(note!.message).toContain("diagram.png");
   });
 
+  it("embeds correlated inline media between adjacent text runs with link and fallback safety", async () => {
+    const embedded: string[] = [];
+    const blocks: ExportBlock[] = [{
+      type: "paragraph",
+      content: [
+        { type: "text", text: "before" },
+        {
+          type: "media",
+          media: { mediaType: "image", id: "inline-1", filename: "inline.png" },
+          source: { kind: "attachment", filename: "inline.png" },
+          alt: "Inline architecture",
+          width: 40,
+          height: 20,
+          border: { color: "#0052CC", size: 2 },
+          link: { target: { kind: "external", href: "https://example.invalid/inline" } },
+        },
+        { type: "text", text: "after" },
+      ],
+    }];
+    const { xml, notes } = await serializeBlocks(blocks, {
+      styleNames: noStyles,
+      images: {
+        embed: async () => ({ ok: false, reason: "not used" }),
+        embedInline: async (node) => {
+          embedded.push(
+            node.source.kind === "attachment" ? node.source.filename : node.source.url,
+          );
+          return { ok: true, xml: '<w:r><w:drawing data-inline="true"/></w:r>' };
+        },
+      },
+    });
+
+    expect(embedded).toEqual(["inline.png"]);
+    expect(xml.indexOf("before")).toBeLessThan(xml.indexOf('data-inline="true"'));
+    expect(xml.indexOf('data-inline="true"')).toBeLessThan(xml.indexOf("after"));
+    expect(xml).toContain('HYPERLINK "https://example.invalid/inline"');
+    expect(xml).not.toContain("[Inline architecture]");
+    expect(notes).toEqual([]);
+  });
+
+  it("keeps the typed inline-media chip and reports a failed correlated embed", async () => {
+    const blocks: ExportBlock[] = [{
+      type: "paragraph",
+      content: [{
+        type: "media",
+        media: { mediaType: "image", id: "inline-1", filename: "inline.png" },
+        source: { kind: "attachment", filename: "inline.png" },
+        alt: "Inline architecture",
+      }],
+    }];
+    const { xml, notes } = await serializeBlocks(blocks, {
+      styleNames: noStyles,
+      images: {
+        embed: async () => ({ ok: false, reason: "not used" }),
+        embedInline: async () => ({ ok: false, reason: "offline" }),
+      },
+    });
+
+    expect(xml).toContain("[Inline architecture]");
+    expect(xml).not.toContain("<w:drawing");
+    expect(notes).toContainEqual(expect.objectContaining({
+      code: "image-embed-failed",
+      message: expect.stringContaining("offline"),
+    }));
+  });
+
   it("emits every cell of a ragged rowspan table (never drops a carried column)", async () => {
     // Regression (#1): <td rowspan=2>A</td><td>B</td> / <td>C</td><td>D</td>.
     // The grid width must account for the carried rowspan or D is dropped.

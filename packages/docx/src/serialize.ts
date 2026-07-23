@@ -72,6 +72,11 @@ import { MAX_ILVL, NumberingAllocator } from "./numbering.js";
 /** The `image` variant of {@link ExportBlock}. */
 export type ImageBlock = Extract<ExportBlock, { type: "image" }>;
 
+/** A correlated ADF inline image whose bytes can be fetched by the host. */
+export type InlineImageNode = Extract<InlineNode, { type: "media" }> & {
+  source: NonNullable<Extract<InlineNode, { type: "media" }>["source"]>;
+};
+
 /** The `codeBlock` variant of {@link ExportBlock} (carries mermaid source). */
 export type CodeBlock = Extract<ExportBlock, { type: "codeBlock" }>;
 
@@ -94,6 +99,8 @@ export type ImageEmbedOutcome =
  */
 export interface ImageEmbedSeam {
   embed(block: ImageBlock): Promise<ImageEmbedOutcome>;
+  /** Embed a correlated image as a drawing run inside its existing paragraph. */
+  embedInline?(node: InlineImageNode): Promise<ImageEmbedOutcome>;
   /**
    * Optional perf hook: start the block's asset fetch NOW, ahead of its
    * document-order {@link embed} call, so downloads overlap each other and
@@ -102,6 +109,8 @@ export interface ImageEmbedSeam {
    * happens in document order via {@link embed}. Never throws.
    */
   prefetch?(block: ImageBlock): void;
+  /** Best-effort byte prefetch for an inline image occurrence. */
+  prefetchInline?(node: InlineImageNode): void;
 }
 
 /**
@@ -358,6 +367,81 @@ export function serializeInline(
   return out;
 }
 
+async function serializeInlineWithAssets(
+  nodes: InlineNode[],
+  ctx: InternalContext,
+  notes: ExportNote[],
+  defaultTextColor?: string,
+  fontSizeHalfPoints?: number,
+  linkStyle = false,
+): Promise<string> {
+  let out = "";
+  for (const node of nodes) {
+    if (node.type === "media" && node.source) {
+      if (!ctx.images?.embedInline) {
+        notes.push({
+          level: "info",
+          code: "image-skipped",
+          message: `Inline image "${inlineMediaDisplayText(node)}" skipped — inline image embedding is unavailable in this export.`,
+        });
+        out += serializeInline([node], defaultTextColor, fontSizeHalfPoints, ctx.dateLocale);
+        continue;
+      }
+      const outcome = await ctx.images.embedInline(node as InlineImageNode);
+      if (outcome.ok) {
+        if (outcome.notes) notes.push(...outcome.notes);
+        out += linkRuns(node.link, outcome.xml);
+      } else {
+        notes.push({
+          level: outcome.level ?? "warning",
+          code: outcome.code ?? "image-embed-failed",
+          message: `Inline image "${inlineMediaDisplayText(node)}" could not be embedded (${outcome.reason}).`,
+        });
+        out += serializeInline([node], defaultTextColor, fontSizeHalfPoints, ctx.dateLocale);
+      }
+      continue;
+    }
+    if (node.type === "link") {
+      const innerRuns = await serializeInlineWithAssets(
+        node.content.length ? node.content : [{ type: "text", text: "" }],
+        ctx,
+        notes,
+        defaultTextColor,
+        fontSizeHalfPoints,
+        true,
+      );
+      const sourceHref =
+        node.target.kind === "external" ||
+        node.target.kind === "page" ||
+        node.target.kind === "attachment"
+          ? node.target.href
+          : undefined;
+      if (sourceHref) {
+        out += hyperlinkField(sourceHref, innerRuns, node.adfAttributes?.title);
+      } else if (node.target.kind === "anchor") {
+        out += internalHyperlink(
+          sanitizeAnchorId(node.target.anchor),
+          innerRuns,
+          node.adfAttributes?.title,
+        );
+      } else {
+        out += innerRuns;
+      }
+      continue;
+    }
+    if (linkStyle && node.type === "text") {
+      out += run(node.text, {
+        ...styleFromInline(node, defaultTextColor, fontSizeHalfPoints),
+        color: "0563C1",
+        underline: true,
+      });
+      continue;
+    }
+    out += serializeInline([node], defaultTextColor, fontSizeHalfPoints, ctx.dateLocale);
+  }
+  return out;
+}
+
 /** Render link content as underlined blue runs (Word Hyperlink look). */
 function linkStyledRuns(nodes: InlineNode[], fontSizeHalfPoints?: number, dateLocale = "en"): string {
   let out = "";
@@ -444,17 +528,39 @@ function placeMarker(frag: string, markerRun: string): string {
  */
 function prefetchBlocks(blocks: ExportBlock[], ctx: SerializeContext): void {
   const languages: string[] = [];
+  const walkInline = (nodes: InlineNode[]): void => {
+    for (const node of nodes) {
+      if (node.type === "link") {
+        walkInline(node.content);
+      } else if (node.type === "media" && node.source) {
+        try {
+          ctx.images?.prefetchInline?.(node as InlineImageNode);
+        } catch {
+          // prefetch is best-effort; embedInline() handles + reports failures
+        }
+      }
+    }
+  };
+  const walkCaption = (caption: Caption | undefined): void => {
+    if (caption) walkInline(caption.content);
+  };
   const walk = (list: ExportBlock[]): void => {
     for (const block of list) {
       switch (block.type) {
+        case "heading":
+        case "paragraph":
+          walkInline(block.content);
+          break;
         case "image":
           try {
             ctx.images?.prefetch?.(block);
           } catch {
             // prefetch is best-effort; embed() handles + reports failures
           }
+          walkCaption(block.caption);
           break;
         case "codeBlock": {
+          walkCaption(block.caption);
           const lang = (block.language ?? "").trim().toLowerCase();
           if (lang === "mermaid") {
             try {
@@ -480,7 +586,11 @@ function prefetchBlocks(blocks: ExportBlock[], ctx: SerializeContext): void {
           for (const column of block.columns) walk(column.content);
           break;
         case "table":
+          walkCaption(block.caption);
           for (const row of block.rows) for (const cell of row.cells) walk(cell.content);
+          break;
+        case "mediaFallback":
+          walkCaption(block.caption);
           break;
       }
     }
@@ -561,7 +671,12 @@ async function serializeBlock(
       const outlineLvl = Math.max(0, Math.min(8, effective - 1));
       const headingStyleId = resolveHeadingStyleId(ctx.styleNames, styleLevel);
       ctx.emittedHeadingStyles.add(headingStyleId);
-      const headingPara = paragraph(serializeInline(block.content, ctx.defaultTextColor, undefined, ctx.dateLocale), {
+      const headingPara = paragraph(await serializeInlineWithAssets(
+        block.content,
+        ctx,
+        notes,
+        ctx.defaultTextColor,
+      ), {
         styleId: headingStyleId,
         extraPPr: `${blockPresentationPPr(block.presentation)}<w:outlineLvl w:val="${outlineLvl}"/>`,
       });
@@ -580,11 +695,12 @@ async function serializeBlock(
     }
 
     case "paragraph":
-      return paragraph(serializeInline(
+      return paragraph(await serializeInlineWithAssets(
         block.content,
+        ctx,
+        notes,
         ctx.defaultTextColor,
         block.presentation?.fontSize === "small" ? ADF_SMALL_TEXT_HALF_POINTS : undefined,
-        ctx.dateLocale,
       ), {
         extraPPr: blockPresentationPPr(block.presentation),
       });
@@ -641,7 +757,7 @@ async function serializeBlock(
         )
         .join("");
       // Caption below code (established convention).
-      return block.caption ? codeXml + captionXml(block.caption, ctx) : codeXml;
+      return block.caption ? codeXml + await captionXml(block.caption, ctx, notes) : codeXml;
     }
 
     case "callout": {
@@ -689,7 +805,7 @@ async function serializeBlock(
         notes
       );
       // Caption above tables (established convention).
-      return block.caption ? captionXml(block.caption, ctx) + tableXml : tableXml;
+      return block.caption ? await captionXml(block.caption, ctx, notes) + tableXml : tableXml;
     }
 
     case "blockquote": {
@@ -709,7 +825,7 @@ async function serializeBlock(
       // fallback (italic placeholder + the SAME caption paragraph), so the SEQ
       // number is not skipped and downstream captions stay correctly numbered
       // (spec 003 C3). Caption below figures (established convention).
-      const cap = block.caption ? captionXml(block.caption, ctx) : "";
+      const cap = block.caption ? await captionXml(block.caption, ctx, notes) : "";
       const fallback = () =>
         block.caption ? mediaParagraph(imageUnavailablePara(block), block) + cap : "";
       // DOCX-ONLY fact (spec 010): NO image pipeline was configured for this
@@ -752,7 +868,7 @@ async function serializeBlock(
 
     case "mediaFallback": {
       const fallback = mediaParagraph(mediaFallbackUnavailablePara(block), block);
-      return block.caption ? fallback + captionXml(block.caption, ctx) : fallback;
+      return block.caption ? fallback + await captionXml(block.caption, ctx, notes) : fallback;
     }
 
     case "unknown": {
@@ -864,7 +980,11 @@ function describeImage(block: Extract<ExportBlock, { type: "image" }>): string {
  * degraded path, so a figure that fails to embed still consumes its number and
  * every later figure keeps the number Word will compute.
  */
-function captionXml(caption: Caption, ctx: InternalContext): string {
+async function captionXml(
+  caption: Caption,
+  ctx: InternalContext,
+  notes: ExportNote[],
+): Promise<string> {
   const sequence = captionSeqName(caption.kind);
   const ordinal = (ctx.captionSeq.get(sequence) ?? 0) + 1;
   ctx.captionSeq.set(sequence, ordinal);
@@ -872,7 +992,7 @@ function captionXml(caption: Caption, ctx: InternalContext): string {
     resolveCaptionStyleId(ctx.styleNames),
     caption.kind,
     ctx.captionLang ?? "en",
-    serializeInline(caption.content, undefined, undefined, ctx.dateLocale),
+    await serializeInlineWithAssets(caption.content, ctx, notes),
     ordinal
   );
 }

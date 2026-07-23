@@ -565,8 +565,16 @@ export interface PreparedPdfAsset {
 
 // export: PreparedPdfBlock
 export type PreparedPdfBlock = Exclude<ExportBlock, {
-    type: "callout" | "expand" | "list" | "layout" | "table" | "image" | "blockquote" | "codeBlock" | "orientation" | "unknown";
-}> | {
+    type: "heading" | "paragraph" | "callout" | "expand" | "list" | "layout" | "table" | "image" | "mediaFallback" | "blockquote" | "codeBlock" | "orientation" | "unknown";
+}> | (Omit<Extract<ExportBlock, {
+    type: "heading";
+}>, "content"> & {
+    content: PreparedPdfInlineNode[];
+}) | (Omit<Extract<ExportBlock, {
+    type: "paragraph";
+}>, "content"> & {
+    content: PreparedPdfInlineNode[];
+}) | {
     type: "unknown";
     macroName: string;
     body?: PreparedPdfBlock[];
@@ -593,7 +601,8 @@ export type PreparedPdfBlock = Exclude<ExportBlock, {
     }>;
 } | Omit<Extract<ExportBlock, {
     type: "table";
-}>, "rows"> & {
+}>, "caption" | "rows"> & {
+    caption?: PreparedPdfCaption;
     rows: Array<Omit<TableRow, "cells"> & {
         cells: Array<Omit<TableCell, "content"> & {
             content: PreparedPdfBlock[];
@@ -621,19 +630,25 @@ export type PreparedPdfBlock = Exclude<ExportBlock, {
     annotations?: Extract<ExportBlock, {
         type: "image";
     }>["annotations"];
-    caption?: Caption;
+    caption?: PreparedPdfCaption;
     link?: ExportLink;
-} | {
+} | (Omit<Extract<ExportBlock, {
+    type: "mediaFallback";
+}>, "caption"> & {
+    caption?: PreparedPdfCaption;
+}) | {
     type: "blockquote";
     content: PreparedPdfBlock[];
-} | Extract<ExportBlock, {
+} | (Omit<Extract<ExportBlock, {
     type: "codeBlock";
-}> | {
+}>, "caption"> & {
+    caption?: PreparedPdfCaption;
+}) | {
     type: "diagram";
     assetPath: string;
     alt?: string;
     source: string;
-    caption?: Caption;
+    caption?: PreparedPdfCaption;
     wrap?: boolean;
     hideLineNumbers?: boolean;
     firstLineNumber?: number;
@@ -643,6 +658,11 @@ export type PreparedPdfBlock = Exclude<ExportBlock, {
     type: "orientation";
     landscape: boolean;
     content: PreparedPdfBlock[];
+};
+
+// export: PreparedPdfCaption
+export type PreparedPdfCaption = Omit<Caption, "content"> & {
+    content: PreparedPdfInlineNode[];
 };
 
 // export: PreparedPdfDocument
@@ -670,6 +690,20 @@ export interface PreparedPdfExportV1 {
     startedAt: number;
     prepareMs: number;
 }
+
+// export: PreparedPdfInlineNode
+export type PreparedPdfInlineNode = Exclude<InlineNode, {
+    type: "link" | "media";
+}> | (Omit<Extract<InlineNode, {
+    type: "link";
+}>, "content"> & {
+    content: PreparedPdfInlineNode[];
+}) | (Extract<InlineNode, {
+    type: "media";
+}> & {
+    assetPath?: string;
+    fallbackLabel: string;
+});
 
 // export: preparePdfDocument
 export declare function preparePdfDocument(blocks: ExportBlock[], resolver: PdfAssetResolver, options?: PreparePdfOptions): Promise<PreparedPdfDocument>;
@@ -1378,8 +1412,16 @@ export interface PreparedPdfAsset {
 
 // export: PreparedPdfBlock
 export type PreparedPdfBlock = Exclude<ExportBlock, {
-    type: "callout" | "expand" | "list" | "layout" | "table" | "image" | "blockquote" | "codeBlock" | "orientation" | "unknown";
-}> | {
+    type: "heading" | "paragraph" | "callout" | "expand" | "list" | "layout" | "table" | "image" | "mediaFallback" | "blockquote" | "codeBlock" | "orientation" | "unknown";
+}> | (Omit<Extract<ExportBlock, {
+    type: "heading";
+}>, "content"> & {
+    content: PreparedPdfInlineNode[];
+}) | (Omit<Extract<ExportBlock, {
+    type: "paragraph";
+}>, "content"> & {
+    content: PreparedPdfInlineNode[];
+}) | {
     type: "unknown";
     macroName: string;
     body?: PreparedPdfBlock[];
@@ -1406,7 +1448,8 @@ export type PreparedPdfBlock = Exclude<ExportBlock, {
     }>;
 } | Omit<Extract<ExportBlock, {
     type: "table";
-}>, "rows"> & {
+}>, "caption" | "rows"> & {
+    caption?: PreparedPdfCaption;
     rows: Array<Omit<TableRow, "cells"> & {
         cells: Array<Omit<TableCell, "content"> & {
             content: PreparedPdfBlock[];
@@ -1434,19 +1477,25 @@ export type PreparedPdfBlock = Exclude<ExportBlock, {
     annotations?: Extract<ExportBlock, {
         type: "image";
     }>["annotations"];
-    caption?: Caption;
+    caption?: PreparedPdfCaption;
     link?: ExportLink;
-} | {
+} | (Omit<Extract<ExportBlock, {
+    type: "mediaFallback";
+}>, "caption"> & {
+    caption?: PreparedPdfCaption;
+}) | {
     type: "blockquote";
     content: PreparedPdfBlock[];
-} | Extract<ExportBlock, {
+} | (Omit<Extract<ExportBlock, {
     type: "codeBlock";
-}> | {
+}>, "caption"> & {
+    caption?: PreparedPdfCaption;
+}) | {
     type: "diagram";
     assetPath: string;
     alt?: string;
     source: string;
-    caption?: Caption;
+    caption?: PreparedPdfCaption;
     wrap?: boolean;
     hideLineNumbers?: boolean;
     firstLineNumber?: number;
@@ -1456,6 +1505,11 @@ export type PreparedPdfBlock = Exclude<ExportBlock, {
     type: "orientation";
     landscape: boolean;
     content: PreparedPdfBlock[];
+};
+
+// export: PreparedPdfCaption
+export type PreparedPdfCaption = Omit<Caption, "content"> & {
+    content: PreparedPdfInlineNode[];
 };
 
 // export: PreparedPdfDocument
@@ -1483,6 +1537,20 @@ export interface PreparedPdfExportV1 {
     startedAt: number;
     prepareMs: number;
 }
+
+// export: PreparedPdfInlineNode
+export type PreparedPdfInlineNode = Exclude<InlineNode, {
+    type: "link" | "media";
+}> | (Omit<Extract<InlineNode, {
+    type: "link";
+}>, "content"> & {
+    content: PreparedPdfInlineNode[];
+}) | (Extract<InlineNode, {
+    type: "media";
+}> & {
+    assetPath?: string;
+    fallbackLabel: string;
+});
 
 // export: preparePdfDocument
 export declare function preparePdfDocument(blocks: ExportBlock[], resolver: PdfAssetResolver, options?: PreparePdfOptions): Promise<PreparedPdfDocument>;
@@ -2191,8 +2259,16 @@ export interface PreparedPdfAsset {
 
 // export: PreparedPdfBlock
 export type PreparedPdfBlock = Exclude<ExportBlock, {
-    type: "callout" | "expand" | "list" | "layout" | "table" | "image" | "blockquote" | "codeBlock" | "orientation" | "unknown";
-}> | {
+    type: "heading" | "paragraph" | "callout" | "expand" | "list" | "layout" | "table" | "image" | "mediaFallback" | "blockquote" | "codeBlock" | "orientation" | "unknown";
+}> | (Omit<Extract<ExportBlock, {
+    type: "heading";
+}>, "content"> & {
+    content: PreparedPdfInlineNode[];
+}) | (Omit<Extract<ExportBlock, {
+    type: "paragraph";
+}>, "content"> & {
+    content: PreparedPdfInlineNode[];
+}) | {
     type: "unknown";
     macroName: string;
     body?: PreparedPdfBlock[];
@@ -2219,7 +2295,8 @@ export type PreparedPdfBlock = Exclude<ExportBlock, {
     }>;
 } | Omit<Extract<ExportBlock, {
     type: "table";
-}>, "rows"> & {
+}>, "caption" | "rows"> & {
+    caption?: PreparedPdfCaption;
     rows: Array<Omit<TableRow, "cells"> & {
         cells: Array<Omit<TableCell, "content"> & {
             content: PreparedPdfBlock[];
@@ -2247,19 +2324,25 @@ export type PreparedPdfBlock = Exclude<ExportBlock, {
     annotations?: Extract<ExportBlock, {
         type: "image";
     }>["annotations"];
-    caption?: Caption;
+    caption?: PreparedPdfCaption;
     link?: ExportLink;
-} | {
+} | (Omit<Extract<ExportBlock, {
+    type: "mediaFallback";
+}>, "caption"> & {
+    caption?: PreparedPdfCaption;
+}) | {
     type: "blockquote";
     content: PreparedPdfBlock[];
-} | Extract<ExportBlock, {
+} | (Omit<Extract<ExportBlock, {
     type: "codeBlock";
-}> | {
+}>, "caption"> & {
+    caption?: PreparedPdfCaption;
+}) | {
     type: "diagram";
     assetPath: string;
     alt?: string;
     source: string;
-    caption?: Caption;
+    caption?: PreparedPdfCaption;
     wrap?: boolean;
     hideLineNumbers?: boolean;
     firstLineNumber?: number;
@@ -2269,6 +2352,11 @@ export type PreparedPdfBlock = Exclude<ExportBlock, {
     type: "orientation";
     landscape: boolean;
     content: PreparedPdfBlock[];
+};
+
+// export: PreparedPdfCaption
+export type PreparedPdfCaption = Omit<Caption, "content"> & {
+    content: PreparedPdfInlineNode[];
 };
 
 // export: PreparedPdfDocument
@@ -2296,6 +2384,20 @@ export interface PreparedPdfExportV1 {
     startedAt: number;
     prepareMs: number;
 }
+
+// export: PreparedPdfInlineNode
+export type PreparedPdfInlineNode = Exclude<InlineNode, {
+    type: "link" | "media";
+}> | (Omit<Extract<InlineNode, {
+    type: "link";
+}>, "content"> & {
+    content: PreparedPdfInlineNode[];
+}) | (Extract<InlineNode, {
+    type: "media";
+}> & {
+    assetPath?: string;
+    fallbackLabel: string;
+});
 
 // export: preparePdfDocument
 export declare function preparePdfDocument(blocks: ExportBlock[], resolver: PdfAssetResolver, options?: PreparePdfOptions): Promise<PreparedPdfDocument>;

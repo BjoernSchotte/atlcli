@@ -64,8 +64,30 @@ export interface PreparedPdfAsset {
   mediaType: string;
 }
 
+export type PreparedPdfInlineNode =
+  | Exclude<InlineNode, { type: "link" | "media" }>
+  | (Omit<Extract<InlineNode, { type: "link" }>, "content"> & {
+      content: PreparedPdfInlineNode[];
+    })
+  | (Extract<InlineNode, { type: "media" }> & {
+      /** Packed asset path when a correlated inline image resolved successfully. */
+      assetPath?: string;
+      /** Deterministic visible fallback retained when the asset cannot be embedded. */
+      fallbackLabel: string;
+    });
+
+export type PreparedPdfCaption = Omit<Caption, "content"> & {
+  content: PreparedPdfInlineNode[];
+};
+
 export type PreparedPdfBlock =
-  | Exclude<ExportBlock, { type: "callout" | "expand" | "list" | "layout" | "table" | "image" | "blockquote" | "codeBlock" | "orientation" | "unknown" }>
+  | Exclude<ExportBlock, { type: "heading" | "paragraph" | "callout" | "expand" | "list" | "layout" | "table" | "image" | "mediaFallback" | "blockquote" | "codeBlock" | "orientation" | "unknown" }>
+  | (Omit<Extract<ExportBlock, { type: "heading" }>, "content"> & {
+      content: PreparedPdfInlineNode[];
+    })
+  | (Omit<Extract<ExportBlock, { type: "paragraph" }>, "content"> & {
+      content: PreparedPdfInlineNode[];
+    })
   /**
    * An unresolved macro (spec 004 placeholder floor). `body` is prepared
    * recursively so images/tables inside an unresolved third-party macro still
@@ -84,7 +106,8 @@ export type PreparedPdfBlock =
   | Omit<Extract<ExportBlock, { type: "layout" }>, "columns"> & {
       columns: Array<Omit<LayoutColumn, "content"> & { content: PreparedPdfBlock[] }>;
     }
-  | Omit<Extract<ExportBlock, { type: "table" }>, "rows"> & {
+  | Omit<Extract<ExportBlock, { type: "table" }>, "caption" | "rows"> & {
+      caption?: PreparedPdfCaption;
       rows: Array<Omit<TableRow, "cells"> & {
         cells: Array<Omit<TableCell, "content"> & { content: PreparedPdfBlock[] }>;
       }>;
@@ -101,17 +124,22 @@ export type PreparedPdfBlock =
       mediaGroup?: Extract<ExportBlock, { type: "image" }>["mediaGroup"];
       border?: Extract<ExportBlock, { type: "image" }>["border"];
       annotations?: Extract<ExportBlock, { type: "image" }>["annotations"];
-      caption?: Caption;
+      caption?: PreparedPdfCaption;
       link?: ExportLink;
     }
+  | (Omit<Extract<ExportBlock, { type: "mediaFallback" }>, "caption"> & {
+      caption?: PreparedPdfCaption;
+    })
   | { type: "blockquote"; content: PreparedPdfBlock[] }
-  | Extract<ExportBlock, { type: "codeBlock" }>
+  | (Omit<Extract<ExportBlock, { type: "codeBlock" }>, "caption"> & {
+      caption?: PreparedPdfCaption;
+    })
   | {
       type: "diagram";
       assetPath: string;
       alt?: string;
       source: string;
-      caption?: Caption;
+      caption?: PreparedPdfCaption;
       /** Retained from an ADF code block even when Mermaid becomes a diagram. */
       wrap?: boolean;
       hideLineNumbers?: boolean;

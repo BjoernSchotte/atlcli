@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "sourceSha256": "3307ff69dd060b4025517f73c9f042d997373459aaf26955950006b1e70ba7d3",
+  "sourceSha256": "88235fa9c0af1d94c327c214e7b6af37b9981e4770ecd18986a0b64ce71bbd36",
   "features": [
     "inline-code",
     "docx-embedded-code-font",
@@ -31,7 +31,7 @@
     "media-fallback",
     "media-single-layout-width-caption-border",
     "media-group",
-    "media-inline-chip",
+    "media-inline-image-and-fallback-chip",
     "media-wrap-source-order",
     "extension"
   ],
@@ -40,7 +40,7 @@
       "pages": [
         {
           "file": "docx-page-1.png",
-          "sha256": "eb42b9a3b81c2a6245abb00eaa7f42b156a746c7744c621d148d8cf4b449b61e"
+          "sha256": "4d482e8d4ea045374b1ba9e48b3ab5aa678fcd22d1e463547c541a92bb2e8543"
         }
       ],
       "requiredText": [
@@ -98,7 +98,7 @@
         },
         {
           "file": "pdf-page-4.png",
-          "sha256": "bf6b74357d8a7a8c610222af7fded5a05a44daad25e3633f61b615a849f9261a"
+          "sha256": "58942b733861da647b4854bce8a74514414aef7fa6162c1933b8ae6469be35f8"
         },
         {
           "file": "pdf-page-5.png",
