@@ -151,6 +151,8 @@ function blocksPlainText(blocks: PreparedPdfBlock[]): string {
           return blocksPlainText(block.content);
         case "list":
           return block.items.map((item) => blocksPlainText(item.content)).join(" ");
+        case "layout":
+          return block.columns.map((column) => blocksPlainText(column.content)).join(" ");
         case "table":
           return block.rows
             .flatMap((row) => row.cells.map((cell) => blocksPlainText(cell.content)))
@@ -730,6 +732,9 @@ function collectHeadingLabels(blocks: PreparedPdfBlock[]): CollectedLabels {
         case "list":
           for (const item of block.items) walkSlugs(item.content);
           break;
+        case "layout":
+          for (const column of block.columns) walkSlugs(column.content);
+          break;
         case "table":
           for (const row of block.rows) for (const cell of row.cells) walkSlugs(cell.content);
           break;
@@ -768,6 +773,9 @@ function collectHeadingLabels(blocks: PreparedPdfBlock[]): CollectedLabels {
           break;
         case "list":
           for (const item of block.items) walkAnchors(item.content);
+          break;
+        case "layout":
+          for (const column of block.columns) walkAnchors(column.content);
           break;
         case "table":
           for (const row of block.rows) for (const cell of row.cells) walkAnchors(cell.content);
@@ -1099,6 +1107,58 @@ function serializeBlock(
           ? `start: ${block.start}, `
           : "";
       value = `#${fn}(${options}\n${items.join(",\n")}\n)`;
+      break;
+    }
+    case "layout": {
+      if (block.columns.length === 0) {
+        writer.notes.push({
+          level: "warning",
+          code: "layout-geometry-fallback",
+          message: "An empty page layout produced no visible columns.",
+          source: { blockPath: path },
+        });
+        value = "";
+        break;
+      }
+      const positiveWidths = block.columns.map((column) =>
+        Number.isFinite(column.width) && column.width > 0 ? column.width : 0
+      );
+      const total = positiveWidths.reduce((sum, width) => sum + width, 0);
+      const visibleMinimum = total > 0
+        ? Math.max(total / 1_000, 0.001)
+        : 1;
+      const weights = total > 0
+        ? positiveWidths.map((width) => width > 0 ? width : visibleMinimum)
+        : positiveWidths.map(() => 1);
+      const columns = weights.map((weight) => `${Number(weight.toFixed(6))}fr`).join(", ");
+      const cellContext: RenderContext = {
+        ...context,
+        container: "tableCell",
+        inTable: false,
+        tableDensity: "normal",
+      };
+      const cells = block.columns.map((column, index) => {
+        const content = serializeBlocks(
+          column.content,
+          writer,
+          `${path}.columns[${index}].content`,
+          cellContext,
+        );
+        const alignment = column.verticalAlignment === "middle"
+          ? "horizon"
+          : column.verticalAlignment;
+        return alignment
+          ? `grid.cell(align: ${alignment})[\n${content}\n]`
+          : `[\n${content}\n]`;
+      });
+      value =
+        `#grid(\n` +
+        `  columns: (${columns}),\n` +
+        `  column-gutter: 12pt,\n` +
+        `  inset: (left: 0pt, right: 0pt),\n` +
+        `  stroke: none,\n` +
+        `  ${cells.join(",\n  ")},\n` +
+        `)`;
       break;
     }
     case "table": {

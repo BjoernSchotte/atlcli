@@ -223,6 +223,47 @@ describe("validateAdf", () => {
     }
   });
 
+  test("validates pinned layout-column and breakout contracts", () => {
+    const layout = (
+      columnAttrs: Record<string, unknown>,
+      markAttrs: Record<string, unknown> = { mode: "wide", width: 960 },
+    ) => doc([{
+      type: "layoutSection",
+      attrs: { localId: "" },
+      marks: [{ type: "breakout", attrs: markAttrs }],
+      content: [{
+        type: "layoutColumn",
+        attrs: columnAttrs,
+        content: [{ type: "paragraph", content: [] }],
+      }],
+    }]);
+
+    expect(() => validateAdf(layout({
+      width: 30.5,
+      localId: "",
+      valign: "middle",
+    }))).not.toThrow();
+
+    for (const attrs of [
+      {},
+      { width: -1 },
+      { width: 101 },
+      { width: "30" },
+      { width: 30, localId: 1 },
+      { width: 30, valign: "center" },
+    ]) {
+      expect(errorCode(() => validateAdf(layout(attrs)))).toBe("invalid-attributes");
+    }
+    for (const attrs of [
+      {},
+      { mode: "center" },
+      { mode: "wide", width: "960" },
+    ]) {
+      expect(errorCode(() => validateAdf(layout({ width: 100 }, attrs))))
+        .toBe("invalid-attributes");
+    }
+  });
+
   test("checks UTF-8 input bytes before parsing", () => {
     const raw = JSON.stringify(doc([{ type: "text", text: "🙂" }]));
     expect(errorCode(() => validateAdf(raw, { budget: { maxInputBytes: raw.length } })))

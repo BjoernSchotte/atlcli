@@ -480,6 +480,61 @@ describe("serializeBlocks — callouts, code, tables, images", () => {
     expect(xml).toContain(">2</w:t>");
   });
 
+  it("renders page layouts as borderless fixed columns with authored proportions and vertical alignment", async () => {
+    const blocks: ExportBlock[] = [{
+      type: "layout",
+      localId: "layout-1",
+      breakout: { mode: "wide", width: 960 },
+      columns: [
+        {
+          width: 30,
+          verticalAlignment: "middle",
+          localId: "left",
+          content: [{ type: "paragraph", content: [{ type: "text", text: "Sidebar" }] }],
+        },
+        {
+          width: 70,
+          verticalAlignment: "bottom",
+          localId: "right",
+          content: [{ type: "paragraph", content: [{ type: "text", text: "Main" }] }],
+        },
+      ],
+    }];
+
+    const { xml, notes } = await serializeBlocks(blocks, { styleNames: noStyles });
+    expect(xml).toContain('<w:tblW w:w="9000" w:type="dxa"/>');
+    expect(xml).toContain('<w:gridCol w:w="2700"/>');
+    expect(xml).toContain('<w:gridCol w:w="6300"/>');
+    expect(xml).toContain('<w:tblLayout w:type="fixed"/>');
+    expect(xml).toContain('<w:vAlign w:val="center"/>');
+    expect(xml).toContain('<w:vAlign w:val="bottom"/>');
+    expect(xml).toContain("Sidebar");
+    expect(xml).toContain("Main");
+    expect(xml).not.toContain('<w:tblStyle w:val="TableGrid"/>');
+    expect(xml).not.toContain("<w:tblBorders>");
+    expect(notes).toEqual([]);
+  });
+
+  it("keeps a schema-valid zero-width layout column visible with an exact table width", async () => {
+    const { xml } = await serializeBlocks([{
+      type: "layout",
+      columns: [
+        {
+          width: 100,
+          content: [{ type: "paragraph", content: [{ type: "text", text: "Main" }] }],
+        },
+        {
+          width: 0,
+          content: [{ type: "paragraph", content: [{ type: "text", text: "Minimum" }] }],
+        },
+      ],
+    }], { styleNames: noStyles });
+    expect(xml).toContain('<w:tblW w:w="9000" w:type="dxa"/>');
+    expect(xml).toContain('<w:gridCol w:w="8999"/>');
+    expect(xml).toContain('<w:gridCol w:w="1"/>');
+    expect(xml).toContain("Minimum");
+  });
+
   it("preserves source cell backgrounds, readable text, and shading across rowspans", async () => {
     const blocks: ExportBlock[] = [
       {
@@ -800,6 +855,35 @@ describe("serializeBlocks — new ExportBlock variants (spec 002 real renderings
     // into the orientation region.
     expect(imagePrefetched).toEqual(["nested.png"]);
     expect(diagramPrefetched).toEqual(["graph TD\n A-->B"]);
+  });
+
+  it("prefetches assets nested inside page-layout columns", async () => {
+    const imagePrefetched: string[] = [];
+    const diagramPrefetched: string[] = [];
+    const blocks: ExportBlock[] = [{
+      type: "layout",
+      columns: [{
+        width: 100,
+        content: [
+          { type: "image", source: { kind: "attachment", filename: "column.png" }, alt: "n" },
+          { type: "codeBlock", language: "mermaid", code: "graph TD\n L-->R" },
+        ],
+      }],
+    }];
+    await serializeBlocks(blocks, {
+      styleNames: noStyles,
+      images: {
+        embed: async () => ({ ok: false, reason: "unused" }),
+        prefetch: (block) =>
+          imagePrefetched.push(block.source.kind === "attachment" ? block.source.filename : block.source.url),
+      },
+      diagrams: {
+        embed: async () => ({ ok: false, route: "failed", reason: "unused" }),
+        prefetch: (block) => diagramPrefetched.push(block.code),
+      },
+    });
+    expect(imagePrefetched).toEqual(["column.png"]);
+    expect(diagramPrefetched).toEqual(["graph TD\n L-->R"]);
   });
 });
 

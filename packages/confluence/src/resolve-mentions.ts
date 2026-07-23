@@ -37,6 +37,9 @@ function collectUnresolvedMentionIds(blocks: ExportBlock[]): string[] {
         case "list":
           for (const item of block.items) visitBlocks(item.content);
           break;
+        case "layout":
+          for (const column of block.columns) visitBlocks(column.content);
+          break;
         case "table":
           for (const row of block.rows) {
             for (const cell of row.cells) visitBlocks(cell.content);
@@ -99,6 +102,14 @@ function resolveBlockMentions(
           items: block.items.map((item) => ({
             ...item,
             content: resolveBlockMentions(item.content, displayNames),
+          })),
+        };
+      case "layout":
+        return {
+          ...block,
+          columns: block.columns.map((column) => ({
+            ...column,
+            content: resolveBlockMentions(column.content, displayNames),
           })),
         };
       case "table":

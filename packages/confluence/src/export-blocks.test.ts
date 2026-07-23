@@ -962,15 +962,49 @@ describe("storageToBlocks — misc blocks", () => {
     ]);
   });
 
-  test("layout columns descend transparently", () => {
+  test("Storage layout sections preserve named column proportions and content ownership", () => {
     const out = blocks(
-      "<ac:layout><ac:layout-section><ac:layout-cell><p>left</p></ac:layout-cell>" +
-        "<ac:layout-cell><p>right</p></ac:layout-cell></ac:layout-section></ac:layout>"
+      '<ac:layout><ac:layout-section ac:type="two_left_sidebar" ac:local-id="layout-local">' +
+        '<ac:layout-cell ac:local-id="left-local" valign="middle"><p>left</p></ac:layout-cell>' +
+        '<ac:layout-cell ac:local-id="" style="vertical-align: bottom"><p>right</p></ac:layout-cell>' +
+        "</ac:layout-section></ac:layout>"
     );
     expect(out).toEqual([
-      { type: "paragraph", content: [{ type: "text", text: "left" }] },
-      { type: "paragraph", content: [{ type: "text", text: "right" }] },
+      {
+        type: "layout",
+        columns: [
+          {
+            width: 30,
+            verticalAlignment: "middle",
+            localId: "left-local",
+            content: [{ type: "paragraph", content: [{ type: "text", text: "left" }] }],
+          },
+          {
+            width: 70,
+            verticalAlignment: "bottom",
+            localId: "",
+            content: [{ type: "paragraph", content: [{ type: "text", text: "right" }] }],
+          },
+        ],
+        localId: "layout-local",
+      },
     ]);
+  });
+
+  test("Storage layout shape mismatch stays visible and uses equal portable tracks", () => {
+    const result = storageToBlocks(
+      '<ac:layout><ac:layout-section ac:type="three_equal">' +
+        "<ac:layout-cell><p>left</p></ac:layout-cell>" +
+        "<ac:layout-cell><p>right</p></ac:layout-cell>" +
+        "</ac:layout-section></ac:layout>",
+      { pageContext: { id: "source-page" } },
+    );
+    expect((result.blocks[0] as Extract<ExportBlock, { type: "layout" }>)
+      .columns.map((column) => column.width)).toEqual([50, 50]);
+    expect(result.notes).toContainEqual(expect.objectContaining({
+      code: "layout-geometry-fallback",
+      source: expect.objectContaining({ pageId: "source-page" }),
+    }));
   });
 });
 
@@ -1462,6 +1496,46 @@ describe("storageToBlocks — C6 deep nested-orientation collapse", () => {
     expect(region.landscape).toBe(true);
     expect(JSON.stringify(region.content)).not.toContain('"orientation"');
     expect(notes.map((n) => n.code)).toEqual(["orientation-nested-collapsed"]);
+  });
+
+  test("nested-orientation cleanup traverses layout columns", () => {
+    const inner =
+      '<ac:structured-macro ac:name="scroll-portrait"><ac:rich-text-body><p>deep</p></ac:rich-text-body></ac:structured-macro>';
+    const xml =
+      `<ac:structured-macro ac:name="scroll-landscape"><ac:rich-text-body>` +
+      `<ac:layout><ac:layout-section ac:type="single"><ac:layout-cell>${inner}</ac:layout-cell></ac:layout-section></ac:layout>` +
+      `</ac:rich-text-body></ac:structured-macro>`;
+    const { blocks: b, notes } = storageToBlocks(xml);
+    expect(b).toMatchObject([{
+      type: "orientation",
+      landscape: true,
+      content: [{
+        type: "layout",
+        columns: [{
+          width: 100,
+          content: [{ type: "paragraph", content: [{ type: "text", text: "deep" }] }],
+        }],
+      }],
+    }]);
+    expect(JSON.stringify(b)).not.toContain('"orientation","landscape":false');
+    expect(notes.map((n) => n.code)).toEqual(["orientation-nested-collapsed"]);
+  });
+
+  test("nested-orientation cleanup retains Storage table-row identity", () => {
+    const inner =
+      '<ac:structured-macro ac:name="scroll-portrait"><ac:rich-text-body><p>deep</p></ac:rich-text-body></ac:structured-macro>';
+    const xml =
+      `<ac:structured-macro ac:name="scroll-landscape"><ac:rich-text-body>` +
+      `<table><tbody><tr ac:local-id="row-local"><td>${inner}</td></tr></tbody></table>` +
+      `</ac:rich-text-body></ac:structured-macro>`;
+    const { blocks: b } = storageToBlocks(xml);
+    expect(b).toMatchObject([{
+      type: "orientation",
+      content: [{
+        type: "table",
+        rows: [{ localId: "row-local" }],
+      }],
+    }]);
   });
 });
 

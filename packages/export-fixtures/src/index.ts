@@ -296,10 +296,26 @@ export const ADF_CONFORMANCE_SOURCE = JSON.stringify({
     },
     {
       type: "layoutSection",
-      content: [{
-        type: "layoutColumn",
-        content: [{ type: "paragraph", content: [{ type: "text", text: "Flattened layout content" }] }],
-      }],
+      attrs: { localId: "layout-local" },
+      marks: [{ type: "breakout", attrs: { mode: "wide", width: 960 } }],
+      content: [
+        {
+          type: "layoutColumn",
+          attrs: { width: 30, valign: "middle", localId: "layout-sidebar-local" },
+          content: [{
+            type: "paragraph",
+            content: [{ type: "text", text: "Layout sidebar" }],
+          }],
+        },
+        {
+          type: "layoutColumn",
+          attrs: { width: 70, valign: "bottom", localId: "layout-main-local" },
+          content: [{
+            type: "paragraph",
+            content: [{ type: "text", text: "Layout main" }],
+          }],
+        },
+      ],
     },
     {
       type: "expand",

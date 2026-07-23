@@ -99,6 +99,29 @@ describe("resolveExportMentions", () => {
     expect(JSON.stringify(result.blocks)).toContain('"displayName":"Ada"');
   });
 
+  it("resolves a mention nested inside a page-layout column", async () => {
+    const blocks: ExportBlock[] = [{
+      type: "layout",
+      columns: [{
+        width: 100,
+        content: [{ type: "paragraph", content: [{ type: "mention", accountId: "a" }] }],
+      }],
+    }];
+    const result = await resolveExportMentions(
+      blocks,
+      async () => new Map([["a", "Ada"]]),
+    );
+    expect(result.unresolved).toBe(0);
+    expect(result.blocks).toMatchObject([{
+      type: "layout",
+      columns: [{
+        content: [{
+          content: [{ type: "mention", accountId: "a", displayName: "Ada" }],
+        }],
+      }],
+    }]);
+  });
+
   it("resolves a mention inside a caption on codeBlock, image and table", async () => {
     const caption = (accountId: string) => ({
       kind: "figure" as const,

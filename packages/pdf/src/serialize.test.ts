@@ -379,6 +379,67 @@ describe("PDF preparation and serialization", () => {
     expect(bundle.main).toContain('#text("2")');
   });
 
+  it("renders page layouts as semantic-free grids with authored proportions and vertical alignment", async () => {
+    const blocks: ExportBlock[] = [{
+      type: "layout",
+      breakout: { mode: "full-width", width: 1800 },
+      columns: [
+        {
+          width: 20,
+          verticalAlignment: "middle",
+          content: [{ type: "paragraph", content: [{ type: "text", text: "Sidebar" }] }],
+        },
+        {
+          width: 80,
+          verticalAlignment: "bottom",
+          content: [{ type: "paragraph", content: [{ type: "text", text: "Main" }] }],
+        },
+      ],
+    }];
+    const prepared = await preparePdfDocument(blocks, {
+      resolve: async () => { throw new Error("unused"); },
+    });
+    expect(prepared.blocks[0]).toMatchObject({
+      type: "layout",
+      breakout: { mode: "full-width", width: 1800 },
+      columns: [
+        { width: 20, verticalAlignment: "middle" },
+        { width: 80, verticalAlignment: "bottom" },
+      ],
+    });
+
+    const bundle = serializePdfDocument(prepared, { metadata });
+    expect(bundle.main).toContain("#grid(");
+    expect(bundle.main).toContain("columns: (20fr, 80fr)");
+    expect(bundle.main).toContain("column-gutter: 12pt");
+    expect(bundle.main).toContain("grid.cell(align: horizon)");
+    expect(bundle.main).toContain("grid.cell(align: bottom)");
+    expect(bundle.main).toContain("Sidebar");
+    expect(bundle.main).toContain("Main");
+  });
+
+  it("keeps a schema-valid zero-width layout column visible without emitting 0fr", async () => {
+    const prepared = await preparePdfDocument([{
+      type: "layout",
+      columns: [
+        {
+          width: 100,
+          content: [{ type: "paragraph", content: [{ type: "text", text: "Main" }] }],
+        },
+        {
+          width: 0,
+          content: [{ type: "paragraph", content: [{ type: "text", text: "Minimum" }] }],
+        },
+      ],
+    }], {
+      resolve: async () => { throw new Error("unused"); },
+    });
+    const bundle = serializePdfDocument(prepared, { metadata });
+    expect(bundle.main).toContain("columns: (100fr, 0.1fr)");
+    expect(bundle.main).not.toContain("columns: (100fr, 0fr)");
+    expect(bundle.main).toContain("Minimum");
+  });
+
   it("lays out merged cells on an explicit grid and keeps body section rows out of the repeated header", async () => {
     const paragraph = (text: string): ExportBlock[] => [{
       type: "paragraph",

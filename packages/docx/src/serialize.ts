@@ -423,6 +423,9 @@ function prefetchBlocks(blocks: ExportBlock[], ctx: SerializeContext): void {
         case "list":
           for (const item of block.items) walk(item.content);
           break;
+        case "layout":
+          for (const column of block.columns) walk(column.content);
+          break;
         case "table":
           for (const row of block.rows) for (const cell of row.cells) walk(cell.content);
           break;
@@ -566,6 +569,9 @@ async function serializeBlock(
       // `listLevel` starts at 0 for every list, independent of container
       // `depth` (callouts/blockquotes/table cells don't deepen list nesting).
       return serializeList(block, ctx, notes, depth, 0);
+
+    case "layout":
+      return serializeLayout(block, ctx, notes, depth);
 
     case "table": {
       const materialized = materializeTable(block);
@@ -995,6 +1001,61 @@ interface CellDesc {
   backgroundColor?: string;
   verticalAlignment?: TableCell["verticalAlignment"];
   vMerge?: "restart" | "continue";
+}
+
+async function serializeLayout(
+  block: Extract<ExportBlock, { type: "layout" }>,
+  ctx: InternalContext,
+  notes: ExportNote[],
+  depth: number,
+): Promise<string> {
+  if (block.columns.length === 0) {
+    notes.push({
+      level: "warning",
+      code: "layout-geometry-fallback",
+      message: "An empty page layout produced no visible columns.",
+    });
+    return "";
+  }
+  const widthsDxa = layoutWidthsDxa(block.columns.map((column) => column.width));
+  const cells = await Promise.all(block.columns.map(async (column, index) => {
+    const body = await serializeChildren(
+      column.content,
+      { ...ctx, container: "tableCell" },
+      notes,
+      depth + 1,
+    );
+    return tableCell(body || paragraph(run("")), {
+      widthDxa: widthsDxa[index],
+      verticalAlignment: column.verticalAlignment,
+    });
+  }));
+  return dataTable(block.columns.length, `<w:tr>${cells.join("")}</w:tr>`, {
+    widthsDxa,
+    widthDxa: widthsDxa.reduce((sum, width) => sum + width, 0),
+    fixedLayout: true,
+    borderless: true,
+    cellMarginDxa: 120,
+  });
+}
+
+function layoutWidthsDxa(widths: readonly number[]): number[] {
+  if (widths.length === 0) return [];
+  const safe = widths.map((width) =>
+    Number.isFinite(width) && width > 0 ? width : 0
+  );
+  const total = safe.reduce((sum, width) => sum + width, 0);
+  const weights = total > 0 ? safe : safe.map(() => 1);
+  const weightTotal = total > 0 ? total : weights.length;
+  const targetWidth = Math.max(9000, widths.length);
+  const distributable = targetWidth - widths.length;
+  const resolved = weights.map((weight) =>
+    1 + Math.round((weight / weightTotal) * distributable)
+  );
+  const remainder = targetWidth - resolved.reduce((sum, width) => sum + width, 0);
+  const adjustmentIndex = resolved.findIndex((width) => width + remainder > 0);
+  resolved[adjustmentIndex >= 0 ? adjustmentIndex : 0] += remainder;
+  return resolved;
 }
 
 /**

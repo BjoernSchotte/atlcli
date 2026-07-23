@@ -110,17 +110,31 @@ describe("resolveMacroBlocks — fallback chain", () => {
     expect(out.notes.some((n) => n.code === "unknown-macro")).toBe(false);
   });
 
-  test("nested-container traversal: unknown inside a table cell and a callout", async () => {
+  test("nested-container traversal preserves table/layout metadata while resolving children", async () => {
     const registry = createRegistry([paraRenderer("w", "widget", "OK")]);
     const input: StorageToBlocksResult = {
       blocks: [
         {
           type: "table",
-          rows: [{ cells: [{ header: false, colspan: 1, rowspan: 1, content: [unknownBlock("widget")] }] }],
+          rows: [{
+            localId: "row-local",
+            cells: [{ header: false, colspan: 1, rowspan: 1, content: [unknownBlock("widget")] }],
+          }],
         },
         { type: "callout", kind: "info", content: [unknownBlock("widget")] },
+        {
+          type: "layout",
+          localId: "layout-local",
+          breakout: { mode: "wide", width: 960 },
+          columns: [{
+            width: 100,
+            verticalAlignment: "middle",
+            localId: "column-local",
+            content: [unknownBlock("widget")],
+          }],
+        },
       ],
-      notes: [walkerNote("widget"), walkerNote("widget")],
+      notes: [walkerNote("widget"), walkerNote("widget"), walkerNote("widget")],
     };
     const out = await resolveMacroBlocks(input, registry, ctx());
     const table = out.blocks[0] as Extract<ExportBlock, { type: "table" }>;
@@ -128,8 +142,20 @@ describe("resolveMacroBlocks — fallback chain", () => {
       type: "paragraph",
       content: [{ type: "text", text: "OK" }],
     });
+    expect(table.rows[0].localId).toBe("row-local");
     const callout = out.blocks[1] as Extract<ExportBlock, { type: "callout" }>;
     expect(callout.content[0]).toEqual({ type: "paragraph", content: [{ type: "text", text: "OK" }] });
+    expect(out.blocks[2]).toMatchObject({
+      type: "layout",
+      localId: "layout-local",
+      breakout: { mode: "wide", width: 960 },
+      columns: [{
+        width: 100,
+        verticalAlignment: "middle",
+        localId: "column-local",
+        content: [{ type: "paragraph", content: [{ type: "text", text: "OK" }] }],
+      }],
+    });
   });
 
   test("no unknown blocks → notes/blocks pass through unchanged", async () => {

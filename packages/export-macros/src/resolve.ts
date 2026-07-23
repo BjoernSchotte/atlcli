@@ -476,6 +476,9 @@ function collectUnknown(blocks: ExportBlock[], out: UnknownBlock[]): void {
       case "list":
         for (const item of b.items) collectUnknown(item.content, out);
         break;
+      case "layout":
+        for (const column of b.columns) collectUnknown(column.content, out);
+        break;
       case "table":
         for (const row of b.rows) for (const cell of row.cells) collectUnknown(cell.content, out);
         break;
@@ -510,10 +513,20 @@ function rebuild(blocks: ExportBlock[], resolutions: Map<UnknownBlock, Resolutio
           items: b.items.map((item) => ({ ...item, content: rebuild(item.content, resolutions) })),
         });
         break;
+      case "layout":
+        out.push({
+          ...b,
+          columns: b.columns.map((column) => ({
+            ...column,
+            content: rebuild(column.content, resolutions),
+          })),
+        });
+        break;
       case "table":
         out.push({
           ...b,
           rows: b.rows.map((row) => ({
+            ...row,
             cells: row.cells.map((cell) => ({ ...cell, content: rebuild(cell.content, resolutions) })),
           })),
         });

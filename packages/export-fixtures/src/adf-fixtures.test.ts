@@ -24,7 +24,7 @@ describe("ADF browser conformance fixture", () => {
       "list",
       "list",
       "table",
-      "paragraph",
+      "layout",
       "callout",
       "unknown",
       "paragraph",
@@ -136,7 +136,26 @@ describe("ADF browser conformance fixture", () => {
       }],
       fragments: [{ localId: "table-fragment", name: "semantic-table" }],
     });
+    expect(pdf.blocks[12]).toMatchObject({
+      type: "layout",
+      localId: "layout-local",
+      breakout: { mode: "wide", width: 960 },
+      columns: [
+        {
+          width: 30,
+          verticalAlignment: "middle",
+          localId: "layout-sidebar-local",
+        },
+        {
+          width: 70,
+          verticalAlignment: "bottom",
+          localId: "layout-main-local",
+        },
+      ],
+    });
     expect(pdf.notes.map((note) => note.code)).toContain("emoji-text-fallback");
     expect(pdf.notes.map((note) => note.code)).toContain("adf-media-unresolved");
+    expect(pdf.notes.map((note) => note.code)).toContain("adf-node-degraded");
+    expect(pdf.notes.map((note) => note.code)).toContain("adf-mark-degraded");
   });
 });

@@ -957,6 +957,9 @@ function countImageBlocks(blocks: ExportBlock[]): number {
         case "list":
           for (const item of block.items) walk(item.content);
           break;
+        case "layout":
+          for (const column of block.columns) walk(column.content);
+          break;
         case "table":
           for (const row of block.rows) for (const cell of row.cells) walk(cell.content);
           break;

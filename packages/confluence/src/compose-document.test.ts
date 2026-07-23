@@ -59,6 +59,7 @@ function allHeadings(blocks: ExportBlock[]): Extract<ExportBlock, { type: "headi
       else if (b.type === "callout" || b.type === "blockquote" || b.type === "orientation") walk(b.content);
       else if (b.type === "list") for (const it of b.items) walk(it.content);
       else if (b.type === "table") for (const r of b.rows) for (const c of r.cells) walk(c.content);
+      else if (b.type === "layout") for (const column of b.columns) walk(column.content);
     }
   };
   walk(blocks);
@@ -92,6 +93,9 @@ function allLinkTargets(blocks: ExportBlock[]): LinkTarget[] {
           break;
         case "table":
           for (const r of b.rows) for (const c of r.cells) walk(c.content);
+          break;
+        case "layout":
+          for (const column of b.columns) walk(column.content);
           break;
       }
     }
@@ -234,6 +238,21 @@ describe("composeChapters — chapter structure", () => {
         presentation: { alignment: "center", indentation: 2 },
         content: [{ type: "text", text: "Presented paragraph" }],
       },
+      {
+        type: "layout",
+        localId: "presented-layout",
+        breakout: { mode: "wide", width: 960 },
+        columns: [{
+          width: 100,
+          verticalAlignment: "middle",
+          localId: "presented-column",
+          content: [{
+            type: "heading",
+            level: 3,
+            content: [{ type: "text", text: "Layout heading" }],
+          }],
+        }],
+      },
     ];
 
     const { blocks } = composeChapters([source], { chapterBreak: "none" });
@@ -248,6 +267,21 @@ describe("composeChapters — chapter structure", () => {
     )).toMatchObject({
       type: "paragraph",
       presentation: { alignment: "center", indentation: 2 },
+    });
+    expect(blocks.find((block) => block.type === "layout")).toMatchObject({
+      type: "layout",
+      localId: "presented-layout",
+      breakout: { mode: "wide", width: 960 },
+      columns: [{
+        width: 100,
+        verticalAlignment: "middle",
+        localId: "presented-column",
+        content: [{
+          type: "heading",
+          level: 3,
+          explicitAnchor: "ppresented-layout-heading",
+        }],
+      }],
     });
   });
 
@@ -574,6 +608,17 @@ describe("composeChapters — retained ADF mark identities", () => {
         macroName: "extension",
         fragments: [{ localId: "extension-fragment", name: "named" }],
       },
+      {
+        type: "layout",
+        localId: "",
+        breakout: { mode: "wide", width: 960 },
+        columns: [{
+          width: 100,
+          verticalAlignment: "middle",
+          localId: "",
+          content: [{ type: "paragraph", content: [{ type: "text", text: "layout" }] }],
+        }],
+      },
     );
 
     const { blocks } = composeChapters([source], { chapterBreak: "none" });
@@ -612,6 +657,17 @@ describe("composeChapters — retained ADF mark identities", () => {
       type: "unknown",
       macroName: "extension",
       fragments: [{ localId: "extension-fragment", name: "named" }],
+    });
+    expect(blocks).toContainEqual({
+      type: "layout",
+      localId: "",
+      breakout: { mode: "wide", width: 960 },
+      columns: [{
+        width: 100,
+        verticalAlignment: "middle",
+        localId: "",
+        content: [{ type: "paragraph", content: [{ type: "text", text: "layout" }] }],
+      }],
     });
   });
 });

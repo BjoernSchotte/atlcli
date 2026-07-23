@@ -53,8 +53,10 @@ export interface AdfSourceCaseResult {
   docxHasTaskAndDecisionSemantics: boolean;
   neutralHasAnnotationAndFragmentIdentity: boolean;
   neutralHasTablePresentation: boolean;
+  neutralHasLayoutPresentation: boolean;
   docxHasTable: boolean;
   docxHasTablePresentation: boolean;
+  docxHasLayoutPresentation: boolean;
   docxHasCardTitle: boolean;
   docxHasExtensionBody: boolean;
   docxHasVisibleMediaFallback: boolean;
@@ -352,6 +354,16 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
       && JSON.stringify(pdfSource.blocks).includes(
         '"columnWidths":[240],"verticalAlignment":"middle","localId":"table-header-local"',
       ),
+    neutralHasLayoutPresentation:
+      JSON.stringify(pdfSource.blocks).includes(
+        '"type":"layout","columns":[{"width":30,"verticalAlignment":"middle","localId":"layout-sidebar-local"',
+      )
+      && JSON.stringify(pdfSource.blocks).includes(
+        '{"width":70,"verticalAlignment":"bottom","localId":"layout-main-local"',
+      )
+      && JSON.stringify(pdfSource.blocks).includes(
+        '"localId":"layout-local","breakout":{"mode":"wide","width":960}',
+      ),
     docxHasTable: documentXml.includes("<w:tbl"),
     docxHasTablePresentation:
       documentXml.includes('<w:tblW w:w="7200" w:type="dxa"/>')
@@ -360,6 +372,12 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
       && documentXml.includes('<w:vAlign w:val="center"/>')
       && documentXml.includes('<w:vAlign w:val="bottom"/>')
       && documentXml.includes(">1</w:t>"),
+    docxHasLayoutPresentation:
+      documentXml.includes('<w:gridCol w:w="2700"/>')
+      && documentXml.includes('<w:gridCol w:w="6300"/>')
+      && documentXml.includes('<w:tblLook w:val="0000"')
+      && documentXml.includes("Layout sidebar")
+      && documentXml.includes("Layout main"),
     docxHasCardTitle:
       documentXml.includes("Local card title")
       && (documentXml.includes("https://example.invalid/adf-card")
@@ -393,6 +411,9 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
   }
   if (!result.neutralHasTablePresentation) {
     throw new Error("ADF-source table presentation was lost in the packed browser.");
+  }
+  if (!result.neutralHasLayoutPresentation) {
+    throw new Error("ADF-source layout presentation was lost in the packed browser.");
   }
   return result;
 }

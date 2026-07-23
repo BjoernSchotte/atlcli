@@ -372,6 +372,54 @@ describe("adfToBlocks", () => {
     }));
   });
 
+  it("preserves multi-column layout geometry, identity, vertical alignment, and breakout intent", () => {
+    const result = adfToBlocks(doc([{
+      type: "layoutSection",
+      attrs: { localId: "" },
+      marks: [{ type: "breakout", attrs: { mode: "wide", width: 960 } }],
+      content: [
+        {
+          type: "layoutColumn",
+          attrs: { width: 30, valign: "middle", localId: "" },
+          content: [{ type: "heading", attrs: { level: 2 }, content: [{ type: "text", text: "Left" }] }],
+        },
+        {
+          type: "layoutColumn",
+          attrs: { width: 70, valign: "bottom", localId: "right-column" },
+          content: [{ type: "paragraph", content: [{ type: "text", text: "Right" }] }],
+        },
+      ],
+    }]));
+
+    expect(result.blocks).toEqual([{
+      type: "layout",
+      localId: "",
+      breakout: { mode: "wide", width: 960 },
+      columns: [
+        {
+          width: 30,
+          verticalAlignment: "middle",
+          localId: "",
+          content: [{ type: "heading", level: 2, content: [{ type: "text", text: "Left" }] }],
+        },
+        {
+          width: 70,
+          verticalAlignment: "bottom",
+          localId: "right-column",
+          content: [{ type: "paragraph", content: [{ type: "text", text: "Right" }] }],
+        },
+      ],
+    }]);
+    expect(result.notes).toContainEqual(expect.objectContaining({
+      code: "adf-mark-degraded",
+      message: expect.stringContaining("retains wide intent"),
+      source: expect.objectContaining({ blockPath: "blocks[0]" }),
+    }));
+    expect(result.notes.map((note) => note.message)).not.toContain(
+      expect.stringContaining("layout was flattened"),
+    );
+  });
+
   it("classifies safe external, anchor, page, attachment, and unsafe links centrally", () => {
     const marked = (text: string, href: string) => ({ type: "text", text, marks: [{ type: "link", attrs: { href } }] });
     const result = adfToBlocks(doc([{

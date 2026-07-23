@@ -149,6 +149,35 @@ export interface TableRow {
   localId?: string;
 }
 
+export interface LayoutBreakout {
+  mode: "wide" | "full-width";
+  /** Optional authored breakout width from ADF, retained in source units. */
+  width?: number;
+}
+
+export interface LayoutColumn {
+  /** Authored share of the section width, expressed as a percentage. */
+  width: number;
+  verticalAlignment?: TableVerticalAlignment;
+  /** Stable ADF editor identity, including an explicitly empty value. */
+  localId?: string;
+  content: ExportBlock[];
+}
+
+/**
+ * Target-neutral multi-column page layout.
+ *
+ * ADF supplies exact percentage tracks. Storage's named layout shapes are
+ * projected onto the same percentages so renderers do not need source-specific
+ * branches.
+ */
+export interface PageLayout {
+  columns: LayoutColumn[];
+  /** Stable ADF editor identity, including an explicitly empty value. */
+  localId?: string;
+  breakout?: LayoutBreakout;
+}
+
 /**
  * A list item. `checked` is the backwards-compatible task checkbox projection;
  * typed task/decision identity and exact state live in the adjacent fields.
@@ -341,6 +370,7 @@ export type ExportBlock =
       /** Stable ADF/Storage editor identity when the representation exposes it. */
       localId?: string;
     }
+  | ({ type: "layout" } & PageLayout)
   | {
       type: "table";
       rows: TableRow[];
@@ -520,6 +550,7 @@ export const EXPORT_NOTE_CODES = [
   "macro-not-rendered",
   "image-unresolved",
   "inline-image-skipped",
+  "layout-geometry-fallback",
   // Shared ADF/Storage fact: no portable Unicode display was available.
   "emoji-text-fallback",
   // ADF adapter degradations. These are representation facts shared by every
@@ -1211,7 +1242,6 @@ const INLINE_TAGS = new Set([
 const TRANSPARENT_BLOCK_TAGS = new Set([
   "div",
   "ac:layout",
-  "ac:layout-section",
   "ac:layout-cell",
   "ac:adf-extension",
   "ac:adf-node",
@@ -1430,6 +1460,8 @@ function handleBlockElement(el: XmlElement, ctx: WalkCtx): ExportBlock[] {
       return [walkList(el, ctx)];
     case "ac:task-list":
       return [walkTaskList(el, ctx)];
+    case "ac:layout-section":
+      return [walkLayoutSection(el, ctx)];
     case "table":
       return [walkTable(el, ctx)];
     case "blockquote":
@@ -1447,6 +1479,51 @@ function handleBlockElement(el: XmlElement, ctx: WalkCtx): ExportBlock[] {
       // Unknown block-level element: descend rather than drop its content.
       return walkBlocks(el.children, ctx);
   }
+}
+
+const STORAGE_LAYOUT_WIDTHS: Readonly<Record<string, readonly number[]>> = {
+  single: [100],
+  two_equal: [50, 50],
+  two_left_sidebar: [30, 70],
+  two_right_sidebar: [70, 30],
+  three_equal: [100 / 3, 100 / 3, 100 / 3],
+  three_with_sidebars: [20, 60, 20],
+};
+
+function walkLayoutSection(el: XmlElement, ctx: WalkCtx): ExportBlock {
+  const cells = childrenByName(el, "ac:layout-cell");
+  const layoutType = el.attrs["ac:type"]?.trim().toLowerCase();
+  const authoredWidths = layoutType ? STORAGE_LAYOUT_WIDTHS[layoutType] : undefined;
+  const widths = authoredWidths?.length === cells.length
+    ? authoredWidths
+    : cells.length > 0
+      ? Array.from({ length: cells.length }, () => 100 / cells.length)
+      : [];
+  if (!authoredWidths || authoredWidths.length !== cells.length) {
+    ctx.notes.push(withSource(ctx, {
+      level: "warning",
+      code: "layout-geometry-fallback",
+      message: layoutType
+        ? `Storage layout "${layoutType}" has ${cells.length} cells; equal portable widths were used.`
+        : "Storage layout has no recognized type; equal portable widths were used.",
+    }));
+  }
+  return {
+    type: "layout",
+    columns: cells.map((cell, index) => ({
+      width: widths[index] ?? 0,
+      ...(tableCellVerticalAlignment(cell)
+        ? { verticalAlignment: tableCellVerticalAlignment(cell) }
+        : {}),
+      ...(cell.attrs["ac:local-id"] !== undefined
+        ? { localId: cell.attrs["ac:local-id"] }
+        : {}),
+      content: walkBlocks(cell.children, ctx),
+    })),
+    ...(el.attrs["ac:local-id"] !== undefined
+      ? { localId: el.attrs["ac:local-id"] }
+      : {}),
+  };
 }
 
 /** Collect the concatenated raw text of an element subtree (for code bodies). */
@@ -2270,11 +2347,17 @@ function stripNestedOrientation(blocks: ExportBlock[]): { blocks: ExportBlock[];
           return [
             { ...block, items: block.items.map((item) => ({ ...item, content: walk(item.content) })) },
           ];
+        case "layout":
+          return [{
+            ...block,
+            columns: block.columns.map((column) => ({ ...column, content: walk(column.content) })),
+          }];
         case "table":
           return [
             {
               ...block,
               rows: block.rows.map((row) => ({
+                ...row,
                 cells: row.cells.map((cell) => ({ ...cell, content: walk(cell.content) })),
               })),
             },

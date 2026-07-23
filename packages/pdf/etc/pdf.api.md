@@ -44,7 +44,9 @@ export type ExportBlock = {
     start?: number;
     listKind?: "task" | "decision";
     localId?: string;
-} | {
+} | ({
+    type: "layout";
+} & PageLayout) | {
     type: "table";
     rows: TableRow[];
     columnWidths?: number[];
@@ -494,7 +496,7 @@ export interface PreparedPdfAsset {
 
 // export: PreparedPdfBlock
 export type PreparedPdfBlock = Exclude<ExportBlock, {
-    type: "callout" | "list" | "table" | "image" | "blockquote" | "codeBlock" | "orientation" | "unknown";
+    type: "callout" | "list" | "layout" | "table" | "image" | "blockquote" | "codeBlock" | "orientation" | "unknown";
 }> | {
     type: "unknown";
     macroName: string;
@@ -511,6 +513,12 @@ export type PreparedPdfBlock = Exclude<ExportBlock, {
     type: "list";
 }>, "items"> & {
     items: Array<Omit<ListItem, "content"> & {
+        content: PreparedPdfBlock[];
+    }>;
+} | Omit<Extract<ExportBlock, {
+    type: "layout";
+}>, "columns"> & {
+    columns: Array<Omit<LayoutColumn, "content"> & {
         content: PreparedPdfBlock[];
     }>;
 } | Omit<Extract<ExportBlock, {
@@ -761,7 +769,9 @@ export type ExportBlock = {
     start?: number;
     listKind?: "task" | "decision";
     localId?: string;
-} | {
+} | ({
+    type: "layout";
+} & PageLayout) | {
     type: "table";
     rows: TableRow[];
     columnWidths?: number[];
@@ -1211,7 +1221,7 @@ export interface PreparedPdfAsset {
 
 // export: PreparedPdfBlock
 export type PreparedPdfBlock = Exclude<ExportBlock, {
-    type: "callout" | "list" | "table" | "image" | "blockquote" | "codeBlock" | "orientation" | "unknown";
+    type: "callout" | "list" | "layout" | "table" | "image" | "blockquote" | "codeBlock" | "orientation" | "unknown";
 }> | {
     type: "unknown";
     macroName: string;
@@ -1228,6 +1238,12 @@ export type PreparedPdfBlock = Exclude<ExportBlock, {
     type: "list";
 }>, "items"> & {
     items: Array<Omit<ListItem, "content"> & {
+        content: PreparedPdfBlock[];
+    }>;
+} | Omit<Extract<ExportBlock, {
+    type: "layout";
+}>, "columns"> & {
+    columns: Array<Omit<LayoutColumn, "content"> & {
         content: PreparedPdfBlock[];
     }>;
 } | Omit<Extract<ExportBlock, {
@@ -1478,7 +1494,9 @@ export type ExportBlock = {
     start?: number;
     listKind?: "task" | "decision";
     localId?: string;
-} | {
+} | ({
+    type: "layout";
+} & PageLayout) | {
     type: "table";
     rows: TableRow[];
     columnWidths?: number[];
@@ -1928,7 +1946,7 @@ export interface PreparedPdfAsset {
 
 // export: PreparedPdfBlock
 export type PreparedPdfBlock = Exclude<ExportBlock, {
-    type: "callout" | "list" | "table" | "image" | "blockquote" | "codeBlock" | "orientation" | "unknown";
+    type: "callout" | "list" | "layout" | "table" | "image" | "blockquote" | "codeBlock" | "orientation" | "unknown";
 }> | {
     type: "unknown";
     macroName: string;
@@ -1945,6 +1963,12 @@ export type PreparedPdfBlock = Exclude<ExportBlock, {
     type: "list";
 }>, "items"> & {
     items: Array<Omit<ListItem, "content"> & {
+        content: PreparedPdfBlock[];
+    }>;
+} | Omit<Extract<ExportBlock, {
+    type: "layout";
+}>, "columns"> & {
+    columns: Array<Omit<LayoutColumn, "content"> & {
         content: PreparedPdfBlock[];
     }>;
 } | Omit<Extract<ExportBlock, {

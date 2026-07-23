@@ -774,7 +774,7 @@ Tasks:
 - [x] Run paired ADF/Storage semantic differential tests for the feature zoo.
 - [x] Run the weekly read-only observed-Cloud structural inventory against retained synthetic feature-zoo pages and compare it with both the pinned and currently discovered schema.
 - [x] Add DOCX OOXML and PDF/Typst assertions where source fidelity affects output.
-- [x] Add rendered goldens for inline code, emoji/custom emoji fallback, tables, layout degradation, cards, media, and extensions where applicable.
+- [x] Add rendered goldens for inline code, emoji/custom emoji fallback, tables, native layout columns with page-bounded breakout, cards, media, and extensions where applicable.
 - [x] Run the live Cloud E2E for PDF and TypeScript DOCX and clean up test resources.
 - [x] Run Data Center/Storage regression coverage or the available Storage compatibility harness.
 - [x] Measure requests/page, wall time, peak memory, block count, note count, and artifact parity on page/tree/space fixtures.
@@ -794,7 +794,7 @@ Differential evidence recorded on 2026-07-22: the paired ADF/Storage semantic fe
 
 Observed-Cloud evidence recorded on 2026-07-22: the weekly optional job now accepts up to 16 retained feature-zoo pages through a secret-only list, aggregates their structural signatures, and fully validates each ADF document against both the committed schema pin and the package schema discovered in that run. Focused tests proved multi-page aggregation, independent current-schema constraint drift, bounded configuration, backwards-compatible skip behavior, and absence of raw content, page references, credentials, and tenant origin from reports. A sanitized live run created one marked temporary feature-zoo page, observed 11 node types and two mark types with `no-drift`, passed both schema validators, and deleted the page with zero cleanup failures. Full build, typecheck, docs, API/closure, browser-isomorphism, browser-output and offline pin gates passed; the complete repository suite passed with 4,838 tests, 13 intentional skips and zero failures across 307 files.
 
-Rendered-golden evidence recorded on 2026-07-22: one synthetic ADF feature zoo now renders through the production decoder and both real export engines, then through LibreOffice/Poppler rasterization. The reviewed references cover inline code, Unicode and unresolved custom emoji, a panel, table, flattened layout, local card link, expand, extension fallback/body, and media fallback/caption. A source hash prevents fixture changes from silently reusing old references; PNG hashes, required extracted text, page counts, normalized pixel difference, and content-bound overlap guard every rerender. The review exposed and fixed a real PDF missing-glyph defect by adding a pinned, checksummed OFL symbol fallback to every Typst text role and both curated template font contracts. The canonical DOCX renderer and all five reference pages were inspected with no clipping, overlap, tofu glyphs, or hidden fallback text. CLI, packed harness, and extension asset-parity gates proved that the font is present in every runtime, while the complete browser conformance run and an anonymized live ADF-primary DOCX/PDF create-export-cleanup run proved both engines end to end.
+Rendered-golden evidence recorded on 2026-07-22: one synthetic ADF feature zoo now renders through the production decoder and both real export engines, then through LibreOffice/Poppler rasterization. The reviewed references initially covered inline code, Unicode and unresolved custom emoji, a panel, table, linearized layout content, local card link, expand, extension fallback/body, and media fallback/caption; the layout reference is superseded by the native-column follow-on below. A source hash prevents fixture changes from silently reusing old references; PNG hashes, required extracted text, page counts, normalized pixel difference, and content-bound overlap guard every rerender. The review exposed and fixed a real PDF missing-glyph defect by adding a pinned, checksummed OFL symbol fallback to every Typst text role and both curated template font contracts. The canonical DOCX renderer and all five reference pages were inspected with no clipping, overlap, tofu glyphs, or hidden fallback text. CLI, packed harness, and extension asset-parity gates proved that the font is present in every runtime, while the complete browser conformance run and an anonymized live ADF-primary DOCX/PDF create-export-cleanup run proved both engines end to end.
 
 Rollout-benchmark evidence recorded on 2026-07-22: a deterministic paired ADF/Storage corpus now exercises page, 25-page tree, and 25-page space scopes through the production source dispatcher, tree orchestration, composition, DOCX, and Typst/WASM PDF. Logical request accounting mirrors the production adapter and proved the correctness-first dual read adds exactly one body request per page: page 2.00 to 3.00 requests/page, tree 3.04 to 4.04, and space 3.08 to 4.08. The synthetic body transfer rose from 869 to 3,392 bytes/page because the 2,523-byte ADF body accompanies the Storage sidecar. With five in-process source samples inside each of three complete process samples, median local source/decode/compose time on Bun 1.3.14 arm64 was 0.2 to 0.3 ms for page, 1.7 to 2.4 ms for tree, and 1.6 to 2.1 ms for space. Median whole-process BSD-time peak RSS, including both render engines, compiler, fonts, and fixture setup, was effectively flat: 377/377 MiB, 491/497 MiB, and 490/494 MiB respectively. Raw blocks stayed 10/page, the expected observable ordered-list diagnostic was 1/page only on ADF, normalized DOCX part hashes matched in every process sample, and PDF bytes matched exactly for every scope. The fail-closed guard now requires exact +1 request/page, exact block/artifact and expected-note parity, ADF source wall time no greater than `2 × Storage + 1 ms`, and no more than 32 MiB added median peak RSS when the platform exposes RSS.
 
@@ -1061,6 +1061,35 @@ schema-valid non-positive width remains in the neutral model but emits a
 source-located degradation note before both renderers select their safe
 portable fallback.
 
+Completed layout-column follow-on evidence recorded on 2026-07-23: the pinned
+ADF validator now enforces exact `layoutSection`, `layoutColumn`, and `breakout`
+attributes. The neutral model retains section/column local identity, required
+column proportions, top/middle/bottom alignment, nested content ownership, and
+layout-section breakout mode/width. The `body.storage` adapter independently
+maps Confluence's documented `single`, `two_*`, and `three_*` layout-section
+types to the same neutral columns; missing or structurally mismatched geometry
+uses deterministic equal tracks with a source-located report note. Composition,
+anchor/heading processing, mention resolution, macro resolution, image/diagram
+preparation, and host asset counting all recurse through columns without
+flattening them. DOCX emits a borderless fixed table with proportional dxa
+tracks and cell vertical alignment; Typst/PDF emits a semantic-free grid with
+proportional fractional tracks, gutter, and cell alignment. Schema-valid zero
+widths receive an explicit source note and a positive minimum track in both
+targets. The browser ADF fixture proves direct/background block, report, and
+artifact parity. Real render goldens replace the old flattened-layout reference
+with visible 30/70 columns in both formats. `wide`/`full-width` remains an
+explicit page-bounded approximation, and breakout on other schema-valid block
+types remains open.
+
+The completed slice passed 494 focused decoder/Storage/composition/macro/DOCX/
+PDF tests, the generated public API and closure guards, the offline 43-node/
+17-mark pin check, full typecheck, the 16-task production build, all 20
+browser-isomorphism entrypoints, and the packed 15-case Chromium harness. The
+real LibreOffice and Typst/Poppler references remain one DOCX page and four PDF
+pages; the deterministic rerender produced zero pixel difference and content
+bounds IoU 1. No unrestricted local suite or private Confluence environment was
+used; the remote CI remains the complete-suite gate for this work package.
+
 After this migration proves the source boundary, close the gap-analysis backlog in separate feature slices:
 
 1. custom-emoji assets after a documented Atlassian resolver contract, complete emoji-font coverage, and a guaranteed DOCX mono font;
@@ -1068,7 +1097,8 @@ After this migration proves the source boundary, close the gap-analysis backlog 
 3. observed product-specific task/decision metadata beyond the pinned schema, if the sanitized Cloud corpus discovers any;
 4. page-bound wide-table pagination/overflow policies beyond the now-complete
    pinned table-attribute contract;
-5. layout columns, breakout, captions, and nested expands;
+5. breakout beyond page-bounded layout sections, captions, and nested expands
+   (pinned ADF and documented Storage layout columns are complete);
 6. full card/embed/media family;
 7. ADF-native definitions for excerpts/Page Properties and removal of their Storage sidecar;
 8. advanced extensions, Forge `adfExport` ingestion policy, and synced-content snapshots;

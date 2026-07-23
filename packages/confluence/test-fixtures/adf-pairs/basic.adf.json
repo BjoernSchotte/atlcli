@@ -81,6 +81,21 @@
       ]
     },
     {
+      "type": "layoutSection",
+      "content": [
+        {
+          "type": "layoutColumn",
+          "attrs": { "width": 30 },
+          "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Sidebar" }] }]
+        },
+        {
+          "type": "layoutColumn",
+          "attrs": { "width": 70 },
+          "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Main" }] }]
+        }
+      ]
+    },
+    {
       "type": "table",
       "content": [{
         "type": "tableRow",

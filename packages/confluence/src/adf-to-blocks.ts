@@ -20,6 +20,8 @@ import type {
   ExportNoteSource,
   InlineMark,
   InlineNode,
+  LayoutBreakout,
+  LayoutColumn,
   LinkTarget,
   ListItem,
   MacroParameter,
@@ -151,15 +153,20 @@ function addNodeNote(
   );
 }
 
-function addMarkNote(ctx: DecodeContext, path: string, type: string): void {
+function addMarkNote(
+  ctx: DecodeContext,
+  path: string,
+  type: string,
+  detail = "is not represented natively; its visible content was preserved.",
+): void {
   ctx.notes.add(
     {
       level: "warning",
       code: "adf-mark-degraded",
-      message: `ADF mark ${type} is not represented natively; its visible content was preserved.`,
+      message: `ADF mark ${type} ${detail}`,
       source: sourceFor(ctx, path),
     },
-    `mark|${path}|${type}`,
+    `mark|${path}|${type}|${detail}`,
   );
 }
 
@@ -344,8 +351,9 @@ function decodeBlockNode(node: AdfNode, ctx: DecodeContext, path: string): Expor
         content: decodeBlockChildren(node.content, ctx, `${path}.content`),
       }];
     case "layoutSection":
+      return [decodeLayoutSection(node, ctx, path)];
     case "layoutColumn":
-      addNodeNote(ctx, path, node.type, "layout was flattened while preserving document order.");
+      addNodeNote(ctx, path, node.type, "appeared outside a layout section and was preserved in document order.");
       return decodeBlockChildren(node.content, ctx, `${path}.content`);
     case "extension":
     case "bodiedExtension": {
@@ -865,6 +873,47 @@ function decodeTable(node: AdfNode, ctx: DecodeContext, path: string): ExportBlo
   };
 }
 
+function decodeLayoutSection(node: AdfNode, ctx: DecodeContext, path: string): ExportBlock {
+  const columnNodes = (node.content ?? []).filter((child) => child.type === "layoutColumn");
+  const columns: LayoutColumn[] = columnNodes.map((column, index) => ({
+    width: numberAttr(column, "width") ?? 0,
+    ...(optionalStringAttr(column, "valign") !== undefined
+      ? { verticalAlignment: optionalStringAttr(column, "valign") as LayoutColumn["verticalAlignment"] }
+      : {}),
+    ...(optionalStringAttr(column, "localId") !== undefined
+      ? { localId: optionalStringAttr(column, "localId") }
+      : {}),
+    content: decodeBlockChildren(column.content, ctx, `${path}.columns[${index}].content`),
+  }));
+  if (columns.some((column) => column.width === 0)) {
+    addNodeNote(
+      ctx,
+      path,
+      node.type,
+      "contains a zero-width column; source widths were retained and exporters enforce a visible minimum track.",
+    );
+  }
+  const breakout = breakoutMark(node.marks);
+  if (breakout) {
+    addMarkNote(
+      ctx,
+      path,
+      "breakout",
+      breakout.width !== undefined && breakout.width <= 0
+        ? "has a non-positive width; the source value was retained and exporters use page-bounded width."
+        : `retains ${breakout.mode} intent but is bounded to the physical output page.`,
+    );
+  }
+  return {
+    type: "layout",
+    columns,
+    ...(optionalStringAttr(node, "localId") !== undefined
+      ? { localId: optionalStringAttr(node, "localId") }
+      : {}),
+    ...(breakout ? { breakout } : {}),
+  };
+}
+
 function decodeCell(node: AdfNode, ctx: DecodeContext, path: string): TableCell {
   const colspan = numberInRange(node.attrs?.colspan, 1, 1_000, 1);
   const rowspan = numberInRange(node.attrs?.rowspan, 1, 1_000, 1);
@@ -990,7 +1039,19 @@ function markHandledByNode(nodeType: string, markType: string): boolean {
       nodeType === "inlineExtension" ||
       nodeType === "table";
   }
+  if (markType === "breakout") return nodeType === "layoutSection";
   return false;
+}
+
+function breakoutMark(marks: readonly AdfMark[] | undefined): LayoutBreakout | undefined {
+  const mark = marks?.find((candidate) => candidate.type === "breakout");
+  const mode = mark?.attrs?.mode;
+  if (mode !== "wide" && mode !== "full-width") return undefined;
+  const width = mark?.attrs?.width;
+  return {
+    mode,
+    ...(typeof width === "number" && Number.isFinite(width) ? { width } : {}),
+  };
 }
 
 function annotationMark(mark: AdfMark): AdfAnnotationIdentity | undefined {

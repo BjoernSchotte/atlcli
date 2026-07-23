@@ -125,6 +125,12 @@ Current closed foundations and feature slices:
   targets.
 - [x] Pinned-schema task lists, inline and block task items, nested tasks,
   decision lists/items, local identities, and exact states.
+- [x] Pinned ADF layout sections/columns and documented Storage layout sections
+  retain column ownership, proportions, vertical alignment, and available local
+  identity through both static TypeScript targets.
+- [ ] **Partial:** `breakout` intent is retained on ADF layout sections and
+  explicitly reported as page-bounded; breakout on other schema-valid block
+  types and true wide/full-width section geometry remain open.
 - [ ] **Partial:** annotation and fragment identities are validated and retained
   through the neutral model, composition, and packed-browser source resolution;
   native comments/PDF notes, separately fetched comment bodies, and a documented
@@ -215,14 +221,19 @@ Evidence: [E10], [E11], [E12], [E27].
 
 | ADF node | Current source mapping | DOCX | PDF | Primary gap |
 |---|---|---|---|---|
-| `layoutSection` | Storage layout wrappers are traversed transparently. | Partial | Partial | Multi-column layout is linearized; section width/layout mode is lost. |
-| `layoutColumn` | Cell content survives in document order. | Partial | Partial | Width and vertical alignment are lost. |
+| `layoutSection` | ADF becomes a typed layout with exact optional local identity and retained breakout intent. Storage `ac:layout-section` maps the documented `single`, `two_*`, and `three_*` arrangements to explicit portable tracks; missing/mismatched geometry uses equal tracks with a source-located note. | Native for pinned columns | Native for pinned columns | DOCX uses a borderless fixed OOXML table and PDF uses a semantic-free Typst grid. The pinned ADF schema and documented Storage shapes are closed; Cloud editor layouts beyond the pinned schema remain in the drift/observed-product lane. |
+| `layoutColumn` | Required ADF percentage width, optional exact local identity, top/middle/bottom alignment, and recursively nested content survive. Storage cells inherit the section's documented proportions. | Native | Native | Schema-valid zero-width tracks remain visible through a bounded minimum and are reported. Nested headings/anchors, mentions, macros, assets, lists/tasks, and export controls traverse the column rather than being flattened or skipped. |
 | `panel` | ADF `info`, `note`, `warning`, `tip`, `success`, and `error` remain distinct callout kinds; Storage callouts use the same neutral model. `custom` stays a visible generic panel with a degradation note. | Partial | Partial | Standard success/error semantics and distinct target palettes are native. Custom panel color/icon attributes still need a portable presentation contract. |
 | `expand` | Known macro body is emitted transparently. | Partial | Partial | Title and collapsed/expanded affordance are lost. |
 | `nestedExpand` | No distinct mapping; content may survive transparent descent. | Fallback | Fallback | Preserve title and nesting context; choose a deterministic static disclosure treatment. |
 | `caption` | No native ADF-caption input mapping. Scroll `scroll-title` can attach an exporter caption. | Partial workaround | Partial workaround | Implement native caption node and media association; keep Scroll compatibility as a separate source adapter. |
 
-Evidence: [E2], [E5], [E7], [E8], [E13].
+The layout renderers intentionally use target-owned static geometry. They do
+not claim browser-responsive behavior, and `wide`/`full-width` breakout cannot
+extend beyond the physical DOCX/PDF page. That residual is explicit rather
+than a silent column loss.
+
+Evidence: [E2], [E5], [E7], [E8], [E13], [E28].
 
 ### 6.5 Inline semantic content
 
@@ -306,7 +317,7 @@ This covers all 17 marks in the pinned schema.
 | `annotation` | Required `id` and exact `inlineComment` type are validated and retained on text/media ranges. | Partial | Partial | The underlying content remains visible, but comment bodies are separate Confluence resources and native Word-comment/PDF-note rendering is not implemented. |
 | `alignment` | ADF `center`/`end` becomes target-neutral block presentation on paragraphs/headings. | Native | Native | DOCX emits logical `w:jc`; PDF emits Typst `align`. |
 | `indentation` | ADF levels 1–6 become bounded target-neutral block indentation. | Native | Native | DOCX and PDF use target-owned, deterministic per-level steps distinct from list nesting. |
-| `breakout` | Not modeled. | Missing | Missing | Map wide/full-width intent to page/section/table policy with deterministic static fallback. |
+| `breakout` | `wide`/`full-width` mode and optional numeric width are validated and retained on layout sections. Other schema-valid block placements still degrade visibly. | Partial | Partial | Layout sections render page-bounded columns and emit a source-located approximation note. Generalize the retained mark to code/expand/sync blocks and define whether any target-owned page/section widening is safe. |
 | `border` | Not modeled. | Missing | Missing | Preserve media border color/size where the target supports it. |
 | `dataConsumer` | Not modeled. | Missing | Missing | Preserve structured data provenance or explicitly report it as non-visual metadata. |
 | `fragment` | Required non-empty `localId` and exact optional `name` are retained on inline/block extensions and tables. | Partial | Partial | Identity survives composition, but it is not reinterpreted as a bookmark until Atlassian semantics and collision/link policy are documented. |
@@ -426,7 +437,13 @@ Required acceptance contract:
   column vectors, and vertical alignment survive the shared model. Both targets
   render the portable visible semantics; responsive viewport scaling is
   retained metadata but is not applicable to a static artifact.
-- [ ] **Open — layout columns and breakout.**
+- [x] **Layout columns for static DOCX/PDF.** Pinned ADF widths, vertical
+  alignment, identity, and content ownership plus documented Storage layout
+  shapes survive composition, macro/mention/asset traversal, browser execution,
+  and both renderers.
+- [ ] **Partial — breakout.** Layout-section intent survives and is explicitly
+  page-bounded; non-layout placements and actual wide/full-width page geometry
+  remain open.
 - [ ] **Partial — captions and nested expands.** Visible fallbacks exist;
   native association, title, nesting, and static disclosure treatment remain.
 - [ ] **Partial — card/embed metadata.** Deterministic visible URL fallbacks
@@ -478,7 +495,8 @@ Required acceptance contract:
 - [x] Nested bullet/numbered/task parity across ADF and Storage.
 - [x] Table attributes for static DOCX/PDF; page-bound wide-table layout remains
   a measured renderer policy rather than an ADF decoding gap.
-- [ ] Layouts/breakout.
+- [x] Layout columns for pinned ADF and documented Storage shapes.
+- [ ] Breakout beyond page-bounded layout-section intent.
 - [ ] Captions/nested expands.
 
 ### Phase 3 - Media and extensions
@@ -543,12 +561,16 @@ Closed gates:
   decoding, composition, coverage classification, and packed-browser
   direct/background parity, plus explicit reporting when a consumed block
   export-control wrapper cannot retain its fragment.
+- [x] Pinned ADF and documented Storage layout-column geometry, identity,
+  vertical alignment, nested traversal, both target renderers, packed-browser
+  parity, and real render goldens.
 
 Focused missing gates:
 
 - [ ] Date localization and deterministic time-zone policy.
 - [ ] Generic inline/block/embed card metadata tests.
-- [ ] Layout width/column tests.
+- [x] Layout width/column tests for pinned ADF and documented Storage shapes.
+- [ ] Breakout rendering beyond the page-bounded layout-section approximation.
 - [ ] Media group/inline/file/video/audio completeness tests.
 - [ ] Native ADF caption/nested-expand tests.
 - [ ] Sync-block snapshot/reference tests.
@@ -581,6 +603,9 @@ Accessed 2026-07-22 and 2026-07-23:
 17. [ADF table node and attribute semantics](https://developer.atlassian.com/cloud/jira/platform/apis/document/nodes/table/)
 18. [Typst table and cell alignment](https://typst.app/docs/reference/model/table/)
 19. [Typst alignment model](https://typst.app/docs/reference/layout/alignment/)
+20. [Confluence Data Center storage format: page layouts](https://confluence.atlassian.com/doc/confluence-storage-format-790796544.html)
+21. [Typst grid](https://typst.app/docs/reference/layout/grid/)
+22. [Microsoft: Working with WordprocessingML tables](https://learn.microsoft.com/en-us/office/open-xml/word/working-with-wordprocessingml-tables)
 
 ## 15. Repository evidence index
 
@@ -611,6 +636,7 @@ Accessed 2026-07-22 and 2026-07-23:
 - **[E25] Nested list parity across both source representations and targets:** `packages/confluence/src/export-blocks.ts:1460-1510`, `packages/confluence/src/adf-to-blocks.ts:270-311`, `packages/confluence/src/adf-to-blocks.ts:819-850`, `packages/confluence/src/page-body.test.ts:18-83`, `packages/confluence/src/compose-document.test.ts:254-350`, `packages/confluence/test-fixtures/adf-pairs/basic.adf.json`, `packages/confluence/test-fixtures/adf-pairs/basic.storage.xml`, `packages/docx/src/numbering.test.ts:190-230`, `packages/pdf/src/serialize.test.ts:129-230`, `packages/pdf/src/serialize.ts:860-870`, `packages/pdf/src/serialize.ts:1037-1074`, `packages/export-fixtures/src/index.ts:177-231`, `apps/browser-export-harness/src/adf-source-case.ts:320-343`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
 - **[E26] Annotation/fragment identity preservation:** `packages/confluence/src/export-blocks.ts:235-248`, `packages/confluence/src/adf-validate.ts:225-247`, `packages/confluence/src/adf-to-blocks.ts:396-535`, `packages/confluence/src/adf-to-blocks.ts:965-999`, `packages/confluence/src/adf-validate.test.ts:139-172`, `packages/confluence/src/adf-to-blocks.test.ts:486-638`, `packages/confluence/src/adf-direct-fixtures.test.ts:143-218`, `packages/confluence/src/compose-document.test.ts:537-580`, `packages/export-fixtures/src/index.ts:128-263`, `packages/export-fixtures/src/adf-fixtures.test.ts:80-114`, `apps/browser-export-harness/src/adf-source-case.ts:315-377`, `apps/browser-export-harness/tests/exports.e2e.ts:90-95`
 - **[E27] Complete pinned table-attribute preservation and static rendering:** `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/adf-validate.ts`, `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/compose-document.ts`, `packages/docx/src/ooxml.ts`, `packages/docx/src/serialize.ts`, `packages/pdf/src/prepare.ts`, `packages/pdf/src/serialize.ts`, `packages/export-fixtures/src/index.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
+- **[E28] Native layout columns and explicit breakout residual:** `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/adf-validate.ts`, `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/compose-document.ts`, `packages/confluence/src/resolve-mentions.ts`, `packages/export-macros/src/resolve.ts`, `packages/docx/src/ooxml.ts`, `packages/docx/src/serialize.ts`, `packages/pdf/src/prepare.ts`, `packages/pdf/src/serialize.ts`, `packages/export-fixtures/src/index.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
 
 ## 16. Review questions
 

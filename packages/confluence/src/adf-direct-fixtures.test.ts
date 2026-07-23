@@ -103,11 +103,19 @@ const NODE_FIXTURES = {
   inlineExtension: inline({ type: "inlineExtension", attrs: { extensionType: "synthetic", extensionKey: "node-inlineExtension", text: "node-inlineExtension" } }),
   layoutColumn: block({
     type: "layoutSection",
-    content: [{ type: "layoutColumn", content: [paragraph("node-layoutColumn")] }],
+    content: [{
+      type: "layoutColumn",
+      attrs: { width: 100 },
+      content: [paragraph("node-layoutColumn")],
+    }],
   }),
   layoutSection: block({
     type: "layoutSection",
-    content: [{ type: "layoutColumn", content: [paragraph("node-layoutSection")] }],
+    content: [{
+      type: "layoutColumn",
+      attrs: { width: 100 },
+      content: [paragraph("node-layoutSection")],
+    }],
   }),
   listItem: block({ type: "bulletList", content: [listItem("node-listItem")] }),
   media: block(media("node-media")),

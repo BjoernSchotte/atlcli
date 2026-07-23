@@ -112,6 +112,28 @@ describe("PDF asset preparation", () => {
     expect(region.content[0]).toMatchObject({ type: "image", assetPath: prepared.assets[0]!.path });
   });
 
+  it("resolves an image nested inside a page-layout column", async () => {
+    const blocks: ExportBlock[] = [{
+      type: "layout",
+      columns: [{
+        width: 100,
+        content: [
+          { type: "image", source: { kind: "attachment", filename: "column.png" }, alt: "Column" },
+        ],
+      }],
+    }];
+    const prepared = await preparePdfDocument(blocks, {
+      resolve: async () => ({ bytes: pngBytes(), mediaType: "image/png" }),
+    });
+    expect(prepared.assets).toHaveLength(1);
+    expect(prepared.blocks[0]).toMatchObject({
+      type: "layout",
+      columns: [{
+        content: [{ type: "image", assetPath: prepared.assets[0]!.path }],
+      }],
+    });
+  });
+
   it("carries caption fields through preparation on table/codeBlock/image", async () => {
     const blocks: ExportBlock[] = [
       { type: "codeBlock", code: "x=1", caption: { kind: "code", content: [{ type: "text", text: "Listing 1" }] } },

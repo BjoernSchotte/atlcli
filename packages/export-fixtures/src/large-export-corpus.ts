@@ -286,6 +286,8 @@ function countBlocks(blocks: readonly ExportBlock[]): number {
       block.rows.forEach((row) =>
         row.cells.forEach((cell) => cell.content.forEach(visit)),
       );
+    } else if (block.type === "layout") {
+      block.columns.forEach((column) => column.content.forEach(visit));
     }
   };
   blocks.forEach(visit);

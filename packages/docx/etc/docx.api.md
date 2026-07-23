@@ -1132,6 +1132,8 @@ export interface DataTableOptions {
     widthDxa?: number;
     alignment?: "start" | "center" | "end";
     fixedLayout?: boolean;
+    borderless?: boolean;
+    cellMarginDxa?: number;
     tableStyle?: TableStyleSource;
 }
 

@@ -558,6 +558,10 @@ export interface DataTableOptions {
   alignment?: "start" | "center" | "end";
   /** Preserve an explicit fixed-column display mode without authored tracks. */
   fixedLayout?: boolean;
+  /** Presentational page layout: omit semantic table styling and borders. */
+  borderless?: boolean;
+  /** Symmetric left/right cell gutter for a borderless layout table. */
+  cellMarginDxa?: number;
   /** Table style source (spec 006 G3b). Defaults to `"confluence"`. */
   tableStyle?: TableStyleSource;
 }
@@ -583,7 +587,18 @@ export function dataTable(gridCols: number, rowsXml: string, opts: DataTableOpti
   const alignment = opts.alignment ? `<w:jc w:val="${opts.alignment}"/>` : "";
   const style = opts.tableStyle ?? { source: "confluence" as const };
   let tblPrInner: string;
-  if (style.source === "template" && style.styleId) {
+  if (opts.borderless) {
+    const margin =
+      Number.isSafeInteger(opts.cellMarginDxa) && (opts.cellMarginDxa ?? 0) >= 0
+        ? opts.cellMarginDxa!
+        : 120;
+    tblPrInner =
+      `<w:tblW w:w="${widthDxa}" w:type="dxa"/>` +
+      alignment +
+      fixedLayout +
+      `<w:tblCellMar><w:left w:w="${margin}" w:type="dxa"/><w:right w:w="${margin}" w:type="dxa"/></w:tblCellMar>` +
+      `<w:tblLook w:val="0000" w:firstRow="0" w:lastRow="0" w:firstColumn="0" w:lastColumn="0" w:noHBand="1" w:noVBand="1"/>`;
+  } else if (style.source === "template" && style.styleId) {
     // Template style controls borders/shading; emit only the style ref + look.
     tblPrInner =
       `<w:tblStyle w:val="${esc(style.styleId)}"/>` +

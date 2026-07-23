@@ -53,8 +53,8 @@ export declare const ADF_NODE_DECODE_MODES: Readonly<{
     readonly heading: "native";
     readonly inlineCard: "approximation";
     readonly inlineExtension: "approximation";
-    readonly layoutColumn: "approximation";
-    readonly layoutSection: "approximation";
+    readonly layoutColumn: "native";
+    readonly layoutSection: "native";
     readonly listItem: "native";
     readonly media: "visible-fallback";
     readonly mediaGroup: "visible-fallback";
@@ -933,6 +933,7 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "macro-not-rendered",
     "image-unresolved",
     "inline-image-skipped",
+    "layout-geometry-fallback",
     "emoji-text-fallback",
     "adf-node-degraded",
     "adf-mark-degraded",
@@ -1080,7 +1081,9 @@ export type ExportBlock = {
     start?: number;
     listKind?: "task" | "decision";
     localId?: string;
-} | {
+} | ({
+    type: "layout";
+} & PageLayout) | {
     type: "table";
     rows: TableRow[];
     columnWidths?: number[];
@@ -1374,6 +1377,9 @@ export interface HeadingScanBlock {
             readonly content: readonly unknown[];
         }[];
     }[];
+    readonly columns?: readonly {
+        readonly content: readonly unknown[];
+    }[];
 }
 
 // export: HtmlConversionLimits
@@ -1483,6 +1489,20 @@ export interface LabelInfo {
     prefix: string;
     name: string;
     id: string;
+}
+
+// export: LayoutBreakout
+export interface LayoutBreakout {
+    mode: "wide" | "full-width";
+    width?: number;
+}
+
+// export: LayoutColumn
+export interface LayoutColumn {
+    width: number;
+    verticalAlignment?: TableVerticalAlignment;
+    localId?: string;
+    content: ExportBlock[];
 }
 
 // export: LinkSanitizeResult
@@ -1645,6 +1665,13 @@ export interface PageHistory {
     pageId: string;
     versions: PageVersion[];
     latest: number;
+}
+
+// export: PageLayout
+export interface PageLayout {
+    columns: LayoutColumn[];
+    localId?: string;
+    breakout?: LayoutBreakout;
 }
 
 // export: PagePropertiesMacro
@@ -2203,8 +2230,8 @@ export declare const ADF_NODE_DECODE_MODES: Readonly<{
     readonly heading: "native";
     readonly inlineCard: "approximation";
     readonly inlineExtension: "approximation";
-    readonly layoutColumn: "approximation";
-    readonly layoutSection: "approximation";
+    readonly layoutColumn: "native";
+    readonly layoutSection: "native";
     readonly listItem: "native";
     readonly media: "visible-fallback";
     readonly mediaGroup: "visible-fallback";
@@ -3083,6 +3110,7 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "macro-not-rendered",
     "image-unresolved",
     "inline-image-skipped",
+    "layout-geometry-fallback",
     "emoji-text-fallback",
     "adf-node-degraded",
     "adf-mark-degraded",
@@ -3230,7 +3258,9 @@ export type ExportBlock = {
     start?: number;
     listKind?: "task" | "decision";
     localId?: string;
-} | {
+} | ({
+    type: "layout";
+} & PageLayout) | {
     type: "table";
     rows: TableRow[];
     columnWidths?: number[];
@@ -3524,6 +3554,9 @@ export interface HeadingScanBlock {
             readonly content: readonly unknown[];
         }[];
     }[];
+    readonly columns?: readonly {
+        readonly content: readonly unknown[];
+    }[];
 }
 
 // export: HtmlConversionLimits
@@ -3633,6 +3666,20 @@ export interface LabelInfo {
     prefix: string;
     name: string;
     id: string;
+}
+
+// export: LayoutBreakout
+export interface LayoutBreakout {
+    mode: "wide" | "full-width";
+    width?: number;
+}
+
+// export: LayoutColumn
+export interface LayoutColumn {
+    width: number;
+    verticalAlignment?: TableVerticalAlignment;
+    localId?: string;
+    content: ExportBlock[];
 }
 
 // export: LinkSanitizeResult
@@ -3795,6 +3842,13 @@ export interface PageHistory {
     pageId: string;
     versions: PageVersion[];
     latest: number;
+}
+
+// export: PageLayout
+export interface PageLayout {
+    columns: LayoutColumn[];
+    localId?: string;
+    breakout?: LayoutBreakout;
 }
 
 // export: PagePropertiesMacro
@@ -4353,8 +4407,8 @@ export declare const ADF_NODE_DECODE_MODES: Readonly<{
     readonly heading: "native";
     readonly inlineCard: "approximation";
     readonly inlineExtension: "approximation";
-    readonly layoutColumn: "approximation";
-    readonly layoutSection: "approximation";
+    readonly layoutColumn: "native";
+    readonly layoutSection: "native";
     readonly listItem: "native";
     readonly media: "visible-fallback";
     readonly mediaGroup: "visible-fallback";
@@ -5233,6 +5287,7 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "macro-not-rendered",
     "image-unresolved",
     "inline-image-skipped",
+    "layout-geometry-fallback",
     "emoji-text-fallback",
     "adf-node-degraded",
     "adf-mark-degraded",
@@ -5380,7 +5435,9 @@ export type ExportBlock = {
     start?: number;
     listKind?: "task" | "decision";
     localId?: string;
-} | {
+} | ({
+    type: "layout";
+} & PageLayout) | {
     type: "table";
     rows: TableRow[];
     columnWidths?: number[];
@@ -5674,6 +5731,9 @@ export interface HeadingScanBlock {
             readonly content: readonly unknown[];
         }[];
     }[];
+    readonly columns?: readonly {
+        readonly content: readonly unknown[];
+    }[];
 }
 
 // export: HtmlConversionLimits
@@ -5783,6 +5843,20 @@ export interface LabelInfo {
     prefix: string;
     name: string;
     id: string;
+}
+
+// export: LayoutBreakout
+export interface LayoutBreakout {
+    mode: "wide" | "full-width";
+    width?: number;
+}
+
+// export: LayoutColumn
+export interface LayoutColumn {
+    width: number;
+    verticalAlignment?: TableVerticalAlignment;
+    localId?: string;
+    content: ExportBlock[];
 }
 
 // export: LinkSanitizeResult
@@ -5945,6 +6019,13 @@ export interface PageHistory {
     pageId: string;
     versions: PageVersion[];
     latest: number;
+}
+
+// export: PageLayout
+export interface PageLayout {
+    columns: LayoutColumn[];
+    localId?: string;
+    breakout?: LayoutBreakout;
 }
 
 // export: PagePropertiesMacro
@@ -7288,6 +7369,7 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "macro-not-rendered",
     "image-unresolved",
     "inline-image-skipped",
+    "layout-geometry-fallback",
     "emoji-text-fallback",
     "adf-node-degraded",
     "adf-mark-degraded",
@@ -7435,7 +7517,9 @@ export type ExportBlock = {
     start?: number;
     listKind?: "task" | "decision";
     localId?: string;
-} | {
+} | ({
+    type: "layout";
+} & PageLayout) | {
     type: "table";
     rows: TableRow[];
     columnWidths?: number[];
@@ -7959,6 +8043,20 @@ export interface LabelRecord {
 // export: LARGE_FILE_THRESHOLD
 export declare const LARGE_FILE_THRESHOLD: number;
 
+// export: LayoutBreakout
+export interface LayoutBreakout {
+    mode: "wide" | "full-width";
+    width?: number;
+}
+
+// export: LayoutColumn
+export interface LayoutColumn {
+    width: number;
+    verticalAlignment?: TableVerticalAlignment;
+    localId?: string;
+    content: ExportBlock[];
+}
+
 // export: LinkChangeResult
 export interface LinkChangeResult {
     pageId: string;
@@ -8232,6 +8330,13 @@ export interface PageHistory {
     pageId: string;
     versions: PageVersion[];
     latest: number;
+}
+
+// export: PageLayout
+export interface PageLayout {
+    columns: LayoutColumn[];
+    localId?: string;
+    breakout?: LayoutBreakout;
 }
 
 // export: PagePropertiesMacro
@@ -9124,8 +9229,8 @@ export declare const ADF_NODE_DECODE_MODES: Readonly<{
     readonly heading: "native";
     readonly inlineCard: "approximation";
     readonly inlineExtension: "approximation";
-    readonly layoutColumn: "approximation";
-    readonly layoutSection: "approximation";
+    readonly layoutColumn: "native";
+    readonly layoutSection: "native";
     readonly listItem: "native";
     readonly media: "visible-fallback";
     readonly mediaGroup: "visible-fallback";
@@ -10004,6 +10109,7 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "macro-not-rendered",
     "image-unresolved",
     "inline-image-skipped",
+    "layout-geometry-fallback",
     "emoji-text-fallback",
     "adf-node-degraded",
     "adf-mark-degraded",
@@ -10151,7 +10257,9 @@ export type ExportBlock = {
     start?: number;
     listKind?: "task" | "decision";
     localId?: string;
-} | {
+} | ({
+    type: "layout";
+} & PageLayout) | {
     type: "table";
     rows: TableRow[];
     columnWidths?: number[];
@@ -10445,6 +10553,9 @@ export interface HeadingScanBlock {
             readonly content: readonly unknown[];
         }[];
     }[];
+    readonly columns?: readonly {
+        readonly content: readonly unknown[];
+    }[];
 }
 
 // export: HtmlConversionLimits
@@ -10554,6 +10665,20 @@ export interface LabelInfo {
     prefix: string;
     name: string;
     id: string;
+}
+
+// export: LayoutBreakout
+export interface LayoutBreakout {
+    mode: "wide" | "full-width";
+    width?: number;
+}
+
+// export: LayoutColumn
+export interface LayoutColumn {
+    width: number;
+    verticalAlignment?: TableVerticalAlignment;
+    localId?: string;
+    content: ExportBlock[];
 }
 
 // export: LinkSanitizeResult
@@ -10716,6 +10841,13 @@ export interface PageHistory {
     pageId: string;
     versions: PageVersion[];
     latest: number;
+}
+
+// export: PageLayout
+export interface PageLayout {
+    columns: LayoutColumn[];
+    localId?: string;
+    breakout?: LayoutBreakout;
 }
 
 // export: PagePropertiesMacro

@@ -38,6 +38,7 @@ describe("pageBodyToBlocks", () => {
       "list",
       "list",
       "list",
+      "layout",
       "table",
       "callout",
       "paragraph",
@@ -80,6 +81,13 @@ describe("pageBodyToBlocks", () => {
             { type: "list", listKind: "task", localId: "tasks-nested" },
           ],
         },
+      ],
+    });
+    expect(adf.blocks.find((block) => block.type === "layout")).toMatchObject({
+      type: "layout",
+      columns: [
+        { width: 30, content: [{ type: "paragraph" }] },
+        { width: 70, content: [{ type: "paragraph" }] },
       ],
     });
     expect(adf.notes).toEqual([]);

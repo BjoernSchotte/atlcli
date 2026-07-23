@@ -52,6 +52,7 @@ export interface HeadingScanBlock {
   readonly rows?: readonly {
     readonly cells: readonly { readonly content: readonly unknown[] }[];
   }[];
+  readonly columns?: readonly { readonly content: readonly unknown[] }[];
 }
 
 /** Smallest heading `level` anywhere in the tree, or `Infinity` if none. */
@@ -82,6 +83,13 @@ export function minHeadingLevel(blocks: readonly HeadingScanBlock[]): number {
             for (const cell of row.cells) {
               min = Math.min(min, minHeadingLevel(cell.content as readonly HeadingScanBlock[]));
             }
+          }
+        }
+        break;
+      case "layout":
+        if (block.columns) {
+          for (const column of block.columns) {
+            min = Math.min(min, minHeadingLevel(column.content as readonly HeadingScanBlock[]));
           }
         }
         break;
@@ -376,6 +384,9 @@ function registerPageAnchors(
         case "table":
           for (const row of block.rows) for (const cell of row.cells) walk(cell.content);
           break;
+        case "layout":
+          for (const column of block.columns) walk(column.content);
+          break;
         case "paragraph":
         case "codeBlock":
         case "image":
@@ -631,6 +642,14 @@ function transformBlock(block: ExportBlock, ctx: EmitCtx): ExportBlock {
         items: block.items.map((item) => ({
           ...item,
           content: item.content.map((b) => transformBlock(b, ctx)),
+        })),
+      };
+    case "layout":
+      return {
+        ...block,
+        columns: block.columns.map((column) => ({
+          ...column,
+          content: column.content.map((child) => transformBlock(child, ctx)),
         })),
       };
     case "table":

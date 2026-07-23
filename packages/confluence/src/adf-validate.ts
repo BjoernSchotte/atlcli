@@ -275,6 +275,28 @@ function validateKnownNodeShape(
       );
     }
   }
+  if (type === "layoutSection") {
+    assertStringAttribute(attrs, "localId", path, false);
+  }
+  if (type === "layoutColumn") {
+    const width = attrs?.width;
+    if (typeof width !== "number" || width < 0 || width > 100) {
+      throw new AdfValidationError(
+        "invalid-attributes",
+        "ADF layout-column width must be a number from 0 through 100.",
+        `${path}.attrs.width`,
+      );
+    }
+    assertStringAttribute(attrs, "localId", path, false);
+    const valign = attrs?.valign;
+    if (valign !== undefined && valign !== "top" && valign !== "middle" && valign !== "bottom") {
+      throw new AdfValidationError(
+        "invalid-attributes",
+        "ADF layout-column valign must be top, middle, or bottom.",
+        `${path}.attrs.valign`,
+      );
+    }
+  }
 }
 
 function validateKnownMarkShape(
@@ -326,6 +348,16 @@ function validateKnownMarkShape(
       );
     }
     assertStringAttribute(attrs, "name", path, false);
+  }
+  if (type === "breakout") {
+    if (attrs?.mode !== "wide" && attrs?.mode !== "full-width") {
+      throw new AdfValidationError(
+        "invalid-attributes",
+        "ADF breakout mode must be wide or full-width.",
+        `${path}.attrs.mode`,
+      );
+    }
+    assertOptionalNumberAttribute(attrs, "width", path);
   }
   if (type === "link") assertStringAttribute(attrs, "href", path);
   if (type === "textColor" || type === "backgroundColor") {

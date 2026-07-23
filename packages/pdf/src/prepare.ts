@@ -207,6 +207,17 @@ export async function preparePdfDocument(
             return { ...block, content: await walk(block.content, `${path}.content`) };
           case "orientation":
             return { ...block, content: await walk(block.content, `${path}.content`) };
+          case "layout":
+            return {
+              ...block,
+              columns: await Promise.all(block.columns.map(async (column, columnIndex) => ({
+                ...column,
+                content: await walk(
+                  column.content,
+                  `${path}.columns[${columnIndex}].content`,
+                ),
+              }))),
+            };
           case "list":
             return {
               ...block,
@@ -410,6 +421,9 @@ function countAssetBlocks(blocks: ExportBlock[]): number {
           break;
         case "list":
           for (const item of block.items) walk(item.content);
+          break;
+        case "layout":
+          for (const column of block.columns) walk(column.content);
           break;
         case "table":
           for (const row of block.rows) for (const cell of row.cells) walk(cell.content);

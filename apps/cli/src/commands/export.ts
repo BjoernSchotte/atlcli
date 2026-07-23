@@ -1574,6 +1574,9 @@ function blocksNeedRasterizer(blocks: readonly ExportBlock[]): boolean {
       case "list":
         for (const item of block.items) if (blocksNeedRasterizer(item.content)) return true;
         break;
+      case "layout":
+        for (const column of block.columns) if (blocksNeedRasterizer(column.content)) return true;
+        break;
       case "table":
         for (const row of block.rows)
           for (const cell of row.cells) if (blocksNeedRasterizer(cell.content)) return true;

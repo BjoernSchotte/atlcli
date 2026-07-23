@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "sourceSha256": "245e8a6c69c0f58f5193c0e5093f92a8ea7dd1a8206d8c4f37ffe0bc727c239c",
+  "sourceSha256": "c840c36cd58f4c5514b37eaf2bde40a2cfa20437a1d4a29bb55a5b41820a842c",
   "features": [
     "inline-code",
     "unicode-emoji",
@@ -18,7 +18,9 @@
     "table-numbered-column",
     "table-width-alignment",
     "table-cell-vertical-alignment",
-    "layout-degradation",
+    "layout-column-proportions",
+    "layout-column-vertical-alignment",
+    "layout-breakout-page-bound",
     "smart-link",
     "media-fallback",
     "extension"
@@ -28,7 +30,7 @@
       "pages": [
         {
           "file": "docx-page-1.png",
-          "sha256": "3141802a593b6449ca8fa6a021fa6adc9e333bc529e245d43738e79cab157411"
+          "sha256": "db2d889c4ef09225335f1a5ff818e53d881e998fa45bdf7f9b76aeaa17192b83"
         }
       ],
       "requiredText": [
@@ -51,7 +53,8 @@
         "Ship the release",
         "Header",
         "Cell",
-        "Flattened layout content",
+        "Layout sidebar",
+        "Layout main",
         "Expanded title",
         "Expanded body",
         "Extension body",
@@ -71,7 +74,7 @@
         },
         {
           "file": "pdf-page-3.png",
-          "sha256": "f51a4c26ff06b0424f34c59754757a7570d0660305d20776322aa9b82676e4bb"
+          "sha256": "e0723de859f28a0a67fcd3cd0fa18d0ab1d4d7d63aa92af43b88f271477c5681"
         },
         {
           "file": "pdf-page-4.png",
@@ -98,7 +101,8 @@
         "Ship the release",
         "Header",
         "Cell",
-        "Flattened layout content",
+        "Layout sidebar",
+        "Layout main",
         "Expanded title",
         "Expanded body",
         "Extension body",
