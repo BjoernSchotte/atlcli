@@ -1,8 +1,8 @@
 # Export gap analysis: Confluence ADF notation to DOCX and PDF
 
-Status: implementation baseline  
-Analysis date: 2026-07-22  
-Repository baseline: `75b7379` (`main` at implementation-branch start)  
+Status: implementation baseline
+Analysis date: 2026-07-22
+Repository baseline: `75b7379` (`main` at implementation-branch start)
 Official schema baseline: `@atlaskit/adf-schema@56.1.13`, resolved from Atlassian's canonical ADF schema URL on 2026-07-22
 
 ## 1. Objective
