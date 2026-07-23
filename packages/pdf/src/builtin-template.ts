@@ -125,6 +125,8 @@ const DESIGN: WikiPdfTemplateDesignV1 = {
       taskGridMarker: "1.05em",
       taskGridGutter: "0.45em",
       taskListBodyIndent: "0pt",
+      pageLayoutColumnGutter: "12pt",
+      pageLayoutInsetX: "0pt",
       denseTableThreshold: "18mm",
       tableCellInsetY: "7pt",
       tableCellInsetNormalX: "6pt",

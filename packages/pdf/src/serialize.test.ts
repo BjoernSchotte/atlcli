@@ -412,6 +412,7 @@ describe("PDF preparation and serialization", () => {
     expect(bundle.main).toContain("#grid(");
     expect(bundle.main).toContain("columns: (20fr, 80fr)");
     expect(bundle.main).toContain("column-gutter: 12pt");
+    expect(bundle.main).toContain("inset: (left: 0pt, right: 0pt)");
     expect(bundle.main).toContain("grid.cell(align: horizon)");
     expect(bundle.main).toContain("grid.cell(align: bottom)");
     expect(bundle.main).toContain("Sidebar");

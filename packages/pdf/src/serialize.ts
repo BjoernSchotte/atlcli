@@ -1131,6 +1131,14 @@ function serializeBlock(
         ? positiveWidths.map((width) => width > 0 ? width : visibleMinimum)
         : positiveWidths.map(() => 1);
       const columns = weights.map((weight) => `${Number(weight.toFixed(6))}fr`).join(", ");
+      // Layout tokens were added after wiki.pdf-template/v1 shipped. Preserve
+      // older custom manifests by falling back to the built-in design.
+      const columnGutter =
+        writer.design.tokens.layout.pageLayoutColumnGutter ??
+        BUILTIN_PDF_DESIGN.tokens.layout.pageLayoutColumnGutter;
+      const insetX =
+        writer.design.tokens.layout.pageLayoutInsetX ??
+        BUILTIN_PDF_DESIGN.tokens.layout.pageLayoutInsetX;
       const cellContext: RenderContext = {
         ...context,
         container: "tableCell",
@@ -1154,8 +1162,8 @@ function serializeBlock(
       value =
         `#grid(\n` +
         `  columns: (${columns}),\n` +
-        `  column-gutter: 12pt,\n` +
-        `  inset: (left: 0pt, right: 0pt),\n` +
+        `  column-gutter: ${columnGutter},\n` +
+        `  inset: (left: ${insetX}, right: ${insetX}),\n` +
         `  stroke: none,\n` +
         `  ${cells.join(",\n  ")},\n` +
         `)`;
