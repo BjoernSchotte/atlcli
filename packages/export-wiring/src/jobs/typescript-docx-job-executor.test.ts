@@ -152,6 +152,9 @@ function executionContext(
   options: {
     leaseEpoch?: number;
     checkpoint?: (ref: string) => void | Promise<void>;
+    progress?: (
+      value: Parameters<ExportJobExecutionContext["updateProgress"]>[0],
+    ) => void | Promise<void>;
   } = {},
 ) {
   let artifactBytes: Uint8Array | undefined;
@@ -183,7 +186,7 @@ function executionContext(
       },
       async getStaged() { return undefined; },
     },
-    async updateProgress() {},
+    async updateProgress(value) { await options.progress?.(value); },
     async appendEvent() {},
     async checkpoint(ref) {
       if (options.checkpoint) {
@@ -595,6 +598,53 @@ describe("createTypescriptDocxExportJobExecutor", () => {
     expect(order.indexOf("reservation-acquire")).toBeLessThan(order.indexOf("asset-delegate"));
     expect(order.indexOf("asset-delegate")).toBeLessThan(order.indexOf("asset-reconcile"));
     expect(order.indexOf("asset-reconcile")).toBeLessThan(order.indexOf("ready-commit"));
+  });
+
+  it("keeps source-derived asset and output names out of durable progress", async () => {
+    const progress: unknown[] = [];
+    const setup = executorOptions({
+      resolveInput: async () => ({
+        details: {
+          ...details,
+          title: "PRIVATE-PAGE-TITLE",
+          storage:
+            '<ac:image><ri:attachment ri:filename="PRIVATE-ASSET-NAME.png"/></ac:image>',
+        },
+        template: {
+          name: "PRIVATE-TEMPLATE-NAME.docx",
+          modificationDate: new Date(0),
+        },
+        assets: {
+          async fetch() {
+            return pngFixtureBytes(2, 2);
+          },
+        },
+      }),
+    });
+    const ctx = executionContext(
+      setup.order,
+      new AbortController().signal,
+      { progress: (value) => { progress.push(structuredClone(value)); } },
+    );
+
+    await createTypescriptDocxExportJobExecutor(setup.options).execute(
+      await request({
+        displayName: "PRIVATE-DISPLAY-NAME",
+        requestedFilename: "PRIVATE-OUTPUT-NAME.docx",
+        template: {
+          ...(await request()).template,
+          name: "PRIVATE-REQUEST-TEMPLATE.docx",
+        },
+      }),
+      ctx.context,
+    );
+
+    expect(progress.length).toBeGreaterThan(0);
+    expect(progress.some((value) => {
+      const event = value as { stage?: unknown };
+      return event.stage === "assets";
+    })).toBe(true);
+    expect(JSON.stringify(progress)).not.toContain("PRIVATE-");
   });
 
   it("reconciles raster pixels before allocation and passes the AbortSignal to the raster port", async () => {

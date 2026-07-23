@@ -649,7 +649,6 @@ function engineProgress(
         stage,
         done: event.done,
         total: event.total,
-        ...(event.detail ? { detail: event.detail } : {}),
         updatedAt: now(),
       }),
     );

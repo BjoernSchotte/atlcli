@@ -311,4 +311,51 @@ describe("Confluence job resolveInput adapters", () => {
     await expect(resolveInput(pdfRequest(), context(controller.signal))).rejects.toThrow();
     expect(builds).toBe(0);
   });
+
+  it("aborts both in-flight ADF and Storage sidecar reads through the job signal", async () => {
+    const controller = new AbortController();
+    const started: string[] = [];
+    const stopped: string[] = [];
+    const branch = (name: string, signal: AbortSignal | undefined): Promise<never> => {
+      started.push(name);
+      return new Promise<never>((_resolve, reject) => {
+        signal?.addEventListener("abort", () => {
+          stopped.push(name);
+          reject(signal.reason);
+        }, { once: true });
+      });
+    };
+    const port = {
+      createTreeSource(): TreeSource {
+        return {
+          async getPage(_id, readContext) {
+            await Promise.all([
+              branch("adf", readContext.signal),
+              branch("storage-sidecar", readContext.signal),
+            ]);
+            throw new Error("unreachable");
+          },
+          async getPageVersion() { return { title: "Root", version: 4 }; },
+          async getChildren() { return []; },
+          async getSpaceHomepageId() { return null; },
+        };
+      },
+    };
+    const resolveInput = createConfluencePdfResolveInputV1({
+      port,
+      build() {
+        throw new Error("builder must not run after source cancellation");
+      },
+    });
+    const pending = resolveInput(
+      pdfRequest(),
+      context(controller.signal),
+    );
+
+    while (started.length < 2) await new Promise((resolve) => setTimeout(resolve, 0));
+    controller.abort(new DOMException("cancelled", "AbortError"));
+
+    await expect(pending).rejects.toThrow("cancelled");
+    expect(stopped.sort()).toEqual(started.sort());
+  });
 });
