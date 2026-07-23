@@ -84,7 +84,8 @@ Consequences:
 | Status | Meaning |
 |---|---|
 | **Native** | The semantic value is represented in the intermediate model and intentionally rendered by the target engine. |
-| **Partial** | Meaningful content remains, but one or more documented attributes, layout semantics, interactions, or visual properties are lost or approximated. |
+| **Open** | The gap is technically actionable in this export project. Some content may already survive, but the row stays unchecked until the complete static-export contract and its evidence exist. |
+| **Partial** | A proven subset is complete, but closure is blocked by a specifically named external contract or parallel work package. “Partial” is never a resting state for work that can be completed in this branch. |
 | **Fallback** | The exporter emits plain text, a link, transparent body content, or a visible placeholder instead of native semantics. |
 | **Missing** | No source-model and target-rendering contract exists. Content may disappear or survive only accidentally through transparent descent. |
 | **Conditional** | Native-looking output depends on external resolution, assets, fonts, live app execution, or host wiring. |
@@ -99,9 +100,10 @@ update both its matrix rows and the checklist below in the same commit:
 
 - `[x]` means the named gap is closed with the applicable semantic, target,
   browser, report, and rendered evidence.
-- `[ ]` plus **Partial** means a proven subset is complete and the remaining
-  sub-gap is stated explicitly.
-- `[ ]` plus **Open** means no complete native contract exists yet.
+- `[ ]` plus **Open** means the complete native/static contract is technically
+  actionable here and remains backlog.
+- `[ ]` plus **Partial** is permitted only when the remaining sub-gap names its
+  external contract or parallel-work dependency.
 
 Current closed foundations and feature slices:
 
@@ -138,10 +140,10 @@ Current closed foundations and feature slices:
   status, and placeholder forms map to the same contract; both targets localize
   dates in UTC, preserve status style/color semantics, and hide editor-only
   placeholder text.
-- [ ] **Partial:** `breakout` intent is retained on ADF layout sections and
+- [ ] **Open:** `breakout` intent is retained on ADF layout sections and
   explicitly reported as page-bounded; breakout on other schema-valid block
   types and true wide/full-width section geometry remain open.
-- [ ] **Partial:** annotation and fragment identities are validated and retained
+- [ ] **Open:** annotation and fragment identities are validated and retained
   through the neutral model, composition, and packed-browser source resolution;
   native comments/PDF notes, separately fetched comment bodies, and a documented
   fragment-to-bookmark policy remain open. Applying a block export-control
@@ -151,10 +153,12 @@ Current cross-cutting residuals:
 
 - [ ] **Partial:** durable background-host source integration is deferred until
   synchronization with the parallel job-host work.
-- [ ] **Partial:** the real sanitized Confluence corpus covers selected live
+- [ ] **Open:** the real sanitized Confluence corpus covers selected live
   slices, not yet every supported editor feature.
-- [ ] **Partial:** guaranteed DOCX monospace embedding, complete emoji glyph
-  coverage, custom panels, and custom-emoji assets remain open.
+- [ ] **Open:** guaranteed DOCX monospace embedding and custom panels remain
+  technically actionable in this project.
+- [ ] **Partial:** complete emoji glyph coverage and custom-emoji assets are
+  blocked on a documented, authorized Atlassian asset-resolution contract.
 
 ## 5. Official baseline and documentation drift
 
@@ -183,42 +187,42 @@ plus the distinct Storage/export-view compatibility adapters.
 
 ### 6.1 Root and basic content
 
-| ADF node | Current source mapping | DOCX | PDF | Primary gap |
-|---|---|---|---|---|
-| `doc` | Cloud ADF version 1 is bounded and validated before decoding; Storage remains a separate compatibility adapter. | N/A | N/A | Native source contract is complete; observed-product corpus breadth remains tracked separately. |
-| `paragraph` | `<p>` or loose inline content becomes a typed paragraph; direct ADF additionally retains logical alignment, indentation, and the schema-defined `small` font size. | Native | Native | Local ID and other ADF attributes remain outside the model. |
-| `heading` | `<h1>`…`<h6>` retains level and inline content; direct ADF additionally retains logical alignment and indentation. | Native | Native | Composed exports may rebase levels; local ID remains outside the model. |
-| `text` | Unicode text is retained and XML/Typst escaped. | Native | Native | Rendering still depends on target font glyph coverage. |
-| `hardBreak` | ADF `hardBreak` and Storage `<br>` become `lineBreak`. | Native | Native | Closed with direct ADF and Storage coverage. |
-| `rule` | ADF `rule` and Storage `<hr>` become `divider`. | Native | Native | Closed with direct ADF and Storage coverage. |
-| `blockquote` | Structured body becomes `blockquote`. | Native/approx. | Native/approx. | Static styling is exporter-owned rather than an ADF fidelity issue. |
-| `codeBlock` | `<pre>` and `code`/`noformat` macros retain code; macro form may retain language. | Partial | Partial | ADF `wrap`, `hideLineNumbers`, and `uniqueId` are not modeled. Language is supported; code-block wrapping/line-number semantics are not. |
+| Done | ADF node | Current source mapping | DOCX | PDF | Primary gap |
+|---|---|---|---|---|---|
+| [x] | `doc` | Cloud ADF version 1 is bounded and validated before decoding; Storage remains a separate compatibility adapter. | N/A | N/A | Native source contract is complete; observed-product corpus breadth remains tracked separately. |
+| [ ] | `paragraph` | `<p>` or loose inline content becomes a typed paragraph; direct ADF additionally retains logical alignment, indentation, and the schema-defined `small` font size. | Native subset | Native subset | **Open:** preserve the pinned local identity instead of dropping it. |
+| [ ] | `heading` | `<h1>`…`<h6>` retains level and inline content; direct ADF additionally retains logical alignment and indentation. | Native subset | Native subset | **Open:** preserve the pinned local identity. Composed level rebasing remains an explicit document policy. |
+| [x] | `text` | Unicode text is retained and XML/Typst escaped. | Native | Native | Closed semantically; target font fallback is a renderer/platform constraint tracked separately where a guaranteed bundled font is required. |
+| [x] | `hardBreak` | ADF `hardBreak` and Storage `<br>` become `lineBreak`. | Native | Native | Closed with direct ADF and Storage coverage. |
+| [x] | `rule` | ADF `rule` and Storage `<hr>` become `divider`. | Native | Native | Closed with direct ADF and Storage coverage. |
+| [x] | `blockquote` | Structured body becomes `blockquote`. | Native static projection | Native static projection | Closed; target-owned static styling is not ADF notation loss. |
+| [ ] | `codeBlock` | `<pre>` and `code`/`noformat` macros retain code; macro form may retain language. | Open | Open | **Open:** model and render ADF `wrap`, `hideLineNumbers`, and `uniqueId`; language and code text are already supported. |
 
 Evidence: [E2], [E5], [E6], [E7], [E8].
 
 ### 6.2 Lists, tasks, and decisions
 
-| ADF node | Current source mapping | DOCX | PDF | Primary gap |
-|---|---|---|---|---|
-| `bulletList` | ADF `bulletList` and Storage `<ul>` become `list { ordered: false }`; child lists remain inside the owning item. | Native | Native | Nested ADF/Storage differential fixtures, target structure tests, packed-browser assertions, and real render goldens are complete. Maximum nesting and resource budgets remain exporter constraints. |
-| `orderedList` | Storage `<ol start>` and ADF `orderedList.order` become `list { ordered: true, start? }`; child lists remain inside the owning item. | Native | Native | Authored starts, including zero, survive the neutral model. DOCX emits a self-contained single-level numbering definition per ordered-list node; PDF emits Typst `enum(start:)`. Each nested node owns an independent restart, visual indent, and correctly indexed PDF source-map path. |
-| `listItem` | Child blocks are recursively preserved. | Native | Native | Local IDs are not retained. |
-| `taskList` | ADF and Storage become a typed task list with list identity where exposed. ADF sibling task lists attach to the preceding owning item; Storage task lists inside `<ac:task-body>` remain child blocks of that task. | Native | Native | Paired ADF/Storage nesting, both target markers/indents, browser parity, and real render goldens are complete; any future observed product-specific attributes enter the drift lane. |
-| `taskItem` | Required `localId`, exact `TODO`/`DONE` state, direct inline content, and checkbox projection are retained. | Native | Native | Closed with distinct open/done markers, composition, browser parity, and real render goldens. |
-| `blockTaskItem` | Required identity/state and one-or-more block children remain a distinct typed task item. | Native | Native | Closed with block-content and nested-list coverage. |
-| `decisionList` | Required list identity and decision grouping are retained directly from ADF. | Native | Native | Schema-only source contract; no equivalent Storage projection is claimed. |
-| `decisionItem` | Required local identity, exact product-defined string state, and direct inline content are retained. | Native | Native | `DECIDED` uses a filled decision marker; nonstandard states remain visibly labeled rather than being collapsed. |
+| Done | ADF node | Current source mapping | DOCX | PDF | Primary gap |
+|---|---|---|---|---|---|
+| [x] | `bulletList` | ADF `bulletList` and Storage `<ul>` become `list { ordered: false }`; child lists remain inside the owning item. | Native | Native | Nested ADF/Storage differential fixtures, target structure tests, packed-browser assertions, and real render goldens are complete. Maximum nesting and resource budgets remain exporter constraints. |
+| [x] | `orderedList` | Storage `<ol start>` and ADF `orderedList.order` become `list { ordered: true, start? }`; child lists remain inside the owning item. | Native | Native | Authored starts, including zero, survive the neutral model. DOCX emits a self-contained single-level numbering definition per ordered-list node; PDF emits Typst `enum(start:)`. Each nested node owns an independent restart, visual indent, and correctly indexed PDF source-map path. |
+| [ ] | `listItem` | Child blocks are recursively preserved. | Native subset | Native subset | **Open:** preserve the pinned local identity. |
+| [x] | `taskList` | ADF and Storage become a typed task list with list identity where exposed. ADF sibling task lists attach to the preceding owning item; Storage task lists inside `<ac:task-body>` remain child blocks of that task. | Native | Native | Paired ADF/Storage nesting, both target markers/indents, browser parity, and real render goldens are complete; any future observed product-specific attributes enter the drift lane. |
+| [x] | `taskItem` | Required `localId`, exact `TODO`/`DONE` state, direct inline content, and checkbox projection are retained. | Native | Native | Closed with distinct open/done markers, composition, browser parity, and real render goldens. |
+| [x] | `blockTaskItem` | Required identity/state and one-or-more block children remain a distinct typed task item. | Native | Native | Closed with block-content and nested-list coverage. |
+| [x] | `decisionList` | Required list identity and decision grouping are retained directly from ADF. | Native | Native | Schema-only source contract; no equivalent Storage projection is claimed. |
+| [x] | `decisionItem` | Required local identity, exact product-defined string state, and direct inline content are retained. | Native | Native | `DECIDED` uses a filled decision marker; nonstandard states remain visibly labeled rather than being collapsed. |
 
 Evidence: [E2], [E5], [E7], [E8], [E9].
 
 ### 6.3 Tables
 
-| ADF node | Current source mapping | DOCX | PDF | Primary gap |
-|---|---|---|---|---|
-| `table` | Rows, widths, exact pinned presentation attributes, editor identity, and fragment identity become a typed table. An enabled numbered column is materialized once through a shared renderer helper. | Partial | Partial | Authored positive pixel width and logical alignment are native within the physical page; non-positive schema-valid widths produce a degradation note and portable fallback, while oversized `wide`/`full-width` tables remain page-bounded. `displayMode` is retained and `fixed` maps to Word fixed layout; responsive screen shrinking has no dynamic meaning in a static artifact. |
-| `tableRow` | Row order, cells, and exact optional local ID (including empty) are preserved. | Native | Native | Closed for the pinned schema. |
-| `tableHeader` | ADF `tableHeader` / Storage `<th>`, identity, per-cell `colwidth`, background, spans, and vertical alignment are preserved. | Native | Native | Portable geometry still uses the exporters' bounded table-shape limits. |
-| `tableCell` | Content, identity, `colspan`, `rowspan`, background, exact `colwidth` vector (including zero/unfixed tracks), and `valign` are preserved. | Native | Native | Pathological/non-portable geometry is safely clamped and reported rather than allowed to exhaust a renderer. |
+| Done | ADF node | Current source mapping | DOCX | PDF | Primary gap |
+|---|---|---|---|---|---|
+| [x] | `table` | Rows, widths, exact pinned presentation attributes, editor identity, and fragment identity become a typed table. An enabled numbered column is materialized once through a shared renderer helper. | Native bounded projection | Native bounded projection | Closed for the pinned schema. Positive authored width, alignment, display mode, numbered columns, and identity survive; invalid/non-portable geometry is bounded and reported, and physical-page bounds are an explicit static-target policy. |
+| [x] | `tableRow` | Row order, cells, and exact optional local ID (including empty) are preserved. | Native | Native | Closed for the pinned schema. |
+| [x] | `tableHeader` | ADF `tableHeader` / Storage `<th>`, identity, per-cell `colwidth`, background, spans, and vertical alignment are preserved. | Native | Native | Closed with bounded portable geometry. |
+| [x] | `tableCell` | Content, identity, `colspan`, `rowspan`, background, exact `colwidth` vector (including zero/unfixed tracks), and `valign` are preserved. | Native | Native | Closed; pathological/non-portable geometry is safely clamped and reported rather than allowed to exhaust a renderer. |
 
 The pinned table attribute contract is now complete through validation, neutral
 model, composition, packed browser execution, and both TypeScript renderers.
@@ -229,14 +233,14 @@ Evidence: [E10], [E11], [E12], [E27].
 
 ### 6.4 Layouts and containers
 
-| ADF node | Current source mapping | DOCX | PDF | Primary gap |
-|---|---|---|---|---|
-| `layoutSection` | ADF becomes a typed layout with exact optional local identity and retained breakout intent. Storage `ac:layout-section` maps the documented `single`, `two_*`, and `three_*` arrangements to explicit portable tracks; missing/mismatched geometry uses equal tracks with a source-located note. | Native for pinned columns | Native for pinned columns | DOCX uses a borderless fixed OOXML table and PDF uses a semantic-free Typst grid. The pinned ADF schema and documented Storage shapes are closed; Cloud editor layouts beyond the pinned schema remain in the drift/observed-product lane. |
-| `layoutColumn` | Required ADF percentage width, optional exact local identity, top/middle/bottom alignment, and recursively nested content survive. Storage cells inherit the section's documented proportions. | Native | Native | Schema-valid zero-width tracks remain visible through a bounded minimum and are reported. Nested headings/anchors, mentions, macros, assets, lists/tasks, and export controls traverse the column rather than being flattened or skipped. |
-| `panel` | ADF `info`, `note`, `warning`, `tip`, `success`, and `error` remain distinct callout kinds; Storage callouts use the same neutral model. `custom` stays a visible generic panel with a degradation note. | Partial | Partial | Standard success/error semantics and distinct target palettes are native. Custom panel color/icon attributes still need a portable presentation contract. |
-| `expand` | ADF and Storage become a recursive `expand` block retaining exact optional title/local identity; Storage additionally retains macro identity. | Partial: native static projection | Partial: native static projection | Both targets render a visibly open disclosure panel and emit `expand-static`; interactivity/collapsed state is inapplicable to a static artifact. Storage and ADF are differentially tested. |
-| `nestedExpand` | A distinct nested disclosure survives with title, local identity, body ownership, and nesting context. Storage expands inside table cells or another expand use the same neutral shape. | Partial: native static projection | Partial: native static projection | Closed for the pinned static-export contract. The editor's interactive toggle is intentionally not claimed. |
-| `caption` | A pinned-schema ADF caption's direct inline children and exact optional local identity remain attached to its `mediaSingle`. Scroll `scroll-title` remains a separate Storage adapter. | Native | Native | Closed for native caption association and numbering. Unresolved media renders as a visible numbered fallback instead of detaching the caption; broader media layout/crop/group semantics remain separate gaps. |
+| Done | ADF node | Current source mapping | DOCX | PDF | Primary gap |
+|---|---|---|---|---|---|
+| [x] | `layoutSection` | ADF becomes a typed layout with exact optional local identity and retained breakout intent. Storage `ac:layout-section` maps the documented `single`, `two_*`, and `three_*` arrangements to explicit portable tracks; missing/mismatched geometry uses equal tracks with a source-located note. | Native for pinned columns | Native for pinned columns | DOCX uses a borderless fixed OOXML table and PDF uses a semantic-free Typst grid. The pinned ADF schema and documented Storage shapes are closed; Cloud editor layouts beyond the pinned schema remain in the drift/observed-product lane. |
+| [x] | `layoutColumn` | Required ADF percentage width, optional exact local identity, top/middle/bottom alignment, and recursively nested content survive. Storage cells inherit the section's documented proportions. | Native | Native | Schema-valid zero-width tracks remain visible through a bounded minimum and are reported. Nested headings/anchors, mentions, macros, assets, lists/tasks, and export controls traverse the column rather than being flattened or skipped. |
+| [ ] | `panel` | ADF `info`, `note`, `warning`, `tip`, `success`, and `error` remain distinct callout kinds; Storage callouts use the same neutral model. `custom` stays a visible generic panel with a degradation note. | Open | Open | **Open:** preserve and render custom panel color/icon attributes through a portable presentation contract. |
+| [x] | `expand` | ADF and Storage become a recursive `expand` block retaining exact optional title/local identity; Storage additionally retains macro identity. | Native static projection | Native static projection | Closed for static export: both targets render the full body visibly open and report that interaction/collapsed state is inapplicable. Storage and ADF are differentially tested. |
+| [x] | `nestedExpand` | A distinct nested disclosure survives with title, local identity, body ownership, and nesting context. Storage expands inside table cells or another expand use the same neutral shape. | Native static projection | Native static projection | Closed for the pinned static-export contract; the editor's interactive toggle is intentionally not claimed. |
+| [x] | `caption` | A pinned-schema ADF caption's direct inline children and exact optional local identity remain attached to its `mediaSingle`. Scroll `scroll-title` remains a separate Storage adapter. | Native | Native | Closed for native caption association and numbering. Unresolved media renders as a visible numbered fallback instead of detaching the caption; broader media layout/crop/group semantics remain separate gaps. |
 
 The layout renderers intentionally use target-owned static geometry. They do
 not claim browser-responsive behavior, and `wide`/`full-width` breakout cannot
@@ -247,23 +251,23 @@ Evidence: [E2], [E5], [E7], [E8], [E13], [E28].
 
 ### 6.5 Inline semantic content
 
-| ADF node | Current source mapping | DOCX | PDF | Primary gap |
-|---|---|---|---|---|
-| `date` | ADF epoch-millisecond timestamp/local identity and Storage `<time>` or legacy `date` macro values become one typed date. | Native | Native | Both targets render a neutral date chip with document-locale formatting in UTC. Invalid but schema-valid timestamps remain exact visible source text and emit `date-invalid`; units are never guessed. |
-| `emoji` | ADF and Storage both retain `shortName`, optional service `id`, the exact optional source text (including empty text), and whether the visible run came from text or the short-name fallback. Raw colon text is never reinterpreted. | Partial/Conditional | Partial/Conditional | Unicode text and deterministic text fallback are native in the shared model and both TS engines; custom/Atlassian emoji still lack a documented portable asset resolver and full emoji-font guarantee. |
-| `mention` | Storage user links become `mention { accountId, displayName? }`. | Partial/Conditional | Partial/Conditional | Static text only; display name needs host resolution, team/user distinction and profile-link policy are absent. |
-| `status` | ADF text, exact semantic color, optional local identity/style, and Storage status macros become one typed status. | Native static projection | Native static projection | The pinned ADF color enum is validated; `mixedCase` preserves casing and other styles use Confluence-style uppercase. Both targets have explicit neutral/purple palettes plus deterministic legacy/unknown-color fallback. |
-| `placeholder` | ADF text/local identity and Storage `<ac:placeholder>` text/type become a typed editor instruction. | Native hidden projection | Native hidden projection | Confluence hides template placeholders in published view, so both targets intentionally emit no visible text while the neutral model retains identity for tooling/composition. No degradation is reported for this correct projection. |
+| Done | ADF node | Current source mapping | DOCX | PDF | Primary gap |
+|---|---|---|---|---|---|
+| [x] | `date` | ADF epoch-millisecond timestamp/local identity and Storage `<time>` or legacy `date` macro values become one typed date. | Native | Native | Both targets render a neutral date chip with document-locale formatting in UTC. Invalid but schema-valid timestamps remain exact visible source text and emit `date-invalid`; units are never guessed. |
+| [ ] | `emoji` | ADF and Storage both retain `shortName`, optional service `id`, the exact optional source text (including empty text), and whether the visible run came from text or the short-name fallback. Raw colon text is never reinterpreted. | Partial/Conditional | Partial/Conditional | **Partial — external contract:** Unicode text and deterministic fallback are native, but custom/Atlassian emoji require a documented, authorized portable asset resolver and complete glyph policy. |
+| [ ] | `mention` | ADF/Storage identities become typed mentions and visible names can be host-resolved. | Open/Conditional | Open/Conditional | **Open:** retain user/team distinction and define unresolved/deactivated display plus profile-link policy; exercise the resolver through both hosts. |
+| [x] | `status` | ADF text, exact semantic color, optional local identity/style, and Storage status macros become one typed status. | Native static projection | Native static projection | The pinned ADF color enum is validated; `mixedCase` preserves casing and other styles use Confluence-style uppercase. Both targets have explicit neutral/purple palettes plus deterministic legacy/unknown-color fallback. |
+| [x] | `placeholder` | ADF text/local identity and Storage `<ac:placeholder>` text/type become a typed editor instruction. | Native hidden projection | Native hidden projection | Confluence hides template placeholders in published view, so both targets intentionally emit no visible text while the neutral model retains identity for tooling/composition. No degradation is reported for this correct projection. |
 
 Evidence: [E2], [E5], [E7], [E8], [E14], [E23], [E30].
 
 ### 6.6 Cards and links
 
-| ADF node | Current source mapping | DOCX | PDF | Primary gap |
-|---|---|---|---|---|
-| `inlineCard` | Usually degrades to a normal hyperlink if Storage exposes `<a>`. | Partial | Partial | Card title, provider, icon, resolved metadata, and appearance are lost. |
-| `blockCard` | Usually becomes a paragraph link. Datasource links are a special live-rendered path. | Partial/Conditional | Partial/Conditional | Model card appearance and stable title/URL fallback independently of datasource rendering. |
-| `embedCard` | No typed model. URL/body may survive through a link or `export_view`. | Fallback | Fallback | Define poster/thumbnail/title/URL representation and report unrenderable embeds. |
+| Done | ADF node | Current source mapping | DOCX | PDF | Primary gap |
+|---|---|---|---|---|---|
+| [ ] | `inlineCard` | ADF retains a safe URL and visible fallback; Storage may expose a normal hyperlink. | Open | Open | **Open:** retain resolved title/provider/icon metadata and define a deterministic inline-card projection. |
+| [ ] | `blockCard` | ADF retains a safe URL in a visible block fallback; datasource links remain a separate live-rendered path. | Open/Conditional | Open/Conditional | **Open:** model card appearance and stable title/URL fallback independently of datasource rendering. |
+| [ ] | `embedCard` | URL/body may survive through a visible link fallback or `export_view`; no typed embed presentation exists. | Open/Fallback | Open/Fallback | **Open:** define poster/thumbnail/title/URL representation and report unrenderable embeds. |
 
 Link behavior is not uniform: external safe URLs are clickable; composed in-scope page links can become internal anchors; unresolved page/attachment links may be styled text rather than live links. Card semantics must not be inferred solely from link survival.
 
@@ -271,12 +275,12 @@ Evidence: [E5], [E7], [E8], [E15], [E16].
 
 ### 6.7 Media
 
-| ADF node | Current source mapping | DOCX | PDF | Primary gap |
-|---|---|---|---|---|
-| `media` | Storage `<ac:image>` maps to a typed image. ADF media resolves only through exact host-proven file-ID correlation; otherwise a typed visible fallback retains media type/id/collection/occurrence/local identity, alt, dimensions, annotations, and any caption without attempting a fetch. | Partial/Conditional | Partial/Conditional | General file/link rendering, crop, link/border marks, and non-image media output remain absent. |
-| `mediaGroup` | No grouping model. | Missing/Fallback | Missing/Fallback | Preserve attachment/gallery grouping and define a static file-list/gallery representation. |
-| `mediaSingle` | Image reference, alt, numeric width/height, and native caption association reach `ExportBlock`; caption inline content and local identity survive. | Partial | Partial | Container layout, percent/pixel width type, crop, and PDF use of carried image dimensions remain open. |
-| `mediaInline` | Inline image is either promoted to a block or replaced by alt text with a note. | Missing as inline | Missing as inline | Add true inline-media model and baseline/alignment/size rules. |
+| Done | ADF node | Current source mapping | DOCX | PDF | Primary gap |
+|---|---|---|---|---|---|
+| [ ] | `media` | Storage `<ac:image>` maps to a typed image. ADF media resolves only through exact host-proven file-ID correlation; otherwise a typed visible fallback retains media type/id/collection/occurrence/local identity, alt, dimensions, annotations, and any caption without attempting a fetch. | Open/Conditional | Open/Conditional | **Open:** add general file/link rendering, crop, link/border marks, and non-image media output. |
+| [ ] | `mediaGroup` | Visible children survive, but grouping identity and presentation do not. | Open/Fallback | Open/Fallback | **Open:** preserve attachment/gallery grouping and define a static file-list/gallery representation. |
+| [ ] | `mediaSingle` | Image reference, alt, numeric width/height, and native caption association reach `ExportBlock`; caption inline content and local identity survive. | Open | Open | **Open:** retain container layout, percent/pixel width type and crop; make both renderers consume the complete geometry contract. |
+| [ ] | `mediaInline` | Inline image is either promoted to a block or replaced by alt text with a note. | Open/Fallback | Open/Fallback | **Open:** add a true inline-media model and baseline/alignment/size rules. |
 
 Image byte support, SVG rasterization, external-asset policy, and missing-alt reporting exist, but those operational strengths do not fill the missing ADF media semantics.
 
@@ -284,13 +288,13 @@ Evidence: [E2], [E7], [E8], [E17].
 
 ### 6.8 Extensions, macros, and synced content
 
-| ADF node | Current source mapping | DOCX | PDF | Primary gap |
-|---|---|---|---|---|
-| `extension` | Storage macro is captured as `unknown` with parameters/body/ID, then offered to the live renderer chain. | Conditional/Fallback | Conditional/Fallback | No generic ADF extension decoder; native output depends on registry renderer or `export_view`. |
-| `inlineExtension` | Only status and Scroll inline controls are classified inline. Other macros risk block-shaped fallback. | Missing/Fallback | Missing/Fallback | Preserve inline placement and text/body fallback without splitting paragraphs. |
-| `bodiedExtension` | Rich/plain body and structured parameters are retained on the unknown block. | Conditional/Fallback | Conditional/Fallback | Decode ADF parameters/body directly and retain extension identity regardless of live resolution. |
-| `syncBlock` | No model or resolver. | Missing | Missing | Define snapshot/reference policy and stale/unavailable fallback. |
-| `bodiedSyncBlock` | No model or resolver. | Missing/Fallback | Missing/Fallback | Preserve resource ID plus body and report whether the export used embedded or resolved content. |
+| Done | ADF node | Current source mapping | DOCX | PDF | Primary gap |
+|---|---|---|---|---|---|
+| [ ] | `extension` | ADF and Storage retain extension/macro identity, structured parameters, body where present, fragments, and source page context before the live renderer chain. | Open/Conditional | Open/Conditional | **Open:** define native/fallback projection for generic extension output and complete `adfExport` ingestion; registry or `export_view` resolution remains conditional. |
+| [ ] | `inlineExtension` | ADF retains inline placement, extension identity/parameters/fragments, and a visible label; export controls are consumed semantically. | Open/Fallback | Open/Fallback | **Open:** render a richer inline body/text fallback without splitting the paragraph and integrate third-party `adfExport`. |
+| [ ] | `bodiedExtension` | ADF/Storage identity, rich/plain body, structured parameters, fragments, and source context are retained before resolution. | Open/Conditional | Open/Conditional | **Open:** complete generic native/fallback presentation and third-party `adfExport` ingestion independent of live registry success. |
+| [ ] | `syncBlock` | Visible child content survives, but synchronization identity is reported as dropped. | Open/Fallback | Open/Fallback | **Open:** define snapshot/reference policy and stale/unavailable fallback. |
+| [ ] | `bodiedSyncBlock` | Embedded body content survives, but resource identity and snapshot provenance do not. | Open/Fallback | Open/Fallback | **Open:** preserve resource ID plus body and report whether the export used embedded or resolved content. |
 
 The async registry currently covers TOC, Jira/JiraIssues, Confluence datasource lists, draw.io/Gliffy, multiexcerpt include, Scroll table layout, children, include/excerpt, page-properties report, and then an `export_view` catch-all. Every other macro falls to a visible placeholder with preserved body where available. This is good loss visibility, but it is not generic ADF extension support.
 
@@ -302,35 +306,35 @@ Evidence: [E2], [E3], [E4], [E18], [E19].
 
 These types are mentioned by the human ADF documentation or may appear in product-specific/legacy payloads, but are not semantic node types in the pinned full schema:
 
-| Type/family | Current handling | Required policy |
-|---|---|---|
-| `multiBodiedExtension` | No typed model; may arrive as wrapper/macro/export-view content. | Keep a product-corpus fixture and support behind an observed-version gate if Confluence emits it. |
-| `extensionFrame` | No typed model. | Preserve visible body and extension identity if observed; never silently drop. |
-| `unsupportedBlock` / `unsupportedInline` and `ac:adf-node` wrappers | Storage wrappers are traversed transparently. | Preserve original type/attributes in a typed unsupported node plus warning and visible fallback. |
+| Done | Type/family | Current handling | Required policy |
+|---|---|---|---|
+| [ ] | `multiBodiedExtension` | No typed model; may arrive as wrapper/macro/export-view content. | **Partial — external observation:** keep a product-corpus fixture and support behind an observed-version gate if Confluence emits it. |
+| [ ] | `extensionFrame` | No typed model. | **Partial — external observation:** preserve visible body and extension identity if the observed-product corpus proves that Confluence emits it. |
+| [ ] | `unsupportedBlock` / `unsupportedInline` and `ac:adf-node` wrappers | Storage wrappers are traversed transparently. | **Open:** preserve original type/attributes in a typed unsupported node plus warning and visible fallback. |
 
 ## 7. Complete ADF mark matrix
 
 This covers all 17 marks in the pinned schema.
 
-| ADF mark | Current source mapping | DOCX | PDF | Primary gap |
-|---|---|---|---|---|
-| `strong` | `<strong>`/`<b>` -> `bold`. | Native | Native | Add direct ADF fixture. |
-| `em` | `<em>`/`<i>` -> `italic`. | Native | Native | Add engine-specific regression assertions. |
-| `underline` | `<u>` -> `underline`. | Native | Native | Add direct ADF fixture. |
-| `strike` | `<s>`/`<del>`/`<strike>` -> `strike`. | Native | Native | Add engine-specific regression assertions. |
-| `code` | `<code>` -> `code`. | **Partial+** | **Native visual treatment** | DOCX now adds deterministic run shading and preserves explicit source shading; it still names a host font rather than embedding the bundled mono font. PDF renders a theme-colored inline chip with bounded padding/radius and the bundled mono font. Both retain exact token text. |
-| `subsup` | `<sub>`/`<sup>` -> separate sub/sup marks. | Native | Native | Preserve ADF enum exactly and test combinations. |
-| `textColor` | Span CSS color -> normalized RGB. | Native | Native | Theme-token mapping is intentionally flattened to static print color; add contrast policy. |
-| `backgroundColor` | Span CSS background -> normalized RGB. | Native | Native | ADF disallows some combinations such as code; validate rather than synthesize invalid combinations. |
-| `fontSize` | The schema-defined paragraph value `small` becomes target-neutral block presentation. | Native | Native | Validation rejects other values; DOCX emits explicit 9 pt runs and PDF uses the template's `adfSmallText` role with a safe 9 pt fallback. |
-| `link` | HTML/Confluence link -> typed target. | Partial | Partial | Page/attachment/card links are not uniformly resolvable/clickable; collection/media attributes are lost. |
-| `annotation` | Required `id` and exact `inlineComment` type are validated and retained on text/media ranges. | Partial | Partial | The underlying content remains visible, but comment bodies are separate Confluence resources and native Word-comment/PDF-note rendering is not implemented. |
-| `alignment` | ADF `center`/`end` becomes target-neutral block presentation on paragraphs/headings. | Native | Native | DOCX emits logical `w:jc`; PDF emits Typst `align`. |
-| `indentation` | ADF levels 1–6 become bounded target-neutral block indentation. | Native | Native | DOCX and PDF use target-owned, deterministic per-level steps distinct from list nesting. |
-| `breakout` | `wide`/`full-width` mode and optional numeric width are validated and retained on layout sections. Other schema-valid block placements still degrade visibly. | Partial | Partial | Layout sections render page-bounded columns and emit a source-located approximation note. Generalize the retained mark to code/expand/sync blocks and define whether any target-owned page/section widening is safe. |
-| `border` | Not modeled. | Missing | Missing | Preserve media border color/size where the target supports it. |
-| `dataConsumer` | Not modeled. | Missing | Missing | Preserve structured data provenance or explicitly report it as non-visual metadata. |
-| `fragment` | Required non-empty `localId` and exact optional `name` are retained on inline/block extensions and tables. | Partial | Partial | Identity survives composition, but it is not reinterpreted as a bookmark until Atlassian semantics and collision/link policy are documented. |
+| Done | ADF mark | Current source mapping | DOCX | PDF | Primary gap |
+|---|---|---|---|---|---|
+| [x] | `strong` | Direct ADF and `<strong>`/`<b>` become `bold`. | Native | Native | Closed with direct-ADF, Storage, and serializer fixtures. |
+| [x] | `em` | Direct ADF and `<em>`/`<i>` become `italic`. | Native | Native | Closed with direct-ADF, Storage, and serializer fixtures. |
+| [x] | `underline` | Direct ADF and `<u>` become `underline`. | Native | Native | Closed with direct-ADF, Storage, and serializer fixtures. |
+| [x] | `strike` | Direct ADF and `<s>`/`<del>`/`<strike>` become `strike`. | Native | Native | Closed with direct-ADF, Storage, and serializer fixtures. |
+| [ ] | `code` | Direct ADF and `<code>` become an exact inline-code run. | Open in DOCX | Native | **Open:** DOCX shading/text fidelity is complete, but the bundled mono font is named rather than guaranteed embedded. PDF uses the bundled mono font and themed chip. |
+| [x] | `subsup` | The exact ADF `sub`/`sup` enum and Storage tags become separate sub/sup marks. | Native | Native | Closed with direct-ADF coverage and deterministic target projection. |
+| [x] | `textColor` | Direct ADF and Storage span color become normalized static RGB. | Native | Native | Closed for static export; flattening theme tokens to authored print color is intentional. |
+| [x] | `backgroundColor` | Direct ADF and Storage span background become normalized static RGB. | Native | Native | Closed for schema-valid mark placement and static target color. |
+| [x] | `fontSize` | The schema-defined paragraph value `small` becomes target-neutral block presentation. | Native | Native | Validation rejects other values; DOCX emits explicit 9 pt runs and PDF uses the template's `adfSmallText` role with a safe 9 pt fallback. |
+| [ ] | `link` | Safe URL and Confluence link targets become typed links with visible fallback text. | Open | Open | **Open:** make page/attachment/card links uniformly resolvable and clickable and retain collection/media attributes. |
+| [ ] | `annotation` | Required `id` and exact `inlineComment` type are validated and retained on text/media ranges. | Open | Open | **Open:** fetch/correlate comment bodies and implement native Word-comment/PDF-note output under an explicit export policy. |
+| [x] | `alignment` | ADF `center`/`end` becomes target-neutral block presentation on paragraphs/headings. | Native | Native | DOCX emits logical `w:jc`; PDF emits Typst `align`. |
+| [x] | `indentation` | ADF levels 1–6 become bounded target-neutral block indentation. | Native | Native | DOCX and PDF use target-owned, deterministic per-level steps distinct from list nesting. |
+| [ ] | `breakout` | `wide`/`full-width` mode and optional numeric width are validated and retained on layout sections. Other schema-valid block placements still degrade visibly. | Open | Open | **Open:** generalize the retained mark to code/expand/sync blocks and define the target-owned page/section widening policy. |
+| [ ] | `border` | The validator recognizes the pinned mark, but no neutral presentation model exists. | Open/Missing | Open/Missing | **Open:** preserve media border color/size and render it where the target supports it. |
+| [ ] | `dataConsumer` | The validator recognizes the pinned mark, but no neutral provenance model exists. | Open/Missing | Open/Missing | **Open:** preserve structured data provenance or explicitly report it as non-visual metadata. |
+| [ ] | `fragment` | Required non-empty `localId` and exact optional `name` are retained on inline/block extensions and tables. | Open | Open | **Open:** define documented fragment semantics and a collision-safe bookmark/link projection instead of leaving identity non-visual. |
 
 Evidence: [E2], [E5], [E7], [E8], [E20], [E21], [E26].
 
@@ -338,29 +342,29 @@ Evidence: [E2], [E5], [E7], [E8], [E20], [E21], [E26].
 
 Official Confluence documentation describes these input shortcuts. They are editor transformations, not syntax the exporter should parse from arbitrary stored text.
 
-| Editor input | Intended stored semantic result | Current export outcome | Gap/acceptance fixture |
-|---|---|---|---|
-| `**Bold**` | `strong` | Native after Confluence materializes it. | ADF + live Storage fixture. |
-| `*Italic*` | `em` | Native after materialization. | ADF + live Storage fixture. |
-| `~~Strike~~` | `strike` | Native after materialization. | ADF + live Storage fixture. |
-| Backtick-delimited text | `text` + `code` mark | Exact text plus a distinct inline-code chip in both targets; DOCX font embedding remains open. | Preserve underscores/spaces exactly; assert gray background, mono font, adjacency, escaping, links/annotations. |
-| `# ` … `###### ` | `heading.level` | Native after materialization. | H1-H6 corpus plus composed-export level policy. |
-| `1. ` | `orderedList` | Native, including non-1 starts and nested restarts. | ADF/Storage differential, DOCX numbering-part, PDF source/source-map, packed-browser parity, and rendered-golden gates are closed. |
-| `* ` | `bulletList` | Native, including nested bullet ownership and visual levels. | ADF/Storage differential, DOCX/PDF structure, packed-browser parity, and rendered-golden gates are closed. |
-| `> ` | `blockquote` | Native/approx. | Static styling golden. |
-| Triple backticks + space | `codeBlock` | Partial. | Language, wrap, line numbers, long lines, empty/final newline. |
-| `--- ` | `rule` | Native. | Semantic and visual golden. |
-| `[title](URL)` | link mark or Smart Link transform | Link native/partial; card appearance lost. | Plain, inline-card, block-card, embed, unsafe URL, page, attachment. |
-| `[] ` | task item | Native for pinned ADF/Storage semantics. | TODO/DONE, direct-inline and block tasks, nesting, identity, composition, and both target markers are covered; mentions/dates survive as ordinary inline semantics. |
-| `<> ` | decision item | Native for the pinned ADF schema. | List/item identity and exact state survive; `DECIDED` and nonstandard states have deterministic static markers. |
-| `:` / emoji picker | `emoji` node or text | Partial/conditional. | Unicode, Atlassian emoji, site custom emoji, missing asset, fallback text. |
-| `:)` auto-conversion | Emoji/editor transformation | Works only if Confluence materializes a glyph/fallback; exporter does no conversion. | Live editor fixture with shortcuts enabled/disabled. |
-| Raw `:shortname:` text | Not a stable documented ADF contract | Remains literal unless Confluence converted it first. | Never reinterpret ordinary text in exporter. |
-| `@ ` | `mention` | Partial/conditional. | User/team/deactivated/unresolved mentions and profile-link policy. |
-| `!` | media picker | Partial. | Image/file/video/audio, inline/block, dimensions, alt, layout, crop. |
-| `{` | macro autocomplete | `extension*` or legacy macro projection | Conditional/fallback. | Core, Forge `adfExport`, Connect/migrated, unknown, offline. |
-| `//` | `date` | Partial. | Locale/time-zone formatting policy and deterministic snapshot. |
-| `/...` | Selected node/macro | Depends on result type. | Coverage is judged by the resulting ADF node, not the slash string. |
+| Done | Editor input | Intended stored semantic result | Current export outcome | Gap/acceptance fixture |
+|---|---|---|---|---|
+| [x] | `**Bold**` | `strong` | Native after Confluence materializes it. | Direct ADF, Storage, and target fixtures are complete. |
+| [x] | `*Italic*` | `em` | Native after materialization. | Direct ADF, Storage, and target fixtures are complete. |
+| [x] | `~~Strike~~` | `strike` | Native after materialization. | Direct ADF, Storage, and target fixtures are complete. |
+| [ ] | Backtick-delimited text | `text` + `code` mark | Exact text plus a distinct inline-code chip in both targets; DOCX font embedding remains open. | **Open:** guarantee the bundled DOCX mono font, then close adjacency/escaping/annotation combinations. |
+| [ ] | `# ` … `###### ` | `heading.level` | Levels and content render natively. | **Open:** retain the pinned heading local identity; keep composed-export level rebasing explicit. |
+| [x] | `1. ` | `orderedList` | Native, including non-1 starts and nested restarts. | ADF/Storage differential, DOCX numbering-part, PDF source/source-map, packed-browser parity, and rendered-golden gates are closed. |
+| [x] | `* ` | `bulletList` | Native, including nested bullet ownership and visual levels. | ADF/Storage differential, DOCX/PDF structure, packed-browser parity, and rendered-golden gates are closed. |
+| [x] | `> ` | `blockquote` | Native static projection. | Closed with deterministic target-owned styling. |
+| [ ] | Triple backticks + space | `codeBlock` | Open. | **Open:** language, wrap, line numbers, unique ID, long lines, and empty/final newline. |
+| [x] | `--- ` | `rule` | Native. | Semantic and visual golden are complete. |
+| [ ] | `[title](URL)` | link mark or Smart Link transform | Safe visible link subset; card appearance and some target resolution remain open. | **Open:** plain, inline-card, block-card, embed, unsafe URL, page, attachment, and media attributes. |
+| [x] | `[] ` | task item | Native for pinned ADF/Storage semantics. | TODO/DONE, direct-inline and block tasks, nesting, identity, composition, and both target markers are covered; mentions/dates survive as ordinary inline semantics. |
+| [x] | `<> ` | decision item | Native for the pinned ADF schema. | List/item identity and exact state survive; `DECIDED` and nonstandard states have deterministic static markers. |
+| [ ] | `:` / emoji picker | `emoji` node or text | Partial/conditional. | **Partial — external asset contract:** Unicode/fallback is complete; Atlassian/site-custom assets and complete glyph coverage remain blocked. |
+| [x] | `:)` auto-conversion | Emoji/editor transformation | Correctly consumes the materialized emoji/text result and performs no exporter-side editor emulation. | Closed exporter policy; the live corpus records enabled/disabled editor outcomes without reinterpreting raw text. |
+| [x] | Raw `:shortname:` text | Not a stable documented ADF contract | Remains literal unless Confluence converted it first. | Closed invariant: never reinterpret ordinary text in the exporter. |
+| [ ] | `@ ` | `mention` | Typed mention with host-resolved visible fallback where available. | **Open:** user/team/deactivated/unresolved mentions and profile-link policy. |
+| [ ] | `!` | media picker | Selected image/media paths work; the complete media family does not. | **Open:** image/file/video/audio, inline/block, dimensions, alt, layout, crop, border, and link. |
+| [ ] | `{` | macro autocomplete | `extension*` or legacy macro projection | **Open/conditional:** core, Forge `adfExport`, Connect/migrated, unknown, and offline behavior. |
+| [x] | `//` | `date` | Native localized static date chip. | UTC calendar semantics, locale formatting, invalid-value reporting, and deterministic browser/render fixtures are complete. |
+| [x] | `/...` | Selected node/macro | Determined by the resulting typed ADF node, never by reparsing slash text. | Closed classification policy; the selected result remains tracked in its own checked row. |
 
 ## 9. Two high-signal visual gaps
 
@@ -412,12 +416,12 @@ Required acceptance contract:
 - [x] **ADF-native source adapter.** `adfToBlocks()` and
   `pageBodyToBlocks()` validate `doc.version` against the pinned schema while
   keeping Storage as a separate compatibility adapter.
-- [ ] **Partial — extend the neutral model before serializers.** Supported
+- [ ] **Open — extend the neutral model before serializers.** Supported
   semantics use typed representations and every unsupported path has visible,
   bounded diagnostics; native representations for the open matrix rows remain.
 - [x] **Versioned coverage manifest.** All pinned nodes and marks are
   classified, and CI rejects unreviewed schema/coverage drift.
-- [ ] **Partial — real Confluence feature corpus.** Sanitized observed fixtures
+- [ ] **Open — real Confluence feature corpus.** Sanitized observed fixtures
   exist for selected slices; broad editor-feature ADF/Storage pairs and build
   provenance remain open.
 - [x] **Never-silent diagnostics.** Unknown nodes, marks, attributes,
@@ -426,10 +430,10 @@ Required acceptance contract:
 
 ### P1 - Close user-visible core gaps
 
-- [ ] **Partial — inline code.** Visual treatment, exact token preservation,
+- [ ] **Open — inline code.** Visual treatment, exact token preservation,
   serializer tests, and rendered goldens are complete; guaranteed DOCX
   monospace embedding and native comment output for code-plus-annotation remain.
-- [ ] **Partial — emoji/custom emoji.** Identity, exact text, deterministic
+- [ ] **Partial — external asset contract for emoji/custom emoji.** Identity, exact text, deterministic
   fallback, reporting, and both TS engines are complete; authorized custom
   assets and complete font/glyph coverage remain.
 - [x] **Alignment, indentation, and small text.** Paragraph/heading alignment
@@ -451,7 +455,7 @@ Required acceptance contract:
   alignment, identity, and content ownership plus documented Storage layout
   shapes survive composition, macro/mention/asset traversal, browser execution,
   and both renderers.
-- [ ] **Partial — breakout.** Layout-section intent survives and is explicitly
+- [ ] **Open — breakout.** Layout-section intent survives and is explicitly
   page-bounded; non-layout placements and actual wide/full-width page geometry
   remain open.
 - [x] **Captions and nested expands for static DOCX/PDF.** Native ADF caption
@@ -464,20 +468,20 @@ Required acceptance contract:
   survive composition and browser/background execution. DOCX/PDF localize
   dates with a deterministic UTC policy, render status palettes/casing, and
   intentionally hide editor-only placeholder text.
-- [ ] **Partial — card/embed metadata.** Deterministic visible URL fallbacks
+- [ ] **Open — card/embed metadata.** Deterministic visible URL fallbacks
   exist; native title/provider/poster metadata remains.
-- [ ] **Partial — media family.** Selected image/media paths exist; group,
+- [ ] **Open — media family.** Selected image/media paths exist; group,
   inline, file/video/audio, crop, border, and link coverage remains.
-- [ ] **Partial — page/attachment hyperlinks.** Safe external and selected
+- [ ] **Open — page/attachment hyperlinks.** Safe external and selected
   composed links work; uniform page and attachment resolution remains.
 
 ### P2 - Dynamic and advanced content
 
-- [ ] **Partial — ADF extensions.** Direct extension identities, parameters,
+- [ ] **Open — ADF extensions.** Direct extension identities, parameters,
   visible fallbacks, and export controls are decoded; Forge `adfExport`
   ingestion before HTML fallback remains.
 - [ ] **Open — sync-block snapshot/reference policy.**
-- [ ] **Partial — annotation and fragment marks.** Exact source identities,
+- [ ] **Open — annotation and fragment marks.** Exact source identities,
   validation, composition, and browser parity are complete; comment-resource
   correlation, native target output, and fragment/bookmark policy remain.
 - [ ] **Open — data-consumer and product metadata policy.**
@@ -497,14 +501,14 @@ Required acceptance contract:
 
 ### Phase 1 - High-value inline fidelity
 
-- [ ] **Partial:** inline code; DOCX font guarantee and annotation combination
+- [ ] **Open:** inline code; DOCX font guarantee and annotation combination
   remain.
-- [ ] **Partial:** emoji/custom emoji; custom assets and complete glyph coverage
-  remain.
+- [ ] **Partial — external asset contract:** emoji/custom emoji assets and
+  complete glyph coverage remain.
 - [x] Alignment, indentation, and the schema-defined small paragraph font size.
 - [x] Date/status/placeholder semantics and target projections.
 - [ ] Link/card identity.
-- [ ] **Partial:** annotation/fragment identity is retained; native target
+- [ ] **Open:** annotation/fragment identity is retained; native target
   semantics and comment-resource correlation remain.
 
 ### Phase 2 - Structural fidelity
@@ -521,7 +525,7 @@ Required acceptance contract:
 ### Phase 3 - Media and extensions
 
 - [ ] Full media family and static embed fallbacks.
-- [ ] **Partial:** ADF-native extension forms are decoded; Forge `adfExport`
+- [ ] **Open:** ADF-native extension forms are decoded; Forge `adfExport`
   ingestion remains.
 - [ ] Synced content policy.
 
@@ -533,8 +537,9 @@ Required acceptance contract:
 - [x] Typst source assertions and rasterized PDF visual goldens for completed
   feature slices.
 - [x] Browser-host and CLI-host parity for the shared TS engine shapes.
-- [ ] **Partial:** live Confluence E2E with cleanup exists for selected slices;
-  the full feature-zoo corpus remains.
+- [ ] **Open:** live Confluence E2E exists for selected slices; create one
+  persistent, runtime-only feature-tree resource for repeatable CLI DOCX/PDF
+  subtree exports and expand it to the full feature-zoo corpus.
 
 ## 12. Definition of done per feature
 
@@ -672,11 +677,15 @@ Accessed 2026-07-22 and 2026-07-23:
 
 ## 16. Review questions
 
-1. Should the target be “100% of the pinned full ADF schema,” or “100% of a verified Confluence Cloud authoring corpus plus explicit schema-only fallbacks”? The latter is more defensible as a product promise.
-2. Should direct ADF become the primary Cloud input with Storage retained as a compatibility/fallback adapter, or should both adapters remain first-class and be differentially tested?
+1. **Resolved for this migration:** target 100% of the verified Confluence
+   Cloud authoring corpus while retaining explicit, never-silent handling for
+   every pinned schema member. Schema-only support remains labeled as such.
+2. **Resolved for this migration:** direct ADF is the primary Cloud input;
+   Storage remains the Data Center/compatibility adapter and a temporary,
+   differentially tested sidecar for unresolved definitions.
 3. **Resolved for this migration:** short-name/text fallback with a typed warning is the portable floor; authorized asset retrieval waits for a documented Atlassian contract.
 4. For cards and embeds, is a stable title + URL representation sufficient for the first fidelity milestone, or are thumbnails/provider metadata required?
-5. **Partially resolved for this migration:** annotation/fragment identities are
+5. **Open:** annotation/fragment identities are
    preserved as metadata on retained source positions while underlying content
    remains visible; a consumed block export-control wrapper is explicitly
    reported rather than silently reassigned to an arbitrary child.

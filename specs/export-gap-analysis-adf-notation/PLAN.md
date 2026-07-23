@@ -315,7 +315,13 @@ Rules:
 
 - Fixtures committed to the repository must be synthetic and sanitized.
 - Record Confluence observation date, editor generation, ADF hash, Storage hash, and source feature—not credentials or page content from unrelated pages.
-- Delete live test pages/resources after E2E runs.
+- Delete ordinary temporary live test pages/resources after E2E runs.
+- One dedicated persistent feature-tree fixture may remain for repeatable CLI
+  subtree DOCX/PDF conformance. Its profile, tenant, space, page IDs, URLs, and
+  titles are runtime-only inputs: never commit them, copy them into this plan or
+  the gap analysis, mention them in commit/PR text, or publish them as CI
+  artifacts. Give the tree an unmistakable test-only title in Confluence and
+  mutate it only through an explicit fixture-maintenance run.
 - Never correlate by document position such as “the nth macro” or “the nth image”.
 - If a stable identity mapping cannot be proven, keep that feature behind a visible fallback and do not enable its ADF-native resolver by default.
 
@@ -333,7 +339,9 @@ cleanup. In the same commit that proves a slice, update the affected node/mark
 matrix rows, the prioritized checklist, the phase checklist, and the
 closed/missing-gate inventory in `GAP-ANALYSIS.md`. Mark `[x]` only when every
 applicable definition-of-done gate has evidence; otherwise keep `[ ]`, label
-the item **Partial** or **Open**, and state the exact residual gap.
+the item **Open**, and state the exact residual gap. Use **Partial** only when a
+named external contract or parallel work package actually blocks closure; it
+is not an acceptable resting state for work that can be completed here.
 
 ### WP0 — Baseline and export-jobs workstream coordination
 
@@ -791,7 +799,7 @@ Tasks:
 - [x] Make rollback switch representation choice at the source adapter; do not fork render engines.
 - [ ] After one stable release window, plan lazy Storage-sidecar reads as a separate optimization.
 
-Partial WP9 evidence recorded on 2026-07-22: the packed browser harness now owns a real ADF-primary case that invokes the production representation dispatcher before either renderer. It proves target-neutral blocks and diagnostics, then structurally asserts DOCX inline-code font treatment, Unicode emoji, tables, local Smart Link title/target, extension body, and visible unresolved-media content; the PDF output passes tagged-document validation. The production browser build, output-integrity check, manifest drift guard, focused fixture test, browser-harness typecheck, and the complete 15-case Playwright conformance run passed.
+WP9 browser evidence recorded on 2026-07-22: the packed browser harness now owns a real ADF-primary case that invokes the production representation dispatcher before either renderer. It proves target-neutral blocks and diagnostics, then structurally asserts DOCX inline-code font treatment, Unicode emoji, tables, local Smart Link title/target, extension body, and visible unresolved-media content; the PDF output passes tagged-document validation. The production browser build, output-integrity check, manifest drift guard, focused fixture test, browser-harness typecheck, and the complete 15-case Playwright conformance run passed.
 
 Rollout evidence recorded on 2026-07-22: `ATLCLI_EXPORT_SOURCE` is parsed once into a host-owned source policy and is not part of the durable request model. Cloud defaults to `adf`; `storage` performs only the versioned Storage read and emits the existing `adf-storage-fallback` diagnostic before entering the unchanged neutral dispatcher/renderers. Invalid values fail closed. Client, dispatcher and CLI source tests, public API/closure checks, full typecheck, the 20-entrypoint isomorphism gate, documentation validation, and the production build passed. An anonymized live create/export/cleanup run proved the same rollback flag through real TypeScript DOCX and tagged-PDF artifacts, visible fallback diagnostics in both reports, and complete cleanup.
 
@@ -929,7 +937,13 @@ bun run test:browser-export-harness
 bun run check:extension-output
 ```
 
-Before any commit that changes production behavior, run the repository-required live E2E against the configured test profile/space and remove created pages/attachments afterwards. Documentation-only plan changes require `git diff --check`; they do not claim runtime test coverage.
+Before any commit that changes production behavior, run the proportionate live
+E2E against the configured test environment. Remove ordinary temporary
+pages/attachments afterwards. The one persistent feature-tree fixture from
+section 6 is the explicit exception: reuse it for CLI subtree DOCX/PDF
+conformance and keep every live identifier out of repository files, commit/PR
+text, logs selected for publication, and CI artifacts. Documentation-only plan
+changes require `git diff --check`; they do not claim runtime test coverage.
 
 The weekly online check is invoked only by `.github/workflows/adf-drift-watch.yml` or explicit `workflow_dispatch`:
 
@@ -1001,7 +1015,9 @@ Rollback switches only the source adapter to Storage-primary. It must not bypass
 - [x] Ready-to-render recovery performs no source refetch.
 - [x] Direct/background notes, completeness, report, and artifact parity gates pass.
 - [x] Browser/package/API/closure/full-suite/live-E2E gates pass.
-- [x] Created E2E resources are deleted.
+- [x] Ordinary temporary E2E resources are deleted; the explicitly designated
+  persistent feature-tree fixture follows the runtime-only privacy and
+  maintenance contract in section 6.
 - [x] Coverage and user documentation are updated with the source flag, fallback policy, and known limitations.
 
 ## 12. Risks and mitigations
@@ -1046,7 +1062,7 @@ Completed follow-on evidence recorded on 2026-07-23: pinned-schema task and deci
 
 Completed follow-on evidence recorded on 2026-07-23: nested list ownership is now explicit and differential across direct ADF and the `body.storage` compatibility adapter. Paired fixtures cover bullet-in-bullet, ordered-in-ordered with independent authored starts, and task-in-task using each representation's native shape; both adapters produce the same neutral tree with the child list inside its owning item. DOCX tests cover mixed ordered/unordered nesting, numbering-instance isolation, per-level indentation, and nested task glyphs without accidental numbering. PDF tests cover nested bullet/task emission and the exact nested source-map path; this work fixed a real provenance bug where a list item's tail blocks were incorrectly indexed from zero after its leading paragraph. The packed browser source case asserts the numbered starts, bullet level, task hierarchy, and direct/background parity. Real LibreOffice and Typst/Poppler goldens visibly prove all three nested forms without overlap, clipping, or flattened ownership.
 
-Completed partial follow-on evidence recorded on 2026-07-23: the bounded validator now enforces the pinned annotation and fragment attribute contracts, including exact `inlineComment`, schema-valid empty annotation IDs, non-empty fragment local IDs, and exact optional fragment names (including an empty string). The neutral model retains annotation identities on text and resolved/unresolved media, and fragment identities on inline/block/bodied extensions and tables. Decoder, direct-schema, composition, target-neutral fixture, production-browser, and direct/background source-resolution gates prove that these identities survive the TypeScript pipeline while both renderers deliberately leave visible output unchanged. Applying a block export-control deliberately consumes its marked extension wrapper; that exceptional residual now emits a degradation note instead of silently attaching the fragment to an arbitrary child, while inline export-controls retain it on their visible text. This closes silent identity loss only: native Word comments/PDF notes require separately fetched inline-comment resources and a product policy, while fragment-to-bookmark rendering remains gated on documented semantics and collision/link behavior.
+Completed annotation/fragment identity-preservation sub-slice recorded on 2026-07-23: the bounded validator now enforces the pinned annotation and fragment attribute contracts, including exact `inlineComment`, schema-valid empty annotation IDs, non-empty fragment local IDs, and exact optional fragment names (including an empty string). The neutral model retains annotation identities on text and resolved/unresolved media, and fragment identities on inline/block/bodied extensions and tables. Decoder, direct-schema, composition, target-neutral fixture, production-browser, and direct/background source-resolution gates prove that these identities survive the TypeScript pipeline while both renderers deliberately leave visible output unchanged. Applying a block export-control deliberately consumes its marked extension wrapper; that exceptional residual now emits a degradation note instead of silently attaching the fragment to an arbitrary child, while inline export-controls retain it on their visible text. This closes silent identity loss only: native Word comments/PDF notes require separately fetched inline-comment resources and a product policy, while fragment-to-bookmark rendering remains an **Open** gap pending documented semantics and collision/link behavior.
 
 Completed table-attribute follow-on evidence recorded on 2026-07-23: the
 bounded validator now enforces the complete pinned `table`, `tableRow`,
