@@ -904,6 +904,14 @@ export declare const DEFAULT_STORAGE_PARSE_BUDGET: StorageParseBudget;
 // export: drainPaginated
 export declare function drainPaginated<T>(fetchPage: (token: string | undefined) => Promise<PaginatedPage<T>>): Promise<T[]>;
 
+// export: EmojiSemantics
+export interface EmojiSemantics {
+    shortName: string;
+    id?: string;
+    text?: string;
+    renderedFrom: "text" | "short-name";
+}
+
 // export: escapeCqlValue
 export declare function escapeCqlValue(value: string): string;
 
@@ -913,6 +921,7 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "macro-not-rendered",
     "image-unresolved",
     "inline-image-skipped",
+    "emoji-text-fallback",
     "adf-node-degraded",
     "adf-mark-degraded",
     "adf-attribute-dropped",
@@ -1394,6 +1403,7 @@ export type InlineNode = {
     marks?: InlineMark[];
     color?: string;
     backgroundColor?: string;
+    emoji?: EmojiSemantics;
     adfExtension?: AdfExtensionIdentity;
     extensionParams?: MacroParameter[];
     sourcePage?: {
@@ -2987,6 +2997,14 @@ export declare const DEFAULT_STORAGE_PARSE_BUDGET: StorageParseBudget;
 // export: drainPaginated
 export declare function drainPaginated<T>(fetchPage: (token: string | undefined) => Promise<PaginatedPage<T>>): Promise<T[]>;
 
+// export: EmojiSemantics
+export interface EmojiSemantics {
+    shortName: string;
+    id?: string;
+    text?: string;
+    renderedFrom: "text" | "short-name";
+}
+
 // export: escapeCqlValue
 export declare function escapeCqlValue(value: string): string;
 
@@ -2996,6 +3014,7 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "macro-not-rendered",
     "image-unresolved",
     "inline-image-skipped",
+    "emoji-text-fallback",
     "adf-node-degraded",
     "adf-mark-degraded",
     "adf-attribute-dropped",
@@ -3477,6 +3496,7 @@ export type InlineNode = {
     marks?: InlineMark[];
     color?: string;
     backgroundColor?: string;
+    emoji?: EmojiSemantics;
     adfExtension?: AdfExtensionIdentity;
     extensionParams?: MacroParameter[];
     sourcePage?: {
@@ -5070,6 +5090,14 @@ export declare const DEFAULT_STORAGE_PARSE_BUDGET: StorageParseBudget;
 // export: drainPaginated
 export declare function drainPaginated<T>(fetchPage: (token: string | undefined) => Promise<PaginatedPage<T>>): Promise<T[]>;
 
+// export: EmojiSemantics
+export interface EmojiSemantics {
+    shortName: string;
+    id?: string;
+    text?: string;
+    renderedFrom: "text" | "short-name";
+}
+
 // export: escapeCqlValue
 export declare function escapeCqlValue(value: string): string;
 
@@ -5079,6 +5107,7 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "macro-not-rendered",
     "image-unresolved",
     "inline-image-skipped",
+    "emoji-text-fallback",
     "adf-node-degraded",
     "adf-mark-degraded",
     "adf-attribute-dropped",
@@ -5560,6 +5589,7 @@ export type InlineNode = {
     marks?: InlineMark[];
     color?: string;
     backgroundColor?: string;
+    emoji?: EmojiSemantics;
     adfExtension?: AdfExtensionIdentity;
     extensionParams?: MacroParameter[];
     sourcePage?: {
@@ -7052,6 +7082,14 @@ export interface EmbeddingRecord {
     updatedAt: string;
 }
 
+// export: EmojiSemantics
+export interface EmojiSemantics {
+    shortName: string;
+    id?: string;
+    text?: string;
+    renderedFrom: "text" | "short-name";
+}
+
 // export: ensureUserPlaceholders
 export declare function ensureUserPlaceholders(users: UserPlaceholder[], adapter: SyncDbAdapter): Promise<void>;
 
@@ -7067,6 +7105,7 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "macro-not-rendered",
     "image-unresolved",
     "inline-image-skipped",
+    "emoji-text-fallback",
     "adf-node-degraded",
     "adf-mark-degraded",
     "adf-attribute-dropped",
@@ -7599,6 +7638,7 @@ export type InlineNode = {
     marks?: InlineMark[];
     color?: string;
     backgroundColor?: string;
+    emoji?: EmojiSemantics;
     adfExtension?: AdfExtensionIdentity;
     extensionParams?: MacroParameter[];
     sourcePage?: {
@@ -9707,6 +9747,14 @@ export declare const DEFAULT_STORAGE_PARSE_BUDGET: StorageParseBudget;
 // export: drainPaginated
 export declare function drainPaginated<T>(fetchPage: (token: string | undefined) => Promise<PaginatedPage<T>>): Promise<T[]>;
 
+// export: EmojiSemantics
+export interface EmojiSemantics {
+    shortName: string;
+    id?: string;
+    text?: string;
+    renderedFrom: "text" | "short-name";
+}
+
 // export: escapeCqlValue
 export declare function escapeCqlValue(value: string): string;
 
@@ -9716,6 +9764,7 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "macro-not-rendered",
     "image-unresolved",
     "inline-image-skipped",
+    "emoji-text-fallback",
     "adf-node-degraded",
     "adf-mark-degraded",
     "adf-attribute-dropped",
@@ -10197,6 +10246,7 @@ export type InlineNode = {
     marks?: InlineMark[];
     color?: string;
     backgroundColor?: string;
+    emoji?: EmojiSemantics;
     adfExtension?: AdfExtensionIdentity;
     extensionParams?: MacroParameter[];
     sourcePage?: {

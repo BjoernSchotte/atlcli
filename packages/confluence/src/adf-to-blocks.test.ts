@@ -282,6 +282,7 @@ describe("adfToBlocks", () => {
           { type: "text", text: ":warning:" },
           { type: "emoji", attrs: { shortName: ":warning:", text: "⚠️" } },
           { type: "emoji", attrs: { id: "custom", shortName: ":custom:" } },
+          { type: "emoji", attrs: { id: "atlassian-empty", shortName: ":empty:", text: "" } },
           { type: "date", attrs: { timestamp: "1704067200000" } },
           { type: "mention", attrs: { id: "user-1", text: "@Ada" } },
           { type: "mention", attrs: { id: "team-1", userType: "TEAM" } },
@@ -295,8 +296,34 @@ describe("adfToBlocks", () => {
 
     expect(result.blocks[0]).toMatchObject({ type: "paragraph", content: [
       { type: "text", text: ":warning:" },
-      { type: "text", text: "⚠️" },
-      { type: "text", text: ":custom:" },
+      {
+        type: "text",
+        text: "⚠️",
+        emoji: {
+          shortName: ":warning:",
+          text: "⚠️",
+          renderedFrom: "text",
+        },
+      },
+      {
+        type: "text",
+        text: ":custom:",
+        emoji: {
+          shortName: ":custom:",
+          id: "custom",
+          renderedFrom: "short-name",
+        },
+      },
+      {
+        type: "text",
+        text: ":empty:",
+        emoji: {
+          shortName: ":empty:",
+          id: "atlassian-empty",
+          text: "",
+          renderedFrom: "short-name",
+        },
+      },
       { type: "text", text: "2024-01-01" },
       { type: "mention", accountId: "user-1", displayName: "Ada" },
       { type: "mention", accountId: "team-1" },
@@ -309,7 +336,8 @@ describe("adfToBlocks", () => {
       },
     ] });
     expect(result.blocks[1]).toMatchObject({ type: "paragraph", content: [{ type: "link" }] });
-    expect(result.notes.some((note) => note.message.includes("Unicode text"))).toBe(true);
+    expect(result.notes.filter((note) => note.code === "emoji-text-fallback")).toHaveLength(2);
+    expect(result.notes.every((note) => note.source?.blockPath)).toBe(true);
   });
 
   it("routes extensions through the neutral macro contract and keeps media visible until correlation exists", () => {

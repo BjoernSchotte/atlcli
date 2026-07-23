@@ -12,6 +12,7 @@ import type {
   Caption,
   AdfExtensionIdentity,
   BlockPresentation,
+  EmojiSemantics,
   ExportBlock,
   ExportNote,
   ExportNoteSource,
@@ -391,9 +392,30 @@ function decodeInlineNode(node: AdfNode, ctx: DecodeContext, path: string): Inli
     case "hardBreak":
       return [{ type: "lineBreak" }];
     case "emoji": {
-      const text = stringAttr(node, "text") ?? stringAttr(node, "shortName") ?? "[emoji]";
-      if (!stringAttr(node, "text")) addNodeNote(ctx, path, node.type, "had no Unicode text; its short name was preserved.");
-      return applyMarks(text, node.marks ?? [], ctx, path);
+      const shortName = stringAttr(node, "shortName") ?? "[emoji]";
+      // Unlike most optional string attributes, an empty emoji `text` is
+      // meaningful: Atlassian emits it for nodes that must fall back to
+      // `shortName`, so retain the exact value in the neutral metadata.
+      const rawSourceText = node.attrs?.text;
+      const sourceText = typeof rawSourceText === "string" ? rawSourceText : undefined;
+      const renderedFrom =
+        sourceText !== undefined && sourceText.length > 0 ? "text" : "short-name";
+      const text = renderedFrom === "text" ? sourceText! : shortName;
+      const emoji: EmojiSemantics = {
+        shortName,
+        ...(stringAttr(node, "id") ? { id: stringAttr(node, "id") } : {}),
+        ...(sourceText !== undefined ? { text: sourceText } : {}),
+        renderedFrom,
+      };
+      if (renderedFrom === "short-name" || isColonEmojiFallback(text)) {
+        ctx.notes.add({
+          level: "warning",
+          code: "emoji-text-fallback",
+          message: "An emoji had no portable Unicode text; its textual short-name fallback was preserved.",
+          source: sourceFor(ctx, path),
+        });
+      }
+      return applyMarks(text, node.marks ?? [], ctx, path, emoji);
     }
     case "date":
       return applyMarks(renderDate(stringAttr(node, "timestamp")), node.marks ?? [], ctx, path);
@@ -455,6 +477,7 @@ function applyMarks(
   marks: readonly AdfMark[],
   ctx: DecodeContext,
   path: string,
+  emoji?: EmojiSemantics,
 ): InlineNode[] {
   const sorted = [...marks].sort((left, right) => markKey(left).localeCompare(markKey(right)));
   const inlineMarks = new Set<InlineMark>();
@@ -481,9 +504,15 @@ function applyMarks(
     ...(inlineMarks.size > 0 ? { marks: [...inlineMarks].sort() } : {}),
     ...(color ? { color } : {}),
     ...(backgroundColor ? { backgroundColor } : {}),
+    ...(emoji ? { emoji } : {}),
   };
   if (!link) return [node];
   return wrapLink(link, [node], ctx, path);
+}
+
+/** True for an ADF textual emoji token such as `:awthanks:`. */
+function isColonEmojiFallback(value: string): boolean {
+  return value.length >= 3 && value.startsWith(":") && value.endsWith(":") && !/\s/u.test(value);
 }
 
 function decodeBlockPresentation(

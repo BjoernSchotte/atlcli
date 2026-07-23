@@ -46,6 +46,22 @@ describe("ADF browser conformance fixture", () => {
     });
     expect(pdf.blocks[5]).toMatchObject({ type: "callout", kind: "success" });
     expect(pdf.blocks[6]).toMatchObject({ type: "callout", kind: "error" });
+    expect(pdf.blocks[1]).toMatchObject({
+      type: "paragraph",
+      content: expect.arrayContaining([
+        {
+          type: "text",
+          text: ":custom_party:",
+          emoji: {
+            shortName: ":custom_party:",
+            id: "custom-emoji",
+            text: "",
+            renderedFrom: "short-name",
+          },
+        },
+      ]),
+    });
+    expect(pdf.notes.map((note) => note.code)).toContain("emoji-text-fallback");
     expect(pdf.notes.map((note) => note.code)).toContain("adf-media-unresolved");
   });
 });

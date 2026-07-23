@@ -140,6 +140,7 @@ export type InlineNode = {
     marks?: InlineMark[];
     color?: string;
     backgroundColor?: string;
+    emoji?: EmojiSemantics;
     adfExtension?: AdfExtensionIdentity;
     extensionParams?: MacroParameter[];
     sourcePage?: {
@@ -855,6 +856,7 @@ export type InlineNode = {
     marks?: InlineMark[];
     color?: string;
     backgroundColor?: string;
+    emoji?: EmojiSemantics;
     adfExtension?: AdfExtensionIdentity;
     extensionParams?: MacroParameter[];
     sourcePage?: {
@@ -1570,6 +1572,7 @@ export type InlineNode = {
     marks?: InlineMark[];
     color?: string;
     backgroundColor?: string;
+    emoji?: EmojiSemantics;
     adfExtension?: AdfExtensionIdentity;
     extensionParams?: MacroParameter[];
     sourcePage?: {

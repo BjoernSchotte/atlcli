@@ -346,6 +346,9 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
   if (!result.sourceNoteCodes.includes("adf-media-unresolved")) {
     throw new Error("ADF-source case lost the unresolved-media degradation note.");
   }
+  if (!result.sourceNoteCodes.includes("emoji-text-fallback")) {
+    throw new Error("ADF-source case lost the custom-emoji textual fallback note.");
+  }
   if (!result.pdfJobArtifactAndReportParity || !result.docxJobArtifactAndReportParity) {
     throw new Error("ADF-source direct/background artifact or report parity failed.");
   }

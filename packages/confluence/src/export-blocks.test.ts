@@ -60,6 +60,61 @@ describe("storageToBlocks — paragraphs & marks", () => {
     ]);
   });
 
+  test("retains Storage emoji identity and diagnoses textual fallbacks without rewriting colon text", () => {
+    const result = storageToBlocks(
+      '<p>:warning: <ac:emoticon ac:name="warning" ac:emoji-shortname=":warning:" ac:emoji-fallback="⚠️"/>' +
+        ' <ac:emoticon ac:name="custom-party" ac:emoji-shortname=":custom-party:" ac:emoji-fallback=":custom-party:"/>' +
+        ' <ac:emoticon ac:name="empty" ac:emoji-shortname=":empty:" ac:emoji-fallback=""/></p>',
+      { pageContext: { id: "page-1" } }
+    );
+
+    expect(result.blocks[0]).toEqual({
+      type: "paragraph",
+      content: [
+        { type: "text", text: ":warning: " },
+        {
+          type: "text",
+          text: "⚠️",
+          emoji: {
+            shortName: ":warning:",
+            text: "⚠️",
+            renderedFrom: "text",
+          },
+        },
+        { type: "text", text: " " },
+        {
+          type: "text",
+          text: ":custom-party:",
+          emoji: {
+            shortName: ":custom-party:",
+            text: ":custom-party:",
+            renderedFrom: "text",
+          },
+        },
+        { type: "text", text: " " },
+        {
+          type: "text",
+          text: ":empty:",
+          emoji: {
+            shortName: ":empty:",
+            text: "",
+            renderedFrom: "short-name",
+          },
+        },
+      ],
+    });
+    expect(result.notes).toEqual([
+      expect.objectContaining({
+        code: "emoji-text-fallback",
+        source: expect.objectContaining({ pageId: "page-1", blockPath: "blocks[0].content[0]" }),
+      }),
+      expect.objectContaining({
+        code: "emoji-text-fallback",
+        source: expect.objectContaining({ pageId: "page-1", blockPath: "blocks[0].content[0]" }),
+      }),
+    ]);
+  });
+
   test("nested marks accumulate", () => {
     const out = blocks("<p><strong><em>both</em></strong></p>");
     const content = (out[0] as { content: InlineNode[] }).content;

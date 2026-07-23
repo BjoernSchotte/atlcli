@@ -1023,9 +1023,11 @@ Completed follow-on evidence recorded on 2026-07-23: ADF paragraph `fontSize: "s
 
 Completed follow-on evidence recorded on 2026-07-23: ADF `success` and `error` panels now survive as distinct neutral callout kinds and render with explicit semantic palettes in TypeScript DOCX and Typst/PDF. Validation accepts exactly the seven panel types in the pinned schema and rejects missing or unknown types. Custom panels remain a visible generic panel and now emit an explicit degradation note for their unmodeled color/icon attributes. Existing PDF template-v1 manifests stay compatible by inheriting the `tip` palette for success and `warning` for error when the new optional roles are absent. Focused decoder/renderer tests, the hardcoding ledger, full typecheck, the production browser build and packed 15-case Chromium conformance run passed. Real LibreOffice and Typst/Poppler goldens visibly prove blue information, green success and red error panels without overlap or clipping; a deterministic rerender produced zero pixel difference.
 
+Completed follow-on evidence recorded on 2026-07-23: ADF and Storage emoji now retain one target-neutral `EmojiSemantics` record containing the required short name, optional service id, exact optional source text (including an empty string), and the selected visible fallback. Missing/empty Unicode text and colon-shaped non-standard text emit the stable cross-representation `emoji-text-fallback` warning with source provenance; arbitrary stored `:syntax:` remains literal text with no emoji metadata. Both TypeScript renderers consume the same visible run, while the packed browser case proves direct/background artifact and report parity. This deliberately does not invent a custom-emoji network route: Atlassian's current Forge ADF renderer also documents custom user-provided emoji as unsupported, so a future asset resolver remains gated on a documented, authorized platform contract.
+
 After this migration proves the source boundary, close the gap-analysis backlog in separate feature slices:
 
-1. emoji/custom-emoji assets and a guaranteed DOCX mono font;
+1. custom-emoji assets after a documented Atlassian resolver contract, complete emoji-font coverage, and a guaranteed DOCX mono font;
 2. annotation and fragment marks (alignment, indentation, and schema-defined small text are complete);
 3. decisions, block tasks, ordered-list starts, and richer task metadata;
 4. table layout/display/number-column/vertical-alignment attributes;

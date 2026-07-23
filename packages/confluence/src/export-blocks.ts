@@ -71,6 +71,13 @@ export type InlineNode =
       color?: string;
       /** Canonical inline highlight/background color (`#RRGGBB`). */
       backgroundColor?: string;
+      /**
+       * Stored emoji semantics retained alongside the portable visible text.
+       * `text` is the exact optional source attribute (including an empty
+       * string); `renderedFrom` records whether the visible run uses that text
+       * or the required short-name fallback.
+       */
+      emoji?: EmojiSemantics;
       /** Identity retained when this visible text approximates an ADF inline extension. */
       adfExtension?: AdfExtensionIdentity;
       /** Structured ADF inline-extension parameters, kept separate from identity. */
@@ -203,6 +210,14 @@ export interface AdfExtensionIdentity {
   localId?: string;
 }
 
+/** Portable identity and fallback provenance for an ADF/Storage emoji node. */
+export interface EmojiSemantics {
+  shortName: string;
+  id?: string;
+  text?: string;
+  renderedFrom: "text" | "short-name";
+}
+
 /**
  * Case-insensitive convenience lookup for a parameter's plain-text value only
  * (mirrors the internal `macroParam` helper). Returns `undefined` for
@@ -331,6 +346,8 @@ export const EXPORT_NOTE_CODES = [
   "macro-not-rendered",
   "image-unresolved",
   "inline-image-skipped",
+  // Shared ADF/Storage fact: no portable Unicode display was available.
+  "emoji-text-fallback",
   // ADF adapter degradations. These are representation facts shared by every
   // host/renderer; DOCX and PDF receive the same notes with the same paths.
   "adf-node-degraded",
@@ -2199,6 +2216,11 @@ function walkInline(nodes: XmlNode[], ctx: WalkCtx): InlineNode[] {
   return out;
 }
 
+/** True for an ADF/Storage textual emoji token such as `:warning:`. */
+function isColonEmojiFallback(value: string): boolean {
+  return value.length >= 3 && value.startsWith(":") && value.endsWith(":") && !/\s/u.test(value);
+}
+
 function walkInlineElement(el: XmlElement, ctx: WalkCtx): InlineNode[] {
   const name = el.name;
 
@@ -2242,8 +2264,35 @@ function walkInlineElement(el: XmlElement, ctx: WalkCtx): InlineNode[] {
   if (name === "ac:link") return walkAcLink(el, ctx);
 
   if (name === "ac:emoticon") {
-    const emoji = el.attrs["ac:emoji-fallback"] ?? el.attrs["ac:name"] ?? "";
-    return emoji ? [{ type: "text", text: emoji }] : [];
+    const nameFallback = el.attrs["ac:name"] ?? "";
+    const shortName =
+      el.attrs["ac:emoji-shortname"] ??
+      (nameFallback
+        ? nameFallback.startsWith(":") && nameFallback.endsWith(":")
+          ? nameFallback
+          : `:${nameFallback}:`
+        : "");
+    const sourceText = el.attrs["ac:emoji-fallback"];
+    const renderedFrom =
+      sourceText !== undefined && sourceText.length > 0 ? "text" : "short-name";
+    const text = renderedFrom === "text" ? sourceText! : shortName;
+    if (!text) return [];
+    if (renderedFrom === "short-name" || isColonEmojiFallback(text)) {
+      ctx.notes.push(withSource(ctx, {
+        level: "warning",
+        code: "emoji-text-fallback",
+        message: "An emoji had no portable Unicode text; its textual short-name fallback was preserved.",
+      }));
+    }
+    return [{
+      type: "text",
+      text,
+      emoji: {
+        shortName,
+        ...(sourceText !== undefined ? { text: sourceText } : {}),
+        renderedFrom,
+      },
+    }];
   }
 
   if (name === "time") {

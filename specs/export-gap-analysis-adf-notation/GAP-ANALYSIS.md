@@ -158,12 +158,12 @@ Evidence: [E2], [E5], [E7], [E8], [E13].
 | ADF node | Current source mapping | DOCX | PDF | Primary gap |
 |---|---|---|---|---|
 | `date` | `<time>` becomes raw `datetime` or visible text. | Partial | Partial | Retain timestamp semantically and format by document locale/time policy. |
-| `emoji` | `<ac:emoticon>` becomes plain text from `ac:emoji-fallback`, otherwise `ac:name`; raw Unicode remains text. | Partial/Conditional | Partial/Conditional | No ADF `id`/`shortName` model, custom-emoji asset path, fallback policy, or emoji-font guarantee. No dedicated regression test. |
+| `emoji` | ADF and Storage both retain `shortName`, optional service `id`, the exact optional source text (including empty text), and whether the visible run came from text or the short-name fallback. Raw colon text is never reinterpreted. | Partial/Conditional | Partial/Conditional | Unicode text and deterministic text fallback are native in the shared model and both TS engines; custom/Atlassian emoji still lack a documented portable asset resolver and full emoji-font guarantee. |
 | `mention` | Storage user links become `mention { accountId, displayName? }`. | Partial/Conditional | Partial/Conditional | Static text only; display name needs host resolution, team/user distinction and profile-link policy are absent. |
 | `status` | Status macro becomes typed text + color. | Native/approx. | Native/approx. | Pin ADF color/style mapping and unknown-color fallback; current output is a static badge. |
 | `placeholder` | No typed model; unknown inline wrappers are traversed. | Missing/Fallback | Missing/Fallback | Preserve placeholder identity/text and emit explicit fallback rather than accidental text-only behavior. |
 
-Evidence: [E2], [E5], [E7], [E8], [E14].
+Evidence: [E2], [E5], [E7], [E8], [E14], [E23].
 
 ### 6.6 Cards and links
 
@@ -293,22 +293,23 @@ Required acceptance contract:
 
 ### 9.2 Emoji and emoticons
 
-Current behavior is passive:
+Current behavior is explicit and source-neutral:
 
-- Raw Unicode survives as text if the selected font/rendering stack has the glyph.
-- `ac:emoji-fallback` is preferred, otherwise `ac:name` is emitted literally.
-- If Storage supplies a colon short name such as `:warning:` as `ac:emoji-fallback` (a shape already present in the repository fixtures), current DOCX/PDF output keeps that literal string; it does not resolve it to a glyph. See [E22].
-- `ac:emoji-shortname`, ADF `id`, and ADF `shortName` are not modeled.
+- Raw Unicode survives as visible text and retains its emoji metadata if the selected font/rendering stack has the glyph.
+- ADF and Storage both retain the required `shortName`, optional ADF emoji-service `id`, exact optional text (including `""`), and `renderedFrom` provenance in `EmojiSemantics`.
+- Non-empty source text is preferred. Missing or empty text falls back to `shortName`; colon-shaped source text and short-name fallbacks emit the stable `emoji-text-fallback` warning with page/block provenance.
+- If Storage supplies a colon short name such as `:warning:` as `ac:emoji-fallback` (a shape already present in the repository fixtures), DOCX/PDF keeps that literal string and diagnoses it; it does not pretend to have resolved a glyph. See [E22].
 - The exporter does not convert raw colon notation, which is the correct default for stored text.
-- Custom emoji have no asset resolver or deterministic missing-asset fallback.
-- The production `ac:emoticon` path has no dedicated walker or engine regression test.
-- The PDF runtime bundles text/code fonts but no emoji-specific font, so Unicode coverage is not guaranteed.
+- Custom and non-standard Atlassian emoji have a deterministic, visible, typed text fallback but no documented portable asset resolver.
+- Dedicated ADF and Storage regressions cover Unicode, custom/missing text, empty text, metadata retention, note provenance, literal colon text, target-neutral parity, and both serializer paths.
+- The PDF runtime bundles a symbol fallback but no color-emoji font; the DOCX recipient may also substitute fonts, so complete Unicode emoji coverage is not guaranteed.
+- Atlassian's current Forge ADF renderer documents the same platform boundary: only standard Unicode emoji are supported there, not custom user-provided emoji [13].
 
 Required acceptance contract:
 
 1. Prefer ADF `text` when it contains a standard Unicode sequence.
-2. For standard emoji without `text`, resolve `shortName` through a pinned map or emit the short name with a warning.
-3. For site custom emoji, resolve the asset when authorized and within budget; otherwise emit `text`/`shortName` plus a typed warning.
+2. **Completed fallback floor:** without usable Unicode `text`, emit the exact short name with a typed warning.
+3. For site custom emoji, add an authorized host resolver only when Atlassian documents a stable asset route; until then retain the current visible text/short-name fallback and typed warning.
 4. Define DOCX image-baseline and PDF inline-image sizing for custom emoji.
 5. Test skin tone, ZWJ sequences, variation selectors, flags, missing glyphs, deleted custom emoji, and literal colon text.
 
@@ -467,12 +468,13 @@ Accessed 2026-07-22 and 2026-07-23:
 - **[E20] DOCX run properties:** `packages/docx/src/ooxml.ts:153-179`
 - **[E21] PDF inline code vs block-code style:** `packages/pdf/src/serialize.ts:509-545`, `packages/pdf/src/template.ts:311-317`
 - **[E22] Colon-shaped Storage emoji fallback fixture:** `packages/confluence/src/markdown.test.ts:214-225`
+- **[E23] Shared emoji semantics, fallbacks, and parity:** `packages/confluence/src/export-blocks.ts:65-96`, `packages/confluence/src/export-blocks.ts:213-219`, `packages/confluence/src/export-blocks.ts:2266-2295`, `packages/confluence/src/adf-to-blocks.ts:394-418`, `packages/confluence/src/adf-to-blocks.test.ts:277-340`, `packages/confluence/src/export-blocks.test.ts:63-115`, `packages/export-fixtures/src/adf-fixtures.test.ts:49-65`, `apps/browser-export-harness/src/adf-source-case.ts:341-353`
 
 ## 16. Review questions
 
 1. Should the target be “100% of the pinned full ADF schema,” or “100% of a verified Confluence Cloud authoring corpus plus explicit schema-only fallbacks”? The latter is more defensible as a product promise.
 2. Should direct ADF become the primary Cloud input with Storage retained as a compatibility/fallback adapter, or should both adapters remain first-class and be differentially tested?
-3. For custom emoji, is authorized asset retrieval required for v1, or is short-name/text fallback with a warning acceptable initially?
+3. **Resolved for this migration:** short-name/text fallback with a typed warning is the portable floor; authorized asset retrieval waits for a documented Atlassian contract.
 4. For cards and embeds, is a stable title + URL representation sufficient for the first fidelity milestone, or are thumbnails/provider metadata required?
 5. Should annotations/comments be exported as Word comments/PDF notes, or only preserved as metadata while the underlying text remains visible?
 6. Which static representation is preferred for decisions, tasks, nested expands, synced blocks, audio, and video?
