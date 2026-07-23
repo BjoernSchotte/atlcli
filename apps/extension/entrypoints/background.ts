@@ -29,6 +29,7 @@ import {
   listPdfJobMeta,
   sweepPdfJobs,
 } from "../utils/pdf/job-store.js";
+import { IndexedDbExportJobCatalog } from "../utils/export-jobs/catalog.js";
 import { createObserverSession } from "../utils/observer-session.js";
 import {
   currentDetection,
@@ -46,12 +47,33 @@ import {
  */
 const OFFSCREEN_IDLE_MS = 5 * 60 * 1000;
 const TAB_OBSERVER_STORAGE_KEY = "tab-observer-state-v1";
+const commonExportCatalog = new IndexedDbExportJobCatalog();
+
+async function countInFlightExportJobs(): Promise<number> {
+  const [legacy, common] = await Promise.all([
+    countInFlightPdfJobs(),
+    commonExportCatalog.list({
+      states: ["running", "cancelling"],
+      limit: 1,
+    }),
+  ]);
+  return legacy + common.length;
+}
+
 const offscreenIdle = createIdleTimer({
   delayMs: OFFSCREEN_IDLE_MS,
   onIdle: () => {
-    void closeOffscreen().catch((err) =>
-      console.error("closeOffscreen (idle) failed", err)
-    );
+    // Re-check at the destructive boundary too. The offscreen queue may have
+    // auto-claimed its next durable job without another service-worker message.
+    void countInFlightExportJobs()
+      .then((inFlight) => {
+        if (inFlight > 0) {
+          offscreenIdle.reset();
+          return;
+        }
+        return closeOffscreen();
+      })
+      .catch((err) => console.error("closeOffscreen (idle) failed", err));
   },
 });
 
@@ -78,7 +100,7 @@ const offscreenIdle = createIdleTimer({
  */
 const durableIdle = createDurableIdleGate({
   timer: offscreenIdle,
-  countInFlight: () => countInFlightPdfJobs(),
+  countInFlight: countInFlightExportJobs,
   onError: (error) => console.error("in-flight job lookup failed", error),
 });
 const offscreenActivity = createOffscreenActivityTracker(durableIdle);
@@ -212,16 +234,34 @@ async function runPdfCancel(jobId: string): Promise<boolean> {
 }
 
 async function runJobsWake(jobIds?: string[]): Promise<string | undefined> {
-  await ensureOffscreen();
-  const response = (await chrome.runtime.sendMessage({
-    kind: "offscreen:jobs-wake",
-    ...(jobIds ? { jobIds } : {}),
-  })) as OffscreenResponse | undefined;
-  if (!response || response.kind !== "offscreen:jobs-wake-result") {
-    throw new Error("Offscreen export queue returned no result.");
+  // Unlike the legacy compile call, the queue response returns immediately
+  // after claim. Durable state, rather than the tracker's in-memory counter,
+  // owns the remainder of the execution lifetime.
+  durableIdle.stop();
+  let claimed = false;
+  try {
+    await ensureOffscreen();
+    const response = (await chrome.runtime.sendMessage({
+      kind: "offscreen:jobs-wake",
+      ...(jobIds ? { jobIds } : {}),
+    })) as OffscreenResponse | undefined;
+    if (!response || response.kind !== "offscreen:jobs-wake-result") {
+      throw new Error("Offscreen export queue returned no result.");
+    }
+    if (response.error !== undefined) throw new Error(response.error);
+    claimed = response.claimedJobId !== undefined;
+    return response.claimedJobId;
+  } finally {
+    if (claimed) {
+      // The durable gate sees the claimed common row and keeps checking until
+      // the offscreen runner has drained its auto-pumped queue.
+      durableIdle.reset();
+    } else {
+      // Do not start another catalog upgrade after a blocked queue-open already
+      // failed. The destructive idle callback performs its own durable recheck.
+      offscreenIdle.reset();
+    }
   }
-  if (response.error !== undefined) throw new Error(response.error);
-  return response.claimedJobId;
 }
 
 /**

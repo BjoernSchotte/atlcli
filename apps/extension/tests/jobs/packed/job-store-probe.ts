@@ -7,7 +7,9 @@ import {
 } from "../../../utils/export-jobs/catalog.js";
 import { BrowserRenderReservationPoolV1 } from "../../../utils/export-jobs/render-reservation.js";
 import { createExtensionExportQueueRunner } from "../../../utils/export-jobs/queue-runner.js";
+import { readExtensionPdfExportReport } from "../../../utils/export-jobs/executor-store.js";
 import { chromeDurableJobsStore } from "../../../utils/jobs/store.js";
+import { deletePdfJob } from "../../../utils/pdf/job-store.js";
 
 async function* bytes(size: number, failAfterFirst = false): AsyncIterable<Uint8Array> {
   const first = new Uint8Array(Math.min(size, 1024));
@@ -117,8 +119,31 @@ const probe = {
       createdAt: Date.now(),
     });
   },
+  async removeBridge(legacyJobId: string, outerJobId: string, outerLeaseEpoch: number): Promise<void> {
+    await new IndexedDbExportJobCatalog().deleteLegacyBridge(
+      outerJobId,
+      outerLeaseEpoch,
+      legacyJobId,
+    );
+    await deletePdfJob(legacyJobId);
+  },
   async activityKeys(): Promise<string[]> {
     return (await chromeDurableJobsStore().list()).map((row) => row.id);
+  },
+  async retainedPdf(
+    artifactRef: string,
+    reportRef: string,
+  ): Promise<{ prefix: string; byteLength: number; filename?: string; complete?: boolean }> {
+    const stored: number[] = [];
+    for await (const chunk of new IndexedDbExportByteStore().read(artifactRef)) {
+      stored.push(...chunk);
+    }
+    const report = await readExtensionPdfExportReport(reportRef);
+    return {
+      prefix: new TextDecoder().decode(Uint8Array.from(stored.slice(0, 5))),
+      byteLength: stored.length,
+      ...(report ? { filename: report.filename, complete: report.complete } : {}),
+    };
   },
   async renderReservations(): Promise<{
     secondWaited: boolean;

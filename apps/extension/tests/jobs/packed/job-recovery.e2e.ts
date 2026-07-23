@@ -17,6 +17,117 @@ let extensionId: string;
 let suiteRoot: string;
 let baseExtensionDir: string;
 let page: Page;
+let packedOffscreen: ChildTargetSession | undefined;
+
+class ChildTargetSession {
+  private id = 0;
+  private readonly pending = new Map<
+    number,
+    { resolve: (value: unknown) => void; reject: (reason: unknown) => void }
+  >();
+
+  constructor(
+    private readonly root: CDPSession,
+    readonly sessionId: string,
+  ) {
+    root.on("Target.receivedMessageFromTarget", this.onMessage);
+  }
+
+  private readonly onMessage = (event: { sessionId: string; message: string }): void => {
+    if (event.sessionId !== this.sessionId) return;
+    const message = JSON.parse(event.message) as {
+      id?: number;
+      result?: unknown;
+      error?: { message?: string };
+    };
+    if (message.id === undefined) return;
+    const waiter = this.pending.get(message.id);
+    if (!waiter) return;
+    this.pending.delete(message.id);
+    if (message.error) waiter.reject(new Error(message.error.message ?? "Target CDP error."));
+    else waiter.resolve(message.result);
+  };
+
+  send<T>(method: string, params: Record<string, unknown> = {}): Promise<T> {
+    const id = ++this.id;
+    const response = new Promise<T>((resolve, reject) => {
+      this.pending.set(id, {
+        resolve: (value) => resolve(value as T),
+        reject,
+      });
+    });
+    void this.root.send("Target.sendMessageToTarget", {
+      sessionId: this.sessionId,
+      message: JSON.stringify({ id, method, params }),
+    }).catch((error) => {
+      const waiter = this.pending.get(id);
+      this.pending.delete(id);
+      waiter?.reject(error);
+    });
+    return response;
+  }
+
+  async close(): Promise<void> {
+    this.root.off("Target.receivedMessageFromTarget", this.onMessage);
+    await this.root.send("Target.detachFromTarget", { sessionId: this.sessionId }).catch(() => undefined);
+    await this.root.detach().catch(() => undefined);
+  }
+}
+
+async function installOffscreenFetchStub(holdPageIds: string[] = []): Promise<void> {
+  await packedOffscreen?.close();
+  const root = await context.newCDPSession(page);
+  const target = (await getTargets(root)).find(
+    (entry) => entry.url === `chrome-extension://${extensionId}/offscreen.html`,
+  );
+  if (!target) throw new Error("Packed offscreen target was not found.");
+  const attached = await root.send("Target.attachToTarget", {
+    targetId: target.targetId,
+    flatten: false,
+  }) as { sessionId: string };
+  packedOffscreen = new ChildTargetSession(root, attached.sessionId);
+  const expression = `(() => {
+    const held = new Set(${JSON.stringify(holdPageIds)});
+    const releases = Object.create(null);
+    globalThis.__atlcliPackedFetchReleases = releases;
+    globalThis.fetch = async (input) => {
+      const url = new URL(typeof input === "string" ? input : input.url);
+      const match = url.pathname.match(/\\/rest\\/api\\/content\\/([^/]+)/);
+      if (!match) return new Response("{}", { status: 404, headers: { "content-type": "application/json" } });
+      const pageId = decodeURIComponent(match[1]);
+      if (held.has(pageId)) {
+        await new Promise((resolve) => { releases[pageId] = resolve; });
+      }
+      return new Response(JSON.stringify({
+        id: pageId,
+        type: "page",
+        title: "Packed page " + pageId,
+        body: { storage: { value: "<p>Hello from packed Chromium</p>" } },
+        version: { number: 1, when: "2026-07-23T00:00:00.000Z" },
+        space: { key: "DOCS" },
+        ancestors: [],
+        metadata: { labels: { results: [] }, properties: {} },
+        history: { createdDate: "2026-07-23T00:00:00.000Z" }
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    };
+    return true;
+  })()`;
+  const result = await packedOffscreen.send<{
+    result?: { value?: unknown };
+    exceptionDetails?: unknown;
+  }>("Runtime.evaluate", { expression, returnByValue: true, awaitPromise: true });
+  if (result.exceptionDetails || result.result?.value !== true) {
+    throw new Error(`Could not install packed offscreen fetch stub: ${JSON.stringify(result)}`);
+  }
+}
+
+async function releaseOffscreenFetch(pageId: string): Promise<void> {
+  if (!packedOffscreen) throw new Error("Packed offscreen target is not attached.");
+  await packedOffscreen.send("Runtime.evaluate", {
+    expression: `globalThis.__atlcliPackedFetchReleases?.[${JSON.stringify(pageId)}]?.()`,
+    returnByValue: true,
+  });
+}
 
 test.beforeAll(async () => {
   suiteRoot = mkdtempSync(join(tmpdir(), "atlcli-export-jobs-extension-"));
@@ -53,6 +164,8 @@ test.beforeAll(async () => {
 });
 
 test.beforeEach(async () => {
+  await packedOffscreen?.close();
+  packedOffscreen = undefined;
   await page.evaluate(async () => {
     async function deleteDatabase(name: string): Promise<void> {
       await new Promise<void>((resolve, reject) => {
@@ -68,6 +181,7 @@ test.beforeEach(async () => {
 });
 
 test.afterAll(async () => {
+  await packedOffscreen?.close();
   await context?.close();
   rmSync(suiteRoot, { recursive: true, force: true });
 });
@@ -89,21 +203,23 @@ async function seedJob(id: string, state: "queued" | "running"): Promise<void> {
       schema: "atlcli.export-job-request/1",
       id: jobId,
       idempotencyKey: `idem:${jobId}`,
-      format: "docx",
-      renderer: "docx-typescript",
+      format: "pdf",
+      renderer: "pdf-typst",
       source: {
         kind: "confluence",
         siteOrigin: "https://site.atlassian.net",
-        locator: { kind: "space-key", spaceKey: "DOCS" },
-        scope: { kind: "space" },
+        locator: { kind: "page-id", id: jobId, version: 1 },
+        scope: { kind: "page" },
       },
-      authRef: "profile:default",
+      authRef: "session:https://site.atlassian.net",
       displayName: jobId,
+      requestedFilename: `${jobId}.pdf`,
       createdAt: 1,
       priority: "interactive",
       output: { policy: "collect" },
-      template: { recordKey: "default", sha256: "0".repeat(64), name: "Default" },
-      options: { embedImages: true, resolveMacros: true },
+      template: { id: "builtin.editorial-indigo", manifestVersion: "1.0.0" },
+      settings: {},
+      options: { resolveMacros: true },
     };
     const emptyStats = {
       pages: { discovered: 0, fetched: 0, composed: 0, skipped: 0 },
@@ -121,9 +237,9 @@ async function seedJob(id: string, state: "queued" | "running"): Promise<void> {
       id: jobId,
       revision: running ? 2 : 0,
       requestRef: `request:${jobId}`,
-      format: "docx",
-      renderer: "docx-typescript",
-      summary: { displayName: jobId, sourceLabel: "DOCS", siteOrigin: "https://site.atlassian.net", scopeKind: "space" },
+      format: "pdf",
+      renderer: "pdf-typst",
+      summary: { displayName: jobId, sourceLabel: jobId, siteOrigin: "https://site.atlassian.net", scopeKind: "page" },
       queue: { priority: "interactive", enqueuedAt: 1, groupKey: "https://site.atlassian.net" },
       state: jobState,
       attempt: running ? 1 : 0,
@@ -170,6 +286,10 @@ interface PackedJobRow {
     recoveryCount: number;
     checkpointRef?: string;
     lease?: { ownerId: string; epoch: number; expiresAt: number };
+    error?: { code: string; message: string; stage?: string };
+    artifact?: { ref: string; filename: string; byteLength: number };
+    reportRef?: string;
+    reportSummary?: { completeness: string };
   };
 }
 
@@ -188,6 +308,18 @@ async function readJob(id: string): Promise<PackedJobRow> {
     db.close();
     return result as PackedJobRow;
   }, id);
+}
+
+async function waitForJobState(id: string, state: string, timeout = 30_000): Promise<PackedJobRow> {
+  let row!: PackedJobRow;
+  await expect.poll(async () => {
+    row = await readJob(id);
+    if (row.snapshot.state === "failed" && state !== "failed") {
+      throw new Error(`Packed job ${id} failed: ${JSON.stringify(row.snapshot.error)}`);
+    }
+    return row.snapshot.state;
+  }, { timeout }).toBe(state);
+  return row;
 }
 
 async function checkpointAndExpire(id: string): Promise<PackedJobRow> {
@@ -332,23 +464,53 @@ test("a blocked upgrade timeout cannot commit later after the blocker closes", a
 
 test("two packed-extension wakeups produce exactly one claim", async () => {
   await ensureCatalog();
+  await installOffscreenFetchStub([JOB_A]);
   await seedJob(JOB_A, "queued");
   const responses = await Promise.all([sendWake([JOB_A]), sendWake([JOB_A])]);
   expect(responses.filter((response) => response.claimedJobId === JOB_A)).toHaveLength(1);
   expect(await readJob(JOB_A)).toMatchObject({
     snapshot: { state: "running", leaseEpoch: 1, attempt: 1, recoveryCount: 0 },
   });
+  await releaseOffscreenFetch(JOB_A);
+  const succeeded = await waitForJobState(JOB_A, "succeeded");
+  expect(succeeded.snapshot).toMatchObject({
+    artifact: { filename: `${JOB_A}.pdf` },
+    reportSummary: { completeness: "complete" },
+  });
+  if (!succeeded.snapshot.artifact || !succeeded.snapshot.reportRef) {
+    throw new Error("Packed PDF did not retain both artifact and report refs.");
+  }
+  const retained = await page.evaluate(async ({ artifactRef, reportRef }) => {
+    const probe = (globalThis as unknown as {
+      exportJobStoreProbe: {
+        retainedPdf(
+          artifactRef: string,
+          reportRef: string,
+        ): Promise<{ prefix: string; byteLength: number; filename?: string; complete?: boolean }>;
+      };
+    }).exportJobStoreProbe;
+    return probe.retainedPdf(artifactRef, reportRef);
+  }, {
+    artifactRef: succeeded.snapshot.artifact.ref,
+    reportRef: succeeded.snapshot.reportRef,
+  });
+  expect(retained).toMatchObject({
+    prefix: "%PDF-",
+    byteLength: succeeded.snapshot.artifact.byteLength,
+    filename: `${JOB_A}.pdf`,
+    complete: true,
+  });
 });
 
-test("a real service-worker restart reconstructs expired checkpointed work", async () => {
+test("a real service-worker restart does not interrupt an offscreen PDF job", async () => {
   await ensureCatalog();
+  await installOffscreenFetchStub([JOB_B]);
   await seedJob(JOB_B, "queued");
   await expect(sendWake([JOB_B])).resolves.toMatchObject({ claimedJobId: JOB_B });
   const initiallyClaimed = await readJob(JOB_B);
   expect(initiallyClaimed.snapshot).toMatchObject({ state: "running", leaseEpoch: 1, attempt: 1 });
   const originalOwner = initiallyClaimed.snapshot.lease?.ownerId;
   expect(originalOwner).toMatch(/^offscreen:/);
-  await checkpointAndExpire(JOB_B);
 
   const session = await context.newCDPSession(page);
   const worker = (await getTargets(session)).find(
@@ -358,32 +520,29 @@ test("a real service-worker restart reconstructs expired checkpointed work", asy
   await session.send("Target.closeTarget", { targetId: worker!.targetId });
   await waitForTargetGone(session, worker!.targetId);
 
-  const response = await sendWake([JOB_B]);
-  expect(response.claimedJobId).toBe(JOB_B);
+  await expect(sendWake([JOB_B])).resolves.toEqual({ kind: "jobs:wake-result" });
   const replacement = await waitForRestartedTarget(
     session,
     (target) => target.type === "service_worker" && target.url.startsWith(`chrome-extension://${extensionId}/`),
   );
   expect(replacement.url.startsWith(`chrome-extension://${extensionId}/`)).toBe(true);
-  expect(await readJob(JOB_B)).toMatchObject({
-    snapshot: {
-      state: "running",
-      leaseEpoch: 2,
-      attempt: 2,
-      recoveryCount: 1,
-      lease: { ownerId: originalOwner },
-    },
+  await releaseOffscreenFetch(JOB_B);
+  const succeeded = await waitForJobState(JOB_B, "succeeded");
+  expect(succeeded.snapshot).toMatchObject({
+    leaseEpoch: 1,
+    attempt: 1,
+    recoveryCount: 0,
   });
 });
 
 test("a real offscreen-document restart reconstructs expired checkpointed work", async () => {
   await ensureCatalog();
+  await installOffscreenFetchStub([JOB_C]);
   await seedJob(JOB_C, "queued");
   await expect(sendWake([JOB_C])).resolves.toMatchObject({ claimedJobId: JOB_C });
   const initiallyClaimed = await readJob(JOB_C);
   const originalOwner = initiallyClaimed.snapshot.lease?.ownerId;
   expect(originalOwner).toMatch(/^offscreen:/);
-  await checkpointAndExpire(JOB_C);
 
   const session = await context.newCDPSession(page);
   const offscreen = (await getTargets(session)).find(
@@ -393,23 +552,27 @@ test("a real offscreen-document restart reconstructs expired checkpointed work",
   await session.send("Target.closeTarget", { targetId: offscreen!.targetId });
   await waitForTargetGone(session, offscreen!.targetId);
 
-  const response = await sendWake([JOB_C]);
-  expect(response.claimedJobId).toBe(JOB_C);
+  // Recreate the offscreen target while the old lease is still live, install
+  // the new target's host stub, then expire and reclaim the durable job.
+  await expect(sendWake()).resolves.toEqual({ kind: "jobs:wake-result" });
   const replacement = await waitForRestartedTarget(
     session,
     (target) => target.url === `chrome-extension://${extensionId}/offscreen.html`,
   );
+  await installOffscreenFetchStub();
+  await checkpointAndExpire(JOB_C);
+  const response = await sendWake([JOB_C]);
+  expect(response.claimedJobId).toBe(JOB_C);
   expect(replacement.url).toBe(`chrome-extension://${extensionId}/offscreen.html`);
-  const recovered = await readJob(JOB_C);
+  const recovered = await waitForJobState(JOB_C, "succeeded");
   expect(recovered).toMatchObject({
-    snapshot: { state: "running", leaseEpoch: 2, attempt: 2, recoveryCount: 1 },
+    snapshot: { state: "succeeded", leaseEpoch: 2, attempt: 2, recoveryCount: 1 },
   });
-  expect(recovered.snapshot.lease?.ownerId).toMatch(/^offscreen:/);
-  expect(recovered.snapshot.lease?.ownerId).not.toBe(originalOwner);
 });
 
 test("a private legacy compiler bridge produces one outer Activity row", async () => {
   await ensureCatalog();
+  await installOffscreenFetchStub([JOB_A]);
   await seedJob(JOB_A, "queued");
   await expect(sendWake([JOB_A])).resolves.toMatchObject({ claimedJobId: JOB_A });
   await page.evaluate(async ({ legacyId, outerId }) => {
@@ -456,6 +619,20 @@ test("a private legacy compiler bridge produces one outer Activity row", async (
   expect(keys.filter((key) => key === `common:${JOB_A}` || key === `legacy-pdf:${LEGACY}`)).toEqual([
     `common:${JOB_A}`,
   ]);
+  await page.evaluate(async ({ legacyId, outerId }) => {
+    const probe = (globalThis as unknown as {
+      exportJobStoreProbe: {
+        removeBridge(
+          legacyJobId: string,
+          outerJobId: string,
+          outerLeaseEpoch: number,
+        ): Promise<void>;
+      };
+    }).exportJobStoreProbe;
+    await probe.removeBridge(legacyId, outerId, 1);
+  }, { legacyId: LEGACY, outerId: JOB_A });
+  await releaseOffscreenFetch(JOB_A);
+  await waitForJobState(JOB_A, "succeeded");
 });
 
 test("the packed browser shares one FIFO heavy-render slot across PDF and DOCX", async () => {

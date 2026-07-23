@@ -9,20 +9,57 @@
  */
 import { handleOffscreenMessage } from "../../utils/listeners.js";
 import { ChromeWorkerCompilerHost } from "../../utils/pdf/compiler-host.js";
-import { createExtensionQueueFoundation } from "../../utils/export-jobs/recovery.js";
-
-const exportQueue = createExtensionQueueFoundation();
-void exportQueue.startup().catch((error) =>
-  console.error("Common export queue recovery failed", error)
-);
+import { IndexedDbExportJobCatalog } from "../../utils/export-jobs/catalog.js";
+import { IndexedDbExportByteStore } from "../../utils/export-jobs/chunk-store.js";
+import {
+  createProductiveExtensionPdfExecutor,
+  EXTENSION_PDF_MAX_OUTPUT_BYTES_V1,
+  EXTENSION_PDF_SPOOL_LIMITS_V1,
+} from "../../utils/export-jobs/pdf-executor.js";
+import { createExtensionExportQueueRunner } from "../../utils/export-jobs/queue-runner.js";
+import { BrowserRenderReservationPoolV1 } from "../../utils/export-jobs/render-reservation.js";
+import { runClaimedExtensionExportJob } from "../../utils/export-jobs/runtime.js";
 
 const pdfHost = new ChromeWorkerCompilerHost({
   createWorker: () =>
     new Worker(new URL("../../workers/pdf-compiler.ts", import.meta.url), {
       type: "module",
       name: "atlcli-pdf-compiler",
-    }),
+  }),
 });
+
+const exportCatalog = new IndexedDbExportJobCatalog();
+const exportBytes = new IndexedDbExportByteStore({
+  maxArtifactBytes: EXTENSION_PDF_MAX_OUTPUT_BYTES_V1,
+  maxJobBytes: EXTENSION_PDF_SPOOL_LIMITS_V1.maxJobBytes,
+  maxTotalBytes: EXTENSION_PDF_SPOOL_LIMITS_V1.maxTotalBytes,
+});
+// PR-H binds DOCX to this exact pool as well. The global heavy slot therefore
+// already lives at the host boundary rather than inside either format engine.
+const renderPool = new BrowserRenderReservationPoolV1();
+const pdfExecutor = createProductiveExtensionPdfExecutor({
+  catalog: exportCatalog,
+  bytes: exportBytes,
+  compilerHost: pdfHost,
+  renderPool,
+});
+const exportQueue = createExtensionExportQueueRunner({
+  catalog: exportCatalog,
+  bytes: exportBytes,
+  execute: (claimed) =>
+    runClaimedExtensionExportJob({
+      claimed,
+      catalog: exportCatalog,
+      bytes: exportBytes,
+      executor: pdfExecutor,
+      spoolLimits: EXTENSION_PDF_SPOOL_LIMITS_V1,
+    }),
+  onExecutionError: (error, jobId) =>
+    console.error(`Common export job ${jobId} failed outside its executor`, error),
+});
+void exportQueue.startup()
+  .then(() => exportQueue.wake())
+  .catch((error) => console.error("Common export queue recovery failed", error));
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) =>
   handleOffscreenMessage(message, sendResponse, {
