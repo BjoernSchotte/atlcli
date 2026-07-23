@@ -62,6 +62,40 @@ export declare function classifyClientError(err: unknown, service: string): neve
 // export: confluenceContentPortFromClient
 export declare function confluenceContentPortFromClient(client: ConfluenceClient): ConfluenceContentPort;
 
+// export: ConfluenceSourceProgressV1
+export interface ConfluenceSourceProgressV1 {
+    fetched: number;
+    total: number | null;
+}
+
+// export: ConfluenceSourceReadContextV1
+export interface ConfluenceSourceReadContextV1 {
+    siteOrigin: string;
+    signal: AbortSignal;
+}
+
+// export: ConfluenceSourceResolutionError
+export declare class ConfluenceSourceResolutionError extends Error {
+    readonly code: "confluence-source-resolution-failed";
+    constructor();
+}
+
+// export: ConfluenceSourceResolverPortV1
+export interface ConfluenceSourceResolverPortV1 {
+    createTreeSource(context: ConfluenceSourceReadContextV1): TreeSource;
+    resolveContentKey?(value: string, context: ConfluenceSourceReadContextV1): Promise<{
+        id: string;
+    }>;
+}
+
+// export: ConfluenceSourceVersionMismatchError
+export declare class ConfluenceSourceVersionMismatchError extends Error {
+    readonly pageId: string;
+    readonly expectedVersion: number;
+    readonly observedVersion: number | undefined;
+    constructor(pageId: string, expectedVersion: number, observedVersion: number | undefined);
+}
+
 // export: createExternalAssetFetcher
 export declare function createExternalAssetFetcher(policy: ExternalAssetPolicy, deps?: ExternalAssetFetcherDeps): ExternalAssetFetcher;
 
@@ -258,6 +292,45 @@ export interface PersistedOrderedSourceCheckpointV1<Cursor> {
     ref: string;
 }
 
+// export: ResolveConfluenceSourceOptionsV1
+export interface ResolveConfluenceSourceOptionsV1 {
+    exporter: "pdf" | "word";
+    port: ConfluenceSourceResolverPortV1;
+    signal: AbortSignal;
+    resolveExternalUrl?: NonNullable<ComposeOptions["resolveExternalUrl"]>;
+    onProgress?: (progress: ConfluenceSourceProgressV1) => void;
+    bodyOptions?: Omit<PageBodyToBlocksOptions, "exporter" | "pageContext">;
+}
+
+// export: resolveConfluenceSourceV1
+export declare function resolveConfluenceSourceV1(sourceRequest: ExportSourceV1, options: ResolveConfluenceSourceOptionsV1): Promise<ResolvedConfluenceSourceV1>;
+
+// export: ResolvedConfluenceSourcePageV1
+export interface ResolvedConfluenceSourcePageV1 {
+    id: string;
+    title: string;
+    version?: number;
+    spaceKey?: string;
+    notes: readonly ExportNote[];
+}
+
+// export: ResolvedConfluenceSourceV1
+export interface ResolvedConfluenceSourceV1 {
+    blocks: ExportBlock[];
+    sourceNotes: ExportNote[];
+    complete: boolean;
+    root: {
+        id: string;
+        title: string;
+        version?: number;
+        spaceKey?: string;
+    };
+    pages: readonly ResolvedConfluenceSourcePageV1[];
+    pageCount: number;
+    sourceSummary: TreeSourceSummary;
+    chapterAnchorById?: ReadonlyMap<string, string>;
+}
+
 // export: runCheckpointedOrderedSourcePipeline
 export declare function runCheckpointedOrderedSourcePipeline<Value, Cursor, Result>(options: CheckpointedOrderedSourcePipelineOptionsV1<Value, Cursor, Result>): Promise<CheckpointedOrderedSourcePipelineResultV1<Cursor>>;
 
@@ -373,6 +446,40 @@ export interface CheckpointedOrderedSourcePipelineOptionsV1<Value, Cursor, Resul
 export interface CheckpointedOrderedSourcePipelineResultV1<Cursor> {
     committedCount: number;
     latestCheckpoint?: PersistedOrderedSourceCheckpointV1<Cursor>;
+}
+
+// export: ConfluenceSourceProgressV1
+export interface ConfluenceSourceProgressV1 {
+    fetched: number;
+    total: number | null;
+}
+
+// export: ConfluenceSourceReadContextV1
+export interface ConfluenceSourceReadContextV1 {
+    siteOrigin: string;
+    signal: AbortSignal;
+}
+
+// export: ConfluenceSourceResolutionError
+export declare class ConfluenceSourceResolutionError extends Error {
+    readonly code: "confluence-source-resolution-failed";
+    constructor();
+}
+
+// export: ConfluenceSourceResolverPortV1
+export interface ConfluenceSourceResolverPortV1 {
+    createTreeSource(context: ConfluenceSourceReadContextV1): TreeSource;
+    resolveContentKey?(value: string, context: ConfluenceSourceReadContextV1): Promise<{
+        id: string;
+    }>;
+}
+
+// export: ConfluenceSourceVersionMismatchError
+export declare class ConfluenceSourceVersionMismatchError extends Error {
+    readonly pageId: string;
+    readonly expectedVersion: number;
+    readonly observedVersion: number | undefined;
+    constructor(pageId: string, expectedVersion: number, observedVersion: number | undefined);
 }
 
 // export: createPdfExportJobExecutor
@@ -740,6 +847,45 @@ export declare class PdfRenderRestartLimitError extends Error {
 export interface PersistedOrderedSourceCheckpointV1<Cursor> {
     checkpoint: OrderedSourceCheckpointV1<Cursor>;
     ref: string;
+}
+
+// export: ResolveConfluenceSourceOptionsV1
+export interface ResolveConfluenceSourceOptionsV1 {
+    exporter: "pdf" | "word";
+    port: ConfluenceSourceResolverPortV1;
+    signal: AbortSignal;
+    resolveExternalUrl?: NonNullable<ComposeOptions["resolveExternalUrl"]>;
+    onProgress?: (progress: ConfluenceSourceProgressV1) => void;
+    bodyOptions?: Omit<PageBodyToBlocksOptions, "exporter" | "pageContext">;
+}
+
+// export: resolveConfluenceSourceV1
+export declare function resolveConfluenceSourceV1(sourceRequest: ExportSourceV1, options: ResolveConfluenceSourceOptionsV1): Promise<ResolvedConfluenceSourceV1>;
+
+// export: ResolvedConfluenceSourcePageV1
+export interface ResolvedConfluenceSourcePageV1 {
+    id: string;
+    title: string;
+    version?: number;
+    spaceKey?: string;
+    notes: readonly ExportNote[];
+}
+
+// export: ResolvedConfluenceSourceV1
+export interface ResolvedConfluenceSourceV1 {
+    blocks: ExportBlock[];
+    sourceNotes: ExportNote[];
+    complete: boolean;
+    root: {
+        id: string;
+        title: string;
+        version?: number;
+        spaceKey?: string;
+    };
+    pages: readonly ResolvedConfluenceSourcePageV1[];
+    pageCount: number;
+    sourceSummary: TreeSourceSummary;
+    chapterAnchorById?: ReadonlyMap<string, string>;
 }
 
 // export: runCheckpointedOrderedSourcePipeline

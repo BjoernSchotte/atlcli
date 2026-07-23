@@ -795,7 +795,17 @@ export async function fetchExportTree(
     | {
         ok: true;
         node: ExportPageNode;
-        page: TreeSourcePage;
+        /**
+         * Body-free metadata copied before the source page leaves the bounded
+         * decode slot. Keeping the complete `TreeSourcePage` here would make
+         * `Promise.allSettled()` retain every raw ADF body and Storage sidecar
+         * until the slowest page in the tree finished.
+         */
+        pageMeta: {
+          version?: number;
+          labels: string[];
+          spaceKey?: string;
+        };
         decoded: BlocksResult;
       };
 
@@ -881,7 +891,16 @@ export async function fetchExportTree(
           representation,
         };
       }
-      return { ok: true, node, page, decoded };
+      return {
+        ok: true,
+        node,
+        pageMeta: {
+          ...(bodyVersion !== undefined ? { version: bodyVersion } : {}),
+          labels: page.labels ?? [],
+          ...(page.spaceKey !== undefined ? { spaceKey: page.spaceKey } : {}),
+        },
+        decoded,
+      };
     })
   );
 
@@ -933,9 +952,9 @@ export async function fetchExportTree(
     value.node.blocks = value.decoded.blocks;
     value.node.notes = value.decoded.notes;
     if (value.decoded.degraded) degradedPages += 1;
-    value.node.meta.version = value.page.exportSource?.sourceVersion ?? value.page.version;
-    value.node.meta.labels = value.page.labels ?? [];
-    value.node.meta.spaceKey = value.page.spaceKey;
+    value.node.meta.version = value.pageMeta.version;
+    value.node.meta.labels = value.pageMeta.labels;
+    value.node.meta.spaceKey = value.pageMeta.spaceKey;
   });
 
   if (strictFailures.length > 0) {
