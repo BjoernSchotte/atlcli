@@ -670,6 +670,7 @@ const probe = {
     id: string,
     templateValues: number[],
     sourcePageId = id,
+    createdAt?: number,
   ): Promise<string> {
     const templateBytes = Uint8Array.from(templateValues);
     const library = idbTemplateLibrary({
@@ -709,6 +710,7 @@ const probe = {
       catalog,
       bytes,
       requestId: id,
+      ...(createdAt === undefined ? {} : { now: () => createdAt }),
       wake: async (jobIds) => {
         const response = await chrome.runtime.sendMessage({
           kind: "jobs:wake",

@@ -467,22 +467,25 @@ async function submitPackedDocx(
   jobId: string,
   templateBytes: Uint8Array,
   sourcePageId = jobId,
+  createdAt?: number,
 ): Promise<string> {
-  return page.evaluate(async ({ id, sourceId, template }) => {
+  return page.evaluate(async ({ id, sourceId, template, submittedAt }) => {
     const probe = (globalThis as unknown as {
       exportJobStoreProbe: {
         submitDocx(
           jobId: string,
           templateValues: number[],
           sourcePageId?: string,
+          createdAt?: number,
         ): Promise<string>;
       };
     }).exportJobStoreProbe;
-    return probe.submitDocx(id, template, sourceId);
+    return probe.submitDocx(id, template, sourceId, submittedAt);
   }, {
     id: jobId,
     sourceId: sourcePageId,
     template: [...templateBytes],
+    submittedAt: createdAt,
   });
 }
 
@@ -1605,11 +1608,12 @@ test("a packed offscreen DOCX recovery matches an uninterrupted control export",
     body: para("$scroll.title") + para("$scroll.content"),
     date: new Date("2026-07-23T00:00:00.000Z"),
   });
+  const exportDate = Date.parse("2026-07-23T12:34:56.000Z");
   await installOffscreenFetchStub([sourcePageId], {
     [sourcePageId]: storage,
   });
   await expect(
-    submitPackedDocx(JOB_G, templateBytes, sourcePageId),
+    submitPackedDocx(JOB_G, templateBytes, sourcePageId, exportDate),
   ).resolves.toBe(JOB_G);
   await waitForJobState(JOB_G, "running");
 
@@ -1641,7 +1645,7 @@ test("a packed offscreen DOCX recovery matches an uninterrupted control export",
   });
 
   await expect(
-    submitPackedDocx(JOB_H, templateBytes, sourcePageId),
+    submitPackedDocx(JOB_H, templateBytes, sourcePageId, exportDate),
   ).resolves.toBe(JOB_H);
   const uninterrupted = await waitForJobState(JOB_H, "succeeded");
   expect(recovered.snapshot.artifact).toBeDefined();
