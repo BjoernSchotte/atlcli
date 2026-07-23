@@ -11,6 +11,7 @@ const MAX_TEXT_LENGTH = 16_384;
 const MAX_REF_LENGTH = 4_096;
 const MAX_COLLECTION_SIZE = 10_000;
 const MAX_PAGES = 1_000_000;
+const MAX_FOLDERS = 1_000_000;
 const MAX_DEPTH = 10_000;
 const MAX_CODE_LENGTH = 256;
 const SHA256 = /^[a-f0-9]{64}$/i;
@@ -126,7 +127,16 @@ function validateSource(value: unknown, path: string): void {
   const source = record(value, path);
   onlyKeys(
     source,
-    ["kind", "siteOrigin", "locator", "scope", "labels", "completenessMode", "maxPages"],
+    [
+      "kind",
+      "siteOrigin",
+      "locator",
+      "scope",
+      "labels",
+      "completenessMode",
+      "maxPages",
+      "maxFolders",
+    ],
     path,
   );
   if (source.kind !== "confluence") fail(`${path}.kind`, "must be confluence");
@@ -189,6 +199,7 @@ function validateSource(value: unknown, path: string): void {
     choice(source.completenessMode, ["strict", "partial"] as const, `${path}.completenessMode`);
   }
   optionalInteger(source.maxPages, `${path}.maxPages`, { min: 1, max: MAX_PAGES });
+  optionalInteger(source.maxFolders, `${path}.maxFolders`, { min: 1, max: MAX_FOLDERS });
 }
 
 function finiteNumber(
@@ -290,9 +301,15 @@ function validateRequestBaseV1(request: Record<string, unknown>): void {
   validateSource(request.source, "request.source");
 
   const output = record(request.output, "request.output");
-  onlyKeys(output, ["policy", "targetRef"], "request.output");
+  onlyKeys(output, ["policy", "targetRef", "targetKind", "overwriteExisting"], "request.output");
   choice(output.policy, ["collect", "path", "host"] as const, "request.output.policy");
   optionalText(output.targetRef, "request.output.targetRef", MAX_REF_LENGTH);
+  if (output.targetKind !== undefined) {
+    choice(output.targetKind, ["file", "directory"] as const, "request.output.targetKind");
+  }
+  if (output.overwriteExisting !== undefined) {
+    boolean(output.overwriteExisting, "request.output.overwriteExisting");
+  }
 }
 
 function validatePdfExportJobRequestV1(request: Record<string, unknown>): void {
@@ -313,9 +330,16 @@ function validatePdfExportJobRequestV1(request: Record<string, unknown>): void {
   text(template.manifestVersion, "request.template.manifestVersion", MAX_REF_LENGTH);
   validateSettings(request.settings, "request.settings");
   const options = record(request.options, "request.options");
-  onlyKeys(options, ["resolveMacros", "profile"], "request.options");
+  onlyKeys(
+    options,
+    ["resolveMacros", "profile", "strict", "noCache", "exportedAt"],
+    "request.options",
+  );
   boolean(options.resolveMacros, "request.options.resolveMacros");
   optionalText(options.profile, "request.options.profile", MAX_REF_LENGTH);
+  if (options.strict !== undefined) boolean(options.strict, "request.options.strict");
+  if (options.noCache !== undefined) boolean(options.noCache, "request.options.noCache");
+  optionalInteger(options.exportedAt, "request.options.exportedAt");
 }
 
 function validateDocxExportJobRequestV1(request: Record<string, unknown>): void {
@@ -333,14 +357,30 @@ function validateDocxExportJobRequestV1(request: Record<string, unknown>): void 
     fail("request.renderer", "DOCX requires docx-typescript");
   }
   const template = record(request.template, "request.template");
-  onlyKeys(template, ["recordKey", "sha256", "name"], "request.template");
+  onlyKeys(template, ["recordKey", "sha256", "name", "uploadedAt"], "request.template");
   text(template.recordKey, "request.template.recordKey", MAX_REF_LENGTH);
   sha256(template.sha256, "request.template.sha256");
   text(template.name, "request.template.name");
+  optionalInteger(template.uploadedAt, "request.template.uploadedAt");
   const options = record(request.options, "request.options");
-  onlyKeys(options, ["embedImages", "resolveMacros", "updateFields", "captionLang"], "request.options");
+  onlyKeys(
+    options,
+    [
+      "embedImages",
+      "resolveMacros",
+      "keepIgnored",
+      "strict",
+      "updateFields",
+      "captionLang",
+    ],
+    "request.options",
+  );
   boolean(options.embedImages, "request.options.embedImages");
   boolean(options.resolveMacros, "request.options.resolveMacros");
+  if (options.keepIgnored !== undefined) {
+    boolean(options.keepIgnored, "request.options.keepIgnored");
+  }
+  if (options.strict !== undefined) boolean(options.strict, "request.options.strict");
   if (options.updateFields !== undefined) {
     choice(options.updateFields, ["auto", "always", "never"] as const, "request.options.updateFields");
   }
@@ -504,6 +544,29 @@ function validateStats(value: unknown, path: string): void {
     );
     choice(kind, ["measured", "derived", "unavailable"] as const, `${path}.metricSupport.${metric}`);
   }
+  const measurements = {
+    "storage.spoolPeakBytes": storage.spoolPeakBytes,
+    "memory.heapPeakBytes": memory.heapPeakBytes,
+    "memory.rendererPeakBytes": memory.rendererPeakBytes,
+  } as const;
+  for (const [metric, measurement] of Object.entries(measurements)) {
+    const kind = support[metric];
+    // Missing support remains accepted for persisted v1 rows written before
+    // telemetry became productive. All newly created rows set it explicitly.
+    if (kind === undefined) continue;
+    if (kind === "unavailable" && measurement !== null) {
+      fail(
+        `${path}.metricSupport.${metric}`,
+        "unavailable metrics must retain a null measurement",
+      );
+    }
+    if ((kind === "measured" || kind === "derived") && measurement === null) {
+      fail(
+        `${path}.metricSupport.${metric}`,
+        `${kind} metrics require a numeric measurement`,
+      );
+    }
+  }
   const durations = record(stats.durationsMs, `${path}.durationsMs`);
   for (const [stage, duration] of Object.entries(durations)) {
     choice(stage, [...STAGES, "queue"] as const, `${path}.durationsMs key`);
@@ -547,7 +610,8 @@ export function parseExportJobSnapshotV1(value: unknown): ExportJobSnapshotV1 {
     [
       "schema", "id", "revision", "requestRef", "format", "renderer", "summary", "queue",
       "state", "stage", "progress", "waiting", "attempt", "recoveryCount", "leaseEpoch",
-      "lease", "cancelRequestedAt", "checkpointRef", "artifact", "reportRef", "reportSummary",
+      "lease", "cancelRequestedAt", "checkpointRef", "artifact", "artifactReleasedAt",
+      "reportRef", "reportReleasedAt", "reportSummary",
       "stats", "error", "createdAt", "startedAt", "finishedAt", "deliveredAt",
       "acknowledgedAt", "dismissedAt", "derivedFrom",
     ],
@@ -637,9 +701,26 @@ export function parseExportJobSnapshotV1(value: unknown): ExportJobSnapshotV1 {
 
   const createdAt = integer(snapshot.createdAt, "snapshot.createdAt");
   const timestamps: Partial<
-    Record<"startedAt" | "finishedAt" | "deliveredAt" | "acknowledgedAt" | "dismissedAt", number>
+    Record<
+      | "startedAt"
+      | "finishedAt"
+      | "deliveredAt"
+      | "acknowledgedAt"
+      | "dismissedAt"
+      | "artifactReleasedAt"
+      | "reportReleasedAt",
+      number
+    >
   > = {};
-  for (const field of ["startedAt", "finishedAt", "deliveredAt", "acknowledgedAt", "dismissedAt"] as const) {
+  for (const field of [
+    "startedAt",
+    "finishedAt",
+    "deliveredAt",
+    "acknowledgedAt",
+    "dismissedAt",
+    "artifactReleasedAt",
+    "reportReleasedAt",
+  ] as const) {
     if (snapshot[field] !== undefined) {
       timestamps[field] = integer(snapshot[field], `snapshot.${field}`);
     }
@@ -668,14 +749,30 @@ export function parseExportJobSnapshotV1(value: unknown): ExportJobSnapshotV1 {
     fail("snapshot.finishedAt", "non-terminal jobs must not have finishedAt");
   }
   if (state === "succeeded") {
-    if (snapshot.artifact === undefined) fail("snapshot.artifact", "succeeded jobs require an artifact");
-    validateArtifact(snapshot.artifact, format, "snapshot.artifact");
-    const artifact = snapshot.artifact as Record<string, unknown>;
-    if (artifact.committedAt !== timestamps.finishedAt) {
-      fail("snapshot.artifact.committedAt", "must equal snapshot.finishedAt");
+    if (snapshot.artifact === undefined && snapshot.artifactReleasedAt === undefined) {
+      fail("snapshot.artifact", "succeeded jobs require an artifact or an artifact release marker");
+    }
+    if (snapshot.artifact !== undefined) {
+      validateArtifact(snapshot.artifact, format, "snapshot.artifact");
+      const artifact = snapshot.artifact as Record<string, unknown>;
+      if (artifact.committedAt !== timestamps.finishedAt) {
+        fail("snapshot.artifact.committedAt", "must equal snapshot.finishedAt");
+      }
     }
   } else if (snapshot.artifact !== undefined) {
     fail("snapshot.artifact", "is only valid for succeeded jobs");
+  }
+  if (snapshot.artifact !== undefined && snapshot.artifactReleasedAt !== undefined) {
+    fail("snapshot.artifactReleasedAt", "cannot coexist with a retained artifact");
+  }
+  if (snapshot.artifactReleasedAt !== undefined && state !== "succeeded") {
+    fail("snapshot.artifactReleasedAt", "is only valid for succeeded jobs");
+  }
+  if (snapshot.reportRef !== undefined && snapshot.reportReleasedAt !== undefined) {
+    fail("snapshot.reportReleasedAt", "cannot coexist with a retained report ref");
+  }
+  if (snapshot.reportReleasedAt !== undefined && !TERMINAL.has(state)) {
+    fail("snapshot.reportReleasedAt", "is only valid for terminal jobs");
   }
   if ((state === "failed" || state === "interrupted") && snapshot.error === undefined) {
     fail("snapshot.error", `${state} jobs require an error`);
@@ -692,7 +789,13 @@ export function parseExportJobSnapshotV1(value: unknown): ExportJobSnapshotV1 {
   if ((snapshot.acknowledgedAt !== undefined || snapshot.dismissedAt !== undefined) && !TERMINAL.has(state)) {
     fail("snapshot", "only terminal jobs may be acknowledged or dismissed");
   }
-  for (const field of ["deliveredAt", "acknowledgedAt", "dismissedAt"] as const) {
+  for (const field of [
+    "deliveredAt",
+    "acknowledgedAt",
+    "dismissedAt",
+    "artifactReleasedAt",
+    "reportReleasedAt",
+  ] as const) {
     if (
       timestamps[field] !== undefined &&
       timestamps.finishedAt !== undefined &&

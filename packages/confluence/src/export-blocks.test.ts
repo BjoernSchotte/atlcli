@@ -812,6 +812,24 @@ describe("storageToBlocks — misc blocks", () => {
       { type: "paragraph", content: [{ type: "text", text: "right" }] },
     ]);
   });
+
+  test("legacy section/column macros flatten without placeholder blocks", () => {
+    const storage =
+      '<ac:structured-macro ac:name="section"><ac:rich-text-body>' +
+      '<ac:structured-macro ac:name="column"><ac:parameter ac:name="width">40%</ac:parameter>' +
+      "<ac:rich-text-body><p>left</p></ac:rich-text-body></ac:structured-macro>" +
+      '<ac:structured-macro ac:name="column"><ac:parameter ac:name="width">60%</ac:parameter>' +
+      "<ac:rich-text-body><p>right</p></ac:rich-text-body></ac:structured-macro>" +
+      "</ac:rich-text-body></ac:structured-macro>";
+    const out = storageToBlocks(storage);
+
+    expect(out.blocks).toEqual([
+      { type: "paragraph", content: [{ type: "text", text: "left" }] },
+      { type: "paragraph", content: [{ type: "text", text: "right" }] },
+    ]);
+    expect(JSON.stringify(out.blocks)).not.toContain("macro not rendered");
+    expect(out.notes).toEqual([]);
+  });
 });
 
 describe("storageToBlocks — integration (§2.1 feature zoo)", () => {

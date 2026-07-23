@@ -15,6 +15,8 @@ declare module "pizzip" {
     asArrayBuffer(): ArrayBuffer;
     name: string;
     dir: boolean;
+    /** ZIP header timestamp; writable like JSZip's/PizZip's runtime object. */
+    date: Date;
   }
 
   interface PizZipGenerateOptions {

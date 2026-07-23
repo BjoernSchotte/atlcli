@@ -3,6 +3,7 @@ import type {
   ExportBlock,
   ExportNote,
   ExportScope,
+  ExportTreeBodyStoreV1,
   LabelFilter,
   TreeFetchProgress,
 } from "@atlcli/confluence/browser";
@@ -41,6 +42,8 @@ export interface DocxScopeInput {
   pageUrl: string;
   scope?: ExportScope;
   labels?: LabelFilter;
+  /** Durable queued-export page/block spool; absent for direct panel work. */
+  bodyStore?: ExportTreeBodyStoreV1;
   signal?: AbortSignal;
   onProgress?: (progress: TreeFetchProgress) => void;
 }
@@ -89,6 +92,7 @@ export async function resolveDocxExportScope(
       exporter: "word",
       scope: input.scope,
       ...(input.labels ? { labels: input.labels } : {}),
+      ...(input.bodyStore ? { bodyStore: input.bodyStore } : {}),
       ...(input.signal ? { signal: input.signal } : {}),
       ...(input.onProgress ? { onProgress: input.onProgress } : {}),
     },

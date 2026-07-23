@@ -641,16 +641,13 @@ describe("no PDF env construction site bypasses the router", () => {
       join(import.meta.dir, "..", "..", "utils", "docx", "env.ts"),
       "utf8"
     );
-    const portSource = readFileSync(
-      join(import.meta.dir, "..", "..", "entrypoints", "sidepanel", "ports", "docx.ts"),
+    const resolverSource = readFileSync(
+      join(import.meta.dir, "..", "..", "utils", "export-jobs", "docx-resolver.ts"),
       "utf8"
     );
     expect(envSource).toContain("trustRoutingAssetFetcher(");
-    const assetsFields = [...portSource.matchAll(/\n\s*assets:\s*([A-Za-z0-9_.]+)\(/g)].map(
-      (m) => m[1]
-    );
-    expect([...new Set(assetsFields)]).toEqual(["env.sessionDocxAssets"]);
-    expect(portSource).toContain("buildSessionMacroResolutionOptions(");
+    expect(resolverSource).toContain("sessionDocxAssets({");
+    expect(resolverSource).toContain("buildSessionMacroResolutionOptions(");
   });
 });
 

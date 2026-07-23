@@ -6,6 +6,10 @@ import type {
   ExportJobSnapshotV1,
   ExportJobState,
 } from "./snapshot.js";
+import {
+  DELIVERED_ARTIFACT_RETENTION_MS_V1,
+  FULL_REPORT_RETENTION_MS_V1,
+} from "./lifecycle-retention.js";
 
 export type ExportJobTransitionConflictCode =
   | "revision-conflict"
@@ -104,6 +108,13 @@ export interface ExportJobTerminalMetadataInputV1 {
   dismissedAt?: number;
 }
 
+export interface ExportJobRetentionInputV1 {
+  expectedRevision: number;
+  at: number;
+  releaseArtifact: boolean;
+  releaseReport: boolean;
+}
+
 const TERMINAL_STATES: ReadonlySet<ExportJobState> = new Set([
   "succeeded",
   "failed",
@@ -112,7 +123,7 @@ const TERMINAL_STATES: ReadonlySet<ExportJobState> = new Set([
 ]);
 
 const DIRECT_TRANSITIONS: Readonly<Record<ExportJobState, ReadonlySet<ExportJobState>>> = {
-  queued: new Set(["cancelled"]),
+  queued: new Set(["cancelled", "interrupted"]),
   running: new Set(["waiting", "cancelling", "failed", "interrupted"]),
   waiting: new Set(["cancelled"]),
   cancelling: new Set(["cancelled"]),
@@ -608,6 +619,75 @@ export function updateExportJobTerminalMetadata(
     ...(input.deliveredAt === undefined ? {} : { deliveredAt: input.deliveredAt }),
     ...(input.acknowledgedAt === undefined ? {} : { acknowledgedAt: input.acknowledgedAt }),
     ...(input.dismissedAt === undefined ? {} : { dismissedAt: input.dismissedAt }),
+  };
+}
+
+/**
+ * Clear retained payload refs only after their independent policy horizons.
+ *
+ * Adapters execute the corresponding physical cleanup in the same durable
+ * operation where possible. The release timestamps keep the compact history
+ * valid and make repeated cleanup reconciliation explicit.
+ */
+export function releaseExportJobRetention(
+  snapshot: ExportJobSnapshotV1,
+  input: ExportJobRetentionInputV1,
+): ExportJobSnapshotV1 {
+  assertRevision(snapshot, input.expectedRevision);
+  assertTerminal(snapshot);
+  assertFiniteTime(input.at, "Retention time");
+  if (!input.releaseArtifact && !input.releaseReport) {
+    conflict("invalid-metadata", "Retention must release at least one payload class.");
+  }
+  if (snapshot.finishedAt === undefined) {
+    conflict("invalid-metadata", "Terminal retention requires finishedAt.");
+  }
+
+  if (input.releaseArtifact) {
+    if (
+      snapshot.state !== "succeeded" ||
+      snapshot.artifact === undefined ||
+      snapshot.artifactReleasedAt !== undefined
+    ) {
+      conflict("invalid-metadata", "Only an unreleased successful artifact can be released.");
+    }
+    if (snapshot.deliveredAt === undefined && snapshot.dismissedAt === undefined) {
+      conflict("invalid-metadata", "Succeeded-undelivered artifacts are retention-protected.");
+    }
+    const lastUseAt = Math.max(
+      snapshot.finishedAt,
+      snapshot.deliveredAt ?? Number.NEGATIVE_INFINITY,
+      snapshot.dismissedAt ?? Number.NEGATIVE_INFINITY,
+    );
+    if (input.at < lastUseAt || input.at - lastUseAt < DELIVERED_ARTIFACT_RETENTION_MS_V1) {
+      conflict("invalid-metadata", "The delivered artifact retention horizon has not elapsed.");
+    }
+  }
+
+  if (input.releaseReport) {
+    if (snapshot.reportReleasedAt !== undefined) {
+      conflict("invalid-metadata", "The full report and event protocol were already released.");
+    }
+    if (
+      input.at < snapshot.finishedAt ||
+      input.at - snapshot.finishedAt < FULL_REPORT_RETENTION_MS_V1
+    ) {
+      conflict("invalid-metadata", "The full report retention horizon has not elapsed.");
+    }
+    if (snapshot.reportRef !== undefined && snapshot.reportSummary === undefined) {
+      conflict("invalid-metadata", "A retained report needs a compact summary before release.");
+    }
+  }
+
+  return {
+    ...snapshot,
+    revision: nextRevision(snapshot),
+    ...(input.releaseArtifact
+      ? { artifact: undefined, artifactReleasedAt: input.at }
+      : {}),
+    ...(input.releaseReport
+      ? { reportRef: undefined, reportReleasedAt: input.at }
+      : {}),
   };
 }
 

@@ -44,9 +44,6 @@ export interface LoadedExportTemplate {
  * / `$scroll.exportdate` / `$scroll.content` placeholders, so the zero-template
  * path is guaranteed to leave nothing unfilled.
  *
- * `--engine python` deliberately keeps requiring the flag — docxtpl has no
- * bundled default to fall back to.
- *
  * The fallback ALWAYS emits its note: an output whose template the user never
  * named must not be a mystery. `info`, not `warning` — nothing is wrong with
  * this export, and it must not fail `--strict`.

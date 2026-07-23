@@ -6,6 +6,7 @@ import type {
   PdfExportJobRequestV1,
 } from "./request.js";
 import type { ExportJobSnapshotV1, ExportJobState } from "./snapshot.js";
+import { createEmptyExportJobStatsV1 } from "./statistics.js";
 import {
   ExportJobValidationError,
   parseDocxExportJobRequestV1,
@@ -31,13 +32,14 @@ function pdfRequest(): PdfExportJobRequestV1 {
       locator: { kind: "space-key", spaceKey: "DOCS" },
       scope: { kind: "space" },
       maxPages: 500,
+      maxFolders: 200,
     },
     authRef: "session:default",
     displayName: "Documentation",
     requestedFilename: "docs.pdf",
     createdAt: 100,
     priority: "interactive",
-    output: { policy: "collect" },
+    output: { policy: "path", targetRef: "/exports/docs.pdf", overwriteExisting: true },
     template: { id: "default", manifestVersion: "1" },
     settings: {
       page: "a4",
@@ -51,7 +53,12 @@ function pdfRequest(): PdfExportJobRequestV1 {
       },
       custom: { copies: 1, tagged: true, optional: null },
     },
-    options: { resolveMacros: true },
+    options: {
+      resolveMacros: true,
+      strict: true,
+      noCache: true,
+      exportedAt: 1_753_161_600_000,
+    },
   };
 }
 
@@ -63,7 +70,13 @@ function docxRequest(): DocxExportJobRequestV1 {
     renderer: "docx-typescript",
     requestedFilename: "docs.docx",
     template: { recordKey: "default", sha256: HASH, name: "Default" },
-    options: { embedImages: true, resolveMacros: true, updateFields: "auto" },
+    options: {
+      embedImages: true,
+      resolveMacros: true,
+      keepIgnored: true,
+      strict: true,
+      updateFields: "never",
+    },
   };
 }
 
@@ -175,6 +188,9 @@ describe("parseExportJobRequestV1", () => {
     ["scope", (request: any) => (request.source.scope = { kind: "tree" })],
     ["resolved ID in scope", (request: any) => (request.source.scope.spaceKey = "DOCS")],
     ["maxPages", (request: any) => (request.source.maxPages = 0)],
+    ["maxFolders", (request: any) => (request.source.maxFolders = 0)],
+    ["overwrite authorization", (request: any) => (request.output.overwriteExisting = "yes")],
+    ["output target kind", (request: any) => (request.output.targetKind = "pipe")],
     ["filename", (request: any) => (request.requestedFilename = "")],
     ["settings NaN", (request: any) => (request.settings.custom.copies = Number.NaN)],
     ["settings object", (request: any) => (request.settings.custom.nested = { unsafe: true })],
@@ -207,12 +223,27 @@ describe("parsePdfExportJobRequestV1", () => {
     expect(() => parsePdfExportJobRequestV1(docxRequest())).toThrow("request.format: must be pdf");
   });
 
+  it("keeps new CLI replay semantics optional for older v1 records", () => {
+    const request = changed(pdfRequest(), (copy) => {
+      delete copy.source.maxFolders;
+      delete copy.output.overwriteExisting;
+      delete copy.options.strict;
+      delete copy.options.noCache;
+      delete copy.options.exportedAt;
+    });
+
+    expect(parsePdfExportJobRequestV1(request)).toEqual(request as PdfExportJobRequestV1);
+  });
+
   it.each([
     ["unknown top-level field", (request: any) => (request.accessToken = "secret")],
     ["unknown settings field", (request: any) => (request.settings.paperTray = "unsafe")],
     ["mismatched renderer", (request: any) => (request.renderer = "docx-typescript")],
     ["non-scalar custom setting", (request: any) => (request.settings.custom.nested = [])],
     ["inline logo bytes", (request: any) => (request.settings.logo.bytes = [1, 2, 3])],
+    ["invalid strict mode", (request: any) => (request.options.strict = "yes")],
+    ["invalid no-cache mode", (request: any) => (request.options.noCache = 1)],
+    ["invalid export timestamp", (request: any) => (request.options.exportedAt = 1.5)],
   ])("rejects %s", (_name, mutate) => {
     expect(() => parsePdfExportJobRequestV1(changed(pdfRequest(), mutate))).toThrow(
       ExportJobValidationError,
@@ -233,12 +264,27 @@ describe("parseDocxExportJobRequestV1", () => {
     );
   });
 
+  it("keeps new CLI replay semantics optional for older v1 records", () => {
+    const request = changed(docxRequest(), (copy) => {
+      delete copy.source.maxFolders;
+      delete copy.output.overwriteExisting;
+      delete copy.options.keepIgnored;
+      delete copy.options.strict;
+      delete copy.options.updateFields;
+    });
+
+    expect(parseDocxExportJobRequestV1(request)).toEqual(request as DocxExportJobRequestV1);
+  });
+
   it.each([
     ["unknown top-level field", (request: any) => (request.accessToken = "secret")],
     ["mismatched renderer", (request: any) => (request.renderer = "pdf-typst")],
     ["invalid template hash", (request: any) => (request.template.sha256 = "bad")],
+    ["invalid template upload timestamp", (request: any) => (request.template.uploadedAt = -1)],
     ["inline template bytes", (request: any) => (request.template.bytes = [1, 2, 3])],
     ["invalid update-fields mode", (request: any) => (request.options.updateFields = "later")],
+    ["invalid keep-ignored mode", (request: any) => (request.options.keepIgnored = 1)],
+    ["invalid strict mode", (request: any) => (request.options.strict = "yes")],
     ["unknown option", (request: any) => (request.options.pythonFallback = true)],
   ])("rejects %s", (_name, mutate) => {
     expect(() => parseDocxExportJobRequestV1(changed(docxRequest(), mutate))).toThrow(
@@ -307,6 +353,45 @@ describe("parseExportJobSnapshotV1", () => {
     ).toThrow("snapshot.unknown");
   });
 
+  it("creates explicit unavailable support markers for host-dependent metrics", () => {
+    expect(createEmptyExportJobStatsV1()).toMatchObject({
+      storage: { spoolPeakBytes: null },
+      memory: { heapPeakBytes: null, rendererPeakBytes: null },
+      metricSupport: {
+        "storage.spoolPeakBytes": "unavailable",
+        "memory.heapPeakBytes": "unavailable",
+        "memory.rendererPeakBytes": "unavailable",
+      },
+    });
+  });
+
+  it("keeps metric support and nullable metric values consistent", () => {
+    expect(() =>
+      parseExportJobSnapshotV1(
+        changed(snapshot(), (copy) => {
+          copy.stats.storage.spoolPeakBytes = 1;
+          copy.stats.metricSupport["storage.spoolPeakBytes"] = "unavailable";
+        }),
+      ),
+    ).toThrow("unavailable metrics must retain a null measurement");
+    expect(() =>
+      parseExportJobSnapshotV1(
+        changed(snapshot(), (copy) => {
+          copy.stats.memory.heapPeakBytes = null;
+          copy.stats.metricSupport["memory.heapPeakBytes"] = "measured";
+        }),
+      ),
+    ).toThrow("measured metrics require a numeric measurement");
+  });
+
+  it("accepts legacy metric support maps without inventing measurements", () => {
+    const legacy = changed(snapshot(), (copy) => {
+      copy.stats.metricSupport = {};
+    });
+
+    expect(parseExportJobSnapshotV1(legacy).stats.metricSupport).toEqual({});
+  });
+
   it("rejects non-plain record values", () => {
     expect(() =>
       parseExportJobRequestV1(changed(pdfRequest(), (copy) => (copy.settings = new Date()))),
@@ -357,6 +442,43 @@ describe("parseExportJobSnapshotV1", () => {
         changed(snapshot("succeeded"), (copy) => (copy.acknowledgedAt = 119)),
       ),
     ).toThrow("snapshot.acknowledgedAt");
+  });
+
+  it("accepts released payload markers and rejects dangling retained refs", () => {
+    const released = changed(snapshot("succeeded"), (copy) => {
+      delete copy.artifact;
+      copy.artifactReleasedAt = 200;
+      copy.reportSummary = {
+        issues: { info: 0, warning: 1, error: 0 },
+        topCodes: [],
+        completeness: "partial",
+      };
+      copy.reportReleasedAt = 200;
+    });
+    expect(parseExportJobSnapshotV1(released)).toMatchObject({
+      artifactReleasedAt: 200,
+      reportReleasedAt: 200,
+      reportSummary: {
+        issues: { info: 0, warning: 1, error: 0 },
+        topCodes: [],
+        completeness: "partial",
+      },
+    });
+    expect(() =>
+      parseExportJobSnapshotV1(
+        changed(snapshot("succeeded"), (copy) => {
+          copy.artifactReleasedAt = 200;
+        }),
+      ),
+    ).toThrow("cannot coexist");
+    expect(() =>
+      parseExportJobSnapshotV1(
+        changed(snapshot("succeeded"), (copy) => {
+          copy.reportRef = "report:job-1";
+          copy.reportReleasedAt = 200;
+        }),
+      ),
+    ).toThrow("cannot coexist");
   });
 
   it.each([

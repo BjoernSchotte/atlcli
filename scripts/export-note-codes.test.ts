@@ -53,6 +53,21 @@ interface EmissionScan {
   sources: Map<string, string>;
 }
 
+/**
+ * These codes/prefixes belong to the Activity projection, not to Confluence
+ * `ExportNote`. The source scanner is intentionally syntax-based and cannot
+ * infer the surrounding TypeScript type, so keep this small boundary explicit.
+ */
+const NON_EXPORT_NOTE_CODES = new Set([
+  "browser-case-failure",
+  "compiler-diagnostic",
+  "legacy-pdf-error",
+]);
+
+const NON_EXPORT_NOTE_PREFIXES = new Set([
+  "pdf-compiler-",
+]);
+
 function collectEmissionSites(): EmissionScan {
   const literals: EmissionSite[] = [];
   const templatePrefixes: EmissionSite[] = [];
@@ -70,10 +85,12 @@ function collectEmissionSites(): EmissionScan {
         // properties (mark maps, exit codes, …) do not.
         const windowText = source.slice(Math.max(0, match.index - 400), match.index + 400);
         if (!windowText.includes("message:")) continue;
+        if (NON_EXPORT_NOTE_CODES.has(match[1]!)) continue;
         literals.push({ file: rel, code: match[1]! });
       }
 
       for (const match of source.matchAll(/code:\s*`([a-z0-9-]+-)\$\{/g)) {
+        if (NON_EXPORT_NOTE_PREFIXES.has(match[1]!)) continue;
         templatePrefixes.push({ file: rel, code: match[1]! });
       }
     }

@@ -110,6 +110,7 @@ describe("InMemoryExportJobStore", () => {
       displayName: "Handbook",
       createdAt: 30,
       priority: "retry",
+      output: { policy: "path", targetRef: "/exports/handbook.docx" },
     });
     expect(await store.create({ request: child, derivedFrom })).toMatchObject({
       id: "child",
@@ -122,10 +123,23 @@ describe("InMemoryExportJobStore", () => {
           displayName: "Handbook",
           createdAt: 40,
           priority: "retry",
+          output: { policy: "path", targetRef: "/exports/handbook.docx" },
         }),
         derivedFrom,
       }),
     ).toMatchObject({ id: "child" });
+    await expect(
+      store.create({
+        request: request("conflicting-output", {
+          idempotencyKey: "idem:conflicting-output",
+          displayName: "Handbook",
+          createdAt: 40,
+          priority: "retry",
+          output: { policy: "path", targetRef: "/exports/other.docx" },
+        }),
+        derivedFrom,
+      }),
+    ).rejects.toMatchObject({ code: "derivation-conflict" });
     await expect(
       store.create({
         request: request("forged", {
@@ -154,6 +168,10 @@ describe("InMemoryExportJobStore", () => {
     expect((await store.list({ createdBefore: 3 })).map((job) => job.id)).toEqual([
       "job-1",
       "job-0",
+    ]);
+    expect((await store.list({ createdAfter: 503 })).map((job) => job.id)).toEqual([
+      "job-504",
+      "job-503",
     ]);
     const row = (await store.list({ limit: 1 }))[0]!;
     row.summary.displayName = "caller mutation";
@@ -220,6 +238,25 @@ describe("InMemoryExportJobStore", () => {
       checkpointRef: "checkpoint:auth",
     });
     expect(await due.claimNext({ ownerId: "runner", now: 1_000, leaseDurationMs: 100 })).toBeUndefined();
+    expect(await due.claimNext({
+      ownerId: "runner",
+      now: 55,
+      leaseDurationMs: 100,
+      resumeWaitingIds: ["timed"],
+    })).toBeUndefined();
+    expect(await due.claimNext({
+      ownerId: "runner",
+      now: 55,
+      leaseDurationMs: 100,
+      ids: ["timed"],
+      resumeWaitingIds: ["timed"],
+    })).toMatchObject({
+      id: "timed",
+      state: "running",
+      attempt: 3,
+      leaseEpoch: 3,
+      checkpointRef: "checkpoint:auth",
+    });
   });
 
   it("keeps a round-robin cursor across individual claims", async () => {
@@ -232,6 +269,45 @@ describe("InMemoryExportJobStore", () => {
     expect((await store.claimNext({ ownerId: "runner", now: 200, leaseDurationMs: 20 }))?.id).toBe("a-1");
     expect((await store.claimNext({ ownerId: "runner", now: 200, leaseDurationMs: 20 }))?.id).toBe("b-1");
     expect((await store.claimNext({ ownerId: "runner", now: 200, leaseDurationMs: 20 }))?.id).toBe("a-2");
+  });
+
+  it("claims only jobs whose opaque auth reference the host can resolve", async () => {
+    const store = new InMemoryExportJobStore({ now: () => 200 });
+    await store.create({ request: request("profile-a", { authRef: "cli-profile:a" }) });
+    await store.create({ request: request("profile-b", { authRef: "cli-profile:b" }) });
+
+    expect((await store.claimNext({
+      ownerId: "runner-b",
+      now: 200,
+      leaseDurationMs: 20,
+      authRefs: ["cli-profile:b"],
+    }))?.id).toBe("profile-b");
+    expect(await store.claimNext({
+      ownerId: "runner-c",
+      now: 200,
+      leaseDurationMs: 20,
+      authRefs: ["cli-profile:c"],
+    })).toBeUndefined();
+  });
+
+  it("limits an invocation-scoped claim to an exact job id", async () => {
+    const store = new InMemoryExportJobStore({ now: () => 200 });
+    await store.create({ request: request("older", { createdAt: 1 }) });
+    await store.create({ request: request("current", { createdAt: 2 }) });
+
+    expect((await store.claimNext({
+      ownerId: "current-command",
+      now: 200,
+      leaseDurationMs: 20,
+      ids: ["current"],
+    }))?.id).toBe("current");
+    expect((await store.get("older"))?.state).toBe("queued");
+    expect(await store.claimNext({
+      ownerId: "empty-allow-list",
+      now: 200,
+      leaseDurationMs: 20,
+      ids: [],
+    })).toBeUndefined();
   });
 
   it("dispatches the closed CAS commands and fences progress, checkpoints, and events", async () => {
@@ -372,6 +448,45 @@ describe("InMemoryExportJobStore", () => {
     const events = await store.listEvents("job", 1_000);
     expect(events).toHaveLength(1_000);
     expect(events[0]).toEqual({ kind: "state", seq: 1, at: 1, from: "queued", to: "running" });
+  });
+
+  it("reads retained events in ascending cursor-paginated pages", async () => {
+    const store = new InMemoryExportJobStore({ now: () => 1 });
+    await store.create({ request: request("job") });
+    const running = (await store.claimNext({ ownerId: "runner", now: 1, leaseDurationMs: 10_000 }))!;
+    for (let seq = 1; seq <= 3; seq += 1) {
+      await store.appendEvent("job", {
+        expectedRevision: running.revision,
+        leaseEpoch: running.leaseEpoch,
+        event: { kind: "issue", seq, at: seq, level: "info", code: `detail-${seq}` },
+      });
+    }
+
+    const first = await store.readEvents("job", { afterSeq: 0, limit: 2 });
+    expect(first).toEqual({
+      events: [
+        { kind: "issue", seq: 1, at: 1, level: "info", code: "detail-1" },
+        { kind: "issue", seq: 2, at: 2, level: "info", code: "detail-2" },
+      ],
+      nextAfterSeq: 2,
+      hasMore: true,
+    });
+    const second = await store.readEvents("job", { afterSeq: first.nextAfterSeq, limit: 2 });
+    expect(second).toEqual({
+      events: [{ kind: "issue", seq: 3, at: 3, level: "info", code: "detail-3" }],
+      nextAfterSeq: 3,
+      hasMore: false,
+    });
+    const caughtUp = await store.readEvents("job", { afterSeq: second.nextAfterSeq, limit: 2 });
+    expect(caughtUp).toEqual({ events: [], nextAfterSeq: 3, hasMore: false });
+
+    if (first.events[0]?.kind !== "issue") throw new Error("expected an issue event");
+    first.events[0].code = "caller-mutation";
+    expect((await store.readEvents("job", { limit: 1 })).events[0]).toMatchObject({
+      code: "detail-1",
+    });
+    await expect(store.readEvents("job", { afterSeq: -1 })).rejects.toBeInstanceOf(RangeError);
+    await expect(store.readEvents("job", { limit: 0 })).rejects.toBeInstanceOf(RangeError);
   });
 
   it("uses trusted store time to reject delayed executor writes", async () => {

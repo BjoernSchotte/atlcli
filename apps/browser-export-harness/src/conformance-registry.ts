@@ -6,6 +6,8 @@
  * A feature lane adds one entry here + one manifest entry + its own `*-case.ts`.
  */
 import { CONFORMANCE_MANIFEST, type ConformanceCaseMeta } from "./conformance-manifest.js";
+import { runActivityMonitorCase } from "./activity-monitor-case.js";
+import { runAssetSpoolRecoveryCase } from "./asset-spool-recovery-case.js";
 import { runBlocksCase } from "./blocks-case.js";
 import { runContentCase } from "./content-case.js";
 import { runDocxCase } from "./docx-case.js";
@@ -19,12 +21,16 @@ import { runPdfJobParityCase } from "./pdf-job-parity-case.js";
 import { runPdfSettingsCase } from "./pdf-settings-case.js";
 import { runPlaceholderCase } from "./placeholder-case.js";
 import { runScopeCase } from "./scope-case.js";
+import { runSourceSpoolRecoveryCase } from "./source-spool-recovery-case.js";
 
 export interface ConformanceCase extends ConformanceCaseMeta {
   run: () => Promise<unknown>;
 }
 
 const RUNNERS: Record<string, () => Promise<unknown>> = {
+  "activity-monitor": runActivityMonitorCase,
+  "asset-spool-recovery": runAssetSpoolRecoveryCase,
+  "source-spool-recovery": runSourceSpoolRecoveryCase,
   "pdf-abort": runPdfAbortCase,
   docx: runDocxCase,
   "docx-job-parity": runDocxJobParityCase,

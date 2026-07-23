@@ -190,6 +190,7 @@ export type PlaceholderStatus = "supported" | "unsupported" | "never";
 export interface PreparedDocxExportV1 {
     schema: "atlcli.prepared-docx-export/1";
     renderState: PreparedDocxRenderStateV1 | undefined;
+    archiveDateMs?: number;
     filename: string;
     complete: boolean;
     updateFields: NonNullable<ExportInput["updateFields"]>;
@@ -481,6 +482,7 @@ export type PlaceholderStatus = "supported" | "unsupported" | "never";
 export interface PreparedDocxExportV1 {
     schema: "atlcli.prepared-docx-export/1";
     renderState: PreparedDocxRenderStateV1 | undefined;
+    archiveDateMs?: number;
     filename: string;
     complete: boolean;
     updateFields: NonNullable<ExportInput["updateFields"]>;
@@ -776,6 +778,7 @@ export type PlaceholderStatus = "supported" | "unsupported" | "never";
 export interface PreparedDocxExportV1 {
     schema: "atlcli.prepared-docx-export/1";
     renderState: PreparedDocxRenderStateV1 | undefined;
+    archiveDateMs?: number;
     filename: string;
     complete: boolean;
     updateFields: NonNullable<ExportInput["updateFields"]>;
@@ -1591,6 +1594,7 @@ export type PlaceholderStatus = "supported" | "unsupported" | "never";
 export interface PreparedDocxExportV1 {
     schema: "atlcli.prepared-docx-export/1";
     renderState: PreparedDocxRenderStateV1 | undefined;
+    archiveDateMs?: number;
     filename: string;
     complete: boolean;
     updateFields: NonNullable<ExportInput["updateFields"]>;
@@ -2015,6 +2019,7 @@ export type PlaceholderStatus = "supported" | "unsupported" | "never";
 export interface PreparedDocxExportV1 {
     schema: "atlcli.prepared-docx-export/1";
     renderState: PreparedDocxRenderStateV1 | undefined;
+    archiveDateMs?: number;
     filename: string;
     complete: boolean;
     updateFields: NonNullable<ExportInput["updateFields"]>;

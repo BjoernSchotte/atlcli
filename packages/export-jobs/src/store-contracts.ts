@@ -25,8 +25,27 @@ export interface ExportJobQueryV1 {
   states?: ExportJobState[];
   stages?: ExportJobStage[];
   includeDismissed?: boolean;
+  createdAfter?: number;
   createdBefore?: number;
+  /** Exclusive stable cursor for descending `createdAt`, then descending `id` order. */
+  cursorBefore?: { createdAt: number; id: string };
   limit?: number;
+}
+
+/** Exclusive event cursor plus a bounded page size for activity/monitor reads. */
+export interface ExportJobEventQueryV1 {
+  /** Return retained events whose sequence is strictly greater than this cursor. */
+  afterSeq?: number;
+  /** Positive page size. Hosts may clamp it to their documented maximum. */
+  limit?: number;
+}
+
+/** One ascending event page and the cursor to use for the next read. */
+export interface ExportJobEventPageV1 {
+  events: ExportJobEventV1[];
+  /** Last returned sequence, or the supplied cursor (zero when omitted). */
+  nextAfterSeq: number;
+  hasMore: boolean;
 }
 
 interface ExportJobCasBaseV1 {
@@ -83,6 +102,14 @@ export interface ExportJobStatsUpdateV1 extends ExportJobCasBaseV1 {
   stats: ExportJobStatsV1;
 }
 
+/** CAS release of independently retained artifact and report/event payloads. */
+export interface ExportJobRetentionUpdateV1 extends ExportJobCasBaseV1 {
+  kind: "retention";
+  at: number;
+  releaseArtifact: boolean;
+  releaseReport: boolean;
+}
+
 /**
  * Closed CAS command union. Adapters dispatch to the pure reducers and cannot
  * patch arbitrary snapshot fields.
@@ -93,7 +120,8 @@ export type ExportJobUpdateV1 =
   | ExportJobProgressUpdateV1
   | ExportJobReclaimExpiredUpdateV1
   | ExportJobCheckpointUpdateV1
-  | ExportJobStatsUpdateV1;
+  | ExportJobStatsUpdateV1
+  | ExportJobRetentionUpdateV1;
 
 /** Revision- and lease-fenced append to the bounded event protocol. */
 export interface ExportJobEventAppendV1 {
@@ -107,7 +135,18 @@ export interface ExportJobClaimV1 {
   ownerId: string;
   now: number;
   leaseDurationMs: number;
+  /** Optional exact job allow-list for invocation-scoped runners. */
+  ids?: string[];
+  /**
+   * Explicit user-authorized resume of checkpointed waiting jobs.
+   *
+   * The subset must also be present in `ids`; otherwise an indefinite
+   * auth/quota/host wait remains unclaimable.
+   */
+  resumeWaitingIds?: string[];
   formats?: ExportFormat[];
+  /** Host-resolvable credential references; prevents claiming work it cannot authenticate. */
+  authRefs?: string[];
 }
 
 /** Atomic artifact/report finalization request. */
@@ -126,7 +165,15 @@ export interface ExportJobFinalizeV1 {
 /** Retention query restricted to already-terminal job records. */
 export interface ExportJobDeleteQueryV1 {
   finishedBefore: number;
+  /** Optional exact allow-list used by the common compact-history planner. */
+  ids?: string[];
   states?: Array<Extract<ExportJobState, "succeeded" | "failed" | "cancelled" | "interrupted">>;
+  limit?: number;
+}
+
+/** Bounded tombstone query used to resume physical cleanup after a host restart. */
+export interface ExportJobTombstoneQueryV1 {
+  cleanupPending?: boolean;
   limit?: number;
 }
 

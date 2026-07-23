@@ -139,9 +139,9 @@ export function parseExportRequest(
   flags: Flags
 ): ParsedExportRequest {
   // --- engine ---
-  const engine = (getFlag(flags, "engine") ?? "python") as string;
+  const engine = (getFlag(flags, "engine") ?? "ts") as string;
   if (engine !== "python" && engine !== "ts") {
-    fail(`Unknown --engine "${engine}". Use "ts" or "python".`);
+    fail(`Unknown --engine "${engine}". Use "ts".`);
   }
 
   // --- raw scope inputs ---
@@ -200,9 +200,6 @@ export function parseExportRequest(
   if (hasFlag(flags, "label-exclude-mode") && excludeModeRaw === undefined) {
     fail(`--label-exclude-mode requires a value ("prune-subtree" or "page-only").`);
   }
-  const labelFlagsPresent =
-    include !== undefined || exclude !== undefined || hasFlag(flags, "label-exclude-mode");
-
   const completenessRaw = getFlag(flags, "completeness");
   if (
     completenessRaw !== undefined &&
@@ -225,25 +222,6 @@ export function parseExportRequest(
     if (excludeModeRaw) labels.excludeMode = excludeModeRaw as LabelFilter["excludeMode"];
   } else if (excludeModeRaw !== undefined) {
     fail("--label-exclude-mode has no effect without --label-exclude.");
-  }
-
-  // --- python engine only supports the legacy single-page / --include-children path ---
-  if (engine === "python") {
-    const usesNewFlags =
-      rawScope === "tree" ||
-      rawScope === "space" ||
-      spacePresent ||
-      labelFlagsPresent ||
-      hasFlag(flags, "completeness") ||
-      maxDepth !== undefined ||
-      maxPages !== undefined ||
-      maxFolders !== undefined;
-    if (usesNewFlags) {
-      fail(
-        "Scope, label, completeness and traversal flags require --engine ts " +
-          "(the python engine only supports single-page export and the legacy --include-children merge)."
-      );
-    }
   }
 
   // --- per-scope validation of the flags that only make sense for a tree/space ---

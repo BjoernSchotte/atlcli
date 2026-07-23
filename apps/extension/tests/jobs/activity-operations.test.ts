@@ -1,0 +1,544 @@
+import { beforeEach, describe, expect, it } from "bun:test";
+import { IDBFactory, IDBKeyRange } from "fake-indexeddb";
+import type {
+  DocxExportJobRequestV1,
+  ExportJobSnapshotV1,
+  PdfExportJobRequestV1,
+} from "@atlcli/export-jobs";
+import { IndexedDbExportByteStore } from "../../utils/export-jobs/chunk-store.js";
+import { IndexedDbExportJobCatalog } from "../../utils/export-jobs/catalog.js";
+import {
+  EXTENSION_DOCX_TEMPLATE_LIMITS_V1,
+  extensionDocxTemplateSpoolRef,
+} from "../../utils/export-jobs/docx-template.js";
+import {
+  EXTENSION_PDF_LOGO_LIMITS_V1,
+  extensionPdfLogoAssetRef,
+  extensionPdfLogoSpoolRef,
+} from "../../utils/export-jobs/pdf-submit.js";
+import {
+  createExtensionDurableJobsStore,
+  type DurableJobsPort,
+} from "../../utils/jobs/store.js";
+
+globalThis.IDBKeyRange = IDBKeyRange;
+
+const DOCX = "123e4567-e89b-42d3-a456-426614174000";
+const PDF = "223e4567-e89b-42d3-a456-426614174000";
+const WAITING = "323e4567-e89b-42d3-a456-426614174000";
+const SHA_ABC =
+  "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+
+let factory: IDBFactory;
+
+beforeEach(() => {
+  factory = new IDBFactory();
+});
+
+function docxRequest(id: string): DocxExportJobRequestV1 {
+  return {
+    schema: "atlcli.export-job-request/1",
+    id,
+    idempotencyKey: `idem:${id}`,
+    format: "docx",
+    renderer: "docx-typescript",
+    source: {
+      kind: "confluence",
+      siteOrigin: "https://site.atlassian.net",
+      locator: { kind: "space-key", spaceKey: "DOCS" },
+      scope: { kind: "space" },
+    },
+    authRef: "session:https://site.atlassian.net",
+    displayName: `DOCX ${id}`,
+    createdAt: 1,
+    priority: "interactive",
+    output: { policy: "collect" },
+    template: {
+      recordKey: "site:template",
+      sha256: SHA_ABC,
+      name: "Site template",
+      uploadedAt: 1,
+    },
+    options: { embedImages: true, resolveMacros: true },
+  };
+}
+
+function pdfRequest(id: string): PdfExportJobRequestV1 {
+  return {
+    schema: "atlcli.export-job-request/1",
+    id,
+    idempotencyKey: `idem:${id}`,
+    format: "pdf",
+    renderer: "pdf-typst",
+    source: {
+      kind: "confluence",
+      siteOrigin: "https://site.atlassian.net",
+      locator: { kind: "page-id", id: "42" },
+      scope: { kind: "page" },
+    },
+    authRef: "session:https://site.atlassian.net",
+    displayName: `PDF ${id}`,
+    createdAt: 2,
+    priority: "interactive",
+    output: { policy: "collect" },
+    template: { id: "default", manifestVersion: "1" },
+    settings: {},
+    options: { resolveMacros: true, exportedAt: 2 },
+  };
+}
+
+function unavailableLegacy(): DurableJobsPort {
+  return {
+    list: async () => [],
+    detail: async () => undefined,
+    cancel: async () => undefined,
+    retry: async () => undefined,
+    rerun: async () => undefined,
+    resume: async () => false,
+    acknowledge: async () => undefined,
+    dismiss: async () => undefined,
+    download: async () => false,
+    getPreferences: async () => ({ pulseEnabled: true }),
+    setPulseEnabled: async () => undefined,
+  };
+}
+
+async function* abc(): AsyncIterable<Uint8Array> {
+  yield Uint8Array.from([97, 98, 99]);
+}
+
+async function succeed(
+  catalog: IndexedDbExportJobCatalog,
+  bytes: IndexedDbExportByteStore,
+  request: PdfExportJobRequestV1,
+  finishedAt = 20,
+  reportRef?: string,
+): Promise<ExportJobSnapshotV1> {
+  await catalog.create({ request });
+  const claimed = (await catalog.claimNext({
+    ids: [request.id],
+    ownerId: "runner",
+    now: 10,
+    leaseDurationMs: 100,
+  }))!;
+  const staged = await bytes.stage(request.id, claimed.leaseEpoch, {
+    mediaType: "application/pdf",
+    filename: "result.pdf",
+    byteLength: 3,
+    sha256: SHA_ABC,
+    bytes: abc(),
+  });
+  return catalog.finalizeArtifact({
+    id: request.id,
+    expectedRevision: claimed.revision,
+    leaseEpoch: claimed.leaseEpoch,
+    stagedArtifact: staged,
+    ...(reportRef
+      ? {
+          reportRef,
+          reportSummary: {
+            issues: { info: 1, warning: 1, error: 1 },
+            topCodes: [{ code: "fixture", count: 3 }],
+            completeness: "partial" as const,
+          },
+        }
+      : {}),
+    finishedAt,
+  });
+}
+
+describe("format-neutral extension Activity operations", () => {
+  it("retries DOCX and reruns PDF with replay-safe requests and idempotent action keys", async () => {
+    let now = 10;
+    let serial = 0;
+    const wakes: string[][] = [];
+    const catalog = new IndexedDbExportJobCatalog({
+      factory,
+      now: () => now,
+    });
+    const bytes = new IndexedDbExportByteStore({
+      factory,
+      now: () => now,
+    });
+
+    await bytes.put(
+      extensionDocxTemplateSpoolRef(DOCX),
+      abc(),
+      EXTENSION_DOCX_TEMPLATE_LIMITS_V1,
+    );
+    await catalog.create({ request: docxRequest(DOCX) });
+    const claimed = (await catalog.claimNext({
+      ids: [DOCX],
+      ownerId: "runner",
+      now,
+      leaseDurationMs: 100,
+    }))!;
+    await catalog.compareAndSet({
+      id: DOCX,
+      kind: "transition",
+      expectedRevision: claimed.revision,
+      leaseEpoch: claimed.leaseEpoch,
+      to: "failed",
+      at: 11,
+      error: {
+        code: "network",
+        message: "Synthetic network failure.",
+        category: "network",
+        retryable: true,
+        stage: "fetch",
+        occurredAt: 11,
+      },
+    });
+    await succeed(catalog, bytes, pdfRequest(PDF));
+
+    const port = createExtensionDurableJobsStore({
+      catalog,
+      bytes,
+      legacy: unavailableLegacy(),
+      listLegacyPdf: async () => [],
+      now: () => ++now,
+      randomUUID: () => `derived-${++serial}`,
+      wake: async (jobIds) => {
+        wakes.push(jobIds);
+        return {};
+      },
+      emit: async () => undefined,
+    });
+
+    const retry = await port.retry(`common:${DOCX}`, "retry-click-1");
+    const duplicateRetry = await port.retry(
+      `common:${DOCX}`,
+      "retry-click-1",
+    );
+    const rerun = await port.rerun(`common:${PDF}`, "rerun-click-1");
+
+    expect(retry).toBe("common:derived-1");
+    expect(duplicateRetry).toBe(retry);
+    expect(rerun).toBe("common:derived-2");
+    expect(wakes).toEqual([
+      ["derived-1"],
+      ["derived-1"],
+      ["derived-2"],
+    ]);
+
+    const retried = await catalog.get("derived-1");
+    const retryRequest = await catalog.getRequest(retried!.requestRef);
+    expect(retried?.derivedFrom).toEqual({
+      jobId: DOCX,
+      relation: "retry",
+      actionKey: "retry-click-1",
+    });
+    expect(retryRequest).toMatchObject({
+      id: "derived-1",
+      format: "docx",
+      priority: "retry",
+      template: {
+        recordKey: "site:template",
+        sha256: SHA_ABC,
+        uploadedAt: 1,
+      },
+    });
+    expect(
+      await bytes.stat(extensionDocxTemplateSpoolRef("derived-1")),
+    ).toMatchObject({ sha256: SHA_ABC, byteLength: 3 });
+
+    const rerunSnapshot = await catalog.get("derived-2");
+    const rerunRequest = await catalog.getRequest(
+      rerunSnapshot!.requestRef,
+    );
+    expect(rerunSnapshot?.derivedFrom).toEqual({
+      jobId: PDF,
+      relation: "rerun",
+      actionKey: "rerun-click-1",
+    });
+    expect(rerunRequest).toMatchObject({
+      id: "derived-2",
+      format: "pdf",
+      priority: "interactive",
+      template: { id: "default", manifestVersion: "1" },
+    });
+  });
+
+  it("keeps acknowledge, dismiss, delivery, and repeated download distinct", async () => {
+    let now = 30;
+    const catalog = new IndexedDbExportJobCatalog({
+      factory,
+      now: () => now,
+    });
+    const bytes = new IndexedDbExportByteStore({
+      factory,
+      now: () => now,
+    });
+    await succeed(catalog, bytes, pdfRequest(PDF), 40);
+    now = 40;
+    const emitted: number[][] = [];
+    const port = createExtensionDurableJobsStore({
+      catalog,
+      bytes,
+      legacy: unavailableLegacy(),
+      listLegacyPdf: async () => [],
+      now: () => ++now,
+      emit: async (_filename, value) => {
+        emitted.push([...value]);
+      },
+    });
+
+    expect((await port.list())[0]).toMatchObject({
+      key: `common:${PDF}`,
+      unread: true,
+      actions: { download: true, acknowledge: true, dismiss: true },
+    });
+    await port.acknowledge(`common:${PDF}`);
+    expect((await catalog.get(PDF))?.acknowledgedAt).toBe(41);
+    expect((await port.list())[0]?.unread).toBe(false);
+
+    expect(await port.download(`common:${PDF}`)).toBe(true);
+    expect(await port.download(`common:${PDF}`)).toBe(true);
+    expect(emitted).toEqual([
+      [97, 98, 99],
+      [97, 98, 99],
+    ]);
+    expect((await catalog.get(PDF))?.deliveredAt).toBe(42);
+    expect((await catalog.get(PDF))?.acknowledgedAt).toBe(41);
+
+    await port.dismiss(`common:${PDF}`);
+    expect((await catalog.get(PDF))?.dismissedAt).toBe(44);
+    expect(await port.list()).toEqual([]);
+    expect((await catalog.get(PDF))?.artifact?.ref).toBeDefined();
+  });
+
+  it("copies a pinned PDF logo into an idempotent Run-again job", async () => {
+    let now = 20;
+    let serial = 0;
+    const catalog = new IndexedDbExportJobCatalog({
+      factory,
+      now: () => now,
+    });
+    const bytes = new IndexedDbExportByteStore({
+      factory,
+      now: () => now,
+    });
+    const requestWithLogo = pdfRequest(PDF);
+    requestWithLogo.settings.logo = {
+      assetRef: extensionPdfLogoAssetRef(PDF),
+      sha256: SHA_ABC,
+      byteLength: 3,
+      mediaType: "image/png",
+      alt: "Product logo",
+    };
+    await bytes.put(
+      extensionPdfLogoSpoolRef(PDF),
+      abc(),
+      EXTENSION_PDF_LOGO_LIMITS_V1,
+    );
+    await succeed(catalog, bytes, requestWithLogo);
+    const port = createExtensionDurableJobsStore({
+      catalog,
+      bytes,
+      legacy: unavailableLegacy(),
+      listLegacyPdf: async () => [],
+      now: () => ++now,
+      randomUUID: () => `logo-rerun-${++serial}`,
+      wake: async () => ({}),
+      emit: async () => undefined,
+    });
+
+    const first = await port.rerun(`common:${PDF}`, "logo-action");
+    const repeated = await port.rerun(`common:${PDF}`, "logo-action");
+    expect(first).toBe("common:logo-rerun-1");
+    expect(repeated).toBe(first);
+    expect(serial).toBe(1);
+    const derived = await catalog.getRequest("request:logo-rerun-1");
+    expect(
+      derived?.format === "pdf" ? derived.settings.logo : undefined,
+    ).toMatchObject({
+      assetRef: extensionPdfLogoAssetRef(PDF),
+      sha256: SHA_ABC,
+      byteLength: 3,
+    });
+    expect(
+      await bytes.stat(extensionPdfLogoSpoolRef("logo-rerun-1")),
+    ).toMatchObject({ sha256: SHA_ABC, byteLength: 3 });
+  });
+
+  it("resumes only an explicitly selected waiting/auth checkpoint", async () => {
+    let now = 10;
+    const catalog = new IndexedDbExportJobCatalog({
+      factory,
+      now: () => now,
+    });
+    const bytes = new IndexedDbExportByteStore({ factory });
+    await catalog.create({ request: docxRequest(WAITING) });
+    const claimed = (await catalog.claimNext({
+      ids: [WAITING],
+      ownerId: "first",
+      now,
+      leaseDurationMs: 100,
+    }))!;
+    await catalog.compareAndSet({
+      id: WAITING,
+      kind: "transition",
+      expectedRevision: claimed.revision,
+      leaseEpoch: claimed.leaseEpoch,
+      to: "waiting",
+      waiting: { reason: "auth" },
+      checkpointRef: "checkpoint:waiting-auth",
+      at: 11,
+    });
+
+    expect(
+      await catalog.claimNext({
+        ids: [WAITING],
+        ownerId: "automatic",
+        now: 12,
+        leaseDurationMs: 100,
+      }),
+    ).toBeUndefined();
+
+    const port = createExtensionDurableJobsStore({
+      catalog,
+      bytes,
+      legacy: unavailableLegacy(),
+      listLegacyPdf: async () => [],
+      now: () => ++now,
+      wake: async (jobIds, options) => {
+        const resumed = await catalog.claimNext({
+          ids: jobIds,
+          ...(options?.resumeWaiting
+            ? { resumeWaitingIds: jobIds }
+            : {}),
+          ownerId: "after-sign-in",
+          now: ++now,
+          leaseDurationMs: 100,
+        });
+        return resumed ? { claimedJobId: resumed.id } : {};
+      },
+      emit: async () => undefined,
+    });
+
+    expect(await port.resume(`common:${WAITING}`)).toBe(true);
+    expect(await catalog.get(WAITING)).toMatchObject({
+      state: "running",
+      leaseEpoch: 2,
+      attempt: 2,
+      checkpointRef: "checkpoint:waiting-auth",
+    });
+  });
+
+  it("loads only normalized retained report/request detail and acknowledges viewing", async () => {
+    let now = 30;
+    const notifications: string[] = [];
+    const catalog = new IndexedDbExportJobCatalog({
+      factory,
+      now: () => now,
+    });
+    const bytes = new IndexedDbExportByteStore({
+      factory,
+      now: () => now,
+    });
+    await succeed(catalog, bytes, pdfRequest(PDF), 40, "report:pdf");
+    now = 40;
+    const port = createExtensionDurableJobsStore({
+      catalog,
+      bytes,
+      legacy: unavailableLegacy(),
+      listLegacyPdf: async () => [],
+      now: () => ++now,
+      readReport: async () => ({
+        filename: "result.pdf",
+        compilerVersion: "typst-fixture",
+        pageCount: 7,
+        notes: [
+          {
+            level: "warning",
+            code: "image-skipped",
+            message: "An image was skipped.",
+            source: { pageId: "42", pageTitle: "Guide" },
+            rawContent: "must not surface",
+          },
+        ],
+        compilerDiagnostics: [
+          {
+            severity: "error",
+            message: "Fixture diagnostic.",
+            path: "template.typ",
+          },
+        ],
+      }),
+      notifyChanged: async (jobId) => {
+        notifications.push(jobId);
+      },
+      emit: async () => undefined,
+    });
+
+    const detail = await port.detail(`common:${PDF}`);
+    expect(detail?.request).toEqual({
+      availability: "retained",
+      renderer: "pdf-typst",
+      template: "default",
+      fingerprint: "default@1",
+    });
+    expect(detail?.report).toEqual({
+      availability: "retained",
+      issues: [
+        {
+          level: "warning",
+          code: "image-skipped",
+          message: "An image was skipped.",
+          source: "Guide · page 42",
+        },
+        {
+          level: "error",
+          code: "compiler-diagnostic",
+          message: "Fixture diagnostic.",
+          source: "template.typ",
+        },
+      ],
+      facts: [
+        { label: "Compiler", value: "typst-fixture" },
+        { label: "PDF pages", value: "7" },
+      ],
+    });
+    expect(JSON.stringify(detail)).not.toContain("must not surface");
+    expect(detail?.job.unread).toBe(false);
+    expect((await catalog.get(PDF))?.acknowledgedAt).toBe(41);
+    expect(notifications).toEqual([PDF]);
+  });
+
+  it("notifies the toolbar projection after durable actions and preference changes", async () => {
+    const notifications: string[] = [];
+    const preferenceWrites: boolean[] = [];
+    const catalog = new IndexedDbExportJobCatalog({
+      factory,
+      now: () => 10,
+    });
+    const bytes = new IndexedDbExportByteStore({
+      factory,
+      now: () => 10,
+    });
+    await succeed(catalog, bytes, pdfRequest(PDF));
+
+    const port = createExtensionDurableJobsStore({
+      catalog,
+      bytes,
+      legacy: unavailableLegacy(),
+      listLegacyPdf: async () => [],
+      notifyChanged: async (jobId) => {
+        notifications.push(jobId);
+      },
+      getPulseEnabled: async () => false,
+      setPulseEnabled: async (enabled) => {
+        preferenceWrites.push(enabled);
+      },
+      emit: async () => undefined,
+      now: () => 30,
+    });
+
+    expect(await port.getPreferences()).toEqual({ pulseEnabled: false });
+    await port.acknowledge(`common:${PDF}`);
+    await port.setPulseEnabled(true);
+
+    expect(notifications).toEqual([PDF, "badge-preference"]);
+    expect(preferenceWrites).toEqual([true]);
+  });
+});

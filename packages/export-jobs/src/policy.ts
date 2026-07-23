@@ -151,8 +151,8 @@ export interface RetentionPolicyV1 {
   diagnosticGraceMs: number;
 }
 
-/** Initial validated horizon after delivery/dismissal; never shortened by a host. */
-export const DELIVERED_ARTIFACT_RETENTION_MS_V1 = 24 * 60 * 60 * 1_000;
+export { DELIVERED_ARTIFACT_RETENTION_MS_V1 } from "./lifecycle-retention.js";
+import { DELIVERED_ARTIFACT_RETENTION_MS_V1 } from "./lifecycle-retention.js";
 
 export type EvictionReasonV1 =
   | "expired-temp"

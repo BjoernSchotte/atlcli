@@ -40,6 +40,7 @@ import PizZip from "pizzip";
 import Docxtemplater from "docxtemplater";
 import {
   AssetBudget,
+  AssetPipelineError,
   assertSafeSvg,
   decodeSvgSource,
   storageToBlocks,
@@ -304,6 +305,11 @@ export interface PreparedDocxRenderStateV1 {
 export interface PreparedDocxExportV1 {
   schema: "atlcli.prepared-docx-export/1";
   renderState: PreparedDocxRenderStateV1 | undefined;
+  /**
+   * Canonical ZIP-entry timestamp pinned from `ExportInput.exportDate`.
+   * Persisted so a recovered render is byte-identical to its uninterrupted run.
+   */
+  archiveDateMs?: number;
   filename: string;
   complete: boolean;
   updateFields: NonNullable<ExportInput["updateFields"]>;
@@ -386,9 +392,32 @@ function throwIfAborted(signal?: AbortSignal): void {
   signal?.throwIfAborted();
 }
 
+const ZIP_EPOCH_MS = Date.UTC(1980, 0, 1);
+
+/**
+ * PizZip timestamps every overwritten entry with wall-clock time. Pinning the
+ * entry metadata to the request's export date prevents retries that cross a ZIP
+ * two-second timestamp boundary from producing different artifact bytes. This
+ * mutates metadata only: it never inflates/copies archive payloads.
+ */
+function pinZipEntryDates(zip: PizZip, requestedDateMs: number): void {
+  if (!Number.isFinite(requestedDateMs)) {
+    throw new Error("DOCX export date must be a finite timestamp.");
+  }
+  const date = new Date(Math.max(ZIP_EPOCH_MS, requestedDateMs));
+  for (const entry of Object.values(zip.files)) {
+    entry.date = date;
+  }
+}
+
 function rethrowCancellation(error: unknown, signal?: AbortSignal): void {
   throwIfAborted(signal);
-  if (error instanceof Error && error.name === "AbortError") throw error;
+  if (
+    error instanceof AssetPipelineError ||
+    (error instanceof Error && error.name === "AbortError")
+  ) {
+    throw error;
+  }
 }
 
 /**
@@ -721,6 +750,8 @@ export async function prepareDocxExport(input: ExportInput): Promise<PreparedDoc
   // The mutable PizZip archive itself is frozen into bytes so a worker crash
   // cannot leave a durable checkpoint pointing at a half-mutated object.
   throwIfAborted(input.signal);
+  const archiveDateMs = Math.max(ZIP_EPOCH_MS, exportDate.getTime());
+  pinZipEntryDates(zip, archiveDateMs);
   const archiveBytes = zip.generate({
     type: "uint8array",
     compression: "DEFLATE",
@@ -740,6 +771,7 @@ export async function prepareDocxExport(input: ExportInput): Promise<PreparedDoc
       bodyXml: body.xml,
       includes: [...includes.entries()],
     },
+    archiveDateMs,
     filename: toDownloadFilename(input.details.title),
     complete: input.complete ?? true,
     updateFields: input.updateFields ?? "auto",
@@ -843,6 +875,10 @@ export async function renderPreparedDocxExport(
   if (refreshNote) flowNotes.push(refreshNote);
 
   throwIfAborted(input.signal);
+  pinZipEntryDates(
+    rendered,
+    prepared.archiveDateMs ?? Math.max(ZIP_EPOCH_MS, prepared.startedAt),
+  );
   const bytes = rendered.generate({
     type: "uint8array",
     compression: "DEFLATE",

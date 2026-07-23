@@ -25,6 +25,10 @@ export type {
   ExportJobMetricV1,
   ExportJobStatsV1,
 } from "./statistics.js";
+export {
+  EXPORT_JOB_METRICS_V1,
+  createEmptyExportJobStatsV1,
+} from "./statistics.js";
 export type {
   ExportIssueSourceV1,
   ExportJobErrorCategoryV1,
@@ -38,7 +42,19 @@ export type {
   ExportJobDerivationV1,
   ExportJobSnapshotV1,
 } from "./snapshot.js";
-export type { ExportJobEventV1 } from "./event.js";
+export type { ExportJobEventDraftV1, ExportJobEventV1 } from "./event.js";
+export type { ExportJobResultTelemetryV1 } from "./telemetry.js";
+export type {
+  ExportActivityActionsV1,
+  ExportActivityQueueProjectionV1,
+  ExportActivityRowV1,
+  ExportActivityProjectionOptionsV1,
+} from "./activity.js";
+export {
+  projectExportActivityRowV1,
+  compareExportActivityRowsV1,
+  projectExportActivityV1,
+} from "./activity.js";
 export type {
   SpoolRefV1,
   SpoolWriteLimitsV1,
@@ -72,15 +88,20 @@ export type {
   ExportJobReclaimExpiredUpdateV1,
   ExportJobCheckpointUpdateV1,
   ExportJobStatsUpdateV1,
+  ExportJobRetentionUpdateV1,
   ExportJobEventAppendV1,
+  ExportJobEventQueryV1,
+  ExportJobEventPageV1,
   ExportJobClaimV1,
   ExportJobFinalizeV1,
   ExportJobDeleteQueryV1,
   ExportJobDeleteResultV1,
+  ExportJobTombstoneQueryV1,
   ExportJobTombstoneV1,
 } from "./store-contracts.js";
 export type {
   ExportJobStore,
+  ExportJobEventReaderV1,
   ExportSpoolStore,
   ExportJobSpool,
   ExportArtifactStore,
@@ -100,6 +121,7 @@ export {
   updateExportJobProgress,
   updateExportJobStats,
   updateExportJobTerminalMetadata,
+  releaseExportJobRetention,
 } from "./transitions.js";
 export type {
   ExportJobTransitionConflictCode,
@@ -111,20 +133,32 @@ export type {
   ExportJobStatsInputV1,
   ExportJobLeaseReclaimInputV1,
   ExportJobTerminalMetadataInputV1,
+  ExportJobRetentionInputV1,
 } from "./transitions.js";
-export { deriveExportJobReplayV1 } from "./replay.js";
+export { ExportJobReplayConflict, deriveExportJobReplayV1 } from "./replay.js";
 export type {
   ExportJobReplayRelationV1,
   ExportJobReplayInputV1,
   ExportJobReplayDerivationV1,
+  ExportJobReplayConflictCodeV1,
 } from "./replay.js";
 export {
-  DELIVERED_ARTIFACT_RETENTION_MS_V1,
   decideResourceAdmission,
   orderExportQueue,
   planRetentionEviction,
   projectExportBadge,
 } from "./policy.js";
+export {
+  COMPACT_HISTORY_MAX_JOBS_V1,
+  COMPACT_HISTORY_RETENTION_MS_V1,
+  DELIVERED_ARTIFACT_RETENTION_MS_V1,
+  FULL_REPORT_RETENTION_MS_V1,
+  planExportJobLifecycleRetentionV1,
+} from "./lifecycle-retention.js";
+export type {
+  ExportJobLifecycleRetentionPlanV1,
+  ExportJobRetentionReleaseV1,
+} from "./lifecycle-retention.js";
 export type {
   QueueJobV1,
   BadgeJobV1,

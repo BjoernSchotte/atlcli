@@ -122,6 +122,7 @@ async function jobRun(compiler: PdfCompilePort): Promise<{
           preparedByteLength: input.binding.byteLength,
           preparedSha256: input.binding.sha256,
           estimate: input.estimate,
+          sourcePageCount: input.sourcePageCount,
           renderAttempts: 0,
         };
         return checkpoint;
@@ -220,6 +221,7 @@ async function jobRun(compiler: PdfCompilePort): Promise<{
       },
     },
     async updateProgress() {},
+    async updateStats() {},
     async appendEvent() {},
     async checkpoint(ref) {
       checkpointRef = ref;

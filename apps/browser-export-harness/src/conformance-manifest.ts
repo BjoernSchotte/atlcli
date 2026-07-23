@@ -28,6 +28,30 @@ export interface ConformanceCaseMeta {
 
 export const CONFORMANCE_MANIFEST: readonly ConformanceCaseMeta[] = [
   {
+    id: "activity-monitor",
+    title: "Generic-browser Activity and queue monitor (013)",
+    folderTaskIds: ["013/T7.7"],
+    engines: ["pdf", "docx"],
+    mediaPolicy: "none",
+    emitsDigests: false,
+  },
+  {
+    id: "asset-spool-recovery",
+    title: "Generic-browser checkpointed asset recovery (013)",
+    folderTaskIds: ["013/T7.2"],
+    engines: ["pdf", "docx"],
+    mediaPolicy: "none",
+    emitsDigests: false,
+  },
+  {
+    id: "source-spool-recovery",
+    title: "Generic-browser ordered source spool recovery (013)",
+    folderTaskIds: ["013/T7.2"],
+    engines: ["pdf", "docx"],
+    mediaPolicy: "none",
+    emitsDigests: false,
+  },
+  {
     id: "pdf-abort",
     title: "PDF abort",
     folderTaskIds: ["harness/pdf-abort"],
@@ -158,6 +182,9 @@ export const CONFORMANCE_MANIFEST: readonly ConformanceCaseMeta[] = [
  * entry.
  */
 export const EXPECTED_LANDED_CASE_IDS: readonly string[] = [
+  "activity-monitor",
+  "asset-spool-recovery",
+  "source-spool-recovery",
   "pdf-abort",
   "docx",
   "docx-job-parity",

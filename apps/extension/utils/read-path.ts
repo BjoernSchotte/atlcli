@@ -26,6 +26,7 @@ import {
   type ConfluencePageDetails,
 } from "@atlcli/confluence/browser";
 import type { Profile } from "@atlcli/core";
+import { classifyAtlassianSessionError } from "./session-error.js";
 
 /** Distinct, user-renderable failure classes (PLAN §2.3 / §2.4). */
 export type ReadErrorKind = "not-logged-in" | "access-denied" | "network" | "unknown";
@@ -70,31 +71,7 @@ export interface LoadedPage {
  * `unknown`.
  */
 export function classifyThrownError(err: unknown): ReadErrorKind {
-  const message = err instanceof Error ? err.message : String(err);
-
-  // Session-mode login signals surfaced by the client (spec 003 §2.3): an HTML
-  // login page ("non-JSON 200") or a bounce to the Atlassian login host
-  // (redirect). Checked before the numeric-status match so the phrase wins even
-  // when no 3-digit code is present.
-  if (/non-json|login page|authentication redirect|opaqueredirect/i.test(message)) {
-    return "not-logged-in";
-  }
-
-  const status = message.match(/Confluence API(?: v2)? error \((\d{3})\)/);
-  if (status) {
-    const code = Number(status[1]);
-    if (code === 401) return "not-logged-in";
-    // A 3xx (auth redirect to id.atlassian.com) means the session is missing.
-    if (code >= 300 && code < 400) return "not-logged-in";
-    if (code === 403 || code === 404) return "access-denied";
-    return "unknown";
-  }
-
-  if (err instanceof TypeError) return "network";
-  if (/failed to fetch|networkerror|load failed|fetch failed/i.test(message)) {
-    return "network";
-  }
-  return "unknown";
+  return classifyAtlassianSessionError(err);
 }
 
 /** Count words in markdown (whitespace-separated non-empty tokens). */

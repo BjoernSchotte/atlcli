@@ -80,6 +80,21 @@ export class AssetBudgetExceededError extends Error {
   }
 }
 
+/**
+ * Fatal host-side asset transport/persistence failure.
+ *
+ * Ordinary missing or undecodable images remain per-asset report warnings.
+ * A durable job spool failure is different: degrading it would silently emit
+ * an output that lost a successfully fetched image. Both engines therefore
+ * rethrow this marker and let the job runtime classify the failed attempt.
+ */
+export class AssetPipelineError extends Error {
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options);
+    this.name = "AssetPipelineError";
+  }
+}
+
 /** FNV-1a (32-bit) plus length → a bucket key; byte-equality verifies members. */
 function contentHash(bytes: Uint8Array): string {
   let hash = 0x811c9dc5;

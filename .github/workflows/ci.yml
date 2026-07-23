@@ -238,6 +238,9 @@ jobs:
       - name: Verify PDF.js worker in the built MV3 extension
         run: bun run --cwd apps/extension test:worker-extension-browser
 
+      - name: Verify durable export jobs in the built MV3 extension
+        run: bun run --cwd apps/extension test:jobs-extension-browser
+
       - name: Shape-parity gate
         run: bun run check:parity
 
