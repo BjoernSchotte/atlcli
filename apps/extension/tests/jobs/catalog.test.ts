@@ -129,6 +129,12 @@ describe("IndexedDbExportJobCatalog", () => {
     await expect(store.putLegacyBridge(bridge)).rejects.toMatchObject({
       code: "legacy-bridge-conflict",
     });
+    await expect(store.deleteLegacyBridge(
+      bridge.outerJobId,
+      bridge.outerLeaseEpoch,
+      bridge.legacyJobId,
+    )).rejects.toMatchObject({ code: "legacy-bridge-conflict" });
+    expect(await store.listLegacyBridges()).toEqual([bridge]);
   });
 
   it("reconstructs checkpointed work after owner loss and fences the old epoch", async () => {

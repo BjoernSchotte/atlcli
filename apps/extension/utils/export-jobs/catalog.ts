@@ -877,6 +877,49 @@ export class IndexedDbExportJobCatalog implements ExportJobStore, ExportJobEvent
     return withExtensionExportTransaction(this.#options, [LEGACY_BRIDGES], "readonly", async (tx) =>
       clone(await extensionExportRequestResult(tx.objectStore(LEGACY_BRIDGES).getAll()) as LegacyPdfBridgeV1[]));
   }
+
+  async deleteLegacyBridge(
+    outerJobId: string,
+    outerLeaseEpoch: number,
+    legacyJobId: string,
+  ): Promise<void> {
+    await withExtensionExportTransaction(
+      this.#options,
+      [JOBS, LEGACY_BRIDGES],
+      "readwrite",
+      async (tx) => {
+        const row = await extensionExportRequestResult(
+          tx.objectStore(JOBS).get(outerJobId),
+        ) as JobRow | undefined;
+        const outer = row?.snapshot;
+        if (
+          !outer
+          || (outer.state !== "running" && outer.state !== "cancelling")
+          || outer.leaseEpoch !== outerLeaseEpoch
+          || outer.lease?.epoch !== outerLeaseEpoch
+          || outer.lease.expiresAt <= this.#now()
+        ) {
+          throw new ExtensionExportCatalogError(
+            "legacy-bridge-conflict",
+            "Only the active outer lease may release its private compiler bridge.",
+          );
+        }
+        const bridges = tx.objectStore(LEGACY_BRIDGES);
+        const key: [string, number] = [outerJobId, outerLeaseEpoch];
+        const existing = await extensionExportRequestResult(
+          bridges.get(key),
+        ) as LegacyPdfBridgeV1 | undefined;
+        if (!existing) return;
+        if (existing.legacyJobId !== legacyJobId) {
+          throw new ExtensionExportCatalogError(
+            "legacy-bridge-conflict",
+            "The private compiler bridge belongs to another legacy job.",
+          );
+        }
+        await extensionExportRequestResult(bridges.delete(key));
+      },
+    );
+  }
 }
 
 export interface RecoverExtensionExportJobsOptions {
