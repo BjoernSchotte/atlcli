@@ -6,6 +6,7 @@ import {
   IndexedDbExportJobCatalog,
 } from "../../../utils/export-jobs/catalog.js";
 import { BrowserRenderReservationPoolV1 } from "../../../utils/export-jobs/render-reservation.js";
+import { createExtensionExportQueueRunner } from "../../../utils/export-jobs/queue-runner.js";
 import { chromeDurableJobsStore } from "../../../utils/jobs/store.js";
 
 async function* bytes(size: number, failAfterFirst = false): AsyncIterable<Uint8Array> {
@@ -165,6 +166,66 @@ const probe = {
       activeAfterHandoff,
       activeAfterRelease: pool.snapshot.activeReservations,
     };
+  },
+  async queuePump(): Promise<{
+    firstClaim: string | undefined;
+    duplicateClaim: string | undefined;
+    entered: string[];
+  }> {
+    const catalog = new IndexedDbExportJobCatalog();
+    const bytes = new IndexedDbExportByteStore();
+    const ids = [
+      "523e4567-e89b-42d3-a456-426614174000",
+      "623e4567-e89b-42d3-a456-426614174000",
+    ];
+    for (const [index, id] of ids.entries()) {
+      await catalog.create({
+        request: {
+          schema: "atlcli.export-job-request/1",
+          id,
+          idempotencyKey: `packed-pump:${id}`,
+          format: "pdf",
+          renderer: "pdf-typst",
+          source: {
+            kind: "confluence",
+            siteOrigin: "https://site.atlassian.net",
+            locator: { kind: "page-id", id: "42" },
+            scope: { kind: "page" },
+          },
+          authRef: "session:https://site.atlassian.net",
+          displayName: id,
+          requestedFilename: `${id}.pdf`,
+          createdAt: index + 1,
+          priority: "interactive",
+          output: { policy: "collect" },
+          template: { id: "builtin.editorial-indigo", manifestVersion: "1.0.0" },
+          settings: {},
+          options: { resolveMacros: true },
+        },
+      });
+    }
+    const entered: string[] = [];
+    let releaseFirst!: () => void;
+    const runner = createExtensionExportQueueRunner({
+      catalog,
+      bytes,
+      ownerId: "offscreen:packed-pump",
+      execute: async (claimed) => {
+        entered.push(claimed.id);
+        if (claimed.id === ids[0]) {
+          await new Promise<void>((resolve) => { releaseFirst = resolve; });
+        }
+      },
+    });
+    const firstClaim = await runner.wake();
+    const duplicateClaim = await runner.wake(ids);
+    releaseFirst();
+    const deadline = Date.now() + 1_000;
+    while (!entered.includes(ids[1]!)) {
+      if (Date.now() >= deadline) throw new Error("Packed queue did not pump its second job.");
+      await new Promise((resolve) => setTimeout(resolve, 1));
+    }
+    return { firstClaim, duplicateClaim, entered };
   },
 };
 

@@ -478,6 +478,29 @@ test("the packed browser shares one FIFO heavy-render slot across PDF and DOCX",
   });
 });
 
+test("the packed browser queue returns after claim and automatically pumps FIFO", async () => {
+  const result = await page.evaluate(async () => {
+    const probe = (globalThis as unknown as {
+      exportJobStoreProbe: {
+        queuePump(): Promise<{
+          firstClaim: string | undefined;
+          duplicateClaim: string | undefined;
+          entered: string[];
+        }>;
+      };
+    }).exportJobStoreProbe;
+    return probe.queuePump();
+  });
+  expect(result).toEqual({
+    firstClaim: "523e4567-e89b-42d3-a456-426614174000",
+    duplicateClaim: undefined,
+    entered: [
+      "523e4567-e89b-42d3-a456-426614174000",
+      "623e4567-e89b-42d3-a456-426614174000",
+    ],
+  });
+});
+
 test("source aborts and adapter quota limits leave no half object", async () => {
   await ensureCatalog();
   const invoke = (id: string, size: number, fail: boolean, totalLimit?: number) => page.evaluate(
