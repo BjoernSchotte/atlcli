@@ -13,7 +13,12 @@
  * with neither simply has no jobs, which is also the correct answer.
  */
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { chromeDurableJobsStore, type DurableJob, type DurableJobsPort } from "./store.js";
+import {
+  chromeDurableJobsStore,
+  type DurableJobsPort,
+  type ExportActivityDetail,
+  type ExportActivityJob,
+} from "./store.js";
 
 const DurableJobsContext = createContext<DurableJobsPort | null | undefined>(undefined);
 
@@ -62,7 +67,7 @@ export function useDurableJobsPort(): DurableJobsPort | null {
 }
 
 export interface DurableJobsView {
-  jobs: readonly DurableJob[];
+  jobs: readonly ExportActivityJob[];
   /** False until the first read settles, so an empty list is never shown too early. */
   loaded: boolean;
   error: string | null;
@@ -70,6 +75,16 @@ export interface DurableJobsView {
   cancel: (id: string) => void;
   dismiss: (id: string) => void;
   download: (id: string) => void;
+  retry: (id: string, actionKey: string) => void;
+  rerun: (id: string, actionKey: string) => void;
+  resume: (id: string) => void;
+  acknowledge: (id: string) => void;
+  detail: ExportActivityDetail | null;
+  detailLoading: boolean;
+  viewDetail: (id: string) => void;
+  closeDetail: () => void;
+  pulseEnabled: boolean;
+  setPulseEnabled: (enabled: boolean) => void;
 }
 
 /** Poll cadence while at least one job is running. */
@@ -89,10 +104,13 @@ export const JOBS_IDLE_POLL_MS = 5_000;
  */
 export function useDurableJobs(siteOrigin: string | null): DurableJobsView {
   const port = useDurableJobsPort();
-  const [jobs, setJobs] = useState<readonly DurableJob[]>([]);
+  const [jobs, setJobs] = useState<readonly ExportActivityJob[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
+  const [detail, setDetail] = useState<ExportActivityDetail | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [pulseEnabled, setPulseEnabledState] = useState(true);
   const alive = useRef(true);
 
   const refresh = useCallback(() => setTick((value) => value + 1), []);
@@ -115,14 +133,18 @@ export function useDurableJobs(siteOrigin: string | null): DurableJobsView {
 
     const read = async (): Promise<void> => {
       try {
-        const next = await port.list({ siteOrigin });
+        const next = await port.list({
+          ...(siteOrigin === null ? {} : { siteOrigin }),
+        });
         if (cancelled) return;
         setJobs(next);
         setError(null);
         setLoaded(true);
         timer = setTimeout(
           () => void read(),
-          next.some((job) => job.running) ? JOBS_POLL_MS : JOBS_IDLE_POLL_MS
+          next.some((job) => job.actions.cancel)
+            ? JOBS_POLL_MS
+            : JOBS_IDLE_POLL_MS
         );
       } catch (reason) {
         if (cancelled) return;
@@ -136,6 +158,19 @@ export function useDurableJobs(siteOrigin: string | null): DurableJobsView {
       if (timer !== null) clearTimeout(timer);
     };
   }, [port, siteOrigin, tick]);
+
+  useEffect(() => {
+    if (!port) return;
+    let cancelled = false;
+    void port.getPreferences()
+      .then((preferences) => {
+        if (!cancelled) setPulseEnabledState(preferences.pulseEnabled);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [port]);
 
   const act = useCallback(
     (run: (port: DurableJobsPort) => Promise<unknown>) => {
@@ -153,6 +188,32 @@ export function useDurableJobs(siteOrigin: string | null): DurableJobsView {
     [port, refresh]
   );
 
+  const viewDetail = useCallback(
+    (id: string) => {
+      if (!port) return;
+      setDetailLoading(true);
+      void port
+        .detail(id)
+        .then((next) => {
+          if (alive.current) setDetail(next ?? null);
+        })
+        .catch((reason) => {
+          if (alive.current) {
+            setError(reason instanceof Error ? reason.message : String(reason));
+          }
+        })
+        .finally(() => {
+          if (alive.current) {
+            setDetailLoading(false);
+            refresh();
+          }
+        });
+    },
+    [port, refresh],
+  );
+
+  const closeDetail = useCallback(() => setDetail(null), []);
+
   return useMemo<DurableJobsView>(
     () => ({
       jobs,
@@ -162,7 +223,31 @@ export function useDurableJobs(siteOrigin: string | null): DurableJobsView {
       cancel: (id) => act((p) => p.cancel(id)),
       dismiss: (id) => act((p) => p.dismiss(id)),
       download: (id) => act((p) => p.download(id)),
+      retry: (id, actionKey) => act((p) => p.retry(id, actionKey)),
+      rerun: (id, actionKey) => act((p) => p.rerun(id, actionKey)),
+      resume: (id) => act((p) => p.resume(id)),
+      acknowledge: (id) => act((p) => p.acknowledge(id)),
+      detail,
+      detailLoading,
+      viewDetail,
+      closeDetail,
+      pulseEnabled,
+      setPulseEnabled: (enabled) => {
+        setPulseEnabledState(enabled);
+        act((p) => p.setPulseEnabled(enabled));
+      },
     }),
-    [jobs, loaded, error, refresh, act]
+    [
+      jobs,
+      loaded,
+      error,
+      refresh,
+      act,
+      detail,
+      detailLoading,
+      viewDetail,
+      closeDetail,
+      pulseEnabled,
+    ]
   );
 }

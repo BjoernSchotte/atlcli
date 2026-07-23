@@ -41,8 +41,8 @@ Cloud export-specific reads now request ADF, validate the pinned contract, and
 decode through the representation-neutral `pageBodyToBlocks()` boundary.
 Storage remains a compatibility adapter, the Data Center source, and a
 version-matched sidecar for definitions that are not yet ADF-native. Durable
-background-host integration remains a separate, explicitly open work package;
-it must enter at the same source boundary and must not fork renderer behavior.
+CLI and extension jobs now enter through that same source boundary after
+durable creation and claim; neither host forks decoder or renderer behavior.
 Third-party block and bodied `adfExport` output is now consumed through
 Confluence's documented platform export: Forge ADF `localId` is projected to
 the macro export ID, Confluence invokes the app function, and the returned
@@ -221,8 +221,15 @@ Current closed foundations and feature slices:
 
 Current cross-cutting residuals:
 
-- [ ] **Partial:** durable background-host source integration is deferred until
-  synchronization with the parallel job-host work.
+- [x] Durable CLI and extension jobs resolve ADF/Storage, validate, decode,
+  compose, resolve mentions/macros, and prepare checkpointed assets only after
+  durable creation and claim. Body-free source plans and ordered normalized
+  page checkpoints support fenced recovery; packed Chromium proves that
+  extension-surface navigation and closure do not abort the background job.
+  Final merge validation additionally proves monotonic, awaited durable source
+  progress; full typecheck, production build, API/closure guards, 5,279
+  repository tests, and the packed navigation proof pass against the merged
+  runtime.
 - [ ] **Open:** the real sanitized Confluence corpus covers selected live
   slices, not yet every supported editor feature.
 - [ ] **Partial:** complete emoji glyph coverage and custom-emoji assets are

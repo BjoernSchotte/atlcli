@@ -10,6 +10,7 @@
   "dependencies": {
     "@atlcli/core": "workspace:*",
     "@atlcli/export-node": "workspace:*",
+    "@atlcli/export-jobs": "workspace:*",
     "@atlcli/confluence": "workspace:*",
     "@atlcli/export-macros": "workspace:*",
     "@atlcli/export-wiring": "workspace:*",

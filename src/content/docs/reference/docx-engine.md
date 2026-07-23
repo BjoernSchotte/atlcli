@@ -101,8 +101,8 @@ delimiter pair, so a template's own `{`, `}` and `{foo}` are never treated as ta
 
 ### Foreign (docxtpl/Jinja) placeholders
 
-That pass-through guarantee has a sharp edge for anyone migrating from the legacy Python engine:
-a **docxtpl template** handed to the ts engine renders its `{{ … }}` / `{% … %}` placeholders as
+That pass-through guarantee has a sharp edge for anyone migrating from the retired Python engine:
+a **docxtpl template** handed to the DOCX engine renders its `{{ … }}` / `{% … %}` placeholders as
 **visible literal text** in the finished document. Nothing fills them, and nothing fails.
 
 The template scan therefore inventories that syntax and the report names it:
@@ -110,9 +110,8 @@ The template scan therefore inventories that syntax and the report names it:
 ```
 warning  template-foreign-placeholders
 Template uses Jinja/docxtpl placeholders ({{ title }}, {{ author }}, {{ spaceName }});
-the ts engine fills $scroll.* placeholders and will leave these in the document as
-literal text. Rewrite them as $scroll.* placeholders, or export this template with
---engine python.
+the DOCX engine fills $scroll.* placeholders and will leave these in the document as
+literal text. Rewrite them as $scroll.* placeholders or use the bundled default.
 ```
 
 - **`warning`, so `--strict` catches it** in CI. An `info` note would be reported and ignored,
@@ -125,13 +124,11 @@ literal text. Rewrite them as $scroll.* placeholders, or export this template wi
 
 ### The bundled default template
 
-`--template` is **optional** with `--engine ts`. Omit it and the export uses the bundled default
+`--template` is **optional**. Omit it and the export uses the bundled default
 template from `@atlcli/export-node` (`bundledDefaultTemplate()`): a title heading, an export-date
 line, the `$scroll.content` body anchor and the Scroll heading styles — built programmatically
 from OOXML parts, byte-deterministic, with its zip timestamps pinned to a fixed epoch. A
 `template-default-used` **info** note records that it was used, so the output is never mysterious.
-
-`--engine python` still requires `--template`: docxtpl has no bundled default.
 
 ## Lists and numbering
 

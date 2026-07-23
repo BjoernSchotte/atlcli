@@ -37,24 +37,15 @@ report, so "why is section X missing?" always has an answer.
 |-------|------------------|---------|
 | `scroll-only` | Keep the body only for the matching exporter | DOCX `ts`, PDF |
 | `scroll-ignore` | Drop the body (for the matching exporter) | DOCX `ts`, PDF |
-| `scroll-only-inline` | Inline variant of `scroll-only` | DOCX `ts`, PDF |
-| `scroll-ignore-inline` | Inline variant of `scroll-ignore` | DOCX `ts`, PDF |
-| `scroll-pagebreak` | Insert a hard page break | DOCX `ts`, PDF |
-| `scroll-landscape` | Lay the region out in landscape orientation | DOCX `ts`, PDF |
-| `scroll-portrait` | Lay the region out in portrait orientation | DOCX `ts`, PDF |
-| `scroll-title` | Attach a numbered caption to a figure/table/code | DOCX `ts`, PDF |
+| `scroll-only-inline` | Inline variant of `scroll-only` | DOCX, PDF |
+| `scroll-ignore-inline` | Inline variant of `scroll-ignore` | DOCX, PDF |
+| `scroll-pagebreak` | Insert a hard page break | DOCX, PDF |
+| `scroll-landscape` | Lay the region out in landscape orientation | DOCX, PDF |
+| `scroll-portrait` | Lay the region out in portrait orientation | DOCX, PDF |
+| `scroll-title` | Attach a numbered caption to a figure/table/code | DOCX, PDF |
 
 Any `scroll-*` macro atlcli does not recognize is preserved conservatively — its
 content is kept and a warning note is added, never silently dropped.
-
-:::caution[`--engine python` does not implement these macros]
-The "Engines" column means `--format pdf` and `--engine ts`. The legacy python
-engine converts the page to Markdown first, and every `scroll-*` macro becomes a
-placeholder line such as `*[scroll-title macro]*` — **taking the macro's body
-with it**. A table wrapped in `scroll-title` for its caption is not in the output
-at all. Use `--engine ts` (or PDF); see
-[Macro compatibility](/confluence/macro-compatibility/) for the whole picture.
-:::
 
 ## Export-control macros
 
@@ -185,13 +176,13 @@ To inspect what an export normally drops, run the CLI export with
 
 ```bash
 atlcli wiki export <page> --template mytemplate --output out.docx \
-  --engine ts --keep-ignored
+  --keep-ignored
 ```
 
 Both `scroll-only` and `scroll-ignore` bodies are kept, and the report records
 `export-controls-passthrough` so you know the output is not representative of a
 normal run. Page breaks and orientation regions still render. The flag is not
-available for `--scope tree/space` or the Python engine yet.
+available for `--scope tree/space` yet.
 
 > **Tip:** Passthrough is a debugging aid. Do not ship a passthrough export as
 > the final document — it contains content the author marked for exclusion.
@@ -204,7 +195,6 @@ available for `--scope tree/space` or the Python engine yet.
 | A page break did nothing | The break sits inside a table cell or callout | See the `pagebreak-suppressed-in-container` note; move the break to body level |
 | An orientation region did not flip | The region sits inside a table cell or callout | See the `orientation-suppressed-in-container` note |
 | Every caption reads "1" in Word | The template's own `SEQ` fields interleave with the exported ones, so the export cannot vouch for the numbers and asks Word to refresh | Answer **Yes** to the refresh prompt, or press **Ctrl+A** then **F9** — see [Caption numbering](/confluence/export/#caption-numbering) |
-| Captions vanished along with their tables | The export ran on `--engine python`, which does not implement these macros | Re-export with `--engine ts` or `--format pdf` |
 | A caption used the wrong label | The `scroll-title` `type` was unknown | See the `caption-kind-unknown` note; use `figure`, `table`, or `code` |
 
 ## Related topics

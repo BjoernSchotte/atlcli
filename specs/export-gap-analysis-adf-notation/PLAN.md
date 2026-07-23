@@ -87,7 +87,8 @@ Official references:
 - Source-version consistency between discovery, metadata, ADF, and Storage sidecar reads.
 - CLI TypeScript DOCX and Typst/PDF source wiring.
 - Representation-neutral tree fetching and include-page decoding.
-- A background-job integration seam compatible with the parallel PDF job-executor and later production host-routing slices.
+- Production background-job integration through the shared PDF and
+  TypeScript-DOCX host resolvers.
 - Browser, package, API-report, differential, and live Confluence conformance gates.
 
 ### Out of scope for this first migration
@@ -732,7 +733,9 @@ Evidence recorded on 2026-07-22: ADF block and inline extensions now retain thei
 
 ### WP8 — Background-job/extension integration
 
-This work package is sequenced with the production host-routing slice after the host-neutral PDF job executor contract has landed. It must not create a second long-lived panel-owned ADF pipeline.
+This work package is implemented at the production host-routing boundary after
+the host-neutral job executor contracts. It does not create a second
+long-lived panel-owned ADF pipeline.
 
 Target boundary from the reviewed PDF job-executor contract:
 
@@ -758,46 +761,81 @@ createPdfExportJobExecutor({
 
 Tasks:
 
-- [ ] Persist/claim the durable job before the first ADF or Storage network read.
+- [x] Persist/claim the durable job before the first ADF or Storage network read.
 - [x] Keep `ExportJobRequestV1.source` as locator/scope/version metadata only; do not add `bodyFormat`, raw ADF, or Storage.
 - [x] Make ADF-primary a resolver policy selected by deployment capability, not a user-controlled request-v1 field.
-- [ ] Run fetch, validation, decode, sidecar reads, tree composition, mention/macro resolution, and asset preparation inside background `resolveInput`.
-- [ ] Use the ordered source/checkpoint pipeline for tree/space pages rather than buffering raw full-tree ADF.
+- [x] Run fetch, validation, decode, sidecar reads, tree composition, and
+  mention/macro adapter construction inside background `resolveInput`; run
+  attachment/asset reads through its claimed-job checkpoint adapters during
+  engine preparation.
+- [x] Use the ordered source/checkpoint pipeline for tree/space pages rather than buffering raw full-tree ADF.
 - [x] Pin/verify page versions so pre-checkpoint retry cannot silently export newer content.
 - [x] Ensure the ready-to-render checkpoint contains prepared engine state and diagnostics, not the original page body.
 - [x] On ready-to-render recovery, perform zero ADF/Storage refetches.
-- [ ] Thread job cancellation through every ADF, sidecar, macro, attachment, and identity request.
-- [ ] Preserve ADF degradation notes and `complete=false` through preparation, checkpoint fingerprinting, report staging, and final activity UI.
-- [ ] Keep page content out of job progress/events and error summaries.
+- [x] Thread job cancellation through every ADF, sidecar, macro, attachment, and identity request.
+- [x] Preserve ADF degradation notes and `complete=false` through preparation, checkpoint fingerprinting, report staging, and final activity UI.
+- [x] Keep page content out of job progress/events and error summaries.
 - [x] Reuse the same shared composition helper in direct and background paths; no extension-only ADF decoder.
 
 Required job tests:
 
-- [ ] job row exists before first ADF GET;
+- [x] job row exists before first ADF GET;
 - [x] cancellation during ADF and sidecar reads aborts all outstanding requests;
 - [x] crash before ready-to-render refetches only version-pinned source;
 - [x] crash/recovery after ready-to-render performs no source reads;
 - [x] direct-vs-job blocks/notes/completeness and final PDF/DOCX report parity;
-- [ ] panel closure/navigation does not abort the job;
+- [x] panel closure/navigation does not abort the job;
 - [x] malformed ADF fails or becomes a partial page according to completeness mode, never Storage-hidden success;
 - [x] bounded page pipeline does not retain complete raw tree bodies;
 - [x] packed browser consumer imports the ADF adapter without Node/Bun/dynamic-code leakage.
 
-Incremental WP8 evidence recorded on 2026-07-23: `@atlcli/export-wiring/jobs` now exposes one browser-safe, engine-neutral Confluence source resolver over the durable locator/scope contract. Its host port owns authentication and representation policy, so request v1 remains unchanged and cannot select ADF versus Storage. Page/content/space locators map to the shared `TreeSource` walk; optional durable page-version pins are verified before the first body read and the same snapshot is reused for the body-version race check. Both renderer adapters can consume the exact same blocks, notes, completeness verdict, root metadata and chapter-anchor map. Resolver progress contains counts only, resolver errors are sanitized before the durable boundary, malformed ADF never succeeds through its Storage sidecar, and the cancellation signal reaches all in-flight page reads. The tree fetch no longer retains complete `TreeSourcePage` objects after decoding: only version/labels/space metadata survives in the ordered settled slots, so raw ADF and sidecars leave the bounded decode slot promptly. Focused resolver/tree/executor tests, API and closure guards, full typecheck, the production build, and all 20 browser-isomorphism entrypoints passed. A read-only live run returned one ADF-primary page with a complete result through the new resolver while emitting aggregate counters only. The remaining unchecked items are production host routing, source checkpoints/recovery, macro/asset preparation inside the claimed job, and end-to-end direct/background artifact-report parity.
+Incremental WP8 evidence recorded on 2026-07-23: `@atlcli/export-wiring/jobs` now exposes one browser-safe, engine-neutral Confluence source resolver over the durable locator/scope contract. Its host port owns authentication and representation policy, so request v1 remains unchanged and cannot select ADF versus Storage. Page/content/space locators map to the shared `TreeSource` walk; optional durable page-version pins are verified before the first body read and the same snapshot is reused for the body-version race check. Both renderer adapters can consume the exact same blocks, notes, completeness verdict, root metadata and chapter-anchor map. Resolver progress contains counts only, resolver errors are sanitized before the durable boundary, malformed ADF never succeeds through its Storage sidecar, and the cancellation signal reaches all in-flight page reads. The tree fetch no longer retains complete `TreeSourcePage` objects after decoding: only version/labels/space metadata survives in the ordered settled slots, so raw ADF and sidecars leave the bounded decode slot promptly. Focused resolver/tree/executor tests, API and closure guards, full typecheck, the production build, and all 20 browser-isomorphism entrypoints passed. A read-only live run returned one ADF-primary page with a complete result through the new resolver while emitting aggregate counters only. Production routing, checkpoint recovery, claimed-job macro/asset preparation, and direct/background parity were closed by the later evidence in this work package.
 
 Executor-adapter evidence recorded on 2026-07-23: format-specific factories now bind that shared resolver directly to the existing PDF and TypeScript-DOCX `resolveInput()` contracts. They force the canonical blocks, notes, completeness verdict and root identity into both engines; the DOCX adapter synthesizes body-free root details (`storage: ""`) because precomposed blocks make the legacy body fallback unreachable. PDF and DOCX recovery tests deliberately lose the first render attempt after committing `ready-to-render`, then prove the second lease performs zero source reads, creates no second prepared checkpoint, retains ADF degradation notes and contains no Storage sidecar. The browser bundle gate imports the published jobs entrypoint without Node/Bun or dynamic-code leakage. A read-only live comparison returned equal PDF/DOCX source shapes and a zero-byte DOCX root body while emitting aggregate counters only.
 
-Pre-body tree-plan evidence recorded on 2026-07-23: `fetchExportTree()` now exposes a validated, browser-safe `atlcli.export-tree-plan/1` snapshot after traversal and label filtering but before its first ADF/Storage body read. The bounded plan contains only scope, ordering, identifiers/titles, version pins and diagnostics; it rejects foreign scopes/roots, policy mismatches, invalid nodes/notes, count-limit violations and a configurable serialized-byte budget before body IO. A recovered plan skips homepage, child, page-version and label discovery, fetches only its planned bodies and fails through the existing completeness contract when a body no longer matches its pin. Durable planning refuses the legacy body-reading label fallback when no metadata-only label port exists, so the pre-body checkpoint boundary cannot be bypassed. Focused plan/tree/API tests, full typecheck, production build, public API/closure guards and all 20 browser-isomorphism entrypoints passed; the complete repository suite passed with 4,863 tests, 15 intentional skips and zero failures. An anonymized read-only live plan/recovery comparison produced semantically equal ADF-primary nodes, a body-free plan and zero discovery calls on recovery. The next slice must persist/load this plan through the claimed job's host-owned checkpoint store; until then the production routing and crash-before-ready checklist items remain deliberately unchecked.
+Pre-body tree-plan evidence recorded on 2026-07-23: `fetchExportTree()` now exposes a validated, browser-safe `atlcli.export-tree-plan/1` snapshot after traversal and label filtering but before its first ADF/Storage body read. The bounded plan contains only scope, ordering, identifiers/titles, version pins and diagnostics; it rejects foreign scopes/roots, policy mismatches, invalid nodes/notes, count-limit violations and a configurable serialized-byte budget before body IO. A recovered plan skips homepage, child, page-version and label discovery, fetches only its planned bodies and fails through the existing completeness contract when a body no longer matches its pin. Durable planning refuses the legacy body-reading label fallback when no metadata-only label port exists, so the pre-body checkpoint boundary cannot be bypassed. Focused plan/tree/API tests, full typecheck, production build, public API/closure guards and all 20 browser-isomorphism entrypoints passed; the complete repository suite passed with 4,863 tests, 15 intentional skips and zero failures. An anonymized read-only live plan/recovery comparison produced semantically equal ADF-primary nodes, a body-free plan and zero discovery calls on recovery. The production hosts now persist and recover this plan through the claimed job's fenced spool.
 
-Persisted source-plan evidence recorded on 2026-07-23: the shared PDF and TypeScript-DOCX `resolveInput()` adapters now bind a host-owned source-plan store to the claimed job ID, request idempotency key, representation-policy identity and fenced lease epoch. A fresh lease atomically commits and publishes the opaque body-free plan ref before its first page body read; a later lease validates the stored identity, scope, policy, root and plan limits before republishing the same ref and reading only the version-pinned bodies. Recovery no longer repeats content-key, homepage, child, label or page-version discovery, including when the durable locator omitted an explicit version. Cancellation after store commit stops before publication or body IO, and malformed/foreign checkpoints fail through the sanitized source boundary. Executor-level loss-before-ready tests pass for both formats and prove a single discovery snapshot, no prepared checkpoint on the failed attempt, no raw ADF/Storage in the source plan, and successful second-lease rendering from the original pins. The focused 54-test recovery set, full typecheck, 16-task production build, public API/closure guards and all 20 browser-isomorphism entrypoints passed. An anonymized read-only live run produced equal PDF/DOCX blocks and notes, equal fresh/recovered results, complete outputs, body-free checkpoints and zero recovery discovery reads. Production job creation/claim ordering and extension activity routing remain owned by the host-integration slice.
+Persisted source-plan evidence recorded on 2026-07-23: the shared PDF and TypeScript-DOCX `resolveInput()` adapters now bind a host-owned source-plan store to the claimed job ID, request idempotency key, representation-policy identity and fenced lease epoch. A fresh lease atomically commits and publishes the opaque body-free plan ref before its first page body read; a later lease validates the stored identity, scope, policy, root and plan limits before republishing the same ref and reading only the version-pinned bodies. Recovery no longer repeats content-key, homepage, child, label or page-version discovery, including when the durable locator omitted an explicit version. Cancellation after store commit stops before publication or body IO, and malformed/foreign checkpoints fail through the sanitized source boundary. Executor-level loss-before-ready tests pass for both formats and prove a single discovery snapshot, no prepared checkpoint on the failed attempt, no raw ADF/Storage in the source plan, and successful second-lease rendering from the original pins. The focused 54-test recovery set, full typecheck, 16-task production build, public API/closure guards and all 20 browser-isomorphism entrypoints passed. An anonymized read-only live run produced equal PDF/DOCX blocks and notes, equal fresh/recovered results, complete outputs, body-free checkpoints and zero recovery discovery reads. Production job creation/claim ordering and extension activity routing are now covered by the integrated host evidence below.
 
 Packed ADF job-parity evidence recorded on 2026-07-23: the browser conformance case now starts with the committed raw ADF fixture, resolves it once through the shared direct source boundary and independently through each format-specific job adapter, and fails unless blocks, degradation notes, completeness, root/page metadata and aggregate source diagnostics are identical. The resulting direct and background PDF bytes and stable report projection are exact matches; the DOCX comparison requires the same decompressed part set, byte-identical part content and the same stable report projection while explicitly allowing this unresolved-media fixture to remain media-free. The reusable PDF/DOCX parity harnesses retain their stronger real-media default for their existing fixtures. Browser-harness typecheck, 74 focused unit tests, production build/output policy, the 15-case manifest guard and the complete packed Chromium conformance run passed without foreign requests or console/page errors.
 
-Cancellation and progress-privacy evidence recorded on 2026-07-23: both job adapters already pass one claimed-job `AbortSignal` into the shared source resolver; an integrated dual-read test now models ADF and Storage-sidecar requests inside the host port and proves one job cancellation aborts both outstanding branches before either renderer builder can run. DOCX preparation no longer forwards source-derived engine detail strings into durable progress, preventing attachment names and output filenames from escaping through that channel while retaining stage and aggregate count updates. The focused 38-test adapter/PDF/DOCX executor set passed, including cancellation, asset/raster signal propagation, recovery and sanitized-progress assertions. Runtime-owned macro/attachment/identity ports and durable error summaries remain part of the production host-integration gate.
+Cancellation and progress-privacy evidence recorded on 2026-07-23: both job adapters already pass one claimed-job `AbortSignal` into the shared source resolver; an integrated dual-read test now models ADF and Storage-sidecar requests inside the host port and proves one job cancellation aborts both outstanding branches before either renderer builder can run. DOCX preparation no longer forwards source-derived engine detail strings into durable progress, preventing attachment names and output filenames from escaping through that channel while retaining stage and aggregate count updates. The focused 38-test adapter/PDF/DOCX executor set passed, including cancellation, asset/raster signal propagation, recovery and sanitized-progress assertions. The integrated production hosts now extend the same signal and content-free durable error boundary through macro, attachment, and identity ports.
 
-Host-preparation privacy evidence recorded on 2026-07-23: the PDF and TypeScript-DOCX resolver adapters now place their host-owned `build()` phase behind one content-free durable error boundary. Macro, attachment, identity and asset failures can no longer copy source text, URLs or filenames into the outer job error message; the original transient error is not attached as a durable cause. Version-drift errors likewise retain typed in-memory identity fields while their message no longer includes a page identifier. An integrated preparation test starts concurrent macro, attachment and identity branches from the claimed-job context and proves that the same cancellation signal stops all three. The focused 50-test resolver/adapter/executor set and the export-wiring production build passed; production routing and its final host-level error classifier remain separate.
+Host-preparation privacy evidence recorded on 2026-07-23: the PDF and TypeScript-DOCX resolver adapters now place their host-owned `build()` phase behind one content-free durable error boundary. Macro, attachment, identity and asset failures can no longer copy source text, URLs or filenames into the outer job error message; the original transient error is not attached as a durable cause. Version-drift errors likewise retain typed in-memory identity fields while their message no longer includes a page identifier. An integrated preparation test starts concurrent macro, attachment and identity branches from the claimed-job context and proves that the same cancellation signal stops all three. The focused 50-test resolver/adapter/executor set and the export-wiring production build passed; the integrated production hosts retain that same classifier.
 
-Current sequencing status (2026-07-23): WP8 is now in progress on this main-based branch without copying the moving background-runtime implementation. The shared source boundary is ready for that runtime to consume; durable extension host routing and its recovery/activity integration remain deliberately separate until their owning branch is synchronized.
+Production-host integration evidence recorded on 2026-07-23: after the
+background runtime landed on `main`, this branch integrated its durable CLI and
+extension hosts without changing request v1. Both ordinary CLI formats and
+both extension production resolvers now create the same shared ADF-primary
+source resolver only inside claimed execution. A body-free, policy-bound
+source-plan spool links into ordered page and checkpointed-asset spools so
+later lease epochs recover through the newest checkpoint without repeating
+discovery or retaining raw ADF/Storage in the job row. Stored CLI replay
+retains the host rollback policy. Macro, export-view, Jira,
+attachment-listing, mention, space, owner, homepage, and included-page
+requests all receive the claimed job's cancellation signal. Durable progress
+is count-only, DOCX root details carry an empty legacy body, source-plan and
+job records are body-free, and host errors cross a content-free boundary.
+Fifty-nine focused cancellation/wiring tests and sixty-six durable
+creation/claim/recovery tests pass. A packed Chromium test additionally proves
+that a submitted PDF completes after the submitting extension surface
+navigates away, another tab becomes active, and the surface closes.
+
+Final merge validation recorded on 2026-07-23: source progress now remains
+inside the executor's monotonic `compose` stage and the shared resolver awaits
+every durable progress write before host preparation or a later checkpoint can
+advance. A dedicated delayed-write regression proves that ordering instead of
+relying on host timing. The focused resolver/CLI/extension slice passed all 35
+tests; full typecheck, the 16-task production build, API/closure guards with
+zero reachable gaps, and the complete repository suite passed with 5,279
+tests, 15 intentional skips, and zero failures across 350 files. The packed
+Chromium navigation/tab-change/surface-close proof also passed again against
+the merged production background runtime.
+
+Current sequencing status (2026-07-23): the former background-runtime
+dependency is integrated. WP8 is closed; the remaining open coverage rows are
+the broad sanitized live corpus and the external custom-emoji/glyph contract,
+not job-host work.
 
 Exit:
 
@@ -843,29 +881,34 @@ Default-enable gates:
 - [x] no silent whole-page decoder fallback;
 - [x] macro and media correlation gates pass or remain visibly degraded;
 - [x] direct and background report parity passes;
-- [ ] source bodies are absent from logs/job records/events;
+- [x] source bodies are absent from logs/job records/events;
 - [x] browser, Node/Bun, package, API, closure, and packed-consumer gates pass;
 - [x] Cloud live E2E passes for both target formats;
 - [x] Storage/Data Center regressions pass;
 - [x] dual-read request/latency overhead remains within the first-rollout budget above.
 
-## 8. Interaction with the parallel export-jobs workstream
+## 8. Interaction with the export-jobs runtime
 
-PR numbers are deliberately absent from the normative plan. The stack may be reordered, split, or renumbered without changing this architecture. At the start of WP0 and again before WP8, resolve the then-current PRs/branches that own the contracts and files below. Record those volatile references in the implementation task or PR description, not as dependencies in this plan.
+PR numbers are deliberately absent from the normative plan. The stack may be
+reordered, split, or renumbered without changing this architecture. Resolve
+contracts from the current `main`; record volatile PR references in an
+implementation task or PR description, never as dependencies in this plan.
 
 If a current branch no longer exposes the named contract, stop and update this section before implementing against a guessed replacement.
 
 ### 8.1 Reviewed job-executor capability snapshot
 
-The reviewed current workstream baseline:
+The integrated runtime baseline:
 
 - provides host-neutral PDF and TypeScript-DOCX job executors with fail-closed request validation;
 - splits preparation from render and checkpoints ready-to-render state for both formats;
 - fingerprints prepared state, report, and artifact metadata;
 - routes ordinary CLI DOCX and PDF exports through durable exact-ID jobs before the first Confluence API read;
 - preserves host-owned `resolveInput()` seams for both formats and proves their runtime behavior;
-- does not route the production extension/background export yet;
-- changes CLI and export-job/wiring production files, but does not introduce ADF or change `packages/confluence` source contracts.
+- routes production CLI and extension/background exports through the shared
+  host-owned Confluence resolver after durable creation and claim;
+- keeps ADF representation policy in the host and neutral source adapter,
+  outside the request, executor, and renderer contracts.
 
 The key contracts are favorable: `createPdfExportJobExecutor()` and `createTypescriptDocxExportJobExecutor()` accept host-owned `resolveInput()` callbacks that return normal engine inputs containing neutral blocks and report state. ADF belongs inside those host-owned resolution steps. The durable request, executor, ready-to-render store, renderer/compiler, and artifact staging do not need an ADF concept.
 
@@ -874,8 +917,8 @@ The key contracts are favorable: `createPdfExportJobExecutor()` and `createTypes
 | Area | Parallel export-jobs workstream | This plan | Conflict risk | Resolution |
 |---|---|---|---|---|
 | `packages/confluence` client/decoder/tree | None | Primary implementation area | Low | Develop independently. |
-| CLI DOCX/PDF source wiring | Durable production routing and both `resolveInput()` seams are present | Change source composition inside the existing resolvers | Medium | Preserve request/runtime ownership; put ADF fetch/decode only inside host resolution. |
-| Extension production source wiring | Owned by a later host-routing slice | Deferred to background `resolveInput` | Medium with that slice | Integrate once in the background host, not first in React and then again in jobs. |
+| CLI DOCX/PDF source wiring | Durable production routing and both `resolveInput()` seams are present | Shared ADF source composition is inside the existing resolvers | Resolved | Request/runtime ownership is unchanged; fetch/decode occurs only inside claimed host resolution. |
+| Extension production source wiring | Durable offscreen routing, recovery, and activity are present | Shared resolver is constructed inside background `resolveInput` | Resolved | React submits/observes locator-only jobs; it does not fetch or decode source bodies. |
 | `packages/pdf/src/run-export.ts` | Prepare/render split | Should remain unchanged | Low | Feed blocks through existing input; do not add ADF there. |
 | `packages/export-wiring/src/jobs/*-job-executor.ts` | PDF and TypeScript-DOCX executors | Consumed only | Low | Do not change unless a proven neutral input field is missing. |
 | Export-job request/validation | Closed v1 request | Must remain locator-only | Low if unchanged; high if `bodyFormat` added | Keep representation out of request v1. |
@@ -885,12 +928,12 @@ The key contracts are favorable: `createPdfExportJobExecutor()` and `createTypes
 
 ### 8.3 Sequencing
 
-Recommended landing order:
+Completed landing order:
 
-1. Keep WP1–WP4 main-compatible while the durable CLI runtime evolves in parallel; treat its host-owned resolution contracts as the later integration target, not as this branch's base.
+1. Keep WP1–WP4 main-compatible while the durable CLI runtime evolves; treat its host-owned resolution contracts as the later integration target.
 2. Land WP1–WP4: safe client read, ADF validator/decoder, dispatcher, and differential fixtures.
 3. Land WP5–WP7: representation-neutral tree plus CLI `resolveInput()` integration and compatibility gates.
-4. Re-resolve the current export-jobs stack, then rebase/regenerate API, closure, and browser-harness artifacts after any newer slices that own those files.
+4. Synchronize the current `main`, then regenerate API, closure, and browser-harness artifacts.
 5. Integrate WP8 with the production background host-routing slice; ADF starts inside its `resolveInput()`.
 6. Run WP9 and enable ADF-primary independently for CLI and background extension after their own parity gates.
 
@@ -1031,7 +1074,7 @@ Rollback switches only the source adapter to Storage-primary. It must not bypass
 - [x] CLI TypeScript DOCX and PDF are ADF-primary under the rollout flag.
 - [x] Includes, Page Properties, excerpts, and live macro/export-view behavior retain their Storage sidecar path.
 - [x] Macro and media identity is correlation-proven or visibly degraded.
-- [ ] Background integration starts inside the durable job's `resolveInput()` and does not change request v1.
+- [x] Background integration starts inside the durable job's `resolveInput()` and does not change request v1.
 - [x] Ready-to-render recovery performs no source refetch.
 - [x] Direct/background notes, completeness, report, and artifact parity gates pass.
 - [x] Browser/package/API/closure/full-suite/live-E2E gates pass.

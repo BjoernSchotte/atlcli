@@ -8,7 +8,7 @@
 
 ```ts
 // export: attachmentLookupFromClient
-export declare function attachmentLookupFromClient(client: ConfluenceClient): AttachmentLookupPort;
+export declare function attachmentLookupFromClient(client: ConfluenceClient, signal?: AbortSignal): AttachmentLookupPort;
 
 // export: BuildMacroOptionsArgs
 export interface BuildMacroOptionsArgs {
@@ -60,7 +60,7 @@ export interface CheckpointedOrderedSourcePipelineResultV1<Cursor> {
 export declare function classifyClientError(err: unknown, service: string): never;
 
 // export: confluenceContentPortFromClient
-export declare function confluenceContentPortFromClient(client: ConfluenceClient): ConfluenceContentPort;
+export declare function confluenceContentPortFromClient(client: ConfluenceClient, signal?: AbortSignal): ConfluenceContentPort;
 
 // export: ConfluenceInputPreparationError
 export declare class ConfluenceInputPreparationError extends Error {
@@ -85,6 +85,9 @@ export declare class ConfluenceSourceResolutionError extends Error {
     readonly code: "confluence-source-resolution-failed";
     constructor();
 }
+
+// export: confluenceSourceResolverPortFromClientV1
+export declare function confluenceSourceResolverPortFromClientV1(client: TreeSourceClient): ConfluenceSourceResolverPortV1;
 
 // export: ConfluenceSourceResolverPortV1
 export interface ConfluenceSourceResolverPortV1 {
@@ -131,6 +134,9 @@ export interface CreateConfluencePdfResolveInputOptionsV1 extends SharedSourceOp
 export declare function createConfluencePdfResolveInputV1(options: CreateConfluencePdfResolveInputOptionsV1): (request: PdfExportJobRequestV1, context: ExportJobExecutionContext) => Promise<{
     input: PdfExportJobEngineInputV1;
     env: Omit<PreparePdfExportEnv, "now">;
+    telemetry: {
+        sourcePageCount: number;
+    };
 }>;
 
 // export: createExternalAssetFetcher
@@ -168,7 +174,7 @@ export interface ExportAssetSourceV1<Reference> {
 }
 
 // export: exportViewPortFromClient
-export declare function exportViewPortFromClient(client: ConfluenceClient): ExportViewPort;
+export declare function exportViewPortFromClient(client: ConfluenceClient, signal?: AbortSignal): ExportViewPort;
 
 // export: EXTERNAL_ASSET_MAX_BYTES
 export declare const EXTERNAL_ASSET_MAX_BYTES: number;
@@ -281,7 +287,7 @@ export interface JiraIssueLike {
 }
 
 // export: jiraIssuePortFromClient
-export declare function jiraIssuePortFromClient(client: JiraClientLike, browseBaseUrl: string): JiraIssuePort;
+export declare function jiraIssuePortFromClient(client: JiraClientLike, browseBaseUrl: string, signal?: AbortSignal): JiraIssuePort;
 
 // export: jiraIssueRef
 export declare function jiraIssueRef(issue: JiraIssueLike, browseBaseUrl: string): JiraIssueRef;
@@ -347,6 +353,7 @@ export interface ResolveConfluenceSourceOptionsV1 {
     onProgress?: (progress: ConfluenceSourceProgressV1) => void;
     bodyOptions?: Omit<PageBodyToBlocksOptions, "exporter" | "pageContext">;
     sourcePlanCheckpoint?: ConfluenceSourcePlanCheckpointOptionsV1;
+    bodyStore?: ExportTreeBodyStoreV1;
 }
 
 // export: resolveConfluenceSourceV1
@@ -466,6 +473,9 @@ export declare const TRUST_ROUTING_PROBE_REF: PdfAssetRef;
 ### Entry point `./jobs`
 
 ```ts
+// export: checkpointDocxAssetsV1
+export declare function checkpointDocxAssetsV1(context: ExportJobExecutionContext, requestKey: string, delegate: AssetFetcher): AssetFetcher;
+
 // export: CheckpointedOrderedSourcePipelineOptionsV1
 export interface CheckpointedOrderedSourcePipelineOptionsV1<Value, Cursor, Result> {
     jobId: string;
@@ -494,6 +504,9 @@ export interface CheckpointedOrderedSourcePipelineResultV1<Cursor> {
     committedCount: number;
     latestCheckpoint?: PersistedOrderedSourceCheckpointV1<Cursor>;
 }
+
+// export: checkpointPdfAssetsV1
+export declare function checkpointPdfAssetsV1(context: ExportJobExecutionContext, requestKey: string, delegate: PdfAssetResolver): PdfAssetResolver;
 
 // export: ConfluenceInputPreparationError
 export declare class ConfluenceInputPreparationError extends Error {
@@ -558,6 +571,9 @@ export declare class ConfluenceSourceResolutionError extends Error {
     constructor();
 }
 
+// export: confluenceSourceResolverPortFromClientV1
+export declare function confluenceSourceResolverPortFromClientV1(client: TreeSourceClient): ConfluenceSourceResolverPortV1;
+
 // export: ConfluenceSourceResolverPortV1
 export interface ConfluenceSourceResolverPortV1 {
     createTreeSource(context: ConfluenceSourceReadContextV1): TreeSource;
@@ -603,7 +619,16 @@ export interface CreateConfluencePdfResolveInputOptionsV1 extends SharedSourceOp
 export declare function createConfluencePdfResolveInputV1(options: CreateConfluencePdfResolveInputOptionsV1): (request: PdfExportJobRequestV1, context: ExportJobExecutionContext) => Promise<{
     input: PdfExportJobEngineInputV1;
     env: Omit<PreparePdfExportEnv, "now">;
+    telemetry: {
+        sourcePageCount: number;
+    };
 }>;
+
+// export: createConfluenceSourcePlanSpoolV1
+export declare function createConfluenceSourcePlanSpoolV1(context: ExportJobExecutionContext): ConfluenceSourcePlanStoreV1;
+
+// export: createExportTreeBodySpoolV1
+export declare function createExportTreeBodySpoolV1(context: ExportJobExecutionContext, requestKey: string): ExportTreeBodyStoreV1;
 
 // export: createPdfExportJobExecutor
 export declare function createPdfExportJobExecutor(options: CreatePdfExportJobExecutorOptionsV1): ExportJobExecutor<PdfExportJobRequestV1>;
@@ -613,6 +638,9 @@ export interface CreatePdfExportJobExecutorOptionsV1 {
     resolveInput(request: PdfExportJobRequestV1, context: ExportJobExecutionContext): Promise<{
         input: PdfExportJobEngineInputV1;
         env: Omit<PreparePdfExportEnv, "now">;
+        telemetry?: {
+            sourcePageCount: number;
+        };
     }>;
     readyToRender: PdfReadyToRenderStoreV1;
     estimateRender(input: PdfExportJobEngineInputV1, request: PdfExportJobRequestV1): ResourceEstimateV1;
@@ -627,7 +655,7 @@ export declare function createTypescriptDocxExportJobExecutor(options: CreateTyp
 
 // export: CreateTypescriptDocxExportJobExecutorOptionsV1
 export interface CreateTypescriptDocxExportJobExecutorOptionsV1 {
-    resolveInput(request: DocxExportJobRequestV1, context: ExportJobExecutionContext): Promise<TypescriptDocxExportJobEngineInputV1>;
+    resolveInput(request: DocxExportJobRequestV1, context: ExportJobExecutionContext): Promise<TypescriptDocxExportJobResolvedInputV1>;
     estimateRender(input: TypescriptDocxExportJobEngineInputV1, request: DocxExportJobRequestV1): ResourceEstimateV1;
     templates: DocxPinnedTemplatePortV1;
     readyToRender: DocxReadyToRenderStoreV1;
@@ -655,6 +683,7 @@ export interface DocxExportResultIntentV1 {
     reportRef: string;
     reportSha256: string;
     reportSummary: ExportReportSummaryV1;
+    telemetry?: ExportJobResultTelemetryV1;
 }
 
 // export: DocxExportResultRecoveryKeyV1
@@ -688,6 +717,7 @@ export interface DocxExportResultStoreV1 {
 // export: DocxPinnedTemplatePortV1
 export interface DocxPinnedTemplatePortV1 {
     resolve(input: {
+        jobId: string;
         recordKey: string;
         expectedSha256: string;
         signal: AbortSignal;
@@ -718,6 +748,7 @@ export interface DocxReadyToRenderCheckpointV1 {
     preparedSha256: string;
     template: DocxTemplateBindingV1;
     estimate: ResourceEstimateV1;
+    sourcePageCount?: number;
     renderAttempts: number;
 }
 
@@ -736,6 +767,7 @@ export interface DocxReadyToRenderStoreV1 {
         binding: DocxPreparedPayloadBindingV1;
         template: DocxTemplateBindingV1;
         estimate: ResourceEstimateV1;
+        sourcePageCount?: number;
         signal: AbortSignal;
     }): Promise<DocxReadyToRenderCheckpointV1>;
     materialize(input: {
@@ -865,6 +897,7 @@ export interface PdfExportResultIntentV1 {
     reportRef: string;
     reportSha256: string;
     reportSummary: ExportReportSummaryV1;
+    telemetry?: ExportJobResultTelemetryV1;
 }
 
 // export: PdfExportResultRecoveryKeyV1
@@ -911,6 +944,7 @@ export interface PdfReadyToRenderCheckpointV1 {
     preparedByteLength: number;
     preparedSha256: string;
     estimate: ResourceEstimateV1;
+    sourcePageCount?: number;
     renderAttempts: number;
 }
 
@@ -928,6 +962,7 @@ export interface PdfReadyToRenderStoreV1 {
         prepared: PreparedPdfExportV1;
         binding: PdfPreparedPayloadBindingV1;
         estimate: ResourceEstimateV1;
+        sourcePageCount?: number;
         signal: AbortSignal;
     }): Promise<PdfReadyToRenderCheckpointV1>;
     materialize(input: {
@@ -996,6 +1031,7 @@ export interface ResolveConfluenceSourceOptionsV1 {
     onProgress?: (progress: ConfluenceSourceProgressV1) => void;
     bodyOptions?: Omit<PageBodyToBlocksOptions, "exporter" | "pageContext">;
     sourcePlanCheckpoint?: ConfluenceSourcePlanCheckpointOptionsV1;
+    bodyStore?: ExportTreeBodyStoreV1;
 }
 
 // export: resolveConfluenceSourceV1
@@ -1059,4 +1095,11 @@ export interface StreamedExportAssetResultV1<Result> {
 
 // export: TypescriptDocxExportJobEngineInputV1
 export type TypescriptDocxExportJobEngineInputV1 = Omit<ExportInput, "templateBytes" | "signal" | "onProgress">;
+
+// export: TypescriptDocxExportJobResolvedInputV1
+export type TypescriptDocxExportJobResolvedInputV1 = TypescriptDocxExportJobEngineInputV1 & {
+    jobTelemetry?: {
+        sourcePageCount: number;
+    };
+};
 ```

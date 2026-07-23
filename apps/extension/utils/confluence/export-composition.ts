@@ -38,6 +38,7 @@ import {
   type ExportNode,
   type ExportNote,
   type ExportScope,
+  type ExportTreeBodyStoreV1,
   type LabelFilter,
   type TreeFetchProgress,
   type TreeSource,
@@ -81,6 +82,8 @@ export interface ExportCompositionInput {
   /** Left at the engine default (`strict`) unless the host chooses otherwise. */
   completenessMode?: CompletenessMode;
   maxPages?: number;
+  /** Queued-export page/block spool; direct preview/export callers omit it. */
+  bodyStore?: ExportTreeBodyStoreV1;
   signal?: AbortSignal;
   /** `{ fetched, total, currentTitle }` — one call per fetched page body. */
   onProgress?: (progress: TreeFetchProgress) => void;
@@ -208,6 +211,7 @@ export async function resolveExportComposition(
     ...(input.labels ? { labels: input.labels } : {}),
     ...(input.completenessMode ? { completenessMode: input.completenessMode } : {}),
     ...(input.maxPages !== undefined ? { maxPages: input.maxPages } : {}),
+    ...(input.bodyStore ? { bodyStore: input.bodyStore } : {}),
     ...(input.signal ? { signal: input.signal } : {}),
     ...(input.onProgress ? { onProgress: input.onProgress } : {}),
   });

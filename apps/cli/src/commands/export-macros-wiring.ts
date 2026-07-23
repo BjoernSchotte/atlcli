@@ -61,6 +61,8 @@ export interface BuildMacroOptionsArgs {
    * ones that are chapters of it. Omitted for single-page exports.
    */
   chapterAnchorById?: ReadonlyMap<string, string>;
+  /** Cancels in-flight macro, attachment, and export-view requests. */
+  signal?: AbortSignal;
 }
 
 /**
@@ -78,5 +80,6 @@ export function buildMacroResolutionOptions(args: BuildMacroOptionsArgs): MacroR
     ...(args.live !== undefined ? { live: args.live } : {}),
     ...(args.nativeTocPresent !== undefined ? { nativeTocPresent: args.nativeTocPresent } : {}),
     ...(args.chapterAnchorById ? { chapterAnchorById: args.chapterAnchorById } : {}),
+    ...(args.signal ? { signal: args.signal } : {}),
   });
 }

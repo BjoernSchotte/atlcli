@@ -35,11 +35,272 @@ export declare function confluenceTreeSource(profile: Profile): TreeSource;
 // export: createAssetByteCache
 export declare function createAssetByteCache(baseUrl: string, cacheDir?: string): AssetByteCache;
 
+// export: createFileDocxExportResultStore
+export declare function createFileDocxExportResultStore(options: FileExecutorStoreOptionsV1): DocxExportResultStoreV1;
+
+// export: createFileDocxReadyToRenderStore
+export declare function createFileDocxReadyToRenderStore(options: FileExecutorStoreOptionsV1): DocxReadyToRenderStoreV1;
+
+// export: createFileDocxRenderReservationPort
+export declare function createFileDocxRenderReservationPort(lock: FileExportLock): DocxRenderReservationPortV1;
+
+// export: createFileExportExecutionContext
+export declare function createFileExportExecutionContext(options: CreateFileExportExecutionContextOptionsV1): FileExportExecutionRuntime;
+
+// export: CreateFileExportExecutionContextOptionsV1
+export interface CreateFileExportExecutionContextOptionsV1 {
+    claimed: ExportJobSnapshotV1;
+    jobs: FileExportJobStore;
+    spool: FileExportSpoolStore;
+    artifacts: FileExportArtifactStore;
+    spoolLimits: SpoolWriteLimitsV1;
+    leaseDurationMs?: number;
+    heartbeatIntervalMs?: number;
+    cancelPollMs?: number;
+    now?: () => number;
+    signal?: AbortSignal;
+}
+
+// export: createFileExportJobPersistence
+export declare function createFileExportJobPersistence(options?: FileExportJobPersistenceOptionsV1): FileExportJobPersistenceV1;
+
+// export: createFilePdfExportResultStore
+export declare function createFilePdfExportResultStore(options: FileExecutorStoreOptionsV1): PdfExportResultStoreV1;
+
+// export: createFilePdfReadyToRenderStore
+export declare function createFilePdfReadyToRenderStore(options: FileExecutorStoreOptionsV1): PdfReadyToRenderStoreV1;
+
+// export: createFilePdfRenderReservationPort
+export declare function createFilePdfRenderReservationPort(lock: FileExportLock): PdfRenderReservationPortV1;
+
 // export: defaultTemplateSource
 export declare function defaultTemplateSource(): TemplateSource;
 
+// export: deliverFileExportArtifact
+export declare function deliverFileExportArtifact(store: ExportArtifactStore, artifact: ExportArtifactV1, targetPath: string, options?: {
+    overwriteExisting?: boolean;
+    signal?: AbortSignal;
+}): Promise<void>;
+
 // export: dirPdfOutputSink
 export declare function dirPdfOutputSink(outDir: string): PdfOutputSink;
+
+// export: ExportArtifactDeliveryError
+export declare class ExportArtifactDeliveryError extends Error {
+    constructor(message: string);
+}
+
+// export: exportJobStateDir
+export declare function exportJobStateDir(): string;
+
+// export: FileExecutorStoreOptionsV1
+export interface FileExecutorStoreOptionsV1 {
+    jobs: FileExportJobStore;
+    spool: FileExportSpoolStore;
+    rootDir: string;
+    spoolLimits: SpoolWriteLimitsV1;
+    now?: () => number;
+}
+
+// export: FileExportArtifactFinalizer
+export interface FileExportArtifactFinalizer {
+    commitFinalization(intent: ExportArtifactFinalizationIntentV1): Promise<ExportArtifactV1>;
+}
+
+// export: FileExportArtifactStore
+export declare class FileExportArtifactStore implements ExportArtifactStore {
+    #private;
+    readonly rootDir: string;
+    constructor(rootDir: string, options?: {
+        now?: () => number;
+        lockTtlMs?: number;
+        maxArtifactBytes?: number;
+        maxTotalBytes?: number;
+    });
+    stage(jobId: string, leaseEpoch: number, artifact: PendingArtifactV1, options?: {
+        signal?: AbortSignal;
+    }): Promise<StagedArtifactV1>;
+    getStaged(jobId: string, leaseEpoch: number): Promise<StagedArtifactV1 | undefined>;
+    read(ref: string, options?: {
+        signal?: AbortSignal;
+    }): AsyncIterable<Uint8Array>;
+    deleteStaged(ref: string): Promise<void>;
+    deleteStagedEpoch(jobId: string, leaseEpoch: number): Promise<ExportByteCleanupResultV1>;
+    cleanupJob(jobId: string): Promise<ExportByteCleanupResultV1>;
+    commitFinalization(intent: ExportArtifactFinalizationIntentV1): Promise<ExportArtifactV1>;
+}
+
+// export: FileExportExecutionRuntime
+export interface FileExportExecutionRuntime {
+    context: ExportJobExecutionContext;
+    snapshot(): Promise<ExportJobSnapshotV1>;
+    requestCancellation(at?: number): Promise<void>;
+    stop(): Promise<void>;
+}
+
+// export: FileExportJobPersistenceOptionsV1
+export interface FileExportJobPersistenceOptionsV1 {
+    rootDir?: string;
+    now?: () => number;
+    lockTtlMs?: number;
+    maxArtifactBytes?: number;
+    maxTotalArtifactBytes?: number;
+    spoolLimits?: SpoolWriteLimitsV1;
+}
+
+// export: FileExportJobPersistenceV1
+export interface FileExportJobPersistenceV1 {
+    rootDir: string;
+    jobs: FileExportJobStore;
+    spool: FileExportSpoolStore;
+    artifacts: FileExportArtifactStore;
+    heavyRenderLock: FileExportLock;
+    spoolLimits: SpoolWriteLimitsV1;
+    pdfReadyToRender: ReturnType<typeof createFilePdfReadyToRenderStore>;
+    docxReadyToRender: ReturnType<typeof createFileDocxReadyToRenderStore>;
+    pdfResults: ReturnType<typeof createFilePdfExportResultStore>;
+    docxResults: ReturnType<typeof createFileDocxExportResultStore>;
+    pdfRenderReservations: ReturnType<typeof createFilePdfRenderReservationPort>;
+    docxRenderReservations: ReturnType<typeof createFileDocxRenderReservationPort>;
+}
+
+// export: FileExportJobStore
+export declare class FileExportJobStore implements ExportJobStore, ExportJobEventReaderV1 {
+    #private;
+    readonly rootDir: string;
+    constructor(rootDir: string, options?: FileExportJobStoreOptions);
+    create(input: ExportJobCreateV1): Promise<ExportJobSnapshotV1>;
+    get(id: string): Promise<ExportJobSnapshotV1 | undefined>;
+    getRequest(ref: string): Promise<ExportJobRequestV1 | undefined>;
+    list(query?: ExportJobQueryV1 & {
+        createdAfter?: number;
+    }): Promise<ExportJobSnapshotV1[]>;
+    claimNext(claim: ExportJobClaimV1): Promise<ExportJobSnapshotV1 | undefined>;
+    compareAndSet(update: ExportJobUpdateV1): Promise<ExportJobSnapshotV1>;
+    appendEvent(id: string, input: ExportJobEventAppendV1): Promise<void>;
+    readEvents(id: string, query?: ExportJobEventQueryV1): Promise<ExportJobEventPageV1>;
+    finalizeArtifact(input: ExportJobFinalizeV1): Promise<ExportJobSnapshotV1>;
+    reconcilePreparedArtifactFinalizations(): Promise<number>;
+    loadExecutorCheckpoint<T>(key: string): Promise<{
+        checkpoint: T;
+        manifestRef: import("@atlcli/export-jobs").SpoolRefV1;
+    } | undefined>;
+    commitExecutorCheckpoint<T>(input: {
+        key: string;
+        jobId: string;
+        leaseEpoch: number;
+        checkpoint: T & {
+            ref: string;
+        };
+        manifestRef: import("@atlcli/export-jobs").SpoolRefV1;
+        at: number;
+    }): Promise<T>;
+    advanceExecutorCheckpointAttempt<T extends {
+        renderAttempts: number;
+    }>(input: {
+        key: string;
+        jobId: string;
+        leaseEpoch: number;
+        expected: T;
+    }): Promise<T>;
+    prepareExecutorResult(input: {
+        key: string;
+        jobId: string;
+        leaseEpoch: number;
+        intent: unknown;
+        reportRef: string;
+        reportPath: string;
+    }): Promise<unknown>;
+    completeExecutorResult(input: {
+        key: string;
+        jobId: string;
+        leaseEpoch: number;
+        intent: unknown;
+        result: import("@atlcli/export-jobs").ExportJobExecutionResultV1;
+    }): Promise<void>;
+    loadExecutorResult<TIntent>(key: string): Promise<{
+        intent: TIntent;
+        result?: import("@atlcli/export-jobs").ExportJobExecutionResultV1;
+    } | undefined>;
+    resolveExecutorReportPath(reportRef: string): Promise<string | undefined>;
+    cleanupReleasedReportPayloads(jobId: string): Promise<number>;
+    acknowledge(id: string, expectedRevision: number, at: number): Promise<ExportJobSnapshotV1>;
+    dismiss(id: string, expectedRevision: number, at: number): Promise<ExportJobSnapshotV1>;
+    deliver(id: string, expectedRevision: number, at: number): Promise<ExportJobSnapshotV1>;
+    deleteTerminal(query: ExportJobDeleteQueryV1): Promise<ExportJobDeleteResultV1>;
+    listTombstones(query?: ExportJobTombstoneQueryV1): Promise<ExportJobTombstoneV1[]>;
+    getTombstone(jobId: string): Promise<ExportJobTombstoneV1 | undefined>;
+    markTombstoneCleanupComplete(jobId: string, ref: string, at: number): Promise<ExportJobTombstoneV1>;
+}
+
+// export: FileExportJobStoreConflict
+export declare class FileExportJobStoreConflict extends Error {
+    readonly code: string;
+    constructor(code: string, message: string);
+}
+
+// export: FileExportJobStoreOptions
+export interface FileExportJobStoreOptions {
+    now?: () => number;
+    lockTtlMs?: number;
+    artifactFinalizer?: FileExportArtifactFinalizer;
+}
+
+// export: FileExportLock
+export declare class FileExportLock {
+    #private;
+    readonly path: string;
+    constructor(path: string, options?: FileExportLockOptions);
+    acquire(options?: {
+        signal?: AbortSignal;
+        label?: string;
+    }): Promise<FileExportLockLease>;
+}
+
+// export: FileExportLockLease
+export interface FileExportLockLease {
+    readonly nonce: string;
+    readonly expiresAt: number;
+    refresh(): Promise<void>;
+    assertOwned(): Promise<void>;
+    release(): Promise<void>;
+}
+
+// export: FileExportLockOptions
+export interface FileExportLockOptions {
+    ttlMs?: number;
+    pollMs?: number;
+    now?: () => number;
+}
+
+// export: FileExportRetentionSweepResultV1
+export interface FileExportRetentionSweepResultV1 {
+    payloadReleases: number;
+    historyDeleted: number;
+    tombstonesReconciled: number;
+}
+
+// export: FileExportSpoolStore
+export declare class FileExportSpoolStore implements ExportSpoolStore {
+    #private;
+    readonly rootDir: string;
+    constructor(rootDir: string, options?: {
+        now?: () => number;
+        lockTtlMs?: number;
+    });
+    put(ref: SpoolRefV1, source: AsyncIterable<Uint8Array>, limits: SpoolWriteLimitsV1, options?: {
+        signal?: AbortSignal;
+    }): Promise<SpoolObjectV1>;
+    read(ref: SpoolRefV1, options?: {
+        signal?: AbortSignal;
+    }): AsyncIterable<Uint8Array>;
+    stat(ref: SpoolRefV1): Promise<SpoolObjectV1 | undefined>;
+    listNamespaceRefs(jobId: string, leaseEpoch: number): Promise<SpoolRefV1[]>;
+    deleteNamespace(jobId: string, leaseEpoch: number, options?: {
+        preserve?: readonly SpoolRefV1[];
+    }): Promise<ExportByteCleanupResultV1>;
+    cleanupJob(jobId: string): Promise<ExportByteCleanupResultV1>;
+}
 
 // export: fileOutputSink
 export declare function fileOutputSink(path: string): OutputSink;
@@ -83,8 +344,37 @@ export interface NodePdfEnvOptions {
 // export: nodeTemplateSource
 export declare function nodeTemplateSource(templatePath?: string): TemplateSource;
 
+// export: readFileExportReport
+export declare function readFileExportReport<T = unknown>(jobs: FileExportJobStore, reportRef: string): Promise<T | undefined>;
+
+// export: reconcileStaleExportJobs
+export declare function reconcileStaleExportJobs(jobs: FileExportJobStore, stores: {
+    spool: FileExportSpoolStore;
+    artifacts: FileExportArtifactStore;
+}, now?: number): Promise<ReconcileStaleExportJobsResultV1>;
+
+// export: ReconcileStaleExportJobsResultV1
+export interface ReconcileStaleExportJobsResultV1 {
+    finalizationsRecovered: number;
+    requeued: string[];
+    interrupted: string[];
+    cancelled: string[];
+}
+
 // export: resvgSvgRasterizer
 export declare function resvgSvgRasterizer(assets?: ResvgRasterizerAssets): SvgRasterizer;
+
+// export: runClaimedFileExportJob
+export declare function runClaimedFileExportJob(options: RunClaimedFileExportJobOptionsV1): Promise<ExportJobSnapshotV1>;
+
+// export: RunClaimedFileExportJobOptionsV1
+export interface RunClaimedFileExportJobOptionsV1 extends Omit<CreateFileExportExecutionContextOptionsV1, "claimed"> {
+    claimed: ExportJobSnapshotV1;
+    executor: ExportJobExecutor<ExportJobRequestV1>;
+}
+
+// export: sweepFileExportJobRetentionV1
+export declare function sweepFileExportJobRetentionV1(persistence: FileExportJobPersistenceV1, now: number): Promise<FileExportRetentionSweepResultV1>;
 
 // export: tokenAssetFetcher
 export declare function tokenAssetFetcher(client: AssetClient, cache: Pick<AssetByteCache, "getOrLoad">): {
@@ -104,4 +394,11 @@ export declare function tokenPdfAssetResolver(client: AssetClient, baseUrl: stri
 
 // export: unsupportedAssetFetcher
 export declare function unsupportedAssetFetcher(reason?: string): AssetFetcher;
+
+// export: watchFileExportJobEvents
+export declare function watchFileExportJobEvents(jobs: FileExportJobStore, jobId: string, options?: {
+    afterSeq?: number;
+    pollMs?: number;
+    signal?: AbortSignal;
+}): AsyncIterable<import("@atlcli/export-jobs").ExportJobEventV1>;
 ```

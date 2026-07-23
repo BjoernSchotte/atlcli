@@ -44,9 +44,6 @@ export interface LoadedExportTemplate {
  * / `$scroll.exportdate` / `$scroll.content` placeholders, so the zero-template
  * path is guaranteed to leave nothing unfilled.
  *
- * `--engine python` deliberately keeps requiring the flag — docxtpl has no
- * bundled default to fall back to.
- *
  * The fallback ALWAYS emits its note: an output whose template the user never
  * named must not be a mystery. `info`, not `warning` — nothing is wrong with
  * this export, and it must not fail `--strict`.
@@ -83,7 +80,10 @@ export async function loadExportTemplate(
 }
 
 interface MentionClient {
-  getUsersBulk(accountIds: string[]): Promise<Map<string, { displayName: string | null } | null>>;
+  getUsersBulk(
+    accountIds: string[],
+    options?: { signal?: AbortSignal },
+  ): Promise<Map<string, { displayName: string | null } | null>>;
 }
 
 /**
@@ -93,9 +93,12 @@ interface MentionClient {
  * tree/space document happens upstream in `resolveExportMentions` (one bulk call
  * per unique id set).
  */
-export function tokenMentionLookup(client: MentionClient): ExportMentionLookup {
+export function tokenMentionLookup(
+  client: MentionClient,
+  signal?: AbortSignal,
+): ExportMentionLookup {
   return async (accountIds) => {
-    const users = await client.getUsersBulk(accountIds);
+    const users = await client.getUsersBulk(accountIds, { signal });
     const out = new Map<string, string | null>();
     for (const id of accountIds) out.set(id, users.get(id)?.displayName ?? null);
     return out;

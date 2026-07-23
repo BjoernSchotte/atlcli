@@ -8,15 +8,91 @@
  * load-bearing `true` return is unit-tested.
  */
 import { handleOffscreenMessage } from "../../utils/listeners.js";
+import type {
+  ExportJobExecutor,
+  ExportJobRequestV1,
+  ExportJobSnapshotV1,
+} from "@atlcli/export-jobs";
 import { ChromeWorkerCompilerHost } from "../../utils/pdf/compiler-host.js";
+import { IndexedDbExportJobCatalog } from "../../utils/export-jobs/catalog.js";
+import { IndexedDbExportByteStore } from "../../utils/export-jobs/chunk-store.js";
+import {
+  createProductiveExtensionPdfExecutor,
+  EXTENSION_PDF_MAX_OUTPUT_BYTES_V1,
+  EXTENSION_PDF_SPOOL_LIMITS_V1,
+} from "../../utils/export-jobs/pdf-executor.js";
+import { createExtensionExportQueueRunner } from "../../utils/export-jobs/queue-runner.js";
+import { BrowserRenderReservationPoolV1 } from "../../utils/export-jobs/render-reservation.js";
+import { runClaimedExtensionExportJob } from "../../utils/export-jobs/runtime.js";
 
 const pdfHost = new ChromeWorkerCompilerHost({
   createWorker: () =>
     new Worker(new URL("../../workers/pdf-compiler.ts", import.meta.url), {
       type: "module",
       name: "atlcli-pdf-compiler",
-    }),
+  }),
 });
+
+const exportCatalog = new IndexedDbExportJobCatalog();
+const exportBytes = new IndexedDbExportByteStore({
+  maxArtifactBytes: EXTENSION_PDF_MAX_OUTPUT_BYTES_V1,
+  maxJobBytes: EXTENSION_PDF_SPOOL_LIMITS_V1.maxJobBytes,
+  maxTotalBytes: EXTENSION_PDF_SPOOL_LIMITS_V1.maxTotalBytes,
+});
+// PR-H binds DOCX to this exact pool as well. The global heavy slot therefore
+// already lives at the host boundary rather than inside either format engine.
+const renderPool = new BrowserRenderReservationPoolV1();
+const pdfExecutor = createProductiveExtensionPdfExecutor({
+  catalog: exportCatalog,
+  bytes: exportBytes,
+  compilerHost: pdfHost,
+  renderPool,
+});
+let docxExecutorPromise:
+  | Promise<ExportJobExecutor<ExportJobRequestV1>>
+  | undefined;
+
+function docxExecutor(): Promise<ExportJobExecutor<ExportJobRequestV1>> {
+  return docxExecutorPromise ??= import(
+    "../../utils/export-jobs/docx-executor.js"
+  ).then(({ createProductiveExtensionDocxExecutor }) =>
+    createProductiveExtensionDocxExecutor({
+      bytes: exportBytes,
+      renderPool,
+    })
+  );
+}
+
+async function executeClaimedExport(claimed: ExportJobSnapshotV1) {
+  const executor = claimed.format === "docx"
+    ? await docxExecutor()
+    : pdfExecutor;
+  return runClaimedExtensionExportJob({
+    claimed,
+    catalog: exportCatalog,
+    bytes: exportBytes,
+    executor,
+    // Both productive browser engines intentionally share this envelope.
+    spoolLimits: EXTENSION_PDF_SPOOL_LIMITS_V1,
+  });
+}
+
+const exportQueue = createExtensionExportQueueRunner({
+  catalog: exportCatalog,
+  bytes: exportBytes,
+  execute: executeClaimedExport,
+  onExecutionError: (error, jobId) =>
+    console.error(`Common export job ${jobId} failed outside its executor`, error),
+  onSettled: async (jobId) => {
+    await chrome.runtime.sendMessage({
+      kind: "jobs:changed",
+      jobId,
+    }).catch(() => undefined);
+  },
+});
+void exportQueue.startup()
+  .then(() => exportQueue.wake(undefined, { scheduleRecovery: true }))
+  .catch((error) => console.error("Common export queue recovery failed", error));
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) =>
   handleOffscreenMessage(message, sendResponse, {
@@ -32,5 +108,6 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) =>
       return result.ok ? { ok: true } : { ok: false, error: result.error };
     },
     runPdfCancel: (jobId) => pdfHost.cancel(jobId),
+    runJobsWake: (jobIds, options) => exportQueue.wake(jobIds, options),
   })
 );

@@ -1,4 +1,7 @@
-import type { ConfluencePageDetails } from "@atlcli/confluence";
+import type {
+  ConfluencePageDetails,
+  ExportTreeBodyStoreV1,
+} from "@atlcli/confluence";
 import type {
   DocxExportJobRequestV1,
   ExportJobExecutionContext,
@@ -25,12 +28,23 @@ type SharedSourceOptionsV1 = Pick<
     request: PdfExportJobRequestV1 | DocxExportJobRequestV1,
     context: ExportJobExecutionContext,
     progress: ConfluenceSourceProgressV1,
-  ) => void;
+  ) => void | Promise<void>;
   sourcePlan?: {
     store: ConfluenceSourcePlanStoreV1;
     /** Stable host capability/representation policy identity. */
     sourcePolicyKey: string;
   };
+  createSourcePlan?: (
+    request: PdfExportJobRequestV1 | DocxExportJobRequestV1,
+    context: ExportJobExecutionContext,
+  ) => {
+    store: ConfluenceSourcePlanStoreV1;
+    sourcePolicyKey: string;
+  };
+  createBodyStore?: (
+    request: PdfExportJobRequestV1 | DocxExportJobRequestV1,
+    context: ExportJobExecutionContext,
+  ) => ExportTreeBodyStoreV1;
 };
 
 export type PdfConfluenceResolvedInputExtrasV1 = Omit<
@@ -108,31 +122,78 @@ function sourceOptions<Request extends PdfExportJobRequestV1 | DocxExportJobRequ
   request: Request,
   context: ExportJobExecutionContext,
   exporter: "pdf" | "word",
+  onProgress?: (progress: ConfluenceSourceProgressV1) => void,
 ): ResolveConfluenceSourceOptionsV1 {
+  const sourcePlan = options.createSourcePlan?.(request, context) ?? options.sourcePlan;
   return {
     exporter,
     port: options.port,
     signal: context.signal,
     ...(options.bodyOptions ? { bodyOptions: options.bodyOptions } : {}),
     ...(options.resolveExternalUrl ? { resolveExternalUrl: options.resolveExternalUrl } : {}),
-    ...(options.onProgress
-      ? {
-          onProgress: (progress) => options.onProgress!(request, context, progress),
-        }
+    ...(options.createBodyStore
+      ? { bodyStore: options.createBodyStore(request, context) }
       : {}),
-    ...(options.sourcePlan
+    ...(onProgress ? { onProgress } : {}),
+    ...(sourcePlan
       ? {
           sourcePlanCheckpoint: {
             jobId: context.jobId,
             requestKey: request.idempotencyKey,
-            sourcePolicyKey: options.sourcePlan.sourcePolicyKey,
+            sourcePolicyKey: sourcePlan.sourcePolicyKey,
             leaseEpoch: context.leaseEpoch,
-            store: options.sourcePlan.store,
+            store: sourcePlan.store,
             publishCheckpointRef: (ref: string) => context.checkpoint(ref),
           },
         }
       : {}),
   };
+}
+
+function sourceProgressChannel(
+  options: SharedSourceOptionsV1,
+  request: PdfExportJobRequestV1 | DocxExportJobRequestV1,
+  context: ExportJobExecutionContext,
+): {
+  callback?: (progress: ConfluenceSourceProgressV1) => void;
+  settled(): Promise<void>;
+} {
+  if (!options.onProgress) return { settled: async () => {} };
+  let pending = Promise.resolve();
+  return {
+    callback(progress) {
+      pending = pending.then(() => options.onProgress!(request, context, progress));
+    },
+    settled: () => pending,
+  };
+}
+
+async function resolveSourceWithProgressV1(
+  options: SharedSourceOptionsV1,
+  request: PdfExportJobRequestV1 | DocxExportJobRequestV1,
+  context: ExportJobExecutionContext,
+  exporter: "pdf" | "word",
+): Promise<ResolvedConfluenceSourceV1> {
+  const progress = sourceProgressChannel(options, request, context);
+  let resolved: ResolvedConfluenceSourceV1 | undefined;
+  let sourceFailure: unknown;
+  try {
+    resolved = await resolveConfluenceSourceV1(
+      request.source,
+      sourceOptions(options, request, context, exporter, progress.callback),
+    );
+  } catch (error) {
+    sourceFailure = error;
+  } finally {
+    try {
+      await progress.settled();
+    } catch (progressFailure) {
+      if (sourceFailure === undefined) throw progressFailure;
+    }
+  }
+  if (sourceFailure !== undefined) throw sourceFailure;
+  if (!resolved) throw new Error("Confluence source resolution completed without a result.");
+  return resolved;
 }
 
 /** Bind the shared ADF/Storage resolver to the PDF executor's `resolveInput`. */
@@ -144,11 +205,14 @@ export function createConfluencePdfResolveInputV1(
 ) => Promise<{
   input: PdfExportJobEngineInputV1;
   env: Omit<PreparePdfExportEnv, "now">;
+  telemetry: { sourcePageCount: number };
 }> {
   return async (request, context) => {
-    const resolved = await resolveConfluenceSourceV1(
-      request.source,
-      sourceOptions(options, request, context, "pdf"),
+    const resolved = await resolveSourceWithProgressV1(
+      options,
+      request,
+      context,
+      "pdf",
     );
     const built = await prepareHostInputV1(
       context.signal,
@@ -167,6 +231,7 @@ export function createConfluencePdfResolveInputV1(
         },
       },
       env: built.env,
+      telemetry: { sourcePageCount: resolved.pageCount },
     };
   };
 }
@@ -183,9 +248,11 @@ export function createConfluenceDocxResolveInputV1(
   context: ExportJobExecutionContext,
 ) => Promise<TypescriptDocxExportJobEngineInputV1> {
   return async (request, context) => {
-    const resolved = await resolveConfluenceSourceV1(
-      request.source,
-      sourceOptions(options, request, context, "word"),
+    const resolved = await resolveSourceWithProgressV1(
+      options,
+      request,
+      context,
+      "word",
     );
     const built = await prepareHostInputV1(
       context.signal,
@@ -193,6 +260,7 @@ export function createConfluenceDocxResolveInputV1(
     );
     return {
       ...built.input,
+      jobTelemetry: { sourcePageCount: resolved.pageCount },
       details: {
         ...built.rootDetails,
         id: resolved.root.id,

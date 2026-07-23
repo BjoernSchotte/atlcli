@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import type { ExportBlock } from "@atlcli/confluence";
+import { AssetPipelineError, type ExportBlock } from "@atlcli/confluence";
 import { PDF_ASSET_CONCURRENCY, preparePdfDocument } from "./prepare.js";
 
 function pngBytes(unique = 0): Uint8Array {
@@ -481,6 +481,16 @@ describe("PDF alt-text audit", () => {
     });
     expect(altNotes(prepared.notes)).toHaveLength(1);
     expect(prepared.notes.map((note) => note.code)).toContain("image-embed-failed");
+  });
+
+  it("does not downgrade a durable asset-pipeline failure to a missing image", async () => {
+    await expect(
+      preparePdfDocument([image("Figure", "figure.png")], {
+        resolve: async () => {
+          throw new AssetPipelineError("asset checkpoint quota exceeded");
+        },
+      }),
+    ).rejects.toThrow("asset checkpoint quota exceeded");
   });
 
   it("reports a block path that locates the image inside nested containers", async () => {

@@ -29,4 +29,6 @@ export interface ExportSourceV1 {
   labels?: LabelFilter;
   completenessMode?: CompletenessMode;
   maxPages?: number;
+  /** Hard folder/discovery-node cap for tree and space traversal. */
+  maxFolders?: number;
 }

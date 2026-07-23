@@ -15,6 +15,7 @@ declare module "pizzip" {
     asArrayBuffer(): ArrayBuffer;
     name: string;
     dir: boolean;
+    date: Date;
   }
 
   interface PizZipGenerateOptions {

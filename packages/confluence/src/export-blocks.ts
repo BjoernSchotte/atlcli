@@ -2644,6 +2644,17 @@ function walkMacro(el: XmlElement, ctx: WalkCtx): ExportBlock[] {
     }];
   }
 
+  // Legacy Confluence layout macros are structural containers, not document
+  // content. Flatten them exactly like modern `<ac:layout>` cells: a `section`
+  // contains one or more `column` macros, and each column contributes its rich
+  // body in source order. Sending either wrapper through the unknown-macro
+  // fallback leaked user-visible "[section/column macro not rendered]" lines
+  // into DOCX/PDF even though all nested content was available.
+  if (macroName === "section" || macroName === "column") {
+    const body = childByName(el, "ac:rich-text-body");
+    return body ? walkBlocks(body.children, ctx) : [];
+  }
+
   // Multiexcerpt DEFINITION (`multiexcerpt-macro`/`multiexcerpt`, spec 004 E4):
   // the macro that defines a named excerpt on its page renders its body
   // transparently, same one-line treatment as `expand`. The *include*-side

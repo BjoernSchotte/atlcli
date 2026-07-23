@@ -5,6 +5,8 @@ import type { ExportReport, PreparedDocxExportV1 } from "@atlcli/docx";
 import type {
   DocxExportJobRequestV1,
   ExportJobExecutionContext,
+  ExportJobEventDraftV1,
+  ExportJobStatsV1,
   PendingArtifactV1,
   ResourceEstimateV1,
   StagedArtifactV1,
@@ -120,6 +122,7 @@ class MemoryReadyStore implements DocxReadyToRenderStoreV1 {
       preparedSha256: input.binding.sha256,
       template: input.template,
       estimate: input.estimate,
+      sourcePageCount: input.sourcePageCount,
       renderAttempts: 0,
     };
     return this.record;
@@ -187,6 +190,7 @@ function executionContext(
       async getStaged() { return undefined; },
     },
     async updateProgress(value) { await options.progress?.(value); },
+    async updateStats() {},
     async appendEvent() {},
     async checkpoint(ref) {
       if (options.checkpoint) {
@@ -219,6 +223,7 @@ function executorOptions(input: {
       order.push("resolve-input");
       if (input.resolveInput) return input.resolveInput(req, context);
       return {
+        jobTelemetry: { sourcePageCount: 4 },
         details,
         template: { name: "untrusted-name.docx", modificationDate: new Date(0) },
         macros: { registry: {} as never, contextFor: (() => ({})) as never },
@@ -298,6 +303,10 @@ describe("createTypescriptDocxExportJobExecutor", () => {
   it("reserves before resolving template/PizZip and stages one owned DOCX", async () => {
     const setup = executorOptions();
     const context = executionContext(setup.order);
+    const stats: ExportJobStatsV1[] = [];
+    const events: ExportJobEventDraftV1[] = [];
+    context.context.updateStats = async (value) => { stats.push(structuredClone(value)); };
+    context.context.appendEvent = async (event) => { events.push(structuredClone(event)); };
     const result = await createTypescriptDocxExportJobExecutor(setup.options).execute(
       await request(),
       context.context,
@@ -309,6 +318,14 @@ describe("createTypescriptDocxExportJobExecutor", () => {
     const bytes = context.artifactBytes();
     expect(bytes).toBeDefined();
     expect(readPart(bytes!, "word/document.xml")).toContain("DOCX job");
+    expect(stats).toHaveLength(1);
+    expect(stats[0]).toMatchObject({
+      pages: { discovered: 4, fetched: 4, composed: 4, skipped: 0 },
+      storage: { outputBytes: result.stagedArtifact.byteLength },
+      warnings: result.reportSummary!.issues.warning,
+      errors: result.reportSummary!.issues.error,
+    });
+    expect(events.every((event) => event.kind === "issue")).toBe(true);
     expect(setup.order.at(-1)).toBe("reservation-release");
   });
 
@@ -536,6 +553,10 @@ describe("createTypescriptDocxExportJobExecutor", () => {
   it("recovers a lost staged-result return in O(1) before reservation/materialization", async () => {
     const setup = executorOptions({ lostStageReturnOnce: true });
     const context = executionContext(setup.order);
+    const recoveredStats: ExportJobStatsV1[] = [];
+    context.context.updateStats = async (value) => {
+      recoveredStats.push(structuredClone(value));
+    };
     const executor = createTypescriptDocxExportJobExecutor(setup.options);
     await expect(executor.execute(await request(), context.context)).rejects.toThrow("lost result");
     const materializations = setup.ready.materializations;
@@ -545,6 +566,8 @@ describe("createTypescriptDocxExportJobExecutor", () => {
     expect(setup.ready.materializations).toBe(materializations);
     expect(setup.order.filter((value) => value === "reservation-acquire")).toHaveLength(reservations);
     expect(setup.order).toContain("result-recover");
+    expect(recoveredStats).toHaveLength(1);
+    expect(recoveredStats[0]?.pages.composed).toBe(4);
   });
 
   it("enforces the output estimate as a hard cap before result staging", async () => {
@@ -595,11 +618,15 @@ describe("createTypescriptDocxExportJobExecutor", () => {
       }),
     });
     const context = executionContext(order);
+    const progressStages: string[] = [];
+    context.context.updateProgress = async (progress) => { progressStages.push(progress.stage); };
     await createTypescriptDocxExportJobExecutor(setup.options).execute(await request(), context.context);
     expect(assetSignal).toBe(context.context.signal);
     expect(order.indexOf("reservation-acquire")).toBeLessThan(order.indexOf("asset-delegate"));
     expect(order.indexOf("asset-delegate")).toBeLessThan(order.indexOf("asset-reconcile"));
     expect(order.indexOf("asset-reconcile")).toBeLessThan(order.indexOf("ready-commit"));
+    expect(progressStages.indexOf("assets")).toBeGreaterThanOrEqual(0);
+    expect(progressStages.slice(progressStages.indexOf("assets") + 1)).not.toContain("compose");
   });
 
   it("keeps source-derived asset and output names out of durable progress", async () => {

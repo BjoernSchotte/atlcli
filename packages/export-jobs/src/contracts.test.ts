@@ -3,6 +3,9 @@ import { parseDocxExportJobRequestV1, parsePdfExportJobRequestV1 } from "./index
 import type {
   DocxExportJobRequestV1,
   ExportJobEventV1,
+  ExportJobEventPageV1,
+  ExportJobEventQueryV1,
+  ExportJobEventReaderV1,
   ExportJobExecutionResultV1,
   ExportJobExecutor,
   ExportJobHostCapabilityV1,
@@ -16,6 +19,7 @@ const source = {
   siteOrigin: "https://example.atlassian.net",
   locator: { kind: "space-key" as const, spaceKey: "DOCS" },
   scope: { kind: "space" as const },
+  maxFolders: 200,
 };
 
 const base = {
@@ -27,7 +31,7 @@ const base = {
   displayName: "Documentation",
   createdAt: 1,
   priority: "interactive" as const,
-  output: { policy: "collect" as const },
+  output: { policy: "path" as const, targetRef: "/exports/document", overwriteExisting: true },
 };
 
 const docxRequest: DocxExportJobRequestV1 = {
@@ -35,7 +39,13 @@ const docxRequest: DocxExportJobRequestV1 = {
   format: "docx",
   renderer: "docx-typescript",
   template: { recordKey: "default", sha256: "abc", name: "Default" },
-  options: { embedImages: true, resolveMacros: true },
+  options: {
+    embedImages: true,
+    resolveMacros: true,
+    keepIgnored: true,
+    strict: true,
+    updateFields: "never",
+  },
 };
 
 const pdfRequest: PdfExportJobRequestV1 = {
@@ -44,7 +54,12 @@ const pdfRequest: PdfExportJobRequestV1 = {
   renderer: "pdf-typst",
   template: { id: "default", manifestVersion: "1" },
   settings: {},
-  options: { resolveMacros: true },
+  options: {
+    resolveMacros: true,
+    strict: true,
+    noCache: true,
+    exportedAt: 1_753_161_600_000,
+  },
 };
 
 describe("version-1 export job contracts", () => {
@@ -56,6 +71,10 @@ describe("version-1 export job contracts", () => {
     expect(formats).toEqual(["docx", "pdf"]);
     expectTypeOf(docxRequest.renderer).toEqualTypeOf<"docx-typescript">();
     expectTypeOf(pdfRequest.renderer).toEqualTypeOf<"pdf-typst">();
+    expectTypeOf(source.maxFolders).toEqualTypeOf<number>();
+    expectTypeOf(docxRequest.options.keepIgnored).toEqualTypeOf<boolean | undefined>();
+    expectTypeOf(pdfRequest.options.exportedAt).toEqualTypeOf<number | undefined>();
+    expectTypeOf(base.output.overwriteExisting).toEqualTypeOf<boolean>();
   });
 
   it("exposes snapshots, events, executors, and host capabilities from the public entrypoint", () => {
@@ -65,6 +84,9 @@ describe("version-1 export job contracts", () => {
       "state" | "stage" | "progress" | "retry" | "issue" | "recovery" | "artifact"
     >();
     expectTypeOf<ExportJobExecutor<ExportJobRequestV1>>().toHaveProperty("execute");
+    expectTypeOf<ExportJobEventReaderV1>().toHaveProperty("readEvents");
+    expectTypeOf<ExportJobEventQueryV1>().toHaveProperty("afterSeq");
+    expectTypeOf<ExportJobEventPageV1>().toHaveProperty("nextAfterSeq");
     expectTypeOf<ExportJobExecutionResultV1>().toHaveProperty("stagedArtifact");
     expectTypeOf<ExportJobHostCapabilityV1>().toHaveProperty("canRerun");
     expectTypeOf(parsePdfExportJobRequestV1).returns.toEqualTypeOf<PdfExportJobRequestV1>();

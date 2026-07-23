@@ -85,6 +85,7 @@ function context(
       async getStaged() { return undefined; },
     },
     async updateProgress() {},
+    async updateStats() {},
     async appendEvent() {},
     async checkpoint(ref) { await options.checkpoint?.(ref); },
   };
@@ -154,7 +155,9 @@ describe("Confluence job resolveInput adapters", () => {
     };
     const resolveInput = createConfluencePdfResolveInputV1({
       port: { createTreeSource: () => source(reads) },
-      onProgress: (_request, _context, event) => progress.push(event),
+      onProgress: (_request, _context, event) => {
+        progress.push(event);
+      },
       build(resolved) {
         return {
           input: {
@@ -179,6 +182,45 @@ describe("Confluence job resolveInput adapters", () => {
     )).toBe(true);
     expect(progress).toEqual([{ fetched: 1, total: 1 }]);
     expect(JSON.stringify(result.input)).not.toContain("RAW-STORAGE");
+  });
+
+  it("settles durable source progress before host preparation can checkpoint", async () => {
+    let releaseProgress!: () => void;
+    const progressGate = new Promise<void>((resolve) => {
+      releaseProgress = resolve;
+    });
+    let progressStarted = false;
+    let buildStarted = false;
+    const resolveInput = createConfluencePdfResolveInputV1({
+      port: { createTreeSource: () => source({ pages: 0 }) },
+      async onProgress() {
+        progressStarted = true;
+        await progressGate;
+      },
+      build() {
+        buildStarted = true;
+        return {
+          input: {
+            metadata: { title: "Root", exportedAt: new Date(0) },
+            filename: "output.pdf",
+          },
+          env: {
+            assets: {
+              async resolve(): Promise<never> {
+                throw new Error("unused");
+              },
+            },
+          },
+        };
+      },
+    });
+
+    const pending = resolveInput(pdfRequest(), context());
+    while (!progressStarted) await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(buildStarted).toBe(false);
+    releaseProgress();
+    await pending;
+    expect(buildStarted).toBe(true);
   });
 
   it("feeds the same canonical source state into DOCX with body-free root details", async () => {

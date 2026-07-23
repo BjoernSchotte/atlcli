@@ -1,13 +1,17 @@
 import {
   composeChapters,
+  confluenceTreeSource,
+  escapeCqlValue,
   fetchExportTree,
   type ComposeOptions,
   type ExportBlock,
   type ExportNote,
   type ExportScope,
+  type ExportTreeBodyStoreV1,
   type ExportTreePlanV1,
   type PageBodyToBlocksOptions,
   type TreeSource,
+  type TreeSourceClient,
   type TreeSourceSummary,
   type TreeSourceVersion,
 } from "@atlcli/confluence";
@@ -43,6 +47,48 @@ export interface ConfluenceSourceResolverPortV1 {
   ): Promise<{ id: string }>;
 }
 
+/**
+ * Bind the shared source resolver to a Confluence client without choosing an
+ * export representation here. The client owns the ADF-primary/Storage-primary
+ * deployment policy used by `getExportPageDetailsWithMedia()`.
+ */
+export function confluenceSourceResolverPortFromClientV1(
+  client: TreeSourceClient,
+): ConfluenceSourceResolverPortV1 {
+  return {
+    createTreeSource: () => confluenceTreeSource(client),
+    async resolveContentKey(value, context) {
+      const urlId = value.startsWith("http://") || value.startsWith("https://")
+        ? value.match(/pages\/(\d+)/)?.[1] ?? value.match(/[?&]pageId=(\d+)/)?.[1]
+        : undefined;
+      if (urlId) return { id: urlId };
+      const separator = value.indexOf(":");
+      if (separator <= 0 || separator === value.length - 1) {
+        throw new TypeError(
+          "A Confluence content key must use SPACE:Title syntax or contain a page id.",
+        );
+      }
+      const spaceKey = value.slice(0, separator);
+      const title = value.slice(separator + 1);
+      const cql =
+        `type=page AND space="${escapeCqlValue(spaceKey)}" ` +
+        `AND title="${escapeCqlValue(title)}"`;
+      const matches = await client.searchPages(cql, 2, {
+        signal: context.signal,
+      });
+      context.signal.throwIfAborted();
+      if (matches.length !== 1) {
+        throw new Error(
+          matches.length === 0
+            ? "The Confluence content key did not resolve to a page."
+            : "The Confluence content key is ambiguous.",
+        );
+      }
+      return { id: matches[0]!.id };
+    },
+  };
+}
+
 export interface ResolveConfluenceSourceOptionsV1 {
   exporter: "pdf" | "word";
   port: ConfluenceSourceResolverPortV1;
@@ -53,6 +99,8 @@ export interface ResolveConfluenceSourceOptionsV1 {
   bodyOptions?: Omit<PageBodyToBlocksOptions, "exporter" | "pageContext">;
   /** Optional durable pre-body plan owned by the claimed export-job host. */
   sourcePlanCheckpoint?: ConfluenceSourcePlanCheckpointOptionsV1;
+  /** Optional durable normalized-body spool owned by the claimed job host. */
+  bodyStore?: ExportTreeBodyStoreV1;
 }
 
 export interface ConfluenceSourceProgressV1 {
@@ -331,6 +379,7 @@ async function resolveConfluenceSourceUnsafeV1(
       ...options.bodyOptions,
       exporter: options.exporter,
     },
+    ...(options.bodyStore ? { bodyStore: options.bodyStore } : {}),
     signal: options.signal,
     ...(persistedPlan
       ? {

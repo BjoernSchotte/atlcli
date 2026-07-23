@@ -157,6 +157,7 @@ async function jobRun(
           preparedByteLength: input.binding.byteLength,
           preparedSha256: input.binding.sha256,
           estimate: input.estimate,
+          sourcePageCount: input.sourcePageCount,
           renderAttempts: 0,
         };
         return checkpoint;
@@ -255,6 +256,7 @@ async function jobRun(
       },
     },
     async updateProgress() {},
+    async updateStats() {},
     async appendEvent() {},
     async checkpoint(ref) {
       checkpointRef = ref;

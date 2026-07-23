@@ -27,6 +27,10 @@ export interface OffscreenListenerDeps {
     hints?: PdfCompileHints
   ) => Promise<{ ok: true } | { ok: false; error: string }>;
   runPdfCancel: (jobId: string) => Promise<boolean>;
+  runJobsWake?: (
+    jobIds?: string[],
+    options?: { resumeWaiting?: boolean },
+  ) => Promise<string | undefined>;
 }
 
 const toMessage = (err: unknown): string =>
@@ -57,6 +61,9 @@ export function handleExtMessage(
         case "pdf:cancel":
           sendResponse({ kind: "pdf:cancel-result", jobId: message.jobId, cancelled: false });
           break;
+        case "jobs:wake":
+          sendResponse({ kind: "jobs:wake-result", error: toMessage(err) });
+          break;
         case "ping":
         case "wasm-smoke":
         case "get-current-entity":
@@ -80,6 +87,7 @@ export function handleOffscreenMessage(
     runWasmAdd,
     runPdfCompile: async () => ({ ok: false, error: "PDF compiler host is not configured." }),
     runPdfCancel: async () => false,
+    runJobsWake: async () => undefined,
   }
 ): boolean {
   if (!isOffscreenRequest(message)) return false;
@@ -101,6 +109,19 @@ export function handleOffscreenMessage(
       deps.runPdfCancel(message.jobId)
         .then((cancelled) => sendResponse({ kind: "offscreen:pdf-cancel-result", jobId: message.jobId, cancelled }))
         .catch(() => sendResponse({ kind: "offscreen:pdf-cancel-result", jobId: message.jobId, cancelled: false }));
+      break;
+    case "offscreen:jobs-wake":
+      (deps.runJobsWake?.(message.jobIds, {
+        resumeWaiting: message.resumeWaiting,
+      }) ?? Promise.resolve(undefined))
+        .then((claimedJobId) => sendResponse({
+          kind: "offscreen:jobs-wake-result",
+          ...(claimedJobId ? { claimedJobId } : {}),
+        }))
+        .catch((error) => sendResponse({
+          kind: "offscreen:jobs-wake-result",
+          error: toMessage(error),
+        }));
       break;
   }
 

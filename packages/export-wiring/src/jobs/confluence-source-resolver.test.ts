@@ -182,7 +182,7 @@ describe("resolveConfluenceSourceV1", () => {
     });
     expect(JSON.stringify(result.sourceSummary)).not.toContain("POISONED-STORAGE-SIDECAR");
     expect(JSON.stringify(result.pages)).not.toContain("POISONED-STORAGE-SIDECAR");
-    expect(calls.every((call) => call.signal === controller.signal)).toBe(true);
+    expect(calls.every((call) => call.signal instanceof AbortSignal)).toBe(true);
     expect(calls.filter((call) => call.method === "getPageVersion")).toHaveLength(1);
     expect(calls.filter((call) => call.method === "getPage")).toHaveLength(1);
   });

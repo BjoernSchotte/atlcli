@@ -930,8 +930,12 @@ export class ConfluenceClient {
    * Get the current authenticated user.
    * Useful for verifying authentication and connectivity.
    */
-  async getCurrentUser(): Promise<{ accountId: string; displayName: string; email?: string }> {
-    const data = (await this.request("/user/current")) as any;
+  async getCurrentUser(
+    options: { signal?: AbortSignal } = {},
+  ): Promise<{ accountId: string; displayName: string; email?: string }> {
+    const data = (await this.request("/user/current", {
+      signal: options.signal,
+    })) as any;
     return {
       accountId: data.accountId,
       displayName: data.displayName,
@@ -939,10 +943,14 @@ export class ConfluenceClient {
     };
   }
 
-  async getPage(id: string): Promise<ConfluencePage & { storage: string }> {
+  async getPage(
+    id: string,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<ConfluencePage & { storage: string }> {
     const data = (await this.request(`/content/${id}`, {
       query: { expand: "body.storage,version,space,ancestors" },
       logBody: "meta-only",
+      signal: options.signal,
     })) as any;
 
     // Extract ancestors (array of {id, title} from root to parent)
@@ -1995,8 +2003,11 @@ export class ConfluenceClient {
    * `$scroll.globallogo` embedding). Returns `null` when the space carries no
    * icon — Cloud normally always has one (the default is an SVG).
    */
-  async getSpaceIcon(key: string): Promise<SpaceIcon | null> {
-    return (await this.getSpaceWithIcon(key)).icon;
+  async getSpaceIcon(
+    key: string,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<SpaceIcon | null> {
+    return (await this.getSpaceWithIcon(key, options)).icon;
   }
 
   /**
@@ -2005,9 +2016,13 @@ export class ConfluenceClient {
    * both `$scroll.space.*` and a logo placeholder previously paid two calls
    * to the same endpoint; hosts memoize this one instead.
    */
-  async getSpaceWithIcon(key: string): Promise<{ space: ConfluenceSpace; icon: SpaceIcon | null }> {
+  async getSpaceWithIcon(
+    key: string,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<{ space: ConfluenceSpace; icon: SpaceIcon | null }> {
     const data = (await this.request(`/space/${key}`, {
       query: { expand: "icon" },
+      signal: options.signal,
     })) as any;
     const space: ConfluenceSpace = {
       id: data.id,
@@ -2307,13 +2322,14 @@ export class ConfluenceClient {
    */
   async listAttachments(
     pageId: string,
-    options: { limit?: number } = {}
+    options: { limit?: number; signal?: AbortSignal } = {},
   ): Promise<AttachmentInfo[]> {
     const data = (await this.request(`/content/${pageId}/child/attachment`, {
       query: {
         expand: "version,metadata.mediaType",
         limit: options.limit ?? 100,
       },
+      signal: options.signal,
     })) as any;
 
     const results = Array.isArray(data.results) ? data.results : [];
@@ -3738,10 +3754,14 @@ export class ConfluenceClient {
    * @param accountId - Atlassian account ID
    * @returns User info or null if not found
    */
-  async getUser(accountId: string): Promise<UserInfo | null> {
+  async getUser(
+    accountId: string,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<UserInfo | null> {
     try {
       const data = (await this.request("/user", {
         query: { accountId },
+        signal: options.signal,
       })) as any;
 
       return {
@@ -3773,9 +3793,13 @@ export class ConfluenceClient {
    * @returns The homepage's storage XML, or `null` when the space has no
    *   homepage or it carries no storage body.
    */
-  async getSpaceHomepageStorage(spaceKey: string): Promise<string | null> {
+  async getSpaceHomepageStorage(
+    spaceKey: string,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<string | null> {
     const data = (await this.request(`/space/${spaceKey}`, {
       query: { expand: "homepage.body.storage" },
+      signal: options.signal,
     })) as { homepage?: { body?: { storage?: { value?: string } } } };
     return data?.homepage?.body?.storage?.value ?? null;
   }
@@ -3817,14 +3841,19 @@ export class ConfluenceClient {
    * @returns The owner with a resolved display name, or `null` when the page has
    *   no owner or the account cannot be looked up (caller renders empty).
    */
-  async getPageOwner(pageId: string): Promise<ConfluenceUser | null> {
-    const data = (await this.requestV2(`/pages/${pageId}`, {})) as {
+  async getPageOwner(
+    pageId: string,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<ConfluenceUser | null> {
+    const data = (await this.requestV2(`/pages/${pageId}`, {
+      signal: options.signal,
+    })) as {
       ownerId?: string | null;
     };
     const ownerId = data?.ownerId;
     if (!ownerId) return null;
 
-    const user = await this.getUser(ownerId);
+    const user = await this.getUser(ownerId, options);
     if (!user?.displayName) return null;
     return {
       accountId: ownerId,
@@ -3843,7 +3872,7 @@ export class ConfluenceClient {
    */
   async getUsersBulk(
     accountIds: string[],
-    options: { concurrency?: number } = {}
+    options: { concurrency?: number; signal?: AbortSignal } = {},
   ): Promise<Map<string, UserInfo | null>> {
     const { concurrency = 5 } = options;
     const results = new Map<string, UserInfo | null>();
@@ -3851,9 +3880,10 @@ export class ConfluenceClient {
 
     // Process in batches to avoid overwhelming the API
     for (let i = 0; i < uniqueIds.length; i += concurrency) {
+      options.signal?.throwIfAborted();
       const batch = uniqueIds.slice(i, i + concurrency);
       const promises = batch.map(async (id) => {
-        const user = await this.getUser(id);
+        const user = await this.getUser(id, { signal: options.signal });
         results.set(id, user);
       });
       await Promise.all(promises);

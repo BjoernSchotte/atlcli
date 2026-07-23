@@ -66,7 +66,8 @@ export type ExtRequest =
   | { kind: "wasm-smoke"; a: number; b: number }
   | { kind: "get-current-entity"; windowId: number }
   | ({ kind: "pdf:compile"; jobId: string } & PdfCompileHints)
-  | { kind: "pdf:cancel"; jobId: string };
+  | { kind: "pdf:cancel"; jobId: string }
+  | { kind: "jobs:wake"; jobIds?: string[]; resumeWaiting?: boolean };
 
 /** Response messages returned to the panel. */
 export type ExtResponse =
@@ -76,7 +77,9 @@ export type ExtResponse =
   | { kind: "current-entity"; detection: EntityDetection }
   | { kind: "pdf:compile-result"; jobId: string; ok: true }
   | { kind: "pdf:compile-result"; jobId: string; ok: false; error: string }
-  | { kind: "pdf:cancel-result"; jobId: string; cancelled: boolean };
+  | { kind: "pdf:cancel-result"; jobId: string; cancelled: boolean }
+  | { kind: "jobs:wake-result"; claimedJobId?: string; error?: never }
+  | { kind: "jobs:wake-result"; error: string; claimedJobId?: never };
 
 /**
  * Push message: the service worker (canonical tab observer, PLAN §2.1) notifies
@@ -85,6 +88,8 @@ export type ExtResponse =
  * for it with {@link isEntityChanged}.
  */
 export type EntityChanged = { kind: "entity-changed"; detection: EntityDetection };
+/** Fire-and-forget hint; durable snapshots remain the badge correctness path. */
+export type ExportJobsChanged = { kind: "jobs:changed"; jobId: string };
 
 /**
  * Internal messages the service worker forwards to the offscreen document.
@@ -94,19 +99,23 @@ export type EntityChanged = { kind: "entity-changed"; detection: EntityDetection
 export type OffscreenRequest =
   | { kind: "offscreen:wasm-add"; a: number; b: number }
   | ({ kind: "offscreen:pdf-compile"; jobId: string } & PdfCompileHints)
-  | { kind: "offscreen:pdf-cancel"; jobId: string };
+  | { kind: "offscreen:pdf-cancel"; jobId: string }
+  | { kind: "offscreen:jobs-wake"; jobIds?: string[]; resumeWaiting?: boolean };
 export type OffscreenResponse =
   | { kind: "offscreen:wasm-add-result"; ok: true; result: number }
   | { kind: "offscreen:wasm-add-result"; ok: false; error: string }
   | { kind: "offscreen:pdf-compile-result"; jobId: string; ok: true }
   | { kind: "offscreen:pdf-compile-result"; jobId: string; ok: false; error: string }
-  | { kind: "offscreen:pdf-cancel-result"; jobId: string; cancelled: boolean };
+  | { kind: "offscreen:pdf-cancel-result"; jobId: string; cancelled: boolean }
+  | { kind: "offscreen:jobs-wake-result"; claimedJobId?: string; error?: never }
+  | { kind: "offscreen:jobs-wake-result"; error: string; claimedJobId?: never };
 
 /** Every message that can travel over the protocol. */
 export type ExtMessage =
   | ExtRequest
   | ExtResponse
   | EntityChanged
+  | ExportJobsChanged
   | OffscreenRequest
   | OffscreenResponse;
 
@@ -123,6 +132,7 @@ export interface ResponseMap {
   "get-current-entity": Extract<ExtResponse, { kind: "current-entity" }>;
   "pdf:compile": Extract<ExtResponse, { kind: "pdf:compile-result" }>;
   "pdf:cancel": Extract<ExtResponse, { kind: "pdf:cancel-result" }>;
+  "jobs:wake": Extract<ExtResponse, { kind: "jobs:wake-result" }>;
 }
 
 export type ResponseFor<K extends ExtRequestKind> = ResponseMap[K];
@@ -132,10 +142,20 @@ export function isExtRequest(value: unknown): value is ExtRequest {
   if (typeof value !== "object" || value === null) return false;
   const candidate = value as { kind?: unknown; jobId?: unknown; windowId?: unknown };
   const kind = candidate.kind;
-  if (kind === "pdf:compile") return isPdfJobId(candidate.jobId) && hasValidCompileHints(value);
-  if (kind === "pdf:cancel") return isPdfJobId(candidate.jobId);
-  if (kind === "get-current-entity") return isWindowId(candidate.windowId);
-  return kind === "ping" || kind === "wasm-smoke";
+  if (kind === "pdf:compile") return hasOnlyKeys(value, ["kind", "jobId", "job", "pages"]) && isPdfJobId(candidate.jobId) && hasValidCompileHints(value);
+  if (kind === "pdf:cancel") return hasOnlyKeys(value, ["kind", "jobId"]) && isPdfJobId(candidate.jobId);
+  if (kind === "jobs:wake") {
+    const wake = value as { jobIds?: unknown; resumeWaiting?: unknown };
+    return hasOnlyKeys(value, ["kind", "jobIds", "resumeWaiting"]) &&
+      hasValidJobIds(wake.jobIds) &&
+      (wake.resumeWaiting === undefined || typeof wake.resumeWaiting === "boolean") &&
+      (wake.resumeWaiting !== true || Array.isArray(wake.jobIds));
+  }
+  if (kind === "get-current-entity") return hasOnlyKeys(value, ["kind", "windowId"]) && isWindowId(candidate.windowId);
+  if (kind === "ping") return hasOnlyKeys(value, ["kind"]);
+  return kind === "wasm-smoke"
+    && hasOnlyKeys(value, ["kind", "a", "b"])
+    && hasFiniteOperands(value);
 }
 
 /** Narrowing type guard for the SW→panel `entity-changed` push message. */
@@ -143,6 +163,14 @@ export function isEntityChanged(value: unknown): value is EntityChanged {
   if (typeof value !== "object" || value === null) return false;
   const candidate = value as { kind?: unknown; detection?: { windowId?: unknown } };
   return candidate.kind === "entity-changed" && isWindowId(candidate.detection?.windowId);
+}
+
+export function isExportJobsChanged(value: unknown): value is ExportJobsChanged {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as { kind?: unknown; jobId?: unknown };
+  return candidate.kind === "jobs:changed" &&
+    hasOnlyKeys(value, ["kind", "jobId"]) &&
+    isOpaqueExportJobId(candidate.jobId);
 }
 
 /** Narrow a broadcast push to the Chrome window owned by one side panel. */
@@ -158,10 +186,39 @@ export function isOffscreenRequest(value: unknown): value is OffscreenRequest {
   if (typeof value !== "object" || value === null) return false;
   const candidate = value as { kind?: unknown; jobId?: unknown };
   if (candidate.kind === "offscreen:pdf-compile") {
-    return isPdfJobId(candidate.jobId) && hasValidCompileHints(value);
+    return hasOnlyKeys(value, ["kind", "jobId", "job", "pages"]) && isPdfJobId(candidate.jobId) && hasValidCompileHints(value);
   }
-  if (candidate.kind === "offscreen:pdf-cancel") return isPdfJobId(candidate.jobId);
-  return candidate.kind === "offscreen:wasm-add";
+  if (candidate.kind === "offscreen:pdf-cancel") return hasOnlyKeys(value, ["kind", "jobId"]) && isPdfJobId(candidate.jobId);
+  if (candidate.kind === "offscreen:jobs-wake") {
+    const wake = value as { jobIds?: unknown; resumeWaiting?: unknown };
+    return hasOnlyKeys(value, ["kind", "jobIds", "resumeWaiting"]) &&
+      hasValidJobIds(wake.jobIds) &&
+      (wake.resumeWaiting === undefined || typeof wake.resumeWaiting === "boolean") &&
+      (wake.resumeWaiting !== true || Array.isArray(wake.jobIds));
+  }
+  return candidate.kind === "offscreen:wasm-add"
+    && hasOnlyKeys(value, ["kind", "a", "b"])
+    && hasFiniteOperands(value);
+}
+
+function hasOnlyKeys(value: unknown, allowed: readonly string[]): boolean {
+  return typeof value === "object" && value !== null
+    && Object.keys(value).every((key) => allowed.includes(key));
+}
+
+function hasValidJobIds(value: unknown): boolean {
+  return value === undefined || (Array.isArray(value) && value.length <= 100 && value.every(isOpaqueExportJobId));
+}
+
+/** Mirrors the host-neutral export-job contract: opaque, non-empty, bounded text. */
+function isOpaqueExportJobId(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0 && value.length <= 4_096;
+}
+
+function hasFiniteOperands(value: unknown): boolean {
+  const candidate = value as { a?: unknown; b?: unknown };
+  return typeof candidate.a === "number" && Number.isFinite(candidate.a)
+    && typeof candidate.b === "number" && Number.isFinite(candidate.b);
 }
 
 /**

@@ -4,6 +4,7 @@ import {
   type ExportJobExecutionContext,
   type ExportJobExecutionResultV1,
   type ExportJobExecutor,
+  type ExportJobResultTelemetryV1,
   type ExportReportSummaryV1,
   type PendingArtifactV1,
   type PdfExportJobRequestV1,
@@ -19,6 +20,9 @@ import {
   type PreparedPdfExportV1,
   type RunPdfExportInput,
 } from "@atlcli/pdf";
+import {
+  buildProductiveExportTelemetryV1,
+} from "./productive-telemetry.js";
 
 export type PdfExportJobEngineInputV1 = Omit<
   RunPdfExportInput,
@@ -36,6 +40,8 @@ export interface PdfReadyToRenderCheckpointV1 {
   preparedByteLength: number;
   preparedSha256: string;
   estimate: ResourceEstimateV1;
+  /** Productive source-page count for final statistics; absent only on legacy checkpoints. */
+  sourcePageCount?: number;
   /** Atomically advanced before starting Typst. One fresh restart means at most two. */
   renderAttempts: number;
 }
@@ -58,6 +64,7 @@ export interface PdfReadyToRenderStoreV1 {
     prepared: PreparedPdfExportV1;
     binding: PdfPreparedPayloadBindingV1;
     estimate: ResourceEstimateV1;
+    sourcePageCount?: number;
     signal: AbortSignal;
   }): Promise<PdfReadyToRenderCheckpointV1>;
   /** Materialize the compiler bundle only while the caller holds a heavy reservation. */
@@ -127,6 +134,8 @@ export interface PdfExportResultIntentV1 {
   reportRef: string;
   reportSha256: string;
   reportSummary: ExportReportSummaryV1;
+  /** Added productively in PR-I; absent only on legacy persisted result intents. */
+  telemetry?: ExportJobResultTelemetryV1;
 }
 
 export interface PdfRecoveredExportResultV1 {
@@ -165,7 +174,11 @@ export interface CreatePdfExportJobExecutorOptionsV1 {
   resolveInput(
     request: PdfExportJobRequestV1,
     context: ExportJobExecutionContext,
-  ): Promise<{ input: PdfExportJobEngineInputV1; env: Omit<PreparePdfExportEnv, "now"> }>;
+  ): Promise<{
+    input: PdfExportJobEngineInputV1;
+    env: Omit<PreparePdfExportEnv, "now">;
+    telemetry?: { sourcePageCount: number };
+  }>;
   readyToRender: PdfReadyToRenderStoreV1;
   /**
    * Conservative admission estimate computed before VFS materialization.
@@ -241,6 +254,7 @@ function sameCheckpointExceptAttempts(
     left.preparedRef === right.preparedRef &&
     left.preparedByteLength === right.preparedByteLength &&
     left.preparedSha256 === right.preparedSha256 &&
+    left.sourcePageCount === right.sourcePageCount &&
     sameEstimate(left.estimate, right.estimate)
   );
 }
@@ -272,6 +286,9 @@ function validateCheckpoint(
     throw new Error("PDF prepared bundle SHA-256 is invalid.");
   }
   nonNegativeSafeInteger(checkpoint.renderAttempts, "checkpoint.renderAttempts");
+  if (checkpoint.sourcePageCount !== undefined) {
+    nonNegativeSafeInteger(checkpoint.sourcePageCount, "checkpoint.sourcePageCount");
+  }
   validateEstimate(checkpoint.estimate);
 }
 
@@ -467,7 +484,12 @@ function validateRecoveryKey(
 function validateResultIntent(
   intent: PdfExportResultIntentV1,
   expectedKey: PdfExportResultRecoveryKeyV1,
-  expected?: { artifact: PendingArtifactV1; reportSha256: string; reportSummary: ExportReportSummaryV1 },
+  expected?: {
+    artifact: PendingArtifactV1;
+    reportSha256: string;
+    reportSummary: ExportReportSummaryV1;
+    telemetry: ExportJobResultTelemetryV1;
+  },
 ): void {
   if (intent.schema !== "atlcli.pdf-result-intent/1") {
     throw new Error("Unsupported PDF result intent schema.");
@@ -491,10 +513,19 @@ function validateResultIntent(
       intent.artifact.byteLength !== expected.artifact.byteLength ||
       intent.artifact.sha256 !== expected.artifact.sha256 ||
       intent.reportSha256 !== expected.reportSha256 ||
-      !sameReportSummary(intent.reportSummary, expected.reportSummary))
+      !sameReportSummary(intent.reportSummary, expected.reportSummary) ||
+      canonical(intent.telemetry) !== canonical(expected.telemetry))
   ) {
     throw new Error("PDF result intent does not match the validated artifact and report.");
   }
+}
+
+async function publishTelemetry(
+  context: ExportJobExecutionContext,
+  telemetry: ExportJobResultTelemetryV1,
+): Promise<void> {
+  await context.updateStats(telemetry.stats);
+  for (const issue of telemetry.issues) await context.appendEvent(issue);
 }
 
 function validateExecutionResult(
@@ -582,10 +613,15 @@ export function createPdfExportJobExecutor(
       throwIfAborted(context.signal);
 
       let resolved:
-        | { input: PdfExportJobEngineInputV1; env: Omit<PreparePdfExportEnv, "now"> }
+        | {
+            input: PdfExportJobEngineInputV1;
+            env: Omit<PreparePdfExportEnv, "now">;
+            telemetry?: { sourcePageCount: number };
+          }
         | undefined;
       let estimate: ResourceEstimateV1;
       let resultKey: PdfExportResultRecoveryKeyV1 | undefined;
+      let sourcePageCount = checkpoint?.sourcePageCount ?? 1;
       if (checkpoint) {
         validateCheckpoint(checkpoint, request, context);
         // Commit and publication are separate fenced writes. Recovery must heal
@@ -597,12 +633,18 @@ export function createPdfExportJobExecutor(
         throwIfAborted(context.signal);
         if (recovered) {
           validateResultIntent(recovered.intent, resultKey);
-          return validateExecutionResult(recovered.result, context, recovered.intent);
+          const result = validateExecutionResult(recovered.result, context, recovered.intent);
+          if (recovered.intent.telemetry) {
+            await publishTelemetry(context, recovered.intent.telemetry);
+          }
+          return result;
         }
       } else {
         await progress(context, now, "compose", 0, 1, "Preparing PDF render input");
         resolved = await options.resolveInput(request, context);
         throwIfAborted(context.signal);
+        sourcePageCount = resolved.telemetry?.sourcePageCount ?? 1;
+        nonNegativeSafeInteger(sourcePageCount, "telemetry.sourcePageCount");
         estimate = options.estimateRender(resolved.input, request);
         validateEstimate(estimate);
       }
@@ -641,6 +683,7 @@ export function createPdfExportJobExecutor(
             prepared: newlyPrepared,
             binding: fingerprint,
             estimate,
+            sourcePageCount,
             signal: context.signal,
           });
           validateCheckpoint(checkpoint, request, context);
@@ -746,6 +789,29 @@ export function createPdfExportJobExecutor(
           };
           const summary = reportSummary(report);
           parseExportReportSummaryV1(summary);
+          const telemetry = buildProductiveExportTelemetryV1(
+            {
+              pageCount: checkpoint.sourcePageCount ?? 1,
+              preparedBytes: checkpoint.preparedByteLength,
+              outputBytes: artifact.byteLength,
+              renderAttempts: checkpoint.renderAttempts,
+              embeddedAssets: report.embeddedImages,
+              skippedAssets: report.skippedAssets,
+              renderedDiagrams: report.renderedDiagrams,
+              reportSummary: summary,
+              notes: report.notes,
+              compilerIssues: (report.compilerDiagnostics ?? []).map((diagnostic) => ({
+                severity: diagnostic.severity,
+                code: `pdf-compiler-${diagnostic.severity}`,
+              })),
+              durationsMs: {
+                compose: Math.round(report.timings.prepareMs),
+                render: Math.round(report.timings.compileMs),
+                commit: Math.round(report.timings.emitMs),
+              },
+            },
+            now(),
+          );
           const reportSha256 = await sha256Hex(
             new TextEncoder().encode(canonical(report)),
             context.signal,
@@ -763,13 +829,20 @@ export function createPdfExportJobExecutor(
             reportRef: `${resultKey.ref}:report`,
             reportSha256,
             reportSummary: summary,
+            telemetry,
           };
           const preparedIntent = await options.results.prepare({ intent, report }, context);
-          validateResultIntent(preparedIntent, resultKey, { artifact, reportSha256, reportSummary: summary });
+          validateResultIntent(preparedIntent, resultKey, {
+            artifact,
+            reportSha256,
+            reportSummary: summary,
+            telemetry,
+          });
           const result = await options.results.stage(
             { intent: preparedIntent, artifact },
             context,
           );
+          await publishTelemetry(context, telemetry);
           await progress(context, now, "commit", 1, 1, "PDF artifact and report staged");
           return validateExecutionResult(result, context, preparedIntent);
         } finally {

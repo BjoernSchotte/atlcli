@@ -12,7 +12,12 @@ import {
   updateExportJobProgress,
   updateExportJobStats,
   updateExportJobTerminalMetadata,
+  releaseExportJobRetention,
 } from "./transitions.js";
+import {
+  DELIVERED_ARTIFACT_RETENTION_MS_V1,
+  FULL_REPORT_RETENTION_MS_V1,
+} from "./lifecycle-retention.js";
 
 function snapshot(state: ExportJobState = "queued"): ExportJobSnapshotV1 {
   return {
@@ -117,6 +122,28 @@ describe("state transitions", () => {
       });
       expect(result).toMatchObject({ state: "cancelled", finishedAt: 20 });
     }
+  });
+
+  it("records a queued host preflight failure as interrupted without forging a lease", () => {
+    const current = snapshot("queued");
+    const result = transitionExportJob(current, {
+      expectedRevision: current.revision,
+      to: "interrupted",
+      at: 20,
+      error: {
+        code: "host.replay-start-failed",
+        message: "Profile is unavailable.",
+        category: "auth",
+        retryable: true,
+        occurredAt: 20,
+      },
+    });
+    expect(result).toMatchObject({
+      state: "interrupted",
+      finishedAt: 20,
+      error: { code: "host.replay-start-failed" },
+    });
+    expect(result.lease).toBeUndefined();
   });
 
   it("requires executor lease fencing for terminal and waiting writes", () => {
@@ -686,6 +713,93 @@ describe("terminal presentation metadata", () => {
         { ...snapshot("succeeded"), finishedAt: 100 },
         { expectedRevision: 0, acknowledgedAt: 99 },
       ),
+      "invalid-metadata",
+    );
+  });
+});
+
+describe("terminal payload retention", () => {
+  function retainedSuccess(): ExportJobSnapshotV1 {
+    return {
+      ...snapshot("succeeded"),
+      revision: 5,
+      attempt: 1,
+      leaseEpoch: 1,
+      startedAt: 90,
+      finishedAt: 100,
+      deliveredAt: 110,
+      artifact: {
+        ref: "artifact:job-1",
+        mediaType: "application/pdf",
+        filename: "Handbook.pdf",
+        byteLength: 42,
+        sha256: "a".repeat(64),
+        committedAt: 100,
+      },
+      reportRef: "report:job-1",
+      reportSummary: {
+        issues: { info: 1, warning: 2, error: 0 },
+        topCodes: [{ code: "image-skipped", count: 2 }],
+        completeness: "partial",
+      },
+    };
+  }
+
+  it("independently releases artifact bytes and full report while preserving summary", () => {
+    const terminal = retainedSuccess();
+    const at = Math.max(
+      terminal.deliveredAt! + DELIVERED_ARTIFACT_RETENTION_MS_V1,
+      terminal.finishedAt! + FULL_REPORT_RETENTION_MS_V1,
+    );
+    const released = releaseExportJobRetention(terminal, {
+      expectedRevision: terminal.revision,
+      at,
+      releaseArtifact: true,
+      releaseReport: true,
+    });
+    expect(released).toMatchObject({
+      revision: 6,
+      artifactReleasedAt: at,
+      reportReleasedAt: at,
+      reportSummary: terminal.reportSummary,
+    });
+    expect(released.artifact).toBeUndefined();
+    expect(released.reportRef).toBeUndefined();
+  });
+
+  it("fails closed before either horizon and for succeeded-undelivered bytes", () => {
+    const terminal = retainedSuccess();
+    expectConflict(
+      () =>
+        releaseExportJobRetention(terminal, {
+          expectedRevision: terminal.revision,
+          at: terminal.deliveredAt! + DELIVERED_ARTIFACT_RETENTION_MS_V1 - 1,
+          releaseArtifact: true,
+          releaseReport: false,
+        }),
+      "invalid-metadata",
+    );
+    expectConflict(
+      () =>
+        releaseExportJobRetention(terminal, {
+          expectedRevision: terminal.revision,
+          at: terminal.finishedAt! + FULL_REPORT_RETENTION_MS_V1 - 1,
+          releaseArtifact: false,
+          releaseReport: true,
+        }),
+      "invalid-metadata",
+    );
+    expectConflict(
+      () =>
+        releaseExportJobRetention(
+          { ...terminal, deliveredAt: undefined },
+          {
+            expectedRevision: terminal.revision,
+            at: terminal.finishedAt! + FULL_REPORT_RETENTION_MS_V1,
+            releaseArtifact: true,
+            releaseReport: false,
+          },
+        ),
       "invalid-metadata",
     );
   });

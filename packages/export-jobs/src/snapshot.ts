@@ -84,7 +84,11 @@ export interface ExportJobSnapshotV1 {
   cancelRequestedAt?: number;
   checkpointRef?: string;
   artifact?: ExportArtifactV1;
+  /** Set once the delivered/dismissed artifact bytes were released by retention. */
+  artifactReleasedAt?: number;
   reportRef?: string;
+  /** Set once the full report and bounded event protocol were released. */
+  reportReleasedAt?: number;
   reportSummary?: ExportReportSummaryV1;
   stats: ExportJobStatsV1;
   error?: ExportJobErrorV1;

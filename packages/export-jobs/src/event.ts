@@ -22,3 +22,11 @@ export type ExportJobEventV1 =
     }
   | { kind: "recovery"; seq: number; at: number; fromCheckpoint?: string; leaseEpoch: number }
   | { kind: "artifact"; seq: number; at: number; artifact: ExportArtifactV1 };
+
+/** Executor-authored event input; the durable store owns its global sequence. */
+export type ExportJobEventDraftV1 =
+  ExportJobEventV1 extends infer Event
+    ? Event extends ExportJobEventV1
+      ? Omit<Event, "seq">
+      : never
+    : never;

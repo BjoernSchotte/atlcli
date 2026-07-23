@@ -102,10 +102,18 @@ export interface BuildMacroOptionsArgs {
  */
 export function buildMacroResolutionOptions(args: BuildMacroOptionsArgs): MacroResolutionOptions {
   const registry = createMacroRegistry();
-  const confluencePort = confluenceContentPortFromClient(args.confluence);
-  const exportViewPort = exportViewPortFromClient(args.confluence);
-  const attachmentsPort = attachmentLookupFromClient(args.confluence);
-  const jiraPort = args.jira ? jiraIssuePortFromClient(args.jira, args.siteBaseUrl) : undefined;
+  const confluencePort = confluenceContentPortFromClient(
+    args.confluence,
+    args.signal,
+  );
+  const exportViewPort = exportViewPortFromClient(args.confluence, args.signal);
+  const attachmentsPort = attachmentLookupFromClient(
+    args.confluence,
+    args.signal,
+  );
+  const jiraPort = args.jira
+    ? jiraIssuePortFromClient(args.jira, args.siteBaseUrl, args.signal)
+    : undefined;
   const policy = args.policy ?? defaultExternalAssetPolicy(args.siteBaseUrl);
   const externalAssets = args.externalAssets ?? defaultExternalAssetFetcher(policy);
   const siteId = args.siteBaseUrl;

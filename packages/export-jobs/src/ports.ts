@@ -3,8 +3,9 @@ import type {
   PendingArtifactV1,
   StagedArtifactV1,
 } from "./artifact.js";
-import type { ExportJobEventV1 } from "./event.js";
+import type { ExportJobEventDraftV1 } from "./event.js";
 import type { ExportJobRequestV1 } from "./request.js";
+import type { ExportJobStatsV1 } from "./statistics.js";
 import type { ExportFormat } from "./source.js";
 import type { ExportJobProgressV1, ExportJobSnapshotV1 } from "./snapshot.js";
 import type {
@@ -13,8 +14,11 @@ import type {
   ExportJobDeleteQueryV1,
   ExportJobDeleteResultV1,
   ExportJobEventAppendV1,
+  ExportJobEventPageV1,
+  ExportJobEventQueryV1,
   ExportJobFinalizeV1,
   ExportJobQueryV1,
+  ExportJobTombstoneQueryV1,
   ExportJobUpdateV1,
 } from "./store-contracts.js";
 import type {
@@ -44,12 +48,20 @@ export interface ExportJobStore {
   deliver(id: string, expectedRevision: number, at: number): Promise<ExportJobSnapshotV1>;
   /** Succeeded jobs without `deliveredAt` or `dismissedAt` are never eligible. */
   deleteTerminal(query: ExportJobDeleteQueryV1): Promise<ExportJobDeleteResultV1>;
+  listTombstones(
+    query?: ExportJobTombstoneQueryV1,
+  ): Promise<import("./store-contracts.js").ExportJobTombstoneV1[]>;
   getTombstone(jobId: string): Promise<import("./store-contracts.js").ExportJobTombstoneV1 | undefined>;
   markTombstoneCleanupComplete(
     jobId: string,
     tombstoneRef: string,
     at: number,
   ): Promise<import("./store-contracts.js").ExportJobTombstoneV1>;
+}
+
+/** Read-only, cursor-paginated durable event log used by monitors and activity detail. */
+export interface ExportJobEventReaderV1 {
+  readEvents(jobId: string, query?: ExportJobEventQueryV1): Promise<ExportJobEventPageV1>;
 }
 
 /** Host-owned chunked byte storage for source and checkpoint payloads. */
@@ -116,11 +128,23 @@ export interface ExportJobArtifacts {
 export interface ExportJobExecutionContext {
   jobId: string;
   leaseEpoch: number;
+  /** Durable checkpoint visible when this lease was claimed; updated after publication. */
+  checkpointRef?: string;
   signal: AbortSignal;
   spool: ExportJobSpool;
+  /**
+   * Read an owned spool object from a previous lease epoch during recovery.
+   * Hosts must reject refs for another job; executors receive no cross-job byte
+   * access and cannot write through this recovery-only surface.
+   */
+  readSpool?(
+    ref: SpoolRefV1,
+    options?: { signal?: AbortSignal },
+  ): AsyncIterable<Uint8Array>;
   artifacts: ExportJobArtifacts;
   updateProgress(progress: ExportJobProgressV1): Promise<void>;
-  appendEvent(event: ExportJobEventV1): Promise<void>;
+  updateStats(stats: ExportJobStatsV1): Promise<void>;
+  appendEvent(event: ExportJobEventDraftV1): Promise<void>;
   checkpoint(ref: string): Promise<void>;
 }
 

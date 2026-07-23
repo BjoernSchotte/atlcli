@@ -358,6 +358,13 @@ export interface AssetBudgetOptions {
     maxTotalBytes?: number;
 }
 
+// export: AssetPipelineError
+export declare class AssetPipelineError extends Error {
+    constructor(message: string, options?: {
+        cause?: unknown;
+    });
+}
+
 // export: ASSETS_DATASOURCE_ID
 export declare const ASSETS_DATASOURCE_ID = "361d618a-3c04-40ad-9b27-3c8ea6927020";
 
@@ -508,12 +515,16 @@ export declare class ConfluenceClient {
     private assertSessionJsonOk;
     private request;
     private requestV2;
-    getCurrentUser(): Promise<{
+    getCurrentUser(options?: {
+        signal?: AbortSignal;
+    }): Promise<{
         accountId: string;
         displayName: string;
         email?: string;
     }>;
-    getPage(id: string): Promise<ConfluencePage & {
+    getPage(id: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluencePage & {
         storage: string;
     }>;
     getPageAdf(id: string, options?: {
@@ -616,8 +627,12 @@ export declare class ConfluenceClient {
     }): Promise<ConfluenceSpace>;
     listSpaces(limit?: number): Promise<ConfluenceSpace[]>;
     getSpace(key: string): Promise<ConfluenceSpace>;
-    getSpaceIcon(key: string): Promise<SpaceIcon | null>;
-    getSpaceWithIcon(key: string): Promise<{
+    getSpaceIcon(key: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<SpaceIcon | null>;
+    getSpaceWithIcon(key: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<{
         space: ConfluenceSpace;
         icon: SpaceIcon | null;
     }>;
@@ -644,6 +659,7 @@ export declare class ConfluenceClient {
     }): Promise<PageAttachmentMediaResult>;
     listAttachments(pageId: string, options?: {
         limit?: number;
+        signal?: AbortSignal;
     }): Promise<AttachmentInfo[]>;
     getAttachment(attachmentId: string): Promise<AttachmentInfo>;
     uploadAttachment(params: {
@@ -752,14 +768,21 @@ export declare class ConfluenceClient {
     }>>;
     getFoldersInTree(parentId: string): Promise<ConfluenceFolder[]>;
     movePageToFolder(pageId: string, folderId: string): Promise<ConfluencePage>;
-    getUser(accountId: string): Promise<UserInfo | null>;
-    getSpaceHomepageStorage(spaceKey: string): Promise<string | null>;
+    getUser(accountId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<UserInfo | null>;
+    getSpaceHomepageStorage(spaceKey: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<string | null>;
     getSpaceHomepageId(spaceKey: string, options?: {
         signal?: AbortSignal;
     }): Promise<string | null>;
-    getPageOwner(pageId: string): Promise<ConfluenceUser | null>;
+    getPageOwner(pageId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluenceUser | null>;
     getUsersBulk(accountIds: string[], options?: {
         concurrency?: number;
+        signal?: AbortSignal;
     }): Promise<Map<string, UserInfo | null>>;
     getVersionHistory(pageId: string, options?: {
         limit?: number;
@@ -1413,6 +1436,61 @@ export type ExportSourcePolicy = "adf-primary" | "storage-primary";
 
 // export: exportSourcePolicyFromFlag
 export declare function exportSourcePolicyFromFlag(value: string | undefined): ExportSourcePolicy;
+
+// export: ExportTreeBodyManifestEntryV1
+export interface ExportTreeBodyManifestEntryV1 {
+    ordinal: number;
+    key: string;
+    pageId: string;
+    title: string;
+}
+
+// export: ExportTreeBodyResultV1
+export type ExportTreeBodyResultV1 = {
+    ok: false;
+    pageId: string;
+    title: string;
+    source?: {
+        representation: PageBody["representation"];
+        degraded: false;
+    };
+    failure: {
+        code: CompletenessCode;
+        affected: ReadonlyArray<{
+            id: string;
+            title: string;
+        }>;
+        detail?: string;
+    };
+} | {
+    ok: true;
+    pageId: string;
+    title: string;
+    source: {
+        representation: PageBody["representation"];
+        degraded: boolean;
+    };
+    blocks: ExportBlock[];
+    notes: ExportNote[];
+    meta: {
+        version?: number;
+        labels: string[];
+        spaceKey?: string;
+    };
+};
+
+// export: ExportTreeBodyStoreV1
+export interface ExportTreeBodyStoreV1 {
+    prepare(entries: readonly ExportTreeBodyManifestEntryV1[], context: {
+        signal: AbortSignal;
+    }): Promise<void>;
+    load(entry: ExportTreeBodyManifestEntryV1, context: {
+        signal: AbortSignal;
+    }): Promise<ExportTreeBodyResultV1 | undefined>;
+    commit(entry: ExportTreeBodyManifestEntryV1, result: ExportTreeBodyResultV1, context: {
+        signal: AbortSignal;
+    }): Promise<void>;
+}
 
 // export: ExportTreePlanError
 export declare class ExportTreePlanError extends Error {
@@ -2264,6 +2342,8 @@ export interface TreeFetchOptions {
     maxPages?: number;
     maxFolders?: number;
     concurrency?: number;
+    maxResultSlots?: number;
+    bodyStore?: ExportTreeBodyStoreV1;
     completenessMode?: CompletenessMode;
     signal?: AbortSignal;
     onProgress?: (progress: TreeFetchProgress) => void;
@@ -2835,6 +2915,13 @@ export interface AssetBudgetOptions {
     maxTotalBytes?: number;
 }
 
+// export: AssetPipelineError
+export declare class AssetPipelineError extends Error {
+    constructor(message: string, options?: {
+        cause?: unknown;
+    });
+}
+
 // export: ASSETS_DATASOURCE_ID
 export declare const ASSETS_DATASOURCE_ID = "361d618a-3c04-40ad-9b27-3c8ea6927020";
 
@@ -2985,12 +3072,16 @@ export declare class ConfluenceClient {
     private assertSessionJsonOk;
     private request;
     private requestV2;
-    getCurrentUser(): Promise<{
+    getCurrentUser(options?: {
+        signal?: AbortSignal;
+    }): Promise<{
         accountId: string;
         displayName: string;
         email?: string;
     }>;
-    getPage(id: string): Promise<ConfluencePage & {
+    getPage(id: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluencePage & {
         storage: string;
     }>;
     getPageAdf(id: string, options?: {
@@ -3093,8 +3184,12 @@ export declare class ConfluenceClient {
     }): Promise<ConfluenceSpace>;
     listSpaces(limit?: number): Promise<ConfluenceSpace[]>;
     getSpace(key: string): Promise<ConfluenceSpace>;
-    getSpaceIcon(key: string): Promise<SpaceIcon | null>;
-    getSpaceWithIcon(key: string): Promise<{
+    getSpaceIcon(key: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<SpaceIcon | null>;
+    getSpaceWithIcon(key: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<{
         space: ConfluenceSpace;
         icon: SpaceIcon | null;
     }>;
@@ -3121,6 +3216,7 @@ export declare class ConfluenceClient {
     }): Promise<PageAttachmentMediaResult>;
     listAttachments(pageId: string, options?: {
         limit?: number;
+        signal?: AbortSignal;
     }): Promise<AttachmentInfo[]>;
     getAttachment(attachmentId: string): Promise<AttachmentInfo>;
     uploadAttachment(params: {
@@ -3229,14 +3325,21 @@ export declare class ConfluenceClient {
     }>>;
     getFoldersInTree(parentId: string): Promise<ConfluenceFolder[]>;
     movePageToFolder(pageId: string, folderId: string): Promise<ConfluencePage>;
-    getUser(accountId: string): Promise<UserInfo | null>;
-    getSpaceHomepageStorage(spaceKey: string): Promise<string | null>;
+    getUser(accountId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<UserInfo | null>;
+    getSpaceHomepageStorage(spaceKey: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<string | null>;
     getSpaceHomepageId(spaceKey: string, options?: {
         signal?: AbortSignal;
     }): Promise<string | null>;
-    getPageOwner(pageId: string): Promise<ConfluenceUser | null>;
+    getPageOwner(pageId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluenceUser | null>;
     getUsersBulk(accountIds: string[], options?: {
         concurrency?: number;
+        signal?: AbortSignal;
     }): Promise<Map<string, UserInfo | null>>;
     getVersionHistory(pageId: string, options?: {
         limit?: number;
@@ -3890,6 +3993,61 @@ export type ExportSourcePolicy = "adf-primary" | "storage-primary";
 
 // export: exportSourcePolicyFromFlag
 export declare function exportSourcePolicyFromFlag(value: string | undefined): ExportSourcePolicy;
+
+// export: ExportTreeBodyManifestEntryV1
+export interface ExportTreeBodyManifestEntryV1 {
+    ordinal: number;
+    key: string;
+    pageId: string;
+    title: string;
+}
+
+// export: ExportTreeBodyResultV1
+export type ExportTreeBodyResultV1 = {
+    ok: false;
+    pageId: string;
+    title: string;
+    source?: {
+        representation: PageBody["representation"];
+        degraded: false;
+    };
+    failure: {
+        code: CompletenessCode;
+        affected: ReadonlyArray<{
+            id: string;
+            title: string;
+        }>;
+        detail?: string;
+    };
+} | {
+    ok: true;
+    pageId: string;
+    title: string;
+    source: {
+        representation: PageBody["representation"];
+        degraded: boolean;
+    };
+    blocks: ExportBlock[];
+    notes: ExportNote[];
+    meta: {
+        version?: number;
+        labels: string[];
+        spaceKey?: string;
+    };
+};
+
+// export: ExportTreeBodyStoreV1
+export interface ExportTreeBodyStoreV1 {
+    prepare(entries: readonly ExportTreeBodyManifestEntryV1[], context: {
+        signal: AbortSignal;
+    }): Promise<void>;
+    load(entry: ExportTreeBodyManifestEntryV1, context: {
+        signal: AbortSignal;
+    }): Promise<ExportTreeBodyResultV1 | undefined>;
+    commit(entry: ExportTreeBodyManifestEntryV1, result: ExportTreeBodyResultV1, context: {
+        signal: AbortSignal;
+    }): Promise<void>;
+}
 
 // export: ExportTreePlanError
 export declare class ExportTreePlanError extends Error {
@@ -4741,6 +4899,8 @@ export interface TreeFetchOptions {
     maxPages?: number;
     maxFolders?: number;
     concurrency?: number;
+    maxResultSlots?: number;
+    bodyStore?: ExportTreeBodyStoreV1;
     completenessMode?: CompletenessMode;
     signal?: AbortSignal;
     onProgress?: (progress: TreeFetchProgress) => void;
@@ -5312,6 +5472,13 @@ export interface AssetBudgetOptions {
     maxTotalBytes?: number;
 }
 
+// export: AssetPipelineError
+export declare class AssetPipelineError extends Error {
+    constructor(message: string, options?: {
+        cause?: unknown;
+    });
+}
+
 // export: ASSETS_DATASOURCE_ID
 export declare const ASSETS_DATASOURCE_ID = "361d618a-3c04-40ad-9b27-3c8ea6927020";
 
@@ -5462,12 +5629,16 @@ export declare class ConfluenceClient {
     private assertSessionJsonOk;
     private request;
     private requestV2;
-    getCurrentUser(): Promise<{
+    getCurrentUser(options?: {
+        signal?: AbortSignal;
+    }): Promise<{
         accountId: string;
         displayName: string;
         email?: string;
     }>;
-    getPage(id: string): Promise<ConfluencePage & {
+    getPage(id: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluencePage & {
         storage: string;
     }>;
     getPageAdf(id: string, options?: {
@@ -5570,8 +5741,12 @@ export declare class ConfluenceClient {
     }): Promise<ConfluenceSpace>;
     listSpaces(limit?: number): Promise<ConfluenceSpace[]>;
     getSpace(key: string): Promise<ConfluenceSpace>;
-    getSpaceIcon(key: string): Promise<SpaceIcon | null>;
-    getSpaceWithIcon(key: string): Promise<{
+    getSpaceIcon(key: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<SpaceIcon | null>;
+    getSpaceWithIcon(key: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<{
         space: ConfluenceSpace;
         icon: SpaceIcon | null;
     }>;
@@ -5598,6 +5773,7 @@ export declare class ConfluenceClient {
     }): Promise<PageAttachmentMediaResult>;
     listAttachments(pageId: string, options?: {
         limit?: number;
+        signal?: AbortSignal;
     }): Promise<AttachmentInfo[]>;
     getAttachment(attachmentId: string): Promise<AttachmentInfo>;
     uploadAttachment(params: {
@@ -5706,14 +5882,21 @@ export declare class ConfluenceClient {
     }>>;
     getFoldersInTree(parentId: string): Promise<ConfluenceFolder[]>;
     movePageToFolder(pageId: string, folderId: string): Promise<ConfluencePage>;
-    getUser(accountId: string): Promise<UserInfo | null>;
-    getSpaceHomepageStorage(spaceKey: string): Promise<string | null>;
+    getUser(accountId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<UserInfo | null>;
+    getSpaceHomepageStorage(spaceKey: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<string | null>;
     getSpaceHomepageId(spaceKey: string, options?: {
         signal?: AbortSignal;
     }): Promise<string | null>;
-    getPageOwner(pageId: string): Promise<ConfluenceUser | null>;
+    getPageOwner(pageId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluenceUser | null>;
     getUsersBulk(accountIds: string[], options?: {
         concurrency?: number;
+        signal?: AbortSignal;
     }): Promise<Map<string, UserInfo | null>>;
     getVersionHistory(pageId: string, options?: {
         limit?: number;
@@ -6367,6 +6550,61 @@ export type ExportSourcePolicy = "adf-primary" | "storage-primary";
 
 // export: exportSourcePolicyFromFlag
 export declare function exportSourcePolicyFromFlag(value: string | undefined): ExportSourcePolicy;
+
+// export: ExportTreeBodyManifestEntryV1
+export interface ExportTreeBodyManifestEntryV1 {
+    ordinal: number;
+    key: string;
+    pageId: string;
+    title: string;
+}
+
+// export: ExportTreeBodyResultV1
+export type ExportTreeBodyResultV1 = {
+    ok: false;
+    pageId: string;
+    title: string;
+    source?: {
+        representation: PageBody["representation"];
+        degraded: false;
+    };
+    failure: {
+        code: CompletenessCode;
+        affected: ReadonlyArray<{
+            id: string;
+            title: string;
+        }>;
+        detail?: string;
+    };
+} | {
+    ok: true;
+    pageId: string;
+    title: string;
+    source: {
+        representation: PageBody["representation"];
+        degraded: boolean;
+    };
+    blocks: ExportBlock[];
+    notes: ExportNote[];
+    meta: {
+        version?: number;
+        labels: string[];
+        spaceKey?: string;
+    };
+};
+
+// export: ExportTreeBodyStoreV1
+export interface ExportTreeBodyStoreV1 {
+    prepare(entries: readonly ExportTreeBodyManifestEntryV1[], context: {
+        signal: AbortSignal;
+    }): Promise<void>;
+    load(entry: ExportTreeBodyManifestEntryV1, context: {
+        signal: AbortSignal;
+    }): Promise<ExportTreeBodyResultV1 | undefined>;
+    commit(entry: ExportTreeBodyManifestEntryV1, result: ExportTreeBodyResultV1, context: {
+        signal: AbortSignal;
+    }): Promise<void>;
+}
 
 // export: ExportTreePlanError
 export declare class ExportTreePlanError extends Error {
@@ -7218,6 +7456,8 @@ export interface TreeFetchOptions {
     maxPages?: number;
     maxFolders?: number;
     concurrency?: number;
+    maxResultSlots?: number;
+    bodyStore?: ExportTreeBodyStoreV1;
     completenessMode?: CompletenessMode;
     signal?: AbortSignal;
     onProgress?: (progress: TreeFetchProgress) => void;
@@ -7777,12 +8017,16 @@ export declare class ConfluenceClient {
     private assertSessionJsonOk;
     private request;
     private requestV2;
-    getCurrentUser(): Promise<{
+    getCurrentUser(options?: {
+        signal?: AbortSignal;
+    }): Promise<{
         accountId: string;
         displayName: string;
         email?: string;
     }>;
-    getPage(id: string): Promise<ConfluencePage & {
+    getPage(id: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluencePage & {
         storage: string;
     }>;
     getPageAdf(id: string, options?: {
@@ -7885,8 +8129,12 @@ export declare class ConfluenceClient {
     }): Promise<ConfluenceSpace>;
     listSpaces(limit?: number): Promise<ConfluenceSpace[]>;
     getSpace(key: string): Promise<ConfluenceSpace>;
-    getSpaceIcon(key: string): Promise<SpaceIcon | null>;
-    getSpaceWithIcon(key: string): Promise<{
+    getSpaceIcon(key: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<SpaceIcon | null>;
+    getSpaceWithIcon(key: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<{
         space: ConfluenceSpace;
         icon: SpaceIcon | null;
     }>;
@@ -7913,6 +8161,7 @@ export declare class ConfluenceClient {
     }): Promise<PageAttachmentMediaResult>;
     listAttachments(pageId: string, options?: {
         limit?: number;
+        signal?: AbortSignal;
     }): Promise<AttachmentInfo[]>;
     getAttachment(attachmentId: string): Promise<AttachmentInfo>;
     uploadAttachment(params: {
@@ -8021,14 +8270,21 @@ export declare class ConfluenceClient {
     }>>;
     getFoldersInTree(parentId: string): Promise<ConfluenceFolder[]>;
     movePageToFolder(pageId: string, folderId: string): Promise<ConfluencePage>;
-    getUser(accountId: string): Promise<UserInfo | null>;
-    getSpaceHomepageStorage(spaceKey: string): Promise<string | null>;
+    getUser(accountId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<UserInfo | null>;
+    getSpaceHomepageStorage(spaceKey: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<string | null>;
     getSpaceHomepageId(spaceKey: string, options?: {
         signal?: AbortSignal;
     }): Promise<string | null>;
-    getPageOwner(pageId: string): Promise<ConfluenceUser | null>;
+    getPageOwner(pageId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluenceUser | null>;
     getUsersBulk(accountIds: string[], options?: {
         concurrency?: number;
+        signal?: AbortSignal;
     }): Promise<Map<string, UserInfo | null>>;
     getVersionHistory(pageId: string, options?: {
         limit?: number;
@@ -10690,6 +10946,13 @@ export interface AssetBudgetOptions {
     maxTotalBytes?: number;
 }
 
+// export: AssetPipelineError
+export declare class AssetPipelineError extends Error {
+    constructor(message: string, options?: {
+        cause?: unknown;
+    });
+}
+
 // export: ASSETS_DATASOURCE_ID
 export declare const ASSETS_DATASOURCE_ID = "361d618a-3c04-40ad-9b27-3c8ea6927020";
 
@@ -10840,12 +11103,16 @@ export declare class ConfluenceClient {
     private assertSessionJsonOk;
     private request;
     private requestV2;
-    getCurrentUser(): Promise<{
+    getCurrentUser(options?: {
+        signal?: AbortSignal;
+    }): Promise<{
         accountId: string;
         displayName: string;
         email?: string;
     }>;
-    getPage(id: string): Promise<ConfluencePage & {
+    getPage(id: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluencePage & {
         storage: string;
     }>;
     getPageAdf(id: string, options?: {
@@ -10948,8 +11215,12 @@ export declare class ConfluenceClient {
     }): Promise<ConfluenceSpace>;
     listSpaces(limit?: number): Promise<ConfluenceSpace[]>;
     getSpace(key: string): Promise<ConfluenceSpace>;
-    getSpaceIcon(key: string): Promise<SpaceIcon | null>;
-    getSpaceWithIcon(key: string): Promise<{
+    getSpaceIcon(key: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<SpaceIcon | null>;
+    getSpaceWithIcon(key: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<{
         space: ConfluenceSpace;
         icon: SpaceIcon | null;
     }>;
@@ -10976,6 +11247,7 @@ export declare class ConfluenceClient {
     }): Promise<PageAttachmentMediaResult>;
     listAttachments(pageId: string, options?: {
         limit?: number;
+        signal?: AbortSignal;
     }): Promise<AttachmentInfo[]>;
     getAttachment(attachmentId: string): Promise<AttachmentInfo>;
     uploadAttachment(params: {
@@ -11084,14 +11356,21 @@ export declare class ConfluenceClient {
     }>>;
     getFoldersInTree(parentId: string): Promise<ConfluenceFolder[]>;
     movePageToFolder(pageId: string, folderId: string): Promise<ConfluencePage>;
-    getUser(accountId: string): Promise<UserInfo | null>;
-    getSpaceHomepageStorage(spaceKey: string): Promise<string | null>;
+    getUser(accountId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<UserInfo | null>;
+    getSpaceHomepageStorage(spaceKey: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<string | null>;
     getSpaceHomepageId(spaceKey: string, options?: {
         signal?: AbortSignal;
     }): Promise<string | null>;
-    getPageOwner(pageId: string): Promise<ConfluenceUser | null>;
+    getPageOwner(pageId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluenceUser | null>;
     getUsersBulk(accountIds: string[], options?: {
         concurrency?: number;
+        signal?: AbortSignal;
     }): Promise<Map<string, UserInfo | null>>;
     getVersionHistory(pageId: string, options?: {
         limit?: number;
@@ -11745,6 +12024,61 @@ export type ExportSourcePolicy = "adf-primary" | "storage-primary";
 
 // export: exportSourcePolicyFromFlag
 export declare function exportSourcePolicyFromFlag(value: string | undefined): ExportSourcePolicy;
+
+// export: ExportTreeBodyManifestEntryV1
+export interface ExportTreeBodyManifestEntryV1 {
+    ordinal: number;
+    key: string;
+    pageId: string;
+    title: string;
+}
+
+// export: ExportTreeBodyResultV1
+export type ExportTreeBodyResultV1 = {
+    ok: false;
+    pageId: string;
+    title: string;
+    source?: {
+        representation: PageBody["representation"];
+        degraded: false;
+    };
+    failure: {
+        code: CompletenessCode;
+        affected: ReadonlyArray<{
+            id: string;
+            title: string;
+        }>;
+        detail?: string;
+    };
+} | {
+    ok: true;
+    pageId: string;
+    title: string;
+    source: {
+        representation: PageBody["representation"];
+        degraded: boolean;
+    };
+    blocks: ExportBlock[];
+    notes: ExportNote[];
+    meta: {
+        version?: number;
+        labels: string[];
+        spaceKey?: string;
+    };
+};
+
+// export: ExportTreeBodyStoreV1
+export interface ExportTreeBodyStoreV1 {
+    prepare(entries: readonly ExportTreeBodyManifestEntryV1[], context: {
+        signal: AbortSignal;
+    }): Promise<void>;
+    load(entry: ExportTreeBodyManifestEntryV1, context: {
+        signal: AbortSignal;
+    }): Promise<ExportTreeBodyResultV1 | undefined>;
+    commit(entry: ExportTreeBodyManifestEntryV1, result: ExportTreeBodyResultV1, context: {
+        signal: AbortSignal;
+    }): Promise<void>;
+}
 
 // export: ExportTreePlanError
 export declare class ExportTreePlanError extends Error {
@@ -12596,6 +12930,8 @@ export interface TreeFetchOptions {
     maxPages?: number;
     maxFolders?: number;
     concurrency?: number;
+    maxResultSlots?: number;
+    bodyStore?: ExportTreeBodyStoreV1;
     completenessMode?: CompletenessMode;
     signal?: AbortSignal;
     onProgress?: (progress: TreeFetchProgress) => void;

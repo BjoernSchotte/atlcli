@@ -31,6 +31,8 @@
     "@atlcli/confluence": "workspace:*",
     "@atlcli/core": "workspace:*",
     "@atlcli/docx": "workspace:*",
+    "@atlcli/export-jobs": "workspace:*",
+    "@atlcli/export-wiring": "workspace:*",
     "@atlcli/pdf": "workspace:*",
     "@atlcli/pdf-compiler-browser": "workspace:*"
   }

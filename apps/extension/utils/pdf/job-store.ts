@@ -191,6 +191,12 @@ export interface StoredPdfJobMeta {
   deadlineAt?: number;
   /** True once the panel has handed these bytes to the user. */
   consumed?: boolean;
+  /** Hidden compiler subrecords belong to a common outer job and never become Activity rows. */
+  activityVisibility?: "visible" | "private";
+  /** Common outer job owning a private transition-period compiler record. */
+  parentJobId?: string;
+  /** Fencing epoch of the outer job that created this compiler record. */
+  parentLeaseEpoch?: number;
 }
 
 /** A job with whichever payloads the caller asked for (and that still exist). */
@@ -224,6 +230,10 @@ function resolveFactory(factory?: IDBFactory): IDBFactory {
 
 export function isPdfJobId(value: unknown): value is string {
   return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+function isOpaqueExportJobId(value: unknown): value is string {
+  return typeof value === "string" && value.trim().length > 0 && value.length <= 4_096;
 }
 
 export function createPdfJobId(randomUUID: () => string = () => crypto.randomUUID()): string {
@@ -447,6 +457,9 @@ export interface PutPdfJobInput {
   scopeLabel?: string;
   deadlineAt?: number;
   progress?: PdfJobProgress;
+  activityVisibility?: "visible" | "private";
+  parentJobId?: string;
+  parentLeaseEpoch?: number;
 }
 
 export async function putPdfJob(
@@ -454,6 +467,16 @@ export async function putPdfJob(
   factory?: IDBFactory
 ): Promise<StoredPdfJob> {
   if (!isPdfJobId(input.id)) throw new Error("Invalid PDF job id.");
+  if (input.activityVisibility === "private") {
+    if (!isOpaqueExportJobId(input.parentJobId)) {
+      throw new Error("Private PDF compiler jobs require a valid parent job id.");
+    }
+    if (!Number.isSafeInteger(input.parentLeaseEpoch) || input.parentLeaseEpoch! < 1) {
+      throw new Error("Private PDF compiler jobs require a positive parent lease epoch.");
+    }
+  } else if (input.parentJobId !== undefined || input.parentLeaseEpoch !== undefined) {
+    throw new Error("Only private PDF compiler jobs may reference an outer job.");
+  }
   // Snapshot BEFORE measuring — see snapshotSourceBundle. Everything below
   // reads `bundle`, never `input.bundle`.
   const bundle = snapshotSourceBundle(input.bundle);
@@ -477,6 +500,9 @@ export async function putPdfJob(
     ...(input.scopeLabel === undefined ? {} : { scopeLabel: input.scopeLabel }),
     ...(input.deadlineAt === undefined ? {} : { deadlineAt: input.deadlineAt }),
     ...(input.progress === undefined ? {} : { progress: input.progress }),
+    ...(input.activityVisibility === undefined ? {} : { activityVisibility: input.activityVisibility }),
+    ...(input.parentJobId === undefined ? {} : { parentJobId: input.parentJobId }),
+    ...(input.parentLeaseEpoch === undefined ? {} : { parentLeaseEpoch: input.parentLeaseEpoch }),
   };
   // Admission control across BOTH tenants of the shared budget, before the write
   // transaction opens (see the module comment).
@@ -642,6 +668,12 @@ export function claimPdfJob(id: string, factory?: IDBFactory): Promise<ClaimedPd
             done(undefined);
             return;
           }
+          if (current.status !== "prepared") {
+            // Reject before opening the payload row: a duplicate wakeup must
+            // not deserialize a bundle owned by the winning compiler.
+            done(undefined);
+            return;
+          }
           const bundleRequest = stores[BUNDLE_STORE]!.get(id);
           bundleRequest.onerror = () => reject(bundleRequest.error);
           bundleRequest.onsuccess = () => {
@@ -649,12 +681,6 @@ export function claimPdfJob(id: string, factory?: IDBFactory): Promise<ClaimedPd
             if (!row) {
               // Released (cancelled, cleaned up) — nothing left to compile.
               done(undefined);
-              return;
-            }
-            if (current.status !== "prepared") {
-              // Not ours to claim; hand back the current state unchanged so the
-              // caller can report *why*, without writing anything.
-              done({ ...current, bundle: row.bundle });
               return;
             }
             const next: StoredPdfJobMeta = { ...current, status: "compiling", updatedAt: Date.now() };

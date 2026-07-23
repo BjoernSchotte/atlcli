@@ -82,6 +82,15 @@ export declare function cleanupAbandonedExportAttempt(stores: ExportOwnedByteSto
 // export: cleanupTombstonedExportJob
 export declare function cleanupTombstonedExportJob(stores: ExportOwnedByteStoresV1, tombstone: ExportJobTombstoneV1): Promise<ExportOwnedByteCleanupSummaryV1>;
 
+// export: COMPACT_HISTORY_MAX_JOBS_V1
+export declare const COMPACT_HISTORY_MAX_JOBS_V1 = 100;
+
+// export: COMPACT_HISTORY_RETENTION_MS_V1
+export declare const COMPACT_HISTORY_RETENTION_MS_V1: number;
+
+// export: compareExportActivityRowsV1
+export declare function compareExportActivityRowsV1(left: ExportActivityRowV1, right: ExportActivityRowV1): number;
+
 // export: CompletenessMode
 export type CompletenessMode = "strict" | "partial";
 
@@ -96,6 +105,9 @@ export declare function consumeBoundedByteStreamV1(source: AsyncIterable<Uint8Ar
 // export: copyExactOwnedBytesV1
 export declare function copyExactOwnedBytesV1(chunk: Uint8Array): Uint8Array;
 
+// export: createEmptyExportJobStatsV1
+export declare function createEmptyExportJobStatsV1(): ExportJobStatsV1;
+
 // export: decideResourceAdmission
 export declare function decideResourceAdmission(estimate: ResourceEstimateV1, available: ResourceCapacityV1, options: ResourceAdmissionOptionsV1): ResourceAdmissionDecisionV1;
 
@@ -108,6 +120,7 @@ export declare function deriveExportJobReplayV1(args: {
     originRequest: ExportJobRequestV1;
     input: ExportJobReplayInputV1;
     existingDerived: readonly ExportJobSnapshotV1[];
+    existingDerivedRequests: readonly ExportJobRequestV1[];
 }): ExportJobReplayDerivationV1;
 
 // export: DocxExportJobRequestV1
@@ -118,10 +131,13 @@ export interface DocxExportJobRequestV1 extends ExportJobRequestBaseV1 {
         recordKey: string;
         sha256: string;
         name: string;
+        uploadedAt?: number;
     };
     options: {
         embedImages: boolean;
         resolveMacros: boolean;
+        keepIgnored?: boolean;
+        strict?: boolean;
         updateFields?: "auto" | "always" | "never";
         captionLang?: string;
     };
@@ -129,6 +145,13 @@ export interface DocxExportJobRequestV1 extends ExportJobRequestBaseV1 {
 
 // export: EvictionReasonV1
 export type EvictionReasonV1 = "expired-temp" | "regenerable-preview" | "released-terminal-artifact" | "terminal-diagnostic-grace-elapsed";
+
+// export: EXPORT_JOB_METRICS_V1
+export declare const EXPORT_JOB_METRICS_V1: readonly [
+    "storage.spoolPeakBytes",
+    "memory.heapPeakBytes",
+    "memory.rendererPeakBytes"
+];
 
 // export: EXPORT_RESOURCE_NAMES_V1
 export declare const EXPORT_RESOURCE_NAMES_V1: readonly [
@@ -138,6 +161,73 @@ export declare const EXPORT_RESOURCE_NAMES_V1: readonly [
     "rasterBytes",
     "heavySlots"
 ];
+
+// export: ExportActivityActionsV1
+export interface ExportActivityActionsV1 {
+    cancel: boolean;
+    retry: boolean;
+    rerun: boolean;
+    resume: boolean;
+    download: boolean;
+    acknowledge: boolean;
+    dismiss: boolean;
+    detail: boolean;
+}
+
+// export: ExportActivityProjectionOptionsV1
+export interface ExportActivityProjectionOptionsV1 {
+    queuePositionKind?: "estimated" | "exact";
+    includeDismissed?: boolean;
+    siteOrigin?: string;
+    formats?: readonly ExportFormat[];
+    states?: readonly ExportJobState[];
+    createdAfter?: number;
+}
+
+// export: ExportActivityQueueProjectionV1
+export type ExportActivityQueueProjectionV1 = {
+    kind: "estimated" | "exact";
+    position: number;
+} | {
+    kind: "waiting";
+    reason: NonNullable<ExportJobSnapshotV1["waiting"]>["reason"];
+    until?: number;
+};
+
+// export: ExportActivityRowV1
+export interface ExportActivityRowV1 {
+    key: `common:${string}`;
+    source: "common";
+    id: string;
+    format: ExportFormat;
+    state: ExportJobState;
+    stage?: ExportJobSnapshotV1["stage"];
+    displayName: string;
+    sourceLabel: string;
+    siteOrigin: string;
+    profileLabel?: string;
+    scopeKind: string;
+    createdAt: number;
+    startedAt?: number;
+    finishedAt?: number;
+    deliveredAt?: number;
+    acknowledgedAt?: number;
+    waiting?: ExportJobSnapshotV1["waiting"];
+    progress?: ExportJobSnapshotV1["progress"];
+    queue?: ExportJobSnapshotV1["queue"];
+    queueProjection?: ExportActivityQueueProjectionV1;
+    attempt: number;
+    recoveryCount: number;
+    stats: ExportJobSnapshotV1["stats"];
+    reportSummary?: ExportJobSnapshotV1["reportSummary"];
+    reportRef?: string;
+    artifact?: ExportJobSnapshotV1["artifact"];
+    derivedFrom?: ExportJobSnapshotV1["derivedFrom"];
+    bytes: number;
+    error?: ExportJobSnapshotV1["error"];
+    unread: boolean;
+    actions: ExportActivityActionsV1;
+}
 
 // export: ExportArtifactFinalizationCommitter
 export interface ExportArtifactFinalizationCommitter {
@@ -273,7 +363,10 @@ export interface ExportJobClaimV1 {
     ownerId: string;
     now: number;
     leaseDurationMs: number;
+    ids?: string[];
+    resumeWaitingIds?: string[];
     formats?: ExportFormat[];
+    authRefs?: string[];
 }
 
 // export: ExportJobCreateV1
@@ -285,6 +378,7 @@ export interface ExportJobCreateV1 {
 // export: ExportJobDeleteQueryV1
 export interface ExportJobDeleteQueryV1 {
     finishedBefore: number;
+    ids?: string[];
     states?: Array<Extract<ExportJobState, "succeeded" | "failed" | "cancelled" | "interrupted">>;
     limit?: number;
 }
@@ -321,6 +415,27 @@ export interface ExportJobEventAppendV1 {
     expectedRevision: number;
     leaseEpoch?: number;
     event: ExportJobEventV1;
+}
+
+// export: ExportJobEventDraftV1
+export type ExportJobEventDraftV1 = ExportJobEventV1 extends infer Event ? Event extends ExportJobEventV1 ? Omit<Event, "seq"> : never : never;
+
+// export: ExportJobEventPageV1
+export interface ExportJobEventPageV1 {
+    events: ExportJobEventV1[];
+    nextAfterSeq: number;
+    hasMore: boolean;
+}
+
+// export: ExportJobEventQueryV1
+export interface ExportJobEventQueryV1 {
+    afterSeq?: number;
+    limit?: number;
+}
+
+// export: ExportJobEventReaderV1
+export interface ExportJobEventReaderV1 {
+    readEvents(jobId: string, query?: ExportJobEventQueryV1): Promise<ExportJobEventPageV1>;
 }
 
 // export: ExportJobEventV1
@@ -370,11 +485,16 @@ export type ExportJobEventV1 = {
 export interface ExportJobExecutionContext {
     jobId: string;
     leaseEpoch: number;
+    checkpointRef?: string;
     signal: AbortSignal;
     spool: ExportJobSpool;
+    readSpool?(ref: SpoolRefV1, options?: {
+        signal?: AbortSignal;
+    }): AsyncIterable<Uint8Array>;
     artifacts: ExportJobArtifacts;
     updateProgress(progress: ExportJobProgressV1): Promise<void>;
-    appendEvent(event: ExportJobEventV1): Promise<void>;
+    updateStats(stats: ExportJobStatsV1): Promise<void>;
+    appendEvent(event: ExportJobEventDraftV1): Promise<void>;
     checkpoint(ref: string): Promise<void>;
 }
 
@@ -458,6 +578,12 @@ export interface ExportJobLeaseV1 {
     expiresAt: number;
 }
 
+// export: ExportJobLifecycleRetentionPlanV1
+export interface ExportJobLifecycleRetentionPlanV1 {
+    releases: ExportJobRetentionReleaseV1[];
+    deleteJobIds: string[];
+}
+
 // export: ExportJobMetricV1
 export type ExportJobMetricV1 = "storage.spoolPeakBytes" | "memory.heapPeakBytes" | "memory.rendererPeakBytes";
 
@@ -491,7 +617,12 @@ export interface ExportJobQueryV1 {
     states?: ExportJobState[];
     stages?: ExportJobStage[];
     includeDismissed?: boolean;
+    createdAfter?: number;
     createdBefore?: number;
+    cursorBefore?: {
+        createdAt: number;
+        id: string;
+    };
     limit?: number;
 }
 
@@ -500,6 +631,15 @@ export interface ExportJobReclaimExpiredUpdateV1 extends ExportJobCasBaseV1 {
     kind: "reclaim-expired";
     now: number;
 }
+
+// export: ExportJobReplayConflict
+export declare class ExportJobReplayConflict extends Error {
+    readonly code: ExportJobReplayConflictCodeV1;
+    constructor(code: ExportJobReplayConflictCodeV1, message: string);
+}
+
+// export: ExportJobReplayConflictCodeV1
+export type ExportJobReplayConflictCodeV1 = "candidate-request-missing" | "action-payload-conflict";
 
 // export: ExportJobReplayDerivationV1
 export type ExportJobReplayDerivationV1 = {
@@ -522,6 +662,7 @@ export interface ExportJobReplayInputV1 {
     newJobId: string;
     newIdempotencyKey: string;
     createdAt: number;
+    outputOverride?: ExportJobRequestV1["output"];
 }
 
 // export: ExportJobReplayRelationV1
@@ -542,11 +683,43 @@ export interface ExportJobRequestBaseV1 {
     output: {
         policy: "collect" | "path" | "host";
         targetRef?: string;
+        targetKind?: "file" | "directory";
+        overwriteExisting?: boolean;
     };
 }
 
 // export: ExportJobRequestV1
 export type ExportJobRequestV1 = DocxExportJobRequestV1 | PdfExportJobRequestV1;
+
+// export: ExportJobResultTelemetryV1
+export interface ExportJobResultTelemetryV1 {
+    stats: ExportJobStatsV1;
+    issues: ExportJobEventDraftV1[];
+}
+
+// export: ExportJobRetentionInputV1
+export interface ExportJobRetentionInputV1 {
+    expectedRevision: number;
+    at: number;
+    releaseArtifact: boolean;
+    releaseReport: boolean;
+}
+
+// export: ExportJobRetentionReleaseV1
+export interface ExportJobRetentionReleaseV1 {
+    id: string;
+    expectedRevision: number;
+    releaseArtifact: boolean;
+    releaseReport: boolean;
+}
+
+// export: ExportJobRetentionUpdateV1
+export interface ExportJobRetentionUpdateV1 extends ExportJobCasBaseV1 {
+    kind: "retention";
+    at: number;
+    releaseArtifact: boolean;
+    releaseReport: boolean;
+}
 
 // export: ExportJobSnapshotV1
 export interface ExportJobSnapshotV1 {
@@ -582,7 +755,9 @@ export interface ExportJobSnapshotV1 {
     cancelRequestedAt?: number;
     checkpointRef?: string;
     artifact?: ExportArtifactV1;
+    artifactReleasedAt?: number;
     reportRef?: string;
+    reportReleasedAt?: number;
     reportSummary?: ExportReportSummaryV1;
     stats: ExportJobStatsV1;
     error?: ExportJobErrorV1;
@@ -705,6 +880,7 @@ export interface ExportJobStore {
     dismiss(id: string, expectedRevision: number, at: number): Promise<ExportJobSnapshotV1>;
     deliver(id: string, expectedRevision: number, at: number): Promise<ExportJobSnapshotV1>;
     deleteTerminal(query: ExportJobDeleteQueryV1): Promise<ExportJobDeleteResultV1>;
+    listTombstones(query?: ExportJobTombstoneQueryV1): Promise<import("./store-contracts.js").ExportJobTombstoneV1[]>;
     getTombstone(jobId: string): Promise<import("./store-contracts.js").ExportJobTombstoneV1 | undefined>;
     markTombstoneCleanupComplete(jobId: string, tombstoneRef: string, at: number): Promise<import("./store-contracts.js").ExportJobTombstoneV1>;
 }
@@ -715,6 +891,12 @@ export interface ExportJobTerminalMetadataInputV1 {
     deliveredAt?: number;
     acknowledgedAt?: number;
     dismissedAt?: number;
+}
+
+// export: ExportJobTombstoneQueryV1
+export interface ExportJobTombstoneQueryV1 {
+    cleanupPending?: boolean;
+    limit?: number;
 }
 
 // export: ExportJobTombstoneV1
@@ -753,7 +935,7 @@ export interface ExportJobTransitionUpdateV1 extends ExportJobCasBaseV1 {
 }
 
 // export: ExportJobUpdateV1
-export type ExportJobUpdateV1 = ExportJobTransitionUpdateV1 | ExportJobHeartbeatUpdateV1 | ExportJobProgressUpdateV1 | ExportJobReclaimExpiredUpdateV1 | ExportJobCheckpointUpdateV1 | ExportJobStatsUpdateV1;
+export type ExportJobUpdateV1 = ExportJobTransitionUpdateV1 | ExportJobHeartbeatUpdateV1 | ExportJobProgressUpdateV1 | ExportJobReclaimExpiredUpdateV1 | ExportJobCheckpointUpdateV1 | ExportJobStatsUpdateV1 | ExportJobRetentionUpdateV1;
 
 // export: ExportJobValidationError
 export declare class ExportJobValidationError extends Error {
@@ -866,6 +1048,7 @@ export interface ExportSourceV1 {
     labels?: LabelFilter;
     completenessMode?: CompletenessMode;
     maxPages?: number;
+    maxFolders?: number;
 }
 
 // export: ExportSpoolStore
@@ -888,6 +1071,9 @@ export declare function finalizeExportArtifactDurably(ports: ExportArtifactFinal
 
 // export: finalizeExportJobArtifact
 export declare function finalizeExportJobArtifact(snapshot: ExportJobSnapshotV1, input: ExportJobFinalizeV1): ExportJobSnapshotV1;
+
+// export: FULL_REPORT_RETENTION_MS_V1
+export declare const FULL_REPORT_RETENTION_MS_V1: number;
 
 // export: heartbeatExportJob
 export declare function heartbeatExportJob(snapshot: ExportJobSnapshotV1, input: ExportJobHeartbeatInputV1): ExportJobSnapshotV1;
@@ -942,7 +1128,7 @@ export declare class InMemoryExportArtifactFinalizationJournal implements Export
 }
 
 // export: InMemoryExportJobStore
-export declare class InMemoryExportJobStore implements ExportJobStore {
+export declare class InMemoryExportJobStore implements ExportJobStore, ExportJobEventReaderV1 {
     #private;
     constructor(options?: InMemoryExportJobStoreOptions);
     create(input: ExportJobCreateV1): Promise<ExportJobSnapshotV1>;
@@ -959,6 +1145,7 @@ export declare class InMemoryExportJobStore implements ExportJobStore {
     compareAndSet(update: ExportJobUpdateV1): Promise<ExportJobSnapshotV1>;
     appendEvent(id: string, input: ExportJobEventAppendV1): Promise<void>;
     listEvents(id: string, limit?: number): Promise<ExportJobEventV1[]>;
+    readEvents(id: string, query?: ExportJobEventQueryV1): Promise<ExportJobEventPageV1>;
     finalizeArtifact(finalize: ExportJobFinalizeV1): Promise<ExportJobSnapshotV1>;
     finalizeArtifactWithFaults(finalize: ExportJobFinalizeV1, hooks?: ExportArtifactFinalizationFaultHooks): Promise<ExportJobSnapshotV1>;
     reconcilePreparedArtifactFinalization(jobId: string): Promise<ExportJobSnapshotV1 | undefined>;
@@ -966,6 +1153,7 @@ export declare class InMemoryExportJobStore implements ExportJobStore {
     dismiss(id: string, expectedRevision: number, at: number): Promise<ExportJobSnapshotV1>;
     deliver(id: string, expectedRevision: number, at: number): Promise<ExportJobSnapshotV1>;
     deleteTerminal(query: ExportJobDeleteQueryV1): Promise<ExportJobDeleteResultV1>;
+    listTombstones(query?: ExportJobTombstoneQueryV1): Promise<ExportJobTombstoneV1[]>;
     getTombstone(jobId: string): Promise<ExportJobTombstoneV1 | undefined>;
     markTombstoneCleanupComplete(jobId: string, tombstoneRef: string, at: number): Promise<ExportJobTombstoneV1>;
 }
@@ -1078,6 +1266,9 @@ export interface PdfExportJobRequestV1 extends ExportJobRequestBaseV1 {
     options: {
         resolveMacros: boolean;
         profile?: string;
+        strict?: boolean;
+        noCache?: boolean;
+        exportedAt?: number;
     };
 }
 
@@ -1123,6 +1314,9 @@ export interface PendingArtifactV1 {
     bytes: AsyncIterable<Uint8Array>;
 }
 
+// export: planExportJobLifecycleRetentionV1
+export declare function planExportJobLifecycleRetentionV1(snapshots: readonly ExportJobSnapshotV1[], now: number): ExportJobLifecycleRetentionPlanV1;
+
 // export: PlannedEvictionV1
 export interface PlannedEvictionV1 {
     ref: string;
@@ -1135,6 +1329,12 @@ export declare function planRetentionEviction(occupants: readonly RetentionOccup
 
 // export: prepareExportArtifactFinalizationIntent
 export declare function prepareExportArtifactFinalizationIntent(input: ExportJobFinalizeV1): ExportArtifactFinalizationIntentV1;
+
+// export: projectExportActivityRowV1
+export declare function projectExportActivityRowV1(snapshot: ExportJobSnapshotV1): ExportActivityRowV1;
+
+// export: projectExportActivityV1
+export declare function projectExportActivityV1(snapshots: readonly ExportJobSnapshotV1[], options?: ExportActivityProjectionOptionsV1): ExportActivityRowV1[];
 
 // export: projectExportBadge
 export declare function projectExportBadge(jobs: readonly BadgeJobV1[]): ExportBadgeProjectionV1;
@@ -1150,6 +1350,9 @@ export declare function reconcileTombstonedExportJobCleanup(jobStore: ExportJobS
     tombstone: ExportJobTombstoneV1;
     cleanup: ExportOwnedByteCleanupSummaryV1;
 }>;
+
+// export: releaseExportJobRetention
+export declare function releaseExportJobRetention(snapshot: ExportJobSnapshotV1, input: ExportJobRetentionInputV1): ExportJobSnapshotV1;
 
 // export: ResourceAdmissionDecisionV1
 export interface ResourceAdmissionDecisionV1 {

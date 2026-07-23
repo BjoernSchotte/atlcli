@@ -1,5 +1,5 @@
 /**
- * Template handling for a user migrating from `--engine python` to `--engine ts`
+ * Template handling for the TypeScript DOCX engine
  * (spec 010 W3-D). Two gaps, one root cause: the ts engine used to accept any
  * `.docx` as a template and never say what it could not fill.
  *
@@ -10,7 +10,7 @@
  *          toward grabbing whatever `.docx` was at hand (the mistake that
  *          produced Gap 1's finding). On `--engine ts` it is now optional and
  *          falls back to the bundled default, reported as an `info` note.
- *          `--engine python` still requires it — docxtpl has no bundled default.
+ *          the removed Python engine fails with a migration message.
  *
  * NO MOCKS: a real Bun HTTP server stands in for the Confluence REST API and the
  * real CLI runs in its own process against it, writing a real `.docx` to disk —
@@ -209,7 +209,7 @@ describe("Gap 2: --template is optional on --engine ts", () => {
     expect(stderr).toMatch(/no --template given; using the bundled default template/);
   }, 60_000);
 
-  it("still requires --template on --engine python", async () => {
+  it("rejects the removed Python engine with a migration message", async () => {
     const { stdout, stderr, exitCode } = await runCli([
       "--engine",
       "python",
@@ -217,7 +217,8 @@ describe("Gap 2: --template is optional on --engine ts", () => {
       join(dir, "python.docx"),
     ]);
     expect(exitCode).not.toBe(0);
-    expect(`${stdout}${stderr}`).toMatch(/--template is required for --engine python/);
+    expect(`${stdout}${stderr}`).toMatch(/Python DOCX exporter is no longer supported/);
+    expect(`${stdout}${stderr}`).toMatch(/TypeScript DOCX engine is now the default/);
   }, 30_000);
 });
 

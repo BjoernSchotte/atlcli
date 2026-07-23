@@ -128,13 +128,20 @@ describe("CLI PDF asset resolver — trust routing", () => {
 describe("no PDF env construction site bypasses the router", () => {
   const source = readFileSync(join(import.meta.dir, "export-pdf.ts"), "utf8");
 
-  test("runPdfExport is only ever handed cliPdfAssets", () => {
-    // The structural half. `cliPdfAssets` is the single composition point; an
-    // `assets:` naming the bare resolver is the exact regression that left this
-    // path unprotected for two specs.
+  test("runPdfExport is only handed protected or checkpoint-wrapped assets", () => {
+    // The structural half. `cliPdfAssets` is the trust-routing composition
+    // point. The job path may wrap it in durable checkpointing, but an
+    // `assets:` naming the bare resolver is still the exact regression that
+    // left this path unprotected for two specs.
     const assetsFields = [...source.matchAll(/\n\s*assets:\s*([A-Za-z0-9_]+)\(/g)].map((m) => m[1]);
     expect(assetsFields.length).toBeGreaterThan(0);
-    expect([...new Set(assetsFields)]).toEqual(["cliPdfAssets"]);
+    expect([...new Set(assetsFields)].sort()).toEqual([
+      "checkpointPdfAssetsV1",
+      "cliPdfAssets",
+    ]);
+    expect(source).toMatch(
+      /assets:\s*checkpointPdfAssetsV1\(\s*context,\s*request\.idempotencyKey,\s*cliPdfAssets\(/,
+    );
   });
 
   test("cliPdfAssets composes the shared router, not a hand-rolled check", () => {

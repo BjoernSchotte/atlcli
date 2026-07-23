@@ -1043,8 +1043,7 @@ Use one policy across formats and preview cache occupants:
 4. failed/cancelled temp data after diagnostic grace;
 5. never evict running work or succeeded-undelivered artifacts.
 
-History/report metadata is separate from artifact retention. Suggested initial
-policy to validate in UX:
+History/report metadata is separate from artifact retention. Version 1 uses:
 
 - succeeded-undelivered artifacts: never auto-evicted; quota admission waits or
   fails rather than deleting the user's only result;
@@ -1280,6 +1279,7 @@ atlcli wiki export jobs list [--status ...] [--format ...] [--since ...] [--json
 atlcli wiki export jobs show <id> [--json]
 atlcli wiki export jobs watch <id> [--jsonl]
 atlcli wiki export jobs cancel <id>
+atlcli wiki export jobs resume <queued-id>
 atlcli wiki export jobs retry <id> [--output ...]
 atlcli wiki export jobs rerun <succeeded-id> [--output ...]
 atlcli wiki export jobs clear --before <duration> --confirm
@@ -1423,82 +1423,185 @@ Exit: the second vertical slice is real before Chrome migration.
 
 ### Phase 2 / T7.3 — CLI journal, monitor, and activity commands
 
-- [ ] Add file-backed metadata, chunk spool, artifact, lock, and lease adapters
+- [x] Add file-backed metadata, chunk spool, artifact, lock, and lease adapters
       to `@atlcli/export-node`.
-- [ ] Remove any remaining ordinary-command Python DOCX default/fallback before
+- [x] Remove any remaining ordinary-command Python DOCX default/fallback before
       routing; add a regression test that an unqualified DOCX export selects the
       TypeScript executor.
-- [ ] Route ordinary DOCX and PDF exports through the job runtime while retaining
+- [x] Route ordinary DOCX and PDF exports through the job runtime while retaining
       stdout/exit/report contracts.
-- [ ] Add TTY, non-TTY, and JSONL monitor renderers.
-- [ ] Add `jobs list/show/watch/cancel/retry/rerun/clear`.
-- [ ] Reconcile stale process leases on every export/jobs command.
-- [ ] Keep detached execution explicitly unavailable.
+- [x] Add TTY, non-TTY, and JSONL monitor renderers.
+- [x] Add `jobs list/show/watch/cancel/resume/retry/rerun/clear`.
+- [x] Reconcile stale process leases on every export/jobs command.
+- [x] Keep detached execution explicitly unavailable.
 
 Exit: two concurrent CLI processes observe one job and cannot double-render or
 double-commit it.
 
 ### Phase 3 / T7.4 — Extension central catalog and legacy bridge
 
-- [ ] Add one cross-format job catalog and opaque request/checkpoint/artifact refs.
-- [ ] Decide chunked-IDB vs optional OPFS after the packed spike; preserve a
-      chunked-IDB fallback.
-- [ ] Dual-read legacy PDF rows in Activity for one retention/release window.
-- [ ] Do not copy live large legacy blobs into the new store.
-- [ ] Legacy in-flight PDF rows may finish under the legacy runtime; new
-      submissions use the new catalog.
-- [ ] A legacy compile subrecord used during transition is private/hidden and
+- [x] Add one cross-format job catalog and opaque request/checkpoint/artifact refs.
+- [x] Ship chunked IndexedDB as the mandatory portable backend. The PR-F packed
+      spike found no evidence that OPFS is required; keep OPFS deferred as an
+      optional optimization behind the same ports, never as a compatibility or
+      correctness dependency.
+- [x] Dual-read legacy PDF rows in Activity for one retention/release window.
+- [x] Do not copy live large legacy blobs into the new store.
+- [x] Legacy in-flight PDF rows may finish under the legacy runtime.
+- [x] Route new PDF submissions to the common catalog in PR-G.
+- [x] Route new DOCX submissions to the common catalog in PR-H; PR-F
+      deliberately introduced no half-migrated submission path.
+- [x] A legacy compile subrecord used during transition is private/hidden and
       never produces a second Activity row.
 
 Exit: Activity can project legacy PDF plus new common rows without schema loss.
 
 ### Phase 4 / T7.5 — Full-pipeline PDF background execution
 
-- [ ] Persist the outer PDF request before discovery.
-- [ ] Move source/macro/asset/preparation/validation/commit execution off the
+- [x] Persist the outer PDF request before discovery.
+- [x] Move source/macro/asset/preparation/validation/commit execution off the
       panel.
-- [ ] Split compiler transport from the current compile-only job wrapper so the
+- [x] Split compiler transport from the current compile-only job wrapper so the
       outer job id remains the sole user-visible job.
-- [ ] Reconstruct runnable jobs after offscreen loss using claims/checkpoints.
-- [ ] Prove panel close/navigation/restart during every stage.
-- [ ] Retain finished PDF bytes/report for Activity delivery.
+- [x] Reconstruct runnable jobs after offscreen loss using claims/checkpoints.
+- [x] Prove panel close/navigation/restart during every stage.
+- [x] Retain finished PDF bytes/report for Activity delivery.
 
 Exit: no PDF stage before artifact commit depends on panel lifetime.
 
+Evidence (2026-07-23): the lifecycle proof is deliberately layered. The catalog
+test checkpoints and recovers a PDF job at each of `discover`, `fetch`,
+`compose`, `resolve`, `assets`, `render`, `validate`, and `commit`, while
+fencing the old lease and preserving the durable request/checkpoint. UI tests
+prove page navigation and panel unmount detach the observer without cancelling
+the job, while explicit Cancel still requests durable cancellation. The packed
+MV3 Chromium test submits a real PDF, navigates the submitting extension
+surface away, changes the active tab, closes the surface, terminates the real
+service-worker target, and separately terminates/recreates the real offscreen
+target. The recovered PDF has the same SHA-256, byte length, and report summary
+as an uninterrupted control export. Because neither the panel nor service
+worker owns an executor, those lifecycle losses are stage-independent; the
+all-stage catalog recovery matrix covers the only stage-sensitive owner loss.
+The affected extension matrix passed 99/99, full typecheck passed, and the
+fresh production build plus packed Chromium gate passed 12/12.
+
 ### Phase 5 / T7.6 — DOCX background parity
 
-- [ ] Add pinned template request/ref semantics.
-- [ ] Prove session fetch, dynamic imports, PizZip/docxtemplater, and canvas/SVG
+- [x] Add pinned template request/ref semantics.
+- [x] Prove session fetch, dynamic imports, PizZip/docxtemplater, and canvas/SVG
       rasterization in a real packed offscreen document.
-- [ ] Move full DOCX execution off the panel and into the common queue.
-- [ ] Add DOCX render reservation, timeout, cancellation, artifact/report commit,
+- [x] Move full DOCX execution off the panel and into the common queue.
+- [x] Add DOCX render reservation, timeout, cancellation, artifact/report commit,
       and recovery from `ready-to-render`.
-- [ ] Replace page-identity/panel-unmount abort with detach/observe behavior.
-- [ ] Prove output/report parity against uninterrupted direct execution.
+- [x] Replace page-identity/panel-unmount abort with detach/observe behavior.
+- [x] Prove output/report parity against uninterrupted direct execution.
 
 Exit: PDF and DOCX expose the same lifecycle actions and Activity semantics.
 
+Evidence (2026-07-23): submission persists only the pinned source/template
+identity and verifies the template SHA-256 before queue admission. The
+productive offscreen executor reconstructs Confluence input, runs the
+TypeScript DOCX engine, owns the common heavy-render reservation, and commits
+checkpoint, artifact, and report through IndexedDB. Provider tests prove page
+navigation and panel close detach without aborting. The cancellation matrix
+drives all eight observable stages (`discover` through `commit`) to a durable
+`cancelled` state with no staged artifact. A forced owner loss after the
+`ready-to-render` checkpoint is lease-reclaimed and produces the same artifact
+SHA-256, byte length, report summary, and semantic report as the uninterrupted
+control without resolving source/template twice; ZIP timestamps are pinned as
+metadata to the durable export date without copying archive payloads. Packed
+Chromium independently proves session fetch, dynamic chunks,
+PizZip/docxtemplater, canvas Mermaid rasterization, offscreen restart, and
+recovered-vs-control DOCX byte/report parity. Gates: affected DOCX/wiring/job
+matrix 670 passed with one optional LibreOffice smoke skipped, full typecheck,
+API report guard 5/5, production extension build, packed Chromium 14/14.
+
 ### Phase 6 / T7.7 — Unified Activity, badge, docs, and cleanup
 
-- [ ] Replace PDF-specific Activity types/store with common snapshots.
-- [ ] Add format/status/site/time filters and job detail timeline/statistics/log.
-- [ ] Add Retry, Run again, Resume after sign-in, Download/Reveal, Acknowledge,
+- [x] Replace PDF-specific Activity types/store with common snapshots.
+- [x] Add format/status/site/time filters and job detail timeline/statistics/log.
+- [x] Add Retry, Run again, Resume after sign-in, Download/Reveal, Acknowledge,
       and Dismiss.
-- [ ] Add active-count badge, durable completed/failed state, and bounded pulse.
+- [x] Add active-count badge, durable completed/failed state, and bounded pulse.
+- [x] Project Activity rows and exact/estimated queue positions from the common
+      snapshots plus the same pure fair-admission policy; prove the projection
+      in both the Extension UI and a generic browser host.
 - [ ] Remove obsolete panel-owned DOCX run state and legacy PDF job reader after
       its retention plus one release.
-- [ ] Update extension, CLI, operations, troubleshooting, and architecture docs.
-- [ ] Update CHANGELOG only when the feature is release-ready; never release from
+- [x] Update extension, CLI, operations, troubleshooting, and architecture docs.
+- [x] Update CHANGELOG only when the feature is release-ready; never release from
       this plan automatically.
+
+Progress evidence (2026-07-23): Activity reads common PDF/DOCX snapshots through
+one format-neutral port, exposes the required filters, bounded detail protocol,
+statistics, replay/resume/delivery/acknowledgement/dismissal operations, and
+truthful unavailable/expired states. The toolbar projects durable active and
+unread records as `1`–`9+`, `!`, `✓`, or empty; terminal transitions can produce
+one finite color pulse, checkpointed before animation, with a persisted opt-out.
+Opening Activity does not acknowledge work, while viewing the relevant detail,
+downloading it, or **Mark as read** does. Packed persistent-profile Chromium
+proves mixed PDF/DOCX rows, the full badge transition sequence, finite pulse and
+opt-out, acknowledgement persistence, retained Retry/Run-again requests and
+original artifact/report preservation, plus bounded parallel blocked-upgrade
+opens. A later completion-audit increment also closes and relaunches the entire
+persistent browser profile: the worker startup recreates the offscreen host,
+waits for any still-live lease to expire, then automatically reclaims the same
+checkpoint with a newer epoch. Gates: affected unit/UI/catalog matrix 64/64,
+full typecheck, production extension build/output scan, and the final packed
+Chromium lifecycle matrix 22/22. The final non-cleanup audit and deferred PR-J
+cleanup were tracked separately.
+
+Final non-cleanup acceptance evidence (2026-07-23): the mandatory drift check
+was rerun from `1e5822f8a5a3524293f34043bc398b7846bf52f9` against base and
+merge-base `75b737987a6220932c41a651f2777b4c3a78d470`; none of its stop
+conditions applied. `bun run test` passed 4,885 tests across 330 files with 14
+declared skips and zero failures. The skips were closed separately where they
+are release-relevant: the four consumer smokes passed, and the three pack/npm/
+pnpm install-matrix cases passed with the CI-pinned pnpm 9.15.9. The remaining
+skips are the optional unavailable veraPDF and LibreOffice tool smokes, the
+four fixture-id-gated PDF live variants, and the deliberately retired Python/
+TypeScript dual-engine comparison. The required live success path is covered
+more broadly here by full-space PDF and DOCX runs; authentication and not-found
+classification remain covered by the repository tests without creating tenant
+fixtures.
+`bun run typecheck`, the 20-entrypoint browser gate, production generic-browser
+build/output scan, all 17 registered conformance cases, Chromium harness E2E,
+PDF byte/report parity, production MV3 build/output scan, and packed persistent-
+profile Chromium 22/22 all passed. Astro reported zero diagnostics and built all
+76 documentation pages. Read-only live exports of `mayflower`/`DOCSY` completed
+through both queued runtimes without creating a remote resource: each processed
+93/93 pages, fetched/embedded 8 images, rendered 7 diagrams and 15 live macros;
+the tagged 195-page PDF was 4,114,021 bytes and the validated TypeScript DOCX
+was 301,305 bytes. Both exited zero and their isolated local artifacts were
+removed. `git diff --check origin/main...HEAD` and the final worktree inspection
+were clean. The only unfinished Phase 6 work is PR-J, whose retention-plus-one-
+release precondition intentionally keeps it outside this non-cleanup delivery.
+
+The shared browser-safe Activity projector now owns state ordering, actions,
+dismissal/filter semantics, named waiting blockers, and global queue positions.
+Positions are estimated by default and can be called exact only by a host that
+can fence that claim; filtering never renumbers a globally queued job. The
+Extension removed its render-order counter and consumes this projection. A
+fifteenth generic-browser conformance case runs the same PDF/DOCX monitor policy
+from production Vite output with no Chrome, WXT, Node, `Buffer`, or `process`
+runtime. Gates: focused Activity/UI 24/24, browser policy/output unit 50/50,
+generic-browser conformance 15/15 cases, root typecheck, API report/closure 5/5,
+production Extension build, and packed MV3 Chromium 19/19.
 
 ### PR delivery checklist and merge ledger
 
 There is no external issue tracker for this work. This section is the execution
 tracker. Phase checkboxes above track capabilities; the ledger below tracks the
-reviewable PRs that deliver them. The owning PR fills in its URL and marks itself
-`[x]` only after every listed acceptance gate is green and review has made it
-mergeable. The checked state becomes authoritative when that PR lands on the
-target branch.
+reviewable delivery slices that implement them. PR-A through PR-D landed as
+separate prerequisite PRs. PR-E through PR-I are accumulated as reviewable,
+individually gated slices in the single large Draft PR
+[#85](https://github.com/BjoernSchotte/atlcli/pull/85); that Draft remains open
+and unmerged until the complete non-cleanup plan is implemented and verified.
+Each slice gets its own logical commits, recorded acceptance evidence, and
+checkbox. A slice is marked `[x]` only after every listed gate is green, even
+though the shared Draft PR has not landed yet. PR-J remains a separate deferred
+cleanup because its retention-plus-one-release precondition cannot truthfully be
+satisfied before PR #85 ships.
 
 ```mermaid
 flowchart LR
@@ -1518,14 +1621,15 @@ flowchart LR
   I --> J["PR-J legacy cleanup"]
 ```
 
-Independent arrows may be implemented in parallel, but each PR owns a disjoint
-file set or coordinates an explicitly named hot file. Combining slices is allowed
-only when the result remains reviewable and satisfies every combined gate.
-Splitting a slice is allowed, but the final sub-PR must retain the slice's gate.
+Independent arrows may be implemented in parallel, but each slice owns a
+disjoint file set or coordinates an explicitly named hot file. Combining slices
+inside PR #85 does not combine their acceptance gates: each slice remains
+separately reviewable and must satisfy its own gate. Splitting a slice into
+multiple commits is allowed, but its final commit must retain the slice's gate.
 
 #### Merge ledger
 
-- [ ] **PR-A — Contract kernel and measurements** (`T7.1`)
+- [x] **PR-A — Contract kernel and measurements** (`T7.1`)
   - PR: [#79](https://github.com/BjoernSchotte/atlcli/pull/79)
   - Scope: baseline artifacts; `@atlcli/export-jobs`; schemas, reducer, leases,
     fencing, scheduling, retention, badge projection, in-memory adapters, package
@@ -1534,7 +1638,7 @@ Splitting a slice is allowed, but the final sub-PR must retain the slice's gate.
     Retry/Run-again tests pass; 50-/500-page pre-change measurements are attached
     with their reproducible command, fixture, environment, and raw result.
 
-- [ ] **PR-B — Bounded spool and checkpointed source pipeline** (`T7.2`)
+- [x] **PR-B — Bounded spool and checkpointed source pipeline** (`T7.2`)
   - PR: [#80](https://github.com/BjoernSchotte/atlcli/pull/80)
   - Scope: structural spool/artifact ports, chunk semantics, discovery cursor,
     ordered page/block checkpoints, asset streaming, reservations, backpressure,
@@ -1543,7 +1647,7 @@ Splitting a slice is allowed, but the final sub-PR must retain the slice's gate.
     slots exert backpressure; exact-owned buffer, quota, cancellation, checkpoint,
     staged-artifact crash, and orphan-cleanup tests pass.
 
-- [ ] **PR-C — PDF job executor** (`T7.2`)
+- [x] **PR-C — PDF job executor** (`T7.2`)
   - PR: [#81](https://github.com/BjoernSchotte/atlcli/pull/81)
   - Scope: `createPdfExportJobExecutor`, capture sink, ready-to-render manifest,
     Typst render reservation, validation/report staging, cancellation, and render
@@ -1552,7 +1656,7 @@ Splitting a slice is allowed, but the final sub-PR must retain the slice's gate.
     harness; compiler loss resumes from `ready-to-render` at most once; no second
     user-visible compile job is introduced.
 
-- [ ] **PR-D — TypeScript DOCX job executor** (`T7.2`)
+- [x] **PR-D — TypeScript DOCX job executor** (`T7.2`)
   - PR: [#82](https://github.com/BjoernSchotte/atlcli/pull/82)
   - Scope: `createTypescriptDocxExportJobExecutor`, pinned template refs, capture
     sink, ordered PizZip/docxtemplater render, raster ports, reservation,
@@ -1561,37 +1665,55 @@ Splitting a slice is allowed, but the final sub-PR must retain the slice's gate.
     harness; template mismatch fails closed; no deprecated Python exporter is
     imported, registered, or used as fallback.
 
-- [ ] **PR-E — CLI journal, queue, monitor, and commands** (`T7.3`)
-  - PR: `TBD`
+- [x] **PR-E — CLI journal, queue, monitor, and commands** (`T7.3`)
+  - PR: [#85](https://github.com/BjoernSchotte/atlcli/pull/85)
   - Scope: file journal/spool/artifact/locks, ordinary DOCX/PDF routing, TTY and
-    JSONL monitor, `list/show/watch/cancel/retry/rerun/clear`, output delivery,
+    JSONL monitor, `list/show/watch/cancel/resume/retry/rerun/clear`, output delivery,
     stale-process reconciliation, and removal of the Python default/fallback.
   - Acceptance: unresolved request is durable before the first API read; stdout,
     stderr, report, and exit contracts remain stable; two processes cannot
     double-render/commit; cross-process Cancel aborts the owner; successful Rerun
     creates a linked job and obeys output-conflict policy; no detach claim.
 
-- [ ] **PR-F — Extension catalog, storage, and recovery foundation** (`T7.4`)
-  - PR: `TBD`
-  - Scope: common IndexedDB catalog, selected chunked-IDB/OPFS implementation and
-    fallback, atomic claims/fencing, wakeup/recovery, legacy PDF dual-read, store
+- [x] **PR-F — Extension catalog, storage, and recovery foundation** (`T7.4`)
+  - Integration PR: [#85](https://github.com/BjoernSchotte/atlcli/pull/85)
+  - Scope: common IndexedDB catalog, mandatory chunked-IDB storage (OPFS remains
+    a deferred optional optimization), atomic claims/fencing, wakeup/recovery, legacy PDF dual-read, store
     upgrades, quota behavior, and private legacy compile bridge.
   - Acceptance: packed extension proves duplicate wakeups yield one claim; worker
-    and offscreen loss reconstruct runnable jobs; `onblocked`, quota, and aborted
-    transactions leave no half record; runtime messages carry refs, never bytes;
+    and offscreen loss reconstruct runnable jobs; `onblocked`, a real browser
+    transaction abort, and the enforced browser-storage quota leave no half
+    record; native quota override is recorded as a capability probe where Chrome
+    does not apply it to extension origins; runtime messages carry refs, never bytes;
     legacy rows produce no duplicate Activity entry.
+  - Evidence (2026-07-22): `bun run test` passed outside the filesystem/network
+    sandbox; the focused extension suite passed 91/91; `bun run typecheck`,
+    `bun run check:browser`, and `bun run check:extension-output` passed; the
+    built MV3 Packed-Chromium gate passed 9/9, including independent selective
+    setup, real service-worker/offscreen target loss, blocked-upgrade timeout,
+    native transaction abort, productive Activity dual-read, and adapter quota.
+    Pinned Chromium accepted the CDP native-quota override for the extension
+    origin, so that result remains an annotated capability probe rather than a
+    false native-quota claim.
 
-- [ ] **PR-G — Full-pipeline PDF extension background migration** (`T7.5`)
-  - PR: `TBD`
+- [x] **PR-G — Full-pipeline PDF extension background migration** (`T7.5`)
+  - Integration PR: [#85](https://github.com/BjoernSchotte/atlcli/pull/85)
   - Scope: persist request before discovery; move PDF fetch/compose/resolve/assets/
     prepare/render/validate/finalize outside the panel; split compiler transport
     from the legacy visible job wrapper; background artifact collection.
   - Acceptance: navigation, tab change, panel close, service-worker loss, and
     offscreen loss are tested at every stage; one outer Activity row remains
     truth; recovered output/report matches uninterrupted PDF execution.
+  - Evidence (2026-07-23): all eight durable stages are covered by the recovery/
+    fencing matrix; panel detach and explicit-cancel semantics are covered
+    through the real provider; packed Chromium covers navigation, tab change,
+    surface close, real service-worker loss, real offscreen loss, the private
+    compiler bridge's single Activity row, retained bytes/report, and recovered
+    output/report parity. Gates: affected tests 99/99, typecheck, production
+    extension build, packed Chromium 12/12.
 
-- [ ] **PR-H — DOCX extension background parity** (`T7.6`)
-  - PR: `TBD`
+- [x] **PR-H — DOCX extension background parity** (`T7.6`)
+  - Integration PR: [#85](https://github.com/BjoernSchotte/atlcli/pull/85)
   - Scope: packed offscreen/worker execution, session fetch, dynamic chunks,
     PizZip/docxtemplater, canvas/SVG raster path, global heavy slot, retained
     artifact/report, and removal of panel-owned cancellation.
@@ -1599,13 +1721,122 @@ Splitting a slice is allowed, but the final sub-PR must retain the slice's gate.
     the declared capability; cancellation works during every stage; template and
     raster behavior is proven in packed Chrome; recovered output/report matches
     uninterrupted TypeScript DOCX execution.
+  - Evidence (2026-07-23): pinned template/source requests, productive
+    offscreen TypeScript execution, retained artifact/report stores, global
+    render reservation, and detach/observe panel behavior are implemented.
+    Eight-stage durable cancellation is covered in the extension runtime.
+    Forced loss after `ready-to-render` matches the uninterrupted artifact SHA,
+    byte length, summary, and semantic report without re-resolving source or
+    template. ZIP timestamps are pinned by metadata to the durable export date,
+    so parity remains byte-stable across wall-clock boundaries without a second
+    archive payload copy. The production build and packed persistent-profile
+    Chromium test cover the real DOCX engine, Mermaid canvas rasterization,
+    offscreen loss, and a second recovered-vs-control parity comparison. Gates:
+    affected matrix 670 passed (one optional LibreOffice smoke skipped),
+    typecheck, API report guard 5/5, packed Chromium 14/14.
 
-- [ ] **PR-I — Unified Activity, toolbar state, operations, and docs** (`T7.7`)
-  - PR: `TBD`
+- [x] **PR-I — Unified Activity, toolbar state, operations, and docs** (`T7.7`)
+  - Integration PR: [#85](https://github.com/BjoernSchotte/atlcli/pull/85)
   - Scope: cross-format list/detail/filters/monitor, statistics/protocol, Retry,
     Run again, Resume, Acknowledge, Dismiss, Download/Reveal, retention/clear,
     active badge, completion/failure pulse, CLI/extension/operations/
     troubleshooting docs, and release-ready CHANGELOG entry.
+  - [x] Retention increment: common policy and CAS contract, restart-safe file
+    cleanup, one-transaction IndexedDB payload release, stable pagination beyond
+    500 rows, replay-safe request pins, compact-summary fallback, background/CLI
+    sweep integration, and real packed PDF/DOCX parity are proven.
+  - [x] Telemetry contract increment: canonical unavailable-metric semantics,
+    executor-owned statistics updates, store-owned event sequencing, and
+    productive stage/progress events are implemented identically in the file and
+    IndexedDB runtimes. Focused persistence/runtime coverage, workspace
+    typecheck, all 16 production builds, and API report/closure guard 5/5 pass.
+  - [x] Productive telemetry increment: PDF and DOCX persist source-page counts
+    through ready/result recovery, publish renderer-derived final counters and
+    bounded redacted issue codes, and record terminal state/artifact/failure/auth
+    lifecycle events in both hosts. Recovered jobs restore the same deterministic
+    counters without rerendering; real durations remain attempt-specific.
+    Focused matrix 63/63, typecheck, 16 production builds, API report/closure
+    guard 5/5, and packed MV3 Chromium 19/19 pass.
+  - [x] Generic-browser Activity/queue increment: the public browser-safe
+    projector derives ordering, actions, waiting blockers, and global
+    exact/estimated positions from common snapshots and the shared fair queue
+    policy. The Extension consumes it instead of numbering rendered rows. Its
+    generic Vite/Chromium case proves PDF/DOCX filtering without renumbering and
+    rejects Chrome/WXT/Node globals. Focused Activity/UI 24/24, browser policy
+    unit 50/50, conformance 15/15 cases, root typecheck, API/closure 5/5,
+    production Extension build, and packed MV3 Chromium 19/19 pass.
+  - [x] Completion-audit source-body hardening increment: productive CLI and
+    Extension tree/space jobs now run Confluence body normalization through a
+    four-fetch/eight-result sliding window, atomically checkpoint each ordered
+    normalized page slot to the host spool, release raw storage bodies before
+    final composition, and resume at the first uncommitted slot across lease or
+    offscreen loss. Manifest/page identity, request identity, job ownership,
+    lease history, order, gaps, cycles, corruption bounds, and changed discovery
+    fail closed. The same browser-safe adapter is used by PDF and DOCX. Evidence:
+    the focused source/runtime matrix passes 88/88; the 500-page slow-slot test
+    proves an eight-slot ceiling with four active fetches; file and IndexedDB
+    runtimes prove prior-epoch reads; API/closure guard passes 5/5; all 20
+    browser-safe package entrypoints build; the production generic-browser
+    harness passes all 16 conformance cases without Chrome/Node globals; and
+    packed MV3 Chromium passes 20/20, including a real Tree export that loses
+    its offscreen owner and refetches only the uncommitted children.
+  - [x] Completion-audit asset hardening increment: queued PDF and DOCX jobs in
+    both CLI and Extension now reserve the full 25 MiB cap before each
+    unknown-length host fetch under the shared 50 MiB in-flight ceiling, copy
+    exact-owned bytes, persist assets by SHA-256, publish reference checkpoints
+    without storing source/signed URLs, deduplicate physical content, and recover
+    prior-epoch bytes without another host request. Asset checkpoints form one
+    validated chain with ordered source checkpoints. A durable asset-spool
+    failure is fatal instead of silently degrading a successfully fetched image
+    to a missing-image warning. Host runtimes normalize executor-captured
+    progress at the serialized persistence boundary so a heartbeat cannot turn
+    valid long-running progress into a retroactive leased write. Evidence: the
+    focused engine/asset/source/resolver/runtime matrix passes 146/146; API and
+    closure guards pass 5/5; the production generic-browser harness passes all
+    17 cases without Chrome/Node globals; packed MV3 Chromium passes 21/21,
+    including offscreen loss after the first of two real PNG checkpoints and
+    proving that only the uncommitted image is refetched; and the read-only
+    `mayflower`/`DOCSY` CLI E2E succeeds from the current source resolver with
+    93 source pages, 8 images, 195 PDF pages, and a 4,114,021-byte PDF.
+  - [x] Node post-queue benchmark increment: the deterministic 50-/500-page
+    DOCX/PDF corpus now runs through the real file journal, normalized-source
+    spool, content-addressed asset spool, ready store, global render lock, result
+    store, artifact finalization, and both productive job executors. The raw
+    three-repetition matrix records request, source/asset/prepared spool,
+    artifact, physical-state, time, heap, and RSS checkpoints in
+    `baselines/node-post-queue.json`. At 500 pages the median complete spool is
+    6,176,041 bytes for DOCX and 7,670,571 bytes for PDF; the documented
+    19,509.8 ms DOCX and 14,076.8 ms PDF job times expose rather than hide the
+    cost of per-page atomic durability. The 50-page DOCX/PDF regression smoke
+    and root typecheck pass.
+  - [x] Chrome post-queue benchmark increment: a production MV3 build now runs
+    the same deterministic 50-/500-page DOCX/PDF, three-repetition matrix in
+    real Chromium through the productive IndexedDB catalog and byte store,
+    normalized-source and asset checkpoints, ready payload, shared render
+    reservation, both real engines, report/result persistence, and retained
+    artifact. All 12 cells succeed with exact artifact-record byte parity and
+    non-empty source/asset/prepared spools. At 500 pages the median complete
+    spool is 6,187,659 bytes for DOCX and 7,678,789 bytes for PDF; median complete
+    job time is 2,391.0 ms and 4,275.2 ms respectively. The raw provenance,
+    timings, origin estimates, logical IndexedDB payload, output hashes, and
+    extension-page CDP heap checkpoints are recorded in
+    `baselines/chrome-post-queue.json`; offscreen/worker memory remains explicitly
+    unavailable rather than inferred. The benchmark corpus is synthetic and
+    performs no tenant request; packed persistent-profile Chromium independently
+    proves the production offscreen/service-worker lifecycle.
+  - [x] Documentation/release-note increment: the CLI export guide and command
+    reference, Extension install/export walkthroughs, shared troubleshooting,
+    package READMEs, and a new Export Jobs & Operations reference now document
+    the common lifecycle, host differences, Activity/badge actions, Retry/Run
+    again, browser pause/recovery semantics, buffering/caps, retention, privacy,
+    incident procedure, and future-Forge non-claim. Stale Python-default/Jinja
+    guidance was replaced by the actually shipped TypeScript `$scroll.*`
+    contract, and CHANGELOG carries an unreleased release-ready entry. Astro
+    check and the 76-page production documentation build pass.
+  - [x] Final non-cleanup audit and gates: full repository, package-consumer,
+    install-matrix, type/browser/harness, packed MV3, documentation, live
+    `mayflower`/`DOCSY`, drift, diff-hygiene, and clean-worktree evidence is
+    recorded above.
   - Acceptance: packed Chrome covers DOCX/PDF mixed states, `9+`, `✓`, `!`, pulse
     bound, acknowledgement persistence, Retry and Run again; retained request/
     template refs remain replayable; unavailable metrics and expired reports have
@@ -1631,52 +1862,52 @@ dated plan and go/no-go/revise evidence after this browser-safe foundation exist
 
 Before coding/opening the PR:
 
-- [ ] Name the owning slice (`PR-A` … `PR-J`) and T7 phase in the PR description.
-- [ ] Re-run the mandatory drift check and record the base commit.
-- [ ] List in-scope packages/files, shared hot files, schema/API changes, and
+- [x] Name the owning slice (`PR-A` … `PR-J`) and T7 phase in the PR description.
+- [x] Re-run the mandatory drift check and record the base commit.
+- [x] List in-scope packages/files, shared hot files, schema/API changes, and
       explicitly excluded work.
-- [ ] Resolve every open question that blocks this slice; do not encode an
+- [x] Resolve every open question that blocks this slice; do not encode an
       unrecorded product decision in implementation.
-- [ ] Identify the direct-path fixture/baseline and the smallest test that must
+- [x] Identify the direct-path fixture/baseline and the smallest test that must
       fail before the change.
-- [ ] Define migration, compatibility, feature-flag/cutover, and rollback behavior
+- [x] Define migration, compatibility, feature-flag/cutover, and rollback behavior
       for persisted state or user-visible contracts.
 
 While implementing:
 
-- [ ] Add tests with the functionality and regression tests with every bug fix.
-- [ ] Keep DOCX/PDF engines and reports separate; share only job lifecycle and
+- [x] Add tests with the functionality and regression tests with every bug fix.
+- [x] Keep DOCX/PDF engines and reports separate; share only job lifecycle and
       upstream orchestration.
-- [ ] Commit the job before the first source/network read and pass refs—not large
+- [x] Commit the job before the first source/network read and pass refs—not large
       bytes—across host message boundaries.
-- [ ] Thread durable cancellation, revision/lease epoch, timeout, quota, and
+- [x] Thread durable cancellation, revision/lease epoch, timeout, quota, and
       resource reservations through every new asynchronous boundary.
-- [ ] Keep secrets, source bodies, signed URLs, and raw artifact bytes out of
+- [x] Keep secrets, source bodies, signed URLs, and raw artifact bytes out of
       metadata/events/logs.
-- [ ] Preserve bounded buffering/backpressure and deterministic output ordering;
+- [x] Preserve bounded buffering/backpressure and deterministic output ordering;
       document any changed concurrency/cap with measurement evidence.
-- [ ] Derive host UI claims from proven capabilities; do not broaden Chrome,
+- [x] Derive host UI claims from proven capabilities; do not broaden Chrome,
       generic-browser, or future Forge lifecycle promises by inference.
-- [ ] Update user, operations, troubleshooting, architecture, and command docs in
+- [x] Update user, operations, troubleshooting, architecture, and command docs in
       the same PR when behavior changes.
 
 Before requesting review/merge:
 
-- [ ] Run the slice-specific acceptance gate above and the relevant Section 13
+- [x] Run the slice-specific acceptance gate above and the relevant Section 13
       suites through repository scripts, never bare `bun test`.
-- [ ] Run `bun run typecheck`, browser/package gates, and API Extractor where the
+- [x] Run `bun run typecheck`, browser/package gates, and API Extractor where the
       touched package requires them.
-- [ ] Run packed-extension lifecycle E2E for every extension lifetime claim; unit
+- [x] Run packed-extension lifecycle E2E for every extension lifetime claim; unit
       tests/fake IndexedDB do not substitute for it.
-- [ ] Run the required live E2E with profile `mayflower`, space `DOCSY`, and clean
+- [x] Run the required live E2E with profile `mayflower`, space `DOCSY`, and clean
       up every created page/resource.
-- [ ] Attach before/after 50-/500-page time, memory, spool, and output evidence to
+- [x] Attach before/after 50-/500-page time, memory, spool, and output evidence to
       every PR that changes resource policy or a heavy pipeline.
-- [ ] Verify migration from the previous persisted schema plus fresh install,
+- [x] Verify migration from the previous persisted schema plus fresh install,
       cancellation races, executor loss, and artifact finalization where relevant.
-- [ ] Run `git diff --check`; inspect `git status`; confirm the PR contains no
+- [x] Run `git diff --check`; inspect `git status`; confirm the PR contains no
       unrelated files, generated debris, credentials, or unrequested release.
-- [ ] Record residual risks, deferred work, exact commands/results, and any gate
+- [x] Record residual risks, deferred work, exact commands/results, and any gate
       not run with its reason. Never describe an unrun gate as passing.
 
 After merge:
@@ -1775,6 +2006,8 @@ After merge:
   and commits no partial output.
 - Process termination after every checkpoint is reconciled on the next command.
 - `jobs list/show/watch` observe a job owned by another process.
+- `jobs resume <queued-id>` reclaims the same recoverable checkpoint in a
+  foreground runner without deriving another history row.
 - Process B runs `jobs cancel` on a job owned by process A; A observes the
   durable request, aborts local work, exits with the established cancellation
   code, and commits no output.
@@ -1925,35 +2158,70 @@ Capabilities and host-specific E2E are the guardrail.
 
 ---
 
-## 16. Unresolved questions
+## 16. Decisions and unresolved questions
 
-These require explicit decisions before their owning implementation phase:
+### Resolved for PR-E
 
-1. **Chrome physical storage:** one central database with metadata/request/
-   checkpoint/result stores, or a central catalog plus opaque engine artifact
-   databases? Preferred starting point: central metadata/catalog plus opaque refs;
-   decide after the transaction/quota/upgrade spike.
-2. **Browser restart promise:** should the extension automatically requeue stale
-   leased jobs on the next Chrome start, or mark them `interrupted` with a Retry
-   action? Automatic resume is preferred only if auth and packed-profile E2E are
-   reliable.
-3. **DOCX execution context:** can dynamic chunks, session-authenticated fetch,
-   PizZip/docxtemplater, and SVG/canvas rasterization run in a dedicated Worker,
-   or must v1 use the offscreen document? The packed spike decides.
-4. **Heavy-slot concurrency:** is one global DOCX/PDF render slot sufficient, or
-   can measured devices safely run independent format slots? Start with one.
-5. **Storage cap values:** retain today's 64/128 MiB physical caps, derive a cap
-   from `navigator.storage.estimate()`, or introduce a larger fixed product cap?
-   Do not decide without real quota/memory evidence.
-6. **Artifact/report/history retention:** are 24 hours after delivery/dismissal
-   for artifact bytes, 7 days for the full report, and 100 jobs/30 days for
-   compact history acceptable defaults? Succeeded-undelivered bytes remain
-   protected regardless of that decision.
-7. **CLI history location and privacy:** exact state-directory path, file
-    permissions, redaction, and multi-profile/site partitioning.
-8. **CLI detached mode:** daemon, OS service, or explicitly never? It is not part
-    of this plan's first release.
-9. **Future Forge PoC:** can a browser-only Custom UI shape run both engines,
+- **CLI history location and privacy:** version-1 state lives in
+  `~/.atlcli/export-jobs/v1`, with `ATLCLI_EXPORT_JOBS_DIR` as an explicit test
+  and managed-host override. Directories use mode `0700`, files use `0600`, and
+  logical refs are hashed before they become physical filenames. One global
+  catalog is intentional so `jobs list` can show activity across profiles and
+  sites; `siteOrigin`, profile labels, and opaque `authRef` values remain fields
+  on the request/snapshot rather than directory partitions. Metadata and events
+  never contain tokens, source bodies, signed URLs, template bytes, spool bytes,
+  artifact bytes, or full reports. Those bytes live in job-scoped private stores
+  and are reached only by opaque refs. Ephemeral CLI credentials are process-only
+  and therefore require fresh authentication before a later Retry/Run-again.
+
+### Resolved for PR-I
+
+- **Artifact/report/history retention:** version 1 accepts 24 hours after
+  delivery or dismissal for artifact bytes, 7 days after completion for the full
+  report and event protocol, and the intersection of the newest 100 jobs and
+  jobs younger than 30 days for compact history. Succeeded-undelivered artifacts
+  remain protected regardless of age or count. Report cleanup preserves the
+  compact summary; request/template pins survive payload cleanup so retained
+  rows remain replayable. Physical history deletion is authorized by a durable
+  tombstone and restart-safe cleanup.
+- **Proof:** common transition/planner validation, real file-journal cleanup,
+  IndexedDB transaction abort, concurrent sweeps, restart recovery, and 501
+  same-timestamp pagination pass in focused tests. The production-packed MV3
+  Chromium suite passes 22/22 and creates real PDF and TypeScript-DOCX artifacts
+  before proving equal payload release, retained summaries, and the retained
+  DOCX request pin.
+- **Chrome physical storage:** one central IndexedDB catalog owns metadata,
+  requests, checkpoints, results, events, and tombstones; a separate chunked
+  IndexedDB byte store is reached only through opaque refs. OPFS remains an
+  optional future optimization, not a correctness dependency.
+- **Browser restart promise:** Chrome-close pauses local execution. Worker
+  startup recreates the offscreen queue host only when durable runnable or
+  time-waiting work exists. The offscreen runner waits out an unexpired fenced
+  lease, then automatically reclaims the same checkpoint. Packed Chromium
+  closes and relaunches the whole persistent profile and proves epoch-2 recovery
+  without a UI action. Authentication waits still require explicit
+  **Resume after sign-in**.
+- **DOCX execution context:** version 1 uses the offscreen document for session
+  fetch, dynamic chunks, PizZip/docxtemplater, Typst/WASM coordination, and
+  SVG/canvas rasterization. The packed runtime, not a fake browser adapter,
+  proves those paths.
+- **Heavy-slot concurrency:** version 1 has one global FIFO heavy-render slot
+  shared by DOCX and PDF. The 50-/500-page measurements do not justify separate
+  format slots.
+- **Storage cap values:** both formats use fixed 128 MiB object, 256 MiB per-job,
+  512 MiB common-spool, and 64 MiB final-artifact product caps. Admission also
+  probes `navigator.storage.estimate()` where available; unavailable or
+  unenforceable browser-origin quota data is reported as such.
+- **CLI detached mode:** explicitly unavailable in version 1. Ordinary exports
+  are foreground runners; another process can observe/cancel them, and
+  `jobs resume <queued-id>` reclaims a recovered checkpoint without a daemon.
+
+### Still unresolved
+
+This question belongs to the explicitly deferred future work, not to an
+unfinished CLI/Extension delivery slice:
+
+1. **Future Forge PoC:** can a browser-only Custom UI shape run both engines,
     including Typst/WASM, plus the durable background queue and Activity
     reattachment after leaving the UI, without ongoing Forge costs borne by us as
     the app developer? The browser-owned runner mechanism, lifecycle, pricing,

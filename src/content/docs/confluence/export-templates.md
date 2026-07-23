@@ -34,7 +34,7 @@ a parity that does not exist.
   [browser extension](/extension/) installed.
 - For Word: a `.docx` or `.docm` template. See
   [Scroll Word Exporter compatibility](/confluence/export/#scroll-word-exporter-compatibility)
-  for the placeholder vocabulary the `ts` engine fills.
+  for the placeholder vocabulary the DOCX engine fills.
 
 ## What a template is, per engine
 
@@ -43,8 +43,7 @@ are producing, and conflating them is the usual source of confusion.
 
 | Engine | Template | Where it comes from | Configurable without editing it? |
 |--------|----------|---------------------|----------------------------------|
-| Word (`--engine ts` / the panel) | A real `.docx` you author in Word — styles, headers, footers, and `$scroll.*` placeholders | You upload or install it | No — the template *is* the design |
-| Word (`--engine python`) | A docxtpl/Jinja `.docx` | You install it; `--template` is required | No |
+| Word (CLI / panel) | A real `.docx` you author in Word — styles, headers, footers, and `$scroll.*` placeholders | You upload or install it | No — the template *is* the design |
 | PDF | The **built-in** `atlcli-doc` design (`wiki.pdf-template/v1`) | Bundled — there is nothing to install | Yes — through [settings](/reference/pdf-template-settings/) |
 
 **PDF has no template upload in any host.** The library described below is
@@ -91,9 +90,8 @@ atlcli wiki export template save corporate --file ./template.docx --level global
 atlcli wiki export template delete corporate --confirm
 ```
 
-`--engine ts` may omit `--template` entirely and fall back to a
-[bundled default](/confluence/export/#the-bundled-default-template---engine-ts);
-`--engine python` always requires one.
+The CLI may omit `--template` entirely and fall back to a
+[bundled default](/confluence/export/#the-bundled-default-template).
 
 ## Panel: global and space scope
 
@@ -223,7 +221,7 @@ override reverts that space to the house style.
 | A space override is ignored | The page is not in that space, or the entry is scoped to another site | Confirm the page's space key in the panel's page summary |
 | A template's settings form is greyed out with an explanation | It is a Word template; the Word engine has no settings input | Configure the design in the template itself |
 | "Template exceeds the 20 MB limit" (panel) | Over the upload cap | Usually an embedded image — slim the template |
-| Jinja placeholders survive into the document | A docxtpl template ran through `--engine ts` | See [Jinja placeholders appear in the exported document](/confluence/export/#jinja-placeholders-appear-in-the-exported-document) |
+| Jinja placeholders survive into the document | A retired docxtpl/Jinja template was supplied to the TypeScript engine | See [Jinja placeholders appear in the exported document](/confluence/export/#jinja-placeholders-appear-in-the-exported-document) |
 
 ## Related topics
 

@@ -13,6 +13,8 @@ import {
   type TreeFetchContext,
   type ExportNode,
   type ExportPageNode,
+  type ExportTreeBodyResultV1,
+  type ExportTreeBodyStoreV1,
   type TreeFetchProgress,
 } from "./tree-fetch.js";
 import type { ExportPageSource } from "./page-body.js";
@@ -70,6 +72,22 @@ function abortableSleep(ms: number, signal?: AbortSignal): Promise<void> {
     };
     signal?.addEventListener("abort", onAbort, { once: true });
   });
+}
+
+function deferred(): { promise: Promise<void>; resolve(): void } {
+  let resolve!: () => void;
+  const promise = new Promise<void>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
+async function waitUntil(predicate: () => boolean): Promise<void> {
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    if (predicate()) return;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+  throw new Error("Condition was not reached.");
 }
 
 function statusError(status: number): Error {
@@ -536,6 +554,109 @@ describe("fetchExportTree — pool ordering & drain", () => {
     // slot is A.
     expect((error as ExportCompletenessError).code).toBe("page-version-changed");
     expect((error as ExportCompletenessError).affected[0]?.id).toBe("a");
+  });
+
+  test("a slow first page backpressures a 500-page tree at the configured result window", async () => {
+    const first = deferred();
+    const fixture: FixtureNode[] = [
+      {
+        id: "root",
+        kind: "page",
+        title: "Page 0",
+        parent: null,
+        observedVersion: 1,
+      },
+      ...Array.from({ length: 499 }, (_, index): FixtureNode => ({
+        id: `page-${index + 1}`,
+        kind: "page",
+        title: `Page ${index + 1}`,
+        parent: "root",
+        position: index,
+        observedVersion: 1,
+      })),
+    ];
+    const source = inMemoryTreeSource(fixture);
+    const originalGetPage = source.getPage.bind(source);
+    const startedIds: string[] = [];
+    source.getPage = async (id, context) => {
+      startedIds.push(id);
+      if (id === "root") await first.promise;
+      return originalGetPage(id, context);
+    };
+
+    const run = fetchExportTree(source, tree("root"), {
+      concurrency: 4,
+      maxResultSlots: 8,
+    });
+    await waitUntil(() => startedIds.length === 8);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(startedIds).toHaveLength(8);
+    expect(startedIds.at(-1)).toBe("page-7");
+
+    first.resolve();
+    const result = await run;
+    expect(result.nodes).toHaveLength(500);
+    expect(source.calls.getPage).toBe(500);
+    expect(titles(result).slice(0, 3)).toEqual(["Page 0", "Page 1", "Page 2"]);
+    expect(titles(result).at(-1)).toBe("Page 499");
+  });
+
+  test("a durable body store reuses committed normalized slots without refetching them", async () => {
+    const fixture: FixtureNode[] = [
+      { id: "root", kind: "page", title: "Root", parent: null, observedVersion: 1 },
+      { id: "a", kind: "page", title: "A", parent: "root", position: 0, observedVersion: 1 },
+      { id: "b", kind: "page", title: "B", parent: "root", position: 1, observedVersion: 1 },
+    ];
+    const source = inMemoryTreeSource(fixture);
+    const committed = new Map<number, ExportTreeBodyResultV1>([
+      [0, {
+        ok: true,
+        pageId: "root",
+        title: "Root",
+        source: { representation: "storage", degraded: false },
+        blocks: [{ type: "paragraph", content: [{ type: "text", text: "Recovered root" }] }],
+        notes: [],
+        meta: { version: 1, labels: [], spaceKey: "TEST" },
+      }],
+      [1, {
+        ok: true,
+        pageId: "a",
+        title: "A",
+        source: { representation: "storage", degraded: false },
+        blocks: [{ type: "paragraph", content: [{ type: "text", text: "Recovered A" }] }],
+        notes: [],
+        meta: { version: 1, labels: [], spaceKey: "TEST" },
+      }],
+    ]);
+    const prepared: string[][] = [];
+    const committedOrdinals: number[] = [];
+    const bodyStore: ExportTreeBodyStoreV1 = {
+      async prepare(entries) {
+        prepared.push(entries.map((entry) => entry.key));
+      },
+      async load(entry) {
+        return committed.get(entry.ordinal);
+      },
+      async commit(entry, result) {
+        committedOrdinals.push(entry.ordinal);
+        committed.set(entry.ordinal, result);
+      },
+    };
+
+    const result = await fetchExportTree(source, tree("root"), { bodyStore });
+    expect(prepared).toHaveLength(1);
+    expect(prepared[0]).toHaveLength(3);
+    expect(source.getPageIds).toEqual(["b"]);
+    expect(committedOrdinals).toEqual([2]);
+    expect(
+      (result.nodes[0] as ExportPageNode).blocks[0],
+    ).toMatchObject({ content: [{ text: "Recovered root" }] });
+    expect(
+      (result.nodes[1] as ExportPageNode).blocks[0],
+    ).toMatchObject({ content: [{ text: "Recovered A" }] });
+    expect(
+      (result.nodes[2] as ExportPageNode).blocks[0],
+    ).toMatchObject({ content: [{ text: "B" }] });
   });
 });
 
@@ -1192,7 +1313,7 @@ describe("fetchExportTree — representation-neutral sources", () => {
     });
     setTimeout(() => controller.abort(), 5);
     await expect(pending).rejects.toThrow();
-    expect(observedSignal).toBe(controller.signal);
+    expect(observedSignal?.aborted).toBe(true);
     expect(progress).toEqual([]);
   });
 

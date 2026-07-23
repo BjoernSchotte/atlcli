@@ -20,6 +20,8 @@ export interface CurrentTemplate {
   uploadedAt: number;
   scan: ScanResult;
   bytes: ArrayBuffer;
+  recordKey?: string;
+  sha256?: string;
 }
 
 /** The minimum a stored record must carry to be loadable. */
@@ -27,6 +29,9 @@ export interface StoredTemplateLike {
   name: string;
   uploadedAt: number;
   bytes: ArrayBuffer;
+  recordKey?: string;
+  /** Legacy rows awaiting the hash backfill carry `null`. */
+  sha256?: string | null;
 }
 
 /**
@@ -58,6 +63,8 @@ export async function loadCurrentTemplate(
     uploadedAt: stored.uploadedAt,
     scan: await scan(new Uint8Array(stored.bytes)),
     bytes: stored.bytes,
+    ...(stored.recordKey ? { recordKey: stored.recordKey } : {}),
+    ...(stored.sha256 ? { sha256: stored.sha256 } : {}),
   };
 }
 

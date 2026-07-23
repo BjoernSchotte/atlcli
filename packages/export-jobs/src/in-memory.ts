@@ -5,15 +5,18 @@ import type {
 } from "./artifact.js";
 import type { ExportJobEventV1 } from "./event.js";
 import type { ExportJobRequestV1 } from "./request.js";
-import type { ExportJobStatsV1 } from "./statistics.js";
+import { createEmptyExportJobStatsV1 } from "./statistics.js";
 import type {
   ExportJobClaimV1,
   ExportJobCreateV1,
   ExportJobDeleteQueryV1,
   ExportJobDeleteResultV1,
   ExportJobEventAppendV1,
+  ExportJobEventQueryV1,
+  ExportJobEventPageV1,
   ExportJobFinalizeV1,
   ExportJobQueryV1,
+  ExportJobTombstoneQueryV1,
   ExportJobTombstoneV1,
   ExportJobUpdateV1,
 } from "./store-contracts.js";
@@ -26,6 +29,7 @@ import type {
 } from "./spool.js";
 import type {
   ExportArtifactStore,
+  ExportJobEventReaderV1,
   ExportJobStore,
   ExportSpoolStore,
 } from "./ports.js";
@@ -50,6 +54,7 @@ import {
   updateExportJobProgress,
   updateExportJobStats,
   updateExportJobTerminalMetadata,
+  releaseExportJobRetention,
   type ExportJobHeartbeatInputV1,
   type ExportJobCheckpointInputV1,
   type ExportJobLeaseReclaimInputV1,
@@ -134,30 +139,6 @@ function locatorLabel(request: ExportJobRequestV1): string {
   }
 }
 
-function emptyStats(): ExportJobStatsV1 {
-  return {
-    pages: { discovered: 0, fetched: 0, composed: 0, skipped: 0 },
-    assets: {
-      discovered: 0,
-      fetched: 0,
-      embedded: 0,
-      skipped: 0,
-      deduplicated: 0,
-      logicalBytes: 0,
-      physicalBytes: 0,
-    },
-    diagrams: { discovered: 0, rendered: 0, rasterized: 0, failed: 0 },
-    macros: { discovered: 0, rendered: 0, approximated: 0, unresolved: 0 },
-    retries: { total: 0, rateLimited: 0, network: 0, worker: 0 },
-    storage: { spoolBytes: 0, spoolPeakBytes: null, outputBytes: 0 },
-    memory: { heapPeakBytes: null, rendererPeakBytes: null },
-    metricSupport: {},
-    durationsMs: {},
-    warnings: 0,
-    errors: 0,
-  };
-}
-
 function derivationKey(input: NonNullable<ExportJobCreateV1["derivedFrom"]>): string {
   return canonical([input.jobId, input.relation, input.actionKey]);
 }
@@ -169,6 +150,18 @@ function requestRef(request: ExportJobRequestV1): string {
 function replayPayload(request: ExportJobRequestV1): string {
   const { id: _id, idempotencyKey: _idempotencyKey, createdAt: _createdAt, priority: _priority, ...rest } =
     request;
+  return canonical(rest);
+}
+
+function replayPayloadWithoutOutput(request: ExportJobRequestV1): string {
+  const {
+    id: _id,
+    idempotencyKey: _idempotencyKey,
+    createdAt: _createdAt,
+    priority: _priority,
+    output: _output,
+    ...rest
+  } = request;
   return canonical(rest);
 }
 
@@ -189,7 +182,7 @@ function assertFiniteTime(value: number, label: string): void {
  * cannot submit arbitrary partial snapshots, so every mutation retains the
  * lifecycle and fencing invariants enforced by the reducers.
  */
-export class InMemoryExportJobStore implements ExportJobStore {
+export class InMemoryExportJobStore implements ExportJobStore, ExportJobEventReaderV1 {
   readonly #jobs = new Map<string, ExportJobSnapshotV1>();
   readonly #requests = new Map<string, ExportJobRequestV1>();
   readonly #idempotency = new Map<string, string>();
@@ -296,7 +289,7 @@ export class InMemoryExportJobStore implements ExportJobStore {
       attempt: 0,
       recoveryCount: 0,
       leaseEpoch: 0,
-      stats: emptyStats(),
+      stats: createEmptyExportJobStatsV1(),
       createdAt: request.createdAt,
       ...(input.derivedFrom ? { derivedFrom: clone(input.derivedFrom) } : {}),
     };
@@ -330,7 +323,15 @@ export class InMemoryExportJobStore implements ExportJobStore {
       .filter((job) => !query.states || query.states.includes(job.state))
       .filter((job) => !query.stages || (job.stage !== undefined && query.stages.includes(job.stage)))
       .filter((job) => query.includeDismissed === true || job.dismissedAt === undefined)
+      .filter((job) => query.createdAfter === undefined || job.createdAt > query.createdAfter)
       .filter((job) => query.createdBefore === undefined || job.createdAt < query.createdBefore)
+      .filter(
+        (job) =>
+          query.cursorBefore === undefined ||
+          job.createdAt < query.cursorBefore.createdAt ||
+          (job.createdAt === query.cursorBefore.createdAt &&
+            job.id.localeCompare(query.cursorBefore.id) < 0),
+      )
       .sort((a, b) => b.createdAt - a.createdAt || b.id.localeCompare(a.id))
       .slice(0, limit)
       .map(clone);
@@ -342,9 +343,13 @@ export class InMemoryExportJobStore implements ExportJobStore {
       (job) =>
         (job.state === "queued" ||
           (job.state === "waiting" &&
-            job.waiting?.until !== undefined &&
-            job.waiting.until <= observedAt)) &&
-        (!claim.formats || claim.formats.includes(job.format)),
+            ((job.waiting?.until !== undefined &&
+              job.waiting.until <= observedAt) ||
+              (claim.resumeWaitingIds?.includes(job.id) === true &&
+                claim.ids?.includes(job.id) === true)))) &&
+        (!claim.ids || claim.ids.includes(job.id)) &&
+        (!claim.formats || claim.formats.includes(job.format)) &&
+        (!claim.authRefs || claim.authRefs.includes(this.#requests.get(job.requestRef)?.authRef ?? "")),
     );
     const ordered = orderExportQueue(claimable);
     const first = ordered[0];
@@ -469,6 +474,18 @@ export class InMemoryExportJobStore implements ExportJobStore {
           at: update.at,
           stats: update.stats,
         });
+      case "retention":
+        {
+          const next = await this.#replace(update.id, (snapshot) =>
+          releaseExportJobRetention(snapshot, update),
+          );
+          if (update.releaseArtifact) await this.#artifacts.cleanupJob(update.id);
+          if (update.releaseReport) {
+            this.#events.delete(update.id);
+            this.#nextEventSeq.set(update.id, 1);
+          }
+          return next;
+        }
     }
   }
 
@@ -530,6 +547,28 @@ export class InMemoryExportJobStore implements ExportJobStore {
     this.#require(id);
     const bounded = boundedLimit(limit, DEFAULT_EVENT_LIMIT, MAX_EVENT_LIMIT);
     return (this.#events.get(id) ?? []).slice(-bounded).map(clone);
+  }
+
+  async readEvents(
+    id: string,
+    query: ExportJobEventQueryV1 = {},
+  ): Promise<ExportJobEventPageV1> {
+    this.#require(id);
+    const afterSeq = query.afterSeq ?? 0;
+    if (!Number.isSafeInteger(afterSeq) || afterSeq < 0) {
+      throw new RangeError("Event cursor must be a non-negative safe integer.");
+    }
+    if (query.limit !== undefined && (!Number.isSafeInteger(query.limit) || query.limit < 1)) {
+      throw new RangeError("Event page limit must be a positive safe integer.");
+    }
+    const limit = Math.min(query.limit ?? DEFAULT_EVENT_LIMIT, MAX_EVENT_LIMIT);
+    const candidates = (this.#events.get(id) ?? []).filter((event) => event.seq > afterSeq);
+    const events = candidates.slice(0, limit).map(clone);
+    return {
+      events,
+      nextAfterSeq: events.at(-1)?.seq ?? afterSeq,
+      hasMore: candidates.length > events.length,
+    };
   }
 
   async finalizeArtifact(finalize: ExportJobFinalizeV1): Promise<ExportJobSnapshotV1> {
@@ -622,6 +661,7 @@ export class InMemoryExportJobStore implements ExportJobStore {
     const limit = boundedLimit(query.limit, DEFAULT_LIST_LIMIT, MAX_LIST_LIMIT);
     const candidates = [...this.#jobs.values()]
       .filter((job) => isExportJobTerminal(job.state))
+      .filter((job) => query.ids === undefined || query.ids.includes(job.id))
       .filter((job) => query.states === undefined || query.states.includes(job.state as never))
       .filter((job) => job.finishedAt !== undefined && job.finishedAt < query.finishedBefore)
       .filter(
@@ -673,6 +713,23 @@ export class InMemoryExportJobStore implements ExportJobStore {
       tombstoneRefs.push(ref);
     }
     return { deletedJobIds, tombstoneRefs };
+  }
+
+  async listTombstones(
+    query: ExportJobTombstoneQueryV1 = {},
+  ): Promise<ExportJobTombstoneV1[]> {
+    const limit = boundedLimit(query.limit, DEFAULT_LIST_LIMIT, MAX_LIST_LIMIT);
+    return [...this.#tombstones.values()]
+      .filter(
+        (tombstone) =>
+          query.cleanupPending !== true || tombstone.cleanupCompletedAt === undefined,
+      )
+      .sort(
+        (left, right) =>
+          left.deletedAt - right.deletedAt || left.jobId.localeCompare(right.jobId),
+      )
+      .slice(0, limit)
+      .map(clone);
   }
 
   async getTombstone(jobId: string): Promise<ExportJobTombstoneV1 | undefined> {
@@ -821,7 +878,7 @@ export class InMemoryExportJobStore implements ExportJobStore {
       request.id === origin.id ||
       request.format !== origin.format ||
       request.renderer !== origin.renderer ||
-      replayPayload(request) !== replayPayload(originRequest) ||
+      replayPayloadWithoutOutput(request) !== replayPayloadWithoutOutput(originRequest) ||
       request.priority !== (derivedFrom.relation === "retry" ? "retry" : "interactive")
     ) {
       throw new InMemoryExportStoreConflict(
@@ -831,10 +888,16 @@ export class InMemoryExportJobStore implements ExportJobStore {
     }
     if (existingDerivedId) {
       const existing = this.#jobs.get(existingDerivedId);
-      if (!existing || canonical(existing.derivedFrom) !== canonical(derivedFrom)) {
+      const existingRequest = existing ? this.#requests.get(existing.requestRef) : undefined;
+      if (
+        !existing ||
+        !existingRequest ||
+        canonical(existing.derivedFrom) !== canonical(derivedFrom) ||
+        replayPayload(request) !== replayPayload(existingRequest)
+      ) {
         throw new InMemoryExportStoreConflict(
           "derivation-conflict",
-          "Stored derivation index does not match the replay relation.",
+          "Stored derivation index or output override does not match the replay action.",
         );
       }
     }

@@ -1,6 +1,9 @@
-# atlcli-export (Python)
+# atlcli-export (deprecated Python package)
 
-This package powers DOCX exports for atlcli via a Python subprocess.
+This package is retained temporarily for removal/migration work only. Ordinary
+DOCX and PDF exports do not invoke it: DOCX uses the TypeScript
+`@atlcli/docx` engine and PDF uses the Typst/WASM pipeline. Do not add new
+callers or features here.
 
 ## Requirements
 

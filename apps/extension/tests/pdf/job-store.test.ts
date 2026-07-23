@@ -60,6 +60,20 @@ async function spyOnTransactions(): Promise<{ scopes: string[][]; restore: () =>
   return { scopes, restore: () => { proto.transaction = original; } };
 }
 
+async function spyOnBundleReads(): Promise<{ count: () => number; restore: () => void }> {
+  let reads = 0;
+  const db = await openPdfJobDb(factory);
+  const store = db.transaction("bundles", "readonly").objectStore("bundles");
+  const proto = Object.getPrototypeOf(store) as IDBObjectStore;
+  const original = proto.get;
+  proto.get = function patched(this: IDBObjectStore, query: IDBValidKey | IDBKeyRange) {
+    if (this.name === "bundles") reads += 1;
+    return original.call(this, query);
+  };
+  db.close();
+  return { count: () => reads, restore: () => { proto.get = original; } };
+}
+
 describe("PDF job store", () => {
   it("stores, claims and completes a binary job", async () => {
     await putPdfJob({ id, sourceIdentity: "page:1", bundle: bundle() }, factory);
@@ -73,6 +87,41 @@ describe("PDF job store", () => {
     const result = await getPdfJob(id, factory);
     expect(result?.status).toBe("complete");
     expect([...result!.pdf!]).toEqual([37, 80, 68, 70]);
+  });
+
+  it("gives a legacy PDF job to exactly one compiler", async () => {
+    await putPdfJob({ id, sourceIdentity: "page:1", bundle: bundle() }, factory);
+    const spy = await spyOnBundleReads();
+    let first;
+    let second;
+    try {
+      [first, second] = await Promise.all([
+        claimPdfJob(id, factory),
+        claimPdfJob(id, factory),
+      ]);
+    } finally {
+      spy.restore();
+    }
+    expect([first, second].filter(Boolean)).toHaveLength(1);
+    expect([first, second].filter(Boolean)[0]?.status).toBe("compiling");
+    expect(spy.count()).toBe(1);
+  });
+
+  it("accepts an opaque common parent id for a private compiler record", async () => {
+    await putPdfJob({
+      id,
+      sourceIdentity: "page:1",
+      bundle: bundle(),
+      activityVisibility: "private",
+      parentJobId: "job-1",
+      parentLeaseEpoch: 1,
+    }, factory);
+
+    expect(await getPdfJobMeta(id, factory)).toMatchObject({
+      activityVisibility: "private",
+      parentJobId: "job-1",
+      parentLeaseEpoch: 1,
+    });
   });
 
   it("does not resurrect a deleted or cancelled job on late completion", async () => {

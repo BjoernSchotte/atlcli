@@ -23,6 +23,7 @@ import {
   SpaceHomepageError,
   composeChapters,
   confluenceTreeSource,
+  exportSourcePolicyFromFlag,
   fetchExportTree,
   pageBodyToBlocks,
   resolveExportMentions,
@@ -32,6 +33,7 @@ import {
   type ExportBlock,
   type ExportNote,
   type ExportProgressCallback,
+  type ExportTreeBodyStoreV1,
 } from "@atlcli/confluence";
 import {
   normalizePdfLocale,
@@ -39,9 +41,16 @@ import {
   type PdfAssetRef,
   type PdfAssetResolver,
   type PdfExportMetadata,
+  type PdfExportReport,
   type PdfOutputSink,
   type PdfResolvedAsset,
 } from "@atlcli/pdf";
+import type {
+  ExportJobDerivationV1,
+  PdfExportJobRequestV1,
+  ResourceEstimateV1,
+} from "@atlcli/export-jobs";
+import { createFileExportJobPersistence } from "@atlcli/export-node";
 import {
   buildReport,
   buildTreeExportReport,
@@ -63,6 +72,13 @@ import {
   defaultExternalAssetPolicy,
   trustRoutingPdfAssetResolver,
 } from "@atlcli/export-wiring";
+import {
+  checkpointPdfAssetsV1,
+  confluenceSourceResolverPortFromClientV1,
+  createConfluencePdfResolveInputV1,
+  createConfluenceSourcePlanSpoolV1,
+  createExportTreeBodySpoolV1,
+} from "@atlcli/export-wiring/jobs";
 import { getPdfCompiler } from "./export-pdf-assets.js";
 import {
   PdfUsageError,
@@ -70,6 +86,12 @@ import {
   filePdfOutputSink,
   sanitizePathComponent,
 } from "./export-pdf-sink.js";
+import {
+  createOrdinaryPdfExecutorV1,
+  readOrdinaryExportProjectionV1,
+  runOrdinaryExportJobV1,
+  writeOrdinaryExportProjectionV1,
+} from "./export-job-runtime.js";
 
 // Re-export the pure sink/path surface so existing callers keep importing from
 // this module (no API change). The implementations live in export-pdf-sink.ts —
@@ -250,10 +272,11 @@ export interface ResolvedScope {
  * unconditionally, which is exactly the "cannot be forgotten tomorrow" it was
  * written for.
  */
-async function buildPdfMacroOptions(
+export async function buildPdfMacroOptions(
   profile: Profile,
   client: ConfluenceClient,
-  chapterAnchorById?: ReadonlyMap<string, string>
+  chapterAnchorById?: ReadonlyMap<string, string>,
+  signal?: AbortSignal,
 ): Promise<MacroResolutionOptions> {
   const [wiring, { JiraClient }] = await Promise.all([
     import("./export-macros-wiring.js"),
@@ -268,6 +291,7 @@ async function buildPdfMacroOptions(
     targetEngine: "pdf",
     live: true,
     ...(chapterAnchorById ? { chapterAnchorById } : {}),
+    ...(signal ? { signal } : {}),
   });
 }
 
@@ -290,6 +314,28 @@ export interface ExportPdfArgs {
   opts: OutputOptions;
 }
 
+function cliConfluenceExternalUrlResolver(
+  profile: Profile,
+): NonNullable<ComposeOptions["resolveExternalUrl"]> {
+  return (target, anchor) => {
+    let path: string;
+    if (target.contentId) {
+      path = target.spaceKey
+        ? `spaces/${target.spaceKey}/pages/${target.contentId}`
+        : `pages/viewpage.action?pageId=${target.contentId}`;
+    } else if (target.spaceKey) {
+      path = `display/${target.spaceKey}/${encodeURIComponent(target.contentTitle)}`;
+    } else {
+      path = `search?text=${encodeURIComponent(target.contentTitle)}`;
+    }
+    const url = buildConfluenceUrl(
+      profile as Parameters<typeof buildConfluenceUrl>[0],
+      path,
+    );
+    return anchor ? `${url}#${anchor}` : url;
+  };
+}
+
 /**
  * Resolve the export scope into ONE composed block list. Page scope walks a
  * single page (with page context so attachment ImageSources carry pageId);
@@ -300,7 +346,9 @@ export interface ExportPdfArgs {
 export async function resolveScope(
   args: ExportPdfArgs,
   signal: AbortSignal,
-  onProgress: ExportProgressCallback
+  onProgress: ExportProgressCallback,
+  walk: { exporter?: "pdf" | "word"; keepIgnored?: boolean } = {},
+  bodyStore?: ExportTreeBodyStoreV1,
 ): Promise<ResolvedScope> {
   const { client, request, profile } = args;
 
@@ -309,18 +357,24 @@ export async function resolveScope(
     const page = await client.getExportPageDetailsWithMedia(pageId, { signal });
     const spaceKey = page.spaceKey ?? "UNKNOWN";
     const walked = pageBodyToBlocks(page.exportSource, {
-      exporter: "pdf",
+      exporter: walk.exporter ?? "pdf",
       resolveMediaAttachment: createAdfMediaAttachmentResolver(page.mediaAttachments),
       resolveAnnotation: createAdfAnnotationResolver(page.inlineComments),
       annotationCommentsComplete: page.inlineCommentsComplete,
+      ...(walk.keepIgnored ? { exportControls: "passthrough" as const } : {}),
       pageContext: {
         id: pageId,
         title: page.title,
-        ...(page.exportSource.sourceVersion ? { version: page.exportSource.sourceVersion } : {}),
+        ...(page.exportSource.sourceVersion !== undefined
+          ? { version: page.exportSource.sourceVersion }
+          : {}),
         spaceKey,
       },
     });
-    const mention = await resolveExportMentions(walked.blocks, tokenMentionLookup(client));
+    const mention = await resolveExportMentions(
+      walked.blocks,
+      tokenMentionLookup(client, signal),
+    );
     const sourceNotes: ExportNote[] = [...walked.notes];
     // `mention-unresolved` is the CROSS-HOST code (spec 010): the CLI's DOCX
     // path (`export.ts`) and the extension's PDF host
@@ -361,27 +415,24 @@ export async function resolveScope(
     completenessMode: request.completenessMode,
     ...(request.maxPages !== undefined ? { maxPages: request.maxPages } : {}),
     ...(request.maxFolders !== undefined ? { maxFolders: request.maxFolders } : {}),
-    bodyOptions: { exporter: "pdf" },
+    bodyOptions: {
+      exporter: walk.exporter ?? "pdf",
+      ...(walk.keepIgnored ? { exportControls: "passthrough" as const } : {}),
+    },
+    ...(bodyStore ? { bodyStore } : {}),
     signal,
     onProgress: (p) => onProgress({ phase: "fetch", done: p.fetched, total: p.total, detail: p.currentTitle }),
   });
 
-  const resolveExternalUrl: NonNullable<ComposeOptions["resolveExternalUrl"]> = (target, anchor) => {
-    let path: string;
-    if (target.contentId) {
-      path = target.spaceKey ? `spaces/${target.spaceKey}/pages/${target.contentId}` : `pages/viewpage.action?pageId=${target.contentId}`;
-    } else if (target.spaceKey) {
-      path = `display/${target.spaceKey}/${encodeURIComponent(target.contentTitle)}`;
-    } else {
-      path = `search?text=${encodeURIComponent(target.contentTitle)}`;
-    }
-    const url = buildConfluenceUrl(profile as Parameters<typeof buildConfluenceUrl>[0], path);
-    return anchor ? `${url}#${anchor}` : url;
-  };
-  const composed = composeChapters(treeResult.nodes, { resolveExternalUrl });
+  const composed = composeChapters(treeResult.nodes, {
+    resolveExternalUrl: cliConfluenceExternalUrlResolver(profile),
+  });
   const rootDetails = await client.getPageDetails(rootId, { signal });
 
-  const mention = await resolveExportMentions(composed.blocks, tokenMentionLookup(client));
+  const mention = await resolveExportMentions(
+    composed.blocks,
+    tokenMentionLookup(client, signal),
+  );
   const sourceNotes: ExportNote[] = [...treeResult.notes, ...composed.notes];
   if (mention.unresolved > 0) {
     sourceNotes.push({ level: "warning", code: "mention-unresolved", message: `${mention.unresolved} mention(s) could not be resolved to a display name.` });
@@ -453,7 +504,12 @@ export async function exportPdf(args: ExportPdfArgs): Promise<ExportOutcome> {
       : resolve(args.outputPath!);
 
     const compiler = await getPdfCompiler();
-    const macros = await buildPdfMacroOptions(args.profile, client, scope.chapterAnchorById);
+    const macros = await buildPdfMacroOptions(
+      args.profile,
+      client,
+      scope.chapterAnchorById,
+      controller.signal,
+    );
     const report = await runPdfExport(
       {
         blocks: scope.blocks,
@@ -548,5 +604,234 @@ export async function exportPdf(args: ExportPdfArgs): Promise<ExportOutcome> {
   } finally {
     process.removeListener("SIGINT", onSignal);
     process.removeListener("SIGTERM", onSignal);
+  }
+}
+
+/**
+ * Queue-backed ordinary PDF command. The unresolved request is persisted by
+ * {@link runOrdinaryExportJobV1} before `resolveScope` performs the first API
+ * read; rendering then runs exclusively through the PR-C executor.
+ */
+export async function exportPdfAsOrdinaryJob(
+  args: ExportPdfArgs,
+  jobRequest: PdfExportJobRequestV1,
+  derivedFrom?: ExportJobDerivationV1,
+): Promise<ExportOutcome> {
+  const startedAt = Date.now();
+  const persistence = createFileExportJobPersistence();
+  let resolvedOutputPath: string | undefined;
+  type CliProjection = Pick<ResolvedScope, "sourcePages" | "reconcilablePageId" | "scopeReport"> & {
+    outputPath: string;
+  };
+  let reportProjection: CliProjection | undefined;
+
+  try {
+    // Compiler loading is local-only; runOrdinaryExportJobV1 persists before
+    // the shared ADF/Storage resolver (the first Confluence read) is reachable.
+    const compiler = await getPdfCompiler();
+    const sourcePolicyKey = args.profile.deploymentType === "data-center"
+      ? "storage-primary:data-center:v1"
+      : `${exportSourcePolicyFromFlag(process.env.ATLCLI_EXPORT_SOURCE)}:v1`;
+    const resolveInput = createConfluencePdfResolveInputV1({
+      port: confluenceSourceResolverPortFromClientV1(args.client),
+      resolveExternalUrl: cliConfluenceExternalUrlResolver(args.profile),
+      createSourcePlan: (_request, context) => ({
+        store: createConfluenceSourcePlanSpoolV1(context),
+        sourcePolicyKey,
+      }),
+      createBodyStore: (request, context) =>
+        createExportTreeBodySpoolV1(context, request.idempotencyKey),
+      onProgress: (_request, context, progress) => {
+        return context.updateProgress({
+          stage: "compose",
+          done: progress.fetched,
+          total: progress.total,
+          updatedAt: Date.now(),
+        });
+      },
+      async build(resolved, request, context) {
+        const mentions = await resolveExportMentions(
+          resolved.blocks,
+          tokenMentionLookup(args.client, context.signal),
+        );
+        resolved.blocks = mentions.blocks;
+        if (mentions.unresolved > 0) {
+          resolved.sourceNotes.push({
+            level: "warning",
+            code: "mention-unresolved",
+            message:
+              `${mentions.unresolved} mention(s) could not be resolved to a display name.`,
+          });
+        }
+
+        const outNameKey = args.request.scopeKind === "space"
+          ? args.request.spaceKey!
+          : resolved.root.id;
+        resolvedOutputPath = args.outDir
+          ? derivePdfOutputPath(args.outDir, outNameKey, resolved.root.title)
+          : resolve(args.outputPath!);
+        const sourcePages: SourcePageEntry[] = resolved.pages.map((page) => ({
+          id: page.id,
+          title: page.title,
+          notes: page.notes.map((note) => noteToIssue(note, "compose", page.id)),
+        }));
+        const scopeReport = args.request.scopeKind === "page"
+          ? undefined
+          : buildScopeReportFields(
+              args.request,
+              buildExportScope(args.request, resolved.root.id),
+            );
+        reportProjection = {
+          sourcePages,
+          outputPath: resolvedOutputPath,
+          ...(args.request.scopeKind === "page"
+            ? { reconcilablePageId: resolved.root.id }
+            : {}),
+          ...(scopeReport ? { scopeReport } : {}),
+        };
+        await writeOrdinaryExportProjectionV1(persistence, {
+          schema: "atlcli.cli-export-projection/1",
+          jobId: jobRequest.id,
+          format: "pdf",
+          value: reportProjection,
+        });
+
+        const locale = normalizePdfLocale(undefined);
+        const metadata: PdfExportMetadata = {
+          title: resolved.root.title,
+          space: resolved.root.spaceKey ?? "UNKNOWN",
+          ...(resolved.root.version !== undefined
+            ? { version: resolved.root.version }
+            : {}),
+          exporter: "atlcli",
+          language: locale.language,
+          ...(locale.region ? { region: locale.region } : {}),
+          exportedAt: request.options.exportedAt !== undefined
+            ? new Date(request.options.exportedAt)
+            : new Date(request.createdAt),
+        };
+        const macros = await buildPdfMacroOptions(
+          args.profile,
+          args.client,
+          resolved.chapterAnchorById,
+          context.signal,
+        );
+        return {
+          input: {
+            metadata,
+            filename: basename(resolvedOutputPath),
+          },
+          env: {
+            assets: checkpointPdfAssetsV1(
+              context,
+              request.idempotencyKey,
+              cliPdfAssets(args.client, args.baseUrl, {
+                noCache: request.options.noCache === true,
+              }),
+            ),
+            macros,
+          },
+        };
+      },
+    });
+    const executor = createOrdinaryPdfExecutorV1(persistence, {
+      compiler,
+      resolveInput,
+      estimateRender(input): ResourceEstimateV1 {
+        const sourceBytes = new TextEncoder().encode(JSON.stringify(input.blocks)).byteLength;
+        return {
+          heapBytes: Math.max(256 * 1024 * 1024, sourceBytes * 8),
+          spoolBytes: Math.max(512 * 1024 * 1024, sourceBytes * 16),
+          outputBytes: 512 * 1024 * 1024,
+          rasterPixels: 128 * 1024 * 1024,
+          confidence: "unknown",
+        };
+      },
+    });
+
+    const execution = await runOrdinaryExportJobV1({
+      request: jobRequest,
+      ...(derivedFrom ? { derivedFrom } : {}),
+      executor,
+      persistence,
+      monitor: {
+        mode: args.opts.json ? "jsonl" : process.stderr.isTTY ? "tty" : "lines",
+        writer: process.stderr,
+      },
+    });
+    if (execution.snapshot.state !== "succeeded" || !execution.report) {
+      const error = execution.snapshot.error;
+      return {
+        ok: false,
+        report: buildReport({
+          format: "pdf",
+          sourcePages: [],
+          outputDetails: [],
+          issues: [{
+            code: error?.code ?? `job-${execution.snapshot.state}`,
+            severity: "error",
+            phase: error?.stage ?? "commit",
+            retryable: error?.retryable ?? false,
+            message: error?.message ?? `Export job ended as ${execution.snapshot.state}.`,
+          }],
+          timings: { totalMs: Date.now() - startedAt },
+          failureExitCode: execution.snapshot.state === "cancelled" ? 130 : 5,
+        }),
+      };
+    }
+
+    // Recovery can skip resolveInput when a ready/result checkpoint exists.
+    // The CLI projection is therefore durable too; never re-read Confluence
+    // merely to print the report after the artifact has already succeeded.
+    reportProjection ??= await readOrdinaryExportProjectionV1<CliProjection>(
+      persistence,
+      execution.snapshot.id,
+      "pdf",
+    );
+    if (!reportProjection) throw new Error("PDF job recovery has no durable CLI report projection.");
+    const report = execution.report as PdfExportReport;
+    const outputPath = reportProjection.outputPath;
+    const { outputDetail, issues } = pdfReportContributions(
+      report,
+      outputPath,
+      report.compilerDiagnostics ?? [],
+    );
+    const sourcePages: SourcePageEntry[] =
+      reportProjection.reconcilablePageId && report.sourceNotes
+        ? [{
+            ...reportProjection.sourcePages[0]!,
+            notes: report.sourceNotes.map((note) =>
+              noteToIssue(note, "compose", reportProjection!.reconcilablePageId!),
+            ),
+          }]
+        : reportProjection.sourcePages;
+    const common = {
+      format: "pdf" as const,
+      sourcePages,
+      outputDetails: [outputDetail],
+      issues,
+      timings: { ...report.timings, totalMs: Date.now() - startedAt },
+      complete: report.complete,
+      strict: args.strict,
+    };
+    return {
+      ok: true,
+      report: reportProjection.scopeReport
+        ? buildTreeExportReport({ ...common, scope: reportProjection.scopeReport })
+        : buildReport(common),
+    };
+  } catch (error) {
+    const classified = classifyError(error);
+    return {
+      ok: false,
+      report: buildReport({
+        format: "pdf",
+        sourcePages: [],
+        outputDetails: [],
+        issues: [classified.issue],
+        timings: { totalMs: Date.now() - startedAt },
+        failureExitCode: classified.exitCode,
+      }),
+    };
   }
 }

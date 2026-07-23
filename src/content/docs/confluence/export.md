@@ -13,8 +13,9 @@ the browser extension to create a tagged PDF with the built-in atlcli document d
 - [Browser extension: PDF export](#browser-extension-pdf-export)
 - [CLI: DOCX quick start](#quick-start)
 - [CLI: PDF export](#cli-pdf-export) and [document settings](#document-settings-are-not-cli-flags-yet)
-- [Rendering engines](#rendering-engines)
 - [ADF source selection and rollback](#adf-source-selection-and-rollback)
+- [Rendering runtime](#rendering-runtime)
+- [Export activity and recovery](#export-activity-and-recovery)
 - [Tree and space export](#tree-and-space-export)
 - [Note codes](#note-codes-are-shared-across-formats) and [migrating retired codes](#migrating-retired-note-codes)
 - [Note severity and `--strict`](#note-severity-and---strict)
@@ -72,15 +73,14 @@ not make that claim.
 
 - Authenticated profile (`atlcli auth login`)
 - **Space permission**: View permission on pages to export
-- Word-compatible template file (`.docx` or `.docm`) — required with `--engine python`,
-  optional with `--engine ts` (which has a
-  [bundled default template](#the-bundled-default-template---engine-ts))
+- Optional Word-compatible template file (`.docx` or `.docm`). Without one,
+  DOCX uses the [bundled default template](#the-bundled-default-template).
 
 ## Quick Start
 
 ```bash
-# No template needed: the ts engine falls back to its bundled default
-atlcli wiki export 12345678 --output ./report.docx --engine ts
+# No template needed: DOCX falls back to its bundled default
+atlcli wiki export 12345678 --output ./report.docx
 
 # Export a page using a template
 atlcli wiki export 12345678 --template corporate --output ./report.docx
@@ -93,10 +93,9 @@ atlcli wiki export "DOCS:Architecture Overview" -t report -o ./arch.docx
 
 Cloud DOCX (TypeScript engine) and PDF exports read Atlas Doc Format (ADF) as
 their primary page body, validate it under bounded resource limits, and decode
-it into the same neutral document model used by both renderers. Data Center and
-the legacy Python DOCX path remain Storage-based. Storage is also retained as a
-Cloud sidecar for macros and definitions that do not yet have an ADF-native
-equivalent.
+it into the same neutral document model used by both renderers. Data Center
+remains Storage-based. Storage is also retained as a Cloud sidecar for macros
+and definitions that do not yet have an ADF-native equivalent.
 
 `ATLCLI_EXPORT_SOURCE` is the single deployment rollback switch. It changes
 only the source adapter; it does not fork DOCX/PDF rendering, bypass version
@@ -163,7 +162,7 @@ Pass one or the other, never both.
 | `--exported-at <ISO8601>` | Fix the export timestamp (reproducible builds; also honors `SOURCE_DATE_EPOCH`) |
 | `--report json` | Synonym for `--json` |
 
-All [scope and label options](#scope-options---engine-ts) work with `--format pdf` too.
+All [scope and label options](#scope-options) work with `--format pdf` too.
 
 ### Document settings are not CLI flags (yet)
 
@@ -220,8 +219,8 @@ jq -r '.issues[] | "\(.severity)\t\(.code)\t\(.phase)"' report.json
 
 :::note[Behavior change: informational notes no longer fail `--strict`]
 Earlier releases reported **every** note as `severity: "warning"`, whatever the exporter
-actually said about it. Because the ts DOCX engine appends a `perf-timing` note to every
-export, `--engine ts … --strict` exited `2` even on a completely clean run, while
+actually said about it. Because the DOCX engine appends a `perf-timing` note to every
+export, a DOCX `--strict` run exited `2` even on a completely clean run, while
 `--format pdf` on the same page exited `0`.
 
 `severity` now mirrors the note's own level. Notes that describe a correct export —
@@ -268,6 +267,58 @@ profile. `oauth` and `session` auth are out of scope for ephemeral mode.
 
 For a full CI job, see the [Export automation recipe](/recipes/export-automation/).
 
+## Export activity and recovery
+
+Every CLI DOCX and PDF export is recorded as a durable job before the first
+Confluence API read. The normal export command remains foreground: it claims its own job,
+prints progress on stderr, writes the artifact atomically, and emits the existing final
+report on stdout. There is no CLI daemon and no `--detach` mode.
+
+The journal lets another terminal inspect or cancel the running export, and keeps terminal
+history for diagnostics and replay:
+
+```bash
+# Inspect work across DOCX and PDF
+atlcli wiki export jobs list
+atlcli wiki export jobs show <job-id>
+atlcli wiki export jobs watch <job-id>
+
+# Request cancellation from another process
+atlcli wiki export jobs cancel <job-id>
+
+# Resume the same checkpointed row after its foreground process was lost
+atlcli wiki export jobs resume <queued-job-id>
+
+# Failed/cancelled jobs can be retried; successful jobs can be run again
+atlcli wiki export jobs retry <job-id> --output ./retry.docx
+atlcli wiki export jobs rerun <job-id> --output ./copy.pdf
+```
+
+`retry` and `rerun` create a new linked job; they never rewrite the source history row.
+Without a new `--output`, the retained output policy applies again. A successful rerun does
+not silently replace its earlier file: pass a new path, or explicitly authorize replacement
+with `--force`.
+
+Use `--json` with `list`, `show`, `cancel`, `retry`, `rerun`, or `clear`, and `--jsonl`
+with `watch`. Non-TTY monitoring emits stable lines without ANSI control sequences.
+Cleanup is confirmation-gated and touches terminal history only:
+
+```bash
+atlcli wiki export jobs clear --before 30d --confirm
+```
+
+State lives under `~/.atlcli/export-jobs/v1` with private directory/file modes. Set
+`ATLCLI_EXPORT_JOBS_DIR` only when a managed host or isolated test needs a different
+location. Requests and activity contain opaque auth references and operational metadata,
+never tokens or source bodies. Jobs created with process-only ephemeral credentials cannot
+be replayed later without submitting a new authenticated export.
+
+`show` acknowledges a terminal job; `list` and `watch` do not. Artifacts remain protected
+until delivery and are then retained for at least 24 hours. Full reports/events remain for
+7 days, while compact history is bounded to the newest 100 jobs younger than 30 days.
+See [Export Jobs & Operations](/reference/export-jobs/) for lifecycle states, retention,
+storage layout, recovery, and incident diagnostics.
+
 ## Page Reference Formats
 
 | Format | Example | Description |
@@ -281,23 +332,21 @@ For a full CI job, see the [Export automation recipe](/recipes/export-automation
 | Option | Description |
 |--------|-------------|
 | `--format <fmt>` | `docx` (default) or `pdf`. With `pdf`, `--template` and `--engine` are not valid — see [CLI: PDF export](#cli-pdf-export) |
-| `--template, -t` | Template name or path. **Required** with `--engine python`; **optional** with `--engine ts`, which falls back to a [bundled default template](#the-bundled-default-template---engine-ts) |
+| `--template, -t` | Optional DOCX template name or path. Without it, DOCX uses the [bundled default template](#the-bundled-default-template) |
 | `--output, -o` | Output file path (required) |
 | `--no-images` | Don't embed images from attachments |
-| `--include-children` | Deprecated alias for `--scope tree` (with `--engine ts`); legacy child-merge with `--engine python` |
-| `--no-merge` | Keep children as separate array for template loops (python engine) |
+| `--include-children` | Deprecated alias for `--scope tree` |
 | `--no-field-update-prompt` | Never ask Word to refresh fields on open (see [Field update behavior](#field-update-behavior)). Alias: `--no-toc-prompt` |
-| `--keep-ignored` | Keep `scroll-only`/`scroll-ignore` bodies for debugging. `--engine ts`, single page only; the report is marked `export-controls-passthrough` — see [Keeping ignored content](/confluence/scroll-macros/#keeping-ignored-content-for-debugging) |
-| `--no-live-macros` | Deterministic export: skip live (Jira / `export_view` / attachment) macro rendering. Pure macros still render. Requires `--engine ts`; **not** an offline mode — see [Deterministic exports](/confluence/dynamic-macros/#deterministic-exports) |
-| `--engine` | Rendering engine: `python` (default) or `ts` (see [Rendering Engines](#rendering-engines)) |
+| `--keep-ignored` | Keep `scroll-only`/`scroll-ignore` bodies for debugging. Single page only; the report is marked `export-controls-passthrough` — see [Keeping ignored content](/confluence/scroll-macros/#keeping-ignored-content-for-debugging) |
+| `--no-live-macros` | Deterministic export: skip live (Jira / `export_view` / attachment) macro rendering. Pure macros still render. This is **not** an offline mode — see [Deterministic exports](/confluence/dynamic-macros/#deterministic-exports) |
+| `--engine ts` | Optional compatibility spelling for the only supported DOCX engine. `--engine python` now fails with a migration message |
 | `--profile` | Use a specific auth profile |
-| `--json` / `--report json` | Emit exactly one `atlcli.export-report/1` document on stdout (PDF and `--engine ts`) |
+| `--json` / `--report json` | Emit exactly one `atlcli.export-report/1` document on stdout |
 
-### Scope options (`--engine ts`)
+### Scope options
 
-These flags turn a single-page export into a tree or whole-space export. They
-require `--engine ts`; using them with `--engine python` is rejected with a clear
-error. See [Tree and space export](#tree-and-space-export).
+These flags turn a single-page export into a tree or whole-space export. See
+[Tree and space export](#tree-and-space-export).
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
@@ -311,46 +360,34 @@ error. See [Tree and space export](#tree-and-space-export).
 | `--label-exclude-mode` | `prune-subtree` \| `page-only` | `prune-subtree` | Whether an excluded page also removes its descendants |
 | `--completeness` | `strict` \| `partial` | `strict` | `strict` aborts on an unreadable or changed page; `partial` renders a placeholder chapter and sets `complete: false` |
 
-## Rendering Engines
+## Rendering runtime
 
-`atlcli wiki export` can render through two engines:
+DOCX uses the isomorphic TypeScript [`@atlcli/docx` export engine](/reference/docx-engine/).
+PDF uses the Typst compiler packaged as WebAssembly. The CLI and browser hosts bind their
+own storage, authentication and delivery adapters around these portable engines; neither
+format invokes Python.
 
-| Engine | Templates | Requirements | Feature scope |
-|--------|-----------|--------------|---------------|
-| `python` (default) | Jinja2 variables (`{{ title }}`, …) | Python 3.12+ with `atlcli-export` | Single page + legacy `--include-children` merge, content-by-label |
-| `ts` | Scroll placeholders (`$scroll.title`, `$scroll.content`, …) | None (runs in-process) | Single page **plus** page-tree / whole-space export with label filters, chapter merge, working TOC and cross-page links; embeds PNG/JPEG/GIF images (SVG not yet) |
-
-The `ts` engine is the isomorphic [`@atlcli/docx` export engine](/reference/docx-engine/) — the exact
-same code the atlcli browser extension uses for its "Export to Word" button, driven here with
-filesystem adapters. Pick it when you have a Scroll-Word-Exporter-style template and want an export
-with no Python dependency:
+DOCX templates use Scroll placeholders such as `$scroll.title` and
+`$scroll.content`. The JSON report includes placeholder, image and diagram statistics.
+Attachments embed inline at their intrinsic size, capped to the content width; a missing or
+invalid image becomes a report issue instead of silently disappearing. `--no-images`
+disables DOCX image embedding.
 
 ```bash
-atlcli wiki export 12345678 --template scroll-corporate.docx --output out.docx --engine ts
+atlcli wiki export 12345678 --template scroll-corporate.docx --output out.docx
 ```
 
-The JSON result includes an export report: how many placeholders resolved, which are unsupported
-(rendered empty), and how many images were embedded or skipped. Attachment and external images
-embed inline at their intrinsic size (or the page-set width), capped to the content width; an
-image that cannot be fetched or decoded becomes a warning note instead of failing the export.
-`--no-images` disables embedding for this engine too.
-
-:::caution[The two engines do not read each other's templates]
-The template vocabularies in the table above are **not interchangeable**. Hand a docxtpl
-template to `--engine ts` and its `{{ … }}` / `{% … %}` placeholders arrive in the finished
-document as **literal text** — the engine only fills `$scroll.*`. The export completes (a
-deliberate hybrid template is a legitimate workflow), but the report carries a
-`template-foreign-placeholders` **warning** naming the placeholders it will not fill, so
-`--strict` fails the run in CI. See
-[Jinja placeholders appear in the exported document](#jinja-placeholders-appear-in-the-exported-document).
-
-Going the other way, a `$scroll.*` template on `--engine python` leaves the `$scroll.*` text
-literal in the same way — docxtpl has no notion of Scroll placeholders.
+:::caution[Jinja templates must be migrated]
+The retired Python exporter used docxtpl/Jinja placeholders (`{{ … }}`, `{% … %}`). The
+TypeScript DOCX engine deliberately does not evaluate executable template expressions.
+Those placeholders remain literal and produce a `template-foreign-placeholders` warning;
+`--strict` therefore fails the run. Replace them with supported `$scroll.*` placeholders,
+or start from the bundled default template.
 :::
 
 ### Mermaid diagrams
 
-The `ts` engine renders fenced ```` ```mermaid ```` code blocks into real vector drawings
+The DOCX engine renders fenced ```` ```mermaid ```` code blocks into real vector drawings
 (SVG with an automatic PNG fallback for older Word versions) — in the CLI and in the browser
 extension alike. Six diagram types are supported: **flowchart, state, sequence, class, ER, and
 XY chart**. Any other type (Gantt, Pie, Mindmap, …) and any diagram that fails to render exports
@@ -367,31 +404,10 @@ to source code blocks and the report says so in a note.
 Diagram theming follows the export's brand colors when configured; the default is a neutral
 light theme matching the code-block styling. Theme colors should be hex values (`#RRGGBB`).
 
-### Migration: `ts` will become the default engine
-
-Today `--engine` defaults to `python`. A future minor release will flip the default to the
-in-process `ts` engine (no Python dependency). Nothing changes yet — this is advance notice:
-
-- **Keep today's behavior** by passing `--engine python` explicitly. The python engine is
-  not being removed; it stays available behind the flag.
-- **Adopt the new default now** with `--engine ts`. It covers single-page **and** tree/space
-  export, Scroll-style placeholders, image embedding, and Mermaid diagrams, and needs no
-  Python install. Templates use Scroll placeholders (`$scroll.title`) rather than Jinja2
-  variables (`{{ title }}`), so a python template must be adapted before switching.
-- When `--engine` is omitted and the terminal is interactive, the CLI prints a one-line
-  stderr notice about the upcoming change (never on stdout, so `--json` output is unaffected;
-  silence it with `ATLCLI_SUPPRESS_ENGINE_NOTICE=1`).
-- **Once flipped**, Python is no longer required for export unless you opt back in with
-  `--engine python`.
-
-**Flip criteria** (tracked; the flip is its own later PR): the python→ts parity checklist is
-green including tree/space and native list numbering, and at least one release has shipped
-carrying the deprecation notice above.
-
 ## Tree and space export
 
 "Export this handbook" almost never means one page — documentation lives as a page
-tree. With `--engine ts`, `atlcli wiki export` can turn a page tree, or a whole
+tree. `atlcli wiki export` can turn a page tree, or a whole
 space, into **one** DOCX: chapters follow the page hierarchy (page depth becomes
 chapter level), with a working table of contents and working cross-page links.
 Label filters curate the result — drop `internal` pages, or keep only `handbook`
@@ -406,7 +422,6 @@ no hosted job to poll and no data egress to third parties. Automation is the CLI
 - Authenticated profile (`atlcli auth login`)
 - **View permission** on every page in the tree/space (see [Completeness](#completeness-strict-vs-partial))
 - A Word-compatible template (`.docx`/`.docm`)
-- `--engine ts` (the scope/label flags require it)
 
 ### Steps
 
@@ -422,7 +437,7 @@ Export a page and all its descendants into one document:
 
 ```bash
 atlcli wiki export 12345678 \
-  --engine ts --scope tree \
+  --scope tree \
   --template corporate --output ./handbook.docx
 ```
 
@@ -435,7 +450,7 @@ keep only pages labelled `public`, cap the walk, and emit a JSON report for CI:
 
 ```bash
 atlcli wiki export \
-  --engine ts --scope space --space DOCSY \
+  --scope space --space DOCSY \
   --label-exclude internal --label-exclude-mode prune-subtree \
   --label-include public \
   --max-pages 500 --completeness partial \
@@ -469,8 +484,8 @@ pipe in a headless job:
 | `requestedScope` | The scope as requested (e.g. `space` + `spaceKey`) — `--scope tree`/`space` only |
 | `resolvedScope` | The resolved scope (e.g. a `tree` rooted at the homepage id) — `--scope tree`/`space` only |
 | `complete` | `false` when partial mode omitted content; present on every successful export |
-| `placeholders` | ts-engine placeholder metrics (`resolved`, `unsupported`) — DOCX `--engine ts` only |
-| `engine` | `python` or `ts` — DOCX only (the PDF path has a single engine) |
+| `placeholders` | DOCX placeholder metrics (`resolved`, `unsupported`) |
+| `engine` | `ts` for DOCX; omitted for PDF |
 | `timings` | Per-phase wall clocks |
 | `exitCode` | The process exit code, embedded for artifact archiving |
 
@@ -504,7 +519,7 @@ JSON document and branch on `complete` and the note counts:
 set -euo pipefail
 
 report=$(atlcli wiki export \
-  --engine ts --scope space --space DOCSY \
+  --scope space --space DOCSY \
   --label-exclude internal --completeness strict \
   --template corporate --output ./docsy.docx --json)   # progress → stderr
 
@@ -539,9 +554,9 @@ Missing chapters are never a silent bug — they are always explained by a note.
 | `heading-depth-clamped` | `warning` | A heading exceeded level 6 after the chapter shift |
 | `link-outside-scope` | `info` | A cross-page link points outside the export; linked absolutely |
 | `link-anchor-missing` / `link-target-ambiguous` | `warning` | A link could not be resolved; rendered as text |
-| `perf-timing` | `info` | Per-phase wall clocks for the run (ts DOCX engine; emitted on every export) |
-| `template-foreign-placeholders` | `warning` | The template carries docxtpl/Jinja placeholders (`{{ … }}`, `{% … %}`) that the `ts` engine does not fill; they stay in the document as literal text |
-| `template-default-used` | `info` | No `--template` was given on `--engine ts`; the [bundled default template](#the-bundled-default-template---engine-ts) produced the document |
+| `perf-timing` | `info` | Per-phase wall clocks for the run (DOCX; emitted on every export) |
+| `template-foreign-placeholders` | `warning` | The template carries retired docxtpl/Jinja placeholders (`{{ … }}`, `{% … %}`); they stay in the document as literal text |
+| `template-default-used` | `info` | No `--template` was given; the [bundled default template](#the-bundled-default-template) produced the document |
 | `page-unreadable` / `subtree-unreadable` / `page-ambiguous-404` / `page-version-changed` | `error` / `warning` | Completeness events: `error` when `--completeness strict` aborts the export, `warning` when `--completeness partial` substitutes a placeholder and carries on |
 
 ### Note codes are shared across formats
@@ -611,23 +626,21 @@ Templates are resolved in order (first match wins):
 
 atlcli supports both `.docx` and `.docm` (macro-enabled) templates.
 
-### The bundled default template (`--engine ts`)
+### The bundled default template
 
-With `--engine ts` you can omit `--template` entirely. The export then uses a **bundled default
+You can omit `--template` entirely. The export then uses a **bundled default
 template**: a title heading, an export-date line, the page body, and the Scroll heading styles.
 It is built programmatically (no binary asset ships with atlcli) and is byte-deterministic, so
 repeated exports of the same page produce the same document.
 
 ```bash
 # Zero-config: no template to find, install, or maintain
-atlcli wiki export 12345678 --output page.docx --engine ts
+atlcli wiki export 12345678 --output page.docx
 ```
 
 The report records which template produced the document with a `template-default-used`
 **info** note, and in text mode the CLI prints a one-line hint on stderr. Because the note is
 informational, it does not fail `--strict`.
-
-`--engine python` still requires `--template` — docxtpl has no bundled default.
 
 ### Template Management
 
@@ -676,7 +689,7 @@ Word only fills in a table of contents, a caption number or a cross-reference wh
 
 Click **Yes** to populate the TOC with correct entries and page numbers.
 
-**The prompt appears only when a refresh would change something** (`--engine ts`). The engine
+**The prompt appears only when a refresh would change something.** The engine
 inspects the finished document — every part, headers and footers included — and sets the flag
 when it finds a field whose result is computed:
 
@@ -694,11 +707,6 @@ when it finds a field whose result is computed:
 So an ordinary page export — prose, headings, images and links — opens without any prompt, while
 a document with a table of contents still gets one. If your template sets `<w:updateFields>`
 itself, that setting is left in place.
-
-:::note[`--engine python`]
-The Python engine sets the flag whenever the document contains a TOC, and never otherwise. The
-table above describes `--engine ts`.
-:::
 
 ### Caption numbering
 
@@ -751,52 +759,39 @@ running heads, not only tables of contents.
 
 ## Template Variables
 
-Templates use Jinja2 syntax. Available variables:
+DOCX templates use Scroll Word Exporter placeholders. Jinja/docxtpl syntax is
+retired and remains literal text; see
+[Jinja placeholders appear in the exported document](#jinja-placeholders-appear-in-the-exported-document).
 
 ### Page Content
 
 | Variable | Description |
 |----------|-------------|
-| `{{ title }}` | Page title |
-| `{{ content }}` | Page content (as Word subdocument) |
-| `{{ pageId }}` | Confluence page ID |
-| `{{ pageUrl }}` | Full page URL |
-| `{{ tinyUrl }}` | Short page URL |
+| `$scroll.title` | Page title |
+| `$scroll.content` | Page content insertion point |
+| `$scroll.version` | Confluence page version |
+| `$scroll.pageid` | Confluence page ID |
+| `$scroll.pageurl` | Full page URL |
+| `$scroll.tinyurl` | Short page URL |
+| `$scroll.pagelabels` | Page labels |
+| `$scroll.pagelabels.capitalised` | Capitalized page labels |
 
-### Author Information
-
-| Variable | Description |
-|----------|-------------|
-| `{{ author }}` | Creator's display name |
-| `{{ authorEmail }}` | Creator's email |
-| `{{ modifier }}` | Last modifier's display name |
-| `{{ modifierEmail }}` | Last modifier's email |
-
-### Dates
+### People, Dates, Space, and Template
 
 | Variable | Description |
 |----------|-------------|
-| `{{ created }}` | Creation date (ISO format) |
-| `{{ modified }}` | Last modified date (ISO format) |
-| `{{ exportDate }}` | Export timestamp |
+| `$scroll.creator` / `.fullName` / `.email` | Creator identity |
+| `$scroll.modifier` / `.fullName` / `.email` | Last modifier identity |
+| `$scroll.pageowner.fullName` | Current page owner |
+| `$scroll.exporter` / `.fullName` / `.email` | Exporting user |
+| `$scroll.creationdate`, `$scroll.modificationdate`, `$scroll.exportdate` | Dates; optional `.(...)` format argument |
+| `$scroll.space.key`, `$scroll.space.name`, `$scroll.space.url` | Space identity |
+| `$scroll.template.name`, `$scroll.template.modificationdate` | Template identity |
+| `$scroll.spacelogo`, `$scroll.globallogo` | Space-logo image; optional `.(height,width)` in pixels |
+| `$scroll.includepage.(Title\|SPACE:Title\|pageId)` | Included page body |
 
-Use the `date` filter for formatting: `{{ modified | date('YYYY-MM-DD') }}`
-
-### Space Information
-
-| Variable | Description |
-|----------|-------------|
-| `{{ spaceKey }}` | Space key (e.g., "DOCS") |
-| `{{ spaceName }}` | Space name |
-| `{{ spaceUrl }}` | Space URL |
-
-### Collections
-
-| Variable | Description |
-|----------|-------------|
-| `{{ labels }}` | List of page labels |
-| `{{ attachments }}` | List of attachments |
-| `{{ children }}` | Child pages (with `--include-children --no-merge`) |
+Cloud has no Data Center username value. The `.name` variants for people are
+therefore empty with a report note; use `.fullName` or `.email`.
 
 ## Examples
 
@@ -809,11 +804,8 @@ atlcli wiki export 12345678 --template basic --output ./page.docx
 ### Export with Children
 
 ```bash
-# Merge children into single document
-atlcli wiki export 12345 -t book -o book.docx --include-children
-
-# Keep children separate for template loops
-atlcli wiki export 12345 -t book -o book.docx --include-children --no-merge
+# One document whose chapters follow the page tree
+atlcli wiki export 12345 -t book -o book.docx --scope tree
 ```
 
 ### Export without Images
@@ -833,9 +825,8 @@ A document without computed fields never prompts in the first place — see
 
 ## Scroll Word Exporter Compatibility
 
-atlcli supports templates created for Scroll Word Exporter. With the default `python` engine,
-Scroll placeholders (`$scroll.title`, `$scroll.content`, etc.) are automatically converted to the
-equivalent atlcli variables. With `--engine ts`, Scroll placeholders are resolved natively — the
+atlcli supports templates created for Scroll Word Exporter. Scroll placeholders
+(`$scroll.title`, `$scroll.content`, etc.) are resolved natively — the
 template is scanned, supported placeholders are filled, unsupported ones are emptied and listed in
 the export report, and the page body is injected at `$scroll.content`. The logo placeholders
 `$scroll.spacelogo` and `$scroll.globallogo` embed the space logo as an image (optionally sized
@@ -868,18 +859,17 @@ below.)
 warning  template-foreign-placeholders  prepare
 ```
 
-**Cause.** A docxtpl/Jinja template was exported with `--engine ts`. The two engines read
-different placeholder vocabularies (see [Rendering Engines](#rendering-engines)); the `ts` engine
-fills `$scroll.*` only and carries every other brace through untouched, so Jinja placeholders
+**Cause.** The template uses placeholders from the retired docxtpl/Jinja exporter. The
+TypeScript engine fills `$scroll.*` only and carries every other brace through untouched, so
+Jinja placeholders
 survive into the document.
 
 **Fix — pick one:**
 
 1. Rewrite the template's placeholders as `$scroll.*`
    (see [Template Variables](#template-variables)), or
-2. export that template with `--engine python`, which is what it was written for, or
-3. drop `--template` and use the
-   [bundled default template](#the-bundled-default-template---engine-ts) instead.
+2. drop `--template` and use the
+   [bundled default template](#the-bundled-default-template) instead.
 
 Add `--strict` to your CI invocation so this fails the build rather than shipping a document
 with visible placeholders.
@@ -918,12 +908,6 @@ be rendered. Check the note `code` (in `--json` under the report's `issues`/`not
 - `includepage-cycle` — the reference resolved to the page being exported (self-include).
 - `includepage-budget-exceeded` — more than 25 unique included pages (or 2 MiB of included
   storage); later new targets are blanked.
-
-### "require --engine ts" Error
-
-The scope, label, completeness and traversal flags are only implemented by the
-`ts` engine. Add `--engine ts` (the `python` engine only does single-page export
-and the legacy `--include-children` merge).
 
 ### "exceeds the maximum of N pages"
 
@@ -1028,5 +1012,5 @@ the `--json` report's `notesByCode` before assuming a bug.
 - [Attachments](attachments.md) - Managing page attachments for export
 - [Templates](templates.md) - Page templates (different from export templates)
 - [PDF Template Settings](../reference/pdf-template-settings.md) - The settings the panel exposes
-- [DOCX Export Engine](../reference/docx-engine.md) - The reusable `@atlcli/docx` engine behind `--engine ts`
+- [DOCX Export Engine](../reference/docx-engine.md) - The reusable `@atlcli/docx` engine
 - [PDF Export Engine](../reference/pdf-engine.md) - Browser compiler, assets and verification

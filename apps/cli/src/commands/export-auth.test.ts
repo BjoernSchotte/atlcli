@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { buildEphemeralProfile, engineDeprecationNotice } from "./export.js";
+import { buildEphemeralProfile } from "./export.js";
 
 const ENV_KEYS = ["ATLCLI_BASE_URL", "ATLCLI_EMAIL", "ATLCLI_AUTH_TYPE", "ATLCLI_API_TOKEN"];
 let saved: Record<string, string | undefined>;
@@ -77,34 +77,5 @@ describe("buildEphemeralProfile — fail-closed profile-free auth (spec 008 T3.4
       baseUrl: "https://env.atlassian.net",
       auth: { email: "env@x.io" },
     });
-  });
-});
-
-describe("engineDeprecationNotice (spec 008 T3.5)", () => {
-  const base = {
-    engine: "python",
-    engineFlagPresent: false,
-    json: false,
-    stderrIsTTY: true,
-    suppressed: false,
-  };
-
-  it("announces the upcoming default flip for an implicit python default on a TTY", () => {
-    const notice = engineDeprecationNotice(base);
-    expect(notice).toContain("future release");
-    expect(notice).toContain("--engine python");
-    expect(notice).toContain("ATLCLI_SUPPRESS_ENGINE_NOTICE");
-  });
-
-  it("stays silent when --engine was passed explicitly (either engine)", () => {
-    expect(engineDeprecationNotice({ ...base, engineFlagPresent: true })).toBeNull();
-    expect(engineDeprecationNotice({ ...base, engine: "ts", engineFlagPresent: true })).toBeNull();
-  });
-
-  it("stays silent for the ts engine, under --json, off-TTY, and when suppressed", () => {
-    expect(engineDeprecationNotice({ ...base, engine: "ts" })).toBeNull();
-    expect(engineDeprecationNotice({ ...base, json: true })).toBeNull();
-    expect(engineDeprecationNotice({ ...base, stderrIsTTY: false })).toBeNull();
-    expect(engineDeprecationNotice({ ...base, suppressed: true })).toBeNull();
   });
 });
