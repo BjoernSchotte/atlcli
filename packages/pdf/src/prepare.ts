@@ -363,7 +363,21 @@ export async function preparePdfDocument(
                 { filename: "diagram.svg" }
               );
               reportAsset("diagram.svg");
-              return { type: "diagram", assetPath, source: block.code, caption: block.caption };
+              return {
+                type: "diagram",
+                assetPath,
+                source: block.code,
+                caption: block.caption,
+                ...(block.wrap !== undefined ? { wrap: block.wrap } : {}),
+                ...(block.hideLineNumbers !== undefined
+                  ? { hideLineNumbers: block.hideLineNumbers }
+                  : {}),
+                ...(block.firstLineNumber !== undefined
+                  ? { firstLineNumber: block.firstLineNumber }
+                  : {}),
+                ...(block.localId !== undefined ? { localId: block.localId } : {}),
+                ...(block.uniqueId !== undefined ? { uniqueId: block.uniqueId } : {}),
+              };
             }
             notes.push({
               level: rendered.kind === "unsupported" ? "info" : "warning",

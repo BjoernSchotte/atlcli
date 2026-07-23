@@ -295,12 +295,23 @@ function decodeBlockNode(node: AdfNode, ctx: DecodeContext, path: string): Expor
           ? { localId: optionalStringAttr(node, "localId") }
           : {}),
       }];
-    case "codeBlock":
+    case "codeBlock": {
+      const language = optionalStringAttr(node, "language");
+      const localId = optionalStringAttr(node, "localId");
+      const uniqueId = optionalStringAttr(node, "uniqueId");
       return [{
         type: "codeBlock",
         code: descendantText(node),
-        ...(stringAttr(node, "language") ? { language: stringAttr(node, "language") } : {}),
+        ...(language !== undefined ? { language } : {}),
+        ...(node.attrs?.wrap !== undefined ? { wrap: node.attrs.wrap as boolean } : {}),
+        // The official ADF default is to show line numbers. Materialize it so
+        // internal/Storage code blocks with no source policy keep their own
+        // established behavior instead of inheriting an ADF-only default.
+        hideLineNumbers: node.attrs?.hideLineNumbers === true,
+        ...(localId !== undefined ? { localId } : {}),
+        ...(uniqueId !== undefined ? { uniqueId } : {}),
       }];
+    }
     case "rule":
       return [{ type: "divider" }];
     case "blockquote":

@@ -34,6 +34,11 @@ export type ExportBlock = {
     language?: string;
     code: string;
     caption?: Caption;
+    wrap?: boolean;
+    hideLineNumbers?: boolean;
+    firstLineNumber?: number;
+    localId?: string;
+    uniqueId?: string;
 } | {
     type: "callout";
     kind: CalloutKind;
@@ -573,17 +578,19 @@ export type PreparedPdfBlock = Exclude<ExportBlock, {
 } | {
     type: "blockquote";
     content: PreparedPdfBlock[];
-} | {
+} | Extract<ExportBlock, {
     type: "codeBlock";
-    language?: string;
-    code: string;
-    caption?: Caption;
-} | {
+}> | {
     type: "diagram";
     assetPath: string;
     alt?: string;
     source: string;
     caption?: Caption;
+    wrap?: boolean;
+    hideLineNumbers?: boolean;
+    firstLineNumber?: number;
+    localId?: string;
+    uniqueId?: string;
 } | {
     type: "orientation";
     landscape: boolean;
@@ -792,6 +799,11 @@ export type ExportBlock = {
     language?: string;
     code: string;
     caption?: Caption;
+    wrap?: boolean;
+    hideLineNumbers?: boolean;
+    firstLineNumber?: number;
+    localId?: string;
+    uniqueId?: string;
 } | {
     type: "callout";
     kind: CalloutKind;
@@ -1331,17 +1343,19 @@ export type PreparedPdfBlock = Exclude<ExportBlock, {
 } | {
     type: "blockquote";
     content: PreparedPdfBlock[];
-} | {
+} | Extract<ExportBlock, {
     type: "codeBlock";
-    language?: string;
-    code: string;
-    caption?: Caption;
-} | {
+}> | {
     type: "diagram";
     assetPath: string;
     alt?: string;
     source: string;
     caption?: Caption;
+    wrap?: boolean;
+    hideLineNumbers?: boolean;
+    firstLineNumber?: number;
+    localId?: string;
+    uniqueId?: string;
 } | {
     type: "orientation";
     landscape: boolean;
@@ -1550,6 +1564,11 @@ export type ExportBlock = {
     language?: string;
     code: string;
     caption?: Caption;
+    wrap?: boolean;
+    hideLineNumbers?: boolean;
+    firstLineNumber?: number;
+    localId?: string;
+    uniqueId?: string;
 } | {
     type: "callout";
     kind: CalloutKind;
@@ -2089,17 +2108,19 @@ export type PreparedPdfBlock = Exclude<ExportBlock, {
 } | {
     type: "blockquote";
     content: PreparedPdfBlock[];
-} | {
+} | Extract<ExportBlock, {
     type: "codeBlock";
-    language?: string;
-    code: string;
-    caption?: Caption;
-} | {
+}> | {
     type: "diagram";
     assetPath: string;
     alt?: string;
     source: string;
     caption?: Caption;
+    wrap?: boolean;
+    hideLineNumbers?: boolean;
+    firstLineNumber?: number;
+    localId?: string;
+    uniqueId?: string;
 } | {
     type: "orientation";
     landscape: boolean;

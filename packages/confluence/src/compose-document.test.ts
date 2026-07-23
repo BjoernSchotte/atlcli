@@ -778,6 +778,16 @@ describe("composeChapters — retained ADF mark identities", () => {
           }],
         }],
       },
+      {
+        type: "codeBlock",
+        language: "",
+        code: "first\nsecond",
+        wrap: false,
+        hideLineNumbers: false,
+        firstLineNumber: 7,
+        localId: "",
+        uniqueId: "code-unique",
+      },
     ];
 
     const { blocks } = composeChapters([source], { chapterBreak: "none" });
@@ -798,6 +808,18 @@ describe("composeChapters — retained ADF mark identities", () => {
           localId: "item-paragraph-local",
         }],
       }],
+    });
+    expect(blocks.find(
+      (block) => block.type === "codeBlock"
+    )).toEqual({
+      type: "codeBlock",
+      language: "",
+      code: "first\nsecond",
+      wrap: false,
+      hideLineNumbers: false,
+      firstLineNumber: 7,
+      localId: "",
+      uniqueId: "code-unique",
     });
   });
 });

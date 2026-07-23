@@ -431,7 +431,29 @@ export type ExportBlock =
       /** Stable ADF/Storage editor identity, retained as non-visual metadata. */
       localId?: string;
     }
-  | { type: "codeBlock"; language?: string; code: string; caption?: Caption }
+  | {
+      type: "codeBlock";
+      language?: string;
+      code: string;
+      caption?: Caption;
+      /**
+       * Exact ADF wrapping preference. `undefined` retains the schema's
+       * deliberate "no authored preference" state.
+       */
+      wrap?: boolean;
+      /**
+       * Normalized line-number policy. Direct ADF materializes its documented
+       * default (`false`); Storage adapters materialize their own legacy
+       * default so renderers never have to guess the source representation.
+       */
+      hideLineNumbers?: boolean;
+      /** Storage code-macro start ordinal; direct ADF always starts at one. */
+      firstLineNumber?: number;
+      /** Stable ADF editor identity, retained as non-visual metadata. */
+      localId?: string;
+      /** Stable ADF code-block identity, retained independently of `localId`. */
+      uniqueId?: string;
+    }
   | { type: "callout"; kind: CalloutKind; title?: string; content: ExportBlock[] }
   | {
       /**
@@ -814,6 +836,12 @@ export const EXPORT_NOTE_CODES = [
   "perf-timing",
   // DOCX block serializer (@atlcli/docx)
   "code-highlight-skipped",
+  // CROSS-ENGINE static-page policy: ADF explicitly requested horizontal
+  // overflow (`wrap: false`), which an interactive editor can scroll but a
+  // bounded DOCX/PDF page cannot. Both renderers keep all code and wrap it
+  // safely instead of clipping; the exact source preference remains in the
+  // neutral block for audit/reprocessing.
+  "code-nowrap-page-bounded",
   // DOCX-ONLY, and correctly so: the export was configured with NO image
   // pipeline at all (`ExportEnv` without an asset fetcher), so every image
   // degrades at once — an export-configuration fact, level `info`. Distinct from
@@ -1603,7 +1631,10 @@ function handleBlockElement(el: XmlElement, ctx: WalkCtx): ExportBlock[] {
     case "ac:image":
       return walkImage(el, ctx);
     case "pre":
-      return [{ type: "codeBlock", code: elementText(el) }];
+      // Plain Storage <pre> has no line-number control and historically renders
+      // without a gutter. Materialize that source-specific default instead of
+      // letting the renderer confuse it with ADF's opposite default.
+      return [{ type: "codeBlock", code: elementText(el), hideLineNumbers: true }];
     case "ac:structured-macro":
       return walkMacro(el, ctx);
     default:
@@ -2127,7 +2158,17 @@ function walkMacro(el: XmlElement, ctx: WalkCtx): ExportBlock[] {
     const bodyEl = childByName(el, "ac:plain-text-body") ?? childByName(el, "ac:rich-text-body");
     const code = bodyEl ? elementText(bodyEl) : "";
     const language = macroName === "code" ? macroParam(el, "language") : undefined;
-    return [{ type: "codeBlock", language: language || undefined, code }];
+    const lineNumbers = macroName === "code" && macroParam(el, "linenumbers")?.toLowerCase() === "true";
+    const firstLineNumber =
+      lineNumbers ? parsePositiveInt(macroParam(el, "firstline")) ?? 1 : undefined;
+    return [{
+      type: "codeBlock",
+      language: language || undefined,
+      code,
+      hideLineNumbers: !lineNumbers,
+      ...(firstLineNumber !== undefined ? { firstLineNumber } : {}),
+      ...(storageLocalId(el) !== undefined ? { localId: storageLocalId(el) } : {}),
+    }];
   }
 
   // Expand: retain the disclosure boundary and title. Static targets render

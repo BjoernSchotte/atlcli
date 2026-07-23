@@ -1157,14 +1157,37 @@ Paired ADF/Storage fixtures, the modern Cloud `<p local-id>` regression,
 composition tests, the target-neutral browser fixture, and packed
 direct/background source parity guard the contract.
 
-The completed slice passed 494 focused decoder/Storage/composition/macro/DOCX/
-PDF tests, the generated public API and closure guards, the offline 43-node/
-17-mark pin check, full typecheck, the 16-task production build, all 20
-browser-isomorphism entrypoints, and the packed 15-case Chromium harness. The
-real LibreOffice and Typst/Poppler references remain one DOCX page and four PDF
-pages; the deterministic rerender produced zero pixel difference and content
-bounds IoU 1. No unrestricted local suite or private Confluence environment was
-used; the remote CI remains the complete-suite gate for this work package.
+Completed code-block follow-on evidence recorded on 2026-07-23: the bounded
+validator now enforces every pinned `codeBlock` attribute type, unmarked-text
+content, and the root-only breakout exception. The shared block retains exact
+code (including an empty final line), optional language values, tri-state
+`wrap`, normalized line-number policy, `localId`, and `uniqueId`; Storage
+`pre`/`code`/`noformat` uses its own no-gutter default and additionally retains
+legacy `linenumbers`, `firstline`, and macro local identity. DOCX emits a muted
+line-number gutter with a hanging continuation indent and syntax-colored runs.
+PDF uses a scoped Typst `raw.line` projection with a fixed gutter and a
+breakable code track. Both targets therefore keep long lines visible on bounded
+pages; an explicit ADF no-wrap preference remains in the neutral model and
+emits the cross-engine `code-nowrap-page-bounded` fact instead of clipping
+silently. Composition, direct/background browser resolution, artifact/report
+parity, final-newline numbering, and real LibreOffice/Typst-Poppler render
+goldens guard the contract. Legacy Storage-only code-macro title/collapse is
+recorded as a separate open compatibility gap, not as a partial ADF row.
+The shared Shiki adapter also restores trailing empty source lines when the
+CSP-safe JavaScript engine omits them, so the packed browser/extension and
+Oniguruma CLI hosts produce the same numbered source text despite different
+syntax-token boundaries.
+
+The completed slice passed 440 focused validator/decoder/Storage/composition/
+DOCX/PDF/browser tests, the generated public API and closure guards, the
+offline 43-node/17-mark pin check, full typecheck, the 16-task production build,
+all 20 browser-isomorphism entrypoints, output integrity, the 15-case manifest
+guard, the complete packed Chromium harness, and direct/background byte/report
+parity. The real LibreOffice and Typst/Poppler references remain one DOCX page
+and four PDF pages; the deterministic rerender produced zero pixel difference
+and content bounds IoU 1. No unrestricted local suite or private Confluence
+environment was used; the remote CI remains the complete-suite gate for this
+work package.
 
 After this migration proves the source boundary, close the gap-analysis backlog in separate feature slices:
 
@@ -1179,6 +1202,7 @@ After this migration proves the source boundary, close the gap-analysis backlog 
 7. ADF-native definitions for excerpts/Page Properties and removal of their Storage sidecar;
 8. advanced extensions, Forge `adfExport` ingestion policy, and synced-content snapshots;
 9. lazy sidecar reads and eventual Storage removal from Cloud export only after every dependency is retired.
+10. legacy Storage-only code-macro title/collapse static projection.
 
 ## 14. Resolved rollout decisions and unresolved question
 

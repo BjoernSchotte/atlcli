@@ -4,6 +4,7 @@ import { runExport } from "@atlcli/docx/browser";
 import { memoryTemplateSource } from "@atlcli/docx/browser-runtime";
 import { unzipDocx } from "@atlcli/docx/scan";
 import {
+  ADF_CODE_BLOCK_SOURCE,
   ADF_CONFORMANCE_DETAILS,
   ADF_CONFORMANCE_METADATA,
   ADF_CONFORMANCE_SOURCE,
@@ -51,7 +52,9 @@ export interface AdfSourceCaseResult {
   docxHasSmallParagraphText: boolean;
   docxHasNestedListSemantics: boolean;
   docxHasTaskAndDecisionSemantics: boolean;
+  docxHasCodeLineNumbers: boolean;
   neutralHasBlockLocalIdentities: boolean;
+  neutralHasCodeBlockSemantics: boolean;
   neutralHasDateStatusPlaceholderSemantics: boolean;
   neutralHasAnnotationAndFragmentIdentity: boolean;
   neutralHasTablePresentation: boolean;
@@ -114,6 +117,31 @@ function sourcePort(): ConfluenceSourceResolverPortV1 {
       };
     },
   };
+}
+
+function decodeXmlText(value: string): string {
+  return value
+    .replace(/&lt;/gu, "<")
+    .replace(/&gt;/gu, ">")
+    .replace(/&quot;/gu, '"')
+    .replace(/&apos;/gu, "'")
+    .replace(/&#(\d+);/gu, (_match, decimal: string) => String.fromCodePoint(Number(decimal)))
+    .replace(/&#x([0-9a-f]+);/giu, (_match, hex: string) =>
+      String.fromCodePoint(Number.parseInt(hex, 16))
+    )
+    .replace(/&amp;/gu, "&");
+}
+
+function numberedCodeParagraphTexts(documentXml: string): string[] {
+  const paragraphs = documentXml.match(/<w:p\b[^>]*>[\s\S]*?<\/w:p>/gu) ?? [];
+  return paragraphs
+    .filter((paragraph) => paragraph.includes('<w:ind w:start="480" w:hanging="480"/>'))
+    .map((paragraph, index) => {
+      const text = [...paragraph.matchAll(/<w:t\b[^>]*>([\s\S]*?)<\/w:t>/gu)]
+        .map((match) => decodeXmlText(match[1] ?? ""))
+        .join("");
+      return text.slice(String(index + 1).length);
+    });
 }
 
 function assertResolvedParity(
@@ -325,6 +353,13 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
     }),
   };
   const docxJobParity = await runDocxJobParityCase({ fixture: docxFixture });
+  const neutralCodeBlock = pdfSource.blocks.find((block) => block.type === "codeBlock");
+  const codeGutterParagraphs =
+    documentXml.match(/<w:ind w:start="480" w:hanging="480"\/>/gu)?.length ?? 0;
+  const codeGutterRuns =
+    documentXml.match(/<w:color w:val="6B778C"\/>/gu)?.length ?? 0;
+  const expectedCodeLines = ADF_CODE_BLOCK_SOURCE.split("\n").length;
+  const codeParagraphTexts = numberedCodeParagraphTexts(documentXml);
 
   const result: AdfSourceCaseResult = {
     representation: decodedPdf.representation,
@@ -353,11 +388,26 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
       && documentXml.includes("☑")
       && documentXml.includes("◆")
       && documentXml.includes("Nested task"),
+    docxHasCodeLineNumbers:
+      codeGutterParagraphs === expectedCodeLines
+      // Other authored content may legitimately use the same muted color.
+      && codeGutterRuns >= expectedCodeLines
+      && documentXml.includes('<w:t xml:space="preserve">1</w:t>')
+      && documentXml.includes(`<w:t xml:space="preserve">${expectedCodeLines}</w:t>`)
+      && JSON.stringify(codeParagraphTexts) === JSON.stringify(ADF_CODE_BLOCK_SOURCE.split("\n")),
     neutralHasBlockLocalIdentities:
       JSON.stringify(pdfSource.blocks).includes('"localId":"heading-local"')
       && JSON.stringify(pdfSource.blocks).includes('"localId":"paragraph-local"')
       && JSON.stringify(pdfSource.blocks).includes('"localId":"ordered-item-local"')
       && JSON.stringify(pdfSource.blocks).includes('"localId":"bullet-item-local"'),
+    neutralHasCodeBlockSemantics:
+      neutralCodeBlock?.type === "codeBlock"
+      && neutralCodeBlock.code === ADF_CODE_BLOCK_SOURCE
+      && neutralCodeBlock.language === "typescript"
+      && neutralCodeBlock.wrap === false
+      && neutralCodeBlock.hideLineNumbers === false
+      && neutralCodeBlock.localId === "code-local"
+      && neutralCodeBlock.uniqueId === "code-unique",
     neutralHasDateStatusPlaceholderSemantics:
       JSON.stringify(pdfSource.blocks).includes(
         '"type":"date","timestamp":"1709510400000","localId":"date-local"',
@@ -444,6 +494,12 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
       && docxJobParity.reportIdentical,
   };
 
+  if (!result.docxHasCodeLineNumbers) {
+    throw new Error(
+      "ADF-source DOCX assertion failed: docxHasCodeLineNumbers "
+      + `(gutter paragraphs ${codeGutterParagraphs}/${expectedCodeLines}, muted runs ${codeGutterRuns}).`,
+    );
+  }
   for (const [key, value] of Object.entries(result)) {
     if (key.startsWith("docxHas") && value !== true) {
       throw new Error(`ADF-source DOCX assertion failed: ${key}.`);
@@ -466,6 +522,9 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
   }
   if (!result.neutralHasBlockLocalIdentities) {
     throw new Error("ADF-source paragraph, heading, or list-item identity was lost in the packed browser.");
+  }
+  if (!result.neutralHasCodeBlockSemantics) {
+    throw new Error("ADF-source code-block presentation or identity was lost in the packed browser.");
   }
   if (!result.neutralHasDateStatusPlaceholderSemantics) {
     throw new Error("ADF-source date, status, or placeholder semantics were lost in the packed browser.");

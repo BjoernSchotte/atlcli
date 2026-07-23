@@ -419,6 +419,39 @@ describe("serializeBlocks — callouts, code, tables, images", () => {
     expect(/<w:color w:val="[0-9A-F]{6}"\/>/.test(xml)).toBe(true);
   });
 
+  it("renders authored code line numbers and reports the bounded no-wrap policy", async () => {
+    const blocks: ExportBlock[] = [{
+      type: "codeBlock",
+      code: "first\nsecond\n",
+      hideLineNumbers: false,
+      firstLineNumber: 7,
+      wrap: false,
+      localId: "code-local",
+      uniqueId: "code-unique",
+    }];
+    const { xml, notes } = await serializeBlocks(blocks, { styleNames: noStyles });
+
+    expect(xml).toContain('<w:color w:val="6B778C"/>');
+    expect(xml).toContain('<w:t xml:space="preserve">7</w:t>');
+    expect(xml).toContain('<w:t xml:space="preserve">8</w:t>');
+    expect(xml).toContain('<w:t xml:space="preserve">9</w:t>');
+    expect(xml).toContain('<w:tab w:val="left" w:pos="480"/>');
+    expect(xml).toContain('<w:ind w:start="480" w:hanging="480"/>');
+    expect(xml).toContain("first");
+    expect(xml).toContain("second");
+    expect(notes.map((note) => note.code)).toContain("code-nowrap-page-bounded");
+  });
+
+  it("keeps internal and Storage-default code blocks free of an invented gutter", async () => {
+    const { xml } = await serializeBlocks(
+      [{ type: "codeBlock", code: "plain", hideLineNumbers: true }],
+      { styleNames: noStyles },
+    );
+
+    expect(xml).toContain("plain");
+    expect(xml).not.toContain('<w:color w:val="6B778C"/>');
+  });
+
   it("falls back to uncolored code for an unknown language", async () => {
     const blocks: ExportBlock[] = [{ type: "codeBlock", language: "not-a-lang", code: "x = 1" }];
     const { xml } = await serializeBlocks(blocks, { styleNames: noStyles });

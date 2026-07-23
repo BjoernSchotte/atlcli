@@ -88,8 +88,20 @@ export type PreparedPdfBlock =
     }
   | { type: "image"; assetPath?: string; alt?: string; width?: number; height?: number; fallbackLabel: string; caption?: Caption }
   | { type: "blockquote"; content: PreparedPdfBlock[] }
-  | { type: "codeBlock"; language?: string; code: string; caption?: Caption }
-  | { type: "diagram"; assetPath: string; alt?: string; source: string; caption?: Caption }
+  | Extract<ExportBlock, { type: "codeBlock" }>
+  | {
+      type: "diagram";
+      assetPath: string;
+      alt?: string;
+      source: string;
+      caption?: Caption;
+      /** Retained from an ADF code block even when Mermaid becomes a diagram. */
+      wrap?: boolean;
+      hideLineNumbers?: boolean;
+      firstLineNumber?: number;
+      localId?: string;
+      uniqueId?: string;
+    }
   | { type: "orientation"; landscape: boolean; content: PreparedPdfBlock[] };
 
 export interface PreparedPdfDocument {

@@ -1038,6 +1038,7 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "logo-embed-failed",
     "perf-timing",
     "code-highlight-skipped",
+    "code-nowrap-page-bounded",
     "image-skipped",
     "image-embed-failed",
     "image-missing-alt",
@@ -1074,6 +1075,11 @@ export type ExportBlock = {
     language?: string;
     code: string;
     caption?: Caption;
+    wrap?: boolean;
+    hideLineNumbers?: boolean;
+    firstLineNumber?: number;
+    localId?: string;
+    uniqueId?: string;
 } | {
     type: "callout";
     kind: CalloutKind;
@@ -3267,6 +3273,7 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "logo-embed-failed",
     "perf-timing",
     "code-highlight-skipped",
+    "code-nowrap-page-bounded",
     "image-skipped",
     "image-embed-failed",
     "image-missing-alt",
@@ -3303,6 +3310,11 @@ export type ExportBlock = {
     language?: string;
     code: string;
     caption?: Caption;
+    wrap?: boolean;
+    hideLineNumbers?: boolean;
+    firstLineNumber?: number;
+    localId?: string;
+    uniqueId?: string;
 } | {
     type: "callout";
     kind: CalloutKind;
@@ -5496,6 +5508,7 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "logo-embed-failed",
     "perf-timing",
     "code-highlight-skipped",
+    "code-nowrap-page-bounded",
     "image-skipped",
     "image-embed-failed",
     "image-missing-alt",
@@ -5532,6 +5545,11 @@ export type ExportBlock = {
     language?: string;
     code: string;
     caption?: Caption;
+    wrap?: boolean;
+    hideLineNumbers?: boolean;
+    firstLineNumber?: number;
+    localId?: string;
+    uniqueId?: string;
 } | {
     type: "callout";
     kind: CalloutKind;
@@ -7630,6 +7648,7 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "logo-embed-failed",
     "perf-timing",
     "code-highlight-skipped",
+    "code-nowrap-page-bounded",
     "image-skipped",
     "image-embed-failed",
     "image-missing-alt",
@@ -7666,6 +7685,11 @@ export type ExportBlock = {
     language?: string;
     code: string;
     caption?: Caption;
+    wrap?: boolean;
+    hideLineNumbers?: boolean;
+    firstLineNumber?: number;
+    localId?: string;
+    uniqueId?: string;
 } | {
     type: "callout";
     kind: CalloutKind;
@@ -10422,6 +10446,7 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "logo-embed-failed",
     "perf-timing",
     "code-highlight-skipped",
+    "code-nowrap-page-bounded",
     "image-skipped",
     "image-embed-failed",
     "image-missing-alt",
@@ -10458,6 +10483,11 @@ export type ExportBlock = {
     language?: string;
     code: string;
     caption?: Caption;
+    wrap?: boolean;
+    hideLineNumbers?: boolean;
+    firstLineNumber?: number;
+    localId?: string;
+    uniqueId?: string;
 } | {
     type: "callout";
     kind: CalloutKind;

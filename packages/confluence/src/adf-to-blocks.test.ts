@@ -53,7 +53,17 @@ describe("adfToBlocks", () => {
           ] },
         ],
       },
-      { type: "codeBlock", attrs: { language: "text" }, content: [{ type: "text", text: "line 1\nline 2\n" }] },
+      {
+        type: "codeBlock",
+        attrs: {
+          language: "",
+          wrap: false,
+          hideLineNumbers: false,
+          localId: "",
+          uniqueId: "code-unique",
+        },
+        content: [{ type: "text", text: "line 1\nline 2\n" }],
+      },
     ]));
 
     expect(result.representation).toBe("atlas_doc_format");
@@ -69,9 +79,30 @@ describe("adfToBlocks", () => {
         { type: "text", text: ":warning: CONFIG_TOKEN_A `literal` ", marks: ["bold", "code", "italic"] },
         { type: "text", text: "colored", marks: ["superscript"], color: "#123456", backgroundColor: "#AABBCC" },
       ] },
-      { type: "codeBlock", language: "text", code: "line 1\nline 2\n" },
+      {
+        type: "codeBlock",
+        language: "",
+        code: "line 1\nline 2\n",
+        wrap: false,
+        hideLineNumbers: false,
+        localId: "",
+        uniqueId: "code-unique",
+      },
     ]);
     expect(result.notes).toEqual([]);
+  });
+
+  it("materializes the official ADF line-number default without inventing a wrap preference", () => {
+    const result = adfToBlocks(doc([{
+      type: "codeBlock",
+      content: [{ type: "text", text: "const value = 1;" }],
+    }]));
+
+    expect(result.blocks).toEqual([{
+      type: "codeBlock",
+      code: "const value = 1;",
+      hideLineNumbers: false,
+    }]);
   });
 
   it("maps mixed lists, authored starts, and task state without degradation", () => {

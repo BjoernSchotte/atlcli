@@ -69,6 +69,64 @@ describe("validateAdf", () => {
     }
   });
 
+  test("validates the complete pinned code-block attribute and child contract", () => {
+    expect(() => validateAdf(doc([{
+      type: "codeBlock",
+      attrs: {
+        language: "",
+        localId: "",
+        uniqueId: "",
+        wrap: false,
+        hideLineNumbers: true,
+      },
+      content: [{ type: "text", text: "", marks: [] }],
+    }]))).not.toThrow();
+    expect(() => validateAdf(doc([{
+      type: "codeBlock",
+      marks: [{ type: "breakout", attrs: { mode: "wide" } }],
+      content: [{ type: "text", text: "root-only" }],
+    }]))).not.toThrow();
+
+    for (const attrs of [
+      { language: 1 },
+      { localId: 1 },
+      { uniqueId: 1 },
+      { wrap: "true" },
+      { hideLineNumbers: 0 },
+    ]) {
+      expect(errorCode(() => validateAdf(doc([{
+        type: "codeBlock",
+        attrs,
+        content: [],
+      }])))).toBe("invalid-attributes");
+    }
+    for (const invalid of [
+      {
+        type: "codeBlock",
+        marks: [{ type: "strong" }],
+        content: [{ type: "text", text: "marked block" }],
+      },
+      {
+        type: "codeBlock",
+        content: [{ type: "text", text: "marked text", marks: [{ type: "strong" }] }],
+      },
+      {
+        type: "codeBlock",
+        content: [{ type: "hardBreak" }],
+      },
+    ]) {
+      expect(errorCode(() => validateAdf(doc([invalid])))).toBe("invalid-node");
+    }
+    expect(errorCode(() => validateAdf(doc([{
+      type: "blockquote",
+      content: [{
+        type: "codeBlock",
+        marks: [{ type: "breakout", attrs: { mode: "wide" } }],
+        content: [{ type: "text", text: "nested" }],
+      }],
+    }])))).toBe("invalid-node");
+  });
+
   test("validates exact date, status, and placeholder attribute contracts", () => {
     expect(() => validateAdf(doc([{
       type: "paragraph",

@@ -28,6 +28,7 @@ describe("ADF browser conformance fixture", () => {
       "expand",
       "unknown",
       "mediaFallback",
+      "codeBlock",
     ]);
     expect(pdf.blocks[0]).toMatchObject({ type: "heading", localId: "heading-local" });
     expect(pdf.blocks[1]).toMatchObject({ type: "paragraph", localId: "paragraph-local" });
@@ -88,6 +89,14 @@ describe("ADF browser conformance fixture", () => {
     });
     expect(pdf.blocks[5]).toMatchObject({ type: "callout", kind: "success" });
     expect(pdf.blocks[6]).toMatchObject({ type: "callout", kind: "error" });
+    expect(pdf.blocks[16]).toMatchObject({
+      type: "codeBlock",
+      language: "typescript",
+      wrap: false,
+      hideLineNumbers: false,
+      localId: "code-local",
+      uniqueId: "code-unique",
+    });
     expect(pdf.blocks[1]).toMatchObject({
       type: "paragraph",
       content: expect.arrayContaining([

@@ -1609,12 +1609,36 @@ describe("serialize — C3 captions", () => {
     const withCaption = await toMain([
       { type: "codeBlock", language: "ts", code: "const x = 1", caption: { kind: "code", content: [{ type: "text", text: "L1" }] } },
     ]);
-    expect(withCaption.main).toContain("#figure(raw(");
+    expect(withCaption.main).toContain("#figure({ show raw.line:");
     expect(withCaption.main).not.toContain("#figure(#");
     expect(withCaption.main).toContain("kind: raw");
 
     const plain = await toMain([{ type: "codeBlock", language: "ts", code: "const x = 1" }]);
-    expect(plain.main).not.toContain("#figure(raw(");
+    expect(plain.main).not.toContain("#figure({ show raw.line:");
+    expect(plain.main).toContain("#{ show raw.line:");
+  });
+
+  it("renders code line numbers from the authored ordinal and reports bounded no-wrap", async () => {
+    const { main, notes } = await toMain([{
+      type: "codeBlock",
+      language: "text",
+      code: "first\nsecond",
+      hideLineNumbers: false,
+      firstLineNumber: 7,
+      wrap: false,
+      localId: "code-local",
+      uniqueId: "code-unique",
+    }]);
+
+    expect(main).toContain("columns: (auto, 1fr)");
+    expect(main).toContain("box(width: 100%)[#line.body]");
+    expect(main).toContain("line.number + 6");
+    expect(main).toContain('fill: rgb("#6B778C")');
+    expect(main).toContain('raw("first\\nsecond", lang: "text", block: true)');
+    expect(notes).toContainEqual(expect.objectContaining({
+      code: "code-nowrap-page-bounded",
+      source: { blockPath: "blocks[0]" },
+    }));
   });
 });
 

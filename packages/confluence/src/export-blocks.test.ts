@@ -601,14 +601,19 @@ describe("storageToBlocks — code blocks", () => {
       '<ac:structured-macro ac:name="code"><ac:parameter ac:name="language">typescript</ac:parameter>' +
         "<ac:plain-text-body><![CDATA[const x = 1 < 2 && 3 > 2;]]></ac:plain-text-body></ac:structured-macro>"
     );
-    expect(out).toEqual([{ type: "codeBlock", language: "typescript", code: "const x = 1 < 2 && 3 > 2;" }]);
+    expect(out).toEqual([{
+      type: "codeBlock",
+      language: "typescript",
+      code: "const x = 1 < 2 && 3 > 2;",
+      hideLineNumbers: true,
+    }]);
   });
 
   test("noformat becomes a language-less code block", () => {
     const out = blocks(
       '<ac:structured-macro ac:name="noformat"><ac:plain-text-body><![CDATA[raw]]></ac:plain-text-body></ac:structured-macro>'
     );
-    expect(out).toEqual([{ type: "codeBlock", code: "raw" }]);
+    expect(out).toEqual([{ type: "codeBlock", code: "raw", hideLineNumbers: true }]);
   });
 
   // Spec 004 Task 6 / F2: mermaid rendering is deferred (it needs the image module,
@@ -619,7 +624,29 @@ describe("storageToBlocks — code blocks", () => {
       '<ac:structured-macro ac:name="code"><ac:parameter ac:name="language">mermaid</ac:parameter>' +
         "<ac:plain-text-body><![CDATA[graph TD;\n  A-->B;]]></ac:plain-text-body></ac:structured-macro>"
     );
-    expect(out).toEqual([{ type: "codeBlock", language: "mermaid", code: "graph TD;\n  A-->B;" }]);
+    expect(out).toEqual([{
+      type: "codeBlock",
+      language: "mermaid",
+      code: "graph TD;\n  A-->B;",
+      hideLineNumbers: true,
+    }]);
+  });
+
+  test("retains Storage code-macro line numbers, first ordinal, and macro identity", () => {
+    const out = blocks(
+      '<ac:structured-macro ac:name="code" ac:local-id="code-local">' +
+        '<ac:parameter ac:name="linenumbers">true</ac:parameter>' +
+        '<ac:parameter ac:name="firstline">7</ac:parameter>' +
+        "<ac:plain-text-body><![CDATA[first\nsecond]]></ac:plain-text-body>" +
+        "</ac:structured-macro>"
+    );
+    expect(out).toEqual([{
+      type: "codeBlock",
+      code: "first\nsecond",
+      hideLineNumbers: false,
+      firstLineNumber: 7,
+      localId: "code-local",
+    }]);
   });
 });
 
@@ -1308,6 +1335,7 @@ describe("storageToBlocks — integration (§2.1 feature zoo)", () => {
       type: "codeBlock",
       language: "js",
       code: "console.log(1);",
+      hideLineNumbers: true,
     });
 
     // Status + mention inline nodes present in the media paragraph.

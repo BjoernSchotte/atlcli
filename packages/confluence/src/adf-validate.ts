@@ -139,6 +139,20 @@ function assertOptionalNumberAttribute(
   );
 }
 
+function assertOptionalBooleanAttribute(
+  attrs: Record<string, unknown> | undefined,
+  key: string,
+  path: string,
+): void {
+  const value = attrs?.[key];
+  if (value === undefined || typeof value === "boolean") return;
+  throw new AdfValidationError(
+    "invalid-attributes",
+    `ADF attribute ${key} must be a boolean when present.`,
+    `${path}.attrs.${key}`,
+  );
+}
+
 function validateKnownNodeShape(
   type: string,
   node: Record<string, unknown>,
@@ -162,6 +176,45 @@ function validateKnownNodeShape(
   }
   if (type === "paragraph" || type === "heading" || type === "listItem") {
     assertStringAttribute(attrs, "localId", path, false);
+  }
+  if (type === "codeBlock") {
+    assertStringAttribute(attrs, "language", path, false);
+    assertStringAttribute(attrs, "localId", path, false);
+    assertStringAttribute(attrs, "uniqueId", path, false);
+    assertOptionalBooleanAttribute(attrs, "wrap", path);
+    assertOptionalBooleanAttribute(attrs, "hideLineNumbers", path);
+    if (Array.isArray(node.marks) && node.marks.length > 0) {
+      const hasOnlyRootBreakout =
+        node.marks.length === 1 &&
+        isPlainObject(node.marks[0]) &&
+        node.marks[0].type === "breakout";
+      const isTopLevel = /^\$\.content\[\d+\]$/u.test(path);
+      if (!hasOnlyRootBreakout || !isTopLevel) {
+        throw new AdfValidationError(
+          "invalid-node",
+          "ADF code blocks accept one breakout mark only at the document root.",
+          `${path}.marks`,
+        );
+      }
+    }
+    if (
+      Array.isArray(node.content) &&
+      node.content.some(
+        (child) =>
+          !isPlainObject(child) ||
+          child.type !== "text" ||
+          (
+            child.marks !== undefined &&
+            (!Array.isArray(child.marks) || child.marks.length > 0)
+          ),
+      )
+    ) {
+      throw new AdfValidationError(
+        "invalid-node",
+        "ADF code-block content must contain only unmarked text nodes.",
+        `${path}.content`,
+      );
+    }
   }
   if (type === "orderedList" && attrs?.order !== undefined && !nonnegativeInteger(attrs.order)) {
     throw new AdfValidationError("invalid-attributes", "ADF ordered-list order must be non-negative.", `${path}.attrs.order`);

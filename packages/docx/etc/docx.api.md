@@ -1087,7 +1087,7 @@ export type CodeBlock = Extract<ExportBlock, {
 export declare function codeLineParagraph(tokens: {
     text: string;
     color?: string;
-}[]): string;
+}[], lineNumber?: number, lineNumberWidth?: number): string;
 
 // export: codeStyleXml
 export declare function codeStyleXml(): string;

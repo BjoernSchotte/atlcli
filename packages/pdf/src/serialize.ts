@@ -1064,10 +1064,27 @@ function serializeBlock(
       );
       break;
     case "codeBlock": {
+      if (block.wrap === false) {
+        writer.notes.push({
+          level: "info",
+          code: "code-nowrap-page-bounded",
+          message:
+            "A code block requested no wrapping; the bounded PDF page keeps all source text and may wrap long lines instead of clipping them.",
+          source: { blockPath: path },
+        });
+      }
       // NOTE: inside `#figure(...)` arguments Typst is in CODE mode, where a
       // leading `#` is a syntax error ("the character `#` is not valid in
       // code") — the figure body must be the bare `raw(...)` expression.
-      const rawExpr = `raw(${typstString(block.code)}, lang: ${typstString(block.language ?? "text")}, block: true)`;
+      const rawCall = `raw(${typstString(block.code)}, lang: ${typstString(block.language ?? "text")}, block: true)`;
+      const lineBody =
+        block.hideLineNumbers === false
+          ? `box(width: 100%)[#grid(columns: (auto, 1fr), column-gutter: ${writer.design.tokens.layout.codeInset}, text(fill: rgb(${typstString(writer.design.tokens.colors.muted)}))[#(line.number + ${(block.firstLineNumber ?? 1) - 1})], box(width: 100%)[#line.body])]`
+          : "box(width: 100%)[#line.body]";
+      // A scoped raw.line rule gives every logical source line a bounded
+      // 1fr track. This keeps syntax-highlighted content copyable and permits
+      // page-safe wrapping without changing the exact neutral source string.
+      const rawExpr = `{ show raw.line: line => ${lineBody}; ${rawCall} }`;
       // Only CAPTIONED code becomes a figure — caption-less code keeps today's
       // rendering so C2's `figure.where(kind: raw)` outline never lists every
       // code block (spec 003 C3).

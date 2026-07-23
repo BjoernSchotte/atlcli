@@ -110,6 +110,12 @@ export const PDF_FILENAME = "Browser Harness PDF.pdf";
 // ADF-primary browser conformance fixture
 // ---------------------------------------------------------------------------
 
+export const ADF_CODE_BLOCK_SOURCE =
+  "const first = 1;\n" +
+  "const second = first + 1;\n" +
+  'const message = "This is a deliberately long Confluence code line that must remain fully visible in both bounded static export targets even when no-wrap was authored";\n' +
+  "console.log(second, message);\n";
+
 /**
  * Real ADF input for the browser conformance harness. This deliberately starts
  * before the representation-neutral boundary: the case must validate and
@@ -365,6 +371,20 @@ export const ADF_CONFORMANCE_SOURCE = JSON.stringify({
           content: [{ type: "text", text: "Media caption" }],
         },
       ],
+    },
+    {
+      type: "codeBlock",
+      attrs: {
+        language: "typescript",
+        wrap: false,
+        hideLineNumbers: false,
+        localId: "code-local",
+        uniqueId: "code-unique",
+      },
+      content: [{
+        type: "text",
+        text: ADF_CODE_BLOCK_SOURCE,
+      }],
     },
   ],
 });

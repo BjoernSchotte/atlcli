@@ -568,7 +568,26 @@ async function serializeBlock(
           message: `Code block${block.language ? ` (${block.language})` : ""} was not syntax-highlighted (${skipped}); rendered as plain monospace.`,
         });
       }
-      const codeXml = lines.map((tokens) => codeLineParagraph(tokens)).join("");
+      if (block.wrap === false) {
+        notes.push({
+          level: "info",
+          code: "code-nowrap-page-bounded",
+          message:
+            "A code block requested no wrapping; the bounded DOCX page keeps all source text and may wrap long lines instead of clipping them.",
+        });
+      }
+      const firstLineNumber = block.firstLineNumber ?? 1;
+      const lastLineNumber = firstLineNumber + Math.max(0, lines.length - 1);
+      const lineNumberWidth = String(lastLineNumber).length;
+      const codeXml = lines
+        .map((tokens, index) =>
+          codeLineParagraph(
+            tokens,
+            block.hideLineNumbers === false ? firstLineNumber + index : undefined,
+            lineNumberWidth,
+          )
+        )
+        .join("");
       // Caption below code (established convention).
       return block.caption ? codeXml + captionXml(block.caption, ctx) : codeXml;
     }

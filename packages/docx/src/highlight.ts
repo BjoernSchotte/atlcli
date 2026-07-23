@@ -236,8 +236,26 @@ export async function highlightCode(code: string, language?: string): Promise<Hi
     // Tokenize with the requested alias so Shiki preserves its public alias
     // behavior, while grammar loading/warm-up is shared by canonical id.
     const { tokens } = hl.codeToTokens(code, { lang: raw, theme: THEME });
+    const lines: CodeLine[] = tokens.map((line) =>
+      line.map((t) => ({ text: t.content, color: t.color }))
+    );
+    const sourceTextLines = code.split("\n");
+    const highlightedTextLines = lines.map((line) => line.map((token) => token.text).join(""));
+    if (
+      lines.length > sourceTextLines.length ||
+      highlightedTextLines.some((line, index) => line !== sourceTextLines[index])
+    ) {
+      // Highlighting is presentation-only. Any engine output that changes or
+      // reorders source text must degrade to the exact plain representation.
+      return { lines: plainLines(code), skipped: "highlight-failed" };
+    }
+    // Shiki's CSP-safe JavaScript engine may omit trailing empty source lines
+    // that the Oniguruma engine retains. Append only the missing source lines
+    // so browser/extension and CLI exports preserve identical code text.
+    const sourceLines = plainLines(code);
+    if (lines.length < sourceLines.length) lines.push(...sourceLines.slice(lines.length));
     return {
-      lines: tokens.map((line) => line.map((t) => ({ text: t.content, color: t.color }))),
+      lines,
       skipped: null,
     };
   } catch {

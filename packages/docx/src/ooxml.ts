@@ -680,10 +680,37 @@ export function statusBadgeRun(text: string, color: string, fontSizeHalfPoints?:
   );
 }
 
-/** One colored code line: a paragraph in the code style with per-token runs. */
-export function codeLineParagraph(tokens: { text: string; color?: string }[]): string {
-  const runs = tokens
+/**
+ * One colored code line: a paragraph in the code style with per-token runs.
+ * The optional line number is presentation-only and is deliberately emitted
+ * as a separate muted run so copying the neutral source never acquires it.
+ */
+export function codeLineParagraph(
+  tokens: { text: string; color?: string }[],
+  lineNumber?: number,
+  lineNumberWidth = 1,
+): string {
+  const gutter =
+    lineNumber === undefined
+      ? ""
+      : (
+          run(String(lineNumber).padStart(lineNumberWidth), {
+            code: true,
+            color: "#6B778C",
+          }) +
+          "<w:r><w:tab/></w:r>"
+        );
+  const runs = gutter + tokens
     .map((t) => run(t.text, { code: true, color: t.color }))
     .join("");
-  return paragraph(runs || run("", { code: true }), { styleId: CODE_STYLE_ID });
+  return paragraph(runs || run("", { code: true }), {
+    styleId: CODE_STYLE_ID,
+    ...(lineNumber === undefined
+      ? {}
+      : {
+          extraPPr:
+            '<w:tabs><w:tab w:val="left" w:pos="480"/></w:tabs>' +
+            '<w:ind w:start="480" w:hanging="480"/>',
+        }),
+  });
 }

@@ -185,7 +185,16 @@ describe("PDF asset preparation", () => {
 
   it("carries caption fields through preparation on table/codeBlock/image", async () => {
     const blocks: ExportBlock[] = [
-      { type: "codeBlock", code: "x=1", caption: { kind: "code", content: [{ type: "text", text: "Listing 1" }] } },
+      {
+        type: "codeBlock",
+        code: "x=1",
+        caption: { kind: "code", content: [{ type: "text", text: "Listing 1" }] },
+        wrap: false,
+        hideLineNumbers: false,
+        firstLineNumber: 7,
+        localId: "code-local",
+        uniqueId: "code-unique",
+      },
       { type: "table", rows: [], caption: { kind: "table", content: [{ type: "text", text: "Table 1" }] } },
       {
         type: "image",
@@ -199,6 +208,13 @@ describe("PDF asset preparation", () => {
     expect((prepared.blocks[0] as { caption?: unknown }).caption).toEqual({
       kind: "code",
       content: [{ type: "text", text: "Listing 1" }],
+    });
+    expect(prepared.blocks[0]).toMatchObject({
+      wrap: false,
+      hideLineNumbers: false,
+      firstLineNumber: 7,
+      localId: "code-local",
+      uniqueId: "code-unique",
     });
     expect((prepared.blocks[1] as { caption?: unknown }).caption).toEqual({
       kind: "table",
