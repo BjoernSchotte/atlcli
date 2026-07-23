@@ -48,7 +48,7 @@ describe("extension PDF job submission", () => {
       authRef: "session:https://site.atlassian.net",
       requestedFilename: "Guide.pdf",
       settings: { page: "letter", cover: false, watermark: { text: "Draft", opacity: 0.1 } },
-      options: { resolveMacros: false },
+      options: { resolveMacros: false, exportedAt: 10 },
     });
     expect(JSON.stringify(request)).not.toContain("Body that must not enter the request");
   });

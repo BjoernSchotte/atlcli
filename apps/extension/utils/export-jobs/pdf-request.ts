@@ -99,6 +99,12 @@ export function createExtensionPdfJobRequest(
       manifestVersion: BUILTIN_PDF_TEMPLATE_MANIFEST.version,
     },
     settings: durableSettings(request, options.pinnedLogo),
-    options: { resolveMacros: request.resolveMacros !== false },
+    options: {
+      resolveMacros: request.resolveMacros !== false,
+      // Recovery before `ready-to-render` must rebuild byte-identical metadata.
+      // Pin the timestamp with the unresolved request instead of sampling the
+      // offscreen host's clock on each attempt.
+      exportedAt: createdAt,
+    },
   });
 }

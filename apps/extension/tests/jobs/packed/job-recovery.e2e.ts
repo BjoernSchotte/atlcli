@@ -12,6 +12,7 @@ const JOB_B = "223e4567-e89b-42d3-a456-426614174000";
 const JOB_C = "323e4567-e89b-42d3-a456-426614174000";
 const LEGACY = "423e4567-e89b-42d3-a456-426614174000";
 const JOB_D = "723e4567-e89b-42d3-a456-426614174000";
+const JOB_E = "823e4567-e89b-42d3-a456-426614174000";
 
 let context: BrowserContext;
 let extensionId: string;
@@ -198,8 +199,12 @@ async function ensureCatalog(): Promise<void> {
   await expect(sendWake()).resolves.toEqual({ kind: "jobs:wake-result" });
 }
 
-async function seedJob(id: string, state: "queued" | "running"): Promise<void> {
-  await page.evaluate(async ({ jobId, jobState }) => {
+async function seedJob(
+  id: string,
+  state: "queued" | "running",
+  options: { sourcePageId?: string; displayName?: string } = {},
+): Promise<void> {
+  await page.evaluate(async ({ jobId, jobState, sourcePageId, displayName }) => {
     const request = {
       schema: "atlcli.export-job-request/1",
       id: jobId,
@@ -209,18 +214,18 @@ async function seedJob(id: string, state: "queued" | "running"): Promise<void> {
       source: {
         kind: "confluence",
         siteOrigin: "https://site.atlassian.net",
-        locator: { kind: "page-id", id: jobId, version: 1 },
+        locator: { kind: "page-id", id: sourcePageId, version: 1 },
         scope: { kind: "page" },
       },
       authRef: "session:https://site.atlassian.net",
-      displayName: jobId,
-      requestedFilename: `${jobId}.pdf`,
+      displayName,
+      requestedFilename: `${displayName}.pdf`,
       createdAt: 1,
       priority: "interactive",
       output: { policy: "collect" },
       template: { id: "builtin.editorial-indigo", manifestVersion: "1.0.0" },
       settings: {},
-      options: { resolveMacros: true },
+      options: { resolveMacros: true, exportedAt: 1 },
     };
     const emptyStats = {
       pages: { discovered: 0, fetched: 0, composed: 0, skipped: 0 },
@@ -240,7 +245,7 @@ async function seedJob(id: string, state: "queued" | "running"): Promise<void> {
       requestRef: `request:${jobId}`,
       format: "pdf",
       renderer: "pdf-typst",
-      summary: { displayName: jobId, sourceLabel: jobId, siteOrigin: "https://site.atlassian.net", scopeKind: "page" },
+      summary: { displayName, sourceLabel: sourcePageId, siteOrigin: "https://site.atlassian.net", scopeKind: "page" },
       queue: { priority: "interactive", enqueuedAt: 1, groupKey: "https://site.atlassian.net" },
       state: jobState,
       attempt: running ? 1 : 0,
@@ -275,7 +280,12 @@ async function seedJob(id: string, state: "queued" | "running"): Promise<void> {
       tx.onerror = () => reject(tx.error);
     });
     db.close();
-  }, { jobId: id, jobState: state });
+  }, {
+    jobId: id,
+    jobState: state,
+    sourcePageId: options.sourcePageId ?? id,
+    displayName: options.displayName ?? id,
+  });
 }
 
 interface PackedJobRow {
@@ -288,7 +298,7 @@ interface PackedJobRow {
     checkpointRef?: string;
     lease?: { ownerId: string; epoch: number; expiresAt: number };
     error?: { code: string; message: string; stage?: string };
-    artifact?: { ref: string; filename: string; byteLength: number };
+    artifact?: { ref: string; filename: string; byteLength: number; sha256: string };
     reportRef?: string;
     reportSummary?: { completeness: string };
     deliveredAt?: number;
@@ -539,8 +549,9 @@ test("a real service-worker restart does not interrupt an offscreen PDF job", as
 
 test("a real offscreen-document restart reconstructs expired checkpointed work", async () => {
   await ensureCatalog();
-  await installOffscreenFetchStub([JOB_C]);
-  await seedJob(JOB_C, "queued");
+  const parity = { sourcePageId: "packed-parity-page", displayName: "Packed parity guide" };
+  await installOffscreenFetchStub([parity.sourcePageId]);
+  await seedJob(JOB_C, "queued", parity);
   await expect(sendWake([JOB_C])).resolves.toMatchObject({ claimedJobId: JOB_C });
   const initiallyClaimed = await readJob(JOB_C);
   const originalOwner = initiallyClaimed.snapshot.lease?.ownerId;
@@ -569,6 +580,21 @@ test("a real offscreen-document restart reconstructs expired checkpointed work",
   const recovered = await waitForJobState(JOB_C, "succeeded");
   expect(recovered).toMatchObject({
     snapshot: { state: "succeeded", leaseEpoch: 2, attempt: 2, recoveryCount: 1 },
+  });
+
+  await seedJob(JOB_E, "queued", parity);
+  await expect(sendWake([JOB_E])).resolves.toMatchObject({ claimedJobId: JOB_E });
+  const uninterrupted = await waitForJobState(JOB_E, "succeeded");
+  expect(recovered.snapshot.artifact).toBeDefined();
+  expect(uninterrupted.snapshot.artifact).toBeDefined();
+  expect({
+    sha256: recovered.snapshot.artifact!.sha256,
+    byteLength: recovered.snapshot.artifact!.byteLength,
+    reportSummary: recovered.snapshot.reportSummary,
+  }).toEqual({
+    sha256: uninterrupted.snapshot.artifact!.sha256,
+    byteLength: uninterrupted.snapshot.artifact!.byteLength,
+    reportSummary: uninterrupted.snapshot.reportSummary,
   });
 });
 
