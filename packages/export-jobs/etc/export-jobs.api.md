@@ -82,6 +82,12 @@ export declare function cleanupAbandonedExportAttempt(stores: ExportOwnedByteSto
 // export: cleanupTombstonedExportJob
 export declare function cleanupTombstonedExportJob(stores: ExportOwnedByteStoresV1, tombstone: ExportJobTombstoneV1): Promise<ExportOwnedByteCleanupSummaryV1>;
 
+// export: COMPACT_HISTORY_MAX_JOBS_V1
+export declare const COMPACT_HISTORY_MAX_JOBS_V1 = 100;
+
+// export: COMPACT_HISTORY_RETENTION_MS_V1
+export declare const COMPACT_HISTORY_RETENTION_MS_V1: number;
+
 // export: CompletenessMode
 export type CompletenessMode = "strict" | "partial";
 
@@ -292,6 +298,7 @@ export interface ExportJobCreateV1 {
 // export: ExportJobDeleteQueryV1
 export interface ExportJobDeleteQueryV1 {
     finishedBefore: number;
+    ids?: string[];
     states?: Array<Extract<ExportJobState, "succeeded" | "failed" | "cancelled" | "interrupted">>;
     limit?: number;
 }
@@ -483,6 +490,12 @@ export interface ExportJobLeaseV1 {
     expiresAt: number;
 }
 
+// export: ExportJobLifecycleRetentionPlanV1
+export interface ExportJobLifecycleRetentionPlanV1 {
+    releases: ExportJobRetentionReleaseV1[];
+    deleteJobIds: string[];
+}
+
 // export: ExportJobMetricV1
 export type ExportJobMetricV1 = "storage.spoolPeakBytes" | "memory.heapPeakBytes" | "memory.rendererPeakBytes";
 
@@ -518,6 +531,10 @@ export interface ExportJobQueryV1 {
     includeDismissed?: boolean;
     createdAfter?: number;
     createdBefore?: number;
+    cursorBefore?: {
+        createdAt: number;
+        id: string;
+    };
     limit?: number;
 }
 
@@ -586,6 +603,30 @@ export interface ExportJobRequestBaseV1 {
 // export: ExportJobRequestV1
 export type ExportJobRequestV1 = DocxExportJobRequestV1 | PdfExportJobRequestV1;
 
+// export: ExportJobRetentionInputV1
+export interface ExportJobRetentionInputV1 {
+    expectedRevision: number;
+    at: number;
+    releaseArtifact: boolean;
+    releaseReport: boolean;
+}
+
+// export: ExportJobRetentionReleaseV1
+export interface ExportJobRetentionReleaseV1 {
+    id: string;
+    expectedRevision: number;
+    releaseArtifact: boolean;
+    releaseReport: boolean;
+}
+
+// export: ExportJobRetentionUpdateV1
+export interface ExportJobRetentionUpdateV1 extends ExportJobCasBaseV1 {
+    kind: "retention";
+    at: number;
+    releaseArtifact: boolean;
+    releaseReport: boolean;
+}
+
 // export: ExportJobSnapshotV1
 export interface ExportJobSnapshotV1 {
     schema: "atlcli.export-job/1";
@@ -620,7 +661,9 @@ export interface ExportJobSnapshotV1 {
     cancelRequestedAt?: number;
     checkpointRef?: string;
     artifact?: ExportArtifactV1;
+    artifactReleasedAt?: number;
     reportRef?: string;
+    reportReleasedAt?: number;
     reportSummary?: ExportReportSummaryV1;
     stats: ExportJobStatsV1;
     error?: ExportJobErrorV1;
@@ -743,6 +786,7 @@ export interface ExportJobStore {
     dismiss(id: string, expectedRevision: number, at: number): Promise<ExportJobSnapshotV1>;
     deliver(id: string, expectedRevision: number, at: number): Promise<ExportJobSnapshotV1>;
     deleteTerminal(query: ExportJobDeleteQueryV1): Promise<ExportJobDeleteResultV1>;
+    listTombstones(query?: ExportJobTombstoneQueryV1): Promise<import("./store-contracts.js").ExportJobTombstoneV1[]>;
     getTombstone(jobId: string): Promise<import("./store-contracts.js").ExportJobTombstoneV1 | undefined>;
     markTombstoneCleanupComplete(jobId: string, tombstoneRef: string, at: number): Promise<import("./store-contracts.js").ExportJobTombstoneV1>;
 }
@@ -753,6 +797,12 @@ export interface ExportJobTerminalMetadataInputV1 {
     deliveredAt?: number;
     acknowledgedAt?: number;
     dismissedAt?: number;
+}
+
+// export: ExportJobTombstoneQueryV1
+export interface ExportJobTombstoneQueryV1 {
+    cleanupPending?: boolean;
+    limit?: number;
 }
 
 // export: ExportJobTombstoneV1
@@ -791,7 +841,7 @@ export interface ExportJobTransitionUpdateV1 extends ExportJobCasBaseV1 {
 }
 
 // export: ExportJobUpdateV1
-export type ExportJobUpdateV1 = ExportJobTransitionUpdateV1 | ExportJobHeartbeatUpdateV1 | ExportJobProgressUpdateV1 | ExportJobReclaimExpiredUpdateV1 | ExportJobCheckpointUpdateV1 | ExportJobStatsUpdateV1;
+export type ExportJobUpdateV1 = ExportJobTransitionUpdateV1 | ExportJobHeartbeatUpdateV1 | ExportJobProgressUpdateV1 | ExportJobReclaimExpiredUpdateV1 | ExportJobCheckpointUpdateV1 | ExportJobStatsUpdateV1 | ExportJobRetentionUpdateV1;
 
 // export: ExportJobValidationError
 export declare class ExportJobValidationError extends Error {
@@ -928,6 +978,9 @@ export declare function finalizeExportArtifactDurably(ports: ExportArtifactFinal
 // export: finalizeExportJobArtifact
 export declare function finalizeExportJobArtifact(snapshot: ExportJobSnapshotV1, input: ExportJobFinalizeV1): ExportJobSnapshotV1;
 
+// export: FULL_REPORT_RETENTION_MS_V1
+export declare const FULL_REPORT_RETENTION_MS_V1: number;
+
 // export: heartbeatExportJob
 export declare function heartbeatExportJob(snapshot: ExportJobSnapshotV1, input: ExportJobHeartbeatInputV1): ExportJobSnapshotV1;
 
@@ -1006,6 +1059,7 @@ export declare class InMemoryExportJobStore implements ExportJobStore, ExportJob
     dismiss(id: string, expectedRevision: number, at: number): Promise<ExportJobSnapshotV1>;
     deliver(id: string, expectedRevision: number, at: number): Promise<ExportJobSnapshotV1>;
     deleteTerminal(query: ExportJobDeleteQueryV1): Promise<ExportJobDeleteResultV1>;
+    listTombstones(query?: ExportJobTombstoneQueryV1): Promise<ExportJobTombstoneV1[]>;
     getTombstone(jobId: string): Promise<ExportJobTombstoneV1 | undefined>;
     markTombstoneCleanupComplete(jobId: string, tombstoneRef: string, at: number): Promise<ExportJobTombstoneV1>;
 }
@@ -1166,6 +1220,9 @@ export interface PendingArtifactV1 {
     bytes: AsyncIterable<Uint8Array>;
 }
 
+// export: planExportJobLifecycleRetentionV1
+export declare function planExportJobLifecycleRetentionV1(snapshots: readonly ExportJobSnapshotV1[], now: number): ExportJobLifecycleRetentionPlanV1;
+
 // export: PlannedEvictionV1
 export interface PlannedEvictionV1 {
     ref: string;
@@ -1193,6 +1250,9 @@ export declare function reconcileTombstonedExportJobCleanup(jobStore: ExportJobS
     tombstone: ExportJobTombstoneV1;
     cleanup: ExportOwnedByteCleanupSummaryV1;
 }>;
+
+// export: releaseExportJobRetention
+export declare function releaseExportJobRetention(snapshot: ExportJobSnapshotV1, input: ExportJobRetentionInputV1): ExportJobSnapshotV1;
 
 // export: ResourceAdmissionDecisionV1
 export interface ResourceAdmissionDecisionV1 {

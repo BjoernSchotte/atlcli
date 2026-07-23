@@ -30,7 +30,9 @@ import {
   sweepPdfJobs,
 } from "../utils/pdf/job-store.js";
 import { IndexedDbExportJobCatalog } from "../utils/export-jobs/catalog.js";
+import { IndexedDbExportByteStore } from "../utils/export-jobs/chunk-store.js";
 import { listExtensionExportActivity } from "../utils/export-jobs/activity.js";
+import { sweepExtensionExportJobRetention } from "../utils/export-jobs/retention.js";
 import {
   EXTENSION_EXPORT_BADGE_PULSE_ENABLED_KEY,
   EXTENSION_EXPORT_BADGE_PULSE_FRAME_MS,
@@ -58,6 +60,7 @@ import {
 const OFFSCREEN_IDLE_MS = 5 * 60 * 1000;
 const TAB_OBSERVER_STORAGE_KEY = "tab-observer-state-v1";
 const commonExportCatalog = new IndexedDbExportJobCatalog();
+const commonExportBytes = new IndexedDbExportByteStore();
 
 async function countInFlightExportJobs(): Promise<number> {
   const [legacy, common] = await Promise.all([
@@ -199,6 +202,10 @@ function sweepJobs(force = false): void {
   if (!force && now - lastSweep < SWEEP_THROTTLE_MS) return;
   lastSweep = now;
   void sweepPdfJobs().catch((error) => console.error("PDF job sweep failed", error));
+  void sweepExtensionExportJobRetention({
+    catalog: commonExportCatalog,
+    bytes: commonExportBytes,
+  }).catch((error) => console.error("Export job retention sweep failed", error));
 }
 
 /**

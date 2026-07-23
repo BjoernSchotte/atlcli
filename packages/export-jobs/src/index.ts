@@ -72,6 +72,7 @@ export type {
   ExportJobReclaimExpiredUpdateV1,
   ExportJobCheckpointUpdateV1,
   ExportJobStatsUpdateV1,
+  ExportJobRetentionUpdateV1,
   ExportJobEventAppendV1,
   ExportJobEventQueryV1,
   ExportJobEventPageV1,
@@ -79,6 +80,7 @@ export type {
   ExportJobFinalizeV1,
   ExportJobDeleteQueryV1,
   ExportJobDeleteResultV1,
+  ExportJobTombstoneQueryV1,
   ExportJobTombstoneV1,
 } from "./store-contracts.js";
 export type {
@@ -103,6 +105,7 @@ export {
   updateExportJobProgress,
   updateExportJobStats,
   updateExportJobTerminalMetadata,
+  releaseExportJobRetention,
 } from "./transitions.js";
 export type {
   ExportJobTransitionConflictCode,
@@ -114,6 +117,7 @@ export type {
   ExportJobStatsInputV1,
   ExportJobLeaseReclaimInputV1,
   ExportJobTerminalMetadataInputV1,
+  ExportJobRetentionInputV1,
 } from "./transitions.js";
 export { ExportJobReplayConflict, deriveExportJobReplayV1 } from "./replay.js";
 export type {
@@ -123,12 +127,22 @@ export type {
   ExportJobReplayConflictCodeV1,
 } from "./replay.js";
 export {
-  DELIVERED_ARTIFACT_RETENTION_MS_V1,
   decideResourceAdmission,
   orderExportQueue,
   planRetentionEviction,
   projectExportBadge,
 } from "./policy.js";
+export {
+  COMPACT_HISTORY_MAX_JOBS_V1,
+  COMPACT_HISTORY_RETENTION_MS_V1,
+  DELIVERED_ARTIFACT_RETENTION_MS_V1,
+  FULL_REPORT_RETENTION_MS_V1,
+  planExportJobLifecycleRetentionV1,
+} from "./lifecycle-retention.js";
+export type {
+  ExportJobLifecycleRetentionPlanV1,
+  ExportJobRetentionReleaseV1,
+} from "./lifecycle-retention.js";
 export type {
   QueueJobV1,
   BadgeJobV1,

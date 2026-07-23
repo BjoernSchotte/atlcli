@@ -33,6 +33,7 @@ export * from "./jobs/persistence.js";
 export * from "./jobs/executor-stores.js";
 export * from "./jobs/render-reservation.js";
 export * from "./jobs/runtime.js";
+export * from "./jobs/retention.js";
 // Re-exported Node adapters so one import covers the full host wiring story.
 export {
   fileOutputSink,

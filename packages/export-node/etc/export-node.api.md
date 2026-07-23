@@ -223,10 +223,12 @@ export declare class FileExportJobStore implements ExportJobStore, ExportJobEven
         result?: import("@atlcli/export-jobs").ExportJobExecutionResultV1;
     } | undefined>;
     resolveExecutorReportPath(reportRef: string): Promise<string | undefined>;
+    cleanupReleasedReportPayloads(jobId: string): Promise<number>;
     acknowledge(id: string, expectedRevision: number, at: number): Promise<ExportJobSnapshotV1>;
     dismiss(id: string, expectedRevision: number, at: number): Promise<ExportJobSnapshotV1>;
     deliver(id: string, expectedRevision: number, at: number): Promise<ExportJobSnapshotV1>;
     deleteTerminal(query: ExportJobDeleteQueryV1): Promise<ExportJobDeleteResultV1>;
+    listTombstones(query?: ExportJobTombstoneQueryV1): Promise<ExportJobTombstoneV1[]>;
     getTombstone(jobId: string): Promise<ExportJobTombstoneV1 | undefined>;
     markTombstoneCleanupComplete(jobId: string, ref: string, at: number): Promise<ExportJobTombstoneV1>;
 }
@@ -269,6 +271,13 @@ export interface FileExportLockOptions {
     ttlMs?: number;
     pollMs?: number;
     now?: () => number;
+}
+
+// export: FileExportRetentionSweepResultV1
+export interface FileExportRetentionSweepResultV1 {
+    payloadReleases: number;
+    historyDeleted: number;
+    tombstonesReconciled: number;
 }
 
 // export: FileExportSpoolStore
@@ -363,6 +372,9 @@ export interface RunClaimedFileExportJobOptionsV1 extends Omit<CreateFileExportE
     claimed: ExportJobSnapshotV1;
     executor: ExportJobExecutor<ExportJobRequestV1>;
 }
+
+// export: sweepFileExportJobRetentionV1
+export declare function sweepFileExportJobRetentionV1(persistence: FileExportJobPersistenceV1, now: number): Promise<FileExportRetentionSweepResultV1>;
 
 // export: tokenAssetFetcher
 export declare function tokenAssetFetcher(client: AssetClient, cache: Pick<AssetByteCache, "getOrLoad">): {

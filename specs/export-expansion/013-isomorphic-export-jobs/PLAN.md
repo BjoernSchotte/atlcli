@@ -1043,8 +1043,7 @@ Use one policy across formats and preview cache occupants:
 4. failed/cancelled temp data after diagnostic grace;
 5. never evict running work or succeeded-undelivered artifacts.
 
-History/report metadata is separate from artifact retention. Suggested initial
-policy to validate in UX:
+History/report metadata is separate from artifact retention. Version 1 uses:
 
 - succeeded-undelivered artifacts: never auto-evicted; quota admission waits or
   fails rather than deleting the user's only result;
@@ -1449,7 +1448,7 @@ double-commit it.
 - [x] Do not copy live large legacy blobs into the new store.
 - [x] Legacy in-flight PDF rows may finish under the legacy runtime.
 - [x] Route new PDF submissions to the common catalog in PR-G.
-- [ ] Route new DOCX submissions to the common catalog in PR-H; PR-F
+- [x] Route new DOCX submissions to the common catalog in PR-H; PR-F
       deliberately introduced no half-migrated submission path.
 - [x] A legacy compile subrecord used during transition is private/hidden and
       never produces a second Activity row.
@@ -1697,6 +1696,13 @@ multiple commits is allowed, but its final commit must retain the slice's gate.
     Run again, Resume, Acknowledge, Dismiss, Download/Reveal, retention/clear,
     active badge, completion/failure pulse, CLI/extension/operations/
     troubleshooting docs, and release-ready CHANGELOG entry.
+  - [x] Retention increment: common policy and CAS contract, restart-safe file
+    cleanup, one-transaction IndexedDB payload release, stable pagination beyond
+    500 rows, replay-safe request pins, compact-summary fallback, background/CLI
+    sweep integration, and real packed PDF/DOCX parity are proven.
+  - [ ] Remaining PR-I increments: productive statistics/event protocols,
+    generic-browser Activity/queue proof, documentation/CHANGELOG, and the final
+    non-cleanup audit and gates.
   - Acceptance: packed Chrome covers DOCX/PDF mixed states, `9+`, `✓`, `!`, pulse
     bound, acknowledgement persistence, Retry and Run again; retained request/
     template refs remain replayable; unavailable metrics and expired reports have
@@ -2032,6 +2038,23 @@ Capabilities and host-specific E2E are the guardrail.
   and are reached only by opaque refs. Ephemeral CLI credentials are process-only
   and therefore require fresh authentication before a later Retry/Run-again.
 
+### Resolved for PR-I
+
+- **Artifact/report/history retention:** version 1 accepts 24 hours after
+  delivery or dismissal for artifact bytes, 7 days after completion for the full
+  report and event protocol, and the intersection of the newest 100 jobs and
+  jobs younger than 30 days for compact history. Succeeded-undelivered artifacts
+  remain protected regardless of age or count. Report cleanup preserves the
+  compact summary; request/template pins survive payload cleanup so retained
+  rows remain replayable. Physical history deletion is authorized by a durable
+  tombstone and restart-safe cleanup.
+- **Proof:** common transition/planner validation, real file-journal cleanup,
+  IndexedDB transaction abort, concurrent sweeps, restart recovery, and 501
+  same-timestamp pagination pass in focused tests. The production-packed MV3
+  Chromium suite passes 19/19 and creates real PDF and TypeScript-DOCX artifacts
+  before proving equal payload release, retained summaries, and the retained
+  DOCX request pin.
+
 ### Still unresolved
 
 These require explicit decisions before their owning implementation phase:
@@ -2052,13 +2075,9 @@ These require explicit decisions before their owning implementation phase:
 5. **Storage cap values:** retain today's 64/128 MiB physical caps, derive a cap
    from `navigator.storage.estimate()`, or introduce a larger fixed product cap?
    Do not decide without real quota/memory evidence.
-6. **Artifact/report/history retention:** are 24 hours after delivery/dismissal
-   for artifact bytes, 7 days for the full report, and 100 jobs/30 days for
-   compact history acceptable defaults? Succeeded-undelivered bytes remain
-   protected regardless of that decision.
-7. **CLI detached mode:** daemon, OS service, or explicitly never? It is not part
-    of this plan's first release.
-8. **Future Forge PoC:** can a browser-only Custom UI shape run both engines,
+6. **CLI detached mode:** daemon, OS service, or explicitly never? It is not part
+   of this plan's first release.
+7. **Future Forge PoC:** can a browser-only Custom UI shape run both engines,
     including Typst/WASM, plus the durable background queue and Activity
     reattachment after leaving the UI, without ongoing Forge costs borne by us as
     the app developer? The browser-owned runner mechanism, lifecycle, pricing,

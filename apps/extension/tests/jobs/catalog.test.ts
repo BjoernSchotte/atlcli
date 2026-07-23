@@ -86,6 +86,25 @@ async function* bytes(...chunks: number[][]): AsyncIterable<Uint8Array> {
 }
 
 describe("IndexedDbExportJobCatalog", () => {
+  it("paginates a same-timestamp history beyond 500 rows without gaps", async () => {
+    const catalog = new IndexedDbExportJobCatalog({ factory });
+    for (let index = 0; index < 501; index += 1) {
+      await catalog.create({
+        request: request(`history-${String(index).padStart(3, "0")}`),
+      });
+    }
+    const first = await catalog.list({ includeDismissed: true, limit: 500 });
+    const last = first.at(-1)!;
+    const second = await catalog.list({
+      includeDismissed: true,
+      limit: 500,
+      cursorBefore: { createdAt: last.createdAt, id: last.id },
+    });
+    expect(first).toHaveLength(500);
+    expect(second).toHaveLength(1);
+    expect(new Set([...first, ...second].map((job) => job.id)).size).toBe(501);
+  });
+
   it("creates request and snapshot atomically", async () => {
     const failed = new IndexedDbExportJobCatalog({
       factory,

@@ -18,6 +18,8 @@ const JOB_F = "923e4567-e89b-42d3-a456-426614174000";
 const JOB_G = "a23e4567-e89b-42d3-a456-426614174000";
 const JOB_H = "b23e4567-e89b-42d3-a456-426614174000";
 const JOB_I = "c23e4567-e89b-42d3-a456-426614174000";
+const JOB_J = "d23e4567-e89b-42d3-a456-426614174000";
+const JOB_K = "e23e4567-e89b-42d3-a456-426614174000";
 const SHA_ABC =
   "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
 
@@ -321,6 +323,17 @@ async function submitPackedDocx(
   });
 }
 
+async function submitPackedPdf(jobId: string): Promise<string> {
+  return page.evaluate(async (id) => {
+    const probe = (globalThis as unknown as {
+      exportJobStoreProbe: {
+        submitPdf(exportJobId: string): Promise<string>;
+      };
+    }).exportJobStoreProbe;
+    return probe.submitPdf(id);
+  }, jobId);
+}
+
 async function seedJob(
   id: string,
   state: "queued" | "running",
@@ -423,7 +436,10 @@ interface PackedJobRow {
     artifact?: { ref: string; filename: string; byteLength: number; sha256: string };
     reportRef?: string;
     reportSummary?: { completeness: string };
+    finishedAt?: number;
     deliveredAt?: number;
+    artifactReleasedAt?: number;
+    reportReleasedAt?: number;
   };
 }
 
@@ -1139,6 +1155,76 @@ test("a packed offscreen DOCX runs PizZip, docxtemplater, and canvas diagram ras
       mediaType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     },
   });
+});
+
+test("packed PDF and DOCX exports apply the same durable payload retention", async () => {
+  await ensureCatalog();
+  await installOffscreenFetchStub();
+  await expect(submitPackedPdf(JOB_J)).resolves.toBe(JOB_J);
+  await waitForJobState(JOB_J, "succeeded");
+
+  const templateBytes = buildDocx({
+    body: para("$scroll.title") + para("$scroll.content"),
+    date: new Date("2026-07-23T00:00:00.000Z"),
+  });
+  await expect(submitPackedDocx(JOB_K, templateBytes)).resolves.toBe(JOB_K);
+  await waitForJobState(JOB_K, "succeeded");
+
+  const retained = await page.evaluate(async (ids) => {
+    const probe = (globalThis as unknown as {
+      exportJobStoreProbe: {
+        retainCompleted(jobIds: string[]): Promise<{
+          sweep: {
+            payloadReleases: number;
+            historyDeleted: number;
+            tombstonesReconciled: number;
+          };
+          jobs: Array<{
+            id: string;
+            format: string;
+            artifactReleasedAt?: number;
+            reportReleasedAt?: number;
+            reportCompleteness?: string;
+            artifactReadable: boolean;
+            reportReadable: boolean;
+            eventCount: number;
+            requestTemplatePinned: boolean;
+          }>;
+        }>;
+      };
+    }).exportJobStoreProbe;
+    return probe.retainCompleted(ids);
+  }, [JOB_J, JOB_K]);
+
+  expect(retained.sweep).toEqual({
+    payloadReleases: 2,
+    historyDeleted: 0,
+    tombstonesReconciled: 0,
+  });
+  expect(retained.jobs).toEqual([
+    {
+      id: JOB_J,
+      format: "pdf",
+      artifactReleasedAt: expect.any(Number),
+      reportReleasedAt: expect.any(Number),
+      reportCompleteness: "complete",
+      artifactReadable: false,
+      reportReadable: false,
+      eventCount: 0,
+      requestTemplatePinned: false,
+    },
+    {
+      id: JOB_K,
+      format: "docx",
+      artifactReleasedAt: expect.any(Number),
+      reportReleasedAt: expect.any(Number),
+      reportCompleteness: "complete",
+      artifactReadable: false,
+      reportReadable: false,
+      eventCount: 0,
+      requestTemplatePinned: true,
+    },
+  ]);
 });
 
 test("a packed offscreen DOCX recovery matches an uninterrupted control export", async () => {

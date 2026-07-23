@@ -17,6 +17,7 @@ import {
   updateExportJobProgress,
   updateExportJobStats,
   updateExportJobTerminalMetadata,
+  releaseExportJobRetention,
   type ExportArtifactFinalizationIntentV1,
   type ExportArtifactV1,
   type ExportJobCreateV1,
@@ -29,6 +30,7 @@ import {
   type ExportJobEventReaderV1,
   type ExportJobFinalizeV1,
   type ExportJobQueryV1,
+  type ExportJobTombstoneQueryV1,
   type ExportJobRequestV1,
   type ExportJobSnapshotV1,
   type ExportJobStore,
@@ -206,6 +208,7 @@ export class FileExportJobStore implements ExportJobStore, ExportJobEventReaderV
       .filter((j) => query.includeDismissed === true || j.dismissedAt === undefined)
       .filter((j) => query.createdBefore === undefined || j.createdAt < query.createdBefore)
       .filter((j) => query.createdAfter === undefined || j.createdAt > query.createdAfter)
+      .filter((j) => query.cursorBefore === undefined || j.createdAt < query.cursorBefore.createdAt || (j.createdAt === query.cursorBefore.createdAt && j.id.localeCompare(query.cursorBefore.id) < 0))
       .sort((a, b) => b.createdAt - a.createdAt || b.id.localeCompare(a.id)).slice(0, boundedLimit(query.limit)).map(clone));
   }
 
@@ -242,6 +245,13 @@ export class FileExportJobStore implements ExportJobStore, ExportJobEventReaderV
           if (current.checkpointRef === update.checkpointRef && current.leaseEpoch === update.leaseEpoch) return { result: clone(current), changed: false };
           next = checkpointExportJob(current, { ...update, observedAt }); break;
         case "stats": next = updateExportJobStats(current, { ...update, observedAt }); break;
+        case "retention":
+          next = releaseExportJobRetention(current, update);
+          if (update.releaseReport) {
+            catalog.events[current.id] = [];
+            catalog.nextEventSeq[current.id] = 1;
+          }
+          break;
       }
       this.#replace(catalog, current, next);
       return { result: clone(next), changed: true };
@@ -362,6 +372,42 @@ export class FileExportJobStore implements ExportJobStore, ExportJobEventReaderV
   }
   async resolveExecutorReportPath(reportRef: string): Promise<string | undefined> { return this.#read((catalog) => Object.values(catalog.executorResults).find((value) => value.reportRef === reportRef)?.reportPath); }
 
+  /**
+   * Idempotently remove physical full-report files whose snapshot release
+   * marker was committed. Metadata rows are retained until the file deletion
+   * succeeds, so a process crash can safely retry this operation.
+   */
+  async cleanupReleasedReportPayloads(jobId: string): Promise<number> {
+    const lease = await this.#lock.acquire({ label: "journal-report-retention" });
+    try {
+      const catalog = await this.#load();
+      const job = catalog.jobs[jobId];
+      if (!job || job.reportReleasedAt === undefined || job.reportRef !== undefined) {
+        return 0;
+      }
+      const reportsRoot = resolve(this.rootDir, "reports");
+      const retained = Object.entries(catalog.executorResults).filter(([, stored]) => {
+        const intent = stored.intent as { key?: { jobId?: unknown }; jobId?: unknown };
+        return (intent.key?.jobId ?? intent.jobId) === jobId;
+      });
+      for (const [, stored] of retained) {
+        const reportPath = resolve(stored.reportPath);
+        if (reportPath !== reportsRoot && !reportPath.startsWith(`${reportsRoot}${sep}`)) {
+          throw new Error("Executor report path escaped the private report directory.");
+        }
+        await rm(reportPath, { force: true });
+      }
+      if (retained.length === 0) return 0;
+      for (const [key] of retained) delete catalog.executorResults[key];
+      await lease.assertOwned();
+      catalog.sequence += 1;
+      await this.#commit(catalog);
+      return retained.length;
+    } finally {
+      await lease.release();
+    }
+  }
+
   async #finishFinalization(intent: ExportArtifactFinalizationIntentV1): Promise<void> {
     const artifact = await this.#artifactFinalizer!.commitFinalization(intent);
     await this.#mutate((catalog) => {
@@ -387,6 +433,7 @@ export class FileExportJobStore implements ExportJobStore, ExportJobEventReaderV
   async deleteTerminal(query: ExportJobDeleteQueryV1): Promise<ExportJobDeleteResultV1> {
     return this.#mutate((catalog) => {
       const candidates = Object.values(catalog.jobs).filter((j) => isExportJobTerminal(j.state) && j.finishedAt !== undefined && j.finishedAt < query.finishedBefore)
+        .filter((j) => !query.ids || query.ids.includes(j.id))
         .filter((j) => !query.states || query.states.includes(j.state as never)).filter((j) => j.state !== "succeeded" || j.deliveredAt !== undefined || j.dismissedAt !== undefined)
         .sort((a, b) => a.finishedAt! - b.finishedAt!).slice(0, boundedLimit(query.limit));
       for (const job of candidates) {
@@ -399,6 +446,14 @@ export class FileExportJobStore implements ExportJobStore, ExportJobEventReaderV
       }
       return { result: { deletedJobIds: candidates.map((j) => j.id), tombstoneRefs: candidates.map((j) => catalog.tombstones[j.id]!.ref) }, changed: candidates.length > 0 };
     });
+  }
+  async listTombstones(query: ExportJobTombstoneQueryV1 = {}): Promise<ExportJobTombstoneV1[]> {
+    return this.#read((catalog) =>
+      Object.values(catalog.tombstones)
+        .filter((value) => query.cleanupPending !== true || value.cleanupCompletedAt === undefined)
+        .sort((a, b) => a.deletedAt - b.deletedAt || a.jobId.localeCompare(b.jobId))
+        .slice(0, boundedLimit(query.limit))
+        .map(clone));
   }
   async getTombstone(jobId: string): Promise<ExportJobTombstoneV1 | undefined> { return this.#read((c) => c.tombstones[jobId] ? clone(c.tombstones[jobId]) : undefined); }
   async markTombstoneCleanupComplete(jobId: string, ref: string, at: number): Promise<ExportJobTombstoneV1> {

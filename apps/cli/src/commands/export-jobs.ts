@@ -35,6 +35,8 @@ export interface ExportJobPersistenceV1 {
   artifacts: ExportArtifactStore;
   /** Reconcile stale process leases and prepared finalizations before every command. */
   reconcile(now: number): Promise<unknown>;
+  /** Apply the shared payload/history retention policy while the CLI is alive. */
+  retention?(now: number): Promise<unknown>;
 }
 
 interface RawExportJobPersistenceV1 {
@@ -42,6 +44,7 @@ interface RawExportJobPersistenceV1 {
   spool: ExportSpoolStore;
   artifacts: ExportArtifactStore;
   reconcile?: (now: number) => Promise<unknown>;
+  retention?: (now: number) => Promise<unknown>;
 }
 
 type PersistenceFactoryV1 = () => ExportJobPersistenceV1 | Promise<ExportJobPersistenceV1>;
@@ -53,6 +56,10 @@ interface NodePersistenceModuleV1 {
   reconcileStaleExportJobs?: (
     jobs: ExportJobStore,
     stores: { spool: ExportSpoolStore; artifacts: ExportArtifactStore },
+    now: number,
+  ) => Promise<unknown>;
+  sweepFileExportJobRetentionV1?: (
+    persistence: RawExportJobPersistenceV1,
     now: number,
   ) => Promise<unknown>;
 }
@@ -93,7 +100,11 @@ export async function createDefaultExportJobPersistenceV1(): Promise<ExportJobPe
           { spool: persistence.spool, artifacts: persistence.artifacts },
           now,
         );
-  return { ...persistence, reconcile };
+  const retention = persistence.retention ??
+    (node.sweepFileExportJobRetentionV1
+      ? (at: number) => node.sweepFileExportJobRetentionV1!(persistence, at)
+      : undefined);
+  return { ...persistence, reconcile, ...(retention ? { retention } : {}) };
 }
 
 export interface ExportJobsCommandDependenciesV1 {
@@ -530,6 +541,7 @@ export async function handleExportJobs(
   const createPersistence = dependencies.createPersistence ?? createDefaultExportJobPersistenceV1;
   const persistence = await createPersistence();
   await persistence.reconcile(now());
+  await persistence.retention?.(now());
   const json = opts.json || hasFlag(flags, "json");
 
   switch (subcommand) {

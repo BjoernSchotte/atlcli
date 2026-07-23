@@ -587,7 +587,8 @@ export function parseExportJobSnapshotV1(value: unknown): ExportJobSnapshotV1 {
     [
       "schema", "id", "revision", "requestRef", "format", "renderer", "summary", "queue",
       "state", "stage", "progress", "waiting", "attempt", "recoveryCount", "leaseEpoch",
-      "lease", "cancelRequestedAt", "checkpointRef", "artifact", "reportRef", "reportSummary",
+      "lease", "cancelRequestedAt", "checkpointRef", "artifact", "artifactReleasedAt",
+      "reportRef", "reportReleasedAt", "reportSummary",
       "stats", "error", "createdAt", "startedAt", "finishedAt", "deliveredAt",
       "acknowledgedAt", "dismissedAt", "derivedFrom",
     ],
@@ -677,9 +678,26 @@ export function parseExportJobSnapshotV1(value: unknown): ExportJobSnapshotV1 {
 
   const createdAt = integer(snapshot.createdAt, "snapshot.createdAt");
   const timestamps: Partial<
-    Record<"startedAt" | "finishedAt" | "deliveredAt" | "acknowledgedAt" | "dismissedAt", number>
+    Record<
+      | "startedAt"
+      | "finishedAt"
+      | "deliveredAt"
+      | "acknowledgedAt"
+      | "dismissedAt"
+      | "artifactReleasedAt"
+      | "reportReleasedAt",
+      number
+    >
   > = {};
-  for (const field of ["startedAt", "finishedAt", "deliveredAt", "acknowledgedAt", "dismissedAt"] as const) {
+  for (const field of [
+    "startedAt",
+    "finishedAt",
+    "deliveredAt",
+    "acknowledgedAt",
+    "dismissedAt",
+    "artifactReleasedAt",
+    "reportReleasedAt",
+  ] as const) {
     if (snapshot[field] !== undefined) {
       timestamps[field] = integer(snapshot[field], `snapshot.${field}`);
     }
@@ -708,14 +726,30 @@ export function parseExportJobSnapshotV1(value: unknown): ExportJobSnapshotV1 {
     fail("snapshot.finishedAt", "non-terminal jobs must not have finishedAt");
   }
   if (state === "succeeded") {
-    if (snapshot.artifact === undefined) fail("snapshot.artifact", "succeeded jobs require an artifact");
-    validateArtifact(snapshot.artifact, format, "snapshot.artifact");
-    const artifact = snapshot.artifact as Record<string, unknown>;
-    if (artifact.committedAt !== timestamps.finishedAt) {
-      fail("snapshot.artifact.committedAt", "must equal snapshot.finishedAt");
+    if (snapshot.artifact === undefined && snapshot.artifactReleasedAt === undefined) {
+      fail("snapshot.artifact", "succeeded jobs require an artifact or an artifact release marker");
+    }
+    if (snapshot.artifact !== undefined) {
+      validateArtifact(snapshot.artifact, format, "snapshot.artifact");
+      const artifact = snapshot.artifact as Record<string, unknown>;
+      if (artifact.committedAt !== timestamps.finishedAt) {
+        fail("snapshot.artifact.committedAt", "must equal snapshot.finishedAt");
+      }
     }
   } else if (snapshot.artifact !== undefined) {
     fail("snapshot.artifact", "is only valid for succeeded jobs");
+  }
+  if (snapshot.artifact !== undefined && snapshot.artifactReleasedAt !== undefined) {
+    fail("snapshot.artifactReleasedAt", "cannot coexist with a retained artifact");
+  }
+  if (snapshot.artifactReleasedAt !== undefined && state !== "succeeded") {
+    fail("snapshot.artifactReleasedAt", "is only valid for succeeded jobs");
+  }
+  if (snapshot.reportRef !== undefined && snapshot.reportReleasedAt !== undefined) {
+    fail("snapshot.reportReleasedAt", "cannot coexist with a retained report ref");
+  }
+  if (snapshot.reportReleasedAt !== undefined && !TERMINAL.has(state)) {
+    fail("snapshot.reportReleasedAt", "is only valid for terminal jobs");
   }
   if ((state === "failed" || state === "interrupted") && snapshot.error === undefined) {
     fail("snapshot.error", `${state} jobs require an error`);
@@ -732,7 +766,13 @@ export function parseExportJobSnapshotV1(value: unknown): ExportJobSnapshotV1 {
   if ((snapshot.acknowledgedAt !== undefined || snapshot.dismissedAt !== undefined) && !TERMINAL.has(state)) {
     fail("snapshot", "only terminal jobs may be acknowledged or dismissed");
   }
-  for (const field of ["deliveredAt", "acknowledgedAt", "dismissedAt"] as const) {
+  for (const field of [
+    "deliveredAt",
+    "acknowledgedAt",
+    "dismissedAt",
+    "artifactReleasedAt",
+    "reportReleasedAt",
+  ] as const) {
     if (
       timestamps[field] !== undefined &&
       timestamps.finishedAt !== undefined &&

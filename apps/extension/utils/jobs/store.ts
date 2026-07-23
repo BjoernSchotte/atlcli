@@ -576,7 +576,9 @@ export function createExtensionDurableJobsStore(
       }
       const reportAvailability =
         snapshot.reportRef === undefined
-          ? "not-produced"
+          ? snapshot.reportReleasedAt === undefined
+            ? "not-produced"
+            : "expired"
           : reportValue === undefined
             ? "expired"
             : "retained";

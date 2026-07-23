@@ -16,9 +16,10 @@ import React from "react";
 import { Window } from "happy-dom";
 import { IDBFactory, IDBKeyRange } from "fake-indexeddb";
 import type { PdfSourceBundle } from "@atlcli/pdf/browser";
-import type {
-  DocxExportJobRequestV1,
-  PdfExportJobRequestV1,
+import {
+  FULL_REPORT_RETENTION_MS_V1,
+  type DocxExportJobRequestV1,
+  type PdfExportJobRequestV1,
 } from "@atlcli/export-jobs";
 import {
   cancelPdfJob,
@@ -35,6 +36,10 @@ import {
 import { createDurableJobsStore, createExtensionDurableJobsStore, type DurableJobsPort } from "../../utils/jobs/store.js";
 import { IndexedDbExportJobCatalog } from "../../utils/export-jobs/catalog.js";
 import { IndexedDbExportByteStore } from "../../utils/export-jobs/chunk-store.js";
+import {
+  EXTENSION_DOCX_TEMPLATE_LIMITS_V1,
+  extensionDocxTemplateSpoolRef,
+} from "../../utils/export-jobs/docx-template.js";
 import { DurableJobsProvider } from "../../utils/jobs/context.js";
 import { JobsScreen, jobsScreenDefinition, siteOriginOf } from "../../components/screens/JobsScreen.js";
 import type { ScreenProps } from "../../utils/screens/registry.js";
@@ -263,7 +268,7 @@ function commonRequest(
     createdAt: 20,
     priority: "interactive",
     output: { policy: "collect" },
-    template: { recordKey: "default", sha256: "0".repeat(64), name: "Default" },
+    template: { recordKey: "default", sha256: SHA_ABC, name: "Default" },
     options: { embedImages: true, resolveMacros: true },
   };
 }
@@ -621,6 +626,72 @@ describe("the Jobs screen", () => {
     expect((await catalog.get(COMMON_PDF))?.acknowledgedAt).toBe(40);
   });
 
+  it("renders a released full report as expired while retaining its compact summary", async () => {
+    let now = 30;
+    const catalog = new IndexedDbExportJobCatalog({
+      factory,
+      now: () => now,
+    });
+    const bytes = new IndexedDbExportByteStore({
+      factory,
+      now: () => now,
+      randomUUID: () => "released-report-artifact",
+    });
+    await catalog.create({ request: commonPdfRequest() });
+    const claimed = (await catalog.claimNext({
+      ids: [COMMON_PDF],
+      ownerId: "runner",
+      now,
+      leaseDurationMs: FULL_REPORT_RETENTION_MS_V1 + 1_000,
+    }))!;
+    const staged = await bytes.stage(COMMON_PDF, claimed.leaseEpoch, {
+      mediaType: "application/pdf",
+      filename: "activity.pdf",
+      byteLength: 3,
+      sha256: SHA_ABC,
+      bytes: (async function* () {
+        yield Uint8Array.from([97, 98, 99]);
+      })(),
+    });
+    now = 40;
+    const succeeded = await catalog.finalizeArtifact({
+      id: COMMON_PDF,
+      expectedRevision: claimed.revision,
+      leaseEpoch: claimed.leaseEpoch,
+      stagedArtifact: staged,
+      reportRef: "report:released",
+      reportSummary: {
+        issues: { info: 0, warning: 1, error: 0 },
+        topCodes: [{ code: "image-skipped", count: 1 }],
+        completeness: "partial",
+      },
+      finishedAt: now,
+    });
+    now += FULL_REPORT_RETENTION_MS_V1;
+    await catalog.compareAndSet({
+      kind: "retention",
+      id: COMMON_PDF,
+      expectedRevision: succeeded.revision,
+      at: now,
+      releaseArtifact: false,
+      releaseReport: true,
+    });
+
+    await render(
+      <DurableJobsProvider port={unifiedPort(catalog, { bytes, now: () => now })}>
+        <JobsScreen {...screenProps()} />
+      </DurableJobsProvider>,
+    );
+    await clickElement(
+      row(`common:${COMMON_PDF}`).querySelector(
+        '[data-testid="job-detail-open"]',
+      )!,
+    );
+    expect(find("job-report-expired")).toBeDefined();
+    expect(find("job-detail").textContent).toContain("partial");
+    expect(find("job-detail").textContent).toContain("1 warning");
+  });
+
   it("routes Retry, Run again, Resume, Acknowledge, and Dismiss from their rows", async () => {
     let now = 30;
     let serial = 0;
@@ -639,6 +710,13 @@ describe("the Jobs screen", () => {
       randomUUID: () => `artifact-${++serial}`,
     });
 
+    await bytes.put(
+      extensionDocxTemplateSpoolRef(COMMON_JOB),
+      (async function* () {
+        yield Uint8Array.from([97, 98, 99]);
+      })(),
+      EXTENSION_DOCX_TEMPLATE_LIMITS_V1,
+    );
     await catalog.create({ request: commonRequest() });
     const failedClaim = (await catalog.claimNext({
       ids: [COMMON_JOB],
@@ -743,8 +821,13 @@ describe("the Jobs screen", () => {
       row(`common:${COMMON_JOB}`).querySelector('[data-testid="job-dismiss"]')!,
     );
 
-    const derived = (await catalog.list({ includeDismissed: true }))
+    let derived = (await catalog.list({ includeDismissed: true }))
       .filter((snapshot) => snapshot.derivedFrom !== undefined);
+    for (let attempt = 0; derived.length < 2 && attempt < 20; attempt += 1) {
+      await flush(1);
+      derived = (await catalog.list({ includeDismissed: true }))
+        .filter((snapshot) => snapshot.derivedFrom !== undefined);
+    }
     expect(derived.map((snapshot) => snapshot.derivedFrom?.relation).sort())
       .toEqual(["rerun", "retry"]);
     expect(wakes.some((entry) =>

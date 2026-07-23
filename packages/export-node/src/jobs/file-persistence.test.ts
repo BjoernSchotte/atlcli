@@ -7,6 +7,8 @@ import { pathToFileURL } from "node:url";
 import {
   bindExportJobArtifacts,
   bindExportJobSpool,
+  DELIVERED_ARTIFACT_RETENTION_MS_V1,
+  FULL_REPORT_RETENTION_MS_V1,
   prepareExportArtifactFinalizationIntent,
   type DocxExportJobRequestV1,
   type ExportJobExecutionContext,
@@ -23,6 +25,7 @@ import { readFileExportReport } from "./executor-stores.js";
 import { createFileExportExecutionContext } from "./runtime.js";
 import { FileExportLock } from "./file-lock.js";
 import { reconcileStaleExportJobs } from "./reconcile.js";
+import { sweepFileExportJobRetentionV1 } from "./retention.js";
 
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map((path) => rm(path, { recursive: true, force: true }))); });
@@ -244,6 +247,95 @@ describe("file export persistence", () => {
     expect(await p.jobs.loadExecutorResult(intent.key.ref)).toBeUndefined();
     await expect(stat(reportPath)).rejects.toMatchObject({ code: "ENOENT" });
     await expect(stat(projectionPath)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("applies the same restart-safe artifact/report retention policy in the CLI host", async () => {
+    let now = 1;
+    const dir = await root();
+    const p = createFileExportJobPersistence({ rootDir: dir, now: () => now });
+    await p.jobs.create({ request: request("retention-job") });
+    const claimed = (await p.jobs.claimNext({
+      ownerId: "cli",
+      now,
+      leaseDurationMs: 1_000,
+    }))!;
+    const requestPin = {
+      jobId: claimed.id,
+      leaseEpoch: claimed.leaseEpoch,
+      namespace: "request-assets",
+      key: "docx-template",
+    };
+    await p.spool.put(requestPin, bytes("template"), p.spoolLimits);
+    const staged = await p.artifacts.stage(claimed.id, claimed.leaseEpoch, {
+      mediaType:
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      filename: "retained.docx",
+      byteLength: 3,
+      sha256:
+        "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+      bytes: bytes("abc"),
+    });
+    const reportDir = join(dir, "reports");
+    await mkdir(reportDir, { recursive: true });
+    const reportPath = join(reportDir, "retention-report.json");
+    await writeFile(reportPath, "{\"schema\":\"report/1\"}\n");
+    const reportRef = "logical:report:retention";
+    await p.jobs.prepareExecutorResult({
+      key: "retention-result",
+      jobId: claimed.id,
+      leaseEpoch: claimed.leaseEpoch,
+      intent: { jobId: claimed.id },
+      reportRef,
+      reportPath,
+    });
+    now = 10;
+    const succeeded = await p.jobs.finalizeArtifact({
+      id: claimed.id,
+      expectedRevision: claimed.revision,
+      leaseEpoch: claimed.leaseEpoch,
+      stagedArtifact: staged,
+      reportRef,
+      reportSummary: {
+        issues: { info: 0, warning: 1, error: 0 },
+        topCodes: [{ code: "image-skipped", count: 1 }],
+        completeness: "partial",
+      },
+      finishedAt: now,
+    });
+    now = 20;
+    await p.jobs.deliver(succeeded.id, succeeded.revision, now);
+    now = Math.max(
+      now + DELIVERED_ARTIFACT_RETENTION_MS_V1,
+      10 + FULL_REPORT_RETENTION_MS_V1,
+    );
+
+    expect(await sweepFileExportJobRetentionV1(p, now)).toMatchObject({
+      payloadReleases: 1,
+      historyDeleted: 0,
+    });
+    const retained = (await p.jobs.get(claimed.id))!;
+    expect(retained).toMatchObject({
+      artifactReleasedAt: now,
+      reportReleasedAt: now,
+      reportSummary: {
+        issues: { warning: 1 },
+      },
+    });
+    expect(retained.artifact).toBeUndefined();
+    expect(retained.reportRef).toBeUndefined();
+    await expect(all(p.artifacts.read(staged.ref))).rejects.toThrow("not committed");
+    await expect(stat(reportPath)).rejects.toMatchObject({ code: "ENOENT" });
+    expect(await all(p.spool.read(requestPin))).toBe("template");
+
+    const restarted = createFileExportJobPersistence({
+      rootDir: dir,
+      now: () => now,
+    });
+    expect(await sweepFileExportJobRetentionV1(restarted, now)).toEqual({
+      payloadReleases: 0,
+      historyDeleted: 0,
+      tombstonesReconciled: 0,
+    });
   });
 
   it("observes durable cross-instance cancellation without heartbeat journal flooding", async () => {

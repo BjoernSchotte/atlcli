@@ -17,6 +17,7 @@ import type {
   ExportJobEventQueryV1,
   ExportJobFinalizeV1,
   ExportJobQueryV1,
+  ExportJobTombstoneQueryV1,
   ExportJobUpdateV1,
 } from "./store-contracts.js";
 import type {
@@ -46,6 +47,9 @@ export interface ExportJobStore {
   deliver(id: string, expectedRevision: number, at: number): Promise<ExportJobSnapshotV1>;
   /** Succeeded jobs without `deliveredAt` or `dismissedAt` are never eligible. */
   deleteTerminal(query: ExportJobDeleteQueryV1): Promise<ExportJobDeleteResultV1>;
+  listTombstones(
+    query?: ExportJobTombstoneQueryV1,
+  ): Promise<import("./store-contracts.js").ExportJobTombstoneV1[]>;
   getTombstone(jobId: string): Promise<import("./store-contracts.js").ExportJobTombstoneV1 | undefined>;
   markTombstoneCleanupComplete(
     jobId: string,

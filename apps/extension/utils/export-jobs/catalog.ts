@@ -13,6 +13,7 @@ import {
   updateExportJobStats,
   checkpointExportJob,
   updateExportJobTerminalMetadata,
+  releaseExportJobRetention,
   type ExportJobClaimV1,
   type ExportJobCreateV1,
   type ExportJobDeleteQueryV1,
@@ -24,6 +25,7 @@ import {
   type ExportJobEventReaderV1,
   type ExportJobFinalizeV1,
   type ExportJobQueryV1,
+  type ExportJobTombstoneQueryV1,
   type ExportJobRequestV1,
   type ExportJobSnapshotV1,
   type ExportJobStore,
@@ -92,6 +94,34 @@ interface CursorRow {
   groupKey: string;
 }
 
+interface RetentionByteObjectRow {
+  id: string;
+  jobId: string;
+  leaseEpoch: number;
+  namespace?: string;
+  key?: string;
+  ref?: string;
+}
+
+interface RetentionExecutorResultRow {
+  key: string;
+  jobId: string;
+  reportRef: string;
+  reportSpoolRef: {
+    jobId: string;
+    leaseEpoch: number;
+    namespace: string;
+    key: string;
+  };
+}
+
+interface RetentionFenceRow {
+  key: string;
+  kind: "byte-job-fence";
+  jobId: string;
+  closedAt: number;
+}
+
 export interface LegacyPdfBridgeV1 {
   legacyJobId: string;
   outerJobId: string;
@@ -130,6 +160,8 @@ export interface ExtensionExportCatalogOptions {
   blockedTimeoutMs?: number;
   /** Transaction fault seam used to prove job+request creation is atomic. */
   afterRequestWrite?: () => void;
+  /** Transaction fault seam used to prove payload release is atomic. */
+  afterRetentionByteDelete?: () => void;
 }
 
 function clone<T>(value: T): T {
@@ -163,6 +195,55 @@ function replayPayload(request: ExportJobRequestV1, includeOutput: boolean): str
 
 function requestRef(request: ExportJobRequestV1): string {
   return `request:${request.id}`;
+}
+
+function retentionJobFenceKey(jobId: string): string {
+  return `byte-fence:job:${jobId.length}:${jobId}`;
+}
+
+async function deleteRetentionByteObject(
+  tx: IDBTransaction,
+  objectId: string,
+): Promise<void> {
+  const chunks = tx.objectStore(EXTENSION_EXPORT_BYTE_CHUNKS_STORE);
+  const index = chunks.index("objectId");
+  while (true) {
+    const keys = await extensionExportRequestResult(index.getAllKeys(objectId, 128));
+    if (keys.length === 0) break;
+    for (const key of keys) {
+      await extensionExportRequestResult(chunks.delete(key));
+    }
+  }
+  await extensionExportRequestResult(
+    tx.objectStore(EXTENSION_EXPORT_BYTE_OBJECTS_STORE).delete(objectId),
+  );
+}
+
+async function closeRetentionJobWrites(
+  tx: IDBTransaction,
+  jobId: string,
+  at: number,
+): Promise<void> {
+  const store = tx.objectStore(EXTENSION_EXPORT_COORDINATION_STORE);
+  const key = retentionJobFenceKey(jobId);
+  const existing = await extensionExportRequestResult(
+    store.get(key),
+  ) as RetentionFenceRow | undefined;
+  if (existing) {
+    if (existing.kind !== "byte-job-fence" || existing.jobId !== jobId) {
+      throw new ExtensionExportCatalogError(
+        "retention-protected",
+        "The export byte fence belongs to a different job.",
+      );
+    }
+    return;
+  }
+  await extensionExportRequestResult(store.add({
+    key,
+    kind: "byte-job-fence",
+    jobId,
+    closedAt: at,
+  } satisfies RetentionFenceRow));
 }
 
 function locatorLabel(request: ExportJobRequestV1): string {
@@ -449,6 +530,8 @@ function applyUpdate(
       return checkpointExportJob(snapshot, { ...update, observedAt });
     case "stats":
       return updateExportJobStats(snapshot, { ...update, observedAt });
+    case "retention":
+      return releaseExportJobRetention(snapshot, update);
   }
 }
 
@@ -557,6 +640,13 @@ export class IndexedDbExportJobCatalog implements ExportJobStore, ExportJobEvent
         .filter((job) => query.includeDismissed === true || job.dismissedAt === undefined)
         .filter((job) => query.createdAfter === undefined || job.createdAt > query.createdAfter)
         .filter((job) => query.createdBefore === undefined || job.createdAt < query.createdBefore)
+        .filter(
+          (job) =>
+            query.cursorBefore === undefined ||
+            job.createdAt < query.cursorBefore.createdAt ||
+            (job.createdAt === query.cursorBefore.createdAt &&
+              job.id.localeCompare(query.cursorBefore.id) < 0),
+        )
         .sort((left, right) => right.createdAt - left.createdAt || right.id.localeCompare(left.id))
         .slice(0, limit)
         .map(clone);
@@ -608,10 +698,56 @@ export class IndexedDbExportJobCatalog implements ExportJobStore, ExportJobEvent
   }
 
   async compareAndSet(update: ExportJobUpdateV1): Promise<ExportJobSnapshotV1> {
-    return withExtensionExportTransaction(this.#options, [JOBS], "readwrite", async (tx) => {
+    const stores: StoreName[] = update.kind === "retention"
+      ? [
+          JOBS,
+          EVENTS,
+          EXTENSION_EXPORT_COORDINATION_STORE,
+          EXTENSION_EXPORT_BYTE_OBJECTS_STORE,
+          EXTENSION_EXPORT_BYTE_CHUNKS_STORE,
+          EXTENSION_EXPORT_EXECUTOR_RESULTS_STORE,
+        ]
+      : [JOBS];
+    return withExtensionExportTransaction(this.#options, stores, "readwrite", async (tx) => {
       const store = tx.objectStore(JOBS);
       const row = requireRow(await extensionExportRequestResult(store.get(update.id)) as JobRow | undefined, update.id);
       const next = applyUpdate(row.snapshot, update, this.#now());
+      if (update.kind === "retention") {
+        await closeRetentionJobWrites(tx, update.id, update.at);
+        const objects = tx.objectStore(EXTENSION_EXPORT_BYTE_OBJECTS_STORE);
+        if (update.releaseArtifact && row.snapshot.artifact) {
+          const artifact = await extensionExportRequestResult(
+            objects.index("artifactRef").get(row.snapshot.artifact.ref),
+          ) as RetentionByteObjectRow | undefined;
+          if (artifact) await deleteRetentionByteObject(tx, artifact.id);
+        }
+        if (update.releaseReport) {
+          const results = tx.objectStore(EXTENSION_EXPORT_EXECUTOR_RESULTS_STORE);
+          const retainedResults = await extensionExportRequestResult(
+            results.index("jobId").getAll(update.id),
+          ) as RetentionExecutorResultRow[];
+          for (const result of retainedResults) {
+            const ref = result.reportSpoolRef;
+            const reportObject = await extensionExportRequestResult(
+              objects.index("spoolRef").get([
+                ref.jobId,
+                ref.leaseEpoch,
+                ref.namespace,
+                ref.key,
+              ]),
+            ) as RetentionByteObjectRow | undefined;
+            if (reportObject) await deleteRetentionByteObject(tx, reportObject.id);
+            await extensionExportRequestResult(results.delete(result.key));
+          }
+          const events = tx.objectStore(EVENTS);
+          for (const event of await extensionExportRequestResult(
+            events.index("jobId").getAll(update.id),
+          ) as EventRow[]) {
+            await extensionExportRequestResult(events.delete([event.jobId, event.seq]));
+          }
+        }
+        this.#options.afterRetentionByteDelete?.();
+      }
       await extensionExportRequestResult(store.put(replaceSnapshot(row, next)));
       return clone(next);
     });
@@ -769,6 +905,7 @@ export class IndexedDbExportJobCatalog implements ExportJobStore, ExportJobEvent
       const events = tx.objectStore(EVENTS);
       const candidates = (await extensionExportRequestResult(jobs.getAll()) as JobRow[])
         .filter((row) => isExportJobTerminal(row.snapshot.state))
+        .filter((row) => query.ids === undefined || query.ids.includes(row.id))
         .filter((row) => !query.states || query.states.includes(row.snapshot.state as never))
         .filter((row) => row.snapshot.finishedAt !== undefined && row.snapshot.finishedAt < query.finishedBefore)
         .filter((row) => row.snapshot.state !== "succeeded" || row.snapshot.deliveredAt !== undefined || row.snapshot.dismissedAt !== undefined)
@@ -813,6 +950,26 @@ export class IndexedDbExportJobCatalog implements ExportJobStore, ExportJobEvent
       return { deletedJobIds, tombstoneRefs };
       },
     );
+  }
+
+  async listTombstones(
+    query: ExportJobTombstoneQueryV1 = {},
+  ): Promise<ExportJobTombstoneV1[]> {
+    const limit = boundedLimit(query.limit, DEFAULT_LIST_LIMIT, MAX_LIST_LIMIT);
+    return withExtensionExportTransaction(this.#options, [TOMBSTONES], "readonly", async (tx) =>
+      (await extensionExportRequestResult(
+        tx.objectStore(TOMBSTONES).getAll(),
+      ) as ExportJobTombstoneV1[])
+        .filter(
+          (value) =>
+            query.cleanupPending !== true || value.cleanupCompletedAt === undefined,
+        )
+        .sort(
+          (left, right) =>
+            left.deletedAt - right.deletedAt || left.jobId.localeCompare(right.jobId),
+        )
+        .slice(0, limit)
+        .map(clone));
   }
 
   async getTombstone(jobId: string): Promise<ExportJobTombstoneV1 | undefined> {

@@ -16,6 +16,7 @@ import type {
   ExportJobEventPageV1,
   ExportJobFinalizeV1,
   ExportJobQueryV1,
+  ExportJobTombstoneQueryV1,
   ExportJobTombstoneV1,
   ExportJobUpdateV1,
 } from "./store-contracts.js";
@@ -53,6 +54,7 @@ import {
   updateExportJobProgress,
   updateExportJobStats,
   updateExportJobTerminalMetadata,
+  releaseExportJobRetention,
   type ExportJobHeartbeatInputV1,
   type ExportJobCheckpointInputV1,
   type ExportJobLeaseReclaimInputV1,
@@ -347,6 +349,13 @@ export class InMemoryExportJobStore implements ExportJobStore, ExportJobEventRea
       .filter((job) => query.includeDismissed === true || job.dismissedAt === undefined)
       .filter((job) => query.createdAfter === undefined || job.createdAt > query.createdAfter)
       .filter((job) => query.createdBefore === undefined || job.createdAt < query.createdBefore)
+      .filter(
+        (job) =>
+          query.cursorBefore === undefined ||
+          job.createdAt < query.cursorBefore.createdAt ||
+          (job.createdAt === query.cursorBefore.createdAt &&
+            job.id.localeCompare(query.cursorBefore.id) < 0),
+      )
       .sort((a, b) => b.createdAt - a.createdAt || b.id.localeCompare(a.id))
       .slice(0, limit)
       .map(clone);
@@ -489,6 +498,18 @@ export class InMemoryExportJobStore implements ExportJobStore, ExportJobEventRea
           at: update.at,
           stats: update.stats,
         });
+      case "retention":
+        {
+          const next = await this.#replace(update.id, (snapshot) =>
+          releaseExportJobRetention(snapshot, update),
+          );
+          if (update.releaseArtifact) await this.#artifacts.cleanupJob(update.id);
+          if (update.releaseReport) {
+            this.#events.delete(update.id);
+            this.#nextEventSeq.set(update.id, 1);
+          }
+          return next;
+        }
     }
   }
 
@@ -664,6 +685,7 @@ export class InMemoryExportJobStore implements ExportJobStore, ExportJobEventRea
     const limit = boundedLimit(query.limit, DEFAULT_LIST_LIMIT, MAX_LIST_LIMIT);
     const candidates = [...this.#jobs.values()]
       .filter((job) => isExportJobTerminal(job.state))
+      .filter((job) => query.ids === undefined || query.ids.includes(job.id))
       .filter((job) => query.states === undefined || query.states.includes(job.state as never))
       .filter((job) => job.finishedAt !== undefined && job.finishedAt < query.finishedBefore)
       .filter(
@@ -715,6 +737,23 @@ export class InMemoryExportJobStore implements ExportJobStore, ExportJobEventRea
       tombstoneRefs.push(ref);
     }
     return { deletedJobIds, tombstoneRefs };
+  }
+
+  async listTombstones(
+    query: ExportJobTombstoneQueryV1 = {},
+  ): Promise<ExportJobTombstoneV1[]> {
+    const limit = boundedLimit(query.limit, DEFAULT_LIST_LIMIT, MAX_LIST_LIMIT);
+    return [...this.#tombstones.values()]
+      .filter(
+        (tombstone) =>
+          query.cleanupPending !== true || tombstone.cleanupCompletedAt === undefined,
+      )
+      .sort(
+        (left, right) =>
+          left.deletedAt - right.deletedAt || left.jobId.localeCompare(right.jobId),
+      )
+      .slice(0, limit)
+      .map(clone);
   }
 
   async getTombstone(jobId: string): Promise<ExportJobTombstoneV1 | undefined> {

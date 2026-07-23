@@ -15,6 +15,7 @@ import {
   extensionDocxTemplateSpoolRef,
 } from "../../../utils/export-jobs/docx-template.js";
 import { submitExtensionPdfExport } from "../../../utils/export-jobs/pdf-submit.js";
+import { sweepExtensionExportJobRetention } from "../../../utils/export-jobs/retention.js";
 import { idbTemplateLibrary } from "../../../utils/templates/library.js";
 import {
   chromeDurableJobsStore,
@@ -26,6 +27,10 @@ import type {
   DocxExportJobRequestV1,
   ExportJobRequestV1,
   PdfExportJobRequestV1,
+} from "@atlcli/export-jobs";
+import {
+  DELIVERED_ARTIFACT_RETENTION_MS_V1,
+  FULL_REPORT_RETENTION_MS_V1,
 } from "@atlcli/export-jobs";
 
 const PACKED_BADGE_STATE_KEY = "export-activity-badge-state-v1";
@@ -511,6 +516,106 @@ const probe = {
           }
         : {}),
     };
+  },
+  async retainCompleted(ids: string[]): Promise<{
+    sweep: {
+      payloadReleases: number;
+      historyDeleted: number;
+      tombstonesReconciled: number;
+    };
+    jobs: Array<{
+      id: string;
+      format: string;
+      artifactReleasedAt?: number;
+      reportReleasedAt?: number;
+      reportCompleteness?: string;
+      artifactReadable: boolean;
+      reportReadable: boolean;
+      eventCount: number;
+      requestTemplatePinned: boolean;
+    }>;
+  }> {
+    const catalog = new IndexedDbExportJobCatalog();
+    const byteStore = new IndexedDbExportByteStore();
+    const originals: Array<{
+      id: string;
+      format: "pdf" | "docx";
+      artifactRef: string;
+      reportRef: string;
+      deliveredAt: number;
+      finishedAt: number;
+    }> = [];
+    for (const id of ids) {
+      let snapshot = await catalog.get(id);
+      if (
+        !snapshot ||
+        snapshot.state !== "succeeded" ||
+        !snapshot.artifact ||
+        !snapshot.reportRef ||
+        snapshot.finishedAt === undefined
+      ) {
+        throw new Error(`Packed retention fixture ${id} is not a complete export.`);
+      }
+      if (snapshot.deliveredAt === undefined) {
+        snapshot = await catalog.deliver(
+          id,
+          snapshot.revision,
+          snapshot.finishedAt,
+        );
+      }
+      originals.push({
+        id,
+        format: snapshot.format,
+        artifactRef: snapshot.artifact!.ref,
+        reportRef: snapshot.reportRef!,
+        deliveredAt: snapshot.deliveredAt!,
+        finishedAt: snapshot.finishedAt!,
+      });
+    }
+    const at = Math.max(...originals.flatMap((job) => [
+      job.deliveredAt + DELIVERED_ARTIFACT_RETENTION_MS_V1,
+      job.finishedAt + FULL_REPORT_RETENTION_MS_V1,
+    ]));
+    const sweep = await sweepExtensionExportJobRetention({
+      catalog,
+      bytes: byteStore,
+      now: () => at,
+    });
+    const jobs = await Promise.all(originals.map(async (original) => {
+      const snapshot = await catalog.get(original.id);
+      if (!snapshot) {
+        throw new Error(`Packed retention unexpectedly deleted ${original.id}.`);
+      }
+      let artifactReadable = true;
+      try {
+        await Array.fromAsync(byteStore.read(original.artifactRef));
+      } catch {
+        artifactReadable = false;
+      }
+      const report = original.format === "pdf"
+        ? await readExtensionPdfExportReport(original.reportRef)
+        : await readExtensionDocxExportReport(original.reportRef);
+      return {
+        id: original.id,
+        format: original.format,
+        ...(snapshot.artifactReleasedAt !== undefined
+          ? { artifactReleasedAt: snapshot.artifactReleasedAt }
+          : {}),
+        ...(snapshot.reportReleasedAt !== undefined
+          ? { reportReleasedAt: snapshot.reportReleasedAt }
+          : {}),
+        ...(snapshot.reportSummary
+          ? { reportCompleteness: snapshot.reportSummary.completeness }
+          : {}),
+        artifactReadable,
+        reportReadable: report !== undefined,
+        eventCount: (await catalog.readEvents(original.id)).events.length,
+        requestTemplatePinned: original.format === "docx" &&
+          await byteStore.stat(extensionDocxTemplateSpoolRef(original.id)) !==
+            undefined,
+      };
+    }));
+    return { sweep, jobs };
   },
   async submitPdf(id: string): Promise<string> {
     const catalog = new IndexedDbExportJobCatalog();

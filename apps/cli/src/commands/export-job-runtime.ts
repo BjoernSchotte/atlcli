@@ -13,6 +13,7 @@ import {
   deliverFileExportArtifact,
   readFileExportReport,
   reconcileStaleExportJobs,
+  sweepFileExportJobRetentionV1,
   runClaimedFileExportJob,
   type FileExportJobPersistenceV1,
 } from "@atlcli/export-node";
@@ -304,6 +305,7 @@ export async function runOrdinaryExportJobV1<Request extends ExportJobRequestV1>
       { spool: persistence.spool, artifacts: persistence.artifacts },
       now(),
     );
+    await sweepFileExportJobRetentionV1(persistence, now());
 
     for (;;) {
       if (abort.signal.aborted) {

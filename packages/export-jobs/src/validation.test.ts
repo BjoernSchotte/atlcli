@@ -404,6 +404,43 @@ describe("parseExportJobSnapshotV1", () => {
     ).toThrow("snapshot.acknowledgedAt");
   });
 
+  it("accepts released payload markers and rejects dangling retained refs", () => {
+    const released = changed(snapshot("succeeded"), (copy) => {
+      delete copy.artifact;
+      copy.artifactReleasedAt = 200;
+      copy.reportSummary = {
+        issues: { info: 0, warning: 1, error: 0 },
+        topCodes: [],
+        completeness: "partial",
+      };
+      copy.reportReleasedAt = 200;
+    });
+    expect(parseExportJobSnapshotV1(released)).toMatchObject({
+      artifactReleasedAt: 200,
+      reportReleasedAt: 200,
+      reportSummary: {
+        issues: { info: 0, warning: 1, error: 0 },
+        topCodes: [],
+        completeness: "partial",
+      },
+    });
+    expect(() =>
+      parseExportJobSnapshotV1(
+        changed(snapshot("succeeded"), (copy) => {
+          copy.artifactReleasedAt = 200;
+        }),
+      ),
+    ).toThrow("cannot coexist");
+    expect(() =>
+      parseExportJobSnapshotV1(
+        changed(snapshot("succeeded"), (copy) => {
+          copy.reportRef = "report:job-1";
+          copy.reportReleasedAt = 200;
+        }),
+      ),
+    ).toThrow("cannot coexist");
+  });
+
   it.each([
     ["renderer", (copy: any) => (copy.renderer = "docx-typescript")],
     ["request ref", (copy: any) => (copy.requestRef = "")],

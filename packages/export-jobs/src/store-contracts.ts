@@ -27,6 +27,8 @@ export interface ExportJobQueryV1 {
   includeDismissed?: boolean;
   createdAfter?: number;
   createdBefore?: number;
+  /** Exclusive stable cursor for descending `createdAt`, then descending `id` order. */
+  cursorBefore?: { createdAt: number; id: string };
   limit?: number;
 }
 
@@ -100,6 +102,14 @@ export interface ExportJobStatsUpdateV1 extends ExportJobCasBaseV1 {
   stats: ExportJobStatsV1;
 }
 
+/** CAS release of independently retained artifact and report/event payloads. */
+export interface ExportJobRetentionUpdateV1 extends ExportJobCasBaseV1 {
+  kind: "retention";
+  at: number;
+  releaseArtifact: boolean;
+  releaseReport: boolean;
+}
+
 /**
  * Closed CAS command union. Adapters dispatch to the pure reducers and cannot
  * patch arbitrary snapshot fields.
@@ -110,7 +120,8 @@ export type ExportJobUpdateV1 =
   | ExportJobProgressUpdateV1
   | ExportJobReclaimExpiredUpdateV1
   | ExportJobCheckpointUpdateV1
-  | ExportJobStatsUpdateV1;
+  | ExportJobStatsUpdateV1
+  | ExportJobRetentionUpdateV1;
 
 /** Revision- and lease-fenced append to the bounded event protocol. */
 export interface ExportJobEventAppendV1 {
@@ -154,7 +165,15 @@ export interface ExportJobFinalizeV1 {
 /** Retention query restricted to already-terminal job records. */
 export interface ExportJobDeleteQueryV1 {
   finishedBefore: number;
+  /** Optional exact allow-list used by the common compact-history planner. */
+  ids?: string[];
   states?: Array<Extract<ExportJobState, "succeeded" | "failed" | "cancelled" | "interrupted">>;
+  limit?: number;
+}
+
+/** Bounded tombstone query used to resume physical cleanup after a host restart. */
+export interface ExportJobTombstoneQueryV1 {
+  cleanupPending?: boolean;
   limit?: number;
 }
 
