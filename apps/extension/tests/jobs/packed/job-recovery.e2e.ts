@@ -17,6 +17,7 @@ const JOB_E = "823e4567-e89b-42d3-a456-426614174000";
 const JOB_F = "923e4567-e89b-42d3-a456-426614174000";
 const JOB_G = "a23e4567-e89b-42d3-a456-426614174000";
 const JOB_H = "b23e4567-e89b-42d3-a456-426614174000";
+const JOB_I = "c23e4567-e89b-42d3-a456-426614174000";
 
 let context: BrowserContext;
 let extensionId: string;
@@ -83,6 +84,7 @@ class ChildTargetSession {
 async function installOffscreenFetchStub(
   holdPageIds: string[] = [],
   storageByPageId: Record<string, string> = {},
+  authPageIds: string[] = [],
 ): Promise<void> {
   await packedOffscreen?.close();
   const root = await context.newCDPSession(page);
@@ -97,6 +99,7 @@ async function installOffscreenFetchStub(
   packedOffscreen = new ChildTargetSession(root, attached.sessionId);
   const expression = `(() => {
     const held = new Set(${JSON.stringify(holdPageIds)});
+    const authFailures = new Set(${JSON.stringify(authPageIds)});
     const storageByPageId = ${JSON.stringify(storageByPageId)};
     const releases = Object.create(null);
     globalThis.__atlcliPackedFetchReleases = releases;
@@ -105,6 +108,12 @@ async function installOffscreenFetchStub(
       const match = url.pathname.match(/\\/rest\\/api\\/content\\/([^/]+)/);
       if (!match) return new Response("{}", { status: 404, headers: { "content-type": "application/json" } });
       const pageId = decodeURIComponent(match[1]);
+      if (authFailures.has(pageId)) {
+        return new Response(JSON.stringify({ message: "session expired" }), {
+          status: 401,
+          headers: { "content-type": "application/json" }
+        });
+      }
       if (held.has(pageId)) {
         await new Promise((resolve) => { releases[pageId] = resolve; });
       }
@@ -808,6 +817,51 @@ test("a submitted PDF survives extension-surface navigation, tab change, and clo
     artifact: { filename: `Packed page ${JOB_D}.pdf` },
   });
   expect(succeeded.snapshot.deliveredAt).toBeUndefined();
+});
+
+test("a real session failure waits for explicit Resume and then succeeds", async () => {
+  await ensureCatalog();
+  await installOffscreenFetchStub([], {}, [JOB_I]);
+  await expect(page.evaluate(async (jobId) => {
+    const probe = (globalThis as unknown as {
+      exportJobStoreProbe: { submitPdf(id: string): Promise<string> };
+    }).exportJobStoreProbe;
+    return probe.submitPdf(jobId);
+  }, JOB_I)).resolves.toBe(JOB_I);
+
+  const waiting = await waitForJobState(JOB_I, "waiting");
+  expect(waiting.snapshot).toMatchObject({
+    state: "waiting",
+    waiting: { reason: "auth" },
+    leaseEpoch: 1,
+    attempt: 1,
+    error: {
+      code: "auth.session-expired",
+      category: "auth",
+      retryable: true,
+    },
+  });
+  await expect(sendWake([JOB_I])).resolves.toEqual({
+    kind: "jobs:wake-result",
+  });
+  expect((await readJob(JOB_I)).snapshot.state).toBe("waiting");
+
+  await installOffscreenFetchStub();
+  await expect(page.evaluate(async (jobId) => {
+    const probe = (globalThis as unknown as {
+      exportJobStoreProbe: { resumeJob(id: string): Promise<boolean> };
+    }).exportJobStoreProbe;
+    return probe.resumeJob(jobId);
+  }, JOB_I)).resolves.toBe(true);
+
+  const succeeded = await waitForJobState(JOB_I, "succeeded");
+  expect(succeeded.snapshot).toMatchObject({
+    state: "succeeded",
+    leaseEpoch: 2,
+    attempt: 2,
+    recoveryCount: 0,
+    artifact: { filename: `Packed page ${JOB_I}.pdf` },
+  });
 });
 
 test("packed Activity and toolbar project mixed PDF/DOCX states durably", async () => {

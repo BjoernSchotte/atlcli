@@ -595,6 +595,9 @@ const probe = {
     });
     return submitted.snapshot.id;
   },
+  async resumeJob(id: string): Promise<boolean> {
+    return chromeDurableJobsStore().resume(`common:${id}`);
+  },
   async renderReservations(): Promise<{
     secondWaited: boolean;
     activeAfterHandoff: number;

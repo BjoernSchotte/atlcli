@@ -10,6 +10,7 @@ import {
 } from "@atlcli/export-jobs";
 import { IndexedDbExportJobCatalog } from "./catalog.js";
 import { IndexedDbExportByteStore } from "./chunk-store.js";
+import { classifyAtlassianSessionError } from "../session-error.js";
 
 export interface ExtensionExportExecutionRuntime {
   context: ExportJobExecutionContext;
@@ -221,20 +222,44 @@ export async function runClaimedExtensionExportJob(
       });
     }
     if (current.state === "running") {
+      const occurredAt = now();
+      if (classifyAtlassianSessionError(error) === "not-logged-in") {
+        return options.catalog.compareAndSet({
+          kind: "transition",
+          id: current.id,
+          expectedRevision: current.revision,
+          leaseEpoch: current.leaseEpoch,
+          to: "waiting",
+          waiting: { reason: "auth" },
+          // The replay-safe request is the initial durable checkpoint. A later
+          // executor checkpoint supersedes it and is preserved here instead.
+          checkpointRef: current.checkpointRef ?? current.requestRef,
+          at: occurredAt,
+          error: {
+            code: "auth.session-expired",
+            message:
+              "Your Atlassian session expired. Sign in again in this browser, then resume the export.",
+            category: "auth",
+            retryable: true,
+            ...(current.stage ? { stage: current.stage } : {}),
+            occurredAt,
+          },
+        });
+      }
       return options.catalog.compareAndSet({
         kind: "transition",
         id: current.id,
         expectedRevision: current.revision,
         leaseEpoch: current.leaseEpoch,
         to: "failed",
-        at: now(),
+        at: occurredAt,
         error: {
           code: "executor.failed",
           message: error instanceof Error ? error.message : String(error),
           category: "unknown",
           retryable: false,
           ...(current.stage ? { stage: current.stage } : {}),
-          occurredAt: now(),
+          occurredAt,
         },
       });
     }

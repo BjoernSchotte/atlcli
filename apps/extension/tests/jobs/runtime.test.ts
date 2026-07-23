@@ -151,6 +151,88 @@ describe("extension export execution runtime", () => {
     });
   });
 
+  it("pauses an expired Atlassian session at a replay-safe auth checkpoint", async () => {
+    const factory = new IDBFactory();
+    let now = 10;
+    const catalog = new IndexedDbExportJobCatalog({ factory, now: () => now });
+    const bytes = new IndexedDbExportByteStore({ factory, now: () => now });
+    const durable = createExtensionPdfJobRequest(request(), {
+      requestId: "job-auth-wait",
+      now: () => now,
+    });
+    await catalog.create({ request: durable });
+    const claimed = await catalog.claimNext({
+      ids: [durable.id],
+      ownerId: "offscreen:first-session",
+      now,
+      leaseDurationMs: 30_000,
+    });
+    if (!claimed) throw new Error("Expected the auth test job to be claimed.");
+
+    now = 20;
+    const waiting = await runClaimedExtensionExportJob({
+      claimed,
+      catalog,
+      bytes,
+      executor: {
+        format: "pdf",
+        execute: async () => {
+          throw new Error(
+            "Confluence API error (401): authentication redirect to Atlassian login",
+          );
+        },
+      },
+      now: () => now,
+      heartbeatIntervalMs: 60_000,
+      cancelPollMs: 60_000,
+      spoolLimits: {
+        maxObjectBytes: 1024,
+        maxJobBytes: 2048,
+        maxTotalBytes: 4096,
+      },
+    });
+
+    expect(waiting).toMatchObject({
+      id: durable.id,
+      state: "waiting",
+      waiting: { reason: "auth" },
+      checkpointRef: waiting.requestRef,
+      leaseEpoch: 1,
+      attempt: 1,
+      error: {
+        code: "auth.session-expired",
+        category: "auth",
+        retryable: true,
+        occurredAt: 20,
+      },
+    });
+    expect(waiting.lease).toBeUndefined();
+    expect(waiting.finishedAt).toBeUndefined();
+
+    expect(
+      await catalog.claimNext({
+        ids: [durable.id],
+        ownerId: "offscreen:automatic",
+        now: 21,
+        leaseDurationMs: 30_000,
+      }),
+    ).toBeUndefined();
+
+    const resumed = await catalog.claimNext({
+      ids: [durable.id],
+      resumeWaitingIds: [durable.id],
+      ownerId: "offscreen:after-sign-in",
+      now: 22,
+      leaseDurationMs: 30_000,
+    });
+    expect(resumed).toMatchObject({
+      state: "running",
+      leaseEpoch: 2,
+      attempt: 2,
+      checkpointRef: waiting.requestRef,
+    });
+  });
+
   it("durably cancels DOCX execution from every observable pipeline stage", async () => {
     const stages: ExportJobStage[] = [
       "discover",
