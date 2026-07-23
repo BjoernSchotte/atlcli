@@ -8,7 +8,10 @@ import {
 import { BrowserRenderReservationPoolV1 } from "../../../utils/export-jobs/render-reservation.js";
 import { createExtensionExportQueueRunner } from "../../../utils/export-jobs/queue-runner.js";
 import { readExtensionPdfExportReport } from "../../../utils/export-jobs/executor-store.js";
+import { readExtensionDocxExportReport } from "../../../utils/export-jobs/docx-executor-store.js";
+import { submitExtensionDocxExport } from "../../../utils/export-jobs/docx-submit.js";
 import { submitExtensionPdfExport } from "../../../utils/export-jobs/pdf-submit.js";
+import { idbTemplateLibrary } from "../../../utils/templates/library.js";
 import { chromeDurableJobsStore } from "../../../utils/jobs/store.js";
 import { deletePdfJob } from "../../../utils/pdf/job-store.js";
 
@@ -146,6 +149,33 @@ const probe = {
       ...(report ? { filename: report.filename, complete: report.complete } : {}),
     };
   },
+  async retainedDocx(
+    artifactRef: string,
+    reportRef: string,
+  ): Promise<{
+    prefix: number[];
+    byteLength: number;
+    filename?: string;
+    complete?: boolean;
+    renderedDiagrams?: number;
+  }> {
+    const stored: number[] = [];
+    for await (const chunk of new IndexedDbExportByteStore().read(artifactRef)) {
+      stored.push(...chunk);
+    }
+    const report = await readExtensionDocxExportReport(reportRef);
+    return {
+      prefix: stored.slice(0, 2),
+      byteLength: stored.length,
+      ...(report
+        ? {
+            filename: report.filename,
+            complete: report.complete,
+            renderedDiagrams: report.renderedDiagrams,
+          }
+        : {}),
+    };
+  },
   async submitPdf(id: string): Promise<string> {
     const catalog = new IndexedDbExportJobCatalog();
     const submitted = await submitExtensionPdfExport({
@@ -162,6 +192,60 @@ const probe = {
         wordCount: 6,
         attachments: [],
       },
+    }, {
+      catalog,
+      requestId: id,
+      wake: async (jobIds) => {
+        const response = await chrome.runtime.sendMessage({
+          kind: "jobs:wake",
+          jobIds,
+        }) as { kind?: string; claimedJobId?: string; error?: string } | undefined;
+        return response?.kind === "jobs:wake-result"
+          ? {
+              ...(response.claimedJobId
+                ? { claimedJobId: response.claimedJobId }
+                : {}),
+              ...(response.error ? { error: response.error } : {}),
+            }
+          : { error: "No background queue response." };
+      },
+    });
+    return submitted.snapshot.id;
+  },
+  async submitDocx(id: string, templateValues: number[]): Promise<string> {
+    const templateBytes = Uint8Array.from(templateValues);
+    const library = idbTemplateLibrary({
+      siteOrigin: "https://site.atlassian.net",
+    });
+    const entry = await library.add({
+      name: "packed-template.docx",
+      displayName: "Packed template",
+      bytes: templateBytes.slice().buffer,
+      templateId: `packed-${id}`,
+    });
+    const catalog = new IndexedDbExportJobCatalog();
+    const submitted = await submitExtensionDocxExport({
+      pageUrl: `https://site.atlassian.net/wiki/spaces/DOCS/pages/${id}/Packed`,
+      page: {
+        details: {
+          id,
+          title: `Packed DOCX ${id}`,
+          version: 1,
+          spaceKey: "DOCS",
+          storage: "<p>Panel-owned source must not be retained</p>",
+        },
+        markdown: "Panel-owned source must not be retained",
+        wordCount: 6,
+        attachments: [],
+      },
+      template: {
+        name: entry.fileName,
+        uploadedAt: Date.parse(entry.uploadedAt),
+        bytes: templateBytes.slice().buffer,
+        recordKey: entry.recordKey,
+        sha256: entry.sha256,
+      },
+      resolveMacros: false,
     }, {
       catalog,
       requestId: id,

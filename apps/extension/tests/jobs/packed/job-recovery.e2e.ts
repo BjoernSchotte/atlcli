@@ -4,6 +4,7 @@ import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { buildDocx, para } from "@atlcli/docx/fixtures";
 
 const EXTENSION_ROOT = fileURLToPath(new URL("../../..", import.meta.url));
 const OUTPUT_DIR = join(EXTENSION_ROOT, ".output", "chrome-mv3");
@@ -13,6 +14,7 @@ const JOB_C = "323e4567-e89b-42d3-a456-426614174000";
 const LEGACY = "423e4567-e89b-42d3-a456-426614174000";
 const JOB_D = "723e4567-e89b-42d3-a456-426614174000";
 const JOB_E = "823e4567-e89b-42d3-a456-426614174000";
+const JOB_F = "923e4567-e89b-42d3-a456-426614174000";
 
 let context: BrowserContext;
 let extensionId: string;
@@ -76,7 +78,10 @@ class ChildTargetSession {
   }
 }
 
-async function installOffscreenFetchStub(holdPageIds: string[] = []): Promise<void> {
+async function installOffscreenFetchStub(
+  holdPageIds: string[] = [],
+  storageByPageId: Record<string, string> = {},
+): Promise<void> {
   await packedOffscreen?.close();
   const root = await context.newCDPSession(page);
   const target = (await getTargets(root)).find(
@@ -90,6 +95,7 @@ async function installOffscreenFetchStub(holdPageIds: string[] = []): Promise<vo
   packedOffscreen = new ChildTargetSession(root, attached.sessionId);
   const expression = `(() => {
     const held = new Set(${JSON.stringify(holdPageIds)});
+    const storageByPageId = ${JSON.stringify(storageByPageId)};
     const releases = Object.create(null);
     globalThis.__atlcliPackedFetchReleases = releases;
     globalThis.fetch = async (input) => {
@@ -104,7 +110,7 @@ async function installOffscreenFetchStub(holdPageIds: string[] = []): Promise<vo
         id: pageId,
         type: "page",
         title: "Packed page " + pageId,
-        body: { storage: { value: "<p>Hello from packed Chromium</p>" } },
+        body: { storage: { value: storageByPageId[pageId] || "<p>Hello from packed Chromium</p>" } },
         version: { number: 1, when: "2026-07-23T00:00:00.000Z" },
         space: { key: "DOCS" },
         ancestors: [],
@@ -179,6 +185,7 @@ test.beforeEach(async () => {
     }
     await deleteDatabase("atlcli-export-jobs");
     await deleteDatabase("atlcli-pdf");
+    await deleteDatabase("atlcli-docx");
   });
 });
 
@@ -691,6 +698,69 @@ test("a submitted PDF survives extension-surface navigation, tab change, and clo
     artifact: { filename: `Packed page ${JOB_D}.pdf` },
   });
   expect(succeeded.snapshot.deliveredAt).toBeUndefined();
+});
+
+test("a packed offscreen DOCX runs PizZip, docxtemplater, and canvas diagram rasterization", async () => {
+  await ensureCatalog();
+  const storage =
+    '<p>before</p><ac:structured-macro ac:name="code">' +
+    '<ac:parameter ac:name="language">mermaid</ac:parameter>' +
+    '<ac:plain-text-body><![CDATA[graph TD\n  A --> B]]></ac:plain-text-body>' +
+    '</ac:structured-macro>';
+  await installOffscreenFetchStub([], { [JOB_F]: storage });
+  const templateBytes = buildDocx({
+    body: para("$scroll.title") + para("$scroll.content"),
+    date: new Date("2026-07-23T00:00:00.000Z"),
+  });
+  await expect(page.evaluate(async ({ jobId, template }) => {
+    const probe = (globalThis as unknown as {
+      exportJobStoreProbe: {
+        submitDocx(id: string, templateValues: number[]): Promise<string>;
+      };
+    }).exportJobStoreProbe;
+    return probe.submitDocx(jobId, template);
+  }, { jobId: JOB_F, template: [...templateBytes] })).resolves.toBe(JOB_F);
+
+  const succeeded = await waitForJobState(JOB_F, "succeeded");
+  expect(succeeded.snapshot).toMatchObject({
+    state: "succeeded",
+    format: "docx",
+    artifact: {
+      filename: `Packed page ${JOB_F}.docx`,
+      mediaType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    },
+    reportSummary: { completeness: "complete" },
+  });
+  if (!succeeded.snapshot.artifact || !succeeded.snapshot.reportRef) {
+    throw new Error("Packed DOCX did not retain both artifact and report refs.");
+  }
+  const retained = await page.evaluate(async ({ artifactRef, reportRef }) => {
+    const probe = (globalThis as unknown as {
+      exportJobStoreProbe: {
+        retainedDocx(
+          artifactRef: string,
+          reportRef: string,
+        ): Promise<{
+          prefix: number[];
+          byteLength: number;
+          filename?: string;
+          complete?: boolean;
+          renderedDiagrams?: number;
+        }>;
+      };
+    }).exportJobStoreProbe;
+    return probe.retainedDocx(artifactRef, reportRef);
+  }, {
+    artifactRef: succeeded.snapshot.artifact.ref,
+    reportRef: succeeded.snapshot.reportRef,
+  });
+  expect(retained).toEqual({
+    prefix: [80, 75],
+    byteLength: succeeded.snapshot.artifact.byteLength,
+    filename: `Packed page ${JOB_F}.docx`,
+    complete: true,
+    renderedDiagrams: 1,
+  });
 });
 
 test("the packed browser shares one FIFO heavy-render slot across PDF and DOCX", async () => {
