@@ -14,6 +14,7 @@ import type {
 } from "@atlcli/export-jobs";
 import {
   createTypescriptDocxExportJobExecutor,
+  type CreateTypescriptDocxExportJobExecutorOptionsV1,
   type DocxExportResultIntentV1,
   type DocxReadyToRenderCheckpointV1,
   type DocxReadyToRenderStoreV1,
@@ -44,7 +45,24 @@ function engineInput(rasterizer: SvgRasterizer): ExportInput {
 
 export interface DocxJobParityCaseOptions {
   createRasterizer?: () => SvgRasterizer;
+  fixture?: DocxJobParityFixtureV1;
 }
+
+export interface DocxJobParityFixtureV1 {
+  request(): Promise<DocxExportJobRequestV1>;
+  input(rasterizer: SvgRasterizer): ExportInput;
+  resolveInput?(
+    rasterizer: SvgRasterizer,
+  ): CreateTypescriptDocxExportJobExecutorOptionsV1["resolveInput"];
+  templateBytes: Uint8Array;
+  requireMediaPart?: boolean;
+}
+
+const DEFAULT_FIXTURE: DocxJobParityFixtureV1 = {
+  request: jobRequest,
+  input: engineInput,
+  templateBytes: DOCX_TEMPLATE_BYTES,
+};
 
 async function collect(source: AsyncIterable<Uint8Array>): Promise<Uint8Array> {
   const chunks: Uint8Array[] = [];
@@ -95,7 +113,11 @@ async function jobRequest(): Promise<DocxExportJobRequestV1> {
   };
 }
 
-async function jobRun(request: DocxExportJobRequestV1, rasterizer: SvgRasterizer) {
+async function jobRun(
+  request: DocxExportJobRequestV1,
+  rasterizer: SvgRasterizer,
+  fixture: DocxJobParityFixtureV1,
+) {
   let checkpoint: DocxReadyToRenderCheckpointV1 | undefined;
   let prepared: Parameters<DocxReadyToRenderStoreV1["commit"]>[0]["prepared"] | undefined;
   let stagedBytes: Uint8Array | undefined;
@@ -107,10 +129,14 @@ async function jobRun(request: DocxExportJobRequestV1, rasterizer: SvgRasterizer
   let templateResolutions = 0;
   let time = 0;
   const now = () => time++;
+  const fixtureResolveInput = fixture.resolveInput?.(rasterizer);
 
   const executor = createTypescriptDocxExportJobExecutor({
-    async resolveInput() {
-      const { templateBytes: _templateBytes, ...input } = engineInput(rasterizer);
+    async resolveInput(jobRequest, executionContext) {
+      if (fixtureResolveInput) {
+        return fixtureResolveInput(jobRequest, executionContext);
+      }
+      const { templateBytes: _templateBytes, ...input } = fixture.input(rasterizer);
       return input;
     },
     estimateRender() {
@@ -131,7 +157,7 @@ async function jobRun(request: DocxExportJobRequestV1, rasterizer: SvgRasterizer
         ) {
           throw new Error("DOCX parity template resolver received the wrong pinned identity.");
         }
-        return { recordKey: input.recordKey, bytes: DOCX_TEMPLATE_BYTES.slice() };
+        return { recordKey: input.recordKey, bytes: fixture.templateBytes.slice() };
       },
     },
     readyToRender: {
@@ -244,7 +270,6 @@ async function jobRun(request: DocxExportJobRequestV1, rasterizer: SvgRasterizer
       checkpointRef = ref;
     },
   };
-
   const result = await executor.execute(request, context);
   if (!stagedBytes || !stagedReport || !checkpoint || !stagedArtifact) {
     throw new Error("DOCX job executor did not stage its artifact, report, and checkpoint.");
@@ -279,12 +304,13 @@ export async function runDocxPreparedParityCase(
 ) {
   const createRasterizer = options.createRasterizer ??
     (() => canvasSvgRasterizer({ document }));
+  const fixture = options.fixture ?? DEFAULT_FIXTURE;
 
   const directRasterizer = createRasterizer();
-  const direct = await exportDocx(engineInput(directRasterizer));
+  const direct = await exportDocx(fixture.input(directRasterizer));
 
   const stagedRasterizer = createRasterizer();
-  const prepared = await prepareDocxExport(engineInput(stagedRasterizer));
+  const prepared = await prepareDocxExport(fixture.input(stagedRasterizer));
   const durableClone = structuredClone(prepared);
   const staged = await renderPreparedDocxExport(durableClone);
   if (durableClone.renderState !== undefined) {
@@ -295,7 +321,9 @@ export async function runDocxPreparedParityCase(
   }
 
   return {
-    ...assertDocxJobParity(direct, staged),
+    ...assertDocxJobParity(direct, staged, {
+      requireMediaPart: fixture.requireMediaPart,
+    }),
     usedPreparedStages: true,
     usedIndependentRasterizers: directRasterizer !== stagedRasterizer,
     ownedIndependentBytes: true,
@@ -306,14 +334,17 @@ export async function runDocxPreparedParityCase(
 export async function runDocxJobParityCase(options: DocxJobParityCaseOptions = {}) {
   const createRasterizer = options.createRasterizer ??
     (() => canvasSvgRasterizer({ document }));
+  const fixture = options.fixture ?? DEFAULT_FIXTURE;
   const directRasterizer = createRasterizer();
-  const direct = await exportDocx(engineInput(directRasterizer));
+  const direct = await exportDocx(fixture.input(directRasterizer));
   const jobRasterizer = createRasterizer();
-  const job = await jobRun(await jobRequest(), jobRasterizer);
+  const job = await jobRun(await fixture.request(), jobRasterizer, fixture);
   if (direct.bytes.buffer === job.bytes.buffer) {
     throw new Error("DOCX direct and job paths aliased the same output buffer.");
   }
-  const parity = assertDocxJobParity(direct, job);
+  const parity = assertDocxJobParity(direct, job, {
+    requireMediaPart: fixture.requireMediaPart,
+  });
   if (!job.checkpointRef.startsWith("ready:")) {
     throw new Error("DOCX job did not publish its ready-to-render checkpoint.");
   }

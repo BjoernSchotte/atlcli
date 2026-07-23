@@ -73,6 +73,7 @@ function equalBytes(left: Uint8Array, right: Uint8Array): boolean {
 export function assertDocxJobParity(
   direct: DocxParityRun,
   job: DocxParityRun,
+  options: { requireMediaPart?: boolean } = {},
 ): DocxJobParityResult {
   const directParts = readParts(direct.bytes);
   const jobParts = readParts(job.bytes);
@@ -106,7 +107,7 @@ export function assertDocxJobParity(
   }
 
   const mediaPartCount = directParts.filter(({ name }) => /^word\/media\//i.test(name)).length;
-  if (mediaPartCount === 0) {
+  if ((options.requireMediaPart ?? true) && mediaPartCount === 0) {
     throw new Error("DOCX job parity fixture did not render a media part.");
   }
 

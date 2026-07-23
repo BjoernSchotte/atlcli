@@ -1,15 +1,37 @@
 /** Browser conformance that starts with real ADF before either render engine. */
+import type { TreeSource } from "@atlcli/confluence";
 import { runExport } from "@atlcli/docx/browser";
 import { memoryTemplateSource } from "@atlcli/docx/browser-runtime";
 import { unzipDocx } from "@atlcli/docx/scan";
 import {
   ADF_CONFORMANCE_DETAILS,
   ADF_CONFORMANCE_METADATA,
+  ADF_CONFORMANCE_SOURCE,
   DOCX_TEMPLATE_BYTES,
   adfConformanceBlocks,
 } from "@atlcli/export-fixtures";
+import type {
+  DocxExportJobRequestV1,
+  PdfExportJobRequestV1,
+} from "@atlcli/export-jobs";
+import {
+  createConfluenceDocxResolveInputV1,
+  createConfluencePdfResolveInputV1,
+  resolveConfluenceSourceV1,
+  type ConfluenceSourceResolverPortV1,
+  type ResolvedConfluenceSourceV1,
+} from "@atlcli/export-wiring/jobs";
 import { validatePdfOutput } from "@atlcli/pdf/browser";
+import { sha256Hex } from "./digest.js";
+import {
+  runDocxJobParityCase,
+  type DocxJobParityFixtureV1,
+} from "./docx-job-parity-case.js";
 import { MemoryOutputSink } from "./memory-output.js";
+import {
+  runPdfJobParityCase,
+  type PdfJobParityFixtureV1,
+} from "./pdf-job-parity-case.js";
 import { HarnessPdfWorkerClient } from "./pdf-worker-client.js";
 import { compilePdf } from "./pdf-run.js";
 
@@ -28,19 +50,104 @@ export interface AdfSourceCaseResult {
   docxHasCardTitle: boolean;
   docxHasExtensionBody: boolean;
   docxHasVisibleMediaFallback: boolean;
+  pdfJobArtifactAndReportParity: boolean;
+  docxJobArtifactAndReportParity: boolean;
+}
+
+const SOURCE_REQUEST = {
+  kind: "confluence" as const,
+  siteOrigin: "https://example.invalid",
+  locator: {
+    kind: "page-id" as const,
+    id: ADF_CONFORMANCE_DETAILS.id,
+    version: ADF_CONFORMANCE_DETAILS.version,
+  },
+  scope: { kind: "page" as const },
+  completenessMode: "strict" as const,
+};
+
+function sourcePort(): ConfluenceSourceResolverPortV1 {
+  return {
+    createTreeSource(): TreeSource {
+      return {
+        async getPage(id) {
+          if (id !== ADF_CONFORMANCE_DETAILS.id) throw new Error("Unknown ADF fixture page.");
+          return {
+            id,
+            title: ADF_CONFORMANCE_DETAILS.title,
+            version: ADF_CONFORMANCE_DETAILS.version,
+            spaceKey: ADF_CONFORMANCE_DETAILS.spaceKey,
+            labels: ADF_CONFORMANCE_DETAILS.labels,
+            exportSource: {
+              primary: {
+                representation: "atlas_doc_format",
+                value: ADF_CONFORMANCE_SOURCE,
+              },
+              sourceVersion: ADF_CONFORMANCE_DETAILS.version,
+            },
+          };
+        },
+        async getPageVersion(id) {
+          if (id !== ADF_CONFORMANCE_DETAILS.id) throw new Error("Unknown ADF fixture page.");
+          return {
+            title: ADF_CONFORMANCE_DETAILS.title,
+            version: ADF_CONFORMANCE_DETAILS.version,
+          };
+        },
+        async getChildren() { return []; },
+        async getSpaceHomepageId() { return null; },
+      };
+    },
+  };
+}
+
+function assertResolvedParity(
+  direct: ResolvedConfluenceSourceV1,
+  job: ResolvedConfluenceSourceV1,
+): void {
+  const project = (value: ResolvedConfluenceSourceV1) => ({
+    blocks: value.blocks,
+    sourceNotes: value.sourceNotes,
+    complete: value.complete,
+    root: value.root,
+    pages: value.pages,
+    pageCount: value.pageCount,
+    sourceSummary: value.sourceSummary,
+  });
+  if (JSON.stringify(project(direct)) !== JSON.stringify(project(job))) {
+    throw new Error("ADF direct and background source resolution diverged.");
+  }
 }
 
 export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
-  const pdfSource = adfConformanceBlocks("pdf");
-  const wordSource = adfConformanceBlocks("word");
+  const decodedPdf = adfConformanceBlocks("pdf");
+  const decodedWord = adfConformanceBlocks("word");
   if (
-    pdfSource.representation !== "atlas_doc_format"
-    || wordSource.representation !== "atlas_doc_format"
+    decodedPdf.representation !== "atlas_doc_format"
+    || decodedWord.representation !== "atlas_doc_format"
   ) {
     throw new Error("ADF-source conformance did not retain its primary representation.");
   }
-  if (JSON.stringify(pdfSource.blocks) !== JSON.stringify(wordSource.blocks)) {
+  if (JSON.stringify(decodedPdf.blocks) !== JSON.stringify(decodedWord.blocks)) {
     throw new Error("ADF target decoders produced different neutral blocks.");
+  }
+  const [pdfSource, wordSource] = await Promise.all([
+    resolveConfluenceSourceV1(SOURCE_REQUEST, {
+      exporter: "pdf",
+      port: sourcePort(),
+      signal: new AbortController().signal,
+    }),
+    resolveConfluenceSourceV1(SOURCE_REQUEST, {
+      exporter: "word",
+      port: sourcePort(),
+      signal: new AbortController().signal,
+    }),
+  ]);
+  if (
+    JSON.stringify(pdfSource.blocks) !== JSON.stringify(decodedPdf.blocks)
+    || JSON.stringify(wordSource.blocks) !== JSON.stringify(decodedWord.blocks)
+  ) {
+    throw new Error("ADF shared source resolver diverged from direct representation dispatch.");
   }
 
   const pdf = await compilePdf(
@@ -48,7 +155,7 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
     pdfSource.blocks,
     ADF_CONFORMANCE_METADATA,
     "ADF Browser Conformance.pdf",
-    pdfSource.notes,
+    pdfSource.sourceNotes,
   );
   const inspection = validatePdfOutput(pdf.bytes);
   if (!inspection.tagged || inspection.pageCount < 1) {
@@ -60,7 +167,7 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
     {
       details: ADF_CONFORMANCE_DETAILS,
       blocks: wordSource.blocks,
-      sourceNotes: wordSource.notes,
+      sourceNotes: wordSource.sourceNotes,
       template: {
         name: "adf-conformance-template.docx",
         modificationDate: new Date("2026-07-22T08:00:00.000Z"),
@@ -72,10 +179,137 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
   const zip = unzipDocx(output.single.bytes);
   const documentXml = zip.file("word/document.xml")?.asText() ?? "";
   const relationships = zip.file("word/_rels/document.xml.rels")?.asText() ?? "";
+  const pdfRequest: PdfExportJobRequestV1 = {
+    schema: "atlcli.export-job-request/1",
+    id: "adf-pdf-job",
+    idempotencyKey: "adf-pdf-action",
+    format: "pdf",
+    renderer: "pdf-typst",
+    source: SOURCE_REQUEST,
+    authRef: "browser-harness",
+    displayName: ADF_CONFORMANCE_DETAILS.title,
+    requestedFilename: "ADF Browser Conformance.pdf",
+    createdAt: 1,
+    priority: "interactive",
+    output: { policy: "collect" },
+    template: { id: "default", manifestVersion: "1" },
+    settings: {},
+    options: { resolveMacros: false, profile: "tagged" },
+  };
+  const pdfResolveInput = createConfluencePdfResolveInputV1({
+    port: sourcePort(),
+    build(resolved) {
+      assertResolvedParity(pdfSource, resolved);
+      return {
+        input: {
+          metadata: ADF_CONFORMANCE_METADATA,
+          filename: "ADF Browser Conformance.pdf",
+          profile: "tagged",
+        },
+        env: {
+          assets: {
+            async resolve(): Promise<never> { throw new Error("unused"); },
+          },
+        },
+      };
+    },
+  });
+  const pdfFixture: PdfJobParityFixtureV1 = {
+    request: pdfRequest,
+    input: {
+      blocks: pdfSource.blocks,
+      sourceNotes: pdfSource.sourceNotes,
+      complete: pdfSource.complete,
+      metadata: ADF_CONFORMANCE_METADATA,
+      filename: "ADF Browser Conformance.pdf",
+      profile: "tagged",
+      page: {
+        id: pdfSource.root.id,
+        ...(pdfSource.root.version !== undefined
+          ? { version: pdfSource.root.version }
+          : {}),
+        ...(pdfSource.root.spaceKey !== undefined
+          ? { spaceKey: pdfSource.root.spaceKey }
+          : {}),
+      },
+    },
+    resolveInput: pdfResolveInput,
+  };
+  const pdfJobParity = await runPdfJobParityCase({ fixture: pdfFixture });
+
+  const docxRequest = async (): Promise<DocxExportJobRequestV1> => ({
+    schema: "atlcli.export-job-request/1",
+    id: "adf-docx-job",
+    idempotencyKey: "adf-docx-action",
+    format: "docx",
+    renderer: "docx-typescript",
+    source: SOURCE_REQUEST,
+    authRef: "browser-harness",
+    displayName: ADF_CONFORMANCE_DETAILS.title,
+    requestedFilename: "ADF Browser Conformance.docx",
+    createdAt: 1,
+    priority: "interactive",
+    output: { policy: "collect" },
+    template: {
+      recordKey: "template:adf-browser-conformance",
+      sha256: await sha256Hex(DOCX_TEMPLATE_BYTES),
+      name: "adf-conformance-template.docx",
+    },
+    options: {
+      embedImages: true,
+      resolveMacros: false,
+      updateFields: "auto",
+    },
+  });
+  const docxFixture: DocxJobParityFixtureV1 = {
+    request: docxRequest,
+    templateBytes: DOCX_TEMPLATE_BYTES,
+    requireMediaPart: false,
+    input: (rasterizer) => ({
+      details: ADF_CONFORMANCE_DETAILS,
+      blocks: wordSource.blocks,
+      sourceNotes: wordSource.sourceNotes,
+      complete: wordSource.complete,
+      templateBytes: DOCX_TEMPLATE_BYTES.slice(),
+      template: {
+        name: "adf-conformance-template.docx",
+        modificationDate: new Date("2026-07-22T08:00:00.000Z"),
+      },
+      exportDate: new Date("2026-07-22T08:00:00.000Z"),
+      rasterizer,
+    }),
+    resolveInput: (rasterizer) => createConfluenceDocxResolveInputV1({
+      port: sourcePort(),
+      build(resolved) {
+        assertResolvedParity(wordSource, resolved);
+        const {
+          id: _id,
+          title: _title,
+          version: _version,
+          spaceKey: _spaceKey,
+          storage: _storage,
+          ...rootDetails
+        } = ADF_CONFORMANCE_DETAILS;
+        return {
+          input: {
+            template: {
+              name: "adf-conformance-template.docx",
+              modificationDate: new Date("2026-07-22T08:00:00.000Z"),
+            },
+            exportDate: new Date("2026-07-22T08:00:00.000Z"),
+            rasterizer,
+          },
+          rootDetails,
+        };
+      },
+    }),
+  };
+  const docxJobParity = await runDocxJobParityCase({ fixture: docxFixture });
+
   const result: AdfSourceCaseResult = {
-    representation: pdfSource.representation,
+    representation: decodedPdf.representation,
     blockTypes: pdfSource.blocks.map((block) => block.type),
-    sourceNoteCodes: pdfSource.notes.map((note) => note.code),
+    sourceNoteCodes: pdfSource.sourceNotes.map((note) => note.code),
     pdfTagged: inspection.tagged,
     pdfPageCount: inspection.pageCount,
     docxHasInlineCode: documentXml.includes('w:rFonts w:ascii="Consolas"'),
@@ -88,6 +322,12 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
         || relationships.includes("https://example.invalid/adf-card")),
     docxHasExtensionBody: documentXml.includes("Extension body"),
     docxHasVisibleMediaFallback: documentXml.includes("Visible media fallback") && documentXml.includes("Media caption"),
+    pdfJobArtifactAndReportParity:
+      pdfJobParity.byteIdentical && pdfJobParity.reportIdentical,
+    docxJobArtifactAndReportParity:
+      docxJobParity.partsIdentical
+      && docxJobParity.mediaIdentical
+      && docxJobParity.reportIdentical,
   };
 
   for (const [key, value] of Object.entries(result)) {
@@ -97,6 +337,9 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
   }
   if (!result.sourceNoteCodes.includes("adf-media-unresolved")) {
     throw new Error("ADF-source case lost the unresolved-media degradation note.");
+  }
+  if (!result.pdfJobArtifactAndReportParity || !result.docxJobArtifactAndReportParity) {
+    throw new Error("ADF-source direct/background artifact or report parity failed.");
   }
   return result;
 }

@@ -87,6 +87,12 @@ test("every registered conformance case passes from nested production output", a
   expect(pdfJobParity.renderAttempts).toBe(1);
   expect(pdfJobParity.reservationReleased).toBe(true);
 
+  const adfSource = JSON.parse(
+    (await page.getByTestId("adf-source-result").textContent()) ?? "null",
+  );
+  expect(adfSource.pdfJobArtifactAndReportParity).toBe(true);
+  expect(adfSource.docxJobArtifactAndReportParity).toBe(true);
+
   mkdirSync(dirname(DIGEST_MANIFEST), { recursive: true });
   writeFileSync(DIGEST_MANIFEST, JSON.stringify(digestManifest, null, 2));
 
