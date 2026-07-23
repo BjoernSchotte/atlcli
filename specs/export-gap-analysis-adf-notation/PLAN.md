@@ -91,7 +91,8 @@ Official references:
 
 - Removing `storageToBlocks()` or `ConfluencePageDetails.storage`.
 - Converting sync, import, Markdown preview, or Storage-to-Markdown flows to ADF.
-- Converting the legacy Python/docxtpl DOCX engine; it remains Storage-based.
+- The retired Python/docxtpl DOCX engine. It is not a product export path and is
+  not an implementation target or acceptance gate for this migration.
 - Native visual implementation of every missing ADF feature from the gap matrix.
 - Reproducing interactive Confluence behavior in a static file.
 - Changing the durable export-job request v1 schema to carry a body representation or page content.
@@ -637,7 +638,8 @@ Tasks:
 - [x] Make include budgets representation-neutral and add a separate bounded sidecar allowance.
 - [x] Keep root/homepage Storage available for existing Page Properties/template resolvers in this wave.
 - [x] Replace raw-Storage Mermaid/image heuristics with block-derived inspection where practical; otherwise document their temporary sidecar dependency.
-- [x] Leave the Python/docxtpl path explicitly on `storageToMarkdown()`.
+- [x] Make no changes to the retired Python/docxtpl path and do not use it as
+  implementation or acceptance evidence.
 - [x] Preserve mention, macro, asset, report, strict-mode, and output behavior after the parser boundary.
 
 Tests:
@@ -651,9 +653,10 @@ Tests:
 
 Exit:
 
-- Cloud CLI TypeScript DOCX and PDF are ADF-primary with no regression in Storage/Data Center or the legacy Python path.
+- Cloud CLI TypeScript DOCX and PDF are ADF-primary with no regression in the
+  supported Storage/Data Center paths.
 
-Evidence recorded on 2026-07-22: single-page and tree/space CLI paths now select the version-bound export source and decode it before either renderer; the TypeScript DOCX engine receives precomposed blocks, while its public Storage fallback and the legacy Python path remain unchanged. Include-page lookup now carries the additive export source, caches neutral `BlocksResult` values, and accounts for primary-body and Storage-sidecar bytes independently. Focused tests prove ADF-primary PDF and DOCX source selection, ADF export-control passthrough, poisoned-sidecar avoidance, representation-neutral includes and budgets, report provenance, and existing macro/mention/image/strict-mode parity. Public API and closure reports show the additive include type with no reachable-but-unexported gaps. Full typecheck, the production build for all 16 packages, and the unrestricted complete repository suite passed; the latter covered 4,762 tests with 13 intentional skips and zero failures across 305 files. An anonymized live create/export/cleanup test confirmed a real ADF source with an inline-code mark, ADF-primary CLI DOCX and PDF without a Storage fallback note, DOCX monospace styling, a tagged PDF with embedded fonts, and complete cleanup of its sole temporary page.
+Evidence recorded on 2026-07-22: single-page and tree/space CLI paths now select the version-bound export source and decode it before either renderer; the TypeScript DOCX engine receives precomposed blocks, while its public Storage fallback remains unchanged. Include-page lookup now carries the additive export source, caches neutral `BlocksResult` values, and accounts for primary-body and Storage-sidecar bytes independently. Focused tests prove ADF-primary PDF and DOCX source selection, ADF export-control passthrough, poisoned-sidecar avoidance, representation-neutral includes and budgets, report provenance, and existing macro/mention/image/strict-mode parity. Public API and closure reports show the additive include type with no reachable-but-unexported gaps. Full typecheck, the production build for all 16 packages, and the unrestricted complete TypeScript repository suite passed; the latter covered 4,762 tests with 13 intentional skips and zero failures across 305 files. An anonymized live create/export/cleanup test confirmed a real ADF source with an inline-code mark, ADF-primary CLI DOCX and PDF without a Storage fallback note, DOCX monospace styling, a tagged PDF with embedded fonts, and complete cleanup of its sole temporary page. The retired Python engine is excluded from these claims and gates.
 
 ### WP7 — Macro, media, card, emoji, and link parity gates
 
@@ -963,7 +966,8 @@ Rollback switches only the source adapter to Storage-primary. It must not bypass
 ## 11. Definition of done for the first migration
 
 - [x] Cloud export-specific reads request and validate ADF without leaking it to logs.
-- [x] Data Center and legacy/Python paths remain Storage-based.
+- [x] Data Center remains Storage-based; the retired Python engine is outside
+  this migration's implementation and acceptance scope.
 - [x] ADF and Storage version races fail visibly.
 - [x] Runtime validator is bounded, iterative, isomorphic, and adversarially tested.
 - [x] Pinned schema/coverage CI classifies all 43 nodes and 17 marks.
