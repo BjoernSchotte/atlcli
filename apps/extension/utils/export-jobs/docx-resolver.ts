@@ -11,6 +11,7 @@ import type {
 } from "@atlcli/export-jobs";
 import type { MacroResolutionOptions } from "@atlcli/export-macros";
 import {
+  checkpointDocxAssetsV1,
   createExportTreeBodySpoolV1,
   type TypescriptDocxExportJobResolvedInputV1,
 } from "@atlcli/export-wiring/jobs";
@@ -290,7 +291,11 @@ export function createExtensionDocxJobInputResolver(
       },
       exportDate: new Date(request.createdAt),
       deps: deps.createDeps({ root, siteOrigin, signal: context.signal }),
-      assets: deps.createAssets({ siteOrigin, signal: context.signal }),
+      assets: checkpointDocxAssetsV1(
+        context,
+        request.idempotencyKey,
+        deps.createAssets({ siteOrigin, signal: context.signal }),
+      ),
       rasterizer: deps.createRasterizer(),
       macros,
       ...(request.options.keepIgnored ? { exportControls: "passthrough" as const } : {}),

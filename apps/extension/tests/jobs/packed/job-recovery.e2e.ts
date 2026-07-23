@@ -21,6 +21,7 @@ const JOB_I = "c23e4567-e89b-42d3-a456-426614174000";
 const JOB_J = "d23e4567-e89b-42d3-a456-426614174000";
 const JOB_K = "e23e4567-e89b-42d3-a456-426614174000";
 const JOB_L = "f23e4567-e89b-42d3-a456-426614174000";
+const JOB_M = "013e4567-e89b-42d3-a456-426614174001";
 const SHA_ABC =
   "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
 
@@ -91,6 +92,8 @@ async function installOffscreenFetchStub(
   storageByPageId: Record<string, string> = {},
   authPageIds: string[] = [],
   childrenByPageId: Record<string, string[]> = {},
+  assetBytesByPath: Record<string, number[]> = {},
+  holdAssetPaths: string[] = [],
 ): Promise<void> {
   await packedOffscreen?.close();
   const root = await context.newCDPSession(page);
@@ -108,14 +111,28 @@ async function installOffscreenFetchStub(
     const authFailures = new Set(${JSON.stringify(authPageIds)});
     const storageByPageId = ${JSON.stringify(storageByPageId)};
     const childrenByPageId = ${JSON.stringify(childrenByPageId)};
+    const assetBytesByPath = ${JSON.stringify(assetBytesByPath)};
+    const heldAssets = new Set(${JSON.stringify(holdAssetPaths)});
     const releases = Object.create(null);
     const released = new Set();
     const bodyFetches = Object.create(null);
+    const assetFetches = Object.create(null);
     globalThis.__atlcliPackedFetchReleases = releases;
     globalThis.__atlcliPackedFetchReleased = released;
     globalThis.__atlcliPackedBodyFetches = bodyFetches;
+    globalThis.__atlcliPackedAssetFetches = assetFetches;
     globalThis.fetch = async (input) => {
       const url = new URL(typeof input === "string" ? input : input.url);
+      if (assetBytesByPath[url.pathname]) {
+        assetFetches[url.pathname] = (assetFetches[url.pathname] || 0) + 1;
+        if (heldAssets.has(url.pathname) && !released.has(url.pathname)) {
+          await new Promise((resolve) => { releases[url.pathname] = resolve; });
+        }
+        return new Response(new Uint8Array(assetBytesByPath[url.pathname]), {
+          status: 200,
+          headers: { "content-type": "image/png" }
+        });
+      }
       const directChildren = url.pathname.match(/\\/api\\/v2\\/pages\\/([^/]+)\\/direct-children$/);
       if (directChildren) {
         const parentId = decodeURIComponent(directChildren[1]);
@@ -211,6 +228,43 @@ async function readOffscreenBodyFetches(): Promise<Record<string, number>> {
     throw new Error(`Could not read packed body fetch counts: ${JSON.stringify(result)}`);
   }
   return result.result.value as Record<string, number>;
+}
+
+async function readOffscreenAssetFetches(): Promise<Record<string, number>> {
+  if (!packedOffscreen) throw new Error("Packed offscreen target is not attached.");
+  const result = await packedOffscreen.send<{
+    result?: { value?: unknown };
+    exceptionDetails?: unknown;
+  }>("Runtime.evaluate", {
+    expression:
+      "({ ...globalThis.__atlcliPackedAssetFetches })",
+    returnByValue: true,
+  });
+  if (result.exceptionDetails || !result.result?.value) {
+    throw new Error(`Could not read packed asset fetch counts: ${JSON.stringify(result)}`);
+  }
+  return result.result.value as Record<string, number>;
+}
+
+async function createPackedPngBytes(): Promise<number[]> {
+  return page.evaluate(async () => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 2;
+    canvas.height = 2;
+    const drawing = canvas.getContext("2d");
+    if (!drawing) throw new Error("Packed test canvas has no 2D context.");
+    drawing.fillStyle = "#0052cc";
+    drawing.fillRect(0, 0, 2, 2);
+    const blob = await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob(
+        (value) => value
+          ? resolve(value)
+          : reject(new Error("Packed test canvas did not encode PNG bytes.")),
+        "image/png",
+      );
+    });
+    return [...new Uint8Array(await blob.arrayBuffer())];
+  });
 }
 
 test.beforeAll(async () => {
@@ -926,6 +980,78 @@ test("a packed tree export resumes from its durable ordered page spool", async (
     [JOB_L]: 1,
     [childA]: 1,
     [childB]: 1,
+  });
+});
+
+test("a packed PDF resumes checkpointed assets without refetching committed bytes", async () => {
+  await ensureCatalog();
+  const firstPath = `/wiki/download/attachments/${JOB_M}/first.png`;
+  const secondPath = `/wiki/download/attachments/${JOB_M}/second.png`;
+  const storage = {
+    [JOB_M]:
+      '<ac:image ac:alt="First"><ri:attachment ri:filename="first.png"/></ac:image>' +
+      '<ac:image ac:alt="Second"><ri:attachment ri:filename="second.png"/></ac:image>',
+  };
+  const packedPng = await createPackedPngBytes();
+  const assets = {
+    [firstPath]: packedPng,
+    [secondPath]: packedPng,
+  };
+  await installOffscreenFetchStub(
+    [],
+    storage,
+    [],
+    {},
+    assets,
+    [secondPath],
+  );
+  await expect(submitPackedPdf(JOB_M)).resolves.toBe(JOB_M);
+
+  await expect.poll(async () => {
+    const row = await readJob(JOB_M);
+    if (row.snapshot.state === "failed") {
+      throw new Error(JSON.stringify(row.snapshot.error));
+    }
+    return row.snapshot.checkpointRef?.startsWith(
+      "atlcli.export-asset-spool/1:",
+    ) === true;
+  }, { timeout: 30_000 }).toBe(true);
+
+  const session = await context.newCDPSession(page);
+  const original = (await getTargets(session)).find(
+    (target) => target.url === `chrome-extension://${extensionId}/offscreen.html`,
+  );
+  expect(original).toBeDefined();
+  await session.send("Target.closeTarget", { targetId: original!.targetId });
+  await waitForTargetGone(session, original!.targetId);
+
+  await expect(sendWake()).resolves.toEqual({ kind: "jobs:wake-result" });
+  await waitForRestartedTarget(
+    session,
+    (target) => target.url === `chrome-extension://${extensionId}/offscreen.html`,
+  );
+  await installOffscreenFetchStub([], storage, [], {}, assets);
+  const expired = await expireJobLease(JOB_M);
+  expect(expired.snapshot.checkpointRef?.startsWith(
+    "atlcli.export-asset-spool/1:",
+  )).toBe(true);
+  await expect(sendWake([JOB_M])).resolves.toMatchObject({
+    claimedJobId: JOB_M,
+  });
+
+  const succeeded = await waitForJobState(JOB_M, "succeeded", 45_000);
+  expect(succeeded.snapshot).toMatchObject({
+    leaseEpoch: 2,
+    attempt: 2,
+    recoveryCount: 1,
+    reportSummary: { completeness: "complete" },
+    stats: {
+      pages: { discovered: 1, fetched: 1, composed: 1 },
+      assets: { discovered: 2, fetched: 2, embedded: 2 },
+    },
+  });
+  expect(await readOffscreenAssetFetches()).toEqual({
+    [secondPath]: 1,
   });
 });
 

@@ -1749,6 +1749,24 @@ multiple commits is allowed, but its final commit must retain the slice's gate.
     harness passes all 16 conformance cases without Chrome/Node globals; and
     packed MV3 Chromium passes 20/20, including a real Tree export that loses
     its offscreen owner and refetches only the uncommitted children.
+  - [x] Completion-audit asset hardening increment: queued PDF and DOCX jobs in
+    both CLI and Extension now reserve the full 25 MiB cap before each
+    unknown-length host fetch under the shared 50 MiB in-flight ceiling, copy
+    exact-owned bytes, persist assets by SHA-256, publish reference checkpoints
+    without storing source/signed URLs, deduplicate physical content, and recover
+    prior-epoch bytes without another host request. Asset checkpoints form one
+    validated chain with ordered source checkpoints. A durable asset-spool
+    failure is fatal instead of silently degrading a successfully fetched image
+    to a missing-image warning. Host runtimes normalize executor-captured
+    progress at the serialized persistence boundary so a heartbeat cannot turn
+    valid long-running progress into a retroactive leased write. Evidence: the
+    focused engine/asset/source/resolver/runtime matrix passes 146/146; API and
+    closure guards pass 5/5; the production generic-browser harness passes all
+    17 cases without Chrome/Node globals; packed MV3 Chromium passes 21/21,
+    including offscreen loss after the first of two real PNG checkpoints and
+    proving that only the uncommitted image is refetched; and the read-only
+    `mayflower`/`DOCSY` CLI E2E succeeds from the current source resolver with
+    93 source pages, 8 images, 195 PDF pages, and a 4,114,021-byte PDF.
   - [ ] Remaining PR-I increments: documentation/CHANGELOG and the final
     non-cleanup audit and gates.
   - Acceptance: packed Chrome covers DOCX/PDF mixed states, `9+`, `✓`, `!`, pulse

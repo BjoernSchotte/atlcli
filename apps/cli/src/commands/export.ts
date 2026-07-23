@@ -62,7 +62,10 @@ import {
   runOrdinaryExportJobV1,
   writeOrdinaryExportProjectionV1,
 } from "./export-job-runtime.js";
-import { createExportTreeBodySpoolV1 } from "@atlcli/export-wiring/jobs";
+import {
+  checkpointDocxAssetsV1,
+  createExportTreeBodySpoolV1,
+} from "@atlcli/export-wiring/jobs";
 import {
   createAssetByteCache,
   tokenAssetFetcher,
@@ -1046,7 +1049,11 @@ async function exportDocxAsOrdinaryJob(
           embedImages: request.options.embedImages,
           ...(request.options.keepIgnored ? { exportControls: "passthrough" as const } : {}),
           updateFields: request.options.updateFields ?? "auto",
-          assets: macroSetup.wrapAssets(tokenAssetFetcher(args.client, cache)),
+          assets: checkpointDocxAssetsV1(
+            context,
+            request.idempotencyKey,
+            macroSetup.wrapAssets(tokenAssetFetcher(args.client, cache)),
+          ),
           rasterizer,
           macros: macroSetup.macros,
           deps: {

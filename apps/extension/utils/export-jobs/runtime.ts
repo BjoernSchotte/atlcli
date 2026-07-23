@@ -147,24 +147,37 @@ export function createExtensionExportExecutionContext(
         const latest = await refresh();
         abort.signal.throwIfAborted();
         const previousStage = latest.stage;
+        // Executor progress is captured before this serialized host write.
+        // Claims/checkpoints/heartbeats queued ahead may advance the lease
+        // clock. Normalize against durable state without another host-clock
+        // read so injected clocks remain observably stable.
+        const persistedProgress = {
+          ...progress,
+          updatedAt: Math.max(
+            progress.updatedAt,
+            latest.lease?.acquiredAt ?? progress.updatedAt,
+            latest.lease?.heartbeatAt ?? progress.updatedAt,
+            latest.progress?.updatedAt ?? progress.updatedAt,
+          ),
+        };
         current = await options.catalog.compareAndSet({
           kind: "progress",
           id: latest.id,
           expectedRevision: latest.revision,
           leaseEpoch: latest.leaseEpoch,
-          progress,
+          progress: persistedProgress,
         });
-        if (previousStage !== progress.stage) {
+        if (previousStage !== persistedProgress.stage) {
           await appendEvent(current, {
             kind: "stage",
-            at: progress.updatedAt,
-            stage: progress.stage,
+            at: persistedProgress.updatedAt,
+            stage: persistedProgress.stage,
           });
         }
         await appendEvent(current, {
           kind: "progress",
-          at: progress.updatedAt,
-          progress,
+          at: persistedProgress.updatedAt,
+          progress: persistedProgress,
         });
       });
     },

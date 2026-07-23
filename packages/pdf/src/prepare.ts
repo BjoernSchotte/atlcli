@@ -4,6 +4,7 @@ import {
   ASSET_MAX_TOTAL_BYTES,
   AssetBudget,
   AssetBudgetExceededError,
+  AssetPipelineError,
   createInOrderLimiter,
   type ExportProgressCallback,
 } from "@atlcli/confluence";
@@ -308,7 +309,12 @@ export async function preparePdfDocument(
             } catch (error) {
               // A shared-budget breach is a FATAL scope-level error (same as
               // DOCX) — never a per-image warning. Let it abort the export.
-              if (error instanceof AssetBudgetExceededError) throw error;
+              if (
+                error instanceof AssetBudgetExceededError ||
+                error instanceof AssetPipelineError
+              ) {
+                throw error;
+              }
               // A cancellation must abort the whole export, not be downgraded to
               // a soft per-image skip note (spec 008 T3.2).
               if (isAbortError(error)) throw error;

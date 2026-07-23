@@ -7,6 +7,7 @@
  */
 import { CONFORMANCE_MANIFEST, type ConformanceCaseMeta } from "./conformance-manifest.js";
 import { runActivityMonitorCase } from "./activity-monitor-case.js";
+import { runAssetSpoolRecoveryCase } from "./asset-spool-recovery-case.js";
 import { runBlocksCase } from "./blocks-case.js";
 import { runContentCase } from "./content-case.js";
 import { runDocxCase } from "./docx-case.js";
@@ -28,6 +29,7 @@ export interface ConformanceCase extends ConformanceCaseMeta {
 
 const RUNNERS: Record<string, () => Promise<unknown>> = {
   "activity-monitor": runActivityMonitorCase,
+  "asset-spool-recovery": runAssetSpoolRecoveryCase,
   "source-spool-recovery": runSourceSpoolRecoveryCase,
   "pdf-abort": runPdfAbortCase,
   docx: runDocxCase,

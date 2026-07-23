@@ -449,6 +449,24 @@ describe("file export persistence", () => {
       ...createEmptyExportJobStatsV1(),
       pages: { discovered: 2, fetched: 1, composed: 0, skipped: 0 },
     });
+    now = 30;
+    const beforeHeartbeat = (await persistence.jobs.get(claimed.id))!;
+    await persistence.jobs.compareAndSet({
+      kind: "heartbeat",
+      id: beforeHeartbeat.id,
+      expectedRevision: beforeHeartbeat.revision,
+      ownerId: "telemetry-owner",
+      leaseEpoch: beforeHeartbeat.leaseEpoch,
+      now,
+      leaseDurationMs: 10_000,
+    });
+    await runtime.context.updateProgress({
+      stage: "fetch",
+      done: 2,
+      total: 2,
+      // Captured before the heartbeat write reached durable storage.
+      updatedAt: 20,
+    });
 
     expect((await runtime.snapshot()).stats).toMatchObject({
       pages: { discovered: 2, fetched: 1, composed: 0, skipped: 0 },
@@ -462,9 +480,9 @@ describe("file export persistence", () => {
       { kind: "stage", seq: 1, at: 20, stage: "fetch" },
       {
         kind: "progress",
-        seq: 2,
-        at: 20,
-        progress: { stage: "fetch", done: 1, total: 2, updatedAt: 20 },
+        seq: 3,
+        at: 30,
+        progress: { stage: "fetch", done: 2, total: 2, updatedAt: 30 },
       },
     ]);
     await runtime.stop();

@@ -36,6 +36,14 @@ export const CONFORMANCE_MANIFEST: readonly ConformanceCaseMeta[] = [
     emitsDigests: false,
   },
   {
+    id: "asset-spool-recovery",
+    title: "Generic-browser checkpointed asset recovery (013)",
+    folderTaskIds: ["013/T7.2"],
+    engines: ["pdf", "docx"],
+    mediaPolicy: "none",
+    emitsDigests: false,
+  },
+  {
     id: "source-spool-recovery",
     title: "Generic-browser ordered source spool recovery (013)",
     folderTaskIds: ["013/T7.2"],
@@ -175,6 +183,7 @@ export const CONFORMANCE_MANIFEST: readonly ConformanceCaseMeta[] = [
  */
 export const EXPECTED_LANDED_CASE_IDS: readonly string[] = [
   "activity-monitor",
+  "asset-spool-recovery",
   "source-spool-recovery",
   "pdf-abort",
   "docx",

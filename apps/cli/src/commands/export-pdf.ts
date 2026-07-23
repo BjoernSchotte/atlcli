@@ -69,7 +69,10 @@ import {
   defaultExternalAssetPolicy,
   trustRoutingPdfAssetResolver,
 } from "@atlcli/export-wiring";
-import { createExportTreeBodySpoolV1 } from "@atlcli/export-wiring/jobs";
+import {
+  checkpointPdfAssetsV1,
+  createExportTreeBodySpoolV1,
+} from "@atlcli/export-wiring/jobs";
 import { getPdfCompiler } from "./export-pdf-assets.js";
 import {
   PdfUsageError,
@@ -649,9 +652,13 @@ export async function exportPdfAsOrdinaryJob(
             },
           },
           env: {
-            assets: cliPdfAssets(args.client, args.baseUrl, {
-              noCache: request.options.noCache === true,
-            }),
+            assets: checkpointPdfAssetsV1(
+              context,
+              request.idempotencyKey,
+              cliPdfAssets(args.client, args.baseUrl, {
+                noCache: request.options.noCache === true,
+              }),
+            ),
             macros,
           },
           telemetry: { sourcePageCount: value.sourcePages.length },

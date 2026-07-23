@@ -346,6 +346,9 @@ export declare const TRUST_ROUTING_PROBE_REF: PdfAssetRef;
 ### Entry point `./jobs`
 
 ```ts
+// export: checkpointDocxAssetsV1
+export declare function checkpointDocxAssetsV1(context: ExportJobExecutionContext, requestKey: string, delegate: AssetFetcher): AssetFetcher;
+
 // export: CheckpointedOrderedSourcePipelineOptionsV1
 export interface CheckpointedOrderedSourcePipelineOptionsV1<Value, Cursor, Result> {
     jobId: string;
@@ -374,6 +377,9 @@ export interface CheckpointedOrderedSourcePipelineResultV1<Cursor> {
     committedCount: number;
     latestCheckpoint?: PersistedOrderedSourceCheckpointV1<Cursor>;
 }
+
+// export: checkpointPdfAssetsV1
+export declare function checkpointPdfAssetsV1(context: ExportJobExecutionContext, requestKey: string, delegate: PdfAssetResolver): PdfAssetResolver;
 
 // export: createExportTreeBodySpoolV1
 export declare function createExportTreeBodySpoolV1(context: ExportJobExecutionContext, requestKey: string): ExportTreeBodyStoreV1;

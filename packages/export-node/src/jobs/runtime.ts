@@ -99,11 +99,25 @@ export function createFileExportExecutionContext(options: CreateFileExportExecut
     updateProgress(progress) { return serialize(async () => {
       const latest = await refresh(); abort.signal.throwIfAborted();
       const previousStage = latest.stage;
-      current = await options.jobs.compareAndSet({ kind: "progress", id: latest.id, expectedRevision: latest.revision, leaseEpoch: latest.leaseEpoch, progress });
-      if (previousStage !== progress.stage) {
-        await appendEvent(current, { kind: "stage", at: progress.updatedAt, stage: progress.stage });
+      // The executor captures progress before this serialized host write runs.
+      // A claim, checkpoint, or heartbeat queued ahead of it may have advanced
+      // the lease clock meanwhile. Normalize against durable state without
+      // reading the host clock again: injected clocks must not gain observable
+      // calls merely because a progress write was serialized.
+      const persistedProgress = {
+        ...progress,
+        updatedAt: Math.max(
+          progress.updatedAt,
+          latest.lease?.acquiredAt ?? progress.updatedAt,
+          latest.lease?.heartbeatAt ?? progress.updatedAt,
+          latest.progress?.updatedAt ?? progress.updatedAt,
+        ),
+      };
+      current = await options.jobs.compareAndSet({ kind: "progress", id: latest.id, expectedRevision: latest.revision, leaseEpoch: latest.leaseEpoch, progress: persistedProgress });
+      if (previousStage !== persistedProgress.stage) {
+        await appendEvent(current, { kind: "stage", at: persistedProgress.updatedAt, stage: persistedProgress.stage });
       }
-      await appendEvent(current, { kind: "progress", at: progress.updatedAt, progress });
+      await appendEvent(current, { kind: "progress", at: persistedProgress.updatedAt, progress: persistedProgress });
     }); },
     updateStats(stats) { return serialize(async () => {
       const latest = await refresh(); abort.signal.throwIfAborted();

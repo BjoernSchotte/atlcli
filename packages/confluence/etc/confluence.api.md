@@ -77,6 +77,13 @@ export interface AssetBudgetOptions {
     maxTotalBytes?: number;
 }
 
+// export: AssetPipelineError
+export declare class AssetPipelineError extends Error {
+    constructor(message: string, options?: {
+        cause?: unknown;
+    });
+}
+
 // export: ASSETS_DATASOURCE_ID
 export declare const ASSETS_DATASOURCE_ID = "361d618a-3c04-40ad-9b27-3c8ea6927020";
 
@@ -1711,6 +1718,13 @@ export interface AssetBudgetOptions {
     maxTotalBytes?: number;
 }
 
+// export: AssetPipelineError
+export declare class AssetPipelineError extends Error {
+    constructor(message: string, options?: {
+        cause?: unknown;
+    });
+}
+
 // export: ASSETS_DATASOURCE_ID
 export declare const ASSETS_DATASOURCE_ID = "361d618a-3c04-40ad-9b27-3c8ea6927020";
 
@@ -3343,6 +3357,13 @@ export interface AssetBudgetOffender {
 // export: AssetBudgetOptions
 export interface AssetBudgetOptions {
     maxTotalBytes?: number;
+}
+
+// export: AssetPipelineError
+export declare class AssetPipelineError extends Error {
+    constructor(message: string, options?: {
+        cause?: unknown;
+    });
 }
 
 // export: ASSETS_DATASOURCE_ID
@@ -7479,6 +7500,13 @@ export interface AssetBudgetOffender {
 // export: AssetBudgetOptions
 export interface AssetBudgetOptions {
     maxTotalBytes?: number;
+}
+
+// export: AssetPipelineError
+export declare class AssetPipelineError extends Error {
+    constructor(message: string, options?: {
+        cause?: unknown;
+    });
 }
 
 // export: ASSETS_DATASOURCE_ID

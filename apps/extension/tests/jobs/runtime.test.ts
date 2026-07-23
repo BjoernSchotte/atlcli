@@ -163,6 +163,19 @@ describe("extension export execution runtime", () => {
           sha256: "039058c6f2c0cb492c533b0a4d14ef77cc0f78abccced5287d84a1a2011cfb81",
           bytes: (async function* () { yield Uint8Array.from([1, 2, 3]); })(),
         });
+        now = 30;
+        const beforeHeartbeat = await catalog.get(context.jobId);
+        if (!beforeHeartbeat) throw new Error("Expected the running extension job.");
+        await catalog.compareAndSet({
+          kind: "heartbeat",
+          id: beforeHeartbeat.id,
+          expectedRevision: beforeHeartbeat.revision,
+          ownerId: "offscreen:test",
+          leaseEpoch: beforeHeartbeat.leaseEpoch,
+          now,
+          leaseDurationMs: 30_000,
+        });
+        // The executor captured this before the heartbeat was durably written.
         await context.updateProgress({ stage: "commit", done: 1, total: 1, updatedAt: 20 });
         return {
           stagedArtifact: artifact,
@@ -206,6 +219,12 @@ describe("extension export execution runtime", () => {
         },
       },
     });
+    expect(finished.progress).toMatchObject({
+      stage: "commit",
+      done: 1,
+      total: 1,
+      updatedAt: 30,
+    });
     expect((await catalog.readEvents(finished.id)).events).toEqual([
       { kind: "stage", seq: 1, at: 20, stage: "render" },
       {
@@ -214,18 +233,18 @@ describe("extension export execution runtime", () => {
         at: 20,
         progress: { stage: "render", done: 0, total: 1, updatedAt: 20 },
       },
-      { kind: "stage", seq: 3, at: 20, stage: "commit" },
+      { kind: "stage", seq: 3, at: 30, stage: "commit" },
       {
         kind: "progress",
         seq: 4,
-        at: 20,
-        progress: { stage: "commit", done: 1, total: 1, updatedAt: 20 },
+        at: 30,
+        progress: { stage: "commit", done: 1, total: 1, updatedAt: 30 },
       },
-      { kind: "state", seq: 5, at: 20, from: "running", to: "succeeded" },
+      { kind: "state", seq: 5, at: 30, from: "running", to: "succeeded" },
       {
         kind: "artifact",
         seq: 6,
-        at: 20,
+        at: 30,
         artifact: finished.artifact!,
       },
     ]);

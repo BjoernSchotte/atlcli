@@ -1,6 +1,10 @@
 import { describe, expect, it } from "bun:test";
 import PizZip from "pizzip";
-import type { ConfluencePageDetails, ConfluenceSpace } from "@atlcli/confluence";
+import {
+  AssetPipelineError,
+  type ConfluencePageDetails,
+  type ConfluenceSpace,
+} from "@atlcli/confluence";
 import { DocxRenderError, exportDocx } from "./export.js";
 import type { CurrentUser } from "./resolver.js";
 import {
@@ -704,6 +708,26 @@ describe("exportDocx — image embedding (spec 005)", () => {
     expect(rels).not.toContain("relationships/image");
     const zip = new PizZip(bytes);
     expect(Object.keys(zip.files).some((p) => p.startsWith("word/media/"))).toBe(false);
+  });
+
+  it("does not downgrade a durable asset-pipeline failure to a skipped image", async () => {
+    await expect(
+      exportDocx({
+        templateBytes: imageTemplate(),
+        details: {
+          ...details,
+          storage:
+            '<ac:image><ri:attachment ri:filename="checkpointed.png"/></ac:image>',
+        },
+        template,
+        deps,
+        assets: {
+          async fetch() {
+            throw new AssetPipelineError("asset checkpoint quota exceeded");
+          },
+        },
+      }),
+    ).rejects.toThrow("asset checkpoint quota exceeded");
   });
 
   it("degrades an SVG attachment with no rasterizer to image-svg-no-rasterizer (spec 006 G4)", async () => {

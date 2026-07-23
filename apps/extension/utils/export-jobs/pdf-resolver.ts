@@ -13,6 +13,7 @@ import type {
 } from "@atlcli/export-jobs";
 import type { MacroResolutionOptions } from "@atlcli/export-macros";
 import {
+  checkpointPdfAssetsV1,
   createExportTreeBodySpoolV1,
   type PdfExportJobEngineInputV1,
 } from "@atlcli/export-wiring/jobs";
@@ -425,11 +426,15 @@ export function createExtensionPdfJobInputResolver(
           ?? sanitizeDownloadName(request.displayName || "export", "pdf"),
       },
       env: {
-        assets: deps.createAssets({
-          rootPageId: composition.root.id,
-          siteOrigin,
-          signal: context.signal,
-        }),
+        assets: checkpointPdfAssetsV1(
+          context,
+          request.idempotencyKey,
+          deps.createAssets({
+            rootPageId: composition.root.id,
+            siteOrigin,
+            signal: context.signal,
+          }),
+        ),
         macros,
       },
       telemetry: { sourcePageCount: composition.pageCount },

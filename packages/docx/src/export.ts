@@ -40,6 +40,7 @@ import PizZip from "pizzip";
 import Docxtemplater from "docxtemplater";
 import {
   AssetBudget,
+  AssetPipelineError,
   assertSafeSvg,
   decodeSvgSource,
   storageToBlocks,
@@ -411,7 +412,12 @@ function pinZipEntryDates(zip: PizZip, requestedDateMs: number): void {
 
 function rethrowCancellation(error: unknown, signal?: AbortSignal): void {
   throwIfAborted(signal);
-  if (error instanceof Error && error.name === "AbortError") throw error;
+  if (
+    error instanceof AssetPipelineError ||
+    (error instanceof Error && error.name === "AbortError")
+  ) {
+    throw error;
+  }
 }
 
 /**

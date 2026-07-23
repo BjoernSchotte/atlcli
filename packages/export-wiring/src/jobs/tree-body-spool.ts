@@ -9,8 +9,10 @@ import type {
 } from "@atlcli/confluence";
 
 const CHECKPOINT_PREFIX = "atlcli.export-tree-spool/1:";
+const ASSET_CHECKPOINT_PREFIX = "atlcli.export-asset-spool/1:";
 const MANIFEST_MAX_BYTES = 4 * 1024 * 1024;
 const PAGE_MAX_BYTES = 64 * 1024 * 1024;
+const FOREIGN_CHECKPOINT_MAX_BYTES = 64 * 1024;
 const MAX_RECOVERY_CHAIN = 10_000;
 
 interface TreeManifestPayloadV1 {
@@ -56,6 +58,31 @@ function parseCheckpointRef(value: string): SpoolRefV1 {
     typeof (parsed as SpoolRefV1).key !== "string"
   ) {
     throw new Error("Source checkpoint contains malformed spool coordinates.");
+  }
+  return parsed as SpoolRefV1;
+}
+
+function parseAssetCheckpointRef(value: string): SpoolRefV1 {
+  if (!value.startsWith(ASSET_CHECKPOINT_PREFIX)) {
+    throw new Error("Source checkpoint is not an export-asset spool ref.");
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(
+      decodeURIComponent(value.slice(ASSET_CHECKPOINT_PREFIX.length)),
+    );
+  } catch {
+    throw new Error("Source checkpoint contains an invalid asset spool ref.");
+  }
+  if (
+    !parsed ||
+    typeof parsed !== "object" ||
+    typeof (parsed as SpoolRefV1).jobId !== "string" ||
+    !Number.isSafeInteger((parsed as SpoolRefV1).leaseEpoch) ||
+    typeof (parsed as SpoolRefV1).namespace !== "string" ||
+    typeof (parsed as SpoolRefV1).key !== "string"
+  ) {
+    throw new Error("Source checkpoint contains malformed asset coordinates.");
   }
   return parsed as SpoolRefV1;
 }
@@ -232,7 +259,7 @@ export function createExportTreeBodySpoolV1(
     if (initialized) return;
     initialized = true;
     const checkpointRef = context.checkpointRef;
-    if (!checkpointRef?.startsWith(CHECKPOINT_PREFIX)) return;
+    if (!checkpointRef) return;
     latestRef = checkpointRef;
     const seen = new Set<string>();
     let cursor = checkpointRef;
@@ -242,6 +269,35 @@ export function createExportTreeBodySpoolV1(
         throw new Error("Export-tree checkpoint chain contains a cycle.");
       }
       seen.add(cursor);
+      if (cursor.startsWith(ASSET_CHECKPOINT_PREFIX)) {
+        const ref = parseAssetCheckpointRef(cursor);
+        if (ref.jobId !== context.jobId || ref.leaseEpoch > context.leaseEpoch) {
+          throw new Error("Export-tree checkpoint escaped its job or lease history.");
+        }
+        const raw = await collectJson(
+          context.readSpool!(ref, { signal }),
+          FOREIGN_CHECKPOINT_MAX_BYTES,
+          signal,
+        );
+        if (
+          !raw ||
+          typeof raw !== "object" ||
+          (raw as { schema?: unknown }).schema !==
+            "atlcli.export-asset-checkpoint/1" ||
+          (raw as { jobId?: unknown }).jobId !== context.jobId ||
+          (raw as { requestKey?: unknown }).requestKey !== requestKey
+        ) {
+          throw new Error("Export-tree encountered a mismatched asset checkpoint.");
+        }
+        const previousRef = (raw as { previousRef?: unknown }).previousRef;
+        if (previousRef === undefined) return;
+        if (typeof previousRef !== "string") {
+          throw new Error("Export-tree encountered a malformed asset checkpoint link.");
+        }
+        cursor = previousRef;
+        continue;
+      }
+      if (!cursor.startsWith(CHECKPOINT_PREFIX)) return;
       const payload = await readPayload(cursor, signal);
       if (payload.schema === "atlcli.export-tree-manifest/1") {
         if (!Array.isArray(payload.entries)) {
