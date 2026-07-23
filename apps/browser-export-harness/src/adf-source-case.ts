@@ -88,6 +88,7 @@ export interface AdfSourceCaseResult {
   neutralHasMentionSemantics: boolean;
   neutralHasDateStatusPlaceholderSemantics: boolean;
   neutralHasAnnotationAndFragmentIdentity: boolean;
+  reportHasFragmentProjectionFact: boolean;
   neutralHasDataConsumerProvenance: boolean;
   neutralHasSyncedContentSemantics: boolean;
   neutralHasBreakoutSemantics: boolean;
@@ -512,6 +513,14 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
     neutralHasAnnotationAndFragmentIdentity:
       JSON.stringify(pdfSource.blocks).includes('"id":"annotation-inline-code","annotationType":"inlineComment"')
       && JSON.stringify(pdfSource.blocks).includes('"localId":"table-fragment","name":"semantic-table"'),
+    reportHasFragmentProjectionFact:
+      pdfSource.sourceNotes.filter(
+        (note) =>
+          note.code === "adf-mark-degraded"
+          && note.message.startsWith("ADF mark fragment "),
+      ).length === 1
+      && !documentXml.includes("table-fragment")
+      && !documentXml.includes("semantic-table"),
     neutralHasDataConsumerProvenance:
       neutralJson.includes(
         '"dataConsumers":[{"sources":["synthetic-consumer-primary","synthetic-consumer-secondary"]}]',
@@ -688,6 +697,9 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
   }
   if (!result.neutralHasAnnotationAndFragmentIdentity) {
     throw new Error("ADF-source annotation or fragment identity was lost in the packed browser.");
+  }
+  if (!result.reportHasFragmentProjectionFact) {
+    throw new Error("ADF-source fragment projection fact was lost or published visibly.");
   }
   if (!result.neutralHasDataConsumerProvenance) {
     throw new Error("ADF-source data-consumer provenance was lost or published visibly.");

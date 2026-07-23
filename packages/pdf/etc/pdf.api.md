@@ -577,12 +577,11 @@ export type PreparedPdfBlock = Exclude<ExportBlock, {
     type: "paragraph";
 }>, "content"> & {
     content: PreparedPdfInlineNode[];
-}) | {
+}) | (Omit<Extract<ExportBlock, {
     type: "unknown";
-    macroName: string;
+}>, "body"> & {
     body?: PreparedPdfBlock[];
-    plainBody?: string;
-} | Omit<Extract<ExportBlock, {
+}) | Omit<Extract<ExportBlock, {
     type: "callout";
 }>, "content"> & {
     content: PreparedPdfBlock[];
@@ -1427,12 +1426,11 @@ export type PreparedPdfBlock = Exclude<ExportBlock, {
     type: "paragraph";
 }>, "content"> & {
     content: PreparedPdfInlineNode[];
-}) | {
+}) | (Omit<Extract<ExportBlock, {
     type: "unknown";
-    macroName: string;
+}>, "body"> & {
     body?: PreparedPdfBlock[];
-    plainBody?: string;
-} | Omit<Extract<ExportBlock, {
+}) | Omit<Extract<ExportBlock, {
     type: "callout";
 }>, "content"> & {
     content: PreparedPdfBlock[];
@@ -2277,12 +2275,11 @@ export type PreparedPdfBlock = Exclude<ExportBlock, {
     type: "paragraph";
 }>, "content"> & {
     content: PreparedPdfInlineNode[];
-}) | {
+}) | (Omit<Extract<ExportBlock, {
     type: "unknown";
-    macroName: string;
+}>, "body"> & {
     body?: PreparedPdfBlock[];
-    plainBody?: string;
-} | Omit<Extract<ExportBlock, {
+}) | Omit<Extract<ExportBlock, {
     type: "callout";
 }>, "content"> & {
     content: PreparedPdfBlock[];

@@ -50,6 +50,7 @@ describe("ADF rendered goldens", () => {
       "media-group",
       "media-inline-image-and-fallback-chip",
       "media-data-consumer-provenance-nonvisual",
+      "fragment-provenance-nonvisual",
       "media-wrap-source-order",
       "synced-content-snapshot-and-reference",
       "extension",

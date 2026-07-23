@@ -576,8 +576,8 @@ export interface AdfAnnotationIdentity {
 }
 
 /**
- * Identity of an ADF fragment mark. This stays source metadata until a
- * documented target bookmark/link policy defines its rendering semantics.
+ * Identity of an ADF fragment mark. This is product-owned source provenance,
+ * not a user-authored bookmark or link target.
  */
 export interface AdfFragmentIdentity {
   localId: string;

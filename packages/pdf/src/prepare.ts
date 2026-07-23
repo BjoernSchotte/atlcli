@@ -509,11 +509,15 @@ export async function preparePdfDocument(
           }
           case "unknown": {
             // Placeholder floor (spec 004): prepare the preserved body so images
-            // /tables inside an unresolved macro still render; keep plainBody.
-            const prepared: PreparedPdfBlock = { type: "unknown", macroName: block.macroName };
-            if (block.body && block.body.length > 0) prepared.body = await walk(block.body, `${path}.body`);
-            if (block.plainBody !== undefined) prepared.plainBody = block.plainBody;
-            return prepared;
+            // /tables inside an unresolved macro still render. Every non-body
+            // field is provenance and must survive this target preparation.
+            const { body, ...metadata } = block;
+            return {
+              ...metadata,
+              ...(body
+                ? { body: await walk(body, `${path}.body`) }
+                : {}),
+            };
           }
           case "heading":
           case "paragraph":

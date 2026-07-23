@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "sourceSha256": "7f43593942a9d38c030d840d6a085a66a68b76cc2ea9027c30169b82c516ef45",
+  "sourceSha256": "25e7c94b94430b2a8d6bdd24f742747c689613776fc3af07e62151b3cf3d6017",
   "features": [
     "inline-code",
     "docx-embedded-code-font",
@@ -34,6 +34,7 @@
     "media-group",
     "media-inline-image-and-fallback-chip",
     "media-data-consumer-provenance-nonvisual",
+    "fragment-provenance-nonvisual",
     "media-wrap-source-order",
     "synced-content-snapshot-and-reference",
     "extension"

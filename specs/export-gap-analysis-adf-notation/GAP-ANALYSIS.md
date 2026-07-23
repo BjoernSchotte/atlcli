@@ -105,7 +105,7 @@ update both its matrix rows and the checklist below in the same commit:
 - `[ ]` plus **Partial** is permitted only when the remaining sub-gap names its
   external contract or parallel-work dependency.
 
-Current matrix orientation: **73 of 84 rows closed; 11 rows open.** This count
+Current matrix orientation: **74 of 84 rows closed; 10 rows open.** This count
 must change in the same commit as any row checkbox.
 `scripts/adf-gap-register.test.ts` enforces the checkbox shape, reconciles
 these counters with every progress-table row, and rejects an unchecked
@@ -185,11 +185,16 @@ Current closed foundations and feature slices:
   TypeScript hosts. DOCX/PDF deliberately keep the content inside the physical
   page and emit a source-located `adf-mark-degraded` fact; this is the complete
   static-artifact projection, not an unchecked partial.
-- [ ] **Open:** annotation and fragment identities are validated and retained
-  through the neutral model, composition, and packed-browser source resolution;
-  native comments/PDF notes, separately fetched comment bodies, and a documented
-  fragment-to-bookmark policy remain open. Applying a block export-control
-  removes its marked wrapper by design and now emits an explicit residual note.
+- [x] Exact ordered `fragment` mark arrays—including duplicate identities and
+  empty optional names—survive inline/block/bodied extensions, tables,
+  composition, PDF preparation, and both TypeScript hosts as non-visual
+  provenance. Both targets omit opaque fragment IDs and invented bookmarks;
+  every projection is source-located in the report. A consumed export-control
+  wrapper is explicitly reported because that wrapper intentionally has no
+  exported object.
+- [ ] **Open:** annotation identities are validated and retained through the
+  neutral model, composition, and packed-browser source resolution; native
+  comments/PDF notes and separately fetched comment bodies remain open.
 
 Current cross-cutting residuals:
 
@@ -384,9 +389,9 @@ This covers all 17 marks in the pinned schema.
 | [x] | `breakout` | Exact `wide`/`full-width` mode and optional numeric width are validated and retained on every pinned placement: root `codeBlock`, root `expand`, `layoutSection`, `syncBlock`, and `bodiedSyncBlock`. | Approximation | Approximation | Closed for the pinned schema and static targets. The intent survives decoding, composition, CLI/browser direct and background paths, DOCX/PDF preparation, and the conformance fixture. A fixed page cannot reproduce an editor viewport wider than itself, so both renderers preserve ordinary page-bounded visible output and emit a source-located `adf-mark-degraded` fact instead of silently dropping or falsely claiming viewport geometry. |
 | [x] | `border` | Exact pinned six/eight-digit color and size 1–3 are validated and retained on block/inline media. DOCX emits run/paragraph borders and PDF emits target-native strokes; alpha-bearing source colors retain their exact neutral value and use their portable RGB component for print. | Native | Native | Closed with invalid-shape, block, inline, group, DOCX, PDF, and packed-browser fixtures. |
 | [x] | `dataConsumer` | The exact ordered mark boundaries and each non-empty source array are validated and retained on `media`/`mediaInline` identity. | Native non-visual provenance | Native non-visual provenance | Closed for the pinned schema: DOCX/PDF intentionally render no consumer binding or opaque source ID, while the shared source-located report states that product-internal execution is unavailable. Composition, PDF preparation, packed-browser parity, and a no-pixel-drift rendered golden prove retention without publication. |
-| [ ] | `fragment` | Required non-empty `localId` and exact optional `name` are retained on inline/block extensions and tables. | Open | Open | **Open:** define documented fragment semantics and a collision-safe bookmark/link projection instead of leaving identity non-visual. |
+| [x] | `fragment` | Every required non-empty `localId` and exact optional `name` is retained in source order on inline/block/bodied extensions and tables, including duplicates and empty names. | Native non-visual provenance | Native non-visual provenance | Closed for the pinned schema. The mark declares product-owned fragment identity, not a user-authored hyperlink target; therefore DOCX/PDF intentionally emit no bookmark, link, or opaque ID. Source-located projection facts, composition, full PDF preparation, CLI/browser direct/background parity, and no-pixel-drift goldens prove retention without publication. Consumed export-control wrappers produce an explicit fact rather than reassigning identity to an unrelated child. |
 
-Evidence: [E2], [E5], [E7], [E8], [E20], [E21], [E26], [E43].
+Evidence: [E2], [E5], [E7], [E8], [E20], [E21], [E26], [E43], [E44].
 
 ## 8. Editor notation mapping
 
@@ -562,11 +567,14 @@ Required acceptance contract:
 - [ ] **Open — ADF extensions.** Direct extension identities, parameters,
   visible fallbacks, and export controls are decoded; Forge `adfExport`
   ingestion before HTML fallback remains.
-- [ ] **Open — sync-block snapshot/reference policy.**
-- [ ] **Open — annotation and fragment marks.** Exact source identities,
-  validation, composition, and browser parity are complete; comment-resource
-  correlation, native target output, and fragment/bookmark policy remain.
-- [ ] **Open — data-consumer and product metadata policy.**
+- [x] **Synced-content snapshot/reference policy.** Embedded snapshots and
+  reference-only projections are complete for the pinned static contract.
+- [ ] **Open — annotation marks.** Exact source identities, validation,
+  composition, and browser parity are complete; comment-resource correlation
+  and native target output remain.
+- [x] **Data-consumer and fragment product provenance.** Both marks retain their
+  exact product-owned metadata without publishing opaque IDs or inventing
+  executable/navigation semantics in static artifacts.
 - [x] **Schema-drift lane.** The pinned offline contract and non-blocking weekly
   upstream plus observed-product watchguard are complete.
 
@@ -591,8 +599,9 @@ Required acceptance contract:
 - [x] Alignment, indentation, and the schema-defined small paragraph font size.
 - [x] Date/status/placeholder semantics and target projections.
 - [x] Link/card identity and complete pinned Smart Card projection.
-- [ ] **Open:** annotation/fragment identity is retained; native target
-  semantics and comment-resource correlation remain.
+- [x] Fragment provenance and complete non-visual static projection.
+- [ ] **Open:** annotation identity is retained; native target semantics and
+  comment-resource correlation remain.
 
 ### Phase 2 - Structural fidelity
 
@@ -669,10 +678,12 @@ Closed gates:
   composition, both target markers, real render goldens, and packed browser
   parity.
 - [x] Generic inline-extension placement and visible fallback.
-- [x] Annotation/fragment attribute validation and identity preservation through
-  decoding, composition, coverage classification, and packed-browser
-  direct/background parity, plus explicit reporting when a consumed block
-  export-control wrapper cannot retain its fragment.
+- [x] Annotation identity validation/retention and complete fragment provenance:
+  fragment arrays retain exact source order, duplicates, and optional names
+  through decoding, composition, PDF preparation, and packed-browser
+  direct/background parity. DOCX/PDF publish neither opaque fragment IDs nor
+  invented bookmarks, and every projection—including consumed block
+  export-controls—is explicitly reported.
 - [x] Pinned ADF and documented Storage layout-column geometry, identity,
   vertical alignment, nested traversal, both target renderers, packed-browser
   parity, and real render goldens.
@@ -691,7 +702,8 @@ Focused missing gates:
 - [x] Date localization and deterministic time-zone policy.
 - [x] Generic inline/block/embed card metadata tests.
 - [x] Layout width/column tests for pinned ADF and documented Storage shapes.
-- [ ] Breakout rendering beyond the page-bounded layout-section approximation.
+- [x] Breakout intent and explicit page-bounded rendering on every pinned
+  placement.
 - [x] Media completeness tests: block/group/inline/file/link/external/border/
   layout coverage, bounded asset handling, target-native image output,
   browser/background parity, and persistent live CLI proof are complete.
@@ -701,9 +713,10 @@ Focused missing gates:
 - [x] Date/status/placeholder validation, ADF/Storage differential decoding,
   composition, both target renderers, packed-browser direct/background parity,
   and real render goldens with explicit placeholder-absence assertions.
-- [ ] Sync-block snapshot/reference tests.
-- [ ] Native annotation comment-body/target-rendering tests, documented
-  fragment-to-bookmark policy tests, and data-consumer preservation tests.
+- [x] Sync-block snapshot/reference tests.
+- [x] Fragment and data-consumer preservation, non-publication, report,
+  preparation, browser-parity, and no-pixel-drift tests.
+- [ ] Native annotation comment-body/target-rendering tests.
 - [ ] Broad paired live Confluence ADF-versus-Storage projection fixtures.
 
 At the initial documentation-only analysis baseline, workspace dependencies were not installed and existing tests were inspected rather than freshly executed. Subsequent implementation evidence and current gates are recorded in `PLAN.md`.
@@ -802,6 +815,7 @@ Accessed 2026-07-22 and 2026-07-23:
 - **[E41] Complete pinned `dataConsumer` provenance without identifier publication:** `packages/confluence/src/adf-validate.ts`, `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/adf-coverage.ts`, `packages/confluence/src/adf-validate.test.ts`, `packages/confluence/src/adf-to-blocks.test.ts`, `packages/confluence/src/adf-direct-fixtures.test.ts`, `packages/confluence/src/compose-document.ts`, `packages/docx/src/serialize.test.ts`, `packages/pdf/src/serialize.test.ts`, `packages/export-fixtures/src/index.ts`, `packages/export-fixtures/src/adf-fixtures.test.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `apps/browser-export-harness/tests/exports.e2e.ts`, `scripts/adf-rendered-goldens.ts`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
 - **[E42] Complete pinned synced-content identity and safe static projection:** `packages/confluence/src/adf-validate.ts`, `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/adf-coverage.ts`, `packages/confluence/src/adf-validate.test.ts`, `packages/confluence/src/adf-to-blocks.test.ts`, `packages/confluence/src/adf-direct-fixtures.test.ts`, `packages/confluence/src/compose-document.test.ts`, `packages/docx/src/serialize.test.ts`, `packages/pdf/src/serialize.test.ts`, `packages/export-fixtures/src/index.ts`, `packages/export-fixtures/src/adf-fixtures.test.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `apps/browser-export-harness/tests/exports.e2e.ts`, `scripts/adf-rendered-goldens.ts`, `scripts/adf-rendered-goldens.test.ts`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
 - **[E43] Complete pinned breakout intent and page-bounded static projection:** `packages/confluence/src/adf-validate.ts`, `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/adf-coverage.ts`, `packages/confluence/src/adf-validate.test.ts`, `packages/confluence/src/adf-to-blocks.test.ts`, `packages/confluence/src/adf-direct-fixtures.test.ts`, `packages/confluence/src/compose-document.test.ts`, `packages/docx/src/serialize.test.ts`, `packages/pdf/src/serialize.test.ts`, `packages/export-fixtures/src/index.ts`, `packages/export-fixtures/src/adf-fixtures.test.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `apps/browser-export-harness/tests/exports.e2e.ts`, `scripts/adf-rendered-goldens.ts`, `scripts/adf-rendered-goldens.test.ts`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
+- **[E44] Complete fragment provenance without invented navigation:** `packages/confluence/src/adf-validate.ts`, `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/adf-validate.test.ts`, `packages/confluence/src/adf-to-blocks.test.ts`, `packages/confluence/src/adf-direct-fixtures.test.ts`, `packages/confluence/src/compose-document.test.ts`, `packages/docx/src/serialize.test.ts`, `packages/pdf/src/types.ts`, `packages/pdf/src/prepare.ts`, `packages/pdf/src/serialize.test.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `apps/browser-export-harness/tests/exports.e2e.ts`, `scripts/adf-rendered-goldens.ts`, `scripts/adf-rendered-goldens.test.ts`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
 
 ## 16. Review questions
 
@@ -817,13 +831,12 @@ Accessed 2026-07-22 and 2026-07-23:
    semantics. Thumbnails/provider execution are not invented when the pinned
    node exposes no such contract; future observed attributes enter the weekly
    drift lane.
-5. **Open:** annotation/fragment identities are
-   preserved as metadata on retained source positions while underlying content
-   remains visible; a consumed block export-control wrapper is explicitly
-   reported rather than silently reassigned to an arbitrary child.
-   Native Word comments/PDF notes still require a decision plus separately
-   fetched comment bodies; fragment-to-bookmark rendering still requires a
-   documented semantic and collision policy.
+5. **Resolved for fragments; open for annotations:** fragment identities are
+   exact non-visual product provenance, not document navigation, and consumed
+   export-control wrappers are explicitly reported rather than reassigned.
+   Annotation identities remain on their exact source positions while native
+   Word comments/PDF notes still require separately fetched comment bodies and
+   an export policy.
 6. **Resolved for tasks and decisions:** target-appropriate open/done task
    markers and a distinct decision marker are the static floor; exact
    identities/states remain in the neutral model and nonstandard decision

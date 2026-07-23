@@ -1314,7 +1314,11 @@ describe("adfToBlocks", () => {
       {
         type: "extension",
         attrs: { extensionType: "x", extensionKey: "block" },
-        marks: [fragment("block-fragment", "named")],
+        marks: [
+          fragment("block-fragment-z", "last-authored"),
+          fragment("block-fragment-a", "first-alphabetically"),
+          fragment("block-fragment-z", "duplicate-identity"),
+        ],
       },
       {
         type: "table",
@@ -1364,7 +1368,11 @@ describe("adfToBlocks", () => {
         type: "unknown",
         macroName: "block",
         adfExtension: { extensionType: "x", extensionKey: "block" },
-        fragments: [{ localId: "block-fragment", name: "named" }],
+        fragments: [
+          { localId: "block-fragment-z", name: "last-authored" },
+          { localId: "block-fragment-a", name: "first-alphabetically" },
+          { localId: "block-fragment-z", name: "duplicate-identity" },
+        ],
       },
       {
         type: "table",
@@ -1398,10 +1406,27 @@ describe("adfToBlocks", () => {
         annotations: [{ id: "fallback-comment", annotationType: "inlineComment" }],
       },
     ]);
-    expect(result.notes.filter((note) => note.code === "adf-mark-degraded")).toEqual([]);
+    expect(result.notes.filter((note) => note.code === "adf-mark-degraded")).toHaveLength(3);
+    expect(result.notes.filter((note) => note.message.includes("ADF mark fragment "))).toEqual([
+      expect.objectContaining({
+        message: expect.stringContaining("non-visual product provenance"),
+        source: expect.objectContaining({ blockPath: "blocks[0].content[1]" }),
+      }),
+      expect.objectContaining({
+        message: expect.stringContaining("non-visual product provenance"),
+        source: expect.objectContaining({ blockPath: "blocks[1]" }),
+      }),
+      expect.objectContaining({
+        message: expect.stringContaining("non-visual product provenance"),
+        source: expect.objectContaining({ blockPath: "blocks[2]" }),
+      }),
+    ]);
     expect(result.notes.map((note) => note.code)).toEqual([
       "adf-node-degraded",
+      "adf-mark-degraded",
       "adf-node-degraded",
+      "adf-mark-degraded",
+      "adf-mark-degraded",
       "adf-media-unresolved",
     ]);
   });
@@ -1692,6 +1717,7 @@ describe("adfToBlocks", () => {
       "scroll-only-applied",
       "adf-mark-degraded",
       "scroll-only-applied",
+      "adf-mark-degraded",
     ]);
   });
 

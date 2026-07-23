@@ -309,13 +309,14 @@ The coverage source of truth remains the complete matrices in `GAP-ANALYSIS.md`.
 
 ### 5.2 Explicitly classify, preserve, and defer native rendering
 
-The remaining schema rows—including annotations/fragments, generic extension
+The remaining schema rows—including annotations, generic extension
 output, unsupported wrappers, and externally resolved custom emoji—must retain
 a coverage-manifest status and deterministic fallback.
 Decisions, block tasks, layouts, native captions, block-media geometry and
-grouping, media borders, annotations/fragments, alignment, indentation, and the
-schema-defined small paragraph font size now have the completed contracts
-recorded in the gap analysis.
+grouping, media borders, fragment provenance, alignment, indentation, and the
+schema-defined small paragraph font size now have completed contracts recorded
+in the gap analysis. Annotation identity retention is complete, but native
+comment output remains open.
 
 The ADF adapter must never infer semantics from raw text. Literal `:warning:`, backticks, `[]`, `<>`, and slash-command text remain literal unless Confluence stored a typed ADF node or mark.
 
@@ -1079,7 +1080,7 @@ Completed follow-on evidence recorded on 2026-07-23: pinned-schema task and deci
 
 Completed follow-on evidence recorded on 2026-07-23: nested list ownership is now explicit and differential across direct ADF and the `body.storage` compatibility adapter. Paired fixtures cover bullet-in-bullet, ordered-in-ordered with independent authored starts, and task-in-task using each representation's native shape; both adapters produce the same neutral tree with the child list inside its owning item. DOCX tests cover mixed ordered/unordered nesting, numbering-instance isolation, per-level indentation, and nested task glyphs without accidental numbering. PDF tests cover nested bullet/task emission and the exact nested source-map path; this work fixed a real provenance bug where a list item's tail blocks were incorrectly indexed from zero after its leading paragraph. The packed browser source case asserts the numbered starts, bullet level, task hierarchy, and direct/background parity. Real LibreOffice and Typst/Poppler goldens visibly prove all three nested forms without overlap, clipping, or flattened ownership.
 
-Completed annotation/fragment identity-preservation sub-slice recorded on 2026-07-23: the bounded validator now enforces the pinned annotation and fragment attribute contracts, including exact `inlineComment`, schema-valid empty annotation IDs, non-empty fragment local IDs, and exact optional fragment names (including an empty string). The neutral model retains annotation identities on text and resolved/unresolved media, and fragment identities on inline/block/bodied extensions and tables. Decoder, direct-schema, composition, target-neutral fixture, production-browser, and direct/background source-resolution gates prove that these identities survive the TypeScript pipeline while both renderers deliberately leave visible output unchanged. Applying a block export-control deliberately consumes its marked extension wrapper; that exceptional residual now emits a degradation note instead of silently attaching the fragment to an arbitrary child, while inline export-controls retain it on their visible text. This closes silent identity loss only: native Word comments/PDF notes require separately fetched inline-comment resources and a product policy, while fragment-to-bookmark rendering remains an **Open** gap pending documented semantics and collision/link behavior.
+Completed annotation/fragment identity-preservation sub-slice recorded on 2026-07-23: the bounded validator now enforces the pinned annotation and fragment attribute contracts, including exact `inlineComment`, schema-valid empty annotation IDs, non-empty fragment local IDs, and exact optional fragment names (including an empty string). The neutral model retains annotation identities on text and resolved/unresolved media, and fragment identities on inline/block/bodied extensions and tables. Decoder, direct-schema, composition, target-neutral fixture, production-browser, and direct/background source-resolution gates prove that these identities survive the TypeScript pipeline while both renderers deliberately leave visible output unchanged. Applying a block export-control deliberately consumes its marked extension wrapper; that exceptional residual now emits a degradation note instead of silently attaching the fragment to an arbitrary child, while inline export-controls retain it on their visible text. At this checkpoint native Word comments/PDF notes still required separately fetched inline-comment resources and a product policy; the later fragment-provenance follow-on closes the fragment row with a documented non-visual static policy instead of inventing bookmark semantics.
 
 Completed table-attribute follow-on evidence recorded on 2026-07-23: the
 bounded validator now enforces the complete pinned `table`, `tableRow`,
@@ -1461,11 +1462,35 @@ difference and content-bounds IoU 1. The unrestricted workspace suite passed
 5,020 tests with 13 intentional skips and zero failures. The matrix now records
 73 of 84 rows closed and 11 open.
 
+Completed fragment-provenance follow-on evidence recorded on 2026-07-23: every
+pinned fragment placement now retains its exact ordered mark array, including
+duplicates, required non-empty local identities, and exact optional names.
+Inline, block, and bodied extensions plus tables preserve that product-owned
+identity through decoding, composition, full PDF preparation, and identical
+CLI/browser direct/background shapes. This slice exposed and fixed a real
+PDF-preparation loss: unknown extension preparation previously retained only
+visible body data and discarded neutral extension metadata.
+
+The complete static policy is deliberately non-visual. The public ADF contract
+does not declare fragment marks as user-authored hyperlinks or bookmarks, so
+DOCX/PDF publish neither opaque IDs nor invented navigation. Instead, every
+projection is source-located in the shared report; a consumed export-control
+wrapper is reported explicitly rather than reassigning its fragment to an
+unrelated child. Focused decoder/DOCX/PDF tests, typecheck, build, API/closure
+checks, 74 browser unit cases, output/manifest gates, packed Chromium E2E,
+exact artifact/report parity, and two repeat-rendered DOCX plus five PDF pages
+passed. Both renders reproduced with zero mean pixel difference and
+content-bounds IoU 1. The unrestricted workspace suite passed 5,022 tests with
+13 intentional skips and zero failures. The matrix now records 74 of 84 rows
+closed and 10 open.
+
 After this migration proves the source boundary, close the gap-analysis backlog in separate feature slices:
 
 1. custom-emoji assets after a documented Atlassian resolver contract and
    complete emoji-font coverage (portable DOCX mono-font embedding is complete);
-2. annotation comment-resource correlation/native target output and a documented fragment-to-bookmark policy (identity preservation is complete; alignment, indentation, and schema-defined small text are complete);
+2. annotation comment-resource correlation/native target output (fragment
+   provenance, alignment, indentation, and schema-defined small text are
+   complete);
 3. observed product-specific task/decision metadata beyond the pinned schema, if the sanitized Cloud corpus discovers any;
 4. page-bound wide-table pagination/overflow policies beyond the now-complete
    pinned table-attribute contract;

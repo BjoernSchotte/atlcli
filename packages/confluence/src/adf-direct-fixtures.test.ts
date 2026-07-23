@@ -263,6 +263,10 @@ describe("direct ADF decoder fixtures", () => {
       }
       if (type === "fragment") {
         expect(JSON.stringify(result.blocks)).toContain('"fragments":[{"localId":"fragment-1","name":"node-fragment"}]');
+        expect(result.notes).toContainEqual(expect.objectContaining({
+          code: "adf-mark-degraded",
+          message: expect.stringContaining("non-visual product provenance"),
+        }));
       }
       if (type === "dataConsumer") {
         expect(JSON.stringify(result.blocks)).toContain(

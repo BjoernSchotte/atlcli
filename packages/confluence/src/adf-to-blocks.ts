@@ -590,6 +590,7 @@ function decodeInlineNode(node: AdfNode, ctx: DecodeContext, path: string): Inli
       const extensionKey = stringAttr(node, "extensionKey") ?? "adf-extension";
       const params = extensionParams(node.attrs?.parameters);
       const fragments = fragmentMarks(node.marks);
+      addFragmentProjectionNote(ctx, path, fragments);
       return [{
         type: "text",
         text: extensionLabel(node),
@@ -950,6 +951,7 @@ function decodeExtension(node: AdfNode, ctx: DecodeContext, path: string): Expor
     ...(stringAttr(node, "localId") ? { localId: stringAttr(node, "localId") } : {}),
   };
   const fragments = fragmentMarks(node.marks);
+  addFragmentProjectionNote(ctx, path, fragments);
   return {
     type: "unknown",
     macroName: extensionKey,
@@ -975,12 +977,30 @@ function decodeBlockExportControl(
 ): { blocks: ExportBlock[] } | undefined {
   const macro = (stringAttr(node, "extensionKey") ?? "").toLowerCase();
   if (macro !== "scroll-only" && macro !== "scroll-ignore") return undefined;
-  if (!exportControlKeeps(macro, node, ctx, path)) return { blocks: [] };
+  const fragments = fragmentMarks(node.marks);
+  if (!exportControlKeeps(macro, node, ctx, path)) {
+    if (fragments.length > 0) {
+      addMarkNote(
+        ctx,
+        path,
+        "fragment",
+        "belongs to a consumed export-control wrapper; its intentionally omitted output was reported.",
+      );
+    }
+    return { blocks: [] };
+  }
   // Applying a block export-control deliberately removes its extension
   // wrapper. The neutral model has no invisible wrapper slot on which to keep
   // that wrapper's fragment mark, so report the residual instead of silently
   // pretending the identity survived on one arbitrary child.
-  if (fragmentMarks(node.marks).length > 0) addMarkNote(ctx, path, "fragment");
+  if (fragments.length > 0) {
+    addMarkNote(
+      ctx,
+      path,
+      "fragment",
+      "belongs to a consumed export-control wrapper; its visible body was preserved.",
+    );
+  }
   return { blocks: decodeBlockChildren(node.content, ctx, `${path}.content`) };
 }
 
@@ -993,6 +1013,19 @@ function decodeInlineExportControl(
   if (macro !== "scroll-only-inline" && macro !== "scroll-ignore-inline") return undefined;
   const text = stringAttr(node, "text") ?? descendantText(node);
   const fragments = fragmentMarks(node.marks);
+  const keep = exportControlKeeps(macro, node, ctx, path);
+  if (fragments.length > 0) {
+    if (keep && text) {
+      addFragmentProjectionNote(ctx, path, fragments);
+    } else {
+      addMarkNote(
+        ctx,
+        path,
+        "fragment",
+        "belongs to a consumed export-control wrapper; its intentionally omitted output was reported.",
+      );
+    }
+  }
   const content = text
     ? [{
         type: "text" as const,
@@ -1000,7 +1033,7 @@ function decodeInlineExportControl(
         ...(fragments.length > 0 ? { fragments } : {}),
       }]
     : [];
-  return { content: exportControlKeeps(macro, node, ctx, path) ? content : [] };
+  return { content: keep ? content : [] };
 }
 
 function exportControlKeeps(
@@ -1367,6 +1400,7 @@ function decodeTable(node: AdfNode, ctx: DecodeContext, path: string): ExportBlo
       : {}),
   };
   const fragments = fragmentMarks(node.marks);
+  addFragmentProjectionNote(ctx, path, fragments);
   return {
     type: "table",
     rows,
@@ -1679,7 +1713,7 @@ function annotationFields(
 
 function fragmentMarks(marks: readonly AdfMark[] | undefined): AdfFragmentIdentity[] {
   const fragments: AdfFragmentIdentity[] = [];
-  for (const mark of [...(marks ?? [])].sort((left, right) => markKey(left).localeCompare(markKey(right)))) {
+  for (const mark of marks ?? []) {
     if (mark.type !== "fragment") continue;
     const localId = mark.attrs?.localId;
     if (typeof localId !== "string" || localId.length === 0) continue;
@@ -1690,6 +1724,20 @@ function fragmentMarks(marks: readonly AdfMark[] | undefined): AdfFragmentIdenti
     });
   }
   return fragments;
+}
+
+function addFragmentProjectionNote(
+  ctx: DecodeContext,
+  path: string,
+  fragments: readonly AdfFragmentIdentity[],
+): void {
+  if (fragments.length === 0) return;
+  addMarkNote(
+    ctx,
+    path,
+    "fragment",
+    "identity is retained as non-visual product provenance; no user navigation target was declared.",
+  );
 }
 
 function decodeInlineDescendants(

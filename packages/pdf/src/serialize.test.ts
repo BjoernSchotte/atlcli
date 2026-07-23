@@ -1835,6 +1835,66 @@ describe("serialize — C3 captions", () => {
     expect(retainedBundle.notes).toEqual([]);
   });
 
+  it("preserves fragment provenance without publishing ids or inventing anchors", async () => {
+    const baseExtension: Extract<ExportBlock, { type: "unknown" }> = {
+      type: "unknown",
+      macroName: "fragmented-extension",
+      body: [{
+        type: "paragraph",
+        content: [{ type: "text", text: "Visible extension body" }],
+      }],
+    };
+    const baseTable: Extract<ExportBlock, { type: "table" }> = {
+      type: "table",
+      rows: [{
+        cells: [{
+          header: false,
+          colspan: 1,
+          rowspan: 1,
+          content: [{
+            type: "paragraph",
+            content: [{ type: "text", text: "Visible table cell" }],
+          }],
+        }],
+      }],
+    };
+    const plain = await preparePdfDocument([baseExtension, baseTable], {
+      resolve: async () => { throw new Error("unused"); },
+    });
+    const retained = await preparePdfDocument([
+      {
+        ...baseExtension,
+        fragments: [{ localId: "opaque-extension-fragment", name: "extension-fragment" }],
+      },
+      {
+        ...baseTable,
+        fragments: [{ localId: "opaque-table-fragment", name: "" }],
+      },
+    ], {
+      resolve: async () => { throw new Error("unused"); },
+    });
+    expect(retained.blocks).toMatchObject([
+      {
+        type: "unknown",
+        fragments: [{ localId: "opaque-extension-fragment", name: "extension-fragment" }],
+      },
+      {
+        type: "table",
+        fragments: [{ localId: "opaque-table-fragment", name: "" }],
+      },
+    ]);
+
+    const plainBundle = serializePdfDocument(plain, { metadata });
+    const retainedBundle = serializePdfDocument(retained, { metadata });
+    expect(retainedBundle.main).toBe(plainBundle.main);
+    expect(retainedBundle.main).toContain("Visible extension body");
+    expect(retainedBundle.main).toContain('#text("Visible")');
+    expect(retainedBundle.main).toContain('#text("cell")');
+    expect(retainedBundle.main).not.toContain("opaque-");
+    expect(retainedBundle.main).not.toContain("extension-fragment");
+    expect(retainedBundle.notes).toEqual(plainBundle.notes);
+  });
+
   it("preserves synced-content provenance without publishing opaque identity", async () => {
     const snapshot: ExportBlock = {
       type: "callout",

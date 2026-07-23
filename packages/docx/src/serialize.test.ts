@@ -1638,6 +1638,49 @@ describe("serializeBlocks — C3 captions", () => {
     expect(retained.notes).toEqual([]);
   });
 
+  it("keeps fragment provenance non-visual and never invents document bookmarks", async () => {
+    const baseExtension: Extract<ExportBlock, { type: "unknown" }> = {
+      type: "unknown",
+      macroName: "fragmented-extension",
+      body: [{
+        type: "paragraph",
+        content: [{ type: "text", text: "Visible extension body" }],
+      }],
+    };
+    const baseTable: Extract<ExportBlock, { type: "table" }> = {
+      type: "table",
+      rows: [{
+        cells: [{
+          header: false,
+          colspan: 1,
+          rowspan: 1,
+          content: [{
+            type: "paragraph",
+            content: [{ type: "text", text: "Visible table cell" }],
+          }],
+        }],
+      }],
+    };
+    const plain = await serializeBlocks([baseExtension, baseTable], { styleNames: noStyles });
+    const retained = await serializeBlocks([
+      {
+        ...baseExtension,
+        fragments: [{ localId: "opaque-extension-fragment", name: "extension-fragment" }],
+      },
+      {
+        ...baseTable,
+        fragments: [{ localId: "opaque-table-fragment", name: "" }],
+      },
+    ], { styleNames: noStyles });
+
+    expect(retained.xml).toBe(plain.xml);
+    expect(retained.xml).toContain("Visible extension body");
+    expect(retained.xml).toContain("Visible table cell");
+    expect(retained.xml).not.toContain("opaque-");
+    expect(retained.xml).not.toContain("extension-fragment");
+    expect(retained.notes).toEqual(plain.notes);
+  });
+
   it("renders synced-content projections without publishing opaque identity", async () => {
     const snapshot: ExportBlock = {
       type: "callout",

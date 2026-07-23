@@ -93,7 +93,9 @@ export type PreparedPdfBlock =
    * recursively so images/tables inside an unresolved third-party macro still
    * render; `plainBody` is the verbatim plain-text body.
    */
-  | { type: "unknown"; macroName: string; body?: PreparedPdfBlock[]; plainBody?: string }
+  | (Omit<Extract<ExportBlock, { type: "unknown" }>, "body"> & {
+      body?: PreparedPdfBlock[];
+    })
   | Omit<Extract<ExportBlock, { type: "callout" }>, "content"> & {
       content: PreparedPdfBlock[];
     }
