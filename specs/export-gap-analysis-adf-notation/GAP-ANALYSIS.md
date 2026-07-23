@@ -105,7 +105,7 @@ update both its matrix rows and the checklist below in the same commit:
 - `[ ]` plus **Partial** is permitted only when the remaining sub-gap names its
   external contract or parallel-work dependency.
 
-Current matrix orientation: **74 of 84 rows closed; 10 rows open.** This count
+Current matrix orientation: **75 of 84 rows closed; 9 rows open.** This count
 must change in the same commit as any row checkbox.
 `scripts/adf-gap-register.test.ts` enforces the checkbox shape, reconciles
 these counters with every progress-table row, and rejects an unchecked
@@ -192,6 +192,12 @@ Current closed foundations and feature slices:
   every projection is source-located in the report. A consumed export-control
   wrapper is explicitly reported because that wrapper intentionally has no
   exported object.
+- [x] Direct `unsupportedBlock`/`unsupportedInline` and Storage
+  `ac:adf-node` wrappers retain their original type plus ordered, structured
+  attributes in the neutral model. Visible children keep formatting; empty
+  wrappers receive an explicit fallback. Both targets render the same bounded
+  fallback without publishing opaque attributes, and these wrappers never
+  masquerade as live macros.
 - [ ] **Open:** annotation identities are validated and retained through the
   neutral model, composition, and packed-browser source resolution; native
   comments/PDF notes and separately fetched comment bodies remain open.
@@ -365,7 +371,9 @@ These types are mentioned by the human ADF documentation or may appear in produc
 |---|---|---|---|
 | [ ] | `multiBodiedExtension` | No typed model; may arrive as wrapper/macro/export-view content. | **Partial — external observation:** keep a product-corpus fixture and support behind an observed-version gate if Confluence emits it. |
 | [ ] | `extensionFrame` | No typed model. | **Partial — external observation:** preserve visible body and extension identity if the observed-product corpus proves that Confluence emits it. |
-| [ ] | `unsupportedBlock` / `unsupportedInline` and `ac:adf-node` wrappers | Storage wrappers are traversed transparently. | **Open:** preserve original type/attributes in a typed unsupported node plus warning and visible fallback. |
+| [x] | `unsupportedBlock` / `unsupportedInline` and `ac:adf-node` wrappers | Direct and legacy Storage wrappers retain exact node type, ordered structured attributes, marks where present, source representation, visible rich children, and wrapper boundaries. | Closed typed fallback: DOCX/PDF show an explicit unsupported-ADF label plus retained body/inline content, never publish opaque provenance, and never route the wrapper through the macro registry. Packed CLI/browser direct/background parity and real renders cover the same model. |
+
+Evidence: [E45].
 
 ## 7. Complete ADF mark matrix
 
@@ -684,6 +692,10 @@ Closed gates:
   direct/background parity. DOCX/PDF publish neither opaque fragment IDs nor
   invented bookmarks, and every projection—including consumed block
   export-controls—is explicitly reported.
+- [x] Direct unsupported block/inline wrappers and Storage `ac:adf-node`
+  wrappers retain typed source provenance, rich visible children, explicit
+  fallback labels, renderer privacy, and macro-registry isolation through
+  packed direct/background browser parity and real DOCX/PDF renders.
 - [x] Pinned ADF and documented Storage layout-column geometry, identity,
   vertical alignment, nested traversal, both target renderers, packed-browser
   parity, and real render goldens.
@@ -816,6 +828,7 @@ Accessed 2026-07-22 and 2026-07-23:
 - **[E42] Complete pinned synced-content identity and safe static projection:** `packages/confluence/src/adf-validate.ts`, `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/adf-coverage.ts`, `packages/confluence/src/adf-validate.test.ts`, `packages/confluence/src/adf-to-blocks.test.ts`, `packages/confluence/src/adf-direct-fixtures.test.ts`, `packages/confluence/src/compose-document.test.ts`, `packages/docx/src/serialize.test.ts`, `packages/pdf/src/serialize.test.ts`, `packages/export-fixtures/src/index.ts`, `packages/export-fixtures/src/adf-fixtures.test.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `apps/browser-export-harness/tests/exports.e2e.ts`, `scripts/adf-rendered-goldens.ts`, `scripts/adf-rendered-goldens.test.ts`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
 - **[E43] Complete pinned breakout intent and page-bounded static projection:** `packages/confluence/src/adf-validate.ts`, `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/adf-coverage.ts`, `packages/confluence/src/adf-validate.test.ts`, `packages/confluence/src/adf-to-blocks.test.ts`, `packages/confluence/src/adf-direct-fixtures.test.ts`, `packages/confluence/src/compose-document.test.ts`, `packages/docx/src/serialize.test.ts`, `packages/pdf/src/serialize.test.ts`, `packages/export-fixtures/src/index.ts`, `packages/export-fixtures/src/adf-fixtures.test.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `apps/browser-export-harness/tests/exports.e2e.ts`, `scripts/adf-rendered-goldens.ts`, `scripts/adf-rendered-goldens.test.ts`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
 - **[E44] Complete fragment provenance without invented navigation:** `packages/confluence/src/adf-validate.ts`, `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/adf-validate.test.ts`, `packages/confluence/src/adf-to-blocks.test.ts`, `packages/confluence/src/adf-direct-fixtures.test.ts`, `packages/confluence/src/compose-document.test.ts`, `packages/docx/src/serialize.test.ts`, `packages/pdf/src/types.ts`, `packages/pdf/src/prepare.ts`, `packages/pdf/src/serialize.test.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `apps/browser-export-harness/tests/exports.e2e.ts`, `scripts/adf-rendered-goldens.ts`, `scripts/adf-rendered-goldens.test.ts`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
+- **[E45] Typed unsupported-ADF preservation and visible static fallback:** `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/adf-to-blocks.test.ts`, `packages/confluence/src/export-blocks.test.ts`, `packages/export-macros/src/resolve.ts`, `packages/export-macros/src/resolve.test.ts`, `packages/docx/src/serialize.ts`, `packages/docx/src/serialize.test.ts`, `packages/pdf/src/prepare.ts`, `packages/pdf/src/serialize.ts`, `packages/pdf/src/serialize.test.ts`, `packages/export-fixtures/src/index.ts`, `packages/export-fixtures/src/adf-fixtures.test.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `apps/browser-export-harness/tests/exports.e2e.ts`, `scripts/adf-rendered-goldens.ts`, `scripts/adf-rendered-goldens.test.ts`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
 
 ## 16. Review questions
 

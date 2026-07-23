@@ -1484,6 +1484,27 @@ content-bounds IoU 1. The unrestricted workspace suite passed 5,022 tests with
 13 intentional skips and zero failures. The matrix now records 74 of 84 rows
 closed and 10 open.
 
+Completed unsupported-ADF fallback follow-on evidence recorded on 2026-07-23:
+direct `unsupportedBlock`/`unsupportedInline` nodes and legacy Storage
+`ac:adf-node` wrappers now retain a typed source-representation record with
+their exact node type, ordered structured attributes, and direct-ADF marks.
+Block wrappers reuse the body-bearing neutral fallback without being treated as
+macros; inline wrappers attach their ordered provenance stack to the first
+owned text leaf so child marks and links remain intact. Empty or non-text
+wrappers receive an explicit visible label.
+
+Both TypeScript targets show the same unsupported-ADF label plus retained
+content while keeping opaque attributes non-visual. The macro resolver
+explicitly excludes these wrappers from live registry lookup. Focused ADF,
+Storage, macro-resolution, DOCX, and PDF tests passed; full typecheck, 74
+browser unit cases, production browser build/output/manifest gates, packed
+Chromium E2E, and exact direct/background artifact/report parity passed. Two
+DOCX and five PDF pages were visually reviewed without clipping, overlap, or
+missing content; a repeat render produced zero mean pixel difference and
+content-bounds IoU 1. The unrestricted workspace suite passed 5,027 tests with
+13 intentional skips and zero failures. The matrix now records 75 of 84 rows
+closed and 9 open.
+
 After this migration proves the source boundary, close the gap-analysis backlog in separate feature slices:
 
 1. custom-emoji assets after a documented Atlassian resolver contract and

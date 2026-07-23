@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "sourceSha256": "25e7c94b94430b2a8d6bdd24f742747c689613776fc3af07e62151b3cf3d6017",
+  "sourceSha256": "e06253fc6fba250d0a8f5bf8881d8d3a1216c6439e21dd459de2a8e364a51b9d",
   "features": [
     "inline-code",
     "docx-embedded-code-font",
@@ -35,6 +35,7 @@
     "media-inline-image-and-fallback-chip",
     "media-data-consumer-provenance-nonvisual",
     "fragment-provenance-nonvisual",
+    "unsupported-adf-typed-fallback",
     "media-wrap-source-order",
     "synced-content-snapshot-and-reference",
     "extension"
@@ -48,7 +49,7 @@
         },
         {
           "file": "docx-page-2.png",
-          "sha256": "cb1ac5dcedef8701ed46c0fc4787410d73689d772c631dd9234737202002d785"
+          "sha256": "0fc6e415cdea27d35392fcadd097fe9d7c1125e0b869c0a77d68b139540bcbaa"
         }
       ],
       "requiredText": [
@@ -84,13 +85,18 @@
         "Synced content snapshot",
         "Synced snapshot body",
         "Synced content is unavailable in this static export.",
+        "Unsupported ADF block: unsupportedBlock",
+        "Unsupported wrapper keeps ",
+        "rich inline content",
         "Mar 4, 2024",
         "READY",
         "Keep Case"
       ],
       "forbiddenText": [
         "editor-only-secret",
-        "1709510400000"
+        "1709510400000",
+        "unsupported-block-private-provenance",
+        "unsupported-inline-private-provenance"
       ]
     },
     "pdf": {
@@ -109,7 +115,7 @@
         },
         {
           "file": "pdf-page-4.png",
-          "sha256": "00ce98257a74994d305269d0a5354abb09e335259b24817f3581429d855df58b"
+          "sha256": "91d4734603d300d949b6103d5cf2def74af960cf1fb57337cceb1fe4ab91c7cd"
         },
         {
           "file": "pdf-page-5.png",
@@ -149,13 +155,18 @@
         "Synced content snapshot",
         "Synced snapshot body",
         "Synced content is unavailable in this static export.",
+        "Unsupported ADF block: unsupportedBlock",
+        "Unsupported wrapper keeps ",
+        "rich inline content",
         "4 Mar 2024",
         "READY",
         "Keep Case"
       ],
       "forbiddenText": [
         "editor-only-secret",
-        "1709510400000"
+        "1709510400000",
+        "unsupported-block-private-provenance",
+        "unsupported-inline-private-provenance"
       ]
     }
   }

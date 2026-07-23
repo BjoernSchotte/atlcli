@@ -875,8 +875,11 @@ async function serializeBlock(
       // Stage-4 placeholder floor (spec 004): the placeholder line, followed by
       // the preserved body/plainBody so an unresolved third-party macro never
       // silently drops content ("never silently drop" is spec 004's invariant).
+      const fallbackLabel = block.unsupportedAdf
+        ? `Unsupported ADF block: ${block.unsupportedAdf.nodeType}`
+        : `${block.macroName} macro not rendered`;
       const placeholder = paragraph(
-        run(`[${block.macroName} macro not rendered]`, { italic: true, color: "97A0AF" })
+        run(`[${fallbackLabel}]`, { italic: true, color: "97A0AF" })
       );
       const MAX_BODY_DEPTH = 20;
       if (block.body && block.body.length > 0) {

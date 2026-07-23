@@ -2193,6 +2193,60 @@ describe("storageToBlocks — datasource smart links", () => {
   });
 });
 
+describe("storageToBlocks — typed ac:adf-node fallback", () => {
+  test("retains block and inline wrapper provenance without flattening visible children", () => {
+    const result = storageToBlocks(
+      '<ac:adf-node type="unsupportedBlock" data-envelope="legacy">' +
+        '<ac:adf-attribute key="originalValue">' +
+          '<ac:adf-parameter key="kind">synthetic</ac:adf-parameter>' +
+        '</ac:adf-attribute>' +
+        '<ac:adf-content><p>Visible ' +
+          '<ac:adf-node type="unsupportedInline">' +
+            '<ac:adf-attribute key="tone">quiet</ac:adf-attribute>' +
+            '<ac:adf-content><strong>inline</strong></ac:adf-content>' +
+          '</ac:adf-node>' +
+        '</p></ac:adf-content>' +
+      '</ac:adf-node>',
+    );
+
+    expect(result.blocks).toEqual([{
+      type: "unknown",
+      macroName: "unsupportedBlock",
+      unsupportedAdf: {
+        nodeType: "unsupportedBlock",
+        sourceRepresentation: "storage",
+        attributes: [
+          { name: "data-envelope", value: "legacy" },
+          {
+            name: "originalValue",
+            value: [{ name: "kind", value: "synthetic" }],
+          },
+        ],
+      },
+      body: [{
+        type: "paragraph",
+        content: [
+          { type: "text", text: "Visible " },
+          {
+            type: "text",
+            text: "inline",
+            marks: ["bold"],
+            unsupportedAdf: [{
+              nodeType: "unsupportedInline",
+              sourceRepresentation: "storage",
+              attributes: [{ name: "tone", value: "quiet" }],
+            }],
+          },
+        ],
+      }],
+    }]);
+    expect(result.notes.map(({ code }) => code)).toEqual([
+      "adf-node-degraded",
+      "adf-node-degraded",
+    ]);
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Note-code vocabulary contract (spec 010)
 // ---------------------------------------------------------------------------

@@ -50,6 +50,46 @@ function skipRenderer(id: string, macro: string, note?: ExportNote): MacroRender
 }
 
 describe("resolveMacroBlocks — fallback chain", () => {
+  test("never routes a typed unsupported ADF wrapper through the macro registry", async () => {
+    let calls = 0;
+    const registry = createRegistry([{
+      id: "catchall",
+      macros: ["*"],
+      requiresLivePort: false,
+      async render() {
+        calls += 1;
+        return {
+          kind: "blocks",
+          blocks: [{ type: "paragraph", content: [{ type: "text", text: "wrong" }] }],
+        };
+      },
+    }]);
+    const block = unknownBlock("unsupportedBlock", {
+      unsupportedAdf: {
+        nodeType: "unsupportedBlock",
+        sourceRepresentation: "atlas_doc_format",
+      },
+      body: [{ type: "paragraph", content: [{ type: "text", text: "visible" }] }],
+    });
+
+    const out = await resolveMacroBlocks({
+      blocks: [block],
+      notes: [{
+        level: "warning",
+        code: "adf-node-degraded",
+        message: "typed fallback",
+      }],
+    }, registry, ctx());
+
+    expect(calls).toBe(0);
+    expect(out.blocks).toEqual([block]);
+    expect(out.notes).toEqual([{
+      level: "warning",
+      code: "adf-node-degraded",
+      message: "typed fallback",
+    }]);
+  });
+
   test("never substitutes an ADF localId for the Storage macro-body id", async () => {
     let calls = 0;
     const renderer = exportViewFallbackRenderer({

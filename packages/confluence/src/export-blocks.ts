@@ -161,6 +161,11 @@ export type InlineNode =
       annotations?: AdfAnnotationIdentity[];
       /** ADF fragment identities retained without inventing bookmark semantics. */
       fragments?: AdfFragmentIdentity[];
+      /**
+       * Unsupported ADF inline wrappers retained on the first visible text run
+       * they own. Arrays preserve nested wrapper boundaries in source order.
+       */
+      unsupportedAdf?: AdfUnsupportedNodeProvenance[];
     }
   | ({
       type: "link";
@@ -585,6 +590,30 @@ export interface AdfFragmentIdentity {
   name?: string;
 }
 
+/** One exact, ordered attribute retained from an unsupported ADF wrapper. */
+export interface AdfUnsupportedAttribute {
+  name: string;
+  value: AdfJsonValue;
+}
+
+/** One exact mark retained from an unsupported direct-ADF wrapper. */
+export interface AdfUnsupportedMark {
+  type: string;
+  attributes?: AdfUnsupportedAttribute[];
+}
+
+/**
+ * Product/legacy ADF wrapper provenance retained without publishing opaque
+ * attributes in the static artifact. Visible child content stays renderable;
+ * this record prevents the wrapper type and attributes from disappearing.
+ */
+export interface AdfUnsupportedNodeProvenance {
+  nodeType: string;
+  sourceRepresentation: "atlas_doc_format" | "storage";
+  attributes?: AdfUnsupportedAttribute[];
+  marks?: AdfUnsupportedMark[];
+}
+
 /**
  * One ADF `dataConsumer` mark retained on media without executing the
  * product-internal consumer binding. Mark boundaries and source order remain
@@ -795,6 +824,8 @@ export type ExportBlock =
       adfExtension?: AdfExtensionIdentity;
       /** ADF fragment identities retained without inventing bookmark semantics. */
       fragments?: AdfFragmentIdentity[];
+      /** Unsupported ADF wrapper type/attributes retained as exact provenance. */
+      unsupportedAdf?: AdfUnsupportedNodeProvenance;
       /**
        * Notes the scratch walk of `body` produced but did NOT merge into the
        * top-level report — preserved on the block for a later consumer (Lane E,
@@ -1735,6 +1766,10 @@ function walkBlocks(nodes: XmlNode[], ctx: WalkCtx): ExportBlock[] {
       ctx.blockPath = savedPath;
       continue;
     }
+    if (node.name === "ac:adf-node" && storageAdfNodeIsInline(node)) {
+      inlineBuf.push(node);
+      continue;
+    }
     if (INLINE_TAGS.has(node.name) || isInlineMacro(node)) {
       inlineBuf.push(node);
       continue;
@@ -1887,11 +1922,118 @@ function handleBlockElement(el: XmlElement, ctx: WalkCtx): ExportBlock[] {
       return [{ type: "codeBlock", code: elementText(el), hideLineNumbers: true }];
     case "ac:structured-macro":
       return walkMacro(el, ctx);
+    case "ac:adf-node":
+      return [walkUnsupportedStorageAdfBlock(el, ctx)];
     default:
       if (TRANSPARENT_BLOCK_TAGS.has(name)) return walkBlocks(el.children, ctx);
       // Unknown block-level element: descend rather than drop its content.
       return walkBlocks(el.children, ctx);
   }
+}
+
+function storageAdfNodeType(el: XmlElement): string {
+  return el.attrs.type?.trim() || "ac:adf-node";
+}
+
+function storageAdfNodeIsInline(el: XmlElement): boolean {
+  const type = storageAdfNodeType(el).toLowerCase();
+  return type === "unsupportedinline" ||
+    type === "inlineextension" ||
+    type === "inlinecard" ||
+    type === "mediainline";
+}
+
+function storageAdfValue(el: XmlElement): AdfJsonValue {
+  const structured = el.children.filter(
+    (child): child is XmlElement =>
+      child.type === "element" &&
+      (child.name === "ac:adf-attribute" || child.name === "ac:adf-parameter"),
+  );
+  if (structured.length === 0) return elementText(el);
+  return structured.map((child) => ({
+    name: child.attrs.key ?? child.attrs["ac:key"] ?? "",
+    value: storageAdfValue(child),
+  }));
+}
+
+function storageAdfProvenance(el: XmlElement): AdfUnsupportedNodeProvenance {
+  const attributes: AdfUnsupportedAttribute[] = [];
+  for (const [name, value] of Object.entries(el.attrs)) {
+    if (name !== "type") attributes.push({ name, value });
+  }
+  for (const child of el.children) {
+    if (child.type !== "element" || child.name !== "ac:adf-attribute") continue;
+    attributes.push({
+      name: child.attrs.key ?? child.attrs["ac:key"] ?? "",
+      value: storageAdfValue(child),
+    });
+  }
+  return {
+    nodeType: storageAdfNodeType(el),
+    sourceRepresentation: "storage",
+    ...(attributes.length > 0 ? { attributes } : {}),
+  };
+}
+
+function storageAdfContent(el: XmlElement): XmlNode[] {
+  const wrapper = childByName(el, "ac:adf-content");
+  if (wrapper) return wrapper.children;
+  return el.children.filter(
+    (child) => child.type !== "element" || child.name !== "ac:adf-attribute",
+  );
+}
+
+function reportUnsupportedStorageAdf(
+  el: XmlElement,
+  ctx: WalkCtx,
+  placement: "block" | "inline",
+): void {
+  ctx.notes.push(withSource(ctx, {
+    level: "warning",
+    code: "adf-node-degraded",
+    message:
+      `Storage ADF ${placement} wrapper ${storageAdfNodeType(el)} retained its ` +
+      "typed provenance and visible fallback.",
+  }));
+}
+
+function walkUnsupportedStorageAdfBlock(el: XmlElement, ctx: WalkCtx): Extract<ExportBlock, { type: "unknown" }> {
+  reportUnsupportedStorageAdf(el, ctx, "block");
+  const body = walkBlocks(storageAdfContent(el), ctx);
+  return {
+    type: "unknown",
+    macroName: storageAdfNodeType(el),
+    unsupportedAdf: storageAdfProvenance(el),
+    ...(body.length > 0 ? { body } : {}),
+  };
+}
+
+function walkUnsupportedStorageAdfInline(el: XmlElement, ctx: WalkCtx): InlineNode[] {
+  reportUnsupportedStorageAdf(el, ctx, "inline");
+  const provenance = storageAdfProvenance(el);
+  const content = walkInline(storageAdfContent(el), ctx);
+  let attached = false;
+  const visit = (nodes: InlineNode[]): InlineNode[] =>
+    nodes.map((node): InlineNode => {
+      if (attached) return node;
+      if (node.type === "text") {
+        attached = true;
+        return {
+          ...node,
+          unsupportedAdf: [...(node.unsupportedAdf ?? []), provenance],
+        };
+      }
+      if (node.type === "link") return { ...node, content: visit(node.content) };
+      return node;
+    });
+  const retained = visit(content);
+  return attached
+    ? retained
+    : [{
+        type: "text",
+        text: `[Unsupported ADF inline: ${provenance.nodeType}]`,
+        unsupportedAdf: [provenance],
+      }, ...retained];
 }
 
 const STORAGE_LAYOUT_WIDTHS: Readonly<Record<string, readonly number[]>> = {
@@ -3026,6 +3168,8 @@ function storageDateInline(value: string, ctx: WalkCtx): InlineNode[] {
 
 function walkInlineElement(el: XmlElement, ctx: WalkCtx): InlineNode[] {
   const name = el.name;
+
+  if (name === "ac:adf-node") return walkUnsupportedStorageAdfInline(el, ctx);
 
   const mark = MARK_TAGS[name];
   if (mark) return addMark(walkInline(el.children, ctx), mark);

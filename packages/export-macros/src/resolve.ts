@@ -466,7 +466,10 @@ function collectUnknown(blocks: ExportBlock[], out: UnknownBlock[]): void {
   for (const b of blocks) {
     switch (b.type) {
       case "unknown":
-        out.push(b);
+        // Unsupported ADF wrappers already have their complete static fallback
+        // contract. They are not macros and must never enter a live registry
+        // lookup merely because they reuse the body-bearing unknown block.
+        if (!b.unsupportedAdf) out.push(b);
         break;
       case "callout":
       case "expand":

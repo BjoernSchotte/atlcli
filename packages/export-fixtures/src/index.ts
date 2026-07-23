@@ -561,6 +561,31 @@ export const ADF_CONFORMANCE_SOURCE = JSON.stringify({
         attrs: { mode: "full-width" },
       }],
     },
+    {
+      type: "unsupportedBlock",
+      attrs: {
+        originalValue: { kind: "synthetic-legacy-wrapper" },
+        opaqueIdentity: "unsupported-block-private-provenance",
+      },
+      content: [{
+        type: "paragraph",
+        content: [
+          { type: "text", text: "Unsupported wrapper keeps " },
+          {
+            type: "unsupportedInline",
+            attrs: {
+              originalValue: ["synthetic", "inline"],
+              opaqueIdentity: "unsupported-inline-private-provenance",
+            },
+            content: [{
+              type: "text",
+              text: "rich inline content",
+              marks: [{ type: "strong" }],
+            }],
+          },
+        ],
+      }],
+    },
   ],
 });
 

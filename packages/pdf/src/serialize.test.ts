@@ -1895,6 +1895,46 @@ describe("serialize — C3 captions", () => {
     expect(retainedBundle.notes).toEqual(plainBundle.notes);
   });
 
+  it("prepares and renders typed unsupported ADF fallback without publishing attributes", async () => {
+    const prepared = await preparePdfDocument([{
+      type: "unknown",
+      macroName: "unsupportedBlock",
+      unsupportedAdf: {
+        nodeType: "unsupportedBlock",
+        sourceRepresentation: "storage",
+        attributes: [{ name: "originalValue", value: "opaque-source-value" }],
+      },
+      body: [{
+        type: "paragraph",
+        content: [{
+          type: "text",
+          text: "Visible unsupported body",
+          unsupportedAdf: [{
+            nodeType: "unsupportedInline",
+            sourceRepresentation: "storage",
+            attributes: [{ name: "identity", value: "opaque-inline-value" }],
+          }],
+        }],
+      }],
+    }], {
+      resolve: async () => { throw new Error("unused"); },
+    });
+    expect(prepared.blocks[0]).toMatchObject({
+      type: "unknown",
+      unsupportedAdf: {
+        nodeType: "unsupportedBlock",
+        sourceRepresentation: "storage",
+      },
+    });
+
+    const bundle = serializePdfDocument(prepared, { metadata });
+    expect(bundle.main).toContain("Unsupported ADF block: unsupportedBlock");
+    expect(bundle.main).toContain("Visible unsupported body");
+    expect(bundle.main).not.toContain("opaque-source-value");
+    expect(bundle.main).not.toContain("opaque-inline-value");
+    expect(bundle.notes).toEqual([]);
+  });
+
   it("preserves synced-content provenance without publishing opaque identity", async () => {
     const snapshot: ExportBlock = {
       type: "callout",

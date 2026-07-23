@@ -127,6 +127,7 @@ export type ExportBlock = {
     macroId?: string;
     adfExtension?: AdfExtensionIdentity;
     fragments?: AdfFragmentIdentity[];
+    unsupportedAdf?: AdfUnsupportedNodeProvenance;
     bodyNotes?: ExportNote[];
     sourcePage?: {
         id: string;
@@ -201,6 +202,7 @@ export type InlineNode = {
     };
     annotations?: AdfAnnotationIdentity[];
     fragments?: AdfFragmentIdentity[];
+    unsupportedAdf?: AdfUnsupportedNodeProvenance[];
 } | ({
     type: "link";
     content: InlineNode[];
@@ -976,6 +978,7 @@ export type ExportBlock = {
     macroId?: string;
     adfExtension?: AdfExtensionIdentity;
     fragments?: AdfFragmentIdentity[];
+    unsupportedAdf?: AdfUnsupportedNodeProvenance;
     bodyNotes?: ExportNote[];
     sourcePage?: {
         id: string;
@@ -1050,6 +1053,7 @@ export type InlineNode = {
     };
     annotations?: AdfAnnotationIdentity[];
     fragments?: AdfFragmentIdentity[];
+    unsupportedAdf?: AdfUnsupportedNodeProvenance[];
 } | ({
     type: "link";
     content: InlineNode[];
@@ -1825,6 +1829,7 @@ export type ExportBlock = {
     macroId?: string;
     adfExtension?: AdfExtensionIdentity;
     fragments?: AdfFragmentIdentity[];
+    unsupportedAdf?: AdfUnsupportedNodeProvenance;
     bodyNotes?: ExportNote[];
     sourcePage?: {
         id: string;
@@ -1899,6 +1904,7 @@ export type InlineNode = {
     };
     annotations?: AdfAnnotationIdentity[];
     fragments?: AdfFragmentIdentity[];
+    unsupportedAdf?: AdfUnsupportedNodeProvenance[];
 } | ({
     type: "link";
     content: InlineNode[];

@@ -15,6 +15,8 @@ import type {
   AdfExtensionIdentity,
   AdfFragmentIdentity,
   AdfLinkAttributes,
+  AdfUnsupportedAttribute,
+  AdfUnsupportedNodeProvenance,
   BlockPresentation,
   EmojiSemantics,
   ExportBlock,
@@ -479,7 +481,12 @@ function decodeBlockNode(node: AdfNode, ctx: DecodeContext, path: string): Expor
     default: {
       addNodeNote(ctx, path, node.type, "has no native block mapping; its visible content was preserved.");
       const children = decodeBlockChildren(node.content, ctx, `${path}.content`);
-      return children.length > 0 ? children : [fallbackParagraph(node, `Unsupported Confluence ${node.type}`)];
+      return [{
+        type: "unknown",
+        macroName: node.type,
+        unsupportedAdf: unsupportedNodeProvenance(node, "atlas_doc_format"),
+        ...(children.length > 0 ? { body: children } : {}),
+      }];
     }
   }
 }
@@ -625,9 +632,75 @@ function decodeInlineNode(node: AdfNode, ctx: DecodeContext, path: string): Inli
     default: {
       addNodeNote(ctx, path, node.type, "has no native inline mapping; its visible content was preserved.");
       const children = decodeInlineChildren(node.content, ctx, `${path}.content`);
-      return children.length > 0 ? children : [{ type: "text", text: `[${node.type}]` }];
+      return retainUnsupportedInline(
+        children,
+        unsupportedNodeProvenance(node, "atlas_doc_format"),
+      );
     }
   }
+}
+
+function unsupportedAttributes(
+  attrs: Readonly<Record<string, AdfJsonValue>> | undefined,
+): AdfUnsupportedAttribute[] | undefined {
+  if (!attrs) return undefined;
+  const attributes = Object.entries(attrs).map(([name, value]) => ({ name, value }));
+  return attributes.length > 0 ? attributes : undefined;
+}
+
+function unsupportedNodeProvenance(
+  node: AdfNode,
+  sourceRepresentation: AdfUnsupportedNodeProvenance["sourceRepresentation"],
+): AdfUnsupportedNodeProvenance {
+  const attributes = unsupportedAttributes(node.attrs);
+  const marks = (node.marks ?? []).map((mark) => ({
+    type: mark.type,
+    ...(unsupportedAttributes(mark.attrs)
+      ? { attributes: unsupportedAttributes(mark.attrs) }
+      : {}),
+  }));
+  return {
+    nodeType: node.type,
+    sourceRepresentation,
+    ...(attributes ? { attributes } : {}),
+    ...(marks.length > 0 ? { marks } : {}),
+  };
+}
+
+/**
+ * Preserve an unsupported inline wrapper without flattening its visible child
+ * formatting. The first owned text leaf carries the ordered wrapper stack; a
+ * content-free/non-text wrapper gets an explicit visible label.
+ */
+function retainUnsupportedInline(
+  content: InlineNode[],
+  provenance: AdfUnsupportedNodeProvenance,
+): InlineNode[] {
+  let attached = false;
+  const visit = (nodes: InlineNode[]): InlineNode[] =>
+    nodes.map((node): InlineNode => {
+      if (attached) return node;
+      if (node.type === "text") {
+        attached = true;
+        return {
+          ...node,
+          unsupportedAdf: [...(node.unsupportedAdf ?? []), provenance],
+        };
+      }
+      if (node.type === "link") {
+        const linked = visit(node.content);
+        return linked === node.content ? node : { ...node, content: linked };
+      }
+      return node;
+    });
+  const retained = visit(content);
+  return attached
+    ? retained
+    : [{
+        type: "text",
+        text: `[Unsupported ADF inline: ${provenance.nodeType}]`,
+        unsupportedAdf: [provenance],
+      }, ...retained];
 }
 
 function applyMarks(
@@ -1569,11 +1642,6 @@ function decodeCaption(node: AdfNode, ctx: DecodeContext, path: string): Caption
   };
 }
 
-function fallbackParagraph(node: AdfNode, label: string): ExportBlock {
-  const visible = stringAttr(node, "text") ?? stringAttr(node, "title") ?? `[${label}]`;
-  return { type: "paragraph", content: [{ type: "text", text: visible }] };
-}
-
 function panelKind(
   value: string | undefined,
 ): "info" | "note" | "warning" | "tip" | "success" | "error" | "panel" {
@@ -1589,7 +1657,7 @@ function panelKind(
 
 const INLINE_NODE_TYPES = new Set([
   "date", "emoji", "hardBreak", "inlineCard", "inlineExtension", "mediaInline",
-  "mention", "placeholder", "status", "text",
+  "mention", "placeholder", "status", "text", "unsupportedInline",
 ]);
 
 function isInlineNodeType(type: string): boolean {

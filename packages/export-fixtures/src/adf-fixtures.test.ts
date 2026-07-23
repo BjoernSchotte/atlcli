@@ -39,6 +39,7 @@ describe("ADF browser conformance fixture", () => {
       "codeBlock",
       "callout",
       "callout",
+      "unknown",
     ]);
     expect(pdf.blocks[0]).toMatchObject({ type: "heading", localId: "heading-local" });
     expect(pdf.blocks[1]).toMatchObject({ type: "paragraph", localId: "paragraph-local" });
@@ -140,6 +141,34 @@ describe("ADF browser conformance fixture", () => {
         projection: "unresolved-reference",
         breakout: { mode: "full-width" },
       },
+    });
+    expect(pdf.blocks[27]).toMatchObject({
+      type: "unknown",
+      macroName: "unsupportedBlock",
+      unsupportedAdf: {
+        nodeType: "unsupportedBlock",
+        sourceRepresentation: "atlas_doc_format",
+        attributes: [
+          { name: "originalValue", value: { kind: "synthetic-legacy-wrapper" } },
+          { name: "opaqueIdentity", value: "unsupported-block-private-provenance" },
+        ],
+      },
+      body: [{
+        type: "paragraph",
+        content: expect.arrayContaining([{
+          type: "text",
+          text: "rich inline content",
+          marks: ["bold"],
+          unsupportedAdf: [{
+            nodeType: "unsupportedInline",
+            sourceRepresentation: "atlas_doc_format",
+            attributes: [
+              { name: "originalValue", value: ["synthetic", "inline"] },
+              { name: "opaqueIdentity", value: "unsupported-inline-private-provenance" },
+            ],
+          }],
+        }]),
+      }],
     });
     expect(pdf.blocks[1]).toMatchObject({
       type: "paragraph",

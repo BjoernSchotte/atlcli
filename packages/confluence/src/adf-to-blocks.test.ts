@@ -1739,12 +1739,104 @@ describe("adfToBlocks", () => {
     ]), { parseBudget: { maxDiagnostics: 3 } });
 
     expect(result.blocks).toEqual([
-      { type: "paragraph", content: [{ type: "text", text: "Visible" }, { type: "text", text: " inline" }] },
-      { type: "paragraph", content: [{ type: "text", text: "[Unsupported Confluence futureEmpty]" }] },
+      {
+        type: "unknown",
+        macroName: "futureBlock",
+        unsupportedAdf: {
+          nodeType: "futureBlock",
+          sourceRepresentation: "atlas_doc_format",
+          attributes: [{ name: "future", value: true }],
+        },
+        body: [{
+          type: "paragraph",
+          content: [
+            { type: "text", text: "Visible" },
+            {
+              type: "text",
+              text: " inline",
+              unsupportedAdf: [{
+                nodeType: "futureInline",
+                sourceRepresentation: "atlas_doc_format",
+              }],
+            },
+          ],
+        }],
+      },
+      {
+        type: "unknown",
+        macroName: "futureEmpty",
+        unsupportedAdf: {
+          nodeType: "futureEmpty",
+          sourceRepresentation: "atlas_doc_format",
+        },
+      },
     ]);
     expect(result.degraded).toBe(true);
     expect(result.notes).toHaveLength(3);
     expect(result.notes[2]?.message).toContain("suppressed");
+  });
+
+  it("retains exact unsupportedBlock/unsupportedInline provenance and child formatting", () => {
+    const result = adfToBlocks(doc([{
+      type: "unsupportedBlock",
+      attrs: {
+        originalValue: { kind: "legacy", version: 2 },
+        empty: "",
+      },
+      marks: [{ type: "futureMark", attrs: { mode: "keep" } }],
+      content: [{
+        type: "paragraph",
+        content: [
+          { type: "text", text: "before " },
+          {
+            type: "unsupportedInline",
+            attrs: { originalValue: ["a", "b"] },
+            content: [{
+              type: "text",
+              text: "rich",
+              marks: [{ type: "strong" }],
+            }],
+          },
+        ],
+      }],
+    }]));
+
+    expect(result.blocks).toEqual([{
+      type: "unknown",
+      macroName: "unsupportedBlock",
+      unsupportedAdf: {
+        nodeType: "unsupportedBlock",
+        sourceRepresentation: "atlas_doc_format",
+        attributes: [
+          { name: "originalValue", value: { kind: "legacy", version: 2 } },
+          { name: "empty", value: "" },
+        ],
+        marks: [{
+          type: "futureMark",
+          attributes: [{ name: "mode", value: "keep" }],
+        }],
+      },
+      body: [{
+        type: "paragraph",
+        content: [
+          { type: "text", text: "before " },
+          {
+            type: "text",
+            text: "rich",
+            marks: ["bold"],
+            unsupportedAdf: [{
+              nodeType: "unsupportedInline",
+              sourceRepresentation: "atlas_doc_format",
+              attributes: [{ name: "originalValue", value: ["a", "b"] }],
+            }],
+          },
+        ],
+      }],
+    }]);
+    expect(result.notes.some((note) =>
+      note.code === "adf-node-degraded" &&
+      note.source?.blockPath === "blocks[0]"
+    )).toBe(true);
   });
 
   it("keeps deterministic output independent of object-key and mark-array order", () => {
@@ -1781,7 +1873,15 @@ describe("adfToBlocks", () => {
     }]), {
       parseBudget: { maxDiagnostics: 0 },
     });
-    expect(result.blocks).toEqual([{ type: "paragraph", content: [{ type: "text", text: "visible" }] }]);
+    expect(result.blocks).toEqual([{
+      type: "unknown",
+      macroName: "futureNode",
+      unsupportedAdf: {
+        nodeType: "futureNode",
+        sourceRepresentation: "atlas_doc_format",
+      },
+      body: [{ type: "paragraph", content: [{ type: "text", text: "visible" }] }],
+    }]);
     expect(result.notes).toEqual([]);
     expect(result.degraded).toBe(true);
   });

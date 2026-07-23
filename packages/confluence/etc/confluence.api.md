@@ -216,6 +216,26 @@ export interface AdfToBlocksOptions extends Omit<StorageToBlocksOptions, "parseB
     resolveMediaAttachment?: (reference: AdfMediaReference) => AdfResolvedMediaAttachment | undefined;
 }
 
+// export: AdfUnsupportedAttribute
+export interface AdfUnsupportedAttribute {
+    name: string;
+    value: AdfJsonValue;
+}
+
+// export: AdfUnsupportedMark
+export interface AdfUnsupportedMark {
+    type: string;
+    attributes?: AdfUnsupportedAttribute[];
+}
+
+// export: AdfUnsupportedNodeProvenance
+export interface AdfUnsupportedNodeProvenance {
+    nodeType: string;
+    sourceRepresentation: "atlas_doc_format" | "storage";
+    attributes?: AdfUnsupportedAttribute[];
+    marks?: AdfUnsupportedMark[];
+}
+
 // export: AdfValidationError
 export declare class AdfValidationError extends Error {
     readonly code: AdfValidationErrorCode;
@@ -1187,6 +1207,7 @@ export type ExportBlock = {
     macroId?: string;
     adfExtension?: AdfExtensionIdentity;
     fragments?: AdfFragmentIdentity[];
+    unsupportedAdf?: AdfUnsupportedNodeProvenance;
     bodyNotes?: ExportNote[];
     sourcePage?: {
         id: string;
@@ -1517,6 +1538,7 @@ export type InlineNode = {
     };
     annotations?: AdfAnnotationIdentity[];
     fragments?: AdfFragmentIdentity[];
+    unsupportedAdf?: AdfUnsupportedNodeProvenance[];
 } | ({
     type: "link";
     content: InlineNode[];
@@ -2590,6 +2612,26 @@ export interface AdfToBlocksOptions extends Omit<StorageToBlocksOptions, "parseB
     resolveMediaAttachment?: (reference: AdfMediaReference) => AdfResolvedMediaAttachment | undefined;
 }
 
+// export: AdfUnsupportedAttribute
+export interface AdfUnsupportedAttribute {
+    name: string;
+    value: AdfJsonValue;
+}
+
+// export: AdfUnsupportedMark
+export interface AdfUnsupportedMark {
+    type: string;
+    attributes?: AdfUnsupportedAttribute[];
+}
+
+// export: AdfUnsupportedNodeProvenance
+export interface AdfUnsupportedNodeProvenance {
+    nodeType: string;
+    sourceRepresentation: "atlas_doc_format" | "storage";
+    attributes?: AdfUnsupportedAttribute[];
+    marks?: AdfUnsupportedMark[];
+}
+
 // export: AdfValidationError
 export declare class AdfValidationError extends Error {
     readonly code: AdfValidationErrorCode;
@@ -3561,6 +3603,7 @@ export type ExportBlock = {
     macroId?: string;
     adfExtension?: AdfExtensionIdentity;
     fragments?: AdfFragmentIdentity[];
+    unsupportedAdf?: AdfUnsupportedNodeProvenance;
     bodyNotes?: ExportNote[];
     sourcePage?: {
         id: string;
@@ -3891,6 +3934,7 @@ export type InlineNode = {
     };
     annotations?: AdfAnnotationIdentity[];
     fragments?: AdfFragmentIdentity[];
+    unsupportedAdf?: AdfUnsupportedNodeProvenance[];
 } | ({
     type: "link";
     content: InlineNode[];
@@ -4964,6 +5008,26 @@ export interface AdfToBlocksOptions extends Omit<StorageToBlocksOptions, "parseB
     resolveMediaAttachment?: (reference: AdfMediaReference) => AdfResolvedMediaAttachment | undefined;
 }
 
+// export: AdfUnsupportedAttribute
+export interface AdfUnsupportedAttribute {
+    name: string;
+    value: AdfJsonValue;
+}
+
+// export: AdfUnsupportedMark
+export interface AdfUnsupportedMark {
+    type: string;
+    attributes?: AdfUnsupportedAttribute[];
+}
+
+// export: AdfUnsupportedNodeProvenance
+export interface AdfUnsupportedNodeProvenance {
+    nodeType: string;
+    sourceRepresentation: "atlas_doc_format" | "storage";
+    attributes?: AdfUnsupportedAttribute[];
+    marks?: AdfUnsupportedMark[];
+}
+
 // export: AdfValidationError
 export declare class AdfValidationError extends Error {
     readonly code: AdfValidationErrorCode;
@@ -5935,6 +5999,7 @@ export type ExportBlock = {
     macroId?: string;
     adfExtension?: AdfExtensionIdentity;
     fragments?: AdfFragmentIdentity[];
+    unsupportedAdf?: AdfUnsupportedNodeProvenance;
     bodyNotes?: ExportNote[];
     sourcePage?: {
         id: string;
@@ -6265,6 +6330,7 @@ export type InlineNode = {
     };
     annotations?: AdfAnnotationIdentity[];
     fragments?: AdfFragmentIdentity[];
+    unsupportedAdf?: AdfUnsupportedNodeProvenance[];
 } | ({
     type: "link";
     content: InlineNode[];
@@ -7165,6 +7231,26 @@ export interface AdfLinkAttributes {
     id?: string;
     collection?: string;
     occurrenceKey?: string;
+}
+
+// export: AdfUnsupportedAttribute
+export interface AdfUnsupportedAttribute {
+    name: string;
+    value: AdfJsonValue;
+}
+
+// export: AdfUnsupportedMark
+export interface AdfUnsupportedMark {
+    type: string;
+    attributes?: AdfUnsupportedAttribute[];
+}
+
+// export: AdfUnsupportedNodeProvenance
+export interface AdfUnsupportedNodeProvenance {
+    nodeType: string;
+    sourceRepresentation: "atlas_doc_format" | "storage";
+    attributes?: AdfUnsupportedAttribute[];
+    marks?: AdfUnsupportedMark[];
 }
 
 // export: AtlcliConfig
@@ -8208,6 +8294,7 @@ export type ExportBlock = {
     macroId?: string;
     adfExtension?: AdfExtensionIdentity;
     fragments?: AdfFragmentIdentity[];
+    unsupportedAdf?: AdfUnsupportedNodeProvenance;
     bodyNotes?: ExportNote[];
     sourcePage?: {
         id: string;
@@ -8586,6 +8673,7 @@ export type InlineNode = {
     };
     annotations?: AdfAnnotationIdentity[];
     fragments?: AdfFragmentIdentity[];
+    unsupportedAdf?: AdfUnsupportedNodeProvenance[];
 } | ({
     type: "link";
     content: InlineNode[];
@@ -10174,6 +10262,26 @@ export interface AdfToBlocksOptions extends Omit<StorageToBlocksOptions, "parseB
     resolveMediaAttachment?: (reference: AdfMediaReference) => AdfResolvedMediaAttachment | undefined;
 }
 
+// export: AdfUnsupportedAttribute
+export interface AdfUnsupportedAttribute {
+    name: string;
+    value: AdfJsonValue;
+}
+
+// export: AdfUnsupportedMark
+export interface AdfUnsupportedMark {
+    type: string;
+    attributes?: AdfUnsupportedAttribute[];
+}
+
+// export: AdfUnsupportedNodeProvenance
+export interface AdfUnsupportedNodeProvenance {
+    nodeType: string;
+    sourceRepresentation: "atlas_doc_format" | "storage";
+    attributes?: AdfUnsupportedAttribute[];
+    marks?: AdfUnsupportedMark[];
+}
+
 // export: AdfValidationError
 export declare class AdfValidationError extends Error {
     readonly code: AdfValidationErrorCode;
@@ -11145,6 +11253,7 @@ export type ExportBlock = {
     macroId?: string;
     adfExtension?: AdfExtensionIdentity;
     fragments?: AdfFragmentIdentity[];
+    unsupportedAdf?: AdfUnsupportedNodeProvenance;
     bodyNotes?: ExportNote[];
     sourcePage?: {
         id: string;
@@ -11475,6 +11584,7 @@ export type InlineNode = {
     };
     annotations?: AdfAnnotationIdentity[];
     fragments?: AdfFragmentIdentity[];
+    unsupportedAdf?: AdfUnsupportedNodeProvenance[];
 } | ({
     type: "link";
     content: InlineNode[];

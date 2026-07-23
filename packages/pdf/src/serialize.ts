@@ -1533,8 +1533,11 @@ function serializeBlock(
     case "unknown": {
       // Placeholder floor (spec 004): render a visible placeholder line, then
       // the preserved body/plainBody, instead of silently omitting content.
+      const fallbackLabel = block.unsupportedAdf
+        ? `Unsupported ADF block: ${block.unsupportedAdf.nodeType}`
+        : `${block.macroName} macro not rendered`;
       const placeholder = `#text(style: "italic", fill: rgb(${typstString(writer.design.tokens.colors.placeholder)}))[${escapeTypstContent(
-        `[${block.macroName} macro not rendered]`
+        `[${fallbackLabel}]`
       )}]`;
       const parts = [`#par[${placeholder}]`];
       if (block.body && block.body.length > 0) {

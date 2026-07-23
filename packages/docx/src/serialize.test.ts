@@ -1681,6 +1681,36 @@ describe("serializeBlocks — C3 captions", () => {
     expect(retained.notes).toEqual(plain.notes);
   });
 
+  it("renders typed unsupported ADF fallback without publishing opaque attributes", async () => {
+    const { xml, notes } = await serializeBlocks([{
+      type: "unknown",
+      macroName: "unsupportedBlock",
+      unsupportedAdf: {
+        nodeType: "unsupportedBlock",
+        sourceRepresentation: "atlas_doc_format",
+        attributes: [{ name: "originalValue", value: "opaque-source-value" }],
+      },
+      body: [{
+        type: "paragraph",
+        content: [{
+          type: "text",
+          text: "Visible unsupported body",
+          unsupportedAdf: [{
+            nodeType: "unsupportedInline",
+            sourceRepresentation: "atlas_doc_format",
+            attributes: [{ name: "identity", value: "opaque-inline-value" }],
+          }],
+        }],
+      }],
+    }], { styleNames: noStyles });
+
+    expect(xml).toContain("Unsupported ADF block: unsupportedBlock");
+    expect(xml).toContain("Visible unsupported body");
+    expect(xml).not.toContain("opaque-source-value");
+    expect(xml).not.toContain("opaque-inline-value");
+    expect(notes).toEqual([]);
+  });
+
   it("renders synced-content projections without publishing opaque identity", async () => {
     const snapshot: ExportBlock = {
       type: "callout",

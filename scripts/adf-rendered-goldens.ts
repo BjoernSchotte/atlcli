@@ -61,10 +61,15 @@ const REQUIRED_TEXT = Object.freeze([
   "Synced content snapshot",
   "Synced snapshot body",
   "Synced content is unavailable in this static export.",
+  "Unsupported ADF block: unsupportedBlock",
+  "Unsupported wrapper keeps ",
+  "rich inline content",
 ]);
 const FORBIDDEN_TEXT = Object.freeze([
   "editor-only-secret",
   "1709510400000",
+  "unsupported-block-private-provenance",
+  "unsupported-inline-private-provenance",
 ]);
 
 const MAX_MEAN_PIXEL_DIFFERENCE = 0.08;
@@ -357,7 +362,8 @@ async function manifestFor(
       "media-group",
       "media-inline-image-and-fallback-chip",
       "media-data-consumer-provenance-nonvisual",
-      "fragment-provenance-nonvisual",
+  "fragment-provenance-nonvisual",
+  "unsupported-adf-typed-fallback",
       "media-wrap-source-order",
       "synced-content-snapshot-and-reference",
       "extension",

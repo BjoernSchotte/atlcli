@@ -91,6 +91,7 @@ export interface AdfSourceCaseResult {
   reportHasFragmentProjectionFact: boolean;
   neutralHasDataConsumerProvenance: boolean;
   neutralHasSyncedContentSemantics: boolean;
+  neutralHasUnsupportedAdfProvenance: boolean;
   neutralHasBreakoutSemantics: boolean;
   reportHasAllBreakoutProjectionFacts: boolean;
   neutralHasTablePresentation: boolean;
@@ -104,6 +105,7 @@ export interface AdfSourceCaseResult {
   docxHasLayoutPresentation: boolean;
   docxHasDisclosureSemantics: boolean;
   docxHasSyncedContentProjection: boolean;
+  docxHasUnsupportedAdfFallback: boolean;
   docxHasDateStatusPlaceholderSemantics: boolean;
   docxHasMentionPresentation: boolean;
   docxHasCardTitle: boolean;
@@ -534,6 +536,13 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
         '"syncedContent":{"resourceId":"synthetic-sync-reference-resource","localId":"synthetic-sync-reference-local","projection":"unresolved-reference","breakout":{"mode":"full-width"}}',
       )
       && !documentXml.includes("synthetic-sync"),
+    neutralHasUnsupportedAdfProvenance:
+      neutralJson.includes(
+        '"unsupportedAdf":{"nodeType":"unsupportedBlock","sourceRepresentation":"atlas_doc_format","attributes":[{"name":"originalValue","value":{"kind":"synthetic-legacy-wrapper"}},{"name":"opaqueIdentity","value":"unsupported-block-private-provenance"}]}',
+      )
+      && neutralJson.includes(
+        '"unsupportedAdf":[{"nodeType":"unsupportedInline","sourceRepresentation":"atlas_doc_format","attributes":[{"name":"originalValue","value":["synthetic","inline"]},{"name":"opaqueIdentity","value":"unsupported-inline-private-provenance"}]}]',
+      ),
     neutralHasBreakoutSemantics:
       neutralExpand?.type === "expand"
       && neutralExpand.breakout?.mode === "full-width"
@@ -628,6 +637,12 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
       && documentXml.includes("Synced snapshot body")
       && documentXml.includes("Synced content is unavailable in this static export.")
       && !documentXml.includes("synthetic-sync"),
+    docxHasUnsupportedAdfFallback:
+      documentXml.includes("Unsupported ADF block: unsupportedBlock")
+      && documentXml.includes("Unsupported wrapper keeps ")
+      && documentXml.includes("rich inline content")
+      && !documentXml.includes("unsupported-block-private-provenance")
+      && !documentXml.includes("unsupported-inline-private-provenance"),
     docxHasDateStatusPlaceholderSemantics:
       documentXml.includes("4. März 2024")
       && documentXml.includes("> READY </w:t>")
@@ -697,6 +712,9 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
   }
   if (!result.neutralHasAnnotationAndFragmentIdentity) {
     throw new Error("ADF-source annotation or fragment identity was lost in the packed browser.");
+  }
+  if (!result.neutralHasUnsupportedAdfProvenance) {
+    throw new Error("ADF-source unsupported wrapper provenance was lost in the packed browser.");
   }
   if (!result.reportHasFragmentProjectionFact) {
     throw new Error("ADF-source fragment projection fact was lost or published visibly.");
