@@ -71,7 +71,9 @@ export type PreparedPdfBlock =
    * render; `plainBody` is the verbatim plain-text body.
    */
   | { type: "unknown"; macroName: string; body?: PreparedPdfBlock[]; plainBody?: string }
-  | { type: "callout"; kind: Extract<ExportBlock, { type: "callout" }>["kind"]; title?: string; content: PreparedPdfBlock[] }
+  | Omit<Extract<ExportBlock, { type: "callout" }>, "content"> & {
+      content: PreparedPdfBlock[];
+    }
   | Omit<Extract<ExportBlock, { type: "expand" }>, "content"> & {
       content: PreparedPdfBlock[];
     }

@@ -1137,8 +1137,16 @@ function serializeBlock(
     }
     case "callout": {
       const title = block.title ? `[${literalText(block.title)}]` : "none";
+      const panelColor =
+        block.panelColor && /^#[0-9a-f]{6}$/iu.test(block.panelColor)
+          ? safeColor(block.panelColor)
+          : undefined;
+      const panelIcon = block.panelIconText || block.panelIcon;
+      const presentation =
+        (panelColor ? `, custom_color: rgb(${typstString(panelColor)})` : "")
+        + (panelIcon ? `, icon: [${literalText(panelIcon)}]` : "");
       const calloutContext: RenderContext = { ...context, container: "calloutCell" };
-      value = `#callout(kind: ${typstString(block.kind)}, title: ${title})[\n${serializeBlocks(block.content, writer, `${path}.content`, calloutContext)}\n]`;
+      value = `#callout(kind: ${typstString(block.kind)}, title: ${title}${presentation})[\n${serializeBlocks(block.content, writer, `${path}.content`, calloutContext)}\n]`;
       break;
     }
     case "expand": {

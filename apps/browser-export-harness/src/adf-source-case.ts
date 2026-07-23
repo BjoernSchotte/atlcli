@@ -53,8 +53,10 @@ export interface AdfSourceCaseResult {
   docxHasNestedListSemantics: boolean;
   docxHasTaskAndDecisionSemantics: boolean;
   docxHasCodeLineNumbers: boolean;
+  docxHasCustomPanelPresentation: boolean;
   neutralHasBlockLocalIdentities: boolean;
   neutralHasCodeBlockSemantics: boolean;
+  neutralHasCustomPanelSemantics: boolean;
   neutralHasDateStatusPlaceholderSemantics: boolean;
   neutralHasAnnotationAndFragmentIdentity: boolean;
   neutralHasTablePresentation: boolean;
@@ -354,6 +356,9 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
   };
   const docxJobParity = await runDocxJobParityCase({ fixture: docxFixture });
   const neutralCodeBlock = pdfSource.blocks.find((block) => block.type === "codeBlock");
+  const neutralCustomPanel = pdfSource.blocks.find(
+    (block) => block.type === "callout" && block.localId === "custom-panel-local",
+  );
   const codeGutterParagraphs =
     documentXml.match(/<w:ind w:start="480" w:hanging="480"\/>/gu)?.length ?? 0;
   const codeGutterRuns =
@@ -395,6 +400,12 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
       && documentXml.includes('<w:t xml:space="preserve">1</w:t>')
       && documentXml.includes(`<w:t xml:space="preserve">${expectedCodeLines}</w:t>`)
       && JSON.stringify(codeParagraphTexts) === JSON.stringify(ADF_CODE_BLOCK_SOURCE.split("\n")),
+    docxHasCustomPanelPresentation:
+      documentXml.includes('w:fill="DBE1E6"')
+      && documentXml.includes('w:color="123456"')
+      && documentXml.includes("★")
+      && documentXml.includes("ADF custom panel")
+      && !documentXml.includes(":star:"),
     neutralHasBlockLocalIdentities:
       JSON.stringify(pdfSource.blocks).includes('"localId":"heading-local"')
       && JSON.stringify(pdfSource.blocks).includes('"localId":"paragraph-local"')
@@ -408,6 +419,13 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
       && neutralCodeBlock.hideLineNumbers === false
       && neutralCodeBlock.localId === "code-local"
       && neutralCodeBlock.uniqueId === "code-unique",
+    neutralHasCustomPanelSemantics:
+      neutralCustomPanel?.type === "callout"
+      && neutralCustomPanel.kind === "panel"
+      && neutralCustomPanel.panelColor === "#123456"
+      && neutralCustomPanel.panelIcon === ":star:"
+      && neutralCustomPanel.panelIconId === "custom-panel-icon"
+      && neutralCustomPanel.panelIconText === "★",
     neutralHasDateStatusPlaceholderSemantics:
       JSON.stringify(pdfSource.blocks).includes(
         '"type":"date","timestamp":"1709510400000","localId":"date-local"',
@@ -525,6 +543,9 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
   }
   if (!result.neutralHasCodeBlockSemantics) {
     throw new Error("ADF-source code-block presentation or identity was lost in the packed browser.");
+  }
+  if (!result.neutralHasCustomPanelSemantics) {
+    throw new Error("ADF-source custom-panel presentation or identity was lost in the packed browser.");
   }
   if (!result.neutralHasDateStatusPlaceholderSemantics) {
     throw new Error("ADF-source date, status, or placeholder semantics were lost in the packed browser.");

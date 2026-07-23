@@ -594,13 +594,18 @@ async function serializeBlock(
 
     case "callout": {
       const title = block.title ? run(block.title, { bold: true }) : null;
+      const panelColor = block.panelColor?.match(/^#[0-9a-f]{6}$/iu)?.[0].toUpperCase();
+      const panelIcon = block.panelIconText || block.panelIcon;
       const body = await serializeChildren(
         block.content,
         { ...ctx, container: "calloutCell" },
         notes,
         depth + 1
       );
-      return calloutTable(block.kind, title, body);
+      return calloutTable(block.kind, title, body, {
+        ...(panelColor !== undefined ? { color: panelColor } : {}),
+        ...(panelIcon ? { iconRunsXml: run(panelIcon, { bold: true }) } : {}),
+      });
     }
 
     case "expand": {

@@ -380,6 +380,25 @@ describe("serializeBlocks — callouts, code, tables, images", () => {
     expect(xml).toContain("Failed");
   });
 
+  it("renders portable custom-panel color and icon text while retaining target-safe contrast", async () => {
+    const { xml } = await serializeBlocks([{
+      type: "callout",
+      kind: "panel",
+      localId: "panel-local",
+      panelColor: "#123456",
+      panelIcon: ":star:",
+      panelIconId: "icon-id",
+      panelIconText: "★",
+      content: [{ type: "paragraph", content: [{ type: "text", text: "Custom body" }] }],
+    }], { styleNames: noStyles });
+
+    expect(xml).toContain('w:fill="DBE1E6"');
+    expect(xml).toContain('w:color="123456"');
+    expect(xml).toContain("★");
+    expect(xml).not.toContain(":star:");
+    expect(xml).toContain("Custom body");
+  });
+
   it("renders expand and nested-expand bodies open with a visible disclosure title", async () => {
     const blocks: ExportBlock[] = [{
       type: "expand",

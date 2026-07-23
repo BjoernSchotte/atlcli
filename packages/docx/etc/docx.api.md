@@ -1046,7 +1046,10 @@ export declare function boundRasterTarget(size: TargetSize): TargetSize | null;
 export declare function buildGetIncludedPage(io: IncludeLookupIo): (ref: IncludePageRef) => Promise<IncludeLookupOutcome>;
 
 // export: calloutTable
-export declare function calloutTable(kind: string, titleRunsXml: string | null, bodyParagraphs: string): string;
+export declare function calloutTable(kind: string, titleRunsXml: string | null, bodyParagraphs: string, custom?: {
+    color?: string;
+    iconRunsXml?: string | null;
+}): string;
 
 // export: CAPTION_STYLE_ID
 export declare const CAPTION_STYLE_ID = "Caption";

@@ -44,6 +44,11 @@ export type ExportBlock = {
     kind: CalloutKind;
     title?: string;
     content: ExportBlock[];
+    localId?: string;
+    panelColor?: string;
+    panelIcon?: string;
+    panelIconId?: string;
+    panelIconText?: string;
 } | {
     type: "expand";
     nested: boolean;
@@ -536,12 +541,9 @@ export type PreparedPdfBlock = Exclude<ExportBlock, {
     macroName: string;
     body?: PreparedPdfBlock[];
     plainBody?: string;
-} | {
+} | Omit<Extract<ExportBlock, {
     type: "callout";
-    kind: Extract<ExportBlock, {
-        type: "callout";
-    }>["kind"];
-    title?: string;
+}>, "content"> & {
     content: PreparedPdfBlock[];
 } | Omit<Extract<ExportBlock, {
     type: "expand";
@@ -809,6 +811,11 @@ export type ExportBlock = {
     kind: CalloutKind;
     title?: string;
     content: ExportBlock[];
+    localId?: string;
+    panelColor?: string;
+    panelIcon?: string;
+    panelIconId?: string;
+    panelIconText?: string;
 } | {
     type: "expand";
     nested: boolean;
@@ -1301,12 +1308,9 @@ export type PreparedPdfBlock = Exclude<ExportBlock, {
     macroName: string;
     body?: PreparedPdfBlock[];
     plainBody?: string;
-} | {
+} | Omit<Extract<ExportBlock, {
     type: "callout";
-    kind: Extract<ExportBlock, {
-        type: "callout";
-    }>["kind"];
-    title?: string;
+}>, "content"> & {
     content: PreparedPdfBlock[];
 } | Omit<Extract<ExportBlock, {
     type: "expand";
@@ -1574,6 +1578,11 @@ export type ExportBlock = {
     kind: CalloutKind;
     title?: string;
     content: ExportBlock[];
+    localId?: string;
+    panelColor?: string;
+    panelIcon?: string;
+    panelIconId?: string;
+    panelIconText?: string;
 } | {
     type: "expand";
     nested: boolean;
@@ -2066,12 +2075,9 @@ export type PreparedPdfBlock = Exclude<ExportBlock, {
     macroName: string;
     body?: PreparedPdfBlock[];
     plainBody?: string;
-} | {
+} | Omit<Extract<ExportBlock, {
     type: "callout";
-    kind: Extract<ExportBlock, {
-        type: "callout";
-    }>["kind"];
-    title?: string;
+}>, "content"> & {
     content: PreparedPdfBlock[];
 } | Omit<Extract<ExportBlock, {
     type: "expand";

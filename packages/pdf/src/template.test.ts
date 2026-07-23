@@ -82,6 +82,11 @@ describe("atlcli Typst template settings rendering", () => {
     expect(legacyTemplate).toContain('error: (rgb("#FFFAE6"), rgb("#974F0C"))');
   });
 
+  it("supports portable custom-panel color and icon overrides", () => {
+    expect(template).toContain("custom_color.lighten(85%)");
+    expect(template).toContain('text(weight: "semibold", fill: foreground, icon)');
+  });
+
   it("styles inline raw separately from block code with the theme background", () => {
     expect(template).toContain("show raw.where(block: false): it => box(");
     expect(template).toContain('fill: rgb("#F4F5F7")');

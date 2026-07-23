@@ -650,6 +650,31 @@ describe("composeChapters — anchor namespacing & link rewrite", () => {
 });
 
 describe("composeChapters — retained ADF mark identities", () => {
+  test("preserves custom-panel presentation and identity through composition", () => {
+    const source = page("1", "Source", 0, null, "<p>body</p>");
+    source.blocks.push({
+      type: "callout",
+      kind: "panel",
+      localId: "",
+      panelColor: "#123456",
+      panelIcon: ":star:",
+      panelIconId: "icon-id",
+      panelIconText: "★",
+      content: [{ type: "paragraph", content: [{ type: "text", text: "Custom" }] }],
+    });
+
+    const { blocks } = composeChapters([source], { chapterBreak: "none" });
+    expect(blocks.find((block) => block.type === "callout")).toMatchObject({
+      type: "callout",
+      kind: "panel",
+      localId: "",
+      panelColor: "#123456",
+      panelIcon: ":star:",
+      panelIconId: "icon-id",
+      panelIconText: "★",
+    });
+  });
+
   test("preserves annotation and fragment metadata while rewriting document structure", () => {
     const source = page("1", "Source", 0, null, "<p>body</p>");
     source.blocks.push(

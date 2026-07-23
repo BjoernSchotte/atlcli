@@ -353,17 +353,41 @@ function decodeBlockNode(node: AdfNode, ctx: DecodeContext, path: string): Expor
       return decodeBlockChildren(node.content, ctx, `${path}.content`);
     case "panel": {
       const type = stringAttr(node, "panelType");
-      if (type === "custom") {
+      const localId = optionalStringAttr(node, "localId");
+      const rawPanelColor = optionalStringAttr(node, "panelColor");
+      const normalizedPanelColor = normalizeColor(rawPanelColor);
+      const panelColor = normalizedPanelColor ?? rawPanelColor;
+      const panelIcon = optionalStringAttr(node, "panelIcon");
+      const panelIconId = optionalStringAttr(node, "panelIconId");
+      const panelIconText = optionalStringAttr(node, "panelIconText");
+      if (rawPanelColor !== undefined && normalizedPanelColor === undefined) {
         addNodeNote(
           ctx,
           path,
           node.type,
-          "custom color and icon attributes were approximated by the generic panel style.",
+          "has a non-portable custom color; the exact value was retained and the target default is used.",
+        );
+      }
+      if (
+        type === "custom" &&
+        panelIconId !== undefined &&
+        !(panelIconText || panelIcon)
+      ) {
+        addNodeNote(
+          ctx,
+          path,
+          node.type,
+          "has only a service icon ID; the identity was retained but no portable static icon text exists.",
         );
       }
       return [{
         type: "callout",
         kind: panelKind(type),
+        ...(localId !== undefined ? { localId } : {}),
+        ...(panelColor !== undefined ? { panelColor } : {}),
+        ...(panelIcon !== undefined ? { panelIcon } : {}),
+        ...(panelIconId !== undefined ? { panelIconId } : {}),
+        ...(panelIconText !== undefined ? { panelIconText } : {}),
         content: decodeBlockChildren(node.content, ctx, `${path}.content`),
       }];
     }

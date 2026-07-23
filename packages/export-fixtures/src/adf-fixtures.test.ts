@@ -19,6 +19,7 @@ describe("ADF browser conformance fixture", () => {
       "callout",
       "callout",
       "callout",
+      "callout",
       "list",
       "list",
       "list",
@@ -32,7 +33,7 @@ describe("ADF browser conformance fixture", () => {
     ]);
     expect(pdf.blocks[0]).toMatchObject({ type: "heading", localId: "heading-local" });
     expect(pdf.blocks[1]).toMatchObject({ type: "paragraph", localId: "paragraph-local" });
-    expect(pdf.blocks[7]).toMatchObject({
+    expect(pdf.blocks[8]).toMatchObject({
       type: "list",
       ordered: true,
       start: 3,
@@ -41,7 +42,7 @@ describe("ADF browser conformance fixture", () => {
         { type: "list", ordered: true, start: 8 },
       ] }],
     });
-    expect(pdf.blocks[8]).toMatchObject({
+    expect(pdf.blocks[9]).toMatchObject({
       type: "list",
       ordered: false,
       items: [{
@@ -52,7 +53,7 @@ describe("ADF browser conformance fixture", () => {
         ],
       }],
     });
-    expect(pdf.blocks[9]).toMatchObject({
+    expect(pdf.blocks[10]).toMatchObject({
       type: "list",
       ordered: false,
       listKind: "task",
@@ -72,7 +73,7 @@ describe("ADF browser conformance fixture", () => {
         },
       ],
     });
-    expect(pdf.blocks[10]).toMatchObject({
+    expect(pdf.blocks[11]).toMatchObject({
       type: "list",
       ordered: false,
       listKind: "decision",
@@ -89,7 +90,16 @@ describe("ADF browser conformance fixture", () => {
     });
     expect(pdf.blocks[5]).toMatchObject({ type: "callout", kind: "success" });
     expect(pdf.blocks[6]).toMatchObject({ type: "callout", kind: "error" });
-    expect(pdf.blocks[16]).toMatchObject({
+    expect(pdf.blocks[7]).toMatchObject({
+      type: "callout",
+      kind: "panel",
+      localId: "custom-panel-local",
+      panelColor: "#123456",
+      panelIcon: ":star:",
+      panelIconId: "custom-panel-icon",
+      panelIconText: "★",
+    });
+    expect(pdf.blocks[17]).toMatchObject({
       type: "codeBlock",
       language: "typescript",
       wrap: false,
@@ -125,7 +135,7 @@ describe("ADF browser conformance fixture", () => {
         { type: "placeholder", text: "editor-only-secret", localId: "placeholder-local" },
       ]),
     });
-    expect(pdf.blocks[11]).toMatchObject({
+    expect(pdf.blocks[12]).toMatchObject({
       type: "table",
       presentation: {
         layout: "align-end",
@@ -151,7 +161,7 @@ describe("ADF browser conformance fixture", () => {
       }],
       fragments: [{ localId: "table-fragment", name: "semantic-table" }],
     });
-    expect(pdf.blocks[12]).toMatchObject({
+    expect(pdf.blocks[13]).toMatchObject({
       type: "layout",
       localId: "layout-local",
       breakout: { mode: "wide", width: 960 },
@@ -168,7 +178,7 @@ describe("ADF browser conformance fixture", () => {
         },
       ],
     });
-    expect(pdf.blocks[13]).toEqual({
+    expect(pdf.blocks[14]).toEqual({
       type: "expand",
       nested: false,
       title: "Expanded title",
@@ -190,7 +200,7 @@ describe("ADF browser conformance fixture", () => {
         },
       ],
     });
-    expect(pdf.blocks[15]).toMatchObject({
+    expect(pdf.blocks[16]).toMatchObject({
       type: "mediaFallback",
       label: "Visible media fallback",
       media: { mediaType: "file", id: "unresolved-media" },

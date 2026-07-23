@@ -201,6 +201,18 @@ export const ADF_CONFORMANCE_SOURCE = JSON.stringify({
       content: [{ type: "paragraph", content: [{ type: "text", text: "ADF error panel" }] }],
     },
     {
+      type: "panel",
+      attrs: {
+        panelType: "custom",
+        localId: "custom-panel-local",
+        panelColor: "#123456",
+        panelIcon: ":star:",
+        panelIconId: "custom-panel-icon",
+        panelIconText: "★",
+      },
+      content: [{ type: "paragraph", content: [{ type: "text", text: "ADF custom panel" }] }],
+    },
+    {
       type: "orderedList",
       attrs: { order: 3 },
       content: [{

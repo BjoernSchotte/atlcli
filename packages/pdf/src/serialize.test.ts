@@ -179,6 +179,24 @@ describe("PDF preparation and serialization", () => {
     expect(main).toContain('#callout(kind: "error"');
   });
 
+  it("renders portable custom-panel color and preferred icon text", async () => {
+    const { main } = await toMain([{
+      type: "callout",
+      kind: "panel",
+      localId: "panel-local",
+      panelColor: "#123456",
+      panelIcon: ":star:",
+      panelIconId: "icon-id",
+      panelIconText: "★",
+      content: [{ type: "paragraph", content: [{ type: "text", text: "Custom body" }] }],
+    }]);
+
+    expect(main).toContain(
+      '#callout(kind: "panel", title: none, custom_color: rgb("#123456"), icon: [#text("★")])',
+    );
+    expect(main).not.toContain(":star:");
+  });
+
   it("renders expand and nested-expand bodies open with a visible disclosure title", async () => {
     const { main } = await toMain([{
       type: "expand",

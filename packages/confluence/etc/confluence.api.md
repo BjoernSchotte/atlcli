@@ -1085,6 +1085,11 @@ export type ExportBlock = {
     kind: CalloutKind;
     title?: string;
     content: ExportBlock[];
+    localId?: string;
+    panelColor?: string;
+    panelIcon?: string;
+    panelIconId?: string;
+    panelIconText?: string;
 } | {
     type: "expand";
     nested: boolean;
@@ -3320,6 +3325,11 @@ export type ExportBlock = {
     kind: CalloutKind;
     title?: string;
     content: ExportBlock[];
+    localId?: string;
+    panelColor?: string;
+    panelIcon?: string;
+    panelIconId?: string;
+    panelIconText?: string;
 } | {
     type: "expand";
     nested: boolean;
@@ -5555,6 +5565,11 @@ export type ExportBlock = {
     kind: CalloutKind;
     title?: string;
     content: ExportBlock[];
+    localId?: string;
+    panelColor?: string;
+    panelIcon?: string;
+    panelIconId?: string;
+    panelIconText?: string;
 } | {
     type: "expand";
     nested: boolean;
@@ -7695,6 +7710,11 @@ export type ExportBlock = {
     kind: CalloutKind;
     title?: string;
     content: ExportBlock[];
+    localId?: string;
+    panelColor?: string;
+    panelIcon?: string;
+    panelIconId?: string;
+    panelIconText?: string;
 } | {
     type: "expand";
     nested: boolean;
@@ -10493,6 +10513,11 @@ export type ExportBlock = {
     kind: CalloutKind;
     title?: string;
     content: ExportBlock[];
+    localId?: string;
+    panelColor?: string;
+    panelIcon?: string;
+    panelIconId?: string;
+    panelIconText?: string;
 } | {
     type: "expand";
     nested: boolean;

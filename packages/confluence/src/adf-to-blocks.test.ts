@@ -326,7 +326,7 @@ describe("adfToBlocks", () => {
     expect(result.notes).toEqual([]);
   });
 
-  it("preserves success and error panel semantics while custom panels use the generic fallback", () => {
+  it("preserves standard and complete custom-panel semantics", () => {
     const result = adfToBlocks(doc([
       {
         type: "panel",
@@ -340,7 +340,14 @@ describe("adfToBlocks", () => {
       },
       {
         type: "panel",
-        attrs: { panelType: "custom", panelColor: "#123456", panelIconText: "★" },
+        attrs: {
+          panelType: "custom",
+          localId: "",
+          panelColor: "#123456",
+          panelIcon: ":star:",
+          panelIconId: "icon-id",
+          panelIconText: "★",
+        },
         content: [{ type: "paragraph", content: [{ type: "text", text: "Custom" }] }],
       },
     ]));
@@ -359,14 +366,55 @@ describe("adfToBlocks", () => {
       {
         type: "callout",
         kind: "panel",
+        localId: "",
+        panelColor: "#123456",
+        panelIcon: ":star:",
+        panelIconId: "icon-id",
+        panelIconText: "★",
         content: [{ type: "paragraph", content: [{ type: "text", text: "Custom" }] }],
       },
     ]);
-    expect(result.notes).toHaveLength(1);
-    expect(result.notes[0]).toMatchObject({
-      code: "adf-node-degraded",
-      source: { blockPath: "blocks[2]" },
+    expect(result.notes).toEqual([]);
+  });
+
+  it("retains custom-panel values and reports only unportable color or ID-only icon fallbacks", () => {
+    const result = adfToBlocks(doc([{
+      type: "panel",
+      attrs: {
+        panelType: "custom",
+        panelColor: "not-a-portable-color",
+        panelIconId: "icon-id",
+      },
+      content: [{ type: "paragraph", content: [{ type: "text", text: "Custom" }] }],
+    }]));
+
+    expect(result.blocks[0]).toMatchObject({
+      type: "callout",
+      kind: "panel",
+      panelColor: "not-a-portable-color",
+      panelIconId: "icon-id",
     });
+    expect(result.notes).toHaveLength(2);
+    expect(result.notes.every((note) => note.code === "adf-node-degraded")).toBe(true);
+    expect(result.notes.every((note) => note.source?.blockPath === "blocks[0]")).toBe(true);
+  });
+
+  it("normalizes portable short custom-panel colors for every renderer", () => {
+    const result = adfToBlocks(doc([{
+      type: "panel",
+      attrs: {
+        panelType: "custom",
+        panelColor: "#abc",
+      },
+      content: [{ type: "paragraph", content: [{ type: "text", text: "Custom" }] }],
+    }]));
+
+    expect(result.blocks[0]).toMatchObject({
+      type: "callout",
+      kind: "panel",
+      panelColor: "#AABBCC",
+    });
+    expect(result.notes).toEqual([]);
   });
 
   it("preserves complete pinned table presentation, cell geometry, and identities", () => {

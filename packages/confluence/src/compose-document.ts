@@ -636,9 +636,7 @@ function transformBlock(block: ExportBlock, ctx: EmitCtx): ExportBlock {
       return { ...block, content: transformInline(block.content, ctx) };
     case "callout":
       return {
-        type: "callout",
-        kind: block.kind,
-        ...(block.title !== undefined ? { title: block.title } : {}),
+        ...block,
         content: block.content.map((b) => transformBlock(b, ctx)),
       };
     case "expand":

@@ -507,7 +507,8 @@ export function dividerParagraph(): string {
 export function calloutTable(
   kind: string,
   titleRunsXml: string | null,
-  bodyParagraphs: string
+  bodyParagraphs: string,
+  custom?: { color?: string; iconRunsXml?: string | null },
 ): string {
   const palette: Record<string, { fill: string; accent: string }> = {
     info: { fill: "DEEBFF", accent: "2684FF" },
@@ -518,7 +519,22 @@ export function calloutTable(
     error: { fill: "FFEBE6", accent: "DE350B" },
     panel: { fill: "F4F5F7", accent: "97A0AF" },
   };
-  const c = palette[kind] ?? palette.panel;
+  const sourceColor =
+    custom?.color && /^#[0-9A-F]{6}$/u.test(custom.color) ? custom.color.slice(1) : undefined;
+  const tint = (hex: string): string =>
+    [0, 2, 4]
+      .map((offset) => {
+        const channel = Number.parseInt(hex.slice(offset, offset + 2), 16);
+        return Math.round(channel * 0.15 + 255 * 0.85).toString(16).padStart(2, "0");
+      })
+      .join("")
+      .toUpperCase();
+  const c = sourceColor
+    ? { fill: tint(sourceColor), accent: sourceColor }
+    : palette[kind] ?? palette.panel;
+  const icon = custom?.iconRunsXml
+    ? `<w:p><w:pPr><w:spacing w:after="60"/></w:pPr>${custom.iconRunsXml}</w:p>`
+    : "";
   const title = titleRunsXml ? `<w:p><w:pPr><w:spacing w:after="60"/></w:pPr>${titleRunsXml}</w:p>` : "";
   return (
     `<w:tbl>` +
@@ -529,6 +545,7 @@ export function calloutTable(
     `<w:tblGrid><w:gridCol w:w="9000"/></w:tblGrid>` +
     `<w:tr><w:tc>` +
     `<w:tcPr><w:tcW w:w="9000" w:type="dxa"/><w:shd w:val="clear" w:color="auto" w:fill="${c.fill}"/></w:tcPr>` +
+    icon +
     title +
     (bodyParagraphs || "<w:p/>") +
     `</w:tc></w:tr>` +

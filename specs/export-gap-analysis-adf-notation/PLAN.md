@@ -1054,7 +1054,7 @@ Completed follow-on evidence recorded on 2026-07-23: ADF block `alignment` (`cen
 
 Completed follow-on evidence recorded on 2026-07-23: ADF paragraph `fontSize: "small"` now survives validation, decoding, composition, DOCX, and PDF through the shared `BlockPresentation` contract. Arbitrary size values fail validation. DOCX writes explicit 18-half-point run sizes; PDF resolves the template-owned `adfSmallText` role with a bounded 9 pt fallback. The packed source fixture and real render goldens prove visibly smaller text in both formats, and the mark row is pinned as native.
 
-Completed follow-on evidence recorded on 2026-07-23: ADF `success` and `error` panels now survive as distinct neutral callout kinds and render with explicit semantic palettes in TypeScript DOCX and Typst/PDF. Validation accepts exactly the seven panel types in the pinned schema and rejects missing or unknown types. Custom panels remain a visible generic panel and now emit an explicit degradation note for their unmodeled color/icon attributes. Existing PDF template-v1 manifests stay compatible by inheriting the `tip` palette for success and `warning` for error when the new optional roles are absent. Focused decoder/renderer tests, the hardcoding ledger, full typecheck, the production browser build and packed 15-case Chromium conformance run passed. Real LibreOffice and Typst/Poppler goldens visibly prove blue information, green success and red error panels without overlap or clipping; a deterministic rerender produced zero pixel difference.
+Completed follow-on evidence recorded on 2026-07-23: ADF `success` and `error` panels now survive as distinct neutral callout kinds and render with explicit semantic palettes in TypeScript DOCX and Typst/PDF. Validation accepts exactly the seven panel types in the pinned schema and rejects missing or unknown types. At this checkpoint custom panels remained a visible generic panel with an explicit degradation note; the later custom-panel follow-on below closes that residual. Existing PDF template-v1 manifests stay compatible by inheriting the `tip` palette for success and `warning` for error when the new optional roles are absent. Focused decoder/renderer tests, the hardcoding ledger, full typecheck, the production browser build and packed 15-case Chromium conformance run passed. Real LibreOffice and Typst/Poppler goldens visibly prove blue information, green success and red error panels without overlap or clipping; a deterministic rerender produced zero pixel difference.
 
 Completed follow-on evidence recorded on 2026-07-23: ADF and Storage emoji now retain one target-neutral `EmojiSemantics` record containing the required short name, optional service id, exact optional source text (including an empty string), and the selected visible fallback. Missing/empty Unicode text and colon-shaped non-standard text emit the stable cross-representation `emoji-text-fallback` warning with source provenance; arbitrary stored `:syntax:` remains literal text with no emoji metadata. Both TypeScript renderers consume the same visible run, while the packed browser case proves direct/background artifact and report parity. This deliberately does not invent a custom-emoji network route: Atlassian's current Forge ADF renderer also documents custom user-provided emoji as unsupported, so a future asset resolver remains gated on a documented, authorized platform contract.
 
@@ -1188,6 +1188,29 @@ and four PDF pages; the deterministic rerender produced zero pixel difference
 and content bounds IoU 1. No unrestricted local suite or private Confluence
 environment was used; the remote CI remains the complete-suite gate for this
 work package.
+
+Completed custom-panel follow-on evidence recorded on 2026-07-23: every pinned
+panel attribute now passes through bounded validation, ADF decoding, the shared
+neutral model, composition, and both TypeScript renderers. Portable long and
+short hex colors are canonicalized, then rendered as the authored accent with
+a contrast-safe tinted background. Static targets prefer exact visible icon
+text and retain the emoji short name plus custom-emoji identity for future
+authorized resolvers. Non-portable colors and ID-only custom emoji remain
+visible with exact source metadata and source-located degradation diagnostics.
+The packed browser fixture checks target-neutral semantics plus DOCX
+presentation; reviewed LibreOffice and Typst/Poppler references visibly contain
+the custom icon, color, and body without clipping or overlap. This closes the
+custom-panel row rather than leaving a locally actionable partial.
+The slice passed 268 focused tests with one intentional rendered-golden skip,
+the six-test public API/closure guard with zero reachable-but-unexported gaps,
+the offline 43-node/17-mark/84-definition pin, full typecheck, the 16-task
+production build, all 20 browser-isomorphism entrypoints, browser/extension
+output integrity, the 15-case manifest, the complete packed Chromium run, and
+direct/background byte/report parity. The deterministic real-render check
+reproduced one DOCX and four PDF pages within the reviewed visual budgets
+(maximum mean pixel difference 0.0063; minimum content-bounds IoU 0.9868).
+The matrix now records 54 of 84 rows closed and 30 open; the unrestricted suite
+remains the remote-CI gate.
 
 After this migration proves the source boundary, close the gap-analysis backlog in separate feature slices:
 

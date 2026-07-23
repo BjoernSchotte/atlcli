@@ -273,6 +273,26 @@ describe("validateAdf", () => {
       attrs: {},
       content: [{ type: "paragraph", content: [] }],
     }])))).toBe("invalid-attributes");
+
+    expect(() => validateAdf(doc([{
+      type: "panel",
+      attrs: {
+        panelType: "custom",
+        localId: "",
+        panelColor: "#123456",
+        panelIcon: ":star:",
+        panelIconId: "icon-id",
+        panelIconText: "★",
+      },
+      content: [{ type: "paragraph", content: [] }],
+    }]))).not.toThrow();
+    for (const key of ["localId", "panelColor", "panelIcon", "panelIconId", "panelIconText"]) {
+      expect(errorCode(() => validateAdf(doc([{
+        type: "panel",
+        attrs: { panelType: "custom", [key]: 1 },
+        content: [{ type: "paragraph", content: [] }],
+      }])))).toBe("invalid-attributes");
+    }
   });
 
   test("accepts schema-defined block presentation marks and rejects invalid values", () => {

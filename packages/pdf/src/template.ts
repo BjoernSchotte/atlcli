@@ -414,7 +414,7 @@ ${headerResolution}
   ]
 }
 
-#let callout(kind: "info", title: none, body) = {
+#let callout(kind: "info", title: none, custom_color: none, icon: none, body) = {
   let palette = (
     info: (rgb("${info.bg}"), rgb("${info.fg}")),
     note: (rgb("${note.bg}"), rgb("${note.fg}")),
@@ -425,17 +425,20 @@ ${headerResolution}
     panel: (rgb("${panel.bg}"), rgb("${panel.fg}")),
   )
   let colors = palette.at(kind, default: palette.panel)
+  let background = if custom_color == none { colors.first() } else { custom_color.lighten(85%) }
+  let foreground = if custom_color == none { colors.last() } else { custom_color }
   block(
     width: 100%,
-    fill: colors.first(),
-    stroke: (left: ${L("calloutStroke")} + colors.last()),
+    fill: background,
+    stroke: (left: ${L("calloutStroke")} + foreground),
     inset: (x: ${L("calloutInsetX")}, y: ${L("calloutInsetY")}),
     radius: (right: ${L("calloutRadius")}),
     above: ${L("calloutAbove")},
     below: ${L("calloutBelow")},
   )[
     #set text(font: ${fontStack(F("heading"))})
-    #if title != none { text(weight: "semibold", fill: colors.last(), title); linebreak() }
+    #if icon != none { text(weight: "semibold", fill: foreground, icon); if title == none { linebreak() } else { h(0.55em) } }
+    #if title != none { text(weight: "semibold", fill: foreground, title); linebreak() }
     #body
   ]
 }

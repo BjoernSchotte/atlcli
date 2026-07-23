@@ -237,6 +237,11 @@ function validateKnownNodeShape(
     assertStringAttribute(attrs, "state", path);
   }
   if (type === "panel") {
+    assertStringAttribute(attrs, "localId", path, false);
+    assertStringAttribute(attrs, "panelColor", path, false);
+    assertStringAttribute(attrs, "panelIcon", path, false);
+    assertStringAttribute(attrs, "panelIconId", path, false);
+    assertStringAttribute(attrs, "panelIconText", path, false);
     const panelType = attrs?.panelType;
     if (
       panelType !== "info" &&

@@ -454,7 +454,22 @@ export type ExportBlock =
       /** Stable ADF code-block identity, retained independently of `localId`. */
       uniqueId?: string;
     }
-  | { type: "callout"; kind: CalloutKind; title?: string; content: ExportBlock[] }
+  | {
+      type: "callout";
+      kind: CalloutKind;
+      title?: string;
+      content: ExportBlock[];
+      /** Stable ADF editor identity, retained as non-visual metadata. */
+      localId?: string;
+      /** Canonical portable color, or exact source value when it is not portable. */
+      panelColor?: string;
+      /** Exact custom-panel emoji short name or portable textual icon fallback. */
+      panelIcon?: string;
+      /** Exact custom emoji service identity, retained for authorized resolvers. */
+      panelIconId?: string;
+      /** Exact custom-panel visible icon text, preferred by static renderers. */
+      panelIconText?: string;
+    }
   | {
       /**
        * A static export of Confluence's disclosure/accordion container.
