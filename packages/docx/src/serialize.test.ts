@@ -478,6 +478,59 @@ describe("serializeBlocks — callouts, code, tables, images", () => {
     expect(xml).toContain("Failed");
   });
 
+  it("routes all six defaults through the labelled icon seam and preserves explicit/suppressed precedence", async () => {
+    const embeddedKinds: string[] = [];
+    const standardKinds = ["info", "note", "warning", "tip", "success", "error"] as const;
+    const blocks: ExportBlock[] = [
+      ...standardKinds.map((kind) => ({
+        type: "callout" as const,
+        kind,
+        content: [{
+          type: "paragraph" as const,
+          content: [{ type: "text" as const, text: `${kind} body` }],
+        }],
+      })),
+      {
+        type: "callout",
+        kind: "warning",
+        panelIcon: ":warning:",
+        panelIconText: "🧭",
+        content: [{ type: "paragraph", content: [{ type: "text", text: "explicit body" }] }],
+      },
+      {
+        type: "callout",
+        kind: "warning",
+        suppressDefaultIcon: true,
+        content: [{ type: "paragraph", content: [{ type: "text", text: "suppressed body" }] }],
+      },
+      {
+        type: "callout",
+        kind: "panel",
+        content: [{ type: "paragraph", content: [{ type: "text", text: "panel body" }] }],
+      },
+    ];
+
+    const { xml } = await serializeBlocks(blocks, {
+      styleNames: noStyles,
+      calloutIcons: {
+        embed(icon) {
+          embeddedKinds.push(icon.kind);
+          return `<w:r><w:drawing data-callout-kind="${icon.kind}"/></w:r>`;
+        },
+      },
+    });
+
+    expect(embeddedKinds).toEqual([...standardKinds]);
+    expect(xml.match(/data-callout-kind=/g)).toHaveLength(6);
+    expect(xml).toContain(
+      '<w:drawing data-callout-kind="info"/></w:r><w:r><w:t xml:space="preserve"> </w:t></w:r><w:r><w:t xml:space="preserve">info body</w:t>',
+    );
+    expect(xml).toContain("🧭");
+    expect(xml).not.toContain(":warning:");
+    expect(xml).toContain("suppressed body");
+    expect(xml).toContain("panel body");
+  });
+
   it("renders portable custom-panel color and icon text while retaining target-safe contrast", async () => {
     const { xml } = await serializeBlocks([{
       type: "callout",

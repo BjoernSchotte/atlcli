@@ -214,6 +214,63 @@ describe("PDF preparation and serialization", () => {
     expect(main).toContain('#callout(kind: "error"');
   });
 
+  it("renders all six defaults as labelled graphical icons", async () => {
+    const standard = [
+      ["info", "ℹ", "Info"],
+      ["note", "✎", "Note"],
+      ["warning", "⚠", "Warning"],
+      ["tip", "💡", "Tip"],
+      ["success", "✓", "Success"],
+      ["error", "✕", "Error"],
+    ] as const;
+    const { main } = await toMain(standard.map(([kind]) => ({
+      type: "callout" as const,
+      kind,
+      content: [{
+        type: "paragraph" as const,
+        content: [{ type: "text" as const, text: `${kind} body` }],
+      }],
+    })));
+
+    for (const [kind, symbol, label] of standard) {
+      expect(main).toContain(
+        `#callout(kind: "${kind}", title: none, icon: [#text("${symbol}")], icon_alt: "${label}")`,
+      );
+    }
+  });
+
+  it("keeps explicit standard icons and Storage/DC icon=false ahead of semantic defaults", async () => {
+    const explicit = await toMain([{
+      type: "callout",
+      kind: "warning",
+      panelIcon: ":warning:",
+      panelIconText: "🧭",
+      content: [{ type: "paragraph", content: [{ type: "text", text: "Explicit" }] }],
+    }]);
+    expect(explicit.main).toContain(
+      '#callout(kind: "warning", title: none, icon: [#text("🧭")])',
+    );
+    expect(explicit.main).not.toContain('icon_alt: "Warning"');
+    expect(explicit.main).not.toContain(":warning:");
+
+    const suppressed = await toMain([
+      {
+        type: "callout",
+        kind: "warning",
+        suppressDefaultIcon: true,
+        content: [{ type: "paragraph", content: [{ type: "text", text: "Suppressed" }] }],
+      },
+      {
+        type: "callout",
+        kind: "panel",
+        content: [{ type: "paragraph", content: [{ type: "text", text: "Panel" }] }],
+      },
+    ]);
+    expect(suppressed.main).toContain('#callout(kind: "warning", title: none)');
+    expect(suppressed.main).toContain('#callout(kind: "panel", title: none)');
+    expect(suppressed.main).not.toContain("icon:");
+  });
+
   it("renders portable custom-panel color and preferred icon text", async () => {
     const { main } = await toMain([{
       type: "callout",

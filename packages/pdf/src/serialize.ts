@@ -16,7 +16,7 @@ import {
   mediaFallbackDisplayText,
   isSafeLinkScheme,
   mentionDisplayText,
-  panelIconDisplayText,
+  resolveCalloutIcon,
   smartCardDisplayText,
   statusDisplayText,
   uniqueAnchorId,
@@ -1425,10 +1425,19 @@ function serializeBlock(
         block.panelColor && /^#[0-9a-f]{6}$/iu.test(block.panelColor)
           ? safeColor(block.panelColor)
           : undefined;
-      const panelIcon = panelIconDisplayText(block);
+      const resolvedIcon = resolveCalloutIcon(block);
+      const icon =
+        resolvedIcon?.source === "explicit"
+          ? `, icon: [${literalText(resolvedIcon.text)}]`
+          : resolvedIcon?.source === "semantic-default"
+            ? (
+                `, icon: [${literalText(resolvedIcon.icon.symbol)}]` +
+                `, icon_alt: ${typstString(resolvedIcon.icon.label)}`
+              )
+            : "";
       const presentation =
         (panelColor ? `, custom_color: rgb(${typstString(panelColor)})` : "")
-        + (panelIcon ? `, icon: [${literalText(panelIcon)}]` : "");
+        + icon;
       const calloutContext: RenderContext = { ...context, container: "calloutCell" };
       value = `#callout(kind: ${typstString(block.kind)}, title: ${title}${presentation})[\n${serializeBlocks(block.content, writer, `${path}.content`, calloutContext)}\n]`;
       break;

@@ -1,6 +1,6 @@
 # P1 — Semantic default icons for standard callouts
 
-Status: in progress; P1.1 accessibility contract proved
+Status: in progress; P1.1 and P1.2 proved
 
 Baseline: `5876348343c5805c3424eea5d516a8c937b4f6f5`
 
@@ -116,15 +116,30 @@ settings were restored to off after the check.
 
   Commit: `feat(confluence): define semantic callout icons`
 
-- [ ] **P1.2 — Render semantic icons in DOCX and PDF.**
+- [x] **P1.2 — Render semantic icons in DOCX and PDF.**
   Route both engines through the shared registry, preserve current palettes and
   custom colors, and keep generic panels iconless without source metadata.
+
+  Evidence (2026-07-24):
+
+  - DOCX embeds six deterministic, browser-safe 32×32 PNG assets as 16×16
+    labelled inline drawings without counting them as authored page images.
+  - The part-aware include path places a footer callout drawing relationship
+    in `footer1.xml.rels`; the document part receives no dangling copy.
+  - PDF compiles the production template through the real browser WASM compiler
+    with exactly six `/Figure` structure entries and `/Alt` values `Info`,
+    `Note`, `Warning`, `Tip`, `Success`, and `Error`.
+  - Explicit icons, generic panels, and Storage/DC `icon=false` bypass the
+    semantic default in both renderers.
+  - The focused production suite passes 350 tests; the complete workspace
+    typecheck and `git diff --check` pass.
 
   Verification:
 
   ```bash
-  bun run test packages/docx/src/serialize.test.ts packages/pdf/src/serialize.test.ts
+  bun run test packages/docx/src/image.test.ts packages/docx/src/export.test.ts packages/docx/src/serialize.test.ts packages/pdf/src/serialize.test.ts packages/pdf-compiler-browser/src/callout-accessibility.test.ts
   bun run typecheck
+  git diff --check
   ```
 
   Commit: `feat(export): render semantic callout icons`

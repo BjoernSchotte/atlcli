@@ -6,6 +6,7 @@
  */
 import { describe, expect, it } from "bun:test";
 import PizZip from "pizzip";
+import { DOCX_CALLOUT_ICON_PNG } from "./callout-icon-assets.js";
 import {
   ImageEmbedder,
   ImageEmbedError,
@@ -75,6 +76,19 @@ function templateZip(body = para("hello")): PizZip {
 // ---------------------------------------------------------------------------
 
 describe("decodeImageInfo", () => {
+  it("keeps every built-in callout icon as a distinct 32×32 PNG", () => {
+    const icons = Object.values(DOCX_CALLOUT_ICON_PNG);
+    expect(icons).toHaveLength(6);
+    expect(new Set(icons.map((bytes) => Buffer.from(bytes).toString("base64"))).size).toBe(6);
+    for (const bytes of icons) {
+      expect(decodeImageInfo(bytes)).toMatchObject({
+        format: "png",
+        width: 32,
+        height: 32,
+      });
+    }
+  });
+
   it("decodes PNG IHDR dimensions", () => {
     expect(decodeImageInfo(pngBytes(640, 480))).toEqual({
       format: "png",
@@ -521,6 +535,25 @@ describe("ImageEmbedder.embedSvg", () => {
 });
 
 describe("ImageEmbedder inline drawings", () => {
+  it("embeds a labelled built-in callout icon without changing page-image counters", () => {
+    const zip = templateZip();
+    const embedder = new ImageEmbedder(zip);
+    const icon = embedder.embedCalloutIconInline(pngBytes(32, 32), {
+      name: "Warning callout icon",
+      accessibility: { kind: "labelled", description: "Warning" },
+      widthPx: 16,
+      heightPx: 16,
+    });
+
+    expect(icon).not.toContain("<w:p>");
+    expect(icon).toContain('name="Warning callout icon" descr="Warning"');
+    expect(icon).toContain(`<wp:extent cx="${16 * 9525}" cy="${16 * 9525}"/>`);
+    expect(embedder.embeddedCount).toBe(0);
+    expect(zip.file("word/_rels/document.xml.rels")!.asText()).toContain(
+      "relationships/image",
+    );
+  });
+
   it("embeds raster and SVG images as runs while preserving dimensions and borders", () => {
     const zip = templateZip();
     const embedder = new ImageEmbedder(zip);

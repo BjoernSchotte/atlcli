@@ -170,8 +170,11 @@ describe("exportDocx — full pipeline", () => {
     expect(doc).toContain("Heads up");
     expect(doc).toContain('<w:pStyle w:val="AtlcliCode"/>');
 
-    // Image + logo skipped (no asset fetcher): no drawing, report lists both.
-    expect(doc).not.toContain("<w:drawing");
+    // Page image + logo skipped (no asset fetcher), while the built-in callout
+    // icon remains available and is not tallied as authored page media.
+    expect(doc).toContain("<w:drawing");
+    expect(doc).toContain('name="Info callout icon" descr="Info"');
+    expect(report.embeddedImages).toBe(0);
     expect(report.skippedImages).toBe(2);
     expect(report.notes.some((n) => n.code === "image-skipped")).toBe(true);
     expect(report.notes.some((n) => n.code === "logo-skipped")).toBe(true);
@@ -186,6 +189,72 @@ describe("exportDocx — full pipeline", () => {
     expect(report.unsupportedNames).not.toContain("$scroll.spacelogo");
     expect(report.filename).toBe("Q3_ Architecture _ Overview.docx");
     expect(report.durationMs).toBeGreaterThanOrEqual(0);
+  });
+
+  it("embeds all six labelled semantic callout icons without counting them as page media", async () => {
+    const standardKinds = ["info", "note", "warning", "tip", "success", "error"] as const;
+    const blocks = [
+      ...standardKinds.map((kind) => ({
+        type: "callout" as const,
+        kind,
+        content: [{
+          type: "paragraph" as const,
+          content: [{ type: "text" as const, text: `${kind} body` }],
+        }],
+      })),
+      {
+        type: "callout" as const,
+        kind: "warning" as const,
+        panelIcon: ":warning:",
+        panelIconText: "🧭",
+        content: [{
+          type: "paragraph" as const,
+          content: [{ type: "text" as const, text: "explicit warning body" }],
+        }],
+      },
+      {
+        type: "callout" as const,
+        kind: "warning" as const,
+        suppressDefaultIcon: true,
+        content: [{
+          type: "paragraph" as const,
+          content: [{ type: "text" as const, text: "suppressed warning body" }],
+        }],
+      },
+      {
+        type: "callout" as const,
+        kind: "panel" as const,
+        content: [{
+          type: "paragraph" as const,
+          content: [{ type: "text" as const, text: "generic panel body" }],
+        }],
+      },
+    ];
+
+    const { bytes, report } = await exportDocx({
+      templateBytes: fullTemplate(true),
+      details,
+      blocks,
+      template,
+      deps,
+    });
+
+    const zip = new PizZip(bytes);
+    const doc = readPart(bytes, "word/document.xml");
+    const rels = readPart(bytes, "word/_rels/document.xml.rels");
+    for (const label of ["Info", "Note", "Warning", "Tip", "Success", "Error"]) {
+      expect(doc.match(new RegExp(`descr="${label}"`, "g"))).toHaveLength(2);
+    }
+    expect(doc.match(/<wp:docPr\b/g)).toHaveLength(6);
+    expect(doc).toContain("🧭");
+    expect(doc).not.toContain(":warning:");
+    expect(doc).toContain("suppressed warning body");
+    expect(doc).toContain("generic panel body");
+    expect(rels.match(/relationships\/image/g)).toHaveLength(6);
+    expect(
+      Object.keys(zip.files).filter((path) => /^word\/media\/atlcli-image\d+\.png$/u.test(path)),
+    ).toHaveLength(6);
+    expect(report.embeddedImages).toBe(0);
   });
 
   it("flattens legacy section/column layouts without visible macro placeholders", async () => {
@@ -2090,6 +2159,39 @@ describe("exportDocx — $scroll.includepage (spec 005 D1)", () => {
     expect(readPart(bytes, "word/_rels/document.xml.rels")).toContain("relationships/image");
     // The included image was fetched from the INCLUDED page's id, not the root.
     expect(fetchedRefs.some((r) => r.url.includes("/attachments/Imprint/inc.png"))).toBe(true);
+  });
+
+  it("embeds an included FOOTER callout icon through footer1.xml.rels", async () => {
+    const footerPage = includePage(
+      "Imprint",
+      '<ac:structured-macro ac:name="warning">' +
+        "<ac:rich-text-body><p>Footer warning</p></ac:rich-text-body>" +
+        "</ac:structured-macro>",
+    );
+    const { bytes, report } = await exportDocx({
+      templateBytes: styledTemplate({
+        body: para("$scroll.content"),
+        footer: para("$scroll.includepage.(ENG:Imprint)"),
+      }),
+      details: { ...details, storage: "<p>own body</p>" },
+      template,
+      deps: { ...deps, getIncludedPage: resolver({ Imprint: footerPage }).getIncludedPage },
+    });
+
+    const footer = readPart(bytes, "word/footer1.xml");
+    expect(footer).toContain("Footer warning");
+    expect(footer).toContain('name="Warning callout icon" descr="Warning"');
+    assertBalancedXml(footer);
+    const relId = footer.match(/r:embed="(rId\d+)"/)?.[1];
+    expect(relId).toBeDefined();
+    expect(readPart(bytes, "word/_rels/footer1.xml.rels")).toContain(`Id="${relId}"`);
+    expect(readPart(bytes, "word/_rels/footer1.xml.rels")).toContain(
+      "relationships/image",
+    );
+    expect(readPart(bytes, "word/document.xml")).not.toContain(
+      'name="Warning callout icon"',
+    );
+    expect(report.embeddedImages).toBe(0);
   });
 
   it("embeds an included FOOTER page's Mermaid diagram into footer1.xml.rels, not document.xml.rels", async () => {

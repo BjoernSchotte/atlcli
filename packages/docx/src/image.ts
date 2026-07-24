@@ -600,10 +600,22 @@ export class ImageEmbedder {
     return this.embedRaster(bytes, opts, true);
   }
 
+  /**
+   * Embed a built-in semantic callout icon as an inline drawing.
+   *
+   * It uses the same media/relationship/id machinery as page images, but it is
+   * exporter chrome rather than authored page media and therefore does not
+   * increment {@link embeddedCount}.
+   */
+  embedCalloutIconInline(bytes: Uint8Array, opts: EmbedImageOptions): string {
+    return this.embedRaster(bytes, opts, true, false);
+  }
+
   private embedRaster(
     bytes: Uint8Array,
     opts: EmbedImageOptions,
     inline: boolean,
+    countAsImage = true,
   ): string {
     if (bytes.length === 0) throw new ImageEmbedError("the fetched image was empty");
     if (bytes.length > MAX_IMAGE_BYTES) {
@@ -624,7 +636,7 @@ export class ImageEmbedder {
     const relId = this.ensureRelationship(entry, opts.partPath ?? DOCUMENT_PART);
     const size = resolveTargetSize(info, { widthPx: opts.widthPx, heightPx: opts.heightPx }, this.maxWidthPx);
     const docPrId = this.nextDocPrId++;
-    this.embedded += 1;
+    if (countAsImage) this.embedded += 1;
     const params: DrawingParams = {
       relId,
       docPrId,

@@ -5,10 +5,13 @@ import {
   PDF_RUNTIME_ASSETS,
   type PdfSourceBundle,
 } from "@atlcli/pdf/browser";
+import type { ExportBlock } from "@atlcli/confluence";
 import {
   decorativeCalloutIcon,
   labelledCalloutIcon,
 } from "../../pdf/src/callout-accessibility.js";
+import { preparePdfDocument } from "../../pdf/src/prepare.js";
+import { serializePdfDocument } from "../../pdf/src/serialize.js";
 import { ensurePdfFonts } from "../../pdf/scripts/ensure-fonts.js";
 import { ensureVendoredTypst } from "../scripts/vendor-typst.js";
 import { BrowserPdfCompiler } from "./index.js";
@@ -91,5 +94,42 @@ describe("semantic callout PDF accessibility spikes", () => {
 
     expect(figures).toHaveLength(1);
     expect(text).toContain("/Alt (Warning)");
+  }, 120_000);
+
+  it("compiles every production semantic callout as one labelled figure", async () => {
+    const kinds = ["info", "note", "warning", "tip", "success", "error"] as const;
+    const blocks: ExportBlock[] = kinds.map((kind) => ({
+      type: "callout",
+      kind,
+      content: [{
+        type: "paragraph",
+        content: [{ type: "text", text: `${kind} body` }],
+      }],
+    }));
+    const prepared = await preparePdfDocument(blocks, {
+      resolve: async () => {
+        throw new Error("unused");
+      },
+    });
+    const bundle = serializePdfDocument(prepared, {
+      metadata: {
+        title: "Semantic callouts",
+        space: "DOCSY",
+        version: 1,
+        author: "P1 test",
+        exporter: "atlcli",
+        language: "en",
+        region: "US",
+        exportedAt: new Date("2026-07-24T12:00:00Z"),
+      },
+    });
+    const result = await compiler.compile(bundle);
+
+    expect(result.diagnostics.filter((diagnostic) => diagnostic.severity === "error")).toEqual([]);
+    const text = inspectable(result.pdf!);
+    expect([...text.matchAll(/\/S\s*\/Figure\b/g)]).toHaveLength(6);
+    for (const label of ["Info", "Note", "Warning", "Tip", "Success", "Error"]) {
+      expect(text).toContain(`/Alt (${label})`);
+    }
   }, 120_000);
 });

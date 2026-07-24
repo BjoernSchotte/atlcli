@@ -415,7 +415,7 @@ ${headerResolution}
   ]
 }
 
-#let callout(kind: "info", title: none, custom_color: none, icon: none, body) = {
+#let callout(kind: "info", title: none, custom_color: none, icon: none, icon_alt: none, body) = {
   let palette = (
     info: (rgb("${info.bg}"), rgb("${info.fg}")),
     note: (rgb("${note.bg}"), rgb("${note.fg}")),
@@ -438,7 +438,15 @@ ${headerResolution}
     below: ${L("calloutBelow")},
   )[
     #set text(font: ${fontStack(F("heading"))})
-    #if icon != none { text(weight: "semibold", fill: foreground, icon); if title == none { linebreak() } else { h(${L("calloutIconGap")}) } }
+    #if icon != none {
+      let styled-icon = text(weight: "semibold", fill: foreground, icon)
+      if icon_alt == none {
+        styled-icon
+      } else {
+        box(figure(styled-icon, alt: icon_alt, outlined: false))
+      }
+      h(${L("calloutIconGap")})
+    }
     #if title != none { text(weight: "semibold", fill: foreground, title); linebreak() }
     #body
   ]
