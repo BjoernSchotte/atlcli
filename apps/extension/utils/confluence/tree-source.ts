@@ -31,6 +31,7 @@
 import {
   ConfluenceClient,
   confluenceTreeSource,
+  type ExportSourcePolicy,
   type TreeFetchContext,
   type TreeSource,
   type TreeSourceClient,
@@ -47,6 +48,12 @@ export const NOT_ATLASSIAN_HOST_MESSAGE =
   "The active page is not on an approved Atlassian host.";
 
 export interface SessionTreeSourceOptions {
+  /**
+   * Body representation used by export reads. The legacy panel-owned export
+   * path stays Storage-primary by default; PDF preview opts into ADF-primary so
+   * it renders the same published source as the durable Download path.
+   */
+  exportSourcePolicy?: ExportSourcePolicy;
   /**
    * The export-level abort signal. Combined with (not replaced by) whatever
    * signal `fetchExportTree` threads into each call's {@link TreeFetchContext},
@@ -122,8 +129,19 @@ export function sessionTreeSourceForProfile(
   profile: Profile,
   options: SessionTreeSourceOptions = {}
 ): TreeSource {
-  const makeClient = options.makeClient ?? ((p: Profile) => new ConfluenceClient(p));
+  const makeClient =
+    options.makeClient ??
+    ((p: Profile) =>
+      new ConfluenceClient(
+        p,
+        options.exportSourcePolicy
+          ? { exportSourcePolicy: options.exportSourcePolicy }
+          : {}
+      ));
   const client = makeClient(profile);
+  if (options.exportSourcePolicy === "adf-primary") {
+    return withExportSignal(confluenceTreeSource(client), options.signal);
+  }
   // The current panel-owned export path remains explicitly Storage-primary
   // until the background-job resolver owns the complete dual-read lifecycle.
   // Hiding the optional export read here is a routing policy, not a parser

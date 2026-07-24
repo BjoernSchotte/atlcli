@@ -282,6 +282,58 @@ describe("sessionTreeSource — behavior inherited from ConfluenceClient", () =>
 });
 
 describe("sessionTreeSource — injectable client seam", () => {
+  it("uses the representation-aware export read when preview requests ADF-primary", async () => {
+    const seen: string[] = [];
+    const fake: TreeSourceClient = {
+      getExportPageDetailsWithMedia: async (id) => {
+        seen.push(`export:${id}`);
+        return {
+          id,
+          title: "ADF preview",
+          storage: "<p>Storage sidecar</p>",
+          version: 4,
+          exportSource: {
+            primary: {
+              representation: "atlas_doc_format",
+              value: JSON.stringify({
+                type: "doc",
+                version: 1,
+                content: [{ type: "paragraph", content: [{ type: "text", text: "ADF body" }] }],
+              }),
+            },
+            storageSidecar: "<p>Storage sidecar</p>",
+            sourceVersion: 4,
+          },
+        };
+      },
+      getPageDetails: async (id) => {
+        seen.push(`details:${id}`);
+        return { id, title: "Storage preview", storage: "<p>Storage body</p>", version: 4 };
+      },
+      getPageVersion: async () => ({ title: "ADF preview", version: 4 }),
+      getChildrenWithPosition: async () => [],
+      getPageDirectChildren: async () => [],
+      getFolderChildren: async () => [],
+      getSpaceHomepageId: async () => null,
+      searchPages: async () => [],
+    };
+
+    const page = await sessionTreeSource(PAGE_URL, {
+      exportSourcePolicy: "adf-primary",
+      makeClient: () => fake,
+    }).getPage("42", {});
+
+    expect(page).toMatchObject({
+      id: "42",
+      title: "ADF preview",
+      exportSource: {
+        primary: { representation: "atlas_doc_format" },
+        sourceVersion: 4,
+      },
+    });
+    expect(seen).toEqual(["export:42"]);
+  });
+
   it("uses the supplied client factory and the tab's origin as base URL", async () => {
     const seen: string[] = [];
     const fake: TreeSourceClient = {

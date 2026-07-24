@@ -220,6 +220,109 @@ const loadedPage = {
 const report = { filename: "T.pdf" } as unknown as PdfExportReport;
 
 describe("runPagePdfPreview", () => {
+  it("refreshes ADF-primary source so a media caption absent from Storage remains visible", async () => {
+    const caption = "Abstract document-flow symbol";
+    const adf = JSON.stringify({
+      type: "doc",
+      version: 1,
+      content: [
+        {
+          type: "mediaSingle",
+          attrs: { layout: "center" },
+          content: [
+            {
+              type: "media",
+              attrs: {
+                type: "file",
+                id: "media-1",
+                collection: "contentId-1",
+                alt: "Architecture",
+              },
+            },
+            {
+              type: "caption",
+              content: [{ type: "text", text: caption }],
+            },
+          ],
+        },
+      ],
+    });
+    const source: TreeSource = {
+      async getPage() {
+        return {
+          id: "1",
+          title: "T",
+          storage: "<p><ac:image><ri:attachment ri:filename=\"image.png\" /></ac:image></p>",
+          version: 2,
+          labels: [],
+          spaceKey: "DOCSY",
+          exportSource: {
+            primary: { representation: "atlas_doc_format", value: adf },
+            storageSidecar:
+              "<p><ac:image><ri:attachment ri:filename=\"image.png\" /></ac:image></p>",
+            sourceVersion: 2,
+          },
+          mediaAttachments: [
+            { fileId: "media-1", filename: "image.png", pageId: "1" },
+          ],
+          mediaAttachmentsComplete: true,
+        };
+      },
+      async getPageVersion() {
+        return { title: "T", version: 2 };
+      },
+      async getChildren() {
+        return [];
+      },
+      async getSpaceHomepageId() {
+        return "1";
+      },
+    };
+    let previewBlocks: ExportBlock[] = [];
+
+    await runPagePdfPreview(
+      { page: loadedPage, pageUrl: "https://x.atlassian.net/wiki/p/1" },
+      {
+        runExport: async (input, overrides) => {
+          const composition = await overrides!.resolveComposition!(
+            {
+              root: {
+                id: input.page.details.id,
+                title: input.page.details.title,
+                version: input.page.details.version,
+                storage: input.page.details.storage,
+              },
+              pageUrl: input.pageUrl,
+              exporter: "pdf",
+            },
+            { createTreeSource: () => source }
+          );
+          previewBlocks = composition.blocks;
+          await overrides?.output?.emit(
+            "T.pdf",
+            pdfBytesFromUint8Array(new Uint8Array([1]))
+          );
+          return report;
+        },
+      }
+    );
+
+    expect(previewBlocks).toEqual([
+      expect.objectContaining({
+        type: "image",
+        source: {
+          kind: "attachment",
+          filename: "image.png",
+          pageId: "1",
+        },
+        caption: {
+          kind: "figure",
+          content: [{ type: "text", text: caption }],
+        },
+      }),
+    ]);
+  });
+
   it("runs the REAL export pipeline with a capture sink and a preview-tagged port", async () => {
     let sawPreviewPort = false;
     let emitted: string | undefined;

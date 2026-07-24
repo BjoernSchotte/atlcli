@@ -76,6 +76,12 @@ export interface ExportCompositionInput {
   pageUrl: string;
   /** Absent → single page (today's behaviour). */
   scope?: ExportScope;
+  /**
+   * Re-read a single page through the injected {@link TreeSource} instead of
+   * walking the panel's already-loaded Storage body. PDF preview enables this
+   * so its published source representation matches durable ADF-primary export.
+   */
+  refreshPageSource?: boolean;
   labels?: LabelFilter;
   /** Which engine's walker dialect to use for the single-page walk. */
   exporter: "pdf" | "word";
@@ -160,11 +166,9 @@ function externalUrlResolver(profile: Profile): NonNullable<ComposeOptions["reso
 /**
  * Resolve the requested scope into one composed document.
  *
- * Single page: walks the already-loaded storage — with `pageContext`, so
- * attachment `ImageSource`s carry `pageId` and `unknown` blocks carry
- * `sourcePage` exactly as they do in a tree export. That uniformity is what
- * lets the asset resolvers and the macro `contextFor` take ONE code path for
- * both scopes rather than special-casing the root.
+ * Single page normally walks the already-loaded storage. A preview can set
+ * `refreshPageSource` to read the page through the injected representation-
+ * aware source instead, preserving ADF-only semantics such as media captions.
  *
  * Tree/space: folder 002's `fetchExportTree` (label filter, ordering,
  * completeness, `onProgress`, `signal`) followed by `composeChapters`. The
@@ -178,7 +182,7 @@ export async function resolveExportComposition(
   const deps = { ...defaultDeps, ...overrides };
   input.signal?.throwIfAborted();
 
-  if (!isTreeScope(input.scope)) {
+  if (!isTreeScope(input.scope) && input.refreshPageSource !== true) {
     const walked = storageToBlocks(input.root.storage ?? "", {
       exporter: input.exporter,
       pageContext: {
@@ -207,7 +211,8 @@ export async function resolveExportComposition(
   if (!profile) throw new Error(NOT_ATLASSIAN_HOST_MESSAGE);
 
   const source = deps.createTreeSource(input.pageUrl, input.signal);
-  const tree = await fetchExportTree(source, input.scope, {
+  const scope = input.scope ?? { kind: "page" as const, pageId: input.root.id };
+  const tree = await fetchExportTree(source, scope, {
     ...(input.labels ? { labels: input.labels } : {}),
     ...(input.completenessMode ? { completenessMode: input.completenessMode } : {}),
     ...(input.maxPages !== undefined ? { maxPages: input.maxPages } : {}),
@@ -216,6 +221,33 @@ export async function resolveExportComposition(
     ...(input.onProgress ? { onProgress: input.onProgress } : {}),
   });
   input.signal?.throwIfAborted();
+
+  if (scope.kind === "page") {
+    const page = tree.nodes.find((node) => node.kind === "page");
+    if (!page || page.kind !== "page") {
+      throw new Error("The refreshed preview source did not contain its root page.");
+    }
+    if (
+      input.root.version !== undefined &&
+      page.meta.version !== undefined &&
+      page.meta.version !== input.root.version
+    ) {
+      throw new Error("The published page changed while its preview source was being read.");
+    }
+    return {
+      kind: "page",
+      blocks: page.blocks,
+      notes: [...tree.notes, ...page.notes],
+      complete: tree.complete,
+      root: {
+        id: page.pageId,
+        title: page.title,
+        ...(page.meta.version !== undefined ? { version: page.meta.version } : {}),
+        ...(page.meta.spaceKey !== undefined ? { spaceKey: page.meta.spaceKey } : {}),
+      },
+      pageCount: 1,
+    };
+  }
 
   const selectedNodes = input.selectNodes ? input.selectNodes(tree.nodes) : tree.nodes;
   const selectedPageIds = new Set(
