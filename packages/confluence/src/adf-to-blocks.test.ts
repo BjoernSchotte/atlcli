@@ -1168,6 +1168,61 @@ describe("adfToBlocks", () => {
     expect(result.notes).toEqual([]);
   });
 
+  it("projects the exact Atlassian-owned Cloud picker ADF shapes and preserves Unicode picker text", () => {
+    const pickerAssets = [
+      { shortName: ":check_mark:", id: "atlassian-check_mark", canonicalName: "tick" },
+      { shortName: ":warning:", id: "atlassian-warning", canonicalName: "warning" },
+      { shortName: ":minus:", id: "atlassian-minus", canonicalName: "minus" },
+      { shortName: ":question_mark:", id: "atlassian-question_mark", canonicalName: "question" },
+      { shortName: ":cross_mark:", id: "atlassian-cross_mark", canonicalName: "cross" },
+      { shortName: ":info:", id: "atlassian-info", canonicalName: "information" },
+    ] as const;
+    const result = adfToBlocks(doc([{
+      type: "paragraph",
+      content: [
+        ...pickerAssets.map(({ shortName, id }) => ({
+          type: "emoji",
+          attrs: { shortName, id, text: shortName },
+        })),
+        {
+          type: "emoji",
+          attrs: { shortName: ":slight_smile:", id: "1f642", text: "🙂" },
+        },
+      ],
+    }]));
+
+    expect(result.blocks[0]).toEqual({
+      type: "paragraph",
+      content: [
+        ...pickerAssets.map(({ shortName, id, canonicalName }) => {
+          const projection = CONFLUENCE_LEGACY_EMOJI_PROJECTIONS[canonicalName];
+          return {
+            type: "text" as const,
+            text: projection.text,
+            emoji: {
+              shortName,
+              id,
+              text: shortName,
+              renderedFrom: "catalog-projection" as const,
+              projection,
+            },
+          };
+        }),
+        {
+          type: "text",
+          text: "🙂",
+          emoji: {
+            shortName: ":slight_smile:",
+            id: "1f642",
+            text: "🙂",
+            renderedFrom: "source-text",
+          },
+        },
+      ],
+    });
+    expect(result.notes).toEqual([]);
+  });
+
   it("keeps a visible diagnosed floor for an invalid empty ADF emoji identity", () => {
     const result = adfToBlocks(doc([{
       type: "paragraph",

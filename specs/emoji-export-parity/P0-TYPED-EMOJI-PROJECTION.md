@@ -464,6 +464,48 @@ Pre-commit live gate for every P0 task:
 
   Commit: `docs(export): document typed emoji parity`
 
+- [x] **P0.6 — Pin the complete native Cloud picker corpus and Storage/DC parity.**
+  Inspect the editor's native emoji picker on the retained DOCSY live page,
+  record the exact ADF shapes in the dedicated `Official Notations` section,
+  and add permanent adapter regressions for the Atlassian-owned assets plus
+  source-provided Unicode. Prove the same typed aliases through Body Storage so
+  the Data Center path does not depend on Cloud-only code.
+
+  Evidence (2026-07-24):
+
+  - DOCSY page `1141374997`, version 4, contains exactly 50 unique native picker
+    entries in `Official Notations`: 44 standard Unicode emoji and six
+    Atlassian-owned assets.
+  - The six product-owned ADF forms are `:check_mark:`
+    (`atlassian-check_mark`), `:warning:` (`atlassian-warning`), `:minus:`
+    (`atlassian-minus`), `:question_mark:` (`atlassian-question_mark`),
+    `:cross_mark:` (`atlassian-cross_mark`), and `:info:` (`atlassian-info`).
+    Their colon-valued `text` fields now have exact unit and ADF integration
+    regressions; standard picker Unicode is pinned as source-text behavior.
+  - The Body Storage regression feeds the same six `ac:emoji-shortname` and
+    colon-valued `ac:emoji-fallback` pairs through the production adapter, plus
+    a standard Unicode fallback. All use the shared resolver and produce no
+    export note.
+  - The live ADF, DOCX XML, and PDF text sequences were compared exactly:
+    all 50 outputs occur once and in order, with no known picker shortcode
+    leak. The complete DOCX rendered in Microsoft Word and the seven-page PDF
+    rendered without missing symbols; LibreOffice's optional preview retained
+    the exact DOCX text but lacked some platform color-emoji glyphs.
+  - The retained page also contains all 22 canonical legacy notations, all 26
+    aliases, literal/custom negative controls, and the semantic callout corpus.
+    Final artifact hashes and cleanup proof are recorded with P1.4.
+
+  Verification:
+
+  ```bash
+  bun run test packages/confluence/src/emoji-projection.test.ts packages/confluence/src/adf-to-blocks.test.ts packages/confluence/src/export-blocks.test.ts
+  bun run typecheck
+  bun run check:browser
+  git diff --check
+  ```
+
+  Commit: `test(confluence): prove native picker emoji parity`
+
 ## 6. Required test matrix
 
 | Source | Input | Expected visible output | Note |

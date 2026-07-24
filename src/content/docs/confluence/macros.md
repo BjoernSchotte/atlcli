@@ -231,6 +231,17 @@ name such as `:check_mark:` or `:light_bulb_on:` during ADF read-back. The
 export adapter recognizes those spellings, but they are not additional
 Markdown authoring aliases and are therefore not listed below.
 
+The table below is the complete Markdown/legacy authoring catalog, not a limit
+on Confluence Cloud's native emoji picker. A live Cloud picker inventory on
+2026-07-24 contained 50 unique entries: 44 standard emoji carried exact Unicode
+in ADF `emoji.attrs.text`, while six product-owned assets used colon text.
+Those six portable read-back projections are `:check_mark:` → ✓,
+`:warning:` → ⚠, `:minus:` → −, `:question_mark:` → ❓,
+`:cross_mark:` → ✕, and `:info:` → ℹ. Standard Unicode remains byte-for-byte
+unchanged. The Body Storage/Data Center `ac:emoticon` adapter applies the same
+resolver when `ac:emoji-fallback` contains one of those typed short names and
+preserves a usable Unicode fallback exactly.
+
 ### Supported Emoticons
 
 | Canonical shortcode | Graphical export | Supported aliases |
@@ -263,7 +274,9 @@ pixel parity with Confluence's color emoji. PDF bundles and checks the required
 fonts. DOCX stores the exact projected Unicode, but the receiving application
 still chooses the display font. Arbitrary source-provided Unicode sequences
 are preserved exactly; glyph availability for those sequences depends on the
-recipient. Site-custom emoji are not fetched because Atlassian does not expose
+recipient. The 50-entry live picker corpus rendered completely in Microsoft
+Word; LibreOffice retained the exact DOCX text but did not provide every
+platform color-emoji glyph. Site-custom emoji are not fetched because Atlassian does not expose
 a documented, authorized portable asset contract for this export path.
 
 ## User Mentions

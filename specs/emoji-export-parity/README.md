@@ -44,6 +44,7 @@ P0.1 contract and catalog
     -> P0.3 custom-panel projection
       -> P0.4 browser/render proof
         -> P0.5 docs and aggregate gates
+          -> P0.6 native Cloud picker and Storage/DC parity
 
 P1 starts only after P0 is complete and reviewed.
 ```

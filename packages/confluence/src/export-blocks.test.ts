@@ -283,6 +283,50 @@ describe("storageToBlocks — paragraphs & marks", () => {
     expect(result.notes).toEqual([]);
   });
 
+  test("projects Cloud picker aliases through Body Storage and preserves Unicode fallbacks", () => {
+    const pickerAssets = [
+      { shortName: ":check_mark:", id: "atlassian-check_mark", canonicalName: "tick" },
+      { shortName: ":warning:", id: "atlassian-warning", canonicalName: "warning" },
+      { shortName: ":minus:", id: "atlassian-minus", canonicalName: "minus" },
+      { shortName: ":question_mark:", id: "atlassian-question_mark", canonicalName: "question" },
+      { shortName: ":cross_mark:", id: "atlassian-cross_mark", canonicalName: "cross" },
+      { shortName: ":info:", id: "atlassian-info", canonicalName: "information" },
+    ] as const;
+    const storage = `<p>${pickerAssets.map(({ shortName, id }) =>
+      `<ac:emoticon ac:name="smile" ac:emoji-id="${id}" ac:emoji-shortname="${shortName}" ac:emoji-fallback="${shortName}"/>`
+    ).join("")}<ac:emoticon ac:name="slight-smile" ac:emoji-id="1f642" ac:emoji-shortname=":slight_smile:" ac:emoji-fallback="🙂"/></p>`;
+    const result = storageToBlocks(storage);
+
+    expect(result.blocks[0]).toEqual({
+      type: "paragraph",
+      content: [
+        ...pickerAssets.map(({ shortName, canonicalName }) => {
+          const projection = CONFLUENCE_LEGACY_EMOJI_PROJECTIONS[canonicalName];
+          return {
+            type: "text" as const,
+            text: projection.text,
+            emoji: {
+              shortName,
+              text: shortName,
+              renderedFrom: "catalog-projection" as const,
+              projection,
+            },
+          };
+        }),
+        {
+          type: "text",
+          text: "🙂",
+          emoji: {
+            shortName: ":slight_smile:",
+            text: "🙂",
+            renderedFrom: "source-text",
+          },
+        },
+      ],
+    });
+    expect(result.notes).toEqual([]);
+  });
+
   test("keeps a visible diagnosed floor for an invalid empty Storage emoji identity", () => {
     const result = storageToBlocks(
       '<p><ac:emoticon ac:name="warning" ac:emoji-shortname=""/></p>'

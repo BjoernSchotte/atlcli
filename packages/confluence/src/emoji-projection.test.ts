@@ -127,6 +127,29 @@ describe("projectTypedEmoji", () => {
     }
   });
 
+  it("projects the exact six product-owned emoji shapes observed in the Cloud picker", () => {
+    const pickerAssets = {
+      check_mark: "tick",
+      warning: "warning",
+      minus: "minus",
+      question_mark: "question",
+      cross_mark: "cross",
+      info: "information",
+    } as const;
+
+    for (const [shortName, canonicalName] of Object.entries(pickerAssets)) {
+      const projection = CONFLUENCE_LEGACY_EMOJI_PROJECTIONS[canonicalName];
+      expect(projectTypedEmoji({
+        shortName: `:${shortName}:`,
+        sourceText: `:${shortName}:`,
+      })).toEqual({
+        kind: "known",
+        text: projection.text,
+        projection,
+      });
+    }
+  });
+
   it("preserves an unknown or site-custom short name exactly", () => {
     expect(projectTypedEmoji({ shortName: ":party-parrot:", sourceText: ":fallback:" })).toEqual({
       kind: "unresolved",
