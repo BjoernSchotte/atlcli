@@ -30,6 +30,10 @@ import { UNSAFE_LINK_NOTE_CODE, sanitizeLinkHref, unsafeLinkMessage } from "./li
 import { translateDatasourceLink } from "./datasource.js";
 import type { AdfJsonValue } from "./adf-types.js";
 import type { BlocksResult } from "./page-body.js";
+import {
+  projectTypedEmoji,
+  type PortableEmojiProjection,
+} from "./emoji-projection.js";
 
 // ---------------------------------------------------------------------------
 // Model
@@ -147,8 +151,8 @@ export type InlineNode =
       /**
        * Stored emoji semantics retained alongside the portable visible text.
        * `text` is the exact optional source attribute (including an empty
-       * string); `renderedFrom` records whether the visible run uses that text
-       * or the required short-name fallback.
+       * string); `renderedFrom` records whether the visible run uses that text,
+       * a reviewed catalog projection, or the exact unresolved short name.
        */
       emoji?: EmojiSemantics;
       /** Identity retained when this visible text approximates an ADF inline extension. */
@@ -652,7 +656,8 @@ export interface EmojiSemantics {
   shortName: string;
   id?: string;
   text?: string;
-  renderedFrom: "text" | "short-name";
+  renderedFrom: "source-text" | "catalog-projection" | "short-name";
+  projection?: PortableEmojiProjection;
 }
 
 /**
@@ -3184,11 +3189,6 @@ function walkInline(nodes: XmlNode[], ctx: WalkCtx): InlineNode[] {
   return out;
 }
 
-/** True for an ADF/Storage textual emoji token such as `:warning:`. */
-function isColonEmojiFallback(value: string): boolean {
-  return value.length >= 3 && value.startsWith(":") && value.endsWith(":") && !/\s/u.test(value);
-}
-
 /** Normalize Storage's calendar-date representations to ADF epoch milliseconds. */
 function storageDateTimestamp(value: string): string {
   const source = value.trim();
@@ -3279,20 +3279,26 @@ function walkInlineElement(el: XmlElement, ctx: WalkCtx): InlineNode[] {
   if (name === "ac:link") return walkAcLink(el, ctx);
 
   if (name === "ac:emoticon") {
-    const nameFallback = el.attrs["ac:name"] ?? "";
-    const shortName =
+    // The explicit short-name is authoritative. Only when it is absent may
+    // the legacy ac:name identity participate in catalog normalization.
+    const sourceShortName =
       el.attrs["ac:emoji-shortname"] ??
-      (nameFallback
-        ? nameFallback.startsWith(":") && nameFallback.endsWith(":")
-          ? nameFallback
-          : `:${nameFallback}:`
-        : "");
+      el.attrs["ac:name"] ??
+      "";
+    // Empty is schema-representable but is not an emoji notation. Keep the
+    // existing visible invalid-node floor in parity with the ADF decoder.
+    const shortName = sourceShortName || "[emoji]";
     const sourceText = el.attrs["ac:emoji-fallback"];
+    const result = projectTypedEmoji({ shortName, sourceText });
     const renderedFrom =
-      sourceText !== undefined && sourceText.length > 0 ? "text" : "short-name";
-    const text = renderedFrom === "text" ? sourceText! : shortName;
+      result.kind === "source-text"
+        ? "source-text"
+        : result.kind === "known"
+          ? "catalog-projection"
+          : "short-name";
+    const text = result.text;
     if (!text) return [];
-    if (renderedFrom === "short-name" || isColonEmojiFallback(text)) {
+    if (result.kind === "unresolved") {
       ctx.notes.push(withSource(ctx, {
         level: "warning",
         code: "emoji-text-fallback",
@@ -3306,6 +3312,7 @@ function walkInlineElement(el: XmlElement, ctx: WalkCtx): InlineNode[] {
         shortName,
         ...(sourceText !== undefined ? { text: sourceText } : {}),
         renderedFrom,
+        ...(result.kind === "known" ? { projection: result.projection } : {}),
       },
     }];
   }

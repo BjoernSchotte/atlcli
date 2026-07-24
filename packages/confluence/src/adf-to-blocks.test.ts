@@ -14,6 +14,10 @@ import {
 } from "./adf-coverage.js";
 import { JIRA_DATASOURCE_ID } from "./datasource.js";
 import type { ExportBlock } from "./export-blocks.js";
+import {
+  CONFLUENCE_LEGACY_EMOJI_ALIASES,
+  CONFLUENCE_LEGACY_EMOJI_PROJECTIONS,
+} from "./emoji-projection.js";
 
 function doc(content: unknown[]): string {
   return JSON.stringify({ version: 1, type: "doc", content });
@@ -844,7 +848,7 @@ describe("adfToBlocks", () => {
         emoji: {
           shortName: ":warning:",
           text: "⚠️",
-          renderedFrom: "text",
+          renderedFrom: "source-text",
         },
       },
       {
@@ -958,6 +962,150 @@ describe("adfToBlocks", () => {
     expect(result.notes.filter((note) => note.code === "emoji-text-fallback")).toHaveLength(2);
     expect(result.notes.filter((note) => note.code === "adf-node-degraded")).toHaveLength(0);
     expect(result.notes.every((note) => note.source?.blockPath)).toBe(true);
+  });
+
+  it("projects only typed ADF emoji and materializes every semantic state", () => {
+    const warning = CONFLUENCE_LEGACY_EMOJI_PROJECTIONS.warning;
+    const result = adfToBlocks(doc([{
+      type: "paragraph",
+      content: [
+        { type: "emoji", attrs: { shortName: ":warning:" } },
+        { type: "emoji", attrs: { shortName: ":warning:", text: "" } },
+        { type: "emoji", attrs: { shortName: ":warning:", text: ":warning:" } },
+        { type: "emoji", attrs: { shortName: ":warning:", text: ":smile:" } },
+        { type: "emoji", attrs: { shortName: ":warn:" } },
+        { type: "emoji", attrs: { shortName: ":custom:", text: "🦜" } },
+      ],
+    }]));
+
+    expect(result.blocks[0]).toEqual({
+      type: "paragraph",
+      content: [
+        {
+          type: "text",
+          text: warning.text,
+          emoji: {
+            shortName: ":warning:",
+            renderedFrom: "catalog-projection",
+            projection: warning,
+          },
+        },
+        {
+          type: "text",
+          text: warning.text,
+          emoji: {
+            shortName: ":warning:",
+            text: "",
+            renderedFrom: "catalog-projection",
+            projection: warning,
+          },
+        },
+        {
+          type: "text",
+          text: warning.text,
+          emoji: {
+            shortName: ":warning:",
+            text: ":warning:",
+            renderedFrom: "catalog-projection",
+            projection: warning,
+          },
+        },
+        {
+          type: "text",
+          text: warning.text,
+          emoji: {
+            shortName: ":warning:",
+            text: ":smile:",
+            renderedFrom: "catalog-projection",
+            projection: warning,
+          },
+        },
+        {
+          type: "text",
+          text: warning.text,
+          emoji: {
+            shortName: ":warn:",
+            renderedFrom: "catalog-projection",
+            projection: warning,
+          },
+        },
+        {
+          type: "text",
+          text: "🦜",
+          emoji: {
+            shortName: ":custom:",
+            text: "🦜",
+            renderedFrom: "source-text",
+          },
+        },
+      ],
+    });
+    expect(result.notes).toEqual([]);
+  });
+
+  it("projects all 22 canonical and 26 alias notations through the ADF adapter", () => {
+    const canonicalCases = Object.values(CONFLUENCE_LEGACY_EMOJI_PROJECTIONS)
+      .map((projection) => ({
+        shortName: `:${projection.canonicalName}:`,
+        projection,
+      }));
+    const aliasCases = Object.entries(CONFLUENCE_LEGACY_EMOJI_ALIASES)
+      .map(([alias, canonicalName]) => ({
+        shortName: `:${alias}:`,
+        projection: CONFLUENCE_LEGACY_EMOJI_PROJECTIONS[canonicalName],
+      }));
+    const cases = [...canonicalCases, ...aliasCases];
+    const result = adfToBlocks(doc([{
+      type: "paragraph",
+      content: [
+        ...cases.map(({ shortName }) => ({
+          type: "emoji",
+          attrs: { shortName },
+        })),
+        { type: "text", text: ":+1:" },
+      ],
+    }]));
+
+    expect(canonicalCases).toHaveLength(22);
+    expect(aliasCases).toHaveLength(26);
+    expect(result.blocks[0]).toEqual({
+      type: "paragraph",
+      content: [
+        ...cases.map(({ shortName, projection }) => ({
+          type: "text" as const,
+          text: projection.text,
+          emoji: {
+            shortName,
+            renderedFrom: "catalog-projection" as const,
+            projection,
+          },
+        })),
+        { type: "text", text: ":+1:" },
+      ],
+    });
+    expect(result.notes).toEqual([]);
+  });
+
+  it("keeps a visible diagnosed floor for an invalid empty ADF emoji identity", () => {
+    const result = adfToBlocks(doc([{
+      type: "paragraph",
+      content: [{ type: "emoji", attrs: { shortName: "" } }],
+    }]));
+
+    expect(result.blocks[0]).toEqual({
+      type: "paragraph",
+      content: [{
+        type: "text",
+        text: "[emoji]",
+        emoji: {
+          shortName: "[emoji]",
+          renderedFrom: "short-name",
+        },
+      }],
+    });
+    expect(result.notes).toEqual([
+      expect.objectContaining({ code: "emoji-text-fallback" }),
+    ]);
   });
 
   it("routes extensions through the neutral macro contract and keeps media visible until correlation exists", () => {

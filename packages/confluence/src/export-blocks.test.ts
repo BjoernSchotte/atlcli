@@ -16,6 +16,10 @@ import {
   type InlineNode,
   type MacroParameter,
 } from "./export-blocks.js";
+import {
+  CONFLUENCE_LEGACY_EMOJI_ALIASES,
+  CONFLUENCE_LEGACY_EMOJI_PROJECTIONS,
+} from "./emoji-projection.js";
 
 /** Convenience: parse and return only the blocks. */
 function blocks(storage: string): ExportBlock[] {
@@ -116,7 +120,7 @@ describe("storageToBlocks — paragraphs & marks", () => {
           emoji: {
             shortName: ":warning:",
             text: "⚠️",
-            renderedFrom: "text",
+            renderedFrom: "source-text",
           },
         },
         { type: "text", text: " " },
@@ -126,7 +130,7 @@ describe("storageToBlocks — paragraphs & marks", () => {
           emoji: {
             shortName: ":custom-party:",
             text: ":custom-party:",
-            renderedFrom: "text",
+            renderedFrom: "short-name",
           },
         },
         { type: "text", text: " " },
@@ -150,6 +154,151 @@ describe("storageToBlocks — paragraphs & marks", () => {
         code: "emoji-text-fallback",
         source: expect.objectContaining({ pageId: "page-1", blockPath: "blocks[0].content[0]" }),
       }),
+    ]);
+  });
+
+  test("projects typed Storage emoticons with short-name precedence", () => {
+    const warning = CONFLUENCE_LEGACY_EMOJI_PROJECTIONS.warning;
+    const cases = [
+      {
+        storage: '<ac:emoticon ac:name="warning"/>',
+        expected: {
+          type: "text",
+          text: warning.text,
+          emoji: {
+            shortName: "warning",
+            renderedFrom: "catalog-projection",
+            projection: warning,
+          },
+        },
+      },
+      {
+        storage: '<ac:emoticon ac:name="smile" ac:emoji-shortname=":warn:"/>',
+        expected: {
+          type: "text",
+          text: warning.text,
+          emoji: {
+            shortName: ":warn:",
+            renderedFrom: "catalog-projection",
+            projection: warning,
+          },
+        },
+      },
+      {
+        storage:
+          '<ac:emoticon ac:name="smile" ac:emoji-shortname=":warning:" ac:emoji-fallback=":smile:"/>',
+        expected: {
+          type: "text",
+          text: warning.text,
+          emoji: {
+            shortName: ":warning:",
+            text: ":smile:",
+            renderedFrom: "catalog-projection",
+            projection: warning,
+          },
+        },
+      },
+      {
+        storage:
+          '<ac:emoticon ac:name="smile" ac:emoji-shortname=":warning:" ac:emoji-fallback="⚠️"/>',
+        expected: {
+          type: "text",
+          text: "⚠️",
+          emoji: {
+            shortName: ":warning:",
+            text: "⚠️",
+            renderedFrom: "source-text",
+          },
+        },
+      },
+    ] as const;
+
+    for (const { storage, expected } of cases) {
+      const result = storageToBlocks(`<p>${storage}</p>`);
+      expect(result.blocks[0]).toEqual({
+        type: "paragraph",
+        content: [expected],
+      });
+      expect(result.notes).toEqual([]);
+    }
+
+    const unknown = storageToBlocks('<p><ac:emoticon ac:name="custom-party"/></p>');
+    expect(unknown.blocks[0]).toEqual({
+      type: "paragraph",
+      content: [{
+        type: "text",
+        text: "custom-party",
+        emoji: {
+          shortName: "custom-party",
+          renderedFrom: "short-name",
+        },
+      }],
+    });
+    expect(unknown.notes).toEqual([
+      expect.objectContaining({ code: "emoji-text-fallback" }),
+    ]);
+
+    expect(storageToBlocks("<p>:warning:</p>").blocks[0]).toEqual({
+      type: "paragraph",
+      content: [{ type: "text", text: ":warning:" }],
+    });
+  });
+
+  test("projects all 22 canonical and 26 alias notations through Body Storage", () => {
+    const canonicalCases = Object.values(CONFLUENCE_LEGACY_EMOJI_PROJECTIONS)
+      .map((projection) => ({
+        shortName: `:${projection.canonicalName}:`,
+        projection,
+      }));
+    const aliasCases = Object.entries(CONFLUENCE_LEGACY_EMOJI_ALIASES)
+      .map(([alias, canonicalName]) => ({
+        shortName: `:${alias}:`,
+        projection: CONFLUENCE_LEGACY_EMOJI_PROJECTIONS[canonicalName],
+      }));
+    const cases = [...canonicalCases, ...aliasCases];
+    const storage = `<p>${cases.map(({ shortName }) =>
+      `<ac:emoticon ac:name="smile" ac:emoji-shortname="${shortName}"/>`
+    ).join("")}:+1:</p>`;
+    const result = storageToBlocks(storage);
+
+    expect(canonicalCases).toHaveLength(22);
+    expect(aliasCases).toHaveLength(26);
+    expect(result.blocks[0]).toEqual({
+      type: "paragraph",
+      content: [
+        ...cases.map(({ shortName, projection }) => ({
+          type: "text" as const,
+          text: projection.text,
+          emoji: {
+            shortName,
+            renderedFrom: "catalog-projection" as const,
+            projection,
+          },
+        })),
+        { type: "text", text: ":+1:" },
+      ],
+    });
+    expect(result.notes).toEqual([]);
+  });
+
+  test("keeps a visible diagnosed floor for an invalid empty Storage emoji identity", () => {
+    const result = storageToBlocks(
+      '<p><ac:emoticon ac:name="warning" ac:emoji-shortname=""/></p>'
+    );
+
+    expect(result.blocks[0]).toEqual({
+      type: "paragraph",
+      content: [{
+        type: "text",
+        text: "[emoji]",
+        emoji: {
+          shortName: "[emoji]",
+          renderedFrom: "short-name",
+        },
+      }],
+    });
+    expect(result.notes).toEqual([
+      expect.objectContaining({ code: "emoji-text-fallback" }),
     ]);
   });
 

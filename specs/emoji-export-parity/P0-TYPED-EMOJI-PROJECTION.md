@@ -48,6 +48,9 @@ Typst escaping defect.
 - A deterministic portable projection for every canonical name.
 - Shared normalization used by Markdown authoring, ADF decoding, Storage
   decoding, and custom-panel decoding.
+- Confluence Data Center compatibility through the shared Body Storage
+  `ac:emoticon` contract wherever the source provides a supported canonical
+  name or alias.
 - Exact preservation of already usable Unicode, including variation selectors,
   skin-tone modifiers, ZWJ sequences, and flags.
 - Exact preservation does not claim that every recipient font can shape every
@@ -71,6 +74,9 @@ Typst escaping defect.
 - Adding default icons to ordinary `info`/`warning`/`tip` callouts; P1 owns that.
 - Color emoji or pixel parity with the Confluence editor.
 - The retired Python DOCX exporter.
+- A live Data Center certification run: no DC instance is available in the
+  configured environment, so P0 proves the DC-relevant Body Storage contract
+  exhaustively and keeps the live acceptance run on DOCSY Cloud.
 
 ## 4. Target contract
 
@@ -196,21 +202,44 @@ semantic default only after the entire explicit-source chain.
 
   Commit: `feat(confluence): define typed emoji projections`
 
-- [ ] **P0.2 — Apply the contract to ADF and Storage emoji nodes.**
+- [x] **P0.2 — Apply the contract to ADF and Storage emoji nodes.**
   Route only typed `emoji`/`ac:emoticon` nodes through the shared projection.
   Materialize the exact `EmojiSemantics` state machine above. Retain
   `emoji-text-fallback` only for unresolved values. Add regression cases for
   missing, empty, colon-shaped, Unicode, alias, unknown/custom, literal text,
   a conflicting known `sourceText`, and conflicting Storage
-  `ac:emoji-shortname`/`ac:name`.
+  `ac:emoji-shortname`/`ac:name`. Exercise all 22 canonical names and all 26
+  aliases through both ADF and the DC-relevant Body Storage adapter.
 
   Verification:
 
   ```bash
   bun run test packages/confluence/src/adf-to-blocks.test.ts packages/confluence/src/export-blocks.test.ts packages/confluence/src/adf-direct-fixtures.test.ts
+  bun run test scripts/api-report.test.ts
   bun run check:adf-pinned
   bun run typecheck
   ```
+
+  Evidence (2026-07-24):
+
+  - The ADF and Body Storage integration matrices each cover all 22 canonical
+    names and all 26 aliases. They also pin missing, empty, colon-shaped,
+    conflicting, exact-Unicode, literal-text, unknown/custom, and invalid-empty
+    states.
+  - The focused regression run reports 273 passing and zero failing tests. The
+    generated API report, five API-surface guards, pinned ADF drift check, full
+    workspace typecheck, fresh build, and `git diff --check` pass.
+  - The Body Storage tests use real `ac:emoticon` XML and prove that explicit
+    `ac:emoji-shortname` wins over `ac:name`. This is the shared Cloud/DC
+    contract proof; it is not presented as a live DC certification.
+  - A synthetic DOCSY page
+    `atlcli-e2e-emoji-p02-1784878868` (page `1140686885`) exported successfully
+    as DOCX and PDF. Extracted text contains the warning symbol, preserves
+    literal `:warning:` and unresolved `:custom-party:`, and reports exactly one
+    expected fallback. Every rendered DOCX/PDF page was visually checked
+    without tofu, clipping, or overlap.
+  - Cleanup is proven: the page was deleted in the guarded cleanup path and a
+    subsequent page lookup returned not found.
 
   Commit: `fix(confluence): resolve typed emoji short names`
 
@@ -237,8 +266,9 @@ semantic default only after the entire explicit-source chain.
   without `panelIconText`. Prove direct/background PDF and DOCX parity, update
   the rendered-golden source hash and reviewed images, and inspect the real
   outputs for tofu, clipping, overlap, and leaked known short names. The
-  conformance fixture includes all 22 canonical projections plus representative
-  preserved sequences (variation selector, skin tone, ZWJ, and flag).
+  conformance fixture includes all 22 canonical projections, all 26 supported
+  aliases, plus representative preserved sequences (variation selector, skin
+  tone, ZWJ, and flag).
 
   Verification:
 
@@ -269,7 +299,10 @@ semantic default only after the entire explicit-source chain.
   and record the remaining custom-emoji/font limitations. Run the full
   regression and browser gates. Perform the required `mayflower`/`DOCSY` live
   export for both formats, retain only redacted evidence, and delete the
-  synthetic test page/resources.
+  synthetic test page/resources. The final DOCSY fixture and both downloadable
+  artifacts enumerate all 22 canonical notations and all 26 aliases with an
+  explicit input label, graphical expected output, literal-known negative
+  control, and unknown-custom negative control.
 
   Verification:
 

@@ -1077,7 +1077,8 @@ export interface EmojiSemantics {
     shortName: string;
     id?: string;
     text?: string;
-    renderedFrom: "text" | "short-name";
+    renderedFrom: "source-text" | "catalog-projection" | "short-name";
+    projection?: PortableEmojiProjection;
 }
 
 // export: escapeCqlValue
@@ -3701,7 +3702,8 @@ export interface EmojiSemantics {
     shortName: string;
     id?: string;
     text?: string;
-    renderedFrom: "text" | "short-name";
+    renderedFrom: "source-text" | "catalog-projection" | "short-name";
+    projection?: PortableEmojiProjection;
 }
 
 // export: escapeCqlValue
@@ -6325,7 +6327,8 @@ export interface EmojiSemantics {
     shortName: string;
     id?: string;
     text?: string;
-    renderedFrom: "text" | "short-name";
+    renderedFrom: "source-text" | "catalog-projection" | "short-name";
+    projection?: PortableEmojiProjection;
 }
 
 // export: escapeCqlValue
@@ -8770,7 +8773,8 @@ export interface EmojiSemantics {
     shortName: string;
     id?: string;
     text?: string;
-    renderedFrom: "text" | "short-name";
+    renderedFrom: "source-text" | "catalog-projection" | "short-name";
+    projection?: PortableEmojiProjection;
 }
 
 // export: ensureUserPlaceholders
@@ -11866,7 +11870,8 @@ export interface EmojiSemantics {
     shortName: string;
     id?: string;
     text?: string;
-    renderedFrom: "text" | "short-name";
+    renderedFrom: "source-text" | "catalog-projection" | "short-name";
+    projection?: PortableEmojiProjection;
 }
 
 // export: escapeCqlValue
