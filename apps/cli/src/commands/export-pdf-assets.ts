@@ -1,6 +1,6 @@
 /**
  * The CLI's PDF compiler assets (spec 008 T3.1): the patched typst.ts wasm plus
- * the 11 canonical fonts, materialized as EMBEDDED assets and fed into the
+ * the 12 canonical fonts, materialized as EMBEDDED assets and fed into the
  * runtime-agnostic {@link BrowserPdfCompiler}.
  *
  * The `with { type: "file" }` imports are the load-bearing part, mirroring
@@ -34,6 +34,7 @@ import sourceSerifBold from "@atlcli/pdf/fonts/SourceSerif4-Bold.ttf" with { typ
 import sourceCodeRegular from "@atlcli/pdf/fonts/SourceCodePro-Regular.ttf" with { type: "file" };
 import sourceCodeBold from "@atlcli/pdf/fonts/SourceCodePro-Bold.ttf" with { type: "file" };
 import notoSymbolsRegular from "@atlcli/pdf/fonts/NotoSansSymbols2-Regular.ttf" with { type: "file" };
+import notoEmojiRegular from "@atlcli/pdf/fonts/NotoEmoji-wght.ttf" with { type: "file" };
 import { readFile } from "node:fs/promises";
 import { isAbsolute, resolve } from "node:path";
 import { PDF_RUNTIME_ASSETS } from "@atlcli/pdf";
@@ -70,6 +71,7 @@ const FONT_FILES: ReadonlyArray<{ fileName: string; path: string }> = [
   { fileName: "SourceCodePro-Regular.ttf", path: sourceCodeRegular },
   { fileName: "SourceCodePro-Bold.ttf", path: sourceCodeBold },
   { fileName: "NotoSansSymbols2-Regular.ttf", path: notoSymbolsRegular },
+  { fileName: "NotoEmoji-wght.ttf", path: notoEmojiRegular },
 ];
 
 /**
@@ -89,7 +91,7 @@ export function assertPdfAssetParity(): void {
 }
 
 /**
- * Load the embedded typst wasm bytes and the 11 canonical fonts. A failure here
+ * Load the embedded typst wasm bytes and the 12 canonical fonts. A failure here
  * is a hard error (PDF export cannot degrade) — the caller surfaces it as a
  * `configuration`-phase failure.
  */

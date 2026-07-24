@@ -56,15 +56,15 @@ const projectionEntries: ReadonlyArray<
   ["information", "ℹ"],
   ["question", "❓"],
   ["light-on", "💡"],
-  ["light-off", "⊘"],
+  ["light-off", "○"],
   ["yellow-star", "Y★"],
   ["red-star", "R★"],
   ["green-star", "G★"],
   ["blue-star", "B★"],
   ["heart", "♥"],
   ["broken-heart", "💔"],
-  ["plus", "⊕"],
-  ["minus", "⊖"],
+  ["plus", "✚"],
+  ["minus", "−"],
 ] as const;
 
 function projectionRecord(): Readonly<Record<CanonicalLegacyEmojiName, PortableEmojiProjection>> {

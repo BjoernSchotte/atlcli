@@ -284,7 +284,7 @@ semantic default only after the entire explicit-source chain.
 
   Commit: `fix(export): project typed custom panel icons`
 
-- [ ] **P0.4 — Prove packed-browser and real-render fidelity.**
+- [x] **P0.4 — Prove packed-browser and real-render fidelity.**
   Extend the ADF conformance source with a known emoji lacking usable Unicode,
   a known colon-valued fallback, an unresolved custom emoji, and a custom panel
   without `panelIconText`. Prove direct/background PDF and DOCX parity, update
@@ -314,6 +314,46 @@ semantic default only after the entire explicit-source chain.
   - unresolved custom short names remain visible;
   - direct and background artifacts and reports remain equal;
   - no missing-glyph/tofu box appears in reviewed renders.
+
+  Evidence (2026-07-24):
+
+  - The packed ADF fixture now contains all 22 canonical names and all 26
+    supported aliases, a literal-known control, an unresolved custom control,
+    four Unicode passthrough controls, and a custom panel whose typed
+    `panelIcon` must be projected before either serializer.
+  - Initial real rendering exposed ten genuine missing glyphs that the prior
+    compile-only guard could not detect. The PDF runtime now pins the official
+    monochrome `Noto Emoji` variable font by Google Fonts commit and SHA-256,
+    ships its OFL license, and includes it in the canonical Node, CLI,
+    extension-worker, browser-harness, built-in-template, and curated-template
+    asset contracts.
+    The three legacy mathematical stand-ins not covered by either pinned
+    symbol font were replaced with portable `○`, `✚`, and `−` projections.
+  - The focused projection/runtime/serializer/fixture run reports 106 passing
+    tests and zero failures. CLI embedded-asset parity reports 5 passing tests;
+    the full packed Chromium harness reports 1 passing end-to-end test.
+    Extension runtime inventory/compiler coverage reports 61 passing unit
+    tests, its output scan passes, and the packed MV3 worker suite reports 2
+    passing browser tests. Browser closure, harness typecheck/build/output
+    scan, workspace build/typecheck, all five API guards, and the re-rendered
+    golden gate pass.
+  - Reviewed rendered goldens contain 3 DOCX pages and 7 PDF pages. Every page
+    was inspected; all 48 typed rows render without tofu, clipping, overlap, or
+    leaked known short names. DOCX package inspection separately proves exact
+    preservation of variation-selector, skin-tone, ZWJ, and flag controls
+    because LibreOffice does not reliably expose every ZWJ sequence through
+    converted-PDF text extraction.
+  - Synthetic DOCSY page `atlcli-e2e-emoji-p04-1784880913` (page
+    `1141899268`) exported successfully through the real CLI as DOCX and PDF.
+    Both known `:warning:`/`:warn:` inputs rendered as `⚠`, the
+    entity-protected literal remained exactly `:warning:`, and the unknown
+    custom input remained `:custom_party:`. One DOCX page and all four PDF
+    pages were visually inspected. The page was deleted and a subsequent get
+    returned Confluence 404.
+  - Data Center compatibility remains on the shared Body Storage
+    `ac:emoticon` adapter proven in P0.2; this task adds no Cloud-only resolver
+    branch. No live DC instance was available, so this is a hard contract and
+    artifact proof, not a live-tenant DC certification.
 
   Commit: `test(export): prove emoji artifact parity`
 

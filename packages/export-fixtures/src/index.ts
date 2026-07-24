@@ -10,6 +10,8 @@
  * fed one of these in-memory fixtures.
  */
 import {
+  CONFLUENCE_LEGACY_EMOJI_ALIASES,
+  CONFLUENCE_LEGACY_EMOJI_PROJECTIONS,
   composeChapters,
   createAdfAnnotationResolver,
   createAdfMediaAttachmentResolver,
@@ -143,6 +145,74 @@ export const STORAGE_CODE_COMPATIBILITY_SOURCE =
 export function storageCodeCompatibilityBlocks(): StorageToBlocksResult {
   return storageToBlocks(STORAGE_CODE_COMPATIBILITY_SOURCE);
 }
+
+export interface AdfEmojiConformanceCase {
+  category: "canonical" | "alias";
+  name: string;
+  shortName: string;
+  expectedText: string;
+}
+
+/** Every supported typed colon notation and its reviewed portable output. */
+export const ADF_EMOJI_CONFORMANCE_CASES: readonly AdfEmojiConformanceCase[] =
+  Object.freeze([
+    ...Object.values(CONFLUENCE_LEGACY_EMOJI_PROJECTIONS).map((projection) =>
+      Object.freeze({
+        category: "canonical" as const,
+        name: projection.canonicalName,
+        shortName: `:${projection.canonicalName}:`,
+        expectedText: projection.text,
+      })
+    ),
+    ...Object.entries(CONFLUENCE_LEGACY_EMOJI_ALIASES).map(([alias, canonicalName]) =>
+      Object.freeze({
+        category: "alias" as const,
+        name: alias,
+        shortName: `:${alias}:`,
+        expectedText: CONFLUENCE_LEGACY_EMOJI_PROJECTIONS[canonicalName].text,
+      })
+    ),
+  ]);
+
+export const ADF_EMOJI_LITERAL_CONTROL = ":warning:";
+export const ADF_EMOJI_CUSTOM_CONTROL = ":custom_party:";
+
+const ADF_EMOJI_MATRIX_CONTENT = [
+  ...ADF_EMOJI_CONFORMANCE_CASES.flatMap((emojiCase) => [
+    {
+      type: "text",
+      text: `EMOJI ${emojiCase.category} ${emojiCase.name} => `,
+    },
+    {
+      type: "emoji",
+      attrs: { shortName: emojiCase.shortName },
+    },
+    { type: "hardBreak" },
+  ]),
+  { type: "text", text: `LITERAL known => ${ADF_EMOJI_LITERAL_CONTROL}` },
+  { type: "hardBreak" },
+  { type: "text", text: "CUSTOM typed => " },
+  {
+    type: "emoji",
+    attrs: {
+      shortName: ADF_EMOJI_CUSTOM_CONTROL,
+      id: "custom-emoji-matrix",
+      text: "",
+    },
+  },
+  { type: "hardBreak" },
+  { type: "text", text: "UNICODE variation-selector => " },
+  { type: "emoji", attrs: { shortName: ":warning:", text: "⚠️" } },
+  { type: "hardBreak" },
+  { type: "text", text: "UNICODE skin-tone => " },
+  { type: "emoji", attrs: { shortName: ":thumbs-up:", text: "👍🏽" } },
+  { type: "hardBreak" },
+  { type: "text", text: "UNICODE ZWJ => " },
+  { type: "emoji", attrs: { shortName: ":custom-developer:", text: "👩‍💻" } },
+  { type: "hardBreak" },
+  { type: "text", text: "UNICODE flag => " },
+  { type: "emoji", attrs: { shortName: ":custom-flag:", text: "🇩🇪" } },
+];
 
 /**
  * Real ADF input for the browser conformance harness. This deliberately starts
@@ -279,7 +349,6 @@ export const ADF_CONFORMANCE_SOURCE = JSON.stringify({
         panelColor: "#123456",
         panelIcon: ":star:",
         panelIconId: "custom-panel-icon",
-        panelIconText: "★",
       },
       content: [{ type: "paragraph", content: [{ type: "text", text: "ADF custom panel" }] }],
     },
@@ -650,6 +719,11 @@ export const ADF_CONFORMANCE_SOURCE = JSON.stringify({
         localId: "static-extension-private-local-id",
         parameters: { privateMode: "static-extension-private-parameter" },
       },
+    },
+    {
+      type: "paragraph",
+      attrs: { localId: "emoji-matrix" },
+      content: ADF_EMOJI_MATRIX_CONTENT,
     },
   ],
 });

@@ -10,6 +10,9 @@ import {
   ADF_CONFORMANCE_DETAILS,
   ADF_CONFORMANCE_METADATA,
   ADF_CONFORMANCE_SOURCE,
+  ADF_EMOJI_CONFORMANCE_CASES,
+  ADF_EMOJI_CUSTOM_CONTROL,
+  ADF_EMOJI_LITERAL_CONTROL,
   ADF_INLINE_MEDIA_BYTES,
   ADF_INLINE_MEDIA_FILENAME,
   DOCX_TEMPLATE_BYTES,
@@ -76,6 +79,9 @@ export interface AdfSourceCaseResult {
   docxHasEmbeddedCodeFont: boolean;
   docxHasEmoji: boolean;
   docxHasCustomEmojiFallback: boolean;
+  docxHasAllSupportedEmojiProjections: boolean;
+  docxKnownEmojiShortNamesDoNotLeak: boolean;
+  docxPreservesEmojiControlsAndUnicode: boolean;
   docxHasBlockAlignment: boolean;
   docxHasBlockIndentation: boolean;
   docxHasSmallParagraphText: boolean;
@@ -87,6 +93,7 @@ export interface AdfSourceCaseResult {
   neutralHasBlockLocalIdentities: boolean;
   neutralHasCodeBlockSemantics: boolean;
   neutralHasCustomPanelSemantics: boolean;
+  neutralHasAllSupportedEmojiProjections: boolean;
   neutralHasMentionSemantics: boolean;
   neutralHasDateStatusPlaceholderSemantics: boolean;
   neutralHasAnnotationAndFragmentIdentity: boolean;
@@ -433,6 +440,9 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
   const neutralCustomPanel = pdfSource.blocks.find(
     (block) => block.type === "callout" && block.localId === "custom-panel-local",
   );
+  const neutralEmojiMatrix = pdfSource.blocks.find(
+    (block) => block.type === "paragraph" && block.localId === "emoji-matrix",
+  );
   const neutralExpand = pdfSource.blocks.find(
     (block) => block.type === "expand" && !block.nested,
   );
@@ -443,6 +453,9 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
   const expectedCodeLines = ADF_CODE_BLOCK_SOURCE.split("\n").length;
   const codeParagraphTexts = numberedCodeParagraphTexts(documentXml);
   const neutralJson = JSON.stringify(pdfSource.blocks);
+  const documentText = decodeXmlText(documentXml.replace(/<[^>]+>/gu, ""));
+  const literalWarningOccurrences =
+    documentText.match(/:warning:/gu)?.length ?? 0;
 
   const result: AdfSourceCaseResult = {
     representation: decodedPdf.representation,
@@ -459,6 +472,25 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
       && relationships.includes("relationships/fontTable"),
     docxHasEmoji: documentXml.includes("⚠️"),
     docxHasCustomEmojiFallback: documentXml.includes(":custom_party:"),
+    docxHasAllSupportedEmojiProjections:
+      ADF_EMOJI_CONFORMANCE_CASES.every((emojiCase) =>
+        documentText.includes(
+          `EMOJI ${emojiCase.category} ${emojiCase.name} => ${emojiCase.expectedText}`,
+        )
+      ),
+    docxKnownEmojiShortNamesDoNotLeak:
+      literalWarningOccurrences === 1
+      && ADF_EMOJI_CONFORMANCE_CASES.every((emojiCase) =>
+        emojiCase.shortName === ADF_EMOJI_LITERAL_CONTROL
+          || !documentText.includes(emojiCase.shortName)
+      ),
+    docxPreservesEmojiControlsAndUnicode:
+      documentText.includes(`LITERAL known => ${ADF_EMOJI_LITERAL_CONTROL}`)
+      && documentText.includes(`CUSTOM typed => ${ADF_EMOJI_CUSTOM_CONTROL}`)
+      && documentText.includes("UNICODE variation-selector => ⚠️")
+      && documentText.includes("UNICODE skin-tone => 👍🏽")
+      && documentText.includes("UNICODE ZWJ => 👩‍💻")
+      && documentText.includes("UNICODE flag => 🇩🇪"),
     docxHasBlockAlignment: documentXml.includes('<w:jc w:val="center"/>'),
     docxHasBlockIndentation: documentXml.includes('<w:ind w:start="1440"/>'),
     docxHasSmallParagraphText:
@@ -487,7 +519,7 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
     docxHasCustomPanelPresentation:
       documentXml.includes('w:fill="DBE1E6"')
       && documentXml.includes('w:color="123456"')
-      && documentXml.includes("★")
+      && documentXml.includes("Y★")
       && documentXml.includes("ADF custom panel")
       && !documentXml.includes(":star:"),
     docxHasNativeInlineComment:
@@ -515,7 +547,19 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
       && neutralCustomPanel.panelColor === "#123456"
       && neutralCustomPanel.panelIcon === ":star:"
       && neutralCustomPanel.panelIconId === "custom-panel-icon"
-      && neutralCustomPanel.panelIconText === "★",
+      && neutralCustomPanel.panelIconText === undefined
+      && neutralCustomPanel.panelIconProjection?.canonicalName === "yellow-star"
+      && neutralCustomPanel.panelIconProjection.text === "Y★",
+    neutralHasAllSupportedEmojiProjections:
+      neutralEmojiMatrix?.type === "paragraph"
+      && ADF_EMOJI_CONFORMANCE_CASES.every((emojiCase, index) => {
+        const node = neutralEmojiMatrix.content[index * 3 + 1];
+        return node?.type === "text"
+          && node.text === emojiCase.expectedText
+          && node.emoji?.shortName === emojiCase.shortName
+          && node.emoji.renderedFrom === "catalog-projection"
+          && node.emoji.projection?.text === emojiCase.expectedText;
+      }),
     neutralHasMentionSemantics:
       JSON.stringify(pdfSource.blocks).includes(
         '"type":"mention","accountId":"mention-account-1","sourceText":"@Example Person","displayName":"Example Person","localId":"mention-local","accessLevel":"SITE","userType":"DEFAULT"',

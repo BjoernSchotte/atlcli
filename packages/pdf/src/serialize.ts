@@ -1074,7 +1074,7 @@ function serializeDecisionItem(
   column-gutter: ${writer.design.tokens.layout.taskGridGutter},
   align: top,
   text(
-    font: (${typstString(font)}, "Noto Sans Symbols2"),
+    font: (${typstString(font)}, "Noto Sans Symbols2", "Noto Emoji"),
     size: ${role.size}${weight},
     fill: rgb(${typstString(writer.design.tokens.colors.taskChecked)}),
     ${typstString(marker)},

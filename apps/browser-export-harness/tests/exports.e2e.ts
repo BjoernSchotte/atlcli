@@ -117,6 +117,10 @@ test("every registered conformance case passes from nested production output", a
   expect(adfSource.docxHasMediaPresentation).toBe(true);
   expect(adfSource.docxHasEmbeddedCodeFont).toBe(true);
   expect(adfSource.docxHasCodeLineNumbers).toBe(true);
+  expect(adfSource.neutralHasAllSupportedEmojiProjections).toBe(true);
+  expect(adfSource.docxHasAllSupportedEmojiProjections).toBe(true);
+  expect(adfSource.docxKnownEmojiShortNamesDoNotLeak).toBe(true);
+  expect(adfSource.docxPreservesEmojiControlsAndUnicode).toBe(true);
   expect(adfSource.neutralHasCustomPanelSemantics).toBe(true);
   expect(adfSource.docxHasCustomPanelPresentation).toBe(true);
   expect(adfSource.neutralHasMentionSemantics).toBe(true);

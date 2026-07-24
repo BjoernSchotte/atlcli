@@ -44,6 +44,7 @@ async function createCompiler(): Promise<BrowserPdfCompiler> {
     packageBytes("@atlcli/pdf/fonts/SourceCodePro-Regular.ttf"),
     packageBytes("@atlcli/pdf/fonts/SourceCodePro-Bold.ttf"),
     packageBytes("@atlcli/pdf/fonts/NotoSansSymbols2-Regular.ttf"),
+    packageBytes("@atlcli/pdf/fonts/NotoEmoji-wght.ttf"),
   ]);
   return new BrowserPdfCompiler({ wasm: wasm.buffer, fonts });
 }

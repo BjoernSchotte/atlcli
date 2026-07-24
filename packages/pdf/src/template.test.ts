@@ -65,7 +65,7 @@ describe("atlcli Typst template settings rendering", () => {
     // the SOURCE file template.ts carries no bare literal — proven by the
     // hardcoding-ledger lint, not here. These pins prove the interpolation
     // wired the built-in defaults through unchanged.
-    expect(template).toContain('font: ("Source Serif 4", "Noto Sans Symbols2")');
+    expect(template).toContain('font: ("Source Serif 4", "Noto Sans Symbols2", "Noto Emoji")');
     expect(template).toContain('size: 18pt, weight: "semibold"');
     expect(template).toContain('fill: rgb("#172B4D")');
     expect(template).toContain('info: (rgb("#DEEBFF"), rgb("#0747A6"))');

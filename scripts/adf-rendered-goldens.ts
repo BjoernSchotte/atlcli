@@ -6,12 +6,16 @@ import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { runExport } from "@atlcli/docx";
+import { unzipDocx } from "@atlcli/docx/scan";
 import { nodeDocxEnv } from "../packages/export-node/src/docx-env.js";
 import { nodePdfEnv } from "../packages/export-node/src/pdf-env.js";
 import {
   ADF_CONFORMANCE_DETAILS,
   ADF_CONFORMANCE_METADATA,
   ADF_CONFORMANCE_SOURCE,
+  ADF_EMOJI_CONFORMANCE_CASES,
+  ADF_EMOJI_CUSTOM_CONTROL,
+  ADF_EMOJI_LITERAL_CONTROL,
   ADF_INLINE_MEDIA_BYTES,
   ADF_INLINE_MEDIA_FILENAME,
   STORAGE_CODE_COMPATIBILITY_SOURCE,
@@ -74,6 +78,25 @@ const REQUIRED_TEXT = Object.freeze([
   "Extension: static-extension",
   "Legacy Storage code title",
   "const legacyStorage = true;",
+  ...ADF_EMOJI_CONFORMANCE_CASES.flatMap((emojiCase) => [
+    `EMOJI ${emojiCase.category} ${emojiCase.name} =>`,
+    emojiCase.expectedText,
+  ]),
+  `LITERAL known => ${ADF_EMOJI_LITERAL_CONTROL}`,
+  `CUSTOM typed => ${ADF_EMOJI_CUSTOM_CONTROL}`,
+  "UNICODE variation-selector => ⚠️",
+  "UNICODE skin-tone => 👍🏽",
+  "UNICODE ZWJ =>",
+  "UNICODE flag => 🇩🇪",
+]);
+const PDF_ONLY_REQUIRED_TEXT = Object.freeze([
+  "UNICODE ZWJ => 👩‍💻",
+]);
+const DOCX_UNICODE_CONTROLS = Object.freeze([
+  "⚠️",
+  "👍🏽",
+  "👩‍💻",
+  "🇩🇪",
 ]);
 const FORBIDDEN_TEXT = Object.freeze([
   "editor-only-secret",
@@ -88,6 +111,9 @@ const FORBIDDEN_TEXT = Object.freeze([
   "multi-frame-local",
   "multi-frame-fragment",
   "multi-frame-consumer",
+  ...ADF_EMOJI_CONFORMANCE_CASES
+    .map((emojiCase) => emojiCase.shortName)
+    .filter((shortName) => shortName !== ADF_EMOJI_LITERAL_CONTROL),
 ]);
 
 const MAX_MEAN_PIXEL_DIFFERENCE = 0.08;
@@ -178,6 +204,7 @@ function sourceHash(): string {
 async function renderCurrent(tempDir: string): Promise<{
   docxPages: string[];
   pdfPages: string[];
+  docxDocumentXml: string;
   docxText: string;
   pdfText: string;
 }> {
@@ -282,6 +309,10 @@ async function renderCurrent(tempDir: string): Promise<{
   return {
     docxPages,
     pdfPages,
+    docxDocumentXml:
+      unzipDocx(new Uint8Array(await readFile(docxPath)))
+        .file("word/document.xml")
+        ?.asText() ?? "",
     docxText: runTool(tools.pdftotext, ["-layout", docxPdfPath, "-"], tempDir),
     pdfText: runTool(tools.pdftotext, ["-layout", pdfPath, "-"], tempDir),
   };
@@ -361,6 +392,8 @@ async function manifestFor(
       "docx-embedded-code-font",
       "unicode-emoji",
       "custom-emoji-fallback",
+      "typed-emoji-all-canonical-aliases",
+      "emoji-literal-and-unicode-controls",
       "localized-date-chip",
       "semantic-status-colors-and-casing",
       "hidden-template-placeholder",
@@ -370,6 +403,7 @@ async function manifestFor(
       "paragraph-font-size",
       "semantic-success-error-panels",
       "custom-panel-color-icon",
+      "typed-custom-panel-icon-projection",
       "ordered-list-start",
       "nested-ordered-list-restart",
       "nested-bullet-list",
@@ -407,6 +441,7 @@ async function manifestFor(
         pages: await copyPages("pdf", pdfPages),
         requiredText: [
           ...REQUIRED_TEXT,
+          ...PDF_ONLY_REQUIRED_TEXT,
           "4 Mar 2024",
           "READY",
           "Keep Case",
@@ -457,6 +492,41 @@ function assertStorageCodeTitleOrder(format: string, actual: string): void {
   }
 }
 
+function assertEmojiMatrix(format: string, actual: string): void {
+  const normalized = actual.replace(/\s+/gu, " ");
+  for (const emojiCase of ADF_EMOJI_CONFORMANCE_CASES) {
+    const row =
+      `EMOJI ${emojiCase.category} ${emojiCase.name} => ${emojiCase.expectedText}`;
+    if (!normalized.includes(row)) {
+      const label = `EMOJI ${emojiCase.category} ${emojiCase.name} =>`;
+      const labelIndex = normalized.indexOf(label);
+      const excerpt = labelIndex < 0
+        ? "(label absent)"
+        : normalized.slice(labelIndex, labelIndex + label.length + 40);
+      throw new Error(
+        `${format} rendered golden is missing typed emoji row: ${JSON.stringify(row)}; actual ${JSON.stringify(excerpt)}.`,
+      );
+    }
+  }
+  const literalOccurrences =
+    normalized.match(/:warning:/gu)?.length ?? 0;
+  if (literalOccurrences !== 1) {
+    throw new Error(
+      `${format} rendered golden expected exactly one literal :warning: control, got ${literalOccurrences}.`,
+    );
+  }
+}
+
+function assertDocxUnicodeControls(documentXml: string): void {
+  for (const control of DOCX_UNICODE_CONTROLS) {
+    if (!documentXml.includes(control)) {
+      throw new Error(
+        `DOCX package did not preserve Unicode control ${JSON.stringify(control)} byte-for-byte.`,
+      );
+    }
+  }
+}
+
 export async function checkAdfRenderedGoldens(options: { update?: boolean } = {}): Promise<AdfRenderedGoldenResult> {
   const tempDir = await mkdtemp(join(tmpdir(), "atlcli-adf-rendered-golden-"));
   try {
@@ -465,6 +535,9 @@ export async function checkAdfRenderedGoldens(options: { update?: boolean } = {}
     assertOrderedListMarkers("PDF", rendered.pdfText);
     assertStorageCodeTitleOrder("DOCX", rendered.docxText);
     assertStorageCodeTitleOrder("PDF", rendered.pdfText);
+    assertEmojiMatrix("DOCX", rendered.docxText);
+    assertEmojiMatrix("PDF", rendered.pdfText);
+    assertDocxUnicodeControls(rendered.docxDocumentXml);
     await mkdir(ADF_RENDERED_GOLDEN_DIR, { recursive: true });
     if (options.update) {
       const manifest = await manifestFor(rendered.docxPages, rendered.pdfPages);
@@ -528,7 +601,11 @@ export async function checkAdfRenderedGoldens(options: { update?: boolean } = {}
       minContentBoundsIou: minIou,
     };
   } finally {
-    await rm(tempDir, { recursive: true, force: true });
+    if (process.env.ATLCLI_KEEP_ADF_GOLDEN_TEMP === "1") {
+      console.error(`Kept ADF rendered-golden temp directory: ${tempDir}`);
+    } else {
+      await rm(tempDir, { recursive: true, force: true });
+    }
   }
 }
 

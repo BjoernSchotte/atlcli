@@ -26,7 +26,7 @@ function bundle(main: string): PdfSourceBundle {
 }
 
 describe("legacy emoji projection PDF font coverage", () => {
-  it("compiles every canonical projection with the pinned production fonts", async () => {
+  it("compiles every canonical projection with the pinned symbol and emoji fonts", async () => {
     const fonts = await Promise.all(
       PDF_RUNTIME_ASSETS.fonts.map((font) =>
         packageBytes(`@atlcli/pdf/fonts/${font.fileName}`)
@@ -40,7 +40,7 @@ describe("legacy emoji projection PDF font coverage", () => {
     const source = String.raw`
 #import "/atlcli.typ": *
 #set page(width: 210mm, height: auto, margin: 15mm)
-#set text(font: ("Source Sans 3", "Noto Sans Symbols2"), size: 11pt)
+#set text(font: ("Source Sans 3", "Noto Sans Symbols2", "Noto Emoji"), size: 11pt)
 = Legacy emoji projection coverage
 ${rows}
 `;
@@ -54,6 +54,7 @@ ${rows}
         tagged: true,
       });
       expect((await compiler.getLoadedFonts()).join("\n")).toContain("Noto Sans Symbols2");
+      expect((await compiler.getLoadedFonts()).join("\n")).toContain("Noto Emoji");
     } finally {
       await compiler.reset();
     }

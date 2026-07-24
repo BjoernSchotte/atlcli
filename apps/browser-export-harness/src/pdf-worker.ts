@@ -12,10 +12,12 @@ import serifBoldUrl from "@atlcli/pdf/fonts/SourceSerif4-Bold.ttf?url";
 import codeRegularUrl from "@atlcli/pdf/fonts/SourceCodePro-Regular.ttf?url";
 import codeBoldUrl from "@atlcli/pdf/fonts/SourceCodePro-Bold.ttf?url";
 import symbolsRegularUrl from "@atlcli/pdf/fonts/NotoSansSymbols2-Regular.ttf?url";
+import emojiRegularUrl from "@atlcli/pdf/fonts/NotoEmoji-wght.ttf?url";
 import sansLicenseUrl from "@atlcli/pdf/licenses/LICENSE-Source-Sans-3.txt?url&no-inline";
 import serifLicenseUrl from "@atlcli/pdf/licenses/LICENSE-Source-Serif-4.txt?url&no-inline";
 import codeLicenseUrl from "@atlcli/pdf/licenses/LICENSE-Source-Code-Pro.txt?url&no-inline";
 import symbolsLicenseUrl from "@atlcli/pdf/licenses/LICENSE-Noto-Sans-Symbols-2.txt?url&no-inline";
+import emojiLicenseUrl from "@atlcli/pdf/licenses/LICENSE-Noto-Emoji.txt?url&no-inline";
 import compilerLicenseUrl from "../../../LICENSE?url&no-inline";
 import { PDF_RUNTIME_ASSETS } from "@atlcli/pdf/browser";
 import { BrowserPdfCompiler } from "@atlcli/pdf-compiler-browser";
@@ -36,6 +38,7 @@ const fontUrls = new Map<string, string>([
   ["SourceCodePro-Regular.ttf", codeRegularUrl],
   ["SourceCodePro-Bold.ttf", codeBoldUrl],
   ["NotoSansSymbols2-Regular.ttf", symbolsRegularUrl],
+  ["NotoEmoji-wght.ttf", emojiRegularUrl],
 ]);
 
 const licenseUrls = new Map<string, string>([
@@ -43,6 +46,7 @@ const licenseUrls = new Map<string, string>([
   ["LICENSE-Source-Serif-4.txt", serifLicenseUrl],
   ["LICENSE-Source-Code-Pro.txt", codeLicenseUrl],
   ["LICENSE-Noto-Sans-Symbols-2.txt", symbolsLicenseUrl],
+  ["LICENSE-Noto-Emoji.txt", emojiLicenseUrl],
 ]);
 
 function sameNames(actual: Iterable<string>, expected: Iterable<string>): boolean {
