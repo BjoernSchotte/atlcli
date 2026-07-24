@@ -35,11 +35,13 @@ missing section always has an explanation in the report, never silence.
 
 | Path | How to get it | Pipeline |
 |------|---------------|----------|
-| **PDF** | `--format pdf`, or **Export to PDF** in the panel | storage → `ExportBlock[]` → Typst |
-| **DOCX** | default CLI format, or **Export to Word** in the panel | storage → `ExportBlock[]` → OOXML |
+| **PDF** | `--format pdf`, or **Export to PDF** in the panel | Cloud ADF or Data Center/rollback Storage → `ExportBlock[]` → Typst |
+| **DOCX** | default CLI format, or **Export to Word** in the panel | Cloud ADF or Data Center/rollback Storage → `ExportBlock[]` → OOXML |
 
-**PDF and DOCX share the storage walker.** They see the same blocks and macro
-resolution; they differ only in how a block is drawn.
+**PDF and DOCX share the neutral block model.** Cloud uses validated ADF as the
+primary body; Data Center and `ATLCLI_EXPORT_SOURCE=storage` use Body Storage.
+Both targets therefore see the same decoded callouts and macro resolution; they
+differ only in how a block is drawn.
 
 ## Compatibility macros
 
@@ -89,6 +91,15 @@ and never make a network call.
 Mermaid support covers **flowchart, state, sequence, class, ER and XY chart**.
 Any other type, and any diagram that fails to render, becomes a readable source
 block with a note — never a broken image.
+
+Standard `info`, `note`, `warning`, and `tip` macros receive labelled graphical
+icons in both formats. Body Storage `icon=false` suppresses that default. A
+generic `panel` remains iconless unless it carries an explicit source icon.
+Cloud ADF additionally has native `success` and `error` panel kinds; they use
+the same color-independent icon contract. In the current live Cloud editor,
+an authored tip was normalized to `info`; the shared model still supports
+schema-valid ADF `tip` and the distinct Storage/DC `tip` macro. Explicit
+custom-panel icons always take precedence over a semantic default.
 
 ## Dynamic macros
 

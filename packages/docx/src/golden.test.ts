@@ -51,8 +51,14 @@
  * relationships, content types, and obfuscated font part. Normalizing exactly
  * those owned additions lets this golden keep detecting every unrelated DOCX
  * change without storing a 274 kB binary as JSON text.
+ *
+ * The 2026-07-24 semantic-callout-icon change is handled the same way. The
+ * fixture's info macro now owns one labelled PNG drawing. The test asserts its
+ * exact media digest, relationship, and accessible label, then normalizes only
+ * those additions before comparing every historical XML entry.
  */
 import { describe, expect, it } from "bun:test";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import PizZip from "pizzip";
 import { exportDocx, type ExportResult } from "./export.js";
@@ -82,11 +88,17 @@ const CODE_FONT_OWNED_PARTS = [
   "word/fontTable.xml",
   CODE_FONT_PART,
 ] as const;
+const CALLOUT_ICON_PART = "word/media/atlcli-image1.png";
+const INFO_CALLOUT_ICON_SHA256 =
+  "159c6abc1afe2aebb3f8af25baa442a396f67b7a7bf5aba1df2a00c3c72b222b";
+const INFO_CALLOUT_DRAWING =
+  /<w:r><w:drawing><wp:inline\b[\s\S]*?<wp:docPr id="1" name="Info callout icon" descr="Info"\/>[\s\S]*?<\/wp:inline><\/w:drawing><\/w:r><w:r><w:t xml:space="preserve"> <\/w:t><\/w:r>/u;
 
-function normalizePortableCodeFontDelta(name: string, value: string): string {
+function normalizeOwnedDeltas(name: string, value: string): string {
   let normalized = value.replaceAll(CODE_FONT_FAMILY, "Consolas");
   if (name === "[Content_Types].xml") {
     normalized = normalized
+      .replace('<Default Extension="png" ContentType="image/png"/>', "")
       .replace(
         '<Default Extension="odttf" ContentType="application/vnd.openxmlformats-officedocument.obfuscatedFont"/>',
         "",
@@ -97,10 +109,22 @@ function normalizePortableCodeFontDelta(name: string, value: string): string {
       );
   }
   if (name === "word/_rels/document.xml.rels") {
-    normalized = normalized.replace(
-      '<Relationship Id="rIdAtlcliFontTable" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/fontTable" Target="fontTable.xml"/>',
-      "",
-    );
+    normalized = normalized
+      .replace(
+        '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/atlcli-image1.png"/>',
+        "",
+      )
+      .replace(
+        '<Relationship Id="rIdAtlcliFontTable" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/fontTable" Target="fontTable.xml"/>',
+        "",
+      )
+      .replace(
+        '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering"',
+        '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering"',
+      );
+  }
+  if (name === "word/document.xml") {
+    normalized = normalized.replace(INFO_CALLOUT_DRAWING, "");
   }
   return normalized;
 }
@@ -167,10 +191,10 @@ export function expectMatchesGolden({ bytes, report }: ExportResult): void {
     .filter((n) => !zip.files[n].dir)
     .sort();
   expect(names).toEqual(
-    [...Object.keys(golden.entries), ...CODE_FONT_OWNED_PARTS].sort(),
+    [...Object.keys(golden.entries), ...CODE_FONT_OWNED_PARTS, CALLOUT_ICON_PART].sort(),
   );
   for (const name of Object.keys(golden.entries)) {
-    expect(normalizePortableCodeFontDelta(name, zip.files[name].asText())).toBe(
+    expect(normalizeOwnedDeltas(name, zip.files[name].asText())).toBe(
       golden.entries[name],
     );
   }
@@ -186,6 +210,18 @@ export function expectMatchesGolden({ bytes, report }: ExportResult): void {
   const embeddedFont = zip.files[CODE_FONT_PART].asUint8Array();
   expect(embeddedFont.byteLength).toBe(273_900);
   expect([...embeddedFont.subarray(0, 4)]).not.toEqual([0x00, 0x01, 0x00, 0x00]);
+
+  const documentXml = zip.files["word/document.xml"].asText();
+  expect(documentXml.match(INFO_CALLOUT_DRAWING)).toHaveLength(1);
+  expect(documentXml.match(/<wp:docPr\b/gu)).toHaveLength(1);
+  expect(zip.files["word/_rels/document.xml.rels"].asText()).toContain(
+    'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/atlcli-image1.png"',
+  );
+  const calloutIcon = zip.files[CALLOUT_ICON_PART].asUint8Array();
+  expect(calloutIcon.byteLength).toBe(348);
+  expect(createHash("sha256").update(calloutIcon).digest("hex")).toBe(
+    INFO_CALLOUT_ICON_SHA256,
+  );
 
   expect(report.resolvedCount).toBe(golden.report.resolvedCount);
   expect(report.unsupportedNames).toEqual(golden.report.unsupportedNames);

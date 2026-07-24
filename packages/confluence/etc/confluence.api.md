@@ -1257,6 +1257,7 @@ export type ExportBlock = {
     panelIconId?: string;
     panelIconText?: string;
     panelIconProjection?: PortableEmojiProjection;
+    suppressDefaultIcon?: boolean;
     syncedContent?: SyncedContentProvenance;
 } | {
     type: "expand";
@@ -2199,6 +2200,24 @@ export declare function readableTextColor(backgroundColor: string): "#FFFFFF" | 
 // export: replaceAttachmentPaths
 export declare function replaceAttachmentPaths(markdown: string, pageFilename: string): string;
 
+// export: resolveCalloutIcon
+export declare function resolveCalloutIcon(callout: {
+    kind: CalloutKind;
+    panelIcon?: string;
+    panelIconText?: string;
+    panelIconProjection?: PortableEmojiProjection;
+    suppressDefaultIcon?: boolean;
+}): ResolvedCalloutIcon | undefined;
+
+// export: ResolvedCalloutIcon
+export type ResolvedCalloutIcon = {
+    source: "explicit";
+    text: string;
+} | {
+    source: "semantic-default";
+    icon: SemanticCalloutIcon;
+};
+
 // export: resolveExportMentions
 export declare function resolveExportMentions(blocks: ExportBlock[], lookup: ExportMentionLookup): Promise<ExportMentionResolution>;
 
@@ -2235,6 +2254,16 @@ export interface SearchResults {
     totalSize?: number;
     hasMore: boolean;
     nextLink?: string;
+}
+
+// export: SEMANTIC_CALLOUT_ICONS
+export declare const SEMANTIC_CALLOUT_ICONS: Readonly<Record<StandardCalloutKind, SemanticCalloutIcon>>;
+
+// export: SemanticCalloutIcon
+export interface SemanticCalloutIcon {
+    kind: StandardCalloutKind;
+    symbol: string;
+    label: string;
 }
 
 // export: SmartCardAppearance
@@ -2275,6 +2304,9 @@ export type SpaceIcon = {
     height?: number;
     isDefault?: boolean;
 };
+
+// export: StandardCalloutKind
+export type StandardCalloutKind = Exclude<CalloutKind, "panel">;
 
 // export: statusDisplayText
 export declare function statusDisplayText(status: Pick<Extract<InlineNode, {
@@ -3890,6 +3922,7 @@ export type ExportBlock = {
     panelIconId?: string;
     panelIconText?: string;
     panelIconProjection?: PortableEmojiProjection;
+    suppressDefaultIcon?: boolean;
     syncedContent?: SyncedContentProvenance;
 } | {
     type: "expand";
@@ -4832,6 +4865,24 @@ export declare function readableTextColor(backgroundColor: string): "#FFFFFF" | 
 // export: replaceAttachmentPaths
 export declare function replaceAttachmentPaths(markdown: string, pageFilename: string): string;
 
+// export: resolveCalloutIcon
+export declare function resolveCalloutIcon(callout: {
+    kind: CalloutKind;
+    panelIcon?: string;
+    panelIconText?: string;
+    panelIconProjection?: PortableEmojiProjection;
+    suppressDefaultIcon?: boolean;
+}): ResolvedCalloutIcon | undefined;
+
+// export: ResolvedCalloutIcon
+export type ResolvedCalloutIcon = {
+    source: "explicit";
+    text: string;
+} | {
+    source: "semantic-default";
+    icon: SemanticCalloutIcon;
+};
+
 // export: resolveExportMentions
 export declare function resolveExportMentions(blocks: ExportBlock[], lookup: ExportMentionLookup): Promise<ExportMentionResolution>;
 
@@ -4868,6 +4919,16 @@ export interface SearchResults {
     totalSize?: number;
     hasMore: boolean;
     nextLink?: string;
+}
+
+// export: SEMANTIC_CALLOUT_ICONS
+export declare const SEMANTIC_CALLOUT_ICONS: Readonly<Record<StandardCalloutKind, SemanticCalloutIcon>>;
+
+// export: SemanticCalloutIcon
+export interface SemanticCalloutIcon {
+    kind: StandardCalloutKind;
+    symbol: string;
+    label: string;
 }
 
 // export: SmartCardAppearance
@@ -4908,6 +4969,9 @@ export type SpaceIcon = {
     height?: number;
     isDefault?: boolean;
 };
+
+// export: StandardCalloutKind
+export type StandardCalloutKind = Exclude<CalloutKind, "panel">;
 
 // export: statusDisplayText
 export declare function statusDisplayText(status: Pick<Extract<InlineNode, {
@@ -6523,6 +6587,7 @@ export type ExportBlock = {
     panelIconId?: string;
     panelIconText?: string;
     panelIconProjection?: PortableEmojiProjection;
+    suppressDefaultIcon?: boolean;
     syncedContent?: SyncedContentProvenance;
 } | {
     type: "expand";
@@ -7465,6 +7530,24 @@ export declare function readableTextColor(backgroundColor: string): "#FFFFFF" | 
 // export: replaceAttachmentPaths
 export declare function replaceAttachmentPaths(markdown: string, pageFilename: string): string;
 
+// export: resolveCalloutIcon
+export declare function resolveCalloutIcon(callout: {
+    kind: CalloutKind;
+    panelIcon?: string;
+    panelIconText?: string;
+    panelIconProjection?: PortableEmojiProjection;
+    suppressDefaultIcon?: boolean;
+}): ResolvedCalloutIcon | undefined;
+
+// export: ResolvedCalloutIcon
+export type ResolvedCalloutIcon = {
+    source: "explicit";
+    text: string;
+} | {
+    source: "semantic-default";
+    icon: SemanticCalloutIcon;
+};
+
 // export: resolveExportMentions
 export declare function resolveExportMentions(blocks: ExportBlock[], lookup: ExportMentionLookup): Promise<ExportMentionResolution>;
 
@@ -7501,6 +7584,16 @@ export interface SearchResults {
     totalSize?: number;
     hasMore: boolean;
     nextLink?: string;
+}
+
+// export: SEMANTIC_CALLOUT_ICONS
+export declare const SEMANTIC_CALLOUT_ICONS: Readonly<Record<StandardCalloutKind, SemanticCalloutIcon>>;
+
+// export: SemanticCalloutIcon
+export interface SemanticCalloutIcon {
+    kind: StandardCalloutKind;
+    symbol: string;
+    label: string;
 }
 
 // export: SmartCardAppearance
@@ -7541,6 +7634,9 @@ export type SpaceIcon = {
     height?: number;
     isDefault?: boolean;
 };
+
+// export: StandardCalloutKind
+export type StandardCalloutKind = Exclude<CalloutKind, "panel">;
 
 // export: statusDisplayText
 export declare function statusDisplayText(status: Pick<Extract<InlineNode, {
@@ -8983,6 +9079,7 @@ export type ExportBlock = {
     panelIconId?: string;
     panelIconText?: string;
     panelIconProjection?: PortableEmojiProjection;
+    suppressDefaultIcon?: boolean;
     syncedContent?: SyncedContentProvenance;
 } | {
     type: "expand";
@@ -10133,8 +10230,26 @@ export interface ReorderResult {
 // export: replaceAttachmentPaths
 export declare function replaceAttachmentPaths(markdown: string, pageFilename: string): string;
 
+// export: resolveCalloutIcon
+export declare function resolveCalloutIcon(callout: {
+    kind: CalloutKind;
+    panelIcon?: string;
+    panelIconText?: string;
+    panelIconProjection?: PortableEmojiProjection;
+    suppressDefaultIcon?: boolean;
+}): ResolvedCalloutIcon | undefined;
+
 // export: resolveConflicts
 export declare function resolveConflicts(content: string, choice: "local" | "remote"): string;
+
+// export: ResolvedCalloutIcon
+export type ResolvedCalloutIcon = {
+    source: "explicit";
+    text: string;
+} | {
+    source: "semantic-default";
+    icon: SemanticCalloutIcon;
+};
 
 // export: resolveExportMentions
 export declare function resolveExportMentions(blocks: ExportBlock[], lookup: ExportMentionLookup): Promise<ExportMentionResolution>;
@@ -10181,6 +10296,16 @@ export interface SearchResults {
     totalSize?: number;
     hasMore: boolean;
     nextLink?: string;
+}
+
+// export: SEMANTIC_CALLOUT_ICONS
+export declare const SEMANTIC_CALLOUT_ICONS: Readonly<Record<StandardCalloutKind, SemanticCalloutIcon>>;
+
+// export: SemanticCalloutIcon
+export interface SemanticCalloutIcon {
+    kind: StandardCalloutKind;
+    symbol: string;
+    label: string;
 }
 
 // export: setPageEditorVersion
@@ -10335,6 +10460,9 @@ export interface SqliteAdapterConfig {
     enableVectors?: boolean;
     customSqlitePath?: string;
 }
+
+// export: StandardCalloutKind
+export type StandardCalloutKind = Exclude<CalloutKind, "panel">;
 
 // export: statusDisplayText
 export declare function statusDisplayText(status: Pick<Extract<InlineNode, {
@@ -12082,6 +12210,7 @@ export type ExportBlock = {
     panelIconId?: string;
     panelIconText?: string;
     panelIconProjection?: PortableEmojiProjection;
+    suppressDefaultIcon?: boolean;
     syncedContent?: SyncedContentProvenance;
 } | {
     type: "expand";
@@ -13024,6 +13153,24 @@ export declare function readableTextColor(backgroundColor: string): "#FFFFFF" | 
 // export: replaceAttachmentPaths
 export declare function replaceAttachmentPaths(markdown: string, pageFilename: string): string;
 
+// export: resolveCalloutIcon
+export declare function resolveCalloutIcon(callout: {
+    kind: CalloutKind;
+    panelIcon?: string;
+    panelIconText?: string;
+    panelIconProjection?: PortableEmojiProjection;
+    suppressDefaultIcon?: boolean;
+}): ResolvedCalloutIcon | undefined;
+
+// export: ResolvedCalloutIcon
+export type ResolvedCalloutIcon = {
+    source: "explicit";
+    text: string;
+} | {
+    source: "semantic-default";
+    icon: SemanticCalloutIcon;
+};
+
 // export: resolveExportMentions
 export declare function resolveExportMentions(blocks: ExportBlock[], lookup: ExportMentionLookup): Promise<ExportMentionResolution>;
 
@@ -13060,6 +13207,16 @@ export interface SearchResults {
     totalSize?: number;
     hasMore: boolean;
     nextLink?: string;
+}
+
+// export: SEMANTIC_CALLOUT_ICONS
+export declare const SEMANTIC_CALLOUT_ICONS: Readonly<Record<StandardCalloutKind, SemanticCalloutIcon>>;
+
+// export: SemanticCalloutIcon
+export interface SemanticCalloutIcon {
+    kind: StandardCalloutKind;
+    symbol: string;
+    label: string;
 }
 
 // export: SmartCardAppearance
@@ -13100,6 +13257,9 @@ export type SpaceIcon = {
     height?: number;
     isDefault?: boolean;
 };
+
+// export: StandardCalloutKind
+export type StandardCalloutKind = Exclude<CalloutKind, "panel">;
 
 // export: statusDisplayText
 export declare function statusDisplayText(status: Pick<Extract<InlineNode, {

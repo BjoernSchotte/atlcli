@@ -1,6 +1,6 @@
 # P1 — Semantic default icons for standard callouts
 
-Status: in progress; P1.1 and P1.2 proved
+Status: complete
 
 Baseline: `5876348343c5805c3424eea5d516a8c937b4f6f5`
 
@@ -181,15 +181,60 @@ settings were restored to off after the check.
 
   Commit: `test(export): prove semantic callout icon fidelity`
 
-- [ ] **P1.4 — Document and certify the visual change.**
+- [x] **P1.4 — Document and certify the visual change.**
   Update user-facing export documentation and the gap register, run aggregate
-  gates, and perform a live `mayflower`/`DOCSY` export. Create a uniquely named
-  page containing all six standard callout kinds, one standard warning with an
-  explicit source icon, one custom panel with known icon, and one custom panel
-  with an unresolved icon. Export it through production PDF and TypeScript
-  DOCX paths, inspect visual and accessibility structure, then delete the page
-  in `finally` and prove a subsequent `wiki page get` returns not found. Record
-  only redacted artifact/evidence paths and the cleanup result.
+  gates, and perform a live `mayflower`/`DOCSY` export. Use the native Cloud
+  editor for every standard panel kind it retains, record any normalization,
+  and include one custom panel with known icon, one custom panel with an
+  unresolved icon, and a dense table-cell callout. Prove the complete six-kind
+  shared registry in fixtures and the four-kind Storage/DC macro contract on
+  the same page. Export through production PDF and TypeScript DOCX paths,
+  inspect visual and accessibility structure, then delete the page and prove a
+  subsequent get returns not found.
+
+  Evidence (2026-07-24):
+
+  - DOCSY page `1141374997`, version 4, retained native Cloud panels for
+    `info`, `note`, `warning`, `success`, and `error`, plus a second warning in
+    a bounded table cell. The Cloud editor normalized an authored `tip` to
+    `info`; the pinned schema/shared registry still covers `tip`, and the
+    Storage/DC companion retains a distinct tip macro.
+  - The same live page contained the user-curated 50-entry native picker
+    section, all 22 canonical legacy notations, all 26 aliases, literal/custom
+    negative controls, a known custom-panel icon, and an unresolved
+    `:custom_party:` icon.
+  - Final ADF-primary DOCX (`7,000` bytes,
+    SHA-256 `b6faa4621dc57f808329b704537a6f98e81a4a76e903c18f4dc77a8bbd33fbf1`)
+    and seven-page PDF (`105,060` bytes,
+    SHA-256 `d59346e2747ffcc01c875bc73c9afed29b82a23995073083be5d044a2792cbdf`)
+    completed through the real CLI. The only warning is the intentional
+    unresolved custom-panel control.
+  - Exact verifiers prove all 50 native picker outputs in ADF/DOCX/PDF order,
+    all 22+26 legacy rows graphical and cross-format equal, both negative
+    controls unchanged, six semantic figures, twelve DOCX accessibility
+    attributes, six PDF figure labels, explicit/custom precedence, and the
+    dense container.
+  - All seven Poppler PDF pages and all five pages in Microsoft Word 16.111.1
+    were visually inspected without missing symbols, tofu, clipping, or
+    overlap. Word exposed each labelled icon once. LibreOffice's three-page
+    preview retained the exact DOCX XML but omitted some arbitrary
+    platform-color-emoji glyphs; this is the documented recipient-font
+    boundary, not source loss.
+  - The production Storage rollback/Data Center adapter generated a companion
+    DOCX (`5,982` bytes,
+    SHA-256 `086115d60995b9e0fe2fa50a6793e28950bdf715d43a0fd7692dde2d44549cd5`)
+    and five-page PDF (`80,026` bytes,
+    SHA-256 `bb6ba0b65e4458ba99dc4b513ffcfbe02932f8942b4e01bff2d47d1204639031`).
+    Exact verification proves all 22+26 rows, four labelled standard macro
+    icons, `icon=false` suppression, and an iconless generic panel. Permanent
+    regressions additionally feed the six observed Atlassian picker aliases
+    and a Unicode fallback through real `ac:emoticon` XML.
+  - `bun run test` passed with 5,330 tests, 13 explicit environment-gated
+    skips, and zero failures. Typecheck, all 16 built package tasks, all 20
+    browser-isomorphism entrypoints, Astro docs with zero diagnostics, rendered
+    golden comparison, and `git diff --check` passed.
+  - The temporary page was deleted after artifact verification; the subsequent
+    get returned `not-found`.
 
   Verification:
 

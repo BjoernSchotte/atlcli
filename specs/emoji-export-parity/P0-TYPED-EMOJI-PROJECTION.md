@@ -1,6 +1,6 @@
 # P0 — Typed emoji projection for DOCX and PDF
 
-Status: active implementation
+Status: complete
 
 Baseline: `5876348343c5805c3424eea5d516a8c937b4f6f5`
 

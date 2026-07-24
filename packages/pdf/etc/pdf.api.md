@@ -56,6 +56,7 @@ export type ExportBlock = {
     panelIconId?: string;
     panelIconText?: string;
     panelIconProjection?: PortableEmojiProjection;
+    suppressDefaultIcon?: boolean;
     syncedContent?: SyncedContentProvenance;
 } | {
     type: "expand";
@@ -916,6 +917,7 @@ export type ExportBlock = {
     panelIconId?: string;
     panelIconText?: string;
     panelIconProjection?: PortableEmojiProjection;
+    suppressDefaultIcon?: boolean;
     syncedContent?: SyncedContentProvenance;
 } | {
     type: "expand";
@@ -1776,6 +1778,7 @@ export type ExportBlock = {
     panelIconId?: string;
     panelIconText?: string;
     panelIconProjection?: PortableEmojiProjection;
+    suppressDefaultIcon?: boolean;
     syncedContent?: SyncedContentProvenance;
 } | {
     type: "expand";

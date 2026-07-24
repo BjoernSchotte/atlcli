@@ -33,6 +33,8 @@ describe("ADF rendered goldens", () => {
       "block-indentation",
       "paragraph-font-size",
       "semantic-success-error-panels",
+      "semantic-callout-labelled-icons",
+      "semantic-callout-nested-list-and-table-layout",
       "custom-panel-color-icon",
       "typed-custom-panel-icon-projection",
       "ordered-list-start",
@@ -76,7 +78,7 @@ describe("ADF rendered goldens", () => {
     expect(result).toMatchObject({
       updated: false,
       docxPages: 3,
-      pdfPages: 7,
+      pdfPages: 8,
       docxCodeFontEmbedded: true,
     });
     expect(result.maxMeanPixelDifference).toBeLessThanOrEqual(0.08);

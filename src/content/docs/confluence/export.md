@@ -106,6 +106,23 @@ shortcode remains literal. See
 [Supported Emoticons](/confluence/macros/#supported-emoticons) for the complete
 canonical and alias table, graphical projections, and custom emoji limits.
 
+Standard callouts also share one renderer contract. The neutral model supports
+`info`, `note`, `warning`, `tip`, `success`, and `error`; each receives a
+deterministic graphical icon in DOCX and PDF. Current Cloud ADF live evidence
+contains native `info`, `note`, `warning`, `success`, and `error` panels.
+Although the pinned schema recognizes `tip`, the tested Cloud editor normalized
+an authored tip to `info`; Body Storage retains a distinct `tip` macro. The
+icon carries a target-native accessibility label (`descr` in DOCX and figure
+`alt` in PDF); atlcli does not add a second visible kind label. An explicit
+source icon wins, and a generic/custom panel stays iconless unless the source
+supplies one.
+
+Data Center and Storage rollback exports apply the same defaults to the
+supported Body Storage `info`, `note`, `warning`, and `tip` macros. Their
+documented `icon=false` parameter suppresses the default icon in both formats.
+This keeps the source contract intact instead of inventing an icon that the
+Confluence page explicitly disabled.
+
 `ATLCLI_EXPORT_SOURCE` is the single deployment rollback switch. It changes
 only the source adapter; it does not fork DOCX/PDF rendering, bypass version
 checks, or become part of a durable export-job request.
