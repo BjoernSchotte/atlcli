@@ -141,8 +141,9 @@ Current closed foundations and feature slices:
   short name, custom-emoji identity, and visible icon text. DOCX/PDF render
   portable color/icon presentation; non-portable color and ID-only icons stay
   retained and produce explicit fallback diagnostics.
-- [x] Emoji identity, exact source text, deterministic short-name fallback, and
-  typed fallback reporting.
+- [x] Emoji identity, exact source text, the portable 22-name/26-alias legacy
+  catalog, typed fallback reporting, and graphical DOCX/PDF projection through
+  both ADF and the Data Center-relevant Body Storage adapter.
 - [x] Mention account/collection identity, exact optional source text, local
   identity, access scope, pinned user type, resolver behavior, and
   privacy-safe unresolved labels across both TypeScript targets.
@@ -350,7 +351,7 @@ Evidence: [E2], [E5], [E7], [E8], [E13], [E28], [E33].
 | Done | ADF node | Current source mapping | DOCX | PDF | Primary gap |
 |---|---|---|---|---|---|
 | [x] | `date` | ADF epoch-millisecond timestamp/local identity and Storage `<time>` or legacy `date` macro values become one typed date. | Native | Native | Both targets render a neutral date chip with document-locale formatting in UTC. Invalid but schema-valid timestamps remain exact visible source text and emit `date-invalid`; units are never guessed. |
-| [ ] | `emoji` | ADF and Storage both retain `shortName`, optional service `id`, the exact optional source text (including empty text), and whether the visible run came from text or the short-name fallback. Raw colon text is never reinterpreted. | Partial/Conditional | Partial/Conditional | **Partial — external contract:** Unicode text and deterministic fallback are native, but custom/Atlassian emoji require a documented, authorized portable asset resolver and complete glyph policy. |
+| [ ] | `emoji` | ADF and Storage both retain `shortName`, optional service `id`, exact optional source text (including empty text), projection provenance, and the shared portable catalog result. Raw colon text is never reinterpreted. | Native for catalog/source text; conditional for custom assets | Native for catalog/source text; conditional for custom assets | **Partial — external contract:** all 22 canonical legacy names and 26 aliases have reviewed graphical projections in both targets, including Data Center-compatible `ac:emoticon` input. Arbitrary source Unicode remains exact but recipient glyph coverage is not universal; site-custom/Atlassian assets require a documented, authorized resolver. |
 | [x] | `mention` | ADF retains exact account-or-collection ID, optional source text (including empty), local identity, access level, and pinned `DEFAULT`/`SPECIAL`/`APP` user type. Storage retains its available identity/name form. Host resolution may enrich the visible display name without replacing source metadata. | Native static projection | Native static projection | Closed for the pinned schema. Both targets render the source/resolved name; unresolved or deactivated identities use deterministic `Unknown user`/`Unknown app` labels and never leak the raw ID. No profile hyperlink is invented because the pinned ADF node carries no profile URL. Product-specific attributes enter the drift lane. |
 | [x] | `status` | ADF text, exact semantic color, optional local identity/style, and Storage status macros become one typed status. | Native static projection | Native static projection | The pinned ADF color enum is validated; `mixedCase` preserves casing and other styles use Confluence-style uppercase. Both targets have explicit neutral/purple palettes plus deterministic legacy/unknown-color fallback. |
 | [x] | `placeholder` | ADF text/local identity and Storage `<ac:placeholder>` text/type become a typed editor instruction. | Native hidden projection | Native hidden projection | Confluence hides template placeholders in published view, so both targets intentionally emit no visible text while the neutral model retains identity for tooling/composition. No degradation is reported for this correct projection. |
@@ -475,7 +476,7 @@ Official Confluence documentation describes these input shortcuts. They are edit
 | [x] | `[title](URL)` | link mark or Smart Link transform | Plain link marks and inline/block/embed Smart Card outcomes are complete, including safe external/page/attachment/media/card targets and unsafe-scheme degradation. | Closed after Confluence materializes the editor input: exact link-mark provenance and all pinned Smart Card attributes survive, with deterministic clickable static output in both targets and datasource live-resolution reuse where supported. |
 | [x] | `[] ` | task item | Native for pinned ADF/Storage semantics. | TODO/DONE, direct-inline and block tasks, nesting, identity, composition, and both target markers are covered; mentions/dates survive as ordinary inline semantics. |
 | [x] | `<> ` | decision item | Native for the pinned ADF schema. | List/item identity and exact state survive; `DECIDED` and nonstandard states have deterministic static markers. |
-| [ ] | `:` / emoji picker | `emoji` node or text | Partial/conditional. | **Partial — external asset contract:** Unicode/fallback is complete; Atlassian/site-custom assets and complete glyph coverage remain blocked. |
+| [ ] | `:` / emoji picker | `emoji` node or text | Native for the reviewed 22-name/26-alias portable catalog; conditional for arbitrary Unicode and custom assets. | **Partial — external asset contract:** graphical catalog projection, exact source Unicode, typed fallback, and ADF/Storage parity are complete. Atlassian/site-custom assets and universal recipient glyph coverage remain blocked. |
 | [x] | `:)` auto-conversion | Emoji/editor transformation | Correctly consumes the materialized emoji/text result and performs no exporter-side editor emulation. | Closed exporter policy; the live corpus records enabled/disabled editor outcomes without reinterpreting raw text. |
 | [x] | Raw `:shortname:` text | Not a stable documented ADF contract | Remains literal unless Confluence converted it first. | Closed invariant: never reinterpret ordinary text in the exporter. |
 | [x] | `@ ` | `mention` | Native typed mention with source or host-resolved visible name. | Closed for the pinned ADF contract: identity/presentation metadata survives, unresolved/deactivated output is privacy-safe, and no unsupported profile URL is invented. |
@@ -527,23 +528,45 @@ Required acceptance contract:
 
 Current behavior is explicit and source-neutral:
 
-- Raw Unicode survives as visible text and retains its emoji metadata if the selected font/rendering stack has the glyph.
-- ADF and Storage both retain the required `shortName`, optional ADF emoji-service `id`, exact optional text (including `""`), and `renderedFrom` provenance in `EmojiSemantics`.
-- Non-empty source text is preferred. Missing or empty text falls back to `shortName`; colon-shaped source text and short-name fallbacks emit the stable `emoji-text-fallback` warning with page/block provenance.
-- If Storage supplies a colon short name such as `:warning:` as `ac:emoji-fallback` (a shape already present in the repository fixtures), DOCX/PDF keeps that literal string and diagnoses it; it does not pretend to have resolved a glyph. See [E22].
+- Raw Unicode survives exactly as visible text and retains its emoji metadata;
+  arbitrary recipient glyph coverage is not claimed.
+- ADF and Storage both retain the required `shortName`, optional ADF
+  emoji-service `id`, exact optional text (including `""`), and
+  `renderedFrom` provenance in `EmojiSemantics`.
+- Non-empty, non-colon source text is preferred. Missing, empty, or
+  colon-shaped text on a typed emoji is resolved through one shared catalog of
+  22 canonical legacy names and 26 aliases. A known value becomes its reviewed
+  graphical projection; an unknown value remains exact and emits
+  `emoji-text-fallback` with page/block provenance.
+- Cloud read-back spellings observed for catalog values (`check_mark`,
+  `cross_mark`, `question_mark`, both `light_bulb_*` names, and the four
+  color-star names) normalize only inside typed metadata. They are not exposed
+  as additional Markdown authoring aliases.
+- Storage `ac:emoji-shortname` is authoritative over `ac:name`; the same
+  catalog is exercised exhaustively through real `ac:emoticon` XML. This is
+  the Cloud/Data Center compatibility contract, not a live DC certification.
 - The exporter does not convert raw colon notation, which is the correct default for stored text.
 - Custom and non-standard Atlassian emoji have a deterministic, visible, typed text fallback but no documented portable asset resolver.
-- Dedicated ADF and Storage regressions cover Unicode, custom/missing text, empty text, metadata retention, note provenance, literal colon text, target-neutral parity, and both serializer paths.
-- The PDF runtime bundles a symbol fallback but no color-emoji font; the DOCX recipient may also substitute fonts, so complete Unicode emoji coverage is not guaranteed.
+- Dedicated ADF and Storage matrices cover every canonical name and alias,
+  Unicode, custom/missing/empty text, metadata retention, note provenance,
+  literal colon text, target-neutral parity, and both serializer paths.
+- The PDF runtime bundles checksummed symbol and monochrome Noto Emoji fonts
+  with their licenses; the DOCX recipient may substitute fonts. The reviewed
+  catalog is render-gated, but universal arbitrary-Unicode glyph coverage is
+  not guaranteed.
 - Atlassian's current Forge ADF renderer documents the same platform boundary: only standard Unicode emoji are supported there, not custom user-provided emoji [13].
 
 Required acceptance contract:
 
 1. Prefer ADF `text` when it contains a standard Unicode sequence.
-2. **Completed fallback floor:** without usable Unicode `text`, emit the exact short name with a typed warning.
-3. For site custom emoji, add an authorized host resolver only when Atlassian documents a stable asset route; until then retain the current visible text/short-name fallback and typed warning.
-4. Define DOCX image-baseline and PDF inline-image sizing for custom emoji.
-5. Test skin tone, ZWJ sequences, variation selectors, flags, missing glyphs, deleted custom emoji, and literal colon text.
+2. **Completed portable catalog:** without usable Unicode `text`, resolve all
+   22 canonical legacy names and 26 aliases to reviewed graphical projections.
+3. **Completed unresolved floor:** preserve an unknown short name exactly and
+   emit a typed warning.
+4. For site custom emoji, add an authorized host resolver only when Atlassian documents a stable asset route; until then retain the current visible text/short-name fallback and typed warning.
+5. Define DOCX image-baseline and PDF inline-image sizing for custom emoji.
+6. Keep skin tone, ZWJ sequences, variation selectors, flags, missing glyphs,
+   deleted custom emoji, and literal colon text in the regression corpus.
 
 ## 10. Prioritized gap backlog
 
@@ -572,9 +595,11 @@ Required acceptance contract:
 - [x] **Inline code.** Exact code-mark text, adjacency, highlight precedence,
   annotation coexistence, target-specific chip treatment, portable DOCX font
   embedding, PDF font use, browser/job parity, and real rendering are complete.
-- [ ] **Partial — external asset contract for emoji/custom emoji.** Identity, exact text, deterministic
-  fallback, reporting, and both TS engines are complete; authorized custom
-  assets and complete font/glyph coverage remain.
+- [ ] **Partial — external asset contract for emoji/custom emoji.** Identity,
+  exact text, the reviewed 22-name/26-alias graphical catalog, deterministic
+  unresolved fallback, reporting, ADF/Storage parity, and both TS engines are
+  complete. Authorized custom assets and universal arbitrary-Unicode recipient
+  glyph coverage remain.
 - [x] **Alignment, indentation, and small text.** Paragraph/heading alignment
   and indentation plus schema-defined small paragraph text are complete.
 - [x] **Tasks and decisions.** Pinned-schema list/item identities, exact states,
@@ -746,8 +771,9 @@ Closed gates:
 
 - [x] Schema-derived enumeration classifies all 43 nodes and 17 marks.
 - [x] Direct ADF-to-model fixtures cover every classified node and mark.
-- [x] Emoji/emoticon decoding, both-engine semantics, packed browser parity,
-  report parity, and deterministic render goldens.
+- [x] All 22 canonical legacy emoji and 26 aliases through ADF and Storage
+  decoding, both-engine semantics, packed browser parity, report parity, and
+  deterministic render goldens with the pinned PDF font inventory.
 - [x] Ordered-list non-1 starts and nested restarts.
 - [x] Nested bullet/numbered/task ownership across paired ADF/Storage,
   composition, both serializers, packed browser execution, and real renders.
@@ -959,6 +985,7 @@ Accessed 2026-07-22 through 2026-07-24:
 - **[E48] Complete ADF annotation sidecar and static-target contract:** `packages/confluence/src/client.ts`, `packages/confluence/src/comment-text.ts`, `packages/confluence/src/page-body.ts`, `packages/confluence/src/page-body-to-blocks.ts`, `packages/confluence/src/tree-fetch.ts`, `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/client-adf.test.ts`, `packages/confluence/src/adf-to-blocks.test.ts`, `packages/docx/src/serialize.ts`, `packages/docx/src/export.ts`, `packages/docx/src/serialize.test.ts`, `packages/docx/src/export.test.ts`, `packages/pdf/src/serialize.ts`, `packages/pdf/src/serialize.test.ts`, `packages/pdf-compiler-browser/src/compiler.test.ts`, `packages/export-fixtures/src/index.ts`, `packages/export-fixtures/src/adf-fixtures.test.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `apps/browser-export-harness/tests/exports.e2e.ts`
 - **[E49] Pinned Stage-0 multi-bodied extension contract and target parity:** `packages/confluence/test-fixtures/adf/upstream-stage0-extensions.json`, `packages/confluence/test-fixtures/adf/upstream-baseline.json`, `scripts/adf-drift.ts`, `scripts/adf-drift.test.ts`, `packages/confluence/src/adf-coverage.ts`, `packages/confluence/src/adf-validate.ts`, `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/export-blocks.ts`, `packages/export-macros/src/resolve.ts`, `packages/docx/src/serialize.ts`, `packages/pdf/src/types.ts`, `packages/pdf/src/prepare.ts`, `packages/pdf/src/serialize.ts`, `packages/export-fixtures/src/index.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `apps/browser-export-harness/tests/exports.e2e.ts`, `scripts/adf-rendered-goldens.ts`
 - **[E50] Legacy Storage code-macro title/collapse compatibility:** `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/export-blocks.test.ts`, `packages/docx/src/serialize.ts`, `packages/docx/src/serialize.test.ts`, `packages/pdf/src/types.ts`, `packages/pdf/src/prepare.ts`, `packages/pdf/src/prepare.test.ts`, `packages/pdf/src/serialize.ts`, `packages/pdf/src/serialize.test.ts`, `packages/export-fixtures/src/index.ts`, `packages/export-fixtures/src/adf-fixtures.test.ts`, `apps/browser-export-harness/src/blocks-case.ts`, `apps/browser-export-harness/tests/exports.e2e.ts`, `scripts/adf-rendered-goldens.ts`, `scripts/adf-rendered-goldens.test.ts`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
+- **[E51] Portable typed-emoji catalog, Cloud read-back normalization, and artifact parity:** `packages/confluence/src/emoji-projection.ts`, `packages/confluence/src/emoji-projection.test.ts`, `packages/confluence/src/adf-to-blocks.ts`, `packages/confluence/src/adf-to-blocks.test.ts`, `packages/confluence/src/export-blocks.ts`, `packages/confluence/src/export-blocks.test.ts`, `packages/confluence/src/page-body.test.ts`, `packages/confluence/test-fixtures/adf-pairs/basic.adf.json`, `packages/pdf/src/runtime-assets.ts`, `packages/pdf/src/serialize.ts`, `packages/docx/src/serialize.ts`, `packages/export-fixtures/src/index.ts`, `packages/export-fixtures/src/adf-fixtures.test.ts`, `apps/browser-export-harness/src/adf-source-case.ts`, `apps/browser-export-harness/tests/exports.e2e.ts`, `scripts/adf-rendered-goldens.ts`, `packages/export-fixtures/test-fixtures/adf-rendered-golden/manifest.json`
 
 ## 16. Review questions
 

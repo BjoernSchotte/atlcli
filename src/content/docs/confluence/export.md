@@ -97,6 +97,15 @@ it into the same neutral document model used by both renderers. Data Center
 remains Storage-based. Storage is also retained as a Cloud sidecar for macros
 and definitions that do not yet have an ADF-native equivalent.
 
+Typed legacy emoji use one resolver in both source paths: Cloud ADF `emoji`
+and Data Center/compatibility Body Storage `ac:emoticon` apply the same
+portable catalog when the typed source has no usable Unicode text. Existing
+source Unicode remains exact, so a platform-supplied display sequence can
+differ from the catalog projection. Ordinary text that merely looks like a
+shortcode remains literal. See
+[Supported Emoticons](/confluence/macros/#supported-emoticons) for the complete
+canonical and alias table, graphical projections, and custom emoji limits.
+
 `ATLCLI_EXPORT_SOURCE` is the single deployment rollback switch. It changes
 only the source adapter; it does not fork DOCX/PDF rendering, bypass version
 checks, or become part of a durable export-job request.

@@ -1,6 +1,6 @@
 # Emoji export parity
 
-Status: active delivery plan
+Status: P0 complete; P1 planned
 
 Planned at: `5876348343c5805c3424eea5d516a8c937b4f6f5`
 (`feat(confluence): add ADF-primary export pipeline (#86)`).
@@ -12,9 +12,9 @@ This folder separates two related but independently reviewable outcomes:
 - [P1 — Semantic callout icons](./P1-SEMANTIC-CALLOUT-ICONS.md) adds
   target-neutral default icons to ordinary Confluence callouts.
 
-P0 is the active implementation scope. P1 is deliberately a follow-up because
-it changes the visual appearance of every standard callout and therefore owns a
-separate rendered-golden review.
+P0 is complete. P1 remains a deliberate follow-up because it changes the
+visual appearance of every standard callout and therefore owns a separate
+rendered-golden review.
 
 ## Delivery rules
 

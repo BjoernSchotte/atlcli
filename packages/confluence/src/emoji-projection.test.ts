@@ -103,6 +103,30 @@ describe("projectTypedEmoji", () => {
     });
   });
 
+  it("normalizes Confluence Cloud read-back spellings without adding authoring aliases", () => {
+    const cloudNames = {
+      check_mark: "tick",
+      cross_mark: "cross",
+      question_mark: "question",
+      light_bulb_on: "light-on",
+      light_bulb_off: "light-off",
+      yellow_star: "yellow-star",
+      red_star: "red-star",
+      green_star: "green-star",
+      blue_star: "blue-star",
+    } as const;
+
+    for (const [shortName, canonicalName] of Object.entries(cloudNames)) {
+      const projection = CONFLUENCE_LEGACY_EMOJI_PROJECTIONS[canonicalName];
+      expect(normalizeEmojiShortName(shortName)).toBeUndefined();
+      expect(projectTypedEmoji({ shortName: `:${shortName}:` })).toEqual({
+        kind: "known",
+        text: projection.text,
+        projection,
+      });
+    }
+  });
+
   it("preserves an unknown or site-custom short name exactly", () => {
     expect(projectTypedEmoji({ shortName: ":party-parrot:", sourceText: ":fallback:" })).toEqual({
       kind: "unresolved",

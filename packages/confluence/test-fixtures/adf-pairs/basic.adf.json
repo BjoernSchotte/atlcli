@@ -15,7 +15,7 @@
         { "type": "text", "text": " and " },
         { "type": "text", "text": "code", "marks": [{ "type": "code" }] },
         { "type": "hardBreak" },
-        { "type": "emoji", "attrs": { "shortName": ":warning:", "text": "⚠️" } }
+        { "type": "emoji", "attrs": { "shortName": "warning", "text": "⚠️" } }
       ]
     },
     {

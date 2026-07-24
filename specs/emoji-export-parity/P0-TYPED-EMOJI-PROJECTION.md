@@ -357,7 +357,7 @@ semantic default only after the entire explicit-source chain.
 
   Commit: `test(export): prove emoji artifact parity`
 
-- [ ] **P0.5 — Align docs, gap accounting, and aggregate gates.**
+- [x] **P0.5 — Align docs, gap accounting, and aggregate gates.**
   Replace the stale supported-emoticon table with the canonical catalog,
   document the typed-vs-literal boundary, update the ADF coverage/gap register,
   and record the remaining custom-emoji/font limitations. Run the full
@@ -378,6 +378,54 @@ semantic default only after the entire explicit-source chain.
   bun run docs:check
   git diff --check
   ```
+
+  Evidence (2026-07-24):
+
+  - The Confluence macro guide now derives the public contract from the
+    canonical 22-name/26-alias catalog, shows every reviewed graphical
+    projection, and documents the typed-versus-literal boundary, custom-emoji
+    limit, recipient-font boundary, and shared Cloud/Data Center Body Storage
+    behavior. The export guide links that contract from the ADF/Storage source
+    policy.
+  - The live gap register keeps its 82/84 orientation exact. The reviewed
+    portable catalog is closed; only the external site-custom asset contract
+    and universal glyph coverage for arbitrary source-provided Unicode remain
+    conditional.
+  - The first complete live corpus exposed nine Confluence Cloud product-owned
+    ADF read-back spellings (`check_mark`, `cross_mark`, `question_mark`, both
+    `light_bulb_*` names, and four color-star names). They now normalize only
+    inside typed metadata and do not expand the public Markdown authoring
+    aliases. The focused projection/ADF/Storage/DOCX/PDF run reports 422
+    passing tests, and the differential source/benchmark regression reports
+    182 passing tests.
+  - The final full workspace run reports 5,306 passing, 13 explicitly
+    environment-gated skips, and zero failures. Workspace typecheck, the full
+    16-package build, all 20 browser-isomorphism entrypoints, Astro docs with
+    zero diagnostics, the executable gap-register guard, and
+    `git diff --check` pass.
+  - Synthetic DOCSY page
+    `atlcli-e2e-emoji-all-supported-1784881740` (page `1141899288`, version 2)
+    enumerated all 22 canonical notations and all 26 supported aliases with
+    literal input labels, typed graphical output, a literal-known control, and
+    an unknown-custom control. ADF-primary DOCX and PDF completed with zero
+    warnings/errors. An exact artifact verifier found all 48 graphical rows
+    and both controls in both formats and proved cross-format text equality.
+    The tagged PDF contains five pages; the DOCX contains two rendered pages.
+    Every page was visually inspected with the pinned symbol/emoji font
+    baseline without tofu, empty glyphs, clipping, or overlap.
+  - The same DOCSY version was additionally exported through
+    `ATLCLI_EXPORT_SOURCE=storage` as DOCX and PDF. Both completed with zero
+    warnings/errors plus the expected informational rollout-policy note; the
+    exact 22+26+2 verifier passed cross-format. This exercises the production
+    Body Storage adapter used by Data Center, complementing the exhaustive
+    real-`ac:emoticon` contract matrix. It is not misrepresented as a live DC
+    tenant certification.
+  - Final downloadable artifacts are retained outside the repository as
+    `atlcli-emoji-all-supported-live.docx` and
+    `atlcli-emoji-all-supported-live.pdf`. The synthetic page was deleted and
+    the subsequent lookup returned Confluence 404.
+
+  Commit: `fix(export): complete emoji parity proof`
 
   Live acceptance:
 

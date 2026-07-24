@@ -109,6 +109,23 @@ export const CONFLUENCE_LEGACY_EMOJI_ALIASES = Object.freeze({
   red_heart: "heart",
 } satisfies Record<string, CanonicalLegacyEmojiName>);
 
+/**
+ * Product-owned short names observed after Confluence Cloud materializes the
+ * legacy authoring tokens above. These are source normalization spellings,
+ * not additional Markdown authoring aliases.
+ */
+const CONFLUENCE_TYPED_EMOJI_SOURCE_ALIASES = Object.freeze({
+  check_mark: "tick",
+  cross_mark: "cross",
+  question_mark: "question",
+  light_bulb_on: "light-on",
+  light_bulb_off: "light-off",
+  yellow_star: "yellow-star",
+  red_star: "red-star",
+  green_star: "green-star",
+  blue_star: "blue-star",
+} satisfies Record<string, CanonicalLegacyEmojiName>);
+
 /** True for a single colon-wrapped token such as `:warning:`. */
 export function isColonEmojiShortName(value: string): boolean {
   return value.length >= 3 &&
@@ -137,6 +154,17 @@ export function normalizeEmojiShortName(
   ];
 }
 
+function normalizeTypedEmojiShortName(
+  value: string
+): CanonicalLegacyEmojiName | undefined {
+  const authoredName = normalizeEmojiShortName(value);
+  if (authoredName) return authoredName;
+  const candidate = unwrappedShortName(value).toLowerCase();
+  return CONFLUENCE_TYPED_EMOJI_SOURCE_ALIASES[
+    candidate as keyof typeof CONFLUENCE_TYPED_EMOJI_SOURCE_ALIASES
+  ];
+}
+
 /**
  * Select visible text for a value whose typed source already proves emoji
  * semantics. The typed short name is authoritative whenever source text is
@@ -154,7 +182,7 @@ export function projectTypedEmoji(input: {
     return { kind: "source-text", text: input.sourceText };
   }
 
-  const canonicalName = normalizeEmojiShortName(input.shortName);
+  const canonicalName = normalizeTypedEmojiShortName(input.shortName);
   if (canonicalName) {
     const projection = CONFLUENCE_LEGACY_EMOJI_PROJECTIONS[canonicalName];
     return { kind: "known", text: projection.text, projection };

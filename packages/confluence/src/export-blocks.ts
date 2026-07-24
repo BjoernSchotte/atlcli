@@ -2618,7 +2618,7 @@ function walkMacro(el: XmlElement, ctx: WalkCtx): ExportBlock[] {
       {
         type: "callout",
         kind: macroName as CalloutKind,
-        title: title || undefined,
+        ...(title ? { title } : {}),
         content: body ? walkBlocks(body.children, ctx) : [],
       },
     ];

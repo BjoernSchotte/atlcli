@@ -95,7 +95,6 @@ exports[`storageToBlocks — integration (§2.1 feature zoo) full block-tree sna
         },
       ],
       "kind": "info",
-      "title": undefined,
       "type": "callout",
     },
     {
@@ -111,7 +110,6 @@ exports[`storageToBlocks — integration (§2.1 feature zoo) full block-tree sna
         },
       ],
       "kind": "note",
-      "title": undefined,
       "type": "callout",
     },
     {
@@ -127,7 +125,6 @@ exports[`storageToBlocks — integration (§2.1 feature zoo) full block-tree sna
         },
       ],
       "kind": "warning",
-      "title": undefined,
       "type": "callout",
     },
     {
@@ -143,7 +140,6 @@ exports[`storageToBlocks — integration (§2.1 feature zoo) full block-tree sna
         },
       ],
       "kind": "tip",
-      "title": undefined,
       "type": "callout",
     },
     {
