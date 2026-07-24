@@ -57,6 +57,7 @@ import {
 import {
   createExternalAssetFetcher,
   extensionAssetPolicyFromPageUrl,
+  extensionPagePdfAssetResolver,
 } from "../macros/external-asset-policy.js";
 import {
   buildSessionMacroResolutionOptions,
@@ -288,11 +289,12 @@ function mimeFromFilename(filename: string): string {
  * what keeps a single-page export — whose refs carry no page id at all —
  * working unchanged.
  *
- * Page-author external images (`trust` absent/`"page"`) are fetched through the
- * same session path the DOCX engine uses, so the two engines embed the same
- * image for the same page. `trust: "export-view"` refs never arrive here: the
- * router in {@link extensionPdfAssets} diverts them to the policy-checked
- * fetcher first.
+ * Page-author external images (`trust` absent/`"page"`) whose origin is covered
+ * by the extension manifest are fetched through the same session path the DOCX
+ * engine uses. Other absolute origins are rejected by the host-specific guard
+ * around this resolver before Chrome can emit a CORS request.
+ * `trust: "export-view"` refs never arrive here: the router in
+ * {@link extensionPdfAssets} diverts them to the policy-checked fetcher first.
  */
 function pageResolver(
   rootPageId: string,
@@ -340,7 +342,7 @@ export interface ExtensionPdfAssetsOptions {
   rootPageId: string;
   pageUrl: string;
   signal?: AbortSignal;
-  /** Replaces the session fetch; the trust router is composed around it regardless. */
+  /** Replaces the session fetch; the manifest guard and trust router are composed around it. */
   inner?: PdfAssetResolver;
   /** Defaults to the extension's manifest-scoped origin allowlist. */
   policy?: ExternalAssetPolicy;
@@ -350,7 +352,7 @@ export interface ExtensionPdfAssetsOptions {
 
 /**
  * The resolver the PDF export env actually gets: the session resolver with the
- * spec-004 trust router already composed around it.
+ * manifest-origin guard and spec-004 trust router already composed around it.
  *
  * **Every `PdfExportEnv.assets` this host builds goes through here.** That is
  * the reason it is a function rather than two inlined lines: the CLI's PDF path
@@ -359,14 +361,16 @@ export interface ExtensionPdfAssetsOptions {
  * path passed no `macros`. This host passes `macros`, so an unwrapped resolver
  * here is a live SSRF — third-party macro HTML naming
  * the cloud metadata service would be fetched from inside the user's
- * authenticated browser session. Composing the router costs nothing for refs
- * without the trust marker: they take the identical inner path.
+ * authenticated browser session. Refs without the trust marker take the inner
+ * path only when the extension manifest covers their origin; unsupported
+ * absolute origins degrade before the browser transport.
  */
 export function extensionPdfAssets(options: ExtensionPdfAssetsOptions): PdfAssetResolver {
   const policy = options.policy ?? extensionAssetPolicyFromPageUrl(options.pageUrl);
   const external = options.external ?? createExternalAssetFetcher(policy);
-  const inner =
+  const session =
     options.inner ?? pageResolver(options.rootPageId, options.pageUrl, options.signal);
+  const inner = extensionPagePdfAssetResolver(session, policy);
   return trustRoutingPdfAssetResolver(inner, external);
 }
 
