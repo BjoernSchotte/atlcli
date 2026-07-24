@@ -160,7 +160,7 @@ semantic default only after the entire explicit-source chain.
 
 ## 5. Commit-sized implementation tasks
 
-- [ ] **P0.1 — Establish the shared catalog and pure projection contract.**
+- [x] **P0.1 — Establish the shared catalog and pure projection contract.**
   Create the browser-safe catalog/module, move the 22 canonical names and 26
   aliases out of `markdown.ts`, define deterministic projections, and add
   exhaustive pure tests. Prove that usable Unicode is preserved, raw text is
@@ -172,9 +172,27 @@ semantic default only after the entire explicit-source chain.
 
   ```bash
   bun run test packages/confluence/src/emoji-projection.test.ts packages/confluence/src/markdown.test.ts
-  bun run test packages/pdf/src/emoji-font-coverage.test.ts
+  bun run test packages/pdf-compiler-browser/src/emoji-font-coverage.test.ts packages/docx/src/emoji-font-coverage.libreoffice.test.ts
+  bun run test scripts/api-report.test.ts
+  bun run check:browser
   bun run typecheck
   ```
+
+  Evidence (2026-07-24):
+
+  - All 22 canonical projections and all 26 aliases pass exhaustive contract
+    tests; the combined regression run reports 244 passing and zero failing
+    tests.
+  - One real Typst WASM compilation with all pinned production fonts covers
+    every projection without diagnostics and produces a valid tagged PDF.
+  - One generated DOCX containing all projections survives headless
+    LibreOffice conversion and PDF text extraction; the installed Microsoft
+    Word for Mac also renders all 22 rows without tofu or missing glyphs.
+  - The API-report guard, browser-isomorphism check, and workspace typecheck
+    pass.
+  - A read-only live export of DOCSY page `1126236245` completes as both DOCX
+    and PDF with exit code zero and no warnings or errors. It creates no remote
+    test resource, so no cleanup is required.
 
   Commit: `feat(confluence): define typed emoji projections`
 
