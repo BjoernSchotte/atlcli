@@ -2,7 +2,7 @@
 
 Status: active implementation and progress register
 Analysis date: 2026-07-22
-Progress last reconciled: 2026-07-23
+Progress last reconciled: 2026-07-24
 Repository baseline: `75b7379` (`main` at implementation-branch start)
 Official schema baseline: `@atlaskit/adf-schema@56.1.15`, resolved from Atlassian's canonical ADF schema URL and verified npm package on 2026-07-23
 
@@ -61,9 +61,9 @@ Consequences:
   attribute, or mark yet has a native neutral-model representation.
 - DOCX and PDF intentionally share parse/model semantics; target-specific gaps
   begin only after the shared model boundary.
-- A defensible 100% target still requires the remaining matrix gaps plus a
-  broader sanitized, observed Confluence corpus. Schema coverage alone is not a
-  product-fidelity claim.
+- A defensible 100% target still requires the remaining external emoji
+  asset/glyph contract. Schema coverage alone is not a product-fidelity claim;
+  the retained sanitized live corpus is the observed-product complement.
 
 ## 3. Scope and source policy
 
@@ -236,8 +236,12 @@ Current cross-cutting residuals:
   ordered tree continuation without refetching the committed root, asset
   continuation without refetching committed bytes, explicit authentication
   resume, and automatic reclaim after a complete persistent-browser restart.
-- [ ] **Open:** the real sanitized Confluence corpus covers selected live
-  slices, not yet every supported editor feature.
+- [x] The retained runtime-only Confluence corpus now covers the broad stable
+  feature surface on one schema-clean page. The product read-back contains
+  40 of 43 stable node types and 16 of 17 marks; direct schema fixtures cover
+  the server-normalized remainder. Both TypeScript exports complete, retain
+  nested bullet/numbered/task ownership, and render a real correlated PNG plus
+  its visible text description.
 - [ ] **Partial:** complete emoji glyph coverage and custom-emoji assets are
   blocked on a documented, authorized Atlassian asset-resolution contract.
 
@@ -554,9 +558,11 @@ Required acceptance contract:
   contract.
 - [x] **Versioned coverage manifest.** All pinned nodes and marks are
   classified, and CI rejects unreviewed schema/coverage drift.
-- [ ] **Open — real Confluence feature corpus.** Sanitized observed fixtures
-  exist for selected slices; broad editor-feature ADF/Storage pairs and build
-  provenance remain open.
+- [x] **Real Confluence feature corpus.** One retained runtime-only page
+  exercises the broad stable feature surface, validates after product
+  read-back against both the product validator and pinned schema, and supplies
+  same-version ADF/Storage inputs plus inspected DOCX/PDF artifacts. Runtime
+  identifiers and raw tenant content remain outside the repository.
 - [x] **Never-silent diagnostics.** Unknown nodes, marks, attributes,
   extensions, media kinds, and contract failures are bounded and
   source-located in export reports.
@@ -652,8 +658,8 @@ Required acceptance contract:
 - [x] Pin schema and add schema-diff CI.
 - [x] Add bounded `AdfDocument` validation and visible unknown-node/mark
   preservation with diagnostics.
-- [ ] Expand paired ADF/Storage fixtures to the full observed Confluence editor
-  corpus.
+- [x] Expand paired ADF/Storage fixtures to the full observed Confluence editor
+  corpus, with server-normalized schema members retained as direct fixtures.
 - [x] Generate and gate the coverage manifest from the pinned schema.
 
 ### Phase 1 - High-value inline fidelity
@@ -702,9 +708,10 @@ Required acceptance contract:
 - [x] Typst source assertions and rasterized PDF visual goldens for completed
   feature slices.
 - [x] Browser-host and CLI-host parity for the shared TS engine shapes.
-- [ ] **Open:** a persistent runtime-only feature tree now proves repeatable
-  CLI DOCX/PDF subtree exports and real correlated `mediaInline` output without
-  repository identifiers. Expand it to the remaining full feature-zoo corpus.
+- [x] A persistent runtime-only feature page proves broad ADF read-back,
+  same-version Storage comparison, repeatable CLI DOCX/PDF exports, real
+  correlated image retrieval, and a preserved visible image description
+  without repository identifiers.
 
 ## 12. Definition of done per feature
 
@@ -732,8 +739,8 @@ progress register:
 Current tests cover the bounded ADF validator, one direct fixture for every
 pinned node/mark, paired ADF/Storage projections, shared-model composition,
 both serializers, real DOCX/PDF rendering, and packed browser conformance.
-Observed Confluence breadth and the open matrix rows—not absence of an ADF
-entry point—are now the limiting factors.
+The external custom-emoji asset/glyph contract—not absence of an ADF entry
+point or observed Confluence breadth—is now the limiting factor.
 
 Closed gates:
 
@@ -798,13 +805,57 @@ Focused missing gates:
 - [x] Fragment and data-consumer preservation, non-publication, report,
   preparation, browser-parity, and no-pixel-drift tests.
 - [x] Native annotation comment-body/target-rendering tests.
-- [ ] Broad paired live Confluence ADF-versus-Storage projection fixtures.
+- [x] Broad paired live Confluence ADF-versus-Storage projection fixture,
+  pinned-schema read-back, real correlated image, and rendered DOCX/PDF proof.
+
+### 13.1 Sanitized live-corpus evidence (2026-07-24)
+
+The retained runtime-only feature page was built incrementally through the
+official page API, read back from Confluence, and validated against both
+`validateAdf()` and the pinned upstream schema. The schema-clean response
+observed 40 of 43 stable nodes and 16 of 17 marks. Confluence normalized
+`blockTaskItem` to `taskItem`; synthetic unresolved media identities were not
+used as evidence because the service decorated them with non-schema private
+attributes. The exhaustive direct-fixture gate remains authoritative for these
+server-normalized schema members.
+
+The same page produced 32 neutral blocks from ADF but only 3 from its Storage
+sidecar, directly demonstrating why ADF is the primary source. The TypeScript
+DOCX and Typst/PDF CLI exports both completed without error. Rendered inspection
+covered every output page and confirmed intact nested bullet, numbered, and
+task indentation, visible fallbacks, tables, marks, the real generated PNG, and
+its descriptive caption without clipping, overlap, or replacement glyphs.
+PDF retained the two live layout columns on one baseline at distinct horizontal
+positions. The first DOCX render exposed an interoperability defect after a
+nested expand: a table cell ending directly in another table caused
+LibreOffice to flatten the following borderless layout into prose. Emitting a
+terminal cell paragraph preserves the two 50/50 columns in the rendered DOCX;
+a focused regression test covers that exact adjacency.
+
+Confluence retained the correlated image identity and caption but removed the
+authored `media.attrs.alt` value on repeated write/read cycles. Both exporters
+therefore emitted their existing missing-alt diagnostics while preserving the
+visible description. This is recorded as observed Cloud normalization rather
+than silently claiming an alt-text round trip. The exercise also found that
+Cloud may omit the optional `mediaInline.attrs.type`; the local validator and
+its regression test now accept the pinned-schema shape while still rejecting
+an invalid supplied type.
+
+Caption text has no independent alignment field in the pinned schema, and
+Confluence documents that its text size and alignment cannot be changed.
+Placement belongs to `mediaSingle.attrs.layout`. PDF already aligned the whole
+figure; DOCX previously aligned only the image paragraph. DOCX now applies the
+same center, start, or end projection to the associated caption paragraph,
+with focused OOXML and live rendered evidence.
+
+No page, space, profile, account, tenant, attachment, or raw document
+identifier from this run is stored in the repository.
 
 At the initial documentation-only analysis baseline, workspace dependencies were not installed and existing tests were inspected rather than freshly executed. Subsequent implementation evidence and current gates are recorded in `PLAN.md`.
 
 ## 14. Official sources
 
-Accessed 2026-07-22 and 2026-07-23:
+Accessed 2026-07-22 through 2026-07-24:
 
 1. [Atlassian Document Format structure](https://developer.atlassian.com/cloud/jira/platform/apis/document/structure/)
 2. [Canonical ADF JSON schema](https://go.atlassian.com/adf-json-schema) -> pinned for this analysis to [`@atlaskit/adf-schema@56.1.15`](https://unpkg.com/@atlaskit/adf-schema@56.1.15/dist/json-schema/v1/full.json)

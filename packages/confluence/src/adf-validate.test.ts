@@ -303,6 +303,16 @@ describe("validateAdf", () => {
           },
         }],
       },
+      {
+        type: "paragraph",
+        content: [{
+          type: "mediaInline",
+          attrs: {
+            id: "cloud-read-back-inline",
+            collection: "content-1",
+          },
+        }],
+      },
     ]))).not.toThrow();
 
     const invalidMediaAttrs = [
@@ -318,6 +328,13 @@ describe("validateAdf", () => {
         content: [{ type: "media", attrs }],
       }])))).toBe("invalid-attributes");
     }
+    expect(errorCode(() => validateAdf(doc([{
+      type: "paragraph",
+      content: [{
+        type: "mediaInline",
+        attrs: { type: "external", id: "inline-1", collection: "content-1" },
+      }],
+    }])))).toBe("invalid-attributes");
 
     for (const attrs of [
       { layout: "floating" },

@@ -559,6 +559,7 @@ export function calloutTable(
     ? `<w:p><w:pPr><w:spacing w:after="60"/></w:pPr>${custom.iconRunsXml}</w:p>`
     : "";
   const title = titleRunsXml ? `<w:p><w:pPr><w:spacing w:after="60"/></w:pPr>${titleRunsXml}</w:p>` : "";
+  const body = cellBodyXml(bodyParagraphs);
   return (
     `<w:tbl>` +
     `<w:tblPr><w:tblW w:w="9000" w:type="dxa"/>` +
@@ -570,7 +571,7 @@ export function calloutTable(
     `<w:tcPr><w:tcW w:w="9000" w:type="dxa"/><w:shd w:val="clear" w:color="auto" w:fill="${c.fill}"/></w:tcPr>` +
     icon +
     title +
-    (bodyParagraphs || "<w:p/>") +
+    body +
     `</w:tc></w:tr>` +
     `</w:tbl>`
   );
@@ -696,8 +697,18 @@ export function tableCell(
     const value = opts.verticalAlignment === "middle" ? "center" : opts.verticalAlignment;
     props.push(`<w:vAlign w:val="${value}"/>`);
   }
-  const body = paragraphsXml || "<w:p/>";
+  const body = cellBodyXml(paragraphsXml);
   return `<w:tc><w:tcPr>${props.join("")}</w:tcPr>${body}</w:tc>`;
+}
+
+/**
+ * WordprocessingML table cells need a terminal paragraph after a nested table
+ * for portable round-tripping. Word repairs the omission permissively, while
+ * LibreOffice can lift the following sibling table into plain paragraphs.
+ */
+function cellBodyXml(xml: string): string {
+  if (!xml) return "<w:p/>";
+  return /<\/w:tbl>\s*$/u.test(xml) ? `${xml}<w:p/>` : xml;
 }
 
 /** Status badge as a shaded, colored inline run inside its own paragraph. */

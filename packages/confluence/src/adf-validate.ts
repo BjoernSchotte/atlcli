@@ -625,7 +625,11 @@ function validateKnownNodeShape(
       type === "media"
         ? new Set(["file", "link", "external"])
         : new Set(["file", "link", "image"]);
-    if (typeof mediaType !== "string" || !allowedTypes.has(mediaType)) {
+    const typeIsRequired = type === "media";
+    if (
+      (typeIsRequired && typeof mediaType !== "string") ||
+      (mediaType !== undefined && (typeof mediaType !== "string" || !allowedTypes.has(mediaType)))
+    ) {
       throw new AdfValidationError(
         "invalid-attributes",
         `ADF ${type} type is not part of the pinned schema.`,

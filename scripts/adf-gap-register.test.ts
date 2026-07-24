@@ -37,7 +37,7 @@ describe("ADF gap progress register", () => {
     const markdown = await readFile(GAP_ANALYSIS, "utf8");
     const register = parseProgressRegister(markdown);
     const orientation = markdown.match(
-      /Current matrix orientation: \*\*(\d+) of (\d+) rows closed; (\d+) rows open\.\*\*/,
+      /Current matrix orientation: \*\*(\d+) of (\d+) rows closed; (\d+) rows? open\.\*\*/,
     );
 
     expect(orientation).not.toBeNull();

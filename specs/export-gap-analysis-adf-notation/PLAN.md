@@ -1677,9 +1677,9 @@ and zero failures across 317 files; the production Chromium conformance case,
 all 20 browser-isomorphism entrypoints, full typecheck, and the complete
 workspace build also passed.
 
-The matrix now records 82 of 84 rows closed and 2 open. Both remaining rows
-share one external dependency: custom-emoji assets and complete emoji glyph
-coverage require a documented, authorized Atlassian resolver contract.
+At that checkpoint the matrix recorded 82 of 84 rows closed and 2 open. Both
+rows represent the external custom-emoji asset and complete glyph-coverage
+contract from the ADF-node and editor-notation perspectives.
 
 Completed legacy Storage code-macro follow-on recorded on 2026-07-23:
 the compatibility decoder now retains the documented `title` and `collapse`
@@ -1704,6 +1704,42 @@ manifest gates, the packed 15-case Chromium conformance run, exact CLI/browser
 artifact/report parity, the pinned-schema guard, API/closure guards, and the
 complete workspace suite passed. The suite recorded 5,062 tests passed, 13
 intentional skips, and zero failures across 317 files.
+
+Completed broad observed-corpus follow-on recorded on 2026-07-24:
+one retained runtime-only Confluence page now exercises the broad stable ADF
+surface without committing environment metadata or raw tenant content. Its
+schema-clean read-back passes both the product validator and pinned upstream
+schema and observes 40 of 43 stable nodes plus 16 of 17 marks. The remaining
+schema members are covered by exhaustive direct fixtures because Confluence
+normalizes one task form and does not retain unresolved synthetic media
+identities as clean public ADF.
+
+The same-version source comparison produced 32 neutral blocks from ADF and
+only 3 from Storage. Both TypeScript CLI engines completed the export, and
+rendered inspection of every DOCX and PDF page confirmed nested bullet,
+numbered, and task indentation plus a real correlated generated PNG and its
+visible descriptive caption. Confluence retained the caption and media
+identity but removed `media.attrs.alt` on repeated write/read cycles, so the
+existing target diagnostics correctly report the absent structural alt text.
+The live read-back also exposed a validator mismatch: the pinned schema and
+Cloud both permit `mediaInline.attrs.type` to be absent. The validator now
+accepts that shape and retains rejection of an invalid supplied type.
+
+The rendered review then caught two target-level details that semantic XML
+assertions alone had missed. First, ADF captions have no independent alignment;
+Confluence aligns the `mediaSingle` figure through its layout attribute. PDF
+already aligned the whole figure, while DOCX aligned only the drawing
+paragraph. DOCX now projects the same figure placement onto the caption
+paragraph. Second, PDF correctly kept the live two-column layout on one
+baseline, but LibreOffice flattened the following DOCX layout after a nested
+expand whose table cell ended in another table. A portable terminal paragraph
+inside such cells now preserves the following borderless 50/50 layout. Focused
+regression tests and renewed live DOCX rendering prove both corrections.
+
+The broad corpus gate is now closed, but it is not one of the 84 feature-matrix
+rows. The matrix therefore remains at 82 of 84 rows closed and 2 open. Both
+unchecked rows represent the same documented, authorized custom-emoji asset
+resolver and complete glyph-coverage contract from different matrix views.
 
 ## 14. Resolved rollout decisions and unresolved question
 

@@ -740,6 +740,37 @@ describe("serializeBlocks — callouts, code, tables, images", () => {
     expect(notes).toEqual([]);
   });
 
+  it("keeps a layout table after a nested expand interoperable with LibreOffice", async () => {
+    const blocks: ExportBlock[] = [
+      {
+        type: "expand",
+        nested: false,
+        content: [{
+          type: "expand",
+          nested: true,
+          content: [{ type: "paragraph", content: [{ type: "text", text: "Nested" }] }],
+        }],
+      },
+      {
+        type: "layout",
+        columns: [
+          {
+            width: 50,
+            content: [{ type: "paragraph", content: [{ type: "text", text: "Left" }] }],
+          },
+          {
+            width: 50,
+            content: [{ type: "paragraph", content: [{ type: "text", text: "Right" }] }],
+          },
+        ],
+      },
+    ];
+
+    const { xml } = await serializeBlocks(blocks, { styleNames: noStyles });
+    expect(xml).toContain("</w:tbl><w:p/></w:tc></w:tr></w:tbl><w:tbl>");
+    expect(xml).toContain('<w:gridCol w:w="4500"/><w:gridCol w:w="4500"/>');
+  });
+
   it("keeps a schema-valid zero-width layout column visible with an exact table width", async () => {
     const { xml } = await serializeBlocks([{
       type: "layout",
@@ -1589,6 +1620,29 @@ describe("serializeBlocks — C3 captions", () => {
       images: { embed: async () => ({ ok: true, xml: "<w:p>IMG</w:p>" }) },
     });
     expect(xml).toContain('<w:pStyle w:val="MyCaption"/>');
+  });
+
+  it("aligns an image caption with its ADF mediaSingle layout", async () => {
+    const blocks: ExportBlock[] = [
+      {
+        ...captionedImage(),
+        mediaPresentation: { layout: "center" },
+      } as ExportBlock,
+      {
+        ...captionedImage(),
+        mediaPresentation: { layout: "align-end" },
+      } as ExportBlock,
+    ];
+    const { xml } = await serializeBlocks(blocks, {
+      styleNames: noStyles,
+      images: { embed: async () => ({ ok: true, xml: "<w:p>IMG</w:p>" }) },
+    });
+    const captionParagraphs = [
+      ...xml.matchAll(/<w:p><w:pPr><w:pStyle w:val="Caption"\/>([\s\S]*?)<\/w:p>/g),
+    ];
+    expect(captionParagraphs).toHaveLength(2);
+    expect(captionParagraphs[0]?.[1]).toContain('<w:jc w:val="center"/>');
+    expect(captionParagraphs[1]?.[1]).toContain('<w:jc w:val="right"/>');
   });
 
   it("a captioned image with a failed embed still emits a numbered caption + placeholder", async () => {

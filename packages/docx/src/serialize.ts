@@ -946,7 +946,9 @@ async function serializeBlock(
       // fallback (italic placeholder + the SAME caption paragraph), so the SEQ
       // number is not skipped and downstream captions stay correctly numbered
       // (spec 003 C3). Caption below figures (established convention).
-      const cap = block.caption ? await captionXml(block.caption, ctx, notes) : "";
+      const cap = block.caption
+        ? alignMediaCaption(await captionXml(block.caption, ctx, notes), block)
+        : "";
       const fallback = () => {
         const placeholder = mediaParagraph(imageUnavailablePara(block), block);
         const ranged = wrapCommentRangesInFirstParagraph(
@@ -1010,7 +1012,9 @@ async function serializeBlock(
         block.annotations,
         ctx.comments,
       );
-      return block.caption ? ranged + await captionXml(block.caption, ctx, notes) : ranged;
+      return block.caption
+        ? ranged + alignMediaCaption(await captionXml(block.caption, ctx, notes), block)
+        : ranged;
     }
 
     case "unknown": {
@@ -1190,15 +1194,7 @@ function mediaParagraph(
   xml: string,
   block: Extract<ExportBlock, { type: "image" | "mediaFallback" }>,
 ): string {
-  const layout = block.mediaPresentation?.layout;
-  const alignment =
-    layout === "center" || layout === "wide" || layout === "full-width"
-      ? "center"
-      : layout === "wrap-right" || layout === "align-end"
-        ? "right"
-        : layout === "wrap-left" || layout === "align-start"
-          ? "left"
-          : undefined;
+  const alignment = mediaParagraphAlignment(block);
   const border = block.border;
   const group = block.mediaGroup;
   const groupBorderXml = group
@@ -1219,6 +1215,34 @@ function mediaParagraph(
     `${group ? '<w:shd w:val="clear" w:color="auto" w:fill="F7F8F9"/>' : ""}` +
     `${authoredBorderXml || groupBorderXml}`;
   return props ? addParagraphProps(xml, props) : xml;
+}
+
+function mediaParagraphAlignment(
+  block: Extract<ExportBlock, { type: "image" | "mediaFallback" }>,
+): "left" | "center" | "right" | undefined {
+  const layout = block.mediaPresentation?.layout;
+  return layout === "center" || layout === "wide" || layout === "full-width"
+    ? "center"
+    : layout === "wrap-right" || layout === "align-end"
+      ? "right"
+      : layout === "wrap-left" || layout === "align-start"
+        ? "left"
+        : undefined;
+}
+
+/**
+ * ADF captions do not carry independent alignment. Confluence aligns the
+ * `mediaSingle` figure through `attrs.layout`, so keep the Word caption
+ * paragraph with the same static figure placement as its image or fallback.
+ */
+function alignMediaCaption(
+  xml: string,
+  block: Extract<ExportBlock, { type: "image" | "mediaFallback" }>,
+): string {
+  const alignment = mediaParagraphAlignment(block);
+  return alignment
+    ? addParagraphProps(xml, `<w:jc w:val="${alignment}"/>`)
+    : xml;
 }
 
 function linkRuns(link: ExportLink | undefined, innerRuns: string): string {
