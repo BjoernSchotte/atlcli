@@ -88,10 +88,12 @@ export interface AdfSourceCaseResult {
   docxHasNestedListSemantics: boolean;
   docxHasTaskAndDecisionSemantics: boolean;
   docxHasCodeLineNumbers: boolean;
+  docxHasAllSemanticCalloutIcons: boolean;
   docxHasCustomPanelPresentation: boolean;
   docxHasNativeInlineComment: boolean;
   neutralHasBlockLocalIdentities: boolean;
   neutralHasCodeBlockSemantics: boolean;
+  neutralHasAllSemanticCalloutKinds: boolean;
   neutralHasCustomPanelSemantics: boolean;
   neutralHasAllSupportedEmojiProjections: boolean;
   neutralHasMentionSemantics: boolean;
@@ -446,6 +448,12 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
   const neutralExpand = pdfSource.blocks.find(
     (block) => block.type === "expand" && !block.nested,
   );
+  const neutralStandardCalloutKinds = new Set<string>();
+  for (const block of pdfSource.blocks) {
+    if (block.type === "callout" && block.kind !== "panel") {
+      neutralStandardCalloutKinds.add(block.kind);
+    }
+  }
   const codeGutterParagraphs =
     documentXml.match(/<w:ind w:start="480" w:hanging="480"\/>/gu)?.length ?? 0;
   const codeGutterRuns =
@@ -516,6 +524,13 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
       && documentXml.includes('<w:t xml:space="preserve">1</w:t>')
       && documentXml.includes(`<w:t xml:space="preserve">${expectedCodeLines}</w:t>`)
       && JSON.stringify(codeParagraphTexts) === JSON.stringify(ADF_CODE_BLOCK_SOURCE.split("\n")),
+    docxHasAllSemanticCalloutIcons:
+      ["Info", "Note", "Tip", "Success", "Error"].every(
+        (label) => documentXml.match(new RegExp(`descr="${label}"`, "gu"))?.length === 2,
+      )
+      && documentXml.match(/descr="Warning"/gu)?.length === 4
+      && documentXml.includes("List nested inside info callout")
+      && documentXml.includes("Warning callout inside table cell"),
     docxHasCustomPanelPresentation:
       documentXml.includes('w:fill="DBE1E6"')
       && documentXml.includes('w:color="123456"')
@@ -541,6 +556,10 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
       && neutralCodeBlock.hideLineNumbers === false
       && neutralCodeBlock.localId === "code-local"
       && neutralCodeBlock.uniqueId === "code-unique",
+    neutralHasAllSemanticCalloutKinds:
+      ["info", "note", "warning", "tip", "success", "error"].every(
+        (kind) => neutralStandardCalloutKinds.has(kind),
+      ),
     neutralHasCustomPanelSemantics:
       neutralCustomPanel?.type === "callout"
       && neutralCustomPanel.kind === "panel"
@@ -837,6 +856,9 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
   }
   if (!result.neutralHasCodeBlockSemantics) {
     throw new Error("ADF-source code-block presentation or identity was lost in the packed browser.");
+  }
+  if (!result.neutralHasAllSemanticCalloutKinds) {
+    throw new Error("ADF-source semantic callout kinds were lost in the packed browser.");
   }
   if (!result.neutralHasCustomPanelSemantics) {
     throw new Error("ADF-source custom-panel presentation or identity was lost in the packed browser.");

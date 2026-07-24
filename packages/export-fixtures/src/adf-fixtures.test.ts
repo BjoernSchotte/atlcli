@@ -50,6 +50,9 @@ describe("ADF browser conformance fixture", () => {
       "callout",
       "unknown",
       "unknown",
+      "callout",
+      "callout",
+      "callout",
       "paragraph",
     ]);
     expect(pdf.blocks[0]).toMatchObject({ type: "heading", localId: "heading-local" });
@@ -123,6 +126,23 @@ describe("ADF browser conformance fixture", () => {
         text: "Y★",
       },
     });
+    expect(pdf.blocks[7]).toMatchObject({
+      type: "callout",
+      kind: "info",
+      content: [
+        { type: "paragraph" },
+        {
+          type: "list",
+          ordered: false,
+          items: [{ content: [{ type: "paragraph" }] }],
+        },
+      ],
+    });
+    expect(pdf.blocks.slice(30, 33)).toMatchObject([
+      { type: "callout", kind: "note" },
+      { type: "callout", kind: "warning" },
+      { type: "callout", kind: "tip" },
+    ]);
     expect(pdf.blocks[25]).toMatchObject({
       type: "codeBlock",
       language: "typescript",
@@ -202,7 +222,7 @@ describe("ADF browser conformance fixture", () => {
         spaceKey: "TEST",
       },
     });
-    const emojiMatrix = pdf.blocks[30];
+    const emojiMatrix = pdf.blocks[33];
     expect(emojiMatrix).toMatchObject({
       type: "paragraph",
       localId: "emoji-matrix",
@@ -303,6 +323,10 @@ describe("ADF browser conformance fixture", () => {
             localId: "table-cell-local",
             columnWidths: [360],
             verticalAlignment: "bottom",
+            content: [
+              { type: "paragraph" },
+              { type: "callout", kind: "warning" },
+            ],
           },
         ],
       }],

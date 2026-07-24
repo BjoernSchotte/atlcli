@@ -329,7 +329,19 @@ export const ADF_CONFORMANCE_SOURCE = JSON.stringify({
     {
       type: "panel",
       attrs: { panelType: "info" },
-      content: [{ type: "paragraph", content: [{ type: "text", text: "ADF panel body" }] }],
+      content: [
+        { type: "paragraph", content: [{ type: "text", text: "ADF panel body" }] },
+        {
+          type: "bulletList",
+          content: [{
+            type: "listItem",
+            content: [{
+              type: "paragraph",
+              content: [{ type: "text", text: "List nested inside info callout" }],
+            }],
+          }],
+        },
+      ],
     },
     {
       type: "panel",
@@ -460,7 +472,17 @@ export const ADF_CONFORMANCE_SOURCE = JSON.stringify({
               valign: "bottom",
               localId: "table-cell-local",
             },
-            content: [{ type: "paragraph", content: [{ type: "text", text: "Cell" }] }],
+            content: [
+              { type: "paragraph", content: [{ type: "text", text: "Cell" }] },
+              {
+                type: "panel",
+                attrs: { panelType: "warning" },
+                content: [{
+                  type: "paragraph",
+                  content: [{ type: "text", text: "Warning callout inside table cell" }],
+                }],
+              },
+            ],
           },
         ],
       }],
@@ -719,6 +741,21 @@ export const ADF_CONFORMANCE_SOURCE = JSON.stringify({
         localId: "static-extension-private-local-id",
         parameters: { privateMode: "static-extension-private-parameter" },
       },
+    },
+    {
+      type: "panel",
+      attrs: { panelType: "note" },
+      content: [{ type: "paragraph", content: [{ type: "text", text: "ADF note panel" }] }],
+    },
+    {
+      type: "panel",
+      attrs: { panelType: "warning" },
+      content: [{ type: "paragraph", content: [{ type: "text", text: "ADF warning panel" }] }],
+    },
+    {
+      type: "panel",
+      attrs: { panelType: "tip" },
+      content: [{ type: "paragraph", content: [{ type: "text", text: "ADF tip panel" }] }],
     },
     {
       type: "paragraph",
@@ -1034,8 +1071,43 @@ export const BLOCKS_ALL_FIELDS: ExportBlock[] = [
       {
         cells: [
           { header: false, colspan: 1, rowspan: 1, content: [{ type: "paragraph", content: [{ type: "text", text: "left" }] }] },
-          { header: false, colspan: 1, rowspan: 1, content: [{ type: "paragraph", content: [{ type: "text", text: "right" }] }] },
+          {
+            header: false,
+            colspan: 1,
+            rowspan: 1,
+            content: [{
+              type: "callout",
+              kind: "warning",
+              content: [{ type: "paragraph", content: [{ type: "text", text: "Dense table warning" }] }],
+            }],
+          },
         ],
+      },
+    ],
+  },
+  {
+    type: "list",
+    ordered: false,
+    items: [{
+      content: [
+        { type: "paragraph", content: [{ type: "text", text: "List callout container" }] },
+        {
+          type: "callout",
+          kind: "tip",
+          content: [{ type: "paragraph", content: [{ type: "text", text: "Tip inside list item" }] }],
+        },
+      ],
+    }],
+  },
+  {
+    type: "callout",
+    kind: "info",
+    content: [
+      { type: "paragraph", content: [{ type: "text", text: "Outer info callout" }] },
+      {
+        type: "callout",
+        kind: "note",
+        content: [{ type: "paragraph", content: [{ type: "text", text: "Note inside callout" }] }],
       },
     ],
   },

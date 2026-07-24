@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "sourceSha256": "17439476d9e322e000bb1761ece04559eb89076ead565d8b676da533549631a8",
+  "sourceSha256": "2d7f9d45b19ff263da88ca6f2180b669ffc9185265eddb109ffa2d2fa058f9bf",
   "features": [
     "inline-code",
     "annotation-native-docx-static-pdf",
@@ -17,6 +17,8 @@
     "block-indentation",
     "paragraph-font-size",
     "semantic-success-error-panels",
+    "semantic-callout-labelled-icons",
+    "semantic-callout-nested-list-and-table-layout",
     "custom-panel-color-icon",
     "typed-custom-panel-icon-projection",
     "ordered-list-start",
@@ -51,15 +53,15 @@
       "pages": [
         {
           "file": "docx-page-1.png",
-          "sha256": "0e245b8dfcf0790a7ddef808e8ab453c76b93dcd32b3fa73dbf093cd881eaccb"
+          "sha256": "830f3b861719e344f4501cb5873acdddf10ebd8dd53571db297373f0d1d24288"
         },
         {
           "file": "docx-page-2.png",
-          "sha256": "d4a9ea1ef70e1a9ff9f99ee205736540337dd1374b147eb883540ebd2e38235e"
+          "sha256": "85dd570efc03097ede86ec210d927ee71efef2db77906a87f5aaf4b2a9bbe459"
         },
         {
           "file": "docx-page-3.png",
-          "sha256": "fbbc5e91e97e429a59307e23b6ea5c8a9a254afdaab40a6c0bc79e464244ad2d"
+          "sha256": "8820ce4c5284ca6afd942a56b1bd239c1eef07dbfeb083d564b281b266648115"
         }
       ],
       "requiredText": [
@@ -70,8 +72,13 @@
         "Centered paragraph",
         "Indented paragraph",
         "ADF panel body",
+        "List nested inside info callout",
+        "ADF note panel",
+        "ADF warning panel",
+        "ADF tip panel",
         "ADF success panel",
         "ADF error panel",
+        "Warning callout inside table cell",
         "★",
         "ADF custom panel",
         "@Example Person",
@@ -286,23 +293,27 @@
         },
         {
           "file": "pdf-page-3.png",
-          "sha256": "9cf23dc699f1c01201b0ad44d631dc2b3a59a036b75fd17705ff4013bf5b39bf"
+          "sha256": "09137eb4cb0384831d55e3b704398329d9416da8fd98a57f43ac7d0ddbc0558e"
         },
         {
           "file": "pdf-page-4.png",
-          "sha256": "0708083a8de6ad40007ff73af7fbadc0a1139cd15d4d5796ee8388a1b6014ed1"
+          "sha256": "65e332dc826d87539ae6a38ecd10c916f6849b1bd08b4e68e0e637995f0e6f44"
         },
         {
           "file": "pdf-page-5.png",
-          "sha256": "841ae163b2f344c7d4547cb228c41cf824b101fdf4e412240c66277afbf294a0"
+          "sha256": "50a41331c4606ef68824f5101d2b224f74bfdfb68cd9118801a9cbbdb65765de"
         },
         {
           "file": "pdf-page-6.png",
-          "sha256": "2eb536c78f1c4cdaad7996075291dd43d881e23bd51ee9f4ace8dcb02176adc9"
+          "sha256": "9050097b6d326718ce187ede0cdb70eeaa6849d5fbbceef308d8edeac3a2d88e"
         },
         {
           "file": "pdf-page-7.png",
-          "sha256": "91b220f7e400dedcbf795e63be834975c8aee2325b8bdb07db2442d2176b93dc"
+          "sha256": "d312acacbe17d8c26e66ed814e0b95a35f356cba5ab5f343f0d127d639edfd2e"
+        },
+        {
+          "file": "pdf-page-8.png",
+          "sha256": "7a031a87f819bf1055d3ef044b67495fbaa752fdffdeaa116434964160c576b9"
         }
       ],
       "requiredText": [
@@ -313,8 +324,13 @@
         "Centered paragraph",
         "Indented paragraph",
         "ADF panel body",
+        "List nested inside info callout",
+        "ADF note panel",
+        "ADF warning panel",
+        "ADF tip panel",
         "ADF success panel",
         "ADF error panel",
+        "Warning callout inside table cell",
         "★",
         "ADF custom panel",
         "@Example Person",

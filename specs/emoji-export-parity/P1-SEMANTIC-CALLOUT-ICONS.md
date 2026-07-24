@@ -144,10 +144,27 @@ settings were restored to off after the check.
 
   Commit: `feat(export): render semantic callout icons`
 
-- [ ] **P1.3 — Prove layout, extraction, and accessibility behavior.**
+- [x] **P1.3 — Prove layout, extraction, and accessibility behavior.**
   Add standard callouts in body, list/table/callout containers, update reviewed
   render goldens, and prove no clipping, tofu, duplicate extracted labels, or
   color-only semantics.
+
+  Evidence (2026-07-24):
+
+  - The schema-valid ADF fixture contains all six standard kinds, a list nested
+    inside an info callout, and a warning callout inside a bounded table cell.
+  - The direct block-model browser fixture additionally places semantic
+    callouts in list, table, and nested-callout containers.
+  - Browser direct/background parity, packed production output, browser
+    typecheck/build/output scan, and the Playwright Chromium case pass.
+  - The rendered-golden verifier proves one labelled DOCX/PDF icon per standard
+    body callout plus the second table warning, while extracted text keeps all
+    bodies and exactly one authored literal `:warning:` control.
+  - All 3 DOCX and all 8 PDF reference PNGs were inspected individually:
+    callout icons are visible, color-independent, unclipped, non-tofu, and do
+    not collide with nested list or table content.
+  - Re-rendered output matches the reviewed references exactly:
+    `maxMeanPixelDifference=0`, `minContentBoundsIou=1`.
 
   Verification:
 

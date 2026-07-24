@@ -5,6 +5,7 @@ import { copyFile, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { inflateSync } from "node:zlib";
 import { runExport } from "@atlcli/docx";
 import { unzipDocx } from "@atlcli/docx/scan";
 import { nodeDocxEnv } from "../packages/export-node/src/docx-env.js";
@@ -42,8 +43,13 @@ const REQUIRED_TEXT = Object.freeze([
   "Centered paragraph",
   "Indented paragraph",
   "ADF panel body",
+  "List nested inside info callout",
+  "ADF note panel",
+  "ADF warning panel",
+  "ADF tip panel",
   "ADF success panel",
   "ADF error panel",
+  "Warning callout inside table cell",
   "★",
   "ADF custom panel",
   "@Example Person",
@@ -207,6 +213,7 @@ async function renderCurrent(tempDir: string): Promise<{
   docxDocumentXml: string;
   docxText: string;
   pdfText: string;
+  pdfStructure: string;
 }> {
   const tools = adfRenderedGoldenTools();
   if (!tools.soffice || !tools.pdftoppm || !tools.pdftotext || !tools.pdffonts) {
@@ -295,7 +302,8 @@ async function renderCurrent(tempDir: string): Promise<{
     .some((line) => /JetBrainsMono/iu.test(line) && /\byes\b/iu.test(line));
   if (!embeddedCodeFont) {
     throw new Error(
-      "DOCX rendered golden did not carry its embedded JetBrains Mono face into the converted PDF.",
+      "DOCX rendered golden did not carry its embedded JetBrains Mono face into the converted PDF. "
+      + `pdffonts output: ${docxFonts.replace(/\s+/gu, " ").trim()}`,
     );
   }
   runTool(tools.pdftoppm, ["-png", "-r", "96", docxPdfPath, join(tempDir, "current-docx")], tempDir);
@@ -315,7 +323,28 @@ async function renderCurrent(tempDir: string): Promise<{
         ?.asText() ?? "",
     docxText: runTool(tools.pdftotext, ["-layout", docxPdfPath, "-"], tempDir),
     pdfText: runTool(tools.pdftotext, ["-layout", pdfPath, "-"], tempDir),
+    pdfStructure: inspectablePdf(new Uint8Array(await readFile(pdfPath))),
   };
+}
+
+function inspectablePdf(pdf: Uint8Array): string {
+  const latin1 = new TextDecoder("latin1").decode(pdf);
+  let text = latin1;
+  const streams = /stream\r?\n/gu;
+  let match: RegExpExecArray | null;
+  while ((match = streams.exec(latin1))) {
+    const start = match.index + match[0].length;
+    const end = latin1.indexOf("endstream", start);
+    if (end < 0) continue;
+    let stop = end;
+    while (stop > start && (pdf[stop - 1] === 0x0a || pdf[stop - 1] === 0x0d)) stop -= 1;
+    try {
+      text += `\n${inflateSync(pdf.subarray(start, stop)).toString("latin1")}`;
+    } catch {
+      // Font and image streams are not FlateDecode text streams.
+    }
+  }
+  return text;
 }
 
 async function normalizedPixels(path: string): Promise<{ rgba: Uint8Array; bounds: Bounds }> {
@@ -402,6 +431,8 @@ async function manifestFor(
       "block-indentation",
       "paragraph-font-size",
       "semantic-success-error-panels",
+      "semantic-callout-labelled-icons",
+      "semantic-callout-nested-list-and-table-layout",
       "custom-panel-color-icon",
       "typed-custom-panel-icon-projection",
       "ordered-list-start",
@@ -527,6 +558,27 @@ function assertDocxUnicodeControls(documentXml: string): void {
   }
 }
 
+function assertSemanticCalloutAccessibility(documentXml: string, pdfStructure: string): void {
+  for (const label of ["Info", "Note", "Tip", "Success", "Error"]) {
+    const docxCount = documentXml.match(new RegExp(`descr="${label}"`, "gu"))?.length ?? 0;
+    if (docxCount !== 2) {
+      throw new Error(`DOCX rendered golden expected one labelled ${label} icon, got ${docxCount / 2}.`);
+    }
+    const pdfCount = pdfStructure.match(new RegExp(`/Alt \\(${label}\\)`, "gu"))?.length ?? 0;
+    if (pdfCount !== 1) {
+      throw new Error(`PDF rendered golden expected one labelled ${label} figure, got ${pdfCount}.`);
+    }
+  }
+  const docxWarningCount = documentXml.match(/descr="Warning"/gu)?.length ?? 0;
+  if (docxWarningCount !== 4) {
+    throw new Error(`DOCX rendered golden expected two labelled Warning icons, got ${docxWarningCount / 2}.`);
+  }
+  const pdfWarningCount = pdfStructure.match(/\/Alt \(Warning\)/gu)?.length ?? 0;
+  if (pdfWarningCount !== 2) {
+    throw new Error(`PDF rendered golden expected two labelled Warning figures, got ${pdfWarningCount}.`);
+  }
+}
+
 export async function checkAdfRenderedGoldens(options: { update?: boolean } = {}): Promise<AdfRenderedGoldenResult> {
   const tempDir = await mkdtemp(join(tmpdir(), "atlcli-adf-rendered-golden-"));
   try {
@@ -538,6 +590,7 @@ export async function checkAdfRenderedGoldens(options: { update?: boolean } = {}
     assertEmojiMatrix("DOCX", rendered.docxText);
     assertEmojiMatrix("PDF", rendered.pdfText);
     assertDocxUnicodeControls(rendered.docxDocumentXml);
+    assertSemanticCalloutAccessibility(rendered.docxDocumentXml, rendered.pdfStructure);
     await mkdir(ADF_RENDERED_GOLDEN_DIR, { recursive: true });
     if (options.update) {
       const manifest = await manifestFor(rendered.docxPages, rendered.pdfPages);
