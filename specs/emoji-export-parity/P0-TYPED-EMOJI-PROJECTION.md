@@ -243,7 +243,7 @@ semantic default only after the entire explicit-source chain.
 
   Commit: `fix(confluence): resolve typed emoji short names`
 
-- [ ] **P0.3 — Reuse the projection for custom-panel icons and both serializers.**
+- [x] **P0.3 — Reuse the projection for custom-panel icons and both serializers.**
   Prefer valid `panelIconText`, otherwise resolve a known typed `panelIcon`.
   Preserve a non-colon `panelIcon` exactly. Unknown/custom colon short names
   stay visible and emit the stable `adf-node-degraded` code with ADF path
@@ -257,6 +257,30 @@ semantic default only after the entire explicit-source chain.
   bun run test packages/confluence/src/adf-to-blocks.test.ts packages/docx/src/serialize.test.ts packages/pdf/src/serialize.test.ts
   bun run typecheck
   ```
+
+  Evidence (2026-07-24):
+
+  - The ADF adapter covers known canonical and alias icons, empty and explicit
+    `panelIconText`, exact non-colon Unicode, unresolved colon tokens, ID-only
+    identity, and an explicit icon on a standard panel. The single unresolved
+    chosen token emits exactly one `adf-node-degraded` note with
+    `blocks[4]` provenance.
+  - One shared `panelIconDisplayText()` helper implements the documented
+    precedence. DOCX and PDF consume it but do not call the emoji resolver.
+    Serializer negative controls prove that raw `:warning:` without an
+    adapter-provided projection remains literal.
+  - The focused adapter/DOCX/PDF run reports 239 passing and zero failing tests.
+    The fresh full build, workspace typecheck, generated API and closure
+    reports, five API-surface guards, and `git diff --check` pass.
+  - Synthetic DOCSY page `atlcli-e2e-emoji-p03-1784879522` (page
+    `1141080095`) exported successfully as DOCX and PDF with the known warning
+    glyph, literal-known control, and one diagnosed unknown-custom control.
+    The page was deleted and the subsequent lookup proved it absent.
+  - The one DOCX render and all four PDF pages were visually inspected without
+    tofu, clipping, or overlap. The CLI's Storage authoring surface cannot
+    originate the ADF-only custom-panel attributes, so panel-specific behavior
+    is contract-tested here and proceeds to the packed-browser ADF fixture in
+    P0.4; the live run proves the production Cloud export pipeline.
 
   Commit: `fix(export): project typed custom panel icons`
 

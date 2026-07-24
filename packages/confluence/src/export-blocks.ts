@@ -31,6 +31,7 @@ import { translateDatasourceLink } from "./datasource.js";
 import type { AdfJsonValue } from "./adf-types.js";
 import type { BlocksResult } from "./page-body.js";
 import {
+  isColonEmojiShortName,
   projectTypedEmoji,
   type PortableEmojiProjection,
 } from "./emoji-projection.js";
@@ -661,6 +662,26 @@ export interface EmojiSemantics {
 }
 
 /**
+ * Select the already-decided portable text for an explicit ADF panel icon.
+ *
+ * This helper deliberately does not resolve short names. Source adapters own
+ * that decision and may attach `panelIconProjection`; renderers consume only
+ * this precedence chain.
+ */
+export function panelIconDisplayText(panel: {
+  panelIcon?: string;
+  panelIconText?: string;
+  panelIconProjection?: PortableEmojiProjection;
+}): string | undefined {
+  if (panel.panelIconText) return panel.panelIconText;
+  if (panel.panelIcon && !isColonEmojiShortName(panel.panelIcon)) {
+    return panel.panelIcon;
+  }
+  if (panel.panelIconProjection) return panel.panelIconProjection.text;
+  return panel.panelIcon || undefined;
+}
+
+/**
  * Case-insensitive convenience lookup for a parameter's plain-text value only
  * (mirrors the internal `macroParam` helper). Returns `undefined` for
  * ref-only or absent parameters — callers that need `ri:*` data read `refs`
@@ -757,6 +778,8 @@ export type ExportBlock =
       panelIconId?: string;
       /** Exact custom-panel visible icon text, preferred by static renderers. */
       panelIconText?: string;
+      /** Reviewed portable projection for a typed colon-shaped panel icon. */
+      panelIconProjection?: PortableEmojiProjection;
       /** Exact ADF synced-content identity retained behind the static projection. */
       syncedContent?: SyncedContentProvenance;
     }

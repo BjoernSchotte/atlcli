@@ -1,6 +1,9 @@
 import { describe, expect, it } from "bun:test";
 import type { ExportBlock, ExportNode, ExportNote } from "@atlcli/confluence";
-import { composeChapters } from "@atlcli/confluence";
+import {
+  CONFLUENCE_LEGACY_EMOJI_PROJECTIONS,
+  composeChapters,
+} from "@atlcli/confluence";
 import { BUILTIN_PDF_TEMPLATE_MANIFEST } from "./builtin-template.js";
 import { preparePdfDocument } from "./prepare.js";
 import { mapPdfDiagnostics, serializePdfDocument } from "./serialize.js";
@@ -220,13 +223,44 @@ describe("PDF preparation and serialization", () => {
       panelIcon: ":star:",
       panelIconId: "icon-id",
       panelIconText: "★",
+      panelIconProjection: CONFLUENCE_LEGACY_EMOJI_PROJECTIONS["yellow-star"],
       content: [{ type: "paragraph", content: [{ type: "text", text: "Custom body" }] }],
     }]);
 
     expect(main).toContain(
       '#callout(kind: "panel", title: none, custom_color: rgb("#123456"), icon: [#text("★")])',
     );
+    expect(main).not.toContain("Y★");
     expect(main).not.toContain(":star:");
+  });
+
+  it("uses adapter-projected panel icons without resolving raw colon text", async () => {
+    const { main } = await toMain([
+      {
+        type: "callout",
+        kind: "panel",
+        panelIcon: ":warning:",
+        panelIconText: "",
+        panelIconProjection: CONFLUENCE_LEGACY_EMOJI_PROJECTIONS.warning,
+        content: [{ type: "paragraph", content: [{ type: "text", text: "Projected" }] }],
+      },
+      {
+        type: "callout",
+        kind: "panel",
+        panelIcon: ":warning:",
+        content: [{ type: "paragraph", content: [{ type: "text", text: "Raw" }] }],
+      },
+      {
+        type: "callout",
+        kind: "panel",
+        panelIcon: "🦜",
+        content: [{ type: "paragraph", content: [{ type: "text", text: "Unicode" }] }],
+      },
+    ]);
+
+    expect(main).toContain('icon: [#text("⚠")]');
+    expect(main).toContain('icon: [#text(":warning:")]');
+    expect(main).toContain('icon: [#text("🦜")]');
   });
 
   it("renders expand and nested-expand bodies open with a visible disclosure title", async () => {

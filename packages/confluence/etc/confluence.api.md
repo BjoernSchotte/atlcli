@@ -1256,6 +1256,7 @@ export type ExportBlock = {
     panelIcon?: string;
     panelIconId?: string;
     panelIconText?: string;
+    panelIconProjection?: PortableEmojiProjection;
     syncedContent?: SyncedContentProvenance;
 } | {
     type: "expand";
@@ -2071,6 +2072,13 @@ export declare class PaginationLoopError extends Error {
     readonly code: "pagination-loop";
     constructor(token: string);
 }
+
+// export: panelIconDisplayText
+export declare function panelIconDisplayText(panel: {
+    panelIcon?: string;
+    panelIconText?: string;
+    panelIconProjection?: PortableEmojiProjection;
+}): string | undefined;
 
 // export: parseAdfDateTimestamp
 export declare function parseAdfDateTimestamp(timestamp: string): Date | undefined;
@@ -3881,6 +3889,7 @@ export type ExportBlock = {
     panelIcon?: string;
     panelIconId?: string;
     panelIconText?: string;
+    panelIconProjection?: PortableEmojiProjection;
     syncedContent?: SyncedContentProvenance;
 } | {
     type: "expand";
@@ -4696,6 +4705,13 @@ export declare class PaginationLoopError extends Error {
     readonly code: "pagination-loop";
     constructor(token: string);
 }
+
+// export: panelIconDisplayText
+export declare function panelIconDisplayText(panel: {
+    panelIcon?: string;
+    panelIconText?: string;
+    panelIconProjection?: PortableEmojiProjection;
+}): string | undefined;
 
 // export: parseAdfDateTimestamp
 export declare function parseAdfDateTimestamp(timestamp: string): Date | undefined;
@@ -6506,6 +6522,7 @@ export type ExportBlock = {
     panelIcon?: string;
     panelIconId?: string;
     panelIconText?: string;
+    panelIconProjection?: PortableEmojiProjection;
     syncedContent?: SyncedContentProvenance;
 } | {
     type: "expand";
@@ -7321,6 +7338,13 @@ export declare class PaginationLoopError extends Error {
     readonly code: "pagination-loop";
     constructor(token: string);
 }
+
+// export: panelIconDisplayText
+export declare function panelIconDisplayText(panel: {
+    panelIcon?: string;
+    panelIconText?: string;
+    panelIconProjection?: PortableEmojiProjection;
+}): string | undefined;
 
 // export: parseAdfDateTimestamp
 export declare function parseAdfDateTimestamp(timestamp: string): Date | undefined;
@@ -8958,6 +8982,7 @@ export type ExportBlock = {
     panelIcon?: string;
     panelIconId?: string;
     panelIconText?: string;
+    panelIconProjection?: PortableEmojiProjection;
     syncedContent?: SyncedContentProvenance;
 } | {
     type: "expand";
@@ -9978,6 +10003,13 @@ export interface PageVersion {
 export type PageWithPosition = ConfluencePage & {
     position: number | null;
 };
+
+// export: panelIconDisplayText
+export declare function panelIconDisplayText(panel: {
+    panelIcon?: string;
+    panelIconText?: string;
+    panelIconProjection?: PortableEmojiProjection;
+}): string | undefined;
 
 // export: parseAdfDateTimestamp
 export declare function parseAdfDateTimestamp(timestamp: string): Date | undefined;
@@ -12049,6 +12081,7 @@ export type ExportBlock = {
     panelIcon?: string;
     panelIconId?: string;
     panelIconText?: string;
+    panelIconProjection?: PortableEmojiProjection;
     syncedContent?: SyncedContentProvenance;
 } | {
     type: "expand";
@@ -12864,6 +12897,13 @@ export declare class PaginationLoopError extends Error {
     readonly code: "pagination-loop";
     constructor(token: string);
 }
+
+// export: panelIconDisplayText
+export declare function panelIconDisplayText(panel: {
+    panelIcon?: string;
+    panelIconText?: string;
+    panelIconProjection?: PortableEmojiProjection;
+}): string | undefined;
 
 // export: parseAdfDateTimestamp
 export declare function parseAdfDateTimestamp(timestamp: string): Date | undefined;

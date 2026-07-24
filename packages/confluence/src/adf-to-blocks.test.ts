@@ -414,10 +414,92 @@ describe("adfToBlocks", () => {
         panelIcon: ":star:",
         panelIconId: "icon-id",
         panelIconText: "★",
+        panelIconProjection: CONFLUENCE_LEGACY_EMOJI_PROJECTIONS["yellow-star"],
         content: [{ type: "paragraph", content: [{ type: "text", text: "Custom" }] }],
       },
     ]);
     expect(result.notes).toEqual([]);
+  });
+
+  it("projects typed panel icons once while preserving explicit-source precedence", () => {
+    const result = adfToBlocks(doc([
+      {
+        type: "panel",
+        attrs: { panelType: "custom", panelIcon: ":warning:" },
+        content: [{ type: "paragraph", content: [{ type: "text", text: "Known" }] }],
+      },
+      {
+        type: "panel",
+        attrs: { panelType: "custom", panelIcon: ":star:", panelIconText: "" },
+        content: [{ type: "paragraph", content: [{ type: "text", text: "Alias" }] }],
+      },
+      {
+        type: "panel",
+        attrs: {
+          panelType: "custom",
+          panelIcon: ":custom-hidden:",
+          panelIconText: "🧭",
+        },
+        content: [{ type: "paragraph", content: [{ type: "text", text: "Text wins" }] }],
+      },
+      {
+        type: "panel",
+        attrs: { panelType: "custom", panelIcon: "🦜" },
+        content: [{ type: "paragraph", content: [{ type: "text", text: "Unicode" }] }],
+      },
+      {
+        type: "panel",
+        attrs: { panelType: "custom", panelIcon: ":custom-visible:" },
+        content: [{ type: "paragraph", content: [{ type: "text", text: "Unknown" }] }],
+      },
+      {
+        type: "panel",
+        attrs: { panelType: "warning", panelIcon: ":warning:" },
+        content: [{ type: "paragraph", content: [{ type: "text", text: "Standard" }] }],
+      },
+    ]));
+
+    expect(result.blocks[0]).toMatchObject({
+      type: "callout",
+      kind: "panel",
+      panelIcon: ":warning:",
+      panelIconProjection: CONFLUENCE_LEGACY_EMOJI_PROJECTIONS.warning,
+    });
+    expect(result.blocks[1]).toMatchObject({
+      type: "callout",
+      kind: "panel",
+      panelIcon: ":star:",
+      panelIconText: "",
+      panelIconProjection: CONFLUENCE_LEGACY_EMOJI_PROJECTIONS["yellow-star"],
+    });
+    expect(result.blocks[2]).toMatchObject({
+      type: "callout",
+      panelIcon: ":custom-hidden:",
+      panelIconText: "🧭",
+    });
+    expect(result.blocks[2]).not.toHaveProperty("panelIconProjection");
+    expect(result.blocks[3]).toMatchObject({
+      type: "callout",
+      panelIcon: "🦜",
+    });
+    expect(result.blocks[3]).not.toHaveProperty("panelIconProjection");
+    expect(result.blocks[4]).toMatchObject({
+      type: "callout",
+      panelIcon: ":custom-visible:",
+    });
+    expect(result.blocks[4]).not.toHaveProperty("panelIconProjection");
+    expect(result.blocks[5]).toMatchObject({
+      type: "callout",
+      kind: "warning",
+      panelIcon: ":warning:",
+      panelIconProjection: CONFLUENCE_LEGACY_EMOJI_PROJECTIONS.warning,
+    });
+    expect(result.notes).toEqual([
+      expect.objectContaining({
+        code: "adf-node-degraded",
+        source: expect.objectContaining({ blockPath: "blocks[4]" }),
+      }),
+    ]);
   });
 
   it("retains custom-panel values and reports only unportable color or ID-only icon fallbacks", () => {

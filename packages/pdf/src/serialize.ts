@@ -16,6 +16,7 @@ import {
   mediaFallbackDisplayText,
   isSafeLinkScheme,
   mentionDisplayText,
+  panelIconDisplayText,
   smartCardDisplayText,
   statusDisplayText,
   uniqueAnchorId,
@@ -1424,7 +1425,7 @@ function serializeBlock(
         block.panelColor && /^#[0-9a-f]{6}$/iu.test(block.panelColor)
           ? safeColor(block.panelColor)
           : undefined;
-      const panelIcon = block.panelIconText || block.panelIcon;
+      const panelIcon = panelIconDisplayText(block);
       const presentation =
         (panelColor ? `, custom_color: rgb(${typstString(panelColor)})` : "")
         + (panelIcon ? `, icon: [${literalText(panelIcon)}]` : "");

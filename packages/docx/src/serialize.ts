@@ -32,6 +32,7 @@ import {
   materializeTable,
   mediaFallbackDisplayText,
   mentionDisplayText,
+  panelIconDisplayText,
   readableTextColor,
   sanitizeAnchorId,
   smartCardDisplayText,
@@ -884,7 +885,7 @@ async function serializeBlock(
     case "callout": {
       const title = block.title ? run(block.title, { bold: true }) : null;
       const panelColor = block.panelColor?.match(/^#[0-9a-f]{6}$/iu)?.[0].toUpperCase();
-      const panelIcon = block.panelIconText || block.panelIcon;
+      const panelIcon = panelIconDisplayText(block);
       const body = await serializeChildren(
         block.content,
         { ...ctx, container: "calloutCell" },

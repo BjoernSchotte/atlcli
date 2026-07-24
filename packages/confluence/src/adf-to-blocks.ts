@@ -53,7 +53,10 @@ import { commentBodyToText } from "./comment-text.js";
 import type { InlineComment } from "./client.js";
 import { sanitizeLinkHref, unsafeLinkMessage } from "./link-safety.js";
 import type { BlocksResult } from "./page-body.js";
-import { projectTypedEmoji } from "./emoji-projection.js";
+import {
+  isColonEmojiShortName,
+  projectTypedEmoji,
+} from "./emoji-projection.js";
 
 export interface AdfToBlocksOptions
   extends Omit<StorageToBlocksOptions, "parseBudget"> {
@@ -458,6 +461,14 @@ function decodeBlockNode(node: AdfNode, ctx: DecodeContext, path: string): Expor
       const panelIcon = optionalStringAttr(node, "panelIcon");
       const panelIconId = optionalStringAttr(node, "panelIconId");
       const panelIconText = optionalStringAttr(node, "panelIconText");
+      const panelIconResult =
+        panelIcon !== undefined && isColonEmojiShortName(panelIcon)
+          ? projectTypedEmoji({ shortName: panelIcon })
+          : undefined;
+      const panelIconProjection =
+        panelIconResult?.kind === "known"
+          ? panelIconResult.projection
+          : undefined;
       if (rawPanelColor !== undefined && normalizedPanelColor === undefined) {
         addNodeNote(
           ctx,
@@ -478,6 +489,17 @@ function decodeBlockNode(node: AdfNode, ctx: DecodeContext, path: string): Expor
           "has only a service icon ID; the identity was retained but no portable static icon text exists.",
         );
       }
+      if (
+        !panelIconText &&
+        panelIconResult?.kind === "unresolved"
+      ) {
+        addNodeNote(
+          ctx,
+          path,
+          node.type,
+          "has an unresolved typed panel icon; the exact short name remains visible.",
+        );
+      }
       return [{
         type: "callout",
         kind: panelKind(type),
@@ -486,6 +508,7 @@ function decodeBlockNode(node: AdfNode, ctx: DecodeContext, path: string): Expor
         ...(panelIcon !== undefined ? { panelIcon } : {}),
         ...(panelIconId !== undefined ? { panelIconId } : {}),
         ...(panelIconText !== undefined ? { panelIconText } : {}),
+        ...(panelIconProjection !== undefined ? { panelIconProjection } : {}),
         content: decodeBlockChildren(node.content, ctx, `${path}.content`),
       }];
     }

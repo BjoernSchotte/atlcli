@@ -1,5 +1,12 @@
 import { describe, expect, it } from "bun:test";
-import { composeChapters, storageToBlocks, type ExportBlock, type ExportNode, type InlineNode } from "@atlcli/confluence";
+import {
+  CONFLUENCE_LEGACY_EMOJI_PROJECTIONS,
+  composeChapters,
+  storageToBlocks,
+  type ExportBlock,
+  type ExportNode,
+  type InlineNode,
+} from "@atlcli/confluence";
 import {
   columnWidthsDxa,
   serializeBlocks,
@@ -480,14 +487,45 @@ describe("serializeBlocks — callouts, code, tables, images", () => {
       panelIcon: ":star:",
       panelIconId: "icon-id",
       panelIconText: "★",
+      panelIconProjection: CONFLUENCE_LEGACY_EMOJI_PROJECTIONS["yellow-star"],
       content: [{ type: "paragraph", content: [{ type: "text", text: "Custom body" }] }],
     }], { styleNames: noStyles });
 
     expect(xml).toContain('w:fill="DBE1E6"');
     expect(xml).toContain('w:color="123456"');
     expect(xml).toContain("★");
+    expect(xml).not.toContain("Y★");
     expect(xml).not.toContain(":star:");
     expect(xml).toContain("Custom body");
+  });
+
+  it("uses adapter-projected panel icons without resolving raw colon text", async () => {
+    const { xml } = await serializeBlocks([
+      {
+        type: "callout",
+        kind: "panel",
+        panelIcon: ":warning:",
+        panelIconText: "",
+        panelIconProjection: CONFLUENCE_LEGACY_EMOJI_PROJECTIONS.warning,
+        content: [{ type: "paragraph", content: [{ type: "text", text: "Projected" }] }],
+      },
+      {
+        type: "callout",
+        kind: "panel",
+        panelIcon: ":warning:",
+        content: [{ type: "paragraph", content: [{ type: "text", text: "Raw" }] }],
+      },
+      {
+        type: "callout",
+        kind: "panel",
+        panelIcon: "🦜",
+        content: [{ type: "paragraph", content: [{ type: "text", text: "Unicode" }] }],
+      },
+    ], { styleNames: noStyles });
+
+    expect(xml).toContain("⚠");
+    expect(xml).toContain(":warning:");
+    expect(xml).toContain("🦜");
   });
 
   it("renders expand and nested-expand bodies open with a visible disclosure title", async () => {
