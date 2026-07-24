@@ -10,6 +10,8 @@
  * fed one of these in-memory fixtures.
  */
 import {
+  CONFLUENCE_LEGACY_EMOJI_ALIASES,
+  CONFLUENCE_LEGACY_EMOJI_PROJECTIONS,
   composeChapters,
   createAdfAnnotationResolver,
   createAdfMediaAttachmentResolver,
@@ -144,6 +146,74 @@ export function storageCodeCompatibilityBlocks(): StorageToBlocksResult {
   return storageToBlocks(STORAGE_CODE_COMPATIBILITY_SOURCE);
 }
 
+export interface AdfEmojiConformanceCase {
+  category: "canonical" | "alias";
+  name: string;
+  shortName: string;
+  expectedText: string;
+}
+
+/** Every supported typed colon notation and its reviewed portable output. */
+export const ADF_EMOJI_CONFORMANCE_CASES: readonly AdfEmojiConformanceCase[] =
+  Object.freeze([
+    ...Object.values(CONFLUENCE_LEGACY_EMOJI_PROJECTIONS).map((projection) =>
+      Object.freeze({
+        category: "canonical" as const,
+        name: projection.canonicalName,
+        shortName: `:${projection.canonicalName}:`,
+        expectedText: projection.text,
+      })
+    ),
+    ...Object.entries(CONFLUENCE_LEGACY_EMOJI_ALIASES).map(([alias, canonicalName]) =>
+      Object.freeze({
+        category: "alias" as const,
+        name: alias,
+        shortName: `:${alias}:`,
+        expectedText: CONFLUENCE_LEGACY_EMOJI_PROJECTIONS[canonicalName].text,
+      })
+    ),
+  ]);
+
+export const ADF_EMOJI_LITERAL_CONTROL = ":warning:";
+export const ADF_EMOJI_CUSTOM_CONTROL = ":custom_party:";
+
+const ADF_EMOJI_MATRIX_CONTENT = [
+  ...ADF_EMOJI_CONFORMANCE_CASES.flatMap((emojiCase) => [
+    {
+      type: "text",
+      text: `EMOJI ${emojiCase.category} ${emojiCase.name} => `,
+    },
+    {
+      type: "emoji",
+      attrs: { shortName: emojiCase.shortName },
+    },
+    { type: "hardBreak" },
+  ]),
+  { type: "text", text: `LITERAL known => ${ADF_EMOJI_LITERAL_CONTROL}` },
+  { type: "hardBreak" },
+  { type: "text", text: "CUSTOM typed => " },
+  {
+    type: "emoji",
+    attrs: {
+      shortName: ADF_EMOJI_CUSTOM_CONTROL,
+      id: "custom-emoji-matrix",
+      text: "",
+    },
+  },
+  { type: "hardBreak" },
+  { type: "text", text: "UNICODE variation-selector => " },
+  { type: "emoji", attrs: { shortName: ":warning:", text: "⚠️" } },
+  { type: "hardBreak" },
+  { type: "text", text: "UNICODE skin-tone => " },
+  { type: "emoji", attrs: { shortName: ":thumbs-up:", text: "👍🏽" } },
+  { type: "hardBreak" },
+  { type: "text", text: "UNICODE ZWJ => " },
+  { type: "emoji", attrs: { shortName: ":custom-developer:", text: "👩‍💻" } },
+  { type: "hardBreak" },
+  { type: "text", text: "UNICODE flag => " },
+  { type: "emoji", attrs: { shortName: ":custom-flag:", text: "🇩🇪" } },
+];
+
 /**
  * Real ADF input for the browser conformance harness. This deliberately starts
  * before the representation-neutral boundary: the case must validate and
@@ -259,7 +329,19 @@ export const ADF_CONFORMANCE_SOURCE = JSON.stringify({
     {
       type: "panel",
       attrs: { panelType: "info" },
-      content: [{ type: "paragraph", content: [{ type: "text", text: "ADF panel body" }] }],
+      content: [
+        { type: "paragraph", content: [{ type: "text", text: "ADF panel body" }] },
+        {
+          type: "bulletList",
+          content: [{
+            type: "listItem",
+            content: [{
+              type: "paragraph",
+              content: [{ type: "text", text: "List nested inside info callout" }],
+            }],
+          }],
+        },
+      ],
     },
     {
       type: "panel",
@@ -279,7 +361,6 @@ export const ADF_CONFORMANCE_SOURCE = JSON.stringify({
         panelColor: "#123456",
         panelIcon: ":star:",
         panelIconId: "custom-panel-icon",
-        panelIconText: "★",
       },
       content: [{ type: "paragraph", content: [{ type: "text", text: "ADF custom panel" }] }],
     },
@@ -391,7 +472,17 @@ export const ADF_CONFORMANCE_SOURCE = JSON.stringify({
               valign: "bottom",
               localId: "table-cell-local",
             },
-            content: [{ type: "paragraph", content: [{ type: "text", text: "Cell" }] }],
+            content: [
+              { type: "paragraph", content: [{ type: "text", text: "Cell" }] },
+              {
+                type: "panel",
+                attrs: { panelType: "warning" },
+                content: [{
+                  type: "paragraph",
+                  content: [{ type: "text", text: "Warning callout inside table cell" }],
+                }],
+              },
+            ],
           },
         ],
       }],
@@ -650,6 +741,26 @@ export const ADF_CONFORMANCE_SOURCE = JSON.stringify({
         localId: "static-extension-private-local-id",
         parameters: { privateMode: "static-extension-private-parameter" },
       },
+    },
+    {
+      type: "panel",
+      attrs: { panelType: "note" },
+      content: [{ type: "paragraph", content: [{ type: "text", text: "ADF note panel" }] }],
+    },
+    {
+      type: "panel",
+      attrs: { panelType: "warning" },
+      content: [{ type: "paragraph", content: [{ type: "text", text: "ADF warning panel" }] }],
+    },
+    {
+      type: "panel",
+      attrs: { panelType: "tip" },
+      content: [{ type: "paragraph", content: [{ type: "text", text: "ADF tip panel" }] }],
+    },
+    {
+      type: "paragraph",
+      attrs: { localId: "emoji-matrix" },
+      content: ADF_EMOJI_MATRIX_CONTENT,
     },
   ],
 });
@@ -960,8 +1071,43 @@ export const BLOCKS_ALL_FIELDS: ExportBlock[] = [
       {
         cells: [
           { header: false, colspan: 1, rowspan: 1, content: [{ type: "paragraph", content: [{ type: "text", text: "left" }] }] },
-          { header: false, colspan: 1, rowspan: 1, content: [{ type: "paragraph", content: [{ type: "text", text: "right" }] }] },
+          {
+            header: false,
+            colspan: 1,
+            rowspan: 1,
+            content: [{
+              type: "callout",
+              kind: "warning",
+              content: [{ type: "paragraph", content: [{ type: "text", text: "Dense table warning" }] }],
+            }],
+          },
         ],
+      },
+    ],
+  },
+  {
+    type: "list",
+    ordered: false,
+    items: [{
+      content: [
+        { type: "paragraph", content: [{ type: "text", text: "List callout container" }] },
+        {
+          type: "callout",
+          kind: "tip",
+          content: [{ type: "paragraph", content: [{ type: "text", text: "Tip inside list item" }] }],
+        },
+      ],
+    }],
+  },
+  {
+    type: "callout",
+    kind: "info",
+    content: [
+      { type: "paragraph", content: [{ type: "text", text: "Outer info callout" }] },
+      {
+        type: "callout",
+        kind: "note",
+        content: [{ type: "paragraph", content: [{ type: "text", text: "Note inside callout" }] }],
       },
     ],
   },

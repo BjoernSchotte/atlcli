@@ -1,5 +1,8 @@
 import { describe, expect, it } from "bun:test";
 import {
+  ADF_EMOJI_CONFORMANCE_CASES,
+  ADF_EMOJI_CUSTOM_CONTROL,
+  ADF_EMOJI_LITERAL_CONTROL,
   ADF_CONFORMANCE_SOURCE,
   STORAGE_CODE_COMPATIBILITY_SOURCE,
   adfConformanceBlocks,
@@ -47,6 +50,10 @@ describe("ADF browser conformance fixture", () => {
       "callout",
       "unknown",
       "unknown",
+      "callout",
+      "callout",
+      "callout",
+      "paragraph",
     ]);
     expect(pdf.blocks[0]).toMatchObject({ type: "heading", localId: "heading-local" });
     expect(pdf.blocks[1]).toMatchObject({ type: "paragraph", localId: "paragraph-local" });
@@ -114,8 +121,28 @@ describe("ADF browser conformance fixture", () => {
       panelColor: "#123456",
       panelIcon: ":star:",
       panelIconId: "custom-panel-icon",
-      panelIconText: "★",
+      panelIconProjection: {
+        canonicalName: "yellow-star",
+        text: "Y★",
+      },
     });
+    expect(pdf.blocks[7]).toMatchObject({
+      type: "callout",
+      kind: "info",
+      content: [
+        { type: "paragraph" },
+        {
+          type: "list",
+          ordered: false,
+          items: [{ content: [{ type: "paragraph" }] }],
+        },
+      ],
+    });
+    expect(pdf.blocks.slice(30, 33)).toMatchObject([
+      { type: "callout", kind: "note" },
+      { type: "callout", kind: "warning" },
+      { type: "callout", kind: "tip" },
+    ]);
     expect(pdf.blocks[25]).toMatchObject({
       type: "codeBlock",
       language: "typescript",
@@ -195,6 +222,40 @@ describe("ADF browser conformance fixture", () => {
         spaceKey: "TEST",
       },
     });
+    const emojiMatrix = pdf.blocks[33];
+    expect(emojiMatrix).toMatchObject({
+      type: "paragraph",
+      localId: "emoji-matrix",
+    });
+    if (emojiMatrix?.type !== "paragraph") {
+      throw new Error("ADF emoji matrix did not decode as one paragraph.");
+    }
+    expect(
+      ADF_EMOJI_CONFORMANCE_CASES.filter((emojiCase) => emojiCase.category === "canonical"),
+    ).toHaveLength(22);
+    expect(
+      ADF_EMOJI_CONFORMANCE_CASES.filter((emojiCase) => emojiCase.category === "alias"),
+    ).toHaveLength(26);
+    ADF_EMOJI_CONFORMANCE_CASES.forEach((emojiCase, index) => {
+      expect(emojiMatrix.content[index * 3 + 1]).toMatchObject({
+        type: "text",
+        text: emojiCase.expectedText,
+        emoji: {
+          shortName: emojiCase.shortName,
+          renderedFrom: "catalog-projection",
+          projection: { text: emojiCase.expectedText },
+        },
+      });
+    });
+    const emojiMatrixText = emojiMatrix.content
+      .map((node) => node.type === "text" ? node.text : "\n")
+      .join("");
+    expect(emojiMatrixText).toContain(`LITERAL known => ${ADF_EMOJI_LITERAL_CONTROL}`);
+    expect(emojiMatrixText).toContain(ADF_EMOJI_CUSTOM_CONTROL);
+    expect(emojiMatrixText).toContain("⚠️");
+    expect(emojiMatrixText).toContain("👍🏽");
+    expect(emojiMatrixText).toContain("👩‍💻");
+    expect(emojiMatrixText).toContain("🇩🇪");
     expect(pdf.blocks[1]).toMatchObject({
       type: "paragraph",
       content: expect.arrayContaining([
@@ -262,6 +323,10 @@ describe("ADF browser conformance fixture", () => {
             localId: "table-cell-local",
             columnWidths: [360],
             verticalAlignment: "bottom",
+            content: [
+              { type: "paragraph" },
+              { type: "callout", kind: "warning" },
+            ],
           },
         ],
       }],
@@ -399,7 +464,7 @@ describe("ADF browser conformance fixture", () => {
         border: { color: "#0052CC", size: 1 },
       }],
     });
-    expect(pdf.notes.map((note) => note.code)).toContain("emoji-text-fallback");
+    expect(pdf.notes.filter((note) => note.code === "emoji-text-fallback")).toHaveLength(2);
     expect(pdf.notes.map((note) => note.code)).toContain("adf-media-unresolved");
     expect(pdf.notes.filter((note) => note.code === "expand-static")).toHaveLength(2);
     expect(pdf.notes.map((note) => note.code)).toContain("adf-node-degraded");

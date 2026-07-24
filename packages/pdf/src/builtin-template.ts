@@ -224,6 +224,7 @@ const RAW_MANIFEST = {
     { family: "Source Code Pro", style: "normal", weight: 400 },
     { family: "Source Code Pro", style: "normal", weight: 700 },
     { family: "Noto Sans Symbols2", style: "normal", weight: 400 },
+    { family: "Noto Emoji", style: "normal", weight: 400 },
   ],
   design: DESIGN,
   bindings: [

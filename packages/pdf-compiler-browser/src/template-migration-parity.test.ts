@@ -46,8 +46,13 @@ import { BrowserPdfCompiler, PDF_BROWSER_COMPILER_VERSION } from "./index.js";
  * long lines through a scoped `raw.line` rule. The parity corpus includes a
  * code block, so that separately tested intentional Typst change superseded
  * the prior approved bytes too.
+ *
+ * The 2026-07-24 semantic-callout-icon change deliberately adds labelled
+ * graphical figures to the four standard callouts in this corpus. Dedicated
+ * serializer, structure, accessibility, and rendered-golden tests pin that
+ * behavior; this digest approves the resulting default PDF bytes.
  */
-const APPROVED_DEFAULT_OUTPUT_DIGEST = "4d1e42f06a55569d30d5fee7700782d2d71d3f04e569a6af02bf0ccb87b481a1";
+const APPROVED_DEFAULT_OUTPUT_DIGEST = "a01783f5172074de2d7b99d7ba8202330774b1068efdad311d996ec24675bfc8";
 const PINNED_COMPILER = "typst.ts 0.7.0 / Typst 0.14.2";
 
 const PARITY_BLOCKS: ExportBlock[] = [

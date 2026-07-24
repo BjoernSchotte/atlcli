@@ -1060,6 +1060,11 @@ export declare function boundRasterTarget(size: TargetSize): TargetSize | null;
 // export: buildGetIncludedPage
 export declare function buildGetIncludedPage(io: IncludeLookupIo): (ref: IncludePageRef) => Promise<IncludeLookupOutcome>;
 
+// export: CalloutIconEmbedSeam
+export interface CalloutIconEmbedSeam {
+    embed(icon: SemanticCalloutIcon): string;
+}
+
 // export: calloutTable
 export declare function calloutTable(kind: string, titleRunsXml: string | null, bodyParagraphs: string, custom?: {
     color?: string;
@@ -1234,7 +1239,12 @@ export interface DrawingParams {
     relId: string;
     docPrId: number;
     name: string;
-    descr: string;
+    accessibility: {
+        kind: "labelled";
+        description: string;
+    } | {
+        kind: "decorative";
+    };
     cxEmu: number;
     cyEmu: number;
     wrap?: "left" | "right";
@@ -1246,6 +1256,12 @@ export interface DrawingParams {
 // export: EmbedImageOptions
 export interface EmbedImageOptions {
     alt?: string;
+    accessibility?: {
+        kind: "labelled";
+        description: string;
+    } | {
+        kind: "decorative";
+    };
     name?: string;
     widthPx?: number;
     heightPx?: number;
@@ -1258,6 +1274,12 @@ export interface EmbedImageOptions {
 // export: EmbedSvgOptions
 export interface EmbedSvgOptions {
     alt?: string;
+    accessibility?: {
+        kind: "labelled";
+        description: string;
+    } | {
+        kind: "decorative";
+    };
     name?: string;
     widthPx: number;
     heightPx: number;
@@ -1424,6 +1446,7 @@ export declare class ImageEmbedder {
     get diagramCount(): number;
     embed(bytes: Uint8Array, opts?: EmbedImageOptions): string;
     embedInline(bytes: Uint8Array, opts?: EmbedImageOptions): string;
+    embedCalloutIconInline(bytes: Uint8Array, opts: EmbedImageOptions): string;
     private embedRaster;
     embedSvg(svg: string | Uint8Array, pngFallback: Uint8Array, opts: EmbedSvgOptions): string;
     embedSvgInline(svg: string | Uint8Array, pngFallback: Uint8Array, opts: EmbedSvgOptions): string;
@@ -1877,6 +1900,7 @@ export interface SerializeContext {
     comments?: WordCommentRegistry;
     images?: ImageEmbedSeam;
     diagrams?: DiagramEmbedSeam;
+    calloutIcons?: CalloutIconEmbedSeam;
     bodySectPr?: string;
     captionLang?: CaptionLang;
     dateLocale?: string;

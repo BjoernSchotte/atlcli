@@ -345,8 +345,10 @@ export interface DrawingParams {
   docPrId: number;
   /** Element name shown in Word's selection pane. */
   name: string;
-  /** Alt text carried onto `wp:docPr`/`pic:cNvPr` `descr` (accessibility). */
-  descr: string;
+  /** Explicit assistive-technology contract for this drawing. */
+  accessibility:
+    | { kind: "labelled"; description: string }
+    | { kind: "decorative" };
   cxEmu: number;
   cyEmu: number;
   /** Float the drawing to one side and let following body text wrap around it. */
@@ -391,7 +393,24 @@ function pictureBorder(border: MediaBorder | undefined): string {
 /** A drawing run that can be placed between ordinary text runs in one paragraph. */
 export function inlineImageRun(p: DrawingParams): string {
   const name = escAttr(p.name);
-  const descr = escAttr(p.descr);
+  const labelledDescription =
+    p.accessibility.kind === "labelled"
+      ? escAttr(p.accessibility.description)
+      : undefined;
+  const docPr =
+    labelledDescription !== undefined
+      ? `<wp:docPr id="${p.docPrId}" name="${name}" descr="${labelledDescription}"/>`
+      : (
+          `<wp:docPr id="${p.docPrId}" name="${name}">` +
+          `<a:extLst xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">` +
+          `<a:ext uri="{C183D7F6-B498-43B3-948B-1728B52AA6E4}">` +
+          `<adec:decorative xmlns:adec="http://schemas.microsoft.com/office/drawing/2017/decorative" val="1"/>` +
+          `</a:ext></a:extLst></wp:docPr>`
+        );
+  const nonVisualPictureProperties =
+    labelledDescription !== undefined
+      ? `<pic:cNvPr id="${p.docPrId}" name="${name}" descr="${labelledDescription}"/>`
+      : `<pic:cNvPr id="${p.docPrId}" name="${name}"/>`;
   const drawingOpen = p.wrap
     ? `<wp:anchor distT="0" distB="0" distL="114300" distR="114300" simplePos="0" relativeHeight="0" behindDoc="0" locked="0" layoutInCell="1" allowOverlap="1" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing">` +
       `<wp:simplePos x="0" y="0"/>` +
@@ -408,7 +427,7 @@ export function inlineImageRun(p: DrawingParams): string {
     `<wp:extent cx="${p.cxEmu}" cy="${p.cyEmu}"/>` +
     `<wp:effectExtent l="0" t="0" r="0" b="0"/>` +
     wrap +
-    `<wp:docPr id="${p.docPrId}" name="${name}" descr="${descr}"/>` +
+    docPr +
     `<wp:cNvGraphicFramePr>` +
     `<a:graphicFrameLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noChangeAspect="1"/>` +
     `</wp:cNvGraphicFramePr>` +
@@ -416,7 +435,7 @@ export function inlineImageRun(p: DrawingParams): string {
     `<a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture">` +
     `<pic:pic xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">` +
     `<pic:nvPicPr>` +
-    `<pic:cNvPr id="${p.docPrId}" name="${name}" descr="${descr}"/>` +
+    nonVisualPictureProperties +
     `<pic:cNvPicPr><a:picLocks noChangeAspect="1" noChangeArrowheads="1"/></pic:cNvPicPr>` +
     `</pic:nvPicPr>` +
     `<pic:blipFill>` +
@@ -458,6 +477,15 @@ export interface ImageEmbedderOptions {
 export interface EmbedImageOptions {
   /** Alt text for `descr` (accessibility). */
   alt?: string;
+  /**
+   * Override the drawing's assistive-technology contract.
+   *
+   * Ordinary source images remain labelled from `alt`/`name`; built-in
+   * semantic adornments may opt into the Office 2019 decorative marker.
+   */
+  accessibility?:
+    | { kind: "labelled"; description: string }
+    | { kind: "decorative" };
   /** Human-facing name (e.g. the attachment filename). */
   name?: string;
   /** Author-specified rendered width in px (Confluence `ac:width`). */
@@ -483,6 +511,10 @@ export interface EmbedImageOptions {
 export interface EmbedSvgOptions {
   /** Alt text for `descr` (spec 005a: the diagram SOURCE is the description). */
   alt?: string;
+  /** Explicit assistive-technology contract for the SVG drawing. */
+  accessibility?:
+    | { kind: "labelled"; description: string }
+    | { kind: "decorative" };
   /** Human-facing name (shown in Word's selection pane). */
   name?: string;
   /** Intrinsic pixel width of the SVG (drives the width-capped display size). */
@@ -568,10 +600,22 @@ export class ImageEmbedder {
     return this.embedRaster(bytes, opts, true);
   }
 
+  /**
+   * Embed a built-in semantic callout icon as an inline drawing.
+   *
+   * It uses the same media/relationship/id machinery as page images, but it is
+   * exporter chrome rather than authored page media and therefore does not
+   * increment {@link embeddedCount}.
+   */
+  embedCalloutIconInline(bytes: Uint8Array, opts: EmbedImageOptions): string {
+    return this.embedRaster(bytes, opts, true, false);
+  }
+
   private embedRaster(
     bytes: Uint8Array,
     opts: EmbedImageOptions,
     inline: boolean,
+    countAsImage = true,
   ): string {
     if (bytes.length === 0) throw new ImageEmbedError("the fetched image was empty");
     if (bytes.length > MAX_IMAGE_BYTES) {
@@ -592,12 +636,15 @@ export class ImageEmbedder {
     const relId = this.ensureRelationship(entry, opts.partPath ?? DOCUMENT_PART);
     const size = resolveTargetSize(info, { widthPx: opts.widthPx, heightPx: opts.heightPx }, this.maxWidthPx);
     const docPrId = this.nextDocPrId++;
-    this.embedded += 1;
+    if (countAsImage) this.embedded += 1;
     const params: DrawingParams = {
       relId,
       docPrId,
       name: opts.name || `Image ${docPrId}`,
-      descr: opts.alt || opts.name || "image",
+      accessibility: opts.accessibility ?? {
+        kind: "labelled",
+        description: opts.alt || opts.name || "image",
+      },
       cxEmu: pxToEmu(size.widthPx),
       cyEmu: pxToEmu(size.heightPx),
       wrap: opts.wrap,
@@ -675,7 +722,10 @@ export class ImageEmbedder {
       svgRelId,
       docPrId,
       name: opts.name || `Diagram ${docPrId}`,
-      descr: opts.alt || opts.name || "diagram",
+      accessibility: opts.accessibility ?? {
+        kind: "labelled",
+        description: opts.alt || opts.name || "diagram",
+      },
       cxEmu: pxToEmu(size.widthPx),
       cyEmu: pxToEmu(size.heightPx),
       wrap: opts.wrap,

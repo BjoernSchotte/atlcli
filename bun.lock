@@ -235,6 +235,7 @@
         "@atlcli/pdf": "workspace:*",
       },
       "devDependencies": {
+        "@atlcli/confluence": "workspace:*",
         "@atlcli/template-pack": "workspace:*",
         "@myriaddreamin/typst-ts-web-compiler": "0.7.0",
       },

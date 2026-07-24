@@ -30,6 +30,11 @@ import { UNSAFE_LINK_NOTE_CODE, sanitizeLinkHref, unsafeLinkMessage } from "./li
 import { translateDatasourceLink } from "./datasource.js";
 import type { AdfJsonValue } from "./adf-types.js";
 import type { BlocksResult } from "./page-body.js";
+import {
+  isColonEmojiShortName,
+  projectTypedEmoji,
+  type PortableEmojiProjection,
+} from "./emoji-projection.js";
 
 // ---------------------------------------------------------------------------
 // Model
@@ -147,8 +152,8 @@ export type InlineNode =
       /**
        * Stored emoji semantics retained alongside the portable visible text.
        * `text` is the exact optional source attribute (including an empty
-       * string); `renderedFrom` records whether the visible run uses that text
-       * or the required short-name fallback.
+       * string); `renderedFrom` records whether the visible run uses that text,
+       * a reviewed catalog projection, or the exact unresolved short name.
        */
       emoji?: EmojiSemantics;
       /** Identity retained when this visible text approximates an ADF inline extension. */
@@ -426,6 +431,36 @@ export type ImageSource =
 /** Confluence callout kinds plus the generic/custom titled panel fallback. */
 export type CalloutKind = "info" | "note" | "warning" | "tip" | "success" | "error" | "panel";
 
+/** Standard callouts that receive a portable semantic icon by default. */
+export type StandardCalloutKind = Exclude<CalloutKind, "panel">;
+
+/**
+ * Target-neutral meaning and glyph for one standard callout kind.
+ *
+ * Renderers must not emit `symbol` as an ordinary text run. P1 renders a
+ * graphical target-specific icon and exposes `label` exactly once as its
+ * replacement text.
+ */
+export interface SemanticCalloutIcon {
+  kind: StandardCalloutKind;
+  symbol: string;
+  label: string;
+}
+
+export const SEMANTIC_CALLOUT_ICONS: Readonly<Record<StandardCalloutKind, SemanticCalloutIcon>> =
+  Object.freeze({
+    info: Object.freeze({ kind: "info", symbol: "ℹ", label: "Info" }),
+    note: Object.freeze({ kind: "note", symbol: "✎", label: "Note" }),
+    warning: Object.freeze({ kind: "warning", symbol: "⚠", label: "Warning" }),
+    tip: Object.freeze({ kind: "tip", symbol: "💡", label: "Tip" }),
+    success: Object.freeze({ kind: "success", symbol: "✓", label: "Success" }),
+    error: Object.freeze({ kind: "error", symbol: "✕", label: "Error" }),
+  });
+
+export type ResolvedCalloutIcon =
+  | { source: "explicit"; text: string }
+  | { source: "semantic-default"; icon: SemanticCalloutIcon };
+
 /** What a {@link Caption} labels — drives the serializer's numbering prefix (Figure/Table/…). */
 export type CaptionKind = "figure" | "table" | "code" | "equation";
 
@@ -652,7 +687,51 @@ export interface EmojiSemantics {
   shortName: string;
   id?: string;
   text?: string;
-  renderedFrom: "text" | "short-name";
+  renderedFrom: "source-text" | "catalog-projection" | "short-name";
+  projection?: PortableEmojiProjection;
+}
+
+/**
+ * Select the already-decided portable text for an explicit ADF panel icon.
+ *
+ * This helper deliberately does not resolve short names. Source adapters own
+ * that decision and may attach `panelIconProjection`; renderers consume only
+ * this precedence chain.
+ */
+export function panelIconDisplayText(panel: {
+  panelIcon?: string;
+  panelIconText?: string;
+  panelIconProjection?: PortableEmojiProjection;
+}): string | undefined {
+  if (panel.panelIconText) return panel.panelIconText;
+  if (panel.panelIcon && !isColonEmojiShortName(panel.panelIcon)) {
+    return panel.panelIcon;
+  }
+  if (panel.panelIconProjection) return panel.panelIconProjection.text;
+  return panel.panelIcon || undefined;
+}
+
+/**
+ * Resolve one callout icon without erasing its provenance.
+ *
+ * Explicit source metadata always wins. Storage's authored `icon=false`
+ * suppression then wins over semantic defaults. Generic/custom panels never
+ * receive a default.
+ */
+export function resolveCalloutIcon(callout: {
+  kind: CalloutKind;
+  panelIcon?: string;
+  panelIconText?: string;
+  panelIconProjection?: PortableEmojiProjection;
+  suppressDefaultIcon?: boolean;
+}): ResolvedCalloutIcon | undefined {
+  const explicit = panelIconDisplayText(callout);
+  if (explicit) return { source: "explicit", text: explicit };
+  if (callout.suppressDefaultIcon || callout.kind === "panel") return undefined;
+  return {
+    source: "semantic-default",
+    icon: SEMANTIC_CALLOUT_ICONS[callout.kind],
+  };
 }
 
 /**
@@ -752,6 +831,10 @@ export type ExportBlock =
       panelIconId?: string;
       /** Exact custom-panel visible icon text, preferred by static renderers. */
       panelIconText?: string;
+      /** Reviewed portable projection for a typed colon-shaped panel icon. */
+      panelIconProjection?: PortableEmojiProjection;
+      /** Authored Storage `icon=false`; prevents a semantic default icon. */
+      suppressDefaultIcon?: boolean;
       /** Exact ADF synced-content identity retained behind the static projection. */
       syncedContent?: SyncedContentProvenance;
     }
@@ -2586,11 +2669,14 @@ function walkMacro(el: XmlElement, ctx: WalkCtx): ExportBlock[] {
   if (CALLOUT_KINDS.has(macroName as CalloutKind)) {
     const body = childByName(el, "ac:rich-text-body");
     const title = macroParam(el, "title");
+    const suppressDefaultIcon =
+      macroName !== "panel" && macroParam(el, "icon")?.trim().toLowerCase() === "false";
     return [
       {
         type: "callout",
         kind: macroName as CalloutKind,
-        title: title || undefined,
+        ...(title ? { title } : {}),
+        ...(suppressDefaultIcon ? { suppressDefaultIcon: true } : {}),
         content: body ? walkBlocks(body.children, ctx) : [],
       },
     ];
@@ -3184,11 +3270,6 @@ function walkInline(nodes: XmlNode[], ctx: WalkCtx): InlineNode[] {
   return out;
 }
 
-/** True for an ADF/Storage textual emoji token such as `:warning:`. */
-function isColonEmojiFallback(value: string): boolean {
-  return value.length >= 3 && value.startsWith(":") && value.endsWith(":") && !/\s/u.test(value);
-}
-
 /** Normalize Storage's calendar-date representations to ADF epoch milliseconds. */
 function storageDateTimestamp(value: string): string {
   const source = value.trim();
@@ -3279,20 +3360,26 @@ function walkInlineElement(el: XmlElement, ctx: WalkCtx): InlineNode[] {
   if (name === "ac:link") return walkAcLink(el, ctx);
 
   if (name === "ac:emoticon") {
-    const nameFallback = el.attrs["ac:name"] ?? "";
-    const shortName =
+    // The explicit short-name is authoritative. Only when it is absent may
+    // the legacy ac:name identity participate in catalog normalization.
+    const sourceShortName =
       el.attrs["ac:emoji-shortname"] ??
-      (nameFallback
-        ? nameFallback.startsWith(":") && nameFallback.endsWith(":")
-          ? nameFallback
-          : `:${nameFallback}:`
-        : "");
+      el.attrs["ac:name"] ??
+      "";
+    // Empty is schema-representable but is not an emoji notation. Keep the
+    // existing visible invalid-node floor in parity with the ADF decoder.
+    const shortName = sourceShortName || "[emoji]";
     const sourceText = el.attrs["ac:emoji-fallback"];
+    const result = projectTypedEmoji({ shortName, sourceText });
     const renderedFrom =
-      sourceText !== undefined && sourceText.length > 0 ? "text" : "short-name";
-    const text = renderedFrom === "text" ? sourceText! : shortName;
+      result.kind === "source-text"
+        ? "source-text"
+        : result.kind === "known"
+          ? "catalog-projection"
+          : "short-name";
+    const text = result.text;
     if (!text) return [];
-    if (renderedFrom === "short-name" || isColonEmojiFallback(text)) {
+    if (result.kind === "unresolved") {
       ctx.notes.push(withSource(ctx, {
         level: "warning",
         code: "emoji-text-fallback",
@@ -3306,6 +3393,7 @@ function walkInlineElement(el: XmlElement, ctx: WalkCtx): InlineNode[] {
         shortName,
         ...(sourceText !== undefined ? { text: sourceText } : {}),
         renderedFrom,
+        ...(result.kind === "known" ? { projection: result.projection } : {}),
       },
     }];
   }

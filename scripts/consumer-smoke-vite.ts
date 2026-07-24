@@ -94,6 +94,7 @@ import serifBoldUrl from "@atlcli/pdf/fonts/SourceSerif4-Bold.ttf?url";
 import codeRegularUrl from "@atlcli/pdf/fonts/SourceCodePro-Regular.ttf?url";
 import codeBoldUrl from "@atlcli/pdf/fonts/SourceCodePro-Bold.ttf?url";
 import symbolsRegularUrl from "@atlcli/pdf/fonts/NotoSansSymbols2-Regular.ttf?url";
+import emojiRegularUrl from "@atlcli/pdf/fonts/NotoEmoji-wght.ttf?url";
 import { runPdfExport, isPdfBytesHandle, PDF_RUNTIME_ASSETS } from "@atlcli/pdf";
 import type { PdfBytesHandle } from "@atlcli/pdf";
 import { validatePdfOutput } from "@atlcli/pdf/internal";
@@ -116,6 +117,7 @@ const fontUrls: Record<string, string> = {
   "SourceCodePro-Regular.ttf": codeRegularUrl,
   "SourceCodePro-Bold.ttf": codeBoldUrl,
   "NotoSansSymbols2-Regular.ttf": symbolsRegularUrl,
+  "NotoEmoji-wght.ttf": emojiRegularUrl,
 };
 
 type LoadBytes = (url: string) => Promise<Uint8Array>;

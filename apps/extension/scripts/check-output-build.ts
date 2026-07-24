@@ -189,6 +189,11 @@ const REQUIRED_PDF_ARTIFACTS = [
     sha256: "630846d528dbe4c4981370a4d0a9475a1fd1491a129bb411f8e157cdb5de13c6",
   },
   {
+    label: "Noto Emoji",
+    pattern: /(?:^|\/)assets\/NotoEmoji-wght-[^/]+\.ttf$/,
+    sha256: "de6c18832938afc99caf132b39d6a30a19bac7f2e812e28db2535b4608d27551",
+  },
+  {
     label: "Source Sans 3 font license",
     pattern: /(?:^|\/)assets\/LICENSE-Source-Sans-3-[^/]+\.txt$/,
   },
@@ -203,6 +208,10 @@ const REQUIRED_PDF_ARTIFACTS = [
   {
     label: "Noto Sans Symbols 2 font license",
     pattern: /(?:^|\/)assets\/LICENSE-Noto-Sans-Symbols-2-[^/]+\.txt$/,
+  },
+  {
+    label: "Noto Emoji font license",
+    pattern: /(?:^|\/)assets\/LICENSE-Noto-Emoji-[^/]+\.txt$/,
   },
   {
     label: "compiler Apache-2.0 license",

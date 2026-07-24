@@ -14,6 +14,10 @@ import {
 } from "./adf-coverage.js";
 import { JIRA_DATASOURCE_ID } from "./datasource.js";
 import type { ExportBlock } from "./export-blocks.js";
+import {
+  CONFLUENCE_LEGACY_EMOJI_ALIASES,
+  CONFLUENCE_LEGACY_EMOJI_PROJECTIONS,
+} from "./emoji-projection.js";
 
 function doc(content: unknown[]): string {
   return JSON.stringify({ version: 1, type: "doc", content });
@@ -410,10 +414,92 @@ describe("adfToBlocks", () => {
         panelIcon: ":star:",
         panelIconId: "icon-id",
         panelIconText: "★",
+        panelIconProjection: CONFLUENCE_LEGACY_EMOJI_PROJECTIONS["yellow-star"],
         content: [{ type: "paragraph", content: [{ type: "text", text: "Custom" }] }],
       },
     ]);
     expect(result.notes).toEqual([]);
+  });
+
+  it("projects typed panel icons once while preserving explicit-source precedence", () => {
+    const result = adfToBlocks(doc([
+      {
+        type: "panel",
+        attrs: { panelType: "custom", panelIcon: ":warning:" },
+        content: [{ type: "paragraph", content: [{ type: "text", text: "Known" }] }],
+      },
+      {
+        type: "panel",
+        attrs: { panelType: "custom", panelIcon: ":star:", panelIconText: "" },
+        content: [{ type: "paragraph", content: [{ type: "text", text: "Alias" }] }],
+      },
+      {
+        type: "panel",
+        attrs: {
+          panelType: "custom",
+          panelIcon: ":custom-hidden:",
+          panelIconText: "🧭",
+        },
+        content: [{ type: "paragraph", content: [{ type: "text", text: "Text wins" }] }],
+      },
+      {
+        type: "panel",
+        attrs: { panelType: "custom", panelIcon: "🦜" },
+        content: [{ type: "paragraph", content: [{ type: "text", text: "Unicode" }] }],
+      },
+      {
+        type: "panel",
+        attrs: { panelType: "custom", panelIcon: ":custom-visible:" },
+        content: [{ type: "paragraph", content: [{ type: "text", text: "Unknown" }] }],
+      },
+      {
+        type: "panel",
+        attrs: { panelType: "warning", panelIcon: ":warning:" },
+        content: [{ type: "paragraph", content: [{ type: "text", text: "Standard" }] }],
+      },
+    ]));
+
+    expect(result.blocks[0]).toMatchObject({
+      type: "callout",
+      kind: "panel",
+      panelIcon: ":warning:",
+      panelIconProjection: CONFLUENCE_LEGACY_EMOJI_PROJECTIONS.warning,
+    });
+    expect(result.blocks[1]).toMatchObject({
+      type: "callout",
+      kind: "panel",
+      panelIcon: ":star:",
+      panelIconText: "",
+      panelIconProjection: CONFLUENCE_LEGACY_EMOJI_PROJECTIONS["yellow-star"],
+    });
+    expect(result.blocks[2]).toMatchObject({
+      type: "callout",
+      panelIcon: ":custom-hidden:",
+      panelIconText: "🧭",
+    });
+    expect(result.blocks[2]).not.toHaveProperty("panelIconProjection");
+    expect(result.blocks[3]).toMatchObject({
+      type: "callout",
+      panelIcon: "🦜",
+    });
+    expect(result.blocks[3]).not.toHaveProperty("panelIconProjection");
+    expect(result.blocks[4]).toMatchObject({
+      type: "callout",
+      panelIcon: ":custom-visible:",
+    });
+    expect(result.blocks[4]).not.toHaveProperty("panelIconProjection");
+    expect(result.blocks[5]).toMatchObject({
+      type: "callout",
+      kind: "warning",
+      panelIcon: ":warning:",
+      panelIconProjection: CONFLUENCE_LEGACY_EMOJI_PROJECTIONS.warning,
+    });
+    expect(result.notes).toEqual([
+      expect.objectContaining({
+        code: "adf-node-degraded",
+        source: expect.objectContaining({ blockPath: "blocks[4]" }),
+      }),
+    ]);
   });
 
   it("retains custom-panel values and reports only unportable color or ID-only icon fallbacks", () => {
@@ -844,7 +930,7 @@ describe("adfToBlocks", () => {
         emoji: {
           shortName: ":warning:",
           text: "⚠️",
-          renderedFrom: "text",
+          renderedFrom: "source-text",
         },
       },
       {
@@ -958,6 +1044,205 @@ describe("adfToBlocks", () => {
     expect(result.notes.filter((note) => note.code === "emoji-text-fallback")).toHaveLength(2);
     expect(result.notes.filter((note) => note.code === "adf-node-degraded")).toHaveLength(0);
     expect(result.notes.every((note) => note.source?.blockPath)).toBe(true);
+  });
+
+  it("projects only typed ADF emoji and materializes every semantic state", () => {
+    const warning = CONFLUENCE_LEGACY_EMOJI_PROJECTIONS.warning;
+    const result = adfToBlocks(doc([{
+      type: "paragraph",
+      content: [
+        { type: "emoji", attrs: { shortName: ":warning:" } },
+        { type: "emoji", attrs: { shortName: ":warning:", text: "" } },
+        { type: "emoji", attrs: { shortName: ":warning:", text: ":warning:" } },
+        { type: "emoji", attrs: { shortName: ":warning:", text: ":smile:" } },
+        { type: "emoji", attrs: { shortName: ":warn:" } },
+        { type: "emoji", attrs: { shortName: ":custom:", text: "🦜" } },
+      ],
+    }]));
+
+    expect(result.blocks[0]).toEqual({
+      type: "paragraph",
+      content: [
+        {
+          type: "text",
+          text: warning.text,
+          emoji: {
+            shortName: ":warning:",
+            renderedFrom: "catalog-projection",
+            projection: warning,
+          },
+        },
+        {
+          type: "text",
+          text: warning.text,
+          emoji: {
+            shortName: ":warning:",
+            text: "",
+            renderedFrom: "catalog-projection",
+            projection: warning,
+          },
+        },
+        {
+          type: "text",
+          text: warning.text,
+          emoji: {
+            shortName: ":warning:",
+            text: ":warning:",
+            renderedFrom: "catalog-projection",
+            projection: warning,
+          },
+        },
+        {
+          type: "text",
+          text: warning.text,
+          emoji: {
+            shortName: ":warning:",
+            text: ":smile:",
+            renderedFrom: "catalog-projection",
+            projection: warning,
+          },
+        },
+        {
+          type: "text",
+          text: warning.text,
+          emoji: {
+            shortName: ":warn:",
+            renderedFrom: "catalog-projection",
+            projection: warning,
+          },
+        },
+        {
+          type: "text",
+          text: "🦜",
+          emoji: {
+            shortName: ":custom:",
+            text: "🦜",
+            renderedFrom: "source-text",
+          },
+        },
+      ],
+    });
+    expect(result.notes).toEqual([]);
+  });
+
+  it("projects all 22 canonical and 26 alias notations through the ADF adapter", () => {
+    const canonicalCases = Object.values(CONFLUENCE_LEGACY_EMOJI_PROJECTIONS)
+      .map((projection) => ({
+        shortName: `:${projection.canonicalName}:`,
+        projection,
+      }));
+    const aliasCases = Object.entries(CONFLUENCE_LEGACY_EMOJI_ALIASES)
+      .map(([alias, canonicalName]) => ({
+        shortName: `:${alias}:`,
+        projection: CONFLUENCE_LEGACY_EMOJI_PROJECTIONS[canonicalName],
+      }));
+    const cases = [...canonicalCases, ...aliasCases];
+    const result = adfToBlocks(doc([{
+      type: "paragraph",
+      content: [
+        ...cases.map(({ shortName }) => ({
+          type: "emoji",
+          attrs: { shortName },
+        })),
+        { type: "text", text: ":+1:" },
+      ],
+    }]));
+
+    expect(canonicalCases).toHaveLength(22);
+    expect(aliasCases).toHaveLength(26);
+    expect(result.blocks[0]).toEqual({
+      type: "paragraph",
+      content: [
+        ...cases.map(({ shortName, projection }) => ({
+          type: "text" as const,
+          text: projection.text,
+          emoji: {
+            shortName,
+            renderedFrom: "catalog-projection" as const,
+            projection,
+          },
+        })),
+        { type: "text", text: ":+1:" },
+      ],
+    });
+    expect(result.notes).toEqual([]);
+  });
+
+  it("projects the exact Atlassian-owned Cloud picker ADF shapes and preserves Unicode picker text", () => {
+    const pickerAssets = [
+      { shortName: ":check_mark:", id: "atlassian-check_mark", canonicalName: "tick" },
+      { shortName: ":warning:", id: "atlassian-warning", canonicalName: "warning" },
+      { shortName: ":minus:", id: "atlassian-minus", canonicalName: "minus" },
+      { shortName: ":question_mark:", id: "atlassian-question_mark", canonicalName: "question" },
+      { shortName: ":cross_mark:", id: "atlassian-cross_mark", canonicalName: "cross" },
+      { shortName: ":info:", id: "atlassian-info", canonicalName: "information" },
+    ] as const;
+    const result = adfToBlocks(doc([{
+      type: "paragraph",
+      content: [
+        ...pickerAssets.map(({ shortName, id }) => ({
+          type: "emoji",
+          attrs: { shortName, id, text: shortName },
+        })),
+        {
+          type: "emoji",
+          attrs: { shortName: ":slight_smile:", id: "1f642", text: "🙂" },
+        },
+      ],
+    }]));
+
+    expect(result.blocks[0]).toEqual({
+      type: "paragraph",
+      content: [
+        ...pickerAssets.map(({ shortName, id, canonicalName }) => {
+          const projection = CONFLUENCE_LEGACY_EMOJI_PROJECTIONS[canonicalName];
+          return {
+            type: "text" as const,
+            text: projection.text,
+            emoji: {
+              shortName,
+              id,
+              text: shortName,
+              renderedFrom: "catalog-projection" as const,
+              projection,
+            },
+          };
+        }),
+        {
+          type: "text",
+          text: "🙂",
+          emoji: {
+            shortName: ":slight_smile:",
+            id: "1f642",
+            text: "🙂",
+            renderedFrom: "source-text",
+          },
+        },
+      ],
+    });
+    expect(result.notes).toEqual([]);
+  });
+
+  it("keeps a visible diagnosed floor for an invalid empty ADF emoji identity", () => {
+    const result = adfToBlocks(doc([{
+      type: "paragraph",
+      content: [{ type: "emoji", attrs: { shortName: "" } }],
+    }]));
+
+    expect(result.blocks[0]).toEqual({
+      type: "paragraph",
+      content: [{
+        type: "text",
+        text: "[emoji]",
+        emoji: {
+          shortName: "[emoji]",
+          renderedFrom: "short-name",
+        },
+      }],
+    });
+    expect(result.notes).toEqual([
+      expect.objectContaining({ code: "emoji-text-fallback" }),
+    ]);
   });
 
   it("routes extensions through the neutral macro contract and keeps media visible until correlation exists", () => {

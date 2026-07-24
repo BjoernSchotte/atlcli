@@ -1,5 +1,12 @@
 import { describe, expect, it } from "bun:test";
-import { composeChapters, storageToBlocks, type ExportBlock, type ExportNode, type InlineNode } from "@atlcli/confluence";
+import {
+  CONFLUENCE_LEGACY_EMOJI_PROJECTIONS,
+  composeChapters,
+  storageToBlocks,
+  type ExportBlock,
+  type ExportNode,
+  type InlineNode,
+} from "@atlcli/confluence";
 import {
   columnWidthsDxa,
   serializeBlocks,
@@ -471,6 +478,59 @@ describe("serializeBlocks — callouts, code, tables, images", () => {
     expect(xml).toContain("Failed");
   });
 
+  it("routes all six defaults through the labelled icon seam and preserves explicit/suppressed precedence", async () => {
+    const embeddedKinds: string[] = [];
+    const standardKinds = ["info", "note", "warning", "tip", "success", "error"] as const;
+    const blocks: ExportBlock[] = [
+      ...standardKinds.map((kind) => ({
+        type: "callout" as const,
+        kind,
+        content: [{
+          type: "paragraph" as const,
+          content: [{ type: "text" as const, text: `${kind} body` }],
+        }],
+      })),
+      {
+        type: "callout",
+        kind: "warning",
+        panelIcon: ":warning:",
+        panelIconText: "🧭",
+        content: [{ type: "paragraph", content: [{ type: "text", text: "explicit body" }] }],
+      },
+      {
+        type: "callout",
+        kind: "warning",
+        suppressDefaultIcon: true,
+        content: [{ type: "paragraph", content: [{ type: "text", text: "suppressed body" }] }],
+      },
+      {
+        type: "callout",
+        kind: "panel",
+        content: [{ type: "paragraph", content: [{ type: "text", text: "panel body" }] }],
+      },
+    ];
+
+    const { xml } = await serializeBlocks(blocks, {
+      styleNames: noStyles,
+      calloutIcons: {
+        embed(icon) {
+          embeddedKinds.push(icon.kind);
+          return `<w:r><w:drawing data-callout-kind="${icon.kind}"/></w:r>`;
+        },
+      },
+    });
+
+    expect(embeddedKinds).toEqual([...standardKinds]);
+    expect(xml.match(/data-callout-kind=/g)).toHaveLength(6);
+    expect(xml).toContain(
+      '<w:drawing data-callout-kind="info"/></w:r><w:r><w:t xml:space="preserve"> </w:t></w:r><w:r><w:t xml:space="preserve">info body</w:t>',
+    );
+    expect(xml).toContain("🧭");
+    expect(xml).not.toContain(":warning:");
+    expect(xml).toContain("suppressed body");
+    expect(xml).toContain("panel body");
+  });
+
   it("renders portable custom-panel color and icon text while retaining target-safe contrast", async () => {
     const { xml } = await serializeBlocks([{
       type: "callout",
@@ -480,14 +540,45 @@ describe("serializeBlocks — callouts, code, tables, images", () => {
       panelIcon: ":star:",
       panelIconId: "icon-id",
       panelIconText: "★",
+      panelIconProjection: CONFLUENCE_LEGACY_EMOJI_PROJECTIONS["yellow-star"],
       content: [{ type: "paragraph", content: [{ type: "text", text: "Custom body" }] }],
     }], { styleNames: noStyles });
 
     expect(xml).toContain('w:fill="DBE1E6"');
     expect(xml).toContain('w:color="123456"');
     expect(xml).toContain("★");
+    expect(xml).not.toContain("Y★");
     expect(xml).not.toContain(":star:");
     expect(xml).toContain("Custom body");
+  });
+
+  it("uses adapter-projected panel icons without resolving raw colon text", async () => {
+    const { xml } = await serializeBlocks([
+      {
+        type: "callout",
+        kind: "panel",
+        panelIcon: ":warning:",
+        panelIconText: "",
+        panelIconProjection: CONFLUENCE_LEGACY_EMOJI_PROJECTIONS.warning,
+        content: [{ type: "paragraph", content: [{ type: "text", text: "Projected" }] }],
+      },
+      {
+        type: "callout",
+        kind: "panel",
+        panelIcon: ":warning:",
+        content: [{ type: "paragraph", content: [{ type: "text", text: "Raw" }] }],
+      },
+      {
+        type: "callout",
+        kind: "panel",
+        panelIcon: "🦜",
+        content: [{ type: "paragraph", content: [{ type: "text", text: "Unicode" }] }],
+      },
+    ], { styleNames: noStyles });
+
+    expect(xml).toContain("⚠");
+    expect(xml).toContain(":warning:");
+    expect(xml).toContain("🦜");
   });
 
   it("renders expand and nested-expand bodies open with a visible disclosure title", async () => {

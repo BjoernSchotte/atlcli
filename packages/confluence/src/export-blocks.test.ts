@@ -3,6 +3,7 @@ import {
   DEFAULT_STORAGE_PARSE_BUDGET,
   EXPORT_NOTE_CODES,
   RETIRED_EXPORT_NOTE_CODES,
+  SEMANTIC_CALLOUT_ICONS,
   StorageParseError,
   canonicalExportNoteCode,
   formatAdfDateTimestamp,
@@ -11,11 +12,16 @@ import {
   normalizeCaptionKind,
   parseXml,
   parseAdfDateTimestamp,
+  resolveCalloutIcon,
   storageToBlocks,
   type ExportBlock,
   type InlineNode,
   type MacroParameter,
 } from "./export-blocks.js";
+import {
+  CONFLUENCE_LEGACY_EMOJI_ALIASES,
+  CONFLUENCE_LEGACY_EMOJI_PROJECTIONS,
+} from "./emoji-projection.js";
 
 /** Convenience: parse and return only the blocks. */
 function blocks(storage: string): ExportBlock[] {
@@ -116,7 +122,7 @@ describe("storageToBlocks — paragraphs & marks", () => {
           emoji: {
             shortName: ":warning:",
             text: "⚠️",
-            renderedFrom: "text",
+            renderedFrom: "source-text",
           },
         },
         { type: "text", text: " " },
@@ -126,7 +132,7 @@ describe("storageToBlocks — paragraphs & marks", () => {
           emoji: {
             shortName: ":custom-party:",
             text: ":custom-party:",
-            renderedFrom: "text",
+            renderedFrom: "short-name",
           },
         },
         { type: "text", text: " " },
@@ -150,6 +156,195 @@ describe("storageToBlocks — paragraphs & marks", () => {
         code: "emoji-text-fallback",
         source: expect.objectContaining({ pageId: "page-1", blockPath: "blocks[0].content[0]" }),
       }),
+    ]);
+  });
+
+  test("projects typed Storage emoticons with short-name precedence", () => {
+    const warning = CONFLUENCE_LEGACY_EMOJI_PROJECTIONS.warning;
+    const cases = [
+      {
+        storage: '<ac:emoticon ac:name="warning"/>',
+        expected: {
+          type: "text",
+          text: warning.text,
+          emoji: {
+            shortName: "warning",
+            renderedFrom: "catalog-projection",
+            projection: warning,
+          },
+        },
+      },
+      {
+        storage: '<ac:emoticon ac:name="smile" ac:emoji-shortname=":warn:"/>',
+        expected: {
+          type: "text",
+          text: warning.text,
+          emoji: {
+            shortName: ":warn:",
+            renderedFrom: "catalog-projection",
+            projection: warning,
+          },
+        },
+      },
+      {
+        storage:
+          '<ac:emoticon ac:name="smile" ac:emoji-shortname=":warning:" ac:emoji-fallback=":smile:"/>',
+        expected: {
+          type: "text",
+          text: warning.text,
+          emoji: {
+            shortName: ":warning:",
+            text: ":smile:",
+            renderedFrom: "catalog-projection",
+            projection: warning,
+          },
+        },
+      },
+      {
+        storage:
+          '<ac:emoticon ac:name="smile" ac:emoji-shortname=":warning:" ac:emoji-fallback="⚠️"/>',
+        expected: {
+          type: "text",
+          text: "⚠️",
+          emoji: {
+            shortName: ":warning:",
+            text: "⚠️",
+            renderedFrom: "source-text",
+          },
+        },
+      },
+    ] as const;
+
+    for (const { storage, expected } of cases) {
+      const result = storageToBlocks(`<p>${storage}</p>`);
+      expect(result.blocks[0]).toEqual({
+        type: "paragraph",
+        content: [expected],
+      });
+      expect(result.notes).toEqual([]);
+    }
+
+    const unknown = storageToBlocks('<p><ac:emoticon ac:name="custom-party"/></p>');
+    expect(unknown.blocks[0]).toEqual({
+      type: "paragraph",
+      content: [{
+        type: "text",
+        text: "custom-party",
+        emoji: {
+          shortName: "custom-party",
+          renderedFrom: "short-name",
+        },
+      }],
+    });
+    expect(unknown.notes).toEqual([
+      expect.objectContaining({ code: "emoji-text-fallback" }),
+    ]);
+
+    expect(storageToBlocks("<p>:warning:</p>").blocks[0]).toEqual({
+      type: "paragraph",
+      content: [{ type: "text", text: ":warning:" }],
+    });
+  });
+
+  test("projects all 22 canonical and 26 alias notations through Body Storage", () => {
+    const canonicalCases = Object.values(CONFLUENCE_LEGACY_EMOJI_PROJECTIONS)
+      .map((projection) => ({
+        shortName: `:${projection.canonicalName}:`,
+        projection,
+      }));
+    const aliasCases = Object.entries(CONFLUENCE_LEGACY_EMOJI_ALIASES)
+      .map(([alias, canonicalName]) => ({
+        shortName: `:${alias}:`,
+        projection: CONFLUENCE_LEGACY_EMOJI_PROJECTIONS[canonicalName],
+      }));
+    const cases = [...canonicalCases, ...aliasCases];
+    const storage = `<p>${cases.map(({ shortName }) =>
+      `<ac:emoticon ac:name="smile" ac:emoji-shortname="${shortName}"/>`
+    ).join("")}:+1:</p>`;
+    const result = storageToBlocks(storage);
+
+    expect(canonicalCases).toHaveLength(22);
+    expect(aliasCases).toHaveLength(26);
+    expect(result.blocks[0]).toEqual({
+      type: "paragraph",
+      content: [
+        ...cases.map(({ shortName, projection }) => ({
+          type: "text" as const,
+          text: projection.text,
+          emoji: {
+            shortName,
+            renderedFrom: "catalog-projection" as const,
+            projection,
+          },
+        })),
+        { type: "text", text: ":+1:" },
+      ],
+    });
+    expect(result.notes).toEqual([]);
+  });
+
+  test("projects Cloud picker aliases through Body Storage and preserves Unicode fallbacks", () => {
+    const pickerAssets = [
+      { shortName: ":check_mark:", id: "atlassian-check_mark", canonicalName: "tick" },
+      { shortName: ":warning:", id: "atlassian-warning", canonicalName: "warning" },
+      { shortName: ":minus:", id: "atlassian-minus", canonicalName: "minus" },
+      { shortName: ":question_mark:", id: "atlassian-question_mark", canonicalName: "question" },
+      { shortName: ":cross_mark:", id: "atlassian-cross_mark", canonicalName: "cross" },
+      { shortName: ":info:", id: "atlassian-info", canonicalName: "information" },
+    ] as const;
+    const storage = `<p>${pickerAssets.map(({ shortName, id }) =>
+      `<ac:emoticon ac:name="smile" ac:emoji-id="${id}" ac:emoji-shortname="${shortName}" ac:emoji-fallback="${shortName}"/>`
+    ).join("")}<ac:emoticon ac:name="slight-smile" ac:emoji-id="1f642" ac:emoji-shortname=":slight_smile:" ac:emoji-fallback="🙂"/></p>`;
+    const result = storageToBlocks(storage);
+
+    expect(result.blocks[0]).toEqual({
+      type: "paragraph",
+      content: [
+        ...pickerAssets.map(({ shortName, canonicalName }) => {
+          const projection = CONFLUENCE_LEGACY_EMOJI_PROJECTIONS[canonicalName];
+          return {
+            type: "text" as const,
+            text: projection.text,
+            emoji: {
+              shortName,
+              text: shortName,
+              renderedFrom: "catalog-projection" as const,
+              projection,
+            },
+          };
+        }),
+        {
+          type: "text",
+          text: "🙂",
+          emoji: {
+            shortName: ":slight_smile:",
+            text: "🙂",
+            renderedFrom: "source-text",
+          },
+        },
+      ],
+    });
+    expect(result.notes).toEqual([]);
+  });
+
+  test("keeps a visible diagnosed floor for an invalid empty Storage emoji identity", () => {
+    const result = storageToBlocks(
+      '<p><ac:emoticon ac:name="warning" ac:emoji-shortname=""/></p>'
+    );
+
+    expect(result.blocks[0]).toEqual({
+      type: "paragraph",
+      content: [{
+        type: "text",
+        text: "[emoji]",
+        emoji: {
+          shortName: "[emoji]",
+          renderedFrom: "short-name",
+        },
+      }],
+    });
+    expect(result.notes).toEqual([
+      expect.objectContaining({ code: "emoji-text-fallback" }),
     ]);
   });
 
@@ -683,7 +878,7 @@ describe("storageToBlocks — code blocks", () => {
 });
 
 describe("storageToBlocks — callouts", () => {
-  for (const kind of ["info", "note", "warning", "tip"] as const) {
+  for (const kind of ["info", "note", "warning", "tip", "success", "error"] as const) {
     test(`${kind} callout with body`, () => {
       const out = blocks(
         `<ac:structured-macro ac:name="${kind}"><ac:rich-text-body><p>body</p></ac:rich-text-body></ac:structured-macro>`
@@ -691,6 +886,55 @@ describe("storageToBlocks — callouts", () => {
       expect(out).toEqual([
         { type: "callout", kind, content: [{ type: "paragraph", content: [{ type: "text", text: "body" }] }] },
       ]);
+    });
+  }
+
+  test("semantic registry is exhaustive and explicit source icons always win", () => {
+    expect(SEMANTIC_CALLOUT_ICONS).toEqual({
+      info: { kind: "info", symbol: "ℹ", label: "Info" },
+      note: { kind: "note", symbol: "✎", label: "Note" },
+      warning: { kind: "warning", symbol: "⚠", label: "Warning" },
+      tip: { kind: "tip", symbol: "💡", label: "Tip" },
+      success: { kind: "success", symbol: "✓", label: "Success" },
+      error: { kind: "error", symbol: "✕", label: "Error" },
+    });
+    for (const icon of Object.values(SEMANTIC_CALLOUT_ICONS)) {
+      expect(resolveCalloutIcon({ kind: icon.kind })).toEqual({
+        source: "semantic-default",
+        icon,
+      });
+    }
+
+    expect(resolveCalloutIcon({ kind: "warning", panelIconText: "🧭", panelIcon: ":warning:" }))
+      .toEqual({ source: "explicit", text: "🧭" });
+    expect(resolveCalloutIcon({ kind: "warning", panelIcon: "🦜" }))
+      .toEqual({ source: "explicit", text: "🦜" });
+    expect(resolveCalloutIcon({
+      kind: "warning",
+      panelIcon: ":warning:",
+      panelIconProjection: CONFLUENCE_LEGACY_EMOJI_PROJECTIONS.warning,
+    })).toEqual({ source: "explicit", text: "⚠" });
+    expect(resolveCalloutIcon({ kind: "warning", panelIcon: ":custom-visible:" }))
+      .toEqual({ source: "explicit", text: ":custom-visible:" });
+    expect(resolveCalloutIcon({ kind: "panel" })).toBeUndefined();
+    expect(resolveCalloutIcon({ kind: "warning", suppressDefaultIcon: true })).toBeUndefined();
+  });
+
+  for (const kind of ["info", "note", "warning", "tip"] as const) {
+    test(`${kind} preserves the Data Center icon=false author choice`, () => {
+      const out = blocks(
+        `<ac:structured-macro ac:name="${kind}">` +
+          '<ac:parameter ac:name="icon"> FALSE </ac:parameter>' +
+          "<ac:rich-text-body><p>body</p></ac:rich-text-body>" +
+        "</ac:structured-macro>"
+      );
+      expect(out[0]).toMatchObject({
+        type: "callout",
+        kind,
+        suppressDefaultIcon: true,
+      });
+      expect(resolveCalloutIcon(out[0] as Extract<ExportBlock, { type: "callout" }>))
+        .toBeUndefined();
     });
   }
 

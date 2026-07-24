@@ -53,6 +53,10 @@ import { commentBodyToText } from "./comment-text.js";
 import type { InlineComment } from "./client.js";
 import { sanitizeLinkHref, unsafeLinkMessage } from "./link-safety.js";
 import type { BlocksResult } from "./page-body.js";
+import {
+  isColonEmojiShortName,
+  projectTypedEmoji,
+} from "./emoji-projection.js";
 
 export interface AdfToBlocksOptions
   extends Omit<StorageToBlocksOptions, "parseBudget"> {
@@ -457,6 +461,14 @@ function decodeBlockNode(node: AdfNode, ctx: DecodeContext, path: string): Expor
       const panelIcon = optionalStringAttr(node, "panelIcon");
       const panelIconId = optionalStringAttr(node, "panelIconId");
       const panelIconText = optionalStringAttr(node, "panelIconText");
+      const panelIconResult =
+        panelIcon !== undefined && isColonEmojiShortName(panelIcon)
+          ? projectTypedEmoji({ shortName: panelIcon })
+          : undefined;
+      const panelIconProjection =
+        panelIconResult?.kind === "known"
+          ? panelIconResult.projection
+          : undefined;
       if (rawPanelColor !== undefined && normalizedPanelColor === undefined) {
         addNodeNote(
           ctx,
@@ -477,6 +489,17 @@ function decodeBlockNode(node: AdfNode, ctx: DecodeContext, path: string): Expor
           "has only a service icon ID; the identity was retained but no portable static icon text exists.",
         );
       }
+      if (
+        !panelIconText &&
+        panelIconResult?.kind === "unresolved"
+      ) {
+        addNodeNote(
+          ctx,
+          path,
+          node.type,
+          "has an unresolved typed panel icon; the exact short name remains visible.",
+        );
+      }
       return [{
         type: "callout",
         kind: panelKind(type),
@@ -485,6 +508,7 @@ function decodeBlockNode(node: AdfNode, ctx: DecodeContext, path: string): Expor
         ...(panelIcon !== undefined ? { panelIcon } : {}),
         ...(panelIconId !== undefined ? { panelIconId } : {}),
         ...(panelIconText !== undefined ? { panelIconText } : {}),
+        ...(panelIconProjection !== undefined ? { panelIconProjection } : {}),
         content: decodeBlockChildren(node.content, ctx, `${path}.content`),
       }];
     }
@@ -603,16 +627,21 @@ function decodeInlineNode(node: AdfNode, ctx: DecodeContext, path: string): Inli
       // `shortName`, so retain the exact value in the neutral metadata.
       const rawSourceText = node.attrs?.text;
       const sourceText = typeof rawSourceText === "string" ? rawSourceText : undefined;
+      const result = projectTypedEmoji({ shortName, sourceText });
       const renderedFrom =
-        sourceText !== undefined && sourceText.length > 0 ? "text" : "short-name";
-      const text = renderedFrom === "text" ? sourceText! : shortName;
+        result.kind === "source-text"
+          ? "source-text"
+          : result.kind === "known"
+            ? "catalog-projection"
+            : "short-name";
       const emoji: EmojiSemantics = {
         shortName,
         ...(stringAttr(node, "id") ? { id: stringAttr(node, "id") } : {}),
         ...(sourceText !== undefined ? { text: sourceText } : {}),
         renderedFrom,
+        ...(result.kind === "known" ? { projection: result.projection } : {}),
       };
-      if (renderedFrom === "short-name" || isColonEmojiFallback(text)) {
+      if (result.kind === "unresolved") {
         ctx.notes.add({
           level: "warning",
           code: "emoji-text-fallback",
@@ -620,7 +649,7 @@ function decodeInlineNode(node: AdfNode, ctx: DecodeContext, path: string): Inli
           source: sourceFor(ctx, path),
         });
       }
-      return applyMarks(text, node.marks ?? [], ctx, path, emoji);
+      return applyMarks(result.text, node.marks ?? [], ctx, path, emoji);
     }
     case "date": {
       const timestamp = stringAttr(node, "timestamp") ?? "";
@@ -836,11 +865,6 @@ function applyMarks(
   };
   if (!link) return [node];
   return wrapLink(link.href, [node], ctx, path, link.attributes);
-}
-
-/** True for an ADF textual emoji token such as `:awthanks:`. */
-function isColonEmojiFallback(value: string): boolean {
-  return value.length >= 3 && value.startsWith(":") && value.endsWith(":") && !/\s/u.test(value);
 }
 
 function decodeBlockPresentation(

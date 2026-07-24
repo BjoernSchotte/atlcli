@@ -25,6 +25,7 @@ export * from "./adf-coverage.js";
 export * from "./adf-validate.js";
 export * from "./adf-to-blocks.js";
 export * from "./markdown.js";
+export * from "./emoji-projection.js";
 export * from "./asset-budget.js";
 export * from "./compose-document.js";
 export * from "./export-blocks.js";

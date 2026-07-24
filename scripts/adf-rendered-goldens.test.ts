@@ -23,6 +23,8 @@ describe("ADF rendered goldens", () => {
       "docx-embedded-code-font",
       "unicode-emoji",
       "custom-emoji-fallback",
+      "typed-emoji-all-canonical-aliases",
+      "emoji-literal-and-unicode-controls",
       "localized-date-chip",
       "semantic-status-colors-and-casing",
       "hidden-template-placeholder",
@@ -31,7 +33,10 @@ describe("ADF rendered goldens", () => {
       "block-indentation",
       "paragraph-font-size",
       "semantic-success-error-panels",
+      "semantic-callout-labelled-icons",
+      "semantic-callout-nested-list-and-table-layout",
       "custom-panel-color-icon",
+      "typed-custom-panel-icon-projection",
       "ordered-list-start",
       "nested-ordered-list-restart",
       "nested-bullet-list",
@@ -72,8 +77,8 @@ describe("ADF rendered goldens", () => {
     const result = await checkAdfRenderedGoldens();
     expect(result).toMatchObject({
       updated: false,
-      docxPages: 2,
-      pdfPages: 6,
+      docxPages: 3,
+      pdfPages: 8,
       docxCodeFontEmbedded: true,
     });
     expect(result.maxMeanPixelDifference).toBeLessThanOrEqual(0.08);

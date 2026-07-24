@@ -43,6 +43,7 @@ export interface BlocksCaseResult {
   docxHasAnchorBookmark: boolean;
   docxHasUnknownPlaceholder: boolean;
   docxHasCodeTitle: boolean;
+  docxHasNestedCalloutIcons: boolean;
   pdfHasCodeCollapseProjection: boolean;
   docxHasCodeCollapseProjection: boolean;
   pdfWarningCodes: string[];
@@ -100,11 +101,21 @@ export async function runBlocksCase(): Promise<BlocksCaseResult> {
     documentText.includes("Legacy code header") &&
     documentText.includes("export const answer = 42;") &&
     documentText.indexOf("Legacy code header") < documentText.indexOf("export const answer = 42;");
+  const docxHasNestedCalloutIcons =
+    ["Warning", "Tip", "Info", "Note"].every(
+      (label) => documentXml.match(new RegExp(`descr="${label}"`, "gu"))?.length === 2,
+    )
+    && documentText.includes("Dense table warning")
+    && documentText.includes("Tip inside list item")
+    && documentText.includes("Note inside callout");
   if (!docxHasTable) throw new Error("DOCX is missing the table (columnWidths block).");
   if (!docxHasLandscape) throw new Error("DOCX is missing the landscape orientation section.");
   if (!docxHasAnchorBookmark) throw new Error("DOCX is missing the named anchor bookmark.");
   if (!docxHasUnknownPlaceholder) throw new Error("DOCX did not preserve the unknown-macro placeholder.");
   if (!docxHasCodeTitle) throw new Error("DOCX did not render the legacy code title above the source.");
+  if (!docxHasNestedCalloutIcons) {
+    throw new Error("DOCX did not render semantic callout icons in table, list, and callout containers.");
+  }
 
   const pdfHasCodeCollapseProjection = pdfReport.notes.some(
     (note) => note.code === "code-collapse-static" && note.level === "info",
@@ -132,6 +143,7 @@ export async function runBlocksCase(): Promise<BlocksCaseResult> {
     docxHasAnchorBookmark,
     docxHasUnknownPlaceholder,
     docxHasCodeTitle,
+    docxHasNestedCalloutIcons,
     pdfHasCodeCollapseProjection,
     docxHasCodeCollapseProjection,
     pdfWarningCodes,

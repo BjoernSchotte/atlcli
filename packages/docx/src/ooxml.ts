@@ -555,11 +555,26 @@ export function calloutTable(
   const c = sourceColor
     ? { fill: tint(sourceColor), accent: sourceColor }
     : palette[kind] ?? palette.panel;
-  const icon = custom?.iconRunsXml
-    ? `<w:p><w:pPr><w:spacing w:after="60"/></w:pPr>${custom.iconRunsXml}</w:p>`
-    : "";
-  const title = titleRunsXml ? `<w:p><w:pPr><w:spacing w:after="60"/></w:pPr>${titleRunsXml}</w:p>` : "";
-  const body = cellBodyXml(bodyParagraphs);
+  const icon = custom?.iconRunsXml ?? "";
+  const gap = icon ? `<w:r><w:t xml:space="preserve"> </w:t></w:r>` : "";
+  const title =
+    titleRunsXml
+      ? `<w:p><w:pPr><w:spacing w:after="60"/></w:pPr>${icon}${gap}${titleRunsXml}</w:p>`
+      : "";
+  let body = cellBodyXml(bodyParagraphs);
+  if (icon && !titleRunsXml) {
+    const prefix = icon + gap;
+    if (/^<w:p(?:\s|>)/u.test(body)) {
+      body = /^(<w:p(?:\s[^>]*)?>\s*<w:pPr>[\s\S]*?<\/w:pPr>)/u.test(body)
+        ? body.replace(
+            /^(<w:p(?:\s[^>]*)?>\s*<w:pPr>[\s\S]*?<\/w:pPr>)/u,
+            `$1${prefix}`,
+          )
+        : body.replace(/^(<w:p(?:\s[^>]*)?>)/u, `$1${prefix}`);
+    } else {
+      body = `<w:p>${prefix}</w:p>${body}`;
+    }
+  }
   return (
     `<w:tbl>` +
     `<w:tblPr><w:tblW w:w="9000" w:type="dxa"/>` +
@@ -569,7 +584,6 @@ export function calloutTable(
     `<w:tblGrid><w:gridCol w:w="9000"/></w:tblGrid>` +
     `<w:tr><w:tc>` +
     `<w:tcPr><w:tcW w:w="9000" w:type="dxa"/><w:shd w:val="clear" w:color="auto" w:fill="${c.fill}"/></w:tcPr>` +
-    icon +
     title +
     body +
     `</w:tc></w:tr>` +

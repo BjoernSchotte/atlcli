@@ -42,7 +42,7 @@ const EDITORIAL_BULLET = String.fromCodePoint(0x2022);
 const EDITORIAL_NESTED_BULLET = String.fromCodePoint(0x25e6);
 const TASK_CHECKED = String.fromCodePoint(0x2713);
 const TASK_UNCHECKED = String.fromCodePoint(0x25a1);
-const SYMBOL_FALLBACK_FONT = "Noto Sans Symbols2";
+const SYMBOL_FALLBACK_FONTS = ["Noto Sans Symbols2", "Noto Emoji"] as const;
 
 /**
  * Generate the pinned Typst template for a design. All presentation values come
@@ -72,7 +72,7 @@ export function createAtlcliTypstTemplate(
   const RN = (key: string): number => need(ratios, key, "ratio");
   const F = (role: "body" | "heading" | "mono"): string => fonts[role];
   const fontStack = (font: string): string =>
-    `(${typstString(font)}, ${typstString(SYMBOL_FALLBACK_FONT)})`;
+    `(${[font, ...SYMBOL_FALLBACK_FONTS].map(typstString).join(", ")})`;
   const roleOf = (key: string) => need(roles, key, "typography role");
   const rsize = (key: string): string => roleOf(key).size;
   const rweight = (key: string): string => {
@@ -415,7 +415,7 @@ ${headerResolution}
   ]
 }
 
-#let callout(kind: "info", title: none, custom_color: none, icon: none, body) = {
+#let callout(kind: "info", title: none, custom_color: none, icon: none, icon_alt: none, body) = {
   let palette = (
     info: (rgb("${info.bg}"), rgb("${info.fg}")),
     note: (rgb("${note.bg}"), rgb("${note.fg}")),
@@ -438,7 +438,15 @@ ${headerResolution}
     below: ${L("calloutBelow")},
   )[
     #set text(font: ${fontStack(F("heading"))})
-    #if icon != none { text(weight: "semibold", fill: foreground, icon); if title == none { linebreak() } else { h(${L("calloutIconGap")}) } }
+    #if icon != none {
+      let styled-icon = text(weight: "semibold", fill: foreground, icon)
+      if icon_alt == none {
+        styled-icon
+      } else {
+        box(figure(styled-icon, alt: icon_alt, outlined: false))
+      }
+      h(${L("calloutIconGap")})
+    }
     #if title != none { text(weight: "semibold", fill: foreground, title); linebreak() }
     #body
   ]

@@ -1,6 +1,9 @@
 import { describe, expect, it } from "bun:test";
 import type { ExportBlock, ExportNode, ExportNote } from "@atlcli/confluence";
-import { composeChapters } from "@atlcli/confluence";
+import {
+  CONFLUENCE_LEGACY_EMOJI_PROJECTIONS,
+  composeChapters,
+} from "@atlcli/confluence";
 import { BUILTIN_PDF_TEMPLATE_MANIFEST } from "./builtin-template.js";
 import { preparePdfDocument } from "./prepare.js";
 import { mapPdfDiagnostics, serializePdfDocument } from "./serialize.js";
@@ -110,9 +113,9 @@ describe("PDF preparation and serialization", () => {
     expect(bundle.main).toContain("#quote(block: true)");
     expect(bundle.main).toContain("#line(length: 100%");
     expect(bundle.sourceMap.length).toBeGreaterThanOrEqual(blocks.length);
-    expect(bundle.template).toContain('font: ("Source Serif 4", "Noto Sans Symbols2")');
-    expect(bundle.template).toContain('font: ("Source Sans 3", "Noto Sans Symbols2")');
-    expect(bundle.template).toContain('font: ("Source Code Pro", "Noto Sans Symbols2")');
+    expect(bundle.template).toContain('font: ("Source Serif 4", "Noto Sans Symbols2", "Noto Emoji")');
+    expect(bundle.template).toContain('font: ("Source Sans 3", "Noto Sans Symbols2", "Noto Emoji")');
+    expect(bundle.template).toContain('font: ("Source Code Pro", "Noto Sans Symbols2", "Noto Emoji")');
     expect(bundle.template).toContain(`[${String.fromCodePoint(0x2013)}]`);
     expect(bundle.template).toContain(`[${String.fromCodePoint(0x2022)}]`);
     expect(bundle.template).toContain(`[${String.fromCodePoint(0x25e6)}]`);
@@ -132,7 +135,7 @@ describe("PDF preparation and serialization", () => {
     expect(bundle.main).toContain("inset: (x: 6pt, y: 7pt)");
     expect(bundle.template).toContain('let indigo = rgb(brand.at("accent", default: "#4B57A3"))');
     expect(bundle.template).toContain('let cover-paper = rgb("#FCFBF8")');
-    expect(bundle.template).toContain('text(font: ("Source Serif 4", "Noto Sans Symbols2"), size: 31pt');
+    expect(bundle.template).toContain('text(font: ("Source Serif 4", "Noto Sans Symbols2", "Noto Emoji"), size: 31pt');
     expect(bundle.template).toContain("current-page > 1 and current-page < final-page");
     // Labels are now resolved at runtime; this en export threads the English
     // end-label through settings.labels (asserted on bundle.main below).
@@ -211,6 +214,63 @@ describe("PDF preparation and serialization", () => {
     expect(main).toContain('#callout(kind: "error"');
   });
 
+  it("renders all six defaults as labelled graphical icons", async () => {
+    const standard = [
+      ["info", "ℹ", "Info"],
+      ["note", "✎", "Note"],
+      ["warning", "⚠", "Warning"],
+      ["tip", "💡", "Tip"],
+      ["success", "✓", "Success"],
+      ["error", "✕", "Error"],
+    ] as const;
+    const { main } = await toMain(standard.map(([kind]) => ({
+      type: "callout" as const,
+      kind,
+      content: [{
+        type: "paragraph" as const,
+        content: [{ type: "text" as const, text: `${kind} body` }],
+      }],
+    })));
+
+    for (const [kind, symbol, label] of standard) {
+      expect(main).toContain(
+        `#callout(kind: "${kind}", title: none, icon: [#text("${symbol}")], icon_alt: "${label}")`,
+      );
+    }
+  });
+
+  it("keeps explicit standard icons and Storage/DC icon=false ahead of semantic defaults", async () => {
+    const explicit = await toMain([{
+      type: "callout",
+      kind: "warning",
+      panelIcon: ":warning:",
+      panelIconText: "🧭",
+      content: [{ type: "paragraph", content: [{ type: "text", text: "Explicit" }] }],
+    }]);
+    expect(explicit.main).toContain(
+      '#callout(kind: "warning", title: none, icon: [#text("🧭")])',
+    );
+    expect(explicit.main).not.toContain('icon_alt: "Warning"');
+    expect(explicit.main).not.toContain(":warning:");
+
+    const suppressed = await toMain([
+      {
+        type: "callout",
+        kind: "warning",
+        suppressDefaultIcon: true,
+        content: [{ type: "paragraph", content: [{ type: "text", text: "Suppressed" }] }],
+      },
+      {
+        type: "callout",
+        kind: "panel",
+        content: [{ type: "paragraph", content: [{ type: "text", text: "Panel" }] }],
+      },
+    ]);
+    expect(suppressed.main).toContain('#callout(kind: "warning", title: none)');
+    expect(suppressed.main).toContain('#callout(kind: "panel", title: none)');
+    expect(suppressed.main).not.toContain("icon:");
+  });
+
   it("renders portable custom-panel color and preferred icon text", async () => {
     const { main } = await toMain([{
       type: "callout",
@@ -220,13 +280,44 @@ describe("PDF preparation and serialization", () => {
       panelIcon: ":star:",
       panelIconId: "icon-id",
       panelIconText: "★",
+      panelIconProjection: CONFLUENCE_LEGACY_EMOJI_PROJECTIONS["yellow-star"],
       content: [{ type: "paragraph", content: [{ type: "text", text: "Custom body" }] }],
     }]);
 
     expect(main).toContain(
       '#callout(kind: "panel", title: none, custom_color: rgb("#123456"), icon: [#text("★")])',
     );
+    expect(main).not.toContain("Y★");
     expect(main).not.toContain(":star:");
+  });
+
+  it("uses adapter-projected panel icons without resolving raw colon text", async () => {
+    const { main } = await toMain([
+      {
+        type: "callout",
+        kind: "panel",
+        panelIcon: ":warning:",
+        panelIconText: "",
+        panelIconProjection: CONFLUENCE_LEGACY_EMOJI_PROJECTIONS.warning,
+        content: [{ type: "paragraph", content: [{ type: "text", text: "Projected" }] }],
+      },
+      {
+        type: "callout",
+        kind: "panel",
+        panelIcon: ":warning:",
+        content: [{ type: "paragraph", content: [{ type: "text", text: "Raw" }] }],
+      },
+      {
+        type: "callout",
+        kind: "panel",
+        panelIcon: "🦜",
+        content: [{ type: "paragraph", content: [{ type: "text", text: "Unicode" }] }],
+      },
+    ]);
+
+    expect(main).toContain('icon: [#text("⚠")]');
+    expect(main).toContain('icon: [#text(":warning:")]');
+    expect(main).toContain('icon: [#text("🦜")]');
   });
 
   it("renders expand and nested-expand bodies open with a visible disclosure title", async () => {

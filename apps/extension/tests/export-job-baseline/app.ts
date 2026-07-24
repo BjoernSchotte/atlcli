@@ -9,6 +9,8 @@ import serifSemiBoldUrl from "@atlcli/pdf/fonts/SourceSerif4-Semibold.ttf?url";
 import serifBoldUrl from "@atlcli/pdf/fonts/SourceSerif4-Bold.ttf?url";
 import codeRegularUrl from "@atlcli/pdf/fonts/SourceCodePro-Regular.ttf?url";
 import codeBoldUrl from "@atlcli/pdf/fonts/SourceCodePro-Bold.ttf?url";
+import symbolsRegularUrl from "@atlcli/pdf/fonts/NotoSansSymbols2-Regular.ttf?url";
+import emojiRegularUrl from "@atlcli/pdf/fonts/NotoEmoji-wght.ttf?url";
 import {
   composeChapters,
   type ExportPageNode,
@@ -77,6 +79,8 @@ const fontUrls = new Map<string, string>([
   ["SourceSerif4-Bold.ttf", serifBoldUrl],
   ["SourceCodePro-Regular.ttf", codeRegularUrl],
   ["SourceCodePro-Bold.ttf", codeBoldUrl],
+  ["NotoSansSymbols2-Regular.ttf", symbolsRegularUrl],
+  ["NotoEmoji-wght.ttf", emojiRegularUrl],
 ]);
 
 const EXPORT_DATE = new Date("2026-07-22T00:00:00.000Z");

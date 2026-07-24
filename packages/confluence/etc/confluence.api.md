@@ -431,6 +431,9 @@ export type CalloutKind = "info" | "note" | "warning" | "tip" | "success" | "err
 // export: canonicalExportNoteCode
 export declare function canonicalExportNoteCode(code: string): ExportNoteCode | undefined;
 
+// export: CanonicalLegacyEmojiName
+export type CanonicalLegacyEmojiName = "smile" | "sad" | "cheeky" | "laugh" | "wink" | "thumbs-up" | "thumbs-down" | "tick" | "cross" | "warning" | "information" | "question" | "light-on" | "light-off" | "yellow-star" | "red-star" | "green-star" | "blue-star" | "heart" | "broken-heart" | "plus" | "minus";
+
 // export: Caption
 export interface Caption {
     kind: CaptionKind;
@@ -484,6 +487,39 @@ export interface ComposeResult {
 
 // export: computeHeadingOffset
 export declare function computeHeadingOffset(blocks: readonly HeadingScanBlock[]): number;
+
+// export: CONFLUENCE_LEGACY_EMOJI_ALIASES
+export declare const CONFLUENCE_LEGACY_EMOJI_ALIASES: Readonly<{
+    "+1": "thumbs-up";
+    thumbsup: "thumbs-up";
+    "-1": "thumbs-down";
+    thumbsdown: "thumbs-down";
+    check: "tick";
+    white_check_mark: "tick";
+    heavy_check_mark: "tick";
+    x: "cross";
+    heavy_multiplication_x: "cross";
+    bulb: "light-on";
+    idea: "light-on";
+    lightbulb: "light-on";
+    star: "yellow-star";
+    info: "information";
+    warn: "warning";
+    alert: "warning";
+    grinning: "smile";
+    grin: "smile";
+    smiley: "smile";
+    disappointed: "sad";
+    cry: "sad";
+    stuck_out_tongue: "cheeky";
+    joy: "laugh";
+    laughing: "laugh";
+    love: "heart";
+    red_heart: "heart";
+}>;
+
+// export: CONFLUENCE_LEGACY_EMOJI_PROJECTIONS
+export declare const CONFLUENCE_LEGACY_EMOJI_PROJECTIONS: Readonly<Record<CanonicalLegacyEmojiName, PortableEmojiProjection>>;
 
 // export: CONFLUENCE_LIST_MACRO
 export declare const CONFLUENCE_LIST_MACRO = "confluence-list";
@@ -1023,12 +1059,26 @@ export declare const DEFAULT_STORAGE_PARSE_BUDGET: StorageParseBudget;
 // export: drainPaginated
 export declare function drainPaginated<T>(fetchPage: (token: string | undefined) => Promise<PaginatedPage<T>>): Promise<T[]>;
 
+// export: EmojiProjectionResult
+export type EmojiProjectionResult = {
+    kind: "source-text";
+    text: string;
+} | {
+    kind: "known";
+    text: string;
+    projection: PortableEmojiProjection;
+} | {
+    kind: "unresolved";
+    text: string;
+};
+
 // export: EmojiSemantics
 export interface EmojiSemantics {
     shortName: string;
     id?: string;
     text?: string;
-    renderedFrom: "text" | "short-name";
+    renderedFrom: "source-text" | "catalog-projection" | "short-name";
+    projection?: PortableEmojiProjection;
 }
 
 // export: escapeCqlValue
@@ -1206,6 +1256,8 @@ export type ExportBlock = {
     panelIcon?: string;
     panelIconId?: string;
     panelIconText?: string;
+    panelIconProjection?: PortableEmojiProjection;
+    suppressDefaultIcon?: boolean;
     syncedContent?: SyncedContentProvenance;
 } | {
     type: "expand";
@@ -1713,6 +1765,9 @@ export type InlineNode = {
     type: "lineBreak";
 };
 
+// export: isColonEmojiShortName
+export declare function isColonEmojiShortName(value: string): boolean;
+
 // export: isImageFile
 export declare function isImageFile(filename: string): boolean;
 
@@ -1907,6 +1962,9 @@ export declare function normalizeCaptionKind(raw: string | undefined, targetBloc
     note?: ExportNote;
 };
 
+// export: normalizeEmojiShortName
+export declare function normalizeEmojiShortName(value: string): CanonicalLegacyEmojiName | undefined;
+
 // export: normalizeExportColor
 export declare function normalizeExportColor(value: string | undefined): string | undefined;
 
@@ -2016,6 +2074,13 @@ export declare class PaginationLoopError extends Error {
     constructor(token: string);
 }
 
+// export: panelIconDisplayText
+export declare function panelIconDisplayText(panel: {
+    panelIcon?: string;
+    panelIconText?: string;
+    panelIconProjection?: PortableEmojiProjection;
+}): string | undefined;
+
 // export: parseAdfDateTimestamp
 export declare function parseAdfDateTimestamp(timestamp: string): Date | undefined;
 
@@ -2117,11 +2182,41 @@ export type PinnedAdfNodeType = (typeof PINNED_ADF_NODE_TYPES)[number];
 // export: PinnedAdfStage0NodeType
 export type PinnedAdfStage0NodeType = (typeof PINNED_ADF_STAGE0_NODE_TYPES)[number];
 
+// export: PortableEmojiProjection
+export interface PortableEmojiProjection {
+    canonicalName: CanonicalLegacyEmojiName;
+    text: string;
+}
+
+// export: projectTypedEmoji
+export declare function projectTypedEmoji(input: {
+    shortName: string;
+    sourceText?: string;
+}): EmojiProjectionResult;
+
 // export: readableTextColor
 export declare function readableTextColor(backgroundColor: string): "#FFFFFF" | "#172B4D";
 
 // export: replaceAttachmentPaths
 export declare function replaceAttachmentPaths(markdown: string, pageFilename: string): string;
+
+// export: resolveCalloutIcon
+export declare function resolveCalloutIcon(callout: {
+    kind: CalloutKind;
+    panelIcon?: string;
+    panelIconText?: string;
+    panelIconProjection?: PortableEmojiProjection;
+    suppressDefaultIcon?: boolean;
+}): ResolvedCalloutIcon | undefined;
+
+// export: ResolvedCalloutIcon
+export type ResolvedCalloutIcon = {
+    source: "explicit";
+    text: string;
+} | {
+    source: "semantic-default";
+    icon: SemanticCalloutIcon;
+};
 
 // export: resolveExportMentions
 export declare function resolveExportMentions(blocks: ExportBlock[], lookup: ExportMentionLookup): Promise<ExportMentionResolution>;
@@ -2159,6 +2254,16 @@ export interface SearchResults {
     totalSize?: number;
     hasMore: boolean;
     nextLink?: string;
+}
+
+// export: SEMANTIC_CALLOUT_ICONS
+export declare const SEMANTIC_CALLOUT_ICONS: Readonly<Record<StandardCalloutKind, SemanticCalloutIcon>>;
+
+// export: SemanticCalloutIcon
+export interface SemanticCalloutIcon {
+    kind: StandardCalloutKind;
+    symbol: string;
+    label: string;
 }
 
 // export: SmartCardAppearance
@@ -2199,6 +2304,9 @@ export type SpaceIcon = {
     height?: number;
     isDefault?: boolean;
 };
+
+// export: StandardCalloutKind
+export type StandardCalloutKind = Exclude<CalloutKind, "panel">;
 
 // export: statusDisplayText
 export declare function statusDisplayText(status: Pick<Extract<InlineNode, {
@@ -2988,6 +3096,9 @@ export type CalloutKind = "info" | "note" | "warning" | "tip" | "success" | "err
 // export: canonicalExportNoteCode
 export declare function canonicalExportNoteCode(code: string): ExportNoteCode | undefined;
 
+// export: CanonicalLegacyEmojiName
+export type CanonicalLegacyEmojiName = "smile" | "sad" | "cheeky" | "laugh" | "wink" | "thumbs-up" | "thumbs-down" | "tick" | "cross" | "warning" | "information" | "question" | "light-on" | "light-off" | "yellow-star" | "red-star" | "green-star" | "blue-star" | "heart" | "broken-heart" | "plus" | "minus";
+
 // export: Caption
 export interface Caption {
     kind: CaptionKind;
@@ -3041,6 +3152,39 @@ export interface ComposeResult {
 
 // export: computeHeadingOffset
 export declare function computeHeadingOffset(blocks: readonly HeadingScanBlock[]): number;
+
+// export: CONFLUENCE_LEGACY_EMOJI_ALIASES
+export declare const CONFLUENCE_LEGACY_EMOJI_ALIASES: Readonly<{
+    "+1": "thumbs-up";
+    thumbsup: "thumbs-up";
+    "-1": "thumbs-down";
+    thumbsdown: "thumbs-down";
+    check: "tick";
+    white_check_mark: "tick";
+    heavy_check_mark: "tick";
+    x: "cross";
+    heavy_multiplication_x: "cross";
+    bulb: "light-on";
+    idea: "light-on";
+    lightbulb: "light-on";
+    star: "yellow-star";
+    info: "information";
+    warn: "warning";
+    alert: "warning";
+    grinning: "smile";
+    grin: "smile";
+    smiley: "smile";
+    disappointed: "sad";
+    cry: "sad";
+    stuck_out_tongue: "cheeky";
+    joy: "laugh";
+    laughing: "laugh";
+    love: "heart";
+    red_heart: "heart";
+}>;
+
+// export: CONFLUENCE_LEGACY_EMOJI_PROJECTIONS
+export declare const CONFLUENCE_LEGACY_EMOJI_PROJECTIONS: Readonly<Record<CanonicalLegacyEmojiName, PortableEmojiProjection>>;
 
 // export: CONFLUENCE_LIST_MACRO
 export declare const CONFLUENCE_LIST_MACRO = "confluence-list";
@@ -3580,12 +3724,26 @@ export declare const DEFAULT_STORAGE_PARSE_BUDGET: StorageParseBudget;
 // export: drainPaginated
 export declare function drainPaginated<T>(fetchPage: (token: string | undefined) => Promise<PaginatedPage<T>>): Promise<T[]>;
 
+// export: EmojiProjectionResult
+export type EmojiProjectionResult = {
+    kind: "source-text";
+    text: string;
+} | {
+    kind: "known";
+    text: string;
+    projection: PortableEmojiProjection;
+} | {
+    kind: "unresolved";
+    text: string;
+};
+
 // export: EmojiSemantics
 export interface EmojiSemantics {
     shortName: string;
     id?: string;
     text?: string;
-    renderedFrom: "text" | "short-name";
+    renderedFrom: "source-text" | "catalog-projection" | "short-name";
+    projection?: PortableEmojiProjection;
 }
 
 // export: escapeCqlValue
@@ -3763,6 +3921,8 @@ export type ExportBlock = {
     panelIcon?: string;
     panelIconId?: string;
     panelIconText?: string;
+    panelIconProjection?: PortableEmojiProjection;
+    suppressDefaultIcon?: boolean;
     syncedContent?: SyncedContentProvenance;
 } | {
     type: "expand";
@@ -4270,6 +4430,9 @@ export type InlineNode = {
     type: "lineBreak";
 };
 
+// export: isColonEmojiShortName
+export declare function isColonEmojiShortName(value: string): boolean;
+
 // export: isImageFile
 export declare function isImageFile(filename: string): boolean;
 
@@ -4464,6 +4627,9 @@ export declare function normalizeCaptionKind(raw: string | undefined, targetBloc
     note?: ExportNote;
 };
 
+// export: normalizeEmojiShortName
+export declare function normalizeEmojiShortName(value: string): CanonicalLegacyEmojiName | undefined;
+
 // export: normalizeExportColor
 export declare function normalizeExportColor(value: string | undefined): string | undefined;
 
@@ -4573,6 +4739,13 @@ export declare class PaginationLoopError extends Error {
     constructor(token: string);
 }
 
+// export: panelIconDisplayText
+export declare function panelIconDisplayText(panel: {
+    panelIcon?: string;
+    panelIconText?: string;
+    panelIconProjection?: PortableEmojiProjection;
+}): string | undefined;
+
 // export: parseAdfDateTimestamp
 export declare function parseAdfDateTimestamp(timestamp: string): Date | undefined;
 
@@ -4674,11 +4847,41 @@ export type PinnedAdfNodeType = (typeof PINNED_ADF_NODE_TYPES)[number];
 // export: PinnedAdfStage0NodeType
 export type PinnedAdfStage0NodeType = (typeof PINNED_ADF_STAGE0_NODE_TYPES)[number];
 
+// export: PortableEmojiProjection
+export interface PortableEmojiProjection {
+    canonicalName: CanonicalLegacyEmojiName;
+    text: string;
+}
+
+// export: projectTypedEmoji
+export declare function projectTypedEmoji(input: {
+    shortName: string;
+    sourceText?: string;
+}): EmojiProjectionResult;
+
 // export: readableTextColor
 export declare function readableTextColor(backgroundColor: string): "#FFFFFF" | "#172B4D";
 
 // export: replaceAttachmentPaths
 export declare function replaceAttachmentPaths(markdown: string, pageFilename: string): string;
+
+// export: resolveCalloutIcon
+export declare function resolveCalloutIcon(callout: {
+    kind: CalloutKind;
+    panelIcon?: string;
+    panelIconText?: string;
+    panelIconProjection?: PortableEmojiProjection;
+    suppressDefaultIcon?: boolean;
+}): ResolvedCalloutIcon | undefined;
+
+// export: ResolvedCalloutIcon
+export type ResolvedCalloutIcon = {
+    source: "explicit";
+    text: string;
+} | {
+    source: "semantic-default";
+    icon: SemanticCalloutIcon;
+};
 
 // export: resolveExportMentions
 export declare function resolveExportMentions(blocks: ExportBlock[], lookup: ExportMentionLookup): Promise<ExportMentionResolution>;
@@ -4716,6 +4919,16 @@ export interface SearchResults {
     totalSize?: number;
     hasMore: boolean;
     nextLink?: string;
+}
+
+// export: SEMANTIC_CALLOUT_ICONS
+export declare const SEMANTIC_CALLOUT_ICONS: Readonly<Record<StandardCalloutKind, SemanticCalloutIcon>>;
+
+// export: SemanticCalloutIcon
+export interface SemanticCalloutIcon {
+    kind: StandardCalloutKind;
+    symbol: string;
+    label: string;
 }
 
 // export: SmartCardAppearance
@@ -4756,6 +4969,9 @@ export type SpaceIcon = {
     height?: number;
     isDefault?: boolean;
 };
+
+// export: StandardCalloutKind
+export type StandardCalloutKind = Exclude<CalloutKind, "panel">;
 
 // export: statusDisplayText
 export declare function statusDisplayText(status: Pick<Extract<InlineNode, {
@@ -5545,6 +5761,9 @@ export type CalloutKind = "info" | "note" | "warning" | "tip" | "success" | "err
 // export: canonicalExportNoteCode
 export declare function canonicalExportNoteCode(code: string): ExportNoteCode | undefined;
 
+// export: CanonicalLegacyEmojiName
+export type CanonicalLegacyEmojiName = "smile" | "sad" | "cheeky" | "laugh" | "wink" | "thumbs-up" | "thumbs-down" | "tick" | "cross" | "warning" | "information" | "question" | "light-on" | "light-off" | "yellow-star" | "red-star" | "green-star" | "blue-star" | "heart" | "broken-heart" | "plus" | "minus";
+
 // export: Caption
 export interface Caption {
     kind: CaptionKind;
@@ -5598,6 +5817,39 @@ export interface ComposeResult {
 
 // export: computeHeadingOffset
 export declare function computeHeadingOffset(blocks: readonly HeadingScanBlock[]): number;
+
+// export: CONFLUENCE_LEGACY_EMOJI_ALIASES
+export declare const CONFLUENCE_LEGACY_EMOJI_ALIASES: Readonly<{
+    "+1": "thumbs-up";
+    thumbsup: "thumbs-up";
+    "-1": "thumbs-down";
+    thumbsdown: "thumbs-down";
+    check: "tick";
+    white_check_mark: "tick";
+    heavy_check_mark: "tick";
+    x: "cross";
+    heavy_multiplication_x: "cross";
+    bulb: "light-on";
+    idea: "light-on";
+    lightbulb: "light-on";
+    star: "yellow-star";
+    info: "information";
+    warn: "warning";
+    alert: "warning";
+    grinning: "smile";
+    grin: "smile";
+    smiley: "smile";
+    disappointed: "sad";
+    cry: "sad";
+    stuck_out_tongue: "cheeky";
+    joy: "laugh";
+    laughing: "laugh";
+    love: "heart";
+    red_heart: "heart";
+}>;
+
+// export: CONFLUENCE_LEGACY_EMOJI_PROJECTIONS
+export declare const CONFLUENCE_LEGACY_EMOJI_PROJECTIONS: Readonly<Record<CanonicalLegacyEmojiName, PortableEmojiProjection>>;
 
 // export: CONFLUENCE_LIST_MACRO
 export declare const CONFLUENCE_LIST_MACRO = "confluence-list";
@@ -6137,12 +6389,26 @@ export declare const DEFAULT_STORAGE_PARSE_BUDGET: StorageParseBudget;
 // export: drainPaginated
 export declare function drainPaginated<T>(fetchPage: (token: string | undefined) => Promise<PaginatedPage<T>>): Promise<T[]>;
 
+// export: EmojiProjectionResult
+export type EmojiProjectionResult = {
+    kind: "source-text";
+    text: string;
+} | {
+    kind: "known";
+    text: string;
+    projection: PortableEmojiProjection;
+} | {
+    kind: "unresolved";
+    text: string;
+};
+
 // export: EmojiSemantics
 export interface EmojiSemantics {
     shortName: string;
     id?: string;
     text?: string;
-    renderedFrom: "text" | "short-name";
+    renderedFrom: "source-text" | "catalog-projection" | "short-name";
+    projection?: PortableEmojiProjection;
 }
 
 // export: escapeCqlValue
@@ -6320,6 +6586,8 @@ export type ExportBlock = {
     panelIcon?: string;
     panelIconId?: string;
     panelIconText?: string;
+    panelIconProjection?: PortableEmojiProjection;
+    suppressDefaultIcon?: boolean;
     syncedContent?: SyncedContentProvenance;
 } | {
     type: "expand";
@@ -6827,6 +7095,9 @@ export type InlineNode = {
     type: "lineBreak";
 };
 
+// export: isColonEmojiShortName
+export declare function isColonEmojiShortName(value: string): boolean;
+
 // export: isImageFile
 export declare function isImageFile(filename: string): boolean;
 
@@ -7021,6 +7292,9 @@ export declare function normalizeCaptionKind(raw: string | undefined, targetBloc
     note?: ExportNote;
 };
 
+// export: normalizeEmojiShortName
+export declare function normalizeEmojiShortName(value: string): CanonicalLegacyEmojiName | undefined;
+
 // export: normalizeExportColor
 export declare function normalizeExportColor(value: string | undefined): string | undefined;
 
@@ -7130,6 +7404,13 @@ export declare class PaginationLoopError extends Error {
     constructor(token: string);
 }
 
+// export: panelIconDisplayText
+export declare function panelIconDisplayText(panel: {
+    panelIcon?: string;
+    panelIconText?: string;
+    panelIconProjection?: PortableEmojiProjection;
+}): string | undefined;
+
 // export: parseAdfDateTimestamp
 export declare function parseAdfDateTimestamp(timestamp: string): Date | undefined;
 
@@ -7231,11 +7512,41 @@ export type PinnedAdfNodeType = (typeof PINNED_ADF_NODE_TYPES)[number];
 // export: PinnedAdfStage0NodeType
 export type PinnedAdfStage0NodeType = (typeof PINNED_ADF_STAGE0_NODE_TYPES)[number];
 
+// export: PortableEmojiProjection
+export interface PortableEmojiProjection {
+    canonicalName: CanonicalLegacyEmojiName;
+    text: string;
+}
+
+// export: projectTypedEmoji
+export declare function projectTypedEmoji(input: {
+    shortName: string;
+    sourceText?: string;
+}): EmojiProjectionResult;
+
 // export: readableTextColor
 export declare function readableTextColor(backgroundColor: string): "#FFFFFF" | "#172B4D";
 
 // export: replaceAttachmentPaths
 export declare function replaceAttachmentPaths(markdown: string, pageFilename: string): string;
+
+// export: resolveCalloutIcon
+export declare function resolveCalloutIcon(callout: {
+    kind: CalloutKind;
+    panelIcon?: string;
+    panelIconText?: string;
+    panelIconProjection?: PortableEmojiProjection;
+    suppressDefaultIcon?: boolean;
+}): ResolvedCalloutIcon | undefined;
+
+// export: ResolvedCalloutIcon
+export type ResolvedCalloutIcon = {
+    source: "explicit";
+    text: string;
+} | {
+    source: "semantic-default";
+    icon: SemanticCalloutIcon;
+};
 
 // export: resolveExportMentions
 export declare function resolveExportMentions(blocks: ExportBlock[], lookup: ExportMentionLookup): Promise<ExportMentionResolution>;
@@ -7273,6 +7584,16 @@ export interface SearchResults {
     totalSize?: number;
     hasMore: boolean;
     nextLink?: string;
+}
+
+// export: SEMANTIC_CALLOUT_ICONS
+export declare const SEMANTIC_CALLOUT_ICONS: Readonly<Record<StandardCalloutKind, SemanticCalloutIcon>>;
+
+// export: SemanticCalloutIcon
+export interface SemanticCalloutIcon {
+    kind: StandardCalloutKind;
+    symbol: string;
+    label: string;
 }
 
 // export: SmartCardAppearance
@@ -7313,6 +7634,9 @@ export type SpaceIcon = {
     height?: number;
     isDefault?: boolean;
 };
+
+// export: StandardCalloutKind
+export type StandardCalloutKind = Exclude<CalloutKind, "panel">;
 
 // export: statusDisplayText
 export declare function statusDisplayText(status: Pick<Extract<InlineNode, {
@@ -8569,7 +8893,8 @@ export interface EmojiSemantics {
     shortName: string;
     id?: string;
     text?: string;
-    renderedFrom: "text" | "short-name";
+    renderedFrom: "source-text" | "catalog-projection" | "short-name";
+    projection?: PortableEmojiProjection;
 }
 
 // export: ensureUserPlaceholders
@@ -8753,6 +9078,8 @@ export type ExportBlock = {
     panelIcon?: string;
     panelIconId?: string;
     panelIconText?: string;
+    panelIconProjection?: PortableEmojiProjection;
+    suppressDefaultIcon?: boolean;
     syncedContent?: SyncedContentProvenance;
 } | {
     type: "expand";
@@ -9774,6 +10101,13 @@ export type PageWithPosition = ConfluencePage & {
     position: number | null;
 };
 
+// export: panelIconDisplayText
+export declare function panelIconDisplayText(panel: {
+    panelIcon?: string;
+    panelIconText?: string;
+    panelIconProjection?: PortableEmojiProjection;
+}): string | undefined;
+
 // export: parseAdfDateTimestamp
 export declare function parseAdfDateTimestamp(timestamp: string): Date | undefined;
 
@@ -9896,8 +10230,26 @@ export interface ReorderResult {
 // export: replaceAttachmentPaths
 export declare function replaceAttachmentPaths(markdown: string, pageFilename: string): string;
 
+// export: resolveCalloutIcon
+export declare function resolveCalloutIcon(callout: {
+    kind: CalloutKind;
+    panelIcon?: string;
+    panelIconText?: string;
+    panelIconProjection?: PortableEmojiProjection;
+    suppressDefaultIcon?: boolean;
+}): ResolvedCalloutIcon | undefined;
+
 // export: resolveConflicts
 export declare function resolveConflicts(content: string, choice: "local" | "remote"): string;
+
+// export: ResolvedCalloutIcon
+export type ResolvedCalloutIcon = {
+    source: "explicit";
+    text: string;
+} | {
+    source: "semantic-default";
+    icon: SemanticCalloutIcon;
+};
 
 // export: resolveExportMentions
 export declare function resolveExportMentions(blocks: ExportBlock[], lookup: ExportMentionLookup): Promise<ExportMentionResolution>;
@@ -9944,6 +10296,16 @@ export interface SearchResults {
     totalSize?: number;
     hasMore: boolean;
     nextLink?: string;
+}
+
+// export: SEMANTIC_CALLOUT_ICONS
+export declare const SEMANTIC_CALLOUT_ICONS: Readonly<Record<StandardCalloutKind, SemanticCalloutIcon>>;
+
+// export: SemanticCalloutIcon
+export interface SemanticCalloutIcon {
+    kind: StandardCalloutKind;
+    symbol: string;
+    label: string;
 }
 
 // export: setPageEditorVersion
@@ -10098,6 +10460,9 @@ export interface SqliteAdapterConfig {
     enableVectors?: boolean;
     customSqlitePath?: string;
 }
+
+// export: StandardCalloutKind
+export type StandardCalloutKind = Exclude<CalloutKind, "panel">;
 
 // export: statusDisplayText
 export declare function statusDisplayText(status: Pick<Extract<InlineNode, {
@@ -11019,6 +11384,9 @@ export type CalloutKind = "info" | "note" | "warning" | "tip" | "success" | "err
 // export: canonicalExportNoteCode
 export declare function canonicalExportNoteCode(code: string): ExportNoteCode | undefined;
 
+// export: CanonicalLegacyEmojiName
+export type CanonicalLegacyEmojiName = "smile" | "sad" | "cheeky" | "laugh" | "wink" | "thumbs-up" | "thumbs-down" | "tick" | "cross" | "warning" | "information" | "question" | "light-on" | "light-off" | "yellow-star" | "red-star" | "green-star" | "blue-star" | "heart" | "broken-heart" | "plus" | "minus";
+
 // export: Caption
 export interface Caption {
     kind: CaptionKind;
@@ -11072,6 +11440,39 @@ export interface ComposeResult {
 
 // export: computeHeadingOffset
 export declare function computeHeadingOffset(blocks: readonly HeadingScanBlock[]): number;
+
+// export: CONFLUENCE_LEGACY_EMOJI_ALIASES
+export declare const CONFLUENCE_LEGACY_EMOJI_ALIASES: Readonly<{
+    "+1": "thumbs-up";
+    thumbsup: "thumbs-up";
+    "-1": "thumbs-down";
+    thumbsdown: "thumbs-down";
+    check: "tick";
+    white_check_mark: "tick";
+    heavy_check_mark: "tick";
+    x: "cross";
+    heavy_multiplication_x: "cross";
+    bulb: "light-on";
+    idea: "light-on";
+    lightbulb: "light-on";
+    star: "yellow-star";
+    info: "information";
+    warn: "warning";
+    alert: "warning";
+    grinning: "smile";
+    grin: "smile";
+    smiley: "smile";
+    disappointed: "sad";
+    cry: "sad";
+    stuck_out_tongue: "cheeky";
+    joy: "laugh";
+    laughing: "laugh";
+    love: "heart";
+    red_heart: "heart";
+}>;
+
+// export: CONFLUENCE_LEGACY_EMOJI_PROJECTIONS
+export declare const CONFLUENCE_LEGACY_EMOJI_PROJECTIONS: Readonly<Record<CanonicalLegacyEmojiName, PortableEmojiProjection>>;
 
 // export: CONFLUENCE_LIST_MACRO
 export declare const CONFLUENCE_LIST_MACRO = "confluence-list";
@@ -11611,12 +12012,26 @@ export declare const DEFAULT_STORAGE_PARSE_BUDGET: StorageParseBudget;
 // export: drainPaginated
 export declare function drainPaginated<T>(fetchPage: (token: string | undefined) => Promise<PaginatedPage<T>>): Promise<T[]>;
 
+// export: EmojiProjectionResult
+export type EmojiProjectionResult = {
+    kind: "source-text";
+    text: string;
+} | {
+    kind: "known";
+    text: string;
+    projection: PortableEmojiProjection;
+} | {
+    kind: "unresolved";
+    text: string;
+};
+
 // export: EmojiSemantics
 export interface EmojiSemantics {
     shortName: string;
     id?: string;
     text?: string;
-    renderedFrom: "text" | "short-name";
+    renderedFrom: "source-text" | "catalog-projection" | "short-name";
+    projection?: PortableEmojiProjection;
 }
 
 // export: escapeCqlValue
@@ -11794,6 +12209,8 @@ export type ExportBlock = {
     panelIcon?: string;
     panelIconId?: string;
     panelIconText?: string;
+    panelIconProjection?: PortableEmojiProjection;
+    suppressDefaultIcon?: boolean;
     syncedContent?: SyncedContentProvenance;
 } | {
     type: "expand";
@@ -12301,6 +12718,9 @@ export type InlineNode = {
     type: "lineBreak";
 };
 
+// export: isColonEmojiShortName
+export declare function isColonEmojiShortName(value: string): boolean;
+
 // export: isImageFile
 export declare function isImageFile(filename: string): boolean;
 
@@ -12495,6 +12915,9 @@ export declare function normalizeCaptionKind(raw: string | undefined, targetBloc
     note?: ExportNote;
 };
 
+// export: normalizeEmojiShortName
+export declare function normalizeEmojiShortName(value: string): CanonicalLegacyEmojiName | undefined;
+
 // export: normalizeExportColor
 export declare function normalizeExportColor(value: string | undefined): string | undefined;
 
@@ -12604,6 +13027,13 @@ export declare class PaginationLoopError extends Error {
     constructor(token: string);
 }
 
+// export: panelIconDisplayText
+export declare function panelIconDisplayText(panel: {
+    panelIcon?: string;
+    panelIconText?: string;
+    panelIconProjection?: PortableEmojiProjection;
+}): string | undefined;
+
 // export: parseAdfDateTimestamp
 export declare function parseAdfDateTimestamp(timestamp: string): Date | undefined;
 
@@ -12705,11 +13135,41 @@ export type PinnedAdfNodeType = (typeof PINNED_ADF_NODE_TYPES)[number];
 // export: PinnedAdfStage0NodeType
 export type PinnedAdfStage0NodeType = (typeof PINNED_ADF_STAGE0_NODE_TYPES)[number];
 
+// export: PortableEmojiProjection
+export interface PortableEmojiProjection {
+    canonicalName: CanonicalLegacyEmojiName;
+    text: string;
+}
+
+// export: projectTypedEmoji
+export declare function projectTypedEmoji(input: {
+    shortName: string;
+    sourceText?: string;
+}): EmojiProjectionResult;
+
 // export: readableTextColor
 export declare function readableTextColor(backgroundColor: string): "#FFFFFF" | "#172B4D";
 
 // export: replaceAttachmentPaths
 export declare function replaceAttachmentPaths(markdown: string, pageFilename: string): string;
+
+// export: resolveCalloutIcon
+export declare function resolveCalloutIcon(callout: {
+    kind: CalloutKind;
+    panelIcon?: string;
+    panelIconText?: string;
+    panelIconProjection?: PortableEmojiProjection;
+    suppressDefaultIcon?: boolean;
+}): ResolvedCalloutIcon | undefined;
+
+// export: ResolvedCalloutIcon
+export type ResolvedCalloutIcon = {
+    source: "explicit";
+    text: string;
+} | {
+    source: "semantic-default";
+    icon: SemanticCalloutIcon;
+};
 
 // export: resolveExportMentions
 export declare function resolveExportMentions(blocks: ExportBlock[], lookup: ExportMentionLookup): Promise<ExportMentionResolution>;
@@ -12747,6 +13207,16 @@ export interface SearchResults {
     totalSize?: number;
     hasMore: boolean;
     nextLink?: string;
+}
+
+// export: SEMANTIC_CALLOUT_ICONS
+export declare const SEMANTIC_CALLOUT_ICONS: Readonly<Record<StandardCalloutKind, SemanticCalloutIcon>>;
+
+// export: SemanticCalloutIcon
+export interface SemanticCalloutIcon {
+    kind: StandardCalloutKind;
+    symbol: string;
+    label: string;
 }
 
 // export: SmartCardAppearance
@@ -12787,6 +13257,9 @@ export type SpaceIcon = {
     height?: number;
     isDefault?: boolean;
 };
+
+// export: StandardCalloutKind
+export type StandardCalloutKind = Exclude<CalloutKind, "panel">;
 
 // export: statusDisplayText
 export declare function statusDisplayText(status: Pick<Extract<InlineNode, {

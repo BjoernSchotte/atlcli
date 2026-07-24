@@ -52,6 +52,7 @@ import {
   type ExportBlock,
   type ExportNote,
   type ExportProgressCallback,
+  type SemanticCalloutIcon,
 } from "@atlcli/confluence";
 import { resolveMacroBlocks, type MacroResolutionOptions } from "@atlcli/export-macros";
 import {
@@ -76,6 +77,7 @@ import {
 import {
   serializeBlocks,
   WordCommentRegistry,
+  type CalloutIconEmbedSeam,
   type CodeBlock,
   type DiagramEmbedSeam,
   type ImageBlock,
@@ -94,6 +96,7 @@ import {
   relsPathFor,
   resolveTargetSize,
 } from "./image.js";
+import { DOCX_CALLOUT_ICON_PNG } from "./callout-icon-assets.js";
 import { renderDiagram, type DiagramTheme } from "@atlcli/diagram";
 import { parseIncludePageArgs, parseLogoArgs, type IncludePageRef } from "./placeholder-map.js";
 import type { IncludeLookupOutcome, IncludePageDetails } from "./resolver.js";
@@ -559,7 +562,7 @@ export async function prepareDocxExport(input: ExportInput): Promise<PreparedDoc
   // with page images"). Attachment images additionally need an asset fetcher;
   // diagrams additionally need a rasterizer — each seam exists independently.
   const wantImages = Boolean(input.assets) && input.embedImages !== false;
-  const embedder = wantImages || input.rasterizer ? new ImageEmbedder(zip) : undefined;
+  const embedder = new ImageEmbedder(zip);
   // One shared asset budget per export (spec 002): total-byte cap + content
   // dedup, identical to the PDF engine. A breach is a FATAL scope-level error
   // (thrown out of the seam, aborting before any output), unlike per-image
@@ -570,7 +573,7 @@ export async function prepareDocxExport(input: ExportInput): Promise<PreparedDoc
   // serializer's per-image outcome channel so they survive a failed embed;
   // folded into the report's notes below.
   const imageAuditNotes: ExportNote[] = [];
-  const images = embedder && wantImages
+  const images = wantImages
     ? imageSeam(embedder, input.assets!, input.details.id, timings, {
         budget,
         signal: input.signal,
@@ -581,7 +584,7 @@ export async function prepareDocxExport(input: ExportInput): Promise<PreparedDoc
       })
     : undefined;
   const diagrams =
-    embedder && input.rasterizer
+    input.rasterizer
       ? diagramSeam(
           embedder,
           input.rasterizer,
@@ -591,13 +594,14 @@ export async function prepareDocxExport(input: ExportInput): Promise<PreparedDoc
           input.signal
         )
       : undefined;
+  const calloutIcons = calloutIconSeam(embedder);
 
   // Logo pass, fetch leg (spec 005, gap G3): the template scan + space-logo
   // byte fetch start NOW so the (up to three-round-trip) logo chain overlaps
   // body serialization and the resolver; the archive is only touched in step
   // 3b below, in the same deterministic order as before. Never rejects.
   const logoFetch = startLogoPass(zip, {
-    embedder,
+    embedder: wantImages ? embedder : undefined,
     assets: input.assets,
     getSpaceLogo: input.deps?.getSpaceLogo,
     spaceKey: input.details.spaceKey,
@@ -624,6 +628,7 @@ export async function prepareDocxExport(input: ExportInput): Promise<PreparedDoc
     comments,
     images,
     diagrams,
+    calloutIcons,
     ...(bodySectPr ? { bodySectPr } : {}),
     captionLang: captionLocale.lang,
     ...(input.captionLang !== undefined ? { dateLocale: input.captionLang } : {}),
@@ -1398,6 +1403,29 @@ interface ImageSeamOptions {
 const SVG_FALLBACK_SIZE = { widthPx: 600, heightPx: 400 };
 type ImageAssetNode = ImageBlock | InlineImageNode;
 
+/**
+ * Embed one of the six built-in semantic callout icons without a host asset
+ * fetch or rasterizer. The relationship is bound to the document part that
+ * receives the callout (main story or an include in a header/footer), and the
+ * selected P1.1 label is exposed exactly once through the drawing's `descr`.
+ */
+function calloutIconSeam(
+  embedder: ImageEmbedder,
+  partPath?: string,
+): CalloutIconEmbedSeam {
+  return {
+    embed(icon: SemanticCalloutIcon): string {
+      return embedder.embedCalloutIconInline(DOCX_CALLOUT_ICON_PNG[icon.kind], {
+        name: `${icon.label} callout icon`,
+        accessibility: { kind: "labelled", description: icon.label },
+        widthPx: 16,
+        heightPx: 16,
+        ...(partPath ? { partPath } : {}),
+      });
+    },
+  };
+}
+
 function imageSeam(
   embedder: ImageEmbedder,
   assets: AssetFetcher,
@@ -2077,11 +2105,15 @@ async function runIncludePass(pass: IncludePassDeps): Promise<Map<string, string
             occ.part
           )
         : undefined;
+    const calloutIcons = pass.embedder
+      ? calloutIconSeam(pass.embedder, occ.part)
+      : undefined;
     const serialized = await serializeBlocks(walked.blocks, {
       styleNames: pass.styleNames,
       comments: pass.comments,
       ...(images ? { images } : {}),
       ...(diagrams ? { diagrams } : {}),
+      ...(calloutIcons ? { calloutIcons } : {}),
       captionLang: pass.captionLang,
       ...(pass.dateLocale !== undefined ? { dateLocale: pass.dateLocale } : {}),
     });

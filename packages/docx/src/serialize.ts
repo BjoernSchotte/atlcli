@@ -21,6 +21,7 @@ import type {
   ExportNote,
   ListItem,
   SmartCardSemantics,
+  SemanticCalloutIcon,
   TableCell,
   TablePresentation,
   TableRow,
@@ -33,6 +34,7 @@ import {
   mediaFallbackDisplayText,
   mentionDisplayText,
   readableTextColor,
+  resolveCalloutIcon,
   sanitizeAnchorId,
   smartCardDisplayText,
   statusDisplayText,
@@ -140,6 +142,15 @@ export interface DiagramEmbedSeam {
   prefetch?(block: CodeBlock): void;
 }
 
+/**
+ * The serializer's built-in semantic-callout icon seam. The export
+ * orchestrator owns the OOXML media/relationship writes; the serializer only
+ * places the returned inline drawing in reading order.
+ */
+export interface CalloutIconEmbedSeam {
+  embed(icon: SemanticCalloutIcon): string;
+}
+
 export interface SerializeContext {
   /** Lower-cased style-name → styleId map from the template's styles.xml. */
   styleNames: Map<string, string>;
@@ -157,6 +168,8 @@ export interface SerializeContext {
   images?: ImageEmbedSeam;
   /** Diagram embedding seam; absent → mermaid stays a source code block. */
   diagrams?: DiagramEmbedSeam;
+  /** Built-in semantic callout icon seam. Explicit source icons bypass it. */
+  calloutIcons?: CalloutIconEmbedSeam;
   /**
    * The template's body-level `<w:sectPr>` (portrait), cloned by the export
    * orchestrator (spec 003 C6). Threaded so an `orientation` region can emit a
@@ -884,7 +897,13 @@ async function serializeBlock(
     case "callout": {
       const title = block.title ? run(block.title, { bold: true }) : null;
       const panelColor = block.panelColor?.match(/^#[0-9a-f]{6}$/iu)?.[0].toUpperCase();
-      const panelIcon = block.panelIconText || block.panelIcon;
+      const resolvedIcon = resolveCalloutIcon(block);
+      const iconRunsXml =
+        resolvedIcon?.source === "explicit"
+          ? run(resolvedIcon.text, { bold: true })
+          : resolvedIcon?.source === "semantic-default" && ctx.calloutIcons
+            ? ctx.calloutIcons.embed(resolvedIcon.icon)
+            : undefined;
       const body = await serializeChildren(
         block.content,
         { ...ctx, container: "calloutCell" },
@@ -893,7 +912,7 @@ async function serializeBlock(
       );
       return calloutTable(block.kind, title, body, {
         ...(panelColor !== undefined ? { color: panelColor } : {}),
-        ...(panelIcon ? { iconRunsXml: run(panelIcon, { bold: true }) } : {}),
+        ...(iconRunsXml ? { iconRunsXml } : {}),
       });
     }
 
