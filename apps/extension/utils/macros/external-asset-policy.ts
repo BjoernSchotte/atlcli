@@ -20,8 +20,11 @@
  */
 import {
   createExternalAssetPolicy,
+  ExternalAssetBlockedError,
   type ExternalAssetPolicy,
 } from "@atlcli/export-wiring";
+import type { AssetFetcher } from "@atlcli/docx/browser";
+import type { PdfAssetResolver } from "@atlcli/pdf/browser";
 
 export {
   createExternalAssetFetcher,
@@ -57,6 +60,65 @@ export interface ExtensionAssetPolicyOptions {
   siteOrigin: string;
   /** Defaults to {@link ATLASSIAN_MEDIA_ORIGINS}. */
   allowedMediaOrigins?: readonly string[];
+}
+
+function isAbsoluteUrl(value: string): boolean {
+  try {
+    new URL(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function assertManifestScopedPageAsset(
+  policy: ExternalAssetPolicy,
+  url: string,
+): void {
+  if (isAbsoluteUrl(url) && !policy.allow(url)) {
+    throw new ExternalAssetBlockedError(
+      url,
+      "the extension has no host permission for this origin",
+    );
+  }
+}
+
+/**
+ * Guard page-authored DOCX assets with the extension's manifest-scoped policy.
+ *
+ * The shared trust router deliberately only diverts `export-view` refs because
+ * non-browser hosts may support arbitrary page-authored external images. The
+ * extension does not: without a matching `host_permissions` entry Chrome falls
+ * back to CORS and emits a console error before the engine can degrade the
+ * image. Rejecting here keeps relative/same-origin attachment traffic on the
+ * authenticated session path while turning unsupported absolute origins into
+ * the engines' existing `image-embed-failed` fallback without a network call.
+ */
+export function extensionPageAssetFetcher(
+  inner: AssetFetcher,
+  policy: ExternalAssetPolicy,
+): AssetFetcher {
+  return {
+    async fetch(ref, context): Promise<Uint8Array> {
+      assertManifestScopedPageAsset(policy, ref.url);
+      return inner.fetch(ref, context);
+    },
+  };
+}
+
+/** PDF counterpart of {@link extensionPageAssetFetcher}. */
+export function extensionPagePdfAssetResolver(
+  inner: PdfAssetResolver,
+  policy: ExternalAssetPolicy,
+): PdfAssetResolver {
+  return {
+    async resolve(ref, context) {
+      if (ref.kind === "external" && ref.url) {
+        assertManifestScopedPageAsset(policy, ref.url);
+      }
+      return inner.resolve(ref, context);
+    },
+  };
 }
 
 /**

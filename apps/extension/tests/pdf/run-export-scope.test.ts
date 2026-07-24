@@ -545,6 +545,25 @@ describe("PDF env — sink-side trust routing", () => {
     await pdfAssets().resolve({ kind: "attachment", filename: "a.png" }).catch(() => undefined);
     expect(urls.some((url) => url.includes("/download/attachments/1/a.png"))).toBe(true);
   });
+
+  it("blocks a page-authored external image outside host permissions before CORS", async () => {
+    const urls = recordingFetch();
+    const error = await pdfAssets()
+      .resolve({ kind: "external", url: "https://example.com/adf-conformance.svg" })
+      .then(() => undefined, (e: unknown) => e);
+
+    expect(isExternalAssetBlockedError(error)).toBe(true);
+    expect(urls).toEqual([]);
+  });
+
+  it("keeps an absolute page-authored image on the permitted site session path", async () => {
+    const urls = recordingFetch();
+    await pdfAssets()
+      .resolve({ kind: "external", url: `${SITE}/wiki/download/attachments/1/site.png` })
+      .catch(() => undefined);
+
+    expect(urls).toEqual([`${SITE}/wiki/download/attachments/1/site.png`]);
+  });
 });
 
 describe("DOCX env — sink-side trust routing", () => {
@@ -573,6 +592,25 @@ describe("DOCX env — sink-side trust routing", () => {
     const urls = recordingFetch();
     await docxAssets().fetch({ url: "/download/attachments/7/x.png" }).catch(() => undefined);
     expect(urls.some((url) => url.includes(`${SITE}/wiki/download/attachments/7/x.png`))).toBe(true);
+  });
+
+  it("blocks a page-authored external image outside host permissions before CORS", async () => {
+    const urls = recordingFetch();
+    const error = await docxAssets()
+      .fetch({ url: "https://example.com/adf-conformance.svg" })
+      .then(() => undefined, (e: unknown) => e);
+
+    expect(isExternalAssetBlockedError(error)).toBe(true);
+    expect(urls).toEqual([]);
+  });
+
+  it("keeps an absolute page-authored image on the permitted site session path", async () => {
+    const urls = recordingFetch();
+    await docxAssets()
+      .fetch({ url: `${SITE}/wiki/download/attachments/1/site.png` })
+      .catch(() => undefined);
+
+    expect(urls).toEqual([`${SITE}/wiki/download/attachments/1/site.png`]);
   });
 });
 

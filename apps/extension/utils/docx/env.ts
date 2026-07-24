@@ -22,6 +22,7 @@ import type { ExternalAssetFetcher, ExternalAssetPolicy } from "@atlcli/export-m
 import { trustRoutingAssetFetcher } from "@atlcli/export-wiring";
 import {
   createExternalAssetFetcher,
+  extensionPageAssetFetcher,
   extensionAssetPolicyFromPageUrl,
 } from "../macros/external-asset-policy.js";
 import {
@@ -237,7 +238,7 @@ export interface SessionDocxAssetsOptions {
   baseUrl?: string;
   /** The active tab's URL — the origin the external-asset policy is built on. */
   pageUrl: string;
-  /** Replaces the session fetch; the trust router is composed around it regardless. */
+  /** Replaces the session fetch; the manifest guard and trust router are composed around it. */
   inner?: AssetFetcher;
   /** Defaults to the extension's manifest-scoped origin allowlist. */
   policy?: ExternalAssetPolicy;
@@ -248,7 +249,7 @@ export interface SessionDocxAssetsOptions {
 
 /**
  * The fetcher the DOCX export env actually gets: {@link sessionAssetFetcher}
- * with the spec-004 trust router already composed around it.
+ * with the manifest-origin guard and spec-004 trust router composed around it.
  *
  * **Every `ExportEnv.assets` this host builds goes through here** — the exact
  * counterpart of `extensionPdfAssets` in `utils/pdf/run-export.ts`, and for the
@@ -258,15 +259,17 @@ export interface SessionDocxAssetsOptions {
  * app's `export_view` HTML would otherwise have been fetched from inside the
  * user's authenticated browser session. The router sends exactly those
  * (`trust: "export-view"`) through the policy-checked, redirect-re-checked,
- * byte-capped, `credentials: "omit"` fetcher; page-author refs keep the
- * session path unchanged, which is what keeps the DOCX and PDF engines
- * embedding the same image for the same page.
+ * byte-capped, `credentials: "omit"` fetcher. Page-author refs keep the
+ * session path when their origin is covered by the extension manifest; other
+ * absolute origins are rejected before Chrome can emit a CORS request. PDF
+ * applies the same host-specific guard, so both engines degrade identically.
  */
 export function sessionDocxAssets(options: SessionDocxAssetsOptions): AssetFetcher {
   const policy = options.policy ?? extensionAssetPolicyFromPageUrl(options.pageUrl);
   const external = options.external ?? createExternalAssetFetcher(policy);
-  const inner =
+  const session =
     options.inner ?? sessionAssetFetcher(options.baseUrl, options.fetchFn ?? fetch);
+  const inner = extensionPageAssetFetcher(session, policy);
   return trustRoutingAssetFetcher(inner, external);
 }
 
