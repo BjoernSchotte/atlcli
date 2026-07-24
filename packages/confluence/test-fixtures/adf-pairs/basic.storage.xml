@@ -1,0 +1,19 @@
+<h2 local-id="paired-heading">Paired fixture</h2>
+<p local-id="paired-paragraph"><strong>Bold</strong> and <code>code</code><br/><ac:emoticon ac:name="warning" ac:emoji-fallback="⚠️"/></p>
+<blockquote><p>Quoted</p></blockquote>
+<ul><li local-id="paired-bullet-item"><p>Bullet</p><ul><li><p>Nested bullet</p></li></ul></li></ul>
+<ol start="3"><li><p>Number</p><ol start="8"><li><p>Nested number</p></li></ol></li></ol>
+<ac:task-list ac:local-id="tasks-root">
+  <ac:task><ac:task-id>task-done</ac:task-id><ac:task-status>complete</ac:task-status><ac:task-body>Done</ac:task-body></ac:task>
+  <ac:task><ac:task-id>task-open</ac:task-id><ac:task-status>incomplete</ac:task-status><ac:task-body>Open<ac:task-list ac:local-id="tasks-nested">
+    <ac:task><ac:task-id>task-nested</ac:task-id><ac:task-status>incomplete</ac:task-status><ac:task-body>Nested task</ac:task-body></ac:task>
+  </ac:task-list></ac:task-body></ac:task>
+</ac:task-list>
+<ac:layout><ac:layout-section ac:type="two_left_sidebar">
+  <ac:layout-cell><p>Sidebar</p></ac:layout-cell>
+  <ac:layout-cell><p>Main</p></ac:layout-cell>
+</ac:layout-section></ac:layout>
+<table><tbody><tr><th bgcolor="#abc">Header</th><td colspan="2">Cell</td></tr></tbody></table>
+<ac:structured-macro ac:name="info"><ac:rich-text-body><p>Information</p></ac:rich-text-body></ac:structured-macro>
+<p>state: <ac:structured-macro ac:name="status"><ac:parameter ac:name="colour">Green</ac:parameter><ac:parameter ac:name="title">Done</ac:parameter></ac:structured-macro> date: <time datetime="2024-01-01"/><ac:placeholder>editor-only</ac:placeholder></p>
+<hr/>

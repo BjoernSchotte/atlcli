@@ -228,4 +228,18 @@ describe("DOCX direct-vs-job parity", () => {
       { bytes: noMedia.slice(), report: report() },
     )).toThrow("did not render a media part");
   });
+
+  it("allows an explicitly media-free source fixture without weakening part parity", () => {
+    const noMedia = buildDocx({ body: para("same"), styles: stylesXml() });
+    expect(assertDocxJobParity(
+      { bytes: noMedia, report: report({ embeddedImages: 0 }) },
+      { bytes: noMedia.slice(), report: report({ embeddedImages: 0 }) },
+      { requireMediaPart: false },
+    )).toMatchObject({
+      partsIdentical: true,
+      mediaIdentical: true,
+      reportIdentical: true,
+      mediaPartCount: 0,
+    });
+  });
 });

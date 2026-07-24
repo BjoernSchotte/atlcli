@@ -112,9 +112,91 @@ describe("PDF asset preparation", () => {
     expect(region.content[0]).toMatchObject({ type: "image", assetPath: prepared.assets[0]!.path });
   });
 
+  it("resolves an image nested inside a page-layout column", async () => {
+    const blocks: ExportBlock[] = [{
+      type: "layout",
+      columns: [{
+        width: 100,
+        content: [
+          { type: "image", source: { kind: "attachment", filename: "column.png" }, alt: "Column" },
+        ],
+      }],
+    }];
+    const prepared = await preparePdfDocument(blocks, {
+      resolve: async () => ({ bytes: pngBytes(), mediaType: "image/png" }),
+    });
+    expect(prepared.assets).toHaveLength(1);
+    expect(prepared.blocks[0]).toMatchObject({
+      type: "layout",
+      columns: [{
+        content: [{ type: "image", assetPath: prepared.assets[0]!.path }],
+      }],
+    });
+  });
+
+  it("recurses through expands while unresolved media stays non-fetching and captioned", async () => {
+    const seen: string[] = [];
+    const blocks: ExportBlock[] = [{
+      type: "expand",
+      nested: false,
+      title: "Assets",
+      content: [
+        {
+          type: "image",
+          source: { kind: "attachment", filename: "inside.png" },
+          alt: "Inside",
+        },
+        {
+          type: "mediaFallback",
+          label: "unresolved-media",
+          media: { mediaType: "file", id: "media-1" },
+          caption: {
+            kind: "figure",
+            localId: "caption-1",
+            content: [{ type: "text", text: "Unresolved caption" }],
+          },
+        },
+      ],
+    }];
+    const prepared = await preparePdfDocument(blocks, {
+      resolve: async (reference) => {
+        seen.push(reference.filename ?? "");
+        return { bytes: pngBytes(), mediaType: "image/png" };
+      },
+    });
+
+    expect(seen).toEqual(["inside.png"]);
+    expect(prepared.assets).toHaveLength(1);
+    expect(prepared.blocks[0]).toMatchObject({
+      type: "expand",
+      content: [
+        { type: "image", assetPath: prepared.assets[0]!.path },
+        {
+          type: "mediaFallback",
+          media: { id: "media-1" },
+          caption: {
+            localId: "caption-1",
+            content: [{ type: "text", text: "Unresolved caption" }],
+          },
+        },
+      ],
+    });
+  });
+
   it("carries caption fields through preparation on table/codeBlock/image", async () => {
     const blocks: ExportBlock[] = [
-      { type: "codeBlock", code: "x=1", caption: { kind: "code", content: [{ type: "text", text: "Listing 1" }] } },
+      {
+        type: "codeBlock",
+        code: "x=1",
+        caption: { kind: "code", content: [{ type: "text", text: "Listing 1" }] },
+        title: "Deployment",
+        initiallyCollapsed: true,
+        wrap: false,
+        hideLineNumbers: false,
+        firstLineNumber: 7,
+        localId: "code-local",
+        uniqueId: "code-unique",
+      },
       { type: "table", rows: [], caption: { kind: "table", content: [{ type: "text", text: "Table 1" }] } },
       {
         type: "image",
@@ -129,6 +211,15 @@ describe("PDF asset preparation", () => {
       kind: "code",
       content: [{ type: "text", text: "Listing 1" }],
     });
+    expect(prepared.blocks[0]).toMatchObject({
+      wrap: false,
+      title: "Deployment",
+      initiallyCollapsed: true,
+      hideLineNumbers: false,
+      firstLineNumber: 7,
+      localId: "code-local",
+      uniqueId: "code-unique",
+    });
     expect((prepared.blocks[1] as { caption?: unknown }).caption).toEqual({
       kind: "table",
       content: [{ type: "text", text: "Table 1" }],
@@ -137,6 +228,115 @@ describe("PDF asset preparation", () => {
       kind: "figure",
       content: [{ type: "text", text: "Figure 1" }],
     });
+  });
+
+  it("retains legacy code title and collapse intent when Mermaid becomes a diagram", async () => {
+    const prepared = await preparePdfDocument([{
+      type: "codeBlock",
+      language: "mermaid",
+      code: "flowchart LR\nA --> B",
+      title: "System flow",
+      initiallyCollapsed: true,
+    }], {
+      resolve: async () => {
+        throw new Error("unused");
+      },
+    });
+
+    expect(prepared.blocks[0]).toMatchObject({
+      type: "diagram",
+      title: "System flow",
+      initiallyCollapsed: true,
+    });
+  });
+
+  it("resolves correlated inline media in paragraphs and captions with shared asset dedup", async () => {
+    const blocks: ExportBlock[] = [
+      {
+        type: "paragraph",
+        content: [
+          { type: "text", text: "before" },
+          {
+            type: "media",
+            media: { mediaType: "image", id: "inline-1", filename: "shared.png" },
+            source: { kind: "attachment", filename: "shared.png" },
+            alt: "Inline architecture",
+          },
+          { type: "text", text: "after" },
+        ],
+      },
+      {
+        type: "image",
+        source: { kind: "attachment", filename: "shared.png" },
+        alt: "Block architecture",
+        caption: {
+          kind: "figure",
+          content: [{
+            type: "media",
+            media: { mediaType: "image", id: "inline-2", filename: "shared.png" },
+            source: { kind: "attachment", filename: "shared.png" },
+            alt: "Caption architecture",
+          }],
+        },
+      },
+    ];
+    const progress: Array<{ done: number; total: number }> = [];
+    const prepared = await preparePdfDocument(blocks, {
+      resolve: async () => ({
+        bytes: pngBytes(),
+        mediaType: "image/png",
+        filename: "shared.png",
+      }),
+    }, {
+      onProgress: (event) => {
+        if (event.phase === "assets" && event.total !== null) {
+          progress.push({ done: event.done, total: event.total });
+        }
+      },
+    });
+
+    expect(prepared.assets).toHaveLength(1);
+    const assetPath = prepared.assets[0]!.path;
+    expect(prepared.blocks[0]).toMatchObject({
+      type: "paragraph",
+      content: [
+        { type: "text", text: "before" },
+        { type: "media", assetPath, fallbackLabel: "Inline architecture" },
+        { type: "text", text: "after" },
+      ],
+    });
+    expect(prepared.blocks[1]).toMatchObject({
+      type: "image",
+      assetPath,
+      caption: {
+        content: [{ type: "media", assetPath, fallbackLabel: "Caption architecture" }],
+      },
+    });
+    expect(progress.at(-1)).toEqual({ done: 3, total: 3 });
+  });
+
+  it("keeps a deterministic inline-media fallback when resolution fails", async () => {
+    const prepared = await preparePdfDocument([{
+      type: "paragraph",
+      content: [{
+        type: "media",
+        media: { mediaType: "image", id: "inline-1", filename: "missing.png" },
+        source: { kind: "attachment", filename: "missing.png" },
+        alt: "Missing inline",
+      }],
+    }], {
+      resolve: async () => {
+        throw new Error("offline");
+      },
+    });
+
+    expect(prepared.blocks[0]).toMatchObject({
+      content: [{ type: "media", fallbackLabel: "Missing inline" }],
+    });
+    expect(prepared.notes).toContainEqual(expect.objectContaining({
+      code: "image-embed-failed",
+      message: expect.stringContaining("offline"),
+    }));
   });
 
   it("deduplicates identical large images so the shared budget counts them once", async () => {

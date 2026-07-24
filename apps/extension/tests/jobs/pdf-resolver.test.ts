@@ -2,8 +2,16 @@ import { describe, expect, it } from "bun:test";
 import { IDBFactory, IDBKeyRange } from "fake-indexeddb";
 import type {
   ExportJobExecutionContext,
+  ExportJobProgressV1,
   PdfExportJobRequestV1,
 } from "@atlcli/export-jobs";
+import {
+  bindExportJobSpool,
+  type SpoolWriteLimitsV1,
+} from "@atlcli/export-jobs";
+import type {
+  ConfluenceSourceResolverPortV1,
+} from "@atlcli/export-wiring/jobs";
 import type { ExportComposition } from "../../utils/confluence/export-composition.js";
 import { IndexedDbExportByteStore } from "../../utils/export-jobs/chunk-store.js";
 import { createExtensionPdfJobInputResolver } from "../../utils/export-jobs/pdf-resolver.js";
@@ -37,7 +45,7 @@ function request(id: string): PdfExportJobRequestV1 {
   };
 }
 
-function context(): ExportJobExecutionContext {
+function context(progress: ExportJobProgressV1[] = []): ExportJobExecutionContext {
   return {
     jobId: "job",
     leaseEpoch: 1,
@@ -47,10 +55,74 @@ function context(): ExportJobExecutionContext {
       throw new Error("No recovered source object was expected.");
     },
     artifacts: {} as ExportJobExecutionContext["artifacts"],
-    updateProgress: async () => {},
+    updateProgress: async (value) => {
+      progress.push(value);
+    },
     updateStats: async () => {},
     appendEvent: async () => {},
     checkpoint: async () => {},
+  };
+}
+
+const spoolLimits: SpoolWriteLimitsV1 = {
+  maxObjectBytes: 16 * 1024 * 1024,
+  maxJobBytes: 64 * 1024 * 1024,
+  maxTotalBytes: 128 * 1024 * 1024,
+};
+
+function durableContext(
+  bytes: IndexedDbExportByteStore,
+  jobId: string,
+): ExportJobExecutionContext {
+  const value: ExportJobExecutionContext = {
+    jobId,
+    leaseEpoch: 1,
+    signal: new AbortController().signal,
+    spool: bindExportJobSpool(bytes, jobId, 1, spoolLimits),
+    readSpool: (ref, options) => bytes.read(ref, options),
+    artifacts: {} as ExportJobExecutionContext["artifacts"],
+    updateProgress: async () => {},
+    updateStats: async () => {},
+    appendEvent: async () => {},
+    checkpoint: async (ref) => { value.checkpointRef = ref; },
+  };
+  return value;
+}
+
+function adfSourcePort(): ConfluenceSourceResolverPortV1 {
+  return {
+    createTreeSource() {
+      return {
+        async getPage() {
+          return {
+            id: "42",
+            title: "Guide",
+            version: 7,
+            spaceKey: "TEST",
+            exportSource: {
+              primary: {
+                representation: "atlas_doc_format" as const,
+                value: JSON.stringify({
+                  version: 1,
+                  type: "doc",
+                  content: [{
+                    type: "paragraph",
+                    content: [{ type: "text", text: "ADF production path" }],
+                  }],
+                }),
+              },
+              storageSidecar: "<p>POISONED STORAGE</p>",
+              sourceVersion: 7,
+            },
+          };
+        },
+        async getPageVersion() {
+          return { title: "Guide", version: 7 };
+        },
+        async getChildren() { return []; },
+        async getSpaceHomepageId() { return null; },
+      };
+    },
   };
 }
 
@@ -65,9 +137,37 @@ const composition: ExportComposition = {
 };
 
 describe("extension PDF durable input resolver", () => {
+  it("uses the shared ADF resolver and durable source checkpoints by default", async () => {
+    const factory = new IDBFactory();
+    const bytes = new IndexedDbExportByteStore({ factory });
+    const sourceRequest: PdfExportJobRequestV1 = {
+      ...request("default-adf"),
+      source: {
+        kind: "confluence",
+        siteOrigin: "https://site.atlassian.net",
+        locator: { kind: "page-id", id: "42", version: 7 },
+        scope: { kind: "page" },
+      },
+    };
+    const execution = durableContext(bytes, sourceRequest.id);
+    const resolved = await createExtensionPdfJobInputResolver({
+      bytes,
+      sourcePort: adfSourcePort(),
+    })(sourceRequest, execution);
+
+    expect(resolved.input.blocks).toEqual([{
+      type: "paragraph",
+      content: [{ type: "text", text: "ADF production path" }],
+    }]);
+    expect(JSON.stringify(resolved)).not.toContain("POISONED STORAGE");
+    expect(resolved.telemetry).toEqual({ sourcePageCount: 1 });
+    expect(execution.checkpointRef).toStartWith("atlcli.export-tree-spool/1:");
+  });
+
   it("resolves scope and engine input without any panel-owned page object", async () => {
     const factory = new IDBFactory();
     const bytes = new IndexedDbExportByteStore({ factory });
+    const progress: ExportJobProgressV1[] = [];
     let seenScope: unknown;
     let sawBodyStore = false;
     let live: boolean | undefined;
@@ -107,7 +207,7 @@ describe("extension PDF durable input resolver", () => {
       },
     });
 
-    const resolved = await resolver(request("job"), context());
+    const resolved = await resolver(request("job"), context(progress));
     expect(seenScope).toEqual({
       kind: "tree",
       rootPageId: "42",
@@ -136,6 +236,13 @@ describe("extension PDF durable input resolver", () => {
     expect(resolved.input.metadata.exportedAt.toISOString()).toBe(
       "2023-11-14T22:13:20.000Z",
     );
+    expect(progress).toEqual([{
+      stage: "fetch",
+      done: 1,
+      total: 1,
+      detail: "Guide",
+      updatedAt: 20,
+    }]);
   });
 
   it("integrity-checks and hydrates pinned logo bytes from request-owned storage", async () => {

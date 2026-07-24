@@ -354,6 +354,7 @@ exports[`storageToBlocks — integration (§2.1 feature zoo) full block-tree sna
     },
     {
       "code": "console.log(1);",
+      "hideLineNumbers": true,
       "language": "js",
       "type": "codeBlock",
     },

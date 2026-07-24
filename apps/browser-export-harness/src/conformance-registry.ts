@@ -6,6 +6,7 @@
  * A feature lane adds one entry here + one manifest entry + its own `*-case.ts`.
  */
 import { CONFORMANCE_MANIFEST, type ConformanceCaseMeta } from "./conformance-manifest.js";
+import { runAdfSourceCase } from "./adf-source-case.js";
 import { runActivityMonitorCase } from "./activity-monitor-case.js";
 import { runAssetSpoolRecoveryCase } from "./asset-spool-recovery-case.js";
 import { runBlocksCase } from "./blocks-case.js";
@@ -38,6 +39,7 @@ const RUNNERS: Record<string, () => Promise<unknown>> = {
   "pdf-job-parity": runPdfJobParityCase,
   "pdf-settings": runPdfSettingsCase,
   blocks: runBlocksCase,
+  "adf-source": runAdfSourceCase,
   scope: runScopeCase,
   "content-compat": runContentCase,
   macros: runMacroCase,

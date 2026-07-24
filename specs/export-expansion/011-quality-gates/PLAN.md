@@ -318,10 +318,12 @@ scheduled workflows: `bench.yml` (nightly, non-blocking trend first),
         resolve, a self-include triggers `includepage-cycle`, and
         `$scroll.metadata.*` degrades with `placeholder-unsupported`.)*
   - [x] **Case 006 `docx-quality`** (`src/docx-quality-case.ts`): asserts
-        `word/numbering.xml` exists with multilevel defs, `w:tblGrid` widths
-        from `columnWidths`, an SVG attachment lands as svgBlip + PNG
-        fallback media parts, and the StyleRef header field survives export.
-        *(Done. A nested ordered list forces multilevel numbering (≥9 `w:lvl`);
+        `word/numbering.xml` carries independent definitions and authored starts,
+        `w:tblGrid` widths from `columnWidths`, an SVG attachment lands as
+        svgBlip + PNG fallback media parts, and the StyleRef header field
+        survives export.
+        *(Done. A nested ordered list forces two self-contained single-level
+        definitions/instances with starts 3 and 8 plus depth-specific indents;
         `columnWidths: [300,100]` (spread 3.0) forces two real `w:gridCol`
         widths; a safe SVG attachment fed through the canvas rasterizer lands as
         `asvg:svgBlip` + a PNG media pair; the header STYLEREF survives with no

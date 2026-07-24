@@ -40,7 +40,13 @@ interface DocumentRelationships {
 }
 
 function docRels(header: boolean, footer: boolean, settings: boolean): DocumentRelationships {
-  let rels = "";
+  // `styles.xml` is a required dependency of every package this builder emits.
+  // Keep the id non-numeric so feature-specific relationship allocators can
+  // continue issuing compact `rId1`, `rId2`, ... ids without collisions.
+  let rels =
+    `<Relationship Id="rIdStyles" ` +
+    `Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" ` +
+    `Target="styles.xml"/>`;
   let n = 1;
   const headerId = header ? `rIdH${n++}` : undefined;
   const footerId = footer ? `rIdF${n++}` : undefined;

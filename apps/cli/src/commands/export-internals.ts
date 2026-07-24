@@ -80,7 +80,10 @@ export async function loadExportTemplate(
 }
 
 interface MentionClient {
-  getUsersBulk(accountIds: string[]): Promise<Map<string, { displayName: string | null } | null>>;
+  getUsersBulk(
+    accountIds: string[],
+    options?: { signal?: AbortSignal },
+  ): Promise<Map<string, { displayName: string | null } | null>>;
 }
 
 /**
@@ -90,9 +93,12 @@ interface MentionClient {
  * tree/space document happens upstream in `resolveExportMentions` (one bulk call
  * per unique id set).
  */
-export function tokenMentionLookup(client: MentionClient): ExportMentionLookup {
+export function tokenMentionLookup(
+  client: MentionClient,
+  signal?: AbortSignal,
+): ExportMentionLookup {
   return async (accountIds) => {
-    const users = await client.getUsersBulk(accountIds);
+    const users = await client.getUsersBulk(accountIds, { signal });
     const out = new Map<string, string | null>();
     for (const id of accountIds) out.set(id, users.get(id)?.displayName ?? null);
     return out;

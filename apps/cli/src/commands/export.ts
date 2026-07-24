@@ -23,10 +23,15 @@ import {
   SpaceHomepageError,
   composeChapters,
   confluenceTreeSource,
+  createAdfAnnotationResolver,
+  createAdfMediaAttachmentResolver,
+  exportSourcePolicyFromFlag,
   fetchExportTree,
+  pageBodyToBlocks,
   resolveExportMentions,
   storageToBlocks,
   type ComposeOptions,
+  type ConfluenceExportPageDetails,
   type ExportBlock,
   type ExportNote,
   type ExportProgressCallback,
@@ -64,11 +69,15 @@ import {
 } from "./export-job-runtime.js";
 import {
   checkpointDocxAssetsV1,
+  confluenceSourceResolverPortFromClientV1,
+  createConfluenceDocxResolveInputV1,
+  createConfluenceSourcePlanSpoolV1,
   createExportTreeBodySpoolV1,
 } from "@atlcli/export-wiring/jobs";
 import {
   createAssetByteCache,
   tokenAssetFetcher,
+  tokenMentionLookup,
   type LoadedExportTemplate,
 } from "./export-internals.js";
 import { handleExportJobs } from "./export-jobs.js";
@@ -207,13 +216,9 @@ export async function handleExport(
     hasFlag(flags, "no-field-update-prompt") || hasFlag(flags, "no-toc-prompt");
   // Spec 003 C4 progressive disclosure: keep scroll-only/scroll-ignore bodies
   // for debugging ("why is section X missing?"). Engine option:
-  // exportControls "passthrough". ts single-page only for now — the tree/space
-  // composition walks pages in @atlcli/confluence's tree fetch, which does not
-  // thread export controls yet.
+  // exportControls "passthrough". The shared source resolver applies it to page,
+  // tree, and space scopes before either TypeScript renderer sees the blocks.
   const keepIgnored = hasFlag(flags, "keep-ignored");
-  if (keepIgnored && request.scopeKind !== "page") {
-    fail(opts, 1, ERROR_CODES.USAGE, "--keep-ignored is not supported with --scope tree/space yet.");
-  }
 
   // spec 004: `--no-live-macros` suppresses live (port-backed) macro renderers
   // for deterministic/compliance exports.
@@ -456,6 +461,13 @@ async function getClient(
   flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<{ client: ConfluenceClient; profile: any }> {
+  let exportSourcePolicy;
+  try {
+    exportSourcePolicy = exportSourcePolicyFromFlag(process.env.ATLCLI_EXPORT_SOURCE);
+  } catch (error) {
+    fail(opts, 1, ERROR_CODES.USAGE, error instanceof Error ? error.message : String(error));
+  }
+  const clientOptions = { exportSourcePolicy };
   // Fully ephemeral (CI) mode short-circuits before any config/keychain access.
   let ephemeral: Profile | null;
   try {
@@ -468,7 +480,7 @@ async function getClient(
   }
   if (ephemeral) {
     assertCliAuthSupported(ephemeral, opts);
-    return { client: new ConfluenceClient(ephemeral), profile: ephemeral };
+    return { client: new ConfluenceClient(ephemeral, clientOptions), profile: ephemeral };
   }
 
   const config = await loadConfig();
@@ -478,7 +490,7 @@ async function getClient(
     fail(opts, 1, ERROR_CODES.AUTH, "No active profile found. Run `atlcli auth login`.", { profile: profileName });
   }
   assertCliAuthSupported(profile, opts);
-  const client = new ConfluenceClient(profile);
+  const client = new ConfluenceClient(profile, clientOptions);
   return { client, profile };
 }
 
@@ -554,7 +566,12 @@ async function executeStoredExportJob(
   derivedFrom?: ExportJobDerivationV1,
 ): Promise<void> {
   const profile = await profileForStoredJob(request, opts);
-  const client = new ConfluenceClient(profile);
+  const replaySourcePolicy = exportSourcePolicyFromFlag(
+    process.env.ATLCLI_EXPORT_SOURCE,
+  );
+  const client = new ConfluenceClient(profile, {
+    exportSourcePolicy: replaySourcePolicy,
+  });
   const parsed = parsedRequestFromJob(request);
   const baseUrl = getConfluenceBaseUrl(profile);
   if (request.output.policy !== "path" || !request.output.targetRef) {
@@ -866,7 +883,7 @@ export async function deleteTemplate(
 interface TsEngineArgs {
   client: ConfluenceClient;
   profile: Profile;
-  pagePromise: Promise<ConfluencePageDetails>;
+  pagePromise: Promise<ConfluenceExportPageDetails>;
   pageId: string;
   baseUrl: string;
   /** Absolute template path, or undefined for the bundled default (spec 010 W3-D). */
@@ -918,7 +935,8 @@ async function buildTsEngineMacroOptions(
    * `BuildMacroOptionsArgs.chapterAnchorById`. Absent on the single-page path,
    * where nothing but the page itself is in scope.
    */
-  chapterAnchorById?: ReadonlyMap<string, string>
+  chapterAnchorById?: ReadonlyMap<string, string>,
+  signal?: AbortSignal,
 ) {
   const [wiring, { JiraClient }] = await Promise.all([
     import("./export-macros-wiring.js"),
@@ -931,6 +949,7 @@ async function buildTsEngineMacroOptions(
     targetEngine,
     live,
     ...(chapterAnchorById ? { chapterAnchorById } : {}),
+    ...(signal ? { signal } : {}),
   });
   // SSRF enforcement (spec 004): export_view-derived external image refs carry
   // trust:"export-view"; route them through the policy-checked external fetcher
@@ -941,6 +960,28 @@ async function buildTsEngineMacroOptions(
   const wrapAssets = (inner: import("@atlcli/docx").AssetFetcher) =>
     wiring.trustRoutingAssetFetcher(inner, externalAssets);
   return { macros, wrapAssets };
+}
+
+/** Decode the selected page source before the TypeScript DOCX engine runs. */
+export function decodeTsPageSource(
+  page: ConfluenceExportPageDetails,
+  keepIgnored = false,
+) {
+  return pageBodyToBlocks(page.exportSource, {
+    exporter: "word",
+    resolveMediaAttachment: createAdfMediaAttachmentResolver(page.mediaAttachments),
+    resolveAnnotation: createAdfAnnotationResolver(page.inlineComments),
+    annotationCommentsComplete: page.inlineCommentsComplete,
+    ...(keepIgnored ? { exportControls: "passthrough" as const } : {}),
+    pageContext: {
+      id: page.id,
+      title: page.title,
+      ...(page.exportSource.sourceVersion !== undefined
+        ? { version: page.exportSource.sourceVersion }
+        : {}),
+      ...(page.spaceKey ? { spaceKey: page.spaceKey } : {}),
+    },
+  });
 }
 
 interface OrdinaryDocxJobArgs {
@@ -972,41 +1013,86 @@ async function exportDocxAsOrdinaryJob(
   try {
     // Executor construction is local-only; runOrdinaryExportJobV1 performs the
     // durable create before this resolver can reach Confluence.
-    const executor = createOrdinaryDocxExecutorV1(persistence, {
-      templates: {
-        async resolve(input) {
-          if (input.recordKey !== jobRequest.template.recordKey) {
-            throw new Error("Pinned DOCX template record is unavailable in this CLI invocation.");
-          }
-          return { recordKey: input.recordKey, bytes: args.template.bytes };
-        },
+    const sourcePolicyKey = args.profile.deploymentType === "data-center"
+      ? "storage-primary:data-center:v1"
+      : `${exportSourcePolicyFromFlag(process.env.ATLCLI_EXPORT_SOURCE)}:v1`;
+    const resolveInput = createConfluenceDocxResolveInputV1({
+      port: confluenceSourceResolverPortFromClientV1(args.client),
+      ...(args.request.scopeKind === "page"
+        ? {}
+        : {
+            resolveExternalUrl: (
+              target: Parameters<NonNullable<ComposeOptions["resolveExternalUrl"]>>[0],
+              anchor: Parameters<NonNullable<ComposeOptions["resolveExternalUrl"]>>[1],
+            ) => {
+              const path = target.contentId
+                ? target.spaceKey
+                  ? `spaces/${target.spaceKey}/pages/${target.contentId}`
+                  : `pages/viewpage.action?pageId=${target.contentId}`
+                : target.spaceKey
+                  ? `display/${target.spaceKey}/${encodeURIComponent(target.contentTitle)}`
+                  : `search?text=${encodeURIComponent(target.contentTitle)}`;
+              const url = buildConfluenceUrl(args.profile, path);
+              return anchor ? `${url}#${anchor}` : url;
+            },
+          }),
+      ...(args.request.scopeKind === "page" &&
+      !jobRequest.options.keepIgnored
+        ? {}
+        : {
+            bodyOptions: jobRequest.options.keepIgnored
+              ? { exportControls: "passthrough" as const }
+              : {},
+          }),
+      createSourcePlan: (_request, context) => ({
+        store: createConfluenceSourcePlanSpoolV1(context),
+        sourcePolicyKey,
+      }),
+      createBodyStore: (request, context) =>
+        createExportTreeBodySpoolV1(context, request.idempotencyKey),
+      onProgress: (_request, context, progress) => {
+        return context.updateProgress({
+          stage: "fetch",
+          done: progress.fetched,
+          total: progress.total,
+          updatedAt: Date.now(),
+        });
       },
-      async resolveInput(request, context) {
-        const pdfModule = await import("./export-pdf.js");
-        const value = await pdfModule.resolveScope(
-          {
-            client: args.client,
-            profile: args.profile,
-            request: args.request,
-            baseUrl: args.baseUrl,
-            outputPath: args.outputPath,
-            force: true,
-            strict: request.options.strict === true,
-            noCache: false,
-            opts: args.opts,
-          },
-          context.signal,
-          () => undefined,
-          { exporter: "word", keepIgnored: request.options.keepIgnored === true },
-          args.request.scopeKind === "page"
-            ? undefined
-            : createExportTreeBodySpoolV1(context, request.idempotencyKey),
+      async build(resolved, request, context) {
+        const mentions = await resolveExportMentions(
+          resolved.blocks,
+          tokenMentionLookup(args.client, context.signal),
         );
+        resolved.blocks = mentions.blocks;
+        if (mentions.unresolved > 0) {
+          resolved.sourceNotes.push({
+            level: "warning",
+            code: "mention-unresolved",
+            message:
+              `${mentions.unresolved} mention(s) could not be resolved to a display name.`,
+          });
+        }
+
+        const sourcePages = resolved.pages.map((page) => ({
+          id: page.id,
+          title: page.title,
+          notes: page.notes.map((note) =>
+            noteToIssue(note, "compose", page.id),
+          ),
+        }));
+        const scopeReport = args.request.scopeKind === "page"
+          ? undefined
+          : buildScopeReportFields(
+              args.request,
+              buildExportScope(args.request, resolved.root.id),
+            );
         reportProjection = {
-          sourcePages: value.sourcePages,
+          sourcePages,
           outputPath: resolve(args.outputPath),
-          ...(value.reconcilablePageId ? { reconcilablePageId: value.reconcilablePageId } : {}),
-          ...(value.scopeReport ? { scopeReport: value.scopeReport } : {}),
+          ...(args.request.scopeKind === "page"
+            ? { reconcilablePageId: resolved.root.id }
+            : {}),
+          ...(scopeReport ? { scopeReport } : {}),
         };
         await writeOrdinaryExportProjectionV1(persistence, {
           schema: "atlcli.cli-export-projection/1",
@@ -1021,64 +1107,105 @@ async function exportDocxAsOrdinaryJob(
           args.client,
           "docx",
           args.liveMacros && request.options.resolveMacros,
-          value.chapterAnchorById,
+          resolved.chapterAnchorById,
+          context.signal,
         );
         const cache = createAssetByteCache(args.baseUrl);
-        let rasterizerPromise: Promise<import("@atlcli/docx").SvgRasterizer | null> | undefined;
+        let rasterizerPromise:
+          | Promise<import("@atlcli/docx").SvgRasterizer | null>
+          | undefined;
         const rasterizer: import("@atlcli/docx").SvgRasterizer = {
           async rasterize(svg, target, hostContext) {
-            rasterizerPromise ??= import("./export-rasterizer.js").then(({ buildDiagramRasterizer }) =>
-              buildDiagramRasterizer((message) => cliNotes.push(
-                `diagram rasterizer unavailable; diagrams degrade (${message}).`,
-              )),
+            rasterizerPromise ??= import("./export-rasterizer.js").then(
+              ({ buildDiagramRasterizer }) =>
+                buildDiagramRasterizer((message) =>
+                  cliNotes.push(
+                    `diagram rasterizer unavailable; diagrams degrade (${message}).`,
+                  ),
+                ),
             );
-            const resolved = await rasterizerPromise;
+            const ready = await rasterizerPromise;
             hostContext?.signal?.throwIfAborted();
-            if (!resolved) throw new Error("DOCX diagram rasterizer is unavailable.");
-            return resolved.rasterize(svg, target, hostContext);
+            if (!ready) throw new Error("DOCX diagram rasterizer is unavailable.");
+            return ready.rasterize(svg, target, hostContext);
           },
         };
 
         return {
-          jobTelemetry: { sourcePageCount: value.sourcePages.length },
-          details: value.metaPage,
-          blocks: value.blocks,
-          sourceNotes: value.sourceNotes,
-          complete: value.complete,
-          template: args.template.meta,
-          embedImages: request.options.embedImages,
-          ...(request.options.keepIgnored ? { exportControls: "passthrough" as const } : {}),
-          updateFields: request.options.updateFields ?? "auto",
-          assets: checkpointDocxAssetsV1(
-            context,
-            request.idempotencyKey,
-            macroSetup.wrapAssets(tokenAssetFetcher(args.client, cache)),
-          ),
-          rasterizer,
-          macros: macroSetup.macros,
-          deps: {
-            getSpace: async (key: string) => (await args.client.getSpaceWithIcon(key)).space,
-            getCurrentUser: () => args.client.getCurrentUser(),
-            getPageOwner: (id: string) => args.client.getPageOwner(id),
-            getSpaceHomepageStorage: (key: string) => args.client.getSpaceHomepageStorage(key),
-            getSpaceLogo: async (key: string) => {
-              const icon = (await args.client.getSpaceWithIcon(key)).icon;
-              if (!icon) return null;
-              const match = icon.path.match(/^\/download\/attachments\/(\d+)\/([^/?]+)/);
-              return {
-                url: icon.path,
-                ...(match ? { pageId: match[1], filename: decodeURIComponent(match[2]) } : {}),
-              };
+          input: {
+            template: args.template.meta,
+            embedImages: request.options.embedImages,
+            ...(request.options.keepIgnored
+              ? { exportControls: "passthrough" as const }
+              : {}),
+            updateFields: request.options.updateFields ?? "auto",
+            assets: checkpointDocxAssetsV1(
+              context,
+              request.idempotencyKey,
+              macroSetup.wrapAssets(tokenAssetFetcher(args.client, cache)),
+            ),
+            rasterizer,
+            macros: macroSetup.macros,
+            deps: {
+              getSpace: async (key: string) =>
+                (
+                  await args.client.getSpaceWithIcon(key, {
+                    signal: context.signal,
+                  })
+                ).space,
+              getCurrentUser: () =>
+                args.client.getCurrentUser({ signal: context.signal }),
+              getPageOwner: (id: string) =>
+                args.client.getPageOwner(id, { signal: context.signal }),
+              getSpaceHomepageStorage: (key: string) =>
+                args.client.getSpaceHomepageStorage(key, {
+                  signal: context.signal,
+                }),
+              getSpaceLogo: async (key: string) => {
+                const icon = (
+                  await args.client.getSpaceWithIcon(key, {
+                    signal: context.signal,
+                  })
+                ).icon;
+                if (!icon) return null;
+                const match = icon.path.match(
+                  /^\/download\/attachments\/(\d+)\/([^/?]+)/,
+                );
+                return {
+                  url: icon.path,
+                  ...(match
+                    ? {
+                        pageId: match[1],
+                        filename: decodeURIComponent(match[2]),
+                      }
+                    : {}),
+                };
+              },
+              getIncludedPage: buildGetIncludedPage({
+                getPage: (id) =>
+                  args.client.getPage(id, { signal: context.signal }),
+                findPagesByTitle: (title, spaceKey) =>
+                  args.client.findPagesByTitle(title, {
+                    spaceKey,
+                    signal: context.signal,
+                  }),
+                defaultSpaceKey: resolved.root.spaceKey,
+              }),
             },
-            getIncludedPage: buildGetIncludedPage({
-              getPage: (id) => args.client.getPage(id),
-              findPagesByTitle: (title, spaceKey) =>
-                args.client.findPagesByTitle(title, { spaceKey }),
-              defaultSpaceKey: value.metaPage.spaceKey,
-            }),
           },
         };
       },
+    });
+    const executor = createOrdinaryDocxExecutorV1(persistence, {
+      templates: {
+        async resolve(input) {
+          if (input.recordKey !== jobRequest.template.recordKey) {
+            throw new Error("Pinned DOCX template record is unavailable in this CLI invocation.");
+          }
+          return { recordKey: input.recordKey, bytes: args.template.bytes };
+        },
+      },
+      resolveInput,
       estimateRender(input): ResourceEstimateV1 {
         const sourceBytes = new TextEncoder().encode(JSON.stringify(input.blocks ?? [])).byteLength;
         return {
@@ -1213,15 +1340,18 @@ async function exportWithTsEngine(args: TsEngineArgs): Promise<void> {
   const templatePromise = internalsPromise.then((m) => m.loadExportTemplate(resolvedTemplatePath));
   const [
     { runExport, fileOutputSink },
-    { buildGetIncludedPage },
-    { createAssetByteCache, mightContainMermaid, mightReferenceImage, prestartPageDependentDeps, tokenAssetFetcher, tokenMentionLookup },
+    { buildGetIncludedPage, configureBundledCodeFontLoader },
+    { createAssetByteCache, prestartPageDependentDeps, tokenAssetFetcher, tokenMentionLookup },
     template,
+    { loadDocxCodeFont },
   ] = await Promise.all([
     import("@atlcli/docx"),
     import("@atlcli/docx/internal"),
     internalsPromise,
     templatePromise,
+    import("./export-code-font.js"),
   ]);
+  configureBundledCodeFontLoader(loadDocxCodeFont);
   const templateBytes = template.bytes;
   const assetCache = createAssetByteCache(baseUrl);
 
@@ -1277,6 +1407,9 @@ async function exportWithTsEngine(args: TsEngineArgs): Promise<void> {
     getSpaceHomepageStorage: spaceHomepage,
   });
 
+  const decodedPromise = pagePromise.then((page) => decodeTsPageSource(page, keepIgnored));
+  decodedPromise.catch(() => {});
+
   // Mermaid diagrams render via resvg-wasm (spec 005a), and SVG page
   // attachments rasterize their PNG fallback through the same rasterizer
   // (spec 006 G4). A missing rasterizer is not an error: the engine degrades
@@ -1284,9 +1417,8 @@ async function exportWithTsEngine(args: TsEngineArgs): Promise<void> {
   // EITHER a mermaid macro OR any image/attachment reference is present, so an
   // SVG-only page (no mermaid macro) still gets a rasterizer instead of
   // degrading with `image-svg-no-rasterizer`.
-  const rasterizerPromise = pagePromise.then(async (details) => {
-    const storage = details.storage ?? "";
-    if (!mightContainMermaid(storage) && !mightReferenceImage(storage)) {
+  const rasterizerPromise = decodedPromise.then(async (decoded) => {
+    if (!blocksNeedRasterizer(decoded.blocks)) {
       return { needed: false as const, rasterizer: null, error: undefined as string | undefined };
     }
     try {
@@ -1305,7 +1437,11 @@ async function exportWithTsEngine(args: TsEngineArgs): Promise<void> {
     }
   });
   rasterizerPromise.catch(() => {});
-  const [page, rasterizerState] = await Promise.all([pagePromise, rasterizerPromise]);
+  const [page, walked, rasterizerState] = await Promise.all([
+    pagePromise,
+    decodedPromise,
+    rasterizerPromise,
+  ]);
   const rasterizer = rasterizerState.rasterizer;
   if (rasterizerState.needed && !rasterizer) {
     cliNotes.push(
@@ -1316,8 +1452,8 @@ async function exportWithTsEngine(args: TsEngineArgs): Promise<void> {
   }
 
   // Resolve @mentions to display names before serialization, matching the
-  // extension's pipeline (spec 008 T3.2 — the CLI had this parity gap). Walk the
-  // storage here and hand the engine pre-resolved blocks; a getUsersBulk call
+  // extension's pipeline (spec 008 T3.2 — the CLI had this parity gap). Decode
+  // the selected export source here and hand the engine pre-resolved blocks; a getUsersBulk call
   // only happens when an account-id-only mention is actually present.
   //
   // `exportControls` MUST be threaded into this walk, not only into `runExport`
@@ -1326,11 +1462,10 @@ async function exportWithTsEngine(args: TsEngineArgs): Promise<void> {
   // dropped every `--keep-ignored` body (spec 003) from the moment this
   // pre-walk was added — the engine-level option at :1354 was addressing a walk
   // that no longer happened.
-  const walked = storageToBlocks(page.storage ?? "", {
-    exporter: "word",
-    ...(keepIgnored ? { exportControls: "passthrough" as const } : {}),
-  });
-  const mention = await resolveExportMentions(walked.blocks, tokenMentionLookup(client));
+  const mention = await resolveExportMentions(
+    walked.blocks,
+    tokenMentionLookup(client),
+  );
   const tsSourceNotes = [...walked.notes];
   if (mention.unresolved > 0) {
     tsSourceNotes.push({
@@ -1341,7 +1476,13 @@ async function exportWithTsEngine(args: TsEngineArgs): Promise<void> {
   }
 
   const resolvedOutputPath = resolve(outputPath);
-  const macroSetup = await buildTsEngineMacroOptions(profile, client, "docx", liveMacros);
+  const macroSetup = await buildTsEngineMacroOptions(
+    profile,
+    client,
+    "docx",
+    liveMacros,
+    undefined,
+  );
   const report = await runExport(
     {
       details: page,
@@ -1383,7 +1524,7 @@ async function exportWithTsEngine(args: TsEngineArgs): Promise<void> {
         // Concurrency lives ONLY in the engine's include pool, so this loader
         // stays throttle-agnostic; the pool de-duplicates repeated refs.
         getIncludedPage: buildGetIncludedPage({
-          getPage: (id) => client.getPage(id),
+          getPage: (id) => client.getExportPageDetailsWithMedia(id),
           findPagesByTitle: (title, spaceKey) => client.findPagesByTitle(title, { spaceKey }),
           defaultSpaceKey: page.spaceKey,
         }),
@@ -1522,12 +1663,16 @@ function blocksNeedRasterizer(blocks: readonly ExportBlock[]): boolean {
       case "image":
         return true;
       case "callout":
+      case "expand":
       case "blockquote":
       case "orientation":
         if (blocksNeedRasterizer(block.content)) return true;
         break;
       case "list":
         for (const item of block.items) if (blocksNeedRasterizer(item.content)) return true;
+        break;
+      case "layout":
+        for (const column of block.columns) if (blocksNeedRasterizer(column.content)) return true;
         break;
       case "table":
         for (const row of block.rows)
@@ -1591,6 +1736,7 @@ async function exportTreeWithTsEngine(args: TreeEngineArgs): Promise<void> {
       completenessMode: request.completenessMode,
       ...(request.maxPages !== undefined ? { maxPages: request.maxPages } : {}),
       ...(request.maxFolders !== undefined ? { maxFolders: request.maxFolders } : {}),
+      bodyOptions: { exporter: "word" },
       signal: controller.signal,
       onProgress: (p) =>
         onProgress({ phase: "fetch", done: p.fetched, total: p.total, detail: p.currentTitle }),
@@ -1627,19 +1773,31 @@ async function exportTreeWithTsEngine(args: TreeEngineArgs): Promise<void> {
     // Load engine + template + optional rasterizer. No `--template` resolves to
     // the bundled default (spec 010 W3-D), with a `template-default-used` note.
     const internalsPromise = import("./export-internals.js");
-    const [{ runExport, fileOutputSink }, { createAssetByteCache, tokenAssetFetcher, tokenMentionLookup }, template] =
+    const [
+      { runExport, fileOutputSink },
+      { configureBundledCodeFontLoader },
+      { createAssetByteCache, tokenAssetFetcher, tokenMentionLookup },
+      template,
+      { loadDocxCodeFont },
+    ] =
       await Promise.all([
         import("@atlcli/docx"),
+        import("@atlcli/docx/internal"),
         internalsPromise,
         internalsPromise.then((m) => m.loadExportTemplate(resolvedTemplatePath)),
+        import("./export-code-font.js"),
       ]);
+    configureBundledCodeFontLoader(loadDocxCodeFont);
     const templateBytes = template.bytes;
     const assetCache = createAssetByteCache(baseUrl);
 
     // Resolve @mentions across the WHOLE composed document with one deduped bulk
     // lookup (spec 008 T3.2 parity). Account ids are deduped inside
     // resolveExportMentions, so a name repeated across chapters costs one call.
-    const mention = await resolveExportMentions(composed.blocks, tokenMentionLookup(client));
+    const mention = await resolveExportMentions(
+      composed.blocks,
+      tokenMentionLookup(client, controller.signal),
+    );
     if (mention.unresolved > 0) {
       sourceNotes.push({
         level: "warning",
@@ -1676,7 +1834,8 @@ async function exportTreeWithTsEngine(args: TreeEngineArgs): Promise<void> {
       client,
       "docx",
       liveMacros,
-      composed.chapterAnchorById
+      composed.chapterAnchorById,
+      controller.signal,
     );
     const docxReport = await runExport(
       {
@@ -1692,12 +1851,26 @@ async function exportTreeWithTsEngine(args: TreeEngineArgs): Promise<void> {
         // definition of the default policy.
         ...(noFieldUpdatePrompt ? { updateFields: "never" as const } : {}),
         deps: {
-          getSpace: async (key: string) => (await client.getSpaceWithIcon(key)).space,
-          getCurrentUser: () => client.getCurrentUser(),
-          getPageOwner: (id: string) => client.getPageOwner(id),
-          getSpaceHomepageStorage: (key: string) => client.getSpaceHomepageStorage(key),
+          getSpace: async (key: string) =>
+            (
+              await client.getSpaceWithIcon(key, {
+                signal: controller.signal,
+              })
+            ).space,
+          getCurrentUser: () =>
+            client.getCurrentUser({ signal: controller.signal }),
+          getPageOwner: (id: string) =>
+            client.getPageOwner(id, { signal: controller.signal }),
+          getSpaceHomepageStorage: (key: string) =>
+            client.getSpaceHomepageStorage(key, {
+              signal: controller.signal,
+            }),
           getSpaceLogo: async (key: string) => {
-            const icon = (await client.getSpaceWithIcon(key)).icon;
+            const icon = (
+              await client.getSpaceWithIcon(key, {
+                signal: controller.signal,
+              })
+            ).icon;
             if (!icon) return null;
             const m = icon.path.match(/^\/download\/attachments\/(\d+)\/([^/?]+)/);
             return {

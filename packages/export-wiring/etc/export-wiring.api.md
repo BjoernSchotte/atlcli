@@ -8,7 +8,7 @@
 
 ```ts
 // export: attachmentLookupFromClient
-export declare function attachmentLookupFromClient(client: ConfluenceClient): AttachmentLookupPort;
+export declare function attachmentLookupFromClient(client: ConfluenceClient, signal?: AbortSignal): AttachmentLookupPort;
 
 // export: BuildMacroOptionsArgs
 export interface BuildMacroOptionsArgs {
@@ -60,7 +60,88 @@ export interface CheckpointedOrderedSourcePipelineResultV1<Cursor> {
 export declare function classifyClientError(err: unknown, service: string): never;
 
 // export: confluenceContentPortFromClient
-export declare function confluenceContentPortFromClient(client: ConfluenceClient): ConfluenceContentPort;
+export declare function confluenceContentPortFromClient(client: ConfluenceClient, signal?: AbortSignal): ConfluenceContentPort;
+
+// export: ConfluenceInputPreparationError
+export declare class ConfluenceInputPreparationError extends Error {
+    readonly code: "confluence-input-preparation-failed";
+    constructor();
+}
+
+// export: ConfluenceSourceFailureKindV1
+export type ConfluenceSourceFailureKindV1 = "authentication" | "unknown";
+
+// export: ConfluenceSourceProgressV1
+export interface ConfluenceSourceProgressV1 {
+    fetched: number;
+    total: number | null;
+}
+
+// export: ConfluenceSourceReadContextV1
+export interface ConfluenceSourceReadContextV1 {
+    siteOrigin: string;
+    signal: AbortSignal;
+}
+
+// export: ConfluenceSourceResolutionError
+export declare class ConfluenceSourceResolutionError extends Error {
+    readonly code: "confluence-source-resolution-failed";
+    readonly sourceFailureKind: ConfluenceSourceFailureKindV1;
+    constructor(sourceFailureKind?: ConfluenceSourceFailureKindV1);
+}
+
+// export: confluenceSourceResolverPortFromClientV1
+export declare function confluenceSourceResolverPortFromClientV1(client: TreeSourceClient): ConfluenceSourceResolverPortV1;
+
+// export: ConfluenceSourceResolverPortV1
+export interface ConfluenceSourceResolverPortV1 {
+    createTreeSource(context: ConfluenceSourceReadContextV1): TreeSource;
+    resolveContentKey?(value: string, context: ConfluenceSourceReadContextV1): Promise<{
+        id: string;
+    }>;
+}
+
+// export: ConfluenceSourceVersionMismatchError
+export declare class ConfluenceSourceVersionMismatchError extends Error {
+    readonly pageId: string;
+    readonly expectedVersion: number;
+    readonly observedVersion: number | undefined;
+    constructor(pageId: string, expectedVersion: number, observedVersion: number | undefined);
+}
+
+// export: CreateConfluenceDocxResolveInputOptionsV1
+export interface CreateConfluenceDocxResolveInputOptionsV1 extends SharedSourceOptionsV1 {
+    build(resolved: ResolvedConfluenceSourceV1, request: DocxExportJobRequestV1, context: ExportJobExecutionContext): Promise<{
+        input: DocxConfluenceResolvedInputExtrasV1;
+        rootDetails?: DocxConfluenceRootDetailsV1;
+    }> | {
+        input: DocxConfluenceResolvedInputExtrasV1;
+        rootDetails?: DocxConfluenceRootDetailsV1;
+    };
+}
+
+// export: createConfluenceDocxResolveInputV1
+export declare function createConfluenceDocxResolveInputV1(options: CreateConfluenceDocxResolveInputOptionsV1): (request: DocxExportJobRequestV1, context: ExportJobExecutionContext) => Promise<TypescriptDocxExportJobEngineInputV1>;
+
+// export: CreateConfluencePdfResolveInputOptionsV1
+export interface CreateConfluencePdfResolveInputOptionsV1 extends SharedSourceOptionsV1 {
+    build(resolved: ResolvedConfluenceSourceV1, request: PdfExportJobRequestV1, context: ExportJobExecutionContext): Promise<{
+        input: PdfConfluenceResolvedInputExtrasV1;
+        env: Omit<PreparePdfExportEnv, "now">;
+    }> | {
+        input: PdfConfluenceResolvedInputExtrasV1;
+        env: Omit<PreparePdfExportEnv, "now">;
+    };
+}
+
+// export: createConfluencePdfResolveInputV1
+export declare function createConfluencePdfResolveInputV1(options: CreateConfluencePdfResolveInputOptionsV1): (request: PdfExportJobRequestV1, context: ExportJobExecutionContext) => Promise<{
+    input: PdfExportJobEngineInputV1;
+    env: Omit<PreparePdfExportEnv, "now">;
+    telemetry: {
+        sourcePageCount: number;
+    };
+}>;
 
 // export: createExternalAssetFetcher
 export declare function createExternalAssetFetcher(policy: ExternalAssetPolicy, deps?: ExternalAssetFetcherDeps): ExternalAssetFetcher;
@@ -77,6 +158,12 @@ export declare function defaultExternalAssetFetcher(policy: ExternalAssetPolicy,
 // export: defaultExternalAssetPolicy
 export declare function defaultExternalAssetPolicy(siteBaseUrl: string): ExternalAssetPolicy;
 
+// export: DocxConfluenceResolvedInputExtrasV1
+export type DocxConfluenceResolvedInputExtrasV1 = Omit<TypescriptDocxExportJobEngineInputV1, "blocks" | "sourceNotes" | "complete" | "details">;
+
+// export: DocxConfluenceRootDetailsV1
+export type DocxConfluenceRootDetailsV1 = Omit<ConfluencePageDetails, "id" | "title" | "version" | "spaceKey" | "storage">;
+
 // export: ExportAssetResponseV1
 export interface ExportAssetResponseV1 {
     contentLength?: number;
@@ -91,7 +178,7 @@ export interface ExportAssetSourceV1<Reference> {
 }
 
 // export: exportViewPortFromClient
-export declare function exportViewPortFromClient(client: ConfluenceClient): ExportViewPort;
+export declare function exportViewPortFromClient(client: ConfluenceClient, signal?: AbortSignal): ExportViewPort;
 
 // export: EXTERNAL_ASSET_MAX_BYTES
 export declare const EXTERNAL_ASSET_MAX_BYTES: number;
@@ -204,7 +291,7 @@ export interface JiraIssueLike {
 }
 
 // export: jiraIssuePortFromClient
-export declare function jiraIssuePortFromClient(client: JiraClientLike, browseBaseUrl: string): JiraIssuePort;
+export declare function jiraIssuePortFromClient(client: JiraClientLike, browseBaseUrl: string, signal?: AbortSignal): JiraIssuePort;
 
 // export: jiraIssueRef
 export declare function jiraIssueRef(issue: JiraIssueLike, browseBaseUrl: string): JiraIssueRef;
@@ -252,10 +339,55 @@ export interface OrderedSourcePortV1<Value, Cursor> {
 // export: parseIpv6
 export declare function parseIpv6(value: string): number[] | undefined;
 
+// export: PdfConfluenceResolvedInputExtrasV1
+export type PdfConfluenceResolvedInputExtrasV1 = Omit<PdfExportJobEngineInputV1, "blocks" | "sourceNotes" | "complete" | "page">;
+
 // export: PersistedOrderedSourceCheckpointV1
 export interface PersistedOrderedSourceCheckpointV1<Cursor> {
     checkpoint: OrderedSourceCheckpointV1<Cursor>;
     ref: string;
+}
+
+// export: ResolveConfluenceSourceOptionsV1
+export interface ResolveConfluenceSourceOptionsV1 {
+    exporter: "pdf" | "word";
+    port: ConfluenceSourceResolverPortV1;
+    signal: AbortSignal;
+    resolveExternalUrl?: NonNullable<ComposeOptions["resolveExternalUrl"]>;
+    onProgress?: (progress: ConfluenceSourceProgressV1) => void;
+    classifyError?: (error: unknown) => ConfluenceSourceFailureKindV1;
+    bodyOptions?: Omit<PageBodyToBlocksOptions, "exporter" | "pageContext">;
+    sourcePlanCheckpoint?: ConfluenceSourcePlanCheckpointOptionsV1;
+    bodyStore?: ExportTreeBodyStoreV1;
+}
+
+// export: resolveConfluenceSourceV1
+export declare function resolveConfluenceSourceV1(sourceRequest: ExportSourceV1, options: ResolveConfluenceSourceOptionsV1): Promise<ResolvedConfluenceSourceV1>;
+
+// export: ResolvedConfluenceSourcePageV1
+export interface ResolvedConfluenceSourcePageV1 {
+    id: string;
+    title: string;
+    version?: number;
+    spaceKey?: string;
+    notes: readonly ExportNote[];
+}
+
+// export: ResolvedConfluenceSourceV1
+export interface ResolvedConfluenceSourceV1 {
+    blocks: ExportBlock[];
+    sourceNotes: ExportNote[];
+    complete: boolean;
+    root: {
+        id: string;
+        title: string;
+        version?: number;
+        spaceKey?: string;
+    };
+    pages: readonly ResolvedConfluenceSourcePageV1[];
+    pageCount: number;
+    sourceSummary: TreeSourceSummary;
+    chapterAnchorById?: ReadonlyMap<string, string>;
 }
 
 // export: runCheckpointedOrderedSourcePipeline
@@ -381,6 +513,130 @@ export interface CheckpointedOrderedSourcePipelineResultV1<Cursor> {
 // export: checkpointPdfAssetsV1
 export declare function checkpointPdfAssetsV1(context: ExportJobExecutionContext, requestKey: string, delegate: PdfAssetResolver): PdfAssetResolver;
 
+// export: ConfluenceInputPreparationError
+export declare class ConfluenceInputPreparationError extends Error {
+    readonly code: "confluence-input-preparation-failed";
+    constructor();
+}
+
+// export: ConfluenceSourceFailureKindV1
+export type ConfluenceSourceFailureKindV1 = "authentication" | "unknown";
+
+// export: ConfluenceSourcePlanCheckpointOptionsV1
+export interface ConfluenceSourcePlanCheckpointOptionsV1 extends ConfluenceSourcePlanIdentityV1 {
+    leaseEpoch: number;
+    store: ConfluenceSourcePlanStoreV1;
+    recoveryHeadRef?: string;
+    publishCheckpointRef(ref: string, context: {
+        signal: AbortSignal;
+    }): Promise<void>;
+}
+
+// export: ConfluenceSourcePlanCheckpointV1
+export interface ConfluenceSourcePlanCheckpointV1 extends ConfluenceSourcePlanIdentityV1 {
+    schema: "atlcli.confluence-source-plan-checkpoint/1";
+    committedLeaseEpoch: number;
+    root: {
+        id: string;
+        title: string;
+        version?: number;
+    };
+    plan: ExportTreePlanV1;
+}
+
+// export: ConfluenceSourcePlanIdentityV1
+export interface ConfluenceSourcePlanIdentityV1 {
+    jobId: string;
+    requestKey: string;
+    sourcePolicyKey: string;
+}
+
+// export: ConfluenceSourcePlanStoreV1
+export interface ConfluenceSourcePlanStoreV1 {
+    load(identity: ConfluenceSourcePlanIdentityV1, context: {
+        signal: AbortSignal;
+    }): Promise<PersistedConfluenceSourcePlanV1 | undefined>;
+    commit(checkpoint: ConfluenceSourcePlanCheckpointV1, context: {
+        leaseEpoch: number;
+        signal: AbortSignal;
+    }): Promise<string>;
+}
+
+// export: ConfluenceSourceProgressV1
+export interface ConfluenceSourceProgressV1 {
+    fetched: number;
+    total: number | null;
+}
+
+// export: ConfluenceSourceReadContextV1
+export interface ConfluenceSourceReadContextV1 {
+    siteOrigin: string;
+    signal: AbortSignal;
+}
+
+// export: ConfluenceSourceResolutionError
+export declare class ConfluenceSourceResolutionError extends Error {
+    readonly code: "confluence-source-resolution-failed";
+    readonly sourceFailureKind: ConfluenceSourceFailureKindV1;
+    constructor(sourceFailureKind?: ConfluenceSourceFailureKindV1);
+}
+
+// export: confluenceSourceResolverPortFromClientV1
+export declare function confluenceSourceResolverPortFromClientV1(client: TreeSourceClient): ConfluenceSourceResolverPortV1;
+
+// export: ConfluenceSourceResolverPortV1
+export interface ConfluenceSourceResolverPortV1 {
+    createTreeSource(context: ConfluenceSourceReadContextV1): TreeSource;
+    resolveContentKey?(value: string, context: ConfluenceSourceReadContextV1): Promise<{
+        id: string;
+    }>;
+}
+
+// export: ConfluenceSourceVersionMismatchError
+export declare class ConfluenceSourceVersionMismatchError extends Error {
+    readonly pageId: string;
+    readonly expectedVersion: number;
+    readonly observedVersion: number | undefined;
+    constructor(pageId: string, expectedVersion: number, observedVersion: number | undefined);
+}
+
+// export: CreateConfluenceDocxResolveInputOptionsV1
+export interface CreateConfluenceDocxResolveInputOptionsV1 extends SharedSourceOptionsV1 {
+    build(resolved: ResolvedConfluenceSourceV1, request: DocxExportJobRequestV1, context: ExportJobExecutionContext): Promise<{
+        input: DocxConfluenceResolvedInputExtrasV1;
+        rootDetails?: DocxConfluenceRootDetailsV1;
+    }> | {
+        input: DocxConfluenceResolvedInputExtrasV1;
+        rootDetails?: DocxConfluenceRootDetailsV1;
+    };
+}
+
+// export: createConfluenceDocxResolveInputV1
+export declare function createConfluenceDocxResolveInputV1(options: CreateConfluenceDocxResolveInputOptionsV1): (request: DocxExportJobRequestV1, context: ExportJobExecutionContext) => Promise<TypescriptDocxExportJobEngineInputV1>;
+
+// export: CreateConfluencePdfResolveInputOptionsV1
+export interface CreateConfluencePdfResolveInputOptionsV1 extends SharedSourceOptionsV1 {
+    build(resolved: ResolvedConfluenceSourceV1, request: PdfExportJobRequestV1, context: ExportJobExecutionContext): Promise<{
+        input: PdfConfluenceResolvedInputExtrasV1;
+        env: Omit<PreparePdfExportEnv, "now">;
+    }> | {
+        input: PdfConfluenceResolvedInputExtrasV1;
+        env: Omit<PreparePdfExportEnv, "now">;
+    };
+}
+
+// export: createConfluencePdfResolveInputV1
+export declare function createConfluencePdfResolveInputV1(options: CreateConfluencePdfResolveInputOptionsV1): (request: PdfExportJobRequestV1, context: ExportJobExecutionContext) => Promise<{
+    input: PdfExportJobEngineInputV1;
+    env: Omit<PreparePdfExportEnv, "now">;
+    telemetry: {
+        sourcePageCount: number;
+    };
+}>;
+
+// export: createConfluenceSourcePlanSpoolV1
+export declare function createConfluenceSourcePlanSpoolV1(context: ExportJobExecutionContext): ConfluenceSourcePlanStoreV1;
+
 // export: createExportTreeBodySpoolV1
 export declare function createExportTreeBodySpoolV1(context: ExportJobExecutionContext, requestKey: string): ExportTreeBodyStoreV1;
 
@@ -417,6 +673,12 @@ export interface CreateTypescriptDocxExportJobExecutorOptionsV1 {
     results: DocxExportResultStoreV1;
     now?: () => number;
 }
+
+// export: DocxConfluenceResolvedInputExtrasV1
+export type DocxConfluenceResolvedInputExtrasV1 = Omit<TypescriptDocxExportJobEngineInputV1, "blocks" | "sourceNotes" | "complete" | "details">;
+
+// export: DocxConfluenceRootDetailsV1
+export type DocxConfluenceRootDetailsV1 = Omit<ConfluencePageDetails, "id" | "title" | "version" | "spaceKey" | "storage">;
 
 // export: DocxExportResultIntentV1
 export interface DocxExportResultIntentV1 {
@@ -626,6 +888,9 @@ export interface OrderedSourcePortV1<Value, Cursor> {
     }): Promise<OrderedSourceDiscoveryV1<Value, Cursor>>;
 }
 
+// export: PdfConfluenceResolvedInputExtrasV1
+export type PdfConfluenceResolvedInputExtrasV1 = Omit<PdfExportJobEngineInputV1, "blocks" | "sourceNotes" | "complete" | "page">;
+
 // export: PdfExportJobEngineInputV1
 export type PdfExportJobEngineInputV1 = Omit<RunPdfExportInput, "signal" | "onPhase" | "onProgress">;
 
@@ -755,10 +1020,58 @@ export declare class PdfRenderRestartLimitError extends Error {
     constructor();
 }
 
+// export: PersistedConfluenceSourcePlanV1
+export interface PersistedConfluenceSourcePlanV1 {
+    checkpoint: ConfluenceSourcePlanCheckpointV1;
+    ref: string;
+}
+
 // export: PersistedOrderedSourceCheckpointV1
 export interface PersistedOrderedSourceCheckpointV1<Cursor> {
     checkpoint: OrderedSourceCheckpointV1<Cursor>;
     ref: string;
+}
+
+// export: ResolveConfluenceSourceOptionsV1
+export interface ResolveConfluenceSourceOptionsV1 {
+    exporter: "pdf" | "word";
+    port: ConfluenceSourceResolverPortV1;
+    signal: AbortSignal;
+    resolveExternalUrl?: NonNullable<ComposeOptions["resolveExternalUrl"]>;
+    onProgress?: (progress: ConfluenceSourceProgressV1) => void;
+    classifyError?: (error: unknown) => ConfluenceSourceFailureKindV1;
+    bodyOptions?: Omit<PageBodyToBlocksOptions, "exporter" | "pageContext">;
+    sourcePlanCheckpoint?: ConfluenceSourcePlanCheckpointOptionsV1;
+    bodyStore?: ExportTreeBodyStoreV1;
+}
+
+// export: resolveConfluenceSourceV1
+export declare function resolveConfluenceSourceV1(sourceRequest: ExportSourceV1, options: ResolveConfluenceSourceOptionsV1): Promise<ResolvedConfluenceSourceV1>;
+
+// export: ResolvedConfluenceSourcePageV1
+export interface ResolvedConfluenceSourcePageV1 {
+    id: string;
+    title: string;
+    version?: number;
+    spaceKey?: string;
+    notes: readonly ExportNote[];
+}
+
+// export: ResolvedConfluenceSourceV1
+export interface ResolvedConfluenceSourceV1 {
+    blocks: ExportBlock[];
+    sourceNotes: ExportNote[];
+    complete: boolean;
+    root: {
+        id: string;
+        title: string;
+        version?: number;
+        spaceKey?: string;
+    };
+    pages: readonly ResolvedConfluenceSourcePageV1[];
+    pageCount: number;
+    sourceSummary: TreeSourceSummary;
+    chapterAnchorById?: ReadonlyMap<string, string>;
 }
 
 // export: runCheckpointedOrderedSourcePipeline

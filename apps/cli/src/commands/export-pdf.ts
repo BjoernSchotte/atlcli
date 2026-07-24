@@ -18,11 +18,14 @@ import { basename, join, resolve } from "node:path";
 import { buildConfluenceUrl, type OutputOptions, type Profile } from "@atlcli/core";
 import type { MacroResolutionOptions } from "@atlcli/export-macros";
 import {
+  createAdfAnnotationResolver,
+  createAdfMediaAttachmentResolver,
   SpaceHomepageError,
   composeChapters,
   confluenceTreeSource,
+  exportSourcePolicyFromFlag,
   fetchExportTree,
-  storageToBlocks,
+  pageBodyToBlocks,
   resolveExportMentions,
   type ComposeOptions,
   type ConfluenceClient,
@@ -71,6 +74,9 @@ import {
 } from "@atlcli/export-wiring";
 import {
   checkpointPdfAssetsV1,
+  confluenceSourceResolverPortFromClientV1,
+  createConfluencePdfResolveInputV1,
+  createConfluenceSourcePlanSpoolV1,
   createExportTreeBodySpoolV1,
 } from "@atlcli/export-wiring/jobs";
 import { getPdfCompiler } from "./export-pdf-assets.js";
@@ -269,7 +275,8 @@ export interface ResolvedScope {
 export async function buildPdfMacroOptions(
   profile: Profile,
   client: ConfluenceClient,
-  chapterAnchorById?: ReadonlyMap<string, string>
+  chapterAnchorById?: ReadonlyMap<string, string>,
+  signal?: AbortSignal,
 ): Promise<MacroResolutionOptions> {
   const [wiring, { JiraClient }] = await Promise.all([
     import("./export-macros-wiring.js"),
@@ -284,6 +291,7 @@ export async function buildPdfMacroOptions(
     targetEngine: "pdf",
     live: true,
     ...(chapterAnchorById ? { chapterAnchorById } : {}),
+    ...(signal ? { signal } : {}),
   });
 }
 
@@ -306,6 +314,28 @@ export interface ExportPdfArgs {
   opts: OutputOptions;
 }
 
+function cliConfluenceExternalUrlResolver(
+  profile: Profile,
+): NonNullable<ComposeOptions["resolveExternalUrl"]> {
+  return (target, anchor) => {
+    let path: string;
+    if (target.contentId) {
+      path = target.spaceKey
+        ? `spaces/${target.spaceKey}/pages/${target.contentId}`
+        : `pages/viewpage.action?pageId=${target.contentId}`;
+    } else if (target.spaceKey) {
+      path = `display/${target.spaceKey}/${encodeURIComponent(target.contentTitle)}`;
+    } else {
+      path = `search?text=${encodeURIComponent(target.contentTitle)}`;
+    }
+    const url = buildConfluenceUrl(
+      profile as Parameters<typeof buildConfluenceUrl>[0],
+      path,
+    );
+    return anchor ? `${url}#${anchor}` : url;
+  };
+}
+
 /**
  * Resolve the export scope into ONE composed block list. Page scope walks a
  * single page (with page context so attachment ImageSources carry pageId);
@@ -324,14 +354,27 @@ export async function resolveScope(
 
   if (request.scopeKind === "page") {
     const pageId = await resolvePageIdThrowing(client, request.pageRef!, signal);
-    const page = await client.getPageDetails(pageId, { signal });
+    const page = await client.getExportPageDetailsWithMedia(pageId, { signal });
     const spaceKey = page.spaceKey ?? "UNKNOWN";
-    const walked = storageToBlocks(page.storage, {
+    const walked = pageBodyToBlocks(page.exportSource, {
       exporter: walk.exporter ?? "pdf",
+      resolveMediaAttachment: createAdfMediaAttachmentResolver(page.mediaAttachments),
+      resolveAnnotation: createAdfAnnotationResolver(page.inlineComments),
+      annotationCommentsComplete: page.inlineCommentsComplete,
       ...(walk.keepIgnored ? { exportControls: "passthrough" as const } : {}),
-      pageContext: { id: pageId, ...(page.version ? { version: page.version } : {}), spaceKey },
+      pageContext: {
+        id: pageId,
+        title: page.title,
+        ...(page.exportSource.sourceVersion !== undefined
+          ? { version: page.exportSource.sourceVersion }
+          : {}),
+        spaceKey,
+      },
     });
-    const mention = await resolveExportMentions(walked.blocks, tokenMentionLookup(client));
+    const mention = await resolveExportMentions(
+      walked.blocks,
+      tokenMentionLookup(client, signal),
+    );
     const sourceNotes: ExportNote[] = [...walked.notes];
     // `mention-unresolved` is the CROSS-HOST code (spec 010): the CLI's DOCX
     // path (`export.ts`) and the extension's PDF host
@@ -372,27 +415,24 @@ export async function resolveScope(
     completenessMode: request.completenessMode,
     ...(request.maxPages !== undefined ? { maxPages: request.maxPages } : {}),
     ...(request.maxFolders !== undefined ? { maxFolders: request.maxFolders } : {}),
+    bodyOptions: {
+      exporter: walk.exporter ?? "pdf",
+      ...(walk.keepIgnored ? { exportControls: "passthrough" as const } : {}),
+    },
     ...(bodyStore ? { bodyStore } : {}),
     signal,
     onProgress: (p) => onProgress({ phase: "fetch", done: p.fetched, total: p.total, detail: p.currentTitle }),
   });
 
-  const resolveExternalUrl: NonNullable<ComposeOptions["resolveExternalUrl"]> = (target, anchor) => {
-    let path: string;
-    if (target.contentId) {
-      path = target.spaceKey ? `spaces/${target.spaceKey}/pages/${target.contentId}` : `pages/viewpage.action?pageId=${target.contentId}`;
-    } else if (target.spaceKey) {
-      path = `display/${target.spaceKey}/${encodeURIComponent(target.contentTitle)}`;
-    } else {
-      path = `search?text=${encodeURIComponent(target.contentTitle)}`;
-    }
-    const url = buildConfluenceUrl(profile as Parameters<typeof buildConfluenceUrl>[0], path);
-    return anchor ? `${url}#${anchor}` : url;
-  };
-  const composed = composeChapters(treeResult.nodes, { resolveExternalUrl });
+  const composed = composeChapters(treeResult.nodes, {
+    resolveExternalUrl: cliConfluenceExternalUrlResolver(profile),
+  });
   const rootDetails = await client.getPageDetails(rootId, { signal });
 
-  const mention = await resolveExportMentions(composed.blocks, tokenMentionLookup(client));
+  const mention = await resolveExportMentions(
+    composed.blocks,
+    tokenMentionLookup(client, signal),
+  );
   const sourceNotes: ExportNote[] = [...treeResult.notes, ...composed.notes];
   if (mention.unresolved > 0) {
     sourceNotes.push({ level: "warning", code: "mention-unresolved", message: `${mention.unresolved} mention(s) could not be resolved to a display name.` });
@@ -464,7 +504,12 @@ export async function exportPdf(args: ExportPdfArgs): Promise<ExportOutcome> {
       : resolve(args.outputPath!);
 
     const compiler = await getPdfCompiler();
-    const macros = await buildPdfMacroOptions(args.profile, client, scope.chapterAnchorById);
+    const macros = await buildPdfMacroOptions(
+      args.profile,
+      client,
+      scope.chapterAnchorById,
+      controller.signal,
+    );
     const report = await runPdfExport(
       {
         blocks: scope.blocks,
@@ -580,51 +625,83 @@ export async function exportPdfAsOrdinaryJob(
   };
   let reportProjection: CliProjection | undefined;
 
-  const resolveForJob = async (
-    signal: AbortSignal,
-    onProgress: ExportProgressCallback,
-    bodyStore?: ExportTreeBodyStoreV1,
-  ): Promise<ResolvedScope> => {
-    const value = await resolveScope(args, signal, onProgress, {}, bodyStore);
-    resolvedOutputPath = args.outDir
-      ? derivePdfOutputPath(args.outDir, value.outNameKey, value.metaPage.title)
-      : resolve(args.outputPath!);
-    reportProjection = {
-      sourcePages: value.sourcePages,
-      outputPath: resolvedOutputPath,
-      ...(value.reconcilablePageId ? { reconcilablePageId: value.reconcilablePageId } : {}),
-      ...(value.scopeReport ? { scopeReport: value.scopeReport } : {}),
-    };
-    await writeOrdinaryExportProjectionV1(persistence, {
-      schema: "atlcli.cli-export-projection/1",
-      jobId: jobRequest.id,
-      format: "pdf",
-      value: reportProjection,
-    });
-    return value;
-  };
-
   try {
     // Compiler loading is local-only; runOrdinaryExportJobV1 persists before
-    // `resolveForJob` (the first Confluence read) is reachable.
+    // the shared ADF/Storage resolver (the first Confluence read) is reachable.
     const compiler = await getPdfCompiler();
-    const executor = createOrdinaryPdfExecutorV1(persistence, {
-      compiler,
-      async resolveInput(request, context) {
-        const value = await resolveForJob(
-          context.signal,
-          () => undefined,
-          args.request.scopeKind === "page"
-            ? undefined
-            : createExportTreeBodySpoolV1(context, request.idempotencyKey),
+    const sourcePolicyKey = args.profile.deploymentType === "data-center"
+      ? "storage-primary:data-center:v1"
+      : `${exportSourcePolicyFromFlag(process.env.ATLCLI_EXPORT_SOURCE)}:v1`;
+    const resolveInput = createConfluencePdfResolveInputV1({
+      port: confluenceSourceResolverPortFromClientV1(args.client),
+      resolveExternalUrl: cliConfluenceExternalUrlResolver(args.profile),
+      createSourcePlan: (_request, context) => ({
+        store: createConfluenceSourcePlanSpoolV1(context),
+        sourcePolicyKey,
+      }),
+      createBodyStore: (request, context) =>
+        createExportTreeBodySpoolV1(context, request.idempotencyKey),
+      onProgress: (_request, context, progress) => {
+        return context.updateProgress({
+          stage: "fetch",
+          done: progress.fetched,
+          total: progress.total,
+          updatedAt: Date.now(),
+        });
+      },
+      async build(resolved, request, context) {
+        const mentions = await resolveExportMentions(
+          resolved.blocks,
+          tokenMentionLookup(args.client, context.signal),
         );
+        resolved.blocks = mentions.blocks;
+        if (mentions.unresolved > 0) {
+          resolved.sourceNotes.push({
+            level: "warning",
+            code: "mention-unresolved",
+            message:
+              `${mentions.unresolved} mention(s) could not be resolved to a display name.`,
+          });
+        }
+
+        const outNameKey = args.request.scopeKind === "space"
+          ? args.request.spaceKey!
+          : resolved.root.id;
+        resolvedOutputPath = args.outDir
+          ? derivePdfOutputPath(args.outDir, outNameKey, resolved.root.title)
+          : resolve(args.outputPath!);
+        const sourcePages: SourcePageEntry[] = resolved.pages.map((page) => ({
+          id: page.id,
+          title: page.title,
+          notes: page.notes.map((note) => noteToIssue(note, "compose", page.id)),
+        }));
+        const scopeReport = args.request.scopeKind === "page"
+          ? undefined
+          : buildScopeReportFields(
+              args.request,
+              buildExportScope(args.request, resolved.root.id),
+            );
+        reportProjection = {
+          sourcePages,
+          outputPath: resolvedOutputPath,
+          ...(args.request.scopeKind === "page"
+            ? { reconcilablePageId: resolved.root.id }
+            : {}),
+          ...(scopeReport ? { scopeReport } : {}),
+        };
+        await writeOrdinaryExportProjectionV1(persistence, {
+          schema: "atlcli.cli-export-projection/1",
+          jobId: jobRequest.id,
+          format: "pdf",
+          value: reportProjection,
+        });
+
         const locale = normalizePdfLocale(undefined);
         const metadata: PdfExportMetadata = {
-          title: value.metaPage.title,
-          space: value.metaPage.spaceKey ?? "UNKNOWN",
-          ...(value.metaPage.version !== undefined ? { version: value.metaPage.version } : {}),
-          ...(value.metaPage.createdBy?.displayName
-            ? { author: value.metaPage.createdBy.displayName }
+          title: resolved.root.title,
+          space: resolved.root.spaceKey ?? "UNKNOWN",
+          ...(resolved.root.version !== undefined
+            ? { version: resolved.root.version }
             : {}),
           exporter: "atlcli",
           language: locale.language,
@@ -636,20 +713,13 @@ export async function exportPdfAsOrdinaryJob(
         const macros = await buildPdfMacroOptions(
           args.profile,
           args.client,
-          value.chapterAnchorById,
+          resolved.chapterAnchorById,
+          context.signal,
         );
         return {
           input: {
-            blocks: value.blocks,
-            sourceNotes: value.sourceNotes,
             metadata,
-            filename: basename(resolvedOutputPath!),
-            complete: value.complete,
-            page: {
-              id: value.metaPage.id,
-              ...(value.metaPage.version !== undefined ? { version: value.metaPage.version } : {}),
-              ...(value.metaPage.spaceKey !== undefined ? { spaceKey: value.metaPage.spaceKey } : {}),
-            },
+            filename: basename(resolvedOutputPath),
           },
           env: {
             assets: checkpointPdfAssetsV1(
@@ -661,9 +731,12 @@ export async function exportPdfAsOrdinaryJob(
             ),
             macros,
           },
-          telemetry: { sourcePageCount: value.sourcePages.length },
         };
       },
+    });
+    const executor = createOrdinaryPdfExecutorV1(persistence, {
+      compiler,
+      resolveInput,
       estimateRender(input): ResourceEstimateV1 {
         const sourceBytes = new TextEncoder().encode(JSON.stringify(input.blocks)).byteLength;
         return {

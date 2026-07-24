@@ -6,6 +6,13 @@ import type {
   ExportJobExecutionContext,
   ExportJobProgressV1,
 } from "@atlcli/export-jobs";
+import {
+  bindExportJobSpool,
+  type SpoolWriteLimitsV1,
+} from "@atlcli/export-jobs";
+import type {
+  ConfluenceSourceResolverPortV1,
+} from "@atlcli/export-wiring/jobs";
 import { IndexedDbExportByteStore } from "../../utils/export-jobs/chunk-store.js";
 import { createExtensionDocxJobInputResolver } from "../../utils/export-jobs/docx-resolver.js";
 import {
@@ -39,9 +46,9 @@ function request(
     priority: "interactive",
     output: { policy: "collect" },
     template: {
-      recordKey: "https://site.atlassian.net|docx|mayflower|global",
+      recordKey: "https://site.atlassian.net|docx|synthetic|global",
       sha256: templateSha256,
-      name: "mayflower.docx",
+      name: "synthetic.docx",
       uploadedAt: 1_600_000_000_000,
     },
     options: {
@@ -72,7 +79,94 @@ function context(progress: ExportJobProgressV1[] = []): ExportJobExecutionContex
   };
 }
 
+const spoolLimits: SpoolWriteLimitsV1 = {
+  maxObjectBytes: 16 * 1024 * 1024,
+  maxJobBytes: 64 * 1024 * 1024,
+  maxTotalBytes: 128 * 1024 * 1024,
+};
+
+function durableContext(
+  bytes: IndexedDbExportByteStore,
+): ExportJobExecutionContext {
+  const value: ExportJobExecutionContext = {
+    jobId: "docx-job",
+    leaseEpoch: 1,
+    signal: new AbortController().signal,
+    spool: bindExportJobSpool(bytes, "docx-job", 1, spoolLimits),
+    readSpool: (ref, options) => bytes.read(ref, options),
+    artifacts: {} as ExportJobExecutionContext["artifacts"],
+    updateProgress: async () => {},
+    updateStats: async () => {},
+    appendEvent: async () => {},
+    checkpoint: async (ref) => { value.checkpointRef = ref; },
+  };
+  return value;
+}
+
+function adfSourcePort(): ConfluenceSourceResolverPortV1 {
+  return {
+    createTreeSource() {
+      return {
+        async getPage() {
+          return {
+            id: "42",
+            title: "Guide",
+            version: 7,
+            spaceKey: "TEST",
+            exportSource: {
+              primary: {
+                representation: "atlas_doc_format" as const,
+                value: JSON.stringify({
+                  version: 1,
+                  type: "doc",
+                  content: [{
+                    type: "paragraph",
+                    content: [{ type: "text", text: "ADF production path" }],
+                  }],
+                }),
+              },
+              storageSidecar: "<p>POISONED STORAGE</p>",
+              sourceVersion: 7,
+            },
+          };
+        },
+        async getPageVersion() {
+          return { title: "Guide", version: 7 };
+        },
+        async getChildren() { return []; },
+        async getSpaceHomepageId() { return null; },
+      };
+    },
+  };
+}
+
 describe("extension DOCX durable input resolver", () => {
+  it("uses the shared ADF resolver and durable source checkpoints by default", async () => {
+    const bytes = new IndexedDbExportByteStore({ factory: new IDBFactory() });
+    const sourceRequest: DocxExportJobRequestV1 = {
+      ...request(),
+      source: {
+        kind: "confluence",
+        siteOrigin: "https://site.atlassian.net",
+        locator: { kind: "page-id", id: "42", version: 7 },
+        scope: { kind: "page" },
+      },
+    };
+    const execution = durableContext(bytes);
+    const resolved = await createExtensionDocxJobInputResolver({
+      sourcePort: adfSourcePort(),
+    })(sourceRequest, execution);
+
+    expect(resolved.blocks).toEqual([{
+      type: "paragraph",
+      content: [{ type: "text", text: "ADF production path" }],
+    }]);
+    expect(resolved.details.storage).toBe("");
+    expect(JSON.stringify(resolved)).not.toContain("POISONED STORAGE");
+    expect(resolved.jobTelemetry).toEqual({ sourcePageCount: 1 });
+    expect(execution.checkpointRef).toStartWith("atlcli.export-tree-spool/1:");
+  });
+
   it("reconstructs source, macro, asset, and raster seams without panel state", async () => {
     const progress: ExportJobProgressV1[] = [];
     let seenScope: unknown;
@@ -133,7 +227,7 @@ describe("extension DOCX durable input resolver", () => {
       blocks,
       complete: true,
       template: {
-        name: "mayflower.docx",
+        name: "synthetic.docx",
         modificationDate: new Date(1_600_000_000_000),
       },
       exportDate: new Date(1_700_000_000_000),

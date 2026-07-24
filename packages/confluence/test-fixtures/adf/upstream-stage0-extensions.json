@@ -1,0 +1,162 @@
+{
+  "schemaVersion": 1,
+  "package": {
+    "name": "@atlaskit/adf-schema",
+    "version": "56.1.15",
+    "schemaPath": "package/dist/json-schema/v1/stage-0.json"
+  },
+  "definitions": {
+    "extensionFrame_node": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "enum": [
+            "extensionFrame"
+          ]
+        },
+        "marks": {
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "$ref": "#/definitions/dataConsumer_mark"
+              },
+              {
+                "$ref": "#/definitions/fragment_mark"
+              }
+            ]
+          }
+        },
+        "content": {
+          "type": "array",
+          "items": {
+            "anyOf": [
+              {
+                "$ref": "#/definitions/paragraph_with_no_marks_node"
+              },
+              {
+                "$ref": "#/definitions/paragraph_with_font_size_node"
+              },
+              {
+                "$ref": "#/definitions/panel_node"
+              },
+              {
+                "$ref": "#/definitions/blockquote_node"
+              },
+              {
+                "$ref": "#/definitions/orderedList_node"
+              },
+              {
+                "$ref": "#/definitions/bulletList_node"
+              },
+              {
+                "$ref": "#/definitions/rule_node"
+              },
+              {
+                "$ref": "#/definitions/heading_with_no_marks_node"
+              },
+              {
+                "$ref": "#/definitions/codeBlock_node"
+              },
+              {
+                "$ref": "#/definitions/mediaGroup_node"
+              },
+              {
+                "$ref": "#/definitions/mediaSingle_full_node"
+              },
+              {
+                "$ref": "#/definitions/mediaSingle_caption_node"
+              },
+              {
+                "$ref": "#/definitions/decisionList_node"
+              },
+              {
+                "$ref": "#/definitions/taskList_node"
+              },
+              {
+                "$ref": "#/definitions/table_node"
+              },
+              {
+                "$ref": "#/definitions/extension_with_marks_node"
+              },
+              {
+                "$ref": "#/definitions/bodiedExtension_with_marks_node"
+              },
+              {
+                "$ref": "#/definitions/blockCard_node"
+              },
+              {
+                "$ref": "#/definitions/embedCard_node"
+              }
+            ]
+          },
+          "minItems": 1
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "content"
+      ]
+    },
+    "multiBodiedExtension_node": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "enum": [
+            "multiBodiedExtension"
+          ]
+        },
+        "marks": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "attrs": {
+          "type": "object",
+          "properties": {
+            "extensionKey": {
+              "type": "string",
+              "minLength": 1
+            },
+            "extensionType": {
+              "type": "string",
+              "minLength": 1
+            },
+            "parameters": {},
+            "text": {
+              "type": "string"
+            },
+            "layout": {
+              "enum": [
+                "default",
+                "wide",
+                "full-width"
+              ]
+            },
+            "localId": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "required": [
+            "extensionKey",
+            "extensionType"
+          ],
+          "additionalProperties": false
+        },
+        "content": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/extensionFrame_node"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "type",
+        "attrs",
+        "content"
+      ]
+    }
+  }
+}

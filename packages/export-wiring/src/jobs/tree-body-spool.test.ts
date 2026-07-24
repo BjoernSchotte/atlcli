@@ -36,9 +36,10 @@ function result(
     ok: true,
     pageId,
     title,
+    source: { representation: "storage", degraded: false },
     blocks: [{ type: "paragraph", content: [{ type: "text", text }] }],
     notes: [],
-    meta: { version: 1, labels: [], spaceKey: "DOCSY" },
+    meta: { version: 1, labels: [], spaceKey: "TEST" },
   };
 }
 

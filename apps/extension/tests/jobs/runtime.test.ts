@@ -7,6 +7,7 @@ import {
   ExportJobRequestV1,
   ExportJobStage,
 } from "@atlcli/export-jobs";
+import { ConfluenceSourceResolutionError } from "@atlcli/export-wiring/jobs";
 import {
   IndexedDbExportJobCatalog,
   recoverAndClaimExtensionExportJob,
@@ -285,7 +286,7 @@ describe("extension export execution runtime", () => {
     ]);
   });
 
-  it("pauses an expired Atlassian session at a replay-safe auth checkpoint", async () => {
+  it("pauses a sanitized expired-session source failure at a replay-safe auth checkpoint", async () => {
     const factory = new IDBFactory();
     let now = 10;
     const catalog = new IndexedDbExportJobCatalog({ factory, now: () => now });
@@ -311,9 +312,7 @@ describe("extension export execution runtime", () => {
       executor: {
         format: "pdf",
         execute: async () => {
-          throw new Error(
-            "Confluence API error (401): authentication redirect to Atlassian login",
-          );
+          throw new ConfluenceSourceResolutionError("authentication");
         },
       },
       now: () => now,

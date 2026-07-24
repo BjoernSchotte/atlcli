@@ -5,9 +5,12 @@ import {
   RETIRED_EXPORT_NOTE_CODES,
   StorageParseError,
   canonicalExportNoteCode,
+  formatAdfDateTimestamp,
   macroParamText,
+  materializeTable,
   normalizeCaptionKind,
   parseXml,
+  parseAdfDateTimestamp,
   storageToBlocks,
   type ExportBlock,
   type InlineNode,
@@ -40,6 +43,41 @@ describe("storageToBlocks — headings", () => {
       ],
     });
   });
+
+  test("retains heading, paragraph, and ordinary-list-item local identities", () => {
+    const result = storageToBlocks(
+      '<h2 local-id="heading-1">Heading</h2>' +
+        '<p ac:local-id="">Paragraph</p>' +
+        '<ul><li local-id="item-1"><p>Item</p></li></ul>'
+    );
+    expect(result).toEqual({
+      blocks: [
+        {
+          type: "heading",
+          level: 2,
+          localId: "heading-1",
+          content: [{ type: "text", text: "Heading" }],
+        },
+        {
+          type: "paragraph",
+          localId: "",
+          content: [{ type: "text", text: "Paragraph" }],
+        },
+        {
+          type: "list",
+          ordered: false,
+          items: [{
+            localId: "item-1",
+            content: [{
+              type: "paragraph",
+              content: [{ type: "text", text: "Item" }],
+            }],
+          }],
+        },
+      ],
+      notes: [],
+    });
+  });
 });
 
 describe("storageToBlocks — paragraphs & marks", () => {
@@ -57,6 +95,61 @@ describe("storageToBlocks — paragraphs & marks", () => {
       { type: "text", text: "mono", marks: ["code"] },
       { type: "text", text: " " },
       { type: "text", text: "gone", marks: ["strike"] },
+    ]);
+  });
+
+  test("retains Storage emoji identity and diagnoses textual fallbacks without rewriting colon text", () => {
+    const result = storageToBlocks(
+      '<p>:warning: <ac:emoticon ac:name="warning" ac:emoji-shortname=":warning:" ac:emoji-fallback="⚠️"/>' +
+        ' <ac:emoticon ac:name="custom-party" ac:emoji-shortname=":custom-party:" ac:emoji-fallback=":custom-party:"/>' +
+        ' <ac:emoticon ac:name="empty" ac:emoji-shortname=":empty:" ac:emoji-fallback=""/></p>',
+      { pageContext: { id: "page-1" } }
+    );
+
+    expect(result.blocks[0]).toEqual({
+      type: "paragraph",
+      content: [
+        { type: "text", text: ":warning: " },
+        {
+          type: "text",
+          text: "⚠️",
+          emoji: {
+            shortName: ":warning:",
+            text: "⚠️",
+            renderedFrom: "text",
+          },
+        },
+        { type: "text", text: " " },
+        {
+          type: "text",
+          text: ":custom-party:",
+          emoji: {
+            shortName: ":custom-party:",
+            text: ":custom-party:",
+            renderedFrom: "text",
+          },
+        },
+        { type: "text", text: " " },
+        {
+          type: "text",
+          text: ":empty:",
+          emoji: {
+            shortName: ":empty:",
+            text: "",
+            renderedFrom: "short-name",
+          },
+        },
+      ],
+    });
+    expect(result.notes).toEqual([
+      expect.objectContaining({
+        code: "emoji-text-fallback",
+        source: expect.objectContaining({ pageId: "page-1", blockPath: "blocks[0].content[0]" }),
+      }),
+      expect.objectContaining({
+        code: "emoji-text-fallback",
+        source: expect.objectContaining({ pageId: "page-1", blockPath: "blocks[0].content[0]" }),
+      }),
     ]);
   });
 
@@ -137,6 +230,20 @@ describe("storageToBlocks — paragraphs & marks", () => {
     expect(blocks("<p></p><p>  </p><p>real</p>")).toEqual([
       { type: "paragraph", content: [{ type: "text", text: "real" }] },
     ]);
+  });
+});
+
+describe("semantic date helpers", () => {
+  test("interpret timestamps as exact epoch milliseconds and format in UTC", () => {
+    expect(parseAdfDateTimestamp("1709510400000")?.toISOString()).toBe("2024-03-04T00:00:00.000Z");
+    expect(formatAdfDateTimestamp("1709510400000", "de-DE")).toBe("4. März 2024");
+    expect(formatAdfDateTimestamp("1709510400000", "[]")).toBe("Mar 4, 2024");
+  });
+
+  test("does not guess units or rewrite invalid source text", () => {
+    expect(parseAdfDateTimestamp("1709510400")?.toISOString()).toBe("1970-01-20T18:51:50.400Z");
+    expect(parseAdfDateTimestamp("1709510400.5")).toBeUndefined();
+    expect(formatAdfDateTimestamp("not-a-timestamp", "de-DE")).toBe("not-a-timestamp");
   });
 });
 
@@ -270,6 +377,15 @@ describe("storageToBlocks — lists", () => {
     expect((blocks("<ol><li>a</li></ol>")[0] as { ordered: boolean }).ordered).toBe(true);
   });
 
+  test("ordered lists retain a non-default authored start", () => {
+    expect(blocks('<ol start="0"><li>a</li></ol>')[0]).toMatchObject({
+      type: "list",
+      ordered: true,
+      start: 0,
+    });
+    expect(blocks('<ol start="-1"><li>a</li></ol>')[0]).not.toHaveProperty("start");
+  });
+
   test("nested list nests inside the item", () => {
     const out = blocks("<ul><li>top<ul><li>child</li></ul></li></ul>");
     const item = (out[0] as { items: { content: ExportBlock[] }[] }).items[0];
@@ -285,8 +401,8 @@ describe("storageToBlocks — lists", () => {
 
   test("task list carries checked state", () => {
     const out = blocks(
-      "<ac:task-list>" +
-        "<ac:task><ac:task-status>complete</ac:task-status><ac:task-body>done</ac:task-body></ac:task>" +
+      '<ac:task-list ac:local-id="tasks-root">' +
+        "<ac:task><ac:task-id>task-done</ac:task-id><ac:task-status>complete</ac:task-status><ac:task-body>done</ac:task-body></ac:task>" +
         "<ac:task><ac:task-status>incomplete</ac:task-status><ac:task-body>todo</ac:task-body></ac:task>" +
         "</ac:task-list>"
     );
@@ -294,9 +410,22 @@ describe("storageToBlocks — lists", () => {
       {
         type: "list",
         ordered: false,
+        listKind: "task",
+        localId: "tasks-root",
         items: [
-          { content: [{ type: "paragraph", content: [{ type: "text", text: "done" }] }], checked: true },
-          { content: [{ type: "paragraph", content: [{ type: "text", text: "todo" }] }], checked: false },
+          {
+            content: [{ type: "paragraph", content: [{ type: "text", text: "done" }] }],
+            kind: "task",
+            state: "DONE",
+            localId: "task-done",
+            checked: true,
+          },
+          {
+            content: [{ type: "paragraph", content: [{ type: "text", text: "todo" }] }],
+            kind: "task",
+            state: "TODO",
+            checked: false,
+          },
         ],
       },
     ]);
@@ -339,6 +468,88 @@ describe("storageToBlocks — tables", () => {
     ]);
   });
 
+  test("preserves Storage table identity and vertical alignment", () => {
+    const table = blocks(
+      '<table data-layout="align-start" ac:local-id="table-id"><tbody>' +
+        '<tr ac:local-id=""><td ac:local-id="cell-id" style="vertical-align: middle"><p>Middle</p></td>' +
+        '<td valign="bottom"><p>Bottom</p></td></tr>' +
+        "</tbody></table>",
+    )[0] as Extract<ExportBlock, { type: "table" }>;
+
+    expect(table.presentation).toEqual({ layout: "align-start", localId: "table-id" });
+    expect(table.rows[0].localId).toBe("");
+    expect(table.rows[0].cells[0]).toMatchObject({
+      localId: "cell-id",
+      verticalAlignment: "middle",
+    });
+    expect(table.rows[0].cells[1].verticalAlignment).toBe("bottom");
+  });
+
+  test("materializes the implicit ADF numbered column identically for all renderers", () => {
+    const table: Extract<ExportBlock, { type: "table" }> = {
+      type: "table",
+      presentation: { numberedColumn: true, width: 480 },
+      rows: [
+        {
+          localId: "row-1",
+          cells: [{
+            header: true,
+            colspan: 1,
+            rowspan: 1,
+            content: [{ type: "paragraph", content: [{ type: "text", text: "Header" }] }],
+          }],
+        },
+        {
+          cells: [{
+            header: false,
+            colspan: 1,
+            rowspan: 1,
+            content: [{ type: "paragraph", content: [{ type: "text", text: "Value" }] }],
+          }],
+        },
+      ],
+    };
+
+    const materialized = materializeTable(table);
+    expect(materialized.rows.map((row) => row.cells[0].content)).toEqual([
+      [{ type: "paragraph", content: [{ type: "text", text: "1" }] }],
+      [{ type: "paragraph", content: [{ type: "text", text: "2" }] }],
+    ]);
+    expect(materialized.rows[0].localId).toBe("row-1");
+    expect(materialized.columnWidths).toEqual([48, 432]);
+    expect(table.rows[0].cells).toHaveLength(1);
+  });
+
+  test("bounds numbered-column width derivation before either renderer allocates tracks", () => {
+    const table: Extract<ExportBlock, { type: "table" }> = {
+      type: "table",
+      presentation: { numberedColumn: true },
+      rows: [{
+        cells: [{
+          header: false,
+          colspan: Number.MAX_SAFE_INTEGER,
+          rowspan: 1,
+          content: [],
+        }],
+      }],
+    };
+    expect(materializeTable(table).columnWidths).toHaveLength(201);
+
+    const oversizedAuthoredTracks = {
+      ...table,
+      rows: [{
+        cells: [{
+          header: false,
+          colspan: 1,
+          rowspan: 1,
+          content: [],
+        }],
+      }],
+      columnWidths: Array.from({ length: 10_000 }, () => 1),
+    } satisfies Extract<ExportBlock, { type: "table" }>;
+    expect(materializeTable(oversizedAuthoredTracks).columnWidths).toHaveLength(2);
+  });
+
   test("modern Cloud markup: <colgroup> + ac:local-id + <p local-id> wrappers (regression)", () => {
     // This is the exact shape that broke the markdown table path: a leading
     // <colgroup> made <tbody> a non-first sibling. The rich walker tolerates
@@ -360,10 +571,10 @@ describe("storageToBlocks — tables", () => {
     expect(table.rows).toHaveLength(2);
     expect(table.rows[0].cells.every((c) => c.header)).toBe(true);
     expect(table.rows[0].cells[0].content).toEqual([
-      { type: "paragraph", content: [{ type: "text", text: "Name" }] },
+      { type: "paragraph", localId: "a1", content: [{ type: "text", text: "Name" }] },
     ]);
     expect(table.rows[1].cells[1].content).toEqual([
-      { type: "paragraph", content: [{ type: "text", text: "Engineer" }] },
+      { type: "paragraph", localId: "b2", content: [{ type: "text", text: "Engineer" }] },
     ]);
   });
 
@@ -390,14 +601,19 @@ describe("storageToBlocks — code blocks", () => {
       '<ac:structured-macro ac:name="code"><ac:parameter ac:name="language">typescript</ac:parameter>' +
         "<ac:plain-text-body><![CDATA[const x = 1 < 2 && 3 > 2;]]></ac:plain-text-body></ac:structured-macro>"
     );
-    expect(out).toEqual([{ type: "codeBlock", language: "typescript", code: "const x = 1 < 2 && 3 > 2;" }]);
+    expect(out).toEqual([{
+      type: "codeBlock",
+      language: "typescript",
+      code: "const x = 1 < 2 && 3 > 2;",
+      hideLineNumbers: true,
+    }]);
   });
 
   test("noformat becomes a language-less code block", () => {
     const out = blocks(
       '<ac:structured-macro ac:name="noformat"><ac:plain-text-body><![CDATA[raw]]></ac:plain-text-body></ac:structured-macro>'
     );
-    expect(out).toEqual([{ type: "codeBlock", code: "raw" }]);
+    expect(out).toEqual([{ type: "codeBlock", code: "raw", hideLineNumbers: true }]);
   });
 
   // Spec 004 Task 6 / F2: mermaid rendering is deferred (it needs the image module,
@@ -408,7 +624,61 @@ describe("storageToBlocks — code blocks", () => {
       '<ac:structured-macro ac:name="code"><ac:parameter ac:name="language">mermaid</ac:parameter>' +
         "<ac:plain-text-body><![CDATA[graph TD;\n  A-->B;]]></ac:plain-text-body></ac:structured-macro>"
     );
-    expect(out).toEqual([{ type: "codeBlock", language: "mermaid", code: "graph TD;\n  A-->B;" }]);
+    expect(out).toEqual([{
+      type: "codeBlock",
+      language: "mermaid",
+      code: "graph TD;\n  A-->B;",
+      hideLineNumbers: true,
+    }]);
+  });
+
+  test("retains Storage code-macro line numbers, first ordinal, and macro identity", () => {
+    const out = blocks(
+      '<ac:structured-macro ac:name="code" ac:local-id="code-local">' +
+        '<ac:parameter ac:name="linenumbers">true</ac:parameter>' +
+        '<ac:parameter ac:name="firstline">7</ac:parameter>' +
+        "<ac:plain-text-body><![CDATA[first\nsecond]]></ac:plain-text-body>" +
+        "</ac:structured-macro>"
+    );
+    expect(out).toEqual([{
+      type: "codeBlock",
+      code: "first\nsecond",
+      hideLineNumbers: false,
+      firstLineNumber: 7,
+      localId: "code-local",
+    }]);
+  });
+
+  test("retains the legacy title and explicit collapse state independently", () => {
+    const out = blocks(
+      '<ac:structured-macro ac:name="code">' +
+        '<ac:parameter ac:name="title">Deployment &amp; rollback</ac:parameter>' +
+        '<ac:parameter ac:name="collapse">TRUE</ac:parameter>' +
+        "<ac:plain-text-body><![CDATA[first]]></ac:plain-text-body>" +
+        "</ac:structured-macro>" +
+        '<ac:structured-macro ac:name="code">' +
+        '<ac:parameter ac:name="title"></ac:parameter>' +
+        '<ac:parameter ac:name="collapse">false</ac:parameter>' +
+        "<ac:plain-text-body><![CDATA[second]]></ac:plain-text-body>" +
+        "</ac:structured-macro>"
+    );
+
+    expect(out).toEqual([
+      {
+        type: "codeBlock",
+        code: "first",
+        title: "Deployment & rollback",
+        initiallyCollapsed: true,
+        hideLineNumbers: true,
+      },
+      {
+        type: "codeBlock",
+        code: "second",
+        title: "",
+        initiallyCollapsed: false,
+        hideLineNumbers: true,
+      },
+    ]);
   });
 });
 
@@ -436,6 +706,94 @@ describe("storageToBlocks — callouts", () => {
         title: "Heads up",
         content: [{ type: "paragraph", content: [{ type: "text", text: "content" }] }],
       },
+    ]);
+  });
+
+  test("retains Storage expand identity and marks table-cell expands as nested", () => {
+    const result = storageToBlocks(
+      '<ac:structured-macro ac:name="expand" ac:local-id="" ac:macro-id="expand-root">' +
+        '<ac:parameter ac:name="title"></ac:parameter>' +
+        '<ac:rich-text-body><p>Outer body</p>' +
+          '<ac:structured-macro ac:name="expand" ac:macro-id="expand-child">' +
+            '<ac:parameter ac:name="title">Child details</ac:parameter>' +
+            '<ac:rich-text-body><p>Child body</p></ac:rich-text-body>' +
+          '</ac:structured-macro>' +
+        '</ac:rich-text-body>' +
+      '</ac:structured-macro>' +
+      '<table><tbody><tr><td>' +
+        '<ac:structured-macro ac:name="expand" ac:local-id="nested-local" ac:macro-id="expand-nested">' +
+          '<ac:parameter ac:name="title">Nested details</ac:parameter>' +
+          '<ac:rich-text-body><p>Nested body</p></ac:rich-text-body>' +
+        '</ac:structured-macro>' +
+      '</td></tr></tbody></table>',
+      { pageContext: { id: "page-1", version: 4 } },
+    );
+
+    expect(result.blocks).toEqual([
+      {
+        type: "expand",
+        nested: false,
+        title: "",
+        localId: "",
+        macroId: "expand-root",
+        content: [{
+          type: "paragraph",
+          content: [{ type: "text", text: "Outer body" }],
+        }, {
+          type: "expand",
+          nested: true,
+          title: "Child details",
+          macroId: "expand-child",
+          content: [{
+            type: "paragraph",
+            content: [{ type: "text", text: "Child body" }],
+          }],
+        }],
+      },
+      {
+        type: "table",
+        rows: [{
+          cells: [{
+            header: false,
+            colspan: 1,
+            rowspan: 1,
+            content: [{
+              type: "expand",
+              nested: true,
+              title: "Nested details",
+              localId: "nested-local",
+              macroId: "expand-nested",
+              content: [{
+                type: "paragraph",
+                content: [{ type: "text", text: "Nested body" }],
+              }],
+            }],
+          }],
+        }],
+      },
+    ]);
+    expect(result.notes).toEqual([
+      expect.objectContaining({
+        level: "info",
+        code: "expand-static",
+        source: expect.objectContaining({ pageId: "page-1", blockPath: "blocks[0]" }),
+      }),
+      expect.objectContaining({
+        level: "info",
+        code: "expand-static",
+        source: expect.objectContaining({
+          pageId: "page-1",
+          blockPath: "blocks[0].content[1]",
+        }),
+      }),
+      expect.objectContaining({
+        level: "info",
+        code: "expand-static",
+        source: expect.objectContaining({
+          pageId: "page-1",
+          blockPath: "blocks[1].content[0]",
+        }),
+      }),
     ]);
   });
 });
@@ -485,6 +843,91 @@ describe("storageToBlocks — status macro", () => {
       { type: "text", text: "state: " },
       { type: "status", text: "Done", color: "green" },
     ]);
+  });
+
+  test("retains subtle status style", () => {
+    const out = blocks(
+      '<p><ac:structured-macro ac:name="status">' +
+        '<ac:parameter ac:name="colour">Purple</ac:parameter>' +
+        '<ac:parameter ac:name="title">Mixed source</ac:parameter>' +
+        '<ac:parameter ac:name="subtle">true</ac:parameter>' +
+      '</ac:structured-macro></p>'
+    );
+    expect((out[0] as { content: InlineNode[] }).content).toEqual([
+      { type: "status", text: "Mixed source", color: "purple", style: "subtle" },
+    ]);
+  });
+});
+
+describe("storageToBlocks — semantic dates and template placeholders", () => {
+  test("normalizes time and legacy date macro values to epoch milliseconds", () => {
+    const result = storageToBlocks(
+      '<p><time datetime="2024-01-01"/> ' +
+        '<ac:structured-macro ac:name="date">' +
+          '<ac:parameter ac:name="">2024-01-02</ac:parameter>' +
+        '</ac:structured-macro></p>'
+    );
+    expect(result.blocks).toEqual([{
+      type: "paragraph",
+      content: [
+        { type: "date", timestamp: "1704067200000" },
+        { type: "text", text: " " },
+        { type: "date", timestamp: "1704153600000" },
+      ],
+    }]);
+    expect(result.notes).toEqual([]);
+  });
+
+  test("retains placeholder identity but treats it as editor-only content", () => {
+    const result = storageToBlocks(
+      '<p>before<ac:placeholder ac:type="mention">Choose a person</ac:placeholder>after</p>'
+    );
+    expect(result).toEqual({
+      blocks: [{
+        type: "paragraph",
+        content: [
+          { type: "text", text: "before" },
+          { type: "placeholder", text: "Choose a person", placeholderType: "mention" },
+          { type: "text", text: "after" },
+        ],
+      }],
+      notes: [],
+    });
+  });
+
+  test("retains invalid date source text with a typed warning", () => {
+    const result = storageToBlocks(
+      '<p><time datetime="not-a-date"/></p>',
+      { pageContext: { id: "page-1" } }
+    );
+    expect(result.blocks).toEqual([{
+      type: "paragraph",
+      content: [{ type: "date", timestamp: "not-a-date" }],
+    }]);
+    expect(result.notes).toEqual([expect.objectContaining({
+      level: "warning",
+      code: "date-invalid",
+      source: expect.objectContaining({ pageId: "page-1", blockPath: "blocks[0].content[0]" }),
+    })]);
+  });
+
+  test("does not guess locale-shaped dates but accepts explicitly zoned ISO timestamps", () => {
+    const result = storageToBlocks(
+      '<p><time datetime="03/04/2024"/> ' +
+        '<time datetime="2024-03-04T10:30:00+01:00"/></p>'
+    );
+    expect(result.blocks).toEqual([{
+      type: "paragraph",
+      content: [
+        { type: "date", timestamp: "03/04/2024" },
+        { type: "text", text: " " },
+        { type: "date", timestamp: "1709544600000" },
+      ],
+    }]);
+    expect(result.notes).toEqual([expect.objectContaining({
+      level: "warning",
+      code: "date-invalid",
+    })]);
   });
 });
 
@@ -802,15 +1245,49 @@ describe("storageToBlocks — misc blocks", () => {
     ]);
   });
 
-  test("layout columns descend transparently", () => {
+  test("Storage layout sections preserve named column proportions and content ownership", () => {
     const out = blocks(
-      "<ac:layout><ac:layout-section><ac:layout-cell><p>left</p></ac:layout-cell>" +
-        "<ac:layout-cell><p>right</p></ac:layout-cell></ac:layout-section></ac:layout>"
+      '<ac:layout><ac:layout-section ac:type="two_left_sidebar" ac:local-id="layout-local">' +
+        '<ac:layout-cell ac:local-id="left-local" valign="middle"><p>left</p></ac:layout-cell>' +
+        '<ac:layout-cell ac:local-id="" style="vertical-align: bottom"><p>right</p></ac:layout-cell>' +
+        "</ac:layout-section></ac:layout>"
     );
     expect(out).toEqual([
-      { type: "paragraph", content: [{ type: "text", text: "left" }] },
-      { type: "paragraph", content: [{ type: "text", text: "right" }] },
+      {
+        type: "layout",
+        columns: [
+          {
+            width: 30,
+            verticalAlignment: "middle",
+            localId: "left-local",
+            content: [{ type: "paragraph", content: [{ type: "text", text: "left" }] }],
+          },
+          {
+            width: 70,
+            verticalAlignment: "bottom",
+            localId: "",
+            content: [{ type: "paragraph", content: [{ type: "text", text: "right" }] }],
+          },
+        ],
+        localId: "layout-local",
+      },
     ]);
+  });
+
+  test("Storage layout shape mismatch stays visible and uses equal portable tracks", () => {
+    const result = storageToBlocks(
+      '<ac:layout><ac:layout-section ac:type="three_equal">' +
+        "<ac:layout-cell><p>left</p></ac:layout-cell>" +
+        "<ac:layout-cell><p>right</p></ac:layout-cell>" +
+        "</ac:layout-section></ac:layout>",
+      { pageContext: { id: "source-page" } },
+    );
+    expect((result.blocks[0] as Extract<ExportBlock, { type: "layout" }>)
+      .columns.map((column) => column.width)).toEqual([50, 50]);
+    expect(result.notes).toContainEqual(expect.objectContaining({
+      code: "layout-geometry-fallback",
+      source: expect.objectContaining({ pageId: "source-page" }),
+    }));
   });
 
   test("legacy section/column macros flatten without placeholder blocks", () => {
@@ -908,6 +1385,7 @@ describe("storageToBlocks — integration (§2.1 feature zoo)", () => {
       type: "codeBlock",
       language: "js",
       code: "console.log(1);",
+      hideLineNumbers: true,
     });
 
     // Status + mention inline nodes present in the media paragraph.
@@ -1321,6 +1799,46 @@ describe("storageToBlocks — C6 deep nested-orientation collapse", () => {
     expect(JSON.stringify(region.content)).not.toContain('"orientation"');
     expect(notes.map((n) => n.code)).toEqual(["orientation-nested-collapsed"]);
   });
+
+  test("nested-orientation cleanup traverses layout columns", () => {
+    const inner =
+      '<ac:structured-macro ac:name="scroll-portrait"><ac:rich-text-body><p>deep</p></ac:rich-text-body></ac:structured-macro>';
+    const xml =
+      `<ac:structured-macro ac:name="scroll-landscape"><ac:rich-text-body>` +
+      `<ac:layout><ac:layout-section ac:type="single"><ac:layout-cell>${inner}</ac:layout-cell></ac:layout-section></ac:layout>` +
+      `</ac:rich-text-body></ac:structured-macro>`;
+    const { blocks: b, notes } = storageToBlocks(xml);
+    expect(b).toMatchObject([{
+      type: "orientation",
+      landscape: true,
+      content: [{
+        type: "layout",
+        columns: [{
+          width: 100,
+          content: [{ type: "paragraph", content: [{ type: "text", text: "deep" }] }],
+        }],
+      }],
+    }]);
+    expect(JSON.stringify(b)).not.toContain('"orientation","landscape":false');
+    expect(notes.map((n) => n.code)).toEqual(["orientation-nested-collapsed"]);
+  });
+
+  test("nested-orientation cleanup retains Storage table-row identity", () => {
+    const inner =
+      '<ac:structured-macro ac:name="scroll-portrait"><ac:rich-text-body><p>deep</p></ac:rich-text-body></ac:structured-macro>';
+    const xml =
+      `<ac:structured-macro ac:name="scroll-landscape"><ac:rich-text-body>` +
+      `<table><tbody><tr ac:local-id="row-local"><td>${inner}</td></tr></tbody></table>` +
+      `</ac:rich-text-body></ac:structured-macro>`;
+    const { blocks: b } = storageToBlocks(xml);
+    expect(b).toMatchObject([{
+      type: "orientation",
+      content: [{
+        type: "table",
+        rows: [{ localId: "row-local" }],
+      }],
+    }]);
+  });
 });
 
 describe("storageToBlocks — inline export-control safety", () => {
@@ -1722,6 +2240,60 @@ describe("storageToBlocks — datasource smart links", () => {
     expect(macroParamText(block.params, "jqlQuery")).toBe("project = ATL ORDER BY created DESC");
     expect(res.notes.filter((n) => n.code === "macro-not-rendered").length).toBe(1);
     expect(res.notes.some((n) => n.code.startsWith("datasource-"))).toBe(false);
+  });
+});
+
+describe("storageToBlocks — typed ac:adf-node fallback", () => {
+  test("retains block and inline wrapper provenance without flattening visible children", () => {
+    const result = storageToBlocks(
+      '<ac:adf-node type="unsupportedBlock" data-envelope="legacy">' +
+        '<ac:adf-attribute key="originalValue">' +
+          '<ac:adf-parameter key="kind">synthetic</ac:adf-parameter>' +
+        '</ac:adf-attribute>' +
+        '<ac:adf-content><p>Visible ' +
+          '<ac:adf-node type="unsupportedInline">' +
+            '<ac:adf-attribute key="tone">quiet</ac:adf-attribute>' +
+            '<ac:adf-content><strong>inline</strong></ac:adf-content>' +
+          '</ac:adf-node>' +
+        '</p></ac:adf-content>' +
+      '</ac:adf-node>',
+    );
+
+    expect(result.blocks).toEqual([{
+      type: "unknown",
+      macroName: "unsupportedBlock",
+      unsupportedAdf: {
+        nodeType: "unsupportedBlock",
+        sourceRepresentation: "storage",
+        attributes: [
+          { name: "data-envelope", value: "legacy" },
+          {
+            name: "originalValue",
+            value: [{ name: "kind", value: "synthetic" }],
+          },
+        ],
+      },
+      body: [{
+        type: "paragraph",
+        content: [
+          { type: "text", text: "Visible " },
+          {
+            type: "text",
+            text: "inline",
+            marks: ["bold"],
+            unsupportedAdf: [{
+              nodeType: "unsupportedInline",
+              sourceRepresentation: "storage",
+              attributes: [{ name: "tone", value: "quiet" }],
+            }],
+          },
+        ],
+      }],
+    }]);
+    expect(result.notes.map(({ code }) => code)).toEqual([
+      "adf-node-degraded",
+      "adf-node-degraded",
+    ]);
   });
 });
 

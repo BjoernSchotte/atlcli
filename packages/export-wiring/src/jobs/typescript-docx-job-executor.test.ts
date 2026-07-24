@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import type { ConfluencePageDetails } from "@atlcli/confluence";
+import type { ConfluencePageDetails, TreeSource } from "@atlcli/confluence";
 import { buildDocx, para, pngFixtureBytes, readPart } from "@atlcli/docx/fixtures";
 import type { ExportReport, PreparedDocxExportV1 } from "@atlcli/docx";
 import type {
@@ -11,6 +11,14 @@ import type {
   ResourceEstimateV1,
   StagedArtifactV1,
 } from "@atlcli/export-jobs";
+import {
+  createConfluenceDocxResolveInputV1,
+} from "./confluence-job-resolve-input.js";
+import type {
+  ConfluenceSourcePlanCheckpointV1,
+  ConfluenceSourcePlanStoreV1,
+  PersistedConfluenceSourcePlanV1,
+} from "./confluence-source-plan-checkpoint.js";
 import {
   createTypescriptDocxExportJobExecutor,
   DocxRenderRestartLimitError,
@@ -141,11 +149,21 @@ class MemoryReadyStore implements DocxReadyToRenderStoreV1 {
   }
 }
 
-function executionContext(order: string[] = [], signal = new AbortController().signal) {
+function executionContext(
+  order: string[] = [],
+  signal = new AbortController().signal,
+  options: {
+    leaseEpoch?: number;
+    checkpoint?: (ref: string) => void | Promise<void>;
+    progress?: (
+      value: Parameters<ExportJobExecutionContext["updateProgress"]>[0],
+    ) => void | Promise<void>;
+  } = {},
+) {
   let artifactBytes: Uint8Array | undefined;
   const context: ExportJobExecutionContext = {
     jobId: "job-1",
-    leaseEpoch: 1,
+    leaseEpoch: options.leaseEpoch ?? 1,
     signal,
     spool: {
       async put() { throw new Error("unused"); },
@@ -165,16 +183,22 @@ function executionContext(order: string[] = [], signal = new AbortController().s
           byteLength: pending.byteLength,
           sha256: pending.sha256,
           jobId: "job-1",
-          leaseEpoch: 1,
+          leaseEpoch: options.leaseEpoch ?? 1,
           stagedAt: 10,
         };
       },
       async getStaged() { return undefined; },
     },
-    async updateProgress() {},
+    async updateProgress(value) { await options.progress?.(value); },
     async updateStats() {},
     async appendEvent() {},
-    async checkpoint() { order.push("checkpoint-publish"); },
+    async checkpoint(ref) {
+      if (options.checkpoint) {
+        await options.checkpoint(ref);
+        return;
+      }
+      order.push("checkpoint-publish");
+    },
   };
   return { context, artifactBytes: () => artifactBytes };
 }
@@ -361,6 +385,171 @@ describe("createTypescriptDocxExportJobExecutor", () => {
     expect(ready.materializations).toBe(2);
   });
 
+  it("checkpoints shared ADF resolver state and performs zero source reads on render recovery", async () => {
+    const ready = new MemoryReadyStore();
+    ready.failMaterializeOnce = true;
+    let sourceReads = 0;
+    const treeSource: TreeSource = {
+      async getPage(id) {
+        sourceReads += 1;
+        return {
+          id,
+          title: "Root",
+          version: 1,
+          exportSource: {
+            primary: {
+              representation: "atlas_doc_format",
+              value: JSON.stringify({
+                type: "doc",
+                version: 1,
+                content: [{
+                  type: "extension",
+                  attrs: { extensionType: "example", extensionKey: "widget" },
+                  content: [{ type: "paragraph", content: [{ type: "text", text: "Visible" }] }],
+                }],
+              }),
+            },
+            storageSidecar: "<p>RAW-SIDECAR</p>",
+            sourceVersion: 1,
+          },
+        };
+      },
+      async getPageVersion() { return { title: "Root", version: 1 }; },
+      async getChildren() { return []; },
+      async getSpaceHomepageId() { return null; },
+    };
+    const resolveInput = createConfluenceDocxResolveInputV1({
+      port: { createTreeSource: () => treeSource },
+      build() {
+        return {
+          input: {
+            template: { name: "template.docx", modificationDate: new Date(0) },
+          },
+        };
+      },
+    });
+    const setup = executorOptions({ ready, noRecovery: true, resolveInput });
+    const ctx = executionContext(setup.order);
+    const executor = createTypescriptDocxExportJobExecutor(setup.options);
+
+    await expect(executor.execute(await request(), ctx.context)).rejects.toThrow("worker lost");
+    expect(sourceReads).toBe(1);
+    expect(ready.prepared?.sourceNotes.some((note) =>
+      note.code === "macro-not-rendered" && note.macroName === "widget"
+    )).toBe(true);
+    expect(JSON.stringify(ready.prepared)).not.toContain("RAW-SIDECAR");
+
+    await executor.execute(await request(), ctx.context);
+    expect(sourceReads).toBe(1);
+    expect(ready.commits).toBe(1);
+  });
+
+  it("recovers a version-pinned source plan before ready-to-render", async () => {
+    const order: string[] = [];
+    let persisted: PersistedConfluenceSourcePlanV1 | undefined;
+    const sourcePlans: ConfluenceSourcePlanStoreV1 = {
+      async load() {
+        order.push("source-plan-load");
+        return persisted ? structuredClone(persisted) : undefined;
+      },
+      async commit(checkpoint: ConfluenceSourcePlanCheckpointV1) {
+        order.push("source-plan-commit");
+        persisted = {
+          checkpoint: structuredClone(checkpoint),
+          ref: "source-plan:job-1",
+        };
+        return persisted.ref;
+      },
+    };
+    let metadataReads = 0;
+    let bodyReads = 0;
+    const treeSource: TreeSource = {
+      async getPage(id) {
+        bodyReads += 1;
+        order.push(`body-${bodyReads}`);
+        if (bodyReads === 1) throw new Error("worker lost before ready");
+        return {
+          id,
+          title: "Root",
+          version: 5,
+          exportSource: {
+            primary: {
+              representation: "atlas_doc_format",
+              value: JSON.stringify({
+                type: "doc",
+                version: 1,
+                content: [{
+                  type: "paragraph",
+                  content: [{ type: "text", text: "Recovered" }],
+                }],
+              }),
+            },
+            storageSidecar: "<p>RAW-SIDECAR</p>",
+            sourceVersion: 5,
+          },
+        };
+      },
+      async getPageVersion() {
+        metadataReads += 1;
+        order.push("version");
+        return { title: "Root", version: 5 };
+      },
+      async getChildren() {
+        metadataReads += 1;
+        throw new Error("page scope must not discover children");
+      },
+      async getSpaceHomepageId() { return null; },
+    };
+    const resolveInput = createConfluenceDocxResolveInputV1({
+      port: { createTreeSource: () => treeSource },
+      sourcePlan: { store: sourcePlans, sourcePolicyKey: "adf-primary:v1" },
+      build() {
+        return {
+          input: {
+            template: { name: "template.docx", modificationDate: new Date(0) },
+          },
+        };
+      },
+    });
+    const ready = new MemoryReadyStore(order);
+    const setup = executorOptions({ ready, order, resolveInput, noRecovery: true });
+    const executor = createTypescriptDocxExportJobExecutor(setup.options);
+    const published: string[] = [];
+    const checkpoint = async (ref: string): Promise<void> => {
+      published.push(ref);
+      order.push(ref.startsWith("source-plan:") ? "source-plan-publish" : "ready-publish");
+    };
+
+    await expect(
+      executor.execute(
+        await request(),
+        executionContext(order, new AbortController().signal, { checkpoint }).context,
+      ),
+    ).rejects.toThrow("could not be resolved");
+    expect(ready.commits).toBe(0);
+    expect(order.indexOf("source-plan-commit")).toBeLessThan(order.indexOf("source-plan-publish"));
+    expect(order.indexOf("source-plan-publish")).toBeLessThan(order.indexOf("body-1"));
+    expect(JSON.stringify(persisted)).not.toContain("Recovered");
+    expect(JSON.stringify(persisted)).not.toContain("RAW-SIDECAR");
+
+    await executor.execute(
+      await request(),
+      executionContext(order, new AbortController().signal, {
+        leaseEpoch: 2,
+        checkpoint,
+      }).context,
+    );
+
+    expect({ metadataReads, bodyReads, readyCommits: ready.commits }).toEqual({
+      metadataReads: 1,
+      bodyReads: 2,
+      readyCommits: 1,
+    });
+    expect(persisted?.checkpoint.committedLeaseEpoch).toBe(1);
+    expect(published.filter((ref) => ref === "source-plan:job-1")).toHaveLength(2);
+    expect(published).toContain("render/job-1/manifest.json");
+  });
+
   it("recovers a lost staged-result return in O(1) before reservation/materialization", async () => {
     const setup = executorOptions({ lostStageReturnOnce: true });
     const context = executionContext(setup.order);
@@ -438,6 +627,53 @@ describe("createTypescriptDocxExportJobExecutor", () => {
     expect(order.indexOf("asset-reconcile")).toBeLessThan(order.indexOf("ready-commit"));
     expect(progressStages.indexOf("assets")).toBeGreaterThanOrEqual(0);
     expect(progressStages.slice(progressStages.indexOf("assets") + 1)).not.toContain("compose");
+  });
+
+  it("keeps source-derived asset and output names out of durable progress", async () => {
+    const progress: unknown[] = [];
+    const setup = executorOptions({
+      resolveInput: async () => ({
+        details: {
+          ...details,
+          title: "PRIVATE-PAGE-TITLE",
+          storage:
+            '<ac:image><ri:attachment ri:filename="PRIVATE-ASSET-NAME.png"/></ac:image>',
+        },
+        template: {
+          name: "PRIVATE-TEMPLATE-NAME.docx",
+          modificationDate: new Date(0),
+        },
+        assets: {
+          async fetch() {
+            return pngFixtureBytes(2, 2);
+          },
+        },
+      }),
+    });
+    const ctx = executionContext(
+      setup.order,
+      new AbortController().signal,
+      { progress: (value) => { progress.push(structuredClone(value)); } },
+    );
+
+    await createTypescriptDocxExportJobExecutor(setup.options).execute(
+      await request({
+        displayName: "PRIVATE-DISPLAY-NAME",
+        requestedFilename: "PRIVATE-OUTPUT-NAME.docx",
+        template: {
+          ...(await request()).template,
+          name: "PRIVATE-REQUEST-TEMPLATE.docx",
+        },
+      }),
+      ctx.context,
+    );
+
+    expect(progress.length).toBeGreaterThan(0);
+    expect(progress.some((value) => {
+      const event = value as { stage?: unknown };
+      return event.stage === "assets";
+    })).toBe(true);
+    expect(JSON.stringify(progress)).not.toContain("PRIVATE-");
   });
 
   it("reconciles raster pixels before allocation and passes the AbortSignal to the raster port", async () => {

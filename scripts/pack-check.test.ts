@@ -303,6 +303,20 @@ describe("pack-check (spec 009)", () => {
     }
   });
 
+  it("@atlcli/docx ships the embedded code face, its OFL license, and the Node loader", () => {
+    const { entries } = packageOf(
+      packages.find((p) => p.name === "@atlcli/docx") ?? (undefined as never),
+    );
+    for (const required of [
+      "package/fonts/JetBrainsMono-Regular.ttf",
+      "package/fonts/LICENSE-JetBrainsMono.txt",
+      "package/dist/font-embedding.js",
+      "package/dist/node-code-font.js",
+    ]) {
+      expect(entries.includes(required), `@atlcli/docx: missing ${required}`).toBe(true);
+    }
+  });
+
   it("@atlcli/pdf-compiler-browser ships the vendored PATCHED glue + wasm + LICENSE/NOTICE", () => {
     const { entries, tarball } = packageOf(
       packages.find((p) => p.name === "@atlcli/pdf-compiler-browser") ?? (undefined as never),

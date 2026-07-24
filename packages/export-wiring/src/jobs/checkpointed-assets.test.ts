@@ -153,9 +153,10 @@ describe("checkpointed job assets", () => {
         ok: true,
         pageId: "root",
         title: "Root",
+        source: { representation: "storage", degraded: false },
         blocks: [{ type: "paragraph", content: [{ type: "text", text: "body" }] }],
         notes: [],
-        meta: { version: 1, labels: [], spaceKey: "DOCSY" },
+        meta: { version: 1, labels: [], spaceKey: "TEST" },
       },
       { signal: first.signal },
     );

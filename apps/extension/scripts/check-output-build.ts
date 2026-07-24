@@ -12,7 +12,7 @@
  *   3. zero bare node/Bun GLOBALS (`Buffer.`, `process.env`, `__dirname`, `Bun.`),
  *   4. zero string-to-code constructors (`Function(...)`, `eval(...)`) that
  *      violate Manifest V3's extension-page CSP, and
- *   5. a complete, locally bundled PDF runtime (worker, WASM and ten fonts).
+ *   5. a complete, locally bundled PDF runtime (worker, WASM and eleven fonts).
  *
  * Bare node globals are
  *      invisible to an import-specifier scan — nothing is imported, the symbol is
@@ -184,6 +184,11 @@ const REQUIRED_PDF_ARTIFACTS = [
     sha256: "b2095e0d657e6d28dc32444a9dacabab0c9241d0bf39d96371756cc9bdbc3a5f",
   },
   {
+    label: "Noto Sans Symbols 2 Regular",
+    pattern: /(?:^|\/)assets\/NotoSansSymbols2-Regular-[^/]+\.ttf$/,
+    sha256: "630846d528dbe4c4981370a4d0a9475a1fd1491a129bb411f8e157cdb5de13c6",
+  },
+  {
     label: "Source Sans 3 font license",
     pattern: /(?:^|\/)assets\/LICENSE-Source-Sans-3-[^/]+\.txt$/,
   },
@@ -194,6 +199,10 @@ const REQUIRED_PDF_ARTIFACTS = [
   {
     label: "Source Code Pro font license",
     pattern: /(?:^|\/)assets\/LICENSE-Source-Code-Pro-[^/]+\.txt$/,
+  },
+  {
+    label: "Noto Sans Symbols 2 font license",
+    pattern: /(?:^|\/)assets\/LICENSE-Noto-Sans-Symbols-2-[^/]+\.txt$/,
   },
   {
     label: "compiler Apache-2.0 license",

@@ -42,6 +42,9 @@ export interface BlocksCaseResult {
   docxHasLandscape: boolean;
   docxHasAnchorBookmark: boolean;
   docxHasUnknownPlaceholder: boolean;
+  docxHasCodeTitle: boolean;
+  pdfHasCodeCollapseProjection: boolean;
+  docxHasCodeCollapseProjection: boolean;
   pdfWarningCodes: string[];
   docxWarningCodes: string[];
   reportNotes: ReportNoteProjection[];
@@ -88,10 +91,30 @@ export async function runBlocksCase(): Promise<BlocksCaseResult> {
   const docxHasLandscape = documentXml.includes('w:orient="landscape"');
   const docxHasAnchorBookmark = documentXml.includes('w:name="appendix"');
   const docxHasUnknownPlaceholder = documentXml.includes("customwidget");
+  // Syntax highlighting splits one logical code line across several <w:t>
+  // runs. Compare the ordered visible text, not a contiguous XML substring.
+  const documentText = [...documentXml.matchAll(/<w:t\b[^>]*>([\s\S]*?)<\/w:t>/gu)]
+    .map((match) => match[1] ?? "")
+    .join("");
+  const docxHasCodeTitle =
+    documentText.includes("Legacy code header") &&
+    documentText.includes("export const answer = 42;") &&
+    documentText.indexOf("Legacy code header") < documentText.indexOf("export const answer = 42;");
   if (!docxHasTable) throw new Error("DOCX is missing the table (columnWidths block).");
   if (!docxHasLandscape) throw new Error("DOCX is missing the landscape orientation section.");
   if (!docxHasAnchorBookmark) throw new Error("DOCX is missing the named anchor bookmark.");
   if (!docxHasUnknownPlaceholder) throw new Error("DOCX did not preserve the unknown-macro placeholder.");
+  if (!docxHasCodeTitle) throw new Error("DOCX did not render the legacy code title above the source.");
+
+  const pdfHasCodeCollapseProjection = pdfReport.notes.some(
+    (note) => note.code === "code-collapse-static" && note.level === "info",
+  );
+  const docxHasCodeCollapseProjection = docx.report.notes.some(
+    (note) => note.code === "code-collapse-static" && note.level === "info",
+  );
+  if (!pdfHasCodeCollapseProjection || !docxHasCodeCollapseProjection) {
+    throw new Error("The static code-collapse projection fact is missing from one target.");
+  }
 
   const docxWarningCodes = warningCodes(docx.report.notes);
   if (docxWarningCodes.length > 0) {
@@ -108,6 +131,9 @@ export async function runBlocksCase(): Promise<BlocksCaseResult> {
     docxHasLandscape,
     docxHasAnchorBookmark,
     docxHasUnknownPlaceholder,
+    docxHasCodeTitle,
+    pdfHasCodeCollapseProjection,
+    docxHasCodeCollapseProjection,
     pdfWarningCodes,
     docxWarningCodes,
     reportNotes: projectReportNotes(pdfReport.notes),

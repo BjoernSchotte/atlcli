@@ -20,7 +20,12 @@
  * {@link ImageEmbedError} leaves no dangling media part or relationship.
  */
 import type PizZip from "pizzip";
-import { ASSET_MAX_BYTES, decodeSvgSource, type ExportNote } from "@atlcli/confluence";
+import {
+  ASSET_MAX_BYTES,
+  decodeSvgSource,
+  type ExportNote,
+  type MediaBorder,
+} from "@atlcli/confluence";
 
 /** 914400 EMU/inch ÷ 96 dpi (research §2.5; matches Scroll/Word defaults). */
 export const EMU_PER_PX = 9525;
@@ -344,6 +349,8 @@ export interface DrawingParams {
   descr: string;
   cxEmu: number;
   cyEmu: number;
+  /** Float the drawing to one side and let following body text wrap around it. */
+  wrap?: "left" | "right";
   /**
    * Optional `<w:pPr>…</w:pPr>` carried onto the emitted paragraph — used by
    * the logo pass to preserve the replaced placeholder paragraph's alignment.
@@ -355,6 +362,8 @@ export interface DrawingParams {
    * older Word falls back to the raster `relId` (the mandatory PNG).
    */
   svgRelId?: string;
+  /** Authored ADF border rendered on the picture shape itself. */
+  border?: MediaBorder;
 }
 
 /**
@@ -365,14 +374,40 @@ export interface DrawingParams {
  * robustness improvement), so the fragment is self-contained wherever the
  * serializer splices it.
  */
-export function inlineImageParagraph(p: DrawingParams): string {
+function pictureBorder(border: MediaBorder | undefined): string {
+  if (!border) return `<a:ln><a:noFill/></a:ln>`;
+  const rgb = border.color.slice(1, 7).toUpperCase();
+  const alphaHex = border.color.length === 9 ? border.color.slice(7, 9) : undefined;
+  const alpha = alphaHex === undefined
+    ? ""
+    : `<a:alpha val="${Math.round((Number.parseInt(alphaHex, 16) / 255) * 100000)}"/>`;
+  return (
+    `<a:ln w="${border.size * 12700}">` +
+    `<a:solidFill><a:srgbClr val="${rgb}">${alpha}</a:srgbClr></a:solidFill>` +
+    `</a:ln>`
+  );
+}
+
+/** A drawing run that can be placed between ordinary text runs in one paragraph. */
+export function inlineImageRun(p: DrawingParams): string {
   const name = escAttr(p.name);
   const descr = escAttr(p.descr);
+  const drawingOpen = p.wrap
+    ? `<wp:anchor distT="0" distB="0" distL="114300" distR="114300" simplePos="0" relativeHeight="0" behindDoc="0" locked="0" layoutInCell="1" allowOverlap="1" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing">` +
+      `<wp:simplePos x="0" y="0"/>` +
+      `<wp:positionH relativeFrom="column"><wp:align>${p.wrap}</wp:align></wp:positionH>` +
+      `<wp:positionV relativeFrom="paragraph"><wp:posOffset>0</wp:posOffset></wp:positionV>`
+    : `<wp:inline distT="0" distB="0" distL="0" distR="0" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing">`;
+  const wrap = p.wrap
+    ? `<wp:wrapSquare wrapText="${p.wrap === "left" ? "right" : "left"}"/>`
+    : "";
+  const drawingClose = p.wrap ? "</wp:anchor>" : "</wp:inline>";
   return (
-    `<w:p>${p.pPrXml ?? ""}<w:r><w:drawing>` +
-    `<wp:inline distT="0" distB="0" distL="0" distR="0" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing">` +
+    `<w:r><w:drawing>` +
+    drawingOpen +
     `<wp:extent cx="${p.cxEmu}" cy="${p.cyEmu}"/>` +
     `<wp:effectExtent l="0" t="0" r="0" b="0"/>` +
+    wrap +
     `<wp:docPr id="${p.docPrId}" name="${name}" descr="${descr}"/>` +
     `<wp:cNvGraphicFramePr>` +
     `<a:graphicFrameLocks xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" noChangeAspect="1"/>` +
@@ -401,10 +436,14 @@ export function inlineImageParagraph(p: DrawingParams): string {
     `<pic:spPr bwMode="auto">` +
     `<a:xfrm><a:off x="0" y="0"/><a:ext cx="${p.cxEmu}" cy="${p.cyEmu}"/></a:xfrm>` +
     `<a:prstGeom prst="rect"><a:avLst/></a:prstGeom>` +
-    `<a:noFill/><a:ln><a:noFill/></a:ln>` +
+    `<a:noFill/>${pictureBorder(p.border)}` +
     `</pic:spPr>` +
-    `</pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>`
+    `</pic:pic></a:graphicData></a:graphic>${drawingClose}</w:drawing></w:r>`
   );
+}
+
+export function inlineImageParagraph(p: DrawingParams): string {
+  return `<w:p>${p.pPrXml ?? ""}${inlineImageRun(p)}</w:p>`;
 }
 
 // ---------------------------------------------------------------------------
@@ -425,6 +464,8 @@ export interface EmbedImageOptions {
   widthPx?: number;
   /** Author-specified rendered height in px. */
   heightPx?: number;
+  /** ADF media wrapping side. */
+  wrap?: "left" | "right";
   /**
    * The document part whose XML will carry the returned drawing (default
    * `word/document.xml`). An `r:embed` relationship is only valid in the rels
@@ -435,6 +476,8 @@ export interface EmbedImageOptions {
   partPath?: string;
   /** `<w:pPr>…</w:pPr>` to preserve on the emitted paragraph (see {@link DrawingParams.pPrXml}). */
   pPrXml?: string;
+  /** Authored ADF border rendered on the picture shape. */
+  border?: MediaBorder;
 }
 
 export interface EmbedSvgOptions {
@@ -446,6 +489,8 @@ export interface EmbedSvgOptions {
   widthPx: number;
   /** Intrinsic pixel height of the SVG. */
   heightPx: number;
+  /** ADF media wrapping side. */
+  wrap?: "left" | "right";
   /** Document part whose rels carry the relationships (default `word/document.xml`). */
   partPath?: string;
   /** `<w:pPr>…</w:pPr>` to preserve on the emitted paragraph. */
@@ -457,6 +502,8 @@ export interface EmbedSvgOptions {
    * not a rendered diagram, so the report tallies it as `embeddedImages`.
    */
   origin?: "image" | "diagram";
+  /** Authored ADF border rendered on the picture shape. */
+  border?: MediaBorder;
 }
 
 interface MediaEntry {
@@ -513,6 +560,19 @@ export class ImageEmbedder {
    * — in that case the archive is untouched (no dangling media part or rel).
    */
   embed(bytes: Uint8Array, opts: EmbedImageOptions = {}): string {
+    return this.embedRaster(bytes, opts, false);
+  }
+
+  /** Embed an image as a drawing run inside an existing paragraph. */
+  embedInline(bytes: Uint8Array, opts: EmbedImageOptions = {}): string {
+    return this.embedRaster(bytes, opts, true);
+  }
+
+  private embedRaster(
+    bytes: Uint8Array,
+    opts: EmbedImageOptions,
+    inline: boolean,
+  ): string {
     if (bytes.length === 0) throw new ImageEmbedError("the fetched image was empty");
     if (bytes.length > MAX_IMAGE_BYTES) {
       throw new ImageEmbedError(
@@ -533,15 +593,18 @@ export class ImageEmbedder {
     const size = resolveTargetSize(info, { widthPx: opts.widthPx, heightPx: opts.heightPx }, this.maxWidthPx);
     const docPrId = this.nextDocPrId++;
     this.embedded += 1;
-    return inlineImageParagraph({
+    const params: DrawingParams = {
       relId,
       docPrId,
       name: opts.name || `Image ${docPrId}`,
       descr: opts.alt || opts.name || "image",
       cxEmu: pxToEmu(size.widthPx),
       cyEmu: pxToEmu(size.heightPx),
+      wrap: opts.wrap,
       pPrXml: opts.pPrXml,
-    });
+      border: opts.border,
+    };
+    return inline ? inlineImageRun(params) : inlineImageParagraph(params);
   }
 
   /**
@@ -557,6 +620,24 @@ export class ImageEmbedder {
    * no dangling media part or relationship (the 004-F3 invariant).
    */
   embedSvg(svg: string | Uint8Array, pngFallback: Uint8Array, opts: EmbedSvgOptions): string {
+    return this.embedSvgDrawing(svg, pngFallback, opts, false);
+  }
+
+  /** Embed SVG + PNG fallback as a drawing run inside an existing paragraph. */
+  embedSvgInline(
+    svg: string | Uint8Array,
+    pngFallback: Uint8Array,
+    opts: EmbedSvgOptions,
+  ): string {
+    return this.embedSvgDrawing(svg, pngFallback, opts, true);
+  }
+
+  private embedSvgDrawing(
+    svg: string | Uint8Array,
+    pngFallback: Uint8Array,
+    opts: EmbedSvgOptions,
+    inline: boolean,
+  ): string {
     const svgBytes = typeof svg === "string" ? new TextEncoder().encode(svg) : svg;
     if (svgBytes.length === 0) throw new ImageEmbedError("the rendered SVG was empty");
     if (svgBytes.length > MAX_IMAGE_BYTES) throw new ImageEmbedError("the rendered SVG is too large to embed");
@@ -589,7 +670,7 @@ export class ImageEmbedder {
     const docPrId = this.nextDocPrId++;
     if ((opts.origin ?? "diagram") === "image") this.embedded += 1;
     else this.diagramsEmbedded += 1;
-    return inlineImageParagraph({
+    const params: DrawingParams = {
       relId: pngRelId,
       svgRelId,
       docPrId,
@@ -597,8 +678,11 @@ export class ImageEmbedder {
       descr: opts.alt || opts.name || "diagram",
       cxEmu: pxToEmu(size.widthPx),
       cyEmu: pxToEmu(size.heightPx),
+      wrap: opts.wrap,
       pPrXml: opts.pPrXml,
-    });
+      border: opts.border,
+    };
+    return inline ? inlineImageRun(params) : inlineImageParagraph(params);
   }
 
   /** Reuse the media part for byte-identical images, else write a new one. */

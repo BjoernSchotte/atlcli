@@ -6,7 +6,7 @@ import {
   type ConfluenceSpace,
 } from "@atlcli/confluence";
 import { DocxRenderError, exportDocx } from "./export.js";
-import type { CurrentUser } from "./resolver.js";
+import type { CurrentUser, IncludePageDetails } from "./resolver.js";
 import {
   assertBalancedXml,
   buildDocx,
@@ -100,6 +100,44 @@ function fullTemplate(withScrollHeadings: boolean): Uint8Array {
 }
 
 describe("exportDocx — full pipeline", () => {
+  it("packages correlated ADF annotations as native Word comments", async () => {
+    const { bytes } = await exportDocx({
+      templateBytes: fullTemplate(true),
+      details,
+      blocks: [{
+        type: "paragraph",
+        content: [{
+          type: "text",
+          text: "Annotated text",
+          annotations: [{
+            id: "marker-private",
+            annotationType: "inlineComment",
+            comment: {
+              bodyText: "Please verify this value",
+              status: "open",
+              replies: [{ bodyText: "Verified" }],
+            },
+          }],
+        }],
+      }],
+      template,
+      deps,
+    });
+
+    const zip = new PizZip(bytes);
+    const document = zip.file("word/document.xml")?.asText() ?? "";
+    const comments = zip.file("word/comments.xml")?.asText() ?? "";
+    const rels = zip.file("word/_rels/document.xml.rels")?.asText() ?? "";
+    const contentTypes = zip.file("[Content_Types].xml")?.asText() ?? "";
+    expect(document).toContain('<w:commentRangeStart w:id="0"/>');
+    expect(document).toContain('<w:commentReference w:id="0"/>');
+    expect(comments).toContain("Please verify this value");
+    expect(comments).toContain("Reply: Verified");
+    expect(comments).not.toContain("marker-private");
+    expect(rels).toContain("/relationships/comments");
+    expect(contentTypes).toContain("/word/comments.xml");
+  });
+
   it("produces a docx with no $scroll literals and expected style refs", async () => {
     const { bytes, report } = await exportDocx({
       templateBytes: fullTemplate(true),
@@ -689,6 +727,83 @@ describe("exportDocx — image embedding (spec 005)", () => {
     expect(report.embeddedImages).toBe(1);
     expect(report.skippedImages).toBe(0);
     expect(report.notes.some((n) => n.code.startsWith("image"))).toBe(false);
+  });
+
+  it("embeds correlated ADF inline media inside its paragraph with authored geometry and link", async () => {
+    const { refs, fetcher } = recordingFetcher(pngFixtureBytes(200, 100));
+    const { bytes, report } = await exportDocx({
+      templateBytes: imageTemplate(),
+      details,
+      blocks: [{
+        type: "paragraph",
+        content: [
+          { type: "text", text: "before" },
+          {
+            type: "media",
+            media: { mediaType: "image", id: "inline-1", filename: "inline.png" },
+            source: { kind: "attachment", filename: "inline.png", pageId: "123" },
+            alt: "Inline architecture",
+            width: 40,
+            height: 20,
+            border: { color: "#0052CC", size: 2 },
+            link: { target: { kind: "external", href: "https://example.invalid/inline" } },
+          },
+          { type: "text", text: "after" },
+        ],
+      }],
+      template,
+      deps,
+      assets: fetcher,
+    });
+
+    expect(refs).toEqual([
+      { url: "/download/attachments/123/inline.png", pageId: "123", filename: "inline.png" },
+    ]);
+    const doc = readPart(bytes, "word/document.xml");
+    const paragraphXml = doc.match(/<w:p>[\s\S]*?before[\s\S]*?after[\s\S]*?<\/w:p>/)?.[0];
+    expect(paragraphXml).toBeDefined();
+    expect(paragraphXml!.indexOf("before")).toBeLessThan(paragraphXml!.indexOf("<w:drawing>"));
+    expect(paragraphXml!.indexOf("<w:drawing>")).toBeLessThan(paragraphXml!.indexOf("after"));
+    expect(paragraphXml).toContain(`<wp:extent cx="${40 * 9525}" cy="${20 * 9525}"/>`);
+    expect(paragraphXml).toContain('<a:ln w="25400">');
+    expect(paragraphXml).toContain('<a:srgbClr val="0052CC">');
+    expect(paragraphXml).toContain('HYPERLINK "https://example.invalid/inline"');
+    expect(paragraphXml).not.toContain("[Inline architecture]");
+    expect(report.embeddedImages).toBe(1);
+    expect(report.skippedImages).toBe(0);
+  });
+
+  it("applies ADF mediaSingle percentage width and native Word text wrapping", async () => {
+    const { fetcher } = recordingFetcher();
+    const { bytes } = await exportDocx({
+      templateBytes: imageTemplate(),
+      details,
+      blocks: [{
+        type: "image",
+        source: {
+          kind: "attachment",
+          filename: "diagram.png",
+          pageId: "123",
+        },
+        alt: "Wrapped diagram",
+        mediaPresentation: {
+          layout: "wrap-right",
+          width: 40,
+          widthType: "percentage",
+        },
+      }],
+      template,
+      deps,
+      assets: fetcher,
+    });
+
+    const doc = readPart(bytes, "word/document.xml");
+    expect(doc).toContain(`<wp:extent cx="${240 * 9525}" cy="${120 * 9525}"/>`);
+    expect(doc).toContain("<wp:anchor ");
+    expect(doc).toContain(
+      '<wp:positionH relativeFrom="column"><wp:align>right</wp:align></wp:positionH>',
+    );
+    expect(doc).toContain('<wp:wrapSquare wrapText="left"/>');
   });
 
   it("passes external image URLs through to the fetcher unchanged", async () => {
@@ -1693,6 +1808,121 @@ describe("exportDocx — $scroll.includepage (spec 005 D1)", () => {
     }
   });
 
+  it("decodes an ADF-primary include once and never walks its Storage sidecar", async () => {
+    const page: IncludePageDetails = {
+      ...includePage("AdfInclude", "<p>STORAGE_SIDECAR_POISON</p>"),
+      version: 4,
+      exportSource: {
+        primary: {
+          representation: "atlas_doc_format",
+          value: JSON.stringify({
+            type: "doc",
+            version: 1,
+            content: [{
+              type: "paragraph",
+              content: [{ type: "text", text: "ADF_INCLUDE_SENTINEL" }],
+            }],
+          }),
+        },
+        storageSidecar: "<p>STORAGE_SIDECAR_POISON</p>",
+        sourceVersion: 4,
+      },
+    };
+    const { calls, getIncludedPage } = resolver({ AdfInclude: page });
+    const { bytes } = await exportDocx({
+      templateBytes: styledTemplate({
+        body: para("$scroll.content") + para("$scroll.includepage.(AdfInclude)"),
+      }),
+      details,
+      template,
+      deps: { ...deps, getIncludedPage },
+    });
+    const doc = readPart(bytes, "word/document.xml");
+    expect(doc).toContain("ADF_INCLUDE_SENTINEL");
+    expect(doc).not.toContain("STORAGE_SIDECAR_POISON");
+    expect(calls).toEqual([":AdfInclude"]);
+  });
+
+  it("correlates an ADF include image by v2 fileId before asset embedding", async () => {
+    const page: IncludePageDetails = {
+      ...includePage("AdfMedia"),
+      exportSource: {
+        primary: {
+          representation: "atlas_doc_format",
+          value: JSON.stringify({
+            type: "doc",
+            version: 1,
+            content: [{
+              type: "mediaSingle",
+              content: [{
+                type: "media",
+                attrs: {
+                  type: "file",
+                  id: "file-1",
+                  collection: "content-1",
+                  alt: "Included image",
+                },
+              }],
+            }],
+          }),
+        },
+        sourceVersion: 1,
+      },
+      mediaAttachments: [{ fileId: "file-1", filename: "included.png", pageId: "AdfMedia" }],
+      mediaAttachmentsComplete: true,
+    };
+    const fetched: Array<{ filename?: string; pageId?: string }> = [];
+    const { bytes, report } = await exportDocx({
+      templateBytes: styledTemplate({
+        body: para("$scroll.content") + para("$scroll.includepage.(AdfMedia)"),
+      }),
+      details,
+      template,
+      deps: { ...deps, getIncludedPage: resolver({ AdfMedia: page }).getIncludedPage },
+      assets: {
+        async fetch(ref) {
+          fetched.push({ filename: ref.filename, pageId: ref.pageId });
+          return pngFixtureBytes(120, 60);
+        },
+      },
+    });
+
+    expect(readPart(bytes, "word/document.xml")).toContain("<w:drawing>");
+    expect(fetched).toContainEqual({ filename: "included.png", pageId: "AdfMedia" });
+    expect(report.notes.map((note) => note.code)).not.toContain("adf-media-unresolved");
+  });
+
+  it("bounds ADF include sidecars separately from primary body bytes", async () => {
+    const page: IncludePageDetails = {
+      ...includePage("SidecarBudget"),
+      exportSource: {
+        primary: {
+          representation: "atlas_doc_format",
+          value: JSON.stringify({
+            type: "doc",
+            version: 1,
+            content: [{ type: "paragraph", content: [{ type: "text", text: "SMALL_ADF" }] }],
+          }),
+        },
+        storageSidecar: "x".repeat(2 * 1024 * 1024 + 1),
+        sourceVersion: 1,
+      },
+    };
+    const { bytes, report } = await exportDocx({
+      templateBytes: styledTemplate({
+        body: para("$scroll.content") + para("$scroll.includepage.(SidecarBudget)"),
+      }),
+      details,
+      template,
+      deps: {
+        ...deps,
+        getIncludedPage: async () => ({ kind: "resolved", page }),
+      },
+    });
+    expect(readPart(bytes, "word/document.xml")).not.toContain("SMALL_ADF");
+    expect(report.notes.some((note) => note.code === "includepage-budget-exceeded")).toBe(true);
+  });
+
   it("renders two occurrences of the same include in one part with one fetch", async () => {
     const { calls, getIncludedPage } = resolver({ Imprint: includePage("Imprint") });
     const { bytes } = await exportDocx({
@@ -1917,6 +2147,47 @@ describe("exportDocx — $scroll.includepage (spec 005 D1)", () => {
       deps: { ...deps, getIncludedPage: resolver({ Imprint: codePage }).getIncludedPage },
     });
     expect(readPart(bytes, "word/styles.xml")).toContain('w:styleId="AtlcliCode"');
+    expect(readPart(bytes, "word/fontTable.xml")).toContain(
+      '<w:font w:name="JetBrains Mono">',
+    );
+    expect(readPart(bytes, "word/_rels/fontTable.xml.rels")).toContain(
+      "relationships/font",
+    );
+    expect(
+      new PizZip(bytes)
+        .file("word/fonts/atlcli-code-001b70dc-aa60-4ad5-90ec-18a0948e1eae.odttf")
+        ?.asUint8Array().byteLength,
+    ).toBeGreaterThan(250_000);
+  });
+
+  it("embeds the code face for inline code without requiring a code-block style", async () => {
+    const { bytes } = await exportDocx({
+      templateBytes: styledTemplate({ body: para("$scroll.content") }),
+      details: { ...details, storage: "<p>before <code>INLINE_TOKEN</code> after</p>" },
+      template,
+      deps,
+    });
+    const zip = new PizZip(bytes);
+    expect(readPart(bytes, "word/document.xml")).toContain("INLINE_TOKEN");
+    expect(readPart(bytes, "word/document.xml")).toContain(
+      'w:rFonts w:ascii="JetBrains Mono"',
+    );
+    expect(readPart(bytes, "word/styles.xml")).not.toContain('w:styleId="AtlcliCode"');
+    expect(Object.keys(zip.files).filter((path) => path.endsWith(".odttf"))).toEqual([
+      "word/fonts/atlcli-code-001b70dc-aa60-4ad5-90ec-18a0948e1eae.odttf",
+    ]);
+  });
+
+  it("does not add font parts to a document with no code semantics", async () => {
+    const { bytes } = await exportDocx({
+      templateBytes: styledTemplate({ body: para("$scroll.content") }),
+      details: { ...details, storage: "<p>plain text only</p>" },
+      template,
+      deps,
+    });
+    const zip = new PizZip(bytes);
+    expect(Object.keys(zip.files).some((path) => path.endsWith(".odttf"))).toBe(false);
+    expect(zip.file("word/fontTable.xml")).toBeNull();
   });
 
   it("enforces the unique-target budget deterministically (cache still serves repeats)", async () => {

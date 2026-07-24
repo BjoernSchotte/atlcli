@@ -14,10 +14,164 @@ import {
   buildAuthHeader,
   buildTlsOptions,
   getConfluenceBaseUrl,
+  resolveDeploymentType,
+  type DeploymentType,
   TlsOptions,
 } from "@atlcli/core";
-import { drainPaginated } from "./pagination.js";
+import { drainPaginated, PaginationLoopError } from "./pagination.js";
 import { extractExportViewMacros as extractMacroFragments } from "./html-to-blocks.js";
+import type { AdfMediaAttachment } from "./adf-to-blocks.js";
+import {
+  ExportPageReadError,
+  type ConfluenceExportPageDetails,
+  type ConfluencePageAdf,
+  type ExportSourceFallbackReason,
+  type ExportSourcePolicy,
+} from "./page-body.js";
+
+type V2FailureClassification = "adf-body-format-unsupported";
+
+/** Private transport error: never retains an API response body. */
+class ConfluenceV2RequestError extends Error {
+  constructor(
+    public readonly status: number,
+    message: string,
+    public readonly classification?: V2FailureClassification,
+  ) {
+    super(message);
+    this.name = "ConfluenceV2RequestError";
+  }
+}
+
+/** A proven site capability, never an auth or page-level denial. */
+const ADF_UNAVAILABLE_ORIGINS = new Set<string>();
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function collectV2ErrorText(value: unknown): string {
+  if (!isRecord(value)) return typeof value === "string" ? value.slice(0, 4096) : "";
+  const parts: string[] = [];
+  const append = (candidate: unknown): void => {
+    if (typeof candidate === "string" && candidate !== "") {
+      parts.push(candidate.slice(0, 4096));
+    }
+  };
+  append(value.message);
+  append(value.errorMessage);
+  append(value.error);
+  if (Array.isArray(value.errors)) {
+    for (const candidate of value.errors.slice(0, 20)) {
+      if (isRecord(candidate)) append(candidate.message);
+      else append(candidate);
+    }
+  }
+  return parts.join("\n");
+}
+
+type V2QueryValue =
+  | string
+  | number
+  | readonly (string | number)[]
+  | undefined;
+
+function classifyV2Failure(
+  path: string,
+  query: Record<string, V2QueryValue> | undefined,
+  status: number,
+  data: unknown,
+): V2FailureClassification | undefined {
+  if (
+    status !== 400 ||
+    !path.startsWith("/pages/") ||
+    query?.["body-format"] !== "atlas_doc_format"
+  ) {
+    return undefined;
+  }
+  const message = collectV2ErrorText(data).toLowerCase();
+  const identifiesParameter =
+    message.includes("body-format") ||
+    message.includes("body format") ||
+    message.includes("primarybodyrepresentation");
+  const identifiesValue = message.includes("atlas_doc_format");
+  const rejectsCapability =
+    message.includes("unsupported") ||
+    message.includes("not supported") ||
+    message.includes("invalid") ||
+    message.includes("unknown") ||
+    message.includes("not allowed");
+  return identifiesParameter && identifiesValue && rejectsCapability
+    ? "adf-body-format-unsupported"
+    : undefined;
+}
+
+function invalidAdfResponse(pageId: string, reason: string): ExportPageReadError {
+  return new ExportPageReadError(
+    "invalid-adf-response",
+    `Confluence ADF response for page ${pageId} is invalid (${reason}).`,
+    pageId,
+  );
+}
+
+function parseConfluencePageAdf(data: unknown, pageId: string): ConfluencePageAdf {
+  if (!isRecord(data)) throw invalidAdfResponse(pageId, "root is not an object");
+  if (data.id !== pageId) throw invalidAdfResponse(pageId, "page id does not match");
+  if (!isRecord(data.version)) throw invalidAdfResponse(pageId, "version is missing");
+  const version = data.version.number;
+  if (!Number.isInteger(version) || (version as number) < 1) {
+    throw invalidAdfResponse(pageId, "version number is invalid");
+  }
+  if (!isRecord(data.body)) throw invalidAdfResponse(pageId, "body is missing");
+  const candidate = data.body.atlas_doc_format;
+  if (!isRecord(candidate)) {
+    throw invalidAdfResponse(pageId, "atlas_doc_format body is missing");
+  }
+  if (candidate.representation !== "atlas_doc_format") {
+    throw invalidAdfResponse(pageId, "representation does not match the request");
+  }
+  if (typeof candidate.value !== "string") {
+    throw invalidAdfResponse(pageId, "body value is not a string");
+  }
+  return {
+    id: pageId,
+    version: version as number,
+    body: { representation: "atlas_doc_format", value: candidate.value },
+  };
+}
+
+function requireStorageVersion(details: ConfluencePageDetails, pageId: string): number {
+  if (details.id !== pageId) {
+    throw new ExportPageReadError(
+      "invalid-storage-response",
+      `Confluence Storage response for page ${pageId} has a different page id.`,
+      pageId,
+    );
+  }
+  if (!Number.isInteger(details.version) || (details.version as number) < 1) {
+    throw new ExportPageReadError(
+      "invalid-storage-response",
+      `Confluence Storage response for page ${pageId} has no valid version.`,
+      pageId,
+    );
+  }
+  return details.version as number;
+}
+
+function linkAbortSignal(signal?: AbortSignal): {
+  controller: AbortController;
+  cleanup: () => void;
+} {
+  const controller = new AbortController();
+  if (!signal) return { controller, cleanup: () => undefined };
+  const onAbort = (): void => controller.abort(signal.reason);
+  if (signal.aborted) onAbort();
+  else signal.addEventListener("abort", onAbort, { once: true });
+  return {
+    controller,
+    cleanup: () => signal.removeEventListener("abort", onAbort),
+  };
+}
 
 export type ConfluencePage = {
   id: string;
@@ -195,6 +349,34 @@ export interface AttachmentInfo {
   comment?: string;
 }
 
+/** Bounded v2 attachment metadata used to correlate ADF media IDs. */
+export interface PageAttachmentMediaResult {
+  attachments: AdfMediaAttachment[];
+  /** False when a result/request budget stopped pagination early. */
+  complete: boolean;
+}
+
+const DEFAULT_PAGE_ATTACHMENT_MEDIA_LIMIT = 1_000;
+const MAX_PAGE_ATTACHMENT_MEDIA_LIMIT = 5_000;
+const MAX_PAGE_ATTACHMENT_MEDIA_REQUESTS = 20;
+const DEFAULT_PAGE_INLINE_COMMENT_LIMIT = 1_000;
+const MAX_PAGE_INLINE_COMMENT_LIMIT = 5_000;
+const MAX_PAGE_INLINE_COMMENT_REQUESTS = 100;
+
+function adfMayReferenceMedia(value: string): boolean {
+  // This gates an optional metadata request only; the bounded validator remains
+  // authoritative. Atlassian serializes node `type` names literally, while
+  // arbitrary whitespace is allowed between JSON tokens.
+  return /"type"\s*:\s*"(?:media|mediaInline)"/u.test(value);
+}
+
+function adfMayReferenceInlineComments(value: string): boolean {
+  // Optional-sidecar request gate only. The bounded ADF validator remains
+  // authoritative for the exact annotation mark shape.
+  return /"type"\s*:\s*"annotation"/u.test(value) &&
+    /"annotationType"\s*:\s*"inlineComment"/u.test(value);
+}
+
 /**
  * Escape a value for safe inclusion inside a **double-quoted** CQL string
  * literal, e.g. `label in ("${escapeCqlValue(label)}")` or
@@ -249,6 +431,8 @@ function extractCursor(nextLink: string | undefined, baseUrl: string): string | 
 
 export class ConfluenceClient {
   private confluenceBaseUrl: string;
+  private deploymentType: DeploymentType;
+  private capabilityOrigin: string;
   private authHeader: string;
   private useSession: boolean;
   private maxRetries = 3;
@@ -261,9 +445,15 @@ export class ConfluenceClient {
    * `JiraClient` instead of a per-client copy.
    */
   private sessionRedirectPolicy: SessionRedirectPolicy;
+  private exportSourcePolicy: ExportSourcePolicy;
 
-  constructor(profile: Profile) {
+  constructor(
+    profile: Profile,
+    options: { exportSourcePolicy?: ExportSourcePolicy } = {},
+  ) {
     this.confluenceBaseUrl = getConfluenceBaseUrl(profile);
+    this.deploymentType = resolveDeploymentType(profile);
+    this.capabilityOrigin = new URL(this.confluenceBaseUrl).origin.toLowerCase();
     if (profile.auth.type === "oauth") {
       throw new Error("OAuth is not implemented yet. Use API token or bearer auth.");
     }
@@ -276,6 +466,7 @@ export class ConfluenceClient {
     this.sessionRedirectPolicy = createAtlassianSessionRedirectPolicy({
       siteOrigin: this.confluenceBaseUrl,
     });
+    this.exportSourcePolicy = options.exportSourcePolicy ?? "adf-primary";
   }
 
   /** Get the Confluence instance base URL */
@@ -587,16 +778,22 @@ export class ConfluenceClient {
     path: string,
     options: {
       method?: string;
-      query?: Record<string, string | number | undefined>;
+      query?: Record<string, V2QueryValue>;
       body?: unknown;
       signal?: AbortSignal;
+      /** See {@link request}; body endpoints must use `"meta-only"`. */
+      logBody?: false | "meta-only" | true;
     } = {}
   ): Promise<unknown> {
     const url = new URL(`${this.confluenceBaseUrl}/api/v2${path}`);
     if (options.query) {
       for (const [key, value] of Object.entries(options.query)) {
         if (value === undefined) continue;
-        url.searchParams.set(key, String(value));
+        if (Array.isArray(value)) {
+          for (const item of value) url.searchParams.append(key, String(item));
+        } else {
+          url.searchParams.set(key, String(value));
+        }
       }
     }
 
@@ -604,6 +801,12 @@ export class ConfluenceClient {
     const requestId = generateRequestId();
     const method = options.method ?? "GET";
     const startTime = Date.now();
+    const suppressBody = options.logBody === false || options.logBody === "meta-only";
+    const bodyMeta = (text: string, res: Response) => ({
+      byteLength: text.length,
+      contentType: res.headers.get("content-type") ?? undefined,
+      requestId,
+    });
 
     // Log request
     logger.api("request", {
@@ -616,7 +819,13 @@ export class ConfluenceClient {
         Accept: "application/json",
         "Content-Type": "application/json",
       }),
-      body: options.body ? redactSensitive(options.body) : undefined,
+      body: suppressBody
+        ? options.body
+          ? "[request body omitted: logBody policy]"
+          : undefined
+        : options.body
+          ? redactSensitive(options.body)
+          : undefined,
     });
 
     let lastError: Error | null = null;
@@ -646,7 +855,10 @@ export class ConfluenceClient {
           await this.sleep(delayMs, options.signal);
           continue;
         }
-        const error = new Error(`Rate limited by Confluence API after ${this.maxRetries} retries`);
+        const error = new ConfluenceV2RequestError(
+          res.status,
+          `Rate limited by Confluence API after ${this.maxRetries} retries`,
+        );
         logger.api("response", {
           requestId,
           status: res.status,
@@ -670,8 +882,16 @@ export class ConfluenceClient {
       }
 
       if (!res.ok) {
-        const message = typeof data === "string" ? data : JSON.stringify(data);
-        lastError = new Error(`Confluence API v2 error (${res.status}): ${message}`);
+        const message = suppressBody
+          ? "[response body omitted: logBody policy]"
+          : typeof data === "string"
+            ? data
+            : JSON.stringify(data);
+        lastError = new ConfluenceV2RequestError(
+          res.status,
+          `Confluence API v2 error (${res.status}): ${message}`,
+          classifyV2Failure(path, options.query, res.status, data),
+        );
 
         if (res.status >= 500 && attempt < this.maxRetries) {
           await this.sleep(this.baseDelayMs * Math.pow(2, attempt), options.signal);
@@ -681,7 +901,7 @@ export class ConfluenceClient {
           requestId,
           status: res.status,
           statusText: res.statusText,
-          body: redactSensitive(data),
+          body: suppressBody ? bodyMeta(text, res) : redactSensitive(data),
           durationMs: Date.now() - startTime,
           error: lastError.message,
         });
@@ -696,7 +916,7 @@ export class ConfluenceClient {
         requestId,
         status: res.status,
         statusText: res.statusText,
-        body: redactSensitive(data),
+        body: suppressBody ? bodyMeta(text, res) : redactSensitive(data),
         durationMs: Date.now() - startTime,
       });
 
@@ -710,8 +930,12 @@ export class ConfluenceClient {
    * Get the current authenticated user.
    * Useful for verifying authentication and connectivity.
    */
-  async getCurrentUser(): Promise<{ accountId: string; displayName: string; email?: string }> {
-    const data = (await this.request("/user/current")) as any;
+  async getCurrentUser(
+    options: { signal?: AbortSignal } = {},
+  ): Promise<{ accountId: string; displayName: string; email?: string }> {
+    const data = (await this.request("/user/current", {
+      signal: options.signal,
+    })) as any;
     return {
       accountId: data.accountId,
       displayName: data.displayName,
@@ -719,9 +943,14 @@ export class ConfluenceClient {
     };
   }
 
-  async getPage(id: string): Promise<ConfluencePage & { storage: string }> {
+  async getPage(
+    id: string,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<ConfluencePage & { storage: string }> {
     const data = (await this.request(`/content/${id}`, {
       query: { expand: "body.storage,version,space,ancestors" },
+      logBody: "meta-only",
+      signal: options.signal,
     })) as any;
 
     // Extract ancestors (array of {id, title} from root to parent)
@@ -742,6 +971,38 @@ export class ConfluenceClient {
       ancestors,
       storage: data.body?.storage?.value ?? "",
     };
+  }
+
+  /**
+   * Read one Cloud page's ADF body through REST v2.
+   *
+   * The body remains an opaque string. Structural ADF validation belongs to
+   * the bounded decoder boundary, not to the HTTP client.
+   */
+  async getPageAdf(
+    id: string,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<ConfluencePageAdf> {
+    try {
+      const data = await this.requestV2(`/pages/${id}`, {
+        query: { "body-format": "atlas_doc_format" },
+        signal: options.signal,
+        logBody: "meta-only",
+      });
+      return parseConfluencePageAdf(data, id);
+    } catch (error) {
+      if (
+        error instanceof ConfluenceV2RequestError &&
+        error.classification === "adf-body-format-unsupported"
+      ) {
+        throw new ExportPageReadError(
+          "adf-representation-unavailable",
+          `Confluence does not expose atlas_doc_format for page reads at this site.`,
+          id,
+        );
+      }
+      throw error;
+    }
   }
 
   /**
@@ -834,6 +1095,7 @@ export class ConfluenceClient {
         ].join(","),
       },
       signal: options.signal,
+      logBody: "meta-only",
     })) as any;
 
     // Extract ancestors (array of {id, title} from root to parent)
@@ -891,6 +1153,143 @@ export class ConfluenceClient {
       modifiedBy,
       labels,
       editorVersion,
+    };
+  }
+
+  /**
+   * Read the version-bound source used by DOCX/PDF export.
+   *
+   * Cloud performs a correctness-first dual read: ADF is primary and the
+   * existing Storage body remains a compatibility sidecar. Data Center never
+   * probes the Cloud-only v2 representation.
+   */
+  async getExportPageDetails(
+    id: string,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<ConfluenceExportPageDetails> {
+    const storagePrimary = (
+      details: ConfluencePageDetails,
+      fallbackReason: ExportSourceFallbackReason,
+    ): ConfluenceExportPageDetails => {
+      const sourceVersion = requireStorageVersion(details, id);
+      return {
+        ...details,
+        exportSource: {
+          primary: { representation: "storage", value: details.storage },
+          sourceVersion,
+          fallbackReason,
+        },
+      };
+    };
+
+    if (this.deploymentType === "data-center") {
+      const details = await this.getPageDetails(id, options);
+      return storagePrimary(details, "data-center");
+    }
+
+    if (this.exportSourcePolicy === "storage-primary") {
+      const details = await this.getPageDetails(id, options);
+      return storagePrimary(details, "rollout-storage-primary");
+    }
+
+    if (ADF_UNAVAILABLE_ORIGINS.has(this.capabilityOrigin)) {
+      const details = await this.getPageDetails(id, options);
+      return storagePrimary(details, "adf-representation-unavailable");
+    }
+
+    const { controller, cleanup } = linkAbortSignal(options.signal);
+    const readOptions = { signal: controller.signal };
+    const storagePromise = this.getPageDetails(id, readOptions);
+    const adfPromise = this.getPageAdf(id, readOptions);
+
+    try {
+      let details: ConfluencePageDetails;
+      let adf: ConfluencePageAdf;
+      try {
+        [details, adf] = await Promise.all([storagePromise, adfPromise]);
+      } catch (error) {
+        if (
+          error instanceof ExportPageReadError &&
+          error.kind === "adf-representation-unavailable"
+        ) {
+          // Cache only after a successful page identity/permission read. A
+          // concurrent 401/403/404 must never become a site capability fact.
+          try {
+            details = await storagePromise;
+          } catch (storageError) {
+            controller.abort(storageError);
+            await Promise.allSettled([storagePromise, adfPromise]);
+            throw storageError;
+          }
+          const result = storagePrimary(details, "adf-representation-unavailable");
+          ADF_UNAVAILABLE_ORIGINS.add(this.capabilityOrigin);
+          return result;
+        }
+
+        controller.abort(error);
+        await Promise.allSettled([storagePromise, adfPromise]);
+        throw error;
+      }
+
+      const storageVersion = requireStorageVersion(details, id);
+      if (storageVersion !== adf.version) {
+        throw new ExportPageReadError(
+          "page-version-mismatch",
+          `Confluence page ${id} changed while its export source was being read.`,
+          id,
+          storageVersion,
+          adf.version,
+        );
+      }
+
+      return {
+        ...details,
+        exportSource: {
+          primary: adf.body,
+          storageSidecar: details.storage,
+          sourceVersion: adf.version,
+        },
+      };
+    } finally {
+      cleanup();
+    }
+  }
+
+  /**
+   * Read the version-bound export source and, only for ADF containing media
+   * nodes, prefetch the v2 attachment `fileId` index required by the decoder.
+   */
+  async getExportPageDetailsWithMedia(
+    id: string,
+    options: {
+      signal?: AbortSignal;
+      maxAttachments?: number;
+      maxInlineComments?: number;
+    } = {},
+  ): Promise<ConfluenceExportPageDetails> {
+    const page = await this.getExportPageDetails(id, options);
+    if (page.exportSource.primary.representation !== "atlas_doc_format") {
+      return page;
+    }
+    const value = page.exportSource.primary.value;
+    const mediaPromise = adfMayReferenceMedia(value)
+      ? this.listPageAttachmentMedia(id, options)
+      : undefined;
+    const commentsPromise = adfMayReferenceInlineComments(value)
+      ? this.listPageInlineCommentsForExport(id, options)
+      : undefined;
+    if (!mediaPromise && !commentsPromise) return page;
+    const [media, comments] = await Promise.all([mediaPromise, commentsPromise]);
+    return {
+      ...page,
+      ...(media ? {
+        mediaAttachments: media.attachments,
+        mediaAttachmentsComplete: media.complete,
+      } : {}),
+      ...(comments ? {
+        inlineComments: comments.comments,
+        inlineCommentsComplete: comments.complete,
+      } : {}),
     };
   }
 
@@ -1604,8 +2003,11 @@ export class ConfluenceClient {
    * `$scroll.globallogo` embedding). Returns `null` when the space carries no
    * icon — Cloud normally always has one (the default is an SVG).
    */
-  async getSpaceIcon(key: string): Promise<SpaceIcon | null> {
-    return (await this.getSpaceWithIcon(key)).icon;
+  async getSpaceIcon(
+    key: string,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<SpaceIcon | null> {
+    return (await this.getSpaceWithIcon(key, options)).icon;
   }
 
   /**
@@ -1614,9 +2016,13 @@ export class ConfluenceClient {
    * both `$scroll.space.*` and a logo placeholder previously paid two calls
    * to the same endpoint; hosts memoize this one instead.
    */
-  async getSpaceWithIcon(key: string): Promise<{ space: ConfluenceSpace; icon: SpaceIcon | null }> {
+  async getSpaceWithIcon(
+    key: string,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<{ space: ConfluenceSpace; icon: SpaceIcon | null }> {
     const data = (await this.request(`/space/${key}`, {
       query: { expand: "icon" },
+      signal: options.signal,
     })) as any;
     const space: ConfluenceSpace = {
       id: data.id,
@@ -1832,19 +2238,98 @@ export class ConfluenceClient {
   // ============ Attachment Operations ============
 
   /**
+   * List the Cloud v2 attachment identity needed by ADF media nodes.
+   *
+   * ADF media `attrs.id` correlates to the attachment response's `fileId`, not
+   * the attachment content `id`. Pagination is bounded independently by item
+   * and request caps; filenames and response bodies stay out of logs.
+   */
+  async listPageAttachmentMedia(
+    pageId: string,
+    options: { maxAttachments?: number; signal?: AbortSignal } = {},
+  ): Promise<PageAttachmentMediaResult> {
+    const requested = options.maxAttachments ?? DEFAULT_PAGE_ATTACHMENT_MEDIA_LIMIT;
+    const maxAttachments = Math.max(
+      1,
+      Math.min(MAX_PAGE_ATTACHMENT_MEDIA_LIMIT, Math.trunc(Number.isFinite(requested) ? requested : 0)),
+    );
+    const pageSize = Math.min(250, maxAttachments);
+    const attachments: AdfMediaAttachment[] = [];
+    const seenCursors = new Set<string>();
+    const seenFileIds = new Set<string>();
+    let cursor: string | undefined;
+
+    for (let request = 0; request < MAX_PAGE_ATTACHMENT_MEDIA_REQUESTS; request += 1) {
+      options.signal?.throwIfAborted();
+      const data = (await this.requestV2(`/pages/${pageId}/attachments`, {
+        query: { limit: pageSize, cursor },
+        signal: options.signal,
+        logBody: "meta-only",
+      })) as any;
+      const results = Array.isArray(data.results) ? data.results : [];
+      for (const item of results) {
+        if (attachments.length >= maxAttachments) {
+          return { attachments, complete: false };
+        }
+        if (typeof item?.fileId !== "string" || typeof item?.title !== "string") continue;
+        const fileId = item.fileId.trim();
+        const filename = item.title.trim();
+        if (!fileId || !filename || seenFileIds.has(fileId)) continue;
+        seenFileIds.add(fileId);
+        const webuiLink =
+          typeof item.webuiLink === "string"
+            ? item.webuiLink
+            : typeof item._links?.webui === "string"
+              ? item._links.webui
+              : undefined;
+        const downloadLink =
+          typeof item.downloadLink === "string"
+            ? item.downloadLink
+            : typeof item._links?.download === "string"
+              ? item._links.download
+              : undefined;
+        attachments.push({
+          fileId,
+          filename,
+          pageId,
+          ...(typeof item.mediaType === "string" && item.mediaType.trim()
+            ? { mediaType: item.mediaType.trim() }
+            : {}),
+          ...(webuiLink?.trim()
+            ? { webuiLink: webuiLink.trim() }
+            : {}),
+          ...(downloadLink?.trim()
+            ? { downloadLink: downloadLink.trim() }
+            : {}),
+        });
+      }
+
+      const next = extractCursor(data._links?.next, this.confluenceBaseUrl);
+      if (!next) return { attachments, complete: true };
+      if (attachments.length >= maxAttachments) return { attachments, complete: false };
+      if (seenCursors.has(next)) throw new PaginationLoopError(next);
+      seenCursors.add(next);
+      cursor = next;
+    }
+
+    return { attachments, complete: false };
+  }
+
+  /**
    * List attachments for a page.
    *
    * GET /content/{id}/child/attachment
    */
   async listAttachments(
     pageId: string,
-    options: { limit?: number } = {}
+    options: { limit?: number; signal?: AbortSignal } = {},
   ): Promise<AttachmentInfo[]> {
     const data = (await this.request(`/content/${pageId}/child/attachment`, {
       query: {
         expand: "version,metadata.mediaType",
         limit: options.limit ?? 100,
       },
+      signal: options.signal,
     })) as any;
 
     const results = Array.isArray(data.results) ? data.results : [];
@@ -2676,6 +3161,111 @@ export class ConfluenceClient {
   }
 
   /**
+   * Fetch the privacy-sensitive inline-comment sidecar used by ADF export.
+   *
+   * Root comments and replies are cursor-paginated, bounded together, and
+   * response bodies are never copied into API logs. `complete:false` is an
+   * explicit export fact when either the item or request budget is exhausted.
+   */
+  async listPageInlineCommentsForExport(
+    pageId: string,
+    options: { signal?: AbortSignal; maxInlineComments?: number } = {},
+  ): Promise<PageInlineCommentsExportResult> {
+    const requested = options.maxInlineComments ?? DEFAULT_PAGE_INLINE_COMMENT_LIMIT;
+    const maxComments = Math.max(0, Math.min(requested, MAX_PAGE_INLINE_COMMENT_LIMIT));
+    if (maxComments === 0) return { comments: [], complete: false };
+
+    let requests = 0;
+    let observed = 0;
+    let complete = true;
+    const roots: InlineComment[] = [];
+
+    const fetchPage = async (
+      path: string,
+      cursor: string | undefined,
+      includeRootFilters: boolean,
+    ): Promise<{ items: InlineComment[]; next?: string }> => {
+      if (requests >= MAX_PAGE_INLINE_COMMENT_REQUESTS) {
+        complete = false;
+        return { items: [] };
+      }
+      requests += 1;
+      const remaining = maxComments - observed;
+      if (remaining <= 0) {
+        complete = false;
+        return { items: [] };
+      }
+      const data = (await this.requestV2(path, {
+        query: {
+          limit: Math.min(250, remaining),
+          cursor,
+          "body-format": "storage",
+          ...(includeRootFilters
+            ? {
+                status: ["current"],
+                "resolution-status": ["open", "resolved"],
+              }
+            : {}),
+        },
+        signal: options.signal,
+        logBody: "meta-only",
+      })) as any;
+      const raw = Array.isArray(data.results) ? data.results : [];
+      const items = raw
+        .slice(0, remaining)
+        .map((item: any) => this.parseInlineComment(item));
+      observed += items.length;
+      const next = extractCursor(data._links?.next, this.confluenceBaseUrl);
+      if (raw.length > items.length || (observed >= maxComments && next)) complete = false;
+      return { items, next };
+    };
+
+    let rootCursor: string | undefined;
+    const seenRootCursors = new Set<string>();
+    for (;;) {
+      const page = await fetchPage(
+        `/pages/${pageId}/inline-comments`,
+        rootCursor,
+        true,
+      );
+      roots.push(...page.items);
+      if (!page.next || observed >= maxComments || requests >= MAX_PAGE_INLINE_COMMENT_REQUESTS) {
+        if (page.next) complete = false;
+        break;
+      }
+      if (seenRootCursors.has(page.next)) throw new PaginationLoopError(page.next);
+      seenRootCursors.add(page.next);
+      rootCursor = page.next;
+    }
+
+    for (const root of roots) {
+      if (observed >= maxComments || requests >= MAX_PAGE_INLINE_COMMENT_REQUESTS) {
+        complete = false;
+        break;
+      }
+      let cursor: string | undefined;
+      const seen = new Set<string>();
+      for (;;) {
+        const page = await fetchPage(
+          `/inline-comments/${root.id}/children`,
+          cursor,
+          false,
+        );
+        root.replies.push(...page.items);
+        if (!page.next || observed >= maxComments || requests >= MAX_PAGE_INLINE_COMMENT_REQUESTS) {
+          if (page.next) complete = false;
+          break;
+        }
+        if (seen.has(page.next)) throw new PaginationLoopError(page.next);
+        seen.add(page.next);
+        cursor = page.next;
+      }
+    }
+
+    return { comments: roots, complete };
+  }
+
+  /**
    * Get all comments (footer + inline) for a page.
    */
   async getAllComments(
@@ -2717,7 +3307,7 @@ export class ConfluenceClient {
    * Parse inline comment from v2 API response.
    */
   private parseInlineComment(item: any): InlineComment {
-    const props = item.inlineCommentProperties ?? {};
+    const props = item.properties ?? item.inlineCommentProperties ?? {};
     return {
       id: item.id,
       author: {
@@ -2732,6 +3322,8 @@ export class ConfluenceClient {
       textSelection: props.textSelection ?? "",
       textSelectionMatchCount: props.textSelectionMatchCount,
       textSelectionMatchIndex: props.textSelectionMatchIndex,
+      inlineMarkerRef: props.inlineMarkerRef,
+      inlineOriginalSelection: props.inlineOriginalSelection,
     };
   }
 
@@ -3162,10 +3754,14 @@ export class ConfluenceClient {
    * @param accountId - Atlassian account ID
    * @returns User info or null if not found
    */
-  async getUser(accountId: string): Promise<UserInfo | null> {
+  async getUser(
+    accountId: string,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<UserInfo | null> {
     try {
       const data = (await this.request("/user", {
         query: { accountId },
+        signal: options.signal,
       })) as any;
 
       return {
@@ -3197,9 +3793,13 @@ export class ConfluenceClient {
    * @returns The homepage's storage XML, or `null` when the space has no
    *   homepage or it carries no storage body.
    */
-  async getSpaceHomepageStorage(spaceKey: string): Promise<string | null> {
+  async getSpaceHomepageStorage(
+    spaceKey: string,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<string | null> {
     const data = (await this.request(`/space/${spaceKey}`, {
       query: { expand: "homepage.body.storage" },
+      signal: options.signal,
     })) as { homepage?: { body?: { storage?: { value?: string } } } };
     return data?.homepage?.body?.storage?.value ?? null;
   }
@@ -3241,14 +3841,19 @@ export class ConfluenceClient {
    * @returns The owner with a resolved display name, or `null` when the page has
    *   no owner or the account cannot be looked up (caller renders empty).
    */
-  async getPageOwner(pageId: string): Promise<ConfluenceUser | null> {
-    const data = (await this.requestV2(`/pages/${pageId}`, {})) as {
+  async getPageOwner(
+    pageId: string,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<ConfluenceUser | null> {
+    const data = (await this.requestV2(`/pages/${pageId}`, {
+      signal: options.signal,
+    })) as {
       ownerId?: string | null;
     };
     const ownerId = data?.ownerId;
     if (!ownerId) return null;
 
-    const user = await this.getUser(ownerId);
+    const user = await this.getUser(ownerId, options);
     if (!user?.displayName) return null;
     return {
       accountId: ownerId,
@@ -3267,7 +3872,7 @@ export class ConfluenceClient {
    */
   async getUsersBulk(
     accountIds: string[],
-    options: { concurrency?: number } = {}
+    options: { concurrency?: number; signal?: AbortSignal } = {},
   ): Promise<Map<string, UserInfo | null>> {
     const { concurrency = 5 } = options;
     const results = new Map<string, UserInfo | null>();
@@ -3275,9 +3880,10 @@ export class ConfluenceClient {
 
     // Process in batches to avoid overwhelming the API
     for (let i = 0; i < uniqueIds.length; i += concurrency) {
+      options.signal?.throwIfAborted();
       const batch = uniqueIds.slice(i, i + concurrency);
       const promises = batch.map(async (id) => {
-        const user = await this.getUser(id);
+        const user = await this.getUser(id, { signal: options.signal });
         results.set(id, user);
       });
       await Promise.all(promises);
@@ -3506,7 +4112,17 @@ export interface InlineComment extends BaseComment {
   textSelectionMatchCount?: number;
   /** Which occurrence (0-indexed) this comment is attached to */
   textSelectionMatchIndex?: number;
+  /** Exact correlation key used by the ADF annotation mark `attrs.id`. */
+  inlineMarkerRef?: string;
+  /** Original selected text reported by the v2 comment resource. */
+  inlineOriginalSelection?: string;
   replies: InlineComment[];
+}
+
+/** Bounded inline-comment sidecar for ADF export. */
+export interface PageInlineCommentsExportResult {
+  comments: InlineComment[];
+  complete: boolean;
 }
 
 /** All comments for a page */

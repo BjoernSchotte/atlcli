@@ -307,6 +307,7 @@ async function durableBlocks(
       ok: true as const,
       pageId: node.pageId,
       title: node.title,
+      source: { representation: "storage" as const, degraded: false },
       blocks: structuredClone(node.blocks),
       notes: structuredClone(node.notes),
       meta: structuredClone(node.meta),

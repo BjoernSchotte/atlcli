@@ -39,11 +39,15 @@
 import PizZip from "pizzip";
 import Docxtemplater from "docxtemplater";
 import {
+  createAdfAnnotationResolver,
+  createAdfMediaAttachmentResolver,
   AssetBudget,
   AssetPipelineError,
   assertSafeSvg,
   decodeSvgSource,
+  pageBodyToBlocks,
   storageToBlocks,
+  type BlocksResult,
   type ConfluencePageDetails,
   type ExportBlock,
   type ExportNote,
@@ -71,11 +75,13 @@ import {
 } from "./resolver.js";
 import {
   serializeBlocks,
+  WordCommentRegistry,
   type CodeBlock,
   type DiagramEmbedSeam,
   type ImageBlock,
   type ImageEmbedOutcome,
   type ImageEmbedSeam,
+  type InlineImageNode,
 } from "./serialize.js";
 import {
   auditImageAltText,
@@ -90,7 +96,7 @@ import {
 } from "./image.js";
 import { renderDiagram, type DiagramTheme } from "@atlcli/diagram";
 import { parseIncludePageArgs, parseLogoArgs, type IncludePageRef } from "./placeholder-map.js";
-import type { IncludeLookupOutcome } from "./resolver.js";
+import type { IncludeLookupOutcome, IncludePageDetails } from "./resolver.js";
 import type { AssetFetcher, AssetRef, HostCallContext, SvgRasterizer } from "./env.js";
 import {
   CAPTION_STYLE_ID,
@@ -104,6 +110,12 @@ import {
   type CaptionLang,
   type TableStyleSource,
 } from "./ooxml.js";
+import {
+  CODE_FONT_FAMILY,
+  assertBundledCodeFont,
+  ensureEmbeddedCodeFont,
+  loadBundledCodeFont,
+} from "./font-embedding.js";
 import { NumberingAllocator } from "./numbering.js";
 import {
   encodeXmlText,
@@ -541,6 +553,7 @@ export async function prepareDocxExport(input: ExportInput): Promise<PreparedDoc
   // post-render scan would be too late (see PLAN "Numbering inventory happens
   // before serialization"). A malformed part degrades to a safe zero base.
   const numbering = new NumberingAllocator(inspectNumberingPart(zip));
+  const comments = new WordCommentRegistry();
   // One embedder per export owns the unique-id counters for images AND
   // diagrams (spec 005a: "unique element ids reused from 005 — no collisions
   // with page images"). Attachment images additionally need an asset fetcher;
@@ -608,10 +621,12 @@ export async function prepareDocxExport(input: ExportInput): Promise<PreparedDoc
   const body = await serializeBlocks(blocks, {
     styleNames,
     numbering,
+    comments,
     images,
     diagrams,
     ...(bodySectPr ? { bodySectPr } : {}),
     captionLang: captionLocale.lang,
+    ...(input.captionLang !== undefined ? { dateLocale: input.captionLang } : {}),
     tableStyle: tableStyleResolution.tableStyle,
   });
   timings.bodyMs = Date.now() - bodyStart;
@@ -703,8 +718,10 @@ export async function prepareDocxExport(input: ExportInput): Promise<PreparedDoc
     budget,
     styleNames,
     captionLang: captionLocale.lang,
+    ...(input.captionLang !== undefined ? { dateLocale: input.captionLang } : {}),
     timings,
     notes: flowNotes,
+    comments,
   });
 
   if (!contentFound) {
@@ -724,12 +741,20 @@ export async function prepareDocxExport(input: ExportInput): Promise<PreparedDoc
   preprocessScrollText(zip, resolved.values);
 
   // 5. Synthesize the code/caption styles if the body OR any included page
-  //    referenced them; force TOC refresh. An included page can be the only
-  //    thing carrying a code macro or a captioned figure (spec 005 D1).
+  //    referenced them. An included page can be the only thing carrying a code
+  //    macro, inline code, or a captioned figure (spec 005 D1).
   const includeXml = [...includes.values()].join("");
   const styledXml = body.xml + includeXml;
   if (styledXml.includes(`w:pStyle w:val="${CODE_STYLE_ID}"`)) ensureCodeStyle(zip);
   if (styledXml.includes(`w:pStyle w:val="${CAPTION_STYLE_ID}"`)) ensureCaptionStyle(zip);
+  if (styledXml.includes(`w:rFonts w:ascii="${CODE_FONT_FAMILY}"`)) {
+    throwIfAborted(input.signal);
+    const codeFontBytes = await loadBundledCodeFont();
+    throwIfAborted(input.signal);
+    await assertBundledCodeFont(codeFontBytes);
+    throwIfAborted(input.signal);
+    ensureEmbeddedCodeFont(zip, codeFontBytes);
+  }
   // Native list numbering (spec 006 G2): write word/numbering.xml (+ content
   // type + relationship) only when a list actually acquired an id, and
   // synthesize the fallback ListParagraph style if the body OR an included
@@ -746,6 +771,7 @@ export async function prepareDocxExport(input: ExportInput): Promise<PreparedDoc
       });
     }
   }
+  if (comments.isUsed) ensureCommentsPart(zip, comments);
   // Everything below this point is small, serializable report/checkpoint data.
   // The mutable PizZip archive itself is frozen into bytes so a worker crash
   // cannot leave a durable checkpoint pointing at a half-mutated object.
@@ -976,13 +1002,32 @@ function validateStylerefFields(
 /** Count `image` blocks anywhere in the tree (for asset-phase progress totals). */
 function countImageBlocks(blocks: ExportBlock[]): number {
   let count = 0;
+  const countInline = (nodes: import("@atlcli/confluence").InlineNode[]): void => {
+    for (const node of nodes) {
+      if (node.type === "link") countInline(node.content);
+      else if (node.type === "media" && node.source) count += 1;
+    }
+  };
+  const countCaption = (caption: import("@atlcli/confluence").Caption | undefined): void => {
+    if (caption) countInline(caption.content);
+  };
   const walk = (list: ExportBlock[]): void => {
     for (const block of list) {
       switch (block.type) {
+        case "heading":
+        case "paragraph":
+          countInline(block.content);
+          break;
         case "image":
           count += 1;
+          countCaption(block.caption);
+          break;
+        case "codeBlock":
+        case "mediaFallback":
+          countCaption(block.caption);
           break;
         case "callout":
+        case "expand":
         case "blockquote":
         case "orientation":
           walk(block.content);
@@ -990,7 +1035,11 @@ function countImageBlocks(blocks: ExportBlock[]): number {
         case "list":
           for (const item of block.items) walk(item.content);
           break;
+        case "layout":
+          for (const column of block.columns) walk(column.content);
+          break;
         case "table":
+          countCaption(block.caption);
           for (const row of block.rows) for (const cell of row.cells) walk(cell.content);
           break;
       }
@@ -1347,6 +1396,7 @@ interface ImageSeamOptions {
 
 /** The default display size for an SVG whose intrinsic size is undeterminable. */
 const SVG_FALLBACK_SIZE = { widthPx: 600, heightPx: 400 };
+type ImageAssetNode = ImageBlock | InlineImageNode;
 
 function imageSeam(
   embedder: ImageEmbedder,
@@ -1370,7 +1420,7 @@ function imageSeam(
   // the same attachment twice downloads it once (the embedder already
   // deduplicates the media part; this deduplicates the network fetch).
   const fetches = new Map<string, Promise<Uint8Array>>();
-  const fetchBytes = (block: ImageBlock): Promise<Uint8Array> => {
+  const fetchBytes = (block: ImageAssetNode): Promise<Uint8Array> => {
     const ref = assetRefFor(block, pageId);
     let p = fetches.get(ref.url);
     if (!p) {
@@ -1393,7 +1443,7 @@ function imageSeam(
     }
     return p;
   };
-  const budgetMeta = (block: ImageBlock): { filename: string; pageId?: string } => {
+  const budgetMeta = (block: ImageAssetNode): { filename: string; pageId?: string } => {
     const filename = block.source.kind === "attachment" ? block.source.filename : block.source.url;
     const owningPage = block.source.kind === "attachment" ? block.source.pageId ?? pageId : pageId;
     return { filename, ...(owningPage ? { pageId: owningPage } : {}) };
@@ -1406,7 +1456,7 @@ function imageSeam(
    * asset budget would blame: one notion of "which page is this image from",
    * not two.
    */
-  const auditAlt = (block: ImageBlock): void => {
+  const auditAlt = (block: ImageAssetNode): void => {
     if (!auditNotes) return;
     const meta = budgetMeta(block);
     const note = auditImageAltText({
@@ -1424,49 +1474,64 @@ function imageSeam(
     done += 1;
     onProgress?.({ phase: "assets", done, total, ...(detail !== undefined ? { detail } : {}) });
   };
+  const embed = async (
+    block: ImageAssetNode,
+    inline: boolean,
+  ): Promise<ImageEmbedOutcome> => {
+    const name = block.source.kind === "attachment" ? block.source.filename : undefined;
+    // Audit the SOURCE node first: the defect belongs to the page, not to the
+    // embed attempt, so it is reported whether or not the bytes resolve.
+    auditAlt(block);
+    let bytes: Uint8Array;
+    try {
+      bytes = await fetchBytes(block);
+    } catch (err) {
+      rethrowCancellation(err, signal);
+      reportDone(name);
+      return { ok: false as const, reason: err instanceof Error ? err.message : String(err) };
+    }
+    // Budget accounting BEFORE embed: a total-cap breach is fatal and must
+    // abort the whole export (never a per-image warning).
+    budget.account(bytes, budgetMeta(block));
+    if (isSvg(bytes)) {
+      const outcome = await embedSvgAttachment(block, bytes, name, inline);
+      reportDone(name);
+      return outcome;
+    }
+    try {
+      const wanted = mediaTargetSize(block);
+      const wrap = inline ? undefined : mediaWrap(block);
+      const options = {
+        alt: block.alt,
+        name,
+        widthPx: wanted.widthPx,
+        heightPx: wanted.heightPx,
+        ...(wrap ? { wrap } : {}),
+        ...(partPath ? { partPath } : {}),
+        ...(inline && block.border ? { border: block.border } : {}),
+      };
+      const xml = inline
+        ? embedder.embedInline(bytes, options)
+        : embedder.embed(bytes, options);
+      reportDone(name);
+      return { ok: true as const, xml };
+    } catch (err) {
+      reportDone(name);
+      return { ok: false as const, reason: err instanceof Error ? err.message : String(err) };
+    }
+  };
   return {
     prefetch(block: ImageBlock) {
       void fetchBytes(block);
     },
-    async embed(block: ImageBlock) {
-      const name = block.source.kind === "attachment" ? block.source.filename : undefined;
-      // Audit the SOURCE block first: the defect belongs to the page, not to
-      // the embed attempt, so it is reported whether or not the bytes resolve.
-      auditAlt(block);
-      let bytes: Uint8Array;
-      try {
-        bytes = await fetchBytes(block);
-      } catch (err) {
-        rethrowCancellation(err, signal);
-        reportDone(name);
-        return { ok: false as const, reason: err instanceof Error ? err.message : String(err) };
-      }
-      // Budget accounting BEFORE embed: a total-cap breach is fatal and must
-      // abort the whole export (never a per-image warning), so it is NOT caught
-      // by the per-image failure branch below — it propagates out of the seam.
-      budget.account(bytes, budgetMeta(block));
-      // SVG attachment path (spec 006 G4): embed vector-sharp via svgBlip with a
-      // 2× PNG fallback. Detected here before the raster embedder is reached, so
-      // the deferral throw in ImageEmbedder.embed is never hit for this path.
-      if (isSvg(bytes)) {
-        const outcome = await embedSvgAttachment(block, bytes, name);
-        reportDone(name);
-        return outcome;
-      }
-      try {
-        const xml = embedder.embed(bytes, {
-          alt: block.alt,
-          name,
-          widthPx: block.width,
-          heightPx: block.height,
-          ...(partPath ? { partPath } : {}),
-        });
-        reportDone(name);
-        return { ok: true as const, xml };
-      } catch (err) {
-        reportDone(name);
-        return { ok: false as const, reason: err instanceof Error ? err.message : String(err) };
-      }
+    prefetchInline(block: InlineImageNode) {
+      void fetchBytes(block);
+    },
+    embed(block: ImageBlock) {
+      return embed(block, false);
+    },
+    embedInline(block: InlineImageNode) {
+      return embed(block, true);
     },
   };
 
@@ -1480,9 +1545,10 @@ function imageSeam(
    * target degrades with a precise note code instead of embedding.
    */
   async function embedSvgAttachment(
-    block: ImageBlock,
+    block: ImageAssetNode,
     bytes: Uint8Array,
-    name: string | undefined
+    name: string | undefined,
+    inline: boolean,
   ): Promise<ImageEmbedOutcome> {
     if (!rasterizer) {
       return {
@@ -1515,7 +1581,7 @@ function imageSeam(
     }
     const display = resolveTargetSize(
       { width: intrinsic.widthPx, height: intrinsic.heightPx },
-      { widthPx: block.width, heightPx: block.height },
+      mediaTargetSize(block),
       MAX_CONTENT_WIDTH_PX
     );
     const raster = boundRasterTarget({ widthPx: display.widthPx * 2, heightPx: display.heightPx * 2 });
@@ -1542,13 +1608,19 @@ function imageSeam(
     // accounted above). A breach is fatal — propagate out of the seam.
     budget.account(png, { filename: (name ?? "image") + ".png" });
     try {
-      const xml = embedder.embedSvg(source, png, {
+      const svgOptions = {
         origin: "image",
         alt: block.alt ?? name,
         name,
         widthPx: display.widthPx,
         heightPx: display.heightPx,
-      });
+        ...(!inline && mediaWrap(block) ? { wrap: mediaWrap(block) } : {}),
+        ...(partPath ? { partPath } : {}),
+        ...(inline && block.border ? { border: block.border } : {}),
+      } as const;
+      const xml = inline
+        ? embedder.embedSvgInline(source, png, svgOptions)
+        : embedder.embedSvg(source, png, svgOptions);
       return { ok: true as const, xml, ...(sideNotes.length ? { notes: sideNotes } : {}) };
     } catch (err) {
       return { ok: false as const, reason: err instanceof Error ? err.message : String(err) };
@@ -1556,8 +1628,35 @@ function imageSeam(
   }
 }
 
+function mediaTargetSize(
+  block: ImageAssetNode,
+): { widthPx?: number; heightPx?: number } {
+  const presentation = "mediaPresentation" in block ? block.mediaPresentation : undefined;
+  if (!presentation) return { widthPx: block.width, heightPx: block.height };
+  if (presentation.layout === "wide" || presentation.layout === "full-width") {
+    return { widthPx: MAX_CONTENT_WIDTH_PX };
+  }
+  if (presentation.width !== undefined) {
+    const widthPx =
+      presentation.widthType === "pixel"
+        ? presentation.width
+        : (MAX_CONTENT_WIDTH_PX * presentation.width) / 100;
+    return { widthPx };
+  }
+  return { widthPx: block.width, heightPx: block.height };
+}
+
+function mediaWrap(block: ImageAssetNode): "left" | "right" | undefined {
+  const presentation = "mediaPresentation" in block ? block.mediaPresentation : undefined;
+  return presentation?.layout === "wrap-left"
+    ? "left"
+    : presentation?.layout === "wrap-right"
+      ? "right"
+      : undefined;
+}
+
 /** Human label for an image block in a note (attachment filename or URL). */
-function describeImageBlock(block: ImageBlock): string {
+function describeImageBlock(block: ImageAssetNode): string {
   return block.source.kind === "attachment"
     ? `"${block.source.filename}"`
     : `"${block.source.url}"`;
@@ -1722,7 +1821,8 @@ const INCLUDE_TOKEN_RE = /\$scroll\.includepage(?:\.?\([^)]*\))?/;
  * (`includepage-budget-exceeded`), never an unbounded fan-out.
  */
 const INCLUDE_BUDGET_MAX_PAGES = 25;
-const INCLUDE_BUDGET_MAX_STORAGE_BYTES = 2 * 1024 * 1024;
+const INCLUDE_BUDGET_MAX_BODY_BYTES = 2 * 1024 * 1024;
+const INCLUDE_BUDGET_MAX_STORAGE_SIDECAR_BYTES = 2 * 1024 * 1024;
 
 interface IncludeOccurrence {
   /** Stable index → rawxml key `scrollInclude<index>` (one per occurrence). */
@@ -1744,9 +1844,11 @@ interface IncludePassDeps {
   budget: AssetBudget;
   styleNames: Map<string, string>;
   captionLang: CaptionLang;
+  dateLocale?: string;
   timings: ExportTimings;
   /** Sink for the pass's report notes (part of the export's flow notes). */
   notes: ExportNote[];
+  comments: WordCommentRegistry;
 }
 
 /**
@@ -1764,7 +1866,7 @@ interface IncludePassDeps {
  *    true multi-hop cycles are structurally impossible (included content is
  *    never re-scanned for further tokens).
  *  - **One fetch + one walk per unique target.** Fetches de-duplicate by
- *    canonical ref key through a bounded pool; `storageToBlocks` caches per
+ *    canonical ref key through a bounded pool; representation-neutral decode caches per
  *    resolved pageId. `serializeBlocks` still runs per OCCURRENCE so each
  *    occurrence's images/diagrams embed into ITS OWN target part's rels.
  */
@@ -1826,9 +1928,10 @@ async function runIncludePass(pass: IncludePassDeps): Promise<Map<string, string
   };
 
   // 3. Render + budget state, keyed by the resolved pageId.
-  const blocksCache = new Map<string, ReturnType<typeof storageToBlocks>>();
+  const blocksCache = new Map<string, BlocksResult>();
   const acceptedPages = new Set<string>();
-  let cumulativeStorageBytes = 0;
+  let cumulativeBodyBytes = 0;
+  let cumulativeStorageSidecarBytes = 0;
   let budgetNoted = false;
 
   const note = (code: ExportNote["code"], message: string, level: "info" | "warning" = "warning"): void => {
@@ -1850,7 +1953,7 @@ async function runIncludePass(pass: IncludePassDeps): Promise<Map<string, string
     }
 
     const outcome = await fetchRef(ref);
-    let page: ConfluencePageDetails;
+    let page: IncludePageDetails;
     switch (outcome.kind) {
       case "resolved":
         page = outcome.page;
@@ -1894,28 +1997,52 @@ async function runIncludePass(pass: IncludePassDeps): Promise<Map<string, string
 
     // Budget: gate only NEW unique targets; already-accepted ones keep rendering.
     if (!acceptedPages.has(page.id)) {
-      const size = (page.storage ?? "").length;
+      const exportSource = page.exportSource;
+      const body = exportSource?.primary.value ?? page.storage ?? "";
+      const sidecar = exportSource?.storageSidecar ?? "";
+      const bodyBytes = new TextEncoder().encode(body).byteLength;
+      const sidecarBytes = new TextEncoder().encode(sidecar).byteLength;
       if (
         acceptedPages.size >= INCLUDE_BUDGET_MAX_PAGES ||
-        cumulativeStorageBytes + size > INCLUDE_BUDGET_MAX_STORAGE_BYTES
+        cumulativeBodyBytes + bodyBytes > INCLUDE_BUDGET_MAX_BODY_BYTES ||
+        cumulativeStorageSidecarBytes + sidecarBytes > INCLUDE_BUDGET_MAX_STORAGE_SIDECAR_BYTES
       ) {
         if (!budgetNoted) {
           note(
             "includepage-budget-exceeded",
-            `Include budget exceeded (>${INCLUDE_BUDGET_MAX_PAGES} unique pages or >${INCLUDE_BUDGET_MAX_STORAGE_BYTES} bytes); further new includes rendered empty.`
+            `Include budget exceeded (>${INCLUDE_BUDGET_MAX_PAGES} unique pages, >${INCLUDE_BUDGET_MAX_BODY_BYTES} body bytes, or >${INCLUDE_BUDGET_MAX_STORAGE_SIDECAR_BYTES} Storage-sidecar bytes); further new includes rendered empty.`
           );
           budgetNoted = true;
         }
         continue;
       }
       acceptedPages.add(page.id);
-      cumulativeStorageBytes += size;
+      cumulativeBodyBytes += bodyBytes;
+      cumulativeStorageSidecarBytes += sidecarBytes;
     }
 
     // Walk once per unique pageId (cached); collect walk notes only once.
     let walked = blocksCache.get(page.id);
     if (!walked) {
-      walked = storageToBlocks(page.storage ?? "", { exporter: "word" });
+      const exportSource = page.exportSource;
+      walked = exportSource
+        ? pageBodyToBlocks(exportSource, {
+            exporter: "word",
+            resolveMediaAttachment: createAdfMediaAttachmentResolver(page.mediaAttachments),
+            resolveAnnotation: createAdfAnnotationResolver(page.inlineComments),
+            annotationCommentsComplete: page.inlineCommentsComplete,
+            pageContext: {
+              id: page.id,
+              title: page.title,
+              ...(exportSource.sourceVersion !== undefined
+                ? { version: exportSource.sourceVersion }
+                : page.version !== undefined
+                  ? { version: page.version }
+                  : {}),
+              ...(page.spaceKey ? { spaceKey: page.spaceKey } : {}),
+            },
+          })
+        : storageToBlocks(page.storage ?? "", { exporter: "word" });
       blocksCache.set(page.id, walked);
       notes.push(...walked.notes);
     }
@@ -1952,9 +2079,11 @@ async function runIncludePass(pass: IncludePassDeps): Promise<Map<string, string
         : undefined;
     const serialized = await serializeBlocks(walked.blocks, {
       styleNames: pass.styleNames,
+      comments: pass.comments,
       ...(images ? { images } : {}),
       ...(diagrams ? { diagrams } : {}),
       captionLang: pass.captionLang,
+      ...(pass.dateLocale !== undefined ? { dateLocale: pass.dateLocale } : {}),
     });
     notes.push(...serialized.notes);
 
@@ -1981,7 +2110,7 @@ async function runIncludePass(pass: IncludePassDeps): Promise<Map<string, string
  * feed it straight to its binary-request helper and a session host prefixes
  * its wiki base. External images pass their absolute URL through.
  */
-function assetRefFor(block: ImageBlock, pageId: string): AssetRef {
+function assetRefFor(block: ImageAssetNode, pageId: string): AssetRef {
   if (block.source.kind === "attachment") {
     // Composed tree/space documents carry the owning page on the block
     // (ImageSource.pageId, spec 002); an attachment must be fetched from the
@@ -2163,6 +2292,40 @@ export function ensureNumberingPart(zip: PizZip, allocator: NumberingAllocator):
         "</Relationships>",
         `<Relationship Id="${rid}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering" Target="numbering.xml"/></Relationships>`
       )
+    );
+  }
+}
+
+/** Register the native Word comment part emitted by ADF annotation ranges. */
+export function ensureCommentsPart(zip: PizZip, comments: WordCommentRegistry): void {
+  if (!comments.isUsed) return;
+  zip.file("word/comments.xml", comments.toXml());
+
+  const ctPath = "[Content_Types].xml";
+  const ct = zip.file(ctPath)?.asText();
+  if (ct && !ct.includes("word/comments.xml")) {
+    zip.file(
+      ctPath,
+      ct.replace(
+        "</Types>",
+        `<Override PartName="/word/comments.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml"/></Types>`,
+      ),
+    );
+  }
+
+  const relsPath = relsPathFor("word/document.xml");
+  const rels =
+    zip.file(relsPath)?.asText() ??
+    `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"></Relationships>`;
+  if (!/relationships\/comments/.test(rels)) {
+    const ids = [...rels.matchAll(/Id=["']rId(\d+)["']/g)].map((match) => Number(match[1]));
+    const rid = `rId${(ids.length ? Math.max(...ids) : 0) + 1}`;
+    zip.file(
+      relsPath,
+      rels.replace(
+        "</Relationships>",
+        `<Relationship Id="${rid}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments" Target="comments.xml"/></Relationships>`,
+      ),
     );
   }
 }

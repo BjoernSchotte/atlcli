@@ -114,11 +114,11 @@ export interface HostCallContext {
 // export: IncludeLookupOutcome
 export type IncludeLookupOutcome = {
     kind: "resolved";
-    page: ConfluencePageDetails;
+    page: IncludePageDetails;
 } | {
     kind: "ambiguous";
     count: number;
-    page: ConfluencePageDetails;
+    page: IncludePageDetails;
 } | {
     kind: "not-found-or-forbidden";
 } | {
@@ -128,6 +128,15 @@ export type IncludeLookupOutcome = {
 } | {
     kind: "transient-error";
     message: string;
+};
+
+// export: IncludePageDetails
+export type IncludePageDetails = ConfluencePageDetails & {
+    exportSource?: ExportPageSource;
+    mediaAttachments?: AdfMediaAttachment[];
+    mediaAttachmentsComplete?: boolean;
+    inlineComments?: InlineComment[];
+    inlineCommentsComplete?: boolean;
 };
 
 // export: IncludePageRef
@@ -141,22 +150,23 @@ export interface IncludePageRef {
 export declare class NumberingAllocator {
     private readonly base;
     private readonly bulletAbstractId;
-    private readonly decimalAbstractId;
+    private nextAbstractId;
     private nextNumId;
     private bulletNumId;
-    private readonly orderedNumIds;
+    private readonly orderedInstances;
     private lastNumId;
     private used;
     private capReached;
     constructor(base: NumberingBase);
     get isUsed(): boolean;
     get capExceeded(): boolean;
-    acquire(ordered: boolean): number;
+    acquire(ordered: boolean, start?: number, ilvl?: number): number;
     private allocNumId;
     private tryAllocNumId;
     toXml(): NumberingXml;
     private bulletAbstractNum;
-    private decimalAbstractNum;
+    private orderedAbstractNum;
+    private orderedLevel;
 }
 
 // export: NumberingBase
@@ -406,11 +416,11 @@ export interface HostCallContext {
 // export: IncludeLookupOutcome
 export type IncludeLookupOutcome = {
     kind: "resolved";
-    page: ConfluencePageDetails;
+    page: IncludePageDetails;
 } | {
     kind: "ambiguous";
     count: number;
-    page: ConfluencePageDetails;
+    page: IncludePageDetails;
 } | {
     kind: "not-found-or-forbidden";
 } | {
@@ -420,6 +430,15 @@ export type IncludeLookupOutcome = {
 } | {
     kind: "transient-error";
     message: string;
+};
+
+// export: IncludePageDetails
+export type IncludePageDetails = ConfluencePageDetails & {
+    exportSource?: ExportPageSource;
+    mediaAttachments?: AdfMediaAttachment[];
+    mediaAttachmentsComplete?: boolean;
+    inlineComments?: InlineComment[];
+    inlineCommentsComplete?: boolean;
 };
 
 // export: IncludePageRef
@@ -433,22 +452,23 @@ export interface IncludePageRef {
 export declare class NumberingAllocator {
     private readonly base;
     private readonly bulletAbstractId;
-    private readonly decimalAbstractId;
+    private nextAbstractId;
     private nextNumId;
     private bulletNumId;
-    private readonly orderedNumIds;
+    private readonly orderedInstances;
     private lastNumId;
     private used;
     private capReached;
     constructor(base: NumberingBase);
     get isUsed(): boolean;
     get capExceeded(): boolean;
-    acquire(ordered: boolean): number;
+    acquire(ordered: boolean, start?: number, ilvl?: number): number;
     private allocNumId;
     private tryAllocNumId;
     toXml(): NumberingXml;
     private bulletAbstractNum;
-    private decimalAbstractNum;
+    private orderedAbstractNum;
+    private orderedLevel;
 }
 
 // export: NumberingBase
@@ -702,11 +722,11 @@ export interface HostCallContext {
 // export: IncludeLookupOutcome
 export type IncludeLookupOutcome = {
     kind: "resolved";
-    page: ConfluencePageDetails;
+    page: IncludePageDetails;
 } | {
     kind: "ambiguous";
     count: number;
-    page: ConfluencePageDetails;
+    page: IncludePageDetails;
 } | {
     kind: "not-found-or-forbidden";
 } | {
@@ -716,6 +736,15 @@ export type IncludeLookupOutcome = {
 } | {
     kind: "transient-error";
     message: string;
+};
+
+// export: IncludePageDetails
+export type IncludePageDetails = ConfluencePageDetails & {
+    exportSource?: ExportPageSource;
+    mediaAttachments?: AdfMediaAttachment[];
+    mediaAttachmentsComplete?: boolean;
+    inlineComments?: InlineComment[];
+    inlineCommentsComplete?: boolean;
 };
 
 // export: IncludePageRef
@@ -729,22 +758,23 @@ export interface IncludePageRef {
 export declare class NumberingAllocator {
     private readonly base;
     private readonly bulletAbstractId;
-    private readonly decimalAbstractId;
+    private nextAbstractId;
     private nextNumId;
     private bulletNumId;
-    private readonly orderedNumIds;
+    private readonly orderedInstances;
     private lastNumId;
     private used;
     private capReached;
     constructor(base: NumberingBase);
     get isUsed(): boolean;
     get capExceeded(): boolean;
-    acquire(ordered: boolean): number;
+    acquire(ordered: boolean, start?: number, ilvl?: number): number;
     private allocNumId;
     private tryAllocNumId;
     toXml(): NumberingXml;
     private bulletAbstractNum;
-    private decimalAbstractNum;
+    private orderedAbstractNum;
+    private orderedLevel;
 }
 
 // export: NumberingBase
@@ -991,6 +1021,12 @@ export interface ArchiveBudget {
 // export: assertArchiveBudget
 export declare function assertArchiveBudget(zip: PizZip, budget?: ArchiveBudget): void;
 
+// export: assertBundledCodeFont
+export declare function assertBundledCodeFont(bytes: Uint8Array): Promise<void>;
+
+// export: assertEmbeddableSfnt
+export declare function assertEmbeddableSfnt(bytes: Uint8Array): void;
+
 // export: assertNoActiveContent
 export declare function assertNoActiveContent(zip: PizZip): void;
 
@@ -1025,7 +1061,10 @@ export declare function boundRasterTarget(size: TargetSize): TargetSize | null;
 export declare function buildGetIncludedPage(io: IncludeLookupIo): (ref: IncludePageRef) => Promise<IncludeLookupOutcome>;
 
 // export: calloutTable
-export declare function calloutTable(kind: string, titleRunsXml: string | null, bodyParagraphs: string): string;
+export declare function calloutTable(kind: string, titleRunsXml: string | null, bodyParagraphs: string, custom?: {
+    color?: string;
+    iconRunsXml?: string | null;
+}): string;
 
 // export: CAPTION_STYLE_ID
 export declare const CAPTION_STYLE_ID = "Caption";
@@ -1054,6 +1093,18 @@ export declare function classifyPlaceholder(raw: string): PlaceholderClass;
 // export: coalesceSectPrParagraphs
 export declare function coalesceSectPrParagraphs(xml: string): string;
 
+// export: CODE_FONT_FAMILY
+export declare const CODE_FONT_FAMILY = "JetBrains Mono";
+
+// export: CODE_FONT_FILE
+export declare const CODE_FONT_FILE = "JetBrainsMono-Regular.ttf";
+
+// export: CODE_FONT_KEY
+export declare const CODE_FONT_KEY = "{001B70DC-AA60-4AD5-90EC-18A0948E1EAE}";
+
+// export: CODE_FONT_SHA256
+export declare const CODE_FONT_SHA256 = "a0bf60ef0f83c5ed4d7a75d45838548b1f6873372dfac88f71804491898d138f";
+
 // export: CODE_STYLE_ID
 export declare const CODE_STYLE_ID = "AtlcliCode";
 
@@ -1066,7 +1117,7 @@ export type CodeBlock = Extract<ExportBlock, {
 export declare function codeLineParagraph(tokens: {
     text: string;
     color?: string;
-}[]): string;
+}[], lineNumber?: number, lineNumberWidth?: number): string;
 
 // export: codeStyleXml
 export declare function codeStyleXml(): string;
@@ -1093,7 +1144,10 @@ export declare function collectSeqSequenceNames(xml: string): string[];
 export declare function collectStylerefFields(xml: string): string[];
 
 // export: columnWidthsDxa
-export declare function columnWidthsDxa(columnWidths: number[] | undefined, gridCols: number): number[] | undefined;
+export declare function columnWidthsDxa(columnWidths: number[] | undefined, gridCols: number, tableWidthDxa?: number): number[] | undefined;
+
+// export: configureBundledCodeFontLoader
+export declare function configureBundledCodeFontLoader(loader: BundledCodeFontLoader): void;
 
 // export: CurrentUser
 export interface CurrentUser {
@@ -1108,6 +1162,11 @@ export declare function dataTable(gridCols: number, rowsXml: string, opts?: Data
 // export: DataTableOptions
 export interface DataTableOptions {
     widthsDxa?: number[];
+    widthDxa?: number;
+    alignment?: "start" | "center" | "end";
+    fixedLayout?: boolean;
+    borderless?: boolean;
+    cellMarginDxa?: number;
     tableStyle?: TableStyleSource;
 }
 
@@ -1159,6 +1218,11 @@ export declare class DocxError extends Error {
 // export: DocxErrorKind
 export type DocxErrorKind = "not-zip" | "not-docx" | "too-large" | "too-many-entries" | "path-traversal" | "invalid-path" | "entry-too-large" | "uncompressed-too-large" | "suspicious-compression" | "corrupt-entry" | "active-content";
 
+// export: DocxFontEmbeddingError
+export declare class DocxFontEmbeddingError extends Error {
+    constructor(message: string);
+}
+
 // export: DocxRenderError
 export declare class DocxRenderError extends Error {
     readonly details: string[];
@@ -1173,8 +1237,10 @@ export interface DrawingParams {
     descr: string;
     cxEmu: number;
     cyEmu: number;
+    wrap?: "left" | "right";
     pPrXml?: string;
     svgRelId?: string;
+    border?: MediaBorder;
 }
 
 // export: EmbedImageOptions
@@ -1183,8 +1249,10 @@ export interface EmbedImageOptions {
     name?: string;
     widthPx?: number;
     heightPx?: number;
+    wrap?: "left" | "right";
     partPath?: string;
     pPrXml?: string;
+    border?: MediaBorder;
 }
 
 // export: EmbedSvgOptions
@@ -1193,9 +1261,11 @@ export interface EmbedSvgOptions {
     name?: string;
     widthPx: number;
     heightPx: number;
+    wrap?: "left" | "right";
     partPath?: string;
     pPrXml?: string;
     origin?: "image" | "diagram";
+    border?: MediaBorder;
 }
 
 // export: EMU_PER_PX
@@ -1210,8 +1280,14 @@ export declare function ensureCaptionStyle(zip: PizZip): void;
 // export: ensureCodeStyle
 export declare function ensureCodeStyle(zip: PizZip): void;
 
+// export: ensureCommentsPart
+export declare function ensureCommentsPart(zip: PizZip, comments: WordCommentRegistry): void;
+
 // export: ensureContentTypeDefault
 export declare function ensureContentTypeDefault(zip: PizZip, ext: string, mime: string): void;
+
+// export: ensureEmbeddedCodeFont
+export declare function ensureEmbeddedCodeFont(zip: PizZip, fontBytes: Uint8Array): void;
 
 // export: ensureListParagraphStyle
 export declare function ensureListParagraphStyle(zip: PizZip): void;
@@ -1327,7 +1403,7 @@ export declare function formatSimpleDate(date: Date, pattern: string): DateForma
 export declare function hasAltChunkRelationship(relsXml: string): boolean;
 
 // export: hyperlinkField
-export declare function hyperlinkField(url: string, innerRuns: string): string;
+export declare function hyperlinkField(url: string, innerRuns: string, tooltip?: string): string;
 
 // export: ImageBlock
 export type ImageBlock = Extract<ExportBlock, {
@@ -1347,7 +1423,11 @@ export declare class ImageEmbedder {
     get embeddedCount(): number;
     get diagramCount(): number;
     embed(bytes: Uint8Array, opts?: EmbedImageOptions): string;
+    embedInline(bytes: Uint8Array, opts?: EmbedImageOptions): string;
+    private embedRaster;
     embedSvg(svg: string | Uint8Array, pngFallback: Uint8Array, opts: EmbedSvgOptions): string;
+    embedSvgInline(svg: string | Uint8Array, pngFallback: Uint8Array, opts: EmbedSvgOptions): string;
+    private embedSvgDrawing;
     private findOrCreateMedia;
     private writeMedia;
     private ensureRelationship;
@@ -1378,7 +1458,9 @@ export type ImageEmbedOutcome = {
 // export: ImageEmbedSeam
 export interface ImageEmbedSeam {
     embed(block: ImageBlock): Promise<ImageEmbedOutcome>;
+    embedInline?(node: InlineImageNode): Promise<ImageEmbedOutcome>;
     prefetch?(block: ImageBlock): void;
+    prefetchInline?(node: InlineImageNode): void;
 }
 
 // export: ImageFormat
@@ -1395,7 +1477,7 @@ export interface ImageInfo {
 
 // export: IncludeLookupIo
 export interface IncludeLookupIo {
-    getPage: (id: string) => Promise<ConfluencePageDetails>;
+    getPage: (id: string) => Promise<IncludePageDetails>;
     findPagesByTitle: (title: string, spaceKey?: string) => Promise<Array<{
         id: string;
     }>>;
@@ -1405,11 +1487,11 @@ export interface IncludeLookupIo {
 // export: IncludeLookupOutcome
 export type IncludeLookupOutcome = {
     kind: "resolved";
-    page: ConfluencePageDetails;
+    page: IncludePageDetails;
 } | {
     kind: "ambiguous";
     count: number;
-    page: ConfluencePageDetails;
+    page: IncludePageDetails;
 } | {
     kind: "not-found-or-forbidden";
 } | {
@@ -1421,6 +1503,15 @@ export type IncludeLookupOutcome = {
     message: string;
 };
 
+// export: IncludePageDetails
+export type IncludePageDetails = ConfluencePageDetails & {
+    exportSource?: ExportPageSource;
+    mediaAttachments?: AdfMediaAttachment[];
+    mediaAttachmentsComplete?: boolean;
+    inlineComments?: InlineComment[];
+    inlineCommentsComplete?: boolean;
+};
+
 // export: IncludePageRef
 export interface IncludePageRef {
     spaceKey?: string;
@@ -1428,8 +1519,20 @@ export interface IncludePageRef {
     pageId?: string;
 }
 
+// export: InlineImageNode
+export type InlineImageNode = Extract<InlineNode, {
+    type: "media";
+}> & {
+    source: NonNullable<Extract<InlineNode, {
+        type: "media";
+    }>["source"]>;
+};
+
 // export: inlineImageParagraph
 export declare function inlineImageParagraph(p: DrawingParams): string;
+
+// export: inlineImageRun
+export declare function inlineImageRun(p: DrawingParams): string;
 
 // export: inspectNumberingPart
 export declare function inspectNumberingPart(zip: PizZip): {
@@ -1438,7 +1541,7 @@ export declare function inspectNumberingPart(zip: PizZip): {
 };
 
 // export: internalHyperlink
-export declare function internalHyperlink(anchor: string, innerRuns: string): string;
+export declare function internalHyperlink(anchor: string, innerRuns: string, tooltip?: string): string;
 
 // export: isMissingAltText
 export declare function isMissingAltText(alt: string | undefined): boolean;
@@ -1457,6 +1560,9 @@ export declare const LIST_PARAGRAPH_STYLE_ID = "ListParagraph";
 
 // export: listParagraphStyleXml
 export declare function listParagraphStyleXml(): string;
+
+// export: loadBundledCodeFont
+export declare function loadBundledCodeFont(): Promise<Uint8Array>;
 
 // export: LogoArgs
 export interface LogoArgs {
@@ -1501,22 +1607,23 @@ export declare function normalizeColor(color: string): string;
 export declare class NumberingAllocator {
     private readonly base;
     private readonly bulletAbstractId;
-    private readonly decimalAbstractId;
+    private nextAbstractId;
     private nextNumId;
     private bulletNumId;
-    private readonly orderedNumIds;
+    private readonly orderedInstances;
     private lastNumId;
     private used;
     private capReached;
     constructor(base: NumberingBase);
     get isUsed(): boolean;
     get capExceeded(): boolean;
-    acquire(ordered: boolean): number;
+    acquire(ordered: boolean, start?: number, ilvl?: number): number;
     private allocNumId;
     private tryAllocNumId;
     toXml(): NumberingXml;
     private bulletAbstractNum;
-    private decimalAbstractNum;
+    private orderedAbstractNum;
+    private orderedLevel;
 }
 
 // export: NumberingBase
@@ -1530,6 +1637,9 @@ export interface NumberingXml {
     abstractNums: string;
     nums: string;
 }
+
+// export: obfuscateFont
+export declare function obfuscateFont(bytes: Uint8Array, fontKey?: string): Uint8Array;
 
 // export: pageBreakParagraph
 export declare function pageBreakParagraph(): string;
@@ -1718,6 +1828,9 @@ export interface RunStyle {
     superscript?: boolean;
     color?: string;
     backgroundColor?: string;
+    borderColor?: string;
+    borderSize?: number;
+    fontSizeHalfPoints?: number;
 }
 
 // export: ScanHit
@@ -1761,25 +1874,28 @@ export declare function serializeBlocks(blocks: ExportBlock[], ctx: SerializeCon
 export interface SerializeContext {
     styleNames: Map<string, string>;
     numbering?: NumberingAllocator;
+    comments?: WordCommentRegistry;
     images?: ImageEmbedSeam;
     diagrams?: DiagramEmbedSeam;
     bodySectPr?: string;
     captionLang?: CaptionLang;
+    dateLocale?: string;
     tableStyle?: TableStyleSource;
 }
 
 // export: serializeInline
-export declare function serializeInline(nodes: InlineNode[], defaultTextColor?: string): string;
+export declare function serializeInline(nodes: InlineNode[], defaultTextColor?: string, fontSizeHalfPoints?: number, dateLocale?: string): string;
 
 // export: SerializeResult
 export interface SerializeResult {
     xml: string;
     notes: ExportNote[];
     headingStyleIds: string[];
+    comments: WordCommentRegistry;
 }
 
 // export: statusBadgeRun
-export declare function statusBadgeRun(text: string, color: string): string;
+export declare function statusBadgeRun(text: string, color: string, fontSizeHalfPoints?: number): string;
 
 // export: synthesizeA4SectPr
 export declare function synthesizeA4SectPr(): string;
@@ -1791,6 +1907,7 @@ export declare function tableCell(paragraphsXml: string, opts?: {
     header?: boolean;
     backgroundColor?: string;
     widthDxa?: number;
+    verticalAlignment?: "top" | "middle" | "bottom";
 }): string;
 
 // export: TableStyleSource
@@ -1822,6 +1939,14 @@ export declare function toPortraitSectPr(baseSectPr: string): string;
 
 // export: unzipDocx
 export declare function unzipDocx(bytes: Uint8Array, budget?: ArchiveBudget): PizZip;
+
+// export: WordCommentRegistry
+export declare class WordCommentRegistry {
+    private readonly byMarkerRef;
+    register(annotation: AdfAnnotationIdentity): number | undefined;
+    get isUsed(): boolean;
+    toXml(): string;
+}
 ```
 
 ### Entry point `./node`
@@ -1943,11 +2068,11 @@ export interface HostCallContext {
 // export: IncludeLookupOutcome
 export type IncludeLookupOutcome = {
     kind: "resolved";
-    page: ConfluencePageDetails;
+    page: IncludePageDetails;
 } | {
     kind: "ambiguous";
     count: number;
-    page: ConfluencePageDetails;
+    page: IncludePageDetails;
 } | {
     kind: "not-found-or-forbidden";
 } | {
@@ -1957,6 +2082,15 @@ export type IncludeLookupOutcome = {
 } | {
     kind: "transient-error";
     message: string;
+};
+
+// export: IncludePageDetails
+export type IncludePageDetails = ConfluencePageDetails & {
+    exportSource?: ExportPageSource;
+    mediaAttachments?: AdfMediaAttachment[];
+    mediaAttachmentsComplete?: boolean;
+    inlineComments?: InlineComment[];
+    inlineCommentsComplete?: boolean;
 };
 
 // export: IncludePageRef
@@ -1970,22 +2104,23 @@ export interface IncludePageRef {
 export declare class NumberingAllocator {
     private readonly base;
     private readonly bulletAbstractId;
-    private readonly decimalAbstractId;
+    private nextAbstractId;
     private nextNumId;
     private bulletNumId;
-    private readonly orderedNumIds;
+    private readonly orderedInstances;
     private lastNumId;
     private used;
     private capReached;
     constructor(base: NumberingBase);
     get isUsed(): boolean;
     get capExceeded(): boolean;
-    acquire(ordered: boolean): number;
+    acquire(ordered: boolean, start?: number, ilvl?: number): number;
     private allocNumId;
     private tryAllocNumId;
     toXml(): NumberingXml;
     private bulletAbstractNum;
-    private decimalAbstractNum;
+    private orderedAbstractNum;
+    private orderedLevel;
 }
 
 // export: NumberingBase

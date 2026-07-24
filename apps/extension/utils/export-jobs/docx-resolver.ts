@@ -1,5 +1,6 @@
 import {
   ConfluenceClient,
+  resolveExportMentions,
   type ConfluencePageDetails,
   type ExportNote,
   type ExportScope,
@@ -12,7 +13,11 @@ import type {
 import type { MacroResolutionOptions } from "@atlcli/export-macros";
 import {
   checkpointDocxAssetsV1,
+  confluenceSourceResolverPortFromClientV1,
+  createConfluenceDocxResolveInputV1,
+  createConfluenceSourcePlanSpoolV1,
   createExportTreeBodySpoolV1,
+  type ConfluenceSourceResolverPortV1,
   type TypescriptDocxExportJobResolvedInputV1,
 } from "@atlcli/export-wiring/jobs";
 import type { AssetFetcher, SvgRasterizer } from "@atlcli/docx/browser";
@@ -33,6 +38,7 @@ import {
   SESSION_EXPIRED_MESSAGE,
 } from "../macros/session-ports.js";
 import { profileFromTabUrl } from "../profile.js";
+import { classifyAtlassianSessionError } from "../session-error.js";
 
 export interface ExtensionDocxJobResolverDepsV1 {
   loadRoot(
@@ -152,21 +158,40 @@ function defaultCreateDeps(input: {
     return value;
   };
   return {
-    getSpace: async (key) => (await checked(() => client.getSpaceWithIcon(key))).space,
-    getCurrentUser: () => checked(() => client.getCurrentUser()),
-    getPageOwner: (id) => checked(() => client.getPageOwner(id)),
+    getSpace: async (key) =>
+      (
+        await checked(() =>
+          client.getSpaceWithIcon(key, { signal: input.signal })
+        )
+      ).space,
+    getCurrentUser: () =>
+      checked(() => client.getCurrentUser({ signal: input.signal })),
+    getPageOwner: (id) =>
+      checked(() => client.getPageOwner(id, { signal: input.signal })),
     getSpaceHomepageStorage: (key) =>
-      checked(() => client.getSpaceHomepageStorage(key)),
+      checked(() =>
+        client.getSpaceHomepageStorage(key, { signal: input.signal })
+      ),
     getSpaceLogo: async (key) => {
-      const icon = (await checked(() => client.getSpaceWithIcon(key))).icon;
+      const icon = (
+        await checked(() =>
+          client.getSpaceWithIcon(key, { signal: input.signal })
+        )
+      ).icon;
       return icon ? { url: icon.path } : null;
     },
     getIncludedPage: async (ref) => {
       const { buildGetIncludedPage } = await import("@atlcli/docx/internal");
       return buildGetIncludedPage({
-        getPage: (id) => checked(() => client.getPage(id)),
+        getPage: (id) =>
+          checked(() => client.getPage(id, { signal: input.signal })),
         findPagesByTitle: (title, spaceKey) =>
-          checked(() => client.findPagesByTitle(title, { spaceKey })),
+          checked(() =>
+            client.findPagesByTitle(title, {
+              spaceKey,
+              signal: input.signal,
+            })
+          ),
         defaultSpaceKey: input.root.spaceKey,
       })(ref);
     },
@@ -222,14 +247,160 @@ function defaults(): ExtensionDocxJobResolverDepsV1 {
   };
 }
 
-/** Resolve a durable request without any active-tab, panel, or React state. */
-export function createExtensionDocxJobInputResolver(
-  overrides: Partial<ExtensionDocxJobResolverDepsV1> = {},
+function createDefaultExtensionDocxJobInputResolver(
+  sourcePort?: ConfluenceSourceResolverPortV1,
 ): (
   request: DocxExportJobRequestV1,
   context: ExportJobExecutionContext,
 ) => Promise<TypescriptDocxExportJobResolvedInputV1> {
-  const deps = { ...defaults(), ...overrides };
+  return async (request, context) => {
+    const siteOrigin = siteOriginOf(request);
+    const profile = profileFromTabUrl(siteOrigin)!;
+    const client = new ConfluenceClient(profile);
+    return createConfluenceDocxResolveInputV1({
+      port: sourcePort ?? confluenceSourceResolverPortFromClientV1(client),
+      classifyError: (error) =>
+        classifyAtlassianSessionError(error) === "not-logged-in"
+          ? "authentication"
+          : "unknown",
+      ...(request.options.keepIgnored
+        ? { bodyOptions: { exportControls: "passthrough" as const } }
+        : {}),
+      createSourcePlan: (_sourceRequest, sourceContext) => ({
+        store: createConfluenceSourcePlanSpoolV1(sourceContext),
+        sourcePolicyKey: "adf-primary:cloud:v1",
+      }),
+      createBodyStore: (sourceRequest, sourceContext) =>
+        createExportTreeBodySpoolV1(
+          sourceContext,
+          sourceRequest.idempotencyKey,
+        ),
+      onProgress: (_sourceRequest, sourceContext, progress) => {
+        return sourceContext.updateProgress({
+          stage: "fetch",
+          done: progress.fetched,
+          total: progress.total,
+          updatedAt: Date.now(),
+        });
+      },
+      async build(resolved, sourceRequest, sourceContext) {
+        try {
+          const mentions = await resolveExportMentions(
+            resolved.blocks,
+            async (accountIds) => {
+              sourceContext.signal.throwIfAborted();
+              const users = await client.getUsersBulk(accountIds, {
+                signal: sourceContext.signal,
+              });
+              sourceContext.signal.throwIfAborted();
+              return new Map(
+                [...users].map(([accountId, user]) => [
+                  accountId,
+                  user?.displayName ?? null,
+                ]),
+              );
+            },
+          );
+          resolved.blocks = mentions.blocks;
+          if (mentions.unresolved > 0) {
+            resolved.sourceNotes.push({
+              level: "warning",
+              code: "mention-unresolved",
+              message:
+                `${mentions.unresolved} mention display name(s) could not be resolved; technical identifiers were retained.`,
+            });
+          }
+        } catch {
+          sourceContext.signal.throwIfAborted();
+          resolved.sourceNotes.push({
+            level: "warning",
+            code: "mention-unresolved",
+            message:
+              "Mention display names could not be resolved; technical identifiers were retained.",
+          });
+        }
+        const root: ConfluencePageDetails = {
+          id: resolved.root.id,
+          title: resolved.root.title,
+          storage: "",
+          ...(resolved.root.version === undefined
+            ? {}
+            : { version: resolved.root.version }),
+          ...(resolved.root.spaceKey
+            ? { spaceKey: resolved.root.spaceKey }
+            : {}),
+        };
+        const macros = defaultCreateMacros({
+          siteOrigin,
+          signal: sourceContext.signal,
+          live: sourceRequest.options.resolveMacros,
+          ...(resolved.chapterAnchorById
+            ? { chapterAnchorById: resolved.chapterAnchorById }
+            : {}),
+          sourceNotes: resolved.sourceNotes,
+        });
+        return {
+          input: {
+            template: {
+              name: sourceRequest.template.name,
+              modificationDate: new Date(
+                sourceRequest.template.uploadedAt ?? sourceRequest.createdAt,
+              ),
+            },
+            exportDate: new Date(sourceRequest.createdAt),
+            deps: defaultCreateDeps({
+              root,
+              siteOrigin,
+              signal: sourceContext.signal,
+            }),
+            assets: checkpointDocxAssetsV1(
+              sourceContext,
+              sourceRequest.idempotencyKey,
+              sessionDocxAssets({
+                pageUrl: siteOrigin,
+                baseUrl: getConfluenceBaseUrl(profile),
+              }),
+            ),
+            rasterizer: {
+              rasterize: (svg, target, rasterContext) =>
+                canvasSvgRasterizer().rasterize(
+                  svg,
+                  target,
+                  rasterContext,
+                ),
+            },
+            macros,
+            ...(sourceRequest.options.keepIgnored
+              ? { exportControls: "passthrough" as const }
+              : {}),
+            ...(sourceRequest.options.updateFields
+              ? { updateFields: sourceRequest.options.updateFields }
+              : {}),
+            ...(sourceRequest.options.captionLang
+              ? { captionLang: sourceRequest.options.captionLang }
+              : {}),
+          },
+        };
+      },
+    })(request, context);
+  };
+}
+
+/** Resolve a durable request without any active-tab, panel, or React state. */
+export function createExtensionDocxJobInputResolver(
+  overrides: Partial<ExtensionDocxJobResolverDepsV1> & {
+    /** Test/alternate-host port; production omits it and binds the session client. */
+    sourcePort?: ConfluenceSourceResolverPortV1;
+  } = {},
+): (
+  request: DocxExportJobRequestV1,
+  context: ExportJobExecutionContext,
+) => Promise<TypescriptDocxExportJobResolvedInputV1> {
+  const { sourcePort, ...legacyOverrides } = overrides;
+  if (Object.keys(legacyOverrides).length === 0) {
+    return createDefaultExtensionDocxJobInputResolver(sourcePort);
+  }
+  const deps = { ...defaults(), ...legacyOverrides };
   return async (request, context) => {
     context.signal.throwIfAborted();
     const siteOrigin = siteOriginOf(request);

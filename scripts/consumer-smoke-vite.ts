@@ -13,7 +13,8 @@
  * apps/browser-export-harness/src/pdf-worker.ts, bundles the full compile
  * pipeline (runPdfExport + BrowserPdfCompiler + storageToBlocks) from the
  * installed packages, imports the background executor from the packed
- * `@atlcli/export-wiring/jobs` subpath, and exposes a hook on globalThis. After
+ * `@atlcli/export-wiring/jobs` subpath (which also carries the DOCX engine's
+ * package-relative JetBrains Mono face), and exposes a hook on globalThis. After
  * the build the driver asserts the `?url` imports resolved to real hashed files
  * in the build output (nothing falling through to a src/ path or workspace
  * symlink), then imports the PRODUCTION chunk under Bun (headless — a real
@@ -92,6 +93,7 @@ import serifSemiBoldUrl from "@atlcli/pdf/fonts/SourceSerif4-Semibold.ttf?url";
 import serifBoldUrl from "@atlcli/pdf/fonts/SourceSerif4-Bold.ttf?url";
 import codeRegularUrl from "@atlcli/pdf/fonts/SourceCodePro-Regular.ttf?url";
 import codeBoldUrl from "@atlcli/pdf/fonts/SourceCodePro-Bold.ttf?url";
+import symbolsRegularUrl from "@atlcli/pdf/fonts/NotoSansSymbols2-Regular.ttf?url";
 import { runPdfExport, isPdfBytesHandle, PDF_RUNTIME_ASSETS } from "@atlcli/pdf";
 import type { PdfBytesHandle } from "@atlcli/pdf";
 import { validatePdfOutput } from "@atlcli/pdf/internal";
@@ -113,6 +115,7 @@ const fontUrls: Record<string, string> = {
   "SourceSerif4-Bold.ttf": serifBoldUrl,
   "SourceCodePro-Regular.ttf": codeRegularUrl,
   "SourceCodePro-Bold.ttf": codeBoldUrl,
+  "NotoSansSymbols2-Regular.ttf": symbolsRegularUrl,
 };
 
 type LoadBytes = (url: string) => Promise<Uint8Array>;
@@ -252,9 +255,6 @@ export async function runViteSmoke(baseDir?: string): Promise<ViteSmokeResult> {
   if (wasmAssets.length !== 1) {
     throw new Error(`expected exactly one hashed .wasm asset, found: ${wasmAssets.join(", ")}`);
   }
-  if (ttfAssets.length !== 10) {
-    throw new Error(`expected 10 hashed .ttf assets, found ${ttfAssets.length}: ${ttfAssets.join(", ")}`);
-  }
 
   const javaScriptAssets = assets.filter((asset) => asset.endsWith(".js"));
   const chunkName = javaScriptAssets.find((asset) =>
@@ -302,6 +302,23 @@ export async function runViteSmoke(baseDir?: string): Promise<ViteSmokeResult> {
     throw new Error(
       "packed @atlcli/export-wiring/jobs did not expose both PDF and TypeScript DOCX executors",
     );
+  }
+  const docxCodeFontAssets = ttfAssets.filter((asset) =>
+    /^JetBrainsMono-Regular-[A-Za-z0-9_-]+\.ttf$/u.test(asset),
+  );
+  if (docxCodeFontAssets.length !== 1) {
+    throw new Error(
+      `expected one hashed JetBrains Mono DOCX code font, found: ${docxCodeFontAssets.join(", ")}`,
+    );
+  }
+  if (ttfAssets.length !== hook.expectedFonts.length + docxCodeFontAssets.length) {
+    throw new Error(
+      `expected ${hook.expectedFonts.length} PDF fonts plus one DOCX code font, ` +
+      `found ${ttfAssets.length}: ${ttfAssets.join(", ")}`,
+    );
+  }
+  if (!chunkSource.includes(docxCodeFontAssets[0]!)) {
+    throw new Error("the packed production chunk does not reference its emitted DOCX code font");
   }
 
   const resolveAsset = (url: string): string => {

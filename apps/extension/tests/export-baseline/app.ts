@@ -9,6 +9,7 @@ import serifSemiBoldUrl from "@atlcli/pdf/fonts/SourceSerif4-Semibold.ttf?url";
 import serifBoldUrl from "@atlcli/pdf/fonts/SourceSerif4-Bold.ttf?url";
 import codeRegularUrl from "@atlcli/pdf/fonts/SourceCodePro-Regular.ttf?url";
 import codeBoldUrl from "@atlcli/pdf/fonts/SourceCodePro-Bold.ttf?url";
+import symbolsRegularUrl from "@atlcli/pdf/fonts/NotoSansSymbols2-Regular.ttf?url";
 import { composeChapters, type ExportBlock } from "@atlcli/confluence/browser";
 import { runExport, type AssetFetcher, type OutputSink } from "@atlcli/docx/browser";
 import { memoryTemplateSource } from "@atlcli/docx/browser-runtime";
@@ -44,6 +45,7 @@ const fontUrls = new Map<string, string>([
   ["SourceSerif4-Bold.ttf", serifBoldUrl],
   ["SourceCodePro-Regular.ttf", codeRegularUrl],
   ["SourceCodePro-Bold.ttf", codeBoldUrl],
+  ["NotoSansSymbols2-Regular.ttf", symbolsRegularUrl],
 ]);
 
 let corpus: LargeExportCorpus | undefined;

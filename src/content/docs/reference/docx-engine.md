@@ -293,6 +293,21 @@ for its ~1.5 MB elkjs layout chunk; the SVG → PNG rasterization is the host's 
   (weak copyleft, satisfied by attribution); resvg is **MPL-2.0**; the bundled Inter and
   JetBrains Mono fonts are **SIL OFL 1.1** — see the repository `NOTICE` file.
 
+### Portable inline and block code
+
+Inline code and code blocks use the committed JetBrains Mono regular face. If a
+document contains either form, the TypeScript engine validates the font's
+OpenType embedding rights and pinned SHA-256 digest, then adds an obfuscated
+font part plus the standard Word font-table relationships. The recipient
+therefore does not need a system copy of JetBrains Mono. Documents without code
+omit those parts.
+
+The package entry point loads the face from `@atlcli/docx/fonts/` under
+Node/Bun; browser bundlers emit it as a local asset, and the compiled CLI passes
+its embedded copy into the same engine. Inline code keeps its distinct
+background and exact text, while block code retains the separate full-width
+style and syntax coloring.
+
 ### Logo placeholders
 
 `$scroll.spacelogo` and `$scroll.globallogo` embed the **space logo** as an inline drawing

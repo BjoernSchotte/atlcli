@@ -1,8 +1,8 @@
 /**
  * Spec 006 — Word-quality conformance fixtures (case 006 `docx-quality`).
  * DOCX-only. Exercises the four spec-006 quality outputs in one export:
- *   - native list numbering → `word/numbering.xml` (a NESTED ordered list forces
- *     multiple numIds with restart overrides),
+ *   - native list numbering → `word/numbering.xml` (a NESTED ordered list with
+ *     authored starts forces independent, renderer-compatible definitions),
  *   - table column widths → `w:tblGrid` (`columnWidths: [300, 100]`, spread 3.0
  *     > 1.05 so real per-column `w:gridCol` widths are emitted),
  *   - SVG embedding → `asvg:svgBlip` + PNG fallback media parts (an SVG page
@@ -29,6 +29,7 @@ export const DOCX_QUALITY_BLOCKS: ExportBlock[] = [
   {
     type: "list",
     ordered: true,
+    start: 3,
     items: [
       { content: [{ type: "paragraph", content: text("First step") }] },
       {
@@ -37,6 +38,7 @@ export const DOCX_QUALITY_BLOCKS: ExportBlock[] = [
           {
             type: "list",
             ordered: true,
+            start: 8,
             items: [
               { content: [{ type: "paragraph", content: text("Nested one") }] },
               { content: [{ type: "paragraph", content: text("Nested two") }] },

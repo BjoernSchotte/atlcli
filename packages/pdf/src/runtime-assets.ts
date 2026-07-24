@@ -1,6 +1,6 @@
 export interface PdfRuntimeFontAsset {
   fileName: string;
-  family: "Source Sans 3" | "Source Serif 4" | "Source Code Pro";
+  family: "Source Sans 3" | "Source Serif 4" | "Source Code Pro" | "Noto Sans Symbols2";
   style: "normal" | "italic";
   weight: 400 | 600 | 700;
   sourceUrl: string;
@@ -10,9 +10,14 @@ export interface PdfRuntimeFontAsset {
 const SOURCE_SANS_COMMIT = "ed1808970eb3c7301c9a523bee26473ba0bb62fa";
 const SOURCE_SERIF_COMMIT = "2823e993c53fca27c5c8749f529b56a5a7c77b6b";
 const SOURCE_CODE_PRO_COMMIT = "d3f1a5962cde503f9409c21e58527611d4a19ef1";
+const NOTO_FONTS_COMMIT = "ffebf8c1ee449e544955a7e813c54f9b73848eac";
 
 function adobeRaw(repo: string, commit: string, fileName: string): string {
   return `https://raw.githubusercontent.com/adobe-fonts/${repo}/${commit}/TTF/${fileName}`;
+}
+
+function notoRaw(fileName: string): string {
+  return `https://raw.githubusercontent.com/notofonts/noto-fonts/${NOTO_FONTS_COMMIT}/hinted/ttf/NotoSansSymbols2/${fileName}`;
 }
 
 const fonts: readonly PdfRuntimeFontAsset[] = [
@@ -26,6 +31,7 @@ const fonts: readonly PdfRuntimeFontAsset[] = [
   { fileName: "SourceSerif4-Bold.ttf", family: "Source Serif 4", style: "normal", weight: 700, sourceUrl: adobeRaw("source-serif", SOURCE_SERIF_COMMIT, "SourceSerif4-Bold.ttf"), sha256: "7cf4f4e1ad74f45058d5bc61716b82560442fbdcd9d3654d2dea96bf6c683d86" },
   { fileName: "SourceCodePro-Regular.ttf", family: "Source Code Pro", style: "normal", weight: 400, sourceUrl: adobeRaw("source-code-pro", SOURCE_CODE_PRO_COMMIT, "SourceCodePro-Regular.ttf"), sha256: "74bd80d3e42a08517cd7e1108ba3d86f2da29ac0f3065be95e0357956ab9db37" },
   { fileName: "SourceCodePro-Bold.ttf", family: "Source Code Pro", style: "normal", weight: 700, sourceUrl: adobeRaw("source-code-pro", SOURCE_CODE_PRO_COMMIT, "SourceCodePro-Bold.ttf"), sha256: "b2095e0d657e6d28dc32444a9dacabab0c9241d0bf39d96371756cc9bdbc3a5f" },
+  { fileName: "NotoSansSymbols2-Regular.ttf", family: "Noto Sans Symbols2", style: "normal", weight: 400, sourceUrl: notoRaw("NotoSansSymbols2-Regular.ttf"), sha256: "630846d528dbe4c4981370a4d0a9475a1fd1491a129bb411f8e157cdb5de13c6" },
 ];
 
 export const PDF_RUNTIME_ASSETS = Object.freeze({
@@ -34,6 +40,7 @@ export const PDF_RUNTIME_ASSETS = Object.freeze({
     { fileName: "LICENSE-Source-Sans-3.txt" },
     { fileName: "LICENSE-Source-Serif-4.txt" },
     { fileName: "LICENSE-Source-Code-Pro.txt" },
+    { fileName: "LICENSE-Noto-Sans-Symbols-2.txt" },
   ]),
   compilerLicense: Object.freeze({ fileName: "LICENSE" }),
 });

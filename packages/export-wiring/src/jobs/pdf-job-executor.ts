@@ -295,7 +295,7 @@ function validateCheckpoint(
 function progress(
   context: ExportJobExecutionContext,
   now: () => number,
-  stage: "compose" | "render" | "validate" | "commit",
+  stage: "fetch" | "compose" | "render" | "validate" | "commit",
   done: number,
   total: number,
   detail: string,
@@ -640,7 +640,7 @@ export function createPdfExportJobExecutor(
           return result;
         }
       } else {
-        await progress(context, now, "compose", 0, 1, "Preparing PDF render input");
+        await progress(context, now, "fetch", 0, 1, "Resolving PDF source input");
         resolved = await options.resolveInput(request, context);
         throwIfAborted(context.signal);
         sourcePageCount = resolved.telemetry?.sourcePageCount ?? 1;

@@ -38,12 +38,26 @@
  * the final section. The intended diff is limited to the `r` namespace plus
  * `headerReference`/`footerReference`; without those references Word consumers
  * are allowed to ignore the otherwise orphaned story parts.
+ *
+ * Recaptured 2026-07-23 after three intentional fidelity fixes: inline code
+ * gained its background shading, generated fixtures gained their required
+ * styles relationship, and ordered lists moved to renderer-compatible,
+ * self-contained numbering definitions. The fixture metadata was anonymized
+ * at the same time; it is synthetic test data only.
+ *
+ * The 2026-07-23 portable-code-font change is asserted as one explicit,
+ * tightly bounded delta from this historical capture: code runs use the
+ * bundled JetBrains Mono face and the package gains its font table,
+ * relationships, content types, and obfuscated font part. Normalizing exactly
+ * those owned additions lets this golden keep detecting every unrelated DOCX
+ * change without storing a 274 kB binary as JSON text.
  */
 import { describe, expect, it } from "bun:test";
 import { readFileSync } from "node:fs";
 import PizZip from "pizzip";
 import { exportDocx, type ExportResult } from "./export.js";
 import { buildDocx, headingStyle, para, runSplitPara, stylesXml } from "./fixtures.js";
+import { CODE_FONT_FAMILY, CODE_FONT_KEY } from "./font-embedding.js";
 import type { ConfluencePageDetails } from "@atlcli/confluence";
 
 interface Golden {
@@ -60,6 +74,36 @@ interface Golden {
 const golden: Golden = JSON.parse(
   readFileSync(new URL("./golden-extension-export.json", import.meta.url), "utf8")
 );
+
+const CODE_FONT_PART =
+  "word/fonts/atlcli-code-001b70dc-aa60-4ad5-90ec-18a0948e1eae.odttf";
+const CODE_FONT_OWNED_PARTS = [
+  "word/_rels/fontTable.xml.rels",
+  "word/fontTable.xml",
+  CODE_FONT_PART,
+] as const;
+
+function normalizePortableCodeFontDelta(name: string, value: string): string {
+  let normalized = value.replaceAll(CODE_FONT_FAMILY, "Consolas");
+  if (name === "[Content_Types].xml") {
+    normalized = normalized
+      .replace(
+        '<Default Extension="odttf" ContentType="application/vnd.openxmlformats-officedocument.obfuscatedFont"/>',
+        "",
+      )
+      .replace(
+        '<Override PartName="/word/fontTable.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.fontTable+xml"/>',
+        "",
+      );
+  }
+  if (name === "word/_rels/document.xml.rels") {
+    normalized = normalized.replace(
+      '<Relationship Id="rIdAtlcliFontTable" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/fontTable" Target="fontTable.xml"/>',
+      "",
+    );
+  }
+  return normalized;
+}
 
 /** EXACTLY the capture script's input — do not "improve" without recapturing. */
 const STORAGE = `
@@ -78,27 +122,27 @@ export function f(): number { return x; }]]></ac:plain-text-body></ac:structured
 `;
 
 export const GOLDEN_DETAILS: ConfluencePageDetails = {
-  id: "1117356071",
-  title: "DOCX Feature Zoo / Golden",
-  url: "https://mayflower.atlassian.net/wiki/spaces/DOCSY/pages/1117356071",
+  id: "fixture-page-1",
+  title: "DOCX Feature Zoo",
+  url: "https://example.invalid/wiki/spaces/TEST/pages/fixture-page-1",
   version: 7,
-  spaceKey: "DOCSY",
+  spaceKey: "TEST",
   storage: STORAGE,
-  tinyUrl: "https://mayflower.atlassian.net/wiki/x/AbC",
+  tinyUrl: "https://example.invalid/wiki/x/fixture",
   created: "2026-01-02T10:00:00.000Z",
   modified: "2026-06-30T12:30:00.000Z",
-  createdBy: { displayName: "Alice Author" },
-  modifiedBy: { displayName: "Mel Modifier" },
+  createdBy: { displayName: "Fixture Author" },
+  modifiedBy: { displayName: "Fixture Modifier" },
   labels: ["architecture", "golden"],
 };
 
-export const GOLDEN_TEMPLATE_META = { name: "mayflower.docx", modificationDate: new Date(2026, 6, 14) };
+export const GOLDEN_TEMPLATE_META = { name: "fixture.docx", modificationDate: new Date(2026, 6, 14) };
 export const GOLDEN_EXPORT_DATE = new Date(2026, 6, 14, 9, 5);
 
 export const GOLDEN_DEPS = {
-  getSpace: async () => ({ id: "s", key: "DOCSY", name: "Docs Space", type: "global" as const }),
-  getCurrentUser: async () => ({ accountId: "u", displayName: "Björn Schotte" }),
-  getPageOwner: async () => ({ accountId: "u-9", displayName: "Olga Owner" }),
+  getSpace: async () => ({ id: "fixture-space", key: "TEST", name: "Fixture Space", type: "global" as const }),
+  getCurrentUser: async () => ({ accountId: "fixture-user", displayName: "Fixture Exporter" }),
+  getPageOwner: async () => ({ accountId: "fixture-owner", displayName: "Fixture Owner" }),
 };
 
 export function goldenTemplateBytes(): Uint8Array {
@@ -122,10 +166,26 @@ export function expectMatchesGolden({ bytes, report }: ExportResult): void {
   const names = Object.keys(zip.files)
     .filter((n) => !zip.files[n].dir)
     .sort();
-  expect(names).toEqual(Object.keys(golden.entries).sort());
-  for (const name of names) {
-    expect(zip.files[name].asText()).toBe(golden.entries[name]);
+  expect(names).toEqual(
+    [...Object.keys(golden.entries), ...CODE_FONT_OWNED_PARTS].sort(),
+  );
+  for (const name of Object.keys(golden.entries)) {
+    expect(normalizePortableCodeFontDelta(name, zip.files[name].asText())).toBe(
+      golden.entries[name],
+    );
   }
+
+  const fontTable = zip.files["word/fontTable.xml"].asText();
+  expect(fontTable).toContain(`<w:font w:name="${CODE_FONT_FAMILY}">`);
+  expect(fontTable).toContain(
+    `<w:embedRegular r:id="rIdAtlcliCodeFont" w:fontKey="${CODE_FONT_KEY}"/>`,
+  );
+  expect(zip.files["word/_rels/fontTable.xml.rels"].asText()).toContain(
+    `Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/font"`,
+  );
+  const embeddedFont = zip.files[CODE_FONT_PART].asUint8Array();
+  expect(embeddedFont.byteLength).toBe(273_900);
+  expect([...embeddedFont.subarray(0, 4)]).not.toEqual([0x00, 0x01, 0x00, 0x00]);
 
   expect(report.resolvedCount).toBe(golden.report.resolvedCount);
   expect(report.unsupportedNames).toEqual(golden.report.unsupportedNames);

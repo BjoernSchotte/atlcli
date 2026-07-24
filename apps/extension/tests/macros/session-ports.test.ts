@@ -381,6 +381,40 @@ describe("per-source-page context (contextFor passed through unchanged)", () => 
     expect(log.urls.some((u) => u.includes("/contentbody/convert/export_view"))).toBe(true);
     expect(codes(result.notes)).toContain("macro-rendered-via");
   });
+
+  it("prefers the resolver's source-page version over the host lookup fallback", async () => {
+    const log = installFetch((url) => {
+      if (url.includes("/contentbody/convert/export_view")) {
+        return new Response(JSON.stringify({ value: "<p>Converted</p>" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (url.includes("/history/11/macro/id/")) {
+        return new Response(JSON.stringify({ body: "<p>Source version</p>" }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return exportViewJson("other", "<p>Other</p>", 3);
+    });
+    const state = createSessionMacroState();
+    const port = sessionExportViewPort(
+      new ConfluenceClient({
+        name: "session",
+        baseUrl: SITE,
+        deploymentType: "cloud",
+        auth: { type: "session" },
+      }),
+      { state, versionOf: () => 3 }
+    );
+
+    expect(await port.renderMacroHtml(ROOT_ID, "forge-local-id", 11)).toBe(
+      "<p>Converted</p>"
+    );
+    expect(log.urls.some((u) => u.includes("/history/11/macro/id/forge-local-id"))).toBe(true);
+    expect(log.urls.some((u) => u.includes("/history/3/macro/id/forge-local-id"))).toBe(false);
+  });
 });
 
 describe("JiraIssuePort is a thin adapter over JiraClient", () => {

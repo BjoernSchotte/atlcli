@@ -142,20 +142,24 @@ export function jiraIssueRef(issue: JiraIssueLike, browseBaseUrl: string): JiraI
 
 export function jiraIssuePortFromClient(
   client: JiraClientLike,
-  browseBaseUrl: string
+  browseBaseUrl: string,
+  signal?: AbortSignal,
 ): JiraIssuePort {
   const toRef = (issue: JiraIssueLike): JiraIssueRef => jiraIssueRef(issue, browseBaseUrl);
   return {
     async getIssue(key) {
       try {
-        return toRef(await client.getIssue(key));
+        return toRef(await client.getIssue(key, { signal }));
       } catch (err) {
         classifyClientError(err, "jira");
       }
     },
     async searchJql(jql, opts) {
       try {
-        const res = await client.search(jql, { maxResults: opts.maximumIssues });
+        const res = await client.search(jql, {
+          maxResults: opts.maximumIssues,
+          signal,
+        });
         return res.issues.slice(0, opts.maximumIssues).map(toRef);
       } catch (err) {
         classifyClientError(err, "jira");
@@ -164,10 +168,13 @@ export function jiraIssuePortFromClient(
   };
 }
 
-export function confluenceContentPortFromClient(client: ConfluenceClient): ConfluenceContentPort {
+export function confluenceContentPortFromClient(
+  client: ConfluenceClient,
+  signal?: AbortSignal,
+): ConfluenceContentPort {
   const fetchStorage = async (id: string) => {
     try {
-      const page = await client.getPage(id);
+      const page = await client.getPage(id, { signal });
       return { id: page.id, version: page.version ?? 1, storage: page.storage };
     } catch (err) {
       classifyClientError(err, "confluence");
@@ -183,7 +190,7 @@ export function confluenceContentPortFromClient(client: ConfluenceClient): Confl
         const cql = spaceKey
           ? `type=page AND space="${escapeCqlValue(spaceKey)}" AND title="${escapeCqlValue(title)}"`
           : `type=page AND title="${escapeCqlValue(title)}"`;
-        const results = await client.searchPages(cql, 1);
+        const results = await client.searchPages(cql, 1, { signal });
         if (results.length === 0) return undefined;
         return fetchStorage(results[0].id);
       } catch (err) {
@@ -202,6 +209,7 @@ export function confluenceContentPortFromClient(client: ConfluenceClient): Confl
         // with no indexing lag (pagination fixed by 002).
         const children = await client.getChildrenWithPosition(pageId, {
           limit: opts?.limit ?? 100,
+          signal,
         });
         // getChildrenWithPosition drains EVERY page (its `limit` is only the
         // per-request page size); slice to the port contract's cap so the
@@ -214,7 +222,9 @@ export function confluenceContentPortFromClient(client: ConfluenceClient): Confl
     },
     async searchCql(cql, opts) {
       try {
-        const results = await client.searchPages(cql, opts?.limit ?? 25);
+        const results = await client.searchPages(cql, opts?.limit ?? 25, {
+          signal,
+        });
         return results.map((r) => ({ id: r.id, title: r.title }));
       } catch (err) {
         classifyClientError(err, "confluence");
@@ -231,7 +241,9 @@ export function confluenceContentPortFromClient(client: ConfluenceClient): Confl
         const page = await client.searchDetailed(cql, {
           limit: opts.maximumResults,
           ...(opts.contentStatuses ? { contentStatuses: opts.contentStatuses } : {}),
-          ...(opts.signal ? { signal: opts.signal } : {}),
+          ...((opts.signal ?? signal)
+            ? { signal: opts.signal ?? signal }
+            : {}),
         });
         return {
           hits: page.results.slice(0, opts.maximumResults).map((r) => ({
@@ -256,21 +268,42 @@ export function confluenceContentPortFromClient(client: ConfluenceClient): Confl
   };
 }
 
-export function exportViewPortFromClient(client: ConfluenceClient): ExportViewPort {
+export function exportViewPortFromClient(
+  client: ConfluenceClient,
+  signal?: AbortSignal,
+): ExportViewPort {
+  const batches = new Map<string, Promise<Map<string, string>>>();
   return {
-    async renderMacroHtml(pageId, macroId) {
+    async renderMacroHtml(pageId, macroId, pageVersion) {
       try {
-        // Batch: one export_view fetch per page, matched by data-macro-id.
-        const macros = await client.getExportViewMacros(pageId);
-        return macros.get(macroId);
+        // Batch first: one export_view fetch per page, matched by data-macro-id.
+        let batch = batches.get(pageId);
+        if (!batch) {
+          batch = client.getExportViewMacros(pageId, { signal });
+          batches.set(pageId, batch);
+        }
+        const rendered = (await batch).get(macroId);
+        if (rendered !== undefined) return rendered;
+
+        // Forge ADF local IDs are valid macro REST IDs. Some platform exports
+        // do not expose a data-macro-id fragment, so use the documented
+        // versioned macro-body conversion instead of silently flooring them.
+        if (pageVersion === undefined) return undefined;
+        return await client.getMacroBodyByMacroId(pageId, pageVersion, macroId, {
+          signal,
+        });
       } catch (err) {
+        batches.delete(pageId);
         classifyClientError(err, "exportView");
       }
     },
   };
 }
 
-export function attachmentLookupFromClient(client: ConfluenceClient): AttachmentLookupPort {
+export function attachmentLookupFromClient(
+  client: ConfluenceClient,
+  signal?: AbortSignal,
+): AttachmentLookupPort {
   const listings = new Map<
     string,
     Promise<Awaited<ReturnType<ConfluenceClient["listAttachments"]>>>
@@ -280,7 +313,7 @@ export function attachmentLookupFromClient(client: ConfluenceClient): Attachment
       try {
         let listing = listings.get(pageId);
         if (!listing) {
-          listing = client.listAttachments(pageId);
+          listing = client.listAttachments(pageId, { signal });
           listings.set(pageId, listing);
         }
         const found = (await listing).find((a) => a.filename === filename);

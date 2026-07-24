@@ -41,8 +41,13 @@ import { BrowserPdfCompiler, PDF_BROWSER_COMPILER_VERSION } from "./index.js";
  * title used by outlines and running heads. That product fix keeps Confluence
  * foreground/background colors out of the ToC and is covered by dedicated
  * PDF tests; changing the Typst structure necessarily changed the PDF bytes.
+ *
+ * Commit `150bc39` then retained authored code-block presentation and bounded
+ * long lines through a scoped `raw.line` rule. The parity corpus includes a
+ * code block, so that separately tested intentional Typst change superseded
+ * the prior approved bytes too.
  */
-const APPROVED_DEFAULT_OUTPUT_DIGEST = "2740e3e1a3e74dcb54e0f814a91659f1cd202cccd559ed0364b6055ce039b751";
+const APPROVED_DEFAULT_OUTPUT_DIGEST = "4d1e42f06a55569d30d5fee7700782d2d71d3f04e569a6af02bf0ccb87b481a1";
 const PINNED_COMPILER = "typst.ts 0.7.0 / Typst 0.14.2";
 
 const PARITY_BLOCKS: ExportBlock[] = [

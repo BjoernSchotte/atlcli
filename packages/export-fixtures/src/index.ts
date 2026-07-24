@@ -11,11 +11,16 @@
  */
 import {
   composeChapters,
+  createAdfAnnotationResolver,
+  createAdfMediaAttachmentResolver,
+  pageBodyToBlocks,
   storageToBlocks,
+  type BlocksResult,
   type ComposeResult,
   type ConfluencePageDetails,
   type ExportBlock,
   type ExportNode,
+  type InlineComment,
   type StorageToBlocksResult,
 } from "@atlcli/confluence/browser";
 import { buildDocx, para, stylesXml } from "@atlcli/docx/fixtures";
@@ -51,6 +56,8 @@ export const DOCX_DETAILS: ConfluencePageDetails = {
     `<p>This document was generated without an extension host.</p>` +
     `<ac:structured-macro ac:name="code">` +
     `<ac:parameter ac:name="language">mermaid</ac:parameter>` +
+    `<ac:parameter ac:name="title">Browser runtime flow</ac:parameter>` +
+    `<ac:parameter ac:name="collapse">true</ac:parameter>` +
     `<ac:plain-text-body><![CDATA[${MERMAID_SOURCE}]]></ac:plain-text-body>` +
     `</ac:structured-macro>`,
   created: "2026-07-17T08:00:00.000Z",
@@ -64,7 +71,7 @@ export const DOCX_EXPECTED = {
   filename: "Browser Harness DOCX.docx",
   resolvedCount: 1,
   renderedDiagrams: 1,
-  semanticNoteCodes: [] as string[],
+  semanticNoteCodes: ["code-collapse-static"] as string[],
 };
 
 // ---------------------------------------------------------------------------
@@ -89,6 +96,14 @@ export const PDF_BLOCKS: ExportBlock[] = [
       { content: [{ type: "paragraph", content: [{ type: "text", text: "The repeat is deterministic" }] }] },
     ],
   },
+  {
+    type: "codeBlock",
+    language: "text",
+    code: "export const runtime = true;",
+    title: "Runtime contract",
+    initiallyCollapsed: true,
+    hideLineNumbers: true,
+  },
 ];
 
 export const PDF_METADATA: PdfExportMetadata = {
@@ -103,6 +118,626 @@ export const PDF_METADATA: PdfExportMetadata = {
 };
 
 export const PDF_FILENAME = "Browser Harness PDF.pdf";
+
+// ---------------------------------------------------------------------------
+// ADF-primary browser conformance fixture
+// ---------------------------------------------------------------------------
+
+export const ADF_CODE_BLOCK_SOURCE =
+  "const first = 1;\n" +
+  "const second = first + 1;\n" +
+  'const message = "This is a deliberately long Confluence code line that must remain fully visible in both bounded static export targets even when no-wrap was authored";\n' +
+  "console.log(second, message);\n";
+
+/** Legacy Storage-only code-macro semantics that have no ADF node equivalent. */
+export const STORAGE_CODE_COMPATIBILITY_SOURCE =
+  '<ac:structured-macro ac:name="code" ac:local-id="storage-code-local">' +
+  '<ac:parameter ac:name="language">typescript</ac:parameter>' +
+  '<ac:parameter ac:name="title">Legacy Storage code title</ac:parameter>' +
+  '<ac:parameter ac:name="collapse">true</ac:parameter>' +
+  '<ac:parameter ac:name="linenumbers">true</ac:parameter>' +
+  '<ac:parameter ac:name="firstline">12</ac:parameter>' +
+  "<ac:plain-text-body><![CDATA[const legacyStorage = true;\nexport { legacyStorage };]]></ac:plain-text-body>" +
+  "</ac:structured-macro>";
+
+export function storageCodeCompatibilityBlocks(): StorageToBlocksResult {
+  return storageToBlocks(STORAGE_CODE_COMPATIBILITY_SOURCE);
+}
+
+/**
+ * Real ADF input for the browser conformance harness. This deliberately starts
+ * before the representation-neutral boundary: the case must validate and
+ * decode ADF in the packed browser, then feed the resulting blocks to both
+ * renderers. It mixes native semantics with visible, diagnosed degradations.
+ */
+export const ADF_CONFORMANCE_SOURCE = JSON.stringify({
+  version: 1,
+  type: "doc",
+  content: [
+    {
+      type: "heading",
+      attrs: { level: 1, localId: "heading-local" },
+      content: [{ type: "text", text: "ADF browser conformance" }],
+    },
+    {
+      type: "paragraph",
+      attrs: { localId: "paragraph-local" },
+      content: [
+        {
+          type: "text",
+          text: "INLINE_TOKEN",
+          marks: [
+            { type: "code" },
+            {
+              type: "annotation",
+              attrs: { id: "annotation-inline-code", annotationType: "inlineComment" },
+            },
+          ],
+        },
+        { type: "text", text: " remains literal; " },
+        { type: "emoji", attrs: { shortName: ":warning:", text: "⚠️" } },
+        { type: "text", text: " and custom " },
+        { type: "emoji", attrs: { shortName: ":custom_party:", id: "custom-emoji", text: "" } },
+        { type: "text", text: " " },
+        { type: "date", attrs: { timestamp: "1709510400000", localId: "date-local" } },
+        { type: "text", text: " " },
+        { type: "status", attrs: { text: "Ready", color: "purple", localId: "status-local" } },
+        { type: "text", text: " " },
+        {
+          type: "status",
+          attrs: { text: "Keep Case", color: "neutral", style: "mixedCase" },
+        },
+        { type: "placeholder", attrs: { text: "editor-only-secret", localId: "placeholder-local" } },
+        { type: "text", text: " " },
+        {
+          type: "mention",
+          attrs: {
+            id: "mention-account-1",
+            text: "@Example Person",
+            localId: "mention-local",
+            accessLevel: "SITE",
+            userType: "DEFAULT",
+          },
+        },
+        { type: "text", text: " " },
+        {
+          type: "inlineCard",
+          attrs: {
+            data: {
+              url: "https://example.invalid/adf-card",
+              name: "Local card title",
+            },
+          },
+        },
+      ],
+    },
+    {
+      type: "blockCard",
+      attrs: {
+        url: "https://example.invalid/adf-block-card",
+        localId: "block-card-local",
+      },
+    },
+    {
+      type: "blockCard",
+      attrs: {
+        datasource: {
+          id: "example-provider",
+          parameters: { query: "type = page" },
+          views: [{ type: "table", properties: { columns: ["title"] } }],
+        },
+        url: "https://example.invalid/adf-datasource-card",
+        layout: "wide",
+        width: 72,
+        localId: "datasource-card-local",
+      },
+    },
+    {
+      type: "embedCard",
+      attrs: {
+        url: "https://example.invalid/adf-embed-card",
+        layout: "full-width",
+        width: 80,
+        originalHeight: 720,
+        originalWidth: 1280,
+        localId: "embed-card-local",
+      },
+    },
+    {
+      type: "paragraph",
+      marks: [
+        { type: "alignment", attrs: { align: "center" } },
+        { type: "fontSize", attrs: { fontSize: "small" } },
+      ],
+      content: [{ type: "text", text: "Centered paragraph" }],
+    },
+    {
+      type: "paragraph",
+      marks: [{ type: "indentation", attrs: { level: 2 } }],
+      content: [{ type: "text", text: "Indented paragraph" }],
+    },
+    {
+      type: "panel",
+      attrs: { panelType: "info" },
+      content: [{ type: "paragraph", content: [{ type: "text", text: "ADF panel body" }] }],
+    },
+    {
+      type: "panel",
+      attrs: { panelType: "success" },
+      content: [{ type: "paragraph", content: [{ type: "text", text: "ADF success panel" }] }],
+    },
+    {
+      type: "panel",
+      attrs: { panelType: "error" },
+      content: [{ type: "paragraph", content: [{ type: "text", text: "ADF error panel" }] }],
+    },
+    {
+      type: "panel",
+      attrs: {
+        panelType: "custom",
+        localId: "custom-panel-local",
+        panelColor: "#123456",
+        panelIcon: ":star:",
+        panelIconId: "custom-panel-icon",
+        panelIconText: "★",
+      },
+      content: [{ type: "paragraph", content: [{ type: "text", text: "ADF custom panel" }] }],
+    },
+    {
+      type: "orderedList",
+      attrs: { order: 3 },
+      content: [{
+        type: "listItem",
+        attrs: { localId: "ordered-item-local" },
+        content: [
+          { type: "paragraph", content: [{ type: "text", text: "Third item" }] },
+          {
+            type: "orderedList",
+            attrs: { order: 8 },
+            content: [{
+              type: "listItem",
+              content: [{ type: "paragraph", content: [{ type: "text", text: "Eighth nested item" }] }],
+            }],
+          },
+        ],
+      }],
+    },
+    {
+      type: "bulletList",
+      content: [{
+        type: "listItem",
+        attrs: { localId: "bullet-item-local" },
+        content: [
+          { type: "paragraph", content: [{ type: "text", text: "Bullet parent" }] },
+          {
+            type: "bulletList",
+            content: [{
+              type: "listItem",
+              content: [{ type: "paragraph", content: [{ type: "text", text: "Bullet child" }] }],
+            }],
+          },
+        ],
+      }],
+    },
+    {
+      type: "taskList",
+      attrs: { localId: "tasks-root" },
+      content: [
+        {
+          type: "taskItem",
+          attrs: { localId: "task-open", state: "TODO" },
+          content: [{ type: "text", text: "Open task" }],
+        },
+        {
+          type: "blockTaskItem",
+          attrs: { localId: "task-done", state: "DONE" },
+          content: [{ type: "paragraph", content: [{ type: "text", text: "Completed block task" }] }],
+        },
+        {
+          type: "taskList",
+          attrs: { localId: "tasks-nested" },
+          content: [{
+            type: "taskItem",
+            attrs: { localId: "task-nested", state: "TODO" },
+            content: [{ type: "text", text: "Nested task" }],
+          }],
+        },
+      ],
+    },
+    {
+      type: "decisionList",
+      attrs: { localId: "decisions-root" },
+      content: [{
+        type: "decisionItem",
+        attrs: { localId: "decision-ship", state: "DECIDED" },
+        content: [{ type: "text", text: "Ship the release" }],
+      }],
+    },
+    {
+      type: "table",
+      attrs: {
+        layout: "align-end",
+        width: 480,
+        displayMode: "fixed",
+        isNumberColumnEnabled: true,
+        localId: "table-local",
+      },
+      marks: [{
+        type: "fragment",
+        attrs: { localId: "table-fragment", name: "semantic-table" },
+      }],
+      content: [{
+        type: "tableRow",
+        attrs: { localId: "table-row-local" },
+        content: [
+          {
+            type: "tableHeader",
+            attrs: {
+              colspan: 1,
+              rowspan: 1,
+              background: "#AABBCC",
+              colwidth: [240],
+              valign: "middle",
+              localId: "table-header-local",
+            },
+            content: [{ type: "paragraph", content: [{ type: "text", text: "Header" }] }],
+          },
+          {
+            type: "tableCell",
+            attrs: {
+              colspan: 1,
+              rowspan: 1,
+              colwidth: [360],
+              valign: "bottom",
+              localId: "table-cell-local",
+            },
+            content: [{ type: "paragraph", content: [{ type: "text", text: "Cell" }] }],
+          },
+        ],
+      }],
+    },
+    {
+      type: "layoutSection",
+      attrs: { localId: "layout-local" },
+      marks: [{ type: "breakout", attrs: { mode: "wide", width: 960 } }],
+      content: [
+        {
+          type: "layoutColumn",
+          attrs: { width: 30, valign: "middle", localId: "layout-sidebar-local" },
+          content: [{
+            type: "paragraph",
+            content: [{ type: "text", text: "Layout sidebar" }],
+          }],
+        },
+        {
+          type: "layoutColumn",
+          attrs: { width: 70, valign: "bottom", localId: "layout-main-local" },
+          content: [{
+            type: "paragraph",
+            content: [{ type: "text", text: "Layout main" }],
+          }],
+        },
+      ],
+    },
+    {
+      type: "expand",
+      attrs: { title: "Expanded title", localId: "expand-local" },
+      marks: [{ type: "breakout", attrs: { mode: "full-width", width: 1024 } }],
+      content: [
+        { type: "paragraph", content: [{ type: "text", text: "Expanded body" }] },
+        {
+          type: "nestedExpand",
+          attrs: { title: "Nested expanded title", localId: "" },
+          content: [{
+            type: "paragraph",
+            content: [{ type: "text", text: "Nested expanded body" }],
+          }],
+        },
+      ],
+    },
+    {
+      type: "bodiedExtension",
+      attrs: {
+        extensionType: "com.example.synthetic",
+        extensionKey: "visible-extension",
+        localId: "editor-local-only",
+        parameters: { mode: "compact" },
+      },
+      content: [{ type: "paragraph", content: [{ type: "text", text: "Extension body" }] }],
+    },
+    {
+      type: "multiBodiedExtension",
+      attrs: {
+        extensionType: "com.example.stage0",
+        extensionKey: "multi-frame-extension",
+        localId: "multi-frame-local",
+        parameters: { mode: "portable" },
+      },
+      content: [
+        {
+          type: "extensionFrame",
+          marks: [
+            { type: "fragment", attrs: { localId: "multi-frame-fragment", name: "" } },
+            { type: "dataConsumer", attrs: { sources: ["multi-frame-consumer"] } },
+          ],
+          content: [{
+            type: "paragraph",
+            content: [{ type: "text", text: "Multi frame first body" }],
+          }],
+        },
+        {
+          type: "extensionFrame",
+          content: [{
+            type: "paragraph",
+            content: [{ type: "text", text: "Multi frame second body" }],
+          }],
+        },
+      ],
+    },
+    {
+      type: "mediaSingle",
+      attrs: {
+        layout: "wrap-left",
+        width: 40,
+        widthType: "percentage",
+        localId: "media-single-local",
+      },
+      marks: [{
+        type: "link",
+        attrs: {
+          href: "https://example.invalid/adf-media",
+          title: "Open media",
+          id: "media-link-id",
+          collection: "contentId-1",
+          occurrenceKey: "media-link-occurrence",
+        },
+      }],
+      content: [
+        {
+          type: "media",
+          attrs: {
+            type: "file",
+            id: "unresolved-media",
+            collection: "contentId-1",
+            alt: "Visible media fallback",
+            width: 640,
+            height: 480,
+          },
+          marks: [{
+            type: "border",
+            attrs: { color: "#091e4224", size: 2 },
+          }],
+        },
+        {
+          type: "caption",
+          attrs: { localId: "media-caption-local" },
+          content: [{ type: "text", text: "Media caption" }],
+        },
+      ],
+    },
+    {
+      type: "paragraph",
+      content: [{
+        type: "text",
+        text: "This paragraph demonstrates bounded text wrapping beside authored media.",
+      }],
+    },
+    {
+      type: "mediaGroup",
+      content: [
+        {
+          type: "media",
+          attrs: {
+            type: "file",
+            id: "group-media-1",
+            collection: "contentId-1",
+            alt: "Grouped attachment one",
+          },
+        },
+        {
+          type: "media",
+          attrs: {
+            type: "link",
+            id: "group-media-2",
+            collection: "contentId-1",
+            alt: "Grouped attachment two",
+          },
+        },
+      ],
+    },
+    {
+      type: "paragraph",
+      content: [
+        { type: "text", text: "Inline media: " },
+        {
+          type: "mediaInline",
+          attrs: {
+            type: "image",
+            id: "inline-media-1",
+            collection: "contentId-1",
+            localId: "inline-media-local",
+            alt: "Inline media chip",
+            width: 24,
+            height: 16,
+            data: { source: "fixture" },
+          },
+          marks: [
+            {
+              type: "dataConsumer",
+              attrs: {
+                sources: ["synthetic-consumer-primary", "synthetic-consumer-secondary"],
+              },
+            },
+            {
+              type: "border",
+              attrs: { color: "#0052CC", size: 1 },
+            },
+          ],
+        },
+      ],
+    },
+    {
+      type: "codeBlock",
+      attrs: {
+        language: "typescript",
+        wrap: false,
+        hideLineNumbers: false,
+        localId: "code-local",
+        uniqueId: "code-unique",
+      },
+      marks: [{ type: "breakout", attrs: { mode: "wide", width: 880 } }],
+      content: [{
+        type: "text",
+        text: ADF_CODE_BLOCK_SOURCE,
+      }],
+    },
+    {
+      type: "bodiedSyncBlock",
+      attrs: {
+        resourceId: "synthetic-sync-snapshot-resource",
+        localId: "synthetic-sync-snapshot-local",
+      },
+      marks: [{
+        type: "breakout",
+        attrs: { mode: "wide", width: 840 },
+      }],
+      content: [{
+        type: "paragraph",
+        content: [{ type: "text", text: "Synced snapshot body" }],
+      }],
+    },
+    {
+      type: "syncBlock",
+      attrs: {
+        resourceId: "synthetic-sync-reference-resource",
+        localId: "synthetic-sync-reference-local",
+      },
+      marks: [{
+        type: "breakout",
+        attrs: { mode: "full-width" },
+      }],
+    },
+    {
+      type: "unsupportedBlock",
+      attrs: {
+        originalValue: { kind: "synthetic-legacy-wrapper" },
+        opaqueIdentity: "unsupported-block-private-provenance",
+      },
+      content: [{
+        type: "paragraph",
+        content: [
+          { type: "text", text: "Unsupported wrapper keeps " },
+          {
+            type: "unsupportedInline",
+            attrs: {
+              originalValue: ["synthetic", "inline"],
+              opaqueIdentity: "unsupported-inline-private-provenance",
+            },
+            content: [{
+              type: "text",
+              text: "rich inline content",
+              marks: [{ type: "strong" }],
+            }],
+          },
+        ],
+      }],
+    },
+    {
+      type: "extension",
+      attrs: {
+        extensionType: "com.atlassian.ecosystem",
+        extensionKey: "static-extension",
+        localId: "static-extension-private-local-id",
+        parameters: { privateMode: "static-extension-private-parameter" },
+      },
+    },
+  ],
+});
+
+export const ADF_CONFORMANCE_DETAILS: ConfluencePageDetails = {
+  id: "adf-conformance-page",
+  title: "ADF Browser Conformance",
+  url: "https://example.invalid/wiki/spaces/TEST/pages/adf-conformance-page",
+  version: 1,
+  spaceKey: "TEST",
+  storage: "",
+  created: "2026-07-22T08:00:00.000Z",
+  modified: "2026-07-22T08:00:00.000Z",
+  createdBy: { displayName: "Harness Author" },
+  modifiedBy: { displayName: "Harness Author" },
+  labels: ["browser-conformance"],
+};
+
+export const ADF_CONFORMANCE_METADATA: PdfExportMetadata = {
+  title: "ADF Browser Conformance",
+  space: "TEST",
+  version: 1,
+  author: "Harness Author",
+  exporter: "atlcli browser harness",
+  language: "en",
+  region: "GB",
+  exportedAt: new Date("2026-07-22T08:00:00.000Z"),
+};
+
+export const ADF_INLINE_MEDIA_FILENAME = "inline-media.png";
+export const ADF_INLINE_MEDIA_BYTES = Uint8Array.from(
+  atob("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="),
+  (character) => character.charCodeAt(0),
+);
+export const ADF_CONFORMANCE_MEDIA_ATTACHMENTS = [{
+  fileId: "inline-media-1",
+  filename: ADF_INLINE_MEDIA_FILENAME,
+  pageId: ADF_CONFORMANCE_DETAILS.id,
+  mediaType: "image/png",
+}] as const;
+
+/** Deterministic sidecar proving exact ADF marker-to-comment correlation. */
+export const ADF_CONFORMANCE_INLINE_COMMENTS: InlineComment[] = [{
+  id: "comment-resource-1",
+  author: { displayName: "Fixture author" },
+  created: "2026-07-22T08:00:00.000Z",
+  body: "<p>Review the inline token</p>",
+  status: "resolved",
+  replies: [{
+    id: "comment-reply-1",
+    author: { displayName: "Fixture reviewer" },
+    created: "2026-07-22T08:01:00.000Z",
+    body: "<p>Reviewed</p>",
+    status: "open",
+    parentId: "comment-resource-1",
+    replies: [],
+    textSelection: "",
+  }],
+  textSelection: "INLINE_TOKEN",
+  inlineMarkerRef: "annotation-inline-code",
+}];
+
+/** Decode the real ADF fixture through the production representation dispatcher. */
+export function adfConformanceBlocks(exporter: "pdf" | "word"): BlocksResult {
+  return pageBodyToBlocks(
+    {
+      primary: { representation: "atlas_doc_format", value: ADF_CONFORMANCE_SOURCE },
+      sourceVersion: 1,
+    },
+    {
+      exporter,
+      pageContext: {
+        id: ADF_CONFORMANCE_DETAILS.id,
+        title: ADF_CONFORMANCE_DETAILS.title,
+        url: ADF_CONFORMANCE_DETAILS.url,
+        version: ADF_CONFORMANCE_DETAILS.version,
+        spaceKey: ADF_CONFORMANCE_DETAILS.spaceKey,
+      },
+      resolveMediaAttachment: createAdfMediaAttachmentResolver(
+        ADF_CONFORMANCE_MEDIA_ATTACHMENTS,
+      ),
+      resolveAnnotation: createAdfAnnotationResolver(
+        ADF_CONFORMANCE_INLINE_COMMENTS,
+      ),
+      annotationCommentsComplete: true,
+    },
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Spec 007 — PDF settings / watermark conformance fixture
@@ -292,14 +927,14 @@ export const SCOPE_METADATA: PdfExportMetadata = {
  *   - `heading.explicitAnchor` (a named heading target),
  *   - a standalone `pageBreak` block,
  *   - a `table` with `columnWidths` AND a `table` `caption`,
- *   - a `codeBlock` with a `code` `caption`,
+ *   - a `codeBlock` with a legacy header/collapse contract and `code` caption,
  *   - a standalone `orientation` region (`landscape: true`) with content,
  *   - a standalone `anchor` block,
  *   - an enriched `unknown` block carrying `params` + a preserved `body`.
  *
- * Chosen so BOTH engines emit ZERO warning/info notes (no image asset fetch, no
- * container-suppressed break/orientation): the case asserts the note set is
- * empty and — for the PDF side — warm-repeat byte determinism.
+ * Chosen so BOTH engines emit zero warning notes. The one intentional info note
+ * records that a legacy initially-collapsed code block is expanded for static
+ * output; the PDF side also proves warm-repeat byte determinism.
  */
 export const BLOCKS_ALL_FIELDS: ExportBlock[] = [
   {
@@ -334,6 +969,8 @@ export const BLOCKS_ALL_FIELDS: ExportBlock[] = [
     type: "codeBlock",
     language: "typescript",
     code: "export const answer = 42;",
+    title: "Legacy code header",
+    initiallyCollapsed: true,
     caption: { kind: "code", content: [{ type: "text", text: "Listing one" }] },
   },
   {

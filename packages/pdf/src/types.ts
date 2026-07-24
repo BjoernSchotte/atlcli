@@ -1,4 +1,16 @@
-import type { Caption, ExportBlock, ExportNote, InlineNode, LinkTarget } from "@atlcli/confluence";
+import type {
+  AdfExtensionFrame,
+  Caption,
+  ExportBlock,
+  ExportLink,
+  ExportNote,
+  InlineNode,
+  LinkTarget,
+  ListItem,
+  LayoutColumn,
+  TableCell,
+  TableRow,
+} from "@atlcli/confluence";
 import type { TemplateManifest } from "@atlcli/template-pack";
 
 export interface PdfExportMetadata {
@@ -53,26 +65,98 @@ export interface PreparedPdfAsset {
   mediaType: string;
 }
 
+export type PreparedPdfInlineNode =
+  | Exclude<InlineNode, { type: "link" | "media" }>
+  | (Omit<Extract<InlineNode, { type: "link" }>, "content"> & {
+      content: PreparedPdfInlineNode[];
+    })
+  | (Extract<InlineNode, { type: "media" }> & {
+      /** Packed asset path when a correlated inline image resolved successfully. */
+      assetPath?: string;
+      /** Deterministic visible fallback retained when the asset cannot be embedded. */
+      fallbackLabel: string;
+    });
+
+export type PreparedPdfCaption = Omit<Caption, "content"> & {
+  content: PreparedPdfInlineNode[];
+};
+
 export type PreparedPdfBlock =
-  | Exclude<ExportBlock, { type: "callout" | "list" | "table" | "image" | "blockquote" | "codeBlock" | "orientation" | "unknown" }>
+  | Exclude<ExportBlock, { type: "heading" | "paragraph" | "callout" | "expand" | "list" | "layout" | "table" | "image" | "mediaFallback" | "blockquote" | "codeBlock" | "orientation" | "unknown" }>
+  | (Omit<Extract<ExportBlock, { type: "heading" }>, "content"> & {
+      content: PreparedPdfInlineNode[];
+    })
+  | (Omit<Extract<ExportBlock, { type: "paragraph" }>, "content"> & {
+      content: PreparedPdfInlineNode[];
+    })
   /**
    * An unresolved macro (spec 004 placeholder floor). `body` is prepared
    * recursively so images/tables inside an unresolved third-party macro still
    * render; `plainBody` is the verbatim plain-text body.
    */
-  | { type: "unknown"; macroName: string; body?: PreparedPdfBlock[]; plainBody?: string }
-  | { type: "callout"; kind: Extract<ExportBlock, { type: "callout" }>["kind"]; title?: string; content: PreparedPdfBlock[] }
-  | { type: "list"; ordered: boolean; items: Array<{ content: PreparedPdfBlock[]; checked?: boolean }> }
-  | {
-      type: "table";
-      rows: Array<{ cells: Array<{ header: boolean; colspan: number; rowspan: number; backgroundColor?: string; content: PreparedPdfBlock[] }> }>;
-      columnWidths?: number[];
-      caption?: Caption;
+  | (Omit<Extract<ExportBlock, { type: "unknown" }>, "body" | "extensionFrames"> & {
+      body?: PreparedPdfBlock[];
+      extensionFrames?: Array<Omit<AdfExtensionFrame, "content"> & {
+        content: PreparedPdfBlock[];
+      }>;
+    })
+  | Omit<Extract<ExportBlock, { type: "callout" }>, "content"> & {
+      content: PreparedPdfBlock[];
     }
-  | { type: "image"; assetPath?: string; alt?: string; width?: number; height?: number; fallbackLabel: string; caption?: Caption }
+  | Omit<Extract<ExportBlock, { type: "expand" }>, "content"> & {
+      content: PreparedPdfBlock[];
+    }
+  | Omit<Extract<ExportBlock, { type: "list" }>, "items"> & {
+      items: Array<Omit<ListItem, "content"> & { content: PreparedPdfBlock[] }>;
+    }
+  | Omit<Extract<ExportBlock, { type: "layout" }>, "columns"> & {
+      columns: Array<Omit<LayoutColumn, "content"> & { content: PreparedPdfBlock[] }>;
+    }
+  | Omit<Extract<ExportBlock, { type: "table" }>, "caption" | "rows"> & {
+      caption?: PreparedPdfCaption;
+      rows: Array<Omit<TableRow, "cells"> & {
+        cells: Array<Omit<TableCell, "content"> & { content: PreparedPdfBlock[] }>;
+      }>;
+    }
+  | {
+      type: "image";
+      assetPath?: string;
+      alt?: string;
+      width?: number;
+      height?: number;
+      fallbackLabel: string;
+      media?: Extract<ExportBlock, { type: "image" }>["media"];
+      mediaPresentation?: Extract<ExportBlock, { type: "image" }>["mediaPresentation"];
+      mediaGroup?: Extract<ExportBlock, { type: "image" }>["mediaGroup"];
+      border?: Extract<ExportBlock, { type: "image" }>["border"];
+      annotations?: Extract<ExportBlock, { type: "image" }>["annotations"];
+      caption?: PreparedPdfCaption;
+      link?: ExportLink;
+    }
+  | (Omit<Extract<ExportBlock, { type: "mediaFallback" }>, "caption"> & {
+      caption?: PreparedPdfCaption;
+    })
   | { type: "blockquote"; content: PreparedPdfBlock[] }
-  | { type: "codeBlock"; language?: string; code: string; caption?: Caption }
-  | { type: "diagram"; assetPath: string; alt?: string; source: string; caption?: Caption }
+  | (Omit<Extract<ExportBlock, { type: "codeBlock" }>, "caption"> & {
+      caption?: PreparedPdfCaption;
+    })
+  | {
+      type: "diagram";
+      assetPath: string;
+      alt?: string;
+      source: string;
+      caption?: PreparedPdfCaption;
+      /** Retained from an ADF code block even when Mermaid becomes a diagram. */
+      wrap?: boolean;
+      hideLineNumbers?: boolean;
+      firstLineNumber?: number;
+      /** Legacy Storage code-macro header retained when Mermaid becomes a diagram. */
+      title?: string;
+      /** Legacy Storage collapse intent retained for the static-projection report. */
+      initiallyCollapsed?: boolean;
+      localId?: string;
+      uniqueId?: string;
+    }
   | { type: "orientation"; landscape: boolean; content: PreparedPdfBlock[] };
 
 export interface PreparedPdfDocument {

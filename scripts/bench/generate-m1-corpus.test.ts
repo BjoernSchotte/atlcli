@@ -17,12 +17,13 @@ import {
   composeM1Document,
   corpusBlockCount,
   labelledPageCount,
+  MACRO_ADF_INLINE_EXPORT_TEXT,
   M1_CORPUS_PAGES,
   M1_CORPUS_VERSION,
 } from "@atlcli/export-fixtures";
 
 /** Structural golden — a stable sha256 of the corpus node JSON. */
-const M1_CORPUS_DIGEST = "bbf961b1b9267dd53949649ff812705a4f356bcc76f470ceb2359352b72d176c";
+const M1_CORPUS_DIGEST = "9a0c8c822d795cdcca24abae8b4f0fb26e987c03f2e03245772d5cfb3d658b0b";
 
 describe("M1 acceptance corpus", () => {
   it("is deterministic: same version → byte-identical JSON", async () => {
@@ -35,7 +36,7 @@ describe("M1 acceptance corpus", () => {
     const corpus = await buildM1Corpus();
     expect(corpus.version).toBe(M1_CORPUS_VERSION);
     expect(corpus.nodes.length).toBe(M1_CORPUS_PAGES);
-    expect(corpusBlockCount(corpus)).toBe(172);
+    expect(corpusBlockCount(corpus)).toBe(196);
     expect(labelledPageCount(corpus)).toBe(16);
   });
 
@@ -52,6 +53,14 @@ describe("M1 acceptance corpus", () => {
     expect(flat.some((b) => b.type === "orientation")).toBe(true); // scroll-landscape
     expect(flat.some((b) => b.type === "pageBreak")).toBe(true); // scroll-pagebreak
     expect(flat.some((b) => b.type === "unknown")).toBe(true); // draw.io floor
+    expect(flat.some(
+      (block) =>
+        block.type === "paragraph"
+        && block.content.some(
+          (inline) =>
+            inline.type === "text" && inline.text === MACRO_ADF_INLINE_EXPORT_TEXT,
+        ),
+    )).toBe(true);
     expect(corpus.macroNotes.map((n) => n.code)).toContain("macro-rendered-via");
     expect(corpus.macroNotes.map((n) => n.code)).toContain("macro-degraded");
   });

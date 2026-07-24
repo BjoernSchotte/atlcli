@@ -87,7 +87,7 @@ export interface DefaultRegistryDeps {
 
 // export: ExportViewPort
 export interface ExportViewPort {
-    renderMacroHtml(pageId: string, macroId: string): Promise<string | undefined>;
+    renderMacroHtml(pageId: string, macroId: string, pageVersion?: number): Promise<string | undefined>;
 }
 
 // export: ExternalAssetFetcher
@@ -181,6 +181,7 @@ export interface MacroInstance {
     body?: ExportBlock[];
     plainBody?: string;
     macroId?: string;
+    adfExtension?: AdfExtensionIdentity;
 }
 
 // export: MacroInstanceId

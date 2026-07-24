@@ -20,6 +20,8 @@ interface TreeManifestPayloadV1 {
   jobId: string;
   requestKey: string;
   entries: ExportTreeBodyManifestEntryV1[];
+  /** Link to an earlier source-plan checkpoint, when one was published. */
+  previousRef?: string;
 }
 
 interface TreePagePayloadV1 {
@@ -188,7 +190,24 @@ function validateResult(
   if (result.pageId !== entry.pageId || result.title !== entry.title) {
     throw new Error(`Export-tree result ${entry.ordinal} identity is malformed.`);
   }
+  const validateSource = (
+    source: unknown,
+    required: boolean,
+  ): void => {
+    if (!source && !required) return;
+    if (
+      !source ||
+      typeof source !== "object" ||
+      !["atlas_doc_format", "storage"].includes(
+        (source as { representation?: string }).representation ?? "",
+      ) ||
+      typeof (source as { degraded?: unknown }).degraded !== "boolean"
+    ) {
+      throw new Error(`Export-tree source result ${entry.ordinal} is malformed.`);
+    }
+  };
   if (result.ok) {
+    validateSource(result.source, true);
     if (
       !Array.isArray(result.blocks) ||
       !Array.isArray(result.notes) ||
@@ -197,17 +216,20 @@ function validateResult(
     ) {
       throw new Error(`Export-tree success result ${entry.ordinal} is malformed.`);
     }
-  } else if (
-    !result.failure ||
-    ![
-      "page-unreadable",
-      "subtree-unreadable",
-      "page-ambiguous-404",
-      "page-version-changed",
-    ].includes(result.failure.code) ||
-    !Array.isArray(result.failure.affected)
-  ) {
-    throw new Error(`Export-tree failure result ${entry.ordinal} is malformed.`);
+  } else {
+    validateSource(result.source, false);
+    if (
+      !result.failure ||
+      ![
+        "page-unreadable",
+        "subtree-unreadable",
+        "page-ambiguous-404",
+        "page-version-changed",
+      ].includes(result.failure.code) ||
+      !Array.isArray(result.failure.affected)
+    ) {
+      throw new Error(`Export-tree failure result ${entry.ordinal} is malformed.`);
+    }
   }
   return result;
 }
@@ -349,6 +371,7 @@ export function createExportTreeBodySpoolV1(
         jobId: context.jobId,
         requestKey,
         entries: entries.map((entry) => ({ ...entry })),
+        ...(latestRef ? { previousRef: latestRef } : {}),
       };
       const object = await context.spool.put(
         { namespace: "source-manifest", key: "manifest" },

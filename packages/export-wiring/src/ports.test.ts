@@ -17,6 +17,27 @@ import {
 const BASE = "https://acme.atlassian.net";
 
 describe("confluenceContentPortFromClient", () => {
+  test("forwards the export signal into content requests", async () => {
+    const controller = new AbortController();
+    let seen: AbortSignal | undefined;
+    const fake = {
+      async searchPages(
+        _cql: string,
+        _limit: number,
+        options?: { signal?: AbortSignal },
+      ) {
+        seen = options?.signal;
+        return [];
+      },
+    } as unknown as ConfluenceClient;
+
+    await confluenceContentPortFromClient(
+      fake,
+      controller.signal,
+    ).searchCql("type=page");
+    expect(seen).toBe(controller.signal);
+  });
+
   test("getChildren uses the child-page endpoint (getChildrenWithPosition), never the CQL lookup", async () => {
     // Pin the client method: the CQL-based client.getChildren lags behind fresh
     // page creation (e2e-observed: a new child page was missing on the first
@@ -160,22 +181,73 @@ describe("confluenceContentPortFromClient", () => {
 });
 
 describe("exportViewPortFromClient", () => {
-  test("resolves one batched export_view fetch per page, matched by data-macro-id", async () => {
+  test("forwards the export signal into export-view requests", async () => {
+    const controller = new AbortController();
+    let seen: AbortSignal | undefined;
+    const fake = {
+      async getExportViewMacros(
+        _pageId: string,
+        options?: { signal?: AbortSignal },
+      ) {
+        seen = options?.signal;
+        return new Map([["m1", "<p>rendered</p>"]]);
+      },
+    } as unknown as ConfluenceClient;
+
+    await exportViewPortFromClient(
+      fake,
+      controller.signal,
+    ).renderMacroHtml("7", "m1");
+    expect(seen).toBe(controller.signal);
+  });
+
+  test("caches one batch per page and uses the versioned macro endpoint when absent", async () => {
     const pages: string[] = [];
+    const individual: Array<{ pageId: string; pageVersion: number; macroId: string }> = [];
     const fake = {
       async getExportViewMacros(pageId: string) {
         pages.push(pageId);
         return new Map([["m1", "<p>rendered</p>"]]);
       },
+      async getMacroBodyByMacroId(pageId: string, pageVersion: number, macroId: string) {
+        individual.push({ pageId, pageVersion, macroId });
+        return "<p>Forge export</p>";
+      },
     } as unknown as ConfluenceClient;
     const port = exportViewPortFromClient(fake);
     expect(await port.renderMacroHtml("7", "m1")).toBe("<p>rendered</p>");
+    expect(await port.renderMacroHtml("7", "forge-local-id", 3)).toBe("<p>Forge export</p>");
     expect(await port.renderMacroHtml("7", "missing")).toBeUndefined();
-    expect(pages).toEqual(["7", "7"]);
+    expect(pages).toEqual(["7"]);
+    expect(individual).toEqual([{
+      pageId: "7",
+      pageVersion: 3,
+      macroId: "forge-local-id",
+    }]);
   });
 });
 
 describe("attachmentLookupFromClient", () => {
+  test("forwards the export signal into attachment listings", async () => {
+    const controller = new AbortController();
+    let seen: AbortSignal | undefined;
+    const fake = {
+      async listAttachments(
+        _pageId: string,
+        options?: { signal?: AbortSignal },
+      ) {
+        seen = options?.signal;
+        return [];
+      },
+    } as unknown as ConfluenceClient;
+
+    await attachmentLookupFromClient(fake, controller.signal).lookup(
+      "1",
+      "a.png",
+    );
+    expect(seen).toBe(controller.signal);
+  });
+
   test("lists a page's attachments once and reuses the listing", async () => {
     let calls = 0;
     const fake = {
@@ -206,6 +278,27 @@ describe("jiraIssuePortFromClient", () => {
       },
     };
   }
+
+  test("forwards the export signal into Jira requests", async () => {
+    const controller = new AbortController();
+    let seen: AbortSignal | undefined;
+    const client: JiraClientLike = {
+      async getIssue(_key, options): Promise<JiraIssueLike> {
+        seen = options?.signal;
+        return { key: "ATL-1", fields: {} };
+      },
+      async search() {
+        return { issues: [] };
+      },
+    };
+
+    await jiraIssuePortFromClient(
+      client,
+      BASE,
+      controller.signal,
+    ).getIssue("ATL-1");
+    expect(seen).toBe(controller.signal);
+  });
 
   test("403 → permission PortError", async () => {
     const port = jiraIssuePortFromClient(failing(new Error("Jira API error (403): forbidden")), BASE);

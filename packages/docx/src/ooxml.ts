@@ -13,6 +13,7 @@
  */
 import type { CaptionKind, ExportNote } from "@atlcli/confluence";
 import { isSafeLinkScheme, normalizeExportColor } from "@atlcli/confluence";
+import { CODE_FONT_FAMILY } from "./font-embedding.js";
 import { encodeXmlText } from "./ooxml-text.js";
 
 /** Resolved caption locale (spec 003 C3). Only the two shipped label sets. */
@@ -137,7 +138,7 @@ export function codeStyleXml(): string {
     `<w:name w:val="Atlcli Code"/>` +
     `<w:pPr><w:shd w:val="clear" w:color="auto" w:fill="F4F5F7"/>` +
     `<w:spacing w:before="0" w:after="0"/></w:pPr>` +
-    `<w:rPr><w:rFonts w:ascii="Consolas" w:hAnsi="Consolas" w:cs="Consolas"/><w:sz w:val="18"/></w:rPr>` +
+    `<w:rPr><w:rFonts w:ascii="${CODE_FONT_FAMILY}" w:hAnsi="${CODE_FONT_FAMILY}" w:cs="${CODE_FONT_FAMILY}"/><w:sz w:val="18"/></w:rPr>` +
     `</w:style>`
   );
 }
@@ -158,6 +159,18 @@ export interface RunStyle {
   color?: string;
   /** Arbitrary run shading color; unlike `w:highlight`, this preserves `#RRGGBB`. */
   backgroundColor?: string;
+  /** Optional inline border color without leading `#`. */
+  borderColor?: string;
+  /** OOXML eighth-point border size. */
+  borderSize?: number;
+  /** Explicit OOXML half-point size, used for bounded source typography semantics. */
+  fontSizeHalfPoints?: number;
+}
+
+function fontSizeHalfPointsXml(value: number | undefined): string {
+  if (value === undefined || !Number.isFinite(value)) return "";
+  const size = Math.max(1, Math.min(3276, Math.round(value)));
+  return `<w:sz w:val="${size}"/><w:szCs w:val="${size}"/>`;
 }
 
 function runPropsXml(style: RunStyle): string {
@@ -168,8 +181,20 @@ function runPropsXml(style: RunStyle): string {
   if (style.underline) parts.push('<w:u w:val="single"/>');
   if (style.subscript) parts.push('<w:vertAlign w:val="subscript"/>');
   if (style.superscript) parts.push('<w:vertAlign w:val="superscript"/>');
-  if (style.code) parts.push('<w:rFonts w:ascii="Consolas" w:hAnsi="Consolas" w:cs="Consolas"/>');
+  if (style.borderColor) {
+    const size = Math.max(2, Math.min(96, Math.round(style.borderSize ?? 8)));
+    parts.push(
+      `<w:bdr w:val="single" w:sz="${size}" w:space="1" w:color="${normalizeColor(style.borderColor)}"/>`,
+    );
+  }
+  if (style.code) {
+    parts.push(
+      `<w:rFonts w:ascii="${CODE_FONT_FAMILY}" w:hAnsi="${CODE_FONT_FAMILY}" w:cs="${CODE_FONT_FAMILY}"/>`,
+    );
+  }
   if (style.color) parts.push(`<w:color w:val="${normalizeColor(style.color)}"/>`);
+  const fontSize = fontSizeHalfPointsXml(style.fontSizeHalfPoints);
+  if (fontSize) parts.push(fontSize);
   if (style.backgroundColor) {
     parts.push(
       `<w:shd w:val="clear" w:color="auto" w:fill="${normalizeColor(style.backgroundColor)}"/>`
@@ -262,12 +287,15 @@ export function isSafeHyperlinkUrl(url: string): boolean {
  * URLs failing {@link isSafeHyperlinkUrl} degrade to the plain inner runs —
  * the link text survives, the live field target does not.
  */
-export function hyperlinkField(url: string, innerRuns: string): string {
+export function hyperlinkField(url: string, innerRuns: string, tooltip?: string): string {
   if (!isSafeHyperlinkUrl(url)) return innerRuns;
   const instr = esc(escapeFieldArgument(url));
+  const screenTip = tooltip !== undefined
+    ? ` \\o "${esc(escapeFieldArgument(tooltip))}"`
+    : "";
   return (
     `<w:r><w:fldChar w:fldCharType="begin"/></w:r>` +
-    `<w:r><w:instrText xml:space="preserve"> HYPERLINK "${instr}" </w:instrText></w:r>` +
+    `<w:r><w:instrText xml:space="preserve"> HYPERLINK "${instr}"${screenTip} </w:instrText></w:r>` +
     `<w:r><w:fldChar w:fldCharType="separate"/></w:r>` +
     innerRuns +
     `<w:r><w:fldChar w:fldCharType="end"/></w:r>`
@@ -295,8 +323,13 @@ export function bookmarkEnd(id: number): string {
  * (spec 002 anchor rewrite). Previously internal links were only styled blue —
  * they now navigate.
  */
-export function internalHyperlink(anchor: string, innerRuns: string): string {
-  return `<w:hyperlink w:anchor="${esc(anchor)}" w:history="1">${innerRuns}</w:hyperlink>`;
+export function internalHyperlink(
+  anchor: string,
+  innerRuns: string,
+  tooltip?: string,
+): string {
+  const screenTip = tooltip !== undefined ? ` w:tooltip="${esc(tooltip)}"` : "";
+  return `<w:hyperlink w:anchor="${esc(anchor)}" w:history="1"${screenTip}>${innerRuns}</w:hyperlink>`;
 }
 
 /** A hard page break paragraph (`pageBreak` block → `<w:br w:type="page"/>`). */
@@ -497,17 +530,36 @@ export function dividerParagraph(): string {
 export function calloutTable(
   kind: string,
   titleRunsXml: string | null,
-  bodyParagraphs: string
+  bodyParagraphs: string,
+  custom?: { color?: string; iconRunsXml?: string | null },
 ): string {
   const palette: Record<string, { fill: string; accent: string }> = {
     info: { fill: "DEEBFF", accent: "2684FF" },
     note: { fill: "EAE6FF", accent: "6554C0" },
     warning: { fill: "FFFAE6", accent: "FFAB00" },
     tip: { fill: "E3FCEF", accent: "36B37E" },
+    success: { fill: "E3FCEF", accent: "36B37E" },
+    error: { fill: "FFEBE6", accent: "DE350B" },
     panel: { fill: "F4F5F7", accent: "97A0AF" },
   };
-  const c = palette[kind] ?? palette.panel;
+  const sourceColor =
+    custom?.color && /^#[0-9A-F]{6}$/u.test(custom.color) ? custom.color.slice(1) : undefined;
+  const tint = (hex: string): string =>
+    [0, 2, 4]
+      .map((offset) => {
+        const channel = Number.parseInt(hex.slice(offset, offset + 2), 16);
+        return Math.round(channel * 0.15 + 255 * 0.85).toString(16).padStart(2, "0");
+      })
+      .join("")
+      .toUpperCase();
+  const c = sourceColor
+    ? { fill: tint(sourceColor), accent: sourceColor }
+    : palette[kind] ?? palette.panel;
+  const icon = custom?.iconRunsXml
+    ? `<w:p><w:pPr><w:spacing w:after="60"/></w:pPr>${custom.iconRunsXml}</w:p>`
+    : "";
   const title = titleRunsXml ? `<w:p><w:pPr><w:spacing w:after="60"/></w:pPr>${titleRunsXml}</w:p>` : "";
+  const body = cellBodyXml(bodyParagraphs);
   return (
     `<w:tbl>` +
     `<w:tblPr><w:tblW w:w="9000" w:type="dxa"/>` +
@@ -517,8 +569,9 @@ export function calloutTable(
     `<w:tblGrid><w:gridCol w:w="9000"/></w:tblGrid>` +
     `<w:tr><w:tc>` +
     `<w:tcPr><w:tcW w:w="9000" w:type="dxa"/><w:shd w:val="clear" w:color="auto" w:fill="${c.fill}"/></w:tcPr>` +
+    icon +
     title +
-    (bodyParagraphs || "<w:p/>") +
+    body +
     `</w:tc></w:tr>` +
     `</w:tbl>`
   );
@@ -540,6 +593,16 @@ export interface TableStyleSource {
 export interface DataTableOptions {
   /** Per-column `w:gridCol` widths in dxa (spec 006 G3). Absent → even split. */
   widthsDxa?: number[];
+  /** Total portable table width in dxa. Defaults to the historical 9000. */
+  widthDxa?: number;
+  /** Logical source alignment retained for bidirectional Word documents. */
+  alignment?: "start" | "center" | "end";
+  /** Preserve an explicit fixed-column display mode without authored tracks. */
+  fixedLayout?: boolean;
+  /** Presentational page layout: omit semantic table styling and borders. */
+  borderless?: boolean;
+  /** Symmetric left/right cell gutter for a borderless layout table. */
+  cellMarginDxa?: number;
   /** Table style source (spec 006 G3b). Defaults to `"confluence"`. */
   tableStyle?: TableStyleSource;
 }
@@ -547,30 +610,49 @@ export interface DataTableOptions {
 /**
  * Build a data table from row/cell OOXML. With `widthsDxa` (spec 006 G3) the
  * `w:tblGrid` carries real per-column widths and a `w:tblLayout w:type="fixed"`
- * so Word does not re-autofit; without it the grid is an even 9000-dxa split
- * (pre-006 behavior). The table style is either the built-in confluence grid or
+ * so Word does not re-autofit; an explicit fixed display mode does the same
+ * without authored tracks. Otherwise the grid is an even split of `widthDxa`
+ * (9000 by default). The table style is either the built-in confluence grid or
  * a template style (spec 006 G3b).
  */
 export function dataTable(gridCols: number, rowsXml: string, opts: DataTableOptions = {}): string {
   const cols = Math.max(1, gridCols);
   const widths = opts.widthsDxa;
-  const even = Math.floor(9000 / cols);
+  const widthDxa =
+    Number.isSafeInteger(opts.widthDxa) && (opts.widthDxa ?? 0) > 0
+      ? opts.widthDxa!
+      : 9000;
+  const even = Math.max(1, Math.floor(widthDxa / cols));
   const grid = Array.from({ length: cols }, (_, i) => `<w:gridCol w:w="${widths?.[i] ?? even}"/>`).join("");
-  const fixedLayout = widths ? `<w:tblLayout w:type="fixed"/>` : "";
+  const fixedLayout = widths || opts.fixedLayout ? `<w:tblLayout w:type="fixed"/>` : "";
+  const alignment = opts.alignment ? `<w:jc w:val="${opts.alignment}"/>` : "";
   const style = opts.tableStyle ?? { source: "confluence" as const };
   let tblPrInner: string;
-  if (style.source === "template" && style.styleId) {
+  if (opts.borderless) {
+    const margin =
+      Number.isSafeInteger(opts.cellMarginDxa) && (opts.cellMarginDxa ?? 0) >= 0
+        ? opts.cellMarginDxa!
+        : 120;
+    tblPrInner =
+      `<w:tblW w:w="${widthDxa}" w:type="dxa"/>` +
+      alignment +
+      fixedLayout +
+      `<w:tblCellMar><w:left w:w="${margin}" w:type="dxa"/><w:right w:w="${margin}" w:type="dxa"/></w:tblCellMar>` +
+      `<w:tblLook w:val="0000" w:firstRow="0" w:lastRow="0" w:firstColumn="0" w:lastColumn="0" w:noHBand="1" w:noVBand="1"/>`;
+  } else if (style.source === "template" && style.styleId) {
     // Template style controls borders/shading; emit only the style ref + look.
     tblPrInner =
       `<w:tblStyle w:val="${esc(style.styleId)}"/>` +
-      `<w:tblW w:w="9000" w:type="dxa"/>` +
+      `<w:tblW w:w="${widthDxa}" w:type="dxa"/>` +
+      alignment +
       fixedLayout +
       `<w:tblLook w:val="04A0" w:firstRow="1" w:lastRow="0" w:firstColumn="1" w:lastColumn="0" w:noHBand="0" w:noVBand="1"/>`;
   } else {
     // Schema order matters (CT_TblPrBase, ECMA-376 §17.4.60): tblBorders (seq 11)
     // MUST precede tblLayout (seq 13), so fixedLayout goes AFTER tblBorders here.
     tblPrInner =
-      `<w:tblStyle w:val="TableGrid"/><w:tblW w:w="9000" w:type="dxa"/>` +
+      `<w:tblStyle w:val="TableGrid"/><w:tblW w:w="${widthDxa}" w:type="dxa"/>` +
+      alignment +
       `<w:tblBorders>` +
       `<w:top w:val="single" w:sz="4" w:color="AAAAAA"/><w:left w:val="single" w:sz="4" w:color="AAAAAA"/>` +
       `<w:bottom w:val="single" w:sz="4" w:color="AAAAAA"/><w:right w:val="single" w:sz="4" w:color="AAAAAA"/>` +
@@ -601,6 +683,7 @@ export function tableCell(
     header?: boolean;
     backgroundColor?: string;
     widthDxa?: number;
+    verticalAlignment?: "top" | "middle" | "bottom";
   } = {}
 ): string {
   const props: string[] = [];
@@ -610,13 +693,28 @@ export function tableCell(
   if (opts.vMerge) props.push(`<w:vMerge w:val="${opts.vMerge}"/>`);
   const fill = normalizeExportColor(opts.backgroundColor)?.slice(1) ?? (opts.header ? "F4F5F7" : undefined);
   if (fill) props.push(`<w:shd w:val="clear" w:color="auto" w:fill="${fill}"/>`);
-  const body = paragraphsXml || "<w:p/>";
+  if (opts.verticalAlignment) {
+    const value = opts.verticalAlignment === "middle" ? "center" : opts.verticalAlignment;
+    props.push(`<w:vAlign w:val="${value}"/>`);
+  }
+  const body = cellBodyXml(paragraphsXml);
   return `<w:tc><w:tcPr>${props.join("")}</w:tcPr>${body}</w:tc>`;
 }
 
+/**
+ * WordprocessingML table cells need a terminal paragraph after a nested table
+ * for portable round-tripping. Word repairs the omission permissively, while
+ * LibreOffice can lift the following sibling table into plain paragraphs.
+ */
+function cellBodyXml(xml: string): string {
+  if (!xml) return "<w:p/>";
+  return /<\/w:tbl>\s*$/u.test(xml) ? `${xml}<w:p/>` : xml;
+}
+
 /** Status badge as a shaded, colored inline run inside its own paragraph. */
-export function statusBadgeRun(text: string, color: string): string {
+export function statusBadgeRun(text: string, color: string, fontSizeHalfPoints?: number): string {
   const fillByColor: Record<string, string> = {
+    neutral: "DFE1E6",
     grey: "DFE1E6",
     gray: "DFE1E6",
     green: "E3FCEF",
@@ -626,16 +724,44 @@ export function statusBadgeRun(text: string, color: string): string {
     purple: "EAE6FF",
   };
   const fill = fillByColor[color.toLowerCase()] ?? "DFE1E6";
+  const fontSize = fontSizeHalfPointsXml(fontSizeHalfPoints);
   return (
-    `<w:r><w:rPr><w:b/><w:shd w:val="clear" w:color="auto" w:fill="${fill}"/></w:rPr>` +
+    `<w:r><w:rPr><w:b/>${fontSize}<w:shd w:val="clear" w:color="auto" w:fill="${fill}"/></w:rPr>` +
     `<w:t xml:space="preserve"> ${esc(text)} </w:t></w:r>`
   );
 }
 
-/** One colored code line: a paragraph in the code style with per-token runs. */
-export function codeLineParagraph(tokens: { text: string; color?: string }[]): string {
-  const runs = tokens
+/**
+ * One colored code line: a paragraph in the code style with per-token runs.
+ * The optional line number is presentation-only and is deliberately emitted
+ * as a separate muted run so copying the neutral source never acquires it.
+ */
+export function codeLineParagraph(
+  tokens: { text: string; color?: string }[],
+  lineNumber?: number,
+  lineNumberWidth = 1,
+): string {
+  const gutter =
+    lineNumber === undefined
+      ? ""
+      : (
+          run(String(lineNumber).padStart(lineNumberWidth), {
+            code: true,
+            color: "#6B778C",
+          }) +
+          "<w:r><w:tab/></w:r>"
+        );
+  const runs = gutter + tokens
     .map((t) => run(t.text, { code: true, color: t.color }))
     .join("");
-  return paragraph(runs || run("", { code: true }), { styleId: CODE_STYLE_ID });
+  return paragraph(runs || run("", { code: true }), {
+    styleId: CODE_STYLE_ID,
+    ...(lineNumber === undefined
+      ? {}
+      : {
+          extraPPr:
+            '<w:tabs><w:tab w:val="left" w:pos="480"/></w:tabs>' +
+            '<w:ind w:start="480" w:hanging="480"/>',
+        }),
+  });
 }

@@ -87,6 +87,56 @@ test("every registered conformance case passes from nested production output", a
   expect(pdfJobParity.renderAttempts).toBe(1);
   expect(pdfJobParity.reservationReleased).toBe(true);
 
+  const blocks = JSON.parse(
+    (await page.getByTestId("blocks-result").textContent()) ?? "null",
+  );
+  expect(blocks.docxHasCodeTitle).toBe(true);
+  expect(blocks.pdfHasCodeCollapseProjection).toBe(true);
+  expect(blocks.docxHasCodeCollapseProjection).toBe(true);
+
+  const adfSource = JSON.parse(
+    (await page.getByTestId("adf-source-result").textContent()) ?? "null",
+  );
+  expect(adfSource.pdfJobArtifactAndReportParity).toBe(true);
+  expect(adfSource.docxJobArtifactAndReportParity).toBe(true);
+  expect(adfSource.neutralHasDateStatusPlaceholderSemantics).toBe(true);
+  expect(adfSource.docxHasDateStatusPlaceholderSemantics).toBe(true);
+  expect(adfSource.neutralHasAnnotationAndFragmentIdentity).toBe(true);
+  expect(adfSource.reportHasFragmentProjectionFact).toBe(true);
+  expect(adfSource.neutralHasDataConsumerProvenance).toBe(true);
+  expect(adfSource.neutralHasSyncedContentSemantics).toBe(true);
+  expect(adfSource.neutralHasUnsupportedAdfProvenance).toBe(true);
+  expect(adfSource.neutralHasBreakoutSemantics).toBe(true);
+  expect(adfSource.reportHasAllBreakoutProjectionFacts).toBe(true);
+  expect(adfSource.docxHasSyncedContentProjection).toBe(true);
+  expect(adfSource.docxHasUnsupportedAdfFallback).toBe(true);
+  expect(adfSource.neutralHasBlockLocalIdentities).toBe(true);
+  expect(adfSource.neutralHasCodeBlockSemantics).toBe(true);
+  expect(adfSource.docxHasInlineCode).toBe(true);
+  expect(adfSource.pdfHasInlineMediaPresentation).toBe(true);
+  expect(adfSource.docxHasMediaPresentation).toBe(true);
+  expect(adfSource.docxHasEmbeddedCodeFont).toBe(true);
+  expect(adfSource.docxHasCodeLineNumbers).toBe(true);
+  expect(adfSource.neutralHasCustomPanelSemantics).toBe(true);
+  expect(adfSource.docxHasCustomPanelPresentation).toBe(true);
+  expect(adfSource.neutralHasMentionSemantics).toBe(true);
+  expect(adfSource.docxHasMentionPresentation).toBe(true);
+  expect(adfSource.neutralHasSmartCardSemantics).toBe(true);
+  expect(adfSource.neutralHasMultiBodiedExtensionSemantics).toBe(true);
+  expect(adfSource.docxHasSmartCardPresentation).toBe(true);
+  expect(adfSource.docxHasMultiBodiedExtensionProjection).toBe(true);
+  expect(adfSource.neutralHasTablePresentation).toBe(true);
+  expect(adfSource.neutralHasLayoutPresentation).toBe(true);
+  expect(adfSource.docxHasTablePresentation).toBe(true);
+  expect(adfSource.docxHasLayoutPresentation).toBe(true);
+
+  const macros = JSON.parse(
+    (await page.getByTestId("macros-result").textContent()) ?? "null",
+  );
+  expect(macros.adfExportResolved).toBe(true);
+  expect(macros.docxHasAdfExport).toBe(true);
+  expect(macros.docxHasInlineAdfExport).toBe(true);
+
   mkdirSync(dirname(DIGEST_MANIFEST), { recursive: true });
   writeFileSync(DIGEST_MANIFEST, JSON.stringify(digestManifest, null, 2));
 

@@ -56,9 +56,15 @@ function allHeadings(blocks: ExportBlock[]): Extract<ExportBlock, { type: "headi
   const walk = (list: ExportBlock[]): void => {
     for (const b of list) {
       if (b.type === "heading") out.push(b);
-      else if (b.type === "callout" || b.type === "blockquote" || b.type === "orientation") walk(b.content);
+      else if (
+        b.type === "callout" ||
+        b.type === "expand" ||
+        b.type === "blockquote" ||
+        b.type === "orientation"
+      ) walk(b.content);
       else if (b.type === "list") for (const it of b.items) walk(it.content);
       else if (b.type === "table") for (const r of b.rows) for (const c of r.cells) walk(c.content);
+      else if (b.type === "layout") for (const column of b.columns) walk(column.content);
     }
   };
   walk(blocks);
@@ -83,6 +89,7 @@ function allLinkTargets(blocks: ExportBlock[]): LinkTarget[] {
           inline(b.content);
           break;
         case "callout":
+        case "expand":
         case "blockquote":
         case "orientation":
           walk(b.content);
@@ -92,6 +99,9 @@ function allLinkTargets(blocks: ExportBlock[]): LinkTarget[] {
           break;
         case "table":
           for (const r of b.rows) for (const c of r.cells) walk(c.content);
+          break;
+        case "layout":
+          for (const column of b.columns) walk(column.content);
           break;
       }
     }
@@ -175,6 +185,20 @@ describe("computeHeadingOffset / minHeadingLevel (shared helper)", () => {
     expect(computeHeadingOffset([{ type: "paragraph", content: [] }])).toBe(0);
   });
 
+  test("finds headings recursively inside expands", () => {
+    const blocks: ExportBlock[] = [{
+      type: "expand",
+      nested: true,
+      content: [{
+        type: "heading",
+        level: 4,
+        content: [{ type: "text", text: "Hidden in editor, visible in export" }],
+      }],
+    }];
+    expect(minHeadingLevel(blocks)).toBe(4);
+    expect(computeHeadingOffset(blocks)).toBe(3);
+  });
+
   test("a composed document always yields offset 0 (chapters start at level 1)", () => {
     const { blocks } = composeChapters(fixtureTree());
     expect(computeHeadingOffset(blocks)).toBe(0);
@@ -218,6 +242,235 @@ describe("composeChapters — chapter structure", () => {
     ) as Extract<ExportBlock, { type: "heading" }>;
     expect(setup.level).toBe(3);
     expect(sub.level).toBe(4);
+  });
+
+  test("preserves authored block presentation while shifting headings and rewriting inline content", () => {
+    const source = page("presented", "Presented", 0, null, "");
+    source.blocks = [
+      {
+        type: "heading",
+        level: 2,
+        presentation: { alignment: "end", indentation: 1 },
+        content: [{ type: "text", text: "Presented heading" }],
+      },
+      {
+        type: "paragraph",
+        presentation: { alignment: "center", indentation: 2 },
+        content: [{ type: "text", text: "Presented paragraph" }],
+      },
+      {
+        type: "layout",
+        localId: "presented-layout",
+        breakout: { mode: "wide", width: 960 },
+        columns: [{
+          width: 100,
+          verticalAlignment: "middle",
+          localId: "presented-column",
+          content: [{
+            type: "heading",
+            level: 3,
+            content: [{ type: "text", text: "Layout heading" }],
+          }],
+        }],
+      },
+    ];
+
+    const { blocks } = composeChapters([source], { chapterBreak: "none" });
+    expect(blocks.find(
+      (block) => block.type === "heading" && plainText(block.content) === "Presented heading",
+    )).toMatchObject({
+      type: "heading",
+      presentation: { alignment: "end", indentation: 1 },
+    });
+    expect(blocks.find(
+      (block) => block.type === "paragraph" && plainText(block.content) === "Presented paragraph",
+    )).toMatchObject({
+      type: "paragraph",
+      presentation: { alignment: "center", indentation: 2 },
+    });
+    expect(blocks.find((block) => block.type === "layout")).toMatchObject({
+      type: "layout",
+      localId: "presented-layout",
+      breakout: { mode: "wide", width: 960 },
+      columns: [{
+        width: 100,
+        verticalAlignment: "middle",
+        localId: "presented-column",
+        content: [{
+          type: "heading",
+          level: 3,
+          explicitAnchor: "ppresented-layout-heading",
+        }],
+      }],
+    });
+  });
+
+  test("retains date/status/placeholder identity while deriving visible heading anchors", () => {
+    const source = page("semantic", "Semantic", 0, null, "");
+    source.blocks = [{
+      type: "heading",
+      level: 2,
+      content: [
+        { type: "date", timestamp: "1709510400000", localId: "date-1" },
+        { type: "text", text: " " },
+        { type: "status", text: "Ready", color: "purple", localId: "status-1" },
+        { type: "placeholder", text: "editor-only", localId: "placeholder-1" },
+      ],
+    }];
+
+    const { blocks } = composeChapters([source], { chapterBreak: "none" });
+    const heading = blocks.find(
+      (block) => block.type === "heading" && block.explicitAnchor === "psemantic-mar-4-2024-ready",
+    );
+    expect(heading).toMatchObject({
+      type: "heading",
+      content: [
+        { type: "date", timestamp: "1709510400000", localId: "date-1" },
+        { type: "text", text: " " },
+        { type: "status", text: "Ready", color: "purple", localId: "status-1" },
+        { type: "placeholder", text: "editor-only", localId: "placeholder-1" },
+      ],
+    });
+  });
+
+  test("preserves complete mention identity and source presentation through composition", () => {
+    const source = page("mentions", "Mentions", 0, null, "");
+    source.blocks = [{
+      type: "paragraph",
+      content: [{
+        type: "mention",
+        accountId: "account-1",
+        sourceText: "@Example Person",
+        displayName: "Example Person",
+        localId: "mention-local",
+        accessLevel: "SITE",
+        userType: "DEFAULT",
+      }],
+    }];
+
+    const { blocks } = composeChapters([source], { chapterBreak: "none" });
+    expect(blocks).toContainEqual({
+      type: "paragraph",
+      content: [{
+        type: "mention",
+        accountId: "account-1",
+        sourceText: "@Example Person",
+        displayName: "Example Person",
+        localId: "mention-local",
+        accessLevel: "SITE",
+        userType: "DEFAULT",
+      }],
+    });
+  });
+
+  test("preserves nested ordered/task lists and decision identity through composition", () => {
+    const source = page("semantic-lists", "Semantic lists", 0, null, "");
+    source.blocks = [
+      {
+        type: "list",
+        ordered: true,
+        start: 4,
+        items: [{
+          content: [
+            { type: "paragraph", content: [{ type: "text", text: "four" }] },
+            {
+              type: "list",
+              ordered: true,
+              start: 8,
+              items: [{
+                content: [{ type: "paragraph", content: [{ type: "text", text: "eight" }] }],
+              }],
+            },
+          ],
+        }],
+      },
+      {
+        type: "list",
+        ordered: false,
+        listKind: "task",
+        localId: "tasks",
+        items: [{
+          kind: "task",
+          state: "TODO",
+          localId: "task-parent",
+          checked: false,
+          content: [
+            { type: "paragraph", content: [{ type: "text", text: "parent task" }] },
+            {
+              type: "list",
+              ordered: false,
+              listKind: "task",
+              localId: "nested-tasks",
+              items: [{
+                kind: "task",
+                state: "DONE",
+                localId: "task-child",
+                checked: true,
+                content: [{ type: "paragraph", content: [{ type: "text", text: "child task" }] }],
+              }],
+            },
+          ],
+        }],
+      },
+      {
+        type: "list",
+        ordered: false,
+        listKind: "decision",
+        localId: "decisions",
+        items: [{
+          kind: "decision",
+          state: "DECIDED",
+          localId: "decision-1",
+          content: [{ type: "paragraph", content: [{ type: "text", text: "ship" }] }],
+        }],
+      },
+    ];
+
+    const { blocks } = composeChapters([source], { chapterBreak: "none" });
+    expect(blocks.find((block) => block.type === "list" && block.ordered)).toMatchObject({
+      type: "list",
+      ordered: true,
+      start: 4,
+      items: [{
+        content: [
+          { type: "paragraph" },
+          { type: "list", ordered: true, start: 8 },
+        ],
+      }],
+    });
+    expect(blocks.find(
+      (block) => block.type === "list" && block.listKind === "task",
+    )).toMatchObject({
+      type: "list",
+      listKind: "task",
+      localId: "tasks",
+      items: [{
+        kind: "task",
+        state: "TODO",
+        localId: "task-parent",
+        content: [
+          { type: "paragraph" },
+          {
+            type: "list",
+            listKind: "task",
+            localId: "nested-tasks",
+            items: [{
+              kind: "task",
+              state: "DONE",
+              localId: "task-child",
+            }],
+          },
+        ],
+      }],
+    });
+    expect(blocks.find(
+      (block) => block.type === "list" && block.listKind === "decision",
+    )).toMatchObject({
+      type: "list",
+      listKind: "decision",
+      localId: "decisions",
+      items: [{ kind: "decision", state: "DECIDED", localId: "decision-1" }],
+    });
   });
 
   test("clamp at level 6 emits heading-depth-clamped note", () => {
@@ -343,9 +596,86 @@ describe("composeChapters — anchor namespacing & link rewrite", () => {
     expect(targets.some((t) => t.kind === "external")).toBe(false);
   });
 
-  test("caption links pass through the same rewrite (table/codeBlock/image captions)", () => {
-    // No walker emits captions yet (spec 003/T1.4), so build the blocks
-    // programmatically: each caption carries a cross-page link to page 2.
+  test("out-of-scope ADF page links retain their exact href and provenance without a callback", () => {
+    const source = page("1", "Root", 0, null, "<p>body</p>");
+    source.blocks = [{
+      type: "paragraph",
+      content: [{
+        type: "link",
+        target: {
+          kind: "page",
+          contentTitle: "Remote",
+          contentId: "999",
+          href: "https://wiki.example/pages/999/Remote",
+        },
+        adfAttributes: {
+          title: "Remote tooltip",
+          id: "media-id",
+          collection: "content-id",
+          occurrenceKey: "occurrence-1",
+        },
+        content: [{ type: "text", text: "remote" }],
+      }],
+    }];
+
+    const { blocks } = composeChapters([source], { chapterBreak: "none" });
+    const paragraph = blocks.find((block) => block.type === "paragraph");
+    expect(paragraph).toMatchObject({
+      type: "paragraph",
+      content: [{
+        type: "link",
+        target: {
+          kind: "external",
+          href: "https://wiki.example/pages/999/Remote",
+        },
+        adfAttributes: {
+          title: "Remote tooltip",
+          id: "media-id",
+          collection: "content-id",
+          occurrenceKey: "occurrence-1",
+        },
+      }],
+    });
+  });
+
+  test("rewrites inline and block Smart Card page targets through the chapter registry", () => {
+    const source = page("1", "Root", 0, null, "<p>body</p>");
+    const target = page("2", "Child", 1, "1", "<p>target</p>");
+    const card = {
+      appearance: "inline" as const,
+      source: "url" as const,
+      url: "https://wiki.example/pages/2/Child",
+      target: {
+        kind: "page" as const,
+        contentId: "2",
+        contentTitle: "Child",
+        href: "https://wiki.example/pages/2/Child",
+      },
+    };
+    source.blocks = [
+      { type: "paragraph", content: [{ type: "smartCard", card }] },
+      { type: "smartCard", card: { ...card, appearance: "block" } },
+    ];
+
+    const { blocks } = composeChapters([source, target], { chapterBreak: "none" });
+    const paragraph = blocks.find((block) => block.type === "paragraph");
+    const blockCard = blocks.find((block) => block.type === "smartCard");
+    expect(paragraph).toMatchObject({
+      type: "paragraph",
+      content: [{
+        type: "smartCard",
+        card: { target: { kind: "anchor", anchor: "page-2" } },
+      }],
+    });
+    expect(blockCard).toMatchObject({
+      type: "smartCard",
+      card: { target: { kind: "anchor", anchor: "page-2" } },
+    });
+  });
+
+  test("caption links pass through the same rewrite, including unresolved media inside expands", () => {
+    // Build all captionable block variants programmatically: each caption
+    // carries a cross-page link to page 2.
     const captionLink = (text: string): InlineNode => ({
       type: "link",
       target: { kind: "page", contentTitle: "Target", contentId: "2", spaceKey: "DOC" },
@@ -363,6 +693,22 @@ describe("composeChapters — anchor namespacing & link rewrite", () => {
         type: "image",
         source: { kind: "attachment", filename: "a.png" },
         caption: { kind: "figure", content: [captionLink("fig")] },
+      },
+      {
+        type: "expand",
+        nested: true,
+        title: "Details",
+        localId: "",
+        content: [{
+          type: "mediaFallback",
+          label: "unresolved",
+          media: { mediaType: "file", id: "media-1" },
+          caption: {
+            kind: "figure",
+            localId: "caption-1",
+            content: [captionLink("fallback")],
+          },
+        }],
       }
     );
     const target = page("2", "Target", 1, "1", "<p>t</p>");
@@ -382,6 +728,23 @@ describe("composeChapters — anchor namespacing & link rewrite", () => {
       // Rewritten to the chapter-start anchor, not left as an unresolved page link.
       expect(link.target).toEqual({ kind: "anchor", anchor: "page-2" });
     }
+    const expand = blocks.find((block) => block.type === "expand");
+    expect(expand).toMatchObject({
+      type: "expand",
+      nested: true,
+      title: "Details",
+      localId: "",
+      content: [{
+        type: "mediaFallback",
+        caption: {
+          localId: "caption-1",
+          content: [{
+            type: "link",
+            target: { kind: "anchor", anchor: "page-2" },
+          }],
+        },
+      }],
+    });
   });
 
   test("missing target anchor → link-anchor-missing + page-only text", () => {
@@ -390,6 +753,260 @@ describe("composeChapters — anchor namespacing & link rewrite", () => {
     // The "nope" link (Handbook#Nope, undefined anchor) is unwrapped.
     const paras = blocks.filter((b) => b.type === "paragraph") as Extract<ExportBlock, { type: "paragraph" }>[];
     expect(paras.some((p) => plainText(p.content) === "nope")).toBe(true);
+  });
+});
+
+describe("composeChapters — retained ADF mark identities", () => {
+  test("preserves custom-panel presentation and identity through composition", () => {
+    const source = page("1", "Source", 0, null, "<p>body</p>");
+    source.blocks.push({
+      type: "callout",
+      kind: "panel",
+      localId: "",
+      panelColor: "#123456",
+      panelIcon: ":star:",
+      panelIconId: "icon-id",
+      panelIconText: "★",
+      content: [{ type: "paragraph", content: [{ type: "text", text: "Custom" }] }],
+    });
+
+    const { blocks } = composeChapters([source], { chapterBreak: "none" });
+    expect(blocks.find((block) => block.type === "callout")).toMatchObject({
+      type: "callout",
+      kind: "panel",
+      localId: "",
+      panelColor: "#123456",
+      panelIcon: ":star:",
+      panelIconId: "icon-id",
+      panelIconText: "★",
+    });
+  });
+
+  test("preserves synced-content identity and projection through composition", () => {
+    const source = page("1", "Source", 0, null, "<p>body</p>");
+    source.blocks.push({
+      type: "callout",
+      kind: "panel",
+      title: "Synced content snapshot",
+      content: [{ type: "paragraph", content: [{ type: "text", text: "Snapshot" }] }],
+      syncedContent: {
+        resourceId: "opaque-sync-resource",
+        localId: "opaque-sync-local",
+        projection: "embedded-snapshot",
+        breakout: { mode: "wide", width: 720 },
+      },
+    });
+
+    const { blocks } = composeChapters([source], { chapterBreak: "none" });
+    expect(blocks.find((block) => block.type === "callout")).toMatchObject({
+      type: "callout",
+      syncedContent: {
+        resourceId: "opaque-sync-resource",
+        localId: "opaque-sync-local",
+        projection: "embedded-snapshot",
+        breakout: { mode: "wide", width: 720 },
+      },
+    });
+  });
+
+  test("preserves root code and expand breakout intent through composition", () => {
+    const source = page("1", "Source", 0, null, "<p>body</p>");
+    source.blocks.push(
+      {
+        type: "codeBlock",
+        code: "const wide = true;",
+        breakout: { mode: "wide", width: 880 },
+      },
+      {
+        type: "expand",
+        nested: false,
+        content: [{ type: "paragraph", content: [{ type: "text", text: "Details" }] }],
+        breakout: { mode: "full-width", width: 1024 },
+      },
+    );
+
+    const { blocks } = composeChapters([source], { chapterBreak: "none" });
+    expect(blocks.find((block) => block.type === "codeBlock")).toMatchObject({
+      type: "codeBlock",
+      breakout: { mode: "wide", width: 880 },
+    });
+    expect(blocks.find((block) => block.type === "expand")).toMatchObject({
+      type: "expand",
+      breakout: { mode: "full-width", width: 1024 },
+    });
+  });
+
+  test("preserves annotation and fragment metadata while rewriting document structure", () => {
+    const source = page("1", "Source", 0, null, "<p>body</p>");
+    source.blocks.push(
+      {
+        type: "paragraph",
+        content: [{
+          type: "text",
+          text: "commented",
+          annotations: [{ id: "comment-1", annotationType: "inlineComment" }],
+        }],
+      },
+      {
+        type: "table",
+        presentation: {
+          layout: "align-end",
+          width: 480,
+          displayMode: "fixed",
+          numberedColumn: true,
+          localId: "table-local",
+        },
+        rows: [{
+          localId: "",
+          cells: [{
+            header: false,
+            colspan: 1,
+            rowspan: 1,
+            columnWidths: [480],
+            verticalAlignment: "bottom",
+            localId: "cell-local",
+            content: [{ type: "paragraph", content: [{ type: "text", text: "cell" }] }],
+          }],
+        }],
+        fragments: [{ localId: "table-fragment", name: "" }],
+      },
+      {
+        type: "unknown",
+        macroName: "extension",
+        fragments: [{ localId: "extension-fragment", name: "named" }],
+      },
+      {
+        type: "layout",
+        localId: "",
+        breakout: { mode: "wide", width: 960 },
+        columns: [{
+          width: 100,
+          verticalAlignment: "middle",
+          localId: "",
+          content: [{ type: "paragraph", content: [{ type: "text", text: "layout" }] }],
+        }],
+      },
+    );
+
+    const { blocks } = composeChapters([source], { chapterBreak: "none" });
+    expect(blocks).toContainEqual({
+      type: "paragraph",
+      content: [{
+        type: "text",
+        text: "commented",
+        annotations: [{ id: "comment-1", annotationType: "inlineComment" }],
+      }],
+    });
+    expect(blocks).toContainEqual({
+      type: "table",
+      presentation: {
+        layout: "align-end",
+        width: 480,
+        displayMode: "fixed",
+        numberedColumn: true,
+        localId: "table-local",
+      },
+      rows: [{
+        localId: "",
+        cells: [{
+          header: false,
+          colspan: 1,
+          rowspan: 1,
+          columnWidths: [480],
+          verticalAlignment: "bottom",
+          localId: "cell-local",
+          content: [{ type: "paragraph", content: [{ type: "text", text: "cell" }] }],
+        }],
+      }],
+      fragments: [{ localId: "table-fragment", name: "" }],
+    });
+    expect(blocks).toContainEqual({
+      type: "unknown",
+      macroName: "extension",
+      fragments: [{ localId: "extension-fragment", name: "named" }],
+    });
+    expect(blocks).toContainEqual({
+      type: "layout",
+      localId: "",
+      breakout: { mode: "wide", width: 960 },
+      columns: [{
+        width: 100,
+        verticalAlignment: "middle",
+        localId: "",
+        content: [{ type: "paragraph", content: [{ type: "text", text: "layout" }] }],
+      }],
+    });
+  });
+
+  test("preserves paragraph, heading, and ordinary-list-item identities through composition", () => {
+    const source = page("identity-page", "Identity", 0, null, "<p>unused</p>");
+    source.blocks = [
+      {
+        type: "heading",
+        level: 2,
+        localId: "heading-local",
+        content: [{ type: "text", text: "Heading" }],
+      },
+      {
+        type: "paragraph",
+        localId: "",
+        content: [{ type: "text", text: "Paragraph" }],
+      },
+      {
+        type: "list",
+        ordered: false,
+        items: [{
+          localId: "item-local",
+          content: [{
+            type: "paragraph",
+            localId: "item-paragraph-local",
+            content: [{ type: "text", text: "Item" }],
+          }],
+        }],
+      },
+      {
+        type: "codeBlock",
+        language: "",
+        code: "first\nsecond",
+        wrap: false,
+        hideLineNumbers: false,
+        firstLineNumber: 7,
+        localId: "",
+        uniqueId: "code-unique",
+      },
+    ];
+
+    const { blocks } = composeChapters([source], { chapterBreak: "none" });
+    expect(blocks.find(
+      (block) => block.type === "heading" && block.localId === "heading-local"
+    )).toBeDefined();
+    expect(blocks.find(
+      (block) => block.type === "paragraph" && block.localId === ""
+    )).toBeDefined();
+    expect(blocks.find(
+      (block) => block.type === "list"
+    )).toMatchObject({
+      type: "list",
+      items: [{
+        localId: "item-local",
+        content: [{
+          type: "paragraph",
+          localId: "item-paragraph-local",
+        }],
+      }],
+    });
+    expect(blocks.find(
+      (block) => block.type === "codeBlock"
+    )).toEqual({
+      type: "codeBlock",
+      language: "",
+      code: "first\nsecond",
+      wrap: false,
+      hideLineNumbers: false,
+      firstLineNumber: 7,
+      localId: "",
+      uniqueId: "code-unique",
+    });
   });
 });
 

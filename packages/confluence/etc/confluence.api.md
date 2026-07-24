@@ -7,6 +7,287 @@
 ### Entry point `. (browser)`
 
 ```ts
+// export: ADF_COVERAGE
+export declare const ADF_COVERAGE: readonly AdfCoverageRow[];
+
+// export: ADF_MARK_DECODE_MODES
+export declare const ADF_MARK_DECODE_MODES: Readonly<{
+    readonly alignment: "native";
+    readonly annotation: "approximation";
+    readonly backgroundColor: "native";
+    readonly border: "native";
+    readonly breakout: "approximation";
+    readonly code: "native";
+    readonly dataConsumer: "approximation";
+    readonly em: "native";
+    readonly fontSize: "native";
+    readonly fragment: "approximation";
+    readonly indentation: "native";
+    readonly link: "native";
+    readonly strike: "native";
+    readonly strong: "native";
+    readonly subsup: "native";
+    readonly textColor: "native";
+    readonly underline: "native";
+}>;
+
+// export: ADF_NODE_DECODE_MODES
+export declare const ADF_NODE_DECODE_MODES: Readonly<{
+    readonly blockCard: "native";
+    readonly blockTaskItem: "native";
+    readonly blockquote: "native";
+    readonly bodiedExtension: "approximation";
+    readonly bodiedSyncBlock: "approximation";
+    readonly bulletList: "native";
+    readonly caption: "native";
+    readonly codeBlock: "native";
+    readonly date: "native";
+    readonly decisionItem: "native";
+    readonly decisionList: "native";
+    readonly doc: "native";
+    readonly embedCard: "native";
+    readonly emoji: "approximation";
+    readonly expand: "approximation";
+    readonly extension: "approximation";
+    readonly hardBreak: "native";
+    readonly heading: "native";
+    readonly inlineCard: "native";
+    readonly inlineExtension: "approximation";
+    readonly layoutColumn: "native";
+    readonly layoutSection: "native";
+    readonly listItem: "native";
+    readonly media: "native";
+    readonly mediaGroup: "native";
+    readonly mediaInline: "approximation";
+    readonly mediaSingle: "native";
+    readonly mention: "native";
+    readonly nestedExpand: "approximation";
+    readonly orderedList: "native";
+    readonly panel: "approximation";
+    readonly paragraph: "native";
+    readonly placeholder: "native";
+    readonly rule: "native";
+    readonly status: "native";
+    readonly syncBlock: "approximation";
+    readonly table: "approximation";
+    readonly tableCell: "approximation";
+    readonly tableHeader: "approximation";
+    readonly tableRow: "native";
+    readonly taskItem: "native";
+    readonly taskList: "native";
+    readonly text: "native";
+}>;
+
+// export: ADF_STAGE0_NODE_DECODE_MODES
+export declare const ADF_STAGE0_NODE_DECODE_MODES: Readonly<{
+    readonly extensionFrame: "approximation";
+    readonly multiBodiedExtension: "approximation";
+}>;
+
+// export: AdfAnnotationComment
+export interface AdfAnnotationComment {
+    bodyText: string;
+    status: "open" | "resolved";
+    created?: string;
+    replies: AdfAnnotationReply[];
+}
+
+// export: AdfAnnotationIdentity
+export interface AdfAnnotationIdentity {
+    id: string;
+    annotationType: "inlineComment";
+    comment?: AdfAnnotationComment;
+}
+
+// export: AdfAnnotationReply
+export interface AdfAnnotationReply {
+    bodyText: string;
+    created?: string;
+}
+
+// export: AdfCoverageLevel
+export type AdfCoverageLevel = "native" | "partial" | "fallback" | "missing";
+
+// export: AdfCoverageProvenance
+export type AdfCoverageProvenance = "schema-only" | "observed-cloud" | "legacy-observed";
+
+// export: AdfCoverageRow
+export interface AdfCoverageRow {
+    kind: "node" | "mark";
+    type: string;
+    parser: "validated";
+    decoder: AdfCoverageLevel;
+    docx: AdfCoverageLevel | "not-applicable";
+    pdf: AdfCoverageLevel | "not-applicable";
+    provenance: readonly AdfCoverageProvenance[];
+}
+
+// export: AdfDataConsumerProvenance
+export interface AdfDataConsumerProvenance {
+    sources: string[];
+}
+
+// export: AdfDecoderMode
+export type AdfDecoderMode = "native" | "approximation" | "visible-fallback";
+
+// export: AdfDiagnostic
+export interface AdfDiagnostic {
+    kind: AdfDiagnosticKind;
+    path: string;
+    type?: string;
+    attribute?: string;
+    count?: number;
+}
+
+// export: AdfDiagnosticKind
+export type AdfDiagnosticKind = "unknown-node" | "unknown-mark" | "unknown-attribute" | "diagnostics-truncated";
+
+// export: AdfDocument
+export interface AdfDocument extends AdfNode {
+    type: "doc";
+    version: 1;
+    content: AdfNode[];
+}
+
+// export: AdfExtensionFrame
+export interface AdfExtensionFrame {
+    content: ExportBlock[];
+    fragments?: AdfFragmentIdentity[];
+    dataConsumers?: AdfDataConsumerProvenance[];
+    bodyNotes?: ExportNote[];
+}
+
+// export: AdfExtensionIdentity
+export interface AdfExtensionIdentity {
+    extensionType: string;
+    extensionKey: string;
+    localId?: string;
+}
+
+// export: AdfFragmentIdentity
+export interface AdfFragmentIdentity {
+    localId: string;
+    name?: string;
+}
+
+// export: AdfJsonValue
+export type AdfJsonValue = null | boolean | number | string | AdfJsonValue[] | {
+    [key: string]: AdfJsonValue;
+};
+
+// export: AdfLinkAttributes
+export interface AdfLinkAttributes {
+    title?: string;
+    id?: string;
+    collection?: string;
+    occurrenceKey?: string;
+}
+
+// export: AdfMark
+export interface AdfMark {
+    type: string;
+    attrs?: Record<string, AdfJsonValue>;
+}
+
+// export: AdfMediaAttachment
+export interface AdfMediaAttachment {
+    fileId: string;
+    filename: string;
+    pageId: string;
+    mediaType?: string;
+    webuiLink?: string;
+    downloadLink?: string;
+}
+
+// export: AdfMediaReference
+export interface AdfMediaReference {
+    id: string;
+    collection?: string;
+    occurrenceKey?: string;
+}
+
+// export: AdfNode
+export interface AdfNode {
+    type: string;
+    attrs?: Record<string, AdfJsonValue>;
+    content?: AdfNode[];
+    marks?: AdfMark[];
+    text?: string;
+}
+
+// export: AdfParseBudget
+export interface AdfParseBudget {
+    maxInputBytes: number;
+    maxNodes: number;
+    maxDepth: number;
+    maxTextBytes: number;
+    maxAttributeBytes: number;
+    maxMarks: number;
+    maxAttributeValues: number;
+    maxDiagnostics: number;
+}
+
+// export: AdfResolvedMediaAttachment
+export interface AdfResolvedMediaAttachment {
+    filename: string;
+    pageId?: string;
+    mediaType?: string;
+    webuiLink?: string;
+    downloadLink?: string;
+}
+
+// export: adfToBlocks
+export declare function adfToBlocks(input: string | unknown, options?: AdfToBlocksOptions): BlocksResult;
+
+// export: AdfToBlocksOptions
+export interface AdfToBlocksOptions extends Omit<StorageToBlocksOptions, "parseBudget"> {
+    parseBudget?: Partial<AdfParseBudget>;
+    resolveMediaAttachment?: (reference: AdfMediaReference) => AdfResolvedMediaAttachment | undefined;
+    resolveAnnotation?: (markerRef: string) => AdfAnnotationComment | undefined;
+    annotationCommentsComplete?: boolean;
+}
+
+// export: AdfUnsupportedAttribute
+export interface AdfUnsupportedAttribute {
+    name: string;
+    value: AdfJsonValue;
+}
+
+// export: AdfUnsupportedMark
+export interface AdfUnsupportedMark {
+    type: string;
+    attributes?: AdfUnsupportedAttribute[];
+}
+
+// export: AdfUnsupportedNodeProvenance
+export interface AdfUnsupportedNodeProvenance {
+    nodeType: string;
+    sourceRepresentation: "atlas_doc_format" | "storage";
+    attributes?: AdfUnsupportedAttribute[];
+    marks?: AdfUnsupportedMark[];
+}
+
+// export: AdfValidationError
+export declare class AdfValidationError extends Error {
+    readonly code: AdfValidationErrorCode;
+    readonly path: string;
+    constructor(code: AdfValidationErrorCode, message: string, path?: string);
+}
+
+// export: AdfValidationErrorCode
+export type AdfValidationErrorCode = "input-too-large" | "invalid-json" | "invalid-root" | "unsupported-version" | "invalid-node" | "invalid-mark" | "invalid-attributes" | "node-budget-exceeded" | "depth-budget-exceeded" | "text-budget-exceeded" | "attribute-budget-exceeded" | "mark-budget-exceeded";
+
+// export: AdfValidationStats
+export interface AdfValidationStats {
+    inputBytes?: number;
+    nodes: number;
+    marks: number;
+    maxDepth: number;
+    textBytes: number;
+    attributeBytes: number;
+    attributeValues: number;
+}
+
 // export: AnchorRegistry
 export declare class AnchorRegistry {
     private readonly lookup;
@@ -87,6 +368,11 @@ export declare class AssetPipelineError extends Error {
 // export: ASSETS_DATASOURCE_ID
 export declare const ASSETS_DATASOURCE_ID = "361d618a-3c04-40ad-9b27-3c8ea6927020";
 
+// export: AtlasDocFormatPageBody
+export type AtlasDocFormatPageBody = Extract<PageBody, {
+    representation: "atlas_doc_format";
+}>;
+
 // export: AttachmentInfo
 export interface AttachmentInfo {
     id: string;
@@ -112,6 +398,21 @@ export interface BaseComment {
     replies: BaseComment[];
 }
 
+// export: BlockPresentation
+export interface BlockPresentation {
+    alignment?: "center" | "end";
+    indentation?: 1 | 2 | 3 | 4 | 5 | 6;
+    fontSize?: "small";
+}
+
+// export: BlocksResult
+export interface BlocksResult {
+    blocks: ExportBlock[];
+    notes: ExportNote[];
+    representation?: PageBody["representation"];
+    degraded?: boolean;
+}
+
 // export: BulkOperationResult
 export interface BulkOperationResult {
     total: number;
@@ -125,7 +426,7 @@ export interface BulkOperationResult {
 }
 
 // export: CalloutKind
-export type CalloutKind = "info" | "note" | "warning" | "tip" | "panel";
+export type CalloutKind = "info" | "note" | "warning" | "tip" | "success" | "error" | "panel";
 
 // export: canonicalExportNoteCode
 export declare function canonicalExportNoteCode(code: string): ExportNoteCode | undefined;
@@ -134,6 +435,7 @@ export declare function canonicalExportNoteCode(code: string): ExportNoteCode | 
 export interface Caption {
     kind: CaptionKind;
     content: InlineNode[];
+    localId?: string;
 }
 
 // export: CaptionableBlockType
@@ -148,6 +450,9 @@ export interface CommentAuthor {
     accountId?: string;
     email?: string;
 }
+
+// export: commentBodyToText
+export declare function commentBodyToText(storageBody: string): string;
 
 // export: CompletenessCode
 export type CompletenessCode = "page-unreadable" | "subtree-unreadable" | "page-ambiguous-404" | "page-version-changed";
@@ -189,13 +494,18 @@ export declare const CONFLUENCE_SEARCH_DATASOURCE_ID = "768fc736-3af4-4a8f-b27e-
 // export: ConfluenceClient
 export declare class ConfluenceClient {
     private confluenceBaseUrl;
+    private deploymentType;
+    private capabilityOrigin;
     private authHeader;
     private useSession;
     private maxRetries;
     private baseDelayMs;
     private tlsOptions;
     private sessionRedirectPolicy;
-    constructor(profile: Profile);
+    private exportSourcePolicy;
+    constructor(profile: Profile, options?: {
+        exportSourcePolicy?: ExportSourcePolicy;
+    });
     getInstanceUrl(): string;
     private buildWebUrl;
     private sleep;
@@ -205,14 +515,21 @@ export declare class ConfluenceClient {
     private assertSessionJsonOk;
     private request;
     private requestV2;
-    getCurrentUser(): Promise<{
+    getCurrentUser(options?: {
+        signal?: AbortSignal;
+    }): Promise<{
         accountId: string;
         displayName: string;
         email?: string;
     }>;
-    getPage(id: string): Promise<ConfluencePage & {
+    getPage(id: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluencePage & {
         storage: string;
     }>;
+    getPageAdf(id: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluencePageAdf>;
     getMacroBodyByMacroId(pageId: string, version: number, macroId: string, options?: {
         signal?: AbortSignal;
     }): Promise<string | undefined>;
@@ -225,6 +542,14 @@ export declare class ConfluenceClient {
     getPageDetails(id: string, options?: {
         signal?: AbortSignal;
     }): Promise<ConfluencePageDetails>;
+    getExportPageDetails(id: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluenceExportPageDetails>;
+    getExportPageDetailsWithMedia(id: string, options?: {
+        signal?: AbortSignal;
+        maxAttachments?: number;
+        maxInlineComments?: number;
+    }): Promise<ConfluenceExportPageDetails>;
     getAncestors(pageId: string): Promise<{
         id: string;
         title: string;
@@ -302,8 +627,12 @@ export declare class ConfluenceClient {
     }): Promise<ConfluenceSpace>;
     listSpaces(limit?: number): Promise<ConfluenceSpace[]>;
     getSpace(key: string): Promise<ConfluenceSpace>;
-    getSpaceIcon(key: string): Promise<SpaceIcon | null>;
-    getSpaceWithIcon(key: string): Promise<{
+    getSpaceIcon(key: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<SpaceIcon | null>;
+    getSpaceWithIcon(key: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<{
         space: ConfluenceSpace;
         icon: SpaceIcon | null;
     }>;
@@ -324,8 +653,13 @@ export declare class ConfluenceClient {
     getPagesBatch(ids: string[], concurrency?: number): Promise<(ConfluencePage & {
         storage: string;
     })[]>;
+    listPageAttachmentMedia(pageId: string, options?: {
+        maxAttachments?: number;
+        signal?: AbortSignal;
+    }): Promise<PageAttachmentMediaResult>;
     listAttachments(pageId: string, options?: {
         limit?: number;
+        signal?: AbortSignal;
     }): Promise<AttachmentInfo[]>;
     getAttachment(attachmentId: string): Promise<AttachmentInfo>;
     uploadAttachment(params: {
@@ -387,6 +721,10 @@ export declare class ConfluenceClient {
     getInlineCommentReplies(commentId: string, options?: {
         limit?: number;
     }): Promise<InlineComment[]>;
+    listPageInlineCommentsForExport(pageId: string, options?: {
+        signal?: AbortSignal;
+        maxInlineComments?: number;
+    }): Promise<PageInlineCommentsExportResult>;
     getAllComments(pageId: string, options?: {
         limit?: number;
     }): Promise<PageComments>;
@@ -430,14 +768,21 @@ export declare class ConfluenceClient {
     }>>;
     getFoldersInTree(parentId: string): Promise<ConfluenceFolder[]>;
     movePageToFolder(pageId: string, folderId: string): Promise<ConfluencePage>;
-    getUser(accountId: string): Promise<UserInfo | null>;
-    getSpaceHomepageStorage(spaceKey: string): Promise<string | null>;
+    getUser(accountId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<UserInfo | null>;
+    getSpaceHomepageStorage(spaceKey: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<string | null>;
     getSpaceHomepageId(spaceKey: string, options?: {
         signal?: AbortSignal;
     }): Promise<string | null>;
-    getPageOwner(pageId: string): Promise<ConfluenceUser | null>;
+    getPageOwner(pageId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluenceUser | null>;
     getUsersBulk(accountIds: string[], options?: {
         concurrency?: number;
+        signal?: AbortSignal;
     }): Promise<Map<string, UserInfo | null>>;
     getVersionHistory(pageId: string, options?: {
         limit?: number;
@@ -450,6 +795,15 @@ export declare class ConfluenceClient {
 export type ConfluenceDetailedSearchResults = {
     results: ConfluenceSearchDetail[];
     totalSize?: number;
+};
+
+// export: ConfluenceExportPageDetails
+export type ConfluenceExportPageDetails = ConfluencePageDetails & {
+    exportSource: ExportPageSource;
+    mediaAttachments?: AdfMediaAttachment[];
+    mediaAttachmentsComplete?: boolean;
+    inlineComments?: InlineComment[];
+    inlineCommentsComplete?: boolean;
 };
 
 // export: ConfluenceFolder
@@ -475,6 +829,13 @@ export type ConfluencePage = {
         title: string;
     }[];
 };
+
+// export: ConfluencePageAdf
+export interface ConfluencePageAdf {
+    id: string;
+    version: number;
+    body: AtlasDocFormatPageBody;
+}
 
 // export: ConfluencePageDetails
 export type ConfluencePageDetails = ConfluencePage & {
@@ -550,6 +911,12 @@ export interface ConversionOptions {
     emitWarnings?: boolean;
     onWarning?: (message: string) => void;
 }
+
+// export: createAdfAnnotationResolver
+export declare function createAdfAnnotationResolver(comments: readonly InlineComment[] | undefined): AdfToBlocksOptions["resolveAnnotation"] | undefined;
+
+// export: createAdfMediaAttachmentResolver
+export declare function createAdfMediaAttachmentResolver(attachments: readonly AdfMediaAttachment[] | undefined): AdfToBlocksOptions["resolveMediaAttachment"] | undefined;
 
 // export: createInOrderLimiter
 export declare function createInOrderLimiter(limit: number): <T>(task: () => Promise<T>) => Promise<T>;
@@ -647,11 +1014,22 @@ export interface DatasourceView {
 // export: decodeSvgSource
 export declare function decodeSvgSource(bytes: Uint8Array): string;
 
+// export: DEFAULT_ADF_PARSE_BUDGET
+export declare const DEFAULT_ADF_PARSE_BUDGET: Readonly<AdfParseBudget>;
+
 // export: DEFAULT_STORAGE_PARSE_BUDGET
 export declare const DEFAULT_STORAGE_PARSE_BUDGET: StorageParseBudget;
 
 // export: drainPaginated
 export declare function drainPaginated<T>(fetchPage: (token: string | undefined) => Promise<PaginatedPage<T>>): Promise<T[]>;
+
+// export: EmojiSemantics
+export interface EmojiSemantics {
+    shortName: string;
+    id?: string;
+    text?: string;
+    renderedFrom: "text" | "short-name";
+}
 
 // export: escapeCqlValue
 export declare function escapeCqlValue(value: string): string;
@@ -660,8 +1038,20 @@ export declare function escapeCqlValue(value: string): string;
 export declare const EXPORT_NOTE_CODES: readonly [
     "unknown-macro",
     "macro-not-rendered",
+    "inline-extension-not-rendered",
     "image-unresolved",
     "inline-image-skipped",
+    "layout-geometry-fallback",
+    "expand-static",
+    "emoji-text-fallback",
+    "date-invalid",
+    "adf-node-degraded",
+    "adf-mark-degraded",
+    "adf-attribute-dropped",
+    "adf-media-unresolved",
+    "adf-annotation-unresolved",
+    "adf-annotation-comments-truncated",
+    "adf-storage-fallback",
     "datasource-invalid",
     "datasource-provider-unknown",
     "datasource-provider-unsupported",
@@ -757,6 +1147,8 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "logo-embed-failed",
     "perf-timing",
     "code-highlight-skipped",
+    "code-nowrap-page-bounded",
+    "code-collapse-static",
     "image-skipped",
     "image-embed-failed",
     "image-missing-alt",
@@ -781,35 +1173,90 @@ export type ExportBlock = {
     level: 1 | 2 | 3 | 4 | 5 | 6;
     content: InlineNode[];
     explicitAnchor?: string;
+    presentation?: BlockPresentation;
+    localId?: string;
 } | {
     type: "paragraph";
     content: InlineNode[];
+    presentation?: BlockPresentation;
+    localId?: string;
+} | {
+    type: "smartCard";
+    card: SmartCardSemantics;
 } | {
     type: "codeBlock";
     language?: string;
     code: string;
+    title?: string;
+    initiallyCollapsed?: boolean;
     caption?: Caption;
+    wrap?: boolean;
+    hideLineNumbers?: boolean;
+    firstLineNumber?: number;
+    localId?: string;
+    uniqueId?: string;
+    breakout?: LayoutBreakout;
 } | {
     type: "callout";
     kind: CalloutKind;
     title?: string;
     content: ExportBlock[];
+    localId?: string;
+    panelColor?: string;
+    panelIcon?: string;
+    panelIconId?: string;
+    panelIconText?: string;
+    syncedContent?: SyncedContentProvenance;
+} | {
+    type: "expand";
+    nested: boolean;
+    content: ExportBlock[];
+    title?: string;
+    localId?: string;
+    macroId?: string;
+    breakout?: LayoutBreakout;
 } | {
     type: "list";
     ordered: boolean;
     items: ListItem[];
-} | {
+    start?: number;
+    listKind?: "task" | "decision";
+    localId?: string;
+} | ({
+    type: "layout";
+} & PageLayout) | {
     type: "table";
     rows: TableRow[];
     columnWidths?: number[];
+    presentation?: TablePresentation;
     caption?: Caption;
+    fragments?: AdfFragmentIdentity[];
 } | {
     type: "image";
     source: ImageSource;
+    media?: UnresolvedMediaIdentity;
     alt?: string;
     width?: number;
     height?: number;
+    mediaPresentation?: MediaPresentation;
+    mediaGroup?: MediaGroupPosition;
+    border?: MediaBorder;
     caption?: Caption;
+    annotations?: AdfAnnotationIdentity[];
+    link?: ExportLink;
+} | {
+    type: "mediaFallback";
+    label: string;
+    media: UnresolvedMediaIdentity;
+    caption?: Caption;
+    alt?: string;
+    width?: number;
+    height?: number;
+    mediaPresentation?: MediaPresentation;
+    mediaGroup?: MediaGroupPosition;
+    border?: MediaBorder;
+    annotations?: AdfAnnotationIdentity[];
+    link?: ExportLink;
 } | {
     type: "blockquote";
     content: ExportBlock[];
@@ -831,6 +1278,10 @@ export type ExportBlock = {
     body?: ExportBlock[];
     plainBody?: string;
     macroId?: string;
+    adfExtension?: AdfExtensionIdentity;
+    extensionFrames?: AdfExtensionFrame[];
+    fragments?: AdfFragmentIdentity[];
+    unsupportedAdf?: AdfUnsupportedNodeProvenance;
     bodyNotes?: ExportNote[];
     sourcePage?: {
         id: string;
@@ -861,6 +1312,12 @@ export interface ExportFolderNode {
     effectiveDepth: number;
     parentId: string | null;
     position: number | null;
+}
+
+// export: ExportLink
+export interface ExportLink {
+    target: LinkTarget;
+    adfAttributes?: AdfLinkAttributes;
 }
 
 // export: ExportMentionLookup
@@ -916,6 +1373,26 @@ export interface ExportPageNode {
     placeholder?: boolean;
 }
 
+// export: ExportPageReadError
+export declare class ExportPageReadError extends Error {
+    readonly kind: ExportPageReadErrorKind;
+    readonly pageId?: string | undefined;
+    readonly storageVersion?: number | undefined;
+    readonly adfVersion?: number | undefined;
+    constructor(kind: ExportPageReadErrorKind, message: string, pageId?: string | undefined, storageVersion?: number | undefined, adfVersion?: number | undefined);
+}
+
+// export: ExportPageReadErrorKind
+export type ExportPageReadErrorKind = "adf-representation-unavailable" | "invalid-adf-response" | "invalid-storage-response" | "page-version-mismatch";
+
+// export: ExportPageSource
+export interface ExportPageSource {
+    primary: PageBody;
+    storageSidecar?: string;
+    sourceVersion?: number;
+    fallbackReason?: ExportSourceFallbackReason;
+}
+
 // export: ExportPhase
 export type ExportPhase = "discover" | "fetch" | "compose" | "assets" | "serialize" | "emit";
 
@@ -951,6 +1428,15 @@ export declare class ExportScopeError extends Error {
     constructor(message: string);
 }
 
+// export: ExportSourceFallbackReason
+export type ExportSourceFallbackReason = "data-center" | "adf-representation-unavailable" | "rollout-storage-primary";
+
+// export: ExportSourcePolicy
+export type ExportSourcePolicy = "adf-primary" | "storage-primary";
+
+// export: exportSourcePolicyFromFlag
+export declare function exportSourcePolicyFromFlag(value: string | undefined): ExportSourcePolicy;
+
 // export: ExportTreeBodyManifestEntryV1
 export interface ExportTreeBodyManifestEntryV1 {
     ordinal: number;
@@ -964,6 +1450,10 @@ export type ExportTreeBodyResultV1 = {
     ok: false;
     pageId: string;
     title: string;
+    source?: {
+        representation: PageBody["representation"];
+        degraded: false;
+    };
     failure: {
         code: CompletenessCode;
         affected: ReadonlyArray<{
@@ -976,6 +1466,10 @@ export type ExportTreeBodyResultV1 = {
     ok: true;
     pageId: string;
     title: string;
+    source: {
+        representation: PageBody["representation"];
+        degraded: boolean;
+    };
     blocks: ExportBlock[];
     notes: ExportNote[];
     meta: {
@@ -996,6 +1490,49 @@ export interface ExportTreeBodyStoreV1 {
     commit(entry: ExportTreeBodyManifestEntryV1, result: ExportTreeBodyResultV1, context: {
         signal: AbortSignal;
     }): Promise<void>;
+}
+
+// export: ExportTreePlanError
+export declare class ExportTreePlanError extends Error {
+    readonly code: "export-tree-plan-invalid";
+    constructor(message: string);
+}
+
+// export: ExportTreePlanNodeV1
+export type ExportTreePlanNodeV1 = {
+    kind: "page";
+    pageId: string;
+    title: string;
+    depth: number;
+    effectiveDepth: number;
+    parentId: string | null;
+    position: number | null;
+    observedVersion?: number;
+} | {
+    kind: "folder";
+    folderId: string;
+    title: string;
+    depth: number;
+    effectiveDepth: number;
+    parentId: string | null;
+    position: number | null;
+};
+
+// export: ExportTreePlanV1
+export interface ExportTreePlanV1 {
+    schema: "atlcli.export-tree-plan/1";
+    scope: ExportScope;
+    policy: {
+        labels?: LabelFilter;
+        completenessMode: CompletenessMode;
+        maxPages: number;
+        maxFolders: number;
+    };
+    rootId: string;
+    includeRoot: boolean;
+    nodes: readonly ExportTreePlanNodeV1[];
+    notes: readonly ExportNote[];
+    complete: boolean;
 }
 
 // export: ExternalLinkTarget
@@ -1022,6 +1559,7 @@ export interface FetchExportTreeResult {
     nodes: readonly ExportNode[];
     notes: ExportNote[];
     complete: boolean;
+    sourceSummary: TreeSourceSummary;
 }
 
 // export: findSvgSafetyViolation
@@ -1042,6 +1580,9 @@ export interface FooterComment extends BaseComment {
     replies: FooterComment[];
 }
 
+// export: formatAdfDateTimestamp
+export declare function formatAdfDateTimestamp(timestamp: string, locale?: string): string;
+
 // export: hasActiveLabelFilter
 export declare function hasActiveLabelFilter(filter: LabelFilter | undefined): boolean;
 
@@ -1060,6 +1601,9 @@ export interface HeadingScanBlock {
         readonly cells: readonly {
             readonly content: readonly unknown[];
         }[];
+    }[];
+    readonly columns?: readonly {
+        readonly content: readonly unknown[];
     }[];
 }
 
@@ -1095,11 +1639,18 @@ export interface InlineComment extends BaseComment {
     textSelection: string;
     textSelectionMatchCount?: number;
     textSelectionMatchIndex?: number;
+    inlineMarkerRef?: string;
+    inlineOriginalSelection?: string;
     replies: InlineComment[];
 }
 
 // export: InlineMark
 export type InlineMark = "bold" | "italic" | "code" | "strike" | "underline" | "subscript" | "superscript";
+
+// export: inlineMediaDisplayText
+export declare function inlineMediaDisplayText(media: Pick<Extract<InlineNode, {
+    type: "media";
+}>, "media" | "alt">): string;
 
 // export: InlineNode
 export type InlineNode = {
@@ -1108,18 +1659,56 @@ export type InlineNode = {
     marks?: InlineMark[];
     color?: string;
     backgroundColor?: string;
-} | {
+    emoji?: EmojiSemantics;
+    adfExtension?: AdfExtensionIdentity;
+    extensionParams?: MacroParameter[];
+    sourcePage?: {
+        id: string;
+        version?: number;
+        spaceKey?: string;
+    };
+    annotations?: AdfAnnotationIdentity[];
+    fragments?: AdfFragmentIdentity[];
+    unsupportedAdf?: AdfUnsupportedNodeProvenance[];
+} | ({
     type: "link";
-    target: LinkTarget;
     content: InlineNode[];
-} | {
+} & ExportLink) | {
     type: "mention";
     accountId: string;
     displayName?: string;
+    sourceText?: string;
+    localId?: string;
+    accessLevel?: string;
+    userType?: "DEFAULT" | "SPECIAL" | "APP";
+} | {
+    type: "date";
+    timestamp: string;
+    localId?: string;
 } | {
     type: "status";
     text: string;
     color: string;
+    localId?: string;
+    style?: string;
+} | {
+    type: "smartCard";
+    card: SmartCardSemantics;
+} | {
+    type: "media";
+    media: UnresolvedMediaIdentity;
+    source?: ImageSource;
+    alt?: string;
+    width?: number;
+    height?: number;
+    border?: MediaBorder;
+    annotations?: AdfAnnotationIdentity[];
+    link?: ExportLink;
+} | {
+    type: "placeholder";
+    text: string;
+    localId?: string;
+    placeholderType?: string;
 } | {
     type: "lineBreak";
 };
@@ -1127,8 +1716,20 @@ export type InlineNode = {
 // export: isImageFile
 export declare function isImageFile(filename: string): boolean;
 
+// export: isPinnedAdfMarkType
+export declare function isPinnedAdfMarkType(type: string): type is PinnedAdfMarkType;
+
+// export: isPinnedAdfNodeType
+export declare function isPinnedAdfNodeType(type: string): type is PinnedAdfNodeType;
+
+// export: isPinnedAdfStage0NodeType
+export declare function isPinnedAdfStage0NodeType(type: string): type is PinnedAdfStage0NodeType;
+
 // export: isSafeLinkScheme
 export declare function isSafeLinkScheme(href: string): boolean;
+
+// export: isSupportedAdfNodeType
+export declare function isSupportedAdfNodeType(type: string): type is SupportedAdfNodeType;
 
 // export: JIRA_DATASOURCE_ID
 export declare const JIRA_DATASOURCE_ID = "d8b75300-dfda-4519-b6cd-e49abbd50401";
@@ -1156,6 +1757,20 @@ export interface LabelInfo {
     id: string;
 }
 
+// export: LayoutBreakout
+export interface LayoutBreakout {
+    mode: "wide" | "full-width";
+    width?: number;
+}
+
+// export: LayoutColumn
+export interface LayoutColumn {
+    width: number;
+    verticalAlignment?: TableVerticalAlignment;
+    localId?: string;
+    content: ExportBlock[];
+}
+
 // export: LinkSanitizeResult
 export type LinkSanitizeResult = {
     safe: true;
@@ -1176,9 +1791,11 @@ export type LinkTarget = {
     contentId?: string;
     spaceKey?: string;
     anchor?: string;
+    href?: string;
 } | {
     kind: "attachment";
     filename: string;
+    href?: string;
 } | {
     kind: "anchor";
     anchor: string;
@@ -1187,6 +1804,10 @@ export type LinkTarget = {
 // export: ListItem
 export interface ListItem {
     content: ExportBlock[];
+    kind?: "task" | "decision";
+    state?: string;
+    localId?: string;
+    block?: boolean;
     checked?: boolean;
 }
 
@@ -1227,8 +1848,52 @@ export declare function macroParamText(params: MacroParameter[] | undefined, nam
 // export: markdownToStorage
 export declare function markdownToStorage(markdown: string, options?: ConversionOptions): string;
 
+// export: MaterializedTable
+export interface MaterializedTable {
+    rows: TableRow[];
+    columnWidths?: number[];
+}
+
+// export: materializeTable
+export declare function materializeTable(table: Extract<ExportBlock, {
+    type: "table";
+}>): MaterializedTable;
+
 // export: MAX_ANCHOR_ID_LENGTH
 export declare const MAX_ANCHOR_ID_LENGTH = 40;
+
+// export: MediaBorder
+export interface MediaBorder {
+    color: string;
+    size: 1 | 2 | 3;
+}
+
+// export: mediaFallbackDisplayText
+export declare function mediaFallbackDisplayText(block: Pick<Extract<ExportBlock, {
+    type: "mediaFallback";
+}>, "media" | "alt" | "label">): string;
+
+// export: MediaGroupPosition
+export interface MediaGroupPosition {
+    index: number;
+    size: number;
+}
+
+// export: MediaLayout
+export type MediaLayout = "wide" | "full-width" | "center" | "wrap-right" | "wrap-left" | "align-end" | "align-start";
+
+// export: MediaPresentation
+export interface MediaPresentation {
+    layout: MediaLayout;
+    width?: number;
+    widthType?: "percentage" | "pixel";
+    localId?: string;
+}
+
+// export: mentionDisplayText
+export declare function mentionDisplayText(mention: Pick<Extract<InlineNode, {
+    type: "mention";
+}>, "displayName" | "userType">): string;
 
 // export: minHeadingLevel
 export declare function minHeadingLevel(blocks: readonly HeadingScanBlock[]): number;
@@ -1254,6 +1919,33 @@ export declare function normalizeLinkHref(href: string): string;
 // export: normalizeMarkdown
 export declare function normalizeMarkdown(markdown: string): string;
 
+// export: PageAttachmentMediaResult
+export interface PageAttachmentMediaResult {
+    attachments: AdfMediaAttachment[];
+    complete: boolean;
+}
+
+// export: PageBody
+export type PageBody = {
+    representation: "atlas_doc_format";
+    value: string;
+} | {
+    representation: "storage";
+    value: string;
+};
+
+// export: pageBodyToBlocks
+export declare function pageBodyToBlocks(source: ExportPageSource, options?: PageBodyToBlocksOptions): BlocksResult;
+
+// export: PageBodyToBlocksOptions
+export interface PageBodyToBlocksOptions extends Omit<StorageToBlocksOptions, "parseBudget"> {
+    storageParseBudget?: StorageParseBudget;
+    adfParseBudget?: Partial<AdfParseBudget>;
+    resolveMediaAttachment?: (reference: AdfMediaReference) => AdfResolvedMediaAttachment | undefined;
+    resolveAnnotation?: import("./adf-to-blocks.js").AdfToBlocksOptions["resolveAnnotation"];
+    annotationCommentsComplete?: boolean;
+}
+
 // export: PageChangeInfo
 export interface PageChangeInfo {
     id: string;
@@ -1276,6 +1968,19 @@ export interface PageHistory {
     pageId: string;
     versions: PageVersion[];
     latest: number;
+}
+
+// export: PageInlineCommentsExportResult
+export interface PageInlineCommentsExportResult {
+    comments: InlineComment[];
+    complete: boolean;
+}
+
+// export: PageLayout
+export interface PageLayout {
+    columns: LayoutColumn[];
+    localId?: string;
+    breakout?: LayoutBreakout;
 }
 
 // export: PagePropertiesMacro
@@ -1311,6 +2016,9 @@ export declare class PaginationLoopError extends Error {
     constructor(token: string);
 }
 
+// export: parseAdfDateTimestamp
+export declare function parseAdfDateTimestamp(timestamp: string): Date | undefined;
+
 // export: parseDatasourceAttribute
 export declare function parseDatasourceAttribute(raw: string): DatasourceParseResult;
 
@@ -1319,6 +2027,95 @@ export declare function parsePageProperties(storage: string): PagePropertiesMacr
 
 // export: parseXml
 export declare function parseXml(input: string, budget?: StorageParseBudget): XmlNode[];
+
+// export: PINNED_ADF_MARK_TYPES
+export declare const PINNED_ADF_MARK_TYPES: readonly [
+    "alignment",
+    "annotation",
+    "backgroundColor",
+    "border",
+    "breakout",
+    "code",
+    "dataConsumer",
+    "em",
+    "fontSize",
+    "fragment",
+    "indentation",
+    "link",
+    "strike",
+    "strong",
+    "subsup",
+    "textColor",
+    "underline"
+];
+
+// export: PINNED_ADF_NODE_TYPES
+export declare const PINNED_ADF_NODE_TYPES: readonly [
+    "blockCard",
+    "blockTaskItem",
+    "blockquote",
+    "bodiedExtension",
+    "bodiedSyncBlock",
+    "bulletList",
+    "caption",
+    "codeBlock",
+    "date",
+    "decisionItem",
+    "decisionList",
+    "doc",
+    "embedCard",
+    "emoji",
+    "expand",
+    "extension",
+    "hardBreak",
+    "heading",
+    "inlineCard",
+    "inlineExtension",
+    "layoutColumn",
+    "layoutSection",
+    "listItem",
+    "media",
+    "mediaGroup",
+    "mediaInline",
+    "mediaSingle",
+    "mention",
+    "nestedExpand",
+    "orderedList",
+    "panel",
+    "paragraph",
+    "placeholder",
+    "rule",
+    "status",
+    "syncBlock",
+    "table",
+    "tableCell",
+    "tableHeader",
+    "tableRow",
+    "taskItem",
+    "taskList",
+    "text"
+];
+
+// export: PINNED_ADF_SCHEMA_PACKAGE
+export declare const PINNED_ADF_SCHEMA_PACKAGE = "@atlaskit/adf-schema";
+
+// export: PINNED_ADF_SCHEMA_VERSION
+export declare const PINNED_ADF_SCHEMA_VERSION = "56.1.15";
+
+// export: PINNED_ADF_STAGE0_NODE_TYPES
+export declare const PINNED_ADF_STAGE0_NODE_TYPES: readonly [
+    "extensionFrame",
+    "multiBodiedExtension"
+];
+
+// export: PinnedAdfMarkType
+export type PinnedAdfMarkType = (typeof PINNED_ADF_MARK_TYPES)[number];
+
+// export: PinnedAdfNodeType
+export type PinnedAdfNodeType = (typeof PINNED_ADF_NODE_TYPES)[number];
+
+// export: PinnedAdfStage0NodeType
+export type PinnedAdfStage0NodeType = (typeof PINNED_ADF_STAGE0_NODE_TYPES)[number];
 
 // export: readableTextColor
 export declare function readableTextColor(backgroundColor: string): "#FFFFFF" | "#172B4D";
@@ -1364,6 +2161,28 @@ export interface SearchResults {
     nextLink?: string;
 }
 
+// export: SmartCardAppearance
+export type SmartCardAppearance = "inline" | "block" | "embed";
+
+// export: smartCardDisplayText
+export declare function smartCardDisplayText(card: SmartCardSemantics): string;
+
+// export: SmartCardSemantics
+export interface SmartCardSemantics {
+    appearance: SmartCardAppearance;
+    source: "url" | "data" | "datasource";
+    url?: string;
+    target?: LinkTarget;
+    title?: string;
+    localId?: string;
+    data?: AdfJsonValue;
+    datasource?: AdfJsonValue;
+    layout?: "wide" | "full-width" | "center" | "wrap-right" | "wrap-left" | "align-end" | "align-start";
+    width?: number;
+    originalHeight?: number;
+    originalWidth?: number;
+}
+
 // export: SmartLinkAppearance
 export type SmartLinkAppearance = "inline" | "card" | "embed";
 
@@ -1380,6 +2199,11 @@ export type SpaceIcon = {
     height?: number;
     isDefault?: boolean;
 };
+
+// export: statusDisplayText
+export declare function statusDisplayText(status: Pick<Extract<InlineNode, {
+    type: "status";
+}>, "text" | "color" | "style">): string;
 
 // export: StorageParseBudget
 export interface StorageParseBudget {
@@ -1415,16 +2239,16 @@ export interface StorageToBlocksOptions {
 }
 
 // export: StorageToBlocksResult
-export interface StorageToBlocksResult {
-    blocks: ExportBlock[];
-    notes: ExportNote[];
-}
+export type StorageToBlocksResult = BlocksResult;
 
 // export: storageToMarkdown
 export declare function storageToMarkdown(storage: string, options?: ConversionOptions): string;
 
 // export: stripTableColumnMetadata
 export declare function stripTableColumnMetadata(storage: string): string;
+
+// export: SupportedAdfNodeType
+export type SupportedAdfNodeType = PinnedAdfNodeType | PinnedAdfStage0NodeType;
 
 // export: SVG_UNSAFE_MESSAGE
 export declare const SVG_UNSAFE_MESSAGE = "SVG contains active or externally loaded content";
@@ -1433,6 +2257,14 @@ export declare const SVG_UNSAFE_MESSAGE = "SVG contains active or externally loa
 export interface SvgSafetyViolation {
     rule: "doctype-or-entity" | "blocked-element" | "event-handler-attribute" | "non-fragment-reference" | "css-external-reference";
     detail: string;
+}
+
+// export: SyncedContentProvenance
+export interface SyncedContentProvenance {
+    resourceId: string;
+    localId: string;
+    projection: "embedded-snapshot" | "unresolved-reference";
+    breakout?: LayoutBreakout;
 }
 
 // export: SyncScope
@@ -1453,16 +2285,38 @@ export interface TableCell {
     colspan: number;
     rowspan: number;
     backgroundColor?: string;
+    columnWidths?: number[];
+    verticalAlignment?: TableVerticalAlignment;
+    localId?: string;
     content: ExportBlock[];
 }
 
 // export: tableColumns
 export declare function tableColumns(ds: Datasource): string[] | undefined;
 
+// export: TableDisplayMode
+export type TableDisplayMode = "default" | "fixed";
+
+// export: TableLayout
+export type TableLayout = "default" | "wide" | "full-width" | "center" | "align-start" | "align-end";
+
+// export: TablePresentation
+export interface TablePresentation {
+    layout?: TableLayout;
+    width?: number;
+    displayMode?: TableDisplayMode;
+    numberedColumn?: boolean;
+    localId?: string;
+}
+
 // export: TableRow
 export interface TableRow {
     cells: TableCell[];
+    localId?: string;
 }
+
+// export: TableVerticalAlignment
+export type TableVerticalAlignment = "top" | "middle" | "bottom";
 
 // export: translateDatasourceLink
 export declare function translateDatasourceLink(rawAttr: string, href: string): DatasourceOutcome;
@@ -1493,6 +2347,11 @@ export interface TreeFetchOptions {
     completenessMode?: CompletenessMode;
     signal?: AbortSignal;
     onProgress?: (progress: TreeFetchProgress) => void;
+    bodyOptions?: Omit<PageBodyToBlocksOptions, "pageContext">;
+    preparedPlan?: ExportTreePlanV1;
+    onPlanPrepared?: (plan: ExportTreePlanV1) => void | Promise<void>;
+    onPlanRecovered?: (plan: ExportTreePlanV1) => void | Promise<void>;
+    maxPlanBytes?: number;
 }
 
 // export: TreeFetchProgress
@@ -1528,6 +2387,12 @@ export interface TreeSource {
 
 // export: TreeSourceClient
 export interface TreeSourceClient {
+    getExportPageDetailsWithMedia?(id: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluenceExportPageDetails>;
+    getExportPageDetails?(id: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluenceExportPageDetails>;
     getPageDetails(id: string, options?: {
         signal?: AbortSignal;
     }): Promise<{
@@ -1577,13 +2442,32 @@ export interface TreeSourceClient {
 }
 
 // export: TreeSourcePage
-export interface TreeSourcePage {
+export type TreeSourcePage = TreeSourcePageMetadata & ({
+    exportSource: ExportPageSource;
+    storage?: string;
+} | {
+    storage: string;
+    exportSource?: undefined;
+});
+
+// export: TreeSourcePageMetadata
+export interface TreeSourcePageMetadata {
     id: string;
     title: string;
-    storage: string;
     version?: number;
     labels?: string[];
     spaceKey?: string;
+    mediaAttachments?: AdfMediaAttachment[];
+    mediaAttachmentsComplete?: boolean;
+    inlineComments?: InlineComment[];
+    inlineCommentsComplete?: boolean;
+}
+
+// export: TreeSourceSummary
+export interface TreeSourceSummary {
+    pagesRead: number;
+    representations: Readonly<Record<PageBody["representation"], number>>;
+    degradedPages: number;
 }
 
 // export: TreeSourceVersion
@@ -1594,6 +2478,23 @@ export interface TreeSourceVersion {
 
 // export: uniqueAnchorId
 export declare function uniqueAnchorId(rawName: string, used: ReadonlySet<string>): string;
+
+// export: UnresolvedMediaIdentity
+export interface UnresolvedMediaIdentity {
+    mediaType?: string;
+    id?: string;
+    collection?: string;
+    occurrenceKey?: string;
+    localId?: string;
+    dataConsumers?: AdfDataConsumerProvenance[];
+    url?: string;
+    dataJson?: string;
+    filename?: string;
+    pageId?: string;
+    attachmentMediaType?: string;
+    webuiLink?: string;
+    downloadLink?: string;
+}
 
 // export: UNSAFE_LINK_NOTE_CODE
 export declare const UNSAFE_LINK_NOTE_CODE = "unsafe-link-skipped";
@@ -1613,6 +2514,21 @@ export interface UserInfo {
     email: string | null;
     isActive: boolean;
     profilePicture: string | null;
+}
+
+// export: ValidAdfDocument
+export type ValidAdfDocument = AdfDocument;
+
+// export: validateAdf
+export declare function validateAdf(input: string | unknown, options?: {
+    budget?: Partial<AdfParseBudget>;
+}): ValidatedAdfDocument;
+
+// export: ValidatedAdfDocument
+export interface ValidatedAdfDocument {
+    document: AdfDocument;
+    diagnostics: AdfDiagnostic[];
+    stats: AdfValidationStats;
 }
 
 // export: validateExportScope
@@ -1648,6 +2564,287 @@ export interface XmlText {
 ### Entry point `. (default)`
 
 ```ts
+// export: ADF_COVERAGE
+export declare const ADF_COVERAGE: readonly AdfCoverageRow[];
+
+// export: ADF_MARK_DECODE_MODES
+export declare const ADF_MARK_DECODE_MODES: Readonly<{
+    readonly alignment: "native";
+    readonly annotation: "approximation";
+    readonly backgroundColor: "native";
+    readonly border: "native";
+    readonly breakout: "approximation";
+    readonly code: "native";
+    readonly dataConsumer: "approximation";
+    readonly em: "native";
+    readonly fontSize: "native";
+    readonly fragment: "approximation";
+    readonly indentation: "native";
+    readonly link: "native";
+    readonly strike: "native";
+    readonly strong: "native";
+    readonly subsup: "native";
+    readonly textColor: "native";
+    readonly underline: "native";
+}>;
+
+// export: ADF_NODE_DECODE_MODES
+export declare const ADF_NODE_DECODE_MODES: Readonly<{
+    readonly blockCard: "native";
+    readonly blockTaskItem: "native";
+    readonly blockquote: "native";
+    readonly bodiedExtension: "approximation";
+    readonly bodiedSyncBlock: "approximation";
+    readonly bulletList: "native";
+    readonly caption: "native";
+    readonly codeBlock: "native";
+    readonly date: "native";
+    readonly decisionItem: "native";
+    readonly decisionList: "native";
+    readonly doc: "native";
+    readonly embedCard: "native";
+    readonly emoji: "approximation";
+    readonly expand: "approximation";
+    readonly extension: "approximation";
+    readonly hardBreak: "native";
+    readonly heading: "native";
+    readonly inlineCard: "native";
+    readonly inlineExtension: "approximation";
+    readonly layoutColumn: "native";
+    readonly layoutSection: "native";
+    readonly listItem: "native";
+    readonly media: "native";
+    readonly mediaGroup: "native";
+    readonly mediaInline: "approximation";
+    readonly mediaSingle: "native";
+    readonly mention: "native";
+    readonly nestedExpand: "approximation";
+    readonly orderedList: "native";
+    readonly panel: "approximation";
+    readonly paragraph: "native";
+    readonly placeholder: "native";
+    readonly rule: "native";
+    readonly status: "native";
+    readonly syncBlock: "approximation";
+    readonly table: "approximation";
+    readonly tableCell: "approximation";
+    readonly tableHeader: "approximation";
+    readonly tableRow: "native";
+    readonly taskItem: "native";
+    readonly taskList: "native";
+    readonly text: "native";
+}>;
+
+// export: ADF_STAGE0_NODE_DECODE_MODES
+export declare const ADF_STAGE0_NODE_DECODE_MODES: Readonly<{
+    readonly extensionFrame: "approximation";
+    readonly multiBodiedExtension: "approximation";
+}>;
+
+// export: AdfAnnotationComment
+export interface AdfAnnotationComment {
+    bodyText: string;
+    status: "open" | "resolved";
+    created?: string;
+    replies: AdfAnnotationReply[];
+}
+
+// export: AdfAnnotationIdentity
+export interface AdfAnnotationIdentity {
+    id: string;
+    annotationType: "inlineComment";
+    comment?: AdfAnnotationComment;
+}
+
+// export: AdfAnnotationReply
+export interface AdfAnnotationReply {
+    bodyText: string;
+    created?: string;
+}
+
+// export: AdfCoverageLevel
+export type AdfCoverageLevel = "native" | "partial" | "fallback" | "missing";
+
+// export: AdfCoverageProvenance
+export type AdfCoverageProvenance = "schema-only" | "observed-cloud" | "legacy-observed";
+
+// export: AdfCoverageRow
+export interface AdfCoverageRow {
+    kind: "node" | "mark";
+    type: string;
+    parser: "validated";
+    decoder: AdfCoverageLevel;
+    docx: AdfCoverageLevel | "not-applicable";
+    pdf: AdfCoverageLevel | "not-applicable";
+    provenance: readonly AdfCoverageProvenance[];
+}
+
+// export: AdfDataConsumerProvenance
+export interface AdfDataConsumerProvenance {
+    sources: string[];
+}
+
+// export: AdfDecoderMode
+export type AdfDecoderMode = "native" | "approximation" | "visible-fallback";
+
+// export: AdfDiagnostic
+export interface AdfDiagnostic {
+    kind: AdfDiagnosticKind;
+    path: string;
+    type?: string;
+    attribute?: string;
+    count?: number;
+}
+
+// export: AdfDiagnosticKind
+export type AdfDiagnosticKind = "unknown-node" | "unknown-mark" | "unknown-attribute" | "diagnostics-truncated";
+
+// export: AdfDocument
+export interface AdfDocument extends AdfNode {
+    type: "doc";
+    version: 1;
+    content: AdfNode[];
+}
+
+// export: AdfExtensionFrame
+export interface AdfExtensionFrame {
+    content: ExportBlock[];
+    fragments?: AdfFragmentIdentity[];
+    dataConsumers?: AdfDataConsumerProvenance[];
+    bodyNotes?: ExportNote[];
+}
+
+// export: AdfExtensionIdentity
+export interface AdfExtensionIdentity {
+    extensionType: string;
+    extensionKey: string;
+    localId?: string;
+}
+
+// export: AdfFragmentIdentity
+export interface AdfFragmentIdentity {
+    localId: string;
+    name?: string;
+}
+
+// export: AdfJsonValue
+export type AdfJsonValue = null | boolean | number | string | AdfJsonValue[] | {
+    [key: string]: AdfJsonValue;
+};
+
+// export: AdfLinkAttributes
+export interface AdfLinkAttributes {
+    title?: string;
+    id?: string;
+    collection?: string;
+    occurrenceKey?: string;
+}
+
+// export: AdfMark
+export interface AdfMark {
+    type: string;
+    attrs?: Record<string, AdfJsonValue>;
+}
+
+// export: AdfMediaAttachment
+export interface AdfMediaAttachment {
+    fileId: string;
+    filename: string;
+    pageId: string;
+    mediaType?: string;
+    webuiLink?: string;
+    downloadLink?: string;
+}
+
+// export: AdfMediaReference
+export interface AdfMediaReference {
+    id: string;
+    collection?: string;
+    occurrenceKey?: string;
+}
+
+// export: AdfNode
+export interface AdfNode {
+    type: string;
+    attrs?: Record<string, AdfJsonValue>;
+    content?: AdfNode[];
+    marks?: AdfMark[];
+    text?: string;
+}
+
+// export: AdfParseBudget
+export interface AdfParseBudget {
+    maxInputBytes: number;
+    maxNodes: number;
+    maxDepth: number;
+    maxTextBytes: number;
+    maxAttributeBytes: number;
+    maxMarks: number;
+    maxAttributeValues: number;
+    maxDiagnostics: number;
+}
+
+// export: AdfResolvedMediaAttachment
+export interface AdfResolvedMediaAttachment {
+    filename: string;
+    pageId?: string;
+    mediaType?: string;
+    webuiLink?: string;
+    downloadLink?: string;
+}
+
+// export: adfToBlocks
+export declare function adfToBlocks(input: string | unknown, options?: AdfToBlocksOptions): BlocksResult;
+
+// export: AdfToBlocksOptions
+export interface AdfToBlocksOptions extends Omit<StorageToBlocksOptions, "parseBudget"> {
+    parseBudget?: Partial<AdfParseBudget>;
+    resolveMediaAttachment?: (reference: AdfMediaReference) => AdfResolvedMediaAttachment | undefined;
+    resolveAnnotation?: (markerRef: string) => AdfAnnotationComment | undefined;
+    annotationCommentsComplete?: boolean;
+}
+
+// export: AdfUnsupportedAttribute
+export interface AdfUnsupportedAttribute {
+    name: string;
+    value: AdfJsonValue;
+}
+
+// export: AdfUnsupportedMark
+export interface AdfUnsupportedMark {
+    type: string;
+    attributes?: AdfUnsupportedAttribute[];
+}
+
+// export: AdfUnsupportedNodeProvenance
+export interface AdfUnsupportedNodeProvenance {
+    nodeType: string;
+    sourceRepresentation: "atlas_doc_format" | "storage";
+    attributes?: AdfUnsupportedAttribute[];
+    marks?: AdfUnsupportedMark[];
+}
+
+// export: AdfValidationError
+export declare class AdfValidationError extends Error {
+    readonly code: AdfValidationErrorCode;
+    readonly path: string;
+    constructor(code: AdfValidationErrorCode, message: string, path?: string);
+}
+
+// export: AdfValidationErrorCode
+export type AdfValidationErrorCode = "input-too-large" | "invalid-json" | "invalid-root" | "unsupported-version" | "invalid-node" | "invalid-mark" | "invalid-attributes" | "node-budget-exceeded" | "depth-budget-exceeded" | "text-budget-exceeded" | "attribute-budget-exceeded" | "mark-budget-exceeded";
+
+// export: AdfValidationStats
+export interface AdfValidationStats {
+    inputBytes?: number;
+    nodes: number;
+    marks: number;
+    maxDepth: number;
+    textBytes: number;
+    attributeBytes: number;
+    attributeValues: number;
+}
+
 // export: AnchorRegistry
 export declare class AnchorRegistry {
     private readonly lookup;
@@ -1728,6 +2925,11 @@ export declare class AssetPipelineError extends Error {
 // export: ASSETS_DATASOURCE_ID
 export declare const ASSETS_DATASOURCE_ID = "361d618a-3c04-40ad-9b27-3c8ea6927020";
 
+// export: AtlasDocFormatPageBody
+export type AtlasDocFormatPageBody = Extract<PageBody, {
+    representation: "atlas_doc_format";
+}>;
+
 // export: AttachmentInfo
 export interface AttachmentInfo {
     id: string;
@@ -1753,6 +2955,21 @@ export interface BaseComment {
     replies: BaseComment[];
 }
 
+// export: BlockPresentation
+export interface BlockPresentation {
+    alignment?: "center" | "end";
+    indentation?: 1 | 2 | 3 | 4 | 5 | 6;
+    fontSize?: "small";
+}
+
+// export: BlocksResult
+export interface BlocksResult {
+    blocks: ExportBlock[];
+    notes: ExportNote[];
+    representation?: PageBody["representation"];
+    degraded?: boolean;
+}
+
 // export: BulkOperationResult
 export interface BulkOperationResult {
     total: number;
@@ -1766,7 +2983,7 @@ export interface BulkOperationResult {
 }
 
 // export: CalloutKind
-export type CalloutKind = "info" | "note" | "warning" | "tip" | "panel";
+export type CalloutKind = "info" | "note" | "warning" | "tip" | "success" | "error" | "panel";
 
 // export: canonicalExportNoteCode
 export declare function canonicalExportNoteCode(code: string): ExportNoteCode | undefined;
@@ -1775,6 +2992,7 @@ export declare function canonicalExportNoteCode(code: string): ExportNoteCode | 
 export interface Caption {
     kind: CaptionKind;
     content: InlineNode[];
+    localId?: string;
 }
 
 // export: CaptionableBlockType
@@ -1789,6 +3007,9 @@ export interface CommentAuthor {
     accountId?: string;
     email?: string;
 }
+
+// export: commentBodyToText
+export declare function commentBodyToText(storageBody: string): string;
 
 // export: CompletenessCode
 export type CompletenessCode = "page-unreadable" | "subtree-unreadable" | "page-ambiguous-404" | "page-version-changed";
@@ -1830,13 +3051,18 @@ export declare const CONFLUENCE_SEARCH_DATASOURCE_ID = "768fc736-3af4-4a8f-b27e-
 // export: ConfluenceClient
 export declare class ConfluenceClient {
     private confluenceBaseUrl;
+    private deploymentType;
+    private capabilityOrigin;
     private authHeader;
     private useSession;
     private maxRetries;
     private baseDelayMs;
     private tlsOptions;
     private sessionRedirectPolicy;
-    constructor(profile: Profile);
+    private exportSourcePolicy;
+    constructor(profile: Profile, options?: {
+        exportSourcePolicy?: ExportSourcePolicy;
+    });
     getInstanceUrl(): string;
     private buildWebUrl;
     private sleep;
@@ -1846,14 +3072,21 @@ export declare class ConfluenceClient {
     private assertSessionJsonOk;
     private request;
     private requestV2;
-    getCurrentUser(): Promise<{
+    getCurrentUser(options?: {
+        signal?: AbortSignal;
+    }): Promise<{
         accountId: string;
         displayName: string;
         email?: string;
     }>;
-    getPage(id: string): Promise<ConfluencePage & {
+    getPage(id: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluencePage & {
         storage: string;
     }>;
+    getPageAdf(id: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluencePageAdf>;
     getMacroBodyByMacroId(pageId: string, version: number, macroId: string, options?: {
         signal?: AbortSignal;
     }): Promise<string | undefined>;
@@ -1866,6 +3099,14 @@ export declare class ConfluenceClient {
     getPageDetails(id: string, options?: {
         signal?: AbortSignal;
     }): Promise<ConfluencePageDetails>;
+    getExportPageDetails(id: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluenceExportPageDetails>;
+    getExportPageDetailsWithMedia(id: string, options?: {
+        signal?: AbortSignal;
+        maxAttachments?: number;
+        maxInlineComments?: number;
+    }): Promise<ConfluenceExportPageDetails>;
     getAncestors(pageId: string): Promise<{
         id: string;
         title: string;
@@ -1943,8 +3184,12 @@ export declare class ConfluenceClient {
     }): Promise<ConfluenceSpace>;
     listSpaces(limit?: number): Promise<ConfluenceSpace[]>;
     getSpace(key: string): Promise<ConfluenceSpace>;
-    getSpaceIcon(key: string): Promise<SpaceIcon | null>;
-    getSpaceWithIcon(key: string): Promise<{
+    getSpaceIcon(key: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<SpaceIcon | null>;
+    getSpaceWithIcon(key: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<{
         space: ConfluenceSpace;
         icon: SpaceIcon | null;
     }>;
@@ -1965,8 +3210,13 @@ export declare class ConfluenceClient {
     getPagesBatch(ids: string[], concurrency?: number): Promise<(ConfluencePage & {
         storage: string;
     })[]>;
+    listPageAttachmentMedia(pageId: string, options?: {
+        maxAttachments?: number;
+        signal?: AbortSignal;
+    }): Promise<PageAttachmentMediaResult>;
     listAttachments(pageId: string, options?: {
         limit?: number;
+        signal?: AbortSignal;
     }): Promise<AttachmentInfo[]>;
     getAttachment(attachmentId: string): Promise<AttachmentInfo>;
     uploadAttachment(params: {
@@ -2028,6 +3278,10 @@ export declare class ConfluenceClient {
     getInlineCommentReplies(commentId: string, options?: {
         limit?: number;
     }): Promise<InlineComment[]>;
+    listPageInlineCommentsForExport(pageId: string, options?: {
+        signal?: AbortSignal;
+        maxInlineComments?: number;
+    }): Promise<PageInlineCommentsExportResult>;
     getAllComments(pageId: string, options?: {
         limit?: number;
     }): Promise<PageComments>;
@@ -2071,14 +3325,21 @@ export declare class ConfluenceClient {
     }>>;
     getFoldersInTree(parentId: string): Promise<ConfluenceFolder[]>;
     movePageToFolder(pageId: string, folderId: string): Promise<ConfluencePage>;
-    getUser(accountId: string): Promise<UserInfo | null>;
-    getSpaceHomepageStorage(spaceKey: string): Promise<string | null>;
+    getUser(accountId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<UserInfo | null>;
+    getSpaceHomepageStorage(spaceKey: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<string | null>;
     getSpaceHomepageId(spaceKey: string, options?: {
         signal?: AbortSignal;
     }): Promise<string | null>;
-    getPageOwner(pageId: string): Promise<ConfluenceUser | null>;
+    getPageOwner(pageId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluenceUser | null>;
     getUsersBulk(accountIds: string[], options?: {
         concurrency?: number;
+        signal?: AbortSignal;
     }): Promise<Map<string, UserInfo | null>>;
     getVersionHistory(pageId: string, options?: {
         limit?: number;
@@ -2091,6 +3352,15 @@ export declare class ConfluenceClient {
 export type ConfluenceDetailedSearchResults = {
     results: ConfluenceSearchDetail[];
     totalSize?: number;
+};
+
+// export: ConfluenceExportPageDetails
+export type ConfluenceExportPageDetails = ConfluencePageDetails & {
+    exportSource: ExportPageSource;
+    mediaAttachments?: AdfMediaAttachment[];
+    mediaAttachmentsComplete?: boolean;
+    inlineComments?: InlineComment[];
+    inlineCommentsComplete?: boolean;
 };
 
 // export: ConfluenceFolder
@@ -2116,6 +3386,13 @@ export type ConfluencePage = {
         title: string;
     }[];
 };
+
+// export: ConfluencePageAdf
+export interface ConfluencePageAdf {
+    id: string;
+    version: number;
+    body: AtlasDocFormatPageBody;
+}
 
 // export: ConfluencePageDetails
 export type ConfluencePageDetails = ConfluencePage & {
@@ -2191,6 +3468,12 @@ export interface ConversionOptions {
     emitWarnings?: boolean;
     onWarning?: (message: string) => void;
 }
+
+// export: createAdfAnnotationResolver
+export declare function createAdfAnnotationResolver(comments: readonly InlineComment[] | undefined): AdfToBlocksOptions["resolveAnnotation"] | undefined;
+
+// export: createAdfMediaAttachmentResolver
+export declare function createAdfMediaAttachmentResolver(attachments: readonly AdfMediaAttachment[] | undefined): AdfToBlocksOptions["resolveMediaAttachment"] | undefined;
 
 // export: createInOrderLimiter
 export declare function createInOrderLimiter(limit: number): <T>(task: () => Promise<T>) => Promise<T>;
@@ -2288,11 +3571,22 @@ export interface DatasourceView {
 // export: decodeSvgSource
 export declare function decodeSvgSource(bytes: Uint8Array): string;
 
+// export: DEFAULT_ADF_PARSE_BUDGET
+export declare const DEFAULT_ADF_PARSE_BUDGET: Readonly<AdfParseBudget>;
+
 // export: DEFAULT_STORAGE_PARSE_BUDGET
 export declare const DEFAULT_STORAGE_PARSE_BUDGET: StorageParseBudget;
 
 // export: drainPaginated
 export declare function drainPaginated<T>(fetchPage: (token: string | undefined) => Promise<PaginatedPage<T>>): Promise<T[]>;
+
+// export: EmojiSemantics
+export interface EmojiSemantics {
+    shortName: string;
+    id?: string;
+    text?: string;
+    renderedFrom: "text" | "short-name";
+}
 
 // export: escapeCqlValue
 export declare function escapeCqlValue(value: string): string;
@@ -2301,8 +3595,20 @@ export declare function escapeCqlValue(value: string): string;
 export declare const EXPORT_NOTE_CODES: readonly [
     "unknown-macro",
     "macro-not-rendered",
+    "inline-extension-not-rendered",
     "image-unresolved",
     "inline-image-skipped",
+    "layout-geometry-fallback",
+    "expand-static",
+    "emoji-text-fallback",
+    "date-invalid",
+    "adf-node-degraded",
+    "adf-mark-degraded",
+    "adf-attribute-dropped",
+    "adf-media-unresolved",
+    "adf-annotation-unresolved",
+    "adf-annotation-comments-truncated",
+    "adf-storage-fallback",
     "datasource-invalid",
     "datasource-provider-unknown",
     "datasource-provider-unsupported",
@@ -2398,6 +3704,8 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "logo-embed-failed",
     "perf-timing",
     "code-highlight-skipped",
+    "code-nowrap-page-bounded",
+    "code-collapse-static",
     "image-skipped",
     "image-embed-failed",
     "image-missing-alt",
@@ -2422,35 +3730,90 @@ export type ExportBlock = {
     level: 1 | 2 | 3 | 4 | 5 | 6;
     content: InlineNode[];
     explicitAnchor?: string;
+    presentation?: BlockPresentation;
+    localId?: string;
 } | {
     type: "paragraph";
     content: InlineNode[];
+    presentation?: BlockPresentation;
+    localId?: string;
+} | {
+    type: "smartCard";
+    card: SmartCardSemantics;
 } | {
     type: "codeBlock";
     language?: string;
     code: string;
+    title?: string;
+    initiallyCollapsed?: boolean;
     caption?: Caption;
+    wrap?: boolean;
+    hideLineNumbers?: boolean;
+    firstLineNumber?: number;
+    localId?: string;
+    uniqueId?: string;
+    breakout?: LayoutBreakout;
 } | {
     type: "callout";
     kind: CalloutKind;
     title?: string;
     content: ExportBlock[];
+    localId?: string;
+    panelColor?: string;
+    panelIcon?: string;
+    panelIconId?: string;
+    panelIconText?: string;
+    syncedContent?: SyncedContentProvenance;
+} | {
+    type: "expand";
+    nested: boolean;
+    content: ExportBlock[];
+    title?: string;
+    localId?: string;
+    macroId?: string;
+    breakout?: LayoutBreakout;
 } | {
     type: "list";
     ordered: boolean;
     items: ListItem[];
-} | {
+    start?: number;
+    listKind?: "task" | "decision";
+    localId?: string;
+} | ({
+    type: "layout";
+} & PageLayout) | {
     type: "table";
     rows: TableRow[];
     columnWidths?: number[];
+    presentation?: TablePresentation;
     caption?: Caption;
+    fragments?: AdfFragmentIdentity[];
 } | {
     type: "image";
     source: ImageSource;
+    media?: UnresolvedMediaIdentity;
     alt?: string;
     width?: number;
     height?: number;
+    mediaPresentation?: MediaPresentation;
+    mediaGroup?: MediaGroupPosition;
+    border?: MediaBorder;
     caption?: Caption;
+    annotations?: AdfAnnotationIdentity[];
+    link?: ExportLink;
+} | {
+    type: "mediaFallback";
+    label: string;
+    media: UnresolvedMediaIdentity;
+    caption?: Caption;
+    alt?: string;
+    width?: number;
+    height?: number;
+    mediaPresentation?: MediaPresentation;
+    mediaGroup?: MediaGroupPosition;
+    border?: MediaBorder;
+    annotations?: AdfAnnotationIdentity[];
+    link?: ExportLink;
 } | {
     type: "blockquote";
     content: ExportBlock[];
@@ -2472,6 +3835,10 @@ export type ExportBlock = {
     body?: ExportBlock[];
     plainBody?: string;
     macroId?: string;
+    adfExtension?: AdfExtensionIdentity;
+    extensionFrames?: AdfExtensionFrame[];
+    fragments?: AdfFragmentIdentity[];
+    unsupportedAdf?: AdfUnsupportedNodeProvenance;
     bodyNotes?: ExportNote[];
     sourcePage?: {
         id: string;
@@ -2502,6 +3869,12 @@ export interface ExportFolderNode {
     effectiveDepth: number;
     parentId: string | null;
     position: number | null;
+}
+
+// export: ExportLink
+export interface ExportLink {
+    target: LinkTarget;
+    adfAttributes?: AdfLinkAttributes;
 }
 
 // export: ExportMentionLookup
@@ -2557,6 +3930,26 @@ export interface ExportPageNode {
     placeholder?: boolean;
 }
 
+// export: ExportPageReadError
+export declare class ExportPageReadError extends Error {
+    readonly kind: ExportPageReadErrorKind;
+    readonly pageId?: string | undefined;
+    readonly storageVersion?: number | undefined;
+    readonly adfVersion?: number | undefined;
+    constructor(kind: ExportPageReadErrorKind, message: string, pageId?: string | undefined, storageVersion?: number | undefined, adfVersion?: number | undefined);
+}
+
+// export: ExportPageReadErrorKind
+export type ExportPageReadErrorKind = "adf-representation-unavailable" | "invalid-adf-response" | "invalid-storage-response" | "page-version-mismatch";
+
+// export: ExportPageSource
+export interface ExportPageSource {
+    primary: PageBody;
+    storageSidecar?: string;
+    sourceVersion?: number;
+    fallbackReason?: ExportSourceFallbackReason;
+}
+
 // export: ExportPhase
 export type ExportPhase = "discover" | "fetch" | "compose" | "assets" | "serialize" | "emit";
 
@@ -2592,6 +3985,15 @@ export declare class ExportScopeError extends Error {
     constructor(message: string);
 }
 
+// export: ExportSourceFallbackReason
+export type ExportSourceFallbackReason = "data-center" | "adf-representation-unavailable" | "rollout-storage-primary";
+
+// export: ExportSourcePolicy
+export type ExportSourcePolicy = "adf-primary" | "storage-primary";
+
+// export: exportSourcePolicyFromFlag
+export declare function exportSourcePolicyFromFlag(value: string | undefined): ExportSourcePolicy;
+
 // export: ExportTreeBodyManifestEntryV1
 export interface ExportTreeBodyManifestEntryV1 {
     ordinal: number;
@@ -2605,6 +4007,10 @@ export type ExportTreeBodyResultV1 = {
     ok: false;
     pageId: string;
     title: string;
+    source?: {
+        representation: PageBody["representation"];
+        degraded: false;
+    };
     failure: {
         code: CompletenessCode;
         affected: ReadonlyArray<{
@@ -2617,6 +4023,10 @@ export type ExportTreeBodyResultV1 = {
     ok: true;
     pageId: string;
     title: string;
+    source: {
+        representation: PageBody["representation"];
+        degraded: boolean;
+    };
     blocks: ExportBlock[];
     notes: ExportNote[];
     meta: {
@@ -2637,6 +4047,49 @@ export interface ExportTreeBodyStoreV1 {
     commit(entry: ExportTreeBodyManifestEntryV1, result: ExportTreeBodyResultV1, context: {
         signal: AbortSignal;
     }): Promise<void>;
+}
+
+// export: ExportTreePlanError
+export declare class ExportTreePlanError extends Error {
+    readonly code: "export-tree-plan-invalid";
+    constructor(message: string);
+}
+
+// export: ExportTreePlanNodeV1
+export type ExportTreePlanNodeV1 = {
+    kind: "page";
+    pageId: string;
+    title: string;
+    depth: number;
+    effectiveDepth: number;
+    parentId: string | null;
+    position: number | null;
+    observedVersion?: number;
+} | {
+    kind: "folder";
+    folderId: string;
+    title: string;
+    depth: number;
+    effectiveDepth: number;
+    parentId: string | null;
+    position: number | null;
+};
+
+// export: ExportTreePlanV1
+export interface ExportTreePlanV1 {
+    schema: "atlcli.export-tree-plan/1";
+    scope: ExportScope;
+    policy: {
+        labels?: LabelFilter;
+        completenessMode: CompletenessMode;
+        maxPages: number;
+        maxFolders: number;
+    };
+    rootId: string;
+    includeRoot: boolean;
+    nodes: readonly ExportTreePlanNodeV1[];
+    notes: readonly ExportNote[];
+    complete: boolean;
 }
 
 // export: ExternalLinkTarget
@@ -2663,6 +4116,7 @@ export interface FetchExportTreeResult {
     nodes: readonly ExportNode[];
     notes: ExportNote[];
     complete: boolean;
+    sourceSummary: TreeSourceSummary;
 }
 
 // export: findSvgSafetyViolation
@@ -2683,6 +4137,9 @@ export interface FooterComment extends BaseComment {
     replies: FooterComment[];
 }
 
+// export: formatAdfDateTimestamp
+export declare function formatAdfDateTimestamp(timestamp: string, locale?: string): string;
+
 // export: hasActiveLabelFilter
 export declare function hasActiveLabelFilter(filter: LabelFilter | undefined): boolean;
 
@@ -2701,6 +4158,9 @@ export interface HeadingScanBlock {
         readonly cells: readonly {
             readonly content: readonly unknown[];
         }[];
+    }[];
+    readonly columns?: readonly {
+        readonly content: readonly unknown[];
     }[];
 }
 
@@ -2736,11 +4196,18 @@ export interface InlineComment extends BaseComment {
     textSelection: string;
     textSelectionMatchCount?: number;
     textSelectionMatchIndex?: number;
+    inlineMarkerRef?: string;
+    inlineOriginalSelection?: string;
     replies: InlineComment[];
 }
 
 // export: InlineMark
 export type InlineMark = "bold" | "italic" | "code" | "strike" | "underline" | "subscript" | "superscript";
+
+// export: inlineMediaDisplayText
+export declare function inlineMediaDisplayText(media: Pick<Extract<InlineNode, {
+    type: "media";
+}>, "media" | "alt">): string;
 
 // export: InlineNode
 export type InlineNode = {
@@ -2749,18 +4216,56 @@ export type InlineNode = {
     marks?: InlineMark[];
     color?: string;
     backgroundColor?: string;
-} | {
+    emoji?: EmojiSemantics;
+    adfExtension?: AdfExtensionIdentity;
+    extensionParams?: MacroParameter[];
+    sourcePage?: {
+        id: string;
+        version?: number;
+        spaceKey?: string;
+    };
+    annotations?: AdfAnnotationIdentity[];
+    fragments?: AdfFragmentIdentity[];
+    unsupportedAdf?: AdfUnsupportedNodeProvenance[];
+} | ({
     type: "link";
-    target: LinkTarget;
     content: InlineNode[];
-} | {
+} & ExportLink) | {
     type: "mention";
     accountId: string;
     displayName?: string;
+    sourceText?: string;
+    localId?: string;
+    accessLevel?: string;
+    userType?: "DEFAULT" | "SPECIAL" | "APP";
+} | {
+    type: "date";
+    timestamp: string;
+    localId?: string;
 } | {
     type: "status";
     text: string;
     color: string;
+    localId?: string;
+    style?: string;
+} | {
+    type: "smartCard";
+    card: SmartCardSemantics;
+} | {
+    type: "media";
+    media: UnresolvedMediaIdentity;
+    source?: ImageSource;
+    alt?: string;
+    width?: number;
+    height?: number;
+    border?: MediaBorder;
+    annotations?: AdfAnnotationIdentity[];
+    link?: ExportLink;
+} | {
+    type: "placeholder";
+    text: string;
+    localId?: string;
+    placeholderType?: string;
 } | {
     type: "lineBreak";
 };
@@ -2768,8 +4273,20 @@ export type InlineNode = {
 // export: isImageFile
 export declare function isImageFile(filename: string): boolean;
 
+// export: isPinnedAdfMarkType
+export declare function isPinnedAdfMarkType(type: string): type is PinnedAdfMarkType;
+
+// export: isPinnedAdfNodeType
+export declare function isPinnedAdfNodeType(type: string): type is PinnedAdfNodeType;
+
+// export: isPinnedAdfStage0NodeType
+export declare function isPinnedAdfStage0NodeType(type: string): type is PinnedAdfStage0NodeType;
+
 // export: isSafeLinkScheme
 export declare function isSafeLinkScheme(href: string): boolean;
+
+// export: isSupportedAdfNodeType
+export declare function isSupportedAdfNodeType(type: string): type is SupportedAdfNodeType;
 
 // export: JIRA_DATASOURCE_ID
 export declare const JIRA_DATASOURCE_ID = "d8b75300-dfda-4519-b6cd-e49abbd50401";
@@ -2797,6 +4314,20 @@ export interface LabelInfo {
     id: string;
 }
 
+// export: LayoutBreakout
+export interface LayoutBreakout {
+    mode: "wide" | "full-width";
+    width?: number;
+}
+
+// export: LayoutColumn
+export interface LayoutColumn {
+    width: number;
+    verticalAlignment?: TableVerticalAlignment;
+    localId?: string;
+    content: ExportBlock[];
+}
+
 // export: LinkSanitizeResult
 export type LinkSanitizeResult = {
     safe: true;
@@ -2817,9 +4348,11 @@ export type LinkTarget = {
     contentId?: string;
     spaceKey?: string;
     anchor?: string;
+    href?: string;
 } | {
     kind: "attachment";
     filename: string;
+    href?: string;
 } | {
     kind: "anchor";
     anchor: string;
@@ -2828,6 +4361,10 @@ export type LinkTarget = {
 // export: ListItem
 export interface ListItem {
     content: ExportBlock[];
+    kind?: "task" | "decision";
+    state?: string;
+    localId?: string;
+    block?: boolean;
     checked?: boolean;
 }
 
@@ -2868,8 +4405,52 @@ export declare function macroParamText(params: MacroParameter[] | undefined, nam
 // export: markdownToStorage
 export declare function markdownToStorage(markdown: string, options?: ConversionOptions): string;
 
+// export: MaterializedTable
+export interface MaterializedTable {
+    rows: TableRow[];
+    columnWidths?: number[];
+}
+
+// export: materializeTable
+export declare function materializeTable(table: Extract<ExportBlock, {
+    type: "table";
+}>): MaterializedTable;
+
 // export: MAX_ANCHOR_ID_LENGTH
 export declare const MAX_ANCHOR_ID_LENGTH = 40;
+
+// export: MediaBorder
+export interface MediaBorder {
+    color: string;
+    size: 1 | 2 | 3;
+}
+
+// export: mediaFallbackDisplayText
+export declare function mediaFallbackDisplayText(block: Pick<Extract<ExportBlock, {
+    type: "mediaFallback";
+}>, "media" | "alt" | "label">): string;
+
+// export: MediaGroupPosition
+export interface MediaGroupPosition {
+    index: number;
+    size: number;
+}
+
+// export: MediaLayout
+export type MediaLayout = "wide" | "full-width" | "center" | "wrap-right" | "wrap-left" | "align-end" | "align-start";
+
+// export: MediaPresentation
+export interface MediaPresentation {
+    layout: MediaLayout;
+    width?: number;
+    widthType?: "percentage" | "pixel";
+    localId?: string;
+}
+
+// export: mentionDisplayText
+export declare function mentionDisplayText(mention: Pick<Extract<InlineNode, {
+    type: "mention";
+}>, "displayName" | "userType">): string;
 
 // export: minHeadingLevel
 export declare function minHeadingLevel(blocks: readonly HeadingScanBlock[]): number;
@@ -2895,6 +4476,33 @@ export declare function normalizeLinkHref(href: string): string;
 // export: normalizeMarkdown
 export declare function normalizeMarkdown(markdown: string): string;
 
+// export: PageAttachmentMediaResult
+export interface PageAttachmentMediaResult {
+    attachments: AdfMediaAttachment[];
+    complete: boolean;
+}
+
+// export: PageBody
+export type PageBody = {
+    representation: "atlas_doc_format";
+    value: string;
+} | {
+    representation: "storage";
+    value: string;
+};
+
+// export: pageBodyToBlocks
+export declare function pageBodyToBlocks(source: ExportPageSource, options?: PageBodyToBlocksOptions): BlocksResult;
+
+// export: PageBodyToBlocksOptions
+export interface PageBodyToBlocksOptions extends Omit<StorageToBlocksOptions, "parseBudget"> {
+    storageParseBudget?: StorageParseBudget;
+    adfParseBudget?: Partial<AdfParseBudget>;
+    resolveMediaAttachment?: (reference: AdfMediaReference) => AdfResolvedMediaAttachment | undefined;
+    resolveAnnotation?: import("./adf-to-blocks.js").AdfToBlocksOptions["resolveAnnotation"];
+    annotationCommentsComplete?: boolean;
+}
+
 // export: PageChangeInfo
 export interface PageChangeInfo {
     id: string;
@@ -2917,6 +4525,19 @@ export interface PageHistory {
     pageId: string;
     versions: PageVersion[];
     latest: number;
+}
+
+// export: PageInlineCommentsExportResult
+export interface PageInlineCommentsExportResult {
+    comments: InlineComment[];
+    complete: boolean;
+}
+
+// export: PageLayout
+export interface PageLayout {
+    columns: LayoutColumn[];
+    localId?: string;
+    breakout?: LayoutBreakout;
 }
 
 // export: PagePropertiesMacro
@@ -2952,6 +4573,9 @@ export declare class PaginationLoopError extends Error {
     constructor(token: string);
 }
 
+// export: parseAdfDateTimestamp
+export declare function parseAdfDateTimestamp(timestamp: string): Date | undefined;
+
 // export: parseDatasourceAttribute
 export declare function parseDatasourceAttribute(raw: string): DatasourceParseResult;
 
@@ -2960,6 +4584,95 @@ export declare function parsePageProperties(storage: string): PagePropertiesMacr
 
 // export: parseXml
 export declare function parseXml(input: string, budget?: StorageParseBudget): XmlNode[];
+
+// export: PINNED_ADF_MARK_TYPES
+export declare const PINNED_ADF_MARK_TYPES: readonly [
+    "alignment",
+    "annotation",
+    "backgroundColor",
+    "border",
+    "breakout",
+    "code",
+    "dataConsumer",
+    "em",
+    "fontSize",
+    "fragment",
+    "indentation",
+    "link",
+    "strike",
+    "strong",
+    "subsup",
+    "textColor",
+    "underline"
+];
+
+// export: PINNED_ADF_NODE_TYPES
+export declare const PINNED_ADF_NODE_TYPES: readonly [
+    "blockCard",
+    "blockTaskItem",
+    "blockquote",
+    "bodiedExtension",
+    "bodiedSyncBlock",
+    "bulletList",
+    "caption",
+    "codeBlock",
+    "date",
+    "decisionItem",
+    "decisionList",
+    "doc",
+    "embedCard",
+    "emoji",
+    "expand",
+    "extension",
+    "hardBreak",
+    "heading",
+    "inlineCard",
+    "inlineExtension",
+    "layoutColumn",
+    "layoutSection",
+    "listItem",
+    "media",
+    "mediaGroup",
+    "mediaInline",
+    "mediaSingle",
+    "mention",
+    "nestedExpand",
+    "orderedList",
+    "panel",
+    "paragraph",
+    "placeholder",
+    "rule",
+    "status",
+    "syncBlock",
+    "table",
+    "tableCell",
+    "tableHeader",
+    "tableRow",
+    "taskItem",
+    "taskList",
+    "text"
+];
+
+// export: PINNED_ADF_SCHEMA_PACKAGE
+export declare const PINNED_ADF_SCHEMA_PACKAGE = "@atlaskit/adf-schema";
+
+// export: PINNED_ADF_SCHEMA_VERSION
+export declare const PINNED_ADF_SCHEMA_VERSION = "56.1.15";
+
+// export: PINNED_ADF_STAGE0_NODE_TYPES
+export declare const PINNED_ADF_STAGE0_NODE_TYPES: readonly [
+    "extensionFrame",
+    "multiBodiedExtension"
+];
+
+// export: PinnedAdfMarkType
+export type PinnedAdfMarkType = (typeof PINNED_ADF_MARK_TYPES)[number];
+
+// export: PinnedAdfNodeType
+export type PinnedAdfNodeType = (typeof PINNED_ADF_NODE_TYPES)[number];
+
+// export: PinnedAdfStage0NodeType
+export type PinnedAdfStage0NodeType = (typeof PINNED_ADF_STAGE0_NODE_TYPES)[number];
 
 // export: readableTextColor
 export declare function readableTextColor(backgroundColor: string): "#FFFFFF" | "#172B4D";
@@ -3005,6 +4718,28 @@ export interface SearchResults {
     nextLink?: string;
 }
 
+// export: SmartCardAppearance
+export type SmartCardAppearance = "inline" | "block" | "embed";
+
+// export: smartCardDisplayText
+export declare function smartCardDisplayText(card: SmartCardSemantics): string;
+
+// export: SmartCardSemantics
+export interface SmartCardSemantics {
+    appearance: SmartCardAppearance;
+    source: "url" | "data" | "datasource";
+    url?: string;
+    target?: LinkTarget;
+    title?: string;
+    localId?: string;
+    data?: AdfJsonValue;
+    datasource?: AdfJsonValue;
+    layout?: "wide" | "full-width" | "center" | "wrap-right" | "wrap-left" | "align-end" | "align-start";
+    width?: number;
+    originalHeight?: number;
+    originalWidth?: number;
+}
+
 // export: SmartLinkAppearance
 export type SmartLinkAppearance = "inline" | "card" | "embed";
 
@@ -3021,6 +4756,11 @@ export type SpaceIcon = {
     height?: number;
     isDefault?: boolean;
 };
+
+// export: statusDisplayText
+export declare function statusDisplayText(status: Pick<Extract<InlineNode, {
+    type: "status";
+}>, "text" | "color" | "style">): string;
 
 // export: StorageParseBudget
 export interface StorageParseBudget {
@@ -3056,16 +4796,16 @@ export interface StorageToBlocksOptions {
 }
 
 // export: StorageToBlocksResult
-export interface StorageToBlocksResult {
-    blocks: ExportBlock[];
-    notes: ExportNote[];
-}
+export type StorageToBlocksResult = BlocksResult;
 
 // export: storageToMarkdown
 export declare function storageToMarkdown(storage: string, options?: ConversionOptions): string;
 
 // export: stripTableColumnMetadata
 export declare function stripTableColumnMetadata(storage: string): string;
+
+// export: SupportedAdfNodeType
+export type SupportedAdfNodeType = PinnedAdfNodeType | PinnedAdfStage0NodeType;
 
 // export: SVG_UNSAFE_MESSAGE
 export declare const SVG_UNSAFE_MESSAGE = "SVG contains active or externally loaded content";
@@ -3074,6 +4814,14 @@ export declare const SVG_UNSAFE_MESSAGE = "SVG contains active or externally loa
 export interface SvgSafetyViolation {
     rule: "doctype-or-entity" | "blocked-element" | "event-handler-attribute" | "non-fragment-reference" | "css-external-reference";
     detail: string;
+}
+
+// export: SyncedContentProvenance
+export interface SyncedContentProvenance {
+    resourceId: string;
+    localId: string;
+    projection: "embedded-snapshot" | "unresolved-reference";
+    breakout?: LayoutBreakout;
 }
 
 // export: SyncScope
@@ -3094,16 +4842,38 @@ export interface TableCell {
     colspan: number;
     rowspan: number;
     backgroundColor?: string;
+    columnWidths?: number[];
+    verticalAlignment?: TableVerticalAlignment;
+    localId?: string;
     content: ExportBlock[];
 }
 
 // export: tableColumns
 export declare function tableColumns(ds: Datasource): string[] | undefined;
 
+// export: TableDisplayMode
+export type TableDisplayMode = "default" | "fixed";
+
+// export: TableLayout
+export type TableLayout = "default" | "wide" | "full-width" | "center" | "align-start" | "align-end";
+
+// export: TablePresentation
+export interface TablePresentation {
+    layout?: TableLayout;
+    width?: number;
+    displayMode?: TableDisplayMode;
+    numberedColumn?: boolean;
+    localId?: string;
+}
+
 // export: TableRow
 export interface TableRow {
     cells: TableCell[];
+    localId?: string;
 }
+
+// export: TableVerticalAlignment
+export type TableVerticalAlignment = "top" | "middle" | "bottom";
 
 // export: translateDatasourceLink
 export declare function translateDatasourceLink(rawAttr: string, href: string): DatasourceOutcome;
@@ -3134,6 +4904,11 @@ export interface TreeFetchOptions {
     completenessMode?: CompletenessMode;
     signal?: AbortSignal;
     onProgress?: (progress: TreeFetchProgress) => void;
+    bodyOptions?: Omit<PageBodyToBlocksOptions, "pageContext">;
+    preparedPlan?: ExportTreePlanV1;
+    onPlanPrepared?: (plan: ExportTreePlanV1) => void | Promise<void>;
+    onPlanRecovered?: (plan: ExportTreePlanV1) => void | Promise<void>;
+    maxPlanBytes?: number;
 }
 
 // export: TreeFetchProgress
@@ -3169,6 +4944,12 @@ export interface TreeSource {
 
 // export: TreeSourceClient
 export interface TreeSourceClient {
+    getExportPageDetailsWithMedia?(id: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluenceExportPageDetails>;
+    getExportPageDetails?(id: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluenceExportPageDetails>;
     getPageDetails(id: string, options?: {
         signal?: AbortSignal;
     }): Promise<{
@@ -3218,13 +4999,32 @@ export interface TreeSourceClient {
 }
 
 // export: TreeSourcePage
-export interface TreeSourcePage {
+export type TreeSourcePage = TreeSourcePageMetadata & ({
+    exportSource: ExportPageSource;
+    storage?: string;
+} | {
+    storage: string;
+    exportSource?: undefined;
+});
+
+// export: TreeSourcePageMetadata
+export interface TreeSourcePageMetadata {
     id: string;
     title: string;
-    storage: string;
     version?: number;
     labels?: string[];
     spaceKey?: string;
+    mediaAttachments?: AdfMediaAttachment[];
+    mediaAttachmentsComplete?: boolean;
+    inlineComments?: InlineComment[];
+    inlineCommentsComplete?: boolean;
+}
+
+// export: TreeSourceSummary
+export interface TreeSourceSummary {
+    pagesRead: number;
+    representations: Readonly<Record<PageBody["representation"], number>>;
+    degradedPages: number;
 }
 
 // export: TreeSourceVersion
@@ -3235,6 +5035,23 @@ export interface TreeSourceVersion {
 
 // export: uniqueAnchorId
 export declare function uniqueAnchorId(rawName: string, used: ReadonlySet<string>): string;
+
+// export: UnresolvedMediaIdentity
+export interface UnresolvedMediaIdentity {
+    mediaType?: string;
+    id?: string;
+    collection?: string;
+    occurrenceKey?: string;
+    localId?: string;
+    dataConsumers?: AdfDataConsumerProvenance[];
+    url?: string;
+    dataJson?: string;
+    filename?: string;
+    pageId?: string;
+    attachmentMediaType?: string;
+    webuiLink?: string;
+    downloadLink?: string;
+}
 
 // export: UNSAFE_LINK_NOTE_CODE
 export declare const UNSAFE_LINK_NOTE_CODE = "unsafe-link-skipped";
@@ -3254,6 +5071,21 @@ export interface UserInfo {
     email: string | null;
     isActive: boolean;
     profilePicture: string | null;
+}
+
+// export: ValidAdfDocument
+export type ValidAdfDocument = AdfDocument;
+
+// export: validateAdf
+export declare function validateAdf(input: string | unknown, options?: {
+    budget?: Partial<AdfParseBudget>;
+}): ValidatedAdfDocument;
+
+// export: ValidatedAdfDocument
+export interface ValidatedAdfDocument {
+    document: AdfDocument;
+    diagnostics: AdfDiagnostic[];
+    stats: AdfValidationStats;
 }
 
 // export: validateExportScope
@@ -3289,6 +5121,287 @@ export interface XmlText {
 ### Entry point `./browser`
 
 ```ts
+// export: ADF_COVERAGE
+export declare const ADF_COVERAGE: readonly AdfCoverageRow[];
+
+// export: ADF_MARK_DECODE_MODES
+export declare const ADF_MARK_DECODE_MODES: Readonly<{
+    readonly alignment: "native";
+    readonly annotation: "approximation";
+    readonly backgroundColor: "native";
+    readonly border: "native";
+    readonly breakout: "approximation";
+    readonly code: "native";
+    readonly dataConsumer: "approximation";
+    readonly em: "native";
+    readonly fontSize: "native";
+    readonly fragment: "approximation";
+    readonly indentation: "native";
+    readonly link: "native";
+    readonly strike: "native";
+    readonly strong: "native";
+    readonly subsup: "native";
+    readonly textColor: "native";
+    readonly underline: "native";
+}>;
+
+// export: ADF_NODE_DECODE_MODES
+export declare const ADF_NODE_DECODE_MODES: Readonly<{
+    readonly blockCard: "native";
+    readonly blockTaskItem: "native";
+    readonly blockquote: "native";
+    readonly bodiedExtension: "approximation";
+    readonly bodiedSyncBlock: "approximation";
+    readonly bulletList: "native";
+    readonly caption: "native";
+    readonly codeBlock: "native";
+    readonly date: "native";
+    readonly decisionItem: "native";
+    readonly decisionList: "native";
+    readonly doc: "native";
+    readonly embedCard: "native";
+    readonly emoji: "approximation";
+    readonly expand: "approximation";
+    readonly extension: "approximation";
+    readonly hardBreak: "native";
+    readonly heading: "native";
+    readonly inlineCard: "native";
+    readonly inlineExtension: "approximation";
+    readonly layoutColumn: "native";
+    readonly layoutSection: "native";
+    readonly listItem: "native";
+    readonly media: "native";
+    readonly mediaGroup: "native";
+    readonly mediaInline: "approximation";
+    readonly mediaSingle: "native";
+    readonly mention: "native";
+    readonly nestedExpand: "approximation";
+    readonly orderedList: "native";
+    readonly panel: "approximation";
+    readonly paragraph: "native";
+    readonly placeholder: "native";
+    readonly rule: "native";
+    readonly status: "native";
+    readonly syncBlock: "approximation";
+    readonly table: "approximation";
+    readonly tableCell: "approximation";
+    readonly tableHeader: "approximation";
+    readonly tableRow: "native";
+    readonly taskItem: "native";
+    readonly taskList: "native";
+    readonly text: "native";
+}>;
+
+// export: ADF_STAGE0_NODE_DECODE_MODES
+export declare const ADF_STAGE0_NODE_DECODE_MODES: Readonly<{
+    readonly extensionFrame: "approximation";
+    readonly multiBodiedExtension: "approximation";
+}>;
+
+// export: AdfAnnotationComment
+export interface AdfAnnotationComment {
+    bodyText: string;
+    status: "open" | "resolved";
+    created?: string;
+    replies: AdfAnnotationReply[];
+}
+
+// export: AdfAnnotationIdentity
+export interface AdfAnnotationIdentity {
+    id: string;
+    annotationType: "inlineComment";
+    comment?: AdfAnnotationComment;
+}
+
+// export: AdfAnnotationReply
+export interface AdfAnnotationReply {
+    bodyText: string;
+    created?: string;
+}
+
+// export: AdfCoverageLevel
+export type AdfCoverageLevel = "native" | "partial" | "fallback" | "missing";
+
+// export: AdfCoverageProvenance
+export type AdfCoverageProvenance = "schema-only" | "observed-cloud" | "legacy-observed";
+
+// export: AdfCoverageRow
+export interface AdfCoverageRow {
+    kind: "node" | "mark";
+    type: string;
+    parser: "validated";
+    decoder: AdfCoverageLevel;
+    docx: AdfCoverageLevel | "not-applicable";
+    pdf: AdfCoverageLevel | "not-applicable";
+    provenance: readonly AdfCoverageProvenance[];
+}
+
+// export: AdfDataConsumerProvenance
+export interface AdfDataConsumerProvenance {
+    sources: string[];
+}
+
+// export: AdfDecoderMode
+export type AdfDecoderMode = "native" | "approximation" | "visible-fallback";
+
+// export: AdfDiagnostic
+export interface AdfDiagnostic {
+    kind: AdfDiagnosticKind;
+    path: string;
+    type?: string;
+    attribute?: string;
+    count?: number;
+}
+
+// export: AdfDiagnosticKind
+export type AdfDiagnosticKind = "unknown-node" | "unknown-mark" | "unknown-attribute" | "diagnostics-truncated";
+
+// export: AdfDocument
+export interface AdfDocument extends AdfNode {
+    type: "doc";
+    version: 1;
+    content: AdfNode[];
+}
+
+// export: AdfExtensionFrame
+export interface AdfExtensionFrame {
+    content: ExportBlock[];
+    fragments?: AdfFragmentIdentity[];
+    dataConsumers?: AdfDataConsumerProvenance[];
+    bodyNotes?: ExportNote[];
+}
+
+// export: AdfExtensionIdentity
+export interface AdfExtensionIdentity {
+    extensionType: string;
+    extensionKey: string;
+    localId?: string;
+}
+
+// export: AdfFragmentIdentity
+export interface AdfFragmentIdentity {
+    localId: string;
+    name?: string;
+}
+
+// export: AdfJsonValue
+export type AdfJsonValue = null | boolean | number | string | AdfJsonValue[] | {
+    [key: string]: AdfJsonValue;
+};
+
+// export: AdfLinkAttributes
+export interface AdfLinkAttributes {
+    title?: string;
+    id?: string;
+    collection?: string;
+    occurrenceKey?: string;
+}
+
+// export: AdfMark
+export interface AdfMark {
+    type: string;
+    attrs?: Record<string, AdfJsonValue>;
+}
+
+// export: AdfMediaAttachment
+export interface AdfMediaAttachment {
+    fileId: string;
+    filename: string;
+    pageId: string;
+    mediaType?: string;
+    webuiLink?: string;
+    downloadLink?: string;
+}
+
+// export: AdfMediaReference
+export interface AdfMediaReference {
+    id: string;
+    collection?: string;
+    occurrenceKey?: string;
+}
+
+// export: AdfNode
+export interface AdfNode {
+    type: string;
+    attrs?: Record<string, AdfJsonValue>;
+    content?: AdfNode[];
+    marks?: AdfMark[];
+    text?: string;
+}
+
+// export: AdfParseBudget
+export interface AdfParseBudget {
+    maxInputBytes: number;
+    maxNodes: number;
+    maxDepth: number;
+    maxTextBytes: number;
+    maxAttributeBytes: number;
+    maxMarks: number;
+    maxAttributeValues: number;
+    maxDiagnostics: number;
+}
+
+// export: AdfResolvedMediaAttachment
+export interface AdfResolvedMediaAttachment {
+    filename: string;
+    pageId?: string;
+    mediaType?: string;
+    webuiLink?: string;
+    downloadLink?: string;
+}
+
+// export: adfToBlocks
+export declare function adfToBlocks(input: string | unknown, options?: AdfToBlocksOptions): BlocksResult;
+
+// export: AdfToBlocksOptions
+export interface AdfToBlocksOptions extends Omit<StorageToBlocksOptions, "parseBudget"> {
+    parseBudget?: Partial<AdfParseBudget>;
+    resolveMediaAttachment?: (reference: AdfMediaReference) => AdfResolvedMediaAttachment | undefined;
+    resolveAnnotation?: (markerRef: string) => AdfAnnotationComment | undefined;
+    annotationCommentsComplete?: boolean;
+}
+
+// export: AdfUnsupportedAttribute
+export interface AdfUnsupportedAttribute {
+    name: string;
+    value: AdfJsonValue;
+}
+
+// export: AdfUnsupportedMark
+export interface AdfUnsupportedMark {
+    type: string;
+    attributes?: AdfUnsupportedAttribute[];
+}
+
+// export: AdfUnsupportedNodeProvenance
+export interface AdfUnsupportedNodeProvenance {
+    nodeType: string;
+    sourceRepresentation: "atlas_doc_format" | "storage";
+    attributes?: AdfUnsupportedAttribute[];
+    marks?: AdfUnsupportedMark[];
+}
+
+// export: AdfValidationError
+export declare class AdfValidationError extends Error {
+    readonly code: AdfValidationErrorCode;
+    readonly path: string;
+    constructor(code: AdfValidationErrorCode, message: string, path?: string);
+}
+
+// export: AdfValidationErrorCode
+export type AdfValidationErrorCode = "input-too-large" | "invalid-json" | "invalid-root" | "unsupported-version" | "invalid-node" | "invalid-mark" | "invalid-attributes" | "node-budget-exceeded" | "depth-budget-exceeded" | "text-budget-exceeded" | "attribute-budget-exceeded" | "mark-budget-exceeded";
+
+// export: AdfValidationStats
+export interface AdfValidationStats {
+    inputBytes?: number;
+    nodes: number;
+    marks: number;
+    maxDepth: number;
+    textBytes: number;
+    attributeBytes: number;
+    attributeValues: number;
+}
+
 // export: AnchorRegistry
 export declare class AnchorRegistry {
     private readonly lookup;
@@ -3369,6 +5482,11 @@ export declare class AssetPipelineError extends Error {
 // export: ASSETS_DATASOURCE_ID
 export declare const ASSETS_DATASOURCE_ID = "361d618a-3c04-40ad-9b27-3c8ea6927020";
 
+// export: AtlasDocFormatPageBody
+export type AtlasDocFormatPageBody = Extract<PageBody, {
+    representation: "atlas_doc_format";
+}>;
+
 // export: AttachmentInfo
 export interface AttachmentInfo {
     id: string;
@@ -3394,6 +5512,21 @@ export interface BaseComment {
     replies: BaseComment[];
 }
 
+// export: BlockPresentation
+export interface BlockPresentation {
+    alignment?: "center" | "end";
+    indentation?: 1 | 2 | 3 | 4 | 5 | 6;
+    fontSize?: "small";
+}
+
+// export: BlocksResult
+export interface BlocksResult {
+    blocks: ExportBlock[];
+    notes: ExportNote[];
+    representation?: PageBody["representation"];
+    degraded?: boolean;
+}
+
 // export: BulkOperationResult
 export interface BulkOperationResult {
     total: number;
@@ -3407,7 +5540,7 @@ export interface BulkOperationResult {
 }
 
 // export: CalloutKind
-export type CalloutKind = "info" | "note" | "warning" | "tip" | "panel";
+export type CalloutKind = "info" | "note" | "warning" | "tip" | "success" | "error" | "panel";
 
 // export: canonicalExportNoteCode
 export declare function canonicalExportNoteCode(code: string): ExportNoteCode | undefined;
@@ -3416,6 +5549,7 @@ export declare function canonicalExportNoteCode(code: string): ExportNoteCode | 
 export interface Caption {
     kind: CaptionKind;
     content: InlineNode[];
+    localId?: string;
 }
 
 // export: CaptionableBlockType
@@ -3430,6 +5564,9 @@ export interface CommentAuthor {
     accountId?: string;
     email?: string;
 }
+
+// export: commentBodyToText
+export declare function commentBodyToText(storageBody: string): string;
 
 // export: CompletenessCode
 export type CompletenessCode = "page-unreadable" | "subtree-unreadable" | "page-ambiguous-404" | "page-version-changed";
@@ -3471,13 +5608,18 @@ export declare const CONFLUENCE_SEARCH_DATASOURCE_ID = "768fc736-3af4-4a8f-b27e-
 // export: ConfluenceClient
 export declare class ConfluenceClient {
     private confluenceBaseUrl;
+    private deploymentType;
+    private capabilityOrigin;
     private authHeader;
     private useSession;
     private maxRetries;
     private baseDelayMs;
     private tlsOptions;
     private sessionRedirectPolicy;
-    constructor(profile: Profile);
+    private exportSourcePolicy;
+    constructor(profile: Profile, options?: {
+        exportSourcePolicy?: ExportSourcePolicy;
+    });
     getInstanceUrl(): string;
     private buildWebUrl;
     private sleep;
@@ -3487,14 +5629,21 @@ export declare class ConfluenceClient {
     private assertSessionJsonOk;
     private request;
     private requestV2;
-    getCurrentUser(): Promise<{
+    getCurrentUser(options?: {
+        signal?: AbortSignal;
+    }): Promise<{
         accountId: string;
         displayName: string;
         email?: string;
     }>;
-    getPage(id: string): Promise<ConfluencePage & {
+    getPage(id: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluencePage & {
         storage: string;
     }>;
+    getPageAdf(id: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluencePageAdf>;
     getMacroBodyByMacroId(pageId: string, version: number, macroId: string, options?: {
         signal?: AbortSignal;
     }): Promise<string | undefined>;
@@ -3507,6 +5656,14 @@ export declare class ConfluenceClient {
     getPageDetails(id: string, options?: {
         signal?: AbortSignal;
     }): Promise<ConfluencePageDetails>;
+    getExportPageDetails(id: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluenceExportPageDetails>;
+    getExportPageDetailsWithMedia(id: string, options?: {
+        signal?: AbortSignal;
+        maxAttachments?: number;
+        maxInlineComments?: number;
+    }): Promise<ConfluenceExportPageDetails>;
     getAncestors(pageId: string): Promise<{
         id: string;
         title: string;
@@ -3584,8 +5741,12 @@ export declare class ConfluenceClient {
     }): Promise<ConfluenceSpace>;
     listSpaces(limit?: number): Promise<ConfluenceSpace[]>;
     getSpace(key: string): Promise<ConfluenceSpace>;
-    getSpaceIcon(key: string): Promise<SpaceIcon | null>;
-    getSpaceWithIcon(key: string): Promise<{
+    getSpaceIcon(key: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<SpaceIcon | null>;
+    getSpaceWithIcon(key: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<{
         space: ConfluenceSpace;
         icon: SpaceIcon | null;
     }>;
@@ -3606,8 +5767,13 @@ export declare class ConfluenceClient {
     getPagesBatch(ids: string[], concurrency?: number): Promise<(ConfluencePage & {
         storage: string;
     })[]>;
+    listPageAttachmentMedia(pageId: string, options?: {
+        maxAttachments?: number;
+        signal?: AbortSignal;
+    }): Promise<PageAttachmentMediaResult>;
     listAttachments(pageId: string, options?: {
         limit?: number;
+        signal?: AbortSignal;
     }): Promise<AttachmentInfo[]>;
     getAttachment(attachmentId: string): Promise<AttachmentInfo>;
     uploadAttachment(params: {
@@ -3669,6 +5835,10 @@ export declare class ConfluenceClient {
     getInlineCommentReplies(commentId: string, options?: {
         limit?: number;
     }): Promise<InlineComment[]>;
+    listPageInlineCommentsForExport(pageId: string, options?: {
+        signal?: AbortSignal;
+        maxInlineComments?: number;
+    }): Promise<PageInlineCommentsExportResult>;
     getAllComments(pageId: string, options?: {
         limit?: number;
     }): Promise<PageComments>;
@@ -3712,14 +5882,21 @@ export declare class ConfluenceClient {
     }>>;
     getFoldersInTree(parentId: string): Promise<ConfluenceFolder[]>;
     movePageToFolder(pageId: string, folderId: string): Promise<ConfluencePage>;
-    getUser(accountId: string): Promise<UserInfo | null>;
-    getSpaceHomepageStorage(spaceKey: string): Promise<string | null>;
+    getUser(accountId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<UserInfo | null>;
+    getSpaceHomepageStorage(spaceKey: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<string | null>;
     getSpaceHomepageId(spaceKey: string, options?: {
         signal?: AbortSignal;
     }): Promise<string | null>;
-    getPageOwner(pageId: string): Promise<ConfluenceUser | null>;
+    getPageOwner(pageId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluenceUser | null>;
     getUsersBulk(accountIds: string[], options?: {
         concurrency?: number;
+        signal?: AbortSignal;
     }): Promise<Map<string, UserInfo | null>>;
     getVersionHistory(pageId: string, options?: {
         limit?: number;
@@ -3732,6 +5909,15 @@ export declare class ConfluenceClient {
 export type ConfluenceDetailedSearchResults = {
     results: ConfluenceSearchDetail[];
     totalSize?: number;
+};
+
+// export: ConfluenceExportPageDetails
+export type ConfluenceExportPageDetails = ConfluencePageDetails & {
+    exportSource: ExportPageSource;
+    mediaAttachments?: AdfMediaAttachment[];
+    mediaAttachmentsComplete?: boolean;
+    inlineComments?: InlineComment[];
+    inlineCommentsComplete?: boolean;
 };
 
 // export: ConfluenceFolder
@@ -3757,6 +5943,13 @@ export type ConfluencePage = {
         title: string;
     }[];
 };
+
+// export: ConfluencePageAdf
+export interface ConfluencePageAdf {
+    id: string;
+    version: number;
+    body: AtlasDocFormatPageBody;
+}
 
 // export: ConfluencePageDetails
 export type ConfluencePageDetails = ConfluencePage & {
@@ -3832,6 +6025,12 @@ export interface ConversionOptions {
     emitWarnings?: boolean;
     onWarning?: (message: string) => void;
 }
+
+// export: createAdfAnnotationResolver
+export declare function createAdfAnnotationResolver(comments: readonly InlineComment[] | undefined): AdfToBlocksOptions["resolveAnnotation"] | undefined;
+
+// export: createAdfMediaAttachmentResolver
+export declare function createAdfMediaAttachmentResolver(attachments: readonly AdfMediaAttachment[] | undefined): AdfToBlocksOptions["resolveMediaAttachment"] | undefined;
 
 // export: createInOrderLimiter
 export declare function createInOrderLimiter(limit: number): <T>(task: () => Promise<T>) => Promise<T>;
@@ -3929,11 +6128,22 @@ export interface DatasourceView {
 // export: decodeSvgSource
 export declare function decodeSvgSource(bytes: Uint8Array): string;
 
+// export: DEFAULT_ADF_PARSE_BUDGET
+export declare const DEFAULT_ADF_PARSE_BUDGET: Readonly<AdfParseBudget>;
+
 // export: DEFAULT_STORAGE_PARSE_BUDGET
 export declare const DEFAULT_STORAGE_PARSE_BUDGET: StorageParseBudget;
 
 // export: drainPaginated
 export declare function drainPaginated<T>(fetchPage: (token: string | undefined) => Promise<PaginatedPage<T>>): Promise<T[]>;
+
+// export: EmojiSemantics
+export interface EmojiSemantics {
+    shortName: string;
+    id?: string;
+    text?: string;
+    renderedFrom: "text" | "short-name";
+}
 
 // export: escapeCqlValue
 export declare function escapeCqlValue(value: string): string;
@@ -3942,8 +6152,20 @@ export declare function escapeCqlValue(value: string): string;
 export declare const EXPORT_NOTE_CODES: readonly [
     "unknown-macro",
     "macro-not-rendered",
+    "inline-extension-not-rendered",
     "image-unresolved",
     "inline-image-skipped",
+    "layout-geometry-fallback",
+    "expand-static",
+    "emoji-text-fallback",
+    "date-invalid",
+    "adf-node-degraded",
+    "adf-mark-degraded",
+    "adf-attribute-dropped",
+    "adf-media-unresolved",
+    "adf-annotation-unresolved",
+    "adf-annotation-comments-truncated",
+    "adf-storage-fallback",
     "datasource-invalid",
     "datasource-provider-unknown",
     "datasource-provider-unsupported",
@@ -4039,6 +6261,8 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "logo-embed-failed",
     "perf-timing",
     "code-highlight-skipped",
+    "code-nowrap-page-bounded",
+    "code-collapse-static",
     "image-skipped",
     "image-embed-failed",
     "image-missing-alt",
@@ -4063,35 +6287,90 @@ export type ExportBlock = {
     level: 1 | 2 | 3 | 4 | 5 | 6;
     content: InlineNode[];
     explicitAnchor?: string;
+    presentation?: BlockPresentation;
+    localId?: string;
 } | {
     type: "paragraph";
     content: InlineNode[];
+    presentation?: BlockPresentation;
+    localId?: string;
+} | {
+    type: "smartCard";
+    card: SmartCardSemantics;
 } | {
     type: "codeBlock";
     language?: string;
     code: string;
+    title?: string;
+    initiallyCollapsed?: boolean;
     caption?: Caption;
+    wrap?: boolean;
+    hideLineNumbers?: boolean;
+    firstLineNumber?: number;
+    localId?: string;
+    uniqueId?: string;
+    breakout?: LayoutBreakout;
 } | {
     type: "callout";
     kind: CalloutKind;
     title?: string;
     content: ExportBlock[];
+    localId?: string;
+    panelColor?: string;
+    panelIcon?: string;
+    panelIconId?: string;
+    panelIconText?: string;
+    syncedContent?: SyncedContentProvenance;
+} | {
+    type: "expand";
+    nested: boolean;
+    content: ExportBlock[];
+    title?: string;
+    localId?: string;
+    macroId?: string;
+    breakout?: LayoutBreakout;
 } | {
     type: "list";
     ordered: boolean;
     items: ListItem[];
-} | {
+    start?: number;
+    listKind?: "task" | "decision";
+    localId?: string;
+} | ({
+    type: "layout";
+} & PageLayout) | {
     type: "table";
     rows: TableRow[];
     columnWidths?: number[];
+    presentation?: TablePresentation;
     caption?: Caption;
+    fragments?: AdfFragmentIdentity[];
 } | {
     type: "image";
     source: ImageSource;
+    media?: UnresolvedMediaIdentity;
     alt?: string;
     width?: number;
     height?: number;
+    mediaPresentation?: MediaPresentation;
+    mediaGroup?: MediaGroupPosition;
+    border?: MediaBorder;
     caption?: Caption;
+    annotations?: AdfAnnotationIdentity[];
+    link?: ExportLink;
+} | {
+    type: "mediaFallback";
+    label: string;
+    media: UnresolvedMediaIdentity;
+    caption?: Caption;
+    alt?: string;
+    width?: number;
+    height?: number;
+    mediaPresentation?: MediaPresentation;
+    mediaGroup?: MediaGroupPosition;
+    border?: MediaBorder;
+    annotations?: AdfAnnotationIdentity[];
+    link?: ExportLink;
 } | {
     type: "blockquote";
     content: ExportBlock[];
@@ -4113,6 +6392,10 @@ export type ExportBlock = {
     body?: ExportBlock[];
     plainBody?: string;
     macroId?: string;
+    adfExtension?: AdfExtensionIdentity;
+    extensionFrames?: AdfExtensionFrame[];
+    fragments?: AdfFragmentIdentity[];
+    unsupportedAdf?: AdfUnsupportedNodeProvenance;
     bodyNotes?: ExportNote[];
     sourcePage?: {
         id: string;
@@ -4143,6 +6426,12 @@ export interface ExportFolderNode {
     effectiveDepth: number;
     parentId: string | null;
     position: number | null;
+}
+
+// export: ExportLink
+export interface ExportLink {
+    target: LinkTarget;
+    adfAttributes?: AdfLinkAttributes;
 }
 
 // export: ExportMentionLookup
@@ -4198,6 +6487,26 @@ export interface ExportPageNode {
     placeholder?: boolean;
 }
 
+// export: ExportPageReadError
+export declare class ExportPageReadError extends Error {
+    readonly kind: ExportPageReadErrorKind;
+    readonly pageId?: string | undefined;
+    readonly storageVersion?: number | undefined;
+    readonly adfVersion?: number | undefined;
+    constructor(kind: ExportPageReadErrorKind, message: string, pageId?: string | undefined, storageVersion?: number | undefined, adfVersion?: number | undefined);
+}
+
+// export: ExportPageReadErrorKind
+export type ExportPageReadErrorKind = "adf-representation-unavailable" | "invalid-adf-response" | "invalid-storage-response" | "page-version-mismatch";
+
+// export: ExportPageSource
+export interface ExportPageSource {
+    primary: PageBody;
+    storageSidecar?: string;
+    sourceVersion?: number;
+    fallbackReason?: ExportSourceFallbackReason;
+}
+
 // export: ExportPhase
 export type ExportPhase = "discover" | "fetch" | "compose" | "assets" | "serialize" | "emit";
 
@@ -4233,6 +6542,15 @@ export declare class ExportScopeError extends Error {
     constructor(message: string);
 }
 
+// export: ExportSourceFallbackReason
+export type ExportSourceFallbackReason = "data-center" | "adf-representation-unavailable" | "rollout-storage-primary";
+
+// export: ExportSourcePolicy
+export type ExportSourcePolicy = "adf-primary" | "storage-primary";
+
+// export: exportSourcePolicyFromFlag
+export declare function exportSourcePolicyFromFlag(value: string | undefined): ExportSourcePolicy;
+
 // export: ExportTreeBodyManifestEntryV1
 export interface ExportTreeBodyManifestEntryV1 {
     ordinal: number;
@@ -4246,6 +6564,10 @@ export type ExportTreeBodyResultV1 = {
     ok: false;
     pageId: string;
     title: string;
+    source?: {
+        representation: PageBody["representation"];
+        degraded: false;
+    };
     failure: {
         code: CompletenessCode;
         affected: ReadonlyArray<{
@@ -4258,6 +6580,10 @@ export type ExportTreeBodyResultV1 = {
     ok: true;
     pageId: string;
     title: string;
+    source: {
+        representation: PageBody["representation"];
+        degraded: boolean;
+    };
     blocks: ExportBlock[];
     notes: ExportNote[];
     meta: {
@@ -4278,6 +6604,49 @@ export interface ExportTreeBodyStoreV1 {
     commit(entry: ExportTreeBodyManifestEntryV1, result: ExportTreeBodyResultV1, context: {
         signal: AbortSignal;
     }): Promise<void>;
+}
+
+// export: ExportTreePlanError
+export declare class ExportTreePlanError extends Error {
+    readonly code: "export-tree-plan-invalid";
+    constructor(message: string);
+}
+
+// export: ExportTreePlanNodeV1
+export type ExportTreePlanNodeV1 = {
+    kind: "page";
+    pageId: string;
+    title: string;
+    depth: number;
+    effectiveDepth: number;
+    parentId: string | null;
+    position: number | null;
+    observedVersion?: number;
+} | {
+    kind: "folder";
+    folderId: string;
+    title: string;
+    depth: number;
+    effectiveDepth: number;
+    parentId: string | null;
+    position: number | null;
+};
+
+// export: ExportTreePlanV1
+export interface ExportTreePlanV1 {
+    schema: "atlcli.export-tree-plan/1";
+    scope: ExportScope;
+    policy: {
+        labels?: LabelFilter;
+        completenessMode: CompletenessMode;
+        maxPages: number;
+        maxFolders: number;
+    };
+    rootId: string;
+    includeRoot: boolean;
+    nodes: readonly ExportTreePlanNodeV1[];
+    notes: readonly ExportNote[];
+    complete: boolean;
 }
 
 // export: ExternalLinkTarget
@@ -4304,6 +6673,7 @@ export interface FetchExportTreeResult {
     nodes: readonly ExportNode[];
     notes: ExportNote[];
     complete: boolean;
+    sourceSummary: TreeSourceSummary;
 }
 
 // export: findSvgSafetyViolation
@@ -4324,6 +6694,9 @@ export interface FooterComment extends BaseComment {
     replies: FooterComment[];
 }
 
+// export: formatAdfDateTimestamp
+export declare function formatAdfDateTimestamp(timestamp: string, locale?: string): string;
+
 // export: hasActiveLabelFilter
 export declare function hasActiveLabelFilter(filter: LabelFilter | undefined): boolean;
 
@@ -4342,6 +6715,9 @@ export interface HeadingScanBlock {
         readonly cells: readonly {
             readonly content: readonly unknown[];
         }[];
+    }[];
+    readonly columns?: readonly {
+        readonly content: readonly unknown[];
     }[];
 }
 
@@ -4377,11 +6753,18 @@ export interface InlineComment extends BaseComment {
     textSelection: string;
     textSelectionMatchCount?: number;
     textSelectionMatchIndex?: number;
+    inlineMarkerRef?: string;
+    inlineOriginalSelection?: string;
     replies: InlineComment[];
 }
 
 // export: InlineMark
 export type InlineMark = "bold" | "italic" | "code" | "strike" | "underline" | "subscript" | "superscript";
+
+// export: inlineMediaDisplayText
+export declare function inlineMediaDisplayText(media: Pick<Extract<InlineNode, {
+    type: "media";
+}>, "media" | "alt">): string;
 
 // export: InlineNode
 export type InlineNode = {
@@ -4390,18 +6773,56 @@ export type InlineNode = {
     marks?: InlineMark[];
     color?: string;
     backgroundColor?: string;
-} | {
+    emoji?: EmojiSemantics;
+    adfExtension?: AdfExtensionIdentity;
+    extensionParams?: MacroParameter[];
+    sourcePage?: {
+        id: string;
+        version?: number;
+        spaceKey?: string;
+    };
+    annotations?: AdfAnnotationIdentity[];
+    fragments?: AdfFragmentIdentity[];
+    unsupportedAdf?: AdfUnsupportedNodeProvenance[];
+} | ({
     type: "link";
-    target: LinkTarget;
     content: InlineNode[];
-} | {
+} & ExportLink) | {
     type: "mention";
     accountId: string;
     displayName?: string;
+    sourceText?: string;
+    localId?: string;
+    accessLevel?: string;
+    userType?: "DEFAULT" | "SPECIAL" | "APP";
+} | {
+    type: "date";
+    timestamp: string;
+    localId?: string;
 } | {
     type: "status";
     text: string;
     color: string;
+    localId?: string;
+    style?: string;
+} | {
+    type: "smartCard";
+    card: SmartCardSemantics;
+} | {
+    type: "media";
+    media: UnresolvedMediaIdentity;
+    source?: ImageSource;
+    alt?: string;
+    width?: number;
+    height?: number;
+    border?: MediaBorder;
+    annotations?: AdfAnnotationIdentity[];
+    link?: ExportLink;
+} | {
+    type: "placeholder";
+    text: string;
+    localId?: string;
+    placeholderType?: string;
 } | {
     type: "lineBreak";
 };
@@ -4409,8 +6830,20 @@ export type InlineNode = {
 // export: isImageFile
 export declare function isImageFile(filename: string): boolean;
 
+// export: isPinnedAdfMarkType
+export declare function isPinnedAdfMarkType(type: string): type is PinnedAdfMarkType;
+
+// export: isPinnedAdfNodeType
+export declare function isPinnedAdfNodeType(type: string): type is PinnedAdfNodeType;
+
+// export: isPinnedAdfStage0NodeType
+export declare function isPinnedAdfStage0NodeType(type: string): type is PinnedAdfStage0NodeType;
+
 // export: isSafeLinkScheme
 export declare function isSafeLinkScheme(href: string): boolean;
+
+// export: isSupportedAdfNodeType
+export declare function isSupportedAdfNodeType(type: string): type is SupportedAdfNodeType;
 
 // export: JIRA_DATASOURCE_ID
 export declare const JIRA_DATASOURCE_ID = "d8b75300-dfda-4519-b6cd-e49abbd50401";
@@ -4438,6 +6871,20 @@ export interface LabelInfo {
     id: string;
 }
 
+// export: LayoutBreakout
+export interface LayoutBreakout {
+    mode: "wide" | "full-width";
+    width?: number;
+}
+
+// export: LayoutColumn
+export interface LayoutColumn {
+    width: number;
+    verticalAlignment?: TableVerticalAlignment;
+    localId?: string;
+    content: ExportBlock[];
+}
+
 // export: LinkSanitizeResult
 export type LinkSanitizeResult = {
     safe: true;
@@ -4458,9 +6905,11 @@ export type LinkTarget = {
     contentId?: string;
     spaceKey?: string;
     anchor?: string;
+    href?: string;
 } | {
     kind: "attachment";
     filename: string;
+    href?: string;
 } | {
     kind: "anchor";
     anchor: string;
@@ -4469,6 +6918,10 @@ export type LinkTarget = {
 // export: ListItem
 export interface ListItem {
     content: ExportBlock[];
+    kind?: "task" | "decision";
+    state?: string;
+    localId?: string;
+    block?: boolean;
     checked?: boolean;
 }
 
@@ -4509,8 +6962,52 @@ export declare function macroParamText(params: MacroParameter[] | undefined, nam
 // export: markdownToStorage
 export declare function markdownToStorage(markdown: string, options?: ConversionOptions): string;
 
+// export: MaterializedTable
+export interface MaterializedTable {
+    rows: TableRow[];
+    columnWidths?: number[];
+}
+
+// export: materializeTable
+export declare function materializeTable(table: Extract<ExportBlock, {
+    type: "table";
+}>): MaterializedTable;
+
 // export: MAX_ANCHOR_ID_LENGTH
 export declare const MAX_ANCHOR_ID_LENGTH = 40;
+
+// export: MediaBorder
+export interface MediaBorder {
+    color: string;
+    size: 1 | 2 | 3;
+}
+
+// export: mediaFallbackDisplayText
+export declare function mediaFallbackDisplayText(block: Pick<Extract<ExportBlock, {
+    type: "mediaFallback";
+}>, "media" | "alt" | "label">): string;
+
+// export: MediaGroupPosition
+export interface MediaGroupPosition {
+    index: number;
+    size: number;
+}
+
+// export: MediaLayout
+export type MediaLayout = "wide" | "full-width" | "center" | "wrap-right" | "wrap-left" | "align-end" | "align-start";
+
+// export: MediaPresentation
+export interface MediaPresentation {
+    layout: MediaLayout;
+    width?: number;
+    widthType?: "percentage" | "pixel";
+    localId?: string;
+}
+
+// export: mentionDisplayText
+export declare function mentionDisplayText(mention: Pick<Extract<InlineNode, {
+    type: "mention";
+}>, "displayName" | "userType">): string;
 
 // export: minHeadingLevel
 export declare function minHeadingLevel(blocks: readonly HeadingScanBlock[]): number;
@@ -4536,6 +7033,33 @@ export declare function normalizeLinkHref(href: string): string;
 // export: normalizeMarkdown
 export declare function normalizeMarkdown(markdown: string): string;
 
+// export: PageAttachmentMediaResult
+export interface PageAttachmentMediaResult {
+    attachments: AdfMediaAttachment[];
+    complete: boolean;
+}
+
+// export: PageBody
+export type PageBody = {
+    representation: "atlas_doc_format";
+    value: string;
+} | {
+    representation: "storage";
+    value: string;
+};
+
+// export: pageBodyToBlocks
+export declare function pageBodyToBlocks(source: ExportPageSource, options?: PageBodyToBlocksOptions): BlocksResult;
+
+// export: PageBodyToBlocksOptions
+export interface PageBodyToBlocksOptions extends Omit<StorageToBlocksOptions, "parseBudget"> {
+    storageParseBudget?: StorageParseBudget;
+    adfParseBudget?: Partial<AdfParseBudget>;
+    resolveMediaAttachment?: (reference: AdfMediaReference) => AdfResolvedMediaAttachment | undefined;
+    resolveAnnotation?: import("./adf-to-blocks.js").AdfToBlocksOptions["resolveAnnotation"];
+    annotationCommentsComplete?: boolean;
+}
+
 // export: PageChangeInfo
 export interface PageChangeInfo {
     id: string;
@@ -4558,6 +7082,19 @@ export interface PageHistory {
     pageId: string;
     versions: PageVersion[];
     latest: number;
+}
+
+// export: PageInlineCommentsExportResult
+export interface PageInlineCommentsExportResult {
+    comments: InlineComment[];
+    complete: boolean;
+}
+
+// export: PageLayout
+export interface PageLayout {
+    columns: LayoutColumn[];
+    localId?: string;
+    breakout?: LayoutBreakout;
 }
 
 // export: PagePropertiesMacro
@@ -4593,6 +7130,9 @@ export declare class PaginationLoopError extends Error {
     constructor(token: string);
 }
 
+// export: parseAdfDateTimestamp
+export declare function parseAdfDateTimestamp(timestamp: string): Date | undefined;
+
 // export: parseDatasourceAttribute
 export declare function parseDatasourceAttribute(raw: string): DatasourceParseResult;
 
@@ -4601,6 +7141,95 @@ export declare function parsePageProperties(storage: string): PagePropertiesMacr
 
 // export: parseXml
 export declare function parseXml(input: string, budget?: StorageParseBudget): XmlNode[];
+
+// export: PINNED_ADF_MARK_TYPES
+export declare const PINNED_ADF_MARK_TYPES: readonly [
+    "alignment",
+    "annotation",
+    "backgroundColor",
+    "border",
+    "breakout",
+    "code",
+    "dataConsumer",
+    "em",
+    "fontSize",
+    "fragment",
+    "indentation",
+    "link",
+    "strike",
+    "strong",
+    "subsup",
+    "textColor",
+    "underline"
+];
+
+// export: PINNED_ADF_NODE_TYPES
+export declare const PINNED_ADF_NODE_TYPES: readonly [
+    "blockCard",
+    "blockTaskItem",
+    "blockquote",
+    "bodiedExtension",
+    "bodiedSyncBlock",
+    "bulletList",
+    "caption",
+    "codeBlock",
+    "date",
+    "decisionItem",
+    "decisionList",
+    "doc",
+    "embedCard",
+    "emoji",
+    "expand",
+    "extension",
+    "hardBreak",
+    "heading",
+    "inlineCard",
+    "inlineExtension",
+    "layoutColumn",
+    "layoutSection",
+    "listItem",
+    "media",
+    "mediaGroup",
+    "mediaInline",
+    "mediaSingle",
+    "mention",
+    "nestedExpand",
+    "orderedList",
+    "panel",
+    "paragraph",
+    "placeholder",
+    "rule",
+    "status",
+    "syncBlock",
+    "table",
+    "tableCell",
+    "tableHeader",
+    "tableRow",
+    "taskItem",
+    "taskList",
+    "text"
+];
+
+// export: PINNED_ADF_SCHEMA_PACKAGE
+export declare const PINNED_ADF_SCHEMA_PACKAGE = "@atlaskit/adf-schema";
+
+// export: PINNED_ADF_SCHEMA_VERSION
+export declare const PINNED_ADF_SCHEMA_VERSION = "56.1.15";
+
+// export: PINNED_ADF_STAGE0_NODE_TYPES
+export declare const PINNED_ADF_STAGE0_NODE_TYPES: readonly [
+    "extensionFrame",
+    "multiBodiedExtension"
+];
+
+// export: PinnedAdfMarkType
+export type PinnedAdfMarkType = (typeof PINNED_ADF_MARK_TYPES)[number];
+
+// export: PinnedAdfNodeType
+export type PinnedAdfNodeType = (typeof PINNED_ADF_NODE_TYPES)[number];
+
+// export: PinnedAdfStage0NodeType
+export type PinnedAdfStage0NodeType = (typeof PINNED_ADF_STAGE0_NODE_TYPES)[number];
 
 // export: readableTextColor
 export declare function readableTextColor(backgroundColor: string): "#FFFFFF" | "#172B4D";
@@ -4646,6 +7275,28 @@ export interface SearchResults {
     nextLink?: string;
 }
 
+// export: SmartCardAppearance
+export type SmartCardAppearance = "inline" | "block" | "embed";
+
+// export: smartCardDisplayText
+export declare function smartCardDisplayText(card: SmartCardSemantics): string;
+
+// export: SmartCardSemantics
+export interface SmartCardSemantics {
+    appearance: SmartCardAppearance;
+    source: "url" | "data" | "datasource";
+    url?: string;
+    target?: LinkTarget;
+    title?: string;
+    localId?: string;
+    data?: AdfJsonValue;
+    datasource?: AdfJsonValue;
+    layout?: "wide" | "full-width" | "center" | "wrap-right" | "wrap-left" | "align-end" | "align-start";
+    width?: number;
+    originalHeight?: number;
+    originalWidth?: number;
+}
+
 // export: SmartLinkAppearance
 export type SmartLinkAppearance = "inline" | "card" | "embed";
 
@@ -4662,6 +7313,11 @@ export type SpaceIcon = {
     height?: number;
     isDefault?: boolean;
 };
+
+// export: statusDisplayText
+export declare function statusDisplayText(status: Pick<Extract<InlineNode, {
+    type: "status";
+}>, "text" | "color" | "style">): string;
 
 // export: StorageParseBudget
 export interface StorageParseBudget {
@@ -4697,16 +7353,16 @@ export interface StorageToBlocksOptions {
 }
 
 // export: StorageToBlocksResult
-export interface StorageToBlocksResult {
-    blocks: ExportBlock[];
-    notes: ExportNote[];
-}
+export type StorageToBlocksResult = BlocksResult;
 
 // export: storageToMarkdown
 export declare function storageToMarkdown(storage: string, options?: ConversionOptions): string;
 
 // export: stripTableColumnMetadata
 export declare function stripTableColumnMetadata(storage: string): string;
+
+// export: SupportedAdfNodeType
+export type SupportedAdfNodeType = PinnedAdfNodeType | PinnedAdfStage0NodeType;
 
 // export: SVG_UNSAFE_MESSAGE
 export declare const SVG_UNSAFE_MESSAGE = "SVG contains active or externally loaded content";
@@ -4715,6 +7371,14 @@ export declare const SVG_UNSAFE_MESSAGE = "SVG contains active or externally loa
 export interface SvgSafetyViolation {
     rule: "doctype-or-entity" | "blocked-element" | "event-handler-attribute" | "non-fragment-reference" | "css-external-reference";
     detail: string;
+}
+
+// export: SyncedContentProvenance
+export interface SyncedContentProvenance {
+    resourceId: string;
+    localId: string;
+    projection: "embedded-snapshot" | "unresolved-reference";
+    breakout?: LayoutBreakout;
 }
 
 // export: SyncScope
@@ -4735,16 +7399,38 @@ export interface TableCell {
     colspan: number;
     rowspan: number;
     backgroundColor?: string;
+    columnWidths?: number[];
+    verticalAlignment?: TableVerticalAlignment;
+    localId?: string;
     content: ExportBlock[];
 }
 
 // export: tableColumns
 export declare function tableColumns(ds: Datasource): string[] | undefined;
 
+// export: TableDisplayMode
+export type TableDisplayMode = "default" | "fixed";
+
+// export: TableLayout
+export type TableLayout = "default" | "wide" | "full-width" | "center" | "align-start" | "align-end";
+
+// export: TablePresentation
+export interface TablePresentation {
+    layout?: TableLayout;
+    width?: number;
+    displayMode?: TableDisplayMode;
+    numberedColumn?: boolean;
+    localId?: string;
+}
+
 // export: TableRow
 export interface TableRow {
     cells: TableCell[];
+    localId?: string;
 }
+
+// export: TableVerticalAlignment
+export type TableVerticalAlignment = "top" | "middle" | "bottom";
 
 // export: translateDatasourceLink
 export declare function translateDatasourceLink(rawAttr: string, href: string): DatasourceOutcome;
@@ -4775,6 +7461,11 @@ export interface TreeFetchOptions {
     completenessMode?: CompletenessMode;
     signal?: AbortSignal;
     onProgress?: (progress: TreeFetchProgress) => void;
+    bodyOptions?: Omit<PageBodyToBlocksOptions, "pageContext">;
+    preparedPlan?: ExportTreePlanV1;
+    onPlanPrepared?: (plan: ExportTreePlanV1) => void | Promise<void>;
+    onPlanRecovered?: (plan: ExportTreePlanV1) => void | Promise<void>;
+    maxPlanBytes?: number;
 }
 
 // export: TreeFetchProgress
@@ -4810,6 +7501,12 @@ export interface TreeSource {
 
 // export: TreeSourceClient
 export interface TreeSourceClient {
+    getExportPageDetailsWithMedia?(id: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluenceExportPageDetails>;
+    getExportPageDetails?(id: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluenceExportPageDetails>;
     getPageDetails(id: string, options?: {
         signal?: AbortSignal;
     }): Promise<{
@@ -4859,13 +7556,32 @@ export interface TreeSourceClient {
 }
 
 // export: TreeSourcePage
-export interface TreeSourcePage {
+export type TreeSourcePage = TreeSourcePageMetadata & ({
+    exportSource: ExportPageSource;
+    storage?: string;
+} | {
+    storage: string;
+    exportSource?: undefined;
+});
+
+// export: TreeSourcePageMetadata
+export interface TreeSourcePageMetadata {
     id: string;
     title: string;
-    storage: string;
     version?: number;
     labels?: string[];
     spaceKey?: string;
+    mediaAttachments?: AdfMediaAttachment[];
+    mediaAttachmentsComplete?: boolean;
+    inlineComments?: InlineComment[];
+    inlineCommentsComplete?: boolean;
+}
+
+// export: TreeSourceSummary
+export interface TreeSourceSummary {
+    pagesRead: number;
+    representations: Readonly<Record<PageBody["representation"], number>>;
+    degradedPages: number;
 }
 
 // export: TreeSourceVersion
@@ -4876,6 +7592,23 @@ export interface TreeSourceVersion {
 
 // export: uniqueAnchorId
 export declare function uniqueAnchorId(rawName: string, used: ReadonlySet<string>): string;
+
+// export: UnresolvedMediaIdentity
+export interface UnresolvedMediaIdentity {
+    mediaType?: string;
+    id?: string;
+    collection?: string;
+    occurrenceKey?: string;
+    localId?: string;
+    dataConsumers?: AdfDataConsumerProvenance[];
+    url?: string;
+    dataJson?: string;
+    filename?: string;
+    pageId?: string;
+    attachmentMediaType?: string;
+    webuiLink?: string;
+    downloadLink?: string;
+}
 
 // export: UNSAFE_LINK_NOTE_CODE
 export declare const UNSAFE_LINK_NOTE_CODE = "unsafe-link-skipped";
@@ -4895,6 +7628,21 @@ export interface UserInfo {
     email: string | null;
     isActive: boolean;
     profilePicture: string | null;
+}
+
+// export: ValidAdfDocument
+export type ValidAdfDocument = AdfDocument;
+
+// export: validateAdf
+export declare function validateAdf(input: string | unknown, options?: {
+    budget?: Partial<AdfParseBudget>;
+}): ValidatedAdfDocument;
+
+// export: ValidatedAdfDocument
+export interface ValidatedAdfDocument {
+    document: AdfDocument;
+    diagnostics: AdfDiagnostic[];
+    stats: AdfValidationStats;
 }
 
 // export: validateExportScope
@@ -4935,6 +7683,81 @@ export type AdapterType = "sqlite" | "postgres" | "json";
 
 // export: addFrontmatter
 export declare function addFrontmatter(content: string, frontmatter: AtlcliFrontmatter): string;
+
+// export: AdfAnnotationComment
+export interface AdfAnnotationComment {
+    bodyText: string;
+    status: "open" | "resolved";
+    created?: string;
+    replies: AdfAnnotationReply[];
+}
+
+// export: AdfAnnotationIdentity
+export interface AdfAnnotationIdentity {
+    id: string;
+    annotationType: "inlineComment";
+    comment?: AdfAnnotationComment;
+}
+
+// export: AdfAnnotationReply
+export interface AdfAnnotationReply {
+    bodyText: string;
+    created?: string;
+}
+
+// export: AdfDataConsumerProvenance
+export interface AdfDataConsumerProvenance {
+    sources: string[];
+}
+
+// export: AdfExtensionFrame
+export interface AdfExtensionFrame {
+    content: ExportBlock[];
+    fragments?: AdfFragmentIdentity[];
+    dataConsumers?: AdfDataConsumerProvenance[];
+    bodyNotes?: ExportNote[];
+}
+
+// export: AdfExtensionIdentity
+export interface AdfExtensionIdentity {
+    extensionType: string;
+    extensionKey: string;
+    localId?: string;
+}
+
+// export: AdfFragmentIdentity
+export interface AdfFragmentIdentity {
+    localId: string;
+    name?: string;
+}
+
+// export: AdfLinkAttributes
+export interface AdfLinkAttributes {
+    title?: string;
+    id?: string;
+    collection?: string;
+    occurrenceKey?: string;
+}
+
+// export: AdfUnsupportedAttribute
+export interface AdfUnsupportedAttribute {
+    name: string;
+    value: AdfJsonValue;
+}
+
+// export: AdfUnsupportedMark
+export interface AdfUnsupportedMark {
+    type: string;
+    attributes?: AdfUnsupportedAttribute[];
+}
+
+// export: AdfUnsupportedNodeProvenance
+export interface AdfUnsupportedNodeProvenance {
+    nodeType: string;
+    sourceRepresentation: "atlas_doc_format" | "storage";
+    attributes?: AdfUnsupportedAttribute[];
+    marks?: AdfUnsupportedMark[];
+}
 
 // export: AtlcliConfig
 export type AtlcliConfig = AtlcliConfigV1 | AtlcliConfigV2;
@@ -5042,6 +7865,13 @@ export interface BaseComment {
     replies: BaseComment[];
 }
 
+// export: BlockPresentation
+export interface BlockPresentation {
+    alignment?: "center" | "end";
+    indentation?: 1 | 2 | 3 | 4 | 5 | 6;
+    fontSize?: "small";
+}
+
 // export: BrokenLinkSummary
 export interface BrokenLinkSummary {
     totalBroken: number;
@@ -5075,7 +7905,7 @@ export interface BulkOperationResult {
 }
 
 // export: CalloutKind
-export type CalloutKind = "info" | "note" | "warning" | "tip" | "panel";
+export type CalloutKind = "info" | "note" | "warning" | "tip" | "success" | "error" | "panel";
 
 // export: canonicalExportNoteCode
 export declare function canonicalExportNoteCode(code: string): ExportNoteCode | undefined;
@@ -5084,6 +7914,7 @@ export declare function canonicalExportNoteCode(code: string): ExportNoteCode | 
 export interface Caption {
     kind: CaptionKind;
     content: InlineNode[];
+    localId?: string;
 }
 
 // export: CaptionableBlockType
@@ -5165,13 +7996,18 @@ export interface ConflictRegion {
 // export: ConfluenceClient
 export declare class ConfluenceClient {
     private confluenceBaseUrl;
+    private deploymentType;
+    private capabilityOrigin;
     private authHeader;
     private useSession;
     private maxRetries;
     private baseDelayMs;
     private tlsOptions;
     private sessionRedirectPolicy;
-    constructor(profile: Profile);
+    private exportSourcePolicy;
+    constructor(profile: Profile, options?: {
+        exportSourcePolicy?: ExportSourcePolicy;
+    });
     getInstanceUrl(): string;
     private buildWebUrl;
     private sleep;
@@ -5181,14 +8017,21 @@ export declare class ConfluenceClient {
     private assertSessionJsonOk;
     private request;
     private requestV2;
-    getCurrentUser(): Promise<{
+    getCurrentUser(options?: {
+        signal?: AbortSignal;
+    }): Promise<{
         accountId: string;
         displayName: string;
         email?: string;
     }>;
-    getPage(id: string): Promise<ConfluencePage & {
+    getPage(id: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluencePage & {
         storage: string;
     }>;
+    getPageAdf(id: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluencePageAdf>;
     getMacroBodyByMacroId(pageId: string, version: number, macroId: string, options?: {
         signal?: AbortSignal;
     }): Promise<string | undefined>;
@@ -5201,6 +8044,14 @@ export declare class ConfluenceClient {
     getPageDetails(id: string, options?: {
         signal?: AbortSignal;
     }): Promise<ConfluencePageDetails>;
+    getExportPageDetails(id: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluenceExportPageDetails>;
+    getExportPageDetailsWithMedia(id: string, options?: {
+        signal?: AbortSignal;
+        maxAttachments?: number;
+        maxInlineComments?: number;
+    }): Promise<ConfluenceExportPageDetails>;
     getAncestors(pageId: string): Promise<{
         id: string;
         title: string;
@@ -5278,8 +8129,12 @@ export declare class ConfluenceClient {
     }): Promise<ConfluenceSpace>;
     listSpaces(limit?: number): Promise<ConfluenceSpace[]>;
     getSpace(key: string): Promise<ConfluenceSpace>;
-    getSpaceIcon(key: string): Promise<SpaceIcon | null>;
-    getSpaceWithIcon(key: string): Promise<{
+    getSpaceIcon(key: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<SpaceIcon | null>;
+    getSpaceWithIcon(key: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<{
         space: ConfluenceSpace;
         icon: SpaceIcon | null;
     }>;
@@ -5300,8 +8155,13 @@ export declare class ConfluenceClient {
     getPagesBatch(ids: string[], concurrency?: number): Promise<(ConfluencePage & {
         storage: string;
     })[]>;
+    listPageAttachmentMedia(pageId: string, options?: {
+        maxAttachments?: number;
+        signal?: AbortSignal;
+    }): Promise<PageAttachmentMediaResult>;
     listAttachments(pageId: string, options?: {
         limit?: number;
+        signal?: AbortSignal;
     }): Promise<AttachmentInfo[]>;
     getAttachment(attachmentId: string): Promise<AttachmentInfo>;
     uploadAttachment(params: {
@@ -5363,6 +8223,10 @@ export declare class ConfluenceClient {
     getInlineCommentReplies(commentId: string, options?: {
         limit?: number;
     }): Promise<InlineComment[]>;
+    listPageInlineCommentsForExport(pageId: string, options?: {
+        signal?: AbortSignal;
+        maxInlineComments?: number;
+    }): Promise<PageInlineCommentsExportResult>;
     getAllComments(pageId: string, options?: {
         limit?: number;
     }): Promise<PageComments>;
@@ -5406,14 +8270,21 @@ export declare class ConfluenceClient {
     }>>;
     getFoldersInTree(parentId: string): Promise<ConfluenceFolder[]>;
     movePageToFolder(pageId: string, folderId: string): Promise<ConfluencePage>;
-    getUser(accountId: string): Promise<UserInfo | null>;
-    getSpaceHomepageStorage(spaceKey: string): Promise<string | null>;
+    getUser(accountId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<UserInfo | null>;
+    getSpaceHomepageStorage(spaceKey: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<string | null>;
     getSpaceHomepageId(spaceKey: string, options?: {
         signal?: AbortSignal;
     }): Promise<string | null>;
-    getPageOwner(pageId: string): Promise<ConfluenceUser | null>;
+    getPageOwner(pageId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluenceUser | null>;
     getUsersBulk(accountIds: string[], options?: {
         concurrency?: number;
+        signal?: AbortSignal;
     }): Promise<Map<string, UserInfo | null>>;
     getVersionHistory(pageId: string, options?: {
         limit?: number;
@@ -5693,6 +8564,14 @@ export interface EmbeddingRecord {
     updatedAt: string;
 }
 
+// export: EmojiSemantics
+export interface EmojiSemantics {
+    shortName: string;
+    id?: string;
+    text?: string;
+    renderedFrom: "text" | "short-name";
+}
+
 // export: ensureUserPlaceholders
 export declare function ensureUserPlaceholders(users: UserPlaceholder[], adapter: SyncDbAdapter): Promise<void>;
 
@@ -5706,8 +8585,20 @@ export declare function escapeCqlValue(value: string): string;
 export declare const EXPORT_NOTE_CODES: readonly [
     "unknown-macro",
     "macro-not-rendered",
+    "inline-extension-not-rendered",
     "image-unresolved",
     "inline-image-skipped",
+    "layout-geometry-fallback",
+    "expand-static",
+    "emoji-text-fallback",
+    "date-invalid",
+    "adf-node-degraded",
+    "adf-mark-degraded",
+    "adf-attribute-dropped",
+    "adf-media-unresolved",
+    "adf-annotation-unresolved",
+    "adf-annotation-comments-truncated",
+    "adf-storage-fallback",
     "datasource-invalid",
     "datasource-provider-unknown",
     "datasource-provider-unsupported",
@@ -5803,6 +8694,8 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "logo-embed-failed",
     "perf-timing",
     "code-highlight-skipped",
+    "code-nowrap-page-bounded",
+    "code-collapse-static",
     "image-skipped",
     "image-embed-failed",
     "image-missing-alt",
@@ -5827,35 +8720,90 @@ export type ExportBlock = {
     level: 1 | 2 | 3 | 4 | 5 | 6;
     content: InlineNode[];
     explicitAnchor?: string;
+    presentation?: BlockPresentation;
+    localId?: string;
 } | {
     type: "paragraph";
     content: InlineNode[];
+    presentation?: BlockPresentation;
+    localId?: string;
+} | {
+    type: "smartCard";
+    card: SmartCardSemantics;
 } | {
     type: "codeBlock";
     language?: string;
     code: string;
+    title?: string;
+    initiallyCollapsed?: boolean;
     caption?: Caption;
+    wrap?: boolean;
+    hideLineNumbers?: boolean;
+    firstLineNumber?: number;
+    localId?: string;
+    uniqueId?: string;
+    breakout?: LayoutBreakout;
 } | {
     type: "callout";
     kind: CalloutKind;
     title?: string;
     content: ExportBlock[];
+    localId?: string;
+    panelColor?: string;
+    panelIcon?: string;
+    panelIconId?: string;
+    panelIconText?: string;
+    syncedContent?: SyncedContentProvenance;
+} | {
+    type: "expand";
+    nested: boolean;
+    content: ExportBlock[];
+    title?: string;
+    localId?: string;
+    macroId?: string;
+    breakout?: LayoutBreakout;
 } | {
     type: "list";
     ordered: boolean;
     items: ListItem[];
-} | {
+    start?: number;
+    listKind?: "task" | "decision";
+    localId?: string;
+} | ({
+    type: "layout";
+} & PageLayout) | {
     type: "table";
     rows: TableRow[];
     columnWidths?: number[];
+    presentation?: TablePresentation;
     caption?: Caption;
+    fragments?: AdfFragmentIdentity[];
 } | {
     type: "image";
     source: ImageSource;
+    media?: UnresolvedMediaIdentity;
     alt?: string;
     width?: number;
     height?: number;
+    mediaPresentation?: MediaPresentation;
+    mediaGroup?: MediaGroupPosition;
+    border?: MediaBorder;
     caption?: Caption;
+    annotations?: AdfAnnotationIdentity[];
+    link?: ExportLink;
+} | {
+    type: "mediaFallback";
+    label: string;
+    media: UnresolvedMediaIdentity;
+    caption?: Caption;
+    alt?: string;
+    width?: number;
+    height?: number;
+    mediaPresentation?: MediaPresentation;
+    mediaGroup?: MediaGroupPosition;
+    border?: MediaBorder;
+    annotations?: AdfAnnotationIdentity[];
+    link?: ExportLink;
 } | {
     type: "blockquote";
     content: ExportBlock[];
@@ -5877,6 +8825,10 @@ export type ExportBlock = {
     body?: ExportBlock[];
     plainBody?: string;
     macroId?: string;
+    adfExtension?: AdfExtensionIdentity;
+    extensionFrames?: AdfExtensionFrame[];
+    fragments?: AdfFragmentIdentity[];
+    unsupportedAdf?: AdfUnsupportedNodeProvenance;
     bodyNotes?: ExportNote[];
     sourcePage?: {
         id: string;
@@ -5884,6 +8836,12 @@ export type ExportBlock = {
         spaceKey?: string;
     };
 };
+
+// export: ExportLink
+export interface ExportLink {
+    target: LinkTarget;
+    adfAttributes?: AdfLinkAttributes;
+}
 
 // export: ExportMentionLookup
 export type ExportMentionLookup = (accountIds: string[]) => Promise<ReadonlyMap<string, string | null>>;
@@ -6011,6 +8969,9 @@ export type FolderChild = {
 export interface FooterComment extends BaseComment {
     replies: FooterComment[];
 }
+
+// export: formatAdfDateTimestamp
+export declare function formatAdfDateTimestamp(timestamp: string, locale?: string): string;
 
 // export: formatComment
 export declare function formatComment(comment: FooterComment | InlineComment, indent?: number): string;
@@ -6218,11 +9179,18 @@ export interface InlineComment extends BaseComment {
     textSelection: string;
     textSelectionMatchCount?: number;
     textSelectionMatchIndex?: number;
+    inlineMarkerRef?: string;
+    inlineOriginalSelection?: string;
     replies: InlineComment[];
 }
 
 // export: InlineMark
 export type InlineMark = "bold" | "italic" | "code" | "strike" | "underline" | "subscript" | "superscript";
+
+// export: inlineMediaDisplayText
+export declare function inlineMediaDisplayText(media: Pick<Extract<InlineNode, {
+    type: "media";
+}>, "media" | "alt">): string;
 
 // export: InlineNode
 export type InlineNode = {
@@ -6231,18 +9199,56 @@ export type InlineNode = {
     marks?: InlineMark[];
     color?: string;
     backgroundColor?: string;
-} | {
+    emoji?: EmojiSemantics;
+    adfExtension?: AdfExtensionIdentity;
+    extensionParams?: MacroParameter[];
+    sourcePage?: {
+        id: string;
+        version?: number;
+        spaceKey?: string;
+    };
+    annotations?: AdfAnnotationIdentity[];
+    fragments?: AdfFragmentIdentity[];
+    unsupportedAdf?: AdfUnsupportedNodeProvenance[];
+} | ({
     type: "link";
-    target: LinkTarget;
     content: InlineNode[];
-} | {
+} & ExportLink) | {
     type: "mention";
     accountId: string;
     displayName?: string;
+    sourceText?: string;
+    localId?: string;
+    accessLevel?: string;
+    userType?: "DEFAULT" | "SPECIAL" | "APP";
+} | {
+    type: "date";
+    timestamp: string;
+    localId?: string;
 } | {
     type: "status";
     text: string;
     color: string;
+    localId?: string;
+    style?: string;
+} | {
+    type: "smartCard";
+    card: SmartCardSemantics;
+} | {
+    type: "media";
+    media: UnresolvedMediaIdentity;
+    source?: ImageSource;
+    alt?: string;
+    width?: number;
+    height?: number;
+    border?: MediaBorder;
+    annotations?: AdfAnnotationIdentity[];
+    link?: ExportLink;
+} | {
+    type: "placeholder";
+    text: string;
+    localId?: string;
+    placeholderType?: string;
 } | {
     type: "lineBreak";
 };
@@ -6353,6 +9359,20 @@ export interface LabelRecord {
 // export: LARGE_FILE_THRESHOLD
 export declare const LARGE_FILE_THRESHOLD: number;
 
+// export: LayoutBreakout
+export interface LayoutBreakout {
+    mode: "wide" | "full-width";
+    width?: number;
+}
+
+// export: LayoutColumn
+export interface LayoutColumn {
+    width: number;
+    verticalAlignment?: TableVerticalAlignment;
+    localId?: string;
+    content: ExportBlock[];
+}
+
 // export: LinkChangeResult
 export interface LinkChangeResult {
     pageId: string;
@@ -6386,9 +9406,11 @@ export type LinkTarget = {
     contentId?: string;
     spaceKey?: string;
     anchor?: string;
+    href?: string;
 } | {
     kind: "attachment";
     filename: string;
+    href?: string;
 } | {
     kind: "anchor";
     anchor: string;
@@ -6413,6 +9435,10 @@ export interface LinkValidationResult {
 // export: ListItem
 export interface ListItem {
     content: ExportBlock[];
+    kind?: "task" | "decision";
+    state?: string;
+    localId?: string;
+    block?: boolean;
     checked?: boolean;
 }
 
@@ -6473,6 +9499,50 @@ export interface MarkdownLinkWithResolution extends MarkdownLink {
 
 // export: markdownToStorage
 export declare function markdownToStorage(markdown: string, options?: ConversionOptions): string;
+
+// export: MaterializedTable
+export interface MaterializedTable {
+    rows: TableRow[];
+    columnWidths?: number[];
+}
+
+// export: materializeTable
+export declare function materializeTable(table: Extract<ExportBlock, {
+    type: "table";
+}>): MaterializedTable;
+
+// export: MediaBorder
+export interface MediaBorder {
+    color: string;
+    size: 1 | 2 | 3;
+}
+
+// export: mediaFallbackDisplayText
+export declare function mediaFallbackDisplayText(block: Pick<Extract<ExportBlock, {
+    type: "mediaFallback";
+}>, "media" | "alt" | "label">): string;
+
+// export: MediaGroupPosition
+export interface MediaGroupPosition {
+    index: number;
+    size: number;
+}
+
+// export: MediaLayout
+export type MediaLayout = "wide" | "full-width" | "center" | "wrap-right" | "wrap-left" | "align-end" | "align-start";
+
+// export: MediaPresentation
+export interface MediaPresentation {
+    layout: MediaLayout;
+    width?: number;
+    widthType?: "percentage" | "pixel";
+    localId?: string;
+}
+
+// export: mentionDisplayText
+export declare function mentionDisplayText(mention: Pick<Extract<InlineNode, {
+    type: "mention";
+}>, "displayName" | "userType">): string;
 
 // export: MergeResult
 export interface MergeResult {
@@ -6548,6 +9618,12 @@ export declare function normalizeExportColor(value: string | undefined): string 
 // export: normalizeMarkdown
 export declare function normalizeMarkdown(markdown: string): string;
 
+// export: PageAttachmentMediaResult
+export interface PageAttachmentMediaResult {
+    attachments: AdfMediaAttachment[];
+    complete: boolean;
+}
+
 // export: PageChangeInfo
 export interface PageChangeInfo {
     id: string;
@@ -6605,6 +9681,19 @@ export interface PageHistory {
     pageId: string;
     versions: PageVersion[];
     latest: number;
+}
+
+// export: PageInlineCommentsExportResult
+export interface PageInlineCommentsExportResult {
+    comments: InlineComment[];
+    complete: boolean;
+}
+
+// export: PageLayout
+export interface PageLayout {
+    columns: LayoutColumn[];
+    localId?: string;
+    breakout?: LayoutBreakout;
 }
 
 // export: PagePropertiesMacro
@@ -6684,6 +9773,9 @@ export interface PageVersion {
 export type PageWithPosition = ConfluencePage & {
     position: number | null;
 };
+
+// export: parseAdfDateTimestamp
+export declare function parseAdfDateTimestamp(timestamp: string): Date | undefined;
 
 // export: parseConflictMarkers
 export declare function parseConflictMarkers(content: string): ConflictRegion[];
@@ -6873,6 +9965,28 @@ export interface SimilarityResult {
 // export: slugifyTitle
 export declare function slugifyTitle(title: string | undefined | null): string;
 
+// export: SmartCardAppearance
+export type SmartCardAppearance = "inline" | "block" | "embed";
+
+// export: smartCardDisplayText
+export declare function smartCardDisplayText(card: SmartCardSemantics): string;
+
+// export: SmartCardSemantics
+export interface SmartCardSemantics {
+    appearance: SmartCardAppearance;
+    source: "url" | "data" | "datasource";
+    url?: string;
+    target?: LinkTarget;
+    title?: string;
+    localId?: string;
+    data?: AdfJsonValue;
+    datasource?: AdfJsonValue;
+    layout?: "wide" | "full-width" | "center" | "wrap-right" | "wrap-left" | "align-end" | "align-start";
+    width?: number;
+    originalHeight?: number;
+    originalWidth?: number;
+}
+
 // export: SmartLinkAppearance
 export type SmartLinkAppearance = "inline" | "card" | "embed";
 
@@ -6985,6 +10099,11 @@ export interface SqliteAdapterConfig {
     customSqlitePath?: string;
 }
 
+// export: statusDisplayText
+export declare function statusDisplayText(status: Pick<Extract<InlineNode, {
+    type: "status";
+}>, "text" | "color" | "style">): string;
+
 // export: StorageLink
 export interface StorageLink {
     type: "internal" | "external" | "attachment" | "anchor";
@@ -7032,10 +10151,7 @@ export interface StorageToBlocksOptions {
 }
 
 // export: StorageToBlocksResult
-export interface StorageToBlocksResult {
-    blocks: ExportBlock[];
-    notes: ExportNote[];
-}
+export type StorageToBlocksResult = BlocksResult;
 
 // export: storageToMarkdown
 export declare function storageToMarkdown(storage: string, options?: ConversionOptions): string;
@@ -7140,6 +10256,14 @@ export interface SyncDbExport {
     contentProperties: ContentPropertyRecord[];
 }
 
+// export: SyncedContentProvenance
+export interface SyncedContentProvenance {
+    resourceId: string;
+    localId: string;
+    projection: "embedded-snapshot" | "unresolved-reference";
+    breakout?: LayoutBreakout;
+}
+
 // export: SyncScope
 export type SyncScope = {
     type: "page";
@@ -7200,16 +10324,55 @@ export interface TableCell {
     colspan: number;
     rowspan: number;
     backgroundColor?: string;
+    columnWidths?: number[];
+    verticalAlignment?: TableVerticalAlignment;
+    localId?: string;
     content: ExportBlock[];
+}
+
+// export: TableDisplayMode
+export type TableDisplayMode = "default" | "fixed";
+
+// export: TableLayout
+export type TableLayout = "default" | "wide" | "full-width" | "center" | "align-start" | "align-end";
+
+// export: TablePresentation
+export interface TablePresentation {
+    layout?: TableLayout;
+    width?: number;
+    displayMode?: TableDisplayMode;
+    numberedColumn?: boolean;
+    localId?: string;
 }
 
 // export: TableRow
 export interface TableRow {
     cells: TableCell[];
+    localId?: string;
 }
+
+// export: TableVerticalAlignment
+export type TableVerticalAlignment = "top" | "middle" | "bottom";
 
 // export: threeWayMerge
 export declare function threeWayMerge(base: string, local: string, remote: string): MergeResult;
+
+// export: UnresolvedMediaIdentity
+export interface UnresolvedMediaIdentity {
+    mediaType?: string;
+    id?: string;
+    collection?: string;
+    occurrenceKey?: string;
+    localId?: string;
+    dataConsumers?: AdfDataConsumerProvenance[];
+    url?: string;
+    dataJson?: string;
+    filename?: string;
+    pageId?: string;
+    attachmentMediaType?: string;
+    webuiLink?: string;
+    downloadLink?: string;
+}
 
 // export: updateAttachmentState
 export declare function updateAttachmentState(state: AtlcliState, pageId: string, attachmentId: string, update: Partial<AttachmentState>): void;
@@ -7432,6 +10595,287 @@ export interface XmlText {
 ### Entry point `./node`
 
 ```ts
+// export: ADF_COVERAGE
+export declare const ADF_COVERAGE: readonly AdfCoverageRow[];
+
+// export: ADF_MARK_DECODE_MODES
+export declare const ADF_MARK_DECODE_MODES: Readonly<{
+    readonly alignment: "native";
+    readonly annotation: "approximation";
+    readonly backgroundColor: "native";
+    readonly border: "native";
+    readonly breakout: "approximation";
+    readonly code: "native";
+    readonly dataConsumer: "approximation";
+    readonly em: "native";
+    readonly fontSize: "native";
+    readonly fragment: "approximation";
+    readonly indentation: "native";
+    readonly link: "native";
+    readonly strike: "native";
+    readonly strong: "native";
+    readonly subsup: "native";
+    readonly textColor: "native";
+    readonly underline: "native";
+}>;
+
+// export: ADF_NODE_DECODE_MODES
+export declare const ADF_NODE_DECODE_MODES: Readonly<{
+    readonly blockCard: "native";
+    readonly blockTaskItem: "native";
+    readonly blockquote: "native";
+    readonly bodiedExtension: "approximation";
+    readonly bodiedSyncBlock: "approximation";
+    readonly bulletList: "native";
+    readonly caption: "native";
+    readonly codeBlock: "native";
+    readonly date: "native";
+    readonly decisionItem: "native";
+    readonly decisionList: "native";
+    readonly doc: "native";
+    readonly embedCard: "native";
+    readonly emoji: "approximation";
+    readonly expand: "approximation";
+    readonly extension: "approximation";
+    readonly hardBreak: "native";
+    readonly heading: "native";
+    readonly inlineCard: "native";
+    readonly inlineExtension: "approximation";
+    readonly layoutColumn: "native";
+    readonly layoutSection: "native";
+    readonly listItem: "native";
+    readonly media: "native";
+    readonly mediaGroup: "native";
+    readonly mediaInline: "approximation";
+    readonly mediaSingle: "native";
+    readonly mention: "native";
+    readonly nestedExpand: "approximation";
+    readonly orderedList: "native";
+    readonly panel: "approximation";
+    readonly paragraph: "native";
+    readonly placeholder: "native";
+    readonly rule: "native";
+    readonly status: "native";
+    readonly syncBlock: "approximation";
+    readonly table: "approximation";
+    readonly tableCell: "approximation";
+    readonly tableHeader: "approximation";
+    readonly tableRow: "native";
+    readonly taskItem: "native";
+    readonly taskList: "native";
+    readonly text: "native";
+}>;
+
+// export: ADF_STAGE0_NODE_DECODE_MODES
+export declare const ADF_STAGE0_NODE_DECODE_MODES: Readonly<{
+    readonly extensionFrame: "approximation";
+    readonly multiBodiedExtension: "approximation";
+}>;
+
+// export: AdfAnnotationComment
+export interface AdfAnnotationComment {
+    bodyText: string;
+    status: "open" | "resolved";
+    created?: string;
+    replies: AdfAnnotationReply[];
+}
+
+// export: AdfAnnotationIdentity
+export interface AdfAnnotationIdentity {
+    id: string;
+    annotationType: "inlineComment";
+    comment?: AdfAnnotationComment;
+}
+
+// export: AdfAnnotationReply
+export interface AdfAnnotationReply {
+    bodyText: string;
+    created?: string;
+}
+
+// export: AdfCoverageLevel
+export type AdfCoverageLevel = "native" | "partial" | "fallback" | "missing";
+
+// export: AdfCoverageProvenance
+export type AdfCoverageProvenance = "schema-only" | "observed-cloud" | "legacy-observed";
+
+// export: AdfCoverageRow
+export interface AdfCoverageRow {
+    kind: "node" | "mark";
+    type: string;
+    parser: "validated";
+    decoder: AdfCoverageLevel;
+    docx: AdfCoverageLevel | "not-applicable";
+    pdf: AdfCoverageLevel | "not-applicable";
+    provenance: readonly AdfCoverageProvenance[];
+}
+
+// export: AdfDataConsumerProvenance
+export interface AdfDataConsumerProvenance {
+    sources: string[];
+}
+
+// export: AdfDecoderMode
+export type AdfDecoderMode = "native" | "approximation" | "visible-fallback";
+
+// export: AdfDiagnostic
+export interface AdfDiagnostic {
+    kind: AdfDiagnosticKind;
+    path: string;
+    type?: string;
+    attribute?: string;
+    count?: number;
+}
+
+// export: AdfDiagnosticKind
+export type AdfDiagnosticKind = "unknown-node" | "unknown-mark" | "unknown-attribute" | "diagnostics-truncated";
+
+// export: AdfDocument
+export interface AdfDocument extends AdfNode {
+    type: "doc";
+    version: 1;
+    content: AdfNode[];
+}
+
+// export: AdfExtensionFrame
+export interface AdfExtensionFrame {
+    content: ExportBlock[];
+    fragments?: AdfFragmentIdentity[];
+    dataConsumers?: AdfDataConsumerProvenance[];
+    bodyNotes?: ExportNote[];
+}
+
+// export: AdfExtensionIdentity
+export interface AdfExtensionIdentity {
+    extensionType: string;
+    extensionKey: string;
+    localId?: string;
+}
+
+// export: AdfFragmentIdentity
+export interface AdfFragmentIdentity {
+    localId: string;
+    name?: string;
+}
+
+// export: AdfJsonValue
+export type AdfJsonValue = null | boolean | number | string | AdfJsonValue[] | {
+    [key: string]: AdfJsonValue;
+};
+
+// export: AdfLinkAttributes
+export interface AdfLinkAttributes {
+    title?: string;
+    id?: string;
+    collection?: string;
+    occurrenceKey?: string;
+}
+
+// export: AdfMark
+export interface AdfMark {
+    type: string;
+    attrs?: Record<string, AdfJsonValue>;
+}
+
+// export: AdfMediaAttachment
+export interface AdfMediaAttachment {
+    fileId: string;
+    filename: string;
+    pageId: string;
+    mediaType?: string;
+    webuiLink?: string;
+    downloadLink?: string;
+}
+
+// export: AdfMediaReference
+export interface AdfMediaReference {
+    id: string;
+    collection?: string;
+    occurrenceKey?: string;
+}
+
+// export: AdfNode
+export interface AdfNode {
+    type: string;
+    attrs?: Record<string, AdfJsonValue>;
+    content?: AdfNode[];
+    marks?: AdfMark[];
+    text?: string;
+}
+
+// export: AdfParseBudget
+export interface AdfParseBudget {
+    maxInputBytes: number;
+    maxNodes: number;
+    maxDepth: number;
+    maxTextBytes: number;
+    maxAttributeBytes: number;
+    maxMarks: number;
+    maxAttributeValues: number;
+    maxDiagnostics: number;
+}
+
+// export: AdfResolvedMediaAttachment
+export interface AdfResolvedMediaAttachment {
+    filename: string;
+    pageId?: string;
+    mediaType?: string;
+    webuiLink?: string;
+    downloadLink?: string;
+}
+
+// export: adfToBlocks
+export declare function adfToBlocks(input: string | unknown, options?: AdfToBlocksOptions): BlocksResult;
+
+// export: AdfToBlocksOptions
+export interface AdfToBlocksOptions extends Omit<StorageToBlocksOptions, "parseBudget"> {
+    parseBudget?: Partial<AdfParseBudget>;
+    resolveMediaAttachment?: (reference: AdfMediaReference) => AdfResolvedMediaAttachment | undefined;
+    resolveAnnotation?: (markerRef: string) => AdfAnnotationComment | undefined;
+    annotationCommentsComplete?: boolean;
+}
+
+// export: AdfUnsupportedAttribute
+export interface AdfUnsupportedAttribute {
+    name: string;
+    value: AdfJsonValue;
+}
+
+// export: AdfUnsupportedMark
+export interface AdfUnsupportedMark {
+    type: string;
+    attributes?: AdfUnsupportedAttribute[];
+}
+
+// export: AdfUnsupportedNodeProvenance
+export interface AdfUnsupportedNodeProvenance {
+    nodeType: string;
+    sourceRepresentation: "atlas_doc_format" | "storage";
+    attributes?: AdfUnsupportedAttribute[];
+    marks?: AdfUnsupportedMark[];
+}
+
+// export: AdfValidationError
+export declare class AdfValidationError extends Error {
+    readonly code: AdfValidationErrorCode;
+    readonly path: string;
+    constructor(code: AdfValidationErrorCode, message: string, path?: string);
+}
+
+// export: AdfValidationErrorCode
+export type AdfValidationErrorCode = "input-too-large" | "invalid-json" | "invalid-root" | "unsupported-version" | "invalid-node" | "invalid-mark" | "invalid-attributes" | "node-budget-exceeded" | "depth-budget-exceeded" | "text-budget-exceeded" | "attribute-budget-exceeded" | "mark-budget-exceeded";
+
+// export: AdfValidationStats
+export interface AdfValidationStats {
+    inputBytes?: number;
+    nodes: number;
+    marks: number;
+    maxDepth: number;
+    textBytes: number;
+    attributeBytes: number;
+    attributeValues: number;
+}
+
 // export: AnchorRegistry
 export declare class AnchorRegistry {
     private readonly lookup;
@@ -7512,6 +10956,11 @@ export declare class AssetPipelineError extends Error {
 // export: ASSETS_DATASOURCE_ID
 export declare const ASSETS_DATASOURCE_ID = "361d618a-3c04-40ad-9b27-3c8ea6927020";
 
+// export: AtlasDocFormatPageBody
+export type AtlasDocFormatPageBody = Extract<PageBody, {
+    representation: "atlas_doc_format";
+}>;
+
 // export: AttachmentInfo
 export interface AttachmentInfo {
     id: string;
@@ -7537,6 +10986,21 @@ export interface BaseComment {
     replies: BaseComment[];
 }
 
+// export: BlockPresentation
+export interface BlockPresentation {
+    alignment?: "center" | "end";
+    indentation?: 1 | 2 | 3 | 4 | 5 | 6;
+    fontSize?: "small";
+}
+
+// export: BlocksResult
+export interface BlocksResult {
+    blocks: ExportBlock[];
+    notes: ExportNote[];
+    representation?: PageBody["representation"];
+    degraded?: boolean;
+}
+
 // export: BulkOperationResult
 export interface BulkOperationResult {
     total: number;
@@ -7550,7 +11014,7 @@ export interface BulkOperationResult {
 }
 
 // export: CalloutKind
-export type CalloutKind = "info" | "note" | "warning" | "tip" | "panel";
+export type CalloutKind = "info" | "note" | "warning" | "tip" | "success" | "error" | "panel";
 
 // export: canonicalExportNoteCode
 export declare function canonicalExportNoteCode(code: string): ExportNoteCode | undefined;
@@ -7559,6 +11023,7 @@ export declare function canonicalExportNoteCode(code: string): ExportNoteCode | 
 export interface Caption {
     kind: CaptionKind;
     content: InlineNode[];
+    localId?: string;
 }
 
 // export: CaptionableBlockType
@@ -7573,6 +11038,9 @@ export interface CommentAuthor {
     accountId?: string;
     email?: string;
 }
+
+// export: commentBodyToText
+export declare function commentBodyToText(storageBody: string): string;
 
 // export: CompletenessCode
 export type CompletenessCode = "page-unreadable" | "subtree-unreadable" | "page-ambiguous-404" | "page-version-changed";
@@ -7614,13 +11082,18 @@ export declare const CONFLUENCE_SEARCH_DATASOURCE_ID = "768fc736-3af4-4a8f-b27e-
 // export: ConfluenceClient
 export declare class ConfluenceClient {
     private confluenceBaseUrl;
+    private deploymentType;
+    private capabilityOrigin;
     private authHeader;
     private useSession;
     private maxRetries;
     private baseDelayMs;
     private tlsOptions;
     private sessionRedirectPolicy;
-    constructor(profile: Profile);
+    private exportSourcePolicy;
+    constructor(profile: Profile, options?: {
+        exportSourcePolicy?: ExportSourcePolicy;
+    });
     getInstanceUrl(): string;
     private buildWebUrl;
     private sleep;
@@ -7630,14 +11103,21 @@ export declare class ConfluenceClient {
     private assertSessionJsonOk;
     private request;
     private requestV2;
-    getCurrentUser(): Promise<{
+    getCurrentUser(options?: {
+        signal?: AbortSignal;
+    }): Promise<{
         accountId: string;
         displayName: string;
         email?: string;
     }>;
-    getPage(id: string): Promise<ConfluencePage & {
+    getPage(id: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluencePage & {
         storage: string;
     }>;
+    getPageAdf(id: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluencePageAdf>;
     getMacroBodyByMacroId(pageId: string, version: number, macroId: string, options?: {
         signal?: AbortSignal;
     }): Promise<string | undefined>;
@@ -7650,6 +11130,14 @@ export declare class ConfluenceClient {
     getPageDetails(id: string, options?: {
         signal?: AbortSignal;
     }): Promise<ConfluencePageDetails>;
+    getExportPageDetails(id: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluenceExportPageDetails>;
+    getExportPageDetailsWithMedia(id: string, options?: {
+        signal?: AbortSignal;
+        maxAttachments?: number;
+        maxInlineComments?: number;
+    }): Promise<ConfluenceExportPageDetails>;
     getAncestors(pageId: string): Promise<{
         id: string;
         title: string;
@@ -7727,8 +11215,12 @@ export declare class ConfluenceClient {
     }): Promise<ConfluenceSpace>;
     listSpaces(limit?: number): Promise<ConfluenceSpace[]>;
     getSpace(key: string): Promise<ConfluenceSpace>;
-    getSpaceIcon(key: string): Promise<SpaceIcon | null>;
-    getSpaceWithIcon(key: string): Promise<{
+    getSpaceIcon(key: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<SpaceIcon | null>;
+    getSpaceWithIcon(key: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<{
         space: ConfluenceSpace;
         icon: SpaceIcon | null;
     }>;
@@ -7749,8 +11241,13 @@ export declare class ConfluenceClient {
     getPagesBatch(ids: string[], concurrency?: number): Promise<(ConfluencePage & {
         storage: string;
     })[]>;
+    listPageAttachmentMedia(pageId: string, options?: {
+        maxAttachments?: number;
+        signal?: AbortSignal;
+    }): Promise<PageAttachmentMediaResult>;
     listAttachments(pageId: string, options?: {
         limit?: number;
+        signal?: AbortSignal;
     }): Promise<AttachmentInfo[]>;
     getAttachment(attachmentId: string): Promise<AttachmentInfo>;
     uploadAttachment(params: {
@@ -7812,6 +11309,10 @@ export declare class ConfluenceClient {
     getInlineCommentReplies(commentId: string, options?: {
         limit?: number;
     }): Promise<InlineComment[]>;
+    listPageInlineCommentsForExport(pageId: string, options?: {
+        signal?: AbortSignal;
+        maxInlineComments?: number;
+    }): Promise<PageInlineCommentsExportResult>;
     getAllComments(pageId: string, options?: {
         limit?: number;
     }): Promise<PageComments>;
@@ -7855,14 +11356,21 @@ export declare class ConfluenceClient {
     }>>;
     getFoldersInTree(parentId: string): Promise<ConfluenceFolder[]>;
     movePageToFolder(pageId: string, folderId: string): Promise<ConfluencePage>;
-    getUser(accountId: string): Promise<UserInfo | null>;
-    getSpaceHomepageStorage(spaceKey: string): Promise<string | null>;
+    getUser(accountId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<UserInfo | null>;
+    getSpaceHomepageStorage(spaceKey: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<string | null>;
     getSpaceHomepageId(spaceKey: string, options?: {
         signal?: AbortSignal;
     }): Promise<string | null>;
-    getPageOwner(pageId: string): Promise<ConfluenceUser | null>;
+    getPageOwner(pageId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluenceUser | null>;
     getUsersBulk(accountIds: string[], options?: {
         concurrency?: number;
+        signal?: AbortSignal;
     }): Promise<Map<string, UserInfo | null>>;
     getVersionHistory(pageId: string, options?: {
         limit?: number;
@@ -7875,6 +11383,15 @@ export declare class ConfluenceClient {
 export type ConfluenceDetailedSearchResults = {
     results: ConfluenceSearchDetail[];
     totalSize?: number;
+};
+
+// export: ConfluenceExportPageDetails
+export type ConfluenceExportPageDetails = ConfluencePageDetails & {
+    exportSource: ExportPageSource;
+    mediaAttachments?: AdfMediaAttachment[];
+    mediaAttachmentsComplete?: boolean;
+    inlineComments?: InlineComment[];
+    inlineCommentsComplete?: boolean;
 };
 
 // export: ConfluenceFolder
@@ -7900,6 +11417,13 @@ export type ConfluencePage = {
         title: string;
     }[];
 };
+
+// export: ConfluencePageAdf
+export interface ConfluencePageAdf {
+    id: string;
+    version: number;
+    body: AtlasDocFormatPageBody;
+}
 
 // export: ConfluencePageDetails
 export type ConfluencePageDetails = ConfluencePage & {
@@ -7975,6 +11499,12 @@ export interface ConversionOptions {
     emitWarnings?: boolean;
     onWarning?: (message: string) => void;
 }
+
+// export: createAdfAnnotationResolver
+export declare function createAdfAnnotationResolver(comments: readonly InlineComment[] | undefined): AdfToBlocksOptions["resolveAnnotation"] | undefined;
+
+// export: createAdfMediaAttachmentResolver
+export declare function createAdfMediaAttachmentResolver(attachments: readonly AdfMediaAttachment[] | undefined): AdfToBlocksOptions["resolveMediaAttachment"] | undefined;
 
 // export: createInOrderLimiter
 export declare function createInOrderLimiter(limit: number): <T>(task: () => Promise<T>) => Promise<T>;
@@ -8072,11 +11602,22 @@ export interface DatasourceView {
 // export: decodeSvgSource
 export declare function decodeSvgSource(bytes: Uint8Array): string;
 
+// export: DEFAULT_ADF_PARSE_BUDGET
+export declare const DEFAULT_ADF_PARSE_BUDGET: Readonly<AdfParseBudget>;
+
 // export: DEFAULT_STORAGE_PARSE_BUDGET
 export declare const DEFAULT_STORAGE_PARSE_BUDGET: StorageParseBudget;
 
 // export: drainPaginated
 export declare function drainPaginated<T>(fetchPage: (token: string | undefined) => Promise<PaginatedPage<T>>): Promise<T[]>;
+
+// export: EmojiSemantics
+export interface EmojiSemantics {
+    shortName: string;
+    id?: string;
+    text?: string;
+    renderedFrom: "text" | "short-name";
+}
 
 // export: escapeCqlValue
 export declare function escapeCqlValue(value: string): string;
@@ -8085,8 +11626,20 @@ export declare function escapeCqlValue(value: string): string;
 export declare const EXPORT_NOTE_CODES: readonly [
     "unknown-macro",
     "macro-not-rendered",
+    "inline-extension-not-rendered",
     "image-unresolved",
     "inline-image-skipped",
+    "layout-geometry-fallback",
+    "expand-static",
+    "emoji-text-fallback",
+    "date-invalid",
+    "adf-node-degraded",
+    "adf-mark-degraded",
+    "adf-attribute-dropped",
+    "adf-media-unresolved",
+    "adf-annotation-unresolved",
+    "adf-annotation-comments-truncated",
+    "adf-storage-fallback",
     "datasource-invalid",
     "datasource-provider-unknown",
     "datasource-provider-unsupported",
@@ -8182,6 +11735,8 @@ export declare const EXPORT_NOTE_CODES: readonly [
     "logo-embed-failed",
     "perf-timing",
     "code-highlight-skipped",
+    "code-nowrap-page-bounded",
+    "code-collapse-static",
     "image-skipped",
     "image-embed-failed",
     "image-missing-alt",
@@ -8206,35 +11761,90 @@ export type ExportBlock = {
     level: 1 | 2 | 3 | 4 | 5 | 6;
     content: InlineNode[];
     explicitAnchor?: string;
+    presentation?: BlockPresentation;
+    localId?: string;
 } | {
     type: "paragraph";
     content: InlineNode[];
+    presentation?: BlockPresentation;
+    localId?: string;
+} | {
+    type: "smartCard";
+    card: SmartCardSemantics;
 } | {
     type: "codeBlock";
     language?: string;
     code: string;
+    title?: string;
+    initiallyCollapsed?: boolean;
     caption?: Caption;
+    wrap?: boolean;
+    hideLineNumbers?: boolean;
+    firstLineNumber?: number;
+    localId?: string;
+    uniqueId?: string;
+    breakout?: LayoutBreakout;
 } | {
     type: "callout";
     kind: CalloutKind;
     title?: string;
     content: ExportBlock[];
+    localId?: string;
+    panelColor?: string;
+    panelIcon?: string;
+    panelIconId?: string;
+    panelIconText?: string;
+    syncedContent?: SyncedContentProvenance;
+} | {
+    type: "expand";
+    nested: boolean;
+    content: ExportBlock[];
+    title?: string;
+    localId?: string;
+    macroId?: string;
+    breakout?: LayoutBreakout;
 } | {
     type: "list";
     ordered: boolean;
     items: ListItem[];
-} | {
+    start?: number;
+    listKind?: "task" | "decision";
+    localId?: string;
+} | ({
+    type: "layout";
+} & PageLayout) | {
     type: "table";
     rows: TableRow[];
     columnWidths?: number[];
+    presentation?: TablePresentation;
     caption?: Caption;
+    fragments?: AdfFragmentIdentity[];
 } | {
     type: "image";
     source: ImageSource;
+    media?: UnresolvedMediaIdentity;
     alt?: string;
     width?: number;
     height?: number;
+    mediaPresentation?: MediaPresentation;
+    mediaGroup?: MediaGroupPosition;
+    border?: MediaBorder;
     caption?: Caption;
+    annotations?: AdfAnnotationIdentity[];
+    link?: ExportLink;
+} | {
+    type: "mediaFallback";
+    label: string;
+    media: UnresolvedMediaIdentity;
+    caption?: Caption;
+    alt?: string;
+    width?: number;
+    height?: number;
+    mediaPresentation?: MediaPresentation;
+    mediaGroup?: MediaGroupPosition;
+    border?: MediaBorder;
+    annotations?: AdfAnnotationIdentity[];
+    link?: ExportLink;
 } | {
     type: "blockquote";
     content: ExportBlock[];
@@ -8256,6 +11866,10 @@ export type ExportBlock = {
     body?: ExportBlock[];
     plainBody?: string;
     macroId?: string;
+    adfExtension?: AdfExtensionIdentity;
+    extensionFrames?: AdfExtensionFrame[];
+    fragments?: AdfFragmentIdentity[];
+    unsupportedAdf?: AdfUnsupportedNodeProvenance;
     bodyNotes?: ExportNote[];
     sourcePage?: {
         id: string;
@@ -8286,6 +11900,12 @@ export interface ExportFolderNode {
     effectiveDepth: number;
     parentId: string | null;
     position: number | null;
+}
+
+// export: ExportLink
+export interface ExportLink {
+    target: LinkTarget;
+    adfAttributes?: AdfLinkAttributes;
 }
 
 // export: ExportMentionLookup
@@ -8341,6 +11961,26 @@ export interface ExportPageNode {
     placeholder?: boolean;
 }
 
+// export: ExportPageReadError
+export declare class ExportPageReadError extends Error {
+    readonly kind: ExportPageReadErrorKind;
+    readonly pageId?: string | undefined;
+    readonly storageVersion?: number | undefined;
+    readonly adfVersion?: number | undefined;
+    constructor(kind: ExportPageReadErrorKind, message: string, pageId?: string | undefined, storageVersion?: number | undefined, adfVersion?: number | undefined);
+}
+
+// export: ExportPageReadErrorKind
+export type ExportPageReadErrorKind = "adf-representation-unavailable" | "invalid-adf-response" | "invalid-storage-response" | "page-version-mismatch";
+
+// export: ExportPageSource
+export interface ExportPageSource {
+    primary: PageBody;
+    storageSidecar?: string;
+    sourceVersion?: number;
+    fallbackReason?: ExportSourceFallbackReason;
+}
+
 // export: ExportPhase
 export type ExportPhase = "discover" | "fetch" | "compose" | "assets" | "serialize" | "emit";
 
@@ -8376,6 +12016,15 @@ export declare class ExportScopeError extends Error {
     constructor(message: string);
 }
 
+// export: ExportSourceFallbackReason
+export type ExportSourceFallbackReason = "data-center" | "adf-representation-unavailable" | "rollout-storage-primary";
+
+// export: ExportSourcePolicy
+export type ExportSourcePolicy = "adf-primary" | "storage-primary";
+
+// export: exportSourcePolicyFromFlag
+export declare function exportSourcePolicyFromFlag(value: string | undefined): ExportSourcePolicy;
+
 // export: ExportTreeBodyManifestEntryV1
 export interface ExportTreeBodyManifestEntryV1 {
     ordinal: number;
@@ -8389,6 +12038,10 @@ export type ExportTreeBodyResultV1 = {
     ok: false;
     pageId: string;
     title: string;
+    source?: {
+        representation: PageBody["representation"];
+        degraded: false;
+    };
     failure: {
         code: CompletenessCode;
         affected: ReadonlyArray<{
@@ -8401,6 +12054,10 @@ export type ExportTreeBodyResultV1 = {
     ok: true;
     pageId: string;
     title: string;
+    source: {
+        representation: PageBody["representation"];
+        degraded: boolean;
+    };
     blocks: ExportBlock[];
     notes: ExportNote[];
     meta: {
@@ -8421,6 +12078,49 @@ export interface ExportTreeBodyStoreV1 {
     commit(entry: ExportTreeBodyManifestEntryV1, result: ExportTreeBodyResultV1, context: {
         signal: AbortSignal;
     }): Promise<void>;
+}
+
+// export: ExportTreePlanError
+export declare class ExportTreePlanError extends Error {
+    readonly code: "export-tree-plan-invalid";
+    constructor(message: string);
+}
+
+// export: ExportTreePlanNodeV1
+export type ExportTreePlanNodeV1 = {
+    kind: "page";
+    pageId: string;
+    title: string;
+    depth: number;
+    effectiveDepth: number;
+    parentId: string | null;
+    position: number | null;
+    observedVersion?: number;
+} | {
+    kind: "folder";
+    folderId: string;
+    title: string;
+    depth: number;
+    effectiveDepth: number;
+    parentId: string | null;
+    position: number | null;
+};
+
+// export: ExportTreePlanV1
+export interface ExportTreePlanV1 {
+    schema: "atlcli.export-tree-plan/1";
+    scope: ExportScope;
+    policy: {
+        labels?: LabelFilter;
+        completenessMode: CompletenessMode;
+        maxPages: number;
+        maxFolders: number;
+    };
+    rootId: string;
+    includeRoot: boolean;
+    nodes: readonly ExportTreePlanNodeV1[];
+    notes: readonly ExportNote[];
+    complete: boolean;
 }
 
 // export: ExternalLinkTarget
@@ -8447,6 +12147,7 @@ export interface FetchExportTreeResult {
     nodes: readonly ExportNode[];
     notes: ExportNote[];
     complete: boolean;
+    sourceSummary: TreeSourceSummary;
 }
 
 // export: findSvgSafetyViolation
@@ -8467,6 +12168,9 @@ export interface FooterComment extends BaseComment {
     replies: FooterComment[];
 }
 
+// export: formatAdfDateTimestamp
+export declare function formatAdfDateTimestamp(timestamp: string, locale?: string): string;
+
 // export: hasActiveLabelFilter
 export declare function hasActiveLabelFilter(filter: LabelFilter | undefined): boolean;
 
@@ -8485,6 +12189,9 @@ export interface HeadingScanBlock {
         readonly cells: readonly {
             readonly content: readonly unknown[];
         }[];
+    }[];
+    readonly columns?: readonly {
+        readonly content: readonly unknown[];
     }[];
 }
 
@@ -8520,11 +12227,18 @@ export interface InlineComment extends BaseComment {
     textSelection: string;
     textSelectionMatchCount?: number;
     textSelectionMatchIndex?: number;
+    inlineMarkerRef?: string;
+    inlineOriginalSelection?: string;
     replies: InlineComment[];
 }
 
 // export: InlineMark
 export type InlineMark = "bold" | "italic" | "code" | "strike" | "underline" | "subscript" | "superscript";
+
+// export: inlineMediaDisplayText
+export declare function inlineMediaDisplayText(media: Pick<Extract<InlineNode, {
+    type: "media";
+}>, "media" | "alt">): string;
 
 // export: InlineNode
 export type InlineNode = {
@@ -8533,18 +12247,56 @@ export type InlineNode = {
     marks?: InlineMark[];
     color?: string;
     backgroundColor?: string;
-} | {
+    emoji?: EmojiSemantics;
+    adfExtension?: AdfExtensionIdentity;
+    extensionParams?: MacroParameter[];
+    sourcePage?: {
+        id: string;
+        version?: number;
+        spaceKey?: string;
+    };
+    annotations?: AdfAnnotationIdentity[];
+    fragments?: AdfFragmentIdentity[];
+    unsupportedAdf?: AdfUnsupportedNodeProvenance[];
+} | ({
     type: "link";
-    target: LinkTarget;
     content: InlineNode[];
-} | {
+} & ExportLink) | {
     type: "mention";
     accountId: string;
     displayName?: string;
+    sourceText?: string;
+    localId?: string;
+    accessLevel?: string;
+    userType?: "DEFAULT" | "SPECIAL" | "APP";
+} | {
+    type: "date";
+    timestamp: string;
+    localId?: string;
 } | {
     type: "status";
     text: string;
     color: string;
+    localId?: string;
+    style?: string;
+} | {
+    type: "smartCard";
+    card: SmartCardSemantics;
+} | {
+    type: "media";
+    media: UnresolvedMediaIdentity;
+    source?: ImageSource;
+    alt?: string;
+    width?: number;
+    height?: number;
+    border?: MediaBorder;
+    annotations?: AdfAnnotationIdentity[];
+    link?: ExportLink;
+} | {
+    type: "placeholder";
+    text: string;
+    localId?: string;
+    placeholderType?: string;
 } | {
     type: "lineBreak";
 };
@@ -8552,8 +12304,20 @@ export type InlineNode = {
 // export: isImageFile
 export declare function isImageFile(filename: string): boolean;
 
+// export: isPinnedAdfMarkType
+export declare function isPinnedAdfMarkType(type: string): type is PinnedAdfMarkType;
+
+// export: isPinnedAdfNodeType
+export declare function isPinnedAdfNodeType(type: string): type is PinnedAdfNodeType;
+
+// export: isPinnedAdfStage0NodeType
+export declare function isPinnedAdfStage0NodeType(type: string): type is PinnedAdfStage0NodeType;
+
 // export: isSafeLinkScheme
 export declare function isSafeLinkScheme(href: string): boolean;
+
+// export: isSupportedAdfNodeType
+export declare function isSupportedAdfNodeType(type: string): type is SupportedAdfNodeType;
 
 // export: JIRA_DATASOURCE_ID
 export declare const JIRA_DATASOURCE_ID = "d8b75300-dfda-4519-b6cd-e49abbd50401";
@@ -8581,6 +12345,20 @@ export interface LabelInfo {
     id: string;
 }
 
+// export: LayoutBreakout
+export interface LayoutBreakout {
+    mode: "wide" | "full-width";
+    width?: number;
+}
+
+// export: LayoutColumn
+export interface LayoutColumn {
+    width: number;
+    verticalAlignment?: TableVerticalAlignment;
+    localId?: string;
+    content: ExportBlock[];
+}
+
 // export: LinkSanitizeResult
 export type LinkSanitizeResult = {
     safe: true;
@@ -8601,9 +12379,11 @@ export type LinkTarget = {
     contentId?: string;
     spaceKey?: string;
     anchor?: string;
+    href?: string;
 } | {
     kind: "attachment";
     filename: string;
+    href?: string;
 } | {
     kind: "anchor";
     anchor: string;
@@ -8612,6 +12392,10 @@ export type LinkTarget = {
 // export: ListItem
 export interface ListItem {
     content: ExportBlock[];
+    kind?: "task" | "decision";
+    state?: string;
+    localId?: string;
+    block?: boolean;
     checked?: boolean;
 }
 
@@ -8652,8 +12436,52 @@ export declare function macroParamText(params: MacroParameter[] | undefined, nam
 // export: markdownToStorage
 export declare function markdownToStorage(markdown: string, options?: ConversionOptions): string;
 
+// export: MaterializedTable
+export interface MaterializedTable {
+    rows: TableRow[];
+    columnWidths?: number[];
+}
+
+// export: materializeTable
+export declare function materializeTable(table: Extract<ExportBlock, {
+    type: "table";
+}>): MaterializedTable;
+
 // export: MAX_ANCHOR_ID_LENGTH
 export declare const MAX_ANCHOR_ID_LENGTH = 40;
+
+// export: MediaBorder
+export interface MediaBorder {
+    color: string;
+    size: 1 | 2 | 3;
+}
+
+// export: mediaFallbackDisplayText
+export declare function mediaFallbackDisplayText(block: Pick<Extract<ExportBlock, {
+    type: "mediaFallback";
+}>, "media" | "alt" | "label">): string;
+
+// export: MediaGroupPosition
+export interface MediaGroupPosition {
+    index: number;
+    size: number;
+}
+
+// export: MediaLayout
+export type MediaLayout = "wide" | "full-width" | "center" | "wrap-right" | "wrap-left" | "align-end" | "align-start";
+
+// export: MediaPresentation
+export interface MediaPresentation {
+    layout: MediaLayout;
+    width?: number;
+    widthType?: "percentage" | "pixel";
+    localId?: string;
+}
+
+// export: mentionDisplayText
+export declare function mentionDisplayText(mention: Pick<Extract<InlineNode, {
+    type: "mention";
+}>, "displayName" | "userType">): string;
 
 // export: minHeadingLevel
 export declare function minHeadingLevel(blocks: readonly HeadingScanBlock[]): number;
@@ -8679,6 +12507,33 @@ export declare function normalizeLinkHref(href: string): string;
 // export: normalizeMarkdown
 export declare function normalizeMarkdown(markdown: string): string;
 
+// export: PageAttachmentMediaResult
+export interface PageAttachmentMediaResult {
+    attachments: AdfMediaAttachment[];
+    complete: boolean;
+}
+
+// export: PageBody
+export type PageBody = {
+    representation: "atlas_doc_format";
+    value: string;
+} | {
+    representation: "storage";
+    value: string;
+};
+
+// export: pageBodyToBlocks
+export declare function pageBodyToBlocks(source: ExportPageSource, options?: PageBodyToBlocksOptions): BlocksResult;
+
+// export: PageBodyToBlocksOptions
+export interface PageBodyToBlocksOptions extends Omit<StorageToBlocksOptions, "parseBudget"> {
+    storageParseBudget?: StorageParseBudget;
+    adfParseBudget?: Partial<AdfParseBudget>;
+    resolveMediaAttachment?: (reference: AdfMediaReference) => AdfResolvedMediaAttachment | undefined;
+    resolveAnnotation?: import("./adf-to-blocks.js").AdfToBlocksOptions["resolveAnnotation"];
+    annotationCommentsComplete?: boolean;
+}
+
 // export: PageChangeInfo
 export interface PageChangeInfo {
     id: string;
@@ -8701,6 +12556,19 @@ export interface PageHistory {
     pageId: string;
     versions: PageVersion[];
     latest: number;
+}
+
+// export: PageInlineCommentsExportResult
+export interface PageInlineCommentsExportResult {
+    comments: InlineComment[];
+    complete: boolean;
+}
+
+// export: PageLayout
+export interface PageLayout {
+    columns: LayoutColumn[];
+    localId?: string;
+    breakout?: LayoutBreakout;
 }
 
 // export: PagePropertiesMacro
@@ -8736,6 +12604,9 @@ export declare class PaginationLoopError extends Error {
     constructor(token: string);
 }
 
+// export: parseAdfDateTimestamp
+export declare function parseAdfDateTimestamp(timestamp: string): Date | undefined;
+
 // export: parseDatasourceAttribute
 export declare function parseDatasourceAttribute(raw: string): DatasourceParseResult;
 
@@ -8744,6 +12615,95 @@ export declare function parsePageProperties(storage: string): PagePropertiesMacr
 
 // export: parseXml
 export declare function parseXml(input: string, budget?: StorageParseBudget): XmlNode[];
+
+// export: PINNED_ADF_MARK_TYPES
+export declare const PINNED_ADF_MARK_TYPES: readonly [
+    "alignment",
+    "annotation",
+    "backgroundColor",
+    "border",
+    "breakout",
+    "code",
+    "dataConsumer",
+    "em",
+    "fontSize",
+    "fragment",
+    "indentation",
+    "link",
+    "strike",
+    "strong",
+    "subsup",
+    "textColor",
+    "underline"
+];
+
+// export: PINNED_ADF_NODE_TYPES
+export declare const PINNED_ADF_NODE_TYPES: readonly [
+    "blockCard",
+    "blockTaskItem",
+    "blockquote",
+    "bodiedExtension",
+    "bodiedSyncBlock",
+    "bulletList",
+    "caption",
+    "codeBlock",
+    "date",
+    "decisionItem",
+    "decisionList",
+    "doc",
+    "embedCard",
+    "emoji",
+    "expand",
+    "extension",
+    "hardBreak",
+    "heading",
+    "inlineCard",
+    "inlineExtension",
+    "layoutColumn",
+    "layoutSection",
+    "listItem",
+    "media",
+    "mediaGroup",
+    "mediaInline",
+    "mediaSingle",
+    "mention",
+    "nestedExpand",
+    "orderedList",
+    "panel",
+    "paragraph",
+    "placeholder",
+    "rule",
+    "status",
+    "syncBlock",
+    "table",
+    "tableCell",
+    "tableHeader",
+    "tableRow",
+    "taskItem",
+    "taskList",
+    "text"
+];
+
+// export: PINNED_ADF_SCHEMA_PACKAGE
+export declare const PINNED_ADF_SCHEMA_PACKAGE = "@atlaskit/adf-schema";
+
+// export: PINNED_ADF_SCHEMA_VERSION
+export declare const PINNED_ADF_SCHEMA_VERSION = "56.1.15";
+
+// export: PINNED_ADF_STAGE0_NODE_TYPES
+export declare const PINNED_ADF_STAGE0_NODE_TYPES: readonly [
+    "extensionFrame",
+    "multiBodiedExtension"
+];
+
+// export: PinnedAdfMarkType
+export type PinnedAdfMarkType = (typeof PINNED_ADF_MARK_TYPES)[number];
+
+// export: PinnedAdfNodeType
+export type PinnedAdfNodeType = (typeof PINNED_ADF_NODE_TYPES)[number];
+
+// export: PinnedAdfStage0NodeType
+export type PinnedAdfStage0NodeType = (typeof PINNED_ADF_STAGE0_NODE_TYPES)[number];
 
 // export: readableTextColor
 export declare function readableTextColor(backgroundColor: string): "#FFFFFF" | "#172B4D";
@@ -8789,6 +12749,28 @@ export interface SearchResults {
     nextLink?: string;
 }
 
+// export: SmartCardAppearance
+export type SmartCardAppearance = "inline" | "block" | "embed";
+
+// export: smartCardDisplayText
+export declare function smartCardDisplayText(card: SmartCardSemantics): string;
+
+// export: SmartCardSemantics
+export interface SmartCardSemantics {
+    appearance: SmartCardAppearance;
+    source: "url" | "data" | "datasource";
+    url?: string;
+    target?: LinkTarget;
+    title?: string;
+    localId?: string;
+    data?: AdfJsonValue;
+    datasource?: AdfJsonValue;
+    layout?: "wide" | "full-width" | "center" | "wrap-right" | "wrap-left" | "align-end" | "align-start";
+    width?: number;
+    originalHeight?: number;
+    originalWidth?: number;
+}
+
 // export: SmartLinkAppearance
 export type SmartLinkAppearance = "inline" | "card" | "embed";
 
@@ -8805,6 +12787,11 @@ export type SpaceIcon = {
     height?: number;
     isDefault?: boolean;
 };
+
+// export: statusDisplayText
+export declare function statusDisplayText(status: Pick<Extract<InlineNode, {
+    type: "status";
+}>, "text" | "color" | "style">): string;
 
 // export: StorageParseBudget
 export interface StorageParseBudget {
@@ -8840,16 +12827,16 @@ export interface StorageToBlocksOptions {
 }
 
 // export: StorageToBlocksResult
-export interface StorageToBlocksResult {
-    blocks: ExportBlock[];
-    notes: ExportNote[];
-}
+export type StorageToBlocksResult = BlocksResult;
 
 // export: storageToMarkdown
 export declare function storageToMarkdown(storage: string, options?: ConversionOptions): string;
 
 // export: stripTableColumnMetadata
 export declare function stripTableColumnMetadata(storage: string): string;
+
+// export: SupportedAdfNodeType
+export type SupportedAdfNodeType = PinnedAdfNodeType | PinnedAdfStage0NodeType;
 
 // export: SVG_UNSAFE_MESSAGE
 export declare const SVG_UNSAFE_MESSAGE = "SVG contains active or externally loaded content";
@@ -8858,6 +12845,14 @@ export declare const SVG_UNSAFE_MESSAGE = "SVG contains active or externally loa
 export interface SvgSafetyViolation {
     rule: "doctype-or-entity" | "blocked-element" | "event-handler-attribute" | "non-fragment-reference" | "css-external-reference";
     detail: string;
+}
+
+// export: SyncedContentProvenance
+export interface SyncedContentProvenance {
+    resourceId: string;
+    localId: string;
+    projection: "embedded-snapshot" | "unresolved-reference";
+    breakout?: LayoutBreakout;
 }
 
 // export: SyncScope
@@ -8878,16 +12873,38 @@ export interface TableCell {
     colspan: number;
     rowspan: number;
     backgroundColor?: string;
+    columnWidths?: number[];
+    verticalAlignment?: TableVerticalAlignment;
+    localId?: string;
     content: ExportBlock[];
 }
 
 // export: tableColumns
 export declare function tableColumns(ds: Datasource): string[] | undefined;
 
+// export: TableDisplayMode
+export type TableDisplayMode = "default" | "fixed";
+
+// export: TableLayout
+export type TableLayout = "default" | "wide" | "full-width" | "center" | "align-start" | "align-end";
+
+// export: TablePresentation
+export interface TablePresentation {
+    layout?: TableLayout;
+    width?: number;
+    displayMode?: TableDisplayMode;
+    numberedColumn?: boolean;
+    localId?: string;
+}
+
 // export: TableRow
 export interface TableRow {
     cells: TableCell[];
+    localId?: string;
 }
+
+// export: TableVerticalAlignment
+export type TableVerticalAlignment = "top" | "middle" | "bottom";
 
 // export: translateDatasourceLink
 export declare function translateDatasourceLink(rawAttr: string, href: string): DatasourceOutcome;
@@ -8918,6 +12935,11 @@ export interface TreeFetchOptions {
     completenessMode?: CompletenessMode;
     signal?: AbortSignal;
     onProgress?: (progress: TreeFetchProgress) => void;
+    bodyOptions?: Omit<PageBodyToBlocksOptions, "pageContext">;
+    preparedPlan?: ExportTreePlanV1;
+    onPlanPrepared?: (plan: ExportTreePlanV1) => void | Promise<void>;
+    onPlanRecovered?: (plan: ExportTreePlanV1) => void | Promise<void>;
+    maxPlanBytes?: number;
 }
 
 // export: TreeFetchProgress
@@ -8953,6 +12975,12 @@ export interface TreeSource {
 
 // export: TreeSourceClient
 export interface TreeSourceClient {
+    getExportPageDetailsWithMedia?(id: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluenceExportPageDetails>;
+    getExportPageDetails?(id: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluenceExportPageDetails>;
     getPageDetails(id: string, options?: {
         signal?: AbortSignal;
     }): Promise<{
@@ -9002,13 +13030,32 @@ export interface TreeSourceClient {
 }
 
 // export: TreeSourcePage
-export interface TreeSourcePage {
+export type TreeSourcePage = TreeSourcePageMetadata & ({
+    exportSource: ExportPageSource;
+    storage?: string;
+} | {
+    storage: string;
+    exportSource?: undefined;
+});
+
+// export: TreeSourcePageMetadata
+export interface TreeSourcePageMetadata {
     id: string;
     title: string;
-    storage: string;
     version?: number;
     labels?: string[];
     spaceKey?: string;
+    mediaAttachments?: AdfMediaAttachment[];
+    mediaAttachmentsComplete?: boolean;
+    inlineComments?: InlineComment[];
+    inlineCommentsComplete?: boolean;
+}
+
+// export: TreeSourceSummary
+export interface TreeSourceSummary {
+    pagesRead: number;
+    representations: Readonly<Record<PageBody["representation"], number>>;
+    degradedPages: number;
 }
 
 // export: TreeSourceVersion
@@ -9019,6 +13066,23 @@ export interface TreeSourceVersion {
 
 // export: uniqueAnchorId
 export declare function uniqueAnchorId(rawName: string, used: ReadonlySet<string>): string;
+
+// export: UnresolvedMediaIdentity
+export interface UnresolvedMediaIdentity {
+    mediaType?: string;
+    id?: string;
+    collection?: string;
+    occurrenceKey?: string;
+    localId?: string;
+    dataConsumers?: AdfDataConsumerProvenance[];
+    url?: string;
+    dataJson?: string;
+    filename?: string;
+    pageId?: string;
+    attachmentMediaType?: string;
+    webuiLink?: string;
+    downloadLink?: string;
+}
 
 // export: UNSAFE_LINK_NOTE_CODE
 export declare const UNSAFE_LINK_NOTE_CODE = "unsafe-link-skipped";
@@ -9038,6 +13102,21 @@ export interface UserInfo {
     email: string | null;
     isActive: boolean;
     profilePicture: string | null;
+}
+
+// export: ValidAdfDocument
+export type ValidAdfDocument = AdfDocument;
+
+// export: validateAdf
+export declare function validateAdf(input: string | unknown, options?: {
+    budget?: Partial<AdfParseBudget>;
+}): ValidatedAdfDocument;
+
+// export: ValidatedAdfDocument
+export interface ValidatedAdfDocument {
+    document: AdfDocument;
+    diagnostics: AdfDiagnostic[];
+    stats: AdfValidationStats;
 }
 
 // export: validateExportScope

@@ -13,16 +13,29 @@
  * a dangling relationship (the spec-004 skip-path invariant).
  */
 import type {
+  AdfAnnotationIdentity,
+  BlockPresentation,
   ExportBlock,
+  ExportLink,
   InlineNode,
   ExportNote,
   ListItem,
+  SmartCardSemantics,
+  TableCell,
+  TablePresentation,
   TableRow,
 } from "@atlcli/confluence";
 import {
   computeHeadingOffset,
+  formatAdfDateTimestamp,
+  inlineMediaDisplayText,
+  materializeTable,
+  mediaFallbackDisplayText,
+  mentionDisplayText,
   readableTextColor,
   sanitizeAnchorId,
+  smartCardDisplayText,
+  statusDisplayText,
   uniqueAnchorId,
 } from "@atlcli/confluence";
 import { highlightCode, warmHighlight } from "./highlight.js";
@@ -60,6 +73,11 @@ import { MAX_ILVL, NumberingAllocator } from "./numbering.js";
 /** The `image` variant of {@link ExportBlock}. */
 export type ImageBlock = Extract<ExportBlock, { type: "image" }>;
 
+/** A correlated ADF inline image whose bytes can be fetched by the host. */
+export type InlineImageNode = Extract<InlineNode, { type: "media" }> & {
+  source: NonNullable<Extract<InlineNode, { type: "media" }>["source"]>;
+};
+
 /** The `codeBlock` variant of {@link ExportBlock} (carries mermaid source). */
 export type CodeBlock = Extract<ExportBlock, { type: "codeBlock" }>;
 
@@ -82,6 +100,8 @@ export type ImageEmbedOutcome =
  */
 export interface ImageEmbedSeam {
   embed(block: ImageBlock): Promise<ImageEmbedOutcome>;
+  /** Embed a correlated image as a drawing run inside its existing paragraph. */
+  embedInline?(node: InlineImageNode): Promise<ImageEmbedOutcome>;
   /**
    * Optional perf hook: start the block's asset fetch NOW, ahead of its
    * document-order {@link embed} call, so downloads overlap each other and
@@ -90,6 +110,8 @@ export interface ImageEmbedSeam {
    * happens in document order via {@link embed}. Never throws.
    */
   prefetch?(block: ImageBlock): void;
+  /** Best-effort byte prefetch for an inline image occurrence. */
+  prefetchInline?(node: InlineImageNode): void;
 }
 
 /**
@@ -129,6 +151,8 @@ export interface SerializeContext {
    * numbering part so ids never collide.
    */
   numbering?: NumberingAllocator;
+  /** Export-wide allocator for native Word comment ranges and comments.xml. */
+  comments?: WordCommentRegistry;
   /** Image embedding seam; absent → images degrade to report notes. */
   images?: ImageEmbedSeam;
   /** Diagram embedding seam; absent → mermaid stays a source code block. */
@@ -145,6 +169,11 @@ export interface SerializeContext {
    * `"en"`. Undefined → `"en"`. Drives {@link captionParagraph}'s SEQ label.
    */
   captionLang?: CaptionLang;
+  /**
+   * BCP-47 locale used for semantic ADF dates. Unlike `captionLang`, this is
+   * not narrowed to the currently translated caption-label set.
+   */
+  dateLocale?: string;
   /**
    * Table style source (spec 006 G3b / B9): `"confluence"` (default) keeps the
    * built-in grid + borders + per-cell shading; `"template"` defers appearance
@@ -163,6 +192,7 @@ interface InternalContext extends SerializeContext {
   headingOffset: number;
   /** The active numbering allocator (always present inside the walk). */
   numbering: NumberingAllocator;
+  comments: WordCommentRegistry;
   /** Default ink inherited by plain text inside a colored table cell. */
   defaultTextColor?: string;
   /**
@@ -216,10 +246,64 @@ export interface SerializeResult {
    * style no heading in THIS export ends up using.
    */
   headingStyleIds: string[];
+  comments: WordCommentRegistry;
+}
+
+/** Export-wide native Word comment registry, shared with included pages. */
+export class WordCommentRegistry {
+  private readonly byMarkerRef = new Map<string, {
+    id: number;
+    annotation: AdfAnnotationIdentity & { comment: NonNullable<AdfAnnotationIdentity["comment"]> };
+  }>();
+
+  register(annotation: AdfAnnotationIdentity): number | undefined {
+    if (!annotation.comment) return undefined;
+    const existing = this.byMarkerRef.get(annotation.id);
+    if (existing) return existing.id;
+    const id = this.byMarkerRef.size;
+    this.byMarkerRef.set(annotation.id, {
+      id,
+      annotation: annotation as AdfAnnotationIdentity & {
+        comment: NonNullable<AdfAnnotationIdentity["comment"]>;
+      },
+    });
+    return id;
+  }
+
+  get isUsed(): boolean {
+    return this.byMarkerRef.size > 0;
+  }
+
+  toXml(): string {
+    const comments = [...this.byMarkerRef.values()].map(({ id, annotation }) => {
+      const resource = annotation.comment;
+      const status = resource.status === "resolved" ? "[Resolved] " : "";
+      const replies = resource.replies
+        .map((reply) => paragraph(run(`Reply: ${reply.bodyText}`)))
+        .join("");
+      const created = resource.created && !Number.isNaN(Date.parse(resource.created))
+        ? ` w:date="${new Date(resource.created).toISOString()}"`
+        : "";
+      return `<w:comment w:id="${id}" w:author="Confluence"${created}>` +
+        paragraph(run(`${status}${resource.bodyText}`)) +
+        replies +
+        `</w:comment>`;
+    }).join("");
+    return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
+      `<w:comments xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">` +
+      comments +
+      `</w:comments>`;
+  }
 }
 
 /** Twips of indent per list nesting level. */
 const INDENT_STEP = 360;
+/** Half an inch per authored ADF indentation level. */
+const ADF_BLOCK_INDENT_STEP = 720;
+/** Atlassian Body Small is 12 px, which maps to 9 pt / 18 OOXML half-points. */
+const ADF_SMALL_TEXT_HALF_POINTS = 18;
+/** Neutral background used when ADF/Storage code marks carry no explicit fill. */
+const INLINE_CODE_BACKGROUND = "F4F5F7";
 
 // ---------------------------------------------------------------------------
 // Inline
@@ -227,53 +311,145 @@ const INDENT_STEP = 360;
 
 function styleFromInline(
   node: Extract<InlineNode, { type: "text" }>,
-  defaultTextColor?: string
+  defaultTextColor?: string,
+  fontSizeHalfPoints?: number,
 ): RunStyle {
   const marks = node.marks ?? [];
+  const code = marks.includes("code");
   return {
     bold: marks.includes("bold"),
     italic: marks.includes("italic"),
-    code: marks.includes("code"),
+    code,
     strike: marks.includes("strike"),
     underline: marks.includes("underline"),
     subscript: marks.includes("subscript"),
     superscript: marks.includes("superscript"),
     color: node.color ?? defaultTextColor,
-    backgroundColor: node.backgroundColor,
+    backgroundColor: node.backgroundColor ?? (code ? INLINE_CODE_BACKGROUND : undefined),
+    fontSizeHalfPoints,
   };
 }
 
+function wrapCommentRanges(
+  xml: string,
+  annotations: readonly AdfAnnotationIdentity[] | undefined,
+  registry: WordCommentRegistry,
+): string {
+  const ids = (annotations ?? [])
+    .map((annotation) => registry.register(annotation))
+    .filter((id): id is number => id !== undefined);
+  if (ids.length === 0) return xml;
+  const starts = ids.map((id) => `<w:commentRangeStart w:id="${id}"/>`).join("");
+  const ends = [...ids].reverse()
+    .map((id) => `<w:commentRangeEnd w:id="${id}"/>`)
+    .join("");
+  const refs = ids.map((id) =>
+    `<w:r><w:rPr><w:rStyle w:val="CommentReference"/></w:rPr>` +
+    `<w:commentReference w:id="${id}"/></w:r>`
+  ).join("");
+  return `${starts}${xml}${ends}${refs}`;
+}
+
+function wrapCommentRangesInFirstParagraph(
+  xml: string,
+  annotations: readonly AdfAnnotationIdentity[] | undefined,
+  registry: WordCommentRegistry,
+): string {
+  if (!annotations?.some((annotation) => annotation.comment)) return xml;
+  return xml.replace(
+    /^(<w:p\b[^>]*>(?:<w:pPr>[\s\S]*?<\/w:pPr>)?)([\s\S]*?)(<\/w:p>)/,
+    (_match, open: string, content: string, close: string) =>
+      `${open}${wrapCommentRanges(content, annotations, registry)}${close}`,
+  );
+}
+
+function coalesceAdjacentCommentRanges(xml: string): string {
+  return xml.replace(
+    /<w:commentRangeEnd w:id="(\d+)"\/><w:r><w:rPr><w:rStyle w:val="CommentReference"\/><\/w:rPr><w:commentReference w:id="(\d+)"\/><\/w:r><w:commentRangeStart w:id="(\d+)"\/>/g,
+    (boundary, endId: string, referenceId: string, startId: string) =>
+      endId === referenceId && endId === startId ? "" : boundary,
+  );
+}
+
 /** Serialize inline nodes to run XML. */
-export function serializeInline(nodes: InlineNode[], defaultTextColor?: string): string {
+export function serializeInline(
+  nodes: InlineNode[],
+  defaultTextColor?: string,
+  fontSizeHalfPoints?: number,
+  dateLocale = "en",
+): string {
   let out = "";
   for (const node of nodes) {
     switch (node.type) {
       case "text":
-        out += run(node.text, styleFromInline(node, defaultTextColor));
+        out += run(node.text, styleFromInline(node, defaultTextColor, fontSizeHalfPoints));
         break;
       case "lineBreak":
         out += lineBreakRun();
         break;
+      case "date":
+        out += run(` ${formatAdfDateTimestamp(node.timestamp, dateLocale)} `, {
+          backgroundColor: "DFE1E6",
+          fontSizeHalfPoints,
+        });
+        break;
       case "status":
-        out += statusBadgeRun(node.text || node.color, node.color);
+        out += statusBadgeRun(statusDisplayText(node), node.color, fontSizeHalfPoints);
+        break;
+      case "placeholder":
         break;
       case "mention":
-        out += run(`@${node.displayName ?? node.accountId}`, { color: "0747A6" });
+        out += run(`@${mentionDisplayText(node)}`, {
+          color: "0747A6",
+          fontSizeHalfPoints,
+        });
         break;
+      case "smartCard":
+        out += smartCardRuns(node.card, fontSizeHalfPoints);
+        break;
+      case "media": {
+        const inner = run(`[${inlineMediaDisplayText(node)}]`, {
+          color: node.link ? "0563C1" : "42526E",
+          underline: node.link !== undefined,
+          backgroundColor: "F4F5F7",
+          borderColor: node.border?.color.slice(1, 7),
+          borderSize: node.border ? node.border.size * 8 : undefined,
+          fontSizeHalfPoints,
+        });
+        out += linkRuns(node.link, inner);
+        break;
+      }
       case "link": {
         const innerRuns = serializeInline(
-          node.content.length ? node.content : [{ type: "text", text: "" }]
+          node.content.length ? node.content : [{ type: "text", text: "" }],
+          defaultTextColor,
+          fontSizeHalfPoints,
+          dateLocale,
         );
-        const styled = linkStyledRuns(node.content) || innerRuns;
-        if (node.target.kind === "external" && node.target.href) {
+        const styled = linkStyledRuns(node.content, fontSizeHalfPoints, dateLocale) || innerRuns;
+        const sourceHref =
+          node.target.kind === "external" ||
+          node.target.kind === "page" ||
+          node.target.kind === "attachment"
+            ? node.target.href
+            : undefined;
+        if (sourceHref) {
           // Style inner runs link-like by re-emitting as hyperlink-colored.
-          out += hyperlinkField(node.target.href, linkStyledRuns(node.content));
+          out += hyperlinkField(
+            sourceHref,
+            linkStyledRuns(node.content, fontSizeHalfPoints, dateLocale),
+            node.adfAttributes?.title,
+          );
         } else if (node.target.kind === "anchor") {
           // Internal anchor link → a real in-document jump (spec 002). The
           // anchor is the sanitized destination id compose-document assigned;
           // re-sanitize defensively so a raw single-page anchor still matches
           // the bookmark name the anchor/heading emits.
-          out += internalHyperlink(sanitizeAnchorId(node.target.anchor), styled);
+          out += internalHyperlink(
+            sanitizeAnchorId(node.target.anchor),
+            styled,
+            node.adfAttributes?.title,
+          );
         } else {
           out += styled;
         }
@@ -284,17 +460,125 @@ export function serializeInline(nodes: InlineNode[], defaultTextColor?: string):
   return out;
 }
 
+async function serializeInlineWithAssets(
+  nodes: InlineNode[],
+  ctx: InternalContext,
+  notes: ExportNote[],
+  defaultTextColor?: string,
+  fontSizeHalfPoints?: number,
+  linkStyle = false,
+): Promise<string> {
+  let out = "";
+  for (const node of nodes) {
+    if (node.type === "media" && node.source) {
+      if (!ctx.images?.embedInline) {
+        notes.push({
+          level: "info",
+          code: "image-skipped",
+          message: `Inline image "${inlineMediaDisplayText(node)}" skipped — inline image embedding is unavailable in this export.`,
+        });
+        out += wrapCommentRanges(
+          serializeInline([node], defaultTextColor, fontSizeHalfPoints, ctx.dateLocale),
+          node.annotations,
+          ctx.comments,
+        );
+        continue;
+      }
+      const outcome = await ctx.images.embedInline(node as InlineImageNode);
+      if (outcome.ok) {
+        if (outcome.notes) notes.push(...outcome.notes);
+        out += wrapCommentRanges(
+          linkRuns(node.link, outcome.xml),
+          node.annotations,
+          ctx.comments,
+        );
+      } else {
+        notes.push({
+          level: outcome.level ?? "warning",
+          code: outcome.code ?? "image-embed-failed",
+          message: `Inline image "${inlineMediaDisplayText(node)}" could not be embedded (${outcome.reason}).`,
+        });
+        out += wrapCommentRanges(
+          serializeInline([node], defaultTextColor, fontSizeHalfPoints, ctx.dateLocale),
+          node.annotations,
+          ctx.comments,
+        );
+      }
+      continue;
+    }
+    if (node.type === "link") {
+      const innerRuns = await serializeInlineWithAssets(
+        node.content.length ? node.content : [{ type: "text", text: "" }],
+        ctx,
+        notes,
+        defaultTextColor,
+        fontSizeHalfPoints,
+        true,
+      );
+      const sourceHref =
+        node.target.kind === "external" ||
+        node.target.kind === "page" ||
+        node.target.kind === "attachment"
+          ? node.target.href
+          : undefined;
+      if (sourceHref) {
+        out += hyperlinkField(sourceHref, innerRuns, node.adfAttributes?.title);
+      } else if (node.target.kind === "anchor") {
+        out += internalHyperlink(
+          sanitizeAnchorId(node.target.anchor),
+          innerRuns,
+          node.adfAttributes?.title,
+        );
+      } else {
+        out += innerRuns;
+      }
+      continue;
+    }
+    if (linkStyle && node.type === "text") {
+      out += wrapCommentRanges(run(node.text, {
+        ...styleFromInline(node, defaultTextColor, fontSizeHalfPoints),
+        color: "0563C1",
+        underline: true,
+      }), node.annotations, ctx.comments);
+      continue;
+    }
+    out += wrapCommentRanges(
+      serializeInline([node], defaultTextColor, fontSizeHalfPoints, ctx.dateLocale),
+      "annotations" in node ? node.annotations : undefined,
+      ctx.comments,
+    );
+  }
+  return coalesceAdjacentCommentRanges(out);
+}
+
 /** Render link content as underlined blue runs (Word Hyperlink look). */
-function linkStyledRuns(nodes: InlineNode[]): string {
+function linkStyledRuns(nodes: InlineNode[], fontSizeHalfPoints?: number, dateLocale = "en"): string {
   let out = "";
   for (const node of nodes) {
     if (node.type === "text") {
-      out += run(node.text, { ...styleFromInline(node), color: "0563C1", underline: true });
+      out += run(node.text, {
+        ...styleFromInline(node, undefined, fontSizeHalfPoints),
+        color: "0563C1",
+        underline: true,
+      });
     } else {
-      out += serializeInline([node]);
+      out += serializeInline([node], undefined, fontSizeHalfPoints, dateLocale);
     }
   }
   return out;
+}
+
+function blockPresentationPPr(
+  presentation: BlockPresentation | undefined,
+): string {
+  if (!presentation) return "";
+  const indentation = presentation.indentation === undefined
+    ? ""
+    : `<w:ind w:start="${Math.max(1, Math.min(6, presentation.indentation)) * ADF_BLOCK_INDENT_STEP}"/>`;
+  const alignment = presentation.alignment === undefined
+    ? ""
+    : `<w:jc w:val="${presentation.alignment}"/>`;
+  return `${indentation}${alignment}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -353,17 +637,39 @@ function placeMarker(frag: string, markerRun: string): string {
  */
 function prefetchBlocks(blocks: ExportBlock[], ctx: SerializeContext): void {
   const languages: string[] = [];
+  const walkInline = (nodes: InlineNode[]): void => {
+    for (const node of nodes) {
+      if (node.type === "link") {
+        walkInline(node.content);
+      } else if (node.type === "media" && node.source) {
+        try {
+          ctx.images?.prefetchInline?.(node as InlineImageNode);
+        } catch {
+          // prefetch is best-effort; embedInline() handles + reports failures
+        }
+      }
+    }
+  };
+  const walkCaption = (caption: Caption | undefined): void => {
+    if (caption) walkInline(caption.content);
+  };
   const walk = (list: ExportBlock[]): void => {
     for (const block of list) {
       switch (block.type) {
+        case "heading":
+        case "paragraph":
+          walkInline(block.content);
+          break;
         case "image":
           try {
             ctx.images?.prefetch?.(block);
           } catch {
             // prefetch is best-effort; embed() handles + reports failures
           }
+          walkCaption(block.caption);
           break;
         case "codeBlock": {
+          walkCaption(block.caption);
           const lang = (block.language ?? "").trim().toLowerCase();
           if (lang === "mermaid") {
             try {
@@ -377,6 +683,7 @@ function prefetchBlocks(blocks: ExportBlock[], ctx: SerializeContext): void {
           break;
         }
         case "callout":
+        case "expand":
         case "blockquote":
         case "orientation":
           walk(block.content);
@@ -384,8 +691,15 @@ function prefetchBlocks(blocks: ExportBlock[], ctx: SerializeContext): void {
         case "list":
           for (const item of block.items) walk(item.content);
           break;
+        case "layout":
+          for (const column of block.columns) walk(column.content);
+          break;
         case "table":
+          walkCaption(block.caption);
           for (const row of block.rows) for (const cell of row.cells) walk(cell.content);
+          break;
+        case "mediaFallback":
+          walkCaption(block.caption);
           break;
       }
     }
@@ -405,6 +719,7 @@ export async function serializeBlocks(
     ...ctx,
     headingOffset: computeHeadingOffset(blocks),
     numbering: ctx.numbering ?? new NumberingAllocator({ abstractNumId: 0, numId: 0 }),
+    comments: ctx.comments ?? new WordCommentRegistry(),
     bookmarks: { next: 1, used: new Set() },
     captionSeq: new Map<string, number>(),
     emittedHeadingStyles: new Set<string>(),
@@ -418,6 +733,7 @@ export async function serializeBlocks(
     xml: coalesceSectPrParagraphs(parts.join("")),
     notes,
     headingStyleIds: [...internal.emittedHeadingStyles],
+    comments: internal.comments,
   };
 }
 
@@ -466,9 +782,14 @@ async function serializeBlock(
       const outlineLvl = Math.max(0, Math.min(8, effective - 1));
       const headingStyleId = resolveHeadingStyleId(ctx.styleNames, styleLevel);
       ctx.emittedHeadingStyles.add(headingStyleId);
-      const headingPara = paragraph(serializeInline(block.content, ctx.defaultTextColor), {
+      const headingPara = paragraph(await serializeInlineWithAssets(
+        block.content,
+        ctx,
+        notes,
+        ctx.defaultTextColor,
+      ), {
         styleId: headingStyleId,
-        extraPPr: `<w:outlineLvl w:val="${outlineLvl}"/>`,
+        extraPPr: `${blockPresentationPPr(block.presentation)}<w:outlineLvl w:val="${outlineLvl}"/>`,
       });
       // An explicit anchor (chapter start / in-page heading anchor, spec 002)
       // wraps the heading paragraph in a real bookmark so `w:hyperlink w:anchor`
@@ -485,13 +806,47 @@ async function serializeBlock(
     }
 
     case "paragraph":
-      return paragraph(serializeInline(block.content, ctx.defaultTextColor));
+      return paragraph(await serializeInlineWithAssets(
+        block.content,
+        ctx,
+        notes,
+        ctx.defaultTextColor,
+        block.presentation?.fontSize === "small" ? ADF_SMALL_TEXT_HALF_POINTS : undefined,
+      ), {
+        extraPPr: blockPresentationPPr(block.presentation),
+      });
+
+    case "smartCard": {
+      const cardBorder =
+        `<w:pBdr><w:top w:val="single" w:sz="8" w:color="B3BAC5"/>` +
+        `<w:left w:val="single" w:sz="8" w:color="B3BAC5"/>` +
+        `<w:bottom w:val="single" w:sz="8" w:color="B3BAC5"/>` +
+        `<w:right w:val="single" w:sz="8" w:color="B3BAC5"/></w:pBdr>`;
+      const prefix = block.card.appearance === "embed" ? "Embedded content: " : "";
+      return paragraph(
+        run(prefix, { bold: true, color: "42526E" }) + smartCardRuns(block.card),
+        {
+          extraPPr:
+            `${cardBorder}<w:shd w:val="clear" w:color="auto" w:fill="F4F5F7"/>` +
+            `<w:spacing w:before="80" w:after="80"/>`,
+        },
+      );
+    }
 
     case "codeBlock": {
+      if (block.initiallyCollapsed === true) {
+        notes.push({
+          level: "info",
+          code: "code-collapse-static",
+          message:
+            "A code block was initially collapsed in Confluence; the static DOCX export rendered its complete source.",
+        });
+      }
+      const titleXml = codeTitleParagraph(block.title);
       // A ```mermaid block takes the diagram path (spec 005a); every other
       // language is untouched by this branch.
       if ((block.language ?? "").trim().toLowerCase() === "mermaid") {
-        return serializeMermaid(block, ctx, notes);
+        return titleXml + await serializeMermaid(block, ctx, notes);
       }
       const { lines, skipped } = await highlightCode(block.code, block.language);
       if (skipped) {
@@ -501,20 +856,56 @@ async function serializeBlock(
           message: `Code block${block.language ? ` (${block.language})` : ""} was not syntax-highlighted (${skipped}); rendered as plain monospace.`,
         });
       }
-      const codeXml = lines.map((tokens) => codeLineParagraph(tokens)).join("");
+      if (block.wrap === false) {
+        notes.push({
+          level: "info",
+          code: "code-nowrap-page-bounded",
+          message:
+            "A code block requested no wrapping; the bounded DOCX page keeps all source text and may wrap long lines instead of clipping them.",
+        });
+      }
+      const firstLineNumber = block.firstLineNumber ?? 1;
+      const lastLineNumber = firstLineNumber + Math.max(0, lines.length - 1);
+      const lineNumberWidth = String(lastLineNumber).length;
+      const codeXml = lines
+        .map((tokens, index) =>
+          codeLineParagraph(
+            tokens,
+            block.hideLineNumbers === false ? firstLineNumber + index : undefined,
+            lineNumberWidth,
+          )
+        )
+        .join("");
       // Caption below code (established convention).
-      return block.caption ? codeXml + captionXml(block.caption, ctx) : codeXml;
+      const caption = block.caption ? await captionXml(block.caption, ctx, notes) : "";
+      return titleXml + codeXml + caption;
     }
 
     case "callout": {
       const title = block.title ? run(block.title, { bold: true }) : null;
+      const panelColor = block.panelColor?.match(/^#[0-9a-f]{6}$/iu)?.[0].toUpperCase();
+      const panelIcon = block.panelIconText || block.panelIcon;
       const body = await serializeChildren(
         block.content,
         { ...ctx, container: "calloutCell" },
         notes,
         depth + 1
       );
-      return calloutTable(block.kind, title, body);
+      return calloutTable(block.kind, title, body, {
+        ...(panelColor !== undefined ? { color: panelColor } : {}),
+        ...(panelIcon ? { iconRunsXml: run(panelIcon, { bold: true }) } : {}),
+      });
+    }
+
+    case "expand": {
+      const label = block.title === undefined ? "[-]" : `[-] ${block.title}`;
+      const body = await serializeChildren(
+        block.content,
+        { ...ctx, container: "calloutCell" },
+        notes,
+        depth + 1
+      );
+      return calloutTable("panel", run(label, { bold: true }), body);
     }
 
     case "list":
@@ -522,15 +913,20 @@ async function serializeBlock(
       // `depth` (callouts/blockquotes/table cells don't deepen list nesting).
       return serializeList(block, ctx, notes, depth, 0);
 
+    case "layout":
+      return serializeLayout(block, ctx, notes, depth);
+
     case "table": {
+      const materialized = materializeTable(block);
       const tableXml = await serializeTable(
-        block.rows,
-        block.columnWidths,
+        materialized.rows,
+        materialized.columnWidths,
+        block.presentation,
         { ...ctx, defaultTextColor: undefined },
         notes
       );
       // Caption above tables (established convention).
-      return block.caption ? captionXml(block.caption, ctx) + tableXml : tableXml;
+      return block.caption ? await captionXml(block.caption, ctx, notes) + tableXml : tableXml;
     }
 
     case "blockquote": {
@@ -550,8 +946,22 @@ async function serializeBlock(
       // fallback (italic placeholder + the SAME caption paragraph), so the SEQ
       // number is not skipped and downstream captions stay correctly numbered
       // (spec 003 C3). Caption below figures (established convention).
-      const cap = block.caption ? captionXml(block.caption, ctx) : "";
-      const fallback = () => (block.caption ? imageUnavailablePara(block) + cap : "");
+      const cap = block.caption
+        ? alignMediaCaption(await captionXml(block.caption, ctx, notes), block)
+        : "";
+      const fallback = () => {
+        const placeholder = mediaParagraph(imageUnavailablePara(block), block);
+        const ranged = wrapCommentRangesInFirstParagraph(
+          placeholder,
+          block.annotations,
+          ctx.comments,
+        );
+        return block.caption
+          ? ranged + cap
+          : block.annotations?.some((annotation) => annotation.comment)
+            ? ranged
+            : "";
+      };
       // DOCX-ONLY fact (spec 010): NO image pipeline was configured for this
       // export, so every image degrades at once. It is `info`, not `warning`,
       // because nothing went wrong — the export was asked to run this way.
@@ -571,7 +981,12 @@ async function serializeBlock(
       const outcome = await ctx.images.embed(block);
       if (outcome.ok) {
         if (outcome.notes) notes.push(...outcome.notes);
-        return outcome.xml + cap;
+        const drawing = mediaParagraph(linkDrawingParagraph(outcome.xml, block.link), block);
+        return wrapCommentRangesInFirstParagraph(
+          drawing,
+          block.annotations,
+          ctx.comments,
+        ) + cap;
       }
       // Failure branch: no drawing (no dangling relationship, spec 005 / 004-F3),
       // but keep a numbered fallback when a caption is present. The seam may name
@@ -590,14 +1005,51 @@ async function serializeBlock(
       return fallback();
     }
 
+    case "mediaFallback": {
+      const fallback = mediaParagraph(mediaFallbackUnavailablePara(block), block);
+      const ranged = wrapCommentRangesInFirstParagraph(
+        fallback,
+        block.annotations,
+        ctx.comments,
+      );
+      return block.caption
+        ? ranged + alignMediaCaption(await captionXml(block.caption, ctx, notes), block)
+        : ranged;
+    }
+
     case "unknown": {
       // Stage-4 placeholder floor (spec 004): the placeholder line, followed by
       // the preserved body/plainBody so an unresolved third-party macro never
       // silently drops content ("never silently drop" is spec 004's invariant).
+      const fallbackLabel = block.unsupportedAdf
+        ? `Unsupported ADF block: ${block.unsupportedAdf.nodeType}`
+        : block.adfExtension
+        ? `Extension: ${block.adfExtension.extensionKey}`
+        : `${block.macroName} macro not rendered`;
       const placeholder = paragraph(
-        run(`[${block.macroName} macro not rendered]`, { italic: true, color: "97A0AF" })
+        run(`[${fallbackLabel}]`, { italic: true, color: "97A0AF" })
       );
       const MAX_BODY_DEPTH = 20;
+      if (block.extensionFrames) {
+        if (depth >= MAX_BODY_DEPTH) {
+          notes.push({
+            level: "warning",
+            code: "macro-body-truncated",
+            message: `The "${block.macroName}" multi-bodied extension was too deeply nested and was truncated.`,
+            macroName: block.macroName,
+          });
+          return placeholder;
+        }
+        const frames: string[] = [];
+        for (let index = 0; index < block.extensionFrames.length; index += 1) {
+          const frame = block.extensionFrames[index]!;
+          frames.push(paragraph(
+            run(`Frame ${index + 1}`, { italic: true, color: "6B778C" }),
+          ));
+          frames.push(await serializeChildren(frame.content, ctx, notes, depth + 1));
+        }
+        return placeholder + frames.join("");
+      }
       if (block.body && block.body.length > 0) {
         if (depth >= MAX_BODY_DEPTH) {
           notes.push({
@@ -699,7 +1151,11 @@ function describeImage(block: Extract<ExportBlock, { type: "image" }>): string {
  * degraded path, so a figure that fails to embed still consumes its number and
  * every later figure keeps the number Word will compute.
  */
-function captionXml(caption: Caption, ctx: InternalContext): string {
+async function captionXml(
+  caption: Caption,
+  ctx: InternalContext,
+  notes: ExportNote[],
+): Promise<string> {
   const sequence = captionSeqName(caption.kind);
   const ordinal = (ctx.captionSeq.get(sequence) ?? 0) + 1;
   ctx.captionSeq.set(sequence, ordinal);
@@ -707,7 +1163,7 @@ function captionXml(caption: Caption, ctx: InternalContext): string {
     resolveCaptionStyleId(ctx.styleNames),
     caption.kind,
     ctx.captionLang ?? "en",
-    serializeInline(caption.content),
+    await serializeInlineWithAssets(caption.content, ctx, notes),
     ordinal
   );
 }
@@ -715,7 +1171,114 @@ function captionXml(caption: Caption, ctx: InternalContext): string {
 /** The italic placeholder paragraph for an image that could not be embedded. */
 function imageUnavailablePara(block: ImageBlock): string {
   const label = block.alt ?? (block.source.kind === "attachment" ? block.source.filename : block.source.url);
-  return paragraph(run(`[Image unavailable: ${label}]`, { italic: true, color: "97A0AF" }));
+  return paragraph(linkRuns(
+    block.link,
+    run(`[Image unavailable: ${label}]`, { italic: true, color: "97A0AF" }),
+  ));
+}
+
+/** Visible non-fetching placeholder for an uncorrelated ADF media identity. */
+function mediaFallbackUnavailablePara(
+  block: Extract<ExportBlock, { type: "mediaFallback" }>
+): string {
+  return paragraph(linkRuns(
+    block.link,
+    run(`[${mediaFallbackDisplayText(block)}]`, {
+      italic: true,
+      color: "97A0AF",
+    }),
+  ));
+}
+
+function mediaParagraph(
+  xml: string,
+  block: Extract<ExportBlock, { type: "image" | "mediaFallback" }>,
+): string {
+  const alignment = mediaParagraphAlignment(block);
+  const border = block.border;
+  const group = block.mediaGroup;
+  const groupBorderXml = group
+    ? `<w:pBdr>` +
+      `${group.index === 0 ? '<w:top w:val="single" w:sz="4" w:space="4" w:color="DFE1E6"/>' : ""}` +
+      `<w:left w:val="single" w:sz="4" w:space="4" w:color="DFE1E6"/>` +
+      `${group.index === group.size - 1 ? '<w:bottom w:val="single" w:sz="4" w:space="4" w:color="DFE1E6"/>' : ""}` +
+      `<w:right w:val="single" w:sz="4" w:space="4" w:color="DFE1E6"/></w:pBdr>`
+    : "";
+  const authoredBorderXml = border
+    ? `<w:pBdr><w:top w:val="single" w:sz="${border.size * 8}" w:space="4" w:color="${border.color.slice(1, 7)}"/>` +
+      `<w:left w:val="single" w:sz="${border.size * 8}" w:space="4" w:color="${border.color.slice(1, 7)}"/>` +
+      `<w:bottom w:val="single" w:sz="${border.size * 8}" w:space="4" w:color="${border.color.slice(1, 7)}"/>` +
+      `<w:right w:val="single" w:sz="${border.size * 8}" w:space="4" w:color="${border.color.slice(1, 7)}"/></w:pBdr>`
+    : "";
+  const props =
+    `${alignment ? `<w:jc w:val="${alignment}"/>` : ""}` +
+    `${group ? '<w:shd w:val="clear" w:color="auto" w:fill="F7F8F9"/>' : ""}` +
+    `${authoredBorderXml || groupBorderXml}`;
+  return props ? addParagraphProps(xml, props) : xml;
+}
+
+function mediaParagraphAlignment(
+  block: Extract<ExportBlock, { type: "image" | "mediaFallback" }>,
+): "left" | "center" | "right" | undefined {
+  const layout = block.mediaPresentation?.layout;
+  return layout === "center" || layout === "wide" || layout === "full-width"
+    ? "center"
+    : layout === "wrap-right" || layout === "align-end"
+      ? "right"
+      : layout === "wrap-left" || layout === "align-start"
+        ? "left"
+        : undefined;
+}
+
+/**
+ * ADF captions do not carry independent alignment. Confluence aligns the
+ * `mediaSingle` figure through `attrs.layout`, so keep the Word caption
+ * paragraph with the same static figure placement as its image or fallback.
+ */
+function alignMediaCaption(
+  xml: string,
+  block: Extract<ExportBlock, { type: "image" | "mediaFallback" }>,
+): string {
+  const alignment = mediaParagraphAlignment(block);
+  return alignment
+    ? addParagraphProps(xml, `<w:jc w:val="${alignment}"/>`)
+    : xml;
+}
+
+function linkRuns(link: ExportLink | undefined, innerRuns: string): string {
+  if (!link) return innerRuns;
+  const tooltip = link.adfAttributes?.title;
+  if (link.target.kind === "anchor") {
+    return internalHyperlink(sanitizeAnchorId(link.target.anchor), innerRuns, tooltip);
+  }
+  const href =
+    link.target.kind === "external" ||
+    link.target.kind === "page" ||
+    link.target.kind === "attachment"
+      ? link.target.href
+      : undefined;
+  return href ? hyperlinkField(href, innerRuns, tooltip) : innerRuns;
+}
+
+function smartCardRuns(card: SmartCardSemantics, fontSizeHalfPoints?: number): string {
+  const label = smartCardDisplayText(card);
+  const innerRuns = run(label, {
+    bold: card.appearance !== "inline",
+    color: card.target ? "0563C1" : "42526E",
+    underline: card.target !== undefined,
+    backgroundColor: card.appearance === "inline" ? "E9F2FF" : undefined,
+    fontSizeHalfPoints,
+  });
+  return linkRuns(card.target ? { target: card.target } : undefined, innerRuns);
+}
+
+function linkDrawingParagraph(xml: string, link: ExportLink | undefined): string {
+  if (!link) return xml;
+  return xml.replace(
+    /(<w:p(?:\s[^>]*)?>)([\s\S]*?)(<\/w:p>)/u,
+    (_match, open: string, body: string, close: string) =>
+      `${open}${linkRuns(link, body)}${close}`,
+  );
 }
 
 /**
@@ -755,6 +1318,21 @@ async function serializeMermaid(
   return plainCodeParagraphs(block.code);
 }
 
+/** Legacy Storage code-macro title as a distinct header row above the body. */
+function codeTitleParagraph(title: string | undefined): string {
+  if (!title) return "";
+  return paragraph(
+    run(title, { bold: true, color: "172B4D" }),
+    {
+      extraPPr:
+        '<w:keepNext/>' +
+        '<w:spacing w:before="0" w:after="0"/>' +
+        '<w:shd w:val="clear" w:color="auto" w:fill="DFE1E6"/>' +
+        '<w:pBdr><w:bottom w:val="single" w:sz="4" w:color="B3BAC5"/></w:pBdr>',
+    },
+  );
+}
+
 /** The diagram fallback: source lines as uncolored monospace code paragraphs. */
 function plainCodeParagraphs(code: string): string {
   return code
@@ -784,14 +1362,16 @@ function listIndent(ilvl: number): number {
 
 /**
  * Serialize one list NODE. `listLevel` is the SEMANTIC nesting depth (drives
- * `w:ilvl` and one `numId` acquisition per node); `depth` is the generic
- * container depth threaded to child blocks for their own recursion limits.
+ * bullet `w:ilvl`, ordered-list definition indent/format, and one `numId`
+ * acquisition per node); `depth` is the generic container depth threaded to
+ * child blocks for their own recursion limits.
  *
- * `ctx.numbering.acquire(list.ordered)` runs once per node, lazily (only when a
+ * `ctx.numbering.acquire(list.ordered, list.start, listLevel)` runs once per node, lazily (only when a
  * non-task item actually needs a `numId`) — so a nested `<ol>` inside a `<ul>`,
  * or a second logically-separate `<ol>` at the same position, each gets its own
- * type-correct `numId`. Bullets share one instance; every ordered node
- * restarts at 1 via its own instance.
+ * type-correct `numId`. Bullets share one multilevel instance; every ordered
+ * node restarts at its authored value through a self-contained single-level
+ * definition and therefore references `w:ilvl=0`.
  */
 async function serializeList(
   list: Extract<ExportBlock, { type: "list" }>,
@@ -808,7 +1388,8 @@ async function serializeList(
     });
   }
   let numId: number | undefined;
-  const acquire = (): number => (numId ??= ctx.numbering.acquire(list.ordered));
+  const acquire = (): number =>
+    (numId ??= ctx.numbering.acquire(list.ordered, list.start ?? 1, Math.min(listLevel, MAX_ILVL)));
   let out = "";
   for (const item of list.items) {
     out += await serializeListItem(item, list.ordered, listLevel, depth, acquire, ctx, notes);
@@ -826,7 +1407,9 @@ async function serializeListItem(
   notes: ExportNote[]
 ): Promise<string> {
   const ilvl = Math.min(listLevel, MAX_ILVL);
-  const isTask = item.checked !== undefined;
+  const numberingIlvl = ordered ? 0 : ilvl;
+  const semanticMarker = listItemMarker(item);
+  const hasSemanticMarker = semanticMarker !== undefined;
   const styleId = resolveListStyleId(ctx.styleNames, ordered, ilvl);
   const contIndent = `<w:ind w:left="${listIndent(ilvl)}"/>`;
   let out = "";
@@ -841,15 +1424,16 @@ async function serializeListItem(
     const frag = await serializeBlock(block, ctx, notes, depth + 1);
     if (!firstPlaced) {
       firstPlaced = true;
-      if (isTask) {
-        // Task items keep the ☑/☐ glyph (Word has no checkbox numbering) but
-        // adopt the resolved list paragraph style + level indent.
-        const marker = run(`${item.checked ? "☑" : "☐"} `);
+      if (hasSemanticMarker) {
+        // Task/decision items keep their semantic glyph (Word has no checkbox
+        // or decision numbering) but adopt the resolved list paragraph style
+        // and level indent.
+        const marker = run(semanticMarker);
         out += placeMarker(applyFirstListProps(frag, styleId, undefined, contIndent), marker);
       } else {
         // Numbered/bulleted: real w:numPr, no literal marker, indent from
         // the numbering definition.
-        const numPr = `<w:numPr><w:ilvl w:val="${ilvl}"/><w:numId w:val="${acquireNumId()}"/></w:numPr>`;
+        const numPr = `<w:numPr><w:ilvl w:val="${numberingIlvl}"/><w:numId w:val="${acquireNumId()}"/></w:numPr>`;
         out += applyFirstListProps(frag, styleId, numPr, undefined);
       }
     } else {
@@ -860,17 +1444,31 @@ async function serializeListItem(
 
   if (!firstPlaced) {
     // An empty item still needs a marked line so numbering is not skipped.
-    if (isTask) {
-      out += paragraph(run(`${item.checked ? "☑" : "☐"} `), {
+    if (hasSemanticMarker) {
+      out += paragraph(run(semanticMarker), {
         styleId,
         extraPPr: contIndent,
       });
     } else {
-      const numPr = `<w:numPr><w:ilvl w:val="${ilvl}"/><w:numId w:val="${acquireNumId()}"/></w:numPr>`;
+      const numPr = `<w:numPr><w:ilvl w:val="${numberingIlvl}"/><w:numId w:val="${acquireNumId()}"/></w:numPr>`;
       out += paragraph(run(""), { styleId, extraPPr: numPr });
     }
   }
   return out;
+}
+
+function listItemMarker(item: ListItem): string | undefined {
+  if (item.kind === "decision") {
+    const state = item.state ?? "";
+    return state.toUpperCase() === "DECIDED"
+      ? "◆ "
+      : `◇ [${state}] `;
+  }
+  if (item.kind === "task" || item.checked !== undefined) {
+    const checked = item.checked ?? (item.state === "DONE");
+    return `${checked ? "☑" : "☐"} `;
+  }
+  return undefined;
 }
 
 /**
@@ -911,6 +1509,7 @@ interface Carry {
   colspan: number;
   rowsRemaining: number;
   backgroundColor?: string;
+  verticalAlignment?: TableCell["verticalAlignment"];
 }
 
 /** Budget caps against malformed/pathological table geometry (spec 006 G3). */
@@ -925,7 +1524,63 @@ interface CellDesc {
   body?: string;
   header?: boolean;
   backgroundColor?: string;
+  verticalAlignment?: TableCell["verticalAlignment"];
   vMerge?: "restart" | "continue";
+}
+
+async function serializeLayout(
+  block: Extract<ExportBlock, { type: "layout" }>,
+  ctx: InternalContext,
+  notes: ExportNote[],
+  depth: number,
+): Promise<string> {
+  if (block.columns.length === 0) {
+    notes.push({
+      level: "warning",
+      code: "layout-geometry-fallback",
+      message: "An empty page layout produced no visible columns.",
+    });
+    return "";
+  }
+  const widthsDxa = layoutWidthsDxa(block.columns.map((column) => column.width));
+  const cells = await Promise.all(block.columns.map(async (column, index) => {
+    const body = await serializeChildren(
+      column.content,
+      { ...ctx, container: "tableCell" },
+      notes,
+      depth + 1,
+    );
+    return tableCell(body || paragraph(run("")), {
+      widthDxa: widthsDxa[index],
+      verticalAlignment: column.verticalAlignment,
+    });
+  }));
+  return dataTable(block.columns.length, `<w:tr>${cells.join("")}</w:tr>`, {
+    widthsDxa,
+    widthDxa: widthsDxa.reduce((sum, width) => sum + width, 0),
+    fixedLayout: true,
+    borderless: true,
+    cellMarginDxa: 120,
+  });
+}
+
+function layoutWidthsDxa(widths: readonly number[]): number[] {
+  if (widths.length === 0) return [];
+  const safe = widths.map((width) =>
+    Number.isFinite(width) && width > 0 ? width : 0
+  );
+  const total = safe.reduce((sum, width) => sum + width, 0);
+  const weights = total > 0 ? safe : safe.map(() => 1);
+  const weightTotal = total > 0 ? total : weights.length;
+  const targetWidth = Math.max(9000, widths.length);
+  const distributable = targetWidth - widths.length;
+  const resolved = weights.map((weight) =>
+    1 + Math.round((weight / weightTotal) * distributable)
+  );
+  const remainder = targetWidth - resolved.reduce((sum, width) => sum + width, 0);
+  const adjustmentIndex = resolved.findIndex((width) => width + remainder > 0);
+  resolved[adjustmentIndex >= 0 ? adjustmentIndex : 0] += remainder;
+  return resolved;
 }
 
 /**
@@ -939,6 +1594,7 @@ interface CellDesc {
 async function serializeTable(
   rows: TableRow[],
   columnWidths: number[] | undefined,
+  presentation: TablePresentation | undefined,
   ctx: InternalContext,
   notes: ExportNote[]
 ): Promise<string> {
@@ -982,6 +1638,7 @@ async function serializeTable(
           kind: "carry",
           vMerge: "continue",
           backgroundColor: active.backgroundColor,
+          verticalAlignment: active.verticalAlignment,
         });
         active.rowsRemaining -= 1;
         const span = active.colspan;
@@ -1012,11 +1669,17 @@ async function serializeTable(
         body: body || paragraph(run("")),
         header: cell.header,
         backgroundColor: cell.backgroundColor,
+        verticalAlignment: cell.verticalAlignment,
         vMerge: rowspan > 1 ? "restart" : undefined,
       });
       if (rowspan > 1) {
         for (let k = col; k < col + colspan; k++) {
-          carry[k] = { colspan, rowsRemaining: rowspan - 1, backgroundColor: cell.backgroundColor };
+          carry[k] = {
+            colspan,
+            rowsRemaining: rowspan - 1,
+            backgroundColor: cell.backgroundColor,
+            verticalAlignment: cell.verticalAlignment,
+          };
         }
       }
       col += colspan;
@@ -1038,7 +1701,8 @@ async function serializeTable(
 
   // Render phase: widths are now final. Derive the dxa width array; each cell
   // gets the sum of its spanned columns so the fixed layout is not repaired.
-  const widthsDxa = columnWidthsDxa(columnWidths, gridCols);
+  const widthDxa = tableWidthDxa(presentation);
+  const widthsDxa = columnWidthsDxa(columnWidths, gridCols, widthDxa);
   const templateStyle = ctx.tableStyle?.source === "template" && ctx.tableStyle.styleId;
   const spanWidth = (colStart: number, colspan: number): number | undefined => {
     if (!widthsDxa) return undefined;
@@ -1053,6 +1717,7 @@ async function serializeTable(
       // Template style mode suppresses inline header/background shading.
       header: templateStyle ? false : d.header,
       backgroundColor: templateStyle ? undefined : d.backgroundColor,
+      verticalAlignment: d.verticalAlignment,
       ...(spanWidth(d.colStart, d.colspan) !== undefined ? { widthDxa: spanWidth(d.colStart, d.colspan) } : {}),
     });
 
@@ -1065,8 +1730,12 @@ async function serializeTable(
     rowsXml += `<w:tr>${cells}</w:tr>`;
   }
 
+  const alignment = tableAlignment(presentation);
   return dataTable(gridCols, rowsXml, {
     ...(widthsDxa ? { widthsDxa } : {}),
+    widthDxa,
+    ...(alignment ? { alignment } : {}),
+    ...(presentation?.displayMode === "fixed" ? { fixedLayout: true } : {}),
     ...(ctx.tableStyle ? { tableStyle: ctx.tableStyle } : {}),
   });
 }
@@ -1084,18 +1753,46 @@ async function serializeTable(
  */
 export function columnWidthsDxa(
   columnWidths: number[] | undefined,
-  gridCols: number
+  gridCols: number,
+  tableWidthDxa = 9000,
 ): number[] | undefined {
+  if (!Number.isSafeInteger(tableWidthDxa) || tableWidthDxa < 1) return undefined;
   if (!columnWidths || columnWidths.length !== gridCols) return undefined;
   if (!columnWidths.every((w) => Number.isFinite(w) && w > 0)) return undefined;
   const spread = Math.max(...columnWidths) / Math.min(...columnWidths);
   if (spread <= 1.05) return undefined;
   const total = columnWidths.reduce((s, w) => s + w, 0);
-  const dxa = columnWidths.map((w) => Math.max(1, Math.round((w / total) * 9000)));
+  const dxa = columnWidths.map((w) => Math.max(1, Math.round((w / total) * tableWidthDxa)));
   const sum = dxa.reduce((s, w) => s + w, 0);
-  dxa[dxa.length - 1] += 9000 - sum; // absorb the rounding remainder
+  dxa[dxa.length - 1] += tableWidthDxa - sum; // absorb the rounding remainder
   if (dxa[dxa.length - 1] < 1) dxa[dxa.length - 1] = 1;
   return dxa;
+}
+
+function tableWidthDxa(presentation: TablePresentation | undefined): number {
+  const authoredPixels = presentation?.width;
+  if (authoredPixels !== undefined && Number.isFinite(authoredPixels) && authoredPixels > 0) {
+    return Math.max(1, Math.min(9000, Math.round(authoredPixels * 15)));
+  }
+  return 9000;
+}
+
+function tableAlignment(
+  presentation: TablePresentation | undefined,
+): "start" | "center" | "end" | undefined {
+  switch (presentation?.layout) {
+    case "align-start":
+      return "start";
+    case "align-end":
+      return "end";
+    case "default":
+    case "wide":
+    case "full-width":
+    case "center":
+      return "center";
+    default:
+      return undefined;
+  }
 }
 
 /** True if any carried rowspan still occupies a column at or beyond `col`. */

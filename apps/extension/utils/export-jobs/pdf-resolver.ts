@@ -14,7 +14,11 @@ import type {
 import type { MacroResolutionOptions } from "@atlcli/export-macros";
 import {
   checkpointPdfAssetsV1,
+  confluenceSourceResolverPortFromClientV1,
+  createConfluencePdfResolveInputV1,
+  createConfluenceSourcePlanSpoolV1,
   createExportTreeBodySpoolV1,
+  type ConfluenceSourceResolverPortV1,
   type PdfExportJobEngineInputV1,
 } from "@atlcli/export-wiring/jobs";
 import {
@@ -38,6 +42,7 @@ import {
 import { sanitizeDownloadName } from "../download.js";
 import { profileFromTabUrl } from "../profile.js";
 import { extensionPdfAssets } from "../pdf/run-export.js";
+import { classifyAtlassianSessionError } from "../session-error.js";
 import { IndexedDbExportByteStore } from "./chunk-store.js";
 import { extensionPdfLogoSpoolRef } from "./pdf-submit.js";
 
@@ -136,7 +141,9 @@ async function defaultResolveMentions(
   if (!profile) throw new Error("The PDF job source is not an approved Atlassian Cloud origin.");
   return resolveExportMentions(blocks, async (accountIds) => {
     signal.throwIfAborted();
-    const users = await new ConfluenceClient(profile).getUsersBulk(accountIds);
+    const users = await new ConfluenceClient(profile).getUsersBulk(accountIds, {
+      signal,
+    });
     signal.throwIfAborted();
     return new Map(
       [...users].map(([accountId, user]) => [accountId, user?.displayName ?? null]),
@@ -307,6 +314,134 @@ export type ResolvedExtensionPdfJobInputV1 = {
   telemetry?: { sourcePageCount: number };
 };
 
+function createDefaultExtensionPdfJobInputResolver(
+  bytes: Pick<IndexedDbExportByteStore, "read" | "stat">,
+  sourcePort?: ConfluenceSourceResolverPortV1,
+): (
+  request: PdfExportJobRequestV1,
+  context: ExportJobExecutionContext,
+) => Promise<ResolvedExtensionPdfJobInputV1> {
+  return async (request, context) => {
+    const siteOrigin = siteOriginOf(request);
+    const profile = profileFromTabUrl(siteOrigin)!;
+    const client = new ConfluenceClient(profile);
+    return createConfluencePdfResolveInputV1({
+      port: sourcePort ?? confluenceSourceResolverPortFromClientV1(client),
+      classifyError: (error) =>
+        classifyAtlassianSessionError(error) === "not-logged-in"
+          ? "authentication"
+          : "unknown",
+      createSourcePlan: (_sourceRequest, sourceContext) => ({
+        store: createConfluenceSourcePlanSpoolV1(sourceContext),
+        sourcePolicyKey: "adf-primary:cloud:v1",
+      }),
+      createBodyStore: (sourceRequest, sourceContext) =>
+        createExportTreeBodySpoolV1(
+          sourceContext,
+          sourceRequest.idempotencyKey,
+        ),
+      onProgress: (_sourceRequest, sourceContext, progress) => {
+        return sourceContext.updateProgress({
+          stage: "fetch",
+          done: progress.fetched,
+          total: progress.total,
+          updatedAt: Date.now(),
+        });
+      },
+      async build(resolved, sourceRequest, sourceContext) {
+        if (
+          sourceRequest.template.id !== BUILTIN_PDF_TEMPLATE_MANIFEST.id ||
+          sourceRequest.template.manifestVersion !==
+            BUILTIN_PDF_TEMPLATE_MANIFEST.version
+        ) {
+          throw new Error(
+            "The pinned PDF template manifest is unavailable or changed.",
+          );
+        }
+        try {
+          const mentions = await defaultResolveMentions(
+            resolved.blocks,
+            siteOrigin,
+            sourceContext.signal,
+          );
+          resolved.blocks = mentions.blocks;
+          if (mentions.unresolved > 0) {
+            resolved.sourceNotes.push({
+              level: "warning",
+              code: "mention-unresolved",
+              message:
+                `${mentions.unresolved} mention display name(s) could not be resolved; technical identifiers were retained.`,
+            });
+          }
+        } catch {
+          sourceContext.signal.throwIfAborted();
+          resolved.sourceNotes.push({
+            level: "warning",
+            code: "pdf-mention-resolution-failed",
+            message:
+              "Mention display names could not be resolved; technical identifiers were retained.",
+          });
+        }
+
+        const locale = normalizePdfLocale(runtimeLocale());
+        const selectedProfile = pdfProfile(sourceRequest.options.profile);
+        const settings = await durableSettings(
+          sourceRequest,
+          { bytes },
+          sourceContext.signal,
+        );
+        const macros = defaultCreateMacros({
+          siteOrigin,
+          signal: sourceContext.signal,
+          live: sourceRequest.options.resolveMacros,
+          ...(resolved.chapterAnchorById
+            ? { chapterAnchorById: resolved.chapterAnchorById }
+            : {}),
+          sourceNotes: resolved.sourceNotes,
+        });
+        return {
+          input: {
+            metadata: {
+              title: resolved.root.title,
+              ...(resolved.root.spaceKey
+                ? { space: resolved.root.spaceKey }
+                : {}),
+              ...(resolved.root.version === undefined
+                ? {}
+                : { version: resolved.root.version }),
+              exporter: "atlcli",
+              language: locale.language,
+              region: locale.region,
+              exportedAt: new Date(
+                sourceRequest.options.exportedAt ?? Date.now(),
+              ),
+            },
+            ...(selectedProfile ? { profile: selectedProfile } : {}),
+            settings,
+            filename: sourceRequest.requestedFilename ??
+              sanitizeDownloadName(
+                sourceRequest.displayName || "export",
+                "pdf",
+              ),
+          },
+          env: {
+            assets: checkpointPdfAssetsV1(
+              sourceContext,
+              sourceRequest.idempotencyKey,
+              extensionPdfAssets({
+                rootPageId: resolved.root.id,
+                pageUrl: siteOrigin,
+                signal: sourceContext.signal,
+              }),
+            ),
+            macros,
+          },
+        };
+      },
+    })(request, context);
+  };
+}
+
 /**
  * Resolve a replay-safe durable request into the neutral PDF engine input.
  * Nothing here depends on the side panel, active tab, or a loaded React page.
@@ -315,11 +450,19 @@ export function createExtensionPdfJobInputResolver(
   options: {
     bytes: Pick<IndexedDbExportByteStore, "read" | "stat">;
     deps?: Partial<ExtensionPdfJobResolverDepsV1>;
+    /** Test/alternate-host port; production omits it and binds the session client. */
+    sourcePort?: ConfluenceSourceResolverPortV1;
   },
 ): (
   request: PdfExportJobRequestV1,
   context: ExportJobExecutionContext,
 ) => Promise<ResolvedExtensionPdfJobInputV1> {
+  if (!options.deps) {
+    return createDefaultExtensionPdfJobInputResolver(
+      options.bytes,
+      options.sourcePort,
+    );
+  }
   const deps = { ...defaults(options.bytes), ...options.deps };
   return async (request, context) => {
     context.signal.throwIfAborted();

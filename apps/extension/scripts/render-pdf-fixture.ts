@@ -66,6 +66,7 @@ const [wasm, ...fonts] = await Promise.all([
   packageBytes("@atlcli/pdf/fonts/SourceSerif4-Bold.ttf"),
   packageBytes("@atlcli/pdf/fonts/SourceCodePro-Regular.ttf"),
   packageBytes("@atlcli/pdf/fonts/SourceCodePro-Bold.ttf"),
+  packageBytes("@atlcli/pdf/fonts/NotoSansSymbols2-Regular.ttf"),
 ]);
 
 const blocks: ExportBlock[] = [

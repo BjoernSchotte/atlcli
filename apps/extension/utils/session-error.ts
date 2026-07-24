@@ -14,6 +14,14 @@ export type AtlassianSessionErrorKind =
 export function classifyAtlassianSessionError(
   error: unknown,
 ): AtlassianSessionErrorKind {
+  if (
+    typeof error === "object"
+    && error !== null
+    && "sourceFailureKind" in error
+    && error.sourceFailureKind === "authentication"
+  ) {
+    return "not-logged-in";
+  }
   const message = error instanceof Error ? error.message : String(error);
 
   if (

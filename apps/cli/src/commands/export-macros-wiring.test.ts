@@ -311,6 +311,23 @@ describe("buildMacroResolutionOptions — the CLI's half of the shared builder",
     expect(options.contextFor!({ id: "100", spaceKey: "D" }).page.id).toBe("100");
     expect(options.contextFor!({ id: "200", spaceKey: "D" }).page.id).toBe("200");
   });
+
+  test("forwards the job cancellation signal into every macro context", () => {
+    const controller = new AbortController();
+    const options = buildMacroResolutionOptions({
+      profile,
+      confluence,
+      targetEngine: "docx",
+      signal: controller.signal,
+    });
+
+    expect(options.contextFor!({ id: "100", spaceKey: "D" }).signal).toBe(
+      controller.signal,
+    );
+    expect(options.contextFor!({ id: "200", spaceKey: "D" }).signal).toBe(
+      controller.signal,
+    );
+  });
 });
 
 /**

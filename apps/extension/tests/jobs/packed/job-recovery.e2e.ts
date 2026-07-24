@@ -165,6 +165,12 @@ async function installOffscreenFetchStub(
           _links: {}
         }), { status: 200, headers: { "content-type": "application/json" } });
       }
+      const adfPage = url.pathname.match(/\\/api\\/v2\\/pages\\/([^/]+)$/);
+      if (adfPage && url.searchParams.get("body-format") === "atlas_doc_format") {
+        return new Response(JSON.stringify({
+          message: "body-format atlas_doc_format is unsupported by this synthetic host"
+        }), { status: 400, headers: { "content-type": "application/json" } });
+      }
       const match = url.pathname.match(/\\/rest\\/api\\/content\\/([^/]+)/);
       if (!match) return new Response("{}", { status: 404, headers: { "content-type": "application/json" } });
       const pageId = decodeURIComponent(match[1]);
@@ -209,8 +215,8 @@ async function releaseOffscreenFetch(pageId: string): Promise<void> {
     expression: `(() => {
       const pageId = ${JSON.stringify(pageId)};
       const release = globalThis.__atlcliPackedFetchReleases?.[pageId];
+      globalThis.__atlcliPackedFetchReleased?.add(pageId);
       if (release) release();
-      else globalThis.__atlcliPackedFetchReleased?.add(pageId);
     })()`,
     returnByValue: true,
   });
@@ -289,6 +295,12 @@ function installBrowserRestartFetchStub(): void {
     join(baseExtensionDir, scriptName),
     `globalThis.fetch = async (input) => {
       const url = new URL(typeof input === "string" ? input : input.url);
+      const adfPage = url.pathname.match(/\\/api\\/v2\\/pages\\/([^/]+)$/);
+      if (adfPage && url.searchParams.get("body-format") === "atlas_doc_format") {
+        return new Response(JSON.stringify({
+          message: "body-format atlas_doc_format is unsupported by this synthetic host"
+        }), { status: 400, headers: { "content-type": "application/json" } });
+      }
       const match = url.pathname.match(/\\/rest\\/api\\/content\\/([^/]+)/);
       if (!match) {
         return new Response("{}", {
@@ -1027,8 +1039,9 @@ test("a packed tree export resumes from its durable ordered page spool", async (
       pages: { discovered: 3, fetched: 3, composed: 3 },
     },
   });
+  // The root body was committed before the offscreen crash. Only the two
+  // uncommitted children may reach the replacement target's fetch stub.
   expect(await readOffscreenBodyFetches()).toEqual({
-    [JOB_L]: 1,
     [childA]: 1,
     [childB]: 1,
   });

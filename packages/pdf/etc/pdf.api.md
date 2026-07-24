@@ -22,35 +22,90 @@ export type ExportBlock = {
     level: 1 | 2 | 3 | 4 | 5 | 6;
     content: InlineNode[];
     explicitAnchor?: string;
+    presentation?: BlockPresentation;
+    localId?: string;
 } | {
     type: "paragraph";
     content: InlineNode[];
+    presentation?: BlockPresentation;
+    localId?: string;
+} | {
+    type: "smartCard";
+    card: SmartCardSemantics;
 } | {
     type: "codeBlock";
     language?: string;
     code: string;
+    title?: string;
+    initiallyCollapsed?: boolean;
     caption?: Caption;
+    wrap?: boolean;
+    hideLineNumbers?: boolean;
+    firstLineNumber?: number;
+    localId?: string;
+    uniqueId?: string;
+    breakout?: LayoutBreakout;
 } | {
     type: "callout";
     kind: CalloutKind;
     title?: string;
     content: ExportBlock[];
+    localId?: string;
+    panelColor?: string;
+    panelIcon?: string;
+    panelIconId?: string;
+    panelIconText?: string;
+    syncedContent?: SyncedContentProvenance;
+} | {
+    type: "expand";
+    nested: boolean;
+    content: ExportBlock[];
+    title?: string;
+    localId?: string;
+    macroId?: string;
+    breakout?: LayoutBreakout;
 } | {
     type: "list";
     ordered: boolean;
     items: ListItem[];
-} | {
+    start?: number;
+    listKind?: "task" | "decision";
+    localId?: string;
+} | ({
+    type: "layout";
+} & PageLayout) | {
     type: "table";
     rows: TableRow[];
     columnWidths?: number[];
+    presentation?: TablePresentation;
     caption?: Caption;
+    fragments?: AdfFragmentIdentity[];
 } | {
     type: "image";
     source: ImageSource;
+    media?: UnresolvedMediaIdentity;
     alt?: string;
     width?: number;
     height?: number;
+    mediaPresentation?: MediaPresentation;
+    mediaGroup?: MediaGroupPosition;
+    border?: MediaBorder;
     caption?: Caption;
+    annotations?: AdfAnnotationIdentity[];
+    link?: ExportLink;
+} | {
+    type: "mediaFallback";
+    label: string;
+    media: UnresolvedMediaIdentity;
+    caption?: Caption;
+    alt?: string;
+    width?: number;
+    height?: number;
+    mediaPresentation?: MediaPresentation;
+    mediaGroup?: MediaGroupPosition;
+    border?: MediaBorder;
+    annotations?: AdfAnnotationIdentity[];
+    link?: ExportLink;
 } | {
     type: "blockquote";
     content: ExportBlock[];
@@ -72,6 +127,10 @@ export type ExportBlock = {
     body?: ExportBlock[];
     plainBody?: string;
     macroId?: string;
+    adfExtension?: AdfExtensionIdentity;
+    extensionFrames?: AdfExtensionFrame[];
+    fragments?: AdfFragmentIdentity[];
+    unsupportedAdf?: AdfUnsupportedNodeProvenance;
     bodyNotes?: ExportNote[];
     sourcePage?: {
         id: string;
@@ -136,18 +195,56 @@ export type InlineNode = {
     marks?: InlineMark[];
     color?: string;
     backgroundColor?: string;
-} | {
+    emoji?: EmojiSemantics;
+    adfExtension?: AdfExtensionIdentity;
+    extensionParams?: MacroParameter[];
+    sourcePage?: {
+        id: string;
+        version?: number;
+        spaceKey?: string;
+    };
+    annotations?: AdfAnnotationIdentity[];
+    fragments?: AdfFragmentIdentity[];
+    unsupportedAdf?: AdfUnsupportedNodeProvenance[];
+} | ({
     type: "link";
-    target: LinkTarget;
     content: InlineNode[];
-} | {
+} & ExportLink) | {
     type: "mention";
     accountId: string;
     displayName?: string;
+    sourceText?: string;
+    localId?: string;
+    accessLevel?: string;
+    userType?: "DEFAULT" | "SPECIAL" | "APP";
+} | {
+    type: "date";
+    timestamp: string;
+    localId?: string;
 } | {
     type: "status";
     text: string;
     color: string;
+    localId?: string;
+    style?: string;
+} | {
+    type: "smartCard";
+    card: SmartCardSemantics;
+} | {
+    type: "media";
+    media: UnresolvedMediaIdentity;
+    source?: ImageSource;
+    alt?: string;
+    width?: number;
+    height?: number;
+    border?: MediaBorder;
+    annotations?: AdfAnnotationIdentity[];
+    link?: ExportLink;
+} | {
+    type: "placeholder";
+    text: string;
+    localId?: string;
+    placeholderType?: string;
 } | {
     type: "lineBreak";
 };
@@ -165,9 +262,11 @@ export type LinkTarget = {
     contentId?: string;
     spaceKey?: string;
     anchor?: string;
+    href?: string;
 } | {
     kind: "attachment";
     filename: string;
+    href?: string;
 } | {
     kind: "anchor";
     anchor: string;
@@ -371,7 +470,7 @@ export interface PdfResolvedAsset {
 // export: PdfRuntimeFontAsset
 export interface PdfRuntimeFontAsset {
     fileName: string;
-    family: "Source Sans 3" | "Source Serif 4" | "Source Code Pro";
+    family: "Source Sans 3" | "Source Serif 4" | "Source Code Pro" | "Noto Sans Symbols2";
     style: "normal" | "italic";
     weight: 400 | 600 | 700;
     sourceUrl: string;
@@ -474,39 +573,51 @@ export interface PreparedPdfAsset {
 
 // export: PreparedPdfBlock
 export type PreparedPdfBlock = Exclude<ExportBlock, {
-    type: "callout" | "list" | "table" | "image" | "blockquote" | "codeBlock" | "orientation" | "unknown";
-}> | {
+    type: "heading" | "paragraph" | "callout" | "expand" | "list" | "layout" | "table" | "image" | "mediaFallback" | "blockquote" | "codeBlock" | "orientation" | "unknown";
+}> | (Omit<Extract<ExportBlock, {
+    type: "heading";
+}>, "content"> & {
+    content: PreparedPdfInlineNode[];
+}) | (Omit<Extract<ExportBlock, {
+    type: "paragraph";
+}>, "content"> & {
+    content: PreparedPdfInlineNode[];
+}) | (Omit<Extract<ExportBlock, {
     type: "unknown";
-    macroName: string;
+}>, "body" | "extensionFrames"> & {
     body?: PreparedPdfBlock[];
-    plainBody?: string;
-} | {
-    type: "callout";
-    kind: Extract<ExportBlock, {
-        type: "callout";
-    }>["kind"];
-    title?: string;
-    content: PreparedPdfBlock[];
-} | {
-    type: "list";
-    ordered: boolean;
-    items: Array<{
+    extensionFrames?: Array<Omit<AdfExtensionFrame, "content"> & {
         content: PreparedPdfBlock[];
-        checked?: boolean;
     }>;
-} | {
+}) | Omit<Extract<ExportBlock, {
+    type: "callout";
+}>, "content"> & {
+    content: PreparedPdfBlock[];
+} | Omit<Extract<ExportBlock, {
+    type: "expand";
+}>, "content"> & {
+    content: PreparedPdfBlock[];
+} | Omit<Extract<ExportBlock, {
+    type: "list";
+}>, "items"> & {
+    items: Array<Omit<ListItem, "content"> & {
+        content: PreparedPdfBlock[];
+    }>;
+} | Omit<Extract<ExportBlock, {
+    type: "layout";
+}>, "columns"> & {
+    columns: Array<Omit<LayoutColumn, "content"> & {
+        content: PreparedPdfBlock[];
+    }>;
+} | Omit<Extract<ExportBlock, {
     type: "table";
-    rows: Array<{
-        cells: Array<{
-            header: boolean;
-            colspan: number;
-            rowspan: number;
-            backgroundColor?: string;
+}>, "caption" | "rows"> & {
+    caption?: PreparedPdfCaption;
+    rows: Array<Omit<TableRow, "cells"> & {
+        cells: Array<Omit<TableCell, "content"> & {
             content: PreparedPdfBlock[];
         }>;
     }>;
-    columnWidths?: number[];
-    caption?: Caption;
 } | {
     type: "image";
     assetPath?: string;
@@ -514,25 +625,56 @@ export type PreparedPdfBlock = Exclude<ExportBlock, {
     width?: number;
     height?: number;
     fallbackLabel: string;
-    caption?: Caption;
-} | {
+    media?: Extract<ExportBlock, {
+        type: "image";
+    }>["media"];
+    mediaPresentation?: Extract<ExportBlock, {
+        type: "image";
+    }>["mediaPresentation"];
+    mediaGroup?: Extract<ExportBlock, {
+        type: "image";
+    }>["mediaGroup"];
+    border?: Extract<ExportBlock, {
+        type: "image";
+    }>["border"];
+    annotations?: Extract<ExportBlock, {
+        type: "image";
+    }>["annotations"];
+    caption?: PreparedPdfCaption;
+    link?: ExportLink;
+} | (Omit<Extract<ExportBlock, {
+    type: "mediaFallback";
+}>, "caption"> & {
+    caption?: PreparedPdfCaption;
+}) | {
     type: "blockquote";
     content: PreparedPdfBlock[];
-} | {
+} | (Omit<Extract<ExportBlock, {
     type: "codeBlock";
-    language?: string;
-    code: string;
-    caption?: Caption;
-} | {
+}>, "caption"> & {
+    caption?: PreparedPdfCaption;
+}) | {
     type: "diagram";
     assetPath: string;
     alt?: string;
     source: string;
-    caption?: Caption;
+    caption?: PreparedPdfCaption;
+    wrap?: boolean;
+    hideLineNumbers?: boolean;
+    firstLineNumber?: number;
+    title?: string;
+    initiallyCollapsed?: boolean;
+    localId?: string;
+    uniqueId?: string;
 } | {
     type: "orientation";
     landscape: boolean;
     content: PreparedPdfBlock[];
+};
+
+// export: PreparedPdfCaption
+export type PreparedPdfCaption = Omit<Caption, "content"> & {
+    content: PreparedPdfInlineNode[];
 };
 
 // export: PreparedPdfDocument
@@ -560,6 +702,20 @@ export interface PreparedPdfExportV1 {
     startedAt: number;
     prepareMs: number;
 }
+
+// export: PreparedPdfInlineNode
+export type PreparedPdfInlineNode = Exclude<InlineNode, {
+    type: "link" | "media";
+}> | (Omit<Extract<InlineNode, {
+    type: "link";
+}>, "content"> & {
+    content: PreparedPdfInlineNode[];
+}) | (Extract<InlineNode, {
+    type: "media";
+}> & {
+    assetPath?: string;
+    fallbackLabel: string;
+});
 
 // export: preparePdfDocument
 export declare function preparePdfDocument(blocks: ExportBlock[], resolver: PdfAssetResolver, options?: PreparePdfOptions): Promise<PreparedPdfDocument>;
@@ -725,35 +881,90 @@ export type ExportBlock = {
     level: 1 | 2 | 3 | 4 | 5 | 6;
     content: InlineNode[];
     explicitAnchor?: string;
+    presentation?: BlockPresentation;
+    localId?: string;
 } | {
     type: "paragraph";
     content: InlineNode[];
+    presentation?: BlockPresentation;
+    localId?: string;
+} | {
+    type: "smartCard";
+    card: SmartCardSemantics;
 } | {
     type: "codeBlock";
     language?: string;
     code: string;
+    title?: string;
+    initiallyCollapsed?: boolean;
     caption?: Caption;
+    wrap?: boolean;
+    hideLineNumbers?: boolean;
+    firstLineNumber?: number;
+    localId?: string;
+    uniqueId?: string;
+    breakout?: LayoutBreakout;
 } | {
     type: "callout";
     kind: CalloutKind;
     title?: string;
     content: ExportBlock[];
+    localId?: string;
+    panelColor?: string;
+    panelIcon?: string;
+    panelIconId?: string;
+    panelIconText?: string;
+    syncedContent?: SyncedContentProvenance;
+} | {
+    type: "expand";
+    nested: boolean;
+    content: ExportBlock[];
+    title?: string;
+    localId?: string;
+    macroId?: string;
+    breakout?: LayoutBreakout;
 } | {
     type: "list";
     ordered: boolean;
     items: ListItem[];
-} | {
+    start?: number;
+    listKind?: "task" | "decision";
+    localId?: string;
+} | ({
+    type: "layout";
+} & PageLayout) | {
     type: "table";
     rows: TableRow[];
     columnWidths?: number[];
+    presentation?: TablePresentation;
     caption?: Caption;
+    fragments?: AdfFragmentIdentity[];
 } | {
     type: "image";
     source: ImageSource;
+    media?: UnresolvedMediaIdentity;
     alt?: string;
     width?: number;
     height?: number;
+    mediaPresentation?: MediaPresentation;
+    mediaGroup?: MediaGroupPosition;
+    border?: MediaBorder;
     caption?: Caption;
+    annotations?: AdfAnnotationIdentity[];
+    link?: ExportLink;
+} | {
+    type: "mediaFallback";
+    label: string;
+    media: UnresolvedMediaIdentity;
+    caption?: Caption;
+    alt?: string;
+    width?: number;
+    height?: number;
+    mediaPresentation?: MediaPresentation;
+    mediaGroup?: MediaGroupPosition;
+    border?: MediaBorder;
+    annotations?: AdfAnnotationIdentity[];
+    link?: ExportLink;
 } | {
     type: "blockquote";
     content: ExportBlock[];
@@ -775,6 +986,10 @@ export type ExportBlock = {
     body?: ExportBlock[];
     plainBody?: string;
     macroId?: string;
+    adfExtension?: AdfExtensionIdentity;
+    extensionFrames?: AdfExtensionFrame[];
+    fragments?: AdfFragmentIdentity[];
+    unsupportedAdf?: AdfUnsupportedNodeProvenance;
     bodyNotes?: ExportNote[];
     sourcePage?: {
         id: string;
@@ -839,18 +1054,56 @@ export type InlineNode = {
     marks?: InlineMark[];
     color?: string;
     backgroundColor?: string;
-} | {
+    emoji?: EmojiSemantics;
+    adfExtension?: AdfExtensionIdentity;
+    extensionParams?: MacroParameter[];
+    sourcePage?: {
+        id: string;
+        version?: number;
+        spaceKey?: string;
+    };
+    annotations?: AdfAnnotationIdentity[];
+    fragments?: AdfFragmentIdentity[];
+    unsupportedAdf?: AdfUnsupportedNodeProvenance[];
+} | ({
     type: "link";
-    target: LinkTarget;
     content: InlineNode[];
-} | {
+} & ExportLink) | {
     type: "mention";
     accountId: string;
     displayName?: string;
+    sourceText?: string;
+    localId?: string;
+    accessLevel?: string;
+    userType?: "DEFAULT" | "SPECIAL" | "APP";
+} | {
+    type: "date";
+    timestamp: string;
+    localId?: string;
 } | {
     type: "status";
     text: string;
     color: string;
+    localId?: string;
+    style?: string;
+} | {
+    type: "smartCard";
+    card: SmartCardSemantics;
+} | {
+    type: "media";
+    media: UnresolvedMediaIdentity;
+    source?: ImageSource;
+    alt?: string;
+    width?: number;
+    height?: number;
+    border?: MediaBorder;
+    annotations?: AdfAnnotationIdentity[];
+    link?: ExportLink;
+} | {
+    type: "placeholder";
+    text: string;
+    localId?: string;
+    placeholderType?: string;
 } | {
     type: "lineBreak";
 };
@@ -868,9 +1121,11 @@ export type LinkTarget = {
     contentId?: string;
     spaceKey?: string;
     anchor?: string;
+    href?: string;
 } | {
     kind: "attachment";
     filename: string;
+    href?: string;
 } | {
     kind: "anchor";
     anchor: string;
@@ -1074,7 +1329,7 @@ export interface PdfResolvedAsset {
 // export: PdfRuntimeFontAsset
 export interface PdfRuntimeFontAsset {
     fileName: string;
-    family: "Source Sans 3" | "Source Serif 4" | "Source Code Pro";
+    family: "Source Sans 3" | "Source Serif 4" | "Source Code Pro" | "Noto Sans Symbols2";
     style: "normal" | "italic";
     weight: 400 | 600 | 700;
     sourceUrl: string;
@@ -1177,39 +1432,51 @@ export interface PreparedPdfAsset {
 
 // export: PreparedPdfBlock
 export type PreparedPdfBlock = Exclude<ExportBlock, {
-    type: "callout" | "list" | "table" | "image" | "blockquote" | "codeBlock" | "orientation" | "unknown";
-}> | {
+    type: "heading" | "paragraph" | "callout" | "expand" | "list" | "layout" | "table" | "image" | "mediaFallback" | "blockquote" | "codeBlock" | "orientation" | "unknown";
+}> | (Omit<Extract<ExportBlock, {
+    type: "heading";
+}>, "content"> & {
+    content: PreparedPdfInlineNode[];
+}) | (Omit<Extract<ExportBlock, {
+    type: "paragraph";
+}>, "content"> & {
+    content: PreparedPdfInlineNode[];
+}) | (Omit<Extract<ExportBlock, {
     type: "unknown";
-    macroName: string;
+}>, "body" | "extensionFrames"> & {
     body?: PreparedPdfBlock[];
-    plainBody?: string;
-} | {
-    type: "callout";
-    kind: Extract<ExportBlock, {
-        type: "callout";
-    }>["kind"];
-    title?: string;
-    content: PreparedPdfBlock[];
-} | {
-    type: "list";
-    ordered: boolean;
-    items: Array<{
+    extensionFrames?: Array<Omit<AdfExtensionFrame, "content"> & {
         content: PreparedPdfBlock[];
-        checked?: boolean;
     }>;
-} | {
+}) | Omit<Extract<ExportBlock, {
+    type: "callout";
+}>, "content"> & {
+    content: PreparedPdfBlock[];
+} | Omit<Extract<ExportBlock, {
+    type: "expand";
+}>, "content"> & {
+    content: PreparedPdfBlock[];
+} | Omit<Extract<ExportBlock, {
+    type: "list";
+}>, "items"> & {
+    items: Array<Omit<ListItem, "content"> & {
+        content: PreparedPdfBlock[];
+    }>;
+} | Omit<Extract<ExportBlock, {
+    type: "layout";
+}>, "columns"> & {
+    columns: Array<Omit<LayoutColumn, "content"> & {
+        content: PreparedPdfBlock[];
+    }>;
+} | Omit<Extract<ExportBlock, {
     type: "table";
-    rows: Array<{
-        cells: Array<{
-            header: boolean;
-            colspan: number;
-            rowspan: number;
-            backgroundColor?: string;
+}>, "caption" | "rows"> & {
+    caption?: PreparedPdfCaption;
+    rows: Array<Omit<TableRow, "cells"> & {
+        cells: Array<Omit<TableCell, "content"> & {
             content: PreparedPdfBlock[];
         }>;
     }>;
-    columnWidths?: number[];
-    caption?: Caption;
 } | {
     type: "image";
     assetPath?: string;
@@ -1217,25 +1484,56 @@ export type PreparedPdfBlock = Exclude<ExportBlock, {
     width?: number;
     height?: number;
     fallbackLabel: string;
-    caption?: Caption;
-} | {
+    media?: Extract<ExportBlock, {
+        type: "image";
+    }>["media"];
+    mediaPresentation?: Extract<ExportBlock, {
+        type: "image";
+    }>["mediaPresentation"];
+    mediaGroup?: Extract<ExportBlock, {
+        type: "image";
+    }>["mediaGroup"];
+    border?: Extract<ExportBlock, {
+        type: "image";
+    }>["border"];
+    annotations?: Extract<ExportBlock, {
+        type: "image";
+    }>["annotations"];
+    caption?: PreparedPdfCaption;
+    link?: ExportLink;
+} | (Omit<Extract<ExportBlock, {
+    type: "mediaFallback";
+}>, "caption"> & {
+    caption?: PreparedPdfCaption;
+}) | {
     type: "blockquote";
     content: PreparedPdfBlock[];
-} | {
+} | (Omit<Extract<ExportBlock, {
     type: "codeBlock";
-    language?: string;
-    code: string;
-    caption?: Caption;
-} | {
+}>, "caption"> & {
+    caption?: PreparedPdfCaption;
+}) | {
     type: "diagram";
     assetPath: string;
     alt?: string;
     source: string;
-    caption?: Caption;
+    caption?: PreparedPdfCaption;
+    wrap?: boolean;
+    hideLineNumbers?: boolean;
+    firstLineNumber?: number;
+    title?: string;
+    initiallyCollapsed?: boolean;
+    localId?: string;
+    uniqueId?: string;
 } | {
     type: "orientation";
     landscape: boolean;
     content: PreparedPdfBlock[];
+};
+
+// export: PreparedPdfCaption
+export type PreparedPdfCaption = Omit<Caption, "content"> & {
+    content: PreparedPdfInlineNode[];
 };
 
 // export: PreparedPdfDocument
@@ -1263,6 +1561,20 @@ export interface PreparedPdfExportV1 {
     startedAt: number;
     prepareMs: number;
 }
+
+// export: PreparedPdfInlineNode
+export type PreparedPdfInlineNode = Exclude<InlineNode, {
+    type: "link" | "media";
+}> | (Omit<Extract<InlineNode, {
+    type: "link";
+}>, "content"> & {
+    content: PreparedPdfInlineNode[];
+}) | (Extract<InlineNode, {
+    type: "media";
+}> & {
+    assetPath?: string;
+    fallbackLabel: string;
+});
 
 // export: preparePdfDocument
 export declare function preparePdfDocument(blocks: ExportBlock[], resolver: PdfAssetResolver, options?: PreparePdfOptions): Promise<PreparedPdfDocument>;
@@ -1428,35 +1740,90 @@ export type ExportBlock = {
     level: 1 | 2 | 3 | 4 | 5 | 6;
     content: InlineNode[];
     explicitAnchor?: string;
+    presentation?: BlockPresentation;
+    localId?: string;
 } | {
     type: "paragraph";
     content: InlineNode[];
+    presentation?: BlockPresentation;
+    localId?: string;
+} | {
+    type: "smartCard";
+    card: SmartCardSemantics;
 } | {
     type: "codeBlock";
     language?: string;
     code: string;
+    title?: string;
+    initiallyCollapsed?: boolean;
     caption?: Caption;
+    wrap?: boolean;
+    hideLineNumbers?: boolean;
+    firstLineNumber?: number;
+    localId?: string;
+    uniqueId?: string;
+    breakout?: LayoutBreakout;
 } | {
     type: "callout";
     kind: CalloutKind;
     title?: string;
     content: ExportBlock[];
+    localId?: string;
+    panelColor?: string;
+    panelIcon?: string;
+    panelIconId?: string;
+    panelIconText?: string;
+    syncedContent?: SyncedContentProvenance;
+} | {
+    type: "expand";
+    nested: boolean;
+    content: ExportBlock[];
+    title?: string;
+    localId?: string;
+    macroId?: string;
+    breakout?: LayoutBreakout;
 } | {
     type: "list";
     ordered: boolean;
     items: ListItem[];
-} | {
+    start?: number;
+    listKind?: "task" | "decision";
+    localId?: string;
+} | ({
+    type: "layout";
+} & PageLayout) | {
     type: "table";
     rows: TableRow[];
     columnWidths?: number[];
+    presentation?: TablePresentation;
     caption?: Caption;
+    fragments?: AdfFragmentIdentity[];
 } | {
     type: "image";
     source: ImageSource;
+    media?: UnresolvedMediaIdentity;
     alt?: string;
     width?: number;
     height?: number;
+    mediaPresentation?: MediaPresentation;
+    mediaGroup?: MediaGroupPosition;
+    border?: MediaBorder;
     caption?: Caption;
+    annotations?: AdfAnnotationIdentity[];
+    link?: ExportLink;
+} | {
+    type: "mediaFallback";
+    label: string;
+    media: UnresolvedMediaIdentity;
+    caption?: Caption;
+    alt?: string;
+    width?: number;
+    height?: number;
+    mediaPresentation?: MediaPresentation;
+    mediaGroup?: MediaGroupPosition;
+    border?: MediaBorder;
+    annotations?: AdfAnnotationIdentity[];
+    link?: ExportLink;
 } | {
     type: "blockquote";
     content: ExportBlock[];
@@ -1478,6 +1845,10 @@ export type ExportBlock = {
     body?: ExportBlock[];
     plainBody?: string;
     macroId?: string;
+    adfExtension?: AdfExtensionIdentity;
+    extensionFrames?: AdfExtensionFrame[];
+    fragments?: AdfFragmentIdentity[];
+    unsupportedAdf?: AdfUnsupportedNodeProvenance;
     bodyNotes?: ExportNote[];
     sourcePage?: {
         id: string;
@@ -1542,18 +1913,56 @@ export type InlineNode = {
     marks?: InlineMark[];
     color?: string;
     backgroundColor?: string;
-} | {
+    emoji?: EmojiSemantics;
+    adfExtension?: AdfExtensionIdentity;
+    extensionParams?: MacroParameter[];
+    sourcePage?: {
+        id: string;
+        version?: number;
+        spaceKey?: string;
+    };
+    annotations?: AdfAnnotationIdentity[];
+    fragments?: AdfFragmentIdentity[];
+    unsupportedAdf?: AdfUnsupportedNodeProvenance[];
+} | ({
     type: "link";
-    target: LinkTarget;
     content: InlineNode[];
-} | {
+} & ExportLink) | {
     type: "mention";
     accountId: string;
     displayName?: string;
+    sourceText?: string;
+    localId?: string;
+    accessLevel?: string;
+    userType?: "DEFAULT" | "SPECIAL" | "APP";
+} | {
+    type: "date";
+    timestamp: string;
+    localId?: string;
 } | {
     type: "status";
     text: string;
     color: string;
+    localId?: string;
+    style?: string;
+} | {
+    type: "smartCard";
+    card: SmartCardSemantics;
+} | {
+    type: "media";
+    media: UnresolvedMediaIdentity;
+    source?: ImageSource;
+    alt?: string;
+    width?: number;
+    height?: number;
+    border?: MediaBorder;
+    annotations?: AdfAnnotationIdentity[];
+    link?: ExportLink;
+} | {
+    type: "placeholder";
+    text: string;
+    localId?: string;
+    placeholderType?: string;
 } | {
     type: "lineBreak";
 };
@@ -1571,9 +1980,11 @@ export type LinkTarget = {
     contentId?: string;
     spaceKey?: string;
     anchor?: string;
+    href?: string;
 } | {
     kind: "attachment";
     filename: string;
+    href?: string;
 } | {
     kind: "anchor";
     anchor: string;
@@ -1777,7 +2188,7 @@ export interface PdfResolvedAsset {
 // export: PdfRuntimeFontAsset
 export interface PdfRuntimeFontAsset {
     fileName: string;
-    family: "Source Sans 3" | "Source Serif 4" | "Source Code Pro";
+    family: "Source Sans 3" | "Source Serif 4" | "Source Code Pro" | "Noto Sans Symbols2";
     style: "normal" | "italic";
     weight: 400 | 600 | 700;
     sourceUrl: string;
@@ -1880,39 +2291,51 @@ export interface PreparedPdfAsset {
 
 // export: PreparedPdfBlock
 export type PreparedPdfBlock = Exclude<ExportBlock, {
-    type: "callout" | "list" | "table" | "image" | "blockquote" | "codeBlock" | "orientation" | "unknown";
-}> | {
+    type: "heading" | "paragraph" | "callout" | "expand" | "list" | "layout" | "table" | "image" | "mediaFallback" | "blockquote" | "codeBlock" | "orientation" | "unknown";
+}> | (Omit<Extract<ExportBlock, {
+    type: "heading";
+}>, "content"> & {
+    content: PreparedPdfInlineNode[];
+}) | (Omit<Extract<ExportBlock, {
+    type: "paragraph";
+}>, "content"> & {
+    content: PreparedPdfInlineNode[];
+}) | (Omit<Extract<ExportBlock, {
     type: "unknown";
-    macroName: string;
+}>, "body" | "extensionFrames"> & {
     body?: PreparedPdfBlock[];
-    plainBody?: string;
-} | {
-    type: "callout";
-    kind: Extract<ExportBlock, {
-        type: "callout";
-    }>["kind"];
-    title?: string;
-    content: PreparedPdfBlock[];
-} | {
-    type: "list";
-    ordered: boolean;
-    items: Array<{
+    extensionFrames?: Array<Omit<AdfExtensionFrame, "content"> & {
         content: PreparedPdfBlock[];
-        checked?: boolean;
     }>;
-} | {
+}) | Omit<Extract<ExportBlock, {
+    type: "callout";
+}>, "content"> & {
+    content: PreparedPdfBlock[];
+} | Omit<Extract<ExportBlock, {
+    type: "expand";
+}>, "content"> & {
+    content: PreparedPdfBlock[];
+} | Omit<Extract<ExportBlock, {
+    type: "list";
+}>, "items"> & {
+    items: Array<Omit<ListItem, "content"> & {
+        content: PreparedPdfBlock[];
+    }>;
+} | Omit<Extract<ExportBlock, {
+    type: "layout";
+}>, "columns"> & {
+    columns: Array<Omit<LayoutColumn, "content"> & {
+        content: PreparedPdfBlock[];
+    }>;
+} | Omit<Extract<ExportBlock, {
     type: "table";
-    rows: Array<{
-        cells: Array<{
-            header: boolean;
-            colspan: number;
-            rowspan: number;
-            backgroundColor?: string;
+}>, "caption" | "rows"> & {
+    caption?: PreparedPdfCaption;
+    rows: Array<Omit<TableRow, "cells"> & {
+        cells: Array<Omit<TableCell, "content"> & {
             content: PreparedPdfBlock[];
         }>;
     }>;
-    columnWidths?: number[];
-    caption?: Caption;
 } | {
     type: "image";
     assetPath?: string;
@@ -1920,25 +2343,56 @@ export type PreparedPdfBlock = Exclude<ExportBlock, {
     width?: number;
     height?: number;
     fallbackLabel: string;
-    caption?: Caption;
-} | {
+    media?: Extract<ExportBlock, {
+        type: "image";
+    }>["media"];
+    mediaPresentation?: Extract<ExportBlock, {
+        type: "image";
+    }>["mediaPresentation"];
+    mediaGroup?: Extract<ExportBlock, {
+        type: "image";
+    }>["mediaGroup"];
+    border?: Extract<ExportBlock, {
+        type: "image";
+    }>["border"];
+    annotations?: Extract<ExportBlock, {
+        type: "image";
+    }>["annotations"];
+    caption?: PreparedPdfCaption;
+    link?: ExportLink;
+} | (Omit<Extract<ExportBlock, {
+    type: "mediaFallback";
+}>, "caption"> & {
+    caption?: PreparedPdfCaption;
+}) | {
     type: "blockquote";
     content: PreparedPdfBlock[];
-} | {
+} | (Omit<Extract<ExportBlock, {
     type: "codeBlock";
-    language?: string;
-    code: string;
-    caption?: Caption;
-} | {
+}>, "caption"> & {
+    caption?: PreparedPdfCaption;
+}) | {
     type: "diagram";
     assetPath: string;
     alt?: string;
     source: string;
-    caption?: Caption;
+    caption?: PreparedPdfCaption;
+    wrap?: boolean;
+    hideLineNumbers?: boolean;
+    firstLineNumber?: number;
+    title?: string;
+    initiallyCollapsed?: boolean;
+    localId?: string;
+    uniqueId?: string;
 } | {
     type: "orientation";
     landscape: boolean;
     content: PreparedPdfBlock[];
+};
+
+// export: PreparedPdfCaption
+export type PreparedPdfCaption = Omit<Caption, "content"> & {
+    content: PreparedPdfInlineNode[];
 };
 
 // export: PreparedPdfDocument
@@ -1966,6 +2420,20 @@ export interface PreparedPdfExportV1 {
     startedAt: number;
     prepareMs: number;
 }
+
+// export: PreparedPdfInlineNode
+export type PreparedPdfInlineNode = Exclude<InlineNode, {
+    type: "link" | "media";
+}> | (Omit<Extract<InlineNode, {
+    type: "link";
+}>, "content"> & {
+    content: PreparedPdfInlineNode[];
+}) | (Extract<InlineNode, {
+    type: "media";
+}> & {
+    assetPath?: string;
+    fallbackLabel: string;
+});
 
 // export: preparePdfDocument
 export declare function preparePdfDocument(blocks: ExportBlock[], resolver: PdfAssetResolver, options?: PreparePdfOptions): Promise<PreparedPdfDocument>;

@@ -20,6 +20,7 @@
  *     nothing here → the diagram macro also degrades to the floor).
  */
 import {
+  adfToBlocks,
   extractMacroBody,
   htmlToExportBlocks,
   parsePageProperties,
@@ -31,6 +32,7 @@ import {
   defaultRegistry,
   resolveMacroBlocks,
   type AttachmentLookupPort,
+  type ExportViewPort,
   type JiraIssuePort,
   type JiraIssueRef,
   type MacroExportContext,
@@ -112,11 +114,85 @@ export const MACRO_STORAGE: string =
   `<ac:rich-text-body><p>Widget body preserved on the floor.</p></ac:rich-text-body>` +
   `</ac:structured-macro>`;
 
+/** Forge-shaped ADF extensions whose local IDs are their documented export REST IDs. */
+export const MACRO_ADF_BLOCK_EXTENSION_LOCAL_ID = "forge-block-extension-local-id";
+export const MACRO_ADF_BODIED_EXTENSION_LOCAL_ID = "forge-bodied-extension-local-id";
+export const MACRO_ADF_INLINE_EXTENSION_LOCAL_ID = "forge-inline-extension-local-id";
+export const MACRO_ADF_EXTENSION = {
+  type: "doc",
+  version: 1,
+  content: [
+    {
+      type: "extension",
+      attrs: {
+        extensionType: "com.atlassian.ecosystem",
+        extensionKey: "forge-block-export-widget",
+        localId: MACRO_ADF_BLOCK_EXTENSION_LOCAL_ID,
+        parameters: { mode: "print" },
+      },
+    },
+    {
+      type: "bodiedExtension",
+      attrs: {
+        extensionType: "com.atlassian.ecosystem",
+        extensionKey: "forge-bodied-export-widget",
+        localId: MACRO_ADF_BODIED_EXTENSION_LOCAL_ID,
+        parameters: { mode: "print" },
+      },
+      content: [{
+        type: "paragraph",
+        content: [{ type: "text", text: "Forge body fallback" }],
+      }],
+    },
+    {
+      type: "paragraph",
+      content: [
+        { type: "text", text: "Before inline export " },
+        {
+          type: "inlineExtension",
+          attrs: {
+            extensionType: "com.atlassian.ecosystem",
+            extensionKey: "forge-inline-export-widget",
+            localId: MACRO_ADF_INLINE_EXTENSION_LOCAL_ID,
+            parameters: { mode: "print" },
+            text: "Forge inline fallback",
+          },
+        },
+        { type: "text", text: " after inline export" },
+      ],
+    },
+  ],
+} as const;
+
+export const MACRO_ADF_BLOCK_EXPORT_TEXT = "Platform-rendered Forge block ADF export";
+export const MACRO_ADF_BODIED_EXPORT_TEXT = "Platform-rendered Forge bodied ADF export";
+export const MACRO_ADF_INLINE_EXPORT_TEXT = "Platform-rendered Forge inline ADF export";
+
+/** Deterministic replay of Confluence's platform-rendered `adfExport` result. */
+export function macroExportViewPort(): ExportViewPort {
+  return {
+    async renderMacroHtml(_pageId, macroId, pageVersion): Promise<string | undefined> {
+      if (pageVersion !== 5) throw new Error(`unexpected fixture page version ${pageVersion}`);
+      if (macroId === MACRO_ADF_BLOCK_EXTENSION_LOCAL_ID) {
+        return `<p><strong>${MACRO_ADF_BLOCK_EXPORT_TEXT}</strong></p>`;
+      }
+      if (macroId === MACRO_ADF_BODIED_EXTENSION_LOCAL_ID) {
+        return `<p><strong>${MACRO_ADF_BODIED_EXPORT_TEXT}</strong></p>`;
+      }
+      if (macroId === MACRO_ADF_INLINE_EXTENSION_LOCAL_ID) {
+        return `<span><strong>${MACRO_ADF_INLINE_EXPORT_TEXT}</strong></span>`;
+      }
+      return undefined;
+    },
+  };
+}
+
 function macroContext(): MacroExportContext {
   return {
-    page: { id: "macro-page", spaceKey: "TEST" },
+    page: { id: "macro-page", version: 5, spaceKey: "TEST" },
     jira: macroJiraPort(),
     attachments: macroAttachmentsPort(),
+    exportView: macroExportViewPort(),
     depth: 0,
     visited: new Set<string>(),
   };
@@ -136,10 +212,18 @@ export async function resolveMacroFixtureBlocks(
     parsePageProperties,
     extractMacroBody,
   });
-  const parsed = storageToBlocks(MACRO_STORAGE, {
+  const storage = storageToBlocks(MACRO_STORAGE, {
     exporter: targetEngine === "pdf" ? "pdf" : "word",
-    pageContext: { id: "macro-page", spaceKey: "TEST", title: "Macro Coverage" },
+    pageContext: { id: "macro-page", version: 5, spaceKey: "TEST", title: "Macro Coverage" },
   });
+  const adf = adfToBlocks(MACRO_ADF_EXTENSION, {
+    exporter: targetEngine === "pdf" ? "pdf" : "word",
+    pageContext: { id: "macro-page", version: 5, spaceKey: "TEST", title: "Macro Coverage" },
+  });
+  const parsed: StorageToBlocksResult = {
+    blocks: [...storage.blocks, ...adf.blocks],
+    notes: [...storage.notes, ...adf.notes],
+  };
   return resolveMacroBlocks(parsed, registry, macroContext(), { live: true, targetEngine });
 }
 
@@ -151,4 +235,12 @@ export function countTables(blocks: readonly ExportBlock[]): number {
 /** Count the remaining `unknown` (floor) blocks in a resolved set. */
 export function countUnknown(blocks: readonly ExportBlock[]): number {
   return blocks.filter((b) => b.type === "unknown").length;
+}
+
+/** True when the platform-rendered Forge export replaced its ADF fallback. */
+export function hasMacroAdfExport(blocks: readonly ExportBlock[]): boolean {
+  const serialized = JSON.stringify(blocks);
+  return serialized.includes(MACRO_ADF_BLOCK_EXPORT_TEXT) &&
+    serialized.includes(MACRO_ADF_BODIED_EXPORT_TEXT) &&
+    serialized.includes(MACRO_ADF_INLINE_EXPORT_TEXT);
 }

@@ -6,15 +6,23 @@ import type {
 } from "@atlcli/export-jobs";
 import {
   createPdfExportJobExecutor,
+  type CreatePdfExportJobExecutorOptionsV1,
+  type PdfExportJobEngineInputV1,
   type PdfExportResultIntentV1,
   type PdfReadyToRenderCheckpointV1,
   type PdfReadyToRenderStoreV1,
 } from "@atlcli/export-wiring/jobs";
-import type { PdfCompilePort, PdfExportReport } from "@atlcli/pdf/browser";
+import {
+  runPdfExport,
+  type PdfAssetResolver,
+  type PdfCompilePort,
+  type PdfExportReport,
+} from "@atlcli/pdf/browser";
 import { PDF_BLOCKS, PDF_FILENAME, PDF_METADATA } from "./fixture.js";
 import { sha256Hex } from "./digest.js";
 import { assertPdfJobParity } from "./pdf-job-parity.js";
-import { compilePdf, deterministicClock, noPdfAssets } from "./pdf-run.js";
+import { MemoryOutputSink } from "./memory-output.js";
+import { deterministicClock, noPdfAssets } from "./pdf-run.js";
 import { HarnessPdfWorkerClient } from "./pdf-worker-client.js";
 
 const SOURCE_NOTE = {
@@ -54,6 +62,18 @@ const REQUEST: PdfExportJobRequestV1 = {
   options: { resolveMacros: false, profile: "tagged" },
 };
 
+export interface PdfJobParityFixtureV1 {
+  request: PdfExportJobRequestV1;
+  input: PdfExportJobEngineInputV1;
+  resolveInput?: CreatePdfExportJobExecutorOptionsV1["resolveInput"];
+  assets?: PdfAssetResolver;
+}
+
+const DEFAULT_FIXTURE: PdfJobParityFixtureV1 = {
+  request: REQUEST,
+  input: ENGINE_INPUT,
+};
+
 async function collect(source: AsyncIterable<Uint8Array>): Promise<Uint8Array> {
   const chunks: Uint8Array[] = [];
   let length = 0;
@@ -78,13 +98,27 @@ interface PdfJobParityCompiler extends PdfCompilePort {
 
 export interface PdfJobParityCaseOptions {
   createCompiler?: () => PdfJobParityCompiler;
+  fixture?: PdfJobParityFixtureV1;
 }
 
-async function directRun(compiler: PdfCompilePort) {
-  return compilePdf(compiler, PDF_BLOCKS, PDF_METADATA, PDF_FILENAME, [SOURCE_NOTE]);
+async function directRun(
+  compiler: PdfCompilePort,
+  fixture: PdfJobParityFixtureV1,
+) {
+  const output = new MemoryOutputSink();
+  const report = await runPdfExport(fixture.input, {
+    assets: fixture.assets ?? noPdfAssets,
+    compiler,
+    output,
+    now: deterministicClock(),
+  });
+  return { report, bytes: output.single.bytes };
 }
 
-async function jobRun(compiler: PdfCompilePort): Promise<{
+async function jobRun(
+  compiler: PdfCompilePort,
+  fixture: PdfJobParityFixtureV1,
+): Promise<{
   bytes: Uint8Array;
   report: PdfExportReport;
   checkpointRef: string;
@@ -103,9 +137,10 @@ async function jobRun(compiler: PdfCompilePort): Promise<{
   const now = () => time++;
 
   const executor = createPdfExportJobExecutor({
-    async resolveInput() {
-      return { input: ENGINE_INPUT, env: { assets: noPdfAssets } };
-    },
+    resolveInput: fixture.resolveInput ?? (async () => ({
+      input: fixture.input,
+      env: { assets: noPdfAssets },
+    })),
     readyToRender: {
       async load() {
         return checkpoint;
@@ -181,7 +216,7 @@ async function jobRun(compiler: PdfCompilePort): Promise<{
   });
 
   const context: ExportJobExecutionContext = {
-    jobId: REQUEST.id,
+    jobId: fixture.request.id,
     leaseEpoch: 1,
     signal: new AbortController().signal,
     spool: {
@@ -210,7 +245,7 @@ async function jobRun(compiler: PdfCompilePort): Promise<{
           filename: artifact.filename,
           byteLength: artifact.byteLength,
           sha256: artifact.sha256,
-          jobId: REQUEST.id,
+          jobId: fixture.request.id,
           leaseEpoch: 1,
           stagedAt: now(),
         };
@@ -228,7 +263,7 @@ async function jobRun(compiler: PdfCompilePort): Promise<{
     },
   };
 
-  const result = await executor.execute(REQUEST, context);
+  const result = await executor.execute(fixture.request, context);
   if (!stagedBytes || !stagedReport || !checkpoint) {
     throw new Error("PDF job executor did not stage its artifact, report, and checkpoint.");
   }
@@ -249,10 +284,11 @@ async function jobRun(compiler: PdfCompilePort): Promise<{
 
 export async function runPdfJobParityCase(options: PdfJobParityCaseOptions = {}) {
   const createCompiler = options.createCompiler ?? (() => new HarnessPdfWorkerClient());
+  const fixture = options.fixture ?? DEFAULT_FIXTURE;
   const directCompiler = createCompiler();
   const direct = await (async () => {
     try {
-      return await directRun(directCompiler);
+      return await directRun(directCompiler, fixture);
     } finally {
       directCompiler.dispose();
     }
@@ -267,7 +303,7 @@ export async function runPdfJobParityCase(options: PdfJobParityCaseOptions = {})
         return jobCompiler.compile(bundle, context);
       },
     };
-    const job = await jobRun(measuredJobCompiler);
+    const job = await jobRun(measuredJobCompiler, fixture);
     const parity = assertPdfJobParity(direct, job);
     if (!job.checkpointRef.startsWith("ready:")) {
       throw new Error("PDF job did not publish its ready-to-render checkpoint.");

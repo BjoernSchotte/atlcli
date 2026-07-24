@@ -47,4 +47,15 @@ describe("highlightCode determinism", () => {
     expect(line0).toContain("1");
     expect(line0).toContain(";");
   });
+
+  it("preserves every trailing empty source line after highlighting", async () => {
+    const result = await highlightCode("const x = 1;\n\n", "ts");
+    expect(result.skipped).toBeNull();
+    expect(result.lines).toHaveLength(3);
+    expect(result.lines.map((line) => line.map((token) => token.text).join(""))).toEqual([
+      "const x = 1;",
+      "",
+      "",
+    ]);
+  });
 });

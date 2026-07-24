@@ -43,6 +43,7 @@ async function createCompiler(): Promise<BrowserPdfCompiler> {
     packageBytes("@atlcli/pdf/fonts/SourceSerif4-Bold.ttf"),
     packageBytes("@atlcli/pdf/fonts/SourceCodePro-Regular.ttf"),
     packageBytes("@atlcli/pdf/fonts/SourceCodePro-Bold.ttf"),
+    packageBytes("@atlcli/pdf/fonts/NotoSansSymbols2-Regular.ttf"),
   ]);
   return new BrowserPdfCompiler({ wasm: wasm.buffer, fonts });
 }
@@ -826,7 +827,8 @@ This is a real PDF.
       expect(extractedCompact).toContain("REF-1234567890,TASK-9876543210");
       expect(extractedCompact).toContain("alphaomegaworkflow-beta");
       expect(extractedCompact).toContain("AlphabeticOverflowGuard");
-      expect(extractedCompact).toContain("synthetic:user-1234567890-abcdef");
+      expect(extractedCompact).toContain("@Unknownuser");
+      expect(extractedCompact).not.toContain("synthetic:user-1234567890-abcdef");
       expect(extractedCompact).toContain("READYFORRELEASE");
       expect(extractedCompact).toContain("WAITINGFORREVIEW");
       expect(extractedCompact).toContain("AlexandersonExampleton");

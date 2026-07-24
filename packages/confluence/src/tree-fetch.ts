@@ -9,20 +9,35 @@
  * fetch, folder 010) reuse the logic unchanged. `confluenceTreeSource(client)`
  * is the Node adapter that maps the port 1:1 onto the existing client.
  *
- * Isomorphic: no `node:`/`bun:` specifiers — only `storageToBlocks` and the
- * shared limiter/scope helpers.
+ * Isomorphic: no `node:`/`bun:` specifiers — only the representation-neutral
+ * body dispatcher and shared limiter/scope helpers.
  */
 import {
+  canonicalExportNoteCode,
   StorageParseError,
-  storageToBlocks,
   type ExportBlock,
   type ExportNote,
-  type StorageToBlocksResult,
 } from "./export-blocks.js";
+import { AdfValidationError } from "./adf-types.js";
+import {
+  createAdfAnnotationResolver,
+  createAdfMediaAttachmentResolver,
+  type AdfMediaAttachment,
+} from "./adf-to-blocks.js";
+import type { InlineComment } from "./client.js";
+import { pageBodyToBlocks } from "./page-body-to-blocks.js";
+import type {
+  BlocksResult,
+  ConfluenceExportPageDetails,
+  ExportPageSource,
+  PageBody,
+  PageBodyToBlocksOptions,
+} from "./page-body.js";
 import {
   normalizeLabelFilter,
   type ExportScope,
   type LabelFilter,
+  validateExportScope,
 } from "./export-scope.js";
 import { escapeCqlValue } from "./client.js";
 
@@ -41,15 +56,31 @@ export interface TreeNodeRef {
   kind: "page" | "folder";
 }
 
-/** A page fetched via {@link TreeSource.getPage}. */
-export interface TreeSourcePage {
+export interface TreeSourcePageMetadata {
   id: string;
   title: string;
-  storage: string;
   version?: number;
   labels?: string[];
   spaceKey?: string;
+  /** Exact v2 `fileId` metadata, prefetched only when the ADF references media. */
+  mediaAttachments?: AdfMediaAttachment[];
+  mediaAttachmentsComplete?: boolean;
+  inlineComments?: InlineComment[];
+  inlineCommentsComplete?: boolean;
 }
+
+/**
+ * A page fetched via {@link TreeSource.getPage}.
+ *
+ * New sources provide an explicitly selected representation-neutral
+ * `exportSource`. The Storage-only member remains accepted during the host
+ * migration window so existing third-party/test ports keep compiling.
+ */
+export type TreeSourcePage = TreeSourcePageMetadata &
+  (
+    | { exportSource: ExportPageSource; storage?: string }
+    | { storage: string; exportSource?: undefined }
+  );
 
 /** A lightweight version snapshot via {@link TreeSource.getPageVersion}. */
 export interface TreeSourceVersion {
@@ -174,6 +205,11 @@ export type ExportTreeBodyResultV1 =
       ok: false;
       pageId: string;
       title: string;
+      /** Present once a representation-bound body read started. */
+      source?: {
+        representation: PageBody["representation"];
+        degraded: false;
+      };
       failure: {
         code: CompletenessCode;
         affected: ReadonlyArray<{ id: string; title: string }>;
@@ -184,6 +220,11 @@ export type ExportTreeBodyResultV1 =
       ok: true;
       pageId: string;
       title: string;
+      /** Body-free source telemetry retained across durable recovery. */
+      source: {
+        representation: PageBody["representation"];
+        degraded: boolean;
+      };
       blocks: ExportBlock[];
       notes: ExportNote[];
       meta: {
@@ -228,6 +269,77 @@ export interface TreeFetchOptions {
   completenessMode?: CompletenessMode;
   signal?: AbortSignal;
   onProgress?: (progress: TreeFetchProgress) => void;
+  /** Common representation-neutral decoder options; page provenance is owned here. */
+  bodyOptions?: Omit<PageBodyToBlocksOptions, "pageContext">;
+  /**
+   * A validated, body-free plan recovered from durable job storage. When
+   * present, discovery/label reads are skipped and only the pinned page bodies
+   * are fetched.
+   */
+  preparedPlan?: ExportTreePlanV1;
+  /**
+   * Called after discovery/filtering and before the first page body read. A
+   * background host can atomically persist the plan and publish its ref here.
+   */
+  onPlanPrepared?: (plan: ExportTreePlanV1) => void | Promise<void>;
+  /**
+   * Called after a recovered plan passes all scope/policy/budget validation and
+   * before its first page body read.
+   */
+  onPlanRecovered?: (plan: ExportTreePlanV1) => void | Promise<void>;
+  /** Maximum serialized size accepted for a durable body-free plan. */
+  maxPlanBytes?: number;
+}
+
+export type ExportTreePlanNodeV1 =
+  | {
+      kind: "page";
+      pageId: string;
+      title: string;
+      depth: number;
+      effectiveDepth: number;
+      parentId: string | null;
+      position: number | null;
+      observedVersion?: number;
+    }
+  | {
+      kind: "folder";
+      folderId: string;
+      title: string;
+      depth: number;
+      effectiveDepth: number;
+      parentId: string | null;
+      position: number | null;
+    };
+
+/**
+ * Durable pre-body snapshot for one ordered tree export.
+ *
+ * It contains identifiers, titles, ordering metadata, version pins and
+ * bounded diagnostics, but never ADF, Storage, decoded blocks or attachments.
+ */
+export interface ExportTreePlanV1 {
+  schema: "atlcli.export-tree-plan/1";
+  scope: ExportScope;
+  policy: {
+    labels?: LabelFilter;
+    completenessMode: CompletenessMode;
+    maxPages: number;
+    maxFolders: number;
+  };
+  rootId: string;
+  includeRoot: boolean;
+  nodes: readonly ExportTreePlanNodeV1[];
+  notes: readonly ExportNote[];
+  complete: boolean;
+}
+
+export interface TreeSourceSummary {
+  /** Pages whose version-bound body source was read, including parse failures. */
+  pagesRead: number;
+  representations: Readonly<Record<PageBody["representation"], number>>;
+  /** Successfully decoded pages that emitted one or more degradation notes. */
+  degradedPages: number;
 }
 
 export interface FetchExportTreeResult {
@@ -235,11 +347,24 @@ export interface FetchExportTreeResult {
   notes: ExportNote[];
   /** False when partial mode downgraded a completeness failure; true otherwise. */
   complete: boolean;
+  /** Aggregate only: raw ADF/Storage bodies never leave the body-fetch jobs. */
+  sourceSummary: TreeSourceSummary;
+}
+
+/** Raised before body IO when a recovered tree plan is corrupt or foreign. */
+export class ExportTreePlanError extends Error {
+  readonly code = "export-tree-plan-invalid" as const;
+
+  constructor(message: string) {
+    super(message);
+    this.name = "ExportTreePlanError";
+  }
 }
 
 const DEFAULT_MAX_PAGES = 500;
 const DEFAULT_MAX_FOLDERS = 200;
 const DEFAULT_CONCURRENCY = 4;
+const DEFAULT_MAX_PLAN_BYTES = 2 * 1024 * 1024;
 const DEFAULT_MAX_RESULT_SLOTS = 8;
 const CQL_ID_CHUNK = 100;
 
@@ -539,6 +664,292 @@ function compareChildren(a: TreeChild, b: TreeChild): number {
   return a.title.localeCompare(b.title);
 }
 
+function normalizedScopeKey(scope: ExportScope): string {
+  try {
+    validateExportScope(scope);
+    switch (scope.kind) {
+      case "page":
+        return JSON.stringify(["page", scope.pageId]);
+      case "tree":
+        if (scope.includeRoot !== undefined && typeof scope.includeRoot !== "boolean") {
+          throw new TypeError("invalid includeRoot");
+        }
+        return JSON.stringify([
+          "tree",
+          scope.rootPageId,
+          scope.includeRoot ?? true,
+          scope.maxDepth ?? null,
+        ]);
+      case "space":
+        return JSON.stringify(["space", scope.spaceKey]);
+    }
+  } catch {
+    throw new ExportTreePlanError("Recovered export tree plan contains an invalid scope.");
+  }
+}
+
+function clonePlanScope(scope: ExportScope): ExportScope {
+  switch (scope.kind) {
+    case "page":
+      return { kind: "page", pageId: scope.pageId };
+    case "tree":
+      return {
+        kind: "tree",
+        rootPageId: scope.rootPageId,
+        ...(scope.includeRoot !== undefined ? { includeRoot: scope.includeRoot } : {}),
+        ...(scope.maxDepth !== undefined ? { maxDepth: scope.maxDepth } : {}),
+      };
+    case "space":
+      return { kind: "space", spaceKey: scope.spaceKey };
+  }
+}
+
+function normalizedLabelKey(filter: LabelFilter | undefined): string {
+  const normalized = normalizeLabelFilter(filter);
+  return JSON.stringify({
+    include: [...(normalized?.include ?? [])].sort(),
+    exclude: [...(normalized?.exclude ?? [])].sort(),
+    excludeMode: normalized?.excludeMode ?? null,
+  });
+}
+
+function clonePlanLabels(filter: LabelFilter | undefined): LabelFilter | undefined {
+  const normalized = normalizeLabelFilter(filter);
+  if (!normalized) return undefined;
+  return {
+    ...(normalized.include ? { include: [...normalized.include].sort() } : {}),
+    ...(normalized.exclude ? { exclude: [...normalized.exclude].sort() } : {}),
+    ...(normalized.excludeMode ? { excludeMode: normalized.excludeMode } : {}),
+  };
+}
+
+function clonePlanNote(note: ExportNote): ExportNote {
+  return {
+    level: note.level,
+    code: note.code,
+    message: note.message,
+    ...(note.macroName !== undefined ? { macroName: note.macroName } : {}),
+    ...(note.source
+      ? {
+          source: {
+            ...(note.source.pageId !== undefined ? { pageId: note.source.pageId } : {}),
+            ...(note.source.pageTitle !== undefined ? { pageTitle: note.source.pageTitle } : {}),
+            ...(note.source.pageUrl !== undefined ? { pageUrl: note.source.pageUrl } : {}),
+            ...(note.source.blockPath !== undefined ? { blockPath: note.source.blockPath } : {}),
+            ...(note.source.assetName !== undefined ? { assetName: note.source.assetName } : {}),
+          },
+        }
+      : {}),
+  };
+}
+
+function createTreePlan(
+  scope: ExportScope,
+  rootId: string,
+  includeRoot: boolean,
+  nodes: readonly ExportNode[],
+  notes: readonly ExportNote[],
+  complete: boolean,
+  policy: {
+    labels?: LabelFilter;
+    completenessMode: CompletenessMode;
+    maxPages: number;
+    maxFolders: number;
+  },
+): ExportTreePlanV1 {
+  const labels = clonePlanLabels(policy.labels);
+  return {
+    schema: "atlcli.export-tree-plan/1",
+    scope: clonePlanScope(scope),
+    policy: {
+      ...(labels ? { labels } : {}),
+      completenessMode: policy.completenessMode,
+      maxPages: policy.maxPages,
+      maxFolders: policy.maxFolders,
+    },
+    rootId,
+    includeRoot,
+    nodes: nodes.map((node): ExportTreePlanNodeV1 =>
+      node.kind === "page"
+        ? {
+            kind: "page",
+            pageId: node.pageId,
+            title: node.title,
+            depth: node.depth,
+            effectiveDepth: node.effectiveDepth,
+            parentId: node.parentId,
+            position: node.position,
+            ...(node.meta.observedVersion !== undefined
+              ? { observedVersion: node.meta.observedVersion }
+              : {}),
+          }
+        : {
+            kind: "folder",
+            folderId: node.folderId,
+            title: node.title,
+            depth: node.depth,
+            effectiveDepth: node.effectiveDepth,
+            parentId: node.parentId,
+            position: node.position,
+          },
+    ),
+    notes: notes.map(clonePlanNote),
+    complete,
+  };
+}
+
+function assertPlanInteger(value: number, label: string): void {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new ExportTreePlanError(`${label} must be a non-negative safe integer.`);
+  }
+}
+
+function assertPlanByteBudget(plan: ExportTreePlanV1, maxPlanBytes: number): void {
+  if (!Number.isSafeInteger(maxPlanBytes) || maxPlanBytes < 1) {
+    throw new ExportTreePlanError("maxPlanBytes must be a positive safe integer.");
+  }
+  let serialized: string;
+  try {
+    serialized = JSON.stringify(plan);
+  } catch {
+    throw new ExportTreePlanError("Recovered export tree plan is not serializable.");
+  }
+  if (new TextEncoder().encode(serialized).byteLength > maxPlanBytes) {
+    throw new ExportTreePlanError("Export tree plan exceeds the durable byte budget.");
+  }
+}
+
+function restoreTreePlan(
+  plan: ExportTreePlanV1,
+  scope: ExportScope,
+  expected: {
+    labels?: LabelFilter;
+    completenessMode: CompletenessMode;
+    maxPages: number;
+    maxFolders: number;
+  },
+): { rootId: string; includeRoot: boolean; nodes: ExportNode[]; notes: ExportNote[]; complete: boolean } {
+  if (plan.schema !== "atlcli.export-tree-plan/1") {
+    throw new ExportTreePlanError("Unsupported export tree plan schema.");
+  }
+  if (normalizedScopeKey(plan.scope) !== normalizedScopeKey(scope)) {
+    throw new ExportTreePlanError("Recovered export tree plan does not match the requested scope.");
+  }
+  if (
+    !plan.policy ||
+    typeof plan.policy !== "object" ||
+    plan.policy.completenessMode !== expected.completenessMode ||
+    plan.policy.maxPages !== expected.maxPages ||
+    plan.policy.maxFolders !== expected.maxFolders ||
+    normalizedLabelKey(plan.policy.labels) !== normalizedLabelKey(expected.labels)
+  ) {
+    throw new ExportTreePlanError("Recovered export tree plan policy does not match the request.");
+  }
+  if (typeof plan.rootId !== "string" || plan.rootId.trim().length === 0) {
+    throw new ExportTreePlanError("Recovered export tree plan has no root id.");
+  }
+  if (
+    (scope.kind === "page" && plan.rootId !== scope.pageId) ||
+    (scope.kind === "tree" && plan.rootId !== scope.rootPageId)
+  ) {
+    throw new ExportTreePlanError("Recovered export tree plan root does not match the request.");
+  }
+  const expectedIncludeRoot = scope.kind === "tree" ? (scope.includeRoot ?? true) : true;
+  if (plan.includeRoot !== expectedIncludeRoot || typeof plan.complete !== "boolean") {
+    throw new ExportTreePlanError("Recovered export tree plan flags do not match the request.");
+  }
+  if (!Array.isArray(plan.nodes) || !Array.isArray(plan.notes)) {
+    throw new ExportTreePlanError("Recovered export tree plan collections are invalid.");
+  }
+
+  let pages = 0;
+  let folders = 0;
+  const seen = new Set<string>();
+  const nodes = plan.nodes.map((node): ExportNode => {
+    if (!node || typeof node !== "object") {
+      throw new ExportTreePlanError("Recovered export tree plan contains an invalid node.");
+    }
+    const id = node.kind === "page" ? node.pageId : node.kind === "folder" ? node.folderId : undefined;
+    if (typeof id !== "string" || id.trim().length === 0 || typeof node.title !== "string") {
+      throw new ExportTreePlanError("Recovered export tree plan contains invalid node identity.");
+    }
+    const key = `${node.kind}:${id}`;
+    if (seen.has(key)) throw new ExportTreePlanError("Recovered export tree plan contains duplicate nodes.");
+    seen.add(key);
+    assertPlanInteger(node.depth, "node.depth");
+    assertPlanInteger(node.effectiveDepth, "node.effectiveDepth");
+    if (node.parentId !== null && typeof node.parentId !== "string") {
+      throw new ExportTreePlanError("Recovered export tree plan contains an invalid parent id.");
+    }
+    if (node.position !== null) assertPlanInteger(node.position, "node.position");
+
+    if (node.kind === "page") {
+      pages += 1;
+      if (pages > expected.maxPages) {
+        throw new ExportTreePlanError("Recovered export tree plan exceeds the page limit.");
+      }
+      if (
+        node.observedVersion !== undefined &&
+        (!Number.isSafeInteger(node.observedVersion) || node.observedVersion < 1)
+      ) {
+        throw new ExportTreePlanError("Recovered export tree plan contains an invalid page version.");
+      }
+      return {
+        kind: "page",
+        pageId: node.pageId,
+        title: node.title,
+        depth: node.depth,
+        effectiveDepth: node.effectiveDepth,
+        parentId: node.parentId,
+        position: node.position,
+        blocks: [],
+        notes: [],
+        meta: {
+          labels: [],
+          ...(node.observedVersion !== undefined
+            ? { observedVersion: node.observedVersion }
+            : {}),
+        },
+      };
+    }
+
+    folders += 1;
+    if (folders > expected.maxFolders) {
+      throw new ExportTreePlanError("Recovered export tree plan exceeds the folder limit.");
+    }
+    return {
+      kind: "folder",
+      folderId: node.folderId,
+      title: node.title,
+      depth: node.depth,
+      effectiveDepth: node.effectiveDepth,
+      parentId: node.parentId,
+      position: node.position,
+    };
+  });
+
+  const notes = plan.notes.map((note) => {
+    const source = note?.source;
+    if (
+      !note ||
+      typeof note !== "object" ||
+      (note.level !== "info" && note.level !== "warning") ||
+      typeof note.code !== "string" ||
+      canonicalExportNoteCode(note.code) === undefined ||
+      typeof note.message !== "string" ||
+      (note.macroName !== undefined && typeof note.macroName !== "string") ||
+      (source !== undefined &&
+        (typeof source !== "object" || source === null ||
+          [source.pageId, source.pageTitle, source.pageUrl, source.blockPath, source.assetName]
+            .some((value) => value !== undefined && typeof value !== "string")))
+    ) {
+      throw new ExportTreePlanError("Recovered export tree plan contains an invalid note.");
+    }
+    return clonePlanNote(note);
+  });
+  return { rootId: plan.rootId, includeRoot: plan.includeRoot, nodes, notes, complete: plan.complete };
+}
+
 /**
  * Fetch an ordered export tree for a scope.
  *
@@ -560,6 +971,7 @@ export async function fetchExportTree(
   const maxPages = opts.maxPages ?? DEFAULT_MAX_PAGES;
   const maxFolders = opts.maxFolders ?? DEFAULT_MAX_FOLDERS;
   const concurrency = opts.concurrency ?? DEFAULT_CONCURRENCY;
+  const maxPlanBytes = opts.maxPlanBytes ?? DEFAULT_MAX_PLAN_BYTES;
   const maxResultSlots = opts.maxResultSlots ?? DEFAULT_MAX_RESULT_SLOTS;
   const mode: CompletenessMode = opts.completenessMode ?? "strict";
   const filter = normalizeLabelFilter(opts.labels);
@@ -574,12 +986,29 @@ export async function fetchExportTree(
 
   const treeNotes: ExportNote[] = [];
   let complete = true;
+  if (opts.preparedPlan) assertPlanByteBudget(opts.preparedPlan, maxPlanBytes);
+  const recoveredPlan = opts.preparedPlan
+    ? restoreTreePlan(opts.preparedPlan, scope, {
+        ...(filter ? { labels: filter } : {}),
+        completenessMode: mode,
+        maxPages,
+        maxFolders,
+      })
+    : undefined;
+  if (recoveredPlan) {
+    treeNotes.push(...recoveredPlan.notes);
+    complete = recoveredPlan.complete;
+  }
 
   // Resolve the scope root + includeRoot.
   let rootId: string;
   let includeRoot = true;
   let maxDepth: number | undefined;
-  if (scope.kind === "page") {
+  if (recoveredPlan) {
+    rootId = recoveredPlan.rootId;
+    includeRoot = recoveredPlan.includeRoot;
+    maxDepth = scope.kind === "tree" ? scope.maxDepth : scope.kind === "page" ? 0 : undefined;
+  } else if (scope.kind === "page") {
     rootId = scope.pageId;
     // A page scope is exactly one page — never descend into children.
     maxDepth = 0;
@@ -594,7 +1023,7 @@ export async function fetchExportTree(
   }
 
   // ---- Phase 1: ordering walk ----
-  const planned: ExportNode[] = [];
+  const planned: ExportNode[] = recoveredPlan?.nodes ?? [];
   const visited = new Set<string>();
   let pageCount = 0;
   let folderCount = 0;
@@ -725,9 +1154,9 @@ export async function fetchExportTree(
     }
   };
 
-  if (includeRoot) {
+  if (!recoveredPlan && includeRoot) {
     await walk({ id: rootId, kind: "page" }, 0, null, null, undefined, undefined);
-  } else {
+  } else if (!recoveredPlan) {
     // Root excluded by explicit request: discover the root's children as the
     // top-level nodes (each becomes its own level-1 chapter). Seed the root's
     // composite key into the cycle guard even though the root is never emitted —
@@ -790,7 +1219,12 @@ export async function fetchExportTree(
 
   // ---- Phase 2: label filter (before body fetch) ----
   let nodes: ExportNode[] = planned;
-  if (filter) {
+  if (!recoveredPlan && filter) {
+    if (opts.onPlanPrepared && !source.searchPages) {
+      throw new ExportTreePlanError(
+        "Durable tree planning requires metadata-only label lookup before body reads.",
+      );
+    }
     const labelsById = await resolveLabels(source, nodes, filter, context);
     // Root-bypass immunity applies only when the true root is actually in the
     // node list. With `includeRoot: false` the root was removed by explicit
@@ -801,6 +1235,22 @@ export async function fetchExportTree(
     });
     nodes = filtered.nodes;
     treeNotes.push(...filtered.notes);
+  }
+
+  if (!recoveredPlan && opts.onPlanPrepared) {
+    const plan = createTreePlan(scope, rootId, includeRoot, nodes, treeNotes, complete, {
+      ...(filter ? { labels: filter } : {}),
+      completenessMode: mode,
+      maxPages,
+      maxFolders,
+    });
+    assertPlanByteBudget(plan, maxPlanBytes);
+    await opts.onPlanPrepared(plan);
+    throwIfAborted(signal);
+  }
+  if (recoveredPlan && opts.onPlanRecovered) {
+    await opts.onPlanRecovered(opts.preparedPlan!);
+    throwIfAborted(signal);
   }
 
   // ---- Phase 3: bounded body window (page nodes only, in pre-order slots) ----
@@ -837,6 +1287,20 @@ export async function fetchExportTree(
         recovered: boolean;
       }
     | { ordinal: number; error: unknown };
+
+  const representationCounts: Record<PageBody["representation"], number> = {
+    atlas_doc_format: 0,
+    storage: 0,
+  };
+  let pagesRead = 0;
+  let degradedPages = 0;
+
+  const recordSource = (result: ExportTreeBodyResultV1): void => {
+    if (!result.source) return;
+    representationCounts[result.source.representation] += 1;
+    pagesRead += 1;
+    if (result.source.degraded) degradedPages += 1;
+  };
 
   const applySuccess = (
     node: ExportPageNode,
@@ -915,10 +1379,15 @@ export async function fetchExportTree(
         throw error;
       }
 
+      const exportSource: ExportPageSource = page.exportSource ?? {
+        primary: { representation: "storage", value: page.storage },
+        ...(page.version !== undefined ? { sourceVersion: page.version } : {}),
+      };
+      const bodyVersion = exportSource.sourceVersion ?? page.version;
       if (
         node.meta.observedVersion !== undefined &&
-        page.version !== undefined &&
-        page.version !== node.meta.observedVersion
+        bodyVersion !== undefined &&
+        bodyVersion !== node.meta.observedVersion
       ) {
         return {
           ordinal,
@@ -931,22 +1400,50 @@ export async function fetchExportTree(
               code: "page-version-changed",
               affected: [{ id: node.pageId, title: node.title }],
             },
+            source: {
+              representation: exportSource.primary.representation,
+              degraded: false,
+            },
           },
         };
       }
 
-      let walked: StorageToBlocksResult;
+      let decoded: BlocksResult;
       try {
-        walked = storageToBlocks(page.storage, {
+        decoded = pageBodyToBlocks(exportSource, {
+          ...opts.bodyOptions,
+          resolveMediaAttachment:
+            createAdfMediaAttachmentResolver(page.mediaAttachments) ??
+            opts.bodyOptions?.resolveMediaAttachment,
+          resolveAnnotation:
+            createAdfAnnotationResolver(page.inlineComments) ??
+            opts.bodyOptions?.resolveAnnotation,
+          annotationCommentsComplete:
+            page.inlineCommentsComplete ?? opts.bodyOptions?.annotationCommentsComplete,
           pageContext: {
             id: node.pageId,
-            ...(page.version !== undefined ? { version: page.version } : {}),
+            title: node.title,
+            ...(bodyVersion !== undefined ? { version: bodyVersion } : {}),
             ...(page.spaceKey !== undefined ? { spaceKey: page.spaceKey } : {}),
           },
         });
       } catch (error) {
-        if (!(error instanceof StorageParseError)) throw error;
+        // A page whose selected body blows a validation/parse budget is
+        // UNREADABLE, not fatal
+        // to the run (spec 011). Left uncaught this rejected the job, and the
+        // rejection scan below re-throws it — so one pathological page aborted
+        // the entire tree export. Routing it through the existing completeness
+        // path means strict mode still aborts (the user asked for completeness)
+        // while partial mode renders a placeholder chapter and keeps going,
+        // which is exactly what the budget's own docs promise.
+        if (!(error instanceof StorageParseError) && !(error instanceof AdfValidationError)) {
+          throw error;
+        }
         throwIfAborted(bodyController.signal);
+        const representation = exportSource.primary.representation;
+        const detail = error instanceof StorageParseError
+          ? `storage exceeded the parse budget: ${error.kind}`
+          : `ADF validation failed: ${error.code}`;
         return {
           ordinal,
           recovered: false,
@@ -957,8 +1454,9 @@ export async function fetchExportTree(
             failure: {
               code: "page-unreadable",
               affected: [{ id: node.pageId, title: node.title }],
-              detail: `storage exceeded the parse budget: ${error.kind}`,
+              detail,
             },
+            source: { representation, degraded: false },
           },
         };
       }
@@ -969,10 +1467,15 @@ export async function fetchExportTree(
           ok: true,
           pageId: node.pageId,
           title: node.title,
-          blocks: walked.blocks,
-          notes: walked.notes,
+          source: {
+            representation:
+              decoded.representation ?? exportSource.primary.representation,
+            degraded: decoded.degraded === true,
+          },
+          blocks: decoded.blocks,
+          notes: decoded.notes,
           meta: {
-            ...(page.version === undefined ? {} : { version: page.version }),
+            ...(bodyVersion === undefined ? {} : { version: bodyVersion }),
             labels: page.labels ?? [],
             ...(page.spaceKey === undefined ? {} : { spaceKey: page.spaceKey }),
           },
@@ -1039,9 +1542,11 @@ export async function fetchExportTree(
           total,
           currentTitle: current.result.title,
         });
-        if (!opts.bodyStore) applySuccess(node, current.result);
-      } else {
-        applyPartialFailure(node, current.result);
+      }
+      if (!opts.bodyStore) {
+        recordSource(current.result);
+        if (current.result.ok) applySuccess(node, current.result);
+        else applyPartialFailure(node, current.result);
       }
       ready.delete(nextCommit);
       nextCommit += 1;
@@ -1056,7 +1561,9 @@ export async function fetchExportTree(
         if (!result) {
           throw new Error(`Tree body store lost committed slot ${ordinal}.`);
         }
+        recordSource(result);
         if (result.ok) applySuccess(pageNodes[ordinal]!, result);
+        else applyPartialFailure(pageNodes[ordinal]!, result);
       }
     }
   } catch (error) {
@@ -1067,7 +1574,16 @@ export async function fetchExportTree(
     signal?.removeEventListener("abort", abortBodies);
   }
 
-  return { nodes, notes: treeNotes, complete };
+  return {
+    nodes,
+    notes: treeNotes,
+    complete,
+    sourceSummary: {
+      pagesRead,
+      representations: representationCounts,
+      degradedPages,
+    },
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -1149,6 +1665,14 @@ async function resolveLabels(
 
 /** The subset of `ConfluenceClient` the adapter needs (keeps this isomorphic). */
 export interface TreeSourceClient {
+  getExportPageDetailsWithMedia?(
+    id: string,
+    options?: { signal?: AbortSignal }
+  ): Promise<ConfluenceExportPageDetails>;
+  getExportPageDetails?(
+    id: string,
+    options?: { signal?: AbortSignal }
+  ): Promise<ConfluenceExportPageDetails>;
   getPageDetails(
     id: string,
     options?: { signal?: AbortSignal }
@@ -1196,6 +1720,23 @@ export function confluenceTreeSource(client: TreeSourceClient): TreeSource {
 
   return {
     async getPage(id, context) {
+      const exportRead = client.getExportPageDetailsWithMedia ?? client.getExportPageDetails;
+      if (exportRead) {
+        const page = await exportRead.call(client, id, { signal: context.signal });
+        return {
+          id: page.id,
+          title: page.title,
+          storage: page.storage,
+          exportSource: page.exportSource,
+          version: page.version,
+          labels: page.labels,
+          spaceKey: page.spaceKey,
+          mediaAttachments: page.mediaAttachments,
+          mediaAttachmentsComplete: page.mediaAttachmentsComplete,
+          inlineComments: page.inlineComments,
+          inlineCommentsComplete: page.inlineCommentsComplete,
+        };
+      }
       const page = await client.getPageDetails(id, { signal: context.signal });
       return {
         id: page.id,

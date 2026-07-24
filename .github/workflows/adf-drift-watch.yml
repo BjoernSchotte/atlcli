@@ -1,0 +1,104 @@
+name: ADF Drift Watch
+
+on:
+  schedule:
+    # Monday 05:23 UTC, off the hour and early in the working week.
+    - cron: "23 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: adf-drift-watch
+  cancel-in-progress: true
+
+jobs:
+  upstream:
+    name: Public upstream contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Install pinned dependencies
+        run: bun install --frozen-lockfile --ignore-scripts
+
+      - name: Verify committed snapshot offline
+        run: bun run check:adf-pinned
+
+      - name: Check official schema, package, reference, and REST contracts
+        run: >-
+          bun --conditions=development scripts/adf-drift.ts check-upstream
+          --out-dir=artifacts/adf-drift
+
+      - name: Publish watch summary
+        if: always()
+        run: |
+          if [ -f artifacts/adf-drift/adf-drift-report.md ]; then
+            cat artifacts/adf-drift/adf-drift-report.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "ADF drift report was not produced." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload watch reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: adf-drift-report-${{ github.run_id }}
+          path: |
+            artifacts/adf-drift/adf-drift-report.json
+            artifacts/adf-drift/adf-drift-report.md
+          if-no-files-found: warn
+          retention-days: 90
+
+  observed-cloud:
+    name: Optional observed Cloud structures
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      ADF_WATCH_BASE_URL: ${{ secrets.ADF_WATCH_BASE_URL }}
+      ADF_WATCH_EMAIL: ${{ secrets.ADF_WATCH_EMAIL }}
+      ADF_WATCH_API_TOKEN: ${{ secrets.ADF_WATCH_API_TOKEN }}
+      ADF_WATCH_PAGE_IDS: ${{ secrets.ADF_WATCH_PAGE_IDS }}
+      ADF_WATCH_PAGE_ID: ${{ secrets.ADF_WATCH_PAGE_ID }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Install pinned dependencies
+        run: bun install --frozen-lockfile --ignore-scripts
+
+      - name: Inventory aggregate structural signatures only
+        run: >-
+          bun --conditions=development scripts/adf-drift.ts check-observed-cloud
+          --out-dir=artifacts/adf-drift
+
+      - name: Publish observed-Cloud summary
+        if: always()
+        run: |
+          if [ -f artifacts/adf-drift/adf-observed-report.md ]; then
+            cat artifacts/adf-drift/adf-observed-report.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Observed-Cloud report was not produced." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload observed-Cloud report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: adf-observed-report-${{ github.run_id }}
+          path: |
+            artifacts/adf-drift/adf-observed-report.json
+            artifacts/adf-drift/adf-observed-report.md
+          if-no-files-found: warn
+          retention-days: 90

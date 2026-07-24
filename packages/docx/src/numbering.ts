@@ -19,8 +19,9 @@
  * Restart semantics: bullets share ONE `numId` (they never need distinct
  * restart instances), while every ordered list NODE — top-level or nested,
  * including two logically separate `<ol>`s at the same position — gets its own
- * `numId` with a `w:lvlOverride`/`w:startOverride` so each `<ol>` restarts at 1
- * (Confluence's behavior; without it Word numbers document-wide).
+ * self-contained single-level `abstractNum` + `numId`. The definition carries
+ * the authored start and visual nesting indent directly, which both Word and
+ * LibreOffice import reliably.
  */
 
 /** Word caps the number of `w:num` instances at 2047 per document. */
@@ -53,22 +54,10 @@ const BULLET_LEVELS: { char: string; font: string }[] = [
   { char: WINGDINGS_SQUARE, font: "Wingdings" },
 ]
 
-/** The decimal/lowerLetter/lowerRoman cycle for ordered levels (ilvl 0–8). */
-const ORDERED_FORMATS = [
-  "decimal",
-  "lowerLetter",
-  "lowerRoman",
-  "decimal",
-  "lowerLetter",
-  "lowerRoman",
-  "decimal",
-  "lowerLetter",
-  "lowerRoman",
-];
-
 /** `w:ind` left indent for a level: 720 dxa per level, 360 hanging. */
 function levelIndent(ilvl: number): string {
-  return `<w:ind w:left="${(ilvl + 1) * 720}" w:hanging="360"/>`;
+  const left = (ilvl + 1) * 720;
+  return `<w:tabs><w:tab w:val="num" w:pos="${left - 360}"/></w:tabs><w:ind w:left="${left}" w:hanging="360"/>`;
 }
 
 /** The XML pieces a numbering part needs, kept separate so a merge can order them. */
@@ -82,10 +71,15 @@ export interface NumberingXml {
 export class NumberingAllocator {
   private readonly base: NumberingBase;
   private readonly bulletAbstractId: number;
-  private readonly decimalAbstractId: number;
+  private nextAbstractId: number;
   private nextNumId: number;
   private bulletNumId: number | null = null;
-  private readonly orderedNumIds: number[] = [];
+  private readonly orderedInstances: Array<{
+    id: number;
+    abstractId: number;
+    start: number;
+    visualLevel: number;
+  }> = [];
   private lastNumId: number | null = null;
   private used = false;
   private capReached = false;
@@ -93,7 +87,7 @@ export class NumberingAllocator {
   constructor(base: NumberingBase) {
     this.base = base;
     this.bulletAbstractId = base.abstractNumId + 1;
-    this.decimalAbstractId = base.abstractNumId + 2;
+    this.nextAbstractId = base.abstractNumId + 2;
     this.nextNumId = base.numId + 1;
   }
 
@@ -109,11 +103,11 @@ export class NumberingAllocator {
 
   /**
    * Acquire a `numId` for one list NODE. Bullets share a single instance;
-   * every ordered node gets its own so it restarts at 1. Beyond Word's
+   * every ordered node gets its own so it restarts at its authored value. Beyond Word's
    * 2047-instance cap the last instance is reused and {@link capExceeded}
    * flips — a valid (if imperfect) file instead of an invalid one.
    */
-  acquire(ordered: boolean): number {
+  acquire(ordered: boolean, start = 1, ilvl = 0): number {
     this.used = true;
     if (!ordered) {
       if (this.bulletNumId === null) {
@@ -126,7 +120,12 @@ export class NumberingAllocator {
       this.capReached = true;
       return this.lastNumId ?? this.bulletNumId ?? this.base.numId;
     }
-    this.orderedNumIds.push(id);
+    this.orderedInstances.push({
+      id,
+      abstractId: this.nextAbstractId++,
+      start,
+      visualLevel: ilvl,
+    });
     return id;
   }
 
@@ -148,24 +147,24 @@ export class NumberingAllocator {
   }
 
   /**
-   * Emit the numbering XML: one bullet `abstractNum` and one decimal
-   * `abstractNum` (each with 9 `w:lvl` entries), plus the `w:num` instances
-   * that were acquired. Only meaningful when {@link isUsed}.
+   * Emit one shared multilevel bullet definition plus one single-level ordered
+   * definition per ordered node. The latter is intentionally self-contained:
+   * Word and LibreOffice both honor its authored start without depending on
+   * importer-specific `w:lvlOverride` behavior.
    */
   toXml(): NumberingXml {
-    const abstractNums = this.bulletAbstractNum() + this.decimalAbstractNum();
+    let abstractNums = this.bulletNumId === null ? "" : this.bulletAbstractNum();
+    for (const instance of this.orderedInstances) {
+      abstractNums += this.orderedAbstractNum(instance);
+    }
     let nums = "";
     if (this.bulletNumId !== null) {
       nums += `<w:num w:numId="${this.bulletNumId}"><w:abstractNumId w:val="${this.bulletAbstractId}"/></w:num>`;
     }
-    for (const id of this.orderedNumIds) {
-      // The lvlOverride/startOverride is belt-and-suspenders, not load-bearing:
-      // each ordered node already gets its OWN fresh numId → its own abstractNum
-      // counter → restart at 1 by construction. The explicit startOverride makes
-      // the restart intent unmistakable to Word and to a human reading the part.
+    for (const instance of this.orderedInstances) {
       nums +=
-        `<w:num w:numId="${id}"><w:abstractNumId w:val="${this.decimalAbstractId}"/>` +
-        `<w:lvlOverride w:ilvl="0"><w:startOverride w:val="1"/></w:lvlOverride></w:num>`;
+        `<w:num w:numId="${instance.id}">` +
+        `<w:abstractNumId w:val="${instance.abstractId}"/></w:num>`;
     }
     return { abstractNums, nums };
   }
@@ -184,21 +183,42 @@ export class NumberingAllocator {
         `<w:rPr><w:rFonts w:ascii="${font}" w:hAnsi="${font}" w:hint="default"/></w:rPr>` +
         `</w:lvl>`;
     }
-    return `<w:abstractNum w:abstractNumId="${this.bulletAbstractId}"><w:multiLevelType w:val="hybridMultilevel"/>${lvls}</w:abstractNum>`;
+    return (
+      `<w:abstractNum w:abstractNumId="${this.bulletAbstractId}">` +
+      `<w:nsid w:val="A7C11B01"/><w:multiLevelType w:val="multilevel"/><w:tmpl w:val="A7C11B01"/>` +
+      `${lvls}</w:abstractNum>`
+    );
   }
 
-  private decimalAbstractNum(): string {
-    let lvls = "";
-    for (let ilvl = 0; ilvl <= MAX_ILVL; ilvl++) {
-      lvls +=
-        `<w:lvl w:ilvl="${ilvl}">` +
-        `<w:start w:val="1"/>` +
-        `<w:numFmt w:val="${ORDERED_FORMATS[ilvl]}"/>` +
-        `<w:lvlText w:val="%${ilvl + 1}."/>` +
-        `<w:lvlJc w:val="left"/>` +
-        `<w:pPr>${levelIndent(ilvl)}</w:pPr>` +
-        `</w:lvl>`;
-    }
-    return `<w:abstractNum w:abstractNumId="${this.decimalAbstractId}"><w:multiLevelType w:val="hybridMultilevel"/>${lvls}</w:abstractNum>`;
+  private orderedAbstractNum(instance: {
+    abstractId: number;
+    start: number;
+    visualLevel: number;
+  }): string {
+    const nsid = (0xa7c10000 + (instance.abstractId & 0xffff))
+      .toString(16)
+      .padStart(8, "0")
+      .toUpperCase();
+    return (
+      `<w:abstractNum w:abstractNumId="${instance.abstractId}">` +
+      `<w:nsid w:val="${nsid}"/><w:multiLevelType w:val="singleLevel"/><w:tmpl w:val="${nsid}"/>` +
+      this.orderedLevel(instance.visualLevel, instance.start) +
+      `</w:abstractNum>`
+    );
+  }
+
+  private orderedLevel(visualLevel: number, start: number): string {
+    return (
+      `<w:lvl w:ilvl="0">` +
+      `<w:start w:val="${start}"/>` +
+      // ADF `orderedList.attrs.order` is numeric at every nesting depth.
+      // Preserve that observable value instead of translating 8 into "h".
+      `<w:numFmt w:val="decimal"/>` +
+      `<w:pStyle w:val="ListParagraph"/>` +
+      `<w:lvlText w:val="%1."/>` +
+      `<w:lvlJc w:val="left"/>` +
+      `<w:pPr>${levelIndent(visualLevel)}</w:pPr>` +
+      `</w:lvl>`
+    );
   }
 }

@@ -18,6 +18,7 @@ import {
   isMissingAltText,
   ensureContentTypeDefault,
   inlineImageParagraph,
+  inlineImageRun,
   isSvg,
   parseSvgSize,
   pxToEmu,
@@ -290,6 +291,20 @@ describe("ImageEmbedder", () => {
     assertBalancedXml(xml);
   });
 
+  it("emits a Word anchor with square text wrapping for wrapped ADF media", () => {
+    const zip = templateZip();
+    const left = new ImageEmbedder(zip).embed(pngBytes(100, 50), { wrap: "left" });
+
+    expect(left).toContain("<wp:anchor ");
+    expect(left).not.toContain("<wp:inline ");
+    expect(left).toContain(
+      '<wp:positionH relativeFrom="column"><wp:align>left</wp:align></wp:positionH>',
+    );
+    expect(left).toContain('<wp:wrapSquare wrapText="right"/>');
+    expect(left).toContain("</wp:anchor>");
+    assertBalancedXml(left);
+  });
+
   it("caps oversized images to the content width", () => {
     const zip = templateZip();
     const xml = new ImageEmbedder(zip).embed(pngBytes(1200, 600));
@@ -367,6 +382,23 @@ describe("inlineImageParagraph", () => {
     ]) {
       expect(xml).toContain(landmark);
     }
+  });
+
+  it("emits a paragraph-free inline run with authored border color, alpha, and width", () => {
+    const xml = inlineImageRun({
+      relId: "rId10",
+      docPrId: 4,
+      name: "inline",
+      descr: "inline alt",
+      cxEmu: 300,
+      cyEmu: 200,
+      border: { color: "#0052CC80", size: 2 },
+    });
+    assertBalancedXml(xml);
+    expect(xml).toStartWith("<w:r><w:drawing>");
+    expect(xml).not.toContain("<w:p>");
+    expect(xml).toContain('<a:ln w="25400">');
+    expect(xml).toContain('<a:srgbClr val="0052CC"><a:alpha val="50196"/>');
   });
 });
 
@@ -485,6 +517,32 @@ describe("ImageEmbedder.embedSvg", () => {
     expect(zip.file("[Content_Types].xml")!.asText()).toBe(ctBefore);
     expect(Object.keys(zip.files).some((p) => p.startsWith("word/media/"))).toBe(false);
     expect(embedder.diagramCount).toBe(0);
+  });
+});
+
+describe("ImageEmbedder inline drawings", () => {
+  it("embeds raster and SVG images as runs while preserving dimensions and borders", () => {
+    const zip = templateZip();
+    const embedder = new ImageEmbedder(zip);
+    const raster = embedder.embedInline(pngBytes(100, 50), {
+      widthPx: 40,
+      heightPx: 20,
+      border: { color: "#FF5630", size: 3 },
+    });
+    const svg = embedder.embedSvgInline(DIAGRAM_SVG, pngBytes(400, 200), {
+      widthPx: 30,
+      heightPx: 15,
+      origin: "image",
+      border: { color: "#36B37E", size: 1 },
+    });
+
+    expect(raster).not.toContain("<w:p>");
+    expect(raster).toContain(`<wp:extent cx="${40 * 9525}" cy="${20 * 9525}"/>`);
+    expect(raster).toContain('<a:ln w="38100">');
+    expect(svg).not.toContain("<w:p>");
+    expect(svg).toContain("asvg:svgBlip");
+    expect(svg).toContain('<a:srgbClr val="36B37E">');
+    expect(embedder.embeddedCount).toBe(2);
   });
 });
 

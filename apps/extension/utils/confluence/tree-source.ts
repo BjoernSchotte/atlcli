@@ -123,7 +123,22 @@ export function sessionTreeSourceForProfile(
   options: SessionTreeSourceOptions = {}
 ): TreeSource {
   const makeClient = options.makeClient ?? ((p: Profile) => new ConfluenceClient(p));
-  return withExportSignal(confluenceTreeSource(makeClient(profile)), options.signal);
+  const client = makeClient(profile);
+  // The current panel-owned export path remains explicitly Storage-primary
+  // until the background-job resolver owns the complete dual-read lifecycle.
+  // Hiding the optional export read here is a routing policy, not a parser
+  // fork: the same browser-safe TreeSource/dispatcher contracts are already
+  // used by the shared core and will be enabled at the WP8 host boundary.
+  const storageCompatibilityClient: TreeSourceClient = {
+    getPageDetails: (id, request) => client.getPageDetails(id, request),
+    getPageVersion: (id, request) => client.getPageVersion(id, request),
+    getChildrenWithPosition: (id, request) => client.getChildrenWithPosition(id, request),
+    getPageDirectChildren: (id, request) => client.getPageDirectChildren(id, request),
+    getFolderChildren: (id, request) => client.getFolderChildren(id, request),
+    getSpaceHomepageId: (key, request) => client.getSpaceHomepageId(key, request),
+    searchPages: (cql, limit, request) => client.searchPages(cql, limit, request),
+  };
+  return withExportSignal(confluenceTreeSource(storageCompatibilityClient), options.signal);
 }
 
 /**

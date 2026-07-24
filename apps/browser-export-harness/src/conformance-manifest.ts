@@ -108,6 +108,14 @@ export const CONFORMANCE_MANIFEST: readonly ConformanceCaseMeta[] = [
     emitsDigests: true,
   },
   {
+    id: "adf-source",
+    title: "ADF-primary source to DOCX/PDF",
+    folderTaskIds: ["adf-export/WP9"],
+    engines: ["pdf", "docx"],
+    mediaPolicy: "none",
+    emitsDigests: false,
+  },
+  {
     id: "scope",
     title: "Scope / tree compose (002)",
     folderTaskIds: ["002/T1.1", "002/T1.2", "002/T1.3"],
@@ -192,6 +200,7 @@ export const EXPECTED_LANDED_CASE_IDS: readonly string[] = [
   "pdf-job-parity",
   "pdf-settings",
   "blocks",
+  "adf-source",
   "scope",
   "content-compat",
   "macros",

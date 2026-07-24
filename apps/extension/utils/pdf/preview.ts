@@ -133,6 +133,7 @@ export function countImageRefs(blocks: readonly ExportBlock[]): number {
           count += 1;
           break;
         case "callout":
+        case "expand":
         case "blockquote":
           walk(block.content);
           break;
@@ -141,6 +142,9 @@ export function countImageRefs(blocks: readonly ExportBlock[]): number {
           break;
         case "list":
           for (const item of block.items) walk(item.content);
+          break;
+        case "layout":
+          for (const column of block.columns) walk(column.content);
           break;
         case "table":
           for (const row of block.rows) {

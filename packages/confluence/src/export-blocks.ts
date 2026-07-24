@@ -28,6 +28,8 @@ import { decodeHTML } from "entities";
 import { KNOWN_MACROS } from "./markdown.js";
 import { UNSAFE_LINK_NOTE_CODE, sanitizeLinkHref, unsafeLinkMessage } from "./link-safety.js";
 import { translateDatasourceLink } from "./datasource.js";
+import type { AdfJsonValue } from "./adf-types.js";
+import type { BlocksResult } from "./page-body.js";
 
 // ---------------------------------------------------------------------------
 // Model
@@ -53,9 +55,81 @@ export type LinkTarget =
    * rewrite resolves by `contentId` first). Optional + backwards compatible:
    * hand-authored `ri:content-title`-only links leave it unset.
    */
-  | { kind: "page"; contentTitle: string; contentId?: string; spaceKey?: string; anchor?: string }
-  | { kind: "attachment"; filename: string }
+  | {
+      kind: "page";
+      contentTitle: string;
+      contentId?: string;
+      spaceKey?: string;
+      anchor?: string;
+      /**
+       * Exact safe source href. Composed exports prefer an in-document target;
+       * single-page/out-of-scope exports retain this as their clickable fallback.
+       */
+      href?: string;
+    }
+  | {
+      kind: "attachment";
+      filename: string;
+      /** Exact safe source href used when no host-specific attachment resolver runs. */
+      href?: string;
+    }
   | { kind: "anchor"; anchor: string };
+
+/** Exact optional provenance carried by the pinned ADF `link` mark. */
+export interface AdfLinkAttributes {
+  title?: string;
+  id?: string;
+  collection?: string;
+  occurrenceKey?: string;
+}
+
+/** A resolved-safe link plus its exact optional ADF provenance. */
+export interface ExportLink {
+  target: LinkTarget;
+  adfAttributes?: AdfLinkAttributes;
+}
+
+/** The three display modes represented by ADF Smart Card node types. */
+export type SmartCardAppearance = "inline" | "block" | "embed";
+
+/**
+ * Target-neutral, lossless projection of a pinned ADF Smart Card node.
+ *
+ * `data` and `datasource` remain JSON because the pinned schema deliberately
+ * leaves these provider-owned payloads open. Static renderers use only the
+ * stable title/URL projection and never execute or fetch that opaque data.
+ * `target` exists only when the URL passed the shared link-safety gate.
+ */
+export interface SmartCardSemantics {
+  appearance: SmartCardAppearance;
+  source: "url" | "data" | "datasource";
+  url?: string;
+  target?: LinkTarget;
+  title?: string;
+  localId?: string;
+  data?: AdfJsonValue;
+  datasource?: AdfJsonValue;
+  layout?:
+    | "wide"
+    | "full-width"
+    | "center"
+    | "wrap-right"
+    | "wrap-left"
+    | "align-end"
+    | "align-start";
+  width?: number;
+  originalHeight?: number;
+  originalWidth?: number;
+}
+
+/** Deterministic visible label shared by both static export engines. */
+export function smartCardDisplayText(card: SmartCardSemantics): string {
+  const title = card.title?.trim();
+  if (title) return title;
+  const url = card.url?.trim();
+  if (url) return url;
+  return card.source === "datasource" ? "Datasource" : "Smart link";
+}
 
 /**
  * A typed inline node. Serializers render these to runs/spans; the model never
@@ -70,16 +144,166 @@ export type InlineNode =
       color?: string;
       /** Canonical inline highlight/background color (`#RRGGBB`). */
       backgroundColor?: string;
+      /**
+       * Stored emoji semantics retained alongside the portable visible text.
+       * `text` is the exact optional source attribute (including an empty
+       * string); `renderedFrom` records whether the visible run uses that text
+       * or the required short-name fallback.
+       */
+      emoji?: EmojiSemantics;
+      /** Identity retained when this visible text approximates an ADF inline extension. */
+      adfExtension?: AdfExtensionIdentity;
+      /** Structured ADF inline-extension parameters, kept separate from identity. */
+      extensionParams?: MacroParameter[];
+      /** Source page of an approximated inline extension. */
+      sourcePage?: { id: string; version?: number; spaceKey?: string };
+      /** ADF inline-comment source ranges retained independently of comment bodies. */
+      annotations?: AdfAnnotationIdentity[];
+      /** ADF fragment identities retained without inventing bookmark semantics. */
+      fragments?: AdfFragmentIdentity[];
+      /**
+       * Unsupported ADF inline wrappers retained on the first visible text run
+       * they own. Arrays preserve nested wrapper boundaries in source order.
+       */
+      unsupportedAdf?: AdfUnsupportedNodeProvenance[];
     }
-  | { type: "link"; target: LinkTarget; content: InlineNode[] }
+  | ({
+      type: "link";
+      content: InlineNode[];
+    } & ExportLink)
   /**
-   * A user mention. Carries `accountId` always; `displayName` is optional and is
-   * the clean slot for the upcoming display-name resolution feature — when the
-   * storage lacks a name the serializer/resolver fills it from `accountId`.
+   * A user or collection mention. The source identity and presentation
+   * attributes remain metadata; renderers never expose `accountId` merely
+   * because a display-name lookup failed.
    */
-  | { type: "mention"; accountId: string; displayName?: string }
-  | { type: "status"; text: string; color: string }
+  | {
+      type: "mention";
+      accountId: string;
+      /** Resolved or source-derived visible name without the leading `@`. */
+      displayName?: string;
+      /** Exact optional ADF textual representation, including an empty string. */
+      sourceText?: string;
+      /** Stable editor identity, retained as non-visual metadata. */
+      localId?: string;
+      /** Exact optional product access scope from the pinned ADF node. */
+      accessLevel?: string;
+      /** Exact pinned mention category. */
+      userType?: "DEFAULT" | "SPECIAL" | "APP";
+    }
+  /**
+   * A semantic calendar date. ADF stores Unix epoch milliseconds as a string;
+   * keeping that source value avoids baking one viewer's locale into the
+   * target-neutral document model.
+   */
+  | { type: "date"; timestamp: string; localId?: string }
+  /**
+   * A Confluence status lozenge. Storage may expose legacy color names in
+   * addition to ADF's pinned semantic colors, so `color` remains an exact
+   * string while the ADF validator enforces its narrower source contract.
+   */
+  | { type: "status"; text: string; color: string; localId?: string; style?: string }
+  | { type: "smartCard"; card: SmartCardSemantics }
+  | {
+      type: "media";
+      media: UnresolvedMediaIdentity;
+      /** Correlated image source. Non-image files deliberately omit it. */
+      source?: ImageSource;
+      alt?: string;
+      width?: number;
+      height?: number;
+      border?: MediaBorder;
+      annotations?: AdfAnnotationIdentity[];
+      link?: ExportLink;
+    }
+  /**
+   * Template instruction text. Confluence hides placeholders in published
+   * view; exporters retain the identity but deliberately render no visible
+   * text.
+   */
+  | { type: "placeholder"; text: string; localId?: string; placeholderType?: string }
   | { type: "lineBreak" };
+
+/** Parse an ADF date timestamp (Unix epoch milliseconds) without guessing units. */
+export function parseAdfDateTimestamp(timestamp: string): Date | undefined {
+  if (!/^-?\d+$/u.test(timestamp)) return undefined;
+  const milliseconds = Number(timestamp);
+  if (!Number.isSafeInteger(milliseconds)) return undefined;
+  const date = new Date(milliseconds);
+  return Number.isFinite(date.getTime()) ? date : undefined;
+}
+
+/**
+ * Format an ADF date in the document locale while keeping UTC calendar
+ * semantics stable across Node, browsers, and developer time zones.
+ */
+export function formatAdfDateTimestamp(timestamp: string, locale = "en"): string {
+  const date = parseAdfDateTimestamp(timestamp);
+  if (!date) return timestamp;
+  const requested = locale.trim().replace(/_/gu, "-") || "en";
+  const options: Intl.DateTimeFormatOptions = {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  };
+  try {
+    return new Intl.DateTimeFormat(requested, options).format(date);
+  } catch {
+    return new Intl.DateTimeFormat("en", options).format(date);
+  }
+}
+
+/** Match Atlassian's published-view casing while retaining the exact source text. */
+export function statusDisplayText(
+  status: Pick<Extract<InlineNode, { type: "status" }>, "text" | "color" | "style">,
+): string {
+  const text = status.text || status.color;
+  return status.style === "mixedCase" ? text : text.toUpperCase();
+}
+
+/**
+ * Deterministic, privacy-safe mention text shared by both static renderers.
+ * The account/collection ID remains available to resolvers but is never used
+ * as an accidental published label.
+ */
+export function mentionDisplayText(
+  mention: Pick<
+    Extract<InlineNode, { type: "mention" }>,
+    "displayName" | "userType"
+  >,
+): string {
+  const resolved = mention.displayName?.trim();
+  if (resolved) return resolved;
+  return mention.userType === "APP" ? "Unknown app" : "Unknown user";
+}
+
+export type TableVerticalAlignment = "top" | "middle" | "bottom";
+
+export type TableLayout =
+  | "default"
+  | "wide"
+  | "full-width"
+  | "center"
+  | "align-start"
+  | "align-end";
+
+export type TableDisplayMode = "default" | "fixed";
+
+/**
+ * Source table presentation retained independently from portable row/cell
+ * geometry. Optional members distinguish an omitted ADF attribute from its
+ * explicit default value.
+ */
+export interface TablePresentation {
+  layout?: TableLayout;
+  /** Authored ADF table width in CSS pixels. */
+  width?: number;
+  displayMode?: TableDisplayMode;
+  /** ADF's implicit first column that visibly numbers every source row. */
+  numberedColumn?: boolean;
+  /** Stable ADF editor identity. */
+  localId?: string;
+}
 
 /** A table cell. Confluence `<th>` → `header: true`. colspan/rowspan default to 1. */
 export interface TableCell {
@@ -88,20 +312,95 @@ export interface TableCell {
   rowspan: number;
   /** Canonical source background color (`#RRGGBB`), when Confluence supplied one. */
   backgroundColor?: string;
+  /** Exact ADF per-cell `colwidth` vector, including zero/unfixed tracks. */
+  columnWidths?: number[];
+  /** Portable ADF/Storage vertical cell alignment. */
+  verticalAlignment?: TableVerticalAlignment;
+  /** Stable ADF/Storage editor identity, including an explicitly empty value. */
+  localId?: string;
   content: ExportBlock[];
 }
 
 export interface TableRow {
   cells: TableCell[];
+  /** Stable ADF/Storage editor identity, including an explicitly empty value. */
+  localId?: string;
+}
+
+export interface LayoutBreakout {
+  mode: "wide" | "full-width";
+  /** Optional authored breakout width from ADF, retained in source units. */
+  width?: number;
+}
+
+export interface LayoutColumn {
+  /** Authored share of the section width, expressed as a percentage. */
+  width: number;
+  verticalAlignment?: TableVerticalAlignment;
+  /** Stable ADF editor identity, including an explicitly empty value. */
+  localId?: string;
+  content: ExportBlock[];
 }
 
 /**
- * A list item. `checked` is present only for task-list items (`true`/`false`);
- * a normal bullet/number item leaves it `undefined`.
+ * Target-neutral multi-column page layout.
+ *
+ * ADF supplies exact percentage tracks. Storage's named layout shapes are
+ * projected onto the same percentages so renderers do not need source-specific
+ * branches.
+ */
+export interface PageLayout {
+  columns: LayoutColumn[];
+  /** Stable ADF editor identity, including an explicitly empty value. */
+  localId?: string;
+  breakout?: LayoutBreakout;
+}
+
+/**
+ * Exact ADF synchronization identity attached to a static callout projection.
+ *
+ * Static exports never execute Confluence's product-internal synchronization.
+ * A bodied block carries the embedded snapshot; a reference-only block carries
+ * a visible unavailable-content fallback. Opaque IDs remain non-visual.
+ */
+export interface SyncedContentProvenance {
+  resourceId: string;
+  localId: string;
+  projection: "embedded-snapshot" | "unresolved-reference";
+  breakout?: LayoutBreakout;
+}
+
+/**
+ * A list item. `checked` is the backwards-compatible task checkbox projection;
+ * typed task/decision identity and exact state live in the adjacent fields.
+ * A normal bullet/number item leaves all semantic fields undefined.
  */
 export interface ListItem {
   content: ExportBlock[];
+  /**
+   * Typed static semantics for ADF task/decision items. Ordinary list items
+   * omit this field; Storage task lists use `task`.
+   */
+  kind?: "task" | "decision";
+  /** Exact ADF state (`TODO`/`DONE` for tasks; product-defined for decisions). */
+  state?: string;
+  /** Stable editor identity when the source representation exposes it. */
+  localId?: string;
+  /** Distinguishes ADF `blockTaskItem` from its inline `taskItem` sibling. */
+  block?: boolean;
   checked?: boolean;
+}
+
+/**
+ * Presentation semantics authored on an ADF block. These remain logical and
+ * target-neutral: serializers decide the physical indent and how logical
+ * `end` alignment maps into their own writing-direction model.
+ */
+export interface BlockPresentation {
+  alignment?: "center" | "end";
+  indentation?: 1 | 2 | 3 | 4 | 5 | 6;
+  /** ADF's bounded paragraph font-size semantic; the pinned schema currently exposes only `small`. */
+  fontSize?: "small";
 }
 
 /** Where an image's bytes come from. */
@@ -124,8 +423,8 @@ export type ImageSource =
    */
   | { kind: "external"; url: string; trust?: "page" | "export-view" };
 
-/** Confluence callout kinds plus the generic titled panel. */
-export type CalloutKind = "info" | "note" | "warning" | "tip" | "panel";
+/** Confluence callout kinds plus the generic/custom titled panel fallback. */
+export type CalloutKind = "info" | "note" | "warning" | "tip" | "success" | "error" | "panel";
 
 /** What a {@link Caption} labels — drives the serializer's numbering prefix (Figure/Table/…). */
 export type CaptionKind = "figure" | "table" | "code" | "equation";
@@ -133,12 +432,98 @@ export type CaptionKind = "figure" | "table" | "code" | "equation";
 /**
  * A caption attached to a captionable block (figure/table/code/equation). Its
  * `content` is typed inline nodes so a mention inside a caption resolves the
- * same way as anywhere else (see `resolve-mentions.ts`). No walker emits a
- * caption yet — that arrives with `scroll-title` (T1.4).
+ * same way as anywhere else (see `resolve-mentions.ts`). Native ADF
+ * `mediaSingle` captions and Storage `scroll-title` macros both use this shape.
  */
 export interface Caption {
   kind: CaptionKind;
   content: InlineNode[];
+  /** Stable ADF editor identity, including an explicitly empty value. */
+  localId?: string;
+}
+
+/** Source identity retained for an ADF media node that could not be correlated. */
+export interface UnresolvedMediaIdentity {
+  mediaType?: string;
+  id?: string;
+  collection?: string;
+  occurrenceKey?: string;
+  localId?: string;
+  /** Exact ordered `dataConsumer` marks retained as non-visual provenance. */
+  dataConsumers?: AdfDataConsumerProvenance[];
+  /** Exact external-media URL from ADF, retained independently from live-link policy. */
+  url?: string;
+  /** Stable JSON serialization of the schema-permitted opaque `mediaInline.data` payload. */
+  dataJson?: string;
+  /** Host-proven attachment filename for a correlated Media Services file ID. */
+  filename?: string;
+  /** Page that owns the correlated attachment. */
+  pageId?: string;
+  /** MIME type returned by the official Confluence v2 attachment resource. */
+  attachmentMediaType?: string;
+  /** Exact safe attachment UI/download targets returned by Confluence. */
+  webuiLink?: string;
+  downloadLink?: string;
+}
+
+/** Static border authored on an ADF `media` or `mediaInline` node. */
+export interface MediaBorder {
+  /** Canonical source color. Eight-digit ADF colors retain their alpha channel. */
+  color: string;
+  size: 1 | 2 | 3;
+}
+
+export type MediaLayout =
+  | "wide"
+  | "full-width"
+  | "center"
+  | "wrap-right"
+  | "wrap-left"
+  | "align-end"
+  | "align-start";
+
+/**
+ * Presentation owned by an ADF `mediaSingle` container. Source dimensions on
+ * the child media remain separate so renderers can apply the container width
+ * without destroying the media's intrinsic geometry.
+ */
+export interface MediaPresentation {
+  layout: MediaLayout;
+  width?: number;
+  widthType?: "percentage" | "pixel";
+  localId?: string;
+}
+
+/** Position of one item inside an ADF `mediaGroup` attachment/gallery boundary. */
+export interface MediaGroupPosition {
+  index: number;
+  size: number;
+}
+
+/** Deterministic visible fallback for inline media in static text flows. */
+export function inlineMediaDisplayText(
+  media: Pick<Extract<InlineNode, { type: "media" }>, "media" | "alt">,
+): string {
+  return media.alt?.trim() ||
+    media.media.filename?.trim() ||
+    media.media.id?.trim() ||
+    "Media";
+}
+
+/** Visible static label for a block media card or unresolved media fallback. */
+export function mediaFallbackDisplayText(
+  block: Pick<
+    Extract<ExportBlock, { type: "mediaFallback" }>,
+    "media" | "alt" | "label"
+  >,
+): string {
+  const label = block.alt?.trim() || block.media.filename?.trim() || block.label;
+  if (block.media.filename) {
+    const mediaType = block.media.attachmentMediaType?.trim();
+    return `Attachment: ${label}${mediaType ? ` (${mediaType})` : ""}`;
+  }
+  if (block.media.mediaType === "link") return `Linked media: ${label}`;
+  return `Media unavailable: ${label}`;
 }
 
 /**
@@ -171,6 +556,106 @@ export interface MacroParameter {
 }
 
 /**
+ * Identity carried by an ADF extension node.
+ *
+ * `localId` identifies the editor extension instance. It remains separate from
+ * Storage's `ac:macro-id` in the neutral model. For Forge macros, however,
+ * Confluence's macro-body/export REST contract explicitly uses this ADF local
+ * ID as the macro ID; the live export-view resolver applies that documented
+ * projection at the port boundary.
+ */
+export interface AdfExtensionIdentity {
+  extensionType: string;
+  extensionKey: string;
+  localId?: string;
+}
+
+/**
+ * One Stage-0 `extensionFrame` inside a multi-bodied extension.
+ *
+ * Static exporters retain frame boundaries and visible child blocks while
+ * keeping product-internal fragment/data-consumer bindings non-visual.
+ */
+export interface AdfExtensionFrame {
+  content: ExportBlock[];
+  fragments?: AdfFragmentIdentity[];
+  dataConsumers?: AdfDataConsumerProvenance[];
+  bodyNotes?: ExportNote[];
+}
+
+/** One reply attached to an ADF inline comment. */
+export interface AdfAnnotationReply {
+  bodyText: string;
+  created?: string;
+}
+
+/** Portable projection of the separately fetched Confluence comment resource. */
+export interface AdfAnnotationComment {
+  bodyText: string;
+  status: "open" | "resolved";
+  created?: string;
+  replies: AdfAnnotationReply[];
+}
+
+/** Identity of an ADF inline-comment annotation mark and correlated resource. */
+export interface AdfAnnotationIdentity {
+  id: string;
+  annotationType: "inlineComment";
+  comment?: AdfAnnotationComment;
+}
+
+/**
+ * Identity of an ADF fragment mark. This is product-owned source provenance,
+ * not a user-authored bookmark or link target.
+ */
+export interface AdfFragmentIdentity {
+  localId: string;
+  /** Optional source name, including the schema-valid empty string. */
+  name?: string;
+}
+
+/** One exact, ordered attribute retained from an unsupported ADF wrapper. */
+export interface AdfUnsupportedAttribute {
+  name: string;
+  value: AdfJsonValue;
+}
+
+/** One exact mark retained from an unsupported direct-ADF wrapper. */
+export interface AdfUnsupportedMark {
+  type: string;
+  attributes?: AdfUnsupportedAttribute[];
+}
+
+/**
+ * Product/legacy ADF wrapper provenance retained without publishing opaque
+ * attributes in the static artifact. Visible child content stays renderable;
+ * this record prevents the wrapper type and attributes from disappearing.
+ */
+export interface AdfUnsupportedNodeProvenance {
+  nodeType: string;
+  sourceRepresentation: "atlas_doc_format" | "storage";
+  attributes?: AdfUnsupportedAttribute[];
+  marks?: AdfUnsupportedMark[];
+}
+
+/**
+ * One ADF `dataConsumer` mark retained on media without executing the
+ * product-internal consumer binding. Mark boundaries and source order remain
+ * exact; renderers deliberately keep these opaque identifiers non-visual.
+ */
+export interface AdfDataConsumerProvenance {
+  sources: string[];
+}
+
+/** Portable identity and fallback provenance for an ADF/Storage emoji node. */
+export interface EmojiSemantics {
+  shortName: string;
+  id?: string;
+  text?: string;
+  renderedFrom: "text" | "short-name";
+}
+
+/**
  * Case-insensitive convenience lookup for a parameter's plain-text value only
  * (mirrors the internal `macroParam` helper). Returns `undefined` for
  * ref-only or absent parameters — callers that need `ri:*` data read `refs`
@@ -199,13 +684,150 @@ export function macroParamText(
  * its `content` children rendered transparently, never dropped).
  */
 export type ExportBlock =
-  | { type: "heading"; level: 1 | 2 | 3 | 4 | 5 | 6; content: InlineNode[]; explicitAnchor?: string }
-  | { type: "paragraph"; content: InlineNode[] }
-  | { type: "codeBlock"; language?: string; code: string; caption?: Caption }
-  | { type: "callout"; kind: CalloutKind; title?: string; content: ExportBlock[] }
-  | { type: "list"; ordered: boolean; items: ListItem[] }
-  | { type: "table"; rows: TableRow[]; columnWidths?: number[]; caption?: Caption }
-  | { type: "image"; source: ImageSource; alt?: string; width?: number; height?: number; caption?: Caption }
+  | {
+      type: "heading";
+      level: 1 | 2 | 3 | 4 | 5 | 6;
+      content: InlineNode[];
+      explicitAnchor?: string;
+      presentation?: BlockPresentation;
+      /** Stable ADF/Storage editor identity, retained as non-visual metadata. */
+      localId?: string;
+    }
+  | {
+      type: "paragraph";
+      content: InlineNode[];
+      presentation?: BlockPresentation;
+      /** Stable ADF/Storage editor identity, retained as non-visual metadata. */
+      localId?: string;
+    }
+  | { type: "smartCard"; card: SmartCardSemantics }
+  | {
+      type: "codeBlock";
+      language?: string;
+      code: string;
+      /**
+       * Legacy Storage code-macro title. Static targets render it as the header
+       * row above the code body, independently from a numbered `caption`.
+       */
+      title?: string;
+      /**
+       * Authored legacy Storage `collapse` state. Static targets always retain
+       * the complete body and report when an initially collapsed block was
+       * rendered open.
+       */
+      initiallyCollapsed?: boolean;
+      caption?: Caption;
+      /**
+       * Exact ADF wrapping preference. `undefined` retains the schema's
+       * deliberate "no authored preference" state.
+       */
+      wrap?: boolean;
+      /**
+       * Normalized line-number policy. Direct ADF materializes its documented
+       * default (`false`); Storage adapters materialize their own legacy
+       * default so renderers never have to guess the source representation.
+       */
+      hideLineNumbers?: boolean;
+      /** Storage code-macro start ordinal; direct ADF always starts at one. */
+      firstLineNumber?: number;
+      /** Stable ADF editor identity, retained as non-visual metadata. */
+      localId?: string;
+      /** Stable ADF code-block identity, retained independently of `localId`. */
+      uniqueId?: string;
+      /** Root-level ADF wide/full-width intent, bounded by static page geometry. */
+      breakout?: LayoutBreakout;
+    }
+  | {
+      type: "callout";
+      kind: CalloutKind;
+      title?: string;
+      content: ExportBlock[];
+      /** Stable ADF editor identity, retained as non-visual metadata. */
+      localId?: string;
+      /** Canonical portable color, or exact source value when it is not portable. */
+      panelColor?: string;
+      /** Exact custom-panel emoji short name or portable textual icon fallback. */
+      panelIcon?: string;
+      /** Exact custom emoji service identity, retained for authorized resolvers. */
+      panelIconId?: string;
+      /** Exact custom-panel visible icon text, preferred by static renderers. */
+      panelIconText?: string;
+      /** Exact ADF synced-content identity retained behind the static projection. */
+      syncedContent?: SyncedContentProvenance;
+    }
+  | {
+      /**
+       * A static export of Confluence's disclosure/accordion container.
+       * `nested` distinguishes ADF `nestedExpand` (and Storage expands inside
+       * table cells) without coupling either renderer to the source format.
+       */
+      type: "expand";
+      nested: boolean;
+      content: ExportBlock[];
+      title?: string;
+      /** Stable ADF editor identity, including an explicitly empty value. */
+      localId?: string;
+      /** Storage macro identity; deliberately distinct from ADF `localId`. */
+      macroId?: string;
+      /** Root-level ADF wide/full-width intent, bounded by static page geometry. */
+      breakout?: LayoutBreakout;
+    }
+  | {
+      type: "list";
+      ordered: boolean;
+      items: ListItem[];
+      /** First visible ordinal for an ordered list. Omitted means the target default (1). */
+      start?: number;
+      /** Distinguishes ADF/Storage task and ADF decision lists from ordinary lists. */
+      listKind?: "task" | "decision";
+      /** Stable ADF/Storage editor identity when the representation exposes it. */
+      localId?: string;
+    }
+  | ({ type: "layout" } & PageLayout)
+  | {
+      type: "table";
+      rows: TableRow[];
+      columnWidths?: number[];
+      presentation?: TablePresentation;
+      caption?: Caption;
+      fragments?: AdfFragmentIdentity[];
+    }
+  | {
+      type: "image";
+      source: ImageSource;
+      /** Complete ADF media identity, when this image came from an ADF media node. */
+      media?: UnresolvedMediaIdentity;
+      alt?: string;
+      width?: number;
+      height?: number;
+      mediaPresentation?: MediaPresentation;
+      mediaGroup?: MediaGroupPosition;
+      border?: MediaBorder;
+      caption?: Caption;
+      annotations?: AdfAnnotationIdentity[];
+      /** Media or media-container link mark, retained for clickable output. */
+      link?: ExportLink;
+    }
+  | {
+      /**
+       * Visible, non-fetching projection of an ADF media node whose Media
+       * Services ID could not be correlated to an attachment. Keeping this as
+       * a block lets a native ADF caption remain associated and numbered.
+       */
+      type: "mediaFallback";
+      label: string;
+      media: UnresolvedMediaIdentity;
+      caption?: Caption;
+      alt?: string;
+      width?: number;
+      height?: number;
+      mediaPresentation?: MediaPresentation;
+      mediaGroup?: MediaGroupPosition;
+      border?: MediaBorder;
+      annotations?: AdfAnnotationIdentity[];
+      /** Media or media-container link mark, retained for clickable fallback output. */
+      link?: ExportLink;
+    }
   | { type: "blockquote"; content: ExportBlock[] }
   | { type: "divider" }
   /** A hard page break (`scroll-pagebreak`). Engines render nothing until T1.3/T1.5. */
@@ -234,6 +856,21 @@ export type ExportBlock =
       /** The `ac:macro-id` attribute. */
       macroId?: string;
       /**
+       * ADF editor-extension identity. It stays distinct from Storage
+       * `macroId`; the live Forge export port may use its documented `localId`.
+       */
+      adfExtension?: AdfExtensionIdentity;
+      /**
+       * Ordered Stage-0 multi-bodied extension frames. `body`, when also
+       * present, is their flattened compatibility projection for macro
+       * renderers; DOCX/PDF use these frames to retain the authored grouping.
+       */
+      extensionFrames?: AdfExtensionFrame[];
+      /** ADF fragment identities retained without inventing bookmark semantics. */
+      fragments?: AdfFragmentIdentity[];
+      /** Unsupported ADF wrapper type/attributes retained as exact provenance. */
+      unsupportedAdf?: AdfUnsupportedNodeProvenance;
+      /**
        * Notes the scratch walk of `body` produced but did NOT merge into the
        * top-level report — preserved on the block for a later consumer (Lane E,
        * T1.7) to promote rather than silently discarded.
@@ -248,6 +885,86 @@ export type ExportBlock =
        * export. Backwards compatible (optional).
        */
       sourcePage?: { id: string; version?: number; spaceKey?: string } };
+
+export interface MaterializedTable {
+  rows: TableRow[];
+  columnWidths?: number[];
+}
+
+const MAX_MATERIALIZED_TABLE_COLUMNS = 200;
+
+/**
+ * Materialize ADF's implicit numbered column once for every renderer.
+ *
+ * The source rows deliberately stay unchanged in the neutral model. This
+ * helper gives DOCX and PDF the same visible 1-based row numbering and the
+ * same narrow leading track without making the implicit cells look authored.
+ */
+export function materializeTable(
+  table: Extract<ExportBlock, { type: "table" }>,
+): MaterializedTable {
+  if (table.presentation?.numberedColumn !== true) {
+    return {
+      rows: table.rows,
+      ...(table.columnWidths !== undefined ? { columnWidths: table.columnWidths } : {}),
+    };
+  }
+
+  const rows = table.rows.map((row, index): TableRow => ({
+    ...row,
+    cells: [{
+      header: true,
+      colspan: 1,
+      rowspan: 1,
+      content: [{
+        type: "paragraph",
+        content: [{ type: "text", text: String(index + 1) }],
+      }],
+    }, ...row.cells],
+  }));
+
+  const sourceWidths = table.columnWidths;
+  if (
+    sourceWidths !== undefined &&
+    sourceWidths.length > 0 &&
+    sourceWidths.length <= MAX_MATERIALIZED_TABLE_COLUMNS &&
+    sourceWidths.every((width) => Number.isFinite(width) && width > 0)
+  ) {
+    return { rows, columnWidths: [48, ...sourceWidths] };
+  }
+
+  const sourceColumnCount = table.rows.reduce(
+    (maximum, row) => Math.max(
+      maximum,
+      row.cells.reduce((count, cell) => {
+        if (count >= MAX_MATERIALIZED_TABLE_COLUMNS) return count;
+        const span = Number.isSafeInteger(cell.colspan) && cell.colspan > 0
+          ? Math.min(cell.colspan, MAX_MATERIALIZED_TABLE_COLUMNS)
+          : 1;
+        return Math.min(MAX_MATERIALIZED_TABLE_COLUMNS, count + span);
+      }, 0),
+    ),
+    0,
+  );
+  if (sourceColumnCount === 0) return { rows };
+
+  const legacyWidth = table.presentation?.layout === "wide"
+    ? 960
+    : table.presentation?.layout === "full-width"
+      ? 1800
+      : 760;
+  const tableWidth =
+    table.presentation?.width !== undefined &&
+    Number.isFinite(table.presentation.width) &&
+    table.presentation.width > 0
+    ? table.presentation.width
+    : legacyWidth;
+  const sourceTrack = Math.max(48, (tableWidth - 48) / sourceColumnCount);
+  return {
+    rows,
+    columnWidths: [48, ...Array.from({ length: sourceColumnCount }, () => sourceTrack)],
+  };
+}
 
 /**
  * Provenance of an {@link ExportNote} — where in a (possibly multi-page) export
@@ -282,8 +999,26 @@ export const EXPORT_NOTE_CODES = [
   // Confluence storage walk (storageToBlocks)
   "unknown-macro",
   "macro-not-rendered",
+  "inline-extension-not-rendered",
   "image-unresolved",
   "inline-image-skipped",
+  "layout-geometry-fallback",
+  // Shared static-target projection of Confluence's interactive disclosure.
+  "expand-static",
+  // Shared ADF/Storage fact: no portable Unicode display was available.
+  "emoji-text-fallback",
+  // Shared ADF/Storage fact: a semantic date could not be interpreted as an
+  // epoch-millisecond calendar value and is therefore shown as source text.
+  "date-invalid",
+  // ADF adapter degradations. These are representation facts shared by every
+  // host/renderer; DOCX and PDF receive the same notes with the same paths.
+  "adf-node-degraded",
+  "adf-mark-degraded",
+  "adf-attribute-dropped",
+  "adf-media-unresolved",
+  "adf-annotation-unresolved",
+  "adf-annotation-comments-truncated",
+  "adf-storage-fallback",
   // Datasource smart links (`<a data-datasource>`, the modern Cloud replacement
   // for the Jira table macro). Every degradation is typed and visible: the
   // pre-change behaviour was a raw percent-encoded URL in the body with an
@@ -429,6 +1164,16 @@ export const EXPORT_NOTE_CODES = [
   "perf-timing",
   // DOCX block serializer (@atlcli/docx)
   "code-highlight-skipped",
+  // CROSS-ENGINE static-page policy: ADF explicitly requested horizontal
+  // overflow (`wrap: false`), which an interactive editor can scroll but a
+  // bounded DOCX/PDF page cannot. Both renderers keep all code and wrap it
+  // safely instead of clipping; the exact source preference remains in the
+  // neutral block for audit/reprocessing.
+  "code-nowrap-page-bounded",
+  // CROSS-ENGINE static-page policy for the legacy Storage code macro:
+  // interactive initial collapse cannot survive in a static artifact, so both
+  // targets retain the full body and report that it was intentionally opened.
+  "code-collapse-static",
   // DOCX-ONLY, and correctly so: the export was configured with NO image
   // pipeline at all (`ExportEnv` without an asset fetcher), so every image
   // degrades at once — an export-configuration fact, level `info`. Distinct from
@@ -552,10 +1297,7 @@ export interface ExportNote {
 }
 
 /** Result of {@link storageToBlocks}: the block tree plus report notes. */
-export interface StorageToBlocksResult {
-  blocks: ExportBlock[];
-  notes: ExportNote[];
-}
+export type StorageToBlocksResult = BlocksResult;
 
 /** Options for {@link storageToBlocks}. */
 export interface StorageToBlocksOptions {
@@ -914,6 +1656,10 @@ interface WalkCtx {
    * Threaded into attachment {@link ImageSource}s and `unknown` blocks.
    */
   pageContext?: { id: string; version?: number; spaceKey?: string; title?: string; url?: string };
+  /** True while walking direct content of a Storage table cell/header. */
+  inTableCell?: boolean;
+  /** True while walking the rich-text body of a Storage expand macro. */
+  inExpand?: boolean;
   /**
    * The tree position of the block currently being walked (spec 003
    * provenance), e.g. `blocks[3]` / `blocks[3].content[0]`. Maintained by
@@ -962,6 +1708,7 @@ const INLINE_TAGS = new Set([
   "br",
   "ac:link",
   "ac:emoticon",
+  "ac:placeholder",
   "time",
 ]);
 
@@ -969,7 +1716,6 @@ const INLINE_TAGS = new Set([
 const TRANSPARENT_BLOCK_TAGS = new Set([
   "div",
   "ac:layout",
-  "ac:layout-section",
   "ac:layout-cell",
   "ac:adf-extension",
   "ac:adf-node",
@@ -1071,6 +1817,10 @@ function walkBlocks(nodes: XmlNode[], ctx: WalkCtx): ExportBlock[] {
       ctx.blockPath = savedPath;
       continue;
     }
+    if (node.name === "ac:adf-node" && storageAdfNodeIsInline(node)) {
+      inlineBuf.push(node);
+      continue;
+    }
     if (INLINE_TAGS.has(node.name) || isInlineMacro(node)) {
       inlineBuf.push(node);
       continue;
@@ -1157,14 +1907,19 @@ function normalizeOrientationMarkers(blocks: ExportBlock[], ctx: WalkCtx): Expor
 const INLINE_SCROLL_MACROS = new Set(["scroll-only-inline", "scroll-ignore-inline"]);
 
 /**
- * Inline-level structured macros: the `status` badge and the C4 export-control
- * inline variants (`scroll-only-inline`/`scroll-ignore-inline`). A block-level
- * walk buffers these into the enclosing implicit paragraph instead of flushing.
+ * Inline-level structured macros: `status`, legacy `date`, and the C4
+ * export-control inline variants (`scroll-only-inline`/`scroll-ignore-inline`).
+ * A block-level walk buffers these into the enclosing implicit paragraph
+ * instead of flushing.
  */
 function isInlineMacro(node: XmlElement): boolean {
   if (node.name !== "ac:structured-macro") return false;
   const name = (node.attrs["ac:name"] ?? "").toLowerCase();
-  return name === "status" || INLINE_SCROLL_MACROS.has(name);
+  return name === "status" || name === "date" || INLINE_SCROLL_MACROS.has(name);
+}
+
+function storageLocalId(el: XmlElement): string | undefined {
+  return el.attrs["ac:local-id"] ?? el.attrs["local-id"];
 }
 
 /** Dispatch a single block-level element to zero or more {@link ExportBlock}s. */
@@ -1173,11 +1928,24 @@ function handleBlockElement(el: XmlElement, ctx: WalkCtx): ExportBlock[] {
 
   const headingLevel = HEADING_TAGS[name];
   if (headingLevel) {
-    return [{ type: "heading", level: headingLevel, content: trimInline(walkInline(el.children, ctx)) }];
+    const localId = storageLocalId(el);
+    return [{
+      type: "heading",
+      level: headingLevel,
+      content: trimInline(walkInline(el.children, ctx)),
+      ...(localId !== undefined ? { localId } : {}),
+    }];
   }
 
   switch (name) {
-    case "p":
+    case "p": {
+      const blocks = walkBlocks(el.children, ctx);
+      const localId = storageLocalId(el);
+      if (localId !== undefined && blocks.length === 1 && blocks[0]?.type === "paragraph") {
+        return [{ ...blocks[0], localId }];
+      }
+      return blocks;
+    }
     case "ac:layout-cell":
       // A paragraph is a transparent block container: this splits an image (or
       // any embedded block) inside a <p> out into its own block while a plain
@@ -1188,6 +1956,8 @@ function handleBlockElement(el: XmlElement, ctx: WalkCtx): ExportBlock[] {
       return [walkList(el, ctx)];
     case "ac:task-list":
       return [walkTaskList(el, ctx)];
+    case "ac:layout-section":
+      return [walkLayoutSection(el, ctx)];
     case "table":
       return [walkTable(el, ctx)];
     case "blockquote":
@@ -1197,14 +1967,169 @@ function handleBlockElement(el: XmlElement, ctx: WalkCtx): ExportBlock[] {
     case "ac:image":
       return walkImage(el, ctx);
     case "pre":
-      return [{ type: "codeBlock", code: elementText(el) }];
+      // Plain Storage <pre> has no line-number control and historically renders
+      // without a gutter. Materialize that source-specific default instead of
+      // letting the renderer confuse it with ADF's opposite default.
+      return [{ type: "codeBlock", code: elementText(el), hideLineNumbers: true }];
     case "ac:structured-macro":
       return walkMacro(el, ctx);
+    case "ac:adf-node":
+      return [walkUnsupportedStorageAdfBlock(el, ctx)];
     default:
       if (TRANSPARENT_BLOCK_TAGS.has(name)) return walkBlocks(el.children, ctx);
       // Unknown block-level element: descend rather than drop its content.
       return walkBlocks(el.children, ctx);
   }
+}
+
+function storageAdfNodeType(el: XmlElement): string {
+  return el.attrs.type?.trim() || "ac:adf-node";
+}
+
+function storageAdfNodeIsInline(el: XmlElement): boolean {
+  const type = storageAdfNodeType(el).toLowerCase();
+  return type === "unsupportedinline" ||
+    type === "inlineextension" ||
+    type === "inlinecard" ||
+    type === "mediainline";
+}
+
+function storageAdfValue(el: XmlElement): AdfJsonValue {
+  const structured = el.children.filter(
+    (child): child is XmlElement =>
+      child.type === "element" &&
+      (child.name === "ac:adf-attribute" || child.name === "ac:adf-parameter"),
+  );
+  if (structured.length === 0) return elementText(el);
+  return structured.map((child) => ({
+    name: child.attrs.key ?? child.attrs["ac:key"] ?? "",
+    value: storageAdfValue(child),
+  }));
+}
+
+function storageAdfProvenance(el: XmlElement): AdfUnsupportedNodeProvenance {
+  const attributes: AdfUnsupportedAttribute[] = [];
+  for (const [name, value] of Object.entries(el.attrs)) {
+    if (name !== "type") attributes.push({ name, value });
+  }
+  for (const child of el.children) {
+    if (child.type !== "element" || child.name !== "ac:adf-attribute") continue;
+    attributes.push({
+      name: child.attrs.key ?? child.attrs["ac:key"] ?? "",
+      value: storageAdfValue(child),
+    });
+  }
+  return {
+    nodeType: storageAdfNodeType(el),
+    sourceRepresentation: "storage",
+    ...(attributes.length > 0 ? { attributes } : {}),
+  };
+}
+
+function storageAdfContent(el: XmlElement): XmlNode[] {
+  const wrapper = childByName(el, "ac:adf-content");
+  if (wrapper) return wrapper.children;
+  return el.children.filter(
+    (child) => child.type !== "element" || child.name !== "ac:adf-attribute",
+  );
+}
+
+function reportUnsupportedStorageAdf(
+  el: XmlElement,
+  ctx: WalkCtx,
+  placement: "block" | "inline",
+): void {
+  ctx.notes.push(withSource(ctx, {
+    level: "warning",
+    code: "adf-node-degraded",
+    message:
+      `Storage ADF ${placement} wrapper ${storageAdfNodeType(el)} retained its ` +
+      "typed provenance and visible fallback.",
+  }));
+}
+
+function walkUnsupportedStorageAdfBlock(el: XmlElement, ctx: WalkCtx): Extract<ExportBlock, { type: "unknown" }> {
+  reportUnsupportedStorageAdf(el, ctx, "block");
+  const body = walkBlocks(storageAdfContent(el), ctx);
+  return {
+    type: "unknown",
+    macroName: storageAdfNodeType(el),
+    unsupportedAdf: storageAdfProvenance(el),
+    ...(body.length > 0 ? { body } : {}),
+  };
+}
+
+function walkUnsupportedStorageAdfInline(el: XmlElement, ctx: WalkCtx): InlineNode[] {
+  reportUnsupportedStorageAdf(el, ctx, "inline");
+  const provenance = storageAdfProvenance(el);
+  const content = walkInline(storageAdfContent(el), ctx);
+  let attached = false;
+  const visit = (nodes: InlineNode[]): InlineNode[] =>
+    nodes.map((node): InlineNode => {
+      if (attached) return node;
+      if (node.type === "text") {
+        attached = true;
+        return {
+          ...node,
+          unsupportedAdf: [...(node.unsupportedAdf ?? []), provenance],
+        };
+      }
+      if (node.type === "link") return { ...node, content: visit(node.content) };
+      return node;
+    });
+  const retained = visit(content);
+  return attached
+    ? retained
+    : [{
+        type: "text",
+        text: `[Unsupported ADF inline: ${provenance.nodeType}]`,
+        unsupportedAdf: [provenance],
+      }, ...retained];
+}
+
+const STORAGE_LAYOUT_WIDTHS: Readonly<Record<string, readonly number[]>> = {
+  single: [100],
+  two_equal: [50, 50],
+  two_left_sidebar: [30, 70],
+  two_right_sidebar: [70, 30],
+  three_equal: [100 / 3, 100 / 3, 100 / 3],
+  three_with_sidebars: [20, 60, 20],
+};
+
+function walkLayoutSection(el: XmlElement, ctx: WalkCtx): ExportBlock {
+  const cells = childrenByName(el, "ac:layout-cell");
+  const layoutType = el.attrs["ac:type"]?.trim().toLowerCase();
+  const authoredWidths = layoutType ? STORAGE_LAYOUT_WIDTHS[layoutType] : undefined;
+  const widths = authoredWidths?.length === cells.length
+    ? authoredWidths
+    : cells.length > 0
+      ? Array.from({ length: cells.length }, () => 100 / cells.length)
+      : [];
+  if (!authoredWidths || authoredWidths.length !== cells.length) {
+    ctx.notes.push(withSource(ctx, {
+      level: "warning",
+      code: "layout-geometry-fallback",
+      message: layoutType
+        ? `Storage layout "${layoutType}" has ${cells.length} cells; equal portable widths were used.`
+        : "Storage layout has no recognized type; equal portable widths were used.",
+    }));
+  }
+  return {
+    type: "layout",
+    columns: cells.map((cell, index) => ({
+      width: widths[index] ?? 0,
+      ...(tableCellVerticalAlignment(cell)
+        ? { verticalAlignment: tableCellVerticalAlignment(cell) }
+        : {}),
+      ...(cell.attrs["ac:local-id"] !== undefined
+        ? { localId: cell.attrs["ac:local-id"] }
+        : {}),
+      content: walkBlocks(cell.children, ctx),
+    })),
+    ...(el.attrs["ac:local-id"] !== undefined
+      ? { localId: el.attrs["ac:local-id"] }
+      : {}),
+  };
 }
 
 /** Collect the concatenated raw text of an element subtree (for code bodies). */
@@ -1381,9 +2306,20 @@ function walkList(el: XmlElement, ctx: WalkCtx): ExportBlock {
   const ordered = el.name === "ol";
   const items: ListItem[] = [];
   for (const li of childrenByName(el, "li")) {
-    items.push({ content: walkBlocks(li.children, ctx) });
+    const localId = storageLocalId(li);
+    items.push({
+      content: walkBlocks(li.children, ctx),
+      ...(localId !== undefined ? { localId } : {}),
+    });
   }
-  return { type: "list", ordered, items };
+  const rawStart = ordered ? el.attrs.start?.trim() : undefined;
+  const parsedStart = rawStart !== undefined && /^\d+$/u.test(rawStart)
+    ? Number.parseInt(rawStart, 10)
+    : undefined;
+  const start = parsedStart !== undefined && Number.isSafeInteger(parsedStart) && parsedStart <= 2_147_483_647
+    ? parsedStart
+    : undefined;
+  return { type: "list", ordered, items, ...(start !== undefined && start !== 1 ? { start } : {}) };
 }
 
 function walkTaskList(el: XmlElement, ctx: WalkCtx): ExportBlock {
@@ -1393,9 +2329,25 @@ function walkTaskList(el: XmlElement, ctx: WalkCtx): ExportBlock {
     const statusText = (statusEl ? elementText(statusEl) : "").trim().toLowerCase();
     const body = childByName(task, "ac:task-body");
     const content = body ? walkBlocks(body.children, ctx) : [];
-    items.push({ content, checked: statusText === "complete" });
+    const checked = statusText === "complete";
+    const localIdEl = childByName(task, "ac:task-id");
+    const localId = localIdEl ? elementText(localIdEl).trim() : "";
+    items.push({
+      content,
+      kind: "task",
+      state: checked ? "DONE" : "TODO",
+      ...(localId ? { localId } : {}),
+      checked,
+    });
   }
-  return { type: "list", ordered: false, items };
+  const localId = el.attrs["ac:local-id"]?.trim();
+  return {
+    type: "list",
+    ordered: false,
+    listKind: "task",
+    ...(localId ? { localId } : {}),
+    items,
+  };
 }
 
 // ---- Tables ---------------------------------------------------------------
@@ -1505,6 +2457,28 @@ function tableCellBackground(cell: XmlElement): string | undefined {
   );
 }
 
+function tableCellVerticalAlignment(cell: XmlElement): TableVerticalAlignment | undefined {
+  const styleAlignment = (cell.attrs.style ?? "")
+    .match(/(?:^|;)\s*vertical-align\s*:\s*([^;]+)/i)?.[1]
+    ?.trim()
+    .toLowerCase();
+  const value = (cell.attrs.valign ?? styleAlignment)?.trim().toLowerCase();
+  if (value === "top" || value === "middle" || value === "bottom") return value;
+  return undefined;
+}
+
+function tableLayout(value: string | undefined): TableLayout | undefined {
+  if (
+    value === "default" ||
+    value === "wide" ||
+    value === "full-width" ||
+    value === "center" ||
+    value === "align-start" ||
+    value === "align-end"
+  ) return value;
+  return undefined;
+}
+
 function walkTable(el: XmlElement, ctx: WalkCtx): ExportBlock {
   const rows: TableRow[] = [];
   const rowEls: XmlElement[] = [];
@@ -1524,18 +2498,35 @@ function walkTable(el: XmlElement, ctx: WalkCtx): ExportBlock {
       if (cell.type !== "element") continue;
       if (cell.name !== "td" && cell.name !== "th") continue;
       const backgroundColor = tableCellBackground(cell);
+      const verticalAlignment = tableCellVerticalAlignment(cell);
       cells.push({
         header: cell.name === "th",
         colspan: parsePositiveInt(cell.attrs.colspan) ?? 1,
         rowspan: parsePositiveInt(cell.attrs.rowspan) ?? 1,
         ...(backgroundColor ? { backgroundColor } : {}),
-        content: walkBlocks(cell.children, ctx),
+        ...(verticalAlignment ? { verticalAlignment } : {}),
+        ...(cell.attrs["ac:local-id"] !== undefined ? { localId: cell.attrs["ac:local-id"] } : {}),
+        content: walkBlocks(cell.children, { ...ctx, inTableCell: true }),
       });
     }
-    rows.push({ cells });
+    rows.push({
+      cells,
+      ...(tr.attrs["ac:local-id"] !== undefined ? { localId: tr.attrs["ac:local-id"] } : {}),
+    });
   }
   const columnWidths = tableColumnWidths(el);
-  return { type: "table", rows, ...(columnWidths ? { columnWidths } : {}) };
+  const layout = tableLayout(el.attrs["data-layout"]);
+  const localId = el.attrs["ac:local-id"];
+  const presentation: TablePresentation = {
+    ...(layout !== undefined ? { layout } : {}),
+    ...(localId !== undefined ? { localId } : {}),
+  };
+  return {
+    type: "table",
+    rows,
+    ...(columnWidths ? { columnWidths } : {}),
+    ...(Object.keys(presentation).length > 0 ? { presentation } : {}),
+  };
 }
 
 function parsePositiveInt(value: string | undefined): number | undefined {
@@ -1578,7 +2569,15 @@ function walkImage(el: XmlElement, ctx: WalkCtx): ExportBlock[] {
 
 // ---- Macros (block) -------------------------------------------------------
 
-const CALLOUT_KINDS = new Set<CalloutKind>(["info", "note", "warning", "tip", "panel"]);
+const CALLOUT_KINDS = new Set<CalloutKind>([
+  "info",
+  "note",
+  "warning",
+  "tip",
+  "success",
+  "error",
+  "panel",
+]);
 
 function walkMacro(el: XmlElement, ctx: WalkCtx): ExportBlock[] {
   const macroName = (el.attrs["ac:name"] ?? "").toLowerCase();
@@ -1602,13 +2601,47 @@ function walkMacro(el: XmlElement, ctx: WalkCtx): ExportBlock[] {
     const bodyEl = childByName(el, "ac:plain-text-body") ?? childByName(el, "ac:rich-text-body");
     const code = bodyEl ? elementText(bodyEl) : "";
     const language = macroName === "code" ? macroParam(el, "language") : undefined;
-    return [{ type: "codeBlock", language: language || undefined, code }];
+    const title = macroName === "code" ? macroParam(el, "title") : undefined;
+    const collapse = macroName === "code" ? macroParam(el, "collapse") : undefined;
+    const lineNumbers = macroName === "code" && macroParam(el, "linenumbers")?.toLowerCase() === "true";
+    const firstLineNumber =
+      lineNumbers ? parsePositiveInt(macroParam(el, "firstline")) ?? 1 : undefined;
+    return [{
+      type: "codeBlock",
+      language: language || undefined,
+      code,
+      ...(title !== undefined ? { title } : {}),
+      ...(collapse !== undefined
+        ? { initiallyCollapsed: collapse.trim().toLowerCase() === "true" }
+        : {}),
+      hideLineNumbers: !lineNumbers,
+      ...(firstLineNumber !== undefined ? { firstLineNumber } : {}),
+      ...(storageLocalId(el) !== undefined ? { localId: storageLocalId(el) } : {}),
+    }];
   }
 
-  // Expand: no dedicated block type — surface its body transparently.
+  // Expand: retain the disclosure boundary and title. Static targets render
+  // the body open; an expand inside a table cell or another expand is the
+  // Storage counterpart of ADF `nestedExpand`.
   if (macroName === "expand") {
     const body = childByName(el, "ac:rich-text-body");
-    return body ? walkBlocks(body.children, ctx) : [];
+    ctx.notes.push(withSource(ctx, {
+      level: "info",
+      code: "expand-static",
+      message: "Interactive expand content was rendered open in the static export.",
+    }));
+    return [{
+      type: "expand",
+      nested: ctx.inTableCell === true || ctx.inExpand === true,
+      ...(macroParam(el, "title") !== undefined ? { title: macroParam(el, "title") } : {}),
+      ...(el.attrs["ac:local-id"] !== undefined
+        ? { localId: el.attrs["ac:local-id"] }
+        : {}),
+      ...(el.attrs["ac:macro-id"] !== undefined
+        ? { macroId: el.attrs["ac:macro-id"] }
+        : {}),
+      content: body ? walkBlocks(body.children, { ...ctx, inExpand: true }) : [],
+    }];
   }
 
   // Legacy Confluence layout macros are structural containers, not document
@@ -1963,17 +2996,24 @@ function stripNestedOrientation(blocks: ExportBlock[]): { blocks: ExportBlock[];
           found = true;
           return walk(block.content);
         case "callout":
+        case "expand":
         case "blockquote":
           return [{ ...block, content: walk(block.content) }];
         case "list":
           return [
             { ...block, items: block.items.map((item) => ({ ...item, content: walk(item.content) })) },
           ];
+        case "layout":
+          return [{
+            ...block,
+            columns: block.columns.map((column) => ({ ...column, content: walk(column.content) })),
+          }];
         case "table":
           return [
             {
               ...block,
               rows: block.rows.map((row) => ({
+                ...row,
                 cells: row.cells.map((cell) => ({ ...cell, content: walk(cell.content) })),
               })),
             },
@@ -2144,8 +3184,60 @@ function walkInline(nodes: XmlNode[], ctx: WalkCtx): InlineNode[] {
   return out;
 }
 
+/** True for an ADF/Storage textual emoji token such as `:warning:`. */
+function isColonEmojiFallback(value: string): boolean {
+  return value.length >= 3 && value.startsWith(":") && value.endsWith(":") && !/\s/u.test(value);
+}
+
+/** Normalize Storage's calendar-date representations to ADF epoch milliseconds. */
+function storageDateTimestamp(value: string): string {
+  const source = value.trim();
+  if (parseAdfDateTimestamp(source)) return source;
+  const calendar = source.match(/^(\d{4})-(\d{2})-(\d{2})$/u);
+  if (calendar) {
+    const year = Number(calendar[1]);
+    const month = Number(calendar[2]);
+    const day = Number(calendar[3]);
+    const date = new Date(0);
+    date.setUTCHours(0, 0, 0, 0);
+    date.setUTCFullYear(year, month - 1, day);
+    const milliseconds = date.getTime();
+    if (
+      date.getUTCFullYear() === year &&
+      date.getUTCMonth() === month - 1 &&
+      date.getUTCDate() === day
+    ) {
+      return String(milliseconds);
+    }
+  }
+  // Accept only ISO timestamps with an explicit zone. Date.parse() also
+  // accepts locale-shaped and implementation-specific values (for example
+  // 03/04/2024), which would make an export depend on the host environment.
+  const zonedIso =
+    /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,9})?)?(?:Z|[+-]\d{2}:\d{2})$/u;
+  if (!zonedIso.test(source)) return source;
+  const milliseconds = Date.parse(source);
+  return Number.isFinite(milliseconds) ? String(milliseconds) : source;
+}
+
+function storageDateInline(value: string, ctx: WalkCtx): InlineNode[] {
+  const source = value.trim();
+  if (!source) return [];
+  const timestamp = storageDateTimestamp(source);
+  if (!parseAdfDateTimestamp(timestamp)) {
+    ctx.notes.push(withSource(ctx, {
+      level: "warning",
+      code: "date-invalid",
+      message: "A semantic date timestamp was invalid; its exact source text was preserved.",
+    }));
+  }
+  return [{ type: "date", timestamp }];
+}
+
 function walkInlineElement(el: XmlElement, ctx: WalkCtx): InlineNode[] {
   const name = el.name;
+
+  if (name === "ac:adf-node") return walkUnsupportedStorageAdfInline(el, ctx);
 
   const mark = MARK_TAGS[name];
   if (mark) return addMark(walkInline(el.children, ctx), mark);
@@ -2187,13 +3279,48 @@ function walkInlineElement(el: XmlElement, ctx: WalkCtx): InlineNode[] {
   if (name === "ac:link") return walkAcLink(el, ctx);
 
   if (name === "ac:emoticon") {
-    const emoji = el.attrs["ac:emoji-fallback"] ?? el.attrs["ac:name"] ?? "";
-    return emoji ? [{ type: "text", text: emoji }] : [];
+    const nameFallback = el.attrs["ac:name"] ?? "";
+    const shortName =
+      el.attrs["ac:emoji-shortname"] ??
+      (nameFallback
+        ? nameFallback.startsWith(":") && nameFallback.endsWith(":")
+          ? nameFallback
+          : `:${nameFallback}:`
+        : "");
+    const sourceText = el.attrs["ac:emoji-fallback"];
+    const renderedFrom =
+      sourceText !== undefined && sourceText.length > 0 ? "text" : "short-name";
+    const text = renderedFrom === "text" ? sourceText! : shortName;
+    if (!text) return [];
+    if (renderedFrom === "short-name" || isColonEmojiFallback(text)) {
+      ctx.notes.push(withSource(ctx, {
+        level: "warning",
+        code: "emoji-text-fallback",
+        message: "An emoji had no portable Unicode text; its textual short-name fallback was preserved.",
+      }));
+    }
+    return [{
+      type: "text",
+      text,
+      emoji: {
+        shortName,
+        ...(sourceText !== undefined ? { text: sourceText } : {}),
+        renderedFrom,
+      },
+    }];
   }
 
   if (name === "time") {
     const datetime = el.attrs.datetime ?? elementText(el).trim();
-    return datetime ? [{ type: "text", text: datetime }] : [];
+    return storageDateInline(datetime, ctx);
+  }
+
+  if (name === "ac:placeholder") {
+    return [{
+      type: "placeholder",
+      text: elementText(el),
+      ...(el.attrs["ac:type"] !== undefined ? { placeholderType: el.attrs["ac:type"] } : {}),
+    }];
   }
 
   if (name === "ac:structured-macro") {
@@ -2201,7 +3328,22 @@ function walkInlineElement(el: XmlElement, ctx: WalkCtx): InlineNode[] {
     if (macroName === "status") {
       const color = (macroParam(el, "colour") ?? macroParam(el, "color") ?? "grey").toLowerCase();
       const title = macroParam(el, "title") ?? "";
-      return [{ type: "status", text: title, color }];
+      const style =
+        macroParam(el, "style") ??
+        (macroParam(el, "subtle")?.toLowerCase() === "true" ? "subtle" : undefined);
+      return [{
+        type: "status",
+        text: title,
+        color,
+        ...(style !== undefined ? { style } : {}),
+      }];
+    }
+    if (macroName === "date") {
+      const value =
+        macroParam(el, "date") ??
+        macroParam(el, "") ??
+        elementText(el);
+      return storageDateInline(value, ctx);
     }
     if (INLINE_SCROLL_MACROS.has(macroName)) {
       return walkInlineExportControlMacro(

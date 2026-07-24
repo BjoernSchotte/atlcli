@@ -52,6 +52,7 @@ function collectTypes(blocks: ExportBlock[]): Set<string> {
       types.add(block.type);
       switch (block.type) {
         case "callout":
+        case "expand":
         case "blockquote":
         case "orientation":
           walk(block.content);
@@ -155,7 +156,12 @@ const MACRO_STORAGE =
   `<p>After</p>`;
 
 /** The one note ordering both engines must agree on, per source page. */
-const EXPECTED_SOURCE_PAGE_CODES = ["macro-degraded", "image-unresolved", "macro-rendered-via"];
+const EXPECTED_SOURCE_PAGE_CODES = [
+  "adf-storage-fallback",
+  "macro-degraded",
+  "image-unresolved",
+  "macro-rendered-via",
+];
 const MACRO_CODES = new Set([
   "unknown-macro",
   "macro-not-rendered",
@@ -209,6 +215,15 @@ describe("macro-report parity across engines (spec 010)", () => {
             return Response.json({ body: { export_view: { value: EXPORT_VIEW_HTML } }, version: { number: 1 } });
           }
           return Response.json(MACRO_PAGE);
+        }
+        if (
+          url.pathname ===
+          `/rest/api/content/${MACRO_PAGE_ID}/history/1/macro/id/${DEAD_MACRO_ID}`
+        ) {
+          return new Response(JSON.stringify({ message: "macro not found" }), {
+            status: 404,
+            headers: { "content-type": "application/json" },
+          });
         }
         unmatched.push(`${url.pathname}?${url.searchParams}`);
         return new Response(JSON.stringify({ message: `stub: no route for ${url.pathname}` }), {
