@@ -431,6 +431,36 @@ export type ImageSource =
 /** Confluence callout kinds plus the generic/custom titled panel fallback. */
 export type CalloutKind = "info" | "note" | "warning" | "tip" | "success" | "error" | "panel";
 
+/** Standard callouts that receive a portable semantic icon by default. */
+export type StandardCalloutKind = Exclude<CalloutKind, "panel">;
+
+/**
+ * Target-neutral meaning and glyph for one standard callout kind.
+ *
+ * Renderers must not emit `symbol` as an ordinary text run. P1 renders a
+ * graphical target-specific icon and exposes `label` exactly once as its
+ * replacement text.
+ */
+export interface SemanticCalloutIcon {
+  kind: StandardCalloutKind;
+  symbol: string;
+  label: string;
+}
+
+export const SEMANTIC_CALLOUT_ICONS: Readonly<Record<StandardCalloutKind, SemanticCalloutIcon>> =
+  Object.freeze({
+    info: Object.freeze({ kind: "info", symbol: "ℹ", label: "Info" }),
+    note: Object.freeze({ kind: "note", symbol: "✎", label: "Note" }),
+    warning: Object.freeze({ kind: "warning", symbol: "⚠", label: "Warning" }),
+    tip: Object.freeze({ kind: "tip", symbol: "💡", label: "Tip" }),
+    success: Object.freeze({ kind: "success", symbol: "✓", label: "Success" }),
+    error: Object.freeze({ kind: "error", symbol: "✕", label: "Error" }),
+  });
+
+export type ResolvedCalloutIcon =
+  | { source: "explicit"; text: string }
+  | { source: "semantic-default"; icon: SemanticCalloutIcon };
+
 /** What a {@link Caption} labels — drives the serializer's numbering prefix (Figure/Table/…). */
 export type CaptionKind = "figure" | "table" | "code" | "equation";
 
@@ -682,6 +712,29 @@ export function panelIconDisplayText(panel: {
 }
 
 /**
+ * Resolve one callout icon without erasing its provenance.
+ *
+ * Explicit source metadata always wins. Storage's authored `icon=false`
+ * suppression then wins over semantic defaults. Generic/custom panels never
+ * receive a default.
+ */
+export function resolveCalloutIcon(callout: {
+  kind: CalloutKind;
+  panelIcon?: string;
+  panelIconText?: string;
+  panelIconProjection?: PortableEmojiProjection;
+  suppressDefaultIcon?: boolean;
+}): ResolvedCalloutIcon | undefined {
+  const explicit = panelIconDisplayText(callout);
+  if (explicit) return { source: "explicit", text: explicit };
+  if (callout.suppressDefaultIcon || callout.kind === "panel") return undefined;
+  return {
+    source: "semantic-default",
+    icon: SEMANTIC_CALLOUT_ICONS[callout.kind],
+  };
+}
+
+/**
  * Case-insensitive convenience lookup for a parameter's plain-text value only
  * (mirrors the internal `macroParam` helper). Returns `undefined` for
  * ref-only or absent parameters — callers that need `ri:*` data read `refs`
@@ -780,6 +833,8 @@ export type ExportBlock =
       panelIconText?: string;
       /** Reviewed portable projection for a typed colon-shaped panel icon. */
       panelIconProjection?: PortableEmojiProjection;
+      /** Authored Storage `icon=false`; prevents a semantic default icon. */
+      suppressDefaultIcon?: boolean;
       /** Exact ADF synced-content identity retained behind the static projection. */
       syncedContent?: SyncedContentProvenance;
     }
@@ -2614,11 +2669,14 @@ function walkMacro(el: XmlElement, ctx: WalkCtx): ExportBlock[] {
   if (CALLOUT_KINDS.has(macroName as CalloutKind)) {
     const body = childByName(el, "ac:rich-text-body");
     const title = macroParam(el, "title");
+    const suppressDefaultIcon =
+      macroName !== "panel" && macroParam(el, "icon")?.trim().toLowerCase() === "false";
     return [
       {
         type: "callout",
         kind: macroName as CalloutKind,
         ...(title ? { title } : {}),
+        ...(suppressDefaultIcon ? { suppressDefaultIcon: true } : {}),
         content: body ? walkBlocks(body.children, ctx) : [],
       },
     ];

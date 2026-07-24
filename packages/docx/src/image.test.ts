@@ -367,7 +367,7 @@ describe("inlineImageParagraph", () => {
       relId: "rId9",
       docPrId: 3,
       name: "pic",
-      descr: "alt",
+      accessibility: { kind: "labelled", description: "alt" },
       cxEmu: 100,
       cyEmu: 200,
     });
@@ -389,7 +389,7 @@ describe("inlineImageParagraph", () => {
       relId: "rId10",
       docPrId: 4,
       name: "inline",
-      descr: "inline alt",
+      accessibility: { kind: "labelled", description: "inline alt" },
       cxEmu: 300,
       cyEmu: 200,
       border: { color: "#0052CC80", size: 2 },

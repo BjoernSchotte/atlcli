@@ -1,6 +1,6 @@
 # P1 — Semantic default icons for standard callouts
 
-Status: planned follow-up; blocked on P1.1 accessibility seam proof
+Status: in progress; P1.1 accessibility contract proved
 
 Baseline: `5876348343c5805c3424eea5d516a8c937b4f6f5`
 
@@ -55,8 +55,9 @@ explicit panelIconText
   -> non-colon panelIcon
     -> known typed panelIcon projection
       -> unresolved panelIcon kept visible + diagnosed (P0 contract)
-        -> CalloutKind semantic default for standard kinds
-          -> no icon for generic/custom panels
+        -> explicit Storage/DC icon=false suppression
+          -> CalloutKind semantic default for standard kinds
+            -> no icon for generic/custom panels
 ```
 
 Thus a standard warning with an explicit source icon never receives a second
@@ -73,9 +74,32 @@ The proof must inspect generated PDF tags/structure and DOCX OOXML plus a real
 screen-reader/Office baseline. Pixel and `pdftotext` checks alone cannot check
 P1.1. P1.2 may not start while P1.1 is unchecked.
 
+### Selected accessibility contract
+
+P1 uses candidate 2: a labelled graphical icon with target-specific
+replacement text and no additional generated callout-kind text.
+
+- DOCX writes the localized semantic label to `descr` on both `wp:docPr` and
+  `pic:cNvPr`.
+- PDF writes the same label as `alt` on an unoutlined `pdf.figure`.
+- The explicit source icon remains ordinary authored text and suppresses the
+  semantic default.
+- Storage/DC `icon=false` suppresses both the graphical icon and its replacement
+  text. Generic panels stay iconless unless the source supplied an icon.
+
+The rejected decorative candidate remains covered as a regression spike. Typst
+0.14.2 correctly emits it as `/Artifact`, but Word 16.111.1 with VoiceOver 10
+still exposes the drawing during element navigation as
+`Decorative warning callout icon: Dekorativ, Mit Text in Zeile bild`, followed
+by the separately generated `Warning` label. The labelled candidate is exposed
+once as `Warning, Mit Text in Zeile bild`. Word's Accessibility Checker reports
+zero missing-alt-text issues for both OOXML forms. The real Office/VoiceOver
+baseline was run on 2026-07-24; the temporary VoiceOver and AppleScript-control
+settings were restored to off after the check.
+
 ## 5. Commit-sized implementation tasks
 
-- [ ] **P1.1 — Prove and define semantic icon accessibility contracts.**
+- [x] **P1.1 — Prove and define semantic icon accessibility contracts.**
   Build the smallest PDF/DOCX spike for both candidate contracts, select the
   one that is representable in both targets, record the exact structure/OOXML
   seam, then add an exhaustive registry for the six standard callout kinds.

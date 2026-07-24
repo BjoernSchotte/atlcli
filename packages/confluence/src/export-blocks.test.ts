@@ -3,6 +3,7 @@ import {
   DEFAULT_STORAGE_PARSE_BUDGET,
   EXPORT_NOTE_CODES,
   RETIRED_EXPORT_NOTE_CODES,
+  SEMANTIC_CALLOUT_ICONS,
   StorageParseError,
   canonicalExportNoteCode,
   formatAdfDateTimestamp,
@@ -11,6 +12,7 @@ import {
   normalizeCaptionKind,
   parseXml,
   parseAdfDateTimestamp,
+  resolveCalloutIcon,
   storageToBlocks,
   type ExportBlock,
   type InlineNode,
@@ -832,7 +834,7 @@ describe("storageToBlocks — code blocks", () => {
 });
 
 describe("storageToBlocks — callouts", () => {
-  for (const kind of ["info", "note", "warning", "tip"] as const) {
+  for (const kind of ["info", "note", "warning", "tip", "success", "error"] as const) {
     test(`${kind} callout with body`, () => {
       const out = blocks(
         `<ac:structured-macro ac:name="${kind}"><ac:rich-text-body><p>body</p></ac:rich-text-body></ac:structured-macro>`
@@ -840,6 +842,55 @@ describe("storageToBlocks — callouts", () => {
       expect(out).toEqual([
         { type: "callout", kind, content: [{ type: "paragraph", content: [{ type: "text", text: "body" }] }] },
       ]);
+    });
+  }
+
+  test("semantic registry is exhaustive and explicit source icons always win", () => {
+    expect(SEMANTIC_CALLOUT_ICONS).toEqual({
+      info: { kind: "info", symbol: "ℹ", label: "Info" },
+      note: { kind: "note", symbol: "✎", label: "Note" },
+      warning: { kind: "warning", symbol: "⚠", label: "Warning" },
+      tip: { kind: "tip", symbol: "💡", label: "Tip" },
+      success: { kind: "success", symbol: "✓", label: "Success" },
+      error: { kind: "error", symbol: "✕", label: "Error" },
+    });
+    for (const icon of Object.values(SEMANTIC_CALLOUT_ICONS)) {
+      expect(resolveCalloutIcon({ kind: icon.kind })).toEqual({
+        source: "semantic-default",
+        icon,
+      });
+    }
+
+    expect(resolveCalloutIcon({ kind: "warning", panelIconText: "🧭", panelIcon: ":warning:" }))
+      .toEqual({ source: "explicit", text: "🧭" });
+    expect(resolveCalloutIcon({ kind: "warning", panelIcon: "🦜" }))
+      .toEqual({ source: "explicit", text: "🦜" });
+    expect(resolveCalloutIcon({
+      kind: "warning",
+      panelIcon: ":warning:",
+      panelIconProjection: CONFLUENCE_LEGACY_EMOJI_PROJECTIONS.warning,
+    })).toEqual({ source: "explicit", text: "⚠" });
+    expect(resolveCalloutIcon({ kind: "warning", panelIcon: ":custom-visible:" }))
+      .toEqual({ source: "explicit", text: ":custom-visible:" });
+    expect(resolveCalloutIcon({ kind: "panel" })).toBeUndefined();
+    expect(resolveCalloutIcon({ kind: "warning", suppressDefaultIcon: true })).toBeUndefined();
+  });
+
+  for (const kind of ["info", "note", "warning", "tip"] as const) {
+    test(`${kind} preserves the Data Center icon=false author choice`, () => {
+      const out = blocks(
+        `<ac:structured-macro ac:name="${kind}">` +
+          '<ac:parameter ac:name="icon"> FALSE </ac:parameter>' +
+          "<ac:rich-text-body><p>body</p></ac:rich-text-body>" +
+        "</ac:structured-macro>"
+      );
+      expect(out[0]).toMatchObject({
+        type: "callout",
+        kind,
+        suppressDefaultIcon: true,
+      });
+      expect(resolveCalloutIcon(out[0] as Extract<ExportBlock, { type: "callout" }>))
+        .toBeUndefined();
     });
   }
 
