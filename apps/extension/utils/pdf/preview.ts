@@ -58,6 +58,7 @@ import {
 import type { LoadedPage } from "../read-path.js";
 import { exportScopeIdentity } from "../scope-state.js";
 import { resolveExportComposition } from "../confluence/export-composition.js";
+import { sessionTreeSource } from "../confluence/tree-source.js";
 import { extensionPdfCompilePort } from "./compile-port.js";
 import { isPreviewSupersededError } from "./compiler-host.js";
 import {
@@ -418,6 +419,13 @@ const UNTRUNCATED: PreviewTruncationPlan = {
   reason: "none",
 };
 
+function previewTreeSource(pageUrl: string, signal?: AbortSignal) {
+  return sessionTreeSource(pageUrl, {
+    ...(signal ? { signal } : {}),
+    exportSourcePolicy: "adf-primary",
+  });
+}
+
 /** Preview of the loaded page (whole document, never truncated). */
 export async function runPagePdfPreview(
   input: PdfPagePreviewInput,
@@ -437,7 +445,20 @@ export async function runPagePdfPreview(
         signal: input.signal,
         onPhase: input.onPhase,
       },
-      { output: captured.sink, createCompilePort: deps.createCompilePort, now: deps.now }
+      {
+        output: captured.sink,
+        createCompilePort: deps.createCompilePort,
+        now: deps.now,
+        resolveComposition: (compositionInput, compositionOverrides) =>
+          resolveExportComposition(
+            { ...compositionInput, refreshPageSource: true },
+            {
+              ...compositionOverrides,
+              createTreeSource:
+                compositionOverrides?.createTreeSource ?? previewTreeSource,
+            }
+          ),
+      }
     );
     return {
       status: "ready",
@@ -458,7 +479,8 @@ export async function runPagePdfPreview(
 /**
  * Preview the Studio's selected scope through the same host pipeline as
  * Download. Tree/space scopes fetch the complete shared tree, then compose only
- * the bounded chapter prefix; page scope stays on the cheap loaded-page path.
+ * the bounded chapter prefix; page scope refreshes exactly one published source
+ * so ADF-only semantics match Download without paying for a tree walk.
  */
 export async function runScopedPdfPreview(
   input: PdfScopedPreviewInput,
@@ -503,7 +525,11 @@ export async function runScopedPdfPreview(
                 return truncation.nodes;
               },
             },
-            compositionOverrides
+            {
+              ...compositionOverrides,
+              createTreeSource:
+                compositionOverrides?.createTreeSource ?? previewTreeSource,
+            }
           ),
       }
     );
