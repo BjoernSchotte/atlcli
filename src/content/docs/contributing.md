@@ -53,6 +53,24 @@ Superseded pull-request runs and Pages deployments are cancelled. Product CI
 on `main`, nightly runs, and release evidence are never cancelled by a newer
 commit.
 
+### README media
+
+Store repository-owned screenshots and downloadable PDF references used by the
+root `README.md` under `assets/readme/`. Keep each file below 10 MiB and the
+referenced set below 25 MiB. PNG images must have non-zero dimensions no larger
+than 4096×4096; PDFs may contain at most 20 detectable pages.
+
+Run the lightweight validation before committing README presentation changes:
+
+```bash
+bun run check:readme-media
+```
+
+The check rejects missing or untracked files, unsupported local image formats,
+invalid PNG/PDF headers, and media over the configured limits. Other `assets/`
+subdirectories remain product or unknown surfaces and do not inherit this
+documentation-only CI policy.
+
 ### Project Structure
 
 ```

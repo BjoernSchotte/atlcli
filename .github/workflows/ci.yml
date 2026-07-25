@@ -33,6 +33,7 @@ jobs:
       code: ${{ steps.routes.outputs.code }}
       consumer: ${{ steps.routes.outputs.consumer }}
       docs: ${{ steps.routes.outputs.docs }}
+      readmeMedia: ${{ steps.routes.outputs.readmeMedia }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -93,6 +94,23 @@ jobs:
 
       - name: Build docs
         run: bun run docs:build
+
+  readme-media:
+    name: README media
+    needs: changes
+    if: needs.changes.outputs.readmeMedia == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Validate README media
+        run: bun run check:readme-media
 
   test:
     name: Product quality
@@ -233,6 +251,7 @@ jobs:
     needs:
       - changes
       - docs
+      - readme-media
       - test
       - consumer-smoke
       - pdf-cli-macos
@@ -245,13 +264,19 @@ jobs:
         env:
           CHANGES: ${{ needs.changes.result }}
           DOCS: ${{ needs.docs.result }}
+          README_MEDIA_REQUIRED: ${{ needs.changes.outputs.readmeMedia }}
+          README_MEDIA: ${{ needs.readme-media.result }}
           TEST: ${{ needs.test.result }}
           CONSUMER: ${{ needs.consumer-smoke.result }}
           MACOS: ${{ needs.pdf-cli-macos.result }}
           WINDOWS: ${{ needs.pdf-sink-windows.result }}
           BROWSER: ${{ needs.browser-export-harness.result }}
         run: |
-          for result in "$CHANGES" "$DOCS" "$TEST" "$CONSUMER" "$MACOS" "$WINDOWS" "$BROWSER"; do
+          if [[ "$README_MEDIA_REQUIRED" == "true" && "$README_MEDIA" != "success" ]]; then
+            echo "::error::The selected README media gate finished with result: $README_MEDIA"
+            exit 1
+          fi
+          for result in "$CHANGES" "$DOCS" "$README_MEDIA" "$TEST" "$CONSUMER" "$MACOS" "$WINDOWS" "$BROWSER"; do
             if [[ "$result" != "success" && "$result" != "skipped" ]]; then
               echo "::error::A selected CI gate finished with result: $result"
               exit 1
