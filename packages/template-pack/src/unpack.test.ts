@@ -35,6 +35,7 @@ interface RawZip {
 const RawPizZip = PizZipDefault as unknown as { new (): RawZip };
 
 const DATE = new Date(1980, 0, 1, 0, 0, 0);
+const CPU_HEAVY_TEST_TIMEOUT_MS = 30_000;
 
 function manifestJson(entry = "template.typ"): string {
   return JSON.stringify({
@@ -257,7 +258,7 @@ describe("forged declared size (under-declaration bypass)", () => {
     expect(declared).toBeLessThan(compressed);
 
     expectKind(() => unpackTemplate(forged), "suspicious-compression");
-  });
+  }, CPU_HEAVY_TEST_TIMEOUT_MS);
 
   it("refuses the forged bomb WITHOUT inflating it (RSS stays flat)", () => {
     const forged = buildForgedBomb();
@@ -274,7 +275,7 @@ describe("forged declared size (under-declaration bypass)", () => {
     // allocate essentially nothing, so a fraction of the payload is a generous
     // bound that still fails loudly if the pre-inflation guard regresses.
     expect(grewBytes).toBeLessThan(BOMB_UNCOMPRESSED / 4);
-  });
+  }, CPU_HEAVY_TEST_TIMEOUT_MS);
 
   it("refuses a member declaring implausibly MORE than its compressed stream", () => {
     // A bomb that stays under the absolute caps: ~4 KiB of incompressible data

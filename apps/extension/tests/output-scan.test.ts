@@ -11,6 +11,7 @@ import {
 import { EXTENSION_ROOT, ensureExtensionBuilt, OUTPUT_DIR } from "./build-helper.js";
 
 const CLI_PATH = join(EXTENSION_ROOT, "scripts", "check-output-build.ts");
+const EXTENSION_BUILD_TIMEOUT_MS = 180_000;
 
 /** Run the REAL check CLI against `root`; return exit code + merged output. */
 function runCheckCli(root: string): { code: number; output: string } {
@@ -253,7 +254,7 @@ describe("check-output-build CLI (end-to-end)", () => {
   beforeAll(() => {
     ensureExtensionBuilt();
     leakDir = mkdtempSync(join(tmpdir(), "atlcli-outscan-"));
-  });
+  }, EXTENSION_BUILD_TIMEOUT_MS);
 
   afterAll(() => rmSync(leakDir, { recursive: true, force: true }));
 

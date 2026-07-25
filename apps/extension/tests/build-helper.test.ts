@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { BUILD_INPUTS, collectMtimes, isBuildStale } from "./build-helper.js";
+import { BUILD_INPUTS, collectMtimes, formatBuildFailure, isBuildStale } from "./build-helper.js";
 
 /**
  * Regression (finding 7): ensureExtensionBuilt reused any existing `.output`
@@ -56,6 +56,13 @@ describe("isBuildStale", () => {
 
   it("treats an equal mtime as fresh (strictly newer only)", () => {
     expect(isBuildStale(1000, [1000])).toBe(false);
+  });
+});
+
+describe("formatBuildFailure", () => {
+  it("reports signal termination distinctly from a normal non-zero exit", () => {
+    expect(formatBuildFailure(null, "SIGTERM")).toBe("wxt build was killed by SIGTERM");
+    expect(formatBuildFailure(1, null)).toBe("wxt build failed (exit 1)");
   });
 });
 

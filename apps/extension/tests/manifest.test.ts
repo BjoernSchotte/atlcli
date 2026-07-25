@@ -3,6 +3,8 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { ensureExtensionBuilt, MANIFEST_PATH, OUTPUT_DIR } from "./build-helper.js";
 
+const EXTENSION_BUILD_TIMEOUT_MS = 180_000;
+
 /**
  * The exact, normative extension-pages CSP from PLAN §2.3. The test asserts the
  * built manifest carries THIS string verbatim — no extra sources permitted
@@ -31,7 +33,7 @@ describe("built manifest.json", () => {
   beforeAll(() => {
     ensureExtensionBuilt();
     manifest = JSON.parse(readFileSync(MANIFEST_PATH, "utf8"));
-  });
+  }, EXTENSION_BUILD_TIMEOUT_MS);
 
   it("is Manifest V3", () => {
     expect(manifest.manifest_version).toBe(3);
