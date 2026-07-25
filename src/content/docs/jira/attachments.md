@@ -36,28 +36,71 @@ Use `--json` for JSON output.
 
 ## Upload Attachment
 
-Attach a file to an issue:
+Attach one or more files to an issue:
 
 ```bash
-atlcli jira issue attach --key PROJ-123 ./screenshot.png
+# Single file
+atlcli jira issue attach PROJ-123 ./screenshot.png
+
+# Several files in one call
+atlcli jira issue attach PROJ-123 ./file1.png ./file2.pdf ./logs.zip
+
+# A glob the shell expands — every match is uploaded
+atlcli jira issue attach PROJ-123 ./screenshots/*.png
+
+# Upload and comment in one step
+atlcli jira issue attach PROJ-123 ./error.log --comment "Error logs from production"
 ```
 
 Options:
 
 | Flag | Description |
 |------|-------------|
-| `--key` | Issue key (required) |
+| `--key` | Issue key, if you prefer it over the positional form |
+| `--comment` | Post a comment on the issue after the upload |
+| `--json` | JSON output |
 
-:::note[One file per call]
-`attach` uploads a single file. Loop for several:
+:::note[Partial failures]
+Every path is checked before anything is uploaded, so a typo in one filename
+uploads nothing. If a file is rejected by Jira mid-run, the remaining files are
+still uploaded, the failures are reported, and the command exits non-zero — so a
+script never mistakes a partial upload for a complete one.
+
+The `--comment` text is posted only when at least one file uploaded.
+:::
+
+### Upload JSON Output
 
 ```bash
-for file in ./screenshots/*.png; do
-  atlcli jira issue attach --key PROJ-123 "$file"
-done
+atlcli jira issue attach PROJ-123 ./a.png ./b.pdf --json
 ```
 
-:::
+```json
+{
+  "schemaVersion": "1",
+  "issue": "PROJ-123",
+  "attached": [
+    {
+      "id": "20001",
+      "filename": "a.png",
+      "size": 250880,
+      "mimeType": "image/png",
+      "path": "./a.png"
+    },
+    {
+      "id": "20002",
+      "filename": "b.pdf",
+      "size": 12288,
+      "mimeType": "application/pdf",
+      "path": "./b.pdf"
+    }
+  ],
+  "total": 2
+}
+```
+
+A run with failures adds a `failed` array (`[{ "path": "...", "error": "..." }]`),
+and `--comment` adds `"comment": { "id": "30001" }`.
 
 ## Download Attachment
 
@@ -180,9 +223,8 @@ Jira Cloud has a default attachment size limit of 10 MB per file. Your administr
 ### Attach Build Artifacts
 
 ```bash
-# Attach build log after CI failure
-atlcli jira issue attach --key PROJ-123 ./build.log
-atlcli jira issue comment --key PROJ-123 "Build failed - see attached log"
+# Attach build log after CI failure, with the explanation in one call
+atlcli jira issue attach PROJ-123 ./build.log --comment "Build failed - see attached log"
 ```
 
 ### Bulk Export Attachments
@@ -205,10 +247,8 @@ atlcli jira issue attachments PROJ-100 --json | \
   jq -r '.attachments[].id' | \
   xargs -I {} atlcli jira issue attachment download {} -o /tmp/migrate/
 
-# Upload to target issue
-for file in /tmp/migrate/*; do
-  atlcli jira issue attach --key PROJ-200 "$file"
-done
+# Upload to target issue — one call, every file
+atlcli jira issue attach PROJ-200 /tmp/migrate/*
 ```
 
 ## Related Topics

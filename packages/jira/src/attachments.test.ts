@@ -13,6 +13,7 @@ import {
   formatAttachmentsTable,
   insertIdSuffix,
   outputIsDirectory,
+  parseAttachRequest,
   parseAttachmentTarget,
   planDownloads,
   resolveDownloadPath,
@@ -31,6 +32,62 @@ const attachment = (over: Partial<JiraAttachment> = {}): JiraAttachment => ({
   mimeType: "image/png",
   content: "https://example.atlassian.net/rest/api/3/attachment/content/10001",
   ...over,
+});
+
+describe("parseAttachRequest", () => {
+  it("reads the issue key positionally (issue #90)", () => {
+    expect(parseAttachRequest(["PROJ-123", "./a.png"])).toEqual({
+      ok: true,
+      request: { issueKey: "PROJ-123", files: ["./a.png"] },
+    });
+  });
+
+  it("keeps every file of an expanded glob", () => {
+    // The regression: only args[0] was uploaded, the rest vanished silently.
+    expect(parseAttachRequest(["PROJ-123", "a.png", "b.pdf", "logs.zip"])).toEqual({
+      ok: true,
+      request: { issueKey: "PROJ-123", files: ["a.png", "b.pdf", "logs.zip"] },
+    });
+  });
+
+  it("still accepts --key for backward compatibility", () => {
+    expect(parseAttachRequest(["a.png", "b.png"], "PROJ-123")).toEqual({
+      ok: true,
+      request: { issueKey: "PROJ-123", files: ["a.png", "b.png"] },
+    });
+  });
+
+  it("does not treat a repeated --key value as a file", () => {
+    expect(parseAttachRequest(["PROJ-123", "a.png"], "PROJ-123")).toEqual({
+      ok: true,
+      request: { issueKey: "PROJ-123", files: ["a.png"] },
+    });
+  });
+
+  it("names the real problem when the key is missing", () => {
+    const result = parseAttachRequest(["./a.png"]);
+    expect(result.ok).toBe(false);
+    // Not the old "File not found: PROJ-123"-shaped confusion.
+    expect(result.ok === false && result.error).toContain("is not an issue key");
+  });
+
+  it("requires at least one file", () => {
+    expect(parseAttachRequest(["PROJ-123"]).ok).toBe(false);
+    expect(parseAttachRequest([], "PROJ-123").ok).toBe(false);
+  });
+
+  it("requires arguments at all", () => {
+    const result = parseAttachRequest([]);
+    expect(result.ok).toBe(false);
+    expect(result.ok === false && result.error).toContain("Issue key");
+  });
+
+  it("accepts lowercase and underscored project keys", () => {
+    expect(parseAttachRequest(["proj_x-9", "a.png"])).toEqual({
+      ok: true,
+      request: { issueKey: "proj_x-9", files: ["a.png"] },
+    });
+  });
 });
 
 describe("parseAttachmentTarget", () => {

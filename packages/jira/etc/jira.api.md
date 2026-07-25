@@ -1099,6 +1099,21 @@ export type AttachmentTargetResult = {
     error: string;
 };
 
+// export: AttachRequest
+export type AttachRequest = {
+    issueKey: string;
+    files: string[];
+};
+
+// export: AttachRequestResult
+export type AttachRequestResult = {
+    ok: true;
+    request: AttachRequest;
+} | {
+    ok: false;
+    error: string;
+};
+
 // export: BulkCreateResult
 export interface BulkCreateResult {
     issues: Array<{
@@ -2330,6 +2345,9 @@ export declare function outputIsDirectory(output: string | undefined, opts: {
 
 // export: parseAttachmentTarget
 export declare function parseAttachmentTarget(args: string[]): AttachmentTargetResult;
+
+// export: parseAttachRequest
+export declare function parseAttachRequest(args: string[], keyFlag?: string): AttachRequestResult;
 
 // export: parseCsv
 export declare function parseCsv(content: string): ImportIssue[];
@@ -3668,6 +3686,21 @@ export type AttachmentTargetResult = {
     error: string;
 };
 
+// export: AttachRequest
+export type AttachRequest = {
+    issueKey: string;
+    files: string[];
+};
+
+// export: AttachRequestResult
+export type AttachRequestResult = {
+    ok: true;
+    request: AttachRequest;
+} | {
+    ok: false;
+    error: string;
+};
+
 // export: BulkCreateResult
 export interface BulkCreateResult {
     issues: Array<{
@@ -4899,6 +4932,9 @@ export declare function outputIsDirectory(output: string | undefined, opts: {
 
 // export: parseAttachmentTarget
 export declare function parseAttachmentTarget(args: string[]): AttachmentTargetResult;
+
+// export: parseAttachRequest
+export declare function parseAttachRequest(args: string[], keyFlag?: string): AttachRequestResult;
 
 // export: parseCsv
 export declare function parseCsv(content: string): ImportIssue[];

@@ -279,7 +279,7 @@ const COMMAND_FLAGS: Record<string, string[]> = {
   "jira issue assign": ["--key", "--to"],
   "jira issue comment": ["--body", "--key"],
   "jira issue link": ["--from", "--to", "--type"],
-  "jira issue attach": ["--key"],
+  "jira issue attach": ["--comment", "--key"],
   "jira issue attachments": ["--key"],
   "jira issue attachment": ["--confirm", "--output", "--overwrite"],
   "jira issue open": ["--key"],
