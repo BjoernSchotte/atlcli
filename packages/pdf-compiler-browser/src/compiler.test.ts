@@ -508,8 +508,9 @@ describe("spec 003 captioned figures (real compiler, code-context regression)", 
     expect(result.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
     expect(result.pdf).toBeDefined();
     expect(source.main).toContain("#figure(block(width: 100%)[");
-    expect(source.main).toContain("#figure({ show raw.line:");
-    expect(source.main).toContain('raw("const x = 1;", lang: "ts", block: true)');
+    expect(source.main).toContain("#figure(block(width: 100%, fill: rgb(");
+    expect(source.main).toContain('#text(font: "Source Code Pro"');
+    expect(source.main).toContain('"const"');
   }, 60_000);
 
   it("a wide table nested inside a landscape region compiles and escalates against the landscape width", async () => {

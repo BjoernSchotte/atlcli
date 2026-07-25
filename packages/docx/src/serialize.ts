@@ -897,10 +897,12 @@ async function serializeBlock(
             tokens,
             block.hideLineNumbers === false ? firstLineNumber + index : undefined,
             lineNumberWidth,
-            {
-              background: theme.background,
-              foreground: theme.foreground,
-            },
+            theme.id === DEFAULT_CODE_THEME
+              ? undefined
+              : {
+                  background: theme.background,
+                  foreground: theme.foreground,
+                },
           )
         )
         .join("");

@@ -80,6 +80,12 @@ describe("scanText classification", () => {
     expect(scanText(text)).toContain(expected);
   });
 
+  it("allows Node keyword names inside an inert Shiki grammar payload", () => {
+    const grammar =
+      'Object.freeze(JSON.parse(`{"scopeName":"source.coffee","match":"__filename|__dirname"}`))';
+    expect(scanText(grammar)).toEqual([]);
+  });
+
   // Spec 010: the same blind spot the repo-wide browser gate had. A type-only
   // `import type { Server } from "bun"` erases, so NODE_BUN_RE sees no
   // specifier — but the call survives and `Bun` is undefined in an extension

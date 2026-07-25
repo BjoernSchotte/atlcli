@@ -52,7 +52,9 @@ import { BrowserPdfCompiler, PDF_BROWSER_COMPILER_VERSION } from "./index.js";
  * serializer, structure, accessibility, and rendered-golden tests pin that
  * behavior; this digest approves the resulting default PDF bytes.
  */
-const APPROVED_DEFAULT_OUTPUT_DIGEST = "a01783f5172074de2d7b99d7ba8202330774b1068efdad311d996ec24675bfc8";
+// Reviewed issue-102 baseline: explicit prepared Shiki tokens replace Typst's
+// renderer-owned raw highlighting while preserving source text and structure.
+const APPROVED_DEFAULT_OUTPUT_DIGEST = "ef817f7c651269d68506b3482f2d9f4c5537a2fab43d356a8093da50f96ca087";
 const PINNED_COMPILER = "typst.ts 0.7.0 / Typst 0.14.2";
 
 const PARITY_BLOCKS: ExportBlock[] = [

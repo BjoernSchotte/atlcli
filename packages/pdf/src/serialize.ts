@@ -22,6 +22,10 @@ import {
   uniqueAnchorId,
 } from "@atlcli/confluence";
 import { BUILTIN_PDF_DESIGN } from "./builtin-template.js";
+import {
+  DEFAULT_CODE_THEME,
+  resolveCodeTheme,
+} from "@atlcli/code-highlight/registry";
 import { escapeTypstContent, safeColor, typstLabel, typstString } from "./escape.js";
 import { resolvePdfSettings, typstSettingsDict, type ResolvedPdfDesign } from "./settings.js";
 import { createAtlcliTypstTemplate } from "./template.js";
@@ -1191,7 +1195,7 @@ function serializeHighlightedCodeBlock(
     `block(width: 100%, fill: rgb(${typstString(background)}), ` +
     `inset: ${writer.design.tokens.layout.codeInset}, ` +
     `radius: ${writer.design.tokens.layout.codeRadius})[` +
-    `#grid(columns: (1fr), row-gutter: 0pt, ${rows.join(", ")})]`
+    `#grid(columns: (1fr), ${rows.join(", ")})]`
   );
 }
 
@@ -1761,13 +1765,7 @@ function serializeBlock(
             type: "codeBlock",
             code: text,
             highlight: block.plainBodyHighlight ?? {
-              theme: {
-                id: "github-light",
-                displayName: "GitHub Light",
-                type: "light",
-                foreground: "#24292E",
-                background: "#FFFFFF",
-              },
+              theme: resolveCodeTheme(DEFAULT_CODE_THEME),
               lines: text.split("\n").map((line) => [{ text: line }]),
               skipped: null,
             },
