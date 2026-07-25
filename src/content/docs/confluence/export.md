@@ -13,6 +13,7 @@ the browser extension to create a tagged PDF with the built-in atlcli document d
 - [Browser extension: PDF export](#browser-extension-pdf-export)
 - [CLI: DOCX quick start](#quick-start)
 - [CLI: PDF export](#cli-pdf-export) and [document settings](#document-settings-are-not-cli-flags-yet)
+- [Syntax-highlighting themes](#syntax-highlighting-themes)
 - [ADF source selection and rollback](#adf-source-selection-and-rollback)
 - [Rendering runtime](#rendering-runtime) and [migrating from the Python exporter](#migrating-from-the-python-exporter)
 - [Export activity and recovery](#export-activity-and-recovery)
@@ -186,9 +187,37 @@ Pass one or the other, never both.
 | `--strict` | Exit code `2` if the export completed with any **warning**- or **error**-severity issue (informational notes never trip it — see [Note severity](#note-severity-and---strict)) |
 | `--no-cache` | Do not persist downloaded assets across invocations |
 | `--exported-at <ISO8601>` | Fix the export timestamp (reproducible builds; also honors `SOURCE_DATE_EPOCH`) |
+| `--code-theme <id>` | Shiki theme for fenced code blocks; defaults to `github-light` |
 | `--report json` | Synonym for `--json` |
 
 All [scope and label options](#scope-options) work with `--format pdf` too.
+
+## Syntax-highlighting themes
+
+DOCX and PDF use the same pinned Shiki catalogue for fenced code blocks. Select
+a theme with `--code-theme <id>` for either format:
+
+```bash
+# Minimal: retain the backward-compatible default
+atlcli wiki export 12345678 --code-theme github-light -o report.docx
+
+# Realistic: use a dark theme in a reproducible PDF export
+atlcli wiki export 12345678 --format pdf --code-theme dracula \
+  --exported-at 2026-07-25T10:00:00Z -o report.pdf
+```
+
+The default is `github-light`. The CLI rejects an unknown ID before it contacts
+Confluence and prints the supported IDs. The browser extension's **Code theme**
+selector exposes the complete bundled catalogue, including light and dark
+themes such as `github-light`, `github-dark`, `dracula`, `nord`,
+`catppuccin-mocha`, `min-light`, and `rose-pine`.
+
+The selected ID is pinned into durable jobs and recorded in JSON and on-screen
+completion reports. Retrying a job therefore uses the original theme even if
+the current UI preference has changed. Theme and language grammars load on
+demand; atlcli ships Shiki's full bundled language catalogue rather than a
+small hand-maintained subset. Unknown source languages remain readable plain
+code and produce a report note.
 
 ### Document settings are not CLI flags (yet)
 

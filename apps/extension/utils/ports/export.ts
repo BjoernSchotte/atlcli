@@ -13,6 +13,7 @@
  * never exports never pays for Typst WASM or PizZip.
  */
 import type { ExportScope, LabelFilter } from "@atlcli/confluence/browser";
+import type { CodeThemeId } from "@atlcli/code-highlight/registry";
 import type { TemplateLibraryEntry } from "@atlcli/core";
 import type { ExportReport } from "@atlcli/docx/browser";
 import type { ScanResult } from "@atlcli/docx/scan";
@@ -64,6 +65,8 @@ export interface ExportProgress {
  * like `scope: { kind: "page" }`, which is the 90 % case.
  */
 export interface ExportScopeRequest {
+  /** Bundled Shiki theme shared by every export engine. */
+  codeTheme?: CodeThemeId;
   /** Absent means "the single loaded page" — today's behaviour. */
   scope?: ExportScope;
   /** Absent means "no label filtering". */
@@ -85,14 +88,11 @@ export interface PdfExportRequest extends ExportScopeRequest {
   signal?: AbortSignal;
   onPhase?: (phase: ExportPhase) => void;
   /**
-   * Level-A template settings (spec 007), collected by `SettingsForm` and
+   * Level-A PDF template settings (spec 007), collected by `SettingsForm` and
    * persisted per template in `template-prefs`.
    *
-   * **PDF only, deliberately.** `packages/pdf` threads `settings` through
-   * `RunPdfExportInput`; `packages/docx`'s `ExportInput` has no equivalent
-   * field and no folder currently adds one, so {@link DocxExportRequest}
-   * intentionally does **not** mirror this. Adding it there would be an
-   * `as any`-shaped promise the engine cannot keep.
+   * Product-owned settings such as `codeTheme` live on the shared request
+   * instead so PDF and DOCX cannot drift.
    */
   settings?: PdfTemplateSettings;
 }
@@ -126,13 +126,7 @@ export interface DocxTemplateStore {
   remove(): Promise<void>;
 }
 
-/**
- * Note the absence of a `settings` field, and keep it absent: `ExportInput`
- * (`packages/docx/src/export.ts`) has none, so anything the panel put here
- * would be dropped on the floor while looking like a feature. DOCX manifest
- * settings stay informational-only in the panel until a DOCX-side settings seam
- * lands. `tests/settings-form.test.tsx` pins this.
- */
+/** DOCX uses the shared product-owned `codeTheme`, not PDF template settings. */
 export interface DocxExportRequest extends ExportScopeRequest {
   page: LoadedPage;
   pageUrl: string;

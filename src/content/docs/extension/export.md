@@ -18,6 +18,7 @@ which the CLI does not expose yet.
 - [Label filters](#label-filters)
 - [Dynamic macros](#dynamic-macros)
 - [Document settings (PDF)](#document-settings-pdf)
+- [Code themes](#code-themes)
 - [Word templates](#word-templates)
 - [Preview](#preview)
 - [Background exports](#background-exports)
@@ -152,6 +153,22 @@ tagged and an untagged image would be invisible to assistive technology.
 Settings are remembered per **site, engine and space**, so a space you brand one
 way stays branded that way, and another space on the same site is unaffected.
 **Reset to defaults** restores the built-in design.
+
+## Code themes
+
+The **Code theme** selector is shared by PDF preview, PDF export, Word export,
+and background retries. It contains the full theme catalogue bundled by the
+pinned Shiki version and defaults to **GitHub Light**. Theme choices are stored
+with the other per-space publishing preferences.
+
+A dark choice changes both token colours and the code-block background in PDF
+and DOCX; it does not recolour the rest of the document. Preview and final PDF
+use the same resolved theme. Completion reports show the exact stable theme ID,
+which is useful when comparing an interactive export with CLI or CI output.
+
+For automation, pass the same ID as `--code-theme <id>` to either CLI export
+format. See [Syntax-highlighting themes](/confluence/export/#syntax-highlighting-themes)
+for examples and fallback behavior.
 
 :::note[Word templates do not take settings]
 A Word template that declares settings shows them **for information only**, with

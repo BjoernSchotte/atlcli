@@ -30,6 +30,7 @@ interface DocxPart {
  */
 export function projectDocxReport(report: ExportReport): unknown {
   return {
+    codeTheme: report.codeTheme,
     resolvedCount: report.resolvedCount,
     unsupportedNames: [...report.unsupportedNames],
     skippedImages: report.skippedImages,

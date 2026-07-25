@@ -23,6 +23,10 @@ import type {
   PreparedPdfBlock,
 } from "./types.js";
 import { validatePdfOutput } from "./validate.js";
+import {
+  resolveCodeThemeId,
+  type CodeThemeId,
+} from "@atlcli/code-highlight/registry";
 
 export interface PdfOutputSink {
   /**
@@ -46,6 +50,8 @@ export type PdfExportPhase =
   | "emitting";
 
 export interface RunPdfExportInput {
+  /** Bundled Shiki theme for code blocks; defaults to `github-light`. */
+  codeTheme?: CodeThemeId;
   blocks: ExportBlock[];
   sourceNotes?: ExportNote[];
   metadata: PdfExportMetadata;
@@ -105,6 +111,7 @@ export interface PreparedPdfExportV1 {
    */
   bundle: PdfSourceBundle | undefined;
   filename: string;
+  codeTheme: CodeThemeId;
   profile: PdfProfile;
   language?: string;
   sourceNotes: ExportNote[];
@@ -278,6 +285,7 @@ export async function preparePdfExport(
   const now = env.now ?? (() => Date.now());
   const startedAt = now();
   throwIfAborted(input.signal);
+  const codeTheme = resolveCodeThemeId(input.codeTheme);
 
   // Validate settings before any asset fetch so a settings typo never pays for
   // (or is masked by) network requests it would discard. The resolved object is
@@ -334,6 +342,7 @@ export async function preparePdfExport(
     }
     input.onPhase?.("fetching");
     prepared = await preparePdfDocument(blocks, env.assets, {
+      codeTheme,
       ...(input.onProgress ? { onProgress: input.onProgress } : {}),
       ...(input.signal ? { signal: input.signal } : {}),
       // Provenance fallback for the alt-text audit (spec 011): a single-page
@@ -362,6 +371,7 @@ export async function preparePdfExport(
 
   return {
     schema: "atlcli.prepared-pdf-export/1",
+    codeTheme,
     bundle: bundle!,
     filename: input.filename,
     profile: input.profile ?? "tagged",
@@ -448,6 +458,9 @@ export async function renderPreparedPdfExport(
   const emitMs = now() - emitStarted;
 
   return {
+    // Historical /1 checkpoints predate codeTheme. New writers pin the field,
+    // while resumed old checkpoints retain github-light compatibility.
+    codeTheme: resolveCodeThemeId(prepared.codeTheme),
     filename: prepared.filename,
     profile: prepared.profile,
     compilerVersion: compiled.compilerVersion,

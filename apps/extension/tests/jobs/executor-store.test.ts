@@ -76,6 +76,7 @@ function prepared(): PreparedPdfExportV1 {
     },
     filename: "Guide.pdf",
     profile: "tagged",
+    codeTheme: "github-light",
     language: "en",
     sourceNotes: [],
     bundleNotes: [],
@@ -120,6 +121,7 @@ function report(): PdfExportReport {
   return {
     filename: "Guide.pdf",
     profile: "tagged",
+    codeTheme: "github-light",
     compilerVersion: "test",
     embeddedImages: 1,
     renderedDiagrams: 0,

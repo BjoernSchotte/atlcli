@@ -136,6 +136,7 @@ export interface DocxExportJobRequestV1 extends ExportJobRequestBaseV1 {
     options: {
         embedImages: boolean;
         resolveMacros: boolean;
+        codeTheme?: CodeThemeId;
         keepIgnored?: boolean;
         strict?: boolean;
         updateFields?: "auto" | "always" | "never";
@@ -1265,6 +1266,7 @@ export interface PdfExportJobRequestV1 extends ExportJobRequestBaseV1 {
     settings: PdfExportSettingsV1;
     options: {
         resolveMacros: boolean;
+        codeTheme?: CodeThemeId;
         profile?: string;
         strict?: boolean;
         noCache?: boolean;

@@ -41,6 +41,9 @@ export function PdfReportView({ report }: { report: PdfExportReport }): React.JS
           emit: formatDuration(report.timings.emitMs),
         })}
       </div>
+      <div data-testid="report-code-theme" className="mt-0.5 text-muted-foreground">
+        {t("export.codeThemeValue", { theme: report.codeTheme })}
+      </div>
       <MacroOutcomeSummary notes={report.notes} />
       <ExportNoteGroups notes={report.notes} />
     </div>

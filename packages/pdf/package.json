@@ -57,6 +57,7 @@
     "lint:pdf-ledger": "bun scripts/check-hardcoding-ledger.ts"
   },
   "dependencies": {
+    "@atlcli/code-highlight": "workspace:*",
     "@atlcli/export-macros": "workspace:*",
     "@atlcli/confluence": "workspace:*",
     "@atlcli/diagram": "workspace:*",

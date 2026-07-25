@@ -37,9 +37,11 @@ describe("durable CLI export job requests", () => {
       template: { recordKey: "template:1", sha256: "a".repeat(64), name: "report.docx" },
       embedImages: true, keepIgnored: false, strict: true, noFieldUpdatePrompt: true,
       overwriteExisting: true,
+      codeTheme: "dracula",
     });
     expect(request.source.locator).toEqual({ kind: "page-id", id: "123" });
     expect(request.options).toMatchObject({ strict: true, updateFields: "never" });
+    expect(request.options.codeTheme).toBe("dracula");
     expect(request.output.overwriteExisting).toBe(true);
     expect(JSON.stringify(request)).not.toContain("secret");
   });
@@ -50,11 +52,13 @@ describe("durable CLI export job requests", () => {
       request: parseExportRequest(undefined, { scope: "space", space: "DOCS" }),
       profile, outputPath: "/tmp/report.pdf", force: false, strict: true, noCache: true,
       exportedAt: new Date("2026-01-02T03:04:05Z"),
+      codeTheme: "dracula",
     });
     expect(request.source.locator).toEqual({ kind: "space-key", spaceKey: "DOCS" });
     expect(request.output.overwriteExisting).toBe(false);
     expect(request.output.targetKind).toBe("file");
     expect(request.options).toMatchObject({ strict: true, noCache: true, exportedAt: 1767323045000 });
+    expect(request.options.codeTheme).toBe("dracula");
   });
 
   test("records a directory target without pretending its basename is a filename", () => {
@@ -65,5 +69,14 @@ describe("durable CLI export job requests", () => {
     });
     expect(request.output).toMatchObject({ targetRef: "/tmp/exports", targetKind: "directory" });
     expect(request.requestedFilename).toBeUndefined();
+  });
+
+  test("materializes the stable default theme before durable persistence", () => {
+    const request = buildCliPdfJobRequest({
+      id: "job-default", idempotencyKey: "key-default", createdAt: 40,
+      request: parseExportRequest("123", {}), profile, outputPath: "/tmp/default.pdf",
+      force: false, strict: false, noCache: false,
+    });
+    expect(request.options.codeTheme).toBe("github-light");
   });
 });

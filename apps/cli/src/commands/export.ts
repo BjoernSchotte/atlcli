@@ -1,4 +1,9 @@
 import { assertCliAuthSupported } from "./session-guard.js";
+import {
+  InvalidCodeThemeError,
+  resolveCodeThemeId,
+  type CodeThemeId,
+} from "@atlcli/code-highlight/registry";
 import { existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { homedir } from "node:os";
@@ -186,6 +191,15 @@ export async function handleExport(
     }
     throw error;
   }
+  let codeTheme: CodeThemeId;
+  try {
+    codeTheme = resolveCodeThemeId(getFlag(flags, "code-theme"));
+  } catch (error) {
+    if (error instanceof InvalidCodeThemeError) {
+      fail(opts, 1, ERROR_CODES.USAGE, error.message);
+    }
+    throw error;
+  }
   // `--engine python` is rejected inside parseExportRequest (it owns every
   // engine verdict, so the rule is unit-testable without a process), and lands
   // in the USAGE branch above like any other bad flag value.
@@ -270,6 +284,7 @@ export async function handleExport(
     noFieldUpdatePrompt,
     // The pre-job TypeScript path atomically replaced an existing DOCX.
     overwriteExisting: true,
+    codeTheme,
   });
   const outcome = await exportDocxAsOrdinaryJob({
     client,
@@ -344,6 +359,16 @@ async function handlePdfExport(
     throw error;
   }
 
+  let codeTheme: CodeThemeId;
+  try {
+    codeTheme = resolveCodeThemeId(getFlag(flags, "code-theme"));
+  } catch (error) {
+    return emitReportOutcome(
+      usage(error instanceof Error ? error.message : String(error)),
+      opts,
+    );
+  }
+
   const { resolveExportedAt } = await import("./export-pdf.js");
   let exportedAt: Date | undefined;
   try {
@@ -368,6 +393,7 @@ async function handlePdfExport(
     force: hasFlag(flags, "force"),
     strict: hasFlag(flags, "strict"),
     noCache: hasFlag(flags, "no-cache"),
+    codeTheme,
     ...(exportedAt ? { exportedAt } : {}),
   });
   const { exportPdfAsOrdinaryJob } = await import("./export-pdf.js");
@@ -1260,6 +1286,7 @@ async function exportDocxAsOrdinaryJob(
     const common = {
       format: "docx" as const,
       engine: "ts" as const,
+      codeTheme: report.codeTheme,
       sourcePages,
       outputDetails: [{
         output: reportProjection.outputPath,
@@ -1981,6 +2008,9 @@ Options:
                       docxtpl/Jinja template ({{ … }}, {% … %}) exports with
                       those left as literal text and a warning note.
   --output, -o        Output file path (required, or use --out-dir for PDF)
+  --code-theme <id>   Bundled Shiki theme for code blocks in DOCX and PDF.
+                      Defaults to "github-light"; use the generated theme
+                      catalogue for the complete list.
   --no-images         Do not embed images from page attachments (default embeds)
   --no-field-update-prompt
                       Never ask Word to refresh fields on open. A table of

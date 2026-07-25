@@ -55,6 +55,7 @@ function report(overrides: Partial<ExportReport> = {}): ExportReport {
       diagramRasterMs: 5,
     },
     ...overrides,
+    codeTheme: overrides.codeTheme ?? "github-light",
   };
 }
 
@@ -85,6 +86,7 @@ describe("DOCX direct-vs-job parity", () => {
       reservationReleased: true,
       templateResolutions: 1,
     });
+    expect(result.codeTheme).toBe("dracula");
     expect(rasterCalls).toEqual([1, 1]);
   });
 

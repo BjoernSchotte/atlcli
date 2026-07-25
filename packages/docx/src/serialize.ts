@@ -40,7 +40,12 @@ import {
   statusDisplayText,
   uniqueAnchorId,
 } from "@atlcli/confluence";
-import { highlightCode, warmHighlight } from "./highlight.js";
+import {
+  DEFAULT_CODE_THEME,
+  highlightCode,
+  warmHighlight,
+  type CodeThemeId,
+} from "@atlcli/code-highlight";
 import {
   bookmarkEnd,
   bookmarkStart,
@@ -152,6 +157,8 @@ export interface CalloutIconEmbedSeam {
 }
 
 export interface SerializeContext {
+  /** Resolved Shiki theme used for every non-diagram code block. */
+  codeTheme?: CodeThemeId;
   /** Lower-cased style-name → styleId map from the template's styles.xml. */
   styleNames: Map<string, string>;
   /**
@@ -718,7 +725,7 @@ function prefetchBlocks(blocks: ExportBlock[], ctx: SerializeContext): void {
     }
   };
   walk(blocks);
-  if (languages.length) warmHighlight(languages);
+  if (languages.length) warmHighlight(languages, ctx.codeTheme ?? DEFAULT_CODE_THEME);
 }
 
 /** Serialize a block list into an OOXML fragment + report notes. */
@@ -861,7 +868,11 @@ async function serializeBlock(
       if ((block.language ?? "").trim().toLowerCase() === "mermaid") {
         return titleXml + await serializeMermaid(block, ctx, notes);
       }
-      const { lines, skipped } = await highlightCode(block.code, block.language);
+      const { lines, skipped, theme } = await highlightCode(
+        block.code,
+        block.language,
+        ctx.codeTheme ?? DEFAULT_CODE_THEME,
+      );
       if (skipped) {
         notes.push({
           level: "info",
@@ -886,6 +897,10 @@ async function serializeBlock(
             tokens,
             block.hideLineNumbers === false ? firstLineNumber + index : undefined,
             lineNumberWidth,
+            {
+              background: theme.background,
+              foreground: theme.foreground,
+            },
           )
         )
         .join("");

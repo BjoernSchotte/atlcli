@@ -29,6 +29,20 @@ function pngBytes(): Uint8Array {
 }
 
 describe("PDF preparation and serialization", () => {
+  it("uses one selected Shiki theme for explicit token spans and block fill", async () => {
+    const prepared = await preparePdfDocument(
+      [{ type: "codeBlock", language: "ts", code: "const x = 1;\n" }],
+      { resolve: async () => { throw new Error("unused"); } },
+      { codeTheme: "github-dark" },
+    );
+    const bundle = serializePdfDocument(prepared, { metadata });
+
+    expect(bundle.main).toContain('fill: rgb("#24292E")');
+    expect(bundle.main).toContain('fill: rgb("#F97583")');
+    expect(bundle.main).toContain("#box(height: 8.5pt)[]");
+    expect(bundle.main).not.toContain("raw(");
+  });
+
   it("renders correlated ADF annotations as numbered ranges and a static comment appendix", async () => {
     const annotation = {
       id: "opaque-marker-not-rendered",
@@ -2256,17 +2270,19 @@ describe("serialize — C3 captions", () => {
     expect(main).toContain("Matrix");
   });
 
-  it("only captioned code becomes a figure; caption-less code stays a raw block", async () => {
+  it("only captioned code becomes a figure; caption-less code stays an explicit highlighted block", async () => {
     const withCaption = await toMain([
       { type: "codeBlock", language: "ts", code: "const x = 1", caption: { kind: "code", content: [{ type: "text", text: "L1" }] } },
     ]);
-    expect(withCaption.main).toContain("#figure({ show raw.line:");
+    expect(withCaption.main).toContain("#figure(block(width: 100%");
     expect(withCaption.main).not.toContain("#figure(#");
     expect(withCaption.main).toContain("kind: raw");
+    expect(withCaption.main).not.toContain("raw(");
 
     const plain = await toMain([{ type: "codeBlock", language: "ts", code: "const x = 1" }]);
-    expect(plain.main).not.toContain("#figure({ show raw.line:");
-    expect(plain.main).toContain("#{ show raw.line:");
+    expect(plain.main).not.toContain("#figure(");
+    expect(plain.main).toContain('#block(width: 100%, fill: rgb("#FFFFFF")');
+    expect(plain.main).toContain('fill: rgb("#D73A49")');
   });
 
   it("renders code line numbers from the authored ordinal and reports bounded no-wrap", async () => {
@@ -2282,10 +2298,12 @@ describe("serialize — C3 captions", () => {
     }]);
 
     expect(main).toContain("columns: (auto, 1fr)");
-    expect(main).toContain("box(width: 100%)[#line.body]");
-    expect(main).toContain("line.number + 6");
+    expect(main).toContain('fill: rgb("#6B778C"), "7"');
+    expect(main).toContain('fill: rgb("#6B778C"), "8"');
     expect(main).toContain('fill: rgb("#6B778C")');
-    expect(main).toContain('raw("first\\nsecond", lang: "text", block: true)');
+    expect(main).toContain('"first"');
+    expect(main).toContain('"second"');
+    expect(main).not.toContain("raw(");
     expect(notes).toContainEqual(expect.objectContaining({
       code: "code-nowrap-page-bounded",
       source: { blockPath: "blocks[0]" },
@@ -2304,7 +2322,8 @@ describe("serialize — C3 captions", () => {
 
     expect(main).toContain('fill: rgb("#F4F5F7")');
     expect(main).toContain('#strong[#text("Deployment [safe]")]');
-    expect(main).toContain('raw("deploy();", lang: "text", block: true)');
+    expect(main).toContain('"deploy();"');
+    expect(main).not.toContain("raw(");
     expect(main.indexOf("Deployment")).toBeLessThan(main.indexOf("deploy();"));
     expect(notes).toContainEqual(expect.objectContaining({
       level: "info",

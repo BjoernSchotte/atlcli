@@ -19,6 +19,7 @@ inject.
 - [Browser hosts](#browser-hosts)
 - [Lists and numbering](#lists-and-numbering)
 - [Tables](#tables)
+- [Code highlighting](#code-highlighting)
 - [Image embedding](#image-embedding)
 - [SVG attachments](#svg-attachments)
 - [Mermaid diagrams](#mermaid-diagrams)
@@ -50,6 +51,19 @@ Entry points (package `exports` conditions, mirroring `@atlcli/core`):
 
 DOCX and PDF deliberately remain separate engines. They share the structured Confluence
 `ExportBlock[]` input model, not a generic export runner, report, or output sink.
+
+## Code highlighting
+
+`ExportInput.codeTheme` selects a stable ID from `@atlcli/code-highlight`; omission
+resolves to `github-light`. The shared package lazily loads the chosen bundled
+Shiki theme and each encountered language grammar. DOCX writes both token
+foregrounds and the theme background into OOXML, and `ExportReport.codeTheme`
+records the effective ID. Unknown languages stay readable as plain code with a
+report note.
+
+Hosts must pin the resolved theme in durable requests before preparation.
+Historical prepared `/1` checkpoints without the additive field resume as
+`github-light`.
 
 ## Host ports
 

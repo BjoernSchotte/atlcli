@@ -260,6 +260,7 @@ function pdfReport(): PdfExportReport {
   return {
     filename: "Deployment Handbook.pdf",
     profile: "tagged",
+    codeTheme: "github-light",
     compilerVersion: "test",
     embeddedImages: 2,
     renderedDiagrams: 1,
@@ -272,6 +273,7 @@ function pdfReport(): PdfExportReport {
 
 function docxReport(): ExportReport {
   return {
+    codeTheme: "github-light",
     resolvedCount: 4,
     unsupportedNames: [],
     skippedImages: 0,

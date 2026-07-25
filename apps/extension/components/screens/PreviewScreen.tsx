@@ -126,6 +126,7 @@ export interface PreviewCompileRequest {
   scope: ExportScope;
   labels?: LabelFilter;
   settings?: import("@atlcli/pdf/browser").PdfTemplateSettings;
+  codeTheme?: import("@atlcli/code-highlight/registry").CodeThemeId;
   resolveMacros?: boolean;
   signal?: AbortSignal;
 }
@@ -171,6 +172,7 @@ async function cacheParts(
     settings: {
       document: request.settings ?? null,
       resolveMacros: request.resolveMacros !== false,
+      codeTheme: request.codeTheme ?? "github-light",
     },
   });
 }
@@ -184,6 +186,7 @@ const defaultRuntime: PreviewRuntime = {
       scope: request.scope,
       ...(request.labels ? { labels: request.labels } : {}),
       settings: request.settings,
+      codeTheme: request.codeTheme,
       ...(request.resolveMacros === false ? { macros: { live: false } } : {}),
       signal: request.signal,
     });
@@ -270,6 +273,7 @@ export function PreviewScreen({
   const loadedPage = page.status === "loaded" ? page.page : null;
   const pageUrl = page.status === "loaded" ? page.ref.url : null;
   const draftSettings = publishingDraft?.pdfSettings;
+  const draftCodeTheme = publishingDraft?.codeTheme;
   const draftResolveMacros = publishingDraft?.resolveMacros;
   const draftScope = publishingDraft?.exportScope;
   const draftLabels = publishingDraft?.labels;
@@ -287,9 +291,10 @@ export function PreviewScreen({
                   resolveMacros: draftResolveMacros,
                 }
               : {}),
+            ...(draftCodeTheme ? { codeTheme: draftCodeTheme } : {}),
           }
         : null,
-    [draftLabels, draftResolveMacros, draftScope, draftSettings, loadedPage, pageUrl]
+    [draftCodeTheme, draftLabels, draftResolveMacros, draftScope, draftSettings, loadedPage, pageUrl]
   );
   const [phase, setPhase] = useState<PreviewPhase>("idle");
   const [error, setError] = useState<string | null>(null);

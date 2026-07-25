@@ -202,7 +202,7 @@ describe("file export persistence", () => {
     await persistence.jobs.create({ request: pdfRequest }); const claimed = (await persistence.jobs.claimNext({ ownerId: "a", now: 1, leaseDurationMs: 100_000 }))!;
     const prepared: PreparedPdfExportV1 & { extensionMap: Map<string, number>; extensionDate: Date } = {
       schema: "atlcli.prepared-pdf-export/1", bundle: { main: "main", template: "template", assets: [{ path: "a.png", mediaType: "image/png", bytes: Uint8Array.of(1, 2, 3) }], sourceMap: [], notes: [] },
-      filename: "x.pdf", profile: "tagged", sourceNotes: [], bundleNotes: [], counts: { images: 1, diagrams: 0, skipped: 0 }, complete: true, startedAt: 1, prepareMs: 2,
+      filename: "x.pdf", profile: "tagged", codeTheme: "github-light", sourceNotes: [], bundleNotes: [], counts: { images: 1, diagrams: 0, skipped: 0 }, complete: true, startedAt: 1, prepareMs: 2,
       extensionMap: new Map([["a", 1]]), extensionDate: new Date("2026-07-22T00:00:00Z"),
     };
     const checkpoint = await persistence.pdfReadyToRender.commit({ jobId: claimed.id, leaseEpoch: claimed.leaseEpoch, request: pdfRequest, prepared,
@@ -218,7 +218,7 @@ describe("file export persistence", () => {
     const prepared: PreparedDocxExportV1 = {
       schema: "atlcli.prepared-docx-export/1",
       renderState: { archiveBytes: Uint8Array.of(80, 75, 3, 4), bodyXml: "<w:p/>", includes: [["include-1", "<w:p><w:r/></w:p>"]] },
-      filename: "x.docx", complete: true, updateFields: "auto", trustedSeqSequenceNames: [], resolvedCount: 0, unsupportedNames: [], embeddedImages: 0, renderedDiagrams: 0,
+      filename: "x.docx", codeTheme: "github-light", complete: true, updateFields: "auto", trustedSeqSequenceNames: [], resolvedCount: 0, unsupportedNames: [], embeddedImages: 0, renderedDiagrams: 0,
       scan: { supported: [], unsupported: [], never: [], parts: ["word/document.xml"], hasContentPlaceholder: true, stylerefStyleNames: [], foreignPlaceholders: [], riskyFieldInstructions: [], seqSequenceNames: [] },
       sourceNotes: [], baseNotes: [], timings: { resolveMs: 0, bodyMs: 0, logoFetchMs: 0, includeFetchMs: 0, renderMs: 0, imageFetchMs: 0, imageFetches: 0, diagramRenderMs: 0, diagramRasterMs: 0 }, startedAt: 1,
     };

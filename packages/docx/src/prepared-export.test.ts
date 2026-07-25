@@ -53,6 +53,25 @@ describe("prepared DOCX export", () => {
 
     expect(staged.bytes).toEqual(direct.bytes);
     expect(stableReport(staged.report)).toEqual(stableReport(direct.report));
+    expect(prepared.codeTheme).toBe("github-light");
+    expect(staged.report.codeTheme).toBe("github-light");
+  });
+
+  it("persists and reports a non-default code theme", async () => {
+    const themed = input();
+    themed.codeTheme = "github-dark";
+    themed.blocks = [{ type: "codeBlock", language: "ts", code: "const x = 1;" }];
+    const prepared = await prepareDocxExport(themed);
+    const report = (await renderPreparedDocxExport(prepared)).report;
+    expect(prepared.codeTheme).toBe("github-dark");
+    expect(report.codeTheme).toBe("github-dark");
+  });
+
+  it("resumes a historical /1 checkpoint without a theme as github-light", async () => {
+    const prepared = await prepareDocxExport(input());
+    delete (prepared as { codeTheme?: string }).codeTheme;
+    const report = (await renderPreparedDocxExport(prepared)).report;
+    expect(report.codeTheme).toBe("github-light");
   });
 
   it("consumes one render state and retries only from a fresh durable clone", async () => {

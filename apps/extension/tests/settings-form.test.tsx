@@ -19,6 +19,7 @@ import { afterAll, afterEach, beforeEach, describe, expect, it } from "bun:test"
 import React from "react";
 import { IDBFactory } from "fake-indexeddb";
 import { BUILTIN_PDF_TEMPLATE_ID } from "@atlcli/pdf/browser";
+import { CODE_THEME_METADATA } from "@atlcli/code-highlight/registry";
 import type { ExportReport } from "@atlcli/docx/browser";
 import type { ScanResult } from "@atlcli/docx/scan";
 import type { PdfExportReport } from "@atlcli/pdf/browser";
@@ -479,6 +480,20 @@ async function renderPanel(ports: AppPorts): Promise<void> {
 }
 
 describe("PDF settings reach the PDF engine — and nothing else", () => {
+  it("offers the full catalogue and sends one real non-default choice to both engines", async () => {
+    const recorder: Recorder = { pdf: [], docx: [] };
+    await renderPanel(makePorts(recorder, null));
+
+    const select = dom.find("pdf-settings-codeTheme") as unknown as HTMLSelectElement;
+    expect(select.options).toHaveLength(CODE_THEME_METADATA.length);
+    await dom.setValue("pdf-settings-codeTheme", "dracula");
+    await dom.click("pdf-export");
+    await dom.click("template-export");
+
+    expect(recorder.pdf[0]!.codeTheme).toBe("dracula");
+    expect(recorder.docx[0]!.codeTheme).toBe("dracula");
+  });
+
   it("round-trips values through the real template-prefs store", async () => {
     // The real v2 store over fake-indexeddb, not a stub of our own storage.
     const factory = new IDBFactory();
@@ -488,12 +503,14 @@ describe("PDF settings reach the PDF engine — and nothing else", () => {
     await renderPanel(makePorts(recorder, library));
     await dom.setValue("pdf-settings-headerText", "Confidential");
     await dom.setValue("pdf-settings-page", "letter");
+    await dom.setValue("pdf-settings-codeTheme", "dracula");
     await dom.flush();
 
     // Persisted under the built-in template's logical id, per engine + space.
     const stored = await library.readSettings("typst", "DOCSY", PDF_BUILTIN_TEMPLATE_ID);
     expect(stored.headerText).toBe("Confidential");
     expect(stored.page).toBe("letter");
+    expect(stored.codeTheme).toBe("dracula");
 
     // …and read back on the next mount, not just written.
     await dom.teardown();
@@ -501,6 +518,9 @@ describe("PDF settings reach the PDF engine — and nothing else", () => {
     await renderPanel(makePorts({ pdf: [], docx: [] }, idbTemplateLibrary({ factory, siteOrigin: SITE })));
     expect((dom.find("pdf-settings-headerText") as unknown as HTMLInputElement).value).toBe(
       "Confidential"
+    );
+    expect((dom.find("pdf-settings-codeTheme") as unknown as HTMLSelectElement).value).toBe(
+      "dracula"
     );
   });
 
@@ -533,8 +553,9 @@ describe("PDF settings reach the PDF engine — and nothing else", () => {
     expect(recorder.docx).toHaveLength(1);
     const request = recorder.docx[0]!;
     expect("settings" in request).toBe(false);
+    expect(request.codeTheme).toBe("github-light");
     expect(Object.keys(request).sort()).toEqual(
-      ["onProgress", "page", "pageUrl", "resolveMacros", "scope", "signal", "template"].sort()
+      ["codeTheme", "onProgress", "page", "pageUrl", "resolveMacros", "scope", "signal", "template"].sort()
     );
   });
 

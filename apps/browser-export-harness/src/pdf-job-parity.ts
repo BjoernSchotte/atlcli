@@ -65,6 +65,7 @@ export function projectPdfReport(report: PdfExportReport): unknown {
   });
   return {
     filename: report.filename,
+    codeTheme: report.codeTheme,
     profile: report.profile,
     compilerVersion: report.compilerVersion,
     ...(report.pageCount === undefined ? {} : { pageCount: report.pageCount }),

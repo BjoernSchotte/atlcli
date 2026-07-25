@@ -1,4 +1,8 @@
 import { basename, resolve } from "node:path";
+import {
+  resolveCodeThemeId,
+  type CodeThemeId,
+} from "@atlcli/code-highlight/registry";
 import type { Profile } from "@atlcli/core";
 import type {
   DocxExportJobRequestV1,
@@ -66,6 +70,7 @@ interface CliJobBaseInput {
   outputPath: string;
   outputTargetKind?: "file" | "directory";
   displayName?: string;
+  codeTheme?: CodeThemeId;
 }
 
 export function buildCliDocxJobRequest(
@@ -101,6 +106,7 @@ export function buildCliDocxJobRequest(
     options: {
       embedImages: input.embedImages,
       resolveMacros: true,
+      codeTheme: resolveCodeThemeId(input.codeTheme),
       keepIgnored: input.keepIgnored,
       strict: input.strict,
       updateFields: input.noFieldUpdatePrompt ? "never" : "auto",
@@ -139,6 +145,7 @@ export function buildCliPdfJobRequest(
     settings: {},
     options: {
       resolveMacros: true,
+      codeTheme: resolveCodeThemeId(input.codeTheme),
       profile: input.profile.name,
       strict: input.strict,
       noCache: input.noCache,

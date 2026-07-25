@@ -39,6 +39,7 @@ function engineInput(rasterizer: SvgRasterizer): ExportInput {
     exportDate: new Date(EXPORT_DATE),
     embedImages: true,
     updateFields: "auto",
+    codeTheme: "dracula",
     rasterizer,
   };
 }
@@ -109,6 +110,7 @@ async function jobRequest(): Promise<DocxExportJobRequestV1> {
       embedImages: true,
       resolveMacros: false,
       updateFields: "auto",
+      codeTheme: "dracula",
     },
   };
 }
@@ -367,5 +369,6 @@ export async function runDocxJobParityCase(options: DocxJobParityCaseOptions = {
     renderAttempts: job.renderAttempts,
     reservationReleased: job.reservationReleased,
     templateResolutions: job.templateResolutions,
+    codeTheme: direct.report.codeTheme,
   };
 }

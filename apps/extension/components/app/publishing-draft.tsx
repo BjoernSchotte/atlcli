@@ -8,6 +8,10 @@ import React, {
   useState,
 } from "react";
 import type { ExportScope, LabelFilter } from "@atlcli/confluence/browser";
+import {
+  resolveCodeThemeId,
+  type CodeThemeId,
+} from "@atlcli/code-highlight/registry";
 import type {
   AppPorts,
   ExportScopeRequest,
@@ -51,6 +55,7 @@ export interface PublishingDraft {
   onSettingChange: (key: string, value: SettingValue) => void;
   onSettingsReset: () => void;
   pdfSettings: ReturnType<typeof toPdfSettings>;
+  codeTheme: CodeThemeId;
 }
 
 const PublishingDraftContext = createContext<PublishingDraft | null>(null);
@@ -96,13 +101,18 @@ export function PublishingDraftProvider({
   }, [loadedPage, scope, scopeContext]);
 
   const labels = useMemo<LabelFilter | undefined>(() => toLabelFilter(scope), [scope]);
+  const codeTheme = useMemo(
+    () => resolveCodeThemeId(values.codeTheme),
+    [values.codeTheme],
+  );
   const scopeRequest = useMemo<ExportScopeRequest>(
     () => ({
       ...(exportScope ? { scope: exportScope } : {}),
       ...(labels ? { labels } : {}),
       resolveMacros,
+      codeTheme,
     }),
-    [exportScope, labels, resolveMacros]
+    [codeTheme, exportScope, labels, resolveMacros]
   );
 
   useEffect(() => {
@@ -168,6 +178,7 @@ export function PublishingDraftProvider({
       onSettingChange,
       onSettingsReset,
       pdfSettings,
+      codeTheme,
     }),
     [
       format,
@@ -181,6 +192,7 @@ export function PublishingDraftProvider({
       onSettingChange,
       onSettingsReset,
       pdfSettings,
+      codeTheme,
     ]
   );
 

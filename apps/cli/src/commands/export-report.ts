@@ -121,6 +121,8 @@ export interface ExportReport {
   schema: typeof EXPORT_REPORT_SCHEMA;
   format: ExportFormat;
   engine?: ExportReportEngine;
+  /** Effective bundled Shiki theme used for code blocks. */
+  codeTheme?: string;
   sourcePages: SourcePageEntry[];
   outputDetails: OutputDetail[];
   outputs: string[];
@@ -378,6 +380,7 @@ export function classifyError(error: unknown): { exitCode: number; issue: Issue 
 export interface BuildReportInput {
   format: ExportFormat;
   engine?: ExportReportEngine;
+  codeTheme?: string;
   sourcePages: SourcePageEntry[];
   outputDetails: OutputDetail[];
   issues: Issue[];
@@ -431,6 +434,7 @@ export function buildReport(input: BuildReportInput): ExportReport {
     schema: EXPORT_REPORT_SCHEMA,
     format: input.format,
     ...(input.engine ? { engine: input.engine } : {}),
+    ...(input.codeTheme ? { codeTheme: input.codeTheme } : {}),
     sourcePages: input.sourcePages,
     outputDetails: input.outputDetails,
     outputs: input.outputDetails.map((detail) => detail.output),

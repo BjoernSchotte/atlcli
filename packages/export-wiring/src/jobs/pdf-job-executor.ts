@@ -20,6 +20,7 @@ import {
   type PreparedPdfExportV1,
   type RunPdfExportInput,
 } from "@atlcli/pdf";
+import { resolveCodeThemeId } from "@atlcli/code-highlight/registry";
 import {
   buildProductiveExportTelemetryV1,
 } from "./productive-telemetry.js";
@@ -585,10 +586,18 @@ function reportSummary(report: PdfExportReport): ExportReportSummaryV1 {
 
 async function prepareResolvedPdfExport(
   resolved: { input: PdfExportJobEngineInputV1; env: Omit<PreparePdfExportEnv, "now"> },
+  request: PdfExportJobRequestV1,
   signal: AbortSignal,
   now: () => number,
 ): Promise<PreparedPdfExportV1> {
-  return preparePdfExport({ ...resolved.input, signal }, { ...resolved.env, now });
+  return preparePdfExport(
+    {
+      ...resolved.input,
+      codeTheme: resolveCodeThemeId(request.options.codeTheme),
+      signal,
+    },
+    { ...resolved.env, now },
+  );
 }
 
 /** Create the host-neutral Typst executor for one already claimed outer export job. */
@@ -664,7 +673,12 @@ export function createPdfExportJobExecutor(
         if (!checkpoint) {
           let newlyPrepared: PreparedPdfExportV1;
           try {
-            newlyPrepared = await prepareResolvedPdfExport(resolved!, context.signal, now);
+            newlyPrepared = await prepareResolvedPdfExport(
+              resolved!,
+              request,
+              context.signal,
+              now,
+            );
           } finally {
             // The source graph may dwarf the compiler bundle. Drop the final
             // executor-owned reference immediately after preparation settles.
