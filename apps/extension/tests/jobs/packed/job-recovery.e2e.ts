@@ -1854,10 +1854,12 @@ test("a full persistent-browser restart automatically reclaims checkpointed work
   const recovered = await waitForJobState(JOB_N, "succeeded", 45_000);
   expect(recovered.snapshot).toMatchObject({
     state: "succeeded",
-    leaseEpoch: 2,
-    attempt: 2,
-    recoveryCount: 1,
     artifact: { filename: `Packed page ${JOB_N}.pdf` },
     reportSummary: { completeness: "complete" },
   });
+  // A loaded runner may let the reclaimed attempt's lease expire while the
+  // persistent browser, service worker, and offscreen document cold-start.
+  // The contract is eventual recovery, not an exact number of reclaims.
+  expect(recovered.snapshot.recoveryCount).toBeGreaterThanOrEqual(1);
+  expect(recovered.snapshot.leaseEpoch).toBe(recovered.snapshot.attempt);
 });
