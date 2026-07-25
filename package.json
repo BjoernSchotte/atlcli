@@ -25,6 +25,7 @@
     "test": "bun --conditions=development test",
     "typecheck": "bunx tsc --noEmit && bun run typecheck:extension && bun run typecheck:pdf-compiler-browser && bun run typecheck:browser-export-harness",
     "check:browser": "bun scripts/check-browser-build.ts",
+    "check:readme-media": "bun scripts/ci/validate-readme-media.ts",
     "typecheck:extension": "turbo run typecheck --filter=@atlcli/extension",
     "typecheck:pdf-compiler-browser": "turbo run typecheck --filter=@atlcli/pdf-compiler-browser",
     "typecheck:browser-export-harness": "turbo run typecheck --filter=@atlcli/browser-export-harness",
