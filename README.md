@@ -34,6 +34,71 @@ jobs, and machine-readable reports for repeatable publishing and CI.
 
 [Explore DOCX and PDF export →](https://atlcli.sh/confluence/export/)
 
+### World-class document fidelity
+
+atlcli does not print a web page or flatten Confluence into a screenshot. It
+interprets the document, resolves its content, and produces real, structured
+PDF and Word files:
+
+- **ADF-first on Confluence Cloud** — validated Atlassian Document Format is
+  decoded into a shared, typed document model. Data Center and rollback paths
+  use Confluence Storage Format without creating a second-class export path.
+- **Rich Confluence content** — headings, nested lists, task lists, tables,
+  multi-column layouts, panels, status badges, mentions, Smart Links, media
+  placement, captions, inline comments, attachments, and typed emoji retain
+  their document semantics.
+- **An adaptive Confluence table layouter** — authored column widths, header
+  rows, cell colors, vertical alignment, incomplete rows, and real
+  `rowspan`/`colspan` geometry survive export. The PDF engine measures the
+  available portrait or landscape region and escalates deterministically from
+  normal to dense and scaled layouts, with specialized wrapping for long URLs,
+  status badges, mentions, and other atomic values. Header rows repeat across
+  pages, low-contrast cell themes are reported, and irreducible overflow is
+  surfaced instead of silently clipping content. DOCX emits a fixed Word table
+  grid with native merged cells, proportional widths, and optional
+  template-owned table styles.
+- **Serious macro support** — info, note, warning, tip, panel, code, expand,
+  TOC, anchors, excerpts, Jira issue tables, datasources, children, details
+  summaries, includes, Scroll export controls, and more render natively or
+  through a controlled fallback chain.
+- **Mermaid as a real diagram** — flowcharts, state, sequence, class, ER, and
+  XY charts render as vector SVG. DOCX also embeds a high-resolution PNG
+  fallback for older Word and LibreOffice versions.
+- **Draw.io and Gliffy support** — `drawio`, `inc-drawio`, `drawio-sketch`, and
+  `gliffy` macros resolve their Confluence preview assets into the exported
+  document.
+- **No silent content loss** — unsupported or inaccessible macros fall back
+  through Confluence `export_view` and finally to a visible, readable
+  placeholder. The export report records exactly what rendered, degraded, or
+  was skipped.
+- **Durable background exports** — the browser extension persists the job
+  before the first page is read and runs source discovery, asset fetching,
+  rendering, validation, and artifact delivery outside the side panel. Navigate
+  elsewhere or close the panel and the export keeps running. Service-worker and
+  offscreen-document restarts recover from fenced checkpoints; quitting Chrome
+  pauses work and the durable queue resumes when Chrome starts again.
+- **Observable and operable jobs** — every export carries a bounded,
+  versioned operational log and event timeline for state changes, stages,
+  progress, backoff, classified issues, recovery, and the final artifact.
+  The Activity view and `atlcli wiki export jobs` expose list, show, watch,
+  cancel, resume, retry, and run-again workflows, including **Resume after
+  sign-in** for blocked browser sessions. Retry and Run again create linked
+  history rather than rewriting the original job, while lease epochs,
+  checkpoint chains, and content hashes stop stale runners from publishing the
+  wrong bytes. CLI exports intentionally remain foreground jobs, but another
+  process can watch or cancel their durable journal.
+- **A purpose-built PDF engine** — local Typst/WASM compilation produces tagged
+  PDFs with document language, bookmark outlines, internal TOC links, embedded
+  fonts, syntax-highlighted code, alt-text pass-through, and deterministic
+  output.
+- **Native Word documents** — template-driven OOXML preserves editable
+  structure and uses Word-native TOC fields, bookmarks, comments, captions,
+  page breaks, and portrait/landscape sections.
+
+PDF and DOCX share the same neutral content model and macro resolution pipeline,
+so fidelity is a property of the export engine rather than a lucky property of
+one output format or host.
+
 ### Browser-native exports
 
 Open the Chrome side panel on any Confluence Cloud page and export it to Word or
