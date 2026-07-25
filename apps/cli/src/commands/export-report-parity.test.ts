@@ -50,9 +50,15 @@ beforeAll(async () => {
 
 /**
  * Fields that are legitimately format-specific and therefore NOT part of the
- * shared report contract: `engine` distinguishes the python/ts DOCX engines (the
- * PDF path has no such choice), and `placeholders` is documented in the schema
- * as "DOCX ts-engine placeholder metrics". Everything else must match.
+ * shared report contract: `engine` names the DOCX renderer (PDF has no such
+ * field), and `placeholders` is documented in the schema as "DOCX ts-engine
+ * placeholder metrics". Everything else must match.
+ *
+ * `engine` stayed in current output after the Python exporter was removed even
+ * though producers now emit exactly one value: `atlcli.export-report/1` is a
+ * published contract, and deleting a key consumers already read would cost a
+ * schema bump to say nothing new. Its JSON Schema still accepts the historical
+ * `"python"` value so archived v1 reports remain valid.
  */
 const DOCX_ONLY_FIELDS = ["engine", "placeholders"] as const;
 

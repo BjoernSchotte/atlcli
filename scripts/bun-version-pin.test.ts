@@ -7,7 +7,7 @@
  * whose Confluence-list datasource fills a ~100-row × 8-column table crashes
  * the process inside `BrowserPdfCompiler.compile` — SIGSEGV on linux/arm64,
  * SIGILL on linux/x86-64, roughly nine runs in ten, and never on macOS. That is
- * why `engine-parity.test.ts`'s Confluence-list block had never passed in CI
+ * why `export-source-contract.test.ts`'s Confluence-list block had never passed in CI
  * while passing on every developer's Mac.
  *
  * Measured in a `oven/bun:1.3.5-debian` container against the real fixture

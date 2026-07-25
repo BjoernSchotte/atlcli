@@ -180,7 +180,7 @@ signed URLs, template bytes, spool bytes, artifacts, or full raw reports.
 
 The extension contacts only the active permitted Atlassian tenant and approved
 Atlassian attachment redirects. DOCX rendering and Typst/WASM PDF compilation
-are local; the deprecated Python export engine is not used.
+are local. There is no second export engine: the Python exporter has been removed.
 
 ## Incident procedure
 

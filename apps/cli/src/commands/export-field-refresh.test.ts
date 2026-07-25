@@ -144,7 +144,6 @@ async function runCli(args: string[]): Promise<{ stdout: string; stderr: string;
         USERPROFILE: dir,
         ATLCLI_API_TOKEN: "stub-token",
         ATLCLI_DISABLE_UPDATE_CHECK: "1",
-        ATLCLI_SUPPRESS_ENGINE_NOTICE: "1",
       },
       stdout: "pipe",
       stderr: "pipe",

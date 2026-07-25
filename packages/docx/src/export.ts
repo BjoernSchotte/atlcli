@@ -689,7 +689,7 @@ export async function prepareDocxExport(input: ExportInput): Promise<PreparedDoc
       message:
         `Template uses Jinja/docxtpl placeholders (${shown.join(", ")}${rest > 0 ? `, and ${rest} more` : ""}); ` +
         `the ts engine fills $scroll.* placeholders and will leave these in the document as literal text. ` +
-        `Rewrite them as $scroll.* placeholders; deprecated Python/docxtpl export is not available as a fallback.`,
+        `Rewrite them as $scroll.* placeholders, or start from the bundled default template; the Python/docxtpl exporter has been removed and is not available as a fallback.`,
     });
   }
 

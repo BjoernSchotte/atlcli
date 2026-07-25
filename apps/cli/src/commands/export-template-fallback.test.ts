@@ -9,8 +9,8 @@
  *  Gap 2 — `--template` was mandatory, which is what pushed a first-time ts user
  *          toward grabbing whatever `.docx` was at hand (the mistake that
  *          produced Gap 1's finding). On `--engine ts` it is now optional and
- *          falls back to the bundled default, reported as an `info` note.
- *          the removed Python engine fails with a migration message.
+ *          falls back to the bundled default, reported as an `info` note. The
+ *          removed Python engine fails with a migration message.
  *
  * NO MOCKS: a real Bun HTTP server stands in for the Confluence REST API and the
  * real CLI runs in its own process against it, writing a real `.docx` to disk —
@@ -140,7 +140,6 @@ async function runCli(args: string[]): Promise<{ stdout: string; stderr: string;
         USERPROFILE: dir,
         ATLCLI_API_TOKEN: "stub-token",
         ATLCLI_DISABLE_UPDATE_CHECK: "1",
-        ATLCLI_SUPPRESS_ENGINE_NOTICE: "1",
       },
       stdout: "pipe",
       stderr: "pipe",
@@ -209,6 +208,11 @@ describe("Gap 2: --template is optional on --engine ts", () => {
     expect(stderr).toMatch(/no --template given; using the bundled default template/);
   }, 60_000);
 
+  // End-to-end half of the removed-engine contract. The message itself is
+  // asserted in `export-request.test.ts` (pure, where the rule lives); what this
+  // adds is that the verdict survives the whole CLI — it reaches the USAGE
+  // branch, prints, and produces a non-zero exit rather than being swallowed
+  // into a successful export with the default engine.
   it("rejects the removed Python engine with a migration message", async () => {
     const { stdout, stderr, exitCode } = await runCli([
       "--engine",
@@ -217,8 +221,8 @@ describe("Gap 2: --template is optional on --engine ts", () => {
       join(dir, "python.docx"),
     ]);
     expect(exitCode).not.toBe(0);
-    expect(`${stdout}${stderr}`).toMatch(/Python DOCX exporter is no longer supported/);
-    expect(`${stdout}${stderr}`).toMatch(/TypeScript DOCX engine is now the default/);
+    expect(`${stdout}${stderr}`).toMatch(/Python DOCX exporter has been removed/);
+    expect(`${stdout}${stderr}`).toMatch(/TypeScript DOCX engine is the default/);
   }, 30_000);
 });
 

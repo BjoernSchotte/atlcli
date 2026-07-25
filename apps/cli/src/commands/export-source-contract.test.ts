@@ -8,27 +8,27 @@ import { buildDocx, para } from "@atlcli/docx/fixtures";
 import { ensurePdfFonts } from "../../../../packages/pdf/scripts/ensure-fonts.js";
 
 /**
- * python→ts engine parity checklist (spec 008 T3.5). Scope is measurement + the
- * migration path — the default-engine flip is its own later PR. Two layers:
+ * The shared export SOURCE contract (originally spec 008 T3.5's parity
+ * checklist).
  *
- * 1. OFFLINE (always runs): both engines consume the SAME `ExportBlock[]`
- *    contract from `storageToBlocks`; the tests below pin the
- *    observable-feature matrix that contract must carry, so a regression in the
- *    shared source model (which would silently diverge both engines) is caught
- *    without Python, a template, or the network.
- * 2. LIVE dual-engine render diff (gated `ATLCLI_PARITY=1`, second describe
- *    below): exports the SAME page through `--engine python` and `--engine ts`
- *    and diffs observable DOCX features (tables, heading texts) from the two
- *    produced documents. Needs Python + a template + a live DOCSY page — the
- *    orchestrator runs it.
+ * DOCX and PDF are two renderers over ONE source model: the `ExportBlock[]` that
+ * `storageToBlocks` produces. That is the whole reason a feature only has to be
+ * understood once. The tests below pin the observable-feature matrix that
+ * contract must carry, so a regression in the shared source model — which would
+ * silently diverge BOTH renderers at once, and is therefore the expensive kind —
+ * is caught offline, with no template and no network.
  *
- * Intentional, documented differences (NOT parity gaps):
- *   - Templates: ts uses Scroll placeholders ($scroll.title); python uses Jinja2.
- *   - SVG images: python may embed; ts embeds PNG/JPEG/GIF (SVG pending) — image
- *     counts are therefore NOT diffed below.
- *   - `--include-children` merge: python legacy behavior; ts uses `--scope tree`.
+ * The file used to carry a second, `ATLCLI_PARITY=1`-gated layer that exported
+ * one live DOCSY page through `--engine python` and `--engine ts` and diffed the
+ * two documents. It went out with the Python exporter: there is no second engine
+ * left to diff against, and the contract tests here were always the layer that
+ * actually ran.
+ *
+ * Deliberately NOT asserted (documented renderer differences, not gaps):
+ *   - SVG images: DOCX embeds PNG/JPEG/GIF, SVG is pending — image counts are
+ *     not diffed.
  *   - List numbering: native numbering parity depends on T1.13 (tracked) —
- *     numbering XML is not diffed below.
+ *     numbering XML is not diffed.
  */
 
 const FIXTURE_STORAGE = `
@@ -269,7 +269,6 @@ describe("macro-report parity across engines (spec 010)", () => {
           USERPROFILE: dir,
           ATLCLI_API_TOKEN: "stub-token",
           ATLCLI_DISABLE_UPDATE_CHECK: "1",
-          ATLCLI_SUPPRESS_ENGINE_NOTICE: "1",
         },
         stdout: "pipe",
         stderr: "pipe",
@@ -447,7 +446,6 @@ describe("mention-note parity across engines (spec 010)", () => {
           USERPROFILE: dir,
           ATLCLI_API_TOKEN: "stub-token",
           ATLCLI_DISABLE_UPDATE_CHECK: "1",
-          ATLCLI_SUPPRESS_ENGINE_NOTICE: "1",
         },
         stdout: "pipe",
         stderr: "pipe",
@@ -631,7 +629,6 @@ describe("image-note vocabulary parity across engines (spec 010)", () => {
           USERPROFILE: dir,
           ATLCLI_API_TOKEN: "stub-token",
           ATLCLI_DISABLE_UPDATE_CHECK: "1",
-          ATLCLI_SUPPRESS_ENGINE_NOTICE: "1",
         },
         stdout: "pipe",
         stderr: "pipe",
@@ -877,7 +874,6 @@ describe("Confluence-list datasource parity across engines (spec SUPPORT-DATASOU
           USERPROFILE: dir,
           ATLCLI_API_TOKEN: "stub-token",
           ATLCLI_DISABLE_UPDATE_CHECK: "1",
-          ATLCLI_SUPPRESS_ENGINE_NOTICE: "1",
         },
         stdout: "pipe",
         stderr: "pipe",
@@ -949,69 +945,5 @@ describe("Confluence-list datasource parity across engines (spec SUPPORT-DATASOU
     expect(pdf.issues.find((i) => i.code === "macro-degraded")!.message).toBe(
       docx.issues.find((i) => i.code === "macro-degraded")!.message
     );
-  }, 300_000);
-});
-
-/**
- * LIVE dual-engine render diff (layer 2). GATED: needs Python (`packages/
- * export` venv or system install), a Scroll-style template, a configured
- * profile, and a live page — which per the project's hard E2E rule MUST live in
- * space DOCSY. Env: ATLCLI_PARITY=1, ATLCLI_PARITY_PAGE_ID (DOCSY page id),
- * ATLCLI_PARITY_TEMPLATE (template path usable by BOTH engines),
- * ATLCLI_PARITY_PROFILE (default "mayflower").
- */
-const PARITY = process.env.ATLCLI_PARITY === "1";
-
-describe.skipIf(!PARITY)("dual-engine render diff (live, DOCSY)", () => {
-  it("python and ts render the same tables and heading texts from one page", async () => {
-    const { mkdtemp, readFile, rm } = await import("node:fs/promises");
-    const { tmpdir } = await import("node:os");
-    const { join } = await import("node:path");
-    const { fileURLToPath } = await import("node:url");
-    const { unzipDocx } = await import("@atlcli/docx/scan");
-
-    const cli = fileURLToPath(new URL("../index.ts", import.meta.url));
-    const pageId = process.env.ATLCLI_PARITY_PAGE_ID!;
-    const template = process.env.ATLCLI_PARITY_TEMPLATE!;
-    const profile = process.env.ATLCLI_PARITY_PROFILE ?? "mayflower";
-    expect(pageId).toBeTruthy();
-    expect(template).toBeTruthy();
-
-    const dir = await mkdtemp(join(tmpdir(), "atlcli-parity-"));
-    try {
-      const outputs: Record<string, string> = {
-        python: join(dir, "python.docx"),
-        ts: join(dir, "ts.docx"),
-      };
-      for (const [engine, out] of Object.entries(outputs)) {
-        const proc = Bun.spawn(
-          ["bun", "--conditions=development", "run", cli, "wiki", "export", pageId, "--profile", profile, "--engine", engine, "--template", template, "-o", out, "--json"],
-          { stdout: "pipe", stderr: "pipe", env: { ...process.env, ATLCLI_SUPPRESS_ENGINE_NOTICE: "1" } }
-        );
-        expect(await proc.exited).toBe(0);
-      }
-
-      const documentXml = async (path: string): Promise<string> => {
-        const zip = unzipDocx(new Uint8Array(await readFile(path)));
-        return zip.file("word/document.xml")?.asText() ?? "";
-      };
-      const [pythonXml, tsXml] = await Promise.all([
-        documentXml(outputs.python),
-        documentXml(outputs.ts),
-      ]);
-
-      // Observable-feature diff. Image counts and numbering XML deliberately
-      // excluded (documented intentional differences above).
-      const tableCount = (xml: string): number => (xml.match(/<w:tbl[ >]/g) ?? []).length;
-      expect(tableCount(tsXml)).toBe(tableCount(pythonXml));
-
-      const headingTexts = (xml: string): string[] =>
-        [...xml.matchAll(/<w:p\b[^>]*>(?:(?!<\/w:p>).)*?w:val="Heading[1-6]"(?:(?!<\/w:p>).)*?<\/w:p>/gs)]
-          .map((match) => [...match[0].matchAll(/<w:t[^>]*>([^<]*)<\/w:t>/g)].map((t) => t[1]).join("").trim())
-          .filter(Boolean);
-      expect(new Set(headingTexts(tsXml))).toEqual(new Set(headingTexts(pythonXml)));
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
   }, 300_000);
 });

@@ -160,30 +160,6 @@ jobs:
       - name: Sink commit-protocol tests
         run: bun --conditions=development test apps/cli/src/commands/export-pdf-sink.test.ts
 
-  test-python:
-    needs: changes
-    if: needs.changes.outputs.code == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Setup uv
-        uses: astral-sh/setup-uv@v4
-
-      - name: Install dependencies
-        working-directory: packages/export
-        run: uv sync
-
-      - name: Run Python tests
-        working-directory: packages/export
-        run: uv run pytest tests/ -v
-
   browser-export-harness:
     needs: changes
     if: needs.changes.outputs.code == 'true'
@@ -261,7 +237,6 @@ jobs:
       - consumer-smoke
       - pdf-cli-macos
       - pdf-sink-windows
-      - test-python
       - browser-export-harness
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -274,10 +249,9 @@ jobs:
           CONSUMER: ${{ needs.consumer-smoke.result }}
           MACOS: ${{ needs.pdf-cli-macos.result }}
           WINDOWS: ${{ needs.pdf-sink-windows.result }}
-          PYTHON: ${{ needs.test-python.result }}
           BROWSER: ${{ needs.browser-export-harness.result }}
         run: |
-          for result in "$CHANGES" "$DOCS" "$TEST" "$CONSUMER" "$MACOS" "$WINDOWS" "$PYTHON" "$BROWSER"; do
+          for result in "$CHANGES" "$DOCS" "$TEST" "$CONSUMER" "$MACOS" "$WINDOWS" "$BROWSER"; do
             if [[ "$result" != "success" && "$result" != "skipped" ]]; then
               echo "::error::A selected CI gate finished with result: $result"
               exit 1

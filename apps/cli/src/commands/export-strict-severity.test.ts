@@ -18,7 +18,7 @@
  * NO MOCKS: a real Bun HTTP server stands in for the Confluence REST API, the
  * real ts DOCX engine writes a real .docx, and the real Typst pipeline compiles
  * a real PDF — driven through the real CLI in its own process, exactly like the
- * sibling `export-report-flag.test.ts` / `engine-parity.test.ts` suites.
+ * sibling `export-report-flag.test.ts` / `export-source-contract.test.ts` suites.
  */
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -149,7 +149,6 @@ describe("--strict counts warnings, not informational notes (severity fidelity)"
           USERPROFILE: dir,
           ATLCLI_API_TOKEN: "stub-token",
           ATLCLI_DISABLE_UPDATE_CHECK: "1",
-          ATLCLI_SUPPRESS_ENGINE_NOTICE: "1",
         },
         stdout: "pipe",
         stderr: "pipe",

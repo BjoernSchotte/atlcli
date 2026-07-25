@@ -27,6 +27,7 @@ import { seedLegacyV1 } from "../docx/seed-v1.js";
 
 const SITE_A = "https://mayflower.atlassian.net";
 const SITE_B = "https://mayflower-staging.atlassian.net";
+const FIXED_DOCX_DATE = new Date("2020-01-01T00:00:00.000Z");
 
 let factory: IDBFactory;
 
@@ -35,7 +36,10 @@ beforeEach(() => {
 });
 
 function bytesFor(text: string): ArrayBuffer {
-  const b = buildDocx({ body: para(text) + para("$scroll.content") });
+  const b = buildDocx({
+    body: para(text) + para("$scroll.content"),
+    date: FIXED_DOCX_DATE,
+  });
   return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer;
 }
 

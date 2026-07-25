@@ -141,7 +141,6 @@ atlcli/
 │   ├── core/                   # Shared utilities (config, logging, templates)
 │   ├── confluence/             # Confluence client, conversion, shared export blocks
 │   ├── docx/                   # Isomorphic DOCX engine + browser runtime
-│   ├── export/                 # Deprecated Python exporter (unused; pending removal)
 │   ├── jira/                   # Jira API client
 │   ├── pdf/                    # Host-neutral PDF preparation and runner contracts
 │   ├── pdf-compiler-browser/   # Private Typst-WASM browser adapter
