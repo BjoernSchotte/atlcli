@@ -221,6 +221,7 @@ describe("scanTemplate", () => {
 // ---------------------------------------------------------------------------
 
 const MB = 1024 * 1024;
+const CPU_HEAVY_TEST_TIMEOUT_MS = 30_000;
 
 /** Assert `fn` throws a {@link DocxError} with exactly `kind`. */
 function expectDocxError(fn: () => unknown, kind: DocxError["kind"]): DocxError {
@@ -648,7 +649,7 @@ describe("unzipDocx — forged central directory (spec 011 round 3)", () => {
     expect(err.message).toContain("DEFLATE never expands");
     // The proof that nothing inflated: 200 MiB of payload would dwarf this.
     expect(grew).toBeLessThan(64);
-  });
+  }, CPU_HEAVY_TEST_TIMEOUT_MS);
 
   it("still refuses the HONEST form of the same bomb (via the absolute cap)", () => {
     const payload = "<w:document>" + " ".repeat(200 * MB) + "</w:document>";
@@ -656,7 +657,7 @@ describe("unzipDocx — forged central directory (spec 011 round 3)", () => {
     zip.file("word/document.xml", payload);
     const honest = zip.generate({ type: "uint8array", compression: "DEFLATE" }) as unknown as Uint8Array;
     expectDocxError(() => unzipDocx(honest), "entry-too-large");
-  });
+  }, CPU_HEAVY_TEST_TIMEOUT_MS);
 
   it("refuses an implausibly high declared ratio that stays under the absolute caps", () => {
     // 60 MiB declared (< the 64 MiB per-entry cap) from a tiny stream.
