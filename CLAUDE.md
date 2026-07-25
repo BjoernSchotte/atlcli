@@ -11,13 +11,6 @@ bun run test             # Run all tests (adds --conditions=development; see bel
 bun run typecheck        # TypeScript type checking
 ```
 
-### Running Python Tests
-
-```bash
-cd packages/export
-uv run pytest tests/ -v
-```
-
 ### Running Single Tests
 
 ```bash

@@ -23,8 +23,8 @@ themed content instead of collapsing them into a gray placeholder.
 ## Prerequisites
 
 - **Engine:** DOCX uses the TypeScript engine (`--engine ts` is an optional
-  compatibility spelling); PDF uses its single Typst/WASM engine. The retired
-  Python exporter is not a fallback.
+  compatibility spelling); PDF uses its single Typst/WASM engine. The Python
+  exporter has been removed and is not a fallback.
 - An auth profile with access to the space (and, for Jira macros, the linked
   Jira site).
 

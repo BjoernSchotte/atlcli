@@ -101,7 +101,7 @@ delimiter pair, so a template's own `{`, `}` and `{foo}` are never treated as ta
 
 ### Foreign (docxtpl/Jinja) placeholders
 
-That pass-through guarantee has a sharp edge for anyone migrating from the retired Python engine:
+That pass-through guarantee has a sharp edge for anyone migrating from the removed Python engine:
 a **docxtpl template** handed to the DOCX engine renders its `{{ … }}` / `{% … %}` placeholders as
 **visible literal text** in the finished document. Nothing fills them, and nothing fails.
 
@@ -110,8 +110,9 @@ The template scan therefore inventories that syntax and the report names it:
 ```
 warning  template-foreign-placeholders
 Template uses Jinja/docxtpl placeholders ({{ title }}, {{ author }}, {{ spaceName }});
-the DOCX engine fills $scroll.* placeholders and will leave these in the document as
-literal text. Rewrite them as $scroll.* placeholders or use the bundled default.
+the ts engine fills $scroll.* placeholders and will leave these in the document as
+literal text. Rewrite them as $scroll.* placeholders, or start from the bundled default
+template; the Python/docxtpl exporter has been removed and is not available as a fallback.
 ```
 
 - **`warning`, so `--strict` catches it** in CI. An `info` note would be reported and ignored,
