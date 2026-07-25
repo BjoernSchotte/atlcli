@@ -141,7 +141,6 @@ async function exportWith(name: string, extra: string[]): Promise<CliReport & { 
         USERPROFILE: dir,
         ATLCLI_API_TOKEN: "stub-token",
         ATLCLI_DISABLE_UPDATE_CHECK: "1",
-        ATLCLI_SUPPRESS_ENGINE_NOTICE: "1",
       },
       stdout: "pipe",
       stderr: "pipe",

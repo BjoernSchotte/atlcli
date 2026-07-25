@@ -171,7 +171,7 @@ describe("ExportNote.code registry (spec 009)", () => {
     // the same `resolveExportMentions` result. They are separate processes with
     // no shared call site, so nothing but this assertion keeps their spelling
     // together. (Each side's own runtime behaviour is pinned separately: the CLI
-    // in `apps/cli/src/commands/engine-parity.test.ts`, the extension in
+    // in `apps/cli/src/commands/export-source-contract.test.ts`, the extension in
     // `apps/extension/tests/pdf/run-export.test.ts`.)
     const hosts = ["apps/cli/src/commands/export-pdf.ts", "apps/extension/utils/pdf/run-export.ts"];
     const spellings = new Map<string, string[]>();

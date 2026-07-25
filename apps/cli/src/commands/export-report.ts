@@ -28,7 +28,15 @@ import type { PdfCompilerDiagnostic } from "@atlcli/pdf";
 export const EXPORT_REPORT_SCHEMA = "atlcli.export-report/1";
 
 export type ExportFormat = "pdf" | "docx";
-export type ExportReportEngine = "python" | "ts";
+
+/**
+ * The engine named in a DOCX report. One value since the Python exporter was
+ * removed; the field survives because `atlcli.export-report/1` is a published
+ * contract and dropping a key consumers already read would force a schema bump
+ * for no gain. Narrowing the enum is the compatible half of that change: no
+ * producer ever emits anything but `"ts"` now.
+ */
+export type ExportReportEngine = "ts";
 
 /**
  * Deterministic, documented exit codes (T3.4). Applied unconditionally for the

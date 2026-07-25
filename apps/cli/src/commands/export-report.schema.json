@@ -9,7 +9,7 @@
   "properties": {
     "schema": { "const": "atlcli.export-report/1" },
     "format": { "enum": ["pdf", "docx"] },
-    "engine": { "enum": ["python", "ts"] },
+    "engine": { "enum": ["ts"] },
     "sourcePages": {
       "type": "array",
       "description": "One entry per source page — provenance/fetch-and-compose status only, NO per-page metrics.",
