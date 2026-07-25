@@ -1,8 +1,8 @@
 /**
  * Foreign (docxtpl/Jinja) placeholder detection — spec 010 W3-D, Gap 1.
  *
- * The defect this pins: a Python-engine template fixture full of docxtpl Jinja
- * placeholders was handed to `--engine ts`. The engine happily produced a
+ * The defect this pins: a docxtpl/Jinja template (from the since-retired Python
+ * exporter) was handed to `--engine ts`. The engine happily produced a
  * 62-page `.docx` containing SEVEN literal unfilled placeholders — `{{ title }}`,
  * `{{ author }}`, `{{ spaceName }}`, `{{ modified | date('YYYY-MM-DD') }}`, … —
  * as visible body text, and the report said nothing about them. The only related
@@ -121,13 +121,16 @@ describe("scanTemplate: foreign placeholders in the template archive", () => {
   });
 
   it("names all seven placeholders in the fixture that produced the finding", async () => {
-    // The actual artifact: the PYTHON engine's own test template, which is what
-    // got handed to `--engine ts` and produced a 62-page document with seven
-    // visible unfilled placeholders. Deliberately cross-package — a synthetic
-    // fixture would only prove the detector matches fixtures the same author
-    // wrote. If this path ever disappears the test fails loudly rather than
-    // quietly stopping to check the one template this whole fix exists for.
-    const url = new URL("../../export/tests/fixtures/basic-template.docx", import.meta.url);
+    // The actual artifact: the retired Python engine's own test template, which
+    // is what got handed to `--engine ts` and produced a 62-page document with
+    // seven visible unfilled placeholders. It is a REAL docxtpl template written
+    // by another toolchain — a synthetic fixture would only prove the detector
+    // matches fixtures the same author wrote. Kept verbatim (under a name that
+    // says what it is) when the Python package was deleted, precisely because
+    // migrating users still hand templates like this one to the ts engine. If
+    // this path ever disappears the test fails loudly rather than quietly
+    // stopping to check the one template this whole fix exists for.
+    const url = new URL("../test-fixtures/docxtpl-template.docx", import.meta.url);
     const bytes = new Uint8Array(await Bun.file(url).arrayBuffer());
     expect(scanTemplate(bytes).foreignPlaceholders).toEqual([
       "{{ title }}",
