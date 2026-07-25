@@ -30,11 +30,16 @@ colors. The resolved identifier and its code-block foreground/background
 contract are shared by both engines, persisted before background work starts,
 included in deterministic inputs, and reported with the result.
 
-The first release ships a deliberately small static registry:
+The first release ships:
 
-- `github-light` — backward-compatible default;
-- one additional theme selected during implementation after its Shiki colors
-  and explicit code-block background pass the PDF/DOCX readability goldens.
+- `github-light` as the backward-compatible default;
+- the broadest practical set of themes from Shiki's bundled default theme
+  catalogue, generated from the pinned Shiki version rather than maintained as
+  a hand-picked list;
+- Shiki's full bundled language catalogue and aliases.
+
+Themes and grammars remain lazy-loaded so full catalogue support does not put
+every implementation into the initial CLI or browser chunk.
 
 No caller may provide a module path, a free-form Shiki theme object, or a URL.
 No renderer fetches theme data at runtime.
@@ -111,11 +116,13 @@ Typst.
 ### 3.1 In scope
 
 - A browser-safe shared code-highlighting module with:
-  - a closed `CodeThemeId` union;
+  - a generated `CodeThemeId` union covering the shipped Shiki default-theme
+    catalogue;
+  - a generated `CodeLanguageId` union plus Shiki's aliases;
   - `DEFAULT_CODE_THEME`;
   - registry metadata including foreground and background;
   - runtime validation/defaulting;
-  - lazy static imports of bundled Shiki themes and grammars;
+  - catalogue-complete lazy imports of bundled Shiki themes and grammars;
   - theme-keyed highlighter/language-load memoization;
   - a serializable highlighted line/token result.
 - One normalized `codeTheme` value in both engine inputs, prepared checkpoints,
@@ -126,18 +133,18 @@ Typst.
 - Explicit code-block background and fallback foreground in PDF and DOCX.
 - Tests for defaults, validation, concurrency isolation, fallback behavior,
   prepared/resumed jobs, and cross-engine rendered colors.
-- Supported-theme documentation and CLI examples.
+- Generated supported-theme/language documentation and CLI examples.
 
 ### 3.2 Non-goals
 
 - Arbitrary Shiki themes, user-authored JSON themes, module paths, CDN loading,
   or network discovery.
-- Shipping Shiki's full theme or language catalogue.
 - Making the document body itself dark.
 - Changing Mermaid/diagram themes automatically. `diagramTheme` remains a
   separate contract.
 - Replacing the export-job lifecycle or merging PDF and DOCX engine reports.
-- Changing source-language detection or expanding the curated language list.
+- Loading community/user themes or grammars that are not bundled by the pinned
+  Shiki package version.
 
 ### 3.3 Invariants
 
@@ -152,8 +159,9 @@ Typst.
    fallback foreground from the shared adapter.
 7. Unknown languages and tokenizer failures keep the complete source text and
    use the selected theme's fallback foreground/background.
-8. Adding a theme requires an explicit registry entry, static import, metadata,
-   tests, and documentation.
+8. The shipped theme/language ids are generated deterministically from the
+   pinned Shiki package. A dependency upgrade must regenerate and review the
+   catalogue diff, metadata, bundle manifest, tests, and documentation.
 
 ## 4. Target architecture
 
@@ -167,9 +175,16 @@ would recreate the state-leak and parity problem.
 Public contract:
 
 ```ts
-export const CODE_THEME_IDS = ["github-light", "<second-theme>"] as const;
+export const CODE_THEME_IDS = [
+  // generated from the pinned Shiki default-theme catalogue
+] as const;
 export type CodeThemeId = (typeof CODE_THEME_IDS)[number];
 export const DEFAULT_CODE_THEME: CodeThemeId = "github-light";
+
+export const CODE_LANGUAGE_IDS = [
+  // generated from the pinned Shiki bundled-language catalogue
+] as const;
+export type CodeLanguageId = (typeof CODE_LANGUAGE_IDS)[number];
 
 export interface ResolvedCodeTheme {
   id: CodeThemeId;
@@ -202,14 +217,19 @@ registry/validation subpath and keep Shiki loading behind the main subpath.
 
 ### 4.2 Registry and memoization
 
-The registry maps each id to:
+Generated registries map each shipped id to:
 
-- one static dynamic import such as
-  `() => import("shiki/themes/github-light.mjs")`;
+- a bundler-discoverable lazy loader for the exact bundled Shiki module;
 - normalized fallback foreground and background;
-- optional human-readable label for host UIs.
+- human-readable metadata for host UIs;
+- for languages, the canonical id and all Shiki-provided aliases.
 
-Do not generate an unconstrained dynamic import from user input.
+Generation must run at build/development time against the pinned Shiki package,
+write deterministic TypeScript source, and fail CI when the checked-in catalogue
+is stale. Runtime user input selects only an own-property entry from the
+generated registry; it is never interpolated into an import path. This preserves
+browser bundler discovery and CSP compatibility without hand-maintaining
+hundreds of imports.
 
 Replace the single `highlighterPromise` with a map keyed by `CodeThemeId`.
 Language load/warm promises must also include the theme/highlighter identity,
@@ -308,7 +328,9 @@ Add `--code-theme <id>` to `atlcli wiki export` for both formats.
 
 - Parse and validate it before profile/network/template work.
 - Default to `github-light`.
-- Include the supported ids in the error and help output.
+- Make the error name the invalid id and point to the catalogue command/docs;
+  keep CLI help readable by showing the default plus representative values
+  rather than printing the complete catalogue inline.
 - Pass the normalized id through both job-request builders.
 - Include `codeTheme` in machine-readable reports without removing or renaming
   existing fields.
@@ -354,19 +376,24 @@ that must be identical across formats.
 
 ### Phase 1 — Shared registry and compatibility lock
 
-1. Extract the language registry, canonicalization, regex-engine selection,
+1. Extract canonicalization, regex-engine selection,
    token types, and Shiki adapter from `packages/docx/src/highlight.ts` into
    `@atlcli/code-highlight`.
-2. Add the closed theme registry and default resolver.
-3. Add per-theme highlighter/language memoization with failure eviction.
-4. Port existing DOCX highlight tests unchanged first; capture the current
+2. Add a deterministic catalogue generator for all bundled Shiki languages,
+   aliases, and the broad default-theme catalogue. Check in its generated
+   TypeScript registry and add a CI stale-generation check.
+3. Add the default resolver and catalogue lookup APIs.
+4. Add per-theme highlighter/language memoization with failure eviction.
+5. Port existing DOCX highlight tests unchanged first; capture the current
    `github-light` token grid as the compatibility fixture.
-5. Add second-theme, invalid-theme, concurrency, unknown-language, trailing
-   empty-line, and failed-load retry tests.
+6. Add representative light/dark themes, catalogue completeness, alias,
+   invalid-theme, concurrency, unknown-language, trailing-empty-line, and
+   failed-load retry tests.
 
 Exit gate: default calls return the same text/token colors as the pre-change
-DOCX adapter, and the browser build contains only the curated theme/language
-chunks.
+DOCX adapter; every generated catalogue entry resolves in the build; and the
+initial browser chunk does not eagerly contain every theme/language
+implementation.
 
 ### Phase 2 — Prepared engine state and render parity
 
@@ -401,10 +428,12 @@ host preference changes.
 2. Add the shared extension choice control, localized labels/errors, and
    per-space persistence.
 3. Update machine-readable settings/report schemas and public package exports.
-4. Update user documentation and the supported-theme registry table.
+4. Generate the supported-theme/language reference from the same catalogue
+   metadata used by the runtime.
 
-Exit gate: both hosts reject unknown ids before rendering and can produce both
-formats with both supported themes.
+Exit gate: both hosts reject unknown ids before rendering; every generated
+theme is selectable for both formats; and representative light/dark themes
+produce verified artifacts.
 
 ### Phase 5 — Proof and release preparation
 
@@ -449,8 +478,9 @@ only when a later request explicitly asks for a release.
   verifies neither result contains colors unique to the other.
 - Durable-job tests change the stored preference after submission, then cover
   resume, automatic retry, manual Retry, and Run again.
-- Browser build tests assert CSP-safe execution, no runtime theme fetch, and no
-  uncurated Shiki theme chunks.
+- Browser build tests assert CSP-safe execution, no runtime network fetch,
+  catalogue completeness, lazy chunking, and successful representative
+  language/theme loads from packed extension output.
 
 ### 7.3 Commands
 
@@ -480,7 +510,7 @@ the same implementation PR, including
 `src/content/docs/reference/docx-engine.md` and the corresponding PDF/export-job
 reference pages:
 
-- supported id/default table;
+- generated supported-theme and supported-language catalogues;
 - minimal omitted/default example;
 - realistic light/non-default examples for both formats;
 - per-space extension selection steps;
@@ -497,9 +527,11 @@ currently published documentation source.
 
 - Omitted input resolves to `github-light` across every CLI/browser PDF/DOCX
   path.
-- At least one additional statically bundled theme is selectable.
+- The broad generated default-theme catalogue and full bundled language
+  catalogue are selectable through lazy, CSP-safe loaders.
 - Both engines consume the same prepared Shiki tokens and background.
-- Unknown ids fail before source discovery/rendering with supported ids named.
+- Unknown ids fail before source discovery/rendering with the invalid value,
+  default, and catalogue discovery path named.
 - Durable requests, checkpoints, hashes, reports, retries, and Run again retain
   the effective theme.
 - Concurrent themes are isolated.
@@ -518,8 +550,11 @@ currently published documentation source.
    default DOCX bytes even when colors are visually equivalent. Mitigation:
    measure before promising byte equality and distinguish byte parity from
    token-color parity in the proof.
-3. **Bundle growth.** A full Shiki theme import pattern can emit the catalogue.
-   Mitigation: static curated imports and bundle-content assertions.
+3. **Bundle and chunk growth.** Full catalogue support necessarily emits many
+   lazy chunks and can increase package/install size even when startup remains
+   small. Mitigation: generated bundler-discoverable loaders, no eager
+   catalogue import, initial-chunk and total-distribution budgets, duplicate
+   chunk inspection, and real Chrome/Forge packaging checks.
 4. **Dark-theme readability.** Token colors without a fill are unusable.
    Mitigation: registry-owned foreground/background and real-app artifact
    inspection.
@@ -535,9 +570,12 @@ currently published documentation source.
 
 ## 11. Unresolved questions
 
-1. Which second curated theme should ship? Recommendation: choose one dark theme
-   to force the background contract to be proven now; confirm its redistribution
-   metadata and real Word/PDF contrast before freezing the id.
+1. Which exact Shiki export defines the “default theme catalogue” for the pinned
+   version, and are any bundled themes unsuitable for document rendering?
+   Recommendation: start from Shiki's official bundled theme list, exclude only
+   entries with a documented technical/licensing/accessibility reason, and test
+   representative light and dark themes plus metadata completeness for every
+   shipped id.
 2. Are `atlcli.export-job-request/1` and the prepared V1 checkpoints already
    treated as externally stable persisted contracts? If yes, introduce V2. If
    no, document and test the one-time default migration rather than changing
