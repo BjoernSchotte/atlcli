@@ -616,7 +616,9 @@ describe("serializeBlocks — callouts, code, tables, images", () => {
     const { xml } = await serializeBlocks(blocks, { styleNames: noStyles });
     expect(xml).toContain('<w:pStyle w:val="AtlcliCode"/>');
     expect(xml).toContain("JetBrains Mono");
-    expect(xml).toContain('<w:shd w:val="clear" w:color="auto" w:fill="FFFFFF"/>');
+    // github-light remains byte-compatible: its white background is the page
+    // background, so only non-default themes need an explicit paragraph fill.
+    expect(xml).not.toContain("<w:shd");
     // At least one syntax color was applied.
     expect(/<w:color w:val="[0-9A-F]{6}"\/>/.test(xml)).toBe(true);
   });
