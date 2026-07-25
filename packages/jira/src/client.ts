@@ -1642,6 +1642,27 @@ export class JiraClient {
   }
 
   /**
+   * Get a single attachment's metadata by id.
+   *
+   * GET /rest/api/3/attachment/{id}
+   *
+   * Downloading by id needs this: the id alone yields no filename to save the
+   * bytes under, and `content` is the only URL guaranteed to serve them.
+   */
+  async getAttachment(id: string): Promise<JiraAttachment> {
+    return this.request<JiraAttachment>(`/attachment/${id}`);
+  }
+
+  /**
+   * Delete an attachment by id.
+   *
+   * DELETE /rest/api/3/attachment/{id}
+   */
+  async deleteAttachment(id: string): Promise<void> {
+    await this.request(`/attachment/${id}`, { method: "DELETE" });
+  }
+
+  /**
    * Download an attachment's binary content.
    *
    * Fetches the content URL directly (not through API path).

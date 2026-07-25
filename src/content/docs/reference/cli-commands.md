@@ -373,6 +373,11 @@ atlcli jira issue assign --key <key> --assignee <email>
 atlcli jira issue assign --key <key> --assignee none  # Unassign
 atlcli jira issue link --from <key> --to <key> --type <type>
 atlcli jira issue attach --key <key> <file>  # Attach file
+atlcli jira issue attachments <key>     # List attachments
+atlcli jira issue attachment download <id> [-o <path>] [--overwrite]
+atlcli jira issue attachment download <key> <filename> [-o <path>] [--overwrite]
+atlcli jira issue attachment delete <id> --confirm
+atlcli jira issue attachment delete <key> <filename> --confirm
 atlcli jira issue open <key>            # Open issue in browser
 
 # Cross-product linking (Jira ↔ Confluence)

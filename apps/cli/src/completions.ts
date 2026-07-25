@@ -111,6 +111,8 @@ const NESTED_SUBCOMMANDS: Record<string, Record<string, string[]>> = {
     issue: [
       "assign",
       "attach",
+      "attachment",
+      "attachments",
       "comment",
       "create",
       "delete",
@@ -145,6 +147,9 @@ const NESTED_SUBCOMMANDS: Record<string, Record<string, string[]>> = {
 // Third-level subcommands
 const THIRD_LEVEL_SUBCOMMANDS: Record<string, Record<string, Record<string, string[]>>> = {
   jira: {
+    issue: {
+      attachment: ["delete", "download"],
+    },
     worklog: {
       timer: ["cancel", "start", "status", "stop"],
     },
@@ -274,7 +279,9 @@ const COMMAND_FLAGS: Record<string, string[]> = {
   "jira issue assign": ["--key", "--to"],
   "jira issue comment": ["--body", "--key"],
   "jira issue link": ["--from", "--to", "--type"],
-  "jira issue attach": ["--file", "--key"],
+  "jira issue attach": ["--key"],
+  "jira issue attachments": ["--key"],
+  "jira issue attachment": ["--confirm", "--output", "--overwrite"],
   "jira issue open": ["--key"],
 
   // jira board flags
