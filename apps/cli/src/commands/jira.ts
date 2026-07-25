@@ -79,6 +79,7 @@ import {
   JiraTemplateResolver,
   ensureMigrated,
   // Attachment helpers (functional core)
+  parseAttachRequest,
   parseAttachmentTarget,
   selectAttachmentsByFilename,
   planDownloads,
@@ -693,46 +694,119 @@ async function handleIssueLink(
   output({ schemaVersion: "1", linked: { from, to, type } }, opts);
 }
 
+/**
+ * `jira issue attach <issue-key> <file> [file...] [--comment <text>]`.
+ *
+ * Issue #90: the key is positional (with `--key` kept working), every file on
+ * the command line is uploaded rather than only the first, and `--comment` is
+ * posted after the upload instead of being silently dropped. A file that fails
+ * does not stop the rest — the others still upload and the command exits
+ * non-zero so a script notices.
+ */
 async function handleIssueAttach(
   args: string[],
   flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions
 ): Promise<void> {
-  const key = getFlag(flags, "key");
-  const [filePath] = args;
-
-  if (!key || !filePath) {
-    fail(opts, 1, ERROR_CODES.USAGE, "--key <issue> and <file> are required.");
+  const parsed = parseAttachRequest(args, getFlag(flags, "key"));
+  if (!parsed.ok) {
+    fail(opts, 1, ERROR_CODES.USAGE, parsed.error);
     return;
   }
 
-  // Check if file exists
-  try {
-    await stat(filePath);
-  } catch {
-    fail(opts, 1, ERROR_CODES.USAGE, `File not found: ${filePath}`);
+  const { issueKey, files } = parsed.request;
+
+  // `--comment` with no text is a usage error: the whole point of #90 is that a
+  // flag the user passed never disappears without a word.
+  const commentText = getFlag(flags, "comment");
+  if (hasFlag(flags, "comment") && !commentText) {
+    fail(opts, 1, ERROR_CODES.USAGE, "--comment requires text.");
+    return;
+  }
+
+  const missing: string[] = [];
+  for (const file of files) {
+    if (!(await pathExists(file))) missing.push(file);
+  }
+  if (missing.length > 0) {
+    fail(
+      opts,
+      1,
+      ERROR_CODES.USAGE,
+      `File not found: ${missing.join(", ")}`,
+      { files: missing }
+    );
     return;
   }
 
   const client = await getClient(flags, opts);
-  const data = await readFile(filePath);
-  const filename = basename(filePath);
 
-  const attachments = await client.uploadAttachment(key, filename, data);
+  const attached: Array<{
+    id: string;
+    filename: string;
+    size: number;
+    mimeType: string;
+    path: string;
+  }> = [];
+  const failed: Array<{ path: string; error: string }> = [];
+
+  for (const file of files) {
+    const filename = basename(file);
+    try {
+      const data = await readFile(file);
+      const uploaded = await client.uploadAttachment(issueKey, filename, data);
+      for (const a of uploaded) {
+        attached.push({
+          id: a.id,
+          filename: a.filename,
+          size: a.size,
+          mimeType: a.mimeType,
+          path: file,
+        });
+      }
+    } catch (error) {
+      failed.push({ path: file, error: error instanceof Error ? error.message : String(error) });
+    }
+  }
+
+  // The comment references the attachments, so it is only worth posting when at
+  // least one of them made it.
+  let comment: { id: string } | undefined;
+  if (commentText && attached.length > 0) {
+    try {
+      const posted = await client.addComment(issueKey, commentText);
+      comment = { id: posted.id };
+    } catch (error) {
+      failed.push({
+        path: "--comment",
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
 
   if (opts.json) {
-    output({
-      schemaVersion: "1",
-      attached: attachments.map((a) => ({
-        id: a.id,
-        filename: a.filename,
-        size: a.size,
-        mimeType: a.mimeType,
-      })),
-    }, opts);
+    output(
+      {
+        schemaVersion: "1",
+        issue: issueKey,
+        attached,
+        total: attached.length,
+        ...(failed.length > 0 ? { failed } : {}),
+        ...(comment ? { comment } : {}),
+      },
+      opts
+    );
   } else {
-    output(`Attached ${filename} (${data.length} bytes) to ${key}`, opts);
+    for (const file of attached) {
+      output(`Attached ${file.filename} (${file.size} bytes) to ${issueKey}`, opts);
+    }
+    if (comment) output(`Commented on ${issueKey}`, opts);
+    for (const file of failed) {
+      process.stderr.write(`Failed: ${file.path}: ${file.error}\n`);
+    }
   }
+
+  if (failed.length > 0) process.exit(1);
 }
 
 /**
@@ -1066,7 +1140,7 @@ Commands:
   assign --key <key> --assignee <accountId>|none
   comment --key <key> <text>
   link --from <key> --to <key> --type <name>
-  attach --key <key> <file>            Attach a file to an issue
+  attach <key> <file> [file...] [--comment <text>]   Attach files to an issue
   attachments <key>                    List attachments on an issue
   attachment download <id>|<key> <filename> [-o <path>] [--overwrite]
   attachment delete <id>|<key> <filename> --confirm
@@ -1078,7 +1152,7 @@ Commands:
 Options:
   --profile <name>   Use a specific auth profile
   --json             JSON output
-  --comment          Add comment when linking (link-page only)
+  --comment <text>   Post a comment (attach, link-page)
   --field <id>=<value>  Set a custom field (repeatable). Value is auto-coerced:
                          numbers → number, JSON strings → parsed, plain text → string.
                          Example: --field customfield_10028=5 --field customfield_10077={"value":"Bug"}

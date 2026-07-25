@@ -372,7 +372,7 @@ atlcli jira issue transitions --key <key>  # List available transitions
 atlcli jira issue assign --key <key> --assignee <email>
 atlcli jira issue assign --key <key> --assignee none  # Unassign
 atlcli jira issue link --from <key> --to <key> --type <type>
-atlcli jira issue attach --key <key> <file>  # Attach file
+atlcli jira issue attach <key> <file> [file...] [--comment <text>]  # Attach files
 atlcli jira issue attachments <key>     # List attachments
 atlcli jira issue attachment download <id> [-o <path>] [--overwrite]
 atlcli jira issue attachment download <key> <filename> [-o <path>] [--overwrite]

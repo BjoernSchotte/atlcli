@@ -72,6 +72,69 @@ export function parseAttachmentTarget(args: string[]): AttachmentTargetResult {
   };
 }
 
+/** An issue key: project key, dash, number (`PROJ-123`, `ATLCLI-1`). */
+const ISSUE_KEY = /^[A-Za-z][A-Za-z0-9_]*-\d+$/;
+
+/** What `jira issue attach` was asked to upload. */
+export type AttachRequest = { issueKey: string; files: string[] };
+
+export type AttachRequestResult =
+  | { ok: true; request: AttachRequest }
+  | { ok: false; error: string };
+
+const ATTACH_USAGE = "Usage: jira issue attach <issue-key> <file> [file...]";
+
+/**
+ * Read the arguments of `jira issue attach` (issue #90).
+ *
+ * Two documented shapes, both accepted:
+ *   `attach PROJ-123 a.png b.pdf`          → key positional, several files
+ *   `attach --key PROJ-123 a.png b.pdf`    → key as a flag (the older syntax)
+ *
+ * Every remaining positional is a file: a glob the shell expanded to ten paths
+ * uploads ten files. Silently keeping only the first — the old behaviour — is
+ * what made this a data-loss-shaped bug in scripts.
+ *
+ * A first positional that is not issue-key-shaped and no `--key` is the
+ * interesting error: the old code passed it straight to the filesystem and
+ * reported `File not found: PROJ-123`, which pointed at the wrong thing.
+ */
+export function parseAttachRequest(
+  args: string[],
+  keyFlag?: string
+): AttachRequestResult {
+  const positional = args.filter((a) => a.length > 0);
+
+  if (keyFlag) {
+    // `--key` wins; a positional repeat of the same key is a paste artefact,
+    // not a file, so drop it rather than failing on `File not found: PROJ-123`.
+    const files =
+      positional[0] === keyFlag ? positional.slice(1) : positional;
+    if (files.length === 0) {
+      return { ok: false, error: `At least one file is required. ${ATTACH_USAGE}` };
+    }
+    return { ok: true, request: { issueKey: keyFlag, files } };
+  }
+
+  if (positional.length === 0) {
+    return { ok: false, error: `Issue key and at least one file are required. ${ATTACH_USAGE}` };
+  }
+
+  const [first, ...rest] = positional;
+  if (!ISSUE_KEY.test(first)) {
+    return {
+      ok: false,
+      error: `"${first}" is not an issue key. ${ATTACH_USAGE}`,
+    };
+  }
+
+  if (rest.length === 0) {
+    return { ok: false, error: `At least one file is required. ${ATTACH_USAGE}` };
+  }
+
+  return { ok: true, request: { issueKey: first, files: rest } };
+}
+
 /**
  * Every attachment on the issue carrying `filename`.
  *
