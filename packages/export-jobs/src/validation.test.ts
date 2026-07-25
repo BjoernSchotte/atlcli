@@ -55,6 +55,7 @@ function pdfRequest(): PdfExportJobRequestV1 {
     },
     options: {
       resolveMacros: true,
+      codeTheme: "dracula",
       strict: true,
       noCache: true,
       exportedAt: 1_753_161_600_000,
@@ -73,6 +74,7 @@ function docxRequest(): DocxExportJobRequestV1 {
     options: {
       embedImages: true,
       resolveMacros: true,
+      codeTheme: "dracula",
       keepIgnored: true,
       strict: true,
       updateFields: "never",
@@ -230,6 +232,7 @@ describe("parsePdfExportJobRequestV1", () => {
       delete copy.options.strict;
       delete copy.options.noCache;
       delete copy.options.exportedAt;
+      delete copy.options.codeTheme;
     });
 
     expect(parsePdfExportJobRequestV1(request)).toEqual(request as PdfExportJobRequestV1);
@@ -244,6 +247,7 @@ describe("parsePdfExportJobRequestV1", () => {
     ["invalid strict mode", (request: any) => (request.options.strict = "yes")],
     ["invalid no-cache mode", (request: any) => (request.options.noCache = 1)],
     ["invalid export timestamp", (request: any) => (request.options.exportedAt = 1.5)],
+    ["invalid code theme", (request: any) => (request.options.codeTheme = "not-a-shiki-theme")],
   ])("rejects %s", (_name, mutate) => {
     expect(() => parsePdfExportJobRequestV1(changed(pdfRequest(), mutate))).toThrow(
       ExportJobValidationError,
@@ -271,6 +275,7 @@ describe("parseDocxExportJobRequestV1", () => {
       delete copy.options.keepIgnored;
       delete copy.options.strict;
       delete copy.options.updateFields;
+      delete copy.options.codeTheme;
     });
 
     expect(parseDocxExportJobRequestV1(request)).toEqual(request as DocxExportJobRequestV1);
@@ -285,6 +290,7 @@ describe("parseDocxExportJobRequestV1", () => {
     ["invalid update-fields mode", (request: any) => (request.options.updateFields = "later")],
     ["invalid keep-ignored mode", (request: any) => (request.options.keepIgnored = 1)],
     ["invalid strict mode", (request: any) => (request.options.strict = "yes")],
+    ["invalid code theme", (request: any) => (request.options.codeTheme = "not-a-shiki-theme")],
     ["unknown option", (request: any) => (request.options.pythonFallback = true)],
   ])("rejects %s", (_name, mutate) => {
     expect(() => parseDocxExportJobRequestV1(changed(docxRequest(), mutate))).toThrow(

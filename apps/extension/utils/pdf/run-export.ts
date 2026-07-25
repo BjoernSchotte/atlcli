@@ -45,6 +45,7 @@ import {
   type PdfThemeOptions,
 } from "@atlcli/pdf/browser";
 import type { ExternalAssetFetcher, ExternalAssetPolicy } from "@atlcli/export-macros";
+import type { CodeThemeId } from "@atlcli/code-highlight/registry";
 import { trustRoutingPdfAssetResolver } from "@atlcli/export-wiring";
 import type { LoadedPage } from "../read-path.js";
 import { profileFromTabUrl } from "../profile.js";
@@ -113,6 +114,8 @@ export interface RunPdfExportInput {
   profile?: PdfProfile;
   /** Level-A template settings (spec 007), threaded straight to the engine. */
   settings?: PdfTemplateSettings;
+  /** Product-owned Shiki theme shared with DOCX. */
+  codeTheme?: CodeThemeId;
   signal?: AbortSignal;
   onPhase?: (phase: PdfExportPhase) => void;
   /**
@@ -555,6 +558,7 @@ export async function runPdfExport(
     profile: input.profile,
     theme: input.theme,
     ...(input.settings ? { settings: input.settings } : {}),
+    ...(input.codeTheme ? { codeTheme: input.codeTheme } : {}),
     filename,
     signal: input.signal,
     onPhase: (phase) => mapNeutralPhase(phase, input.onPhase),

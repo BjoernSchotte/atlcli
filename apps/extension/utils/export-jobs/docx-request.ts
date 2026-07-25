@@ -2,6 +2,7 @@ import {
   parseDocxExportJobRequestV1,
   type DocxExportJobRequestV1,
 } from "@atlcli/export-jobs";
+import { resolveCodeThemeId } from "@atlcli/code-highlight/registry";
 import { sha256Hex } from "@atlcli/core";
 import type { DocxExportRequest } from "../ports/export.js";
 import { sanitizeDownloadName } from "../download.js";
@@ -56,6 +57,7 @@ export async function createExtensionDocxJobRequest(
     options: {
       embedImages: true,
       resolveMacros: request.resolveMacros !== false,
+      codeTheme: resolveCodeThemeId(request.codeTheme),
     },
   });
 }

@@ -6,6 +6,7 @@ import type {
 import type { ExportJobSnapshotV1 } from "./snapshot.js";
 import type { ExportJobEventV1 } from "./event.js";
 import type { ExportReportSummaryV1 } from "./statistics.js";
+import { InvalidCodeThemeError, resolveCodeThemeId } from "@atlcli/code-highlight/registry";
 
 const MAX_TEXT_LENGTH = 16_384;
 const MAX_REF_LENGTH = 4_096;
@@ -72,6 +73,16 @@ function choice<const Values extends readonly string[]>(
 
 function boolean(value: unknown, path: string): void {
   if (typeof value !== "boolean") fail(path, "must be a boolean");
+}
+
+function optionalCodeTheme(value: unknown, path: string): void {
+  if (value === undefined) return;
+  try {
+    resolveCodeThemeId(value);
+  } catch (error) {
+    if (error instanceof InvalidCodeThemeError) fail(path, error.message);
+    throw error;
+  }
 }
 
 function integer(
@@ -332,10 +343,11 @@ function validatePdfExportJobRequestV1(request: Record<string, unknown>): void {
   const options = record(request.options, "request.options");
   onlyKeys(
     options,
-    ["resolveMacros", "profile", "strict", "noCache", "exportedAt"],
+    ["resolveMacros", "codeTheme", "profile", "strict", "noCache", "exportedAt"],
     "request.options",
   );
   boolean(options.resolveMacros, "request.options.resolveMacros");
+  optionalCodeTheme(options.codeTheme, "request.options.codeTheme");
   optionalText(options.profile, "request.options.profile", MAX_REF_LENGTH);
   if (options.strict !== undefined) boolean(options.strict, "request.options.strict");
   if (options.noCache !== undefined) boolean(options.noCache, "request.options.noCache");
@@ -368,6 +380,7 @@ function validateDocxExportJobRequestV1(request: Record<string, unknown>): void 
     [
       "embedImages",
       "resolveMacros",
+      "codeTheme",
       "keepIgnored",
       "strict",
       "updateFields",
@@ -377,6 +390,7 @@ function validateDocxExportJobRequestV1(request: Record<string, unknown>): void 
   );
   boolean(options.embedImages, "request.options.embedImages");
   boolean(options.resolveMacros, "request.options.resolveMacros");
+  optionalCodeTheme(options.codeTheme, "request.options.codeTheme");
   if (options.keepIgnored !== undefined) {
     boolean(options.keepIgnored, "request.options.keepIgnored");
   }

@@ -21,6 +21,7 @@ const emptyScan: ExportReport["scan"] = {
 
 function makeReport(notes: ExportReport["notes"]): ExportReport {
   return {
+    codeTheme: "github-light",
     resolvedCount: 3,
     unsupportedNames: [],
     skippedImages: 0,
@@ -46,6 +47,14 @@ function makeReport(notes: ExportReport["notes"]): ExportReport {
 }
 
 describe("ReportView — notes rendering (#15)", () => {
+  it("shows the exact Shiki theme used by the export", () => {
+    const html = renderToStaticMarkup(
+      <ReportView report={{ ...makeReport([]), codeTheme: "dracula" }} />
+    );
+    expect(html).toContain('data-testid="report-code-theme"');
+    expect(html).toContain("Code theme: dracula");
+  });
+
   it("renders a space-fetch-failed warning note in the panel", () => {
     const html = renderToStaticMarkup(
       <ReportView

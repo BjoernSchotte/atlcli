@@ -126,6 +126,10 @@ import {
   rewriteScrollText,
   splitParagraphs,
 } from "./ooxml-text.js";
+import {
+  resolveCodeThemeId,
+  type CodeThemeId,
+} from "@atlcli/code-highlight/registry";
 
 /**
  * Wall-clock durations of the export's (deliberately overlapping) phases —
@@ -148,6 +152,8 @@ export interface ExportTimings {
 }
 
 export interface ExportReport {
+  /** Effective bundled Shiki theme used by code blocks. */
+  codeTheme: CodeThemeId;
   /** Placeholders resolved to a non-empty value. */
   resolvedCount: number;
   /** Distinct unsupported/never placeholder bases (rendered empty). */
@@ -192,6 +198,8 @@ export interface ExportResult {
 }
 
 export interface ExportInput {
+  /** Bundled Shiki theme for code blocks; defaults to `github-light`. */
+  codeTheme?: CodeThemeId;
   templateBytes: Uint8Array;
   /**
    * The ROOT page. Template placeholders (title/author/…) resolve against it.
@@ -326,6 +334,8 @@ export interface PreparedDocxExportV1 {
    */
   archiveDateMs?: number;
   filename: string;
+  /** Effective theme is durable even though body XML is already materialized. */
+  codeTheme: CodeThemeId;
   complete: boolean;
   updateFields: NonNullable<ExportInput["updateFields"]>;
   trustedSeqSequenceNames: string[];
@@ -466,6 +476,7 @@ export async function prepareDocxExport(input: ExportInput): Promise<PreparedDoc
   const start = Date.now();
   throwIfAborted(input.signal);
   const exportDate = input.exportDate ?? new Date();
+  const codeTheme = resolveCodeThemeId(input.codeTheme);
   const timings: ExportTimings = {
     resolveMs: 0,
     bodyMs: 0,
@@ -623,6 +634,7 @@ export async function prepareDocxExport(input: ExportInput): Promise<PreparedDoc
   const tableStyleResolution = resolveTableStyle(input.tableStyle, styleNames);
   const bodyStart = Date.now();
   const body = await serializeBlocks(blocks, {
+    codeTheme,
     styleNames,
     numbering,
     comments,
@@ -797,6 +809,7 @@ export async function prepareDocxExport(input: ExportInput): Promise<PreparedDoc
   ];
   return {
     schema: "atlcli.prepared-docx-export/1",
+    codeTheme,
     renderState: {
       archiveBytes,
       bodyXml: body.xml,
@@ -924,6 +937,9 @@ export async function renderPreparedDocxExport(
   return {
     bytes,
     report: {
+      // Historical /1 checkpoints predate codeTheme. Treat the absent field as
+      // the stable default while every new writer materializes it explicitly.
+      codeTheme: resolveCodeThemeId(prepared.codeTheme),
       resolvedCount: prepared.resolvedCount,
       unsupportedNames: prepared.unsupportedNames,
       skippedImages,

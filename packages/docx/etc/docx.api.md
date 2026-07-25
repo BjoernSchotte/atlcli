@@ -47,6 +47,7 @@ export interface ExportEnv {
 
 // export: ExportInput
 export interface ExportInput {
+    codeTheme?: CodeThemeId;
     templateBytes: Uint8Array;
     details: ConfluencePageDetails;
     blocks?: ExportBlock[];
@@ -73,6 +74,7 @@ export interface ExportInput {
 
 // export: ExportReport
 export interface ExportReport {
+    codeTheme: CodeThemeId;
     resolvedCount: number;
     unsupportedNames: string[];
     skippedImages: number;
@@ -202,6 +204,7 @@ export interface PreparedDocxExportV1 {
     renderState: PreparedDocxRenderStateV1 | undefined;
     archiveDateMs?: number;
     filename: string;
+    codeTheme: CodeThemeId;
     complete: boolean;
     updateFields: NonNullable<ExportInput["updateFields"]>;
     trustedSeqSequenceNames: string[];
@@ -343,6 +346,7 @@ export interface ExportEnv {
 
 // export: ExportInput
 export interface ExportInput {
+    codeTheme?: CodeThemeId;
     templateBytes: Uint8Array;
     details: ConfluencePageDetails;
     blocks?: ExportBlock[];
@@ -369,6 +373,7 @@ export interface ExportInput {
 
 // export: ExportReport
 export interface ExportReport {
+    codeTheme: CodeThemeId;
     resolvedCount: number;
     unsupportedNames: string[];
     skippedImages: number;
@@ -504,6 +509,7 @@ export interface PreparedDocxExportV1 {
     renderState: PreparedDocxRenderStateV1 | undefined;
     archiveDateMs?: number;
     filename: string;
+    codeTheme: CodeThemeId;
     complete: boolean;
     updateFields: NonNullable<ExportInput["updateFields"]>;
     trustedSeqSequenceNames: string[];
@@ -655,6 +661,7 @@ export interface ExportEnv {
 
 // export: ExportInput
 export interface ExportInput {
+    codeTheme?: CodeThemeId;
     templateBytes: Uint8Array;
     details: ConfluencePageDetails;
     blocks?: ExportBlock[];
@@ -681,6 +688,7 @@ export interface ExportInput {
 
 // export: ExportReport
 export interface ExportReport {
+    codeTheme: CodeThemeId;
     resolvedCount: number;
     unsupportedNames: string[];
     skippedImages: number;
@@ -810,6 +818,7 @@ export interface PreparedDocxExportV1 {
     renderState: PreparedDocxRenderStateV1 | undefined;
     archiveDateMs?: number;
     filename: string;
+    codeTheme: CodeThemeId;
     complete: boolean;
     updateFields: NonNullable<ExportInput["updateFields"]>;
     trustedSeqSequenceNames: string[];
@@ -1122,7 +1131,10 @@ export type CodeBlock = Extract<ExportBlock, {
 export declare function codeLineParagraph(tokens: {
     text: string;
     color?: string;
-}[], lineNumber?: number, lineNumberWidth?: number): string;
+}[], lineNumber?: number, lineNumberWidth?: number, theme?: {
+    background: string;
+    foreground: string;
+}): string;
 
 // export: codeStyleXml
 export declare function codeStyleXml(): string;
@@ -1331,6 +1343,7 @@ export declare function exportDocx(input: ExportInput): Promise<ExportResult>;
 
 // export: ExportInput
 export interface ExportInput {
+    codeTheme?: CodeThemeId;
     templateBytes: Uint8Array;
     details: ConfluencePageDetails;
     blocks?: ExportBlock[];
@@ -1357,6 +1370,7 @@ export interface ExportInput {
 
 // export: ExportReport
 export interface ExportReport {
+    codeTheme: CodeThemeId;
     resolvedCount: number;
     unsupportedNames: string[];
     skippedImages: number;
@@ -1729,6 +1743,7 @@ export interface PreparedDocxExportV1 {
     renderState: PreparedDocxRenderStateV1 | undefined;
     archiveDateMs?: number;
     filename: string;
+    codeTheme: CodeThemeId;
     complete: boolean;
     updateFields: NonNullable<ExportInput["updateFields"]>;
     trustedSeqSequenceNames: string[];
@@ -1895,6 +1910,7 @@ export declare function serializeBlocks(blocks: ExportBlock[], ctx: SerializeCon
 
 // export: SerializeContext
 export interface SerializeContext {
+    codeTheme?: CodeThemeId;
     styleNames: Map<string, string>;
     numbering?: NumberingAllocator;
     comments?: WordCommentRegistry;
@@ -2019,6 +2035,7 @@ export interface ExportEnv {
 
 // export: ExportInput
 export interface ExportInput {
+    codeTheme?: CodeThemeId;
     templateBytes: Uint8Array;
     details: ConfluencePageDetails;
     blocks?: ExportBlock[];
@@ -2045,6 +2062,7 @@ export interface ExportInput {
 
 // export: ExportReport
 export interface ExportReport {
+    codeTheme: CodeThemeId;
     resolvedCount: number;
     unsupportedNames: string[];
     skippedImages: number;
@@ -2180,6 +2198,7 @@ export interface PreparedDocxExportV1 {
     renderState: PreparedDocxRenderStateV1 | undefined;
     archiveDateMs?: number;
     filename: string;
+    codeTheme: CodeThemeId;
     complete: boolean;
     updateFields: NonNullable<ExportInput["updateFields"]>;
     trustedSeqSequenceNames: string[];

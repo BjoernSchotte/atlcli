@@ -37,6 +37,12 @@ describe("harness output content policy", () => {
     expect(scanHarnessText(`import "./app.js"; const pdfLink = "https://atlcli.sh/";`)).toEqual([]);
   });
 
+  it("allows Node keyword names inside an inert Shiki grammar payload", () => {
+    const grammar =
+      'Object.freeze(JSON.parse(`{"scopeName":"source.coffee","match":"__filename|__dirname"}`))';
+    expect(scanHarnessText(grammar)).toEqual([]);
+  });
+
   it("names the exact built file containing a seeded leak", () => {
     const root = mkdtempSync(join(tmpdir(), "atlcli-harness-scan-"));
     try {

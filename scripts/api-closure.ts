@@ -38,6 +38,14 @@ export interface FreezeDecision {
  * Recorded here as the single source the closure files render from.
  */
 export const FREEZE_DECISIONS: Record<string, FreezeDecision> = {
+  "@atlcli/code-highlight": {
+    version: "0.x",
+    frozen: false,
+    reasoning:
+      "STAYS 0.x: introduced for issue 102 as the shared lazy Shiki catalogue and tokenizer " +
+      "for DOCX, PDF, extension, CLI, and browser hosts. Keep it experimental while catalogue " +
+      "upgrade and downstream host compatibility policy are proven across a release cycle.",
+  },
   "@atlcli/confluence": {
     version: "1.0.0",
     frozen: true,

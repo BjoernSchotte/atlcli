@@ -35,7 +35,10 @@ import { DocxExportPanel } from "../export/DocxExportPanel.js";
 import { ScopeSection } from "../export/ScopeSection.js";
 import { SpaceExportConfirm } from "../export/SpaceExportConfirm.js";
 import { SettingsForm } from "../export/SettingsForm.js";
-import { PDF_LEVEL_A_SETTINGS } from "../export/pdf-settings.js";
+import {
+  CODE_THEME_SETTINGS,
+  PDF_LEVEL_A_SETTINGS,
+} from "../export/pdf-settings.js";
 import { TEMPLATES_SCREEN_ID } from "./TemplatesScreen.js";
 import { PreviewScreen } from "./PreviewScreen.js";
 import {
@@ -270,6 +273,14 @@ function LoadedExportScreenBody({ ports, page, retry, navigate }: ScreenProps): 
           style={format !== "docx" ? { display: "none" } : undefined}
           className="flex flex-col gap-3"
         >
+          <StudioStep number="03" label={t("export.codeTheme")}>
+            <SettingsForm
+              schema={CODE_THEME_SETTINGS}
+              values={values}
+              onChange={onSettingChange}
+              idPrefix="docx-code-theme"
+            />
+          </StudioStep>
           <DocxExportPanel
             port={ports.docx}
             store={ports.docxTemplates}

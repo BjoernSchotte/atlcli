@@ -12,6 +12,10 @@ import type {
   TableRow,
 } from "@atlcli/confluence";
 import type { TemplateManifest } from "@atlcli/template-pack";
+import type {
+  CodeThemeId,
+  HighlightedCode,
+} from "@atlcli/code-highlight";
 
 export interface PdfExportMetadata {
   title: string;
@@ -96,6 +100,8 @@ export type PreparedPdfBlock =
    */
   | (Omit<Extract<ExportBlock, { type: "unknown" }>, "body" | "extensionFrames"> & {
       body?: PreparedPdfBlock[];
+      /** Shared projection for the verbatim fallback when no rich body exists. */
+      plainBodyHighlight?: HighlightedCode;
       extensionFrames?: Array<Omit<AdfExtensionFrame, "content"> & {
         content: PreparedPdfBlock[];
       }>;
@@ -139,6 +145,8 @@ export type PreparedPdfBlock =
   | { type: "blockquote"; content: PreparedPdfBlock[] }
   | (Omit<Extract<ExportBlock, { type: "codeBlock" }>, "caption"> & {
       caption?: PreparedPdfCaption;
+      /** Shared Shiki projection prepared before Typst serialization. */
+      highlight: HighlightedCode;
     })
   | {
       type: "diagram";
@@ -298,6 +306,8 @@ export interface PdfExportTimings {
 }
 
 export interface PdfExportReport {
+  /** Effective bundled Shiki theme used by code blocks. */
+  codeTheme: CodeThemeId;
   filename: string;
   profile: PdfProfile;
   compilerVersion: string;

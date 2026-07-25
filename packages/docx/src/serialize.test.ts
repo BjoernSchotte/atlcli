@@ -616,8 +616,20 @@ describe("serializeBlocks — callouts, code, tables, images", () => {
     const { xml } = await serializeBlocks(blocks, { styleNames: noStyles });
     expect(xml).toContain('<w:pStyle w:val="AtlcliCode"/>');
     expect(xml).toContain("JetBrains Mono");
+    // github-light remains byte-compatible: its white background is the page
+    // background, so only non-default themes need an explicit paragraph fill.
+    expect(xml).not.toContain("<w:shd");
     // At least one syntax color was applied.
     expect(/<w:color w:val="[0-9A-F]{6}"\/>/.test(xml)).toBe(true);
+  });
+
+  it("applies the selected dark theme background to every code paragraph", async () => {
+    const { xml } = await serializeBlocks(
+      [{ type: "codeBlock", language: "ts", code: "const x = 1;\n" }],
+      { styleNames: noStyles, codeTheme: "github-dark" },
+    );
+    expect(xml.match(/<w:shd w:val="clear" w:color="auto" w:fill="24292E"\/>/g)).toHaveLength(2);
+    expect(xml).toContain('<w:color w:val="E1E4E8"/>');
   });
 
   it("renders authored code line numbers and reports the bounded no-wrap policy", async () => {

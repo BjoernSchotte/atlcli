@@ -22,12 +22,30 @@
  * map is flat by contract; `toPdfSettings` re-nests them.
  */
 import type { MessageKey } from "../../utils/i18n/messages.js";
+import {
+  CODE_THEME_METADATA,
+  DEFAULT_CODE_THEME,
+} from "@atlcli/code-highlight/registry";
 import type { SettingsSchema } from "./settings-schema.js";
 
 /** Byte cap on an uploaded logo, matching the engine's `LOGO_MAX_BYTES`. */
 export const PDF_LOGO_MAX_BYTES = 5 * 1024 * 1024;
 
+export const CODE_THEME_SETTINGS: SettingsSchema = {
+  codeTheme: {
+    type: "choice",
+    default: DEFAULT_CODE_THEME,
+    options: CODE_THEME_METADATA.map((theme) => ({
+      value: theme.id,
+      label: `${theme.displayName} (${theme.type})`,
+    })),
+    label: "Code theme",
+    group: "code",
+  },
+};
+
 export const PDF_LEVEL_A_SETTINGS: SettingsSchema = {
+  ...CODE_THEME_SETTINGS,
   page: {
     type: "choice",
     default: "a4",
@@ -73,6 +91,7 @@ export const PDF_LEVEL_A_SETTINGS: SettingsSchema = {
 
 /** Translated field labels for {@link PDF_LEVEL_A_SETTINGS}. */
 export const PDF_SETTING_LABEL_KEYS: Readonly<Record<string, MessageKey>> = {
+  codeTheme: "export.codeTheme",
   page: "pdf.settings.page",
   orientation: "pdf.settings.orientation",
   cover: "pdf.settings.cover",

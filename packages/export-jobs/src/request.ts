@@ -1,3 +1,4 @@
+import type { CodeThemeId } from "@atlcli/code-highlight/registry";
 import type { ExportFormat, ExportSourceV1 } from "./source.js";
 
 /** Fields shared by every version-1 export request. */
@@ -40,6 +41,8 @@ export interface DocxExportJobRequestV1 extends ExportJobRequestBaseV1 {
   options: {
     embedImages: boolean;
     resolveMacros: boolean;
+    /** Effective theme; absent only on historical schema-v1 records. */
+    codeTheme?: CodeThemeId;
     /** Preserve scroll-only/scroll-ignore content in the rendered document. */
     keepIgnored?: boolean;
     /** Turn warning-level report issues into the host's strict failure outcome. */
@@ -90,6 +93,8 @@ export interface PdfExportJobRequestV1 extends ExportJobRequestBaseV1 {
   settings: PdfExportSettingsV1;
   options: {
     resolveMacros: boolean;
+    /** Effective theme; absent only on historical schema-v1 records. */
+    codeTheme?: CodeThemeId;
     profile?: string;
     /** Turn warning-level report issues into the host's strict failure outcome. */
     strict?: boolean;

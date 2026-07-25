@@ -46,13 +46,24 @@ function matches(text: string, expressions: RegExp[]): string[] {
 }
 
 export function scanHarnessText(text: string): string[] {
-  return [
+  const findings = [
     ...matches(text, [NODE_SPECIFIER_RE, NODE_RUNTIME_RE]),
     ...matches(text, DYNAMIC_CODE_RES),
     ...matches(text, REMOTE_EXECUTABLE_RES),
     ...matches(text, [EXTENSION_RUNTIME_RE]),
     ...matches(text, ROOT_RELATIVE_RES),
   ];
+  // Shiki grammar chunks are inert JSON payloads. Some grammars list Node
+  // globals as source-language keywords; those strings are not runtime use.
+  if (
+    text.includes("Object.freeze(JSON.parse(`") &&
+    text.includes('"scopeName"')
+  ) {
+    return findings.filter(
+      (finding) => finding !== "__dirname" && finding !== "__filename",
+    );
+  }
+  return findings;
 }
 
 function walk(root: string): string[] {

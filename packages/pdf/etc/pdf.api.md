@@ -414,6 +414,7 @@ export type PdfExportPhase = "configuration" | "preparing" | "fetching" | "compi
 
 // export: PdfExportReport
 export interface PdfExportReport {
+    codeTheme: CodeThemeId;
     filename: string;
     profile: PdfProfile;
     compilerVersion: string;
@@ -588,6 +589,7 @@ export type PreparedPdfBlock = Exclude<ExportBlock, {
     type: "unknown";
 }>, "body" | "extensionFrames"> & {
     body?: PreparedPdfBlock[];
+    plainBodyHighlight?: HighlightedCode;
     extensionFrames?: Array<Omit<AdfExtensionFrame, "content"> & {
         content: PreparedPdfBlock[];
     }>;
@@ -655,6 +657,7 @@ export type PreparedPdfBlock = Exclude<ExportBlock, {
     type: "codeBlock";
 }>, "caption"> & {
     caption?: PreparedPdfCaption;
+    highlight: HighlightedCode;
 }) | {
     type: "diagram";
     assetPath: string;
@@ -691,6 +694,7 @@ export interface PreparedPdfExportV1 {
     schema: "atlcli.prepared-pdf-export/1";
     bundle: PdfSourceBundle | undefined;
     filename: string;
+    codeTheme: CodeThemeId;
     profile: PdfProfile;
     language?: string;
     sourceNotes: ExportNote[];
@@ -734,6 +738,7 @@ export interface PreparePdfExportEnv {
 
 // export: PreparePdfOptions
 export interface PreparePdfOptions {
+    codeTheme?: CodeThemeId;
     onProgress?: ExportProgressCallback;
     signal?: AbortSignal;
     pageContext?: {
@@ -814,6 +819,7 @@ export declare function runPdfExport(input: RunPdfExportInput, env: PdfExportEnv
 
 // export: RunPdfExportInput
 export interface RunPdfExportInput {
+    codeTheme?: CodeThemeId;
     blocks: ExportBlock[];
     sourceNotes?: ExportNote[];
     metadata: PdfExportMetadata;
@@ -1275,6 +1281,7 @@ export type PdfExportPhase = "configuration" | "preparing" | "fetching" | "compi
 
 // export: PdfExportReport
 export interface PdfExportReport {
+    codeTheme: CodeThemeId;
     filename: string;
     profile: PdfProfile;
     compilerVersion: string;
@@ -1449,6 +1456,7 @@ export type PreparedPdfBlock = Exclude<ExportBlock, {
     type: "unknown";
 }>, "body" | "extensionFrames"> & {
     body?: PreparedPdfBlock[];
+    plainBodyHighlight?: HighlightedCode;
     extensionFrames?: Array<Omit<AdfExtensionFrame, "content"> & {
         content: PreparedPdfBlock[];
     }>;
@@ -1516,6 +1524,7 @@ export type PreparedPdfBlock = Exclude<ExportBlock, {
     type: "codeBlock";
 }>, "caption"> & {
     caption?: PreparedPdfCaption;
+    highlight: HighlightedCode;
 }) | {
     type: "diagram";
     assetPath: string;
@@ -1552,6 +1561,7 @@ export interface PreparedPdfExportV1 {
     schema: "atlcli.prepared-pdf-export/1";
     bundle: PdfSourceBundle | undefined;
     filename: string;
+    codeTheme: CodeThemeId;
     profile: PdfProfile;
     language?: string;
     sourceNotes: ExportNote[];
@@ -1595,6 +1605,7 @@ export interface PreparePdfExportEnv {
 
 // export: PreparePdfOptions
 export interface PreparePdfOptions {
+    codeTheme?: CodeThemeId;
     onProgress?: ExportProgressCallback;
     signal?: AbortSignal;
     pageContext?: {
@@ -1675,6 +1686,7 @@ export declare function runPdfExport(input: RunPdfExportInput, env: PdfExportEnv
 
 // export: RunPdfExportInput
 export interface RunPdfExportInput {
+    codeTheme?: CodeThemeId;
     blocks: ExportBlock[];
     sourceNotes?: ExportNote[];
     metadata: PdfExportMetadata;
@@ -2136,6 +2148,7 @@ export type PdfExportPhase = "configuration" | "preparing" | "fetching" | "compi
 
 // export: PdfExportReport
 export interface PdfExportReport {
+    codeTheme: CodeThemeId;
     filename: string;
     profile: PdfProfile;
     compilerVersion: string;
@@ -2310,6 +2323,7 @@ export type PreparedPdfBlock = Exclude<ExportBlock, {
     type: "unknown";
 }>, "body" | "extensionFrames"> & {
     body?: PreparedPdfBlock[];
+    plainBodyHighlight?: HighlightedCode;
     extensionFrames?: Array<Omit<AdfExtensionFrame, "content"> & {
         content: PreparedPdfBlock[];
     }>;
@@ -2377,6 +2391,7 @@ export type PreparedPdfBlock = Exclude<ExportBlock, {
     type: "codeBlock";
 }>, "caption"> & {
     caption?: PreparedPdfCaption;
+    highlight: HighlightedCode;
 }) | {
     type: "diagram";
     assetPath: string;
@@ -2413,6 +2428,7 @@ export interface PreparedPdfExportV1 {
     schema: "atlcli.prepared-pdf-export/1";
     bundle: PdfSourceBundle | undefined;
     filename: string;
+    codeTheme: CodeThemeId;
     profile: PdfProfile;
     language?: string;
     sourceNotes: ExportNote[];
@@ -2456,6 +2472,7 @@ export interface PreparePdfExportEnv {
 
 // export: PreparePdfOptions
 export interface PreparePdfOptions {
+    codeTheme?: CodeThemeId;
     onProgress?: ExportProgressCallback;
     signal?: AbortSignal;
     pageContext?: {
@@ -2536,6 +2553,7 @@ export declare function runPdfExport(input: RunPdfExportInput, env: PdfExportEnv
 
 // export: RunPdfExportInput
 export interface RunPdfExportInput {
+    codeTheme?: CodeThemeId;
     blocks: ExportBlock[];
     sourceNotes?: ExportNote[];
     metadata: PdfExportMetadata;
@@ -2692,6 +2710,7 @@ export declare function preparePdfDocument(blocks: ExportBlock[], resolver: PdfA
 
 // export: PreparePdfOptions
 export interface PreparePdfOptions {
+    codeTheme?: CodeThemeId;
     onProgress?: ExportProgressCallback;
     signal?: AbortSignal;
     pageContext?: {

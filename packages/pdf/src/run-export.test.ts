@@ -42,6 +42,47 @@ describe("neutral runPdfExport", () => {
 
     expect(stagedReport).toEqual(directReport);
     expect(prepared.schema).toBe("atlcli.prepared-pdf-export/1");
+    expect(prepared.codeTheme).toBe("github-light");
+    expect(stagedReport.codeTheme).toBe("github-light");
+  });
+
+  it("persists and reports a non-default code theme", async () => {
+    const prepared = await preparePdfExport(
+      {
+        blocks: [{ type: "codeBlock", language: "ts", code: "const x = 1;" }],
+        metadata,
+        filename: "Themed.pdf",
+        codeTheme: "github-dark",
+      },
+      { assets },
+    );
+    const report = await renderPreparedPdfExport(
+      prepared,
+      {},
+      {
+        compiler: { compile: async () => ({ pdf: validPdf, diagnostics: [], compilerVersion: "test" }) },
+        output: { emit: async () => {} },
+      },
+    );
+    expect(prepared.codeTheme).toBe("github-dark");
+    expect(report.codeTheme).toBe("github-dark");
+  });
+
+  it("resumes a historical /1 checkpoint without a theme as github-light", async () => {
+    const prepared = await preparePdfExport(
+      { blocks, metadata, filename: "Historical.pdf" },
+      { assets },
+    );
+    delete (prepared as { codeTheme?: string }).codeTheme;
+    const report = await renderPreparedPdfExport(
+      prepared,
+      {},
+      {
+        compiler: { compile: async () => ({ pdf: validPdf, diagnostics: [], compilerVersion: "test" }) },
+        output: { emit: async () => {} },
+      },
+    );
+    expect(report.codeTheme).toBe("github-light");
   });
 
   it("consumes each materialized render value and retries from a fresh durable clone", async () => {

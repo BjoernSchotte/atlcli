@@ -22,6 +22,11 @@ import type {
   PreparedPdfDocument,
   PreparedPdfInlineNode,
 } from "./types.js";
+import {
+  DEFAULT_CODE_THEME,
+  highlightCode,
+  type CodeThemeId,
+} from "@atlcli/code-highlight";
 
 const EXTENSIONS: Record<string, string> = {
   "image/png": "png",
@@ -114,6 +119,8 @@ function assetKey(bytes: Uint8Array, mediaType: string): string {
 }
 
 export interface PreparePdfOptions {
+  /** Resolved bundled Shiki theme for every non-diagram code block. */
+  codeTheme?: CodeThemeId;
   /** Granular progress callback (spec 002 — one event per embedded asset). */
   onProgress?: ExportProgressCallback;
   /**
@@ -473,7 +480,20 @@ export async function preparePdfDocument(
             const caption = await prepareCaption(block.caption, `${path}.caption`);
             const { caption: _sourceCaption, ...codeBlock } = block;
             if ((block.language ?? "").trim().toLowerCase() !== "mermaid") {
-              return { ...codeBlock, ...(caption ? { caption } : {}) };
+              const highlight = await highlightCode(
+                block.code,
+                block.language,
+                options.codeTheme ?? DEFAULT_CODE_THEME,
+              );
+              if (highlight.skipped) {
+                notes.push({
+                  level: "info",
+                  code: "code-highlight-skipped",
+                  message: `Code block${block.language ? ` (${block.language})` : ""} was not syntax-highlighted (${highlight.skipped}); rendered as plain monospace.`,
+                  source: { blockPath: path },
+                });
+              }
+              return { ...codeBlock, highlight, ...(caption ? { caption } : {}) };
             }
             const rendered = await renderDiagram(block.code);
             if (rendered.kind === "svg") {
@@ -515,7 +535,20 @@ export async function preparePdfDocument(
                   ? `${rendered.diagramType} diagram rendered as source code.`
                   : `Diagram rendered as source code: ${rendered.reason}`,
             });
-            return { ...codeBlock, ...(caption ? { caption } : {}) };
+            const highlight = await highlightCode(
+              block.code,
+              block.language,
+              options.codeTheme ?? DEFAULT_CODE_THEME,
+            );
+            if (highlight.skipped) {
+              notes.push({
+                level: "info",
+                code: "code-highlight-skipped",
+                message: `Code block (${block.language}) was not syntax-highlighted (${highlight.skipped}); rendered as plain monospace.`,
+                source: { blockPath: path },
+              });
+            }
+            return { ...codeBlock, highlight, ...(caption ? { caption } : {}) };
           }
           case "unknown": {
             // Placeholder floor (spec 004): prepare the preserved body so images
@@ -524,6 +557,15 @@ export async function preparePdfDocument(
             const { body, extensionFrames, ...metadata } = block;
             return {
               ...metadata,
+              ...(block.plainBody
+                ? {
+                    plainBodyHighlight: await highlightCode(
+                      block.plainBody.slice(0, 20_000),
+                      undefined,
+                      options.codeTheme ?? DEFAULT_CODE_THEME,
+                    ),
+                  }
+                : {}),
               ...(body
                 ? { body: await walk(body, `${path}.body`) }
                 : {}),

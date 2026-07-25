@@ -22,6 +22,10 @@ import {
   uniqueAnchorId,
 } from "@atlcli/confluence";
 import { BUILTIN_PDF_DESIGN } from "./builtin-template.js";
+import {
+  DEFAULT_CODE_THEME,
+  resolveCodeTheme,
+} from "@atlcli/code-highlight/registry";
 import { escapeTypstContent, safeColor, typstLabel, typstString } from "./escape.js";
 import { resolvePdfSettings, typstSettingsDict, type ResolvedPdfDesign } from "./settings.js";
 import { createAtlcliTypstTemplate } from "./template.js";
@@ -1144,6 +1148,57 @@ function applyBlockPresentation(
   return presented;
 }
 
+/** Match DOCX's Shiki normalization: canonical RGB, dropping an alpha byte. */
+function shikiRgb(value: string, fallback: string): string {
+  const raw = value.startsWith("#") ? value : `#${value}`;
+  const alpha = raw.match(/^(#[0-9a-f]{6})[0-9a-f]{2}$/i);
+  return alpha ? alpha[1]!.toUpperCase() : safeColor(raw, fallback);
+}
+
+/**
+ * Render the shared Shiki projection without asking Typst to choose syntax
+ * colors. Each source line remains a distinct grid row, including trailing
+ * empty lines, while token text stays literal and copyable.
+ */
+function serializeHighlightedCodeBlock(
+  block: Extract<PreparedPdfBlock, { type: "codeBlock" }>,
+  writer: Writer,
+): string {
+  const mono = writer.design.typography.fonts.mono;
+  const size = writer.design.typography.roles.code!.size;
+  const firstLineNumber = block.firstLineNumber ?? 1;
+  const lastLineNumber = firstLineNumber + Math.max(0, block.highlight.lines.length - 1);
+  const lineNumberWidth = String(lastLineNumber).length;
+  const rows = block.highlight.lines.map((tokens, index) => {
+    const spans = tokens.length === 0 || tokens.every((token) => token.text.length === 0)
+      ? `#box(height: ${size})[]`
+      : tokens.map((token) =>
+          `#text(font: ${typstString(mono)}, size: ${size}, fill: rgb(${typstString(
+            shikiRgb(
+              token.color ?? block.highlight.theme.foreground,
+              block.highlight.theme.foreground,
+            ),
+          )}), ${typstString(token.text)})`
+        ).join("");
+    const body = `#box(width: 100%)[${spans}]`;
+    if (block.hideLineNumbers !== false) return `[${body}]`;
+    const number = String(firstLineNumber + index).padStart(lineNumberWidth);
+    return `[#grid(columns: (auto, 1fr), column-gutter: ${writer.design.tokens.layout.codeInset}, ` +
+      `[${`#text(font: ${typstString(mono)}, size: ${size}, fill: rgb(${typstString(writer.design.tokens.colors.muted)}), ${typstString(number)})`}], ` +
+      `[${body}])]`;
+  });
+  const background = shikiRgb(
+    block.highlight.theme.background,
+    block.highlight.theme.background,
+  );
+  return (
+    `block(width: 100%, fill: rgb(${typstString(background)}), ` +
+    `inset: ${writer.design.tokens.layout.codeInset}, ` +
+    `radius: ${writer.design.tokens.layout.codeRadius})[` +
+    `#grid(columns: (1fr), row-gutter: ${size} * 0.35, ${rows.join(", ")})]`
+  );
+}
+
 function serializeBlocks(
   blocks: PreparedPdfBlock[],
   writer: Writer,
@@ -1342,24 +1397,13 @@ function serializeBlock(
           source: { blockPath: path },
         });
       }
-      // NOTE: inside `#figure(...)` arguments Typst is in CODE mode, where a
-      // leading `#` is a syntax error ("the character `#` is not valid in
-      // code") — the figure body must be the bare `raw(...)` expression.
-      const rawCall = `raw(${typstString(block.code)}, lang: ${typstString(block.language ?? "text")}, block: true)`;
-      const lineBody =
-        block.hideLineNumbers === false
-          ? `box(width: 100%)[#grid(columns: (auto, 1fr), column-gutter: ${writer.design.tokens.layout.codeInset}, text(fill: rgb(${typstString(writer.design.tokens.colors.muted)}))[#(line.number + ${(block.firstLineNumber ?? 1) - 1})], box(width: 100%)[#line.body])]`
-          : "box(width: 100%)[#line.body]";
-      // A scoped raw.line rule gives every logical source line a bounded
-      // 1fr track. This keeps syntax-highlighted content copyable and permits
-      // page-safe wrapping without changing the exact neutral source string.
-      const rawExpr = `{ show raw.line: line => ${lineBody}; ${rawCall} }`;
-      // Only CAPTIONED code becomes a figure — caption-less code keeps today's
-      // rendering so C2's `figure.where(kind: raw)` outline never lists every
-      // code block (spec 003 C3).
+      // The figure body is a bare expression because figure arguments are
+      // Typst code mode. Colors and fill come exclusively from the prepared
+      // Shiki projection; no renderer-specific `raw(lang:)` highlighting runs.
+      const highlighted = serializeHighlightedCodeBlock(block, writer);
       const code = block.caption
-        ? `#figure(${rawExpr}, ${captionFigureArgs(block.caption, writer)})`
-        : `#${rawExpr}`;
+        ? `#figure(${highlighted}, ${captionFigureArgs(block.caption, writer)})`
+        : `#${highlighted}`;
       value = serializeCodeTitle(block.title, writer.design) + code;
       break;
     }
@@ -1717,7 +1761,15 @@ function serializeBlock(
           });
         }
         parts.push(
-          serializeBlocks([{ type: "codeBlock", code: text }], writer, `${path}.plainBody`, context)
+          serializeBlocks([{
+            type: "codeBlock",
+            code: text,
+            highlight: block.plainBodyHighlight ?? {
+              theme: resolveCodeTheme(DEFAULT_CODE_THEME),
+              lines: text.split("\n").map((line) => [{ text: line }]),
+              skipped: null,
+            },
+          }], writer, `${path}.plainBody`, context)
         );
       }
       value = parts.join("\n");

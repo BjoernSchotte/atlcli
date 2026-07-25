@@ -13,6 +13,10 @@
       "enum": ["python", "ts"],
       "description": "Current producers emit `ts`; `python` remains accepted so archived atlcli.export-report/1 documents stay valid."
     },
+    "codeTheme": {
+      "type": "string",
+      "description": "Effective bundled Shiki theme used for code blocks."
+    },
     "sourcePages": {
       "type": "array",
       "description": "One entry per source page — provenance/fetch-and-compose status only, NO per-page metrics.",

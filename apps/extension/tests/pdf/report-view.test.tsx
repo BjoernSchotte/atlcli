@@ -4,11 +4,31 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { PdfReportView } from "../../entrypoints/sidepanel/PdfSection.js";
 
 describe("PdfReportView", () => {
+  it("shows the exact Shiki theme used by the export", () => {
+    const html = renderToStaticMarkup(
+      <PdfReportView report={{
+        filename: "Theme.pdf",
+        profile: "tagged",
+        codeTheme: "dracula",
+        compilerVersion: "test",
+        embeddedImages: 0,
+        renderedDiagrams: 0,
+        skippedAssets: 0,
+        notes: [],
+        complete: true,
+        timings: { prepareMs: 1, compileMs: 2, emitMs: 1, totalMs: 4 },
+      }} />
+    );
+    expect(html).toContain('data-testid="report-code-theme"');
+    expect(html).toContain("Code theme: dracula");
+  });
+
   it("renders PDF-specific counts and notes", () => {
     const html = renderToStaticMarkup(
       <PdfReportView report={{
         filename: "Guide.pdf",
         profile: "tagged",
+        codeTheme: "github-light",
         compilerVersion: "test",
         embeddedImages: 2,
         renderedDiagrams: 1,
@@ -37,6 +57,7 @@ describe("PdfReportView", () => {
       <PdfReportView report={{
         filename: "Long.pdf",
         profile: "tagged",
+        codeTheme: "github-light",
         compilerVersion: "test",
         embeddedImages: 5,
         renderedDiagrams: 0,
@@ -58,6 +79,7 @@ describe("PdfReportView", () => {
       <PdfReportView report={{
         filename: "Macros.pdf",
         profile: "tagged",
+        codeTheme: "github-light",
         compilerVersion: "test",
         embeddedImages: 0,
         renderedDiagrams: 0,
@@ -89,6 +111,7 @@ describe("PdfReportView", () => {
       <PdfReportView report={{
         filename: "Space.pdf",
         profile: "tagged",
+        codeTheme: "github-light",
         compilerVersion: "test",
         embeddedImages: 8,
         renderedDiagrams: 7,

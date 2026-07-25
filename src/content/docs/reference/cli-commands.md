@@ -321,7 +321,9 @@ atlcli wiki docs template import --file <path>
 ```bash
 # Foreground export through the durable job runtime
 atlcli wiki export <page-id> --output ./page.docx
+atlcli wiki export <page-id> --code-theme dracula --output ./page.docx
 atlcli wiki export <page-id> --format pdf --output ./page.pdf
+atlcli wiki export <page-id> --format pdf --code-theme nord --output ./page.pdf
 atlcli wiki export <page-id> --scope tree --output ./handbook.docx
 atlcli wiki export --scope space --space DOCS --format pdf --out-dir ./dist
 

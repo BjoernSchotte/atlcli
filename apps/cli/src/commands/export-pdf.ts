@@ -570,6 +570,7 @@ export async function exportPdf(args: ExportPdfArgs): Promise<ExportOutcome> {
     // `buildTreeExportReport`, which makes both REQUIRED at compile time.
     const common = {
       format,
+      codeTheme: report.codeTheme,
       sourcePages,
       outputDetails: [outputDetail],
       issues,

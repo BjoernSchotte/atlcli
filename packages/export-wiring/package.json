@@ -38,6 +38,7 @@
     "postpack": "bun ../../scripts/strip-dev-condition.ts restore"
   },
   "dependencies": {
+    "@atlcli/code-highlight": "workspace:*",
     "@atlcli/confluence": "workspace:*",
     "@atlcli/docx": "workspace:*",
     "@atlcli/export-jobs": "workspace:*",

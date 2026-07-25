@@ -4,6 +4,7 @@ import {
   type PdfExportJobRequestV1,
   type PdfExportSettingsV1,
 } from "@atlcli/export-jobs";
+import { resolveCodeThemeId } from "@atlcli/code-highlight/registry";
 import { BUILTIN_PDF_TEMPLATE_MANIFEST } from "@atlcli/pdf/browser";
 import type { PdfExportRequest } from "../ports/export.js";
 import { sanitizeDownloadName } from "../download.js";
@@ -67,6 +68,7 @@ export function createExtensionPdfJobRequest(
     settings: durableSettings(request, options.pinnedLogo),
     options: {
       resolveMacros: request.resolveMacros !== false,
+      codeTheme: resolveCodeThemeId(request.codeTheme),
       // Recovery before `ready-to-render` must rebuild byte-identical metadata.
       // Pin the timestamp with the unresolved request instead of sampling the
       // offscreen host's clock on each attempt.

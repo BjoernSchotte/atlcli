@@ -74,6 +74,18 @@ The exporter does not automatically switch page orientation, clip a paragraph or
 or shrink every table font. Landscape pages and user-configurable wide-table policies remain
 outside the current standard template.
 
+## Code highlighting
+
+`RunPdfExportInput.codeTheme` accepts the same generated Shiki theme IDs as
+DOCX and defaults to `github-light`. Highlighting happens during preparation,
+before the durable render checkpoint: prepared blocks contain explicit token
+text, RGB colors, and the selected theme background. Typst only lays out those
+tokens; it does not choose a second syntax theme.
+
+This keeps preview, direct export, recovered background jobs, and DOCX/PDF
+color semantics aligned. `PdfExportReport.codeTheme` names the effective ID.
+Unknown languages degrade to plain readable code and a report note.
+
 ## Runtime matrix
 
 | Component | Pinned value | Verification |

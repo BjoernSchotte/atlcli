@@ -42,6 +42,13 @@ A terminal row never returns to `running`. **Retry** creates a linked job from a
 failed, interrupted, or cancelled row. **Run again** creates a linked job from a
 successful row. The original record stays immutable history.
 
+Render-affecting choices are part of that immutable request. In particular,
+`options.codeTheme` contains the resolved Shiki theme ID rather than relying on
+the host's current preference. Resume, Retry, and Run again therefore retain
+the submitted code colors even when a user changes the per-space selector
+after submission. Historical `/1` requests without this additive field resolve
+to `github-light`.
+
 ## CLI operation
 
 An ordinary CLI export is still foreground. The process submits and claims its

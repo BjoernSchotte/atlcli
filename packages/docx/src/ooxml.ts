@@ -754,6 +754,7 @@ export function codeLineParagraph(
   tokens: { text: string; color?: string }[],
   lineNumber?: number,
   lineNumberWidth = 1,
+  theme?: { background: string; foreground: string },
 ): string {
   const gutter =
     lineNumber === undefined
@@ -766,16 +767,17 @@ export function codeLineParagraph(
           "<w:r><w:tab/></w:r>"
         );
   const runs = gutter + tokens
-    .map((t) => run(t.text, { code: true, color: t.color }))
+    .map((t) => run(t.text, { code: true, color: t.color ?? theme?.foreground }))
     .join("");
   return paragraph(runs || run("", { code: true }), {
     styleId: CODE_STYLE_ID,
-    ...(lineNumber === undefined
-      ? {}
-      : {
-          extraPPr:
-            '<w:tabs><w:tab w:val="left" w:pos="480"/></w:tabs>' +
-            '<w:ind w:start="480" w:hanging="480"/>',
-        }),
+    extraPPr:
+      (theme
+        ? `<w:shd w:val="clear" w:color="auto" w:fill="${normalizeColor(theme.background)}"/>`
+        : "") +
+      (lineNumber === undefined
+        ? ""
+        : '<w:tabs><w:tab w:val="left" w:pos="480"/></w:tabs>' +
+          '<w:ind w:start="480" w:hanging="480"/>'),
   });
 }

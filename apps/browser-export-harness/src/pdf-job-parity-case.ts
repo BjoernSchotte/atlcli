@@ -37,6 +37,7 @@ const ENGINE_INPUT = {
   profile: "tagged" as const,
   filename: PDF_FILENAME,
   sourceNotes: [SOURCE_NOTE],
+  codeTheme: "dracula" as const,
 };
 
 const REQUEST: PdfExportJobRequestV1 = {
@@ -59,7 +60,7 @@ const REQUEST: PdfExportJobRequestV1 = {
   output: { policy: "collect" },
   template: { id: "default", manifestVersion: "1" },
   settings: {},
-  options: { resolveMacros: false, profile: "tagged" },
+  options: { resolveMacros: false, profile: "tagged", codeTheme: "dracula" },
 };
 
 export interface PdfJobParityFixtureV1 {
@@ -326,6 +327,7 @@ export async function runPdfJobParityCase(options: PdfJobParityCaseOptions = {})
       jobCompileCalls,
       renderAttempts: job.renderAttempts,
       reservationReleased: job.reservationReleased,
+      codeTheme: direct.report.codeTheme,
     };
   } finally {
     jobCompiler.dispose();

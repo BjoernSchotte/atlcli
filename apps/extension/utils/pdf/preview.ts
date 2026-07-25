@@ -56,6 +56,7 @@ import {
   type PdfThemeOptions,
 } from "@atlcli/pdf/browser";
 import type { LoadedPage } from "../read-path.js";
+import type { CodeThemeId } from "@atlcli/code-highlight/registry";
 import { exportScopeIdentity } from "../scope-state.js";
 import { resolveExportComposition } from "../confluence/export-composition.js";
 import { sessionTreeSource } from "../confluence/tree-source.js";
@@ -356,6 +357,7 @@ export interface PdfPagePreviewInput {
   page: LoadedPage;
   pageUrl: string;
   settings?: PdfTemplateSettings;
+  codeTheme?: CodeThemeId;
   macros?: RunPdfMacroOptions;
   theme?: PdfThemeOptions;
   profile?: PdfProfile;
@@ -384,6 +386,7 @@ export interface PdfComposedPreviewInput {
   filename: string;
   assets: PdfAssetResolver;
   settings?: PdfTemplateSettings;
+  codeTheme?: CodeThemeId;
   theme?: PdfThemeOptions;
   profile?: PdfProfile;
   signal?: AbortSignal;
@@ -439,6 +442,7 @@ export async function runPagePdfPreview(
         page: input.page,
         pageUrl: input.pageUrl,
         settings: input.settings,
+        codeTheme: input.codeTheme,
         macros: input.macros,
         theme: input.theme,
         profile: input.profile,
@@ -505,6 +509,7 @@ export async function runScopedPdfPreview(
         scope,
         ...(input.labels ? { labels: input.labels } : {}),
         settings: input.settings,
+        codeTheme: input.codeTheme,
         macros: input.macros,
         theme: input.theme,
         profile: input.profile,
@@ -587,6 +592,7 @@ export async function runComposedPdfPreview(
         sourceNotes: input.sourceNotes,
         metadata: input.metadata,
         settings: input.settings,
+        codeTheme: input.codeTheme,
         theme: input.theme,
         profile: input.profile,
         filename: input.filename,

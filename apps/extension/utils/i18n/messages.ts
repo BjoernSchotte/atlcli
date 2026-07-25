@@ -47,6 +47,8 @@ const en = {
   "studio.format.pdfDetail": "Print-ready document",
   "studio.format.docxDetail": "Editable template",
   "studio.preview": "Review document",
+  "export.codeTheme": "Code theme",
+  "export.codeThemeValue": "Code theme: {theme}",
 
   "screen.export.label": "Studio",
   "screen.export.description": "Export the current Confluence page to PDF or Word.",
@@ -411,6 +413,8 @@ const de: MessageCatalog = {
   "studio.format.pdfDetail": "Druckfertiges Dokument",
   "studio.format.docxDetail": "Bearbeitbare Vorlage",
   "studio.preview": "Dokument prüfen",
+  "export.codeTheme": "Code-Theme",
+  "export.codeThemeValue": "Code-Theme: {theme}",
 
   "screen.export.label": "Studio",
   "screen.export.description": "Die aktuelle Confluence-Seite als PDF oder Word exportieren.",

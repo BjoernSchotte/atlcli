@@ -31,6 +31,9 @@ export function ReportView({ report }: { report: ExportReport }): React.JSX.Elem
         </div>
       </div>
       <ul className="m-0 mt-1.5 list-disc pl-4">
+        <li data-testid="report-code-theme">
+          {t("export.codeThemeValue", { theme: report.codeTheme })}
+        </li>
         <li>{t("docx.report.resolved", { count: report.resolvedCount })}</li>
         {report.unsupportedNames.length > 0 && (
           <li data-testid="report-unsupported">

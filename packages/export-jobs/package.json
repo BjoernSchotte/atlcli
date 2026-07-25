@@ -28,5 +28,7 @@
     "prepack": "bun ../../scripts/strip-dev-condition.ts strip",
     "postpack": "bun ../../scripts/strip-dev-condition.ts restore"
   },
-  "dependencies": {}
+  "dependencies": {
+    "@atlcli/code-highlight": "workspace:*"
+  }
 }

@@ -112,6 +112,13 @@
         "wxt": "^0.20.27",
       },
     },
+    "packages/code-highlight": {
+      "name": "@atlcli/code-highlight",
+      "version": "1.0.0",
+      "dependencies": {
+        "shiki": "^4.3.1",
+      },
+    },
     "packages/confluence": {
       "name": "@atlcli/confluence",
       "version": "1.0.0",
@@ -313,6 +320,8 @@
     "@atlcli/browser-export-harness": ["@atlcli/browser-export-harness@workspace:apps/browser-export-harness"],
 
     "@atlcli/cli": ["@atlcli/cli@workspace:apps/cli"],
+
+    "@atlcli/code-highlight": ["@atlcli/code-highlight@workspace:packages/code-highlight"],
 
     "@atlcli/confluence": ["@atlcli/confluence@workspace:packages/confluence"],
 

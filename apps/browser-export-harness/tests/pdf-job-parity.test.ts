@@ -56,6 +56,7 @@ function report(overrides: Partial<PdfExportReport> = {}): PdfExportReport {
     compilerDiagnostics: [],
     timings: { prepareMs: 1, compileMs: 2, emitMs: 3, totalMs: 6 },
     ...overrides,
+    codeTheme: overrides.codeTheme ?? "github-light",
   };
 }
 
@@ -71,6 +72,7 @@ describe("PDF direct-vs-job parity", () => {
     });
 
     expect(result).toMatchObject({ usedRealWorker: true, jobCompileCalls: 1 });
+    expect(result.codeTheme).toBe("dracula");
     expect(compilers).toHaveLength(2);
     expect(compilers.map((compiler) => compiler.compileCalls)).toEqual([1, 1]);
     expect(compilers.every((compiler) => compiler.disposed)).toBe(true);

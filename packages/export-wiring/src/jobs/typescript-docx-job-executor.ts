@@ -19,6 +19,7 @@ import {
   type PreparedDocxExportV1,
   type SvgRasterizer,
 } from "@atlcli/docx";
+import { resolveCodeThemeId } from "@atlcli/code-highlight/registry";
 import type { ExportProgressCallback } from "@atlcli/confluence";
 import {
   buildProductiveExportTelemetryV1,
@@ -660,6 +661,7 @@ function instrumentEngineInput(
     embedImages: request.options.embedImages,
     updateFields: request.options.updateFields,
     captionLang: request.options.captionLang,
+    codeTheme: resolveCodeThemeId(request.options.codeTheme),
     macros: request.options.resolveMacros ? input.macros : undefined,
     assets,
     rasterizer,

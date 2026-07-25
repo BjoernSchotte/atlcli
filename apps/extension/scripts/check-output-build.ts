@@ -277,7 +277,16 @@ export function scanText(text: string): string[] {
   for (const re of DYNAMIC_CODE_RES) {
     for (const m of text.matchAll(re)) found.add(m[0].trim());
   }
-  return [...found];
+  const findings = [...found];
+  if (
+    text.includes("Object.freeze(JSON.parse(`") &&
+    text.includes('"scopeName"')
+  ) {
+    return findings.filter(
+      (finding) => finding !== "__dirname" && finding !== "__filename",
+    );
+  }
+  return findings;
 }
 
 /** Verify that every runtime asset needed for a browser-only PDF export exists. */
