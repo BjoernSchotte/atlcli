@@ -5,6 +5,13 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+    # Spelled out rather than inherited from the GitHub default. Without
+    # `ready_for_review` a PR can sit in draft for days and then be marked
+    # ready — the moment a human is asked to trust the checks — while the
+    # newest run still points at an outdated moment in time. Every
+    # `pull_request`-triggered workflow in this repo carries this same list;
+    # scripts/ci/workflow-policy.test.ts enforces it.
+    types: [opened, synchronize, reopened, ready_for_review]
   schedule:
     # Full unfiltered drift guard. Path routing must never become the only proof.
     - cron: "33 5 * * 6"

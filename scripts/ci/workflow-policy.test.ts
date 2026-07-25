@@ -4,7 +4,26 @@ import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 
 const REPO_ROOT = fileURLToPath(new URL("../..", import.meta.url));
-const workflow = (name: string) => readFile(join(REPO_ROOT, ".github", "workflows", name), "utf8");
+const WORKFLOW_DIR = join(REPO_ROOT, ".github", "workflows");
+const workflow = (name: string) => readFile(join(WORKFLOW_DIR, name), "utf8");
+const workflowNames = async () =>
+  (await readdir(WORKFLOW_DIR)).filter((entry) => entry.endsWith(".yml"));
+
+/** Body of an indented YAML block, ending at the next key of the same depth. */
+const block = (source: string, header: RegExp, indent: number): string | null => {
+  const lines = source.split("\n");
+  const start = lines.findIndex((line) => header.test(line));
+  if (start === -1) return null;
+  const rest = lines.slice(start + 1);
+  const end = rest.findIndex((line) => new RegExp(`^ {${indent}}\\S`).test(line));
+  return (end === -1 ? rest : rest.slice(0, end)).join("\n");
+};
+
+/** The `pull_request:` trigger body of a workflow, or null when it has none. */
+const pullRequestTrigger = (source: string): string | null => {
+  const triggers = block(source, /^on:\s*$/, 0);
+  return triggers === null ? null : block(triggers, /^ {2}pull_request:\s*$/, 2);
+};
 
 describe("CI workflow policy", () => {
   it("keeps one stable required check around selectively skipped jobs", async () => {
@@ -22,6 +41,26 @@ describe("CI workflow policy", () => {
     expect(ci).toContain("group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}");
     expect(ci).toContain("cancel-in-progress: ${{ github.event_name == 'pull_request' }}");
     expect(ci).toMatch(/schedule:\n\s+# Full unfiltered drift guard/);
+  });
+
+  it("revalidates a pull request when it leaves draft", async () => {
+    const ci = await workflow("ci.yml");
+    const trigger = pullRequestTrigger(ci);
+    expect(trigger).not.toBeNull();
+    expect(trigger).toContain("types: [opened, synchronize, reopened, ready_for_review]");
+  });
+
+  it("spells out the same trigger types on every pull_request workflow", async () => {
+    for (const name of await workflowNames()) {
+      const trigger = pullRequestTrigger(await workflow(name));
+      if (trigger === null) continue;
+      const types = trigger.match(/^\s*types:\s*\[(.+)\]\s*$/m);
+      expect(types, `${name} inherits the default pull_request types`).not.toBeNull();
+      const listed = types![1]!.split(",").map((entry) => entry.trim());
+      for (const action of ["opened", "synchronize", "reopened", "ready_for_review"]) {
+        expect(listed, `${name} does not listen for ${action}`).toContain(action);
+      }
+    }
   });
 
   it("runs the browser gate in parallel with product quality", async () => {
