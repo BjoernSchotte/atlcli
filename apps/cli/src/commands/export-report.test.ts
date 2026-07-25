@@ -169,6 +169,15 @@ describe("export-report kernel (spec 008 T3.2/T3.4)", () => {
     expect(docxReport.notesByCode).toEqual({ "label-filtered": 1 });
     expect(docxReport.outputs).toEqual(["/tmp/tree.docx"]);
 
+    // Removing an engine must not retroactively invalidate archived documents
+    // under the unchanged, additive-only /1 schema. Current producer types stay
+    // narrowed to "ts"; this fixture deliberately models historical JSON.
+    const historicalPythonReport = { ...docxReport, engine: "python" };
+    expect(
+      validate(historicalPythonReport) ? [] : validate.errors,
+      "atlcli.export-report/1 must keep accepting historical Python reports",
+    ).toEqual([]);
+
     // An `info`-severity issue (an engine note with level "info") is part of the
     // /1 contract too — the schema's severity enum must accept it.
     const withInfo = buildReport({
