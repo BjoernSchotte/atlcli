@@ -574,6 +574,8 @@ export declare class JiraClient {
         total: number;
     }>;
     getIssueAttachments(keyOrId: string): Promise<JiraAttachment[]>;
+    getAttachment(id: string): Promise<JiraAttachment>;
+    deleteAttachment(id: string): Promise<void>;
     downloadAttachment(contentUrl: string, options?: {
         signal?: AbortSignal;
     }): Promise<Buffer>;
@@ -1064,6 +1066,39 @@ export declare function aggregateWorklogs(worklogs: WorklogWithIssue[], user: st
     to: string;
 }, groupBy?: "issue" | "date"): WorklogReport;
 
+// export: AttachmentJson
+export type AttachmentJson = {
+    id: string;
+    filename: string;
+    size: number;
+    mimeType: string;
+    created: string;
+    author: {
+        displayName: string;
+        email?: string;
+    };
+    content: string;
+};
+
+// export: AttachmentTarget
+export type AttachmentTarget = {
+    kind: "id";
+    id: string;
+} | {
+    kind: "issue";
+    issueKey: string;
+    filename: string;
+};
+
+// export: AttachmentTargetResult
+export type AttachmentTargetResult = {
+    ok: true;
+    target: AttachmentTarget;
+} | {
+    ok: false;
+    error: string;
+};
+
 // export: BulkCreateResult
 export interface BulkCreateResult {
     issues: Array<{
@@ -1245,6 +1280,15 @@ export interface ExportOptions {
     outputPath: string;
 }
 
+// export: formatAttachmentDate
+export declare function formatAttachmentDate(created: string | undefined): string;
+
+// export: formatAttachmentSize
+export declare function formatAttachmentSize(bytes: number): string;
+
+// export: formatAttachmentsTable
+export declare function formatAttachmentsTable(attachments: readonly JiraAttachment[]): string[];
+
 // export: formatElapsed
 export declare function formatElapsed(seconds: number): string;
 
@@ -1329,6 +1373,9 @@ export interface ImportResult {
         error?: string;
     }>;
 }
+
+// export: insertIdSuffix
+export declare function insertIdSuffix(filename: string, id: string): string;
 
 // export: isIssueComplete
 export declare function isIssueComplete(issue: JiraIssue): boolean;
@@ -1704,6 +1751,8 @@ export declare class JiraClient {
         total: number;
     }>;
     getIssueAttachments(keyOrId: string): Promise<JiraAttachment[]>;
+    getAttachment(id: string): Promise<JiraAttachment>;
+    deleteAttachment(id: string): Promise<void>;
     downloadAttachment(contentUrl: string, options?: {
         signal?: AbortSignal;
     }): Promise<Buffer>;
@@ -2273,6 +2322,15 @@ export declare function migrateTemplates(): Promise<{
     errors: string[];
 }>;
 
+// export: outputIsDirectory
+export declare function outputIsDirectory(output: string | undefined, opts: {
+    existsAsDirectory: boolean;
+    fileCount: number;
+}): boolean;
+
+// export: parseAttachmentTarget
+export declare function parseAttachmentTarget(args: string[]): AttachmentTargetResult;
+
 // export: parseCsv
 export declare function parseCsv(content: string): ImportIssue[];
 
@@ -2303,6 +2361,18 @@ export declare function peekTimer(): {
     elapsedSeconds: number;
 };
 
+// export: planDownloads
+export declare function planDownloads<T extends {
+    id: string;
+    filename: string;
+}>(attachments: readonly T[]): PlannedDownload<T>[];
+
+// export: PlannedDownload
+export type PlannedDownload<T> = {
+    attachment: T;
+    filename: string;
+};
+
 // export: ProfileJiraTemplateStorage
 export declare class ProfileJiraTemplateStorage extends BaseJiraTemplateStorage {
     private profileName;
@@ -2323,8 +2393,16 @@ export declare class ProjectJiraTemplateStorage extends BaseJiraTemplateStorage 
     protected getProject(): string;
 }
 
+// export: resolveDownloadPath
+export declare function resolveDownloadPath(output: string | undefined, filename: string, opts: {
+    isDirectory: boolean;
+}): string;
+
 // export: roundTime
 export declare function roundTime(seconds: number, intervalMinutes: number, mode?: "nearest" | "up" | "down"): number;
+
+// export: sanitizeAttachmentFilename
+export declare function sanitizeAttachmentFilename(filename: string, id: string): string;
 
 // export: saveTemplate
 // @deprecated saveTemplate — Use JiraTemplateStorage.save() instead
@@ -2340,6 +2418,11 @@ export declare function secondsToHuman(seconds: number): string;
 
 // export: secondsToJiraFormat
 export declare function secondsToJiraFormat(seconds: number, config?: TimeConfig): string;
+
+// export: selectAttachmentsByFilename
+export declare function selectAttachmentsByFilename<T extends {
+    filename: string;
+}>(attachments: readonly T[], filename: string): T[];
 
 // export: SprintMetrics
 export interface SprintMetrics {
@@ -2399,6 +2482,9 @@ export interface TimerState {
     profile: string;
     comment?: string;
 }
+
+// export: toAttachmentJson
+export declare function toAttachmentJson(attachment: JiraAttachment): AttachmentJson;
 
 // export: toWorklogWithIssue
 export declare function toWorklogWithIssue(worklog: JiraWorklog, issueKey: string, issueSummary: string): WorklogWithIssue;
@@ -3057,6 +3143,8 @@ export declare class JiraClient {
         total: number;
     }>;
     getIssueAttachments(keyOrId: string): Promise<JiraAttachment[]>;
+    getAttachment(id: string): Promise<JiraAttachment>;
+    deleteAttachment(id: string): Promise<void>;
     downloadAttachment(contentUrl: string, options?: {
         signal?: AbortSignal;
     }): Promise<Buffer>;
@@ -3547,6 +3635,39 @@ export declare function aggregateWorklogs(worklogs: WorklogWithIssue[], user: st
     to: string;
 }, groupBy?: "issue" | "date"): WorklogReport;
 
+// export: AttachmentJson
+export type AttachmentJson = {
+    id: string;
+    filename: string;
+    size: number;
+    mimeType: string;
+    created: string;
+    author: {
+        displayName: string;
+        email?: string;
+    };
+    content: string;
+};
+
+// export: AttachmentTarget
+export type AttachmentTarget = {
+    kind: "id";
+    id: string;
+} | {
+    kind: "issue";
+    issueKey: string;
+    filename: string;
+};
+
+// export: AttachmentTargetResult
+export type AttachmentTargetResult = {
+    ok: true;
+    target: AttachmentTarget;
+} | {
+    ok: false;
+    error: string;
+};
+
 // export: BulkCreateResult
 export interface BulkCreateResult {
     issues: Array<{
@@ -3728,6 +3849,15 @@ export interface ExportOptions {
     outputPath: string;
 }
 
+// export: formatAttachmentDate
+export declare function formatAttachmentDate(created: string | undefined): string;
+
+// export: formatAttachmentSize
+export declare function formatAttachmentSize(bytes: number): string;
+
+// export: formatAttachmentsTable
+export declare function formatAttachmentsTable(attachments: readonly JiraAttachment[]): string[];
+
 // export: formatElapsed
 export declare function formatElapsed(seconds: number): string;
 
@@ -3812,6 +3942,9 @@ export interface ImportResult {
         error?: string;
     }>;
 }
+
+// export: insertIdSuffix
+export declare function insertIdSuffix(filename: string, id: string): string;
 
 // export: isIssueComplete
 export declare function isIssueComplete(issue: JiraIssue): boolean;
@@ -4187,6 +4320,8 @@ export declare class JiraClient {
         total: number;
     }>;
     getIssueAttachments(keyOrId: string): Promise<JiraAttachment[]>;
+    getAttachment(id: string): Promise<JiraAttachment>;
+    deleteAttachment(id: string): Promise<void>;
     downloadAttachment(contentUrl: string, options?: {
         signal?: AbortSignal;
     }): Promise<Buffer>;
@@ -4756,6 +4891,15 @@ export declare function migrateTemplates(): Promise<{
     errors: string[];
 }>;
 
+// export: outputIsDirectory
+export declare function outputIsDirectory(output: string | undefined, opts: {
+    existsAsDirectory: boolean;
+    fileCount: number;
+}): boolean;
+
+// export: parseAttachmentTarget
+export declare function parseAttachmentTarget(args: string[]): AttachmentTargetResult;
+
 // export: parseCsv
 export declare function parseCsv(content: string): ImportIssue[];
 
@@ -4786,6 +4930,18 @@ export declare function peekTimer(): {
     elapsedSeconds: number;
 };
 
+// export: planDownloads
+export declare function planDownloads<T extends {
+    id: string;
+    filename: string;
+}>(attachments: readonly T[]): PlannedDownload<T>[];
+
+// export: PlannedDownload
+export type PlannedDownload<T> = {
+    attachment: T;
+    filename: string;
+};
+
 // export: ProfileJiraTemplateStorage
 export declare class ProfileJiraTemplateStorage extends BaseJiraTemplateStorage {
     private profileName;
@@ -4806,8 +4962,16 @@ export declare class ProjectJiraTemplateStorage extends BaseJiraTemplateStorage 
     protected getProject(): string;
 }
 
+// export: resolveDownloadPath
+export declare function resolveDownloadPath(output: string | undefined, filename: string, opts: {
+    isDirectory: boolean;
+}): string;
+
 // export: roundTime
 export declare function roundTime(seconds: number, intervalMinutes: number, mode?: "nearest" | "up" | "down"): number;
+
+// export: sanitizeAttachmentFilename
+export declare function sanitizeAttachmentFilename(filename: string, id: string): string;
 
 // export: saveTemplate
 // @deprecated saveTemplate — Use JiraTemplateStorage.save() instead
@@ -4823,6 +4987,11 @@ export declare function secondsToHuman(seconds: number): string;
 
 // export: secondsToJiraFormat
 export declare function secondsToJiraFormat(seconds: number, config?: TimeConfig): string;
+
+// export: selectAttachmentsByFilename
+export declare function selectAttachmentsByFilename<T extends {
+    filename: string;
+}>(attachments: readonly T[], filename: string): T[];
 
 // export: SprintMetrics
 export interface SprintMetrics {
@@ -4882,6 +5051,9 @@ export interface TimerState {
     profile: string;
     comment?: string;
 }
+
+// export: toAttachmentJson
+export declare function toAttachmentJson(attachment: JiraAttachment): AttachmentJson;
 
 // export: toWorklogWithIssue
 export declare function toWorklogWithIssue(worklog: JiraWorklog, issueKey: string, issueSummary: string): WorklogWithIssue;

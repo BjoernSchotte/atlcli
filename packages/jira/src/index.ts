@@ -11,6 +11,7 @@
  * A browser host must import `@atlcli/jira/browser`, never this barrel.
  */
 export * from "./index.browser.js";
+export * from "./attachments.js";
 export * from "./worklog.js";
 export * from "./analysis.js";
 export * from "./export.js";

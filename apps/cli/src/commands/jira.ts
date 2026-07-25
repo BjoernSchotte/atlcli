@@ -1,6 +1,6 @@
-import { readFile, stat } from "node:fs/promises";
+import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { assertCliAuthSupported } from "./session-guard.js";
-import { basename } from "node:path";
+import { basename, dirname } from "node:path";
 import {
   ERROR_CODES,
   OutputOptions,
@@ -17,6 +17,7 @@ import {
 } from "@atlcli/core";
 import {
   JiraClient,
+  JiraAttachment,
   JiraIssue,
   JiraTransition,
   JiraSprint,
@@ -77,6 +78,15 @@ import {
   ProjectJiraTemplateStorage,
   JiraTemplateResolver,
   ensureMigrated,
+  // Attachment helpers (functional core)
+  parseAttachmentTarget,
+  selectAttachmentsByFilename,
+  planDownloads,
+  outputIsDirectory,
+  resolveDownloadPath,
+  formatAttachmentSize,
+  formatAttachmentsTable,
+  toAttachmentJson,
 } from "@atlcli/jira";
 
 export async function handleJira(
@@ -163,7 +173,7 @@ export async function handleJira(
       await handleTemplate(rest, flags, opts);
       return;
     default:
-      output(jiraHelp(), opts);
+      unknownSubcommand(sub, jiraHelp(), opts);
       return;
   }
 }
@@ -207,6 +217,29 @@ async function getClient(
   return client;
 }
 
+/**
+ * Terminal handler for a subcommand this dispatcher does not know.
+ *
+ * An unknown subcommand used to print the help text and exit 0, which is how
+ * issue #8 stayed invisible for so long: `jira issue attachments PROJ-123` —
+ * documented, never implemented — looked like a successful no-op in a script
+ * instead of an error. A bare `jira issue` is still help-with-exit-0; a typo or
+ * a missing command now fails with a usage error. In `--json` mode the error
+ * object is the only thing written, so stdout stays single-document.
+ */
+function unknownSubcommand(
+  sub: string | undefined,
+  help: string,
+  opts: OutputOptions
+): void {
+  if (!sub) {
+    output(help, opts);
+    return;
+  }
+  if (!opts.json) output(help, opts);
+  fail(opts, 1, ERROR_CODES.USAGE, `Unknown subcommand: ${sub}`, { subcommand: sub });
+}
+
 // ============ Me ============
 
 async function handleMe(
@@ -240,7 +273,7 @@ async function handleProject(
       await handleProjectTypes(flags, opts);
       return;
     default:
-      output(projectHelp(), opts);
+      unknownSubcommand(sub, projectHelp(), opts);
       return;
   }
 }
@@ -408,6 +441,12 @@ async function handleIssue(
     case "attach":
       await handleIssueAttach(args.slice(1), flags, opts);
       return;
+    case "attachments":
+      await handleIssueAttachments(args.slice(1), flags, opts);
+      return;
+    case "attachment":
+      await handleIssueAttachment(args.slice(1), flags, opts);
+      return;
     case "open":
       await handleIssueOpen(args.slice(1), flags, opts);
       return;
@@ -421,7 +460,7 @@ async function handleIssue(
       await handleIssueUnlinkPage(flags, opts);
       return;
     default:
-      output(issueHelp(), opts);
+      unknownSubcommand(sub, issueHelp(), opts);
       return;
   }
 }
@@ -696,6 +735,257 @@ async function handleIssueAttach(
   }
 }
 
+/**
+ * `jira issue attachments <key>` — list what is attached to an issue.
+ *
+ * The key is positional (as documented) with `--key` kept as an alias, matching
+ * `issue open`.
+ */
+async function handleIssueAttachments(
+  args: string[],
+  flags: Record<string, string | boolean | string[]>,
+  opts: OutputOptions
+): Promise<void> {
+  const key = args[0] ?? getFlag(flags, "key");
+
+  if (!key) {
+    fail(opts, 1, ERROR_CODES.USAGE, "Issue key is required: jira issue attachments <key>");
+    return;
+  }
+
+  const client = await getClient(flags, opts);
+  const attachments = await client.getIssueAttachments(key);
+
+  if (opts.json) {
+    output(
+      {
+        schemaVersion: "1",
+        issue: key,
+        attachments: attachments.map(toAttachmentJson),
+        total: attachments.length,
+      },
+      opts
+    );
+    return;
+  }
+
+  if (attachments.length === 0) {
+    output(`No attachments on ${key}.`, opts);
+    return;
+  }
+
+  for (const line of formatAttachmentsTable(attachments)) {
+    output(line, opts);
+  }
+}
+
+/** `jira issue attachment <download|delete>`. */
+async function handleIssueAttachment(
+  args: string[],
+  flags: Record<string, string | boolean | string[]>,
+  opts: OutputOptions
+): Promise<void> {
+  const [sub] = args;
+  switch (sub) {
+    case "download":
+      await handleAttachmentDownload(args.slice(1), flags, opts);
+      return;
+    case "delete":
+      await handleAttachmentDelete(args.slice(1), flags, opts);
+      return;
+    default:
+      unknownSubcommand(sub, attachmentHelp(), opts);
+      return;
+  }
+}
+
+/**
+ * Resolve `<id>` or `<issue-key> <filename>` to the attachments it names.
+ *
+ * A filename lookup can legitimately match more than one attachment — Jira does
+ * not enforce unique names on an issue — so this returns every match and lets
+ * the caller decide what to do with them.
+ */
+async function resolveAttachments(
+  args: string[],
+  flags: Record<string, string | boolean | string[]>,
+  opts: OutputOptions
+): Promise<{ client: JiraClient; attachments: JiraAttachment[] }> {
+  const parsed = parseAttachmentTarget(args);
+  if (!parsed.ok) {
+    fail(opts, 1, ERROR_CODES.USAGE, parsed.error);
+  }
+
+  const client = await getClient(flags, opts);
+
+  if (parsed.target.kind === "id") {
+    const attachment = await client.getAttachment(parsed.target.id);
+    return { client, attachments: [attachment] };
+  }
+
+  const { issueKey, filename } = parsed.target;
+  const all = await client.getIssueAttachments(issueKey);
+  const matches = selectAttachmentsByFilename(all, filename);
+
+  if (matches.length === 0) {
+    fail(
+      opts,
+      1,
+      ERROR_CODES.VALIDATION,
+      `No attachment named "${filename}" on ${issueKey}.`,
+      { issue: issueKey, filename, available: all.map((a) => a.filename) }
+    );
+  }
+
+  return { client, attachments: matches };
+}
+
+async function pathExists(path: string): Promise<boolean> {
+  try {
+    await stat(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function isExistingDirectory(path: string): Promise<boolean> {
+  try {
+    return (await stat(path)).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * `jira issue attachment download <id> | <issue-key> <filename>`.
+ *
+ * Several attachments on an issue can share a filename; all matches are
+ * downloaded and the colliding names get an id suffix (`shot.10001.png`) rather
+ * than one silently overwriting the other. Existing files on disk are never
+ * clobbered without `--overwrite`.
+ */
+async function handleAttachmentDownload(
+  args: string[],
+  flags: Record<string, string | boolean | string[]>,
+  opts: OutputOptions
+): Promise<void> {
+  const { client, attachments } = await resolveAttachments(args, flags, opts);
+  const outputTarget = getFlag(flags, "output") ?? getFlag(flags, "o");
+  const overwrite = hasFlag(flags, "overwrite");
+
+  const planned = planDownloads(attachments);
+  const isDirectory = outputIsDirectory(outputTarget, {
+    existsAsDirectory: outputTarget ? await isExistingDirectory(outputTarget) : false,
+    fileCount: planned.length,
+  });
+
+  const downloaded: Array<{ id: string; filename: string; path: string; size: number }> = [];
+
+  for (const { attachment, filename } of planned) {
+    const targetPath = resolveDownloadPath(outputTarget, filename, { isDirectory });
+
+    if (!overwrite && (await pathExists(targetPath))) {
+      fail(
+        opts,
+        1,
+        ERROR_CODES.IO,
+        `File exists: ${targetPath}. Pass --overwrite to replace it.`,
+        { path: targetPath }
+      );
+    }
+
+    const dir = dirname(targetPath);
+    if (dir && dir !== ".") await mkdir(dir, { recursive: true });
+
+    const data = await client.downloadAttachment(attachment.content);
+    await writeFile(targetPath, data);
+
+    downloaded.push({
+      id: attachment.id,
+      filename: attachment.filename,
+      path: targetPath,
+      size: data.length,
+    });
+  }
+
+  if (opts.json) {
+    output({ schemaVersion: "1", downloaded, total: downloaded.length }, opts);
+    return;
+  }
+
+  for (const file of downloaded) {
+    output(`Downloaded ${file.filename} (${formatAttachmentSize(file.size)}) → ${file.path}`, opts);
+  }
+}
+
+/**
+ * `jira issue attachment delete <id> | <issue-key> <filename> --confirm`.
+ *
+ * Deleting by filename can resolve to several attachments; `--confirm` is
+ * required for all of them, and the response names every one that was removed.
+ */
+async function handleAttachmentDelete(
+  args: string[],
+  flags: Record<string, string | boolean | string[]>,
+  opts: OutputOptions
+): Promise<void> {
+  const { client, attachments } = await resolveAttachments(args, flags, opts);
+
+  if (!hasFlag(flags, "confirm")) {
+    const names = attachments.map((a) => `${a.id} (${a.filename})`).join(", ");
+    fail(
+      opts,
+      1,
+      ERROR_CODES.USAGE,
+      `--confirm is required to delete ${attachments.length === 1 ? "attachment" : "attachments"}: ${names}`,
+      { attachments: attachments.map((a) => ({ id: a.id, filename: a.filename })) }
+    );
+    return;
+  }
+
+  const deleted: Array<{ id: string; filename: string }> = [];
+  for (const attachment of attachments) {
+    await client.deleteAttachment(attachment.id);
+    deleted.push({ id: attachment.id, filename: attachment.filename });
+  }
+
+  if (opts.json) {
+    output({ schemaVersion: "1", deleted, total: deleted.length }, opts);
+    return;
+  }
+
+  for (const file of deleted) {
+    output(`Deleted attachment ${file.id} (${file.filename})`, opts);
+  }
+}
+
+function attachmentHelp(): string {
+  return `atlcli jira issue attachment <command>
+
+Commands:
+  download <id> [-o <path>] [--overwrite]
+  download <issue-key> <filename> [-o <path>] [--overwrite]
+  delete <id> --confirm
+  delete <issue-key> <filename> --confirm
+
+Options:
+  -o, --output <path>  Output directory or file path (default: current directory)
+      --overwrite      Replace existing files
+      --confirm        Required for delete
+      --profile <name> Use a specific auth profile
+      --json           JSON output
+
+Notes:
+  -o is a directory when it exists as one or ends in a separator (./downloads/),
+  and names the target file otherwise. Missing directories are created.
+
+  A filename can match several attachments on the same issue. Every match is
+  downloaded, and colliding names get the attachment id inserted before the
+  extension (screenshot.10001.png).
+`;
+}
+
 async function handleIssueOpen(
   args: string[],
   flags: Record<string, string | boolean | string[]>,
@@ -777,6 +1067,9 @@ Commands:
   comment --key <key> <text>
   link --from <key> --to <key> --type <name>
   attach --key <key> <file>            Attach a file to an issue
+  attachments <key>                    List attachments on an issue
+  attachment download <id>|<key> <filename> [-o <path>] [--overwrite]
+  attachment delete <id>|<key> <filename> --confirm
   open <key>                           Open issue in browser
   link-page --key <key> --page <id>    Link to Confluence page
   pages --key <key>                    List linked Confluence pages
@@ -961,7 +1254,7 @@ async function handleBoard(
       await handleBoardIssues(flags, opts);
       return;
     default:
-      output(boardHelp(), opts);
+      unknownSubcommand(sub, boardHelp(), opts);
       return;
   }
 }
@@ -1111,7 +1404,7 @@ async function handleSprint(
       await handleSprintReport(args.slice(1), flags, opts);
       return;
     default:
-      output(sprintHelp(), opts);
+      unknownSubcommand(sub, sprintHelp(), opts);
       return;
   }
 }
@@ -1439,7 +1732,7 @@ async function handleWorklog(
       await handleWorklogReport(flags, opts);
       return;
     default:
-      output(worklogHelp(), opts);
+      unknownSubcommand(sub, worklogHelp(), opts);
       return;
   }
 }
@@ -1771,7 +2064,7 @@ async function handleWorklogTimer(
       handleTimerCancel(opts);
       return;
     default:
-      output(timerHelp(), opts);
+      unknownSubcommand(sub, timerHelp(), opts);
       return;
   }
 }
@@ -2109,7 +2402,7 @@ async function handleEpic(
       await handleEpicProgress(rest, flags, opts);
       return;
     default:
-      output(epicHelp(), opts);
+      unknownSubcommand(sub, epicHelp(), opts);
       return;
   }
 }
@@ -2474,7 +2767,7 @@ async function handleAnalyze(
       await handleAnalyzePredictability(flags, opts);
       return;
     default:
-      output(analyzeHelp(), opts);
+      unknownSubcommand(sub, analyzeHelp(), opts);
       return;
   }
 }
@@ -2893,7 +3186,7 @@ async function handleBulk(
       await handleBulkLinkPage(flags, opts);
       return;
     default:
-      output(bulkHelp(), opts);
+      unknownSubcommand(sub, bulkHelp(), opts);
       return;
   }
 }
@@ -3494,7 +3787,7 @@ async function handleFilter(
       await handleFilterShare(rest, flags, opts);
       return;
     default:
-      output(filterHelp(), opts);
+      unknownSubcommand(sub, filterHelp(), opts);
       return;
   }
 }
@@ -4249,7 +4542,7 @@ async function handleWebhook(
       await handleWebhookRefresh(rest, flags, opts);
       return;
     default:
-      output(webhookHelp(), opts);
+      unknownSubcommand(sub, webhookHelp(), opts);
       return;
   }
 }
@@ -4496,7 +4789,7 @@ async function handleSubtask(
       await handleSubtaskList(rest, flags, opts);
       return;
     default:
-      output(subtaskHelp(), opts);
+      unknownSubcommand(sub, subtaskHelp(), opts);
       return;
   }
 }
@@ -4629,7 +4922,7 @@ async function handleComponent(
       await handleComponentDelete(rest, flags, opts);
       return;
     default:
-      output(componentHelp(), opts);
+      unknownSubcommand(sub, componentHelp(), opts);
       return;
   }
 }
@@ -4827,7 +5120,7 @@ async function handleVersion(
       await handleVersionDelete(rest, flags, opts);
       return;
     default:
-      output(versionHelp(), opts);
+      unknownSubcommand(sub, versionHelp(), opts);
       return;
   }
 }
@@ -5060,7 +5353,7 @@ async function handleField(
       await handleFieldSearch(rest, flags, opts);
       return;
     default:
-      output(fieldHelp(), opts);
+      unknownSubcommand(sub, fieldHelp(), opts);
       return;
   }
 }
@@ -5441,7 +5734,7 @@ async function handleTemplate(
       await handleTemplateImport(flags, opts);
       return;
     default:
-      output(templateHelp(), opts);
+      unknownSubcommand(sub, templateHelp(), opts);
       return;
   }
 }

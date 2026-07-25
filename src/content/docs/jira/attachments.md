@@ -23,11 +23,14 @@ atlcli jira issue attachments PROJ-123
 Output:
 
 ```
-ID          FILENAME           SIZE      CREATED
-10001       screenshot.png     245 KB    2025-01-14
-10002       debug.log          12 KB     2025-01-13
-10003       requirements.pdf   1.2 MB    2025-01-10
+ID     FILENAME          SIZE    CREATED
+10001  screenshot.png    245 KB  2026-01-14
+10002  debug.log         12 KB   2026-01-13
+10003  requirements.pdf  1.2 MB  2026-01-10
 ```
+
+The issue key can also be passed as `--key PROJ-123`. Columns are sized to the
+widest row.
 
 Use `--json` for JSON output.
 
@@ -36,30 +39,25 @@ Use `--json` for JSON output.
 Attach a file to an issue:
 
 ```bash
-atlcli jira issue attach PROJ-123 ./screenshot.png
-```
-
-Upload multiple files:
-
-```bash
-atlcli jira issue attach PROJ-123 ./file1.png ./file2.pdf ./logs.zip
+atlcli jira issue attach --key PROJ-123 ./screenshot.png
 ```
 
 Options:
 
 | Flag | Description |
 |------|-------------|
-| `--comment` | Add a comment with the attachment |
+| `--key` | Issue key (required) |
 
-### Examples
+:::note[One file per call]
+`attach` uploads a single file. Loop for several:
 
 ```bash
-# Upload with comment
-atlcli jira issue attach PROJ-123 ./error.log --comment "Error logs from production"
-
-# Upload all screenshots
-atlcli jira issue attach PROJ-123 ./screenshots/*.png
+for file in ./screenshots/*.png; do
+  atlcli jira issue attach --key PROJ-123 "$file"
+done
 ```
+
+:::
 
 ## Download Attachment
 
@@ -77,8 +75,35 @@ Options:
 
 | Flag | Description |
 |------|-------------|
-| `-o`, `--output` | Output directory or file path |
+| `-o`, `--output` | Output directory or file path (default: current directory) |
 | `--overwrite` | Overwrite existing files |
+
+`-o` is treated as a **directory** when it already exists as one or ends in a
+path separator (`./downloads/`); missing directories are created. Otherwise it
+names the target file:
+
+```bash
+# Writes ./downloads/screenshot.png
+atlcli jira issue attachment download 10001 -o ./downloads/
+
+# Writes ./shot.png
+atlcli jira issue attachment download 10001 -o ./shot.png
+```
+
+Without `--overwrite`, an existing file is left untouched and the command exits
+with `ATLCLI_ERR_IO`.
+
+:::note[Duplicate filenames]
+Jira allows several attachments with the same name on one issue. Downloading by
+filename fetches **all** matches and inserts the attachment ID before the
+extension so nothing is overwritten:
+
+```
+screenshot.10001.png
+screenshot.10003.png
+```
+
+:::
 
 ### Download All Attachments
 
@@ -94,14 +119,18 @@ atlcli jira issue attachments PROJ-123 --json | \
 Remove an attachment:
 
 ```bash
+# By attachment ID
 atlcli jira issue attachment delete 10001 --confirm
+
+# By issue key + filename (deletes every match)
+atlcli jira issue attachment delete PROJ-123 screenshot.png --confirm
 ```
 
 Options:
 
 | Flag | Description |
 |------|-------------|
-| `--confirm` | Skip confirmation prompt |
+| `--confirm` | Required — deletion is not reversible |
 
 ## JSON Output
 
@@ -119,7 +148,7 @@ atlcli jira issue attachments PROJ-123 --json
       "filename": "screenshot.png",
       "size": 250880,
       "mimeType": "image/png",
-      "created": "2025-01-14T10:00:00Z",
+      "created": "2026-01-14T10:00:00.000+0000",
       "author": {
         "displayName": "Alice",
         "email": "alice@company.com"
@@ -152,7 +181,8 @@ Jira Cloud has a default attachment size limit of 10 MB per file. Your administr
 
 ```bash
 # Attach build log after CI failure
-atlcli jira issue attach PROJ-123 ./build.log --comment "Build failed - see attached log"
+atlcli jira issue attach --key PROJ-123 ./build.log
+atlcli jira issue comment --key PROJ-123 "Build failed - see attached log"
 ```
 
 ### Bulk Export Attachments
@@ -176,7 +206,9 @@ atlcli jira issue attachments PROJ-100 --json | \
   xargs -I {} atlcli jira issue attachment download {} -o /tmp/migrate/
 
 # Upload to target issue
-atlcli jira issue attach PROJ-200 /tmp/migrate/*
+for file in /tmp/migrate/*; do
+  atlcli jira issue attach --key PROJ-200 "$file"
+done
 ```
 
 ## Related Topics
