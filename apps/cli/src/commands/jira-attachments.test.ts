@@ -71,7 +71,7 @@ beforeAll(async () => {
       if (req.method === "GET" && content) {
         const found = attachments.find((a) => a.id === content[1]);
         if (!found) return new Response("not found", { status: 404 });
-        return new Response(found.bytes, {
+        return new Response(Uint8Array.from(found.bytes), {
           headers: { "content-type": found.mimeType },
         });
       }
