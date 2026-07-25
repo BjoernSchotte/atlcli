@@ -40,6 +40,49 @@ atlcli does not print a web page or flatten Confluence into a screenshot. It
 interprets the document, resolves its content, and produces real, structured
 PDF and Word files:
 
+<p align="center">
+  <img
+    src="assets/readme/document-fidelity-surfer.png"
+    alt="A full-page 8-bit illustration preserved in an atlcli PDF export"
+    width="72%"
+  />
+</p>
+
+<p align="center"><em>Images remain sharp, color-managed document content — not browser screenshots.</em></p>
+
+<table>
+  <tr>
+    <td width="50%">
+      <img
+        src="assets/readme/document-fidelity-toc-macros.png"
+        alt="PDF page with a table of contents, Confluence panels, and status badges"
+      />
+    </td>
+    <td width="50%">
+      <img
+        src="assets/readme/document-fidelity-mermaid-shiki.png"
+        alt="PDF page with a Mermaid diagram, Expand macro, and Shiki-highlighted TypeScript"
+      />
+    </td>
+  </tr>
+  <tr>
+    <td align="center"><em>TOC, panels, and status macros</em></td>
+    <td align="center"><em>Mermaid, Expand, and Shiki code</em></td>
+  </tr>
+</table>
+
+<p align="center">
+  <img
+    src="assets/readme/document-fidelity-table.png"
+    alt="Dense ten-column Confluence table laid out across a PDF page"
+    width="100%"
+  />
+</p>
+
+<p align="center"><em>Dense tables retain every value, link, badge, and recovery instruction.</em></p>
+
+[Open the complete nine-page PDF fidelity reference →](assets/readme/atlcli-confluence-export-reference.pdf)
+
 - **ADF-first on Confluence Cloud** — validated Atlassian Document Format is
   decoded into a shared, typed document model. Data Center and rollback paths
   use Confluence Storage Format without creating a second-class export path.
