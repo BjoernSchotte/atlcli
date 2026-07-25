@@ -190,6 +190,12 @@ describe("parseExportRequest — rejected combinations", () => {
     { name: "label trailing comma", argv: ["12345", "--scope", "tree", "--engine", "ts", "--label-exclude", "a,"], match: /empty label entry/i },
     { name: "unknown scope", argv: ["12345", "--scope", "foo", "--engine", "ts"], match: /Unknown --scope/i },
     { name: "unknown engine", argv: ["12345", "--engine", "java"], match: /Unknown --engine/i },
+    // `python` must NOT reach the generic "Unknown --engine" branch above: the
+    // person typing it is migrating off the removed exporter and needs to be
+    // told what happened to it, not which values are legal.
+    { name: "removed engine: python", argv: ["12345", "--engine", "python"], match: /Python DOCX exporter has been removed/i },
+    { name: "removed engine names the replacement", argv: ["12345", "--engine", "python"], match: /TypeScript DOCX engine is the default/i },
+    { name: "removed engine names the template migration", argv: ["12345", "--engine", "python"], match: /\$scroll\.\* placeholders/i },
     { name: "max-depth with page scope", argv: ["12345", "--scope", "page", "--engine", "ts", "--max-depth", "3"], match: /only valid with --scope tree or --scope space/i },
     { name: "labels with page scope", argv: ["12345", "--scope", "page", "--engine", "ts", "--label-include", "a"], match: /only valid with --scope tree or --scope space/i },
     { name: "completeness with page scope", argv: ["12345", "--scope", "page", "--engine", "ts", "--completeness", "partial"], match: /only valid with --scope tree or --scope space/i },

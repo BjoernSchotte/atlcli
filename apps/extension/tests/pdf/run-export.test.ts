@@ -94,7 +94,7 @@ describe("extension PDF page adapter", () => {
     expect(compiledBundle?.main).toContain("@Ada");
     // CROSS-HOST vocabulary (spec 010). This is the exact condition the CLI's
     // PDF host reports — pinned there by `apps/cli/src/commands/
-    // engine-parity.test.ts` ("counts one unresolvable mention exactly once on
+    // export-source-contract.test.ts` ("counts one unresolvable mention exactly once on
     // both engines"), which asserts `notesByCode["mention-unresolved"] === 1`
     // for `--format pdf`. The extension used to spell the same fact
     // `pdf-mention-unresolved`, so a consumer's filter worked on one host's

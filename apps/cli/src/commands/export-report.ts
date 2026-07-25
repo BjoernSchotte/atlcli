@@ -28,7 +28,17 @@ import type { PdfCompilerDiagnostic } from "@atlcli/pdf";
 export const EXPORT_REPORT_SCHEMA = "atlcli.export-report/1";
 
 export type ExportFormat = "pdf" | "docx";
-export type ExportReportEngine = "python" | "ts";
+
+/**
+ * The engine emitted in a current DOCX report. The producer has one value since
+ * the Python exporter was removed; the field survives because
+ * `atlcli.export-report/1` is a published contract and dropping a key consumers
+ * already read would force a schema bump for no gain.
+ *
+ * This type models current producer output. The v1 JSON Schema separately keeps
+ * accepting historical `"python"` reports so archived documents remain valid.
+ */
+export type ExportReportEngine = "ts";
 
 /**
  * Deterministic, documented exit codes (T3.4). Applied unconditionally for the

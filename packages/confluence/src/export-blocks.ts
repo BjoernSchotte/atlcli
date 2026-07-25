@@ -1204,17 +1204,16 @@ export const EXPORT_NOTE_CODES = [
   // syntax belonging to ANOTHER engine — docxtpl/Jinja `{{ … }}` / `{% … %}` —
   // which the ts DOCX engine never fills, so it renders as literal body text.
   // WARNING level on purpose: it is the only thing standing between a user
-  // migrating from `--engine python` and a finished document full of visible
-  // unfilled placeholders that no report mentioned. Decided from the TEMPLATE
+  // migrating off the removed Python exporter and a finished document full of
+  // visible unfilled placeholders that no report mentioned. Decided from the TEMPLATE
   // archive before the page body is injected, so page content that happens to
   // document Jinja never triggers it. Not fatal — a deliberate hybrid template
   // is a real workflow.
   "template-foreign-placeholders",
-  // `--template` was omitted on `--engine ts` and the bundled default template
-  // stood in. `info`: nothing is wrong with the export, but which template
-  // produced the document must never be a mystery. CLI-emitted (only a host
-  // knows where its template came from); `--engine python` has no bundled
-  // default and still requires the flag, so there is no counterpart there.
+  // `--template` was omitted and the bundled default template stood in.
+  // `info`: nothing is wrong with the export, but which template produced the
+  // document must never be a mystery. CLI-emitted — only a host knows where its
+  // template came from.
   "template-default-used",
   // Generic fallback used by scope/CLI error paths
   "other",

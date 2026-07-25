@@ -4,6 +4,20 @@ All notable changes to atlcli will be documented in this file.
 
 ## [Unreleased]
 
+### BREAKING CHANGES
+
+- **export:** Remove the Python DOCX exporter (`packages/export`). `--engine
+  python` stops the export with a migration message instead of selecting it;
+  `--engine ts` is still accepted, and omitting `--engine` is unchanged. Python
+  and `uv` are no longer part of the developer or CI toolchain — `bun install`
+  is the whole setup. Templates written for the old exporter must be ported
+  from docxtpl/Jinja (`{{ … }}`) to `$scroll.*` placeholders; unported
+  placeholders render as literal text and are reported as a
+  `template-foreign-placeholders` warning, so `--strict` fails the run. The
+  `engine` field in `atlcli.export-report/1` is unchanged in shape and now only
+  ever carries `"ts"`. See
+  [Migrating from the Python exporter](https://atlcli.sh/confluence/export/#migrating-from-the-python-exporter).
+
 ### Features
 
 - **export:** Run DOCX and PDF through one durable, bounded job queue in the CLI
@@ -21,8 +35,8 @@ All notable changes to atlcli will be documented in this file.
 
 ### Changed
 
-- **export:** Use the TypeScript DOCX engine exclusively. The deprecated Python
-  exporter is no longer selected or used by ordinary exports.
+- **export:** Use the TypeScript DOCX engine exclusively (completed by the
+  removal noted under Breaking Changes above).
 - **export:** Buffer large tree/space exports through bounded, restartable
   source and content-addressed asset checkpoints. One global heavy-render slot
   prevents DOCX and PDF memory peaks from overlapping.

@@ -186,16 +186,9 @@ export async function handleExport(
     }
     throw error;
   }
-  const engine = request.engine;
-
-  if (engine === "python") {
-    fail(
-      opts,
-      1,
-      ERROR_CODES.USAGE,
-      'The Python DOCX exporter is no longer supported. Remove `--engine python`; the TypeScript DOCX engine is now the default.'
-    );
-  }
+  // `--engine python` is rejected inside parseExportRequest (it owns every
+  // engine verdict, so the rule is unit-testable without a process), and lands
+  // in the USAGE branch above like any other bad flag value.
 
   const templatePath = templateFlag(flags);
   const outputPath = getFlag(flags, "output") ?? getFlag(flags, "o");
@@ -2004,11 +1997,12 @@ Options:
                       macro rendering. Pure macros (TOC, includes) still render.
                       This is NOT network-free — the page body and its own
                       attachments still fetch.
-  --engine <name>     Rendering engine: "ts" (default and only supported engine;
-                      isomorphic @atlcli/docx — same as the browser
-                      extension; $scroll.* placeholders + image embedding +
-                      mermaid diagram rendering, no Python needed). The former
-                      "python" value now fails with a migration error.
+  --engine <name>     Rendering engine: "ts" — the default, and the only value.
+                      Accepted so existing scripts keep working; the isomorphic
+                      @atlcli/docx engine (same code as the browser extension)
+                      renders every export either way: $scroll.* placeholders,
+                      image embedding, mermaid diagrams. The removed "python"
+                      value fails with a migration error.
   --profile <name>    Use a specific auth profile
   --report json       Synonym for --json (emit the report to stdout); applies to
                       PDF and DOCX exports alike

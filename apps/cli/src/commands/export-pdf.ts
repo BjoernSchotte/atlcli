@@ -380,7 +380,7 @@ export async function resolveScope(
     // path (`export.ts`) and the extension's PDF host
     // (`apps/extension/utils/pdf/run-export.ts`) report this same condition
     // under this same code. Pinned from both ends —
-    // `engine-parity.test.ts` for the CLI, `apps/extension/tests/pdf/
+    // `export-source-contract.test.ts` for the CLI, `apps/extension/tests/pdf/
     // run-export.test.ts` for the extension.
     if (mention.unresolved > 0) {
       sourceNotes.push({ level: "warning", code: "mention-unresolved", message: `${mention.unresolved} mention(s) could not be resolved to a display name.` });

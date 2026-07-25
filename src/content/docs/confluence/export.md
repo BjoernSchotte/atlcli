@@ -14,7 +14,7 @@ the browser extension to create a tagged PDF with the built-in atlcli document d
 - [CLI: DOCX quick start](#quick-start)
 - [CLI: PDF export](#cli-pdf-export) and [document settings](#document-settings-are-not-cli-flags-yet)
 - [ADF source selection and rollback](#adf-source-selection-and-rollback)
-- [Rendering runtime](#rendering-runtime)
+- [Rendering runtime](#rendering-runtime) and [migrating from the Python exporter](#migrating-from-the-python-exporter)
 - [Export activity and recovery](#export-activity-and-recovery)
 - [Tree and space export](#tree-and-space-export)
 - [Note codes](#note-codes-are-shared-across-formats) and [migrating retired codes](#migrating-retired-note-codes)
@@ -365,7 +365,7 @@ storage layout, recovery, and incident diagnostics.
 | `--no-field-update-prompt` | Never ask Word to refresh fields on open (see [Field update behavior](#field-update-behavior)). Alias: `--no-toc-prompt` |
 | `--keep-ignored` | Keep `scroll-only`/`scroll-ignore` bodies for debugging. Single page only; the report is marked `export-controls-passthrough` — see [Keeping ignored content](/confluence/scroll-macros/#keeping-ignored-content-for-debugging) |
 | `--no-live-macros` | Deterministic export: skip live (Jira / `export_view` / attachment) macro rendering. Pure macros still render. This is **not** an offline mode — see [Deterministic exports](/confluence/dynamic-macros/#deterministic-exports) |
-| `--engine ts` | Optional compatibility spelling for the only supported DOCX engine. `--engine python` now fails with a migration message |
+| `--engine ts` | Optional compatibility spelling for the only DOCX engine. Accepted so existing scripts keep working; `--engine python` fails with a migration message — see [Migrating from the Python exporter](#migrating-from-the-python-exporter) |
 | `--profile` | Use a specific auth profile |
 | `--json` / `--report json` | Emit exactly one `atlcli.export-report/1` document on stdout |
 
@@ -390,8 +390,9 @@ These flags turn a single-page export into a tree or whole-space export. See
 
 DOCX uses the isomorphic TypeScript [`@atlcli/docx` export engine](/reference/docx-engine/).
 PDF uses the Typst compiler packaged as WebAssembly. The CLI and browser hosts bind their
-own storage, authentication and delivery adapters around these portable engines; neither
-format invokes Python.
+own storage, authentication and delivery adapters around these portable engines. Neither
+format shells out to a second runtime, so `bun install` is the whole toolchain — there is
+no Python to install on a developer machine or a CI runner.
 
 DOCX templates use Scroll placeholders such as `$scroll.title` and
 `$scroll.content`. The JSON report includes placeholder, image and diagram statistics.
@@ -403,13 +404,45 @@ disables DOCX image embedding.
 atlcli wiki export 12345678 --template scroll-corporate.docx --output out.docx
 ```
 
-:::caution[Jinja templates must be migrated]
-The retired Python exporter used docxtpl/Jinja placeholders (`{{ … }}`, `{% … %}`). The
-TypeScript DOCX engine deliberately does not evaluate executable template expressions.
-Those placeholders remain literal and produce a `template-foreign-placeholders` warning;
-`--strict` therefore fails the run. Replace them with supported `$scroll.*` placeholders,
-or start from the bundled default template.
+### Migrating from the Python exporter
+
+atlcli used to ship a second DOCX exporter written in Python (`--engine python`). It has
+been **removed**. If you still pass the flag, the export stops with a message pointing here
+rather than quietly producing a different document.
+
+**Step 1 — drop the flag.** `atlcli wiki export … --engine python` becomes
+`atlcli wiki export …`. There is nothing to install in its place: the TypeScript engine is
+built in. `--engine ts` is still accepted, so a script that already passes it needs no edit.
+
+**Step 2 — port the template.** This is the only part that is not automatic. The Python
+exporter used docxtpl/Jinja placeholders; the TypeScript engine fills `$scroll.*`
+placeholders and deliberately does not evaluate executable template expressions.
+
+| Python exporter (docxtpl/Jinja) | TypeScript engine |
+|---|---|
+| `{{ title }}` | `$scroll.title` |
+| `{{p content }}` | `$scroll.content` |
+| `{{ spaceName }}` | `$scroll.space.name` |
+| `{{ spaceKey }}` | `$scroll.space.key` |
+| `{{ author }}` | `$scroll.creator.fullName` |
+| `{{ modified \| date('YYYY-MM-DD') }}` | `$scroll.modificationdate.(yyyy-MM-dd)` |
+| `{{ exportDate \| date('…') }}` | `$scroll.exportdate` (optional `.(…)` format argument) |
+| `{% if … %}` / `{% for … %}` | No equivalent — the engine does not run template logic |
+
+[Template Variables](#template-variables) lists the full vocabulary, and
+[Scroll Word Exporter Compatibility](#scroll-word-exporter-compatibility) covers what
+carries over from Scroll templates.
+
+:::caution[An unported template does not fail — it renders literally]
+Left-over `{{ … }}` / `{% … %}` placeholders are carried into the finished document as
+**visible literal text**. Nothing fills them. The export reports each one as a
+`template-foreign-placeholders` **warning**, so [`--strict`](#exit-codes) turns a
+half-migrated template into a failed CI run instead of a document nobody proofread.
 :::
+
+If you would rather not port the template at all, drop `--template`: the export falls back
+to the [bundled default template](#the-bundled-default-template) and reports
+`template-default-used`.
 
 ### Mermaid diagrams
 
@@ -885,15 +918,16 @@ below.)
 warning  template-foreign-placeholders  prepare
 ```
 
-**Cause.** The template uses placeholders from the retired docxtpl/Jinja exporter. The
+**Cause.** The template uses placeholders from the removed docxtpl/Jinja exporter. The
 TypeScript engine fills `$scroll.*` only and carries every other brace through untouched, so
 Jinja placeholders
 survive into the document.
 
 **Fix — pick one:**
 
-1. Rewrite the template's placeholders as `$scroll.*`
-   (see [Template Variables](#template-variables)), or
+1. Rewrite the template's placeholders as `$scroll.*` — see
+   [Migrating from the Python exporter](#migrating-from-the-python-exporter) for the
+   equivalence table, or
 2. drop `--template` and use the
    [bundled default template](#the-bundled-default-template) instead.
 
