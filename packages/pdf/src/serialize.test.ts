@@ -40,6 +40,7 @@ describe("PDF preparation and serialization", () => {
     expect(bundle.main).toContain('fill: rgb("#24292E")');
     expect(bundle.main).toContain('fill: rgb("#F97583")');
     expect(bundle.main).toContain("#box(height: 8.5pt)[]");
+    expect(bundle.main).toContain("row-gutter: 8.5pt * 0.35");
     expect(bundle.main).not.toContain("raw(");
   });
 

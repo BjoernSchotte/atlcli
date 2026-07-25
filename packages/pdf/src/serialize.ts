@@ -1195,7 +1195,7 @@ function serializeHighlightedCodeBlock(
     `block(width: 100%, fill: rgb(${typstString(background)}), ` +
     `inset: ${writer.design.tokens.layout.codeInset}, ` +
     `radius: ${writer.design.tokens.layout.codeRadius})[` +
-    `#grid(columns: (1fr), ${rows.join(", ")})]`
+    `#grid(columns: (1fr), row-gutter: ${size} * 0.35, ${rows.join(", ")})]`
   );
 }
 
