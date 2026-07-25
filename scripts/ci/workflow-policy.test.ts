@@ -34,6 +34,16 @@ describe("CI workflow policy", () => {
     expect(ci).toContain("if: always()");
     expect(ci).toContain("uses: ./.github/workflows/reusable-quality.yml");
     expect(ci).toContain("uses: ./.github/workflows/reusable-consumer-smoke.yml");
+    const readmeMedia = ci.slice(ci.indexOf("  readme-media:"), ci.indexOf("  test:"));
+    expect(readmeMedia).toContain("needs: changes");
+    expect(readmeMedia).toContain("if: needs.changes.outputs.readmeMedia == 'true'");
+    expect(readmeMedia).toContain("bun run check:readme-media");
+    const required = ci.slice(ci.indexOf("  required:"));
+    expect(required).toContain("- readme-media");
+    expect(required).toContain("README_MEDIA_REQUIRED: ${{ needs.changes.outputs.readmeMedia }}");
+    expect(required).toContain("README_MEDIA: ${{ needs.readme-media.result }}");
+    expect(required).toContain('[[ "$README_MEDIA_REQUIRED" == "true" && "$README_MEDIA" != "success" ]]');
+    expect(required).toContain('"$README_MEDIA" "$TEST"');
   });
 
   it("cancels superseded PR work but retains main and scheduled evidence", async () => {
