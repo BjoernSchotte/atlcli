@@ -164,9 +164,13 @@ async function loadLanguage(
   if (!promise) {
     created = true;
     promise = (async () => {
-      const { highlighter, initMs } = await getHighlighter(theme);
       const startedAt = nowMs();
-      const grammarModule = await bundledLanguages[language]();
+      const highlighterPromise = getHighlighter(theme);
+      const grammarPromise = bundledLanguages[language]();
+      const [{ highlighter, initMs }, grammarModule] = await Promise.all([
+        highlighterPromise,
+        grammarPromise,
+      ]);
       const grammar =
         "default" in grammarModule ? grammarModule.default : grammarModule;
       await highlighter.loadLanguage(grammar as LanguageInput);
@@ -176,6 +180,8 @@ async function loadLanguage(
       highlighter.codeToTokens("0;", { lang: language, theme });
       return {
         engineInitMs: initMs,
+        // This is the grammar's wall time from import request through ready
+        // state. On a cold theme it intentionally overlaps engineInitMs.
         grammarLoadMs: nowMs() - startedAt,
         tokenizeMs: 0,
       };
