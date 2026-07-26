@@ -1,6 +1,6 @@
 # DOCX Shiki engine separation and preload
 
-Status: implemented and verified  
+Status: implemented and verified
 Baseline: `a6b4c42` (`origin/main`), 2026-07-26
 
 ## Goal
