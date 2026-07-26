@@ -69,6 +69,10 @@ entrypoint's full symbol list and transitive type closure is committed and CI-gu
   `resvgSvgRasterizer`, `unsupportedAssetFetcher`.
 - Transitively frozen input/report types: `ExportInput`, `ConfluencePageDetails` (from
   confluence), `TemplateMeta`, `ResolveDeps`, `ScanResult`, `ExportReport`.
+- Additive `ExportReport.timings` fields expose DOCX highlighting work:
+  `highlightEngineInitMs`, `highlightGrammarLoadMs`, `highlightTokenizeMs`,
+  `highlightCodeBlocks`, and `highlightLanguageCount`. Historical prepared
+  checkpoints normalize missing fields to zero.
 
 ## PDF engine: PdfExportEnv & runPdfExport
 
@@ -202,6 +206,8 @@ Explicitly **not** part of the freeze:
   are not); export-macros' concrete renderer instances + helpers.
 - `@atlcli/docx/scan` and `@atlcli/docx/fixtures` (dev/test API), `@atlcli/pdf/template`
   (raw Typst template), `./browser-runtime` and `./vite` (host bootstrap, experimental).
+  The browser runtime also exports the awaitable, idempotent
+  `prepareDocxCodeHighlighting(blocks, options?)` intent-time preload.
 - The 0.x packages: `@atlcli/core`, `@atlcli/diagram`, `@atlcli/jira`, `@atlcli/plugin-api`,
   `@atlcli/template-pack`, `@atlcli/export-node` — see the freeze table in
   [Package Versioning](/reference/versioning/) for the per-package reasoning. Types owned by

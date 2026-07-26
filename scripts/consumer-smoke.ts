@@ -129,13 +129,22 @@ import { runExport } from "@atlcli/docx";
 import { buildDocx, para, readPart } from "@atlcli/docx/fixtures";
 import { unzipDocx } from "@atlcli/docx/scan";
 import { storageToBlocks } from "@atlcli/confluence";
+import { getCodeHighlightEngineId } from "@atlcli/code-highlight";
 
 const resolved = import.meta.resolve("@atlcli/docx");
 if (!resolved.includes("/dist/")) {
   throw new Error(\`@atlcli/docx resolved to \${resolved} — expected the built dist/ output\`);
 }
 
-const storage = "<h1>Smoke Heading</h1><p>Consumer smoke body with <code>INLINE_SMOKE</code>.</p>";
+if (getCodeHighlightEngineId() !== "oniguruma") {
+  throw new Error(\`Node DOCX selected \${getCodeHighlightEngineId()} instead of Oniguruma\`);
+}
+
+const storage =
+  "<h1>Smoke Heading</h1><p>Consumer smoke body with <code>INLINE_SMOKE</code>.</p>" +
+  '<ac:structured-macro ac:name="code"><ac:parameter ac:name="language">ts</ac:parameter>' +
+  "<ac:plain-text-body><![CDATA[const answer: number = 42;\\n\\n]]></ac:plain-text-body>" +
+  "</ac:structured-macro>";
 
 // The installed converter must produce a real block tree.
 const { blocks, notes } = storageToBlocks(storage);
@@ -188,6 +197,16 @@ if (!documentXml.includes("Smoke Heading")) {
 }
 if (!documentXml.includes("Consumer smoke body with")) {
   throw new Error("word/document.xml does not contain the fixture paragraph");
+}
+if (!documentXml.includes("answer")) {
+  throw new Error("word/document.xml does not contain the highlighted code block");
+}
+if (
+  report.timings.highlightCodeBlocks !== 1 ||
+  report.timings.highlightLanguageCount !== 1 ||
+  !(report.timings.highlightTokenizeMs > 0)
+) {
+  throw new Error(\`Node highlighting timings are incomplete: \${JSON.stringify(report.timings)}\`);
 }
 if (!documentXml.includes('w:rFonts w:ascii="JetBrains Mono"')) {
   throw new Error("word/document.xml does not select the portable code face");

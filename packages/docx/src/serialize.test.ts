@@ -18,8 +18,61 @@ import {
 import { renderDiagram } from "@atlcli/diagram";
 import { dataTable, parseStyleNames, resolveCaptionLang } from "./ooxml.js";
 import { headingStyle, stylesXml } from "./fixtures.js";
+import { collectDocxCodeHighlightUsage } from "./code-highlighting.js";
 
 const noStyles = new Map<string, string>();
+
+describe("DOCX code-highlighting preparation", () => {
+  it("collects nested aliases once, counts blocks, and excludes Mermaid", () => {
+    const blocks: ExportBlock[] = [
+      {
+        type: "list",
+        ordered: false,
+        items: [{
+          content: [
+            { type: "codeBlock", language: "ts", code: "const x = 1;" },
+            { type: "codeBlock", language: "typescript", code: "const y = 2;" },
+          ],
+        }],
+      },
+      {
+        type: "table",
+        rows: [{
+          cells: [{
+            header: false,
+            colspan: 1,
+            rowspan: 1,
+            content: [
+              { type: "codeBlock", language: "python", code: "x = 1" },
+              { type: "codeBlock", language: "unknown-test-language", code: "x" },
+              { type: "codeBlock", language: "mermaid", code: "graph TD; A-->B" },
+            ],
+          }],
+        }],
+      },
+      { type: "codeBlock", code: "plain" },
+    ];
+
+    expect(collectDocxCodeHighlightUsage(blocks)).toEqual({
+      codeBlocks: 5,
+      languages: ["typescript", "python"],
+    });
+  });
+
+  it("reports tokenization counts without changing serialized source", async () => {
+    const result = await serializeBlocks([
+      { type: "codeBlock", language: "ts", code: "const x = 1;\n\n" },
+      { type: "codeBlock", language: "definitely-unknown", code: "plain" },
+    ], { styleNames: noStyles });
+
+    expect(result.highlightTimings.codeBlocks).toBe(2);
+    expect([...result.highlightTimings.languages]).toEqual(["typescript"]);
+    expect(result.highlightTimings.tokenizeMs).toBeGreaterThanOrEqual(0);
+    expect(result.xml).toContain(">const</w:t>");
+    expect(result.xml).toContain(">x</w:t>");
+    expect(result.xml).toContain("plain");
+  });
+});
 
 /** A diagram seam over an inline embed function (test double for the wiring). */
 function diagramSeamOver(

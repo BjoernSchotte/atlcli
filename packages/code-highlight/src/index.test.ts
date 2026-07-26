@@ -4,9 +4,11 @@ import {
   CODE_LANGUAGE_IDS,
   CODE_THEME_IDS,
   DEFAULT_CODE_THEME,
+  getCodeHighlightEngineId,
   highlightCode,
   InvalidCodeThemeError,
   resolveCodeTheme,
+  prepareCodeHighlighting,
   warmHighlight,
 } from "./index.js";
 
@@ -49,6 +51,10 @@ describe("themes", () => {
 });
 
 describe("highlightCode", () => {
+  test("uses the explicit Node/Bun Oniguruma adapter", () => {
+    expect(getCodeHighlightEngineId()).toBe("oniguruma");
+  });
+
   test("highlights aliases and preserves complete source text", async () => {
     const code = "const answer: number = 42;\n";
     const result = await highlightCode(code, "ts");
@@ -80,5 +86,65 @@ describe("highlightCode", () => {
 
   test("warmup accepts aliases and unknown languages without throwing", () => {
     expect(() => warmHighlight(["ts", "definitely-unknown"], "github-light")).not.toThrow();
+  });
+
+  test("awaitable preload shares aliases and reports no repeated grammar work", async () => {
+    const cold: number[] = [];
+    const warm: number[] = [];
+    await Promise.all([
+      prepareCodeHighlighting(["lua"], "github-light", {
+        onTiming: (timing) => cold.push(timing.grammarLoadMs),
+      }),
+      prepareCodeHighlighting(["Lua"], "github-light", {
+        onTiming: (timing) => cold.push(timing.grammarLoadMs),
+      }),
+    ]);
+    await prepareCodeHighlighting(["lua"], "github-light", {
+      onTiming: (timing) => warm.push(timing.grammarLoadMs),
+    });
+    expect(cold.filter((duration) => duration > 0)).toHaveLength(1);
+    expect(warm).toEqual([0]);
+  });
+
+  test("reports a concurrent grammar batch as bounded wall time", async () => {
+    let timing:
+      | { engineInitMs: number; grammarLoadMs: number; tokenizeMs: number }
+      | undefined;
+    const startedAt = performance.now();
+    await prepareCodeHighlighting(
+      ["typescript", "python", "java", "csharp", "rust", "shellscript"],
+      "github-dark-high-contrast",
+      { onTiming: (value) => { timing = value; } },
+    );
+    const elapsedMs = performance.now() - startedAt;
+
+    expect(timing).toBeDefined();
+    expect(timing!.engineInitMs).toBeGreaterThan(0);
+    expect(timing!.grammarLoadMs).toBeGreaterThan(0);
+    expect(timing!.tokenizeMs).toBe(0);
+    expect(timing!.engineInitMs + timing!.grammarLoadMs).toBeLessThanOrEqual(
+      elapsedMs + 5,
+    );
+  });
+});
+
+describe("engine module boundaries", () => {
+  test("keeps concrete engines out of the shared cache/token contract", async () => {
+    const shared = await Bun.file(new URL("./highlight.ts", import.meta.url)).text();
+    const javascript = await Bun.file(
+      new URL("./highlight-engine-javascript.ts", import.meta.url),
+    ).text();
+    const oniguruma = await Bun.file(
+      new URL("./highlight-engine-oniguruma.ts", import.meta.url),
+    ).text();
+
+    expect(shared).not.toContain("shiki/engine/");
+    expect(shared).not.toContain("shiki/wasm");
+    expect(javascript).toContain("shiki/engine/javascript");
+    expect(javascript).not.toContain("oniguruma");
+    expect(javascript).not.toContain("shiki/wasm");
+    expect(oniguruma).toContain("shiki/engine/oniguruma");
+    expect(oniguruma).toContain("shiki/wasm");
+    expect(oniguruma).not.toContain("shiki/engine/javascript");
   });
 });

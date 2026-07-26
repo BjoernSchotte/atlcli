@@ -86,6 +86,10 @@ import {
   type InlineImageNode,
 } from "./serialize.js";
 import {
+  createDocxCodeHighlightTimingCollector,
+  type DocxCodeHighlightTimingCollector,
+} from "./code-highlighting.js";
+import {
   auditImageAltText,
   boundRasterTarget,
   ImageEmbedder,
@@ -141,6 +145,16 @@ import {
 export interface ExportTimings {
   resolveMs: number;
   bodyMs: number;
+  /** One-time Shiki core/theme/RegExp-engine initialization work. */
+  highlightEngineInitMs?: number;
+  /** Sum of newly loaded grammar imports, loads, and deterministic compiles. */
+  highlightGrammarLoadMs?: number;
+  /** Sum of real source-code tokenization calls. */
+  highlightTokenizeMs?: number;
+  /** Non-Mermaid code block occurrences handled by the serializer. */
+  highlightCodeBlocks?: number;
+  /** Distinct known canonical code languages in the export. */
+  highlightLanguageCount?: number;
   logoFetchMs: number;
   /** Wall clock of the cross-page include pass (fetch + walk + serialize). */
   includeFetchMs: number;
@@ -480,6 +494,11 @@ export async function prepareDocxExport(input: ExportInput): Promise<PreparedDoc
   const timings: ExportTimings = {
     resolveMs: 0,
     bodyMs: 0,
+    highlightEngineInitMs: 0,
+    highlightGrammarLoadMs: 0,
+    highlightTokenizeMs: 0,
+    highlightCodeBlocks: 0,
+    highlightLanguageCount: 0,
     logoFetchMs: 0,
     includeFetchMs: 0,
     renderMs: 0,
@@ -488,6 +507,7 @@ export async function prepareDocxExport(input: ExportInput): Promise<PreparedDoc
     diagramRenderMs: 0,
     diagramRasterMs: 0,
   };
+  const codeHighlightTimings = createDocxCodeHighlightTimingCollector();
 
   const zip = unzipDocx(input.templateBytes);
   const scan = scanZip(zip);
@@ -635,6 +655,7 @@ export async function prepareDocxExport(input: ExportInput): Promise<PreparedDoc
   const bodyStart = Date.now();
   const body = await serializeBlocks(blocks, {
     codeTheme,
+    highlightTimings: codeHighlightTimings,
     styleNames,
     numbering,
     comments,
@@ -737,9 +758,15 @@ export async function prepareDocxExport(input: ExportInput): Promise<PreparedDoc
     captionLang: captionLocale.lang,
     ...(input.captionLang !== undefined ? { dateLocale: input.captionLang } : {}),
     timings,
+    codeHighlightTimings,
     notes: flowNotes,
     comments,
   });
+  timings.highlightEngineInitMs = codeHighlightTimings.engineInitMs;
+  timings.highlightGrammarLoadMs = codeHighlightTimings.grammarLoadMs;
+  timings.highlightTokenizeMs = codeHighlightTimings.tokenizeMs;
+  timings.highlightCodeBlocks = codeHighlightTimings.codeBlocks;
+  timings.highlightLanguageCount = codeHighlightTimings.languages.size;
 
   if (!contentFound) {
     injectContentTagAtEnd(zip);
@@ -864,6 +891,26 @@ function openPreparedDocxArchive(bytes: Uint8Array): PizZip {
   return zip;
 }
 
+/** Supply additive timing fields missing from historical `/1` checkpoints. */
+function normalizeExportTimings(timings: ExportTimings): ExportTimings {
+  return {
+    resolveMs: timings.resolveMs ?? 0,
+    bodyMs: timings.bodyMs ?? 0,
+    highlightEngineInitMs: timings.highlightEngineInitMs ?? 0,
+    highlightGrammarLoadMs: timings.highlightGrammarLoadMs ?? 0,
+    highlightTokenizeMs: timings.highlightTokenizeMs ?? 0,
+    highlightCodeBlocks: timings.highlightCodeBlocks ?? 0,
+    highlightLanguageCount: timings.highlightLanguageCount ?? 0,
+    logoFetchMs: timings.logoFetchMs ?? 0,
+    includeFetchMs: timings.includeFetchMs ?? 0,
+    renderMs: timings.renderMs ?? 0,
+    imageFetchMs: timings.imageFetchMs ?? 0,
+    imageFetches: timings.imageFetches ?? 0,
+    diagramRenderMs: timings.diagramRenderMs ?? 0,
+    diagramRasterMs: timings.diagramRasterMs ?? 0,
+  };
+}
+
 /**
  * Consume and render one fresh materialization of a ready-to-render checkpoint.
  * The render state is cleared synchronously before PizZip/docxtemplater touch it,
@@ -929,7 +976,10 @@ export async function renderPreparedDocxExport(
   }) as unknown as Uint8Array;
   rendered = undefined;
   throwIfAborted(input.signal);
-  const timings = { ...prepared.timings, renderMs: Date.now() - renderStart };
+  const timings = {
+    ...normalizeExportTimings(prepared.timings),
+    renderMs: Date.now() - renderStart,
+  };
   const durationMs = Date.now() - prepared.startedAt;
   const notes = [...prepared.baseNotes, ...flowNotes, timingNote(timings, durationMs)];
   const skippedImages = notes.filter((note) => IMAGE_SKIP_CODES.has(note.code)).length;
@@ -1076,12 +1126,22 @@ function countImageBlocks(blocks: ExportBlock[]): number {
  * extra tooling. Phases overlap by design, so they don't sum to the total.
  */
 function timingNote(t: ExportTimings, totalMs: number): ExportNote {
+  const highlightInitMs = t.highlightEngineInitMs ?? 0;
+  const highlightGrammarMs = t.highlightGrammarLoadMs ?? 0;
+  const highlightTokenizeMs = t.highlightTokenizeMs ?? 0;
+  const highlightCodeBlocks = t.highlightCodeBlocks ?? 0;
+  const highlightLanguages = t.highlightLanguageCount ?? 0;
   const parts = [
     `body ${t.bodyMs} ms` +
       (t.diagramRenderMs || t.diagramRasterMs
         ? ` (diagrams: render ${t.diagramRenderMs} ms, rasterize ${t.diagramRasterMs} ms)`
         : "") +
       (t.imageFetches ? ` (${t.imageFetches} image fetch(es): ${t.imageFetchMs} ms)` : ""),
+    ...(highlightCodeBlocks
+      ? [
+          `highlight init ${Math.round(highlightInitMs)} ms · grammars ${Math.round(highlightGrammarMs)} ms · tokenize ${Math.round(highlightTokenizeMs)} ms (${highlightCodeBlocks} code block(s), ${highlightLanguages} language(s))`,
+        ]
+      : []),
     `placeholders ${t.resolveMs} ms`,
     ...(t.logoFetchMs ? [`logo fetch ${t.logoFetchMs} ms`] : []),
     ...(t.includeFetchMs ? [`includes ${t.includeFetchMs} ms`] : []),
@@ -1890,6 +1950,7 @@ interface IncludePassDeps {
   captionLang: CaptionLang;
   dateLocale?: string;
   timings: ExportTimings;
+  codeHighlightTimings: DocxCodeHighlightTimingCollector;
   /** Sink for the pass's report notes (part of the export's flow notes). */
   notes: ExportNote[];
   comments: WordCommentRegistry;
@@ -2126,6 +2187,7 @@ async function runIncludePass(pass: IncludePassDeps): Promise<Map<string, string
       : undefined;
     const serialized = await serializeBlocks(walked.blocks, {
       styleNames: pass.styleNames,
+      highlightTimings: pass.codeHighlightTimings,
       comments: pass.comments,
       ...(images ? { images } : {}),
       ...(diagrams ? { diagrams } : {}),

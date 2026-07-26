@@ -25,6 +25,10 @@ const ROOT_RELATIVE_RES = [
   /\b(?:fetch|Worker|SharedWorker|URL|importScripts)\s*\(\s*["'`]\/(?!\/)[^"'`]+["'`]/g,
   /["'`]\/assets\/[^"'`]+\.(?:js|mjs|wasm|ttf|otf|woff2?|txt)["'`]/g,
 ];
+const ONIGURUMA_RUNTIME_RES = [
+  /\bfindNextOnigScannerMatch\b/g,
+  /Must invoke loadWasm first[.]/g,
+];
 
 export interface OutputFinding {
   file: string;
@@ -52,6 +56,7 @@ export function scanHarnessText(text: string): string[] {
     ...matches(text, REMOTE_EXECUTABLE_RES),
     ...matches(text, [EXTENSION_RUNTIME_RE]),
     ...matches(text, ROOT_RELATIVE_RES),
+    ...matches(text, ONIGURUMA_RUNTIME_RES),
   ];
   // Shiki grammar chunks are inert JSON payloads. Some grammars list Node
   // globals as source-language keywords; those strings are not runtime use.
@@ -126,6 +131,11 @@ function requireOne(
 
 export function validateHarnessInventory(artifacts: OutputArtifact[]): string[] {
   const issues: string[] = [];
+  for (const artifact of artifacts) {
+    if (/(?:^|\/)engine-oniguruma-[^/]+[.]js$/i.test(artifact.path)) {
+      issues.push(`Oniguruma engine: unexpected browser artifact ${artifact.path}`);
+    }
+  }
   if (!artifacts.some((artifact) => artifact.path === "index.html")) {
     issues.push("entry HTML: missing index.html");
   }

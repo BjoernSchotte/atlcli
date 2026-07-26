@@ -120,6 +120,13 @@ describe("scanText classification", () => {
   });
 
   it.each([
+    ["engine runtime", `findNextOnigScannerMatch(scanner, input)`],
+    ["WASM loader", `throw new Error("Must invoke loadWasm first.")`],
+  ])("flags Oniguruma %s", (_label, source) => {
+    expect(scanText(source).length).toBeGreaterThan(0);
+  });
+
+  it.each([
     ["Function constructor", `const make = Function("return 1");`, "Function("],
     ["new Function constructor", `const make = new Function("return 1");`, "Function("],
     ["direct eval", `const value = eval("1 + 1");`, "eval("],

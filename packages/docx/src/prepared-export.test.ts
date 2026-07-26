@@ -65,6 +65,9 @@ describe("prepared DOCX export", () => {
     const report = (await renderPreparedDocxExport(prepared)).report;
     expect(prepared.codeTheme).toBe("github-dark");
     expect(report.codeTheme).toBe("github-dark");
+    expect(report.timings.highlightCodeBlocks).toBe(1);
+    expect(report.timings.highlightLanguageCount).toBe(1);
+    expect(report.timings.highlightTokenizeMs).toBeGreaterThanOrEqual(0);
   });
 
   it("resumes a historical /1 checkpoint without a theme as github-light", async () => {
@@ -72,6 +75,31 @@ describe("prepared DOCX export", () => {
     delete (prepared as { codeTheme?: string }).codeTheme;
     const report = (await renderPreparedDocxExport(prepared)).report;
     expect(report.codeTheme).toBe("github-light");
+  });
+
+  it("normalizes highlight timings missing from a historical /1 checkpoint", async () => {
+    const prepared = await prepareDocxExport(input());
+    const historical = prepared.timings as typeof prepared.timings & {
+      highlightEngineInitMs?: number;
+      highlightGrammarLoadMs?: number;
+      highlightTokenizeMs?: number;
+      highlightCodeBlocks?: number;
+      highlightLanguageCount?: number;
+    };
+    delete historical.highlightEngineInitMs;
+    delete historical.highlightGrammarLoadMs;
+    delete historical.highlightTokenizeMs;
+    delete historical.highlightCodeBlocks;
+    delete historical.highlightLanguageCount;
+
+    const report = (await renderPreparedDocxExport(prepared)).report;
+    expect(report.timings).toMatchObject({
+      highlightEngineInitMs: 0,
+      highlightGrammarLoadMs: 0,
+      highlightTokenizeMs: 0,
+      highlightCodeBlocks: 0,
+      highlightLanguageCount: 0,
+    });
   });
 
   it("consumes one render state and retries only from a fresh durable clone", async () => {

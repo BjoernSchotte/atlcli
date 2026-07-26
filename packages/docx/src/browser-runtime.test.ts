@@ -7,8 +7,10 @@ import {
   canvasSvgRasterizer,
   installDocxBrowserRuntime,
   memoryTemplateSource,
+  prepareDocxCodeHighlighting,
   type DocxByteHelpers,
 } from "./browser-runtime.js";
+import type { ExportBlock } from "@atlcli/confluence";
 import { DOCX_BROWSER_VITE_DEFINES } from "./vite.js";
 
 type RuntimeGlobal = typeof globalThis & {
@@ -37,6 +39,35 @@ describe("DOCX browser byte helpers", () => {
     const before = scope.Buffer;
     installDocxBrowserRuntime();
     expect(scope.Buffer).toBe(before);
+  });
+
+  it("awaits only nested non-Mermaid DOCX languages and is idempotent", async () => {
+    const blocks: ExportBlock[] = [
+      {
+        type: "callout",
+        kind: "info",
+        content: [{ type: "codeBlock", language: "ts", code: "const x = 1;" }],
+      },
+      {
+        type: "table",
+        rows: [{
+          cells: [{
+            header: false,
+            colspan: 1,
+            rowspan: 1,
+            content: [
+              { type: "codeBlock", language: "typescript", code: "const y = 2;" },
+              { type: "codeBlock", language: "mermaid", code: "graph TD; A-->B" },
+            ],
+          }],
+        }],
+      },
+    ];
+    await Promise.all([
+      prepareDocxCodeHighlighting(blocks),
+      prepareDocxCodeHighlighting(blocks),
+    ]);
+    await prepareDocxCodeHighlighting(blocks);
   });
 
   it("exports the exact frozen Vite define map", () => {
@@ -144,7 +175,7 @@ async function buildAndRunEntry(entrySource: string): Promise<ReturnType<typeof 
 }
 
 describe("browser runtime module evaluation order", () => {
-  const runtimePath = join(import.meta.dir, "browser-runtime.ts");
+  const runtimePath = join(import.meta.dir, "browser-runtime-bootstrap.ts");
 
   it("works when the runtime is installed before a dynamic engine import", async () => {
     const run = await buildAndRunEntry(
@@ -152,7 +183,7 @@ describe("browser runtime module evaluation order", () => {
         `const { value } = await import("./probe.ts");\n` +
         `console.log(Array.from(value).join(","));\n`
     );
-    expect(run.status).toBe(0);
+    expect(run.status, run.stderr.toString()).toBe(0);
     expect(run.stdout).toContain("111,107");
   });
 

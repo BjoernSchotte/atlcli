@@ -7,6 +7,10 @@ const mainSource = readFileSync(
   join(extensionRoot, "entrypoints", "sidepanel", "main.tsx"),
   "utf8"
 );
+const offscreenSource = readFileSync(
+  join(extensionRoot, "entrypoints", "offscreen", "main.ts"),
+  "utf8"
+);
 /**
  * The lazy-load boundary moved with the code it guards: spec 010 Phase 0 took
  * the DOCX effect half out of `TemplateSection.tsx` (now a compatibility
@@ -25,6 +29,16 @@ describe("DOCX browser bootstrap boundary", () => {
     const firstImport = mainSource.split("\n").find((line) => line.startsWith("import "));
     expect(firstImport).toBe('import "@atlcli/docx/browser-runtime";');
     expect(mainSource).not.toContain("byte-helpers-shim");
+  });
+
+  it("installs the package runtime in the productive offscreen DOCX realm", () => {
+    const firstImport = offscreenSource
+      .split("\n")
+      .find((line) => line.startsWith("import "));
+    expect(firstImport).toBe('import "@atlcli/docx/browser-runtime";');
+    expect(offscreenSource.indexOf("@atlcli/docx/browser-runtime")).toBeLessThan(
+      offscreenSource.indexOf("docx-executor.js"),
+    );
   });
 
   it("keeps runtime DOCX engine modules behind dynamic imports", () => {

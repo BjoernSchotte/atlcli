@@ -4,7 +4,7 @@
 > Do NOT edit by hand — regenerate with `bun scripts/api-report.ts --update`
 > and have the diff reviewed (spec 009, API freeze & guards).
 
-### Entry point `.`
+### Entry point `. (browser)`
 
 ```ts
 // export: canonicalCodeLanguage
@@ -2445,6 +2445,29 @@ export declare const CODE_THEMES: readonly [
     }
 ];
 
+// export: CodeHighlightEngine
+export interface CodeHighlightEngine {
+    readonly id: string;
+    create(): RegexEngine | Promise<RegexEngine>;
+}
+
+// export: CodeHighlightEngineConfigurationError
+export declare class CodeHighlightEngineConfigurationError extends Error {
+    constructor(message: string);
+}
+
+// export: CodeHighlightOptions
+export interface CodeHighlightOptions {
+    onTiming?: (timing: CodeHighlightTiming) => void;
+}
+
+// export: CodeHighlightTiming
+export interface CodeHighlightTiming {
+    engineInitMs: number;
+    grammarLoadMs: number;
+    tokenizeMs: number;
+}
+
 // export: CodeLanguageId
 export type CodeLanguageId = (typeof CODE_LANGUAGES)[number]["id"];
 
@@ -2463,8 +2486,11 @@ export interface CodeToken {
 // export: DEFAULT_CODE_THEME
 export declare const DEFAULT_CODE_THEME: CodeThemeId;
 
+// export: getCodeHighlightEngineId
+export declare function getCodeHighlightEngineId(): string | null;
+
 // export: highlightCode
-export declare function highlightCode(code: string, language?: string, theme?: CodeThemeId): Promise<HighlightedCode>;
+export declare function highlightCode(code: string, language?: string, theme?: CodeThemeId, options?: CodeHighlightOptions): Promise<HighlightedCode>;
 
 // export: HighlightedCode
 export interface HighlightedCode {
@@ -2479,6 +2505,9 @@ export type HighlightResult = HighlightedCode;
 // export: HighlightSkip
 export type HighlightSkip = "unknown-language" | "highlight-failed";
 
+// export: installCodeHighlightEngine
+export declare function installCodeHighlightEngine(engine: CodeHighlightEngine): void;
+
 // export: InvalidCodeThemeError
 export declare class InvalidCodeThemeError extends Error {
     readonly value: unknown;
@@ -2488,6 +2517,9 @@ export declare class InvalidCodeThemeError extends Error {
 
 // export: isCodeThemeId
 export declare function isCodeThemeId(value: unknown): value is CodeThemeId;
+
+// export: prepareCodeHighlighting
+export declare function prepareCodeHighlighting(languages: readonly string[], theme?: CodeThemeId, options?: CodeHighlightOptions): Promise<void>;
 
 // export: resolveCodeTheme
 export declare function resolveCodeTheme(value?: unknown): ResolvedCodeTheme;
@@ -2506,6 +2538,2556 @@ export interface ResolvedCodeTheme {
 
 // export: warmHighlight
 export declare function warmHighlight(languages: readonly string[], theme?: CodeThemeId): void;
+```
+
+### Entry point `. (default)`
+
+```ts
+// export: canonicalCodeLanguage
+export declare function canonicalCodeLanguage(value: string): CodeLanguageId | undefined;
+
+// export: CODE_LANGUAGE_IDS
+export declare const CODE_LANGUAGE_IDS: ("stylus" | "d" | "r" | "move" | "html" | "ruby" | "rel" | "json" | "abap" | "actionscript-3" | "ada" | "angular-html" | "angular-ts" | "apache" | "apex" | "apl" | "applescript" | "ara" | "asciidoc" | "asm" | "astro" | "awk" | "ballerina" | "bat" | "beancount" | "berry" | "bibtex" | "bicep" | "bird2" | "blade" | "bsl" | "c" | "c3" | "cadence" | "cairo" | "clarity" | "clojure" | "cmake" | "cobol" | "codeowners" | "codeql" | "coffee" | "common-lisp" | "coq" | "cpp" | "crystal" | "csharp" | "css" | "csv" | "cue" | "cypher" | "dart" | "dax" | "desktop" | "diff" | "docker" | "dotenv" | "dream-maker" | "edge" | "elixir" | "elm" | "emacs-lisp" | "erb" | "erlang" | "fennel" | "fish" | "fluent" | "fortran-fixed-form" | "fortran-free-form" | "fsharp" | "gdresource" | "gdscript" | "gdshader" | "genie" | "gherkin" | "git-commit" | "git-rebase" | "gleam" | "glimmer-js" | "glimmer-ts" | "glsl" | "gn" | "gnuplot" | "go" | "graphql" | "groovy" | "hack" | "haml" | "handlebars" | "haskell" | "haxe" | "hcl" | "hjson" | "hlsl" | "html-derivative" | "http" | "hurl" | "hxml" | "hy" | "imba" | "ini" | "java" | "javascript" | "jinja" | "jison" | "json5" | "jsonc" | "jsonl" | "jsonnet" | "jssm" | "jsx" | "julia" | "just" | "kdl" | "kotlin" | "kusto" | "latex" | "lean" | "less" | "liquid" | "llvm" | "log" | "logo" | "lua" | "luau" | "make" | "markdown" | "marko" | "matlab" | "mdc" | "mdx" | "mermaid" | "mipsasm" | "mojo" | "moonbit" | "narrat" | "nextflow" | "nextflow-groovy" | "nginx" | "nim" | "nix" | "nushell" | "objective-c" | "objective-cpp" | "ocaml" | "odin" | "openscad" | "pascal" | "perl" | "php" | "pkl" | "plsql" | "po" | "polar" | "postcss" | "powerquery" | "powershell" | "prisma" | "prolog" | "proto" | "pug" | "puppet" | "purescript" | "python" | "qml" | "qmldir" | "qss" | "racket" | "raku" | "razor" | "reg" | "regexp" | "riscv" | "ron" | "rosmsg" | "rst" | "rust" | "sas" | "sass" | "scala" | "scheme" | "scss" | "sdbl" | "shaderlab" | "shellscript" | "shellsession" | "smalltalk" | "solidity" | "soy" | "sparql" | "splunk" | "sql" | "ssh-config" | "stata" | "surrealql" | "svelte" | "swift" | "system-verilog" | "systemd" | "talonscript" | "tasl" | "tcl" | "templ" | "terraform" | "tex" | "toml" | "ts-tags" | "tsv" | "tsx" | "turtle" | "twig" | "typescript" | "typespec" | "typst" | "v" | "vala" | "vb" | "verilog" | "vhdl" | "viml" | "vue" | "vue-html" | "vue-vine" | "vyper" | "wasm" | "wenyan" | "wgsl" | "wikitext" | "wit" | "wolfram" | "xml" | "xsl" | "yaml" | "zenscript" | "zig")[];
+
+// export: CODE_LANGUAGES
+export declare const CODE_LANGUAGES: readonly [
+    {
+        readonly id: "abap";
+        readonly name: "ABAP";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "actionscript-3";
+        readonly name: "ActionScript";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "ada";
+        readonly name: "Ada";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "angular-html";
+        readonly name: "Angular HTML";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "angular-ts";
+        readonly name: "Angular TypeScript";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "apache";
+        readonly name: "Apache Conf";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "apex";
+        readonly name: "Apex";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "apl";
+        readonly name: "APL";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "applescript";
+        readonly name: "AppleScript";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "ara";
+        readonly name: "Ara";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "asciidoc";
+        readonly name: "AsciiDoc";
+        readonly aliases: readonly [
+            "adoc"
+        ];
+    },
+    {
+        readonly id: "asm";
+        readonly name: "Assembly";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "astro";
+        readonly name: "Astro";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "awk";
+        readonly name: "AWK";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "ballerina";
+        readonly name: "Ballerina";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "bat";
+        readonly name: "Batch File";
+        readonly aliases: readonly [
+            "batch"
+        ];
+    },
+    {
+        readonly id: "beancount";
+        readonly name: "Beancount";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "berry";
+        readonly name: "Berry";
+        readonly aliases: readonly [
+            "be"
+        ];
+    },
+    {
+        readonly id: "bibtex";
+        readonly name: "BibTeX";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "bicep";
+        readonly name: "Bicep";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "bird2";
+        readonly name: "BIRD2 Configuration";
+        readonly aliases: readonly [
+            "bird"
+        ];
+    },
+    {
+        readonly id: "blade";
+        readonly name: "Blade";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "bsl";
+        readonly name: "1C (Enterprise)";
+        readonly aliases: readonly [
+            "1c"
+        ];
+    },
+    {
+        readonly id: "c";
+        readonly name: "C";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "c3";
+        readonly name: "C3";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "cadence";
+        readonly name: "Cadence";
+        readonly aliases: readonly [
+            "cdc"
+        ];
+    },
+    {
+        readonly id: "cairo";
+        readonly name: "Cairo";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "clarity";
+        readonly name: "Clarity";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "clojure";
+        readonly name: "Clojure";
+        readonly aliases: readonly [
+            "clj"
+        ];
+    },
+    {
+        readonly id: "cmake";
+        readonly name: "CMake";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "cobol";
+        readonly name: "COBOL";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "codeowners";
+        readonly name: "CODEOWNERS";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "codeql";
+        readonly name: "CodeQL";
+        readonly aliases: readonly [
+            "ql"
+        ];
+    },
+    {
+        readonly id: "coffee";
+        readonly name: "CoffeeScript";
+        readonly aliases: readonly [
+            "coffeescript"
+        ];
+    },
+    {
+        readonly id: "common-lisp";
+        readonly name: "Common Lisp";
+        readonly aliases: readonly [
+            "lisp"
+        ];
+    },
+    {
+        readonly id: "coq";
+        readonly name: "Coq";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "cpp";
+        readonly name: "C++";
+        readonly aliases: readonly [
+            "c++"
+        ];
+    },
+    {
+        readonly id: "crystal";
+        readonly name: "Crystal";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "csharp";
+        readonly name: "C#";
+        readonly aliases: readonly [
+            "c#",
+            "cs"
+        ];
+    },
+    {
+        readonly id: "css";
+        readonly name: "CSS";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "csv";
+        readonly name: "CSV";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "cue";
+        readonly name: "CUE";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "cypher";
+        readonly name: "Cypher";
+        readonly aliases: readonly [
+            "cql"
+        ];
+    },
+    {
+        readonly id: "d";
+        readonly name: "D";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "dart";
+        readonly name: "Dart";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "dax";
+        readonly name: "DAX";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "desktop";
+        readonly name: "Desktop";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "diff";
+        readonly name: "Diff";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "docker";
+        readonly name: "Dockerfile";
+        readonly aliases: readonly [
+            "dockerfile"
+        ];
+    },
+    {
+        readonly id: "dotenv";
+        readonly name: "dotEnv";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "dream-maker";
+        readonly name: "Dream Maker";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "edge";
+        readonly name: "Edge";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "elixir";
+        readonly name: "Elixir";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "elm";
+        readonly name: "Elm";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "emacs-lisp";
+        readonly name: "Emacs Lisp";
+        readonly aliases: readonly [
+            "elisp"
+        ];
+    },
+    {
+        readonly id: "erb";
+        readonly name: "ERB";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "erlang";
+        readonly name: "Erlang";
+        readonly aliases: readonly [
+            "erl"
+        ];
+    },
+    {
+        readonly id: "fennel";
+        readonly name: "Fennel";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "fish";
+        readonly name: "Fish";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "fluent";
+        readonly name: "Fluent";
+        readonly aliases: readonly [
+            "ftl"
+        ];
+    },
+    {
+        readonly id: "fortran-fixed-form";
+        readonly name: "Fortran (Fixed Form)";
+        readonly aliases: readonly [
+            "f",
+            "f77",
+            "for"
+        ];
+    },
+    {
+        readonly id: "fortran-free-form";
+        readonly name: "Fortran (Free Form)";
+        readonly aliases: readonly [
+            "f03",
+            "f08",
+            "f18",
+            "f90",
+            "f95"
+        ];
+    },
+    {
+        readonly id: "fsharp";
+        readonly name: "F#";
+        readonly aliases: readonly [
+            "f#",
+            "fs"
+        ];
+    },
+    {
+        readonly id: "gdresource";
+        readonly name: "GDResource";
+        readonly aliases: readonly [
+            "tres",
+            "tscn"
+        ];
+    },
+    {
+        readonly id: "gdscript";
+        readonly name: "GDScript";
+        readonly aliases: readonly [
+            "gd"
+        ];
+    },
+    {
+        readonly id: "gdshader";
+        readonly name: "GDShader";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "genie";
+        readonly name: "Genie";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "gherkin";
+        readonly name: "Gherkin";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "git-commit";
+        readonly name: "Git Commit Message";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "git-rebase";
+        readonly name: "Git Rebase Message";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "gleam";
+        readonly name: "Gleam";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "glimmer-js";
+        readonly name: "Glimmer JS";
+        readonly aliases: readonly [
+            "gjs"
+        ];
+    },
+    {
+        readonly id: "glimmer-ts";
+        readonly name: "Glimmer TS";
+        readonly aliases: readonly [
+            "gts"
+        ];
+    },
+    {
+        readonly id: "glsl";
+        readonly name: "GLSL";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "gn";
+        readonly name: "GN";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "gnuplot";
+        readonly name: "Gnuplot";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "go";
+        readonly name: "Go";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "graphql";
+        readonly name: "GraphQL";
+        readonly aliases: readonly [
+            "gql"
+        ];
+    },
+    {
+        readonly id: "groovy";
+        readonly name: "Groovy";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "hack";
+        readonly name: "Hack";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "haml";
+        readonly name: "Ruby Haml";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "handlebars";
+        readonly name: "Handlebars";
+        readonly aliases: readonly [
+            "hbs"
+        ];
+    },
+    {
+        readonly id: "haskell";
+        readonly name: "Haskell";
+        readonly aliases: readonly [
+            "hs"
+        ];
+    },
+    {
+        readonly id: "haxe";
+        readonly name: "Haxe";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "hcl";
+        readonly name: "HashiCorp HCL";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "hjson";
+        readonly name: "Hjson";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "hlsl";
+        readonly name: "HLSL";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "html";
+        readonly name: "HTML";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "html-derivative";
+        readonly name: "HTML (Derivative)";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "http";
+        readonly name: "HTTP";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "hurl";
+        readonly name: "Hurl";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "hxml";
+        readonly name: "HXML";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "hy";
+        readonly name: "Hy";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "imba";
+        readonly name: "Imba";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "ini";
+        readonly name: "INI";
+        readonly aliases: readonly [
+            "properties"
+        ];
+    },
+    {
+        readonly id: "java";
+        readonly name: "Java";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "javascript";
+        readonly name: "JavaScript";
+        readonly aliases: readonly [
+            "cjs",
+            "js",
+            "mjs"
+        ];
+    },
+    {
+        readonly id: "jinja";
+        readonly name: "Jinja";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "jison";
+        readonly name: "Jison";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "json";
+        readonly name: "JSON";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "json5";
+        readonly name: "JSON5";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "jsonc";
+        readonly name: "JSON with Comments";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "jsonl";
+        readonly name: "JSON Lines";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "jsonnet";
+        readonly name: "Jsonnet";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "jssm";
+        readonly name: "JSSM";
+        readonly aliases: readonly [
+            "fsl"
+        ];
+    },
+    {
+        readonly id: "jsx";
+        readonly name: "JSX";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "julia";
+        readonly name: "Julia";
+        readonly aliases: readonly [
+            "jl"
+        ];
+    },
+    {
+        readonly id: "just";
+        readonly name: "Just";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "kdl";
+        readonly name: "KDL";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "kotlin";
+        readonly name: "Kotlin";
+        readonly aliases: readonly [
+            "kt",
+            "kts"
+        ];
+    },
+    {
+        readonly id: "kusto";
+        readonly name: "Kusto";
+        readonly aliases: readonly [
+            "kql"
+        ];
+    },
+    {
+        readonly id: "latex";
+        readonly name: "LaTeX";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "lean";
+        readonly name: "Lean 4";
+        readonly aliases: readonly [
+            "lean4"
+        ];
+    },
+    {
+        readonly id: "less";
+        readonly name: "Less";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "liquid";
+        readonly name: "Liquid";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "llvm";
+        readonly name: "LLVM IR";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "log";
+        readonly name: "Log file";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "logo";
+        readonly name: "Logo";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "lua";
+        readonly name: "Lua";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "luau";
+        readonly name: "Luau";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "make";
+        readonly name: "Makefile";
+        readonly aliases: readonly [
+            "makefile"
+        ];
+    },
+    {
+        readonly id: "markdown";
+        readonly name: "Markdown";
+        readonly aliases: readonly [
+            "md"
+        ];
+    },
+    {
+        readonly id: "marko";
+        readonly name: "Marko";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "matlab";
+        readonly name: "MATLAB";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "mdc";
+        readonly name: "MDC";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "mdx";
+        readonly name: "MDX";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "mermaid";
+        readonly name: "Mermaid";
+        readonly aliases: readonly [
+            "mmd"
+        ];
+    },
+    {
+        readonly id: "mipsasm";
+        readonly name: "MIPS Assembly";
+        readonly aliases: readonly [
+            "mips"
+        ];
+    },
+    {
+        readonly id: "mojo";
+        readonly name: "Mojo";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "moonbit";
+        readonly name: "MoonBit";
+        readonly aliases: readonly [
+            "mbt",
+            "mbti"
+        ];
+    },
+    {
+        readonly id: "move";
+        readonly name: "Move";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "narrat";
+        readonly name: "Narrat Language";
+        readonly aliases: readonly [
+            "nar"
+        ];
+    },
+    {
+        readonly id: "nextflow";
+        readonly name: "Nextflow";
+        readonly aliases: readonly [
+            "nf"
+        ];
+    },
+    {
+        readonly id: "nextflow-groovy";
+        readonly name: "Nextflow Groovy";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "nginx";
+        readonly name: "Nginx";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "nim";
+        readonly name: "Nim";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "nix";
+        readonly name: "Nix";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "nushell";
+        readonly name: "nushell";
+        readonly aliases: readonly [
+            "nu"
+        ];
+    },
+    {
+        readonly id: "objective-c";
+        readonly name: "Objective-C";
+        readonly aliases: readonly [
+            "objc"
+        ];
+    },
+    {
+        readonly id: "objective-cpp";
+        readonly name: "Objective-C++";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "ocaml";
+        readonly name: "OCaml";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "odin";
+        readonly name: "Odin";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "openscad";
+        readonly name: "OpenSCAD";
+        readonly aliases: readonly [
+            "scad"
+        ];
+    },
+    {
+        readonly id: "pascal";
+        readonly name: "Pascal";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "perl";
+        readonly name: "Perl";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "php";
+        readonly name: "PHP";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "pkl";
+        readonly name: "Pkl";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "plsql";
+        readonly name: "PL/SQL";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "po";
+        readonly name: "Gettext PO";
+        readonly aliases: readonly [
+            "pot",
+            "potx"
+        ];
+    },
+    {
+        readonly id: "polar";
+        readonly name: "Polar";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "postcss";
+        readonly name: "PostCSS";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "powerquery";
+        readonly name: "PowerQuery";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "powershell";
+        readonly name: "PowerShell";
+        readonly aliases: readonly [
+            "ps",
+            "ps1"
+        ];
+    },
+    {
+        readonly id: "prisma";
+        readonly name: "Prisma";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "prolog";
+        readonly name: "Prolog";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "proto";
+        readonly name: "Protocol Buffer 3";
+        readonly aliases: readonly [
+            "protobuf"
+        ];
+    },
+    {
+        readonly id: "pug";
+        readonly name: "Pug";
+        readonly aliases: readonly [
+            "jade"
+        ];
+    },
+    {
+        readonly id: "puppet";
+        readonly name: "Puppet";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "purescript";
+        readonly name: "PureScript";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "python";
+        readonly name: "Python";
+        readonly aliases: readonly [
+            "py"
+        ];
+    },
+    {
+        readonly id: "qml";
+        readonly name: "QML";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "qmldir";
+        readonly name: "QML Directory";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "qss";
+        readonly name: "Qt Style Sheets";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "r";
+        readonly name: "R";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "racket";
+        readonly name: "Racket";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "raku";
+        readonly name: "Raku";
+        readonly aliases: readonly [
+            "perl6"
+        ];
+    },
+    {
+        readonly id: "razor";
+        readonly name: "ASP.NET Razor";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "reg";
+        readonly name: "Windows Registry Script";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "regexp";
+        readonly name: "RegExp";
+        readonly aliases: readonly [
+            "regex"
+        ];
+    },
+    {
+        readonly id: "rel";
+        readonly name: "Rel";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "riscv";
+        readonly name: "RISC-V";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "ron";
+        readonly name: "RON";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "rosmsg";
+        readonly name: "ROS Interface";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "rst";
+        readonly name: "reStructuredText";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "ruby";
+        readonly name: "Ruby";
+        readonly aliases: readonly [
+            "rb"
+        ];
+    },
+    {
+        readonly id: "rust";
+        readonly name: "Rust";
+        readonly aliases: readonly [
+            "rs"
+        ];
+    },
+    {
+        readonly id: "sas";
+        readonly name: "SAS";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "sass";
+        readonly name: "Sass";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "scala";
+        readonly name: "Scala";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "scheme";
+        readonly name: "Scheme";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "scss";
+        readonly name: "SCSS";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "sdbl";
+        readonly name: "1C (Query)";
+        readonly aliases: readonly [
+            "1c-query"
+        ];
+    },
+    {
+        readonly id: "shaderlab";
+        readonly name: "ShaderLab";
+        readonly aliases: readonly [
+            "shader"
+        ];
+    },
+    {
+        readonly id: "shellscript";
+        readonly name: "Shell";
+        readonly aliases: readonly [
+            "bash",
+            "sh",
+            "shell",
+            "zsh"
+        ];
+    },
+    {
+        readonly id: "shellsession";
+        readonly name: "Shell Session";
+        readonly aliases: readonly [
+            "console"
+        ];
+    },
+    {
+        readonly id: "smalltalk";
+        readonly name: "Smalltalk";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "solidity";
+        readonly name: "Solidity";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "soy";
+        readonly name: "Closure Templates";
+        readonly aliases: readonly [
+            "closure-templates"
+        ];
+    },
+    {
+        readonly id: "sparql";
+        readonly name: "SPARQL";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "splunk";
+        readonly name: "Splunk Query Language";
+        readonly aliases: readonly [
+            "spl"
+        ];
+    },
+    {
+        readonly id: "sql";
+        readonly name: "SQL";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "ssh-config";
+        readonly name: "SSH Config";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "stata";
+        readonly name: "Stata";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "stylus";
+        readonly name: "Stylus";
+        readonly aliases: readonly [
+            "styl"
+        ];
+    },
+    {
+        readonly id: "surrealql";
+        readonly name: "SurrealQL";
+        readonly aliases: readonly [
+            "surql"
+        ];
+    },
+    {
+        readonly id: "svelte";
+        readonly name: "Svelte";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "swift";
+        readonly name: "Swift";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "system-verilog";
+        readonly name: "SystemVerilog";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "systemd";
+        readonly name: "Systemd Units";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "talonscript";
+        readonly name: "TalonScript";
+        readonly aliases: readonly [
+            "talon"
+        ];
+    },
+    {
+        readonly id: "tasl";
+        readonly name: "Tasl";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "tcl";
+        readonly name: "Tcl";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "templ";
+        readonly name: "Templ";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "terraform";
+        readonly name: "Terraform";
+        readonly aliases: readonly [
+            "tf",
+            "tfvars"
+        ];
+    },
+    {
+        readonly id: "tex";
+        readonly name: "TeX";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "toml";
+        readonly name: "TOML";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "ts-tags";
+        readonly name: "TypeScript with Tags";
+        readonly aliases: readonly [
+            "lit"
+        ];
+    },
+    {
+        readonly id: "tsv";
+        readonly name: "TSV";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "tsx";
+        readonly name: "TSX";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "turtle";
+        readonly name: "Turtle";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "twig";
+        readonly name: "Twig";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "typescript";
+        readonly name: "TypeScript";
+        readonly aliases: readonly [
+            "cts",
+            "mts",
+            "ts"
+        ];
+    },
+    {
+        readonly id: "typespec";
+        readonly name: "TypeSpec";
+        readonly aliases: readonly [
+            "tsp"
+        ];
+    },
+    {
+        readonly id: "typst";
+        readonly name: "Typst";
+        readonly aliases: readonly [
+            "typ"
+        ];
+    },
+    {
+        readonly id: "v";
+        readonly name: "V";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "vala";
+        readonly name: "Vala";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "vb";
+        readonly name: "Visual Basic";
+        readonly aliases: readonly [
+            "cmd"
+        ];
+    },
+    {
+        readonly id: "verilog";
+        readonly name: "Verilog";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "vhdl";
+        readonly name: "VHDL";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "viml";
+        readonly name: "Vim Script";
+        readonly aliases: readonly [
+            "vim",
+            "vimscript"
+        ];
+    },
+    {
+        readonly id: "vue";
+        readonly name: "Vue";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "vue-html";
+        readonly name: "Vue HTML";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "vue-vine";
+        readonly name: "Vue Vine";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "vyper";
+        readonly name: "Vyper";
+        readonly aliases: readonly [
+            "vy"
+        ];
+    },
+    {
+        readonly id: "wasm";
+        readonly name: "WebAssembly";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "wenyan";
+        readonly name: "Wenyan";
+        readonly aliases: readonly [
+            "文言"
+        ];
+    },
+    {
+        readonly id: "wgsl";
+        readonly name: "WGSL";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "wikitext";
+        readonly name: "Wikitext";
+        readonly aliases: readonly [
+            "mediawiki",
+            "wiki"
+        ];
+    },
+    {
+        readonly id: "wit";
+        readonly name: "WebAssembly Interface Types";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "wolfram";
+        readonly name: "Wolfram";
+        readonly aliases: readonly [
+            "wl"
+        ];
+    },
+    {
+        readonly id: "xml";
+        readonly name: "XML";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "xsl";
+        readonly name: "XSL";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "yaml";
+        readonly name: "YAML";
+        readonly aliases: readonly [
+            "yml"
+        ];
+    },
+    {
+        readonly id: "zenscript";
+        readonly name: "ZenScript";
+        readonly aliases: readonly [
+        ];
+    },
+    {
+        readonly id: "zig";
+        readonly name: "Zig";
+        readonly aliases: readonly [
+        ];
+    }
+];
+
+// export: CODE_THEME_IDS
+export declare const CODE_THEME_IDS: ("andromeeda" | "aurora-x" | "ayu-dark" | "ayu-light" | "ayu-mirage" | "catppuccin-frappe" | "catppuccin-latte" | "catppuccin-macchiato" | "catppuccin-mocha" | "dark-plus" | "dracula" | "dracula-soft" | "everforest-dark" | "everforest-light" | "github-dark" | "github-dark-default" | "github-dark-dimmed" | "github-dark-high-contrast" | "github-light" | "github-light-default" | "github-light-high-contrast" | "gruvbox-dark-hard" | "gruvbox-dark-medium" | "gruvbox-dark-soft" | "gruvbox-light-hard" | "gruvbox-light-medium" | "gruvbox-light-soft" | "horizon" | "horizon-bright" | "houston" | "kanagawa-dragon" | "kanagawa-lotus" | "kanagawa-wave" | "laserwave" | "light-plus" | "material-theme" | "material-theme-darker" | "material-theme-lighter" | "material-theme-ocean" | "material-theme-palenight" | "min-dark" | "min-light" | "monokai" | "night-owl" | "night-owl-light" | "nord" | "one-dark-pro" | "one-light" | "plastic" | "poimandres" | "red" | "rose-pine" | "rose-pine-dawn" | "rose-pine-moon" | "slack-dark" | "slack-ochin" | "snazzy-light" | "solarized-dark" | "solarized-light" | "synthwave-84" | "tokyo-night" | "vesper" | "vitesse-black" | "vitesse-dark" | "vitesse-light")[];
+
+// export: CODE_THEME_METADATA
+export declare const CODE_THEME_METADATA: readonly [
+    {
+        readonly id: "andromeeda";
+        readonly displayName: "Andromeeda";
+        readonly type: "dark";
+        readonly foreground: "#D5CED9";
+        readonly background: "#23262E";
+    },
+    {
+        readonly id: "aurora-x";
+        readonly displayName: "Aurora X";
+        readonly type: "dark";
+        readonly foreground: "#BBBBBB";
+        readonly background: "#07090F";
+    },
+    {
+        readonly id: "ayu-dark";
+        readonly displayName: "Ayu Dark";
+        readonly type: "dark";
+        readonly foreground: "#BFBDB6";
+        readonly background: "#0D1017";
+    },
+    {
+        readonly id: "ayu-light";
+        readonly displayName: "Ayu Light";
+        readonly type: "light";
+        readonly foreground: "#5C6166";
+        readonly background: "#F8F9FA";
+    },
+    {
+        readonly id: "ayu-mirage";
+        readonly displayName: "Ayu Mirage";
+        readonly type: "dark";
+        readonly foreground: "#CCCAC2";
+        readonly background: "#1F2430";
+    },
+    {
+        readonly id: "catppuccin-frappe";
+        readonly displayName: "Catppuccin Frappé";
+        readonly type: "dark";
+        readonly foreground: "#C6D0F5";
+        readonly background: "#303446";
+    },
+    {
+        readonly id: "catppuccin-latte";
+        readonly displayName: "Catppuccin Latte";
+        readonly type: "light";
+        readonly foreground: "#4C4F69";
+        readonly background: "#EFF1F5";
+    },
+    {
+        readonly id: "catppuccin-macchiato";
+        readonly displayName: "Catppuccin Macchiato";
+        readonly type: "dark";
+        readonly foreground: "#CAD3F5";
+        readonly background: "#24273A";
+    },
+    {
+        readonly id: "catppuccin-mocha";
+        readonly displayName: "Catppuccin Mocha";
+        readonly type: "dark";
+        readonly foreground: "#CDD6F4";
+        readonly background: "#1E1E2E";
+    },
+    {
+        readonly id: "dark-plus";
+        readonly displayName: "Dark Plus";
+        readonly type: "dark";
+        readonly foreground: "#D4D4D4";
+        readonly background: "#1E1E1E";
+    },
+    {
+        readonly id: "dracula";
+        readonly displayName: "Dracula Theme";
+        readonly type: "dark";
+        readonly foreground: "#F8F8F2";
+        readonly background: "#282A36";
+    },
+    {
+        readonly id: "dracula-soft";
+        readonly displayName: "Dracula Theme Soft";
+        readonly type: "dark";
+        readonly foreground: "#F6F6F4";
+        readonly background: "#282A36";
+    },
+    {
+        readonly id: "everforest-dark";
+        readonly displayName: "Everforest Dark";
+        readonly type: "dark";
+        readonly foreground: "#D3C6AA";
+        readonly background: "#2D353B";
+    },
+    {
+        readonly id: "everforest-light";
+        readonly displayName: "Everforest Light";
+        readonly type: "light";
+        readonly foreground: "#5C6A72";
+        readonly background: "#FDF6E3";
+    },
+    {
+        readonly id: "github-dark";
+        readonly displayName: "GitHub Dark";
+        readonly type: "dark";
+        readonly foreground: "#E1E4E8";
+        readonly background: "#24292E";
+    },
+    {
+        readonly id: "github-dark-default";
+        readonly displayName: "GitHub Dark Default";
+        readonly type: "dark";
+        readonly foreground: "#E6EDF3";
+        readonly background: "#0D1117";
+    },
+    {
+        readonly id: "github-dark-dimmed";
+        readonly displayName: "GitHub Dark Dimmed";
+        readonly type: "dark";
+        readonly foreground: "#ADBAC7";
+        readonly background: "#22272E";
+    },
+    {
+        readonly id: "github-dark-high-contrast";
+        readonly displayName: "GitHub Dark High Contrast";
+        readonly type: "dark";
+        readonly foreground: "#F0F3F6";
+        readonly background: "#0A0C10";
+    },
+    {
+        readonly id: "github-light";
+        readonly displayName: "GitHub Light";
+        readonly type: "light";
+        readonly foreground: "#24292E";
+        readonly background: "#FFFFFF";
+    },
+    {
+        readonly id: "github-light-default";
+        readonly displayName: "GitHub Light Default";
+        readonly type: "light";
+        readonly foreground: "#1F2328";
+        readonly background: "#FFFFFF";
+    },
+    {
+        readonly id: "github-light-high-contrast";
+        readonly displayName: "GitHub Light High Contrast";
+        readonly type: "light";
+        readonly foreground: "#0E1116";
+        readonly background: "#FFFFFF";
+    },
+    {
+        readonly id: "gruvbox-dark-hard";
+        readonly displayName: "Gruvbox Dark Hard";
+        readonly type: "dark";
+        readonly foreground: "#EBDBB2";
+        readonly background: "#1D2021";
+    },
+    {
+        readonly id: "gruvbox-dark-medium";
+        readonly displayName: "Gruvbox Dark Medium";
+        readonly type: "dark";
+        readonly foreground: "#EBDBB2";
+        readonly background: "#282828";
+    },
+    {
+        readonly id: "gruvbox-dark-soft";
+        readonly displayName: "Gruvbox Dark Soft";
+        readonly type: "dark";
+        readonly foreground: "#EBDBB2";
+        readonly background: "#32302F";
+    },
+    {
+        readonly id: "gruvbox-light-hard";
+        readonly displayName: "Gruvbox Light Hard";
+        readonly type: "light";
+        readonly foreground: "#3C3836";
+        readonly background: "#F9F5D7";
+    },
+    {
+        readonly id: "gruvbox-light-medium";
+        readonly displayName: "Gruvbox Light Medium";
+        readonly type: "light";
+        readonly foreground: "#3C3836";
+        readonly background: "#FBF1C7";
+    },
+    {
+        readonly id: "gruvbox-light-soft";
+        readonly displayName: "Gruvbox Light Soft";
+        readonly type: "light";
+        readonly foreground: "#3C3836";
+        readonly background: "#F2E5BC";
+    },
+    {
+        readonly id: "horizon";
+        readonly displayName: "Horizon";
+        readonly type: "dark";
+        readonly foreground: "#BBBBBB";
+        readonly background: "#1C1E26";
+    },
+    {
+        readonly id: "horizon-bright";
+        readonly displayName: "Horizon Bright";
+        readonly type: "light";
+        readonly foreground: "#333333";
+        readonly background: "#FDF0ED";
+    },
+    {
+        readonly id: "houston";
+        readonly displayName: "Houston";
+        readonly type: "dark";
+        readonly foreground: "#EEF0F9";
+        readonly background: "#17191E";
+    },
+    {
+        readonly id: "kanagawa-dragon";
+        readonly displayName: "Kanagawa Dragon";
+        readonly type: "dark";
+        readonly foreground: "#C5C9C5";
+        readonly background: "#181616";
+    },
+    {
+        readonly id: "kanagawa-lotus";
+        readonly displayName: "Kanagawa Lotus";
+        readonly type: "light";
+        readonly foreground: "#545464";
+        readonly background: "#F2ECBC";
+    },
+    {
+        readonly id: "kanagawa-wave";
+        readonly displayName: "Kanagawa Wave";
+        readonly type: "dark";
+        readonly foreground: "#DCD7BA";
+        readonly background: "#1F1F28";
+    },
+    {
+        readonly id: "laserwave";
+        readonly displayName: "LaserWave";
+        readonly type: "dark";
+        readonly foreground: "#FFFFFF";
+        readonly background: "#27212E";
+    },
+    {
+        readonly id: "light-plus";
+        readonly displayName: "Light Plus";
+        readonly type: "light";
+        readonly foreground: "#000000";
+        readonly background: "#FFFFFF";
+    },
+    {
+        readonly id: "material-theme";
+        readonly displayName: "Material Theme";
+        readonly type: "dark";
+        readonly foreground: "#EEFFFF";
+        readonly background: "#263238";
+    },
+    {
+        readonly id: "material-theme-darker";
+        readonly displayName: "Material Theme Darker";
+        readonly type: "dark";
+        readonly foreground: "#EEFFFF";
+        readonly background: "#212121";
+    },
+    {
+        readonly id: "material-theme-lighter";
+        readonly displayName: "Material Theme Lighter";
+        readonly type: "light";
+        readonly foreground: "#90A4AE";
+        readonly background: "#FAFAFA";
+    },
+    {
+        readonly id: "material-theme-ocean";
+        readonly displayName: "Material Theme Ocean";
+        readonly type: "dark";
+        readonly foreground: "#BABED8";
+        readonly background: "#0F111A";
+    },
+    {
+        readonly id: "material-theme-palenight";
+        readonly displayName: "Material Theme Palenight";
+        readonly type: "dark";
+        readonly foreground: "#BABED8";
+        readonly background: "#292D3E";
+    },
+    {
+        readonly id: "min-dark";
+        readonly displayName: "Min Dark";
+        readonly type: "dark";
+        readonly foreground: "#B392F0";
+        readonly background: "#1F1F1F";
+    },
+    {
+        readonly id: "min-light";
+        readonly displayName: "Min Light";
+        readonly type: "light";
+        readonly foreground: "#24292E";
+        readonly background: "#FFFFFF";
+    },
+    {
+        readonly id: "monokai";
+        readonly displayName: "Monokai";
+        readonly type: "dark";
+        readonly foreground: "#F8F8F2";
+        readonly background: "#272822";
+    },
+    {
+        readonly id: "night-owl";
+        readonly displayName: "Night Owl";
+        readonly type: "dark";
+        readonly foreground: "#D6DEEB";
+        readonly background: "#011627";
+    },
+    {
+        readonly id: "night-owl-light";
+        readonly displayName: "Night Owl Light";
+        readonly type: "light";
+        readonly foreground: "#403F53";
+        readonly background: "#FBFBFB";
+    },
+    {
+        readonly id: "nord";
+        readonly displayName: "Nord";
+        readonly type: "dark";
+        readonly foreground: "#D8DEE9";
+        readonly background: "#2E3440";
+    },
+    {
+        readonly id: "one-dark-pro";
+        readonly displayName: "One Dark Pro";
+        readonly type: "dark";
+        readonly foreground: "#ABB2BF";
+        readonly background: "#282C34";
+    },
+    {
+        readonly id: "one-light";
+        readonly displayName: "One Light";
+        readonly type: "light";
+        readonly foreground: "#383A42";
+        readonly background: "#FAFAFA";
+    },
+    {
+        readonly id: "plastic";
+        readonly displayName: "Plastic";
+        readonly type: "dark";
+        readonly foreground: "#A9B2C3";
+        readonly background: "#21252B";
+    },
+    {
+        readonly id: "poimandres";
+        readonly displayName: "Poimandres";
+        readonly type: "dark";
+        readonly foreground: "#A6ACCD";
+        readonly background: "#1B1E28";
+    },
+    {
+        readonly id: "red";
+        readonly displayName: "Red";
+        readonly type: "dark";
+        readonly foreground: "#F8F8F8";
+        readonly background: "#390000";
+    },
+    {
+        readonly id: "rose-pine";
+        readonly displayName: "Rosé Pine";
+        readonly type: "dark";
+        readonly foreground: "#E0DEF4";
+        readonly background: "#191724";
+    },
+    {
+        readonly id: "rose-pine-dawn";
+        readonly displayName: "Rosé Pine Dawn";
+        readonly type: "light";
+        readonly foreground: "#575279";
+        readonly background: "#FAF4ED";
+    },
+    {
+        readonly id: "rose-pine-moon";
+        readonly displayName: "Rosé Pine Moon";
+        readonly type: "dark";
+        readonly foreground: "#E0DEF4";
+        readonly background: "#232136";
+    },
+    {
+        readonly id: "slack-dark";
+        readonly displayName: "Slack Dark";
+        readonly type: "dark";
+        readonly foreground: "#E6E6E6";
+        readonly background: "#222222";
+    },
+    {
+        readonly id: "slack-ochin";
+        readonly displayName: "Slack Ochin";
+        readonly type: "light";
+        readonly foreground: "#002339";
+        readonly background: "#FFFFFF";
+    },
+    {
+        readonly id: "snazzy-light";
+        readonly displayName: "Snazzy Light";
+        readonly type: "light";
+        readonly foreground: "#565869";
+        readonly background: "#FAFBFC";
+    },
+    {
+        readonly id: "solarized-dark";
+        readonly displayName: "Solarized Dark";
+        readonly type: "dark";
+        readonly foreground: "#839496";
+        readonly background: "#002B36";
+    },
+    {
+        readonly id: "solarized-light";
+        readonly displayName: "Solarized Light";
+        readonly type: "light";
+        readonly foreground: "#657B83";
+        readonly background: "#FDF6E3";
+    },
+    {
+        readonly id: "synthwave-84";
+        readonly displayName: "Synthwave '84";
+        readonly type: "dark";
+        readonly foreground: "#BBBBBB";
+        readonly background: "#262335";
+    },
+    {
+        readonly id: "tokyo-night";
+        readonly displayName: "Tokyo Night";
+        readonly type: "dark";
+        readonly foreground: "#A9B1D6";
+        readonly background: "#1A1B26";
+    },
+    {
+        readonly id: "vesper";
+        readonly displayName: "Vesper";
+        readonly type: "dark";
+        readonly foreground: "#FFFFFF";
+        readonly background: "#101010";
+    },
+    {
+        readonly id: "vitesse-black";
+        readonly displayName: "Vitesse Black";
+        readonly type: "dark";
+        readonly foreground: "#DBD7CA";
+        readonly background: "#000000";
+    },
+    {
+        readonly id: "vitesse-dark";
+        readonly displayName: "Vitesse Dark";
+        readonly type: "dark";
+        readonly foreground: "#DBD7CA";
+        readonly background: "#121212";
+    },
+    {
+        readonly id: "vitesse-light";
+        readonly displayName: "Vitesse Light";
+        readonly type: "light";
+        readonly foreground: "#393A34";
+        readonly background: "#FFFFFF";
+    }
+];
+
+// export: CODE_THEMES
+export declare const CODE_THEMES: readonly [
+    {
+        readonly id: "andromeeda";
+        readonly displayName: "Andromeeda";
+        readonly type: "dark";
+        readonly foreground: "#D5CED9";
+        readonly background: "#23262E";
+    },
+    {
+        readonly id: "aurora-x";
+        readonly displayName: "Aurora X";
+        readonly type: "dark";
+        readonly foreground: "#BBBBBB";
+        readonly background: "#07090F";
+    },
+    {
+        readonly id: "ayu-dark";
+        readonly displayName: "Ayu Dark";
+        readonly type: "dark";
+        readonly foreground: "#BFBDB6";
+        readonly background: "#0D1017";
+    },
+    {
+        readonly id: "ayu-light";
+        readonly displayName: "Ayu Light";
+        readonly type: "light";
+        readonly foreground: "#5C6166";
+        readonly background: "#F8F9FA";
+    },
+    {
+        readonly id: "ayu-mirage";
+        readonly displayName: "Ayu Mirage";
+        readonly type: "dark";
+        readonly foreground: "#CCCAC2";
+        readonly background: "#1F2430";
+    },
+    {
+        readonly id: "catppuccin-frappe";
+        readonly displayName: "Catppuccin Frappé";
+        readonly type: "dark";
+        readonly foreground: "#C6D0F5";
+        readonly background: "#303446";
+    },
+    {
+        readonly id: "catppuccin-latte";
+        readonly displayName: "Catppuccin Latte";
+        readonly type: "light";
+        readonly foreground: "#4C4F69";
+        readonly background: "#EFF1F5";
+    },
+    {
+        readonly id: "catppuccin-macchiato";
+        readonly displayName: "Catppuccin Macchiato";
+        readonly type: "dark";
+        readonly foreground: "#CAD3F5";
+        readonly background: "#24273A";
+    },
+    {
+        readonly id: "catppuccin-mocha";
+        readonly displayName: "Catppuccin Mocha";
+        readonly type: "dark";
+        readonly foreground: "#CDD6F4";
+        readonly background: "#1E1E2E";
+    },
+    {
+        readonly id: "dark-plus";
+        readonly displayName: "Dark Plus";
+        readonly type: "dark";
+        readonly foreground: "#D4D4D4";
+        readonly background: "#1E1E1E";
+    },
+    {
+        readonly id: "dracula";
+        readonly displayName: "Dracula Theme";
+        readonly type: "dark";
+        readonly foreground: "#F8F8F2";
+        readonly background: "#282A36";
+    },
+    {
+        readonly id: "dracula-soft";
+        readonly displayName: "Dracula Theme Soft";
+        readonly type: "dark";
+        readonly foreground: "#F6F6F4";
+        readonly background: "#282A36";
+    },
+    {
+        readonly id: "everforest-dark";
+        readonly displayName: "Everforest Dark";
+        readonly type: "dark";
+        readonly foreground: "#D3C6AA";
+        readonly background: "#2D353B";
+    },
+    {
+        readonly id: "everforest-light";
+        readonly displayName: "Everforest Light";
+        readonly type: "light";
+        readonly foreground: "#5C6A72";
+        readonly background: "#FDF6E3";
+    },
+    {
+        readonly id: "github-dark";
+        readonly displayName: "GitHub Dark";
+        readonly type: "dark";
+        readonly foreground: "#E1E4E8";
+        readonly background: "#24292E";
+    },
+    {
+        readonly id: "github-dark-default";
+        readonly displayName: "GitHub Dark Default";
+        readonly type: "dark";
+        readonly foreground: "#E6EDF3";
+        readonly background: "#0D1117";
+    },
+    {
+        readonly id: "github-dark-dimmed";
+        readonly displayName: "GitHub Dark Dimmed";
+        readonly type: "dark";
+        readonly foreground: "#ADBAC7";
+        readonly background: "#22272E";
+    },
+    {
+        readonly id: "github-dark-high-contrast";
+        readonly displayName: "GitHub Dark High Contrast";
+        readonly type: "dark";
+        readonly foreground: "#F0F3F6";
+        readonly background: "#0A0C10";
+    },
+    {
+        readonly id: "github-light";
+        readonly displayName: "GitHub Light";
+        readonly type: "light";
+        readonly foreground: "#24292E";
+        readonly background: "#FFFFFF";
+    },
+    {
+        readonly id: "github-light-default";
+        readonly displayName: "GitHub Light Default";
+        readonly type: "light";
+        readonly foreground: "#1F2328";
+        readonly background: "#FFFFFF";
+    },
+    {
+        readonly id: "github-light-high-contrast";
+        readonly displayName: "GitHub Light High Contrast";
+        readonly type: "light";
+        readonly foreground: "#0E1116";
+        readonly background: "#FFFFFF";
+    },
+    {
+        readonly id: "gruvbox-dark-hard";
+        readonly displayName: "Gruvbox Dark Hard";
+        readonly type: "dark";
+        readonly foreground: "#EBDBB2";
+        readonly background: "#1D2021";
+    },
+    {
+        readonly id: "gruvbox-dark-medium";
+        readonly displayName: "Gruvbox Dark Medium";
+        readonly type: "dark";
+        readonly foreground: "#EBDBB2";
+        readonly background: "#282828";
+    },
+    {
+        readonly id: "gruvbox-dark-soft";
+        readonly displayName: "Gruvbox Dark Soft";
+        readonly type: "dark";
+        readonly foreground: "#EBDBB2";
+        readonly background: "#32302F";
+    },
+    {
+        readonly id: "gruvbox-light-hard";
+        readonly displayName: "Gruvbox Light Hard";
+        readonly type: "light";
+        readonly foreground: "#3C3836";
+        readonly background: "#F9F5D7";
+    },
+    {
+        readonly id: "gruvbox-light-medium";
+        readonly displayName: "Gruvbox Light Medium";
+        readonly type: "light";
+        readonly foreground: "#3C3836";
+        readonly background: "#FBF1C7";
+    },
+    {
+        readonly id: "gruvbox-light-soft";
+        readonly displayName: "Gruvbox Light Soft";
+        readonly type: "light";
+        readonly foreground: "#3C3836";
+        readonly background: "#F2E5BC";
+    },
+    {
+        readonly id: "horizon";
+        readonly displayName: "Horizon";
+        readonly type: "dark";
+        readonly foreground: "#BBBBBB";
+        readonly background: "#1C1E26";
+    },
+    {
+        readonly id: "horizon-bright";
+        readonly displayName: "Horizon Bright";
+        readonly type: "light";
+        readonly foreground: "#333333";
+        readonly background: "#FDF0ED";
+    },
+    {
+        readonly id: "houston";
+        readonly displayName: "Houston";
+        readonly type: "dark";
+        readonly foreground: "#EEF0F9";
+        readonly background: "#17191E";
+    },
+    {
+        readonly id: "kanagawa-dragon";
+        readonly displayName: "Kanagawa Dragon";
+        readonly type: "dark";
+        readonly foreground: "#C5C9C5";
+        readonly background: "#181616";
+    },
+    {
+        readonly id: "kanagawa-lotus";
+        readonly displayName: "Kanagawa Lotus";
+        readonly type: "light";
+        readonly foreground: "#545464";
+        readonly background: "#F2ECBC";
+    },
+    {
+        readonly id: "kanagawa-wave";
+        readonly displayName: "Kanagawa Wave";
+        readonly type: "dark";
+        readonly foreground: "#DCD7BA";
+        readonly background: "#1F1F28";
+    },
+    {
+        readonly id: "laserwave";
+        readonly displayName: "LaserWave";
+        readonly type: "dark";
+        readonly foreground: "#FFFFFF";
+        readonly background: "#27212E";
+    },
+    {
+        readonly id: "light-plus";
+        readonly displayName: "Light Plus";
+        readonly type: "light";
+        readonly foreground: "#000000";
+        readonly background: "#FFFFFF";
+    },
+    {
+        readonly id: "material-theme";
+        readonly displayName: "Material Theme";
+        readonly type: "dark";
+        readonly foreground: "#EEFFFF";
+        readonly background: "#263238";
+    },
+    {
+        readonly id: "material-theme-darker";
+        readonly displayName: "Material Theme Darker";
+        readonly type: "dark";
+        readonly foreground: "#EEFFFF";
+        readonly background: "#212121";
+    },
+    {
+        readonly id: "material-theme-lighter";
+        readonly displayName: "Material Theme Lighter";
+        readonly type: "light";
+        readonly foreground: "#90A4AE";
+        readonly background: "#FAFAFA";
+    },
+    {
+        readonly id: "material-theme-ocean";
+        readonly displayName: "Material Theme Ocean";
+        readonly type: "dark";
+        readonly foreground: "#BABED8";
+        readonly background: "#0F111A";
+    },
+    {
+        readonly id: "material-theme-palenight";
+        readonly displayName: "Material Theme Palenight";
+        readonly type: "dark";
+        readonly foreground: "#BABED8";
+        readonly background: "#292D3E";
+    },
+    {
+        readonly id: "min-dark";
+        readonly displayName: "Min Dark";
+        readonly type: "dark";
+        readonly foreground: "#B392F0";
+        readonly background: "#1F1F1F";
+    },
+    {
+        readonly id: "min-light";
+        readonly displayName: "Min Light";
+        readonly type: "light";
+        readonly foreground: "#24292E";
+        readonly background: "#FFFFFF";
+    },
+    {
+        readonly id: "monokai";
+        readonly displayName: "Monokai";
+        readonly type: "dark";
+        readonly foreground: "#F8F8F2";
+        readonly background: "#272822";
+    },
+    {
+        readonly id: "night-owl";
+        readonly displayName: "Night Owl";
+        readonly type: "dark";
+        readonly foreground: "#D6DEEB";
+        readonly background: "#011627";
+    },
+    {
+        readonly id: "night-owl-light";
+        readonly displayName: "Night Owl Light";
+        readonly type: "light";
+        readonly foreground: "#403F53";
+        readonly background: "#FBFBFB";
+    },
+    {
+        readonly id: "nord";
+        readonly displayName: "Nord";
+        readonly type: "dark";
+        readonly foreground: "#D8DEE9";
+        readonly background: "#2E3440";
+    },
+    {
+        readonly id: "one-dark-pro";
+        readonly displayName: "One Dark Pro";
+        readonly type: "dark";
+        readonly foreground: "#ABB2BF";
+        readonly background: "#282C34";
+    },
+    {
+        readonly id: "one-light";
+        readonly displayName: "One Light";
+        readonly type: "light";
+        readonly foreground: "#383A42";
+        readonly background: "#FAFAFA";
+    },
+    {
+        readonly id: "plastic";
+        readonly displayName: "Plastic";
+        readonly type: "dark";
+        readonly foreground: "#A9B2C3";
+        readonly background: "#21252B";
+    },
+    {
+        readonly id: "poimandres";
+        readonly displayName: "Poimandres";
+        readonly type: "dark";
+        readonly foreground: "#A6ACCD";
+        readonly background: "#1B1E28";
+    },
+    {
+        readonly id: "red";
+        readonly displayName: "Red";
+        readonly type: "dark";
+        readonly foreground: "#F8F8F8";
+        readonly background: "#390000";
+    },
+    {
+        readonly id: "rose-pine";
+        readonly displayName: "Rosé Pine";
+        readonly type: "dark";
+        readonly foreground: "#E0DEF4";
+        readonly background: "#191724";
+    },
+    {
+        readonly id: "rose-pine-dawn";
+        readonly displayName: "Rosé Pine Dawn";
+        readonly type: "light";
+        readonly foreground: "#575279";
+        readonly background: "#FAF4ED";
+    },
+    {
+        readonly id: "rose-pine-moon";
+        readonly displayName: "Rosé Pine Moon";
+        readonly type: "dark";
+        readonly foreground: "#E0DEF4";
+        readonly background: "#232136";
+    },
+    {
+        readonly id: "slack-dark";
+        readonly displayName: "Slack Dark";
+        readonly type: "dark";
+        readonly foreground: "#E6E6E6";
+        readonly background: "#222222";
+    },
+    {
+        readonly id: "slack-ochin";
+        readonly displayName: "Slack Ochin";
+        readonly type: "light";
+        readonly foreground: "#002339";
+        readonly background: "#FFFFFF";
+    },
+    {
+        readonly id: "snazzy-light";
+        readonly displayName: "Snazzy Light";
+        readonly type: "light";
+        readonly foreground: "#565869";
+        readonly background: "#FAFBFC";
+    },
+    {
+        readonly id: "solarized-dark";
+        readonly displayName: "Solarized Dark";
+        readonly type: "dark";
+        readonly foreground: "#839496";
+        readonly background: "#002B36";
+    },
+    {
+        readonly id: "solarized-light";
+        readonly displayName: "Solarized Light";
+        readonly type: "light";
+        readonly foreground: "#657B83";
+        readonly background: "#FDF6E3";
+    },
+    {
+        readonly id: "synthwave-84";
+        readonly displayName: "Synthwave '84";
+        readonly type: "dark";
+        readonly foreground: "#BBBBBB";
+        readonly background: "#262335";
+    },
+    {
+        readonly id: "tokyo-night";
+        readonly displayName: "Tokyo Night";
+        readonly type: "dark";
+        readonly foreground: "#A9B1D6";
+        readonly background: "#1A1B26";
+    },
+    {
+        readonly id: "vesper";
+        readonly displayName: "Vesper";
+        readonly type: "dark";
+        readonly foreground: "#FFFFFF";
+        readonly background: "#101010";
+    },
+    {
+        readonly id: "vitesse-black";
+        readonly displayName: "Vitesse Black";
+        readonly type: "dark";
+        readonly foreground: "#DBD7CA";
+        readonly background: "#000000";
+    },
+    {
+        readonly id: "vitesse-dark";
+        readonly displayName: "Vitesse Dark";
+        readonly type: "dark";
+        readonly foreground: "#DBD7CA";
+        readonly background: "#121212";
+    },
+    {
+        readonly id: "vitesse-light";
+        readonly displayName: "Vitesse Light";
+        readonly type: "light";
+        readonly foreground: "#393A34";
+        readonly background: "#FFFFFF";
+    }
+];
+
+// export: CodeHighlightEngine
+export interface CodeHighlightEngine {
+    readonly id: string;
+    create(): RegexEngine | Promise<RegexEngine>;
+}
+
+// export: CodeHighlightEngineConfigurationError
+export declare class CodeHighlightEngineConfigurationError extends Error {
+    constructor(message: string);
+}
+
+// export: CodeHighlightOptions
+export interface CodeHighlightOptions {
+    onTiming?: (timing: CodeHighlightTiming) => void;
+}
+
+// export: CodeHighlightTiming
+export interface CodeHighlightTiming {
+    engineInitMs: number;
+    grammarLoadMs: number;
+    tokenizeMs: number;
+}
+
+// export: CodeLanguageId
+export type CodeLanguageId = (typeof CODE_LANGUAGES)[number]["id"];
+
+// export: CodeLine
+export type CodeLine = CodeToken[];
+
+// export: CodeThemeId
+export type CodeThemeId = (typeof CODE_THEMES)[number]["id"];
+
+// export: CodeToken
+export interface CodeToken {
+    text: string;
+    color?: `#${string}`;
+}
+
+// export: DEFAULT_CODE_THEME
+export declare const DEFAULT_CODE_THEME: CodeThemeId;
+
+// export: getCodeHighlightEngineId
+export declare function getCodeHighlightEngineId(): string | null;
+
+// export: highlightCode
+export declare function highlightCode(code: string, language?: string, theme?: CodeThemeId, options?: CodeHighlightOptions): Promise<HighlightedCode>;
+
+// export: HighlightedCode
+export interface HighlightedCode {
+    theme: ResolvedCodeTheme;
+    lines: CodeLine[];
+    skipped: HighlightSkip | null;
+}
+
+// export: HighlightResult
+export type HighlightResult = HighlightedCode;
+
+// export: HighlightSkip
+export type HighlightSkip = "unknown-language" | "highlight-failed";
+
+// export: installCodeHighlightEngine
+export declare function installCodeHighlightEngine(engine: CodeHighlightEngine): void;
+
+// export: InvalidCodeThemeError
+export declare class InvalidCodeThemeError extends Error {
+    readonly value: unknown;
+    readonly code = "INVALID_CODE_THEME";
+    constructor(value: unknown);
+}
+
+// export: isCodeThemeId
+export declare function isCodeThemeId(value: unknown): value is CodeThemeId;
+
+// export: prepareCodeHighlighting
+export declare function prepareCodeHighlighting(languages: readonly string[], theme?: CodeThemeId, options?: CodeHighlightOptions): Promise<void>;
+
+// export: resolveCodeTheme
+export declare function resolveCodeTheme(value?: unknown): ResolvedCodeTheme;
+
+// export: resolveCodeThemeId
+export declare function resolveCodeThemeId(value?: unknown): CodeThemeId;
+
+// export: ResolvedCodeTheme
+export interface ResolvedCodeTheme {
+    id: CodeThemeId;
+    displayName: string;
+    type: "dark" | "light";
+    foreground: `#${string}`;
+    background: `#${string}`;
+}
+
+// export: warmHighlight
+export declare function warmHighlight(languages: readonly string[], theme?: CodeThemeId): void;
+```
+
+### Entry point `./engine/javascript`
+
+```ts
+// export: installJavaScriptHighlightEngine
+export declare function installJavaScriptHighlightEngine(): void;
+```
+
+### Entry point `./engine/oniguruma`
+
+```ts
+// export: installOnigurumaHighlightEngine
+export declare function installOnigurumaHighlightEngine(): void;
 ```
 
 ### Entry point `./registry`

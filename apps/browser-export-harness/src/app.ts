@@ -1,4 +1,5 @@
 import "./style.css";
+import "./highlight-benchmark.js";
 import { CONFORMANCE_CASES } from "./conformance-registry.js";
 
 function required<T extends Element>(selector: string): T {

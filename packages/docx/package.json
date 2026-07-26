@@ -9,7 +9,9 @@
     "publish": "public-0.x"
   },
   "sideEffects": [
+    "./src/browser-runtime-bootstrap.ts",
     "./src/browser-runtime.ts",
+    "./dist/browser-runtime-bootstrap.js",
     "./dist/browser-runtime.js"
   ],
   "files": [
@@ -84,7 +86,6 @@
     "@atlcli/diagram": "workspace:*",
     "@resvg/resvg-wasm": "2.6.2",
     "docxtemplater": "^3.69.0",
-    "pizzip": "^3.2.0",
-    "shiki": "^4.3.1"
+    "pizzip": "^3.2.0"
   }
 }
