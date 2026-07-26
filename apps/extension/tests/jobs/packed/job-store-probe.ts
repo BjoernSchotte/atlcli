@@ -481,7 +481,7 @@ const probe = {
   ): Promise<{ prefix: string; byteLength: number; filename?: string; complete?: boolean }> {
     const stored: number[] = [];
     for await (const chunk of new IndexedDbExportByteStore().read(artifactRef)) {
-      stored.push(...chunk);
+      for (const byte of chunk) stored.push(byte);
     }
     const report = await readExtensionPdfExportReport(reportRef);
     return {
@@ -499,10 +499,13 @@ const probe = {
     filename?: string;
     complete?: boolean;
     renderedDiagrams?: number;
+    highlightCodeBlocks?: number;
+    highlightLanguageCount?: number;
+    highlightTokenizeMs?: number;
   }> {
     const stored: number[] = [];
     for await (const chunk of new IndexedDbExportByteStore().read(artifactRef)) {
-      stored.push(...chunk);
+      for (const byte of chunk) stored.push(byte);
     }
     const report = await readExtensionDocxExportReport(reportRef);
     return {
@@ -513,6 +516,9 @@ const probe = {
             filename: report.filename,
             complete: report.complete,
             renderedDiagrams: report.renderedDiagrams,
+            highlightCodeBlocks: report.timings.highlightCodeBlocks,
+            highlightLanguageCount: report.timings.highlightLanguageCount,
+            highlightTokenizeMs: report.timings.highlightTokenizeMs,
           }
         : {}),
     };

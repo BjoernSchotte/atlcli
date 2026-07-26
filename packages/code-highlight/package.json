@@ -8,7 +8,12 @@
   "atlcli": {
     "publish": "public-0.x"
   },
-  "sideEffects": false,
+  "sideEffects": [
+    "./src/index.ts",
+    "./src/index.browser.ts",
+    "./dist/index.js",
+    "./dist/index.browser.js"
+  ],
   "files": [
     "dist",
     "README.md"
@@ -16,9 +21,28 @@
   "type": "module",
   "exports": {
     ".": {
-      "development": "./src/index.ts",
-      "types": "./dist/index.d.ts",
-      "default": "./dist/index.js"
+      "development": {
+        "browser": "./src/index.browser.ts",
+        "default": "./src/index.ts"
+      },
+      "browser": {
+        "types": "./dist/index.browser.d.ts",
+        "default": "./dist/index.browser.js"
+      },
+      "default": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    },
+    "./engine/javascript": {
+      "development": "./src/highlight-engine-javascript.ts",
+      "types": "./dist/highlight-engine-javascript.d.ts",
+      "default": "./dist/highlight-engine-javascript.js"
+    },
+    "./engine/oniguruma": {
+      "development": "./src/highlight-engine-oniguruma.ts",
+      "types": "./dist/highlight-engine-oniguruma.d.ts",
+      "default": "./dist/highlight-engine-oniguruma.js"
     },
     "./registry": {
       "development": "./src/registry.ts",

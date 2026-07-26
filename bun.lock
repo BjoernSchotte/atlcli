@@ -36,6 +36,7 @@
       "name": "@atlcli/browser-export-harness",
       "version": "0.0.0",
       "dependencies": {
+        "@atlcli/code-highlight": "workspace:*",
         "@atlcli/confluence": "workspace:*",
         "@atlcli/docx": "workspace:*",
         "@atlcli/export-fixtures": "workspace:*",
@@ -58,6 +59,7 @@
         "atlcli": "src/index.ts",
       },
       "dependencies": {
+        "@atlcli/code-highlight": "workspace:*",
         "@atlcli/confluence": "workspace:*",
         "@atlcli/core": "workspace:*",
         "@atlcli/docx": "workspace:*",
@@ -80,6 +82,7 @@
       "name": "@atlcli/extension",
       "version": "0.0.0",
       "dependencies": {
+        "@atlcli/code-highlight": "workspace:*",
         "@atlcli/confluence": "workspace:*",
         "@atlcli/core": "workspace:*",
         "@atlcli/docx": "workspace:*",
@@ -158,6 +161,7 @@
       "name": "@atlcli/docx",
       "version": "1.0.0",
       "dependencies": {
+        "@atlcli/code-highlight": "workspace:*",
         "@atlcli/confluence": "workspace:*",
         "@atlcli/core": "workspace:*",
         "@atlcli/diagram": "workspace:*",
@@ -165,7 +169,6 @@
         "@resvg/resvg-wasm": "2.6.2",
         "docxtemplater": "^3.69.0",
         "pizzip": "^3.2.0",
-        "shiki": "^4.3.1",
       },
     },
     "packages/export-fixtures": {
@@ -183,6 +186,9 @@
     "packages/export-jobs": {
       "name": "@atlcli/export-jobs",
       "version": "0.1.0",
+      "dependencies": {
+        "@atlcli/code-highlight": "workspace:*",
+      },
     },
     "packages/export-macros": {
       "name": "@atlcli/export-macros",
@@ -208,6 +214,7 @@
       "name": "@atlcli/export-wiring",
       "version": "0.1.0",
       "dependencies": {
+        "@atlcli/code-highlight": "workspace:*",
         "@atlcli/confluence": "workspace:*",
         "@atlcli/docx": "workspace:*",
         "@atlcli/export-jobs": "workspace:*",
@@ -226,6 +233,7 @@
       "name": "@atlcli/pdf",
       "version": "1.0.0",
       "dependencies": {
+        "@atlcli/code-highlight": "workspace:*",
         "@atlcli/confluence": "workspace:*",
         "@atlcli/diagram": "workspace:*",
         "@atlcli/export-macros": "workspace:*",

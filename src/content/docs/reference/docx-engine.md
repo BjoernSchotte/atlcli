@@ -61,9 +61,52 @@ foregrounds and the theme background into OOXML, and `ExportReport.codeTheme`
 records the effective ID. Unknown languages stay readable as plain code with a
 report note.
 
+The RegExp implementation is selected by the host entrypoint, not by runtime
+capability detection. Node/Bun imports install Oniguruma. Browser-conditioned
+imports and `@atlcli/docx/browser-runtime` install only Shiki's JavaScript
+RegExp engine; no browser module imports `shiki/wasm` or the Oniguruma adapter.
+The concrete engine modules remain separate so Vite cannot discover and emit
+an unused WASM chunk. Once the first highlighter initializes, the engine is
+locked because its grammar and highlighter caches cannot safely be reused by a
+different implementation.
+
+After explicit DOCX intent, a browser host can start an awaitable preload:
+
+```ts
+import "@atlcli/docx/browser-runtime";
+import { prepareDocxCodeHighlighting } from "@atlcli/docx/browser-runtime";
+
+await prepareDocxCodeHighlighting(blocks, { codeTheme: "github-light" });
+```
+
+The walker includes nested callouts, lists, layouts, tables, block quotes,
+expands, and orientation regions. It canonicalizes aliases, ignores unknown
+languages and Mermaid, and loads each known grammar once. Concurrent and
+repeated calls share the same cache promises. A modal can therefore start the
+preload when it opens and enable export after the promise settles, without
+adding Shiki work to ordinary Confluence page views.
+
 Hosts must pin the resolved theme in durable requests before preparation.
 Historical prepared `/1` checkpoints without the additive field resume as
 `github-light`.
+
+`ExportReport.timings` exposes the work that previously appeared only in
+`bodyMs`:
+
+| Field | Meaning |
+|-------|---------|
+| `highlightEngineInitMs` | Newly performed Shiki core, theme, and RegExp-engine initialization |
+| `highlightGrammarLoadMs` | Wall time of newly imported, loaded, and deterministically compiled grammar batches |
+| `highlightTokenizeMs` | Real source-code tokenization only |
+| `highlightCodeBlocks` | Non-Mermaid code blocks seen across the body and included pages |
+| `highlightLanguageCount` | Distinct known canonical languages across the export |
+
+Preloaded engine/grammar time is zero during the later export; tokenization
+remains measured because every code block still produces tokens. The
+highlighter verifies that token text reconstructs the exact source and restores
+trailing empty lines if Shiki omits them. The exporter starts preload before
+the document-order walk, so grammar work and later tokenization may overlap;
+these fields describe work and are not an additive critical-path total.
 
 ## Host ports
 

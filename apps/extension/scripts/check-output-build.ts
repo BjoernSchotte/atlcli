@@ -89,6 +89,10 @@ const DYNAMIC_CODE_RES: RegExp[] = [
   /(?:^|[=(:,!&|?;{}])\s*Function\s*\(\s*["'`]/g,
   /(?:^|[^\w.])eval\s*\(/g,
 ];
+const ONIGURUMA_RUNTIME_RES: RegExp[] = [
+  /\bfindNextOnigScannerMatch\b/g,
+  /Must invoke loadWasm first[.]/g,
+];
 
 export interface OutputArtifact {
   path: string;
@@ -277,6 +281,9 @@ export function scanText(text: string): string[] {
   for (const re of DYNAMIC_CODE_RES) {
     for (const m of text.matchAll(re)) found.add(m[0].trim());
   }
+  for (const re of ONIGURUMA_RUNTIME_RES) {
+    for (const m of text.matchAll(re)) found.add(m[0].trim());
+  }
   const findings = [...found];
   if (
     text.includes("Object.freeze(JSON.parse(`") &&
@@ -351,6 +358,9 @@ export function scanOutputDir(root: string): FileLeak[] {
   const leaks: FileLeak[] = [];
   for (const file of walk(root, [...SCANNED_EXTENSIONS])) {
     const findings = scanText(readFileSync(file, "utf8"));
+    if (/engine-oniguruma-[^/]+[.]js$/i.test(file)) {
+      findings.push("Oniguruma engine chunk");
+    }
     if (findings.length > 0) {
       leaks.push({ file: relative(root, file), findings });
     }

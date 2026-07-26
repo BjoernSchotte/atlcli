@@ -43,9 +43,15 @@ import {
 import {
   DEFAULT_CODE_THEME,
   highlightCode,
-  warmHighlight,
+  prepareCodeHighlighting,
   type CodeThemeId,
 } from "@atlcli/code-highlight";
+import {
+  addDocxCodeHighlightTiming,
+  collectDocxCodeHighlightUsage,
+  createDocxCodeHighlightTimingCollector,
+  type DocxCodeHighlightTimingCollector,
+} from "./code-highlighting.js";
 import {
   bookmarkEnd,
   bookmarkStart,
@@ -159,6 +165,8 @@ export interface CalloutIconEmbedSeam {
 export interface SerializeContext {
   /** Resolved Shiki theme used for every non-diagram code block. */
   codeTheme?: CodeThemeId;
+  /** Export-wide highlight timing/count collector, shared with include passes. */
+  highlightTimings?: DocxCodeHighlightTimingCollector;
   /** Lower-cased style-name → styleId map from the template's styles.xml. */
   styleNames: Map<string, string>;
   /**
@@ -267,6 +275,7 @@ export interface SerializeResult {
    */
   headingStyleIds: string[];
   comments: WordCommentRegistry;
+  highlightTimings: DocxCodeHighlightTimingCollector;
 }
 
 /** Export-wide native Word comment registry, shared with included pages. */
@@ -648,15 +657,16 @@ function placeMarker(frag: string, markerRun: string): string {
 
 /**
  * Kick off every deferrable cost up front (perf): image asset fetches and
- * diagram render/rasterize runs start through the seams' `prefetch` hooks,
- * and Shiki grammar loading starts for every code-block language — all
- * BEFORE the document-order serialization walk begins. The walk then awaits
- * work that is already in flight instead of paying each cost sequentially.
+ * diagram render/rasterize runs start through the seams' `prefetch` hooks.
+ * Shiki preload uses {@link collectDocxCodeHighlightUsage} separately so the
+ * host-facing preload and this export path cannot drift.
+ * All work starts BEFORE the document-order serialization walk begins. The
+ * walk then awaits work that is already in flight instead of paying each cost
+ * sequentially.
  * Archive mutation order (and thus relationship-id allocation) is untouched:
  * prefetch hooks produce bytes/fragments only.
  */
 function prefetchBlocks(blocks: ExportBlock[], ctx: SerializeContext): void {
-  const languages: string[] = [];
   const walkInline = (nodes: InlineNode[]): void => {
     for (const node of nodes) {
       if (node.type === "link") {
@@ -697,8 +707,6 @@ function prefetchBlocks(blocks: ExportBlock[], ctx: SerializeContext): void {
             } catch {
               // best-effort, see above
             }
-          } else if (lang) {
-            languages.push(lang);
           }
           break;
         }
@@ -725,7 +733,6 @@ function prefetchBlocks(blocks: ExportBlock[], ctx: SerializeContext): void {
     }
   };
   walk(blocks);
-  if (languages.length) warmHighlight(languages, ctx.codeTheme ?? DEFAULT_CODE_THEME);
 }
 
 /** Serialize a block list into an OOXML fragment + report notes. */
@@ -735,8 +742,27 @@ export async function serializeBlocks(
 ): Promise<SerializeResult> {
   const notes: ExportNote[] = [];
   const parts: string[] = [];
+  const highlightTimings =
+    ctx.highlightTimings ?? createDocxCodeHighlightTimingCollector();
+  const highlightUsage = collectDocxCodeHighlightUsage(blocks);
+  highlightTimings.codeBlocks += highlightUsage.codeBlocks;
+  for (const language of highlightUsage.languages) {
+    highlightTimings.languages.add(language);
+  }
+  const highlightPreload = prepareCodeHighlighting(
+    highlightUsage.languages,
+    ctx.codeTheme ?? DEFAULT_CODE_THEME,
+    {
+      onTiming: (timing) =>
+        addDocxCodeHighlightTiming(highlightTimings, timing),
+    },
+  ).catch(() => {
+    // Preload is an optimization. Individual code blocks retry and preserve
+    // the established plain-text fallback if a grammar still cannot load.
+  });
   const internal: InternalContext = {
     ...ctx,
+    highlightTimings,
     headingOffset: computeHeadingOffset(blocks),
     numbering: ctx.numbering ?? new NumberingAllocator({ abstractNumId: 0, numId: 0 }),
     comments: ctx.comments ?? new WordCommentRegistry(),
@@ -749,11 +775,13 @@ export async function serializeBlocks(
   for (const block of blocks) {
     parts.push(await serializeBlock(block, internal, notes, 0));
   }
+  await highlightPreload;
   return {
     xml: coalesceSectPrParagraphs(parts.join("")),
     notes,
     headingStyleIds: [...internal.emittedHeadingStyles],
     comments: internal.comments,
+    highlightTimings,
   };
 }
 
@@ -872,6 +900,13 @@ async function serializeBlock(
         block.code,
         block.language,
         ctx.codeTheme ?? DEFAULT_CODE_THEME,
+        {
+          onTiming: (timing) => {
+            if (ctx.highlightTimings) {
+              addDocxCodeHighlightTiming(ctx.highlightTimings, timing);
+            }
+          },
+        },
       );
       if (skipped) {
         notes.push({

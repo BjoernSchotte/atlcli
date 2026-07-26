@@ -2240,7 +2240,7 @@ describe("exportDocx — $scroll.includepage (spec 005 D1)", () => {
         '<ac:structured-macro ac:name="code"><ac:parameter ac:name="language">ts</ac:parameter>' +
         "<ac:plain-text-body><![CDATA[const x = 1;]]></ac:plain-text-body></ac:structured-macro>",
     };
-    const { bytes } = await exportDocx({
+    const { bytes, report } = await exportDocx({
       templateBytes: styledTemplate({
         body: para("$scroll.content") + para("$scroll.includepage.(ENG:Imprint)"),
       }),
@@ -2260,6 +2260,9 @@ describe("exportDocx — $scroll.includepage (spec 005 D1)", () => {
         .file("word/fonts/atlcli-code-001b70dc-aa60-4ad5-90ec-18a0948e1eae.odttf")
         ?.asUint8Array().byteLength,
     ).toBeGreaterThan(250_000);
+    expect(report.timings.highlightCodeBlocks).toBe(1);
+    expect(report.timings.highlightLanguageCount).toBe(1);
+    expect(report.timings.highlightTokenizeMs).toBeGreaterThan(0);
   });
 
   it("embeds the code face for inline code without requiring a code-block style", async () => {

@@ -259,6 +259,18 @@ export async function runViteSmoke(baseDir?: string): Promise<ViteSmokeResult> {
   }
 
   const javaScriptAssets = assets.filter((asset) => asset.endsWith(".js"));
+  for (const asset of javaScriptAssets) {
+    const source = readFileSync(join(assetsDir, asset), "utf8");
+    if (
+      /engine-oniguruma/i.test(asset) ||
+      source.includes("findNextOnigScannerMatch") ||
+      source.includes("Must invoke loadWasm first.")
+    ) {
+      throw new Error(
+        `packed browser consumer emitted an Oniguruma/Shiki-WASM chunk: ${asset}`,
+      );
+    }
+  }
   const chunkName = javaScriptAssets.find((asset) =>
     readFileSync(join(assetsDir, asset), "utf8").includes("__ATLCLI_VITE_SMOKE"),
   );

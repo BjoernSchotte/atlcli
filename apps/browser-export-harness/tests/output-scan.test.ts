@@ -29,6 +29,8 @@ describe("harness output content policy", () => {
     ["root-relative CSS", `url(/assets/font.ttf)`],
     ["root-relative Worker", `new Worker("/assets/worker.js")`],
     ["root-relative asset literal", `const wasm = "/assets/compiler.wasm"`],
+    ["Oniguruma engine", `findNextOnigScannerMatch(scanner, input)`],
+    ["Oniguruma WASM loader", `throw new Error("Must invoke loadWasm first.")`],
   ])("rejects %s", (_label, source) => {
     expect(scanHarnessText(source).length).toBeGreaterThan(0);
   });
@@ -91,5 +93,15 @@ describe("harness runtime inventory", () => {
       artifact.path.includes(font!.fileName.split(".")[0]!) ? { ...artifact, sha256: "tampered" } : artifact,
     );
     expect(validateHarnessInventory(tampered).join("\n")).toContain("SHA-256");
+  });
+
+  it("rejects an emitted Oniguruma engine chunk by inventory", () => {
+    const inventory = [
+      ...completeInventory(),
+      { path: "assets/engine-oniguruma-seeded.js", size: 6_000 },
+    ];
+    expect(validateHarnessInventory(inventory).join("\n")).toContain(
+      "Oniguruma engine",
+    );
   });
 });

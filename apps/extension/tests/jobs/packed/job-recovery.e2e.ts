@@ -123,8 +123,16 @@ async function installOffscreenFetchStub(
     globalThis.__atlcliPackedFetchReleased = released;
     globalThis.__atlcliPackedBodyFetches = bodyFetches;
     globalThis.__atlcliPackedAssetFetches = assetFetches;
+    const nativeFetch = globalThis.fetch.bind(globalThis);
     globalThis.fetch = async (input) => {
-      const url = new URL(typeof input === "string" ? input : input.url);
+      const rawUrl =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.href
+            : input.url;
+      const url = new URL(rawUrl, location.href);
+      if (url.origin === location.origin) return nativeFetch(input);
       if (assetBytesByPath[url.pathname]) {
         assetFetches[url.pathname] = (assetFetches[url.pathname] || 0) + 1;
         if (heldAssets.has(url.pathname) && !released.has(url.pathname)) {
@@ -293,8 +301,16 @@ function installBrowserRestartFetchStub(): void {
   const scriptName = "packed-browser-restart-fetch-stub.js";
   writeFileSync(
     join(baseExtensionDir, scriptName),
-    `globalThis.fetch = async (input) => {
-      const url = new URL(typeof input === "string" ? input : input.url);
+    `const nativeFetch = globalThis.fetch.bind(globalThis);
+    globalThis.fetch = async (input) => {
+      const rawUrl =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.href
+            : input.url;
+      const url = new URL(rawUrl, location.href);
+      if (url.origin === location.origin) return nativeFetch(input);
       const adfPage = url.pathname.match(/\\/api\\/v2\\/pages\\/([^/]+)$/);
       if (adfPage && url.searchParams.get("body-format") === "atlas_doc_format") {
         return new Response(JSON.stringify({
@@ -1457,6 +1473,9 @@ test("a packed offscreen DOCX runs PizZip, docxtemplater, and canvas diagram ras
     '<p>before</p><ac:structured-macro ac:name="code">' +
     '<ac:parameter ac:name="language">mermaid</ac:parameter>' +
     '<ac:plain-text-body><![CDATA[graph TD\n  A --> B]]></ac:plain-text-body>' +
+    '</ac:structured-macro><ac:structured-macro ac:name="code">' +
+    '<ac:parameter ac:name="language">ts</ac:parameter>' +
+    '<ac:plain-text-body><![CDATA[const answer: number = 42;\n\n]]></ac:plain-text-body>' +
     '</ac:structured-macro>';
   await installOffscreenFetchStub([JOB_F], { [JOB_F]: storage });
   const templateBytes = buildDocx({
@@ -1500,6 +1519,9 @@ test("a packed offscreen DOCX runs PizZip, docxtemplater, and canvas diagram ras
           filename?: string;
           complete?: boolean;
           renderedDiagrams?: number;
+          highlightCodeBlocks?: number;
+          highlightLanguageCount?: number;
+          highlightTokenizeMs?: number;
         }>;
       };
     }).exportJobStoreProbe;
@@ -1514,7 +1536,11 @@ test("a packed offscreen DOCX runs PizZip, docxtemplater, and canvas diagram ras
     filename: `Packed page ${JOB_F}.docx`,
     complete: true,
     renderedDiagrams: 1,
+    highlightCodeBlocks: 1,
+    highlightLanguageCount: 1,
+    highlightTokenizeMs: expect.any(Number),
   });
+  expect(retained.highlightTokenizeMs).toBeGreaterThan(0);
 
   await installOffscreenFetchStub([], { [JOB_F]: storage });
   const rerunRoute = await page.evaluate(async (jobId) => {

@@ -11,7 +11,8 @@ browser and under Node/Bun; hosts inject template/asset/output seams via
     (`fileTemplateSource`, `fileOutputSink`, `resvgSvgRasterizer`).
   - `./browser` — the same engine without Node adapters.
   - `./browser-runtime` — browser bootstrap (installs the byte helpers;
-    import before PizZip/docxtemplater run in a browser host).
+    import before PizZip/docxtemplater run in a browser host), the
+    JavaScript-only Shiki engine, and `prepareDocxCodeHighlighting`.
   - `./vite` — build-time define map for browser bundlers.
   - `./scan` — template scanning (`scanTemplate`, `unzipDocx`).
   - `./fixtures` — programmatic minimal-docx builders (dev/test API).
@@ -33,6 +34,31 @@ await runExport(
 
 Full engine reference: [DOCX export engine](https://atlcli.sh/reference/docx-engine/).
 Versioning: [package versioning](https://atlcli.sh/reference/versioning/).
+
+## Browser code-highlighting preload
+
+Browser entrypoints must import the runtime before any static DOCX dependency:
+
+```ts
+import "@atlcli/docx/browser-runtime";
+```
+
+After the user has expressed DOCX intent, a host may preload only the known
+languages present in the resolved block tree:
+
+```ts
+const { prepareDocxCodeHighlighting } =
+  await import("@atlcli/docx/browser-runtime");
+
+await prepareDocxCodeHighlighting(blocks, { codeTheme: "github-light" });
+```
+
+The call is awaitable, concurrent-safe, and idempotent. Starting it from a
+DOCX modal or explicit export action keeps ordinary page loads untouched.
+Browser builds use Shiki's JavaScript RegExp engine; Node/Bun imports use
+Oniguruma. `ExportReport.timings` separates one-time engine initialization,
+grammar load/compile, and real-source tokenization, and records code-block and
+distinct-language counts.
 
 ## Queued export engine seam
 

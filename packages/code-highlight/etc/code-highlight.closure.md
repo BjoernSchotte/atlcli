@@ -8,9 +8,21 @@
 > Classes: **stable** (frozen v1 surface), **experimental** (exported,
 > may change in minors), **internal** (non-frozen implementation subpath).
 
-### Entry point `.` — experimental
+### Entry point `. (browser)` — experimental
 
-- exported symbols (21): CODE_LANGUAGES, CODE_LANGUAGE_IDS, CODE_THEMES, CODE_THEME_IDS, CODE_THEME_METADATA, CodeLanguageId, CodeLine, CodeThemeId, CodeToken, DEFAULT_CODE_THEME, HighlightResult, HighlightSkip, HighlightedCode, InvalidCodeThemeError, ResolvedCodeTheme, canonicalCodeLanguage, highlightCode, isCodeThemeId, resolveCodeTheme, resolveCodeThemeId, warmHighlight
+- exported symbols (28): CODE_LANGUAGES, CODE_LANGUAGE_IDS, CODE_THEMES, CODE_THEME_IDS, CODE_THEME_METADATA, CodeHighlightEngine, CodeHighlightEngineConfigurationError, CodeHighlightOptions, CodeHighlightTiming, CodeLanguageId, CodeLine, CodeThemeId, CodeToken, DEFAULT_CODE_THEME, HighlightResult, HighlightSkip, HighlightedCode, InvalidCodeThemeError, ResolvedCodeTheme, canonicalCodeLanguage, getCodeHighlightEngineId, highlightCode, installCodeHighlightEngine, isCodeThemeId, prepareCodeHighlighting, resolveCodeTheme, resolveCodeThemeId, warmHighlight
+
+### Entry point `. (default)` — experimental
+
+- exported symbols (28): CODE_LANGUAGES, CODE_LANGUAGE_IDS, CODE_THEMES, CODE_THEME_IDS, CODE_THEME_METADATA, CodeHighlightEngine, CodeHighlightEngineConfigurationError, CodeHighlightOptions, CodeHighlightTiming, CodeLanguageId, CodeLine, CodeThemeId, CodeToken, DEFAULT_CODE_THEME, HighlightResult, HighlightSkip, HighlightedCode, InvalidCodeThemeError, ResolvedCodeTheme, canonicalCodeLanguage, getCodeHighlightEngineId, highlightCode, installCodeHighlightEngine, isCodeThemeId, prepareCodeHighlighting, resolveCodeTheme, resolveCodeThemeId, warmHighlight
+
+### Entry point `./engine/javascript` — experimental
+
+- exported symbols (1): installJavaScriptHighlightEngine
+
+### Entry point `./engine/oniguruma` — experimental
+
+- exported symbols (1): installOnigurumaHighlightEngine
 
 ### Entry point `./registry` — experimental
 

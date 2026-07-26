@@ -99,6 +99,11 @@ export interface ExportResult {
 export interface ExportTimings {
     resolveMs: number;
     bodyMs: number;
+    highlightEngineInitMs?: number;
+    highlightGrammarLoadMs?: number;
+    highlightTokenizeMs?: number;
+    highlightCodeBlocks?: number;
+    highlightLanguageCount?: number;
     logoFetchMs: number;
     includeFetchMs: number;
     renderMs: number;
@@ -398,6 +403,11 @@ export interface ExportResult {
 export interface ExportTimings {
     resolveMs: number;
     bodyMs: number;
+    highlightEngineInitMs?: number;
+    highlightGrammarLoadMs?: number;
+    highlightTokenizeMs?: number;
+    highlightCodeBlocks?: number;
+    highlightLanguageCount?: number;
     logoFetchMs: number;
     includeFetchMs: number;
     renderMs: number;
@@ -713,6 +723,11 @@ export interface ExportResult {
 export interface ExportTimings {
     resolveMs: number;
     bodyMs: number;
+    highlightEngineInitMs?: number;
+    highlightGrammarLoadMs?: number;
+    highlightTokenizeMs?: number;
+    highlightCodeBlocks?: number;
+    highlightLanguageCount?: number;
     logoFetchMs: number;
     includeFetchMs: number;
     renderMs: number;
@@ -946,6 +961,11 @@ export declare function installDocxBrowserRuntime(): void;
 
 // export: memoryTemplateSource
 export declare function memoryTemplateSource(bytes: ArrayBuffer | Uint8Array): TemplateSource;
+
+// export: prepareDocxCodeHighlighting
+export declare function prepareDocxCodeHighlighting(blocks: readonly ExportBlock[], options?: {
+    codeTheme?: CodeThemeId;
+}): Promise<void>;
 ```
 
 ### Entry point `./fixtures`
@@ -1395,6 +1415,11 @@ export interface ExportResult {
 export interface ExportTimings {
     resolveMs: number;
     bodyMs: number;
+    highlightEngineInitMs?: number;
+    highlightGrammarLoadMs?: number;
+    highlightTokenizeMs?: number;
+    highlightCodeBlocks?: number;
+    highlightLanguageCount?: number;
     logoFetchMs: number;
     includeFetchMs: number;
     renderMs: number;
@@ -1911,6 +1936,7 @@ export declare function serializeBlocks(blocks: ExportBlock[], ctx: SerializeCon
 // export: SerializeContext
 export interface SerializeContext {
     codeTheme?: CodeThemeId;
+    highlightTimings?: DocxCodeHighlightTimingCollector;
     styleNames: Map<string, string>;
     numbering?: NumberingAllocator;
     comments?: WordCommentRegistry;
@@ -1932,6 +1958,7 @@ export interface SerializeResult {
     notes: ExportNote[];
     headingStyleIds: string[];
     comments: WordCommentRegistry;
+    highlightTimings: DocxCodeHighlightTimingCollector;
 }
 
 // export: statusBadgeRun
@@ -2087,6 +2114,11 @@ export interface ExportResult {
 export interface ExportTimings {
     resolveMs: number;
     bodyMs: number;
+    highlightEngineInitMs?: number;
+    highlightGrammarLoadMs?: number;
+    highlightTokenizeMs?: number;
+    highlightCodeBlocks?: number;
+    highlightLanguageCount?: number;
     logoFetchMs: number;
     includeFetchMs: number;
     renderMs: number;

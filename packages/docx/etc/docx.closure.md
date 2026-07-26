@@ -40,7 +40,7 @@
 
 ### Entry point `./browser-runtime` — experimental
 
-- exported symbols (6): CanvasRasterizerTiming, CanvasSvgRasterizerOptions, DocxByteHelpers, canvasSvgRasterizer, installDocxBrowserRuntime, memoryTemplateSource
+- exported symbols (7): CanvasRasterizerTiming, CanvasSvgRasterizerOptions, DocxByteHelpers, canvasSvgRasterizer, installDocxBrowserRuntime, memoryTemplateSource, prepareDocxCodeHighlighting
 
 ### Entry point `./fixtures` — internal
 

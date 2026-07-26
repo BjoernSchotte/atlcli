@@ -7,6 +7,7 @@
  * the exported `handleOffscreenMessage` adapter (utils/listeners.ts) so the
  * load-bearing `true` return is unit-tested.
  */
+import "@atlcli/docx/browser-runtime";
 import { handleOffscreenMessage } from "../../utils/listeners.js";
 import type {
   ExportJobExecutor,
