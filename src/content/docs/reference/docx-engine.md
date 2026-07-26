@@ -96,10 +96,13 @@ Historical prepared `/1` checkpoints without the additive field resume as
 | Field | Meaning |
 |-------|---------|
 | `highlightEngineInitMs` | Newly performed Shiki core, theme, and RegExp-engine initialization |
-| `highlightGrammarLoadMs` | Wall time of newly imported, loaded, and deterministically compiled grammar batches |
+| `highlightGrammarLoadMs` | Wall time from the first requested grammar import through the newly loaded and deterministically compiled grammar batch; this overlaps cold engine initialization |
 | `highlightTokenizeMs` | Real source-code tokenization only |
 | `highlightCodeBlocks` | Non-Mermaid code blocks seen across the body and included pages |
 | `highlightLanguageCount` | Distinct known canonical languages across the export |
+
+`highlightEngineInitMs` and `highlightGrammarLoadMs` are independent wall-time
+diagnostics. Cold requests start both phases together, so do not add them.
 
 Preloaded engine/grammar time is zero during the later export; tokenization
 remains measured because every code block still produces tokens. The

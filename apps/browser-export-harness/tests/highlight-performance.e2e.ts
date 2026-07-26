@@ -9,11 +9,23 @@ const RESULT_DIR = resolve(
   "../test-results/highlight-performance",
 );
 const HARNESS_URL = "http://127.0.0.1:4179/browser-export-harness/";
+const INITIALIZATION_CHUNK_RE =
+  /^(?:core|engine-javascript|github-light)-[^/]+[.]js$/;
+
+interface HighlightResourceTiming {
+  name: string;
+  startTime: number;
+  responseEnd: number;
+}
 
 async function runInFreshContext(
   browser: Browser,
   preload: boolean,
-): Promise<HighlightBenchmarkResult> {
+): Promise<{
+  benchmark: HighlightBenchmarkResult;
+  beforeIntentResources: string[];
+  resources: HighlightResourceTiming[];
+}> {
   const context = await browser.newContext();
   try {
     const page = await context.newPage();
@@ -22,9 +34,23 @@ async function runInFreshContext(
       () => typeof window.__ATLCLI_DOCX_HIGHLIGHT_BENCHMARK === "function",
     );
     return await page.evaluate(async (shouldPreload) => {
+      const beforeIntentResources = performance
+        .getEntriesByType("resource")
+        .map(({ name }) => new URL(name).pathname.split("/").at(-1) ?? name);
+      performance.clearResourceTimings();
       const run = window.__ATLCLI_DOCX_HIGHLIGHT_BENCHMARK;
       if (!run) throw new Error("highlight benchmark hook is unavailable");
-      return run(shouldPreload);
+      const benchmark = await run(shouldPreload);
+      const resources = performance
+        .getEntriesByType("resource")
+        .map((entry) => entry as PerformanceResourceTiming)
+        .filter(({ name }) => name.endsWith(".js"))
+        .map(({ name, startTime, responseEnd }) => ({
+          name: new URL(name).pathname.split("/").at(-1) ?? name,
+          startTime,
+          responseEnd,
+        }));
+      return { benchmark, beforeIntentResources, resources };
     }, preload);
   } finally {
     await context.close();
@@ -34,8 +60,36 @@ async function runInFreshContext(
 test("DOCX highlighting is JavaScript-only and deterministic across fresh cold/preloaded contexts", async ({
   browser,
 }) => {
-  const cold = await runInFreshContext(browser, false);
-  const preloaded = await runInFreshContext(browser, true);
+  const {
+    benchmark: cold,
+    beforeIntentResources,
+    resources: coldResources,
+  } = await runInFreshContext(browser, false);
+  const { benchmark: preloaded } = await runInFreshContext(browser, true);
+
+  const initializationResources = coldResources.filter(({ name }) =>
+    INITIALIZATION_CHUNK_RE.test(name),
+  );
+  const grammarResources = coldResources.filter(
+    ({ name }) => !INITIALIZATION_CHUNK_RE.test(name),
+  );
+  expect(initializationResources.length).toBeGreaterThan(0);
+  expect(grammarResources.length).toBeGreaterThanOrEqual(22);
+  const beforeIntentNames = new Set(beforeIntentResources);
+  expect(
+    [...initializationResources, ...grammarResources].some(({ name }) =>
+      beforeIntentNames.has(name),
+    ),
+  ).toBe(false);
+  const latestInitializationResponseEnd = Math.max(
+    ...initializationResources.map(({ responseEnd }) => responseEnd),
+  );
+  const earliestGrammarRequestStart = Math.min(
+    ...grammarResources.map(({ startTime }) => startTime),
+  );
+  expect(earliestGrammarRequestStart).toBeLessThan(
+    latestInitializationResponseEnd,
+  );
 
   expect(cold.engine).toBe("javascript");
   expect(preloaded.engine).toBe("javascript");
@@ -67,6 +121,14 @@ test("DOCX highlighting is JavaScript-only and deterministic across fresh cold/p
     `${JSON.stringify({
       cold: { ...cold, base64: undefined },
       preloaded: { ...preloaded, base64: undefined },
+      resourceTrace: {
+        initializationRequests: initializationResources.map(({ name }) => name),
+        grammarRequestCount: grammarResources.length,
+        earliestGrammarRequestStart,
+        latestInitializationResponseEnd,
+        overlapMs:
+          latestInitializationResponseEnd - earliestGrammarRequestStart,
+      },
     }, null, 2)}\n`,
   );
 });

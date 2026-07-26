@@ -30,7 +30,8 @@ Aliases are canonicalized, unknown languages are ignored, and concurrent or
 repeated calls share the same initialization/grammar promises. `highlightCode`
 and `prepareCodeHighlighting` accept an `onTiming` callback that reports newly
 performed engine initialization, grammar load/compile, and source
-tokenization. Warm cache work is reported as zero.
+tokenization. Cold engine initialization and grammar loading overlap, so those
+two wall-time metrics are not additive. Warm cache work is reported as zero.
 
 After upgrading Shiki, regenerate and verify the checked-in catalogue:
 

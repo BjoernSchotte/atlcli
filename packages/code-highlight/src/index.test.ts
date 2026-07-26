@@ -122,9 +122,11 @@ describe("highlightCode", () => {
     expect(timing!.engineInitMs).toBeGreaterThan(0);
     expect(timing!.grammarLoadMs).toBeGreaterThan(0);
     expect(timing!.tokenizeMs).toBe(0);
-    expect(timing!.engineInitMs + timing!.grammarLoadMs).toBeLessThanOrEqual(
-      elapsedMs + 5,
-    );
+    // Cold engine and grammar work overlap. Each phase reports its own wall
+    // time, so they are individually bounded but are no longer additive.
+    expect(
+      Math.max(timing!.engineInitMs, timing!.grammarLoadMs),
+    ).toBeLessThanOrEqual(elapsedMs + 5);
   });
 });
 
