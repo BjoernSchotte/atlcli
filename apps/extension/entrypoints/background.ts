@@ -12,6 +12,7 @@ import { defineBackground } from "wxt/utils/define-background";
 // resolves the `browser` export condition (PLAN §6 risk 4); the Task 6 output
 // scan then proves this pulls in zero node:/bun: specifiers.
 import { extractEntityFromUrl } from "@atlcli/core";
+import type { CodeThemeId } from "@atlcli/code-highlight/registry";
 import {
   type EntityChanged,
   type EntityDetection,
@@ -282,6 +283,20 @@ async function runPdfCancel(jobId: string): Promise<boolean> {
   );
 }
 
+async function prepareDocxRuntime(codeTheme?: CodeThemeId) {
+  offscreenActivity.touch();
+  await ensureOffscreen();
+  const response = (await chrome.runtime.sendMessage({
+    kind: "offscreen:docx-prepare-runtime",
+    ...(codeTheme ? { codeTheme } : {}),
+  })) as OffscreenResponse | undefined;
+  if (!response || response.kind !== "offscreen:docx-prepare-runtime-result") {
+    throw new Error("Offscreen DOCX runtime returned no preparation result.");
+  }
+  if (!response.ok) throw new Error(response.error);
+  return response.preparation;
+}
+
 async function runJobsWake(
   jobIds?: string[],
   options?: { resumeWaiting?: boolean },
@@ -416,6 +431,7 @@ export default defineBackground({
       getCurrentEntity,
       runPdfCompile,
       runPdfCancel,
+      prepareDocxRuntime,
       runJobsWake,
     });
     if (handled) {

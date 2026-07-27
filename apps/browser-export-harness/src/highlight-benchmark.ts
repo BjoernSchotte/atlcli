@@ -3,7 +3,7 @@ import type { ExportBlock } from "@atlcli/confluence";
 import { runExport } from "@atlcli/docx/browser";
 import {
   memoryTemplateSource,
-  prepareDocxCodeHighlighting,
+  prepareDocxExportRuntime,
 } from "@atlcli/docx/browser-runtime";
 import { DOCX_TEMPLATE_BYTES } from "@atlcli/export-fixtures";
 import { sha256Hex } from "./digest.js";
@@ -34,14 +34,49 @@ const REPRESENTATIVE_CODE = [
   ["markdown", "# Answer\n\n42"],
 ] as const;
 
-const HIGHLIGHT_BLOCKS: ExportBlock[] = REPRESENTATIVE_CODE.map(
+const FLAT_HIGHLIGHT_BLOCKS: ExportBlock[] = REPRESENTATIVE_CODE.map(
   ([language, code]) => ({ type: "codeBlock", language, code }),
 );
+const HIGHLIGHT_BLOCKS: ExportBlock[] = [
+  {
+    type: "callout",
+    kind: "info",
+    content: [FLAT_HIGHLIGHT_BLOCKS[0]!],
+  },
+  {
+    type: "table",
+    rows: [{
+      cells: [{
+        header: false,
+        colspan: 1,
+        rowspan: 1,
+        content: [FLAT_HIGHLIGHT_BLOCKS[1]!],
+      }],
+    }],
+  },
+  {
+    type: "paragraph",
+    content: [{
+      type: "text",
+      text: "Inline code also needs the bundled face: INLINE_TOKEN",
+      marks: ["code"],
+    }],
+  },
+  ...FLAT_HIGHLIGHT_BLOCKS.slice(2),
+];
 
 export interface HighlightBenchmarkResult {
   engine: string | null;
   preloadMs: number;
   exportMs: number;
+  preparation: Awaited<ReturnType<typeof prepareDocxExportRuntime>> | null;
+  phases: {
+    runtimeReadyAt: number;
+    preloadStartedAt: number;
+    preloadEndedAt: number;
+    exportStartedAt: number;
+    exportEndedAt: number;
+  };
   digest: string;
   byteLength: number;
   base64: string;
@@ -67,8 +102,11 @@ async function runHighlightBenchmark(
   preload: boolean,
 ): Promise<HighlightBenchmarkResult> {
   const preloadStartedAt = performance.now();
-  if (preload) await prepareDocxCodeHighlighting(HIGHLIGHT_BLOCKS);
-  const preloadMs = preload ? performance.now() - preloadStartedAt : 0;
+  const preparation = preload
+    ? await prepareDocxExportRuntime(HIGHLIGHT_BLOCKS)
+    : null;
+  const preloadEndedAt = performance.now();
+  const preloadMs = preload ? preloadEndedAt - preloadStartedAt : 0;
 
   const output = new MemoryOutputSink();
   const exportStartedAt = performance.now();
@@ -92,12 +130,22 @@ async function runHighlightBenchmark(
       output,
     },
   );
-  const exportMs = performance.now() - exportStartedAt;
+  const exportEndedAt = performance.now();
+  const exportMs = exportEndedAt - exportStartedAt;
   const bytes = output.single.bytes;
   return {
     engine: getCodeHighlightEngineId(),
     preloadMs,
     exportMs,
+    preparation,
+    phases: {
+      runtimeReadyAt:
+        window.__ATLCLI_DOCX_BROWSER_RUNTIME_READY_AT ?? 0,
+      preloadStartedAt,
+      preloadEndedAt,
+      exportStartedAt,
+      exportEndedAt,
+    },
     digest: await sha256Hex(bytes),
     byteLength: bytes.byteLength,
     base64: toBase64(bytes),
@@ -113,6 +161,7 @@ async function runHighlightBenchmark(
 
 declare global {
   interface Window {
+    __ATLCLI_DOCX_BROWSER_RUNTIME_READY_AT?: number;
     __ATLCLI_DOCX_HIGHLIGHT_BENCHMARK?: (
       preload: boolean,
     ) => Promise<HighlightBenchmarkResult>;

@@ -12,7 +12,7 @@
  *   3. zero bare node/Bun GLOBALS (`Buffer.`, `process.env`, `__dirname`, `Bun.`),
  *   4. zero string-to-code constructors (`Function(...)`, `eval(...)`) that
  *      violate Manifest V3's extension-page CSP, and
- *   5. a complete, locally bundled PDF runtime (worker, WASM and eleven fonts).
+ *   5. complete, locally bundled PDF and DOCX render assets.
  *
  * Bare node globals are
  *      invisible to an import-specifier scan — nothing is imported, the symbol is
@@ -136,6 +136,11 @@ const REQUIRED_PDF_ARTIFACTS = [
     pattern: /(?:^|\/)assets\/typst_ts_web_compiler_bg-[^/]+\.wasm$/,
     minimumSize: 20_000_000,
     sha256: "1fc968438a672366dfec39c96c842c26ed29caff4eb1bcaab19a6c60867de5fd",
+  },
+  {
+    label: "DOCX code font",
+    pattern: /(?:^|\/)assets\/JetBrainsMono-Regular-[^/]+\.ttf$/,
+    sha256: "a0bf60ef0f83c5ed4d7a75d45838548b1f6873372dfac88f71804491898d138f",
   },
   {
     label: "Source Sans 3 Regular",
@@ -296,7 +301,7 @@ export function scanText(text: string): string[] {
   return findings;
 }
 
-/** Verify that every runtime asset needed for a browser-only PDF export exists. */
+/** Verify that every binary runtime asset needed for browser exports exists. */
 export function validatePdfArtifactInventory(artifacts: OutputArtifact[]): string[] {
   const issues: string[] = [];
   for (const requirement of REQUIRED_PDF_ARTIFACTS) {
@@ -389,7 +394,7 @@ async function main(): Promise<void> {
 
   if (leaks.length === 0 && artifactIssues.length === 0) {
     console.log(
-      `✓ extension output clean — CSP-safe and complete PDF runtime in ${root}`
+      `✓ extension output clean — CSP-safe and complete export runtime in ${root}`
     );
     return;
   }
@@ -402,7 +407,7 @@ async function main(): Promise<void> {
     }
   }
   if (artifactIssues.length > 0) {
-    console.error("  incomplete PDF runtime:");
+    console.error("  incomplete export runtime:");
     for (const issue of artifactIssues) console.error(`    ${issue}`);
   }
   process.exit(1);

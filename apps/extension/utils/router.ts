@@ -8,11 +8,13 @@
  * the result onto `chrome.runtime.onMessage`.
  */
 import type {
+  DocxRuntimePreparationMessage,
   EntityDetection,
   ExtRequest,
   ExtResponse,
   PdfCompileHints,
 } from "./messages.js";
+import type { CodeThemeId } from "@atlcli/code-highlight/registry";
 
 /** Injected side effects the router needs to fulfil requests. */
 export interface RouterDeps {
@@ -31,6 +33,10 @@ export interface RouterDeps {
   ) => Promise<{ ok: true } | { ok: false; error: string }>;
   /** Cancels a queued or active PDF job. */
   runPdfCancel: (jobId: string) => Promise<boolean>;
+  /** Warms deterministic DOCX runtime assets in the productive offscreen realm. */
+  prepareDocxRuntime?: (
+    codeTheme?: CodeThemeId,
+  ) => Promise<DocxRuntimePreparationMessage>;
   /** Wakes the common offscreen queue using opaque job ids only. */
   runJobsWake?: (
     jobIds?: string[],
@@ -84,6 +90,25 @@ export async function routeMessage(
     case "pdf:cancel": {
       const cancelled = await deps.runPdfCancel(msg.jobId).catch(() => false);
       return { kind: "pdf:cancel-result", jobId: msg.jobId, cancelled };
+    }
+    case "docx:prepare-runtime": {
+      if (!deps.prepareDocxRuntime) {
+        return {
+          kind: "docx:prepare-runtime-result",
+          ok: false,
+          error: "DOCX runtime preparation is not configured.",
+        };
+      }
+      try {
+        const preparation = await deps.prepareDocxRuntime(msg.codeTheme);
+        return { kind: "docx:prepare-runtime-result", ok: true, preparation };
+      } catch (error) {
+        return {
+          kind: "docx:prepare-runtime-result",
+          ok: false,
+          error: error instanceof Error ? error.message : String(error),
+        };
+      }
     }
     case "jobs:wake": {
       if (!deps.runJobsWake) {

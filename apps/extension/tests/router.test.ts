@@ -3,12 +3,19 @@ import { routeMessage, type RouterDeps } from "../utils/router.js";
 import type { EntityDetection } from "../utils/messages.js";
 
 const noEntity: EntityDetection = { windowId: 7, url: null, entity: null, seq: 0 };
+const preparation = {
+  totalMs: 12,
+  highlightingMs: 8,
+  codeFontMs: 10,
+  codeFontBytes: 273_900,
+};
 
 const okDeps: RouterDeps = {
   runWasmSmoke: async (a, b) => a + b,
   getCurrentEntity: async () => noEntity,
   runPdfCompile: async () => ({ ok: true }),
   runPdfCancel: async () => true,
+  prepareDocxRuntime: async () => preparation,
   runJobsWake: async (jobIds) => jobIds?.[0],
 };
 
@@ -119,6 +126,30 @@ describe("routeMessage (pure router)", () => {
     );
     expect(response).toEqual({
       kind: "pdf:compile-result", jobId, ok: false, error: "compiler offline",
+    });
+  });
+
+  it("routes bounded DOCX runtime preparation and captures failures", async () => {
+    expect(await routeMessage({
+      kind: "docx:prepare-runtime",
+      codeTheme: "github-dark",
+    }, okDeps)).toEqual({
+      kind: "docx:prepare-runtime-result",
+      ok: true,
+      preparation,
+    });
+    expect(await routeMessage(
+      { kind: "docx:prepare-runtime" },
+      {
+        ...okDeps,
+        prepareDocxRuntime: async () => {
+          throw new Error("font unavailable");
+        },
+      },
+    )).toEqual({
+      kind: "docx:prepare-runtime-result",
+      ok: false,
+      error: "font unavailable",
     });
   });
 

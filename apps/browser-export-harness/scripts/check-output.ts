@@ -29,6 +29,8 @@ const ONIGURUMA_RUNTIME_RES = [
   /\bfindNextOnigScannerMatch\b/g,
   /Must invoke loadWasm first[.]/g,
 ];
+const DOCX_CODE_FONT_SHA256 =
+  "a0bf60ef0f83c5ed4d7a75d45838548b1f6873372dfac88f71804491898d138f";
 
 export interface OutputFinding {
   file: string;
@@ -148,6 +150,12 @@ export function validateHarnessInventory(artifacts: OutputArtifact[]): string[] 
     artifacts,
     "Typst compiler WASM",
     /(?:^|\/)assets\/typst_ts_web_compiler_bg-[^/]+\.wasm$/,
+  ));
+  issues.push(...requireOne(
+    artifacts,
+    "DOCX code font",
+    /(?:^|\/)assets\/JetBrainsMono-Regular-[^/]+\.ttf$/,
+    DOCX_CODE_FONT_SHA256,
   ));
   for (const font of PDF_RUNTIME_ASSETS.fonts) {
     issues.push(...requireOne(artifacts, font.fileName, hashedAssetPattern(font.fileName), font.sha256));

@@ -63,6 +63,9 @@ entrypoint's full symbol list and transitive type closure is committed and CI-gu
 `@atlcli/docx` (spec 006).
 
 - `runExport(input: RunExportInput, env: ExportEnv)` → `ExportReport`.
+- `prepareDocxExportRuntime(blocks, options?)` → `DocxExportRuntimePreparation` — intent-time,
+  isomorphic preparation of known highlighting grammars plus the bundled code font. Concurrent
+  and repeated calls share work; cancellation stops only the requesting wait.
 - `ExportEnv` seams: `TemplateSource`, `AssetFetcher`, `OutputSink`, `SvgRasterizer` — hosts
   inject them; nothing assumes a browser or Node.
 - Node adapters (stable, exported from the barrel): `fileTemplateSource`, `fileOutputSink`,
@@ -206,8 +209,8 @@ Explicitly **not** part of the freeze:
   are not); export-macros' concrete renderer instances + helpers.
 - `@atlcli/docx/scan` and `@atlcli/docx/fixtures` (dev/test API), `@atlcli/pdf/template`
   (raw Typst template), `./browser-runtime` and `./vite` (host bootstrap, experimental).
-  The browser runtime also exports the awaitable, idempotent
-  `prepareDocxCodeHighlighting(blocks, options?)` intent-time preload.
+  The browser runtime also re-exports stable `prepareDocxExportRuntime`; its narrower
+  `prepareDocxCodeHighlighting(blocks, options?)` compatibility helper remains experimental.
 - The 0.x packages: `@atlcli/core`, `@atlcli/diagram`, `@atlcli/jira`, `@atlcli/plugin-api`,
   `@atlcli/template-pack`, `@atlcli/export-node` — see the freeze table in
   [Package Versioning](/reference/versioning/) for the per-package reasoning. Types owned by

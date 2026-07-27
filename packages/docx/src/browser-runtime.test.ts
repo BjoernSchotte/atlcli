@@ -8,6 +8,7 @@ import {
   installDocxBrowserRuntime,
   memoryTemplateSource,
   prepareDocxCodeHighlighting,
+  prepareDocxExportRuntime,
   type DocxByteHelpers,
 } from "./browser-runtime.js";
 import type { ExportBlock } from "@atlcli/confluence";
@@ -68,6 +69,24 @@ describe("DOCX browser byte helpers", () => {
       prepareDocxCodeHighlighting(blocks),
     ]);
     await prepareDocxCodeHighlighting(blocks);
+  });
+
+  it("warms highlighting and the validated bundled code font through one public contract", async () => {
+    const prepared = await prepareDocxExportRuntime([
+      {
+        type: "callout",
+        kind: "info",
+        content: [{ type: "codeBlock", language: "ts", code: "const x = 1;" }],
+      },
+      {
+        type: "paragraph",
+        content: [{ type: "text", text: "INLINE_TOKEN", marks: ["code"] }],
+      },
+    ]);
+    expect(prepared.codeFontBytes).toBe(273_900);
+    expect(prepared.totalMs).toBeGreaterThanOrEqual(0);
+    expect(prepared.highlightingMs).toBeGreaterThanOrEqual(0);
+    expect(prepared.codeFontMs).toBeGreaterThanOrEqual(0);
   });
 
   it("exports the exact frozen Vite define map", () => {

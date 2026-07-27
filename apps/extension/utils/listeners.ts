@@ -12,10 +12,12 @@
 import {
   isExtRequest,
   isOffscreenRequest,
+  type DocxRuntimePreparationMessage,
   type ExtResponse,
   type OffscreenResponse,
   type PdfCompileHints,
 } from "./messages.js";
+import type { CodeThemeId } from "@atlcli/code-highlight/registry";
 import { routeMessage, type RouterDeps } from "./router.js";
 import { runWasmAdd } from "./wasm-smoke.js";
 
@@ -27,6 +29,9 @@ export interface OffscreenListenerDeps {
     hints?: PdfCompileHints
   ) => Promise<{ ok: true } | { ok: false; error: string }>;
   runPdfCancel: (jobId: string) => Promise<boolean>;
+  prepareDocxRuntime?: (
+    codeTheme?: CodeThemeId,
+  ) => Promise<DocxRuntimePreparationMessage>;
   runJobsWake?: (
     jobIds?: string[],
     options?: { resumeWaiting?: boolean },
@@ -64,6 +69,13 @@ export function handleExtMessage(
         case "jobs:wake":
           sendResponse({ kind: "jobs:wake-result", error: toMessage(err) });
           break;
+        case "docx:prepare-runtime":
+          sendResponse({
+            kind: "docx:prepare-runtime-result",
+            ok: false,
+            error: toMessage(err),
+          });
+          break;
         case "ping":
         case "wasm-smoke":
         case "get-current-entity":
@@ -87,6 +99,9 @@ export function handleOffscreenMessage(
     runWasmAdd,
     runPdfCompile: async () => ({ ok: false, error: "PDF compiler host is not configured." }),
     runPdfCancel: async () => false,
+    prepareDocxRuntime: async () => {
+      throw new Error("DOCX runtime preparation is not configured.");
+    },
     runJobsWake: async () => undefined,
   }
 ): boolean {
@@ -109,6 +124,21 @@ export function handleOffscreenMessage(
       deps.runPdfCancel(message.jobId)
         .then((cancelled) => sendResponse({ kind: "offscreen:pdf-cancel-result", jobId: message.jobId, cancelled }))
         .catch(() => sendResponse({ kind: "offscreen:pdf-cancel-result", jobId: message.jobId, cancelled: false }));
+      break;
+    case "offscreen:docx-prepare-runtime":
+      (deps.prepareDocxRuntime
+        ? deps.prepareDocxRuntime(message.codeTheme)
+        : Promise.reject(new Error("DOCX runtime preparation is not configured.")))
+        .then((preparation) => sendResponse({
+          kind: "offscreen:docx-prepare-runtime-result",
+          ok: true,
+          preparation,
+        }))
+        .catch((error) => sendResponse({
+          kind: "offscreen:docx-prepare-runtime-result",
+          ok: false,
+          error: toMessage(error),
+        }));
       break;
     case "offscreen:jobs-wake":
       (deps.runJobsWake?.(message.jobIds, {

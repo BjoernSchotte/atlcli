@@ -11,6 +11,7 @@ import {
   type ResourceEstimateV1,
 } from "@atlcli/export-jobs";
 import {
+  prepareDocxExportRuntime,
   prepareDocxExport,
   renderPreparedDocxExport,
   type AssetFetcher,
@@ -755,6 +756,21 @@ export function createTypescriptDocxExportJobExecutor(
         if (!checkpoint) {
           // The heavy reservation deliberately precedes template bytes, PizZip,
           // asset fetch/decode, rasterization, and prepared-archive generation.
+          // Runtime preparation is intentionally outside PizZip state. Start it
+          // from the fully resolved block tree while the pinned template is
+          // read/hashed below; the font and known grammars are then warm before
+          // prepareDocxExport reaches serialization in this same host realm.
+          const runtimePreparation = prepareDocxExportRuntime(
+            resolvedInput!.blocks ?? [],
+            {
+              codeTheme: resolveCodeThemeId(request.options.codeTheme),
+              signal: context.signal,
+            },
+          );
+          // Template resolution can fail before the preparation is awaited.
+          // Keep a handler attached so that independent failure never becomes
+          // an unhandled rejection.
+          runtimePreparation.catch(() => {});
           let pinned = await options.templates.resolve({
             jobId: context.jobId,
             recordKey: request.template.recordKey,
@@ -774,6 +790,8 @@ export function createTypescriptDocxExportJobExecutor(
           };
           validateTemplateBinding(template, request);
           await reservation.reconcile({ templateBytes: template.byteLength, signal: context.signal });
+          await runtimePreparation;
+          throwIfAborted(context.signal);
 
           const progressChannel = engineProgress(context, now);
           let prepared: PreparedDocxExportV1 | undefined;

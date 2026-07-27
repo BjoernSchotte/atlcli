@@ -1,4 +1,4 @@
-import { describe, expect, it } from "bun:test";
+import { afterAll, describe, expect, it } from "bun:test";
 import {
   CODE_FONT_FAMILY,
   CODE_FONT_KEY,
@@ -6,10 +6,13 @@ import {
   DocxFontEmbeddingError,
   assertBundledCodeFont,
   assertEmbeddableSfnt,
+  configureBundledCodeFontLoader,
   ensureEmbeddedCodeFont,
+  loadBundledCodeFont,
   obfuscateFont,
 } from "./font-embedding.js";
 import { buildDocx, para } from "./fixtures.js";
+import { prepareDocxExportRuntime } from "./runtime-preparation.js";
 import { unzipDocx } from "./scan.js";
 
 const fontUrl = new URL("../fonts/JetBrainsMono-Regular.ttf", import.meta.url);
@@ -17,6 +20,10 @@ const fontUrl = new URL("../fonts/JetBrainsMono-Regular.ttf", import.meta.url);
 async function codeFont(): Promise<Uint8Array> {
   return new Uint8Array(await Bun.file(fontUrl).arrayBuffer());
 }
+
+afterAll(() => {
+  configureBundledCodeFontLoader(codeFont);
+});
 
 function reverseObfuscation(bytes: Uint8Array, fontKey: string): Uint8Array {
   const compact = fontKey.replace(/[{}-]/gu, "");
@@ -129,5 +136,76 @@ describe("DOCX code-font embedding", () => {
     await expect(assertBundledCodeFont(changed)).rejects.toThrow(
       DocxFontEmbeddingError,
     );
+  });
+
+  it("shares concurrent and repeated loads, then retries after rejection", async () => {
+    const source = await codeFont();
+    let calls = 0;
+    configureBundledCodeFontLoader(async () => {
+      calls += 1;
+      if (calls === 1) throw new Error("transient font read");
+      return source;
+    });
+
+    await expect(loadBundledCodeFont()).rejects.toThrow("transient font read");
+    const [first, second] = await Promise.all([
+      loadBundledCodeFont(),
+      loadBundledCodeFont(),
+    ]);
+    expect(first).toBe(second);
+    expect(await loadBundledCodeFont()).toBe(first);
+    expect(calls).toBe(2);
+  });
+
+  it("does not let an obsolete rejection clear a replacement loader promise", async () => {
+    const source = await codeFont();
+    let rejectOld: (error: Error) => void = () => {};
+    configureBundledCodeFontLoader(
+      () => new Promise<Uint8Array>((_resolve, reject) => {
+        rejectOld = reject;
+      }),
+    );
+    const obsolete = loadBundledCodeFont();
+
+    let replacementCalls = 0;
+    configureBundledCodeFontLoader(async () => {
+      replacementCalls += 1;
+      return source;
+    });
+    const replacement = loadBundledCodeFont();
+    rejectOld(new Error("obsolete loader failed"));
+    await expect(obsolete).rejects.toThrow("obsolete loader failed");
+    expect(await replacement).toEqual(source);
+    expect(await loadBundledCodeFont()).toBe(await replacement);
+    expect(replacementCalls).toBe(1);
+  });
+
+  it("cancels only one preflight wait while shared initialization completes", async () => {
+    const source = await codeFont();
+    let resolveFont = (_bytes: Uint8Array): void => {};
+    const pendingFont = new Promise<Uint8Array>((resolve) => {
+      resolveFont = resolve;
+    });
+    let markLoaderStarted = (): void => {};
+    const loaderStarted = new Promise<void>((resolve) => {
+      markLoaderStarted = resolve;
+    });
+    let calls = 0;
+    configureBundledCodeFontLoader(() => {
+      calls += 1;
+      markLoaderStarted();
+      return pendingFont;
+    });
+
+    const controller = new AbortController();
+    const cancelled = prepareDocxExportRuntime([], { signal: controller.signal });
+    await loaderStarted;
+    controller.abort(new Error("dialog dismissed"));
+    await expect(cancelled).rejects.toThrow("dialog dismissed");
+
+    resolveFont(source);
+    const warm = await prepareDocxExportRuntime([]);
+    expect(warm.codeFontBytes).toBe(source.byteLength);
+    expect(calls).toBe(1);
   });
 });

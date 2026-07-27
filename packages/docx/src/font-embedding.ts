@@ -292,7 +292,8 @@ export function configureBundledCodeFontLoader(loader: BundledCodeFontLoader): v
  * bundler's `new URL(..., import.meta.url)` asset transform.
  */
 export function loadBundledCodeFont(): Promise<Uint8Array> {
-  bundledCodeFontPromise ??= (async () => {
+  if (bundledCodeFontPromise) return bundledCodeFontPromise;
+  const promise = (async () => {
     if (hostCodeFontLoader) return hostCodeFontLoader();
     // Keep this path literal so browser bundlers can discover and copy the asset.
     const url = new URL("../fonts/JetBrainsMono-Regular.ttf", import.meta.url);
@@ -304,8 +305,11 @@ export function loadBundledCodeFont(): Promise<Uint8Array> {
     }
     return new Uint8Array(await response.arrayBuffer());
   })();
-  bundledCodeFontPromise.catch(() => {
-    bundledCodeFontPromise = undefined;
+  bundledCodeFontPromise = promise;
+  promise.catch(() => {
+    // A host may install a replacement loader while an older request is still
+    // in flight. Only the promise that still owns the cache may clear it.
+    if (bundledCodeFontPromise === promise) bundledCodeFontPromise = undefined;
   });
-  return bundledCodeFontPromise;
+  return promise;
 }

@@ -5,14 +5,16 @@ description: "Stable @atlcli/* asset subpaths (wasm, fonts, licenses) and how bu
 
 # Export Asset Contract (`?url` subpaths)
 
-The PDF and DOCX engines never bundle their binary runtime assets. Instead the packages expose
-them at **stable subpaths**, and every host — CLI, extension, harness, or an external bundler —
-loads bytes itself and injects them through the engine seams
-(`BrowserPdfCompilerAssets`, `ExportEnv`). This page is the contract those subpaths follow.
+The export packages expose binary runtime assets at **stable subpaths**. PDF
+hosts load and inject compiler/font bytes through `BrowserPdfCompilerAssets`.
+The DOCX package owns its code-font loader: Node reads the installed package
+file, browser bundlers emit a same-origin asset, and the compiled CLI injects
+its embedded copy. This page is the contract those subpaths follow.
 
 ## In this page
 
 - [Stable subpaths](#stable-subpaths)
+- [DOCX code-font loading](#docx-code-font-loading)
 - [`BrowserPdfCompilerAssets`](#browserpdfcompilerassets)
 - [Vite `?url` example](#vite-url-example)
 - [Ambient type declarations](#ambient-type-declarations)
@@ -27,11 +29,25 @@ loads bytes itself and injects them through the engine seams
 | `@atlcli/pdf-compiler-browser/wasm` | The vendored, CSP-patched typst.ts compiler wasm (`typst_ts_web_compiler_bg.wasm`) |
 | `@atlcli/pdf/fonts/<file>.ttf` | The ten sha256-pinned Source Sans 3 / Source Serif 4 / Source Code Pro TTFs |
 | `@atlcli/pdf/licenses/<file>` | The SIL OFL 1.1 license texts accompanying those fonts |
-| `@atlcli/docx/fonts/<file>` | The committed Inter / JetBrains Mono TTFs used by the CLI's SVG rasterizer |
+| `@atlcli/docx/fonts/<file>` | The committed Inter TTFs used by SVG rasterization and the JetBrains Mono face embedded for inline/block code |
 
 The canonical font/license list lives in code — `PDF_RUNTIME_ASSETS` (exported from
 `@atlcli/pdf`) — and `scripts/pack-check.test.ts` asserts the shipped tarball matches it
 exactly. Never hardcode a font list; iterate `PDF_RUNTIME_ASSETS.fonts`.
+
+## DOCX code-font loading
+
+`prepareDocxExportRuntime(blocks, options?)` resolves and validates the
+committed `JetBrainsMono-Regular.ttf` after explicit DOCX intent. The loader is
+single-flight and retryable. Browser bundlers discover the package-relative
+`new URL(..., import.meta.url)` and emit exactly one local asset; callers do
+not pass a font URL or fetch callback. Node/Bun resolve the installed package
+file instead. The browser harness and MV3 output scans pin the asset's SHA-256
+and require exactly one emitted copy.
+
+Preparation loads the font unconditionally because included content or inline
+code may need it after the initial block scan. The render path still embeds
+the font into OOXML only when the final document contains code.
 
 ## `BrowserPdfCompilerAssets`
 

@@ -43,6 +43,11 @@ export type {
   PreparedDocxRenderStateV1,
   RenderPreparedDocxExportInput,
 } from "./export.js";
+export { prepareDocxExportRuntime } from "./runtime-preparation.js";
+export type {
+  DocxExportRuntimePreparation,
+  PrepareDocxExportRuntimeOptions,
+} from "./runtime-preparation.js";
 
 // --- Types transitively required by the seams above (closure-enforced) but
 // whose implementation modules stay behind ./scan and ./internal. ---

@@ -130,8 +130,14 @@ The engine is driven through injected host seams (`ExportEnv`) — no filesystem
 assumptions:
 
 ```ts
-import { runExport } from "@atlcli/docx";
+import { prepareDocxExportRuntime, runExport } from "@atlcli/docx";
+import { storageToBlocks } from "@atlcli/confluence";
 import { readFile, writeFile } from "node:fs/promises";
+
+// Start after explicit DOCX intent. Node loads the font from the installed
+// package; no browser fetch or system font is involved.
+const { blocks } = storageToBlocks(pageDetails.storage ?? "");
+await prepareDocxExportRuntime(blocks);
 
 const report = await runExport(
   {

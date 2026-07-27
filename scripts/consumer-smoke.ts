@@ -125,7 +125,7 @@ export function packAll(destDir: string): Map<string, string> {
  * result to assert the heading landed in word/document.xml.
  */
 export const DOCX_SMOKE_MJS = `
-import { runExport } from "@atlcli/docx";
+import { prepareDocxExportRuntime, runExport } from "@atlcli/docx";
 import { buildDocx, para, readPart } from "@atlcli/docx/fixtures";
 import { unzipDocx } from "@atlcli/docx/scan";
 import { storageToBlocks } from "@atlcli/confluence";
@@ -152,6 +152,29 @@ if (!Array.isArray(blocks) || blocks.length < 2) {
   throw new Error(\`storageToBlocks produced \${blocks?.length} blocks, expected >= 2\`);
 }
 if (!Array.isArray(notes)) throw new Error("storageToBlocks returned no notes array");
+
+// The public Node contract must use the package-relative font loader, never a
+// browser/global fetch. Concurrent and repeated calls share that one load.
+const originalFetch = globalThis.fetch;
+globalThis.fetch = async () => {
+  throw new Error("DOCX Node preparation attempted a network fetch");
+};
+let prepared;
+try {
+  const concurrent = await Promise.all([
+    prepareDocxExportRuntime(blocks),
+    prepareDocxExportRuntime(blocks),
+  ]);
+  prepared = await prepareDocxExportRuntime(blocks);
+  if (concurrent.some((result) => result.codeFontBytes !== 273900)) {
+    throw new Error("concurrent DOCX preparation did not load the committed code font");
+  }
+} finally {
+  globalThis.fetch = originalFetch;
+}
+if (prepared.codeFontBytes !== 273900) {
+  throw new Error("warm DOCX preparation did not retain the committed code font");
+}
 
 const templateBytes = buildDocx({ body: para("$scroll.title") + para("$scroll.content") });
 
