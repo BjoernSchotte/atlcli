@@ -58,6 +58,8 @@ export interface TemplateCandidateV1 {
   schema: typeof TEMPLATE_CANDIDATE_SCHEMA_V1;
   /** Analysis-local handle. It is deliberately not a durable identity. */
   id: string;
+  /** Business-facing concept label owned by an injected message registry. */
+  conceptCode?: string;
   semanticKey: string;
   candidateFingerprint: string;
   sourceFingerprint: string;
@@ -386,6 +388,7 @@ export interface TemplateReviewItemV1 {
   actions: readonly TemplateImportActionDescriptorV1[];
   details: {
     candidateIds: readonly string[];
+    candidateFingerprints: readonly string[];
     targets: readonly string[];
   };
 }

@@ -31,11 +31,24 @@ export declare function analyzeDocxTemplate(bytes: Uint8Array, options?: {
     progress?: (event: TemplateImportProgressEventV1) => void;
 }): Promise<DocxTemplateFactsV1>;
 
+// export: analyzeDocxTemplateForCatalog
+export declare function analyzeDocxTemplateForCatalog(bytes: Uint8Array, options: {
+    catalog: TemplateCapabilityCatalogV1;
+    bundledFontFamilies: readonly string[];
+    progress?: (event: TemplateImportProgressEventV1) => void;
+}): Promise<DocxCatalogAnalysisV1>;
+
 // export: canonicalDocxOpcFactsJson
 export declare function canonicalDocxOpcFactsJson(facts: DocxOpcFactsV1): string;
 
 // export: canonicalDocxTemplateFactsJson
 export declare function canonicalDocxTemplateFactsJson(facts: DocxTemplateFactsV1): string;
+
+// export: canonicalDocxThemeDefinition
+export declare function canonicalDocxThemeDefinition(theme: DocxThemeDefinitionV1): DocxThemeDefinitionV1;
+
+// export: DOCX_CATALOG_ANALYSIS_SCHEMA_V1
+export declare const DOCX_CATALOG_ANALYSIS_SCHEMA_V1: "atlcli.docx-catalog-analysis/1";
 
 // export: DOCX_FACTS_MESSAGE_REGISTRY_V1
 export declare const DOCX_FACTS_MESSAGE_REGISTRY_V1: TemplateMessageRegistryV1;
@@ -43,11 +56,46 @@ export declare const DOCX_FACTS_MESSAGE_REGISTRY_V1: TemplateMessageRegistryV1;
 // export: DOCX_INTAKE_MESSAGE_REGISTRY_V1
 export declare const DOCX_INTAKE_MESSAGE_REGISTRY_V1: TemplateMessageRegistryV1;
 
+// export: DOCX_MAPPING_MESSAGE_REGISTRY_V1
+export declare const DOCX_MAPPING_MESSAGE_REGISTRY_V1: TemplateMessageRegistryV1;
+
 // export: DOCX_OPC_FACTS_SCHEMA_V1
 export declare const DOCX_OPC_FACTS_SCHEMA_V1: "atlcli.docx-opc-facts/1";
 
+// export: DOCX_PDF_MAPPING_RULE_V1
+export declare const DOCX_PDF_MAPPING_RULE_V1: {
+    readonly id: "atlcli.docx-to-pdf";
+    readonly version: "1";
+    readonly directFormatting: {
+        readonly minimumOccurrences: 5;
+        readonly minimumDominance: 0.7;
+    };
+};
+
+// export: DOCX_RESOLVED_DESIGN_SCHEMA_V1
+export declare const DOCX_RESOLVED_DESIGN_SCHEMA_V1: "atlcli.docx-resolved-design/1";
+
+// export: DOCX_SECTION_RESOLUTION_RULE_V1
+export declare const DOCX_SECTION_RESOLUTION_RULE_V1: {
+    readonly id: "atlcli.docx-section-resolution";
+    readonly version: "1";
+    readonly pageToleranceTwips: 24;
+};
+
+// export: DOCX_STYLE_RESOLUTION_RULE_V1
+export declare const DOCX_STYLE_RESOLUTION_RULE_V1: {
+    readonly id: "atlcli.docx-style-resolution";
+    readonly version: "1";
+};
+
 // export: DOCX_TEMPLATE_FACTS_SCHEMA_V1
 export declare const DOCX_TEMPLATE_FACTS_SCHEMA_V1: "atlcli.docx-template-facts/1";
+
+// export: DOCX_THEME_RESOLUTION_RULE_V1
+export declare const DOCX_THEME_RESOLUTION_RULE_V1: {
+    readonly id: "atlcli.docx-theme-resolution";
+    readonly version: "1";
+};
 
 // export: DOCX_XML_LIMITS_V1
 export declare const DOCX_XML_LIMITS_V1: {
@@ -60,12 +108,57 @@ export declare const DOCX_XML_LIMITS_V1: {
     readonly maxNodes: 100000;
 };
 
+// export: DocxCatalogAnalysisV1
+export interface DocxCatalogAnalysisV1 extends Omit<ResolvedDocxDesignV1, "schema"> {
+    schema: typeof DOCX_CATALOG_ANALYSIS_SCHEMA_V1;
+    matching: DocxTemplateMatchResultV1;
+}
+
+// export: DocxCentralColorInputV1
+export interface DocxCentralColorInputV1 {
+    concept: "accent" | "ink" | "paper";
+    reference: DocxThemeColorReferenceV1;
+    locator: string;
+}
+
+// export: DocxDecorationKindV1
+export type DocxDecorationKindV1 = "footer" | "header";
+
+// export: DocxDirectFormattingAggregateV1
+export interface DocxDirectFormattingAggregateV1 {
+    role: Exclude<DocxSemanticStyleRoleV1, "table">;
+    properties: ResolvedDocxStylePropertiesV1;
+    count: number;
+    totalCount: number;
+    evidence: TemplateEvidenceV1;
+}
+
+// export: DocxFontScriptV1
+export type DocxFontScriptV1 = "ascii" | "hAnsi" | "eastAsia" | "cs";
+
+// export: DocxMasterVariantV1
+export type DocxMasterVariantV1 = "default" | "even" | "first";
+
 // export: DocxOpcFactsV1
 export interface DocxOpcFactsV1 {
     schema: typeof DOCX_OPC_FACTS_SCHEMA_V1;
     parts: readonly OpcPartFactV1[];
     relationships: readonly OpcRelationshipFactV1[];
     diagnostics: readonly TemplateDiagnosticV1[];
+}
+
+// export: DocxPageFormatV1
+export type DocxPageFormatV1 = "a4" | "letter" | "custom";
+
+// export: DocxPageGeometryInputV1
+export interface DocxPageGeometryInputV1 {
+    widthTwips: number;
+    heightTwips: number;
+    orientation?: "landscape" | "portrait";
+    marginTopTwips: number;
+    marginRightTwips: number;
+    marginBottomTwips: number;
+    marginLeftTwips: number;
 }
 
 // export: DocxSectionFactV1
@@ -84,6 +177,36 @@ export interface DocxSectionFactV1 {
     };
 }
 
+// export: DocxSectionInputV1
+export interface DocxSectionInputV1 {
+    section: number;
+    locator: string;
+    page: DocxPageGeometryInputV1;
+    titlePage?: boolean;
+    pageNumberStart?: number;
+    headers?: Partial<Record<DocxMasterVariantV1, string>>;
+    footers?: Partial<Record<DocxMasterVariantV1, string>>;
+}
+
+// export: DocxSectionResolutionInputV1
+export interface DocxSectionResolutionInputV1 {
+    evenAndOddHeaders: boolean;
+    sections: readonly DocxSectionInputV1[];
+}
+
+// export: DocxSectionResolutionV1
+export interface DocxSectionResolutionV1 {
+    rule: typeof DOCX_SECTION_RESOLUTION_RULE_V1;
+    sections: readonly ResolvedDocxSectionV1[];
+    globalPage?: ResolvedDocxPageGeometryV1;
+    geometryUniform: boolean;
+    decorations: readonly ResolvedDocxDecorationV1[];
+    diagnostics: readonly TemplateDiagnosticV1[];
+}
+
+// export: DocxSemanticConfidenceV1
+export type DocxSemanticConfidenceV1 = "conclusive" | "corroborated" | "suggestive";
+
 // export: DocxSemanticPartFactV1
 export interface DocxSemanticPartFactV1 {
     partRef: string;
@@ -93,6 +216,65 @@ export interface DocxSemanticPartFactV1 {
 
 // export: DocxSemanticPartKindV1
 export type DocxSemanticPartKindV1 = "document" | "endnotes" | "font-table" | "footer" | "footnotes" | "header" | "numbering" | "settings" | "styles" | "theme";
+
+// export: DocxSemanticStyleRoleV1
+export type DocxSemanticStyleRoleV1 = "body" | "h1" | "h2" | "h3" | "code" | "table";
+
+// export: DocxStyleDefinitionInputV1
+export interface DocxStyleDefinitionInputV1 {
+    styleId: string;
+    kind: DocxStyleKindV1;
+    basedOn?: string;
+    displayName?: string;
+    qFormat?: boolean;
+    uiPriority?: number;
+    properties?: DocxStylePropertiesInputV1;
+    locator: string;
+}
+
+// export: DocxStyleKindV1
+export type DocxStyleKindV1 = "character" | "paragraph" | "table";
+
+// export: DocxStylePropertiesInputV1
+export interface DocxStylePropertiesInputV1 {
+    fonts?: unknown;
+    sizeHalfPoints?: unknown;
+    bold?: unknown;
+    color?: unknown;
+    spacingBeforeTwips?: unknown;
+    spacingAfterTwips?: unknown;
+    lineTwips?: unknown;
+    outlineLevel?: unknown;
+    alignment?: unknown;
+    numberingLevel?: unknown;
+    tableConditionalRegions?: unknown;
+}
+
+// export: DocxStyleResolutionInputV1
+export interface DocxStyleResolutionInputV1 {
+    docDefaults?: DocxStylePropertiesInputV1;
+    styles: readonly DocxStyleDefinitionInputV1[];
+    usage: readonly DocxStyleUsageInputV1[];
+}
+
+// export: DocxStyleResolutionV1
+export interface DocxStyleResolutionV1 {
+    rule: typeof DOCX_STYLE_RESOLUTION_RULE_V1;
+    styles: readonly ResolvedDocxStyleV1[];
+    diagnostics: readonly TemplateDiagnosticV1[];
+    revisionsPresent: boolean;
+}
+
+// export: DocxStyleUsageInputV1
+export interface DocxStyleUsageInputV1 {
+    styleId: string;
+    count: number;
+    story: string;
+    section: number;
+    locator: string;
+    deleted?: boolean;
+    direct?: DocxStylePropertiesInputV1;
+}
 
 // export: DocxTemplateFactsV1
 export interface DocxTemplateFactsV1 {
@@ -124,6 +306,53 @@ export interface DocxTemplateFactsV1 {
     };
     alternateContent: readonly AlternateContentFactV1[];
     diagnostics: readonly TemplateDiagnosticV1[];
+}
+
+// export: DocxTemplateMatchingInputV1
+export interface DocxTemplateMatchingInputV1 {
+    analysisDigest: string;
+    catalog: TemplateCapabilityCatalogV1;
+    styles: DocxStyleResolutionV1;
+    theme: DocxThemeDefinitionV1;
+    sections: DocxSectionResolutionV1;
+    bundledFontFamilies: readonly string[];
+    centralColors?: readonly DocxCentralColorInputV1[];
+    directFormatting?: readonly DocxDirectFormattingAggregateV1[];
+    progress?: (event: TemplateImportProgressEventV1) => void;
+}
+
+// export: DocxTemplateMatchResultV1
+export interface DocxTemplateMatchResultV1 {
+    rule: typeof DOCX_PDF_MAPPING_RULE_V1;
+    candidates: readonly TemplateCandidateV1[];
+    diagnostics: readonly TemplateDiagnosticV1[];
+}
+
+// export: DocxThemeColorReferenceV1
+export interface DocxThemeColorReferenceV1 {
+    rgb?: string;
+    theme?: string;
+    tint?: number | string;
+    shade?: number | string;
+}
+
+// export: DocxThemeDefinitionV1
+export interface DocxThemeDefinitionV1 {
+    colors: Readonly<Record<string, string>>;
+    colorMapping?: Readonly<Record<string, string>>;
+    fonts: {
+        major: Partial<Record<DocxFontScriptV1, string>>;
+        minor: Partial<Record<DocxFontScriptV1, string>>;
+    };
+}
+
+// export: DocxThemeFontFamilyV1
+export type DocxThemeFontFamilyV1 = "major" | "minor";
+
+// export: DocxThemeFontReferenceV1
+export interface DocxThemeFontReferenceV1 {
+    family?: string;
+    theme?: `${DocxThemeFontFamilyV1}-${DocxFontScriptV1}`;
 }
 
 // export: DocxUsageFactV1
@@ -165,6 +394,9 @@ export interface MarkupCompatibilityProfileV1 {
     alternateContentPolicy: "first-understood-choice-else-fallback";
 }
 
+// export: matchDocxTemplate
+export declare function matchDocxTemplate(input: DocxTemplateMatchingInputV1): Promise<DocxTemplateMatchResultV1>;
+
 // export: MessageParameterSchemaV1
 export interface MessageParameterSchemaV1 {
     type: "integer" | "string";
@@ -172,6 +404,9 @@ export interface MessageParameterSchemaV1 {
     maximum?: number;
     maxLength?: number;
 }
+
+// export: normalizeDocxPageGeometry
+export declare function normalizeDocxPageGeometry(page: DocxPageGeometryInputV1): ResolvedDocxPageGeometryV1;
 
 // export: OpcPartFactV1
 export interface OpcPartFactV1 {
@@ -222,6 +457,104 @@ export declare function renderTemplateDiagnostic(diagnostic: TemplateDiagnosticV
 
 // export: renderTemplateIntakeMessage
 export declare function renderTemplateIntakeMessage(code: TemplateIntakeMessageCode, parameters: Readonly<Record<string, unknown>>, copies?: TemplateIntakeMessageCopies): RenderedTemplateIntakeMessageV1;
+
+// export: ResolvedDocxDecorationV1
+export interface ResolvedDocxDecorationV1 {
+    kind: DocxDecorationKindV1;
+    variant: DocxMasterVariantV1;
+    section: number;
+    partFingerprint?: string;
+    status: "inactive" | "native" | "unsupported-section-scope";
+    evidence: TemplateEvidenceV1;
+}
+
+// export: ResolvedDocxDesignV1
+export interface ResolvedDocxDesignV1 {
+    schema: typeof DOCX_RESOLVED_DESIGN_SCHEMA_V1;
+    sourceDigest: string;
+    facts: DocxTemplateFactsV1;
+    styles: DocxStyleResolutionV1;
+    theme: DocxThemeDefinitionV1;
+    sections: DocxSectionResolutionV1;
+    diagnostics: readonly TemplateDiagnosticV1[];
+}
+
+// export: ResolvedDocxPageGeometryV1
+export interface ResolvedDocxPageGeometryV1 extends DocxPageGeometryInputV1 {
+    orientation: "landscape" | "portrait";
+    format: DocxPageFormatV1;
+}
+
+// export: ResolvedDocxSectionV1
+export interface ResolvedDocxSectionV1 {
+    section: number;
+    evidence: TemplateEvidenceV1;
+    page: ResolvedDocxPageGeometryV1;
+    titlePage: boolean;
+    pageNumberStart?: number;
+    pageNumberRestart: boolean;
+    headers: Partial<Record<DocxMasterVariantV1, string>>;
+    footers: Partial<Record<DocxMasterVariantV1, string>>;
+    activeVariants: readonly DocxMasterVariantV1[];
+}
+
+// export: ResolvedDocxStylePropertiesV1
+export interface ResolvedDocxStylePropertiesV1 {
+    fonts?: Partial<Record<DocxFontScriptV1, DocxThemeFontReferenceV1>>;
+    sizeHalfPoints?: number;
+    bold?: boolean;
+    color?: DocxThemeColorReferenceV1;
+    spacingBeforeTwips?: number;
+    spacingAfterTwips?: number;
+    lineTwips?: number;
+    outlineLevel?: number;
+    alignment?: "center" | "justify" | "left" | "right";
+    numberingLevel?: number;
+    tableConditionalRegions?: readonly string[];
+}
+
+// export: ResolvedDocxStyleUseV1
+export interface ResolvedDocxStyleUseV1 {
+    evidence: TemplateEvidenceV1;
+    count: number;
+    story: string;
+    section: number;
+    properties: ResolvedDocxStylePropertiesV1;
+}
+
+// export: ResolvedDocxStyleV1
+export interface ResolvedDocxStyleV1 {
+    styleRef: string;
+    styleFingerprint: string;
+    kind: DocxStyleKindV1;
+    resolvable: boolean;
+    chain: readonly string[];
+    properties: ResolvedDocxStylePropertiesV1;
+    role?: DocxSemanticStyleRoleV1;
+    roleConfidence?: DocxSemanticConfidenceV1;
+    roleSignals: readonly string[];
+    usageCount: number;
+    uses: readonly ResolvedDocxStyleUseV1[];
+    evidence: TemplateEvidenceV1;
+    diagnostics: readonly TemplateDiagnosticV1[];
+}
+
+// export: resolveDocxSections
+export declare function resolveDocxSections(input: DocxSectionResolutionInputV1): Promise<DocxSectionResolutionV1>;
+
+// export: resolveDocxStyles
+export declare function resolveDocxStyles(input: DocxStyleResolutionInputV1): Promise<DocxStyleResolutionV1>;
+
+// export: resolveDocxTemplateDesign
+export declare function resolveDocxTemplateDesign(bytes: Uint8Array, options?: {
+    progress?: (event: TemplateImportProgressEventV1) => void;
+}): Promise<ResolvedDocxDesignV1>;
+
+// export: resolveDocxThemeColor
+export declare function resolveDocxThemeColor(reference: DocxThemeColorReferenceV1, theme: DocxThemeDefinitionV1): string | undefined;
+
+// export: resolveDocxThemeFont
+export declare function resolveDocxThemeFont(reference: DocxThemeFontReferenceV1 | undefined, script: DocxFontScriptV1, theme: DocxThemeDefinitionV1): string | undefined;
 
 // export: streamXmlPart
 export declare function streamXmlPart(partRef: string, bytes: Uint8Array, handlers?: {
@@ -415,11 +748,24 @@ export declare function analyzeDocxTemplate(bytes: Uint8Array, options?: {
     progress?: (event: TemplateImportProgressEventV1) => void;
 }): Promise<DocxTemplateFactsV1>;
 
+// export: analyzeDocxTemplateForCatalog
+export declare function analyzeDocxTemplateForCatalog(bytes: Uint8Array, options: {
+    catalog: TemplateCapabilityCatalogV1;
+    bundledFontFamilies: readonly string[];
+    progress?: (event: TemplateImportProgressEventV1) => void;
+}): Promise<DocxCatalogAnalysisV1>;
+
 // export: canonicalDocxOpcFactsJson
 export declare function canonicalDocxOpcFactsJson(facts: DocxOpcFactsV1): string;
 
 // export: canonicalDocxTemplateFactsJson
 export declare function canonicalDocxTemplateFactsJson(facts: DocxTemplateFactsV1): string;
+
+// export: canonicalDocxThemeDefinition
+export declare function canonicalDocxThemeDefinition(theme: DocxThemeDefinitionV1): DocxThemeDefinitionV1;
+
+// export: DOCX_CATALOG_ANALYSIS_SCHEMA_V1
+export declare const DOCX_CATALOG_ANALYSIS_SCHEMA_V1: "atlcli.docx-catalog-analysis/1";
 
 // export: DOCX_FACTS_MESSAGE_REGISTRY_V1
 export declare const DOCX_FACTS_MESSAGE_REGISTRY_V1: TemplateMessageRegistryV1;
@@ -427,11 +773,46 @@ export declare const DOCX_FACTS_MESSAGE_REGISTRY_V1: TemplateMessageRegistryV1;
 // export: DOCX_INTAKE_MESSAGE_REGISTRY_V1
 export declare const DOCX_INTAKE_MESSAGE_REGISTRY_V1: TemplateMessageRegistryV1;
 
+// export: DOCX_MAPPING_MESSAGE_REGISTRY_V1
+export declare const DOCX_MAPPING_MESSAGE_REGISTRY_V1: TemplateMessageRegistryV1;
+
 // export: DOCX_OPC_FACTS_SCHEMA_V1
 export declare const DOCX_OPC_FACTS_SCHEMA_V1: "atlcli.docx-opc-facts/1";
 
+// export: DOCX_PDF_MAPPING_RULE_V1
+export declare const DOCX_PDF_MAPPING_RULE_V1: {
+    readonly id: "atlcli.docx-to-pdf";
+    readonly version: "1";
+    readonly directFormatting: {
+        readonly minimumOccurrences: 5;
+        readonly minimumDominance: 0.7;
+    };
+};
+
+// export: DOCX_RESOLVED_DESIGN_SCHEMA_V1
+export declare const DOCX_RESOLVED_DESIGN_SCHEMA_V1: "atlcli.docx-resolved-design/1";
+
+// export: DOCX_SECTION_RESOLUTION_RULE_V1
+export declare const DOCX_SECTION_RESOLUTION_RULE_V1: {
+    readonly id: "atlcli.docx-section-resolution";
+    readonly version: "1";
+    readonly pageToleranceTwips: 24;
+};
+
+// export: DOCX_STYLE_RESOLUTION_RULE_V1
+export declare const DOCX_STYLE_RESOLUTION_RULE_V1: {
+    readonly id: "atlcli.docx-style-resolution";
+    readonly version: "1";
+};
+
 // export: DOCX_TEMPLATE_FACTS_SCHEMA_V1
 export declare const DOCX_TEMPLATE_FACTS_SCHEMA_V1: "atlcli.docx-template-facts/1";
+
+// export: DOCX_THEME_RESOLUTION_RULE_V1
+export declare const DOCX_THEME_RESOLUTION_RULE_V1: {
+    readonly id: "atlcli.docx-theme-resolution";
+    readonly version: "1";
+};
 
 // export: DOCX_XML_LIMITS_V1
 export declare const DOCX_XML_LIMITS_V1: {
@@ -444,12 +825,57 @@ export declare const DOCX_XML_LIMITS_V1: {
     readonly maxNodes: 100000;
 };
 
+// export: DocxCatalogAnalysisV1
+export interface DocxCatalogAnalysisV1 extends Omit<ResolvedDocxDesignV1, "schema"> {
+    schema: typeof DOCX_CATALOG_ANALYSIS_SCHEMA_V1;
+    matching: DocxTemplateMatchResultV1;
+}
+
+// export: DocxCentralColorInputV1
+export interface DocxCentralColorInputV1 {
+    concept: "accent" | "ink" | "paper";
+    reference: DocxThemeColorReferenceV1;
+    locator: string;
+}
+
+// export: DocxDecorationKindV1
+export type DocxDecorationKindV1 = "footer" | "header";
+
+// export: DocxDirectFormattingAggregateV1
+export interface DocxDirectFormattingAggregateV1 {
+    role: Exclude<DocxSemanticStyleRoleV1, "table">;
+    properties: ResolvedDocxStylePropertiesV1;
+    count: number;
+    totalCount: number;
+    evidence: TemplateEvidenceV1;
+}
+
+// export: DocxFontScriptV1
+export type DocxFontScriptV1 = "ascii" | "hAnsi" | "eastAsia" | "cs";
+
+// export: DocxMasterVariantV1
+export type DocxMasterVariantV1 = "default" | "even" | "first";
+
 // export: DocxOpcFactsV1
 export interface DocxOpcFactsV1 {
     schema: typeof DOCX_OPC_FACTS_SCHEMA_V1;
     parts: readonly OpcPartFactV1[];
     relationships: readonly OpcRelationshipFactV1[];
     diagnostics: readonly TemplateDiagnosticV1[];
+}
+
+// export: DocxPageFormatV1
+export type DocxPageFormatV1 = "a4" | "letter" | "custom";
+
+// export: DocxPageGeometryInputV1
+export interface DocxPageGeometryInputV1 {
+    widthTwips: number;
+    heightTwips: number;
+    orientation?: "landscape" | "portrait";
+    marginTopTwips: number;
+    marginRightTwips: number;
+    marginBottomTwips: number;
+    marginLeftTwips: number;
 }
 
 // export: DocxSectionFactV1
@@ -468,6 +894,36 @@ export interface DocxSectionFactV1 {
     };
 }
 
+// export: DocxSectionInputV1
+export interface DocxSectionInputV1 {
+    section: number;
+    locator: string;
+    page: DocxPageGeometryInputV1;
+    titlePage?: boolean;
+    pageNumberStart?: number;
+    headers?: Partial<Record<DocxMasterVariantV1, string>>;
+    footers?: Partial<Record<DocxMasterVariantV1, string>>;
+}
+
+// export: DocxSectionResolutionInputV1
+export interface DocxSectionResolutionInputV1 {
+    evenAndOddHeaders: boolean;
+    sections: readonly DocxSectionInputV1[];
+}
+
+// export: DocxSectionResolutionV1
+export interface DocxSectionResolutionV1 {
+    rule: typeof DOCX_SECTION_RESOLUTION_RULE_V1;
+    sections: readonly ResolvedDocxSectionV1[];
+    globalPage?: ResolvedDocxPageGeometryV1;
+    geometryUniform: boolean;
+    decorations: readonly ResolvedDocxDecorationV1[];
+    diagnostics: readonly TemplateDiagnosticV1[];
+}
+
+// export: DocxSemanticConfidenceV1
+export type DocxSemanticConfidenceV1 = "conclusive" | "corroborated" | "suggestive";
+
 // export: DocxSemanticPartFactV1
 export interface DocxSemanticPartFactV1 {
     partRef: string;
@@ -477,6 +933,65 @@ export interface DocxSemanticPartFactV1 {
 
 // export: DocxSemanticPartKindV1
 export type DocxSemanticPartKindV1 = "document" | "endnotes" | "font-table" | "footer" | "footnotes" | "header" | "numbering" | "settings" | "styles" | "theme";
+
+// export: DocxSemanticStyleRoleV1
+export type DocxSemanticStyleRoleV1 = "body" | "h1" | "h2" | "h3" | "code" | "table";
+
+// export: DocxStyleDefinitionInputV1
+export interface DocxStyleDefinitionInputV1 {
+    styleId: string;
+    kind: DocxStyleKindV1;
+    basedOn?: string;
+    displayName?: string;
+    qFormat?: boolean;
+    uiPriority?: number;
+    properties?: DocxStylePropertiesInputV1;
+    locator: string;
+}
+
+// export: DocxStyleKindV1
+export type DocxStyleKindV1 = "character" | "paragraph" | "table";
+
+// export: DocxStylePropertiesInputV1
+export interface DocxStylePropertiesInputV1 {
+    fonts?: unknown;
+    sizeHalfPoints?: unknown;
+    bold?: unknown;
+    color?: unknown;
+    spacingBeforeTwips?: unknown;
+    spacingAfterTwips?: unknown;
+    lineTwips?: unknown;
+    outlineLevel?: unknown;
+    alignment?: unknown;
+    numberingLevel?: unknown;
+    tableConditionalRegions?: unknown;
+}
+
+// export: DocxStyleResolutionInputV1
+export interface DocxStyleResolutionInputV1 {
+    docDefaults?: DocxStylePropertiesInputV1;
+    styles: readonly DocxStyleDefinitionInputV1[];
+    usage: readonly DocxStyleUsageInputV1[];
+}
+
+// export: DocxStyleResolutionV1
+export interface DocxStyleResolutionV1 {
+    rule: typeof DOCX_STYLE_RESOLUTION_RULE_V1;
+    styles: readonly ResolvedDocxStyleV1[];
+    diagnostics: readonly TemplateDiagnosticV1[];
+    revisionsPresent: boolean;
+}
+
+// export: DocxStyleUsageInputV1
+export interface DocxStyleUsageInputV1 {
+    styleId: string;
+    count: number;
+    story: string;
+    section: number;
+    locator: string;
+    deleted?: boolean;
+    direct?: DocxStylePropertiesInputV1;
+}
 
 // export: DocxTemplateFactsV1
 export interface DocxTemplateFactsV1 {
@@ -508,6 +1023,53 @@ export interface DocxTemplateFactsV1 {
     };
     alternateContent: readonly AlternateContentFactV1[];
     diagnostics: readonly TemplateDiagnosticV1[];
+}
+
+// export: DocxTemplateMatchingInputV1
+export interface DocxTemplateMatchingInputV1 {
+    analysisDigest: string;
+    catalog: TemplateCapabilityCatalogV1;
+    styles: DocxStyleResolutionV1;
+    theme: DocxThemeDefinitionV1;
+    sections: DocxSectionResolutionV1;
+    bundledFontFamilies: readonly string[];
+    centralColors?: readonly DocxCentralColorInputV1[];
+    directFormatting?: readonly DocxDirectFormattingAggregateV1[];
+    progress?: (event: TemplateImportProgressEventV1) => void;
+}
+
+// export: DocxTemplateMatchResultV1
+export interface DocxTemplateMatchResultV1 {
+    rule: typeof DOCX_PDF_MAPPING_RULE_V1;
+    candidates: readonly TemplateCandidateV1[];
+    diagnostics: readonly TemplateDiagnosticV1[];
+}
+
+// export: DocxThemeColorReferenceV1
+export interface DocxThemeColorReferenceV1 {
+    rgb?: string;
+    theme?: string;
+    tint?: number | string;
+    shade?: number | string;
+}
+
+// export: DocxThemeDefinitionV1
+export interface DocxThemeDefinitionV1 {
+    colors: Readonly<Record<string, string>>;
+    colorMapping?: Readonly<Record<string, string>>;
+    fonts: {
+        major: Partial<Record<DocxFontScriptV1, string>>;
+        minor: Partial<Record<DocxFontScriptV1, string>>;
+    };
+}
+
+// export: DocxThemeFontFamilyV1
+export type DocxThemeFontFamilyV1 = "major" | "minor";
+
+// export: DocxThemeFontReferenceV1
+export interface DocxThemeFontReferenceV1 {
+    family?: string;
+    theme?: `${DocxThemeFontFamilyV1}-${DocxFontScriptV1}`;
 }
 
 // export: DocxUsageFactV1
@@ -549,6 +1111,9 @@ export interface MarkupCompatibilityProfileV1 {
     alternateContentPolicy: "first-understood-choice-else-fallback";
 }
 
+// export: matchDocxTemplate
+export declare function matchDocxTemplate(input: DocxTemplateMatchingInputV1): Promise<DocxTemplateMatchResultV1>;
+
 // export: MessageParameterSchemaV1
 export interface MessageParameterSchemaV1 {
     type: "integer" | "string";
@@ -556,6 +1121,9 @@ export interface MessageParameterSchemaV1 {
     maximum?: number;
     maxLength?: number;
 }
+
+// export: normalizeDocxPageGeometry
+export declare function normalizeDocxPageGeometry(page: DocxPageGeometryInputV1): ResolvedDocxPageGeometryV1;
 
 // export: OpcPartFactV1
 export interface OpcPartFactV1 {
@@ -606,6 +1174,104 @@ export declare function renderTemplateDiagnostic(diagnostic: TemplateDiagnosticV
 
 // export: renderTemplateIntakeMessage
 export declare function renderTemplateIntakeMessage(code: TemplateIntakeMessageCode, parameters: Readonly<Record<string, unknown>>, copies?: TemplateIntakeMessageCopies): RenderedTemplateIntakeMessageV1;
+
+// export: ResolvedDocxDecorationV1
+export interface ResolvedDocxDecorationV1 {
+    kind: DocxDecorationKindV1;
+    variant: DocxMasterVariantV1;
+    section: number;
+    partFingerprint?: string;
+    status: "inactive" | "native" | "unsupported-section-scope";
+    evidence: TemplateEvidenceV1;
+}
+
+// export: ResolvedDocxDesignV1
+export interface ResolvedDocxDesignV1 {
+    schema: typeof DOCX_RESOLVED_DESIGN_SCHEMA_V1;
+    sourceDigest: string;
+    facts: DocxTemplateFactsV1;
+    styles: DocxStyleResolutionV1;
+    theme: DocxThemeDefinitionV1;
+    sections: DocxSectionResolutionV1;
+    diagnostics: readonly TemplateDiagnosticV1[];
+}
+
+// export: ResolvedDocxPageGeometryV1
+export interface ResolvedDocxPageGeometryV1 extends DocxPageGeometryInputV1 {
+    orientation: "landscape" | "portrait";
+    format: DocxPageFormatV1;
+}
+
+// export: ResolvedDocxSectionV1
+export interface ResolvedDocxSectionV1 {
+    section: number;
+    evidence: TemplateEvidenceV1;
+    page: ResolvedDocxPageGeometryV1;
+    titlePage: boolean;
+    pageNumberStart?: number;
+    pageNumberRestart: boolean;
+    headers: Partial<Record<DocxMasterVariantV1, string>>;
+    footers: Partial<Record<DocxMasterVariantV1, string>>;
+    activeVariants: readonly DocxMasterVariantV1[];
+}
+
+// export: ResolvedDocxStylePropertiesV1
+export interface ResolvedDocxStylePropertiesV1 {
+    fonts?: Partial<Record<DocxFontScriptV1, DocxThemeFontReferenceV1>>;
+    sizeHalfPoints?: number;
+    bold?: boolean;
+    color?: DocxThemeColorReferenceV1;
+    spacingBeforeTwips?: number;
+    spacingAfterTwips?: number;
+    lineTwips?: number;
+    outlineLevel?: number;
+    alignment?: "center" | "justify" | "left" | "right";
+    numberingLevel?: number;
+    tableConditionalRegions?: readonly string[];
+}
+
+// export: ResolvedDocxStyleUseV1
+export interface ResolvedDocxStyleUseV1 {
+    evidence: TemplateEvidenceV1;
+    count: number;
+    story: string;
+    section: number;
+    properties: ResolvedDocxStylePropertiesV1;
+}
+
+// export: ResolvedDocxStyleV1
+export interface ResolvedDocxStyleV1 {
+    styleRef: string;
+    styleFingerprint: string;
+    kind: DocxStyleKindV1;
+    resolvable: boolean;
+    chain: readonly string[];
+    properties: ResolvedDocxStylePropertiesV1;
+    role?: DocxSemanticStyleRoleV1;
+    roleConfidence?: DocxSemanticConfidenceV1;
+    roleSignals: readonly string[];
+    usageCount: number;
+    uses: readonly ResolvedDocxStyleUseV1[];
+    evidence: TemplateEvidenceV1;
+    diagnostics: readonly TemplateDiagnosticV1[];
+}
+
+// export: resolveDocxSections
+export declare function resolveDocxSections(input: DocxSectionResolutionInputV1): Promise<DocxSectionResolutionV1>;
+
+// export: resolveDocxStyles
+export declare function resolveDocxStyles(input: DocxStyleResolutionInputV1): Promise<DocxStyleResolutionV1>;
+
+// export: resolveDocxTemplateDesign
+export declare function resolveDocxTemplateDesign(bytes: Uint8Array, options?: {
+    progress?: (event: TemplateImportProgressEventV1) => void;
+}): Promise<ResolvedDocxDesignV1>;
+
+// export: resolveDocxThemeColor
+export declare function resolveDocxThemeColor(reference: DocxThemeColorReferenceV1, theme: DocxThemeDefinitionV1): string | undefined;
+
+// export: resolveDocxThemeFont
+export declare function resolveDocxThemeFont(reference: DocxThemeFontReferenceV1 | undefined, script: DocxFontScriptV1, theme: DocxThemeDefinitionV1): string | undefined;
 
 // export: streamXmlPart
 export declare function streamXmlPart(partRef: string, bytes: Uint8Array, handlers?: {
@@ -799,11 +1465,24 @@ export declare function analyzeDocxTemplate(bytes: Uint8Array, options?: {
     progress?: (event: TemplateImportProgressEventV1) => void;
 }): Promise<DocxTemplateFactsV1>;
 
+// export: analyzeDocxTemplateForCatalog
+export declare function analyzeDocxTemplateForCatalog(bytes: Uint8Array, options: {
+    catalog: TemplateCapabilityCatalogV1;
+    bundledFontFamilies: readonly string[];
+    progress?: (event: TemplateImportProgressEventV1) => void;
+}): Promise<DocxCatalogAnalysisV1>;
+
 // export: canonicalDocxOpcFactsJson
 export declare function canonicalDocxOpcFactsJson(facts: DocxOpcFactsV1): string;
 
 // export: canonicalDocxTemplateFactsJson
 export declare function canonicalDocxTemplateFactsJson(facts: DocxTemplateFactsV1): string;
+
+// export: canonicalDocxThemeDefinition
+export declare function canonicalDocxThemeDefinition(theme: DocxThemeDefinitionV1): DocxThemeDefinitionV1;
+
+// export: DOCX_CATALOG_ANALYSIS_SCHEMA_V1
+export declare const DOCX_CATALOG_ANALYSIS_SCHEMA_V1: "atlcli.docx-catalog-analysis/1";
 
 // export: DOCX_FACTS_MESSAGE_REGISTRY_V1
 export declare const DOCX_FACTS_MESSAGE_REGISTRY_V1: TemplateMessageRegistryV1;
@@ -811,11 +1490,46 @@ export declare const DOCX_FACTS_MESSAGE_REGISTRY_V1: TemplateMessageRegistryV1;
 // export: DOCX_INTAKE_MESSAGE_REGISTRY_V1
 export declare const DOCX_INTAKE_MESSAGE_REGISTRY_V1: TemplateMessageRegistryV1;
 
+// export: DOCX_MAPPING_MESSAGE_REGISTRY_V1
+export declare const DOCX_MAPPING_MESSAGE_REGISTRY_V1: TemplateMessageRegistryV1;
+
 // export: DOCX_OPC_FACTS_SCHEMA_V1
 export declare const DOCX_OPC_FACTS_SCHEMA_V1: "atlcli.docx-opc-facts/1";
 
+// export: DOCX_PDF_MAPPING_RULE_V1
+export declare const DOCX_PDF_MAPPING_RULE_V1: {
+    readonly id: "atlcli.docx-to-pdf";
+    readonly version: "1";
+    readonly directFormatting: {
+        readonly minimumOccurrences: 5;
+        readonly minimumDominance: 0.7;
+    };
+};
+
+// export: DOCX_RESOLVED_DESIGN_SCHEMA_V1
+export declare const DOCX_RESOLVED_DESIGN_SCHEMA_V1: "atlcli.docx-resolved-design/1";
+
+// export: DOCX_SECTION_RESOLUTION_RULE_V1
+export declare const DOCX_SECTION_RESOLUTION_RULE_V1: {
+    readonly id: "atlcli.docx-section-resolution";
+    readonly version: "1";
+    readonly pageToleranceTwips: 24;
+};
+
+// export: DOCX_STYLE_RESOLUTION_RULE_V1
+export declare const DOCX_STYLE_RESOLUTION_RULE_V1: {
+    readonly id: "atlcli.docx-style-resolution";
+    readonly version: "1";
+};
+
 // export: DOCX_TEMPLATE_FACTS_SCHEMA_V1
 export declare const DOCX_TEMPLATE_FACTS_SCHEMA_V1: "atlcli.docx-template-facts/1";
+
+// export: DOCX_THEME_RESOLUTION_RULE_V1
+export declare const DOCX_THEME_RESOLUTION_RULE_V1: {
+    readonly id: "atlcli.docx-theme-resolution";
+    readonly version: "1";
+};
 
 // export: DOCX_XML_LIMITS_V1
 export declare const DOCX_XML_LIMITS_V1: {
@@ -828,12 +1542,57 @@ export declare const DOCX_XML_LIMITS_V1: {
     readonly maxNodes: 100000;
 };
 
+// export: DocxCatalogAnalysisV1
+export interface DocxCatalogAnalysisV1 extends Omit<ResolvedDocxDesignV1, "schema"> {
+    schema: typeof DOCX_CATALOG_ANALYSIS_SCHEMA_V1;
+    matching: DocxTemplateMatchResultV1;
+}
+
+// export: DocxCentralColorInputV1
+export interface DocxCentralColorInputV1 {
+    concept: "accent" | "ink" | "paper";
+    reference: DocxThemeColorReferenceV1;
+    locator: string;
+}
+
+// export: DocxDecorationKindV1
+export type DocxDecorationKindV1 = "footer" | "header";
+
+// export: DocxDirectFormattingAggregateV1
+export interface DocxDirectFormattingAggregateV1 {
+    role: Exclude<DocxSemanticStyleRoleV1, "table">;
+    properties: ResolvedDocxStylePropertiesV1;
+    count: number;
+    totalCount: number;
+    evidence: TemplateEvidenceV1;
+}
+
+// export: DocxFontScriptV1
+export type DocxFontScriptV1 = "ascii" | "hAnsi" | "eastAsia" | "cs";
+
+// export: DocxMasterVariantV1
+export type DocxMasterVariantV1 = "default" | "even" | "first";
+
 // export: DocxOpcFactsV1
 export interface DocxOpcFactsV1 {
     schema: typeof DOCX_OPC_FACTS_SCHEMA_V1;
     parts: readonly OpcPartFactV1[];
     relationships: readonly OpcRelationshipFactV1[];
     diagnostics: readonly TemplateDiagnosticV1[];
+}
+
+// export: DocxPageFormatV1
+export type DocxPageFormatV1 = "a4" | "letter" | "custom";
+
+// export: DocxPageGeometryInputV1
+export interface DocxPageGeometryInputV1 {
+    widthTwips: number;
+    heightTwips: number;
+    orientation?: "landscape" | "portrait";
+    marginTopTwips: number;
+    marginRightTwips: number;
+    marginBottomTwips: number;
+    marginLeftTwips: number;
 }
 
 // export: DocxSectionFactV1
@@ -852,6 +1611,36 @@ export interface DocxSectionFactV1 {
     };
 }
 
+// export: DocxSectionInputV1
+export interface DocxSectionInputV1 {
+    section: number;
+    locator: string;
+    page: DocxPageGeometryInputV1;
+    titlePage?: boolean;
+    pageNumberStart?: number;
+    headers?: Partial<Record<DocxMasterVariantV1, string>>;
+    footers?: Partial<Record<DocxMasterVariantV1, string>>;
+}
+
+// export: DocxSectionResolutionInputV1
+export interface DocxSectionResolutionInputV1 {
+    evenAndOddHeaders: boolean;
+    sections: readonly DocxSectionInputV1[];
+}
+
+// export: DocxSectionResolutionV1
+export interface DocxSectionResolutionV1 {
+    rule: typeof DOCX_SECTION_RESOLUTION_RULE_V1;
+    sections: readonly ResolvedDocxSectionV1[];
+    globalPage?: ResolvedDocxPageGeometryV1;
+    geometryUniform: boolean;
+    decorations: readonly ResolvedDocxDecorationV1[];
+    diagnostics: readonly TemplateDiagnosticV1[];
+}
+
+// export: DocxSemanticConfidenceV1
+export type DocxSemanticConfidenceV1 = "conclusive" | "corroborated" | "suggestive";
+
 // export: DocxSemanticPartFactV1
 export interface DocxSemanticPartFactV1 {
     partRef: string;
@@ -861,6 +1650,65 @@ export interface DocxSemanticPartFactV1 {
 
 // export: DocxSemanticPartKindV1
 export type DocxSemanticPartKindV1 = "document" | "endnotes" | "font-table" | "footer" | "footnotes" | "header" | "numbering" | "settings" | "styles" | "theme";
+
+// export: DocxSemanticStyleRoleV1
+export type DocxSemanticStyleRoleV1 = "body" | "h1" | "h2" | "h3" | "code" | "table";
+
+// export: DocxStyleDefinitionInputV1
+export interface DocxStyleDefinitionInputV1 {
+    styleId: string;
+    kind: DocxStyleKindV1;
+    basedOn?: string;
+    displayName?: string;
+    qFormat?: boolean;
+    uiPriority?: number;
+    properties?: DocxStylePropertiesInputV1;
+    locator: string;
+}
+
+// export: DocxStyleKindV1
+export type DocxStyleKindV1 = "character" | "paragraph" | "table";
+
+// export: DocxStylePropertiesInputV1
+export interface DocxStylePropertiesInputV1 {
+    fonts?: unknown;
+    sizeHalfPoints?: unknown;
+    bold?: unknown;
+    color?: unknown;
+    spacingBeforeTwips?: unknown;
+    spacingAfterTwips?: unknown;
+    lineTwips?: unknown;
+    outlineLevel?: unknown;
+    alignment?: unknown;
+    numberingLevel?: unknown;
+    tableConditionalRegions?: unknown;
+}
+
+// export: DocxStyleResolutionInputV1
+export interface DocxStyleResolutionInputV1 {
+    docDefaults?: DocxStylePropertiesInputV1;
+    styles: readonly DocxStyleDefinitionInputV1[];
+    usage: readonly DocxStyleUsageInputV1[];
+}
+
+// export: DocxStyleResolutionV1
+export interface DocxStyleResolutionV1 {
+    rule: typeof DOCX_STYLE_RESOLUTION_RULE_V1;
+    styles: readonly ResolvedDocxStyleV1[];
+    diagnostics: readonly TemplateDiagnosticV1[];
+    revisionsPresent: boolean;
+}
+
+// export: DocxStyleUsageInputV1
+export interface DocxStyleUsageInputV1 {
+    styleId: string;
+    count: number;
+    story: string;
+    section: number;
+    locator: string;
+    deleted?: boolean;
+    direct?: DocxStylePropertiesInputV1;
+}
 
 // export: DocxTemplateFactsV1
 export interface DocxTemplateFactsV1 {
@@ -892,6 +1740,53 @@ export interface DocxTemplateFactsV1 {
     };
     alternateContent: readonly AlternateContentFactV1[];
     diagnostics: readonly TemplateDiagnosticV1[];
+}
+
+// export: DocxTemplateMatchingInputV1
+export interface DocxTemplateMatchingInputV1 {
+    analysisDigest: string;
+    catalog: TemplateCapabilityCatalogV1;
+    styles: DocxStyleResolutionV1;
+    theme: DocxThemeDefinitionV1;
+    sections: DocxSectionResolutionV1;
+    bundledFontFamilies: readonly string[];
+    centralColors?: readonly DocxCentralColorInputV1[];
+    directFormatting?: readonly DocxDirectFormattingAggregateV1[];
+    progress?: (event: TemplateImportProgressEventV1) => void;
+}
+
+// export: DocxTemplateMatchResultV1
+export interface DocxTemplateMatchResultV1 {
+    rule: typeof DOCX_PDF_MAPPING_RULE_V1;
+    candidates: readonly TemplateCandidateV1[];
+    diagnostics: readonly TemplateDiagnosticV1[];
+}
+
+// export: DocxThemeColorReferenceV1
+export interface DocxThemeColorReferenceV1 {
+    rgb?: string;
+    theme?: string;
+    tint?: number | string;
+    shade?: number | string;
+}
+
+// export: DocxThemeDefinitionV1
+export interface DocxThemeDefinitionV1 {
+    colors: Readonly<Record<string, string>>;
+    colorMapping?: Readonly<Record<string, string>>;
+    fonts: {
+        major: Partial<Record<DocxFontScriptV1, string>>;
+        minor: Partial<Record<DocxFontScriptV1, string>>;
+    };
+}
+
+// export: DocxThemeFontFamilyV1
+export type DocxThemeFontFamilyV1 = "major" | "minor";
+
+// export: DocxThemeFontReferenceV1
+export interface DocxThemeFontReferenceV1 {
+    family?: string;
+    theme?: `${DocxThemeFontFamilyV1}-${DocxFontScriptV1}`;
 }
 
 // export: DocxUsageFactV1
@@ -933,6 +1828,9 @@ export interface MarkupCompatibilityProfileV1 {
     alternateContentPolicy: "first-understood-choice-else-fallback";
 }
 
+// export: matchDocxTemplate
+export declare function matchDocxTemplate(input: DocxTemplateMatchingInputV1): Promise<DocxTemplateMatchResultV1>;
+
 // export: MessageParameterSchemaV1
 export interface MessageParameterSchemaV1 {
     type: "integer" | "string";
@@ -940,6 +1838,9 @@ export interface MessageParameterSchemaV1 {
     maximum?: number;
     maxLength?: number;
 }
+
+// export: normalizeDocxPageGeometry
+export declare function normalizeDocxPageGeometry(page: DocxPageGeometryInputV1): ResolvedDocxPageGeometryV1;
 
 // export: OpcPartFactV1
 export interface OpcPartFactV1 {
@@ -990,6 +1891,104 @@ export declare function renderTemplateDiagnostic(diagnostic: TemplateDiagnosticV
 
 // export: renderTemplateIntakeMessage
 export declare function renderTemplateIntakeMessage(code: TemplateIntakeMessageCode, parameters: Readonly<Record<string, unknown>>, copies?: TemplateIntakeMessageCopies): RenderedTemplateIntakeMessageV1;
+
+// export: ResolvedDocxDecorationV1
+export interface ResolvedDocxDecorationV1 {
+    kind: DocxDecorationKindV1;
+    variant: DocxMasterVariantV1;
+    section: number;
+    partFingerprint?: string;
+    status: "inactive" | "native" | "unsupported-section-scope";
+    evidence: TemplateEvidenceV1;
+}
+
+// export: ResolvedDocxDesignV1
+export interface ResolvedDocxDesignV1 {
+    schema: typeof DOCX_RESOLVED_DESIGN_SCHEMA_V1;
+    sourceDigest: string;
+    facts: DocxTemplateFactsV1;
+    styles: DocxStyleResolutionV1;
+    theme: DocxThemeDefinitionV1;
+    sections: DocxSectionResolutionV1;
+    diagnostics: readonly TemplateDiagnosticV1[];
+}
+
+// export: ResolvedDocxPageGeometryV1
+export interface ResolvedDocxPageGeometryV1 extends DocxPageGeometryInputV1 {
+    orientation: "landscape" | "portrait";
+    format: DocxPageFormatV1;
+}
+
+// export: ResolvedDocxSectionV1
+export interface ResolvedDocxSectionV1 {
+    section: number;
+    evidence: TemplateEvidenceV1;
+    page: ResolvedDocxPageGeometryV1;
+    titlePage: boolean;
+    pageNumberStart?: number;
+    pageNumberRestart: boolean;
+    headers: Partial<Record<DocxMasterVariantV1, string>>;
+    footers: Partial<Record<DocxMasterVariantV1, string>>;
+    activeVariants: readonly DocxMasterVariantV1[];
+}
+
+// export: ResolvedDocxStylePropertiesV1
+export interface ResolvedDocxStylePropertiesV1 {
+    fonts?: Partial<Record<DocxFontScriptV1, DocxThemeFontReferenceV1>>;
+    sizeHalfPoints?: number;
+    bold?: boolean;
+    color?: DocxThemeColorReferenceV1;
+    spacingBeforeTwips?: number;
+    spacingAfterTwips?: number;
+    lineTwips?: number;
+    outlineLevel?: number;
+    alignment?: "center" | "justify" | "left" | "right";
+    numberingLevel?: number;
+    tableConditionalRegions?: readonly string[];
+}
+
+// export: ResolvedDocxStyleUseV1
+export interface ResolvedDocxStyleUseV1 {
+    evidence: TemplateEvidenceV1;
+    count: number;
+    story: string;
+    section: number;
+    properties: ResolvedDocxStylePropertiesV1;
+}
+
+// export: ResolvedDocxStyleV1
+export interface ResolvedDocxStyleV1 {
+    styleRef: string;
+    styleFingerprint: string;
+    kind: DocxStyleKindV1;
+    resolvable: boolean;
+    chain: readonly string[];
+    properties: ResolvedDocxStylePropertiesV1;
+    role?: DocxSemanticStyleRoleV1;
+    roleConfidence?: DocxSemanticConfidenceV1;
+    roleSignals: readonly string[];
+    usageCount: number;
+    uses: readonly ResolvedDocxStyleUseV1[];
+    evidence: TemplateEvidenceV1;
+    diagnostics: readonly TemplateDiagnosticV1[];
+}
+
+// export: resolveDocxSections
+export declare function resolveDocxSections(input: DocxSectionResolutionInputV1): Promise<DocxSectionResolutionV1>;
+
+// export: resolveDocxStyles
+export declare function resolveDocxStyles(input: DocxStyleResolutionInputV1): Promise<DocxStyleResolutionV1>;
+
+// export: resolveDocxTemplateDesign
+export declare function resolveDocxTemplateDesign(bytes: Uint8Array, options?: {
+    progress?: (event: TemplateImportProgressEventV1) => void;
+}): Promise<ResolvedDocxDesignV1>;
+
+// export: resolveDocxThemeColor
+export declare function resolveDocxThemeColor(reference: DocxThemeColorReferenceV1, theme: DocxThemeDefinitionV1): string | undefined;
+
+// export: resolveDocxThemeFont
+export declare function resolveDocxThemeFont(reference: DocxThemeFontReferenceV1 | undefined, script: DocxFontScriptV1, theme: DocxThemeDefinitionV1): string | undefined;
 
 // export: streamXmlPart
 export declare function streamXmlPart(partRef: string, bytes: Uint8Array, handlers?: {
@@ -1183,11 +2182,24 @@ export declare function analyzeDocxTemplate(bytes: Uint8Array, options?: {
     progress?: (event: TemplateImportProgressEventV1) => void;
 }): Promise<DocxTemplateFactsV1>;
 
+// export: analyzeDocxTemplateForCatalog
+export declare function analyzeDocxTemplateForCatalog(bytes: Uint8Array, options: {
+    catalog: TemplateCapabilityCatalogV1;
+    bundledFontFamilies: readonly string[];
+    progress?: (event: TemplateImportProgressEventV1) => void;
+}): Promise<DocxCatalogAnalysisV1>;
+
 // export: canonicalDocxOpcFactsJson
 export declare function canonicalDocxOpcFactsJson(facts: DocxOpcFactsV1): string;
 
 // export: canonicalDocxTemplateFactsJson
 export declare function canonicalDocxTemplateFactsJson(facts: DocxTemplateFactsV1): string;
+
+// export: canonicalDocxThemeDefinition
+export declare function canonicalDocxThemeDefinition(theme: DocxThemeDefinitionV1): DocxThemeDefinitionV1;
+
+// export: DOCX_CATALOG_ANALYSIS_SCHEMA_V1
+export declare const DOCX_CATALOG_ANALYSIS_SCHEMA_V1: "atlcli.docx-catalog-analysis/1";
 
 // export: DOCX_FACTS_MESSAGE_REGISTRY_V1
 export declare const DOCX_FACTS_MESSAGE_REGISTRY_V1: TemplateMessageRegistryV1;
@@ -1195,11 +2207,46 @@ export declare const DOCX_FACTS_MESSAGE_REGISTRY_V1: TemplateMessageRegistryV1;
 // export: DOCX_INTAKE_MESSAGE_REGISTRY_V1
 export declare const DOCX_INTAKE_MESSAGE_REGISTRY_V1: TemplateMessageRegistryV1;
 
+// export: DOCX_MAPPING_MESSAGE_REGISTRY_V1
+export declare const DOCX_MAPPING_MESSAGE_REGISTRY_V1: TemplateMessageRegistryV1;
+
 // export: DOCX_OPC_FACTS_SCHEMA_V1
 export declare const DOCX_OPC_FACTS_SCHEMA_V1: "atlcli.docx-opc-facts/1";
 
+// export: DOCX_PDF_MAPPING_RULE_V1
+export declare const DOCX_PDF_MAPPING_RULE_V1: {
+    readonly id: "atlcli.docx-to-pdf";
+    readonly version: "1";
+    readonly directFormatting: {
+        readonly minimumOccurrences: 5;
+        readonly minimumDominance: 0.7;
+    };
+};
+
+// export: DOCX_RESOLVED_DESIGN_SCHEMA_V1
+export declare const DOCX_RESOLVED_DESIGN_SCHEMA_V1: "atlcli.docx-resolved-design/1";
+
+// export: DOCX_SECTION_RESOLUTION_RULE_V1
+export declare const DOCX_SECTION_RESOLUTION_RULE_V1: {
+    readonly id: "atlcli.docx-section-resolution";
+    readonly version: "1";
+    readonly pageToleranceTwips: 24;
+};
+
+// export: DOCX_STYLE_RESOLUTION_RULE_V1
+export declare const DOCX_STYLE_RESOLUTION_RULE_V1: {
+    readonly id: "atlcli.docx-style-resolution";
+    readonly version: "1";
+};
+
 // export: DOCX_TEMPLATE_FACTS_SCHEMA_V1
 export declare const DOCX_TEMPLATE_FACTS_SCHEMA_V1: "atlcli.docx-template-facts/1";
+
+// export: DOCX_THEME_RESOLUTION_RULE_V1
+export declare const DOCX_THEME_RESOLUTION_RULE_V1: {
+    readonly id: "atlcli.docx-theme-resolution";
+    readonly version: "1";
+};
 
 // export: DOCX_XML_LIMITS_V1
 export declare const DOCX_XML_LIMITS_V1: {
@@ -1212,12 +2259,57 @@ export declare const DOCX_XML_LIMITS_V1: {
     readonly maxNodes: 100000;
 };
 
+// export: DocxCatalogAnalysisV1
+export interface DocxCatalogAnalysisV1 extends Omit<ResolvedDocxDesignV1, "schema"> {
+    schema: typeof DOCX_CATALOG_ANALYSIS_SCHEMA_V1;
+    matching: DocxTemplateMatchResultV1;
+}
+
+// export: DocxCentralColorInputV1
+export interface DocxCentralColorInputV1 {
+    concept: "accent" | "ink" | "paper";
+    reference: DocxThemeColorReferenceV1;
+    locator: string;
+}
+
+// export: DocxDecorationKindV1
+export type DocxDecorationKindV1 = "footer" | "header";
+
+// export: DocxDirectFormattingAggregateV1
+export interface DocxDirectFormattingAggregateV1 {
+    role: Exclude<DocxSemanticStyleRoleV1, "table">;
+    properties: ResolvedDocxStylePropertiesV1;
+    count: number;
+    totalCount: number;
+    evidence: TemplateEvidenceV1;
+}
+
+// export: DocxFontScriptV1
+export type DocxFontScriptV1 = "ascii" | "hAnsi" | "eastAsia" | "cs";
+
+// export: DocxMasterVariantV1
+export type DocxMasterVariantV1 = "default" | "even" | "first";
+
 // export: DocxOpcFactsV1
 export interface DocxOpcFactsV1 {
     schema: typeof DOCX_OPC_FACTS_SCHEMA_V1;
     parts: readonly OpcPartFactV1[];
     relationships: readonly OpcRelationshipFactV1[];
     diagnostics: readonly TemplateDiagnosticV1[];
+}
+
+// export: DocxPageFormatV1
+export type DocxPageFormatV1 = "a4" | "letter" | "custom";
+
+// export: DocxPageGeometryInputV1
+export interface DocxPageGeometryInputV1 {
+    widthTwips: number;
+    heightTwips: number;
+    orientation?: "landscape" | "portrait";
+    marginTopTwips: number;
+    marginRightTwips: number;
+    marginBottomTwips: number;
+    marginLeftTwips: number;
 }
 
 // export: DocxSectionFactV1
@@ -1236,6 +2328,36 @@ export interface DocxSectionFactV1 {
     };
 }
 
+// export: DocxSectionInputV1
+export interface DocxSectionInputV1 {
+    section: number;
+    locator: string;
+    page: DocxPageGeometryInputV1;
+    titlePage?: boolean;
+    pageNumberStart?: number;
+    headers?: Partial<Record<DocxMasterVariantV1, string>>;
+    footers?: Partial<Record<DocxMasterVariantV1, string>>;
+}
+
+// export: DocxSectionResolutionInputV1
+export interface DocxSectionResolutionInputV1 {
+    evenAndOddHeaders: boolean;
+    sections: readonly DocxSectionInputV1[];
+}
+
+// export: DocxSectionResolutionV1
+export interface DocxSectionResolutionV1 {
+    rule: typeof DOCX_SECTION_RESOLUTION_RULE_V1;
+    sections: readonly ResolvedDocxSectionV1[];
+    globalPage?: ResolvedDocxPageGeometryV1;
+    geometryUniform: boolean;
+    decorations: readonly ResolvedDocxDecorationV1[];
+    diagnostics: readonly TemplateDiagnosticV1[];
+}
+
+// export: DocxSemanticConfidenceV1
+export type DocxSemanticConfidenceV1 = "conclusive" | "corroborated" | "suggestive";
+
 // export: DocxSemanticPartFactV1
 export interface DocxSemanticPartFactV1 {
     partRef: string;
@@ -1245,6 +2367,65 @@ export interface DocxSemanticPartFactV1 {
 
 // export: DocxSemanticPartKindV1
 export type DocxSemanticPartKindV1 = "document" | "endnotes" | "font-table" | "footer" | "footnotes" | "header" | "numbering" | "settings" | "styles" | "theme";
+
+// export: DocxSemanticStyleRoleV1
+export type DocxSemanticStyleRoleV1 = "body" | "h1" | "h2" | "h3" | "code" | "table";
+
+// export: DocxStyleDefinitionInputV1
+export interface DocxStyleDefinitionInputV1 {
+    styleId: string;
+    kind: DocxStyleKindV1;
+    basedOn?: string;
+    displayName?: string;
+    qFormat?: boolean;
+    uiPriority?: number;
+    properties?: DocxStylePropertiesInputV1;
+    locator: string;
+}
+
+// export: DocxStyleKindV1
+export type DocxStyleKindV1 = "character" | "paragraph" | "table";
+
+// export: DocxStylePropertiesInputV1
+export interface DocxStylePropertiesInputV1 {
+    fonts?: unknown;
+    sizeHalfPoints?: unknown;
+    bold?: unknown;
+    color?: unknown;
+    spacingBeforeTwips?: unknown;
+    spacingAfterTwips?: unknown;
+    lineTwips?: unknown;
+    outlineLevel?: unknown;
+    alignment?: unknown;
+    numberingLevel?: unknown;
+    tableConditionalRegions?: unknown;
+}
+
+// export: DocxStyleResolutionInputV1
+export interface DocxStyleResolutionInputV1 {
+    docDefaults?: DocxStylePropertiesInputV1;
+    styles: readonly DocxStyleDefinitionInputV1[];
+    usage: readonly DocxStyleUsageInputV1[];
+}
+
+// export: DocxStyleResolutionV1
+export interface DocxStyleResolutionV1 {
+    rule: typeof DOCX_STYLE_RESOLUTION_RULE_V1;
+    styles: readonly ResolvedDocxStyleV1[];
+    diagnostics: readonly TemplateDiagnosticV1[];
+    revisionsPresent: boolean;
+}
+
+// export: DocxStyleUsageInputV1
+export interface DocxStyleUsageInputV1 {
+    styleId: string;
+    count: number;
+    story: string;
+    section: number;
+    locator: string;
+    deleted?: boolean;
+    direct?: DocxStylePropertiesInputV1;
+}
 
 // export: DocxTemplateFactsV1
 export interface DocxTemplateFactsV1 {
@@ -1276,6 +2457,53 @@ export interface DocxTemplateFactsV1 {
     };
     alternateContent: readonly AlternateContentFactV1[];
     diagnostics: readonly TemplateDiagnosticV1[];
+}
+
+// export: DocxTemplateMatchingInputV1
+export interface DocxTemplateMatchingInputV1 {
+    analysisDigest: string;
+    catalog: TemplateCapabilityCatalogV1;
+    styles: DocxStyleResolutionV1;
+    theme: DocxThemeDefinitionV1;
+    sections: DocxSectionResolutionV1;
+    bundledFontFamilies: readonly string[];
+    centralColors?: readonly DocxCentralColorInputV1[];
+    directFormatting?: readonly DocxDirectFormattingAggregateV1[];
+    progress?: (event: TemplateImportProgressEventV1) => void;
+}
+
+// export: DocxTemplateMatchResultV1
+export interface DocxTemplateMatchResultV1 {
+    rule: typeof DOCX_PDF_MAPPING_RULE_V1;
+    candidates: readonly TemplateCandidateV1[];
+    diagnostics: readonly TemplateDiagnosticV1[];
+}
+
+// export: DocxThemeColorReferenceV1
+export interface DocxThemeColorReferenceV1 {
+    rgb?: string;
+    theme?: string;
+    tint?: number | string;
+    shade?: number | string;
+}
+
+// export: DocxThemeDefinitionV1
+export interface DocxThemeDefinitionV1 {
+    colors: Readonly<Record<string, string>>;
+    colorMapping?: Readonly<Record<string, string>>;
+    fonts: {
+        major: Partial<Record<DocxFontScriptV1, string>>;
+        minor: Partial<Record<DocxFontScriptV1, string>>;
+    };
+}
+
+// export: DocxThemeFontFamilyV1
+export type DocxThemeFontFamilyV1 = "major" | "minor";
+
+// export: DocxThemeFontReferenceV1
+export interface DocxThemeFontReferenceV1 {
+    family?: string;
+    theme?: `${DocxThemeFontFamilyV1}-${DocxFontScriptV1}`;
 }
 
 // export: DocxUsageFactV1
@@ -1317,6 +2545,9 @@ export interface MarkupCompatibilityProfileV1 {
     alternateContentPolicy: "first-understood-choice-else-fallback";
 }
 
+// export: matchDocxTemplate
+export declare function matchDocxTemplate(input: DocxTemplateMatchingInputV1): Promise<DocxTemplateMatchResultV1>;
+
 // export: MessageParameterSchemaV1
 export interface MessageParameterSchemaV1 {
     type: "integer" | "string";
@@ -1324,6 +2555,9 @@ export interface MessageParameterSchemaV1 {
     maximum?: number;
     maxLength?: number;
 }
+
+// export: normalizeDocxPageGeometry
+export declare function normalizeDocxPageGeometry(page: DocxPageGeometryInputV1): ResolvedDocxPageGeometryV1;
 
 // export: OpcPartFactV1
 export interface OpcPartFactV1 {
@@ -1374,6 +2608,104 @@ export declare function renderTemplateDiagnostic(diagnostic: TemplateDiagnosticV
 
 // export: renderTemplateIntakeMessage
 export declare function renderTemplateIntakeMessage(code: TemplateIntakeMessageCode, parameters: Readonly<Record<string, unknown>>, copies?: TemplateIntakeMessageCopies): RenderedTemplateIntakeMessageV1;
+
+// export: ResolvedDocxDecorationV1
+export interface ResolvedDocxDecorationV1 {
+    kind: DocxDecorationKindV1;
+    variant: DocxMasterVariantV1;
+    section: number;
+    partFingerprint?: string;
+    status: "inactive" | "native" | "unsupported-section-scope";
+    evidence: TemplateEvidenceV1;
+}
+
+// export: ResolvedDocxDesignV1
+export interface ResolvedDocxDesignV1 {
+    schema: typeof DOCX_RESOLVED_DESIGN_SCHEMA_V1;
+    sourceDigest: string;
+    facts: DocxTemplateFactsV1;
+    styles: DocxStyleResolutionV1;
+    theme: DocxThemeDefinitionV1;
+    sections: DocxSectionResolutionV1;
+    diagnostics: readonly TemplateDiagnosticV1[];
+}
+
+// export: ResolvedDocxPageGeometryV1
+export interface ResolvedDocxPageGeometryV1 extends DocxPageGeometryInputV1 {
+    orientation: "landscape" | "portrait";
+    format: DocxPageFormatV1;
+}
+
+// export: ResolvedDocxSectionV1
+export interface ResolvedDocxSectionV1 {
+    section: number;
+    evidence: TemplateEvidenceV1;
+    page: ResolvedDocxPageGeometryV1;
+    titlePage: boolean;
+    pageNumberStart?: number;
+    pageNumberRestart: boolean;
+    headers: Partial<Record<DocxMasterVariantV1, string>>;
+    footers: Partial<Record<DocxMasterVariantV1, string>>;
+    activeVariants: readonly DocxMasterVariantV1[];
+}
+
+// export: ResolvedDocxStylePropertiesV1
+export interface ResolvedDocxStylePropertiesV1 {
+    fonts?: Partial<Record<DocxFontScriptV1, DocxThemeFontReferenceV1>>;
+    sizeHalfPoints?: number;
+    bold?: boolean;
+    color?: DocxThemeColorReferenceV1;
+    spacingBeforeTwips?: number;
+    spacingAfterTwips?: number;
+    lineTwips?: number;
+    outlineLevel?: number;
+    alignment?: "center" | "justify" | "left" | "right";
+    numberingLevel?: number;
+    tableConditionalRegions?: readonly string[];
+}
+
+// export: ResolvedDocxStyleUseV1
+export interface ResolvedDocxStyleUseV1 {
+    evidence: TemplateEvidenceV1;
+    count: number;
+    story: string;
+    section: number;
+    properties: ResolvedDocxStylePropertiesV1;
+}
+
+// export: ResolvedDocxStyleV1
+export interface ResolvedDocxStyleV1 {
+    styleRef: string;
+    styleFingerprint: string;
+    kind: DocxStyleKindV1;
+    resolvable: boolean;
+    chain: readonly string[];
+    properties: ResolvedDocxStylePropertiesV1;
+    role?: DocxSemanticStyleRoleV1;
+    roleConfidence?: DocxSemanticConfidenceV1;
+    roleSignals: readonly string[];
+    usageCount: number;
+    uses: readonly ResolvedDocxStyleUseV1[];
+    evidence: TemplateEvidenceV1;
+    diagnostics: readonly TemplateDiagnosticV1[];
+}
+
+// export: resolveDocxSections
+export declare function resolveDocxSections(input: DocxSectionResolutionInputV1): Promise<DocxSectionResolutionV1>;
+
+// export: resolveDocxStyles
+export declare function resolveDocxStyles(input: DocxStyleResolutionInputV1): Promise<DocxStyleResolutionV1>;
+
+// export: resolveDocxTemplateDesign
+export declare function resolveDocxTemplateDesign(bytes: Uint8Array, options?: {
+    progress?: (event: TemplateImportProgressEventV1) => void;
+}): Promise<ResolvedDocxDesignV1>;
+
+// export: resolveDocxThemeColor
+export declare function resolveDocxThemeColor(reference: DocxThemeColorReferenceV1, theme: DocxThemeDefinitionV1): string | undefined;
+
+// export: resolveDocxThemeFont
+export declare function resolveDocxThemeFont(reference: DocxThemeFontReferenceV1 | undefined, script: DocxFontScriptV1, theme: DocxThemeDefinitionV1): string | undefined;
 
 // export: streamXmlPart
 export declare function streamXmlPart(partRef: string, bytes: Uint8Array, handlers?: {

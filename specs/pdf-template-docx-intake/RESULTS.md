@@ -479,3 +479,85 @@ artifact was used or persisted.
 This evidence proves T3 only. It does not claim style resolution, catalog
 matching, asset extraction, CLI review, or template-pack materialization from
 T4 onward.
+
+## T4 — Style, theme, section, usage, and token matching
+
+**Status:** Proven on 2026-07-27.
+
+### Resolved design model
+
+`@atlcli/docx-template-intake` now exposes a one-unzip, browser-safe analysis
+path from DOCX bytes to a resolved design model and catalog candidates. Style
+resolution applies `docDefaults`, arbitrarily deep `basedOn` inheritance,
+style properties, and per-use direct formatting in the required order.
+Missing parents, inheritance cycles, and invalid property values remain typed
+diagnostics; an unresolved chain cannot become a safe match.
+
+Semantic role detection combines standard style identity, localized display
+name, quick-format metadata, UI priority, outline level, inheritance, and
+effective non-deleted usage. It distinguishes built-in, localized, and custom
+heading evidence without treating an unused style name as proof. Inserted
+content contributes usage; deleted revisions do not; revision presence is
+retained as a confidence signal.
+
+Theme resolution is deterministic per script and produces canonical uppercase
+hex colors after color-scheme mapping, tint, and shade. Equivalent theme and
+literal representations therefore produce the same candidate fingerprint.
+Fonts are matched only against an injected bundled-family set; a non-bundled
+family is blocked from safe adoption and no font bytes are read or emitted.
+
+### Section masters and catalog-constrained matching
+
+Page geometry retains exact twip values, recognizes A4 and Letter only within
+the frozen tolerance, and never rounds custom sizes to a supported format.
+Multi-section geometry becomes a global native candidate only when every
+effective section agrees. First/default/even header and footer references are
+resolved with Word inheritance, `titlePg`, even/odd settings, and page-number
+restart semantics. Unsupported section scope is reported explicitly rather
+than globalized.
+
+The versioned matcher can emit only capability paths present in the injected
+PDF catalog. It covers page, body, H1–H3, code, table, central color, spacing,
+font, and decoration concepts. Direct-format aggregates require the pinned
+minimum count and dominance threshold. Every candidate carries value nature,
+confidence, compatibility, adoption, rule version, evidence locators, and
+structured explanation facts.
+
+The shared review projection presents business concepts and
+baseline/proposed/effective values. Internal candidate IDs, fingerprints, and
+capability paths are confined to its details payload. The intake API report
+contains 85 experimental symbols and its closure report has zero
+reachable-but-unexported gaps.
+
+All test documents are neutral synthetic in-memory OOXML fixtures. The
+end-to-end fixture asserts that document text, display names, source paths,
+and raw XML do not enter the resolved model or candidate output.
+
+### Commands and results
+
+| Proof | Exact command | Result |
+|---|---|---|
+| Normative T4 suite | `bun run test packages/docx-template-intake/src/style-resolution.test.ts packages/docx-template-intake/src/theme-resolution.test.ts packages/docx-template-intake/src/section-resolution.test.ts packages/docx-template-intake/src/matching.test.ts` | Passed; 21 tests, 353 assertions, 0 failures |
+| Existing authoring contract | `bun run test packages/pdf-template-authoring/src` | Passed; 27 tests, 152 assertions, 0 failures |
+| Browser portability | `bun scripts/check-browser-build.ts` | Passed; all 23 browser entry points built without Node/Bun builtins |
+| Package declaration builds | `bun run --cwd packages/docx-template-intake build` and `bun run --cwd packages/pdf-template-authoring build` | Passed |
+| API report and closure guard | `bun run test scripts/api-report.test.ts` | Passed; 5 tests, 14 assertions, zero closure gaps |
+| Repository type safety | `bun run typecheck` | Passed for the root, extension, browser compiler, and browser export harness |
+| Full monorepo build | `bun run build` | Passed; 19 tasks |
+| Full repository suite | `bun run test` | 5,597 passed, 12 environment-gated skips, 1 unrelated aggregate-load timing failure; the affected `apps/cli/src/commands/export-job-runtime.test.ts` then passed 10/10 in isolation |
+| Diff hygiene | `git diff --check` | Passed |
+
+The first full-suite attempt ran inside a network-restricted sandbox and
+failed existing tests that bind loopback ports. Repeating outside that sandbox
+made those tests green. The only remaining full-run failure was the
+timing-sensitive job-stream assertion above; its immediate isolated rerun
+passed without code changes.
+
+The live Confluence E2E is not applicable to T4: this task adds no CLI command,
+filesystem adapter, renderer behavior, network operation, or Confluence
+mutation. Its evidence is the real in-memory DOCX path, browser portability,
+catalog and authoring integration, build/type gates, and repository regression
+suite.
+
+This evidence proves T4 only. It does not claim asset extraction, page-scene
+mapping, CLI review, or template-pack materialization from T5 onward.

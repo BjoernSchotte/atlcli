@@ -22,6 +22,29 @@ const facts = await analyzeDocxTemplate(docxBytes, {
 const portableJson = canonicalDocxTemplateFactsJson(facts);
 ```
 
+To resolve Word styles and create PDF candidates, inject the renderer-owned
+catalog and the font families that renderer can actually embed:
+
+```ts
+import { analyzeDocxTemplateForCatalog } from "@atlcli/docx-template-intake";
+
+const analysis = await analyzeDocxTemplateForCatalog(docxBytes, {
+  catalog: pdfCatalog,
+  bundledFontFamilies: pdfFontFamilies,
+  progress: hostProgress.update,
+});
+
+for (const candidate of analysis.matching.candidates) {
+  reviewModel.add(candidate);
+}
+```
+
+The catalog pipeline resolves `docDefaults`, `basedOn` chains, styles, direct
+formatting, theme fonts/colors, section geometry, header/footer inheritance,
+and page-number scope. It emits business concept codes and structured
+explanations; hosts decide how to render copy and how users accept, reject, or
+override each candidate.
+
 The same byte-in/facts-out API is exported from the default, `./browser`, and
 `./node` entry points. Hosts own file pickers, filesystem access, persistence,
 localized copy, and progress presentation.

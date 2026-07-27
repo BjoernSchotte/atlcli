@@ -219,6 +219,15 @@ export async function createTemplateCandidate(
   assertStableId(input.semanticKey, "semanticKey");
   assertStableId(input.group.id, "group.id");
   assertStableId(input.rule.id, "rule.id");
+  if (
+    input.conceptCode !== undefined &&
+    !MESSAGE_CODE_RE.test(input.conceptCode)
+  ) {
+    throw new TemplateAuthoringError(
+      "candidate-invalid",
+      "conceptCode must be a stable message code"
+    );
+  }
   if (!STABLE_VERSION_RE.test(input.rule.version)) {
     throw new TemplateAuthoringError(
       "candidate-invalid",
@@ -1537,6 +1546,12 @@ export function projectTemplateImportView(
         : "text";
     const proposed = primary.writes[0]?.value;
     for (const candidate of groupCandidates) {
+      if (candidate.conceptCode) {
+        validateTemplateMessageOwnership(
+          { code: candidate.conceptCode, params: {} },
+          messageRegistries
+        );
+      }
       for (const explanation of candidate.explanations) {
         validateTemplateExplanation(explanation, messageRegistries);
       }
@@ -1568,7 +1583,10 @@ export function projectTemplateImportView(
       item: {
         id: `review:${semanticKey}`,
         semanticKey,
-        labelCode: descriptor?.messageCode ?? "PDF_CAPABILITY_DETAILS",
+        labelCode:
+          primary.conceptCode ??
+          descriptor?.messageCode ??
+          "PDF_CAPABILITY_DETAILS",
         state,
         baseline: displayValue(baselineFlat[target], scalarFormat),
         ...(proposed === undefined
@@ -1580,6 +1598,9 @@ export function projectTemplateImportView(
         actions: itemActions,
         details: {
           candidateIds: visible.map(({ id }) => id).sort(),
+          candidateFingerprints: visible
+            .map(({ candidateFingerprint }) => candidateFingerprint)
+            .sort(),
           targets,
         },
       },

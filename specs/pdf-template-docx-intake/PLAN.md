@@ -1832,43 +1832,51 @@ suite passes 5,577 tests with 12 environment-gated skips and zero failures.
 
 **Acceptance criteria / proof**
 
-- [ ] Fixtures prove `docDefaults`, three levels of `basedOn`, direct
+- [x] Fixtures prove `docDefaults`, three levels of `basedOn`, direct
       override, missing parent, and cycle, including diagnostics.
-- [ ] Theme colors with tint and shade produce the expected canonical
+- [x] Theme colors with tint and shade produce the expected canonical
       `#RRGGBB` values; two equivalent representations produce the same
       candidate fingerprint.
-- [ ] `Heading 1`, a localized display name, and a custom style with
+- [x] `Heading 1`, a localized display name, and a custom style with
       `outlineLvl=0` are distinguished correctly from combined evidence.
-- [ ] An unused style coincidentally named `Heading 1` is not automatically
+- [x] An unused style coincidentally named `Heading 1` is not automatically
       classified as a safe H1 candidate.
-- [ ] A uniform multi-section document produces a native global page
+- [x] A uniform multi-section document produces a native global page
       candidate; conflicting sections produce separate review/unsupported
       candidates, never an arbitrary winner.
-- [ ] A4 and Letter normalize deterministically within the defined tolerance;
+- [x] A4 and Letter normalize deterministically within the defined tolerance;
       a custom size is never rounded to the "nearest" format or accepted as
       safe.
-- [ ] Header/footer fixtures cover missing `first/default/even` references in
+- [x] Header/footer fixtures cover missing `first/default/even` references in
       the first and later sections, `titlePg` on/off, `evenAndOddHeaders`
       on/off, and page-number restarts.
-- [ ] `first` decorations are native only with exactly one section.
+- [x] `first` decorations are native only with exactly one section.
       Default/even decorations across multiple sections are native only when
       the effective variant and geometry are uniform and no page-number
       restart changes odd/even semantics; all other cases explicitly become
       `unsupported-section-scope` and are never globalized.
-- [ ] Usage evaluation ignores deleted revisions and reports the presence of
+- [x] Usage evaluation ignores deleted revisions and reports the presence of
       revisions.
-- [ ] Candidates include value nature, confidence, compatibility, adoption,
+- [x] Candidates include value nature, confidence, compatibility, adoption,
       rule version, at least one verifiable evidence locator, and at least one
       structured explanation suitable for "Why this was suggested."
-- [ ] The review projection renders Heading 1, body, page, and color matches as
+- [x] The review projection renders Heading 1, body, page, and color matches as
       business concepts with baseline/proposed/effective values. Candidate IDs,
       fingerprints, and capability paths appear only in the details payload.
-- [ ] A matcher cannot write a path absent from the injected catalog.
-- [ ] A non-bundled DOCX font is never accepted by `--accept-safe`.
-- [ ] `bun run test packages/docx-template-intake/src/style-resolution.test.ts
+- [x] A matcher cannot write a path absent from the injected catalog.
+- [x] A non-bundled DOCX font is never accepted by `--accept-safe`.
+- [x] `bun run test packages/docx-template-intake/src/style-resolution.test.ts
       packages/docx-template-intake/src/theme-resolution.test.ts
       packages/docx-template-intake/src/section-resolution.test.ts
       packages/docx-template-intake/src/matching.test.ts` passes.
+
+**T4 evidence:** See `RESULTS.md`. The byte-in analysis path unzips once, then
+resolves styles, theme values, usage, and section masters before matching only
+against the injected capability catalog. All 14 acceptance criteria are
+covered by 21 normative tests with 353 assertions. The full repository run
+passed 5,597 tests and exposed one unrelated timing-sensitive job-stream test
+under aggregate load; that test passed all 10 cases immediately when rerun in
+isolation.
 
 ### T5 — Analyze graphics, backgrounds, and page scenes
 

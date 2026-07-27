@@ -180,9 +180,11 @@
         "@atlcli/core": "workspace:*",
         "@atlcli/docx": "workspace:*",
         "@atlcli/pdf-template-authoring": "workspace:*",
+        "@atlcli/template-pack": "workspace:*",
         "saxes": "6.0.0",
       },
       "devDependencies": {
+        "@atlcli/pdf": "workspace:*",
         "pizzip": "^3.2.0",
       },
     },

@@ -187,6 +187,10 @@ interface ZipEntry {
   asUint8Array(): Uint8Array;
 }
 
+export interface DocxIntakeArchive {
+  files: Readonly<Record<string, ZipEntry>>;
+}
+
 interface MutableUsage {
   story: string;
   section: number;
@@ -769,17 +773,14 @@ async function portableAlternates(
   );
 }
 
-/** Analyze only allowlisted OOXML parts and return text-free portable facts. */
-export async function analyzeDocxTemplate(
-  bytes: Uint8Array,
+/** Internal single-unzip seam shared with the higher-level design resolver. */
+export async function analyzeDocxTemplateArchive(
+  zip: DocxIntakeArchive,
+  opc: DocxOpcFactsV1,
   options: {
     progress?: (event: TemplateImportProgressEventV1) => void;
   } = {}
 ): Promise<DocxTemplateFactsV1> {
-  const zip = unzipDocx(bytes, DOCX_TEMPLATE_INTAKE_BUDGET);
-  const opc = await analyzeDocxOpcArchive(zip, {
-    progress: options.progress,
-  });
   const allowlist = semanticAllowlist(opc);
   const entries = (Object.values(zip.files) as unknown as ZipEntry[])
     .filter(
@@ -876,6 +877,20 @@ export async function analyzeDocxTemplate(
     alternateContent: await portableAlternates(allAlternates),
     diagnostics,
   };
+}
+
+/** Analyze only allowlisted OOXML parts and return text-free portable facts. */
+export async function analyzeDocxTemplate(
+  bytes: Uint8Array,
+  options: {
+    progress?: (event: TemplateImportProgressEventV1) => void;
+  } = {}
+): Promise<DocxTemplateFactsV1> {
+  const zip = unzipDocx(bytes, DOCX_TEMPLATE_INTAKE_BUDGET);
+  const opc = await analyzeDocxOpcArchive(zip, {
+    progress: options.progress,
+  });
+  return analyzeDocxTemplateArchive(zip, opc, options);
 }
 
 export function canonicalDocxTemplateFactsJson(
