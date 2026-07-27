@@ -14,6 +14,7 @@ import {
   type AdfValidationStats,
   type ValidatedAdfDocument,
 } from "./adf-types.js";
+import { trustValidatedAdf } from "./adf-validation-cache.js";
 
 const utf8 = new TextEncoder();
 const forbiddenKeys = new Set(["__proto__", "prototype", "constructor"]);
@@ -1226,7 +1227,11 @@ export function validateAdf(
     else diagnostics.push(summary);
   }
 
-  return { document: value as unknown as AdfDocument, diagnostics, stats };
+  return trustValidatedAdf({
+    document: value as unknown as AdfDocument,
+    diagnostics,
+    stats,
+  });
 }
 
 function validateAttributeGraph(

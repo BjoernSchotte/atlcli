@@ -1,4 +1,8 @@
-import type { ConfluencePageDetails, InlineComment } from "./client.js";
+import type {
+  ConfluencePageDetails,
+  InlineComment,
+  PageAttachmentMediaTermination,
+} from "./client.js";
 import type {
   ExportBlock,
   ExportNote,
@@ -64,8 +68,12 @@ export type ConfluenceExportPageDetails = ConfluencePageDetails & {
   exportSource: ExportPageSource;
   /** Prefetched v2 attachment metadata for exact ADF media-id correlation. */
   mediaAttachments?: AdfMediaAttachment[];
-  /** False only when the configured attachment metadata budget truncated. */
+  /** True only when the complete attachment index was exhausted. */
   mediaAttachmentsComplete?: boolean;
+  /** Why targeted attachment pagination stopped. */
+  mediaAttachmentsTermination?: PageAttachmentMediaTermination;
+  /** Referenced ADF file IDs not found before pagination stopped. */
+  unresolvedMediaFileIds?: string[];
   /** Privacy-safe, transient v2 sidecar for exact ADF annotation correlation. */
   inlineComments?: InlineComment[];
   /** False only when the configured comment/request budget truncated. */

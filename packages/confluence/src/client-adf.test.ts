@@ -6,7 +6,10 @@ import {
   type Profile,
 } from "@atlcli/core";
 import { ConfluenceClient } from "./client.js";
+import { createAdfMediaAttachmentResolver } from "./adf-to-blocks.js";
 import { ExportPageReadError } from "./page-body.js";
+import { pageBodyToBlocks } from "./page-body-to-blocks.js";
+import { PaginationLoopError } from "./pagination.js";
 
 const originalFetch = globalThis.fetch;
 const originalSink = Logger.getSink();
@@ -152,12 +155,18 @@ describe("ConfluenceClient ADF page reads", () => {
     });
   });
 
-  test("prefetches exact v2 fileId metadata only when ADF contains media", async () => {
+  test("stops after the first page once every exact ADF fileId is resolved", async () => {
     const calls: string[] = [];
     const adf = JSON.stringify({
       type: "doc",
       version: 1,
-      content: [{ type: "mediaSingle", content: [{ type: "media", attrs: { id: "file-a", type: "file" } }] }],
+      content: [{
+        type: "mediaSingle",
+        content: [{
+          type: "media",
+          attrs: { id: "file-a", type: "file", collection: "content-1" },
+        }],
+      }],
     });
     globalThis.fetch = (async (input: string | URL | Request) => {
       const url = String(input);
@@ -189,14 +198,22 @@ describe("ConfluenceClient ADF page reads", () => {
               _links: {},
             }
           : {
-              results: [{
-                id: "content-a",
-                fileId: "file-a",
-                title: "a.png",
-                mediaType: "image/png",
-                webuiLink: "/wiki/attachments/a",
-                downloadLink: "/download/a",
-              }],
+              results: [
+                {
+                  id: "content-a",
+                  fileId: "file-a",
+                  title: "a.png",
+                  mediaType: "image/png",
+                  webuiLink: "/wiki/attachments/a",
+                  downloadLink: "/download/a",
+                },
+                ...Array.from({ length: 249 }, (_, index) => ({
+                  id: `unrelated-content-${index}`,
+                  fileId: `unrelated-file-${index}`,
+                  title: `unrelated-${index}.bin`,
+                  mediaType: "application/octet-stream",
+                })),
+              ],
               _links: { next: "/wiki/api/v2/pages/123/attachments?cursor=next" },
             }), { status: 200, headers: { "content-type": "application/json" } });
       }
@@ -208,7 +225,11 @@ describe("ConfluenceClient ADF page reads", () => {
       cloudProfile("https://media-index.example.invalid"),
     ).getExportPageDetailsWithMedia("123");
 
-    expect(result.mediaAttachmentsComplete).toBe(true);
+    expect(result.mediaAttachmentsComplete).toBe(false);
+    expect(result.mediaAttachmentsTermination).toBe(
+      "required-file-ids-satisfied",
+    );
+    expect(result.unresolvedMediaFileIds).toEqual([]);
     expect(result.mediaAttachments).toEqual([
       {
         fileId: "file-a",
@@ -218,16 +239,8 @@ describe("ConfluenceClient ADF page reads", () => {
         webuiLink: "/wiki/attachments/a",
         downloadLink: "/download/a",
       },
-      {
-        fileId: "file-b",
-        filename: "b.pdf",
-        pageId: "123",
-        mediaType: "application/pdf",
-        webuiLink: "/wiki/attachments/b",
-        downloadLink: "/download/b",
-      },
     ]);
-    expect(calls.filter((url) => url.includes("/attachments"))).toHaveLength(2);
+    expect(calls.filter((url) => url.includes("/attachments"))).toHaveLength(1);
   });
 
   test("does not add an attachment request to an ADF page without media", async () => {
@@ -236,6 +249,168 @@ describe("ConfluenceClient ADF page reads", () => {
 
     const result = await new ConfluenceClient(
       cloudProfile("https://media-free.example.invalid"),
+    ).getExportPageDetailsWithMedia("123");
+
+    expect(result.mediaAttachments).toBeUndefined();
+    expect(calls).toHaveLength(2);
+    expect(calls.some((url) => url.includes("/attachments"))).toBe(false);
+  });
+
+  test("an explicit empty required-ID set performs zero attachment requests", async () => {
+    let calls = 0;
+    globalThis.fetch = (async () => {
+      calls += 1;
+      throw new Error("no request expected");
+    }) as unknown as typeof fetch;
+
+    const result = await new ConfluenceClient(
+      cloudProfile("https://empty-media-set.example.invalid"),
+    ).listPageAttachmentMedia("123", { requiredFileIds: [] });
+
+    expect(calls).toBe(0);
+    expect(result).toEqual({
+      attachments: [],
+      complete: false,
+      termination: "required-file-ids-satisfied",
+      unresolvedRequiredFileIds: [],
+    });
+  });
+
+  test("continues to a later page and then stops before the next cursor", async () => {
+    const calls: string[] = [];
+    globalThis.fetch = (async (input: string | URL | Request) => {
+      const url = String(input);
+      calls.push(url);
+      const cursor = new URL(url).searchParams.get("cursor");
+      return new Response(JSON.stringify(cursor
+        ? {
+            results: [
+              { fileId: "required-file", title: "required.png" },
+              { fileId: "unrelated-second", title: "other.png" },
+            ],
+            _links: { next: "/wiki/api/v2/pages/123/attachments?cursor=third" },
+          }
+        : {
+            results: [{ fileId: "unrelated-first", title: "first.png" }],
+            _links: { next: "/wiki/api/v2/pages/123/attachments?cursor=second" },
+          }), { status: 200, headers: { "content-type": "application/json" } });
+    }) as typeof fetch;
+
+    const result = await new ConfluenceClient(
+      cloudProfile("https://later-media.example.invalid"),
+    ).listPageAttachmentMedia("123", {
+      requiredFileIds: ["required-file"],
+    });
+
+    expect(calls).toHaveLength(2);
+    expect(result).toEqual({
+      attachments: [{
+        fileId: "required-file",
+        filename: "required.png",
+        pageId: "123",
+      }],
+      complete: false,
+      termination: "required-file-ids-satisfied",
+      unresolvedRequiredFileIds: [],
+    });
+  });
+
+  test("reports natural index exhaustion and unresolved required IDs", async () => {
+    let calls = 0;
+    globalThis.fetch = (async () => {
+      calls += 1;
+      return new Response(JSON.stringify(calls === 1
+        ? {
+            results: [{ fileId: "unrelated", title: "other.png" }],
+            _links: { next: "/wiki/api/v2/pages/123/attachments?cursor=final" },
+          }
+        : {
+            results: [],
+            _links: {},
+          }), { status: 200, headers: { "content-type": "application/json" } });
+    }) as unknown as typeof fetch;
+
+    const result = await new ConfluenceClient(
+      cloudProfile("https://missing-media.example.invalid"),
+    ).listPageAttachmentMedia("123", {
+      requiredFileIds: ["missing-a", "missing-b", "missing-a"],
+    });
+
+    expect(calls).toBe(2);
+    expect(result).toEqual({
+      attachments: [],
+      complete: true,
+      termination: "index-exhausted",
+      unresolvedRequiredFileIds: ["missing-a", "missing-b"],
+    });
+  });
+
+  test("keeps an unresolved targeted ID visible through the export-note path", async () => {
+    const adf = JSON.stringify({
+      type: "doc",
+      version: 1,
+      content: [{
+        type: "mediaSingle",
+        content: [{
+          type: "media",
+          attrs: {
+            type: "file",
+            id: "missing-file",
+            collection: "content-1",
+            alt: "Visible fallback",
+          },
+        }],
+      }],
+    });
+    globalThis.fetch = (async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes("/attachments")) {
+        return new Response(JSON.stringify({
+          results: [{ fileId: "unrelated", title: "other.png" }],
+          _links: {},
+        }), { status: 200, headers: { "content-type": "application/json" } });
+      }
+      if (url.includes("/rest/api/content/")) return storageResponse();
+      return adfResponse("123", 7, adf);
+    }) as typeof fetch;
+
+    const page = await new ConfluenceClient(
+      cloudProfile("https://unresolved-media-note.example.invalid"),
+    ).getExportPageDetailsWithMedia("123");
+    const decoded = pageBodyToBlocks(page.exportSource, {
+      resolveMediaAttachment:
+        createAdfMediaAttachmentResolver(page.mediaAttachments),
+      pageContext: { id: page.id, title: page.title },
+    });
+
+    expect(page).toMatchObject({
+      mediaAttachmentsComplete: true,
+      mediaAttachmentsTermination: "index-exhausted",
+      unresolvedMediaFileIds: ["missing-file"],
+    });
+    expect(decoded.notes.map(({ code }) => code)).toContain(
+      "adf-media-unresolved",
+    );
+    expect(JSON.stringify(decoded.blocks)).toContain("Visible fallback");
+  });
+
+  test("invalid ADF performs no sidecar request and remains decoder-owned", async () => {
+    const calls: string[] = [];
+    const invalidAdf = JSON.stringify({
+      type: "doc",
+      version: 1,
+      content: [{
+        type: "media",
+        attrs: { type: "file", collection: "content-1" },
+      }],
+    });
+    routeBodyReads({
+      calls,
+      adf: () => adfResponse("123", 7, invalidAdf),
+    });
+
+    const result = await new ConfluenceClient(
+      cloudProfile("https://invalid-media.example.invalid"),
     ).getExportPageDetailsWithMedia("123");
 
     expect(result.mediaAttachments).toBeUndefined();
@@ -369,6 +544,110 @@ describe("ConfluenceClient ADF page reads", () => {
       attachments: [{ fileId: "file-a", filename: "a.png", pageId: "123" }],
       complete: false,
     });
+  });
+
+  test("reports the attachment-record limit without retaining unrelated metadata", async () => {
+    globalThis.fetch = (async () => new Response(JSON.stringify({
+      results: [
+        { fileId: "unrelated", title: "other.png" },
+        { fileId: "required", title: "required.png" },
+      ],
+      _links: { next: "/wiki/api/v2/pages/123/attachments?cursor=more" },
+    }), { status: 200, headers: { "content-type": "application/json" } })) as unknown as typeof fetch;
+
+    const result = await new ConfluenceClient(
+      cloudProfile("https://target-media-budget.example.invalid"),
+    ).listPageAttachmentMedia("123", {
+      maxAttachments: 1,
+      requiredFileIds: ["required"],
+    });
+
+    expect(result).toEqual({
+      attachments: [],
+      complete: false,
+      termination: "attachment-limit-reached",
+      unresolvedRequiredFileIds: ["required"],
+    });
+  });
+
+  test("reports the request limit after twenty advancing cursors", async () => {
+    let calls = 0;
+    globalThis.fetch = (async () => {
+      calls += 1;
+      return new Response(JSON.stringify({
+        results: [{ fileId: `unrelated-${calls}`, title: `other-${calls}.png` }],
+        _links: {
+          next: `/wiki/api/v2/pages/123/attachments?cursor=cursor-${calls}`,
+        },
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    }) as unknown as typeof fetch;
+
+    const result = await new ConfluenceClient(
+      cloudProfile("https://target-media-request-limit.example.invalid"),
+    ).listPageAttachmentMedia("123", {
+      requiredFileIds: ["missing"],
+    });
+
+    expect(calls).toBe(20);
+    expect(result).toEqual({
+      attachments: [],
+      complete: false,
+      termination: "request-limit-reached",
+      unresolvedRequiredFileIds: ["missing"],
+    });
+  });
+
+  test("throws on a repeated attachment cursor", async () => {
+    let calls = 0;
+    globalThis.fetch = (async () => {
+      calls += 1;
+      return new Response(JSON.stringify({
+        results: [{ fileId: `unrelated-${calls}`, title: "other.png" }],
+        _links: { next: "/wiki/api/v2/pages/123/attachments?cursor=repeat" },
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    }) as unknown as typeof fetch;
+
+    await expect(new ConfluenceClient(
+      cloudProfile("https://target-media-loop.example.invalid"),
+    ).listPageAttachmentMedia("123", {
+      requiredFileIds: ["missing"],
+    })).rejects.toBeInstanceOf(PaginationLoopError);
+    expect(calls).toBe(2);
+  });
+
+  test("honors attachment cancellation before and between cursor requests", async () => {
+    let preAbortedCalls = 0;
+    const preAborted = new AbortController();
+    preAborted.abort(new Error("stop before request"));
+    globalThis.fetch = (async () => {
+      preAbortedCalls += 1;
+      throw new Error("no request expected");
+    }) as unknown as typeof fetch;
+    await expect(new ConfluenceClient(
+      cloudProfile("https://target-media-pre-abort.example.invalid"),
+    ).listPageAttachmentMedia("123", {
+      requiredFileIds: ["missing"],
+      signal: preAborted.signal,
+    })).rejects.toThrow("stop before request");
+    expect(preAbortedCalls).toBe(0);
+
+    let inFlightCalls = 0;
+    const betweenPages = new AbortController();
+    globalThis.fetch = (async () => {
+      inFlightCalls += 1;
+      betweenPages.abort(new Error("stop before second page"));
+      return new Response(JSON.stringify({
+        results: [{ fileId: "unrelated", title: "other.png" }],
+        _links: { next: "/wiki/api/v2/pages/123/attachments?cursor=second" },
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    }) as unknown as typeof fetch;
+    await expect(new ConfluenceClient(
+      cloudProfile("https://target-media-between-abort.example.invalid"),
+    ).listPageAttachmentMedia("123", {
+      requiredFileIds: ["missing"],
+      signal: betweenPages.signal,
+    })).rejects.toThrow("stop before second page");
+    expect(inFlightCalls).toBe(1);
   });
 
   test("keeps attachment filenames out of v2 metadata logs", async () => {
