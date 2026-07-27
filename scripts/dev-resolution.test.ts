@@ -35,7 +35,7 @@ describe("development-condition resolution (spec 009)", () => {
     ).toBe(true);
   });
 
-  it("pins development resolution in nested Bun subprocesses", () => {
+  it("pins development resolution in nested test subprocesses", () => {
     const authIsolation = readFileSync(
       join(REPO_ROOT, "apps/cli/src/commands/auth-test-isolation.test.ts"),
       "utf8",
@@ -50,6 +50,12 @@ describe("development-condition resolution (spec 009)", () => {
         "utf8",
       ),
     ) as { scripts?: Record<string, string> };
+    const extensionPackage = JSON.parse(
+      readFileSync(
+        join(REPO_ROOT, "apps/extension/package.json"),
+        "utf8",
+      ),
+    ) as { scripts?: Record<string, string> };
 
     expect(authIsolation).toContain('"--conditions=development"');
     expect(pluginCommand).toContain(
@@ -60,5 +66,8 @@ describe("development-condition resolution (spec 009)", () => {
         "bun --conditions=development ",
       );
     }
+    expect(
+      extensionPackage.scripts?.["test:jobs-extension-browser:prebuilt"],
+    ).toStartWith("node --conditions=development ");
   });
 });
