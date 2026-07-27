@@ -2390,43 +2390,43 @@ commands and human-facing journey remain T8 scope.
 
 **Acceptance criteria / proof**
 
-- [ ] A pack built by T7 is loaded, unpacked, and compiled for real through the
+- [x] A pack built by T7 is loaded, unpacked, and compiled for real through the
       normal `runPdfExport` path.
-- [ ] Mutating the manifest, Typst, or one asset byte produces a specific
+- [x] Mutating the manifest, Typst, or one asset byte produces a specific
       validation error before compile in each case.
-- [ ] The PDF pack loader rejects a formally correctly hashed pack containing
+- [x] The PDF pack loader rejects a formally correctly hashed pack containing
       extreme raster dimensions or an over-complex SVG before Typst-WASM; the
       direct pack path cannot bypass intake budgets.
-- [ ] A syntactically valid pack with free Typst code is rejected as
+- [x] A syntactically valid pack with free Typst code is rejected as
       `non-canonical-template-source`.
-- [ ] German and English use the same `atlcli.typ` digest but demonstrably
+- [x] German and English use the same `atlcli.typ` digest but demonstrably
       receive different localized document labels through `settings.labels`.
-- [ ] `wiki export --format pdf --template <pack>` demonstrably uses the
+- [x] `wiki export --format pdf --template <pack>` demonstrably uses the
       pack's design/background; without `--template`, Editorial Indigo remains
       active.
-- [ ] An engine integration test with `runPdfExport({ settings:
+- [x] An engine integration test with `runPdfExport({ settings:
       { accentColor: ... } })` proves that Level A settings override only
       declared runtime-bindable targets. This plan introduces no new Level A
       export flags.
-- [ ] An invalid pack path or pack causes zero API calls.
-- [ ] Replacing the pack file after prepare changes neither render nor replay;
+- [x] An invalid pack path or pack causes zero API calls.
+- [x] Replacing the pack file after prepare changes neither render nor replay;
       digest and assets are frozen in the job.
-- [ ] Replacing/deleting the original pack file immediately after request
+- [x] Replacing/deleting the original pack file immediately after request
       persistence and restarting **before** prepare does not change rendering;
       the executor loads only through `recordKey + archiveSha256`.
-- [ ] TemplatePackStore retention keeps bytes while a referencing active or
+- [x] TemplatePackStore retention keeps bytes while a referencing active or
       replayable job exists; cleanup deletes neither foreign nor still
       referenced records.
-- [ ] Store put followed by failed request creation leaves at most one
+- [x] Store put followed by failed request creation leaves at most one
       unreferenced record; orphan reconciliation deletes it only after the
       grace period. Two jobs with the same pack share the record, and
       deleting/completing one job does not remove it for the other.
-- [ ] Built-in requests round-trip unchanged; pack requests accept neither
+- [x] Built-in requests round-trip unchanged; pack requests accept neither
       built-in fields nor local paths nor a hash without a verified store
       record.
-- [ ] The PDF template path works in Node/CLI and the browser harness with the
+- [x] The PDF template path works in Node/CLI and the browser harness with the
       same runtime DTO.
-- [ ] `bun run test packages/pdf/src/template-pack.test.ts
+- [x] `bun run test packages/pdf/src/template-pack.test.ts
       packages/pdf/src/run-export.test.ts
       packages/export-jobs/src/request.test.ts
       packages/export-jobs/src/template-pack-store.test.ts

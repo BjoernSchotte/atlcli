@@ -14,6 +14,7 @@ import {
   validatePdfTemplatePack,
 } from "./template-pack.js";
 import { BUILTIN_PDF_DESIGN } from "./builtin-template.js";
+import { createAtlcliTypstTemplate } from "./template.js";
 import { PDF_RUNTIME_ASSETS } from "./runtime-assets.js";
 
 const encoder = new TextEncoder();
@@ -117,8 +118,7 @@ async function manifestWith(
         decorative: true,
       };
     });
-  return {
-    manifest: validateManifest({
+  const manifest = validateManifest({
       schemaVersion: 1,
       id: "fixture.assets",
       name: "Asset fixture",
@@ -142,9 +142,16 @@ async function manifestWith(
             },
           }
         : {}),
-    }),
-    files,
-  };
+    });
+  if (options.canonical) {
+    files["atlcli.typ"] = encoder.encode(
+      createAtlcliTypstTemplate(
+        manifest.design!,
+        {}
+      )
+    );
+  }
+  return { manifest, files };
 }
 
 function expectPdfReason(
@@ -314,7 +321,7 @@ describe("PDF template pack integrity phase", () => {
         descriptorId: "page.art",
         bytes: svg(),
       },
-    });
+    }, { canonical: true });
     validatePdfTemplateManifest(fixture.manifest);
     const loaded = await validatePdfTemplatePack(
       fixture.manifest,
@@ -356,7 +363,7 @@ describe("PDF template pack integrity phase", () => {
     wrongMagicFixture.manifest.assetDescriptors!.background!.mediaType =
       "image/png";
     await expectPdfReason(
-      () =>
+      async () =>
         validatePdfTemplatePack(
           wrongMagicFixture.manifest,
           wrongMagicFixture.files
@@ -428,7 +435,7 @@ describe("PDF template pack integrity phase", () => {
     );
   });
 
-  it("rejects foreign canonical payloads while preserving legacy readability", async () => {
+  it("rejects foreign canonical payloads and non-canonical executable packs", async () => {
     const canonical = await manifestWith(
       {
         "asset.pageBackground": {
@@ -453,12 +460,14 @@ describe("PDF template pack integrity phase", () => {
         bytes: svg(),
       },
     });
-    await expect(
-      validatePdfTemplatePack(legacy.manifest, {
-        ...legacy.files,
-        "legacy/opaque.bin": new Uint8Array([1, 2, 3]),
-      })
-    ).resolves.toBeDefined();
+    await expectPdfReason(
+      async () =>
+        validatePdfTemplatePack(legacy.manifest, {
+          ...legacy.files,
+          "legacy/opaque.bin": new Uint8Array([1, 2, 3]),
+        }),
+      "non-canonical-template-source"
+    );
   });
 
   it("orchestrates all phases and rejects non-bundled fonts before returning", async () => {
@@ -487,6 +496,85 @@ describe("PDF template pack integrity phase", () => {
     const badArchive = await packTemplate(badFont);
     await expect(loadPdfTemplatePack(badArchive)).rejects.toThrow(
       /not in the bundled font inventory/
+    );
+  });
+
+  it("rejects manifest, canonical Typst, and asset-byte mutation with phase-specific reasons", async () => {
+    const fixture = await manifestWith(
+      {
+        "asset.pageBackground": {
+          descriptorId: "background",
+          bytes: svg("#DDEEFF"),
+        },
+      },
+      { canonical: true }
+    );
+
+    const changedManifest = structuredClone(fixture.manifest);
+    changedManifest.design!.branding.accent = "#123456";
+    await expectPdfReason(
+      async () =>
+        loadPdfTemplatePack(
+          await packTemplate({
+            manifest: changedManifest,
+            files: fixture.files,
+          })
+        ),
+      "non-canonical-template-source"
+    );
+
+    await expectPdfReason(
+      async () =>
+        loadPdfTemplatePack(
+          await packTemplate({
+            manifest: fixture.manifest,
+            files: {
+              ...fixture.files,
+              "atlcli.typ": encoder.encode(
+                '#let atlcli-doc(body) = body\n// free Typst'
+              ),
+            },
+          })
+        ),
+      "non-canonical-template-source"
+    );
+
+    const assetPath =
+      fixture.manifest.assetDescriptors!.background!.path;
+    await expectPdfReason(
+      async () =>
+        loadPdfTemplatePack(
+          await packTemplate({
+            manifest: fixture.manifest,
+            files: {
+              ...fixture.files,
+              [assetPath]: svg("#CCDDEE"),
+            },
+          })
+        ),
+      "hash-mismatch"
+    );
+  });
+
+  it("returns a structured-clone-compatible runtime and rejects a foreign catalog pin", async () => {
+    const fixture = await manifestWith({}, { canonical: true });
+    const runtime = await loadPdfTemplatePack(await packTemplate(fixture));
+    expect(structuredClone(runtime)).toEqual(runtime);
+    expect(runtime.runtimeSnapshot.capabilityCatalog.digest).toMatch(
+      /^[a-f0-9]{64}$/
+    );
+    expect(runtime.canonicalSource.source).toBe(runtime.entrySource);
+
+    const foreign = structuredClone(fixture.manifest);
+    foreign.canonicalSource!.revision = "2";
+    foreign.capabilityCatalog = {
+      id: "wiki.pdf.design-capabilities",
+      version: 1,
+      digest: "0".repeat(64),
+    };
+    await expectPdfReason(
+      () => validatePdfTemplateManifest(foreign),
+      "canonical-source-mismatch"
     );
   });
 });

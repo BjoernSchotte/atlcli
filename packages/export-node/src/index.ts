@@ -30,6 +30,7 @@ export * from "./jobs/file-artifact-store.js";
 export * from "./jobs/delivery.js";
 export * from "./jobs/reconcile.js";
 export * from "./jobs/persistence.js";
+export * from "./jobs/file-template-pack-store.js";
 export * from "./jobs/executor-stores.js";
 export * from "./jobs/render-reservation.js";
 export * from "./jobs/runtime.js";

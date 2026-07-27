@@ -19,6 +19,9 @@ export declare const BUILTIN_PDF_TEMPLATE_MANIFEST: TemplateManifest;
 // export: BUILTIN_PDF_TEMPLATES
 export declare const BUILTIN_PDF_TEMPLATES: Readonly<Record<string, TemplateManifest>>;
 
+// export: clonePdfTemplateRuntime
+export declare function clonePdfTemplateRuntime(runtime: PdfTemplateRuntimeV1): PdfTemplateRuntimeV1;
+
 // export: DocxUniformPageBorderInputV1
 export interface DocxUniformPageBorderInputV1 {
     section: number;
@@ -202,6 +205,9 @@ export declare class FontVerificationError extends Error {
 // export: formatPdfCompilerDiagnostics
 export declare function formatPdfCompilerDiagnostics(diagnostics: PdfCompilerDiagnostic[]): string;
 
+// export: generateCanonicalPdfTemplateSourceV1
+export declare function generateCanonicalPdfTemplateSourceV1(manifest: TemplateManifest, visuals: PdfTemplateVisualsV1): string;
+
 // export: getBuiltinPdfTemplate
 export declare function getBuiltinPdfTemplate(id: string): TemplateManifest | undefined;
 
@@ -349,6 +355,12 @@ export declare const PDF_TEMPLATE_ASSET_SLOTS_V1: readonly [
     "asset.headerDecoration",
     "asset.footerDecoration"
 ];
+
+// export: PDF_TEMPLATE_CAPABILITIES_V1
+export declare const PDF_TEMPLATE_CAPABILITIES_V1: TemplateCapabilityCatalogV1;
+
+// export: PDF_TEMPLATE_CAPABILITY_DIGEST_V1
+export declare const PDF_TEMPLATE_CAPABILITY_DIGEST_V1: "d871153baebf8e1cc318736ea34103213882e5d9569aa0efc820b226753a885c";
 
 // export: PDF_TEMPLATE_DECORATION_IDS_V1
 export declare const PDF_TEMPLATE_DECORATION_IDS_V1: readonly [
@@ -626,6 +638,32 @@ export interface PdfTemplatePreviewModelV1 {
     }[];
 }
 
+// export: PdfTemplateRuntimeSnapshotV1
+export interface PdfTemplateRuntimeSnapshotV1 {
+    schema: "atlcli.pdf-template-runtime-snapshot/1";
+    capabilityCatalog: {
+        id: string;
+        version: number;
+        digest: string;
+    };
+    design: WikiPdfTemplateDesignV1;
+    fallbackLocale: string;
+    fallbackLabels: Readonly<Record<string, string>>;
+    visuals: PdfTemplateVisualsV1;
+}
+
+// export: PdfTemplateRuntimeV1
+export interface PdfTemplateRuntimeV1 {
+    schema: "atlcli.pdf-template-runtime/1";
+    manifest: TemplateManifest;
+    runtimeSnapshot: PdfTemplateRuntimeSnapshotV1;
+    canonicalSource: PdfVerifiedCanonicalSourceV1;
+    assetBytes: Readonly<Partial<Record<PdfTemplateAssetSlotV1, Uint8Array>>>;
+    entrySource: string;
+    assets: Readonly<Partial<Record<PdfTemplateAssetSlotV1, ResolvedPdfTemplateAssetV1>>>;
+    decorations: readonly WikiPdfTemplatePageDecorationV1[];
+}
+
 // export: PdfTemplateSettings
 export interface PdfTemplateSettings {
     page?: "a4" | "letter";
@@ -652,7 +690,7 @@ export declare class PdfTemplateValidationError extends Error {
 export type PdfTemplateValidationPhase = "pdf-manifest" | "pack-integrity";
 
 // export: PdfTemplateValidationReason
-export type PdfTemplateValidationReason = "unknown-slot" | "unknown-decoration" | "unknown-writer" | "invalid-scope" | "invalid-geometry" | "unsupported-decoration" | "unsupported-section-scope" | "missing-payload" | "unreferenced-payload" | "hash-mismatch" | "media-mismatch" | "descriptor-mismatch" | "asset-budget-exceeded" | "unsafe-svg" | "vfs-collision" | "payload-digest-mismatch" | "non-bundled-font" | "unsupported-canonical-revision" | "canonical-source-mismatch";
+export type PdfTemplateValidationReason = "unknown-slot" | "unknown-decoration" | "unknown-writer" | "invalid-scope" | "invalid-geometry" | "unsupported-decoration" | "unsupported-section-scope" | "missing-payload" | "unreferenced-payload" | "hash-mismatch" | "media-mismatch" | "descriptor-mismatch" | "asset-budget-exceeded" | "unsafe-svg" | "vfs-collision" | "payload-digest-mismatch" | "non-bundled-font" | "unsupported-canonical-revision" | "canonical-source-mismatch" | "non-canonical-template-source";
 
 // export: PdfTemplateVisualsV1
 export interface PdfTemplateVisualsV1 {
@@ -690,6 +728,14 @@ export interface PdfThemeOptions {
             minimumContrast?: number;
         };
     };
+}
+
+// export: PdfVerifiedCanonicalSourceV1
+export interface PdfVerifiedCanonicalSourceV1 {
+    api: typeof PDF_CANONICAL_SOURCE_API_V1;
+    revision: string;
+    source: string;
+    sha256: string;
 }
 
 // export: PdfWatermarkSettings
@@ -1018,17 +1064,13 @@ export interface TemplateManifest extends TemplateVisualManifestFieldsV1 {
     settings?: Record<string, ManifestSetting>;
     provenance?: TemplateProvenance;
     design?: WikiPdfTemplateDesignV1;
+    capabilityCatalog?: TemplateCapabilityCatalogReferenceV1;
     bindings?: WikiPdfTemplateSettingBindingV1[];
     localization?: WikiPdfTemplateLocalizationV1;
 }
 
 // export: ValidatedPdfTemplatePackV1
-export interface ValidatedPdfTemplatePackV1 {
-    manifest: TemplateManifest;
-    entrySource: string;
-    assets: Readonly<Partial<Record<PdfTemplateAssetSlotV1, ResolvedPdfTemplateAssetV1>>>;
-    decorations: readonly WikiPdfTemplatePageDecorationV1[];
-}
+export type ValidatedPdfTemplatePackV1 = PdfTemplateRuntimeV1;
 
 // export: validatePdfOutput
 export declare function validatePdfOutput(bytes: Uint8Array): PdfOutputInspection;
@@ -1068,6 +1110,9 @@ export declare const BUILTIN_PDF_TEMPLATE_MANIFEST: TemplateManifest;
 // export: BUILTIN_PDF_TEMPLATES
 export declare const BUILTIN_PDF_TEMPLATES: Readonly<Record<string, TemplateManifest>>;
 
+// export: clonePdfTemplateRuntime
+export declare function clonePdfTemplateRuntime(runtime: PdfTemplateRuntimeV1): PdfTemplateRuntimeV1;
+
 // export: DocxUniformPageBorderInputV1
 export interface DocxUniformPageBorderInputV1 {
     section: number;
@@ -1251,6 +1296,9 @@ export declare class FontVerificationError extends Error {
 // export: formatPdfCompilerDiagnostics
 export declare function formatPdfCompilerDiagnostics(diagnostics: PdfCompilerDiagnostic[]): string;
 
+// export: generateCanonicalPdfTemplateSourceV1
+export declare function generateCanonicalPdfTemplateSourceV1(manifest: TemplateManifest, visuals: PdfTemplateVisualsV1): string;
+
 // export: getBuiltinPdfTemplate
 export declare function getBuiltinPdfTemplate(id: string): TemplateManifest | undefined;
 
@@ -1398,6 +1446,12 @@ export declare const PDF_TEMPLATE_ASSET_SLOTS_V1: readonly [
     "asset.headerDecoration",
     "asset.footerDecoration"
 ];
+
+// export: PDF_TEMPLATE_CAPABILITIES_V1
+export declare const PDF_TEMPLATE_CAPABILITIES_V1: TemplateCapabilityCatalogV1;
+
+// export: PDF_TEMPLATE_CAPABILITY_DIGEST_V1
+export declare const PDF_TEMPLATE_CAPABILITY_DIGEST_V1: "d871153baebf8e1cc318736ea34103213882e5d9569aa0efc820b226753a885c";
 
 // export: PDF_TEMPLATE_DECORATION_IDS_V1
 export declare const PDF_TEMPLATE_DECORATION_IDS_V1: readonly [
@@ -1675,6 +1729,32 @@ export interface PdfTemplatePreviewModelV1 {
     }[];
 }
 
+// export: PdfTemplateRuntimeSnapshotV1
+export interface PdfTemplateRuntimeSnapshotV1 {
+    schema: "atlcli.pdf-template-runtime-snapshot/1";
+    capabilityCatalog: {
+        id: string;
+        version: number;
+        digest: string;
+    };
+    design: WikiPdfTemplateDesignV1;
+    fallbackLocale: string;
+    fallbackLabels: Readonly<Record<string, string>>;
+    visuals: PdfTemplateVisualsV1;
+}
+
+// export: PdfTemplateRuntimeV1
+export interface PdfTemplateRuntimeV1 {
+    schema: "atlcli.pdf-template-runtime/1";
+    manifest: TemplateManifest;
+    runtimeSnapshot: PdfTemplateRuntimeSnapshotV1;
+    canonicalSource: PdfVerifiedCanonicalSourceV1;
+    assetBytes: Readonly<Partial<Record<PdfTemplateAssetSlotV1, Uint8Array>>>;
+    entrySource: string;
+    assets: Readonly<Partial<Record<PdfTemplateAssetSlotV1, ResolvedPdfTemplateAssetV1>>>;
+    decorations: readonly WikiPdfTemplatePageDecorationV1[];
+}
+
 // export: PdfTemplateSettings
 export interface PdfTemplateSettings {
     page?: "a4" | "letter";
@@ -1701,7 +1781,7 @@ export declare class PdfTemplateValidationError extends Error {
 export type PdfTemplateValidationPhase = "pdf-manifest" | "pack-integrity";
 
 // export: PdfTemplateValidationReason
-export type PdfTemplateValidationReason = "unknown-slot" | "unknown-decoration" | "unknown-writer" | "invalid-scope" | "invalid-geometry" | "unsupported-decoration" | "unsupported-section-scope" | "missing-payload" | "unreferenced-payload" | "hash-mismatch" | "media-mismatch" | "descriptor-mismatch" | "asset-budget-exceeded" | "unsafe-svg" | "vfs-collision" | "payload-digest-mismatch" | "non-bundled-font" | "unsupported-canonical-revision" | "canonical-source-mismatch";
+export type PdfTemplateValidationReason = "unknown-slot" | "unknown-decoration" | "unknown-writer" | "invalid-scope" | "invalid-geometry" | "unsupported-decoration" | "unsupported-section-scope" | "missing-payload" | "unreferenced-payload" | "hash-mismatch" | "media-mismatch" | "descriptor-mismatch" | "asset-budget-exceeded" | "unsafe-svg" | "vfs-collision" | "payload-digest-mismatch" | "non-bundled-font" | "unsupported-canonical-revision" | "canonical-source-mismatch" | "non-canonical-template-source";
 
 // export: PdfTemplateVisualsV1
 export interface PdfTemplateVisualsV1 {
@@ -1739,6 +1819,14 @@ export interface PdfThemeOptions {
             minimumContrast?: number;
         };
     };
+}
+
+// export: PdfVerifiedCanonicalSourceV1
+export interface PdfVerifiedCanonicalSourceV1 {
+    api: typeof PDF_CANONICAL_SOURCE_API_V1;
+    revision: string;
+    source: string;
+    sha256: string;
 }
 
 // export: PdfWatermarkSettings
@@ -2067,17 +2155,13 @@ export interface TemplateManifest extends TemplateVisualManifestFieldsV1 {
     settings?: Record<string, ManifestSetting>;
     provenance?: TemplateProvenance;
     design?: WikiPdfTemplateDesignV1;
+    capabilityCatalog?: TemplateCapabilityCatalogReferenceV1;
     bindings?: WikiPdfTemplateSettingBindingV1[];
     localization?: WikiPdfTemplateLocalizationV1;
 }
 
 // export: ValidatedPdfTemplatePackV1
-export interface ValidatedPdfTemplatePackV1 {
-    manifest: TemplateManifest;
-    entrySource: string;
-    assets: Readonly<Partial<Record<PdfTemplateAssetSlotV1, ResolvedPdfTemplateAssetV1>>>;
-    decorations: readonly WikiPdfTemplatePageDecorationV1[];
-}
+export type ValidatedPdfTemplatePackV1 = PdfTemplateRuntimeV1;
 
 // export: validatePdfOutput
 export declare function validatePdfOutput(bytes: Uint8Array): PdfOutputInspection;
@@ -2117,6 +2201,9 @@ export declare const BUILTIN_PDF_TEMPLATE_MANIFEST: TemplateManifest;
 // export: BUILTIN_PDF_TEMPLATES
 export declare const BUILTIN_PDF_TEMPLATES: Readonly<Record<string, TemplateManifest>>;
 
+// export: clonePdfTemplateRuntime
+export declare function clonePdfTemplateRuntime(runtime: PdfTemplateRuntimeV1): PdfTemplateRuntimeV1;
+
 // export: DocxUniformPageBorderInputV1
 export interface DocxUniformPageBorderInputV1 {
     section: number;
@@ -2300,6 +2387,9 @@ export declare class FontVerificationError extends Error {
 // export: formatPdfCompilerDiagnostics
 export declare function formatPdfCompilerDiagnostics(diagnostics: PdfCompilerDiagnostic[]): string;
 
+// export: generateCanonicalPdfTemplateSourceV1
+export declare function generateCanonicalPdfTemplateSourceV1(manifest: TemplateManifest, visuals: PdfTemplateVisualsV1): string;
+
 // export: getBuiltinPdfTemplate
 export declare function getBuiltinPdfTemplate(id: string): TemplateManifest | undefined;
 
@@ -2447,6 +2537,12 @@ export declare const PDF_TEMPLATE_ASSET_SLOTS_V1: readonly [
     "asset.headerDecoration",
     "asset.footerDecoration"
 ];
+
+// export: PDF_TEMPLATE_CAPABILITIES_V1
+export declare const PDF_TEMPLATE_CAPABILITIES_V1: TemplateCapabilityCatalogV1;
+
+// export: PDF_TEMPLATE_CAPABILITY_DIGEST_V1
+export declare const PDF_TEMPLATE_CAPABILITY_DIGEST_V1: "d871153baebf8e1cc318736ea34103213882e5d9569aa0efc820b226753a885c";
 
 // export: PDF_TEMPLATE_DECORATION_IDS_V1
 export declare const PDF_TEMPLATE_DECORATION_IDS_V1: readonly [
@@ -2724,6 +2820,32 @@ export interface PdfTemplatePreviewModelV1 {
     }[];
 }
 
+// export: PdfTemplateRuntimeSnapshotV1
+export interface PdfTemplateRuntimeSnapshotV1 {
+    schema: "atlcli.pdf-template-runtime-snapshot/1";
+    capabilityCatalog: {
+        id: string;
+        version: number;
+        digest: string;
+    };
+    design: WikiPdfTemplateDesignV1;
+    fallbackLocale: string;
+    fallbackLabels: Readonly<Record<string, string>>;
+    visuals: PdfTemplateVisualsV1;
+}
+
+// export: PdfTemplateRuntimeV1
+export interface PdfTemplateRuntimeV1 {
+    schema: "atlcli.pdf-template-runtime/1";
+    manifest: TemplateManifest;
+    runtimeSnapshot: PdfTemplateRuntimeSnapshotV1;
+    canonicalSource: PdfVerifiedCanonicalSourceV1;
+    assetBytes: Readonly<Partial<Record<PdfTemplateAssetSlotV1, Uint8Array>>>;
+    entrySource: string;
+    assets: Readonly<Partial<Record<PdfTemplateAssetSlotV1, ResolvedPdfTemplateAssetV1>>>;
+    decorations: readonly WikiPdfTemplatePageDecorationV1[];
+}
+
 // export: PdfTemplateSettings
 export interface PdfTemplateSettings {
     page?: "a4" | "letter";
@@ -2750,7 +2872,7 @@ export declare class PdfTemplateValidationError extends Error {
 export type PdfTemplateValidationPhase = "pdf-manifest" | "pack-integrity";
 
 // export: PdfTemplateValidationReason
-export type PdfTemplateValidationReason = "unknown-slot" | "unknown-decoration" | "unknown-writer" | "invalid-scope" | "invalid-geometry" | "unsupported-decoration" | "unsupported-section-scope" | "missing-payload" | "unreferenced-payload" | "hash-mismatch" | "media-mismatch" | "descriptor-mismatch" | "asset-budget-exceeded" | "unsafe-svg" | "vfs-collision" | "payload-digest-mismatch" | "non-bundled-font" | "unsupported-canonical-revision" | "canonical-source-mismatch";
+export type PdfTemplateValidationReason = "unknown-slot" | "unknown-decoration" | "unknown-writer" | "invalid-scope" | "invalid-geometry" | "unsupported-decoration" | "unsupported-section-scope" | "missing-payload" | "unreferenced-payload" | "hash-mismatch" | "media-mismatch" | "descriptor-mismatch" | "asset-budget-exceeded" | "unsafe-svg" | "vfs-collision" | "payload-digest-mismatch" | "non-bundled-font" | "unsupported-canonical-revision" | "canonical-source-mismatch" | "non-canonical-template-source";
 
 // export: PdfTemplateVisualsV1
 export interface PdfTemplateVisualsV1 {
@@ -2788,6 +2910,14 @@ export interface PdfThemeOptions {
             minimumContrast?: number;
         };
     };
+}
+
+// export: PdfVerifiedCanonicalSourceV1
+export interface PdfVerifiedCanonicalSourceV1 {
+    api: typeof PDF_CANONICAL_SOURCE_API_V1;
+    revision: string;
+    source: string;
+    sha256: string;
 }
 
 // export: PdfWatermarkSettings
@@ -3116,17 +3246,13 @@ export interface TemplateManifest extends TemplateVisualManifestFieldsV1 {
     settings?: Record<string, ManifestSetting>;
     provenance?: TemplateProvenance;
     design?: WikiPdfTemplateDesignV1;
+    capabilityCatalog?: TemplateCapabilityCatalogReferenceV1;
     bindings?: WikiPdfTemplateSettingBindingV1[];
     localization?: WikiPdfTemplateLocalizationV1;
 }
 
 // export: ValidatedPdfTemplatePackV1
-export interface ValidatedPdfTemplatePackV1 {
-    manifest: TemplateManifest;
-    entrySource: string;
-    assets: Readonly<Partial<Record<PdfTemplateAssetSlotV1, ResolvedPdfTemplateAssetV1>>>;
-    decorations: readonly WikiPdfTemplatePageDecorationV1[];
-}
+export type ValidatedPdfTemplatePackV1 = PdfTemplateRuntimeV1;
 
 // export: validatePdfOutput
 export declare function validatePdfOutput(bytes: Uint8Array): PdfOutputInspection;
@@ -3183,6 +3309,9 @@ export declare function classifyTableLayout(input: {
     availableWidth: number;
 }): TableLayoutClass;
 
+// export: clonePdfTemplateRuntime
+export declare function clonePdfTemplateRuntime(runtime: PdfTemplateRuntimeV1): PdfTemplateRuntimeV1;
+
 // export: createAtlcliTypstTemplate
 export declare function createAtlcliTypstTemplate(design?: WikiPdfTemplateDesignV1, labels?: Record<string, string>, visuals?: PdfTemplateVisualsV1): string;
 
@@ -3206,6 +3335,9 @@ export declare function escapeTypstContent(value: string): string;
 
 // export: escapeTypstString
 export declare function escapeTypstString(value: string): string;
+
+// export: generateCanonicalPdfTemplateSourceV1
+export declare function generateCanonicalPdfTemplateSourceV1(manifest: TemplateManifest, visuals: PdfTemplateVisualsV1): string;
 
 // export: getBuiltinPdfTemplate
 export declare function getBuiltinPdfTemplate(id: string): TemplateManifest | undefined;
@@ -3370,6 +3502,32 @@ export interface PdfTemplatePreviewModelV1 {
     }[];
 }
 
+// export: PdfTemplateRuntimeSnapshotV1
+export interface PdfTemplateRuntimeSnapshotV1 {
+    schema: "atlcli.pdf-template-runtime-snapshot/1";
+    capabilityCatalog: {
+        id: string;
+        version: number;
+        digest: string;
+    };
+    design: WikiPdfTemplateDesignV1;
+    fallbackLocale: string;
+    fallbackLabels: Readonly<Record<string, string>>;
+    visuals: PdfTemplateVisualsV1;
+}
+
+// export: PdfTemplateRuntimeV1
+export interface PdfTemplateRuntimeV1 {
+    schema: "atlcli.pdf-template-runtime/1";
+    manifest: TemplateManifest;
+    runtimeSnapshot: PdfTemplateRuntimeSnapshotV1;
+    canonicalSource: PdfVerifiedCanonicalSourceV1;
+    assetBytes: Readonly<Partial<Record<PdfTemplateAssetSlotV1, Uint8Array>>>;
+    entrySource: string;
+    assets: Readonly<Partial<Record<PdfTemplateAssetSlotV1, ResolvedPdfTemplateAssetV1>>>;
+    decorations: readonly WikiPdfTemplatePageDecorationV1[];
+}
+
 // export: PdfTemplateValidationError
 export declare class PdfTemplateValidationError extends Error {
     readonly phase: PdfTemplateValidationPhase;
@@ -3382,12 +3540,20 @@ export declare class PdfTemplateValidationError extends Error {
 export type PdfTemplateValidationPhase = "pdf-manifest" | "pack-integrity";
 
 // export: PdfTemplateValidationReason
-export type PdfTemplateValidationReason = "unknown-slot" | "unknown-decoration" | "unknown-writer" | "invalid-scope" | "invalid-geometry" | "unsupported-decoration" | "unsupported-section-scope" | "missing-payload" | "unreferenced-payload" | "hash-mismatch" | "media-mismatch" | "descriptor-mismatch" | "asset-budget-exceeded" | "unsafe-svg" | "vfs-collision" | "payload-digest-mismatch" | "non-bundled-font" | "unsupported-canonical-revision" | "canonical-source-mismatch";
+export type PdfTemplateValidationReason = "unknown-slot" | "unknown-decoration" | "unknown-writer" | "invalid-scope" | "invalid-geometry" | "unsupported-decoration" | "unsupported-section-scope" | "missing-payload" | "unreferenced-payload" | "hash-mismatch" | "media-mismatch" | "descriptor-mismatch" | "asset-budget-exceeded" | "unsafe-svg" | "vfs-collision" | "payload-digest-mismatch" | "non-bundled-font" | "unsupported-canonical-revision" | "canonical-source-mismatch" | "non-canonical-template-source";
 
 // export: PdfTemplateVisualsV1
 export interface PdfTemplateVisualsV1 {
     assets: Readonly<Partial<Record<PdfTemplateAssetSlotV1, Pick<ResolvedPdfTemplateAssetV1, "vfsPath" | "reference">>>>;
     decorations: readonly WikiPdfTemplatePageDecorationV1[];
+}
+
+// export: PdfVerifiedCanonicalSourceV1
+export interface PdfVerifiedCanonicalSourceV1 {
+    api: typeof PDF_CANONICAL_SOURCE_API_V1;
+    revision: string;
+    source: string;
+    sha256: string;
 }
 
 // export: preparePdfDocument
@@ -3443,12 +3609,7 @@ export declare function typstLabel(value: string): string;
 export declare function typstString(value: string): string;
 
 // export: ValidatedPdfTemplatePackV1
-export interface ValidatedPdfTemplatePackV1 {
-    manifest: TemplateManifest;
-    entrySource: string;
-    assets: Readonly<Partial<Record<PdfTemplateAssetSlotV1, ResolvedPdfTemplateAssetV1>>>;
-    decorations: readonly WikiPdfTemplatePageDecorationV1[];
-}
+export type ValidatedPdfTemplatePackV1 = PdfTemplateRuntimeV1;
 
 // export: validatePdfOutput
 export declare function validatePdfOutput(bytes: Uint8Array): PdfOutputInspection;

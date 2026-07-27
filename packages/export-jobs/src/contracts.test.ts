@@ -52,7 +52,7 @@ const pdfRequest: PdfExportJobRequestV1 = {
   ...base,
   format: "pdf",
   renderer: "pdf-typst",
-  template: { id: "default", manifestVersion: "1" },
+  template: { kind: "builtin", id: "default", manifestVersion: "1" },
   settings: {},
   options: {
     resolveMacros: true,

@@ -11,6 +11,7 @@ import {
   PDF_CANONICAL_SOURCE_REVISION,
   PDF_RUNTIME_ASSETS,
   PDF_TEMPLATE_WRITERS_V1,
+  generateCanonicalPdfTemplateSourceV1,
   loadPdfTemplatePack,
   preparePdfDocument,
   validatePdfOutput,
@@ -21,9 +22,9 @@ import {
   type PdfTemplateVisualsV1,
 } from "@atlcli/pdf";
 import {
-  BUILTIN_PDF_FALLBACK_LABELS,
   BUILTIN_PDF_TEMPLATE_MANIFEST,
-  createAtlcliTypstTemplate,
+  PDF_TEMPLATE_CAPABILITIES_V1,
+  PDF_TEMPLATE_CAPABILITY_DIGEST_V1,
   serializePdfDocument,
 } from "@atlcli/pdf/internal";
 import { BrowserPdfCompiler } from "@atlcli/pdf-compiler-browser";
@@ -269,6 +270,11 @@ export class CliPdfTemplateRuntimeMaterializer
       name: "Imported PDF design",
       version: "1.0.0",
       design,
+      capabilityCatalog: {
+        id: PDF_TEMPLATE_CAPABILITIES_V1.id,
+        version: PDF_TEMPLATE_CAPABILITIES_V1.version,
+        digest: PDF_TEMPLATE_CAPABILITY_DIGEST_V1,
+      },
       canonicalSource: {
         api: PDF_CANONICAL_SOURCE_API_V1,
         revision: PDF_CANONICAL_SOURCE_REVISION,
@@ -279,29 +285,37 @@ export class CliPdfTemplateRuntimeMaterializer
       provenance: undefined,
     });
     validatePdfTemplateManifest(manifest);
-    const temporaryFiles = {
-      ...visual.files,
-      "atlcli.typ": new Uint8Array(),
-    };
-    const loaded = await validatePdfTemplatePack(manifest, temporaryFiles);
     const visuals: PdfTemplateVisualsV1 = {
       assets: Object.fromEntries(
-        Object.entries(loaded.assets).map(([slot, value]) => [
+        Object.entries(manifest.assets ?? {}).map(([slot, reference]) => {
+          const descriptor = manifest.assetDescriptors?.[reference.descriptor];
+          if (!descriptor) {
+            throw new Error(
+              `PDF template asset ${slot} has no validated descriptor`
+            );
+          }
+          return [
           slot,
-          { vfsPath: value.vfsPath, reference: value.reference },
-        ])
+          {
+            vfsPath: `template-assets/${reference.descriptor
+              .toLowerCase()
+              .replace(/[._]+/g, "-")}.${extension(descriptor.mediaType)}`,
+            reference,
+          },
+        ];
+        })
       ),
-      decorations: loaded.decorations,
+      decorations: manifest.decorations ?? [],
     };
-    const canonicalTypst = createAtlcliTypstTemplate(
-      design,
-      BUILTIN_PDF_FALLBACK_LABELS,
+    const canonicalTypst = generateCanonicalPdfTemplateSourceV1(
+      manifest,
       visuals
     );
     const files = {
       ...visual.files,
       "atlcli.typ": encoder.encode(canonicalTypst),
     };
+    await validatePdfTemplatePack(manifest, files);
     return {
       manifest,
       canonicalTypst,

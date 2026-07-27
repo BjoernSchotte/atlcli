@@ -46,7 +46,7 @@ function request(outputPath: string): PdfExportJobRequestV1 {
     createdAt: 100,
     priority: "interactive",
     output: { policy: "path", targetRef: outputPath, overwriteExisting: false },
-    template: { id: "builtin-default", manifestVersion: "1" },
+    template: { kind: "builtin", id: "builtin-default", manifestVersion: "1" },
     settings: {},
     options: { resolveMacros: true },
   };

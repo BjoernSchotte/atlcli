@@ -10,19 +10,25 @@ import {
   computePayloadSha256,
   unpackTemplate,
   validateManifest,
+  WIKI_PDF_V1_DOCUMENT_LABELS,
   type TemplateAssetDescriptorV1,
   type TemplateAssetMediaTypeV1,
   type TemplateAssetReferenceV1,
   type TemplateCapabilityCatalogV1,
   type TemplateManifest,
+  type WikiPdfTemplateDesignV1,
   type WikiPdfTemplateImageDecorationV1,
   type WikiPdfTemplatePageBorderV1,
   type WikiPdfTemplatePageDecorationV1,
 } from "@atlcli/template-pack";
 import { decodeSvgSource, findSvgSafetyViolation } from "@atlcli/confluence";
-import { PDF_TEMPLATE_CAPABILITIES_V1 } from "./design-catalog.js";
+import {
+  PDF_TEMPLATE_CAPABILITIES_V1,
+  PDF_TEMPLATE_CAPABILITY_DIGEST_V1,
+} from "./design-catalog.js";
 import { PDF_RUNTIME_ASSETS } from "./runtime-assets.js";
 import { PDF_TEMPLATE_ASSET_CAPABILITIES_V1 } from "./template-asset-capabilities.js";
+import { createAtlcliTypstTemplate } from "./template.js";
 
 export const PDF_TEMPLATE_ASSET_SLOTS_V1 = [
   "asset.logo",
@@ -77,7 +83,8 @@ export type PdfTemplateValidationReason =
   | "payload-digest-mismatch"
   | "non-bundled-font"
   | "unsupported-canonical-revision"
-  | "canonical-source-mismatch";
+  | "canonical-source-mismatch"
+  | "non-canonical-template-source";
 
 export class PdfTemplateValidationError extends Error {
   constructor(
@@ -101,14 +108,49 @@ export interface ResolvedPdfTemplateAssetV1 {
   vfsPath: string;
 }
 
-export interface ValidatedPdfTemplatePackV1 {
+export interface PdfTemplateRuntimeSnapshotV1 {
+  schema: "atlcli.pdf-template-runtime-snapshot/1";
+  capabilityCatalog: {
+    id: string;
+    version: number;
+    digest: string;
+  };
+  design: WikiPdfTemplateDesignV1;
+  fallbackLocale: string;
+  fallbackLabels: Readonly<Record<string, string>>;
+  visuals: PdfTemplateVisualsV1;
+}
+
+export interface PdfVerifiedCanonicalSourceV1 {
+  api: typeof PDF_CANONICAL_SOURCE_API_V1;
+  revision: string;
+  source: string;
+  sha256: string;
+}
+
+/**
+ * Structured-clone-compatible execution DTO returned by the untrusted pack
+ * gate. It contains only validated manifest data, the regenerated canonical
+ * source, and accepted asset bytes. Authoring state and arbitrary source paths
+ * never cross this boundary.
+ */
+export interface PdfTemplateRuntimeV1 {
+  schema: "atlcli.pdf-template-runtime/1";
   manifest: TemplateManifest;
+  runtimeSnapshot: PdfTemplateRuntimeSnapshotV1;
+  canonicalSource: PdfVerifiedCanonicalSourceV1;
+  assetBytes: Readonly<
+    Partial<Record<PdfTemplateAssetSlotV1, Uint8Array>>
+  >;
+  /** Backward-compatible alias for the verified canonical source. */
   entrySource: string;
   assets: Readonly<
     Partial<Record<PdfTemplateAssetSlotV1, ResolvedPdfTemplateAssetV1>>
   >;
   decorations: readonly WikiPdfTemplatePageDecorationV1[];
 }
+
+export type ValidatedPdfTemplatePackV1 = PdfTemplateRuntimeV1;
 
 export interface PdfTemplateVisualsV1 {
   assets: Readonly<
@@ -317,6 +359,28 @@ export function validatePdfTemplateManifest(
       "unsupported-canonical-revision",
       "canonicalSource.revision",
       `revision "${manifest.canonicalSource.revision}" needs an explicit template migration; supported revisions: ${PDF_SUPPORTED_CANONICAL_SOURCE_REVISIONS.join(", ")}`
+    );
+  }
+  if (manifest.capabilityCatalog !== undefined) {
+    if (
+      manifest.capabilityCatalog.id !== PDF_TEMPLATE_CAPABILITIES_V1.id ||
+      manifest.capabilityCatalog.version !==
+        PDF_TEMPLATE_CAPABILITIES_V1.version ||
+      manifest.capabilityCatalog.digest !== PDF_TEMPLATE_CAPABILITY_DIGEST_V1
+    ) {
+      reject(
+        "pdf-manifest",
+        "canonical-source-mismatch",
+        "capabilityCatalog",
+        "does not match the renderer-owned PDF capability catalog"
+      );
+    }
+  } else if (manifest.canonicalSource?.revision === "2") {
+    reject(
+      "pdf-manifest",
+      "canonical-source-mismatch",
+      "capabilityCatalog",
+      "is required by canonical source revision 2"
     );
   }
 
@@ -629,6 +693,144 @@ function vfsPath(descriptorId: string, mediaType: TemplateAssetMediaTypeV1): str
   return `template-assets/${safe}.${extension(mediaType)}`;
 }
 
+function fallbackLabels(manifest: TemplateManifest): {
+  locale: string;
+  labels: Readonly<Record<string, string>>;
+} {
+  const localization = manifest.localization;
+  if (!localization) return { locale: "en", labels: {} };
+  const locale = localization.fallbackLocale;
+  const declared = localization.locales[locale]?.document ?? {};
+  return {
+    locale,
+    labels: Object.freeze(
+      Object.fromEntries(
+        WIKI_PDF_V1_DOCUMENT_LABELS.map((key) => [key, declared[key] ?? ""])
+      )
+    ),
+  };
+}
+
+function runtimeVisuals(
+  assets: PdfTemplateRuntimeV1["assets"],
+  decorations: readonly WikiPdfTemplatePageDecorationV1[]
+): PdfTemplateVisualsV1 {
+  return {
+    assets: Object.freeze(
+      Object.fromEntries(
+        Object.entries(assets).map(([slot, asset]) => [
+          slot,
+          {
+            vfsPath: asset.vfsPath,
+            reference: structuredClone(asset.reference),
+          },
+        ])
+      )
+    ),
+    decorations: structuredClone(decorations),
+  };
+}
+
+function canonicalSourceFor(
+  manifest: TemplateManifest,
+  revision: string,
+  labels: Readonly<Record<string, string>>,
+  visuals: PdfTemplateVisualsV1
+): string {
+  if (!manifest.design) {
+    reject(
+      "pack-integrity",
+      "non-canonical-template-source",
+      "design",
+      "a canonical template requires a complete validated design snapshot"
+    );
+  }
+  switch (revision) {
+    case "1":
+      return createAtlcliTypstTemplate(manifest.design, { ...labels });
+    case "2":
+      return createAtlcliTypstTemplate(manifest.design, { ...labels }, visuals);
+    default:
+      reject(
+        "pack-integrity",
+        "unsupported-canonical-revision",
+        "canonicalSource.revision",
+        `revision "${revision}" needs an explicit template migration`
+      );
+  }
+}
+
+/**
+ * Revision-pinned canonical source generator shared by authoring hosts and the
+ * executable loader. The fallback-locale labels are embedded only as defensive
+ * defaults; document-locale labels remain runtime settings.
+ */
+export function generateCanonicalPdfTemplateSourceV1(
+  manifest: TemplateManifest,
+  visuals: PdfTemplateVisualsV1
+): string {
+  validatePdfTemplateManifest(manifest);
+  if (!manifest.canonicalSource) {
+    reject(
+      "pack-integrity",
+      "non-canonical-template-source",
+      "canonicalSource",
+      "is required to generate executable PDF template source"
+    );
+  }
+  const fallback = fallbackLabels(manifest);
+  return canonicalSourceFor(
+    manifest,
+    manifest.canonicalSource.revision,
+    fallback.labels,
+    visuals
+  );
+}
+
+function cloneAsset(
+  asset: ResolvedPdfTemplateAssetV1
+): ResolvedPdfTemplateAssetV1 {
+  return {
+    slot: asset.slot,
+    descriptorId: asset.descriptorId,
+    descriptor: structuredClone(asset.descriptor),
+    reference: structuredClone(asset.reference),
+    bytes: new Uint8Array(asset.bytes),
+    vfsPath: asset.vfsPath,
+  };
+}
+
+/** Clone the accepted runtime before asynchronous preparation can observe mutation. */
+export function clonePdfTemplateRuntime(
+  runtime: PdfTemplateRuntimeV1
+): PdfTemplateRuntimeV1 {
+  const assets = Object.freeze(
+    Object.fromEntries(
+      Object.entries(runtime.assets).map(([slot, asset]) => [
+        slot,
+        cloneAsset(asset),
+      ])
+    )
+  ) as PdfTemplateRuntimeV1["assets"];
+  return {
+    schema: "atlcli.pdf-template-runtime/1",
+    manifest: structuredClone(runtime.manifest),
+    runtimeSnapshot: structuredClone(runtime.runtimeSnapshot),
+    canonicalSource: structuredClone(runtime.canonicalSource),
+    assetBytes: Object.freeze(
+      Object.fromEntries(
+        Object.entries(assets).map(([slot, asset]) => [
+          slot,
+          new Uint8Array(asset.bytes),
+        ])
+      )
+    ),
+    entrySource: runtime.canonicalSource.source,
+    assets,
+    decorations: structuredClone(runtime.decorations),
+  };
+}
+
 /**
  * Phase 3: validate bytes, payload inventory, budgets, and fixed VFS mapping.
  */
@@ -790,11 +992,89 @@ export async function validatePdfTemplatePack(
     }
     assets[slot] = { slot, reference, ...resolved };
   }
-  return {
+  const canonical = manifest.canonicalSource;
+  if (!canonical) {
+    reject(
+      "pack-integrity",
+      "non-canonical-template-source",
+      "canonicalSource",
+      "is required for an executable PDF template pack"
+    );
+  }
+  const decorations = structuredClone(manifest.decorations ?? []);
+  const visuals = runtimeVisuals(assets, decorations);
+  const fallback = fallbackLabels(manifest);
+  const regenerated = generateCanonicalPdfTemplateSourceV1(
     manifest,
-    entrySource: new TextDecoder().decode(files[manifest.engine.entry]),
-    assets,
-    decorations: manifest.decorations ?? [],
+    visuals
+  );
+  const entryBytes = files[manifest.engine.entry];
+  if (!entryBytes) {
+    reject(
+      "pack-integrity",
+      "missing-payload",
+      manifest.engine.entry,
+      "canonical Typst entry is absent"
+    );
+  }
+  const entrySource = new TextDecoder("utf-8", { fatal: true }).decode(
+    entryBytes
+  );
+  if (entrySource !== regenerated) {
+    reject(
+      "pack-integrity",
+      "non-canonical-template-source",
+      manifest.engine.entry,
+      "does not byte-match the selected canonical source generator"
+    );
+  }
+  const sourceSha256 = await sha256Hex(entryBytes);
+  const acceptedAssets = Object.freeze(
+    Object.fromEntries(
+      Object.entries(assets).map(([slot, asset]) => [
+        slot,
+        cloneAsset(asset),
+      ])
+    )
+  ) as PdfTemplateRuntimeV1["assets"];
+  return {
+    schema: "atlcli.pdf-template-runtime/1",
+    manifest: structuredClone(manifest),
+    runtimeSnapshot: {
+      schema: "atlcli.pdf-template-runtime-snapshot/1",
+      capabilityCatalog: {
+        id:
+          manifest.capabilityCatalog?.id ??
+          PDF_TEMPLATE_CAPABILITIES_V1.id,
+        version:
+          manifest.capabilityCatalog?.version ??
+          PDF_TEMPLATE_CAPABILITIES_V1.version,
+        digest:
+          manifest.capabilityCatalog?.digest ??
+          PDF_TEMPLATE_CAPABILITY_DIGEST_V1,
+      },
+      design: structuredClone(manifest.design!),
+      fallbackLocale: fallback.locale,
+      fallbackLabels: structuredClone(fallback.labels),
+      visuals: structuredClone(visuals),
+    },
+    canonicalSource: {
+      api: PDF_CANONICAL_SOURCE_API_V1,
+      revision: canonical.revision,
+      source: regenerated,
+      sha256: sourceSha256,
+    },
+    assetBytes: Object.freeze(
+      Object.fromEntries(
+        Object.entries(acceptedAssets).map(([slot, asset]) => [
+          slot,
+          new Uint8Array(asset.bytes),
+        ])
+      )
+    ),
+    entrySource: regenerated,
+    assets: acceptedAssets,
+    decorations,
   };
 }
 

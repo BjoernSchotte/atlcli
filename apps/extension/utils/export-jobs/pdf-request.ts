@@ -62,6 +62,7 @@ export function createExtensionPdfJobRequest(
     priority: "interactive",
     output: { policy: "collect" },
     template: {
+      kind: "builtin",
       id: BUILTIN_PDF_TEMPLATE_MANIFEST.id,
       manifestVersion: BUILTIN_PDF_TEMPLATE_MANIFEST.version,
     },

@@ -1,7 +1,9 @@
 import {
   cleanupTombstonedExportJob,
   planExportJobLifecycleRetentionV1,
+  TEMPLATE_PACK_ORPHAN_GRACE_MS_V1,
   type ExportJobSnapshotV1,
+  type TemplatePackReachabilityV1,
 } from "@atlcli/export-jobs";
 import type { FileExportJobPersistenceV1 } from "./persistence.js";
 
@@ -36,6 +38,47 @@ async function listCompleteTerminalHistory(
     const last = page.at(-1)!;
     cursorBefore = { createdAt: last.createdAt, id: last.id };
   }
+}
+
+async function listCompleteJobHistory(
+  persistence: FileExportJobPersistenceV1,
+): Promise<ExportJobSnapshotV1[]> {
+  const result: ExportJobSnapshotV1[] = [];
+  let cursorBefore: { createdAt: number; id: string } | undefined;
+  while (true) {
+    const page = await persistence.jobs.list({
+      includeDismissed: true,
+      limit: PAGE_SIZE,
+      ...(cursorBefore ? { cursorBefore } : {}),
+    });
+    result.push(...page);
+    if (page.length < PAGE_SIZE) return result;
+    const last = page.at(-1)!;
+    cursorBefore = { createdAt: last.createdAt, id: last.id };
+  }
+}
+
+async function reconcileTemplatePackReachability(
+  persistence: FileExportJobPersistenceV1,
+  now: number,
+): Promise<void> {
+  const references: TemplatePackReachabilityV1[] = [];
+  for (const snapshot of await listCompleteJobHistory(persistence)) {
+    const request = await persistence.jobs.getRequest(snapshot.requestRef);
+    if (request?.format !== "pdf" || request.template.kind !== "pack") continue;
+    references.push({
+      jobId: snapshot.id,
+      requestRef: snapshot.requestRef,
+      recordKey: request.template.recordKey,
+      archiveSha256: request.template.archiveSha256,
+    });
+  }
+  await persistence.templatePacks.reconcile({
+    completeScan: true,
+    references,
+    now,
+    orphanGraceMs: TEMPLATE_PACK_ORPHAN_GRACE_MS_V1,
+  });
 }
 
 async function reconcileReleasedPayloads(
@@ -139,5 +182,8 @@ export async function sweepFileExportJobRetentionV1(
     historyDeleted += deleted.deletedJobIds.length;
   }
   tombstonesReconciled += await reconcilePendingTombstones(persistence, now);
+  // This is intentionally last: only a complete scan after history deletion
+  // may prove that a content-addressed pack no longer has a retained job.
+  await reconcileTemplatePackReachability(persistence, now);
   return { payloadReleases, historyDeleted, tombstonesReconciled };
 }

@@ -44,5 +44,8 @@
     "@atlcli/export-jobs": "workspace:*",
     "@atlcli/export-macros": "workspace:*",
     "@atlcli/pdf": "workspace:*"
+  },
+  "devDependencies": {
+    "@atlcli/template-pack": "workspace:*"
   }
 }

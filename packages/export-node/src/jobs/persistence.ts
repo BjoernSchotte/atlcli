@@ -7,6 +7,7 @@ import { FileExportLock } from "./file-lock.js";
 import { FileExportSpoolStore } from "./file-spool-store.js";
 import { createFileDocxReadyToRenderStore, createFilePdfReadyToRenderStore, createFileDocxExportResultStore, createFilePdfExportResultStore } from "./executor-stores.js";
 import { createFileDocxRenderReservationPort, createFilePdfRenderReservationPort } from "./render-reservation.js";
+import { FileTemplatePackStoreV1 } from "./file-template-pack-store.js";
 
 export interface FileExportJobPersistenceOptionsV1 {
   rootDir?: string;
@@ -22,6 +23,7 @@ export interface FileExportJobPersistenceV1 {
   jobs: FileExportJobStore;
   spool: FileExportSpoolStore;
   artifacts: FileExportArtifactStore;
+  templatePacks: FileTemplatePackStoreV1;
   /** Shared by DOCX and PDF; acquiring it serializes their heavy peaks. */
   heavyRenderLock: FileExportLock;
   spoolLimits: SpoolWriteLimitsV1;
@@ -44,11 +46,15 @@ export function createFileExportJobPersistence(
     maxTotalBytes: options.maxTotalArtifactBytes,
   });
   const spool = new FileExportSpoolStore(rootDir, { now: options.now, lockTtlMs: options.lockTtlMs });
+  const templatePacks = new FileTemplatePackStoreV1(rootDir, {
+    now: options.now,
+    lockTtlMs: options.lockTtlMs,
+  });
   const jobs = new FileExportJobStore(rootDir, { now: options.now, lockTtlMs: options.lockTtlMs, artifactFinalizer: artifacts });
   const heavyRenderLock = new FileExportLock(join(rootDir, "locks", "heavy-render.lock"), { ttlMs: Math.max(options.lockTtlMs ?? 30_000, 120_000), now: options.now });
   const spoolLimits = options.spoolLimits ?? { maxObjectBytes: 256 * 1024 * 1024, maxJobBytes: 2 * 1024 * 1024 * 1024, maxTotalBytes: 4 * 1024 * 1024 * 1024 };
   const stores = { jobs, spool, rootDir, spoolLimits, now: options.now };
-  return { rootDir, jobs, spool, artifacts, heavyRenderLock, spoolLimits,
+  return { rootDir, jobs, spool, artifacts, templatePacks, heavyRenderLock, spoolLimits,
     pdfReadyToRender: createFilePdfReadyToRenderStore(stores), docxReadyToRender: createFileDocxReadyToRenderStore(stores),
     pdfResults: createFilePdfExportResultStore(stores), docxResults: createFileDocxExportResultStore(stores),
     pdfRenderReservations: createFilePdfRenderReservationPort(heavyRenderLock), docxRenderReservations: createFileDocxRenderReservationPort(heavyRenderLock) };

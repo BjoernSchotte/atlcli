@@ -259,7 +259,11 @@ async function request(
       ...base,
       format,
       renderer: "pdf-typst",
-      template: { id: "builtin.editorial-indigo", manifestVersion: "1.0.0" },
+      template: {
+        kind: "builtin",
+        id: "builtin.editorial-indigo",
+        manifestVersion: "1.0.0",
+      },
       settings: {},
       options: {
         resolveMacros: false,

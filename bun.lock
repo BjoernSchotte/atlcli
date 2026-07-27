@@ -242,6 +242,9 @@
         "@atlcli/export-macros": "workspace:*",
         "@atlcli/pdf": "workspace:*",
       },
+      "devDependencies": {
+        "@atlcli/template-pack": "workspace:*",
+      },
     },
     "packages/jira": {
       "name": "@atlcli/jira",

@@ -81,6 +81,7 @@ export function createOrdinaryPdfExecutorV1(
 ) {
   return createPdfExportJobExecutor({
     ...options,
+    templatePacks: persistence.templatePacks,
     readyToRender: persistence.pdfReadyToRender,
     renderReservations: persistence.pdfRenderReservations,
     results: persistence.pdfResults,
@@ -262,6 +263,18 @@ export async function runOrdinaryExportJobV1<Request extends ExportJobRequestV1>
     request: options.request,
     ...(options.derivedFrom ? { derivedFrom: options.derivedFrom } : {}),
   });
+  if (
+    options.request.format === "pdf" &&
+    options.request.template.kind === "pack"
+  ) {
+    await persistence.templatePacks.link({
+      jobId: created.id,
+      requestRef: created.requestRef,
+      recordKey: options.request.template.recordKey,
+      archiveSha256: options.request.template.archiveSha256,
+      at: now(),
+    });
+  }
   await options.onDurableCreate?.(created);
 
   const monitorAbort = new AbortController();

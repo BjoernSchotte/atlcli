@@ -657,6 +657,7 @@ export interface CreatePdfExportJobExecutorOptionsV1 {
     compiler: PdfCompilePort;
     renderReservations: PdfRenderReservationPortV1;
     results: PdfExportResultStoreV1;
+    templatePacks?: Pick<TemplatePackStoreV1, "get">;
     now?: () => number;
 }
 

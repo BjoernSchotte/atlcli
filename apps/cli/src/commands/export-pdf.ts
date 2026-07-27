@@ -617,9 +617,11 @@ export async function exportPdfAsOrdinaryJob(
   args: ExportPdfArgs,
   jobRequest: PdfExportJobRequestV1,
   derivedFrom?: ExportJobDerivationV1,
+  suppliedPersistence?: ReturnType<typeof createFileExportJobPersistence>,
 ): Promise<ExportOutcome> {
   const startedAt = Date.now();
-  const persistence = createFileExportJobPersistence();
+  const persistence =
+    suppliedPersistence ?? createFileExportJobPersistence();
   let resolvedOutputPath: string | undefined;
   type CliProjection = Pick<ResolvedScope, "sourcePages" | "reconcilablePageId" | "scopeReport"> & {
     outputPath: string;

@@ -13,6 +13,8 @@ import {
   type ExportJobState,
   type ExportJobStore,
   type ExportSpoolStore,
+  type PdfTemplatePackReferenceV1,
+  type TemplatePackStoreV1,
 } from "@atlcli/export-jobs";
 import {
   ERROR_CODES,
@@ -33,6 +35,7 @@ export interface ExportJobPersistenceV1 {
   jobs: ExportJobStore & ExportJobEventReaderV1;
   spool: ExportSpoolStore;
   artifacts: ExportArtifactStore;
+  templatePacks?: TemplatePackStoreV1;
   /** Reconcile stale process leases and prepared finalizations before every command. */
   reconcile(now: number): Promise<unknown>;
   /** Apply the shared payload/history retention policy while the CLI is alive. */
@@ -43,6 +46,7 @@ interface RawExportJobPersistenceV1 {
   jobs: ExportJobStore;
   spool: ExportSpoolStore;
   artifacts: ExportArtifactStore;
+  templatePacks?: TemplatePackStoreV1;
   reconcile?: (now: number) => Promise<unknown>;
   retention?: (now: number) => Promise<unknown>;
 }
@@ -475,10 +479,29 @@ async function replayJob(
     }
     return { request: existingRequest, snapshot: derivation.snapshot };
   }
+  const packReference: PdfTemplatePackReferenceV1 | undefined =
+    derivation.request.format === "pdf" && derivation.request.template.kind === "pack"
+      ? derivation.request.template
+      : undefined;
+  if (packReference) {
+    if (!persistence.templatePacks) {
+      throw new Error("This host has no durable PDF template-pack store.");
+    }
+    await persistence.templatePacks.verify(packReference);
+  }
   const snapshot = await persistence.jobs.create({
     request: derivation.request,
     derivedFrom: derivation.derivedFrom,
   });
+  if (packReference) {
+    await persistence.templatePacks!.link({
+      jobId: snapshot.id,
+      requestRef: snapshot.requestRef,
+      recordKey: packReference.recordKey,
+      archiveSha256: packReference.archiveSha256,
+      at: now(),
+    });
+  }
   return { request: derivation.request, snapshot };
 }
 

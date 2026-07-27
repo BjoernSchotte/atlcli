@@ -90,8 +90,15 @@ export {
   validatePdfTemplateManifest,
   validatePdfTemplatePack,
   loadPdfTemplatePack,
+  clonePdfTemplateRuntime,
+  generateCanonicalPdfTemplateSourceV1,
   buildUniformPdfPageBorderV1,
 } from "./template-pack.js";
+
+export {
+  PDF_TEMPLATE_CAPABILITIES_V1,
+  PDF_TEMPLATE_CAPABILITY_DIGEST_V1,
+} from "./design-catalog.js";
 
 // --- Host-neutral preview compiler adapter ---
 export {
@@ -108,6 +115,9 @@ export type {
   PdfTemplateValidationPhase,
   PdfTemplateValidationReason,
   PdfTemplateVisualsV1,
+  PdfTemplateRuntimeSnapshotV1,
+  PdfVerifiedCanonicalSourceV1,
+  PdfTemplateRuntimeV1,
   ResolvedPdfTemplateAssetV1,
   ValidatedPdfTemplatePackV1,
   DocxUniformPageBorderInputV1,

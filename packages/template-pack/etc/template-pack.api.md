@@ -356,6 +356,13 @@ export interface TemplateAssetReferenceV1 {
     alt?: string;
 }
 
+// export: TemplateCapabilityCatalogReferenceV1
+export interface TemplateCapabilityCatalogReferenceV1 {
+    id: string;
+    version: number;
+    digest: string;
+}
+
 // export: TemplateCapabilityCatalogV1
 export interface TemplateCapabilityCatalogV1 {
     schema: typeof TEMPLATE_CAPABILITY_CATALOG_SCHEMA_V1;
@@ -421,6 +428,7 @@ export interface TemplateManifest extends TemplateVisualManifestFieldsV1 {
     settings?: Record<string, ManifestSetting>;
     provenance?: TemplateProvenance;
     design?: WikiPdfTemplateDesignV1;
+    capabilityCatalog?: TemplateCapabilityCatalogReferenceV1;
     bindings?: WikiPdfTemplateSettingBindingV1[];
     localization?: WikiPdfTemplateLocalizationV1;
 }
@@ -1005,6 +1013,13 @@ export interface TemplateAssetReferenceV1 {
     alt?: string;
 }
 
+// export: TemplateCapabilityCatalogReferenceV1
+export interface TemplateCapabilityCatalogReferenceV1 {
+    id: string;
+    version: number;
+    digest: string;
+}
+
 // export: TemplateCapabilityCatalogV1
 export interface TemplateCapabilityCatalogV1 {
     schema: typeof TEMPLATE_CAPABILITY_CATALOG_SCHEMA_V1;
@@ -1070,6 +1085,7 @@ export interface TemplateManifest extends TemplateVisualManifestFieldsV1 {
     settings?: Record<string, ManifestSetting>;
     provenance?: TemplateProvenance;
     design?: WikiPdfTemplateDesignV1;
+    capabilityCatalog?: TemplateCapabilityCatalogReferenceV1;
     bindings?: WikiPdfTemplateSettingBindingV1[];
     localization?: WikiPdfTemplateLocalizationV1;
 }
@@ -1654,6 +1670,13 @@ export interface TemplateAssetReferenceV1 {
     alt?: string;
 }
 
+// export: TemplateCapabilityCatalogReferenceV1
+export interface TemplateCapabilityCatalogReferenceV1 {
+    id: string;
+    version: number;
+    digest: string;
+}
+
 // export: TemplateCapabilityCatalogV1
 export interface TemplateCapabilityCatalogV1 {
     schema: typeof TEMPLATE_CAPABILITY_CATALOG_SCHEMA_V1;
@@ -1719,6 +1742,7 @@ export interface TemplateManifest extends TemplateVisualManifestFieldsV1 {
     settings?: Record<string, ManifestSetting>;
     provenance?: TemplateProvenance;
     design?: WikiPdfTemplateDesignV1;
+    capabilityCatalog?: TemplateCapabilityCatalogReferenceV1;
     bindings?: WikiPdfTemplateSettingBindingV1[];
     localization?: WikiPdfTemplateLocalizationV1;
 }
@@ -2303,6 +2327,13 @@ export interface TemplateAssetReferenceV1 {
     alt?: string;
 }
 
+// export: TemplateCapabilityCatalogReferenceV1
+export interface TemplateCapabilityCatalogReferenceV1 {
+    id: string;
+    version: number;
+    digest: string;
+}
+
 // export: TemplateCapabilityCatalogV1
 export interface TemplateCapabilityCatalogV1 {
     schema: typeof TEMPLATE_CAPABILITY_CATALOG_SCHEMA_V1;
@@ -2368,6 +2399,7 @@ export interface TemplateManifest extends TemplateVisualManifestFieldsV1 {
     settings?: Record<string, ManifestSetting>;
     provenance?: TemplateProvenance;
     design?: WikiPdfTemplateDesignV1;
+    capabilityCatalog?: TemplateCapabilityCatalogReferenceV1;
     bindings?: WikiPdfTemplateSettingBindingV1[];
     localization?: WikiPdfTemplateLocalizationV1;
 }

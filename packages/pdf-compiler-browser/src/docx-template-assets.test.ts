@@ -12,9 +12,14 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { inflateSync } from "node:zlib";
 import {
+  PDF_CANONICAL_SOURCE_API_V1,
+  PDF_CANONICAL_SOURCE_REVISION,
   PDF_RUNTIME_ASSETS,
+  PDF_TEMPLATE_CAPABILITIES_V1,
+  PDF_TEMPLATE_CAPABILITY_DIGEST_V1,
   PdfTemplatePreviewCompiler as BrowserTemplatePreviewCompiler,
   buildUniformPdfPageBorderV1,
+  generateCanonicalPdfTemplateSourceV1,
   loadPdfTemplatePack,
   preparePdfDocument,
   validatePdfOutput,
@@ -79,9 +84,7 @@ async function fixturePack(): Promise<Uint8Array> {
     "asset.footerDecoration": { descriptor: "footer", decorative: true },
   } as const;
   const assetDescriptors: Record<string, unknown> = {};
-  const files: Record<string, Uint8Array> = {
-    "atlcli.typ": encoder.encode("// canonical source is regenerated in T7"),
-  };
+  const files: Record<string, Uint8Array> = {};
   for (const [id, bytes] of Object.entries(sources)) {
     const width = id === "logo" ? 120 : 80;
     const height = id === "logo" ? 40 : id === "page" || id === "cover" ? 80 : 24;
@@ -156,9 +159,14 @@ async function fixturePack(): Promise<Uint8Array> {
     design,
     bindings: BUILTIN_PDF_TEMPLATE_MANIFEST.bindings,
     localization: BUILTIN_PDF_TEMPLATE_MANIFEST.localization,
+    capabilityCatalog: {
+      id: PDF_TEMPLATE_CAPABILITIES_V1.id,
+      version: PDF_TEMPLATE_CAPABILITIES_V1.version,
+      digest: PDF_TEMPLATE_CAPABILITY_DIGEST_V1,
+    },
     canonicalSource: {
-      api: "wiki.pdf-canonical-typst",
-      revision: "1",
+      api: PDF_CANONICAL_SOURCE_API_V1,
+      revision: PDF_CANONICAL_SOURCE_REVISION,
     },
     assetDescriptors,
     assets: Object.fromEntries(
@@ -213,6 +221,20 @@ async function fixturePack(): Promise<Uint8Array> {
       border,
     ],
   });
+  files["atlcli.typ"] = encoder.encode(
+    generateCanonicalPdfTemplateSourceV1(manifest, {
+      assets: Object.fromEntries(
+        Object.entries(slots).map(([slot, reference]) => [
+          slot,
+          {
+            reference: manifest.assets![slot]!,
+            vfsPath: `template-assets/${reference.descriptor}.svg`,
+          },
+        ])
+      ),
+      decorations: manifest.decorations ?? [],
+    })
+  );
   return packTemplate({ manifest, files });
 }
 

@@ -2032,11 +2032,17 @@ ${body}${commentAppendix}
 
   return {
     main,
-    template: createAtlcliTypstTemplate(
-      settings.design,
-      settings.labels,
-      settings.templateVisuals
-    ),
+    // A pack reaches this branch only after the loader regenerated and
+    // byte-compared its canonical source. Locale labels and declared runtime
+    // bindings travel through `settings`; the static source is never generated
+    // again per document locale.
+    template:
+      options.templatePack?.canonicalSource.source ??
+      createAtlcliTypstTemplate(
+        settings.design,
+        settings.labels,
+        settings.templateVisuals
+      ),
     assets: [
       ...document.assets,
       ...(logoAsset ? [logoAsset] : []),
