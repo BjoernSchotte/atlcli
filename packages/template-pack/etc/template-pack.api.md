@@ -354,6 +354,7 @@ export interface TemplateAssetReferenceV1 {
     writer: string;
     decorative: boolean;
     alt?: string;
+    placement?: WikiPdfTemplateImageDecorationV1["placement"];
 }
 
 // export: TemplateCapabilityCatalogReferenceV1
@@ -1011,6 +1012,7 @@ export interface TemplateAssetReferenceV1 {
     writer: string;
     decorative: boolean;
     alt?: string;
+    placement?: WikiPdfTemplateImageDecorationV1["placement"];
 }
 
 // export: TemplateCapabilityCatalogReferenceV1
@@ -1668,6 +1670,7 @@ export interface TemplateAssetReferenceV1 {
     writer: string;
     decorative: boolean;
     alt?: string;
+    placement?: WikiPdfTemplateImageDecorationV1["placement"];
 }
 
 // export: TemplateCapabilityCatalogReferenceV1
@@ -2325,6 +2328,7 @@ export interface TemplateAssetReferenceV1 {
     writer: string;
     decorative: boolean;
     alt?: string;
+    placement?: WikiPdfTemplateImageDecorationV1["placement"];
 }
 
 // export: TemplateCapabilityCatalogReferenceV1

@@ -29,6 +29,7 @@ export interface DocxSectionInputV1 {
   section: number;
   locator: string;
   page: DocxPageGeometryInputV1;
+  columnCount?: number;
   titlePage?: boolean;
   pageNumberStart?: number;
   headers?: Partial<Record<DocxMasterVariantV1, string>>;
@@ -50,6 +51,7 @@ export interface ResolvedDocxSectionV1 {
   section: number;
   evidence: TemplateEvidenceV1;
   page: ResolvedDocxPageGeometryV1;
+  columnCount: number;
   titlePage: boolean;
   pageNumberStart?: number;
   pageNumberRestart: boolean;
@@ -188,6 +190,12 @@ export async function resolveDocxSections(
         sectionIndex: section.section,
       },
       page: normalizeDocxPageGeometry(section.page),
+      columnCount:
+        section.columnCount !== undefined &&
+        Number.isSafeInteger(section.columnCount) &&
+        section.columnCount > 0
+          ? section.columnCount
+          : 1,
       titlePage: section.titlePage ?? false,
       ...(section.pageNumberStart === undefined
         ? {}

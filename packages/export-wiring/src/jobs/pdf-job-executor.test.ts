@@ -106,7 +106,8 @@ async function canonicalPackBytes(): Promise<{
   const source = createAtlcliTypstTemplate(
     manifest.design!,
     BUILTIN_PDF_FALLBACK_LABELS,
-    { assets: {}, decorations: [] }
+    { assets: {}, decorations: [] },
+    { positionedLogo: true }
   );
   return {
     bytes: await packTemplate({

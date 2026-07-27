@@ -14,6 +14,10 @@ import {
   validatePdfTemplatePack,
 } from "./template-pack.js";
 import { BUILTIN_PDF_DESIGN } from "./builtin-template.js";
+import {
+  PDF_TEMPLATE_CAPABILITIES_V1,
+  PDF_TEMPLATE_CAPABILITY_DIGEST_V1,
+} from "./design-catalog.js";
 import { createAtlcliTypstTemplate } from "./template.js";
 import { PDF_RUNTIME_ASSETS } from "./runtime-assets.js";
 
@@ -51,6 +55,15 @@ async function manifestWith(
         mediaType?: "image/png" | "image/jpeg" | "image/svg+xml";
         decorative?: boolean;
         alt?: string;
+        placement?: {
+          relativeTo: "page" | "margin";
+          fit?: "contain" | "cover" | "stretch";
+          x: string;
+          y: string;
+          width: string;
+          height: string;
+          rotation?: number;
+        };
       }
     >
   >,
@@ -88,6 +101,9 @@ async function manifestWith(
           : PDF_TEMPLATE_WRITERS_V1.imageDecoration,
       decorative: value.decorative ?? slot !== "asset.logo",
       ...(value.alt === undefined ? {} : { alt: value.alt }),
+      ...(value.placement === undefined
+        ? {}
+        : { placement: value.placement }),
     };
     files[path] = value.bytes;
   }
@@ -228,13 +244,20 @@ describe("PDF template manifest phase", () => {
   });
 
   it("keeps the prior canonical revision readable and gives future revisions a migration diagnostic", async () => {
-    expect(PDF_CANONICAL_SOURCE_REVISION).toBe("2");
+    expect(PDF_CANONICAL_SOURCE_REVISION).toBe("3");
     const prior = await manifestWith({}, { canonical: true });
-    prior.manifest.canonicalSource!.revision = "1";
+    expect(validatePdfTemplateManifest(prior.manifest)).toBe(prior.manifest);
+
+    prior.manifest.canonicalSource!.revision = "2";
+    prior.manifest.capabilityCatalog = {
+      id: PDF_TEMPLATE_CAPABILITIES_V1.id,
+      version: PDF_TEMPLATE_CAPABILITIES_V1.version,
+      digest: PDF_TEMPLATE_CAPABILITY_DIGEST_V1,
+    };
     expect(validatePdfTemplateManifest(prior.manifest)).toBe(prior.manifest);
 
     const future = structuredClone(prior.manifest);
-    future.canonicalSource!.revision = "3";
+    future.canonicalSource!.revision = "4";
     await expectPdfReason(
       () => validatePdfTemplateManifest(future),
       "unsupported-canonical-revision"
@@ -251,6 +274,14 @@ describe("PDF template manifest phase", () => {
         bytes: svg(),
         decorative: false,
         alt: "Organization logo",
+        placement: {
+          relativeTo: "margin",
+          fit: "contain",
+          x: "-1.94mm",
+          y: "-0.423mm",
+          width: "49.989mm",
+          height: "11.342mm",
+        },
       },
       "asset.headerDecoration": {
         descriptorId: "header",
@@ -258,6 +289,20 @@ describe("PDF template manifest phase", () => {
       },
     });
     expect(validatePdfTemplateManifest(valid.manifest)).toBe(valid.manifest);
+
+    const positionedOrnament = structuredClone(valid.manifest);
+    positionedOrnament.assets!["asset.headerDecoration"]!.placement = {
+      relativeTo: "margin",
+      fit: "contain",
+      x: "0mm",
+      y: "0mm",
+      width: "35mm",
+      height: "8mm",
+    };
+    await expectPdfReason(
+      () => validatePdfTemplateManifest(positionedOrnament),
+      "unsupported-decoration"
+    );
 
     const meaningfulOrnament = structuredClone(valid.manifest);
     meaningfulOrnament.assets!["asset.headerDecoration"]!.decorative = false;

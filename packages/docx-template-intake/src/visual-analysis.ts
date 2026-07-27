@@ -32,6 +32,7 @@ import {
 import type {
   DocxMasterVariantV1,
   DocxSectionResolutionV1,
+  ResolvedDocxSectionV1,
 } from "./section-resolution.js";
 import { streamXmlPart } from "./streaming.js";
 import {
@@ -1225,7 +1226,18 @@ function parseVisualPart(
   return { scenes, backgrounds, borders, inventory };
 }
 
-function supportedAnchorReference(value: string): boolean {
+function supportedAnchorReference(
+  value: string,
+  axis: "horizontal" | "vertical",
+  section: ResolvedDocxSectionV1 | undefined
+): boolean {
+  if (
+    axis === "horizontal" &&
+    value === "column" &&
+    section?.columnCount === 1
+  ) {
+    return true;
+  }
   return [
     "bottomMargin",
     "insideMargin",
@@ -1239,7 +1251,8 @@ function supportedAnchorReference(value: string): boolean {
 }
 
 function scenePlacement(
-  raw: MutableRawScene
+  raw: MutableRawScene,
+  sections: DocxSectionResolutionV1
 ): DocxScenePlacementV1 | undefined {
   if (raw.inline) {
     return {
@@ -1258,9 +1271,20 @@ function scenePlacement(
         : { kind: "offset", emu: value.offset ?? 0 },
   });
   const localExact = raw.anchor.useSimplePos && raw.anchor.simplePos !== undefined;
+  const section = sections.sections.find(
+    (candidate) => candidate.section === raw.section
+  );
   const pageResolved =
-    supportedAnchorReference(raw.anchor.horizontal.relativeFrom) &&
-    supportedAnchorReference(raw.anchor.vertical.relativeFrom);
+    supportedAnchorReference(
+      raw.anchor.horizontal.relativeFrom,
+      "horizontal",
+      section
+    ) &&
+    supportedAnchorReference(
+      raw.anchor.vertical.relativeFrom,
+      "vertical",
+      section
+    );
   return {
     kind: "anchor",
     horizontal: axis(raw.anchor.horizontal),
@@ -1847,7 +1871,7 @@ export async function analyzeDocxVisualArchive(
       selected: raw.alternate?.selected ?? true,
       sourceUse,
     };
-    const placement = scenePlacement(raw);
+    const placement = scenePlacement(raw, options.sections);
     for (const assignment of assignments) {
       const id = `${sceneBase}.section.${assignment.section}.${assignment.master ?? "body"}`;
       const existing = scenesById.get(id);

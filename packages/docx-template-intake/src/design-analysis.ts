@@ -410,6 +410,7 @@ function parseDocument(
     | {
         depth: number;
         page: Partial<DocxPageGeometryInputV1>;
+        columnCount: number;
         titlePage: boolean;
         pageNumberStart?: number;
         headers: NonNullable<DocxSectionInputV1["headers"]>;
@@ -438,6 +439,7 @@ function parseDocument(
         currentSection = {
           depth: event.depth,
           page: {},
+          columnCount: 1,
           titlePage: false,
           headers: {},
           footers: {},
@@ -466,6 +468,10 @@ function parseDocument(
         currentSection.page.marginLeftTwips = integer(
           attribute(event, "left", WORD_URIS)
         );
+      } else if (currentSection && event.local === "cols") {
+        const count = integer(attribute(event, "num", WORD_URIS));
+        currentSection.columnCount =
+          count !== undefined && count > 0 ? count : 1;
       } else if (currentSection && event.local === "titlePg") {
         currentSection.titlePage = onOff(attribute(event, "val", WORD_URIS));
       } else if (currentSection && event.local === "pgNumType") {
@@ -544,6 +550,7 @@ function parseDocument(
             section: sections.length,
             locator: `document.section.${sections.length}`,
             page: candidate as DocxPageGeometryInputV1,
+            columnCount: currentSection.columnCount,
             titlePage: currentSection.titlePage,
             ...(currentSection.pageNumberStart === undefined
               ? {}

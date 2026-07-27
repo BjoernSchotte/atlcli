@@ -52,7 +52,8 @@ async function canonicalRuntime() {
   const source = createAtlcliTypstTemplate(
     manifest.design!,
     BUILTIN_PDF_FALLBACK_LABELS,
-    { assets: {}, decorations: [] }
+    { assets: {}, decorations: [] },
+    { positionedLogo: true }
   );
   const bytes = await packTemplate({
     manifest,

@@ -29,6 +29,18 @@ const section = (
 });
 
 describe("DOCX section and page-master resolution", () => {
+  test("defaults to one content column and preserves an explicit column count", async () => {
+    const result = await resolveDocxSections({
+      evenAndOddHeaders: false,
+      sections: [section(0), section(1, { columnCount: 2 })],
+    });
+
+    expect(result.sections.map(({ columnCount }) => columnCount)).toEqual([
+      1,
+      2,
+    ]);
+  });
+
   test("normalizes A4 and Letter within tolerance without rounding custom paper", () => {
     expect(
       normalizeDocxPageGeometry(

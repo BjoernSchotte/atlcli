@@ -7,6 +7,28 @@ import {
 import { ATLCLI_TYPST_TEMPLATE, createAtlcliTypstTemplate } from "./template.js";
 
 describe("atlcli Typst template settings rendering", () => {
+  it("keeps positioned-logo execution behind canonical revision 3", () => {
+    const prior = createAtlcliTypstTemplate();
+    const current = createAtlcliTypstTemplate(
+      undefined,
+      {},
+      undefined,
+      { positionedLogo: true }
+    );
+
+    expect(prior).not.toContain('settings.at("logo-placement"');
+    expect(prior).toContain("#if logo-path != none [");
+    expect(current).toContain('settings.at("logo-placement"');
+    expect(current).toContain(
+      "logo-path != none and logo-placement != none"
+    );
+    expect(current).toContain(
+      "logo-path != none and logo-placement == none"
+    );
+    expect(current).toContain(
+      "place(top + left, dx: logo-x, dy: logo-y, placed-logo)"
+    );
+  });
   const template = ATLCLI_TYPST_TEMPLATE;
 
   it("reads page geometry from the resolved design (spec 012)", () => {

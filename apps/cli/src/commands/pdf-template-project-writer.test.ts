@@ -498,9 +498,48 @@ describe("private intake and real executable pack gate", () => {
       candidates: [],
       mappingVersion: "mapping-1",
     });
+    const logoBytes = new TextEncoder().encode(
+      '<svg xmlns="http://www.w3.org/2000/svg" width="500" height="110" viewBox="0 0 500 110"><rect width="500" height="110" fill="#4B57A3"/></svg>'
+    );
+    const logoDigest = await sha256Hex(logoBytes);
     const materialized = await new PdfTemplateRuntimeMaterializer().materialize(
       snapshot,
-      []
+      [
+        {
+          slot: "asset.logo",
+          sha256: logoDigest,
+          mediaType: "image/svg+xml",
+          bytes: logoBytes,
+          accessibility: {
+            decorative: false,
+            alt: "Organization logo",
+          },
+          rendering: {
+            kind: "candidate-placement",
+            placement: {
+              relativeTo: "margin",
+              fit: "contain",
+              x: "-1.94mm",
+              y: "-0.423mm",
+              width: "49.989mm",
+              height: "11.342mm",
+            },
+          },
+        },
+      ]
+    );
+    expect(
+      materialized.manifest.assets?.["asset.logo"]?.placement
+    ).toEqual({
+      relativeTo: "margin",
+      fit: "contain",
+      x: "-1.94mm",
+      y: "-0.423mm",
+      width: "49.989mm",
+      height: "11.342mm",
+    });
+    expect(materialized.canonicalTypst).toContain(
+      "logo-path != none and logo-placement != none"
     );
     const build: TemplateProjectBuildV1 = {
       schema: TEMPLATE_PROJECT_BUILD_SCHEMA_V1,

@@ -1184,6 +1184,30 @@ seven explicitly non-transferable items. The source document, its path,
 digest, content, and extracted private assets remain uncommitted and are not
 recorded in this evidence file.
 
+The same document also exposed a stable mixed-axis DrawingML logo anchor:
+horizontal `column` and vertical `page` in a one-column section. Intake now
+normalizes those axes into one margin-relative placement while retaining the
+source extent. A multi-column negative remains layout-dependent. The user
+explicitly confirmed role, rights, meaningful accessibility text, and
+`candidate-placement`; no heuristic silently included the image.
+
+The resulting canonical-revision-3 pack retained the accepted PNG and its
+placement in the `asset.logo` reference. It compiled through pinned
+Typst-WASM, then produced a ten-page tagged A4 PDF from the retained `DOCSY`
+page through the configured live profile. Page 1 was rendered with Poppler and
+visually inspected at original resolution: the logo appeared once in the
+detected upper-left position and size, with no fixed-slot duplicate, clipping,
+or overlap. The generated private project, pack, PDF raster, page content,
+source identifier, asset digest, and source path remain ignored or untracked.
+
+| Supplemental proof | Result |
+|---|---|
+| Analyzer, CLI, manifest, settings, canonical source, and real compile tests | Passed; 98 tests, 654 assertions, 0 failures |
+| Full build and API reports | Passed; 19 build tasks; all three changed public API reports regenerated |
+| Private DOCX import/build | Passed through the normal CLI; stable logo placement available and explicitly accepted |
+| Live retained-page export | Passed; 10-page tagged A4 PDF, one embedded page image, one rendered diagram, no export errors |
+| Page-1 visual inspection | Passed; accepted logo present once at detected placement with no clipping or overlap |
+
 ### External usability evidence
 
 The

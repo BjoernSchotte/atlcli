@@ -314,6 +314,53 @@ describe("DrawingML and page-scene resolution", () => {
     ).toEqual(["page-resolved", "layout-dependent"]);
   });
 
+  test("resolves a column anchor only when the section has one content column", async () => {
+    const source = visualDocx({
+      document: wordDocument(
+        anchorDrawing("rLogo", {
+          horizontal: "column",
+          horizontalOffset: -69_850,
+          vertical: "page",
+          verticalOffset: 899_160,
+          width: 1_799_590,
+          height: 408_305,
+        })
+      ),
+      documentRelationships: imageRelationships([
+        { id: "rLogo", target: "media/logo.png" },
+      ]),
+      entries: { "word/media/logo.png": png(1_000, 227) },
+    });
+    const analyze = async (columnCount: number) =>
+      analyzeDocxVisualAssets(source, {
+        capabilities: TEST_VISUAL_CAPABILITIES,
+        assetStore: new TrackingAssetStore(),
+        sections: await singleSection({ columnCount }),
+      });
+
+    const single = await analyze(1);
+    expect(single.analysis.scenes[0]).toMatchObject({
+      compatibility: "native",
+      placement: {
+        resolution: "page-resolved",
+        horizontal: {
+          relativeFrom: "column",
+          value: { kind: "offset", emu: -69_850 },
+        },
+        vertical: {
+          relativeFrom: "page",
+          value: { kind: "offset", emu: 899_160 },
+        },
+      },
+    });
+
+    const multiple = await analyze(2);
+    expect(multiple.analysis.scenes[0]).toMatchObject({
+      compatibility: "unsupported",
+      placement: { resolution: "layout-dependent" },
+    });
+  });
+
   test("keeps private Unicode metadata only in the private sidecar", async () => {
     const privateValues = {
       part: "word/media/秘密-😀.png",

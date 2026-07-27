@@ -159,6 +159,8 @@ export function anchorDrawing(
   options: {
     horizontal?: string;
     vertical?: string;
+    horizontalOffset?: number;
+    verticalOffset?: number;
     width?: number;
     height?: number;
     behindDoc?: boolean;
@@ -177,8 +179,14 @@ export function anchorDrawing(
     ` simplePos="${options.simplePos ? "1" : "0"}" relativeHeight="42"`,
     ` behindDoc="${options.behindDoc ? "1" : "0"}" allowOverlap="1" layoutInCell="0">`,
     `<wp:simplePos x="111" y="222"/>`,
-    `<wp:positionH relativeFrom="${options.horizontal ?? "page"}"><wp:align>center</wp:align></wp:positionH>`,
-    `<wp:positionV relativeFrom="${options.vertical ?? "margin"}"><wp:posOffset>333</wp:posOffset></wp:positionV>`,
+    `<wp:positionH relativeFrom="${options.horizontal ?? "page"}">${
+      options.horizontalOffset === undefined
+        ? "<wp:align>center</wp:align>"
+        : `<wp:posOffset>${options.horizontalOffset}</wp:posOffset>`
+    }</wp:positionH>`,
+    `<wp:positionV relativeFrom="${options.vertical ?? "margin"}"><wp:posOffset>${
+      options.verticalOffset ?? 333
+    }</wp:posOffset></wp:positionV>`,
     `<wp:extent cx="${options.width ?? 7000000}" cy="${options.height ?? 9000000}"/>`,
     `<wp:effectExtent l="1" t="2" r="3" b="4"/>`,
     `<wp:wrapSquare/>`,
@@ -240,6 +248,7 @@ export async function singleSection(
   overrides: {
     titlePage?: boolean;
     pageNumberStart?: number;
+    columnCount?: number;
     headers?: Partial<Record<"default" | "even" | "first", string>>;
     footers?: Partial<Record<"default" | "even" | "first", string>>;
     evenAndOddHeaders?: boolean;
@@ -259,6 +268,9 @@ export async function singleSection(
           marginBottomTwips: 1_440,
           marginLeftTwips: 1_440,
         },
+        ...(overrides.columnCount === undefined
+          ? {}
+          : { columnCount: overrides.columnCount }),
         ...(overrides.titlePage === undefined
           ? {}
           : { titlePage: overrides.titlePage }),

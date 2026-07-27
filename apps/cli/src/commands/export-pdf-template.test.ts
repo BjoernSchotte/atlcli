@@ -137,7 +137,8 @@ async function generatedPack(): Promise<Uint8Array> {
         },
       },
       decorations: manifest.decorations!,
-    }
+    },
+    { positionedLogo: true }
   );
   return packTemplate({
     manifest,

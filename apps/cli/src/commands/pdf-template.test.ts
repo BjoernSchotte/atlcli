@@ -1358,6 +1358,86 @@ describe("pdf-template CLI expert validation", () => {
     }
   });
 
+  test("stable one-column Word logo coordinates can be accepted into the template", async () => {
+    const root = await workspace();
+    const source = join(root, "positioned-logo.docx");
+    await writeFile(
+      source,
+      visualDocx({
+        document: wordDocument(
+          `${anchorDrawing("rLogo", {
+            horizontal: "column",
+            vertical: "page",
+            horizontalOffset: -69_850,
+            verticalOffset: 899_160,
+            width: 1_799_590,
+            height: 408_305,
+            rotation: 0,
+          })}<w:sectPr><w:pgSz w:w="11906" w:h="16838"/><w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/><w:cols w:num="1"/></w:sectPr>`
+        ),
+        documentRelationships: imageRelationships([
+          { id: "rLogo", target: "media/logo.png" },
+        ]),
+        entries: { "word/media/logo.png": png(500, 110) },
+      })
+    );
+    const deps = dependencies(root);
+    const imported = await executePdfTemplateCommand(
+      ["import", source],
+      {},
+      deps.value
+    );
+    const projectDir = join(root, "positioned-logo-pdf-template");
+    const assetItem = imported.view?.sections
+      .flatMap(({ items }) => items)
+      .find(
+        (item) =>
+          item.labelCode === "DOCX_CONCEPT_VISUAL_ASSET" &&
+          item.actions.some(
+            ({ kind, enabled }) => kind === "review-asset" && enabled
+          )
+      );
+    expect(assetItem).toBeDefined();
+
+    await executePdfTemplateCommand(
+      ["decide"],
+      {
+        dir: projectDir,
+        candidate: assetItem!.details.candidateIds[0]!,
+        "accept-asset": true,
+        role: "logo",
+        "rights-confirmed": true,
+        meaningful: true,
+        alt: "Organization logo",
+        "use-candidate-placement": true,
+      },
+      deps.value
+    );
+
+    const id = await readTemplateProjectIdentity(projectDir);
+    const project = (
+      await new DirectoryTemplateProjectRepository(projectDir).read(id)
+    ).project!;
+    expect(
+      project.decisions.decisions.find(
+        ({ kind }) => kind === "accept-asset"
+      )
+    ).toMatchObject({
+      role: "asset.logo",
+      rendering: {
+        kind: "candidate-placement",
+        placement: {
+          relativeTo: "margin",
+          fit: "contain",
+          x: "-1.94mm",
+          y: "-0.423mm",
+          width: "49.989mm",
+          height: "11.342mm",
+        },
+      },
+    });
+  });
+
   test("layout-dependent graphic placement cannot be frozen as a candidate placement", async () => {
     const root = await workspace();
     const source = join(root, "layout-dependent.docx");

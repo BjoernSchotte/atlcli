@@ -675,6 +675,8 @@ function numberLiteral(value: number): string {
 
 /** Typst dictionary keys we are willing to interpolate unquoted into source. */
 const EMITTABLE_KEY_RE = /^[A-Za-z][A-Za-z0-9]*$/;
+const EMITTABLE_LENGTH_RE =
+  /^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:pt|mm|cm|in)$/;
 
 /**
  * Assert a dictionary key is safe to interpolate into Typst source unquoted.
@@ -690,6 +692,17 @@ function assertEmittableKey(key: string, namespace: string): void {
       constraint: "dictionary key must be a safe identifier ([A-Za-z][A-Za-z0-9]*)",
     });
   }
+}
+
+function emittableLength(value: string, path: string): string {
+  if (!EMITTABLE_LENGTH_RE.test(value)) {
+    throw new PdfSettingsError({
+      path,
+      value,
+      constraint: "length must be a finite pt/mm/cm/in literal",
+    });
+  }
+  return value;
 }
 
 /**
@@ -762,6 +775,33 @@ export function typstSettingsDict(
       `  logo: ${typstString(options.logoPath)},`,
       `  logo-alt: ${typstString(resolved.logo.alt)},`
     );
+    const placement =
+      resolved.templateVisuals?.assets["asset.logo"]?.reference.placement;
+    if (placement) {
+      lines.push(
+        "  logo-placement: (",
+        `    relativeTo: ${typstString(placement.relativeTo)},`,
+        `    fit: ${typstString(placement.fit ?? "contain")},`,
+        `    x: ${emittableLength(
+          placement.x,
+          "templatePack.assets.asset.logo.placement.x"
+        )},`,
+        `    y: ${emittableLength(
+          placement.y,
+          "templatePack.assets.asset.logo.placement.y"
+        )},`,
+        `    width: ${emittableLength(
+          placement.width,
+          "templatePack.assets.asset.logo.placement.width"
+        )},`,
+        `    height: ${emittableLength(
+          placement.height,
+          "templatePack.assets.asset.logo.placement.height"
+        )},`,
+        `    rotation: ${numberLiteral(placement.rotation ?? 0)},`,
+        "  ),"
+      );
+    }
   }
   if (resolved.watermark) {
     const watermark = resolved.watermark;

@@ -325,7 +325,7 @@ export declare function parseFontMeta(bytes: Uint8Array): ParsedFontFace[];
 export declare const PDF_CANONICAL_SOURCE_API_V1 = "wiki.pdf-canonical-typst";
 
 // export: PDF_CANONICAL_SOURCE_REVISION
-export declare const PDF_CANONICAL_SOURCE_REVISION = "2";
+export declare const PDF_CANONICAL_SOURCE_REVISION = "3";
 
 // export: PDF_RUNTIME_ASSETS
 export declare const PDF_RUNTIME_ASSETS: Readonly<{
@@ -341,7 +341,8 @@ export declare const PDF_RUNTIME_ASSETS: Readonly<{
 // export: PDF_SUPPORTED_CANONICAL_SOURCE_REVISIONS
 export declare const PDF_SUPPORTED_CANONICAL_SOURCE_REVISIONS: readonly [
     "1",
-    "2"
+    "2",
+    "3"
 ];
 
 // export: PDF_TEMPLATE_ASSET_CAPABILITIES_V1
@@ -1431,7 +1432,7 @@ export declare function parseFontMeta(bytes: Uint8Array): ParsedFontFace[];
 export declare const PDF_CANONICAL_SOURCE_API_V1 = "wiki.pdf-canonical-typst";
 
 // export: PDF_CANONICAL_SOURCE_REVISION
-export declare const PDF_CANONICAL_SOURCE_REVISION = "2";
+export declare const PDF_CANONICAL_SOURCE_REVISION = "3";
 
 // export: PDF_RUNTIME_ASSETS
 export declare const PDF_RUNTIME_ASSETS: Readonly<{
@@ -1447,7 +1448,8 @@ export declare const PDF_RUNTIME_ASSETS: Readonly<{
 // export: PDF_SUPPORTED_CANONICAL_SOURCE_REVISIONS
 export declare const PDF_SUPPORTED_CANONICAL_SOURCE_REVISIONS: readonly [
     "1",
-    "2"
+    "2",
+    "3"
 ];
 
 // export: PDF_TEMPLATE_ASSET_CAPABILITIES_V1
@@ -2537,7 +2539,7 @@ export declare function parseFontMeta(bytes: Uint8Array): ParsedFontFace[];
 export declare const PDF_CANONICAL_SOURCE_API_V1 = "wiki.pdf-canonical-typst";
 
 // export: PDF_CANONICAL_SOURCE_REVISION
-export declare const PDF_CANONICAL_SOURCE_REVISION = "2";
+export declare const PDF_CANONICAL_SOURCE_REVISION = "3";
 
 // export: PDF_RUNTIME_ASSETS
 export declare const PDF_RUNTIME_ASSETS: Readonly<{
@@ -2553,7 +2555,8 @@ export declare const PDF_RUNTIME_ASSETS: Readonly<{
 // export: PDF_SUPPORTED_CANONICAL_SOURCE_REVISIONS
 export declare const PDF_SUPPORTED_CANONICAL_SOURCE_REVISIONS: readonly [
     "1",
-    "2"
+    "2",
+    "3"
 ];
 
 // export: PDF_TEMPLATE_ASSET_CAPABILITIES_V1
@@ -3358,7 +3361,9 @@ export declare function classifyTableLayout(input: {
 export declare function clonePdfTemplateRuntime(runtime: PdfTemplateRuntimeV1): PdfTemplateRuntimeV1;
 
 // export: createAtlcliTypstTemplate
-export declare function createAtlcliTypstTemplate(design?: WikiPdfTemplateDesignV1, labels?: Record<string, string>, visuals?: PdfTemplateVisualsV1): string;
+export declare function createAtlcliTypstTemplate(design?: WikiPdfTemplateDesignV1, labels?: Record<string, string>, visuals?: PdfTemplateVisualsV1, options?: {
+    positionedLogo?: boolean;
+}): string;
 
 // export: DEFAULT_PDF_THEME
 export declare const DEFAULT_PDF_THEME: Readonly<PdfTheme>;
@@ -3432,7 +3437,7 @@ export declare const PDF_ASSET_CONCURRENCY = 4;
 export declare const PDF_CANONICAL_SOURCE_API_V1 = "wiki.pdf-canonical-typst";
 
 // export: PDF_CANONICAL_SOURCE_REVISION
-export declare const PDF_CANONICAL_SOURCE_REVISION = "2";
+export declare const PDF_CANONICAL_SOURCE_REVISION = "3";
 
 // export: PDF_MAX_ASSET_BYTES
 export declare const PDF_MAX_ASSET_BYTES: number;
@@ -3446,7 +3451,8 @@ export declare const PDF_SCAN_CHUNK_BYTES: number;
 // export: PDF_SUPPORTED_CANONICAL_SOURCE_REVISIONS
 export declare const PDF_SUPPORTED_CANONICAL_SOURCE_REVISIONS: readonly [
     "1",
-    "2"
+    "2",
+    "3"
 ];
 
 // export: PDF_TEMPLATE_ASSET_SLOTS_V1
@@ -3676,5 +3682,7 @@ export declare function writePdfDesignCapability(design: WikiPdfTemplateDesignV1
 export declare const ATLCLI_TYPST_TEMPLATE: string;
 
 // export: createAtlcliTypstTemplate
-export declare function createAtlcliTypstTemplate(design?: WikiPdfTemplateDesignV1, labels?: Record<string, string>, visuals?: PdfTemplateVisualsV1): string;
+export declare function createAtlcliTypstTemplate(design?: WikiPdfTemplateDesignV1, labels?: Record<string, string>, visuals?: PdfTemplateVisualsV1, options?: {
+    positionedLogo?: boolean;
+}): string;
 ```

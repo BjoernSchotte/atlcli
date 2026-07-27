@@ -328,6 +328,15 @@ function manifestAssetFields(
       ...(asset.accessibility.alt
         ? { alt: asset.accessibility.alt }
         : {}),
+      ...(slot === "asset.logo" &&
+      asset.rendering.kind !== "slot-default" &&
+      asset.rendering.placement
+        ? {
+            placement:
+              asset.rendering
+                .placement as unknown as TemplateAssetReferenceV1["placement"],
+          }
+        : {}),
     };
     const decoration = decorationFor(asset, design);
     if (decoration) decorations.push(decoration);

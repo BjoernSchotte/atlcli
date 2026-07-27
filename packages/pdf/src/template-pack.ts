@@ -57,8 +57,12 @@ export const PDF_TEMPLATE_WRITERS_V1 = {
 } as const;
 
 export const PDF_CANONICAL_SOURCE_API_V1 = "wiki.pdf-canonical-typst";
-export const PDF_CANONICAL_SOURCE_REVISION = "2";
-export const PDF_SUPPORTED_CANONICAL_SOURCE_REVISIONS = ["1", "2"] as const;
+export const PDF_CANONICAL_SOURCE_REVISION = "3";
+export const PDF_SUPPORTED_CANONICAL_SOURCE_REVISIONS = [
+  "1",
+  "2",
+  "3",
+] as const;
 
 export type PdfTemplateValidationPhase =
   | "pdf-manifest"
@@ -202,16 +206,15 @@ function lengthMm(value: string, path: string): number {
   return Number(match[1]) * UNITS_IN_MM[match[2]]!;
 }
 
-function validateGeometry(
-  decoration: WikiPdfTemplateImageDecorationV1,
+function validatePlacementGeometry(
+  placement: WikiPdfTemplateImageDecorationV1["placement"],
   path: string
 ): void {
-  const placement = decoration.placement;
   const values = [
-    ["x", lengthMm(placement.x, `${path}.placement.x`)],
-    ["y", lengthMm(placement.y, `${path}.placement.y`)],
-    ["width", lengthMm(placement.width, `${path}.placement.width`)],
-    ["height", lengthMm(placement.height, `${path}.placement.height`)],
+    ["x", lengthMm(placement.x, `${path}.x`)],
+    ["y", lengthMm(placement.y, `${path}.y`)],
+    ["width", lengthMm(placement.width, `${path}.width`)],
+    ["height", lengthMm(placement.height, `${path}.height`)],
   ] as const;
   for (const [name, value] of values) {
     if (
@@ -221,7 +224,7 @@ function validateGeometry(
       reject(
         "pdf-manifest",
         "invalid-geometry",
-        `${path}.placement.${name}`,
+        `${path}.${name}`,
         `must fit the bounded ${MAX_PLACEMENT_MM}mm renderer canvas`
       );
     }
@@ -232,7 +235,7 @@ function validateGeometry(
     reject(
       "pdf-manifest",
       "unsupported-decoration",
-      `${path}.placement.opacity`,
+      `${path}.opacity`,
       "PDF V1 supports only opaque image decorations"
     );
   }
@@ -240,10 +243,17 @@ function validateGeometry(
     reject(
       "pdf-manifest",
       "unsupported-decoration",
-      `${path}.placement.crop`,
+      `${path}.crop`,
       "PDF V1 does not execute image crop geometry"
     );
   }
+}
+
+function validateGeometry(
+  decoration: WikiPdfTemplateImageDecorationV1,
+  path: string
+): void {
+  validatePlacementGeometry(decoration.placement, `${path}.placement`);
 }
 
 function expectedImageDecoration(
@@ -375,12 +385,15 @@ export function validatePdfTemplateManifest(
         "does not match the renderer-owned PDF capability catalog"
       );
     }
-  } else if (manifest.canonicalSource?.revision === "2") {
+  } else if (
+    manifest.canonicalSource?.revision === "2" ||
+    manifest.canonicalSource?.revision === "3"
+  ) {
     reject(
       "pdf-manifest",
       "canonical-source-mismatch",
       "capabilityCatalog",
-      "is required by canonical source revision 2"
+      "is required by canonical source revision 2 or later"
     );
   }
 
@@ -419,6 +432,19 @@ export function validatePdfTemplateManifest(
           "a logo is meaning-bearing and requires non-empty alt text"
         );
       }
+      if (reference.placement) {
+        validatePlacementGeometry(
+          reference.placement,
+          `assets.${slot}.placement`
+        );
+      }
+    } else if (reference.placement) {
+      reject(
+        "pdf-manifest",
+        "unsupported-decoration",
+        `assets.${slot}.placement`,
+        "only the logo asset can carry direct placement; ornaments use decorations"
+      );
     } else if (!reference.decorative) {
       reject(
         "pdf-manifest",
@@ -750,6 +776,13 @@ function canonicalSourceFor(
       return createAtlcliTypstTemplate(manifest.design, { ...labels });
     case "2":
       return createAtlcliTypstTemplate(manifest.design, { ...labels }, visuals);
+    case "3":
+      return createAtlcliTypstTemplate(
+        manifest.design,
+        { ...labels },
+        visuals,
+        { positionedLogo: true }
+      );
     default:
       reject(
         "pack-integrity",

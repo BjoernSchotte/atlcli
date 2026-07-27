@@ -1946,6 +1946,10 @@ isolation.
       global decoration.
 - [x] Page/margin-relative anchors are classified as native;
       paragraph/line-relative anchors remain `unsupported` for V1.
+- [x] A horizontal `column` anchor is normalized to margin-relative geometry
+      only for a one-column section. Mixed `column`/`page` axes retain the
+      detected offset and extent in one coordinate system; multi-column use
+      remains layout-dependent and cannot be frozen as candidate placement.
 - [x] Role suggestions include concrete reasons; no suggestion is classified
       as `conclusive` based solely on the filename `logo.*`.
 - [x] Every asset review item defaults to "Do not include." No role suggestion
@@ -2027,6 +2031,10 @@ LibreOffice oracle entries.
 - [x] Logo, page background, cover background, header decoration, footer
       decoration, and the bounded uniform page border each compile for real
       with Typst-WASM.
+- [x] A reviewed logo may retain stable detected placement and exact extent in
+      its manifest asset reference. Canonical revision 3 renders that
+      placement; slot-default remains the explicit fallback, and revisions 1
+      and 2 remain readable without silently changing their logo behavior.
 - [x] A multi-page feature zoo proves `first`, `odd`, `even`, and `all` through
       rendered page images; scope errors would be visible in the raster diff.
 - [x] The same preview request through Node and browser compiler entries yields
@@ -2498,6 +2506,10 @@ is not an acceptable substitute.
       AlternateContent branch, crop, H/V anchor, and section master. The test
       therefore proves not only a stable renderer but the correct
       DOCX→candidate→snapshot chain.
+- [x] A stable one-column logo anchor is proven through analyzer, CLI
+      `--use-candidate-placement`, manifest, canonical source, real
+      Typst-WASM compile, and a visually inspected live PDF. The safe
+      slot-default is exercised only as an explicit user choice or fallback.
 - [x] `ATLCLI_E2E=1 ATLCLI_E2E_PAGE_ID=<DOCSY-fixture-id>
       bun run test apps/cli/src/commands/export-pdf.e2e.test.ts` exports once
       without and once with a generated pack using profile `mayflower`.

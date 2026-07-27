@@ -338,6 +338,7 @@ export interface DocxSectionInputV1 {
     section: number;
     locator: string;
     page: DocxPageGeometryInputV1;
+    columnCount?: number;
     titlePage?: boolean;
     pageNumberStart?: number;
     headers?: Partial<Record<DocxMasterVariantV1, string>>;
@@ -753,6 +754,7 @@ export interface ResolvedDocxSectionV1 {
     section: number;
     evidence: TemplateEvidenceV1;
     page: ResolvedDocxPageGeometryV1;
+    columnCount: number;
     titlePage: boolean;
     pageNumberStart?: number;
     pageNumberRestart: boolean;
@@ -1373,6 +1375,7 @@ export interface DocxSectionInputV1 {
     section: number;
     locator: string;
     page: DocxPageGeometryInputV1;
+    columnCount?: number;
     titlePage?: boolean;
     pageNumberStart?: number;
     headers?: Partial<Record<DocxMasterVariantV1, string>>;
@@ -1788,6 +1791,7 @@ export interface ResolvedDocxSectionV1 {
     section: number;
     evidence: TemplateEvidenceV1;
     page: ResolvedDocxPageGeometryV1;
+    columnCount: number;
     titlePage: boolean;
     pageNumberStart?: number;
     pageNumberRestart: boolean;
@@ -2408,6 +2412,7 @@ export interface DocxSectionInputV1 {
     section: number;
     locator: string;
     page: DocxPageGeometryInputV1;
+    columnCount?: number;
     titlePage?: boolean;
     pageNumberStart?: number;
     headers?: Partial<Record<DocxMasterVariantV1, string>>;
@@ -2823,6 +2828,7 @@ export interface ResolvedDocxSectionV1 {
     section: number;
     evidence: TemplateEvidenceV1;
     page: ResolvedDocxPageGeometryV1;
+    columnCount: number;
     titlePage: boolean;
     pageNumberStart?: number;
     pageNumberRestart: boolean;
@@ -3443,6 +3449,7 @@ export interface DocxSectionInputV1 {
     section: number;
     locator: string;
     page: DocxPageGeometryInputV1;
+    columnCount?: number;
     titlePage?: boolean;
     pageNumberStart?: number;
     headers?: Partial<Record<DocxMasterVariantV1, string>>;
@@ -3858,6 +3865,7 @@ export interface ResolvedDocxSectionV1 {
     section: number;
     evidence: TemplateEvidenceV1;
     page: ResolvedDocxPageGeometryV1;
+    columnCount: number;
     titlePage: boolean;
     pageNumberStart?: number;
     pageNumberRestart: boolean;

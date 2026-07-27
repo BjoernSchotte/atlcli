@@ -33,6 +33,11 @@ import {
   type DocxVisualPrivateSidecarV1,
   type SceneCandidateV1,
 } from "./visual-analysis.js";
+import type {
+  DocxSectionResolutionV1,
+  ResolvedDocxPageGeometryV1,
+  ResolvedDocxSectionV1,
+} from "./section-resolution.js";
 
 export const DOCX_TEMPLATE_IMPORT_APPLICATION_SCHEMA_V1 =
   "wiki.pdf-template-docx-application/v1" as const;
@@ -92,7 +97,8 @@ function emuLength(value: number): string {
 }
 
 function supportedCandidatePlacement(
-  scene: SceneCandidateV1 | undefined
+  scene: SceneCandidateV1 | undefined,
+  sections: DocxSectionResolutionV1
 ): Readonly<Record<string, unknown>> | undefined {
   if (
     scene?.placement?.kind !== "anchor" ||
@@ -103,23 +109,60 @@ function supportedCandidatePlacement(
   const extent = scene.placement.extent;
   const horizontal = scene.placement.horizontal;
   const vertical = scene.placement.vertical;
+  const section = sections.sections.find(
+    (candidate) => candidate.section === scene.scope.section
+  );
   if (
     horizontal.value.kind !== "offset" ||
     vertical.value.kind !== "offset" ||
-    !["page", "margin"].includes(horizontal.relativeFrom) ||
-    !["page", "margin"].includes(vertical.relativeFrom)
+    !section
   ) {
     return undefined;
   }
+  const marginOffset = (
+    axis: "horizontal" | "vertical",
+    relativeFrom: string,
+    emu: number,
+    resolvedSection: ResolvedDocxSectionV1,
+    page: ResolvedDocxPageGeometryV1
+  ): number | undefined => {
+    if (relativeFrom === "margin") return emu;
+    if (
+      axis === "horizontal" &&
+      relativeFrom === "column" &&
+      resolvedSection.columnCount === 1
+    ) {
+      return emu;
+    }
+    if (relativeFrom === "page") {
+      const marginTwips =
+        axis === "horizontal"
+          ? page.marginLeftTwips
+          : page.marginTopTwips;
+      return emu - marginTwips * 635;
+    }
+    return undefined;
+  };
+  const x = marginOffset(
+    "horizontal",
+    horizontal.relativeFrom,
+    horizontal.value.emu,
+    section,
+    section.page
+  );
+  const y = marginOffset(
+    "vertical",
+    vertical.relativeFrom,
+    vertical.value.emu,
+    section,
+    section.page
+  );
+  if (x === undefined || y === undefined) return undefined;
   return {
-    relativeTo:
-      horizontal.relativeFrom === "page" &&
-      vertical.relativeFrom === "page"
-        ? "page"
-        : "margin",
+    relativeTo: "margin",
     fit: "contain",
-    x: emuLength(horizontal.value.emu),
-    y: emuLength(vertical.value.emu),
+    x: emuLength(x),
+    y: emuLength(y),
     width: emuLength(extent.width),
     height: emuLength(extent.height),
   };
@@ -127,7 +170,8 @@ function supportedCandidatePlacement(
 
 async function projectVisualCandidates(
   analysisDigest: string,
-  visual: DocxVisualAnalysisV1
+  visual: DocxVisualAnalysisV1,
+  sections: DocxSectionResolutionV1
 ): Promise<{
   candidates: readonly TemplateCandidateV1[];
   privateCandidates: readonly DocxTemplatePrivateAssetCandidateV1[];
@@ -203,8 +247,8 @@ async function projectVisualCandidates(
       occurrenceCount: review.occurrenceCount,
       ...(proposedRole ? { proposedRole } : {}),
       supportedPlacementChoices: [...review.supportedPlacementChoices],
-      ...(supportedCandidatePlacement(scene)
-        ? { candidatePlacement: supportedCandidatePlacement(scene) }
+      ...(supportedCandidatePlacement(scene, sections)
+        ? { candidatePlacement: supportedCandidatePlacement(scene, sections) }
         : {}),
     });
   }
@@ -255,8 +299,9 @@ export async function analyzeDocxTemplateImport(
       });
   const projected = visual
     ? await projectVisualCandidates(
-        catalogAnalysis.sourceDigest,
-        visual.analysis
+      catalogAnalysis.sourceDigest,
+        visual.analysis,
+        catalogAnalysis.sections
       )
     : { candidates: [], privateCandidates: [] };
   const diagnostics = [

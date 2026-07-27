@@ -25,6 +25,7 @@ export interface TemplateAssetReferenceV1 {
   writer: string;
   decorative: boolean;
   alt?: string;
+  placement?: WikiPdfTemplateImageDecorationV1["placement"];
 }
 
 export type TemplateDecorationScopeV1 = "all" | "first" | "odd" | "even";
@@ -294,7 +295,11 @@ function validateReferences(
   for (const [key, unknownReference] of Object.entries(record)) {
     id(key, `assets.${key}`);
     const reference = object(unknownReference, `assets.${key}`);
-    exactKeys(reference, ["descriptor", "writer", "decorative", "alt"], `assets.${key}`);
+    exactKeys(
+      reference,
+      ["descriptor", "writer", "decorative", "alt", "placement"],
+      `assets.${key}`
+    );
     const descriptor = id(reference.descriptor, `assets.${key}.descriptor`);
     if (!descriptors[descriptor]) {
       fail(`assets.${key}.descriptor`, `references unknown descriptor "${descriptor}"`);
@@ -306,6 +311,14 @@ function validateReferences(
       writer: writer(reference.writer, `assets.${key}.writer`),
       decorative,
       ...(alt === undefined ? {} : { alt }),
+      ...(reference.placement === undefined
+        ? {}
+        : {
+            placement: validatePlacement(
+              reference.placement,
+              `assets.${key}.placement`
+            ),
+          }),
     };
   }
   return validated;

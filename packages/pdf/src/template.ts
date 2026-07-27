@@ -61,7 +61,8 @@ const SYMBOL_FALLBACK_FONTS = ["Noto Sans Symbols2", "Noto Emoji"] as const;
 export function createAtlcliTypstTemplate(
   design: WikiPdfTemplateDesignV1 = BUILTIN_PDF_DESIGN,
   labels: Record<string, string> = BUILTIN_PDF_FALLBACK_LABELS,
-  visuals?: PdfTemplateVisualsV1
+  visuals?: PdfTemplateVisualsV1,
+  options: { positionedLogo?: boolean } = {}
 ): string {
   const catalogDesign = projectPdfDesignThroughCatalog(design);
   const fonts = catalogDesign.typography.fonts;
@@ -71,6 +72,7 @@ export function createAtlcliTypstTemplate(
   const ratios = catalogDesign.tokens.ratios;
   const callouts = catalogDesign.semanticPalettes.callouts;
   const margin = catalogDesign.page.margin;
+  const positionedLogo = options.positionedLogo === true;
 
   const need = <T>(map: Record<string, T>, key: string, kind: string): T => {
     const value = map[key];
@@ -192,6 +194,40 @@ export function createAtlcliTypstTemplate(
   const footerDecorationSource = hasDecorations
     ? "\n      template-footer-decorations()"
     : "";
+  const logoPlacementSettingSource = positionedLogo
+    ? '\n  let logo-placement = settings.at("logo-placement", default: none)'
+    : "";
+  const positionedLogoSource = positionedLogo
+    ? String.raw`
+    if logo-path != none and logo-placement != none {
+      let logo-x = if logo-placement.relativeTo == "page" {
+        logo-placement.x - ${margin.left}
+      } else {
+        logo-placement.x
+      }
+      let logo-y = if logo-placement.relativeTo == "page" {
+        logo-placement.y - ${margin.top}
+      } else {
+        logo-placement.y
+      }
+      let logo-image = image(
+        logo-path,
+        width: logo-placement.width,
+        height: logo-placement.height,
+        fit: logo-placement.fit,
+        alt: logo-alt,
+      )
+      let placed-logo = if logo-placement.rotation == 0 {
+        logo-image
+      } else {
+        rotate(logo-placement.rotation * 1deg, origin: center, logo-image)
+      }
+      place(top + left, dx: logo-x, dy: logo-y, placed-logo)
+    }`
+    : "";
+  const flowLogoCondition = positionedLogo
+    ? "logo-path != none and logo-placement == none"
+    : "logo-path != none";
 
   return String.raw`
 #let editorial-numbering(..nums) = {
@@ -253,7 +289,7 @@ export function createAtlcliTypstTemplate(
   let indigo = rgb(brand.at("accent", default: "${accentDefault}"))
   let org-name = brand.at("organization-name", default: none)
   let logo-path = settings.at("logo", default: none)
-  let logo-alt = settings.at("logo-alt", default: "")
+  let logo-alt = settings.at("logo-alt", default: "")${logoPlacementSettingSource}
   let space-label = if org-name == none {
     [#space-prefix / #meta.space]
   } else {
@@ -363,10 +399,11 @@ ${headerResolution}
   }
 
   if cover-config.at("enabled", default: ${coverDefault}) {
+${positionedLogoSource}
     v(${L("coverTopPad")})
     block(width: ${RN("coverBlockWidth")}%)[
       #set text(font: ${fontStack(F("heading"))})
-      #if logo-path != none [
+      #if ${flowLogoCondition} [
         #block(below: ${L("coverLogoBelow")})[#image(logo-path, height: ${L("coverLogoHeight")}, width: ${L("coverLogoWidth")}, fit: "contain", alt: logo-alt)]
       ]
       #text(size: ${rsize("coverEyebrow")}, weight: "${rweight("coverEyebrow")}", tracking: ${rtrack("coverEyebrow")}, fill: indigo, space-label)
