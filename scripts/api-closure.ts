@@ -55,6 +55,15 @@ export const FREEZE_DECISIONS: Record<string, FreezeDecision> = {
       "regression-guarded (api-report + conformance suites). The non-frozen sync machinery " +
       "lives behind ./internal.",
   },
+  "@atlcli/export-media": {
+    version: "0.x",
+    frozen: false,
+    reasoning:
+      "STAYS 0.x: introduced for issue 118 Phase 1 as the shared deterministic image " +
+      "inspection/normalization codec (extracted from @atlcli/docx, consumed by the PDF and " +
+      "DOCX engines). Keep it experimental until the standard/print PPI pins survive a " +
+      "release cycle of measured corpus results.",
+  },
   "@atlcli/docx": {
     version: "1.0.0",
     frozen: true,

@@ -168,6 +168,7 @@
         "@atlcli/core": "workspace:*",
         "@atlcli/diagram": "workspace:*",
         "@atlcli/export-macros": "workspace:*",
+        "@atlcli/export-media": "workspace:*",
         "@resvg/resvg-wasm": "2.6.2",
         "docxtemplater": "^3.69.0",
         "pizzip": "^3.2.0",
@@ -180,6 +181,7 @@
         "@atlcli/confluence": "workspace:*",
         "@atlcli/docx": "workspace:*",
         "@atlcli/export-macros": "workspace:*",
+        "@atlcli/export-media": "workspace:*",
         "@atlcli/pdf": "workspace:*",
         "@atlcli/template-pack": "workspace:*",
         "pizzip": "^3.2.0",
@@ -195,6 +197,13 @@
     "packages/export-macros": {
       "name": "@atlcli/export-macros",
       "version": "1.0.0",
+      "dependencies": {
+        "@atlcli/confluence": "workspace:*",
+      },
+    },
+    "packages/export-media": {
+      "name": "@atlcli/export-media",
+      "version": "0.1.0",
       "dependencies": {
         "@atlcli/confluence": "workspace:*",
       },
@@ -239,6 +248,7 @@
         "@atlcli/confluence": "workspace:*",
         "@atlcli/diagram": "workspace:*",
         "@atlcli/export-macros": "workspace:*",
+        "@atlcli/export-media": "workspace:*",
         "@atlcli/template-pack": "workspace:*",
       },
       "devDependencies": {
@@ -347,6 +357,8 @@
     "@atlcli/export-jobs": ["@atlcli/export-jobs@workspace:packages/export-jobs"],
 
     "@atlcli/export-macros": ["@atlcli/export-macros@workspace:packages/export-macros"],
+
+    "@atlcli/export-media": ["@atlcli/export-media@workspace:packages/export-media"],
 
     "@atlcli/export-node": ["@atlcli/export-node@workspace:packages/export-node"],
 
