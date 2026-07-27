@@ -38,6 +38,19 @@ export declare function analyzeDocxTemplateForCatalog(bytes: Uint8Array, options
     progress?: (event: TemplateImportProgressEventV1) => void;
 }): Promise<DocxCatalogAnalysisV1>;
 
+// export: analyzeDocxTemplateImport
+export declare function analyzeDocxTemplateImport(bytes: Uint8Array, options: AnalyzeDocxTemplateImportOptionsV1): Promise<DocxTemplateImportApplicationResultV1>;
+
+// export: AnalyzeDocxTemplateImportOptionsV1
+export interface AnalyzeDocxTemplateImportOptionsV1 {
+    catalog: TemplateCapabilityCatalogV1;
+    bundledFontFamilies: readonly string[];
+    assetCapabilities: TemplateAssetCapabilitiesV1;
+    assetStore: TemplateAssetStore;
+    metadataOnly?: boolean;
+    progress?: (event: TemplateImportProgressEventV1) => void;
+}
+
 // export: analyzeDocxVisualAssets
 export declare function analyzeDocxVisualAssets(bytes: Uint8Array, options: {
     capabilities: TemplateAssetCapabilitiesV1;
@@ -118,6 +131,9 @@ export declare const DOCX_STYLE_RESOLUTION_RULE_V1: {
 
 // export: DOCX_TEMPLATE_FACTS_SCHEMA_V1
 export declare const DOCX_TEMPLATE_FACTS_SCHEMA_V1: "atlcli.docx-template-facts/1";
+
+// export: DOCX_TEMPLATE_IMPORT_APPLICATION_SCHEMA_V1
+export declare const DOCX_TEMPLATE_IMPORT_APPLICATION_SCHEMA_V1: "wiki.pdf-template-docx-application/v1";
 
 // export: DOCX_THEME_RESOLUTION_RULE_V1
 export declare const DOCX_THEME_RESOLUTION_RULE_V1: {
@@ -448,6 +464,16 @@ export interface DocxTemplateFactsV1 {
     diagnostics: readonly TemplateDiagnosticV1[];
 }
 
+// export: DocxTemplateImportApplicationResultV1
+export interface DocxTemplateImportApplicationResultV1 {
+    schema: typeof DOCX_TEMPLATE_IMPORT_APPLICATION_SCHEMA_V1;
+    analysis: TemplateProjectAnalysisV1;
+    assetHandles: Readonly<Record<string, TemplateAssetHandleV1>>;
+    visualAnalysis?: DocxVisualAnalysisV1;
+    privateVisual?: DocxVisualPrivateSidecarV1;
+    privateAssetCandidates: readonly DocxTemplatePrivateAssetCandidateV1[];
+}
+
 // export: DocxTemplateMatchingInputV1
 export interface DocxTemplateMatchingInputV1 {
     analysisDigest: string;
@@ -466,6 +492,17 @@ export interface DocxTemplateMatchResultV1 {
     rule: typeof DOCX_PDF_MAPPING_RULE_V1;
     candidates: readonly TemplateCandidateV1[];
     diagnostics: readonly TemplateDiagnosticV1[];
+}
+
+// export: DocxTemplatePrivateAssetCandidateV1
+export interface DocxTemplatePrivateAssetCandidateV1 {
+    candidateId: string;
+    semanticKey: string;
+    asset: TemplateAssetHandleV1;
+    occurrenceCount: number;
+    proposedRole?: string;
+    supportedPlacementChoices: readonly string[];
+    candidatePlacement?: Readonly<Record<string, unknown>>;
 }
 
 // export: DocxThemeColorReferenceV1
@@ -1036,6 +1073,19 @@ export declare function analyzeDocxTemplateForCatalog(bytes: Uint8Array, options
     progress?: (event: TemplateImportProgressEventV1) => void;
 }): Promise<DocxCatalogAnalysisV1>;
 
+// export: analyzeDocxTemplateImport
+export declare function analyzeDocxTemplateImport(bytes: Uint8Array, options: AnalyzeDocxTemplateImportOptionsV1): Promise<DocxTemplateImportApplicationResultV1>;
+
+// export: AnalyzeDocxTemplateImportOptionsV1
+export interface AnalyzeDocxTemplateImportOptionsV1 {
+    catalog: TemplateCapabilityCatalogV1;
+    bundledFontFamilies: readonly string[];
+    assetCapabilities: TemplateAssetCapabilitiesV1;
+    assetStore: TemplateAssetStore;
+    metadataOnly?: boolean;
+    progress?: (event: TemplateImportProgressEventV1) => void;
+}
+
 // export: analyzeDocxVisualAssets
 export declare function analyzeDocxVisualAssets(bytes: Uint8Array, options: {
     capabilities: TemplateAssetCapabilitiesV1;
@@ -1116,6 +1166,9 @@ export declare const DOCX_STYLE_RESOLUTION_RULE_V1: {
 
 // export: DOCX_TEMPLATE_FACTS_SCHEMA_V1
 export declare const DOCX_TEMPLATE_FACTS_SCHEMA_V1: "atlcli.docx-template-facts/1";
+
+// export: DOCX_TEMPLATE_IMPORT_APPLICATION_SCHEMA_V1
+export declare const DOCX_TEMPLATE_IMPORT_APPLICATION_SCHEMA_V1: "wiki.pdf-template-docx-application/v1";
 
 // export: DOCX_THEME_RESOLUTION_RULE_V1
 export declare const DOCX_THEME_RESOLUTION_RULE_V1: {
@@ -1446,6 +1499,16 @@ export interface DocxTemplateFactsV1 {
     diagnostics: readonly TemplateDiagnosticV1[];
 }
 
+// export: DocxTemplateImportApplicationResultV1
+export interface DocxTemplateImportApplicationResultV1 {
+    schema: typeof DOCX_TEMPLATE_IMPORT_APPLICATION_SCHEMA_V1;
+    analysis: TemplateProjectAnalysisV1;
+    assetHandles: Readonly<Record<string, TemplateAssetHandleV1>>;
+    visualAnalysis?: DocxVisualAnalysisV1;
+    privateVisual?: DocxVisualPrivateSidecarV1;
+    privateAssetCandidates: readonly DocxTemplatePrivateAssetCandidateV1[];
+}
+
 // export: DocxTemplateMatchingInputV1
 export interface DocxTemplateMatchingInputV1 {
     analysisDigest: string;
@@ -1464,6 +1527,17 @@ export interface DocxTemplateMatchResultV1 {
     rule: typeof DOCX_PDF_MAPPING_RULE_V1;
     candidates: readonly TemplateCandidateV1[];
     diagnostics: readonly TemplateDiagnosticV1[];
+}
+
+// export: DocxTemplatePrivateAssetCandidateV1
+export interface DocxTemplatePrivateAssetCandidateV1 {
+    candidateId: string;
+    semanticKey: string;
+    asset: TemplateAssetHandleV1;
+    occurrenceCount: number;
+    proposedRole?: string;
+    supportedPlacementChoices: readonly string[];
+    candidatePlacement?: Readonly<Record<string, unknown>>;
 }
 
 // export: DocxThemeColorReferenceV1
@@ -2034,6 +2108,19 @@ export declare function analyzeDocxTemplateForCatalog(bytes: Uint8Array, options
     progress?: (event: TemplateImportProgressEventV1) => void;
 }): Promise<DocxCatalogAnalysisV1>;
 
+// export: analyzeDocxTemplateImport
+export declare function analyzeDocxTemplateImport(bytes: Uint8Array, options: AnalyzeDocxTemplateImportOptionsV1): Promise<DocxTemplateImportApplicationResultV1>;
+
+// export: AnalyzeDocxTemplateImportOptionsV1
+export interface AnalyzeDocxTemplateImportOptionsV1 {
+    catalog: TemplateCapabilityCatalogV1;
+    bundledFontFamilies: readonly string[];
+    assetCapabilities: TemplateAssetCapabilitiesV1;
+    assetStore: TemplateAssetStore;
+    metadataOnly?: boolean;
+    progress?: (event: TemplateImportProgressEventV1) => void;
+}
+
 // export: analyzeDocxVisualAssets
 export declare function analyzeDocxVisualAssets(bytes: Uint8Array, options: {
     capabilities: TemplateAssetCapabilitiesV1;
@@ -2114,6 +2201,9 @@ export declare const DOCX_STYLE_RESOLUTION_RULE_V1: {
 
 // export: DOCX_TEMPLATE_FACTS_SCHEMA_V1
 export declare const DOCX_TEMPLATE_FACTS_SCHEMA_V1: "atlcli.docx-template-facts/1";
+
+// export: DOCX_TEMPLATE_IMPORT_APPLICATION_SCHEMA_V1
+export declare const DOCX_TEMPLATE_IMPORT_APPLICATION_SCHEMA_V1: "wiki.pdf-template-docx-application/v1";
 
 // export: DOCX_THEME_RESOLUTION_RULE_V1
 export declare const DOCX_THEME_RESOLUTION_RULE_V1: {
@@ -2444,6 +2534,16 @@ export interface DocxTemplateFactsV1 {
     diagnostics: readonly TemplateDiagnosticV1[];
 }
 
+// export: DocxTemplateImportApplicationResultV1
+export interface DocxTemplateImportApplicationResultV1 {
+    schema: typeof DOCX_TEMPLATE_IMPORT_APPLICATION_SCHEMA_V1;
+    analysis: TemplateProjectAnalysisV1;
+    assetHandles: Readonly<Record<string, TemplateAssetHandleV1>>;
+    visualAnalysis?: DocxVisualAnalysisV1;
+    privateVisual?: DocxVisualPrivateSidecarV1;
+    privateAssetCandidates: readonly DocxTemplatePrivateAssetCandidateV1[];
+}
+
 // export: DocxTemplateMatchingInputV1
 export interface DocxTemplateMatchingInputV1 {
     analysisDigest: string;
@@ -2462,6 +2562,17 @@ export interface DocxTemplateMatchResultV1 {
     rule: typeof DOCX_PDF_MAPPING_RULE_V1;
     candidates: readonly TemplateCandidateV1[];
     diagnostics: readonly TemplateDiagnosticV1[];
+}
+
+// export: DocxTemplatePrivateAssetCandidateV1
+export interface DocxTemplatePrivateAssetCandidateV1 {
+    candidateId: string;
+    semanticKey: string;
+    asset: TemplateAssetHandleV1;
+    occurrenceCount: number;
+    proposedRole?: string;
+    supportedPlacementChoices: readonly string[];
+    candidatePlacement?: Readonly<Record<string, unknown>>;
 }
 
 // export: DocxThemeColorReferenceV1
@@ -3032,6 +3143,19 @@ export declare function analyzeDocxTemplateForCatalog(bytes: Uint8Array, options
     progress?: (event: TemplateImportProgressEventV1) => void;
 }): Promise<DocxCatalogAnalysisV1>;
 
+// export: analyzeDocxTemplateImport
+export declare function analyzeDocxTemplateImport(bytes: Uint8Array, options: AnalyzeDocxTemplateImportOptionsV1): Promise<DocxTemplateImportApplicationResultV1>;
+
+// export: AnalyzeDocxTemplateImportOptionsV1
+export interface AnalyzeDocxTemplateImportOptionsV1 {
+    catalog: TemplateCapabilityCatalogV1;
+    bundledFontFamilies: readonly string[];
+    assetCapabilities: TemplateAssetCapabilitiesV1;
+    assetStore: TemplateAssetStore;
+    metadataOnly?: boolean;
+    progress?: (event: TemplateImportProgressEventV1) => void;
+}
+
 // export: analyzeDocxVisualAssets
 export declare function analyzeDocxVisualAssets(bytes: Uint8Array, options: {
     capabilities: TemplateAssetCapabilitiesV1;
@@ -3112,6 +3236,9 @@ export declare const DOCX_STYLE_RESOLUTION_RULE_V1: {
 
 // export: DOCX_TEMPLATE_FACTS_SCHEMA_V1
 export declare const DOCX_TEMPLATE_FACTS_SCHEMA_V1: "atlcli.docx-template-facts/1";
+
+// export: DOCX_TEMPLATE_IMPORT_APPLICATION_SCHEMA_V1
+export declare const DOCX_TEMPLATE_IMPORT_APPLICATION_SCHEMA_V1: "wiki.pdf-template-docx-application/v1";
 
 // export: DOCX_THEME_RESOLUTION_RULE_V1
 export declare const DOCX_THEME_RESOLUTION_RULE_V1: {
@@ -3442,6 +3569,16 @@ export interface DocxTemplateFactsV1 {
     diagnostics: readonly TemplateDiagnosticV1[];
 }
 
+// export: DocxTemplateImportApplicationResultV1
+export interface DocxTemplateImportApplicationResultV1 {
+    schema: typeof DOCX_TEMPLATE_IMPORT_APPLICATION_SCHEMA_V1;
+    analysis: TemplateProjectAnalysisV1;
+    assetHandles: Readonly<Record<string, TemplateAssetHandleV1>>;
+    visualAnalysis?: DocxVisualAnalysisV1;
+    privateVisual?: DocxVisualPrivateSidecarV1;
+    privateAssetCandidates: readonly DocxTemplatePrivateAssetCandidateV1[];
+}
+
 // export: DocxTemplateMatchingInputV1
 export interface DocxTemplateMatchingInputV1 {
     analysisDigest: string;
@@ -3460,6 +3597,17 @@ export interface DocxTemplateMatchResultV1 {
     rule: typeof DOCX_PDF_MAPPING_RULE_V1;
     candidates: readonly TemplateCandidateV1[];
     diagnostics: readonly TemplateDiagnosticV1[];
+}
+
+// export: DocxTemplatePrivateAssetCandidateV1
+export interface DocxTemplatePrivateAssetCandidateV1 {
+    candidateId: string;
+    semanticKey: string;
+    asset: TemplateAssetHandleV1;
+    occurrenceCount: number;
+    proposedRole?: string;
+    supportedPlacementChoices: readonly string[];
+    candidatePlacement?: Readonly<Record<string, unknown>>;
 }
 
 // export: DocxThemeColorReferenceV1

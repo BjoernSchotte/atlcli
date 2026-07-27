@@ -43,6 +43,22 @@ const HASH_RE = /^[a-f0-9]{64}$/;
 const FORBIDDEN_PACK_FIELD_RE =
   /"(?:decisionDigest|sourceDigest|baseline|candidates?|decisions?|trace)"\s*:/;
 
+export interface CreateTemplateProjectStateInputV1 {
+  analysis: TemplateProjectAnalysisV1;
+  assetHandles: Readonly<Record<string, TemplateAssetHandleV1>>;
+  catalog: {
+    id: string;
+    version: number;
+    digest: string;
+    descriptor: Parameters<typeof resolveTemplateLayers>[0]["catalog"];
+  };
+  baseline: {
+    id: string;
+    version: string;
+    design: Readonly<Record<string, unknown>>;
+  };
+}
+
 function stableJson(value: unknown): string {
   return `${canonicalCapabilityJson(value)}\n`;
 }
@@ -62,6 +78,53 @@ function immutableJson<T>(value: T): T {
 
 function sameJson(left: unknown, right: unknown): boolean {
   return canonicalCapabilityJson(left) === canonicalCapabilityJson(right);
+}
+
+/**
+ * Start a host-neutral authoring project from one analyzed source.
+ *
+ * Repository generation, source paths, terminal state, and presentation stay
+ * host-owned. The returned state is the single portable input used by CLI and
+ * future browser repositories.
+ */
+export async function createTemplateProjectState(
+  input: CreateTemplateProjectStateInputV1
+): Promise<TemplateProjectStateV1> {
+  const decisions = {
+    schema: TEMPLATE_DECISION_STATE_SCHEMA_V1,
+    decisions: [],
+    preview: {},
+  } satisfies TemplateDecisionStateV1;
+  const snapshot = await resolveTemplateLayers({
+    catalog: input.catalog.descriptor,
+    catalogDigest: input.catalog.digest,
+    baseline: {
+      id: input.baseline.id,
+      version: input.baseline.version,
+      design: input.baseline.design,
+    },
+    sourceDigest: input.analysis.sourceDigest,
+    decisions,
+    candidates: input.analysis.candidates,
+    mappingVersion: input.analysis.mappingVersion,
+  });
+  return immutableJson({
+    schema: TEMPLATE_PROJECT_STATE_SCHEMA_V1,
+    catalog: {
+      id: input.catalog.id,
+      version: input.catalog.version,
+      digest: input.catalog.digest,
+    },
+    baseline: {
+      id: input.baseline.id,
+      version: input.baseline.version,
+      digest: snapshot.baseline.digest,
+    },
+    analysis: input.analysis,
+    decisions,
+    snapshot,
+    assetHandles: input.assetHandles,
+  });
 }
 
 function cloneFiles(

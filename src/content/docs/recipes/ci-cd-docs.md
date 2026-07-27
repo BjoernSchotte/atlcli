@@ -199,10 +199,13 @@ For a full pipeline that parses the report — gating on note codes, listing
 issues by severity, distinguishing warnings from information — see the
 [Export automation recipe](export-automation.md).
 
-:::note[Document settings are not CLI flags]
+:::note[Document settings are not individual CLI flags]
 Page size, header/footer text, accent colour, logo and watermark are configured
 in the [browser panel](/extension/export/#document-settings-pdf), not on the
-command line. A CLI PDF export always produces the default document design.
+command line. Without `--template`, a CLI PDF export uses Editorial Indigo.
+For a reusable branded design, build a reviewed
+[PDF template from Word](/confluence/pdf-template-from-word/) and pass its
+`.wiki-pdf-template` path.
 :::
 
 ## Best Practices
@@ -221,4 +224,6 @@ command line. A CLI PDF export always produces the default document design.
 - [Confluence Sync](../confluence/sync.md) - Full sync documentation
 - [Export Automation](export-automation.md) - Parsing the export report in CI
 - [DOCX and PDF Export](../confluence/export.md) - Every export flag in detail
+- [Create a PDF Template from Word](../confluence/pdf-template-from-word.md) -
+  Build a reviewed branded pack
 - [Team Docs](team-docs.md) - Manual workflow

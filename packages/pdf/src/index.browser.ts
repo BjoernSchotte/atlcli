@@ -98,7 +98,14 @@ export {
 export {
   PDF_TEMPLATE_CAPABILITIES_V1,
   PDF_TEMPLATE_CAPABILITY_DIGEST_V1,
+  PDF_TEMPLATE_CAPABILITY_PRESENTATION_V1,
 } from "./design-catalog.js";
+
+// --- Host-neutral authoring runtime materializer ---
+export {
+  PdfGeneratedTemplateProofCompiler,
+  PdfTemplateRuntimeMaterializer,
+} from "./template-authoring-runtime.js";
 
 // --- Host-neutral preview compiler adapter ---
 export {

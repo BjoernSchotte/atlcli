@@ -32,6 +32,7 @@
     "build:minify": "bun run build.ts --minify"
   },
   "devDependencies": {
+    "@atlcli/export-fixtures": "workspace:*",
     "ajv": "^8.20.0"
   }
 }

@@ -2035,10 +2035,12 @@ export async function analyzeDocxVisualAssets(
     sections: DocxSectionResolutionV1;
   }
 ): Promise<DocxVisualAnalysisBundleV1> {
-  const archive = unzipDocx(bytes, DOCX_TEMPLATE_INTAKE_BUDGET);
+  const sourceBytes = new Uint8Array(bytes);
+  const sourceDigest = await sha256Hex(sourceBytes);
+  const archive = unzipDocx(sourceBytes, DOCX_TEMPLATE_INTAKE_BUDGET);
   const opc = await analyzeDocxOpcArchive(archive);
   return analyzeDocxVisualArchive(archive, opc, {
     ...options,
-    sourceDigest: await sha256Hex(bytes),
+    sourceDigest,
   });
 }

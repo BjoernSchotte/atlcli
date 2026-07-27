@@ -1046,6 +1046,138 @@ All fixtures, archives, store records, and reports are neutral and synthetic.
 The changes and evidence contain no local source path in a durable request, no
 customer identity, no private DOCX content, and no raw private OOXML.
 
-This evidence proves T9 only. It does not claim the T10 browser intake
-journey, raster goldens, independent oracle chain, live Confluence pack E2E,
-documentation, or external usability sessions.
+This evidence proves T9 only. T10 evidence is recorded separately below.
+
+## T10 — Cross-shape, visual, live E2E, and usability proof
+
+**Status:** Technical slice proven on 2026-07-27; task completion is waiting
+for the five independent human usability sessions.
+
+### Browser contract and deterministic vertical slice
+
+The
+[`docx-template-intake` conformance flow](../../apps/browser-export-harness/src/docx-template-intake-flow.ts)
+uses only browser barrels, structured-clone-safe DTOs, and explicit in-memory
+repository, asset, preview, compile, and output ports. It performs the complete
+synthetic flow:
+
+`DOCX → catalog/visual analysis → import view → explicit actions → accepted
+page background and header decoration → previews → runtime materialization →
+canonical pack → real Typst-WASM PDF`.
+
+The browser and Bun runs agree on the source and analysis digests, every
+projected view, grouped counts, section/item order, diagnostics, action IDs and
+disabled reasons, next actions, resolved snapshot digest, preview
+freshness/metadata, runtime projection, pack digest, and final PDF bytes. Both
+pack and final PDF are byte-identical on a warm repeat. The final PDF has six
+pages, tagging, an outline, embedded fonts, and both accepted decorations.
+
+The browser dependency gate now checks 25 entry points, including the intake
+application and PDF authoring runtime. Four seeded negative tests separately
+prove rejection of CLI, filesystem-adapter, process-lock, and terminal
+dependencies; the existing builtin checks reject Node and Bun imports.
+
+### Raster and real-editor proof
+
+The
+[`docx-template-assets` golden set](../../packages/pdf-compiler-browser/test-fixtures/docx-template-assets-golden/manifest.json)
+contains six lossless Poppler PPM pages produced with Poppler 26.03.0 at
+36 DPI. The allowed mean pixel difference is `0.002` and the minimum
+color-bounds intersection-over-union is `0.98`. The pages prove
+`first`/`odd`/`even`/`all` scopes for cover, page, header, footer, logo, and
+uniform-border colors. An intentionally shifted page is rejected by both the
+pixel and bounding-box criteria. All six pages were opened together and
+visually inspected; the expected colored regions were present with no missing
+or clipped decoration.
+
+The
+[`real-editor chain test`](../../packages/pdf-compiler-browser/src/docx-template-intake-chain.test.ts)
+starts from independently reviewed Word and LibreOffice oracles and checks the
+complete `oracle → scene → decision → runtime snapshot → pack descriptor →
+rendered page/BBox` chain:
+
+| Fixture | Safe | Needs review | Blocked | Open after explicit background decision |
+|---|---:|---:|---:|---:|
+| Microsoft Word for Mac 16.111.1 | 0 | 7 | 9 | 6 |
+| LibreOffice 7.1.1.2 | 3 | 5 | 9 | 7 |
+
+For both files, asset hash, relationship reference, target fingerprint,
+AlternateContent branch, crop, horizontal/vertical anchor, section, and master
+agree from oracle through the scene. The same asset hash is then present in the
+explicit decision, runtime snapshot, and generated pack descriptor, and its
+render changes more than 20% of the first-page raster with a non-empty bounding
+box. The source oracle classifies the illustrative body graphic as
+`do-not-include`; assigning it as a page background in this test is an explicit
+user override used only to prove the complete rendering chain, not a product
+recommendation.
+
+### CLI output and documentation
+
+The committed
+[`human-output snapshot`](../../apps/cli/src/commands/__snapshots__/pdf-template.test.ts.snap)
+contains the actual CLI presenter output for first import, resume, ready and
+uncertain review, asset review, source-change recovery, blocked build,
+successful preview, successful build, and undo. Every state is rendered at
+80 and 120 columns with ANSI color enabled and disabled. Tests strip ANSI
+before enforcing the width, require a valid next or recovery command, and
+verify that plain mode contains no escape sequence.
+
+Task-first documentation now covers the
+[`Word-to-PDF-template workflow`](../../src/content/docs/confluence/pdf-template-from-word.md)
+and the
+[`CLI/JSON reference`](../../src/content/docs/reference/pdf-template-authoring-cli.md).
+It includes the minimal flow, exact transcript, resume/undo, automation and
+action gating, schemas, TTY/non-TTY behavior, troubleshooting, privacy and
+security boundaries, graphics limits, and related topics.
+
+### Live Confluence E2E
+
+The live test resolved an existing retained page in `DOCSY` through profile
+`mayflower`, passed its ID only through the process environment, and did not
+persist that identifier or any page content. It created no remote resource.
+All generated DOCX, project, pack, report, baseline PDF, and templated PDF
+artifacts lived in a disposable local directory removed in `finally`.
+
+The run first exported the page with Editorial Indigo and then with a reviewed
+DOCX-derived pack at the same fixed timestamp. Both outputs were valid tagged,
+outlined PDFs with equal page counts, while their bytes differed as required.
+The same run proved exit 4 for a missing page and exit 3 for invalid
+credentials. Its first attempt exposed that the durable job runtime had reduced
+both source failures to generic exit 5; the final implementation preserves only
+the redacted `authentication`/`not-found` class across the durable boundary and
+the regression tests cover both paths.
+
+The tree case remained skipped because `ATLCLI_E2E_TREE_ROOT_ID` was not
+provided; it is an existing hand-off from the earlier tree-export work and is
+not part of T10's single-page pack acceptance.
+
+### Commands and results
+
+| Evidence category | Exact command | Result |
+|---|---|---|
+| Browser contract | `bun run build:browser-export-harness && bun run test:browser-export-harness && bun run assert:conformance-cases && bun run check:parity` | Passed; 4 Chromium tests, 19 registered cases, and byte/report parity for the seven compared PDF cases including `docx-template-intake` |
+| Real-editor chain | `bun run test packages/pdf-compiler-browser/src/docx-template-intake-chain.test.ts` | Passed; 2 tests, 36 assertions, 0 failures |
+| Raster goldens | `bun run test packages/pdf-compiler-browser/src/docx-template-assets.test.ts` | Passed; all six pages within tolerance and the shifted negative rejected |
+| Human-output matrix | `bun run test apps/cli/src/commands/pdf-template.test.ts` | Passed; 23 tests, one 40-variant snapshot, 0 failures |
+| Live E2E | `ATLCLI_E2E=1 ATLCLI_E2E_PAGE_ID=<retained-DOCSY-page> ATLCLI_E2E_PROFILE=mayflower bun run test apps/cli/src/commands/export-pdf.e2e.test.ts` | Passed; 5 tests, 1 unrelated tree hand-off skipped, 0 failures |
+| Browser dependency graph | `bun run check:browser` | Passed; 25 browser entry points |
+| API reports and closure | `bun run test scripts/api-report.test.ts` | Passed; 5 tests and zero reachable-but-unexported gaps |
+| Repository type safety | `bun run typecheck` | Passed for root, extension, browser compiler, and browser harness |
+| Full build | `bun run build` | Passed; 19 tasks |
+| Documentation | `bun run docs:check && bun run docs:build` | Passed; zero diagnostics and 78 generated pages |
+| Full repository suite | `bun run test` | Passed; 5,720 tests, 13 documented skips, 0 failures, 20,409 assertions, and 4 snapshots across 391 files |
+| Diff hygiene | `git diff --check` | Passed with no errors |
+
+### External usability evidence
+
+The
+[`usability evidence record`](USABILITY-RESULTS.md)
+is deliberately still empty. No implementer, agent, or synthetic test is
+counted as a representative participant. T10 and the overall definition of
+done remain open until five uninvolved business-document users complete the
+script, at least four succeed without facilitator intervention, and any
+repeated blocking journey defect is fixed and rerun.
+
+The automated output matrix proves rendering, terminology, width, color, and
+next-action contracts. It does not substitute for that human comprehension
+evidence.

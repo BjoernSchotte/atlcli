@@ -35,6 +35,8 @@ a parity that does not exist.
 - For Word: a `.docx` or `.docm` template. See
   [Scroll Word Exporter compatibility](/confluence/export/#scroll-word-exporter-compatibility)
   for the placeholder vocabulary the DOCX engine fills.
+- For a custom CLI PDF design: a reviewed `.wiki-pdf-template` pack. See
+  [Create a PDF template from Word](/confluence/pdf-template-from-word/).
 
 ## What a template is, per engine
 
@@ -44,12 +46,12 @@ are producing, and conflating them is the usual source of confusion.
 | Engine | Template | Where it comes from | Configurable without editing it? |
 |--------|----------|---------------------|----------------------------------|
 | Word (CLI / panel) | A real `.docx` you author in Word — styles, headers, footers, and `$scroll.*` placeholders | You upload or install it | No — the template *is* the design |
-| PDF | The **built-in** `atlcli-doc` design (`wiki.pdf-template/v1`) | Bundled — there is nothing to install | Yes — through [settings](/reference/pdf-template-settings/) |
+| PDF (CLI) | Editorial Indigo, or a verified `.wiki-pdf-template` pack | Bundled default or direct pack path | Yes — by reviewing a Word-derived authoring project |
+| PDF (browser panel) | The built-in `atlcli-doc` design (`wiki.pdf-template/v1`) | Bundled; the panel has no PDF-pack upload yet | Yes — through [settings](/reference/pdf-template-settings/) |
 
-**PDF has no template upload in any host.** The library described below is
-therefore, in practice, a Word-template library; the model is engine-aware so
-that custom Typst templates can join it later without a second mechanism, but no
-render path consumes one yet.
+The named/scoped library below currently manages Word templates. PDF packs use
+a direct path in the CLI; they are validated and copied into durable,
+content-addressed job storage before export.
 
 ## Two resolution models
 
@@ -68,7 +70,7 @@ precedence rules rather than reinventing them. **Today the CLI does not use it.*
 
 ## CLI: path precedence
 
-`--template <name-or-path>` resolves in this order, first match wins:
+For DOCX, `--template <name-or-path>` resolves in this order, first match wins:
 
 | # | Location | Use it for |
 |---|----------|------------|
@@ -92,6 +94,17 @@ atlcli wiki export template delete corporate --confirm
 
 The CLI may omit `--template` entirely and fall back to a
 [bundled default](/confluence/export/#the-bundled-default-template).
+
+For PDF, `--template` must be a direct `.wiki-pdf-template` path:
+
+```bash
+atlcli wiki export 12345678 --format pdf \
+  --template ./brand.wiki-pdf-template \
+  --output ./brand-report.pdf
+```
+
+The CLI validates the complete pack before contacting Confluence. Omitting the
+flag keeps Editorial Indigo.
 
 ## Panel: global and space scope
 
@@ -127,7 +140,8 @@ called `DOCSY` never see each other's templates.
 
 Every panel entry records the SHA-256 and byte length of the archive as stored.
 On **every** load, the bytes are re-hashed and cross-checked against both before
-they reach the engine:
+they reach the engine. CLI PDF packs receive the corresponding full archive,
+canonical-source, manifest, and accepted-asset validation before use:
 
 - A mismatch raises *"Template `<id>` failed its sha256 check … template was
   modified, re-upload."*
@@ -221,11 +235,14 @@ override reverts that space to the house style.
 | A space override is ignored | The page is not in that space, or the entry is scoped to another site | Confirm the page's space key in the panel's page summary |
 | A template's settings form is greyed out with an explanation | It is a Word template; the Word engine has no settings input | Configure the design in the template itself |
 | "Template exceeds the 20 MB limit" (panel) | Over the upload cap | Usually an embedded image — slim the template |
+| "PDF template validation failed" (CLI) | The path is missing, has the wrong extension, or the pack failed manifest/source/asset validation | Rebuild it with `atlcli pdf-template build`; do not edit generated pack members |
 | Jinja placeholders survive into the document | A retired docxtpl/Jinja template was supplied to the TypeScript engine | See [Jinja placeholders appear in the exported document](/confluence/export/#jinja-placeholders-appear-in-the-exported-document) |
 
 ## Related topics
 
 - [DOCX and PDF Export](/confluence/export/) — the export commands themselves
+- [Create a PDF template from Word](/confluence/pdf-template-from-word/) —
+  guided PDF-pack authoring
 - [Exporting from the panel](/extension/export/#word-templates) — the panel-side
   library UI
 - [PDF Template Settings](/reference/pdf-template-settings/) — the fixed

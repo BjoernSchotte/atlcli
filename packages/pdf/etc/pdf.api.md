@@ -362,6 +362,9 @@ export declare const PDF_TEMPLATE_CAPABILITIES_V1: TemplateCapabilityCatalogV1;
 // export: PDF_TEMPLATE_CAPABILITY_DIGEST_V1
 export declare const PDF_TEMPLATE_CAPABILITY_DIGEST_V1: "d871153baebf8e1cc318736ea34103213882e5d9569aa0efc820b226753a885c";
 
+// export: PDF_TEMPLATE_CAPABILITY_PRESENTATION_V1
+export declare const PDF_TEMPLATE_CAPABILITY_PRESENTATION_V1: TemplateCapabilityPresentationRegistryV1;
+
 // export: PDF_TEMPLATE_DECORATION_IDS_V1
 export declare const PDF_TEMPLATE_DECORATION_IDS_V1: readonly [
     "asset.pageBackground",
@@ -519,6 +522,13 @@ export interface PdfExportTimings {
     totalMs: number;
 }
 
+// export: PdfGeneratedTemplateProofCompiler
+export declare class PdfGeneratedTemplateProofCompiler implements TemplateGeneratedPackCompilerV1 {
+    private readonly compiler;
+    constructor(compiler: PdfCompilePort);
+    compile(input: TemplateGeneratedPackCompileInputV1): Promise<TemplateGeneratedPackCompileResultV1>;
+}
+
 // export: PdfLogoAsset
 export interface PdfLogoAsset {
     bytes: Uint8Array;
@@ -636,6 +646,11 @@ export interface PdfTemplatePreviewModelV1 {
         occurrenceCount: number;
         proposedRole?: string;
     }[];
+}
+
+// export: PdfTemplateRuntimeMaterializer
+export declare class PdfTemplateRuntimeMaterializer implements TemplateRuntimeMaterializer {
+    materialize(snapshot: AuthoringResolutionSnapshotV1, assets: readonly TemplateRuntimeAssetV1[]): Promise<TemplateRuntimeMaterializationV1>;
 }
 
 // export: PdfTemplateRuntimeSnapshotV1
@@ -1453,6 +1468,9 @@ export declare const PDF_TEMPLATE_CAPABILITIES_V1: TemplateCapabilityCatalogV1;
 // export: PDF_TEMPLATE_CAPABILITY_DIGEST_V1
 export declare const PDF_TEMPLATE_CAPABILITY_DIGEST_V1: "d871153baebf8e1cc318736ea34103213882e5d9569aa0efc820b226753a885c";
 
+// export: PDF_TEMPLATE_CAPABILITY_PRESENTATION_V1
+export declare const PDF_TEMPLATE_CAPABILITY_PRESENTATION_V1: TemplateCapabilityPresentationRegistryV1;
+
 // export: PDF_TEMPLATE_DECORATION_IDS_V1
 export declare const PDF_TEMPLATE_DECORATION_IDS_V1: readonly [
     "asset.pageBackground",
@@ -1610,6 +1628,13 @@ export interface PdfExportTimings {
     totalMs: number;
 }
 
+// export: PdfGeneratedTemplateProofCompiler
+export declare class PdfGeneratedTemplateProofCompiler implements TemplateGeneratedPackCompilerV1 {
+    private readonly compiler;
+    constructor(compiler: PdfCompilePort);
+    compile(input: TemplateGeneratedPackCompileInputV1): Promise<TemplateGeneratedPackCompileResultV1>;
+}
+
 // export: PdfLogoAsset
 export interface PdfLogoAsset {
     bytes: Uint8Array;
@@ -1727,6 +1752,11 @@ export interface PdfTemplatePreviewModelV1 {
         occurrenceCount: number;
         proposedRole?: string;
     }[];
+}
+
+// export: PdfTemplateRuntimeMaterializer
+export declare class PdfTemplateRuntimeMaterializer implements TemplateRuntimeMaterializer {
+    materialize(snapshot: AuthoringResolutionSnapshotV1, assets: readonly TemplateRuntimeAssetV1[]): Promise<TemplateRuntimeMaterializationV1>;
 }
 
 // export: PdfTemplateRuntimeSnapshotV1
@@ -2544,6 +2574,9 @@ export declare const PDF_TEMPLATE_CAPABILITIES_V1: TemplateCapabilityCatalogV1;
 // export: PDF_TEMPLATE_CAPABILITY_DIGEST_V1
 export declare const PDF_TEMPLATE_CAPABILITY_DIGEST_V1: "d871153baebf8e1cc318736ea34103213882e5d9569aa0efc820b226753a885c";
 
+// export: PDF_TEMPLATE_CAPABILITY_PRESENTATION_V1
+export declare const PDF_TEMPLATE_CAPABILITY_PRESENTATION_V1: TemplateCapabilityPresentationRegistryV1;
+
 // export: PDF_TEMPLATE_DECORATION_IDS_V1
 export declare const PDF_TEMPLATE_DECORATION_IDS_V1: readonly [
     "asset.pageBackground",
@@ -2701,6 +2734,13 @@ export interface PdfExportTimings {
     totalMs: number;
 }
 
+// export: PdfGeneratedTemplateProofCompiler
+export declare class PdfGeneratedTemplateProofCompiler implements TemplateGeneratedPackCompilerV1 {
+    private readonly compiler;
+    constructor(compiler: PdfCompilePort);
+    compile(input: TemplateGeneratedPackCompileInputV1): Promise<TemplateGeneratedPackCompileResultV1>;
+}
+
 // export: PdfLogoAsset
 export interface PdfLogoAsset {
     bytes: Uint8Array;
@@ -2818,6 +2858,11 @@ export interface PdfTemplatePreviewModelV1 {
         occurrenceCount: number;
         proposedRole?: string;
     }[];
+}
+
+// export: PdfTemplateRuntimeMaterializer
+export declare class PdfTemplateRuntimeMaterializer implements TemplateRuntimeMaterializer {
+    materialize(snapshot: AuthoringResolutionSnapshotV1, assets: readonly TemplateRuntimeAssetV1[]): Promise<TemplateRuntimeMaterializationV1>;
 }
 
 // export: PdfTemplateRuntimeSnapshotV1

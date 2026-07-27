@@ -69,7 +69,7 @@ export declare class ConfluenceInputPreparationError extends Error {
 }
 
 // export: ConfluenceSourceFailureKindV1
-export type ConfluenceSourceFailureKindV1 = "authentication" | "unknown";
+export type ConfluenceSourceFailureKindV1 = "authentication" | "not-found" | "unknown";
 
 // export: ConfluenceSourceProgressV1
 export interface ConfluenceSourceProgressV1 {
@@ -520,7 +520,7 @@ export declare class ConfluenceInputPreparationError extends Error {
 }
 
 // export: ConfluenceSourceFailureKindV1
-export type ConfluenceSourceFailureKindV1 = "authentication" | "unknown";
+export type ConfluenceSourceFailureKindV1 = "authentication" | "not-found" | "unknown";
 
 // export: ConfluenceSourcePlanCheckpointOptionsV1
 export interface ConfluenceSourcePlanCheckpointOptionsV1 extends ConfluenceSourcePlanIdentityV1 {

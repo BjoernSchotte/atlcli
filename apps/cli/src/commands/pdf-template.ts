@@ -12,22 +12,17 @@ import {
   DOCX_FACTS_MESSAGE_REGISTRY_V1,
   DOCX_INTAKE_MESSAGE_REGISTRY_V1,
   DOCX_MAPPING_MESSAGE_REGISTRY_V1,
-  DOCX_PDF_MAPPING_RULE_V1,
-  DOCX_VISUAL_ANALYSIS_RULE_V1,
   DOCX_VISUAL_MESSAGE_REGISTRY_V1,
   TEMPLATE_INTAKE_MESSAGES_V1,
-  analyzeDocxTemplateForCatalog,
-  analyzeDocxVisualAssets,
-  type AssetReviewDescriptorV1,
-  type DocxVisualAnalysisV1,
+  analyzeDocxTemplateImport,
   type DocxVisualPrivateSidecarV1,
-  type SceneCandidateV1,
 } from "@atlcli/docx-template-intake";
 import {
   BUILTIN_PDF_TEMPLATE_ID,
   BUILTIN_PDF_TEMPLATE_MANIFEST,
   PDF_RUNTIME_ASSETS,
   PDF_TEMPLATE_ASSET_CAPABILITIES_V1,
+  PdfTemplateRuntimeMaterializer,
   PdfTemplatePreviewCompiler,
   getBuiltinPdfTemplate,
   loadPdfTemplatePack,
@@ -42,16 +37,13 @@ import {
   ACCEPT_SAFE_POLICY_V1,
   AUTHORING_MESSAGE_REGISTRY_V1,
   InMemoryTemplateAssetStore,
-  TEMPLATE_PROJECT_STATE_SCHEMA_V1,
   TemplateAuthoringError,
   TemplateProjectBuildError,
   acceptRecommendedCandidates,
   acceptSafeCandidates,
   buildGeneratedPdfTemplatePack,
   buildTemplateProject,
-  createTemplateCandidate,
-  createTemplateDecisionState,
-  deriveSemanticReconciliationKey,
+  createTemplateProjectState,
   diffTemplateLayers,
   prepareTemplateProjectUndo,
   projectTemplateImportView,
@@ -65,7 +57,6 @@ import {
   type TemplateCandidateV1,
   type TemplateDecisionContextV1,
   type TemplateDecisionStateV1,
-  type TemplateDiagnosticV1,
   type TemplateDisplayValueV1,
   type TemplateImportActionV1,
   type TemplateImportProgressEventV1,
@@ -92,7 +83,6 @@ import {
 } from "./pdf-template-project-writer.js";
 import {
   CliGeneratedPdfTemplateCompiler,
-  CliPdfTemplateRuntimeMaterializer,
 } from "./pdf-template-runtime.js";
 
 const RESULT_SCHEMA = "atlcli.pdf-template-result/1" as const;
@@ -361,7 +351,7 @@ function defaultDependencies(
     },
     readBytes: async (path) => new Uint8Array(await readFile(path)),
     createPreviewCompiler: async (project, privateIntake, assetStore) => {
-      const materializer = new CliPdfTemplateRuntimeMaterializer();
+      const materializer = new PdfTemplateRuntimeMaterializer();
       const runtimeAssets = await acceptedRuntimeAssets(project, assetStore);
       const materialized = await materializer.materialize(
         project.snapshot,
@@ -653,149 +643,6 @@ function mapRole(role: string | undefined): string | undefined {
   }
 }
 
-function emuLength(value: number): string {
-  return `${Number((value / 36000).toFixed(3))}mm`;
-}
-
-function candidatePlacement(
-  scene: SceneCandidateV1 | undefined
-): Readonly<Record<string, unknown>> | undefined {
-  if (
-    scene?.placement?.kind !== "anchor" ||
-    scene.placement.resolution === "layout-dependent"
-  ) {
-    return undefined;
-  }
-  const extent = scene.placement.extent;
-  const horizontal = scene.placement.horizontal;
-  const vertical = scene.placement.vertical;
-  if (
-    horizontal.value.kind !== "offset" ||
-    vertical.value.kind !== "offset" ||
-    !["page", "margin"].includes(horizontal.relativeFrom) ||
-    !["page", "margin"].includes(vertical.relativeFrom)
-  ) {
-    return undefined;
-  }
-  return {
-    relativeTo:
-      horizontal.relativeFrom === "page" && vertical.relativeFrom === "page"
-        ? "page"
-        : "margin",
-    fit: "contain",
-    x: emuLength(horizontal.value.emu),
-    y: emuLength(vertical.value.emu),
-    width: emuLength(extent.width),
-    height: emuLength(extent.height),
-  };
-}
-
-async function visualCandidates(
-  analysisDigest: string,
-  visual: DocxVisualAnalysisV1
-): Promise<{
-  candidates: readonly TemplateCandidateV1[];
-  privateCandidates: readonly PrivateAssetCandidateV1[];
-}> {
-  const candidates: TemplateCandidateV1[] = [];
-  const privateCandidates: PrivateAssetCandidateV1[] = [];
-  for (const [ordinal, review] of visual.assetReview.entries()) {
-    const roleSuggestion = visual.roleSuggestions.find(
-      (suggestion) =>
-        suggestion.role === review.proposedRole &&
-        visual.scenes
-          .find(({ id }) => id === suggestion.sceneId)
-          ?.representations.some(
-            ({ selected, assetSha256 }) =>
-              selected && assetSha256 === review.asset.sha256
-          )
-    );
-    const scene =
-      visual.scenes.find(({ id }) => id === roleSuggestion?.sceneId) ??
-      visual.scenes.find((entry) =>
-      entry.representations.some(
-        ({ selected, assetSha256 }) =>
-          selected && assetSha256 === review.asset.sha256
-      )
-    );
-    const role = mapRole(review.proposedRole);
-    const semanticKey = await deriveSemanticReconciliationKey({
-      ruleId: DOCX_VISUAL_ANALYSIS_RULE_V1.id,
-      concept: "visual-asset",
-      scope: `sha-${review.asset.sha256}`,
-    });
-    const compatibility =
-      role && scene?.compatibility === "native" && scene.sectionScope !== "unsupported-section-scope"
-        ? "native"
-        : "unsupported";
-    const candidate = await createTemplateCandidate({
-      analysisDigest,
-      ordinal: 1_000_000 + ordinal,
-      conceptCode: "DOCX_CONCEPT_VISUAL_ASSET",
-      semanticKey,
-      group: {
-        id: `asset.${review.asset.sha256}`,
-        cardinality: "zero-or-one",
-        atomic: true,
-      },
-      writes: [],
-      rank: 10,
-      kind: "asset",
-      valueNature: "source-explicit",
-      confidence: role ? "corroborated" : "blocked",
-      compatibility,
-      adoption: compatibility === "native" ? "review" : "blocked",
-      evidence: [
-        {
-          id: `asset-evidence-${ordinal}`,
-          partRef: "visual",
-          locator: `asset.${ordinal + 1}`,
-          ...(scene ? { sectionIndex: scene.scope.section } : {}),
-        },
-      ],
-      rule: DOCX_VISUAL_ANALYSIS_RULE_V1,
-      explanations: review.explanations,
-      diagnostics: [],
-      layoutDependent:
-        scene?.placement?.kind === "anchor" &&
-        scene.placement.resolution === "layout-dependent",
-    });
-    candidates.push(candidate);
-    privateCandidates.push({
-      candidateId: candidate.id,
-      semanticKey,
-      asset: review.asset,
-      occurrenceCount: review.occurrenceCount,
-      ...(role ? { proposedRole: role } : {}),
-      supportedPlacementChoices: review.supportedPlacementChoices,
-      ...(candidatePlacement(scene)
-        ? { candidatePlacement: candidatePlacement(scene) }
-        : {}),
-    });
-  }
-  return { candidates, privateCandidates };
-}
-
-function inventoryCodes(
-  diagnostics: readonly TemplateDiagnosticV1[]
-): readonly string[] {
-  return [
-    ...new Set(
-      diagnostics
-        .filter(
-          ({ severity, code }) =>
-            severity !== "info" &&
-            (code.includes("UNSUPPORTED") ||
-              code.includes("UNKNOWN") ||
-              code.includes("EXTERNAL") ||
-              code.includes("CAPABILITY_ABSENT") ||
-              code.includes("REVISIONS"))
-        )
-        .map(({ code }) => code)
-    ),
-  ].sort();
-}
-
 async function analyzeSource(
   bytes: Uint8Array,
   source: { absolute: string; display: string },
@@ -807,64 +654,25 @@ async function analyzeSource(
   assetHandles: Readonly<Record<string, TemplateAssetHandleV1>>;
   privateIntake: PrivateIntakeV1;
 }> {
-  const catalogAnalysis = await analyzeDocxTemplateForCatalog(bytes, {
+  const result = await analyzeDocxTemplateImport(bytes, {
     catalog: PDF_TEMPLATE_CAPABILITIES_V1,
     bundledFontFamilies: PDF_RUNTIME_ASSETS.fonts.map(({ family }) => family),
+    assetCapabilities: PDF_TEMPLATE_ASSET_CAPABILITIES_V1,
+    assetStore,
+    metadataOnly,
     progress: dependencies.onProgress,
   });
-  const visual = metadataOnly
-    ? undefined
-    : await analyzeDocxVisualAssets(bytes, {
-        capabilities: PDF_TEMPLATE_ASSET_CAPABILITIES_V1,
-        assetStore,
-        sections: catalogAnalysis.sections,
-      });
-  const projected = visual
-    ? await visualCandidates(catalogAnalysis.sourceDigest, visual.analysis)
-    : { candidates: [], privateCandidates: [] };
-  const diagnostics = [
-    ...catalogAnalysis.diagnostics,
-    ...(visual?.analysis.diagnostics ?? []),
-  ].sort((left, right) =>
-    `${left.code}:${canonicalCapabilityJson(left.params)}`.localeCompare(
-      `${right.code}:${canonicalCapabilityJson(right.params)}`
-    )
-  );
-  const candidates = [
-    ...catalogAnalysis.matching.candidates,
-    ...projected.candidates,
-  ];
-  const portable = {
-    sourceDigest: catalogAnalysis.sourceDigest,
-    mappingVersion: `${DOCX_PDF_MAPPING_RULE_V1.version}+${DOCX_VISUAL_ANALYSIS_RULE_V1.version}`,
-    candidates,
-    diagnostics,
-    inventoryDiagnosticCodes: inventoryCodes(diagnostics),
-    hasVisualCandidates: (visual?.analysis.assetReview.length ?? 0) > 0,
-  };
-  const analysis: TemplateProjectAnalysisV1 = {
-    digest: await sha256Hex(
-      new TextEncoder().encode(canonicalCapabilityJson(portable))
-    ),
-    ...portable,
-  };
-  const assetHandles = Object.fromEntries(
-    (visual?.analysis.assets ?? []).map(({ sha256, handle }) => [
-      sha256,
-      handle,
-    ])
-  );
   return {
-    analysis,
-    assetHandles,
+    analysis: result.analysis,
+    assetHandles: result.assetHandles,
     privateIntake: {
       schema: PRIVATE_INTAKE_SCHEMA,
       source: {
         name: basename(source.absolute),
         metadataOnly,
       },
-      ...(visual ? { visual: visual.privateSource } : {}),
-      assetCandidates: projected.privateCandidates,
+      ...(result.privateVisual ? { visual: result.privateVisual } : {}),
+      assetCandidates: result.privateAssetCandidates,
     },
   };
 }
@@ -936,37 +744,21 @@ async function createInitialProject(
   assetHandles: Readonly<Record<string, TemplateAssetHandleV1>>,
   selected: ReturnType<typeof baseline>
 ): Promise<TemplateProjectStateV1> {
-  const decisions = createTemplateDecisionState();
-  const snapshot = await resolveTemplateLayers({
-    catalog: PDF_TEMPLATE_CAPABILITIES_V1,
-    catalogDigest: PDF_TEMPLATE_CAPABILITY_DIGEST_V1,
+  return createTemplateProjectState({
+    analysis,
+    assetHandles,
+    catalog: {
+      id: PDF_TEMPLATE_CAPABILITIES_V1.id,
+      version: PDF_TEMPLATE_CAPABILITIES_V1.version,
+      digest: PDF_TEMPLATE_CAPABILITY_DIGEST_V1,
+      descriptor: PDF_TEMPLATE_CAPABILITIES_V1,
+    },
     baseline: {
       id: selected.id,
       version: selected.version,
       design: selected.design,
     },
-    sourceDigest: analysis.sourceDigest,
-    decisions,
-    candidates: analysis.candidates,
-    mappingVersion: analysis.mappingVersion,
   });
-  return {
-    schema: TEMPLATE_PROJECT_STATE_SCHEMA_V1,
-    catalog: {
-      id: PDF_TEMPLATE_CAPABILITIES_V1.id,
-      version: PDF_TEMPLATE_CAPABILITIES_V1.version,
-      digest: PDF_TEMPLATE_CAPABILITY_DIGEST_V1,
-    },
-    baseline: {
-      id: selected.id,
-      version: selected.version,
-      digest: snapshot.baseline.digest,
-    },
-    analysis,
-    decisions,
-    snapshot,
-    assetHandles,
-  };
 }
 
 async function projectView(
@@ -2277,7 +2069,7 @@ async function buildCurrent(
     view: loaded.view,
     previews: await collectPreviews(loaded),
     assetStore: loaded.assetStore,
-    materializer: new CliPdfTemplateRuntimeMaterializer(),
+    materializer: new PdfTemplateRuntimeMaterializer(),
   });
 }
 
@@ -2514,6 +2306,7 @@ export function presentPdfTemplateResult(
   options: {
     width: number;
     details: boolean;
+    color: boolean;
     unicode: boolean;
     locale: string;
   }
@@ -2521,7 +2314,7 @@ export function presentPdfTemplateResult(
   if (!result.ok) {
     const first = result.diagnostics[0];
     const message = first?.message ?? "The command failed.";
-    return [
+    const rendered = [
       message,
       ...(/active draft was retained/iu.test(message)
         ? []
@@ -2531,6 +2324,13 @@ export function presentPdfTemplateResult(
       ),
       ...(options.details && first ? [`Code: ${first.code}`] : []),
     ].join("\n");
+    if (!options.color) return rendered;
+    const firstLineEnd = rendered.indexOf("\n");
+    const heading =
+      firstLineEnd === -1 ? rendered : rendered.slice(0, firstLineEnd);
+    const remainder =
+      firstLineEnd === -1 ? "" : rendered.slice(firstLineEnd);
+    return `\u001b[31m${heading}\u001b[0m${remainder}`;
   }
   const view = result.view;
   if (!view) return `${result.command} completed.`;
@@ -2594,9 +2394,24 @@ export function presentPdfTemplateResult(
       }
     }
   }
-  return lines
+  const rendered = lines
     .map((line) => (line ? wrap(line, options.width) : line))
     .join("\n");
+  if (!options.color) return rendered;
+  const firstLineEnd = rendered.indexOf("\n");
+  const heading =
+    firstLineEnd === -1 ? rendered : rendered.slice(0, firstLineEnd);
+  const remainder =
+    firstLineEnd === -1 ? "" : rendered.slice(firstLineEnd);
+  const color =
+    view.stage === "blocked" || view.stage === "source-changed"
+      ? 31
+      : view.stage === "review-required"
+        ? 33
+        : view.stage === "analyzing"
+          ? 36
+          : 32;
+  return `\u001b[${color}m${heading}\u001b[0m${remainder}`;
 }
 
 function errorResult(
@@ -2733,6 +2548,7 @@ export async function handlePdfTemplate(
     const text = presentPdfTemplateResult(result, {
       width: dependencies.columns,
       details: hasFlag(flags, "details"),
+      color: !dependencies.noColor,
       unicode: dependencies.unicode,
       locale: dependencies.locale,
     });
@@ -2795,6 +2611,7 @@ Important boundaries:
 Automation:
   --json implies --non-interactive. JSON writes exactly one result document to
   stdout; progress is JSONL on stderr. Use --details to reveal technical IDs
-  and digests in text output.
+  and digests in text output. --no-color (or NO_COLOR) disables ANSI status
+  color; --ascii uses portable status markers.
 `;
 }

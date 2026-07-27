@@ -324,6 +324,8 @@ atlcli wiki export <page-id> --output ./page.docx
 atlcli wiki export <page-id> --code-theme dracula --output ./page.docx
 atlcli wiki export <page-id> --format pdf --output ./page.pdf
 atlcli wiki export <page-id> --format pdf --code-theme nord --output ./page.pdf
+atlcli wiki export <page-id> --format pdf \
+  --template ./brand.wiki-pdf-template --output ./brand-page.pdf
 atlcli wiki export <page-id> --scope tree --output ./handbook.docx
 atlcli wiki export --scope space --space DOCS --format pdf --out-dir ./dist
 
@@ -349,6 +351,37 @@ progress while another process can monitor or cancel them. There is no
 `--detach` mode. See [DOCX and PDF Export](/confluence/export/) for export flags
 and [Export Jobs & Operations](/reference/export-jobs/) for recovery and
 retention.
+
+### PDF Template Authoring
+
+```bash
+# Guided Word-design import
+atlcli pdf-template import ./brand.docx
+atlcli pdf-template status ./brand-pdf-template
+atlcli pdf-template review ./brand-pdf-template
+atlcli pdf-template preview ./brand-pdf-template
+atlcli pdf-template build ./brand-pdf-template \
+  --output ./brand.wiki-pdf-template
+atlcli pdf-template undo ./brand-pdf-template
+
+# Expert / automation surfaces
+atlcli pdf-template analyze ./brand.docx --json --no-log
+atlcli pdf-template reanalyze ./brand-v2.docx --dir ./brand-pdf-template
+atlcli pdf-template diff ./brand-pdf-template --details
+atlcli pdf-template decide --dir ./brand-pdf-template <explicit-action>
+atlcli pdf-template set --dir ./brand-pdf-template \
+  --target <capability-path> --value '<json>'
+atlcli pdf-template validate ./brand-pdf-template
+atlcli pdf-template pack ./brand-pdf-template \
+  --output ./brand.wiki-pdf-template
+```
+
+The default import uses Editorial Indigo as a complete baseline and applies no
+suggestion silently. Graphics require explicit role, rights, accessibility,
+and placement decisions. JSON mode is non-interactive and emits one
+`atlcli.pdf-template-result/1` document on stdout; progress is JSONL on stderr.
+See [PDF Template Authoring CLI](/reference/pdf-template-authoring-cli/) for
+all stages, options, schemas, and recovery behavior.
 
 ## Jira
 

@@ -2057,9 +2057,11 @@ Arguments:
 
 Options:
   --format <fmt>      Output format: "docx" (default) or "pdf"
-  --template, -t      Optional DOCX template name or path. Without it, the
-                      TypeScript engine uses the bundled default (page title, export
-                      date, page body) and reports which template it used.
+  --template, -t      DOCX: optional template name/path. PDF: verified
+                      .wiki-pdf-template pack path. Without it, each format
+                      uses its bundled default; DOCX reports that fallback.
+                      DOCX template names follow the resolution order below;
+                      PDF requires a direct pack path.
                       The DOCX engine fills $scroll.* placeholders only — a
                       docxtpl/Jinja template ({{ … }}, {% … %}) exports with
                       those left as literal text and a warning note.
@@ -2101,7 +2103,8 @@ PDF Options (--format pdf):
   --no-cache                Do not persist downloaded assets across invocations
   --exported-at <ISO8601>   Fix the export timestamp (reproducible builds; also
                             honors the SOURCE_DATE_EPOCH env var)
-  (--template and --engine are not valid with --format pdf.)
+  --template, -t <pack>     Use a verified .wiki-pdf-template pack
+  (--engine is not valid with --format pdf.)
 
 Profile-free auth (CI, any format):
   --base-url <url>          Confluence base URL (or ATLCLI_BASE_URL); requires
@@ -2147,14 +2150,16 @@ JSON Output (--json / --report json):
   on stdout (sourcePages, outputDetails, issues, scope traceability, exitCode).
   Progress events go to stderr.
 
-Template Resolution:
-  Templates are resolved in order (first match wins):
+DOCX Template Resolution:
+  DOCX template names are resolved in order (first match wins):
   1. Direct file path (if exists)
   2. Project: .atlcli/templates/confluence/<name>.docx
   3. Profile: ~/.atlcli/profiles/<profile>/templates/confluence/<name>.docx
   4. Global: ~/.atlcli/templates/confluence/<name>.docx
   With no --template: the bundled default template
   (reported as the info note "template-default-used").
+  PDF --template requires a direct .wiki-pdf-template path; omission keeps
+  Editorial Indigo.
 
 Template Management:
   atlcli wiki export template list                    List available templates
@@ -2187,6 +2192,10 @@ Examples:
 
   # PDF: single page to a tagged, font-embedded PDF with a JSON report for CI
   atlcli wiki export 12345 --format pdf --output ./report.pdf --json
+
+  # PDF: apply a reviewed Word-derived design pack
+  atlcli wiki export 12345 --format pdf --template ./brand.wiki-pdf-template \\
+    --output ./brand-report.pdf --json
 
   atlcli wiki export 12345678 --template corporate --output ./report.docx
   atlcli wiki export "DOCS:Architecture" -t ./my-template.docx -o ./arch.docx

@@ -213,6 +213,26 @@ export interface CreateTemplateCandidateInputV1 extends Omit<TemplateCandidateV1
 // export: createTemplateDecisionState
 export declare function createTemplateDecisionState(): TemplateDecisionStateV1;
 
+// export: createTemplateProjectState
+export declare function createTemplateProjectState(input: CreateTemplateProjectStateInputV1): Promise<TemplateProjectStateV1>;
+
+// export: CreateTemplateProjectStateInputV1
+export interface CreateTemplateProjectStateInputV1 {
+    analysis: TemplateProjectAnalysisV1;
+    assetHandles: Readonly<Record<string, TemplateAssetHandleV1>>;
+    catalog: {
+        id: string;
+        version: number;
+        digest: string;
+        descriptor: Parameters<typeof resolveTemplateLayers>[0]["catalog"];
+    };
+    baseline: {
+        id: string;
+        version: string;
+        design: Readonly<Record<string, unknown>>;
+    };
+}
+
 // export: deriveRecommendedCandidates
 export declare function deriveRecommendedCandidates(state: TemplateDecisionStateV1, candidates: readonly TemplateCandidateV1[], context: TemplateDecisionContextV1): readonly TemplateCandidateV1[];
 
@@ -1235,6 +1255,26 @@ export interface CreateTemplateCandidateInputV1 extends Omit<TemplateCandidateV1
 
 // export: createTemplateDecisionState
 export declare function createTemplateDecisionState(): TemplateDecisionStateV1;
+
+// export: createTemplateProjectState
+export declare function createTemplateProjectState(input: CreateTemplateProjectStateInputV1): Promise<TemplateProjectStateV1>;
+
+// export: CreateTemplateProjectStateInputV1
+export interface CreateTemplateProjectStateInputV1 {
+    analysis: TemplateProjectAnalysisV1;
+    assetHandles: Readonly<Record<string, TemplateAssetHandleV1>>;
+    catalog: {
+        id: string;
+        version: number;
+        digest: string;
+        descriptor: Parameters<typeof resolveTemplateLayers>[0]["catalog"];
+    };
+    baseline: {
+        id: string;
+        version: string;
+        design: Readonly<Record<string, unknown>>;
+    };
+}
 
 // export: deriveRecommendedCandidates
 export declare function deriveRecommendedCandidates(state: TemplateDecisionStateV1, candidates: readonly TemplateCandidateV1[], context: TemplateDecisionContextV1): readonly TemplateCandidateV1[];
@@ -2259,6 +2299,26 @@ export interface CreateTemplateCandidateInputV1 extends Omit<TemplateCandidateV1
 // export: createTemplateDecisionState
 export declare function createTemplateDecisionState(): TemplateDecisionStateV1;
 
+// export: createTemplateProjectState
+export declare function createTemplateProjectState(input: CreateTemplateProjectStateInputV1): Promise<TemplateProjectStateV1>;
+
+// export: CreateTemplateProjectStateInputV1
+export interface CreateTemplateProjectStateInputV1 {
+    analysis: TemplateProjectAnalysisV1;
+    assetHandles: Readonly<Record<string, TemplateAssetHandleV1>>;
+    catalog: {
+        id: string;
+        version: number;
+        digest: string;
+        descriptor: Parameters<typeof resolveTemplateLayers>[0]["catalog"];
+    };
+    baseline: {
+        id: string;
+        version: string;
+        design: Readonly<Record<string, unknown>>;
+    };
+}
+
 // export: deriveRecommendedCandidates
 export declare function deriveRecommendedCandidates(state: TemplateDecisionStateV1, candidates: readonly TemplateCandidateV1[], context: TemplateDecisionContextV1): readonly TemplateCandidateV1[];
 
@@ -3281,6 +3341,26 @@ export interface CreateTemplateCandidateInputV1 extends Omit<TemplateCandidateV1
 
 // export: createTemplateDecisionState
 export declare function createTemplateDecisionState(): TemplateDecisionStateV1;
+
+// export: createTemplateProjectState
+export declare function createTemplateProjectState(input: CreateTemplateProjectStateInputV1): Promise<TemplateProjectStateV1>;
+
+// export: CreateTemplateProjectStateInputV1
+export interface CreateTemplateProjectStateInputV1 {
+    analysis: TemplateProjectAnalysisV1;
+    assetHandles: Readonly<Record<string, TemplateAssetHandleV1>>;
+    catalog: {
+        id: string;
+        version: number;
+        digest: string;
+        descriptor: Parameters<typeof resolveTemplateLayers>[0]["catalog"];
+    };
+    baseline: {
+        id: string;
+        version: string;
+        design: Readonly<Record<string, unknown>>;
+    };
+}
 
 // export: deriveRecommendedCandidates
 export declare function deriveRecommendedCandidates(state: TemplateDecisionStateV1, candidates: readonly TemplateCandidateV1[], context: TemplateDecisionContextV1): readonly TemplateCandidateV1[];

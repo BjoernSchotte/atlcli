@@ -247,7 +247,13 @@ describe("pdf-template CLI discovery and presentation", () => {
           baseline: "builtin.editorial-indigo",
         },
       },
-      { width: 80, details: false, unicode: false, locale: "en" }
+      {
+        width: 80,
+        details: false,
+        color: false,
+        unicode: false,
+        locale: "en",
+      }
     );
     expect(text).toContain("Analyzed brand.docx");
     expect(text).toContain("12 design choices are ready to apply");
@@ -315,6 +321,7 @@ describe("pdf-template CLI discovery and presentation", () => {
       const text = presentPdfTemplateResult(result, {
         width,
         details: false,
+        color: false,
         unicode: false,
         locale: "en",
       });
@@ -324,6 +331,169 @@ describe("pdf-template CLI discovery and presentation", () => {
       expect(text).toContain("OK Review required");
       expect(text).not.toContain("\u001b");
     }
+  });
+
+  test("freezes every primary journey state at 80/120 columns with and without color", () => {
+    type View = NonNullable<PdfTemplateCliResultV1["view"]>;
+    const projectPath = "./brand-pdf-template";
+    const view = (
+      stage: View["stage"],
+      overrides: Partial<View> = {}
+    ): View => ({
+      schema: "wiki.pdf-template-import-view/v1",
+      generation: "a".repeat(64),
+      stage,
+      summary: {
+        readyToApply: 2,
+        needsReview: 1,
+        cannotTransfer: 1,
+        blockers: stage === "blocked" ? 1 : 0,
+        unanswered: 1,
+      },
+      sections: [],
+      diagnostics: [],
+      availableActions: [],
+      nextActions: [],
+      preview: {
+        designReview:
+          stage === "ready-to-build" || stage === "built"
+            ? "ready"
+            : "missing",
+        compatibilityProof:
+          stage === "ready-to-build" || stage === "built"
+            ? "ready"
+            : "missing",
+      },
+      ...overrides,
+    });
+    const warning = (message: string): PdfTemplateCliResultV1["diagnostics"] => [
+      {
+        code: "ATLCLI_PDF_TEMPLATE_REVIEW_REQUIRED",
+        severity: "warning",
+        message,
+        recoveryCommands: [
+          `atlcli pdf-template review ${projectPath}`,
+        ],
+      },
+    ];
+    const ok = (
+      command: string,
+      stage: View["stage"],
+      extra: Partial<PdfTemplateCliResultV1> = {}
+    ): PdfTemplateCliResultV1 => ({
+      schema: "atlcli.pdf-template-result/1",
+      command,
+      ok: true,
+      exitCode: 0,
+      projectPath,
+      view: view(stage),
+      diagnostics: [],
+      nextActions: [`atlcli pdf-template review ${projectPath}`],
+      ...extra,
+    });
+    const scenarios: Readonly<Record<string, PdfTemplateCliResultV1>> = {
+      "first-import": ok("import", "review-required", {
+        changedCount: 0,
+        details: {
+          sourceName: "brand.docx",
+          baseline: "builtin.editorial-indigo",
+        },
+      }),
+      "resumable-status": ok("status", "review-required"),
+      "ready-change-review": ok("review", "review-required", {
+        changedCount: 1,
+        openCount: 2,
+      }),
+      "uncertain-review": ok("review", "review-required", {
+        diagnostics: warning(
+          "One design choice needs confirmation before it can be applied."
+        ),
+      }),
+      "asset-review": ok("review", "review-required", {
+        diagnostics: warning(
+          "Confirm the graphic role, accessibility, and usage rights."
+        ),
+      }),
+      "source-change-recovery": ok("reanalyze", "source-changed", {
+        diagnostics: warning(
+          "The Word source changed. Reanalyze it before continuing."
+        ),
+        nextActions: [
+          "atlcli pdf-template reanalyze brand.docx --dir ./brand-pdf-template",
+        ],
+      }),
+      "blocked-build": {
+        schema: "atlcli.pdf-template-result/1",
+        command: "build",
+        ok: false,
+        exitCode: 5,
+        projectPath,
+        diagnostics: [
+          {
+            code: "ATLCLI_ERR_VALIDATION",
+            severity: "error",
+            message:
+              "Review items remain. The active draft was retained.",
+            recoveryCommands: [
+              `atlcli pdf-template review ${projectPath}`,
+            ],
+          },
+        ],
+        nextActions: [`atlcli pdf-template review ${projectPath}`],
+      },
+      "successful-preview": ok("preview", "ready-to-build", {
+        outputs: {
+          "design-review": "./proof/design-review.pdf",
+          "compatibility-proof": "./proof/compatibility-proof.pdf",
+        },
+        nextActions: [`atlcli pdf-template build ${projectPath}`],
+      }),
+      "successful-build": ok("build", "built", {
+        outputs: {
+          archive: "./brand.wiki-pdf-template",
+        },
+        nextActions: [`atlcli wiki export 123 --format pdf --template ./brand.wiki-pdf-template --output ./brand.pdf`],
+      }),
+      undo: ok("undo", "ready-to-preview", {
+        changedCount: 1,
+        openCount: 0,
+        details: {
+          undoCommand: `atlcli pdf-template undo ${projectPath}`,
+        },
+        nextActions: [`atlcli pdf-template preview ${projectPath}`],
+      }),
+    };
+    const matrix: Record<string, string> = {};
+    const stripAnsi = (value: string): string =>
+      value.replace(/\u001b\[[0-9;]*m/gu, "");
+    for (const [scenario, result] of Object.entries(scenarios)) {
+      for (const width of [80, 120]) {
+        for (const color of [false, true]) {
+          const rendered = presentPdfTemplateResult(result, {
+            width,
+            details: false,
+            color,
+            unicode: false,
+            locale: "en",
+          });
+          const plain = stripAnsi(rendered);
+          expect(
+            Math.max(...plain.split("\n").map((line) => line.length)),
+            `${scenario}/${width}/${color ? "color" : "plain"}`
+          ).toBeLessThanOrEqual(width);
+          expect(plain).toMatch(/(?:Next|Recover): atlcli /u);
+          expect(rendered.includes("\u001b["), scenario).toBe(color);
+          matrix[
+            `${scenario}/${width}/${color ? "color" : "plain"}`
+          ] = rendered;
+        }
+      }
+    }
+    expect(
+      Object.entries(matrix)
+        .map(([key, value]) => `=== ${key} ===\n${value}`)
+        .join("\n\n")
+    ).toMatchSnapshot();
   });
 
   test("human errors retain the draft once and keep the machine code behind details", () => {
@@ -350,6 +520,7 @@ describe("pdf-template CLI discovery and presentation", () => {
     const ordinary = presentPdfTemplateResult(result, {
       width: 80,
       details: false,
+      color: false,
       unicode: false,
       locale: "en",
     });
@@ -364,6 +535,7 @@ describe("pdf-template CLI discovery and presentation", () => {
       presentPdfTemplateResult(result, {
         width: 80,
         details: true,
+        color: false,
         unicode: false,
         locale: "en",
       })
@@ -524,6 +696,7 @@ describe("pdf-template CLI project journey", () => {
     const reviewedText = presentPdfTemplateResult(reviewed, {
       width: 80,
       details: false,
+      color: false,
       unicode: false,
       locale: "en",
     });

@@ -54,7 +54,13 @@ import {
 } from "@atlcli/export-fixtures";
 import { ensurePdfFonts } from "../../../packages/pdf/scripts/ensure-fonts.js";
 import { MemoryOutputSink } from "../src/memory-output.js";
-import { compareReportProjection, projectNotes, sha256Hex } from "./parity-compare.js";
+import { runDocxTemplateIntakeFlow } from "../src/docx-template-intake-flow.js";
+import {
+  compareReportProjection,
+  compareStructuredParity,
+  projectNotes,
+  sha256Hex,
+} from "./parity-compare.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const DIGEST_MANIFEST = resolve(HERE, "../test-results/digests.json");
@@ -114,6 +120,7 @@ interface CliCaseResult {
   compilerVersion: string;
   digests: Record<string, string>;
   notes: Array<{ code: string; level: string }>;
+  parity?: Readonly<Record<string, unknown>>;
 }
 
 /** The canonical (parity-shared) PDF export request — identical to the harness. */
@@ -216,6 +223,26 @@ async function runManuscriptCli(compiler: PdfCompilePort): Promise<CliCaseResult
   };
 }
 
+async function runDocxTemplateIntakeCli(
+  _compiler: PdfCompilePort
+): Promise<CliCaseResult> {
+  // The browser case owns a dedicated module Worker. Use an equally fresh Bun
+  // compiler here so preview byte parity cannot depend on caches warmed by an
+  // unrelated conformance case.
+  const { result } = await runDocxTemplateIntakeFlow(
+    await buildBunCompiler()
+  );
+  return {
+    compilerVersion: result.compilerVersion,
+    digests: result.digests,
+    notes: result.reportNotes.map(({ code, severity }) => ({
+      code,
+      level: severity,
+    })),
+    parity: result.parity,
+  };
+}
+
 /**
  * Every PDF parity case: id → CLI-side runner producing the same digests as the
  * browser.
@@ -230,6 +257,7 @@ async function runManuscriptCli(compiler: PdfCompilePort): Promise<CliCaseResult
  */
 const PARITY_CASES: Record<string, (compiler: PdfCompilePort) => Promise<CliCaseResult>> = {
   "pdf-settings": runPdfSettingsCli,
+  "docx-template-intake": runDocxTemplateIntakeCli,
   blocks: runBlocksCli,
   scope: runScopeCli,
   "content-compat": runContentCli,
@@ -241,6 +269,7 @@ interface BrowserCaseResult {
   compilerVersion: string;
   digests: Record<string, string>;
   reportNotes: Array<{ code: string; severity?: string; level?: string }>;
+  parity?: Readonly<Record<string, unknown>>;
 }
 
 function loadBrowserManifest(): Record<string, BrowserCaseResult> | null {
@@ -268,11 +297,20 @@ function compareCase(id: string, browser: BrowserCaseResult | undefined, cli: Cl
     );
     return failures;
   }
-  for (const key of Object.keys(cli.digests)) {
+  const digestKeys = new Set([
+    ...Object.keys(browser.digests ?? {}),
+    ...Object.keys(cli.digests),
+  ]);
+  for (const key of [...digestKeys].sort()) {
     const b = browser.digests?.[key];
     const c = cli.digests[key];
     if (b !== c) {
       failures.push(`case ${id}: "${key}" digest differs (browser ${String(b).slice(0, 16)} vs cli ${c.slice(0, 16)})`);
+    }
+  }
+  if (browser.parity !== undefined || cli.parity !== undefined) {
+    for (const detail of compareStructuredParity(browser.parity, cli.parity)) {
+      failures.push(`case ${id}: contract${detail}`);
     }
   }
   for (const detail of compareReportProjection(

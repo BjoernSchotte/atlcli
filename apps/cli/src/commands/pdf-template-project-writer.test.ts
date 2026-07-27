@@ -12,6 +12,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { sha256Hex } from "@atlcli/core";
 import {
+  PdfTemplateRuntimeMaterializer,
+} from "@atlcli/pdf";
+import {
   BUILTIN_PDF_DESIGN,
   PDF_TEMPLATE_CAPABILITIES_V1,
 } from "@atlcli/pdf/internal";
@@ -38,7 +41,6 @@ import {
 } from "./pdf-template-project-writer.js";
 import {
   CliGeneratedPdfTemplateCompiler,
-  CliPdfTemplateRuntimeMaterializer,
 } from "./pdf-template-runtime.js";
 
 const HASH_A = "a".repeat(64);
@@ -496,7 +498,7 @@ describe("private intake and real executable pack gate", () => {
       candidates: [],
       mappingVersion: "mapping-1",
     });
-    const materialized = await new CliPdfTemplateRuntimeMaterializer().materialize(
+    const materialized = await new PdfTemplateRuntimeMaterializer().materialize(
       snapshot,
       []
     );

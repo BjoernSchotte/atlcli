@@ -635,7 +635,9 @@ export async function resolveDocxTemplateDesign(
     progress?: (event: TemplateImportProgressEventV1) => void;
   } = {}
 ): Promise<ResolvedDocxDesignV1> {
-  const zip = unzipDocx(bytes, DOCX_TEMPLATE_INTAKE_BUDGET);
+  const sourceBytes = new Uint8Array(bytes);
+  const sourceDigest = await sha256Hex(sourceBytes);
+  const zip = unzipDocx(sourceBytes, DOCX_TEMPLATE_INTAKE_BUDGET);
   const opc = await analyzeDocxOpcArchive(zip, { progress: options.progress });
   const facts = await analyzeDocxTemplateArchive(zip, opc, options);
   const extracted = extractDesignInput(zip, opc);
@@ -655,7 +657,7 @@ export async function resolveDocxTemplateDesign(
   ];
   return {
     schema: DOCX_RESOLVED_DESIGN_SCHEMA_V1,
-    sourceDigest: await sha256Hex(bytes),
+    sourceDigest,
     facts,
     styles,
     theme: extracted.theme,

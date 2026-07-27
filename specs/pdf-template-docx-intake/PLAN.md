@@ -2477,34 +2477,34 @@ is not an acceptable substitute.
 
 **Acceptance criteria / proof**
 
-- [ ] `bun run build:browser-export-harness &&
+- [x] `bun run build:browser-export-harness &&
       bun run test:browser-export-harness &&
       bun run assert:conformance-cases &&
       bun run check:parity` passes.
-- [ ] The new harness case proves a byte-identical warm repeat, Node/browser
+- [x] The new harness case proves a byte-identical warm repeat, Node/browser
       parity, a valid tagged PDF, outline, embedded fonts, expected page count,
       and visible background/header asset.
-- [ ] Given the same source, baseline, catalog, decisions, and action sequence,
+- [x] Given the same source, baseline, catalog, decisions, and action sequence,
       Node and browser runs produce the same stage, section order, item counts,
       diagnostics, enabled/disabled action IDs and reasons, next actions,
       snapshot digest, and preview-freshness metadata.
-- [ ] A browser dependency test proves that the authoring, intake, and
+- [x] A browser dependency test proves that the authoring, intake, and
       application-contract graph contains no Node/Bun/file-system/terminal/CLI
       dependency. It uses only structured-clone-safe DTOs and explicit ports.
-- [ ] Raster goldens show the expected `first`/`odd`/`even`/`all` scopes with a
+- [x] Raster goldens show the expected `first`/`odd`/`even`/`all` scopes with a
       documented tight tolerance; an intentionally shifted asset makes the
       test fail.
-- [ ] The oracle and pack/raster proof agree on asset hash, relationship,
+- [x] The oracle and pack/raster proof agree on asset hash, relationship,
       AlternateContent branch, crop, H/V anchor, and section master. The test
       therefore proves not only a stable renderer but the correct
       DOCX→candidate→snapshot chain.
-- [ ] `ATLCLI_E2E=1 ATLCLI_E2E_PAGE_ID=<DOCSY-fixture-id>
+- [x] `ATLCLI_E2E=1 ATLCLI_E2E_PAGE_ID=<DOCSY-fixture-id>
       bun run test apps/cli/src/commands/export-pdf.e2e.test.ts` exports once
       without and once with a generated pack using profile `mayflower`.
-- [ ] E2E creates no persistent remote resources; if the harness creates
+- [x] E2E creates no persistent remote resources; if the harness creates
       temporary pages, marker, `finally` cleanup, and breakers from
       `apps/cli/src/e2e/` run.
-- [ ] Human-output goldens cover first import, resume, ready and uncertain
+- [x] Human-output goldens cover first import, resume, ready and uncertain
       suggestions, asset review, source-change recovery, preview, blocked and
       successful build, and undo at 80 and 120 columns with and without color.
       Every state names what happened, what remains, and one valid next action.
@@ -2516,13 +2516,13 @@ is not an acceptable substitute.
       participants is fixed and that task is rerun before completion. The
       anonymized evidence records attempts and outcomes, not participant or
       source-document content.
-- [ ] `bun run test` passes.
-- [ ] `bun run typecheck` passes.
-- [ ] `bun run check:browser` passes.
-- [ ] `bun run build` passes.
-- [ ] `bun run docs:check` and `bun run docs:build` pass.
-- [ ] `git diff --check` passes.
-- [ ] `specs/pdf-template-docx-intake/RESULTS.md` links all generated anonymous
+- [x] `bun run test` passes.
+- [x] `bun run typecheck` passes.
+- [x] `bun run check:browser` passes.
+- [x] `bun run build` passes.
+- [x] `bun run docs:check` and `bun run docs:build` pass.
+- [x] `git diff --check` passes.
+- [x] `specs/pdf-template-docx-intake/RESULTS.md` links all generated anonymous
       proof artifacts and separates unit, compile, browser-contract, visual,
       usability, and live E2E evidence.
 
@@ -2668,43 +2668,43 @@ is not an acceptable substitute.
 The slice is complete only when:
 
 - [ ] all T0–T10 tasks and their acceptance criteria are checked;
-- [ ] one real Word DOCX and one real LibreOffice DOCX have been analyzed;
-- [ ] candidates, conflicts, and unsupported features are traceable in the
+- [x] one real Word DOCX and one real LibreOffice DOCX have been analyzed;
+- [x] candidates, conflicts, and unsupported features are traceable in the
       report;
 - [ ] a first-time business-document user can complete the primary
       `import → review → preview → build` journey without candidate IDs,
       capability paths, JSON editing, or knowledge of OOXML/Typst;
-- [ ] `status` resumes interrupted work, `undo` restores the previous
+- [x] `status` resumes interrupted work, `undo` restores the previous
       generation, and every blocked state explains retained work and the next
       valid action;
-- [ ] the project cannot become build-ready while actionable suggestions are
+- [x] the project cannot become build-ready while actionable suggestions are
       unanswered, unsupported inventory is unacknowledged, a blocker exists,
       or required proof is stale;
-- [ ] at least one page background and one header/footer graphic have been
+- [x] at least one page background and one header/footer graphic have been
       explicitly accepted and rendered correctly;
-- [ ] accepted graphics have explicit inclusion, role, rights, accessibility,
+- [x] accepted graphics have explicit inclusion, role, rights, accessibility,
       and placement decisions;
-- [ ] the design review, neutral compatibility proof, and asset contact sheet
+- [x] the design review, neutral compatibility proof, and asset contact sheet
       are generated, provenance-pinned, and invalidated after relevant changes;
-- [ ] the baseline-only path does not change existing Editorial Indigo output;
-- [ ] the generated pack is deterministic, minimal, and free of
+- [x] the baseline-only path does not change existing Editorial Indigo output;
+- [x] the generated pack is deterministic, minimal, and free of
       authoring/source artifacts;
-- [ ] the pack loader rejects manipulated and non-canonical Typst;
-- [ ] CLI, browser harness, and real Typst-WASM compiler process the same
+- [x] the pack loader rejects manipulated and non-canonical Typst;
+- [x] CLI, browser harness, and real Typst-WASM compiler process the same
       snapshot;
-- [ ] Node and browser contract tests project identical journey stages, review
+- [x] Node and browser contract tests project identical journey stages, review
       sections, diagnostics, action availability, next actions, and preview
       freshness through host-neutral DTOs and ports;
-- [ ] no browser Studio, browser-extension UI, IndexedDB adapter, or full-screen
+- [x] no browser Studio, browser-extension UI, IndexedDB adapter, or full-screen
       TUI is required for completion; their reusable contracts and conformance
       boundary are proven;
 - [ ] at least four of five representative usability participants complete the
       defined primary tasks without facilitator intervention and understand
       applied, kept, open, and unsupported outcomes;
-- [ ] `wiki export --format pdf --template <pack>` works in a live E2E run;
-- [ ] `RESULTS.md` documents the proof and the remaining explicitly
+- [x] `wiki export --format pdf --template <pack>` works in a live E2E run;
+- [x] `RESULTS.md` documents the proof and the remaining explicitly
       unsupported Word constructs;
-- [ ] documentation and API reports are current.
+- [x] documentation and API reports are current.
 
 ## Proposed commit sequence
 

@@ -720,6 +720,50 @@ describe("file export persistence", () => {
       { kind: "state", from: "running", to: "failed" },
       { kind: "issue", level: "error", code: "executor.failed" },
     ]);
+
+    await persistence.jobs.create({ request: request("runtime-source-failure") });
+    const sourceFailureClaim = (await persistence.jobs.claimNext({
+      ownerId: "worker",
+      now: 23,
+      leaseDurationMs: 10_000,
+      ids: ["runtime-source-failure"],
+    }))!;
+    const sourceFailure = await runClaimedFileExportJob({
+      claimed: sourceFailureClaim,
+      jobs: persistence.jobs,
+      spool: persistence.spool,
+      artifacts: persistence.artifacts,
+      spoolLimits: persistence.spoolLimits,
+      executor: {
+        format: "docx",
+        execute: async () => {
+          throw Object.assign(
+            new Error("The Confluence export source could not be resolved."),
+            {
+              code: "confluence-source-resolution-failed",
+              sourceFailureKind: "not-found",
+            }
+          );
+        },
+      },
+      now: () => 24,
+      heartbeatIntervalMs: 60_000,
+      cancelPollMs: 60_000,
+    });
+    expect(sourceFailure.error).toMatchObject({
+      code: "confluence-source-resolution-failed",
+      category: "source",
+      retryable: false,
+    });
+    expect(
+      (await persistence.jobs.readEvents(sourceFailure.id)).events
+    ).toContainEqual(
+      expect.objectContaining({
+        kind: "issue",
+        level: "error",
+        code: "confluence-source-resolution-failed",
+      })
+    );
   });
 
   it("returns ascending event pages after a cursor", async () => {

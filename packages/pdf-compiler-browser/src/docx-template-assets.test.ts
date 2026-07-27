@@ -6,9 +6,9 @@
  * pixels rather than from generated source inspection.
  */
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { mkdtemp, readdir, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { inflateSync } from "node:zlib";
 import {
@@ -45,6 +45,21 @@ import { BrowserPdfCompiler } from "./index.js";
 
 const encoder = new TextEncoder();
 let compiler: BrowserPdfCompiler;
+const GOLDEN_DIRECTORY = resolve(
+  import.meta.dir,
+  "../test-fixtures/docx-template-assets-golden"
+);
+const GOLDEN_MANIFEST = resolve(GOLDEN_DIRECTORY, "manifest.json");
+const MAX_GOLDEN_MEAN_DIFFERENCE = 0.002;
+const MIN_GOLDEN_COLOR_BOUNDS_IOU = 0.98;
+const GOLDEN_COLORS = [
+  [255, 0, 0],
+  [0, 255, 0],
+  [0, 0, 255],
+  [255, 255, 0],
+  [170, 0, 170],
+  [0, 255, 255],
+] as const;
 
 async function packageBytes(specifier: string): Promise<Uint8Array<ArrayBuffer>> {
   return new Uint8Array(
@@ -299,6 +314,176 @@ function colorPixels(
   return count;
 }
 
+interface ColorBounds {
+  populated: boolean;
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+}
+
+function colorBounds(
+  page: Ppm,
+  [red, green, blue]: readonly [number, number, number]
+): ColorBounds {
+  const bounds: ColorBounds = {
+    populated: false,
+    minX: page.width,
+    minY: page.height,
+    maxX: -1,
+    maxY: -1,
+  };
+  for (let y = 0; y < page.height; y += 1) {
+    for (let x = 0; x < page.width; x += 1) {
+      const index = (y * page.width + x) * 3;
+      if (
+        Math.abs(page.pixels[index]! - red) > 8 ||
+        Math.abs(page.pixels[index + 1]! - green) > 8 ||
+        Math.abs(page.pixels[index + 2]! - blue) > 8
+      ) {
+        continue;
+      }
+      bounds.populated = true;
+      bounds.minX = Math.min(bounds.minX, x);
+      bounds.minY = Math.min(bounds.minY, y);
+      bounds.maxX = Math.max(bounds.maxX, x);
+      bounds.maxY = Math.max(bounds.maxY, y);
+    }
+  }
+  return bounds;
+}
+
+function boundsIou(left: ColorBounds, right: ColorBounds): number {
+  if (!left.populated || !right.populated) {
+    return left.populated === right.populated ? 1 : 0;
+  }
+  const width = Math.max(
+    0,
+    Math.min(left.maxX, right.maxX) - Math.max(left.minX, right.minX) + 1
+  );
+  const height = Math.max(
+    0,
+    Math.min(left.maxY, right.maxY) - Math.max(left.minY, right.minY) + 1
+  );
+  const intersection = width * height;
+  const leftArea =
+    (left.maxX - left.minX + 1) * (left.maxY - left.minY + 1);
+  const rightArea =
+    (right.maxX - right.minX + 1) * (right.maxY - right.minY + 1);
+  return intersection / (leftArea + rightArea - intersection);
+}
+
+function encodePpm(page: Ppm): Uint8Array {
+  const header = encoder.encode(`P6\n${page.width} ${page.height}\n255\n`);
+  const result = new Uint8Array(header.byteLength + page.pixels.byteLength);
+  result.set(header);
+  result.set(page.pixels, header.byteLength);
+  return result;
+}
+
+function compareRasterPage(
+  current: Ppm,
+  golden: Ppm
+): { meanDifference: number; minColorBoundsIou: number } {
+  if (current.width !== golden.width || current.height !== golden.height) {
+    return { meanDifference: 1, minColorBoundsIou: 0 };
+  }
+  let difference = 0;
+  for (let index = 0; index < current.pixels.byteLength; index += 1) {
+    difference += Math.abs(current.pixels[index]! - golden.pixels[index]!);
+  }
+  const populatedColorIous = GOLDEN_COLORS.map((color) => ({
+    current: colorBounds(current, color),
+    golden: colorBounds(golden, color),
+  }))
+    .filter(({ current: left, golden: right }) => left.populated || right.populated)
+    .map(({ current: left, golden: right }) => boundsIou(left, right));
+  return {
+    meanDifference:
+      difference / current.pixels.byteLength / 255,
+    minColorBoundsIou:
+      populatedColorIous.length > 0
+        ? Math.min(...populatedColorIous)
+        : 0,
+  };
+}
+
+function shiftPage(page: Ppm, pixels: number): Ppm {
+  const shifted = new Uint8Array(page.pixels.byteLength);
+  shifted.fill(255);
+  for (let y = 0; y < page.height; y += 1) {
+    for (let x = 0; x < page.width - pixels; x += 1) {
+      const source = (y * page.width + x) * 3;
+      const target = (y * page.width + x + pixels) * 3;
+      shifted.set(page.pixels.subarray(source, source + 3), target);
+    }
+  }
+  return { width: page.width, height: page.height, pixels: shifted };
+}
+
+async function assertRasterGoldens(
+  pages: readonly Ppm[],
+  pdf: Uint8Array
+): Promise<void> {
+  if (process.env.UPDATE_DOCX_TEMPLATE_ASSET_GOLDENS === "1") {
+    await mkdir(GOLDEN_DIRECTORY, { recursive: true });
+    const entries = [];
+    for (let index = 0; index < pages.length; index += 1) {
+      const file = `page-${index + 1}.ppm`;
+      const bytes = encodePpm(pages[index]!);
+      await Bun.write(resolve(GOLDEN_DIRECTORY, file), bytes);
+      entries.push({ file, sha256: await digest(bytes) });
+    }
+    const version = Bun.spawnSync(["pdftoppm", "-v"], {
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    await Bun.write(
+      GOLDEN_MANIFEST,
+      `${JSON.stringify(
+        {
+          schemaVersion: 1,
+          pdfSha256: await digest(pdf),
+          rasterizer: new TextDecoder()
+            .decode(version.stderr)
+            .split(/\r?\n/u)[0],
+          resolutionDpi: 36,
+          maxMeanPixelDifference: MAX_GOLDEN_MEAN_DIFFERENCE,
+          minColorBoundsIou: MIN_GOLDEN_COLOR_BOUNDS_IOU,
+          pages: entries,
+        },
+        null,
+        2
+      )}\n`
+    );
+  }
+  const manifest = (await Bun.file(GOLDEN_MANIFEST).json()) as {
+    schemaVersion: number;
+    pages: readonly { file: string; sha256: string }[];
+  };
+  expect(manifest.schemaVersion).toBe(1);
+  expect(manifest.pages).toHaveLength(pages.length);
+  for (let index = 0; index < pages.length; index += 1) {
+    const reference = manifest.pages[index]!;
+    const bytes = new Uint8Array(
+      await Bun.file(resolve(GOLDEN_DIRECTORY, reference.file)).arrayBuffer()
+    );
+    expect(await digest(bytes)).toBe(reference.sha256);
+    const comparison = compareRasterPage(pages[index]!, parsePpm(bytes));
+    expect(comparison.meanDifference).toBeLessThanOrEqual(
+      MAX_GOLDEN_MEAN_DIFFERENCE
+    );
+    expect(comparison.minColorBoundsIou).toBeGreaterThanOrEqual(
+      MIN_GOLDEN_COLOR_BOUNDS_IOU
+    );
+  }
+  const shifted = compareRasterPage(pages[0]!, shiftPage(pages[0]!, 12));
+  expect(
+    shifted.meanDifference > MAX_GOLDEN_MEAN_DIFFERENCE ||
+      shifted.minColorBoundsIou < MIN_GOLDEN_COLOR_BOUNDS_IOU
+  ).toBe(true);
+}
+
 function inflatedPdfText(bytes: Uint8Array): string {
   const raw = new TextDecoder("latin1").decode(bytes);
   const parts = [raw];
@@ -467,6 +652,7 @@ describe("DOCX template visual assets through real Typst-WASM", () => {
     expect(
       pages.map((page) => colorPixels(page, [0, 255, 255]) > 20)
     ).toEqual(pages.map(() => true));
+    await assertRasterGoldens(pages, pdf);
   }, 120_000);
 
   it("renders design review, compatibility proof, and contact sheet through the host-neutral adapter", async () => {

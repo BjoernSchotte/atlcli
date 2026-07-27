@@ -1,4 +1,5 @@
 export * from "./messages.js";
+export * from "./application.js";
 export * from "./design-analysis.js";
 export { DOCX_MAPPING_MESSAGE_REGISTRY_V1 } from "./mapping-messages.js";
 export * from "./matching.js";
