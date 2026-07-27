@@ -1,4 +1,8 @@
 import { describe, expect, it } from "bun:test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
+const REPO_ROOT = join(import.meta.dir, "..");
 
 /**
  * Canary for spec 009's development-condition contract.
@@ -29,5 +33,32 @@ describe("development-condition resolution (spec 009)", () => {
         `so imports hit (possibly stale or missing) dist/ builds.\n` +
         `Run tests via "bun run test [files]" or "bun --conditions=development test [files]".`,
     ).toBe(true);
+  });
+
+  it("pins development resolution in nested Bun subprocesses", () => {
+    const authIsolation = readFileSync(
+      join(REPO_ROOT, "apps/cli/src/commands/auth-test-isolation.test.ts"),
+      "utf8",
+    );
+    const pluginCommand = readFileSync(
+      join(REPO_ROOT, "apps/cli/src/commands/plugin.test.ts"),
+      "utf8",
+    );
+    const harnessPackage = JSON.parse(
+      readFileSync(
+        join(REPO_ROOT, "apps/browser-export-harness/package.json"),
+        "utf8",
+      ),
+    ) as { scripts?: Record<string, string> };
+
+    expect(authIsolation).toContain('"--conditions=development"');
+    expect(pluginCommand).toContain(
+      '[process.execPath, "--conditions=development", "run", cliPath',
+    );
+    for (const script of ["check:output", "check:parity", "test:unit"]) {
+      expect(harnessPackage.scripts?.[script]).toStartWith(
+        "bun --conditions=development ",
+      );
+    }
   });
 });
