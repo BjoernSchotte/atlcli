@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { fileURLToPath } from "node:url";
 import { deflateSync, inflateSync } from "node:zlib";
 import {
@@ -14,9 +14,16 @@ import { ensurePdfFonts } from "../../pdf/scripts/ensure-fonts.js";
 import { ensureVendoredTypst } from "../scripts/vendor-typst.js";
 import { BrowserPdfCompiler, PDF_BROWSER_COMPILER_VERSION } from "./index.js";
 
+let canonicalCompiler: BrowserPdfCompiler | undefined;
+
 beforeAll(async () => {
   await ensurePdfFonts({ logger: () => {} });
   await ensureVendoredTypst();
+  canonicalCompiler = await createCompiler();
+});
+
+afterAll(async () => {
+  await canonicalCompiler?.reset();
 });
 
 async function packageBytes(specifier: string): Promise<Uint8Array<ArrayBuffer>> {
@@ -30,6 +37,13 @@ async function createCompiler(): Promise<BrowserPdfCompiler> {
     ...PDF_RUNTIME_ASSETS.fonts.map((font) => packageBytes(`@atlcli/pdf/fonts/${font.fileName}`)),
   ]);
   return new BrowserPdfCompiler({ wasm: wasm.buffer, fonts });
+}
+
+function sharedCompiler(): BrowserPdfCompiler {
+  if (!canonicalCompiler) {
+    throw new Error("Canonical BrowserPdfCompiler is not initialized");
+  }
+  return canonicalCompiler;
 }
 
 function bundle(main: string, sourceMap: PdfSourceBundle["sourceMap"] = []): PdfSourceBundle {
@@ -118,7 +132,7 @@ function tinyPng(): Uint8Array {
 
 describe("BrowserPdfCompiler package", () => {
   it("compiles with the complete canonical font set", async () => {
-    const compiler = await createCompiler();
+    const compiler = sharedCompiler();
     const result = await compiler.compile(bundle(String.raw`#set text(font: "Source Sans 3")
 = Package smoke
 #text(font: "Source Serif 4")[Serif]
@@ -135,31 +149,39 @@ describe("BrowserPdfCompiler package", () => {
 
   it("returns normalized, source-mapped diagnostics without raw Typst ranges", async () => {
     const compiler = await createCompiler();
-    const result = await compiler.compile(bundle(
-      "#this-function-does-not-exist()",
-      [{ blockPath: "blocks[0]", blockType: "paragraph", startLine: 1, startColumn: 1, endLine: 1, endColumn: 40 }]
-    ));
-    expect(result.pdf).toBeUndefined();
-    expect(result.diagnostics[0]).toMatchObject({
-      severity: "error",
-      path: "/main.typ",
-      blockPath: "blocks[0]",
-    });
-    expect("range" in (result.diagnostics[0] as object)).toBe(false);
+    try {
+      const result = await compiler.compile(bundle(
+        "#this-function-does-not-exist()",
+        [{ blockPath: "blocks[0]", blockType: "paragraph", startLine: 1, startColumn: 1, endLine: 1, endColumn: 40 }]
+      ));
+      expect(result.pdf).toBeUndefined();
+      expect(result.diagnostics[0]).toMatchObject({
+        severity: "error",
+        path: "/main.typ",
+        blockPath: "blocks[0]",
+      });
+      expect("range" in (result.diagnostics[0] as object)).toBe(false);
+    } finally {
+      await compiler.reset();
+    }
   }, 30_000);
 
   it("drops compiler state and initializes cleanly after reset", async () => {
     const compiler = await createCompiler();
-    const source = bundle("= Reset lifecycle\n\nSame source.");
-    const first = await compiler.compile(source);
-    await compiler.reset();
-    const second = await compiler.compile(source);
-    expect(second.diagnostics).toEqual([]);
-    expect(second.pdf).toEqual(first.pdf);
+    try {
+      const source = bundle("= Reset lifecycle\n\nSame source.");
+      const first = await compiler.compile(source);
+      await compiler.reset();
+      const second = await compiler.compile(source);
+      expect(second.diagnostics).toEqual([]);
+      expect(second.pdf).toEqual(first.pdf);
+    } finally {
+      await compiler.reset();
+    }
   }, 30_000);
 
   it("exposes the real post-VFS measurement point before Typst compiles", async () => {
-    const compiler = await createCompiler();
+    const compiler = sharedCompiler();
     let hookRan = false;
     const hook = Symbol.for("atlcli.pdf-compiler-browser.memory-probe.after-vfs-loaded");
     const host = globalThis as typeof globalThis &
@@ -210,7 +232,7 @@ describe("BrowserPdfCompiler package", () => {
     const source = serializePdfDocument(prepared, {
       metadata: { title: "Anchor names", exportedAt: new Date("2026-07-19T00:00:00Z") },
     });
-    const compiler = await createCompiler();
+    const compiler = sharedCompiler();
     const result = await compiler.compile(source);
     expect(result.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
     expect(result.pdf).toBeDefined();
@@ -242,7 +264,7 @@ describe("BrowserPdfCompiler package", () => {
     const source = serializePdfDocument(prepared, {
       metadata: { title: "Inline comments", exportedAt: new Date("2026-07-19T00:00:00Z") },
     });
-    const compiler = await createCompiler();
+    const compiler = sharedCompiler();
     const result = await compiler.compile(source);
 
     expect(result.diagnostics.filter((diagnostic) => diagnostic.severity === "error")).toEqual([]);
@@ -253,7 +275,7 @@ describe("BrowserPdfCompiler package", () => {
 
 describe("template settings compiled output", () => {
   it("compiles Letter with a DRAFT watermark: clean, tagged, page count unchanged vs A4", async () => {
-    const compiler = await createCompiler();
+    const compiler = sharedCompiler();
     const a4 = await compiler.compile(settingsBundle());
     const letter = await compiler.compile(
       settingsBundle({ page: "letter", orientation: "portrait", watermark: { text: "DRAFT" } })
@@ -272,7 +294,7 @@ describe("template settings compiled output", () => {
   }, 120_000);
 
   it("produces the exact page count for every cover/outline combination", async () => {
-    const compiler = await createCompiler();
+    const compiler = sharedCompiler();
     // Baseline: cover + outline + one body page + colophon = 4 pages. Each
     // disabled section removes exactly one page — a stray unconditional
     // pagebreak() outside its guard would leave a blank page behind instead.
@@ -290,7 +312,7 @@ describe("template settings compiled output", () => {
   }, 240_000);
 
   it("compiles landscape orientation with the A4-tuned cover measurements intact", async () => {
-    const compiler = await createCompiler();
+    const compiler = sharedCompiler();
     const result = await compiler.compile(settingsBundle({ orientation: "landscape" }));
     expect(result.diagnostics).toEqual([]);
     // Cover and colophon still fit their landscape pages: same page count as portrait.
@@ -299,7 +321,7 @@ describe("template settings compiled output", () => {
   }, 120_000);
 
   it("compiles accent color, organization name, header/footer text, and a real PNG logo", async () => {
-    const compiler = await createCompiler();
+    const compiler = sharedCompiler();
     const result = await compiler.compile(
       settingsBundle({
         accentColor: "#0052CC",
@@ -332,7 +354,7 @@ describe("spec 003 content features (real compiler)", () => {
       },
     });
     const source = serializePdfDocument(prepared, { metadata: meta, ...(settings ? { settings } : {}) });
-    const compiler = await createCompiler();
+    const compiler = sharedCompiler();
     const result = await compiler.compile(source);
     const errors = result.diagnostics.filter((d) => d.severity === "error");
     if (errors.length) throw new Error(`compile errors: ${JSON.stringify(errors)}`);
@@ -450,7 +472,7 @@ describe("spec 003 captioned figures (real compiler, code-context regression)", 
   ) {
     const prepared = await preparePdfDocument(blocks, { resolve });
     const source = serializePdfDocument(prepared, { metadata: meta });
-    const compiler = await createCompiler();
+    const compiler = sharedCompiler();
     const result = await compiler.compile(source);
     return { result, source };
   }
@@ -555,7 +577,7 @@ describe("spec 003 captioned figures (real compiler, code-context regression)", 
     expect(landscapeCodes).not.toContain("table-text-scaled");
     expect(landscapeCodes).not.toContain("table-overflow-warned");
 
-    const compiler = await createCompiler();
+    const compiler = sharedCompiler();
     const result = await compiler.compile(landscape);
     expect(result.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
     expect(result.pdf).toBeDefined();

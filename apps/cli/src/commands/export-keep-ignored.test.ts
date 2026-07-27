@@ -29,6 +29,7 @@ import { buildDocx, headingStyle, para, readPart, stylesXml } from "@atlcli/docx
 
 const CLI = fileURLToPath(new URL("../index.ts", import.meta.url));
 const PAGE_ID = "1126250177";
+const HOSTED_TEST_TIMEOUT_MS = 15_000;
 
 /** Requests the stub could not answer — surfaced in the failure message. */
 const unmatched: string[] = [];
@@ -175,7 +176,7 @@ describe("--engine ts: --keep-ignored reaches the walk that actually runs", () =
     expect(doc).toContain("WORD_ONLY_BODY");
     expect(doc).not.toContain("PDF_ONLY_BODY");
     expect(issues.map((i) => i.code)).toContain("scroll-ignore-applied");
-  });
+  }, HOSTED_TEST_TIMEOUT_MS);
 
   it("keeps the ignored body with --keep-ignored, and says so in the report", async () => {
     const { doc, issues } = await exportWith("kept.docx", ["--keep-ignored"]);
@@ -186,7 +187,7 @@ describe("--engine ts: --keep-ignored reaches the walk that actually runs", () =
     const codes = issues.map((i) => i.code);
     expect(codes).toContain("export-controls-passthrough");
     expect(codes).not.toContain("scroll-ignore-applied");
-  });
+  }, HOSTED_TEST_TIMEOUT_MS);
 
   it("passthrough is total — it bypasses exporter routing too", async () => {
     // `passthrough` returns the body before `classifyExporterParam` runs
@@ -197,5 +198,5 @@ describe("--engine ts: --keep-ignored reaches the walk that actually runs", () =
     const { doc } = await exportWith("kept-total.docx", ["--keep-ignored"]);
     expect(doc).toContain("WORD_ONLY_BODY");
     expect(doc).toContain("PDF_ONLY_BODY");
-  });
+  }, HOSTED_TEST_TIMEOUT_MS);
 });

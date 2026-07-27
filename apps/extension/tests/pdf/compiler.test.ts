@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it } from "bun:test";
+import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import {
@@ -20,9 +20,16 @@ import { ensurePdfFonts } from "../../../../packages/pdf/scripts/ensure-fonts.js
 import { ensureVendoredTypst } from "../../../../packages/pdf-compiler-browser/scripts/vendor-typst.js";
 import { ChromeWorkerCompilerHost } from "../../utils/pdf/compiler-host.js";
 
+let canonicalCompiler: BrowserPdfCompiler | undefined;
+
 beforeAll(async () => {
   await ensurePdfFonts({ logger: () => {} });
   await ensureVendoredTypst();
+  canonicalCompiler = await createCompiler();
+});
+
+afterAll(async () => {
+  await canonicalCompiler?.reset();
 });
 
 async function packageBytes(specifier: string): Promise<Uint8Array<ArrayBuffer>> {
@@ -47,6 +54,13 @@ async function createCompiler(): Promise<BrowserPdfCompiler> {
     packageBytes("@atlcli/pdf/fonts/NotoEmoji-wght.ttf"),
   ]);
   return new BrowserPdfCompiler({ wasm: wasm.buffer, fonts });
+}
+
+function sharedCompiler(): BrowserPdfCompiler {
+  if (!canonicalCompiler) {
+    throw new Error("Canonical BrowserPdfCompiler is not initialized");
+  }
+  return canonicalCompiler;
 }
 
 function sourceBundle(main: string): PdfSourceBundle {
@@ -368,7 +382,7 @@ describe("BrowserPdfCompiler", () => {
   });
 
   it("registers every pinned PDF font with the compiler", async () => {
-    const compiler = await createCompiler();
+    const compiler = sharedCompiler();
     const result = await compiler.compile(
       sourceBundle(
         `#set text(font: "Source Serif 4")\n#text(weight: "semibold")[Semibold] #text(weight: "bold")[Bold] #emph[Italic]\n#text(font: "Source Sans 3")[Sans #text(weight: "bold")[Bold] #emph[Italic]]\n#text(font: "Source Code Pro")[Code #text(weight: "bold")[Bold]]`
@@ -383,7 +397,7 @@ describe("BrowserPdfCompiler", () => {
   }, 30_000);
 
   it("compiles a real PDF with the bundled template and fonts", async () => {
-    const compiler = await createCompiler();
+    const compiler = sharedCompiler();
     const result = await compiler.compile(
       sourceBundle(String.raw`#import "atlcli.typ": atlcli-doc, callout, status-badge
 #show: atlcli-doc.with(meta: (
@@ -429,7 +443,7 @@ This is a real PDF.
         exportedAt: new Date("2026-07-21T00:00:00Z"),
       },
     });
-    const compiler = await createCompiler();
+    const compiler = sharedCompiler();
     const result = await compiler.compile(bundle);
     expect(result.diagnostics).toEqual([]);
 
@@ -506,7 +520,7 @@ This is a real PDF.
       /#text\(fill: rgb\("#[0-9A-F]{6}"\)\)\[#underline\[#dense-link\(/
     );
     expect(bundle.main).toContain(`[#underline[#link("${labelledUrl}")`);
-    const compiler = await createCompiler();
+    const compiler = sharedCompiler();
     const result = await compiler.compile(bundle);
     expect(result.diagnostics).toEqual([]);
     expect(result.pdf).toBeDefined();
@@ -555,7 +569,7 @@ This is a real PDF.
     expect(bundle.main).toContain('#highlight(fill: rgb("#12AB34"))');
     expect(bundle.main).toContain('#highlight(fill: rgb("#FEDCBA"))');
 
-    const compiler = await createCompiler();
+    const compiler = sharedCompiler();
     const result = await compiler.compile(bundle);
     expect(result.diagnostics).toEqual([]);
     expect(result.pdf).toBeDefined();
@@ -612,7 +626,7 @@ This is a real PDF.
       '#atlcli-outline-title.update("Highlighted navigation title")#heading(level: 1, outlined: true)[#highlight(fill: rgb("#12AB34"))'
     );
 
-    const compiler = await createCompiler();
+    const compiler = sharedCompiler();
     const result = await compiler.compile(bundle);
     expect(result.diagnostics).toEqual([]);
     expect(result.pdf).toBeDefined();
@@ -654,10 +668,14 @@ This is a real PDF.
 
   it("returns structured diagnostics for invalid Typst", async () => {
     const compiler = await createCompiler();
-    const result = await compiler.compile(sourceBundle("#this-function-does-not-exist()"));
-    expect(result.pdf).toBeUndefined();
-    expect(result.diagnostics.length).toBeGreaterThan(0);
-    expect(result.diagnostics[0]?.path).toContain("main.typ");
+    try {
+      const result = await compiler.compile(sourceBundle("#this-function-does-not-exist()"));
+      expect(result.pdf).toBeUndefined();
+      expect(result.diagnostics.length).toBeGreaterThan(0);
+      expect(result.diagnostics[0]?.path).toContain("main.typ");
+    } finally {
+      await compiler.reset();
+    }
   }, 30_000);
 
   it("compiles the generated semantic block source", async () => {
@@ -728,7 +746,7 @@ This is a real PDF.
         exportedAt: new Date("2026-07-16T12:00:00Z"),
       },
     });
-    const compiler = await createCompiler();
+    const compiler = sharedCompiler();
     const result = await compiler.compile(bundle);
 
     expect(result.diagnostics).toEqual([]);
@@ -772,7 +790,7 @@ This is a real PDF.
         exportedAt: new Date("2026-07-16T12:00:00Z"),
       },
     });
-    const compiler = await createCompiler();
+    const compiler = sharedCompiler();
     const result = await compiler.compile(bundle);
     const repeat = await compiler.compile(bundle);
 
@@ -795,7 +813,7 @@ This is a real PDF.
         exportedAt: new Date("2026-07-16T12:00:00Z"),
       },
     });
-    const compiler = await createCompiler();
+    const compiler = sharedCompiler();
     const result = await compiler.compile(bundle);
 
     expect(result.diagnostics).toEqual([]);
@@ -856,7 +874,7 @@ This is a real PDF.
         exportedAt: new Date("2026-07-16T12:00:00Z"),
       },
     });
-    const compiler = await createCompiler();
+    const compiler = sharedCompiler();
     const result = await compiler.compile(bundle);
 
     expect(result.diagnostics).toEqual([]);
@@ -887,7 +905,7 @@ This is a real PDF.
         exportedAt: new Date("2026-07-16T12:00:00Z"),
       },
     });
-    const compiler = await createCompiler();
+    const compiler = sharedCompiler();
     const result = await compiler.compile(bundle);
 
     expect(result.diagnostics).toEqual([]);
@@ -929,7 +947,7 @@ This is a real PDF.
         exportedAt: new Date("2026-07-16T12:00:00Z"),
       },
     });
-    const compiler = await createCompiler();
+    const compiler = sharedCompiler();
     const result = await compiler.compile(bundle);
 
     expect(bundle.main).toContain("columns: (1fr, 1fr, 1fr, 1fr,)");
@@ -981,7 +999,7 @@ This is a real PDF.
         exportedAt: new Date("2026-07-16T12:00:00Z"),
       },
     });
-    const compiler = await createCompiler();
+    const compiler = sharedCompiler();
     const result = await compiler.compile(bundle);
 
     expect(bundle.main.match(/table\.header\(/g)).toHaveLength(1);
@@ -1074,7 +1092,7 @@ This is a real PDF.
         exportedAt: new Date("2026-07-16T12:00:00Z"),
       },
     });
-    const compiler = await createCompiler();
+    const compiler = sharedCompiler();
     const result = await compiler.compile(bundle);
 
     expect(result.diagnostics).toEqual([]);
@@ -1092,18 +1110,20 @@ This is a real PDF.
       },
     });
     Object.defineProperty(globalThis, "Function", { configurable: true, value: blocked });
+    let compiler: BrowserPdfCompiler | undefined;
     try {
-      const compiler = await createCompiler();
+      compiler = await createCompiler();
       const result = await compiler.compile(sourceBundle("= CSP-safe\n\nNo unsafe eval."));
       expect(result.diagnostics).toEqual([]);
       expect(new TextDecoder().decode(result.pdf?.slice(0, 8))).toStartWith("%PDF-");
     } finally {
       Object.defineProperty(globalThis, "Function", { configurable: true, value: original });
+      await compiler?.reset();
     }
   }, 30_000);
 
   it("produces byte-identical output on a warm repeat compile", async () => {
-    const compiler = await createCompiler();
+    const compiler = sharedCompiler();
     const bundle = sourceBundle("= Deterministic\n\nSame source, same PDF.");
     const first = await compiler.compile(bundle);
     const second = await compiler.compile(bundle);
@@ -1113,7 +1133,7 @@ This is a real PDF.
   }, 30_000);
 
   it("compiles a preview and the full export with one real warm compiler instance", async () => {
-    const compiler = await createCompiler();
+    const compiler = sharedCompiler();
     const previewBundle = await chapterBundle(1, "Warm preview");
     const exportBundle = await chapterBundle(6, "Warm full export");
 
@@ -1134,7 +1154,7 @@ This is a real PDF.
 
   it("compiles a real multi-chapter bundle within the production scaled timeout", async () => {
     const chapterCount = 12;
-    const compiler = await createCompiler();
+    const compiler = sharedCompiler();
     const bundle = await chapterBundle(chapterCount, "Scaled multi-chapter export");
     const timeoutContract = new ChromeWorkerCompilerHost({
       createWorker: () => {

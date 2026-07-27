@@ -236,11 +236,14 @@ jobs:
       - name: Run browser export harness E2E
         run: bun run test:browser-export-harness
 
+      - name: Build packed MV3 extension once
+        run: bun run --cwd apps/extension build
+
       - name: Verify PDF.js worker in the built MV3 extension
-        run: bun run --cwd apps/extension test:worker-extension-browser
+        run: bun run --cwd apps/extension test:worker-extension-browser:prebuilt
 
       - name: Verify durable export jobs in the built MV3 extension
-        run: bun run --cwd apps/extension test:jobs-extension-browser
+        run: bun run --cwd apps/extension test:jobs-extension-browser:prebuilt
 
       - name: Shape-parity gate
         run: bun run check:parity
@@ -263,8 +266,12 @@ jobs:
       - name: Require every selected gate to pass
         env:
           CHANGES: ${{ needs.changes.result }}
-          DOCS: ${{ needs.docs.result }}
+          CODE_REQUIRED: ${{ needs.changes.outputs.code }}
+          CONSUMER_REQUIRED: ${{ needs.changes.outputs.consumer }}
+          DOCS_REQUIRED: ${{ needs.changes.outputs.docs }}
           README_MEDIA_REQUIRED: ${{ needs.changes.outputs.readmeMedia }}
+          EVENT_NAME: ${{ github.event_name }}
+          DOCS: ${{ needs.docs.result }}
           README_MEDIA: ${{ needs.readme-media.result }}
           TEST: ${{ needs.test.result }}
           CONSUMER: ${{ needs.consumer-smoke.result }}
@@ -272,13 +279,36 @@ jobs:
           WINDOWS: ${{ needs.pdf-sink-windows.result }}
           BROWSER: ${{ needs.browser-export-harness.result }}
         run: |
-          if [[ "$README_MEDIA_REQUIRED" == "true" && "$README_MEDIA" != "success" ]]; then
-            echo "::error::The selected README media gate finished with result: $README_MEDIA"
-            exit 1
-          fi
-          for result in "$CHANGES" "$DOCS" "$README_MEDIA" "$TEST" "$CONSUMER" "$MACOS" "$WINDOWS" "$BROWSER"; do
-            if [[ "$result" != "success" && "$result" != "skipped" ]]; then
-              echo "::error::A selected CI gate finished with result: $result"
+          require_result() {
+            local gate="$1"
+            local selected="$2"
+            local result="$3"
+            local expected="skipped"
+            if [[ "$selected" == "true" ]]; then
+              expected="success"
+            fi
+            if [[ "$result" != "$expected" ]]; then
+              echo "::error::$gate was selected=$selected and finished with result=$result; expected $expected"
               exit 1
             fi
-          done
+          }
+
+          if [[ "$CHANGES" != "success" ]]; then
+            echo "::error::Change classification finished with result: $CHANGES"
+            exit 1
+          fi
+
+          DOCS_SELECTED="$DOCS_REQUIRED"
+          if [[ "$EVENT_NAME" == "push" ]]; then
+            # docs.yml owns main-push deployment; CI's docs job intentionally
+            # runs only for PR, schedule, and manual events.
+            DOCS_SELECTED="false"
+          fi
+
+          require_result "Documentation" "$DOCS_SELECTED" "$DOCS"
+          require_result "README media" "$README_MEDIA_REQUIRED" "$README_MEDIA"
+          require_result "Product quality" "$CODE_REQUIRED" "$TEST"
+          require_result "Pinned consumer smoke" "$CONSUMER_REQUIRED" "$CONSUMER"
+          require_result "macOS PDF" "$CODE_REQUIRED" "$MACOS"
+          require_result "Windows PDF sink" "$CODE_REQUIRED" "$WINDOWS"
+          require_result "Browser export harness" "$CODE_REQUIRED" "$BROWSER"

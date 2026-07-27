@@ -429,6 +429,13 @@ function extractCursor(nextLink: string | undefined, baseUrl: string): string | 
   return nextUrl.searchParams.get("cursor") ?? undefined;
 }
 
+type RetryScheduler = (delayMs: number, signal?: AbortSignal) => Promise<void>;
+
+// Internal-only test seam. Keeping this off the constructor avoids widening the
+// public client API while allowing retry tests to observe requested backoffs
+// without waiting through production-duration timers.
+const retrySchedulerHook = Symbol.for("atlcli.confluence.retry-scheduler.test-hook");
+
 export class ConfluenceClient {
   private confluenceBaseUrl: string;
   private deploymentType: DeploymentType;
@@ -492,6 +499,13 @@ export class ConfluenceClient {
    * actually stop (the "Abort is real" requirement, spec 002).
    */
   private sleep(ms: number, signal?: AbortSignal): Promise<void> {
+    const injectedScheduler = (
+      globalThis as typeof globalThis & Record<symbol, RetryScheduler | undefined>
+    )[retrySchedulerHook];
+    if (injectedScheduler) {
+      return injectedScheduler(ms, signal);
+    }
+
     return new Promise((resolve, reject) => {
       if (signal?.aborted) {
         reject(signal.reason ?? new Error("Aborted"));

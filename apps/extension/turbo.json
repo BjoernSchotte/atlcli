@@ -4,42 +4,39 @@
   "tasks": {
     "build": {
       "cache": true,
-      "dependsOn": ["^build"],
+      "dependsOn": [],
       "outputs": [".output/**", ".wxt/**"],
       "inputs": [
-        "entrypoints/**",
-        "utils/**",
-        "workers/**",
-        "types/**",
-        "$TURBO_ROOT$/packages/core/src/**",
-        "$TURBO_ROOT$/packages/confluence/src/**",
-        "$TURBO_ROOT$/packages/diagram/src/**",
-        "$TURBO_ROOT$/packages/docx/src/**",
-        "$TURBO_ROOT$/packages/pdf/src/**",
-        "$TURBO_ROOT$/packages/pdf-compiler-browser/src/**",
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/packages/*/src/**",
+        "$TURBO_ROOT$/packages/docx/fonts/**",
         "$TURBO_ROOT$/packages/pdf/scripts/ensure-fonts.ts",
         "$TURBO_ROOT$/packages/pdf/.fonts/**",
         "$TURBO_ROOT$/packages/pdf/licenses/**",
+        "$TURBO_ROOT$/packages/pdf-compiler-browser/scripts/**",
+        "$TURBO_ROOT$/packages/pdf-compiler-browser/vendor/**",
+        "$TURBO_ROOT$/patches/**",
+        "$TURBO_ROOT$/scripts/clean-browser-artifacts.ts",
         "$TURBO_ROOT$/LICENSE",
-        "wxt.config.ts",
-        "package.json",
-        "tsconfig.json"
+        "wxt.config.ts"
       ]
     },
     "typecheck": {
       "cache": true,
       "outputs": [],
       "inputs": [
-        "entrypoints/**",
-        "utils/**",
-        "workers/**",
-        "types/**",
-        "scripts/**",
-        "tests/**",
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/packages/*/src/**",
+        "$TURBO_ROOT$/packages/docx/fonts/**",
+        "$TURBO_ROOT$/packages/pdf/scripts/ensure-fonts.ts",
+        "$TURBO_ROOT$/packages/pdf/.fonts/**",
+        "$TURBO_ROOT$/packages/pdf/licenses/**",
+        "$TURBO_ROOT$/packages/pdf-compiler-browser/scripts/**",
+        "$TURBO_ROOT$/packages/pdf-compiler-browser/vendor/**",
+        "$TURBO_ROOT$/patches/**",
+        "$TURBO_ROOT$/LICENSE",
         "wxt.config.ts",
-        "env.d.ts",
-        "tsconfig.json",
-        "package.json"
+        "postcss.config.mjs"
       ]
     }
   }

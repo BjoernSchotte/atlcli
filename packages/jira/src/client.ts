@@ -44,6 +44,13 @@ import type {
 
 export type { JiraTransition, JiraSprint, JiraWorklog, JiraEpic, JiraField, JiraFilter, JiraFilterPermission, JiraAttachment, JiraRemoteLink, CreateRemoteLinkInput } from "./types.js";
 
+type RetryScheduler = (delayMs: number, signal?: AbortSignal) => Promise<void>;
+
+// Internal-only test seam. Keeping this off the constructor avoids widening the
+// public client API while allowing retry tests to observe requested backoffs
+// without waiting through production-duration timers.
+const retrySchedulerHook = Symbol.for("atlcli.jira.retry-scheduler.test-hook");
+
 /**
  * Jira REST API client for Cloud (v3) and Server (v2).
  *
@@ -103,6 +110,13 @@ export class JiraClient {
    * `ConfluenceClient.sleep`.
    */
   private sleep(ms: number, signal?: AbortSignal): Promise<void> {
+    const injectedScheduler = (
+      globalThis as typeof globalThis & Record<symbol, RetryScheduler | undefined>
+    )[retrySchedulerHook];
+    if (injectedScheduler) {
+      return injectedScheduler(ms, signal);
+    }
+
     return new Promise((resolve, reject) => {
       if (signal?.aborted) {
         reject(signal.reason ?? new Error("Aborted"));

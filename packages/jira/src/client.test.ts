@@ -14,6 +14,28 @@ const mockProfile: Profile = {
 };
 
 const originalFetch = globalThis.fetch;
+type RetryScheduler = (delayMs: number, signal?: AbortSignal) => Promise<void>;
+const retrySchedulerHook = Symbol.for("atlcli.jira.retry-scheduler.test-hook");
+const retrySchedulerHost = globalThis as typeof globalThis &
+  Record<symbol, RetryScheduler | undefined>;
+const originalRetryScheduler = retrySchedulerHost[retrySchedulerHook];
+
+function installImmediateRetryScheduler(requestedDelays: number[]): void {
+  retrySchedulerHost[retrySchedulerHook] = async (delayMs, signal) => {
+    if (signal?.aborted) {
+      throw signal.reason ?? new Error("Aborted");
+    }
+    requestedDelays.push(delayMs);
+  };
+}
+
+function restoreRetryScheduler(): void {
+  if (originalRetryScheduler) {
+    retrySchedulerHost[retrySchedulerHook] = originalRetryScheduler;
+  } else {
+    delete retrySchedulerHost[retrySchedulerHook];
+  }
+}
 
 describe("JiraClient TLS options", () => {
   afterEach(() => {
@@ -459,19 +481,24 @@ describe("JiraClient AbortSignal (spec 010 wave 2)", () => {
 });
 
 describe("JiraClient 429 retry delay is bounded (spec 010 wave-1 review, B6)", () => {
+  const requestedDelays: number[] = [];
+
+  beforeEach(() => {
+    requestedDelays.length = 0;
+    installImmediateRetryScheduler(requestedDelays);
+  });
+
   afterEach(() => {
     globalThis.fetch = originalFetch;
+    restoreRetryScheduler();
   });
 
   test("does not retry immediately when Retry-After is unparseable", async () => {
     // Proves the clamp is WIRED INTO the request loop, not merely exported:
-    // `parseInt("unavailable", 10) * 1000` is NaN, and `setTimeout(fn, NaN)`
-    // fires on the next tick, so the client used to answer a 429 with an
-    // instant second request.
-    const timestamps: number[] = [];
+    // `parseInt("unavailable", 10) * 1000` is NaN, so the client used to request
+    // an immediate timer instead of falling back to its exponential base.
     let callCount = 0;
     globalThis.fetch = mock(() => {
-      timestamps.push(Date.now());
       callCount++;
       if (callCount === 1) {
         return Promise.resolve(
@@ -490,8 +517,22 @@ describe("JiraClient 429 retry delay is bounded (spec 010 wave-1 review, B6)", (
     await client.getIssue("TEST-1");
 
     expect(callCount).toBe(2);
-    // Fell back to the 1 s exponential base rather than to NaN.
-    expect(timestamps[1]! - timestamps[0]!).toBeGreaterThanOrEqual(500);
+    expect(requestedDelays).toEqual([1000]);
+  });
+
+  test("requests the full exponential sequence before exhausting retries", async () => {
+    let callCount = 0;
+    globalThis.fetch = mock(() => {
+      callCount++;
+      return Promise.resolve(new Response("Rate limited", { status: 429 }));
+    }) as unknown as typeof fetch;
+
+    await expect(new JiraClient(mockProfile).getIssue("TEST-1")).rejects.toThrow(
+      /rate limited/i
+    );
+
+    expect(callCount).toBe(4);
+    expect(requestedDelays).toEqual([1000, 2000, 4000]);
   });
 });
 

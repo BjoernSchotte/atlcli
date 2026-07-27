@@ -15,17 +15,20 @@ async function runCli(...args: string[]): Promise<{
     testHome = await mkdtemp(join(tmpdir(), "atlcli-plugin-command-test-"));
   }
 
-  const proc = Bun.spawn([process.execPath, "run", cliPath, ...args], {
-    cwd: testHome,
-    env: {
-      ...process.env,
-      HOME: testHome,
-      USERPROFILE: testHome,
-      ATLCLI_DISABLE_UPDATE_CHECK: "1",
+  const proc = Bun.spawn(
+    [process.execPath, "--conditions=development", "run", cliPath, ...args],
+    {
+      cwd: testHome,
+      env: {
+        ...process.env,
+        HOME: testHome,
+        USERPROFILE: testHome,
+        ATLCLI_DISABLE_UPDATE_CHECK: "1",
+      },
+      stdout: "pipe",
+      stderr: "pipe",
     },
-    stdout: "pipe",
-    stderr: "pipe",
-  });
+  );
 
   const [stdout, stderr, exitCode] = await Promise.all([
     new Response(proc.stdout).text(),

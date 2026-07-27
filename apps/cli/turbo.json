@@ -1,0 +1,14 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "extends": ["//"],
+  "tasks": {
+    "build": {
+      "outputs": ["../../dist/**"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "build.ts",
+        "$TURBO_ROOT$/patches/**"
+      ]
+    }
+  }
+}
