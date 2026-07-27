@@ -1,6 +1,8 @@
 # Issue #118: Adaptive browser PDF memory
 
-- Status: Phase 0 attribution measured; transport track closed by its gate
+- Status: Phases 0–3 measured and landed (attribution, copy quick wins,
+  profiles at −74.84% peak, runtime lanes, CLI/extension wiring live-proven);
+  transport track closed by its gate; Phase 4 (Forge consumer) in progress
   (2026-07-27)
 - Issue: [#118](https://github.com/BjoernSchotte/atlcli/issues/118)
 - Related: [#119](https://github.com/BjoernSchotte/atlcli/issues/119), [#116](https://github.com/BjoernSchotte/atlcli/issues/116), [#117](https://github.com/BjoernSchotte/atlcli/pull/117)
@@ -1121,6 +1123,17 @@ report on the same corpora as the baseline.
 5. Run real E2E and packed-host checks.
 
 Exit: each first-party host passes its profile parity and lifecycle matrix.
+
+**Status: DONE, live-proven (2026-07-27).** `--pdf-images` +
+`--pdf-images-ppi` land in `feat(cli): add pdf image profile flags`;
+the extension select + PPI field in `feat(extension): expose pdf image
+profiles for durable jobs`. RATCHET.md "Phase 3" records the live DOCSY
+four-way ladder (1,704,492 → 773,045 → 287,059 → 118,845 bytes on a real
+2400×1792 photo page, `image-profile-applied` present exactly when
+re-encoding) plus all three flag error paths. Two pre-existing
+environment findings documented there (pre-#106 journal poisoning;
+docs-push attachment-reference convention) — neither caused by this
+branch, the first flagged as separate work.
 
 ### Phase 4 — downstream Forge proof
 
