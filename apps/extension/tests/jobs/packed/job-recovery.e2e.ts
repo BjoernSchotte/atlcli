@@ -826,10 +826,21 @@ async function waitForRestartedTarget(
   return restarted!;
 }
 
-test("upgrades after a real blocked connection is released", async () => {
-  const startedAt = Date.now();
-  await page.evaluate(async () => {
+async function seedLegacyExportCatalog(autoCloseAfterMs?: number): Promise<void> {
+  await page.evaluate(async (closeAfterMs) => {
     const old = await new Promise<IDBDatabase>((resolve, reject) => {
+      const deletion = indexedDB.deleteDatabase("atlcli-export-jobs");
+      const timeout = setTimeout(
+        () => reject(new Error("Legacy export catalog cleanup stayed blocked.")),
+        5_000,
+      );
+      deletion.onerror = () => {
+        clearTimeout(timeout);
+        reject(deletion.error);
+      };
+      deletion.onblocked = () => undefined;
+      // Queue the legacy open immediately behind deletion. This leaves no
+      // event-loop gap in which the live worker can recreate version 3.
       const open = indexedDB.open("atlcli-export-jobs", 1);
       open.onupgradeneeded = () => {
         const jobs = open.result.createObjectStore("jobs", { keyPath: "id" });
@@ -837,12 +848,23 @@ test("upgrades after a real blocked connection is released", async () => {
         jobs.createIndex("derivationKey", "derivationKey", { unique: true });
         open.result.createObjectStore("requests", { keyPath: "ref" });
       };
-      open.onsuccess = () => resolve(open.result);
-      open.onerror = () => reject(open.error);
+      open.onsuccess = () => {
+        clearTimeout(timeout);
+        resolve(open.result);
+      };
+      open.onerror = () => {
+        clearTimeout(timeout);
+        reject(open.error);
+      };
     });
     (globalThis as unknown as { oldExportDb: IDBDatabase }).oldExportDb = old;
-    setTimeout(() => old.close(), 100);
-  });
+    if (typeof closeAfterMs === "number") setTimeout(() => old.close(), closeAfterMs);
+  }, autoCloseAfterMs);
+}
+
+test("upgrades after a real blocked connection is released", async () => {
+  await seedLegacyExportCatalog(100);
+  const startedAt = Date.now();
   await expect(sendWake()).resolves.toEqual({ kind: "jobs:wake-result" });
   expect(Date.now() - startedAt).toBeGreaterThanOrEqual(75);
   const stores = await page.evaluate(async () => {
@@ -861,19 +883,8 @@ test("upgrades after a real blocked connection is released", async () => {
 });
 
 test("parallel blocked upgrade opens time out and cannot commit after the blocker closes", async () => {
+  await seedLegacyExportCatalog();
   await page.evaluate(async () => {
-    const old = await new Promise<IDBDatabase>((resolve, reject) => {
-      const open = indexedDB.open("atlcli-export-jobs", 1);
-      open.onupgradeneeded = () => {
-        const jobs = open.result.createObjectStore("jobs", { keyPath: "id" });
-        jobs.createIndex("idempotencyKey", "idempotencyKey", { unique: true });
-        jobs.createIndex("derivationKey", "derivationKey", { unique: true });
-        open.result.createObjectStore("requests", { keyPath: "ref" });
-      };
-      open.onsuccess = () => resolve(open.result);
-      open.onerror = () => reject(open.error);
-    });
-    (globalThis as unknown as { oldExportDb: IDBDatabase }).oldExportDb = old;
     const probe = (globalThis as unknown as {
       exportJobStoreProbe: { resetBadge(initialize?: boolean): Promise<void> };
     }).exportJobStoreProbe;
