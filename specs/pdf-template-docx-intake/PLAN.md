@@ -2531,6 +2531,9 @@ is not an acceptable substitute.
 - [x] `bun run test` passes.
 - [x] `bun run typecheck` passes.
 - [x] `bun run check:browser` passes.
+- [x] Publishable tarballs include every runtime sidecar and install through
+      Bun, npm, and pnpm. A production-mode `file:` consumer resolves only
+      built `dist/` entry points and completes real DOCX and PDF exports.
 - [x] `bun run build` passes.
 - [x] `bun run docs:check` and `bun run docs:build` pass.
 - [x] `git diff --check` passes.

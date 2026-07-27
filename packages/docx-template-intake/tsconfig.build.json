@@ -8,10 +8,11 @@
     "declarationMap": true,
     "sourceMap": true,
     "skipLibCheck": true,
+    "allowJs": true,
     "customConditions": [],
     "types": []
   },
-  "include": ["src/**/*.ts"],
+  "include": ["src/**/*.ts", "src/**/*.js"],
   "exclude": [
     "src/**/*.test.ts",
     "src/**/*.test.tsx",

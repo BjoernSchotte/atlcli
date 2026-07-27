@@ -1162,6 +1162,7 @@ not part of T10's single-page pack acceptance.
 | Live E2E | `ATLCLI_E2E=1 ATLCLI_E2E_PAGE_ID=<retained-DOCSY-page> ATLCLI_E2E_PROFILE=mayflower bun run test apps/cli/src/commands/export-pdf.e2e.test.ts` | Passed; 5 tests, 1 unrelated tree hand-off skipped, 0 failures |
 | Browser dependency graph | `bun run check:browser` | Passed; 25 browser entry points |
 | API reports and closure | `bun run test scripts/api-report.test.ts` | Passed; 5 tests and zero reachable-but-unexported gaps |
+| External consumer matrix | `ATLCLI_CONSUMER_SMOKE=1 bun --conditions=development test scripts/consumer-smoke.test.ts scripts/install-matrix.test.ts` | Passed; 7 tests, 0 failures: Bun tarball and production `file:` consumers, Node-LTS/npm, Vite, plus npm and pnpm installs |
 | Repository type safety | `bun run typecheck` | Passed for root, extension, browser compiler, and browser harness |
 | Full build | `bun run build` | Passed; 19 tasks |
 | Documentation | `bun run docs:check && bun run docs:build` | Passed; zero diagnostics and 78 generated pages |
