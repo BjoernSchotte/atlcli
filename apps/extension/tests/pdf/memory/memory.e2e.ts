@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { computeWorkerMemoryAttribution } from "./attribution.js";
-import type { MemoryWorkerPhase } from "./protocol.js";
+import type { MemoryProbeApi, MemoryWorkerPhase } from "./protocol.js";
 
 const OUTPUT_DIR = fileURLToPath(
   new URL("../../../.output/chrome-memory-mv3", import.meta.url)
@@ -474,6 +474,98 @@ test("records real Chrome/V8 heap peaks for the extension PDF byte path", async 
     await workerSession?.close().catch(() => undefined);
     await closeHarness(harness);
   }
+});
+
+interface ProfileCycleResult {
+  fixture: Awaited<ReturnType<MemoryProbeApi["prepareCorpusFixture"]>>;
+  attribution: ReturnType<typeof computeWorkerMemoryAttribution>;
+  pdfBytes: number;
+}
+
+/** One full image-heavy cycle (prepare → store → compile) under a profile. */
+async function runImageHeavyCycle(profile: "original" | "standard"): Promise<ProfileCycleResult> {
+  let harness: Harness | undefined;
+  let workerSession: ChildTargetSession | undefined;
+  try {
+    harness = await openHarness();
+    const { page, cdp } = harness;
+    const fixture = await page.evaluate(
+      (value) => window.atlcliMemoryProbe.prepareCorpusFixture(value),
+      profile,
+    );
+    expect(fixture.notes === 0 || profile === "standard").toBe(true);
+    await page.evaluate(() => window.atlcliMemoryProbe.storePreparedJob());
+    await page.evaluate(() => window.atlcliMemoryProbe.startWorker());
+    await waitForPhase(page, "warm", 300_000);
+    workerSession = await attachCompilerWorker(cdp);
+    const samples: Array<Parameters<typeof computeWorkerMemoryAttribution>[0][number]> = [];
+    const capture = async (phase: Exclude<MemoryWorkerPhase, "error">): Promise<void> => {
+      samples.push(attributionSample(phase, await workerSession!.heap(), await workerDetail(page, phase)));
+    };
+    await capture("warm");
+    await page.evaluate(() => window.atlcliMemoryProbe.startCompile());
+    await waitForPhase(page, "bundle-received", 300_000);
+    await capture("bundle-received");
+    await page.evaluate(() => window.atlcliMemoryProbe.continueWorker());
+    await waitForPhase(page, "vfs-ready", 300_000);
+    await capture("vfs-ready");
+    await page.evaluate(() => window.atlcliMemoryProbe.continueWorker());
+    await waitForPhase(page, "compiled-held", 1_200_000);
+    await capture("compiled-held");
+    await page.evaluate(() => window.atlcliMemoryProbe.continueWorker());
+    await waitForPhase(page, "complete", 600_000);
+    await capture("complete");
+    const compiled = await page.evaluate(() => window.atlcliMemoryProbe.readCompiledResult());
+    await page.evaluate(() => window.atlcliMemoryProbe.cleanup());
+    await harness.cdp.detach();
+    return {
+      fixture,
+      attribution: computeWorkerMemoryAttribution(samples),
+      pdfBytes: compiled.byteLength,
+    };
+  } finally {
+    await workerSession?.close().catch(() => undefined);
+    await closeHarness(harness);
+  }
+}
+
+test("measures the standard profile against original on the image-heavy corpus (issue #118 P1)", async () => {
+  test.setTimeout(3_600_000);
+  const original = await runImageHeavyCycle("original");
+  const standard = await runImageHeavyCycle("standard");
+  const reduction = 1 - standard.attribution.peak.totalMiB / original.attribution.peak.totalMiB;
+  const report = {
+    schema: "atlcli.chrome-memory-image-profile/v1",
+    measuredAt: new Date().toISOString(),
+    corpus: {
+      scale: original.fixture.scale,
+      manifestSha256: original.fixture.manifestSha256,
+    },
+    original: {
+      bundleMiB: mib(original.fixture.bundleBytes),
+      pdfMiB: mib(original.pdfBytes),
+      peak: original.attribution.peak,
+      wasmHighWaterMiB: original.attribution.wasmHighWaterMiB,
+    },
+    standard: {
+      bundleMiB: mib(standard.fixture.bundleBytes),
+      pdfMiB: mib(standard.pdfBytes),
+      peak: standard.attribution.peak,
+      wasmHighWaterMiB: standard.attribution.wasmHighWaterMiB,
+      prepareNotes: standard.fixture.notes,
+    },
+    peakReduction: Number(reduction.toFixed(4)),
+  };
+  console.log(`ATLCLI_CHROME_MEMORY_IMAGE_PROFILE_RESULT\n${JSON.stringify(report, null, 2)}`);
+
+  if (original.fixture.scale === 1) {
+    // The plan's product bar: 'standard' must cut the image-heavy peak by at
+    // least 40% before documentation recommends it for large trees.
+    expect(reduction).toBeGreaterThanOrEqual(0.4);
+    expect(standard.fixture.bundleBytes).toBeLessThan(original.fixture.bundleBytes * 0.75);
+  }
+  expect(standard.attribution.basis).not.toBe("wasm-unavailable");
+  expect(standard.attribution.wasmMonotonicGrowth).toBe(true);
 });
 
 test("records image-heavy corpus host-versus-WASM attribution (issue #118 gate input)", async () => {

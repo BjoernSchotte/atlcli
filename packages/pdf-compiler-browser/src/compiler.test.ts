@@ -230,6 +230,45 @@ describe("BrowserPdfCompiler package", () => {
     expect(validatePdfOutput(result.pdf!)).toMatchObject({ tagged: true });
   }, 120_000);
 
+  it("decodes profile-normalized derivatives through the real Typst pipeline (issue #118 P1)", async () => {
+    // The 'standard' profile re-encodes rasters with the pinned in-repo
+    // codec; Typst (image crate) must accept every derivative. Zero
+    // diagnostics + a tagged PDF is the acceptance evidence, and the
+    // normalized bundle must be materially smaller than the original.
+    // Scale 0.75 keeps sources ABOVE the 180-PPI envelope target (photos
+    // 1800px wide vs the 1176px cap) so normalization genuinely engages;
+    // smaller scales are correctly all-kept ("no-downscale").
+    const corpus = generateImageHeavyCorpus({ scale: 0.75 });
+    const resolver = {
+      resolve: async (ref: { filename?: string }) =>
+        resolveImageHeavyAsset(corpus, ref.filename ?? ""),
+    };
+    const prepared = await preparePdfDocument(corpus.blocks, resolver, {
+      imageQuality: { imageProfile: "standard" },
+    });
+    const originalBytes = corpus.counts.uniqueAssetBytes;
+    const normalizedBytes = prepared.assets.reduce(
+      (total, asset) => total + asset.bytes.byteLength,
+      0,
+    );
+    expect(normalizedBytes).toBeLessThan(originalBytes * 0.75);
+    expect(prepared.notes.some((note) => note.code === "image-profile-applied")).toBe(true);
+    const source = serializePdfDocument(prepared, {
+      metadata: {
+        title: "Image profile decode proof",
+        space: "DOCSY",
+        version: 1,
+        exporter: "atlcli image profile test",
+        exportedAt: new Date("2026-07-27T00:00:00.000Z"),
+      },
+      settings: { cover: false, outline: false },
+    });
+    const compiler = sharedCompiler();
+    const result = await compiler.compile(source);
+    expect(result.diagnostics).toEqual([]);
+    expect(validatePdfOutput(result.pdf!)).toMatchObject({ tagged: true });
+  }, 120_000);
+
   it("registers the Typst WASM linear memory with the benchmark probe hook", async () => {
     const hook = Symbol.for("atlcli.pdf-compiler-browser.memory-probe.register-wasm-memory");
     const host = globalThis as typeof globalThis &

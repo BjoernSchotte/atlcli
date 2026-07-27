@@ -234,6 +234,28 @@ How to read this:
   this issue targets are exactly the ones where host-side transport matters
   least.
 
+### Explicit image profiles (Phase 1 result)
+
+The `standard` profile (180 PPI candidate pin, `@atlcli/export-media`
+deterministic codec) measured against `original` on the same full-scale
+image-heavy corpus, one complete store → worker → VFS → compile cycle per
+profile (`ATLCLI_CHROME_MEMORY_IMAGE_PROFILE_RESULT`):
+
+| | `original` | `standard` (180 PPI) | delta |
+|---|---|---|---|
+| source bundle | 100.36 MiB | 16.65 MiB | −83.4% |
+| compiled PDF | 97.36 MiB | 15.79 MiB | −83.8% |
+| WASM linear high-water | 1326.56 MiB | 325.63 MiB | −75.5% |
+| worker peak | 1558.32 MiB | **392.10 MiB** | **−74.84%** |
+
+**The plan's 40% bar for recommending `standard` on large image-heavy trees
+is met with a 74.84% measured peak reduction** — asserted in the harness at
+scale 1. Profiles are always explicit (`original` stays byte-identical and
+is the default); `imagePpi` (72–1200) tunes the same pipeline between the
+presets. Normalization never upscales, keeps JPEG as JPEG and transparency
+lossless, and keeps original bytes for anything it cannot decode faithfully
+(reported in one aggregate `image-profile-applied` note).
+
 The attribution math is pure and unit-tested
 (`apps/extension/tests/pdf/memory/attribution.ts`); the harness README
 documents the probe protocol.

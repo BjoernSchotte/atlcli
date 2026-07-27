@@ -166,7 +166,9 @@ async function fetchJson<T>(path: string): Promise<T> {
   return (await response.json()) as T;
 }
 
-async function prepareCorpusFixture(): Promise<MemoryCorpusFixtureSummary> {
+async function prepareCorpusFixture(
+  profile: "original" | "standard" = "original",
+): Promise<MemoryCorpusFixtureSummary> {
   // The ≥100 MiB image-heavy corpus exceeds the product budgets BY DESIGN
   // (issue #118 Phase 0). Both benchmark-only Symbol.for seams are installed
   // here, in the harness, so release configuration is provably untouched.
@@ -192,14 +194,18 @@ async function prepareCorpusFixture(): Promise<MemoryCorpusFixtureSummary> {
     assets.set(entry.filename, new Uint8Array(await response.arrayBuffer()));
   }
 
-  const prepared = await preparePdfDocument(blocks, {
-    async resolve(ref) {
-      const name = ref.filename ?? "";
-      const bytes = assets.get(name);
-      if (!bytes) throw new Error(`Missing corpus asset ${name}.`);
-      return { bytes, mediaType: mediaTypes.get(name) ?? "application/octet-stream", filename: name };
+  const prepared = await preparePdfDocument(
+    blocks,
+    {
+      async resolve(ref) {
+        const name = ref.filename ?? "";
+        const bytes = assets.get(name);
+        if (!bytes) throw new Error(`Missing corpus asset ${name}.`);
+        return { bytes, mediaType: mediaTypes.get(name) ?? "application/octet-stream", filename: name };
+      },
     },
-  });
+    profile === "standard" ? { imageQuality: { imageProfile: "standard" } } : {},
+  );
   bundle = serializePdfDocument(prepared, {
     metadata: {
       title: "Image-heavy corpus attribution fixture",

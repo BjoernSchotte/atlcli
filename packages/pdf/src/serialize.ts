@@ -21,6 +21,7 @@ import {
   statusDisplayText,
   uniqueAnchorId,
 } from "@atlcli/confluence";
+import { normalizeRasterAssetV1, resolveEffectivePpi } from "@atlcli/export-media";
 import { BUILTIN_PDF_DESIGN } from "./builtin-template.js";
 import {
   DEFAULT_CODE_THEME,
@@ -447,9 +448,13 @@ const DENSE_TABLE_COLUMN_THRESHOLD = 9;
 /** Escalation tiers for a table that may not fit its available width. */
 export type TableLayoutClass = "normal" | "dense" | "scaled" | "overflow-warned";
 
-/** Usable text width (pt) of the built-in A4 template, portrait / landscape. */
-const PORTRAIT_TEXT_WIDTH_PT = 470;
-const LANDSCAPE_TEXT_WIDTH_PT = 717;
+/**
+ * Usable text width (pt) of the built-in A4 template, portrait / landscape.
+ * Exported (package-internal) because the image-profile normalizer uses them
+ * as the conservative render-envelope cap (issue #118 Phase 1).
+ */
+export const PORTRAIT_TEXT_WIDTH_PT = 470;
+export const LANDSCAPE_TEXT_WIDTH_PT = 717;
 /** Table cell font size (pt) at normal and the practical readability floor. */
 const TABLE_FONT_SIZE_PT = 9;
 const MIN_TABLE_FONT_SIZE_PT = 7;
@@ -1978,10 +1983,24 @@ export function serializePdfDocument(
   // its filesystem — the same path-emission pattern prepared image assets use.
   // The "atlcli-logo" name cannot collide with prepared assets, whose paths
   // always carry a numeric index and content hash.
+  // Issue #118 Phase 1: the logo is the fourth asset source (it bypasses
+  // preparation), so an explicit profile normalizes it here — same pinned
+  // pipeline, SVG logos stay untouched by construction.
+  const logoPpi = options.imageQuality ? resolveEffectivePpi(options.imageQuality) : null;
+  const normalizedLogo =
+    settings.logo && logoPpi !== null && settings.logo.mediaType === "image/png"
+      ? normalizeRasterAssetV1({
+          bytes: settings.logo.bytes,
+          mediaType: settings.logo.mediaType,
+          renderEnvelopeWidthPt: PORTRAIT_TEXT_WIDTH_PT,
+          ppi: logoPpi,
+        })
+      : null;
   const logoAsset: PreparedPdfAsset | undefined = settings.logo
     ? {
         path: settings.logo.mediaType === "image/png" ? "assets/atlcli-logo.png" : "assets/atlcli-logo.svg",
-        bytes: settings.logo.bytes,
+        bytes:
+          normalizedLogo?.kind === "normalized" ? normalizedLogo.bytes : settings.logo.bytes,
         mediaType: settings.logo.mediaType,
       }
     : undefined;

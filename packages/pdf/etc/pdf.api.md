@@ -487,6 +487,7 @@ export interface PdfSerializeOptions {
     theme?: PdfThemeOptions;
     settings?: PdfTemplateSettings;
     templateManifest?: TemplateManifest;
+    imageQuality?: import("@atlcli/export-media").ExportImageQualityV1;
 }
 
 // export: PdfSourceBundle
@@ -746,6 +747,7 @@ export interface PreparePdfOptions {
         pageTitle?: string;
         pageUrl?: string;
     };
+    imageQuality?: ExportImageQualityV1;
 }
 
 // export: renderPreparedPdfExport
@@ -1354,6 +1356,7 @@ export interface PdfSerializeOptions {
     theme?: PdfThemeOptions;
     settings?: PdfTemplateSettings;
     templateManifest?: TemplateManifest;
+    imageQuality?: import("@atlcli/export-media").ExportImageQualityV1;
 }
 
 // export: PdfSourceBundle
@@ -1613,6 +1616,7 @@ export interface PreparePdfOptions {
         pageTitle?: string;
         pageUrl?: string;
     };
+    imageQuality?: ExportImageQualityV1;
 }
 
 // export: renderPreparedPdfExport
@@ -2221,6 +2225,7 @@ export interface PdfSerializeOptions {
     theme?: PdfThemeOptions;
     settings?: PdfTemplateSettings;
     templateManifest?: TemplateManifest;
+    imageQuality?: import("@atlcli/export-media").ExportImageQualityV1;
 }
 
 // export: PdfSourceBundle
@@ -2480,6 +2485,7 @@ export interface PreparePdfOptions {
         pageTitle?: string;
         pageUrl?: string;
     };
+    imageQuality?: ExportImageQualityV1;
 }
 
 // export: renderPreparedPdfExport
@@ -2652,6 +2658,9 @@ export declare function getBuiltinPdfTemplate(id: string): TemplateManifest | un
 // export: isMissingAltText
 export declare function isMissingAltText(alt: string | undefined): boolean;
 
+// export: LANDSCAPE_TEXT_WIDTH_PT
+export declare const LANDSCAPE_TEXT_WIDTH_PT = 717;
+
 // export: MANUSCRIPT_PDF_TEMPLATE_ID
 export declare const MANUSCRIPT_PDF_TEMPLATE_ID = "builtin.manuscript";
 
@@ -2705,6 +2714,9 @@ export interface PdfOutputInspection {
 // export: pdfTableCellForeground
 export declare function pdfTableCellForeground(background: string, theme: PdfTheme): string;
 
+// export: PORTRAIT_TEXT_WIDTH_PT
+export declare const PORTRAIT_TEXT_WIDTH_PT = 470;
+
 // export: preparePdfDocument
 export declare function preparePdfDocument(blocks: ExportBlock[], resolver: PdfAssetResolver, options?: PreparePdfOptions): Promise<PreparedPdfDocument>;
 
@@ -2718,6 +2730,7 @@ export interface PreparePdfOptions {
         pageTitle?: string;
         pageUrl?: string;
     };
+    imageQuality?: ExportImageQualityV1;
 }
 
 // export: preservePdfSourceCellColor

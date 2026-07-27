@@ -73,7 +73,7 @@ Lane: `bench:copy-probe` (`atlcli.copy-probe/1`), isolated child processes,
 | checkpoint-assets (3×20 MiB + repeated logo through `checkpointPdfAssetsV1` + real file spool) | 303.69 (302.47–303.72) | **243.64** (242.22–243.75) | **−60.05** |
 | executor-collect (3×40 MiB through the real chunk store on fake-indexeddb) | 487.48 (477.92–491.59) | 530.75 (501.22–537.28) | inconclusive |
 
-Honest reading: the checkpoint-assets win is exactly the predicted ~3×20 MiB
+Honest reading (step 2): the checkpoint-assets win is exactly the predicted ~3×20 MiB
 of per-asset transients. The executor-collect lane is **inconclusive on this
 instrument** — fake-indexeddb structured-clone noise (run spread ±30 MiB)
 exceeds the per-object signal, and production objects are ~2.6 MiB where the
@@ -83,3 +83,43 @@ packed-extension and node job baselines; its integrity benefit (length
 binding detects truncation before hydrate) stands regardless.
 Node job baseline re-run AFTER as no-regression: all 12 cells complete,
 artifact hashes unchanged.
+
+## Phase 1 — explicit image profiles (primary lever)
+
+Built: `@atlcli/export-media` (published-classified) with the inspection code
+EXTRACTED from `@atlcli/docx` (docx re-exports; one implementation), the
+pinned encoders MOVED from `@atlcli/export-fixtures` (corpus recipe hash
+`95b46f89…` unchanged — byte-identity proven by the pin), plus new pinned
+pure-TS decoders (PNG: full RFC-1951 inflate incl. dynamic Huffman, all five
+filters, palette/tRNS/gray/alpha; JPEG: baseline+extended sequential, 4:4:4/
+4:2:2/4:2:0, restart markers, IDCT over the shared literal cosine matrix),
+deterministic premultiplied box resampling, profile presets over a numeric
+core (`standard`=180 PPI candidate, `print`=300, `imagePpi` 72–1200), and
+`normalizeRasterAssetV1` (JPEG stays JPEG, alpha stays lossless PNG, SVG/GIF/
+undecodable KEPT with a stated reason, never upscale, ±2% no-op hysteresis).
+
+Codec proof (18/18 unit): byte-exact PNG roundtrip; inflate vs node:zlib on
+dynamic/fixed/stored streams; all five PNG filters from an independent zlib
+stream; REAL ImageIO-written PNG and 4:2:0 JPEG fixtures cross-validated
+(committed binaries, 1.4 KiB); progressive/16-bit/interlaced rejected (kept,
+never guessed). Engine proof: `preparePdfDocument({imageQuality})` normalizes
+deterministically with ONE aggregate diagnostics note; the real Typst
+compiler accepts every derivative (scale-0.75 corpus, 0 diagnostics, tagged
+PDF, bundle < 75%). The template logo (fourth asset source) normalizes in
+`serializePdfDocument`.
+
+Lane: Chrome memory harness, full-scale image-heavy corpus, one run per
+profile through the identical store → worker → VFS → compile path
+(`ATLCLI_CHROME_MEMORY_IMAGE_PROFILE_RESULT`, Chromium 140.0.7339.16):
+
+| | original | standard (180 PPI) | delta |
+|---|---|---|---|
+| source bundle | 100.36 MiB | **16.65 MiB** | −83.4% |
+| compiled PDF | 97.36 MiB | **15.79 MiB** | −83.8% |
+| WASM linear high-water | 1326.56 MiB | **325.63 MiB** | −75.5% |
+| worker peak (compiled-held) | 1558.32 MiB | **392.10 MiB** | **−74.84%** |
+
+**The plan's 40% product bar for recommending `standard` on large trees is
+met with a 74.84% measured peak reduction**, now asserted in the harness
+(`peakReduction ≥ 0.4` at scale 1). Prepare-side normalization of the 100 MiB
+corpus runs in-page as part of the measured cycle.

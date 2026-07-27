@@ -13,6 +13,12 @@ import {
 import type { Caption, ExportBlock, ExportNote, InlineNode } from "@atlcli/confluence";
 import { assertSafeSvg } from "./svg-safety.js";
 import { decodeSvgSource } from "@atlcli/confluence";
+import {
+  normalizeRasterAssetV1,
+  resolveEffectivePpi,
+  type ExportImageQualityV1,
+} from "@atlcli/export-media";
+import { LANDSCAPE_TEXT_WIDTH_PT, PORTRAIT_TEXT_WIDTH_PT } from "./serialize.js";
 import type {
   PdfAssetResolver,
   PdfResolvedAsset,
@@ -162,6 +168,34 @@ export interface PreparePdfOptions {
    * it never changes what is rendered.
    */
   pageContext?: { pageId?: string; pageTitle?: string; pageUrl?: string };
+  /**
+   * Explicit image-quality request (issue #118 Phase 1). Absent or
+   * `original` keeps every raster byte untouched. `standard`/`print` (or an
+   * `imagePpi` override) deterministically downscale rasters to the render
+   * envelope × PPI before embedding — smaller decoded rasters shrink both
+   * the host bundle and Typst's in-WASM decode footprint. Never upscales,
+   * never touches SVG/vector, keeps JPEG as JPEG and alpha lossless, and
+   * keeps the ORIGINAL bytes for anything it cannot decode faithfully.
+   */
+  imageQuality?: ExportImageQualityV1;
+}
+
+/**
+ * Conservative render-envelope cap for profile normalization: the portrait
+ * usable text width, or the landscape width when the document contains ANY
+ * landscape orientation block. A per-use envelope propagated from layout is
+ * the finer future refinement; this v1 heuristic only ever OVER-estimates
+ * the rendered size, so it can never downscale below what layout shows.
+ */
+function renderEnvelopeWidthPt(blocks: ExportBlock[]): number {
+  const containsLandscape = (value: unknown): boolean => {
+    if (!value || typeof value !== "object") return false;
+    if (Array.isArray(value)) return value.some(containsLandscape);
+    const record = value as Record<string, unknown>;
+    if (record.type === "orientation" && record.landscape === true) return true;
+    return Object.values(record).some(containsLandscape);
+  };
+  return containsLandscape(blocks) ? LANDSCAPE_TEXT_WIDTH_PT : PORTRAIT_TEXT_WIDTH_PT;
 }
 
 /**
@@ -205,6 +239,17 @@ export async function preparePdfDocument(
       ? {}
       : { maxTotalBytes: budgetOverride.maxTotalBytes }
   );
+  // Explicit image profile (issue #118 Phase 1): resolve the effective PPI
+  // once (throws on an invalid request BEFORE any asset is fetched) and track
+  // aggregate-only diagnostics — counts and bytes, never media or names.
+  const effectivePpi = options.imageQuality ? resolveEffectivePpi(options.imageQuality) : null;
+  const envelopePt = effectivePpi === null ? 0 : renderEnvelopeWidthPt(blocks);
+  const profileStats = {
+    normalized: 0,
+    sourceBytes: 0,
+    normalizedBytes: 0,
+    kept: new Map<string, number>(),
+  };
   const assetTotal = countAssetBlocks(blocks);
   let assetsDone = 0;
   const reportAsset = (detail?: string): void => {
@@ -215,9 +260,31 @@ export async function preparePdfDocument(
   const addAsset = (
     rawAsset: PdfResolvedAsset,
     prefix: string,
-    meta: { filename: string; pageId?: string }
+    meta: { filename: string; pageId?: string; authoredWidthPx?: number }
   ): string => {
-    const asset = validateResolvedAsset(rawAsset, maxAssetBytes);
+    let asset = validateResolvedAsset(rawAsset, maxAssetBytes);
+    if (effectivePpi !== null) {
+      const normalized = normalizeRasterAssetV1({
+        bytes: asset.bytes,
+        mediaType: asset.mediaType,
+        renderEnvelopeWidthPt: envelopePt,
+        ppi: effectivePpi,
+        ...(meta.authoredWidthPx !== undefined
+          ? { authored: { widthPx: meta.authoredWidthPx } }
+          : {}),
+      });
+      if (normalized.kind === "normalized") {
+        profileStats.normalized += 1;
+        profileStats.sourceBytes += asset.bytes.byteLength;
+        profileStats.normalizedBytes += normalized.bytes.byteLength;
+        asset = { ...asset, bytes: normalized.bytes, mediaType: normalized.mediaType };
+      } else {
+        profileStats.kept.set(
+          normalized.reason,
+          (profileStats.kept.get(normalized.reason) ?? 0) + 1,
+        );
+      }
+    }
     const key = assetKey(asset.bytes, asset.mediaType);
     const bucket = paths.get(key) ?? [];
     const existing = bucket.find(
@@ -291,6 +358,7 @@ export async function preparePdfDocument(
         const assetPath = addAsset(resolved, "inline-image", {
           filename,
           ...(owningPage ? { pageId: owningPage } : {}),
+          ...(node.width !== undefined ? { authoredWidthPx: node.width } : {}),
         });
         reportAsset(filename);
         return { ...node, assetPath, fallbackLabel };
@@ -445,6 +513,7 @@ export async function preparePdfDocument(
               const assetPath = addAsset(resolved, "image", {
                 filename,
                 ...(owningPage ? { pageId: owningPage } : {}),
+                ...(block.width !== undefined ? { authoredWidthPx: block.width } : {}),
               });
               reportAsset(filename);
               return {
@@ -640,7 +709,26 @@ export async function preparePdfDocument(
       })
     );
 
-  return { blocks: await walk(blocks), assets, notes };
+  const preparedBlocks = await walk(blocks);
+  if (effectivePpi !== null && (profileStats.normalized > 0 || profileStats.kept.size > 0)) {
+    // ONE aggregate diagnostics note (PLAN.md privacy rule): counts, bytes,
+    // and reasons only — never media bytes, filenames, or tenant data.
+    const keptSummary = [...profileStats.kept.entries()]
+      .map(([reason, count]) => `${reason}: ${count}`)
+      .join(", ");
+    notes.push({
+      level: "info",
+      code: "image-profile-applied",
+      message:
+        `Image profile "${options.imageQuality!.imageProfile}"` +
+        `${options.imageQuality!.imagePpi ? ` (${options.imageQuality!.imagePpi} PPI)` : ""}` +
+        ` normalized ${profileStats.normalized} raster asset(s): ` +
+        `${(profileStats.sourceBytes / 1048576).toFixed(2)} MiB source -> ` +
+        `${(profileStats.normalizedBytes / 1048576).toFixed(2)} MiB embedded` +
+        `${keptSummary ? `; kept untouched (${keptSummary})` : ""}.`,
+    });
+  }
+  return { blocks: preparedBlocks, assets, notes };
 }
 
 /** Count asset-bearing blocks (images + mermaid code) for progress totals. */

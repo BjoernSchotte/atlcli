@@ -60,6 +60,7 @@
     "@atlcli/code-highlight": "workspace:*",
     "@atlcli/export-macros": "workspace:*",
     "@atlcli/confluence": "workspace:*",
+    "@atlcli/export-media": "workspace:*",
     "@atlcli/diagram": "workspace:*",
     "@atlcli/template-pack": "workspace:*"
   },

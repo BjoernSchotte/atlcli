@@ -34,7 +34,7 @@ export interface MemoryCorpusFixtureSummary extends MemoryFixtureSummary {
 
 export interface MemoryProbeApi {
   prepareFixture(): Promise<MemoryFixtureSummary>;
-  prepareCorpusFixture(): Promise<MemoryCorpusFixtureSummary>;
+  prepareCorpusFixture(profile?: "original" | "standard"): Promise<MemoryCorpusFixtureSummary>;
   storePreparedJob(): Promise<{ jobId: string }>;
   readMetaInventory(): Promise<{ jobs: number; inputBytes: number }>;
   releaseMetaInventory(): void;

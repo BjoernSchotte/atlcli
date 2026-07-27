@@ -15,6 +15,7 @@
 - reaches `@atlcli/code-highlight` (0.x — frozen-by-closure): CodeThemeId, HighlightedCode
 - reaches `@atlcli/confluence` (frozen): AdfAnnotationIdentity, AdfExtensionFrame, AdfExtensionIdentity, AdfFragmentIdentity, AdfUnsupportedNodeProvenance, BlockPresentation, CalloutKind, Caption, EmojiSemantics, ExportBlock, ExportLink, ExportNote, ExportNoteCode, ExportNoteSource, ExportProgressCallback, ImageSource, InlineMark, InlineNode, LayoutBreakout, LayoutColumn, ListItem, MacroParameter, MediaBorder, MediaGroupPosition, MediaPresentation, PageLayout, PortableEmojiProjection, SmartCardSemantics, SyncedContentProvenance, TableCell, TablePresentation, TableRow, UnresolvedMediaIdentity
 - reaches `@atlcli/export-macros` (frozen): MacroResolutionOptions
+- reaches `@atlcli/export-media` (0.x — frozen-by-closure): ExportImageQualityV1
 - reaches `@atlcli/template-pack` (0.x — frozen-by-closure): DesignBranding, DesignFeatures, DesignPage, DesignSemanticPalettes, DesignTokens, DesignTypography, ManifestSetting, RequiredFont, TemplateEngineSpec, TemplateManifest, TemplateProvenance, WikiPdfTemplateDesignV1, WikiPdfTemplateLocalizationV1, WikiPdfTemplateSettingBindingV1
 - reachable-but-unexported gaps: none
 
@@ -25,6 +26,7 @@
 - reaches `@atlcli/code-highlight` (0.x — frozen-by-closure): CodeThemeId, HighlightedCode
 - reaches `@atlcli/confluence` (frozen): AdfAnnotationIdentity, AdfExtensionFrame, AdfExtensionIdentity, AdfFragmentIdentity, AdfUnsupportedNodeProvenance, BlockPresentation, CalloutKind, Caption, EmojiSemantics, ExportBlock, ExportLink, ExportNote, ExportNoteCode, ExportNoteSource, ExportProgressCallback, ImageSource, InlineMark, InlineNode, LayoutBreakout, LayoutColumn, ListItem, MacroParameter, MediaBorder, MediaGroupPosition, MediaPresentation, PageLayout, PortableEmojiProjection, SmartCardSemantics, SyncedContentProvenance, TableCell, TablePresentation, TableRow, UnresolvedMediaIdentity
 - reaches `@atlcli/export-macros` (frozen): MacroResolutionOptions
+- reaches `@atlcli/export-media` (0.x — frozen-by-closure): ExportImageQualityV1
 - reaches `@atlcli/template-pack` (0.x — frozen-by-closure): DesignBranding, DesignFeatures, DesignPage, DesignSemanticPalettes, DesignTokens, DesignTypography, ManifestSetting, RequiredFont, TemplateEngineSpec, TemplateManifest, TemplateProvenance, WikiPdfTemplateDesignV1, WikiPdfTemplateLocalizationV1, WikiPdfTemplateSettingBindingV1
 - reachable-but-unexported gaps: none
 
@@ -35,12 +37,13 @@
 - reaches `@atlcli/code-highlight` (0.x — frozen-by-closure): CodeThemeId, HighlightedCode
 - reaches `@atlcli/confluence` (frozen): AdfAnnotationIdentity, AdfExtensionFrame, AdfExtensionIdentity, AdfFragmentIdentity, AdfUnsupportedNodeProvenance, BlockPresentation, CalloutKind, Caption, EmojiSemantics, ExportBlock, ExportLink, ExportNote, ExportNoteCode, ExportNoteSource, ExportProgressCallback, ImageSource, InlineMark, InlineNode, LayoutBreakout, LayoutColumn, ListItem, MacroParameter, MediaBorder, MediaGroupPosition, MediaPresentation, PageLayout, PortableEmojiProjection, SmartCardSemantics, SyncedContentProvenance, TableCell, TablePresentation, TableRow, UnresolvedMediaIdentity
 - reaches `@atlcli/export-macros` (frozen): MacroResolutionOptions
+- reaches `@atlcli/export-media` (0.x — frozen-by-closure): ExportImageQualityV1
 - reaches `@atlcli/template-pack` (0.x — frozen-by-closure): DesignBranding, DesignFeatures, DesignPage, DesignSemanticPalettes, DesignTokens, DesignTypography, ManifestSetting, RequiredFont, TemplateEngineSpec, TemplateManifest, TemplateProvenance, WikiPdfTemplateDesignV1, WikiPdfTemplateLocalizationV1, WikiPdfTemplateSettingBindingV1
 - reachable-but-unexported gaps: none
 
 ### Entry point `./internal` — internal
 
-- exported symbols (33): ATLCLI_TYPST_TEMPLATE, BUILTIN_PDF_DESIGN, BUILTIN_PDF_FALLBACK_LABELS, BUILTIN_PDF_TEMPLATES, BUILTIN_PDF_TEMPLATE_ID, BUILTIN_PDF_TEMPLATE_MANIFEST, DEFAULT_PDF_THEME, MANUSCRIPT_PDF_TEMPLATE_ID, MANUSCRIPT_PDF_TEMPLATE_MANIFEST, PDF_ASSET_CONCURRENCY, PDF_MAX_ASSET_BYTES, PDF_MAX_TOTAL_ASSET_BYTES, PDF_SCAN_CHUNK_BYTES, PdfOutputInspection, PreparePdfOptions, TableLayoutClass, classifyTableLayout, createAtlcliTypstTemplate, escapeTypstContent, escapeTypstString, getBuiltinPdfTemplate, isMissingAltText, mapPdfDiagnostics, pdfColorContrast, pdfTableCellForeground, preparePdfDocument, preservePdfSourceCellColor, resolvePdfTheme, safeColor, serializePdfDocument, typstLabel, typstString, validatePdfOutput
+- exported symbols (35): ATLCLI_TYPST_TEMPLATE, BUILTIN_PDF_DESIGN, BUILTIN_PDF_FALLBACK_LABELS, BUILTIN_PDF_TEMPLATES, BUILTIN_PDF_TEMPLATE_ID, BUILTIN_PDF_TEMPLATE_MANIFEST, DEFAULT_PDF_THEME, LANDSCAPE_TEXT_WIDTH_PT, MANUSCRIPT_PDF_TEMPLATE_ID, MANUSCRIPT_PDF_TEMPLATE_MANIFEST, PDF_ASSET_CONCURRENCY, PDF_MAX_ASSET_BYTES, PDF_MAX_TOTAL_ASSET_BYTES, PDF_SCAN_CHUNK_BYTES, PORTRAIT_TEXT_WIDTH_PT, PdfOutputInspection, PreparePdfOptions, TableLayoutClass, classifyTableLayout, createAtlcliTypstTemplate, escapeTypstContent, escapeTypstString, getBuiltinPdfTemplate, isMissingAltText, mapPdfDiagnostics, pdfColorContrast, pdfTableCellForeground, preparePdfDocument, preservePdfSourceCellColor, resolvePdfTheme, safeColor, serializePdfDocument, typstLabel, typstString, validatePdfOutput
 
 ### Entry point `./template` — internal
 
