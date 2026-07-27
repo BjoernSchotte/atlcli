@@ -207,8 +207,12 @@ image-heavy browser fixtures.
 
 ### Quality
 
-- `original` never resamples a raster image.
-- `standard` and `print` never upscale.
+- `original` never resamples a raster image, and never combines with an
+  `imagePpi` override.
+- `standard`, `print`, and any explicit `imagePpi` never upscale.
+- An explicit `imagePpi` obeys every preset invariant (alpha, vector, EXIF,
+  determinism) and is byte-deterministic for a given value; presets carry
+  the golden/visual matrix, custom values are property-tested.
 - JPEG remains JPEG when possible; transparency remains lossless; SVG and other
   vector sources remain vector.
 - One content hash maps to one normalized result for a given versioned profile.
@@ -258,11 +262,46 @@ transport track.)
 
 ## Public and internal contracts
 
-The remaining public control is the image profile:
+The remaining public control is the image quality request — a preset,
+optionally sharpened by an exact PPI:
 
 ```ts
 export type PdfImageProfile = "original" | "standard" | "print";
+
+export interface PdfImageQualityV1 {
+  imageProfile: PdfImageProfile;
+  /**
+   * Advanced override in [72, 1200] for the re-encode path: exact target PPI
+   * fed into the same normalizer the presets use. Invalid together with
+   * "original" (which never re-encodes) — a validation error, not a silent
+   * re-encode.
+   */
+  imagePpi?: number;
+}
 ```
+
+The presets are pinned values over a numeric core, not a separate mechanism:
+the normalizer always computes `ceil(rendered inches × effective PPI), capped
+at source pixels`, and `standard`/`print` simply name measured PPI choices.
+That makes the override cheap and safe:
+
+- Determinism is per `(profile version, effective PPI, pinned codec)`: the
+  same input and the same number produce the same bytes on every host. The
+  override is persisted in the request/checkpoint, and
+  `buildResultRecoveryKey` hashes the canonical request, so idempotency and
+  retry absorb it automatically — a retry with a different number is a
+  different job, as it must be.
+- The never-upscale cap bounds high values by construction (1200 PPI on a
+  small source yields the source resolution); only the floor (72) and a
+  sanity ceiling (1200) need explicit validation. Pixel budgets and
+  decompression-bomb checks apply unchanged.
+- The golden/visual parity matrix stays bounded to the named presets; custom
+  values are property-tested instead: byte-determinism at sampled values,
+  monotone target resolution in PPI, never upscale, alpha/vector/EXIF
+  invariants identical to the presets.
+- On a well-equipped machine, `original` remains the quality maximum; the
+  override serves the middle ground (for example 240 PPI: visibly sharper
+  than `standard` at a fraction of `original`'s decoded footprint).
 
 Naming and coverage constraints that stay binding for the profile path:
 
@@ -475,12 +514,16 @@ The target raster size is:
 ceil(rendered inches * profile PPI), capped at source pixels
 ```
 
-Candidate ranges for Phase 0 are:
+Candidate ranges for the preset pins are:
 
 - `standard`: benchmark 160–200 PPI;
 - `print`: benchmark around 300 PPI.
 
-The final value is a measured decision, not a planning assertion.
+The final preset values are a measured decision, not a planning assertion.
+Independently of where the pins land, the explicit `imagePpi` override
+([72, 1200], re-encode path only) feeds the same formula, so users can pick
+a higher target on capable machines — or a lower one on constrained ones —
+without waiting for new presets.
 
 ### Processing rules
 
@@ -602,12 +645,18 @@ There are two related execution shapes and both must be covered:
   `@atlcli/export-node` supplying the env) directly and pass the profile as
   an additive option.
 
-Add one option, name subject to CLI review (`--pdf-memory` fell with the
+Add two options, names subject to CLI review (`--pdf-memory` fell with the
 transport track):
 
 ```text
 --pdf-images original|standard|print
+--pdf-images-ppi <72-1200>   # advanced: exact target PPI on the re-encode path
 ```
+
+`--pdf-images-ppi` combined with `original` fails validation with an
+actionable message; the override persists exactly like the preset (request,
+idempotency input, checkpoint, JSON report, human diagnostics report the
+effective PPI).
 
 Persist them in job requests, idempotency input, checkpoints, JSON reports, and
 human diagnostics. The compiled Bun artifact must contain or lazily load the
@@ -619,8 +668,10 @@ collision-safe, cancellation-aware, and deleted after success/failure.
 Treat preview and durable export differently:
 
 - Preview remains `original` by default for latency and supersession; the
-  durable export UI exposes the explicit profile. Preview prepare runs in the
-  side panel today, so its peak is a panel concern.
+  durable export UI exposes the profile presets plus an advanced exact-PPI
+  field (users on capable machines choose higher targets, constrained hosts
+  lower ones). Preview prepare runs in the side panel today, so its peak is
+  a panel concern.
 - "No source or PDF bytes in runtime messages" is already true today and
   stays a regression guard.
 - The legacy PDF job/IDB bridge (64 MiB per-job cap, full bundle re-persist
@@ -653,7 +704,7 @@ spool adapter it was to gain fell with the transport track).
 The public browser entry points expose the additive profile type without
 extension imports. A plain Vite consumer must be able to:
 
-- run every image profile;
+- run every image profile and an explicit `imagePpi` override;
 - cancel during normalize, VFS handoff, layout, and output;
 - recover from a terminated worker;
 - load WASM/fonts/codec from same-origin assets under a strict CSP;
@@ -945,7 +996,10 @@ merely because it was planned — which is exactly what this gate was for.
   deduplication;
 - normalization determinism and privacy-safe diagnostics;
 - abort/failure/corruption handling in the normalize path;
-- persisted profile in requests, checkpoints, and recovery keys;
+- persisted profile and `imagePpi` in requests, checkpoints, and recovery
+  keys;
+- `imagePpi` bounds ([72, 1200]), the `original`-conflict validation, and
+  the monotonicity/never-upscale properties at sampled values;
 - benchmark seams: product caps provably unchanged without the hooks
   (**exists** for both seams).
 
