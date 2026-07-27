@@ -45,7 +45,7 @@ compatibility policy in a future slice.
 - [Implementation tasks and proof](#technical-implementation)
 - [Cross-cutting quality rules](#security-privacy-and-quality-invariants)
 - [Definition of done](#definition-of-done)
-- [Review decisions](#review-decisions-before-implementation)
+- [Confirmed decisions](#confirmed-implementation-decisions)
 
 ## Context and confirmed current state
 
@@ -2673,28 +2673,28 @@ The slice is complete only when:
 Run task-specific tests before each commit. Run all T10 gates and the required
 live E2E acceptance before the final commit.
 
-## Review decisions before implementation
+## Confirmed implementation decisions
 
-The plan already uses the following defaults. A different decision changes the
-scope or trust model and must be incorporated into this document before T0:
+The following decisions are confirmed for this plan. Changing one alters the
+scope or trust model and requires an explicit plan amendment before T0:
 
 1. **Trust:** V1 loads only canonically generated Typst sources; free Typst
-   packs remain a separate follow-up. **Recommendation: confirm.**
+   packs remain a separate follow-up. **Confirmed for this plan.**
 2. **Asset intake:** Supported internal graphics are visibly extracted to
    `.intake/<generation>/assets` by default; `--metadata-only` is the opt-out.
-   **Recommendation: confirm.**
+   **Confirmed for this plan.**
 3. **Export integration:** This slice does not stop at pack generation; it
    enables `--template` for PDF with an explicit pack path.
-   **Recommendation: confirm.**
+   **Confirmed for this plan.**
 4. **Automation:** The default remains `suggest-only`; automatic adoption is
    an explicit expert `--apply-ready` action or `--policy apply-ready` at
    import.
-   **Recommendation: confirm.**
+   **Confirmed for this plan.**
 5. **V1 graphics scope:** Render demonstrably globalizable page/margin-relative
    backgrounds, logo, header/footer, and a uniform `single` page border.
    Inventory image/foreground watermarks, section-specific or
    paragraph/line-relative elements, and complex Office graphics only.
-   **Recommendation: confirm.**
+   **Confirmed for this plan.**
 6. **Shape scope:** This slice delivers the CLI end-to-end journey and reusable
    host-neutral packages, views, actions, ports, and browser conformance. A
    full-screen TUI, browser Studio/extension UI, and IndexedDB adapters are
