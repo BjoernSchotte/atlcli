@@ -37,3 +37,6 @@ scripts/verapdf/out/
 security-attestation.json
 # Scheduled/read-only ADF drift reports
 /artifacts/adf-drift/
+
+# Generated image-heavy benchmark corpus (issue #118 Phase 0) — reproduced from (seed, scale)
+apps/extension/tests/pdf/memory/public/image-heavy/

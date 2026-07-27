@@ -15,6 +15,7 @@ import {
 } from "../../../utils/pdf/job-store.js";
 import { openPdfViewer } from "../../../utils/pdf/viewer.js";
 import type {
+  MemoryCorpusFixtureSummary,
   MemoryFixtureSummary,
   MemoryProbeApi,
   MemoryWorkerPhase,
@@ -145,6 +146,83 @@ async function prepareFixture(): Promise<MemoryFixtureSummary> {
     bundleBytes: sourceBundleBytes(bundle),
   };
   output(`prepared:${summary.bundleBytes}`);
+  return summary;
+}
+
+interface CorpusManifest {
+  schema: string;
+  seed: number;
+  scale: number;
+  manifestSha256: string;
+  minAggregateBytes: number;
+  counts: { uniqueAssets: number; uniqueAssetBytes: number; chapters: number };
+  manifest: Array<{ filename: string; mediaType: string; byteLength: number }>;
+}
+
+async function fetchJson<T>(path: string): Promise<T> {
+  const response = await fetch(path);
+  if (!response.ok) throw new Error(`Corpus fetch failed (${response.status}): ${path}`);
+  return (await response.json()) as T;
+}
+
+async function prepareCorpusFixture(): Promise<MemoryCorpusFixtureSummary> {
+  // The ≥100 MiB image-heavy corpus exceeds the product budgets BY DESIGN
+  // (issue #118 Phase 0). Both benchmark-only Symbol.for seams are installed
+  // here, in the harness, so release configuration is provably untouched.
+  const host = globalThis as typeof globalThis & Record<symbol, unknown>;
+  host[Symbol.for("atlcli.pdf.benchmark-asset-budget")] = {
+    maxAssetBytes: 32 * 1024 * 1024,
+    maxTotalBytes: 512 * 1024 * 1024,
+  };
+  host[Symbol.for("atlcli.extension.benchmark-pdf-job-limits")] = {
+    jobMaxBytes: 512 * 1024 * 1024,
+    storeMaxBytes: 1024 * 1024 * 1024,
+  };
+
+  const manifest = await fetchJson<CorpusManifest>("image-heavy/manifest.json");
+  const blocks = await fetchJson<ExportBlock[]>("image-heavy/blocks.json");
+  const mediaTypes = new Map(manifest.manifest.map((entry) => [entry.filename, entry.mediaType]));
+  const assets = new Map<string, Uint8Array>();
+  for (const entry of manifest.manifest) {
+    const response = await fetch(`image-heavy/${entry.filename}`);
+    if (!response.ok) {
+      throw new Error(`Corpus asset fetch failed (${response.status}): ${entry.filename}`);
+    }
+    assets.set(entry.filename, new Uint8Array(await response.arrayBuffer()));
+  }
+
+  const prepared = await preparePdfDocument(blocks, {
+    async resolve(ref) {
+      const name = ref.filename ?? "";
+      const bytes = assets.get(name);
+      if (!bytes) throw new Error(`Missing corpus asset ${name}.`);
+      return { bytes, mediaType: mediaTypes.get(name) ?? "application/octet-stream", filename: name };
+    },
+  });
+  bundle = serializePdfDocument(prepared, {
+    metadata: {
+      title: "Image-heavy corpus attribution fixture",
+      space: "DOCSY",
+      version: 1,
+      exporter: "atlcli Chrome/V8 memory harness",
+      exportedAt: new Date("2026-07-27T00:00:00.000Z"),
+    },
+    settings: { cover: false, outline: true },
+  });
+  // The bundle references the fetched buffers; clearing the map drops the
+  // only extra references so samples measure the bundle, not the fetch cache.
+  assets.clear();
+  const summary: MemoryCorpusFixtureSummary = {
+    chapters: manifest.counts.chapters,
+    images: bundle.assets.length,
+    assetBytes: bundle.assets.reduce((total, asset) => total + asset.bytes.byteLength, 0),
+    bundleBytes: sourceBundleBytes(bundle),
+    scale: manifest.scale,
+    manifestSha256: manifest.manifestSha256,
+    minAggregateBytes: manifest.minAggregateBytes,
+    notes: prepared.notes.length,
+  };
+  output(`corpus-prepared:${summary.bundleBytes}`);
   return summary;
 }
 
@@ -335,6 +413,7 @@ async function cleanup(): Promise<void> {
 
 window.atlcliMemoryProbe = {
   prepareFixture,
+  prepareCorpusFixture,
   storePreparedJob,
   readMetaInventory,
   releaseMetaInventory() {

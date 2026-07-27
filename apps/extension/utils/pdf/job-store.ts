@@ -122,6 +122,31 @@ export const PDF_JOB_MAX_BYTES = 64 * 1024 * 1024;
 export const PDF_STORE_MAX_BYTES = 128 * 1024 * 1024;
 export const PDF_JOB_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
+// Benchmark-only cap seam (issue #118 Phase 0), mirroring the prepare-side
+// `atlcli.pdf.benchmark-asset-budget` hook: the ≥100 MiB image-heavy corpus
+// must flow through this REAL store inside the Chrome memory harness, and the
+// product caps must not gain a public override to make that possible. Only a
+// benchmark harness installs the Symbol on globalThis (page AND compiler
+// worker); release code has no path to it.
+const BENCHMARK_PDF_JOB_LIMITS = Symbol.for("atlcli.extension.benchmark-pdf-job-limits");
+
+interface BenchmarkPdfJobLimitsOverride {
+  jobMaxBytes?: number;
+  storeMaxBytes?: number;
+}
+
+interface BenchmarkPdfJobLimitsHost {
+  [BENCHMARK_PDF_JOB_LIMITS]?: BenchmarkPdfJobLimitsOverride;
+}
+
+function pdfJobLimits(): { jobMaxBytes: number; storeMaxBytes: number } {
+  const override = (globalThis as BenchmarkPdfJobLimitsHost)[BENCHMARK_PDF_JOB_LIMITS];
+  return {
+    jobMaxBytes: override?.jobMaxBytes ?? PDF_JOB_MAX_BYTES,
+    storeMaxBytes: override?.storeMaxBytes ?? PDF_STORE_MAX_BYTES,
+  };
+}
+
 /**
  * Job lifecycle.
  *
@@ -333,7 +358,7 @@ async function makeRoomFor(
   const jobs = (await listPdfJobMeta(factory)).map(budgetEntryOf);
   const others = await sharedTenants.inventory().catch(() => [] as readonly BudgetEntry[]);
   const plan = planStoreEviction([...jobs, ...others], incomingBytes, {
-    limit: PDF_STORE_MAX_BYTES,
+    limit: pdfJobLimits().storeMaxBytes,
     now,
     maxAgeMs: PDF_JOB_MAX_AGE_MS,
   });
@@ -481,8 +506,9 @@ export async function putPdfJob(
   // reads `bundle`, never `input.bundle`.
   const bundle = snapshotSourceBundle(input.bundle);
   const inputBytes = sourceBundleBytes(bundle);
-  if (inputBytes > PDF_JOB_MAX_BYTES) {
-    throw new Error(`PDF export input exceeds the ${PDF_JOB_MAX_BYTES} byte job limit.`);
+  const limits = pdfJobLimits();
+  if (inputBytes > limits.jobMaxBytes) {
+    throw new Error(`PDF export input exceeds the ${limits.jobMaxBytes} byte job limit.`);
   }
   const createdAt = input.createdAt ?? Date.now();
   const meta: StoredPdfJobMeta = {
@@ -517,8 +543,8 @@ export async function putPdfJob(
           (sum, stored) => sum + storedJobBytes(stored),
           0
         );
-        if (total + inputBytes > PDF_STORE_MAX_BYTES) {
-          reject(new Error("PDF export storage exceeds the 128 MB total quota."));
+        if (total + inputBytes > limits.storeMaxBytes) {
+          reject(new Error(`PDF export storage exceeds the ${limits.storeMaxBytes} byte total quota.`));
           return;
         }
         // Re-measure in the SAME synchronous turn as the `add()` below. IndexedDB
@@ -730,8 +756,9 @@ export async function completePdfJob(
   output: { pdf: Uint8Array; diagnostics: PdfCompilerDiagnostic[]; compilerVersion: string },
   factory?: IDBFactory
 ): Promise<StoredPdfJobMeta | undefined> {
-  if (output.pdf.byteLength > PDF_JOB_MAX_BYTES) {
-    throw new Error(`PDF result exceeds the ${PDF_JOB_MAX_BYTES} byte job limit.`);
+  const limits = pdfJobLimits();
+  if (output.pdf.byteLength > limits.jobMaxBytes) {
+    throw new Error(`PDF result exceeds the ${limits.jobMaxBytes} byte job limit.`);
   }
   // The result is about to be added while the bundle is about to go away, so the
   // net demand is the difference. Asking for the full result would evict a
@@ -757,8 +784,8 @@ export async function completePdfJob(
             return;
           }
           const total = all.reduce((sum, meta) => sum + storedJobBytes(meta), 0);
-          if (total + output.pdf.byteLength > PDF_STORE_MAX_BYTES) {
-            reject(new Error("PDF export storage exceeds the 128 MB total quota."));
+          if (total + output.pdf.byteLength > limits.storeMaxBytes) {
+            reject(new Error(`PDF export storage exceeds the ${limits.storeMaxBytes} byte total quota.`));
             return;
           }
           const next: StoredPdfJobMeta = {

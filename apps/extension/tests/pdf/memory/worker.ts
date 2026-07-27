@@ -26,6 +26,13 @@ import type {
 
 const scope = self as unknown as DedicatedWorkerGlobalScope;
 
+// Benchmark-only cap seam, worker side: `completePdfJob` runs HERE, and the
+// image-heavy corpus produces a result beyond the 64 MiB product cap. The
+// page installs the same Symbol for its `putPdfJob` half (issue #118 Phase 0).
+(globalThis as typeof globalThis & Record<symbol, unknown>)[
+  Symbol.for("atlcli.extension.benchmark-pdf-job-limits")
+] = { jobMaxBytes: 512 * 1024 * 1024, storeMaxBytes: 1024 * 1024 * 1024 };
+
 const fontUrls = [
   sansRegularUrl,
   sansItalicUrl,

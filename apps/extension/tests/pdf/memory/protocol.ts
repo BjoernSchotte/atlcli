@@ -24,8 +24,17 @@ export interface MemoryFixtureSummary {
   bundleBytes: number;
 }
 
+export interface MemoryCorpusFixtureSummary extends MemoryFixtureSummary {
+  scale: number;
+  manifestSha256: string;
+  minAggregateBytes: number;
+  /** Prepare-time export notes; the benchmark requires zero embed failures. */
+  notes: number;
+}
+
 export interface MemoryProbeApi {
   prepareFixture(): Promise<MemoryFixtureSummary>;
+  prepareCorpusFixture(): Promise<MemoryCorpusFixtureSummary>;
   storePreparedJob(): Promise<{ jobId: string }>;
   readMetaInventory(): Promise<{ jobs: number; inputBytes: number }>;
   releaseMetaInventory(): void;

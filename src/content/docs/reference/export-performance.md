@@ -192,6 +192,22 @@ byte-identically across two consecutive runs:
 | **compiled-held (peak)** | **87.31** | **50.62** | **137.93** | **63.3%** |
 | complete | 87.31 | 33.98 | 121.29 | 72.0% |
 
+The same run also measures the **image-heavy corpus** (100.29 MiB assets,
+105.23 MiB source bundle, scale 1) through the identical store → worker →
+VFS → compile path, unlocked by the benchmark-only cap seams. Result
+(`ATLCLI_CHROME_MEMORY_IMAGE_HEAVY_RESULT`, same pinned runtime):
+
+| Phase | WASM linear (MiB) | Host outside WASM (MiB) | Total (MiB) | WASM share |
+|---|---|---|---|---|
+| warm | 15.56 | 33.67 | 49.23 | 31.6% |
+| bundle-received | 15.56 | 134.12 | 149.67 | 10.4% (host holds the 100 MiB bundle) |
+| vfs-ready | 120.88 | 134.13 | 255.00 | 47.4% |
+| **compiled-held (peak)** | **1326.56** | **231.76** | **1558.32** | **85.1%** |
+| complete | 1326.56 | 33.99 | 1360.55 | 97.5% (warm-runtime retention) |
+
+The compiled PDF is 97.36 MiB (JPEG passthrough) and Typst compiles the whole
+corpus without diagnostics.
+
 How to read this:
 
 - The WASM linear memory is read through a benchmark-only `Symbol.for` hook
@@ -202,11 +218,21 @@ How to read this:
   from the samples and reported as `basis` (`backing-includes-wasm` on this
   runtime), never assumed — a runtime change alters the report instead of
   silently double-counting.
-- At the peak phase, **63.3% of the worker footprint is inside the WASM
-  instance** and out of reach of host-side descriptor/lease transport. The
-  36.7% host share on this small mixed fixture clears the plan's 25% working
-  threshold, but the gate decision requires the image-heavy corpus, which this
-  fixture is not. Do not quote these shares as the gate verdict.
+- **Gate input (issue #118 attribution gate): on the image-heavy corpus, the
+  host-side share at peak is 14.9%** — below the plan's 25% working
+  threshold. 85.1% of the peak lives inside the WASM instance (decoded
+  rasters, layout, PDF assembly), out of reach of host-side descriptor/lease
+  transport: even a zero-copy host transport could reduce this peak by at
+  most ~15%. The levers that reach the dominant share are the explicit image
+  profiles (smaller decoded rasters shrink the 1.3 GiB in-WASM footprint
+  directly) and the Typst/runtime evaluation lanes.
+- **Second gate reading from the same run:** whole-PDF result handoff is
+  97.36 MiB of a 1558.32 MiB peak = **6.2%**, below the plan's 10% bar for
+  pursuing an owned/chunked output handle.
+- The small mixed fixture (63.3% WASM / 36.7% host at its 137.93 MiB peak)
+  shows the host share *shrinks* as inputs grow image-heavy — the workloads
+  this issue targets are exactly the ones where host-side transport matters
+  least.
 
 The attribution math is pure and unit-tested
 (`apps/extension/tests/pdf/memory/attribution.ts`); the harness README

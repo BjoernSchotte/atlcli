@@ -233,10 +233,50 @@ async function attachCompilerWorker(root: CDPSession): Promise<ChildTargetSessio
   throw new Error("The Chrome memory compiler worker target did not appear.");
 }
 
-async function waitForPhase(page: Page, phase: MemoryWorkerPhase): Promise<void> {
+async function waitForPhase(
+  page: Page,
+  phase: MemoryWorkerPhase,
+  timeoutMs = 90_000
+): Promise<void> {
   await expect
-    .poll(() => page.evaluate(() => window.atlcliMemoryProbe.phase()), { timeout: 90_000 })
+    .poll(() => page.evaluate(() => window.atlcliMemoryProbe.phase()), { timeout: timeoutMs })
     .toBe(phase);
+}
+
+interface Harness {
+  context: BrowserContext;
+  page: Page;
+  cdp: CDPSession;
+  browserVersion: { product: string; revision: string; userAgent: string; jsVersion: string };
+  profileDir: string;
+}
+
+async function openHarness(): Promise<Harness> {
+  const profileDir = mkdtempSync(join(tmpdir(), "atlcli-chrome-memory-profile-"));
+  const context = await chromium.launchPersistentContext(profileDir, {
+    channel: "chromium",
+    headless: true,
+    args: [
+      `--disable-extensions-except=${OUTPUT_DIR}`,
+      `--load-extension=${OUTPUT_DIR}`,
+      "--enable-precise-memory-info",
+    ],
+  });
+  let serviceWorker = context.serviceWorkers()[0];
+  serviceWorker ??= await context.waitForEvent("serviceworker", { timeout: 30_000 });
+  const extensionId = new URL(serviceWorker.url()).host;
+  const page = await context.newPage();
+  await page.goto(`chrome-extension://${extensionId}/index.html`);
+  await expect(page.getByTestId("memory-state")).toHaveText("ready");
+  const cdp = await context.newCDPSession(page);
+  const browserVersion = (await cdp.send("Browser.getVersion")) as Harness["browserVersion"];
+  return { context, page, cdp, browserVersion, profileDir };
+}
+
+async function closeHarness(harness: Harness | undefined): Promise<void> {
+  if (!harness) return;
+  await harness.context.close().catch(() => undefined);
+  rmSync(harness.profileDir, { recursive: true, force: true });
 }
 
 function workerDetail(
@@ -273,32 +313,11 @@ function allocationBytes(profile: unknown): number {
 }
 
 test("records real Chrome/V8 heap peaks for the extension PDF byte path", async () => {
-  const profileDir = mkdtempSync(join(tmpdir(), "atlcli-chrome-memory-profile-"));
-  let context: BrowserContext | undefined;
+  let harness: Harness | undefined;
   let workerSession: ChildTargetSession | undefined;
   try {
-    context = await chromium.launchPersistentContext(profileDir, {
-      channel: "chromium",
-      headless: true,
-      args: [
-        `--disable-extensions-except=${OUTPUT_DIR}`,
-        `--load-extension=${OUTPUT_DIR}`,
-        "--enable-precise-memory-info",
-      ],
-    });
-    let serviceWorker = context.serviceWorkers()[0];
-    serviceWorker ??= await context.waitForEvent("serviceworker", { timeout: 30_000 });
-    const extensionId = new URL(serviceWorker.url()).host;
-    const page = await context.newPage();
-    await page.goto(`chrome-extension://${extensionId}/index.html`);
-    await expect(page.getByTestId("memory-state")).toHaveText("ready");
-    const cdp = await context.newCDPSession(page);
-    const browserVersion = (await cdp.send("Browser.getVersion")) as {
-      product: string;
-      revision: string;
-      userAgent: string;
-      jsVersion: string;
-    };
+    harness = await openHarness();
+    const { page, cdp, browserVersion } = harness;
 
     const baseline = await pageHeap(cdp);
     const fixture = await page.evaluate(() => window.atlcliMemoryProbe.prepareFixture());
@@ -453,7 +472,102 @@ test("records real Chrome/V8 heap peaks for the extension PDF byte path", async 
     await cdp.detach();
   } finally {
     await workerSession?.close().catch(() => undefined);
-    await context?.close();
-    rmSync(profileDir, { recursive: true, force: true });
+    await closeHarness(harness);
+  }
+});
+
+test("records image-heavy corpus host-versus-WASM attribution (issue #118 gate input)", async () => {
+  test.setTimeout(1_800_000);
+  let harness: Harness | undefined;
+  let workerSession: ChildTargetSession | undefined;
+  try {
+    harness = await openHarness();
+    const { page, cdp, browserVersion } = harness;
+
+    const baseline = await pageHeap(cdp);
+    const fixture = await page.evaluate(() => window.atlcliMemoryProbe.prepareCorpusFixture());
+    expect(fixture.notes).toBe(0);
+    expect(fixture.assetBytes).toBeGreaterThanOrEqual(fixture.minAggregateBytes);
+    const prepared = await pageHeap(cdp);
+
+    await page.evaluate(() => window.atlcliMemoryProbe.storePreparedJob());
+    const stored = await pageHeap(cdp);
+
+    await page.evaluate(() => window.atlcliMemoryProbe.startWorker());
+    await waitForPhase(page, "warm", 300_000);
+    workerSession = await attachCompilerWorker(cdp);
+    const workerWarm = await workerSession.heap();
+    const warmDetail = await workerDetail(page, "warm");
+
+    await page.evaluate(() => window.atlcliMemoryProbe.startCompile());
+    await waitForPhase(page, "bundle-received", 300_000);
+    const workerBundle = await workerSession.heap();
+    const bundleDetail = await workerDetail(page, "bundle-received");
+    await page.evaluate(() => window.atlcliMemoryProbe.continueWorker());
+    await waitForPhase(page, "vfs-ready", 300_000);
+    const workerVfs = await workerSession.heap();
+    const vfsDetail = await workerDetail(page, "vfs-ready");
+    await page.evaluate(() => window.atlcliMemoryProbe.continueWorker());
+    await waitForPhase(page, "compiled-held", 1_200_000);
+    const workerCompiled = await workerSession.heap();
+    const compiledDetail = await workerDetail(page, "compiled-held");
+    await page.evaluate(() => window.atlcliMemoryProbe.continueWorker());
+    await waitForPhase(page, "complete", 600_000);
+    const workerComplete = await workerSession.heap();
+    const completeDetail = await workerDetail(page, "complete");
+
+    const workerAttribution = computeWorkerMemoryAttribution([
+      attributionSample("warm", workerWarm, warmDetail),
+      attributionSample("bundle-received", workerBundle, bundleDetail),
+      attributionSample("vfs-ready", workerVfs, vfsDetail),
+      attributionSample("compiled-held", workerCompiled, compiledDetail),
+      attributionSample("complete", workerComplete, completeDetail),
+    ]);
+    const compiled = await page.evaluate(() => window.atlcliMemoryProbe.readCompiledResult());
+
+    const report = {
+      schema: "atlcli.chrome-memory-image-heavy/v1",
+      measuredAt: new Date().toISOString(),
+      runtime: browserVersion,
+      corpus: {
+        ...fixture,
+        assetMiB: mib(fixture.assetBytes),
+        bundleMiB: mib(fixture.bundleBytes),
+        pdfBytes: compiled.byteLength,
+        pdfMiB: mib(compiled.byteLength),
+      },
+      panel: {
+        prepareFromBaseline: delta(baseline, prepared),
+        storedFromBaseline: delta(baseline, stored),
+      },
+      offscreenWorker: {
+        bundleRead: delta(workerWarm, workerBundle),
+        vfsLoaded: delta(workerWarm, workerVfs),
+        compiledPdfHeld: delta(workerWarm, workerCompiled),
+        completed: delta(workerWarm, workerComplete),
+      },
+      workerAttribution,
+    };
+    console.log(`ATLCLI_CHROME_MEMORY_IMAGE_HEAVY_RESULT\n${JSON.stringify(report, null, 2)}`);
+
+    // Structural gate-input assertions only: the attribution must be
+    // measurable and internally consistent. Whether the host share clears the
+    // plan's threshold is a review decision recorded in PLAN.md, not a test.
+    expect(report.workerAttribution.basis).not.toBe("wasm-unavailable");
+    expect(report.workerAttribution.wasmMonotonicGrowth).toBe(true);
+    expect(report.workerAttribution.peak.wasmShare).toBeGreaterThan(0);
+    expect(report.workerAttribution.peak.hostShare + report.workerAttribution.peak.wasmShare)
+      .toBeCloseTo(1, 2);
+    if (fixture.scale === 1) {
+      // The measurement only counts if the corpus really exceeded the product
+      // caps that the benchmark-only seams unlock.
+      expect(fixture.bundleBytes).toBeGreaterThan(64 * 1024 * 1024);
+      expect(fixture.assetBytes).toBeGreaterThanOrEqual(100 * 1024 * 1024);
+    }
+    await page.evaluate(() => window.atlcliMemoryProbe.cleanup());
+    await cdp.detach();
+  } finally {
+    await workerSession?.close().catch(() => undefined);
+    await closeHarness(harness);
   }
 });

@@ -67,7 +67,10 @@ if (outDir) {
   }
   writeFileSync(
     join(outDir, "manifest.json"),
-    `${JSON.stringify({ schema: corpus.schema, seed: corpus.seed, scale: corpus.scale, manifestSha256: corpus.manifestSha256, manifest: corpus.manifest }, null, 2)}\n`
+    `${JSON.stringify({ schema: corpus.schema, seed: corpus.seed, scale: corpus.scale, manifestSha256: corpus.manifestSha256, minAggregateBytes: corpus.minAggregateBytes, counts: corpus.counts, manifest: corpus.manifest }, null, 2)}\n`
   );
+  // The block tree is JSON-serializable ExportBlock[]; browser harnesses fetch
+  // it alongside the assets instead of regenerating 100 MiB in-page.
+  writeFileSync(join(outDir, "blocks.json"), `${JSON.stringify(corpus.blocks)}\n`);
   console.log(`Materialized ${corpus.assets.length} assets to ${outDir}`);
 }

@@ -146,6 +146,46 @@ describe("PDF job store", () => {
     expect(await getPdfJob(id, factory)).toBeUndefined();
   });
 
+  it("honors the benchmark cap seam and keeps product caps without it (issue #118)", async () => {
+    // The Chrome memory harness runs the ≥100 MiB image-heavy corpus through
+    // this real store via a Symbol.for override; production never installs it.
+    const hook = Symbol.for("atlcli.extension.benchmark-pdf-job-limits");
+    const host = globalThis as typeof globalThis &
+      Record<symbol, { jobMaxBytes?: number; storeMaxBytes?: number } | undefined>;
+    host[hook] = { jobMaxBytes: 256 * 1024 * 1024, storeMaxBytes: 512 * 1024 * 1024 };
+    try {
+      const stored = await putPdfJob(
+        { id, sourceIdentity: "corpus", bundle: bundle(PDF_JOB_MAX_BYTES + 1) },
+        factory
+      );
+      expect(stored.inputBytes).toBeGreaterThan(PDF_JOB_MAX_BYTES);
+      await claimPdfJob(id, factory);
+      const completed = await completePdfJob(
+        id,
+        {
+          pdf: new Uint8Array(PDF_JOB_MAX_BYTES + 1),
+          diagnostics: [],
+          compilerVersion: "test",
+        },
+        factory
+      );
+      expect(completed?.outputBytes).toBe(PDF_JOB_MAX_BYTES + 1);
+    } finally {
+      delete host[hook];
+    }
+    // Hook removed: the product caps are exactly as before.
+    await expect(
+      putPdfJob(
+        {
+          id: "323e4567-e89b-42d3-a456-426614174000",
+          sourceIdentity: "large",
+          bundle: bundle(PDF_JOB_MAX_BYTES + 1),
+        },
+        factory
+      )
+    ).rejects.toThrow("job limit");
+  });
+
   it("enforces the total store quota before accepting another job", async () => {
     const db = await openPdfJobDb(factory);
     await new Promise<void>((resolve, reject) => {
