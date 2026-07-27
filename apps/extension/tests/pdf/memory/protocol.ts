@@ -33,6 +33,7 @@ export interface MemoryProbeApi {
   startCompile(): Promise<void>;
   continueWorker(): void;
   phase(): MemoryWorkerPhase;
+  workerDetail(phase: Exclude<MemoryWorkerPhase, "error">): Record<string, number> | null;
   readCompiledResult(): Promise<{ byteLength: number }>;
   validateResult(): ReturnType<typeof import("@atlcli/pdf/browser").validatePdfOutput>;
   createDownloadBlob(): { byteLength: number; blobSize: number };

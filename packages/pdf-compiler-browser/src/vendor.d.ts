@@ -21,5 +21,5 @@ declare module "@atlcli/pdf-compiler-browser/vendor/typst-ts-web-compiler/pkg/ty
 
   export default function initTypst(options: {
     module_or_path: ArrayBuffer | URL | Response;
-  }): Promise<unknown>;
+  }): Promise<{ readonly memory: WebAssembly.Memory }>;
 }

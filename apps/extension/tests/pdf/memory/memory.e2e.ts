@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { computeWorkerMemoryAttribution } from "./attribution.js";
 import type { MemoryWorkerPhase } from "./protocol.js";
 
 const OUTPUT_DIR = fileURLToPath(
@@ -238,6 +239,26 @@ async function waitForPhase(page: Page, phase: MemoryWorkerPhase): Promise<void>
     .toBe(phase);
 }
 
+function workerDetail(
+  page: Page,
+  phase: Exclude<MemoryWorkerPhase, "error">
+): Promise<Record<string, number> | null> {
+  return page.evaluate((value) => window.atlcliMemoryProbe.workerDetail(value), phase);
+}
+
+function attributionSample(
+  phase: string,
+  heap: HeapUsage,
+  detail: Record<string, number> | null
+): { phase: string; heap: HeapUsage; wasmMemoryBytes?: number } {
+  const wasmMemoryBytes = detail?.wasmMemoryBytes;
+  return {
+    phase,
+    heap,
+    ...(typeof wasmMemoryBytes === "number" ? { wasmMemoryBytes } : {}),
+  };
+}
+
 function allocationBytes(profile: unknown): number {
   const root = (profile as { profile?: { head?: unknown } }).profile?.head;
   const walk = (node: unknown): number => {
@@ -297,19 +318,32 @@ test("records real Chrome/V8 heap peaks for the extension PDF byte path", async 
     await waitForPhase(page, "warm");
     workerSession = await attachCompilerWorker(cdp);
     const workerWarm = await workerSession.heap();
+    const warmDetail = await workerDetail(page, "warm");
 
     await page.evaluate(() => window.atlcliMemoryProbe.startCompile());
     await waitForPhase(page, "bundle-received");
     const workerBundle = await workerSession.heap();
+    const bundleDetail = await workerDetail(page, "bundle-received");
     await page.evaluate(() => window.atlcliMemoryProbe.continueWorker());
     await waitForPhase(page, "vfs-ready");
     const workerVfs = await workerSession.heap();
+    const vfsDetail = await workerDetail(page, "vfs-ready");
     await page.evaluate(() => window.atlcliMemoryProbe.continueWorker());
     await waitForPhase(page, "compiled-held");
     const workerCompiled = await workerSession.heap();
+    const compiledDetail = await workerDetail(page, "compiled-held");
     await page.evaluate(() => window.atlcliMemoryProbe.continueWorker());
     await waitForPhase(page, "complete");
     const workerComplete = await workerSession.heap();
+    const completeDetail = await workerDetail(page, "complete");
+
+    const workerAttribution = computeWorkerMemoryAttribution([
+      attributionSample("warm", workerWarm, warmDetail),
+      attributionSample("bundle-received", workerBundle, bundleDetail),
+      attributionSample("vfs-ready", workerVfs, vfsDetail),
+      attributionSample("compiled-held", workerCompiled, compiledDetail),
+      attributionSample("complete", workerComplete, completeDetail),
+    ]);
 
     const compiled = await page.evaluate(() => window.atlcliMemoryProbe.readCompiledResult());
     expect(compiled.byteLength).toBeGreaterThan(100_000);
@@ -360,7 +394,7 @@ test("records real Chrome/V8 heap peaks for the extension PDF byte path", async 
     expect(blobRead).toEqual({ storedType: "Blob", byteLength: idbBytes });
 
     const report = {
-      schema: "atlcli.chrome-memory/v1",
+      schema: "atlcli.chrome-memory/v2",
       measuredAt: new Date().toISOString(),
       runtime: browserVersion,
       fixture: {
@@ -386,6 +420,7 @@ test("records real Chrome/V8 heap peaks for the extension PDF byte path", async 
         compiledPdfHeld: delta(workerWarm, workerCompiled),
         completed: delta(workerWarm, workerComplete),
       },
+      workerAttribution,
       indexedDb: {
         bytes: idbBytes,
         arrayGet: delta(beforeIdbArray, afterIdbArray),
@@ -397,6 +432,18 @@ test("records real Chrome/V8 heap peaks for the extension PDF byte path", async 
 
     expect(report.panel.metadataGetAll.usedMiB).toBeLessThan(1);
     expect(report.offscreenWorker.vfsLoaded.backingMiB).toBeGreaterThan(0);
+    // Host-versus-WASM attribution (specs/issue-118 Phase 0 gate input): the
+    // WASM linear memory must be observable, its growth monotonic, and the
+    // peak-phase split must be a valid share. The basis is detected and
+    // reported, never asserted, so a runtime that stops counting WASM memory
+    // in backing storage changes the report instead of silently lying.
+    expect(report.workerAttribution.basis).not.toBe("wasm-unavailable");
+    expect(report.workerAttribution.wasmHighWaterMiB).toBeGreaterThan(0);
+    expect(report.workerAttribution.wasmMonotonicGrowth).toBe(true);
+    expect(report.workerAttribution.peak.wasmShare).toBeGreaterThan(0);
+    expect(report.workerAttribution.peak.hostShare).toBeGreaterThanOrEqual(0);
+    expect(report.workerAttribution.peak.hostShare + report.workerAttribution.peak.wasmShare)
+      .toBeCloseTo(1, 2);
     expect(report.indexedDb.arrayGet.backingMiB).toBeGreaterThan(8);
     expect(report.indexedDb.blobGet.usedMiB).toBeLessThan(1);
     expect(report.pdfjsBlob.directRangeStatus).toBe(206);

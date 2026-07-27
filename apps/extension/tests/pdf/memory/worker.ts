@@ -49,6 +49,23 @@ async function fetchBytes(url: string): Promise<Uint8Array<ArrayBuffer>> {
 
 let compilerPromise: Promise<BrowserPdfCompiler> | null = null;
 let continueRun: (() => void) | null = null;
+let typstWasmMemory: WebAssembly.Memory | undefined;
+
+// Installed before the compiler initializes: BrowserPdfCompiler hands the
+// Typst WebAssembly.Memory to this benchmark-only Symbol.for hook so every
+// phase can report linear-memory bytes for host-versus-WASM attribution.
+const registerWasmMemory = Symbol.for(
+  "atlcli.pdf-compiler-browser.memory-probe.register-wasm-memory"
+);
+(globalThis as typeof globalThis & Record<symbol, unknown>)[registerWasmMemory] = (
+  memory: WebAssembly.Memory
+) => {
+  typstWasmMemory = memory;
+};
+
+function wasmDetail(): Record<string, number> {
+  return typstWasmMemory ? { wasmMemoryBytes: typstWasmMemory.buffer.byteLength } : {};
+}
 
 function postPhase(
   phase: Exclude<MemoryWorkerPhase, "error">,
@@ -57,7 +74,7 @@ function postPhase(
   const response: MemoryWorkerResponse = {
     kind: "phase",
     phase,
-    ...(detail ? { detail } : {}),
+    detail: { ...wasmDetail(), ...detail },
   };
   scope.postMessage(response);
 }

@@ -38,6 +38,7 @@ let idbPayload: unknown;
 let worker: Worker | undefined;
 let workerPhase: MemoryWorkerPhase = "booting";
 let workerError: Error | undefined;
+const workerDetails = new Map<string, Record<string, number>>();
 
 function output(message: string): void {
   const state = document.querySelector<HTMLOutputElement>('[data-testid="memory-state"]');
@@ -187,6 +188,7 @@ function startWorker(): Promise<void> {
       return;
     }
     workerPhase = event.data.phase;
+    workerDetails.set(event.data.phase, event.data.detail ?? {});
     output(`worker:${workerPhase}`);
   });
   worker.postMessage({ kind: "warm" } satisfies MemoryWorkerRequest);
@@ -322,6 +324,7 @@ async function cleanup(): Promise<void> {
   jobId = undefined;
   worker?.postMessage({ kind: "shutdown" } satisfies MemoryWorkerRequest);
   worker = undefined;
+  workerDetails.clear();
   await new Promise<void>((resolve) => {
     const request = indexedDB.deleteDatabase(PROBE_DB);
     request.onsuccess = () => resolve();
@@ -346,6 +349,9 @@ window.atlcliMemoryProbe = {
   phase() {
     if (workerError) throw workerError;
     return workerPhase;
+  },
+  workerDetail(phase) {
+    return workerDetails.get(phase) ?? null;
   },
   readCompiledResult,
   validateResult,

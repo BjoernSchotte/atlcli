@@ -199,6 +199,28 @@ describe("BrowserPdfCompiler package", () => {
     expect(result.pdf?.byteLength).toBeGreaterThan(0);
   }, 30_000);
 
+  it("registers the Typst WASM linear memory with the benchmark probe hook", async () => {
+    const hook = Symbol.for("atlcli.pdf-compiler-browser.memory-probe.register-wasm-memory");
+    const host = globalThis as typeof globalThis &
+      Record<symbol, ((memory: WebAssembly.Memory) => void) | undefined>;
+    let registered: WebAssembly.Memory | undefined;
+    host[hook] = (memory) => {
+      registered = memory;
+    };
+    const compiler = await createCompiler();
+    try {
+      const result = await compiler.compile(bundle("= Attribution probe"));
+      expect(result.pdf?.byteLength).toBeGreaterThan(0);
+      expect(registered).toBeInstanceOf(WebAssembly.Memory);
+      // Linear memory only grows, so byteLength read after a compile is the
+      // high-water mark the attribution gate consumes.
+      expect(registered!.buffer.byteLength).toBeGreaterThan(0);
+    } finally {
+      delete host[hook];
+      await compiler.reset();
+    }
+  }, 30_000);
+
   it("contains no host-specific asset or extension imports", async () => {
     const source = await Bun.file(new URL("./compiler.ts", import.meta.url)).text();
     expect(source).not.toMatch(/\?url|chrome|indexedDB|wxt|apps\/extension/);

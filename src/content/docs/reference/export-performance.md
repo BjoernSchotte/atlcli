@@ -20,6 +20,7 @@ baseline to compare against.
 - [Measured envelope: engine tier](#measured-envelope-engine-tier)
 - [Measured envelope: end-to-end tier](#measured-envelope-end-to-end-tier)
 - [Browser code-highlighting trace](#browser-code-highlighting-trace)
+- [Browser host-versus-WASM attribution](#browser-host-versus-wasm-attribution)
 - [What the numbers mean](#what-the-numbers-mean)
 - [Reproducing a measurement](#reproducing-a-measurement)
 - [Trend tracking in CI](#trend-tracking-in-ci)
@@ -164,6 +165,52 @@ bun run --cwd apps/browser-export-harness test:e2e --grep "one-language preparat
 The run writes `apps/browser-export-harness/test-results/highlight-performance/one-language-cold.json`.
 The broader 22-language case in the same suite proves concurrent grammar/core/engine/theme
 loading, cold/warm DOCX byte parity, and deterministic repeat output.
+
+## Browser host-versus-WASM attribution
+
+The Chrome/V8 memory harness splits the PDF compiler worker's footprint per
+phase into **Typst WASM linear memory** versus **host bytes** (V8 heap plus
+backing storage outside the WASM instance). This is the Phase 0 gate input of
+`specs/issue-118-adaptive-browser-pdf-memory/PLAN.md`: host-side transport
+work can only ever reduce the host share, so the split decides whether that
+work is justified.
+
+```bash
+bun run bench:memory-chrome
+```
+
+The report's `workerAttribution` section carries the split. Measured on the
+deterministic 8.33 MiB mixed fixture (6 chapters, two 1200 x 1200 PNGs,
+8.30 MiB PDF), Chromium `140.0.7339.16` / V8 `14.0.365.1`, reproduced
+byte-identically across two consecutive runs:
+
+| Phase | WASM linear (MiB) | Host outside WASM (MiB) | Total (MiB) | WASM share |
+|---|---|---|---|---|
+| warm | 15.56 | 33.67 | 49.23 | 31.6% |
+| bundle-received | 15.56 | 42.04 | 57.59 | 27.0% |
+| vfs-ready | 32.31 | 42.05 | 74.36 | 43.5% |
+| **compiled-held (peak)** | **87.31** | **50.62** | **137.93** | **63.3%** |
+| complete | 87.31 | 33.98 | 121.29 | 72.0% |
+
+How to read this:
+
+- The WASM linear memory is read through a benchmark-only `Symbol.for` hook
+  that `BrowserPdfCompiler` invokes during initialization; production hosts
+  never install it. Linear memory only grows, so the post-compile value is the
+  high-water mark, and the harness asserts monotonic growth.
+- Whether CDP `backingStorageSize` includes the WASM memory is **detected**
+  from the samples and reported as `basis` (`backing-includes-wasm` on this
+  runtime), never assumed — a runtime change alters the report instead of
+  silently double-counting.
+- At the peak phase, **63.3% of the worker footprint is inside the WASM
+  instance** and out of reach of host-side descriptor/lease transport. The
+  36.7% host share on this small mixed fixture clears the plan's 25% working
+  threshold, but the gate decision requires the image-heavy corpus, which this
+  fixture is not. Do not quote these shares as the gate verdict.
+
+The attribution math is pure and unit-tested
+(`apps/extension/tests/pdf/memory/attribution.ts`); the harness README
+documents the probe protocol.
 
 ## What the numbers mean
 
