@@ -175,12 +175,15 @@ function assertStableId(value: string, field: string): void {
   }
 }
 
-function canonicalWrites(writes: readonly CandidateWriteV1[]): CandidateWriteV1[] {
+function canonicalWrites(
+  writes: readonly CandidateWriteV1[],
+  allowEmpty = false
+): CandidateWriteV1[] {
   const targets = new Set<string>();
   const sorted = [...writes]
     .map((write) => canonicalClone(write))
     .sort((left, right) => left.target.localeCompare(right.target));
-  if (sorted.length === 0) {
+  if (sorted.length === 0 && !allowEmpty) {
     throw new TemplateAuthoringError("candidate-invalid", "Candidate must write at least one target");
   }
   for (const write of sorted) {
@@ -241,7 +244,7 @@ export async function createTemplateCandidate(
   if (!Number.isFinite(input.rank)) {
     throw new TemplateAuthoringError("candidate-invalid", "rank must be finite");
   }
-  const writes = canonicalWrites(input.writes);
+  const writes = canonicalWrites(input.writes, input.kind === "asset");
   const evidenceLocator = input.evidence
     .map(({ partRef, locator, sectionIndex, styleChain, themeRef }) => ({
       partRef,
@@ -1586,7 +1589,7 @@ export function projectTemplateImportView(
       itemAction("customize", !cannotTransfer && primary.kind !== "asset"),
       itemAction(
         "review-asset",
-        !answered && primary.kind === "asset",
+        !answered && !cannotTransfer && primary.kind === "asset",
         "rights"
       ),
     ];

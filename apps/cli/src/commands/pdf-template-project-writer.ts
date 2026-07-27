@@ -375,6 +375,14 @@ export class DirectoryTemplateProjectRepository
     return this.#readGeneration(projectId, current.generation);
   }
 
+  async readGeneration(
+    projectId: string,
+    generation: string
+  ): Promise<TemplateProjectGenerationV1> {
+    await this.#assertRoot(projectId);
+    return this.#readGeneration(projectId, generation);
+  }
+
   async #initialize(
     input: TemplateProjectCommitV1
   ): Promise<TemplateProjectGenerationV1> {
@@ -412,6 +420,10 @@ export class DirectoryTemplateProjectRepository
       await atomicWrite(
         join(staging, "project.json"),
         stableJson({ schema: PROJECT_MARKER_SCHEMA, projectId: input.projectId })
+      );
+      await atomicWrite(
+        join(staging, ".gitignore"),
+        ".intake/\ndist/\npreviews/\nproof/\n.project.lock*\n"
       );
       await atomicWrite(
         join(staging, "state", generation.generation, "generation.json"),
@@ -977,4 +989,193 @@ export async function listTemplateProjectRootEntries(
   projectRoot: string
 ): Promise<readonly string[]> {
   return Object.freeze((await readdir(projectRoot)).sort());
+}
+
+/**
+ * Resolve the opaque project id from a marked directory. Command handlers use
+ * this instead of deriving identity from a mutable path or directory name.
+ */
+export async function readTemplateProjectIdentity(
+  projectRoot: string
+): Promise<string> {
+  const root = resolve(projectRoot);
+  const marker = await readJson<ProjectMarkerV1>(join(root, "project.json"));
+  if (
+    marker.schema !== PROJECT_MARKER_SCHEMA ||
+    !PROJECT_ID_RE.test(marker.projectId)
+  ) {
+    throw new PdfTemplateProjectFsError(
+      "corrupt-project",
+      "Template project marker has an invalid identity"
+    );
+  }
+  return marker.projectId;
+}
+
+async function writeImmutableFile(
+  path: string,
+  bytes: Uint8Array | string
+): Promise<void> {
+  const expected =
+    typeof bytes === "string" ? new TextEncoder().encode(bytes) : bytes;
+  if (await exists(path)) {
+    const actual = await readRegular(path);
+    if (
+      actual.byteLength !== expected.byteLength ||
+      (await sha256Hex(actual)) !== (await sha256Hex(expected))
+    ) {
+      throw new PdfTemplateProjectFsError(
+        "unsafe-entry",
+        `Refusing to replace modified generated file ${basename(path)}`
+      );
+    }
+    return;
+  }
+  await atomicWrite(path, expected);
+}
+
+export interface TemplateProjectProofResultV1 {
+  schema: "atlcli.pdf-template-proof/1";
+  generation: string;
+  snapshotDigest: string;
+  compilerVersion: string;
+  artifacts: readonly {
+    purpose: TemplatePreviewRequestV1["purpose"];
+    file: string;
+    digest: string;
+    byteLength: number;
+    pageCount: number;
+    regions: TemplateProjectPreviewArtifactV1["regions"];
+  }[];
+}
+
+/**
+ * Publish the latest verified previews at stable, human-friendly paths while
+ * keeping generation-specific repository records authoritative.
+ */
+export async function writeTemplateProjectProof(
+  projectRoot: string,
+  artifacts: readonly TemplateProjectPreviewArtifactV1[],
+  compilerVersion: string,
+  outputDirectory?: string
+): Promise<TemplateProjectProofResultV1> {
+  if (artifacts.length === 0) {
+    throw new PdfTemplateProjectFsError(
+      "corrupt-project",
+      "A proof result requires at least one preview artifact"
+    );
+  }
+  const [first] = artifacts;
+  if (
+    !first ||
+    artifacts.some(
+      ({ generation, snapshotDigest }) =>
+        generation !== first.generation ||
+        snapshotDigest !== first.snapshotDigest
+    )
+  ) {
+    throw new PdfTemplateProjectFsError(
+      "corrupt-project",
+      "Proof artifacts do not belong to one project generation"
+    );
+  }
+  const root = resolve(projectRoot);
+  const proofRoot = outputDirectory
+    ? resolve(outputDirectory)
+    : join(root, "proof");
+  await ensureDirectoryNoLinks(proofRoot);
+  const entries: TemplateProjectProofResultV1["artifacts"][number][] = [];
+  for (const artifact of [...artifacts].sort((left, right) =>
+    left.purpose.localeCompare(right.purpose)
+  )) {
+    if (artifact.output.kind !== "bytes") {
+      throw new PdfTemplateProjectFsError(
+        "corrupt-project",
+        "The CLI proof writer requires verified PDF bytes"
+      );
+    }
+    const file = `${artifact.purpose}.pdf`;
+    await atomicWrite(join(proofRoot, file), artifact.output.bytes);
+    entries.push({
+      purpose: artifact.purpose,
+      file,
+      digest: artifact.digest,
+      byteLength: artifact.byteLength,
+      pageCount: artifact.pageCount,
+      regions: artifact.regions,
+    });
+  }
+  const result: TemplateProjectProofResultV1 = {
+    schema: "atlcli.pdf-template-proof/1",
+    generation: first.generation,
+    snapshotDigest: first.snapshotDigest,
+    compilerVersion,
+    artifacts: entries,
+  };
+  await atomicWrite(join(proofRoot, "results.json"), stableJson(result));
+  return immutableJson(result);
+}
+
+export interface TemplateProjectBuildWriteResultV1 {
+  distDirectory: string;
+  archivePath: string;
+}
+
+/**
+ * Materialize a verified build into an immutable content-addressed dist
+ * generation and copy the archive to an explicit no-clobber destination.
+ */
+export async function writeTemplateProjectBuild(
+  projectRoot: string,
+  build: TemplateProjectBuildV1,
+  archiveBytes: Uint8Array,
+  outputPath: string
+): Promise<TemplateProjectBuildWriteResultV1> {
+  const root = resolve(projectRoot);
+  const distDirectory = join(root, "dist", build.snapshotDigest);
+  await ensureDirectoryNoLinks(join(root, "dist"));
+  await ensureDirectoryNoLinks(distDirectory);
+  await writeImmutableFile(
+    join(distDirectory, "wiki-pdf-template.json"),
+    build.manifestJson
+  );
+  for (const [relative, bytes] of Object.entries(build.files).sort(
+    ([left], [right]) => left.localeCompare(right)
+  )) {
+    const target = join(distDirectory, relative);
+    assertChild(distDirectory, target);
+    let directory = distDirectory;
+    for (const part of relative.split("/").slice(0, -1)) {
+      directory = join(directory, part);
+      await ensureDirectoryNoLinks(directory);
+    }
+    await writeImmutableFile(target, bytes);
+  }
+  const archiveName = `${build.manifest.id}.wiki-pdf-template`;
+  await writeImmutableFile(
+    join(distDirectory, archiveName),
+    archiveBytes
+  );
+
+  const archivePath = resolve(outputPath);
+  const archiveParent = dirname(archivePath);
+  await ensureDirectoryNoLinks(archiveParent);
+  const outputHandle = await open(archivePath, "wx", PRIVATE_FILE_MODE).catch(
+    (error: NodeJS.ErrnoException) => {
+      if (error.code === "EEXIST") {
+        throw new PdfTemplateProjectFsError(
+          "unsafe-entry",
+          `Refusing to overwrite existing output ${archivePath}`
+        );
+      }
+      throw error;
+    }
+  );
+  try {
+    await outputHandle.writeFile(archiveBytes);
+    await outputHandle.sync();
+  } finally {
+    await outputHandle.close();
+  }
+  return Object.freeze({ distDirectory, archivePath });
 }

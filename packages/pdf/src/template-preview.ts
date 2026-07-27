@@ -32,6 +32,19 @@ export interface PdfTemplatePreviewModelV1 {
   current: TemplateManifest;
   /** Present when accepted visual assets/decorations belong in the preview. */
   currentPack?: ValidatedPdfTemplatePackV1;
+  /**
+   * Verified intake candidates for the review-only contact sheet. These bytes
+   * never become template assets until a separate authoring decision confirms
+   * role, rights, accessibility, and placement.
+   */
+  reviewAssets?: readonly {
+    id: string;
+    vfsPath: string;
+    bytes: Uint8Array;
+    mediaType: string;
+    occurrenceCount: number;
+    proposedRole?: string;
+  }[];
 }
 
 export interface PdfTemplatePreviewCompilerOptionsV1 {
@@ -117,17 +130,24 @@ function previewTemplate(model: PdfTemplatePreviewModelV1): string {
 function basePageSource(model: PdfTemplatePreviewModelV1): string {
   const current = requiredDesign(model.current);
   const margin = current.page.margin;
-  return `#import "atlcli.typ": template-page-decorations, template-header-decorations, template-footer-decorations
-#set document(title: "PDF template preview", author: "atlcli")
+  const hasDecorations = (model.currentPack?.decorations.length ?? 0) > 0;
+  const decorationImport = hasDecorations
+    ? '#import "atlcli.typ": template-page-decorations, template-header-decorations, template-footer-decorations\n'
+    : "";
+  const decorationFields = hasDecorations
+    ? `  background: template-page-decorations(),
+  header: template-header-decorations(),
+  footer: template-footer-decorations(),
+`
+    : "";
+  return `${decorationImport}#set document(title: "PDF template preview", author: "atlcli")
 #set text(font: ${typstString(current.typography.fonts.body)}, size: ${current.typography.roles.body!.size}, fill: rgb(${typstString(current.tokens.colors.ink)}), lang: "en")
 #set page(
   paper: ${typstString(paper(model.current))},
   flipped: ${pageFlip(model.current) ? "true" : "false"},
   fill: rgb(${typstString(current.tokens.colors.paper)}),
   margin: (top: ${margin.top}, right: ${margin.right}, bottom: ${margin.bottom}, left: ${margin.left}),
-  background: template-page-decorations(),
-  header: template-header-decorations(),
-  footer: template-footer-decorations(),
+${decorationFields}
 )
 `;
 }
@@ -344,18 +364,29 @@ async function compatibilityBundle(
 function contactSheetBundle(
   model: PdfTemplatePreviewModelV1
 ): PdfSourceBundle {
-  const assets = Object.values(model.currentPack?.assets ?? {}).filter(
-    (asset): asset is NonNullable<typeof asset> => asset !== undefined
+  const reviewAssets = [...(model.reviewAssets ?? [])].sort((left, right) =>
+    left.id.localeCompare(right.id)
   );
+  const acceptedAssets = Object.values(model.currentPack?.assets ?? {})
+    .filter(
+      (asset): asset is NonNullable<typeof asset> => asset !== undefined
+    )
+    .map((asset) => ({
+      id: asset.slot,
+      vfsPath: asset.vfsPath,
+      bytes: asset.bytes,
+      mediaType: asset.descriptor.mediaType,
+      occurrenceCount: 1,
+      proposedRole: asset.slot,
+    }));
+  const assets = reviewAssets.length > 0 ? reviewAssets : acceptedAssets;
   if (assets.length === 0) {
     throw new PdfTemplatePreviewError(
       "no-contact-assets",
       "An asset contact sheet requires at least one verified visual asset"
     );
   }
-  const cells = assets
-    .sort((left, right) => left.slot.localeCompare(right.slot))
-    .map(
+  const cells = assets.map(
       (asset, index) => `[
   #figure(
     image(${typstString(asset.vfsPath)}, width: 55mm, height: 35mm, fit: "contain"),
@@ -363,7 +394,7 @@ function contactSheetBundle(
     alt: ${typstString(`Preview of candidate ${index + 1}`)},
     outlined: false,
   )
-  #text(size: 8pt)[Role: ${asset.slot}; occurrences: 1]
+  #text(size: 8pt)[Role: ${asset.proposedRole ?? "not selected"}; occurrences: ${asset.occurrenceCount}]
 ]`
     )
     .join(",\n");
@@ -377,7 +408,14 @@ document text, relationship identifiers, or source alt text.
 #grid(columns: (1fr, 1fr), gutter: 10pt, ${cells})
 `,
     template: previewTemplate(model),
-    assets: visualAssets(model.currentPack),
+    assets: [
+      ...visualAssets(model.currentPack),
+      ...reviewAssets.map(({ vfsPath, bytes, mediaType }) => ({
+        path: vfsPath,
+        bytes: new Uint8Array(bytes),
+        mediaType,
+      })),
+    ],
     sourceMap: [],
     notes: [],
   };
@@ -423,7 +461,19 @@ export class PdfTemplatePreviewCompiler implements TemplatePreviewCompiler {
       throw new PdfTemplatePreviewError(
         "compile-failed",
         `Template preview did not compile (${errors
-          .map(({ message }) => message)
+          .map(({ message, path, startLine, startColumn }) => {
+            const location = [
+              path,
+              startLine === undefined
+                ? undefined
+                : `${startLine}${
+                    startColumn === undefined ? "" : `:${startColumn}`
+                  }`,
+            ]
+              .filter((value) => value !== undefined)
+              .join(":");
+            return `${location ? `${location}: ` : ""}${message}`;
+          })
           .join("; ") || "no PDF bytes"})`
       );
     }

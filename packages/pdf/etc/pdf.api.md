@@ -616,6 +616,14 @@ export interface PdfTemplatePreviewModelV1 {
     baseline: TemplateManifest;
     current: TemplateManifest;
     currentPack?: ValidatedPdfTemplatePackV1;
+    reviewAssets?: readonly {
+        id: string;
+        vfsPath: string;
+        bytes: Uint8Array;
+        mediaType: string;
+        occurrenceCount: number;
+        proposedRole?: string;
+    }[];
 }
 
 // export: PdfTemplateSettings
@@ -1657,6 +1665,14 @@ export interface PdfTemplatePreviewModelV1 {
     baseline: TemplateManifest;
     current: TemplateManifest;
     currentPack?: ValidatedPdfTemplatePackV1;
+    reviewAssets?: readonly {
+        id: string;
+        vfsPath: string;
+        bytes: Uint8Array;
+        mediaType: string;
+        occurrenceCount: number;
+        proposedRole?: string;
+    }[];
 }
 
 // export: PdfTemplateSettings
@@ -2698,6 +2714,14 @@ export interface PdfTemplatePreviewModelV1 {
     baseline: TemplateManifest;
     current: TemplateManifest;
     currentPack?: ValidatedPdfTemplatePackV1;
+    reviewAssets?: readonly {
+        id: string;
+        vfsPath: string;
+        bytes: Uint8Array;
+        mediaType: string;
+        occurrenceCount: number;
+        proposedRole?: string;
+    }[];
 }
 
 // export: PdfTemplateSettings
@@ -3336,6 +3360,14 @@ export interface PdfTemplatePreviewModelV1 {
     baseline: TemplateManifest;
     current: TemplateManifest;
     currentPack?: ValidatedPdfTemplatePackV1;
+    reviewAssets?: readonly {
+        id: string;
+        vfsPath: string;
+        bytes: Uint8Array;
+        mediaType: string;
+        occurrenceCount: number;
+        proposedRole?: string;
+    }[];
 }
 
 // export: PdfTemplateValidationError

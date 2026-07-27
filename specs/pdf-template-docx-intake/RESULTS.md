@@ -868,3 +868,106 @@ content, or this evidence.
 
 This evidence proves T7 only. It does not claim the human/expert CLI commands,
 resume scripts, help/completion surface, or browser journey from T8 onward.
+
+## T8 — Human and expert CLI journeys
+
+**Status:** Proven on 2026-07-27.
+
+### Task-oriented primary flow
+
+The new top-level `pdf-template` domain exposes the business journey as
+`import → review → preview → build`, with `status` as the read-only resume
+surface and `undo` as an append-only recovery action. Root help, domain help,
+and shell completions keep this separate from `wiki template`, which manages
+Confluence page templates. The help includes a realistic first-import
+transcript, names Editorial Indigo and `suggest-only` as defaults, explains
+local graphic extraction, and states the final pack boundary before listing
+expert commands.
+
+Default import derives the no-clobber
+`./<docx-basename>-pdf-template` path and records no suggestion decision.
+Tests created equal generations from the same source in independent
+directories containing spaces and Unicode. A second initial analysis into an
+existing target failed without moving the active generation. Fresh repository
+instances reconstructed the exact stage, grouped counts, blockers, preview
+freshness, and next actions after import, review, preview, build, and undo.
+
+The line-oriented review driver renders only action descriptors enabled by the
+host-neutral import view. It groups business concepts, shows current, Word,
+and effective values, explains why a match was proposed, and supports skip,
+back, stop, and later resume. The ordinary transcript contains no candidate
+fingerprint or capability path. Explicit batch flags apply the safe set, write
+current-design tombstones, and acknowledge only the current unsupported
+inventory; no `--all` exists. JSON, explicit non-interactive mode, and either
+non-TTY stream never prompt or infer a mutation.
+
+### Graphics, previews, and verified build
+
+Graphic review first creates and names the contact sheet, then asks separately
+for inclusion, role, rights, accessibility, alternative text, and placement.
+The CLI rejects a missing role or rights confirmation, both or neither
+accessibility modes, decorative graphics with alt text, missing or multiple
+placement modes, and layout-dependent candidate placement. The accepted
+round trip pins the content hash, media type, role, accessibility choice, and
+slot-default placement. Metadata-only import persists no asset bytes and
+returns the exact reanalysis command needed before graphic review.
+
+A fresh CLI subprocess ran the pinned Typst-WASM preview adapter and produced
+valid tagged `design-review.pdf` and `compatibility-proof.pdf` files.
+`proof/results.json` binds their digests, compiler version, page counts,
+semantic page regions, snapshot digest, and committed generation. Review-only
+graphic bytes can appear in a contact sheet without entering the runtime pack.
+Templates without decorations no longer import absent decoration helpers.
+
+Build and expert `pack` share the same readiness and executable gates.
+Unanswered review, blockers, missing or stale previews, and stale decisions
+return typed recovery actions; rendered CLI recovery commands use the actual
+project path. A successful build passed the real generated-pack compiler,
+created one no-clobber `.wiki-pdf-template` archive, and committed the built
+stage. Reusing the output path failed without replacing it.
+
+### Expert and automation surface
+
+`analyze`, `reanalyze`, `diff`, `decide`, `set`, `clear-override`,
+`clear-optional`, `validate`, and `pack` expose lower-level automation without
+changing the primary journey. Safe and recommended policy tests materialized
+different, exact core policy sets. Typed overrides reject unknown paths,
+wrong value types, and bounds violations; override, optional clear, baseline
+tombstone, and group reset stay independent.
+
+Reanalysis retains authoring intent and reports deterministic reconciliation
+states. An unmarked target fails without mutation. Unknown, bare, duplicate,
+and conflicting flags return the fixed usage code and do not move the active
+generation. Human and JSON output derive from the same result/view DTO.
+Machine mode emits exactly one JSON document on stdout and valid progress
+JSONL on stderr. The default copy-coverage test owns every reachable registry
+and CLI presentation code; a missing English entry fails, while an unavailable
+locale visibly falls back to the stable code.
+
+### Commands and results
+
+| Proof | Exact command | Result |
+|---|---|---|
+| Normative T8 suite | `bun run test apps/cli/src/commands/pdf-template*.test.ts` | Passed; 34 tests, 215 assertions, 0 failures |
+| Real CLI preview | T8 test `real CLI preview writes tagged design/compatibility PDFs and JSONL progress` | Passed in a fresh source-run CLI process with pinned Typst-WASM |
+| Real executable build | T8 journey plus project-writer compile gate | Passed; deterministic verified archive and tagged feature-zoo compile |
+| Browser portability | `bun run check:browser` | Passed; all 23 browser entry points built without Node/Bun builtins |
+| API report and closure guard | `bun run test scripts/api-report.test.ts` | Passed; updated PDF report and zero reachable-but-unexported gaps |
+| Repository type safety | `bun run typecheck` | Passed for the root, extension, browser compiler, and browser export harness |
+| Full monorepo build | `bun run build` | Passed; 19 tasks |
+| Full repository suite | `bun run test` | Passed outside the network sandbox; 5,686 tests passed, 12 environment-gated tests skipped, 0 failures |
+| Diff hygiene | `git diff --check` | Passed |
+
+The live Confluence E2E is not applicable to T8: every new command operates on
+a local DOCX, local authoring project, local proofs, and a local pack. It
+performs no Confluence read or mutation. The applicable end-to-end proof is the
+fresh CLI subprocess plus the real pinned Typst-WASM preview and pack
+compilation. The shared export path that consumes this pack is T9 scope.
+
+All committed fixtures and transcripts are neutral and synthetic. Portable
+state, proof metadata, packs, tests, and this record contain no source-DOCX
+path, document text, raw OOXML, customer identity, or private source bytes.
+
+This evidence proves T8 only. It does not claim the durable export pack store,
+real export consumption, browser conformance journey, visual goldens,
+usability sessions, or live Confluence pack E2E from T9–T10.

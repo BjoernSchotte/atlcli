@@ -2267,77 +2267,77 @@ commands and human-facing journey remain T8 scope.
 
 **Acceptance criteria / proof**
 
-- [ ] CLI help leads with the four-step
+- [x] CLI help leads with the four-step
       `import → review → preview → build` story and actual example output,
       then lists expert commands separately. It documents default policy, local
       asset extraction, pack boundary, and the distinction from
       `wiki template`.
-- [ ] `import brand.docx` with no advanced flags creates a deterministic
+- [x] `import brand.docx` with no advanced flags creates a deterministic
       baseline-only project at `./brand-pdf-template`, applies no suggestion,
       and matches the T0 transcript including grouped counts and exact next
       action.
-- [ ] A first-time user can reach a real design review with at most
+- [x] A first-time user can reach a real design review with at most
       `import`, `review`, and `preview`; producing the archive adds only
       `build`. None of these commands requires a candidate ID, capability
       path, JSON edit, or explicit built-in baseline ID.
-- [ ] `status` reconstructs the same stage, counts, blockers, preview
+- [x] `status` reconstructs the same stage, counts, blockers, preview
       freshness, and next actions after a fresh process start and at every
       committed generation in the journey fixture.
-- [ ] Interactive `review` offers only actions enabled by
+- [x] Interactive `review` offers only actions enabled by
       `TemplateImportViewV1`, supports stop/resume without losing a decision,
       and shows business grouping plus explanations. A transcript scan finds
       no candidate fingerprint or capability path unless `--details` is used.
-- [ ] `review --apply-ready` materializes exactly the T2 ready set.
+- [x] `review --apply-ready` materializes exactly the T2 ready set.
       `--keep-current-for-remaining` produces explicit tombstones, and
       `--acknowledge-unsupported` records the current analysis digest. No naked
       `--all` exists.
-- [ ] TTY, stdin-non-TTY, stderr-non-TTY, `--non-interactive`, and `--json`
+- [x] TTY, stdin-non-TTY, stderr-non-TTY, `--non-interactive`, and `--json`
       cases are covered. Non-interactive cases never prompt or hang and never
       assume a default mutation.
-- [ ] Every successful mutation prints the changed count, unchanged/open
+- [x] Every successful mutation prints the changed count, unchanged/open
       count, new stage, project path, next action, and exact undo command.
       `undo` restores prior authoring intent through a new generation and
       prints the resulting stage.
-- [ ] Human errors state what happened, whether the active draft was retained,
+- [x] Human errors state what happened, whether the active draft was retained,
       and how to recover. Golden messages use plain language; technical codes
       remain available in `--details`/JSON.
-- [ ] A catalog coverage test reaches every emitted message code in fixtures.
+- [x] A catalog coverage test reaches every emitted message code in fixtures.
       Removing one default CLI string makes the test fail; forcing a missing
       non-default locale proves the visible stable-code fallback.
-- [ ] Output at 80 and 120 columns remains readable, Unicode can be disabled,
+- [x] Output at 80 and 120 columns remains readable, Unicode can be disabled,
       and every status remains understandable with color disabled.
-- [ ] Text and JSON modes derive from the same view/action result and have the
+- [x] Text and JSON modes derive from the same view/action result and have the
       same semantic counts, stage, blockers, and next actions. JSON contains
       exactly one stdout document; progress is valid JSONL on stderr.
-- [ ] `--metadata-only` writes no asset bytes; later asset review explains that
+- [x] `--metadata-only` writes no asset bytes; later asset review explains that
       source reanalysis is required and provides that action.
-- [ ] Asset inclusion without rights confirmation, with no role, with
+- [x] Asset inclusion without rights confirmation, with no role, with
       `decorative` plus `alt`, or with neither is rejected. Missing/multiple
       placement modes and layout-dependent candidate placement are rejected.
       A valid round trip freezes hash, role, accessibility, and normalized
       placement.
-- [ ] `set` rejects type errors, bound violations, and unknown paths;
+- [x] `set` rejects type errors, bound violations, and unknown paths;
       `clear-override`, `clear-optional`, `use-baseline`, and `reset-group`
       have separate round-trip tests and do not alter another decision class.
-- [ ] `preview` creates a valid tagged `design-review.pdf` and
+- [x] `preview` creates a valid tagged `design-review.pdf` and
       `compatibility-proof.pdf`, plus `asset-contact-sheet.pdf` only when
       needed, and records generation, digest, compiler version, and page
       references in `proof/results.json`.
-- [ ] `build` refuses unanswered review, stale acknowledgement, blockers, or
+- [x] `build` refuses unanswered review, stale acknowledgement, blockers, or
       stale/missing preview with exact recovery commands. A successful build
       creates one deterministic verified archive without requiring a separate
       human `pack` invocation.
-- [ ] `analyze`/`reanalyze` retain decisions/assets and report
+- [x] `analyze`/`reanalyze` retain decisions/assets and report
       current/stale/removed/added deterministically; initial analyze on an
       existing project and reanalyze on an unmarked target fail without
       mutation.
-- [ ] Expert `--accept-safe` and `--accept-recommended` materialize exactly the
+- [x] Expert `--accept-safe` and `--accept-recommended` materialize exactly the
       different T2 policy sets, while the primary help and normal transcripts
       never call the latter a recommendation action.
-- [ ] Unknown, bare, repeated, and conflicting flags produce the documented
+- [x] Unknown, bare, repeated, and conflicting flags produce the documented
       exit/machine codes and mutate no generation.
-- [ ] CLI integration tests run from a path with spaces and Unicode.
-- [ ] `bun run test apps/cli/src/commands/pdf-template*.test.ts` passes.
+- [x] CLI integration tests run from a path with spaces and Unicode.
+- [x] `bun run test apps/cli/src/commands/pdf-template*.test.ts` passes.
 
 ### T9 — Add a verified pack loader and use it in real PDF export
 

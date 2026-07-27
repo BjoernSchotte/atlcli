@@ -14,6 +14,10 @@ export const DOCX_VISUAL_MESSAGE_REGISTRY_V1: TemplateMessageRegistryV1 = {
   id: "atlcli.docx-template-visuals",
   version: 1,
   definitions: [
+    {
+      code: "DOCX_CONCEPT_VISUAL_ASSET",
+      params: {},
+    },
     ...[
       "DOCX_VISUAL_ASSET_CORRUPT",
       "DOCX_VISUAL_ASSET_LIMIT",

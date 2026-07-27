@@ -63,6 +63,7 @@
         "@atlcli/confluence": "workspace:*",
         "@atlcli/core": "workspace:*",
         "@atlcli/docx": "workspace:*",
+        "@atlcli/docx-template-intake": "workspace:*",
         "@atlcli/export-jobs": "workspace:*",
         "@atlcli/export-macros": "workspace:*",
         "@atlcli/export-node": "workspace:*",
