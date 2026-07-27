@@ -1168,6 +1168,22 @@ not part of T10's single-page pack acceptance.
 | Full repository suite | `bun run test` | Passed; 5,720 tests, 13 documented skips, 0 failures, 20,409 assertions, and 4 snapshots across 391 files |
 | Diff hygiene | `git diff --check` | Passed with no errors |
 
+### Post-implementation real-DOCX hardening
+
+An operator-supplied private Word document exposed a legitimate
+2,520-character opaque OOXML attribute that exceeded the original
+per-attribute limit. The document part was only 36 KB and contained 998
+attributes, so this was not a ZIP, decoded-size, node-count, or aggregate
+attribute-count exhaustion case. The per-attribute limit is now 4,096
+characters: a committed boundary test accepts the exact maximum and rejects
+the next character.
+
+The unchanged private DOCX then completed through the normal CLI with no
+runtime override. It reached `review-required` with five review items and
+seven explicitly non-transferable items. The source document, its path,
+digest, content, and extracted private assets remain uncommitted and are not
+recorded in this evidence file.
+
 ### External usability evidence
 
 The

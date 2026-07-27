@@ -10,7 +10,7 @@ export const DOCX_XML_LIMITS_V1 = {
   maxElements: 40_000,
   maxDepth: 64,
   maxAttributes: 60_000,
-  maxAttributeCharacters: 512,
+  maxAttributeCharacters: 4_096,
   maxNodes: 100_000,
 } as const;
 

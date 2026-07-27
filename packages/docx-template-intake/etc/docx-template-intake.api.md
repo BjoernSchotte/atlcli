@@ -169,7 +169,7 @@ export declare const DOCX_XML_LIMITS_V1: {
     readonly maxElements: 40000;
     readonly maxDepth: 64;
     readonly maxAttributes: 60000;
-    readonly maxAttributeCharacters: 512;
+    readonly maxAttributeCharacters: 4096;
     readonly maxNodes: 100000;
 };
 
@@ -1204,7 +1204,7 @@ export declare const DOCX_XML_LIMITS_V1: {
     readonly maxElements: 40000;
     readonly maxDepth: 64;
     readonly maxAttributes: 60000;
-    readonly maxAttributeCharacters: 512;
+    readonly maxAttributeCharacters: 4096;
     readonly maxNodes: 100000;
 };
 
@@ -2239,7 +2239,7 @@ export declare const DOCX_XML_LIMITS_V1: {
     readonly maxElements: 40000;
     readonly maxDepth: 64;
     readonly maxAttributes: 60000;
-    readonly maxAttributeCharacters: 512;
+    readonly maxAttributeCharacters: 4096;
     readonly maxNodes: 100000;
 };
 
@@ -3274,7 +3274,7 @@ export declare const DOCX_XML_LIMITS_V1: {
     readonly maxElements: 40000;
     readonly maxDepth: 64;
     readonly maxAttributes: 60000;
-    readonly maxAttributeCharacters: 512;
+    readonly maxAttributeCharacters: 4096;
     readonly maxNodes: 100000;
 };
 

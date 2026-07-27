@@ -407,6 +407,26 @@ describe("namespace-aware OOXML facts", () => {
     expect(JSON.stringify(streamed).length).toBeLessThan(160);
   });
 
+  test("accepts bounded opaque Word metadata but rejects one character beyond the cap", () => {
+    const bytes = (xml: string): Uint8Array => new TextEncoder().encode(xml);
+    const bounded = "x".repeat(DOCX_XML_LIMITS_V1.maxAttributeCharacters);
+    const accepted = streamXmlPart(
+      "word/document.xml",
+      bytes(`<a opaque="${bounded}"/>`)
+    );
+    expect(accepted.attributes).toBe(1);
+
+    const oversized = `${bounded}x`;
+    expect(() =>
+      streamXmlPart(
+        "word/document.xml",
+        bytes(`<a opaque="${oversized}"/>`)
+      )
+    ).toThrow(
+      new DocxXmlPartError("attribute-limit", "word/document.xml")
+    );
+  });
+
   test("counts insertions, excludes deleted style usage, and warns about revisions", async () => {
     const document = wordDocument(
       "w",
