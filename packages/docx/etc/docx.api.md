@@ -27,6 +27,14 @@ export interface CurrentUser {
     email?: string;
 }
 
+// export: DocxExportRuntimePreparation
+export interface DocxExportRuntimePreparation {
+    totalMs: number;
+    highlightingMs: number;
+    codeFontMs: number;
+    codeFontBytes: number;
+}
+
 // export: DocxRenderError
 export declare class DocxRenderError extends Error {
     readonly details: string[];
@@ -237,6 +245,15 @@ export interface PreparedDocxRenderStateV1 {
 // export: prepareDocxExport
 export declare function prepareDocxExport(input: ExportInput): Promise<PreparedDocxExportV1>;
 
+// export: prepareDocxExportRuntime
+export declare function prepareDocxExportRuntime(blocks: readonly ExportBlock[], options?: PrepareDocxExportRuntimeOptions): Promise<DocxExportRuntimePreparation>;
+
+// export: PrepareDocxExportRuntimeOptions
+export interface PrepareDocxExportRuntimeOptions {
+    codeTheme?: CodeThemeId;
+    signal?: AbortSignal;
+}
+
 // export: renderPreparedDocxExport
 export declare function renderPreparedDocxExport(prepared: PreparedDocxExportV1, input?: RenderPreparedDocxExportInput): Promise<ExportResult>;
 
@@ -329,6 +346,14 @@ export interface CurrentUser {
     accountId: string;
     displayName: string;
     email?: string;
+}
+
+// export: DocxExportRuntimePreparation
+export interface DocxExportRuntimePreparation {
+    totalMs: number;
+    highlightingMs: number;
+    codeFontMs: number;
+    codeFontBytes: number;
 }
 
 // export: DocxRenderError
@@ -547,6 +572,15 @@ export interface PreparedDocxRenderStateV1 {
 // export: prepareDocxExport
 export declare function prepareDocxExport(input: ExportInput): Promise<PreparedDocxExportV1>;
 
+// export: prepareDocxExportRuntime
+export declare function prepareDocxExportRuntime(blocks: readonly ExportBlock[], options?: PrepareDocxExportRuntimeOptions): Promise<DocxExportRuntimePreparation>;
+
+// export: PrepareDocxExportRuntimeOptions
+export interface PrepareDocxExportRuntimeOptions {
+    codeTheme?: CodeThemeId;
+    signal?: AbortSignal;
+}
+
 // export: renderPreparedDocxExport
 export declare function renderPreparedDocxExport(prepared: PreparedDocxExportV1, input?: RenderPreparedDocxExportInput): Promise<ExportResult>;
 
@@ -649,6 +683,14 @@ export interface CurrentUser {
     accountId: string;
     displayName: string;
     email?: string;
+}
+
+// export: DocxExportRuntimePreparation
+export interface DocxExportRuntimePreparation {
+    totalMs: number;
+    highlightingMs: number;
+    codeFontMs: number;
+    codeFontBytes: number;
 }
 
 // export: DocxRenderError
@@ -861,6 +903,15 @@ export interface PreparedDocxRenderStateV1 {
 // export: prepareDocxExport
 export declare function prepareDocxExport(input: ExportInput): Promise<PreparedDocxExportV1>;
 
+// export: prepareDocxExportRuntime
+export declare function prepareDocxExportRuntime(blocks: readonly ExportBlock[], options?: PrepareDocxExportRuntimeOptions): Promise<DocxExportRuntimePreparation>;
+
+// export: PrepareDocxExportRuntimeOptions
+export interface PrepareDocxExportRuntimeOptions {
+    codeTheme?: CodeThemeId;
+    signal?: AbortSignal;
+}
+
 // export: renderPreparedDocxExport
 export declare function renderPreparedDocxExport(prepared: PreparedDocxExportV1, input?: RenderPreparedDocxExportInput): Promise<ExportResult>;
 
@@ -956,6 +1007,14 @@ export interface DocxByteHelpers {
     isBuffer(value: unknown): boolean;
 }
 
+// export: DocxExportRuntimePreparation
+export interface DocxExportRuntimePreparation {
+    totalMs: number;
+    highlightingMs: number;
+    codeFontMs: number;
+    codeFontBytes: number;
+}
+
 // export: installDocxBrowserRuntime
 export declare function installDocxBrowserRuntime(): void;
 
@@ -966,6 +1025,15 @@ export declare function memoryTemplateSource(bytes: ArrayBuffer | Uint8Array): T
 export declare function prepareDocxCodeHighlighting(blocks: readonly ExportBlock[], options?: {
     codeTheme?: CodeThemeId;
 }): Promise<void>;
+
+// export: prepareDocxExportRuntime
+export declare function prepareDocxExportRuntime(blocks: readonly ExportBlock[], options?: PrepareDocxExportRuntimeOptions): Promise<DocxExportRuntimePreparation>;
+
+// export: PrepareDocxExportRuntimeOptions
+export interface PrepareDocxExportRuntimeOptions {
+    codeTheme?: CodeThemeId;
+    signal?: AbortSignal;
+}
 ```
 
 ### Entry point `./fixtures`
@@ -2042,6 +2110,14 @@ export interface CurrentUser {
     email?: string;
 }
 
+// export: DocxExportRuntimePreparation
+export interface DocxExportRuntimePreparation {
+    totalMs: number;
+    highlightingMs: number;
+    codeFontMs: number;
+    codeFontBytes: number;
+}
+
 // export: DocxRenderError
 export declare class DocxRenderError extends Error {
     readonly details: string[];
@@ -2257,6 +2333,15 @@ export interface PreparedDocxRenderStateV1 {
 
 // export: prepareDocxExport
 export declare function prepareDocxExport(input: ExportInput): Promise<PreparedDocxExportV1>;
+
+// export: prepareDocxExportRuntime
+export declare function prepareDocxExportRuntime(blocks: readonly ExportBlock[], options?: PrepareDocxExportRuntimeOptions): Promise<DocxExportRuntimePreparation>;
+
+// export: PrepareDocxExportRuntimeOptions
+export interface PrepareDocxExportRuntimeOptions {
+    codeTheme?: CodeThemeId;
+    signal?: AbortSignal;
+}
 
 // export: renderPreparedDocxExport
 export declare function renderPreparedDocxExport(prepared: PreparedDocxExportV1, input?: RenderPreparedDocxExportInput): Promise<ExportResult>;

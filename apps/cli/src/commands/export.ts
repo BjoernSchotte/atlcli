@@ -1014,6 +1014,23 @@ interface OrdinaryDocxJobArgs {
   opts: OutputOptions;
 }
 
+let cliDocxCodeFontLoaderInstallation:
+  | Promise<void>
+  | undefined;
+
+/**
+ * Install the single-file CLI's embedded asset bridge once. Ordinary Node/Bun
+ * consumers keep the package-relative loader installed by @atlcli/docx.
+ */
+function ensureCliDocxCodeFontLoader(): Promise<void> {
+  return cliDocxCodeFontLoaderInstallation ??= Promise.all([
+    import("@atlcli/docx/internal"),
+    import("./export-code-font.js"),
+  ]).then(([{ configureBundledCodeFontLoader }, { loadDocxCodeFont }]) => {
+    configureBundledCodeFontLoader(loadDocxCodeFont);
+  });
+}
+
 /** Queue-backed DOCX command; no direct-engine fallback is reachable here. */
 async function exportDocxAsOrdinaryJob(
   args: OrdinaryDocxJobArgs,
@@ -1030,6 +1047,7 @@ async function exportDocxAsOrdinaryJob(
   const cliNotes: string[] = [];
 
   try {
+    await ensureCliDocxCodeFontLoader();
     // Executor construction is local-only; runOrdinaryExportJobV1 performs the
     // durable create before this resolver can reach Confluence.
     const sourcePolicyKey = args.profile.deploymentType === "data-center"

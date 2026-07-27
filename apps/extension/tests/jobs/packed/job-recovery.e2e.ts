@@ -431,6 +431,34 @@ async function ensureCatalog(): Promise<void> {
   await expect(sendWake()).resolves.toEqual({ kind: "jobs:wake-result" });
 }
 
+async function preparePackedDocxRuntime(): Promise<{
+  kind: string;
+  preparation?: {
+    totalMs: number;
+    highlightingMs: number;
+    codeFontMs: number;
+    codeFontBytes: number;
+  };
+}> {
+  return page.evaluate(async () => {
+    const chromeApi = (globalThis as unknown as {
+      chrome: { runtime: { sendMessage(value: unknown): Promise<unknown> } };
+    }).chrome;
+    return chromeApi.runtime.sendMessage({
+      kind: "docx:prepare-runtime",
+      codeTheme: "github-dark",
+    }) as Promise<{
+      kind: string;
+      preparation?: {
+        totalMs: number;
+        highlightingMs: number;
+        codeFontMs: number;
+        codeFontBytes: number;
+      };
+    }>;
+  });
+}
+
 interface PackedBadgeSnapshot {
   text: string;
   color: number[];
@@ -1469,6 +1497,14 @@ test("packed Retry and Run again preserve originals and replay retained requests
 
 test("a packed offscreen DOCX runs PizZip, docxtemplater, and canvas diagram rasterization", async () => {
   await ensureCatalog();
+  const preparation = await preparePackedDocxRuntime();
+  expect(preparation.kind).toBe("docx:prepare-runtime-result");
+  expect(preparation.preparation).toMatchObject({
+    codeFontBytes: 273_900,
+    totalMs: expect.any(Number),
+    highlightingMs: expect.any(Number),
+    codeFontMs: expect.any(Number),
+  });
   const storage =
     '<p>before</p><ac:structured-macro ac:name="code">' +
     '<ac:parameter ac:name="language">mermaid</ac:parameter>' +

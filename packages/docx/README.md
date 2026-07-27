@@ -12,7 +12,7 @@ browser and under Node/Bun; hosts inject template/asset/output seams via
   - `./browser` — the same engine without Node adapters.
   - `./browser-runtime` — browser bootstrap (installs the byte helpers;
     import before PizZip/docxtemplater run in a browser host), the
-    JavaScript-only Shiki engine, and `prepareDocxCodeHighlighting`.
+    JavaScript-only Shiki engine, and the runtime-preparation API.
   - `./vite` — build-time define map for browser bundlers.
   - `./scan` — template scanning (`scanTemplate`, `unzipDocx`).
   - `./fixtures` — programmatic minimal-docx builders (dev/test API).
@@ -35,7 +35,7 @@ await runExport(
 Full engine reference: [DOCX export engine](https://atlcli.sh/reference/docx-engine/).
 Versioning: [package versioning](https://atlcli.sh/reference/versioning/).
 
-## Browser code-highlighting preload
+## Intent-time runtime preparation
 
 Browser entrypoints must import the runtime before any static DOCX dependency:
 
@@ -43,22 +43,27 @@ Browser entrypoints must import the runtime before any static DOCX dependency:
 import "@atlcli/docx/browser-runtime";
 ```
 
-After the user has expressed DOCX intent, a host may preload only the known
-languages present in the resolved block tree:
+After the user has expressed DOCX intent, a host can warm the complete
+first-render runtime:
 
 ```ts
-const { prepareDocxCodeHighlighting } =
+const { prepareDocxExportRuntime } =
   await import("@atlcli/docx/browser-runtime");
 
-await prepareDocxCodeHighlighting(blocks, { codeTheme: "github-light" });
+const preparation = await prepareDocxExportRuntime(blocks, {
+  codeTheme: "github-light",
+  signal: dialogSignal,
+});
 ```
 
-The call is awaitable, concurrent-safe, and idempotent. Starting it from a
-DOCX modal or explicit export action keeps ordinary page loads untouched.
-Browser builds use Shiki's JavaScript RegExp engine; Node/Bun imports use
-Oniguruma. `ExportReport.timings` separates one-time engine initialization,
-grammar load/compile, and real-source tokenization, and records code-block and
-distinct-language counts.
+The call warms known Shiki grammars and validates the bundled
+`JetBrainsMono-Regular.ttf` concurrently. It is awaitable, concurrent-safe,
+retryable, and idempotent. Cancellation stops only that caller's wait; shared
+initialization continues for the next caller. Starting it from a DOCX modal,
+Word-template selection, or explicit export action keeps ordinary page loads
+untouched. The returned timings cover only intent-to-ready preparation;
+`ExportReport.timings` still describes render work. Browser builds use Shiki's
+JavaScript RegExp engine; Node/Bun imports use Oniguruma.
 
 ## Queued export engine seam
 

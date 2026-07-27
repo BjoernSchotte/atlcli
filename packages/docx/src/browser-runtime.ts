@@ -15,6 +15,11 @@ import {
 import type { SvgRasterizer, TemplateSource } from "./env.js";
 
 export type { DocxByteHelpers } from "./browser-runtime-bootstrap.js";
+export {
+  prepareDocxExportRuntime,
+  type DocxExportRuntimePreparation,
+  type PrepareDocxExportRuntimeOptions,
+} from "./runtime-preparation.js";
 
 /** Install the namespaced byte helpers once without defining a fake Buffer. */
 export function installDocxBrowserRuntime(): void {

@@ -64,6 +64,11 @@ function completeInventory(): OutputArtifact[] {
     { path: "index.html", size: 100 },
     { path: "assets/pdf-worker-abc.js", size: 100 },
     { path: "assets/typst_ts_web_compiler_bg-abc.wasm", size: 25_000_000 },
+    {
+      path: "assets/JetBrainsMono-Regular-abc.ttf",
+      size: 273_900,
+      sha256: "a0bf60ef0f83c5ed4d7a75d45838548b1f6873372dfac88f71804491898d138f",
+    },
   ];
   for (const font of PDF_RUNTIME_ASSETS.fonts) {
     const extension = font.fileName.slice(font.fileName.lastIndexOf("."));
@@ -93,6 +98,25 @@ describe("harness runtime inventory", () => {
       artifact.path.includes(font!.fileName.split(".")[0]!) ? { ...artifact, sha256: "tampered" } : artifact,
     );
     expect(validateHarnessInventory(tampered).join("\n")).toContain("SHA-256");
+  });
+
+  it("requires one pinned DOCX code font", () => {
+    const missing = completeInventory().filter(
+      (artifact) => !artifact.path.includes("JetBrainsMono-Regular"),
+    );
+    expect(validateHarnessInventory(missing).join("\n")).toContain("DOCX code font");
+
+    const duplicate = [
+      ...completeInventory(),
+      {
+        path: "assets/JetBrainsMono-Regular-duplicate.ttf",
+        size: 273_900,
+        sha256: "a0bf60ef0f83c5ed4d7a75d45838548b1f6873372dfac88f71804491898d138f",
+      },
+    ];
+    expect(validateHarnessInventory(duplicate).join("\n")).toContain(
+      "expected exactly one artifact",
+    );
   });
 
   it("rejects an emitted Oniguruma engine chunk by inventory", () => {

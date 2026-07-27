@@ -83,9 +83,6 @@ export function DocxExportPanel({
       .then((current) => {
         if (cancelled || !current) return;
         setTemplate(current);
-        // A stored template means an export is likely: warm the heavy chunks now
-        // so the first Export click does not pay the cold import. Pure warm-up.
-        port.warm?.();
       })
       .catch(() => {
         if (!cancelled) setDocxError(t("docx.error.storedUnreadable"));
@@ -95,6 +92,20 @@ export function DocxExportPanel({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [port, store]);
+
+  // A stored/uploaded Word template is explicit DOCX intent. Warm the
+  // productive host realm (offscreen in MV3) without making readiness depend on
+  // this optimization; the export path retains its own retry/fallback.
+  useEffect(() => {
+    if (!template || !port.warm) return;
+    void port.warm({
+      ...(scopeRequest?.codeTheme
+        ? { codeTheme: scopeRequest.codeTheme }
+        : {}),
+    }).catch(() => {
+      // Pure warm-up: the export path retries its own imports/assets.
+    });
+  }, [port, scopeRequest?.codeTheme, template]);
 
   async function onFile(event: React.ChangeEvent<HTMLInputElement>): Promise<void> {
     const file = event.target.files?.[0];
@@ -116,7 +127,6 @@ export function DocxExportPanel({
       const buffer = await file.arrayBuffer();
       // Validate + scan BEFORE persisting — store nothing on failure.
       const scan = await port.scan(new Uint8Array(buffer));
-      port.warm?.();
       const stored = await store.put({ name: file.name, bytes: buffer });
       setTemplate({
         name: stored.name,

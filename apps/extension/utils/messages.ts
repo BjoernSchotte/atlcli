@@ -12,6 +12,10 @@
  */
 
 import type { AtlassianEntity } from "@atlcli/core";
+import {
+  isCodeThemeId,
+  type CodeThemeId,
+} from "@atlcli/code-highlight/registry";
 
 /**
  * Detection payload shared by the SW push (`entity-changed`) and the
@@ -60,6 +64,14 @@ export interface PdfCompileHints {
   pages?: number;
 }
 
+/** Bounded timing/result projection for cross-realm DOCX runtime preparation. */
+export interface DocxRuntimePreparationMessage {
+  totalMs: number;
+  highlightingMs: number;
+  codeFontMs: number;
+  codeFontBytes: number;
+}
+
 /** Request messages sent from the panel to the service worker. */
 export type ExtRequest =
   | { kind: "ping" }
@@ -67,6 +79,7 @@ export type ExtRequest =
   | { kind: "get-current-entity"; windowId: number }
   | ({ kind: "pdf:compile"; jobId: string } & PdfCompileHints)
   | { kind: "pdf:cancel"; jobId: string }
+  | { kind: "docx:prepare-runtime"; codeTheme?: CodeThemeId }
   | { kind: "jobs:wake"; jobIds?: string[]; resumeWaiting?: boolean };
 
 /** Response messages returned to the panel. */
@@ -78,6 +91,8 @@ export type ExtResponse =
   | { kind: "pdf:compile-result"; jobId: string; ok: true }
   | { kind: "pdf:compile-result"; jobId: string; ok: false; error: string }
   | { kind: "pdf:cancel-result"; jobId: string; cancelled: boolean }
+  | { kind: "docx:prepare-runtime-result"; ok: true; preparation: DocxRuntimePreparationMessage }
+  | { kind: "docx:prepare-runtime-result"; ok: false; error: string }
   | { kind: "jobs:wake-result"; claimedJobId?: string; error?: never }
   | { kind: "jobs:wake-result"; error: string; claimedJobId?: never };
 
@@ -100,6 +115,7 @@ export type OffscreenRequest =
   | { kind: "offscreen:wasm-add"; a: number; b: number }
   | ({ kind: "offscreen:pdf-compile"; jobId: string } & PdfCompileHints)
   | { kind: "offscreen:pdf-cancel"; jobId: string }
+  | { kind: "offscreen:docx-prepare-runtime"; codeTheme?: CodeThemeId }
   | { kind: "offscreen:jobs-wake"; jobIds?: string[]; resumeWaiting?: boolean };
 export type OffscreenResponse =
   | { kind: "offscreen:wasm-add-result"; ok: true; result: number }
@@ -107,6 +123,8 @@ export type OffscreenResponse =
   | { kind: "offscreen:pdf-compile-result"; jobId: string; ok: true }
   | { kind: "offscreen:pdf-compile-result"; jobId: string; ok: false; error: string }
   | { kind: "offscreen:pdf-cancel-result"; jobId: string; cancelled: boolean }
+  | { kind: "offscreen:docx-prepare-runtime-result"; ok: true; preparation: DocxRuntimePreparationMessage }
+  | { kind: "offscreen:docx-prepare-runtime-result"; ok: false; error: string }
   | { kind: "offscreen:jobs-wake-result"; claimedJobId?: string; error?: never }
   | { kind: "offscreen:jobs-wake-result"; error: string; claimedJobId?: never };
 
@@ -132,6 +150,7 @@ export interface ResponseMap {
   "get-current-entity": Extract<ExtResponse, { kind: "current-entity" }>;
   "pdf:compile": Extract<ExtResponse, { kind: "pdf:compile-result" }>;
   "pdf:cancel": Extract<ExtResponse, { kind: "pdf:cancel-result" }>;
+  "docx:prepare-runtime": Extract<ExtResponse, { kind: "docx:prepare-runtime-result" }>;
   "jobs:wake": Extract<ExtResponse, { kind: "jobs:wake-result" }>;
 }
 
@@ -144,6 +163,11 @@ export function isExtRequest(value: unknown): value is ExtRequest {
   const kind = candidate.kind;
   if (kind === "pdf:compile") return hasOnlyKeys(value, ["kind", "jobId", "job", "pages"]) && isPdfJobId(candidate.jobId) && hasValidCompileHints(value);
   if (kind === "pdf:cancel") return hasOnlyKeys(value, ["kind", "jobId"]) && isPdfJobId(candidate.jobId);
+  if (kind === "docx:prepare-runtime") {
+    const preparation = value as { codeTheme?: unknown };
+    return hasOnlyKeys(value, ["kind", "codeTheme"]) &&
+      (preparation.codeTheme === undefined || isCodeThemeId(preparation.codeTheme));
+  }
   if (kind === "jobs:wake") {
     const wake = value as { jobIds?: unknown; resumeWaiting?: unknown };
     return hasOnlyKeys(value, ["kind", "jobIds", "resumeWaiting"]) &&
@@ -189,6 +213,11 @@ export function isOffscreenRequest(value: unknown): value is OffscreenRequest {
     return hasOnlyKeys(value, ["kind", "jobId", "job", "pages"]) && isPdfJobId(candidate.jobId) && hasValidCompileHints(value);
   }
   if (candidate.kind === "offscreen:pdf-cancel") return hasOnlyKeys(value, ["kind", "jobId"]) && isPdfJobId(candidate.jobId);
+  if (candidate.kind === "offscreen:docx-prepare-runtime") {
+    const preparation = value as { codeTheme?: unknown };
+    return hasOnlyKeys(value, ["kind", "codeTheme"]) &&
+      (preparation.codeTheme === undefined || isCodeThemeId(preparation.codeTheme));
+  }
   if (candidate.kind === "offscreen:jobs-wake") {
     const wake = value as { jobIds?: unknown; resumeWaiting?: unknown };
     return hasOnlyKeys(value, ["kind", "jobIds", "resumeWaiting"]) &&

@@ -109,6 +109,14 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) =>
       return result.ok ? { ok: true } : { ok: false, error: result.error };
     },
     runPdfCancel: (jobId) => pdfHost.cancel(jobId),
+    prepareDocxRuntime: async (codeTheme) => {
+      const { prepareDocxExportRuntime } = await import(
+        "@atlcli/docx/browser-runtime"
+      );
+      return prepareDocxExportRuntime([], {
+        ...(codeTheme ? { codeTheme } : {}),
+      });
+    },
     runJobsWake: (jobIds, options) => exportQueue.wake(jobIds, options),
   })
 );

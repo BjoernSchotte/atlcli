@@ -236,8 +236,9 @@ export interface DocxExportPort {
   run(request: DocxExportRequest): Promise<ExportReport>;
 
   /**
-   * Optional: pre-fetch the heavy engine chunks because an export is likely
-   * (a template already exists). Pure warm-up — failures must be swallowed.
+   * Optional: prepare deterministic runtime assets because an export is likely
+   * (a template already exists). Hosts must run this in the productive realm.
+   * Callers treat failure as a pure warm-up miss; the export retries normally.
    */
-  warm?(): void;
+  warm?(options?: { codeTheme?: CodeThemeId }): Promise<void>;
 }

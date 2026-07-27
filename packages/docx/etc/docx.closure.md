@@ -10,8 +10,8 @@
 
 ### Entry point `. (browser)` — stable
 
-- exported symbols (33): AssetFetcher, AssetRef, CurrentUser, DocxRenderError, ExportEnv, ExportInput, ExportReport, ExportResult, ExportTimings, HostCallContext, IncludeLookupOutcome, IncludePageDetails, IncludePageRef, NumberingAllocator, NumberingBase, NumberingXml, OutputSink, PageOwner, PlaceholderStatus, PreparedDocxExportV1, PreparedDocxRenderStateV1, RenderPreparedDocxExportInput, ResolveDeps, RunExportInput, ScanHit, ScanResult, SvgRasterizer, TemplateMeta, TemplateSource, exportDocx, prepareDocxExport, renderPreparedDocxExport, runExport
-- same-package closure references: 27
+- exported symbols (36): AssetFetcher, AssetRef, CurrentUser, DocxExportRuntimePreparation, DocxRenderError, ExportEnv, ExportInput, ExportReport, ExportResult, ExportTimings, HostCallContext, IncludeLookupOutcome, IncludePageDetails, IncludePageRef, NumberingAllocator, NumberingBase, NumberingXml, OutputSink, PageOwner, PlaceholderStatus, PrepareDocxExportRuntimeOptions, PreparedDocxExportV1, PreparedDocxRenderStateV1, RenderPreparedDocxExportInput, ResolveDeps, RunExportInput, ScanHit, ScanResult, SvgRasterizer, TemplateMeta, TemplateSource, exportDocx, prepareDocxExport, prepareDocxExportRuntime, renderPreparedDocxExport, runExport
+- same-package closure references: 29
 - reaches `@atlcli/code-highlight` (0.x — frozen-by-closure): CodeThemeId
 - reaches `@atlcli/confluence` (frozen): AdfMediaAttachment, ConfluencePageDetails, ConfluenceSpace, ExportBlock, ExportNote, ExportPageSource, ExportProgressCallback, InlineComment
 - reaches `@atlcli/diagram` (0.x — frozen-by-closure): DiagramTheme
@@ -20,8 +20,8 @@
 
 ### Entry point `. (default)` — stable
 
-- exported symbols (39): AssetFetcher, AssetRef, CurrentUser, DocxRenderError, ExportEnv, ExportInput, ExportReport, ExportResult, ExportTimings, HostCallContext, IncludeLookupOutcome, IncludePageDetails, IncludePageRef, NumberingAllocator, NumberingBase, NumberingXml, OutputSink, PageOwner, PlaceholderStatus, PreparedDocxExportV1, PreparedDocxRenderStateV1, RenderPreparedDocxExportInput, ResolveDeps, ResvgRasterizerAssets, RunExportInput, ScanHit, ScanResult, SvgRasterizer, TemplateMeta, TemplateSource, bundledDiagramFonts, exportDocx, fileOutputSink, fileTemplateSource, prepareDocxExport, renderPreparedDocxExport, resvgSvgRasterizer, runExport, unsupportedAssetFetcher
-- same-package closure references: 28
+- exported symbols (42): AssetFetcher, AssetRef, CurrentUser, DocxExportRuntimePreparation, DocxRenderError, ExportEnv, ExportInput, ExportReport, ExportResult, ExportTimings, HostCallContext, IncludeLookupOutcome, IncludePageDetails, IncludePageRef, NumberingAllocator, NumberingBase, NumberingXml, OutputSink, PageOwner, PlaceholderStatus, PrepareDocxExportRuntimeOptions, PreparedDocxExportV1, PreparedDocxRenderStateV1, RenderPreparedDocxExportInput, ResolveDeps, ResvgRasterizerAssets, RunExportInput, ScanHit, ScanResult, SvgRasterizer, TemplateMeta, TemplateSource, bundledDiagramFonts, exportDocx, fileOutputSink, fileTemplateSource, prepareDocxExport, prepareDocxExportRuntime, renderPreparedDocxExport, resvgSvgRasterizer, runExport, unsupportedAssetFetcher
+- same-package closure references: 30
 - reaches `@atlcli/code-highlight` (0.x — frozen-by-closure): CodeThemeId
 - reaches `@atlcli/confluence` (frozen): AdfMediaAttachment, ConfluencePageDetails, ConfluenceSpace, ExportBlock, ExportNote, ExportPageSource, ExportProgressCallback, InlineComment
 - reaches `@atlcli/diagram` (0.x — frozen-by-closure): DiagramTheme
@@ -30,8 +30,8 @@
 
 ### Entry point `./browser` — stable
 
-- exported symbols (33): AssetFetcher, AssetRef, CurrentUser, DocxRenderError, ExportEnv, ExportInput, ExportReport, ExportResult, ExportTimings, HostCallContext, IncludeLookupOutcome, IncludePageDetails, IncludePageRef, NumberingAllocator, NumberingBase, NumberingXml, OutputSink, PageOwner, PlaceholderStatus, PreparedDocxExportV1, PreparedDocxRenderStateV1, RenderPreparedDocxExportInput, ResolveDeps, RunExportInput, ScanHit, ScanResult, SvgRasterizer, TemplateMeta, TemplateSource, exportDocx, prepareDocxExport, renderPreparedDocxExport, runExport
-- same-package closure references: 27
+- exported symbols (36): AssetFetcher, AssetRef, CurrentUser, DocxExportRuntimePreparation, DocxRenderError, ExportEnv, ExportInput, ExportReport, ExportResult, ExportTimings, HostCallContext, IncludeLookupOutcome, IncludePageDetails, IncludePageRef, NumberingAllocator, NumberingBase, NumberingXml, OutputSink, PageOwner, PlaceholderStatus, PrepareDocxExportRuntimeOptions, PreparedDocxExportV1, PreparedDocxRenderStateV1, RenderPreparedDocxExportInput, ResolveDeps, RunExportInput, ScanHit, ScanResult, SvgRasterizer, TemplateMeta, TemplateSource, exportDocx, prepareDocxExport, prepareDocxExportRuntime, renderPreparedDocxExport, runExport
+- same-package closure references: 29
 - reaches `@atlcli/code-highlight` (0.x — frozen-by-closure): CodeThemeId
 - reaches `@atlcli/confluence` (frozen): AdfMediaAttachment, ConfluencePageDetails, ConfluenceSpace, ExportBlock, ExportNote, ExportPageSource, ExportProgressCallback, InlineComment
 - reaches `@atlcli/diagram` (0.x — frozen-by-closure): DiagramTheme
@@ -40,7 +40,7 @@
 
 ### Entry point `./browser-runtime` — experimental
 
-- exported symbols (7): CanvasRasterizerTiming, CanvasSvgRasterizerOptions, DocxByteHelpers, canvasSvgRasterizer, installDocxBrowserRuntime, memoryTemplateSource, prepareDocxCodeHighlighting
+- exported symbols (10): CanvasRasterizerTiming, CanvasSvgRasterizerOptions, DocxByteHelpers, DocxExportRuntimePreparation, PrepareDocxExportRuntimeOptions, canvasSvgRasterizer, installDocxBrowserRuntime, memoryTemplateSource, prepareDocxCodeHighlighting, prepareDocxExportRuntime
 
 ### Entry point `./fixtures` — internal
 
@@ -52,8 +52,8 @@
 
 ### Entry point `./node` — stable
 
-- exported symbols (39): AssetFetcher, AssetRef, CurrentUser, DocxRenderError, ExportEnv, ExportInput, ExportReport, ExportResult, ExportTimings, HostCallContext, IncludeLookupOutcome, IncludePageDetails, IncludePageRef, NumberingAllocator, NumberingBase, NumberingXml, OutputSink, PageOwner, PlaceholderStatus, PreparedDocxExportV1, PreparedDocxRenderStateV1, RenderPreparedDocxExportInput, ResolveDeps, ResvgRasterizerAssets, RunExportInput, ScanHit, ScanResult, SvgRasterizer, TemplateMeta, TemplateSource, bundledDiagramFonts, exportDocx, fileOutputSink, fileTemplateSource, prepareDocxExport, renderPreparedDocxExport, resvgSvgRasterizer, runExport, unsupportedAssetFetcher
-- same-package closure references: 28
+- exported symbols (42): AssetFetcher, AssetRef, CurrentUser, DocxExportRuntimePreparation, DocxRenderError, ExportEnv, ExportInput, ExportReport, ExportResult, ExportTimings, HostCallContext, IncludeLookupOutcome, IncludePageDetails, IncludePageRef, NumberingAllocator, NumberingBase, NumberingXml, OutputSink, PageOwner, PlaceholderStatus, PrepareDocxExportRuntimeOptions, PreparedDocxExportV1, PreparedDocxRenderStateV1, RenderPreparedDocxExportInput, ResolveDeps, ResvgRasterizerAssets, RunExportInput, ScanHit, ScanResult, SvgRasterizer, TemplateMeta, TemplateSource, bundledDiagramFonts, exportDocx, fileOutputSink, fileTemplateSource, prepareDocxExport, prepareDocxExportRuntime, renderPreparedDocxExport, resvgSvgRasterizer, runExport, unsupportedAssetFetcher
+- same-package closure references: 30
 - reaches `@atlcli/code-highlight` (0.x — frozen-by-closure): CodeThemeId
 - reaches `@atlcli/confluence` (frozen): AdfMediaAttachment, ConfluencePageDetails, ConfluenceSpace, ExportBlock, ExportNote, ExportPageSource, ExportProgressCallback, InlineComment
 - reaches `@atlcli/diagram` (0.x — frozen-by-closure): DiagramTheme

@@ -27,6 +27,7 @@ const SCAN: ScanResult = {
 describe("DocxExportPanel — honest preview wiring", () => {
   it("places the Word-rendering explanation beside the persisted template scan", async () => {
     const bytes = new ArrayBuffer(8);
+    const warmOptions: unknown[] = [];
     const store: DocxTemplateStore = {
       async get() {
         return { name: "report.docx", uploadedAt: 1, bytes };
@@ -43,6 +44,9 @@ describe("DocxExportPanel — honest preview wiring", () => {
       async run() {
         throw new Error("export is not part of this view test");
       },
+      async warm(options) {
+        warmOptions.push(options);
+      },
     };
 
     await dom.render(
@@ -53,6 +57,7 @@ describe("DocxExportPanel — honest preview wiring", () => {
             store={store}
             page={null}
             pageUrl={null}
+            scopeRequest={{ codeTheme: "github-dark" }}
           />
         </ExportRunsProvider>
       </I18nProvider>
@@ -63,5 +68,6 @@ describe("DocxExportPanel — honest preview wiring", () => {
     expect(dom.find("docx-preview-explanation").textContent).toContain(
       "Word renders the final document"
     );
+    expect(warmOptions).toEqual([{ codeTheme: "github-dark" }]);
   });
 });

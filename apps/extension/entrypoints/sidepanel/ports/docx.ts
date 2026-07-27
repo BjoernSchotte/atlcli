@@ -105,10 +105,20 @@ export function chromeDocxExportPort(): DocxExportPort {
       return scanTemplate(bytes);
     },
 
-    warm() {
-      void loadRun().catch(() => {
-        // Pure warm-up: the export path retries its own imports.
-      });
+    async warm(options) {
+      const responsePromise = chrome.runtime.sendMessage({
+        kind: "docx:prepare-runtime",
+        ...(options?.codeTheme ? { codeTheme: options.codeTheme } : {}),
+      }) as Promise<
+        | { kind: "docx:prepare-runtime-result"; ok: true }
+        | { kind: "docx:prepare-runtime-result"; ok: false; error: string }
+        | undefined
+      >;
+      const [, response] = await Promise.all([loadRun(), responsePromise]);
+      if (!response || response.kind !== "docx:prepare-runtime-result") {
+        throw new Error("DOCX runtime preparation returned no result.");
+      }
+      if (!response.ok) throw new Error(response.error);
     },
 
     async run(request) {

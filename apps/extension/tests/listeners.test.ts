@@ -7,17 +7,25 @@ import {
 import type { ExtResponse, OffscreenResponse } from "../utils/messages.js";
 import type { RouterDeps } from "../utils/router.js";
 
+const preparation = {
+  totalMs: 12,
+  highlightingMs: 8,
+  codeFontMs: 10,
+  codeFontBytes: 273_900,
+};
 const okRouterDeps: RouterDeps = {
   runWasmSmoke: async (a, b) => a + b,
   getCurrentEntity: async (windowId) => ({ windowId, url: null, entity: null, seq: 0 }),
   runPdfCompile: async () => ({ ok: true }),
   runPdfCancel: async () => true,
+  prepareDocxRuntime: async () => preparation,
   runJobsWake: async (jobIds) => jobIds?.[0],
 };
 const okOffscreenDeps: OffscreenListenerDeps = {
   runWasmAdd: async (a, b) => a + b,
   runPdfCompile: async () => ({ ok: true }),
   runPdfCancel: async () => true,
+  prepareDocxRuntime: async () => preparation,
   runJobsWake: async (jobIds) => jobIds?.[0],
 };
 
@@ -111,6 +119,21 @@ describe("handleExtMessage (background listener adapter)", () => {
     await cap.called;
     expect(cap.values).toEqual([{ kind: "jobs:wake-result", claimedJobId: jobId }]);
   });
+
+  it("returns true and responds to DOCX runtime preparation", async () => {
+    const cap = captureResponse<ExtResponse>();
+    expect(handleExtMessage(
+      { kind: "docx:prepare-runtime", codeTheme: "github-dark" },
+      cap.sendResponse,
+      okRouterDeps,
+    )).toBe(true);
+    await cap.called;
+    expect(cap.values).toEqual([{
+      kind: "docx:prepare-runtime-result",
+      ok: true,
+      preparation,
+    }]);
+  });
 });
 
 describe("handleOffscreenMessage (offscreen listener adapter)", () => {
@@ -178,6 +201,21 @@ describe("handleOffscreenMessage (offscreen listener adapter)", () => {
     )).toBe(true);
     await cap.called;
     expect(cap.values).toEqual([{ kind: "offscreen:jobs-wake-result", claimedJobId: jobId }]);
+  });
+
+  it("returns true and responds to offscreen DOCX runtime preparation", async () => {
+    const cap = captureResponse<OffscreenResponse>();
+    expect(handleOffscreenMessage(
+      { kind: "offscreen:docx-prepare-runtime", codeTheme: "github-light" },
+      cap.sendResponse,
+      okOffscreenDeps,
+    )).toBe(true);
+    await cap.called;
+    expect(cap.values).toEqual([{
+      kind: "offscreen:docx-prepare-runtime-result",
+      ok: true,
+      preparation,
+    }]);
   });
 
   it("keeps an offscreen queue wake failure distinct from an empty queue", async () => {

@@ -70,21 +70,32 @@ an unused WASM chunk. Once the first highlighter initializes, the engine is
 locked because its grammar and highlighter caches cannot safely be reused by a
 different implementation.
 
-After explicit DOCX intent, a browser host can start an awaitable preload:
+After explicit DOCX intent, every host can start an awaitable preparation of
+the complete first-render runtime:
 
 ```ts
 import "@atlcli/docx/browser-runtime";
-import { prepareDocxCodeHighlighting } from "@atlcli/docx/browser-runtime";
+import { prepareDocxExportRuntime } from "@atlcli/docx/browser-runtime";
 
-await prepareDocxCodeHighlighting(blocks, { codeTheme: "github-light" });
+const preparation = await prepareDocxExportRuntime(blocks, {
+  codeTheme: "github-light",
+  signal: dialogSignal,
+});
 ```
 
-The walker includes nested callouts, lists, layouts, tables, block quotes,
+The preparation walks nested callouts, lists, layouts, tables, block quotes,
 expands, and orientation regions. It canonicalizes aliases, ignores unknown
-languages and Mermaid, and loads each known grammar once. Concurrent and
-repeated calls share the same cache promises. A modal can therefore start the
-preload when it opens and enable export after the promise settles, without
-adding Shiki work to ordinary Confluence page views.
+languages and Mermaid, and loads each known grammar once. In parallel it loads,
+validates, and caches the pinned `JetBrainsMono-Regular.ttf`, even when the
+initial block scan contains no code; included content or inline code can still
+need it. Rendering embeds the font only when the produced document uses code.
+
+Concurrent and repeated calls share the same cache promises. A failed load is
+retryable. Aborting `signal` cancels only that caller's wait, not shared
+initialization. `preparation` reports `totalMs`, `highlightingMs`, `codeFontMs`,
+and `codeFontBytes`; these local intent-to-ready timings are separate from
+`ExportReport.timings`. Start this from a DOCX modal, Word-template selection,
+or explicit export action. Do not run it on ordinary page attachment.
 
 Hosts must pin the resolved theme in durable requests before preparation.
 Historical prepared `/1` checkpoints without the additive field resume as
@@ -364,10 +375,11 @@ therefore does not need a system copy of JetBrains Mono. Documents without code
 omit those parts.
 
 The package entry point loads the face from `@atlcli/docx/fonts/` under
-Node/Bun; browser bundlers emit it as a local asset, and the compiled CLI passes
-its embedded copy into the same engine. Inline code keeps its distinct
-background and exact text, while block code retains the separate full-width
-style and syntax coloring.
+Node/Bun; browser bundlers emit one same-origin local asset, and the compiled
+CLI passes its embedded copy into the same engine. `prepareDocxExportRuntime`
+warms and validates that exact loader before rendering. Inline code keeps its
+distinct background and exact text, while block code retains the separate
+full-width style and syntax coloring.
 
 ### Logo placeholders
 

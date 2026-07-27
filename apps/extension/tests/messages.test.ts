@@ -19,6 +19,19 @@ describe("message guards", () => {
     expect(isExtRequest({ kind: "get-current-entity", windowId: 1.5 })).toBe(false);
     expect(isExtRequest({ kind: "pdf:compile", jobId })).toBe(true);
     expect(isExtRequest({ kind: "pdf:cancel", jobId })).toBe(true);
+    expect(isExtRequest({ kind: "docx:prepare-runtime" })).toBe(true);
+    expect(isExtRequest({
+      kind: "docx:prepare-runtime",
+      codeTheme: "github-dark",
+    })).toBe(true);
+    expect(isExtRequest({
+      kind: "docx:prepare-runtime",
+      codeTheme: "remote-theme",
+    })).toBe(false);
+    expect(isExtRequest({
+      kind: "docx:prepare-runtime",
+      blocks: [{ type: "codeBlock", code: "secret" }],
+    })).toBe(false);
     expect(isExtRequest({ kind: "jobs:wake", jobIds: [jobId] })).toBe(true);
     expect(isExtRequest({ kind: "jobs:wake", jobIds: [jobId], resumeWaiting: true })).toBe(true);
     expect(isExtRequest({ kind: "jobs:wake", resumeWaiting: true })).toBe(false);
@@ -94,6 +107,14 @@ describe("message guards", () => {
     expect(isOffscreenRequest({ kind: "offscreen:wasm-add", a: 1, b: 2 })).toBe(true);
     expect(isOffscreenRequest({ kind: "offscreen:pdf-compile", jobId })).toBe(true);
     expect(isOffscreenRequest({ kind: "offscreen:pdf-cancel", jobId })).toBe(true);
+    expect(isOffscreenRequest({
+      kind: "offscreen:docx-prepare-runtime",
+      codeTheme: "github-light",
+    })).toBe(true);
+    expect(isOffscreenRequest({
+      kind: "offscreen:docx-prepare-runtime",
+      codeTheme: "remote-theme",
+    })).toBe(false);
     expect(isOffscreenRequest({ kind: "offscreen:jobs-wake", jobIds: [jobId] })).toBe(true);
     expect(isOffscreenRequest({
       kind: "offscreen:jobs-wake",
