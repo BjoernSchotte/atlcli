@@ -32,6 +32,7 @@ export type DocxErrorKind =
   | "path-traversal"
   | "invalid-path"
   | "entry-too-large"
+  | "xml-part-too-large"
   | "uncompressed-too-large"
   | "suspicious-compression"
   | "corrupt-entry"
@@ -74,6 +75,17 @@ export interface ArchiveBudget {
   maxUncompressedBytes: number;
   /** Maximum DECLARED uncompressed size of any single entry. */
   maxSingleEntryUncompressedBytes: number;
+  /**
+   * Optional stricter per-XML-part byte limit. Checked from central-directory
+   * metadata before any archive member is inflated.
+   */
+  maxXmlPartUncompressedBytes?: number;
+  /**
+   * Optional decoded-character ceiling for XML. UTF-8 cannot decode to more
+   * characters than its byte length, so the declared byte count is a safe
+   * pre-inflation upper bound and the parser enforces the exact count later.
+   */
+  maxXmlPartCharacters?: number;
 }
 
 /**
@@ -96,6 +108,13 @@ export const DOCX_ARCHIVE_BUDGET: ArchiveBudget = {
   maxEntryCount: 2048,
   maxUncompressedBytes: 128 * 1024 * 1024,
   maxSingleEntryUncompressedBytes: 64 * 1024 * 1024,
+};
+
+/** Stricter preflight used by untrusted PDF-template intake. */
+export const DOCX_TEMPLATE_INTAKE_BUDGET: ArchiveBudget = {
+  ...DOCX_ARCHIVE_BUDGET,
+  maxXmlPartUncompressedBytes: 2 * 1024 * 1024,
+  maxXmlPartCharacters: 2 * 1024 * 1024,
 };
 
 /** One classified placeholder, aggregated across all occurrences. */
@@ -484,6 +503,19 @@ export function assertArchiveBudget(
       throw new DocxError(
         "entry-too-large",
         `Archive member "${entry.name}" declares ${declared} uncompressed bytes (per-entry limit ${budget.maxSingleEntryUncompressedBytes}).`,
+        entry.name
+      );
+    }
+    if (
+      /\.(?:xml|rels)$/i.test(entry.name) &&
+      ((budget.maxXmlPartUncompressedBytes !== undefined &&
+        declared > budget.maxXmlPartUncompressedBytes) ||
+        (budget.maxXmlPartCharacters !== undefined &&
+          declared > budget.maxXmlPartCharacters))
+    ) {
+      throw new DocxError(
+        "xml-part-too-large",
+        `Archive XML member "${entry.name}" declares ${declared} bytes, beyond the template-intake XML limit.`,
         entry.name
       );
     }

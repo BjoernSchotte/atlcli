@@ -87,6 +87,14 @@ export const FREEZE_DECISIONS: Record<string, FreezeDecision> = {
       "browser-safe authoring and journey core. Keep it experimental until the CLI shape " +
       "and a browser host have both exercised the versioned reducers, ports, and views.",
   },
+  "@atlcli/docx-template-intake": {
+    version: "0.x",
+    frozen: false,
+    reasoning:
+      "STAYS 0.x: introduced by the PDF-template DOCX-intake vertical slice as the " +
+      "browser-safe OPC/OOXML facts boundary. Keep it experimental until matching, " +
+      "asset extraction, CLI review, and a browser host have exercised the complete flow.",
+  },
   "@atlcli/export-macros": {
     version: "1.0.0",
     frozen: true,

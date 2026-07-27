@@ -1745,47 +1745,55 @@ suite pass.
 
 **Acceptance criteria / proof**
 
-- [ ] All existing `unzipDocx()` security-corpus cases remain green; intake
+- [x] All existing `unzipDocx()` security-corpus cases remain green; intake
       cannot bypass size, path, or active-content gates.
-- [ ] In intake mode, an over-limit XML part is rejected by preflight before
+- [x] In intake mode, an over-limit XML part is rejected by preflight before
       `asText()`, the active-content scan, or the streaming parser reads it; an
       instrumented read spy proves zero full-text reads.
-- [ ] OLE, embedded packages, audio/video, unknown binary relationships, and
+- [x] OLE, embedded packages, audio/video, unknown binary relationships, and
       external data parts are diagnosed only; a byte-read spy proves that
       their payloads are neither read nor extracted.
-- [ ] The same logical DOCX content with permuted ZIP entry order produces
+- [x] The same logical DOCX content with permuted ZIP entry order produces
       byte-identical canonical analysis JSON.
-- [ ] Identical OOXML documents with different namespace prefixes produce
+- [x] Identical OOXML documents with different namespace prefixes produce
       identical facts.
-- [ ] Malformed XML, `DOCTYPE`, and entity declarations are rejected with a
+- [x] Malformed XML, `DOCTYPE`, and entity declarations are rejected with a
       typed part/parser error and are not analyzed after "repair."
-- [ ] Transitional and Strict fixtures resolve the same supported page/style
+- [x] Transitional and Strict fixtures resolve the same supported page/style
       facts.
-- [ ] Relative internal relationships resolve correctly; traversal, missing
+- [x] Relative internal relationships resolve correctly; traversal, missing
       target, and duplicate relationship ID produce named errors.
-- [ ] External relationships appear only as `external-unresolved`; a fetch spy
+- [x] External relationships appear only as `external-unresolved`; a fetch spy
       proves that no network call occurs.
-- [ ] For an external test URL, the portable analysis JSON contains no host,
+- [x] For an external test URL, the portable analysis JSON contains no host,
       path, query, or credentials, only a scheme class and fingerprint.
-- [ ] AlternateContent with a DrawingML choice and VML fallback counts exactly
+- [x] AlternateContent with a DrawingML choice and VML fallback counts exactly
       one scene; both variants remain visible as evidence.
-- [ ] Multiple choices, unknown `Requires`, missing fallback, nested
+- [x] Multiple choices, unknown `Requires`, missing fallback, nested
       AlternateContent, and relevant MCE attributes either follow the pinned
       compatibility profile or end in a named diagnostic.
-- [ ] Oversize input, extreme depth, excessive nodes/attributes, overlong
+- [x] Oversize input, extreme depth, excessive nodes/attributes, overlong
       attributes, and a maximum-valid control prove the streaming budgets;
       memory does not grow as it would for a complete DOM.
-- [ ] A golden scan of analysis JSON finds no document text, raw XML, Base64,
+- [x] A golden scan of analysis JSON finds no document text, raw XML, Base64,
       or absolute source path.
-- [ ] Every fixture warning/error has a stable code, severity, safe params, and
+- [x] Every fixture warning/error has a stable code, severity, safe params, and
       recovery action where recovery is possible. Locale selection changes
       rendered host copy but not analysis JSON or diagnostic identity.
-- [ ] Progress events are monotonic within a phase, serializable through
+- [x] Progress events are monotonic within a phase, serializable through
       structured clone, and identical in Node and browser test entries.
-- [ ] `bun run test packages/docx/src/scan.test.ts
+- [x] `bun run test packages/docx/src/scan.test.ts
       packages/docx-template-intake/src/opc.test.ts
       packages/docx-template-intake/src/ooxml-facts.test.ts
       packages/docx-template-intake/src/privacy.test.ts` passes.
+
+**T3 evidence:** See `RESULTS.md`. The browser-safe intake package exports 37
+experimental symbols from identical default/browser/Node entry points. Its
+canonical OPC/OOXML facts layer uses the shared hardened unzip boundary, a
+pinned namespace-aware streaming parser, a versioned MCE profile, relationship
+allowlists, redacted provenance, typed diagnostics, and host-neutral progress.
+The normative suite passes 79 tests with 258 assertions; the full repository
+suite passes 5,577 tests with 12 environment-gated skips and zero failures.
 
 ### T4 — Resolve styles, themes, sections, and usage, then match tokens
 

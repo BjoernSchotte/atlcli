@@ -1,3 +1,5 @@
+import type { TemplateDiagnosticV1 } from "@atlcli/pdf-template-authoring";
+
 export const TEMPLATE_INTAKE_MESSAGE_NAMESPACE = "ATLCLI_PDF_TEMPLATE_" as const;
 
 export interface MessageParameterSchemaV1 {
@@ -97,6 +99,45 @@ export interface RenderedTemplateIntakeMessageV1 {
   code: TemplateIntakeMessageCode;
   severity: TemplateIntakeMessageDefinitionV1["severity"];
   text: string;
+}
+
+export interface RenderedTemplateDiagnosticV1 {
+  code: string;
+  severity: TemplateDiagnosticV1["severity"];
+  text: string;
+  recoveryActions: TemplateDiagnosticV1["recoveryActions"];
+}
+
+/**
+ * Render a validated, locale-free diagnostic with host-owned copy.
+ *
+ * The diagnostic identity and parameters remain unchanged; browser, CLI, and
+ * future hosts may choose different copy without changing portable analysis.
+ */
+export function renderTemplateDiagnostic(
+  diagnostic: TemplateDiagnosticV1,
+  copies: Readonly<Record<string, string>>
+): RenderedTemplateDiagnosticV1 {
+  const template = copies[diagnostic.code];
+  const text = template
+    ? template.replace(
+        /\{([A-Za-z][A-Za-z0-9]*)\}/g,
+        (_match, name: string) => {
+          if (!(name in diagnostic.params)) {
+            throw new Error(
+              `${diagnostic.code} copy uses unknown parameter ${name}`
+            );
+          }
+          return String(diagnostic.params[name]);
+        }
+      )
+    : `[${diagnostic.code}]`;
+  return {
+    code: diagnostic.code,
+    severity: diagnostic.severity,
+    text,
+    recoveryActions: diagnostic.recoveryActions,
+  };
 }
 
 function assertBoundedParameter(

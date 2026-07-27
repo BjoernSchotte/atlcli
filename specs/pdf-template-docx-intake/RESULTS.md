@@ -386,3 +386,96 @@ export evidence begins at the CLI/materialization tasks.
 
 This evidence proves T2 only. It does not claim that the secure OOXML facts
 layer or DOCX-to-catalog matching from T3 onward exists.
+
+## T3 — Secure, namespace-aware OPC/OOXML facts layer
+
+**Status:** Proven on 2026-07-27.
+
+### Hardened intake boundary
+
+`@atlcli/docx-template-intake` is a browser-safe, byte-in/facts-out package
+with identical default, browser, and Node exports. It owns no file, terminal,
+network, persistence, or renderer operations. Its generated API report exposes
+37 experimental `0.x` symbols, and its closure report has zero
+reachable-but-unexported gaps.
+
+The package delegates ZIP admission to the existing `@atlcli/docx`
+`unzipDocx()` boundary. `DOCX_TEMPLATE_INTAKE_BUDGET` adds 2 MiB decoded XML
+byte and character limits without changing the existing export mode. An
+instrumented regression proves that a declared-oversize XML part is rejected
+before `asText()`, active-content inspection, or streaming parse can read it.
+The complete pre-existing bomb, forged-directory, entry-flood, hostile-path,
+active-content, and risky-field corpus remains green.
+
+After preflight, a namespace-aware `saxes` 6.0.0 streaming parser reads XML in
+16 KiB decoded chunks. The frozen per-part limits are 2 MiB bytes, 2 MiB
+characters, 40,000 elements, depth 64, 60,000 attributes, 512 characters per
+attribute, and 100,000 total nodes. Boundary tests cover every rejecting limit
+and an exact-maximum control. A 256 KiB text body produces a summary shorter
+than 160 serialized characters and retains neither text nor a DOM. Malformed
+XML, `DOCTYPE`, and entity declarations fail closed as typed part errors.
+
+### Canonical OOXML facts and compatibility
+
+The OPC graph normalizes internal relationship targets relative to their
+source part and reports traversal, missing targets, and duplicate IDs with
+stable diagnostics. External targets become only `external-unresolved`
+records containing a scheme class and fingerprint. A fetch spy proves zero
+network access, and golden JSON proves that host, path, query, credentials,
+document text, raw XML, Base64, and absolute source paths are absent.
+
+The semantic relationship allowlist reads only supported
+WordprocessingML/theme/drawing parts. OLE objects, embedded packages, audio,
+video, external data, and unknown binaries are inventoried only by class and
+declared size. Payload spies across all six classes prove zero reads and zero
+extraction.
+
+Facts are derived from namespace URI and local name, so prefix permutations
+and equivalent Transitional/Strict inputs produce byte-identical semantic
+results. The inventory covers styles, theme color slots, settings, numbering,
+fonts, sections and page geometry, headers, footers, backgrounds, page
+borders, drawings, media references, and per-story/per-section style or direct
+format usage. Insertions count as visible usage; deletions do not, and any
+revision presence lowers confidence through a named warning.
+
+`MarkupCompatibilityProfileV1` pins understood namespaces/features and the
+first-understood-choice-else-fallback policy. DrawingML choice plus VML
+fallback contributes exactly one scene while both variant fingerprints remain
+as provenance. Multiple choices, unknown `Requires`, missing fallbacks,
+nested `AlternateContent`, and relevant MCE attributes have explicit tested
+outcomes or named diagnostics.
+
+### Host-neutral diagnostics and progress
+
+All portable warnings and errors have a stable code, severity, validated safe
+parameters, and recovery actions when recovery is possible. Host code renders
+locale-specific copy from those facts; changing copy leaves the canonical
+analysis and diagnostic identity unchanged. Scan and resolve progress events
+are monotonic, structured-clone safe, and byte-identical through browser and
+Node entry points.
+
+### Commands and results
+
+| Proof | Exact command | Result |
+|---|---|---|
+| Normative T3 suite | `bun run test packages/docx/src/scan.test.ts packages/docx-template-intake/src/opc.test.ts packages/docx-template-intake/src/ooxml-facts.test.ts packages/docx-template-intake/src/privacy.test.ts` | Passed; 79 tests, 258 assertions, 0 failures |
+| Browser portability | `bun scripts/check-browser-build.ts` | Passed; all 23 browser entry points, including the intake barrel, built without Node/Bun builtins |
+| API report and closure guard | `bun run test scripts/api-report.test.ts` | Passed; 5 tests, 14 assertions, zero closure gaps |
+| Repository type safety | `bun run typecheck` | Passed for the root, extension, browser compiler, and browser export harness |
+| Full monorepo build | `bun run build` | Passed; 19 tasks |
+| Full repository suite | `bun run test` | Passed; 5,577 tests passed, 12 environment-gated tests skipped, 0 failures |
+| Diff hygiene | `git diff --check` | Passed |
+
+The first complete-suite attempt exposed the intentionally updated browser
+entry-point inventory; the next exposed one order-sensitive assertion in an
+otherwise canonical diagnostic test. Both proof harness expectations were
+corrected, and the final complete run above passed with zero failures.
+
+The live Confluence E2E is not applicable to T3: this task adds no CLI command,
+network write, renderer path, or Confluence mutation. All source inputs are
+neutral synthetic fixtures; no private supplemental DOCX or customer-derived
+artifact was used or persisted.
+
+This evidence proves T3 only. It does not claim style resolution, catalog
+matching, asset extraction, CLI review, or template-pack materialization from
+T4 onward.

@@ -175,10 +175,15 @@
     },
     "packages/docx-template-intake": {
       "name": "@atlcli/docx-template-intake",
-      "version": "0.0.0",
+      "version": "0.1.0",
       "dependencies": {
+        "@atlcli/core": "workspace:*",
         "@atlcli/docx": "workspace:*",
+        "@atlcli/pdf-template-authoring": "workspace:*",
         "saxes": "6.0.0",
+      },
+      "devDependencies": {
+        "pizzip": "^3.2.0",
       },
     },
     "packages/export-fixtures": {

@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import PizZip from "pizzip";
 import {
   DOCX_ARCHIVE_BUDGET,
+  DOCX_TEMPLATE_INTAKE_BUDGET,
   DocxError,
   MAX_TEMPLATE_BYTES,
   assertSafeDocxEntryName,
@@ -252,6 +253,51 @@ function buildArchive(members: Record<string, string | Uint8Array>, opts?: { doc
 }
 
 describe("unzipDocx — archive budget (spec 011)", () => {
+  it("template-intake rejects an oversized XML part before any full-text read", () => {
+    const bytes = buildArchive({
+      "word/document.xml":
+        "<w:document><w:altChunk/></w:document>" + " ".repeat(64),
+    });
+    const originalFile = PizZip.prototype.file;
+    let fullTextReads = 0;
+    PizZip.prototype.file = function (this: PizZip, ...args: unknown[]) {
+      const entry = (
+        originalFile as unknown as (
+          this: PizZip,
+          ...inner: unknown[]
+        ) => unknown
+      ).apply(this, args);
+      if (
+        entry &&
+        typeof entry === "object" &&
+        "asText" in entry &&
+        typeof entry.asText === "function"
+      ) {
+        const originalAsText = entry.asText.bind(entry);
+        entry.asText = () => {
+          fullTextReads += 1;
+          return originalAsText();
+        };
+      }
+      return entry;
+    } as typeof PizZip.prototype.file;
+    try {
+      const err = expectDocxError(
+        () =>
+          unzipDocx(bytes, {
+            ...DOCX_TEMPLATE_INTAKE_BUDGET,
+            maxXmlPartUncompressedBytes: 16,
+            maxXmlPartCharacters: 16,
+          }),
+        "xml-part-too-large"
+      );
+      expect(err.path).toBe("word/document.xml");
+      expect(fullTextReads).toBe(0);
+    } finally {
+      PizZip.prototype.file = originalFile;
+    }
+  });
+
   it("POSITIVE CONTROL: a legitimate template with real media still opens", () => {
     // 4 MiB of genuinely incompressible media across two entries — what a real
     // PNG/JPEG looks like to DEFLATE. Comfortably inside every cap, so the
