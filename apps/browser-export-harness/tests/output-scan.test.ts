@@ -31,6 +31,9 @@ describe("harness output content policy", () => {
     ["root-relative asset literal", `const wasm = "/assets/compiler.wasm"`],
     ["Oniguruma engine", `findNextOnigScannerMatch(scanner, input)`],
     ["Oniguruma WASM loader", `throw new Error("Must invoke loadWasm first.")`],
+    ["aggregate Shiki singleton", `const marker = bundle_full_exports`],
+    ["aggregate Shiki language map", `import "shiki/langs"`],
+    ["aggregate Shiki theme map", `import "shiki/themes"`],
   ])("rejects %s", (_label, source) => {
     expect(scanHarnessText(source).length).toBeGreaterThan(0);
   });
@@ -127,5 +130,16 @@ describe("harness runtime inventory", () => {
     expect(validateHarnessInventory(inventory).join("\n")).toContain(
       "Oniguruma engine",
     );
+  });
+
+  it("rejects Oniguruma WASM and aggregate Shiki catalogue chunks", () => {
+    const inventory = [
+      ...completeInventory(),
+      { path: "assets/onig-seeded.wasm", size: 20_000 },
+      { path: "assets/langs-seeded.js", size: 6_000 },
+    ];
+    const issues = validateHarnessInventory(inventory).join("\n");
+    expect(issues).toContain("Oniguruma WASM");
+    expect(issues).toContain("aggregate Shiki catalogue");
   });
 });

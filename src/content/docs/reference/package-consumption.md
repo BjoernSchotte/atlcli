@@ -5,10 +5,10 @@ description: "How external projects install and use the @atlcli/* export package
 
 # Consuming the `@atlcli/*` Packages
 
-The twelve publishable packages — `@atlcli/plugin-api`, `@atlcli/core`, `@atlcli/diagram`,
-`@atlcli/jira`, `@atlcli/confluence`, `@atlcli/export-macros`, `@atlcli/export-wiring`,
-`@atlcli/template-pack`, `@atlcli/docx`, `@atlcli/pdf`, `@atlcli/pdf-compiler-browser`, and
-`@atlcli/export-node` —
+The fourteen publishable packages — `@atlcli/plugin-api`, `@atlcli/core`, `@atlcli/diagram`,
+`@atlcli/jira`, `@atlcli/confluence`, `@atlcli/code-highlight`, `@atlcli/export-jobs`,
+`@atlcli/export-macros`, `@atlcli/export-wiring`, `@atlcli/template-pack`, `@atlcli/docx`,
+`@atlcli/pdf`, `@atlcli/pdf-compiler-browser`, and `@atlcli/export-node` —
 ship compiled ESM (`dist/*.js` + `.d.ts`) and can be consumed by any repo outside this
 monorepo through **two supported install paths**, neither of which needs a package registry.
 
@@ -55,9 +55,11 @@ Declared per package via `engines` and verified by the consumer-smoke suites
 | `@atlcli/diagram` | Node ≥ 20, Bun, browsers | Isomorphic; mermaid renderer lazy-loaded |
 | `@atlcli/jira` | **Bun only** (≥ 1.3) | The barrel's webhook server is `Bun.serve`-native |
 | `@atlcli/confluence` | Node ≥ 20, Bun, browsers | The default barrel is isomorphic; the non-frozen `./internal` subpath (sync-db, webhook-server, …) is **Bun-only** |
+| `@atlcli/code-highlight` | Node ≥ 20, Bun, browsers | Node/Bun installs Oniguruma; browser conditions install the JavaScript RegExp engine; languages/themes use generated direct loaders |
 | `@atlcli/docx` | Node ≥ 20, Bun, browsers | Browser hosts import `./browser-runtime` first |
 | `@atlcli/pdf` | Node ≥ 20, Bun, browsers | Fully isomorphic |
 | `@atlcli/pdf-compiler-browser` | Node ≥ 20, Bun, browsers | Needs `WebAssembly`; wasm/fonts supplied by the host |
+| `@atlcli/export-jobs` | Node ≥ 20, Bun, browsers | Durable job records, validation, and host-injected persistence ports |
 | `@atlcli/export-macros` | Node ≥ 20, Bun, browsers | Isomorphic; hosts inject walker/client ports |
 | `@atlcli/export-wiring` | Node ≥ 20, Bun, browsers | Isomorphic host wiring: macro ports over a real client, the external-asset policy/fetcher, and the trust routers |
 | `@atlcli/template-pack` | Node ≥ 20, Bun, browsers | Pure byte-in/byte-out (PizZip + WebCrypto) |

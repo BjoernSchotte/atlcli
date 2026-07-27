@@ -93,6 +93,11 @@ const ONIGURUMA_RUNTIME_RES: RegExp[] = [
   /\bfindNextOnigScannerMatch\b/g,
   /Must invoke loadWasm first[.]/g,
 ];
+const AGGREGATE_SHIKI_RUNTIME_RES: RegExp[] = [
+  /\bbundle_full_exports\b/g,
+  /\blangs-bundle-full\b/g,
+  /["'`]shiki(?:\/(?:langs|themes))?["'`]/g,
+];
 
 export interface OutputArtifact {
   path: string;
@@ -289,6 +294,9 @@ export function scanText(text: string): string[] {
   for (const re of ONIGURUMA_RUNTIME_RES) {
     for (const m of text.matchAll(re)) found.add(m[0].trim());
   }
+  for (const re of AGGREGATE_SHIKI_RUNTIME_RES) {
+    for (const m of text.matchAll(re)) found.add(m[0].trim());
+  }
   const findings = [...found];
   if (
     text.includes("Object.freeze(JSON.parse(`") &&
@@ -304,6 +312,18 @@ export function scanText(text: string): string[] {
 /** Verify that every binary runtime asset needed for browser exports exists. */
 export function validatePdfArtifactInventory(artifacts: OutputArtifact[]): string[] {
   const issues: string[] = [];
+  for (const artifact of artifacts) {
+    if (/(?:^|\/)(?:onig|shiki)[^/]*[.]wasm$/i.test(artifact.path)) {
+      issues.push(`Oniguruma WASM: unexpected extension artifact ${artifact.path}`);
+    }
+    if (
+      /(?:^|\/)(?:langs|themes|bundle-full|bundle-web)-[^/]+[.]js$/i.test(
+        artifact.path,
+      )
+    ) {
+      issues.push(`aggregate Shiki catalogue: unexpected extension artifact ${artifact.path}`);
+    }
+  }
   for (const requirement of REQUIRED_PDF_ARTIFACTS) {
     const matches = artifacts.filter((artifact) => requirement.pattern.test(artifact.path));
     if (matches.length !== 1) {

@@ -19,6 +19,7 @@ baseline to compare against.
 - [How the numbers are measured](#how-the-numbers-are-measured)
 - [Measured envelope: engine tier](#measured-envelope-engine-tier)
 - [Measured envelope: end-to-end tier](#measured-envelope-end-to-end-tier)
+- [Browser code-highlighting trace](#browser-code-highlighting-trace)
 - [What the numbers mean](#what-the-numbers-mean)
 - [Reproducing a measurement](#reproducing-a-measurement)
 - [Trend tracking in CI](#trend-tracking-in-ci)
@@ -41,8 +42,10 @@ the parse, and the resolver entirely. Quote the end-to-end tier for that claim, 
 that the network is excluded.
 :::
 
-The Chromium-hosted variant (browser heap, module-worker transfer cost) is **out of scope**
-for both tiers today. It is an open question, not a silently dropped requirement.
+The full 500-page Chromium-hosted variant (browser heap and module-worker transfer cost) is
+**out of scope** for both tiers today. A focused browser-harness trace does cover code
+highlighting module requests and cold/warm initialization; do not present that narrower
+measurement as the full export envelope.
 
 ## How the numbers are measured
 
@@ -136,6 +139,31 @@ input, not throughput — see the warning under [Wall clock](#wall-clock).
 
 † **Warm re-runs byte-identical input**, so Typst's incremental cache absorbs most of the
 work. It is a lower bound on one-time setup cost, never a steady-state export time.
+
+## Browser code-highlighting trace
+
+The browser export harness records Shiki's active request path separately from the large
+export envelope. A fresh Chromium context first proves that no core, RegExp engine, theme,
+grammar, or code-font resource is requested before explicit preparation/export intent. A
+one-language `typescript` / `github-light` preparation then records request names, transfer
+and decoded bytes, and cold/warm initialization time. The warm repeat must issue no new
+JavaScript request.
+
+The generated registry contains a literal loader for every supported canonical language
+and theme, but one selected loader is not necessarily one HTTP request: Shiki registrations
+can reference another grammar and a bundler can factor a small wrapper or shared runtime
+chunk. The Chromium trace therefore asserts the complete selected request set and rejects
+unrelated language/theme or aggregate catalogue chunks instead of assuming a universal
+chunk count.
+
+```bash
+bun run build:browser-export-harness
+bun run --cwd apps/browser-export-harness test:e2e --grep "one-language preparation"
+```
+
+The run writes `apps/browser-export-harness/test-results/highlight-performance/one-language-cold.json`.
+The broader 22-language case in the same suite proves concurrent grammar/core/engine/theme
+loading, cold/warm DOCX byte parity, and deterministic repeat output.
 
 ## What the numbers mean
 
