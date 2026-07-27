@@ -1,43 +1,75 @@
 # Issue #118: Adaptive browser PDF memory
 
-- Status: Proposed for review
+- Status: Phase 0 attribution measured; transport track closed by its gate
+  (2026-07-27)
 - Issue: [#118](https://github.com/BjoernSchotte/atlcli/issues/118)
 - Related: [#119](https://github.com/BjoernSchotte/atlcli/issues/119), [#116](https://github.com/BjoernSchotte/atlcli/issues/116), [#117](https://github.com/BjoernSchotte/atlcli/pull/117)
 - Planning baseline: `b0630fd185dba7f06b023f83bff277034d10ef50` (`main`, 2026-07-27)
 
 ## Decision summary
 
-Implement #118 as a host-neutral, additive PDF pipeline with two independent
-controls:
+Implement #118 as a host-neutral, additive image-profile path plus a measured
+Typst/runtime evaluation:
 
-- `PdfResourceMode = "auto" | "fast" | "balanced"` controls ownership,
-  spooling, copies, and compiler handoff.
-- `PdfImageProfile = "original" | "standard" | "print"` controls optional,
-  deterministic image normalization.
+- `PdfImageProfile = "original" | "standard" | "print"` controls explicit,
+  deterministic image normalization. Existing callers keep `original`; nothing
+  ever silently reduces image quality.
+- The formerly planned `PdfResourceMode = "auto" | "fast" | "balanced"`
+  transport split is **closed by the Phase 0 attribution gate** (see "Gate
+  decision" below): the measured host-side share of the image-heavy peak is
+  14.9%, under the 25% bar this plan set for building the descriptor/lease
+  transport. The transport sections below are retained as an
+  evaluated-and-rejected design record, not as work items.
 
-This separation is normative. Selecting a lower-memory transport must never
-silently reduce image quality. Existing callers that pass neither option keep
-the current `fast + original` behavior.
+Implementation order is evidence-first, and the first gate has been taken:
 
-Implementation order is evidence-first:
-
-1. Phase 0 attributes the measured peak between host-side JS copies and
-   Typst/WASM-internal memory before any transport work is built.
+1. Phase 0 attributed the peak between host-side JS copies and
+   Typst/WASM-internal memory before any transport work was built — measured
+   2026-07-27 on the ≥100 MiB image-heavy corpus: peak 1558.32 MiB, of which
+   85.1% is WASM-internal and 14.9% host-side.
 2. The primary product lever is the explicit image-profile path: smaller
-   decoded rasters shrink both host handoff and Typst's decoded-raster
-   footprint inside WASM.
-3. A set of already-identified redundant copies (checkpoint asset copies,
-   executor blob double allocation, panel download double materialization,
-   duplicate fingerprinting) is removed early so later baselines are honest.
-4. The versioned descriptor/lease path that avoids materializing all source
-   assets in host memory at once is built only if the Phase 0 attribution
-   shows host-side materialization is a large enough share of peak to
-   justify it (kill criterion in the benchmark plan).
+   decoded rasters shrink the dominant in-WASM footprint (1326.56 MiB of the
+   image-heavy peak) as well as host handoff.
+3. The already-identified redundant copies (checkpoint asset copies, executor
+   blob double allocation, panel download double materialization, duplicate
+   fingerprinting) are still removed early; they harvest most of what the
+   ~15% host share offers.
+4. The versioned descriptor/lease path is **not built**: the attribution gate
+   it was conditioned on failed. Its design stays below for the record and is
+   revisited only if future runtime evidence moves the host share above the
+   bar.
 
 Typst still needs each individual asset as complete bytes in its VFS, and
-still produces a complete PDF. This plan therefore promises fewer redundant
-representations and bounded host-side handoff, not streaming Typst
-compilation.
+still produces a complete PDF.
+
+## Gate decision (2026-07-27)
+
+Measured on the deterministic image-heavy corpus (100.29 MiB assets,
+105.23 MiB source bundle, scale 1) through the real store → worker → VFS →
+compile path in the Chrome/V8 harness (Chromium 140.0.7339.16, report
+`atlcli.chrome-memory-image-heavy/v1`; full tables in
+`src/content/docs/reference/export-performance.md`):
+
+- peak (`compiled-held`): 1558.32 MiB total — WASM linear memory 1326.56 MiB
+  (85.1%), host outside WASM 231.76 MiB (14.9%);
+- WASM linear growth: 15.56 → 120.88 (VFS mapped) → 1326.56 MiB (compile);
+- compiled PDF 97.36 MiB; whole-result handoff is 6.2% of peak;
+- contrast, small mixed fixture: 63.3% WASM / 36.7% host at a 137.93 MiB
+  peak — the host share *shrinks* exactly on the workloads this issue
+  targets.
+
+Decisions taken against the gates this plan defined:
+
+1. **Attribution gate (25%): failed at 14.9%.** The descriptor/lease
+   transport (former transport scope: `PdfResourceMode`, `compileLeased()`,
+   V2 checkpoint manifests, browser spool adapters) is not built. Even a
+   zero-copy host transport could reduce the image-heavy peak by at most
+   ~15%.
+2. **Output-handle gate (10%): failed at 6.2%.** The owned/chunked PDF
+   output experiment is not pursued.
+3. Effort concentrates on the explicit image profiles and the Typst/runtime
+   lanes — the only levers that reach the dominant in-WASM share — plus the
+   Phase 0.5 copy-elimination quick wins.
 
 The work is shared by:
 
@@ -47,7 +79,7 @@ The work is shared by:
 - the downstream Forge adapter in `kiteweave-forge-app`.
 
 Forge APIs and lifecycle rules stay outside shared packages. Issue #119 may
-reuse the image and spool contracts, but DOCX packaging is not implemented as
+reuse the image-profile contracts, but DOCX packaging is not implemented as
 part of #118.
 
 Typst is not upgraded merely to change a version number. The planning baseline
@@ -115,30 +147,34 @@ image-heavy browser fixtures.
 ## Goals
 
 1. Preserve the current fast path for small jobs.
-2. Add a balanced path that does not hold every source asset in host memory
-   simultaneously.
-3. Make any image normalization explicit, deterministic, and shared across
-   hosts.
-4. Select `auto` from measured input and host capabilities, not page count
-   alone.
-5. Attribute peak memory between host-side copies and WASM-internal memory
+2. Shrink the dominant in-WASM decoded-raster footprint with explicit,
+   deterministic image profiles shared across hosts.
+3. Remove the identified redundant host-side copies (Phase 0.5) so the ~15%
+   host share is not wasted either.
+4. Attribute peak memory between host-side copies and WASM-internal memory
    before investing in transport plumbing, and stop transport work the
-   attribution cannot justify.
-6. Preserve PDF semantics, accessibility, diagnostics, determinism, and
+   attribution cannot justify — **done and applied 2026-07-27**.
+5. Preserve PDF semantics, accessibility, diagnostics, determinism, and
    cancellation.
-7. Give CLI, extension, ordinary browsers, and Forge the same engine contract
+6. Give CLI, extension, ordinary browsers, and Forge the same engine contract
    while keeping their lifecycle and storage adapters separate.
-8. Measure Typst/runtime candidates independently from pipeline changes.
-9. Leave reusable spool and image-profile primitives for #119 without coupling
-   the PDF and DOCX implementations.
+7. Measure Typst/runtime candidates independently from pipeline changes.
+8. Leave reusable image-profile primitives for #119 without coupling the PDF
+   and DOCX implementations.
 
 ## Non-goals
 
+- building the descriptor/lease transport or the `PdfResourceMode` split:
+  closed by the measured attribution gate (14.9% < 25%); revisit only with
+  new runtime evidence;
+- an owned/chunked PDF output handle: closed by the 10% gate at a measured
+  6.2%;
 - splitting a logical export into chapter PDFs and merging them;
 - calling Typst incremental preview a streaming PDF implementation;
 - changing document layout, tags, outline, links, language, or alt text to save
   memory;
-- silently applying `standard` or `print` under `auto`;
+- silently applying `standard` or `print` — profiles are always an explicit
+  choice;
 - committing customer documents or customer-derived media as fixtures;
 - making OPFS mandatory;
 - a Forge session spool in this iteration: Forge v1 ships `fast` plus explicit
@@ -155,23 +191,22 @@ image-heavy browser fixtures.
 
 ### Compatibility
 
-- Missing options mean `fast + original`.
-- `fast + original` remains byte-identical for the existing deterministic
-  fixtures.
-- The current `PdfSourceBundle` and `PdfCompilePort.compile()` remain supported.
+- Missing options mean `original` on the existing eager path.
+- The existing eager path with `original` remains byte-identical for the
+  existing deterministic fixtures.
+- The current `PdfSourceBundle` and `PdfCompilePort.compile()` remain
+  supported and unchanged.
 - Existing V1 pending job checkpoints remain readable and resume through the
   eager path. They are not rewritten in place.
-- External compile-port implementations do not need to implement leases.
 - The V1 asset path scheme is frozen: paths embed the FNV-1a dedup key and
   the insertion index (`packages/pdf/src/prepare.ts`) and are emitted
   verbatim into the generated Typst source, so changing the dedup key or the
-  descriptor order changes PDF bytes. SHA-256 digests live in descriptors
-  only and never rename asset paths; balanced preparation preserves the
-  canonical V1 asset order.
+  asset order changes PDF bytes. Profile-normalized derivatives are new
+  bytes and therefore new paths by construction; within one profile the
+  scheme stays deterministic.
 
 ### Quality
 
-- `auto` chooses a resource mode only.
 - `original` never resamples a raster image.
 - `standard` and `print` never upscale.
 - JPEG remains JPEG when possible; transparency remains lossless; SVG and other
@@ -181,24 +216,15 @@ image-heavy browser fixtures.
 
 ### Ownership
 
-- Every opened lease is released exactly once on success, failure, abort, or
-  worker termination.
-- Once ownership is handed to a spool or worker, the previous owner does not
+- Once ownership is handed to a worker or sink, the previous owner does not
   retain an avoidable copy.
-- Balanced mode may materialize one complete individual asset because Typst's
-  current `World.file()`/VFS boundary requires it. It must not materialize the
-  entire asset set in the host at once.
-- `release()` is idempotent: "released exactly once" means the lease registry
-  tolerates duplicate release calls without double-freeing spool objects.
-- `read()` is single-pass. Retry after a digest mismatch or transient read
-  failure re-opens a fresh lease through `PdfAssetLeaseReader.open()`; it
-  never re-reads a consumed lease.
-- The fast path keeps today's prepare fetch concurrency
-  (`PDF_ASSET_CONCURRENCY = 4`). Balanced mode lowers effective concurrency
-  by policy inside its own pipeline; it does not change the shared default,
-  so the fast path does not regress.
+- Profile normalization decodes at most one large raster at a time and drops
+  decoder/source buffers before opening the next asset.
+- The prepare fetch concurrency (`PDF_ASSET_CONCURRENCY = 4`) stays the
+  shared default; normalization bounds its own decode slot without changing
+  it, so the fast path does not regress.
 - Cleanup is idempotent and covers prepared input, normalized derivatives,
-  compiler state, output handles, and host object URLs.
+  compiler state, and host object URLs.
 
 ### Truthful claims
 
@@ -215,37 +241,57 @@ image-heavy browser fixtures.
 ```mermaid
 flowchart LR
   A["ADF / blocks / template"] --> P["PDF preparation"]
-  P --> M["Asset manifest + render envelopes"]
-  M --> S{"Resource selector"}
-  S -->|"fast"| E["V1 eager bundle"]
-  S -->|"balanced"| N["Normalize one asset at a time"]
-  N --> H["Host spool"]
-  H --> L["V2 descriptors + leases"]
+  P --> M["Asset metadata + render envelopes"]
+  M --> N["Explicit image profile:
+normalize one asset at a time"]
+  N --> E["Eager source bundle (V1)"]
   E --> C["BrowserPdfCompiler"]
-  L --> C
-  C --> O["Owned PDF result or measured output handle"]
+  C --> O["Owned PDF result"]
   O --> W["Host artifact sink"]
-
-  X["CLI file spool"] --> H
-  Y["Extension IndexedDB"] --> H
-  Z["Browser IndexedDB / optional OPFS"] --> H
-  F["Forge v1: fast + profiles, no spool"] --> E
+  R["Typst/runtime candidate lanes"] -. measured separately .-> C
 ```
 
-Shared packages own document preparation, selection, profiles, descriptors,
-lease semantics, compiler behavior, diagnostics, and reports. Hosts own storage
-implementation, capability detection, worker lifecycle, UI, downloads, and
-recovery.
+Shared packages own document preparation, profiles, compiler behavior,
+diagnostics, and reports. Hosts own worker lifecycle, UI, downloads, and
+recovery. (The former spool/descriptor branch of this diagram fell with the
+transport track.)
 
 ## Public and internal contracts
 
-Names below are the intended shape. Exact file placement may change during the
-contract implementation, but the semantic split must not.
+The remaining public control is the image profile:
+
+```ts
+export type PdfImageProfile = "original" | "standard" | "print";
+```
+
+Naming and coverage constraints that stay binding for the profile path:
+
+- The field is named `imageProfile`, never a bare `profile`: "profile"
+  already means three things in this codebase (`PdfProfile =
+  "tagged" | "pdf-ua-1"`, `request.options.profile`, and the CLI's auth
+  `--profile`).
+- The template logo is a fourth asset source: serialization injects
+  `PdfTemplateSettings.logo.bytes` as a synthetic `assets/atlcli-logo.*`
+  entry, bypassing `PdfAssetResolver`, `validateResolvedAsset`, and
+  `AssetBudget`. Profile normalization must cover it explicitly or the logo
+  ships un-normalized and unverified.
+- `PdfExportJobRequestV1.options` is a closed key set (`onlyKeys` in
+  `packages/export-jobs/src/validation.ts`); the new option extends that
+  allow-list, its validators, and the round-trip tests.
+  `buildResultRecoveryKey` hashes the canonical request, so idempotency
+  absorbs it automatically.
+
+### Evaluated and rejected: descriptor/lease transport (design record)
+
+Everything from here to the end of this section was the transport design this
+plan carried to the attribution gate. **The gate failed (14.9% host share
+< 25%); none of this is a work item.** It stays so a future revisit starts
+from the evaluated design and its named constraints instead of rediscovering
+them.
 
 ```ts
 export type PdfResourceMode = "auto" | "fast" | "balanced";
 export type ResolvedPdfResourceMode = "fast" | "balanced";
-export type PdfImageProfile = "original" | "standard" | "print";
 
 export interface PdfResourcePolicyV1 {
   mode: PdfResourceMode;
@@ -289,32 +335,11 @@ export interface PdfLeasedSourceBundleV2 {
 }
 ```
 
-Naming constraints from the existing code:
-
-- The descriptor's image-profile field is `imageProfile`, not `profile`:
-  "profile" already means three things in this codebase (`PdfProfile =
-  "tagged" | "pdf-ua-1"`, `request.options.profile` carrying the same value,
-  and the CLI's auth `--profile`). A fourth bare `profile` is a validation
-  and readability hazard.
-- `PdfExportLogoV1` in `@atlcli/export-jobs` already carries
-  `assetRef/sha256/byteLength/mediaType` — a near-duplicate of
-  `PdfAssetDescriptorV2`. The contract implementation either reuses the
-  descriptor for the logo or documents why both shapes exist.
-- The template logo is a fourth asset source: serialization injects
-  `PdfTemplateSettings.logo.bytes` as a synthetic `assets/atlcli-logo.*`
-  entry, bypassing `PdfAssetResolver`, `validateResolvedAsset`, and
-  `AssetBudget`. The V2 descriptor/sink flow must cover it explicitly or it
-  will be dropped or unverified in balanced mode.
-- The selector input is not named `PdfResourceEstimateV1`:
-  `ResourceEstimateV1` already exists in `@atlcli/export-jobs`
-  (`heapBytes/spoolBytes/outputBytes/rasterPixels/confidence`) and is
-  threaded through checkpoints, reservations, and recovery keys. The
-  selector input is named `PdfSelectorInputV1` and references or extends the
-  existing estimate instead of duplicating a near-identical type.
-- `rehydratePreparedPdfExportV1` does not exist; the real code is the untyped
-  `hydrate()` walker duplicated in both host stores. Phase 2 decides whether
-  V2 unifies the two walkers or replaces them with typed manifest
-  materialization; it must not add a third copy.
+Naming constraints the rejected design had already absorbed (kept with it):
+`PdfExportLogoV1` near-duplicates the descriptor shape; a selector input must
+not collide with the existing `ResourceEstimateV1`; the real rehydration code
+is an untyped `hydrate()` walker duplicated in both host stores, and any
+future revisit must unify rather than add a third copy.
 
 Add an optional leased capability instead of widening the current method into a
 breaking union:
@@ -369,8 +394,12 @@ filenames through descriptors or diagnostics.
 
 ## Adaptive selection
 
-The selector receives a privacy-safe `PdfSelectorInputV1` (naming constraints
-above):
+**Closed with the transport track.** With no second transport to select, no
+`auto` mode ships and no selector is built; profiles remain an explicit user
+choice (nothing auto-reduces quality). The section is kept as part of the
+rejected-design record.
+
+The selector was to receive a privacy-safe `PdfSelectorInputV1`:
 
 - serialized main/template byte count;
 - asset count, aggregate bytes, largest asset, and deduplicated bytes;
@@ -457,7 +486,7 @@ The final value is a measured decision, not a planning assertion.
 
 - inspect and plan without decoding;
 - decode at most one large raster at a time;
-- normalize, hash, and spool immediately;
+- normalize and hash immediately;
 - drop decoder/source buffers before opening the next asset;
 - deduplicate source and derivative by deterministic key;
 - preserve EXIF orientation in visible output but strip unrelated metadata;
@@ -474,6 +503,8 @@ CLI, extension, normal browser, and Forge, and compatible with their CSPs.
 Host-specific Canvas output is not the canonical path if it breaks byte parity.
 
 ## Leased compiler handoff
+
+**Rejected-design record (attribution gate failed); not a work item.**
 
 Balanced preparation writes through `PdfPreparedAssetSinkV2` while assets are
 resolved and normalized. It does not first construct
@@ -515,6 +546,13 @@ support. It must not become a required Forge capability and must not be called
 PDF streaming.
 
 ## Checkpoint and artifact changes
+
+**Rejected-design record except where marked.** `PdfReadyToRenderCheckpointV2`
+and manifest-only materialization fell with the transport track. Two facts in
+this section stay live: the artifact digest-ordering constraint (still binding
+for any future streaming sink) and the output-handle gate, which is now
+**closed by measurement** — whole-result handoff is 6.2% of the image-heavy
+peak, under the 10% bar.
 
 Add `PdfReadyToRenderCheckpointV2` in `@atlcli/export-wiring`:
 
@@ -558,23 +596,16 @@ experimental; the underlying PDF is still complete.
 
 There are two related execution shapes and both must be covered:
 
-- Normal CLI export plus retry/rerun use the durable ordinary-job path. They use
-  the existing `FileExportSpoolStore` and V2 descriptors without rehydrating
-  every blob.
+- Normal CLI export plus retry/rerun use the durable ordinary-job path with
+  the profile persisted in the request.
 - Public consumers may call `runPdfExport` (exported by `@atlcli/pdf`, with
-  `@atlcli/export-node` supplying the env) directly. They keep the eager
-  compatibility path and may supply a file spool for explicit/selected
-  balanced mode.
+  `@atlcli/export-node` supplying the env) directly and pass the profile as
+  an additive option.
 
-`FileExportSpoolStore` is genuinely streaming with incremental SHA-256, but
-every `put`/`stat` currently rescans the objects directory under a global
-lock; per-asset balanced spooling makes that O(n²). Phase 3 CLI wiring
-includes an indexed or cached listing so a ~1000-asset spool stays linear.
-
-Add options, names subject to CLI review:
+Add one option, name subject to CLI review (`--pdf-memory` fell with the
+transport track):
 
 ```text
---pdf-memory auto|fast|balanced
 --pdf-images original|standard|print
 ```
 
@@ -587,40 +618,27 @@ collision-safe, cancellation-aware, and deleted after success/failure.
 
 Treat preview and durable export differently:
 
-- Preview remains `fast + original` by default for latency and supersession.
-  It may expose explicit profiles later, but #118 must not make preview queue
-  behind a durable balanced export unexpectedly. Preview prepare runs in the
-  side panel today, so its peak is a panel concern that executor-store work
-  does not touch.
-- Durable jobs store V2 descriptors in IndexedDB and read asset blobs inside
-  the offscreen/compiler worker. "No source or PDF bytes in runtime messages"
-  is already true today and becomes a regression guard, not a work item.
-- Retiring the legacy PDF job/IDB bridge is a Phase 3 exit criterion with its
-  own commit, not a side effect: today every productive common job
-  re-persists its complete bundle into the old `atlcli-pdf` store through
-  `createOffscreenPrivatePdfCompilePort`, pays the 64 MiB per-job cap
-  (currently the tightest limit in the whole chain), and reads the complete
-  PDF back out. V2 spooling gains nothing while that bridge remains on the
-  productive path. The bridge stays only as a compatibility path for callers
-  that still require V1, and its 64 MiB limit is not raised to make V2
-  benchmarks pass.
-- Consolidate the limit zoo in one decision table: the legacy 64/128 MiB
-  caps, the injected executor spool limits (128/256/512 MiB), the
-  executor-store defaults (256/384/512 MiB), and the reservation pool's
-  128 MiB persisted-spool budget currently disagree.
-- Quota is self-accounted today; there is no `navigator.storage.estimate()`
-  in productive code. Phase 3 decides explicitly whether balanced mode adds
-  an origin-quota probe or keeps self-accounting.
+- Preview remains `original` by default for latency and supersession; the
+  durable export UI exposes the explicit profile. Preview prepare runs in the
+  side panel today, so its peak is a panel concern.
+- "No source or PDF bytes in runtime messages" is already true today and
+  stays a regression guard.
+- The legacy PDF job/IDB bridge (64 MiB per-job cap, full bundle re-persist
+  plus result read-back on every productive common job) is no longer a
+  transport prerequisite — it is now an optional host-copy cleanup in the
+  quick-win class. Its caps are not raised for benchmarks; the harness uses
+  the benchmark-only Symbol seam instead.
+- Consolidating the limit zoo (legacy 64/128 MiB, injected executor spool
+  limits 128/256/512 MiB, executor-store defaults 256/384/512 MiB,
+  reservation pool 128 MiB) remains worthwhile hygiene independent of the
+  gate outcome.
 - Blob-backed IndexedDB storage was already measured and rejected on Chrome
-  140 (`packages/pdf/src/bytes-handle.ts` documents the experiment and why
-  chunk-retention assumption (ii) failed). Revisiting it starts by re-running
-  `bench:memory-chrome`, not by assuming.
-- Avoid the current pattern of collecting every stored blob before the
-  `hydrate()` walker rebuilds the prepared export.
+  140 (`packages/pdf/src/bytes-handle.ts`); revisiting it starts by
+  re-running `bench:memory-chrome`, not by assuming.
 - Preserve the existing service-worker restart model, single-heavy-work slot,
   cancellation, and job recovery.
 - Termination, abort, or quota failure removes partial derivatives and
-  releases object URLs/output handles.
+  releases object URLs.
 
 Packed-MV3 validation exists today: two Playwright suites drive the packed
 `.output/chrome-mv3` build in CI (worker E2E and CDP-driven offscreen job
@@ -629,16 +647,14 @@ harness.
 
 ### Normal browser and public package consumers
 
-The browser export harness is the normative quantitative proof host. Implement
-a browser spool adapter with IndexedDB as the portable baseline and OPFS as an
-optional measured capability. Provide an in-memory eager fallback for small jobs
-and browsers lacking persistent storage.
+The browser export harness is the normative quantitative proof host (the
+spool adapter it was to gain fell with the transport track).
 
-The public browser entry points expose the additive policy/capability types
-without extension imports. A plain Vite consumer must be able to:
+The public browser entry points expose the additive profile type without
+extension imports. A plain Vite consumer must be able to:
 
-- run fast and balanced modes;
-- cancel during normalize, spool, VFS handoff, layout, and output;
+- run every image profile;
+- cancel during normalize, VFS handoff, layout, and output;
 - recover from a terminated worker;
 - load WASM/fonts/codec from same-origin assets under a strict CSP;
 - receive one artifact without a host-specific global.
@@ -727,6 +743,11 @@ touch-up.
 
 ## Typst/runtime evaluation
 
+With the transport track closed, this evaluation is the co-primary lever next
+to image profiles: 85.1% of the image-heavy peak lives inside the runtime,
+and only runtime-side changes (newer Typst/Krilla, narrower build, a gated
+memory mode) can move what profiles do not.
+
 ### Baseline
 
 Record and reproduce:
@@ -809,20 +830,18 @@ The image-heavy corpus needs a pinned deterministic encoder for realistic
 compressible JPEG/PNG content — seeded noise does not compress like
 photographs.
 
-The current product budget is 50 MiB aggregate and 25 MiB per asset. Phase 0
-uses an explicit benchmark-only budget injection for the at-least-100-MiB
-corpus. The per-asset half of that budget currently has no injection seam
-(`AssetBudget` accepts a `maxTotalBytes` override, but the per-file cap is a
-module constant checked in `prepare.ts`); Phase 0 adds a benchmark-only seam
-for both halves. Product defaults and Forge's stricter limits remain
-unchanged; benchmark configuration must never leak into release
-configuration.
+The current product budget is 50 MiB aggregate and 25 MiB per asset.
+**Done:** benchmark-only `Symbol.for` seams now exist for both budget halves
+(`atlcli.pdf.benchmark-asset-budget`) and for the legacy extension job-store
+caps (`atlcli.extension.benchmark-pdf-job-limits`), with covering tests that
+prove product defaults unchanged without the hooks. Benchmark configuration
+must never leak into release configuration.
 
-| Corpus | Required content | Purpose |
-|---|---|---|
-| text-heavy | approximately 500 pages, headings, tables, code, links, outlines | layout/Typst high-water |
-| mixed | representative chapters, repeated logos, diagrams/SVG, screenshots, captions, wrapped media, JPEG photos | normal export crossover |
-| image-heavy | at least 100 MiB aggregate realistic compressed PNG/JPEG, transparency, repeats, inline and full-width media | asset copies, normalization, VFS pressure |
+| Corpus | Required content | Purpose | State |
+|---|---|---|---|
+| text-heavy | approximately 500 pages, headings, tables, code, links, outlines | layout/Typst high-water | recipe pending |
+| mixed | representative chapters, repeated logos, diagrams/SVG, screenshots, captions, wrapped media, JPEG photos | normal export crossover | small mixed fixture measured; full recipe pending |
+| image-heavy | at least 100 MiB aggregate realistic compressed PNG/JPEG, transparency, repeats, inline and full-width media | asset copies, normalization, VFS pressure | **done and measured** (`atlcli.image-heavy-corpus/1`, 100.29 MiB, manifest `95b46f89…`) |
 
 Record cold and warm runs separately. Pin browser, OS/architecture, fixture,
 compiler, fonts, profile, selector, and runtime hashes.
@@ -857,20 +876,18 @@ Collect:
 The harness must separate same-input warm reuse from changed-input runs.
 Warm-runtime retention is reported, not mistaken for an active-job leak.
 
-Attribution gate (kill criterion): the Phase 0 report states, per corpus,
-what share of peak is host-side versus WASM-internal. If the host-side share
-on the image-heavy corpus is below the threshold agreed in the Phase 0
-review (working assumption: 25%), the descriptor/lease transport work in
-Phases 2–3 is re-scoped or dropped, and effort shifts to image profiles plus
-the Typst/runtime lanes. The lease pipeline must not be built merely because
-it was planned.
+Attribution gate (kill criterion) — **taken 2026-07-27**: the image-heavy
+host-side share measured 14.9% against the 25% bar, so the descriptor/lease
+transport work was dropped and effort shifted to image profiles plus the
+Typst/runtime lanes (see "Gate decision"). The lease pipeline was not built
+merely because it was planned — which is exactly what this gate was for.
 
 ## Acceptance criteria
 
 ### Functional and parity
 
-- `fast + original` is byte-identical to the baseline fixtures.
-- `balanced + original` is byte-identical to fast for the same pinned runtime.
+- `original` on the existing eager path is byte-identical to the baseline
+  fixtures.
 - `standard` and `print` are byte-deterministic across repeated runs and across
   first-party hosts using the same runtime/codec.
 - All modes preserve page count, geometry, tags, reading order, outline,
@@ -883,26 +900,26 @@ it was planned.
 
 ### Memory and performance
 
-- The Phase 0 attribution report exists, and the lease pipeline is built only
-  if its host-share gate passes.
-- No balanced checkpoint materialization loads the full asset set.
-- At most one unbounded individual source/derivative buffer is leased outside
-  Typst at a time; declared asset/pixel budgets still apply.
-- On the image-heavy corpus, the mode selected for first-party `auto` lowers
-  browser peak by at least 40% relative to fast. If it does not, `auto` must not
-  select it.
-- Small fast-path exports do not regress beyond the benchmark tolerance agreed
-  in Phase 0.
+- The Phase 0 attribution report exists — **satisfied**; its gate closed the
+  lease pipeline (14.9% < 25%).
+- Normalization decodes at most one large raster at a time; declared
+  asset/pixel budgets still apply.
+- On the image-heavy corpus, the `standard` profile lowers total browser peak
+  by at least 40% relative to `original` before documentation recommends it
+  as the large-tree default (candidate bar; confirmed or revised with the
+  Phase 1 measurements).
+- Small `original` exports do not regress beyond the benchmark tolerance
+  agreed in Phase 0.
 - A Typst custom memory mode needs at least 25% lower peak on text-heavy and
   mixed fixtures.
-- An output-handle implementation is pursued only if whole-result handoff is at
-  least 10% of measured peak.
+- Output-handle work: **closed by measurement** (whole-result handoff 6.2% of
+  peak, under the 10% bar).
 
 ### Lifecycle
 
-- Abort at every phase releases leases and partial spool objects.
-- Retry uses the persisted resolved policy and produces the same artifact.
-- Extension service-worker restart resumes a durable V2 job.
+- Abort at every phase releases decoder buffers and partial derivatives.
+- Retry uses the persisted image profile and produces the same artifact.
+- Extension service-worker restart resumes a durable job with its profile.
 - Worker crash produces a classified failure and a fresh next worker.
 - Quota/capability failure occurs before expensive compilation where possible
   and has an actionable fallback.
@@ -924,30 +941,28 @@ it was planned.
 
 ### Unit
 
-- pure selector thresholds, capabilities, fallback, and persisted decisions;
 - image metadata, render envelopes, no-upscale math, alpha/orientation, and
   deduplication;
 - normalization determinism and privacy-safe diagnostics;
-- lease open and single-pass read, idempotent release, and re-open on retry;
-- abort/failure/corruption/digest mismatch;
-- V1 and V2 checkpoint compatibility;
-- incremental fingerprint and output hash parity;
-- spool quota and cleanup.
+- abort/failure/corruption handling in the normalize path;
+- persisted profile in requests, checkpoints, and recovery keys;
+- benchmark seams: product caps provably unchanged without the hooks
+  (**exists** for both seams).
 
 ### Package integration
 
-- `@atlcli/pdf` fast/balanced parity with real fixtures;
-- real `BrowserPdfCompiler.compileLeased()` with pinned WASM/fonts;
-- `@atlcli/export-wiring` V2 prepare, commit, resume, render, retry;
-- Node file spool and browser IndexedDB spool contract suites;
-- artifact chunk handling without concatenation;
-- real PDF conformance and accessibility inspection.
+- `@atlcli/pdf` profile parity with real fixtures (`original` byte-identical;
+  `standard`/`print` deterministic);
+- real `BrowserPdfCompiler` compile of profile-normalized corpora with pinned
+  WASM/fonts (**exists** for `original` via the image-heavy decode proof);
+- real PDF conformance and accessibility inspection per profile.
 
 ### Shape integration
 
 - CLI durable export/retry plus direct Node consumer, including compiled CLI
   `dist` binary;
-- browser harness fast/balanced/profile/cancel/worker-restart cases;
+- browser harness profile/cancel/worker-restart cases plus the attribution
+  benchmarks (**mixed and image-heavy exist**);
 - packed MV3 extension with IndexedDB, offscreen document, service-worker
   restart, quota, cancel, and preview non-regression;
 - a plain public Vite consumer under strict CSP;
@@ -972,22 +987,22 @@ memory claim.
 
 ## Delivery phases
 
-### Phase 0 — benchmark before behavior
+### Phase 0 — benchmark before behavior (mostly done)
 
-1. Add deterministic fixture generators and manifests, extending
-   `packages/export-fixtures` and the existing bench recipes.
-2. Add phase probes, CDP collection, WASM high-water, and report schema on
-   top of the existing extension memory harness.
-3. Reproduce the pinned baseline in cold/warm runs.
-4. Publish the host-versus-WASM attribution per corpus and take the lease
-   pipeline go/no-go decision against the attribution gate.
-5. Record the selector candidate curves and tolerances.
-6. Fix documentation that currently treats the full browser 500-page run as
-   out of scope.
+1. ~~Attribution instrumentation and report schema~~ — **done**
+   (`atlcli.pdf-host-wasm-attribution/1`, mixed + image-heavy reports).
+2. ~~Image-heavy corpus~~ — **done** (`atlcli.image-heavy-corpus/1`,
+   100.29 MiB, Typst-decode-proven, benchmark seams landed).
+3. ~~Host-versus-WASM attribution and the lease go/no-go decision~~ —
+   **done**: gate failed at 14.9%; transport dropped.
+4. Remaining: text-heavy and full mixed corpus recipes (they calibrate the
+   profile evaluation, no longer a selector), fast-path regression
+   tolerances, and the documentation fix for the stale browser-500-page
+   scope language.
 
-Exit: committed benchmark reports can distinguish preparation, host copies,
-VFS, layout/PDF, result handoff, and retained warm runtime — and state the
-host-side share the lease pipeline decision uses.
+Exit: committed benchmark reports distinguish preparation, host copies, VFS,
+layout/PDF, result handoff, and retained warm runtime — **met for the
+attribution question**; remaining items ride along with Phase 1.
 
 ### Phase 0.5 — copy-elimination quick wins
 
@@ -1017,65 +1032,43 @@ rasters reduce host handoff and WASM-internal decode footprint at once.
    `packages/docx/src/image.ts`, not forked).
 2. Propagate render envelopes from serialization.
 3. Bake off deterministic codecs across Bun and browsers.
-4. Implement one-at-a-time normalize/hash/spool.
+4. Implement one-at-a-time normalize/hash with bounded decode buffers.
 5. Add `original`, candidate `standard`, and `print` tests.
 
 Exit: explicit profiles are deterministic and parity-tested; exact PPI values
 are chosen from evidence.
 
-### Phase 2 — descriptor/lease pipeline (gated by Phase 0 attribution)
+### ~~Descriptor/lease pipeline and auto selection~~ — closed by the gate
 
-Runs only if the Phase 0 attribution gate passes.
+The former Phase 2 (descriptor/lease pipeline), the balanced parts of host
+wiring, and the former Phase 4 (auto selection) are **not built**: the
+attribution gate they were conditioned on failed at 14.9%. Their design
+survives above as the rejected-design record.
 
-1. Add public additive policy, descriptor, lease, and compiler contracts.
-2. Add `PdfReadyToRenderCheckpointV2` (discriminated union through the V1
-   store contract, both host stores, recovery key, and executor tests).
-3. Change V2 stores to materialize manifests only, unifying or replacing the
-   duplicated `hydrate()` walkers.
-4. Implement `compileLeased()` with the worker-side lease reader and the
-   chunk-pull fallback protocol, plus incremental verification.
-5. Hash/write artifact chunks without whole-result concatenation where the
-   current sink permits it.
-6. Measure optional `set_access_model`/OPFS separately.
+### Phase 2 — Typst/runtime lanes (promoted)
 
-Exit: balanced/original is byte-identical, lifecycle-complete, and no host
-materializes all assets.
+1. Compare runtime candidate lanes without pipeline changes, on the measured
+   corpora (image-heavy first: it is where the 1.3 GiB in-WASM peak lives).
+2. Evaluate a gated memory-mode build only after the published-candidate
+   results are in.
+3. Upstream viable runtime changes before adopting a long-lived fork.
 
-### Phase 3 — first-party host wiring
+Exit: adopt, reject, or defer each candidate with a standalone benchmark
+report on the same corpora as the baseline.
 
-1. Wire CLI durable jobs and the direct Node compatibility path (including
-   the spool-store listing fix).
-2. Wire normal browser harness and public consumer.
-3. Wire extension durable jobs; keep preview fast by default.
-4. Retire the legacy extension PDF job/IDB bridge for common jobs.
-5. Ship report-only auto selection with defined report sinks.
-6. Run real E2E and packed-host checks.
+### Phase 3 — first-party host wiring for profiles
 
-Exit: each first-party host passes its parity and lifecycle matrix, and the
-legacy bridge is no longer on the productive path.
+1. Wire the CLI option and the direct Node consumer path.
+2. Wire the normal browser harness and public consumer.
+3. Wire extension durable jobs and export UI; keep preview `original` by
+   default.
+4. Optional host-copy cleanups in the same pass where cheap: legacy-bridge
+   retirement, limit-zoo consolidation.
+5. Run real E2E and packed-host checks.
 
-### Phase 4 — activate measured auto selection
+Exit: each first-party host passes its profile parity and lifecycle matrix.
 
-Runs only if Phases 2–3 shipped balanced mode.
-
-1. Freeze selector thresholds/version from Phase 0–3 results.
-2. Enable active `auto` host by host behind a rollback switch.
-3. Require the 40% image-heavy target before balanced auto-selection.
-4. Publish diagnostics and updated performance guidance.
-
-Exit: auto is predictable, persisted, observable, and safely reversible.
-
-### Phase 5 — optional Typst and output experiments
-
-1. Compare runtime candidate lanes without pipeline changes.
-2. Evaluate a gated memory-mode build only after shared pipeline wins are
-   measured.
-3. Evaluate owned/chunked output only if the 10% gate is met.
-4. Upstream viable runtime changes before adopting a long-lived fork.
-
-Exit: adopt, reject, or defer each candidate with a standalone benchmark report.
-
-### Phase 6 — downstream Forge proof
+### Phase 4 — downstream Forge proof
 
 1. Pin the exact atlcli candidate (`EXPECTED_COMMIT` plus `EXPECTED_PACKAGES`
    atomically).
@@ -1093,22 +1086,26 @@ tree-scale claims remain deferred until that shape exists.
 
 Keep results attributable with logical conventional commits:
 
-1. `test(pdf): add deterministic browser memory corpus`
-2. `perf(export-wiring): remove redundant checkpoint asset copies`
-3. `perf(extension): stream panel downloads through pdf bytes handles`
-4. `feat(export-media): add deterministic image profiles`
-5. `feat(pdf): add leased source bundle contracts`
-6. `feat(export-wiring): persist pdf v2 asset manifests`
-7. `feat(pdf-browser): compile leased assets sequentially`
-8. `feat(cli): add adaptive pdf resource options`
-9. `feat(extension): spool balanced pdf jobs`
-10. `perf(extension): retire legacy pdf job bridge`
-11. `perf(pdf): enable measured automatic resource selection`
-12. optional `perf(pdf-browser): update measured typst runtime`
-13. `docs: document adaptive browser pdf memory`
+Landed on this branch already:
+`test(pdf): attribute chrome compiler memory between host and wasm`,
+`test(pdf): add deterministic image-heavy benchmark corpus`,
+`test(pdf): measure image-heavy host-versus-wasm attribution`.
 
-Do not mix the runtime upgrade, pipeline contract, and auto threshold in one
-commit. Each should be independently revertible.
+Upcoming:
+
+1. `perf(export-wiring): remove redundant checkpoint asset copies`
+2. `perf(extension): stream panel downloads through pdf bytes handles`
+3. `feat(export-media): add deterministic image profiles`
+4. `feat(pdf): apply explicit image profiles in preparation`
+5. `feat(cli): add pdf image profile option`
+6. `feat(extension): expose pdf image profiles for durable jobs`
+7. `perf(pdf-browser): benchmark typst runtime candidate lanes`
+8. optional `perf(pdf-browser): update measured typst runtime`
+9. optional `perf(extension): retire legacy pdf job bridge`
+10. `docs: document pdf image profiles and measured envelopes`
+
+Do not mix a runtime upgrade and a profile-pipeline change in one commit.
+Each should be independently revertible.
 
 ## Documentation updates
 
@@ -1121,9 +1118,10 @@ Update in the same implementation PRs:
   modes/profiles, measured results, and removal of stale scope language;
 - CLI reference: options, defaults, reports, and troubleshooting;
 - Confluence export guides: quality profile examples and warnings;
-- browser package/consumer docs: spool capability and CSP assets;
-- extension docs/UI copy: fast preview versus durable balanced jobs;
-- changelog and migration notes for additive V2 contracts.
+- browser package/consumer docs: profile capability and CSP assets;
+- extension docs/UI copy: preview default versus durable jobs with explicit
+  profiles;
+- changelog and migration notes for the additive profile option.
 
 The separate Forge consumer PR updates `specs/SPIKE.md`, proof metadata, runtime
 pin, resource hashes, limitations, and production evidence.
@@ -1134,7 +1132,7 @@ Share only the format-neutral contracts:
 
 - image profile and render-envelope model;
 - deterministic normalizer;
-- spool references, leases, budgets, and cleanup;
+- asset budgets and cleanup rules;
 - fixture media recipes and privacy rules;
 - host capability reporting.
 
@@ -1147,40 +1145,44 @@ waits for the other's format engine after the shared primitives land.
 
 | Risk | Mitigation |
 |---|---|
-| Balanced mode only moves bytes and Typst VFS still dominates | measure host and WASM high-water separately; gate auto on total peak |
-| Host share of peak too small to justify the lease pipeline | Phase 0 attribution gate with an explicit re-scope/kill rule |
-| SHA-256 dedup or descriptor order changes asset paths and breaks byte parity | frozen V1 path scheme; digests in descriptors only; canonical order preserved |
-| Legacy extension bridge re-materializes bundles behind the new path | bridge retirement is a Phase 3 exit criterion with its own commit |
+| ~~Balanced mode only moves bytes and Typst VFS still dominates~~ | **confirmed by measurement (85.1% WASM at peak); transport dropped — this risk materialized and the gate did its job** |
+| Profiles alone miss the 40% bar on some trees | measure per corpus; runtime lanes as the second lever; honest guidance instead of a silent default |
 | Normalization changes layout or visible quality | separate explicit profile; render envelopes; visual and semantic parity |
 | Browser codecs differ by platform | pin one deterministic cross-host codec; reject Canvas-only normative output |
-| Spool quota fails late | estimate and reserve before normalization; actionable auto fallback |
-| V2 recovery breaks existing jobs | additive checkpoint version; retain V1 eager reader |
-| OPFS unavailable or lifecycle-sensitive | IndexedDB portable baseline; OPFS optional; Forge eager/session fallback |
-| Worker termination leaks objects | lease registry plus idempotent `finally`; crash/restart tests |
+| Profile derivative changes asset paths and breaks `original` parity | frozen V1 path scheme; `original` never re-encodes |
+| Worker termination leaks decode buffers | idempotent `finally` cleanup; crash/restart tests |
 | A runtime upgrade hides the real gain | isolated commits and candidate lanes |
 | Custom Typst fork becomes permanent | upstream-first boundary and high adoption threshold |
-| Benchmarks use synthetic noise unlike real pages | realistic PNG/JPEG recipes, repeated assets, mixed corpus, documented limits |
+| Benchmarks use synthetic noise unlike real pages | realistic PNG/JPEG recipes (pinned encoders, measured 0.36/0.44 B/px), repeated assets, mixed corpus, documented limits |
 | Forge proof overstates current product shape | page-only gates now; tree-scale proof only after executable tree/jobs |
 
 ## Unresolved questions
 
 No product decision blocks implementation. The conservative defaults are:
-`fast + original`, no automatic quality reduction, no mandatory OPFS, and no
-Forge session spool (Forge v1 is `fast` plus explicit profiles).
+`original`, no automatic quality reduction, and no Forge session spool
+(Forge v1 is the eager path plus explicit profiles).
 
-The following questions are intentionally resolved by measured phase gates:
+Resolved by measurement (2026-07-27):
 
-1. What share of the image-heavy peak is host-side versus WASM-internal, and
-   does it pass the attribution gate that justifies the lease pipeline?
-2. Which exact `standard` PPI in the 160–200 range gives the best visual/peak
-   trade-off, and is approximately 300 PPI the correct `print` value?
-3. Which deterministic codec satisfies Bun, extension, normal browser, Forge,
+- Host-versus-WASM share on the image-heavy corpus: **14.9% host — the
+  attribution gate failed and the lease pipeline is not built.**
+- Complete-PDF handoff share of peak: **6.2% — the output-handle experiment
+  is not pursued.**
+- Selector thresholds: moot; no transport to select.
+- typst.ts access-model plus worker OPFS: moot as a copy-reduction path for
+  the same reason.
+
+Still intentionally resolved by measured phase gates:
+
+1. Which exact `standard` PPI in the 160–200 range gives the best visual/peak
+   trade-off, and is approximately 300 PPI the correct `print` value? (The
+   image-heavy attribution predicts the ceiling: photos render at content
+   width, so `standard` should cut decoded pixels by roughly 4x — measure,
+   do not assume.)
+2. Which deterministic codec satisfies Bun, extension, normal browser, Forge,
    CSP, license, size, and parity requirements?
-4. At which input/capability thresholds should selector V1 choose balanced?
-5. Does typst.ts access-model plus worker OPFS reduce total peak enough to
-   justify the additional capability path?
-6. Does a narrower or newer Typst runtime improve runtime peak, not only WASM
+3. Does a narrower or newer Typst runtime improve runtime peak, not only WASM
    size?
-7. Can a maintainable Typst memory mode pass the 25% and parity gates?
-8. Is complete-PDF handoff at least 10% of peak, justifying an output-handle
-   experiment?
+4. Can a maintainable Typst memory mode pass the 25% and parity gates?
+5. Does the `standard` profile clear the 40% image-heavy reduction bar that
+   would let documentation recommend it for large trees?
