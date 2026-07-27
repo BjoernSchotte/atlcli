@@ -17,6 +17,7 @@ entrypoint's full symbol list and transitive type closure is committed and CI-gu
 
 - [Stability classes](#stability-classes)
 - [Document model: ExportBlock & storageToBlocks](#document-model-exportblock--storagetoblocks)
+- [ADF media discovery and targeted attachments](#adf-media-discovery-and-targeted-attachments)
 - [Tree export: TreeSource, fetchExportTree, composeChapters](#tree-export-treesource-fetchexporttree-composechapters)
 - [DOCX engine: ExportEnv & runExport](#docx-engine-exportenv--runexport)
 - [PDF engine: PdfExportEnv & runPdfExport](#pdf-engine-pdfexportenv--runpdfexport)
@@ -45,6 +46,44 @@ entrypoint's full symbol list and transitive type closure is committed and CI-gu
 - `ExportNote` with `code: ExportNoteCode` — every note code is a member of the frozen
   `EXPORT_NOTE_CODES` registry; renaming or removing one is a breaking change.
 - `htmlToExportBlocks` — the export_view HTML fallback walker.
+
+## ADF media discovery and targeted attachments
+
+`@atlcli/confluence` exposes the same contract from its default, `./node`, and
+`./browser` entrypoints:
+
+```ts
+import {
+  collectAdfMediaFileIds,
+  ConfluenceClient,
+  validateAdf,
+} from "@atlcli/confluence";
+
+const client = new ConfluenceClient(profile);
+const page = await client.getPageAdf(pageId);
+const requiredFileIds = collectAdfMediaFileIds(
+  validateAdf(page.body.value),
+);
+const media = await client.listPageAttachmentMedia(pageId, {
+  requiredFileIds,
+});
+```
+
+`collectAdfMediaFileIds()` accepts only `validateAdf()` output. It traverses
+`media` and `mediaInline` nodes iteratively, preserves first document order,
+deduplicates exact IDs, and excludes external media that never resolves through
+the attachment API.
+
+Targeted attachment pagination keeps only matching metadata and returns
+`termination` plus `unresolvedRequiredFileIds`. `complete` is true only for
+`index-exhausted`; `required-file-ids-satisfied` means a later cursor was
+intentionally not fetched. Attachment and request limits remain bounded, cursor
+loops still throw, and cancellation still rejects. No path guesses by filename.
+
+Most exporters should call `getExportPageDetailsWithMedia()` instead of wiring
+the two operations manually. It performs zero attachment requests for
+media-free or invalid ADF and preserves unresolved references as visible
+`adf-media-unresolved` export notes.
 
 ## Tree export: TreeSource, fetchExportTree, composeChapters
 

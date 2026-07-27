@@ -21,6 +21,10 @@ import {
 import { drainPaginated, PaginationLoopError } from "./pagination.js";
 import { extractExportViewMacros as extractMacroFragments } from "./html-to-blocks.js";
 import type { AdfMediaAttachment } from "./adf-to-blocks.js";
+import { collectAdfMediaFileIds } from "./adf-media.js";
+import { validateAdf } from "./adf-validate.js";
+import { AdfValidationError } from "./adf-types.js";
+import { cacheValidatedAdfForSource } from "./adf-validation-cache.js";
 import {
   ExportPageReadError,
   type ConfluenceExportPageDetails,
@@ -356,19 +360,27 @@ export interface PageAttachmentMediaResult {
   complete: boolean;
 }
 
+/** Why targeted attachment metadata pagination stopped. */
+export type PageAttachmentMediaTermination =
+  | "index-exhausted"
+  | "required-file-ids-satisfied"
+  | "attachment-limit-reached"
+  | "request-limit-reached";
+
+/** Explicit outcome returned when a required ADF `fileId` set is supplied. */
+export interface TargetedPageAttachmentMediaResult
+  extends PageAttachmentMediaResult {
+  termination: PageAttachmentMediaTermination;
+  /** Stable required-ID order, with resolved IDs removed. */
+  unresolvedRequiredFileIds: string[];
+}
+
 const DEFAULT_PAGE_ATTACHMENT_MEDIA_LIMIT = 1_000;
 const MAX_PAGE_ATTACHMENT_MEDIA_LIMIT = 5_000;
 const MAX_PAGE_ATTACHMENT_MEDIA_REQUESTS = 20;
 const DEFAULT_PAGE_INLINE_COMMENT_LIMIT = 1_000;
 const MAX_PAGE_INLINE_COMMENT_LIMIT = 5_000;
 const MAX_PAGE_INLINE_COMMENT_REQUESTS = 100;
-
-function adfMayReferenceMedia(value: string): boolean {
-  // This gates an optional metadata request only; the bounded validator remains
-  // authoritative. Atlassian serializes node `type` names literally, while
-  // arbitrary whitespace is allowed between JSON tokens.
-  return /"type"\s*:\s*"(?:media|mediaInline)"/u.test(value);
-}
 
 function adfMayReferenceInlineComments(value: string): boolean {
   // Optional-sidecar request gate only. The bounded ADF validator remains
@@ -1286,8 +1298,28 @@ export class ConfluenceClient {
       return page;
     }
     const value = page.exportSource.primary.value;
-    const mediaPromise = adfMayReferenceMedia(value)
-      ? this.listPageAttachmentMedia(id, options)
+    let requiredFileIds: string[];
+    try {
+      const validated = validateAdf(value);
+      cacheValidatedAdfForSource(page.exportSource, validated);
+      requiredFileIds = collectAdfMediaFileIds(validated);
+    } catch (error) {
+      if (error instanceof AdfValidationError) {
+        // Preserve the established user-visible classification: the decoder
+        // will revalidate this source and turn it into page-unreadable for a
+        // partial tree export. Invalid ADF never triggers sidecar requests.
+        return page;
+      }
+      throw error;
+    }
+    const mediaPromise = requiredFileIds.length > 0
+      ? this.listPageAttachmentMedia(id, {
+          requiredFileIds,
+          ...(options.maxAttachments !== undefined
+            ? { maxAttachments: options.maxAttachments }
+            : {}),
+          ...(options.signal ? { signal: options.signal } : {}),
+        })
       : undefined;
     const commentsPromise = adfMayReferenceInlineComments(value)
       ? this.listPageInlineCommentsForExport(id, options)
@@ -1299,6 +1331,8 @@ export class ConfluenceClient {
       ...(media ? {
         mediaAttachments: media.attachments,
         mediaAttachmentsComplete: media.complete,
+        mediaAttachmentsTermination: media.termination,
+        unresolvedMediaFileIds: media.unresolvedRequiredFileIds,
       } : {}),
       ...(comments ? {
         inlineComments: comments.comments,
@@ -2260,17 +2294,60 @@ export class ConfluenceClient {
    */
   async listPageAttachmentMedia(
     pageId: string,
-    options: { maxAttachments?: number; signal?: AbortSignal } = {},
-  ): Promise<PageAttachmentMediaResult> {
+    options: {
+      maxAttachments?: number;
+      signal?: AbortSignal;
+      requiredFileIds: readonly string[];
+    },
+  ): Promise<TargetedPageAttachmentMediaResult>;
+  async listPageAttachmentMedia(
+    pageId: string,
+    options?: { maxAttachments?: number; signal?: AbortSignal },
+  ): Promise<PageAttachmentMediaResult>;
+  async listPageAttachmentMedia(
+    pageId: string,
+    options: {
+      maxAttachments?: number;
+      signal?: AbortSignal;
+      requiredFileIds?: readonly string[];
+    } = {},
+  ): Promise<PageAttachmentMediaResult | TargetedPageAttachmentMediaResult> {
     const requested = options.maxAttachments ?? DEFAULT_PAGE_ATTACHMENT_MEDIA_LIMIT;
     const maxAttachments = Math.max(
       1,
       Math.min(MAX_PAGE_ATTACHMENT_MEDIA_LIMIT, Math.trunc(Number.isFinite(requested) ? requested : 0)),
     );
-    const pageSize = Math.min(250, maxAttachments);
     const attachments: AdfMediaAttachment[] = [];
+    const targeted = options.requiredFileIds !== undefined;
+    const unresolvedRequiredFileIds = new Set<string>();
+    if (options.requiredFileIds) {
+      for (const fileId of options.requiredFileIds) {
+        if (typeof fileId !== "string" || fileId.length === 0) {
+          throw new TypeError("requiredFileIds must contain non-empty strings.");
+        }
+        unresolvedRequiredFileIds.add(fileId);
+      }
+    }
+    const finish = (
+      complete: boolean,
+      termination: PageAttachmentMediaTermination,
+    ): PageAttachmentMediaResult | TargetedPageAttachmentMediaResult =>
+      targeted
+        ? {
+            attachments,
+            complete,
+            termination,
+            unresolvedRequiredFileIds: [...unresolvedRequiredFileIds],
+          }
+        : { attachments, complete };
+    if (targeted && unresolvedRequiredFileIds.size === 0) {
+      return finish(false, "required-file-ids-satisfied");
+    }
+
+    const pageSize = Math.min(250, maxAttachments);
     const seenCursors = new Set<string>();
     const seenFileIds = new Set<string>();
+    let observedAttachments = 0;
     let cursor: string | undefined;
 
     for (let request = 0; request < MAX_PAGE_ATTACHMENT_MEDIA_REQUESTS; request += 1) {
@@ -2281,15 +2358,20 @@ export class ConfluenceClient {
         logBody: "meta-only",
       })) as any;
       const results = Array.isArray(data.results) ? data.results : [];
+      let attachmentLimitReached = false;
       for (const item of results) {
-        if (attachments.length >= maxAttachments) {
-          return { attachments, complete: false };
-        }
         if (typeof item?.fileId !== "string" || typeof item?.title !== "string") continue;
         const fileId = item.fileId.trim();
         const filename = item.title.trim();
         if (!fileId || !filename || seenFileIds.has(fileId)) continue;
         seenFileIds.add(fileId);
+        if (observedAttachments >= maxAttachments) {
+          attachmentLimitReached = true;
+          break;
+        }
+        observedAttachments += 1;
+        if (targeted && !unresolvedRequiredFileIds.has(fileId)) continue;
+        unresolvedRequiredFileIds.delete(fileId);
         const webuiLink =
           typeof item.webuiLink === "string"
             ? item.webuiLink
@@ -2319,14 +2401,22 @@ export class ConfluenceClient {
       }
 
       const next = extractCursor(data._links?.next, this.confluenceBaseUrl);
-      if (!next) return { attachments, complete: true };
-      if (attachments.length >= maxAttachments) return { attachments, complete: false };
+      if (!next && !attachmentLimitReached) {
+        return finish(true, "index-exhausted");
+      }
+      if (targeted && unresolvedRequiredFileIds.size === 0) {
+        return finish(false, "required-file-ids-satisfied");
+      }
+      if (attachmentLimitReached || observedAttachments >= maxAttachments) {
+        return finish(false, "attachment-limit-reached");
+      }
+      if (!next) return finish(false, "attachment-limit-reached");
       if (seenCursors.has(next)) throw new PaginationLoopError(next);
       seenCursors.add(next);
       cursor = next;
     }
 
-    return { attachments, complete: false };
+    return finish(false, "request-limit-reached");
   }
 
   /**

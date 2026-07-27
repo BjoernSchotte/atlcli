@@ -447,6 +447,9 @@ export type CaptionableBlockType = "image" | "table" | "codeBlock";
 // export: CaptionKind
 export type CaptionKind = "figure" | "table" | "code" | "equation";
 
+// export: collectAdfMediaFileIds
+export declare function collectAdfMediaFileIds(validated: ValidatedAdfDocument): string[];
+
 // export: CommentAuthor
 export interface CommentAuthor {
     displayName: string;
@@ -689,6 +692,11 @@ export declare class ConfluenceClient {
     getPagesBatch(ids: string[], concurrency?: number): Promise<(ConfluencePage & {
         storage: string;
     })[]>;
+    listPageAttachmentMedia(pageId: string, options: {
+        maxAttachments?: number;
+        signal?: AbortSignal;
+        requiredFileIds: readonly string[];
+    }): Promise<TargetedPageAttachmentMediaResult>;
     listPageAttachmentMedia(pageId: string, options?: {
         maxAttachments?: number;
         signal?: AbortSignal;
@@ -838,6 +846,8 @@ export type ConfluenceExportPageDetails = ConfluencePageDetails & {
     exportSource: ExportPageSource;
     mediaAttachments?: AdfMediaAttachment[];
     mediaAttachmentsComplete?: boolean;
+    mediaAttachmentsTermination?: PageAttachmentMediaTermination;
+    unresolvedMediaFileIds?: string[];
     inlineComments?: InlineComment[];
     inlineCommentsComplete?: boolean;
 };
@@ -1983,6 +1993,9 @@ export interface PageAttachmentMediaResult {
     complete: boolean;
 }
 
+// export: PageAttachmentMediaTermination
+export type PageAttachmentMediaTermination = "index-exhausted" | "required-file-ids-satisfied" | "attachment-limit-reached" | "request-limit-reached";
+
 // export: PageBody
 export type PageBody = {
     representation: "atlas_doc_format";
@@ -2426,6 +2439,12 @@ export interface TableRow {
 // export: TableVerticalAlignment
 export type TableVerticalAlignment = "top" | "middle" | "bottom";
 
+// export: TargetedPageAttachmentMediaResult
+export interface TargetedPageAttachmentMediaResult extends PageAttachmentMediaResult {
+    termination: PageAttachmentMediaTermination;
+    unresolvedRequiredFileIds: string[];
+}
+
 // export: translateDatasourceLink
 export declare function translateDatasourceLink(rawAttr: string, href: string): DatasourceOutcome;
 
@@ -2567,6 +2586,8 @@ export interface TreeSourcePageMetadata {
     spaceKey?: string;
     mediaAttachments?: AdfMediaAttachment[];
     mediaAttachmentsComplete?: boolean;
+    mediaAttachmentsTermination?: PageAttachmentMediaTermination;
+    unresolvedMediaFileIds?: string[];
     inlineComments?: InlineComment[];
     inlineCommentsComplete?: boolean;
 }
@@ -3112,6 +3133,9 @@ export type CaptionableBlockType = "image" | "table" | "codeBlock";
 // export: CaptionKind
 export type CaptionKind = "figure" | "table" | "code" | "equation";
 
+// export: collectAdfMediaFileIds
+export declare function collectAdfMediaFileIds(validated: ValidatedAdfDocument): string[];
+
 // export: CommentAuthor
 export interface CommentAuthor {
     displayName: string;
@@ -3354,6 +3378,11 @@ export declare class ConfluenceClient {
     getPagesBatch(ids: string[], concurrency?: number): Promise<(ConfluencePage & {
         storage: string;
     })[]>;
+    listPageAttachmentMedia(pageId: string, options: {
+        maxAttachments?: number;
+        signal?: AbortSignal;
+        requiredFileIds: readonly string[];
+    }): Promise<TargetedPageAttachmentMediaResult>;
     listPageAttachmentMedia(pageId: string, options?: {
         maxAttachments?: number;
         signal?: AbortSignal;
@@ -3503,6 +3532,8 @@ export type ConfluenceExportPageDetails = ConfluencePageDetails & {
     exportSource: ExportPageSource;
     mediaAttachments?: AdfMediaAttachment[];
     mediaAttachmentsComplete?: boolean;
+    mediaAttachmentsTermination?: PageAttachmentMediaTermination;
+    unresolvedMediaFileIds?: string[];
     inlineComments?: InlineComment[];
     inlineCommentsComplete?: boolean;
 };
@@ -4648,6 +4679,9 @@ export interface PageAttachmentMediaResult {
     complete: boolean;
 }
 
+// export: PageAttachmentMediaTermination
+export type PageAttachmentMediaTermination = "index-exhausted" | "required-file-ids-satisfied" | "attachment-limit-reached" | "request-limit-reached";
+
 // export: PageBody
 export type PageBody = {
     representation: "atlas_doc_format";
@@ -5091,6 +5125,12 @@ export interface TableRow {
 // export: TableVerticalAlignment
 export type TableVerticalAlignment = "top" | "middle" | "bottom";
 
+// export: TargetedPageAttachmentMediaResult
+export interface TargetedPageAttachmentMediaResult extends PageAttachmentMediaResult {
+    termination: PageAttachmentMediaTermination;
+    unresolvedRequiredFileIds: string[];
+}
+
 // export: translateDatasourceLink
 export declare function translateDatasourceLink(rawAttr: string, href: string): DatasourceOutcome;
 
@@ -5232,6 +5272,8 @@ export interface TreeSourcePageMetadata {
     spaceKey?: string;
     mediaAttachments?: AdfMediaAttachment[];
     mediaAttachmentsComplete?: boolean;
+    mediaAttachmentsTermination?: PageAttachmentMediaTermination;
+    unresolvedMediaFileIds?: string[];
     inlineComments?: InlineComment[];
     inlineCommentsComplete?: boolean;
 }
@@ -5777,6 +5819,9 @@ export type CaptionableBlockType = "image" | "table" | "codeBlock";
 // export: CaptionKind
 export type CaptionKind = "figure" | "table" | "code" | "equation";
 
+// export: collectAdfMediaFileIds
+export declare function collectAdfMediaFileIds(validated: ValidatedAdfDocument): string[];
+
 // export: CommentAuthor
 export interface CommentAuthor {
     displayName: string;
@@ -6019,6 +6064,11 @@ export declare class ConfluenceClient {
     getPagesBatch(ids: string[], concurrency?: number): Promise<(ConfluencePage & {
         storage: string;
     })[]>;
+    listPageAttachmentMedia(pageId: string, options: {
+        maxAttachments?: number;
+        signal?: AbortSignal;
+        requiredFileIds: readonly string[];
+    }): Promise<TargetedPageAttachmentMediaResult>;
     listPageAttachmentMedia(pageId: string, options?: {
         maxAttachments?: number;
         signal?: AbortSignal;
@@ -6168,6 +6218,8 @@ export type ConfluenceExportPageDetails = ConfluencePageDetails & {
     exportSource: ExportPageSource;
     mediaAttachments?: AdfMediaAttachment[];
     mediaAttachmentsComplete?: boolean;
+    mediaAttachmentsTermination?: PageAttachmentMediaTermination;
+    unresolvedMediaFileIds?: string[];
     inlineComments?: InlineComment[];
     inlineCommentsComplete?: boolean;
 };
@@ -7313,6 +7365,9 @@ export interface PageAttachmentMediaResult {
     complete: boolean;
 }
 
+// export: PageAttachmentMediaTermination
+export type PageAttachmentMediaTermination = "index-exhausted" | "required-file-ids-satisfied" | "attachment-limit-reached" | "request-limit-reached";
+
 // export: PageBody
 export type PageBody = {
     representation: "atlas_doc_format";
@@ -7756,6 +7811,12 @@ export interface TableRow {
 // export: TableVerticalAlignment
 export type TableVerticalAlignment = "top" | "middle" | "bottom";
 
+// export: TargetedPageAttachmentMediaResult
+export interface TargetedPageAttachmentMediaResult extends PageAttachmentMediaResult {
+    termination: PageAttachmentMediaTermination;
+    unresolvedRequiredFileIds: string[];
+}
+
 // export: translateDatasourceLink
 export declare function translateDatasourceLink(rawAttr: string, href: string): DatasourceOutcome;
 
@@ -7897,6 +7958,8 @@ export interface TreeSourcePageMetadata {
     spaceKey?: string;
     mediaAttachments?: AdfMediaAttachment[];
     mediaAttachmentsComplete?: boolean;
+    mediaAttachmentsTermination?: PageAttachmentMediaTermination;
+    unresolvedMediaFileIds?: string[];
     inlineComments?: InlineComment[];
     inlineCommentsComplete?: boolean;
 }
@@ -8479,6 +8542,11 @@ export declare class ConfluenceClient {
     getPagesBatch(ids: string[], concurrency?: number): Promise<(ConfluencePage & {
         storage: string;
     })[]>;
+    listPageAttachmentMedia(pageId: string, options: {
+        maxAttachments?: number;
+        signal?: AbortSignal;
+        requiredFileIds: readonly string[];
+    }): Promise<TargetedPageAttachmentMediaResult>;
     listPageAttachmentMedia(pageId: string, options?: {
         maxAttachments?: number;
         signal?: AbortSignal;
@@ -9951,6 +10019,9 @@ export interface PageAttachmentMediaResult {
     complete: boolean;
 }
 
+// export: PageAttachmentMediaTermination
+export type PageAttachmentMediaTermination = "index-exhausted" | "required-file-ids-satisfied" | "attachment-limit-reached" | "request-limit-reached";
+
 // export: PageChangeInfo
 export interface PageChangeInfo {
     id: string;
@@ -10719,6 +10790,12 @@ export interface TableRow {
 // export: TableVerticalAlignment
 export type TableVerticalAlignment = "top" | "middle" | "bottom";
 
+// export: TargetedPageAttachmentMediaResult
+export interface TargetedPageAttachmentMediaResult extends PageAttachmentMediaResult {
+    termination: PageAttachmentMediaTermination;
+    unresolvedRequiredFileIds: string[];
+}
+
 // export: threeWayMerge
 export declare function threeWayMerge(base: string, local: string, remote: string): MergeResult;
 
@@ -11400,6 +11477,9 @@ export type CaptionableBlockType = "image" | "table" | "codeBlock";
 // export: CaptionKind
 export type CaptionKind = "figure" | "table" | "code" | "equation";
 
+// export: collectAdfMediaFileIds
+export declare function collectAdfMediaFileIds(validated: ValidatedAdfDocument): string[];
+
 // export: CommentAuthor
 export interface CommentAuthor {
     displayName: string;
@@ -11642,6 +11722,11 @@ export declare class ConfluenceClient {
     getPagesBatch(ids: string[], concurrency?: number): Promise<(ConfluencePage & {
         storage: string;
     })[]>;
+    listPageAttachmentMedia(pageId: string, options: {
+        maxAttachments?: number;
+        signal?: AbortSignal;
+        requiredFileIds: readonly string[];
+    }): Promise<TargetedPageAttachmentMediaResult>;
     listPageAttachmentMedia(pageId: string, options?: {
         maxAttachments?: number;
         signal?: AbortSignal;
@@ -11791,6 +11876,8 @@ export type ConfluenceExportPageDetails = ConfluencePageDetails & {
     exportSource: ExportPageSource;
     mediaAttachments?: AdfMediaAttachment[];
     mediaAttachmentsComplete?: boolean;
+    mediaAttachmentsTermination?: PageAttachmentMediaTermination;
+    unresolvedMediaFileIds?: string[];
     inlineComments?: InlineComment[];
     inlineCommentsComplete?: boolean;
 };
@@ -12936,6 +13023,9 @@ export interface PageAttachmentMediaResult {
     complete: boolean;
 }
 
+// export: PageAttachmentMediaTermination
+export type PageAttachmentMediaTermination = "index-exhausted" | "required-file-ids-satisfied" | "attachment-limit-reached" | "request-limit-reached";
+
 // export: PageBody
 export type PageBody = {
     representation: "atlas_doc_format";
@@ -13379,6 +13469,12 @@ export interface TableRow {
 // export: TableVerticalAlignment
 export type TableVerticalAlignment = "top" | "middle" | "bottom";
 
+// export: TargetedPageAttachmentMediaResult
+export interface TargetedPageAttachmentMediaResult extends PageAttachmentMediaResult {
+    termination: PageAttachmentMediaTermination;
+    unresolvedRequiredFileIds: string[];
+}
+
 // export: translateDatasourceLink
 export declare function translateDatasourceLink(rawAttr: string, href: string): DatasourceOutcome;
 
@@ -13520,6 +13616,8 @@ export interface TreeSourcePageMetadata {
     spaceKey?: string;
     mediaAttachments?: AdfMediaAttachment[];
     mediaAttachmentsComplete?: boolean;
+    mediaAttachmentsTermination?: PageAttachmentMediaTermination;
+    unresolvedMediaFileIds?: string[];
     inlineComments?: InlineComment[];
     inlineCommentsComplete?: boolean;
 }
