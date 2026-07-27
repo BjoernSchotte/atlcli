@@ -356,6 +356,65 @@ describe("PDF asset preparation", () => {
     expect(prepared.notes).toEqual([]);
   });
 
+  it("keeps product caps without the benchmark seam and honors both halves with it", async () => {
+    // Issue #118 Phase 0: the ≥100 MiB image-heavy corpus runs through the
+    // real pipeline via a Symbol.for override; without the hook the shared
+    // product caps stay exactly as before.
+    const fakePng = (sizeBytes: number, unique: number): Uint8Array => {
+      const bytes = new Uint8Array(sizeBytes);
+      bytes.set([
+        0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+        0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52,
+        0, 0, 0, 1, 0, 0, 0, 1 + unique,
+      ]);
+      return bytes;
+    };
+    const twentySixMiB = fakePng(26 * 1024 * 1024, 0);
+
+    // Default per-file cap: oversize asset degrades to a note, not an embed.
+    const rejected = await preparePdfDocument(images(1), {
+      resolve: async () => ({ bytes: twentySixMiB, mediaType: "image/png" }),
+    });
+    expect(rejected.assets).toEqual([]);
+    expect(rejected.notes[0]?.message).toContain("25 MB per-file limit");
+
+    const hook = Symbol.for("atlcli.pdf.benchmark-asset-budget");
+    const host = globalThis as typeof globalThis &
+      Record<symbol, { maxAssetBytes?: number; maxTotalBytes?: number } | undefined>;
+    host[hook] = { maxAssetBytes: 32 * 1024 * 1024, maxTotalBytes: 200 * 1024 * 1024 };
+    try {
+      // Per-file half: the same 26 MiB asset embeds under the raised cap.
+      const perFile = await preparePdfDocument(images(1), {
+        resolve: async () => ({ bytes: twentySixMiB, mediaType: "image/png" }),
+      });
+      expect(perFile.assets).toHaveLength(1);
+      expect(perFile.notes).toEqual([]);
+
+      // Total half: three distinct 18 MiB assets (54 MiB > the 50 MiB product
+      // cap) succeed only because the total override is active.
+      const total = await preparePdfDocument(images(3), {
+        resolve: async (ref) => ({
+          bytes: fakePng(18 * 1024 * 1024, Number(ref.filename?.[0] ?? 0)),
+          mediaType: "image/png",
+        }),
+      });
+      expect(total.assets).toHaveLength(3);
+      expect(total.notes).toEqual([]);
+    } finally {
+      delete host[hook];
+    }
+
+    // Hook removed: the same 54 MiB total breaches the product cap again.
+    await expect(
+      preparePdfDocument(images(3), {
+        resolve: async (ref) => ({
+          bytes: fakePng(18 * 1024 * 1024, Number(ref.filename?.[0] ?? 0)),
+          mediaType: "image/png",
+        }),
+      })
+    ).rejects.toThrow(/budget|50/);
+  });
+
   it("reports one progress event per embedded asset", async () => {
     const events: Array<{ phase: string; done: number; total: number | null }> = [];
     let n = 0;

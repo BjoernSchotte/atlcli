@@ -42,6 +42,26 @@ export const PDF_MAX_ASSET_BYTES = ASSET_MAX_BYTES;
 export const PDF_MAX_TOTAL_ASSET_BYTES = ASSET_MAX_TOTAL_BYTES;
 export const PDF_ASSET_CONCURRENCY = 4;
 
+// Benchmark-only budget seam (issue #118 Phase 0): the ≥100 MiB image-heavy
+// corpus must flow through the REAL preparation pipeline, and the product
+// caps must not gain a public override to make that possible. Same Symbol.for
+// pattern as the compiler memory probes — only a benchmark harness installs
+// it on globalThis; release configuration has no path to it.
+const BENCHMARK_ASSET_BUDGET = Symbol.for("atlcli.pdf.benchmark-asset-budget");
+
+interface BenchmarkAssetBudgetOverride {
+  maxAssetBytes?: number;
+  maxTotalBytes?: number;
+}
+
+interface BenchmarkAssetBudgetHost {
+  [BENCHMARK_ASSET_BUDGET]?: BenchmarkAssetBudgetOverride;
+}
+
+function benchmarkAssetBudget(): BenchmarkAssetBudgetOverride | undefined {
+  return (globalThis as BenchmarkAssetBudgetHost)[BENCHMARK_ASSET_BUDGET];
+}
+
 function ascii(bytes: Uint8Array, start: number, length: number): string {
   return String.fromCharCode(...bytes.subarray(start, start + length));
 }
@@ -68,10 +88,15 @@ function sniffMediaType(bytes: Uint8Array): string | null {
   return null;
 }
 
-function validateResolvedAsset(asset: PdfResolvedAsset): PdfResolvedAsset {
+function validateResolvedAsset(
+  asset: PdfResolvedAsset,
+  maxAssetBytes: number
+): PdfResolvedAsset {
   if (asset.bytes.byteLength === 0) throw new Error("the fetched image was empty");
-  if (asset.bytes.byteLength > PDF_MAX_ASSET_BYTES) {
-    throw new Error("the image exceeds the 25 MB per-file limit");
+  if (asset.bytes.byteLength > maxAssetBytes) {
+    throw new Error(
+      `the image exceeds the ${Math.floor(maxAssetBytes / (1024 * 1024))} MB per-file limit`
+    );
   }
   const sniffed = sniffMediaType(asset.bytes);
   if (!sniffed) throw new Error("unsupported or corrupt image bytes");
@@ -171,8 +196,15 @@ export async function preparePdfDocument(
   const limit = createInOrderLimiter(PDF_ASSET_CONCURRENCY);
   // Shared total-byte cap + content dedup (spec 002); a breach throws
   // AssetBudgetExceededError, which propagates out of prepare and aborts the
-  // export identically to the DOCX engine.
-  const budget = new AssetBudget();
+  // export identically to the DOCX engine. Snapshot the benchmark override
+  // once so a mid-prepare hook change cannot split the caps.
+  const budgetOverride = benchmarkAssetBudget();
+  const maxAssetBytes = budgetOverride?.maxAssetBytes ?? PDF_MAX_ASSET_BYTES;
+  const budget = new AssetBudget(
+    budgetOverride?.maxTotalBytes === undefined
+      ? {}
+      : { maxTotalBytes: budgetOverride.maxTotalBytes }
+  );
   const assetTotal = countAssetBlocks(blocks);
   let assetsDone = 0;
   const reportAsset = (detail?: string): void => {
@@ -185,7 +217,7 @@ export async function preparePdfDocument(
     prefix: string,
     meta: { filename: string; pageId?: string }
   ): string => {
-    const asset = validateResolvedAsset(rawAsset);
+    const asset = validateResolvedAsset(rawAsset, maxAssetBytes);
     const key = assetKey(asset.bytes, asset.mediaType);
     const bucket = paths.get(key) ?? [];
     const existing = bucket.find(

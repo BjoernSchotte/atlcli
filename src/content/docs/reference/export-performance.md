@@ -212,6 +212,36 @@ The attribution math is pure and unit-tested
 (`apps/extension/tests/pdf/memory/attribution.ts`); the harness README
 documents the probe protocol.
 
+### Image-heavy corpus
+
+The plan's image-heavy acceptance corpus is generated deterministically at
+bench time — no blob is committed:
+
+```bash
+bun run bench:image-heavy-corpus            # stats + manifest hash, scale 1
+bun run bench:image-heavy-corpus -- --scale 0.25 --out /tmp/corpus
+```
+
+`@atlcli/export-fixtures` (`image-heavy-corpus.ts`) produces ≥ 100 MiB of
+unique compressed media at scale 1 from `(seed, scale)` using pinned pure-TS
+encoders (baseline JPEG with literal cosine constants; PNG with Paeth
+filtering and an in-repo fixed-Huffman DEFLATE) — no canvas, host zlib, or
+`CompressionStream`, whose outputs are not engine-pinned. Measured recipe
+(seed `0x1837c0de`, scale 1, Bun 1.3.14/arm64): **76 unique assets,
+100.29 MiB in ~26 s** — 57 photographic JPEGs (0.36 bytes/pixel), 12
+screenshot PNGs with textured hero regions (0.44 bytes/pixel), 6 transparent
+diagram PNGs plus a logo repeated across all 67 chapters; 224 total
+placements, inline and full-width. Manifest SHA-256
+`95b46f8904d8788099a674a37ca7c3212f7fe5c23d8cc4989bd8f66e769710b3`; the
+scale-0.06 recipe hash is pinned in the unit suite, and a real-compiler test
+proves Typst decodes every generated asset with zero diagnostics.
+
+Because the corpus exceeds the product asset budgets by design, the
+preparation pipeline gains a benchmark-only `Symbol.for` override
+(`atlcli.pdf.benchmark-asset-budget`) for the per-file and total caps —
+release configuration has no path to it, and the covering tests prove the
+product caps unchanged when the hook is absent.
+
 ## What the numbers mean
 
 **PDF compilation is the entire cost.** It is ~94% of wall clock in both tiers. Optimising

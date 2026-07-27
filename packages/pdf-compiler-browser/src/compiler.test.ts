@@ -10,6 +10,10 @@ import {
   type PdfTemplateSettings,
 } from "@atlcli/pdf/browser";
 import { ATLCLI_TYPST_TEMPLATE, serializePdfDocument } from "@atlcli/pdf/internal";
+import {
+  generateImageHeavyCorpus,
+  resolveImageHeavyAsset,
+} from "@atlcli/export-fixtures";
 import { ensurePdfFonts } from "../../pdf/scripts/ensure-fonts.js";
 import { ensureVendoredTypst } from "../scripts/vendor-typst.js";
 import { BrowserPdfCompiler, PDF_BROWSER_COMPILER_VERSION } from "./index.js";
@@ -198,6 +202,33 @@ describe("BrowserPdfCompiler package", () => {
     expect(hookRan).toBe(true);
     expect(result.pdf?.byteLength).toBeGreaterThan(0);
   }, 30_000);
+
+  it("decodes every image-heavy corpus encoder through the real Typst pipeline (issue #118)", async () => {
+    // The corpus ships its own pinned JPEG/PNG encoders; this proves the REAL
+    // compiler (image crate inside Typst WASM) accepts their output. A decode
+    // failure surfaces as a compile diagnostic, so empty diagnostics + a
+    // tagged PDF is the actual acceptance evidence.
+    const corpus = generateImageHeavyCorpus({ scale: 0.06 });
+    const prepared = await preparePdfDocument(corpus.blocks, {
+      resolve: async (ref) => resolveImageHeavyAsset(corpus, ref.filename ?? ""),
+    });
+    expect(prepared.notes).toEqual([]);
+    expect(prepared.assets).toHaveLength(corpus.counts.uniqueAssets);
+    const source = serializePdfDocument(prepared, {
+      metadata: {
+        title: "Image-heavy corpus decode proof",
+        space: "DOCSY",
+        version: 1,
+        exporter: "atlcli image-heavy corpus test",
+        exportedAt: new Date("2026-07-27T00:00:00.000Z"),
+      },
+      settings: { cover: false, outline: false },
+    });
+    const compiler = sharedCompiler();
+    const result = await compiler.compile(source);
+    expect(result.diagnostics).toEqual([]);
+    expect(validatePdfOutput(result.pdf!)).toMatchObject({ tagged: true });
+  }, 120_000);
 
   it("registers the Typst WASM linear memory with the benchmark probe hook", async () => {
     const hook = Symbol.for("atlcli.pdf-compiler-browser.memory-probe.register-wasm-memory");
