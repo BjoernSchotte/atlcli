@@ -211,7 +211,30 @@ export async function collectExecutorBytes(
   source: AsyncIterable<Uint8Array>,
   maxBytes: number,
   signal?: AbortSignal,
+  expectedByteLength?: number,
 ): Promise<Uint8Array> {
+  if (expectedByteLength !== undefined) {
+    // Known-length object (the store's stat records the exact size): write
+    // chunks straight into one preallocated buffer instead of holding a
+    // chunk list plus a concatenated copy (issue #118 Phase 0.5).
+    if (!Number.isSafeInteger(expectedByteLength) || expectedByteLength < 0 || expectedByteLength > maxBytes) {
+      throw new RangeError("Durable export object exceeds its configured limit.");
+    }
+    const result = new Uint8Array(expectedByteLength);
+    let offset = 0;
+    for await (const chunk of source) {
+      if (signal) throwIfExecutorAborted(signal);
+      if (offset + chunk.byteLength > expectedByteLength) {
+        throw new RangeError("Durable export object exceeds its configured limit.");
+      }
+      result.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    if (offset !== expectedByteLength) {
+      throw new Error("Durable export object is shorter than its recorded length.");
+    }
+    return result;
+  }
   const chunks: Uint8Array[] = [];
   let length = 0;
   for await (const chunk of source) {
@@ -404,7 +427,15 @@ export function createExtensionPdfReadyToRenderStore(
       }
       const blobs: Uint8Array[] = [];
       for (const ref of manifest.blobs) {
-        blobs.push(await collect(bytes.read(ref, { signal: input.signal }), limits.maxObjectBytes, input.signal));
+        // Exact-size preallocation via the store's own metadata: no chunk
+        // list + concat double buffering per blob (issue #118 Phase 0.5).
+        const stat = await bytes.stat(ref);
+        blobs.push(await collect(
+          bytes.read(ref, { signal: input.signal }),
+          limits.maxObjectBytes,
+          input.signal,
+          stat?.byteLength,
+        ));
       }
       throwIfAborted(input.signal);
       return hydrate(manifest.value, blobs) as PreparedPdfExportV1;

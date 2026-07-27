@@ -175,6 +175,97 @@ describe("checkpointed job assets", () => {
       .toMatchObject({ ok: true, pageId: "root", title: "Root" });
   });
 
+  it("commits an owned snapshot: mutating fetched or returned bytes cannot corrupt the spool", async () => {
+    // Issue #118 Phase 0.5 removed the redundant per-asset copies; the ONE
+    // remaining snapshot in publish() must still isolate the committed bytes
+    // from both the host fetcher's buffer and the value returned to the
+    // engine.
+    const store = new InMemorySpoolStore();
+    const first = context(store, "owned-job", 1);
+    const hostBuffer = Uint8Array.of(1, 2, 3, 4);
+    const resolver = checkpointPdfAssetsV1(first, "request-key", {
+      async resolve() {
+        return { bytes: hostBuffer, mediaType: "image/png", filename: "figure.png" };
+      },
+    });
+    const ref = { kind: "attachment" as const, pageId: "7", filename: "figure.png" };
+    const resolved = await resolver.resolve(ref);
+    const digest = await sha256(Uint8Array.of(1, 2, 3, 4));
+    // Mutate BOTH buffers after the fact.
+    hostBuffer.fill(0xaa);
+    resolved.bytes.fill(0xbb);
+    // Recovery in a fresh context re-reads the spool and re-verifies the
+    // digest binding: it must still see the original committed bytes.
+    const second = context(store, "owned-job", 2, first.checkpointRef);
+    const recovered = checkpointPdfAssetsV1(second, "request-key", {
+      async resolve() {
+        throw new Error("Recovered asset must not hit the host.");
+      },
+    });
+    expect([...(await recovered.resolve(ref)).bytes]).toEqual([1, 2, 3, 4]);
+    expect(await store.stat({
+      jobId: "owned-job",
+      leaseEpoch: 1,
+      namespace: "assets",
+      key: digest,
+    })).toMatchObject({ byteLength: 4, sha256: digest });
+  });
+
+  it("rejects recovered bytes that no longer match their recorded binding", async () => {
+    // The spool itself is ref-immutable, so the realistic tamper boundary is
+    // the HOST-supplied readSpool. Both a longer stream and an equal-length
+    // bit-flip must fail the exact-length/digest binding introduced with the
+    // preallocated read-back (issue #118 Phase 0.5).
+    const store = new InMemorySpoolStore();
+    const first = context(store, "tamper-job", 1);
+    const resolver = checkpointPdfAssetsV1(first, "request-key", {
+      async resolve() {
+        return { bytes: Uint8Array.of(9, 9, 9), mediaType: "image/png", filename: "x.png" };
+      },
+    });
+    const ref = { kind: "attachment" as const, pageId: "1", filename: "x.png" };
+    await resolver.resolve(ref);
+
+    const appended = context(store, "tamper-job", 2, first.checkpointRef);
+    const appendedRead = appended.readSpool!.bind(appended);
+    appended.readSpool = (dataRef, options) =>
+      dataRef.namespace === "assets"
+        ? (async function* () {
+            yield* appendedRead(dataRef, options);
+            yield Uint8Array.of(0);
+          })()
+        : appendedRead(dataRef, options);
+    const recoveredAppended = checkpointPdfAssetsV1(appended, "request-key", {
+      async resolve() {
+        throw new Error("Recovered asset must not hit the host.");
+      },
+    });
+    await expect(recoveredAppended.resolve(ref)).rejects.toThrow(
+      "bounded object limit",
+    );
+
+    const flipped = context(store, "tamper-job", 3, first.checkpointRef);
+    const flippedRead = flipped.readSpool!.bind(flipped);
+    flipped.readSpool = (dataRef, options) =>
+      dataRef.namespace === "assets"
+        ? (async function* () {
+            for await (const chunk of flippedRead(dataRef, options)) {
+              const copy = Uint8Array.from(chunk);
+              copy[0] = copy[0]! ^ 0xff;
+              yield copy;
+            }
+          })()
+        : flippedRead(dataRef, options);
+    const recoveredFlipped = checkpointPdfAssetsV1(flipped, "request-key", {
+      async resolve() {
+        throw new Error("Recovered asset must not hit the host.");
+      },
+    });
+    await expect(recoveredFlipped.resolve(ref)).rejects.toThrow(
+      "do not match their binding",
+    );
+  });
+
   it("reserves unknown-length host fetches before starting them", async () => {
     const store = new InMemorySpoolStore();
     const execution = context(store, "bounded-job", 1);

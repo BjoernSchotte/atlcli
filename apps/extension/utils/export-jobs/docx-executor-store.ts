@@ -238,10 +238,14 @@ export function createExtensionDocxReadyToRenderStore(
       }
       const blobs: Uint8Array[] = [];
       for (const ref of manifest.blobs) {
+        // Exact-size preallocation via the store's own metadata (issue #118
+        // Phase 0.5) — same shape as the PDF twin.
+        const stat = await bytes.stat(ref);
         blobs.push(await collectExecutorBytes(
           bytes.read(ref, { signal: input.signal }),
           limits.maxObjectBytes,
           input.signal,
+          stat?.byteLength,
         ));
       }
       throwIfExecutorAborted(input.signal);

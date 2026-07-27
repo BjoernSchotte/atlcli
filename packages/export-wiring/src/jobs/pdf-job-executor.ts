@@ -327,12 +327,12 @@ class CapturePdfOutputSink {
 
 async function sha256Hex(bytes: Uint8Array, signal?: AbortSignal): Promise<string> {
   if (signal) throwIfAborted(signal);
-  const source =
-    bytes.buffer instanceof ArrayBuffer &&
-    bytes.byteOffset === 0 &&
-    bytes.byteLength === bytes.buffer.byteLength
-      ? bytes.buffer
-      : bytes.slice().buffer;
+  // WebCrypto snapshots its input synchronously and digesting a typed-array
+  // VIEW hashes exactly the view's range, so the old non-buffer-exact
+  // `slice()` copy was avoidable (issue #118 Phase 0.5). Only a
+  // SharedArrayBuffer-backed view (which WebCrypto rejects) still copies.
+  const source: Uint8Array<ArrayBuffer> =
+    bytes.buffer instanceof ArrayBuffer ? (bytes as Uint8Array<ArrayBuffer>) : bytes.slice();
   const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", source));
   if (signal) throwIfAborted(signal);
   return [...digest].map((value) => value.toString(16).padStart(2, "0")).join("");

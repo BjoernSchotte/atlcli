@@ -63,7 +63,22 @@ function hydrate(value: unknown, blobs: Uint8Array[]): unknown {
   return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([key, entry]) => [key, hydrate(entry, blobs)]));
 }
 
-async function collect(source: AsyncIterable<Uint8Array>, maxBytes: number, signal: AbortSignal): Promise<Uint8Array> {
+async function collect(source: AsyncIterable<Uint8Array>, maxBytes: number, signal: AbortSignal, expectedByteLength?: number): Promise<Uint8Array> {
+  if (expectedByteLength !== undefined) {
+    // Known-length object (spool stat): preallocate instead of chunk list +
+    // concatenated copy (issue #118 Phase 0.5) — same shape as the extension.
+    if (!Number.isSafeInteger(expectedByteLength) || expectedByteLength < 0 || expectedByteLength > maxBytes) {
+      throw new RangeError("Prepared payload object exceeds configured limit.");
+    }
+    const result = new Uint8Array(expectedByteLength); let offset = 0;
+    for await (const chunk of source) {
+      throwIfAborted(signal);
+      if (offset + chunk.byteLength > expectedByteLength) throw new RangeError("Prepared payload object exceeds configured limit.");
+      result.set(chunk, offset); offset += chunk.byteLength;
+    }
+    if (offset !== expectedByteLength) throw new Error("Prepared payload object is shorter than its recorded length.");
+    return result;
+  }
   const chunks: Uint8Array[] = []; let length = 0;
   for await (const chunk of source) { throwIfAborted(signal); length += chunk.byteLength; if (length > maxBytes) throw new RangeError("Prepared payload object exceeds configured limit."); chunks.push(chunk); }
   const result = new Uint8Array(length); let offset = 0; for (const chunk of chunks) { result.set(chunk, offset); offset += chunk.byteLength; } return result;
@@ -97,7 +112,11 @@ class FileReadyStoreBase {
     const stored = await this.#jobs.loadExecutorCheckpoint<T>(checkpointKey(format, checkpoint.jobId, checkpoint.requestId, checkpoint.requestKey)); if (!stored) throw new Error("Prepared checkpoint was not found.");
     const manifestBytes = await collect(this.#spool.read(stored.manifestRef, { signal }), this.#limits.maxObjectBytes, signal);
     const manifest = JSON.parse(new TextDecoder().decode(manifestBytes)) as PreparedManifestV1; if (manifest.schema !== "atlcli.node-prepared-payload/1") throw new Error("Prepared manifest schema is unsupported.");
-    const blobs: Uint8Array[] = []; for (const ref of manifest.blobs) blobs.push(await collect(this.#spool.read(ref, { signal }), this.#limits.maxObjectBytes, signal));
+    const blobs: Uint8Array[] = [];
+    for (const ref of manifest.blobs) {
+      const stat = await this.#spool.stat(ref);
+      blobs.push(await collect(this.#spool.read(ref, { signal }), this.#limits.maxObjectBytes, signal, stat?.byteLength));
+    }
     return hydrate(manifest.value, blobs) as T;
   }
   advance<T extends { renderAttempts: number }>(format: "pdf" | "docx", input: { checkpoint: T & { jobId: string; requestId: string; requestKey: string }; jobId: string; leaseEpoch: number }): Promise<T> {

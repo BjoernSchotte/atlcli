@@ -45,3 +45,41 @@ CDP experiment reproduced +97.00 → +0.00 with a seeded result). Both memory
 harness tests pass with the new structural assertions
 (`deliveryArrayShape.backingMiB > 0.8 × pdfMiB`,
 `deliveryHandleShape.backingMiB < 8`).
+
+### Step 2 — asset checkpoint and executor read-back copy shapes
+
+Changes:
+
+- `checkpointed-assets.ts`: `sha256Hex` digests the typed-array view (WebCrypto
+  snapshots synchronously; the copy-then-digest-the-buffer dance doubled every
+  asset), `bytesSource` streams publish-owned bytes without a producer copy
+  (every spool sink owns what it stores), and known-length read-backs write
+  into one preallocated buffer bound to the recorded byteLength. The single
+  ownership snapshot in `publish()` stays and is documented as THE TOCTOU
+  boundary; new tests pin mutation-isolation and host-boundary tamper
+  rejection (appended byte and equal-length bit-flip).
+- `collectExecutorBytes` (extension) and `collect` (export-node) gain the
+  exact-length preallocated path; PDF and DOCX `materialize()` pass the
+  store's own `stat().byteLength`, removing the per-blob chunk-list + concat
+  double buffering and detecting truncation before hydrate.
+- `pdf-job-executor.ts` `sha256Hex` digests non-buffer-exact views directly
+  instead of `slice()`-copying them (fingerprint bytes unchanged).
+
+Lane: `bench:copy-probe` (`atlcli.copy-probe/1`), isolated child processes,
+`/usr/bin/time` peak RSS, median of 3.
+
+| Scenario | BEFORE MiB | AFTER MiB | Delta |
+|---|---|---|---|
+| checkpoint-assets (3×20 MiB + repeated logo through `checkpointPdfAssetsV1` + real file spool) | 303.69 (302.47–303.72) | **243.64** (242.22–243.75) | **−60.05** |
+| executor-collect (3×40 MiB through the real chunk store on fake-indexeddb) | 487.48 (477.92–491.59) | 530.75 (501.22–537.28) | inconclusive |
+
+Honest reading: the checkpoint-assets win is exactly the predicted ~3×20 MiB
+of per-asset transients. The executor-collect lane is **inconclusive on this
+instrument** — fake-indexeddb structured-clone noise (run spread ±30 MiB)
+exceeds the per-object signal, and production objects are ~2.6 MiB where the
+bounded effect is ≈ one object. The shape change there is carried by unit
+tests (exact-length fill, overflow, truncation, limit) and by the unchanged
+packed-extension and node job baselines; its integrity benefit (length
+binding detects truncation before hydrate) stands regardless.
+Node job baseline re-run AFTER as no-regression: all 12 cells complete,
+artifact hashes unchanged.
