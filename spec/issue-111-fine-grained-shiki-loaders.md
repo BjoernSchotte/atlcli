@@ -1,8 +1,8 @@
 # Issue 111: fine-grained Shiki loaders
 
-Status: implemented  
-Baseline: `origin/main` at `004cb29`  
-Measurement date: 2026-07-27  
+Status: implemented
+Baseline: `origin/main` at `004cb29`
+Measurement date: 2026-07-27
 Issue: <https://github.com/BjoernSchotte/atlcli/issues/111>
 
 ## Goal
