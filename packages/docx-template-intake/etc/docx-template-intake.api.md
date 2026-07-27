@@ -38,6 +38,34 @@ export declare function analyzeDocxTemplateForCatalog(bytes: Uint8Array, options
     progress?: (event: TemplateImportProgressEventV1) => void;
 }): Promise<DocxCatalogAnalysisV1>;
 
+// export: analyzeDocxVisualAssets
+export declare function analyzeDocxVisualAssets(bytes: Uint8Array, options: {
+    capabilities: TemplateAssetCapabilitiesV1;
+    assetStore: TemplateAssetStore;
+    sections: DocxSectionResolutionV1;
+}): Promise<DocxVisualAnalysisBundleV1>;
+
+// export: AssetReviewDescriptorV1
+export interface AssetReviewDescriptorV1 {
+    id: string;
+    asset: TemplateAssetHandleV1;
+    occurrenceCount: number;
+    locations: readonly {
+        story: "document" | "footer" | "header";
+        section: number;
+        master?: DocxMasterVariantV1;
+    }[];
+    proposedRole?: RoleSuggestionV1["role"];
+    explanations: readonly TemplateExplanationV1[];
+    supportedPlacementChoices: readonly ("candidate-placement" | "custom-placement" | "slot-default")[];
+    thumbnailPossible: boolean;
+    defaultDecision: "do-not-include";
+    rights: "unknown";
+    semanticRole: "unconfirmed";
+    accessibility: "unanswered";
+    placement: "unanswered";
+}
+
 // export: canonicalDocxOpcFactsJson
 export declare function canonicalDocxOpcFactsJson(facts: DocxOpcFactsV1): string;
 
@@ -97,6 +125,27 @@ export declare const DOCX_THEME_RESOLUTION_RULE_V1: {
     readonly version: "1";
 };
 
+// export: DOCX_VISUAL_ANALYSIS_RULE_V1
+export declare const DOCX_VISUAL_ANALYSIS_RULE_V1: {
+    readonly id: "atlcli.docx-visual-analysis";
+    readonly version: "1";
+    readonly pageFillMinimum: 0.8;
+    readonly logoMaximumWidth: 2000;
+    readonly logoMaximumHeight: 800;
+    readonly watermarkMinimumCoverage: 0.35;
+    readonly watermarkMinimumRotation: 15;
+    readonly watermarkMaximumOpacity: 0.9;
+};
+
+// export: DOCX_VISUAL_ANALYSIS_SCHEMA_V1
+export declare const DOCX_VISUAL_ANALYSIS_SCHEMA_V1: "atlcli.docx-visual-analysis/1";
+
+// export: DOCX_VISUAL_MESSAGE_REGISTRY_V1
+export declare const DOCX_VISUAL_MESSAGE_REGISTRY_V1: TemplateMessageRegistryV1;
+
+// export: DOCX_VISUAL_PRIVATE_SIDECAR_SCHEMA_V1
+export declare const DOCX_VISUAL_PRIVATE_SIDECAR_SCHEMA_V1: "atlcli.docx-visual-private-sidecar/1";
+
 // export: DOCX_XML_LIMITS_V1
 export declare const DOCX_XML_LIMITS_V1: {
     readonly maxBytes: number;
@@ -107,6 +156,30 @@ export declare const DOCX_XML_LIMITS_V1: {
     readonly maxAttributeCharacters: 512;
     readonly maxNodes: 100000;
 };
+
+// export: DocxAnchorAxisV1
+export interface DocxAnchorAxisV1 {
+    relativeFrom: string;
+    value: {
+        kind: "align";
+        align: string;
+    } | {
+        kind: "offset";
+        emu: number;
+    };
+}
+
+// export: DocxBackgroundFactV1
+export interface DocxBackgroundFactV1 {
+    story: "document";
+    color?: string;
+    themeColor?: {
+        slot: string;
+        tint?: string;
+        shade?: string;
+    };
+    drawingPresent: boolean;
+}
 
 // export: DocxCatalogAnalysisV1
 export interface DocxCatalogAnalysisV1 extends Omit<ResolvedDocxDesignV1, "schema"> {
@@ -147,6 +220,19 @@ export interface DocxOpcFactsV1 {
     diagnostics: readonly TemplateDiagnosticV1[];
 }
 
+// export: DocxPageBorderFactV1
+export interface DocxPageBorderFactV1 {
+    section: number;
+    offsetFrom: string;
+    sides: readonly {
+        side: "bottom" | "left" | "right" | "top";
+        style?: string;
+        color?: string;
+        widthEighthPoints?: number;
+    }[];
+    compatibility: CandidateCompatibilityV1;
+}
+
 // export: DocxPageFormatV1
 export type DocxPageFormatV1 = "a4" | "letter" | "custom";
 
@@ -159,6 +245,60 @@ export interface DocxPageGeometryInputV1 {
     marginRightTwips: number;
     marginBottomTwips: number;
     marginLeftTwips: number;
+}
+
+// export: DocxScenePlacementV1
+export type DocxScenePlacementV1 = {
+    kind: "inline";
+    width: number;
+    height: number;
+    unit: "emu";
+} | {
+    kind: "anchor";
+    horizontal: DocxAnchorAxisV1;
+    vertical: DocxAnchorAxisV1;
+    extent: {
+        width: number;
+        height: number;
+        unit: "emu";
+    };
+    simplePos?: {
+        x: number;
+        y: number;
+        unit: "emu";
+    };
+    useSimplePos: boolean;
+    effectExtent?: {
+        top: number;
+        right: number;
+        bottom: number;
+        left: number;
+        unit: "emu";
+    };
+    distance: {
+        top: number;
+        right: number;
+        bottom: number;
+        left: number;
+        unit: "emu";
+    };
+    wrap: {
+        kind: string;
+        polygonFingerprint?: string;
+    };
+    relativeHeight?: number;
+    behindDoc?: boolean;
+    allowOverlap?: boolean;
+    layoutInCell?: boolean;
+    resolution: "layout-dependent" | "local-exact" | "page-resolved";
+};
+
+// export: DocxSceneRepresentationV1
+export interface DocxSceneRepresentationV1 {
+    kind: "drawingml" | "raster-fallback" | "svg" | "vml";
+    assetSha256?: string;
+    selected: boolean;
+    sourceUse: DocxVisualSourceUseV1;
 }
 
 // export: DocxSectionFactV1
@@ -364,6 +504,92 @@ export interface DocxUsageFactV1 {
     count: number;
 }
 
+// export: DocxVisualAnalysisBundleV1
+export interface DocxVisualAnalysisBundleV1 {
+    analysis: DocxVisualAnalysisV1;
+    privateSource: DocxVisualPrivateSidecarV1;
+}
+
+// export: DocxVisualAnalysisV1
+export interface DocxVisualAnalysisV1 {
+    schema: typeof DOCX_VISUAL_ANALYSIS_SCHEMA_V1;
+    sourceDigest: string;
+    capability: {
+        id: string;
+        version: number;
+    };
+    rule: typeof DOCX_VISUAL_ANALYSIS_RULE_V1;
+    assets: readonly DocxVisualAssetV1[];
+    scenes: readonly SceneCandidateV1[];
+    roleSuggestions: readonly RoleSuggestionV1[];
+    assetReview: readonly AssetReviewDescriptorV1[];
+    backgrounds: readonly DocxBackgroundFactV1[];
+    pageBorders: readonly DocxPageBorderFactV1[];
+    inventory: {
+        charts: number;
+        smartart: number;
+        vml: number;
+        groups: number;
+        textboxes: number;
+        emfWmf: number;
+        complexEffects: number;
+        externalImages: number;
+    };
+    diagnostics: readonly TemplateDiagnosticV1[];
+}
+
+// export: DocxVisualAssetV1
+export interface DocxVisualAssetV1 {
+    sha256: string;
+    mediaType: SupportedMediaType;
+    byteLength: number;
+    dimensions?: DocxVisualDimensionsV1;
+    handle: TemplateAssetHandleV1;
+}
+
+// export: DocxVisualDimensionsV1
+export interface DocxVisualDimensionsV1 {
+    width: number;
+    height: number;
+    unit: "pixel";
+}
+
+// export: DocxVisualPrivateRecordV1
+export interface DocxVisualPrivateRecordV1 {
+    sceneId: string;
+    sourcePartName: string;
+    relationshipId?: string;
+    relationshipTarget?: string;
+    shapeName?: string;
+    shapeTitle?: string;
+    shapeDescription?: string;
+    sourceAltText?: string;
+}
+
+// export: DocxVisualPrivateSidecarV1
+export interface DocxVisualPrivateSidecarV1 {
+    schema: typeof DOCX_VISUAL_PRIVATE_SIDECAR_SCHEMA_V1;
+    records: readonly DocxVisualPrivateRecordV1[];
+}
+
+// export: DocxVisualSourceUseV1
+export interface DocxVisualSourceUseV1 {
+    kind: "inline-xml" | "relationship";
+    sourcePartRef: string;
+    relationshipRef?: string;
+    targetFingerprint?: string;
+    elementFingerprint?: string;
+    alternateContent?: {
+        groupId: string;
+        branch: string;
+        selected: boolean;
+    };
+    altText?: {
+        present: boolean;
+        fingerprint?: string;
+    };
+}
+
 // export: DocxXmlLimitsV1
 export interface DocxXmlLimitsV1 {
     maxBytes: number;
@@ -555,6 +781,61 @@ export declare function resolveDocxThemeColor(reference: DocxThemeColorReference
 
 // export: resolveDocxThemeFont
 export declare function resolveDocxThemeFont(reference: DocxThemeFontReferenceV1 | undefined, script: DocxFontScriptV1, theme: DocxThemeDefinitionV1): string | undefined;
+
+// export: RoleSuggestionV1
+export interface RoleSuggestionV1 {
+    sceneId: string;
+    role: "cover-art" | "footer-decoration" | "header-decoration" | "logo" | "page-background" | "watermark";
+    confidence: CandidateConfidenceV1;
+    explanations: readonly TemplateExplanationV1[];
+}
+
+// export: SceneCandidateV1
+export interface SceneCandidateV1 {
+    id: string;
+    kind: VisualKind;
+    scope: {
+        story: "document" | "footer" | "header";
+        section: number;
+        master?: DocxMasterVariantV1;
+    };
+    representations: readonly DocxSceneRepresentationV1[];
+    placement?: DocxScenePlacementV1;
+    transform?: {
+        xfrm?: {
+            offset: {
+                x: number;
+                y: number;
+                unit: "emu";
+            };
+            extent: {
+                width: number;
+                height: number;
+                unit: "emu";
+            };
+            flipH: boolean;
+            flipV: boolean;
+        };
+        rotation?: {
+            value: number;
+            unit: "degree";
+        };
+        crop?: {
+            left: number;
+            top: number;
+            right: number;
+            bottom: number;
+            unit: "percent";
+        };
+    };
+    paint?: {
+        opacity?: number;
+        fill?: string;
+        stroke?: string;
+    };
+    compatibility: CandidateCompatibilityV1;
+    sectionScope: "native" | "not-applicable" | "unsupported-section-scope";
+}
 
 // export: streamXmlPart
 export declare function streamXmlPart(partRef: string, bytes: Uint8Array, handlers?: {
@@ -755,6 +1036,34 @@ export declare function analyzeDocxTemplateForCatalog(bytes: Uint8Array, options
     progress?: (event: TemplateImportProgressEventV1) => void;
 }): Promise<DocxCatalogAnalysisV1>;
 
+// export: analyzeDocxVisualAssets
+export declare function analyzeDocxVisualAssets(bytes: Uint8Array, options: {
+    capabilities: TemplateAssetCapabilitiesV1;
+    assetStore: TemplateAssetStore;
+    sections: DocxSectionResolutionV1;
+}): Promise<DocxVisualAnalysisBundleV1>;
+
+// export: AssetReviewDescriptorV1
+export interface AssetReviewDescriptorV1 {
+    id: string;
+    asset: TemplateAssetHandleV1;
+    occurrenceCount: number;
+    locations: readonly {
+        story: "document" | "footer" | "header";
+        section: number;
+        master?: DocxMasterVariantV1;
+    }[];
+    proposedRole?: RoleSuggestionV1["role"];
+    explanations: readonly TemplateExplanationV1[];
+    supportedPlacementChoices: readonly ("candidate-placement" | "custom-placement" | "slot-default")[];
+    thumbnailPossible: boolean;
+    defaultDecision: "do-not-include";
+    rights: "unknown";
+    semanticRole: "unconfirmed";
+    accessibility: "unanswered";
+    placement: "unanswered";
+}
+
 // export: canonicalDocxOpcFactsJson
 export declare function canonicalDocxOpcFactsJson(facts: DocxOpcFactsV1): string;
 
@@ -814,6 +1123,27 @@ export declare const DOCX_THEME_RESOLUTION_RULE_V1: {
     readonly version: "1";
 };
 
+// export: DOCX_VISUAL_ANALYSIS_RULE_V1
+export declare const DOCX_VISUAL_ANALYSIS_RULE_V1: {
+    readonly id: "atlcli.docx-visual-analysis";
+    readonly version: "1";
+    readonly pageFillMinimum: 0.8;
+    readonly logoMaximumWidth: 2000;
+    readonly logoMaximumHeight: 800;
+    readonly watermarkMinimumCoverage: 0.35;
+    readonly watermarkMinimumRotation: 15;
+    readonly watermarkMaximumOpacity: 0.9;
+};
+
+// export: DOCX_VISUAL_ANALYSIS_SCHEMA_V1
+export declare const DOCX_VISUAL_ANALYSIS_SCHEMA_V1: "atlcli.docx-visual-analysis/1";
+
+// export: DOCX_VISUAL_MESSAGE_REGISTRY_V1
+export declare const DOCX_VISUAL_MESSAGE_REGISTRY_V1: TemplateMessageRegistryV1;
+
+// export: DOCX_VISUAL_PRIVATE_SIDECAR_SCHEMA_V1
+export declare const DOCX_VISUAL_PRIVATE_SIDECAR_SCHEMA_V1: "atlcli.docx-visual-private-sidecar/1";
+
 // export: DOCX_XML_LIMITS_V1
 export declare const DOCX_XML_LIMITS_V1: {
     readonly maxBytes: number;
@@ -824,6 +1154,30 @@ export declare const DOCX_XML_LIMITS_V1: {
     readonly maxAttributeCharacters: 512;
     readonly maxNodes: 100000;
 };
+
+// export: DocxAnchorAxisV1
+export interface DocxAnchorAxisV1 {
+    relativeFrom: string;
+    value: {
+        kind: "align";
+        align: string;
+    } | {
+        kind: "offset";
+        emu: number;
+    };
+}
+
+// export: DocxBackgroundFactV1
+export interface DocxBackgroundFactV1 {
+    story: "document";
+    color?: string;
+    themeColor?: {
+        slot: string;
+        tint?: string;
+        shade?: string;
+    };
+    drawingPresent: boolean;
+}
 
 // export: DocxCatalogAnalysisV1
 export interface DocxCatalogAnalysisV1 extends Omit<ResolvedDocxDesignV1, "schema"> {
@@ -864,6 +1218,19 @@ export interface DocxOpcFactsV1 {
     diagnostics: readonly TemplateDiagnosticV1[];
 }
 
+// export: DocxPageBorderFactV1
+export interface DocxPageBorderFactV1 {
+    section: number;
+    offsetFrom: string;
+    sides: readonly {
+        side: "bottom" | "left" | "right" | "top";
+        style?: string;
+        color?: string;
+        widthEighthPoints?: number;
+    }[];
+    compatibility: CandidateCompatibilityV1;
+}
+
 // export: DocxPageFormatV1
 export type DocxPageFormatV1 = "a4" | "letter" | "custom";
 
@@ -876,6 +1243,60 @@ export interface DocxPageGeometryInputV1 {
     marginRightTwips: number;
     marginBottomTwips: number;
     marginLeftTwips: number;
+}
+
+// export: DocxScenePlacementV1
+export type DocxScenePlacementV1 = {
+    kind: "inline";
+    width: number;
+    height: number;
+    unit: "emu";
+} | {
+    kind: "anchor";
+    horizontal: DocxAnchorAxisV1;
+    vertical: DocxAnchorAxisV1;
+    extent: {
+        width: number;
+        height: number;
+        unit: "emu";
+    };
+    simplePos?: {
+        x: number;
+        y: number;
+        unit: "emu";
+    };
+    useSimplePos: boolean;
+    effectExtent?: {
+        top: number;
+        right: number;
+        bottom: number;
+        left: number;
+        unit: "emu";
+    };
+    distance: {
+        top: number;
+        right: number;
+        bottom: number;
+        left: number;
+        unit: "emu";
+    };
+    wrap: {
+        kind: string;
+        polygonFingerprint?: string;
+    };
+    relativeHeight?: number;
+    behindDoc?: boolean;
+    allowOverlap?: boolean;
+    layoutInCell?: boolean;
+    resolution: "layout-dependent" | "local-exact" | "page-resolved";
+};
+
+// export: DocxSceneRepresentationV1
+export interface DocxSceneRepresentationV1 {
+    kind: "drawingml" | "raster-fallback" | "svg" | "vml";
+    assetSha256?: string;
+    selected: boolean;
+    sourceUse: DocxVisualSourceUseV1;
 }
 
 // export: DocxSectionFactV1
@@ -1081,6 +1502,92 @@ export interface DocxUsageFactV1 {
     count: number;
 }
 
+// export: DocxVisualAnalysisBundleV1
+export interface DocxVisualAnalysisBundleV1 {
+    analysis: DocxVisualAnalysisV1;
+    privateSource: DocxVisualPrivateSidecarV1;
+}
+
+// export: DocxVisualAnalysisV1
+export interface DocxVisualAnalysisV1 {
+    schema: typeof DOCX_VISUAL_ANALYSIS_SCHEMA_V1;
+    sourceDigest: string;
+    capability: {
+        id: string;
+        version: number;
+    };
+    rule: typeof DOCX_VISUAL_ANALYSIS_RULE_V1;
+    assets: readonly DocxVisualAssetV1[];
+    scenes: readonly SceneCandidateV1[];
+    roleSuggestions: readonly RoleSuggestionV1[];
+    assetReview: readonly AssetReviewDescriptorV1[];
+    backgrounds: readonly DocxBackgroundFactV1[];
+    pageBorders: readonly DocxPageBorderFactV1[];
+    inventory: {
+        charts: number;
+        smartart: number;
+        vml: number;
+        groups: number;
+        textboxes: number;
+        emfWmf: number;
+        complexEffects: number;
+        externalImages: number;
+    };
+    diagnostics: readonly TemplateDiagnosticV1[];
+}
+
+// export: DocxVisualAssetV1
+export interface DocxVisualAssetV1 {
+    sha256: string;
+    mediaType: SupportedMediaType;
+    byteLength: number;
+    dimensions?: DocxVisualDimensionsV1;
+    handle: TemplateAssetHandleV1;
+}
+
+// export: DocxVisualDimensionsV1
+export interface DocxVisualDimensionsV1 {
+    width: number;
+    height: number;
+    unit: "pixel";
+}
+
+// export: DocxVisualPrivateRecordV1
+export interface DocxVisualPrivateRecordV1 {
+    sceneId: string;
+    sourcePartName: string;
+    relationshipId?: string;
+    relationshipTarget?: string;
+    shapeName?: string;
+    shapeTitle?: string;
+    shapeDescription?: string;
+    sourceAltText?: string;
+}
+
+// export: DocxVisualPrivateSidecarV1
+export interface DocxVisualPrivateSidecarV1 {
+    schema: typeof DOCX_VISUAL_PRIVATE_SIDECAR_SCHEMA_V1;
+    records: readonly DocxVisualPrivateRecordV1[];
+}
+
+// export: DocxVisualSourceUseV1
+export interface DocxVisualSourceUseV1 {
+    kind: "inline-xml" | "relationship";
+    sourcePartRef: string;
+    relationshipRef?: string;
+    targetFingerprint?: string;
+    elementFingerprint?: string;
+    alternateContent?: {
+        groupId: string;
+        branch: string;
+        selected: boolean;
+    };
+    altText?: {
+        present: boolean;
+        fingerprint?: string;
+    };
+}
+
 // export: DocxXmlLimitsV1
 export interface DocxXmlLimitsV1 {
     maxBytes: number;
@@ -1272,6 +1779,61 @@ export declare function resolveDocxThemeColor(reference: DocxThemeColorReference
 
 // export: resolveDocxThemeFont
 export declare function resolveDocxThemeFont(reference: DocxThemeFontReferenceV1 | undefined, script: DocxFontScriptV1, theme: DocxThemeDefinitionV1): string | undefined;
+
+// export: RoleSuggestionV1
+export interface RoleSuggestionV1 {
+    sceneId: string;
+    role: "cover-art" | "footer-decoration" | "header-decoration" | "logo" | "page-background" | "watermark";
+    confidence: CandidateConfidenceV1;
+    explanations: readonly TemplateExplanationV1[];
+}
+
+// export: SceneCandidateV1
+export interface SceneCandidateV1 {
+    id: string;
+    kind: VisualKind;
+    scope: {
+        story: "document" | "footer" | "header";
+        section: number;
+        master?: DocxMasterVariantV1;
+    };
+    representations: readonly DocxSceneRepresentationV1[];
+    placement?: DocxScenePlacementV1;
+    transform?: {
+        xfrm?: {
+            offset: {
+                x: number;
+                y: number;
+                unit: "emu";
+            };
+            extent: {
+                width: number;
+                height: number;
+                unit: "emu";
+            };
+            flipH: boolean;
+            flipV: boolean;
+        };
+        rotation?: {
+            value: number;
+            unit: "degree";
+        };
+        crop?: {
+            left: number;
+            top: number;
+            right: number;
+            bottom: number;
+            unit: "percent";
+        };
+    };
+    paint?: {
+        opacity?: number;
+        fill?: string;
+        stroke?: string;
+    };
+    compatibility: CandidateCompatibilityV1;
+    sectionScope: "native" | "not-applicable" | "unsupported-section-scope";
+}
 
 // export: streamXmlPart
 export declare function streamXmlPart(partRef: string, bytes: Uint8Array, handlers?: {
@@ -1472,6 +2034,34 @@ export declare function analyzeDocxTemplateForCatalog(bytes: Uint8Array, options
     progress?: (event: TemplateImportProgressEventV1) => void;
 }): Promise<DocxCatalogAnalysisV1>;
 
+// export: analyzeDocxVisualAssets
+export declare function analyzeDocxVisualAssets(bytes: Uint8Array, options: {
+    capabilities: TemplateAssetCapabilitiesV1;
+    assetStore: TemplateAssetStore;
+    sections: DocxSectionResolutionV1;
+}): Promise<DocxVisualAnalysisBundleV1>;
+
+// export: AssetReviewDescriptorV1
+export interface AssetReviewDescriptorV1 {
+    id: string;
+    asset: TemplateAssetHandleV1;
+    occurrenceCount: number;
+    locations: readonly {
+        story: "document" | "footer" | "header";
+        section: number;
+        master?: DocxMasterVariantV1;
+    }[];
+    proposedRole?: RoleSuggestionV1["role"];
+    explanations: readonly TemplateExplanationV1[];
+    supportedPlacementChoices: readonly ("candidate-placement" | "custom-placement" | "slot-default")[];
+    thumbnailPossible: boolean;
+    defaultDecision: "do-not-include";
+    rights: "unknown";
+    semanticRole: "unconfirmed";
+    accessibility: "unanswered";
+    placement: "unanswered";
+}
+
 // export: canonicalDocxOpcFactsJson
 export declare function canonicalDocxOpcFactsJson(facts: DocxOpcFactsV1): string;
 
@@ -1531,6 +2121,27 @@ export declare const DOCX_THEME_RESOLUTION_RULE_V1: {
     readonly version: "1";
 };
 
+// export: DOCX_VISUAL_ANALYSIS_RULE_V1
+export declare const DOCX_VISUAL_ANALYSIS_RULE_V1: {
+    readonly id: "atlcli.docx-visual-analysis";
+    readonly version: "1";
+    readonly pageFillMinimum: 0.8;
+    readonly logoMaximumWidth: 2000;
+    readonly logoMaximumHeight: 800;
+    readonly watermarkMinimumCoverage: 0.35;
+    readonly watermarkMinimumRotation: 15;
+    readonly watermarkMaximumOpacity: 0.9;
+};
+
+// export: DOCX_VISUAL_ANALYSIS_SCHEMA_V1
+export declare const DOCX_VISUAL_ANALYSIS_SCHEMA_V1: "atlcli.docx-visual-analysis/1";
+
+// export: DOCX_VISUAL_MESSAGE_REGISTRY_V1
+export declare const DOCX_VISUAL_MESSAGE_REGISTRY_V1: TemplateMessageRegistryV1;
+
+// export: DOCX_VISUAL_PRIVATE_SIDECAR_SCHEMA_V1
+export declare const DOCX_VISUAL_PRIVATE_SIDECAR_SCHEMA_V1: "atlcli.docx-visual-private-sidecar/1";
+
 // export: DOCX_XML_LIMITS_V1
 export declare const DOCX_XML_LIMITS_V1: {
     readonly maxBytes: number;
@@ -1541,6 +2152,30 @@ export declare const DOCX_XML_LIMITS_V1: {
     readonly maxAttributeCharacters: 512;
     readonly maxNodes: 100000;
 };
+
+// export: DocxAnchorAxisV1
+export interface DocxAnchorAxisV1 {
+    relativeFrom: string;
+    value: {
+        kind: "align";
+        align: string;
+    } | {
+        kind: "offset";
+        emu: number;
+    };
+}
+
+// export: DocxBackgroundFactV1
+export interface DocxBackgroundFactV1 {
+    story: "document";
+    color?: string;
+    themeColor?: {
+        slot: string;
+        tint?: string;
+        shade?: string;
+    };
+    drawingPresent: boolean;
+}
 
 // export: DocxCatalogAnalysisV1
 export interface DocxCatalogAnalysisV1 extends Omit<ResolvedDocxDesignV1, "schema"> {
@@ -1581,6 +2216,19 @@ export interface DocxOpcFactsV1 {
     diagnostics: readonly TemplateDiagnosticV1[];
 }
 
+// export: DocxPageBorderFactV1
+export interface DocxPageBorderFactV1 {
+    section: number;
+    offsetFrom: string;
+    sides: readonly {
+        side: "bottom" | "left" | "right" | "top";
+        style?: string;
+        color?: string;
+        widthEighthPoints?: number;
+    }[];
+    compatibility: CandidateCompatibilityV1;
+}
+
 // export: DocxPageFormatV1
 export type DocxPageFormatV1 = "a4" | "letter" | "custom";
 
@@ -1593,6 +2241,60 @@ export interface DocxPageGeometryInputV1 {
     marginRightTwips: number;
     marginBottomTwips: number;
     marginLeftTwips: number;
+}
+
+// export: DocxScenePlacementV1
+export type DocxScenePlacementV1 = {
+    kind: "inline";
+    width: number;
+    height: number;
+    unit: "emu";
+} | {
+    kind: "anchor";
+    horizontal: DocxAnchorAxisV1;
+    vertical: DocxAnchorAxisV1;
+    extent: {
+        width: number;
+        height: number;
+        unit: "emu";
+    };
+    simplePos?: {
+        x: number;
+        y: number;
+        unit: "emu";
+    };
+    useSimplePos: boolean;
+    effectExtent?: {
+        top: number;
+        right: number;
+        bottom: number;
+        left: number;
+        unit: "emu";
+    };
+    distance: {
+        top: number;
+        right: number;
+        bottom: number;
+        left: number;
+        unit: "emu";
+    };
+    wrap: {
+        kind: string;
+        polygonFingerprint?: string;
+    };
+    relativeHeight?: number;
+    behindDoc?: boolean;
+    allowOverlap?: boolean;
+    layoutInCell?: boolean;
+    resolution: "layout-dependent" | "local-exact" | "page-resolved";
+};
+
+// export: DocxSceneRepresentationV1
+export interface DocxSceneRepresentationV1 {
+    kind: "drawingml" | "raster-fallback" | "svg" | "vml";
+    assetSha256?: string;
+    selected: boolean;
+    sourceUse: DocxVisualSourceUseV1;
 }
 
 // export: DocxSectionFactV1
@@ -1798,6 +2500,92 @@ export interface DocxUsageFactV1 {
     count: number;
 }
 
+// export: DocxVisualAnalysisBundleV1
+export interface DocxVisualAnalysisBundleV1 {
+    analysis: DocxVisualAnalysisV1;
+    privateSource: DocxVisualPrivateSidecarV1;
+}
+
+// export: DocxVisualAnalysisV1
+export interface DocxVisualAnalysisV1 {
+    schema: typeof DOCX_VISUAL_ANALYSIS_SCHEMA_V1;
+    sourceDigest: string;
+    capability: {
+        id: string;
+        version: number;
+    };
+    rule: typeof DOCX_VISUAL_ANALYSIS_RULE_V1;
+    assets: readonly DocxVisualAssetV1[];
+    scenes: readonly SceneCandidateV1[];
+    roleSuggestions: readonly RoleSuggestionV1[];
+    assetReview: readonly AssetReviewDescriptorV1[];
+    backgrounds: readonly DocxBackgroundFactV1[];
+    pageBorders: readonly DocxPageBorderFactV1[];
+    inventory: {
+        charts: number;
+        smartart: number;
+        vml: number;
+        groups: number;
+        textboxes: number;
+        emfWmf: number;
+        complexEffects: number;
+        externalImages: number;
+    };
+    diagnostics: readonly TemplateDiagnosticV1[];
+}
+
+// export: DocxVisualAssetV1
+export interface DocxVisualAssetV1 {
+    sha256: string;
+    mediaType: SupportedMediaType;
+    byteLength: number;
+    dimensions?: DocxVisualDimensionsV1;
+    handle: TemplateAssetHandleV1;
+}
+
+// export: DocxVisualDimensionsV1
+export interface DocxVisualDimensionsV1 {
+    width: number;
+    height: number;
+    unit: "pixel";
+}
+
+// export: DocxVisualPrivateRecordV1
+export interface DocxVisualPrivateRecordV1 {
+    sceneId: string;
+    sourcePartName: string;
+    relationshipId?: string;
+    relationshipTarget?: string;
+    shapeName?: string;
+    shapeTitle?: string;
+    shapeDescription?: string;
+    sourceAltText?: string;
+}
+
+// export: DocxVisualPrivateSidecarV1
+export interface DocxVisualPrivateSidecarV1 {
+    schema: typeof DOCX_VISUAL_PRIVATE_SIDECAR_SCHEMA_V1;
+    records: readonly DocxVisualPrivateRecordV1[];
+}
+
+// export: DocxVisualSourceUseV1
+export interface DocxVisualSourceUseV1 {
+    kind: "inline-xml" | "relationship";
+    sourcePartRef: string;
+    relationshipRef?: string;
+    targetFingerprint?: string;
+    elementFingerprint?: string;
+    alternateContent?: {
+        groupId: string;
+        branch: string;
+        selected: boolean;
+    };
+    altText?: {
+        present: boolean;
+        fingerprint?: string;
+    };
+}
+
 // export: DocxXmlLimitsV1
 export interface DocxXmlLimitsV1 {
     maxBytes: number;
@@ -1989,6 +2777,61 @@ export declare function resolveDocxThemeColor(reference: DocxThemeColorReference
 
 // export: resolveDocxThemeFont
 export declare function resolveDocxThemeFont(reference: DocxThemeFontReferenceV1 | undefined, script: DocxFontScriptV1, theme: DocxThemeDefinitionV1): string | undefined;
+
+// export: RoleSuggestionV1
+export interface RoleSuggestionV1 {
+    sceneId: string;
+    role: "cover-art" | "footer-decoration" | "header-decoration" | "logo" | "page-background" | "watermark";
+    confidence: CandidateConfidenceV1;
+    explanations: readonly TemplateExplanationV1[];
+}
+
+// export: SceneCandidateV1
+export interface SceneCandidateV1 {
+    id: string;
+    kind: VisualKind;
+    scope: {
+        story: "document" | "footer" | "header";
+        section: number;
+        master?: DocxMasterVariantV1;
+    };
+    representations: readonly DocxSceneRepresentationV1[];
+    placement?: DocxScenePlacementV1;
+    transform?: {
+        xfrm?: {
+            offset: {
+                x: number;
+                y: number;
+                unit: "emu";
+            };
+            extent: {
+                width: number;
+                height: number;
+                unit: "emu";
+            };
+            flipH: boolean;
+            flipV: boolean;
+        };
+        rotation?: {
+            value: number;
+            unit: "degree";
+        };
+        crop?: {
+            left: number;
+            top: number;
+            right: number;
+            bottom: number;
+            unit: "percent";
+        };
+    };
+    paint?: {
+        opacity?: number;
+        fill?: string;
+        stroke?: string;
+    };
+    compatibility: CandidateCompatibilityV1;
+    sectionScope: "native" | "not-applicable" | "unsupported-section-scope";
+}
 
 // export: streamXmlPart
 export declare function streamXmlPart(partRef: string, bytes: Uint8Array, handlers?: {
@@ -2189,6 +3032,34 @@ export declare function analyzeDocxTemplateForCatalog(bytes: Uint8Array, options
     progress?: (event: TemplateImportProgressEventV1) => void;
 }): Promise<DocxCatalogAnalysisV1>;
 
+// export: analyzeDocxVisualAssets
+export declare function analyzeDocxVisualAssets(bytes: Uint8Array, options: {
+    capabilities: TemplateAssetCapabilitiesV1;
+    assetStore: TemplateAssetStore;
+    sections: DocxSectionResolutionV1;
+}): Promise<DocxVisualAnalysisBundleV1>;
+
+// export: AssetReviewDescriptorV1
+export interface AssetReviewDescriptorV1 {
+    id: string;
+    asset: TemplateAssetHandleV1;
+    occurrenceCount: number;
+    locations: readonly {
+        story: "document" | "footer" | "header";
+        section: number;
+        master?: DocxMasterVariantV1;
+    }[];
+    proposedRole?: RoleSuggestionV1["role"];
+    explanations: readonly TemplateExplanationV1[];
+    supportedPlacementChoices: readonly ("candidate-placement" | "custom-placement" | "slot-default")[];
+    thumbnailPossible: boolean;
+    defaultDecision: "do-not-include";
+    rights: "unknown";
+    semanticRole: "unconfirmed";
+    accessibility: "unanswered";
+    placement: "unanswered";
+}
+
 // export: canonicalDocxOpcFactsJson
 export declare function canonicalDocxOpcFactsJson(facts: DocxOpcFactsV1): string;
 
@@ -2248,6 +3119,27 @@ export declare const DOCX_THEME_RESOLUTION_RULE_V1: {
     readonly version: "1";
 };
 
+// export: DOCX_VISUAL_ANALYSIS_RULE_V1
+export declare const DOCX_VISUAL_ANALYSIS_RULE_V1: {
+    readonly id: "atlcli.docx-visual-analysis";
+    readonly version: "1";
+    readonly pageFillMinimum: 0.8;
+    readonly logoMaximumWidth: 2000;
+    readonly logoMaximumHeight: 800;
+    readonly watermarkMinimumCoverage: 0.35;
+    readonly watermarkMinimumRotation: 15;
+    readonly watermarkMaximumOpacity: 0.9;
+};
+
+// export: DOCX_VISUAL_ANALYSIS_SCHEMA_V1
+export declare const DOCX_VISUAL_ANALYSIS_SCHEMA_V1: "atlcli.docx-visual-analysis/1";
+
+// export: DOCX_VISUAL_MESSAGE_REGISTRY_V1
+export declare const DOCX_VISUAL_MESSAGE_REGISTRY_V1: TemplateMessageRegistryV1;
+
+// export: DOCX_VISUAL_PRIVATE_SIDECAR_SCHEMA_V1
+export declare const DOCX_VISUAL_PRIVATE_SIDECAR_SCHEMA_V1: "atlcli.docx-visual-private-sidecar/1";
+
 // export: DOCX_XML_LIMITS_V1
 export declare const DOCX_XML_LIMITS_V1: {
     readonly maxBytes: number;
@@ -2258,6 +3150,30 @@ export declare const DOCX_XML_LIMITS_V1: {
     readonly maxAttributeCharacters: 512;
     readonly maxNodes: 100000;
 };
+
+// export: DocxAnchorAxisV1
+export interface DocxAnchorAxisV1 {
+    relativeFrom: string;
+    value: {
+        kind: "align";
+        align: string;
+    } | {
+        kind: "offset";
+        emu: number;
+    };
+}
+
+// export: DocxBackgroundFactV1
+export interface DocxBackgroundFactV1 {
+    story: "document";
+    color?: string;
+    themeColor?: {
+        slot: string;
+        tint?: string;
+        shade?: string;
+    };
+    drawingPresent: boolean;
+}
 
 // export: DocxCatalogAnalysisV1
 export interface DocxCatalogAnalysisV1 extends Omit<ResolvedDocxDesignV1, "schema"> {
@@ -2298,6 +3214,19 @@ export interface DocxOpcFactsV1 {
     diagnostics: readonly TemplateDiagnosticV1[];
 }
 
+// export: DocxPageBorderFactV1
+export interface DocxPageBorderFactV1 {
+    section: number;
+    offsetFrom: string;
+    sides: readonly {
+        side: "bottom" | "left" | "right" | "top";
+        style?: string;
+        color?: string;
+        widthEighthPoints?: number;
+    }[];
+    compatibility: CandidateCompatibilityV1;
+}
+
 // export: DocxPageFormatV1
 export type DocxPageFormatV1 = "a4" | "letter" | "custom";
 
@@ -2310,6 +3239,60 @@ export interface DocxPageGeometryInputV1 {
     marginRightTwips: number;
     marginBottomTwips: number;
     marginLeftTwips: number;
+}
+
+// export: DocxScenePlacementV1
+export type DocxScenePlacementV1 = {
+    kind: "inline";
+    width: number;
+    height: number;
+    unit: "emu";
+} | {
+    kind: "anchor";
+    horizontal: DocxAnchorAxisV1;
+    vertical: DocxAnchorAxisV1;
+    extent: {
+        width: number;
+        height: number;
+        unit: "emu";
+    };
+    simplePos?: {
+        x: number;
+        y: number;
+        unit: "emu";
+    };
+    useSimplePos: boolean;
+    effectExtent?: {
+        top: number;
+        right: number;
+        bottom: number;
+        left: number;
+        unit: "emu";
+    };
+    distance: {
+        top: number;
+        right: number;
+        bottom: number;
+        left: number;
+        unit: "emu";
+    };
+    wrap: {
+        kind: string;
+        polygonFingerprint?: string;
+    };
+    relativeHeight?: number;
+    behindDoc?: boolean;
+    allowOverlap?: boolean;
+    layoutInCell?: boolean;
+    resolution: "layout-dependent" | "local-exact" | "page-resolved";
+};
+
+// export: DocxSceneRepresentationV1
+export interface DocxSceneRepresentationV1 {
+    kind: "drawingml" | "raster-fallback" | "svg" | "vml";
+    assetSha256?: string;
+    selected: boolean;
+    sourceUse: DocxVisualSourceUseV1;
 }
 
 // export: DocxSectionFactV1
@@ -2515,6 +3498,92 @@ export interface DocxUsageFactV1 {
     count: number;
 }
 
+// export: DocxVisualAnalysisBundleV1
+export interface DocxVisualAnalysisBundleV1 {
+    analysis: DocxVisualAnalysisV1;
+    privateSource: DocxVisualPrivateSidecarV1;
+}
+
+// export: DocxVisualAnalysisV1
+export interface DocxVisualAnalysisV1 {
+    schema: typeof DOCX_VISUAL_ANALYSIS_SCHEMA_V1;
+    sourceDigest: string;
+    capability: {
+        id: string;
+        version: number;
+    };
+    rule: typeof DOCX_VISUAL_ANALYSIS_RULE_V1;
+    assets: readonly DocxVisualAssetV1[];
+    scenes: readonly SceneCandidateV1[];
+    roleSuggestions: readonly RoleSuggestionV1[];
+    assetReview: readonly AssetReviewDescriptorV1[];
+    backgrounds: readonly DocxBackgroundFactV1[];
+    pageBorders: readonly DocxPageBorderFactV1[];
+    inventory: {
+        charts: number;
+        smartart: number;
+        vml: number;
+        groups: number;
+        textboxes: number;
+        emfWmf: number;
+        complexEffects: number;
+        externalImages: number;
+    };
+    diagnostics: readonly TemplateDiagnosticV1[];
+}
+
+// export: DocxVisualAssetV1
+export interface DocxVisualAssetV1 {
+    sha256: string;
+    mediaType: SupportedMediaType;
+    byteLength: number;
+    dimensions?: DocxVisualDimensionsV1;
+    handle: TemplateAssetHandleV1;
+}
+
+// export: DocxVisualDimensionsV1
+export interface DocxVisualDimensionsV1 {
+    width: number;
+    height: number;
+    unit: "pixel";
+}
+
+// export: DocxVisualPrivateRecordV1
+export interface DocxVisualPrivateRecordV1 {
+    sceneId: string;
+    sourcePartName: string;
+    relationshipId?: string;
+    relationshipTarget?: string;
+    shapeName?: string;
+    shapeTitle?: string;
+    shapeDescription?: string;
+    sourceAltText?: string;
+}
+
+// export: DocxVisualPrivateSidecarV1
+export interface DocxVisualPrivateSidecarV1 {
+    schema: typeof DOCX_VISUAL_PRIVATE_SIDECAR_SCHEMA_V1;
+    records: readonly DocxVisualPrivateRecordV1[];
+}
+
+// export: DocxVisualSourceUseV1
+export interface DocxVisualSourceUseV1 {
+    kind: "inline-xml" | "relationship";
+    sourcePartRef: string;
+    relationshipRef?: string;
+    targetFingerprint?: string;
+    elementFingerprint?: string;
+    alternateContent?: {
+        groupId: string;
+        branch: string;
+        selected: boolean;
+    };
+    altText?: {
+        present: boolean;
+        fingerprint?: string;
+    };
+}
+
 // export: DocxXmlLimitsV1
 export interface DocxXmlLimitsV1 {
     maxBytes: number;
@@ -2706,6 +3775,61 @@ export declare function resolveDocxThemeColor(reference: DocxThemeColorReference
 
 // export: resolveDocxThemeFont
 export declare function resolveDocxThemeFont(reference: DocxThemeFontReferenceV1 | undefined, script: DocxFontScriptV1, theme: DocxThemeDefinitionV1): string | undefined;
+
+// export: RoleSuggestionV1
+export interface RoleSuggestionV1 {
+    sceneId: string;
+    role: "cover-art" | "footer-decoration" | "header-decoration" | "logo" | "page-background" | "watermark";
+    confidence: CandidateConfidenceV1;
+    explanations: readonly TemplateExplanationV1[];
+}
+
+// export: SceneCandidateV1
+export interface SceneCandidateV1 {
+    id: string;
+    kind: VisualKind;
+    scope: {
+        story: "document" | "footer" | "header";
+        section: number;
+        master?: DocxMasterVariantV1;
+    };
+    representations: readonly DocxSceneRepresentationV1[];
+    placement?: DocxScenePlacementV1;
+    transform?: {
+        xfrm?: {
+            offset: {
+                x: number;
+                y: number;
+                unit: "emu";
+            };
+            extent: {
+                width: number;
+                height: number;
+                unit: "emu";
+            };
+            flipH: boolean;
+            flipV: boolean;
+        };
+        rotation?: {
+            value: number;
+            unit: "degree";
+        };
+        crop?: {
+            left: number;
+            top: number;
+            right: number;
+            bottom: number;
+            unit: "percent";
+        };
+    };
+    paint?: {
+        opacity?: number;
+        fill?: string;
+        stroke?: string;
+    };
+    compatibility: CandidateCompatibilityV1;
+    sectionScope: "native" | "not-applicable" | "unsupported-section-scope";
+}
 
 // export: streamXmlPart
 export declare function streamXmlPart(partRef: string, bytes: Uint8Array, handlers?: {

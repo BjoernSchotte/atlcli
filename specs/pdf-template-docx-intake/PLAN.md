@@ -1927,48 +1927,55 @@ isolation.
 
 **Acceptance criteria / proof**
 
-- [ ] Identical image bytes from two parts produce one asset and two scenes.
-- [ ] Different crops of the same asset remain two separate scenes.
-- [ ] Relationship-free shape/text-box scenes are representable through
+- [x] Identical image bytes from two parts produce one asset and two scenes.
+- [x] Different crops of the same asset remain two separate scenes.
+- [x] Relationship-free shape/text-box scenes are representable through
       `inline-xml`; anchor goldens preserve separate H/V references,
       `simplePos`, `effectExtent`, complete `xfrm`, flips, and units.
-- [ ] PNG/JPEG/SVG with the wrong content type or magic bytes is rejected or
+- [x] PNG/JPEG/SVG with the wrong content type or magic bytes is rejected or
       reported as corrupt.
-- [ ] Over-wide/over-high rasters, total-pixel excess, and SVG-complexity excess
+- [x] Over-wide/over-high rasters, total-pixel excess, and SVG-complexity excess
       are rejected before compiler invocation; maximum-valid controls remain
       renderable.
-- [ ] The existing hostile-SVG corpus is also rejected for SVGs extracted from
+- [x] The existing hostile-SVG corpus is also rejected for SVGs extracted from
       DOCX.
-- [ ] First/default/even header images are assigned to the expected page
+- [x] First/default/even header images are assigned to the expected page
       masters and are not globalized.
-- [ ] Non-uniform sections, `titlePg` across multiple sections, and odd/even
+- [x] Non-uniform sections, `titlePg` across multiple sections, and odd/even
       with page-number restart become `unsupported-section-scope`, never a
       global decoration.
-- [ ] Page/margin-relative anchors are classified as native;
+- [x] Page/margin-relative anchors are classified as native;
       paragraph/line-relative anchors remain `unsupported` for V1.
-- [ ] Role suggestions include concrete reasons; no suggestion is classified
+- [x] Role suggestions include concrete reasons; no suggestion is classified
       as `conclusive` based solely on the filename `logo.*`.
-- [ ] Every asset review item defaults to "Do not include." No role suggestion
+- [x] Every asset review item defaults to "Do not include." No role suggestion
       changes the design until role, rights, accessibility, and placement have
       each been decided.
-- [ ] Asset review descriptors contain no free part name, relationship target,
+- [x] Asset review descriptors contain no free part name, relationship target,
       shape title, description, source alt text, or absolute path; their
       handles survive structured clone and can be consumed by CLI and browser
       preview adapters.
-- [ ] A feature zoo inventories charts, SmartArt, VML, and EMF/WMF without
+- [x] A feature zoo inventories charts, SmartArt, VML, and EMF/WMF without
       generating asset slots or Typst code for them.
-- [ ] External images are not loaded, not written to `.intake`, and not
+- [x] External images are not loaded, not written to `.intake`, and not
       proposed as native candidates.
-- [ ] Random Unicode values in alt text, shape title/name, and internal
+- [x] Random Unicode values in alt text, shape title/name, and internal
       relationship targets are entirely absent from portable analysis JSON but
       remain inspectable only in the private intake sidecar.
-- [ ] The independent oracle agrees for every supported scene on asset hash,
+- [x] The independent oracle agrees for every supported scene on asset hash,
       relationship, AlternateContent, crop, H/V anchor, and section master.
       Mutations to crop, relationship target, branch, and section assignment
       each make exactly the responsible test fail.
-- [ ] `bun run test packages/docx-template-intake/src/assets.test.ts
+- [x] `bun run test packages/docx-template-intake/src/assets.test.ts
       packages/docx-template-intake/src/drawingml.test.ts
       packages/docx-template-intake/src/visual-roles.test.ts` passes.
+
+**T5 evidence:** See `RESULTS.md`. Visual intake uses the renderer-owned,
+versioned asset capability descriptor, verifies media bytes and dimensions,
+deduplicates assets through safe handles, and keeps source-private metadata
+outside portable analysis. All 17 acceptance criteria are covered by 21
+normative tests with 90 assertions, including independently reviewed Word and
+LibreOffice oracle entries.
 
 ### T6 — Add asset slots and page decorations to the manifest and PDF renderer
 

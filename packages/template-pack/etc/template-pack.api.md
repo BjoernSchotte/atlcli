@@ -303,6 +303,9 @@ export declare const SETTING_TYPES: readonly [
 // export: SUPPORTED_SCHEMA_VERSION
 export declare const SUPPORTED_SCHEMA_VERSION = 1;
 
+// export: TEMPLATE_ASSET_CAPABILITIES_SCHEMA_V1
+export declare const TEMPLATE_ASSET_CAPABILITIES_SCHEMA_V1: "atlcli.template-asset-capabilities/1";
+
 // export: TEMPLATE_CAPABILITY_CATALOG_SCHEMA_V1
 export declare const TEMPLATE_CAPABILITY_CATALOG_SCHEMA_V1: "atlcli.template-capability-catalog/1";
 
@@ -311,6 +314,23 @@ export declare const TEMPLATE_CAPABILITY_PRESENTATION_SCHEMA_V1: "atlcli.templat
 
 // export: TEMPLATE_PACK_MANIFEST_NAME
 export declare const TEMPLATE_PACK_MANIFEST_NAME = "wiki-pdf-template.json";
+
+// export: TemplateAssetCapabilitiesV1
+export interface TemplateAssetCapabilitiesV1 {
+    schema: typeof TEMPLATE_ASSET_CAPABILITIES_SCHEMA_V1;
+    id: string;
+    version: number;
+    mediaTypes: readonly ("image/jpeg" | "image/png" | "image/svg+xml")[];
+    maxBytes: number;
+    maxWidth: number;
+    maxHeight: number;
+    maxPixels: number;
+    svg: {
+        maxElements: number;
+        maxPathElements: number;
+        maxFilterPrimitives: number;
+    };
+}
 
 // export: TemplateCapabilityCatalogV1
 export interface TemplateCapabilityCatalogV1 {
@@ -494,6 +514,9 @@ export interface ValidatePackResult {
 
 // export: validateSafeString
 export declare function validateSafeString(value: unknown, path: string): string;
+
+// export: validateTemplateAssetCapabilitiesV1
+export declare function validateTemplateAssetCapabilitiesV1(value: unknown): TemplateAssetCapabilitiesV1;
 
 // export: WIKI_PDF_V1_DOCUMENT_LABELS
 export declare const WIKI_PDF_V1_DOCUMENT_LABELS: readonly [
@@ -834,6 +857,9 @@ export declare const SETTING_TYPES: readonly [
 // export: SUPPORTED_SCHEMA_VERSION
 export declare const SUPPORTED_SCHEMA_VERSION = 1;
 
+// export: TEMPLATE_ASSET_CAPABILITIES_SCHEMA_V1
+export declare const TEMPLATE_ASSET_CAPABILITIES_SCHEMA_V1: "atlcli.template-asset-capabilities/1";
+
 // export: TEMPLATE_CAPABILITY_CATALOG_SCHEMA_V1
 export declare const TEMPLATE_CAPABILITY_CATALOG_SCHEMA_V1: "atlcli.template-capability-catalog/1";
 
@@ -842,6 +868,23 @@ export declare const TEMPLATE_CAPABILITY_PRESENTATION_SCHEMA_V1: "atlcli.templat
 
 // export: TEMPLATE_PACK_MANIFEST_NAME
 export declare const TEMPLATE_PACK_MANIFEST_NAME = "wiki-pdf-template.json";
+
+// export: TemplateAssetCapabilitiesV1
+export interface TemplateAssetCapabilitiesV1 {
+    schema: typeof TEMPLATE_ASSET_CAPABILITIES_SCHEMA_V1;
+    id: string;
+    version: number;
+    mediaTypes: readonly ("image/jpeg" | "image/png" | "image/svg+xml")[];
+    maxBytes: number;
+    maxWidth: number;
+    maxHeight: number;
+    maxPixels: number;
+    svg: {
+        maxElements: number;
+        maxPathElements: number;
+        maxFilterPrimitives: number;
+    };
+}
 
 // export: TemplateCapabilityCatalogV1
 export interface TemplateCapabilityCatalogV1 {
@@ -1025,6 +1068,9 @@ export interface ValidatePackResult {
 
 // export: validateSafeString
 export declare function validateSafeString(value: unknown, path: string): string;
+
+// export: validateTemplateAssetCapabilitiesV1
+export declare function validateTemplateAssetCapabilitiesV1(value: unknown): TemplateAssetCapabilitiesV1;
 
 // export: WIKI_PDF_V1_DOCUMENT_LABELS
 export declare const WIKI_PDF_V1_DOCUMENT_LABELS: readonly [
@@ -1365,6 +1411,9 @@ export declare const SETTING_TYPES: readonly [
 // export: SUPPORTED_SCHEMA_VERSION
 export declare const SUPPORTED_SCHEMA_VERSION = 1;
 
+// export: TEMPLATE_ASSET_CAPABILITIES_SCHEMA_V1
+export declare const TEMPLATE_ASSET_CAPABILITIES_SCHEMA_V1: "atlcli.template-asset-capabilities/1";
+
 // export: TEMPLATE_CAPABILITY_CATALOG_SCHEMA_V1
 export declare const TEMPLATE_CAPABILITY_CATALOG_SCHEMA_V1: "atlcli.template-capability-catalog/1";
 
@@ -1373,6 +1422,23 @@ export declare const TEMPLATE_CAPABILITY_PRESENTATION_SCHEMA_V1: "atlcli.templat
 
 // export: TEMPLATE_PACK_MANIFEST_NAME
 export declare const TEMPLATE_PACK_MANIFEST_NAME = "wiki-pdf-template.json";
+
+// export: TemplateAssetCapabilitiesV1
+export interface TemplateAssetCapabilitiesV1 {
+    schema: typeof TEMPLATE_ASSET_CAPABILITIES_SCHEMA_V1;
+    id: string;
+    version: number;
+    mediaTypes: readonly ("image/jpeg" | "image/png" | "image/svg+xml")[];
+    maxBytes: number;
+    maxWidth: number;
+    maxHeight: number;
+    maxPixels: number;
+    svg: {
+        maxElements: number;
+        maxPathElements: number;
+        maxFilterPrimitives: number;
+    };
+}
 
 // export: TemplateCapabilityCatalogV1
 export interface TemplateCapabilityCatalogV1 {
@@ -1556,6 +1622,9 @@ export interface ValidatePackResult {
 
 // export: validateSafeString
 export declare function validateSafeString(value: unknown, path: string): string;
+
+// export: validateTemplateAssetCapabilitiesV1
+export declare function validateTemplateAssetCapabilitiesV1(value: unknown): TemplateAssetCapabilitiesV1;
 
 // export: WIKI_PDF_V1_DOCUMENT_LABELS
 export declare const WIKI_PDF_V1_DOCUMENT_LABELS: readonly [
@@ -1896,6 +1965,9 @@ export declare const SETTING_TYPES: readonly [
 // export: SUPPORTED_SCHEMA_VERSION
 export declare const SUPPORTED_SCHEMA_VERSION = 1;
 
+// export: TEMPLATE_ASSET_CAPABILITIES_SCHEMA_V1
+export declare const TEMPLATE_ASSET_CAPABILITIES_SCHEMA_V1: "atlcli.template-asset-capabilities/1";
+
 // export: TEMPLATE_CAPABILITY_CATALOG_SCHEMA_V1
 export declare const TEMPLATE_CAPABILITY_CATALOG_SCHEMA_V1: "atlcli.template-capability-catalog/1";
 
@@ -1904,6 +1976,23 @@ export declare const TEMPLATE_CAPABILITY_PRESENTATION_SCHEMA_V1: "atlcli.templat
 
 // export: TEMPLATE_PACK_MANIFEST_NAME
 export declare const TEMPLATE_PACK_MANIFEST_NAME = "wiki-pdf-template.json";
+
+// export: TemplateAssetCapabilitiesV1
+export interface TemplateAssetCapabilitiesV1 {
+    schema: typeof TEMPLATE_ASSET_CAPABILITIES_SCHEMA_V1;
+    id: string;
+    version: number;
+    mediaTypes: readonly ("image/jpeg" | "image/png" | "image/svg+xml")[];
+    maxBytes: number;
+    maxWidth: number;
+    maxHeight: number;
+    maxPixels: number;
+    svg: {
+        maxElements: number;
+        maxPathElements: number;
+        maxFilterPrimitives: number;
+    };
+}
 
 // export: TemplateCapabilityCatalogV1
 export interface TemplateCapabilityCatalogV1 {
@@ -2087,6 +2176,9 @@ export interface ValidatePackResult {
 
 // export: validateSafeString
 export declare function validateSafeString(value: unknown, path: string): string;
+
+// export: validateTemplateAssetCapabilitiesV1
+export declare function validateTemplateAssetCapabilitiesV1(value: unknown): TemplateAssetCapabilitiesV1;
 
 // export: WIKI_PDF_V1_DOCUMENT_LABELS
 export declare const WIKI_PDF_V1_DOCUMENT_LABELS: readonly [

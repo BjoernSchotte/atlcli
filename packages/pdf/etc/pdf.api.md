@@ -308,6 +308,9 @@ export declare const PDF_RUNTIME_ASSETS: Readonly<{
     }>;
 }>;
 
+// export: PDF_TEMPLATE_ASSET_CAPABILITIES_V1
+export declare const PDF_TEMPLATE_ASSET_CAPABILITIES_V1: TemplateAssetCapabilitiesV1;
+
 // export: PdfAssetRef
 export interface PdfAssetRef {
     kind: "attachment" | "external";
@@ -855,6 +858,23 @@ export interface RunPdfExportInput {
         id: string;
         version?: number;
         spaceKey?: string;
+    };
+}
+
+// export: TemplateAssetCapabilitiesV1
+export interface TemplateAssetCapabilitiesV1 {
+    schema: typeof TEMPLATE_ASSET_CAPABILITIES_SCHEMA_V1;
+    id: string;
+    version: number;
+    mediaTypes: readonly ("image/jpeg" | "image/png" | "image/svg+xml")[];
+    maxBytes: number;
+    maxWidth: number;
+    maxHeight: number;
+    maxPixels: number;
+    svg: {
+        maxElements: number;
+        maxPathElements: number;
+        maxFilterPrimitives: number;
     };
 }
 
@@ -1194,6 +1214,9 @@ export declare const PDF_RUNTIME_ASSETS: Readonly<{
     }>;
 }>;
 
+// export: PDF_TEMPLATE_ASSET_CAPABILITIES_V1
+export declare const PDF_TEMPLATE_ASSET_CAPABILITIES_V1: TemplateAssetCapabilitiesV1;
+
 // export: PdfAssetRef
 export interface PdfAssetRef {
     kind: "attachment" | "external";
@@ -1741,6 +1764,23 @@ export interface RunPdfExportInput {
         id: string;
         version?: number;
         spaceKey?: string;
+    };
+}
+
+// export: TemplateAssetCapabilitiesV1
+export interface TemplateAssetCapabilitiesV1 {
+    schema: typeof TEMPLATE_ASSET_CAPABILITIES_SCHEMA_V1;
+    id: string;
+    version: number;
+    mediaTypes: readonly ("image/jpeg" | "image/png" | "image/svg+xml")[];
+    maxBytes: number;
+    maxWidth: number;
+    maxHeight: number;
+    maxPixels: number;
+    svg: {
+        maxElements: number;
+        maxPathElements: number;
+        maxFilterPrimitives: number;
     };
 }
 
@@ -2080,6 +2120,9 @@ export declare const PDF_RUNTIME_ASSETS: Readonly<{
     }>;
 }>;
 
+// export: PDF_TEMPLATE_ASSET_CAPABILITIES_V1
+export declare const PDF_TEMPLATE_ASSET_CAPABILITIES_V1: TemplateAssetCapabilitiesV1;
+
 // export: PdfAssetRef
 export interface PdfAssetRef {
     kind: "attachment" | "external";
@@ -2627,6 +2670,23 @@ export interface RunPdfExportInput {
         id: string;
         version?: number;
         spaceKey?: string;
+    };
+}
+
+// export: TemplateAssetCapabilitiesV1
+export interface TemplateAssetCapabilitiesV1 {
+    schema: typeof TEMPLATE_ASSET_CAPABILITIES_SCHEMA_V1;
+    id: string;
+    version: number;
+    mediaTypes: readonly ("image/jpeg" | "image/png" | "image/svg+xml")[];
+    maxBytes: number;
+    maxWidth: number;
+    maxHeight: number;
+    maxPixels: number;
+    svg: {
+        maxElements: number;
+        maxPathElements: number;
+        maxFilterPrimitives: number;
     };
 }
 

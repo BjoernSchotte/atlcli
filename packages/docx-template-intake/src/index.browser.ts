@@ -31,3 +31,25 @@ export * from "./section-resolution.js";
 export * from "./style-resolution.js";
 export * from "./streaming.js";
 export * from "./theme-resolution.js";
+export {
+  analyzeDocxVisualAssets,
+  DOCX_VISUAL_ANALYSIS_RULE_V1,
+  DOCX_VISUAL_ANALYSIS_SCHEMA_V1,
+  DOCX_VISUAL_PRIVATE_SIDECAR_SCHEMA_V1,
+  type AssetReviewDescriptorV1,
+  type DocxAnchorAxisV1,
+  type DocxBackgroundFactV1,
+  type DocxPageBorderFactV1,
+  type DocxScenePlacementV1,
+  type DocxSceneRepresentationV1,
+  type DocxVisualAnalysisBundleV1,
+  type DocxVisualAnalysisV1,
+  type DocxVisualAssetV1,
+  type DocxVisualDimensionsV1,
+  type DocxVisualPrivateRecordV1,
+  type DocxVisualPrivateSidecarV1,
+  type DocxVisualSourceUseV1,
+  type RoleSuggestionV1,
+  type SceneCandidateV1,
+} from "./visual-analysis.js";
+export { DOCX_VISUAL_MESSAGE_REGISTRY_V1 } from "./visual-messages.js";

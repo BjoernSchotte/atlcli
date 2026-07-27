@@ -177,6 +177,7 @@
       "name": "@atlcli/docx-template-intake",
       "version": "0.1.0",
       "dependencies": {
+        "@atlcli/confluence": "workspace:*",
         "@atlcli/core": "workspace:*",
         "@atlcli/docx": "workspace:*",
         "@atlcli/pdf-template-authoring": "workspace:*",

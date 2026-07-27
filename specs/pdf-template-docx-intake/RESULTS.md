@@ -561,3 +561,100 @@ suite.
 
 This evidence proves T4 only. It does not claim asset extraction, page-scene
 mapping, CLI review, or template-pack materialization from T5 onward.
+
+## T5 — Visual assets, backgrounds, and page scenes
+
+**Status:** Proven on 2026-07-27.
+
+### Shared capability and safe asset boundary
+
+`@atlcli/template-pack` now owns the engine-neutral
+`TemplateAssetCapabilitiesV1` contract and fail-closed validator. The PDF
+renderer publishes `PDF_TEMPLATE_ASSET_CAPABILITIES_V1` with its existing
+per-file byte ceiling plus explicit width, height, total-pixel, SVG element,
+path, and filter budgets. DOCX intake consumes that injected descriptor; T6
+can pass the same object to pack validation without introducing a package
+cycle or a second set of limits.
+
+Internal PNG, JPEG, and SVG parts are verified against both magic bytes and
+OOXML content types. PNG/JPEG dimensions are read without rendering. SVG input
+uses the existing shared hostile-content policy and additional complexity
+limits. Byte limits apply before media decoding, and invalid or over-budget
+assets never reach the asset store. Identical bytes across different parts
+produce one verified handle while every source occurrence remains a distinct
+scene.
+
+The host-owned asset store must return the canonical digest-bound handle;
+path-shaped or inconsistent handles fail closed. External relationships are
+never fetched, stored, copied to the private sidecar, or proposed for native
+adoption.
+
+### Scene, master, and review model
+
+The DrawingML resolver preserves inline and anchored placement, independent
+horizontal and vertical reference systems, `simplePos` and its activation
+flag, extents and effect extents, distances, wrap, z-order signals, overlap
+and cell-layout flags, complete transforms, flips, rotation, opacity, and
+crop. Page/margin anchors are native; paragraph/line-dependent placement is
+explicitly unsupported. Relationship-free shapes remain inventory scenes
+through an `inline-xml` fingerprint.
+
+Header and footer scenes bind to effective first/default/even section masters.
+Non-uniform multi-section layouts, multi-section first-page variants, and
+page-number restarts remain `unsupported-section-scope`. Solid/theme document
+backgrounds and page-border facts are preserved; only a four-sided uniform
+`single` border relative to the page is classified as native.
+
+AlternateContent choice and fallback representations share one logical scene,
+retain selected-branch provenance, and keep variant assets separate. Charts,
+SmartArt, VML, groups, text boxes, EMF/WMF, and complex effects are counted
+and localized without producing asset slots or Typst.
+
+Role suggestions for repeated header logos, page-filling backgrounds,
+first-page cover art, and large rotated/transparent watermarks carry
+structured reasons and remain `corroborated`, never filename-derived
+conclusions. Every `AssetReviewDescriptorV1` defaults to **Do not include**;
+rights, semantic role, accessibility, and placement remain unanswered until a
+user decision.
+
+Portable visual JSON contains only role/ordinal source references,
+fingerprints, sanitized master locations, and safe handles. Raw part names,
+relationship targets, shape metadata, and source alt text exist only in the
+separate private sidecar. Random Unicode probes prove that separation.
+
+The generated API/closure reports expose 105 experimental intake symbols, 102
+template-pack symbols, and 82 PDF host symbols with zero
+reachable-but-unexported gaps. Archive-level and oracle-test helpers remain
+outside the public barrels.
+
+### Independent oracle
+
+Reviewed Microsoft Word 16.111.1 and LibreOffice 7.1.1.2 fixtures have frozen
+oracle entries covering selected asset digest, relationship and target
+fingerprints, crop, anchor references, section/master assignment, and default
+adoption. A field-addressed comparator proves that mutations to crop,
+relationship target, AlternateContent branch, and section assignment each
+produce exactly one responsible mismatch.
+
+### Commands and results
+
+| Proof | Exact command | Result |
+|---|---|---|
+| Normative T5 suite | `bun run test packages/docx-template-intake/src/assets.test.ts packages/docx-template-intake/src/drawingml.test.ts packages/docx-template-intake/src/visual-roles.test.ts` | Passed; 21 tests, 90 assertions, 0 failures |
+| Shared asset-capability contract | `bun run test packages/template-pack/src/asset-capabilities.test.ts packages/pdf/src/template-asset-capabilities.test.ts` | Passed; 3 tests, 10 assertions, 0 failures |
+| Complete intake regression suite | `bun run test packages/docx-template-intake/src` | Passed; 69 tests, 2,051 assertions, 0 failures |
+| Browser portability | `bun scripts/check-browser-build.ts` | Passed; all 23 browser entry points built without Node/Bun builtins |
+| API report and closure guard | `bun run test scripts/api-report.test.ts` | Passed; 5 tests, 14 assertions, zero closure gaps |
+| Repository type safety | `bun run typecheck` | Passed for the root, extension, browser compiler, and browser export harness |
+| Full monorepo build | `bun run build` | Passed; 19 tasks |
+| Full repository suite | `bun run test` | Passed outside the network sandbox; 5,622 tests passed, 12 environment-gated tests skipped, 0 failures |
+| Diff hygiene | `git diff --check` | Passed |
+
+The live Confluence E2E is not applicable to T5: this task adds no CLI command,
+renderer behavior, filesystem adapter, network operation, or Confluence
+mutation. It uses neutral synthetic inputs plus the committed privacy-reviewed
+Word and LibreOffice fixtures.
+
+This evidence proves T5 only. It does not claim runtime asset slots,
+decorations in rendered PDFs, CLI review, or template-pack materialization
+from T6 onward.

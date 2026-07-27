@@ -74,6 +74,10 @@ export type { PdfOutputInspection } from "./validate.js";
 export { PDF_RUNTIME_ASSETS } from "./runtime-assets.js";
 export type { PdfRuntimeFontAsset } from "./runtime-assets.js";
 
+// --- Template visual-asset capability contract ---
+export { PDF_TEMPLATE_ASSET_CAPABILITIES_V1 } from "./template-asset-capabilities.js";
+export type { TemplateAssetCapabilitiesV1 } from "@atlcli/template-pack";
+
 // --- Curated built-in templates + manifest contract (spec 012) ---
 export { BUILTIN_PDF_TEMPLATE_ID, BUILTIN_PDF_TEMPLATE_MANIFEST } from "./builtin-template.js";
 export {
