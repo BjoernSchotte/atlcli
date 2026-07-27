@@ -196,3 +196,52 @@ worth its cost.
   marked inconclusive where the signal is smaller.
 - Compile wall time under concurrent load: up to ±10% — never used as a
   ratchet gate on its own.
+
+## Phase 3 — host wiring (CLI flags, extension UI), live-proven
+
+Wiring: `--pdf-images original|standard|print` + `--pdf-images-ppi <72..1200>`
+→ `buildCliPdfJobRequest` → `PdfExportJobRequestV1.options.imageProfile/imagePpi`
+(validated, replay-pinned) → executor `imageQuality` → `preparePdfDocument`
+normalization. Extension: ExportScreen **Image quality** select + conditional
+PPI input → draft context → `ExportScopeRequest` → `createExtensionPdfJobRequest`
+options (stray `imagePpi` on `original` is dropped defensively; regression
+test in `apps/extension/tests/jobs/pdf-submit.test.ts`).
+
+### Live CLI proof (DOCSY page 1146748946, deleted after the run)
+
+Temporary page under the DOCX fixture tree carrying one deterministic corpus
+photo attachment (`photo-20.jpg`, 2400×1792 baseline JPEG, 1,654,348 bytes),
+created with `wiki docs push`, exported four ways with a fresh
+`ATLCLI_EXPORT_JOBS_DIR`, then deleted (`wiki page delete --confirm`):
+
+| Run | PDF bytes | vs original | `image-profile-applied` |
+|---|---|---|---|
+| (no flag) original | 1,704,492 | — | absent (correct) |
+| `--pdf-images print` (300 PPI → 1958px) | 773,045 | −54.6% | 1 |
+| `--pdf-images standard` (180 PPI → 1176px) | 287,059 | −83.2% | 1 |
+| `--pdf-images standard --pdf-images-ppi 96` (627px) | 118,845 | −93.0% | 1 |
+
+`pdftotext` finds the page's prose in all four PDFs; `exitCode: 0`,
+`complete: true`, `assets: {fetched: 1, embedded: 1}` in every run. Error
+paths proven live: `--pdf-images original --pdf-images-ppi 200` → usage error
+("original never re-encodes"), `--pdf-images-ppi 5000` → range error,
+`--pdf-images-ppi 240` without a profile → usage error.
+
+Second live anchor: real page 1118437396 (existing small attachment) emits
+`image-profile-applied: 1` under all three re-encode variants and its
+`--pdf-images-ppi 96` output came out ~0.3 KiB *larger* than original —
+the expected small-image trade-off (decoded pixel area is the target, not
+file bytes), now pinned by a behavior test in
+`packages/export-media/src/codec.test.ts`.
+
+### Environment findings hit while proving (pre-existing, not this branch)
+
+- **Journal poisoning**: `~/.atlcli/export-jobs/v1/journal/` records from
+  before #106 carry `template.kind`; `FileJobStore.#load()` strict-parses
+  every historical request, so one stale record fails *every* new export with
+  `request.template.kind: is not part of this contract shape` (exit 4).
+  Reproduced identically with all Phase-3 changes stashed; flagged as
+  separate work. Live runs here used a fresh `ATLCLI_EXPORT_JOBS_DIR`.
+- `wiki docs push` only uploads images referenced as
+  `![alt](./<page>.attachments/<file>)`; other relative paths are left as-is
+  and the PDF export then 401s trying `<base>/wiki` + `<relative-path>`.

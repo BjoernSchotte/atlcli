@@ -51,6 +51,10 @@ export interface PublishingDraft {
   scopeRequest: ExportScopeRequest;
   resolveMacros: boolean;
   setResolveMacros: (value: boolean) => void;
+  imageProfile: "original" | "standard" | "print";
+  setImageProfile: (value: "original" | "standard" | "print") => void;
+  imagePpi: number | undefined;
+  setImagePpi: (value: number | undefined) => void;
   values: Record<string, SettingValue>;
   onSettingChange: (key: string, value: SettingValue) => void;
   onSettingsReset: () => void;
@@ -105,14 +109,20 @@ export function PublishingDraftProvider({
     () => resolveCodeThemeId(values.codeTheme),
     [values.codeTheme],
   );
+  const [imageProfile, setImageProfile] = useState<"original" | "standard" | "print">("original");
+  const [imagePpi, setImagePpi] = useState<number | undefined>(undefined);
   const scopeRequest = useMemo<ExportScopeRequest>(
     () => ({
       ...(exportScope ? { scope: exportScope } : {}),
       ...(labels ? { labels } : {}),
       resolveMacros,
       codeTheme,
+      // Explicit image profile for durable PDF jobs (issue #118 Phase 3);
+      // preview stays original regardless.
+      ...(imageProfile !== "original" ? { imageProfile } : {}),
+      ...(imageProfile !== "original" && imagePpi !== undefined ? { imagePpi } : {}),
     }),
-    [codeTheme, exportScope, labels, resolveMacros]
+    [codeTheme, exportScope, labels, resolveMacros, imageProfile, imagePpi]
   );
 
   useEffect(() => {
@@ -174,6 +184,10 @@ export function PublishingDraftProvider({
       scopeRequest,
       resolveMacros,
       setResolveMacros,
+      imageProfile,
+      setImageProfile,
+      imagePpi,
+      setImagePpi,
       values,
       onSettingChange,
       onSettingsReset,
@@ -188,6 +202,8 @@ export function PublishingDraftProvider({
       labels,
       scopeRequest,
       resolveMacros,
+      imageProfile,
+      imagePpi,
       values,
       onSettingChange,
       onSettingsReset,
