@@ -1229,14 +1229,18 @@ Resolved by measurement (2026-07-27):
 Still intentionally resolved by measured phase gates:
 
 1. Which exact `standard` PPI in the 160–200 range gives the best visual/peak
-   trade-off, and is approximately 300 PPI the correct `print` value? (The
-   image-heavy attribution predicts the ceiling: photos render at content
-   width, so `standard` should cut decoded pixels by roughly 4x — measure,
-   do not assume.)
+   trade-off, and is approximately 300 PPI the correct `print` value? —
+   **first measurement in (2026-07-27): `standard` at the 180 PPI candidate
+   pin cuts the image-heavy worker peak by 74.84% (1558.32 → 392.10 MiB;
+   WASM high-water 1326.56 → 325.63 MiB; bundle 100.36 → 16.65 MiB).** The
+   pin stays a candidate until the visual-parity review confirms it; the
+   memory half of the trade-off is measured.
 2. Which deterministic codec satisfies Bun, extension, normal browser, Forge,
    CSP, license, size, and parity requirements?
 3. Does a narrower or newer Typst runtime improve runtime peak, not only WASM
    size?
 4. Can a maintainable Typst memory mode pass the 25% and parity gates?
 5. Does the `standard` profile clear the 40% image-heavy reduction bar that
-   would let documentation recommend it for large trees?
+   would let documentation recommend it for large trees? — **answered
+   2026-07-27: yes, 74.84% measured; the bar is asserted in the Chrome
+   harness at scale 1.**
