@@ -528,7 +528,9 @@ async function rasterPages(pdf: Uint8Array): Promise<Ppm[]> {
       .sort((left, right) =>
         Number(/\d+/u.exec(left)![0]) - Number(/\d+/u.exec(right)![0])
       );
-    return Promise.all(
+    // Await before finally removes the temporary directory. Returning the
+    // promise directly lets cleanup race the asynchronous file reads.
+    return await Promise.all(
       files.map(async (name) =>
         parsePpm(new Uint8Array(await Bun.file(join(directory, name)).arrayBuffer()))
       )
