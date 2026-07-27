@@ -10,6 +10,7 @@ export * from "./manifest.js";
 export * from "./design.js";
 export * from "./capabilities.js";
 export * from "./asset-capabilities.js";
+export * from "./assets.js";
 export * from "./bindings.js";
 export * from "./localization.js";
 export * from "./localize.js";

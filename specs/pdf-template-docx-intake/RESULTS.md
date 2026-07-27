@@ -658,3 +658,94 @@ Word and LibreOffice fixtures.
 This evidence proves T5 only. It does not claim runtime asset slots,
 decorations in rendered PDFs, CLI review, or template-pack materialization
 from T6 onward.
+
+## T6 — PDF asset slots and page decorations
+
+**Status:** Proven on 2026-07-27.
+
+### Three-phase validation and fixed compiler boundary
+
+`@atlcli/template-pack` now owns engine-neutral asset descriptors, references,
+and page-decoration shapes. Its validator checks only JSON shape, safe relative
+paths, references, lengths, colors, and numeric bounds. It does not claim that
+a slot is supported by PDF or that payload bytes exist.
+
+`@atlcli/pdf` adds the second, engine-specific manifest phase and the third,
+payload-integrity phase. The PDF phase accepts only the five cataloged slots,
+the image-decoration and page-border writers, the four proven page scopes, and
+bounded page or margin geometry. The pack phase verifies referenced payloads,
+hashes, media magic, declared dimensions, byte/pixel/SVG-complexity limits,
+canonical-pack file ownership, bundled fonts, and collision-free
+compiler-owned VFS targets. `loadPdfTemplatePack()` runs all three phases.
+Legacy packs retain their existing tolerance for opaque unreferenced payloads;
+canonical authoring packs reject them.
+
+Meaning-bearing logos require alt text. Backgrounds, headers, footers, and
+borders must be decorative. Hostile SVG, external references, unbundled fonts,
+unknown writers, and VFS collisions fail before Typst compilation. The V1
+builder explicitly rejects image or foreground watermarks, section-specific
+decorations, text-relative or non-uniform borders, border art, crop, and
+partial opacity. Intake facts for those cases remain available for review but
+cannot become executable manifest claims.
+
+### Real renderer and preview proof
+
+The PDF runtime mounts verified visual payloads only at fixed
+`template-assets/*` paths and threads the resolved pack through settings,
+serialization, and export. Page and cover backgrounds render in the page
+background layer; header and footer ornaments render in bounded margin-relative
+placements; a four-sided, page-relative `single` border becomes one declarative
+border decoration. Decoration source is omitted entirely for packs without
+visuals, preserving the established default PDF byte digests.
+
+The pinned Typst-WASM compiler rendered all five asset slots plus the uniform
+border. Poppler rasterization at 36 dpi produced at least six pages and exact
+color-oracle vectors for `first`, `odd`, `even`, and `all`: cover green on the
+first page only, page red on odd pages, header blue on even pages, footer
+yellow on every page, logo purple on the first page, and the cyan border on
+every page. The output remained tagged and outlined; all ornaments were
+`pdf.artifact` content and only the meaning-bearing logo produced a `/Figure`
+structure element. Existing embedded-font assertions and the two approved
+default-output digest tests remained green.
+
+`PdfTemplatePreviewCompiler` is a host-neutral adapter over structured
+requests. Its design-review proof produced two pages with summary, baseline,
+and current region references; displayed the exact `12 / 4 / 3 / 1 / 4`
+`TemplateImportViewV1` counts; and visibly distinguished A4 portrait from
+Letter landscape, both typography stacks, both accent colors, and the accepted
+background. Compatibility-proof and asset-contact-sheet requests produced
+typed page/region references without exposing source paths. Node and browser
+entry points returned identical metadata, digests, regions, and PDF bytes for
+the same request.
+
+The generated API/closure reports expose 112 template-pack symbols, 102 PDF
+symbols, and 102 authoring symbols with zero reachable-but-unexported gaps.
+
+### Commands and results
+
+| Proof | Exact command | Result |
+|---|---|---|
+| Normative T6 suite | `bun run test packages/template-pack/src/manifest.test.ts packages/pdf/src/settings.test.ts packages/pdf/src/template.test.ts packages/pdf-compiler-browser/src/docx-template-assets.test.ts` | Passed; 63 tests, 316 assertions, 0 failures |
+| Default-output and migration parity | `bun run test packages/pdf-compiler-browser/src/docx-template-assets.test.ts packages/pdf-compiler-browser/src/chapter-running-head.test.ts packages/pdf-compiler-browser/src/template-migration-parity.test.ts` | Passed; 24 tests, 100 assertions, 0 failures |
+| Browser portability | `bun scripts/check-browser-build.ts` | Passed; all 23 browser entry points built without Node/Bun builtins |
+| API report and closure guard | `bun run test scripts/api-report.test.ts` | Passed; 5 tests, 14 assertions, zero closure gaps |
+| Repository type safety | `bun run typecheck` | Passed for the root, extension, browser compiler, and browser export harness |
+| Full monorepo build | `bun run build` | Passed; 19 tasks |
+| Full repository suite | `bun run test` | Passed outside the network sandbox; 5,637 tests passed, 12 environment-gated tests skipped, 0 failures |
+| Diff hygiene | `git diff --check` | Passed |
+
+The first full-suite attempt ran inside a network-restricted sandbox and
+correctly exposed unrelated loopback failures. It also found two genuine
+default-output digest regressions: unconditional decoration helpers had changed
+packs with no visuals. Decoration source is now conditional, and the targeted
+digest tests plus the final full suite prove byte-identical legacy output.
+
+The live Confluence E2E is not applicable to T6: this task adds renderer and
+template-pack behavior but no CLI command, filesystem adapter, network
+operation, or Confluence mutation. Its E2E-equivalent evidence is the real
+Typst-WASM compile, Poppler raster oracle, PDF structure inspection, and
+Node/browser compiler parity.
+
+This evidence proves T6 only. It does not claim project persistence,
+deterministic authoring-pack builds, CLI review flows, or later import and
+inspection commands from T7 onward.

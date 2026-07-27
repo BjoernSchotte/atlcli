@@ -255,6 +255,7 @@
         "@atlcli/confluence": "workspace:*",
         "@atlcli/diagram": "workspace:*",
         "@atlcli/export-macros": "workspace:*",
+        "@atlcli/pdf-template-authoring": "workspace:*",
         "@atlcli/template-pack": "workspace:*",
       },
       "devDependencies": {

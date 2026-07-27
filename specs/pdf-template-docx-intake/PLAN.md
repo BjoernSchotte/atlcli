@@ -2017,36 +2017,36 @@ LibreOffice oracle entries.
 
 **Acceptance criteria / proof**
 
-- [ ] Engine-neutral manifest tests reject shape/path/bounds errors; PDF
+- [x] Engine-neutral manifest tests reject shape/path/bounds errors; PDF
       manifest tests reject unknown slots/scopes/writers/geometry; pack
       integrity tests reject missing payloads, actual hash/magic mismatches,
       byte/dimension/pixel/SVG-complexity excess, unreferenced files, and VFS
       collisions. No test claims PDF catalog or file integrity from
       engine-neutral JSON alone.
-- [ ] Only cataloged slot and decoration IDs are allowed.
-- [ ] Logo, page background, cover background, header decoration, footer
+- [x] Only cataloged slot and decoration IDs are allowed.
+- [x] Logo, page background, cover background, header decoration, footer
       decoration, and the bounded uniform page border each compile for real
       with Typst-WASM.
-- [ ] A multi-page feature zoo proves `first`, `odd`, `even`, and `all` through
+- [x] A multi-page feature zoo proves `first`, `odd`, `even`, and `all` through
       rendered page images; scope errors would be visible in the raster diff.
-- [ ] The same preview request through Node and browser compiler entries yields
+- [x] The same preview request through Node and browser compiler entries yields
       equivalent metadata and byte-identical PDF bytes where the existing
       compiler parity contract requires it.
-- [ ] A design-review fixture visibly distinguishes baseline from current
+- [x] A design-review fixture visibly distinguishes baseline from current
       typography, color, page geometry, and accepted background. The first
       page summary counts match `TemplateImportViewV1`.
-- [ ] Two pack assets with the same VFS target are rejected, not overwritten.
-- [ ] Hostile SVG, external references, and non-bundled fonts fail before the
+- [x] Two pack assets with the same VFS target are rejected, not overwritten.
+- [x] Hostile SVG, external references, and non-bundled fonts fail before the
       compiler.
-- [ ] Tagged-PDF, outline, and font assertions in existing harness cases remain
+- [x] Tagged-PDF, outline, and font assertions in existing harness cases remain
       green; backgrounds and decorations are classified as decorative.
-- [ ] Image/foreground watermarks, individual border sides, border art,
+- [x] Image/foreground watermarks, individual border sides, border art,
       `offsetFrom=text`, and section-specific decorations are explicitly
       rejected by the V1 builder and retained only in the analysis inventory.
-- [ ] A page border is materialized only when all relevant sections use the
+- [x] A page border is materialized only when all relevant sections use the
       same `single` stroke relative to the page; one differing section makes
       the builder fail with `unsupported-section-scope`.
-- [ ] `bun run test packages/template-pack/src/manifest.test.ts
+- [x] `bun run test packages/template-pack/src/manifest.test.ts
       packages/pdf/src/settings.test.ts
       packages/pdf/src/template.test.ts
       packages/pdf-compiler-browser/src/docx-template-assets.test.ts` passes.
@@ -2056,6 +2056,13 @@ cannot reproducibly support `first`/`odd`/`even`, safe artifact semantics, or
 the required background placement, reduce T6 to the smaller slot scope proven
 to work and move remaining capabilities to a follow-up plan. Do not publish an
 apparently supported manifest shape without render proof.
+
+**T6 evidence:** See `RESULTS.md`. The three validation phases, fixed VFS
+mapping, host-neutral preview adapter, and bounded decoration renderer are
+covered by unit, integration, real Typst-WASM, Poppler raster, Node/browser
+parity, accessibility, API-closure, build, type, and full-repository tests.
+The proven V1 execution surface deliberately rejects crop and partial opacity;
+those facts remain available to intake without being advertised as renderable.
 
 ### T7 — Implement the project ports, CLI repository, previews, and deterministic packs
 

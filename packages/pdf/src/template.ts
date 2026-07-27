@@ -34,12 +34,17 @@ import {
   BUILTIN_PDF_DESIGN,
   BUILTIN_PDF_FALLBACK_LABELS,
 } from "./builtin-template.js";
-import type { WikiPdfTemplateDesignV1 } from "@atlcli/template-pack";
+import type {
+  WikiPdfTemplateDesignV1,
+  WikiPdfTemplateImageDecorationV1,
+  WikiPdfTemplatePageBorderV1,
+} from "@atlcli/template-pack";
 import {
   projectPdfDesignThroughCatalog,
   readPdfDesignCapability,
 } from "./design-catalog.js";
 import { typstString } from "./escape.js";
+import type { PdfTemplateVisualsV1 } from "./template-pack.js";
 
 const EDITORIAL_DASH = String.fromCodePoint(0x2013);
 const EDITORIAL_BULLET = String.fromCodePoint(0x2022);
@@ -55,7 +60,8 @@ const SYMBOL_FALLBACK_FONTS = ["Noto Sans Symbols2", "Noto Emoji"] as const;
  */
 export function createAtlcliTypstTemplate(
   design: WikiPdfTemplateDesignV1 = BUILTIN_PDF_DESIGN,
-  labels: Record<string, string> = BUILTIN_PDF_FALLBACK_LABELS
+  labels: Record<string, string> = BUILTIN_PDF_FALLBACK_LABELS,
+  visuals?: PdfTemplateVisualsV1
 ): string {
   const catalogDesign = projectPdfDesignThroughCatalog(design);
   const fonts = catalogDesign.typography.fonts;
@@ -170,6 +176,22 @@ export function createAtlcliTypstTemplate(
   const success = callouts.success ? callout("success") : tip;
   const error = callouts.error ? callout("error") : warning;
   const panel = callout("panel");
+  const hasDecorations = (visuals?.decorations.length ?? 0) > 0;
+  const visualSource = hasDecorations
+    ? `\n\n${typstVisualSource(visuals)}\n\n`
+    : "\n\n";
+  const pageBackgroundSource = hasDecorations
+    ? `context {
+      watermark-layer(settings.at("watermark", default: none))
+      template-page-decorations()
+    }`
+    : 'watermark-layer(settings.at("watermark", default: none))';
+  const headerDecorationSource = hasDecorations
+    ? "\n      template-header-decorations()"
+    : "";
+  const footerDecorationSource = hasDecorations
+    ? "\n      template-footer-decorations()"
+    : "";
 
   return String.raw`
 #let editorial-numbering(..nums) = {
@@ -207,9 +229,7 @@ export function createAtlcliTypstTemplate(
       wm.text,
     ),
   ))
-}
-
-// wiki.pdf-template/v1 render surface: render(meta, body, settings).
+}${visualSource}// wiki.pdf-template/v1 render surface: render(meta, body, settings).
 // settings: (:) keeps callers that pass no settings compiling; every settings
 // read below falls back to a built-in default interpolated at generation time.
 #let atlcli-doc(meta: (:), settings: (:), body) = {
@@ -278,8 +298,8 @@ export function createAtlcliTypstTemplate(
     flipped: page-config.at("orientation", default: "${orientDefault}") == "landscape",
     fill: cover-paper,
     margin: (top: ${margin.top}, bottom: ${margin.bottom}, left: ${margin.left}, right: ${margin.right}),
-    background: watermark-layer(settings.at("watermark", default: none)),
-    header: context {
+    background: ${pageBackgroundSource},
+    header: context {${headerDecorationSource}
       let current-page = counter(page).get().first()
       let final-page = counter(page).final().first()
       if current-page > 1 and current-page < final-page {
@@ -293,7 +313,7 @@ ${headerResolution}
         line(length: 100%, stroke: rgb("${C("hairline")}"))
       }
     },
-    footer: context {
+    footer: context {${footerDecorationSource}
       if counter(page).get().first() > 1 {
         set text(font: ${fontStack(F("heading"))}, size: ${rsize("runningHead")}, fill: rgb("${C("muted")}"))
         let footer-text = settings.at("footer-text", default: none)
@@ -536,6 +556,113 @@ ${headerResolution}
   body,
 )
 `;
+}
+
+const SAFE_VISUAL_LENGTH_RE =
+  /^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:pt|mm|cm|in)$/;
+
+function visualLength(value: string, path: string): string {
+  if (!SAFE_VISUAL_LENGTH_RE.test(value)) {
+    throw new Error(`PDF template visual has unsafe ${path}`);
+  }
+  return value;
+}
+
+function scopeCondition(
+  scope: WikiPdfTemplateImageDecorationV1["scope"]
+): string {
+  if (scope === "all") return "true";
+  if (scope === "first") return "current-page == 1";
+  if (scope === "odd") return "calc.rem(current-page, 2) == 1";
+  return "calc.rem(current-page, 2) == 0";
+}
+
+function imageDecorationSource(
+  decoration: WikiPdfTemplateImageDecorationV1,
+  assetPath: string,
+  index: number
+): string {
+  const placement = decoration.placement;
+  const fit = placement.fit ?? "contain";
+  const image = `image(${typstString(assetPath)}, width: ${visualLength(
+    placement.width,
+    `decorations[${index}].placement.width`
+  )}, height: ${visualLength(
+    placement.height,
+    `decorations[${index}].placement.height`
+  )}, fit: ${typstString(fit)})`;
+  const content =
+    placement.rotation === undefined || placement.rotation === 0
+      ? image
+      : `rotate(${placement.rotation}deg, origin: center, ${image})`;
+  return `if ${scopeCondition(decoration.scope)} {
+    pdf.artifact(kind: "other", place(
+      top + left,
+      dx: ${visualLength(placement.x, `decorations[${index}].placement.x`)},
+      dy: ${visualLength(placement.y, `decorations[${index}].placement.y`)},
+      ${content},
+    ))
+  }`;
+}
+
+function borderDecorationSource(
+  border: WikiPdfTemplatePageBorderV1,
+  index: number
+): string {
+  const inset = border.inset;
+  return `pdf.artifact(kind: "other", place(
+    top + left,
+    dx: ${visualLength(inset.left, `decorations[${index}].inset.left`)},
+    dy: ${visualLength(inset.top, `decorations[${index}].inset.top`)},
+    rect(
+      width: 100% - ${visualLength(inset.left, `decorations[${index}].inset.left`)} - ${visualLength(inset.right, `decorations[${index}].inset.right`)},
+      height: 100% - ${visualLength(inset.top, `decorations[${index}].inset.top`)} - ${visualLength(inset.bottom, `decorations[${index}].inset.bottom`)},
+      fill: none,
+      stroke: ${visualLength(border.stroke.width, `decorations[${index}].stroke.width`)} + rgb(${typstString(border.stroke.color)}),
+    ),
+  ))`;
+}
+
+function typstVisualSource(
+  visuals: PdfTemplateVisualsV1 | undefined
+): string {
+  const byLayer: Record<
+    WikiPdfTemplateImageDecorationV1["layer"],
+    string[]
+  > = {
+    "page-background": [],
+    header: [],
+    footer: [],
+  };
+  for (const [index, decoration] of (visuals?.decorations ?? []).entries()) {
+    if (decoration.kind === "page-border") {
+      byLayer["page-background"].push(
+        borderDecorationSource(decoration, index)
+      );
+      continue;
+    }
+    const asset = visuals?.assets[decoration.asset as keyof typeof visuals.assets];
+    if (!asset) {
+      throw new Error(
+        `PDF template decoration "${decoration.id}" has no resolved asset`
+      );
+    }
+    byLayer[decoration.layer].push(
+      imageDecorationSource(decoration, asset.vfsPath, index)
+    );
+  }
+  const definition = (
+    name: string,
+    entries: readonly string[]
+  ): string => `#let ${name}() = context {
+  let current-page = counter(page).get().first()
+  ${entries.join("\n  ")}
+}`;
+  return [
+    definition("template-page-decorations", byLayer["page-background"]),
+    definition("template-header-decorations", byLayer.header),
+    definition("template-footer-decorations", byLayer.footer),
+  ].join("\n\n");
 }
 
 export const ATLCLI_TYPST_TEMPLATE = createAtlcliTypstTemplate();

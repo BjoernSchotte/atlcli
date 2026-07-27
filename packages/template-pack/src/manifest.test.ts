@@ -120,6 +120,135 @@ describe("validateManifest gate", () => {
     expect(m.settings?.cover.type).toBe("boolean");
     expectReason({ ...base(), settings: { x: { type: "wat" } } }, "shape-error");
   });
+
+  it("validates portable asset descriptors, references, and decorations without claiming PDF support", () => {
+    const sha256 = "a".repeat(64);
+    const manifest = validateManifest({
+      ...base(),
+      assetDescriptors: {
+        hero: {
+          path: "assets/hero.svg",
+          sha256,
+          mediaType: "image/svg+xml",
+          byteLength: 128,
+          dimensions: { width: 1200, height: 800, unit: "pixel" },
+        },
+      },
+      assets: {
+        "asset.pageBackground": {
+          descriptor: "hero",
+          writer: "future.engine.writer",
+          decorative: true,
+        },
+      },
+      decorations: [
+        {
+          kind: "image",
+          id: "future.decoration",
+          writer: "future.engine.writer",
+          scope: "odd",
+          layer: "page-background",
+          asset: "asset.pageBackground",
+          placement: {
+            relativeTo: "page",
+            fit: "cover",
+            x: "0mm",
+            y: "0mm",
+            width: "210mm",
+            height: "297mm",
+            rotation: -2,
+          },
+          decorative: true,
+        },
+      ],
+      canonicalSource: { api: "wiki.pdf-canonical-typst", revision: "1" },
+    });
+    expect(manifest.assetDescriptors?.hero.sha256).toBe(sha256);
+    expect(manifest.assets?.["asset.pageBackground"]?.writer).toBe(
+      "future.engine.writer"
+    );
+    expect(manifest.decorations?.[0]?.scope).toBe("odd");
+  });
+
+  it("rejects asset shape, path, reference, alt, and placement-bound errors", () => {
+    const sha256 = "a".repeat(64);
+    const descriptor = {
+      path: "assets/hero.svg",
+      sha256,
+      mediaType: "image/svg+xml",
+      byteLength: 128,
+      dimensions: { width: 1200, height: 800, unit: "pixel" },
+    };
+    expectReason(
+      { ...base(), assetDescriptors: { hero: { ...descriptor, path: "../hero.svg" } } },
+      "shape-error"
+    );
+    expectReason(
+      { ...base(), assetDescriptors: { hero: { ...descriptor, sha256: "ABC" } } },
+      "shape-error"
+    );
+    expectReason(
+      {
+        ...base(),
+        assetDescriptors: { hero: descriptor },
+        assets: {
+          logo: {
+            descriptor: "missing",
+            writer: "writer.image",
+            decorative: true,
+          },
+        },
+      },
+      "shape-error"
+    );
+    expectReason(
+      {
+        ...base(),
+        assetDescriptors: { hero: descriptor },
+        assets: {
+          logo: {
+            descriptor: "hero",
+            writer: "writer.image",
+            decorative: false,
+          },
+        },
+      },
+      "shape-error"
+    );
+    expectReason(
+      {
+        ...base(),
+        assetDescriptors: { hero: descriptor },
+        assets: {
+          logo: {
+            descriptor: "hero",
+            writer: "writer.image",
+            decorative: true,
+          },
+        },
+        decorations: [
+          {
+            kind: "image",
+            id: "decoration",
+            writer: "writer.image",
+            scope: "all",
+            layer: "page-background",
+            asset: "logo",
+            placement: {
+              relativeTo: "page",
+              x: "0mm",
+              y: "0mm",
+              width: "210mm",
+              height: "297mm",
+              opacity: 2,
+            },
+            decorative: true,
+          },
+        ],
+      },
+      "shape-error"
+    );
+  });
 });
 
 describe("satisfiesRange", () => {

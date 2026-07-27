@@ -20,7 +20,10 @@ describe("atlcli Typst template settings rendering", () => {
 
   it("defines the watermark layer and wires it as the page background", () => {
     expect(template).toContain("#let watermark-layer(wm)");
-    expect(template).toContain('background: watermark-layer(settings.at("watermark", default: none))');
+    expect(template).toContain(
+      'background: watermark-layer(settings.at("watermark", default: none))'
+    );
+    expect(template).not.toContain("template-page-decorations()");
     expect(template).toContain("transparentize(");
     expect(template).toContain("place(center + horizon, rotate(");
   });

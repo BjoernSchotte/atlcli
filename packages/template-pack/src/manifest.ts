@@ -18,6 +18,10 @@
  */
 
 import { validateBindings, type WikiPdfTemplateSettingBindingV1 } from "./bindings.js";
+import {
+  validateTemplateVisualManifestFieldsV1,
+  type TemplateVisualManifestFieldsV1,
+} from "./assets.js";
 import { validateDesign, type WikiPdfTemplateDesignV1 } from "./design.js";
 import {
   validateLocalization,
@@ -88,7 +92,7 @@ export interface TemplateProvenance {
   createdWith: string;
 }
 
-export interface TemplateManifest {
+export interface TemplateManifest extends TemplateVisualManifestFieldsV1 {
   schemaVersion: number;
   id: string;
   name: string;
@@ -294,6 +298,7 @@ export function validateManifest(
           ...(options.collectWarnings ? { onWarning: options.collectWarnings } : {}),
         })
       : undefined;
+  const visual = validateTemplateVisualManifestFieldsV1(json);
 
   const manifest: TemplateManifest = {
     schemaVersion: SUPPORTED_SCHEMA_VERSION,
@@ -307,6 +312,7 @@ export function validateManifest(
     ...(design ? { design } : {}),
     ...(bindings ? { bindings } : {}),
     ...(localization ? { localization } : {}),
+    ...visual,
   };
   return manifest;
 }

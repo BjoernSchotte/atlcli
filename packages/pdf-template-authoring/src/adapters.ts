@@ -197,11 +197,27 @@ export class InMemoryTemplatePreviewCompiler
     input: TemplatePreviewRequestV1
   ): Promise<TemplatePreviewResultV1> {
     const canonical = new TextEncoder().encode(canonicalCapabilityJson(input));
-    return immutable({
+    const result: TemplatePreviewResultV1 = {
       digest: await sha256Hex(canonical),
       mediaType: "application/pdf",
       byteLength: canonical.byteLength,
-    });
+      pageCount: 1,
+      regions: [
+        {
+          page: 1,
+          region:
+            input.purpose === "asset-contact-sheet"
+              ? "asset-grid"
+              : input.purpose === "design-review"
+                ? "summary"
+                : "feature-zoo",
+        },
+      ],
+      output: { kind: "bytes", bytes: new Uint8Array(canonical) },
+    };
+    Object.freeze(result.regions);
+    Object.freeze(result.output);
+    return Object.freeze(result);
   }
 }
 

@@ -1952,6 +1952,7 @@ export function serializePdfDocument(
     ...(options.metadata.region !== undefined ? { region: options.metadata.region } : {}),
     ...(options.theme !== undefined ? { theme: options.theme } : {}),
     ...(options.templateManifest !== undefined ? { manifest: options.templateManifest } : {}),
+    ...(options.templatePack !== undefined ? { templatePack: options.templatePack } : {}),
   });
   const collected = collectHeadingLabels(document.blocks);
   const writer: Writer = {
@@ -1978,13 +1979,37 @@ export function serializePdfDocument(
   // its filesystem — the same path-emission pattern prepared image assets use.
   // The "atlcli-logo" name cannot collide with prepared assets, whose paths
   // always carry a numeric index and content hash.
-  const logoAsset: PreparedPdfAsset | undefined = settings.logo
+  const packLogo =
+    options.settings?.logo === undefined
+      ? options.templatePack?.assets["asset.logo"]
+      : undefined;
+  const logoAsset: PreparedPdfAsset | undefined = packLogo
     ? {
-        path: settings.logo.mediaType === "image/png" ? "assets/atlcli-logo.png" : "assets/atlcli-logo.svg",
+        path: packLogo.vfsPath,
+        bytes: packLogo.bytes,
+        mediaType: packLogo.descriptor.mediaType,
+      }
+    : settings.logo
+    ? {
+        path:
+          settings.logo.mediaType === "image/png"
+            ? "assets/atlcli-logo.png"
+            : "assets/atlcli-logo.svg",
         bytes: settings.logo.bytes,
         mediaType: settings.logo.mediaType,
       }
     : undefined;
+  const templateAssets: PreparedPdfAsset[] = [];
+  const mounted = new Set<string>(logoAsset ? [logoAsset.path] : []);
+  for (const asset of Object.values(options.templatePack?.assets ?? {})) {
+    if (!asset || mounted.has(asset.vfsPath)) continue;
+    mounted.add(asset.vfsPath);
+    templateAssets.push({
+      path: asset.vfsPath,
+      bytes: asset.bytes,
+      mediaType: asset.descriptor.mediaType,
+    });
+  }
   const meta = options.metadata;
   const author = meta.author ?? meta.exporter ?? "atlcli";
   const exportedLabel = exportedDateLabel(meta.exportedAt, meta.language, meta.region);
@@ -2007,8 +2032,16 @@ ${body}${commentAppendix}
 
   return {
     main,
-    template: createAtlcliTypstTemplate(settings.design, settings.labels),
-    assets: logoAsset ? [...document.assets, logoAsset] : document.assets,
+    template: createAtlcliTypstTemplate(
+      settings.design,
+      settings.labels,
+      settings.templateVisuals
+    ),
+    assets: [
+      ...document.assets,
+      ...(logoAsset ? [logoAsset] : []),
+      ...templateAssets,
+    ],
     sourceMap: resolveSourceMap(main, writer.sourceMap),
     notes: writer.notes,
   };

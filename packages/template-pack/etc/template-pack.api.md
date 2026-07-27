@@ -332,6 +332,30 @@ export interface TemplateAssetCapabilitiesV1 {
     };
 }
 
+// export: TemplateAssetDescriptorV1
+export interface TemplateAssetDescriptorV1 {
+    path: string;
+    sha256: string;
+    mediaType: TemplateAssetMediaTypeV1;
+    byteLength: number;
+    dimensions: {
+        width: number;
+        height: number;
+        unit: "pixel";
+    };
+}
+
+// export: TemplateAssetMediaTypeV1
+export type TemplateAssetMediaTypeV1 = "image/jpeg" | "image/png" | "image/svg+xml";
+
+// export: TemplateAssetReferenceV1
+export interface TemplateAssetReferenceV1 {
+    descriptor: string;
+    writer: string;
+    decorative: boolean;
+    alt?: string;
+}
+
 // export: TemplateCapabilityCatalogV1
 export interface TemplateCapabilityCatalogV1 {
     schema: typeof TEMPLATE_CAPABILITY_CATALOG_SCHEMA_V1;
@@ -372,6 +396,9 @@ export interface TemplateCapabilityPresentationRegistryV1 {
     descriptors: readonly TemplateCapabilityPresentationDescriptorV1[];
 }
 
+// export: TemplateDecorationScopeV1
+export type TemplateDecorationScopeV1 = "all" | "first" | "odd" | "even";
+
 // export: TemplateEngineKind
 export type TemplateEngineKind = keyof typeof KNOWN_ENGINE_API;
 
@@ -384,7 +411,7 @@ export interface TemplateEngineSpec {
 }
 
 // export: TemplateManifest
-export interface TemplateManifest {
+export interface TemplateManifest extends TemplateVisualManifestFieldsV1 {
     schemaVersion: number;
     id: string;
     name: string;
@@ -422,6 +449,14 @@ export interface TemplateProvenance {
 
 // export: TemplateSettingType
 export type TemplateSettingType = (typeof SETTING_TYPES)[number];
+
+// export: TemplateVisualManifestFieldsV1
+export interface TemplateVisualManifestFieldsV1 {
+    assetDescriptors?: Readonly<Record<string, TemplateAssetDescriptorV1>>;
+    assets?: Readonly<Record<string, TemplateAssetReferenceV1>>;
+    decorations?: readonly WikiPdfTemplatePageDecorationV1[];
+    canonicalSource?: WikiPdfCanonicalSourceV1;
+}
 
 // export: TypographyRole
 export interface TypographyRole {
@@ -518,6 +553,9 @@ export declare function validateSafeString(value: unknown, path: string): string
 // export: validateTemplateAssetCapabilitiesV1
 export declare function validateTemplateAssetCapabilitiesV1(value: unknown): TemplateAssetCapabilitiesV1;
 
+// export: validateTemplateVisualManifestFieldsV1
+export declare function validateTemplateVisualManifestFieldsV1(value: Record<string, unknown>): TemplateVisualManifestFieldsV1;
+
 // export: WIKI_PDF_V1_DOCUMENT_LABELS
 export declare const WIKI_PDF_V1_DOCUMENT_LABELS: readonly [
     "version",
@@ -529,6 +567,12 @@ export declare const WIKI_PDF_V1_DOCUMENT_LABELS: readonly [
     "generatedWith",
     "spacePrefix"
 ];
+
+// export: WikiPdfCanonicalSourceV1
+export interface WikiPdfCanonicalSourceV1 {
+    api: string;
+    revision: string;
+}
 
 // export: WikiPdfDocumentLabelKey
 export type WikiPdfDocumentLabelKey = (typeof WIKI_PDF_V1_DOCUMENT_LABELS)[number];
@@ -543,12 +587,63 @@ export interface WikiPdfTemplateDesignV1 {
     semanticPalettes: DesignSemanticPalettes;
 }
 
+// export: WikiPdfTemplateImageDecorationV1
+export interface WikiPdfTemplateImageDecorationV1 {
+    kind: "image";
+    id: string;
+    writer: string;
+    scope: TemplateDecorationScopeV1;
+    layer: "page-background" | "header" | "footer";
+    asset: string;
+    placement: {
+        relativeTo: "page" | "margin";
+        fit?: "contain" | "cover" | "stretch";
+        x: string;
+        y: string;
+        width: string;
+        height: string;
+        opacity?: number;
+        rotation?: number;
+        crop?: {
+            left: number;
+            top: number;
+            right: number;
+            bottom: number;
+        };
+    };
+    decorative: boolean;
+    alt?: string;
+}
+
 // export: WikiPdfTemplateLocalizationV1
 export interface WikiPdfTemplateLocalizationV1 {
     defaultLocale: string;
     fallbackLocale: string;
     locales: Record<string, LocaleBundle>;
 }
+
+// export: WikiPdfTemplatePageBorderV1
+export interface WikiPdfTemplatePageBorderV1 {
+    kind: "page-border";
+    id: string;
+    writer: string;
+    scope: "all";
+    offsetFrom: "page";
+    inset: {
+        top: string;
+        right: string;
+        bottom: string;
+        left: string;
+    };
+    stroke: {
+        style: "single";
+        color: string;
+        width: string;
+    };
+}
+
+// export: WikiPdfTemplatePageDecorationV1
+export type WikiPdfTemplatePageDecorationV1 = WikiPdfTemplateImageDecorationV1 | WikiPdfTemplatePageBorderV1;
 
 // export: WikiPdfTemplateSettingBindingV1
 export interface WikiPdfTemplateSettingBindingV1 {
@@ -886,6 +981,30 @@ export interface TemplateAssetCapabilitiesV1 {
     };
 }
 
+// export: TemplateAssetDescriptorV1
+export interface TemplateAssetDescriptorV1 {
+    path: string;
+    sha256: string;
+    mediaType: TemplateAssetMediaTypeV1;
+    byteLength: number;
+    dimensions: {
+        width: number;
+        height: number;
+        unit: "pixel";
+    };
+}
+
+// export: TemplateAssetMediaTypeV1
+export type TemplateAssetMediaTypeV1 = "image/jpeg" | "image/png" | "image/svg+xml";
+
+// export: TemplateAssetReferenceV1
+export interface TemplateAssetReferenceV1 {
+    descriptor: string;
+    writer: string;
+    decorative: boolean;
+    alt?: string;
+}
+
 // export: TemplateCapabilityCatalogV1
 export interface TemplateCapabilityCatalogV1 {
     schema: typeof TEMPLATE_CAPABILITY_CATALOG_SCHEMA_V1;
@@ -926,6 +1045,9 @@ export interface TemplateCapabilityPresentationRegistryV1 {
     descriptors: readonly TemplateCapabilityPresentationDescriptorV1[];
 }
 
+// export: TemplateDecorationScopeV1
+export type TemplateDecorationScopeV1 = "all" | "first" | "odd" | "even";
+
 // export: TemplateEngineKind
 export type TemplateEngineKind = keyof typeof KNOWN_ENGINE_API;
 
@@ -938,7 +1060,7 @@ export interface TemplateEngineSpec {
 }
 
 // export: TemplateManifest
-export interface TemplateManifest {
+export interface TemplateManifest extends TemplateVisualManifestFieldsV1 {
     schemaVersion: number;
     id: string;
     name: string;
@@ -976,6 +1098,14 @@ export interface TemplateProvenance {
 
 // export: TemplateSettingType
 export type TemplateSettingType = (typeof SETTING_TYPES)[number];
+
+// export: TemplateVisualManifestFieldsV1
+export interface TemplateVisualManifestFieldsV1 {
+    assetDescriptors?: Readonly<Record<string, TemplateAssetDescriptorV1>>;
+    assets?: Readonly<Record<string, TemplateAssetReferenceV1>>;
+    decorations?: readonly WikiPdfTemplatePageDecorationV1[];
+    canonicalSource?: WikiPdfCanonicalSourceV1;
+}
 
 // export: TypographyRole
 export interface TypographyRole {
@@ -1072,6 +1202,9 @@ export declare function validateSafeString(value: unknown, path: string): string
 // export: validateTemplateAssetCapabilitiesV1
 export declare function validateTemplateAssetCapabilitiesV1(value: unknown): TemplateAssetCapabilitiesV1;
 
+// export: validateTemplateVisualManifestFieldsV1
+export declare function validateTemplateVisualManifestFieldsV1(value: Record<string, unknown>): TemplateVisualManifestFieldsV1;
+
 // export: WIKI_PDF_V1_DOCUMENT_LABELS
 export declare const WIKI_PDF_V1_DOCUMENT_LABELS: readonly [
     "version",
@@ -1083,6 +1216,12 @@ export declare const WIKI_PDF_V1_DOCUMENT_LABELS: readonly [
     "generatedWith",
     "spacePrefix"
 ];
+
+// export: WikiPdfCanonicalSourceV1
+export interface WikiPdfCanonicalSourceV1 {
+    api: string;
+    revision: string;
+}
 
 // export: WikiPdfDocumentLabelKey
 export type WikiPdfDocumentLabelKey = (typeof WIKI_PDF_V1_DOCUMENT_LABELS)[number];
@@ -1097,12 +1236,63 @@ export interface WikiPdfTemplateDesignV1 {
     semanticPalettes: DesignSemanticPalettes;
 }
 
+// export: WikiPdfTemplateImageDecorationV1
+export interface WikiPdfTemplateImageDecorationV1 {
+    kind: "image";
+    id: string;
+    writer: string;
+    scope: TemplateDecorationScopeV1;
+    layer: "page-background" | "header" | "footer";
+    asset: string;
+    placement: {
+        relativeTo: "page" | "margin";
+        fit?: "contain" | "cover" | "stretch";
+        x: string;
+        y: string;
+        width: string;
+        height: string;
+        opacity?: number;
+        rotation?: number;
+        crop?: {
+            left: number;
+            top: number;
+            right: number;
+            bottom: number;
+        };
+    };
+    decorative: boolean;
+    alt?: string;
+}
+
 // export: WikiPdfTemplateLocalizationV1
 export interface WikiPdfTemplateLocalizationV1 {
     defaultLocale: string;
     fallbackLocale: string;
     locales: Record<string, LocaleBundle>;
 }
+
+// export: WikiPdfTemplatePageBorderV1
+export interface WikiPdfTemplatePageBorderV1 {
+    kind: "page-border";
+    id: string;
+    writer: string;
+    scope: "all";
+    offsetFrom: "page";
+    inset: {
+        top: string;
+        right: string;
+        bottom: string;
+        left: string;
+    };
+    stroke: {
+        style: "single";
+        color: string;
+        width: string;
+    };
+}
+
+// export: WikiPdfTemplatePageDecorationV1
+export type WikiPdfTemplatePageDecorationV1 = WikiPdfTemplateImageDecorationV1 | WikiPdfTemplatePageBorderV1;
 
 // export: WikiPdfTemplateSettingBindingV1
 export interface WikiPdfTemplateSettingBindingV1 {
@@ -1440,6 +1630,30 @@ export interface TemplateAssetCapabilitiesV1 {
     };
 }
 
+// export: TemplateAssetDescriptorV1
+export interface TemplateAssetDescriptorV1 {
+    path: string;
+    sha256: string;
+    mediaType: TemplateAssetMediaTypeV1;
+    byteLength: number;
+    dimensions: {
+        width: number;
+        height: number;
+        unit: "pixel";
+    };
+}
+
+// export: TemplateAssetMediaTypeV1
+export type TemplateAssetMediaTypeV1 = "image/jpeg" | "image/png" | "image/svg+xml";
+
+// export: TemplateAssetReferenceV1
+export interface TemplateAssetReferenceV1 {
+    descriptor: string;
+    writer: string;
+    decorative: boolean;
+    alt?: string;
+}
+
 // export: TemplateCapabilityCatalogV1
 export interface TemplateCapabilityCatalogV1 {
     schema: typeof TEMPLATE_CAPABILITY_CATALOG_SCHEMA_V1;
@@ -1480,6 +1694,9 @@ export interface TemplateCapabilityPresentationRegistryV1 {
     descriptors: readonly TemplateCapabilityPresentationDescriptorV1[];
 }
 
+// export: TemplateDecorationScopeV1
+export type TemplateDecorationScopeV1 = "all" | "first" | "odd" | "even";
+
 // export: TemplateEngineKind
 export type TemplateEngineKind = keyof typeof KNOWN_ENGINE_API;
 
@@ -1492,7 +1709,7 @@ export interface TemplateEngineSpec {
 }
 
 // export: TemplateManifest
-export interface TemplateManifest {
+export interface TemplateManifest extends TemplateVisualManifestFieldsV1 {
     schemaVersion: number;
     id: string;
     name: string;
@@ -1530,6 +1747,14 @@ export interface TemplateProvenance {
 
 // export: TemplateSettingType
 export type TemplateSettingType = (typeof SETTING_TYPES)[number];
+
+// export: TemplateVisualManifestFieldsV1
+export interface TemplateVisualManifestFieldsV1 {
+    assetDescriptors?: Readonly<Record<string, TemplateAssetDescriptorV1>>;
+    assets?: Readonly<Record<string, TemplateAssetReferenceV1>>;
+    decorations?: readonly WikiPdfTemplatePageDecorationV1[];
+    canonicalSource?: WikiPdfCanonicalSourceV1;
+}
 
 // export: TypographyRole
 export interface TypographyRole {
@@ -1626,6 +1851,9 @@ export declare function validateSafeString(value: unknown, path: string): string
 // export: validateTemplateAssetCapabilitiesV1
 export declare function validateTemplateAssetCapabilitiesV1(value: unknown): TemplateAssetCapabilitiesV1;
 
+// export: validateTemplateVisualManifestFieldsV1
+export declare function validateTemplateVisualManifestFieldsV1(value: Record<string, unknown>): TemplateVisualManifestFieldsV1;
+
 // export: WIKI_PDF_V1_DOCUMENT_LABELS
 export declare const WIKI_PDF_V1_DOCUMENT_LABELS: readonly [
     "version",
@@ -1637,6 +1865,12 @@ export declare const WIKI_PDF_V1_DOCUMENT_LABELS: readonly [
     "generatedWith",
     "spacePrefix"
 ];
+
+// export: WikiPdfCanonicalSourceV1
+export interface WikiPdfCanonicalSourceV1 {
+    api: string;
+    revision: string;
+}
 
 // export: WikiPdfDocumentLabelKey
 export type WikiPdfDocumentLabelKey = (typeof WIKI_PDF_V1_DOCUMENT_LABELS)[number];
@@ -1651,12 +1885,63 @@ export interface WikiPdfTemplateDesignV1 {
     semanticPalettes: DesignSemanticPalettes;
 }
 
+// export: WikiPdfTemplateImageDecorationV1
+export interface WikiPdfTemplateImageDecorationV1 {
+    kind: "image";
+    id: string;
+    writer: string;
+    scope: TemplateDecorationScopeV1;
+    layer: "page-background" | "header" | "footer";
+    asset: string;
+    placement: {
+        relativeTo: "page" | "margin";
+        fit?: "contain" | "cover" | "stretch";
+        x: string;
+        y: string;
+        width: string;
+        height: string;
+        opacity?: number;
+        rotation?: number;
+        crop?: {
+            left: number;
+            top: number;
+            right: number;
+            bottom: number;
+        };
+    };
+    decorative: boolean;
+    alt?: string;
+}
+
 // export: WikiPdfTemplateLocalizationV1
 export interface WikiPdfTemplateLocalizationV1 {
     defaultLocale: string;
     fallbackLocale: string;
     locales: Record<string, LocaleBundle>;
 }
+
+// export: WikiPdfTemplatePageBorderV1
+export interface WikiPdfTemplatePageBorderV1 {
+    kind: "page-border";
+    id: string;
+    writer: string;
+    scope: "all";
+    offsetFrom: "page";
+    inset: {
+        top: string;
+        right: string;
+        bottom: string;
+        left: string;
+    };
+    stroke: {
+        style: "single";
+        color: string;
+        width: string;
+    };
+}
+
+// export: WikiPdfTemplatePageDecorationV1
+export type WikiPdfTemplatePageDecorationV1 = WikiPdfTemplateImageDecorationV1 | WikiPdfTemplatePageBorderV1;
 
 // export: WikiPdfTemplateSettingBindingV1
 export interface WikiPdfTemplateSettingBindingV1 {
@@ -1994,6 +2279,30 @@ export interface TemplateAssetCapabilitiesV1 {
     };
 }
 
+// export: TemplateAssetDescriptorV1
+export interface TemplateAssetDescriptorV1 {
+    path: string;
+    sha256: string;
+    mediaType: TemplateAssetMediaTypeV1;
+    byteLength: number;
+    dimensions: {
+        width: number;
+        height: number;
+        unit: "pixel";
+    };
+}
+
+// export: TemplateAssetMediaTypeV1
+export type TemplateAssetMediaTypeV1 = "image/jpeg" | "image/png" | "image/svg+xml";
+
+// export: TemplateAssetReferenceV1
+export interface TemplateAssetReferenceV1 {
+    descriptor: string;
+    writer: string;
+    decorative: boolean;
+    alt?: string;
+}
+
 // export: TemplateCapabilityCatalogV1
 export interface TemplateCapabilityCatalogV1 {
     schema: typeof TEMPLATE_CAPABILITY_CATALOG_SCHEMA_V1;
@@ -2034,6 +2343,9 @@ export interface TemplateCapabilityPresentationRegistryV1 {
     descriptors: readonly TemplateCapabilityPresentationDescriptorV1[];
 }
 
+// export: TemplateDecorationScopeV1
+export type TemplateDecorationScopeV1 = "all" | "first" | "odd" | "even";
+
 // export: TemplateEngineKind
 export type TemplateEngineKind = keyof typeof KNOWN_ENGINE_API;
 
@@ -2046,7 +2358,7 @@ export interface TemplateEngineSpec {
 }
 
 // export: TemplateManifest
-export interface TemplateManifest {
+export interface TemplateManifest extends TemplateVisualManifestFieldsV1 {
     schemaVersion: number;
     id: string;
     name: string;
@@ -2084,6 +2396,14 @@ export interface TemplateProvenance {
 
 // export: TemplateSettingType
 export type TemplateSettingType = (typeof SETTING_TYPES)[number];
+
+// export: TemplateVisualManifestFieldsV1
+export interface TemplateVisualManifestFieldsV1 {
+    assetDescriptors?: Readonly<Record<string, TemplateAssetDescriptorV1>>;
+    assets?: Readonly<Record<string, TemplateAssetReferenceV1>>;
+    decorations?: readonly WikiPdfTemplatePageDecorationV1[];
+    canonicalSource?: WikiPdfCanonicalSourceV1;
+}
 
 // export: TypographyRole
 export interface TypographyRole {
@@ -2180,6 +2500,9 @@ export declare function validateSafeString(value: unknown, path: string): string
 // export: validateTemplateAssetCapabilitiesV1
 export declare function validateTemplateAssetCapabilitiesV1(value: unknown): TemplateAssetCapabilitiesV1;
 
+// export: validateTemplateVisualManifestFieldsV1
+export declare function validateTemplateVisualManifestFieldsV1(value: Record<string, unknown>): TemplateVisualManifestFieldsV1;
+
 // export: WIKI_PDF_V1_DOCUMENT_LABELS
 export declare const WIKI_PDF_V1_DOCUMENT_LABELS: readonly [
     "version",
@@ -2191,6 +2514,12 @@ export declare const WIKI_PDF_V1_DOCUMENT_LABELS: readonly [
     "generatedWith",
     "spacePrefix"
 ];
+
+// export: WikiPdfCanonicalSourceV1
+export interface WikiPdfCanonicalSourceV1 {
+    api: string;
+    revision: string;
+}
 
 // export: WikiPdfDocumentLabelKey
 export type WikiPdfDocumentLabelKey = (typeof WIKI_PDF_V1_DOCUMENT_LABELS)[number];
@@ -2205,12 +2534,63 @@ export interface WikiPdfTemplateDesignV1 {
     semanticPalettes: DesignSemanticPalettes;
 }
 
+// export: WikiPdfTemplateImageDecorationV1
+export interface WikiPdfTemplateImageDecorationV1 {
+    kind: "image";
+    id: string;
+    writer: string;
+    scope: TemplateDecorationScopeV1;
+    layer: "page-background" | "header" | "footer";
+    asset: string;
+    placement: {
+        relativeTo: "page" | "margin";
+        fit?: "contain" | "cover" | "stretch";
+        x: string;
+        y: string;
+        width: string;
+        height: string;
+        opacity?: number;
+        rotation?: number;
+        crop?: {
+            left: number;
+            top: number;
+            right: number;
+            bottom: number;
+        };
+    };
+    decorative: boolean;
+    alt?: string;
+}
+
 // export: WikiPdfTemplateLocalizationV1
 export interface WikiPdfTemplateLocalizationV1 {
     defaultLocale: string;
     fallbackLocale: string;
     locales: Record<string, LocaleBundle>;
 }
+
+// export: WikiPdfTemplatePageBorderV1
+export interface WikiPdfTemplatePageBorderV1 {
+    kind: "page-border";
+    id: string;
+    writer: string;
+    scope: "all";
+    offsetFrom: "page";
+    inset: {
+        top: string;
+        right: string;
+        bottom: string;
+        left: string;
+    };
+    stroke: {
+        style: "single";
+        color: string;
+        width: string;
+    };
+}
+
+// export: WikiPdfTemplatePageDecorationV1
+export type WikiPdfTemplatePageDecorationV1 = WikiPdfTemplateImageDecorationV1 | WikiPdfTemplatePageBorderV1;
 
 // export: WikiPdfTemplateSettingBindingV1
 export interface WikiPdfTemplateSettingBindingV1 {

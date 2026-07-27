@@ -45,6 +45,10 @@ import type {
   PdfThemeOptions,
   PdfWatermarkSettings,
 } from "./types.js";
+import type {
+  PdfTemplateVisualsV1,
+  ValidatedPdfTemplatePackV1,
+} from "./template-pack.js";
 
 /** Structured validation failure naming the exact offending settings field. */
 export class PdfSettingsError extends Error {
@@ -130,6 +134,8 @@ export interface ResolvedPdfSettings {
   capabilityCatalogDigest: string;
   /** Document-facing labels for the export locale (spec 012 T6.2). */
   labels: ResolvedPdfLabels;
+  /** Validated visual slots and decorations, with compiler-owned VFS paths. */
+  templateVisuals?: PdfTemplateVisualsV1;
 }
 
 /** Context that drives design binding + label resolution (spec 012 T6.2). */
@@ -142,6 +148,8 @@ export interface ResolvePdfSettingsContext {
   theme?: PdfThemeOptions;
   /** Template manifest driving resolution; defaults to the built-in. */
   manifest?: TemplateManifest;
+  /** Validated pack supplying the manifest plus resolved visual payloads. */
+  templatePack?: ValidatedPdfTemplatePackV1;
 }
 
 export const DEFAULT_PDF_ACCENT_COLOR = "#4B57A3";
@@ -266,7 +274,11 @@ function resolveLogo(logo: PdfLogoAsset): ResolvedPdfLogo {
     reject("logo.bytes", logo.bytes.byteLength, "must be at most 5 MiB");
   }
   if (logo.mediaType !== "image/png" && logo.mediaType !== "image/svg+xml") {
-    reject("logo.mediaType", logo.mediaType, 'must be "image/png" or "image/svg+xml"');
+    reject(
+      "logo.mediaType",
+      logo.mediaType,
+      'must be "image/png" or "image/svg+xml"'
+    );
   }
   if (logo.mediaType === "image/png") {
     if (!hasPngMagic(logo.bytes)) {
@@ -339,10 +351,29 @@ export function resolvePdfSettings(
   if (footerText !== undefined) resolved.footerText = footerText;
   const organizationName = resolveText(options.organizationName, "organizationName");
   if (organizationName !== undefined) resolved.organizationName = organizationName;
-  if (options.logo !== undefined) resolved.logo = resolveLogo(options.logo);
+  const packLogo = context.templatePack?.assets["asset.logo"];
+  if (options.logo !== undefined) {
+    resolved.logo = resolveLogo(options.logo);
+  } else if (packLogo) {
+    if (packLogo.descriptor.mediaType === "image/jpeg") {
+      reject(
+        "templatePack.assets.asset.logo.mediaType",
+        packLogo.descriptor.mediaType,
+        "logo slots support PNG or SVG"
+      );
+    }
+    resolved.logo = resolveLogo({
+      bytes: packLogo.bytes,
+      mediaType: packLogo.descriptor.mediaType,
+      alt: packLogo.reference.alt,
+    });
+  }
   if (options.watermark !== undefined) resolved.watermark = resolveWatermark(options.watermark);
 
-  const manifest = context.manifest ?? BUILTIN_PDF_TEMPLATE_MANIFEST;
+  const manifest =
+    context.templatePack?.manifest ??
+    context.manifest ??
+    BUILTIN_PDF_TEMPLATE_MANIFEST;
   const designResolution = resolveTemplateDesignWithTrace(
     manifest,
     resolved,
@@ -352,6 +383,17 @@ export function resolvePdfSettings(
   resolved.designTrace = designResolution.trace;
   resolved.ignoredDesignCapabilities = designResolution.ignoredCapabilities;
   resolved.labels = resolveTemplateLabels(manifest, context.locale, context.region);
+  if (context.templatePack) {
+    resolved.templateVisuals = {
+      assets: Object.fromEntries(
+        Object.entries(context.templatePack.assets).map(([slot, asset]) => [
+          slot,
+          { vfsPath: asset.vfsPath, reference: asset.reference },
+        ])
+      ),
+      decorations: context.templatePack.decorations,
+    };
+  }
 
   resolvedSettings.add(resolved);
   return resolved;

@@ -78,6 +78,38 @@ export type { PdfRuntimeFontAsset } from "./runtime-assets.js";
 export { PDF_TEMPLATE_ASSET_CAPABILITIES_V1 } from "./template-asset-capabilities.js";
 export type { TemplateAssetCapabilitiesV1 } from "@atlcli/template-pack";
 
+// --- PDF template-pack visual validation/loading ---
+export {
+  PDF_TEMPLATE_ASSET_SLOTS_V1,
+  PDF_TEMPLATE_DECORATION_IDS_V1,
+  PDF_TEMPLATE_WRITERS_V1,
+  PdfTemplateValidationError,
+  validatePdfTemplateManifest,
+  validatePdfTemplatePack,
+  loadPdfTemplatePack,
+  buildUniformPdfPageBorderV1,
+} from "./template-pack.js";
+
+// --- Host-neutral preview compiler adapter ---
+export {
+  PdfTemplatePreviewCompiler,
+  PdfTemplatePreviewError,
+} from "./template-preview.js";
+export type {
+  PdfTemplatePreviewModelV1,
+  PdfTemplatePreviewCompilerOptionsV1,
+} from "./template-preview.js";
+export type {
+  PdfTemplateAssetSlotV1,
+  PdfTemplateDecorationIdV1,
+  PdfTemplateValidationPhase,
+  PdfTemplateValidationReason,
+  PdfTemplateVisualsV1,
+  ResolvedPdfTemplateAssetV1,
+  ValidatedPdfTemplatePackV1,
+  DocxUniformPageBorderInputV1,
+} from "./template-pack.js";
+
 // --- Curated built-in templates + manifest contract (spec 012) ---
 export { BUILTIN_PDF_TEMPLATE_ID, BUILTIN_PDF_TEMPLATE_MANIFEST } from "./builtin-template.js";
 export {

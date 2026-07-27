@@ -26,6 +26,43 @@ await runPdfExport(
 );
 ```
 
+PDF template packs use three fail-closed validation phases:
+
+```ts
+import { loadPdfTemplatePack, runPdfExport } from "@atlcli/pdf";
+
+const templatePack = await loadPdfTemplatePack(archiveBytes);
+
+await runPdfExport(
+  {
+    blocks,
+    metadata: { title, exportedAt: new Date() },
+    filename: "page.pdf",
+    templatePack,
+  },
+  { assets, compiler, output },
+);
+```
+
+The shared template-pack validator first checks portable JSON shape. The PDF
+manifest validator then enforces the renderer-owned slot, writer, scope, font,
+and geometry allowlists. Finally, pack-integrity validation verifies each
+payload's actual hash, media signature, dimensions, complexity budgets,
+references, and compiler-owned VFS path before Typst sees any bytes.
+
+PDF V1 supports a meaning-bearing PNG/SVG logo, page and cover backgrounds,
+header/footer decorations, and one uniform four-sided page-relative border.
+Decorations are emitted as PDF artifacts. Cropped or translucent image
+decorations, image watermarks, side-specific or art borders,
+text-relative borders, and section-specific decorations remain unsupported
+rather than being approximated.
+
+`PdfTemplatePreviewCompiler` implements the host-neutral authoring preview
+port. An injected resolver supplies the baseline/current model; the adapter
+returns PDF bytes, digests, page counts, and typed page/region references with
+no filesystem paths or DOM values. The same adapter can therefore be used by
+the CLI, browser studio, and extension.
+
 Background hosts use the same engine without duplicating PDF semantics:
 
 ```ts

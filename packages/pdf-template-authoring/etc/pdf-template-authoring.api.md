@@ -671,11 +671,25 @@ export interface TemplatePreviewCompiler {
     render(input: TemplatePreviewRequestV1): Promise<TemplatePreviewResultV1>;
 }
 
+// export: TemplatePreviewRegionReferenceV1
+export interface TemplatePreviewRegionReferenceV1 {
+    page: number;
+    region: "asset-grid" | "baseline" | "current" | "feature-zoo" | "summary";
+    bounds?: {
+        x: number;
+        y: number;
+        width: number;
+        height: number;
+        unit: "point";
+    };
+}
+
 // export: TemplatePreviewRequestV1
 export interface TemplatePreviewRequestV1 {
     generation: string;
     snapshotDigest: string;
-    purpose: "compatibility-proof" | "design-review";
+    purpose: "asset-contact-sheet" | "compatibility-proof" | "design-review";
+    summary?: TemplateImportViewV1["summary"];
 }
 
 // export: TemplatePreviewResultV1
@@ -683,6 +697,15 @@ export interface TemplatePreviewResultV1 {
     digest: string;
     mediaType: "application/pdf";
     byteLength: number;
+    pageCount: number;
+    regions: readonly TemplatePreviewRegionReferenceV1[];
+    output: {
+        kind: "bytes";
+        bytes: Uint8Array;
+    } | {
+        kind: "asset-handle";
+        handle: TemplateAssetHandleV1;
+    };
 }
 
 // export: TemplatePreviewStateV1
@@ -1469,11 +1492,25 @@ export interface TemplatePreviewCompiler {
     render(input: TemplatePreviewRequestV1): Promise<TemplatePreviewResultV1>;
 }
 
+// export: TemplatePreviewRegionReferenceV1
+export interface TemplatePreviewRegionReferenceV1 {
+    page: number;
+    region: "asset-grid" | "baseline" | "current" | "feature-zoo" | "summary";
+    bounds?: {
+        x: number;
+        y: number;
+        width: number;
+        height: number;
+        unit: "point";
+    };
+}
+
 // export: TemplatePreviewRequestV1
 export interface TemplatePreviewRequestV1 {
     generation: string;
     snapshotDigest: string;
-    purpose: "compatibility-proof" | "design-review";
+    purpose: "asset-contact-sheet" | "compatibility-proof" | "design-review";
+    summary?: TemplateImportViewV1["summary"];
 }
 
 // export: TemplatePreviewResultV1
@@ -1481,6 +1518,15 @@ export interface TemplatePreviewResultV1 {
     digest: string;
     mediaType: "application/pdf";
     byteLength: number;
+    pageCount: number;
+    regions: readonly TemplatePreviewRegionReferenceV1[];
+    output: {
+        kind: "bytes";
+        bytes: Uint8Array;
+    } | {
+        kind: "asset-handle";
+        handle: TemplateAssetHandleV1;
+    };
 }
 
 // export: TemplatePreviewStateV1
@@ -2267,11 +2313,25 @@ export interface TemplatePreviewCompiler {
     render(input: TemplatePreviewRequestV1): Promise<TemplatePreviewResultV1>;
 }
 
+// export: TemplatePreviewRegionReferenceV1
+export interface TemplatePreviewRegionReferenceV1 {
+    page: number;
+    region: "asset-grid" | "baseline" | "current" | "feature-zoo" | "summary";
+    bounds?: {
+        x: number;
+        y: number;
+        width: number;
+        height: number;
+        unit: "point";
+    };
+}
+
 // export: TemplatePreviewRequestV1
 export interface TemplatePreviewRequestV1 {
     generation: string;
     snapshotDigest: string;
-    purpose: "compatibility-proof" | "design-review";
+    purpose: "asset-contact-sheet" | "compatibility-proof" | "design-review";
+    summary?: TemplateImportViewV1["summary"];
 }
 
 // export: TemplatePreviewResultV1
@@ -2279,6 +2339,15 @@ export interface TemplatePreviewResultV1 {
     digest: string;
     mediaType: "application/pdf";
     byteLength: number;
+    pageCount: number;
+    regions: readonly TemplatePreviewRegionReferenceV1[];
+    output: {
+        kind: "bytes";
+        bytes: Uint8Array;
+    } | {
+        kind: "asset-handle";
+        handle: TemplateAssetHandleV1;
+    };
 }
 
 // export: TemplatePreviewStateV1
@@ -3065,11 +3134,25 @@ export interface TemplatePreviewCompiler {
     render(input: TemplatePreviewRequestV1): Promise<TemplatePreviewResultV1>;
 }
 
+// export: TemplatePreviewRegionReferenceV1
+export interface TemplatePreviewRegionReferenceV1 {
+    page: number;
+    region: "asset-grid" | "baseline" | "current" | "feature-zoo" | "summary";
+    bounds?: {
+        x: number;
+        y: number;
+        width: number;
+        height: number;
+        unit: "point";
+    };
+}
+
 // export: TemplatePreviewRequestV1
 export interface TemplatePreviewRequestV1 {
     generation: string;
     snapshotDigest: string;
-    purpose: "compatibility-proof" | "design-review";
+    purpose: "asset-contact-sheet" | "compatibility-proof" | "design-review";
+    summary?: TemplateImportViewV1["summary"];
 }
 
 // export: TemplatePreviewResultV1
@@ -3077,6 +3160,15 @@ export interface TemplatePreviewResultV1 {
     digest: string;
     mediaType: "application/pdf";
     byteLength: number;
+    pageCount: number;
+    regions: readonly TemplatePreviewRegionReferenceV1[];
+    output: {
+        kind: "bytes";
+        bytes: Uint8Array;
+    } | {
+        kind: "asset-handle";
+        handle: TemplateAssetHandleV1;
+    };
 }
 
 // export: TemplatePreviewStateV1

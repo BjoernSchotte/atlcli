@@ -547,13 +547,47 @@ export interface TemplateAssetStore {
 export interface TemplatePreviewRequestV1 {
   generation: string;
   snapshotDigest: string;
-  purpose: "compatibility-proof" | "design-review";
+  purpose:
+    | "asset-contact-sheet"
+    | "compatibility-proof"
+    | "design-review";
+  /**
+   * Exact journey counts projected by `TemplateImportViewV1`. A renderer may
+   * display them but must not reinterpret or recompute them.
+   */
+  summary?: TemplateImportViewV1["summary"];
+}
+
+export interface TemplatePreviewRegionReferenceV1 {
+  page: number;
+  region:
+    | "asset-grid"
+    | "baseline"
+    | "current"
+    | "feature-zoo"
+    | "summary";
+  bounds?: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    unit: "point";
+  };
 }
 
 export interface TemplatePreviewResultV1 {
   digest: string;
   mediaType: "application/pdf";
   byteLength: number;
+  pageCount: number;
+  regions: readonly TemplatePreviewRegionReferenceV1[];
+  /**
+   * In-process hosts receive bytes. A persistent host may return an opaque
+   * verified handle instead. Neither form exposes a file path or DOM node.
+   */
+  output:
+    | { kind: "bytes"; bytes: Uint8Array }
+    | { kind: "asset-handle"; handle: TemplateAssetHandleV1 };
 }
 
 export interface TemplatePreviewCompiler {
