@@ -123,3 +123,32 @@ profile through the identical store → worker → VFS → compile path
 met with a 74.84% measured peak reduction**, now asserted in the harness
 (`peakReduction ≥ 0.4` at scale 1). Prepare-side normalization of the 100 MiB
 corpus runs in-page as part of the measured cycle.
+
+## Phase 2 — Typst runtime candidate lanes
+
+Built: `bench:runtime-lane` (`atlcli.runtime-lane/1`) — isolated Bun child
+processes run the IDENTICAL pipeline (prepare original → serialize →
+compile) over the materialized scale-1 image-heavy corpus, one candidate per
+child: `baseline` (vendored, patched typst.ts 0.7.0 / Typst 0.14.2) and
+`rc8` (published typst.ts 0.8.0-rc3 / Typst 0.15.0-rc.1 via a devDependency
+alias — the production vendor pin and CSP patch are untouched). Metrics:
+`/usr/bin/time` peak RSS, the WASM linear-memory high-water via the same
+register hook the Chrome harness uses, and compile wall time. Bun/JSC host
+disclaimer recorded in the report; relative candidate deltas and WASM
+high-water are the comparable signals.
+
+| Candidate | peak RSS MiB (median of 3) | WASM high-water MiB | compile ms | PDF bytes | raw WASM |
+|---|---|---|---|---|---|
+| baseline 0.7.0 / 0.14.2 | 1861.92 (1861.92–1862.45) | 1326.38 | 2679 | 102,083,213 | 27.0 MB |
+| rc8 0.8.0-rc3 / 0.15.0-rc.1 | 1874.05 (1870.31–1879.28) | **1325.94** | 2656 | 102,043,785 | 28.8 MB |
+
+Verdict against the plan's adoption gates: **no material image-heavy memory
+benefit** — the WASM high-water is identical within 0.5 MiB because decoded
+rasters dominate this workload, exactly as the plan predicted ("Krilla
+memory work … is not evidence for #118's image-heavy workload"). Peak RSS
+and compile time are within noise; the RC's raw WASM is 1.8 MB larger. Per
+the gate ("a pinned forward-port only if the RC first proves material
+benefit"): **no forward-port and no adoption for memory reasons.** The lane
+stays as infrastructure; re-run it on the text-heavy corpus once that recipe
+lands (Phase 0 remainder), where Typst 0.15's layout-side work could show a
+different profile.
