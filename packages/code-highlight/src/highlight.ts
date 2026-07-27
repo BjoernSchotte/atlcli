@@ -3,11 +3,10 @@ import type {
   LanguageInput,
   ThemeInput,
 } from "shiki/core";
-// Import the catalogue-only entrypoints. Importing `shiki` also re-exports its
-// full singleton bundle; Bun's monolithic CLI bundler can then retain a broken
-// `bundle_full_exports` initializer even though this package never uses it.
-import { bundledLanguages } from "shiki/langs";
-import { bundledThemes } from "shiki/themes";
+import {
+  CODE_LANGUAGE_LOADERS,
+  CODE_THEME_LOADERS,
+} from "./loaders.generated.js";
 import {
   canonicalCodeLanguage,
   DEFAULT_CODE_THEME,
@@ -127,12 +126,10 @@ async function getHighlighter(
         await Promise.all([
           import("shiki/core"),
           engine.create(),
-          bundledThemes[theme](),
+          CODE_THEME_LOADERS[theme](),
         ]);
-      const loadedTheme =
-        "default" in themeModule ? themeModule.default : themeModule;
       const highlighter = await createHighlighterCore({
-        themes: [loadedTheme as ThemeInput],
+        themes: [themeModule.default as ThemeInput],
         langs: [],
         engine: regexEngine,
       });
@@ -166,14 +163,12 @@ async function loadLanguage(
     promise = (async () => {
       const startedAt = nowMs();
       const highlighterPromise = getHighlighter(theme);
-      const grammarPromise = bundledLanguages[language]();
+      const grammarPromise = CODE_LANGUAGE_LOADERS[language]();
       const [{ highlighter, initMs }, grammarModule] = await Promise.all([
         highlighterPromise,
         grammarPromise,
       ]);
-      const grammar =
-        "default" in grammarModule ? grammarModule.default : grammarModule;
-      await highlighter.loadLanguage(grammar as LanguageInput);
+      await highlighter.loadLanguage(grammarModule.default as LanguageInput);
       // Shiki's JavaScript engine compiles grammar rules lazily. This dummy
       // tokenize belongs to grammar-load/compile time and makes the first real
       // source tokenize identical to every warm repeat.

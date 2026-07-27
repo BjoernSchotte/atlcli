@@ -46,6 +46,9 @@ jobs:
       - name: Check pinned ADF contract offline
         run: bun run check:adf-pinned
 
+      - name: Check generated Shiki catalogues and loaders
+        run: bun run --cwd packages/code-highlight catalogue:check
+
       - name: Type check
         run: bun run typecheck
 

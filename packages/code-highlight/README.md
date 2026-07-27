@@ -14,8 +14,10 @@ the first highlighter initialization throws because the caches are
 engine-bound.
 
 The package ships Shiki's complete pinned bundled language/alias catalogue and
-default theme catalogue. Themes and grammars are selected through Shiki's
-generated lazy-loader maps, so no user input is interpolated into an import path
+default theme catalogue. A checked-in loader registry maps every canonical ID
+to a literal `@shikijs/langs/*` or `@shikijs/themes/*` module import. Runtime
+code therefore avoids Shiki's aggregate catalogue maps while keeping every
+module bundler-discoverable; no user input is interpolated into an import path
 and no runtime network access is required. `github-light` is the default.
 
 Hosts may await only the grammars needed for an imminent export:
@@ -33,7 +35,9 @@ performed engine initialization, grammar load/compile, and source
 tokenization. Cold engine initialization and grammar loading overlap, so those
 two wall-time metrics are not additive. Warm cache work is reported as zero.
 
-After upgrading Shiki, regenerate and verify the checked-in catalogue:
+After upgrading Shiki, upgrade `shiki`, `@shikijs/langs`, and
+`@shikijs/themes` together, then regenerate and verify the checked-in metadata
+and loader registries:
 
 ```bash
 bun run --cwd packages/code-highlight catalogue:generate

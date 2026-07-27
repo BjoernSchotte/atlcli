@@ -119,7 +119,9 @@
       "name": "@atlcli/code-highlight",
       "version": "1.0.0",
       "dependencies": {
-        "shiki": "^4.3.1",
+        "@shikijs/langs": "4.3.1",
+        "@shikijs/themes": "4.3.1",
+        "shiki": "4.3.1",
       },
     },
     "packages/confluence": {
