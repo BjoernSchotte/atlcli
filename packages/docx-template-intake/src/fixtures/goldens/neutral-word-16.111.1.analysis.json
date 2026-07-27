@@ -1,0 +1,280 @@
+{
+  "archive": {
+    "compressedBytes": 42225,
+    "entries": 27,
+    "largestEntryBytes": 346480,
+    "uncompressedBytes": 437111
+  },
+  "features": {
+    "alternateContentGroups": 0,
+    "backgrounds": 1,
+    "externalRelationships": 0,
+    "footers": 3,
+    "headers": 3,
+    "internalRelationships": 22,
+    "pageBorders": 2,
+    "sections": 2,
+    "styles": 167,
+    "themeColorSlots": 12
+  },
+  "fixture": "neutral-word-16.111.1.docx",
+  "raster": [
+    {
+      "bytes": 15345,
+      "format": "jpeg",
+      "height": 420,
+      "path": "word/media/image1.jpg",
+      "pixels": 302400,
+      "width": 720
+    },
+    {
+      "bytes": 9324,
+      "format": "png",
+      "height": 360,
+      "path": "word/media/image2.png",
+      "pixels": 460800,
+      "width": 1280
+    }
+  ],
+  "schema": "atlcli.docx-template-fixture-analysis/1",
+  "sha256": "938e7a9d105a41ffa14baedf37f21f4388cc1b2131be7e16ad73f5b5a4a8cf4a",
+  "svg": [
+    {
+      "attributes": 11,
+      "bytes": 232,
+      "characters": 232,
+      "elements": 4,
+      "filters": 0,
+      "maxAttributeCharacters": 26,
+      "maxDepth": 2,
+      "path": "word/media/image3.svg",
+      "pathDataBytes": 38
+    }
+  ],
+  "xml": {
+    "attributes": 14897,
+    "bytes": 412210,
+    "characters": 412109,
+    "elements": 9576,
+    "maxAttributeCharacters": 87,
+    "maxDepth": 13,
+    "parts": [
+      {
+        "attributes": 10,
+        "bytes": 590,
+        "characters": 590,
+        "elements": 4,
+        "maxAttributeCharacters": 87,
+        "maxDepth": 2,
+        "path": "_rels/.rels"
+      },
+      {
+        "attributes": 47,
+        "bytes": 2764,
+        "characters": 2764,
+        "elements": 24,
+        "maxAttributeCharacters": 80,
+        "maxDepth": 2,
+        "path": "[Content_Types].xml"
+      },
+      {
+        "attributes": 4,
+        "bytes": 296,
+        "characters": 296,
+        "elements": 2,
+        "maxAttributeCharacters": 82,
+        "maxDepth": 2,
+        "path": "customXml/_rels/item1.xml.rels"
+      },
+      {
+        "attributes": 4,
+        "bytes": 260,
+        "characters": 260,
+        "elements": 1,
+        "maxAttributeCharacters": 66,
+        "maxDepth": 1,
+        "path": "customXml/item1.xml"
+      },
+      {
+        "attributes": 3,
+        "bytes": 341,
+        "characters": 341,
+        "elements": 3,
+        "maxAttributeCharacters": 66,
+        "maxDepth": 3,
+        "path": "customXml/itemProps1.xml"
+      },
+      {
+        "attributes": 6,
+        "bytes": 1037,
+        "characters": 1037,
+        "elements": 28,
+        "maxAttributeCharacters": 73,
+        "maxDepth": 5,
+        "path": "docProps/app.xml"
+      },
+      {
+        "attributes": 7,
+        "bytes": 804,
+        "characters": 804,
+        "elements": 11,
+        "maxAttributeCharacters": 71,
+        "maxDepth": 2,
+        "path": "docProps/core.xml"
+      },
+      {
+        "attributes": 49,
+        "bytes": 2263,
+        "characters": 2263,
+        "elements": 17,
+        "maxAttributeCharacters": 79,
+        "maxDepth": 2,
+        "path": "word/_rels/document.xml.rels"
+      },
+      {
+        "attributes": 7,
+        "bytes": 421,
+        "characters": 421,
+        "elements": 3,
+        "maxAttributeCharacters": 73,
+        "maxDepth": 2,
+        "path": "word/_rels/header2.xml.rels"
+      },
+      {
+        "attributes": 220,
+        "bytes": 8311,
+        "characters": 8311,
+        "elements": 168,
+        "maxAttributeCharacters": 70,
+        "maxDepth": 12,
+        "path": "word/document.xml"
+      },
+      {
+        "attributes": 51,
+        "bytes": 3133,
+        "characters": 3133,
+        "elements": 13,
+        "maxAttributeCharacters": 70,
+        "maxDepth": 5,
+        "path": "word/endnotes.xml"
+      },
+      {
+        "attributes": 125,
+        "bytes": 3803,
+        "characters": 3783,
+        "elements": 65,
+        "maxAttributeCharacters": 67,
+        "maxDepth": 3,
+        "path": "word/fontTable.xml"
+      },
+      {
+        "attributes": 40,
+        "bytes": 2793,
+        "characters": 2793,
+        "elements": 4,
+        "maxAttributeCharacters": 70,
+        "maxDepth": 4,
+        "path": "word/footer1.xml"
+      },
+      {
+        "attributes": 43,
+        "bytes": 2908,
+        "characters": 2908,
+        "elements": 10,
+        "maxAttributeCharacters": 70,
+        "maxDepth": 5,
+        "path": "word/footer2.xml"
+      },
+      {
+        "attributes": 40,
+        "bytes": 2793,
+        "characters": 2793,
+        "elements": 4,
+        "maxAttributeCharacters": 70,
+        "maxDepth": 4,
+        "path": "word/footer3.xml"
+      },
+      {
+        "attributes": 51,
+        "bytes": 3139,
+        "characters": 3139,
+        "elements": 13,
+        "maxAttributeCharacters": 70,
+        "maxDepth": 5,
+        "path": "word/footnotes.xml"
+      },
+      {
+        "attributes": 43,
+        "bytes": 2921,
+        "characters": 2921,
+        "elements": 11,
+        "maxAttributeCharacters": 70,
+        "maxDepth": 5,
+        "path": "word/header1.xml"
+      },
+      {
+        "attributes": 75,
+        "bytes": 4172,
+        "characters": 4172,
+        "elements": 40,
+        "maxAttributeCharacters": 70,
+        "maxDepth": 13,
+        "path": "word/header2.xml"
+      },
+      {
+        "attributes": 43,
+        "bytes": 2923,
+        "characters": 2923,
+        "elements": 11,
+        "maxAttributeCharacters": 70,
+        "maxDepth": 5,
+        "path": "word/header3.xml"
+      },
+      {
+        "attributes": 208,
+        "bytes": 7577,
+        "characters": 7569,
+        "elements": 150,
+        "maxAttributeCharacters": 70,
+        "maxDepth": 6,
+        "path": "word/numbering.xml"
+      },
+      {
+        "attributes": 94,
+        "bytes": 3792,
+        "characters": 3792,
+        "elements": 61,
+        "maxAttributeCharacters": 67,
+        "maxDepth": 4,
+        "path": "word/settings.xml"
+      },
+      {
+        "attributes": 13441,
+        "bytes": 346480,
+        "characters": 346467,
+        "elements": 8705,
+        "maxAttributeCharacters": 67,
+        "maxDepth": 6,
+        "path": "word/styles.xml"
+      },
+      {
+        "attributes": 273,
+        "bytes": 7643,
+        "characters": 7583,
+        "elements": 226,
+        "maxAttributeCharacters": 53,
+        "maxDepth": 9,
+        "path": "word/theme/theme1.xml"
+      },
+      {
+        "attributes": 13,
+        "bytes": 1046,
+        "characters": 1046,
+        "elements": 2,
+        "maxAttributeCharacters": 67,
+        "maxDepth": 2,
+        "path": "word/webSettings.xml"
+      }
+    ]
+  }
+}

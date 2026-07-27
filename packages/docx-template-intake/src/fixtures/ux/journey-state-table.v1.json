@@ -1,0 +1,99 @@
+{
+  "schema": "atlcli.pdf-template-journey-state-table/1",
+  "stages": [
+    {
+      "allowedNextActions": [
+        {
+          "command": "atlcli pdf-template status ./brand-pdf-template",
+          "kind": "status"
+        }
+      ],
+      "completion": "Analysis is still running.",
+      "stage": "analyzing"
+    },
+    {
+      "allowedNextActions": [
+        {
+          "command": "atlcli pdf-template review ./brand-pdf-template",
+          "kind": "review"
+        },
+        {
+          "command": "atlcli pdf-template status ./brand-pdf-template",
+          "kind": "status"
+        }
+      ],
+      "completion": "Every open suggestion is decided or explicitly kept, and unsupported items are acknowledged.",
+      "stage": "review-required"
+    },
+    {
+      "allowedNextActions": [
+        {
+          "command": "atlcli pdf-template preview ./brand-pdf-template",
+          "kind": "preview"
+        },
+        {
+          "command": "atlcli pdf-template review ./brand-pdf-template",
+          "kind": "review"
+        }
+      ],
+      "completion": "The current draft is complete enough to render.",
+      "stage": "ready-to-preview"
+    },
+    {
+      "allowedNextActions": [
+        {
+          "command": "atlcli pdf-template build ./brand-pdf-template --output ./brand.wiki-pdf-template",
+          "kind": "build"
+        },
+        {
+          "command": "atlcli pdf-template preview ./brand-pdf-template",
+          "kind": "preview"
+        }
+      ],
+      "completion": "A fresh design review and compatibility proof exist for the current draft.",
+      "stage": "ready-to-build"
+    },
+    {
+      "allowedNextActions": [
+        {
+          "command": "atlcli wiki export 12345 --format pdf --template ./brand.wiki-pdf-template --output ./example.pdf",
+          "kind": "use"
+        },
+        {
+          "command": "atlcli pdf-template undo ./brand-pdf-template",
+          "kind": "undo"
+        }
+      ],
+      "completion": "The immutable template pack exists and passed its build gates.",
+      "stage": "built"
+    },
+    {
+      "allowedNextActions": [
+        {
+          "command": "atlcli pdf-template reanalyze updated-brand.docx --dir ./brand-pdf-template",
+          "kind": "reanalyze"
+        },
+        {
+          "command": "atlcli pdf-template status ./brand-pdf-template",
+          "kind": "status"
+        }
+      ],
+      "completion": "The changed source is reanalyzed into a new committed generation.",
+      "stage": "source-changed"
+    },
+    {
+      "allowedNextActions": [
+        {
+          "command": "atlcli pdf-template review ./brand-pdf-template",
+          "kind": "review"
+        },
+        {
+          "command": "atlcli pdf-template status ./brand-pdf-template",
+          "kind": "status"
+        }
+      ],
+      "completion": "The named blocker is resolved while the active draft remains intact.",
+      "stage": "blocked"
+    }
+  ]
+}

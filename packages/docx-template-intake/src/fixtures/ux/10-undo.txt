@@ -1,0 +1,7 @@
+Scenario: undo
+Stage: ready-to-preview
+Message-Code: ATLCLI_PDF_TEMPLATE_UNDO_COMPLETE
+What happened: A new generation was created from the previous committed design.
+Current state: The restored design needs a fresh preview before it can be built.
+Retained: No history was deleted; the source facts, accepted assets, and later generation remain available.
+Next: atlcli pdf-template preview ./brand-pdf-template

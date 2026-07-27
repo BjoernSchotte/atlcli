@@ -1,0 +1,15 @@
+{
+  "name": "@atlcli/docx-template-intake",
+  "version": "0.0.0",
+  "license": "Apache-2.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./fixture-analysis": "./src/fixture-analysis.ts",
+    "./messages": "./src/messages.ts"
+  },
+  "dependencies": {
+    "@atlcli/docx": "workspace:*",
+    "saxes": "6.0.0"
+  }
+}

@@ -1462,35 +1462,38 @@ only one task owns each at a time.
 
 **Acceptance criteria / proof**
 
-- [ ] `fixtures/README.md` lists the source, generator version, expected OOXML
+- [x] `fixtures/README.md` lists the source, generator version, expected OOXML
       features, and SHA-256 for every binary fixture.
-- [ ] A test proves that fixture/golden files contain no prohibited customer
+- [x] A test proves that fixture/golden files contain no prohibited customer
       names, URLs, account IDs, or copied real document text; all permitted
       synthetic marker text is listed in the fixture README.
-- [ ] `bun run test packages/pdf/src/template.test.ts
+- [x] `bun run test packages/pdf/src/template.test.ts
       packages/pdf/src/settings.test.ts
       packages/pdf-compiler-browser/src/compiler.test.ts` passes.
-- [ ] `bun run build:browser-export-harness &&
+- [x] `bun run build:browser-export-harness &&
       bun run assert:conformance-cases &&
       bun run check:parity` passes before the resolver is changed.
-- [ ] `RESULTS.md` records the commit, Bun/Typst versions, commands, digests,
+- [x] `RESULTS.md` records the commit, Bun/Typst versions, commands, digests,
       and artifact paths; no capability is marked "proven" merely by citing a
       unit-test count.
-- [ ] `RESULTS.md` records measurements and selected parser, pixel, and SVG
+- [x] `RESULTS.md` records measurements and selected parser, pixel, and SVG
       hard caps; each cap has a `limit-1`, `limit`, and `limit+1` test plan.
-- [ ] `fixtures/ux/` contains the versioned journey/state table and text-mode
+- [x] `fixtures/ux/` contains the versioned journey/state table and text-mode
       transcripts. The primary happy path uses no candidate ID, capability
       path, JSON editing, explicit built-in baseline ID, or knowledge of OOXML
       or Typst.
-- [ ] Every transcript ends with an allowed next action derived from the
+- [x] Every transcript ends with an allowed next action derived from the
       documented stage, and every failure transcript confirms whether the
       active draft was retained.
-- [ ] Every message code used by a normative transcript exists in an owning
+- [x] Every message code used by a normative transcript exists in an owning
       package registry with a bounded parameter schema; deleting its default
       copy displays the stable code and does not remove the diagnostic.
-- [ ] The usability script has explicit success criteria: reach a rendered
+- [x] The usability script has explicit success criteria: reach a rendered
       design review with at most four primary commands and correctly identify
       applied, retained, open, and unsupported choices.
+
+**T0 evidence:** See `RESULTS.md` and the committed fixtures under
+`packages/docx-template-intake/src/fixtures/`.
 
 **STOP:** If existing default parity is red before changes, do not continue
 implementation.

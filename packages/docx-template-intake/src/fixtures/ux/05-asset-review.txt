@@ -1,0 +1,7 @@
+Scenario: asset-review
+Stage: review-required
+Message-Code: ATLCLI_PDF_TEMPLATE_ASSET_REVIEW_REQUIRED
+What happened: A repeated page graphic was found and a safe local thumbnail was prepared.
+Current state: Its intended role, accessibility text, and usage rights still need confirmation.
+Retained: The graphic is not included in the active draft until all confirmations are complete.
+Next: atlcli pdf-template review ./brand-pdf-template
