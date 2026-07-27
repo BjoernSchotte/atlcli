@@ -324,6 +324,9 @@ export interface PdfAssetResolver {
     }): Promise<PdfResolvedAsset>;
 }
 
+// export: PdfBindableLevelASetting
+export type PdfBindableLevelASetting = (typeof PDF_BINDABLE_LEVEL_A_SETTINGS)[number];
+
 // export: pdfBytesFromBlob
 export declare function pdfBytesFromBlob(source: Blob, options?: {
     mimeType?: string;
@@ -371,6 +374,15 @@ export interface PdfCompileResult {
     pdf?: Uint8Array;
     diagnostics: PdfCompilerDiagnostic[];
     compilerVersion: string;
+}
+
+// export: PdfDesignResolutionTraceEntry
+export interface PdfDesignResolutionTraceEntry {
+    target: string;
+    source: "baseline" | "engine-policy" | "runtime-binding";
+    sourceId: string;
+    sequence: number;
+    value: unknown;
 }
 
 // export: PdfExportEnv
@@ -488,6 +500,9 @@ export interface PdfSerializeOptions {
     settings?: PdfTemplateSettings;
     templateManifest?: TemplateManifest;
 }
+
+// export: PdfSettingPresenceMask
+export type PdfSettingPresenceMask = Readonly<Record<PdfBindableLevelASetting, boolean>>;
 
 // export: PdfSourceBundle
 export interface PdfSourceBundle {
@@ -791,6 +806,10 @@ export interface ResolvedPdfSettings {
     logo?: ResolvedPdfLogo;
     watermark?: ResolvedPdfWatermark;
     design: ResolvedPdfDesign;
+    settingPresence: PdfSettingPresenceMask;
+    designTrace: readonly PdfDesignResolutionTraceEntry[];
+    ignoredDesignCapabilities: readonly string[];
+    capabilityCatalogDigest: string;
     labels: ResolvedPdfLabels;
 }
 
@@ -1191,6 +1210,9 @@ export interface PdfAssetResolver {
     }): Promise<PdfResolvedAsset>;
 }
 
+// export: PdfBindableLevelASetting
+export type PdfBindableLevelASetting = (typeof PDF_BINDABLE_LEVEL_A_SETTINGS)[number];
+
 // export: pdfBytesFromBlob
 export declare function pdfBytesFromBlob(source: Blob, options?: {
     mimeType?: string;
@@ -1238,6 +1260,15 @@ export interface PdfCompileResult {
     pdf?: Uint8Array;
     diagnostics: PdfCompilerDiagnostic[];
     compilerVersion: string;
+}
+
+// export: PdfDesignResolutionTraceEntry
+export interface PdfDesignResolutionTraceEntry {
+    target: string;
+    source: "baseline" | "engine-policy" | "runtime-binding";
+    sourceId: string;
+    sequence: number;
+    value: unknown;
 }
 
 // export: PdfExportEnv
@@ -1355,6 +1386,9 @@ export interface PdfSerializeOptions {
     settings?: PdfTemplateSettings;
     templateManifest?: TemplateManifest;
 }
+
+// export: PdfSettingPresenceMask
+export type PdfSettingPresenceMask = Readonly<Record<PdfBindableLevelASetting, boolean>>;
 
 // export: PdfSourceBundle
 export interface PdfSourceBundle {
@@ -1658,6 +1692,10 @@ export interface ResolvedPdfSettings {
     logo?: ResolvedPdfLogo;
     watermark?: ResolvedPdfWatermark;
     design: ResolvedPdfDesign;
+    settingPresence: PdfSettingPresenceMask;
+    designTrace: readonly PdfDesignResolutionTraceEntry[];
+    ignoredDesignCapabilities: readonly string[];
+    capabilityCatalogDigest: string;
     labels: ResolvedPdfLabels;
 }
 
@@ -2058,6 +2096,9 @@ export interface PdfAssetResolver {
     }): Promise<PdfResolvedAsset>;
 }
 
+// export: PdfBindableLevelASetting
+export type PdfBindableLevelASetting = (typeof PDF_BINDABLE_LEVEL_A_SETTINGS)[number];
+
 // export: pdfBytesFromBlob
 export declare function pdfBytesFromBlob(source: Blob, options?: {
     mimeType?: string;
@@ -2105,6 +2146,15 @@ export interface PdfCompileResult {
     pdf?: Uint8Array;
     diagnostics: PdfCompilerDiagnostic[];
     compilerVersion: string;
+}
+
+// export: PdfDesignResolutionTraceEntry
+export interface PdfDesignResolutionTraceEntry {
+    target: string;
+    source: "baseline" | "engine-policy" | "runtime-binding";
+    sourceId: string;
+    sequence: number;
+    value: unknown;
 }
 
 // export: PdfExportEnv
@@ -2222,6 +2272,9 @@ export interface PdfSerializeOptions {
     settings?: PdfTemplateSettings;
     templateManifest?: TemplateManifest;
 }
+
+// export: PdfSettingPresenceMask
+export type PdfSettingPresenceMask = Readonly<Record<PdfBindableLevelASetting, boolean>>;
 
 // export: PdfSourceBundle
 export interface PdfSourceBundle {
@@ -2525,6 +2578,10 @@ export interface ResolvedPdfSettings {
     logo?: ResolvedPdfLogo;
     watermark?: ResolvedPdfWatermark;
     design: ResolvedPdfDesign;
+    settingPresence: PdfSettingPresenceMask;
+    designTrace: readonly PdfDesignResolutionTraceEntry[];
+    ignoredDesignCapabilities: readonly string[];
+    capabilityCatalogDigest: string;
     labels: ResolvedPdfLabels;
 }
 
@@ -2678,6 +2735,12 @@ export declare function mapPdfDiagnostics(diagnostics: Array<{
     blockPath?: string;
 }>;
 
+// export: materializeLegacyPdfDesign
+export declare function materializeLegacyPdfDesign(sparseDesign: WikiPdfTemplateDesignV1, characterizedBaseline: WikiPdfTemplateDesignV1, fallbackAliases?: Readonly<Record<string, string>>): {
+    design: WikiPdfTemplateDesignV1;
+    ignoredCapabilities: readonly string[];
+};
+
 // export: PDF_ASSET_CONCURRENCY
 export declare const PDF_ASSET_CONCURRENCY = 4;
 
@@ -2689,6 +2752,24 @@ export declare const PDF_MAX_TOTAL_ASSET_BYTES: number;
 
 // export: PDF_SCAN_CHUNK_BYTES
 export declare const PDF_SCAN_CHUNK_BYTES: number;
+
+// export: PDF_TEMPLATE_CAPABILITIES_V1
+export declare const PDF_TEMPLATE_CAPABILITIES_V1: TemplateCapabilityCatalogV1;
+
+// export: PDF_TEMPLATE_CAPABILITY_DIGEST_V1
+export declare const PDF_TEMPLATE_CAPABILITY_DIGEST_V1: "d871153baebf8e1cc318736ea34103213882e5d9569aa0efc820b226753a885c";
+
+// export: PDF_TEMPLATE_CAPABILITY_PRESENTATION_V1
+export declare const PDF_TEMPLATE_CAPABILITY_PRESENTATION_V1: TemplateCapabilityPresentationRegistryV1;
+
+// export: PDF_TEMPLATE_DETAILS_ONLY_CAPABILITIES_V1
+export declare const PDF_TEMPLATE_DETAILS_ONLY_CAPABILITIES_V1: readonly string[];
+
+// export: PDF_TEMPLATE_LEGACY_FALLBACK_ALIASES_V1
+export declare const PDF_TEMPLATE_LEGACY_FALLBACK_ALIASES_V1: Readonly<Record<string, string>>;
+
+// export: PDF_TEMPLATE_PRESENTATION_REVISION_V1
+export declare const PDF_TEMPLATE_PRESENTATION_REVISION_V1: "4b9725c298b76d2627ab45ccd061134a011b56d27837fd68d409dd0f0e6b246d";
 
 // export: pdfColorContrast
 export declare function pdfColorContrast(first: string, second: string): number;
@@ -2723,6 +2804,12 @@ export interface PreparePdfOptions {
 // export: preservePdfSourceCellColor
 export declare function preservePdfSourceCellColor(sourceColor: string | undefined, background: string, theme: PdfTheme): string | undefined;
 
+// export: projectPdfDesignThroughCatalog
+export declare function projectPdfDesignThroughCatalog(design: WikiPdfTemplateDesignV1): WikiPdfTemplateDesignV1;
+
+// export: readPdfDesignCapability
+export declare function readPdfDesignCapability<T = unknown>(design: WikiPdfTemplateDesignV1, path: string): T;
+
 // export: resolvePdfTheme
 export declare function resolvePdfTheme(options?: PdfThemeOptions): PdfTheme;
 
@@ -2743,6 +2830,9 @@ export declare function typstString(value: string): string;
 
 // export: validatePdfOutput
 export declare function validatePdfOutput(bytes: Uint8Array): PdfOutputInspection;
+
+// export: writePdfDesignCapability
+export declare function writePdfDesignCapability(design: WikiPdfTemplateDesignV1, path: string, value: unknown, writerId: string): WikiPdfTemplateDesignV1;
 ```
 
 ### Entry point `./template`

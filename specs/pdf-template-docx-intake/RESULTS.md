@@ -154,3 +154,126 @@ omits the SVG extension while retaining the raster fallback.
 This evidence proves the frozen contract and proof scaffolding. It does not
 claim that the intake engine, renderer extensions, CLI journey, or pack loader
 from T1–T10 already exist.
+
+## T1 — Versioned PDF capability catalog and complete baselines
+
+**Status:** Proven on 2026-07-27.
+
+### Catalog and presentation contracts
+
+| Item | Recorded value |
+|---|---|
+| Runtime descriptors | 201 |
+| Primary presentation descriptors | 78 |
+| Explicit details-only descriptors | 123 |
+| Capability catalog digest | `d871153baebf8e1cc318736ea34103213882e5d9569aa0efc820b226753a885c` |
+| Presentation registry revision | `4b9725c298b76d2627ab45ccd061134a011b56d27837fd68d409dd0f0e6b246d` |
+
+`packages/template-pack/src/capabilities.ts` owns the browser-safe generic
+contracts, canonical flattening, validation, and digest functions.
+`packages/pdf/src/design-catalog.ts` owns the renderer-specific inventory and
+presentation classification. Runtime capability data contains no localized
+copy. Reordering a separate localization object leaves both digests unchanged;
+regrouping a presentation descriptor changes only the presentation revision.
+
+The coverage test scans executable source in the Typst template, serializer,
+settings resolver, theme, and binding validator. It rejects direct reads from
+an unprojected design, checks every literal or helper-derived path against the
+catalog, covers every binding allowlist target, and requires exactly one
+matching runtime writer for every curated binding.
+
+### Baseline and legacy behavior
+
+- Editorial Indigo and Manuscript flatten and unflatten canonically and contain
+  every required capability. Manuscript now states the 18 values that
+  previously came from hidden Editorial Indigo fallbacks.
+- Strict authoring validation rejects an unconsumed leaf with
+  `unknown-capability` and the exact path. Legacy validation reports and drops
+  the same leaf.
+- A foreign sparse V1 design remains structurally readable but fails execution
+  at its first exact missing path; it is never completed from Editorial Indigo.
+- Known historical curated IDs use an explicit, characterized compatibility
+  adapter. The four historical success/error callout aliases are named in that
+  adapter rather than hidden at renderer read sites.
+- Catalog descriptors reject multiple runtime writers unless all writers have
+  one declared order. The production V1 catalog currently has no intentional
+  overlap, so no runtime overlap order is claimed.
+
+### Presence semantics and the Manuscript correction
+
+`resolvePdfSettings()` records raw presence separately from normalized Level-A
+values. All six bindable settings are covered by no-input, single-input, and
+partial-input assertions. A runtime binding writes only when its source key was
+present. Theme `ink`, `paper`, and `minimumContrast` writes are likewise
+field-presence based and append exact engine-policy trace entries.
+
+This corrects one characterized Manuscript defect. Previously, absent inputs
+were normalized and then treated as authored values. That replaced the
+manifest's green accent and own ink/paper with Editorial Indigo defaults. The
+trace identifies only these writes:
+
+| Target | Correct source/value | Former injected source/value |
+|---|---|---|
+| `branding.accent` | baseline `#0B6E4F` | `setting.accentColor` → `#4B57A3` |
+| `tokens.colors.accent` | baseline `#0B6E4F` | `setting.accentColor` → `#4B57A3` |
+| `tokens.colors.ink` | baseline `#1B2733` | `theme.colors.ink` → `#172B4D` |
+| `tokens.colors.paper` | baseline `#FBF9F4` | `theme.colors.paper` → `#FCFBF8` |
+| `tokens.contrast.minimum` | baseline `4.5` | `theme.table.coloredCellText.minimumContrast` → `4.5` |
+
+The contrast value is numerically unchanged but remains in the former write
+trace because the old resolver still overwrote it.
+
+### PDF parity and raster comparison
+
+| Case | T0 SHA-256 | T1 SHA-256 | Result |
+|---|---|---|---|
+| Editorial Indigo projection | `4f27b57e13080e39ba99d8c429cf534407a006303e3360ca7a8085578c35195a` | `4f27b57e13080e39ba99d8c429cf534407a006303e3360ca7a8085578c35195a` | Byte-identical |
+| Manuscript | `66f4bb7675343e6e6acdfb82552824dbe7adac02a62a07859e479bd120a166f4` | `b258511c3daf444015562e868b049e38ab0ea54631a5eeecafab36e5a0568845` | Expected presence fix |
+
+The T0 Manuscript digest was reproduced exactly on the T1 code by explicitly
+supplying the former normalized Level-A and theme defaults. The corrected and
+former PDFs are both tagged, four-page A4 documents. Poppler rendered all
+eight pages at 144 DPI (`1191 × 1684` pixels). At an 8% background tolerance,
+the corresponding non-background bounds were exactly equal:
+
+| Page | Bounds in both renders |
+|---|---|
+| 1 | `474x481+153+418` |
+| 2 | `884x1522+153+77` |
+| 3 | `888x1522+150+77` |
+| 4 | `660x1090+153+509` |
+
+Every old/new page pair was visually inspected. Pagination, typography,
+spacing, line wrapping, tables, headers, footers, and content placement are
+unchanged. Only the expected accent, ink, and paper colors move from injected
+Editorial Indigo defaults to the Manuscript manifest. No clipping, overlap,
+missing glyph, or geometry drift was observed. Generated PDFs and page images
+remain ignored under `.tmp/pdf-template-docx-intake/t1/`.
+
+All other T0 browser digests remain byte-identical:
+`pdf-settings` A/B, `blocks`, `scope`, `content-compat`, and `macros`.
+
+### Commands and results
+
+| Proof | Exact command | Result |
+|---|---|---|
+| Normative T1 suite | `bun run test packages/template-pack/src/capabilities.test.ts packages/pdf/src/design-catalog.test.ts packages/pdf/src/template.test.ts packages/pdf/src/settings.test.ts` | Passed; 65 tests, 461 assertions, 0 failures |
+| PDF serializer and real compiler regressions | `bun run test packages/pdf/src/serialize.test.ts packages/pdf-compiler-browser/src/second-template.test.ts packages/pdf-compiler-browser/src/chapter-running-head.test.ts` | Passed; 105 tests, 448 assertions, 0 failures |
+| API report and closure guard | `bun run test scripts/api-report.test.ts` | Passed; 5 tests, 14 assertions, zero reachable-but-unexported gaps |
+| Repository type safety | `bun run typecheck` | Passed |
+| Full monorepo build | `bun run build` | Passed; 17 tasks |
+| Full repository suite | `bun run test` | Passed outside the filesystem sandbox; 5,532 tests passed, 12 environment-gated tests skipped, 0 failures |
+| Browser output integrity | `bun run check:browser-export-harness` | Passed |
+| Conformance inventory | `bun run assert:conformance-cases` | Passed; 18 declared cases |
+| Real browser harness | `bun run test:browser-export-harness` | Passed; 4 Playwright tests in Chromium |
+| Browser/Bun parity | `bun run check:parity` | Passed for all six digest-producing cases |
+| Diff hygiene | `git diff --check` | Passed |
+
+The first full-suite run inside the restricted filesystem sandbox failed its
+local HTTP-server tests because socket binding was unavailable. It also found
+the expected stale API reports. After exporting the new reachable types and
+updating the reviewed reports, the unrestricted rerun above completed with
+zero failures.
+
+This evidence proves T1 only. It does not claim that the authoring core or DOCX
+analysis from T2 onward exists.

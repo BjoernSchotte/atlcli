@@ -277,7 +277,7 @@ describe("resolver: bindings, locale, labels (spec 012)", () => {
     const bound = applyBindings(
       design,
       [{ setting: "accentColor", targets: ["branding.accent", "tokens.colors.accent"] }],
-      { ...resolvePdfSettings(), accentColor: "#0052CC" }
+      resolvePdfSettings({ accentColor: "#0052CC" })
     );
     expect(bound.branding.accent).toBe("#0052CC");
     expect(bound.tokens.colors.accent).toBe("#0052CC");
@@ -302,7 +302,7 @@ describe("resolver: bindings, locale, labels (spec 012)", () => {
           { setting: "accentColor", targets: ["branding.accent"] },
           { setting: "page", targets: ["branding.accent"] },
         ],
-        { ...resolvePdfSettings(), accentColor: "#0052CC", page: "letter" }
+        resolvePdfSettings({ accentColor: "#0052CC", page: "letter" })
       )
     ).toThrow(/more than one binding/);
   });

@@ -52,6 +52,9 @@ export type {
   ResolvedPdfDesign,
   ResolvedPdfLabels,
   ResolvePdfSettingsContext,
+  PdfBindableLevelASetting,
+  PdfSettingPresenceMask,
+  PdfDesignResolutionTraceEntry,
 } from "./settings.js";
 
 // --- Font intake (fonts.ts, spec 007/008) ---

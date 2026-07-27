@@ -1538,47 +1538,52 @@ implementation.
 
 **Acceptance criteria / proof**
 
-- [ ] A coverage/lint test proves that every design value read or written by
+- [x] A coverage/lint test proves that every design value read or written by
       `template.ts`, `serialize.ts`, `settings.ts`, theme/binding code, and,
       from T6 onward, asset/decoration renderers has exactly one catalog
       descriptor. A direct design read outside catalog-based accessors makes
       the test fail.
-- [ ] Every primary-journey capability has exactly one presentation
+- [x] Every primary-journey capability has exactly one presentation
       descriptor. Missing, duplicated, or unknown targets fail with the exact
       capability path; explicitly details-only capabilities are allowlisted
       and documented.
-- [ ] Reordering localized message catalogs does not change the capability or
+- [x] Reordering localized message catalogs does not change the capability or
       runtime digest; changing presentation grouping changes only the
       presentation-registry revision.
-- [ ] A counterexample with a syntactically valid but unconsumed map key is
+- [x] A counterexample with a syntactically valid but unconsumed map key is
       rejected as `unknown-capability` in authoring mode and reported as
       ignored in legacy mode.
-- [ ] `flattenDesign(unflattenDesign(flat))` and
+- [x] `flattenDesign(unflattenDesign(flat))` and
       `unflattenDesign(flattenDesign(design))` are canonically identical for
       both baselines.
-- [ ] Both curated baselines satisfy every required descriptor; removing a
+- [x] Both curated baselines satisfy every required descriptor; removing a
       value fails the test with the exact path.
-- [ ] Two logically identical catalog objects with different key order produce
+- [x] Two logically identical catalog objects with different key order produce
       the same digest.
-- [ ] Three cases prove presence semantics for every bindable Level A path: no
+- [x] Three cases prove presence semantics for every bindable Level A path: no
       setting preserves the manifest value, one setting overrides only its
       targets, and a partial settings object does not pull in adjacent defaults.
-- [ ] DOCX/authoring values for `tokens.colors.ink`,
+- [x] DOCX/authoring values for `tokens.colors.ink`,
       `tokens.colors.paper`, and `tokens.contrast.minimum` remain effective
       when the respective theme field was not explicitly set; partial themes
       override only present fields with a trace.
-- [ ] Descriptors reject undeclared multiple writers; for every target path
+- [x] Descriptors reject undeclared multiple writers; for every target path
       intentionally writable by both a runtime binding and engine policy, an
       overlap test proves the documented order and both trace entries.
-- [ ] Editorial Indigo remains byte-identical to T0. Manuscript remains
+- [x] Editorial Indigo remains byte-identical to T0. Manuscript remains
       byte-identical if its bindable manifest values already equal the former
       normalized defaults; otherwise, document the one-time digest change as a
       presence bug fix with a field trace, raster comparison, and updated
       browser/CLI parity golden. No unexplained drift is accepted.
-- [ ] `bun run test packages/template-pack/src/capabilities.test.ts
+- [x] `bun run test packages/template-pack/src/capabilities.test.ts
       packages/pdf/src/design-catalog.test.ts
       packages/pdf/src/template.test.ts
       packages/pdf/src/settings.test.ts` passes.
+
+**T1 evidence:** See `RESULTS.md`. The renderer-owned catalog contains 201
+capabilities, the two curated baselines are complete, and the final browser
+and Bun/CLI parity run preserves every T0 digest except the explicitly traced
+Manuscript presence fix.
 
 ### T2 — Build the browser-compatible authoring core
 

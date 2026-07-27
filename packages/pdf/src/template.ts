@@ -34,7 +34,11 @@ import {
   BUILTIN_PDF_DESIGN,
   BUILTIN_PDF_FALLBACK_LABELS,
 } from "./builtin-template.js";
-import { DEFAULT_DESIGN_HEADER_MODE, type WikiPdfTemplateDesignV1 } from "@atlcli/template-pack";
+import type { WikiPdfTemplateDesignV1 } from "@atlcli/template-pack";
+import {
+  projectPdfDesignThroughCatalog,
+  readPdfDesignCapability,
+} from "./design-catalog.js";
 import { typstString } from "./escape.js";
 
 const EDITORIAL_DASH = String.fromCodePoint(0x2013);
@@ -53,21 +57,21 @@ export function createAtlcliTypstTemplate(
   design: WikiPdfTemplateDesignV1 = BUILTIN_PDF_DESIGN,
   labels: Record<string, string> = BUILTIN_PDF_FALLBACK_LABELS
 ): string {
-  const fonts = design.typography.fonts;
-  const roles = design.typography.roles;
-  const colors = design.tokens.colors;
-  const layout = design.tokens.layout;
-  const ratios = design.tokens.ratios;
-  const callouts = design.semanticPalettes.callouts;
-  const margin = design.page.margin;
+  const catalogDesign = projectPdfDesignThroughCatalog(design);
+  const fonts = catalogDesign.typography.fonts;
+  const roles = catalogDesign.typography.roles;
+  const colors = catalogDesign.tokens.colors;
+  const layout = catalogDesign.tokens.layout;
+  const ratios = catalogDesign.tokens.ratios;
+  const callouts = catalogDesign.semanticPalettes.callouts;
+  const margin = catalogDesign.page.margin;
 
   const need = <T>(map: Record<string, T>, key: string, kind: string): T => {
     const value = map[key];
     if (value === undefined) throw new Error(`PDF template design is missing ${kind} "${key}"`);
     return value;
   };
-  const L = (key: string): string =>
-    layout[key] ?? need(BUILTIN_PDF_DESIGN.tokens.layout, key, "layout length");
+  const L = (key: string): string => need(layout, key, "layout length");
   const C = (key: string): string => need(colors, key, "color token");
   const RN = (key: string): number => need(ratios, key, "ratio");
   const F = (role: "body" | "heading" | "mono"): string => fonts[role];
@@ -98,12 +102,12 @@ export function createAtlcliTypstTemplate(
 
   // Gen-time defaults for the settings-driven subset (backward-compat with
   // `settings: (:)`); overridden at runtime by the emitted `settings.design`.
-  const accentDefault = design.branding.accent;
-  const pageDefault = design.page.size;
-  const orientDefault = design.page.orientation;
-  const coverDefault = design.features.cover.enabled ? "true" : "false";
-  const outlineDefault = design.features.outline.enabled ? "true" : "false";
-  const outlineDepthDefault = design.features.outline.depth;
+  const accentDefault = catalogDesign.branding.accent;
+  const pageDefault = catalogDesign.page.size;
+  const orientDefault = catalogDesign.page.orientation;
+  const coverDefault = catalogDesign.features.cover.enabled ? "true" : "false";
+  const outlineDefault = catalogDesign.features.outline.enabled ? "true" : "false";
+  const outlineDepthDefault = catalogDesign.features.outline.depth;
 
   // Running-head mode. This is static design (not settings-driven), so it is
   // resolved and interpolated when the template string is generated: the
@@ -115,7 +119,10 @@ export function createAtlcliTypstTemplate(
   // `header-text` setting wins in every mode (007 behavior, unchanged), so
   // `custom` declares the template's intent and falls back to the title when no
   // `headerText` is supplied.
-  const headerMode = design.features.header.mode ?? DEFAULT_DESIGN_HEADER_MODE;
+  const headerMode = readPdfDesignCapability<string>(
+    catalogDesign,
+    "features.header.mode"
+  );
   const headerResolution =
     headerMode === "chapter"
       ? String.raw`          // Chapter running head ("Kolumnentitel"): the level-1 heading that owns

@@ -1,5 +1,9 @@
 import { describe, expect, it } from "bun:test";
 import { BUILTIN_PDF_DESIGN } from "./builtin-template.js";
+import {
+  PDF_TEMPLATE_LEGACY_FALLBACK_ALIASES_V1,
+  materializeLegacyPdfDesign,
+} from "./design-catalog.js";
 import { ATLCLI_TYPST_TEMPLATE, createAtlcliTypstTemplate } from "./template.js";
 
 describe("atlcli Typst template settings rendering", () => {
@@ -77,7 +81,16 @@ describe("atlcli Typst template settings rendering", () => {
     const design = structuredClone(BUILTIN_PDF_DESIGN);
     delete design.semanticPalettes.callouts.success;
     delete design.semanticPalettes.callouts.error;
-    const legacyTemplate = createAtlcliTypstTemplate(design);
+    expect(() => createAtlcliTypstTemplate(design)).toThrow(
+      /semanticPalettes\.callouts\.error\.background/
+    );
+    const legacyTemplate = createAtlcliTypstTemplate(
+      materializeLegacyPdfDesign(
+        design,
+        BUILTIN_PDF_DESIGN,
+        PDF_TEMPLATE_LEGACY_FALLBACK_ALIASES_V1
+      ).design
+    );
     expect(legacyTemplate).toContain('success: (rgb("#E3FCEF"), rgb("#006644"))');
     expect(legacyTemplate).toContain('error: (rgb("#FFFAE6"), rgb("#974F0C"))');
   });

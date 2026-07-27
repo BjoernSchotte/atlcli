@@ -44,6 +44,46 @@ export interface CalloutPalette {
     foreground: DesignColor;
 }
 
+// export: canonicalCapabilityJson
+export declare function canonicalCapabilityJson(value: unknown): string;
+
+// export: CapabilityComparisonKindV1
+export type CapabilityComparisonKindV1 = "exact" | "numeric" | "visual";
+
+// export: CapabilityEditKindV1
+export type CapabilityEditKindV1 = "choice" | "color" | "font" | "number" | "text" | "toggle";
+
+// export: CapabilityRuntimeWriterKindV1
+export type CapabilityRuntimeWriterKindV1 = "engine-policy" | "runtime-binding";
+
+// export: CapabilityRuntimeWriterV1
+export interface CapabilityRuntimeWriterV1 {
+    kind: CapabilityRuntimeWriterKindV1;
+    id: string;
+}
+
+// export: CapabilityValidationError
+export declare class CapabilityValidationError extends Error {
+    readonly reason: CapabilityValidationReasonV1;
+    readonly path?: string | undefined;
+    constructor(reason: CapabilityValidationReasonV1, message: string, path?: string | undefined);
+}
+
+// export: CapabilityValidationReasonV1
+export type CapabilityValidationReasonV1 = "catalog-invalid" | "incomplete-baseline" | "invalid-capability-value" | "presentation-invalid" | "unknown-capability";
+
+// export: CapabilityValueFormatV1
+export type CapabilityValueFormatV1 = "boolean" | "color" | "font" | "length" | "number" | "text";
+
+// export: CapabilityValueKindV1
+export type CapabilityValueKindV1 = "boolean" | "color" | "enum" | "font-family" | "font-role" | "length" | "number" | "string" | "weight";
+
+// export: computeCapabilityCatalogDigest
+export declare function computeCapabilityCatalogDigest(catalog: TemplateCapabilityCatalogV1): Promise<string>;
+
+// export: computeCapabilityPresentationRevision
+export declare function computeCapabilityPresentationRevision(catalog: TemplateCapabilityCatalogV1, registry: TemplateCapabilityPresentationRegistryV1, detailsOnlyTargets: readonly string[]): Promise<string>;
+
 // export: computePayloadSha256
 export declare function computePayloadSha256(files: Record<string, Uint8Array>): Promise<string>;
 
@@ -65,6 +105,14 @@ export declare const DESIGN_HEADER_MODES: readonly DesignHeaderMode[];
 export interface DesignBranding {
     accent: DesignColor;
     organizationName?: string;
+}
+
+// export: DesignCatalogValidationV1
+export interface DesignCatalogValidationV1 {
+    status: "canonical-executable" | "legacy-readable";
+    flat: FlatDesignV1;
+    ignoredCapabilities: readonly string[];
+    missingCapabilities: readonly string[];
 }
 
 // export: DesignColor
@@ -136,6 +184,12 @@ export type DesignWeight = "regular" | "medium" | "semibold" | "bold";
 
 // export: extractTypstVersion
 export declare function extractTypstVersion(raw: string): string;
+
+// export: FlatDesignV1
+export type FlatDesignV1 = Readonly<Record<string, unknown>>;
+
+// export: flattenDesign
+export declare function flattenDesign(value: unknown): FlatDesignV1;
 
 // export: FontRole
 export type FontRole = "body" | "heading" | "mono";
@@ -249,8 +303,54 @@ export declare const SETTING_TYPES: readonly [
 // export: SUPPORTED_SCHEMA_VERSION
 export declare const SUPPORTED_SCHEMA_VERSION = 1;
 
+// export: TEMPLATE_CAPABILITY_CATALOG_SCHEMA_V1
+export declare const TEMPLATE_CAPABILITY_CATALOG_SCHEMA_V1: "atlcli.template-capability-catalog/1";
+
+// export: TEMPLATE_CAPABILITY_PRESENTATION_SCHEMA_V1
+export declare const TEMPLATE_CAPABILITY_PRESENTATION_SCHEMA_V1: "atlcli.template-capability-presentation/1";
+
 // export: TEMPLATE_PACK_MANIFEST_NAME
 export declare const TEMPLATE_PACK_MANIFEST_NAME = "wiki-pdf-template.json";
+
+// export: TemplateCapabilityCatalogV1
+export interface TemplateCapabilityCatalogV1 {
+    schema: typeof TEMPLATE_CAPABILITY_CATALOG_SCHEMA_V1;
+    id: string;
+    version: number;
+    descriptors: readonly TemplateCapabilityDescriptorV1[];
+}
+
+// export: TemplateCapabilityDescriptorV1
+export interface TemplateCapabilityDescriptorV1 {
+    path: string;
+    valueKind: CapabilityValueKindV1;
+    required: boolean;
+    consumers: readonly string[];
+    runtimeWriters?: readonly CapabilityRuntimeWriterV1[];
+    writeOrder?: readonly string[];
+    enumValues?: readonly string[];
+    minimum?: number;
+    maximum?: number;
+}
+
+// export: TemplateCapabilityPresentationDescriptorV1
+export interface TemplateCapabilityPresentationDescriptorV1 {
+    target: string;
+    section: string;
+    order: number;
+    messageCode: string;
+    valueFormat: CapabilityValueFormatV1;
+    comparisonKind: CapabilityComparisonKindV1;
+    editKind: CapabilityEditKindV1;
+}
+
+// export: TemplateCapabilityPresentationRegistryV1
+export interface TemplateCapabilityPresentationRegistryV1 {
+    schema: typeof TEMPLATE_CAPABILITY_PRESENTATION_SCHEMA_V1;
+    id: string;
+    version: number;
+    descriptors: readonly TemplateCapabilityPresentationDescriptorV1[];
+}
 
 // export: TemplateEngineKind
 export type TemplateEngineKind = keyof typeof KNOWN_ENGINE_API;
@@ -311,6 +411,9 @@ export interface TypographyRole {
     tracking?: DesignLength;
 }
 
+// export: unflattenDesign
+export declare function unflattenDesign(flat: FlatDesignV1): Record<string, unknown>;
+
 // export: UnpackedTemplate
 export interface UnpackedTemplate {
     manifest: TemplateManifest;
@@ -330,8 +433,20 @@ export declare function validateBoundedNumber(value: unknown, path: string, boun
     integer?: boolean;
 }): number;
 
+// export: validateCapabilityCatalogV1
+export declare function validateCapabilityCatalogV1(value: unknown): TemplateCapabilityCatalogV1;
+
+// export: validateCapabilityPresentationRegistryV1
+export declare function validateCapabilityPresentationRegistryV1(catalog: TemplateCapabilityCatalogV1, value: unknown, detailsOnlyTargets: readonly string[]): TemplateCapabilityPresentationRegistryV1;
+
+// export: validateCompleteBaseline
+export declare function validateCompleteBaseline(design: unknown, catalog: TemplateCapabilityCatalogV1): Record<string, unknown>;
+
 // export: validateDesign
 export declare function validateDesign(value: unknown, path?: string): WikiPdfTemplateDesignV1;
+
+// export: validateDesignAgainstCatalog
+export declare function validateDesignAgainstCatalog(design: unknown, catalog: TemplateCapabilityCatalogV1, mode: "authoring" | "legacy"): DesignCatalogValidationV1;
 
 // export: validateDesignColor
 export declare function validateDesignColor(value: unknown, path: string): DesignColor;
@@ -460,6 +575,46 @@ export interface CalloutPalette {
     foreground: DesignColor;
 }
 
+// export: canonicalCapabilityJson
+export declare function canonicalCapabilityJson(value: unknown): string;
+
+// export: CapabilityComparisonKindV1
+export type CapabilityComparisonKindV1 = "exact" | "numeric" | "visual";
+
+// export: CapabilityEditKindV1
+export type CapabilityEditKindV1 = "choice" | "color" | "font" | "number" | "text" | "toggle";
+
+// export: CapabilityRuntimeWriterKindV1
+export type CapabilityRuntimeWriterKindV1 = "engine-policy" | "runtime-binding";
+
+// export: CapabilityRuntimeWriterV1
+export interface CapabilityRuntimeWriterV1 {
+    kind: CapabilityRuntimeWriterKindV1;
+    id: string;
+}
+
+// export: CapabilityValidationError
+export declare class CapabilityValidationError extends Error {
+    readonly reason: CapabilityValidationReasonV1;
+    readonly path?: string | undefined;
+    constructor(reason: CapabilityValidationReasonV1, message: string, path?: string | undefined);
+}
+
+// export: CapabilityValidationReasonV1
+export type CapabilityValidationReasonV1 = "catalog-invalid" | "incomplete-baseline" | "invalid-capability-value" | "presentation-invalid" | "unknown-capability";
+
+// export: CapabilityValueFormatV1
+export type CapabilityValueFormatV1 = "boolean" | "color" | "font" | "length" | "number" | "text";
+
+// export: CapabilityValueKindV1
+export type CapabilityValueKindV1 = "boolean" | "color" | "enum" | "font-family" | "font-role" | "length" | "number" | "string" | "weight";
+
+// export: computeCapabilityCatalogDigest
+export declare function computeCapabilityCatalogDigest(catalog: TemplateCapabilityCatalogV1): Promise<string>;
+
+// export: computeCapabilityPresentationRevision
+export declare function computeCapabilityPresentationRevision(catalog: TemplateCapabilityCatalogV1, registry: TemplateCapabilityPresentationRegistryV1, detailsOnlyTargets: readonly string[]): Promise<string>;
+
 // export: computePayloadSha256
 export declare function computePayloadSha256(files: Record<string, Uint8Array>): Promise<string>;
 
@@ -481,6 +636,14 @@ export declare const DESIGN_HEADER_MODES: readonly DesignHeaderMode[];
 export interface DesignBranding {
     accent: DesignColor;
     organizationName?: string;
+}
+
+// export: DesignCatalogValidationV1
+export interface DesignCatalogValidationV1 {
+    status: "canonical-executable" | "legacy-readable";
+    flat: FlatDesignV1;
+    ignoredCapabilities: readonly string[];
+    missingCapabilities: readonly string[];
 }
 
 // export: DesignColor
@@ -552,6 +715,12 @@ export type DesignWeight = "regular" | "medium" | "semibold" | "bold";
 
 // export: extractTypstVersion
 export declare function extractTypstVersion(raw: string): string;
+
+// export: FlatDesignV1
+export type FlatDesignV1 = Readonly<Record<string, unknown>>;
+
+// export: flattenDesign
+export declare function flattenDesign(value: unknown): FlatDesignV1;
 
 // export: FontRole
 export type FontRole = "body" | "heading" | "mono";
@@ -665,8 +834,54 @@ export declare const SETTING_TYPES: readonly [
 // export: SUPPORTED_SCHEMA_VERSION
 export declare const SUPPORTED_SCHEMA_VERSION = 1;
 
+// export: TEMPLATE_CAPABILITY_CATALOG_SCHEMA_V1
+export declare const TEMPLATE_CAPABILITY_CATALOG_SCHEMA_V1: "atlcli.template-capability-catalog/1";
+
+// export: TEMPLATE_CAPABILITY_PRESENTATION_SCHEMA_V1
+export declare const TEMPLATE_CAPABILITY_PRESENTATION_SCHEMA_V1: "atlcli.template-capability-presentation/1";
+
 // export: TEMPLATE_PACK_MANIFEST_NAME
 export declare const TEMPLATE_PACK_MANIFEST_NAME = "wiki-pdf-template.json";
+
+// export: TemplateCapabilityCatalogV1
+export interface TemplateCapabilityCatalogV1 {
+    schema: typeof TEMPLATE_CAPABILITY_CATALOG_SCHEMA_V1;
+    id: string;
+    version: number;
+    descriptors: readonly TemplateCapabilityDescriptorV1[];
+}
+
+// export: TemplateCapabilityDescriptorV1
+export interface TemplateCapabilityDescriptorV1 {
+    path: string;
+    valueKind: CapabilityValueKindV1;
+    required: boolean;
+    consumers: readonly string[];
+    runtimeWriters?: readonly CapabilityRuntimeWriterV1[];
+    writeOrder?: readonly string[];
+    enumValues?: readonly string[];
+    minimum?: number;
+    maximum?: number;
+}
+
+// export: TemplateCapabilityPresentationDescriptorV1
+export interface TemplateCapabilityPresentationDescriptorV1 {
+    target: string;
+    section: string;
+    order: number;
+    messageCode: string;
+    valueFormat: CapabilityValueFormatV1;
+    comparisonKind: CapabilityComparisonKindV1;
+    editKind: CapabilityEditKindV1;
+}
+
+// export: TemplateCapabilityPresentationRegistryV1
+export interface TemplateCapabilityPresentationRegistryV1 {
+    schema: typeof TEMPLATE_CAPABILITY_PRESENTATION_SCHEMA_V1;
+    id: string;
+    version: number;
+    descriptors: readonly TemplateCapabilityPresentationDescriptorV1[];
+}
 
 // export: TemplateEngineKind
 export type TemplateEngineKind = keyof typeof KNOWN_ENGINE_API;
@@ -727,6 +942,9 @@ export interface TypographyRole {
     tracking?: DesignLength;
 }
 
+// export: unflattenDesign
+export declare function unflattenDesign(flat: FlatDesignV1): Record<string, unknown>;
+
 // export: UnpackedTemplate
 export interface UnpackedTemplate {
     manifest: TemplateManifest;
@@ -746,8 +964,20 @@ export declare function validateBoundedNumber(value: unknown, path: string, boun
     integer?: boolean;
 }): number;
 
+// export: validateCapabilityCatalogV1
+export declare function validateCapabilityCatalogV1(value: unknown): TemplateCapabilityCatalogV1;
+
+// export: validateCapabilityPresentationRegistryV1
+export declare function validateCapabilityPresentationRegistryV1(catalog: TemplateCapabilityCatalogV1, value: unknown, detailsOnlyTargets: readonly string[]): TemplateCapabilityPresentationRegistryV1;
+
+// export: validateCompleteBaseline
+export declare function validateCompleteBaseline(design: unknown, catalog: TemplateCapabilityCatalogV1): Record<string, unknown>;
+
 // export: validateDesign
 export declare function validateDesign(value: unknown, path?: string): WikiPdfTemplateDesignV1;
+
+// export: validateDesignAgainstCatalog
+export declare function validateDesignAgainstCatalog(design: unknown, catalog: TemplateCapabilityCatalogV1, mode: "authoring" | "legacy"): DesignCatalogValidationV1;
 
 // export: validateDesignColor
 export declare function validateDesignColor(value: unknown, path: string): DesignColor;
@@ -876,6 +1106,46 @@ export interface CalloutPalette {
     foreground: DesignColor;
 }
 
+// export: canonicalCapabilityJson
+export declare function canonicalCapabilityJson(value: unknown): string;
+
+// export: CapabilityComparisonKindV1
+export type CapabilityComparisonKindV1 = "exact" | "numeric" | "visual";
+
+// export: CapabilityEditKindV1
+export type CapabilityEditKindV1 = "choice" | "color" | "font" | "number" | "text" | "toggle";
+
+// export: CapabilityRuntimeWriterKindV1
+export type CapabilityRuntimeWriterKindV1 = "engine-policy" | "runtime-binding";
+
+// export: CapabilityRuntimeWriterV1
+export interface CapabilityRuntimeWriterV1 {
+    kind: CapabilityRuntimeWriterKindV1;
+    id: string;
+}
+
+// export: CapabilityValidationError
+export declare class CapabilityValidationError extends Error {
+    readonly reason: CapabilityValidationReasonV1;
+    readonly path?: string | undefined;
+    constructor(reason: CapabilityValidationReasonV1, message: string, path?: string | undefined);
+}
+
+// export: CapabilityValidationReasonV1
+export type CapabilityValidationReasonV1 = "catalog-invalid" | "incomplete-baseline" | "invalid-capability-value" | "presentation-invalid" | "unknown-capability";
+
+// export: CapabilityValueFormatV1
+export type CapabilityValueFormatV1 = "boolean" | "color" | "font" | "length" | "number" | "text";
+
+// export: CapabilityValueKindV1
+export type CapabilityValueKindV1 = "boolean" | "color" | "enum" | "font-family" | "font-role" | "length" | "number" | "string" | "weight";
+
+// export: computeCapabilityCatalogDigest
+export declare function computeCapabilityCatalogDigest(catalog: TemplateCapabilityCatalogV1): Promise<string>;
+
+// export: computeCapabilityPresentationRevision
+export declare function computeCapabilityPresentationRevision(catalog: TemplateCapabilityCatalogV1, registry: TemplateCapabilityPresentationRegistryV1, detailsOnlyTargets: readonly string[]): Promise<string>;
+
 // export: computePayloadSha256
 export declare function computePayloadSha256(files: Record<string, Uint8Array>): Promise<string>;
 
@@ -897,6 +1167,14 @@ export declare const DESIGN_HEADER_MODES: readonly DesignHeaderMode[];
 export interface DesignBranding {
     accent: DesignColor;
     organizationName?: string;
+}
+
+// export: DesignCatalogValidationV1
+export interface DesignCatalogValidationV1 {
+    status: "canonical-executable" | "legacy-readable";
+    flat: FlatDesignV1;
+    ignoredCapabilities: readonly string[];
+    missingCapabilities: readonly string[];
 }
 
 // export: DesignColor
@@ -968,6 +1246,12 @@ export type DesignWeight = "regular" | "medium" | "semibold" | "bold";
 
 // export: extractTypstVersion
 export declare function extractTypstVersion(raw: string): string;
+
+// export: FlatDesignV1
+export type FlatDesignV1 = Readonly<Record<string, unknown>>;
+
+// export: flattenDesign
+export declare function flattenDesign(value: unknown): FlatDesignV1;
 
 // export: FontRole
 export type FontRole = "body" | "heading" | "mono";
@@ -1081,8 +1365,54 @@ export declare const SETTING_TYPES: readonly [
 // export: SUPPORTED_SCHEMA_VERSION
 export declare const SUPPORTED_SCHEMA_VERSION = 1;
 
+// export: TEMPLATE_CAPABILITY_CATALOG_SCHEMA_V1
+export declare const TEMPLATE_CAPABILITY_CATALOG_SCHEMA_V1: "atlcli.template-capability-catalog/1";
+
+// export: TEMPLATE_CAPABILITY_PRESENTATION_SCHEMA_V1
+export declare const TEMPLATE_CAPABILITY_PRESENTATION_SCHEMA_V1: "atlcli.template-capability-presentation/1";
+
 // export: TEMPLATE_PACK_MANIFEST_NAME
 export declare const TEMPLATE_PACK_MANIFEST_NAME = "wiki-pdf-template.json";
+
+// export: TemplateCapabilityCatalogV1
+export interface TemplateCapabilityCatalogV1 {
+    schema: typeof TEMPLATE_CAPABILITY_CATALOG_SCHEMA_V1;
+    id: string;
+    version: number;
+    descriptors: readonly TemplateCapabilityDescriptorV1[];
+}
+
+// export: TemplateCapabilityDescriptorV1
+export interface TemplateCapabilityDescriptorV1 {
+    path: string;
+    valueKind: CapabilityValueKindV1;
+    required: boolean;
+    consumers: readonly string[];
+    runtimeWriters?: readonly CapabilityRuntimeWriterV1[];
+    writeOrder?: readonly string[];
+    enumValues?: readonly string[];
+    minimum?: number;
+    maximum?: number;
+}
+
+// export: TemplateCapabilityPresentationDescriptorV1
+export interface TemplateCapabilityPresentationDescriptorV1 {
+    target: string;
+    section: string;
+    order: number;
+    messageCode: string;
+    valueFormat: CapabilityValueFormatV1;
+    comparisonKind: CapabilityComparisonKindV1;
+    editKind: CapabilityEditKindV1;
+}
+
+// export: TemplateCapabilityPresentationRegistryV1
+export interface TemplateCapabilityPresentationRegistryV1 {
+    schema: typeof TEMPLATE_CAPABILITY_PRESENTATION_SCHEMA_V1;
+    id: string;
+    version: number;
+    descriptors: readonly TemplateCapabilityPresentationDescriptorV1[];
+}
 
 // export: TemplateEngineKind
 export type TemplateEngineKind = keyof typeof KNOWN_ENGINE_API;
@@ -1143,6 +1473,9 @@ export interface TypographyRole {
     tracking?: DesignLength;
 }
 
+// export: unflattenDesign
+export declare function unflattenDesign(flat: FlatDesignV1): Record<string, unknown>;
+
 // export: UnpackedTemplate
 export interface UnpackedTemplate {
     manifest: TemplateManifest;
@@ -1162,8 +1495,20 @@ export declare function validateBoundedNumber(value: unknown, path: string, boun
     integer?: boolean;
 }): number;
 
+// export: validateCapabilityCatalogV1
+export declare function validateCapabilityCatalogV1(value: unknown): TemplateCapabilityCatalogV1;
+
+// export: validateCapabilityPresentationRegistryV1
+export declare function validateCapabilityPresentationRegistryV1(catalog: TemplateCapabilityCatalogV1, value: unknown, detailsOnlyTargets: readonly string[]): TemplateCapabilityPresentationRegistryV1;
+
+// export: validateCompleteBaseline
+export declare function validateCompleteBaseline(design: unknown, catalog: TemplateCapabilityCatalogV1): Record<string, unknown>;
+
 // export: validateDesign
 export declare function validateDesign(value: unknown, path?: string): WikiPdfTemplateDesignV1;
+
+// export: validateDesignAgainstCatalog
+export declare function validateDesignAgainstCatalog(design: unknown, catalog: TemplateCapabilityCatalogV1, mode: "authoring" | "legacy"): DesignCatalogValidationV1;
 
 // export: validateDesignColor
 export declare function validateDesignColor(value: unknown, path: string): DesignColor;
@@ -1292,6 +1637,46 @@ export interface CalloutPalette {
     foreground: DesignColor;
 }
 
+// export: canonicalCapabilityJson
+export declare function canonicalCapabilityJson(value: unknown): string;
+
+// export: CapabilityComparisonKindV1
+export type CapabilityComparisonKindV1 = "exact" | "numeric" | "visual";
+
+// export: CapabilityEditKindV1
+export type CapabilityEditKindV1 = "choice" | "color" | "font" | "number" | "text" | "toggle";
+
+// export: CapabilityRuntimeWriterKindV1
+export type CapabilityRuntimeWriterKindV1 = "engine-policy" | "runtime-binding";
+
+// export: CapabilityRuntimeWriterV1
+export interface CapabilityRuntimeWriterV1 {
+    kind: CapabilityRuntimeWriterKindV1;
+    id: string;
+}
+
+// export: CapabilityValidationError
+export declare class CapabilityValidationError extends Error {
+    readonly reason: CapabilityValidationReasonV1;
+    readonly path?: string | undefined;
+    constructor(reason: CapabilityValidationReasonV1, message: string, path?: string | undefined);
+}
+
+// export: CapabilityValidationReasonV1
+export type CapabilityValidationReasonV1 = "catalog-invalid" | "incomplete-baseline" | "invalid-capability-value" | "presentation-invalid" | "unknown-capability";
+
+// export: CapabilityValueFormatV1
+export type CapabilityValueFormatV1 = "boolean" | "color" | "font" | "length" | "number" | "text";
+
+// export: CapabilityValueKindV1
+export type CapabilityValueKindV1 = "boolean" | "color" | "enum" | "font-family" | "font-role" | "length" | "number" | "string" | "weight";
+
+// export: computeCapabilityCatalogDigest
+export declare function computeCapabilityCatalogDigest(catalog: TemplateCapabilityCatalogV1): Promise<string>;
+
+// export: computeCapabilityPresentationRevision
+export declare function computeCapabilityPresentationRevision(catalog: TemplateCapabilityCatalogV1, registry: TemplateCapabilityPresentationRegistryV1, detailsOnlyTargets: readonly string[]): Promise<string>;
+
 // export: computePayloadSha256
 export declare function computePayloadSha256(files: Record<string, Uint8Array>): Promise<string>;
 
@@ -1313,6 +1698,14 @@ export declare const DESIGN_HEADER_MODES: readonly DesignHeaderMode[];
 export interface DesignBranding {
     accent: DesignColor;
     organizationName?: string;
+}
+
+// export: DesignCatalogValidationV1
+export interface DesignCatalogValidationV1 {
+    status: "canonical-executable" | "legacy-readable";
+    flat: FlatDesignV1;
+    ignoredCapabilities: readonly string[];
+    missingCapabilities: readonly string[];
 }
 
 // export: DesignColor
@@ -1384,6 +1777,12 @@ export type DesignWeight = "regular" | "medium" | "semibold" | "bold";
 
 // export: extractTypstVersion
 export declare function extractTypstVersion(raw: string): string;
+
+// export: FlatDesignV1
+export type FlatDesignV1 = Readonly<Record<string, unknown>>;
+
+// export: flattenDesign
+export declare function flattenDesign(value: unknown): FlatDesignV1;
 
 // export: FontRole
 export type FontRole = "body" | "heading" | "mono";
@@ -1497,8 +1896,54 @@ export declare const SETTING_TYPES: readonly [
 // export: SUPPORTED_SCHEMA_VERSION
 export declare const SUPPORTED_SCHEMA_VERSION = 1;
 
+// export: TEMPLATE_CAPABILITY_CATALOG_SCHEMA_V1
+export declare const TEMPLATE_CAPABILITY_CATALOG_SCHEMA_V1: "atlcli.template-capability-catalog/1";
+
+// export: TEMPLATE_CAPABILITY_PRESENTATION_SCHEMA_V1
+export declare const TEMPLATE_CAPABILITY_PRESENTATION_SCHEMA_V1: "atlcli.template-capability-presentation/1";
+
 // export: TEMPLATE_PACK_MANIFEST_NAME
 export declare const TEMPLATE_PACK_MANIFEST_NAME = "wiki-pdf-template.json";
+
+// export: TemplateCapabilityCatalogV1
+export interface TemplateCapabilityCatalogV1 {
+    schema: typeof TEMPLATE_CAPABILITY_CATALOG_SCHEMA_V1;
+    id: string;
+    version: number;
+    descriptors: readonly TemplateCapabilityDescriptorV1[];
+}
+
+// export: TemplateCapabilityDescriptorV1
+export interface TemplateCapabilityDescriptorV1 {
+    path: string;
+    valueKind: CapabilityValueKindV1;
+    required: boolean;
+    consumers: readonly string[];
+    runtimeWriters?: readonly CapabilityRuntimeWriterV1[];
+    writeOrder?: readonly string[];
+    enumValues?: readonly string[];
+    minimum?: number;
+    maximum?: number;
+}
+
+// export: TemplateCapabilityPresentationDescriptorV1
+export interface TemplateCapabilityPresentationDescriptorV1 {
+    target: string;
+    section: string;
+    order: number;
+    messageCode: string;
+    valueFormat: CapabilityValueFormatV1;
+    comparisonKind: CapabilityComparisonKindV1;
+    editKind: CapabilityEditKindV1;
+}
+
+// export: TemplateCapabilityPresentationRegistryV1
+export interface TemplateCapabilityPresentationRegistryV1 {
+    schema: typeof TEMPLATE_CAPABILITY_PRESENTATION_SCHEMA_V1;
+    id: string;
+    version: number;
+    descriptors: readonly TemplateCapabilityPresentationDescriptorV1[];
+}
 
 // export: TemplateEngineKind
 export type TemplateEngineKind = keyof typeof KNOWN_ENGINE_API;
@@ -1559,6 +2004,9 @@ export interface TypographyRole {
     tracking?: DesignLength;
 }
 
+// export: unflattenDesign
+export declare function unflattenDesign(flat: FlatDesignV1): Record<string, unknown>;
+
 // export: UnpackedTemplate
 export interface UnpackedTemplate {
     manifest: TemplateManifest;
@@ -1578,8 +2026,20 @@ export declare function validateBoundedNumber(value: unknown, path: string, boun
     integer?: boolean;
 }): number;
 
+// export: validateCapabilityCatalogV1
+export declare function validateCapabilityCatalogV1(value: unknown): TemplateCapabilityCatalogV1;
+
+// export: validateCapabilityPresentationRegistryV1
+export declare function validateCapabilityPresentationRegistryV1(catalog: TemplateCapabilityCatalogV1, value: unknown, detailsOnlyTargets: readonly string[]): TemplateCapabilityPresentationRegistryV1;
+
+// export: validateCompleteBaseline
+export declare function validateCompleteBaseline(design: unknown, catalog: TemplateCapabilityCatalogV1): Record<string, unknown>;
+
 // export: validateDesign
 export declare function validateDesign(value: unknown, path?: string): WikiPdfTemplateDesignV1;
+
+// export: validateDesignAgainstCatalog
+export declare function validateDesignAgainstCatalog(design: unknown, catalog: TemplateCapabilityCatalogV1, mode: "authoring" | "legacy"): DesignCatalogValidationV1;
 
 // export: validateDesignColor
 export declare function validateDesignColor(value: unknown, path: string): DesignColor;

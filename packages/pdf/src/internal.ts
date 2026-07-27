@@ -10,6 +10,7 @@
  */
 export * from "./builtin-template.js";
 export * from "./curated-templates.js";
+export * from "./design-catalog.js";
 export * from "./escape.js";
 export * from "./prepare.js";
 export * from "./serialize.js";
