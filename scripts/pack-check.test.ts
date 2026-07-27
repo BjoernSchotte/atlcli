@@ -281,6 +281,33 @@ describe("pack-check (spec 009)", () => {
     }
   });
 
+  it("@atlcli/code-highlight packs only fine-grained Shiki runtime loaders", () => {
+    const { entries, manifest, tarball } = packageOf(
+      packages.find((p) => p.name === "@atlcli/code-highlight") ??
+        (undefined as never),
+    );
+    const runtime = entries
+      .filter((entry) => entry.startsWith("package/dist/") && entry.endsWith(".js"))
+      .map((entry) => tarExtract(tarball, entry))
+      .join("\n");
+    for (const forbidden of [
+      'from "shiki"',
+      '"shiki/langs"',
+      '"shiki/themes"',
+      "bundle_full_exports",
+      "langs-bundle-full",
+    ]) {
+      expect(runtime).not.toContain(forbidden);
+    }
+    expect(runtime).toContain('import("@shikijs/langs/typescript")');
+    expect(runtime).toContain('import("@shikijs/themes/github-light")');
+    expect(manifest.dependencies).toMatchObject({
+      shiki: "4.3.1",
+      "@shikijs/langs": "4.3.1",
+      "@shikijs/themes": "4.3.1",
+    });
+  });
+
   it("@atlcli/pdf ships exactly the PDF_RUNTIME_ASSETS font set plus the OFL licenses (files beats .gitignore)", () => {
     const { entries } = packageOf(
       packages.find((p) => p.name === "@atlcli/pdf") ?? (undefined as never),

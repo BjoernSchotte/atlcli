@@ -11,6 +11,10 @@ import {
   prepareCodeHighlighting,
   warmHighlight,
 } from "./index.js";
+import {
+  CODE_LANGUAGE_LOADERS,
+  CODE_THEME_LOADERS,
+} from "./loaders.generated.js";
 
 describe("catalogue", () => {
   test("ships Shiki's full pinned theme and language catalogues", async () => {
@@ -19,6 +23,17 @@ describe("catalogue", () => {
     expect([...CODE_LANGUAGE_IDS] as string[]).toEqual(bundledLanguagesInfo.map(({ id }) => id));
     expect(CODE_THEME_IDS.length).toBeGreaterThan(60);
     expect(CODE_LANGUAGE_IDS.length).toBeGreaterThan(200);
+  });
+
+  test("maps every public runtime ID to exactly one fine-grained loader", () => {
+    expect(Object.keys(CODE_LANGUAGE_LOADERS)).toEqual([...CODE_LANGUAGE_IDS]);
+    expect(Object.keys(CODE_THEME_LOADERS)).toEqual([...CODE_THEME_IDS]);
+    expect(new Set(Object.keys(CODE_LANGUAGE_LOADERS)).size).toBe(
+      CODE_LANGUAGE_IDS.length,
+    );
+    expect(new Set(Object.keys(CODE_THEME_LOADERS)).size).toBe(
+      CODE_THEME_IDS.length,
+    );
   });
 
   test("resolves every bundled alias", async () => {
@@ -128,6 +143,68 @@ describe("highlightCode", () => {
       Math.max(timing!.engineInitMs, timing!.grammarLoadMs),
     ).toBeLessThanOrEqual(elapsedMs + 5);
   });
+
+  test("loads only the selected direct grammar and theme modules", async () => {
+    const originalLanguageLoader = CODE_LANGUAGE_LOADERS.ada;
+    const originalThemeLoader = CODE_THEME_LOADERS["ayu-light"];
+    let languageLoads = 0;
+    let themeLoads = 0;
+    CODE_LANGUAGE_LOADERS.ada = async () => {
+      languageLoads += 1;
+      return originalLanguageLoader();
+    };
+    CODE_THEME_LOADERS["ayu-light"] = async () => {
+      themeLoads += 1;
+      return originalThemeLoader();
+    };
+    try {
+      await prepareCodeHighlighting(["ada"], "ayu-light");
+      await prepareCodeHighlighting(["ada"], "ayu-light");
+      expect(languageLoads).toBe(1);
+      expect(themeLoads).toBe(1);
+    } finally {
+      CODE_LANGUAGE_LOADERS.ada = originalLanguageLoader;
+      CODE_THEME_LOADERS["ayu-light"] = originalThemeLoader;
+    }
+  });
+
+  test("retries a rejected direct grammar load", async () => {
+    const originalLoader = CODE_LANGUAGE_LOADERS.abap;
+    let attempts = 0;
+    CODE_LANGUAGE_LOADERS.abap = async () => {
+      attempts += 1;
+      if (attempts === 1) throw new Error("synthetic grammar load failure");
+      return originalLoader();
+    };
+    try {
+      await expect(
+        prepareCodeHighlighting(["abap"], "andromeeda"),
+      ).rejects.toThrow("synthetic grammar load failure");
+      await prepareCodeHighlighting(["abap"], "andromeeda");
+      expect(attempts).toBe(2);
+    } finally {
+      CODE_LANGUAGE_LOADERS.abap = originalLoader;
+    }
+  });
+
+  test("retries a rejected direct theme load", async () => {
+    const originalLoader = CODE_THEME_LOADERS["aurora-x"];
+    let attempts = 0;
+    CODE_THEME_LOADERS["aurora-x"] = async () => {
+      attempts += 1;
+      if (attempts === 1) throw new Error("synthetic theme load failure");
+      return originalLoader();
+    };
+    try {
+      await expect(
+        prepareCodeHighlighting(["actionscript-3"], "aurora-x"),
+      ).rejects.toThrow("synthetic theme load failure");
+      await prepareCodeHighlighting(["actionscript-3"], "aurora-x");
+      expect(attempts).toBe(2);
+    } finally {
+      CODE_THEME_LOADERS["aurora-x"] = originalLoader;
+    }
+  });
 });
 
 describe("engine module boundaries", () => {
@@ -148,5 +225,24 @@ describe("engine module boundaries", () => {
     expect(oniguruma).toContain("shiki/engine/oniguruma");
     expect(oniguruma).toContain("shiki/wasm");
     expect(oniguruma).not.toContain("shiki/engine/javascript");
+  });
+
+  test("keeps aggregate Shiki catalogues out of runtime source", async () => {
+    const runtimeSources = await Promise.all(
+      ["./highlight.ts", "./loaders.generated.ts"].map((path) =>
+        Bun.file(new URL(path, import.meta.url)).text(),
+      ),
+    );
+    for (const source of runtimeSources) {
+      expect(source).not.toMatch(/\bfrom\s+["']shiki["']/);
+      expect(source).not.toContain('"shiki/langs"');
+      expect(source).not.toContain('"shiki/themes"');
+    }
+    expect(
+      runtimeSources[1]!.match(/import\("@shikijs\/langs\//g),
+    ).toHaveLength(CODE_LANGUAGE_IDS.length);
+    expect(
+      runtimeSources[1]!.match(/import\("@shikijs\/themes\//g),
+    ).toHaveLength(CODE_THEME_IDS.length);
   });
 });

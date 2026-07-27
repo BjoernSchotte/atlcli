@@ -645,12 +645,14 @@ latency plus the heaviest CPU leg:
   occurrences of the exact same Mermaid source share one preparation. Embedding still happens
   in document order, so relationship ids and media numbering never depend on completion timing
   (pinned by the determinism regression tests in `export.test.ts`).
-- **Syntax highlighting warms early and picks the fastest engine.** Code-block languages found
+- **Syntax highlighting warms early through explicit host adapters.** Code-block languages found
   during the prefetch pass start their grammar loads immediately; aliases such as `ts` and
-  `typescript` share one canonical grammar load. Hosts that may compile WebAssembly (CLI, Node,
-  Tauri) get Shiki's Oniguruma engine (~30 ms for the TypeScript grammar); the MV3 panel (no
-  `wasm-unsafe-eval`) keeps the JavaScript engine and never fetches the wasm chunk — the choice
-  is made by an 8-byte compile probe at runtime.
+  `typescript` share one canonical grammar load. The Node/Bun package entry installs Shiki's
+  Oniguruma/WASM engine. Browser, MV3, and embedded browser entries install the CSP-safe
+  JavaScript RegExp engine and never discover the Oniguruma module or `shiki/wasm`. A generated
+  registry maps each canonical language and theme ID to a literal direct module import, so the
+  active path requests only the selected runtime modules. Engine choice is made by the imported
+  host entry before first use, never by a runtime capability probe.
 - **The CLI overlaps its own legs too.** The page fetch runs concurrently with template
   read/scan; a quick local template scan pre-starts exactly the resolver round-trips the template
   needs, and page-dependent space/homepage calls start as soon as the page yields its space key.

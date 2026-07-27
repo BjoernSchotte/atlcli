@@ -1,4 +1,8 @@
-import { getCodeHighlightEngineId } from "@atlcli/code-highlight";
+import {
+  getCodeHighlightEngineId,
+  prepareCodeHighlighting,
+  type CodeThemeId,
+} from "@atlcli/code-highlight";
 import type { ExportBlock } from "@atlcli/confluence";
 import { runExport } from "@atlcli/docx/browser";
 import {
@@ -159,13 +163,25 @@ async function runHighlightBenchmark(
   };
 }
 
+async function prepareHighlightModules(
+  languages: readonly string[],
+  theme: CodeThemeId,
+): Promise<void> {
+  await prepareCodeHighlighting(languages, theme);
+}
+
 declare global {
   interface Window {
     __ATLCLI_DOCX_BROWSER_RUNTIME_READY_AT?: number;
     __ATLCLI_DOCX_HIGHLIGHT_BENCHMARK?: (
       preload: boolean,
     ) => Promise<HighlightBenchmarkResult>;
+    __ATLCLI_PREPARE_CODE_HIGHLIGHTING?: (
+      languages: readonly string[],
+      theme: CodeThemeId,
+    ) => Promise<void>;
   }
 }
 
 window.__ATLCLI_DOCX_HIGHLIGHT_BENCHMARK = runHighlightBenchmark;
+window.__ATLCLI_PREPARE_CODE_HIGHLIGHTING = prepareHighlightModules;

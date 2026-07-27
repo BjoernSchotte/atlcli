@@ -22,6 +22,125 @@ interface HighlightResourceTiming {
   decodedBodySize: number;
 }
 
+test("one-language preparation requests only its direct grammar and theme after intent", async ({
+  browser,
+}) => {
+  const context = await browser.newContext();
+  try {
+    const page = await context.newPage();
+    await page.goto(HARNESS_URL);
+    await page.waitForFunction(
+      () => typeof window.__ATLCLI_PREPARE_CODE_HIGHLIGHTING === "function",
+    );
+    const result = await page.evaluate(async () => {
+      const resources = (): HighlightResourceTiming[] =>
+        performance
+          .getEntriesByType("resource")
+          .map((entry) => entry as PerformanceResourceTiming)
+          .map(({ name: url, startTime, responseEnd, transferSize, decodedBodySize }) => ({
+            url,
+            name: new URL(url).pathname.split("/").at(-1) ?? url,
+            startTime,
+            responseEnd,
+            transferSize,
+            decodedBodySize,
+          }));
+      const beforeIntentResources = resources();
+      performance.clearResourceTimings();
+      const prepare = window.__ATLCLI_PREPARE_CODE_HIGHLIGHTING;
+      if (!prepare) throw new Error("direct highlighting hook is unavailable");
+      const coldStartedAt = performance.now();
+      await prepare(["typescript"], "github-light");
+      const coldMs = performance.now() - coldStartedAt;
+      const requestedResources = resources();
+      performance.clearResourceTimings();
+      const warmStartedAt = performance.now();
+      await prepare(["typescript"], "github-light");
+      return {
+        beforeIntentResources,
+        coldMs,
+        requestedResources,
+        warmMs: performance.now() - warmStartedAt,
+        repeatResources: resources(),
+      };
+    });
+
+    const requestedNames = result.requestedResources.map(({ name }) => name);
+    expect(requestedNames).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(/^core-[^/]+[.]js$/),
+        expect.stringMatching(/^engine-javascript-[^/]+[.]js$/),
+        expect.stringMatching(/^github-light-[^/]+[.]js$/),
+        expect.stringMatching(/^typescript-[^/]+[.]js$/),
+      ]),
+    );
+    const requestedJavaScript = requestedNames.filter((name) =>
+      name.endsWith(".js"),
+    );
+    expect(requestedJavaScript).toHaveLength(5);
+    expect(
+      requestedJavaScript.filter((name) => /^core-[^/]+[.]js$/.test(name)),
+    ).toHaveLength(1);
+    expect(
+      requestedJavaScript.filter((name) =>
+        /^engine-javascript-[^/]+[.]js$/.test(name),
+      ),
+    ).toHaveLength(1);
+    expect(
+      requestedJavaScript.filter((name) =>
+        /^github-light-[^/]+[.]js$/.test(name),
+      ),
+    ).toHaveLength(1);
+    // Shiki's direct TypeScript registration has one tiny dependency wrapper
+    // plus the grammar payload. Both belong to the selected canonical module.
+    expect(
+      requestedJavaScript.filter((name) =>
+        /^typescript-[^/]+[.]js$/.test(name),
+      ),
+    ).toHaveLength(2);
+    expect(
+      result.beforeIntentResources.some(({ name }) =>
+        /^(?:core|engine-javascript|github-light|typescript)-[^/]+[.]js$/.test(
+          name,
+        ),
+      ),
+    ).toBe(false);
+    expect(
+      requestedNames.some((name) =>
+        /^(?:langs|themes|bundle-full|bundle-web)-[^/]+[.]js$/.test(name),
+      ),
+    ).toBe(false);
+    expect(
+      result.repeatResources.filter(({ name }) => name.endsWith(".js")),
+    ).toEqual([]);
+    expect(result.coldMs).toBeGreaterThan(0);
+    expect(result.warmMs).toBeGreaterThanOrEqual(0);
+
+    mkdirSync(RESULT_DIR, { recursive: true });
+    writeFileSync(
+      resolve(RESULT_DIR, "one-language-cold.json"),
+      `${JSON.stringify({
+        beforeIntentRequests: result.beforeIntentResources.map(({ name }) => name),
+        coldMs: result.coldMs,
+        warmMs: result.warmMs,
+        requests: result.requestedResources,
+        requestCount: result.requestedResources.length,
+        transferBytes: result.requestedResources.reduce(
+          (total, resource) => total + resource.transferSize,
+          0,
+        ),
+        decodedBytes: result.requestedResources.reduce(
+          (total, resource) => total + resource.decodedBodySize,
+          0,
+        ),
+        repeatRequests: result.repeatResources,
+      }, null, 2)}\n`,
+    );
+  } finally {
+    await context.close();
+  }
+});
+
 async function runInFreshContext(
   browser: Browser,
   preload: boolean,
@@ -182,6 +301,15 @@ test("DOCX highlighting is JavaScript-only and deterministic across fresh cold/p
       preloaded: { ...preloaded, base64: undefined },
       repeat: repeat ? { ...repeat, base64: undefined } : undefined,
       resourceTrace: {
+        requestCount: preloadedResources.length,
+        transferBytes: preloadedResources.reduce(
+          (total, { transferSize }) => total + transferSize,
+          0,
+        ),
+        decodedBytes: preloadedResources.reduce(
+          (total, { decodedBodySize }) => total + decodedBodySize,
+          0,
+        ),
         initializationRequests: initializationResources.map(({ name }) => name),
         grammarRequestCount: grammarResources.length,
         coldFont: coldFont,

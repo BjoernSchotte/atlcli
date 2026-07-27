@@ -29,6 +29,11 @@ const ONIGURUMA_RUNTIME_RES = [
   /\bfindNextOnigScannerMatch\b/g,
   /Must invoke loadWasm first[.]/g,
 ];
+const AGGREGATE_SHIKI_RUNTIME_RES = [
+  /\bbundle_full_exports\b/g,
+  /\blangs-bundle-full\b/g,
+  /["'`]shiki(?:\/(?:langs|themes))?["'`]/g,
+];
 const DOCX_CODE_FONT_SHA256 =
   "a0bf60ef0f83c5ed4d7a75d45838548b1f6873372dfac88f71804491898d138f";
 
@@ -59,6 +64,7 @@ export function scanHarnessText(text: string): string[] {
     ...matches(text, [EXTENSION_RUNTIME_RE]),
     ...matches(text, ROOT_RELATIVE_RES),
     ...matches(text, ONIGURUMA_RUNTIME_RES),
+    ...matches(text, AGGREGATE_SHIKI_RUNTIME_RES),
   ];
   // Shiki grammar chunks are inert JSON payloads. Some grammars list Node
   // globals as source-language keywords; those strings are not runtime use.
@@ -136,6 +142,16 @@ export function validateHarnessInventory(artifacts: OutputArtifact[]): string[] 
   for (const artifact of artifacts) {
     if (/(?:^|\/)engine-oniguruma-[^/]+[.]js$/i.test(artifact.path)) {
       issues.push(`Oniguruma engine: unexpected browser artifact ${artifact.path}`);
+    }
+    if (/(?:^|\/)(?:onig|shiki)[^/]*[.]wasm$/i.test(artifact.path)) {
+      issues.push(`Oniguruma WASM: unexpected browser artifact ${artifact.path}`);
+    }
+    if (
+      /(?:^|\/)(?:langs|themes|bundle-full|bundle-web)-[^/]+[.]js$/i.test(
+        artifact.path,
+      )
+    ) {
+      issues.push(`aggregate Shiki catalogue: unexpected browser artifact ${artifact.path}`);
     }
   }
   if (!artifacts.some((artifact) => artifact.path === "index.html")) {

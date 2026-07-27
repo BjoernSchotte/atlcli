@@ -122,6 +122,9 @@ describe("scanText classification", () => {
   it.each([
     ["engine runtime", `findNextOnigScannerMatch(scanner, input)`],
     ["WASM loader", `throw new Error("Must invoke loadWasm first.")`],
+    ["aggregate singleton", `const marker = bundle_full_exports`],
+    ["aggregate language map", `import "shiki/langs"`],
+    ["aggregate theme map", `import "shiki/themes"`],
   ])("flags Oniguruma %s", (_label, source) => {
     expect(scanText(source).length).toBeGreaterThan(0);
   });
@@ -208,6 +211,16 @@ describe("PDF artifact inventory", () => {
     expect(validatePdfArtifactInventory(duplicate).join("\n")).toContain(
       "expected exactly one bundled artifact",
     );
+  });
+
+  it("rejects Oniguruma WASM and aggregate Shiki catalogue chunks", () => {
+    const issues = validatePdfArtifactInventory([
+      ...complete,
+      { path: "assets/onig-seeded.wasm", size: 20_000 },
+      { path: "chunks/themes-seeded.js", size: 6_000 },
+    ]).join("\n");
+    expect(issues).toContain("Oniguruma WASM");
+    expect(issues).toContain("aggregate Shiki catalogue");
   });
 
   /**
