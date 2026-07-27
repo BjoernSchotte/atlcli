@@ -277,3 +277,112 @@ zero failures.
 
 This evidence proves T1 only. It does not claim that the authoring core or DOCX
 analysis from T2 onward exists.
+
+## T2 — Browser-compatible authoring core
+
+**Status:** Proven on 2026-07-27.
+
+### Package and contract boundary
+
+`packages/pdf-template-authoring` is a new renderer- and DOCX-independent
+workspace package. Its default, browser, and Node entry points expose the same
+portable surface. The browser gate bundles the complete entry point and proves
+that no `node:`/`bun:` builtin is reached. A source-contract test additionally
+rejects `File`, `Blob`, `PathLike`, IndexedDB, Node streams, and direct
+Node/Bun imports in the core and its application ports.
+
+The generated API report classifies 101 exported symbols as experimental
+`0.x`. The generated closure report has zero reachable-but-unexported gaps.
+The package owns:
+
+- versioned candidates, evidence, decisions, staleness, layer diffs,
+  resolution snapshots, import views, progress events, and typed messages;
+- the only decision reducer and the only import-view/action reducers;
+- separate safe and recommended policy identities and input digests;
+- repository, asset-store, preview-compiler, and runtime-materializer ports;
+- deterministic in-memory adapters for repository history, optimistic
+  conflicts, undo-as-new-generation, byte-copying assets, and previews.
+
+Candidate handles, candidate fingerprints, source fingerprints, semantic
+reconciliation keys, catalog/baseline/decision/snapshot digests, and project
+generation IDs use separate canonical inputs. Tests change each dimension
+independently and prove that unrelated identities remain stable.
+
+### Decision, resolution, and reconciliation proof
+
+- Baseline-only resolution covers every effective target with a baseline trace.
+  Accepted candidates are frozen; an override wins and clearing it reveals the
+  frozen value again.
+- Resolution sorts canonical writes and applies only declared candidate rank.
+  Unequal values at equal rank produce a deterministic
+  `ambiguous-conflict`; reversing input order produces the same conflict.
+  Atomic candidates pass validation and apply as a unit or leave the input
+  state unchanged.
+- A semantic tombstone blocks only its key. A wildcard tombstone blocks future
+  candidates throughout its target/group scope. Exact reset leaves neighboring
+  tombstones, rejections, and overrides intact.
+- Rejection is fingerprint-bound. An alternative in the same semantic group
+  remains visible, safe, and selectable; canonical JSON round-trips unchanged.
+- Safe policy accepts only unambiguous, native, type-valid token candidates
+  that are source-explicit/source-derived and conclusive. Assets, fonts,
+  conversions, invalid values, conflicts, and blocked candidates stay open.
+  Recommended policy adds only corroborated candidates. Both persist their
+  policy ID, version, and canonical input digest. User decisions contain
+  neither policy metadata nor timestamps.
+- Asset acceptance fails without a role, SHA-256 identity, rights
+  confirmation, and a complete accessibility/rendering decision.
+  Layout-dependent scenes cannot use candidate placement.
+- Reanalysis proves all six states: `current`, `candidate-changed`,
+  `candidate-missing`, `mapping-changed`, `source-changed-same-value`, and
+  `catalog-migration-required`. Every case returns the original frozen
+  decisions unchanged.
+
+### Host-neutral journey proof
+
+The table-driven projection test covers all seven product stages:
+`analyzing`, `review-required`, `ready-to-preview`, `ready-to-build`, `built`,
+`source-changed`, and `blocked`. Each row asserts the complete enabled action
+set. `ready-to-build` is constructible only with zero unanswered items, zero
+blockers, a current inventory acknowledgement, current decisions, and two
+fresh previews.
+
+Individual Word-value, keep-current, customize, and asset actions are bound to
+the exact review item that enabled them. Apply-ready, keep-all-remaining,
+inventory acknowledgement, reanalysis, preview, build, and undo pass through
+the same reducer semantics. A disabled or cross-item action fails closed.
+
+The primary view calls the safe set “ready to apply” through structured action
+codes. It contains no “Accept recommendations” action; the broader recommended
+set exists only in the expert API. Keeping all remaining suggestions creates
+explicit scoped tombstones, takes `unanswered` to zero, and leaves unsupported
+items visible. Changing the analysis digest makes the inventory
+acknowledgement stale.
+
+Canonical view JSON is byte-identical after candidate reordering. Locale is not
+an input, and values/messages contain no ANSI, HTML, or localized prose.
+Authoring messages have exactly one registry owner and exact parameter names,
+types, formats, and bounds. Unsafe paths, URLs, HTML, terminal escapes,
+unknown/duplicate codes, and excess parameters fail validation. Blocking
+diagnostics require a recovery action except for an unreadable source.
+
+### Commands and results
+
+| Proof | Exact command | Result |
+|---|---|---|
+| Normative T2 suite | `bun run test packages/pdf-template-authoring/src` | Passed; 27 tests, 152 assertions, 0 failures |
+| Browser portability | `bun run check:browser` | Passed; all 22 browser entry points, including the new authoring barrel, built without Node/Bun builtins |
+| Package declaration build | `bun run --cwd packages/pdf-template-authoring build` | Passed |
+| API report and closure guard | `bun run test scripts/api-report.test.ts` | Passed; 5 tests, 14 assertions, zero closure gaps |
+| Repository type safety | `bun run typecheck` | Passed for the root, extension, browser compiler, and browser export harness |
+| Full monorepo build | `bun run build` | Passed; 18 tasks |
+| Full repository suite | `bun run test` | Passed outside the filesystem sandbox; 5,559 tests passed, 12 environment-gated tests skipped, 0 failures |
+| Diff hygiene | `git diff --check` | Passed |
+
+The live Confluence E2E is not applicable to T2: this task deliberately adds no
+CLI command, filesystem adapter, network operation, renderer behavior, or
+Confluence mutation. Browser bundling, in-memory port integration, full build,
+and the complete repository suite prove this package boundary. Live CLI and
+export evidence begins at the CLI/materialization tasks.
+
+This evidence proves T2 only. It does not claim that the secure OOXML facts
+layer or DOCX-to-catalog matching from T3 onward exists.

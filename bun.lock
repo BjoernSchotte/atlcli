@@ -265,6 +265,14 @@
         "@myriaddreamin/typst-ts-web-compiler": "0.7.0",
       },
     },
+    "packages/pdf-template-authoring": {
+      "name": "@atlcli/pdf-template-authoring",
+      "version": "0.1.0",
+      "dependencies": {
+        "@atlcli/core": "workspace:*",
+        "@atlcli/template-pack": "workspace:*",
+      },
+    },
     "packages/plugin-api": {
       "name": "@atlcli/plugin-api",
       "version": "0.6.0",
@@ -368,6 +376,8 @@
     "@atlcli/pdf": ["@atlcli/pdf@workspace:packages/pdf"],
 
     "@atlcli/pdf-compiler-browser": ["@atlcli/pdf-compiler-browser@workspace:packages/pdf-compiler-browser"],
+
+    "@atlcli/pdf-template-authoring": ["@atlcli/pdf-template-authoring@workspace:packages/pdf-template-authoring"],
 
     "@atlcli/plugin-api": ["@atlcli/plugin-api@workspace:packages/plugin-api"],
 

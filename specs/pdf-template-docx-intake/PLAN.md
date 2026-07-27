@@ -1628,60 +1628,65 @@ Manuscript presence fix.
 
 **Acceptance criteria / proof**
 
-- [ ] Baseline-only produces a complete authoring snapshot with only
+- [x] Baseline-only produces a complete authoring snapshot with only
       `source: "baseline"` in the trace.
-- [ ] An override wins over an accepted candidate; `clear-override` removes
+- [x] An override wins over an accepted candidate; `clear-override` removes
       only the override and exposes the accepted candidate again.
-- [ ] `use-baseline` blocks the same candidate after
+- [x] `use-baseline` blocks the same candidate after
       `acceptRecommendedCandidates()`; a new candidate ID with the same
       semantic key and target/group scope remains blocked.
-- [ ] A semantic-key tombstone blocks only that key; a `"*"` tombstone blocks
+- [x] A semantic-key tombstone blocks only that key; a `"*"` tombstone blocks
       the entire scope. Reset removes exactly the addressed tombstone and no
       neighboring override or rejection.
-- [ ] `reject-candidate` excludes exactly the fingerprint-bound candidate,
+- [x] `reject-candidate` excludes exactly the fingerprint-bound candidate,
       leaves alternatives in the same group visible, and round-trips stably.
-- [ ] Two equal-ranked candidates with different values are reported as
+- [x] Two equal-ranked candidates with different values are reported as
       `ambiguous-conflict`; input order does not change the result.
-- [ ] An atomic candidate writes all targets or none.
-- [ ] `acceptSafeCandidates()` accepts only unambiguous +
+- [x] An atomic candidate writes all targets or none.
+- [x] `acceptSafeCandidates()` accepts only unambiguous +
       `source-explicit`/`source-derived` + `conclusive` + `native` +
       type-valid candidates; assets, fonts, conflicts, and `needs-conversion`
       remain open.
-- [ ] `acceptRecommendedCandidates()` extends the set only with
+- [x] `acceptRecommendedCandidates()` extends the set only with
       `corroborated`, never with `blocked`.
-- [ ] The primary view labels the `acceptSafeCandidates()` set as ready to
+- [x] The primary view labels the `acceptSafeCandidates()` set as ready to
       apply and exposes `acceptRecommendedCandidates()` only through
       details/expert APIs; no primary action is called "Accept recommendations."
-- [ ] Policy-created accept decisions contain ID, version, and input digest;
+- [x] Policy-created accept decisions contain ID, version, and input digest;
       user decisions contain no invented policy origin or timestamp.
-- [ ] Asset acceptance cannot be created without a role, rights confirmation,
+- [x] Asset acceptance cannot be created without a role, rights confirmation,
       and unambiguous accessibility/rendering decision; a layout-dependent
       scene cannot be frozen as candidate placement.
-- [ ] Reanalysis cases prove all six staleness states without changing frozen
+- [x] Reanalysis cases prove all six staleness states without changing frozen
       values.
-- [ ] A table-driven state-machine test covers every stage and allowed action.
+- [x] A table-driven state-machine test covers every stage and allowed action.
       No impossible combination such as `ready-to-build` with unanswered
       review items, stale acknowledgement, stale preview, or a blocker can be
       constructed.
-- [ ] "Keep current design for all remaining suggestions" creates explicit
+- [x] "Keep current design for all remaining suggestions" creates explicit
       scoped tombstones; it changes `unanswered` to zero without hiding the
       unsupported inventory. A fresh source digest makes the inventory
       acknowledgement stale.
-- [ ] Blocking diagnostics have at least one recovery action unless the source
+- [x] Blocking diagnostics have at least one recovery action unless the source
       is unreadable. Message params contain no raw document text, source path,
       URL, credentials, terminal escapes, or HTML.
-- [ ] Every authoring message code and parameter is accepted by exactly one
+- [x] Every authoring message code and parameter is accepted by exactly one
       versioned owning registry; an unknown code, parameter, wrong type, or
       overlong string fails validation.
-- [ ] The same generation projected twice yields byte-identical canonical
+- [x] The same generation projected twice yields byte-identical canonical
       view JSON. Reordered candidates and locale choice do not change stage,
       grouping, action availability, or next actions.
-- [ ] In-memory repository tests prove commit, optimistic generation conflict,
+- [x] In-memory repository tests prove commit, optimistic generation conflict,
       history, and undo-as-new-generation without any Node/browser API.
-- [ ] Mutation tests prove that baseline, candidates, decisions, and snapshot
+- [x] Mutation tests prove that baseline, candidates, decisions, and snapshot
       do not mutate one another after resolution.
-- [ ] `bun run test packages/pdf-template-authoring/src` and
+- [x] `bun run test packages/pdf-template-authoring/src` and
       `bun run check:browser` pass.
+
+**T2 evidence:** See `RESULTS.md`. The authoring core exposes 101 experimental
+browser/Node symbols with zero API-closure gaps; 27 focused contract tests,
+the 22-entrypoint browser gate, typecheck, build, and the complete repository
+suite pass.
 
 ### T3 — Add a secure, namespace-aware OPC/OOXML facts layer
 

@@ -79,6 +79,14 @@ export const FREEZE_DECISIONS: Record<string, FreezeDecision> = {
       "sha256-pinned vendored compiler; consumed identically by CLI, extension, harness, and " +
       "the spec 011 parity harness.",
   },
+  "@atlcli/pdf-template-authoring": {
+    version: "0.x",
+    frozen: false,
+    reasoning:
+      "STAYS 0.x: introduced by the PDF-template DOCX-intake vertical slice as the shared " +
+      "browser-safe authoring and journey core. Keep it experimental until the CLI shape " +
+      "and a browser host have both exercised the versioned reducers, ports, and views.",
+  },
   "@atlcli/export-macros": {
     version: "1.0.0",
     frozen: true,
