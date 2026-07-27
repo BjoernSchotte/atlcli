@@ -27,6 +27,7 @@ import {
   resolveCodeThemeId,
   type CodeThemeId,
 } from "@atlcli/code-highlight/registry";
+import type { ExportImageQualityV1 } from "@atlcli/export-media";
 
 export interface PdfOutputSink {
   /**
@@ -60,6 +61,12 @@ export interface RunPdfExportInput {
   settings?: PdfTemplateSettings;
   /** Curated template manifest to render with (spec 012). Defaults to built-in. */
   templateManifest?: TemplateManifest;
+  /**
+   * Explicit image-quality profile (issue #118 Phase 1/3): `standard`/`print`
+   * (or an `imagePpi` override) deterministically downscale rasters before
+   * embedding. Absent means `original` — byte-identical rasters.
+   */
+  imageQuality?: ExportImageQualityV1;
   filename: string;
   signal?: AbortSignal;
   onPhase?: (phase: PdfExportPhase) => void;
@@ -348,6 +355,7 @@ export async function preparePdfExport(
       // Provenance fallback for the alt-text audit (spec 011): a single-page
       // export's blocks carry no page id of their own, but the caller knows it.
       ...(input.page?.id ? { pageContext: { pageId: input.page.id } } : {}),
+      ...(input.imageQuality ? { imageQuality: input.imageQuality } : {}),
     });
     throwIfAborted(input.signal);
     bundle = serializePdfDocument(prepared, {
@@ -356,6 +364,7 @@ export async function preparePdfExport(
       theme: input.theme,
       settings,
       ...(input.templateManifest !== undefined ? { templateManifest: input.templateManifest } : {}),
+      ...(input.imageQuality ? { imageQuality: input.imageQuality } : {}),
     });
   } catch (error) {
     wrapFailure(error, "prepare");

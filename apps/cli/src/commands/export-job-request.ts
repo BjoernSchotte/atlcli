@@ -120,6 +120,9 @@ export function buildCliPdfJobRequest(
     strict: boolean;
     noCache: boolean;
     exportedAt?: Date;
+    /** Explicit image profile (issue #118 Phase 3); absent = original. */
+    imageProfile?: "original" | "standard" | "print";
+    imagePpi?: number;
   },
 ): PdfExportJobRequestV1 {
   const targetKind = input.outputTargetKind ?? "file";
@@ -150,6 +153,10 @@ export function buildCliPdfJobRequest(
       strict: input.strict,
       noCache: input.noCache,
       ...(input.exportedAt ? { exportedAt: input.exportedAt.getTime() } : {}),
+      ...(input.imageProfile && input.imageProfile !== "original"
+        ? { imageProfile: input.imageProfile }
+        : {}),
+      ...(input.imagePpi !== undefined ? { imagePpi: input.imagePpi } : {}),
     },
   };
 }

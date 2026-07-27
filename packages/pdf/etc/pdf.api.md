@@ -829,6 +829,7 @@ export interface RunPdfExportInput {
     theme?: PdfThemeOptions;
     settings?: PdfTemplateSettings;
     templateManifest?: TemplateManifest;
+    imageQuality?: ExportImageQualityV1;
     filename: string;
     signal?: AbortSignal;
     onPhase?: (phase: PdfExportPhase) => void;
@@ -1698,6 +1699,7 @@ export interface RunPdfExportInput {
     theme?: PdfThemeOptions;
     settings?: PdfTemplateSettings;
     templateManifest?: TemplateManifest;
+    imageQuality?: ExportImageQualityV1;
     filename: string;
     signal?: AbortSignal;
     onPhase?: (phase: PdfExportPhase) => void;
@@ -2567,6 +2569,7 @@ export interface RunPdfExportInput {
     theme?: PdfThemeOptions;
     settings?: PdfTemplateSettings;
     templateManifest?: TemplateManifest;
+    imageQuality?: ExportImageQualityV1;
     filename: string;
     signal?: AbortSignal;
     onPhase?: (phase: PdfExportPhase) => void;

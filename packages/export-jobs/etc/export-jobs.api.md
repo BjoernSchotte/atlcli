@@ -1271,6 +1271,8 @@ export interface PdfExportJobRequestV1 extends ExportJobRequestBaseV1 {
         strict?: boolean;
         noCache?: boolean;
         exportedAt?: number;
+        imageProfile?: "original" | "standard" | "print";
+        imagePpi?: number;
     };
 }
 

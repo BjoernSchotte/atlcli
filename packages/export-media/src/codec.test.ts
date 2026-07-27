@@ -342,6 +342,24 @@ describe("normalizeRasterAssetV1", () => {
     expect(result.width).toBe(568); // ceil(3.125×180)=563 → padded to /8
   });
 
+  it("accepts a re-encode that is not byte-smaller: fewer pixels is the goal", () => {
+    // Observed live (issue #118 Phase 3 CLI proof): a small, well-compressed
+    // source can grow slightly under the pinned fixed-Huffman encoder. The
+    // profile optimizes decoded pixel area (peak memory), not file size, so
+    // the downscale is still taken — this pins that trade-off as intended.
+    const source = encodePng(rgb(gradientRgba(400, 200)), 400, 200, false);
+    const result = normalizeRasterAssetV1({
+      bytes: source,
+      mediaType: "image/png",
+      renderEnvelopeWidthPt: 470,
+      ppi: 72,
+      authored: { widthPx: 300 }, // 300 css-px = 3.125in ⇒ ceil(3.125 × 72) = 225px target
+    });
+    if (result.kind !== "normalized") throw new Error(`kept: ${JSON.stringify(result)}`);
+    expect(result.width).toBe(225);
+    expect(result.width * result.height).toBeLessThan(400 * 200);
+  });
+
   it("adler32/crc32 fixtures stay pinned (zlib interop guards)", () => {
     const payload = new TextEncoder().encode("atlcli");
     expect(adler32(payload)).toBe(0x08aa027a);

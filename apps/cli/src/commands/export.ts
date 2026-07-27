@@ -377,6 +377,38 @@ async function handlePdfExport(
     return emitReportOutcome(usage(error instanceof Error ? error.message : String(error)), opts);
   }
 
+  // Explicit image profile (issue #118 Phase 3). Validated here so a typo
+  // fails as a usage error before any network or job activity.
+  const imageProfileFlag = getFlag(flags, "pdf-images");
+  if (
+    imageProfileFlag !== undefined &&
+    imageProfileFlag !== "original" &&
+    imageProfileFlag !== "standard" &&
+    imageProfileFlag !== "print"
+  ) {
+    return emitReportOutcome(
+      usage(`--pdf-images must be original, standard, or print (got "${imageProfileFlag}").`),
+      opts,
+    );
+  }
+  const imagePpiFlag = getFlag(flags, "pdf-images-ppi");
+  let imagePpi: number | undefined;
+  if (imagePpiFlag !== undefined) {
+    imagePpi = Number(imagePpiFlag);
+    if (!Number.isSafeInteger(imagePpi) || imagePpi < 72 || imagePpi > 1200) {
+      return emitReportOutcome(
+        usage(`--pdf-images-ppi must be an integer in [72, 1200] (got "${imagePpiFlag}").`),
+        opts,
+      );
+    }
+    if ((imageProfileFlag ?? "original") === "original") {
+      return emitReportOutcome(
+        usage("--pdf-images-ppi requires --pdf-images standard or print: original never re-encodes."),
+        opts,
+      );
+    }
+  }
+
   const { client, profile } = await getClient(flags, opts);
   const baseUrl = getConfluenceBaseUrl(profile);
 
@@ -395,6 +427,8 @@ async function handlePdfExport(
     noCache: hasFlag(flags, "no-cache"),
     codeTheme,
     ...(exportedAt ? { exportedAt } : {}),
+    ...(imageProfileFlag ? { imageProfile: imageProfileFlag } : {}),
+    ...(imagePpi !== undefined ? { imagePpi } : {}),
   });
   const { exportPdfAsOrdinaryJob } = await import("./export-pdf.js");
   const outcome = await exportPdfAsOrdinaryJob({

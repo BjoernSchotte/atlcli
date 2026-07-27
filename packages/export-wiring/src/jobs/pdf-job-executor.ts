@@ -594,6 +594,18 @@ async function prepareResolvedPdfExport(
     {
       ...resolved.input,
       codeTheme: resolveCodeThemeId(request.options.codeTheme),
+      // Persisted image quality (issue #118 Phase 3): a retry renders with
+      // the identical profile because it travels in the durable request.
+      ...(request.options.imageProfile && request.options.imageProfile !== "original"
+        ? {
+            imageQuality: {
+              imageProfile: request.options.imageProfile,
+              ...(request.options.imagePpi !== undefined
+                ? { imagePpi: request.options.imagePpi }
+                : {}),
+            },
+          }
+        : {}),
       signal,
     },
     { ...resolved.env, now },
