@@ -44,6 +44,16 @@ export interface MemoryProbeApi {
   phase(): MemoryWorkerPhase;
   workerDetail(phase: Exclude<MemoryWorkerPhase, "error">): Record<string, number> | null;
   readCompiledResult(): Promise<{ byteLength: number }>;
+  /** Test-only: seed a synthetic held result so delivery probes run standalone. */
+  seedResult(byteLength: number): { byteLength: number };
+  /** Old productive delivery shape: concatenated array + anchor Blob copy. */
+  deliverArrayShape(): Promise<{ byteLength: number }>;
+  /** New productive delivery shape: chunk-granular Blob-backed handle. */
+  deliverHandleShape(): Promise<{ byteLength: number }>;
+  /** Byte sizes currently HELD by a delivery probe (also defeats DCE). */
+  deliveredState(): { arrayBytes: number; blobBytes: number };
+  /** Drop whichever delivery variant is currently held. */
+  releaseDelivery(): void;
   validateResult(): ReturnType<typeof import("@atlcli/pdf/browser").validatePdfOutput>;
   createDownloadBlob(): { byteLength: number; blobSize: number };
   releaseDownloadBlob(): void;

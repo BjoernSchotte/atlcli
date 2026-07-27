@@ -279,7 +279,7 @@ describe("format-neutral extension Activity operations", () => {
       listLegacyPdf: async () => [],
       now: () => ++now,
       emit: async (_filename, value) => {
-        emitted.push([...value]);
+        emitted.push([...(await value.asUint8Array())]);
       },
     });
 

@@ -2,8 +2,9 @@ import type {
   ExportJobSnapshotV1,
   PdfExportJobRequestV1,
 } from "@atlcli/export-jobs";
-import type { PdfExportReport } from "@atlcli/pdf/browser";
+import type { PdfBytesHandle, PdfExportReport } from "@atlcli/pdf/browser";
 import { downloadBytes } from "../download.js";
+import { collectArtifactHandleV1 } from "./artifact-delivery.js";
 import type {
   ExportPhase,
   PdfExportRequest,
@@ -43,7 +44,7 @@ export interface RunSubmittedExtensionPdfExportDepsV1 {
   readReport(ref: string): Promise<PdfExportReport | undefined>;
   emit(input: {
     filename: string;
-    bytes: Uint8Array;
+    bytes: PdfBytesHandle;
     mediaType: string;
     signal?: AbortSignal;
   }): Promise<void>;
@@ -130,26 +131,20 @@ async function requestCancellation(
   throw new Error("PDF cancellation could not win a concurrent job transition.");
 }
 
-async function collectArtifact(
+function collectArtifact(
   snapshot: ExportJobSnapshotV1,
   bytes: Pick<IndexedDbExportByteStore, "read">,
   signal?: AbortSignal,
-): Promise<Uint8Array> {
+): Promise<PdfBytesHandle> {
   if (!snapshot.artifact) throw new Error("Succeeded PDF job has no retained artifact.");
-  const result = new Uint8Array(snapshot.artifact.byteLength);
-  let offset = 0;
-  for await (const chunk of bytes.read(snapshot.artifact.ref, { signal })) {
-    signal?.throwIfAborted();
-    if (offset + chunk.byteLength > result.byteLength) {
-      throw new Error("Retained PDF artifact exceeds its committed length.");
-    }
-    result.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  if (offset !== result.byteLength) {
-    throw new Error("Retained PDF artifact is truncated.");
-  }
-  return result;
+  // Blob-backed handle instead of one panel-heap Uint8Array (issue #118
+  // Phase 0.5): the anchor download reuses the SAME Blob, so the artifact
+  // never materializes in the panel heap at all.
+  return collectArtifactHandleV1(bytes.read(snapshot.artifact.ref, { signal }), {
+    mediaType: snapshot.artifact.mediaType,
+    expectedByteLength: snapshot.artifact.byteLength,
+    ...(signal ? { signal } : {}),
+  });
 }
 
 async function markDelivered(

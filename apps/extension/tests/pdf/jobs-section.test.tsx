@@ -242,7 +242,10 @@ function port(): DurableJobsPort {
       cancelRequests.push(jobId);
     },
     emit: async (filename, bytes) => {
-      emitted.push({ filename, bytes: bytes.byteLength });
+      emitted.push({
+        filename,
+        bytes: bytes instanceof Uint8Array ? bytes.byteLength : bytes.size,
+      });
     },
   });
 }
@@ -330,7 +333,10 @@ function unifiedPort(
       ? { setPulseEnabled: options.setPulseEnabled }
       : {}),
     emit: async (filename, bytes) => {
-      emitted.push({ filename, bytes: bytes.byteLength });
+      emitted.push({
+        filename,
+        bytes: bytes instanceof Uint8Array ? bytes.byteLength : bytes.size,
+      });
     },
     now: options.now ?? (() => 30),
   });

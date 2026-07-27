@@ -157,7 +157,7 @@ describe("sidepanel durable DOCX observer", () => {
       return states.at(-1)!;
     };
     deps.emit = async ({ bytes }) => {
-      emitted.push(bytes);
+      emitted.push(await bytes.asUint8Array());
     };
     const observed = request();
     observed.onPhase = (phase) => phases.push(phase);
@@ -207,7 +207,7 @@ describe("sidepanel durable DOCX observer", () => {
     });
     const deps = baseDeps([failed]);
     deps.emit = async ({ bytes }) => {
-      emitted.push(bytes);
+      emitted.push(await bytes.asUint8Array());
     };
 
     await expect(runSubmittedExtensionDocxExport(request(), deps)).rejects.toThrow(

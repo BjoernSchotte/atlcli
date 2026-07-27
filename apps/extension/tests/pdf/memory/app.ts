@@ -13,6 +13,7 @@ import {
   putPdfJob,
   type StoredPdfJobMeta,
 } from "../../../utils/pdf/job-store.js";
+import { collectArtifactHandleV1 } from "../../../utils/export-jobs/artifact-delivery.js";
 import { openPdfViewer } from "../../../utils/pdf/viewer.js";
 import type {
   MemoryCorpusFixtureSummary,
@@ -286,6 +287,75 @@ async function readCompiledResult(): Promise<{ byteLength: number }> {
   return { byteLength: pdf.byteLength };
 }
 
+const DELIVERY_CHUNK_BYTES = 1024 * 1024;
+
+/** Test-only: seed a synthetic held result so delivery probes run standalone. */
+function seedResult(byteLength: number): { byteLength: number } {
+  pdf = new Uint8Array(byteLength);
+  return { byteLength: pdf.byteLength };
+}
+
+/** Owned 1 MiB slices of the held result — the chunk-store read shape. */
+async function* resultChunks(): AsyncIterable<Uint8Array> {
+  if (!pdf) throw new Error("Read the compiled result before delivering it.");
+  for (let offset = 0; offset < pdf.byteLength; offset += DELIVERY_CHUNK_BYTES) {
+    yield pdf.slice(offset, Math.min(offset + DELIVERY_CHUNK_BYTES, pdf.byteLength));
+  }
+}
+
+// Held delivery state lives behind a READ probe method (`deliveredState`):
+// write-only module variables are legally dead-code-eliminated by the
+// bundler, which silently un-retains the measured allocation.
+const delivery: { array?: Uint8Array; blob?: Blob; url?: string } = {};
+
+function deliveredState(): { arrayBytes: number; blobBytes: number } {
+  return {
+    arrayBytes: delivery.array?.byteLength ?? 0,
+    blobBytes: delivery.blob?.size ?? 0,
+  };
+}
+
+/**
+ * The delivery shape `pdf-run.ts` used BEFORE issue #118 Phase 0.5: collect
+ * all chunks into one preallocated panel-heap array, then hand the array to
+ * the download path, which builds an anchor `Blob` copy. Kept as the measured
+ * A-leg so the report proves the before/after delta forever. The artifacts
+ * stay HELD (like a pending anchor click) until `releaseDelivery()` so the
+ * forced-GC heap sample sees the retention the old flow really had.
+ */
+async function deliverArrayShape(): Promise<{ byteLength: number }> {
+  if (!pdf) throw new Error("Read the compiled result before delivering it.");
+  const result = new Uint8Array(pdf.byteLength);
+  let offset = 0;
+  for await (const chunk of resultChunks()) {
+    result.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  delivery.array = result;
+  delivery.blob = new Blob([result as BlobPart], { type: "application/pdf" });
+  delivery.url = URL.createObjectURL(delivery.blob);
+  return { byteLength: result.byteLength };
+}
+
+/** The productive post-change shape: `collectArtifactHandleV1` end to end. */
+async function deliverHandleShape(): Promise<{ byteLength: number }> {
+  if (!pdf) throw new Error("Read the compiled result before delivering it.");
+  const handle = await collectArtifactHandleV1(resultChunks(), {
+    mediaType: "application/pdf",
+    expectedByteLength: pdf.byteLength,
+  });
+  delivery.blob = await handle.asBlob();
+  delivery.url = URL.createObjectURL(delivery.blob);
+  return { byteLength: delivery.blob.size };
+}
+
+function releaseDelivery(): void {
+  if (delivery.url) URL.revokeObjectURL(delivery.url);
+  delete delivery.url;
+  delete delivery.blob;
+  delete delivery.array;
+}
+
 function validateResult(): ReturnType<typeof validatePdfOutput> {
   if (!pdf) throw new Error("Read the compiled result before validating it.");
   return validatePdfOutput(pdf);
@@ -391,6 +461,7 @@ async function readIdbPayload(
 }
 
 async function cleanup(): Promise<void> {
+  releaseDelivery();
   releaseDownloadBlob();
   await pdfjsViewer?.destroy().catch(() => undefined);
   pdfjsViewer = undefined;
@@ -433,6 +504,11 @@ window.atlcliMemoryProbe = {
     return workerDetails.get(phase) ?? null;
   },
   readCompiledResult,
+  seedResult,
+  deliverArrayShape,
+  deliverHandleShape,
+  deliveredState,
+  releaseDelivery,
   validateResult,
   createDownloadBlob,
   releaseDownloadBlob,

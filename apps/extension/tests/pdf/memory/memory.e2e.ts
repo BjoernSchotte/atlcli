@@ -525,6 +525,25 @@ test("records image-heavy corpus host-versus-WASM attribution (issue #118 gate i
     ]);
     const compiled = await page.evaluate(() => window.atlcliMemoryProbe.readCompiledResult());
 
+    // Phase 0.5 delivery A/B: the old array+Blob shape versus the productive
+    // chunk-granular Blob handle, each sampled while HELD (pending anchor).
+    const beforeArrayDelivery = await pageHeap(cdp);
+    await page.evaluate(() => window.atlcliMemoryProbe.deliverArrayShape());
+    // Retention self-check at sample time: a bundler that dead-code-eliminates
+    // the hold would zero this and silently fake a win.
+    expect(
+      await page.evaluate(() => window.atlcliMemoryProbe.deliveredState()),
+    ).toEqual({ arrayBytes: compiled.byteLength, blobBytes: compiled.byteLength });
+    const arrayDeliveryHeld = await pageHeap(cdp);
+    await page.evaluate(() => window.atlcliMemoryProbe.releaseDelivery());
+    const beforeHandleDelivery = await pageHeap(cdp);
+    await page.evaluate(() => window.atlcliMemoryProbe.deliverHandleShape());
+    expect(
+      await page.evaluate(() => window.atlcliMemoryProbe.deliveredState()),
+    ).toEqual({ arrayBytes: 0, blobBytes: compiled.byteLength });
+    const handleDeliveryHeld = await pageHeap(cdp);
+    await page.evaluate(() => window.atlcliMemoryProbe.releaseDelivery());
+
     const report = {
       schema: "atlcli.chrome-memory-image-heavy/v1",
       measuredAt: new Date().toISOString(),
@@ -539,6 +558,8 @@ test("records image-heavy corpus host-versus-WASM attribution (issue #118 gate i
       panel: {
         prepareFromBaseline: delta(baseline, prepared),
         storedFromBaseline: delta(baseline, stored),
+        deliveryArrayShape: delta(beforeArrayDelivery, arrayDeliveryHeld),
+        deliveryHandleShape: delta(beforeHandleDelivery, handleDeliveryHeld),
       },
       offscreenWorker: {
         bundleRead: delta(workerWarm, workerBundle),
@@ -563,6 +584,14 @@ test("records image-heavy corpus host-versus-WASM attribution (issue #118 gate i
       // caps that the benchmark-only seams unlock.
       expect(fixture.bundleBytes).toBeGreaterThan(64 * 1024 * 1024);
       expect(fixture.assetBytes).toBeGreaterThanOrEqual(100 * 1024 * 1024);
+      // Phase 0.5 delivery conclusion: the old shape retains roughly the
+      // whole artifact in the panel heap; the Blob-handle shape retains no
+      // more than chunk-scale bytes.
+      expect(report.panel.deliveryArrayShape.backingMiB).toBeGreaterThan(
+        report.corpus.pdfMiB * 0.8,
+      );
+      expect(report.panel.deliveryHandleShape.backingMiB).toBeLessThan(8);
+      expect(report.panel.deliveryHandleShape.usedMiB).toBeLessThan(8);
     }
     await page.evaluate(() => window.atlcliMemoryProbe.cleanup());
     await cdp.detach();
