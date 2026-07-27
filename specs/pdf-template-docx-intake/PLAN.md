@@ -2138,59 +2138,67 @@ those facts remain available to intake without being advertised as renderable.
 
 **Acceptance criteria / proof**
 
-- [ ] Two builds from logically identical projects with different JSON/file
+- [x] Two builds from logically identical projects with different JSON/file
       order produce byte-identical snapshot, Typst, and pack bytes.
-- [ ] Entry inventory proves that a pack contains only
+- [x] Entry inventory proves that a pack contains only
       `wiki-pdf-template.json`, `atlcli.typ`, and accepted asset paths.
-- [ ] Pack manifest and payload contain no `decisionDigest`, `sourceDigest`,
+- [x] Pack manifest and payload contain no `decisionDigest`, `sourceDigest`,
       baseline reference, candidate/decision data, or authoring trace; a
       privacy golden checks these prohibited fields.
-- [ ] Rejected and undecided `.intake` assets are absent from the pack.
-- [ ] A DOCX or mapping-rule change makes affected decisions stale; build
+- [x] Rejected and undecided `.intake` assets are absent from the pack.
+- [x] A DOCX or mapping-rule change makes affected decisions stale; build
       fails until they are reconciled.
-- [ ] Catalog/baseline digest mismatch fails with a migration hint.
-- [ ] A failure between generation write and pointer swap leaves the previous
+- [x] Catalog/baseline digest mismatch fails with a migration hint.
+- [x] A failure between generation write and pointer swap leaves the previous
       generation active; a failure after the swap points only to a fully
       hash-verified generation.
-- [ ] Symlink, concurrent-writer, no-clobber, and marker tests prove
+- [x] Symlink, concurrent-writer, no-clobber, and marker tests prove
       file-system safety.
-- [ ] Two writers with the same `baseGeneration` cannot both commit: exactly
+- [x] Two writers with the same `baseGeneration` cannot both commit: exactly
       one updates the pointer, while the other ends with `project-busy` or
       `generation-conflict`; no decision is lost through last-write-wins.
-- [ ] Crash lock, expired lease, PID reuse, and stale recovery never change the
+- [x] Crash lock, expired lease, PID reuse, and stale recovery never change the
       current pointer or foreign files without another base-generation check.
-- [ ] `reanalyze` retains decisions and accepted asset bytes, replaces only
+- [x] `reanalyze` retains decisions and accepted asset bytes, replaces only
       derived/private intake data, and marks every affected decision current or
       stale before the atomic commit.
-- [ ] Directory and in-memory repositories pass the same repository contract
+- [x] Directory and in-memory repositories pass the same repository contract
       suite for read, commit, optimistic conflict, history, and undo. The
       shared suite imports no CLI module.
-- [ ] Undo creates a new generation, restores only prior authoring intent,
+- [x] Undo creates a new generation, restores only prior authoring intent,
       retains analysis/private source safety boundaries, invalidates previews,
       and leaves all earlier generations readable.
-- [ ] Builds with unanswered review items, stale inventory acknowledgement,
+- [x] Builds with unanswered review items, stale inventory acknowledgement,
       unresolved blockers, or stale/missing previews fail before pack output
       with typed recovery actions.
-- [ ] A successful preview stores all required artifact digests against the
+- [x] A successful preview stores all required artifact digests against the
       current generation. Changing a token, asset, placement, source, catalog,
       or baseline makes the relevant preview stale deterministically.
-- [ ] The design review contains baseline/current samples and summary counts;
+- [x] The design review contains baseline/current samples and summary counts;
       the asset contact sheet exists only when visual candidates exist and
       contains no raw document text or private source metadata.
-- [ ] Initialization into an existing non-empty target fails even with foreign
+- [x] Initialization into an existing non-empty target fails even with foreign
       marker files; there is no recursive force-replace path.
-- [ ] A manually modified `atlcli.typ` is rejected as non-canonical.
-- [ ] A pack with `canonicalSource.revision=N` remains executable under loader
+- [x] A manually modified `atlcli.typ` is rejected as non-canonical.
+- [x] A pack with `canonicalSource.revision=N` remains executable under loader
       revision `N+1` while N is supported; otherwise it receives a specific
       documented migration diagnostic rather than a generic source mismatch.
-- [ ] `packTemplate` → `unpackTemplate` → validation → repack produces
+- [x] `packTemplate` → `unpackTemplate` → validation → repack produces
       byte-identical bytes.
-- [ ] Every archive created by `pdf-template pack` has just compiled its own
+- [x] Every archive created by `pdf-template pack` has just compiled its own
       runtime snapshot for real; an intentionally broken generator/feature
       combination prevents pack output.
-- [ ] `bun run test packages/pdf-template-authoring/src/project.test.ts
+- [x] `bun run test packages/pdf-template-authoring/src/project.test.ts
       packages/template-pack/src/pack.test.ts
       apps/cli/src/commands/pdf-template-project-writer.test.ts` passes.
+
+**T7 evidence:** See `RESULTS.md`. The pure authoring build, generation-based
+directory repository, shared repository contract, verified previews,
+content-addressed asset handoff, canonical-source revisioning, deterministic
+minimal pack, privacy boundary, and real pinned Typst-WASM executable gate are
+covered by unit, adversarial filesystem, pack round-trip, real compiler,
+browser-closure, API-surface, build, type, and full-repository tests. The CLI
+commands and human-facing journey remain T8 scope.
 
 ### T8 — Prove the human and expert CLI journeys
 

@@ -25,8 +25,14 @@ export interface AcceptedAssetDecisionV1 {
     kind: "accept-asset";
     semanticKey: string;
     candidateFingerprint: string;
+    sourceFingerprint: string;
+    sourceDigest: string;
+    catalogDigest: string;
+    importerVersion: string;
+    mappingVersion: string;
     assetSha256: string;
     role: string;
+    useConfirmed: true;
     rightsConfirmed: true;
     accessibility: AssetAccessibilityV1;
     rendering: AssetRenderingDecisionV1;
@@ -64,6 +70,9 @@ export declare function analyzeCandidatesAgainstCatalog(state: TemplateDecisionS
     safeCandidateIds: readonly string[];
     recommendedCandidateIds: readonly string[];
 };
+
+// export: assertPreparedTemplateProjectUndo
+export declare function assertPreparedTemplateProjectUndo(current: TemplateProjectStateV1, targetDecisions: TemplateDecisionStateV1, prepared: TemplateProjectStateV1): Promise<void>;
 
 // export: AssetAccessibilityV1
 export interface AssetAccessibilityV1 {
@@ -125,8 +134,37 @@ export interface BaselineTombstoneDecisionV1 {
     };
 }
 
+// export: buildGeneratedPdfTemplatePack
+export declare function buildGeneratedPdfTemplatePack(build: TemplateProjectBuildV1, compiler: TemplateGeneratedPackCompilerV1): Promise<{
+    bytes: Uint8Array;
+    compile: {
+        digest: string;
+        pageCount: number;
+    };
+}>;
+
 // export: buildTemplateProject
-export declare function buildTemplateProject(snapshot: AuthoringResolutionSnapshotV1, materializer: TemplateRuntimeMaterializer): Promise<Readonly<Record<string, unknown>>>;
+export declare function buildTemplateProject(input: BuildTemplateProjectInputV1): Promise<TemplateProjectBuildV1>;
+
+// export: BuildTemplateProjectInputV1
+export interface BuildTemplateProjectInputV1 {
+    generation: string;
+    project: TemplateProjectStateV1;
+    catalog: {
+        id: string;
+        version: number;
+        digest: string;
+    };
+    baseline: {
+        id: string;
+        version: string;
+        digest: string;
+    };
+    view: TemplateImportViewV1;
+    previews: Readonly<Partial<Record<TemplatePreviewRequestV1["purpose"], TemplateProjectPreviewArtifactV1>>>;
+    assetStore: TemplateAssetStore;
+    materializer: TemplateRuntimeMaterializer;
+}
 
 // export: CandidateAdoptionV1
 export type CandidateAdoptionV1 = "safe" | "review" | "blocked";
@@ -214,6 +252,8 @@ export declare class InMemoryTemplateProjectRepository implements TemplateProjec
     commit(input: TemplateProjectCommitV1): Promise<TemplateProjectGenerationV1>;
     listHistory(projectId: string): Promise<readonly TemplateProjectHistoryItemV1[]>;
     undo(input: TemplateProjectUndoV1): Promise<TemplateProjectGenerationV1>;
+    putPreview(projectId: string, artifact: TemplateProjectPreviewArtifactV1): Promise<void>;
+    getPreview(projectId: string, generation: string, purpose: TemplatePreviewRequestV1["purpose"]): Promise<TemplateProjectPreviewArtifactV1 | undefined>;
 }
 
 // export: InventoryAcknowledgementV1
@@ -232,8 +272,34 @@ export interface OverrideDecisionV1 {
     value: unknown;
 }
 
+// export: prepareTemplateProjectUndo
+export declare function prepareTemplateProjectUndo(input: PrepareTemplateProjectUndoInputV1): Promise<TemplateProjectStateV1>;
+
+// export: PrepareTemplateProjectUndoInputV1
+export interface PrepareTemplateProjectUndoInputV1 {
+    current: TemplateProjectStateV1;
+    targetDecisions: TemplateDecisionStateV1;
+    catalog: ReanalyzeTemplateProjectInputV1["catalog"];
+    baseline: ReanalyzeTemplateProjectInputV1["baseline"];
+}
+
 // export: projectTemplateImportView
 export declare function projectTemplateImportView(input: TemplateImportProjectionInputV1): TemplateImportViewV1;
+
+// export: reanalyzeTemplateProject
+export declare function reanalyzeTemplateProject(input: ReanalyzeTemplateProjectInputV1): Promise<TemplateProjectStateV1>;
+
+// export: ReanalyzeTemplateProjectInputV1
+export interface ReanalyzeTemplateProjectInputV1 {
+    current: TemplateProjectStateV1;
+    analysis: TemplateProjectAnalysisV1;
+    catalog: BuildTemplateProjectInputV1["catalog"] & {
+        descriptor: Parameters<typeof resolveTemplateLayers>[0]["catalog"];
+    };
+    baseline: BuildTemplateProjectInputV1["baseline"] & {
+        design: Readonly<Record<string, unknown>>;
+    };
+}
 
 // export: reconcileTemplateDecisions
 export declare function reconcileTemplateDecisions(state: TemplateDecisionStateV1, input: ReconcileTemplateDecisionsInputV1): {
@@ -263,6 +329,15 @@ export interface RejectedCandidateDecisionV1 {
     candidateFingerprint: string;
     groupId: string;
 }
+
+// export: renderTemplateProjectPreviews
+export declare function renderTemplateProjectPreviews(input: {
+    generation: string;
+    snapshotDigest: string;
+    summary: TemplateImportViewV1["summary"];
+    hasVisualCandidates: boolean;
+    compiler: TemplatePreviewCompiler;
+}): Promise<Readonly<Record<TemplatePreviewRequestV1["purpose"], TemplateProjectPreviewArtifactV1>>>;
 
 // export: resolveTemplateLayers
 export declare function resolveTemplateLayers(input: ResolveTemplateLayersInputV1): Promise<AuthoringResolutionSnapshotV1>;
@@ -294,8 +369,14 @@ export declare const TEMPLATE_IMPORT_PROGRESS_SCHEMA_V1: "wiki.pdf-template-impo
 // export: TEMPLATE_IMPORT_VIEW_SCHEMA_V1
 export declare const TEMPLATE_IMPORT_VIEW_SCHEMA_V1: "wiki.pdf-template-import-view/v1";
 
+// export: TEMPLATE_PROJECT_BUILD_SCHEMA_V1
+export declare const TEMPLATE_PROJECT_BUILD_SCHEMA_V1: "wiki.pdf-template-project-build/v1";
+
 // export: TEMPLATE_PROJECT_GENERATION_SCHEMA_V1
 export declare const TEMPLATE_PROJECT_GENERATION_SCHEMA_V1: "wiki.pdf-template-project-generation/v1";
+
+// export: TEMPLATE_PROJECT_STATE_SCHEMA_V1
+export declare const TEMPLATE_PROJECT_STATE_SCHEMA_V1: "wiki.pdf-template-project-state/v1";
 
 // export: TemplateAmbiguousConflictV1
 export interface TemplateAmbiguousConflictV1 {
@@ -395,6 +476,7 @@ export type TemplateDecisionCommandV1 = {
     candidate: TemplateCandidateV1;
     assetSha256: string;
     role: string;
+    useConfirmed: boolean;
     rightsConfirmed: boolean;
     accessibility: AssetAccessibilityV1;
     rendering: AssetRenderingDecisionV1;
@@ -501,6 +583,24 @@ export interface TemplateExplanationV1 extends TemplateMessageV1 {
     evidenceRefs: readonly string[];
 }
 
+// export: TemplateGeneratedPackCompileInputV1
+export interface TemplateGeneratedPackCompileInputV1 {
+    packBytes: Uint8Array;
+    manifest: TemplateManifest;
+    runtimeSnapshot: Readonly<Record<string, unknown>>;
+}
+
+// export: TemplateGeneratedPackCompileResultV1
+export interface TemplateGeneratedPackCompileResultV1 {
+    digest: string;
+    pageCount: number;
+}
+
+// export: TemplateGeneratedPackCompilerV1
+export interface TemplateGeneratedPackCompilerV1 {
+    compile(input: TemplateGeneratedPackCompileInputV1): Promise<TemplateGeneratedPackCompileResultV1>;
+}
+
 // export: TemplateImportActionContextV1
 export interface TemplateImportActionContextV1 {
     projection: TemplateImportProjectionInputV1;
@@ -544,6 +644,7 @@ export type TemplateImportActionV1 = {
     candidateId: string;
     assetSha256: string;
     role: string;
+    useConfirmed: boolean;
     rightsConfirmed: boolean;
     accessibility: AssetAccessibilityV1;
     rendering: AssetRenderingDecisionV1;
@@ -714,6 +815,41 @@ export interface TemplatePreviewStateV1 {
     compatibilityProofDigest?: string;
 }
 
+// export: TemplateProjectAnalysisV1
+export interface TemplateProjectAnalysisV1 {
+    digest: string;
+    sourceDigest: string;
+    mappingVersion: string;
+    candidates: readonly TemplateCandidateV1[];
+    diagnostics: readonly TemplateDiagnosticV1[];
+    inventoryDiagnosticCodes: readonly string[];
+    hasVisualCandidates: boolean;
+}
+
+// export: TemplateProjectBuildError
+export declare class TemplateProjectBuildError extends Error {
+    readonly code: TemplateProjectBuildFailureCodeV1;
+    readonly recoveryActions: readonly TemplateProjectRecoveryActionV1[];
+    constructor(code: TemplateProjectBuildFailureCodeV1, recoveryActions: readonly TemplateProjectRecoveryActionV1[], message: string);
+}
+
+// export: TemplateProjectBuildFailureCodeV1
+export type TemplateProjectBuildFailureCodeV1 = "catalog-migration-required" | "baseline-migration-required" | "review-required" | "inventory-acknowledgement-required" | "blocker-unresolved" | "preview-required" | "preview-stale" | "decision-stale" | "asset-confirmation-required" | "asset-unavailable" | "non-canonical-source" | "runtime-mismatch";
+
+// export: TemplateProjectBuildV1
+export interface TemplateProjectBuildV1 {
+    schema: typeof TEMPLATE_PROJECT_BUILD_SCHEMA_V1;
+    generation: string;
+    snapshotDigest: string;
+    analysisJson: string;
+    authoringSnapshotJson: string;
+    runtimeSnapshotJson: string;
+    manifestJson: string;
+    manifest: TemplateManifest;
+    canonicalTypst: string;
+    files: Readonly<Record<string, Uint8Array>>;
+}
+
 // export: TemplateProjectCommitV1
 export interface TemplateProjectCommitV1 {
     projectId: string;
@@ -721,6 +857,8 @@ export interface TemplateProjectCommitV1 {
     analysisDigest: string;
     decisions: TemplateDecisionStateV1;
     snapshotDigest?: string;
+    project?: TemplateProjectStateV1;
+    privateIntake?: Readonly<Record<string, unknown>>;
 }
 
 // export: TemplateProjectGenerationConflictError
@@ -740,6 +878,8 @@ export interface TemplateProjectGenerationV1 {
     analysisDigest: string;
     decisions: TemplateDecisionStateV1;
     snapshotDigest?: string;
+    project?: TemplateProjectStateV1;
+    privateIntakeDigest?: string;
 }
 
 // export: TemplateProjectHistoryItemV1
@@ -755,12 +895,55 @@ export declare class TemplateProjectNotFoundError extends Error {
     constructor(projectId: string);
 }
 
+// export: TemplateProjectPreviewArtifactV1
+export interface TemplateProjectPreviewArtifactV1 {
+    generation: string;
+    purpose: TemplatePreviewRequestV1["purpose"];
+    snapshotDigest: string;
+    digest: string;
+    mediaType: "application/pdf";
+    byteLength: number;
+    pageCount: number;
+    regions: readonly TemplatePreviewRegionReferenceV1[];
+    output: {
+        kind: "bytes";
+        bytes: Uint8Array;
+    } | {
+        kind: "asset-handle";
+        handle: TemplateAssetHandleV1;
+    };
+}
+
+// export: TemplateProjectRecoveryActionV1
+export type TemplateProjectRecoveryActionV1 = "review" | "acknowledge-inventory" | "reanalyze" | "migrate-catalog" | "migrate-baseline" | "preview" | "review-asset";
+
 // export: TemplateProjectRepository
 export interface TemplateProjectRepository {
     read(projectId: string): Promise<TemplateProjectGenerationV1>;
     commit(input: TemplateProjectCommitV1): Promise<TemplateProjectGenerationV1>;
     listHistory(projectId: string): Promise<readonly TemplateProjectHistoryItemV1[]>;
     undo(input: TemplateProjectUndoV1): Promise<TemplateProjectGenerationV1>;
+    putPreview(projectId: string, artifact: TemplateProjectPreviewArtifactV1): Promise<void>;
+    getPreview(projectId: string, generation: string, purpose: TemplatePreviewRequestV1["purpose"]): Promise<TemplateProjectPreviewArtifactV1 | undefined>;
+}
+
+// export: TemplateProjectStateV1
+export interface TemplateProjectStateV1 {
+    schema: typeof TEMPLATE_PROJECT_STATE_SCHEMA_V1;
+    catalog: {
+        id: string;
+        version: number;
+        digest: string;
+    };
+    baseline: {
+        id: string;
+        version: string;
+        digest: string;
+    };
+    analysis: TemplateProjectAnalysisV1;
+    decisions: TemplateDecisionStateV1;
+    snapshot: AuthoringResolutionSnapshotV1;
+    assetHandles: Readonly<Record<string, TemplateAssetHandleV1>>;
 }
 
 // export: TemplateProjectUndoV1
@@ -768,6 +951,7 @@ export interface TemplateProjectUndoV1 {
     projectId: string;
     expectedGeneration: string;
     targetGeneration: string;
+    preparedProject?: TemplateProjectStateV1;
 }
 
 // export: TemplateReviewItemV1
@@ -797,9 +981,27 @@ export interface TemplateReviewSectionV1 {
     items: readonly TemplateReviewItemV1[];
 }
 
+// export: TemplateRuntimeAssetV1
+export interface TemplateRuntimeAssetV1 {
+    slot: string;
+    sha256: string;
+    mediaType: string;
+    bytes: Uint8Array;
+    accessibility: AssetAccessibilityV1;
+    rendering: AssetRenderingDecisionV1;
+}
+
+// export: TemplateRuntimeMaterializationV1
+export interface TemplateRuntimeMaterializationV1 {
+    manifest: TemplateManifest;
+    canonicalTypst: string;
+    runtimeSnapshot: Readonly<Record<string, unknown>>;
+    files: Readonly<Record<string, Uint8Array>>;
+}
+
 // export: TemplateRuntimeMaterializer
 export interface TemplateRuntimeMaterializer {
-    materialize(snapshot: AuthoringResolutionSnapshotV1): Promise<Readonly<Record<string, unknown>>>;
+    materialize(snapshot: AuthoringResolutionSnapshotV1, assets: readonly TemplateRuntimeAssetV1[]): Promise<TemplateRuntimeMaterializationV1>;
 }
 
 // export: TemplateStringParamFormatV1
@@ -846,8 +1048,14 @@ export interface AcceptedAssetDecisionV1 {
     kind: "accept-asset";
     semanticKey: string;
     candidateFingerprint: string;
+    sourceFingerprint: string;
+    sourceDigest: string;
+    catalogDigest: string;
+    importerVersion: string;
+    mappingVersion: string;
     assetSha256: string;
     role: string;
+    useConfirmed: true;
     rightsConfirmed: true;
     accessibility: AssetAccessibilityV1;
     rendering: AssetRenderingDecisionV1;
@@ -885,6 +1093,9 @@ export declare function analyzeCandidatesAgainstCatalog(state: TemplateDecisionS
     safeCandidateIds: readonly string[];
     recommendedCandidateIds: readonly string[];
 };
+
+// export: assertPreparedTemplateProjectUndo
+export declare function assertPreparedTemplateProjectUndo(current: TemplateProjectStateV1, targetDecisions: TemplateDecisionStateV1, prepared: TemplateProjectStateV1): Promise<void>;
 
 // export: AssetAccessibilityV1
 export interface AssetAccessibilityV1 {
@@ -946,8 +1157,37 @@ export interface BaselineTombstoneDecisionV1 {
     };
 }
 
+// export: buildGeneratedPdfTemplatePack
+export declare function buildGeneratedPdfTemplatePack(build: TemplateProjectBuildV1, compiler: TemplateGeneratedPackCompilerV1): Promise<{
+    bytes: Uint8Array;
+    compile: {
+        digest: string;
+        pageCount: number;
+    };
+}>;
+
 // export: buildTemplateProject
-export declare function buildTemplateProject(snapshot: AuthoringResolutionSnapshotV1, materializer: TemplateRuntimeMaterializer): Promise<Readonly<Record<string, unknown>>>;
+export declare function buildTemplateProject(input: BuildTemplateProjectInputV1): Promise<TemplateProjectBuildV1>;
+
+// export: BuildTemplateProjectInputV1
+export interface BuildTemplateProjectInputV1 {
+    generation: string;
+    project: TemplateProjectStateV1;
+    catalog: {
+        id: string;
+        version: number;
+        digest: string;
+    };
+    baseline: {
+        id: string;
+        version: string;
+        digest: string;
+    };
+    view: TemplateImportViewV1;
+    previews: Readonly<Partial<Record<TemplatePreviewRequestV1["purpose"], TemplateProjectPreviewArtifactV1>>>;
+    assetStore: TemplateAssetStore;
+    materializer: TemplateRuntimeMaterializer;
+}
 
 // export: CandidateAdoptionV1
 export type CandidateAdoptionV1 = "safe" | "review" | "blocked";
@@ -1035,6 +1275,8 @@ export declare class InMemoryTemplateProjectRepository implements TemplateProjec
     commit(input: TemplateProjectCommitV1): Promise<TemplateProjectGenerationV1>;
     listHistory(projectId: string): Promise<readonly TemplateProjectHistoryItemV1[]>;
     undo(input: TemplateProjectUndoV1): Promise<TemplateProjectGenerationV1>;
+    putPreview(projectId: string, artifact: TemplateProjectPreviewArtifactV1): Promise<void>;
+    getPreview(projectId: string, generation: string, purpose: TemplatePreviewRequestV1["purpose"]): Promise<TemplateProjectPreviewArtifactV1 | undefined>;
 }
 
 // export: InventoryAcknowledgementV1
@@ -1053,8 +1295,34 @@ export interface OverrideDecisionV1 {
     value: unknown;
 }
 
+// export: prepareTemplateProjectUndo
+export declare function prepareTemplateProjectUndo(input: PrepareTemplateProjectUndoInputV1): Promise<TemplateProjectStateV1>;
+
+// export: PrepareTemplateProjectUndoInputV1
+export interface PrepareTemplateProjectUndoInputV1 {
+    current: TemplateProjectStateV1;
+    targetDecisions: TemplateDecisionStateV1;
+    catalog: ReanalyzeTemplateProjectInputV1["catalog"];
+    baseline: ReanalyzeTemplateProjectInputV1["baseline"];
+}
+
 // export: projectTemplateImportView
 export declare function projectTemplateImportView(input: TemplateImportProjectionInputV1): TemplateImportViewV1;
+
+// export: reanalyzeTemplateProject
+export declare function reanalyzeTemplateProject(input: ReanalyzeTemplateProjectInputV1): Promise<TemplateProjectStateV1>;
+
+// export: ReanalyzeTemplateProjectInputV1
+export interface ReanalyzeTemplateProjectInputV1 {
+    current: TemplateProjectStateV1;
+    analysis: TemplateProjectAnalysisV1;
+    catalog: BuildTemplateProjectInputV1["catalog"] & {
+        descriptor: Parameters<typeof resolveTemplateLayers>[0]["catalog"];
+    };
+    baseline: BuildTemplateProjectInputV1["baseline"] & {
+        design: Readonly<Record<string, unknown>>;
+    };
+}
 
 // export: reconcileTemplateDecisions
 export declare function reconcileTemplateDecisions(state: TemplateDecisionStateV1, input: ReconcileTemplateDecisionsInputV1): {
@@ -1084,6 +1352,15 @@ export interface RejectedCandidateDecisionV1 {
     candidateFingerprint: string;
     groupId: string;
 }
+
+// export: renderTemplateProjectPreviews
+export declare function renderTemplateProjectPreviews(input: {
+    generation: string;
+    snapshotDigest: string;
+    summary: TemplateImportViewV1["summary"];
+    hasVisualCandidates: boolean;
+    compiler: TemplatePreviewCompiler;
+}): Promise<Readonly<Record<TemplatePreviewRequestV1["purpose"], TemplateProjectPreviewArtifactV1>>>;
 
 // export: resolveTemplateLayers
 export declare function resolveTemplateLayers(input: ResolveTemplateLayersInputV1): Promise<AuthoringResolutionSnapshotV1>;
@@ -1115,8 +1392,14 @@ export declare const TEMPLATE_IMPORT_PROGRESS_SCHEMA_V1: "wiki.pdf-template-impo
 // export: TEMPLATE_IMPORT_VIEW_SCHEMA_V1
 export declare const TEMPLATE_IMPORT_VIEW_SCHEMA_V1: "wiki.pdf-template-import-view/v1";
 
+// export: TEMPLATE_PROJECT_BUILD_SCHEMA_V1
+export declare const TEMPLATE_PROJECT_BUILD_SCHEMA_V1: "wiki.pdf-template-project-build/v1";
+
 // export: TEMPLATE_PROJECT_GENERATION_SCHEMA_V1
 export declare const TEMPLATE_PROJECT_GENERATION_SCHEMA_V1: "wiki.pdf-template-project-generation/v1";
+
+// export: TEMPLATE_PROJECT_STATE_SCHEMA_V1
+export declare const TEMPLATE_PROJECT_STATE_SCHEMA_V1: "wiki.pdf-template-project-state/v1";
 
 // export: TemplateAmbiguousConflictV1
 export interface TemplateAmbiguousConflictV1 {
@@ -1216,6 +1499,7 @@ export type TemplateDecisionCommandV1 = {
     candidate: TemplateCandidateV1;
     assetSha256: string;
     role: string;
+    useConfirmed: boolean;
     rightsConfirmed: boolean;
     accessibility: AssetAccessibilityV1;
     rendering: AssetRenderingDecisionV1;
@@ -1322,6 +1606,24 @@ export interface TemplateExplanationV1 extends TemplateMessageV1 {
     evidenceRefs: readonly string[];
 }
 
+// export: TemplateGeneratedPackCompileInputV1
+export interface TemplateGeneratedPackCompileInputV1 {
+    packBytes: Uint8Array;
+    manifest: TemplateManifest;
+    runtimeSnapshot: Readonly<Record<string, unknown>>;
+}
+
+// export: TemplateGeneratedPackCompileResultV1
+export interface TemplateGeneratedPackCompileResultV1 {
+    digest: string;
+    pageCount: number;
+}
+
+// export: TemplateGeneratedPackCompilerV1
+export interface TemplateGeneratedPackCompilerV1 {
+    compile(input: TemplateGeneratedPackCompileInputV1): Promise<TemplateGeneratedPackCompileResultV1>;
+}
+
 // export: TemplateImportActionContextV1
 export interface TemplateImportActionContextV1 {
     projection: TemplateImportProjectionInputV1;
@@ -1365,6 +1667,7 @@ export type TemplateImportActionV1 = {
     candidateId: string;
     assetSha256: string;
     role: string;
+    useConfirmed: boolean;
     rightsConfirmed: boolean;
     accessibility: AssetAccessibilityV1;
     rendering: AssetRenderingDecisionV1;
@@ -1535,6 +1838,41 @@ export interface TemplatePreviewStateV1 {
     compatibilityProofDigest?: string;
 }
 
+// export: TemplateProjectAnalysisV1
+export interface TemplateProjectAnalysisV1 {
+    digest: string;
+    sourceDigest: string;
+    mappingVersion: string;
+    candidates: readonly TemplateCandidateV1[];
+    diagnostics: readonly TemplateDiagnosticV1[];
+    inventoryDiagnosticCodes: readonly string[];
+    hasVisualCandidates: boolean;
+}
+
+// export: TemplateProjectBuildError
+export declare class TemplateProjectBuildError extends Error {
+    readonly code: TemplateProjectBuildFailureCodeV1;
+    readonly recoveryActions: readonly TemplateProjectRecoveryActionV1[];
+    constructor(code: TemplateProjectBuildFailureCodeV1, recoveryActions: readonly TemplateProjectRecoveryActionV1[], message: string);
+}
+
+// export: TemplateProjectBuildFailureCodeV1
+export type TemplateProjectBuildFailureCodeV1 = "catalog-migration-required" | "baseline-migration-required" | "review-required" | "inventory-acknowledgement-required" | "blocker-unresolved" | "preview-required" | "preview-stale" | "decision-stale" | "asset-confirmation-required" | "asset-unavailable" | "non-canonical-source" | "runtime-mismatch";
+
+// export: TemplateProjectBuildV1
+export interface TemplateProjectBuildV1 {
+    schema: typeof TEMPLATE_PROJECT_BUILD_SCHEMA_V1;
+    generation: string;
+    snapshotDigest: string;
+    analysisJson: string;
+    authoringSnapshotJson: string;
+    runtimeSnapshotJson: string;
+    manifestJson: string;
+    manifest: TemplateManifest;
+    canonicalTypst: string;
+    files: Readonly<Record<string, Uint8Array>>;
+}
+
 // export: TemplateProjectCommitV1
 export interface TemplateProjectCommitV1 {
     projectId: string;
@@ -1542,6 +1880,8 @@ export interface TemplateProjectCommitV1 {
     analysisDigest: string;
     decisions: TemplateDecisionStateV1;
     snapshotDigest?: string;
+    project?: TemplateProjectStateV1;
+    privateIntake?: Readonly<Record<string, unknown>>;
 }
 
 // export: TemplateProjectGenerationConflictError
@@ -1561,6 +1901,8 @@ export interface TemplateProjectGenerationV1 {
     analysisDigest: string;
     decisions: TemplateDecisionStateV1;
     snapshotDigest?: string;
+    project?: TemplateProjectStateV1;
+    privateIntakeDigest?: string;
 }
 
 // export: TemplateProjectHistoryItemV1
@@ -1576,12 +1918,55 @@ export declare class TemplateProjectNotFoundError extends Error {
     constructor(projectId: string);
 }
 
+// export: TemplateProjectPreviewArtifactV1
+export interface TemplateProjectPreviewArtifactV1 {
+    generation: string;
+    purpose: TemplatePreviewRequestV1["purpose"];
+    snapshotDigest: string;
+    digest: string;
+    mediaType: "application/pdf";
+    byteLength: number;
+    pageCount: number;
+    regions: readonly TemplatePreviewRegionReferenceV1[];
+    output: {
+        kind: "bytes";
+        bytes: Uint8Array;
+    } | {
+        kind: "asset-handle";
+        handle: TemplateAssetHandleV1;
+    };
+}
+
+// export: TemplateProjectRecoveryActionV1
+export type TemplateProjectRecoveryActionV1 = "review" | "acknowledge-inventory" | "reanalyze" | "migrate-catalog" | "migrate-baseline" | "preview" | "review-asset";
+
 // export: TemplateProjectRepository
 export interface TemplateProjectRepository {
     read(projectId: string): Promise<TemplateProjectGenerationV1>;
     commit(input: TemplateProjectCommitV1): Promise<TemplateProjectGenerationV1>;
     listHistory(projectId: string): Promise<readonly TemplateProjectHistoryItemV1[]>;
     undo(input: TemplateProjectUndoV1): Promise<TemplateProjectGenerationV1>;
+    putPreview(projectId: string, artifact: TemplateProjectPreviewArtifactV1): Promise<void>;
+    getPreview(projectId: string, generation: string, purpose: TemplatePreviewRequestV1["purpose"]): Promise<TemplateProjectPreviewArtifactV1 | undefined>;
+}
+
+// export: TemplateProjectStateV1
+export interface TemplateProjectStateV1 {
+    schema: typeof TEMPLATE_PROJECT_STATE_SCHEMA_V1;
+    catalog: {
+        id: string;
+        version: number;
+        digest: string;
+    };
+    baseline: {
+        id: string;
+        version: string;
+        digest: string;
+    };
+    analysis: TemplateProjectAnalysisV1;
+    decisions: TemplateDecisionStateV1;
+    snapshot: AuthoringResolutionSnapshotV1;
+    assetHandles: Readonly<Record<string, TemplateAssetHandleV1>>;
 }
 
 // export: TemplateProjectUndoV1
@@ -1589,6 +1974,7 @@ export interface TemplateProjectUndoV1 {
     projectId: string;
     expectedGeneration: string;
     targetGeneration: string;
+    preparedProject?: TemplateProjectStateV1;
 }
 
 // export: TemplateReviewItemV1
@@ -1618,9 +2004,27 @@ export interface TemplateReviewSectionV1 {
     items: readonly TemplateReviewItemV1[];
 }
 
+// export: TemplateRuntimeAssetV1
+export interface TemplateRuntimeAssetV1 {
+    slot: string;
+    sha256: string;
+    mediaType: string;
+    bytes: Uint8Array;
+    accessibility: AssetAccessibilityV1;
+    rendering: AssetRenderingDecisionV1;
+}
+
+// export: TemplateRuntimeMaterializationV1
+export interface TemplateRuntimeMaterializationV1 {
+    manifest: TemplateManifest;
+    canonicalTypst: string;
+    runtimeSnapshot: Readonly<Record<string, unknown>>;
+    files: Readonly<Record<string, Uint8Array>>;
+}
+
 // export: TemplateRuntimeMaterializer
 export interface TemplateRuntimeMaterializer {
-    materialize(snapshot: AuthoringResolutionSnapshotV1): Promise<Readonly<Record<string, unknown>>>;
+    materialize(snapshot: AuthoringResolutionSnapshotV1, assets: readonly TemplateRuntimeAssetV1[]): Promise<TemplateRuntimeMaterializationV1>;
 }
 
 // export: TemplateStringParamFormatV1
@@ -1667,8 +2071,14 @@ export interface AcceptedAssetDecisionV1 {
     kind: "accept-asset";
     semanticKey: string;
     candidateFingerprint: string;
+    sourceFingerprint: string;
+    sourceDigest: string;
+    catalogDigest: string;
+    importerVersion: string;
+    mappingVersion: string;
     assetSha256: string;
     role: string;
+    useConfirmed: true;
     rightsConfirmed: true;
     accessibility: AssetAccessibilityV1;
     rendering: AssetRenderingDecisionV1;
@@ -1706,6 +2116,9 @@ export declare function analyzeCandidatesAgainstCatalog(state: TemplateDecisionS
     safeCandidateIds: readonly string[];
     recommendedCandidateIds: readonly string[];
 };
+
+// export: assertPreparedTemplateProjectUndo
+export declare function assertPreparedTemplateProjectUndo(current: TemplateProjectStateV1, targetDecisions: TemplateDecisionStateV1, prepared: TemplateProjectStateV1): Promise<void>;
 
 // export: AssetAccessibilityV1
 export interface AssetAccessibilityV1 {
@@ -1767,8 +2180,37 @@ export interface BaselineTombstoneDecisionV1 {
     };
 }
 
+// export: buildGeneratedPdfTemplatePack
+export declare function buildGeneratedPdfTemplatePack(build: TemplateProjectBuildV1, compiler: TemplateGeneratedPackCompilerV1): Promise<{
+    bytes: Uint8Array;
+    compile: {
+        digest: string;
+        pageCount: number;
+    };
+}>;
+
 // export: buildTemplateProject
-export declare function buildTemplateProject(snapshot: AuthoringResolutionSnapshotV1, materializer: TemplateRuntimeMaterializer): Promise<Readonly<Record<string, unknown>>>;
+export declare function buildTemplateProject(input: BuildTemplateProjectInputV1): Promise<TemplateProjectBuildV1>;
+
+// export: BuildTemplateProjectInputV1
+export interface BuildTemplateProjectInputV1 {
+    generation: string;
+    project: TemplateProjectStateV1;
+    catalog: {
+        id: string;
+        version: number;
+        digest: string;
+    };
+    baseline: {
+        id: string;
+        version: string;
+        digest: string;
+    };
+    view: TemplateImportViewV1;
+    previews: Readonly<Partial<Record<TemplatePreviewRequestV1["purpose"], TemplateProjectPreviewArtifactV1>>>;
+    assetStore: TemplateAssetStore;
+    materializer: TemplateRuntimeMaterializer;
+}
 
 // export: CandidateAdoptionV1
 export type CandidateAdoptionV1 = "safe" | "review" | "blocked";
@@ -1856,6 +2298,8 @@ export declare class InMemoryTemplateProjectRepository implements TemplateProjec
     commit(input: TemplateProjectCommitV1): Promise<TemplateProjectGenerationV1>;
     listHistory(projectId: string): Promise<readonly TemplateProjectHistoryItemV1[]>;
     undo(input: TemplateProjectUndoV1): Promise<TemplateProjectGenerationV1>;
+    putPreview(projectId: string, artifact: TemplateProjectPreviewArtifactV1): Promise<void>;
+    getPreview(projectId: string, generation: string, purpose: TemplatePreviewRequestV1["purpose"]): Promise<TemplateProjectPreviewArtifactV1 | undefined>;
 }
 
 // export: InventoryAcknowledgementV1
@@ -1874,8 +2318,34 @@ export interface OverrideDecisionV1 {
     value: unknown;
 }
 
+// export: prepareTemplateProjectUndo
+export declare function prepareTemplateProjectUndo(input: PrepareTemplateProjectUndoInputV1): Promise<TemplateProjectStateV1>;
+
+// export: PrepareTemplateProjectUndoInputV1
+export interface PrepareTemplateProjectUndoInputV1 {
+    current: TemplateProjectStateV1;
+    targetDecisions: TemplateDecisionStateV1;
+    catalog: ReanalyzeTemplateProjectInputV1["catalog"];
+    baseline: ReanalyzeTemplateProjectInputV1["baseline"];
+}
+
 // export: projectTemplateImportView
 export declare function projectTemplateImportView(input: TemplateImportProjectionInputV1): TemplateImportViewV1;
+
+// export: reanalyzeTemplateProject
+export declare function reanalyzeTemplateProject(input: ReanalyzeTemplateProjectInputV1): Promise<TemplateProjectStateV1>;
+
+// export: ReanalyzeTemplateProjectInputV1
+export interface ReanalyzeTemplateProjectInputV1 {
+    current: TemplateProjectStateV1;
+    analysis: TemplateProjectAnalysisV1;
+    catalog: BuildTemplateProjectInputV1["catalog"] & {
+        descriptor: Parameters<typeof resolveTemplateLayers>[0]["catalog"];
+    };
+    baseline: BuildTemplateProjectInputV1["baseline"] & {
+        design: Readonly<Record<string, unknown>>;
+    };
+}
 
 // export: reconcileTemplateDecisions
 export declare function reconcileTemplateDecisions(state: TemplateDecisionStateV1, input: ReconcileTemplateDecisionsInputV1): {
@@ -1905,6 +2375,15 @@ export interface RejectedCandidateDecisionV1 {
     candidateFingerprint: string;
     groupId: string;
 }
+
+// export: renderTemplateProjectPreviews
+export declare function renderTemplateProjectPreviews(input: {
+    generation: string;
+    snapshotDigest: string;
+    summary: TemplateImportViewV1["summary"];
+    hasVisualCandidates: boolean;
+    compiler: TemplatePreviewCompiler;
+}): Promise<Readonly<Record<TemplatePreviewRequestV1["purpose"], TemplateProjectPreviewArtifactV1>>>;
 
 // export: resolveTemplateLayers
 export declare function resolveTemplateLayers(input: ResolveTemplateLayersInputV1): Promise<AuthoringResolutionSnapshotV1>;
@@ -1936,8 +2415,14 @@ export declare const TEMPLATE_IMPORT_PROGRESS_SCHEMA_V1: "wiki.pdf-template-impo
 // export: TEMPLATE_IMPORT_VIEW_SCHEMA_V1
 export declare const TEMPLATE_IMPORT_VIEW_SCHEMA_V1: "wiki.pdf-template-import-view/v1";
 
+// export: TEMPLATE_PROJECT_BUILD_SCHEMA_V1
+export declare const TEMPLATE_PROJECT_BUILD_SCHEMA_V1: "wiki.pdf-template-project-build/v1";
+
 // export: TEMPLATE_PROJECT_GENERATION_SCHEMA_V1
 export declare const TEMPLATE_PROJECT_GENERATION_SCHEMA_V1: "wiki.pdf-template-project-generation/v1";
+
+// export: TEMPLATE_PROJECT_STATE_SCHEMA_V1
+export declare const TEMPLATE_PROJECT_STATE_SCHEMA_V1: "wiki.pdf-template-project-state/v1";
 
 // export: TemplateAmbiguousConflictV1
 export interface TemplateAmbiguousConflictV1 {
@@ -2037,6 +2522,7 @@ export type TemplateDecisionCommandV1 = {
     candidate: TemplateCandidateV1;
     assetSha256: string;
     role: string;
+    useConfirmed: boolean;
     rightsConfirmed: boolean;
     accessibility: AssetAccessibilityV1;
     rendering: AssetRenderingDecisionV1;
@@ -2143,6 +2629,24 @@ export interface TemplateExplanationV1 extends TemplateMessageV1 {
     evidenceRefs: readonly string[];
 }
 
+// export: TemplateGeneratedPackCompileInputV1
+export interface TemplateGeneratedPackCompileInputV1 {
+    packBytes: Uint8Array;
+    manifest: TemplateManifest;
+    runtimeSnapshot: Readonly<Record<string, unknown>>;
+}
+
+// export: TemplateGeneratedPackCompileResultV1
+export interface TemplateGeneratedPackCompileResultV1 {
+    digest: string;
+    pageCount: number;
+}
+
+// export: TemplateGeneratedPackCompilerV1
+export interface TemplateGeneratedPackCompilerV1 {
+    compile(input: TemplateGeneratedPackCompileInputV1): Promise<TemplateGeneratedPackCompileResultV1>;
+}
+
 // export: TemplateImportActionContextV1
 export interface TemplateImportActionContextV1 {
     projection: TemplateImportProjectionInputV1;
@@ -2186,6 +2690,7 @@ export type TemplateImportActionV1 = {
     candidateId: string;
     assetSha256: string;
     role: string;
+    useConfirmed: boolean;
     rightsConfirmed: boolean;
     accessibility: AssetAccessibilityV1;
     rendering: AssetRenderingDecisionV1;
@@ -2356,6 +2861,41 @@ export interface TemplatePreviewStateV1 {
     compatibilityProofDigest?: string;
 }
 
+// export: TemplateProjectAnalysisV1
+export interface TemplateProjectAnalysisV1 {
+    digest: string;
+    sourceDigest: string;
+    mappingVersion: string;
+    candidates: readonly TemplateCandidateV1[];
+    diagnostics: readonly TemplateDiagnosticV1[];
+    inventoryDiagnosticCodes: readonly string[];
+    hasVisualCandidates: boolean;
+}
+
+// export: TemplateProjectBuildError
+export declare class TemplateProjectBuildError extends Error {
+    readonly code: TemplateProjectBuildFailureCodeV1;
+    readonly recoveryActions: readonly TemplateProjectRecoveryActionV1[];
+    constructor(code: TemplateProjectBuildFailureCodeV1, recoveryActions: readonly TemplateProjectRecoveryActionV1[], message: string);
+}
+
+// export: TemplateProjectBuildFailureCodeV1
+export type TemplateProjectBuildFailureCodeV1 = "catalog-migration-required" | "baseline-migration-required" | "review-required" | "inventory-acknowledgement-required" | "blocker-unresolved" | "preview-required" | "preview-stale" | "decision-stale" | "asset-confirmation-required" | "asset-unavailable" | "non-canonical-source" | "runtime-mismatch";
+
+// export: TemplateProjectBuildV1
+export interface TemplateProjectBuildV1 {
+    schema: typeof TEMPLATE_PROJECT_BUILD_SCHEMA_V1;
+    generation: string;
+    snapshotDigest: string;
+    analysisJson: string;
+    authoringSnapshotJson: string;
+    runtimeSnapshotJson: string;
+    manifestJson: string;
+    manifest: TemplateManifest;
+    canonicalTypst: string;
+    files: Readonly<Record<string, Uint8Array>>;
+}
+
 // export: TemplateProjectCommitV1
 export interface TemplateProjectCommitV1 {
     projectId: string;
@@ -2363,6 +2903,8 @@ export interface TemplateProjectCommitV1 {
     analysisDigest: string;
     decisions: TemplateDecisionStateV1;
     snapshotDigest?: string;
+    project?: TemplateProjectStateV1;
+    privateIntake?: Readonly<Record<string, unknown>>;
 }
 
 // export: TemplateProjectGenerationConflictError
@@ -2382,6 +2924,8 @@ export interface TemplateProjectGenerationV1 {
     analysisDigest: string;
     decisions: TemplateDecisionStateV1;
     snapshotDigest?: string;
+    project?: TemplateProjectStateV1;
+    privateIntakeDigest?: string;
 }
 
 // export: TemplateProjectHistoryItemV1
@@ -2397,12 +2941,55 @@ export declare class TemplateProjectNotFoundError extends Error {
     constructor(projectId: string);
 }
 
+// export: TemplateProjectPreviewArtifactV1
+export interface TemplateProjectPreviewArtifactV1 {
+    generation: string;
+    purpose: TemplatePreviewRequestV1["purpose"];
+    snapshotDigest: string;
+    digest: string;
+    mediaType: "application/pdf";
+    byteLength: number;
+    pageCount: number;
+    regions: readonly TemplatePreviewRegionReferenceV1[];
+    output: {
+        kind: "bytes";
+        bytes: Uint8Array;
+    } | {
+        kind: "asset-handle";
+        handle: TemplateAssetHandleV1;
+    };
+}
+
+// export: TemplateProjectRecoveryActionV1
+export type TemplateProjectRecoveryActionV1 = "review" | "acknowledge-inventory" | "reanalyze" | "migrate-catalog" | "migrate-baseline" | "preview" | "review-asset";
+
 // export: TemplateProjectRepository
 export interface TemplateProjectRepository {
     read(projectId: string): Promise<TemplateProjectGenerationV1>;
     commit(input: TemplateProjectCommitV1): Promise<TemplateProjectGenerationV1>;
     listHistory(projectId: string): Promise<readonly TemplateProjectHistoryItemV1[]>;
     undo(input: TemplateProjectUndoV1): Promise<TemplateProjectGenerationV1>;
+    putPreview(projectId: string, artifact: TemplateProjectPreviewArtifactV1): Promise<void>;
+    getPreview(projectId: string, generation: string, purpose: TemplatePreviewRequestV1["purpose"]): Promise<TemplateProjectPreviewArtifactV1 | undefined>;
+}
+
+// export: TemplateProjectStateV1
+export interface TemplateProjectStateV1 {
+    schema: typeof TEMPLATE_PROJECT_STATE_SCHEMA_V1;
+    catalog: {
+        id: string;
+        version: number;
+        digest: string;
+    };
+    baseline: {
+        id: string;
+        version: string;
+        digest: string;
+    };
+    analysis: TemplateProjectAnalysisV1;
+    decisions: TemplateDecisionStateV1;
+    snapshot: AuthoringResolutionSnapshotV1;
+    assetHandles: Readonly<Record<string, TemplateAssetHandleV1>>;
 }
 
 // export: TemplateProjectUndoV1
@@ -2410,6 +2997,7 @@ export interface TemplateProjectUndoV1 {
     projectId: string;
     expectedGeneration: string;
     targetGeneration: string;
+    preparedProject?: TemplateProjectStateV1;
 }
 
 // export: TemplateReviewItemV1
@@ -2439,9 +3027,27 @@ export interface TemplateReviewSectionV1 {
     items: readonly TemplateReviewItemV1[];
 }
 
+// export: TemplateRuntimeAssetV1
+export interface TemplateRuntimeAssetV1 {
+    slot: string;
+    sha256: string;
+    mediaType: string;
+    bytes: Uint8Array;
+    accessibility: AssetAccessibilityV1;
+    rendering: AssetRenderingDecisionV1;
+}
+
+// export: TemplateRuntimeMaterializationV1
+export interface TemplateRuntimeMaterializationV1 {
+    manifest: TemplateManifest;
+    canonicalTypst: string;
+    runtimeSnapshot: Readonly<Record<string, unknown>>;
+    files: Readonly<Record<string, Uint8Array>>;
+}
+
 // export: TemplateRuntimeMaterializer
 export interface TemplateRuntimeMaterializer {
-    materialize(snapshot: AuthoringResolutionSnapshotV1): Promise<Readonly<Record<string, unknown>>>;
+    materialize(snapshot: AuthoringResolutionSnapshotV1, assets: readonly TemplateRuntimeAssetV1[]): Promise<TemplateRuntimeMaterializationV1>;
 }
 
 // export: TemplateStringParamFormatV1
@@ -2488,8 +3094,14 @@ export interface AcceptedAssetDecisionV1 {
     kind: "accept-asset";
     semanticKey: string;
     candidateFingerprint: string;
+    sourceFingerprint: string;
+    sourceDigest: string;
+    catalogDigest: string;
+    importerVersion: string;
+    mappingVersion: string;
     assetSha256: string;
     role: string;
+    useConfirmed: true;
     rightsConfirmed: true;
     accessibility: AssetAccessibilityV1;
     rendering: AssetRenderingDecisionV1;
@@ -2527,6 +3139,9 @@ export declare function analyzeCandidatesAgainstCatalog(state: TemplateDecisionS
     safeCandidateIds: readonly string[];
     recommendedCandidateIds: readonly string[];
 };
+
+// export: assertPreparedTemplateProjectUndo
+export declare function assertPreparedTemplateProjectUndo(current: TemplateProjectStateV1, targetDecisions: TemplateDecisionStateV1, prepared: TemplateProjectStateV1): Promise<void>;
 
 // export: AssetAccessibilityV1
 export interface AssetAccessibilityV1 {
@@ -2588,8 +3203,37 @@ export interface BaselineTombstoneDecisionV1 {
     };
 }
 
+// export: buildGeneratedPdfTemplatePack
+export declare function buildGeneratedPdfTemplatePack(build: TemplateProjectBuildV1, compiler: TemplateGeneratedPackCompilerV1): Promise<{
+    bytes: Uint8Array;
+    compile: {
+        digest: string;
+        pageCount: number;
+    };
+}>;
+
 // export: buildTemplateProject
-export declare function buildTemplateProject(snapshot: AuthoringResolutionSnapshotV1, materializer: TemplateRuntimeMaterializer): Promise<Readonly<Record<string, unknown>>>;
+export declare function buildTemplateProject(input: BuildTemplateProjectInputV1): Promise<TemplateProjectBuildV1>;
+
+// export: BuildTemplateProjectInputV1
+export interface BuildTemplateProjectInputV1 {
+    generation: string;
+    project: TemplateProjectStateV1;
+    catalog: {
+        id: string;
+        version: number;
+        digest: string;
+    };
+    baseline: {
+        id: string;
+        version: string;
+        digest: string;
+    };
+    view: TemplateImportViewV1;
+    previews: Readonly<Partial<Record<TemplatePreviewRequestV1["purpose"], TemplateProjectPreviewArtifactV1>>>;
+    assetStore: TemplateAssetStore;
+    materializer: TemplateRuntimeMaterializer;
+}
 
 // export: CandidateAdoptionV1
 export type CandidateAdoptionV1 = "safe" | "review" | "blocked";
@@ -2677,6 +3321,8 @@ export declare class InMemoryTemplateProjectRepository implements TemplateProjec
     commit(input: TemplateProjectCommitV1): Promise<TemplateProjectGenerationV1>;
     listHistory(projectId: string): Promise<readonly TemplateProjectHistoryItemV1[]>;
     undo(input: TemplateProjectUndoV1): Promise<TemplateProjectGenerationV1>;
+    putPreview(projectId: string, artifact: TemplateProjectPreviewArtifactV1): Promise<void>;
+    getPreview(projectId: string, generation: string, purpose: TemplatePreviewRequestV1["purpose"]): Promise<TemplateProjectPreviewArtifactV1 | undefined>;
 }
 
 // export: InventoryAcknowledgementV1
@@ -2695,8 +3341,34 @@ export interface OverrideDecisionV1 {
     value: unknown;
 }
 
+// export: prepareTemplateProjectUndo
+export declare function prepareTemplateProjectUndo(input: PrepareTemplateProjectUndoInputV1): Promise<TemplateProjectStateV1>;
+
+// export: PrepareTemplateProjectUndoInputV1
+export interface PrepareTemplateProjectUndoInputV1 {
+    current: TemplateProjectStateV1;
+    targetDecisions: TemplateDecisionStateV1;
+    catalog: ReanalyzeTemplateProjectInputV1["catalog"];
+    baseline: ReanalyzeTemplateProjectInputV1["baseline"];
+}
+
 // export: projectTemplateImportView
 export declare function projectTemplateImportView(input: TemplateImportProjectionInputV1): TemplateImportViewV1;
+
+// export: reanalyzeTemplateProject
+export declare function reanalyzeTemplateProject(input: ReanalyzeTemplateProjectInputV1): Promise<TemplateProjectStateV1>;
+
+// export: ReanalyzeTemplateProjectInputV1
+export interface ReanalyzeTemplateProjectInputV1 {
+    current: TemplateProjectStateV1;
+    analysis: TemplateProjectAnalysisV1;
+    catalog: BuildTemplateProjectInputV1["catalog"] & {
+        descriptor: Parameters<typeof resolveTemplateLayers>[0]["catalog"];
+    };
+    baseline: BuildTemplateProjectInputV1["baseline"] & {
+        design: Readonly<Record<string, unknown>>;
+    };
+}
 
 // export: reconcileTemplateDecisions
 export declare function reconcileTemplateDecisions(state: TemplateDecisionStateV1, input: ReconcileTemplateDecisionsInputV1): {
@@ -2726,6 +3398,15 @@ export interface RejectedCandidateDecisionV1 {
     candidateFingerprint: string;
     groupId: string;
 }
+
+// export: renderTemplateProjectPreviews
+export declare function renderTemplateProjectPreviews(input: {
+    generation: string;
+    snapshotDigest: string;
+    summary: TemplateImportViewV1["summary"];
+    hasVisualCandidates: boolean;
+    compiler: TemplatePreviewCompiler;
+}): Promise<Readonly<Record<TemplatePreviewRequestV1["purpose"], TemplateProjectPreviewArtifactV1>>>;
 
 // export: resolveTemplateLayers
 export declare function resolveTemplateLayers(input: ResolveTemplateLayersInputV1): Promise<AuthoringResolutionSnapshotV1>;
@@ -2757,8 +3438,14 @@ export declare const TEMPLATE_IMPORT_PROGRESS_SCHEMA_V1: "wiki.pdf-template-impo
 // export: TEMPLATE_IMPORT_VIEW_SCHEMA_V1
 export declare const TEMPLATE_IMPORT_VIEW_SCHEMA_V1: "wiki.pdf-template-import-view/v1";
 
+// export: TEMPLATE_PROJECT_BUILD_SCHEMA_V1
+export declare const TEMPLATE_PROJECT_BUILD_SCHEMA_V1: "wiki.pdf-template-project-build/v1";
+
 // export: TEMPLATE_PROJECT_GENERATION_SCHEMA_V1
 export declare const TEMPLATE_PROJECT_GENERATION_SCHEMA_V1: "wiki.pdf-template-project-generation/v1";
+
+// export: TEMPLATE_PROJECT_STATE_SCHEMA_V1
+export declare const TEMPLATE_PROJECT_STATE_SCHEMA_V1: "wiki.pdf-template-project-state/v1";
 
 // export: TemplateAmbiguousConflictV1
 export interface TemplateAmbiguousConflictV1 {
@@ -2858,6 +3545,7 @@ export type TemplateDecisionCommandV1 = {
     candidate: TemplateCandidateV1;
     assetSha256: string;
     role: string;
+    useConfirmed: boolean;
     rightsConfirmed: boolean;
     accessibility: AssetAccessibilityV1;
     rendering: AssetRenderingDecisionV1;
@@ -2964,6 +3652,24 @@ export interface TemplateExplanationV1 extends TemplateMessageV1 {
     evidenceRefs: readonly string[];
 }
 
+// export: TemplateGeneratedPackCompileInputV1
+export interface TemplateGeneratedPackCompileInputV1 {
+    packBytes: Uint8Array;
+    manifest: TemplateManifest;
+    runtimeSnapshot: Readonly<Record<string, unknown>>;
+}
+
+// export: TemplateGeneratedPackCompileResultV1
+export interface TemplateGeneratedPackCompileResultV1 {
+    digest: string;
+    pageCount: number;
+}
+
+// export: TemplateGeneratedPackCompilerV1
+export interface TemplateGeneratedPackCompilerV1 {
+    compile(input: TemplateGeneratedPackCompileInputV1): Promise<TemplateGeneratedPackCompileResultV1>;
+}
+
 // export: TemplateImportActionContextV1
 export interface TemplateImportActionContextV1 {
     projection: TemplateImportProjectionInputV1;
@@ -3007,6 +3713,7 @@ export type TemplateImportActionV1 = {
     candidateId: string;
     assetSha256: string;
     role: string;
+    useConfirmed: boolean;
     rightsConfirmed: boolean;
     accessibility: AssetAccessibilityV1;
     rendering: AssetRenderingDecisionV1;
@@ -3177,6 +3884,41 @@ export interface TemplatePreviewStateV1 {
     compatibilityProofDigest?: string;
 }
 
+// export: TemplateProjectAnalysisV1
+export interface TemplateProjectAnalysisV1 {
+    digest: string;
+    sourceDigest: string;
+    mappingVersion: string;
+    candidates: readonly TemplateCandidateV1[];
+    diagnostics: readonly TemplateDiagnosticV1[];
+    inventoryDiagnosticCodes: readonly string[];
+    hasVisualCandidates: boolean;
+}
+
+// export: TemplateProjectBuildError
+export declare class TemplateProjectBuildError extends Error {
+    readonly code: TemplateProjectBuildFailureCodeV1;
+    readonly recoveryActions: readonly TemplateProjectRecoveryActionV1[];
+    constructor(code: TemplateProjectBuildFailureCodeV1, recoveryActions: readonly TemplateProjectRecoveryActionV1[], message: string);
+}
+
+// export: TemplateProjectBuildFailureCodeV1
+export type TemplateProjectBuildFailureCodeV1 = "catalog-migration-required" | "baseline-migration-required" | "review-required" | "inventory-acknowledgement-required" | "blocker-unresolved" | "preview-required" | "preview-stale" | "decision-stale" | "asset-confirmation-required" | "asset-unavailable" | "non-canonical-source" | "runtime-mismatch";
+
+// export: TemplateProjectBuildV1
+export interface TemplateProjectBuildV1 {
+    schema: typeof TEMPLATE_PROJECT_BUILD_SCHEMA_V1;
+    generation: string;
+    snapshotDigest: string;
+    analysisJson: string;
+    authoringSnapshotJson: string;
+    runtimeSnapshotJson: string;
+    manifestJson: string;
+    manifest: TemplateManifest;
+    canonicalTypst: string;
+    files: Readonly<Record<string, Uint8Array>>;
+}
+
 // export: TemplateProjectCommitV1
 export interface TemplateProjectCommitV1 {
     projectId: string;
@@ -3184,6 +3926,8 @@ export interface TemplateProjectCommitV1 {
     analysisDigest: string;
     decisions: TemplateDecisionStateV1;
     snapshotDigest?: string;
+    project?: TemplateProjectStateV1;
+    privateIntake?: Readonly<Record<string, unknown>>;
 }
 
 // export: TemplateProjectGenerationConflictError
@@ -3203,6 +3947,8 @@ export interface TemplateProjectGenerationV1 {
     analysisDigest: string;
     decisions: TemplateDecisionStateV1;
     snapshotDigest?: string;
+    project?: TemplateProjectStateV1;
+    privateIntakeDigest?: string;
 }
 
 // export: TemplateProjectHistoryItemV1
@@ -3218,12 +3964,55 @@ export declare class TemplateProjectNotFoundError extends Error {
     constructor(projectId: string);
 }
 
+// export: TemplateProjectPreviewArtifactV1
+export interface TemplateProjectPreviewArtifactV1 {
+    generation: string;
+    purpose: TemplatePreviewRequestV1["purpose"];
+    snapshotDigest: string;
+    digest: string;
+    mediaType: "application/pdf";
+    byteLength: number;
+    pageCount: number;
+    regions: readonly TemplatePreviewRegionReferenceV1[];
+    output: {
+        kind: "bytes";
+        bytes: Uint8Array;
+    } | {
+        kind: "asset-handle";
+        handle: TemplateAssetHandleV1;
+    };
+}
+
+// export: TemplateProjectRecoveryActionV1
+export type TemplateProjectRecoveryActionV1 = "review" | "acknowledge-inventory" | "reanalyze" | "migrate-catalog" | "migrate-baseline" | "preview" | "review-asset";
+
 // export: TemplateProjectRepository
 export interface TemplateProjectRepository {
     read(projectId: string): Promise<TemplateProjectGenerationV1>;
     commit(input: TemplateProjectCommitV1): Promise<TemplateProjectGenerationV1>;
     listHistory(projectId: string): Promise<readonly TemplateProjectHistoryItemV1[]>;
     undo(input: TemplateProjectUndoV1): Promise<TemplateProjectGenerationV1>;
+    putPreview(projectId: string, artifact: TemplateProjectPreviewArtifactV1): Promise<void>;
+    getPreview(projectId: string, generation: string, purpose: TemplatePreviewRequestV1["purpose"]): Promise<TemplateProjectPreviewArtifactV1 | undefined>;
+}
+
+// export: TemplateProjectStateV1
+export interface TemplateProjectStateV1 {
+    schema: typeof TEMPLATE_PROJECT_STATE_SCHEMA_V1;
+    catalog: {
+        id: string;
+        version: number;
+        digest: string;
+    };
+    baseline: {
+        id: string;
+        version: string;
+        digest: string;
+    };
+    analysis: TemplateProjectAnalysisV1;
+    decisions: TemplateDecisionStateV1;
+    snapshot: AuthoringResolutionSnapshotV1;
+    assetHandles: Readonly<Record<string, TemplateAssetHandleV1>>;
 }
 
 // export: TemplateProjectUndoV1
@@ -3231,6 +4020,7 @@ export interface TemplateProjectUndoV1 {
     projectId: string;
     expectedGeneration: string;
     targetGeneration: string;
+    preparedProject?: TemplateProjectStateV1;
 }
 
 // export: TemplateReviewItemV1
@@ -3260,9 +4050,27 @@ export interface TemplateReviewSectionV1 {
     items: readonly TemplateReviewItemV1[];
 }
 
+// export: TemplateRuntimeAssetV1
+export interface TemplateRuntimeAssetV1 {
+    slot: string;
+    sha256: string;
+    mediaType: string;
+    bytes: Uint8Array;
+    accessibility: AssetAccessibilityV1;
+    rendering: AssetRenderingDecisionV1;
+}
+
+// export: TemplateRuntimeMaterializationV1
+export interface TemplateRuntimeMaterializationV1 {
+    manifest: TemplateManifest;
+    canonicalTypst: string;
+    runtimeSnapshot: Readonly<Record<string, unknown>>;
+    files: Readonly<Record<string, Uint8Array>>;
+}
+
 // export: TemplateRuntimeMaterializer
 export interface TemplateRuntimeMaterializer {
-    materialize(snapshot: AuthoringResolutionSnapshotV1): Promise<Readonly<Record<string, unknown>>>;
+    materialize(snapshot: AuthoringResolutionSnapshotV1, assets: readonly TemplateRuntimeAssetV1[]): Promise<TemplateRuntimeMaterializationV1>;
 }
 
 // export: TemplateStringParamFormatV1

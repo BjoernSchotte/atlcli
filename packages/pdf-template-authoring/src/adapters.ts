@@ -2,10 +2,11 @@ import { sha256Hex } from "@atlcli/core";
 import { canonicalCapabilityJson } from "@atlcli/template-pack";
 import {
   TEMPLATE_PROJECT_GENERATION_SCHEMA_V1,
-  type AuthoringResolutionSnapshotV1,
   type TemplateAssetHandleV1,
   type TemplateAssetStore,
+  type TemplateDecisionStateV1,
   type TemplatePreviewCompiler,
+  type TemplateProjectPreviewArtifactV1,
   type TemplatePreviewRequestV1,
   type TemplatePreviewResultV1,
   type TemplateProjectCommitV1,
@@ -13,9 +14,9 @@ import {
   type TemplateProjectHistoryItemV1,
   type TemplateProjectRepository,
   type TemplateProjectUndoV1,
-  type TemplateRuntimeMaterializer,
   type VerifiedAssetCandidateV1,
 } from "./contracts.js";
+import { assertPreparedTemplateProjectUndo } from "./project.js";
 
 async function digest(value: unknown): Promise<string> {
   return sha256Hex(new TextEncoder().encode(canonicalCapabilityJson(value)));
@@ -63,6 +64,8 @@ export class InMemoryTemplateProjectRepository
   implements TemplateProjectRepository
 {
   readonly #projects = new Map<string, TemplateProjectGenerationV1[]>();
+  readonly #privateIntake = new Map<string, Readonly<Record<string, unknown>>>();
+  readonly #previews = new Map<string, TemplateProjectPreviewArtifactV1>();
 
   async read(projectId: string): Promise<TemplateProjectGenerationV1> {
     const history = this.#projects.get(projectId);
@@ -92,6 +95,10 @@ export class InMemoryTemplateProjectRepository
       ...(input.snapshotDigest === undefined
         ? {}
         : { snapshotDigest: input.snapshotDigest }),
+      ...(input.project === undefined ? {} : { project: input.project }),
+      ...(input.privateIntake === undefined
+        ? {}
+        : { privateIntakeDigest: await digest(input.privateIntake) }),
     };
     const generation: TemplateProjectGenerationV1 = {
       schema: TEMPLATE_PROJECT_GENERATION_SCHEMA_V1,
@@ -100,6 +107,22 @@ export class InMemoryTemplateProjectRepository
     };
     history.push(immutable(generation));
     this.#projects.set(input.projectId, history);
+    if (input.privateIntake !== undefined) {
+      this.#privateIntake.set(
+        `${input.projectId}:${generation.generation}`,
+        immutable(input.privateIntake)
+      );
+    } else if (current?.privateIntakeDigest) {
+      const inherited = this.#privateIntake.get(
+        `${input.projectId}:${current.generation}`
+      );
+      if (inherited) {
+        this.#privateIntake.set(
+          `${input.projectId}:${generation.generation}`,
+          inherited
+        );
+      }
+    }
     return immutable(generation);
   }
 
@@ -136,14 +159,124 @@ export class InMemoryTemplateProjectRepository
         `${input.projectId}@${input.targetGeneration}`
       );
     }
+    const restoredDecisions: TemplateDecisionStateV1 = immutable({
+      ...target.decisions,
+      preview: {},
+    });
+    let project;
+    if (current.project && target.project) {
+      if (!input.preparedProject) {
+        throw new Error("Stateful project undo requires a prepared authoring result");
+      }
+      await assertPreparedTemplateProjectUndo(
+        current.project,
+        target.decisions,
+        input.preparedProject
+      );
+      project = immutable(input.preparedProject);
+    }
+    const privateIntake = this.#privateIntake.get(
+      `${input.projectId}:${current.generation}`
+    );
     return this.commit({
       projectId: input.projectId,
       expectedGeneration: current.generation,
-      analysisDigest: target.analysisDigest,
-      decisions: target.decisions,
-      ...(target.snapshotDigest === undefined
+      analysisDigest: current.analysisDigest,
+      decisions: restoredDecisions,
+      ...((project?.snapshot.snapshotDigest ?? target.snapshotDigest) === undefined
         ? {}
-        : { snapshotDigest: target.snapshotDigest }),
+        : {
+            snapshotDigest:
+              project?.snapshot.snapshotDigest ?? target.snapshotDigest,
+          }),
+      ...(project === undefined ? {} : { project }),
+      ...(privateIntake === undefined ? {} : { privateIntake }),
+    });
+  }
+
+  async putPreview(
+    projectId: string,
+    artifact: TemplateProjectPreviewArtifactV1
+  ): Promise<void> {
+    const current = await this.read(projectId);
+    if (current.generation !== artifact.generation) {
+      throw new TemplateProjectGenerationConflictError(
+        projectId,
+        artifact.generation,
+        current.generation
+      );
+    }
+    if (
+      artifact.output.kind === "bytes"
+        ? artifact.output.bytes.byteLength !== artifact.byteLength ||
+          (await sha256Hex(artifact.output.bytes)) !== artifact.digest
+        : artifact.output.handle.sha256 !== artifact.digest ||
+          artifact.output.handle.byteLength !== artifact.byteLength
+    ) {
+      throw new Error("Template preview output does not match its metadata");
+    }
+    const verifiedCurrent = await this.read(projectId);
+    if (verifiedCurrent.generation !== artifact.generation) {
+      throw new TemplateProjectGenerationConflictError(
+        projectId,
+        artifact.generation,
+        verifiedCurrent.generation
+      );
+    }
+    const key = `${projectId}:${artifact.generation}:${artifact.purpose}`;
+    const output =
+      artifact.output.kind === "bytes"
+        ? { kind: "bytes" as const, bytes: new Uint8Array(artifact.output.bytes) }
+        : immutable(artifact.output);
+    const copy = Object.freeze({
+      ...immutable({
+        generation: artifact.generation,
+        purpose: artifact.purpose,
+        snapshotDigest: artifact.snapshotDigest,
+        digest: artifact.digest,
+        mediaType: artifact.mediaType,
+        byteLength: artifact.byteLength,
+        pageCount: artifact.pageCount,
+        regions: artifact.regions,
+      }),
+      output,
+    });
+    const existing = this.#previews.get(key);
+    if (
+      existing &&
+      (existing.digest !== copy.digest ||
+        existing.byteLength !== copy.byteLength)
+    ) {
+      throw new Error("Template preview already exists with different bytes");
+    }
+    this.#previews.set(key, copy);
+  }
+
+  async getPreview(
+    projectId: string,
+    generation: string,
+    purpose: TemplatePreviewRequestV1["purpose"]
+  ): Promise<TemplateProjectPreviewArtifactV1 | undefined> {
+    const artifact = this.#previews.get(`${projectId}:${generation}:${purpose}`);
+    if (!artifact) return undefined;
+    return Object.freeze({
+      ...immutable({
+        generation: artifact.generation,
+        purpose: artifact.purpose,
+        snapshotDigest: artifact.snapshotDigest,
+        digest: artifact.digest,
+        mediaType: artifact.mediaType,
+        byteLength: artifact.byteLength,
+        pageCount: artifact.pageCount,
+        regions: artifact.regions,
+      }),
+      output:
+        artifact.output.kind === "bytes"
+          ? {
+              kind: "bytes" as const,
+              bytes: new Uint8Array(artifact.output.bytes),
+            }
+          : immutable(artifact.output),
     });
   }
 }
@@ -197,33 +330,26 @@ export class InMemoryTemplatePreviewCompiler
     input: TemplatePreviewRequestV1
   ): Promise<TemplatePreviewResultV1> {
     const canonical = new TextEncoder().encode(canonicalCapabilityJson(input));
+    const regions: TemplatePreviewResultV1["regions"] =
+      input.purpose === "asset-contact-sheet"
+        ? [{ page: 1, region: "asset-grid" }]
+        : input.purpose === "design-review"
+          ? [
+              { page: 1, region: "summary" },
+              { page: 1, region: "baseline" },
+              { page: 1, region: "current" },
+            ]
+          : [{ page: 1, region: "feature-zoo" }];
     const result: TemplatePreviewResultV1 = {
       digest: await sha256Hex(canonical),
       mediaType: "application/pdf",
       byteLength: canonical.byteLength,
       pageCount: 1,
-      regions: [
-        {
-          page: 1,
-          region:
-            input.purpose === "asset-contact-sheet"
-              ? "asset-grid"
-              : input.purpose === "design-review"
-                ? "summary"
-                : "feature-zoo",
-        },
-      ],
+      regions,
       output: { kind: "bytes", bytes: new Uint8Array(canonical) },
     };
     Object.freeze(result.regions);
     Object.freeze(result.output);
     return Object.freeze(result);
   }
-}
-
-export async function buildTemplateProject(
-  snapshot: AuthoringResolutionSnapshotV1,
-  materializer: TemplateRuntimeMaterializer
-): Promise<Readonly<Record<string, unknown>>> {
-  return immutable(await materializer.materialize(snapshot));
 }

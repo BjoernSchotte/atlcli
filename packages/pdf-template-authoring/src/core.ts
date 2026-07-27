@@ -20,6 +20,7 @@ import {
   TEMPLATE_IMPORT_VIEW_SCHEMA_V1,
   TEMPLATE_IMPORT_PROGRESS_SCHEMA_V1,
   type AcceptedCandidateDecisionV1,
+  type AcceptedAssetDecisionV1,
   type AuthoringResolutionSnapshotV1,
   type AuthoringTraceEntryV1,
   type BaselineTombstoneDecisionV1,
@@ -599,6 +600,7 @@ export function reduceTemplateDecision(
     case "accept-asset": {
       if (
         command.candidate.kind !== "asset" ||
+        !command.useConfirmed ||
         !command.rightsConfirmed ||
         !command.role ||
         !FINGERPRINT_RE.test(command.assetSha256)
@@ -647,8 +649,14 @@ export function reduceTemplateDecision(
           kind: "accept-asset" as const,
           semanticKey: command.candidate.semanticKey,
           candidateFingerprint: command.candidate.candidateFingerprint,
+          sourceFingerprint: command.candidate.sourceFingerprint,
+          sourceDigest: context.sourceDigest,
+          catalogDigest: context.catalogDigest,
+          importerVersion: context.importerVersion,
+          mappingVersion: context.mappingVersion,
           assetSha256: command.assetSha256,
           role: command.role,
+          useConfirmed: true as const,
           rightsConfirmed: true as const,
           accessibility: canonicalClone(command.accessibility),
           rendering: canonicalClone(command.rendering),
@@ -1145,8 +1153,11 @@ export function reconcileTemplateDecisions(
 } {
   const staleness = state.decisions
     .filter(
-      (decision): decision is AcceptedCandidateDecisionV1 =>
-        decision.kind === "accept-candidate"
+      (
+        decision
+      ): decision is AcceptedCandidateDecisionV1 | AcceptedAssetDecisionV1 =>
+        decision.kind === "accept-candidate" ||
+        decision.kind === "accept-asset"
     )
     .map((decision): TemplateDecisionStalenessEntryV1 => {
       if (decision.catalogDigest !== input.catalogDigest) {
@@ -1172,14 +1183,16 @@ export function reconcileTemplateDecisions(
       }
       if (
         decision.sourceDigest !== input.sourceDigest &&
-        sameSemantic.writes.length === decision.frozenWrites.length &&
-        sameSemantic.writes.every((write) =>
-          decision.frozenWrites.some(
-            (frozen) =>
-              frozen.target === write.target &&
-              valuesEqual(frozen.value, write.value)
-          )
-        )
+        (decision.kind === "accept-asset"
+          ? sameFingerprint !== undefined
+          : sameSemantic.writes.length === decision.frozenWrites.length &&
+            sameSemantic.writes.every((write) =>
+              decision.frozenWrites.some(
+                (frozen) =>
+                  frozen.target === write.target &&
+                  valuesEqual(frozen.value, write.value)
+              )
+            ))
       ) {
         return {
           decisionId: decision.id,
@@ -1871,6 +1884,7 @@ export async function reduceTemplateImportAction(
           candidate,
           assetSha256: actionValue.assetSha256,
           role: actionValue.role,
+          useConfirmed: actionValue.useConfirmed,
           rightsConfirmed: actionValue.rightsConfirmed,
           accessibility: actionValue.accessibility,
           rendering: actionValue.rendering,

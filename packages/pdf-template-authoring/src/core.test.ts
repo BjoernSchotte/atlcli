@@ -724,6 +724,7 @@ describe("asset decisions", () => {
       candidate: asset,
       assetSha256: HASH_B,
       role: "asset.logo",
+      useConfirmed: true,
       rightsConfirmed: true,
       accessibility: { decorative: false, alt: "Company logo" },
       rendering: { kind: "slot-default" as const },
@@ -738,6 +739,7 @@ describe("asset decisions", () => {
     });
     for (const invalid of [
       { ...command, role: "" },
+      { ...command, useConfirmed: false },
       { ...command, rightsConfirmed: false },
       {
         ...command,
@@ -1202,6 +1204,7 @@ describe("host-neutral journey projection and actions", () => {
         candidateId: asset.id,
         assetSha256: HASH_B,
         role: "asset.logo",
+        useConfirmed: true,
         rightsConfirmed: true,
         accessibility: { decorative: true },
         rendering: { kind: "slot-default" },

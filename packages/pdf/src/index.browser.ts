@@ -81,6 +81,9 @@ export type { TemplateAssetCapabilitiesV1 } from "@atlcli/template-pack";
 // --- PDF template-pack visual validation/loading ---
 export {
   PDF_TEMPLATE_ASSET_SLOTS_V1,
+  PDF_CANONICAL_SOURCE_API_V1,
+  PDF_CANONICAL_SOURCE_REVISION,
+  PDF_SUPPORTED_CANONICAL_SOURCE_REVISIONS,
   PDF_TEMPLATE_DECORATION_IDS_V1,
   PDF_TEMPLATE_WRITERS_V1,
   PdfTemplateValidationError,

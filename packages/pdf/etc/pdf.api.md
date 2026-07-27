@@ -315,6 +315,12 @@ export interface ParsedFontFace {
 // export: parseFontMeta
 export declare function parseFontMeta(bytes: Uint8Array): ParsedFontFace[];
 
+// export: PDF_CANONICAL_SOURCE_API_V1
+export declare const PDF_CANONICAL_SOURCE_API_V1 = "wiki.pdf-canonical-typst";
+
+// export: PDF_CANONICAL_SOURCE_REVISION
+export declare const PDF_CANONICAL_SOURCE_REVISION = "2";
+
 // export: PDF_RUNTIME_ASSETS
 export declare const PDF_RUNTIME_ASSETS: Readonly<{
     fonts: readonly PdfRuntimeFontAsset[];
@@ -325,6 +331,12 @@ export declare const PDF_RUNTIME_ASSETS: Readonly<{
         fileName: "LICENSE";
     }>;
 }>;
+
+// export: PDF_SUPPORTED_CANONICAL_SOURCE_REVISIONS
+export declare const PDF_SUPPORTED_CANONICAL_SOURCE_REVISIONS: readonly [
+    "1",
+    "2"
+];
 
 // export: PDF_TEMPLATE_ASSET_CAPABILITIES_V1
 export declare const PDF_TEMPLATE_ASSET_CAPABILITIES_V1: TemplateAssetCapabilitiesV1;
@@ -632,7 +644,7 @@ export declare class PdfTemplateValidationError extends Error {
 export type PdfTemplateValidationPhase = "pdf-manifest" | "pack-integrity";
 
 // export: PdfTemplateValidationReason
-export type PdfTemplateValidationReason = "unknown-slot" | "unknown-decoration" | "unknown-writer" | "invalid-scope" | "invalid-geometry" | "unsupported-decoration" | "unsupported-section-scope" | "missing-payload" | "unreferenced-payload" | "hash-mismatch" | "media-mismatch" | "descriptor-mismatch" | "asset-budget-exceeded" | "unsafe-svg" | "vfs-collision" | "payload-digest-mismatch" | "non-bundled-font" | "canonical-source-mismatch";
+export type PdfTemplateValidationReason = "unknown-slot" | "unknown-decoration" | "unknown-writer" | "invalid-scope" | "invalid-geometry" | "unsupported-decoration" | "unsupported-section-scope" | "missing-payload" | "unreferenced-payload" | "hash-mismatch" | "media-mismatch" | "descriptor-mismatch" | "asset-budget-exceeded" | "unsafe-svg" | "vfs-collision" | "payload-digest-mismatch" | "non-bundled-font" | "unsupported-canonical-revision" | "canonical-source-mismatch";
 
 // export: PdfTemplateVisualsV1
 export interface PdfTemplateVisualsV1 {
@@ -1344,6 +1356,12 @@ export interface ParsedFontFace {
 // export: parseFontMeta
 export declare function parseFontMeta(bytes: Uint8Array): ParsedFontFace[];
 
+// export: PDF_CANONICAL_SOURCE_API_V1
+export declare const PDF_CANONICAL_SOURCE_API_V1 = "wiki.pdf-canonical-typst";
+
+// export: PDF_CANONICAL_SOURCE_REVISION
+export declare const PDF_CANONICAL_SOURCE_REVISION = "2";
+
 // export: PDF_RUNTIME_ASSETS
 export declare const PDF_RUNTIME_ASSETS: Readonly<{
     fonts: readonly PdfRuntimeFontAsset[];
@@ -1354,6 +1372,12 @@ export declare const PDF_RUNTIME_ASSETS: Readonly<{
         fileName: "LICENSE";
     }>;
 }>;
+
+// export: PDF_SUPPORTED_CANONICAL_SOURCE_REVISIONS
+export declare const PDF_SUPPORTED_CANONICAL_SOURCE_REVISIONS: readonly [
+    "1",
+    "2"
+];
 
 // export: PDF_TEMPLATE_ASSET_CAPABILITIES_V1
 export declare const PDF_TEMPLATE_ASSET_CAPABILITIES_V1: TemplateAssetCapabilitiesV1;
@@ -1661,7 +1685,7 @@ export declare class PdfTemplateValidationError extends Error {
 export type PdfTemplateValidationPhase = "pdf-manifest" | "pack-integrity";
 
 // export: PdfTemplateValidationReason
-export type PdfTemplateValidationReason = "unknown-slot" | "unknown-decoration" | "unknown-writer" | "invalid-scope" | "invalid-geometry" | "unsupported-decoration" | "unsupported-section-scope" | "missing-payload" | "unreferenced-payload" | "hash-mismatch" | "media-mismatch" | "descriptor-mismatch" | "asset-budget-exceeded" | "unsafe-svg" | "vfs-collision" | "payload-digest-mismatch" | "non-bundled-font" | "canonical-source-mismatch";
+export type PdfTemplateValidationReason = "unknown-slot" | "unknown-decoration" | "unknown-writer" | "invalid-scope" | "invalid-geometry" | "unsupported-decoration" | "unsupported-section-scope" | "missing-payload" | "unreferenced-payload" | "hash-mismatch" | "media-mismatch" | "descriptor-mismatch" | "asset-budget-exceeded" | "unsafe-svg" | "vfs-collision" | "payload-digest-mismatch" | "non-bundled-font" | "unsupported-canonical-revision" | "canonical-source-mismatch";
 
 // export: PdfTemplateVisualsV1
 export interface PdfTemplateVisualsV1 {
@@ -2373,6 +2397,12 @@ export interface ParsedFontFace {
 // export: parseFontMeta
 export declare function parseFontMeta(bytes: Uint8Array): ParsedFontFace[];
 
+// export: PDF_CANONICAL_SOURCE_API_V1
+export declare const PDF_CANONICAL_SOURCE_API_V1 = "wiki.pdf-canonical-typst";
+
+// export: PDF_CANONICAL_SOURCE_REVISION
+export declare const PDF_CANONICAL_SOURCE_REVISION = "2";
+
 // export: PDF_RUNTIME_ASSETS
 export declare const PDF_RUNTIME_ASSETS: Readonly<{
     fonts: readonly PdfRuntimeFontAsset[];
@@ -2383,6 +2413,12 @@ export declare const PDF_RUNTIME_ASSETS: Readonly<{
         fileName: "LICENSE";
     }>;
 }>;
+
+// export: PDF_SUPPORTED_CANONICAL_SOURCE_REVISIONS
+export declare const PDF_SUPPORTED_CANONICAL_SOURCE_REVISIONS: readonly [
+    "1",
+    "2"
+];
 
 // export: PDF_TEMPLATE_ASSET_CAPABILITIES_V1
 export declare const PDF_TEMPLATE_ASSET_CAPABILITIES_V1: TemplateAssetCapabilitiesV1;
@@ -2690,7 +2726,7 @@ export declare class PdfTemplateValidationError extends Error {
 export type PdfTemplateValidationPhase = "pdf-manifest" | "pack-integrity";
 
 // export: PdfTemplateValidationReason
-export type PdfTemplateValidationReason = "unknown-slot" | "unknown-decoration" | "unknown-writer" | "invalid-scope" | "invalid-geometry" | "unsupported-decoration" | "unsupported-section-scope" | "missing-payload" | "unreferenced-payload" | "hash-mismatch" | "media-mismatch" | "descriptor-mismatch" | "asset-budget-exceeded" | "unsafe-svg" | "vfs-collision" | "payload-digest-mismatch" | "non-bundled-font" | "canonical-source-mismatch";
+export type PdfTemplateValidationReason = "unknown-slot" | "unknown-decoration" | "unknown-writer" | "invalid-scope" | "invalid-geometry" | "unsupported-decoration" | "unsupported-section-scope" | "missing-payload" | "unreferenced-payload" | "hash-mismatch" | "media-mismatch" | "descriptor-mismatch" | "asset-budget-exceeded" | "unsafe-svg" | "vfs-collision" | "payload-digest-mismatch" | "non-bundled-font" | "unsupported-canonical-revision" | "canonical-source-mismatch";
 
 // export: PdfTemplateVisualsV1
 export interface PdfTemplateVisualsV1 {
@@ -3191,6 +3227,12 @@ export declare function materializeLegacyPdfDesign(sparseDesign: WikiPdfTemplate
 // export: PDF_ASSET_CONCURRENCY
 export declare const PDF_ASSET_CONCURRENCY = 4;
 
+// export: PDF_CANONICAL_SOURCE_API_V1
+export declare const PDF_CANONICAL_SOURCE_API_V1 = "wiki.pdf-canonical-typst";
+
+// export: PDF_CANONICAL_SOURCE_REVISION
+export declare const PDF_CANONICAL_SOURCE_REVISION = "2";
+
 // export: PDF_MAX_ASSET_BYTES
 export declare const PDF_MAX_ASSET_BYTES: number;
 
@@ -3199,6 +3241,12 @@ export declare const PDF_MAX_TOTAL_ASSET_BYTES: number;
 
 // export: PDF_SCAN_CHUNK_BYTES
 export declare const PDF_SCAN_CHUNK_BYTES: number;
+
+// export: PDF_SUPPORTED_CANONICAL_SOURCE_REVISIONS
+export declare const PDF_SUPPORTED_CANONICAL_SOURCE_REVISIONS: readonly [
+    "1",
+    "2"
+];
 
 // export: PDF_TEMPLATE_ASSET_SLOTS_V1
 export declare const PDF_TEMPLATE_ASSET_SLOTS_V1: readonly [
@@ -3302,7 +3350,7 @@ export declare class PdfTemplateValidationError extends Error {
 export type PdfTemplateValidationPhase = "pdf-manifest" | "pack-integrity";
 
 // export: PdfTemplateValidationReason
-export type PdfTemplateValidationReason = "unknown-slot" | "unknown-decoration" | "unknown-writer" | "invalid-scope" | "invalid-geometry" | "unsupported-decoration" | "unsupported-section-scope" | "missing-payload" | "unreferenced-payload" | "hash-mismatch" | "media-mismatch" | "descriptor-mismatch" | "asset-budget-exceeded" | "unsafe-svg" | "vfs-collision" | "payload-digest-mismatch" | "non-bundled-font" | "canonical-source-mismatch";
+export type PdfTemplateValidationReason = "unknown-slot" | "unknown-decoration" | "unknown-writer" | "invalid-scope" | "invalid-geometry" | "unsupported-decoration" | "unsupported-section-scope" | "missing-payload" | "unreferenced-payload" | "hash-mismatch" | "media-mismatch" | "descriptor-mismatch" | "asset-budget-exceeded" | "unsafe-svg" | "vfs-collision" | "payload-digest-mismatch" | "non-bundled-font" | "unsupported-canonical-revision" | "canonical-source-mismatch";
 
 // export: PdfTemplateVisualsV1
 export interface PdfTemplateVisualsV1 {

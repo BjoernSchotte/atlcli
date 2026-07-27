@@ -6,6 +6,7 @@ import {
 } from "@atlcli/template-pack";
 import {
   PDF_TEMPLATE_WRITERS_V1,
+  PDF_CANONICAL_SOURCE_REVISION,
   PdfTemplateValidationError,
   buildUniformPdfPageBorderV1,
   loadPdfTemplatePack,
@@ -216,6 +217,23 @@ describe("PDF template manifest phase", () => {
     await expectPdfReason(
       () => validatePdfTemplateManifest(crop),
       "unsupported-decoration"
+    );
+  });
+
+  it("keeps the prior canonical revision readable and gives future revisions a migration diagnostic", async () => {
+    expect(PDF_CANONICAL_SOURCE_REVISION).toBe("2");
+    const prior = await manifestWith({}, { canonical: true });
+    prior.manifest.canonicalSource!.revision = "1";
+    expect(validatePdfTemplateManifest(prior.manifest)).toBe(prior.manifest);
+
+    const future = structuredClone(prior.manifest);
+    future.canonicalSource!.revision = "3";
+    await expectPdfReason(
+      () => validatePdfTemplateManifest(future),
+      "unsupported-canonical-revision"
+    );
+    expect(() => validatePdfTemplateManifest(future)).toThrow(
+      /explicit template migration/
     );
   });
 

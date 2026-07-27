@@ -749,3 +749,122 @@ Node/browser compiler parity.
 This evidence proves T6 only. It does not claim project persistence,
 deterministic authoring-pack builds, CLI review flows, or later import and
 inspection commands from T7 onward.
+
+## T7 — Project ports, CLI repository, previews, and deterministic packs
+
+**Status:** Proven on 2026-07-27.
+
+### Pure build and minimal pack boundary
+
+`@atlcli/pdf-template-authoring` now owns the side-effect-free
+`buildTemplateProject()` orchestration. The caller injects the active
+catalog/baseline pins, verified asset store, preview artifacts, and
+`TemplateRuntimeMaterializer`; the package still has no dependency on
+`@atlcli/pdf`, a filesystem, or a terminal. The build binds the resolved
+snapshot to the current analysis, decisions, catalog, and baseline before
+materialization.
+
+Analysis, authoring snapshot, runtime snapshot, and manifest use canonical
+JSON. Runtime output is checked against the exact resolved design and accepted
+asset set. Every manifest asset is then checked against its concrete payload
+digest and length. Two logically equal projects with different object and file
+insertion order produced identical JSON, canonical Typst, and pack bytes.
+
+The pack inventory is fail-closed: `wiki-pdf-template.json`, `atlcli.typ`, and
+accepted asset paths are the only members. Rejected and undecided private
+assets were present in the injected store but absent from both manifest and
+archive. A golden over the unpacked manifest and payload rejected
+`decisionDigest`, `sourceDigest`, baseline, candidate, decision, and trace
+fields.
+
+`buildGeneratedPdfTemplatePack()` validates the canonical entry source,
+round-trips the container byte-identically, and then compiles that exact pack
+with an injected compiler. The CLI compiler loads the pinned Typst-WASM and
+font set, renders a neutral heading/paragraph/table feature zoo, and requires a
+tagged PDF with an outline. The real compile proof passed. A changed
+`atlcli.typ` and an intentionally failing compiler both prevented pack output.
+
+### Immutable persistence and current-intent undo
+
+The CLI directory repository initializes through an adjacent staging
+directory and refuses every existing target. Existing projects append
+hash-addressed immutable `state/<generation>` directories before atomically
+swapping the current marker. Private intake data is a separately
+digest-verified sidecar. Accepted asset bytes remain content-addressed below
+`.intake`; only confirmed build assets can be copied to `assets/<slot>/...`,
+and existing or foreign bytes are never replaced or deleted.
+
+Every repository commit and preview mutation uses an atomic exclusive lock and
+rereads the base generation under that lock. Same-base concurrent writers and
+conflicting preview writers produced exactly one winner. Crash injection
+before the pointer swap left the old generation active; injection after the
+swap exposed only the fully verified new generation. Active, expired, reused
+PID, and changed-base lock cases preserved the pointer and foreign files.
+Root, state, lock, intake-asset, accepted-asset, and tampered-marker cases all
+failed closed on symlinks or corrupt identity.
+
+The directory and browser-safe in-memory implementations passed the same
+repository contract imported from the authoring package test support, with no
+CLI dependency. Read, optimistic conflict, history, exact-generation preview,
+and append-only undo semantics agree. Stateful undo is prepared by the pure
+authoring core: it restores only prior decisions, re-resolves the snapshot
+against current analysis/source/catalog/baseline, retains current accepted
+asset handles and private intake, clears preview/build markers, and commits a
+new generation without deleting history.
+
+### Readiness, previews, and canonical-source compatibility
+
+Build refuses unanswered review items, unacknowledged inventory, blockers,
+stale decisions, missing previews, wrong-generation previews, bad preview
+digests, and preview artifacts missing their required semantic regions.
+Failures carry typed recovery actions. Reanalysis preserves frozen authoring
+intent and accepted asset handles, replaces derived/private analysis data,
+reconciles all accepted candidate and asset decisions, and invalidates
+previews.
+
+Preview orchestration requests design review and compatibility proof for every
+generation plus a contact sheet only when visual candidates exist. The
+design-review contract requires summary, baseline, and current regions; the
+compatibility proof requires the feature-zoo region; the contact sheet
+requires only the asset-grid region. Digests, lengths, output handles/bytes,
+page counts, generation, and snapshot identity are verified before build. The
+real T6 Typst preview adapter additionally proves valid PDFs, exact summary
+counts, visible baseline/current samples, asset-only contact sheets, and
+Node/browser byte parity.
+
+The PDF canonical-source contract is now explicit and exported:
+`wiki.pdf-canonical-typst` revision `2`. Revision `1` remains supported, while
+unknown future revisions receive `unsupported-canonical-revision` with an
+explicit migration diagnostic. The CLI materializer uses only
+`createAtlcliTypstTemplate()` with fallback locale labels; document locale
+continues to enter at render time rather than becoming pack source.
+
+The generated API/closure reports expose 124 experimental authoring symbols
+and 105 stable PDF symbols with zero reachable-but-unexported gaps.
+
+### Commands and results
+
+| Proof | Exact command | Result |
+|---|---|---|
+| Normative T7 suite | `bun run test packages/pdf-template-authoring/src/project.test.ts packages/template-pack/src/pack.test.ts apps/cli/src/commands/pdf-template-project-writer.test.ts` | Passed; 36 tests, 148 assertions, 0 failures |
+| Extended authoring/pack/preview proof | `bun run test packages/pdf-template-authoring/src/project.test.ts packages/template-pack/src/pack.test.ts apps/cli/src/commands/pdf-template-project-writer.test.ts packages/pdf-template-authoring/src/core.test.ts packages/pdf/src/template-pack.test.ts packages/pdf-compiler-browser/src/docx-template-assets.test.ts scripts/api-report.test.ts` | Passed; 82 tests, 429 assertions, 0 failures |
+| Browser portability | `bun run check:browser` | Passed; all 23 browser entry points built without Node/Bun builtins |
+| API report and closure guard | `bun run test scripts/api-report.test.ts` | Passed within the extended suite; 5 tests, zero closure gaps |
+| Repository type safety | `bun run typecheck` | Passed for the root, extension, browser compiler, and browser export harness |
+| Full monorepo build | `bun run build` | Passed; 19 tasks |
+| Full repository suite | `bun run test` | Passed outside the network sandbox; 5,664 tests passed, 12 environment-gated tests skipped, 0 failures |
+| Diff hygiene | `git diff --check` | Passed |
+
+The first full-suite attempt ran inside the network-restricted sandbox. Its 48
+failures were existing loopback-server tests that could not bind; the same
+suite outside that sandbox passed without code changes.
+
+The live Confluence E2E is not applicable to T7: this task adds project
+persistence and real local pack compilation, but no user-callable CLI command,
+Confluence API operation, or remote mutation. All fixtures are neutral and
+synthetic. No source filename, document text, customer identity, raw OOXML, or
+private DOCX bytes are present in tests, project-portable state, packs, commit
+content, or this evidence.
+
+This evidence proves T7 only. It does not claim the human/expert CLI commands,
+resume scripts, help/completion surface, or browser journey from T8 onward.

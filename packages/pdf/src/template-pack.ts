@@ -50,6 +50,10 @@ export const PDF_TEMPLATE_WRITERS_V1 = {
   pageBorder: "typst.page-border",
 } as const;
 
+export const PDF_CANONICAL_SOURCE_API_V1 = "wiki.pdf-canonical-typst";
+export const PDF_CANONICAL_SOURCE_REVISION = "2";
+export const PDF_SUPPORTED_CANONICAL_SOURCE_REVISIONS = ["1", "2"] as const;
+
 export type PdfTemplateValidationPhase =
   | "pdf-manifest"
   | "pack-integrity";
@@ -72,6 +76,7 @@ export type PdfTemplateValidationReason =
   | "vfs-collision"
   | "payload-digest-mismatch"
   | "non-bundled-font"
+  | "unsupported-canonical-revision"
   | "canonical-source-mismatch";
 
 export class PdfTemplateValidationError extends Error {
@@ -129,7 +134,9 @@ const UNITS_IN_MM: Readonly<Record<string, number>> = {
 const MAX_PLACEMENT_MM = 1_000;
 const MAX_BORDER_INSET_MM = 100;
 const MAX_BORDER_WIDTH_MM = 10;
-const CANONICAL_SOURCE_API = "wiki.pdf-canonical-typst";
+const SUPPORTED_CANONICAL_REVISIONS = new Set<string>(
+  PDF_SUPPORTED_CANONICAL_SOURCE_REVISIONS
+);
 
 function reject(
   phase: PdfTemplateValidationPhase,
@@ -292,13 +299,24 @@ export function validatePdfTemplateManifest(
   }
   if (
     manifest.canonicalSource !== undefined &&
-    manifest.canonicalSource.api !== CANONICAL_SOURCE_API
+    manifest.canonicalSource.api !== PDF_CANONICAL_SOURCE_API_V1
   ) {
     reject(
       "pdf-manifest",
       "canonical-source-mismatch",
       "canonicalSource.api",
-      `must be "${CANONICAL_SOURCE_API}"`
+      `must be "${PDF_CANONICAL_SOURCE_API_V1}"`
+    );
+  }
+  if (
+    manifest.canonicalSource !== undefined &&
+    !SUPPORTED_CANONICAL_REVISIONS.has(manifest.canonicalSource.revision)
+  ) {
+    reject(
+      "pdf-manifest",
+      "unsupported-canonical-revision",
+      "canonicalSource.revision",
+      `revision "${manifest.canonicalSource.revision}" needs an explicit template migration; supported revisions: ${PDF_SUPPORTED_CANONICAL_SOURCE_REVISIONS.join(", ")}`
     );
   }
 
