@@ -43,10 +43,13 @@ the parse, and the resolver entirely. Quote the end-to-end tier for that claim, 
 that the network is excluded.
 :::
 
-The full 500-page Chromium-hosted variant (browser heap and module-worker transfer cost) is
-**out of scope** for both tiers today. A focused browser-harness trace does cover code
-highlighting module requests and cold/warm initialization; do not present that narrower
-measurement as the full export envelope.
+Chromium-hosted memory is covered by its own instrument since issue #118
+Phase 0: the [host-versus-WASM attribution harness](#browser-host-versus-wasm-attribution)
+measures the real extension byte path (store → worker → VFS → compile) on
+the mixed fixture and the ≥100 MiB image-heavy corpus, and
+`bench:runtime-lane` compares Typst runtime candidates on the same corpora.
+The focused code-highlighting trace below remains its own narrower
+measurement; do not present any single lane as the full export envelope.
 
 ## How the numbers are measured
 

@@ -35,6 +35,8 @@ if (!existsSync(join(CORPUS_DIR, "manifest.json"))) {
 
 const repeat = Number(argValue("--repeat") ?? "3");
 const only = argValue("--candidate");
+const corpus = argValue("--corpus") ?? "image-heavy";
+const corpusArg = corpus === "text-heavy" ? "text-heavy" : CORPUS_DIR;
 
 const results: Array<Record<string, unknown>> = [];
 for (const candidate of CANDIDATES) {
@@ -46,7 +48,7 @@ for (const candidate of CANDIDATES) {
   for (let run = 0; run < repeat; run += 1) {
     const measured = runMeasured(
       "bun",
-      ["--conditions=development", join(ROOT, "scripts/bench/runtime-lane-child.ts"), candidate, CORPUS_DIR],
+      ["--conditions=development", join(ROOT, "scripts/bench/runtime-lane-child.ts"), candidate, corpusArg],
       { cwd: ROOT, timeoutMs: 1_800_000 },
     );
     if (measured.exitCode !== 0) {
@@ -69,7 +71,8 @@ for (const candidate of CANDIDATES) {
     wasmHighWaterMiB: median(wasmHighWater),
     compileMsMedian: Math.round(median(compileMs)),
     pdfBytes: marker?.pdfBytes,
-    corpusManifestSha256: marker?.corpusManifestSha256,
+    corpus: marker?.corpus,
+    corpusIdentity: marker?.corpusIdentity,
   });
 }
 

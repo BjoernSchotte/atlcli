@@ -1215,3 +1215,4 @@ export const CONTENT_COMPAT_DETAILS: ConfluencePageDetails = {
   url: "https://example.invalid/wiki/spaces/TEST/pages/content-compat-page",
   storage: CONTENT_COMPAT_STORAGE,
 };
+export * from "./mixed-export-corpus.js";

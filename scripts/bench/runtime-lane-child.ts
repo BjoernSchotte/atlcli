@@ -13,17 +13,22 @@
 import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { composeChapters } from "@atlcli/confluence";
 import type { ExportBlock } from "@atlcli/confluence/browser";
-import { PDF_RUNTIME_ASSETS, preparePdfDocument } from "@atlcli/pdf/browser";
+import {
+  findLargeExportAsset,
+  generateLargeExportCorpus,
+} from "@atlcli/export-fixtures";
+import { PDF_RUNTIME_ASSETS, preparePdfDocument, type PdfAssetResolver } from "@atlcli/pdf/browser";
 import { serializePdfDocument } from "@atlcli/pdf/internal";
 import { BrowserPdfCompiler } from "@atlcli/pdf-compiler-browser";
 
 const ROOT = resolve(fileURLToPath(new URL("../..", import.meta.url)));
 
 const candidate = process.argv[2];
-const corpusDir = process.argv[3];
-if ((candidate !== "baseline" && candidate !== "rc8") || !corpusDir) {
-  throw new Error("Usage: runtime-lane-child.ts <baseline|rc8> <corpusDir>");
+const corpusArg = process.argv[3];
+if ((candidate !== "baseline" && candidate !== "rc8") || !corpusArg) {
+  throw new Error("Usage: runtime-lane-child.ts <baseline|rc8> <corpusDir|text-heavy>");
 }
 
 // Benchmark-only budget seam (the ≥100 MiB corpus exceeds product caps by
@@ -44,29 +49,61 @@ interface CorpusManifest {
   manifestSha256: string;
   manifest: Array<{ filename: string; mediaType: string }>;
 }
-const manifest = JSON.parse(
-  readFileSync(join(corpusDir, "manifest.json"), "utf8"),
-) as CorpusManifest;
-const blocks = JSON.parse(readFileSync(join(corpusDir, "blocks.json"), "utf8")) as ExportBlock[];
-const assets = new Map<string, { bytes: Uint8Array; mediaType: string }>(
-  manifest.manifest.map((entry) => [
-    entry.filename,
-    { bytes: new Uint8Array(readFileSync(join(corpusDir, entry.filename))), mediaType: entry.mediaType },
-  ]),
-);
+
+let blocks: ExportBlock[];
+let resolver: PdfAssetResolver;
+let corpusLabel: string;
+let corpusIdentity: string;
+if (corpusArg === "text-heavy") {
+  // Text-heavy recipe (plan corpus table): the deterministic 500-page tree —
+  // headings, tables, code, links, outlines, only occasional tiny images —
+  // isolating layout/Typst high-water from raster decode pressure.
+  const corpus = generateLargeExportCorpus({ pages: 500 });
+  blocks = composeChapters(corpus.nodes).blocks;
+  resolver = {
+    async resolve(ref) {
+      if (ref.kind !== "attachment" || !ref.filename) {
+        throw new Error("text-heavy corpus resolves named attachments only");
+      }
+      const asset = findLargeExportAsset(corpus, {
+        kind: "attachment",
+        filename: ref.filename,
+        ...(ref.pageId ? { pageId: ref.pageId } : {}),
+      });
+      if (!asset) throw new Error(`Missing text-heavy asset ${ref.filename}`);
+      return { bytes: asset.bytes, mediaType: asset.mediaType, filename: asset.filename };
+    },
+  };
+  corpusLabel = "text-heavy-500";
+  corpusIdentity = `${corpus.schema}:${corpus.pages}:${corpus.seed}`;
+} else {
+  const manifest = JSON.parse(
+    readFileSync(join(corpusArg, "manifest.json"), "utf8"),
+  ) as CorpusManifest;
+  blocks = JSON.parse(readFileSync(join(corpusArg, "blocks.json"), "utf8")) as ExportBlock[];
+  const assets = new Map<string, { bytes: Uint8Array; mediaType: string }>(
+    manifest.manifest.map((entry) => [
+      entry.filename,
+      { bytes: new Uint8Array(readFileSync(join(corpusArg, entry.filename))), mediaType: entry.mediaType },
+    ]),
+  );
+  resolver = {
+    async resolve(ref) {
+      const asset = assets.get(ref.filename ?? "");
+      if (!asset) throw new Error(`Missing corpus asset ${ref.filename}`);
+      return { bytes: asset.bytes, mediaType: asset.mediaType, filename: ref.filename };
+    },
+  };
+  corpusLabel = `image-heavy@${manifest.scale}`;
+  corpusIdentity = manifest.manifestSha256;
+}
 
 const fonts = PDF_RUNTIME_ASSETS.fonts.map(
   (font) => new Uint8Array(readFileSync(join(ROOT, "packages/pdf/.fonts", font.fileName))),
 );
 
 const prepareStarted = performance.now();
-const prepared = await preparePdfDocument(blocks, {
-  async resolve(ref) {
-    const asset = assets.get(ref.filename ?? "");
-    if (!asset) throw new Error(`Missing corpus asset ${ref.filename}`);
-    return { bytes: asset.bytes, mediaType: asset.mediaType, filename: ref.filename };
-  },
-});
+const prepared = await preparePdfDocument(blocks, resolver);
 const bundle = serializePdfDocument(prepared, {
   metadata: {
     title: "Runtime lane corpus",
@@ -122,8 +159,8 @@ if (candidate === "baseline") {
 console.log(`ATLCLI_RUNTIME_LANE_CHILD ${JSON.stringify({
   candidate,
   compilerVersion,
-  corpusScale: manifest.scale,
-  corpusManifestSha256: manifest.manifestSha256,
+  corpus: corpusLabel,
+  corpusIdentity,
   bundleAssetBytes: bundle.assets.reduce((total, asset) => total + asset.bytes.byteLength, 0),
   pdfBytes,
   prepareMs: Math.round(prepareMs),

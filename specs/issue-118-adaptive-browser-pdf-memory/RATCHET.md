@@ -152,3 +152,47 @@ benefit"): **no forward-port and no adoption for memory reasons.** The lane
 stays as infrastructure; re-run it on the text-heavy corpus once that recipe
 lands (Phase 0 remainder), where Typst 0.15's layout-side work could show a
 different profile.
+
+## Phase 0 remainder — corpus recipes, text-heavy lane, tolerances
+
+- **Text-heavy recipe**: the deterministic 500-page `large-export-corpus`
+  (headings, tables, code, macros, occasional tiny images) is the plan's
+  text-heavy row; `bench:runtime-lane --corpus text-heavy` composes and runs
+  it through the identical pipeline.
+- **Mixed recipe**: `generateMixedExportCorpus` composes the two proven
+  extremes deterministically (50-page text tree interwoven with the
+  scale-0.35 image-heavy chapters — repeated logos, screenshots, diagrams,
+  wrapped inline media, JPEG photos), with a routing resolver and identity
+  string; unit-tested for determinism and full asset resolvability.
+- **Documentation scope fix**: `export-performance.md` no longer calls the
+  Chromium-hosted 500-page measurement out of scope — it points at the
+  attribution harness and runtime lanes that now cover it.
+
+### Runtime lane, text-heavy corpus (the 0.15 question, second half)
+
+| Candidate | peak RSS MiB (median of 3) | WASM high-water MiB | compile ms | PDF bytes |
+|---|---|---|---|---|
+| baseline 0.7.0 / 0.14.2 | 948.03 | 391.75 | 1358 | 5,176,657 |
+| rc8 0.8.0-rc3 / 0.15.0-rc.1 | 874.22 (872.36–884.63) | **336.69** | 1214 | 4,670,358 |
+
+**On the text-heavy corpus the RC shows a real, material benefit: −55.06 MiB
+WASM high-water (−14.1%), −73.81 MiB peak RSS (−7.8%), −10.6% compile time,
+and a ~10% smaller PDF** — the layout/Krilla-side improvement the plan
+predicted for structured documents, absent on image-heavy where decoded
+rasters dominate. Consequence per the plan's candidate ladder: the RC now
+QUALIFIES for the next evaluation stage (pinned reproducible forward-port to
+Typst 0.15.1 plus the adoption gates: CSP patch, vendor hashes, parity and
+conformance suites, pathological-layout fixture). Adoption itself remains a
+separate, gated decision — this lane only establishes that the evaluation is
+worth its cost.
+
+### Reproducibility tolerances observed across this ratchet's repeated runs
+
+- Chrome worker attribution (identical corpus + runtime): byte-identical
+  phase values across consecutive runs (0.00 MiB spread observed twice).
+- `/usr/bin/time` peak RSS lanes: spread ≤ 0.6% (runtime lane image-heavy
+  1861.92–1862.45), ≤ 1.4% (text-heavy 872.36–884.63), ≤ 0.7%
+  (copy-probe checkpoint-assets); fake-indexeddb lanes up to ±6% and are
+  marked inconclusive where the signal is smaller.
+- Compile wall time under concurrent load: up to ±10% — never used as a
+  ratchet gate on its own.
