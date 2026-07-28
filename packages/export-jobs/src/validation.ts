@@ -336,9 +336,32 @@ function validatePdfExportJobRequestV1(request: Record<string, unknown>): void {
   );
   if (request.renderer !== "pdf-typst") fail("request.renderer", "PDF requires pdf-typst");
   const template = record(request.template, "request.template");
-  onlyKeys(template, ["id", "manifestVersion"], "request.template");
-  text(template.id, "request.template.id", MAX_REF_LENGTH);
-  text(template.manifestVersion, "request.template.manifestVersion", MAX_REF_LENGTH);
+  if (template.kind === undefined) {
+    // Historical schema-v1 PDF records predate the explicit discriminant.
+    // They remain readable and are normalized by the public parser below.
+    onlyKeys(template, ["id", "manifestVersion"], "request.template");
+    text(template.id, "request.template.id", MAX_REF_LENGTH);
+    text(template.manifestVersion, "request.template.manifestVersion", MAX_REF_LENGTH);
+  } else if (template.kind === "builtin") {
+    onlyKeys(template, ["kind", "id", "manifestVersion"], "request.template");
+    text(template.id, "request.template.id", MAX_REF_LENGTH);
+    text(template.manifestVersion, "request.template.manifestVersion", MAX_REF_LENGTH);
+  } else if (template.kind === "pack") {
+    onlyKeys(template, ["kind", "archiveSha256", "recordKey"], "request.template");
+    sha256(template.archiveSha256, "request.template.archiveSha256");
+    text(template.recordKey, "request.template.recordKey", MAX_REF_LENGTH);
+    if (
+      template.recordKey !==
+      `template-pack:sha256:${template.archiveSha256}`
+    ) {
+      fail(
+        "request.template.recordKey",
+        "must be the content-addressed key for archiveSha256"
+      );
+    }
+  } else {
+    fail("request.template.kind", 'must be "builtin" or "pack"');
+  }
   validateSettings(request.settings, "request.settings");
   const options = record(request.options, "request.options");
   onlyKeys(
@@ -426,6 +449,17 @@ export function parsePdfExportJobRequestV1(value: unknown): PdfExportJobRequestV
   validateRequestBaseV1(request);
   validatePdfExportJobRequestV1(request);
 
+  const template = request.template as Record<string, unknown>;
+  if (template.kind === undefined) {
+    return {
+      ...(value as Omit<PdfExportJobRequestV1, "template">),
+      template: {
+        kind: "builtin",
+        id: template.id as string,
+        manifestVersion: template.manifestVersion as string,
+      },
+    };
+  }
   return value as PdfExportJobRequestV1;
 }
 
@@ -443,9 +477,8 @@ export function parseExportJobRequestV1(value: unknown): ExportJobRequestV1 {
   const request = record(value, "request");
   validateRequestBaseV1(request);
   const format = choice(request.format, ["docx", "pdf"] as const, "request.format");
-  if (format === "pdf") validatePdfExportJobRequestV1(request);
-  else validateDocxExportJobRequestV1(request);
-
+  if (format === "pdf") return parsePdfExportJobRequestV1(value);
+  validateDocxExportJobRequestV1(request);
   return value as ExportJobRequestV1;
 }
 

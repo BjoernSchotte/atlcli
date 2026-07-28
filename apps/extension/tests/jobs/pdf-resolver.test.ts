@@ -39,7 +39,11 @@ function request(id: string): PdfExportJobRequestV1 {
     createdAt: 10,
     priority: "interactive",
     output: { policy: "collect" },
-    template: { id: "builtin.editorial-indigo", manifestVersion: "1.0.0" },
+    template: {
+      kind: "builtin",
+      id: "builtin.editorial-indigo",
+      manifestVersion: "1.0.0",
+    },
     settings: { outline: true },
     options: { resolveMacros: false, exportedAt: 1_700_000_000_000 },
   };
@@ -304,6 +308,9 @@ describe("extension PDF durable input resolver", () => {
     await expect(resolver(wrongAuth, context())).rejects.toThrow(/session reference/);
 
     const wrongTemplate = request("wrong-template");
+    if (wrongTemplate.template.kind !== "builtin") {
+      throw new Error("fixture drift");
+    }
     wrongTemplate.template.manifestVersion = "999";
     await expect(resolver(wrongTemplate, context())).rejects.toThrow(/template manifest/);
   });

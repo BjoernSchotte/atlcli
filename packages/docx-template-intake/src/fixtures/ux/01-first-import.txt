@@ -1,0 +1,7 @@
+Scenario: first-import
+Stage: review-required
+Message-Code: ATLCLI_PDF_TEMPLATE_IMPORT_REVIEW_REQUIRED
+What happened: The Word document was analyzed and a new template project was created.
+Current state: 12 design choices are ready to apply, 4 need review, and 3 Word features cannot be transferred.
+Retained: No Word suggestions were applied; the complete starting design and the original source remain unchanged.
+Next: atlcli pdf-template review ./brand-pdf-template

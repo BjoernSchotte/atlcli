@@ -59,6 +59,37 @@ describe("durable CLI export job requests", () => {
     expect(request.output.targetKind).toBe("file");
     expect(request.options).toMatchObject({ strict: true, noCache: true, exportedAt: 1767323045000 });
     expect(request.options.codeTheme).toBe("dracula");
+    expect(request.template).toEqual({
+      kind: "builtin",
+      id: "builtin-default",
+      manifestVersion: "1",
+    });
+  });
+
+  test("persists only the verified content-addressed PDF pack identity", () => {
+    const archiveSha256 = "d".repeat(64);
+    const request = buildCliPdfJobRequest({
+      id: "job-pack",
+      idempotencyKey: "key-pack",
+      createdAt: 20,
+      request: parseExportRequest("123", {}),
+      profile,
+      outputPath: "/tmp/report.pdf",
+      force: false,
+      strict: false,
+      noCache: false,
+      template: {
+        kind: "pack",
+        archiveSha256,
+        recordKey: `template-pack:sha256:${archiveSha256}`,
+      },
+    });
+    expect(request.template).toEqual({
+      kind: "pack",
+      archiveSha256,
+      recordKey: `template-pack:sha256:${archiveSha256}`,
+    });
+    expect(JSON.stringify(request)).not.toContain(".wiki-pdf-template");
   });
 
   test("persists the explicit image quality and omits redundant original (issue #118)", () => {

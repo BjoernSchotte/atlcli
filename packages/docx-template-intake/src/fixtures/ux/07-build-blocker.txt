@@ -1,0 +1,7 @@
+Scenario: build-blocker
+Stage: blocked
+Message-Code: ATLCLI_PDF_TEMPLATE_BUILD_BLOCKED
+What happened: Build stopped because review items remain open.
+Current state: No template pack was written.
+Retained: The active draft and the most recent successful preview were retained unchanged.
+Next: atlcli pdf-template review ./brand-pdf-template

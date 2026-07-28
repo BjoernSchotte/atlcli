@@ -52,6 +52,9 @@ export type {
   ResolvedPdfDesign,
   ResolvedPdfLabels,
   ResolvePdfSettingsContext,
+  PdfBindableLevelASetting,
+  PdfSettingPresenceMask,
+  PdfDesignResolutionTraceEntry,
 } from "./settings.js";
 
 // --- Font intake (fonts.ts, spec 007/008) ---
@@ -70,6 +73,62 @@ export type { PdfOutputInspection } from "./validate.js";
 // --- Runtime asset manifest (runtime-assets.ts) ---
 export { PDF_RUNTIME_ASSETS } from "./runtime-assets.js";
 export type { PdfRuntimeFontAsset } from "./runtime-assets.js";
+
+// --- Template visual-asset capability contract ---
+export { PDF_TEMPLATE_ASSET_CAPABILITIES_V1 } from "./template-asset-capabilities.js";
+export type { TemplateAssetCapabilitiesV1 } from "@atlcli/template-pack";
+
+// --- PDF template-pack visual validation/loading ---
+export {
+  PDF_TEMPLATE_ASSET_SLOTS_V1,
+  PDF_CANONICAL_SOURCE_API_V1,
+  PDF_CANONICAL_SOURCE_REVISION,
+  PDF_SUPPORTED_CANONICAL_SOURCE_REVISIONS,
+  PDF_TEMPLATE_DECORATION_IDS_V1,
+  PDF_TEMPLATE_WRITERS_V1,
+  PdfTemplateValidationError,
+  validatePdfTemplateManifest,
+  validatePdfTemplatePack,
+  loadPdfTemplatePack,
+  clonePdfTemplateRuntime,
+  generateCanonicalPdfTemplateSourceV1,
+  buildUniformPdfPageBorderV1,
+} from "./template-pack.js";
+
+export {
+  PDF_TEMPLATE_CAPABILITIES_V1,
+  PDF_TEMPLATE_CAPABILITY_DIGEST_V1,
+  PDF_TEMPLATE_CAPABILITY_PRESENTATION_V1,
+} from "./design-catalog.js";
+
+// --- Host-neutral authoring runtime materializer ---
+export {
+  PdfGeneratedTemplateProofCompiler,
+  PdfTemplateRuntimeMaterializer,
+} from "./template-authoring-runtime.js";
+
+// --- Host-neutral preview compiler adapter ---
+export {
+  PdfTemplatePreviewCompiler,
+  PdfTemplatePreviewError,
+} from "./template-preview.js";
+export type {
+  PdfTemplatePreviewModelV1,
+  PdfTemplatePreviewCompilerOptionsV1,
+} from "./template-preview.js";
+export type {
+  PdfTemplateAssetSlotV1,
+  PdfTemplateDecorationIdV1,
+  PdfTemplateValidationPhase,
+  PdfTemplateValidationReason,
+  PdfTemplateVisualsV1,
+  PdfTemplateRuntimeSnapshotV1,
+  PdfVerifiedCanonicalSourceV1,
+  PdfTemplateRuntimeV1,
+  ResolvedPdfTemplateAssetV1,
+  ValidatedPdfTemplatePackV1,
+  DocxUniformPageBorderInputV1,
+} from "./template-pack.js";
 
 // --- Curated built-in templates + manifest contract (spec 012) ---
 export { BUILTIN_PDF_TEMPLATE_ID, BUILTIN_PDF_TEMPLATE_MANIFEST } from "./builtin-template.js";

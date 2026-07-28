@@ -5,8 +5,10 @@ description: "Export Confluence pages to Word or tagged PDF"
 
 # DOCX and PDF Export
 
-Export Confluence pages to Microsoft Word (DOCX) with customizable templates, or use
-the browser extension to create a tagged PDF with the built-in atlcli document design.
+Export Confluence pages to Microsoft Word (DOCX) with customizable templates,
+or create a tagged PDF with Editorial Indigo or a reviewed
+`.wiki-pdf-template` pack from the CLI. The browser extension currently uses
+the built-in PDF design.
 
 ## On this page
 
@@ -36,10 +38,10 @@ The completion report separates preparation, compilation, and download time. Pre
 includes authenticated attachment fetching, so image-heavy pages can be distinguished from
 a slow compiler without enabling debug logging.
 
-PDF uses one built-in document design — cover, computed table of contents, promoted
+The browser panel uses one built-in PDF design — cover, computed table of contents, promoted
 heading hierarchy, running header, page-number footer, callouts, status badges,
 syntax-highlighted code, tables, images and vector Mermaid diagrams. There is no PDF
-template upload in any host; the design is configured through **settings** instead.
+template upload in the panel; the design is configured through **settings** instead.
 
 The panel does three things this page's CLI does not: it configures those
 [document settings](/reference/pdf-template-settings/), it can
@@ -144,18 +146,20 @@ choice visible. Remove the variable (or set it to `adf`) to restore the default.
 
 ## CLI: PDF export
 
-`--format pdf` produces a tagged, font-embedded PDF entirely headless — no browser, no
-Python, no data leaving your runner. It uses the same built-in document design as the
-browser extension (cover, computed table of contents, running header, page-number footer,
-callouts, code, tables, images, and vector Mermaid diagrams). PDF templates are not yet
-configurable from the CLI; `--template` and `--engine` are therefore **not** valid with
-`--format pdf`.
+`--format pdf` produces a tagged, font-embedded PDF entirely headless — no browser or
+Python. Without `--template`, it uses the same Editorial Indigo design as the browser
+extension (cover, computed table of contents, running header, page-number footer,
+callouts, code, tables, images, and vector Mermaid diagrams). The CLI can instead load a
+locally verified `.wiki-pdf-template` pack with `--template`; `--engine` remains invalid
+for PDF.
 
 ### Prerequisites
 
 - An authenticated profile (`atlcli auth login`) **or** the profile-free environment
   variables described under [Profile-free auth](#profile-free-auth-for-ci).
 - View permission on the page(s) to export.
+- Optional: a verified `.wiki-pdf-template` pack created with
+  [`atlcli pdf-template`](/confluence/pdf-template-from-word/).
 
 ### Minimal example
 
@@ -170,6 +174,14 @@ atlcli wiki export 12345678 --format pdf --output ./report.pdf --json
 # A whole page tree → ONE PDF (chapters), dropping internal pages, into a CI dir
 atlcli wiki export 12345678 --format pdf --scope tree \
   --label-exclude internal --out-dir dist --report json --strict
+```
+
+Apply a reviewed Word-derived design:
+
+```bash
+atlcli wiki export 12345678 --format pdf \
+  --template ./brand.wiki-pdf-template \
+  --output ./brand-report.pdf --report json
 ```
 
 `--scope tree|space` always yields **exactly one** PDF (chapters follow the page
@@ -190,6 +202,7 @@ Pass one or the other, never both.
 | `--code-theme <id>` | Shiki theme for fenced code blocks; defaults to `github-light` |
 | `--pdf-images <profile>` | Image quality profile: `original` (default), `standard` (180 PPI), or `print` (300 PPI) |
 | `--pdf-images-ppi <n>` | Exact target density in `[72, 1200]`; requires `--pdf-images standard` or `print` |
+| `--template, -t <path>` | Direct path to a verified `.wiki-pdf-template` pack; omission keeps Editorial Indigo |
 | `--report json` | Synonym for `--json` |
 
 All [scope and label options](#scope-options) work with `--format pdf` too.
@@ -260,11 +273,12 @@ accent color, a logo, and a watermark are all real, validated inputs to the PDF 
 documented in full under [PDF Template Settings](/reference/pdf-template-settings/) — and
 the [browser panel](/extension/export/#document-settings-pdf) exposes every one of them.
 
-**The CLI does not.** `atlcli wiki export --format pdf` always produces the default
-document design. There is no `--page-size`, no `--watermark`, no `--accent-color`. If you
-need a branded PDF from CI today, that is not yet possible from flags; the settings are
-reachable from the [library API](/reference/export-api/) (`RunPdfExportInput.settings`) and
-from the panel.
+**The CLI does not expose those values as individual flags.** There is no
+`--page-size`, `--watermark`, or `--accent-color`. The values remain reachable
+from the [library API](/reference/export-api/) (`RunPdfExportInput.settings`)
+and from the panel. For a reusable branded design in the CLI, create a reviewed
+[PDF template pack from Word](/confluence/pdf-template-from-word/) and pass it
+with `--template`.
 
 The output is written atomically: the bytes go to an exclusive-create temp file in the
 target directory and are renamed into place only on success, so a failed or cancelled run
@@ -420,8 +434,8 @@ storage layout, recovery, and incident diagnostics.
 
 | Option | Description |
 |--------|-------------|
-| `--format <fmt>` | `docx` (default) or `pdf`. With `pdf`, `--template` and `--engine` are not valid — see [CLI: PDF export](#cli-pdf-export) |
-| `--template, -t` | Optional DOCX template name or path. Without it, DOCX uses the [bundled default template](#the-bundled-default-template) |
+| `--format <fmt>` | `docx` (default) or `pdf`. With `pdf`, `--engine` is not valid — see [CLI: PDF export](#cli-pdf-export) |
+| `--template, -t` | DOCX: optional template name or path. PDF: direct `.wiki-pdf-template` path. Without it, each format uses its bundled default |
 | `--output, -o` | Output file path (required) |
 | `--no-images` | Don't embed images from attachments |
 | `--include-children` | Deprecated alias for `--scope tree` |
@@ -1127,6 +1141,7 @@ the `--json` report's `notesByCode` before assuming a bug.
 ## Related Topics
 
 - [Export template library](export-templates.md) - Which template an export uses, and why
+- [Create a PDF template from Word](pdf-template-from-word.md) - Import, review, preview, and build a PDF design pack
 - [Macro compatibility](macro-compatibility.md) - What each macro produces in each engine
 - [Exporting from the panel](/extension/export/) - Scope, settings, preview and background exports
 - [Browser extension](/extension/) - Install and limits

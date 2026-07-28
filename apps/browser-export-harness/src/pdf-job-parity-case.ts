@@ -58,7 +58,7 @@ const REQUEST: PdfExportJobRequestV1 = {
   createdAt: 1,
   priority: "interactive",
   output: { policy: "collect" },
-  template: { id: "default", manifestVersion: "1" },
+  template: { kind: "builtin", id: "default", manifestVersion: "1" },
   settings: {},
   options: { resolveMacros: false, profile: "tagged", codeTheme: "dracula" },
 };

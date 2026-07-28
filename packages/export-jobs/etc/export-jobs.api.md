@@ -1224,6 +1224,35 @@ export interface InMemorySpoolStoreOptions {
     digest?: (bytes: Uint8Array) => Promise<string>;
 }
 
+// export: InMemoryTemplatePackStoreV1
+export declare class InMemoryTemplatePackStoreV1 implements TemplatePackStoreV1 {
+    #private;
+    put(input: {
+        bytes: Uint8Array;
+        limits: TemplatePackStoreLimitsV1;
+        now: number;
+        signal?: AbortSignal;
+    }): Promise<TemplatePackRecordV1>;
+    get(reference: PdfTemplatePackReferenceV1, options?: {
+        signal?: AbortSignal;
+    }): Promise<{
+        record: TemplatePackRecordV1;
+        bytes: Uint8Array;
+    }>;
+    verify(reference: PdfTemplatePackReferenceV1, options?: {
+        signal?: AbortSignal;
+    }): Promise<TemplatePackRecordV1>;
+    link(input: TemplatePackReachabilityV1 & {
+        at: number;
+    }): Promise<void>;
+    reconcile(input: {
+        completeScan: true;
+        references: readonly TemplatePackReachabilityV1[];
+        now: number;
+        orphanGraceMs: number;
+    }): Promise<TemplatePackReconcileResultV1>;
+}
+
 // export: isExportJobTerminal
 export declare function isExportJobTerminal(state: ExportJobState): boolean;
 
@@ -1255,14 +1284,18 @@ export declare function parseExportReportSummaryV1(value: unknown, path?: string
 // export: parsePdfExportJobRequestV1
 export declare function parsePdfExportJobRequestV1(value: unknown): PdfExportJobRequestV1;
 
+// export: PdfBuiltinTemplateReferenceV1
+export interface PdfBuiltinTemplateReferenceV1 {
+    kind: "builtin";
+    id: string;
+    manifestVersion: string;
+}
+
 // export: PdfExportJobRequestV1
 export interface PdfExportJobRequestV1 extends ExportJobRequestBaseV1 {
     format: "pdf";
     renderer: "pdf-typst";
-    template: {
-        id: string;
-        manifestVersion: string;
-    };
+    template: PdfTemplateReferenceV1;
     settings: PdfExportSettingsV1;
     options: {
         resolveMacros: boolean;
@@ -1308,6 +1341,16 @@ export interface PdfExportWatermarkV1 {
     angle?: number;
     size?: number;
 }
+
+// export: PdfTemplatePackReferenceV1
+export interface PdfTemplatePackReferenceV1 {
+    kind: "pack";
+    archiveSha256: string;
+    recordKey: string;
+}
+
+// export: PdfTemplateReferenceV1
+export type PdfTemplateReferenceV1 = PdfBuiltinTemplateReferenceV1 | PdfTemplatePackReferenceV1;
 
 // export: PendingArtifactV1
 export interface PendingArtifactV1 {
@@ -1467,6 +1510,73 @@ export interface StagedArtifactV1 {
     jobId: string;
     leaseEpoch: number;
     stagedAt: number;
+}
+
+// export: TEMPLATE_PACK_ORPHAN_GRACE_MS_V1
+export declare const TEMPLATE_PACK_ORPHAN_GRACE_MS_V1: number;
+
+// export: TemplatePackReachabilityV1
+export interface TemplatePackReachabilityV1 {
+    jobId: string;
+    requestRef: string;
+    recordKey: string;
+    archiveSha256: string;
+}
+
+// export: TemplatePackReconcileResultV1
+export interface TemplatePackReconcileResultV1 {
+    deletedRecords: string[];
+    deletedBytes: number;
+    retainedRecords: number;
+}
+
+// export: templatePackRecordKey
+export declare function templatePackRecordKey(archiveSha256: string): string;
+
+// export: TemplatePackRecordV1
+export interface TemplatePackRecordV1 {
+    schema: "atlcli.template-pack-record/1";
+    recordKey: string;
+    archiveSha256: string;
+    byteLength: number;
+    createdAt: number;
+}
+
+// export: templatePackReference
+export declare function templatePackReference(record: TemplatePackRecordV1): PdfTemplatePackReferenceV1;
+
+// export: TemplatePackStoreLimitsV1
+export interface TemplatePackStoreLimitsV1 {
+    maxObjectBytes: number;
+    maxTotalBytes: number;
+}
+
+// export: TemplatePackStoreV1
+export interface TemplatePackStoreV1 {
+    put(input: {
+        bytes: Uint8Array;
+        limits: TemplatePackStoreLimitsV1;
+        now: number;
+        signal?: AbortSignal;
+    }): Promise<TemplatePackRecordV1>;
+    get(reference: PdfTemplatePackReferenceV1, options?: {
+        signal?: AbortSignal;
+    }): Promise<{
+        record: TemplatePackRecordV1;
+        bytes: Uint8Array;
+    }>;
+    verify(reference: PdfTemplatePackReferenceV1, options?: {
+        signal?: AbortSignal;
+    }): Promise<TemplatePackRecordV1>;
+    link(input: TemplatePackReachabilityV1 & {
+        at: number;
+    }): Promise<void>;
+    reconcile(input: {
+        completeScan: true;
+        references: readonly TemplatePackReachabilityV1[];
+        now: number;
+        orphanGraceMs: number;
+    }): Promise<TemplatePackReconcileResultV1>;
 }
 
 // export: transitionExportJob

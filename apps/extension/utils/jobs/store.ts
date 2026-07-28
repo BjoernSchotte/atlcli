@@ -398,8 +398,14 @@ function requestSummary(
     : {
         availability: "retained",
         renderer: request.renderer,
-        template: request.template.id,
-        fingerprint: `${request.template.id}@${request.template.manifestVersion}`,
+        template:
+          request.template.kind === "builtin"
+            ? request.template.id
+            : request.template.recordKey,
+        fingerprint:
+          request.template.kind === "builtin"
+            ? `${request.template.id}@${request.template.manifestVersion}`
+            : request.template.archiveSha256,
       };
 }
 

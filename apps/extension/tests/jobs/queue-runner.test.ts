@@ -26,7 +26,11 @@ function request(id: string, createdAt: number): PdfExportJobRequestV1 {
     createdAt,
     priority: "interactive",
     output: { policy: "collect" },
-    template: { id: "builtin.editorial-indigo", manifestVersion: "1.0.0" },
+    template: {
+      kind: "builtin",
+      id: "builtin.editorial-indigo",
+      manifestVersion: "1.0.0",
+    },
     settings: {},
     options: { resolveMacros: true },
   };

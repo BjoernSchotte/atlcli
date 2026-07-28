@@ -1,0 +1,7 @@
+Scenario: source-changed-recovery
+Stage: source-changed
+Message-Code: ATLCLI_PDF_TEMPLATE_SOURCE_CHANGED
+What happened: The Word source changed after this project was last analyzed.
+Current state: Preview and build are paused until the updated source is analyzed.
+Retained: The active draft and every prior decision were retained; no partial generation was activated.
+Next: atlcli pdf-template reanalyze updated-brand.docx --dir ./brand-pdf-template

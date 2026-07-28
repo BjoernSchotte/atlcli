@@ -318,6 +318,8 @@ defensive reads:
   and their validation.
 - [Template Pack Format](template-pack-format.md) — the `.wiki-pdf-template`
   container, manifest schema, and import gate.
+- [PDF Template Authoring CLI](pdf-template-authoring-cli.md) — the reviewed
+  Word-to-pack workflow and machine contracts.
 - [PDF Export Engine](pdf-engine.md) — the pipeline this contract renders in.
 - [DOCX Export Engine](docx-engine.md#running-headers-styleref) — the DOCX
   equivalent of a chapter running head (`STYLEREF` in a user template).

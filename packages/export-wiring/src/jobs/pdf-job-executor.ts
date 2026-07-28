@@ -9,8 +9,10 @@ import {
   type PendingArtifactV1,
   type PdfExportJobRequestV1,
   type ResourceEstimateV1,
+  type TemplatePackStoreV1,
 } from "@atlcli/export-jobs";
 import {
+  loadPdfTemplatePack,
   preparePdfExport,
   renderPreparedPdfExport,
   type PdfCompilePort,
@@ -192,6 +194,8 @@ export interface CreatePdfExportJobExecutorOptionsV1 {
   compiler: PdfCompilePort;
   renderReservations: PdfRenderReservationPortV1;
   results: PdfExportResultStoreV1;
+  /** Host-wide immutable pack storage; required only for `template.kind=pack`. */
+  templatePacks?: Pick<TemplatePackStoreV1, "get">;
   now?: () => number;
 }
 
@@ -640,6 +644,7 @@ export function createPdfExportJobExecutor(
             telemetry?: { sourcePageCount: number };
           }
         | undefined;
+      let templatePack: Awaited<ReturnType<typeof loadPdfTemplatePack>> | undefined;
       let estimate: ResourceEstimateV1;
       let resultKey: PdfExportResultRecoveryKeyV1 | undefined;
       let sourcePageCount = checkpoint?.sourcePageCount ?? 1;
@@ -661,9 +666,28 @@ export function createPdfExportJobExecutor(
           return result;
         }
       } else {
+        if (request.template.kind === "pack") {
+          if (!options.templatePacks) {
+            throw new Error(
+              "PDF template pack storage is unavailable for this host."
+            );
+          }
+          const stored = await options.templatePacks.get(request.template, {
+            signal: context.signal,
+          });
+          throwIfAborted(context.signal);
+          templatePack = await loadPdfTemplatePack(stored.bytes);
+          throwIfAborted(context.signal);
+        }
         await progress(context, now, "fetch", 0, 1, "Resolving PDF source input");
         resolved = await options.resolveInput(request, context);
         throwIfAborted(context.signal);
+        if (templatePack) {
+          resolved.input = {
+            ...resolved.input,
+            templatePack,
+          };
+        }
         sourcePageCount = resolved.telemetry?.sourcePageCount ?? 1;
         nonNegativeSafeInteger(sourcePageCount, "telemetry.sourcePageCount");
         estimate = options.estimateRender(resolved.input, request);

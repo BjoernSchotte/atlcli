@@ -16,14 +16,26 @@
  */
 import { decodeSvgSource, normalizeExportColor } from "@atlcli/confluence";
 import {
+  flattenDesign,
   localeChain,
   ManifestValidationError,
+  unflattenDesign,
+  validateDesignAgainstCatalog,
   WIKI_PDF_V1_DOCUMENT_LABELS,
   type TemplateManifest,
   type WikiPdfTemplateDesignV1,
   type WikiPdfTemplateSettingBindingV1,
 } from "@atlcli/template-pack";
 import { BUILTIN_PDF_TEMPLATE_MANIFEST } from "./builtin-template.js";
+import { getBuiltinPdfTemplate } from "./curated-templates.js";
+import {
+  PDF_TEMPLATE_CAPABILITIES_V1,
+  PDF_TEMPLATE_CAPABILITY_DIGEST_V1,
+  PDF_TEMPLATE_LEGACY_FALLBACK_ALIASES_V1,
+  materializeLegacyPdfDesign,
+  projectPdfDesignThroughCatalog,
+  writePdfDesignCapability,
+} from "./design-catalog.js";
 import { typstString } from "./escape.js";
 import { findSvgSafetyViolation } from "./svg-safety.js";
 import { resolvePdfTheme } from "./theme.js";
@@ -33,6 +45,10 @@ import type {
   PdfThemeOptions,
   PdfWatermarkSettings,
 } from "./types.js";
+import type {
+  PdfTemplateVisualsV1,
+  ValidatedPdfTemplatePackV1,
+} from "./template-pack.js";
 
 /** Structured validation failure naming the exact offending settings field. */
 export class PdfSettingsError extends Error {
@@ -69,6 +85,25 @@ export type ResolvedPdfLabels = Record<string, string>;
 /** The fully resolved, bound design (spec 012) — same shape as the manifest's. */
 export type ResolvedPdfDesign = WikiPdfTemplateDesignV1;
 
+export const PDF_BINDABLE_LEVEL_A_SETTINGS = [
+  "accentColor",
+  "organizationName",
+  "page",
+  "orientation",
+  "cover",
+  "outline",
+] as const;
+export type PdfBindableLevelASetting = (typeof PDF_BINDABLE_LEVEL_A_SETTINGS)[number];
+export type PdfSettingPresenceMask = Readonly<Record<PdfBindableLevelASetting, boolean>>;
+
+export interface PdfDesignResolutionTraceEntry {
+  target: string;
+  source: "baseline" | "engine-policy" | "runtime-binding";
+  sourceId: string;
+  sequence: number;
+  value: unknown;
+}
+
 /** Fully-defaulted internal settings ready for Typst emission. */
 export interface ResolvedPdfSettings {
   page: "a4" | "letter";
@@ -89,8 +124,18 @@ export interface ResolvedPdfSettings {
    * `settings.design` dict at Typst runtime.
    */
   design: ResolvedPdfDesign;
+  /** Raw Level-A key presence; normalized defaults never masquerade as input. */
+  settingPresence: PdfSettingPresenceMask;
+  /** Ordered writes for every effective catalog target. */
+  designTrace: readonly PdfDesignResolutionTraceEntry[];
+  /** Unknown legacy leaves that were structurally readable but not executed. */
+  ignoredDesignCapabilities: readonly string[];
+  /** Catalog contract pinned into future authoring snapshots/projects. */
+  capabilityCatalogDigest: string;
   /** Document-facing labels for the export locale (spec 012 T6.2). */
   labels: ResolvedPdfLabels;
+  /** Validated visual slots and decorations, with compiler-owned VFS paths. */
+  templateVisuals?: PdfTemplateVisualsV1;
 }
 
 /** Context that drives design binding + label resolution (spec 012 T6.2). */
@@ -103,6 +148,8 @@ export interface ResolvePdfSettingsContext {
   theme?: PdfThemeOptions;
   /** Template manifest driving resolution; defaults to the built-in. */
   manifest?: TemplateManifest;
+  /** Validated pack supplying the manifest plus resolved visual payloads. */
+  templatePack?: ValidatedPdfTemplatePackV1;
 }
 
 export const DEFAULT_PDF_ACCENT_COLOR = "#4B57A3";
@@ -227,7 +274,11 @@ function resolveLogo(logo: PdfLogoAsset): ResolvedPdfLogo {
     reject("logo.bytes", logo.bytes.byteLength, "must be at most 5 MiB");
   }
   if (logo.mediaType !== "image/png" && logo.mediaType !== "image/svg+xml") {
-    reject("logo.mediaType", logo.mediaType, 'must be "image/png" or "image/svg+xml"');
+    reject(
+      "logo.mediaType",
+      logo.mediaType,
+      'must be "image/png" or "image/svg+xml"'
+    );
   }
   if (logo.mediaType === "image/png") {
     if (!hasPngMagic(logo.bytes)) {
@@ -266,6 +317,14 @@ export function resolvePdfSettings(
   if (resolvedSettings.has(options as ResolvedPdfSettings)) {
     return options as ResolvedPdfSettings;
   }
+  const settingPresence = Object.freeze(
+    Object.fromEntries(
+      PDF_BINDABLE_LEVEL_A_SETTINGS.map((setting) => [
+        setting,
+        Object.prototype.hasOwnProperty.call(options, setting),
+      ])
+    ) as Record<PdfBindableLevelASetting, boolean>
+  );
   const resolved: ResolvedPdfSettings = {
     page: resolveEnum(options.page, ["a4", "letter"] as const, "a4", "page"),
     orientation: resolveEnum(
@@ -279,6 +338,10 @@ export function resolvePdfSettings(
     accentColor: resolveColor(options.accentColor, DEFAULT_PDF_ACCENT_COLOR, "accentColor"),
     // Placeholders; filled in below once the Level-A values exist.
     design: undefined as unknown as ResolvedPdfDesign,
+    settingPresence,
+    designTrace: [],
+    ignoredDesignCapabilities: [],
+    capabilityCatalogDigest: PDF_TEMPLATE_CAPABILITY_DIGEST_V1,
     labels: {},
   };
 
@@ -288,12 +351,49 @@ export function resolvePdfSettings(
   if (footerText !== undefined) resolved.footerText = footerText;
   const organizationName = resolveText(options.organizationName, "organizationName");
   if (organizationName !== undefined) resolved.organizationName = organizationName;
-  if (options.logo !== undefined) resolved.logo = resolveLogo(options.logo);
+  const packLogo = context.templatePack?.assets["asset.logo"];
+  if (options.logo !== undefined) {
+    resolved.logo = resolveLogo(options.logo);
+  } else if (packLogo) {
+    if (packLogo.descriptor.mediaType === "image/jpeg") {
+      reject(
+        "templatePack.assets.asset.logo.mediaType",
+        packLogo.descriptor.mediaType,
+        "logo slots support PNG or SVG"
+      );
+    }
+    resolved.logo = resolveLogo({
+      bytes: packLogo.bytes,
+      mediaType: packLogo.descriptor.mediaType,
+      alt: packLogo.reference.alt,
+    });
+  }
   if (options.watermark !== undefined) resolved.watermark = resolveWatermark(options.watermark);
 
-  const manifest = context.manifest ?? BUILTIN_PDF_TEMPLATE_MANIFEST;
-  resolved.design = resolveTemplateDesign(manifest, resolved, context.theme);
+  const manifest =
+    context.templatePack?.manifest ??
+    context.manifest ??
+    BUILTIN_PDF_TEMPLATE_MANIFEST;
+  const designResolution = resolveTemplateDesignWithTrace(
+    manifest,
+    resolved,
+    context.theme
+  );
+  resolved.design = designResolution.design;
+  resolved.designTrace = designResolution.trace;
+  resolved.ignoredDesignCapabilities = designResolution.ignoredCapabilities;
   resolved.labels = resolveTemplateLabels(manifest, context.locale, context.region);
+  if (context.templatePack) {
+    resolved.templateVisuals = {
+      assets: Object.fromEntries(
+        Object.entries(context.templatePack.assets).map(([slot, asset]) => [
+          slot,
+          { vfsPath: asset.vfsPath, reference: asset.reference },
+        ])
+      ),
+      decorations: context.templatePack.decorations,
+    };
+  }
 
   resolvedSettings.add(resolved);
   return resolved;
@@ -309,6 +409,26 @@ export function resolveTemplateDesign(
   values: ResolvedPdfSettings,
   themeOptions?: PdfThemeOptions
 ): ResolvedPdfDesign {
+  return resolveTemplateDesignWithTrace(manifest, values, themeOptions).design;
+}
+
+export interface ResolvedTemplateDesignWithTrace {
+  design: ResolvedPdfDesign;
+  trace: readonly PdfDesignResolutionTraceEntry[];
+  ignoredCapabilities: readonly string[];
+}
+
+/**
+ * Resolve one executable catalog snapshot and retain every ordered writer.
+ * Known curated ids may use their characterized baseline as an explicit legacy
+ * compatibility adapter; a foreign sparse manifest remains readable but cannot
+ * execute.
+ */
+export function resolveTemplateDesignWithTrace(
+  manifest: TemplateManifest,
+  values: ResolvedPdfSettings,
+  themeOptions?: PdfThemeOptions
+): ResolvedTemplateDesignWithTrace {
   if (!manifest.design) {
     throw new PdfSettingsError({
       path: "manifest.design",
@@ -316,14 +436,109 @@ export function resolveTemplateDesign(
       constraint: "template manifest has no design block",
     });
   }
-  const design = applyBindings(manifest.design, manifest.bindings ?? [], values);
-  // Theme injection: ink/paper (and the contrast target) follow the resolved
-  // theme so a custom PdfThemeOptions still reaches the template's design.
+
+  const characterizedBaseline = getBuiltinPdfTemplate(manifest.id)?.design;
+  let baseline: ResolvedPdfDesign;
+  let ignoredCapabilities: readonly string[];
+  if (characterizedBaseline) {
+    const materialized = materializeLegacyPdfDesign(
+      manifest.design,
+      characterizedBaseline,
+      PDF_TEMPLATE_LEGACY_FALLBACK_ALIASES_V1
+    );
+    baseline = materialized.design;
+    ignoredCapabilities = materialized.ignoredCapabilities;
+  } else {
+    const validation = validateDesignAgainstCatalog(
+      manifest.design,
+      PDF_TEMPLATE_CAPABILITIES_V1,
+      "legacy"
+    );
+    const missing = validation.missingCapabilities[0];
+    if (missing) {
+      throw new PdfSettingsError({
+        path: missing,
+        value: undefined,
+        constraint:
+          "foreign sparse template is structurally readable but not canonical-executable",
+      });
+    }
+    baseline = projectPdfDesignThroughCatalog(
+      unflattenDesign(validation.flat) as unknown as WikiPdfTemplateDesignV1
+    );
+    ignoredCapabilities = validation.ignoredCapabilities;
+  }
+
+  const trace: PdfDesignResolutionTraceEntry[] = Object.entries(
+    flattenDesign(baseline)
+  ).map(([target, value], sequence) => ({
+    target,
+    source: "baseline",
+    sourceId: manifest.id,
+    sequence,
+    value,
+  }));
+  const bound = applyBindingsWithTrace(
+    baseline,
+    manifest.bindings ?? [],
+    values,
+    trace
+  );
+
+  let design = bound.design;
+  const nextTrace = [...bound.trace];
+  // Resolve the complete theme to validate every supplied theme field, but
+  // project only explicitly present fields into the design.
   const theme = resolvePdfTheme(themeOptions);
-  design.tokens.colors.ink = theme.colors.ink;
-  design.tokens.colors.paper = theme.colors.paper;
-  design.tokens.contrast.minimum = theme.table.coloredCellText.minimumContrast;
-  return design;
+  const policyWrites: Array<{
+    present: boolean;
+    sourceId: string;
+    target: string;
+    value: unknown;
+  }> = [
+    {
+      present: Object.prototype.hasOwnProperty.call(themeOptions?.colors ?? {}, "ink"),
+      sourceId: "theme.colors.ink",
+      target: "tokens.colors.ink",
+      value: theme.colors.ink,
+    },
+    {
+      present: Object.prototype.hasOwnProperty.call(themeOptions?.colors ?? {}, "paper"),
+      sourceId: "theme.colors.paper",
+      target: "tokens.colors.paper",
+      value: theme.colors.paper,
+    },
+    {
+      present: Object.prototype.hasOwnProperty.call(
+        themeOptions?.table?.coloredCellText ?? {},
+        "minimumContrast"
+      ),
+      sourceId: "theme.table.coloredCellText.minimumContrast",
+      target: "tokens.contrast.minimum",
+      value: theme.table.coloredCellText.minimumContrast,
+    },
+  ];
+  for (const write of policyWrites) {
+    if (!write.present) continue;
+    design = writePdfDesignCapability(
+      design,
+      write.target,
+      write.value,
+      write.sourceId
+    );
+    nextTrace.push({
+      target: write.target,
+      source: "engine-policy",
+      sourceId: write.sourceId,
+      sequence: nextTrace.length,
+      value: write.value,
+    });
+  }
+  return {
+    design: projectPdfDesignThroughCatalog(design),
+    trace: nextTrace,
+    ignoredCapabilities,
+  };
 }
 
 /** The Level-A resolved value a binding's `setting` reads. */
@@ -357,9 +572,25 @@ export function applyBindings(
   bindings: WikiPdfTemplateSettingBindingV1[],
   values: ResolvedPdfSettings
 ): WikiPdfTemplateDesignV1 {
-  const copy: WikiPdfTemplateDesignV1 = structuredClone(design);
+  return applyBindingsWithTrace(design, bindings, values).design;
+}
+
+export function applyBindingsWithTrace(
+  design: WikiPdfTemplateDesignV1,
+  bindings: WikiPdfTemplateSettingBindingV1[],
+  values: ResolvedPdfSettings,
+  initialTrace: readonly PdfDesignResolutionTraceEntry[] = []
+): {
+  design: WikiPdfTemplateDesignV1;
+  trace: readonly PdfDesignResolutionTraceEntry[];
+} {
+  let copy = projectPdfDesignThroughCatalog(design);
+  const trace = [...initialTrace];
   const written = new Set<string>();
   for (const binding of bindings) {
+    const setting = binding.setting as PdfBindableLevelASetting;
+    if (!PDF_BINDABLE_LEVEL_A_SETTINGS.includes(setting)) continue;
+    if (!values.settingPresence[setting]) continue;
     const source = bindingSourceValue(binding.setting, values);
     if (source === undefined) continue;
     const value = applyTransform(binding, source);
@@ -372,10 +603,18 @@ export function applyBindings(
         );
       }
       written.add(target);
-      writeDesignPath(copy, target, value);
+      const writerId = `setting.${binding.setting}`;
+      copy = writePdfDesignCapability(copy, target, value, writerId);
+      trace.push({
+        target,
+        source: "runtime-binding",
+        sourceId: writerId,
+        sequence: trace.length,
+        value,
+      });
     }
   }
-  return copy;
+  return { design: copy, trace };
 }
 
 function applyTransform(binding: WikiPdfTemplateSettingBindingV1, source: unknown): unknown {
@@ -390,20 +629,6 @@ function applyTransform(binding: WikiPdfTemplateSettingBindingV1, source: unknow
     );
   }
   return transform.map[key];
-}
-
-/** Write a value to one allowlisted design path (dot-separated). */
-function writeDesignPath(design: WikiPdfTemplateDesignV1, path: string, value: unknown): void {
-  const segments = path.split(".");
-  let cursor: Record<string, unknown> = design as unknown as Record<string, unknown>;
-  for (let i = 0; i < segments.length - 1; i += 1) {
-    const next = cursor[segments[i]!];
-    if (typeof next !== "object" || next === null) {
-      throw new ManifestValidationError("shape-error", `binding target path "${path}" is invalid`, path);
-    }
-    cursor = next as Record<string, unknown>;
-  }
-  cursor[segments[segments.length - 1]!] = value;
 }
 
 /**
@@ -450,6 +675,8 @@ function numberLiteral(value: number): string {
 
 /** Typst dictionary keys we are willing to interpolate unquoted into source. */
 const EMITTABLE_KEY_RE = /^[A-Za-z][A-Za-z0-9]*$/;
+const EMITTABLE_LENGTH_RE =
+  /^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:pt|mm|cm|in)$/;
 
 /**
  * Assert a dictionary key is safe to interpolate into Typst source unquoted.
@@ -465,6 +692,17 @@ function assertEmittableKey(key: string, namespace: string): void {
       constraint: "dictionary key must be a safe identifier ([A-Za-z][A-Za-z0-9]*)",
     });
   }
+}
+
+function emittableLength(value: string, path: string): string {
+  if (!EMITTABLE_LENGTH_RE.test(value)) {
+    throw new PdfSettingsError({
+      path,
+      value,
+      constraint: "length must be a finite pt/mm/cm/in literal",
+    });
+  }
+  return value;
 }
 
 /**
@@ -487,25 +725,27 @@ export function typstSettingsDict(
   resolved: ResolvedPdfSettings,
   options: { logoPath?: string } = {}
 ): string {
-  const design = resolved.design;
+  const catalogDesign = projectPdfDesignThroughCatalog(resolved.design);
   const designLines: string[] = [
     "  design: (",
     "    branding: (",
-    `      accent: ${typstString(design.branding.accent)},`,
+    `      accent: ${typstString(catalogDesign.branding.accent)},`,
   ];
-  if (design.branding.organizationName !== undefined) {
-    designLines.push(`      organization-name: ${typstString(design.branding.organizationName)},`);
+  if (catalogDesign.branding.organizationName !== undefined) {
+    designLines.push(
+      `      organization-name: ${typstString(catalogDesign.branding.organizationName)},`
+    );
   }
   designLines.push(
     "    ),",
     "    page: (",
-    `      size: ${typstString(design.page.size)},`,
-    `      orientation: ${typstString(design.page.orientation)},`,
+    `      size: ${typstString(catalogDesign.page.size)},`,
+    `      orientation: ${typstString(catalogDesign.page.orientation)},`,
     "    ),",
     "    features: (",
-    `      cover: (enabled: ${design.features.cover.enabled ? "true" : "false"}),`,
-    `      outline: (enabled: ${design.features.outline.enabled ? "true" : "false"}, depth: ${numberLiteral(
-      design.features.outline.depth
+    `      cover: (enabled: ${catalogDesign.features.cover.enabled ? "true" : "false"}),`,
+    `      outline: (enabled: ${catalogDesign.features.outline.enabled ? "true" : "false"}, depth: ${numberLiteral(
+      catalogDesign.features.outline.depth
     )}),`,
     "    ),",
     "  ),"
@@ -535,6 +775,33 @@ export function typstSettingsDict(
       `  logo: ${typstString(options.logoPath)},`,
       `  logo-alt: ${typstString(resolved.logo.alt)},`
     );
+    const placement =
+      resolved.templateVisuals?.assets["asset.logo"]?.reference.placement;
+    if (placement) {
+      lines.push(
+        "  logo-placement: (",
+        `    relativeTo: ${typstString(placement.relativeTo)},`,
+        `    fit: ${typstString(placement.fit ?? "contain")},`,
+        `    x: ${emittableLength(
+          placement.x,
+          "templatePack.assets.asset.logo.placement.x"
+        )},`,
+        `    y: ${emittableLength(
+          placement.y,
+          "templatePack.assets.asset.logo.placement.y"
+        )},`,
+        `    width: ${emittableLength(
+          placement.width,
+          "templatePack.assets.asset.logo.placement.width"
+        )},`,
+        `    height: ${emittableLength(
+          placement.height,
+          "templatePack.assets.asset.logo.placement.height"
+        )},`,
+        `    rotation: ${numberLiteral(placement.rotation ?? 0)},`,
+        "  ),"
+      );
+    }
   }
   if (resolved.watermark) {
     const watermark = resolved.watermark;

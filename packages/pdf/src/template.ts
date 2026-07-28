@@ -34,8 +34,17 @@ import {
   BUILTIN_PDF_DESIGN,
   BUILTIN_PDF_FALLBACK_LABELS,
 } from "./builtin-template.js";
-import { DEFAULT_DESIGN_HEADER_MODE, type WikiPdfTemplateDesignV1 } from "@atlcli/template-pack";
+import type {
+  WikiPdfTemplateDesignV1,
+  WikiPdfTemplateImageDecorationV1,
+  WikiPdfTemplatePageBorderV1,
+} from "@atlcli/template-pack";
+import {
+  projectPdfDesignThroughCatalog,
+  readPdfDesignCapability,
+} from "./design-catalog.js";
 import { typstString } from "./escape.js";
+import type { PdfTemplateVisualsV1 } from "./template-pack.js";
 
 const EDITORIAL_DASH = String.fromCodePoint(0x2013);
 const EDITORIAL_BULLET = String.fromCodePoint(0x2022);
@@ -51,23 +60,26 @@ const SYMBOL_FALLBACK_FONTS = ["Noto Sans Symbols2", "Noto Emoji"] as const;
  */
 export function createAtlcliTypstTemplate(
   design: WikiPdfTemplateDesignV1 = BUILTIN_PDF_DESIGN,
-  labels: Record<string, string> = BUILTIN_PDF_FALLBACK_LABELS
+  labels: Record<string, string> = BUILTIN_PDF_FALLBACK_LABELS,
+  visuals?: PdfTemplateVisualsV1,
+  options: { positionedLogo?: boolean } = {}
 ): string {
-  const fonts = design.typography.fonts;
-  const roles = design.typography.roles;
-  const colors = design.tokens.colors;
-  const layout = design.tokens.layout;
-  const ratios = design.tokens.ratios;
-  const callouts = design.semanticPalettes.callouts;
-  const margin = design.page.margin;
+  const catalogDesign = projectPdfDesignThroughCatalog(design);
+  const fonts = catalogDesign.typography.fonts;
+  const roles = catalogDesign.typography.roles;
+  const colors = catalogDesign.tokens.colors;
+  const layout = catalogDesign.tokens.layout;
+  const ratios = catalogDesign.tokens.ratios;
+  const callouts = catalogDesign.semanticPalettes.callouts;
+  const margin = catalogDesign.page.margin;
+  const positionedLogo = options.positionedLogo === true;
 
   const need = <T>(map: Record<string, T>, key: string, kind: string): T => {
     const value = map[key];
     if (value === undefined) throw new Error(`PDF template design is missing ${kind} "${key}"`);
     return value;
   };
-  const L = (key: string): string =>
-    layout[key] ?? need(BUILTIN_PDF_DESIGN.tokens.layout, key, "layout length");
+  const L = (key: string): string => need(layout, key, "layout length");
   const C = (key: string): string => need(colors, key, "color token");
   const RN = (key: string): number => need(ratios, key, "ratio");
   const F = (role: "body" | "heading" | "mono"): string => fonts[role];
@@ -98,12 +110,12 @@ export function createAtlcliTypstTemplate(
 
   // Gen-time defaults for the settings-driven subset (backward-compat with
   // `settings: (:)`); overridden at runtime by the emitted `settings.design`.
-  const accentDefault = design.branding.accent;
-  const pageDefault = design.page.size;
-  const orientDefault = design.page.orientation;
-  const coverDefault = design.features.cover.enabled ? "true" : "false";
-  const outlineDefault = design.features.outline.enabled ? "true" : "false";
-  const outlineDepthDefault = design.features.outline.depth;
+  const accentDefault = catalogDesign.branding.accent;
+  const pageDefault = catalogDesign.page.size;
+  const orientDefault = catalogDesign.page.orientation;
+  const coverDefault = catalogDesign.features.cover.enabled ? "true" : "false";
+  const outlineDefault = catalogDesign.features.outline.enabled ? "true" : "false";
+  const outlineDepthDefault = catalogDesign.features.outline.depth;
 
   // Running-head mode. This is static design (not settings-driven), so it is
   // resolved and interpolated when the template string is generated: the
@@ -115,7 +127,10 @@ export function createAtlcliTypstTemplate(
   // `header-text` setting wins in every mode (007 behavior, unchanged), so
   // `custom` declares the template's intent and falls back to the title when no
   // `headerText` is supplied.
-  const headerMode = design.features.header.mode ?? DEFAULT_DESIGN_HEADER_MODE;
+  const headerMode = readPdfDesignCapability<string>(
+    catalogDesign,
+    "features.header.mode"
+  );
   const headerResolution =
     headerMode === "chapter"
       ? String.raw`          // Chapter running head ("Kolumnentitel"): the level-1 heading that owns
@@ -163,6 +178,56 @@ export function createAtlcliTypstTemplate(
   const success = callouts.success ? callout("success") : tip;
   const error = callouts.error ? callout("error") : warning;
   const panel = callout("panel");
+  const hasDecorations = (visuals?.decorations.length ?? 0) > 0;
+  const visualSource = hasDecorations
+    ? `\n\n${typstVisualSource(visuals)}\n\n`
+    : "\n\n";
+  const pageBackgroundSource = hasDecorations
+    ? `context {
+      watermark-layer(settings.at("watermark", default: none))
+      template-page-decorations()
+    }`
+    : 'watermark-layer(settings.at("watermark", default: none))';
+  const headerDecorationSource = hasDecorations
+    ? "\n      template-header-decorations()"
+    : "";
+  const footerDecorationSource = hasDecorations
+    ? "\n      template-footer-decorations()"
+    : "";
+  const logoPlacementSettingSource = positionedLogo
+    ? '\n  let logo-placement = settings.at("logo-placement", default: none)'
+    : "";
+  const positionedLogoSource = positionedLogo
+    ? String.raw`
+    if logo-path != none and logo-placement != none {
+      let logo-x = if logo-placement.relativeTo == "page" {
+        logo-placement.x - ${margin.left}
+      } else {
+        logo-placement.x
+      }
+      let logo-y = if logo-placement.relativeTo == "page" {
+        logo-placement.y - ${margin.top}
+      } else {
+        logo-placement.y
+      }
+      let logo-image = image(
+        logo-path,
+        width: logo-placement.width,
+        height: logo-placement.height,
+        fit: logo-placement.fit,
+        alt: logo-alt,
+      )
+      let placed-logo = if logo-placement.rotation == 0 {
+        logo-image
+      } else {
+        rotate(logo-placement.rotation * 1deg, origin: center, logo-image)
+      }
+      place(top + left, dx: logo-x, dy: logo-y, placed-logo)
+    }`
+    : "";
+  const flowLogoCondition = positionedLogo
+    ? "logo-path != none and logo-placement == none"
+    : "logo-path != none";
 
   return String.raw`
 #let editorial-numbering(..nums) = {
@@ -200,9 +265,7 @@ export function createAtlcliTypstTemplate(
       wm.text,
     ),
   ))
-}
-
-// wiki.pdf-template/v1 render surface: render(meta, body, settings).
+}${visualSource}// wiki.pdf-template/v1 render surface: render(meta, body, settings).
 // settings: (:) keeps callers that pass no settings compiling; every settings
 // read below falls back to a built-in default interpolated at generation time.
 #let atlcli-doc(meta: (:), settings: (:), body) = {
@@ -226,7 +289,7 @@ export function createAtlcliTypstTemplate(
   let indigo = rgb(brand.at("accent", default: "${accentDefault}"))
   let org-name = brand.at("organization-name", default: none)
   let logo-path = settings.at("logo", default: none)
-  let logo-alt = settings.at("logo-alt", default: "")
+  let logo-alt = settings.at("logo-alt", default: "")${logoPlacementSettingSource}
   let space-label = if org-name == none {
     [#space-prefix / #meta.space]
   } else {
@@ -271,8 +334,8 @@ export function createAtlcliTypstTemplate(
     flipped: page-config.at("orientation", default: "${orientDefault}") == "landscape",
     fill: cover-paper,
     margin: (top: ${margin.top}, bottom: ${margin.bottom}, left: ${margin.left}, right: ${margin.right}),
-    background: watermark-layer(settings.at("watermark", default: none)),
-    header: context {
+    background: ${pageBackgroundSource},
+    header: context {${headerDecorationSource}
       let current-page = counter(page).get().first()
       let final-page = counter(page).final().first()
       if current-page > 1 and current-page < final-page {
@@ -286,7 +349,7 @@ ${headerResolution}
         line(length: 100%, stroke: rgb("${C("hairline")}"))
       }
     },
-    footer: context {
+    footer: context {${footerDecorationSource}
       if counter(page).get().first() > 1 {
         set text(font: ${fontStack(F("heading"))}, size: ${rsize("runningHead")}, fill: rgb("${C("muted")}"))
         let footer-text = settings.at("footer-text", default: none)
@@ -336,10 +399,11 @@ ${headerResolution}
   }
 
   if cover-config.at("enabled", default: ${coverDefault}) {
+${positionedLogoSource}
     v(${L("coverTopPad")})
     block(width: ${RN("coverBlockWidth")}%)[
       #set text(font: ${fontStack(F("heading"))})
-      #if logo-path != none [
+      #if ${flowLogoCondition} [
         #block(below: ${L("coverLogoBelow")})[#image(logo-path, height: ${L("coverLogoHeight")}, width: ${L("coverLogoWidth")}, fit: "contain", alt: logo-alt)]
       ]
       #text(size: ${rsize("coverEyebrow")}, weight: "${rweight("coverEyebrow")}", tracking: ${rtrack("coverEyebrow")}, fill: indigo, space-label)
@@ -529,6 +593,113 @@ ${headerResolution}
   body,
 )
 `;
+}
+
+const SAFE_VISUAL_LENGTH_RE =
+  /^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:pt|mm|cm|in)$/;
+
+function visualLength(value: string, path: string): string {
+  if (!SAFE_VISUAL_LENGTH_RE.test(value)) {
+    throw new Error(`PDF template visual has unsafe ${path}`);
+  }
+  return value;
+}
+
+function scopeCondition(
+  scope: WikiPdfTemplateImageDecorationV1["scope"]
+): string {
+  if (scope === "all") return "true";
+  if (scope === "first") return "current-page == 1";
+  if (scope === "odd") return "calc.rem(current-page, 2) == 1";
+  return "calc.rem(current-page, 2) == 0";
+}
+
+function imageDecorationSource(
+  decoration: WikiPdfTemplateImageDecorationV1,
+  assetPath: string,
+  index: number
+): string {
+  const placement = decoration.placement;
+  const fit = placement.fit ?? "contain";
+  const image = `image(${typstString(assetPath)}, width: ${visualLength(
+    placement.width,
+    `decorations[${index}].placement.width`
+  )}, height: ${visualLength(
+    placement.height,
+    `decorations[${index}].placement.height`
+  )}, fit: ${typstString(fit)})`;
+  const content =
+    placement.rotation === undefined || placement.rotation === 0
+      ? image
+      : `rotate(${placement.rotation}deg, origin: center, ${image})`;
+  return `if ${scopeCondition(decoration.scope)} {
+    pdf.artifact(kind: "other", place(
+      top + left,
+      dx: ${visualLength(placement.x, `decorations[${index}].placement.x`)},
+      dy: ${visualLength(placement.y, `decorations[${index}].placement.y`)},
+      ${content},
+    ))
+  }`;
+}
+
+function borderDecorationSource(
+  border: WikiPdfTemplatePageBorderV1,
+  index: number
+): string {
+  const inset = border.inset;
+  return `pdf.artifact(kind: "other", place(
+    top + left,
+    dx: ${visualLength(inset.left, `decorations[${index}].inset.left`)},
+    dy: ${visualLength(inset.top, `decorations[${index}].inset.top`)},
+    rect(
+      width: 100% - ${visualLength(inset.left, `decorations[${index}].inset.left`)} - ${visualLength(inset.right, `decorations[${index}].inset.right`)},
+      height: 100% - ${visualLength(inset.top, `decorations[${index}].inset.top`)} - ${visualLength(inset.bottom, `decorations[${index}].inset.bottom`)},
+      fill: none,
+      stroke: ${visualLength(border.stroke.width, `decorations[${index}].stroke.width`)} + rgb(${typstString(border.stroke.color)}),
+    ),
+  ))`;
+}
+
+function typstVisualSource(
+  visuals: PdfTemplateVisualsV1 | undefined
+): string {
+  const byLayer: Record<
+    WikiPdfTemplateImageDecorationV1["layer"],
+    string[]
+  > = {
+    "page-background": [],
+    header: [],
+    footer: [],
+  };
+  for (const [index, decoration] of (visuals?.decorations ?? []).entries()) {
+    if (decoration.kind === "page-border") {
+      byLayer["page-background"].push(
+        borderDecorationSource(decoration, index)
+      );
+      continue;
+    }
+    const asset = visuals?.assets[decoration.asset as keyof typeof visuals.assets];
+    if (!asset) {
+      throw new Error(
+        `PDF template decoration "${decoration.id}" has no resolved asset`
+      );
+    }
+    byLayer[decoration.layer].push(
+      imageDecorationSource(decoration, asset.vfsPath, index)
+    );
+  }
+  const definition = (
+    name: string,
+    entries: readonly string[]
+  ): string => `#let ${name}() = context {
+  let current-page = counter(page).get().first()
+  ${entries.join("\n  ")}
+}`;
+  return [
+    definition("template-page-decorations", byLayer["page-background"]),
+    definition("template-header-decorations", byLayer.header),
+    definition("template-footer-decorations", byLayer.footer),
+  ].join("\n\n");
 }
 
 export const ATLCLI_TYPST_TEMPLATE = createAtlcliTypstTemplate();

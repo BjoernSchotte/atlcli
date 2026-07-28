@@ -18,6 +18,10 @@
  */
 
 import { validateBindings, type WikiPdfTemplateSettingBindingV1 } from "./bindings.js";
+import {
+  validateTemplateVisualManifestFieldsV1,
+  type TemplateVisualManifestFieldsV1,
+} from "./assets.js";
 import { validateDesign, type WikiPdfTemplateDesignV1 } from "./design.js";
 import {
   validateLocalization,
@@ -88,7 +92,14 @@ export interface TemplateProvenance {
   createdWith: string;
 }
 
-export interface TemplateManifest {
+/** Renderer-owned capability catalog used to generate canonical source. */
+export interface TemplateCapabilityCatalogReferenceV1 {
+  id: string;
+  version: number;
+  digest: string;
+}
+
+export interface TemplateManifest extends TemplateVisualManifestFieldsV1 {
   schemaVersion: number;
   id: string;
   name: string;
@@ -99,6 +110,8 @@ export interface TemplateManifest {
   provenance?: TemplateProvenance;
   /** Presentation model (spec 012): typography, tokens, palettes, components. */
   design?: WikiPdfTemplateDesignV1;
+  /** Exact catalog identity required by canonical generated packs. */
+  capabilityCatalog?: TemplateCapabilityCatalogReferenceV1;
   /** Setting → design-field bindings (spec 012). */
   bindings?: WikiPdfTemplateSettingBindingV1[];
   /** Document + UI copy per locale (spec 012). */
@@ -134,6 +147,37 @@ function requireString(obj: Record<string, unknown>, key: string, path: string):
     throw new ManifestValidationError("shape-error", `${path} must be a non-empty string`, path);
   }
   return v;
+}
+
+function validateCapabilityCatalogReference(
+  value: unknown
+): TemplateCapabilityCatalogReferenceV1 | undefined {
+  if (value === undefined) return undefined;
+  if (!isObject(value)) {
+    throw new ManifestValidationError(
+      "shape-error",
+      "capabilityCatalog must be an object",
+      "capabilityCatalog"
+    );
+  }
+  const id = requireString(value, "id", "capabilityCatalog.id");
+  const version = value.version;
+  if (!Number.isSafeInteger(version) || (version as number) < 1) {
+    throw new ManifestValidationError(
+      "shape-error",
+      "capabilityCatalog.version must be a positive safe integer",
+      "capabilityCatalog.version"
+    );
+  }
+  const digest = requireString(value, "digest", "capabilityCatalog.digest");
+  if (!/^[a-f0-9]{64}$/u.test(digest)) {
+    throw new ManifestValidationError(
+      "shape-error",
+      "capabilityCatalog.digest must be a lowercase SHA-256 digest",
+      "capabilityCatalog.digest"
+    );
+  }
+  return { id, version: version as number, digest };
 }
 
 /** Extract the last `x.y[.z]` token from a version string. */
@@ -285,6 +329,9 @@ export function validateManifest(
 
   // 7. Presentation model (spec 012): design / bindings / localization.
   const design = json.design !== undefined ? validateDesign(json.design) : undefined;
+  const capabilityCatalog = validateCapabilityCatalogReference(
+    json.capabilityCatalog
+  );
   const bindings = json.bindings !== undefined ? validateBindings(json.bindings) : undefined;
   const localization =
     json.localization !== undefined
@@ -294,6 +341,7 @@ export function validateManifest(
           ...(options.collectWarnings ? { onWarning: options.collectWarnings } : {}),
         })
       : undefined;
+  const visual = validateTemplateVisualManifestFieldsV1(json);
 
   const manifest: TemplateManifest = {
     schemaVersion: SUPPORTED_SCHEMA_VERSION,
@@ -305,8 +353,10 @@ export function validateManifest(
     ...(settings ? { settings } : {}),
     ...(provenance ? { provenance } : {}),
     ...(design ? { design } : {}),
+    ...(capabilityCatalog ? { capabilityCatalog } : {}),
     ...(bindings ? { bindings } : {}),
     ...(localization ? { localization } : {}),
+    ...visual,
   };
   return manifest;
 }

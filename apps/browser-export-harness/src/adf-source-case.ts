@@ -321,7 +321,7 @@ export async function runAdfSourceCase(): Promise<AdfSourceCaseResult> {
     createdAt: 1,
     priority: "interactive",
     output: { policy: "collect" },
-    template: { id: "default", manifestVersion: "1" },
+    template: { kind: "builtin", id: "default", manifestVersion: "1" },
     settings: {},
     options: { resolveMacros: false, profile: "tagged" },
   };

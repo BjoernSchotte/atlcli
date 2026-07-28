@@ -12,6 +12,7 @@ import type {
   TableRow,
 } from "@atlcli/confluence";
 import type { TemplateManifest } from "@atlcli/template-pack";
+import type { ValidatedPdfTemplatePackV1 } from "./template-pack.js";
 import type {
   CodeThemeId,
   HighlightedCode,
@@ -303,6 +304,8 @@ export interface PdfSerializeOptions {
    * `preparePdfDocument`.
    */
   imageQuality?: import("@atlcli/export-media").ExportImageQualityV1;
+  /** Fully validated template pack including resolved visual payloads. */
+  templatePack?: ValidatedPdfTemplatePackV1;
 }
 
 export interface PdfExportTimings {

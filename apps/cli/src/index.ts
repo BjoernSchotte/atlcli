@@ -27,6 +27,11 @@ import { handlePlugin } from "./commands/plugin.js";
 import { handleJira } from "./commands/jira.js";
 import { handleHelloworld } from "./commands/helloworld.js";
 import { handleAudit } from "./commands/audit.js";
+import {
+  handlePdfTemplate,
+  pdfTemplateHelp,
+  ReportedPdfTemplateCliError,
+} from "./commands/pdf-template.js";
 import { initializePlugins, getPluginRegistry } from "./plugins/loader.js";
 
 const VERSION = getCurrentVersion();
@@ -143,6 +148,9 @@ async function main(): Promise<void> {
       case "audit":
         await handleAudit(rest, parsed.flags, opts);
         break;
+      case "pdf-template":
+        await handlePdfTemplate(rest, parsed.flags, opts);
+        break;
       case "log":
         await handleLog(rest, parsed.flags, opts);
         break;
@@ -244,6 +252,9 @@ function showCommandHelp(
       break;
     case "jira":
       handleJira(subArgs, helpFlags, opts);
+      break;
+    case "pdf-template":
+      output(pdfTemplateHelp(), opts);
       break;
     case "log":
       handleLog(subArgs, helpFlags, opts);
@@ -347,6 +358,7 @@ Commands:
   flag        Manage feature flags
   wiki        Confluence operations (page, space, docs, search)
   jira        Jira operations (issue, board, sprint, epic)
+  pdf-template Create reviewed PDF template packs from Word documents
   log         Query and manage logs
   plugin      Manage plugins
   update      Check for and install updates
@@ -390,6 +402,9 @@ async function checkAndNotifyUpdate(): Promise<void> {
 }
 
 main().catch((err) => {
+  if (err instanceof ReportedPdfTemplateCliError) {
+    process.exit(err.exitCode);
+  }
   const message = err instanceof Error ? err.message : String(err);
   process.stderr.write(`${message}\n`);
   process.exit(1);

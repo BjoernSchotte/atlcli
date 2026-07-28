@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "pdfSha256": "2fcfefdcc83195735d8a61886ab4c8690c9d1c610c696cb9a0796c066b502be5",
+  "rasterizer": "pdftoppm version 26.03.0",
+  "resolutionDpi": 36,
+  "maxMeanPixelDifference": 0.002,
+  "minColorBoundsIou": 0.98,
+  "pages": [
+    {
+      "file": "page-1.ppm",
+      "sha256": "6d4b4df05a2aeed2e04e368fb009f7badf104c640d8deebb02963af476dc4c1e"
+    },
+    {
+      "file": "page-2.ppm",
+      "sha256": "ee76a2d9f3d2ba49a522ab71901872529984be2dfa49d53b3e0d6cc44fb44a25"
+    },
+    {
+      "file": "page-3.ppm",
+      "sha256": "5ac665a17baefd10017195e311e32d79977ac8cdc3915474e98f3c43c1302a04"
+    },
+    {
+      "file": "page-4.ppm",
+      "sha256": "b1035480a00249ef723a8e709c0af26e60fcc3970c83f9e380c0670e9dbc7d24"
+    },
+    {
+      "file": "page-5.ppm",
+      "sha256": "8c66a83f63739163245afd223739ace069ecfee8782edbcb96649009650cd0f3"
+    },
+    {
+      "file": "page-6.ppm",
+      "sha256": "3fb3ce9c9265e812ce261da4ac784d547d3660f36a6f3da903ba6f6931355e53"
+    }
+  ]
+}

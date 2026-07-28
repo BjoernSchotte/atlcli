@@ -21,11 +21,13 @@
     "@atlcli/code-highlight": "workspace:*",
     "@atlcli/confluence": "workspace:*",
     "@atlcli/docx": "workspace:*",
+    "@atlcli/docx-template-intake": "workspace:*",
     "@atlcli/export-fixtures": "workspace:*",
     "@atlcli/export-jobs": "workspace:*",
     "@atlcli/export-wiring": "workspace:*",
     "@atlcli/pdf": "workspace:*",
     "@atlcli/pdf-compiler-browser": "workspace:*",
+    "@atlcli/pdf-template-authoring": "workspace:*",
     "@atlcli/template-pack": "workspace:*"
   },
   "devDependencies": {

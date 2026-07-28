@@ -1,0 +1,7 @@
+Scenario: successful-preview
+Stage: ready-to-build
+Message-Code: ATLCLI_PDF_TEMPLATE_PREVIEW_READY
+What happened: The design review, compatibility proof, and asset contact sheet were rendered.
+Current state: Applied, retained, open, and unsupported choices are summarized in the design review.
+Retained: The source, decisions, active draft, and rendered review artifacts were retained.
+Next: atlcli pdf-template build ./brand-pdf-template --output ./brand.wiki-pdf-template

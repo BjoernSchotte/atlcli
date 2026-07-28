@@ -93,6 +93,75 @@ export function compareReportProjection(browser: ReportProjection, cli: ReportPr
   return failures;
 }
 
+function escapeJsonPointerToken(token: string): string {
+  return token.replaceAll("~", "~0").replaceAll("/", "~1");
+}
+
+/**
+ * Compare deterministic JSON-compatible contract projections and name the
+ * first divergent JSON pointer. This is intentionally stricter than digest
+ * parity: a changed stage, disabled reason, section count, or preview freshness
+ * must identify the semantic field that drifted.
+ */
+export function compareStructuredParity(
+  browser: unknown,
+  cli: unknown
+): string[] {
+  const compare = (left: unknown, right: unknown, pointer: string): string | undefined => {
+    if (Object.is(left, right)) return undefined;
+    if (
+      left === null ||
+      right === null ||
+      typeof left !== "object" ||
+      typeof right !== "object"
+    ) {
+      return `${pointer || "/"} differs (browser ${JSON.stringify(
+        left
+      )} vs cli ${JSON.stringify(right)})`;
+    }
+    const leftArray = Array.isArray(left);
+    const rightArray = Array.isArray(right);
+    if (leftArray !== rightArray) {
+      return `${pointer || "/"} differs (browser ${
+        leftArray ? "array" : "object"
+      } vs cli ${rightArray ? "array" : "object"})`;
+    }
+    if (leftArray && rightArray) {
+      if (left.length !== right.length) {
+        return `${pointer || "/"} length differs (browser ${left.length} vs cli ${right.length})`;
+      }
+      for (let index = 0; index < left.length; index += 1) {
+        const failure = compare(
+          left[index],
+          right[index],
+          `${pointer}/${index}`
+        );
+        if (failure) return failure;
+      }
+      return undefined;
+    }
+    const leftRecord = left as Record<string, unknown>;
+    const rightRecord = right as Record<string, unknown>;
+    const keys = [
+      ...new Set([...Object.keys(leftRecord), ...Object.keys(rightRecord)]),
+    ].sort();
+    for (const key of keys) {
+      const nextPointer = `${pointer}/${escapeJsonPointerToken(key)}`;
+      if (!(key in leftRecord)) return `${nextPointer} is missing in browser`;
+      if (!(key in rightRecord)) return `${nextPointer} is missing in cli`;
+      const failure = compare(
+        leftRecord[key],
+        rightRecord[key],
+        nextPointer
+      );
+      if (failure) return failure;
+    }
+    return undefined;
+  };
+  const failure = compare(browser, cli, "");
+  return failure ? [failure] : [];
+}
+
 // --- raster content metric --------------------------------------------------
 
 export interface RasterCheckOptions {

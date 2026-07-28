@@ -173,5 +173,7 @@ evidence.
   render contract.
 - [Template Pack Format](template-pack-format.md) — the `.wiki-pdf-template`
   sharing container.
+- [PDF Template Authoring CLI](pdf-template-authoring-cli.md) — build a
+  canonical reviewed pack from Word design evidence.
 - [DOCX and PDF Export](../confluence/export.md)
 - [DOCX Export Engine](docx-engine.md)

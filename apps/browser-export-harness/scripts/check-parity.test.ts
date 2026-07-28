@@ -14,6 +14,7 @@ import {
   comparePdfParity,
   compareRasterMedia,
   compareReportProjection,
+  compareStructuredParity,
   digestParts,
   projectNotes,
   sha256Hex,
@@ -142,6 +143,52 @@ describe("report projection", () => {
     expect(compareReportProjection(a, b)).toEqual([
       "report note macro-degraded|warning|: browser 1 vs cli 0",
     ]);
+  });
+});
+
+describe("structured journey parity", () => {
+  const contract = {
+    views: [
+      {
+        stage: "review-required",
+        actions: [{ id: "action:preview", enabled: false, reason: "open" }],
+      },
+    ],
+    snapshot: "a".repeat(64),
+    preview: { designReview: "missing" },
+  };
+
+  it("accepts the same host-neutral projection", () => {
+    expect(compareStructuredParity(contract, structuredClone(contract))).toEqual([]);
+  });
+
+  it("names stage, action, snapshot, and preview drift by JSON pointer", () => {
+    const mutations = [
+      [
+        { ...contract, views: [{ ...contract.views[0], stage: "ready-to-preview" }] },
+        "/views/0/stage",
+      ],
+      [
+        {
+          ...contract,
+          views: [
+            {
+              ...contract.views[0],
+              actions: [{ ...contract.views[0]!.actions[0]!, enabled: true }],
+            },
+          ],
+        },
+        "/views/0/actions/0/enabled",
+      ],
+      [{ ...contract, snapshot: "b".repeat(64) }, "/snapshot"],
+      [
+        { ...contract, preview: { designReview: "ready" } },
+        "/preview/designReview",
+      ],
+    ] as const;
+    for (const [changed, pointer] of mutations) {
+      expect(compareStructuredParity(contract, changed)[0]).toContain(pointer);
+    }
   });
 });
 

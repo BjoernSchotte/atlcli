@@ -62,6 +62,7 @@
     "@atlcli/confluence": "workspace:*",
     "@atlcli/export-media": "workspace:*",
     "@atlcli/diagram": "workspace:*",
+    "@atlcli/pdf-template-authoring": "workspace:*",
     "@atlcli/template-pack": "workspace:*"
   },
   "devDependencies": {
