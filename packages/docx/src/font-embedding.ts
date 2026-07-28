@@ -276,6 +276,7 @@ type BundledCodeFontLoader = () => Promise<Uint8Array>;
 
 let hostCodeFontLoader: BundledCodeFontLoader | undefined;
 let bundledCodeFontPromise: Promise<Uint8Array> | undefined;
+let validatedBundledCodeFontPromise: Promise<Uint8Array> | undefined;
 
 /**
  * Install the package-host loader used by the Node entry point. Kept behind
@@ -285,6 +286,7 @@ let bundledCodeFontPromise: Promise<Uint8Array> | undefined;
 export function configureBundledCodeFontLoader(loader: BundledCodeFontLoader): void {
   hostCodeFontLoader = loader;
   bundledCodeFontPromise = undefined;
+  validatedBundledCodeFontPromise = undefined;
 }
 
 /**
@@ -310,6 +312,33 @@ export function loadBundledCodeFont(): Promise<Uint8Array> {
     // A host may install a replacement loader while an older request is still
     // in flight. Only the promise that still owns the cache may clear it.
     if (bundledCodeFontPromise === promise) bundledCodeFontPromise = undefined;
+  });
+  return promise;
+}
+
+/**
+ * Load and validate the exact committed code face through one retryable,
+ * concurrent-safe promise shared by explicit preload and renderer demand.
+ *
+ * A validation rejection clears both the validated promise and the raw-byte
+ * promise that supplied it. This lets a transient or replaced host source
+ * provide fresh bytes on retry instead of retaining a rejected validation or
+ * repeatedly hashing the same invalid delivery.
+ */
+export function loadValidatedBundledCodeFont(): Promise<Uint8Array> {
+  if (validatedBundledCodeFontPromise) return validatedBundledCodeFontPromise;
+  const loading = loadBundledCodeFont();
+  const promise = (async () => {
+    const bytes = await loading;
+    await assertBundledCodeFont(bytes);
+    return bytes;
+  })();
+  validatedBundledCodeFontPromise = promise;
+  promise.catch(() => {
+    if (validatedBundledCodeFontPromise === promise) {
+      validatedBundledCodeFontPromise = undefined;
+    }
+    if (bundledCodeFontPromise === loading) bundledCodeFontPromise = undefined;
   });
   return promise;
 }

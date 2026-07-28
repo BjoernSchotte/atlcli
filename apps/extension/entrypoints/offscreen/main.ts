@@ -115,6 +115,10 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) =>
       );
       return prepareDocxExportRuntime([], {
         ...(codeTheme ? { codeTheme } : {}),
+        // Opening the DOCX panel is explicit host intent. Keep its
+        // opportunistic overlap policy explicit while default empty preflights
+        // remain demand-free.
+        preloadCodeFont: true,
       });
     },
     runJobsWake: (jobIds, options) => exportQueue.wake(jobIds, options),

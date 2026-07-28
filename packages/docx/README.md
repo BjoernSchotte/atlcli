@@ -52,16 +52,20 @@ const { prepareDocxExportRuntime } =
 
 const preparation = await prepareDocxExportRuntime(blocks, {
   codeTheme: "github-light",
+  preloadCodeFont: true,
   signal: dialogSignal,
 });
 ```
 
-The call warms known Shiki grammars and validates the bundled
-`JetBrainsMono-Regular.ttf` concurrently. It is awaitable, concurrent-safe,
-retryable, and idempotent. Cancellation stops only that caller's wait; shared
-initialization continues for the next caller. Starting it from a DOCX modal,
-Word-template selection, or explicit export action keeps ordinary page loads
-untouched. The returned timings cover only intent-to-ready preparation;
+The call always warms known Shiki grammars. It validates the bundled
+`JetBrainsMono-Regular.ttf` concurrently only when `preloadCodeFont: true` is
+explicit. Otherwise the renderer stages it after macro/include resolution and
+only when completed OOXML uses the code face; `prepareDocxExportRuntime([])`
+therefore reports zero font bytes/time. Both paths share one awaitable,
+concurrent-safe, retryable cache. Cancellation stops only that caller's wait;
+shared initialization continues for the next caller. Starting it from a DOCX
+modal, Word-template selection, or explicit export action keeps ordinary page
+loads untouched. The returned timings cover only intent-to-ready preparation;
 `ExportReport.timings` still describes render work. Browser builds use Shiki's
 JavaScript RegExp engine; Node/Bun imports use Oniguruma.
 

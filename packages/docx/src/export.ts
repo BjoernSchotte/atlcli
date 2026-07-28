@@ -119,9 +119,8 @@ import {
 } from "./ooxml.js";
 import {
   CODE_FONT_FAMILY,
-  assertBundledCodeFont,
   ensureEmbeddedCodeFont,
-  loadBundledCodeFont,
+  loadValidatedBundledCodeFont,
 } from "./font-embedding.js";
 import { NumberingAllocator } from "./numbering.js";
 import {
@@ -793,9 +792,7 @@ export async function prepareDocxExport(input: ExportInput): Promise<PreparedDoc
   if (styledXml.includes(`w:pStyle w:val="${CAPTION_STYLE_ID}"`)) ensureCaptionStyle(zip);
   if (styledXml.includes(`w:rFonts w:ascii="${CODE_FONT_FAMILY}"`)) {
     throwIfAborted(input.signal);
-    const codeFontBytes = await loadBundledCodeFont();
-    throwIfAborted(input.signal);
-    await assertBundledCodeFont(codeFontBytes);
+    const codeFontBytes = await loadValidatedBundledCodeFont();
     throwIfAborted(input.signal);
     ensureEmbeddedCodeFont(zip, codeFontBytes);
   }

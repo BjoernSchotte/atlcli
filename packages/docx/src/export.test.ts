@@ -1293,6 +1293,8 @@ describe("exportDocx — mermaid diagrams (spec 005a)", () => {
     const svgPart = zip.file("word/media/atlcli-image1.svg")!.asText();
     expect(svgPart).toContain("Start");
     expect(svgPart).not.toContain("fonts.googleapis.com");
+    expect(Object.keys(zip.files).some((path) => path.endsWith(".odttf"))).toBe(false);
+    expect(zip.file("word/fontTable.xml")).toBeNull();
 
     expect(report.renderedDiagrams).toBe(1);
     expect(report.embeddedImages).toBe(0);
@@ -1314,6 +1316,9 @@ describe("exportDocx — mermaid diagrams (spec 005a)", () => {
     expect(doc).not.toContain("<w:drawing");
     expect(doc).toContain('<w:pStyle w:val="AtlcliCode"/>');
     expect(doc).toContain("gantt");
+    expect(
+      Object.keys(new PizZip(bytes).files).some((path) => path.endsWith(".odttf")),
+    ).toBe(true);
     const rels = readPart(bytes, "word/_rels/document.xml.rels");
     expect(rels).not.toContain("relationships/image");
     const note = report.notes.find((n) => n.code === "diagram-unsupported");

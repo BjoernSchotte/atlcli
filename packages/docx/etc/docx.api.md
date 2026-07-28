@@ -251,6 +251,7 @@ export declare function prepareDocxExportRuntime(blocks: readonly ExportBlock[],
 // export: PrepareDocxExportRuntimeOptions
 export interface PrepareDocxExportRuntimeOptions {
     codeTheme?: CodeThemeId;
+    preloadCodeFont?: boolean;
     signal?: AbortSignal;
 }
 
@@ -578,6 +579,7 @@ export declare function prepareDocxExportRuntime(blocks: readonly ExportBlock[],
 // export: PrepareDocxExportRuntimeOptions
 export interface PrepareDocxExportRuntimeOptions {
     codeTheme?: CodeThemeId;
+    preloadCodeFont?: boolean;
     signal?: AbortSignal;
 }
 
@@ -909,6 +911,7 @@ export declare function prepareDocxExportRuntime(blocks: readonly ExportBlock[],
 // export: PrepareDocxExportRuntimeOptions
 export interface PrepareDocxExportRuntimeOptions {
     codeTheme?: CodeThemeId;
+    preloadCodeFont?: boolean;
     signal?: AbortSignal;
 }
 
@@ -1032,6 +1035,7 @@ export declare function prepareDocxExportRuntime(blocks: readonly ExportBlock[],
 // export: PrepareDocxExportRuntimeOptions
 export interface PrepareDocxExportRuntimeOptions {
     codeTheme?: CodeThemeId;
+    preloadCodeFont?: boolean;
     signal?: AbortSignal;
 }
 ```
@@ -1699,6 +1703,9 @@ export declare function listParagraphStyleXml(): string;
 // export: loadBundledCodeFont
 export declare function loadBundledCodeFont(): Promise<Uint8Array>;
 
+// export: loadValidatedBundledCodeFont
+export declare function loadValidatedBundledCodeFont(): Promise<Uint8Array>;
+
 // export: LogoArgs
 export interface LogoArgs {
     heightPx?: number;
@@ -2345,6 +2352,7 @@ export declare function prepareDocxExportRuntime(blocks: readonly ExportBlock[],
 // export: PrepareDocxExportRuntimeOptions
 export interface PrepareDocxExportRuntimeOptions {
     codeTheme?: CodeThemeId;
+    preloadCodeFont?: boolean;
     signal?: AbortSignal;
 }
 
