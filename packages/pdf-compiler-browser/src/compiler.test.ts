@@ -10,10 +10,13 @@ import {
   type PdfTemplateSettings,
 } from "@atlcli/pdf/browser";
 import { ATLCLI_TYPST_TEMPLATE, serializePdfDocument } from "@atlcli/pdf/internal";
+// Cross-package relative import (like ensure-fonts below): export-fixtures is
+// a PRIVATE workspace package, and a devDependency on it from this publishable
+// package breaks the spec-009 file:-link consumer install.
 import {
   generateImageHeavyCorpus,
   resolveImageHeavyAsset,
-} from "@atlcli/export-fixtures";
+} from "../../export-fixtures/src/image-heavy-corpus.js";
 import { ensurePdfFonts } from "../../pdf/scripts/ensure-fonts.js";
 import { ensureVendoredTypst } from "../scripts/vendor-typst.js";
 import { BrowserPdfCompiler, PDF_BROWSER_COMPILER_VERSION } from "./index.js";
