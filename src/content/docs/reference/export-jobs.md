@@ -18,6 +18,7 @@ remain format-specific.
 - [Buffering and resource limits](#buffering-and-resource-limits)
 - [Retention and cleanup](#retention-and-cleanup)
 - [Privacy and storage](#privacy-and-storage)
+- [Journal compatibility and quarantine](#journal-compatibility-and-quarantine)
 - [Incident procedure](#incident-procedure)
 - [Known limits](#known-limits)
 - [Related topics](#related-topics)
@@ -188,6 +189,34 @@ signed URLs, template bytes, spool bytes, artifacts, or full raw reports.
 The extension contacts only the active permitted Atlassian tenant and approved
 Atlassian attachment redirects. DOCX rendering and Typst/WASM PDF compilation
 are local. There is no second export engine: the Python exporter has been removed.
+
+## Journal compatibility and quarantine
+
+The CLI journal outlives any single atlcli version, so a record written by a
+newer, older, or branch build may not match the running build's contract. One
+such record must never block new exports.
+
+On load the store handles historical records in two tiers:
+
+1. **Read as-is** — records that match the current contract, including
+   compatible historical shapes the parsers accept directly (for example PDF
+   template references from before the explicit `kind` discriminant).
+2. **Quarantined** — records the running build cannot represent. The raw unit
+   (request, snapshot, events) moves verbatim into a `quarantined` section of
+   the journal; the job disappears from listings and its idempotency/replay
+   keys are released so an identical re-run creates a fresh job.
+
+When records are quarantined the CLI prints a one-time warning:
+
+```text
+warn: quarantined 1 export job record written by another atlcli version (request.template.kind: is not part of this contract shape); the record stays in the journal and new exports continue.
+```
+
+Nothing is deleted: quarantine is re-evaluated on every load, and a later
+version that understands the shape restores the unit — including its history
+and replay keys — automatically. No manual migration step exists or is needed.
+If a quarantined job's artifact is still on disk it remains readable at its
+delivered path; only the job metadata is hidden while quarantined.
 
 ## Incident procedure
 
