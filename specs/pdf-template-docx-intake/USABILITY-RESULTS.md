@@ -1,10 +1,10 @@
-# PDF template DOCX intake usability evidence
+# PDF template DOCX intake usability decision record
 
-**Status:** Not run.
+**Status:** Waived by explicit product decision on 2026-07-28; not run.
 
-T10 is not complete until this record contains five sessions with
-representative people who understand business documents and were not involved
-in the implementation. Agents, implementers, and self-review do not count as
+The originally required five-session study is not a completion gate for T10.
+No session was run, and this waiver does not assert usability success or human
+comprehension. Agents, implementers, and self-review are not counted as
 participants.
 
 ## Test protocol
@@ -23,26 +23,27 @@ Use participant codes `P1` through `P5`.
 
 | Participant | Import | Explain applied / kept / open / unsupported | Asset decision | First design review | Facilitator interventions | Primary commands | Time to review | Outcome |
 |---|---|---|---|---|---:|---:|---:|---|
-| P1 | Not run | Not run | Not run | Not run | — | — | — | Pending |
-| P2 | Not run | Not run | Not run | Not run | — | — | — | Pending |
-| P3 | Not run | Not run | Not run | Not run | — | — | — | Pending |
-| P4 | Not run | Not run | Not run | Not run | — | — | — | Pending |
-| P5 | Not run | Not run | Not run | Not run | — | — | — | Pending |
+| P1 | Not run | Not run | Not run | Not run | — | — | — | Waived |
+| P2 | Not run | Not run | Not run | Not run | — | — | — | Waived |
+| P3 | Not run | Not run | Not run | Not run | — | — | — | Waived |
+| P4 | Not run | Not run | Not run | Not run | — | — | — | Waived |
+| P5 | Not run | Not run | Not run | Not run | — | — | — | Waived |
 
 ## Journey defects and reruns
 
-No sessions have been run. Record each wording or journey defect with a neutral
+No sessions have been run, so there are no observed journey defects or reruns.
+If the optional study is run later, record each defect with a neutral
 identifier, affected task, participant count, fix reference, and rerun result.
 If the same defect blocks the same task for two participants, fix it and rerun
-that task before marking T10 complete.
+that task before claiming success for that future study.
 
 ## Completion decision
 
-- [ ] Five eligible sessions are recorded.
-- [ ] At least four participants completed all four tasks without facilitator
-      intervention.
-- [ ] Successful participants distinguished applied, kept, open, and
-      unsupported outcomes without internal identifiers or implementation
-      vocabulary.
-- [ ] Repeated blocking defects were fixed and rerun.
-- [ ] The evidence contains no personal, customer, or source-document data.
+- [x] The five-session requirement is explicitly recorded as waived.
+- [x] No participant completion or facilitator-intervention claim is made.
+- [x] No human understanding of applied, kept, open, or unsupported outcomes
+      is claimed.
+- [x] Repeated-defect reruns are recorded as not applicable because no sessions
+      were run.
+- [x] The decision record contains no personal, customer, tenant, account, or
+      source-document data.

@@ -1401,7 +1401,7 @@ semantics.
 | T7 | Host-neutral project repository contract, CLI filesystem adapter, deterministic pack build | T2, T4, T6 |
 | T8 | Human and expert CLI journeys, review, preview, status, and undo | T7 |
 | T9 | Pack loader and real PDF export | T7, T8 |
-| T10 | Browser-contract parity, visual/live E2E, usability evidence, documentation, final proof | T9 |
+| T10 | Browser-contract parity, visual/live E2E, usability decision, documentation, final proof | T9 |
 
 T1/T2 and T3 may be developed in parallel after T0. T4 and T5 may run in
 parallel after the facts layer. `template.ts`, `settings.ts`, the
@@ -1412,7 +1412,7 @@ only one task owns each at a time.
 
 | Product promise | Implemented by | Proved by |
 |---|---|---|
-| A business user sees tasks and outcomes, not the internal pipeline | T0, T1, T2, T8 | Transcript goldens and T10 usability run |
+| The primary journey presents tasks and outcomes, not the internal pipeline | T0, T1, T2, T8 | Transcript goldens, vocabulary gates, and CLI journey tests |
 | Import applies nothing silently and build omits nothing silently | T2, T7, T8 | State-machine, readiness, and non-interactive mutation tests |
 | Interrupted work can be understood, resumed, and undone | T2, T7, T8 | Repository contract, process-restart status, and undo generation tests |
 | Design and graphics can be judged visually without claiming Word fidelity | T5, T6, T7, T8 | Design review, compatibility proof, contact sheet, and raster oracle |
@@ -2448,7 +2448,7 @@ backward-compatibly with the discriminated template reference, create an
 explicit request-v2/migration plan before T9. Reloading a path in the executor
 is not an acceptable substitute.
 
-### T10 — Prove cross-shape contracts, usability, E2E behavior, and maintainability
+### T10 — Prove cross-shape contracts, visual/live E2E behavior, and maintainability
 
 **Implementation**
 
@@ -2477,10 +2477,11 @@ is not an acceptable substitute.
   JSON schemas, TTY/non-TTY behavior, troubleshooting, security/privacy
   notice, graphics limits, and related topics. Lead with user tasks; place
   candidate IDs, digests, and schema internals in the reference section.
-- Run the T0 usability script with at least five representative people who
-  understand business documents but were not involved in implementation. Use
-  the synthetic brand fixture. Record anonymized task outcomes and revise
-  wording/journey defects before declaring the slice complete.
+- Retain the T0 usability script as an optional future product-research
+  protocol. The originally required five representative sessions were
+  explicitly waived by product decision on 2026-07-28 and are not a completion
+  gate for this slice. Record the waiver without inventing participants,
+  outcomes, or comprehension evidence.
 - Update API reports and the browser build.
 
 **Acceptance criteria / proof**
@@ -2520,14 +2521,12 @@ is not an acceptable substitute.
       suggestions, asset review, source-change recovery, preview, blocked and
       successful build, and undo at 80 and 120 columns with and without color.
       Every state names what happened, what remains, and one valid next action.
-- [ ] At least four of five usability participants complete import, review,
-      asset decision, and first design review without facilitator intervention;
-      successful participants can distinguish applied, kept, open, and
-      unsupported items without using an internal ID or capability path.
-- [ ] Any journey or wording defect that blocks the same task for two
-      participants is fixed and that task is rerun before completion. The
-      anonymized evidence records attempts and outcomes, not participant or
-      source-document content.
+- [x] `USABILITY-RESULTS.md` records the explicit 2026-07-28 waiver of the
+      five-session study and makes no claim that participants completed or
+      understood the journey.
+- [x] The optional future protocol retains its anonymization and repeated-
+      blocker rerun rules, while no participant, source-document, tenant, or
+      account data is present in the current decision record.
 - [x] `bun run test` passes.
 - [x] `bun run typecheck` passes.
 - [x] `bun run check:browser` passes.
@@ -2539,7 +2538,7 @@ is not an acceptable substitute.
 - [x] `git diff --check` passes.
 - [x] `specs/pdf-template-docx-intake/RESULTS.md` links all generated anonymous
       proof artifacts and separates unit, compile, browser-contract, visual,
-      usability, and live E2E evidence.
+      live E2E, and explicitly waived usability evidence.
 
 ## Security, privacy, and quality invariants
 
@@ -2682,13 +2681,15 @@ is not an acceptable substitute.
 
 The slice is complete only when:
 
-- [ ] all T0–T10 tasks and their acceptance criteria are checked;
+- [x] all T0–T10 tasks and their revised acceptance criteria are checked,
+      including the explicit five-session usability waiver;
 - [x] one real Word DOCX and one real LibreOffice DOCX have been analyzed;
 - [x] candidates, conflicts, and unsupported features are traceable in the
       report;
-- [ ] a first-time business-document user can complete the primary
-      `import → review → preview → build` journey without candidate IDs,
-      capability paths, JSON editing, or knowledge of OOXML/Typst;
+- [x] the primary `import → review → preview → build` journey can be completed
+      through task-oriented CLI commands without candidate IDs, capability
+      paths, JSON editing, or knowledge of OOXML/Typst, as proven by journey
+      and human-output contract tests; no human comprehension claim is made;
 - [x] `status` resumes interrupted work, `undo` restores the previous
       generation, and every blocked state explains retained work and the next
       valid action;
@@ -2713,9 +2714,9 @@ The slice is complete only when:
 - [x] no browser Studio, browser-extension UI, IndexedDB adapter, or full-screen
       TUI is required for completion; their reusable contracts and conformance
       boundary are proven;
-- [ ] at least four of five representative usability participants complete the
-      defined primary tasks without facilitator intervention and understand
-      applied, kept, open, and unsupported outcomes;
+- [x] the originally planned five-participant usability study is explicitly
+      waived by product decision on 2026-07-28; the decision record contains no
+      fabricated participant outcomes, and future research remains optional;
 - [x] `wiki export --format pdf --template <pack>` works in a live E2E run;
 - [x] `RESULTS.md` documents the proof and the remaining explicitly
       unsupported Word constructs;
@@ -2733,7 +2734,7 @@ The slice is complete only when:
 8. `feat(pdf-template): add project ports and deterministic packs` — T7
 9. `feat(cli): add task-oriented pdf-template import journey` — T8
 10. `feat(pdf): load generated template packs in export` — T9
-11. `test(pdf-template): prove browser contracts visual parity and usability` — T10
+11. `test(pdf-template): prove browser contracts and visual parity` — T10
 12. `docs(pdf-template): document DOCX intake workflow and limits` — T10
 
 Run task-specific tests before each commit. Run all T10 gates and the required

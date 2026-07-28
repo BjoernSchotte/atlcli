@@ -1048,10 +1048,11 @@ customer identity, no private DOCX content, and no raw private OOXML.
 
 This evidence proves T9 only. T10 evidence is recorded separately below.
 
-## T10 — Cross-shape, visual, live E2E, and usability proof
+## T10 — Cross-shape, visual, live E2E, and usability decision
 
-**Status:** Technical slice proven on 2026-07-27; task completion is waiting
-for the five independent human usability sessions.
+**Status:** Proven on 2026-07-28. The technical slice was proven on
+2026-07-27; the originally required five independent human usability sessions
+were explicitly waived by product decision on 2026-07-28.
 
 ### Browser contract and deterministic vertical slice
 
@@ -1213,12 +1214,18 @@ source identifier, asset digest, and source path remain ignored or untracked.
 
 The
 [`usability evidence record`](USABILITY-RESULTS.md)
-is deliberately still empty. No implementer, agent, or synthetic test is
-counted as a representative participant. T10 and the overall definition of
-done remain open until five uninvolved business-document users complete the
-script, at least four succeed without facilitator intervention, and any
-repeated blocking journey defect is fixed and rerun.
+records that the five-session study was explicitly waived on 2026-07-28. No
+session was run, no implementer, agent, or synthetic test is counted as a
+representative participant, and no human completion or comprehension result is
+claimed. The committed protocol remains available for optional future product
+research, including its anonymization and repeated-blocker rerun rules.
 
 The automated output matrix proves rendering, terminology, width, color, and
-next-action contracts. It does not substitute for that human comprehension
-evidence.
+next-action contracts. It does not prove human comprehension; that evidence is
+outside the revised completion criteria.
+
+The decision-record validation passed on 2026-07-28: `bun run docs:check`
+reported no diagnostics, `bun run docs:build` produced all 78 pages, the
+fixture and documentation-link suite passed 14 tests with 1,517 assertions,
+`git diff --check` passed, and the plan plus both evidence records contained no
+unchecked acceptance criterion.
