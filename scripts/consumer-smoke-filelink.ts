@@ -30,7 +30,11 @@ import {
 
 /** The packages the DOCX/PDF smokes need: docx + pdf(+compiler) roots; the
  *  transitive @atlcli closure is derived from the real manifests. */
-const FILELINK_ROOTS = ["@atlcli/docx", "@atlcli/pdf", "@atlcli/pdf-compiler-browser"];
+const FILELINK_ROOTS = [
+  "@atlcli/docx",
+  "@atlcli/pdf",
+  "@atlcli/pdf-compiler-browser",
+];
 
 export interface FilelinkSmokeResult {
   projectDir: string;
@@ -48,9 +52,22 @@ export async function runFilelinkSmoke(baseDir?: string): Promise<FilelinkSmokeR
   for (const name of atlcliClosure(FILELINK_ROOTS)) {
     dependencies[name] = `file:${byName.get(name)!}`;
   }
+  // A file-linked package retains its workspace manifest. Bun may inspect
+  // package devDependencies while linking, so explicitly resolve the browser
+  // compiler's test-only intake edge without installing the same directory a
+  // second time as a direct consumer dependency.
+  const intakeName = "@atlcli/docx-template-intake";
+  const overrides = {
+    ...dependencies,
+    [intakeName]: `file:${byName.get(intakeName)!}`,
+  };
 
   const projectDir = join(workDir, "consumer");
-  scaffoldConsumer(projectDir, { dependencies, devDependencies: CONSUMER_DEV_DEPS });
+  scaffoldConsumer(projectDir, {
+    dependencies,
+    overrides,
+    devDependencies: CONSUMER_DEV_DEPS,
+  });
 
   const install = run(["bun", "install"], projectDir);
   if (install.exitCode !== 0) {

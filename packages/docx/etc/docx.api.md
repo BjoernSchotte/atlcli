@@ -1113,6 +1113,8 @@ export interface ArchiveBudget {
     maxEntryCount: number;
     maxUncompressedBytes: number;
     maxSingleEntryUncompressedBytes: number;
+    maxXmlPartUncompressedBytes?: number;
+    maxXmlPartCharacters?: number;
 }
 
 // export: assertArchiveBudget
@@ -1313,6 +1315,9 @@ export declare function documentPartNames(zip: PizZip): string[];
 // export: DOCX_ARCHIVE_BUDGET
 export declare const DOCX_ARCHIVE_BUDGET: ArchiveBudget;
 
+// export: DOCX_TEMPLATE_INTAKE_BUDGET
+export declare const DOCX_TEMPLATE_INTAKE_BUDGET: ArchiveBudget;
+
 // export: DocxError
 export declare class DocxError extends Error {
     readonly kind: DocxErrorKind;
@@ -1321,7 +1326,7 @@ export declare class DocxError extends Error {
 }
 
 // export: DocxErrorKind
-export type DocxErrorKind = "not-zip" | "not-docx" | "too-large" | "too-many-entries" | "path-traversal" | "invalid-path" | "entry-too-large" | "uncompressed-too-large" | "suspicious-compression" | "corrupt-entry" | "active-content";
+export type DocxErrorKind = "not-zip" | "not-docx" | "too-large" | "too-many-entries" | "path-traversal" | "invalid-path" | "entry-too-large" | "xml-part-too-large" | "uncompressed-too-large" | "suspicious-compression" | "corrupt-entry" | "active-content";
 
 // export: DocxFontEmbeddingError
 export declare class DocxFontEmbeddingError extends Error {
@@ -2432,6 +2437,8 @@ export interface ArchiveBudget {
     maxEntryCount: number;
     maxUncompressedBytes: number;
     maxSingleEntryUncompressedBytes: number;
+    maxXmlPartUncompressedBytes?: number;
+    maxXmlPartCharacters?: number;
 }
 
 // export: assertArchiveBudget
@@ -2478,6 +2485,9 @@ export declare function documentPartNames(zip: PizZip): string[];
 // export: DOCX_ARCHIVE_BUDGET
 export declare const DOCX_ARCHIVE_BUDGET: ArchiveBudget;
 
+// export: DOCX_TEMPLATE_INTAKE_BUDGET
+export declare const DOCX_TEMPLATE_INTAKE_BUDGET: ArchiveBudget;
+
 // export: DocxError
 export declare class DocxError extends Error {
     readonly kind: DocxErrorKind;
@@ -2486,7 +2496,7 @@ export declare class DocxError extends Error {
 }
 
 // export: DocxErrorKind
-export type DocxErrorKind = "not-zip" | "not-docx" | "too-large" | "too-many-entries" | "path-traversal" | "invalid-path" | "entry-too-large" | "uncompressed-too-large" | "suspicious-compression" | "corrupt-entry" | "active-content";
+export type DocxErrorKind = "not-zip" | "not-docx" | "too-large" | "too-many-entries" | "path-traversal" | "invalid-path" | "entry-too-large" | "xml-part-too-large" | "uncompressed-too-large" | "suspicious-compression" | "corrupt-entry" | "active-content";
 
 // export: FieldRefreshOptions
 export interface FieldRefreshOptions {

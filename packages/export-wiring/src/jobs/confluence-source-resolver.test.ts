@@ -395,6 +395,21 @@ describe("resolveConfluenceSourceV1", () => {
       .toBe("authentication");
     expect(JSON.stringify(failure)).not.toContain("CONFIDENTIAL");
     expect(String(failure)).not.toContain("CONFIDENTIAL");
+
+    const missing = await resolveConfluenceSourceV1(pageRequest(), {
+      exporter: "pdf",
+      port: fixturePort([], {
+        getPage: async () => {
+          throw new Error("CONFIDENTIAL-NOT-FOUND");
+        },
+      }),
+      signal: new AbortController().signal,
+      classifyError: () => "not-found",
+    }).catch((caught: unknown) => caught);
+    expect(missing).toBeInstanceOf(ConfluenceSourceResolutionError);
+    expect((missing as ConfluenceSourceResolutionError).sourceFailureKind)
+      .toBe("not-found");
+    expect(JSON.stringify(missing)).not.toContain("CONFIDENTIAL");
   });
 
   it("resolves content keys without a body read and composes one shared tree for both engines", async () => {

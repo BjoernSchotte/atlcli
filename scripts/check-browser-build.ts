@@ -78,9 +78,13 @@ export const BROWSER_ENTRYPOINTS = [
   "packages/docx/src/browser-runtime.ts",
   "packages/diagram/src/index.ts",
   "packages/pdf/src/index.browser.ts",
+  "packages/pdf/src/template-authoring-runtime.ts",
   "packages/pdf/src/internal.ts",
   "packages/pdf-compiler-browser/src/index.ts",
   "packages/template-pack/src/index.browser.ts",
+  "packages/pdf-template-authoring/src/index.browser.ts",
+  "packages/docx-template-intake/src/index.browser.ts",
+  "packages/docx-template-intake/src/application.ts",
   "packages/export-macros/src/index.ts",
   "packages/export-macros/src/internal.ts",
   "packages/export-wiring/src/index.ts",
@@ -165,10 +169,70 @@ export interface EntryCheckResult {
   builtinImports: BuiltinImport[];
   /** `Bun.*` global usages surviving into the bundle (rule 3). */
   bunGlobals: string[];
+  /** Host-specific modules reached by an otherwise buildable browser graph. */
+  hostGraphViolations: Array<{
+    category:
+      | "cli"
+      | "filesystem-adapter"
+      | "process-lock"
+      | "terminal";
+    path: string;
+  }>;
   /** True when `Bun.build` itself reported failure (vs. a clean build that leaked). */
   buildFailed: boolean;
   /** Human-readable build diagnostics, when any. */
   logs: string[];
+}
+
+const HOST_GRAPH_RULES: readonly {
+  category: EntryCheckResult["hostGraphViolations"][number]["category"];
+  pattern: RegExp;
+}[] = [
+  { category: "cli", pattern: /\/apps\/cli\//u },
+  {
+    category: "filesystem-adapter",
+    pattern: /\/(?:pdf-template-project-writer|file-system|filesystem)\.[cm]?[jt]s$/u,
+  },
+  { category: "process-lock", pattern: /\/process-lock\.[cm]?[jt]s$/u },
+  {
+    category: "terminal",
+    pattern: /\/(?:terminal|prompt|terminal-formatting)\.[cm]?[jt]s$/u,
+  },
+];
+
+function hostGraphScanPlugin(
+  sink: EntryCheckResult["hostGraphViolations"],
+  cwd: string
+): import("bun").BunPlugin {
+  return {
+    name: "atlcli-host-neutral-path-scan",
+    setup(build) {
+      build.onLoad({ filter: /.*/ }, (args) => {
+        for (const rule of HOST_GRAPH_RULES) {
+          if (!rule.pattern.test(args.path)) continue;
+          sink.push({
+            category: rule.category,
+            path: args.path.startsWith(cwd + "/")
+              ? args.path.slice(cwd.length + 1)
+              : args.path,
+          });
+        }
+        return undefined;
+      });
+    },
+  };
+}
+
+function uniqueHostGraphViolations(
+  found: EntryCheckResult["hostGraphViolations"]
+): EntryCheckResult["hostGraphViolations"] {
+  const seen = new Set<string>();
+  return found.filter(({ category, path }) => {
+    const key = `${category}\0${path}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 /**
@@ -281,6 +345,7 @@ function uniqueBuiltinImports(found: BuiltinImport[]): BuiltinImport[] {
 /** Build one entrypoint for the browser and apply all three rules. */
 export async function checkEntrypoint(entrypoint: string): Promise<EntryCheckResult> {
   const found: BuiltinImport[] = [];
+  const hostGraphViolations: EntryCheckResult["hostGraphViolations"] = [];
   let result: Awaited<ReturnType<typeof Bun.build>>;
   try {
     // `development` keeps this gate source-based: `@atlcli/*` exports resolve
@@ -290,7 +355,10 @@ export async function checkEntrypoint(entrypoint: string): Promise<EntryCheckRes
       entrypoints: [entrypoint],
       target: "browser",
       conditions: ["development"],
-      plugins: [builtinScanPlugin(found, process.cwd())],
+      plugins: [
+        builtinScanPlugin(found, process.cwd()),
+        hostGraphScanPlugin(hostGraphViolations, process.cwd()),
+      ],
     });
   } catch (err) {
     const logs = collectDiagnostics(err);
@@ -301,6 +369,7 @@ export async function checkEntrypoint(entrypoint: string): Promise<EntryCheckRes
       specifiers: uniqueSpecifiers(logs.join("\n"), true),
       builtinImports: uniqueBuiltinImports(found),
       bunGlobals: [],
+      hostGraphViolations: uniqueHostGraphViolations(hostGraphViolations),
       logs,
     };
   }
@@ -314,6 +383,7 @@ export async function checkEntrypoint(entrypoint: string): Promise<EntryCheckRes
       specifiers: uniqueSpecifiers(logs.join("\n"), true),
       builtinImports: uniqueBuiltinImports(found),
       bunGlobals: [],
+      hostGraphViolations: uniqueHostGraphViolations(hostGraphViolations),
       logs,
     };
   }
@@ -323,14 +393,21 @@ export async function checkEntrypoint(entrypoint: string): Promise<EntryCheckRes
   const specifiers = uniqueSpecifiers(output);
   const bunGlobals = [...new Set([...output.matchAll(BUN_GLOBAL_RE)].map((m) => m[0]))];
   const builtinImports = uniqueBuiltinImports(found);
+  const uniqueHostViolations =
+    uniqueHostGraphViolations(hostGraphViolations);
 
   return {
     entrypoint,
-    ok: specifiers.length === 0 && builtinImports.length === 0 && bunGlobals.length === 0,
+    ok:
+      specifiers.length === 0 &&
+      builtinImports.length === 0 &&
+      bunGlobals.length === 0 &&
+      uniqueHostViolations.length === 0,
     buildFailed: false,
     specifiers,
     builtinImports,
     bunGlobals,
+    hostGraphViolations: uniqueHostViolations,
     logs: [],
   };
 }
@@ -385,6 +462,9 @@ async function main(): Promise<void> {
     }
     for (const hit of r.builtinImports) {
       console.error(`    builtin import: ${hit.importer} imports "${hit.specifier}"`);
+    }
+    for (const hit of r.hostGraphViolations) {
+      console.error(`    host graph: ${hit.category} module ${hit.path}`);
     }
     if (r.specifiers.length > 0) {
       console.error(`    offending specifier(s) in output: ${r.specifiers.join(", ")}`);

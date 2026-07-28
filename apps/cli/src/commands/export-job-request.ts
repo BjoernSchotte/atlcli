@@ -8,6 +8,7 @@ import type {
   DocxExportJobRequestV1,
   ExportSourceV1,
   PdfExportJobRequestV1,
+  PdfTemplateReferenceV1,
 } from "@atlcli/export-jobs";
 import type { ParsedExportRequest } from "./export-request.js";
 
@@ -120,6 +121,7 @@ export function buildCliPdfJobRequest(
     strict: boolean;
     noCache: boolean;
     exportedAt?: Date;
+    template?: PdfTemplateReferenceV1;
   },
 ): PdfExportJobRequestV1 {
   const targetKind = input.outputTargetKind ?? "file";
@@ -141,7 +143,13 @@ export function buildCliPdfJobRequest(
       targetKind,
       overwriteExisting: input.force,
     },
-    template: { id: "builtin-default", manifestVersion: "1" },
+    template:
+      input.template ??
+      {
+        kind: "builtin",
+        id: "builtin-default",
+        manifestVersion: "1",
+      },
     settings: {},
     options: {
       resolveMacros: true,

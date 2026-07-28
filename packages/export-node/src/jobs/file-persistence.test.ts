@@ -11,6 +11,8 @@ import {
   DELIVERED_ARTIFACT_RETENTION_MS_V1,
   FULL_REPORT_RETENTION_MS_V1,
   prepareExportArtifactFinalizationIntent,
+  TEMPLATE_PACK_ORPHAN_GRACE_MS_V1,
+  templatePackReference,
   type DocxExportJobRequestV1,
   type ExportJobExecutionContext,
   type ExportJobExecutor,
@@ -42,10 +44,162 @@ function request(id: string): DocxExportJobRequestV1 {
     authRef: "profile:default", displayName: id, createdAt: 1, priority: "interactive", output: { policy: "collect" },
     template: { recordKey: "default", sha256: "0".repeat(64), name: "Default" }, options: { embedImages: true, resolveMacros: true } };
 }
+function pdfPackRequest(
+  id: string,
+  template: PdfExportJobRequestV1["template"],
+  createdAt: number,
+): PdfExportJobRequestV1 {
+  return {
+    schema: "atlcli.export-job-request/1",
+    id,
+    idempotencyKey: `idem:${id}`,
+    format: "pdf",
+    renderer: "pdf-typst",
+    source: {
+      kind: "confluence",
+      siteOrigin: "https://example.atlassian.net",
+      locator: { kind: "page-id", id: "123" },
+      scope: { kind: "page" },
+    },
+    authRef: "profile:default",
+    displayName: id,
+    createdAt,
+    priority: "interactive",
+    output: { policy: "collect" },
+    template,
+    settings: {},
+    options: { resolveMacros: true },
+  };
+}
 async function* bytes(value: string): AsyncIterable<Uint8Array> { yield new TextEncoder().encode(value); }
 async function all(source: AsyncIterable<Uint8Array>): Promise<string> { const chunks: number[] = []; for await (const chunk of source) chunks.push(...chunk); return new TextDecoder().decode(Uint8Array.from(chunks)); }
 
 describe("file export persistence", () => {
+  it("shares verified template packs across restarts and reconciles only complete-scan orphans", async () => {
+    const dir = await root();
+    const first = createFileExportJobPersistence({ rootDir: dir });
+    const record = await first.templatePacks.put({
+      bytes: new Uint8Array([1, 3, 3, 7]),
+      limits: { maxObjectBytes: 16, maxTotalBytes: 32 },
+      now: 10,
+    });
+    await first.templatePacks.link({
+      ...templatePackReference(record),
+      jobId: "job-a",
+      requestRef: "request:job-a",
+      at: 11,
+    });
+
+    const restarted = createFileExportJobPersistence({ rootDir: dir });
+    expect([
+      ...(await restarted.templatePacks.get(templatePackReference(record)))
+        .bytes,
+    ]).toEqual([1, 3, 3, 7]);
+    expect(
+      await restarted.templatePacks.reconcile({
+        completeScan: true,
+        references: [
+          {
+            ...templatePackReference(record),
+            jobId: "job-a",
+            requestRef: "request:job-a",
+          },
+        ],
+        now: 100,
+        orphanGraceMs: 10,
+      })
+    ).toMatchObject({ deletedRecords: [], retainedRecords: 1 });
+    expect(
+      await restarted.templatePacks.reconcile({
+        completeScan: true,
+        references: [],
+        now: 100,
+        orphanGraceMs: 10,
+      })
+    ).toMatchObject({
+      deletedRecords: [record.recordKey],
+      retainedRecords: 0,
+    });
+  });
+
+  it("retains a shared pack until every retained job is deleted and the orphan grace expires", async () => {
+    const dir = await root();
+    let storeNow = 0;
+    const persistence = createFileExportJobPersistence({
+      rootDir: dir,
+      now: () => storeNow,
+    });
+    const record = await persistence.templatePacks.put({
+      bytes: new Uint8Array([2, 4, 6, 8]),
+      limits: { maxObjectBytes: 16, maxTotalBytes: 32 },
+      now: 0,
+    });
+    const template = templatePackReference(record);
+    const first = await persistence.jobs.create({
+      request: pdfPackRequest("pack-job-a", template, 1),
+    });
+    const second = await persistence.jobs.create({
+      request: pdfPackRequest("pack-job-b", template, 2),
+    });
+    await persistence.templatePacks.link({
+      ...template,
+      jobId: first.id,
+      requestRef: first.requestRef,
+      at: 3,
+    });
+    await persistence.templatePacks.link({
+      ...template,
+      jobId: second.id,
+      requestRef: second.requestRef,
+      at: 3,
+    });
+
+    await sweepFileExportJobRetentionV1(
+      persistence,
+      10,
+    );
+    expect(await persistence.templatePacks.verify(template)).toMatchObject({
+      recordKey: record.recordKey,
+    });
+
+    for (const jobId of [first.id, second.id]) {
+      const queued = (await persistence.jobs.get(jobId))!;
+      await persistence.jobs.compareAndSet({
+        kind: "transition",
+        id: jobId,
+        expectedRevision: queued.revision,
+        to: "cancelled",
+        at: 4,
+      });
+    }
+    storeNow = 11;
+    await persistence.jobs.deleteTerminal({
+      ids: [first.id],
+      finishedBefore: 5,
+      limit: 1,
+    });
+    await sweepFileExportJobRetentionV1(
+      persistence,
+      storeNow,
+    );
+    expect(await persistence.templatePacks.verify(template)).toBeDefined();
+
+    storeNow = 13;
+    await persistence.jobs.deleteTerminal({
+      ids: [second.id],
+      finishedBefore: 5,
+      limit: 1,
+    });
+    storeNow = TEMPLATE_PACK_ORPHAN_GRACE_MS_V1 - 1;
+    await sweepFileExportJobRetentionV1(persistence, storeNow);
+    expect(await persistence.templatePacks.verify(template)).toBeDefined();
+    storeNow = TEMPLATE_PACK_ORPHAN_GRACE_MS_V1 + 3;
+    await sweepFileExportJobRetentionV1(persistence, storeNow);
+    await expect(persistence.templatePacks.verify(template)).rejects.toThrow(
+      "not found",
+    );
+  });
+
   it("durably creates before work and gives one claim to two independent instances", async () => {
     const dir = await root(); const first = createFileExportJobPersistence({ rootDir: dir }); const second = createFileExportJobPersistence({ rootDir: dir });
     await first.jobs.create({ request: request("job-1") });
@@ -198,7 +352,7 @@ describe("file export persistence", () => {
 
   it("round-trips real prepared PDF shapes, binary assets, Date and Map across restart", async () => {
     const dir = await root(); const persistence = createFileExportJobPersistence({ rootDir: dir });
-    const pdfRequest: PdfExportJobRequestV1 = { ...request("pdf-1"), format: "pdf", renderer: "pdf-typst", template: { id: "default", manifestVersion: "1" }, settings: {}, options: { resolveMacros: true } } as PdfExportJobRequestV1;
+    const pdfRequest: PdfExportJobRequestV1 = { ...request("pdf-1"), format: "pdf", renderer: "pdf-typst", template: { kind: "builtin", id: "default", manifestVersion: "1" }, settings: {}, options: { resolveMacros: true } } as PdfExportJobRequestV1;
     await persistence.jobs.create({ request: pdfRequest }); const claimed = (await persistence.jobs.claimNext({ ownerId: "a", now: 1, leaseDurationMs: 100_000 }))!;
     const prepared: PreparedPdfExportV1 & { extensionMap: Map<string, number>; extensionDate: Date } = {
       schema: "atlcli.prepared-pdf-export/1", bundle: { main: "main", template: "template", assets: [{ path: "a.png", mediaType: "image/png", bytes: Uint8Array.of(1, 2, 3) }], sourceMap: [], notes: [] },
@@ -566,6 +720,50 @@ describe("file export persistence", () => {
       { kind: "state", from: "running", to: "failed" },
       { kind: "issue", level: "error", code: "executor.failed" },
     ]);
+
+    await persistence.jobs.create({ request: request("runtime-source-failure") });
+    const sourceFailureClaim = (await persistence.jobs.claimNext({
+      ownerId: "worker",
+      now: 23,
+      leaseDurationMs: 10_000,
+      ids: ["runtime-source-failure"],
+    }))!;
+    const sourceFailure = await runClaimedFileExportJob({
+      claimed: sourceFailureClaim,
+      jobs: persistence.jobs,
+      spool: persistence.spool,
+      artifacts: persistence.artifacts,
+      spoolLimits: persistence.spoolLimits,
+      executor: {
+        format: "docx",
+        execute: async () => {
+          throw Object.assign(
+            new Error("The Confluence export source could not be resolved."),
+            {
+              code: "confluence-source-resolution-failed",
+              sourceFailureKind: "not-found",
+            }
+          );
+        },
+      },
+      now: () => 24,
+      heartbeatIntervalMs: 60_000,
+      cancelPollMs: 60_000,
+    });
+    expect(sourceFailure.error).toMatchObject({
+      code: "confluence-source-resolution-failed",
+      category: "source",
+      retryable: false,
+    });
+    expect(
+      (await persistence.jobs.readEvents(sourceFailure.id)).events
+    ).toContainEqual(
+      expect.objectContaining({
+        kind: "issue",
+        level: "error",
+        code: "confluence-source-resolution-failed",
+      })
+    );
   });
 
   it("returns ascending event pages after a cursor", async () => {

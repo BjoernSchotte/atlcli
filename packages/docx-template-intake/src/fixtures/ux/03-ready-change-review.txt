@@ -1,0 +1,7 @@
+Scenario: ready-change-review
+Stage: review-required
+Message-Code: ATLCLI_PDF_TEMPLATE_REVIEW_READY
+What happened: A heading color matched a supported design choice with strong evidence.
+Current state: The Word value is ready to apply after confirmation.
+Retained: The current heading color remains active until the user confirms the change.
+Next: atlcli pdf-template review ./brand-pdf-template

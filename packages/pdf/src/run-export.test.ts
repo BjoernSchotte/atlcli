@@ -9,6 +9,21 @@ import {
   type PdfExportPhase,
 } from "./run-export.js";
 import { PdfSettingsError } from "./settings.js";
+import {
+  BUILTIN_PDF_FALLBACK_LABELS,
+  BUILTIN_PDF_TEMPLATE_MANIFEST,
+} from "./builtin-template.js";
+import {
+  PDF_TEMPLATE_CAPABILITIES_V1,
+  PDF_TEMPLATE_CAPABILITY_DIGEST_V1,
+} from "./design-catalog.js";
+import {
+  PDF_CANONICAL_SOURCE_API_V1,
+  PDF_CANONICAL_SOURCE_REVISION,
+  loadPdfTemplatePack,
+} from "./template-pack.js";
+import { createAtlcliTypstTemplate } from "./template.js";
+import { packTemplate, validateManifest } from "@atlcli/template-pack";
 
 const validPdf = new TextEncoder().encode(
   "%PDF-1.7\n/Type/Page /StructTreeRoot /MarkInfo /Outlines /FontFile2\n%%EOF\n"
@@ -16,6 +31,36 @@ const validPdf = new TextEncoder().encode(
 const blocks: ExportBlock[] = [{ type: "paragraph", content: [{ type: "text", text: "Hello" }] }];
 const metadata = { title: "Test", exportedAt: new Date("2026-07-17T00:00:00Z") };
 const assets = { resolve: async () => { throw new Error("no assets"); } };
+
+async function canonicalRuntime() {
+  const manifest = validateManifest({
+    ...BUILTIN_PDF_TEMPLATE_MANIFEST,
+    id: "fixture.run-export-pack",
+    name: "Run export pack",
+    version: "1.0.0",
+    capabilityCatalog: {
+      id: PDF_TEMPLATE_CAPABILITIES_V1.id,
+      version: PDF_TEMPLATE_CAPABILITIES_V1.version,
+      digest: PDF_TEMPLATE_CAPABILITY_DIGEST_V1,
+    },
+    canonicalSource: {
+      api: PDF_CANONICAL_SOURCE_API_V1,
+      revision: PDF_CANONICAL_SOURCE_REVISION,
+    },
+    provenance: undefined,
+  });
+  const source = createAtlcliTypstTemplate(
+    manifest.design!,
+    BUILTIN_PDF_FALLBACK_LABELS,
+    { assets: {}, decorations: [] },
+    { positionedLogo: true }
+  );
+  const bytes = await packTemplate({
+    manifest,
+    files: { "atlcli.typ": new TextEncoder().encode(source) },
+  });
+  return { runtime: await loadPdfTemplatePack(bytes), source };
+}
 
 describe("neutral runPdfExport", () => {
   it("keeps the direct path exactly equal to the explicit prepare/render stages", async () => {
@@ -198,6 +243,81 @@ describe("neutral runPdfExport", () => {
     }
     expect(resolveCalls).toBe(0);
     expect(emitted).toBe(0);
+  });
+
+  it("uses one verified static pack source while locale labels and declared Level A bindings travel through settings", async () => {
+    const { runtime, source } = await canonicalRuntime();
+    const bundles: Array<{ main: string; template: string }> = [];
+    const run = (language: "de" | "en", accentColor?: string) =>
+      runPdfExport(
+        {
+          blocks,
+          metadata: { ...metadata, language },
+          filename: `${language}.pdf`,
+          templatePack: runtime,
+          ...(accentColor ? { settings: { accentColor } } : {}),
+        },
+        {
+          assets,
+          compiler: {
+            async compile(bundle) {
+              bundles.push({
+                main: bundle.main,
+                template: bundle.template,
+              });
+              return {
+                pdf: validPdf,
+                diagnostics: [],
+                compilerVersion: "test",
+              };
+            },
+          },
+          output: { emit: async () => {} },
+        }
+      );
+
+    await run("en");
+    await run("de", "#123456");
+    expect(bundles.map(({ template }) => template)).toEqual([source, source]);
+    expect(bundles[0]!.main).toContain('contents: "Contents"');
+    expect(bundles[1]!.main).toContain('contents: "Inhalt"');
+    expect(bundles[1]!.main).toContain('"#123456"');
+    expect(bundles[0]!.main).not.toContain('"#123456"');
+  });
+
+  it("owns the verified runtime before asynchronous preparation can observe mutation", async () => {
+    const { runtime, source } = await canonicalRuntime();
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const preparing = preparePdfExport(
+      {
+        blocks: [
+          {
+            type: "image",
+            source: { kind: "external", url: "https://example.invalid/a.png" },
+            alt: "Synthetic",
+          },
+        ],
+        metadata,
+        filename: "frozen.pdf",
+        templatePack: runtime,
+      },
+      {
+        assets: {
+          async resolve() {
+            await gate;
+            throw new Error("synthetic missing asset");
+          },
+        },
+      }
+    );
+    runtime.canonicalSource.source = "// caller mutation";
+    runtime.entrySource = "// caller mutation";
+    release();
+    const prepared = await preparing;
+    expect(prepared.bundle?.template).toBe(source);
   });
 
   it("resolves settings exactly once across validation and serialization", async () => {

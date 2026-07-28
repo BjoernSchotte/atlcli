@@ -40,7 +40,7 @@ function pdfRequest(): PdfExportJobRequestV1 {
     createdAt: 100,
     priority: "interactive",
     output: { policy: "path", targetRef: "/exports/docs.pdf", overwriteExisting: true },
-    template: { id: "default", manifestVersion: "1" },
+    template: { kind: "builtin", id: "default", manifestVersion: "1" },
     settings: {
       page: "a4",
       watermark: { text: "DRAFT", opacity: 0.08 },

@@ -85,11 +85,27 @@ export interface PdfExportSettingsV1 {
   custom?: Record<string, string | number | boolean | null>;
 }
 
+export interface PdfBuiltinTemplateReferenceV1 {
+  kind: "builtin";
+  id: string;
+  manifestVersion: string;
+}
+
+export interface PdfTemplatePackReferenceV1 {
+  kind: "pack";
+  archiveSha256: string;
+  recordKey: string;
+}
+
+export type PdfTemplateReferenceV1 =
+  | PdfBuiltinTemplateReferenceV1
+  | PdfTemplatePackReferenceV1;
+
 /** Version-1 Typst PDF export request. */
 export interface PdfExportJobRequestV1 extends ExportJobRequestBaseV1 {
   format: "pdf";
   renderer: "pdf-typst";
-  template: { id: string; manifestVersion: string };
+  template: PdfTemplateReferenceV1;
   settings: PdfExportSettingsV1;
   options: {
     resolveMacros: boolean;

@@ -12,6 +12,9 @@ export type {
   PdfExportWatermarkV1,
   PdfExportLogoV1,
   PdfExportSettingsV1,
+  PdfBuiltinTemplateReferenceV1,
+  PdfTemplatePackReferenceV1,
+  PdfTemplateReferenceV1,
   ExportJobRequestV1,
 } from "./request.js";
 export type {
@@ -62,6 +65,19 @@ export type {
   ExportByteCleanupResultV1,
 } from "./spool.js";
 export type { ResourceEstimateV1 } from "./resource.js";
+export {
+  InMemoryTemplatePackStoreV1,
+  TEMPLATE_PACK_ORPHAN_GRACE_MS_V1,
+  templatePackRecordKey,
+  templatePackReference,
+} from "./template-pack-store.js";
+export type {
+  TemplatePackStoreV1,
+  TemplatePackStoreLimitsV1,
+  TemplatePackRecordV1,
+  TemplatePackReachabilityV1,
+  TemplatePackReconcileResultV1,
+} from "./template-pack-store.js";
 export {
   EXPORT_RESOURCE_NAMES_V1,
   ExportResourceReservationErrorV1,

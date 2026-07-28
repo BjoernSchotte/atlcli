@@ -105,7 +105,10 @@ export interface ResolveConfluenceSourceOptionsV1 {
   bodyStore?: ExportTreeBodyStoreV1;
 }
 
-export type ConfluenceSourceFailureKindV1 = "authentication" | "unknown";
+export type ConfluenceSourceFailureKindV1 =
+  | "authentication"
+  | "not-found"
+  | "unknown";
 
 export interface ConfluenceSourceProgressV1 {
   fetched: number;

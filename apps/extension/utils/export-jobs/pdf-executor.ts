@@ -7,6 +7,7 @@ import {
   type PdfExportJobRequestV1,
   type ResourceEstimateV1,
   type SpoolWriteLimitsV1,
+  type TemplatePackStoreV1,
 } from "@atlcli/export-jobs";
 import {
   createPdfExportJobExecutor,
@@ -95,6 +96,7 @@ export interface CreateProductiveExtensionPdfExecutorOptionsV1 {
   ) => ResourceEstimateV1;
   readyToRender?: PdfReadyToRenderStoreV1;
   results?: PdfExportResultStoreV1;
+  templatePacks?: Pick<TemplatePackStoreV1, "get">;
   createCompiler?: (
     request: PdfExportJobRequestV1,
     context: ExportJobExecutionContext,
@@ -158,6 +160,9 @@ export function createProductiveExtensionPdfExecutor(
         compiler,
         renderReservations: options.renderPool.pdf,
         results,
+        ...(options.templatePacks
+          ? { templatePacks: options.templatePacks }
+          : {}),
         now,
       }).execute(request, context);
     },

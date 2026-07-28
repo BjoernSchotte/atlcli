@@ -199,8 +199,10 @@ you did not choose is worse than not exporting.
 Templates are isolated per Atlassian site, so two sites that both have a space
 called `DOCSY` never see each other's entries.
 
-PDF has no template upload: it uses the built-in atlcli document design,
-configured through [Document settings](#document-settings-pdf).
+The browser panel has no PDF-template upload yet: it uses the built-in atlcli
+document design, configured through [Document settings](#document-settings-pdf).
+The CLI can consume reviewed `.wiki-pdf-template` packs; see
+[Create a PDF template from Word](/confluence/pdf-template-from-word/).
 
 ## Preview
 

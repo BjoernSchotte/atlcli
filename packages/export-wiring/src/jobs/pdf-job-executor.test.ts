@@ -1,11 +1,25 @@
 import { describe, expect, it } from "bun:test";
 import type { TreeSource } from "@atlcli/confluence";
 import {
+  BUILTIN_PDF_TEMPLATE_MANIFEST,
+  PDF_CANONICAL_SOURCE_API_V1,
+  PDF_CANONICAL_SOURCE_REVISION,
   runPdfExport,
   type PdfCompilePort,
   type PdfExportReport,
   type PdfOutputSink,
 } from "@atlcli/pdf";
+import {
+  BUILTIN_PDF_FALLBACK_LABELS,
+  PDF_TEMPLATE_CAPABILITIES_V1,
+  PDF_TEMPLATE_CAPABILITY_DIGEST_V1,
+  createAtlcliTypstTemplate,
+} from "@atlcli/pdf/internal";
+import { packTemplate, validateManifest } from "@atlcli/template-pack";
+import {
+  InMemoryTemplatePackStoreV1,
+  templatePackReference,
+} from "@atlcli/export-jobs";
 import type {
   ExportJobExecutionContext,
   ExportJobEventDraftV1,
@@ -63,9 +77,44 @@ function request(): PdfExportJobRequestV1 {
     createdAt: 1,
     priority: "interactive",
     output: { policy: "collect" },
-    template: { id: "default", manifestVersion: "1" },
+    template: { kind: "builtin", id: "default", manifestVersion: "1" },
     settings: {},
     options: { resolveMacros: true, profile: "tagged" },
+  };
+}
+
+async function canonicalPackBytes(): Promise<{
+  bytes: Uint8Array;
+  source: string;
+}> {
+  const manifest = validateManifest({
+    ...BUILTIN_PDF_TEMPLATE_MANIFEST,
+    id: "fixture.executor-pack",
+    name: "Executor pack",
+    version: "1.0.0",
+    capabilityCatalog: {
+      id: PDF_TEMPLATE_CAPABILITIES_V1.id,
+      version: PDF_TEMPLATE_CAPABILITIES_V1.version,
+      digest: PDF_TEMPLATE_CAPABILITY_DIGEST_V1,
+    },
+    canonicalSource: {
+      api: PDF_CANONICAL_SOURCE_API_V1,
+      revision: PDF_CANONICAL_SOURCE_REVISION,
+    },
+    provenance: undefined,
+  });
+  const source = createAtlcliTypstTemplate(
+    manifest.design!,
+    BUILTIN_PDF_FALLBACK_LABELS,
+    { assets: {}, decorations: [] },
+    { positionedLogo: true }
+  );
+  return {
+    bytes: await packTemplate({
+      manifest,
+      files: { "atlcli.typ": new TextEncoder().encode(source) },
+    }),
+    source,
   };
 }
 
@@ -1146,5 +1195,97 @@ describe("createPdfExportJobExecutor", () => {
       ),
     ).rejects.toThrow("does not match its durable checkpoint");
     expect(compileCalls).toBe(1);
+  });
+
+  it("loads a verified content-addressed pack before source resolution and freezes it in the prepared job", async () => {
+    const pack = await canonicalPackBytes();
+    const store = new InMemoryTemplatePackStoreV1();
+    const record = await store.put({
+      bytes: pack.bytes,
+      limits: {
+        maxObjectBytes: 8 * 1024 * 1024,
+        maxTotalBytes: 16 * 1024 * 1024,
+      },
+      now: 1,
+    });
+    const packRequest: PdfExportJobRequestV1 = {
+      ...request(),
+      template: templatePackReference(record),
+    };
+    const order: string[] = [];
+    let compiledTemplate = "";
+    const fixture = executorOptions({
+      order,
+      resolveInput: async () => {
+        order.push("source-resolve");
+        return { ...engineInput(), telemetry: { sourcePageCount: 1 } };
+      },
+      compiler: {
+        async compile(bundle) {
+          compiledTemplate = bundle.template;
+          order.push("compile");
+          return {
+            pdf: validPdf.slice(),
+            diagnostics: [],
+            compilerVersion: "test",
+          };
+        },
+      },
+    });
+    const templatePacks = {
+      async get(reference: typeof packRequest.template & { kind: "pack" }, options?: { signal?: AbortSignal }) {
+        order.push("pack-get");
+        return store.get(reference, options);
+      },
+    };
+
+    // The caller's archive is no longer authoritative after the store put.
+    pack.bytes.fill(0);
+    await createPdfExportJobExecutor({
+      ...fixture.options,
+      templatePacks,
+    }).execute(packRequest, executionContext({ order }).context);
+
+    expect(order.indexOf("pack-get")).toBeLessThan(
+      order.indexOf("source-resolve")
+    );
+    expect(compiledTemplate).toBe(pack.source);
+    expect(fixture.ready.prepared?.bundle?.template).toBe(pack.source);
+  });
+
+  it("rejects a corrupt stored pack before source resolution or compilation", async () => {
+    const store = new InMemoryTemplatePackStoreV1();
+    const record = await store.put({
+      bytes: new Uint8Array([1, 2, 3]),
+      limits: { maxObjectBytes: 10, maxTotalBytes: 10 },
+      now: 1,
+    });
+    const calls = { resolve: 0, compile: 0 };
+    const fixture = executorOptions({
+      resolveInput: async () => {
+        calls.resolve += 1;
+        return engineInput();
+      },
+      compiler: {
+        async compile() {
+          calls.compile += 1;
+          return {
+            pdf: validPdf.slice(),
+            diagnostics: [],
+            compilerVersion: "test",
+          };
+        },
+      },
+    });
+    await expect(
+      createPdfExportJobExecutor({
+        ...fixture.options,
+        templatePacks: store,
+      }).execute(
+        { ...request(), template: templatePackReference(record) },
+        executionContext().context
+      )
+    ).rejects.toThrow();
+    expect(calls).toEqual({ resolve: 0, compile: 0 });
   });
 });

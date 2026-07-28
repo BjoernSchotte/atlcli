@@ -100,6 +100,14 @@ export const CONFORMANCE_MANIFEST: readonly ConformanceCaseMeta[] = [
     emitsDigests: true,
   },
   {
+    id: "docx-template-intake",
+    title: "DOCX to PDF template intake",
+    folderTaskIds: ["pdf-template-docx-intake/T10"],
+    engines: ["pdf"],
+    mediaPolicy: "raster",
+    emitsDigests: true,
+  },
+  {
     id: "blocks",
     title: "Block model (001)",
     folderTaskIds: ["001/T0.1", "001/T0.2"],
@@ -199,6 +207,7 @@ export const EXPECTED_LANDED_CASE_IDS: readonly string[] = [
   "pdf",
   "pdf-job-parity",
   "pdf-settings",
+  "docx-template-intake",
   "blocks",
   "adf-source",
   "scope",

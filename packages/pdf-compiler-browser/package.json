@@ -36,6 +36,8 @@
   },
   "devDependencies": {
     "@atlcli/confluence": "workspace:*",
+    "@atlcli/docx-template-intake": "workspace:*",
+    "@atlcli/pdf-template-authoring": "workspace:*",
     "@atlcli/template-pack": "workspace:*",
     "@myriaddreamin/typst-ts-web-compiler": "0.7.0"
   }

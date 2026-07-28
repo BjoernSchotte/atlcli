@@ -2,6 +2,7 @@ import {
   bindExportJobArtifacts,
   bindExportJobSpool,
   type ExportJobExecutionContext,
+  type ExportJobErrorV1,
   type ExportJobEventDraftV1,
   type ExportJobExecutionResultV1,
   type ExportJobExecutor,
@@ -153,6 +154,47 @@ export interface RunClaimedFileExportJobOptionsV1 extends Omit<CreateFileExportE
   executor: ExportJobExecutor<ExportJobRequestV1>;
 }
 
+function durableExecutorFailure(
+  error: unknown,
+  stage: ExportJobSnapshotV1["stage"],
+  occurredAt: number,
+): ExportJobErrorV1 {
+  if (
+    error &&
+    typeof error === "object" &&
+    "code" in error &&
+    error.code === "confluence-source-resolution-failed" &&
+    "sourceFailureKind" in error
+  ) {
+    const sourceFailureKind = error.sourceFailureKind;
+    if (
+      sourceFailureKind === "authentication" ||
+      sourceFailureKind === "not-found" ||
+      sourceFailureKind === "unknown"
+    ) {
+      return {
+        code: error.code,
+        message:
+          error instanceof Error
+            ? error.message
+            : "The Confluence export source could not be resolved.",
+        category: sourceFailureKind === "authentication" ? "auth" : "source",
+        retryable: sourceFailureKind === "unknown",
+        ...(stage ? { stage } : {}),
+        occurredAt,
+      };
+    }
+  }
+  return {
+    code: "executor.failed",
+    message: error instanceof Error ? error.message : String(error),
+    category: "unknown",
+    retryable: false,
+    ...(stage ? { stage } : {}),
+    occurredAt,
+  };
+}
+
 async function appendCommittedEvent(
   jobs: FileExportJobStore,
   snapshot: ExportJobSnapshotV1,
@@ -190,9 +232,10 @@ export async function runClaimedFileExportJob(options: RunClaimedFileExportJobOp
     }
     if (current.state === "running") {
       const at = now();
-      const failed = await options.jobs.compareAndSet({ kind: "transition", id: current.id, expectedRevision: current.revision, leaseEpoch: current.leaseEpoch, to: "failed", at, error: { code: "executor.failed", message: error instanceof Error ? error.message : String(error), category: "unknown", retryable: false, ...(current.stage ? { stage: current.stage } : {}), occurredAt: at } });
+      const durableError = durableExecutorFailure(error, current.stage, at);
+      const failed = await options.jobs.compareAndSet({ kind: "transition", id: current.id, expectedRevision: current.revision, leaseEpoch: current.leaseEpoch, to: "failed", at, error: durableError });
       await appendCommittedEvent(options.jobs, failed, { kind: "state", at, from: "running", to: "failed" });
-      await appendCommittedEvent(options.jobs, failed, { kind: "issue", at, level: "error", code: "executor.failed" });
+      await appendCommittedEvent(options.jobs, failed, { kind: "issue", at, level: "error", code: durableError.code });
       return failed;
     }
     throw error;

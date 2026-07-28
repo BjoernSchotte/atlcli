@@ -46,9 +46,13 @@ describe("browser-build gate (spec 001 task 6)", () => {
       "packages/docx/src/browser-runtime.ts",
       "packages/diagram/src/index.ts",
       "packages/pdf/src/index.browser.ts",
+      "packages/pdf/src/template-authoring-runtime.ts",
       "packages/pdf/src/internal.ts",
       "packages/pdf-compiler-browser/src/index.ts",
       "packages/template-pack/src/index.browser.ts",
+      "packages/pdf-template-authoring/src/index.browser.ts",
+      "packages/docx-template-intake/src/index.browser.ts",
+      "packages/docx-template-intake/src/application.ts",
       "packages/export-macros/src/index.ts",
       "packages/export-macros/src/internal.ts",
       "packages/export-wiring/src/index.ts",
@@ -68,8 +72,38 @@ describe("browser-build gate (spec 001 task 6)", () => {
     expect(result.specifiers).toEqual([]);
     expect(result.builtinImports).toEqual([]);
     expect(result.bunGlobals).toEqual([]);
+    expect(result.hostGraphViolations).toEqual([]);
     expect(result.ok).toBe(true);
   });
+
+  for (const [category, relative] of [
+    ["cli", "apps/cli/command.ts"],
+    ["filesystem-adapter", "src/pdf-template-project-writer.ts"],
+    ["process-lock", "src/process-lock.ts"],
+    ["terminal", "src/prompt.ts"],
+  ] as const) {
+    test(`a seeded ${category} dependency turns the host-neutral graph gate red`, async () => {
+      const dir = fixtureDir();
+      const dependency = join(dir, relative);
+      mkdirSync(join(dependency, ".."), { recursive: true });
+      writeFileSync(dependency, `export const hostOnly = true;\n`);
+      const entry = join(dir, "entry.ts");
+      const specifier = `./${relative.replace(/\.ts$/u, ".js")}`;
+      writeFileSync(
+        entry,
+        `import { hostOnly } from ${JSON.stringify(specifier)};\nexport { hostOnly };\n`
+      );
+      const result = await checkEntrypoint(entry);
+      expect(result.ok).toBe(false);
+      expect(
+        result.hostGraphViolations.some(
+          (violation) =>
+            violation.category === category &&
+            violation.path.endsWith(relative)
+        )
+      ).toBe(true);
+    });
+  }
 
   // Negative proof (spec 001 task 6 AC).
   //

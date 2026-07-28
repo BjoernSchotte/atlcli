@@ -314,9 +314,8 @@ describe("short flag aliases the help advertises", () => {
     expect(report.issues.map((i) => i.code)).not.toContain("template-default-used");
   }, 60_000);
 
-  it("-t is rejected with --format pdf, like the long spelling", async () => {
-    // The PDF guard checks PRESENCE. Rejecting only `--template` would let `-t`
-    // through into an export that silently ignores it.
+  it("-t is validated as a PDF pack before any API request", async () => {
+    const requestsBefore = unmatched.length;
     const { stdout, stderr, exitCode } = await runCli([
       "--format",
       "pdf",
@@ -327,7 +326,10 @@ describe("short flag aliases the help advertises", () => {
       "--json",
     ]);
     expect(exitCode).not.toBe(0);
-    expect(`${stdout}${stderr}`).toContain("--template is DOCX-only");
+    expect(`${stdout}${stderr}`).toContain(
+      "must point to a .wiki-pdf-template pack"
+    );
+    expect(unmatched).toHaveLength(requestsBefore);
   }, 60_000);
 
   it("-o names the output file, exactly like --output", async () => {

@@ -1,8 +1,34 @@
 import { describe, expect, it } from "bun:test";
 import { BUILTIN_PDF_DESIGN } from "./builtin-template.js";
+import {
+  PDF_TEMPLATE_LEGACY_FALLBACK_ALIASES_V1,
+  materializeLegacyPdfDesign,
+} from "./design-catalog.js";
 import { ATLCLI_TYPST_TEMPLATE, createAtlcliTypstTemplate } from "./template.js";
 
 describe("atlcli Typst template settings rendering", () => {
+  it("keeps positioned-logo execution behind canonical revision 3", () => {
+    const prior = createAtlcliTypstTemplate();
+    const current = createAtlcliTypstTemplate(
+      undefined,
+      {},
+      undefined,
+      { positionedLogo: true }
+    );
+
+    expect(prior).not.toContain('settings.at("logo-placement"');
+    expect(prior).toContain("#if logo-path != none [");
+    expect(current).toContain('settings.at("logo-placement"');
+    expect(current).toContain(
+      "logo-path != none and logo-placement != none"
+    );
+    expect(current).toContain(
+      "logo-path != none and logo-placement == none"
+    );
+    expect(current).toContain(
+      "place(top + left, dx: logo-x, dy: logo-y, placed-logo)"
+    );
+  });
   const template = ATLCLI_TYPST_TEMPLATE;
 
   it("reads page geometry from the resolved design (spec 012)", () => {
@@ -16,7 +42,10 @@ describe("atlcli Typst template settings rendering", () => {
 
   it("defines the watermark layer and wires it as the page background", () => {
     expect(template).toContain("#let watermark-layer(wm)");
-    expect(template).toContain('background: watermark-layer(settings.at("watermark", default: none))');
+    expect(template).toContain(
+      'background: watermark-layer(settings.at("watermark", default: none))'
+    );
+    expect(template).not.toContain("template-page-decorations()");
     expect(template).toContain("transparentize(");
     expect(template).toContain("place(center + horizon, rotate(");
   });
@@ -77,7 +106,16 @@ describe("atlcli Typst template settings rendering", () => {
     const design = structuredClone(BUILTIN_PDF_DESIGN);
     delete design.semanticPalettes.callouts.success;
     delete design.semanticPalettes.callouts.error;
-    const legacyTemplate = createAtlcliTypstTemplate(design);
+    expect(() => createAtlcliTypstTemplate(design)).toThrow(
+      /semanticPalettes\.callouts\.error\.background/
+    );
+    const legacyTemplate = createAtlcliTypstTemplate(
+      materializeLegacyPdfDesign(
+        design,
+        BUILTIN_PDF_DESIGN,
+        PDF_TEMPLATE_LEGACY_FALLBACK_ALIASES_V1
+      ).design
+    );
     expect(legacyTemplate).toContain('success: (rgb("#E3FCEF"), rgb("#006644"))');
     expect(legacyTemplate).toContain('error: (rgb("#FFFAE6"), rgb("#974F0C"))');
   });
