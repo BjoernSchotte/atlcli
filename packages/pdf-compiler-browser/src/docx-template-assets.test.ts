@@ -763,6 +763,30 @@ describe("DOCX template visual assets through real Typst-WASM", () => {
       compiler,
       resolveModel,
     }).render(request);
+    // On a digest mismatch, name the differing PDF offsets — "two 37500-byte
+    // documents with different hashes" is undebuggable from CI logs alone.
+    if (nodeResult.digest !== browserResult.digest) {
+      const a = resultBytes(nodeResult);
+      const b = resultBytes(browserResult);
+      const spans: string[] = [];
+      const limit = Math.min(a.byteLength, b.byteLength);
+      for (let i = 0; i < limit && spans.length < 5; i += 1) {
+        if (a[i] === b[i]) continue;
+        let end = i;
+        while (end < limit && a[end] !== b[end]) end += 1;
+        const from = Math.max(0, i - 24);
+        const to = Math.min(limit, end + 24);
+        const show = (bytes: Uint8Array) =>
+          Array.from(bytes.subarray(from, to), (byte) =>
+            byte >= 0x20 && byte < 0x7f ? String.fromCharCode(byte) : ".",
+          ).join("");
+        spans.push(`@${i}-${end}\n  node:    ${show(a)}\n  browser: ${show(b)}`);
+        i = end;
+      }
+      throw new Error(
+        `Node and browser preview bytes diverge (len ${a.byteLength}/${b.byteLength}):\n${spans.join("\n")}`,
+      );
+    }
     expect({
       digest: nodeResult.digest,
       mediaType: nodeResult.mediaType,

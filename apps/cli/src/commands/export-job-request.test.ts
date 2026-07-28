@@ -92,6 +92,20 @@ describe("durable CLI export job requests", () => {
     expect(JSON.stringify(request)).not.toContain(".wiki-pdf-template");
   });
 
+  test("persists the explicit image quality and omits redundant original (issue #118)", () => {
+    const base = {
+      id: "job-q", idempotencyKey: "key-q", createdAt: 40,
+      request: parseExportRequest("123", {}), profile,
+      outputPath: "/tmp/report.pdf", force: false, strict: false, noCache: false,
+    } as const;
+    const standard = buildCliPdfJobRequest({ ...base, imageProfile: "standard", imagePpi: 240 });
+    expect(standard.options.imageProfile).toBe("standard");
+    expect(standard.options.imagePpi).toBe(240);
+    const original = buildCliPdfJobRequest({ ...base, imageProfile: "original" });
+    expect("imageProfile" in original.options).toBe(false);
+    expect("imagePpi" in original.options).toBe(false);
+  });
+
   test("records a directory target without pretending its basename is a filename", () => {
     const request = buildCliPdfJobRequest({
       id: "job-dir", idempotencyKey: "key-dir", createdAt: 30,

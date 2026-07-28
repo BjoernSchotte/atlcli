@@ -118,6 +118,14 @@ export interface PdfExportJobRequestV1 extends ExportJobRequestBaseV1 {
     noCache?: boolean;
     /** Explicit reproducible export timestamp, as Unix epoch milliseconds. */
     exportedAt?: number;
+    /**
+     * Explicit image-quality profile (issue #118 Phase 1/3). Absent means
+     * `original` (byte-identical rasters). Persisted here so retries render
+     * with the identical quality and the recovery key absorbs it.
+     */
+    imageProfile?: "original" | "standard" | "print";
+    /** Advanced exact-PPI override in [72, 1200]; invalid with `original`. */
+    imagePpi?: number;
   };
 }
 

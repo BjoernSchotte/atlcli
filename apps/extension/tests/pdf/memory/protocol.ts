@@ -24,8 +24,17 @@ export interface MemoryFixtureSummary {
   bundleBytes: number;
 }
 
+export interface MemoryCorpusFixtureSummary extends MemoryFixtureSummary {
+  scale: number;
+  manifestSha256: string;
+  minAggregateBytes: number;
+  /** Prepare-time export notes; the benchmark requires zero embed failures. */
+  notes: number;
+}
+
 export interface MemoryProbeApi {
   prepareFixture(): Promise<MemoryFixtureSummary>;
+  prepareCorpusFixture(profile?: "original" | "standard"): Promise<MemoryCorpusFixtureSummary>;
   storePreparedJob(): Promise<{ jobId: string }>;
   readMetaInventory(): Promise<{ jobs: number; inputBytes: number }>;
   releaseMetaInventory(): void;
@@ -33,7 +42,18 @@ export interface MemoryProbeApi {
   startCompile(): Promise<void>;
   continueWorker(): void;
   phase(): MemoryWorkerPhase;
+  workerDetail(phase: Exclude<MemoryWorkerPhase, "error">): Record<string, number> | null;
   readCompiledResult(): Promise<{ byteLength: number }>;
+  /** Test-only: seed a synthetic held result so delivery probes run standalone. */
+  seedResult(byteLength: number): { byteLength: number };
+  /** Old productive delivery shape: concatenated array + anchor Blob copy. */
+  deliverArrayShape(): Promise<{ byteLength: number }>;
+  /** New productive delivery shape: chunk-granular Blob-backed handle. */
+  deliverHandleShape(): Promise<{ byteLength: number }>;
+  /** Byte sizes currently HELD by a delivery probe (also defeats DCE). */
+  deliveredState(): { arrayBytes: number; blobBytes: number };
+  /** Drop whichever delivery variant is currently held. */
+  releaseDelivery(): void;
   validateResult(): ReturnType<typeof import("@atlcli/pdf/browser").validatePdfOutput>;
   createDownloadBlob(): { byteLength: number; blobSize: number };
   releaseDownloadBlob(): void;

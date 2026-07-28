@@ -297,6 +297,13 @@ export interface PdfSerializeOptions {
    * 010's job; this field is the data seam it drives.
    */
   templateManifest?: TemplateManifest;
+  /**
+   * Explicit image-quality request (issue #118 Phase 1), applied here ONLY
+   * to the template logo — the fourth asset source, which bypasses
+   * `PdfAssetResolver` and preparation. Prepared assets normalize inside
+   * `preparePdfDocument`.
+   */
+  imageQuality?: import("@atlcli/export-media").ExportImageQualityV1;
   /** Fully validated template pack including resolved visual payloads. */
   templatePack?: ValidatedPdfTemplatePackV1;
 }

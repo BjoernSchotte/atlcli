@@ -20,9 +20,13 @@ export interface BrowserPdfCompilerAssets {
 const MEMORY_PROBE_AFTER_VFS_LOADED = Symbol.for(
   "atlcli.pdf-compiler-browser.memory-probe.after-vfs-loaded"
 );
+const MEMORY_PROBE_REGISTER_WASM_MEMORY = Symbol.for(
+  "atlcli.pdf-compiler-browser.memory-probe.register-wasm-memory"
+);
 
 interface MemoryProbeHost {
   [MEMORY_PROBE_AFTER_VFS_LOADED]?: () => void | Promise<void>;
+  [MEMORY_PROBE_REGISTER_WASM_MEMORY]?: (memory: WebAssembly.Memory) => void;
 }
 
 interface RawPdfDiagnostic {
@@ -46,7 +50,13 @@ export class BrowserPdfCompiler {
     if (this.initPromise) return this.initPromise;
 
     this.initPromise = (async () => {
-      await initTypst({ module_or_path: this.assets.wasm });
+      const runtime = await initTypst({ module_or_path: this.assets.wasm });
+      // Same Symbol.for pattern as the after-vfs-loaded probe: the Chrome/V8
+      // harness registers here to read WASM linear-memory high-water for the
+      // host-versus-WASM attribution gate (specs/issue-118). Production hosts
+      // never install the hook and the public API stays unchanged.
+      const registerMemory = (globalThis as MemoryProbeHost)[MEMORY_PROBE_REGISTER_WASM_MEMORY];
+      if (registerMemory) registerMemory(runtime.memory);
       const builder = new TypstCompilerBuilder();
       for (const font of this.assets.fonts) await builder.add_raw_font(font);
       const compiler = await builder.build();

@@ -74,6 +74,17 @@ export function createExtensionPdfJobRequest(
       // Pin the timestamp with the unresolved request instead of sampling the
       // offscreen host's clock on each attempt.
       exportedAt: createdAt,
+      // Explicit image profile (issue #118 Phase 3): persisted so a resumed
+      // job renders with the identical quality.
+      // `imagePpi` only ever accompanies a re-encoding profile: the durable
+      // contract rejects a PPI override on `original`, so dropping a stray
+      // value here keeps a UI race from poisoning the whole job.
+      ...(request.imageProfile && request.imageProfile !== "original"
+        ? {
+            imageProfile: request.imageProfile,
+            ...(request.imagePpi !== undefined ? { imagePpi: request.imagePpi } : {}),
+          }
+        : {}),
     },
   });
 }

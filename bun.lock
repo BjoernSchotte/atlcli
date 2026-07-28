@@ -30,6 +30,7 @@
         "terser": "^5.44.1",
         "turbo": "^2.7.4",
         "typescript": "^5.9.3",
+        "typst-ts-web-compiler-rc8": "npm:@myriaddreamin/typst-ts-web-compiler@0.8.0-rc3",
       },
     },
     "apps/browser-export-harness": {
@@ -174,6 +175,7 @@
         "@atlcli/core": "workspace:*",
         "@atlcli/diagram": "workspace:*",
         "@atlcli/export-macros": "workspace:*",
+        "@atlcli/export-media": "workspace:*",
         "@resvg/resvg-wasm": "2.6.2",
         "docxtemplater": "^3.69.0",
         "pizzip": "^3.2.0",
@@ -202,6 +204,7 @@
         "@atlcli/confluence": "workspace:*",
         "@atlcli/docx": "workspace:*",
         "@atlcli/export-macros": "workspace:*",
+        "@atlcli/export-media": "workspace:*",
         "@atlcli/pdf": "workspace:*",
         "@atlcli/template-pack": "workspace:*",
         "pizzip": "^3.2.0",
@@ -217,6 +220,13 @@
     "packages/export-macros": {
       "name": "@atlcli/export-macros",
       "version": "1.0.0",
+      "dependencies": {
+        "@atlcli/confluence": "workspace:*",
+      },
+    },
+    "packages/export-media": {
+      "name": "@atlcli/export-media",
+      "version": "0.1.0",
       "dependencies": {
         "@atlcli/confluence": "workspace:*",
       },
@@ -264,6 +274,7 @@
         "@atlcli/confluence": "workspace:*",
         "@atlcli/diagram": "workspace:*",
         "@atlcli/export-macros": "workspace:*",
+        "@atlcli/export-media": "workspace:*",
         "@atlcli/pdf-template-authoring": "workspace:*",
         "@atlcli/template-pack": "workspace:*",
       },
@@ -384,6 +395,8 @@
     "@atlcli/export-jobs": ["@atlcli/export-jobs@workspace:packages/export-jobs"],
 
     "@atlcli/export-macros": ["@atlcli/export-macros@workspace:packages/export-macros"],
+
+    "@atlcli/export-media": ["@atlcli/export-media@workspace:packages/export-media"],
 
     "@atlcli/export-node": ["@atlcli/export-node@workspace:packages/export-node"],
 
@@ -1914,6 +1927,8 @@
     "typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
 
     "typescript-auto-import-cache": ["typescript-auto-import-cache@0.3.6", "", { "dependencies": { "semver": "^7.3.8" } }, "sha512-RpuHXrknHdVdK7wv/8ug3Fr0WNsNi5l5aB8MYYuXhq2UH5lnEB1htJ1smhtD5VeCsGr2p8mUDtd83LCQDFVgjQ=="],
+
+    "typst-ts-web-compiler-rc8": ["@myriaddreamin/typst-ts-web-compiler@0.8.0-rc3", "", {}, "sha512-akc8TlhBzldlU1DtbDvR/6ufzgJmQrZMqfYY2fCFbH7y/+h3YdmnyF+twtVqwv+g6YuFXm/Oc1wwa6cYQX4/aw=="],
 
     "uc.micro": ["uc.micro@2.1.0", "", {}, "sha512-ARDJmphmdvUk6Glw7y9DQ2bFkKBHwQHLi2lsaH6PPmz/Ka9sFOBsBluozhDltWmnv9u/cF6Rt87znRTPV+yp/A=="],
 

@@ -39,6 +39,28 @@ the Confluence network fetch is replaced by the local deterministic source.
 storage separately. Typed-array bytes generally appear as backing storage, not
 as `usedSize`; interpreting `usedSize` alone would therefore be incorrect.
 
+## Host-versus-WASM attribution
+
+The report's `workerAttribution` section is the Phase 0 gate input of
+`specs/issue-118-adaptive-browser-pdf-memory/PLAN.md`: it splits the compiler
+worker's footprint per phase into Typst WASM linear memory versus host bytes.
+
+The Typst `WebAssembly.Memory` is handed to the worker through a
+benchmark-only `Symbol.for` hook
+(`atlcli.pdf-compiler-browser.memory-probe.register-wasm-memory`) that
+`BrowserPdfCompiler` invokes during initialization; production hosts never
+install it. Because WASM linear memory can only grow, the byte length read
+after compilation is its high-water mark, and the harness asserts monotonic
+growth as a measurement-integrity check.
+
+Whether `backingStorageSize` includes the WASM memory is *detected* from the
+samples and reported as `basis` (`backing-includes-wasm`,
+`backing-excludes-wasm`, or `wasm-unavailable`) rather than assumed, so a
+runtime change alters the report instead of silently mis-attributing. The
+attribution math lives in `attribution.ts` (pure, unit-tested in
+`attribution.test.ts`); the shares reported at the peak phase are what the
+lease-pipeline go/no-go decision consumes.
+
 Chrome does not expose internal `blob:` reads as `Network.*` events on this
 worker target. The report keeps those event arrays for transparency and uses
 the direct Range response plus the PDF.js worker's resident backing storage to

@@ -69,9 +69,16 @@ function parseCheckpointRef(value: string): SpoolRefV1 {
   return parsed as SpoolRefV1;
 }
 
+/**
+ * Stream publish-owned bytes to the spool WITHOUT a producer-side copy: every
+ * spool sink owns what it stores (the extension chunk store copies per chunk,
+ * the file store streams to disk, the in-memory store consolidates), and the
+ * only callers pass buffers `publish()` privately owns — so a defensive copy
+ * here was pure transient waste (issue #118 Phase 0.5 ratchet).
+ */
 function bytesSource(bytes: Uint8Array): AsyncIterable<Uint8Array> {
   return (async function* (): AsyncIterable<Uint8Array> {
-    yield Uint8Array.from(bytes);
+    yield bytes;
   })();
 }
 
@@ -79,7 +86,34 @@ async function collectBytes(
   source: AsyncIterable<Uint8Array>,
   maxBytes: number,
   signal: AbortSignal,
+  expectedByteLength?: number,
 ): Promise<Uint8Array> {
+  if (expectedByteLength !== undefined) {
+    // Known-length read-back (the checkpoint records the exact size): write
+    // chunks straight into one preallocated buffer instead of buffering a
+    // chunk list plus a concatenated copy.
+    if (
+      !Number.isSafeInteger(expectedByteLength) ||
+      expectedByteLength < 0 ||
+      expectedByteLength > maxBytes
+    ) {
+      throw new Error("Checkpointed asset exceeds its bounded object limit.");
+    }
+    const bytes = new Uint8Array(expectedByteLength);
+    let offset = 0;
+    for await (const chunk of source) {
+      signal.throwIfAborted();
+      if (offset + chunk.byteLength > expectedByteLength) {
+        throw new Error("Checkpointed asset exceeds its bounded object limit.");
+      }
+      bytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    if (offset !== expectedByteLength) {
+      throw new Error("Checkpointed asset bytes do not match their binding.");
+    }
+    return bytes;
+  }
   const chunks: Uint8Array[] = [];
   let byteLength = 0;
   for await (const chunk of source) {
@@ -107,10 +141,14 @@ async function sha256Hex(
   signal: AbortSignal,
 ): Promise<string> {
   signal.throwIfAborted();
-  const source = Uint8Array.from(bytes);
-  const digest = new Uint8Array(
-    await crypto.subtle.digest("SHA-256", source.buffer),
-  );
+  // WebCrypto snapshots its input synchronously at call time, and digesting a
+  // typed-array VIEW hashes exactly the view's range — the old copy-then-
+  // digest-the-buffer dance doubled every asset transiently for nothing.
+  // Only a SharedArrayBuffer-backed view (which WebCrypto rejects) still
+  // needs one owned copy.
+  const source: Uint8Array<ArrayBuffer> =
+    bytes.buffer instanceof ArrayBuffer ? (bytes as Uint8Array<ArrayBuffer>) : bytes.slice();
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", source));
   signal.throwIfAborted();
   return [...digest].map((value) => value.toString(16).padStart(2, "0")).join("");
 }
@@ -290,6 +328,7 @@ function createCheckpointedAssetCacheV1<
       context.readSpool!(cached.dataRef, { signal }),
       ASSET_MAX_BYTES,
       signal,
+      cached.byteLength,
     );
     if (
       bytes.byteLength !== cached.byteLength ||
@@ -309,6 +348,11 @@ function createCheckpointedAssetCacheV1<
     loaded: Result,
     signal: AbortSignal,
   ): Promise<Result> => {
+    // THE ownership boundary: one owned snapshot of the host-fetched bytes,
+    // taken before size/digest binding, so a caller mutating its buffer
+    // afterwards cannot bypass what gets committed (the job-store applies the
+    // same pattern). Everything downstream — digest, spool write, the value
+    // returned to the engine — reuses this snapshot without further copies.
     const bytes = Uint8Array.from(loaded.bytes);
     if (bytes.byteLength === 0 || bytes.byteLength > ASSET_MAX_BYTES) {
       throw new Error(

@@ -1084,6 +1084,9 @@ export const EXPORT_NOTE_CODES = [
   "macro-not-rendered",
   "inline-extension-not-rendered",
   "image-unresolved",
+  // Aggregate-only diagnostics for an explicit image-quality profile
+  // (issue #118 Phase 1): counts/bytes/reasons, never media or names.
+  "image-profile-applied",
   "inline-image-skipped",
   "layout-geometry-fallback",
   // Shared static-target projection of Confluence's interactive disclosure.

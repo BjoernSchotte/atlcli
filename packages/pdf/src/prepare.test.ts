@@ -356,6 +356,113 @@ describe("PDF asset preparation", () => {
     expect(prepared.notes).toEqual([]);
   });
 
+  it("keeps product caps without the benchmark seam and honors both halves with it", async () => {
+    // Issue #118 Phase 0: the ≥100 MiB image-heavy corpus runs through the
+    // real pipeline via a Symbol.for override; without the hook the shared
+    // product caps stay exactly as before.
+    const fakePng = (sizeBytes: number, unique: number): Uint8Array => {
+      const bytes = new Uint8Array(sizeBytes);
+      bytes.set([
+        0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+        0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52,
+        0, 0, 0, 1, 0, 0, 0, 1 + unique,
+      ]);
+      return bytes;
+    };
+    const twentySixMiB = fakePng(26 * 1024 * 1024, 0);
+
+    // Default per-file cap: oversize asset degrades to a note, not an embed.
+    const rejected = await preparePdfDocument(images(1), {
+      resolve: async () => ({ bytes: twentySixMiB, mediaType: "image/png" }),
+    });
+    expect(rejected.assets).toEqual([]);
+    expect(rejected.notes[0]?.message).toContain("25 MB per-file limit");
+
+    const hook = Symbol.for("atlcli.pdf.benchmark-asset-budget");
+    const host = globalThis as typeof globalThis &
+      Record<symbol, { maxAssetBytes?: number; maxTotalBytes?: number } | undefined>;
+    host[hook] = { maxAssetBytes: 32 * 1024 * 1024, maxTotalBytes: 200 * 1024 * 1024 };
+    try {
+      // Per-file half: the same 26 MiB asset embeds under the raised cap.
+      const perFile = await preparePdfDocument(images(1), {
+        resolve: async () => ({ bytes: twentySixMiB, mediaType: "image/png" }),
+      });
+      expect(perFile.assets).toHaveLength(1);
+      expect(perFile.notes).toEqual([]);
+
+      // Total half: three distinct 18 MiB assets (54 MiB > the 50 MiB product
+      // cap) succeed only because the total override is active.
+      const total = await preparePdfDocument(images(3), {
+        resolve: async (ref) => ({
+          bytes: fakePng(18 * 1024 * 1024, Number(ref.filename?.[0] ?? 0)),
+          mediaType: "image/png",
+        }),
+      });
+      expect(total.assets).toHaveLength(3);
+      expect(total.notes).toEqual([]);
+    } finally {
+      delete host[hook];
+    }
+
+    // Hook removed: the same 54 MiB total breaches the product cap again.
+    await expect(
+      preparePdfDocument(images(3), {
+        resolve: async (ref) => ({
+          bytes: fakePng(18 * 1024 * 1024, Number(ref.filename?.[0] ?? 0)),
+          mediaType: "image/png",
+        }),
+      })
+    ).rejects.toThrow(/budget|50/);
+  });
+
+  it("applies an explicit image profile: downscales rasters, keeps original untouched (issue #118)", async () => {
+    const { encodeJpeg } = await import("@atlcli/export-media");
+    const rgbGradient = (width: number, height: number): Uint8Array => {
+      const out = new Uint8Array(width * height * 3);
+      for (let y = 0; y < height; y += 1) for (let x = 0; x < width; x += 1) {
+        const i = (y * width + x) * 3;
+        out[i] = (x * 255 / (width - 1)) | 0;
+        out[i + 1] = (y * 255 / (height - 1)) | 0;
+        out[i + 2] = ((x + y) * 127 / (width + height)) | 0;
+      }
+      return out;
+    };
+    const bigJpeg = encodeJpeg(rgbGradient(1600, 1200), 1600, 1200, 90);
+    const resolver = {
+      resolve: async () => ({ bytes: bigJpeg, mediaType: "image/jpeg" }),
+    };
+
+    const original = await preparePdfDocument(images(1), resolver);
+    expect(original.assets[0]!.bytes).toBe(bigJpeg); // byte-identical passthrough
+    expect(original.notes).toEqual([]);
+
+    const standard = await preparePdfDocument(images(1), resolver, {
+      imageQuality: { imageProfile: "standard" },
+    });
+    expect(standard.assets).toHaveLength(1);
+    expect(standard.assets[0]!.mediaType).toBe("image/jpeg");
+    expect(standard.assets[0]!.bytes.byteLength).toBeLessThan(bigJpeg.byteLength);
+    const note = standard.notes.find((entry) => entry.code === "image-profile-applied");
+    expect(note?.level).toBe("info");
+    expect(note?.message).toContain("normalized 1 raster asset");
+
+    // Deterministic: repeated preparation embeds identical derivative bytes.
+    const again = await preparePdfDocument(images(1), resolver, {
+      imageQuality: { imageProfile: "standard" },
+    });
+    expect(again.assets[0]!.bytes).toEqual(standard.assets[0]!.bytes);
+    // And the derivative path differs from the original's (new content hash).
+    expect(again.assets[0]!.path).toBe(standard.assets[0]!.path);
+    expect(standard.assets[0]!.path).not.toBe(original.assets[0]!.path);
+
+    // Invalid combination fails before any fetch.
+    await expect(
+      preparePdfDocument(images(1), resolver, {
+        imageQuality: { imageProfile: "original", imagePpi: 240 },
+      }),
+    ).rejects.toThrow("original never re-encodes");
+  });
+
   it("reports one progress event per embedded asset", async () => {
     const events: Array<{ phase: string; done: number; total: number | null }> = [];
     let n = 0;

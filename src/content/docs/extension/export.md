@@ -18,6 +18,7 @@ which the CLI does not expose yet.
 - [Label filters](#label-filters)
 - [Dynamic macros](#dynamic-macros)
 - [Document settings (PDF)](#document-settings-pdf)
+- [Image quality (PDF)](#image-quality-pdf)
 - [Code themes](#code-themes)
 - [Word templates](#word-templates)
 - [Preview](#preview)
@@ -153,6 +154,20 @@ tagged and an untagged image would be invisible to assistive technology.
 Settings are remembered per **site, engine and space**, so a space you brand one
 way stays branded that way, and another space on the same site is unaffected.
 **Reset to defaults** restores the built-in design.
+
+## Image quality (PDF)
+
+The PDF form's **Image quality** selector chooses how raster attachments are
+embedded: **Original** (unchanged bytes, the default), **Standard (180 PPI)**,
+or **Print (300 PPI)**. Standard and Print downscale large images to their
+rendered size before the PDF engine decodes them, which lowers the browser's
+peak memory on image-heavy trees and shrinks the file; transparency stays
+lossless and images are never upscaled. Choosing Standard or Print reveals an
+optional **PPI** field (`72–1200`) for an exact density — useful on a
+well-equipped machine that can afford higher fidelity. The choice is pinned
+into the durable job, so Retry and Run again render with the same quality. The
+CLI equivalents are `--pdf-images` and `--pdf-images-ppi` (see
+[DOCX and PDF Export](/confluence/export/#image-quality-profiles)).
 
 ## Code themes
 

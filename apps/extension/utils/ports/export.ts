@@ -67,6 +67,15 @@ export interface ExportProgress {
 export interface ExportScopeRequest {
   /** Bundled Shiki theme shared by every export engine. */
   codeTheme?: CodeThemeId;
+  /**
+   * Explicit image-quality profile for durable PDF exports (issue #118
+   * Phase 3). Absent means `original`; `standard`/`print` (or `imagePpi`)
+   * deterministically downscale rasters — the measured lever for large
+   * image-heavy trees. Preview always stays `original`.
+   */
+  imageProfile?: "original" | "standard" | "print";
+  /** Advanced exact-PPI override in [72, 1200]; only with standard/print. */
+  imagePpi?: number;
   /** Absent means "the single loaded page" — today's behaviour. */
   scope?: ExportScope;
   /** Absent means "no label filtering". */

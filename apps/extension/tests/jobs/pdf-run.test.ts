@@ -148,7 +148,7 @@ describe("sidepanel durable PDF observer", () => {
       delivered.push([id, revision]);
       return states.at(-1)!;
     };
-    deps.emit = async ({ bytes }) => { emitted.push(bytes); };
+    deps.emit = async ({ bytes }) => { emitted.push(await bytes.asUint8Array()); };
     const observed = request();
     observed.onPhase = (phase) => phases.push(phase);
     observed.onProgress = (value) => progress.push(value);

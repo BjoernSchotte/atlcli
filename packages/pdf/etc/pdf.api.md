@@ -580,6 +580,7 @@ export interface PdfSerializeOptions {
     theme?: PdfThemeOptions;
     settings?: PdfTemplateSettings;
     templateManifest?: TemplateManifest;
+    imageQuality?: import("@atlcli/export-media").ExportImageQualityV1;
     templatePack?: ValidatedPdfTemplatePackV1;
 }
 
@@ -942,6 +943,7 @@ export interface PreparePdfOptions {
         pageTitle?: string;
         pageUrl?: string;
     };
+    imageQuality?: ExportImageQualityV1;
 }
 
 // export: renderPreparedPdfExport
@@ -1039,6 +1041,7 @@ export interface RunPdfExportInput {
     theme?: PdfThemeOptions;
     settings?: PdfTemplateSettings;
     templateManifest?: TemplateManifest;
+    imageQuality?: ExportImageQualityV1;
     templatePack?: ValidatedPdfTemplatePackV1;
     filename: string;
     signal?: AbortSignal;
@@ -1687,6 +1690,7 @@ export interface PdfSerializeOptions {
     theme?: PdfThemeOptions;
     settings?: PdfTemplateSettings;
     templateManifest?: TemplateManifest;
+    imageQuality?: import("@atlcli/export-media").ExportImageQualityV1;
     templatePack?: ValidatedPdfTemplatePackV1;
 }
 
@@ -2049,6 +2053,7 @@ export interface PreparePdfOptions {
         pageTitle?: string;
         pageUrl?: string;
     };
+    imageQuality?: ExportImageQualityV1;
 }
 
 // export: renderPreparedPdfExport
@@ -2146,6 +2151,7 @@ export interface RunPdfExportInput {
     theme?: PdfThemeOptions;
     settings?: PdfTemplateSettings;
     templateManifest?: TemplateManifest;
+    imageQuality?: ExportImageQualityV1;
     templatePack?: ValidatedPdfTemplatePackV1;
     filename: string;
     signal?: AbortSignal;
@@ -2794,6 +2800,7 @@ export interface PdfSerializeOptions {
     theme?: PdfThemeOptions;
     settings?: PdfTemplateSettings;
     templateManifest?: TemplateManifest;
+    imageQuality?: import("@atlcli/export-media").ExportImageQualityV1;
     templatePack?: ValidatedPdfTemplatePackV1;
 }
 
@@ -3156,6 +3163,7 @@ export interface PreparePdfOptions {
         pageTitle?: string;
         pageUrl?: string;
     };
+    imageQuality?: ExportImageQualityV1;
 }
 
 // export: renderPreparedPdfExport
@@ -3253,6 +3261,7 @@ export interface RunPdfExportInput {
     theme?: PdfThemeOptions;
     settings?: PdfTemplateSettings;
     templateManifest?: TemplateManifest;
+    imageQuality?: ExportImageQualityV1;
     templatePack?: ValidatedPdfTemplatePackV1;
     filename: string;
     signal?: AbortSignal;
@@ -3394,6 +3403,9 @@ export declare function getBuiltinPdfTemplate(id: string): TemplateManifest | un
 
 // export: isMissingAltText
 export declare function isMissingAltText(alt: string | undefined): boolean;
+
+// export: LANDSCAPE_TEXT_WIDTH_PT
+export declare const LANDSCAPE_TEXT_WIDTH_PT = 717;
 
 // export: loadPdfTemplatePack
 export declare function loadPdfTemplatePack(bytes: Uint8Array): Promise<ValidatedPdfTemplatePackV1>;
@@ -3607,6 +3619,9 @@ export interface PdfVerifiedCanonicalSourceV1 {
     sha256: string;
 }
 
+// export: PORTRAIT_TEXT_WIDTH_PT
+export declare const PORTRAIT_TEXT_WIDTH_PT = 470;
+
 // export: preparePdfDocument
 export declare function preparePdfDocument(blocks: ExportBlock[], resolver: PdfAssetResolver, options?: PreparePdfOptions): Promise<PreparedPdfDocument>;
 
@@ -3620,6 +3635,7 @@ export interface PreparePdfOptions {
         pageTitle?: string;
         pageUrl?: string;
     };
+    imageQuality?: ExportImageQualityV1;
 }
 
 // export: preservePdfSourceCellColor

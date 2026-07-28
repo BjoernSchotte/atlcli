@@ -94,6 +94,10 @@ function LoadedExportScreenBody({ ports, page, retry, navigate }: ScreenProps): 
     scopeRequest,
     resolveMacros,
     setResolveMacros,
+    imageProfile,
+    setImageProfile,
+    imagePpi,
+    setImagePpi,
     values,
     onSettingChange,
     onSettingsReset,
@@ -234,6 +238,43 @@ function LoadedExportScreenBody({ ports, page, retry, navigate }: ScreenProps): 
           className="flex flex-col gap-3"
         >
           <StudioStep number="03" label={t("studio.step.design")}>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-medium" htmlFor="pdf-image-quality">
+                {t("export.imageQuality")}
+              </label>
+              <select
+                id="pdf-image-quality"
+                data-testid="pdf-image-quality"
+                className="h-8 rounded border bg-background px-2 text-sm"
+                value={imageProfile}
+                onChange={(event) =>
+                  setImageProfile(event.target.value as "original" | "standard" | "print")
+                }
+              >
+                <option value="original">{t("export.imageQuality.original")}</option>
+                <option value="standard">{t("export.imageQuality.standard")}</option>
+                <option value="print">{t("export.imageQuality.print")}</option>
+              </select>
+              {imageProfile !== "original" && (
+                <input
+                  type="number"
+                  min={72}
+                  max={1200}
+                  data-testid="pdf-image-ppi"
+                  className="h-8 rounded border bg-background px-2 text-sm"
+                  placeholder={t("export.imageQuality.ppi")}
+                  value={imagePpi ?? ""}
+                  onChange={(event) => {
+                    const parsed = Number.parseInt(event.target.value, 10);
+                    setImagePpi(
+                      Number.isSafeInteger(parsed) && parsed >= 72 && parsed <= 1200
+                        ? parsed
+                        : undefined,
+                    );
+                  }}
+                />
+              )}
+            </div>
             <SettingsForm
               schema={PDF_LEVEL_A_SETTINGS}
               values={values}

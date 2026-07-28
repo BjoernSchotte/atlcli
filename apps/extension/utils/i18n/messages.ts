@@ -49,6 +49,11 @@ const en = {
   "studio.preview": "Review document",
   "export.codeTheme": "Code theme",
   "export.codeThemeValue": "Code theme: {theme}",
+  "export.imageQuality": "Image quality",
+  "export.imageQuality.original": "Original (unchanged)",
+  "export.imageQuality.standard": "Standard (smaller, faster)",
+  "export.imageQuality.print": "Print (300 PPI)",
+  "export.imageQuality.ppi": "Custom PPI (72-1200)",
 
   "screen.export.label": "Studio",
   "screen.export.description": "Export the current Confluence page to PDF or Word.",
@@ -415,6 +420,11 @@ const de: MessageCatalog = {
   "studio.preview": "Dokument prüfen",
   "export.codeTheme": "Code-Theme",
   "export.codeThemeValue": "Code-Theme: {theme}",
+  "export.imageQuality": "Bildqualität",
+  "export.imageQuality.original": "Original (unverändert)",
+  "export.imageQuality.standard": "Standard (kleiner, schneller)",
+  "export.imageQuality.print": "Druck (300 PPI)",
+  "export.imageQuality.ppi": "Eigene PPI (72–1200)",
 
   "screen.export.label": "Studio",
   "screen.export.description": "Die aktuelle Confluence-Seite als PDF oder Word exportieren.",

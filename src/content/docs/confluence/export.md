@@ -200,10 +200,44 @@ Pass one or the other, never both.
 | `--no-cache` | Do not persist downloaded assets across invocations |
 | `--exported-at <ISO8601>` | Fix the export timestamp (reproducible builds; also honors `SOURCE_DATE_EPOCH`) |
 | `--code-theme <id>` | Shiki theme for fenced code blocks; defaults to `github-light` |
+| `--pdf-images <profile>` | Image quality profile: `original` (default), `standard` (180 PPI), or `print` (300 PPI) |
+| `--pdf-images-ppi <n>` | Exact target density in `[72, 1200]`; requires `--pdf-images standard` or `print` |
 | `--template, -t <path>` | Direct path to a verified `.wiki-pdf-template` pack; omission keeps Editorial Indigo |
 | `--report json` | Synonym for `--json` |
 
 All [scope and label options](#scope-options) work with `--format pdf` too.
+
+### Image quality profiles
+
+| Value | Type | Default | Constraints |
+|-------|------|---------|-------------|
+| `--pdf-images` | `original \| standard \| print` | `original` | `original` embeds attachment bytes unchanged |
+| `--pdf-images-ppi` | integer | preset PPI (`standard` 180, `print` 300) | `[72, 1200]`; rejected with `original` and rejected without a profile |
+
+`standard` and `print` downscale large raster images to the page's rendered
+size at the target density before they reach the PDF engine. JPEG stays JPEG,
+transparent PNG stays lossless PNG, SVG/GIF and anything undecodable are kept
+untouched, and images are never upscaled. Every re-encoded export carries one
+aggregate `image-profile-applied` report note; `original` never re-encodes and
+never emits it. The chosen profile is pinned into the durable job, so a retry
+renders with the identical quality.
+
+```bash
+# Minimal: sharply smaller PDFs for screen reading
+atlcli wiki export 12345678 --format pdf --pdf-images standard -o report.pdf
+
+# Realistic: print-quality tree export with an explicit density override
+atlcli wiki export 12345678 --format pdf --scope tree \
+  --pdf-images print --pdf-images-ppi 240 --out-dir dist --report json
+```
+
+Measured on a live page with one 2400×1792 photo attachment (1.6 MiB JPEG):
+`original` 1,704,492 bytes → `print` 773,045 → `standard` 287,059 →
+`standard --pdf-images-ppi 96` 118,845. The profiles exist for browser peak
+memory first (fewer decoded pixels in the PDF engine); the smaller files are
+the visible side effect. A tiny, well-compressed image may re-encode to
+slightly *more* bytes — the downscale is still taken because decoded pixel
+area, not file size, is the target.
 
 ## Syntax-highlighting themes
 

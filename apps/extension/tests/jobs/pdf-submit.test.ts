@@ -129,6 +129,26 @@ describe("extension PDF job submission", () => {
     });
   });
 
+  it("persists image quality only when it re-encodes, dropping stray ppi on original", () => {
+    const standard = createExtensionPdfJobRequest(input({ imageProfile: "standard", imagePpi: 240 }), {
+      requestId: "pdf-job-quality",
+      now: () => 10,
+    });
+    expect(standard.options.imageProfile).toBe("standard");
+    expect(standard.options.imagePpi).toBe(240);
+
+    const original = createExtensionPdfJobRequest(input({ imageProfile: "original", imagePpi: 240 }), {
+      requestId: "pdf-job-original",
+      now: () => 10,
+    });
+    expect(original.options.imageProfile).toBeUndefined();
+    expect(original.options.imagePpi).toBeUndefined();
+
+    const absent = createExtensionPdfJobRequest(input(), { requestId: "pdf-job-absent", now: () => 10 });
+    expect(absent.options.imageProfile).toBeUndefined();
+    expect(absent.options.imagePpi).toBeUndefined();
+  });
+
   it("does not bind the loaded page version to a different selected tree root", () => {
     const request = createExtensionPdfJobRequest(input({
       scope: { kind: "tree", rootPageId: "99", includeRoot: true },

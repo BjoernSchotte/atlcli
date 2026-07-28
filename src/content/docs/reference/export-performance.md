@@ -20,6 +20,7 @@ baseline to compare against.
 - [Measured envelope: engine tier](#measured-envelope-engine-tier)
 - [Measured envelope: end-to-end tier](#measured-envelope-end-to-end-tier)
 - [Browser code-highlighting trace](#browser-code-highlighting-trace)
+- [Browser host-versus-WASM attribution](#browser-host-versus-wasm-attribution)
 - [What the numbers mean](#what-the-numbers-mean)
 - [Reproducing a measurement](#reproducing-a-measurement)
 - [Trend tracking in CI](#trend-tracking-in-ci)
@@ -42,10 +43,13 @@ the parse, and the resolver entirely. Quote the end-to-end tier for that claim, 
 that the network is excluded.
 :::
 
-The full 500-page Chromium-hosted variant (browser heap and module-worker transfer cost) is
-**out of scope** for both tiers today. A focused browser-harness trace does cover code
-highlighting module requests and cold/warm initialization; do not present that narrower
-measurement as the full export envelope.
+Chromium-hosted memory is covered by its own instrument since issue #118
+Phase 0: the [host-versus-WASM attribution harness](#browser-host-versus-wasm-attribution)
+measures the real extension byte path (store → worker → VFS → compile) on
+the mixed fixture and the ≥100 MiB image-heavy corpus, and
+`bench:runtime-lane` compares Typst runtime candidates on the same corpora.
+The focused code-highlighting trace below remains its own narrower
+measurement; do not present any single lane as the full export envelope.
 
 ## How the numbers are measured
 
@@ -164,6 +168,130 @@ bun run --cwd apps/browser-export-harness test:e2e --grep "one-language preparat
 The run writes `apps/browser-export-harness/test-results/highlight-performance/one-language-cold.json`.
 The broader 22-language case in the same suite proves concurrent grammar/core/engine/theme
 loading, cold/warm DOCX byte parity, and deterministic repeat output.
+
+## Browser host-versus-WASM attribution
+
+The Chrome/V8 memory harness splits the PDF compiler worker's footprint per
+phase into **Typst WASM linear memory** versus **host bytes** (V8 heap plus
+backing storage outside the WASM instance). This is the Phase 0 gate input of
+`specs/issue-118-adaptive-browser-pdf-memory/PLAN.md`: host-side transport
+work can only ever reduce the host share, so the split decides whether that
+work is justified.
+
+```bash
+bun run bench:memory-chrome
+```
+
+The report's `workerAttribution` section carries the split. Measured on the
+deterministic 8.33 MiB mixed fixture (6 chapters, two 1200 x 1200 PNGs,
+8.30 MiB PDF), Chromium `140.0.7339.16` / V8 `14.0.365.1`, reproduced
+byte-identically across two consecutive runs:
+
+| Phase | WASM linear (MiB) | Host outside WASM (MiB) | Total (MiB) | WASM share |
+|---|---|---|---|---|
+| warm | 15.56 | 33.67 | 49.23 | 31.6% |
+| bundle-received | 15.56 | 42.04 | 57.59 | 27.0% |
+| vfs-ready | 32.31 | 42.05 | 74.36 | 43.5% |
+| **compiled-held (peak)** | **87.31** | **50.62** | **137.93** | **63.3%** |
+| complete | 87.31 | 33.98 | 121.29 | 72.0% |
+
+The same run also measures the **image-heavy corpus** (100.29 MiB assets,
+105.23 MiB source bundle, scale 1) through the identical store → worker →
+VFS → compile path, unlocked by the benchmark-only cap seams. Result
+(`ATLCLI_CHROME_MEMORY_IMAGE_HEAVY_RESULT`, same pinned runtime):
+
+| Phase | WASM linear (MiB) | Host outside WASM (MiB) | Total (MiB) | WASM share |
+|---|---|---|---|---|
+| warm | 15.56 | 33.67 | 49.23 | 31.6% |
+| bundle-received | 15.56 | 134.12 | 149.67 | 10.4% (host holds the 100 MiB bundle) |
+| vfs-ready | 120.88 | 134.13 | 255.00 | 47.4% |
+| **compiled-held (peak)** | **1326.56** | **231.76** | **1558.32** | **85.1%** |
+| complete | 1326.56 | 33.99 | 1360.55 | 97.5% (warm-runtime retention) |
+
+The compiled PDF is 97.36 MiB (JPEG passthrough) and Typst compiles the whole
+corpus without diagnostics.
+
+How to read this:
+
+- The WASM linear memory is read through a benchmark-only `Symbol.for` hook
+  that `BrowserPdfCompiler` invokes during initialization; production hosts
+  never install it. Linear memory only grows, so the post-compile value is the
+  high-water mark, and the harness asserts monotonic growth.
+- Whether CDP `backingStorageSize` includes the WASM memory is **detected**
+  from the samples and reported as `basis` (`backing-includes-wasm` on this
+  runtime), never assumed — a runtime change alters the report instead of
+  silently double-counting.
+- **Gate input (issue #118 attribution gate): on the image-heavy corpus, the
+  host-side share at peak is 14.9%** — below the plan's 25% working
+  threshold. 85.1% of the peak lives inside the WASM instance (decoded
+  rasters, layout, PDF assembly), out of reach of host-side descriptor/lease
+  transport: even a zero-copy host transport could reduce this peak by at
+  most ~15%. The levers that reach the dominant share are the explicit image
+  profiles (smaller decoded rasters shrink the 1.3 GiB in-WASM footprint
+  directly) and the Typst/runtime evaluation lanes.
+- **Second gate reading from the same run:** whole-PDF result handoff is
+  97.36 MiB of a 1558.32 MiB peak = **6.2%**, below the plan's 10% bar for
+  pursuing an owned/chunked output handle.
+- The small mixed fixture (63.3% WASM / 36.7% host at its 137.93 MiB peak)
+  shows the host share *shrinks* as inputs grow image-heavy — the workloads
+  this issue targets are exactly the ones where host-side transport matters
+  least.
+
+### Explicit image profiles (Phase 1 result)
+
+The `standard` profile (180 PPI candidate pin, `@atlcli/export-media`
+deterministic codec) measured against `original` on the same full-scale
+image-heavy corpus, one complete store → worker → VFS → compile cycle per
+profile (`ATLCLI_CHROME_MEMORY_IMAGE_PROFILE_RESULT`):
+
+| | `original` | `standard` (180 PPI) | delta |
+|---|---|---|---|
+| source bundle | 100.36 MiB | 16.65 MiB | −83.4% |
+| compiled PDF | 97.36 MiB | 15.79 MiB | −83.8% |
+| WASM linear high-water | 1326.56 MiB | 325.63 MiB | −75.5% |
+| worker peak | 1558.32 MiB | **392.10 MiB** | **−74.84%** |
+
+**The plan's 40% bar for recommending `standard` on large image-heavy trees
+is met with a 74.84% measured peak reduction** — asserted in the harness at
+scale 1. Profiles are always explicit (`original` stays byte-identical and
+is the default); `imagePpi` (72–1200) tunes the same pipeline between the
+presets. Normalization never upscales, keeps JPEG as JPEG and transparency
+lossless, and keeps original bytes for anything it cannot decode faithfully
+(reported in one aggregate `image-profile-applied` note).
+
+The attribution math is pure and unit-tested
+(`apps/extension/tests/pdf/memory/attribution.ts`); the harness README
+documents the probe protocol.
+
+### Image-heavy corpus
+
+The plan's image-heavy acceptance corpus is generated deterministically at
+bench time — no blob is committed:
+
+```bash
+bun run bench:image-heavy-corpus            # stats + manifest hash, scale 1
+bun run bench:image-heavy-corpus -- --scale 0.25 --out /tmp/corpus
+```
+
+`@atlcli/export-fixtures` (`image-heavy-corpus.ts`) produces ≥ 100 MiB of
+unique compressed media at scale 1 from `(seed, scale)` using pinned pure-TS
+encoders (baseline JPEG with literal cosine constants; PNG with Paeth
+filtering and an in-repo fixed-Huffman DEFLATE) — no canvas, host zlib, or
+`CompressionStream`, whose outputs are not engine-pinned. Measured recipe
+(seed `0x1837c0de`, scale 1, Bun 1.3.14/arm64): **76 unique assets,
+100.29 MiB in ~26 s** — 57 photographic JPEGs (0.36 bytes/pixel), 12
+screenshot PNGs with textured hero regions (0.44 bytes/pixel), 6 transparent
+diagram PNGs plus a logo repeated across all 67 chapters; 224 total
+placements, inline and full-width. Manifest SHA-256
+`95b46f8904d8788099a674a37ca7c3212f7fe5c23d8cc4989bd8f66e769710b3`; the
+scale-0.06 recipe hash is pinned in the unit suite, and a real-compiler test
+proves Typst decodes every generated asset with zero diagnostics.
+
+Because the corpus exceeds the product asset budgets by design, the
+preparation pipeline gains a benchmark-only `Symbol.for` override
+(`atlcli.pdf.benchmark-asset-budget`) for the per-file and total caps —
+release configuration has no path to it, and the covering tests prove the
+product caps unchanged when the hook is absent.
 
 ## What the numbers mean
 

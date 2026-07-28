@@ -1,5 +1,41 @@
 import { describe, expect, it } from "bun:test";
+import { describe as describeCollect, expect as expectCollect, it as itCollect } from "bun:test";
 import { IDBFactory, IDBKeyRange } from "fake-indexeddb";
+import { collectExecutorBytes } from "../../utils/export-jobs/executor-store.js";
+
+describeCollect("collectExecutorBytes exact-length path (issue #118 Phase 0.5)", () => {
+  async function* chunks(...parts: number[][]): AsyncIterable<Uint8Array> {
+    for (const part of parts) yield Uint8Array.from(part);
+  }
+
+  itCollect("preallocates and fills exactly when the length is known", async () => {
+    const bytes = await collectExecutorBytes(chunks([1, 2], [3]), 16, undefined, 3);
+    expectCollect([...bytes]).toEqual([1, 2, 3]);
+  });
+
+  itCollect("rejects overflow beyond the recorded length before draining", async () => {
+    await expectCollect(
+      collectExecutorBytes(chunks([1, 2], [3, 4]), 16, undefined, 3),
+    ).rejects.toThrow("Durable export object exceeds its configured limit.");
+  });
+
+  itCollect("rejects a stream shorter than the recorded length", async () => {
+    await expectCollect(
+      collectExecutorBytes(chunks([1]), 16, undefined, 3),
+    ).rejects.toThrow("Durable export object is shorter than its recorded length.");
+  });
+
+  itCollect("rejects a recorded length above the object limit", async () => {
+    await expectCollect(
+      collectExecutorBytes(chunks([1]), 2, undefined, 3),
+    ).rejects.toThrow("Durable export object exceeds its configured limit.");
+  });
+
+  itCollect("keeps the unknown-length path byte-identical", async () => {
+    const bytes = await collectExecutorBytes(chunks([1, 2], [3]), 16);
+    expectCollect([...bytes]).toEqual([1, 2, 3]);
+  });
+});
 import type {
   PdfExportJobRequestV1,
   ResourceEstimateV1,

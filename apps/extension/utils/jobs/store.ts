@@ -14,6 +14,8 @@ import {
   type ExportJobSnapshotV1,
   type ExportJobState,
 } from "@atlcli/export-jobs";
+import { pdfBytesFromUint8Array, type PdfBytesHandle } from "@atlcli/pdf/browser";
+import { collectArtifactHandleV1 } from "../export-jobs/artifact-delivery.js";
 import {
   cancelPdfJob,
   deletePdfJob,
@@ -99,7 +101,7 @@ export interface DurableJobsDeps {
   deleteJob: typeof deletePdfJob;
   consume: typeof markPdfJobConsumed;
   requestCancel: (jobId: string) => Promise<void>;
-  emit: (filename: string, bytes: Uint8Array) => Promise<void>;
+  emit: (filename: string, bytes: Uint8Array | PdfBytesHandle) => Promise<void>;
 }
 
 function legacyJobId(route: string): string {
@@ -189,7 +191,12 @@ export function createDurableJobsStore(deps: DurableJobsDeps): DurableJobsPort {
       const id = legacyJobId(route);
       const job = await deps.read(id, undefined, { bundle: false, pdf: true });
       if (!job?.pdf || job.status !== "complete") return false;
-      await deps.emit(job.filename ?? `${job.title ?? "export"}.pdf`, job.pdf);
+      // Handle-wrap the legacy array so downloadBytes reuses one Blob instead
+      // of copying it a second time for the anchor (issue #118 Phase 0.5).
+      await deps.emit(
+        job.filename ?? `${job.title ?? "export"}.pdf`,
+        pdfBytesFromUint8Array(job.pdf),
+      );
       await deps.consume(id).catch(() => undefined);
       await deps.deleteJob(id).catch(() => undefined);
       return true;
@@ -210,7 +217,7 @@ export interface ExtensionDurableJobsDeps {
   bytes: IndexedDbExportByteStore;
   legacy: DurableJobsPort;
   listLegacyPdf?: () => Promise<StoredPdfJobMeta[]>;
-  emit: (filename: string, bytes: Uint8Array, mimeType: string) => Promise<void>;
+  emit: (filename: string, bytes: PdfBytesHandle, mimeType: string) => Promise<void>;
   wake?: (
     jobIds: string[],
     options?: { resumeWaiting?: boolean },
@@ -243,21 +250,6 @@ function splitActivityRoute(route: string): {
   return { source, jobId };
 }
 
-async function collectBytes(source: AsyncIterable<Uint8Array>): Promise<Uint8Array> {
-  const chunks: Uint8Array[] = [];
-  let length = 0;
-  for await (const chunk of source) {
-    chunks.push(chunk);
-    length += chunk.byteLength;
-  }
-  const result = new Uint8Array(length);
-  let offset = 0;
-  for (const chunk of chunks) {
-    result.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return result;
-}
 
 function assertActionKey(actionKey: string): void {
   if (actionKey.trim().length === 0 || actionKey.length > 4_096) {
@@ -677,7 +669,13 @@ export function createExtensionDurableJobsStore(
       }
       const current = await deps.catalog.get(jobId);
       if (current?.state !== "succeeded" || !current.artifact) return false;
-      const bytes = await collectBytes(deps.bytes.read(current.artifact.ref));
+      const bytes = await collectArtifactHandleV1(
+        deps.bytes.read(current.artifact.ref),
+        {
+          mediaType: current.artifact.mediaType,
+          expectedByteLength: current.artifact.byteLength,
+        },
+      );
       await deps.emit(
         current.artifact.filename,
         bytes,

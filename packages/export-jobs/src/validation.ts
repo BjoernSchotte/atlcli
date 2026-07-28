@@ -366,7 +366,7 @@ function validatePdfExportJobRequestV1(request: Record<string, unknown>): void {
   const options = record(request.options, "request.options");
   onlyKeys(
     options,
-    ["resolveMacros", "codeTheme", "profile", "strict", "noCache", "exportedAt"],
+    ["resolveMacros", "codeTheme", "profile", "strict", "noCache", "exportedAt", "imageProfile", "imagePpi"],
     "request.options",
   );
   boolean(options.resolveMacros, "request.options.resolveMacros");
@@ -375,6 +375,25 @@ function validatePdfExportJobRequestV1(request: Record<string, unknown>): void {
   if (options.strict !== undefined) boolean(options.strict, "request.options.strict");
   if (options.noCache !== undefined) boolean(options.noCache, "request.options.noCache");
   optionalInteger(options.exportedAt, "request.options.exportedAt");
+  if (options.imageProfile !== undefined) {
+    if (
+      options.imageProfile !== "original" &&
+      options.imageProfile !== "standard" &&
+      options.imageProfile !== "print"
+    ) {
+      fail("request.options.imageProfile", "must be original, standard, or print");
+    }
+  }
+  if (options.imagePpi !== undefined) {
+    optionalInteger(options.imagePpi, "request.options.imagePpi");
+    const ppi = options.imagePpi as number;
+    if (ppi < 72 || ppi > 1200) {
+      fail("request.options.imagePpi", "must be in [72, 1200]");
+    }
+    if ((options.imageProfile ?? "original") === "original") {
+      fail("request.options.imagePpi", "cannot combine with the original profile");
+    }
+  }
 }
 
 function validateDocxExportJobRequestV1(request: Record<string, unknown>): void {

@@ -248,10 +248,30 @@ describe("parsePdfExportJobRequestV1", () => {
     ["invalid no-cache mode", (request: any) => (request.options.noCache = 1)],
     ["invalid export timestamp", (request: any) => (request.options.exportedAt = 1.5)],
     ["invalid code theme", (request: any) => (request.options.codeTheme = "not-a-shiki-theme")],
+    ["unknown image profile", (request: any) => (request.options.imageProfile = "ultra")],
+    ["image ppi below range", (request: any) => {
+      request.options.imageProfile = "standard";
+      request.options.imagePpi = 30;
+    }],
+    ["image ppi above range", (request: any) => {
+      request.options.imageProfile = "standard";
+      request.options.imagePpi = 2400;
+    }],
+    ["image ppi with original profile", (request: any) => (request.options.imagePpi = 240)],
   ])("rejects %s", (_name, mutate) => {
     expect(() => parsePdfExportJobRequestV1(changed(pdfRequest(), mutate))).toThrow(
       ExportJobValidationError,
     );
+  });
+
+  it("accepts the explicit image-quality options (issue #118 Phase 3)", () => {
+    const request = changed(pdfRequest(), (value: any) => {
+      value.options.imageProfile = "standard";
+      value.options.imagePpi = 240;
+    });
+    const parsed = parsePdfExportJobRequestV1(request);
+    expect(parsed.options.imageProfile).toBe("standard");
+    expect(parsed.options.imagePpi).toBe(240);
   });
 });
 

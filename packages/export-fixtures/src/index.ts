@@ -35,6 +35,7 @@ export * from "./docx-quality-fixtures.js";
 export * from "./m1-corpus.js";
 export * from "./manuscript-fixtures.js";
 export * from "./large-export-corpus.js";
+export * from "./image-heavy-corpus.js";
 export * from "./docx-template-intake-fixture.js";
 
 const MERMAID_SOURCE = "flowchart LR\n  Source --> Export\n  Export --> Document";
@@ -1215,3 +1216,4 @@ export const CONTENT_COMPAT_DETAILS: ConfluencePageDetails = {
   url: "https://example.invalid/wiki/spaces/TEST/pages/content-compat-page",
   storage: CONTENT_COMPAT_STORAGE,
 };
+export * from "./mixed-export-corpus.js";
