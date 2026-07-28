@@ -18,10 +18,22 @@ Confluence REST client, bidirectional storage ↔ markdown conversion, and the
   See the [package consumption guide](https://atlcli.sh/reference/package-consumption/).
 
 ```ts
-import { storageToBlocks } from "@atlcli/confluence";
+import {
+  collectAdfMediaFileIds,
+  storageToBlocks,
+  validateAdf,
+} from "@atlcli/confluence";
 
 const { blocks, notes } = storageToBlocks(page.storage);
+const mediaFileIds = collectAdfMediaFileIds(validateAdf(pageAdf));
 ```
+
+`collectAdfMediaFileIds()` is shared by Node and browser consumers. It walks
+only bounded, validated ADF and returns stable, deduplicated Media Services
+`fileId` values. `ConfluenceClient.getExportPageDetailsWithMedia()` uses this
+contract to stop attachment cursor pagination once every referenced ID has
+been resolved; unresolved IDs remain explicit and continue through the
+export-note degradation path.
 
 Versioning: lockstep `@atlcli/*` train, pre-1.0 rules — see
 [package versioning](https://atlcli.sh/reference/versioning/).

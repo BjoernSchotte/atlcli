@@ -23,6 +23,7 @@ export * from "./page-body-to-blocks.js";
 export * from "./adf-types.js";
 export * from "./adf-coverage.js";
 export * from "./adf-validate.js";
+export * from "./adf-media.js";
 export * from "./adf-to-blocks.js";
 export * from "./markdown.js";
 export * from "./emoji-projection.js";

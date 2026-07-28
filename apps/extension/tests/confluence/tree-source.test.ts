@@ -250,6 +250,65 @@ describe("sessionTreeSource — AbortSignal propagation", () => {
 });
 
 describe("sessionTreeSource — behavior inherited from ConfluenceClient", () => {
+  it("targets ADF attachment pagination through the browser client", async () => {
+    const adf = JSON.stringify({
+      type: "doc",
+      version: 1,
+      content: [{
+        type: "mediaSingle",
+        content: [{
+          type: "media",
+          attrs: { type: "file", id: "required-file", collection: "content-1" },
+        }],
+      }],
+    });
+    const calls = route((url) => {
+      const path = url.pathname.replace("/wiki", "");
+      if (path === "/rest/api/content/1") {
+        return json(pageBody("1", "Root", 3));
+      }
+      if (path === "/api/v2/pages/1" && !path.endsWith("/attachments")) {
+        return json({
+          id: "1",
+          version: { number: 3 },
+          body: {
+            atlas_doc_format: {
+              representation: "atlas_doc_format",
+              value: adf,
+            },
+          },
+        });
+      }
+      if (path === "/api/v2/pages/1/attachments") {
+        return json({
+          results: [
+            { fileId: "required-file", title: "required.png", mediaType: "image/png" },
+            { fileId: "unrelated-file", title: "unrelated.png", mediaType: "image/png" },
+          ],
+          _links: { next: "/wiki/api/v2/pages/1/attachments?cursor=second" },
+        });
+      }
+      return json({ message: `unrouted ${path}` }, 404);
+    });
+
+    const page = await sessionTreeSource(PAGE_URL, {
+      exportSourcePolicy: "adf-primary",
+    }).getPage("1", {});
+
+    expect(page.mediaAttachments).toEqual([{
+      fileId: "required-file",
+      filename: "required.png",
+      pageId: "1",
+      mediaType: "image/png",
+    }]);
+    expect(page.mediaAttachmentsComplete).toBe(false);
+    expect(page.mediaAttachmentsTermination).toBe(
+      "required-file-ids-satisfied",
+    );
+    expect(page.unresolvedMediaFileIds).toEqual([]);
+    expect(calls.filter(({ url }) => url.includes("/attachments"))).toHaveLength(1);
+  });
+
   it("classifies an expired session's login bounce instead of following it", async () => {
     // `redirect: "manual"` surfaces the bounce as an opaque redirect; the client's
     // assertNotAuthRedirect turns it into a classified error. A hand-rolled fetch

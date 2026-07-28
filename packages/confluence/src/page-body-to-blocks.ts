@@ -1,4 +1,5 @@
 import { adfToBlocks } from "./adf-to-blocks.js";
+import { validatedAdfForSource } from "./adf-validation-cache.js";
 import {
   storageToBlocks,
   type ExportNote,
@@ -33,15 +34,22 @@ export function pageBodyToBlocks(
       if (source.fallbackReason !== undefined) {
         throw new TypeError("An ADF-primary export source cannot carry a Storage fallback reason.");
       }
-      return adfToBlocks(source.primary.value, {
-        ...common,
-        ...(options.adfParseBudget ? { parseBudget: options.adfParseBudget } : {}),
-        ...(options.resolveMediaAttachment ? { resolveMediaAttachment: options.resolveMediaAttachment } : {}),
-        ...(options.resolveAnnotation ? { resolveAnnotation: options.resolveAnnotation } : {}),
-        ...(options.annotationCommentsComplete !== undefined
-          ? { annotationCommentsComplete: options.annotationCommentsComplete }
-          : {}),
-      });
+      return adfToBlocks(
+        options.adfParseBudget === undefined
+          ? validatedAdfForSource(source) ?? source.primary.value
+          : source.primary.value,
+        {
+          ...common,
+          ...(options.adfParseBudget ? { parseBudget: options.adfParseBudget } : {}),
+          ...(options.resolveMediaAttachment
+            ? { resolveMediaAttachment: options.resolveMediaAttachment }
+            : {}),
+          ...(options.resolveAnnotation ? { resolveAnnotation: options.resolveAnnotation } : {}),
+          ...(options.annotationCommentsComplete !== undefined
+            ? { annotationCommentsComplete: options.annotationCommentsComplete }
+            : {}),
+        },
+      );
     case "storage": {
       const decoded = storageToBlocks(source.primary.value, {
         ...common,

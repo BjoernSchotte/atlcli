@@ -8,6 +8,7 @@ import type {
 } from "./adf-types.js";
 import { DEFAULT_ADF_PARSE_BUDGET } from "./adf-types.js";
 import { validateAdf } from "./adf-validate.js";
+import { isTrustedValidatedAdf } from "./adf-validation-cache.js";
 import type {
   AdfAnnotationComment,
   AdfAnnotationIdentity,
@@ -304,12 +305,22 @@ function diagnosticToNote(ctx: DecodeContext, diagnostic: AdfDiagnostic): void {
   );
 }
 
-/** Decode untrusted ADF into the same neutral model consumed by DOCX and PDF. */
+/**
+ * Decode untrusted ADF, or a trusted `validateAdf()` result, into the same
+ * neutral model consumed by DOCX and PDF.
+ */
 export function adfToBlocks(
   input: string | unknown,
   options: AdfToBlocksOptions = {},
 ): BlocksResult {
-  const validated = validateAdf(input, { budget: options.parseBudget });
+  if (isTrustedValidatedAdf(input) && options.parseBudget !== undefined) {
+    throw new TypeError(
+      "A parse budget cannot be reapplied to an already validated ADF document.",
+    );
+  }
+  const validated = isTrustedValidatedAdf(input)
+    ? input
+    : validateAdf(input, { budget: options.parseBudget });
   const maxDiagnostics = options.parseBudget?.maxDiagnostics ?? DEFAULT_ADF_PARSE_BUDGET.maxDiagnostics;
   const ctx: DecodeContext = {
     notes: new NoteCollector(maxDiagnostics),

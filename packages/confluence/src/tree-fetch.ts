@@ -25,6 +25,7 @@ import {
   type AdfMediaAttachment,
 } from "./adf-to-blocks.js";
 import type { InlineComment } from "./client.js";
+import type { PageAttachmentMediaTermination } from "./client.js";
 import { pageBodyToBlocks } from "./page-body-to-blocks.js";
 import type {
   BlocksResult,
@@ -65,6 +66,8 @@ export interface TreeSourcePageMetadata {
   /** Exact v2 `fileId` metadata, prefetched only when the ADF references media. */
   mediaAttachments?: AdfMediaAttachment[];
   mediaAttachmentsComplete?: boolean;
+  mediaAttachmentsTermination?: PageAttachmentMediaTermination;
+  unresolvedMediaFileIds?: string[];
   inlineComments?: InlineComment[];
   inlineCommentsComplete?: boolean;
 }
@@ -1733,6 +1736,8 @@ export function confluenceTreeSource(client: TreeSourceClient): TreeSource {
           spaceKey: page.spaceKey,
           mediaAttachments: page.mediaAttachments,
           mediaAttachmentsComplete: page.mediaAttachmentsComplete,
+          mediaAttachmentsTermination: page.mediaAttachmentsTermination,
+          unresolvedMediaFileIds: page.unresolvedMediaFileIds,
           inlineComments: page.inlineComments,
           inlineCommentsComplete: page.inlineCommentsComplete,
         };
