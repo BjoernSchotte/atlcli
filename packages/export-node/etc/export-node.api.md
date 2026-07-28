@@ -146,6 +146,7 @@ export interface FileExportJobPersistenceOptionsV1 {
     maxArtifactBytes?: number;
     maxTotalArtifactBytes?: number;
     spoolLimits?: SpoolWriteLimitsV1;
+    onQuarantine?: (records: readonly FileExportQuarantinedRecordV1[]) => void;
 }
 
 // export: FileExportJobPersistenceV1
@@ -230,6 +231,7 @@ export declare class FileExportJobStore implements ExportJobStore, ExportJobEven
     deleteTerminal(query: ExportJobDeleteQueryV1): Promise<ExportJobDeleteResultV1>;
     listTombstones(query?: ExportJobTombstoneQueryV1): Promise<ExportJobTombstoneV1[]>;
     getTombstone(jobId: string): Promise<ExportJobTombstoneV1 | undefined>;
+    listQuarantined(): Promise<FileExportQuarantinedRecordV1[]>;
     markTombstoneCleanupComplete(jobId: string, ref: string, at: number): Promise<ExportJobTombstoneV1>;
 }
 
@@ -244,6 +246,7 @@ export interface FileExportJobStoreOptions {
     now?: () => number;
     lockTtlMs?: number;
     artifactFinalizer?: FileExportArtifactFinalizer;
+    onQuarantine?: (records: readonly FileExportQuarantinedRecordV1[]) => void;
 }
 
 // export: FileExportLock
@@ -271,6 +274,21 @@ export interface FileExportLockOptions {
     ttlMs?: number;
     pollMs?: number;
     now?: () => number;
+}
+
+// export: FileExportQuarantinedRecordV1
+export interface FileExportQuarantinedRecordV1 {
+    key: string;
+    reason: string;
+    quarantinedAt: number;
+    snapshot?: unknown;
+    requestRef?: string;
+    request?: unknown;
+    events?: unknown[];
+    nextEventSeq?: number;
+    transitions?: unknown;
+    idempotencyKeys?: string[];
+    derivationKeys?: string[];
 }
 
 // export: FileExportRetentionSweepResultV1

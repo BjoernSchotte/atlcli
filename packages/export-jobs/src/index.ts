@@ -177,6 +177,7 @@ export type {
 } from "./policy.js";
 export {
   ExportJobValidationError,
+  normalizeForeignExportJobRequestV1,
   parseDocxExportJobRequestV1,
   parsePdfExportJobRequestV1,
   parseExportJobRequestV1,

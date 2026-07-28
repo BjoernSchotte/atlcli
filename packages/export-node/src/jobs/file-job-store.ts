@@ -5,9 +5,11 @@ import {
   claimExportJob,
   checkpointExportJob,
   createEmptyExportJobStatsV1,
+  ExportJobValidationError,
   finalizeExportJobArtifact,
   heartbeatExportJob,
   isExportJobTerminal,
+  normalizeForeignExportJobRequestV1,
   orderExportQueue,
   parseExportJobEventV1,
   parseExportJobRequestV1,
@@ -62,6 +64,30 @@ interface FileExportCatalogV1 {
   finalizations: Record<string, ExportArtifactFinalizationIntentV1>;
   executorCheckpoints: Record<string, { checkpoint: unknown; manifestRef: import("@atlcli/export-jobs").SpoolRefV1 }>;
   executorResults: Record<string, { intent: unknown; reportRef: string; reportPath: string; result?: import("@atlcli/export-jobs").ExportJobExecutionResultV1 }>;
+  quarantined: Record<string, FileExportQuarantinedRecordV1>;
+}
+
+/**
+ * A journal unit written by another atlcli build that this build cannot parse.
+ * The raw values are preserved verbatim so nothing is lost; every load
+ * re-checks whether the running build understands them again and restores
+ * them into the live catalog when it does.
+ */
+export interface FileExportQuarantinedRecordV1 {
+  /** Live-catalog key the unit was removed from: a job id, or `request:`/`events:`-prefixed for orphans. */
+  key: string;
+  /** First contract violation encountered, e.g. `request.template.kind: is not part of this contract shape`. */
+  reason: string;
+  quarantinedAt: number;
+  snapshot?: unknown;
+  requestRef?: string;
+  request?: unknown;
+  events?: unknown[];
+  nextEventSeq?: number;
+  transitions?: unknown;
+  /** Index entries removed with the unit so re-runs are not blocked; replayed on restore. */
+  idempotencyKeys?: string[];
+  derivationKeys?: string[];
 }
 
 export interface FileExportArtifactFinalizer {
@@ -72,6 +98,8 @@ export interface FileExportJobStoreOptions {
   now?: () => number;
   lockTtlMs?: number;
   artifactFinalizer?: FileExportArtifactFinalizer;
+  /** Called at most once per record per store instance when a load quarantines unreadable journal records. */
+  onQuarantine?: (records: readonly FileExportQuarantinedRecordV1[]) => void;
 }
 
 export class FileExportJobStoreConflict extends Error {
@@ -88,7 +116,7 @@ function emptyCatalog(): FileExportCatalogV1 {
     schema: "atlcli.file-export-catalog/1",
     sequence: 0,
     jobs: {}, requests: {}, idempotency: {}, derivations: {}, events: {}, nextEventSeq: {},
-    tombstones: {}, transitions: {}, lastClaimedGroup: {}, finalizations: {}, executorCheckpoints: {}, executorResults: {},
+    tombstones: {}, transitions: {}, lastClaimedGroup: {}, finalizations: {}, executorCheckpoints: {}, executorResults: {}, quarantined: {},
   };
 }
 
@@ -134,6 +162,8 @@ export class FileExportJobStore implements ExportJobStore, ExportJobEventReaderV
   readonly #lock: FileExportLock;
   readonly #now: () => number;
   readonly #artifactFinalizer?: FileExportArtifactFinalizer;
+  readonly #onQuarantine?: (records: readonly FileExportQuarantinedRecordV1[]) => void;
+  readonly #reportedQuarantine = new Set<string>();
 
   constructor(rootDir: string, options: FileExportJobStoreOptions = {}) {
     this.rootDir = rootDir;
@@ -141,6 +171,7 @@ export class FileExportJobStore implements ExportJobStore, ExportJobEventReaderV
     this.#lock = new FileExportLock(join(rootDir, "locks", "journal.lock"), { ttlMs: options.lockTtlMs ?? 30_000, now: options.now });
     this.#now = options.now ?? Date.now;
     this.#artifactFinalizer = options.artifactFinalizer;
+    this.#onQuarantine = options.onQuarantine;
   }
 
   async create(input: ExportJobCreateV1): Promise<ExportJobSnapshotV1> {
@@ -166,7 +197,7 @@ export class FileExportJobStore implements ExportJobStore, ExportJobEventReaderV
         if (canonical(existing.derivedFrom) !== canonical(input.derivedFrom)) throw new FileExportJobStoreConflict("derivation-conflict", "An idempotent acknowledgement cannot change replay ancestry.");
         return { result: clone(existing), changed: false };
       }
-      if (catalog.jobs[request.id] || catalog.tombstones[request.id]) throw new FileExportJobStoreConflict("duplicate-id", `Job ${request.id} already exists.`);
+      if (catalog.jobs[request.id] || catalog.tombstones[request.id] || catalog.quarantined[request.id]) throw new FileExportJobStoreConflict("duplicate-id", `Job ${request.id} already exists.`);
       if (input.derivedFrom) this.#assertReplay(catalog, request, input.derivedFrom);
       const ref = requestRef(request);
       const snapshot: ExportJobSnapshotV1 = {
@@ -445,6 +476,11 @@ export class FileExportJobStore implements ExportJobStore, ExportJobEventReaderV
         .map(clone));
   }
   async getTombstone(jobId: string): Promise<ExportJobTombstoneV1 | undefined> { return this.#read((c) => c.tombstones[jobId] ? clone(c.tombstones[jobId]) : undefined); }
+  /** Journal records another atlcli build wrote that this build cannot read; preserved verbatim, hidden from job listings. */
+  async listQuarantined(): Promise<FileExportQuarantinedRecordV1[]> {
+    return this.#read((c) => Object.values(c.quarantined)
+      .sort((a, b) => a.quarantinedAt - b.quarantinedAt || a.key.localeCompare(b.key)).map(clone));
+  }
   async markTombstoneCleanupComplete(jobId: string, ref: string, at: number): Promise<ExportJobTombstoneV1> {
     const lease = await this.#lock.acquire({ label: "journal-cleanup" });
     try {
@@ -511,11 +547,136 @@ export class FileExportJobStore implements ExportJobStore, ExportJobEventReaderV
     if (!entries[0]) return emptyCatalog();
     const catalog = JSON.parse(await readFile(join(this.#journalDir, entries[0].name), "utf8")) as FileExportCatalogV1;
     if (catalog.schema !== "atlcli.file-export-catalog/1" || catalog.sequence !== entries[0].sequence) throw new Error("Export job journal head is invalid.");
-    catalog.executorCheckpoints ??= {}; catalog.executorResults ??= {};
-    for (const request of Object.values(catalog.requests)) parseExportJobRequestV1(request);
-    for (const snapshot of Object.values(catalog.jobs)) parseExportJobSnapshotV1(snapshot);
-    for (const events of Object.values(catalog.events)) for (const event of events) parseExportJobEventV1(event);
+    catalog.executorCheckpoints ??= {}; catalog.executorResults ??= {}; catalog.quarantined ??= {};
+    const fresh = this.#quarantineUnreadable(catalog);
+    this.#restoreReadable(catalog);
+    this.#reportQuarantine(fresh);
     return catalog;
+  }
+
+  /**
+   * A record another atlcli build wrote must never poison the whole journal:
+   * one historical request outside this build's contract used to fail every
+   * later store operation. Contract violations are moved to
+   * `catalog.quarantined` verbatim (their idempotency/derivation index entries
+   * are released so identical re-runs create fresh jobs); everything else
+   * still fails closed. Returns the records quarantined by this load.
+   */
+  #quarantineUnreadable(catalog: FileExportCatalogV1): FileExportQuarantinedRecordV1[] {
+    const fresh: FileExportQuarantinedRecordV1[] = [];
+    const quarantine = (key: string, reason: string, capture: Partial<FileExportQuarantinedRecordV1>): void => {
+      const idempotencyKeys = Object.entries(catalog.idempotency).filter(([, id]) => id === key).map(([k]) => k);
+      const derivationKeys = Object.entries(catalog.derivations).filter(([, id]) => id === key).map(([k]) => k);
+      for (const k of idempotencyKeys) delete catalog.idempotency[k];
+      for (const k of derivationKeys) delete catalog.derivations[k];
+      const record: FileExportQuarantinedRecordV1 = { key, reason, quarantinedAt: this.#now(), ...capture,
+        ...(idempotencyKeys.length ? { idempotencyKeys } : {}), ...(derivationKeys.length ? { derivationKeys } : {}) };
+      // Version ping-pong can leave an older captured unit at this key; keep both.
+      let slot = key; for (let n = 2; catalog.quarantined[slot]; n += 1) slot = `${key}#${n}`;
+      catalog.quarantined[slot] = record;
+      fresh.push(record);
+    };
+    for (const [id, snapshot] of Object.entries(catalog.jobs)) {
+      const requestRef = typeof (snapshot as { requestRef?: unknown }).requestRef === "string" ? snapshot.requestRef : undefined;
+      const request = requestRef === undefined ? undefined : catalog.requests[requestRef];
+      const normalized = request === undefined ? undefined : normalizeForeignExportJobRequestV1(request);
+      const reason = this.#unreadableReason(() => {
+        parseExportJobSnapshotV1(snapshot);
+        if (normalized !== undefined) parseExportJobRequestV1(normalized);
+        for (const event of this.#eventsArray(catalog.events[id], id)) parseExportJobEventV1(event);
+      });
+      if (reason === undefined) {
+        if (normalized !== undefined && normalized !== request) catalog.requests[requestRef!] = normalized as ExportJobRequestV1;
+        continue;
+      }
+      quarantine(id, reason, { snapshot,
+        ...(requestRef === undefined ? {} : { requestRef }), ...(request === undefined ? {} : { request }),
+        ...(catalog.events[id] === undefined ? {} : { events: catalog.events[id] }),
+        ...(catalog.nextEventSeq[id] === undefined ? {} : { nextEventSeq: catalog.nextEventSeq[id] }),
+        ...(catalog.transitions[id] === undefined ? {} : { transitions: catalog.transitions[id] }) });
+      delete catalog.jobs[id]; if (requestRef !== undefined) delete catalog.requests[requestRef];
+      delete catalog.events[id]; delete catalog.nextEventSeq[id]; delete catalog.transitions[id];
+    }
+    const owned = new Set(Object.values(catalog.jobs).map((job) => job.requestRef));
+    for (const [ref, request] of Object.entries(catalog.requests)) {
+      if (owned.has(ref)) continue;
+      const normalized = normalizeForeignExportJobRequestV1(request);
+      const reason = this.#unreadableReason(() => { parseExportJobRequestV1(normalized); });
+      if (reason === undefined) { if (normalized !== request) catalog.requests[ref] = normalized as ExportJobRequestV1; continue; }
+      quarantine(ref, reason, { requestRef: ref, request });
+      delete catalog.requests[ref];
+    }
+    for (const [id, events] of Object.entries(catalog.events)) {
+      if (catalog.jobs[id]) continue;
+      const reason = this.#unreadableReason(() => { for (const event of this.#eventsArray(events, id)) parseExportJobEventV1(event); });
+      if (reason === undefined) continue;
+      quarantine(`events:${id}`, reason, { events,
+        ...(catalog.nextEventSeq[id] === undefined ? {} : { nextEventSeq: catalog.nextEventSeq[id] }) });
+      delete catalog.events[id]; delete catalog.nextEventSeq[id];
+    }
+    return fresh;
+  }
+
+  /** A quarantined unit this build parses again (e.g. after an upgrade) rejoins the live catalog. */
+  #restoreReadable(catalog: FileExportCatalogV1): void {
+    for (const [slot, entry] of Object.entries(catalog.quarantined)) {
+      const key = entry.key;
+      if (entry.snapshot !== undefined) {
+        const normalized = entry.request === undefined ? undefined : normalizeForeignExportJobRequestV1(entry.request);
+        const reason = this.#unreadableReason(() => {
+          parseExportJobSnapshotV1(entry.snapshot);
+          if (normalized !== undefined) parseExportJobRequestV1(normalized);
+          for (const event of this.#eventsArray(entry.events, key)) parseExportJobEventV1(event);
+        });
+        if (reason !== undefined) continue;
+        const snapshot = entry.snapshot as ExportJobSnapshotV1;
+        if (snapshot.id !== key || catalog.jobs[key] || catalog.tombstones[key]) continue;
+        if (entry.requestRef !== undefined && catalog.requests[entry.requestRef]) continue;
+        if ((entry.idempotencyKeys ?? []).some((k) => catalog.idempotency[k] !== undefined)) continue;
+        if ((entry.derivationKeys ?? []).some((k) => catalog.derivations[k] !== undefined)) continue;
+        catalog.jobs[key] = snapshot;
+        if (entry.requestRef !== undefined && normalized !== undefined) catalog.requests[entry.requestRef] = normalized as ExportJobRequestV1;
+        if (entry.events !== undefined) catalog.events[key] = entry.events as ExportJobEventV1[];
+        if (entry.nextEventSeq !== undefined) catalog.nextEventSeq[key] = entry.nextEventSeq;
+        if (entry.transitions !== undefined) catalog.transitions[key] = entry.transitions as FileExportCatalogV1["transitions"][string];
+        for (const k of entry.idempotencyKeys ?? []) catalog.idempotency[k] = key;
+        for (const k of entry.derivationKeys ?? []) catalog.derivations[k] = key;
+        delete catalog.quarantined[slot];
+      } else if (entry.request !== undefined) {
+        const normalized = normalizeForeignExportJobRequestV1(entry.request);
+        if (this.#unreadableReason(() => { parseExportJobRequestV1(normalized); }) !== undefined) continue;
+        const ref = entry.requestRef ?? key;
+        if (catalog.requests[ref]) continue;
+        catalog.requests[ref] = normalized as ExportJobRequestV1;
+        delete catalog.quarantined[slot];
+      } else if (entry.events !== undefined) {
+        const id = key.startsWith("events:") ? key.slice("events:".length) : key;
+        if (this.#unreadableReason(() => { for (const event of this.#eventsArray(entry.events, id)) parseExportJobEventV1(event); }) !== undefined) continue;
+        if (catalog.events[id]) continue;
+        catalog.events[id] = entry.events as ExportJobEventV1[];
+        if (entry.nextEventSeq !== undefined && catalog.nextEventSeq[id] === undefined) catalog.nextEventSeq[id] = entry.nextEventSeq;
+        delete catalog.quarantined[slot];
+      }
+    }
+  }
+
+  #eventsArray(events: unknown, id: string): unknown[] {
+    if (events === undefined) return [];
+    if (!Array.isArray(events)) throw new ExportJobValidationError(`events.${id}`, "must be an array");
+    return events;
+  }
+
+  #unreadableReason(check: () => void): string | undefined {
+    try { check(); return undefined; }
+    catch (error) { if (error instanceof ExportJobValidationError) return error.message; throw error; }
+  }
+
+  #reportQuarantine(records: FileExportQuarantinedRecordV1[]): void {
+    const unseen = records.filter((record) => !this.#reportedQuarantine.has(record.key));
+    if (unseen.length === 0) return;
+    for (const record of unseen) this.#reportedQuarantine.add(record.key);
+    if (!this.#onQuarantine) return;
+    try { this.#onQuarantine(unseen.map(clone)); } catch { /* observers must never poison store operations */ }
   }
   async #commit(catalog: FileExportCatalogV1): Promise<void> {
     await writeDurableAtomic(join(this.#journalDir, `${catalog.sequence.toString().padStart(20, "0")}.json`), `${JSON.stringify(catalog)}\n`);

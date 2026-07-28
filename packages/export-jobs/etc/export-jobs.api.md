@@ -1234,6 +1234,9 @@ export interface LabelFilter {
     excludeMode?: "prune-subtree" | "page-only";
 }
 
+// export: normalizeForeignExportJobRequestV1
+export declare function normalizeForeignExportJobRequestV1(value: unknown): unknown;
+
 // export: orderExportQueue
 export declare function orderExportQueue<T extends QueueJobV1>(jobs: readonly T[]): T[];
 

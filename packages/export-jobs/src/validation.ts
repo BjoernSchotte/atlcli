@@ -430,6 +430,29 @@ export function parseExportJobRequestV1(value: unknown): ExportJobRequestV1 {
   return value as ExportJobRequestV1;
 }
 
+/**
+ * Best-effort lossless downgrade of a stored request written by another atlcli
+ * build. Covers exactly one foreign shape today: PDF `template` records that
+ * carry an explicit `kind: "builtin"` discriminant next to the `id` and
+ * `manifestVersion` this contract stores bare. Anything else — including
+ * `kind: "pack"` templates, which have no representation here — is returned
+ * unchanged for the caller to quarantine. Never throws, never mutates `value`,
+ * and is not applied to writes: freshly created requests must already match
+ * the strict contract.
+ */
+export function normalizeForeignExportJobRequestV1(value: unknown): unknown {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return value;
+  const request = value as Record<string, unknown>;
+  if (request.format !== "pdf") return value;
+  const template = request.template;
+  if (typeof template !== "object" || template === null || Array.isArray(template)) return value;
+  const shape = template as Record<string, unknown>;
+  if (shape.kind !== "builtin") return value;
+  if (Object.keys(shape).sort().join(",") !== "id,kind,manifestVersion") return value;
+  if (typeof shape.id !== "string" || typeof shape.manifestVersion !== "string") return value;
+  return { ...request, template: { id: shape.id, manifestVersion: shape.manifestVersion } };
+}
+
 const STATES = [
   "queued",
   "running",
