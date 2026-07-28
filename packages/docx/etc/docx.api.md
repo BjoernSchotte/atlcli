@@ -1277,6 +1277,7 @@ export declare function prepareDocxExportRuntime(blocks: readonly ExportBlock[],
 // export: PrepareDocxExportRuntimeOptions
 export interface PrepareDocxExportRuntimeOptions {
     codeTheme?: CodeThemeId;
+    preloadCodeFont?: boolean;
     signal?: AbortSignal;
 }
 
