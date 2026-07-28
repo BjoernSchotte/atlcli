@@ -983,6 +983,377 @@ export interface TemplateSource {
 }
 ```
 
+### Entry point `./browser-entry`
+
+```ts
+// export: ArchiveBudget
+export interface ArchiveBudget {
+    maxEntryCount: number;
+    maxUncompressedBytes: number;
+    maxSingleEntryUncompressedBytes: number;
+    maxXmlPartUncompressedBytes?: number;
+    maxXmlPartCharacters?: number;
+}
+
+// export: AssetFetcher
+export interface AssetFetcher {
+    fetch(ref: AssetRef, context?: HostCallContext): Promise<Uint8Array>;
+}
+
+// export: AssetRef
+export interface AssetRef {
+    url: string;
+    pageId?: string;
+    filename?: string;
+    trust?: "page" | "export-view";
+}
+
+// export: CanvasRasterizerTiming
+export interface CanvasRasterizerTiming {
+    decodeMs: number;
+    drawMs: number;
+    encodeMs: number;
+}
+
+// export: canvasSvgRasterizer
+export declare function canvasSvgRasterizer(options?: CanvasSvgRasterizerOptions): SvgRasterizer;
+
+// export: CanvasSvgRasterizerOptions
+export interface CanvasSvgRasterizerOptions {
+    document?: Document;
+    decodeTimeoutMs?: number;
+    onTiming?: (timing: CanvasRasterizerTiming) => void;
+}
+
+// export: CurrentUser
+export interface CurrentUser {
+    accountId: string;
+    displayName: string;
+    email?: string;
+}
+
+// export: DocxByteHelpers
+export interface DocxByteHelpers {
+    from(value: ArrayLike<number> | ArrayBuffer | string, encoding?: string): Uint8Array;
+    alloc(size: number): Uint8Array;
+    isBuffer(value: unknown): boolean;
+}
+
+// export: DocxErrorKind
+export type DocxErrorKind = "not-zip" | "not-docx" | "too-large" | "too-many-entries" | "path-traversal" | "invalid-path" | "entry-too-large" | "xml-part-too-large" | "uncompressed-too-large" | "suspicious-compression" | "corrupt-entry" | "active-content";
+
+// export: DocxExportRuntimePreparation
+export interface DocxExportRuntimePreparation {
+    totalMs: number;
+    highlightingMs: number;
+    codeFontMs: number;
+    codeFontBytes: number;
+}
+
+// export: DocxRenderError
+export declare class DocxRenderError extends Error {
+    readonly details: string[];
+    constructor(message: string, details: string[]);
+}
+
+// export: exportDocx
+export declare function exportDocx(input: ExportInput): Promise<ExportResult>;
+
+// export: ExportEnv
+export interface ExportEnv {
+    templates: TemplateSource;
+    assets?: AssetFetcher;
+    rasterizer?: SvgRasterizer;
+    macros?: MacroResolutionOptions;
+    output: OutputSink;
+}
+
+// export: ExportInput
+export interface ExportInput {
+    codeTheme?: CodeThemeId;
+    templateBytes: Uint8Array;
+    details: ConfluencePageDetails;
+    blocks?: ExportBlock[];
+    sourceNotes?: ExportNote[];
+    complete?: boolean;
+    signal?: AbortSignal;
+    onProgress?: ExportProgressCallback;
+    template: TemplateMeta;
+    exportDate?: Date;
+    deps?: ResolveDeps;
+    assets?: AssetFetcher;
+    embedImages?: boolean;
+    rasterizer?: SvgRasterizer;
+    diagramTheme?: DiagramTheme;
+    captionLang?: string;
+    exportControls?: "apply" | "passthrough";
+    macros?: MacroResolutionOptions;
+    tableStyle?: {
+        source: "template" | "confluence";
+        styleId?: string;
+    };
+    updateFields?: "auto" | "always" | "never";
+}
+
+// export: ExportReport
+export interface ExportReport {
+    codeTheme: CodeThemeId;
+    resolvedCount: number;
+    unsupportedNames: string[];
+    skippedImages: number;
+    embeddedImages: number;
+    renderedDiagrams: number;
+    durationMs: number;
+    filename: string;
+    notes: ExportNote[];
+    sourceNotes?: ExportNote[];
+    complete: boolean;
+    scan: ScanResult;
+    timings: ExportTimings;
+}
+
+// export: ExportResult
+export interface ExportResult {
+    bytes: Uint8Array;
+    report: ExportReport;
+}
+
+// export: ExportTimings
+export interface ExportTimings {
+    resolveMs: number;
+    bodyMs: number;
+    highlightEngineInitMs?: number;
+    highlightGrammarLoadMs?: number;
+    highlightTokenizeMs?: number;
+    highlightCodeBlocks?: number;
+    highlightLanguageCount?: number;
+    logoFetchMs: number;
+    includeFetchMs: number;
+    renderMs: number;
+    imageFetchMs: number;
+    imageFetches: number;
+    diagramRenderMs: number;
+    diagramRasterMs: number;
+}
+
+// export: HostCallContext
+export interface HostCallContext {
+    signal?: AbortSignal;
+}
+
+// export: IncludeLookupOutcome
+export type IncludeLookupOutcome = {
+    kind: "resolved";
+    page: IncludePageDetails;
+} | {
+    kind: "ambiguous";
+    count: number;
+    page: IncludePageDetails;
+} | {
+    kind: "not-found-or-forbidden";
+} | {
+    kind: "auth-failed";
+} | {
+    kind: "rate-limited";
+} | {
+    kind: "transient-error";
+    message: string;
+};
+
+// export: IncludePageDetails
+export type IncludePageDetails = ConfluencePageDetails & {
+    exportSource?: ExportPageSource;
+    mediaAttachments?: AdfMediaAttachment[];
+    mediaAttachmentsComplete?: boolean;
+    inlineComments?: InlineComment[];
+    inlineCommentsComplete?: boolean;
+};
+
+// export: IncludePageRef
+export interface IncludePageRef {
+    spaceKey?: string;
+    title?: string;
+    pageId?: string;
+}
+
+// export: installDocxBrowserRuntime
+export declare function installDocxBrowserRuntime(): void;
+
+// export: memoryTemplateSource
+export declare function memoryTemplateSource(bytes: ArrayBuffer | Uint8Array): TemplateSource;
+
+// export: NumberingAllocator
+export declare class NumberingAllocator {
+    private readonly base;
+    private readonly bulletAbstractId;
+    private nextAbstractId;
+    private nextNumId;
+    private bulletNumId;
+    private readonly orderedInstances;
+    private lastNumId;
+    private used;
+    private capReached;
+    constructor(base: NumberingBase);
+    get isUsed(): boolean;
+    get capExceeded(): boolean;
+    acquire(ordered: boolean, start?: number, ilvl?: number): number;
+    private allocNumId;
+    private tryAllocNumId;
+    toXml(): NumberingXml;
+    private bulletAbstractNum;
+    private orderedAbstractNum;
+    private orderedLevel;
+}
+
+// export: NumberingBase
+export interface NumberingBase {
+    abstractNumId: number;
+    numId: number;
+}
+
+// export: NumberingXml
+export interface NumberingXml {
+    abstractNums: string;
+    nums: string;
+}
+
+// export: OutputSink
+export interface OutputSink {
+    emit(name: string, bytes: Uint8Array, context?: HostCallContext): Promise<void>;
+}
+
+// export: PageOwner
+export interface PageOwner {
+    accountId?: string;
+    displayName: string;
+    email?: string;
+}
+
+// export: PlaceholderStatus
+export type PlaceholderStatus = "supported" | "unsupported" | "never";
+
+// export: PreparedDocxExportV1
+export interface PreparedDocxExportV1 {
+    schema: "atlcli.prepared-docx-export/1";
+    renderState: PreparedDocxRenderStateV1 | undefined;
+    archiveDateMs?: number;
+    filename: string;
+    codeTheme: CodeThemeId;
+    complete: boolean;
+    updateFields: NonNullable<ExportInput["updateFields"]>;
+    trustedSeqSequenceNames: string[];
+    resolvedCount: number;
+    unsupportedNames: string[];
+    embeddedImages: number;
+    renderedDiagrams: number;
+    scan: ScanResult;
+    sourceNotes: ExportNote[];
+    baseNotes: ExportNote[];
+    timings: ExportTimings;
+    startedAt: number;
+}
+
+// export: PreparedDocxRenderStateV1
+export interface PreparedDocxRenderStateV1 {
+    archiveBytes: Uint8Array;
+    bodyXml: string;
+    includes: Array<[
+        key: string,
+        xml: string
+    ]>;
+}
+
+// export: prepareDocxCodeHighlighting
+export declare function prepareDocxCodeHighlighting(blocks: readonly ExportBlock[], options?: {
+    codeTheme?: CodeThemeId;
+}): Promise<void>;
+
+// export: prepareDocxExport
+export declare function prepareDocxExport(input: ExportInput): Promise<PreparedDocxExportV1>;
+
+// export: prepareDocxExportRuntime
+export declare function prepareDocxExportRuntime(blocks: readonly ExportBlock[], options?: PrepareDocxExportRuntimeOptions): Promise<DocxExportRuntimePreparation>;
+
+// export: PrepareDocxExportRuntimeOptions
+export interface PrepareDocxExportRuntimeOptions {
+    codeTheme?: CodeThemeId;
+    signal?: AbortSignal;
+}
+
+// export: renderPreparedDocxExport
+export declare function renderPreparedDocxExport(prepared: PreparedDocxExportV1, input?: RenderPreparedDocxExportInput): Promise<ExportResult>;
+
+// export: RenderPreparedDocxExportInput
+export interface RenderPreparedDocxExportInput {
+    signal?: AbortSignal;
+}
+
+// export: ResolveDeps
+export interface ResolveDeps {
+    getSpace?: (spaceKey: string) => Promise<ConfluenceSpace>;
+    getCurrentUser?: () => Promise<CurrentUser>;
+    getPageOwner?: (pageId: string) => Promise<PageOwner | null>;
+    getSpaceHomepageStorage?: (spaceKey: string) => Promise<string | null>;
+    getSpaceLogo?: (spaceKey: string) => Promise<AssetRef | null>;
+    getIncludedPage?: (ref: IncludePageRef) => Promise<IncludeLookupOutcome>;
+}
+
+// export: runExport
+export declare function runExport(input: RunExportInput, env: ExportEnv): Promise<ExportReport>;
+
+// export: RunExportInput
+export interface RunExportInput extends Omit<ExportInput, "templateBytes"> {
+    templateId?: string;
+}
+
+// export: ScanHit
+export interface ScanHit {
+    base: string;
+    status: PlaceholderStatus;
+    count: number;
+    raw: string[];
+    reason?: string;
+}
+
+// export: ScanResult
+export interface ScanResult {
+    supported: ScanHit[];
+    unsupported: ScanHit[];
+    never: ScanHit[];
+    parts: string[];
+    hasContentPlaceholder: boolean;
+    stylerefStyleNames: string[];
+    foreignPlaceholders?: string[];
+    riskyFieldInstructions?: string[];
+    seqSequenceNames?: string[];
+}
+
+// export: scanTemplate
+export declare function scanTemplate(bytes: Uint8Array): ScanResult;
+
+// export: SvgRasterizer
+export interface SvgRasterizer {
+    rasterize(svg: string, target: {
+        widthPx: number;
+        heightPx: number;
+    }, context?: HostCallContext): Promise<Uint8Array>;
+}
+
+// export: TemplateMeta
+export interface TemplateMeta {
+    name: string;
+    modificationDate: Date;
+}
+
+// export: TemplateSource
+export interface TemplateSource {
+    getBytes(id: string, context?: HostCallContext): Promise<Uint8Array>;
+}
+
+// export: unzipDocx
+export declare function unzipDocx(bytes: Uint8Array, budget?: ArchiveBudget): PizZip;
+```
+
 ### Entry point `./browser-runtime`
 
 ```ts

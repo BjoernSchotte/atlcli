@@ -15,7 +15,7 @@
  * (accumulating a library the panel has no UI for). The library UI is wave-2
  * work and replaces this adapter's `get`/`put`/`remove`, not the port.
  */
-import type { ScanResult } from "@atlcli/docx/scan";
+import type { ScanResult } from "@atlcli/docx/browser-entry";
 import { profileFromTabUrl } from "../../../utils/profile.js";
 import { idbTemplateLibrary, type IdbTemplateLibrary, type StoredTemplateEntry } from "../../../utils/templates/library.js";
 import type { DocxExportPort, DocxTemplateStore } from "../../../utils/ports/export.js";
@@ -23,7 +23,7 @@ import type { SiteContext } from "./site-context.js";
 
 // The scan stays panel-local and light. Export itself is a durable observer
 // adapter; PizZip/docxtemplater and canvas load only in the offscreen executor.
-const loadScan = () => import("@atlcli/docx/scan");
+const loadScan = () => import("@atlcli/docx/browser-entry");
 const loadRun = () => import("../../../utils/export-jobs/docx-run.js");
 
 function siteOriginOf(site: SiteContext): string | undefined {

@@ -330,18 +330,29 @@ describe("pack-check (spec 009)", () => {
     }
   });
 
-  it("@atlcli/docx ships the embedded code face, its OFL license, and the Node loader", () => {
-    const { entries } = packageOf(
+  it("@atlcli/docx ships the ordered browser entry, maps, font licenses, and Node loader", () => {
+    const { entries, manifest } = packageOf(
       packages.find((p) => p.name === "@atlcli/docx") ?? (undefined as never),
     );
     for (const required of [
       "package/fonts/JetBrainsMono-Regular.ttf",
       "package/fonts/LICENSE-JetBrainsMono.txt",
+      "package/dist/browser-entry.js",
+      "package/dist/browser-entry.js.map",
+      "package/dist/browser-entry.d.ts",
+      "package/dist/browser-entry.d.ts.map",
       "package/dist/font-embedding.js",
       "package/dist/node-code-font.js",
     ]) {
       expect(entries.includes(required), `@atlcli/docx: missing ${required}`).toBe(true);
     }
+    expect(manifest.license).toBe("Apache-2.0");
+    expect(manifest.exports).toMatchObject({
+      "./browser-entry": {
+        types: "./dist/browser-entry.d.ts",
+        default: "./dist/browser-entry.js",
+      },
+    });
   });
 
   it("@atlcli/pdf-compiler-browser ships the vendored PATCHED glue + wasm + LICENSE/NOTICE", () => {

@@ -18,10 +18,21 @@ function sourceFiles(path: string): string[] {
 }
 
 describe("browser harness boundaries", () => {
-  it("bootstraps the DOCX runtime before dynamically loading the app graph", () => {
-    const source = read("src/main.ts");
-    expect(source.indexOf(`@atlcli/docx/browser-runtime`)).toBeLessThan(source.indexOf(`import("./app.js")`));
-    expect(source).not.toMatch(/from\s+["']@atlcli\/docx\/browser["']/);
+  it("loads one combined DOCX entry inside the explicit app-intent graph", () => {
+    const main = read("src/main.ts");
+    const app = read("src/app.ts");
+    const combined = sourceFiles("src")
+      .map((path) => readFileSync(path, "utf8"))
+      .join("\n");
+    expect(main).toContain(`import("./app.js")`);
+    expect(main).not.toContain("@atlcli/docx/browser-runtime");
+    expect(main).not.toContain("@atlcli/docx/browser-entry");
+    expect(app.split("\n").find((line) => line.startsWith("import "))).toBe(
+      'import { runExport } from "@atlcli/docx/browser-entry";',
+    );
+    expect(combined).not.toMatch(
+      /from\s+["']@atlcli\/docx\/(?:browser|browser-runtime|scan)["']/,
+    );
   });
 
   it("uses relative Vite output and the package-owned DOCX defines", () => {

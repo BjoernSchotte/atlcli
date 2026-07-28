@@ -1,3 +1,7 @@
+// This is the extension's explicit DOCX-intent entry. Its first dependency
+// installs the browser runtime and pulls the engine into the same ordered graph
+// before export-wiring can evaluate its @atlcli/docx engine imports.
+import "@atlcli/docx/browser-entry";
 import {
   parseDocxExportJobRequestV1,
   type DocxExportJobRequestV1,

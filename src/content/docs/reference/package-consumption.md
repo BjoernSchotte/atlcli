@@ -56,7 +56,7 @@ Declared per package via `engines` and verified by the consumer-smoke suites
 | `@atlcli/jira` | **Bun only** (≥ 1.3) | The barrel's webhook server is `Bun.serve`-native |
 | `@atlcli/confluence` | Node ≥ 20, Bun, browsers | The default barrel is isomorphic; the non-frozen `./internal` subpath (sync-db, webhook-server, …) is **Bun-only** |
 | `@atlcli/code-highlight` | Node ≥ 20, Bun, browsers | Node/Bun installs Oniguruma; browser conditions install the JavaScript RegExp engine; languages/themes use generated direct loaders |
-| `@atlcli/docx` | Node ≥ 20, Bun, browsers | Browser hosts import `./browser-runtime` first |
+| `@atlcli/docx` | Node ≥ 20, Bun, browsers | Browser intent hosts import the ordered `./browser-entry`; legacy split subpaths remain compatible |
 | `@atlcli/pdf` | Node ≥ 20, Bun, browsers | Fully isomorphic |
 | `@atlcli/pdf-compiler-browser` | Node ≥ 20, Bun, browsers | Needs `WebAssembly`; wasm/fonts supplied by the host |
 | `@atlcli/export-jobs` | Node ≥ 20, Bun, browsers | Durable job records, validation, and host-injected persistence ports |

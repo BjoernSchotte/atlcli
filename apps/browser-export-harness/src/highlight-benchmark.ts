@@ -4,11 +4,11 @@ import {
   type CodeThemeId,
 } from "@atlcli/code-highlight";
 import type { ExportBlock } from "@atlcli/confluence";
-import { runExport } from "@atlcli/docx/browser";
 import {
   memoryTemplateSource,
   prepareDocxExportRuntime,
-} from "@atlcli/docx/browser-runtime";
+  runExport,
+} from "@atlcli/docx/browser-entry";
 import { DOCX_TEMPLATE_BYTES } from "@atlcli/export-fixtures";
 import { sha256Hex } from "./digest.js";
 import { MemoryOutputSink } from "./memory-output.js";
@@ -75,7 +75,8 @@ export interface HighlightBenchmarkResult {
   exportMs: number;
   preparation: Awaited<ReturnType<typeof prepareDocxExportRuntime>> | null;
   phases: {
-    runtimeReadyAt: number;
+    intentStartedAt: number;
+    entryReadyAt: number;
     preloadStartedAt: number;
     preloadEndedAt: number;
     exportStartedAt: number;
@@ -159,8 +160,10 @@ async function runHighlightBenchmark(
     exportMs,
     preparation,
     phases: {
-      runtimeReadyAt:
-        window.__ATLCLI_DOCX_BROWSER_RUNTIME_READY_AT ?? 0,
+      intentStartedAt:
+        window.__ATLCLI_DOCX_BROWSER_INTENT_STARTED_AT ?? 0,
+      entryReadyAt:
+        window.__ATLCLI_DOCX_BROWSER_ENTRY_READY_AT ?? 0,
       preloadStartedAt,
       preloadEndedAt,
       exportStartedAt,
@@ -238,7 +241,8 @@ async function prepareHighlightModules(
 
 declare global {
   interface Window {
-    __ATLCLI_DOCX_BROWSER_RUNTIME_READY_AT?: number;
+    __ATLCLI_DOCX_BROWSER_INTENT_STARTED_AT?: number;
+    __ATLCLI_DOCX_BROWSER_ENTRY_READY_AT?: number;
     __ATLCLI_DOCX_HIGHLIGHT_BENCHMARK?: (
       preload: boolean,
     ) => Promise<HighlightBenchmarkResult>;

@@ -34,6 +34,7 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { buildDocx, para } from "../packages/docx/src/fixtures.js";
 import {
   atlcliClosure,
   buildPackages,
@@ -42,13 +43,17 @@ import {
   type SmokeRunResult,
 } from "./consumer-smoke.js";
 
-/** PDF/compiler plus the background-wiring package; the transitive @atlcli
+/** Browser DOCX/PDF roots plus background wiring; the transitive @atlcli
  * closure is derived from the real manifests (never a hardcoded list). */
 const VITE_ROOTS = [
+  "@atlcli/docx",
   "@atlcli/pdf",
   "@atlcli/pdf-compiler-browser",
   "@atlcli/export-wiring",
 ];
+const DOCX_TEMPLATE_BYTES = buildDocx({
+  body: para("$scroll.title") + para("$scroll.content"),
+});
 
 const VITE_VERSION = "8.1.4"; // same major the harness builds with
 
@@ -60,6 +65,7 @@ const INDEX_HTML = `<!doctype html>
 `;
 
 const VITE_CONFIG = `import { defineConfig } from "vite";
+import { DOCX_BROWSER_VITE_DEFINES } from "@atlcli/docx/vite";
 
 export default defineConfig({
   base: "./",
@@ -67,6 +73,9 @@ export default defineConfig({
     // Same preference as apps/browser-export-harness — but NO "development":
     // this build must prove the packed tarballs' dist/ exports.
     conditions: ["browser"],
+  },
+  define: {
+    ...DOCX_BROWSER_VITE_DEFINES,
   },
   build: {
     target: "es2022",
@@ -82,6 +91,13 @@ export default defineConfig({
 
 /** Mirrors apps/browser-export-harness/src/pdf-worker.ts's ?url imports. */
 const ENTRY_TS = `
+// This must be the first DOCX-related edge: export-wiring/jobs also reaches
+// the engine graph, so the canonical entry has to establish its runtime first.
+import {
+  memoryTemplateSource,
+  runExport as runDocxExport,
+  unzipDocx,
+} from "@atlcli/docx/browser-entry";
 import wasmUrl from "@atlcli/pdf-compiler-browser/wasm?url";
 import sansRegularUrl from "@atlcli/pdf/fonts/SourceSans3-Regular.ttf?url";
 import sansItalicUrl from "@atlcli/pdf/fonts/SourceSans3-It.ttf?url";
@@ -129,6 +145,51 @@ type LoadBytes = (url: string) => Promise<Uint8Array>;
   jobsEntrypointLoaded:
     typeof createPdfExportJobExecutor === "function" &&
     typeof createTypescriptDocxExportJobExecutor === "function",
+  async compileDocx() {
+    // Test setup injects a known-good binary fixture. The production consumer
+    // imports only the stable browser entry, not the fixture subpath.
+    const templateBytes = new Uint8Array(${JSON.stringify([...DOCX_TEMPLATE_BYTES])});
+    let emitted: Uint8Array | undefined;
+    const report = await runDocxExport(
+      {
+        details: {
+          id: "browser-entry-smoke",
+          title: "Combined Browser Entry",
+          url: "https://example.invalid/wiki/browser-entry-smoke",
+          version: 1,
+          spaceKey: "SMOKE",
+          storage: "<h1>Vite DOCX Heading</h1><p>One ordered browser entry.</p>",
+          created: "2026-07-01T08:00:00.000Z",
+          modified: "2026-07-02T09:00:00.000Z",
+          createdBy: { displayName: "Smoke Author" },
+          modifiedBy: { displayName: "Smoke Editor" },
+          labels: [],
+        },
+        template: {
+          name: "browser-entry-smoke.docx",
+          modificationDate: new Date("2026-07-10T00:00:00.000Z"),
+        },
+        exportDate: new Date("2026-07-15T10:00:00.000Z"),
+      },
+      {
+        templates: memoryTemplateSource(templateBytes),
+        output: {
+          emit: async (_name, bytes) => {
+            emitted = bytes;
+          },
+        },
+      },
+    );
+    if (!emitted) throw new Error("combined DOCX browser entry emitted nothing");
+    const bytes: Uint8Array = emitted;
+    const documentXml = unzipDocx(bytes).file("word/document.xml")?.asText() ?? "";
+    return {
+      byteLength: bytes.byteLength,
+      filename: report.filename,
+      hasHeading: documentXml.includes("Vite DOCX Heading"),
+      hasBody: documentXml.includes("One ordered browser entry."),
+    };
+  },
   async compile(loadBytes: LoadBytes) {
     const wasm = await loadBytes(wasmUrl);
     const fonts = await Promise.all(
@@ -203,6 +264,20 @@ export interface ViteSmokeResult {
   projectDir: string;
   viteVersion: string;
   smokes: SmokeRunResult;
+}
+
+async function withBrowserBufferScope<T>(action: () => Promise<T>): Promise<T> {
+  // The built chunk is imported under Bun only to keep this smoke headless.
+  // Mask Bun's Node-compatible Buffer global while PizZip detects its host so
+  // the bundle executes the same Uint8Array path as an actual browser.
+  const scope = globalThis as Record<string, unknown>;
+  const originalBuffer = scope.Buffer;
+  scope.Buffer = undefined;
+  try {
+    return await action();
+  } finally {
+    scope.Buffer = originalBuffer;
+  }
 }
 
 export async function runViteSmoke(baseDir?: string): Promise<ViteSmokeResult> {
@@ -290,31 +365,50 @@ export async function runViteSmoke(baseDir?: string): Promise<ViteSmokeResult> {
   }
 
   // --- Execute the PRODUCTION chunk and compile with the EMITTED assets. ---
-  await import(chunkPath);
-  const hook = (globalThis as Record<string, unknown>).__ATLCLI_VITE_SMOKE as {
-    wasmUrl: string;
-    fontUrls: Record<string, string>;
-    expectedFonts: string[];
-    jobsEntrypointLoaded: boolean;
-    compile(load: (url: string) => Promise<Uint8Array>): Promise<{
-      byteLength: number;
-      handleSize: number;
-      mimeType: string;
-      pageCount: number;
-      tagged: boolean;
-      isHandle: boolean;
-      borrowed: boolean;
-      blobSize: number;
-      blobType: string;
-      blobMemoized: boolean;
-      objectUrlScheme: string;
-      urlMemoized: boolean;
-    }>;
-  };
-  if (!hook) throw new Error("built chunk did not install the smoke hook — wrong chunk executed?");
-  if (!hook.jobsEntrypointLoaded) {
+  const { hook, docxResult } = await withBrowserBufferScope(async () => {
+    await import(chunkPath);
+    const hook = (globalThis as Record<string, unknown>).__ATLCLI_VITE_SMOKE as {
+      wasmUrl: string;
+      fontUrls: Record<string, string>;
+      expectedFonts: string[];
+      jobsEntrypointLoaded: boolean;
+      compileDocx(): Promise<{
+        byteLength: number;
+        filename: string;
+        hasHeading: boolean;
+        hasBody: boolean;
+      }>;
+      compile(load: (url: string) => Promise<Uint8Array>): Promise<{
+        byteLength: number;
+        handleSize: number;
+        mimeType: string;
+        pageCount: number;
+        tagged: boolean;
+        isHandle: boolean;
+        borrowed: boolean;
+        blobSize: number;
+        blobType: string;
+        blobMemoized: boolean;
+        objectUrlScheme: string;
+        urlMemoized: boolean;
+      }>;
+    };
+    if (!hook) throw new Error("built chunk did not install the smoke hook — wrong chunk executed?");
+    if (!hook.jobsEntrypointLoaded) {
+      throw new Error(
+        "packed @atlcli/export-wiring/jobs did not expose both PDF and TypeScript DOCX executors",
+      );
+    }
+    return { hook, docxResult: await hook.compileDocx() };
+  });
+  if (
+    docxResult.byteLength < 1_000
+    || !docxResult.hasHeading
+    || !docxResult.hasBody
+    || !docxResult.filename.endsWith(".docx")
+  ) {
     throw new Error(
-      "packed @atlcli/export-wiring/jobs did not expose both PDF and TypeScript DOCX executors",
+      `vite smoke combined DOCX entry produced implausible output: ${JSON.stringify(docxResult)}`,
     );
   }
   const docxCodeFontAssets = ttfAssets.filter((asset) =>
@@ -397,7 +491,8 @@ export async function runViteSmoke(baseDir?: string): Promise<ViteSmokeResult> {
     projectDir,
     viteVersion: VITE_VERSION,
     smokes: {
-      docx: "(not part of the vite smoke)",
+      docx:
+        `DOCX_SMOKE_OK ${docxResult.filename} bytes=${docxResult.byteLength}`,
       pdf: `PDF_SMOKE_OK vite-smoke.pdf pages=${result.pageCount} bytes=${result.byteLength}`,
     },
   };
@@ -406,5 +501,6 @@ export async function runViteSmoke(baseDir?: string): Promise<ViteSmokeResult> {
 if (import.meta.main) {
   const { projectDir, viteVersion, smokes } = await runViteSmoke();
   console.log(`vite tarball smoke OK in ${projectDir} (vite ${viteVersion})`);
+  console.log(smokes.docx);
   console.log(smokes.pdf);
 }

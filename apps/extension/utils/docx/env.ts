@@ -4,7 +4,7 @@
  * extension's imperative shell: template bytes come from the IndexedDB store,
  * asset bytes ride the user's Atlassian session cookies, and the finished
  * document leaves through a browser download. Neutral memory/canvas support
- * comes from `@atlcli/docx/browser-runtime`; session, storage, cache, download,
+ * comes from `@atlcli/docx/browser-entry`; session, storage, cache, download,
  * and report policy remain here with the extension host.
  */
 import type {
@@ -13,11 +13,11 @@ import type {
   OutputSink,
   SvgRasterizer,
   TemplateSource,
-} from "@atlcli/docx/browser";
+} from "@atlcli/docx/browser-entry";
 import {
   canvasSvgRasterizer as neutralCanvasSvgRasterizer,
   memoryTemplateSource,
-} from "@atlcli/docx/browser-runtime";
+} from "@atlcli/docx/browser-entry";
 import type { ExternalAssetFetcher, ExternalAssetPolicy } from "@atlcli/export-macros";
 import { trustRoutingAssetFetcher } from "@atlcli/export-wiring";
 import {

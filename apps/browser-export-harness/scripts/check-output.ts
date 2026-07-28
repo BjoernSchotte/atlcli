@@ -157,6 +157,9 @@ export function validateHarnessInventory(artifacts: OutputArtifact[]): string[] 
   if (!artifacts.some((artifact) => artifact.path === "index.html")) {
     issues.push("entry HTML: missing index.html");
   }
+  if (!artifacts.some((artifact) => artifact.path === "topology.html")) {
+    issues.push("topology HTML: missing topology.html");
+  }
   issues.push(...requireOne(
     artifacts,
     "PDF compiler Worker",

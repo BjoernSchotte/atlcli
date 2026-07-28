@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { IDBFactory, IDBKeyRange } from "fake-indexeddb";
 import { sha256Hex } from "@atlcli/core";
 import { buildDocx, para } from "@atlcli/docx/fixtures";
-import { prepareDocxExport } from "@atlcli/docx/browser";
+import { prepareDocxExport } from "@atlcli/docx/browser-entry";
 import type {
   DocxExportJobRequestV1,
   ExportJobRequestV1,

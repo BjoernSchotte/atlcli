@@ -65,6 +65,7 @@ describe("harness output content policy", () => {
 function completeInventory(): OutputArtifact[] {
   const artifacts: OutputArtifact[] = [
     { path: "index.html", size: 100 },
+    { path: "topology.html", size: 100 },
     { path: "assets/pdf-worker-abc.js", size: 100 },
     { path: "assets/typst_ts_web_compiler_bg-abc.wasm", size: 25_000_000 },
     {

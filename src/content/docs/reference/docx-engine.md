@@ -44,8 +44,9 @@ Entry points (package `exports` conditions, mirroring `@atlcli/core`):
 | Import | Resolves to | Use |
 |--------|-------------|-----|
 | `@atlcli/docx` | Node barrel | engine + Node filesystem adapters |
-| `@atlcli/docx/browser` | browser barrel | engine only (no `node:` imports, CI-gated) |
-| `@atlcli/docx/browser-runtime` | browser support | byte compatibility bootstrap plus memory/canvas adapters |
+| `@atlcli/docx/browser-entry` | ordered browser entry | canonical intent graph: runtime bootstrap, engine, preparation, template helpers, and memory/canvas adapters |
+| `@atlcli/docx/browser` | compatibility browser barrel | engine only (no `node:` imports, CI-gated) |
+| `@atlcli/docx/browser-runtime` | compatibility browser support | byte compatibility bootstrap plus memory/canvas adapters |
 | `@atlcli/docx/vite` | Vite defines | build-time replacements required by PizZip/docxtemplater |
 | `@atlcli/docx/scan` | scan module | lightweight template scan without pulling the full engine |
 
@@ -63,7 +64,7 @@ report note.
 
 The RegExp implementation is selected by the host entrypoint, not by runtime
 capability detection. Node/Bun imports install Oniguruma. Browser-conditioned
-imports and `@atlcli/docx/browser-runtime` install only Shiki's JavaScript
+imports and `@atlcli/docx/browser-entry` install only Shiki's JavaScript
 RegExp engine; no browser module imports `shiki/wasm` or the Oniguruma adapter.
 The concrete engine modules remain separate so Vite cannot discover and emit
 an unused WASM chunk. Once the first highlighter initializes, the engine is
@@ -73,8 +74,8 @@ different implementation.
 After explicit DOCX intent, every host can start awaitable runtime preparation:
 
 ```ts
-import "@atlcli/docx/browser-runtime";
-import { prepareDocxExportRuntime } from "@atlcli/docx/browser-runtime";
+const { prepareDocxExportRuntime } =
+  await import("@atlcli/docx/browser-entry");
 
 const preparation = await prepareDocxExportRuntime(blocks, {
   codeTheme: "github-light",
@@ -160,7 +161,7 @@ despite the similar name — see
 `SvgRasterizer` drives mermaid diagram embedding (spec 005a) — it supplies the mandatory PNG
 fallback Word needs next to the vector SVG. Also optional: a host that omits it exports mermaid
 blocks as readable source code blocks with a `diagram-skipped` report note. Two implementations
-ship: the neutral browser canvas rasterizer (`@atlcli/docx/browser-runtime`) and a Node
+ship: the neutral browser canvas rasterizer (`@atlcli/docx/browser-entry`) and a Node
 rasterizer over the WebAssembly build of resvg (`resvgSvgRasterizer` in
 `packages/docx/src/node-adapters.ts`) that the CLI uses.
 
@@ -568,19 +569,28 @@ printing — not only the one this flag requests.
 
 ## Browser hosts
 
-Browser consumers install the DOCX-specific compatibility layer before importing the engine:
+Browser consumers load one ordered graph after explicit DOCX intent:
 
 ```ts
-import "@atlcli/docx/browser-runtime";
-
-const { runExport } = await import("@atlcli/docx/browser");
+const {
+  canvasSvgRasterizer,
+  memoryTemplateSource,
+  prepareDocxExportRuntime,
+  runExport,
+  scanTemplate,
+} = await import("@atlcli/docx/browser-entry");
 ```
 
-`installDocxBrowserRuntime()` installs namespaced `Uint8Array` helpers; it does not create a
-fake global `Buffer`. `memoryTemplateSource()` and `canvasSvgRasterizer()` provide neutral DOM
-adapters. Storage, authenticated asset fetching, download/save behavior, and UI remain owned by
-the consuming host. Vite hosts also spread `docxViteDefines` from `@atlcli/docx/vite` into their
-`define` configuration.
+The entry evaluates `installDocxBrowserRuntime()` before the
+PizZip/docxtemplater engine graph. It installs namespaced `Uint8Array` helpers
+and does not create a fake global `Buffer`. `memoryTemplateSource()` and
+`canvasSvgRasterizer()` provide neutral DOM adapters. Storage, authenticated
+asset fetching, download/save behavior, and UI remain owned by the consuming
+host. Vite hosts also spread `DOCX_BROWSER_VITE_DEFINES` from
+`@atlcli/docx/vite` into their `define` configuration.
+
+The compatibility `./browser` and `./browser-runtime` subpaths remain
+available, but new hosts must not recreate the old sequential import chain.
 
 `apps/browser-export-harness` is the permanent package-conformance consumer. Its production
 build runs the real engine and canvas path in Chromium without extension APIs or native Node

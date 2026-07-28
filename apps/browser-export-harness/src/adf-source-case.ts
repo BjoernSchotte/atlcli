@@ -1,8 +1,10 @@
 /** Browser conformance that starts with real ADF before either render engine. */
 import type { TreeSource } from "@atlcli/confluence";
-import { runExport } from "@atlcli/docx/browser";
-import { memoryTemplateSource } from "@atlcli/docx/browser-runtime";
-import { unzipDocx } from "@atlcli/docx/scan";
+import {
+  memoryTemplateSource,
+  runExport,
+  unzipDocx,
+} from "@atlcli/docx/browser-entry";
 import {
   ADF_CODE_BLOCK_SOURCE,
   ADF_CONFORMANCE_MEDIA_ATTACHMENTS,

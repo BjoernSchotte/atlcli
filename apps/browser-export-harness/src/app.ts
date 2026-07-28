@@ -1,6 +1,14 @@
+import { runExport } from "@atlcli/docx/browser-entry";
 import "./style.css";
 import "./highlight-benchmark.js";
 import { CONFORMANCE_CASES } from "./conformance-registry.js";
+
+if (typeof runExport !== "function") {
+  throw new Error("The canonical DOCX browser entry did not expose runExport.");
+}
+(globalThis as typeof globalThis & {
+  __ATLCLI_DOCX_BROWSER_ENTRY_READY_AT?: number;
+}).__ATLCLI_DOCX_BROWSER_ENTRY_READY_AT = performance.now();
 
 function required<T extends Element>(selector: string): T {
   const element = document.querySelector<T>(selector);

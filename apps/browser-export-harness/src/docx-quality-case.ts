@@ -10,9 +10,13 @@
  *     unused-style warning (the level-1 heading emits the referenced style),
  *   - the engine emits no warning notes.
  */
-import { runExport } from "@atlcli/docx/browser";
-import { canvasSvgRasterizer, memoryTemplateSource } from "@atlcli/docx/browser-runtime";
-import { unzipDocx } from "@atlcli/docx/scan";
+import {
+  canvasSvgRasterizer,
+  memoryTemplateSource,
+  runExport,
+  unzipDocx,
+  type AssetFetcher,
+} from "@atlcli/docx/browser-entry";
 import {
   DOCX_QUALITY_BLOCKS,
   DOCX_QUALITY_DETAILS,
@@ -20,7 +24,6 @@ import {
   DOCX_QUALITY_SVG_FILENAME,
   DOCX_QUALITY_TEMPLATE_BYTES,
 } from "@atlcli/export-fixtures";
-import type { AssetFetcher } from "@atlcli/docx/browser";
 import { MemoryOutputSink } from "./memory-output.js";
 
 const svgAssets: AssetFetcher = {

@@ -9,9 +9,11 @@
  *   - a self-include is caught by cycle protection (`includepage-cycle`),
  *   - the unsupported metadata placeholder degrades visibly (`placeholder-unsupported`).
  */
-import { runExport } from "@atlcli/docx/browser";
-import { memoryTemplateSource } from "@atlcli/docx/browser-runtime";
-import { unzipDocx } from "@atlcli/docx/scan";
+import {
+  memoryTemplateSource,
+  runExport,
+  unzipDocx,
+} from "@atlcli/docx/browser-entry";
 import {
   PLACEHOLDER_ROOT_DETAILS,
   PLACEHOLDER_TEMPLATE_BYTES,

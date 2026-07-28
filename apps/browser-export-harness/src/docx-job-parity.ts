@@ -1,5 +1,7 @@
-import type { ExportReport } from "@atlcli/docx/browser";
-import { unzipDocx } from "@atlcli/docx/scan";
+import {
+  unzipDocx,
+  type ExportReport,
+} from "@atlcli/docx/browser-entry";
 
 export interface DocxParityRun {
   bytes: Uint8Array;

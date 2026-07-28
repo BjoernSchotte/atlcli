@@ -31,7 +31,7 @@ entrypoint's full symbol list and transitive type closure is committed and CI-gu
 
 | Class | Meaning |
 |---|---|
-| **stable** | Frozen v1. Breaking changes = major version, with one `@deprecated` minor first. |
+| **stable** | Frozen v1. Breaking changes = major version, with one `@deprecated` minor first. Includes the canonical `@atlcli/docx/browser-entry`. |
 | **experimental** | Exported and usable, but may change in minor releases (0.x packages, `./browser-runtime`, `./vite`). |
 | **internal** | Non-frozen implementation subpaths (`./internal`, `./scan`, `./fixtures`, `./template`). May change without notice. |
 
@@ -251,6 +251,8 @@ Explicitly **not** part of the freeze:
   (raw Typst template), `./browser-runtime` and `./vite` (host bootstrap, experimental).
   The browser runtime also re-exports stable `prepareDocxExportRuntime`; its narrower
   `prepareDocxCodeHighlighting(blocks, options?)` compatibility helper remains experimental.
+  The stable `@atlcli/docx/browser-entry` is the supported ordered browser
+  composition of the frozen engine API and those browser capabilities.
 - The 0.x packages: `@atlcli/core`, `@atlcli/diagram`, `@atlcli/jira`, `@atlcli/plugin-api`,
   `@atlcli/template-pack`, `@atlcli/export-node` — see the freeze table in
   [Package Versioning](/reference/versioning/) for the per-package reasoning. Types owned by

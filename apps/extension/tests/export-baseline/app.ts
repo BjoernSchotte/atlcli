@@ -12,8 +12,12 @@ import codeBoldUrl from "@atlcli/pdf/fonts/SourceCodePro-Bold.ttf?url";
 import symbolsRegularUrl from "@atlcli/pdf/fonts/NotoSansSymbols2-Regular.ttf?url";
 import emojiRegularUrl from "@atlcli/pdf/fonts/NotoEmoji-wght.ttf?url";
 import { composeChapters, type ExportBlock } from "@atlcli/confluence/browser";
-import { runExport, type AssetFetcher, type OutputSink } from "@atlcli/docx/browser";
-import { memoryTemplateSource } from "@atlcli/docx/browser-runtime";
+import {
+  memoryTemplateSource,
+  runExport,
+  type AssetFetcher,
+  type OutputSink,
+} from "@atlcli/docx/browser-entry";
 import {
   DOCX_TEMPLATE_BYTES,
   digestLargeExportCorpus,

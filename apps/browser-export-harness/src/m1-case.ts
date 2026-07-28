@@ -19,9 +19,11 @@
  * whichever the CLI side also produces — see `run-m1-acceptance.ts` for how the
  * `digestsMatch` verdict is derived.
  */
-import { runExport } from "@atlcli/docx/browser";
-import { memoryTemplateSource } from "@atlcli/docx/browser-runtime";
-import { unzipDocx } from "@atlcli/docx/scan";
+import {
+  memoryTemplateSource,
+  runExport,
+  unzipDocx,
+} from "@atlcli/docx/browser-entry";
 import {
   runPdfExport,
   validatePdfOutput,
