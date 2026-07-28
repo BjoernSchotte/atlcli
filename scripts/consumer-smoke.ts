@@ -162,10 +162,10 @@ globalThis.fetch = async () => {
 let prepared;
 try {
   const concurrent = await Promise.all([
-    prepareDocxExportRuntime(blocks),
-    prepareDocxExportRuntime(blocks),
+    prepareDocxExportRuntime(blocks, { preloadCodeFont: true }),
+    prepareDocxExportRuntime(blocks, { preloadCodeFont: true }),
   ]);
-  prepared = await prepareDocxExportRuntime(blocks);
+  prepared = await prepareDocxExportRuntime(blocks, { preloadCodeFont: true });
   if (concurrent.some((result) => result.codeFontBytes !== 273900)) {
     throw new Error("concurrent DOCX preparation did not load the committed code font");
   }

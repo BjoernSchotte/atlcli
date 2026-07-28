@@ -103,7 +103,8 @@ media-free or invalid ADF and preserves unresolved references as visible
 
 - `runExport(input: RunExportInput, env: ExportEnv)` → `ExportReport`.
 - `prepareDocxExportRuntime(blocks, options?)` → `DocxExportRuntimePreparation` — intent-time,
-  isomorphic preparation of known highlighting grammars plus the bundled code font. Concurrent
+  isomorphic preparation of known highlighting grammars. `preloadCodeFont: true` explicitly
+  overlaps bundled-font validation; otherwise final emitted OOXML owns font demand. Concurrent
   and repeated calls share work; cancellation stops only the requesting wait.
 - `ExportEnv` seams: `TemplateSource`, `AssetFetcher`, `OutputSink`, `SvgRasterizer` — hosts
   inject them; nothing assumes a browser or Node.

@@ -9,9 +9,11 @@ import {
   configureBundledCodeFontLoader,
   ensureEmbeddedCodeFont,
   loadBundledCodeFont,
+  loadValidatedBundledCodeFont,
   obfuscateFont,
 } from "./font-embedding.js";
 import { buildDocx, para } from "./fixtures.js";
+import { prepareDocxExport } from "./export.js";
 import { prepareDocxExportRuntime } from "./runtime-preparation.js";
 import { unzipDocx } from "./scan.js";
 
@@ -180,6 +182,96 @@ describe("DOCX code-font embedding", () => {
     expect(replacementCalls).toBe(1);
   });
 
+  it("skips implicit font work for empty preparation", async () => {
+    let calls = 0;
+    configureBundledCodeFontLoader(async () => {
+      calls += 1;
+      return codeFont();
+    });
+
+    const prepared = await prepareDocxExportRuntime([]);
+
+    expect(prepared.codeFontBytes).toBe(0);
+    expect(prepared.codeFontMs).toBe(0);
+    expect(calls).toBe(0);
+  });
+
+  it("shares explicit validated preloads and retries with fresh bytes after validation failure", async () => {
+    const source = await codeFont();
+    const invalid = source.slice();
+    invalid[invalid.byteLength - 1] = invalid[invalid.byteLength - 1]! ^ 0x01;
+    let calls = 0;
+    configureBundledCodeFontLoader(async () => {
+      calls += 1;
+      return calls === 1 ? invalid : source;
+    });
+
+    const rejected = loadValidatedBundledCodeFont();
+    expect(loadValidatedBundledCodeFont()).toBe(rejected);
+    await expect(rejected).rejects.toThrow(DocxFontEmbeddingError);
+
+    const [first, second] = await Promise.all([
+      prepareDocxExportRuntime([], { preloadCodeFont: true }),
+      prepareDocxExportRuntime([], { preloadCodeFont: true }),
+    ]);
+    const warm = await prepareDocxExportRuntime([], { preloadCodeFont: true });
+
+    expect(first.codeFontBytes).toBe(source.byteLength);
+    expect(second.codeFontBytes).toBe(source.byteLength);
+    expect(warm.codeFontBytes).toBe(source.byteLength);
+    expect(calls).toBe(2);
+  });
+
+  it("does not produce a code-bearing checkpoint before shared validation completes", async () => {
+    const source = await codeFont();
+    let resolveFont = (_bytes: Uint8Array): void => {};
+    const pendingFont = new Promise<Uint8Array>((resolve) => {
+      resolveFont = resolve;
+    });
+    let markLoaderStarted = (): void => {};
+    const loaderStarted = new Promise<void>((resolve) => {
+      markLoaderStarted = resolve;
+    });
+    let calls = 0;
+    configureBundledCodeFontLoader(() => {
+      calls += 1;
+      markLoaderStarted();
+      return pendingFont;
+    });
+
+    let checkpointReady = false;
+    const checkpoint = prepareDocxExport({
+      templateBytes: buildDocx({ body: para("$scroll.content") }),
+      details: { id: "font-demand", title: "Font demand", storage: "" },
+      blocks: [{ type: "codeBlock", language: "ts", code: "const x = 1;" }],
+      template: {
+        name: "font-demand.docx",
+        modificationDate: new Date("2026-07-28T00:00:00.000Z"),
+      },
+      exportDate: new Date("2026-07-28T00:00:00.000Z"),
+    }).then((prepared) => {
+      checkpointReady = true;
+      return prepared;
+    });
+
+    await loaderStarted;
+    const explicitPreload = prepareDocxExportRuntime([], {
+      preloadCodeFont: true,
+    });
+    await Promise.resolve();
+    expect(checkpointReady).toBe(false);
+    expect(calls).toBe(1);
+
+    resolveFont(source);
+    const [prepared, preloaded] = await Promise.all([checkpoint, explicitPreload]);
+    const archive = unzipDocx(prepared.renderState!.archiveBytes);
+    expect(
+      Object.keys(archive.files).filter((path) => path.endsWith(".odttf")),
+    ).toHaveLength(1);
+    expect(preloaded.codeFontBytes).toBe(source.byteLength);
+    expect(calls).toBe(1);
+  });
+
   it("cancels only one preflight wait while shared initialization completes", async () => {
     const source = await codeFont();
     let resolveFont = (_bytes: Uint8Array): void => {};
@@ -198,13 +290,16 @@ describe("DOCX code-font embedding", () => {
     });
 
     const controller = new AbortController();
-    const cancelled = prepareDocxExportRuntime([], { signal: controller.signal });
+    const cancelled = prepareDocxExportRuntime([], {
+      preloadCodeFont: true,
+      signal: controller.signal,
+    });
     await loaderStarted;
     controller.abort(new Error("dialog dismissed"));
     await expect(cancelled).rejects.toThrow("dialog dismissed");
 
     resolveFont(source);
-    const warm = await prepareDocxExportRuntime([]);
+    const warm = await prepareDocxExportRuntime([], { preloadCodeFont: true });
     expect(warm.codeFontBytes).toBe(source.byteLength);
     expect(calls).toBe(1);
   });

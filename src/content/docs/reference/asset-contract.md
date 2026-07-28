@@ -37,17 +37,17 @@ exactly. Never hardcode a font list; iterate `PDF_RUNTIME_ASSETS.fonts`.
 
 ## DOCX code-font loading
 
-`prepareDocxExportRuntime(blocks, options?)` resolves and validates the
-committed `JetBrainsMono-Regular.ttf` after explicit DOCX intent. The loader is
-single-flight and retryable. Browser bundlers discover the package-relative
-`new URL(..., import.meta.url)` and emit exactly one local asset; callers do
-not pass a font URL or fetch callback. Node/Bun resolve the installed package
-file instead. The browser harness and MV3 output scans pin the asset's SHA-256
-and require exactly one emitted copy.
+`prepareDocxExportRuntime(blocks, { preloadCodeFont: true })` explicitly
+resolves and validates the committed `JetBrainsMono-Regular.ttf` after DOCX
+intent. Without that option, preparation performs no font work; the render path
+uses completed body-plus-include OOXML as the demand signal. Both paths share
+one single-flight, retryable load-plus-validation promise.
 
-Preparation loads the font unconditionally because included content or inline
-code may need it after the initial block scan. The render path still embeds
-the font into OOXML only when the final document contains code.
+Browser bundlers discover the package-relative
+`new URL(..., import.meta.url)` and emit exactly one local asset; callers do not
+pass a font URL or fetch callback. Node/Bun resolve the installed package file
+instead. The browser harness and MV3 output scans pin the asset's SHA-256 and
+require exactly one emitted copy.
 
 ## `BrowserPdfCompilerAssets`
 

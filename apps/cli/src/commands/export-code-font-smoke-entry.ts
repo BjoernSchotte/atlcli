@@ -14,10 +14,10 @@ async function main(): Promise<void> {
     return loadDocxCodeFont();
   });
   const [first, second] = await Promise.all([
-    prepareDocxExportRuntime([]),
-    prepareDocxExportRuntime([]),
+    prepareDocxExportRuntime([], { preloadCodeFont: true }),
+    prepareDocxExportRuntime([], { preloadCodeFont: true }),
   ]);
-  const warm = await prepareDocxExportRuntime([]);
+  const warm = await prepareDocxExportRuntime([], { preloadCodeFont: true });
   const bytes = await loadDocxCodeFont();
   const sfnt =
     first.codeFontBytes === bytes.byteLength &&

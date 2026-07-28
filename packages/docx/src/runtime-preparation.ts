@@ -4,6 +4,15 @@ import type { ExportBlock } from "@atlcli/confluence";
 export interface PrepareDocxExportRuntimeOptions {
   codeTheme?: CodeThemeId;
   /**
+   * Explicitly preload and validate the bundled code font while known
+   * highlighting grammars are prepared.
+   *
+   * Defaults to `false`. The renderer owns the authoritative demand check
+   * after macro resolution, include expansion, diagram fallback, and OOXML
+   * serialization, so an empty or no-code preflight performs no font work.
+   */
+  preloadCodeFont?: boolean;
+  /**
    * Cancels only this caller's wait. Shared highlighter/font initialization
    * continues so one dismissed dialog cannot poison another caller's cache.
    */
@@ -56,12 +65,13 @@ function waitForCaller<T>(operation: Promise<T>, signal?: AbortSignal): Promise<
 }
 
 /**
- * Warm the complete deterministic DOCX render runtime after explicit intent.
+ * Warm the deterministic DOCX highlighting runtime after explicit intent.
  *
- * Highlighting is conditional on the known block tree. The bundled code font
- * is deliberately unconditional: inline code and included content can require
- * it without appearing in the initial code-block scan. Rendering still embeds
- * the font only when the produced OOXML uses it.
+ * Highlighting is conditional on the known block tree. Font demand cannot be
+ * inferred safely here: inline and nested content, resolved macros/includes,
+ * and Mermaid fallback can change the emitted OOXML. The renderer therefore
+ * stages the font from completed OOXML; hosts may request explicit preload when
+ * they intentionally want to overlap the same shared work with acquisition.
  */
 export async function prepareDocxExportRuntime(
   blocks: readonly ExportBlock[],
@@ -82,14 +92,15 @@ export async function prepareDocxExportRuntime(
     });
     highlightingMs = nowMs() - phaseStartedAt;
   })();
-  const codeFont = (async () => {
-    const phaseStartedAt = nowMs();
-    const module = await import("./font-embedding.js");
-    const bytes = await module.loadBundledCodeFont();
-    await module.assertBundledCodeFont(bytes);
-    codeFontBytes = bytes.byteLength;
-    codeFontMs = nowMs() - phaseStartedAt;
-  })();
+  const codeFont = options.preloadCodeFont
+    ? (async () => {
+        const phaseStartedAt = nowMs();
+        const module = await import("./font-embedding.js");
+        const bytes = await module.loadValidatedBundledCodeFont();
+        codeFontBytes = bytes.byteLength;
+        codeFontMs = nowMs() - phaseStartedAt;
+      })()
+    : Promise.resolve();
   const operation = Promise.all([highlighting, codeFont]);
 
   await waitForCaller(operation, options.signal);

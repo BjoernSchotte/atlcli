@@ -71,7 +71,21 @@ describe("DOCX browser byte helpers", () => {
     await prepareDocxCodeHighlighting(blocks);
   });
 
-  it("warms highlighting and the validated bundled code font through one public contract", async () => {
+  it("does not infer font demand from an empty or partial block tree", async () => {
+    const empty = await prepareDocxExportRuntime([]);
+    const partial = await prepareDocxExportRuntime([
+      {
+        type: "paragraph",
+        content: [{ type: "text", text: "INLINE_TOKEN", marks: ["code"] }],
+      },
+    ]);
+    expect(empty.codeFontBytes).toBe(0);
+    expect(empty.codeFontMs).toBe(0);
+    expect(partial.codeFontBytes).toBe(0);
+    expect(partial.codeFontMs).toBe(0);
+  });
+
+  it("explicitly preloads highlighting and the validated bundled code font", async () => {
     const prepared = await prepareDocxExportRuntime([
       {
         type: "callout",
@@ -82,7 +96,7 @@ describe("DOCX browser byte helpers", () => {
         type: "paragraph",
         content: [{ type: "text", text: "INLINE_TOKEN", marks: ["code"] }],
       },
-    ]);
+    ], { preloadCodeFont: true });
     expect(prepared.codeFontBytes).toBe(273_900);
     expect(prepared.totalMs).toBeGreaterThanOrEqual(0);
     expect(prepared.highlightingMs).toBeGreaterThanOrEqual(0);

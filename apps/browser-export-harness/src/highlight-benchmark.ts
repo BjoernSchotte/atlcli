@@ -93,6 +93,20 @@ export interface HighlightBenchmarkResult {
   };
 }
 
+export interface RuntimePreparationBenchmarkResult {
+  cold: Awaited<ReturnType<typeof prepareDocxExportRuntime>>;
+  warm: Awaited<ReturnType<typeof prepareDocxExportRuntime>>;
+  coldMs: number;
+  warmMs: number;
+  sampledPeakJsHeapBytes: number;
+  phases: {
+    coldStartedAt: number;
+    coldEndedAt: number;
+    warmStartedAt: number;
+    warmEndedAt: number;
+  };
+}
+
 function toBase64(bytes: Uint8Array): string {
   let binary = "";
   const chunkSize = 0x8000;
@@ -107,7 +121,9 @@ async function runHighlightBenchmark(
 ): Promise<HighlightBenchmarkResult> {
   const preloadStartedAt = performance.now();
   const preparation = preload
-    ? await prepareDocxExportRuntime(HIGHLIGHT_BLOCKS)
+    ? await prepareDocxExportRuntime(HIGHLIGHT_BLOCKS, {
+        preloadCodeFont: true,
+      })
     : null;
   const preloadEndedAt = performance.now();
   const preloadMs = preload ? preloadEndedAt - preloadStartedAt : 0;
@@ -163,6 +179,56 @@ async function runHighlightBenchmark(
   };
 }
 
+function usedJsHeapBytes(): number {
+  const memory = (
+    performance as Performance & {
+      memory?: { usedJSHeapSize?: number };
+    }
+  ).memory;
+  return memory?.usedJSHeapSize ?? 0;
+}
+
+async function runRuntimePreparationBenchmark(
+  preloadCodeFont: boolean,
+): Promise<RuntimePreparationBenchmarkResult> {
+  let sampledPeakJsHeapBytes = usedJsHeapBytes();
+  const sample = (): void => {
+    sampledPeakJsHeapBytes = Math.max(sampledPeakJsHeapBytes, usedJsHeapBytes());
+  };
+  const sampler = setInterval(sample, 1);
+  try {
+    const coldStartedAt = performance.now();
+    const cold = await prepareDocxExportRuntime([], {
+      ...(preloadCodeFont ? { preloadCodeFont: true } : {}),
+    });
+    const coldEndedAt = performance.now();
+    const coldMs = coldEndedAt - coldStartedAt;
+    sample();
+    const warmStartedAt = performance.now();
+    const warm = await prepareDocxExportRuntime([], {
+      ...(preloadCodeFont ? { preloadCodeFont: true } : {}),
+    });
+    const warmEndedAt = performance.now();
+    const warmMs = warmEndedAt - warmStartedAt;
+    sample();
+    return {
+      cold,
+      warm,
+      coldMs,
+      warmMs,
+      sampledPeakJsHeapBytes,
+      phases: {
+        coldStartedAt,
+        coldEndedAt,
+        warmStartedAt,
+        warmEndedAt,
+      },
+    };
+  } finally {
+    clearInterval(sampler);
+  }
+}
+
 async function prepareHighlightModules(
   languages: readonly string[],
   theme: CodeThemeId,
@@ -176,6 +242,9 @@ declare global {
     __ATLCLI_DOCX_HIGHLIGHT_BENCHMARK?: (
       preload: boolean,
     ) => Promise<HighlightBenchmarkResult>;
+    __ATLCLI_DOCX_RUNTIME_PREPARATION_BENCHMARK?: (
+      preloadCodeFont: boolean,
+    ) => Promise<RuntimePreparationBenchmarkResult>;
     __ATLCLI_PREPARE_CODE_HIGHLIGHTING?: (
       languages: readonly string[],
       theme: CodeThemeId,
@@ -184,4 +253,6 @@ declare global {
 }
 
 window.__ATLCLI_DOCX_HIGHLIGHT_BENCHMARK = runHighlightBenchmark;
+window.__ATLCLI_DOCX_RUNTIME_PREPARATION_BENCHMARK =
+  runRuntimePreparationBenchmark;
 window.__ATLCLI_PREPARE_CODE_HIGHLIGHTING = prepareHighlightModules;

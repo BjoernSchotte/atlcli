@@ -136,10 +136,10 @@ import { prepareDocxExportRuntime, runExport } from "@atlcli/docx";
 import { storageToBlocks } from "@atlcli/confluence";
 import { readFile, writeFile } from "node:fs/promises";
 
-// Start after explicit DOCX intent. Node loads the font from the installed
-// package; no browser fetch or system font is involved.
+// Start after explicit DOCX intent. Explicit font preload is optional; without
+// it the renderer loads the installed font only if completed OOXML needs it.
 const { blocks } = storageToBlocks(pageDetails.storage ?? "");
-await prepareDocxExportRuntime(blocks);
+await prepareDocxExportRuntime(blocks, { preloadCodeFont: true });
 
 const report = await runExport(
   {

@@ -757,9 +757,11 @@ export function createTypescriptDocxExportJobExecutor(
           // The heavy reservation deliberately precedes template bytes, PizZip,
           // asset fetch/decode, rasterization, and prepared-archive generation.
           // Runtime preparation is intentionally outside PizZip state. Start it
-          // from the fully resolved block tree while the pinned template is
-          // read/hashed below; the font and known grammars are then warm before
+          // from the resolved root block tree while the pinned template is
+          // read/hashed below; known grammars are then warm before
           // prepareDocxExport reaches serialization in this same host realm.
+          // Template-driven includes and Mermaid fallback are only knowable
+          // there, so completed OOXML remains the shared code-font demand gate.
           const runtimePreparation = prepareDocxExportRuntime(
             resolvedInput!.blocks ?? [],
             {

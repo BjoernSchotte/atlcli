@@ -2,7 +2,10 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, test, type Browser } from "@playwright/test";
-import type { HighlightBenchmarkResult } from "../src/highlight-benchmark.js";
+import type {
+  HighlightBenchmarkResult,
+  RuntimePreparationBenchmarkResult,
+} from "../src/highlight-benchmark.js";
 
 const RESULT_DIR = resolve(
   dirname(fileURLToPath(import.meta.url)),
@@ -21,6 +24,114 @@ interface HighlightResourceTiming {
   transferSize: number;
   decodedBodySize: number;
 }
+
+async function runRuntimePreparationInFreshContext(
+  browser: Browser,
+  preloadCodeFont: boolean,
+): Promise<{
+  benchmark: RuntimePreparationBenchmarkResult;
+  resources: HighlightResourceTiming[];
+}> {
+  const context = await browser.newContext();
+  try {
+    const page = await context.newPage();
+    await page.goto(HARNESS_URL);
+    await page.waitForFunction(
+      () =>
+        typeof window.__ATLCLI_DOCX_RUNTIME_PREPARATION_BENCHMARK ===
+        "function",
+    );
+    return await page.evaluate(async (explicitPreload) => {
+      performance.clearResourceTimings();
+      const run = window.__ATLCLI_DOCX_RUNTIME_PREPARATION_BENCHMARK;
+      if (!run) throw new Error("runtime preparation benchmark is unavailable");
+      const benchmark = await run(explicitPreload);
+      const resources = performance
+        .getEntriesByType("resource")
+        .map((entry) => entry as PerformanceResourceTiming)
+        .filter(({ name }) => /[.](?:js|ttf)$/u.test(new URL(name).pathname))
+        .map(({ name: url, startTime, responseEnd, transferSize, decodedBodySize }) => ({
+          url,
+          name: new URL(url).pathname.split("/").at(-1) ?? url,
+          startTime,
+          responseEnd,
+          transferSize,
+          decodedBodySize,
+        }));
+      return { benchmark, resources };
+    }, preloadCodeFont);
+  } finally {
+    await context.close();
+  }
+}
+
+test("empty DOCX preparation defers the code font unless preload is explicit", async ({
+  browser,
+}) => {
+  const deferred = await runRuntimePreparationInFreshContext(browser, false);
+  const explicit = await runRuntimePreparationInFreshContext(browser, true);
+  const deferredFonts = deferred.resources.filter(({ name }) =>
+    CODE_FONT_RE.test(name),
+  );
+  const explicitFonts = explicit.resources.filter(({ name }) =>
+    CODE_FONT_RE.test(name),
+  );
+  const warmExplicitFonts = explicitFonts.filter(
+    ({ startTime }) =>
+      startTime >= explicit.benchmark.phases.warmStartedAt,
+  );
+
+  expect(deferred.benchmark.cold.codeFontBytes).toBe(0);
+  expect(deferred.benchmark.cold.codeFontMs).toBe(0);
+  expect(deferred.benchmark.warm.codeFontBytes).toBe(0);
+  expect(deferred.benchmark.warm.codeFontMs).toBe(0);
+  expect(deferredFonts).toEqual([]);
+
+  expect(explicit.benchmark.cold.codeFontBytes).toBe(273_900);
+  expect(explicit.benchmark.warm.codeFontBytes).toBe(273_900);
+  expect(explicitFonts).toHaveLength(1);
+  expect(explicitFonts[0]!.decodedBodySize).toBe(273_900);
+  expect(explicitFonts[0]!.startTime).toBeGreaterThanOrEqual(
+    explicit.benchmark.phases.coldStartedAt,
+  );
+  expect(explicitFonts[0]!.responseEnd).toBeLessThanOrEqual(
+    explicit.benchmark.phases.coldEndedAt,
+  );
+  expect(warmExplicitFonts).toEqual([]);
+
+  mkdirSync(RESULT_DIR, { recursive: true });
+  writeFileSync(
+    resolve(RESULT_DIR, "runtime-preparation.json"),
+    `${JSON.stringify({
+      deferred: {
+        coldMs: deferred.benchmark.coldMs,
+        warmMs: deferred.benchmark.warmMs,
+        requestCount: deferred.resources.length,
+        fontRequestCount: deferredFonts.length,
+        fontDecodedBytes: 0,
+        sampledPeakJsHeapBytes:
+          deferred.benchmark.sampledPeakJsHeapBytes,
+      },
+      explicit: {
+        coldMs: explicit.benchmark.coldMs,
+        warmMs: explicit.benchmark.warmMs,
+        requestCount: explicit.resources.length,
+        fontRequestCount: explicitFonts.length,
+        fontTransferBytes: explicitFonts.reduce(
+          (total, resource) => total + resource.transferSize,
+          0,
+        ),
+        fontDecodedBytes: explicitFonts.reduce(
+          (total, resource) => total + resource.decodedBodySize,
+          0,
+        ),
+        warmFontRequestCount: warmExplicitFonts.length,
+        sampledPeakJsHeapBytes:
+          explicit.benchmark.sampledPeakJsHeapBytes,
+      },
+    }, null, 2)}\n`,
+  );
+});
 
 test("one-language preparation requests only its direct grammar and theme after intent", async ({
   browser,
