@@ -47,6 +47,7 @@ import {
 } from "@atlcli/pdf";
 import type {
   ExportJobDerivationV1,
+  ExportJobSnapshotV1,
   PdfExportJobRequestV1,
   ResourceEstimateV1,
 } from "@atlcli/export-jobs";
@@ -98,6 +99,73 @@ import {
 // a deliberately dependency-free module (no wasm/font imports) whose tests run
 // on Windows CI where `packages/pdf/.fonts/` is not materialized.
 export { PdfUsageError, derivePdfOutputPath, filePdfOutputSink, sanitizePathComponent };
+
+/**
+ * Recover the public export error classification after the durable runtime has
+ * converted an executor exception into terminal job state.
+ *
+ * The file runtime intentionally persists a redacted generic error. Its message
+ * still carries the Confluence HTTP status, which is enough to preserve the
+ * command's documented auth/remote exit codes without re-reading the source.
+ */
+export function classifyFailedPdfJob(
+  snapshot: Pick<ExportJobSnapshotV1, "state" | "error">
+): ReturnType<typeof classifyError> {
+  if (snapshot.state === "cancelled") {
+    return {
+      exitCode: 130,
+      issue: {
+        code: "cancelled",
+        severity: "error",
+        phase: "commit",
+        retryable: false,
+        message: "Export job was cancelled.",
+      },
+    };
+  }
+  const error = snapshot.error;
+  if (error?.category === "auth" || error?.category === "permission") {
+    return {
+      exitCode: 3,
+      issue: {
+        code: error.code,
+        severity: "error",
+        phase: error.stage ?? "fetch",
+        retryable: error.retryable,
+        message: error.message,
+      },
+    };
+  }
+  if (
+    error?.category === "network" ||
+    error?.category === "rate-limit" ||
+    error?.category === "source"
+  ) {
+    return {
+      exitCode: 4,
+      issue: {
+        code: error.code,
+        severity: "error",
+        phase: error.stage ?? "fetch",
+        retryable: error.retryable,
+        message: error.message,
+      },
+    };
+  }
+  if (error && /\(\d{3}\)/u.test(error.message)) {
+    return classifyError(new Error(error.message));
+  }
+  return {
+    exitCode: 5,
+    issue: {
+      code: error?.code ?? `job-${snapshot.state}`,
+      severity: "error",
+      phase: error?.stage ?? "commit",
+      retryable: error?.retryable ?? false,
+      message: error?.message ?? `Export job ended as ${snapshot.state}.`,
+    },
+  };
+}
 
 /**
  * The CLI's token-auth {@link PdfAssetResolver}. Reuses `tokenAssetFetcher` +
@@ -617,9 +685,11 @@ export async function exportPdfAsOrdinaryJob(
   args: ExportPdfArgs,
   jobRequest: PdfExportJobRequestV1,
   derivedFrom?: ExportJobDerivationV1,
+  suppliedPersistence?: ReturnType<typeof createFileExportJobPersistence>,
 ): Promise<ExportOutcome> {
   const startedAt = Date.now();
-  const persistence = createFileExportJobPersistence();
+  const persistence =
+    suppliedPersistence ?? createFileExportJobPersistence();
   let resolvedOutputPath: string | undefined;
   type CliProjection = Pick<ResolvedScope, "sourcePages" | "reconcilablePageId" | "scopeReport"> & {
     outputPath: string;
@@ -635,6 +705,12 @@ export async function exportPdfAsOrdinaryJob(
       : `${exportSourcePolicyFromFlag(process.env.ATLCLI_EXPORT_SOURCE)}:v1`;
     const resolveInput = createConfluencePdfResolveInputV1({
       port: confluenceSourceResolverPortFromClientV1(args.client),
+      classifyError: (error) => {
+        const classified = classifyError(error);
+        if (classified.exitCode === 3) return "authentication";
+        if (classified.issue.status === 404) return "not-found";
+        return "unknown";
+      },
       resolveExternalUrl: cliConfluenceExternalUrlResolver(args.profile),
       createSourcePlan: (_request, context) => ({
         store: createConfluenceSourcePlanSpoolV1(context),
@@ -761,22 +837,16 @@ export async function exportPdfAsOrdinaryJob(
       },
     });
     if (execution.snapshot.state !== "succeeded" || !execution.report) {
-      const error = execution.snapshot.error;
+      const classified = classifyFailedPdfJob(execution.snapshot);
       return {
         ok: false,
         report: buildReport({
           format: "pdf",
           sourcePages: [],
           outputDetails: [],
-          issues: [{
-            code: error?.code ?? `job-${execution.snapshot.state}`,
-            severity: "error",
-            phase: error?.stage ?? "commit",
-            retryable: error?.retryable ?? false,
-            message: error?.message ?? `Export job ended as ${execution.snapshot.state}.`,
-          }],
+          issues: [classified.issue],
           timings: { totalMs: Date.now() - startedAt },
-          failureExitCode: execution.snapshot.state === "cancelled" ? 130 : 5,
+          failureExitCode: classified.exitCode,
         }),
       };
     }

@@ -350,6 +350,7 @@ function createDefaultExtensionPdfJobInputResolver(
       },
       async build(resolved, sourceRequest, sourceContext) {
         if (
+          sourceRequest.template.kind !== "builtin" ||
           sourceRequest.template.id !== BUILTIN_PDF_TEMPLATE_MANIFEST.id ||
           sourceRequest.template.manifestVersion !==
             BUILTIN_PDF_TEMPLATE_MANIFEST.version
@@ -468,7 +469,8 @@ export function createExtensionPdfJobInputResolver(
     context.signal.throwIfAborted();
     const siteOrigin = siteOriginOf(request);
     if (
-      request.template.id !== BUILTIN_PDF_TEMPLATE_MANIFEST.id
+      request.template.kind !== "builtin"
+      || request.template.id !== BUILTIN_PDF_TEMPLATE_MANIFEST.id
       || request.template.manifestVersion !== BUILTIN_PDF_TEMPLATE_MANIFEST.version
     ) {
       throw new Error("The pinned PDF template manifest is unavailable or changed.");

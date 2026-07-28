@@ -6,6 +6,10 @@ import {
 } from "@atlcli/confluence";
 import { resolveMacroBlocks, type MacroResolutionOptions } from "@atlcli/export-macros";
 import type { TemplateManifest } from "@atlcli/template-pack";
+import {
+  clonePdfTemplateRuntime,
+  type ValidatedPdfTemplatePackV1,
+} from "./template-pack.js";
 import { pdfBytesFromUint8Array, type PdfBytesHandle } from "./bytes-handle.js";
 import { formatPdfCompilerDiagnostics, type PdfCompilePort } from "./compiler.js";
 import { preparePdfDocument } from "./prepare.js";
@@ -60,6 +64,8 @@ export interface RunPdfExportInput {
   settings?: PdfTemplateSettings;
   /** Curated template manifest to render with (spec 012). Defaults to built-in. */
   templateManifest?: TemplateManifest;
+  /** Fully validated template pack including visual assets/decorations. */
+  templatePack?: ValidatedPdfTemplatePackV1;
   filename: string;
   signal?: AbortSignal;
   onPhase?: (phase: PdfExportPhase) => void;
@@ -286,6 +292,13 @@ export async function preparePdfExport(
   const startedAt = now();
   throwIfAborted(input.signal);
   const codeTheme = resolveCodeThemeId(input.codeTheme);
+  // Freeze the accepted runtime at the call boundary. Source resolution and
+  // document-asset fetching are asynchronous; callers cannot alter a pack's
+  // source or visual bytes while preparation is in flight.
+  const templatePack =
+    input.templatePack === undefined
+      ? undefined
+      : clonePdfTemplateRuntime(input.templatePack);
 
   // Validate settings before any asset fetch so a settings typo never pays for
   // (or is masked by) network requests it would discard. The resolved object is
@@ -298,6 +311,7 @@ export async function preparePdfExport(
       ...(input.metadata.region !== undefined ? { region: input.metadata.region } : {}),
       ...(input.theme !== undefined ? { theme: input.theme } : {}),
       ...(input.templateManifest !== undefined ? { manifest: input.templateManifest } : {}),
+      ...(templatePack !== undefined ? { templatePack } : {}),
     });
   } catch (error) {
     wrapFailure(error, "configuration");
@@ -356,6 +370,7 @@ export async function preparePdfExport(
       theme: input.theme,
       settings,
       ...(input.templateManifest !== undefined ? { templateManifest: input.templateManifest } : {}),
+      ...(templatePack !== undefined ? { templatePack } : {}),
     });
   } catch (error) {
     wrapFailure(error, "prepare");

@@ -12,13 +12,25 @@
  * the conformance case the UMSETZUNGSPLAN references for spec 012's gate.
  */
 import {
+  BUILTIN_PDF_TEMPLATE_MANIFEST,
+  PDF_CANONICAL_SOURCE_API_V1,
+  PDF_CANONICAL_SOURCE_REVISION,
+  PDF_TEMPLATE_CAPABILITIES_V1,
+  PDF_TEMPLATE_CAPABILITY_DIGEST_V1,
+  generateCanonicalPdfTemplateSourceV1,
+  loadPdfTemplatePack,
   runPdfExport,
   validatePdfOutput,
   type PdfAssetResolver,
   type PdfExportReport,
   type PdfTemplateSettings,
+  type PdfTemplateRuntimeV1,
 } from "@atlcli/pdf/browser";
-import { packTemplate, unpackTemplate } from "@atlcli/template-pack";
+import {
+  packTemplate,
+  unpackTemplate,
+  validateManifest,
+} from "@atlcli/template-pack";
 import {
   PDF_SETTINGS_A,
   PDF_SETTINGS_A_NO_WATERMARK,
@@ -56,13 +68,17 @@ async function sha256Hex(bytes: Uint8Array): Promise<string> {
     .join("");
 }
 
-async function compileWith(settings: PdfTemplateSettings): Promise<{ report: PdfExportReport; bytes: Uint8Array }> {
+async function compileWith(
+  settings: PdfTemplateSettings,
+  templatePack?: PdfTemplateRuntimeV1
+): Promise<{ report: PdfExportReport; bytes: Uint8Array }> {
   const output = new MemoryOutputSink();
   const report = await runPdfExport(
     {
       blocks: PDF_SETTINGS_BLOCKS,
       metadata: PDF_SETTINGS_METADATA,
       settings,
+      ...(templatePack ? { templatePack } : {}),
       profile: "tagged",
       filename: "PDF Settings Conformance.pdf",
     },
@@ -79,6 +95,8 @@ export interface PdfSettingsCaseResult {
   variantsDiffer: boolean;
   watermarkChangesBytes: boolean;
   templatePackRoundTrips: boolean;
+  templateRuntimeStructuredClone: boolean;
+  templateRuntimeRenders: boolean;
   reportNotes: Array<{ code: string; severity: string }>;
   digests: Record<string, string>;
 }
@@ -119,6 +137,48 @@ export async function runPdfSettingsCase(): Promise<PdfSettingsCaseResult> {
     Object.keys(unpacked.files).sort().join(",") === Object.keys(PDF_TEMPLATE_PACK_FILES).sort().join(",");
   if (!templatePackRoundTrips) throw new Error("The .wiki-pdf-template container did not round-trip.");
 
+  const runtimeManifest = validateManifest({
+    ...BUILTIN_PDF_TEMPLATE_MANIFEST,
+    id: "com.atlcli.browser-runtime",
+    name: "Browser runtime conformance",
+    version: "1.0.0",
+    capabilityCatalog: {
+      id: PDF_TEMPLATE_CAPABILITIES_V1.id,
+      version: PDF_TEMPLATE_CAPABILITIES_V1.version,
+      digest: PDF_TEMPLATE_CAPABILITY_DIGEST_V1,
+    },
+    canonicalSource: {
+      api: PDF_CANONICAL_SOURCE_API_V1,
+      revision: PDF_CANONICAL_SOURCE_REVISION,
+    },
+    provenance: undefined,
+  });
+  const canonicalSource = generateCanonicalPdfTemplateSourceV1(
+    runtimeManifest,
+    { assets: {}, decorations: [] }
+  );
+  const runtime = await loadPdfTemplatePack(
+    await packTemplate({
+      manifest: runtimeManifest,
+      files: {
+        "atlcli.typ": new TextEncoder().encode(canonicalSource),
+      },
+    })
+  );
+  const templateRuntimeStructuredClone =
+    structuredClone(runtime).canonicalSource.sha256 ===
+    runtime.canonicalSource.sha256;
+  if (!templateRuntimeStructuredClone) {
+    throw new Error("The PDF template runtime did not survive structured clone.");
+  }
+  const runtimeRender = await compileWith(PDF_SETTINGS_A, runtime);
+  const templateRuntimeRenders =
+    validatePdfOutput(runtimeRender.bytes).tagged &&
+    runtimeRender.report.compilerVersion.length > 0;
+  if (!templateRuntimeRenders) {
+    throw new Error("The browser PDF runtime pack did not render.");
+  }
+
   const reportNotes = a1.report.notes.map((note) => ({ code: note.code, severity: note.level }));
 
   const digests: Record<string, string> = {
@@ -140,6 +200,8 @@ export async function runPdfSettingsCase(): Promise<PdfSettingsCaseResult> {
     variantsDiffer,
     watermarkChangesBytes,
     templatePackRoundTrips,
+    templateRuntimeStructuredClone,
+    templateRuntimeRenders,
     reportNotes,
     digests,
   };

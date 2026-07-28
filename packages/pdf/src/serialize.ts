@@ -21,11 +21,14 @@ import {
   statusDisplayText,
   uniqueAnchorId,
 } from "@atlcli/confluence";
-import { BUILTIN_PDF_DESIGN } from "./builtin-template.js";
 import {
   DEFAULT_CODE_THEME,
   resolveCodeTheme,
 } from "@atlcli/code-highlight/registry";
+import {
+  projectPdfDesignThroughCatalog,
+  readPdfDesignCapability,
+} from "./design-catalog.js";
 import { escapeTypstContent, safeColor, typstLabel, typstString } from "./escape.js";
 import { resolvePdfSettings, typstSettingsDict, type ResolvedPdfDesign } from "./settings.js";
 import { createAtlcliTypstTemplate } from "./template.js";
@@ -329,26 +332,26 @@ function resolveLink(target: LinkTarget, labels: Map<string, string>): string | 
   }
 }
 
-function designColor(design: ResolvedPdfDesign, key: string): string {
-  return design.tokens.colors[key] ?? BUILTIN_PDF_DESIGN.tokens.colors[key]!;
+function designColor(catalogDesign: ResolvedPdfDesign, key: string): string {
+  return readPdfDesignCapability<string>(catalogDesign, `tokens.colors.${key}`);
 }
 
-function designLength(design: ResolvedPdfDesign, key: string): string {
-  return design.tokens.layout[key] ?? BUILTIN_PDF_DESIGN.tokens.layout[key]!;
+function designLength(catalogDesign: ResolvedPdfDesign, key: string): string {
+  return readPdfDesignCapability<string>(catalogDesign, `tokens.layout.${key}`);
 }
 
 function serializeSmartCardInline(
   card: SmartCardSemantics,
   labels: Map<string, string>,
-  design: ResolvedPdfDesign,
+  catalogDesign: ResolvedPdfDesign,
 ): string {
   const label = literalText(smartCardDisplayText(card));
   const content =
     card.appearance === "inline"
-      ? `#box(fill: rgb(${typstString(designColor(design, "smartCardInlineBackground"))}), ` +
-        `inset: (x: ${designLength(design, "smartCardInlineInsetX")}, ` +
-        `y: ${designLength(design, "smartCardInlineInsetY")}), ` +
-        `radius: ${designLength(design, "smartCardInlineRadius")})[${label}]`
+      ? `#box(fill: rgb(${typstString(designColor(catalogDesign, "smartCardInlineBackground"))}), ` +
+        `inset: (x: ${designLength(catalogDesign, "smartCardInlineInsetX")}, ` +
+        `y: ${designLength(catalogDesign, "smartCardInlineInsetY")}), ` +
+        `radius: ${designLength(catalogDesign, "smartCardInlineRadius")})[${label}]`
       : label;
   const href = card.target ? resolveLink(card.target, labels) : null;
   if (!href) return content;
@@ -426,19 +429,19 @@ interface RenderContext {
    * status palette) reads from here, so a second curated template's tokens
    * genuinely apply instead of silently rendering the built-in's.
    */
-  design: ResolvedPdfDesign;
+  catalogDesign: ResolvedPdfDesign;
   /** BCP-47 locale for semantic inline dates. */
   locale: string;
   comments: PdfCommentRegistry;
 }
 
-/** The root render context for a document rendered with `design`. */
+/** The root render context for a catalog-projected document design. */
 function rootContext(
-  design: ResolvedPdfDesign,
+  catalogDesign: ResolvedPdfDesign,
   locale = "en",
   comments = new PdfCommentRegistry(),
 ): RenderContext {
-  return { tableDensity: "normal", design, locale, comments };
+  return { tableDensity: "normal", catalogDesign, locale, comments };
 }
 const DENSE_TABLE_COLUMN_THRESHOLD = 9;
 
@@ -558,7 +561,7 @@ function captionFigureArgs(caption: PreparedPdfCaption, writer: Writer): string 
     caption.content,
     writer.labels,
     writer.notes,
-    rootContext(writer.design, writer.locale, writer.comments),
+    rootContext(writer.catalogDesign, writer.locale, writer.comments),
   );
   return `caption: [${inline}], kind: ${typstFigureKind(caption.kind)}`;
 }
@@ -587,16 +590,14 @@ function denseStatusLabel(value: string): string {
   return value.replace(/\S+/gu, (token) => denseAtomicToken(token, DENSE_STATUS_RUN_LENGTH));
 }
 
-function statusColor(value: string | undefined, design: ResolvedPdfDesign): string {
+function statusColor(value: string | undefined, catalogDesign: ResolvedPdfDesign): string {
   const semantic = value?.trim().toLowerCase();
   const authoredColor = safeColor(value, "");
   return (
     authoredColor ||
-    (semantic && design.semanticPalettes.statuses[semantic]) ||
-    (semantic && BUILTIN_PDF_DESIGN.semanticPalettes.statuses[semantic]) ||
-    design.semanticPalettes.statuses.default ||
-    design.tokens.colors.neutral ||
-    BUILTIN_PDF_DESIGN.semanticPalettes.statuses.default ||
+    (semantic && catalogDesign.semanticPalettes.statuses[semantic]) ||
+    catalogDesign.semanticPalettes.statuses.default ||
+    catalogDesign.tokens.colors.neutral ||
     safeColor(value)
   );
 }
@@ -604,13 +605,13 @@ function statusColor(value: string | undefined, design: ResolvedPdfDesign): stri
 /** Legacy Storage code-macro title as a header row above code or diagram output. */
 function serializeCodeTitle(
   title: string | undefined,
-  design: ResolvedPdfDesign,
+  catalogDesign: ResolvedPdfDesign,
 ): string {
   if (!title) return "";
   return (
-    `#block(width: 100%, fill: rgb(${typstString(design.tokens.colors.codeBackground)}), ` +
-    `inset: ${design.tokens.layout.codeInset}, radius: ${design.tokens.layout.codeRadius}, ` +
-    `below: ${designLength(design, "codeTitleBelow")})[#strong[${literalText(title)}]]\n`
+    `#block(width: 100%, fill: rgb(${typstString(catalogDesign.tokens.colors.codeBackground)}), ` +
+    `inset: ${catalogDesign.tokens.layout.codeInset}, radius: ${catalogDesign.tokens.layout.codeRadius}, ` +
+    `below: ${designLength(catalogDesign, "codeTitleBelow")})[#strong[${literalText(title)}]]\n`
   );
 }
 
@@ -619,7 +620,7 @@ function serializeDate(
   context: RenderContext,
 ): string {
   const label = formatAdfDateTimestamp(node.timestamp, context.locale);
-  const tokens = context.design.tokens;
+  const tokens = context.catalogDesign.tokens;
   return `#box(
   fill: rgb(${typstString(tokens.colors.codeBackground)}),
   inset: (x: ${tokens.layout.inlineCodeInsetX}, y: ${tokens.layout.inlineCodeInsetY}),
@@ -680,8 +681,8 @@ function effectiveCellTextColor(sourceColor: string | undefined, context: Render
 /** External PDF links remain recognizable in print-like document designs. */
 function styledExternalLink(link: string, context: RenderContext): string {
   const color =
-    effectiveCellTextColor(context.design.branding.accent, context) ??
-    context.design.branding.accent;
+    effectiveCellTextColor(context.catalogDesign.branding.accent, context) ??
+    context.catalogDesign.branding.accent;
   return `#text(fill: rgb(${typstString(color)}))[#underline[${link}]]`;
 }
 
@@ -744,8 +745,8 @@ function serializeMention(
 ): string {
   const label = mentionDisplayText(node);
   const color =
-    effectiveCellTextColor(context.design.tokens.colors.mention, context) ??
-    context.design.tokens.colors.mention;
+    effectiveCellTextColor(context.catalogDesign.tokens.colors.mention, context) ??
+    context.catalogDesign.tokens.colors.mention;
   if (!context.availableWidth) {
     return `#text(fill: rgb(${typstString(color)}))[${literalText(`@${label}`)}]`;
   }
@@ -791,12 +792,12 @@ function endingAnnotations(
 
 function serializeCommentAppendix(
   comments: PdfCommentRegistry,
-  design: ResolvedPdfDesign,
+  catalogDesign: ResolvedPdfDesign,
 ): string {
   const entries = comments.entries();
   if (entries.length === 0) return "";
-  const replyIndent = designLength(design, "listBodyIndent");
-  const itemSpacing = designLength(design, "paragraphSpacing");
+  const replyIndent = designLength(catalogDesign, "listBodyIndent");
+  const itemSpacing = designLength(catalogDesign, "paragraphSpacing");
   const items = entries.map(({ number, annotation }) => {
     const resource = annotation.comment;
     const status = resource.status === "resolved" ? "Resolved — " : "";
@@ -833,14 +834,14 @@ function serializeInline(
           return serializeDate(node, context);
         case "status": {
           const label = statusDisplayText(node);
-          const color = statusColor(node.color, context.design);
+          const color = statusColor(node.color, context.catalogDesign);
           if (context.availableWidth) {
             return `#dense-status-badge(${context.availableWidth}, ${typstString(label)}, ${typstString(denseStatusLabel(label))}, color: ${typstString(color)})`;
           }
           return `#status-badge(${typstString(label)}, color: ${typstString(color)})`;
         }
         case "smartCard":
-          return serializeSmartCardInline(node.card, labels, context.design);
+          return serializeSmartCardInline(node.card, labels, context.catalogDesign);
         case "media": {
           let rendered: string;
           if (node.assetPath) {
@@ -855,8 +856,8 @@ function serializeInline(
               ? `, stroke: ${node.border.size}pt + rgb(${typstString(node.border.color.slice(0, 7))})`
               : "";
             const drawing =
-              `#box(baseline: ${designLength(context.design, "inlineMediaBaseline")}${border}, ` +
-              `inset: ${designLength(context.design, "inlineMediaInset")})[${image}]`;
+              `#box(baseline: ${designLength(context.catalogDesign, "inlineMediaBaseline")}${border}, ` +
+              `inset: ${designLength(context.catalogDesign, "inlineMediaInset")})[${image}]`;
             if (!node.link) rendered = drawing;
             else {
               const href = resolveLink(node.link.target, labels);
@@ -872,13 +873,13 @@ function serializeInline(
             );
           }
           const label = literalText(`[${inlineMediaDisplayText(node)}]`);
-          const color = node.border?.color.slice(0, 7) ?? context.design.tokens.colors.hairline;
+          const color = node.border?.color.slice(0, 7) ?? context.catalogDesign.tokens.colors.hairline;
           const size = node.border?.size ?? 1;
           const chip =
             `#box(stroke: ${size}pt + rgb(${typstString(color)}), ` +
-            `inset: (x: ${designLength(context.design, "inlineMediaChipInsetX")}, ` +
-            `y: ${designLength(context.design, "inlineMediaChipInsetY")}), ` +
-            `radius: ${designLength(context.design, "inlineMediaChipRadius")})` +
+            `inset: (x: ${designLength(context.catalogDesign, "inlineMediaChipInsetX")}, ` +
+            `y: ${designLength(context.catalogDesign, "inlineMediaChipInsetY")}), ` +
+            `radius: ${designLength(context.catalogDesign, "inlineMediaChipRadius")})` +
             `[${label}]`;
           if (!node.link) rendered = chip;
           else {
@@ -1054,7 +1055,7 @@ interface Writer {
   theme: PdfTheme;
   contrastWarnings: Set<string>;
   /** The ACTIVE template design driving serializer-emitted presentation. */
-  design: ResolvedPdfDesign;
+  catalogDesign: ResolvedPdfDesign;
   /** BCP-47 locale for semantic inline dates. */
   locale: string;
   comments: PdfCommentRegistry;
@@ -1069,18 +1070,18 @@ function serializeDecisionItem(
   const decided = state.toUpperCase() === "DECIDED";
   const marker = decided ? "◆" : "◇";
   const stateLabel = decided ? "" : `#text(${typstString(`[${state}] `)})`;
-  const role = writer.design.typography.roles.taskMarker!;
+  const role = writer.catalogDesign.typography.roles.taskMarker!;
   const fontRole = role.font ?? "heading";
-  const font = writer.design.typography.fonts[fontRole];
+  const font = writer.catalogDesign.typography.fonts[fontRole];
   const weight = role.weight ? `, weight: ${typstString(role.weight)}` : "";
   return `#grid(
-  columns: (${writer.design.tokens.layout.taskGridMarker}, 1fr),
-  column-gutter: ${writer.design.tokens.layout.taskGridGutter},
+  columns: (${writer.catalogDesign.tokens.layout.taskGridMarker}, 1fr),
+  column-gutter: ${writer.catalogDesign.tokens.layout.taskGridGutter},
   align: top,
   text(
     font: (${typstString(font)}, "Noto Sans Symbols2", "Noto Emoji"),
     size: ${role.size}${weight},
-    fill: rgb(${typstString(writer.design.tokens.colors.taskChecked)}),
+    fill: rgb(${typstString(writer.catalogDesign.tokens.colors.taskChecked)}),
     ${typstString(marker)},
   ),
   [${stateLabel}${content}],
@@ -1127,7 +1128,7 @@ function serializeParagraphInline(
 function applyBlockPresentation(
   value: string,
   presentation: BlockPresentation | undefined,
-  design: ResolvedPdfDesign,
+  catalogDesign: ResolvedPdfDesign,
 ): string {
   if (!presentation) return value;
   let presented = value;
@@ -1135,15 +1136,16 @@ function applyBlockPresentation(
     presented = `#align(${presentation.alignment})[${presented}]`;
   }
   if (presentation.fontSize === "small") {
-    const smallTextSize =
-      design.typography.roles.adfSmallText?.size ??
-      BUILTIN_PDF_DESIGN.typography.roles.adfSmallText!.size;
+    const smallTextSize = readPdfDesignCapability<string>(
+      catalogDesign,
+      "typography.roles.adfSmallText.size"
+    );
     presented = `#text(size: ${smallTextSize})[${presented}]`;
   }
   if (presentation.indentation !== undefined) {
     const level = Math.max(1, Math.min(6, presentation.indentation));
     presented =
-      `#block(inset: (left: ${design.tokens.layout.adfBlockIndentStep} * ${level}))[${presented}]`;
+      `#block(inset: (left: ${catalogDesign.tokens.layout.adfBlockIndentStep} * ${level}))[${presented}]`;
   }
   return presented;
 }
@@ -1164,8 +1166,8 @@ function serializeHighlightedCodeBlock(
   block: Extract<PreparedPdfBlock, { type: "codeBlock" }>,
   writer: Writer,
 ): string {
-  const mono = writer.design.typography.fonts.mono;
-  const size = writer.design.typography.roles.code!.size;
+  const mono = writer.catalogDesign.typography.fonts.mono;
+  const size = writer.catalogDesign.typography.roles.code!.size;
   const firstLineNumber = block.firstLineNumber ?? 1;
   const lastLineNumber = firstLineNumber + Math.max(0, block.highlight.lines.length - 1);
   const lineNumberWidth = String(lastLineNumber).length;
@@ -1183,8 +1185,8 @@ function serializeHighlightedCodeBlock(
     const body = `#box(width: 100%)[${spans}]`;
     if (block.hideLineNumbers !== false) return `[${body}]`;
     const number = String(firstLineNumber + index).padStart(lineNumberWidth);
-    return `[#grid(columns: (auto, 1fr), column-gutter: ${writer.design.tokens.layout.codeInset}, ` +
-      `[${`#text(font: ${typstString(mono)}, size: ${size}, fill: rgb(${typstString(writer.design.tokens.colors.muted)}), ${typstString(number)})`}], ` +
+    return `[#grid(columns: (auto, 1fr), column-gutter: ${writer.catalogDesign.tokens.layout.codeInset}, ` +
+      `[${`#text(font: ${typstString(mono)}, size: ${size}, fill: rgb(${typstString(writer.catalogDesign.tokens.colors.muted)}), ${typstString(number)})`}], ` +
       `[${body}])]`;
   });
   const background = shikiRgb(
@@ -1193,8 +1195,8 @@ function serializeHighlightedCodeBlock(
   );
   return (
     `block(width: 100%, fill: rgb(${typstString(background)}), ` +
-    `inset: ${writer.design.tokens.layout.codeInset}, ` +
-    `radius: ${writer.design.tokens.layout.codeRadius})[` +
+    `inset: ${writer.catalogDesign.tokens.layout.codeInset}, ` +
+    `radius: ${writer.catalogDesign.tokens.layout.codeRadius})[` +
     `#grid(columns: (1fr), row-gutter: ${size} * 0.35, ${rows.join(", ")})]`
   );
 }
@@ -1203,7 +1205,7 @@ function serializeBlocks(
   blocks: PreparedPdfBlock[],
   writer: Writer,
   parentPath = "blocks",
-  context: RenderContext = rootContext(writer.design, writer.locale, writer.comments),
+  context: RenderContext = rootContext(writer.catalogDesign, writer.locale, writer.comments),
   startIndex = 0,
 ): string {
   const serialized: string[] = [];
@@ -1249,7 +1251,7 @@ function serializeBlocks(
           ? `(${mediaTrack}, 1fr)`
           : `(1fr, ${mediaTrack})`;
       serialized.push(
-        `#grid(columns: ${columns}, column-gutter: ${designLength(context.design, "mediaWrapColumnGutter")}, ${cells})`,
+        `#grid(columns: ${columns}, column-gutter: ${designLength(context.catalogDesign, "mediaWrapColumnGutter")}, ${cells})`,
       );
       index += 1;
       continue;
@@ -1358,24 +1360,24 @@ function serializeBlock(
       } else {
         value = `${heading(serializeInline(block.content, writer.labels, writer.notes, context))} <${label}>`;
       }
-      value = applyBlockPresentation(value, block.presentation, writer.design);
+      value = applyBlockPresentation(value, block.presentation, writer.catalogDesign);
       break;
     }
     case "paragraph":
       value = applyBlockPresentation(
         serializeParagraphInline(block.content, writer, context, true),
         block.presentation,
-        writer.design,
+        writer.catalogDesign,
       );
       break;
     case "smartCard": {
       const prefix = block.card.appearance === "embed" ? "Embedded content: " : "";
       value =
-        `#block(width: 100%, fill: rgb(${typstString(designColor(writer.design, "smartCardBlockBackground"))}), ` +
-        `stroke: rgb(${typstString(designColor(writer.design, "smartCardBlockStroke"))}), ` +
-        `radius: ${designLength(writer.design, "smartCardBlockRadius")}, ` +
-        `inset: ${designLength(writer.design, "smartCardBlockInset")})[#strong[${literalText(prefix)}]` +
-        `${serializeSmartCardInline(block.card, writer.labels, writer.design)}]`;
+        `#block(width: 100%, fill: rgb(${typstString(designColor(writer.catalogDesign, "smartCardBlockBackground"))}), ` +
+        `stroke: rgb(${typstString(designColor(writer.catalogDesign, "smartCardBlockStroke"))}), ` +
+        `radius: ${designLength(writer.catalogDesign, "smartCardBlockRadius")}, ` +
+        `inset: ${designLength(writer.catalogDesign, "smartCardBlockInset")})[#strong[${literalText(prefix)}]` +
+        `${serializeSmartCardInline(block.card, writer.labels, writer.catalogDesign)}]`;
       break;
     }
     case "codeBlock": {
@@ -1404,7 +1406,7 @@ function serializeBlock(
       const code = block.caption
         ? `#figure(${highlighted}, ${captionFigureArgs(block.caption, writer)})`
         : `#${highlighted}`;
-      value = serializeCodeTitle(block.title, writer.design) + code;
+      value = serializeCodeTitle(block.title, writer.catalogDesign) + code;
       break;
     }
     case "diagram": {
@@ -1424,7 +1426,7 @@ function serializeBlock(
       const diagram = block.caption
         ? `#figure(${img}, ${captionFigureArgs(block.caption, writer)})`
         : `#figure(${img})`;
-      value = serializeCodeTitle(block.title, writer.design) + diagram;
+      value = serializeCodeTitle(block.title, writer.catalogDesign) + diagram;
       break;
     }
     case "image":
@@ -1493,7 +1495,7 @@ function serializeBlock(
         `#callout(kind: "panel", title: [${literalText(titleText)}])[\n` +
         `${serializeBlocks(block.content, writer, `${path}.content`, calloutContext)}\n]`;
       value = block.nested
-        ? `#block(inset: (left: ${writer.design.tokens.layout.adfBlockIndentStep}))[${disclosure}]`
+        ? `#block(inset: (left: ${writer.catalogDesign.tokens.layout.adfBlockIndentStep}))[${disclosure}]`
         : disclosure;
       break;
     }
@@ -1533,7 +1535,7 @@ function serializeBlock(
         return `[${content}]`;
       });
       const options = isSemanticList
-        ? `marker: none, body-indent: ${writer.design.tokens.layout.taskListBodyIndent}, `
+        ? `marker: none, body-indent: ${writer.catalogDesign.tokens.layout.taskListBodyIndent}, `
         : block.ordered && block.start !== undefined
           ? `start: ${block.start}, `
           : "";
@@ -1563,13 +1565,11 @@ function serializeBlock(
         : positiveWidths.map(() => 1);
       const columns = weights.map((weight) => `${Number(weight.toFixed(6))}fr`).join(", ");
       // Layout tokens were added after wiki.pdf-template/v1 shipped. Preserve
-      // older custom manifests by falling back to the built-in design.
-      const columnGutter =
-        writer.design.tokens.layout.pageLayoutColumnGutter ??
-        BUILTIN_PDF_DESIGN.tokens.layout.pageLayoutColumnGutter;
-      const insetX =
-        writer.design.tokens.layout.pageLayoutInsetX ??
-        BUILTIN_PDF_DESIGN.tokens.layout.pageLayoutInsetX;
+      const columnGutter = designLength(
+        writer.catalogDesign,
+        "pageLayoutColumnGutter"
+      );
+      const insetX = designLength(writer.catalogDesign, "pageLayoutInsetX");
       const cellContext: RenderContext = {
         ...context,
         container: "tableCell",
@@ -1632,7 +1632,7 @@ function serializeBlock(
         tableDensity: isDense ? "dense" : "normal",
         inTable: true,
         container: "tableCell",
-        design: context.design,
+        catalogDesign: context.catalogDesign,
         locale: context.locale,
         comments: context.comments,
       };
@@ -1641,7 +1641,7 @@ function serializeBlock(
         const cells = row.map(({ cell, cellIndex, columnIndex }) => {
           const backgroundColor =
             cell.backgroundColor ??
-            (cell.header ? writer.design.tokens.colors.tableHeaderBackground : undefined);
+            (cell.header ? writer.catalogDesign.tokens.colors.tableHeaderBackground : undefined);
           const foregroundColor = cell.backgroundColor
             ? pdfTableCellForeground(cell.backgroundColor, writer.theme)
             : undefined;
@@ -1696,7 +1696,7 @@ function serializeBlock(
       }
       rows.push(...serializedRows.slice(leadingHeaderCount).map((row) => row.cells.join(", ")));
       const horizontalInset = layout === "normal" ? NORMAL_CELL_INSET_PT : DENSE_CELL_INSET_PT;
-      const tableMarkup = `#table(columns: ${columns}, inset: (x: ${horizontalInset}pt, y: ${writer.design.tokens.layout.tableCellInsetY}), stroke: rgb(${typstString(writer.design.tokens.colors.tableStroke)}),\n${rows.join(",\n")}\n)`;
+      const tableMarkup = `#table(columns: ${columns}, inset: (x: ${horizontalInset}pt, y: ${writer.catalogDesign.tokens.layout.tableCellInsetY}), stroke: rgb(${typstString(writer.catalogDesign.tokens.colors.tableStroke)}),\n${rows.join(",\n")}\n)`;
       // "scaled"/"overflow-warned" render body text at the readability floor
       // (accept wrap/clip over losing content).
       const scaled = layout === "scaled" || layout === "overflow-warned";
@@ -1720,7 +1720,7 @@ function serializeBlock(
       break;
     }
     case "divider":
-      value = `#line(length: 100%, stroke: rgb(${typstString(writer.design.tokens.colors.tableStroke)}))`;
+      value = `#line(length: 100%, stroke: rgb(${typstString(writer.catalogDesign.tokens.colors.tableStroke)}))`;
       break;
     case "unknown": {
       // Placeholder floor (spec 004): render a visible placeholder line, then
@@ -1730,14 +1730,14 @@ function serializeBlock(
         : block.adfExtension
         ? `Extension: ${block.adfExtension.extensionKey}`
         : `${block.macroName} macro not rendered`;
-      const placeholder = `#text(style: "italic", fill: rgb(${typstString(writer.design.tokens.colors.placeholder)}))[${escapeTypstContent(
+      const placeholder = `#text(style: "italic", fill: rgb(${typstString(writer.catalogDesign.tokens.colors.placeholder)}))[${escapeTypstContent(
         `[${fallbackLabel}]`
       )}]`;
       const parts = [`#par[${placeholder}]`];
       if (block.extensionFrames) {
         block.extensionFrames.forEach((frame, index) => {
           parts.push(
-            `#par[#text(style: "italic", fill: rgb(${typstString(writer.design.tokens.colors.muted)}))[${literalText(`Frame ${index + 1}`)}]]`,
+            `#par[#text(style: "italic", fill: rgb(${typstString(writer.catalogDesign.tokens.colors.muted)}))[${literalText(`Frame ${index + 1}`)}]]`,
           );
           parts.push(serializeBlocks(
             frame.content,
@@ -1884,16 +1884,16 @@ function mediaFrame(
 ): string {
   let framed = value;
   if (block.border || block.mediaGroup) {
-    const color = block.border?.color.slice(0, 7) ?? context.design.tokens.colors.hairline;
+    const color = block.border?.color.slice(0, 7) ?? context.catalogDesign.tokens.colors.hairline;
     const size =
       block.border?.size !== undefined
         ? `${block.border.size}pt`
-        : designLength(context.design, "mediaFrameDefaultStroke");
+        : designLength(context.catalogDesign, "mediaFrameDefaultStroke");
     framed =
       `#block(stroke: ${size} + rgb(${typstString(color)}), ` +
-      `inset: ${designLength(context.design, "mediaFrameInset")}` +
+      `inset: ${designLength(context.catalogDesign, "mediaFrameInset")}` +
       `${block.mediaGroup
-        ? `, fill: rgb(${typstString(designColor(context.design, "mediaGroupBackground"))})`
+        ? `, fill: rgb(${typstString(designColor(context.catalogDesign, "mediaGroupBackground"))})`
         : ""})` +
       `[${framed}]`;
   }
@@ -1952,6 +1952,7 @@ export function serializePdfDocument(
     ...(options.metadata.region !== undefined ? { region: options.metadata.region } : {}),
     ...(options.theme !== undefined ? { theme: options.theme } : {}),
     ...(options.templateManifest !== undefined ? { manifest: options.templateManifest } : {}),
+    ...(options.templatePack !== undefined ? { templatePack: options.templatePack } : {}),
   });
   const collected = collectHeadingLabels(document.blocks);
   const writer: Writer = {
@@ -1963,7 +1964,7 @@ export function serializePdfDocument(
     headingCounts: new Map(),
     theme,
     contrastWarnings: new Set(),
-    design: settings.design,
+    catalogDesign: projectPdfDesignThroughCatalog(settings.design),
     locale: documentLocale(options.metadata.language, options.metadata.region),
     comments: new PdfCommentRegistry(),
   };
@@ -1971,20 +1972,44 @@ export function serializePdfDocument(
     document.blocks,
     writer,
     "blocks",
-    rootContext(writer.design, writer.locale, writer.comments),
+    rootContext(writer.catalogDesign, writer.locale, writer.comments),
   );
-  const commentAppendix = serializeCommentAppendix(writer.comments, writer.design);
+  const commentAppendix = serializeCommentAppendix(writer.comments, writer.catalogDesign);
   // The validated logo travels as a virtual asset file the compiler maps into
   // its filesystem — the same path-emission pattern prepared image assets use.
   // The "atlcli-logo" name cannot collide with prepared assets, whose paths
   // always carry a numeric index and content hash.
-  const logoAsset: PreparedPdfAsset | undefined = settings.logo
+  const packLogo =
+    options.settings?.logo === undefined
+      ? options.templatePack?.assets["asset.logo"]
+      : undefined;
+  const logoAsset: PreparedPdfAsset | undefined = packLogo
     ? {
-        path: settings.logo.mediaType === "image/png" ? "assets/atlcli-logo.png" : "assets/atlcli-logo.svg",
+        path: packLogo.vfsPath,
+        bytes: packLogo.bytes,
+        mediaType: packLogo.descriptor.mediaType,
+      }
+    : settings.logo
+    ? {
+        path:
+          settings.logo.mediaType === "image/png"
+            ? "assets/atlcli-logo.png"
+            : "assets/atlcli-logo.svg",
         bytes: settings.logo.bytes,
         mediaType: settings.logo.mediaType,
       }
     : undefined;
+  const templateAssets: PreparedPdfAsset[] = [];
+  const mounted = new Set<string>(logoAsset ? [logoAsset.path] : []);
+  for (const asset of Object.values(options.templatePack?.assets ?? {})) {
+    if (!asset || mounted.has(asset.vfsPath)) continue;
+    mounted.add(asset.vfsPath);
+    templateAssets.push({
+      path: asset.vfsPath,
+      bytes: asset.bytes,
+      mediaType: asset.descriptor.mediaType,
+    });
+  }
   const meta = options.metadata;
   const author = meta.author ?? meta.exporter ?? "atlcli";
   const exportedLabel = exportedDateLabel(meta.exportedAt, meta.language, meta.region);
@@ -2007,8 +2032,22 @@ ${body}${commentAppendix}
 
   return {
     main,
-    template: createAtlcliTypstTemplate(settings.design, settings.labels),
-    assets: logoAsset ? [...document.assets, logoAsset] : document.assets,
+    // A pack reaches this branch only after the loader regenerated and
+    // byte-compared its canonical source. Locale labels and declared runtime
+    // bindings travel through `settings`; the static source is never generated
+    // again per document locale.
+    template:
+      options.templatePack?.canonicalSource.source ??
+      createAtlcliTypstTemplate(
+        settings.design,
+        settings.labels,
+        settings.templateVisuals
+      ),
+    assets: [
+      ...document.assets,
+      ...(logoAsset ? [logoAsset] : []),
+      ...templateAssets,
+    ],
     sourceMap: resolveSourceMap(main, writer.sourceMap),
     notes: writer.notes,
   };

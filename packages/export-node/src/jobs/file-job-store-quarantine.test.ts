@@ -6,14 +6,13 @@ import type { DocxExportJobRequestV1, PdfExportJobRequestV1 } from "@atlcli/expo
 import { FileExportJobStore, type FileExportQuarantinedRecordV1 } from "./file-job-store.js";
 
 const HASH = "a".repeat(64);
-// Template shapes written by the template-pack branch build; neither is part
-// of this build's PdfExportJobRequestV1 contract as stored.
-const FOREIGN_PACK_TEMPLATE = {
-  kind: "pack",
-  archiveSha256: HASH,
-  recordKey: `template-pack:sha256:${HASH}`,
-};
-const FOREIGN_BUILTIN_TEMPLATE = { kind: "builtin", id: "builtin-default", manifestVersion: "1" };
+// A template discriminant no atlcli build understands today, standing in for
+// whatever a future or branch build writes next.
+const FOREIGN_TEMPLATE = { kind: "remote", url: "https://example.com/pack" };
+// Shapes from the original poisoning incident; valid since template packs
+// landed, so they must load as-is.
+const PACK_TEMPLATE = { kind: "pack", archiveSha256: HASH, recordKey: `template-pack:sha256:${HASH}` };
+const BUILTIN_TEMPLATE = { kind: "builtin", id: "builtin-default", manifestVersion: "1" };
 
 const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map((path) => rm(path, { recursive: true, force: true }))); });
@@ -23,7 +22,7 @@ function pdfRequest(id: string): PdfExportJobRequestV1 {
   return { schema: "atlcli.export-job-request/1", id, idempotencyKey: `idem:${id}`, format: "pdf", renderer: "pdf-typst",
     source: { kind: "confluence", siteOrigin: "https://example.atlassian.net", locator: { kind: "page-id", id: "123" }, scope: { kind: "page" } },
     authRef: "profile:default", displayName: id, createdAt: 1, priority: "interactive", output: { policy: "collect" },
-    template: { id: "builtin-default", manifestVersion: "1" }, settings: {}, options: { resolveMacros: true } };
+    template: { kind: "builtin", id: "builtin-default", manifestVersion: "1" }, settings: {}, options: { resolveMacros: true } };
 }
 
 function docxRequest(id: string): DocxExportJobRequestV1 {
@@ -60,11 +59,11 @@ async function poisoned(id: string, mutateRequest: (request: any) => void): Prom
 
 describe("file export job store quarantine", () => {
   // Regression for the poisoned-journal bug: one stored request outside this
-  // build's contract (template-pack branch shape) made #load throw
-  // `request.template.kind: is not part of this contract shape` for every
-  // store operation, so every new export died with CLI exit 4.
-  it("creates, lists, and claims new jobs although a foreign pack-template record is present", async () => {
-    const dir = await poisoned("historical", (request) => { request.template = FOREIGN_PACK_TEMPLATE; });
+  // build's contract made #load throw for every store operation, so every new
+  // `wiki export` died with exit 4 on
+  // "request.template.kind: is not part of this contract shape".
+  it("creates, lists, and claims new jobs although a foreign template record is present", async () => {
+    const dir = await poisoned("historical", (request) => { request.template = FOREIGN_TEMPLATE; });
     const reported: FileExportQuarantinedRecordV1[] = [];
     const store = new FileExportJobStore(dir, { onQuarantine: (records) => reported.push(...records) });
 
@@ -77,28 +76,31 @@ describe("file export job store quarantine", () => {
     expect(entries).toHaveLength(1);
     expect(entries[0]!.key).toBe("historical");
     expect(entries[0]!.reason).toContain("request.template.kind");
-    expect((entries[0]!.request as any).template).toEqual(FOREIGN_PACK_TEMPLATE);
+    expect((entries[0]!.request as any).template).toEqual(FOREIGN_TEMPLATE);
     // Several loads ran above; the observer hears about each record only once.
     expect(reported.map((record) => record.key)).toEqual(["historical"]);
   });
 
-  it("keeps builtin-kind templates live by stripping the foreign discriminant", async () => {
-    const dir = await poisoned("builtin-job", (request) => { request.template = FOREIGN_BUILTIN_TEMPLATE; });
+  it("loads the original incident's builtin and pack shapes as-is now that packs landed", async () => {
+    const dir = await root();
+    const seed = new FileExportJobStore(dir);
+    await seed.create({ request: pdfRequest("was-builtin") });
+    await seed.create({ request: pdfRequest("was-pack") });
+    await editHead(dir, (catalog) => {
+      catalog.requests["request:was-builtin"].template = BUILTIN_TEMPLATE;
+      catalog.requests["request:was-pack"].template = PACK_TEMPLATE;
+    });
     const reported: FileExportQuarantinedRecordV1[] = [];
     const store = new FileExportJobStore(dir, { onQuarantine: (records) => reported.push(...records) });
 
-    expect((await store.list()).map((job) => job.id)).toEqual(["builtin-job"]);
-    expect((await store.getRequest("request:builtin-job"))?.template).toEqual({ id: "builtin-default", manifestVersion: "1" });
+    expect((await store.list()).map((job) => job.id).sort()).toEqual(["was-builtin", "was-pack"]);
+    expect((await store.getRequest("request:was-pack"))?.template).toEqual(PACK_TEMPLATE as never);
     expect(await store.listQuarantined()).toEqual([]);
     expect(reported).toEqual([]);
-
-    // The next commit persists the normalized shape durably.
-    await store.create({ request: pdfRequest("second") });
-    expect((await readHead(dir)).requests["request:builtin-job"].template).toEqual({ id: "builtin-default", manifestVersion: "1" });
   });
 
   it("releases a quarantined record's idempotency key so an identical re-run creates a fresh job", async () => {
-    const dir = await poisoned("poisoned", (request) => { request.template = FOREIGN_PACK_TEMPLATE; });
+    const dir = await poisoned("poisoned", (request) => { request.template = FOREIGN_TEMPLATE; });
     const store = new FileExportJobStore(dir);
 
     const rerun = { ...pdfRequest("rerun"), idempotencyKey: "idem:poisoned" };
@@ -107,7 +109,7 @@ describe("file export job store quarantine", () => {
   });
 
   it("rejects a new job whose id is still held by a quarantined record", async () => {
-    const dir = await poisoned("historical", (request) => { request.template = FOREIGN_PACK_TEMPLATE; });
+    const dir = await poisoned("historical", (request) => { request.template = FOREIGN_TEMPLATE; });
     const store = new FileExportJobStore(dir);
 
     await store.list();
@@ -115,13 +117,13 @@ describe("file export job store quarantine", () => {
   });
 
   it("preserves the raw foreign unit verbatim across commits and store instances", async () => {
-    const dir = await poisoned("historical", (request) => { request.template = FOREIGN_PACK_TEMPLATE; });
+    const dir = await poisoned("historical", (request) => { request.template = FOREIGN_TEMPLATE; });
     const store = new FileExportJobStore(dir);
 
     await store.create({ request: pdfRequest("fresh") });
 
     const persisted = (await readHead(dir)).quarantined["historical"];
-    expect(persisted.request.template).toEqual(FOREIGN_PACK_TEMPLATE);
+    expect(persisted.request.template).toEqual(FOREIGN_TEMPLATE);
     expect(persisted.snapshot.id).toBe("historical");
     expect(persisted.idempotencyKeys).toEqual(["idem:historical"]);
     expect((await new FileExportJobStore(dir).listQuarantined())[0]!.key).toBe("historical");
@@ -140,12 +142,12 @@ describe("file export job store quarantine", () => {
   it("restores a quarantined unit once the running build parses it again", async () => {
     const dir = await root();
     await new FileExportJobStore(dir, { now: () => 5 }).create({ request: pdfRequest("frozen") });
-    // A build without builtin-template normalization would have quarantined
-    // this unit; the running build understands it and must bring it back.
+    // A pre-template-pack build with this quarantine fix would have captured
+    // exactly this unit; the running build understands it and must bring it
+    // back, replay keys included.
     await editHead(dir, (catalog) => {
-      const request = { ...catalog.requests["request:frozen"], template: FOREIGN_BUILTIN_TEMPLATE };
       catalog.quarantined = { frozen: { key: "frozen", reason: "request.template.kind: is not part of this contract shape", quarantinedAt: 2,
-        snapshot: catalog.jobs["frozen"], requestRef: "request:frozen", request, events: catalog.events["frozen"],
+        snapshot: catalog.jobs["frozen"], requestRef: "request:frozen", request: catalog.requests["request:frozen"], events: catalog.events["frozen"],
         nextEventSeq: catalog.nextEventSeq["frozen"], transitions: catalog.transitions["frozen"], idempotencyKeys: ["idem:frozen"] } };
       delete catalog.jobs["frozen"]; delete catalog.requests["request:frozen"]; delete catalog.events["frozen"];
       delete catalog.nextEventSeq["frozen"]; delete catalog.transitions["frozen"]; delete catalog.idempotency["idem:frozen"];
@@ -154,7 +156,7 @@ describe("file export job store quarantine", () => {
 
     expect((await store.list()).map((job) => job.id)).toEqual(["frozen"]);
     expect(await store.listQuarantined()).toEqual([]);
-    expect((await store.getRequest("request:frozen"))?.template).toEqual({ id: "builtin-default", manifestVersion: "1" });
+    expect((await store.getRequest("request:frozen"))?.template).toEqual(BUILTIN_TEMPLATE as never);
     // The rebuilt idempotency index acknowledges the restored job again.
     expect((await store.create({ request: pdfRequest("frozen") })).id).toBe("frozen");
   });

@@ -32,7 +32,7 @@ const DESIGN: WikiPdfTemplateDesignV1 = {
   features: {
     cover: { enabled: true },
     outline: { enabled: true, depth: 3 },
-    header: { enabled: true },
+    header: { enabled: true, mode: "title" },
     footer: { enabled: true },
     closingPage: { enabled: true },
   },

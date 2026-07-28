@@ -9,7 +9,6 @@ import {
   finalizeExportJobArtifact,
   heartbeatExportJob,
   isExportJobTerminal,
-  normalizeForeignExportJobRequestV1,
   orderExportQueue,
   parseExportJobEventV1,
   parseExportJobRequestV1,
@@ -579,16 +578,12 @@ export class FileExportJobStore implements ExportJobStore, ExportJobEventReaderV
     for (const [id, snapshot] of Object.entries(catalog.jobs)) {
       const requestRef = typeof (snapshot as { requestRef?: unknown }).requestRef === "string" ? snapshot.requestRef : undefined;
       const request = requestRef === undefined ? undefined : catalog.requests[requestRef];
-      const normalized = request === undefined ? undefined : normalizeForeignExportJobRequestV1(request);
       const reason = this.#unreadableReason(() => {
         parseExportJobSnapshotV1(snapshot);
-        if (normalized !== undefined) parseExportJobRequestV1(normalized);
+        if (request !== undefined) parseExportJobRequestV1(request);
         for (const event of this.#eventsArray(catalog.events[id], id)) parseExportJobEventV1(event);
       });
-      if (reason === undefined) {
-        if (normalized !== undefined && normalized !== request) catalog.requests[requestRef!] = normalized as ExportJobRequestV1;
-        continue;
-      }
+      if (reason === undefined) continue;
       quarantine(id, reason, { snapshot,
         ...(requestRef === undefined ? {} : { requestRef }), ...(request === undefined ? {} : { request }),
         ...(catalog.events[id] === undefined ? {} : { events: catalog.events[id] }),
@@ -600,9 +595,8 @@ export class FileExportJobStore implements ExportJobStore, ExportJobEventReaderV
     const owned = new Set(Object.values(catalog.jobs).map((job) => job.requestRef));
     for (const [ref, request] of Object.entries(catalog.requests)) {
       if (owned.has(ref)) continue;
-      const normalized = normalizeForeignExportJobRequestV1(request);
-      const reason = this.#unreadableReason(() => { parseExportJobRequestV1(normalized); });
-      if (reason === undefined) { if (normalized !== request) catalog.requests[ref] = normalized as ExportJobRequestV1; continue; }
+      const reason = this.#unreadableReason(() => { parseExportJobRequestV1(request); });
+      if (reason === undefined) continue;
       quarantine(ref, reason, { requestRef: ref, request });
       delete catalog.requests[ref];
     }
@@ -622,10 +616,9 @@ export class FileExportJobStore implements ExportJobStore, ExportJobEventReaderV
     for (const [slot, entry] of Object.entries(catalog.quarantined)) {
       const key = entry.key;
       if (entry.snapshot !== undefined) {
-        const normalized = entry.request === undefined ? undefined : normalizeForeignExportJobRequestV1(entry.request);
         const reason = this.#unreadableReason(() => {
           parseExportJobSnapshotV1(entry.snapshot);
-          if (normalized !== undefined) parseExportJobRequestV1(normalized);
+          if (entry.request !== undefined) parseExportJobRequestV1(entry.request);
           for (const event of this.#eventsArray(entry.events, key)) parseExportJobEventV1(event);
         });
         if (reason !== undefined) continue;
@@ -635,7 +628,7 @@ export class FileExportJobStore implements ExportJobStore, ExportJobEventReaderV
         if ((entry.idempotencyKeys ?? []).some((k) => catalog.idempotency[k] !== undefined)) continue;
         if ((entry.derivationKeys ?? []).some((k) => catalog.derivations[k] !== undefined)) continue;
         catalog.jobs[key] = snapshot;
-        if (entry.requestRef !== undefined && normalized !== undefined) catalog.requests[entry.requestRef] = normalized as ExportJobRequestV1;
+        if (entry.requestRef !== undefined && entry.request !== undefined) catalog.requests[entry.requestRef] = entry.request as ExportJobRequestV1;
         if (entry.events !== undefined) catalog.events[key] = entry.events as ExportJobEventV1[];
         if (entry.nextEventSeq !== undefined) catalog.nextEventSeq[key] = entry.nextEventSeq;
         if (entry.transitions !== undefined) catalog.transitions[key] = entry.transitions as FileExportCatalogV1["transitions"][string];
@@ -643,11 +636,10 @@ export class FileExportJobStore implements ExportJobStore, ExportJobEventReaderV
         for (const k of entry.derivationKeys ?? []) catalog.derivations[k] = key;
         delete catalog.quarantined[slot];
       } else if (entry.request !== undefined) {
-        const normalized = normalizeForeignExportJobRequestV1(entry.request);
-        if (this.#unreadableReason(() => { parseExportJobRequestV1(normalized); }) !== undefined) continue;
+        if (this.#unreadableReason(() => { parseExportJobRequestV1(entry.request); }) !== undefined) continue;
         const ref = entry.requestRef ?? key;
         if (catalog.requests[ref]) continue;
-        catalog.requests[ref] = normalized as ExportJobRequestV1;
+        catalog.requests[ref] = entry.request as ExportJobRequestV1;
         delete catalog.quarantined[slot];
       } else if (entry.events !== undefined) {
         const id = key.startsWith("events:") ? key.slice("events:".length) : key;

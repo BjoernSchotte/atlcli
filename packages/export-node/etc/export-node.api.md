@@ -155,6 +155,7 @@ export interface FileExportJobPersistenceV1 {
     jobs: FileExportJobStore;
     spool: FileExportSpoolStore;
     artifacts: FileExportArtifactStore;
+    templatePacks: FileTemplatePackStoreV1;
     heavyRenderLock: FileExportLock;
     spoolLimits: SpoolWriteLimitsV1;
     pdfReadyToRender: ReturnType<typeof createFilePdfReadyToRenderStore>;
@@ -322,6 +323,40 @@ export declare class FileExportSpoolStore implements ExportSpoolStore {
 
 // export: fileOutputSink
 export declare function fileOutputSink(path: string): OutputSink;
+
+// export: FileTemplatePackStoreV1
+export declare class FileTemplatePackStoreV1 implements TemplatePackStoreV1 {
+    #private;
+    readonly rootDir: string;
+    constructor(rootDir: string, options?: {
+        lockTtlMs?: number;
+        now?: () => number;
+    });
+    put(input: {
+        bytes: Uint8Array;
+        limits: TemplatePackStoreLimitsV1;
+        now: number;
+        signal?: AbortSignal;
+    }): Promise<TemplatePackRecordV1>;
+    get(reference: PdfTemplatePackReferenceV1, options?: {
+        signal?: AbortSignal;
+    }): Promise<{
+        record: TemplatePackRecordV1;
+        bytes: Uint8Array;
+    }>;
+    verify(reference: PdfTemplatePackReferenceV1, options?: {
+        signal?: AbortSignal;
+    }): Promise<TemplatePackRecordV1>;
+    link(input: TemplatePackReachabilityV1 & {
+        at: number;
+    }): Promise<void>;
+    reconcile(input: {
+        completeScan: true;
+        references: readonly TemplatePackReachabilityV1[];
+        now: number;
+        orphanGraceMs: number;
+    }): Promise<TemplatePackReconcileResultV1>;
+}
 
 // export: fileTemplateSource
 export declare function fileTemplateSource(path: string): TemplateSource;

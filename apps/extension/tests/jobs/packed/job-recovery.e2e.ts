@@ -591,7 +591,11 @@ async function seedJob(
       createdAt: 1,
       priority: "interactive",
       output: { policy: "collect" },
-      template: { id: "builtin.editorial-indigo", manifestVersion: "1.0.0" },
+      template: {
+        kind: "builtin",
+        id: "builtin.editorial-indigo",
+        manifestVersion: "1.0.0",
+      },
       settings: {},
       options: { resolveMacros: true, exportedAt: 1 },
     };

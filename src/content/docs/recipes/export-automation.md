@@ -5,9 +5,10 @@ description: "Export automation - run atlcli PDF/DOCX export in CI/CD"
 
 # Export Automation
 
-Export Confluence pages to PDF (or DOCX) from a CI/CD pipeline, parse the machine-readable
-report, and upload the result as a build artifact — no hosted service, no polling, and no
-data leaving your runner.
+Export Confluence pages to PDF (or DOCX) from a CI/CD pipeline, parse the
+machine-readable report, and upload the result as a build artifact — with no
+separate hosted renderer or polling service. Page and attachment data travels
+between Confluence and your runner.
 
 > Automation is the CLI itself. There is no hosted export job to submit or poll: a single
 > `atlcli wiki export … --format pdf --report json` call does the whole job on the runner and
@@ -28,6 +29,8 @@ data leaving your runner.
 - An Atlassian API token stored as a CI/CD secret.
 - The Confluence base URL and (for Cloud) the account email.
 - **View permission** on the page(s) to export.
+- Optional: a reviewed `.wiki-pdf-template` pack stored as a protected build
+  input or repository artifact.
 
 No `~/.atlcli/config.json` is needed: the jobs below use
 [profile-free auth](/confluence/export/#profile-free-auth-for-ci) via environment variables.
@@ -41,6 +44,10 @@ The export command:
 3. Writes the file atomically (nothing partial on failure).
 4. Prints an `atlcli.export-report/1` JSON document on stdout and exits with a
    [documented code](/confluence/export/#exit-codes).
+
+When `--template <pack>` is present, atlcli validates and stores the pack
+locally before the first Confluence request. The durable export job pins its
+content hash rather than the caller's file path.
 
 ## GitHub Actions
 
@@ -62,6 +69,7 @@ jobs:
         run: |
           atlcli wiki export "${{ github.event.inputs.page || '12345678' }}" \
             --format pdf --scope tree --label-exclude internal \
+            --template ./templates/brand.wiki-pdf-template \
             --out-dir dist --report json --strict | tee report.json
       - name: Summarize
         run: |
@@ -163,9 +171,14 @@ key can never read as "nothing to report".
 | Exit `1`, "must use HTTPS" | Plain-HTTP `--base-url` | Use HTTPS, or add `--allow-http` for Data Center |
 | Exit `4`, page not found | Wrong page id, or no view permission for the token's user | Verify the id and the token account's permissions |
 | Exit `1`, "already exists" | Output file exists | Use `--out-dir` for a fresh name, or `--force` to overwrite |
+| Exit `1`, "PDF template validation failed" | Missing, modified, or incompatible pack | Rebuild it with `atlcli pdf-template build`; do not patch archive members in CI |
 
 ## Related topics
 
 - [DOCX and PDF Export](/confluence/export/) — full command reference
+- [Create a PDF template from Word](/confluence/pdf-template-from-word/) —
+  build the reviewed pack used by the example
+- [PDF Template Authoring CLI](/reference/pdf-template-authoring-cli/) —
+  machine-mode authoring and schemas
 - [CI/CD Documentation](/recipes/ci-cd-docs/) — publishing docs into Confluence from CI
 - [Authentication](/authentication/) — tokens and profiles

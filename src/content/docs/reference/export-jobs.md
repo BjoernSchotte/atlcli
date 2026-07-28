@@ -196,13 +196,12 @@ The CLI journal outlives any single atlcli version, so a record written by a
 newer, older, or branch build may not match the running build's contract. One
 such record must never block new exports.
 
-On load the store handles historical records in three tiers:
+On load the store handles historical records in two tiers:
 
-1. **Read as-is** — records that match the current contract.
-2. **Normalized** — foreign shapes with a lossless downgrade (for example a PDF
-   template pinned as `{kind: "builtin", id, manifestVersion}` is stored as
-   `{id, manifestVersion}`). These jobs stay fully visible and replayable.
-3. **Quarantined** — records the running build cannot represent. The raw unit
+1. **Read as-is** — records that match the current contract, including
+   compatible historical shapes the parsers accept directly (for example PDF
+   template references from before the explicit `kind` discriminant).
+2. **Quarantined** — records the running build cannot represent. The raw unit
    (request, snapshot, events) moves verbatim into a `quarantined` section of
    the journal; the job disappears from listings and its idempotency/replay
    keys are released so an identical re-run creates a fresh job.

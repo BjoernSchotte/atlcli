@@ -1,0 +1,7 @@
+Scenario: uncertain-review
+Stage: review-required
+Message-Code: ATLCLI_PDF_TEMPLATE_REVIEW_UNCERTAIN
+What happened: Two plausible body-font choices were found.
+Current state: The font choice remains open because the document does not provide enough evidence for a safe recommendation.
+Retained: The current body font remains active and both explanations remain available for review.
+Next: atlcli pdf-template review ./brand-pdf-template

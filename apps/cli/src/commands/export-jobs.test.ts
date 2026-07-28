@@ -4,8 +4,12 @@ import {
   InMemoryArtifactStore,
   InMemoryExportJobStore,
   InMemorySpoolStore,
+  InMemoryTemplatePackStoreV1,
+  templatePackReference,
   type DocxExportJobRequestV1,
   type ExportJobSnapshotV1,
+  type PdfExportJobRequestV1,
+  type TemplatePackReachabilityV1,
 } from "@atlcli/export-jobs";
 import { handleExportJobs, type ExportJobPersistenceV1 } from "./export-jobs.js";
 
@@ -35,6 +39,33 @@ function request(
     output,
     template: { recordKey: "default", sha256: "0".repeat(64), name: "Default" },
     options: { embedImages: true, resolveMacros: true },
+  };
+}
+
+function pdfRequest(
+  id: string,
+  template: PdfExportJobRequestV1["template"],
+): PdfExportJobRequestV1 {
+  return {
+    schema: "atlcli.export-job-request/1",
+    id,
+    idempotencyKey: `idem:${id}`,
+    format: "pdf",
+    renderer: "pdf-typst",
+    source: {
+      kind: "confluence",
+      siteOrigin: "https://example.atlassian.net",
+      locator: { kind: "space-key", spaceKey: "DOCS" },
+      scope: { kind: "space" },
+    },
+    authRef: "profile:test",
+    displayName: id,
+    createdAt: 1,
+    priority: "interactive",
+    output: { policy: "collect" },
+    template,
+    settings: {},
+    options: { resolveMacros: true },
   };
 }
 
@@ -136,6 +167,34 @@ async function succeedJob(
   });
 }
 
+async function failPdfJob(
+  persistence: ExportJobPersistenceV1,
+  input: PdfExportJobRequestV1,
+): Promise<ExportJobSnapshotV1> {
+  await persistence.jobs.create({ request: input });
+  const running = await persistence.jobs.claimNext({
+    ownerId: "test",
+    now: 10,
+    leaseDurationMs: 2_000,
+  });
+  if (!running || running.id !== input.id) throw new Error("expected claimed PDF job");
+  return persistence.jobs.compareAndSet({
+    kind: "transition",
+    id: input.id,
+    expectedRevision: running.revision,
+    leaseEpoch: running.leaseEpoch,
+    to: "failed",
+    at: 20,
+    error: {
+      code: "render.failed",
+      message: "Render failed.",
+      category: "render",
+      retryable: true,
+      occurredAt: 20,
+    },
+  });
+}
+
 describe("handleExportJobs", () => {
   it("reconciles stale durable work before executing a valid command", async () => {
     const store = persistence();
@@ -224,6 +283,48 @@ describe("handleExportJobs", () => {
     });
     expect(derivedRequest?.source).toEqual(request("failed").source);
     expect(output.read()).toContain("Retry queued: derived-job");
+  });
+
+  it("verifies and links a content-addressed PDF pack when retry creates a job", async () => {
+    const store = persistence();
+    const backingStore = new InMemoryTemplatePackStoreV1();
+    const record = await backingStore.put({
+      bytes: new Uint8Array([1, 2, 3]),
+      limits: { maxObjectBytes: 8, maxTotalBytes: 8 },
+      now: 1,
+    });
+    const links: Array<TemplatePackReachabilityV1 & { at: number }> = [];
+    store.templatePacks = {
+      put: backingStore.put.bind(backingStore),
+      get: backingStore.get.bind(backingStore),
+      verify: backingStore.verify.bind(backingStore),
+      reconcile: backingStore.reconcile.bind(backingStore),
+      async link(input) {
+        links.push(structuredClone(input));
+        await backingStore.link(input);
+      },
+    };
+    await failPdfJob(store, pdfRequest("failed-pdf", templatePackReference(record)));
+    const { dependencies } = deps(store);
+
+    await handleExportJobs(
+      ["retry", "failed-pdf"],
+      {},
+      { json: false },
+      dependencies,
+    );
+
+    const derived = await store.jobs.get("derived-job");
+    if (!derived) throw new Error("expected a derived PDF job");
+    expect(links).toEqual([
+      {
+        jobId: "derived-job",
+        requestRef: derived.requestRef,
+        recordKey: record.recordKey,
+        archiveSha256: record.archiveSha256,
+        at: 1_000,
+      },
+    ]);
   });
 
   it("preserves an original overwrite authorization for Retry without a new target", async () => {

@@ -9,7 +9,6 @@ import type { ExportJobSnapshotV1, ExportJobState } from "./snapshot.js";
 import { createEmptyExportJobStatsV1 } from "./statistics.js";
 import {
   ExportJobValidationError,
-  normalizeForeignExportJobRequestV1,
   parseDocxExportJobRequestV1,
   parseExportJobEventV1,
   parsePdfExportJobRequestV1,
@@ -41,7 +40,7 @@ function pdfRequest(): PdfExportJobRequestV1 {
     createdAt: 100,
     priority: "interactive",
     output: { policy: "path", targetRef: "/exports/docs.pdf", overwriteExisting: true },
-    template: { id: "default", manifestVersion: "1" },
+    template: { kind: "builtin", id: "default", manifestVersion: "1" },
     settings: {
       page: "a4",
       watermark: { text: "DRAFT", opacity: 0.08 },
@@ -253,64 +252,6 @@ describe("parsePdfExportJobRequestV1", () => {
     expect(() => parsePdfExportJobRequestV1(changed(pdfRequest(), mutate))).toThrow(
       ExportJobValidationError,
     );
-  });
-});
-
-describe("normalizeForeignExportJobRequestV1", () => {
-  it("strips the foreign builtin discriminant into the stored template shape", () => {
-    const foreign = changed(pdfRequest(), (copy) => {
-      copy.template = { kind: "builtin", id: "builtin-default", manifestVersion: "1" };
-    });
-
-    const normalized = normalizeForeignExportJobRequestV1(foreign);
-
-    expect((normalized as PdfExportJobRequestV1).template).toEqual({
-      id: "builtin-default",
-      manifestVersion: "1",
-    });
-    expect(parseExportJobRequestV1(normalized)).toBe(normalized as ExportJobRequestV1);
-    expect((foreign as PdfExportJobRequestV1).template).toEqual({
-      kind: "builtin",
-      id: "builtin-default",
-      manifestVersion: "1",
-    } as never);
-  });
-
-  it.each([
-    [
-      "pack template without a stored representation",
-      (request: any) => (request.template = {
-        kind: "pack",
-        archiveSha256: HASH,
-        recordKey: `template-pack:sha256:${HASH}`,
-      }),
-    ],
-    ["unknown discriminant", (request: any) => (request.template.kind = "remote")],
-    [
-      "builtin discriminant with extra fields",
-      (request: any) => (request.template = {
-        kind: "builtin",
-        id: "builtin-default",
-        manifestVersion: "1",
-        archiveSha256: HASH,
-      }),
-    ],
-    [
-      "builtin discriminant with non-string identity",
-      (request: any) => (request.template = { kind: "builtin", id: 7, manifestVersion: "1" }),
-    ],
-  ])("returns %s unchanged for the caller to quarantine", (_name, mutate) => {
-    const foreign = changed(pdfRequest(), mutate);
-    expect(normalizeForeignExportJobRequestV1(foreign)).toBe(foreign);
-  });
-
-  it("leaves current-contract requests and non-records untouched", () => {
-    const pdf = pdfRequest();
-    const docx = docxRequest();
-    expect(normalizeForeignExportJobRequestV1(pdf)).toBe(pdf);
-    expect(normalizeForeignExportJobRequestV1(docx)).toBe(docx);
-    expect(normalizeForeignExportJobRequestV1(undefined)).toBeUndefined();
-    expect(normalizeForeignExportJobRequestV1([1])).toEqual([1]);
   });
 });
 

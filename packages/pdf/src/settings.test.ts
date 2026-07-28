@@ -277,7 +277,7 @@ describe("resolver: bindings, locale, labels (spec 012)", () => {
     const bound = applyBindings(
       design,
       [{ setting: "accentColor", targets: ["branding.accent", "tokens.colors.accent"] }],
-      { ...resolvePdfSettings(), accentColor: "#0052CC" }
+      resolvePdfSettings({ accentColor: "#0052CC" })
     );
     expect(bound.branding.accent).toBe("#0052CC");
     expect(bound.tokens.colors.accent).toBe("#0052CC");
@@ -302,7 +302,7 @@ describe("resolver: bindings, locale, labels (spec 012)", () => {
           { setting: "accentColor", targets: ["branding.accent"] },
           { setting: "page", targets: ["branding.accent"] },
         ],
-        { ...resolvePdfSettings(), accentColor: "#0052CC", page: "letter" }
+        resolvePdfSettings({ accentColor: "#0052CC", page: "letter" })
       )
     ).toThrow(/more than one binding/);
   });
@@ -396,6 +396,45 @@ describe("typstSettingsDict", () => {
     const dict = typstSettingsDict(resolved, { logoPath: "assets/atlcli-logo.png" });
     expect(dict).toContain('logo: "assets/atlcli-logo.png"');
     expect(dict).toContain('logo-alt: "Acme"');
+  });
+
+  it("emits validated imported-logo placement for the canonical template", () => {
+    const resolved = resolvePdfSettings({
+      logo: { bytes: pngBytes(), mediaType: "image/png", alt: "Acme" },
+    });
+    resolved.templateVisuals = {
+      assets: {
+        "asset.logo": {
+          vfsPath: "template-assets/logo.png",
+          reference: {
+            descriptor: "logo",
+            writer: "typst.logo",
+            decorative: false,
+            alt: "Acme",
+            placement: {
+              relativeTo: "margin",
+              fit: "contain",
+              x: "-1.94mm",
+              y: "-0.423mm",
+              width: "49.989mm",
+              height: "11.342mm",
+            },
+          },
+        },
+      },
+      decorations: [],
+    };
+
+    const dict = typstSettingsDict(resolved, {
+      logoPath: "template-assets/logo.png",
+    });
+    expect(dict).toContain("logo-placement: (");
+    expect(dict).toContain('relativeTo: "margin"');
+    expect(dict).toContain("x: -1.94mm");
+    expect(dict).toContain("y: -0.423mm");
+    expect(dict).toContain("width: 49.989mm");
+    expect(dict).toContain("height: 11.342mm");
+    expect(dict).toContain("rotation: 0");
   });
 
   it("keeps quote/backslash/#{ injection attempts literal in free-text fields", () => {

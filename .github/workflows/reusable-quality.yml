@@ -86,6 +86,13 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Install PDF proof tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes poppler-utils
+          pdftoppm -v
+          pdftotext -v
+
       # Tests resolve the gitignored, sha-pinned font tree directly. The old
       # serial quality job warmed it during typecheck; independent shards must
       # establish the same precondition themselves.

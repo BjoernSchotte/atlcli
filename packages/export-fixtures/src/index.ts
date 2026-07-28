@@ -35,6 +35,7 @@ export * from "./docx-quality-fixtures.js";
 export * from "./m1-corpus.js";
 export * from "./manuscript-fixtures.js";
 export * from "./large-export-corpus.js";
+export * from "./docx-template-intake-fixture.js";
 
 const MERMAID_SOURCE = "flowchart LR\n  Source --> Export\n  Export --> Document";
 

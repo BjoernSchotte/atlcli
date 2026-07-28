@@ -5,6 +5,7 @@ import {
   type CodeThemeId,
 } from "@atlcli/code-highlight/registry";
 import { existsSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { homedir } from "node:os";
 import { createHash, randomUUID } from "node:crypto";
@@ -48,7 +49,12 @@ import type {
   ExportJobRequestV1,
   ResourceEstimateV1,
 } from "@atlcli/export-jobs";
+import {
+  templatePackReference,
+  type PdfTemplateReferenceV1,
+} from "@atlcli/export-jobs";
 import { createFileExportJobPersistence } from "@atlcli/export-node";
+import { loadPdfTemplatePack } from "@atlcli/pdf";
 import type { ExportReport as DocxEngineReport } from "@atlcli/docx";
 import {
   ExportRequestError,
@@ -303,8 +309,8 @@ export async function handleExport(
 
 /**
  * `--format pdf` command path (spec 008 T3.2/T3.3). Format-aware validation:
- * PDF forbids `--template` (PDF templates arrive via a later Lane P release) and
- * `--engine` (PDF is its own isomorphic engine). Output goes to `--output` OR
+ * PDF accepts a verified `.wiki-pdf-template` pack through `--template` and
+ * forbids `--engine` (PDF is its own isomorphic engine). Output goes to `--output` OR
  * `--out-dir` (never both). All output — success or failure — is the single
  * `atlcli.export-report/1` schema via `emitReportOutcome`.
  */
@@ -329,12 +335,6 @@ async function handlePdfExport(
     }),
   });
 
-  if (hasTemplateFlag(flags)) {
-    return emitReportOutcome(
-      usage("--template is DOCX-only; PDF templates arrive via a later release. Drop --template with --format pdf."),
-      opts
-    );
-  }
   if (hasFlag(flags, "engine")) {
     return emitReportOutcome(usage("--engine is not used with --format pdf (PDF has a single built-in engine)."), opts);
   }
@@ -377,6 +377,43 @@ async function handlePdfExport(
     return emitReportOutcome(usage(error instanceof Error ? error.message : String(error)), opts);
   }
 
+  const persistence = createFileExportJobPersistence();
+  let template: PdfTemplateReferenceV1 | undefined;
+  const pdfTemplatePath = templateFlag(flags);
+  if (pdfTemplatePath) {
+    try {
+      if (!pdfTemplatePath.endsWith(".wiki-pdf-template")) {
+        throw new Error(
+          "PDF --template must point to a .wiki-pdf-template pack."
+        );
+      }
+      const packBytes = new Uint8Array(await readFile(resolve(pdfTemplatePath)));
+      // Full validation happens before profile resolution or client creation,
+      // so an invalid local pack can never trigger a Confluence request.
+      await loadPdfTemplatePack(packBytes);
+      const record = await persistence.templatePacks.put({
+        bytes: packBytes,
+        limits: {
+          maxObjectBytes: 64 * 1024 * 1024,
+          maxTotalBytes: 512 * 1024 * 1024,
+        },
+        now: Date.now(),
+      });
+      template = templatePackReference(
+        await persistence.templatePacks.verify(templatePackReference(record))
+      );
+    } catch (error) {
+      return emitReportOutcome(
+        usage(
+          `PDF template validation failed: ${
+            error instanceof Error ? error.message : String(error)
+          }`
+        ),
+        opts
+      );
+    }
+  }
+
   const { client, profile } = await getClient(flags, opts);
   const baseUrl = getConfluenceBaseUrl(profile);
 
@@ -394,6 +431,7 @@ async function handlePdfExport(
     strict: hasFlag(flags, "strict"),
     noCache: hasFlag(flags, "no-cache"),
     codeTheme,
+    ...(template ? { template } : {}),
     ...(exportedAt ? { exportedAt } : {}),
   });
   const { exportPdfAsOrdinaryJob } = await import("./export-pdf.js");
@@ -409,7 +447,7 @@ async function handlePdfExport(
     noCache: hasFlag(flags, "no-cache"),
     ...(exportedAt ? { exportedAt } : {}),
     opts,
-  }, jobRequest);
+  }, jobRequest, undefined, persistence);
   emitReportOutcome(outcome, opts);
 }
 
@@ -2019,9 +2057,11 @@ Arguments:
 
 Options:
   --format <fmt>      Output format: "docx" (default) or "pdf"
-  --template, -t      Optional DOCX template name or path. Without it, the
-                      TypeScript engine uses the bundled default (page title, export
-                      date, page body) and reports which template it used.
+  --template, -t      DOCX: optional template name/path. PDF: verified
+                      .wiki-pdf-template pack path. Without it, each format
+                      uses its bundled default; DOCX reports that fallback.
+                      DOCX template names follow the resolution order below;
+                      PDF requires a direct pack path.
                       The DOCX engine fills $scroll.* placeholders only — a
                       docxtpl/Jinja template ({{ … }}, {% … %}) exports with
                       those left as literal text and a warning note.
@@ -2063,7 +2103,8 @@ PDF Options (--format pdf):
   --no-cache                Do not persist downloaded assets across invocations
   --exported-at <ISO8601>   Fix the export timestamp (reproducible builds; also
                             honors the SOURCE_DATE_EPOCH env var)
-  (--template and --engine are not valid with --format pdf.)
+  --template, -t <pack>     Use a verified .wiki-pdf-template pack
+  (--engine is not valid with --format pdf.)
 
 Profile-free auth (CI, any format):
   --base-url <url>          Confluence base URL (or ATLCLI_BASE_URL); requires
@@ -2109,14 +2150,16 @@ JSON Output (--json / --report json):
   on stdout (sourcePages, outputDetails, issues, scope traceability, exitCode).
   Progress events go to stderr.
 
-Template Resolution:
-  Templates are resolved in order (first match wins):
+DOCX Template Resolution:
+  DOCX template names are resolved in order (first match wins):
   1. Direct file path (if exists)
   2. Project: .atlcli/templates/confluence/<name>.docx
   3. Profile: ~/.atlcli/profiles/<profile>/templates/confluence/<name>.docx
   4. Global: ~/.atlcli/templates/confluence/<name>.docx
   With no --template: the bundled default template
   (reported as the info note "template-default-used").
+  PDF --template requires a direct .wiki-pdf-template path; omission keeps
+  Editorial Indigo.
 
 Template Management:
   atlcli wiki export template list                    List available templates
@@ -2149,6 +2192,10 @@ Examples:
 
   # PDF: single page to a tagged, font-embedded PDF with a JSON report for CI
   atlcli wiki export 12345 --format pdf --output ./report.pdf --json
+
+  # PDF: apply a reviewed Word-derived design pack
+  atlcli wiki export 12345 --format pdf --template ./brand.wiki-pdf-template \\
+    --output ./brand-report.pdf --json
 
   atlcli wiki export 12345678 --template corporate --output ./report.docx
   atlcli wiki export "DOCS:Architecture" -t ./my-template.docx -o ./arch.docx

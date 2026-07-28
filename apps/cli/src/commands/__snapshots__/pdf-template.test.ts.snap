@@ -1,0 +1,397 @@
+// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+
+exports[`pdf-template CLI discovery and presentation freezes every primary journey state at 80/120 columns with and without color 1`] = `
+"=== first-import/80/plain ===
+Analyzed brand.docx
+
+2 design choices are ready to apply
+1 need your review
+1 Word features cannot be transferred
+
+No Word suggestions have been applied yet.
+The draft currently uses Editorial Indigo.
+
+Project: ./brand-pdf-template
+Next: atlcli pdf-template review ./brand-pdf-template
+
+=== first-import/80/color ===
+\x1B[33mAnalyzed brand.docx\x1B[0m
+
+2 design choices are ready to apply
+1 need your review
+1 Word features cannot be transferred
+
+No Word suggestions have been applied yet.
+The draft currently uses Editorial Indigo.
+
+Project: ./brand-pdf-template
+Next: atlcli pdf-template review ./brand-pdf-template
+
+=== first-import/120/plain ===
+Analyzed brand.docx
+
+2 design choices are ready to apply
+1 need your review
+1 Word features cannot be transferred
+
+No Word suggestions have been applied yet.
+The draft currently uses Editorial Indigo.
+
+Project: ./brand-pdf-template
+Next: atlcli pdf-template review ./brand-pdf-template
+
+=== first-import/120/color ===
+\x1B[33mAnalyzed brand.docx\x1B[0m
+
+2 design choices are ready to apply
+1 need your review
+1 Word features cannot be transferred
+
+No Word suggestions have been applied yet.
+The draft currently uses Editorial Indigo.
+
+Project: ./brand-pdf-template
+Next: atlcli pdf-template review ./brand-pdf-template
+
+=== resumable-status/80/plain ===
+OK Review required
+Ready 2 | Review 1 | Cannot transfer 1 | Blockers 0
+Preview: design review missing; compatibility proof missing
+
+Project: ./brand-pdf-template
+Next: atlcli pdf-template review ./brand-pdf-template
+
+=== resumable-status/80/color ===
+\x1B[33mOK Review required\x1B[0m
+Ready 2 | Review 1 | Cannot transfer 1 | Blockers 0
+Preview: design review missing; compatibility proof missing
+
+Project: ./brand-pdf-template
+Next: atlcli pdf-template review ./brand-pdf-template
+
+=== resumable-status/120/plain ===
+OK Review required
+Ready 2 | Review 1 | Cannot transfer 1 | Blockers 0
+Preview: design review missing; compatibility proof missing
+
+Project: ./brand-pdf-template
+Next: atlcli pdf-template review ./brand-pdf-template
+
+=== resumable-status/120/color ===
+\x1B[33mOK Review required\x1B[0m
+Ready 2 | Review 1 | Cannot transfer 1 | Blockers 0
+Preview: design review missing; compatibility proof missing
+
+Project: ./brand-pdf-template
+Next: atlcli pdf-template review ./brand-pdf-template
+
+=== ready-change-review/80/plain ===
+OK Review required
+Ready 2 | Review 1 | Cannot transfer 1 | Blockers 0
+Preview: design review missing; compatibility proof missing
+Changed: 1; unchanged or open: 2
+
+Project: ./brand-pdf-template
+Next: atlcli pdf-template review ./brand-pdf-template
+
+=== ready-change-review/80/color ===
+\x1B[33mOK Review required\x1B[0m
+Ready 2 | Review 1 | Cannot transfer 1 | Blockers 0
+Preview: design review missing; compatibility proof missing
+Changed: 1; unchanged or open: 2
+
+Project: ./brand-pdf-template
+Next: atlcli pdf-template review ./brand-pdf-template
+
+=== ready-change-review/120/plain ===
+OK Review required
+Ready 2 | Review 1 | Cannot transfer 1 | Blockers 0
+Preview: design review missing; compatibility proof missing
+Changed: 1; unchanged or open: 2
+
+Project: ./brand-pdf-template
+Next: atlcli pdf-template review ./brand-pdf-template
+
+=== ready-change-review/120/color ===
+\x1B[33mOK Review required\x1B[0m
+Ready 2 | Review 1 | Cannot transfer 1 | Blockers 0
+Preview: design review missing; compatibility proof missing
+Changed: 1; unchanged or open: 2
+
+Project: ./brand-pdf-template
+Next: atlcli pdf-template review ./brand-pdf-template
+
+=== uncertain-review/80/plain ===
+OK Review required
+Ready 2 | Review 1 | Cannot transfer 1 | Blockers 0
+Preview: design review missing; compatibility proof missing
+
+WARNING: One design choice needs confirmation before it can be applied.
+Try: atlcli pdf-template review ./brand-pdf-template
+
+Project: ./brand-pdf-template
+Next: atlcli pdf-template review ./brand-pdf-template
+
+=== uncertain-review/80/color ===
+\x1B[33mOK Review required\x1B[0m
+Ready 2 | Review 1 | Cannot transfer 1 | Blockers 0
+Preview: design review missing; compatibility proof missing
+
+WARNING: One design choice needs confirmation before it can be applied.
+Try: atlcli pdf-template review ./brand-pdf-template
+
+Project: ./brand-pdf-template
+Next: atlcli pdf-template review ./brand-pdf-template
+
+=== uncertain-review/120/plain ===
+OK Review required
+Ready 2 | Review 1 | Cannot transfer 1 | Blockers 0
+Preview: design review missing; compatibility proof missing
+
+WARNING: One design choice needs confirmation before it can be applied.
+Try: atlcli pdf-template review ./brand-pdf-template
+
+Project: ./brand-pdf-template
+Next: atlcli pdf-template review ./brand-pdf-template
+
+=== uncertain-review/120/color ===
+\x1B[33mOK Review required\x1B[0m
+Ready 2 | Review 1 | Cannot transfer 1 | Blockers 0
+Preview: design review missing; compatibility proof missing
+
+WARNING: One design choice needs confirmation before it can be applied.
+Try: atlcli pdf-template review ./brand-pdf-template
+
+Project: ./brand-pdf-template
+Next: atlcli pdf-template review ./brand-pdf-template
+
+=== asset-review/80/plain ===
+OK Review required
+Ready 2 | Review 1 | Cannot transfer 1 | Blockers 0
+Preview: design review missing; compatibility proof missing
+
+WARNING: Confirm the graphic role, accessibility, and usage rights.
+Try: atlcli pdf-template review ./brand-pdf-template
+
+Project: ./brand-pdf-template
+Next: atlcli pdf-template review ./brand-pdf-template
+
+=== asset-review/80/color ===
+\x1B[33mOK Review required\x1B[0m
+Ready 2 | Review 1 | Cannot transfer 1 | Blockers 0
+Preview: design review missing; compatibility proof missing
+
+WARNING: Confirm the graphic role, accessibility, and usage rights.
+Try: atlcli pdf-template review ./brand-pdf-template
+
+Project: ./brand-pdf-template
+Next: atlcli pdf-template review ./brand-pdf-template
+
+=== asset-review/120/plain ===
+OK Review required
+Ready 2 | Review 1 | Cannot transfer 1 | Blockers 0
+Preview: design review missing; compatibility proof missing
+
+WARNING: Confirm the graphic role, accessibility, and usage rights.
+Try: atlcli pdf-template review ./brand-pdf-template
+
+Project: ./brand-pdf-template
+Next: atlcli pdf-template review ./brand-pdf-template
+
+=== asset-review/120/color ===
+\x1B[33mOK Review required\x1B[0m
+Ready 2 | Review 1 | Cannot transfer 1 | Blockers 0
+Preview: design review missing; compatibility proof missing
+
+WARNING: Confirm the graphic role, accessibility, and usage rights.
+Try: atlcli pdf-template review ./brand-pdf-template
+
+Project: ./brand-pdf-template
+Next: atlcli pdf-template review ./brand-pdf-template
+
+=== source-change-recovery/80/plain ===
+OK Source changed
+Ready 2 | Review 1 | Cannot transfer 1 | Blockers 0
+Preview: design review missing; compatibility proof missing
+
+WARNING: The Word source changed. Reanalyze it before continuing.
+Try: atlcli pdf-template review ./brand-pdf-template
+
+Project: ./brand-pdf-template
+Next: atlcli pdf-template reanalyze brand.docx --dir ./brand-pdf-template
+
+=== source-change-recovery/80/color ===
+\x1B[31mOK Source changed\x1B[0m
+Ready 2 | Review 1 | Cannot transfer 1 | Blockers 0
+Preview: design review missing; compatibility proof missing
+
+WARNING: The Word source changed. Reanalyze it before continuing.
+Try: atlcli pdf-template review ./brand-pdf-template
+
+Project: ./brand-pdf-template
+Next: atlcli pdf-template reanalyze brand.docx --dir ./brand-pdf-template
+
+=== source-change-recovery/120/plain ===
+OK Source changed
+Ready 2 | Review 1 | Cannot transfer 1 | Blockers 0
+Preview: design review missing; compatibility proof missing
+
+WARNING: The Word source changed. Reanalyze it before continuing.
+Try: atlcli pdf-template review ./brand-pdf-template
+
+Project: ./brand-pdf-template
+Next: atlcli pdf-template reanalyze brand.docx --dir ./brand-pdf-template
+
+=== source-change-recovery/120/color ===
+\x1B[31mOK Source changed\x1B[0m
+Ready 2 | Review 1 | Cannot transfer 1 | Blockers 0
+Preview: design review missing; compatibility proof missing
+
+WARNING: The Word source changed. Reanalyze it before continuing.
+Try: atlcli pdf-template review ./brand-pdf-template
+
+Project: ./brand-pdf-template
+Next: atlcli pdf-template reanalyze brand.docx --dir ./brand-pdf-template
+
+=== blocked-build/80/plain ===
+Review items remain. The active draft was retained.
+Recover: atlcli pdf-template review ./brand-pdf-template
+
+=== blocked-build/80/color ===
+\x1B[31mReview items remain. The active draft was retained.\x1B[0m
+Recover: atlcli pdf-template review ./brand-pdf-template
+
+=== blocked-build/120/plain ===
+Review items remain. The active draft was retained.
+Recover: atlcli pdf-template review ./brand-pdf-template
+
+=== blocked-build/120/color ===
+\x1B[31mReview items remain. The active draft was retained.\x1B[0m
+Recover: atlcli pdf-template review ./brand-pdf-template
+
+=== successful-preview/80/plain ===
+OK Ready to build
+Ready 2 | Review 1 | Cannot transfer 1 | Blockers 0
+Preview: design review ready; compatibility proof ready
+
+design-review: ./proof/design-review.pdf
+compatibility-proof: ./proof/compatibility-proof.pdf
+
+Project: ./brand-pdf-template
+Next: atlcli pdf-template build ./brand-pdf-template
+
+=== successful-preview/80/color ===
+\x1B[32mOK Ready to build\x1B[0m
+Ready 2 | Review 1 | Cannot transfer 1 | Blockers 0
+Preview: design review ready; compatibility proof ready
+
+design-review: ./proof/design-review.pdf
+compatibility-proof: ./proof/compatibility-proof.pdf
+
+Project: ./brand-pdf-template
+Next: atlcli pdf-template build ./brand-pdf-template
+
+=== successful-preview/120/plain ===
+OK Ready to build
+Ready 2 | Review 1 | Cannot transfer 1 | Blockers 0
+Preview: design review ready; compatibility proof ready
+
+design-review: ./proof/design-review.pdf
+compatibility-proof: ./proof/compatibility-proof.pdf
+
+Project: ./brand-pdf-template
+Next: atlcli pdf-template build ./brand-pdf-template
+
+=== successful-preview/120/color ===
+\x1B[32mOK Ready to build\x1B[0m
+Ready 2 | Review 1 | Cannot transfer 1 | Blockers 0
+Preview: design review ready; compatibility proof ready
+
+design-review: ./proof/design-review.pdf
+compatibility-proof: ./proof/compatibility-proof.pdf
+
+Project: ./brand-pdf-template
+Next: atlcli pdf-template build ./brand-pdf-template
+
+=== successful-build/80/plain ===
+OK Built
+Ready 2 | Review 1 | Cannot transfer 1 | Blockers 0
+Preview: design review ready; compatibility proof ready
+
+archive: ./brand.wiki-pdf-template
+
+Project: ./brand-pdf-template
+Next: atlcli wiki export 123 --format pdf --template ./brand.wiki-pdf-template
+--output ./brand.pdf
+
+=== successful-build/80/color ===
+\x1B[32mOK Built\x1B[0m
+Ready 2 | Review 1 | Cannot transfer 1 | Blockers 0
+Preview: design review ready; compatibility proof ready
+
+archive: ./brand.wiki-pdf-template
+
+Project: ./brand-pdf-template
+Next: atlcli wiki export 123 --format pdf --template ./brand.wiki-pdf-template
+--output ./brand.pdf
+
+=== successful-build/120/plain ===
+OK Built
+Ready 2 | Review 1 | Cannot transfer 1 | Blockers 0
+Preview: design review ready; compatibility proof ready
+
+archive: ./brand.wiki-pdf-template
+
+Project: ./brand-pdf-template
+Next: atlcli wiki export 123 --format pdf --template ./brand.wiki-pdf-template --output ./brand.pdf
+
+=== successful-build/120/color ===
+\x1B[32mOK Built\x1B[0m
+Ready 2 | Review 1 | Cannot transfer 1 | Blockers 0
+Preview: design review ready; compatibility proof ready
+
+archive: ./brand.wiki-pdf-template
+
+Project: ./brand-pdf-template
+Next: atlcli wiki export 123 --format pdf --template ./brand.wiki-pdf-template --output ./brand.pdf
+
+=== undo/80/plain ===
+OK Ready to preview
+Ready 2 | Review 1 | Cannot transfer 1 | Blockers 0
+Preview: design review missing; compatibility proof missing
+Changed: 1; unchanged or open: 0
+
+Project: ./brand-pdf-template
+Next: atlcli pdf-template preview ./brand-pdf-template
+Undo: atlcli pdf-template undo ./brand-pdf-template
+
+=== undo/80/color ===
+\x1B[32mOK Ready to preview\x1B[0m
+Ready 2 | Review 1 | Cannot transfer 1 | Blockers 0
+Preview: design review missing; compatibility proof missing
+Changed: 1; unchanged or open: 0
+
+Project: ./brand-pdf-template
+Next: atlcli pdf-template preview ./brand-pdf-template
+Undo: atlcli pdf-template undo ./brand-pdf-template
+
+=== undo/120/plain ===
+OK Ready to preview
+Ready 2 | Review 1 | Cannot transfer 1 | Blockers 0
+Preview: design review missing; compatibility proof missing
+Changed: 1; unchanged or open: 0
+
+Project: ./brand-pdf-template
+Next: atlcli pdf-template preview ./brand-pdf-template
+Undo: atlcli pdf-template undo ./brand-pdf-template
+
+=== undo/120/color ===
+\x1B[32mOK Ready to preview\x1B[0m
+Ready 2 | Review 1 | Cannot transfer 1 | Blockers 0
+Preview: design review missing; compatibility proof missing
+Changed: 1; unchanged or open: 0
+
+Project: ./brand-pdf-template
+Next: atlcli pdf-template preview ./brand-pdf-template
+Undo: atlcli pdf-template undo ./brand-pdf-template"
+`;

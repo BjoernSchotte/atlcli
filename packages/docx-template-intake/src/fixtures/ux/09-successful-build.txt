@@ -1,0 +1,7 @@
+Scenario: successful-build
+Stage: built
+Message-Code: ATLCLI_PDF_TEMPLATE_BUILD_COMPLETE
+What happened: The current design was validated, rendered, and saved as an immutable PDF template pack.
+Current state: The pack is ready for a PDF export.
+Retained: The project history, source facts, decisions, accepted assets, and proof artifacts were retained.
+Next: atlcli wiki export 12345 --format pdf --template ./brand.wiki-pdf-template --output ./example.pdf

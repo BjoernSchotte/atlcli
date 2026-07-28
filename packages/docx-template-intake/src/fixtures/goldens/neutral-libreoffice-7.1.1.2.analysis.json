@@ -1,0 +1,250 @@
+{
+  "archive": {
+    "compressedBytes": 35186,
+    "entries": 24,
+    "largestEntryBytes": 351828,
+    "uncompressedBytes": 421891
+  },
+  "features": {
+    "alternateContentGroups": 0,
+    "backgrounds": 0,
+    "externalRelationships": 0,
+    "footers": 2,
+    "headers": 4,
+    "internalRelationships": 19,
+    "pageBorders": 2,
+    "sections": 2,
+    "styles": 172,
+    "themeColorSlots": 12
+  },
+  "fixture": "neutral-libreoffice-7.1.1.2.docx",
+  "raster": [
+    {
+      "bytes": 15345,
+      "format": "jpeg",
+      "height": 420,
+      "path": "word/media/image1.jpeg",
+      "pixels": 302400,
+      "width": 720
+    },
+    {
+      "bytes": 839,
+      "format": "png",
+      "height": 180,
+      "path": "word/media/image2.png",
+      "pixels": 115200,
+      "width": 640
+    }
+  ],
+  "schema": "atlcli.docx-template-fixture-analysis/1",
+  "sha256": "688e49f1cb7d0acb31a3c5c4398fbcba14675c6785a0d1e9a75114fabdcdd466",
+  "svg": [],
+  "xml": {
+    "attributes": 15474,
+    "bytes": 405707,
+    "characters": 405273,
+    "elements": 10547,
+    "maxAttributeCharacters": 92,
+    "maxDepth": 12,
+    "parts": [
+      {
+        "attributes": 13,
+        "bytes": 727,
+        "characters": 727,
+        "elements": 5,
+        "maxAttributeCharacters": 92,
+        "maxDepth": 2,
+        "path": "_rels/.rels"
+      },
+      {
+        "attributes": 55,
+        "bytes": 3107,
+        "characters": 3107,
+        "elements": 28,
+        "maxAttributeCharacters": 80,
+        "maxDepth": 2,
+        "path": "[Content_Types].xml"
+      },
+      {
+        "attributes": 4,
+        "bytes": 279,
+        "characters": 279,
+        "elements": 2,
+        "maxAttributeCharacters": 82,
+        "maxDepth": 2,
+        "path": "customXml/_rels/item1.xml.rels"
+      },
+      {
+        "attributes": 4,
+        "bytes": 244,
+        "characters": 244,
+        "elements": 1,
+        "maxAttributeCharacters": 66,
+        "maxDepth": 1,
+        "path": "customXml/item1.xml"
+      },
+      {
+        "attributes": 3,
+        "bytes": 336,
+        "characters": 336,
+        "elements": 3,
+        "maxAttributeCharacters": 66,
+        "maxDepth": 3,
+        "path": "customXml/itemProps1.xml"
+      },
+      {
+        "attributes": 2,
+        "bytes": 582,
+        "characters": 582,
+        "elements": 10,
+        "maxAttributeCharacters": 73,
+        "maxDepth": 2,
+        "path": "docProps/app.xml"
+      },
+      {
+        "attributes": 7,
+        "bytes": 856,
+        "characters": 856,
+        "elements": 10,
+        "maxAttributeCharacters": 71,
+        "maxDepth": 2,
+        "path": "docProps/core.xml"
+      },
+      {
+        "attributes": 2,
+        "bytes": 241,
+        "characters": 241,
+        "elements": 1,
+        "maxAttributeCharacters": 71,
+        "maxDepth": 1,
+        "path": "docProps/custom.xml"
+      },
+      {
+        "attributes": 40,
+        "bytes": 1843,
+        "characters": 1843,
+        "elements": 14,
+        "maxAttributeCharacters": 77,
+        "maxDepth": 2,
+        "path": "word/_rels/document.xml.rels"
+      },
+      {
+        "attributes": 4,
+        "bytes": 272,
+        "characters": 272,
+        "elements": 2,
+        "maxAttributeCharacters": 73,
+        "maxDepth": 2,
+        "path": "word/_rels/header3.xml.rels"
+      },
+      {
+        "attributes": 268,
+        "bytes": 8566,
+        "characters": 8502,
+        "elements": 275,
+        "maxAttributeCharacters": 70,
+        "maxDepth": 12,
+        "path": "word/document.xml"
+      },
+      {
+        "attributes": 63,
+        "bytes": 1898,
+        "characters": 1898,
+        "elements": 52,
+        "maxAttributeCharacters": 67,
+        "maxDepth": 3,
+        "path": "word/fontTable.xml"
+      },
+      {
+        "attributes": 13,
+        "bytes": 932,
+        "characters": 932,
+        "elements": 7,
+        "maxAttributeCharacters": 70,
+        "maxDepth": 4,
+        "path": "word/footer1.xml"
+      },
+      {
+        "attributes": 17,
+        "bytes": 1039,
+        "characters": 1039,
+        "elements": 12,
+        "maxAttributeCharacters": 70,
+        "maxDepth": 5,
+        "path": "word/footer2.xml"
+      },
+      {
+        "attributes": 16,
+        "bytes": 1034,
+        "characters": 1034,
+        "elements": 12,
+        "maxAttributeCharacters": 70,
+        "maxDepth": 5,
+        "path": "word/header1.xml"
+      },
+      {
+        "attributes": 16,
+        "bytes": 1030,
+        "characters": 1030,
+        "elements": 12,
+        "maxAttributeCharacters": 70,
+        "maxDepth": 5,
+        "path": "word/header2.xml"
+      },
+      {
+        "attributes": 51,
+        "bytes": 2234,
+        "characters": 2234,
+        "elements": 44,
+        "maxAttributeCharacters": 70,
+        "maxDepth": 11,
+        "path": "word/header3.xml"
+      },
+      {
+        "attributes": 16,
+        "bytes": 1034,
+        "characters": 1034,
+        "elements": 12,
+        "maxAttributeCharacters": 70,
+        "maxDepth": 5,
+        "path": "word/header4.xml"
+      },
+      {
+        "attributes": 616,
+        "bytes": 15755,
+        "characters": 15749,
+        "elements": 604,
+        "maxAttributeCharacters": 67,
+        "maxDepth": 6,
+        "path": "word/numbering.xml"
+      },
+      {
+        "attributes": 22,
+        "bytes": 949,
+        "characters": 949,
+        "elements": 15,
+        "maxAttributeCharacters": 60,
+        "maxDepth": 3,
+        "path": "word/settings.xml"
+      },
+      {
+        "attributes": 13969,
+        "bytes": 351828,
+        "characters": 351524,
+        "elements": 9200,
+        "maxAttributeCharacters": 60,
+        "maxDepth": 6,
+        "path": "word/styles.xml"
+      },
+      {
+        "attributes": 273,
+        "bytes": 10921,
+        "characters": 10861,
+        "elements": 226,
+        "maxAttributeCharacters": 53,
+        "maxDepth": 9,
+        "path": "word/theme/theme1.xml"
+      }
+    ]
+  }
+}

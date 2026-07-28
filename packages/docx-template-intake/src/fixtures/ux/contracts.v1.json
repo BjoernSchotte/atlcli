@@ -1,0 +1,25 @@
+{
+  "apiNames": {
+    "canonicalJson": "canonicalJson",
+    "importView": "TemplateImportViewV1",
+    "journeyAction": "TemplateImportActionV1",
+    "journeyStage": "TemplateImportStage",
+    "messageCode": "TemplateIntakeMessageCode",
+    "projectRepository": "TemplateProjectRepository"
+  },
+  "canonicalJson": {
+    "arrays": "semantic-order",
+    "encoding": "utf-8",
+    "newline": "lf-final",
+    "numbers": "json-finite",
+    "objects": "recursive-key-order"
+  },
+  "schema": "atlcli.pdf-template-ux-contracts/1",
+  "schemaIdentifiers": {
+    "analysis": "atlcli.docx-template-analysis/1",
+    "authoring": "atlcli.pdf-template-authoring/1",
+    "cliResult": "atlcli.pdf-template-result/1",
+    "importView": "atlcli.pdf-template-import-view/1",
+    "progress": "atlcli.pdf-template-progress/1"
+  }
+}

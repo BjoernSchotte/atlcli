@@ -568,6 +568,8 @@ console.log("EXPORT_NODE_SMOKE_OK", "pdfPages=" + inspection.pageCount);
 export interface ScaffoldOptions {
   /** dependency name → spec (file:… tarball or directory). */
   dependencies: Record<string, string>;
+  /** Optional wider transitive override map for file-linked package dev edges. */
+  overrides?: Record<string, string>;
   /** Extra devDependencies (registry specs), e.g. typescript/@types/node. */
   devDependencies?: Record<string, string>;
   /** tsconfig moduleResolution — "bundler" (Bun/Vite-style) or "nodenext". */
@@ -579,6 +581,7 @@ export function scaffoldConsumer(dir: string, options: ScaffoldOptions): void {
   rmSync(dir, { recursive: true, force: true });
   mkdirSync(dir, { recursive: true });
 
+  const overrides = options.overrides ?? options.dependencies;
   const manifest = {
     name: "atlcli-smoke-consumer",
     private: true,
@@ -589,8 +592,8 @@ export function scaffoldConsumer(dir: string, options: ScaffoldOptions): void {
     // `overrides` (bun + npm) and `pnpm.overrides` pin every transitive
     // `@atlcli/*` range to the same local artifacts, so internal ranges like
     // "@atlcli/core": "0.6.0" can never hit a registry (where they do not exist).
-    overrides: options.dependencies,
-    pnpm: { overrides: options.dependencies },
+    overrides,
+    pnpm: { overrides },
   };
   writeFileSync(join(dir, "package.json"), `${JSON.stringify(manifest, null, 2)}\n`);
 

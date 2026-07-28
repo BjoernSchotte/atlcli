@@ -1,0 +1,7 @@
+Scenario: resumable-status
+Stage: review-required
+Message-Code: ATLCLI_PDF_TEMPLATE_STATUS_RESUMED
+What happened: The existing template project was opened without changing it.
+Current state: Review is still required before a preview can represent the intended design.
+Retained: All prior decisions, undecided suggestions, source facts, and the active draft were retained.
+Next: atlcli pdf-template review ./brand-pdf-template

@@ -211,7 +211,7 @@ describe("chapter running head (real compiler)", () => {
   }, 120_000);
 
   // -------------------------------------------------------------------------
-  // (a) the default path is untouched
+  // (a) the default path is explicit and historical sparse input is adapted
   // -------------------------------------------------------------------------
 
   it("the default design emits the historical title header and no chapter query", () => {
@@ -219,24 +219,26 @@ describe("chapter running head (real compiler)", () => {
     expect(source).toContain("grid(columns: (1fr, auto), meta.title, meta.space)");
     expect(source).not.toContain(CHAPTER_QUERY);
     expect(source).not.toContain("chapter-head");
-    // The built-in ships without a mode at all — absent means "title".
-    expect(BUILTIN_PDF_TEMPLATE_MANIFEST.design!.features.header.mode).toBeUndefined();
+    expect(BUILTIN_PDF_TEMPLATE_MANIFEST.design!.features.header.mode).toBe("title");
   });
 
-  it("an explicit title mode generates source identical to an absent mode", () => {
-    // Proves the new field cannot perturb the default path: the pinned
-    // pre-migration digest in template-migration-parity.test.ts is rendered from
-    // exactly this source.
+  it("the explicit title mode generates source identical to the default", () => {
     expect(createAtlcliTypstTemplate(manifestWithHeaderMode("title").design!)).toBe(
-      createAtlcliTypstTemplate(manifestWithHeaderMode(undefined).design!)
+      createAtlcliTypstTemplate()
     );
+  });
+
+  it("rejects an absent mode at the strict renderer boundary", () => {
+    expect(() =>
+      createAtlcliTypstTemplate(manifestWithHeaderMode(undefined).design!)
+    ).toThrow(/features\.header\.mode/);
   });
 
   it("custom mode resolves like title mode (an explicit headerText still wins)", () => {
     // `custom` is declarative: `headerText` already outranks the mode in every
     // branch, so it must not introduce a second, divergent code path.
     expect(createAtlcliTypstTemplate(manifestWithHeaderMode("custom").design!)).toBe(
-      createAtlcliTypstTemplate(manifestWithHeaderMode(undefined).design!)
+      createAtlcliTypstTemplate(manifestWithHeaderMode("title").design!)
     );
   });
 
