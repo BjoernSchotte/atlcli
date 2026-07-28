@@ -52,10 +52,10 @@ describe.skipIf(!enabled)("consumer smoke (spec 009)", () => {
   );
 
   it(
-    "Vite tarball build: ?url wasm/font imports resolve to hashed assets and the production chunk compiles a real PDF",
+    "Vite tarball build: browser assets resolve and the production chunk compiles real DOCX + PDF exports",
     async () => {
       const { viteVersion, smokes } = await runViteSmoke();
-      console.log(`vite ${viteVersion}: ${smokes.pdf}`);
+      console.log(`vite ${viteVersion}: ${smokes.docx} | ${smokes.pdf}`);
     },
     300000,
   );

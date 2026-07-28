@@ -44,6 +44,7 @@ describe("browser-build gate (spec 001 task 6)", () => {
       "packages/docx/src/index.browser.ts",
       "packages/docx/src/internal.ts",
       "packages/docx/src/browser-runtime.ts",
+      "packages/docx/src/browser-entry.ts",
       "packages/diagram/src/index.ts",
       "packages/pdf/src/index.browser.ts",
       "packages/pdf/src/template-authoring-runtime.ts",

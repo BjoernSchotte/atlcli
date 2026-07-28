@@ -13,9 +13,11 @@
  * notes) for the shape-parity gate.
  */
 import { validatePdfOutput } from "@atlcli/pdf/browser";
-import { runExport } from "@atlcli/docx/browser";
-import { memoryTemplateSource } from "@atlcli/docx/browser-runtime";
-import { unzipDocx } from "@atlcli/docx/scan";
+import {
+  memoryTemplateSource,
+  runExport,
+  unzipDocx,
+} from "@atlcli/docx/browser-entry";
 import {
   countTables,
   countUnknown,

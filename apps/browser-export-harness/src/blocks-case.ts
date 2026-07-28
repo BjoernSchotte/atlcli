@@ -12,9 +12,11 @@
  * Emits a PDF sha256 digest + report projection for the shape-parity gate.
  */
 import { validatePdfOutput, type PdfExportReport } from "@atlcli/pdf/browser";
-import { runExport } from "@atlcli/docx/browser";
-import { memoryTemplateSource } from "@atlcli/docx/browser-runtime";
-import { unzipDocx } from "@atlcli/docx/scan";
+import {
+  memoryTemplateSource,
+  runExport,
+  unzipDocx,
+} from "@atlcli/docx/browser-entry";
 import {
   BLOCKS_ALL_FIELDS,
   BLOCKS_DETAILS,
@@ -52,7 +54,10 @@ export interface BlocksCaseResult {
   digests: Record<string, string>;
 }
 
-async function runDocx(): Promise<{ report: import("@atlcli/docx/browser").ExportReport; bytes: Uint8Array }> {
+async function runDocx(): Promise<{
+  report: import("@atlcli/docx/browser-entry").ExportReport;
+  bytes: Uint8Array;
+}> {
   const output = new MemoryOutputSink();
   const report = await runExport(
     {

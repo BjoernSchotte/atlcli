@@ -38,6 +38,16 @@
 - reaches `@atlcli/export-macros` (frozen): MacroResolutionOptions
 - reachable-but-unexported gaps: none
 
+### Entry point `./browser-entry` — stable
+
+- exported symbols (47): ArchiveBudget, AssetFetcher, AssetRef, CanvasRasterizerTiming, CanvasSvgRasterizerOptions, CurrentUser, DocxByteHelpers, DocxErrorKind, DocxExportRuntimePreparation, DocxRenderError, ExportEnv, ExportInput, ExportReport, ExportResult, ExportTimings, HostCallContext, IncludeLookupOutcome, IncludePageDetails, IncludePageRef, NumberingAllocator, NumberingBase, NumberingXml, OutputSink, PageOwner, PlaceholderStatus, PrepareDocxExportRuntimeOptions, PreparedDocxExportV1, PreparedDocxRenderStateV1, RenderPreparedDocxExportInput, ResolveDeps, RunExportInput, ScanHit, ScanResult, SvgRasterizer, TemplateMeta, TemplateSource, canvasSvgRasterizer, exportDocx, installDocxBrowserRuntime, memoryTemplateSource, prepareDocxCodeHighlighting, prepareDocxExport, prepareDocxExportRuntime, renderPreparedDocxExport, runExport, scanTemplate, unzipDocx
+- same-package closure references: 32
+- reaches `@atlcli/code-highlight` (0.x — frozen-by-closure): CodeThemeId
+- reaches `@atlcli/confluence` (frozen): AdfMediaAttachment, ConfluencePageDetails, ConfluenceSpace, ExportBlock, ExportNote, ExportPageSource, ExportProgressCallback, InlineComment
+- reaches `@atlcli/diagram` (0.x — frozen-by-closure): DiagramTheme
+- reaches `@atlcli/export-macros` (frozen): MacroResolutionOptions
+- reachable-but-unexported gaps: none
+
 ### Entry point `./browser-runtime` — experimental
 
 - exported symbols (10): CanvasRasterizerTiming, CanvasSvgRasterizerOptions, DocxByteHelpers, DocxExportRuntimePreparation, PrepareDocxExportRuntimeOptions, canvasSvgRasterizer, installDocxBrowserRuntime, memoryTemplateSource, prepareDocxCodeHighlighting, prepareDocxExportRuntime

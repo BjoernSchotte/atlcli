@@ -9,7 +9,10 @@ browser and under Node/Bun; hosts inject template/asset/output seams via
   - `.` — `runExport`/`exportDocx`, the `ExportEnv` seams, placeholder
     classification, image handling, plus the Node filesystem adapters
     (`fileTemplateSource`, `fileOutputSink`, `resvgSvgRasterizer`).
-  - `./browser` — the same engine without Node adapters.
+  - `./browser-entry` — canonical browser-intent entry: installs the runtime
+    before the engine evaluates and exposes preparation, export, template-scan,
+    memory-template, and canvas-rasterizer capabilities in one graph.
+  - `./browser` — compatibility engine barrel without Node adapters.
   - `./browser-runtime` — browser bootstrap (installs the byte helpers;
     import before PizZip/docxtemplater run in a browser host), the
     JavaScript-only Shiki engine, and the runtime-preparation API.
@@ -37,19 +40,20 @@ Versioning: [package versioning](https://atlcli.sh/reference/versioning/).
 
 ## Intent-time runtime preparation
 
-Browser entrypoints must import the runtime before any static DOCX dependency:
+Browser hosts should load the ordered entry only after explicit DOCX intent:
 
 ```ts
-import "@atlcli/docx/browser-runtime";
+const {
+  prepareDocxExportRuntime,
+  runExport,
+} = await import("@atlcli/docx/browser-entry");
 ```
 
-After the user has expressed DOCX intent, a host can warm the complete
-first-render runtime:
+The entry installs the byte runtime before PizZip/docxtemplater evaluate, so
+hosts do not maintain their own sequential runtime-to-engine chain. They can
+then warm the complete first-render runtime:
 
 ```ts
-const { prepareDocxExportRuntime } =
-  await import("@atlcli/docx/browser-runtime");
-
 const preparation = await prepareDocxExportRuntime(blocks, {
   codeTheme: "github-light",
   preloadCodeFont: true,
@@ -68,6 +72,9 @@ modal, Word-template selection, or explicit export action keeps ordinary page
 loads untouched. The returned timings cover only intent-to-ready preparation;
 `ExportReport.timings` still describes render work. Browser builds use Shiki's
 JavaScript RegExp engine; Node/Bun imports use Oniguruma.
+
+`./browser` and `./browser-runtime` remain available for compatibility and
+specialized bundles. New intent hosts should use `./browser-entry`.
 
 ## Queued export engine seam
 

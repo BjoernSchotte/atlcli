@@ -12,9 +12,11 @@
  * Emits a PDF sha256 digest + report projection for the shape-parity gate.
  */
 import { validatePdfOutput } from "@atlcli/pdf/browser";
-import { runExport } from "@atlcli/docx/browser";
-import { memoryTemplateSource } from "@atlcli/docx/browser-runtime";
-import { unzipDocx } from "@atlcli/docx/scan";
+import {
+  memoryTemplateSource,
+  runExport,
+  unzipDocx,
+} from "@atlcli/docx/browser-entry";
 import {
   composeScopeDocument,
   DOCX_TEMPLATE_BYTES,

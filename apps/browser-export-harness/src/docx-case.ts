@@ -1,9 +1,9 @@
 import {
   canvasSvgRasterizer,
   memoryTemplateSource,
-} from "@atlcli/docx/browser-runtime";
-import { runExport } from "@atlcli/docx/browser";
-import { unzipDocx } from "@atlcli/docx/scan";
+  runExport,
+  unzipDocx,
+} from "@atlcli/docx/browser-entry";
 import {
   DOCX_DETAILS,
   DOCX_EXPECTED,

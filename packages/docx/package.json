@@ -11,8 +11,10 @@
   "sideEffects": [
     "./src/browser-runtime-bootstrap.ts",
     "./src/browser-runtime.ts",
+    "./src/browser-entry.ts",
     "./dist/browser-runtime-bootstrap.js",
-    "./dist/browser-runtime.js"
+    "./dist/browser-runtime.js",
+    "./dist/browser-entry.js"
   ],
   "files": [
     "dist",
@@ -44,6 +46,11 @@
       "development": "./src/browser-runtime.ts",
       "types": "./dist/browser-runtime.d.ts",
       "default": "./dist/browser-runtime.js"
+    },
+    "./browser-entry": {
+      "development": "./src/browser-entry.ts",
+      "types": "./dist/browser-entry.d.ts",
+      "default": "./dist/browser-entry.js"
     },
     "./vite": {
       "development": "./src/vite.ts",

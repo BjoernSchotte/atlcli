@@ -81,7 +81,7 @@ export default defineConfig({
     // Spec 004: PizZip / docxtemplater reference the Node `Buffer.*` globals,
     // which are undefined in the MV3 panel and rejected by the output-scan gate.
     // Rewrite those member expressions to the browser-safe helpers installed by
-    // `@atlcli/docx/browser-runtime` (a real shim, not a scan suppression). Bare
+    // `@atlcli/docx/browser-entry` (a real shim, not a scan suppression). Bare
     // `typeof Buffer` (not a member access) is left alone — it correctly reads
     // as "undefined", keeping the libs on their Uint8Array feature-branch.
     define: { ...DOCX_BROWSER_VITE_DEFINES },

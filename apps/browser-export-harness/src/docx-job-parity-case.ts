@@ -2,10 +2,10 @@ import {
   exportDocx,
   prepareDocxExport,
   renderPreparedDocxExport,
+  canvasSvgRasterizer,
   type ExportInput,
   type SvgRasterizer,
-} from "@atlcli/docx/browser";
-import { canvasSvgRasterizer } from "@atlcli/docx/browser-runtime";
+} from "@atlcli/docx/browser-entry";
 import type {
   DocxExportJobRequestV1,
   ExportJobExecutionContext,

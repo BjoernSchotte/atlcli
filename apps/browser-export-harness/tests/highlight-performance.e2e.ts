@@ -6,6 +6,10 @@ import type {
   HighlightBenchmarkResult,
   RuntimePreparationBenchmarkResult,
 } from "../src/highlight-benchmark.js";
+import type {
+  DocxEntryTopologyMode,
+  DocxEntryTopologyResult,
+} from "../src/topology.js";
 
 const RESULT_DIR = resolve(
   dirname(fileURLToPath(import.meta.url)),
@@ -60,6 +64,115 @@ async function runRuntimePreparationInFreshContext(
         }));
       return { benchmark, resources };
     }, preloadCodeFont);
+  } finally {
+    await context.close();
+  }
+}
+
+interface EntryTopologyMeasurement {
+  result: DocxEntryTopologyResult;
+  beforeIntentResources: HighlightResourceTiming[];
+  resources: HighlightResourceTiming[];
+  warmResult: DocxEntryTopologyResult;
+  warmResources: HighlightResourceTiming[];
+  baselineJsHeapBytes: number;
+  peakJsHeapBytes: number;
+  readyJsHeapBytes: number;
+}
+
+type EntryTopologyPageMeasurement = Omit<
+  EntryTopologyMeasurement,
+  "baselineJsHeapBytes" | "peakJsHeapBytes" | "readyJsHeapBytes"
+>;
+
+function requestWaveCount(resources: readonly HighlightResourceTiming[]): number {
+  const sorted = [...resources].sort((left, right) => left.startTime - right.startTime);
+  if (sorted.length === 0) return 0;
+  let waves = 1;
+  let activeWaveEnd = sorted[0]!.responseEnd;
+  for (const resource of sorted.slice(1)) {
+    if (resource.startTime >= activeWaveEnd - 0.5) {
+      waves += 1;
+      activeWaveEnd = resource.responseEnd;
+    } else {
+      activeWaveEnd = Math.max(activeWaveEnd, resource.responseEnd);
+    }
+  }
+  return waves;
+}
+
+async function measureEntryTopology(
+  browser: Browser,
+  mode: DocxEntryTopologyMode,
+): Promise<EntryTopologyMeasurement> {
+  const context = await browser.newContext();
+  try {
+    const page = await context.newPage();
+    await page.route("**/*.js", async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      await route.continue();
+    });
+    await page.goto(`${HARNESS_URL}topology.html`);
+    await page.waitForFunction(
+      () => typeof window.__ATLCLI_LOAD_DOCX_ENTRY === "function",
+    );
+    const cdp = await context.newCDPSession(page);
+    await cdp.send("Performance.enable");
+    const jsHeapUsed = async (): Promise<number> => {
+      const { metrics } = await cdp.send("Performance.getMetrics");
+      return metrics.find(({ name }) => name === "JSHeapUsedSize")?.value ?? 0;
+    };
+    const baselineJsHeapBytes = await jsHeapUsed();
+    let peakJsHeapBytes = baselineJsHeapBytes;
+    let sampling = true;
+    const sampler = (async () => {
+      while (sampling) {
+        peakJsHeapBytes = Math.max(peakJsHeapBytes, await jsHeapUsed());
+        await new Promise((resolve) => setTimeout(resolve, 2));
+      }
+    })();
+    let measurement: EntryTopologyPageMeasurement;
+    try {
+      measurement = await page.evaluate(async (requestedMode) => {
+        const resources = (): HighlightResourceTiming[] =>
+          performance
+            .getEntriesByType("resource")
+            .map((entry) => entry as PerformanceResourceTiming)
+            .filter(({ name }) => /[.](?:js|ttf)$/u.test(new URL(name).pathname))
+            .map(({ name: url, startTime, responseEnd, transferSize, decodedBodySize }) => ({
+              url,
+              name: new URL(url).pathname.split("/").at(-1) ?? url,
+              startTime,
+              responseEnd,
+              transferSize,
+              decodedBodySize,
+            }));
+        const beforeIntentResources = resources();
+        performance.clearResourceTimings();
+        const load = window.__ATLCLI_LOAD_DOCX_ENTRY;
+        if (!load) throw new Error("DOCX entry topology hook is unavailable");
+        const result = await load(requestedMode);
+        const firstResources = resources();
+        performance.clearResourceTimings();
+        const warmResult = await load(requestedMode);
+        return {
+          result,
+          beforeIntentResources,
+          resources: firstResources,
+          warmResult,
+          warmResources: resources(),
+        };
+      }, mode);
+    } finally {
+      sampling = false;
+      await sampler;
+    }
+    return {
+      ...measurement,
+      baselineJsHeapBytes,
+      peakJsHeapBytes,
+      readyJsHeapBytes: await jsHeapUsed(),
+    };
   } finally {
     await context.close();
   }
@@ -128,6 +241,89 @@ test("empty DOCX preparation defers the code font unless preload is explicit", a
         warmFontRequestCount: warmExplicitFonts.length,
         sampledPeakJsHeapBytes:
           explicit.benchmark.sampledPeakJsHeapBytes,
+      },
+    }, null, 2)}\n`,
+  );
+});
+
+test("the combined DOCX entry removes the runtime-to-engine request wave", async ({
+  browser,
+}) => {
+  const legacy = await measureEntryTopology(browser, "legacy");
+  const combined = await measureEntryTopology(browser, "combined");
+  const legacyWaves = requestWaveCount(legacy.resources);
+  const combinedWaves = requestWaveCount(combined.resources);
+
+  expect(legacy.result.hasRunExport).toBe(true);
+  expect(legacy.result.hasPreparation).toBe(true);
+  expect(legacy.result.runtimeReadyAt).toBeDefined();
+  expect(combined.result.hasRunExport).toBe(true);
+  expect(combined.result.hasPreparation).toBe(true);
+  expect(combined.result.runtimeReadyAt).toBeUndefined();
+  expect(combinedWaves).toBeLessThan(legacyWaves);
+  expect(legacyWaves).toBeGreaterThanOrEqual(2);
+  expect(combinedWaves).toBe(1);
+  expect(
+    combined.beforeIntentResources.some(({ name }) =>
+      /(?:browser-entry|browser-runtime|index[.]browser|JetBrainsMono-Regular)/u.test(name),
+    ),
+  ).toBe(false);
+  expect(
+    combined.resources.some(({ name }) => CODE_FONT_RE.test(name)),
+  ).toBe(false);
+  expect(combined.warmResources).toEqual([]);
+  expect(legacy.warmResources).toEqual([]);
+  const legacyPeakHeapDelta =
+    legacy.peakJsHeapBytes - legacy.baselineJsHeapBytes;
+  const combinedPeakHeapDelta =
+    combined.peakJsHeapBytes - combined.baselineJsHeapBytes;
+  expect(combinedPeakHeapDelta).toBeLessThanOrEqual(
+    legacyPeakHeapDelta + 1024 * 1024,
+  );
+
+  mkdirSync(RESULT_DIR, { recursive: true });
+  writeFileSync(
+    resolve(RESULT_DIR, "entry-topology.json"),
+    `${JSON.stringify({
+      legacy: {
+        ...legacy.result,
+        requestWaves: legacyWaves,
+        requestCount: legacy.resources.length,
+        transferBytes: legacy.resources.reduce(
+          (total, resource) => total + resource.transferSize,
+          0,
+        ),
+        decodedBytes: legacy.resources.reduce(
+          (total, resource) => total + resource.decodedBodySize,
+          0,
+        ),
+        baselineJsHeapBytes: legacy.baselineJsHeapBytes,
+        peakJsHeapBytes: legacy.peakJsHeapBytes,
+        peakJsHeapDeltaBytes: legacyPeakHeapDelta,
+        readyJsHeapBytes: legacy.readyJsHeapBytes,
+        resources: legacy.resources,
+        warmMs: legacy.warmResult.readyMs,
+        warmResources: legacy.warmResources,
+      },
+      combined: {
+        ...combined.result,
+        requestWaves: combinedWaves,
+        requestCount: combined.resources.length,
+        transferBytes: combined.resources.reduce(
+          (total, resource) => total + resource.transferSize,
+          0,
+        ),
+        decodedBytes: combined.resources.reduce(
+          (total, resource) => total + resource.decodedBodySize,
+          0,
+        ),
+        baselineJsHeapBytes: combined.baselineJsHeapBytes,
+        peakJsHeapBytes: combined.peakJsHeapBytes,
+        peakJsHeapDeltaBytes: combinedPeakHeapDelta,
+        readyJsHeapBytes: combined.readyJsHeapBytes,
+        resources: combined.resources,
+        warmMs: combined.warmResult.readyMs,
+        warmResources: combined.warmResources,
       },
     }, null, 2)}\n`,
   );
@@ -379,7 +575,10 @@ test("DOCX highlighting is JavaScript-only and deterministic across fresh cold/p
   expect(preloaded.preparation?.codeFontBytes).toBe(273_900);
   expect(preloaded.preparation?.highlightingMs).toBeGreaterThan(0);
   expect(preloaded.preparation?.codeFontMs).toBeGreaterThan(0);
-  expect(preloaded.phases.runtimeReadyAt).toBeLessThan(
+  expect(preloaded.phases.intentStartedAt).toBeLessThanOrEqual(
+    preloaded.phases.entryReadyAt,
+  );
+  expect(preloaded.phases.entryReadyAt).toBeLessThan(
     preloaded.phases.preloadStartedAt,
   );
   expect(preloaded.timings.highlightEngineInitMs).toBe(0);
