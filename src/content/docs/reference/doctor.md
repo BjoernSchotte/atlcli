@@ -27,7 +27,7 @@ atlcli doctor --json
 | Config exists | Config | Verifies `~/.atlcli/config.json` exists |
 | Config valid | Config | Validates config file is proper JSON |
 | Profile exists | Auth | At least one profile is configured |
-| Active profile | Auth | Active profile has valid credentials |
+| Active profile | Auth | Active profile has credentials resolvable from environment, keychain, or config |
 | Confluence API | Connectivity | Tests Confluence authentication and latency |
 | Jira API | Connectivity | Tests Jira authentication and latency |
 | Log directory | Permissions | Verifies `~/.atlcli/logs/` is writable |
@@ -84,6 +84,8 @@ atlcli doctor
 ```
 
 ## Options
+
+Credentials are resolved through the same precedence as normal API calls: `ATLCLI_API_TOKEN`, macOS Keychain, then profile configuration.
 
 ### `--fix`
 

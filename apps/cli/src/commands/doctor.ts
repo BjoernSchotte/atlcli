@@ -18,6 +18,7 @@ import {
   loadConfig,
   getActiveProfile,
   getConfluenceBaseUrl,
+  resolveToken,
   type Profile,
 } from "@atlcli/core";
 import type { OutputOptions } from "@atlcli/core";
@@ -231,24 +232,45 @@ async function checkActiveProfile(): Promise<CheckResult> {
       };
     }
 
-    // Check profile has required fields
     if (!profile.baseUrl) {
       return {
         name: "active_profile",
         category: "auth",
         status: "fail",
-        message: "Active profile missing baseUrl",
+        message: `Profile '${profile.name}' missing baseUrl`,
         suggestion: "Run: atlcli auth login",
       };
     }
 
-    if (!profile.auth?.email || !profile.auth?.token) {
+    if (profile.auth.type === "oauth") {
       return {
         name: "active_profile",
         category: "auth",
         status: "fail",
-        message: "Active profile missing credentials",
+        message: `Profile '${profile.name}' uses unsupported OAuth authentication`,
+        suggestion: "Use an apiToken or bearer profile: atlcli auth login",
+      };
+    }
+
+    if (profile.auth.type === "apiToken" && !profile.auth.email) {
+      return {
+        name: "active_profile",
+        category: "auth",
+        status: "fail",
+        message: `Profile '${profile.name}' missing email for API token authentication`,
         suggestion: "Run: atlcli auth login",
+      };
+    }
+
+    // Resolve credentials through the same env → keychain → config chain used
+    // by API clients. Session auth is validated by the connectivity checks.
+    if (profile.auth.type !== "session" && !resolveToken(profile)) {
+      return {
+        name: "active_profile",
+        category: "auth",
+        status: "fail",
+        message: `Profile '${profile.name}' missing credentials`,
+        suggestion: "Set ATLCLI_API_TOKEN, configure a token, or store one in the keychain",
       };
     }
 
@@ -256,8 +278,8 @@ async function checkActiveProfile(): Promise<CheckResult> {
       name: "active_profile",
       category: "auth",
       status: "pass",
-      message: `Active profile: ${config.currentProfile}`,
-      details: { profile: config.currentProfile, baseUrl: profile.baseUrl },
+      message: `Active profile: ${profile.name}`,
+      details: { profile: profile.name, baseUrl: profile.baseUrl, authType: profile.auth.type },
     };
   } catch {
     return {
