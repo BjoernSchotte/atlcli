@@ -60,6 +60,8 @@ const PAGE = {
 let server: ReturnType<typeof Bun.serve>;
 let home: string;
 let tree: string;
+/** Every requested path, used to verify deployment-specific API routing. */
+let requests: string[] = [];
 /** Any non-GET request would mean the test wrote to "Confluence". */
 let writes: string[] = [];
 
@@ -70,6 +72,7 @@ beforeAll(async () => {
     port: 0,
     fetch(req) {
       const { pathname } = new URL(req.url);
+      requests.push(pathname);
       if (req.method !== "GET") writes.push(`${req.method} ${pathname}`);
 
       // Data-center shape (bearer auth => no /wiki prefix).
@@ -157,6 +160,7 @@ function parseSingleDocument(stdout: string): Record<string, unknown> {
 async function freshTree(): Promise<void> {
   if (tree) await rm(tree, { recursive: true, force: true });
   tree = await mkdtemp(join(tmpdir(), "atlcli-jsondoc-tree-"));
+  requests = [];
   writes = [];
 
   const init = await runCli(["wiki", "docs", "init", ".", "--page-id", PAGE_ID, "--space", "DOCSY"]);
@@ -166,6 +170,16 @@ async function freshTree(): Promise<void> {
   expect(pull.exitCode, `${pull.stdout}${pull.stderr}`).toBe(0);
   expect(await readFile(pagePath(), "utf8")).toContain("Remote body.");
 }
+
+describe("docs pull on Data Center", () => {
+  beforeEach(async () => {
+    await freshTree();
+  });
+
+  it("does not probe Cloud-only v2 folder endpoints", () => {
+    expect(requests.filter((path) => path.includes("/api/v2/"))).toEqual([]);
+  });
+});
 
 describe("docs pull --json: one document even when a file is skipped", () => {
   beforeEach(async () => {

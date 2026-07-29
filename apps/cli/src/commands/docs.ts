@@ -715,8 +715,8 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
     }
   }
 
-  // Detect and fetch folders (Confluence Cloud feature)
-  // Folders are detected by checking if page parents are not in the page set
+  // Detect and fetch folders (Confluence Cloud feature). Data Center has no
+  // folders, so never probe its nonexistent v2 folder endpoints.
   let folders: ConfluenceFolder[] = [];
   const pageIdSet = new Set(pageDetails.map((p) => p.id));
   const potentialFolderIds = new Set<string>();
@@ -735,7 +735,7 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
   }
 
   // Fetch folder details for potential folder IDs
-  if (potentialFolderIds.size > 0) {
+  if (client.isCloud() && potentialFolderIds.size > 0) {
     for (const folderId of potentialFolderIds) {
       try {
         const folder = await client.getFolder(folderId);
@@ -752,7 +752,7 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
   const folderIdSet = new Set(folders.map((f) => f.id));
   const EMPTY_FOLDER_SCAN_THRESHOLD = 100;
 
-  if (pageDetails.length < EMPTY_FOLDER_SCAN_THRESHOLD) {
+  if (client.isCloud() && pageDetails.length < EMPTY_FOLDER_SCAN_THRESHOLD) {
     for (const page of pageDetails) {
       try {
         const children = await client.getPageDirectChildren(page.id);

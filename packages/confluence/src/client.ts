@@ -493,6 +493,11 @@ export class ConfluenceClient {
     return this.confluenceBaseUrl;
   }
 
+  /** Whether this client targets Atlassian Cloud rather than Server/Data Center. */
+  isCloud(): boolean {
+    return this.deploymentType === "cloud";
+  }
+
   /**
    * Build an absolute web (browser) URL from a Confluence `_links.webui` path,
    * honoring the instance context path. Returns undefined when no path is given.

@@ -546,6 +546,7 @@ export declare class ConfluenceClient {
         exportSourcePolicy?: ExportSourcePolicy;
     });
     getInstanceUrl(): string;
+    isCloud(): boolean;
     private buildWebUrl;
     private sleep;
     private applyFetchOptions;
@@ -3233,6 +3234,7 @@ export declare class ConfluenceClient {
         exportSourcePolicy?: ExportSourcePolicy;
     });
     getInstanceUrl(): string;
+    isCloud(): boolean;
     private buildWebUrl;
     private sleep;
     private applyFetchOptions;
@@ -5920,6 +5922,7 @@ export declare class ConfluenceClient {
         exportSourcePolicy?: ExportSourcePolicy;
     });
     getInstanceUrl(): string;
+    isCloud(): boolean;
     private buildWebUrl;
     private sleep;
     private applyFetchOptions;
@@ -8399,6 +8402,7 @@ export declare class ConfluenceClient {
         exportSourcePolicy?: ExportSourcePolicy;
     });
     getInstanceUrl(): string;
+    isCloud(): boolean;
     private buildWebUrl;
     private sleep;
     private applyFetchOptions;
@@ -11580,6 +11584,7 @@ export declare class ConfluenceClient {
         exportSourcePolicy?: ExportSourcePolicy;
     });
     getInstanceUrl(): string;
+    isCloud(): boolean;
     private buildWebUrl;
     private sleep;
     private applyFetchOptions;
