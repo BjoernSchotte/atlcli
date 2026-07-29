@@ -5,7 +5,6 @@
  * normal browser or Node barrel must not install globals or pull DOM policy
  * into hosts that do not need it.
  */
-import { installJavaScriptHighlightEngine } from "@atlcli/code-highlight/engine/javascript";
 import type { CodeThemeId } from "@atlcli/code-highlight/registry";
 import type { ExportBlock } from "@atlcli/confluence";
 import {
@@ -23,11 +22,6 @@ export {
 
 /** Install the namespaced byte helpers once without defining a fake Buffer. */
 export function installDocxBrowserRuntime(): void {
-  // Bun/Node unit tests import this adapter to exercise its neutral helpers in
-  // the same process as Node entry tests. Only an actual browser document owns
-  // the browser engine choice; production iframe/offscreen/harness realms all
-  // expose `document`.
-  if (typeof document !== "undefined") installJavaScriptHighlightEngine();
   installDocxBrowserByteRuntime();
 }
 

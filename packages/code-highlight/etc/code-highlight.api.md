@@ -2461,6 +2461,18 @@ export interface CodeHighlightOptions {
     onTiming?: (timing: CodeHighlightTiming) => void;
 }
 
+// export: codeHighlightRuntime
+export declare const codeHighlightRuntime: CodeHighlightRuntime;
+
+// export: CodeHighlightRuntime
+export interface CodeHighlightRuntime {
+    prepare(languages: readonly string[], theme?: CodeThemeId, options?: CodeHighlightOptions): Promise<void>;
+    highlight(code: string, language?: string, theme?: CodeThemeId, options?: CodeHighlightOptions): Promise<HighlightedCode>;
+}
+
+// export: CodeHighlightRuntimeLoader
+export type CodeHighlightRuntimeLoader = () => Promise<CodeHighlightRuntime>;
+
 // export: CodeHighlightTiming
 export interface CodeHighlightTiming {
     engineInitMs: number;
@@ -2492,6 +2504,9 @@ export declare function getCodeHighlightEngineId(): string | null;
 // export: highlightCode
 export declare function highlightCode(code: string, language?: string, theme?: CodeThemeId, options?: CodeHighlightOptions): Promise<HighlightedCode>;
 
+// export: highlightCodeWithRuntime
+export declare function highlightCodeWithRuntime(runtime: CodeHighlightRuntime | undefined, code: string, language?: string, theme?: CodeThemeId, options?: CodeHighlightOptions): Promise<HighlightedCode>;
+
 // export: HighlightedCode
 export interface HighlightedCode {
     theme: ResolvedCodeTheme;
@@ -2517,6 +2532,12 @@ export declare class InvalidCodeThemeError extends Error {
 
 // export: isCodeThemeId
 export declare function isCodeThemeId(value: unknown): value is CodeThemeId;
+
+// export: loadCodeHighlightRuntime
+export declare function loadCodeHighlightRuntime(): Promise<CodeHighlightRuntime>;
+
+// export: plainCodeHighlight
+export declare function plainCodeHighlight(code: string, theme?: CodeThemeId, skipped?: HighlightSkip | null): HighlightedCode;
 
 // export: prepareCodeHighlighting
 export declare function prepareCodeHighlighting(languages: readonly string[], theme?: CodeThemeId, options?: CodeHighlightOptions): Promise<void>;
@@ -4997,6 +5018,18 @@ export interface CodeHighlightOptions {
     onTiming?: (timing: CodeHighlightTiming) => void;
 }
 
+// export: codeHighlightRuntime
+export declare const codeHighlightRuntime: CodeHighlightRuntime;
+
+// export: CodeHighlightRuntime
+export interface CodeHighlightRuntime {
+    prepare(languages: readonly string[], theme?: CodeThemeId, options?: CodeHighlightOptions): Promise<void>;
+    highlight(code: string, language?: string, theme?: CodeThemeId, options?: CodeHighlightOptions): Promise<HighlightedCode>;
+}
+
+// export: CodeHighlightRuntimeLoader
+export type CodeHighlightRuntimeLoader = () => Promise<CodeHighlightRuntime>;
+
 // export: CodeHighlightTiming
 export interface CodeHighlightTiming {
     engineInitMs: number;
@@ -5028,6 +5061,9 @@ export declare function getCodeHighlightEngineId(): string | null;
 // export: highlightCode
 export declare function highlightCode(code: string, language?: string, theme?: CodeThemeId, options?: CodeHighlightOptions): Promise<HighlightedCode>;
 
+// export: highlightCodeWithRuntime
+export declare function highlightCodeWithRuntime(runtime: CodeHighlightRuntime | undefined, code: string, language?: string, theme?: CodeThemeId, options?: CodeHighlightOptions): Promise<HighlightedCode>;
+
 // export: HighlightedCode
 export interface HighlightedCode {
     theme: ResolvedCodeTheme;
@@ -5054,6 +5090,12 @@ export declare class InvalidCodeThemeError extends Error {
 // export: isCodeThemeId
 export declare function isCodeThemeId(value: unknown): value is CodeThemeId;
 
+// export: loadCodeHighlightRuntime
+export declare function loadCodeHighlightRuntime(): Promise<CodeHighlightRuntime>;
+
+// export: plainCodeHighlight
+export declare function plainCodeHighlight(code: string, theme?: CodeThemeId, skipped?: HighlightSkip | null): HighlightedCode;
+
 // export: prepareCodeHighlighting
 export declare function prepareCodeHighlighting(languages: readonly string[], theme?: CodeThemeId, options?: CodeHighlightOptions): Promise<void>;
 
@@ -5076,6 +5118,62 @@ export interface ResolvedCodeTheme {
 export declare function warmHighlight(languages: readonly string[], theme?: CodeThemeId): void;
 ```
 
+### Entry point `./contract`
+
+```ts
+// export: CodeHighlightOptions
+export interface CodeHighlightOptions {
+    onTiming?: (timing: CodeHighlightTiming) => void;
+}
+
+// export: CodeHighlightRuntime
+export interface CodeHighlightRuntime {
+    prepare(languages: readonly string[], theme?: CodeThemeId, options?: CodeHighlightOptions): Promise<void>;
+    highlight(code: string, language?: string, theme?: CodeThemeId, options?: CodeHighlightOptions): Promise<HighlightedCode>;
+}
+
+// export: CodeHighlightRuntimeLoader
+export type CodeHighlightRuntimeLoader = () => Promise<CodeHighlightRuntime>;
+
+// export: CodeHighlightTiming
+export interface CodeHighlightTiming {
+    engineInitMs: number;
+    grammarLoadMs: number;
+    tokenizeMs: number;
+}
+
+// export: CodeLine
+export type CodeLine = CodeToken[];
+
+// export: CodeToken
+export interface CodeToken {
+    text: string;
+    color?: `#${string}`;
+}
+
+// export: highlightCodeWithRuntime
+export declare function highlightCodeWithRuntime(runtime: CodeHighlightRuntime | undefined, code: string, language?: string, theme?: CodeThemeId, options?: CodeHighlightOptions): Promise<HighlightedCode>;
+
+// export: HighlightedCode
+export interface HighlightedCode {
+    theme: ResolvedCodeTheme;
+    lines: CodeLine[];
+    skipped: HighlightSkip | null;
+}
+
+// export: HighlightResult
+export type HighlightResult = HighlightedCode;
+
+// export: HighlightSkip
+export type HighlightSkip = "unknown-language" | "highlight-failed";
+
+// export: loadCodeHighlightRuntime
+export declare function loadCodeHighlightRuntime(): Promise<CodeHighlightRuntime>;
+
+// export: plainCodeHighlight
+export declare function plainCodeHighlight(code: string, theme?: CodeThemeId, skipped?: HighlightSkip | null): HighlightedCode;
+```
+
 ### Entry point `./engine/javascript`
 
 ```ts
@@ -5088,6 +5186,30 @@ export declare function installJavaScriptHighlightEngine(): void;
 ```ts
 // export: installOnigurumaHighlightEngine
 export declare function installOnigurumaHighlightEngine(): void;
+```
+
+### Entry point `./engine/state`
+
+```ts
+// export: CodeHighlightEngine
+export interface CodeHighlightEngine {
+    readonly id: string;
+    create(): RegexEngine | Promise<RegexEngine>;
+}
+
+// export: CodeHighlightEngineConfigurationError
+export declare class CodeHighlightEngineConfigurationError extends Error {
+    constructor(message: string);
+}
+
+// export: getCodeHighlightEngineId
+export declare function getCodeHighlightEngineId(): string | null;
+
+// export: installCodeHighlightEngine
+export declare function installCodeHighlightEngine(engine: CodeHighlightEngine): void;
+
+// export: lockCodeHighlightEngine
+export declare function lockCodeHighlightEngine(): CodeHighlightEngine;
 ```
 
 ### Entry point `./registry`

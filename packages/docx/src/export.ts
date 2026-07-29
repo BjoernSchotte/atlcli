@@ -866,6 +866,7 @@ export async function prepareDocxExport(input: ExportInput): Promise<PreparedDoc
     budget,
     styleNames,
     captionLang: captionLocale.lang,
+    codeTheme,
     ...(input.captionLang !== undefined ? { dateLocale: input.captionLang } : {}),
     timings,
     codeHighlightTimings,
@@ -2315,6 +2316,7 @@ interface IncludePassDeps {
   budget: AssetBudget;
   styleNames: Map<string, string>;
   captionLang: CaptionLang;
+  codeTheme: CodeThemeId;
   dateLocale?: string;
   timings: ExportTimings;
   codeHighlightTimings: DocxCodeHighlightTimingCollector;
@@ -2554,6 +2556,7 @@ async function runIncludePass(pass: IncludePassDeps): Promise<Map<string, string
       : undefined;
     const serialized = await serializeBlocks(walked.blocks, {
       styleNames: pass.styleNames,
+      codeTheme: pass.codeTheme,
       highlightTimings: pass.codeHighlightTimings,
       comments: pass.comments,
       ...(images ? { images } : {}),

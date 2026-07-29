@@ -91,6 +91,22 @@ async function renderFromCheckpoint() {
 const report = await renderFromCheckpoint();
 ```
 
+## Usage-gated code highlighting
+
+`preparePdfDocument` scans the fully macro-resolved block tree before loading
+syntax highlighting. No-code, missing-language, unknown-language,
+`unknown.plainBody`, and successful Mermaid-diagram paths remain plain and do
+not evaluate Shiki. Known canonical languages start one concurrent preparation
+batch in first-occurrence order; the prepared `HighlightedCode` token snapshot
+is then shared with DOCX semantics and serialized to Typst without a second
+highlighter.
+
+The default lazy loader selects Oniguruma for Node/Bun and the CSP-safe
+JavaScript engine for browser package conditions. A host that needs an explicit
+adapter can supply `PreparePdfOptions.codeHighlightRuntimeLoader`; that
+function is intentionally excluded from `PreparedPdfExportV1` and durable
+checkpoints.
+
 `PreparedPdfExportV1` is the complete render state. Hosts should persist it
 behind an opaque reference and materialize a fresh clone of its Typst VFS bytes
 only while the heavy-render reservation is held. Rendering consumes that clone

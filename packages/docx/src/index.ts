@@ -7,10 +7,7 @@
  * adapters are available only through the explicit `./browser-runtime`
  * subpath and are deliberately not re-exported here.
  */
-import { installOnigurumaHighlightEngine } from "@atlcli/code-highlight/engine/oniguruma";
 import "./node-code-font.js";
-
-installOnigurumaHighlightEngine();
 
 export * from "./index.browser.js";
 export * from "./node-adapters.js";

@@ -7,6 +7,7 @@ import {
 } from "@atlcli/confluence";
 import { DocxRenderError, exportDocx } from "./export.js";
 import type { CurrentUser, IncludePageDetails } from "./resolver.js";
+import { resolveCodeTheme } from "@atlcli/code-highlight/registry";
 import {
   assertBalancedXml,
   buildDocx,
@@ -1880,6 +1881,40 @@ describe("exportDocx — $scroll.includepage (spec 005 D1)", () => {
       expect(part).not.toContain("$scroll.");
       assertBalancedXml(part);
     }
+  });
+
+  it("uses the selected non-default theme for code discovered only in an include", async () => {
+    const page = includePage(
+      "Themed",
+      '<ac:structured-macro ac:name="code">' +
+        '<ac:parameter ac:name="language">ts</ac:parameter>' +
+        "<ac:plain-text-body><![CDATA[const included = true;]]></ac:plain-text-body>" +
+        "</ac:structured-macro>",
+    );
+    const { bytes, report } = await exportDocx({
+      templateBytes: styledTemplate({
+        body: para("$scroll.content") + para("$scroll.includepage.(Themed)"),
+      }),
+      details,
+      blocks: [{
+        type: "paragraph",
+        content: [{ type: "text", text: "Root without code" }],
+      }],
+      codeTheme: "dracula",
+      template,
+      deps: {
+        ...deps,
+        getIncludedPage: resolver({ Themed: page }).getIncludedPage,
+      },
+    });
+
+    const document = readPart(bytes, "word/document.xml");
+    expect(document).toContain("const");
+    expect(document).toContain(
+      `w:fill="${resolveCodeTheme("dracula").background.slice(1)}"`,
+    );
+    expect(report.timings.highlightCodeBlocks).toBe(1);
+    expect(report.timings.highlightLanguageCount).toBe(1);
   });
 
   it("decodes an ADF-primary include once and never walks its Storage sidecar", async () => {

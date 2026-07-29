@@ -1,5 +1,9 @@
 import { describe, expect, it } from "bun:test";
 import { AssetPipelineError, type ExportBlock } from "@atlcli/confluence";
+import {
+  plainCodeHighlight,
+  type CodeHighlightRuntime,
+} from "@atlcli/code-highlight/contract";
 import { PDF_ASSET_CONCURRENCY, preparePdfDocument } from "./prepare.js";
 
 function pngBytes(unique = 0): Uint8Array {
@@ -17,6 +21,88 @@ function images(count: number): ExportBlock[] {
     alt: `Image ${index}`,
   }));
 }
+
+const unusedAssets = {
+  resolve: async () => {
+    throw new Error("asset resolver must stay unused");
+  },
+};
+
+describe("PDF code-highlighting runtime gate", () => {
+  it("keeps no-code, missing, unknown, plain-body, and Mermaid-only input runtime-free", async () => {
+    let loaderCalls = 0;
+    const prepared = await preparePdfDocument([
+      { type: "paragraph", content: [{ type: "text", text: "No code" }] },
+      { type: "codeBlock", code: "plain" },
+      { type: "codeBlock", language: "not-a-language", code: "plain" },
+      { type: "unknown", macroName: "plain-body", plainBody: "raw fallback" },
+      { type: "codeBlock", language: "mermaid", code: "graph TD; A-->B" },
+    ], unusedAssets, {
+      codeTheme: "dracula",
+      codeHighlightRuntimeLoader: async () => {
+        loaderCalls += 1;
+        throw new Error("runtime must stay gated");
+      },
+    });
+
+    expect(loaderCalls).toBe(0);
+    expect(prepared.blocks).toHaveLength(5);
+    expect(
+      prepared.notes.filter(({ code }) => code === "code-highlight-skipped"),
+    ).toHaveLength(1);
+  });
+
+  it("loads once and prepares distinct canonical languages in first-use order", async () => {
+    let loaderCalls = 0;
+    const preparations: Array<{ languages: readonly string[]; theme?: string }> = [];
+    const highlights: Array<{ language?: string; theme?: string }> = [];
+    const runtime: CodeHighlightRuntime = {
+      prepare: async (languages, theme) => {
+        preparations.push({ languages: [...languages], theme });
+      },
+      highlight: async (code, language, theme) => {
+        highlights.push({ language, theme });
+        return plainCodeHighlight(code, theme);
+      },
+    };
+
+    await preparePdfDocument([
+      { type: "codeBlock", language: "TS", code: "const x = 1;" },
+      {
+        type: "callout",
+        kind: "info",
+        content: [
+          { type: "codeBlock", language: "python", code: "x = 1" },
+          { type: "codeBlock", language: "typescript", code: "const y = 2;" },
+        ],
+      },
+    ], unusedAssets, {
+      codeTheme: "dracula",
+      codeHighlightRuntimeLoader: async () => {
+        loaderCalls += 1;
+        return runtime;
+      },
+    });
+
+    expect(loaderCalls).toBe(1);
+    expect(preparations).toEqual([{
+      languages: ["typescript", "python"],
+      theme: "dracula",
+    }]);
+    expect(highlights).toEqual([
+      { language: "typescript", theme: "dracula" },
+      { language: "python", theme: "dracula" },
+      { language: "typescript", theme: "dracula" },
+    ]);
+  });
+
+  it("has no static package-root edge from PDF preparation", async () => {
+    const source = await Bun.file(
+      new URL("./prepare.ts", import.meta.url),
+    ).text();
+    expect(source).not.toContain('from "@atlcli/code-highlight";');
+  });
+});
 
 describe("PDF asset preparation", () => {
   it("rejects corrupt bytes and preserves a readable fallback", async () => {

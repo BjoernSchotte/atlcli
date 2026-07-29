@@ -936,6 +936,7 @@ export interface PreparePdfExportEnv {
 // export: PreparePdfOptions
 export interface PreparePdfOptions {
     codeTheme?: CodeThemeId;
+    codeHighlightRuntimeLoader?: CodeHighlightRuntimeLoader;
     onProgress?: ExportProgressCallback;
     signal?: AbortSignal;
     pageContext?: {
@@ -2046,6 +2047,7 @@ export interface PreparePdfExportEnv {
 // export: PreparePdfOptions
 export interface PreparePdfOptions {
     codeTheme?: CodeThemeId;
+    codeHighlightRuntimeLoader?: CodeHighlightRuntimeLoader;
     onProgress?: ExportProgressCallback;
     signal?: AbortSignal;
     pageContext?: {
@@ -3156,6 +3158,7 @@ export interface PreparePdfExportEnv {
 // export: PreparePdfOptions
 export interface PreparePdfOptions {
     codeTheme?: CodeThemeId;
+    codeHighlightRuntimeLoader?: CodeHighlightRuntimeLoader;
     onProgress?: ExportProgressCallback;
     signal?: AbortSignal;
     pageContext?: {
@@ -3628,6 +3631,7 @@ export declare function preparePdfDocument(blocks: ExportBlock[], resolver: PdfA
 // export: PreparePdfOptions
 export interface PreparePdfOptions {
     codeTheme?: CodeThemeId;
+    codeHighlightRuntimeLoader?: CodeHighlightRuntimeLoader;
     onProgress?: ExportProgressCallback;
     signal?: AbortSignal;
     pageContext?: {

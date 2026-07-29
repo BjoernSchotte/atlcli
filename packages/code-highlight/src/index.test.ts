@@ -6,10 +6,13 @@ import {
   DEFAULT_CODE_THEME,
   getCodeHighlightEngineId,
   highlightCode,
+  highlightCodeWithRuntime,
   InvalidCodeThemeError,
+  plainCodeHighlight,
   resolveCodeTheme,
   prepareCodeHighlighting,
   warmHighlight,
+  type CodeHighlightRuntime,
 } from "./index.js";
 import {
   CODE_LANGUAGE_LOADERS,
@@ -62,6 +65,49 @@ describe("themes", () => {
   test("rejects unknown themes with a typed actionable error", () => {
     expect(() => resolveCodeTheme("not-a-theme")).toThrow(InvalidCodeThemeError);
     expect(() => resolveCodeTheme("not-a-theme")).toThrow("Choose one of:");
+  });
+});
+
+describe("neutral runtime contract", () => {
+  test("keeps missing and unknown languages plain without touching a runtime", async () => {
+    let calls = 0;
+    const runtime: CodeHighlightRuntime = {
+      prepare: async () => {},
+      highlight: async (code, _language, theme) => {
+        calls += 1;
+        return plainCodeHighlight(code, theme);
+      },
+    };
+
+    expect(
+      await highlightCodeWithRuntime(runtime, "plain", undefined, "dracula"),
+    ).toEqual(plainCodeHighlight("plain", "dracula"));
+    expect(
+      await highlightCodeWithRuntime(
+        runtime,
+        "plain",
+        "definitely-unknown",
+        "dracula",
+      ),
+    ).toEqual({
+      ...plainCodeHighlight("plain", "dracula"),
+      skipped: "unknown-language",
+    });
+    expect(calls).toBe(0);
+  });
+
+  test("canonicalizes before invoking an injected runtime", async () => {
+    const languages: Array<string | undefined> = [];
+    const runtime: CodeHighlightRuntime = {
+      prepare: async () => {},
+      highlight: async (code, language, theme) => {
+        languages.push(language);
+        return plainCodeHighlight(code, theme);
+      },
+    };
+
+    await highlightCodeWithRuntime(runtime, "const x = 1;", "TS", "github-dark");
+    expect(languages).toEqual(["typescript"]);
   });
 });
 
@@ -244,5 +290,16 @@ describe("engine module boundaries", () => {
     expect(
       runtimeSources[1]!.match(/import\("@shikijs\/themes\//g),
     ).toHaveLength(CODE_THEME_IDS.length);
+  });
+
+  test("keeps the public contract free of static runtime edges", async () => {
+    const contract = await Bun.file(
+      new URL("./contract.ts", import.meta.url),
+    ).text();
+
+    expect(contract).not.toContain('from "@atlcli/code-highlight"');
+    expect(contract).not.toContain("loaders.generated");
+    expect(contract).not.toContain("shiki/");
+    expect(contract).toContain('import("@atlcli/code-highlight")');
   });
 });

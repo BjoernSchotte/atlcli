@@ -44,6 +44,16 @@
       "types": "./dist/highlight-engine-oniguruma.d.ts",
       "default": "./dist/highlight-engine-oniguruma.js"
     },
+    "./engine/state": {
+      "development": "./src/highlight-engine-state.ts",
+      "types": "./dist/highlight-engine-state.d.ts",
+      "default": "./dist/highlight-engine-state.js"
+    },
+    "./contract": {
+      "development": "./src/contract.ts",
+      "types": "./dist/contract.d.ts",
+      "default": "./dist/contract.js"
+    },
     "./registry": {
       "development": "./src/registry.ts",
       "types": "./dist/registry.d.ts",

@@ -42,14 +42,18 @@ import {
 } from "@atlcli/confluence";
 import {
   DEFAULT_CODE_THEME,
-  highlightCode,
-  prepareCodeHighlighting,
   type CodeThemeId,
-} from "@atlcli/code-highlight";
+} from "@atlcli/code-highlight/registry";
+import {
+  highlightCodeWithRuntime,
+  type CodeHighlightRuntime,
+  type CodeHighlightRuntimeLoader,
+} from "@atlcli/code-highlight/contract";
 import {
   addDocxCodeHighlightTiming,
   collectDocxCodeHighlightUsage,
   createDocxCodeHighlightTimingCollector,
+  loadDocxCodeHighlightRuntime,
   type DocxCodeHighlightTimingCollector,
 } from "./code-highlighting.js";
 import {
@@ -165,6 +169,8 @@ export interface CalloutIconEmbedSeam {
 export interface SerializeContext {
   /** Resolved Shiki theme used for every non-diagram code block. */
   codeTheme?: CodeThemeId;
+  /** Lazy host adapter. Omitted means use package conditions after known usage. */
+  codeHighlightRuntimeLoader?: CodeHighlightRuntimeLoader;
   /** Export-wide highlight timing/count collector, shared with include passes. */
   highlightTimings?: DocxCodeHighlightTimingCollector;
   /** Lower-cased style-name → styleId map from the template's styles.xml. */
@@ -213,6 +219,8 @@ export interface SerializeContext {
 
 /** {@link SerializeContext} plus the document-wide heading promotion offset. */
 interface InternalContext extends SerializeContext {
+  /** Shared lazy adapter load; awaited only when the walk reaches real code. */
+  codeHighlightRuntimePromise: Promise<CodeHighlightRuntime | undefined>;
   /**
    * Subtracted from every heading's source `level` so the SHALLOWEST heading in
    * the document maps to Heading 1 ("promotion"; see {@link computeHeadingOffset}).
@@ -749,19 +757,29 @@ export async function serializeBlocks(
   for (const language of highlightUsage.languages) {
     highlightTimings.languages.add(language);
   }
-  const highlightPreload = prepareCodeHighlighting(
-    highlightUsage.languages,
-    ctx.codeTheme ?? DEFAULT_CODE_THEME,
-    {
-      onTiming: (timing) =>
-        addDocxCodeHighlightTiming(highlightTimings, timing),
-    },
-  ).catch(() => {
-    // Preload is an optimization. Individual code blocks retry and preserve
-    // the established plain-text fallback if a grammar still cannot load.
-  });
+  const runtimeLoad: Promise<CodeHighlightRuntime | undefined> =
+    highlightUsage.languages.length > 0
+      ? (ctx.codeHighlightRuntimeLoader ?? loadDocxCodeHighlightRuntime)()
+          .catch(() => undefined)
+      : Promise.resolve(undefined);
+  const highlightPreload = runtimeLoad
+    .then((runtime) =>
+      runtime?.prepare(
+        highlightUsage.languages,
+        ctx.codeTheme ?? DEFAULT_CODE_THEME,
+        {
+          onTiming: (timing) =>
+            addDocxCodeHighlightTiming(highlightTimings, timing),
+        },
+      ),
+    )
+    .catch(() => {
+      // Preload is an optimization. A loaded runtime can retry a grammar while
+      // an unavailable runtime preserves the established plain-text fallback.
+    });
   const internal: InternalContext = {
     ...ctx,
+    codeHighlightRuntimePromise: runtimeLoad,
     highlightTimings,
     headingOffset: computeHeadingOffset(blocks),
     numbering: ctx.numbering ?? new NumberingAllocator({ abstractNumId: 0, numId: 0 }),
@@ -896,7 +914,9 @@ async function serializeBlock(
       if ((block.language ?? "").trim().toLowerCase() === "mermaid") {
         return titleXml + await serializeMermaid(block, ctx, notes);
       }
-      const { lines, skipped, theme } = await highlightCode(
+      const highlightRuntime = await ctx.codeHighlightRuntimePromise;
+      const { lines, skipped, theme } = await highlightCodeWithRuntime(
+        highlightRuntime,
         block.code,
         block.language,
         ctx.codeTheme ?? DEFAULT_CODE_THEME,

@@ -2503,6 +2503,7 @@ export declare function serializeBlocks(blocks: ExportBlock[], ctx: SerializeCon
 // export: SerializeContext
 export interface SerializeContext {
     codeTheme?: CodeThemeId;
+    codeHighlightRuntimeLoader?: CodeHighlightRuntimeLoader;
     highlightTimings?: DocxCodeHighlightTimingCollector;
     styleNames: Map<string, string>;
     numbering?: NumberingAllocator;

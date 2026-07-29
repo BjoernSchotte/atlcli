@@ -29,10 +29,18 @@ import type {
   PreparedPdfInlineNode,
 } from "./types.js";
 import {
+  canonicalCodeLanguage,
   DEFAULT_CODE_THEME,
-  highlightCode,
+  type CodeLanguageId,
   type CodeThemeId,
-} from "@atlcli/code-highlight";
+} from "@atlcli/code-highlight/registry";
+import {
+  highlightCodeWithRuntime,
+  loadCodeHighlightRuntime,
+  plainCodeHighlight,
+  type CodeHighlightRuntime,
+  type CodeHighlightRuntimeLoader,
+} from "@atlcli/code-highlight/contract";
 
 const EXTENSIONS: Record<string, string> = {
   "image/png": "png",
@@ -152,6 +160,8 @@ function assetKey(bytes: Uint8Array, mediaType: string): string {
 export interface PreparePdfOptions {
   /** Resolved bundled Shiki theme for every non-diagram code block. */
   codeTheme?: CodeThemeId;
+  /** Lazy host adapter. Omitted means use package conditions after known usage. */
+  codeHighlightRuntimeLoader?: CodeHighlightRuntimeLoader;
   /** Granular progress callback (spec 002 — one event per embedded asset). */
   onProgress?: ExportProgressCallback;
   /**
@@ -208,6 +218,49 @@ export function isMissingAltText(alt: string | undefined): boolean {
   return (alt ?? "").trim().length === 0;
 }
 
+/** Distinct known non-diagram grammars, in first-occurrence order. */
+function collectPdfCodeHighlightLanguages(
+  blocks: readonly ExportBlock[],
+): CodeLanguageId[] {
+  const languages = new Set<CodeLanguageId>();
+  const walk = (list: readonly ExportBlock[]): void => {
+    for (const block of list) {
+      switch (block.type) {
+        case "codeBlock": {
+          const requested = (block.language ?? "").trim().toLowerCase();
+          if (requested === "mermaid") break;
+          const canonical = canonicalCodeLanguage(requested);
+          if (canonical) languages.add(canonical);
+          break;
+        }
+        case "callout":
+        case "expand":
+        case "blockquote":
+        case "orientation":
+          walk(block.content);
+          break;
+        case "list":
+          for (const item of block.items) walk(item.content);
+          break;
+        case "layout":
+          for (const column of block.columns) walk(column.content);
+          break;
+        case "table":
+          for (const row of block.rows) {
+            for (const cell of row.cells) walk(cell.content);
+          }
+          break;
+        case "unknown":
+          if (block.body) walk(block.body);
+          for (const frame of block.extensionFrames ?? []) walk(frame.content);
+          break;
+      }
+    }
+  };
+  walk(blocks);
+  return [...languages];
+}
+
 /** True for a cancellation error, from either the DOM or Node abort surface. */
 function isAbortError(error: unknown): boolean {
   return (
@@ -223,6 +276,28 @@ export async function preparePdfDocument(
 ): Promise<PreparedPdfDocument> {
   const assets: PreparedPdfAsset[] = [];
   const notes: ExportNote[] = [];
+  const highlightLanguages = collectPdfCodeHighlightLanguages(blocks);
+  let highlightRuntimePromise: Promise<CodeHighlightRuntime> | undefined;
+  const getHighlightRuntime = (): Promise<CodeHighlightRuntime> => {
+    highlightRuntimePromise ??= (
+      options.codeHighlightRuntimeLoader ?? loadCodeHighlightRuntime
+    )();
+    return highlightRuntimePromise;
+  };
+  const highlightPreload =
+    highlightLanguages.length > 0
+      ? getHighlightRuntime()
+          .then((runtime) =>
+            runtime.prepare(
+              highlightLanguages,
+              options.codeTheme ?? DEFAULT_CODE_THEME,
+            ),
+          )
+          .catch(() => {
+            // A loaded runtime can retry a grammar; an unavailable runtime
+            // retains the plain-text fallback.
+          })
+      : Promise.resolve();
   const paths = new Map<
     string,
     Array<{ bytes: Uint8Array; mediaType: string; path: string }>
@@ -581,7 +656,13 @@ export async function preparePdfDocument(
             const caption = await prepareCaption(block.caption, `${path}.caption`);
             const { caption: _sourceCaption, ...codeBlock } = block;
             if ((block.language ?? "").trim().toLowerCase() !== "mermaid") {
-              const highlight = await highlightCode(
+              const canonical = block.language
+                ? canonicalCodeLanguage(block.language)
+                : undefined;
+              const highlight = await highlightCodeWithRuntime(
+                canonical
+                  ? await getHighlightRuntime().catch(() => undefined)
+                  : undefined,
                 block.code,
                 block.language,
                 options.codeTheme ?? DEFAULT_CODE_THEME,
@@ -636,9 +717,8 @@ export async function preparePdfDocument(
                   ? `${rendered.diagramType} diagram rendered as source code.`
                   : `Diagram rendered as source code: ${rendered.reason}`,
             });
-            const highlight = await highlightCode(
+            const highlight = plainCodeHighlight(
               block.code,
-              block.language,
               options.codeTheme ?? DEFAULT_CODE_THEME,
             );
             if (highlight.skipped) {
@@ -660,9 +740,8 @@ export async function preparePdfDocument(
               ...metadata,
               ...(block.plainBody
                 ? {
-                    plainBodyHighlight: await highlightCode(
+                    plainBodyHighlight: plainCodeHighlight(
                       block.plainBody.slice(0, 20_000),
-                      undefined,
                       options.codeTheme ?? DEFAULT_CODE_THEME,
                     ),
                   }
@@ -710,6 +789,7 @@ export async function preparePdfDocument(
     );
 
   const preparedBlocks = await walk(blocks);
+  await highlightPreload;
   if (effectivePpi !== null && (profileStats.normalized > 0 || profileStats.kept.size > 0)) {
     // ONE aggregate diagnostics note (PLAN.md privacy rule): counts, bytes,
     // and reasons only — never media bytes, filenames, or tenant data.

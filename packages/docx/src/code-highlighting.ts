@@ -2,14 +2,19 @@ import type { ExportBlock } from "@atlcli/confluence";
 import {
   canonicalCodeLanguage,
   DEFAULT_CODE_THEME,
-  prepareCodeHighlighting,
-  type CodeHighlightTiming,
   type CodeLanguageId,
   type CodeThemeId,
-} from "@atlcli/code-highlight";
+} from "@atlcli/code-highlight/registry";
+import type {
+  CodeHighlightRuntimeLoader,
+  CodeHighlightTiming,
+} from "@atlcli/code-highlight/contract";
+import { loadCodeHighlightRuntime } from "@atlcli/code-highlight/contract";
 
 export interface DocxCodeHighlightingOptions {
   codeTheme?: CodeThemeId;
+  /** Optional lazy host adapter; omitted uses the condition-selected package entry. */
+  runtimeLoader?: CodeHighlightRuntimeLoader;
 }
 
 export interface DocxCodeHighlightUsage {
@@ -85,12 +90,19 @@ export function collectDocxCodeHighlightUsage(
             for (const cell of row.cells) walk(cell.content);
           }
           break;
+        case "unknown":
+          if (block.body) walk(block.body);
+          for (const frame of block.extensionFrames ?? []) walk(frame.content);
+          break;
       }
     }
   };
   walk(blocks);
   return { codeBlocks, languages: [...languages] };
 }
+
+/** DOCX-facing name for the shared, condition-selected runtime loader. */
+export const loadDocxCodeHighlightRuntime = loadCodeHighlightRuntime;
 
 /**
  * Await initialization and only the known grammars present in these DOCX
@@ -101,7 +113,9 @@ export async function prepareDocxCodeHighlighting(
   options: DocxCodeHighlightingOptions = {},
 ): Promise<void> {
   const usage = collectDocxCodeHighlightUsage(blocks);
-  await prepareCodeHighlighting(
+  if (usage.languages.length === 0) return;
+  const runtime = await (options.runtimeLoader ?? loadDocxCodeHighlightRuntime)();
+  await runtime.prepare(
     usage.languages,
     options.codeTheme ?? DEFAULT_CODE_THEME,
   );
