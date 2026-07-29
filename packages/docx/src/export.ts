@@ -133,6 +133,13 @@ import {
   resolveCodeThemeId,
   type CodeThemeId,
 } from "@atlcli/code-highlight/registry";
+import {
+  applyDocxZipCompressionPolicy,
+  isPrecompressedRasterPart,
+  streamDocxOpc,
+  type DocxZipPartSourceV1,
+  type DocxZipTextSpanV1,
+} from "./opc-stream.js";
 
 /**
  * Wall-clock durations of the export's (deliberately overlapping) phases —
@@ -210,6 +217,15 @@ export interface ExportResult {
   report: ExportReport;
 }
 
+export interface StreamedDocxExportResult {
+  bytes: AsyncIterable<Uint8Array>;
+  /**
+   * Available only after `bytes` completed successfully. Keeping this a getter
+   * avoids an unhandled rejected promise when a sink fails or cancels midway.
+   */
+  report(): ExportReport;
+}
+
 export interface ExportInput {
   /** Bundled Shiki theme for code blocks; defaults to `github-light`. */
   codeTheme?: CodeThemeId;
@@ -242,6 +258,12 @@ export interface ExportInput {
   signal?: AbortSignal;
   /** Granular progress callback (spec 002 — asset embedding + emit phases). */
   onProgress?: ExportProgressCallback;
+  /**
+   * Executor-only adaptive packaging boundary. When present, preparation
+   * detaches media only for checkpoints at or above this lower-bound size;
+   * direct/small exports retain the established in-memory path.
+   */
+  streamingPreparedBytesThreshold?: number;
   template: TemplateMeta;
   exportDate?: Date;
   deps?: ResolveDeps;
@@ -335,12 +357,32 @@ export interface PreparedDocxRenderStateV1 {
   archiveBytes: Uint8Array;
   bodyXml: string;
   includes: Array<[key: string, xml: string]>;
+  /**
+   * Media extracted from the prepared PizZip archive. The archive keeps
+   * zero-byte placeholder entries so final OPC order remains deterministic.
+   */
+  mediaParts?: PreparedDocxMediaPartV1[];
+}
+
+export interface PreparedDocxMediaPartV1 {
+  path: string;
+  byteLength: number;
+  sha256: string;
+  /** Present in a fresh/small checkpoint; omitted by a lazy durable store. */
+  bytes?: Uint8Array;
+  /** Opaque durable-store handle, meaningful only to the checkpoint store. */
+  sourceRef?: string;
 }
 
 /** Complete, browser-serializable state at the DOCX ready-to-render boundary. */
 export interface PreparedDocxExportV1 {
   schema: "atlcli.prepared-docx-export/1";
   renderState: PreparedDocxRenderStateV1 | undefined;
+  /**
+   * Durable executor choice. Historical checkpoints omit it and retain the
+   * original in-memory packaging path.
+   */
+  packagingMode?: "memory" | "stream";
   /**
    * Canonical ZIP-entry timestamp pinned from `ExportInput.exportDate`.
    * Persisted so a recovered render is byte-identical to its uninterrupted run.
@@ -366,6 +408,11 @@ export interface PreparedDocxExportV1 {
 /** Per-attempt state deliberately excluded from the durable checkpoint. */
 export interface RenderPreparedDocxExportInput {
   signal?: AbortSignal;
+  /** Resolve a media handle created by the durable ready-to-render store. */
+  readMedia?(
+    sourceRef: string,
+    options?: { signal?: AbortSignal },
+  ): AsyncIterable<Uint8Array>;
 }
 
 /**
@@ -446,6 +493,70 @@ function pinZipEntryDates(zip: PizZip, requestedDateMs: number): void {
   for (const entry of Object.values(zip.files)) {
     entry.date = date;
   }
+}
+
+async function sha256Bytes(bytes: Uint8Array): Promise<string> {
+  const source =
+    bytes.buffer instanceof ArrayBuffer
+    && bytes.byteOffset === 0
+    && bytes.byteLength === bytes.buffer.byteLength
+      ? bytes.buffer
+      : bytes.slice().buffer;
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", source));
+  return [...digest].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+/**
+ * Move media payloads out of the prepared archive while retaining each entry
+ * as an ordered zero-byte placeholder. Durable stores can then keep the bytes
+ * as independently readable blobs instead of hydrating the aggregate set.
+ */
+async function detachPreparedMediaParts(
+  zip: PizZip,
+  signal?: AbortSignal,
+): Promise<PreparedDocxMediaPartV1[]> {
+  const parts: PreparedDocxMediaPartV1[] = [];
+  const write = zip.file as unknown as (
+    path: string,
+    content: Uint8Array,
+    options: { binary: true; compression?: "STORE" },
+  ) => PizZip;
+  for (const [path, entry] of Object.entries(zip.files)) {
+    if (entry.dir || !path.startsWith("word/media/")) continue;
+    throwIfAborted(signal);
+    const bytes = entry.asUint8Array();
+    parts.push({
+      path,
+      byteLength: bytes.byteLength,
+      sha256: await sha256Bytes(bytes),
+      bytes,
+    });
+    write.call(zip, path, new Uint8Array(), {
+      binary: true,
+      ...(isPrecompressedRasterPart(path) ? { compression: "STORE" as const } : {}),
+    });
+  }
+  throwIfAborted(signal);
+  return parts;
+}
+
+function shouldStreamPreparedDocx(
+  zip: PizZip,
+  lowerBoundWithoutMedia: number,
+  threshold: number | undefined,
+): boolean | undefined {
+  if (threshold === undefined) return undefined;
+  if (!Number.isSafeInteger(threshold) || threshold < 1) {
+    throw new RangeError("DOCX streaming threshold must be a positive safe integer.");
+  }
+  if (lowerBoundWithoutMedia >= threshold) return true;
+  let lowerBound = lowerBoundWithoutMedia;
+  for (const [path, entry] of Object.entries(zip.files)) {
+    if (entry.dir || !path.startsWith("word/media/")) continue;
+    lowerBound += entry.asUint8Array().byteLength;
+    if (lowerBound >= threshold) return true;
+  }
+  return false;
 }
 
 function rethrowCancellation(error: unknown, signal?: AbortSignal): void {
@@ -817,8 +928,17 @@ export async function prepareDocxExport(input: ExportInput): Promise<PreparedDoc
   // The mutable PizZip archive itself is frozen into bytes so a worker crash
   // cannot leave a durable checkpoint pointing at a half-mutated object.
   throwIfAborted(input.signal);
+  const streamPackaging = shouldStreamPreparedDocx(
+    zip,
+    input.templateBytes.byteLength + body.xml.length + includeXml.length,
+    input.streamingPreparedBytesThreshold,
+  );
+  const mediaParts = streamPackaging
+    ? await detachPreparedMediaParts(zip, input.signal)
+    : [];
   const archiveDateMs = Math.max(ZIP_EPOCH_MS, exportDate.getTime());
   pinZipEntryDates(zip, archiveDateMs);
+  applyDocxZipCompressionPolicy(zip);
   const archiveBytes = zip.generate({
     type: "uint8array",
     compression: "DEFLATE",
@@ -833,11 +953,15 @@ export async function prepareDocxExport(input: ExportInput): Promise<PreparedDoc
   ];
   return {
     schema: "atlcli.prepared-docx-export/1",
+    ...(streamPackaging === undefined
+      ? {}
+      : { packagingMode: streamPackaging ? "stream" as const : "memory" as const }),
     codeTheme,
     renderState: {
       archiveBytes,
       bodyXml: body.xml,
       includes: [...includes.entries()],
+      ...(mediaParts.length > 0 ? { mediaParts } : {}),
     },
     archiveDateMs,
     filename: toDownloadFilename(input.details.title),
@@ -888,6 +1012,87 @@ function openPreparedDocxArchive(bytes: Uint8Array): PizZip {
   return zip;
 }
 
+function validatePreparedMediaParts(
+  parts: readonly PreparedDocxMediaPartV1[],
+): void {
+  const paths = new Set<string>();
+  for (const [index, part] of parts.entries()) {
+    if (
+      !part.path.startsWith("word/media/")
+      || part.path.includes("\\")
+      || part.path.split("/").includes("..")
+      || paths.has(part.path)
+    ) {
+      throw new Error(`Prepared DOCX media part ${index} has an invalid or duplicate path.`);
+    }
+    if (!Number.isSafeInteger(part.byteLength) || part.byteLength < 0) {
+      throw new Error(`Prepared DOCX media part ${index} has an invalid byte length.`);
+    }
+    if (!/^[a-f0-9]{64}$/.test(part.sha256)) {
+      throw new Error(`Prepared DOCX media part ${index} has an invalid SHA-256.`);
+    }
+    if ((part.bytes === undefined) === (part.sourceRef === undefined)) {
+      throw new Error(
+        `Prepared DOCX media part ${index} must carry exactly one byte source.`,
+      );
+    }
+    if (part.bytes && part.bytes.byteLength !== part.byteLength) {
+      throw new Error(`Prepared DOCX media part ${index} changed byte length.`);
+    }
+    if (part.sourceRef !== undefined && part.sourceRef.trim().length === 0) {
+      throw new Error(`Prepared DOCX media part ${index} has an empty source ref.`);
+    }
+    paths.add(part.path);
+  }
+}
+
+function restorePreparedMediaParts(
+  zip: PizZip,
+  parts: readonly PreparedDocxMediaPartV1[],
+): void {
+  validatePreparedMediaParts(parts);
+  const write = zip.file as unknown as (
+    path: string,
+    content: Uint8Array,
+    options: { binary: true; compression?: "STORE" },
+  ) => PizZip;
+  for (const part of parts) {
+    if (!part.bytes) {
+      throw new Error("In-memory DOCX packaging cannot resolve deferred media.");
+    }
+    if (!zip.file(part.path)) {
+      throw new Error(`Prepared DOCX media placeholder is missing: ${part.path}`);
+    }
+    write.call(zip, part.path, part.bytes, {
+      binary: true,
+      ...(isPrecompressedRasterPart(part.path) ? { compression: "STORE" as const } : {}),
+    });
+  }
+}
+
+function preparedMediaPartSources(
+  parts: readonly PreparedDocxMediaPartV1[],
+  input: RenderPreparedDocxExportInput,
+): ReadonlyMap<string, DocxZipPartSourceV1> {
+  validatePreparedMediaParts(parts);
+  const sources = new Map<string, DocxZipPartSourceV1>();
+  for (const part of parts) {
+    const chunks = part.bytes
+      ? (async function* (): AsyncIterable<Uint8Array> {
+          yield part.bytes!;
+        })()
+      : input.readMedia?.(
+          part.sourceRef!,
+          input.signal ? { signal: input.signal } : undefined,
+        );
+    if (!chunks) {
+      throw new Error(`Prepared DOCX media source is unavailable: ${part.path}`);
+    }
+    sources.set(part.path, { byteLength: part.byteLength, chunks });
+  }
+  return sources;
+}
+
 /** Supply additive timing fields missing from historical `/1` checkpoints. */
 function normalizeExportTimings(timings: ExportTimings): ExportTimings {
   return {
@@ -905,6 +1110,37 @@ function normalizeExportTimings(timings: ExportTimings): ExportTimings {
     imageFetches: timings.imageFetches ?? 0,
     diagramRenderMs: timings.diagramRenderMs ?? 0,
     diagramRasterMs: timings.diagramRasterMs ?? 0,
+  };
+}
+
+function finishPreparedDocxReport(
+  prepared: PreparedDocxExportV1,
+  flowNotes: readonly ExportNote[],
+  renderStart: number,
+): ExportReport {
+  const timings = {
+    ...normalizeExportTimings(prepared.timings),
+    renderMs: Date.now() - renderStart,
+  };
+  const durationMs = Date.now() - prepared.startedAt;
+  const notes = [...prepared.baseNotes, ...flowNotes, timingNote(timings, durationMs)];
+  const skippedImages = notes.filter((note) => IMAGE_SKIP_CODES.has(note.code)).length;
+  return {
+    // Historical /1 checkpoints predate codeTheme. Treat the absent field as
+    // the stable default while every new writer materializes it explicitly.
+    codeTheme: resolveCodeThemeId(prepared.codeTheme),
+    resolvedCount: prepared.resolvedCount,
+    unsupportedNames: prepared.unsupportedNames,
+    skippedImages,
+    embeddedImages: prepared.embeddedImages,
+    renderedDiagrams: prepared.renderedDiagrams,
+    durationMs,
+    filename: prepared.filename,
+    notes,
+    sourceNotes: prepared.sourceNotes,
+    complete: prepared.complete,
+    scan: prepared.scan,
+    timings,
   };
 }
 
@@ -930,26 +1166,27 @@ export async function renderPreparedDocxExport(
   let archiveBytes: Uint8Array | undefined = renderState.archiveBytes;
   let bodyXml: string | undefined = renderState.bodyXml;
   let includes: Map<string, string> | undefined = new Map(renderState.includes);
+  let mediaParts: PreparedDocxMediaPartV1[] | undefined = renderState.mediaParts;
   // Break the large object's direct references before PizZip starts allocating
   // its mutable archive. The zip may retain compressed views internally, but
   // the checkpoint clone itself no longer pins a second archive reference.
   renderState.archiveBytes = new Uint8Array();
   renderState.bodyXml = "";
   renderState.includes.length = 0;
+  renderState.mediaParts = [];
 
   const renderStart = Date.now();
   let rendered: PizZip | undefined;
   try {
-    rendered = renderContent(
-      openPreparedDocxArchive(archiveBytes),
-      bodyXml,
-      includes
-    );
+    const archive = openPreparedDocxArchive(archiveBytes);
+    restorePreparedMediaParts(archive, mediaParts ?? []);
+    rendered = renderContent(archive, bodyXml, includes);
   } finally {
     archiveBytes = undefined;
     bodyXml = undefined;
     includes?.clear();
     includes = undefined;
+    mediaParts = undefined;
   }
 
   // A page body ENDING in an orientation region leaves its region-closing
@@ -967,38 +1204,171 @@ export async function renderPreparedDocxExport(
     rendered,
     prepared.archiveDateMs ?? Math.max(ZIP_EPOCH_MS, prepared.startedAt),
   );
+  applyDocxZipCompressionPolicy(rendered);
   const bytes = rendered.generate({
     type: "uint8array",
     compression: "DEFLATE",
   }) as unknown as Uint8Array;
   rendered = undefined;
   throwIfAborted(input.signal);
-  const timings = {
-    ...normalizeExportTimings(prepared.timings),
-    renderMs: Date.now() - renderStart,
+  return {
+    bytes,
+    report: finishPreparedDocxReport(prepared, flowNotes, renderStart),
   };
-  const durationMs = Date.now() - prepared.startedAt;
-  const notes = [...prepared.baseNotes, ...flowNotes, timingNote(timings, durationMs)];
-  const skippedImages = notes.filter((note) => IMAGE_SKIP_CODES.has(note.code)).length;
+}
+
+function createBodySentinelXml(): string {
+  const random = new Uint32Array(4);
+  crypto.getRandomValues(random);
+  const token = [...random].map((value) => value.toString(16).padStart(8, "0")).join("");
+  return `<w:p><w:r><w:t>ATLCLI_BODY_${token}</w:t></w:r></w:p>`;
+}
+
+function splitBodySentinel(
+  zip: PizZip,
+  sentinelXml: string,
+): { path: string; prefix: string; suffix: string } {
+  let match: { path: string; xml: string; offset: number } | undefined;
+  for (const path of documentPartNames(zip)) {
+    const xml = zip.file(path)?.asText() ?? "";
+    const offset = xml.indexOf(sentinelXml);
+    if (offset === -1) continue;
+    if (match || xml.indexOf(sentinelXml, offset + sentinelXml.length) !== -1) {
+      throw new DocxRenderError(
+        "The Word template could not be streamed.",
+        ["The validated body sentinel was not unique after template rendering."],
+      );
+    }
+    match = { path, xml, offset };
+  }
+  if (!match) {
+    throw new DocxRenderError(
+      "The Word template could not be streamed.",
+      ["The body sentinel disappeared during template rendering."],
+    );
+  }
+  return {
+    path: match.path,
+    prefix: match.xml.slice(0, match.offset),
+    suffix: match.xml.slice(match.offset + sentinelXml.length),
+  };
+}
+
+function streamingBodyFragments(
+  path: string,
+  prefix: string,
+  bodyXml: string,
+  suffix: string,
+): readonly (string | DocxZipTextSpanV1)[] {
+  if (path !== "word/document.xml") return [prefix, bodyXml, suffix];
+
+  // Preserve mergeTrailingRegionSectPr without joining prefix + body + suffix.
+  const tailStart = bodyXml.lastIndexOf("<w:p><w:pPr><w:sectPr");
+  if (tailStart === -1) return [prefix, bodyXml, suffix];
+  const bodyTail = bodyXml.slice(tailStart);
+  const bodyMatch = bodyTail.match(
+    /^<w:p><w:pPr>(<w:sectPr\b[^>]*>[\s\S]*?<\/w:sectPr>)<\/w:pPr><\/w:p>$/,
+  );
+  const suffixMatch = suffix.match(
+    /^(<w:sectPr\b[^>]*>[\s\S]*?<\/w:sectPr>)(?=<\/w:body>)/,
+  );
+  if (!bodyMatch || !suffixMatch) return [prefix, bodyXml, suffix];
+  return [
+    prefix,
+    { value: bodyXml, start: 0, end: tailStart },
+    bodyMatch[1]!,
+    suffix.slice(suffixMatch[0].length),
+  ];
+}
+
+/**
+ * Render one durable checkpoint and expose the final OPC archive as bounded
+ * chunks. Customer-template processing still runs through docxtemplater, but
+ * the main body is represented by a validated sentinel and is fed to the ZIP
+ * compressor as its own fragment rather than joined into the target XML part.
+ */
+export async function renderPreparedDocxExportStream(
+  prepared: PreparedDocxExportV1,
+  input: RenderPreparedDocxExportInput = {},
+): Promise<StreamedDocxExportResult> {
+  if (prepared.schema !== "atlcli.prepared-docx-export/1") {
+    throw new Error("Unsupported prepared DOCX export schema.");
+  }
+  throwIfAborted(input.signal);
+  const renderState = prepared.renderState;
+  if (!renderState) throw new Error("Prepared DOCX render state was already consumed.");
+  prepared.renderState = undefined;
+
+  let archiveBytes: Uint8Array | undefined = renderState.archiveBytes;
+  let bodyXml: string | undefined = renderState.bodyXml;
+  let includes: Map<string, string> | undefined = new Map(renderState.includes);
+  let mediaParts: PreparedDocxMediaPartV1[] | undefined = renderState.mediaParts;
+  renderState.archiveBytes = new Uint8Array();
+  renderState.bodyXml = "";
+  renderState.includes.length = 0;
+  renderState.mediaParts = [];
+
+  const renderStart = Date.now();
+  const sentinelXml = createBodySentinelXml();
+  let rendered: PizZip | undefined;
+  try {
+    rendered = renderContent(openPreparedDocxArchive(archiveBytes), sentinelXml, includes);
+  } finally {
+    archiveBytes = undefined;
+    includes?.clear();
+    includes = undefined;
+  }
+  const streamedBodyXml = bodyXml;
+  bodyXml = undefined;
+  if (streamedBodyXml === undefined) throw new Error("Prepared DOCX body is missing.");
+
+  const flowNotes: ExportNote[] = [];
+  const refreshNote = applyFieldRefreshPolicy(rendered, prepared.updateFields, {
+    trustedSeqSequences: new Set(prepared.trustedSeqSequenceNames),
+    additionalXmlParts: [streamedBodyXml],
+  });
+  if (refreshNote) flowNotes.push(refreshNote);
+  throwIfAborted(input.signal);
+  pinZipEntryDates(
+    rendered,
+    prepared.archiveDateMs ?? Math.max(ZIP_EPOCH_MS, prepared.startedAt),
+  );
+  applyDocxZipCompressionPolicy(rendered);
+  const target = splitBodySentinel(rendered, sentinelXml);
+  const fragments = streamingBodyFragments(
+    target.path,
+    target.prefix,
+    streamedBodyXml,
+    target.suffix,
+  );
+  const partSources = preparedMediaPartSources(mediaParts ?? [], input);
+
+  let report: ExportReport | undefined;
+  let claimed = false;
+  const bytes = (async function* (): AsyncIterable<Uint8Array> {
+    if (claimed) throw new Error("DOCX output stream can only be consumed once.");
+    claimed = true;
+    try {
+      yield* streamDocxOpc(rendered!, {
+        ...(input.signal ? { signal: input.signal } : {}),
+        replacement: { path: target.path, fragments },
+        partSources,
+      });
+      throwIfAborted(input.signal);
+      report = finishPreparedDocxReport(prepared, flowNotes, renderStart);
+    } finally {
+      rendered = undefined;
+      mediaParts = undefined;
+    }
+  })();
 
   return {
     bytes,
-    report: {
-      // Historical /1 checkpoints predate codeTheme. Treat the absent field as
-      // the stable default while every new writer materializes it explicitly.
-      codeTheme: resolveCodeThemeId(prepared.codeTheme),
-      resolvedCount: prepared.resolvedCount,
-      unsupportedNames: prepared.unsupportedNames,
-      skippedImages,
-      embeddedImages: prepared.embeddedImages,
-      renderedDiagrams: prepared.renderedDiagrams,
-      durationMs,
-      filename: prepared.filename,
-      notes,
-      sourceNotes: prepared.sourceNotes,
-      complete: prepared.complete,
-      scan: prepared.scan,
-      timings,
+    report(): ExportReport {
+      if (!report) {
+        throw new Error("DOCX report is available only after the byte stream completes.");
+      }
+      return report;
     },
   };
 }

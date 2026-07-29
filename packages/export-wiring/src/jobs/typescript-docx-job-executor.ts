@@ -14,6 +14,7 @@ import {
   prepareDocxExportRuntime,
   prepareDocxExport,
   renderPreparedDocxExport,
+  renderPreparedDocxExportStream,
   type AssetFetcher,
   type ExportInput,
   type ExportReport,
@@ -25,9 +26,11 @@ import type { ExportProgressCallback } from "@atlcli/confluence";
 import {
   buildProductiveExportTelemetryV1,
 } from "./productive-telemetry.js";
+import { sha256Utf8 } from "./incremental-sha256.js";
 
 const DOCX_MEDIA_TYPE =
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document" as const;
+const STREAMING_PREPARED_BYTES_THRESHOLD = 1024 * 1024;
 
 export type TypescriptDocxExportJobEngineInputV1 = Omit<
   ExportInput,
@@ -103,6 +106,14 @@ export interface DocxReadyToRenderStoreV1 {
     leaseEpoch: number;
     signal: AbortSignal;
   }): Promise<PreparedDocxExportV1>;
+  /** Read one lazily materialized media blob owned by this checkpoint. */
+  readMedia(input: {
+    checkpoint: DocxReadyToRenderCheckpointV1;
+    sourceRef: string;
+    jobId: string;
+    leaseEpoch: number;
+    signal: AbortSignal;
+  }): AsyncIterable<Uint8Array>;
   beginRenderAttempt(input: {
     checkpoint: DocxReadyToRenderCheckpointV1;
     jobId: string;
@@ -208,6 +219,11 @@ export interface CreateTypescriptDocxExportJobExecutorOptionsV1 {
   readyToRender: DocxReadyToRenderStoreV1;
   renderReservations: DocxRenderReservationPortV1;
   results: DocxExportResultStoreV1;
+  /**
+   * Prepared archive plus body lower-bound at which final packaging streams.
+   * Defaults to 1 MiB; hosts/tests may pin another benchmarked threshold.
+   */
+  streamingPreparedBytesThreshold?: number;
   now?: () => number;
 }
 
@@ -348,6 +364,29 @@ async function sha256Hex(bytes: Uint8Array, signal?: AbortSignal): Promise<strin
   return [...digest].map((value) => value.toString(16).padStart(2, "0")).join("");
 }
 
+async function* boundedDocxOutput(
+  source: AsyncIterable<Uint8Array>,
+  maxBytes: number,
+  signal: AbortSignal,
+): AsyncIterable<Uint8Array> {
+  let byteLength = 0;
+  for await (const chunk of source) {
+    throwIfAborted(signal);
+    if (!(chunk instanceof Uint8Array)) {
+      throw new TypeError("DOCX renderer must yield Uint8Array chunks.");
+    }
+    const nextLength = byteLength + chunk.byteLength;
+    if (!Number.isSafeInteger(nextLength) || nextLength > maxBytes) {
+      throw new Error(
+        `DOCX output exceeds its hard estimate (${nextLength} > ${maxBytes}).`,
+      );
+    }
+    byteLength = nextLength;
+    if (chunk.byteLength > 0) yield chunk;
+  }
+  throwIfAborted(signal);
+}
+
 function exactOwnedBytes(bytes: Uint8Array): Uint8Array {
   if (
     bytes.buffer instanceof ArrayBuffer &&
@@ -416,15 +455,13 @@ async function fingerprintPreparedDocxExport(
     nonNegativeFinite(value, `prepared.timings.${name}`);
   }
 
-  const encoder = new TextEncoder();
   const archive = prepared.renderState.archiveBytes;
   if (!(archive instanceof Uint8Array) || archive.byteLength === 0) {
     throw new Error("Prepared DOCX archive bytes are invalid.");
   }
   const archiveSha256 = await sha256Hex(archive, signal);
-  const bodyBytes = encoder.encode(prepared.renderState.bodyXml);
-  const bodySha256 = await sha256Hex(bodyBytes, signal);
-  let byteLength = archive.byteLength + bodyBytes.byteLength;
+  const body = sha256Utf8(prepared.renderState.bodyXml, signal);
+  let byteLength = archive.byteLength + body.byteLength;
   const includeKeys = new Set<string>();
   const includes = [];
   for (const [index, entry] of prepared.renderState.includes.entries()) {
@@ -440,9 +477,44 @@ async function fingerprintPreparedDocxExport(
       throw new Error(`Prepared DOCX include ${index} is invalid or duplicated.`);
     }
     includeKeys.add(entry[0]);
-    const xmlBytes = encoder.encode(entry[1]);
-    byteLength += encoder.encode(entry[0]).byteLength + xmlBytes.byteLength;
-    includes.push({ key: entry[0], byteLength: xmlBytes.byteLength, sha256: await sha256Hex(xmlBytes, signal) });
+    const xml = sha256Utf8(entry[1], signal);
+    const key = sha256Utf8(entry[0], signal);
+    byteLength += key.byteLength + xml.byteLength;
+    includes.push({ key: entry[0], byteLength: xml.byteLength, sha256: xml.sha256 });
+  }
+  const mediaPaths = new Set<string>();
+  const mediaParts = [];
+  for (const [index, part] of (prepared.renderState.mediaParts ?? []).entries()) {
+    throwIfAborted(signal);
+    if (
+      !part.path.startsWith("word/media/")
+      || part.path.includes("\\")
+      || part.path.split("/").includes("..")
+      || mediaPaths.has(part.path)
+      || !Number.isSafeInteger(part.byteLength)
+      || part.byteLength < 0
+      || !/^[a-f0-9]{64}$/.test(part.sha256)
+      || (part.bytes === undefined) === (part.sourceRef === undefined)
+      || (part.sourceRef !== undefined && part.sourceRef.trim().length === 0)
+    ) {
+      throw new Error(`Prepared DOCX media part ${index} is invalid or duplicated.`);
+    }
+    if (part.bytes) {
+      if (
+        part.bytes.byteLength !== part.byteLength
+        || await sha256Hex(part.bytes, signal) !== part.sha256
+      ) {
+        throw new Error(`Prepared DOCX media part ${index} does not match its binding.`);
+      }
+    }
+    const path = sha256Utf8(part.path, signal);
+    byteLength += path.byteLength + part.byteLength;
+    mediaPaths.add(part.path);
+    mediaParts.push({
+      path: part.path,
+      byteLength: part.byteLength,
+      sha256: part.sha256,
+    });
   }
 
   const { renderState: _renderState, ...metadata } = prepared;
@@ -452,13 +524,32 @@ async function fingerprintPreparedDocxExport(
     template,
     renderState: {
       archive: { byteLength: archive.byteLength, sha256: archiveSha256 },
-      body: { byteLength: bodyBytes.byteLength, sha256: bodySha256 },
+      body,
       includes,
+      mediaParts,
     },
   });
+  const encoder = new TextEncoder();
   const descriptorBytes = encoder.encode(descriptor);
   byteLength += descriptorBytes.byteLength;
   return { byteLength, sha256: await sha256Hex(descriptorBytes, signal) };
+}
+
+function selectDocxPackagingMode(
+  prepared: PreparedDocxExportV1,
+  threshold: number,
+): NonNullable<PreparedDocxExportV1["packagingMode"]> {
+  if (!Number.isSafeInteger(threshold) || threshold < 1) {
+    throw new RangeError("DOCX streaming threshold must be a positive safe integer.");
+  }
+  const state = prepared.renderState;
+  if (!state) throw new Error("Prepared DOCX render state is missing.");
+  // `bodyXml.length` is an allocation-free lower bound for UTF-8 bytes. A
+  // non-ASCII body may therefore select streaming slightly later, never earlier.
+  const mediaBytes = (state.mediaParts ?? [])
+    .reduce((total, part) => total + part.byteLength, 0);
+  const lowerBound = state.archiveBytes.byteLength + state.bodyXml.length + mediaBytes;
+  return lowerBound >= threshold ? "stream" : "memory";
 }
 
 function sameReportSummary(
@@ -808,6 +899,9 @@ export function createTypescriptDocxExportJobExecutor(
             prepared = await prepareDocxExport({
               ...engineInput,
               templateBytes,
+              streamingPreparedBytesThreshold:
+                options.streamingPreparedBytesThreshold
+                ?? STREAMING_PREPARED_BYTES_THRESHOLD,
               signal: context.signal,
               onProgress: progressChannel.callback,
             });
@@ -824,6 +918,10 @@ export function createTypescriptDocxExportJobExecutor(
           }
           if (prepareFailure !== undefined) throw prepareFailure;
           if (!prepared) throw new Error("DOCX preparation completed without a payload.");
+          prepared.packagingMode ??= selectDocxPackagingMode(
+            prepared,
+            options.streamingPreparedBytesThreshold ?? STREAMING_PREPARED_BYTES_THRESHOLD,
+          );
           throwIfAborted(context.signal);
           const binding = await fingerprintPreparedDocxExport(
             prepared,
@@ -912,31 +1010,70 @@ export function createTypescriptDocxExportJobExecutor(
           1,
           `Rendering DOCX (attempt ${checkpoint.renderAttempts}/2)`,
         );
-        let outputBytes: Uint8Array | undefined;
+        if (!resultKey) throw new Error("DOCX result key was not derived from its checkpoint.");
+        const outputRef = {
+          namespace: "docx-output-v1",
+          key: resultKey.ref,
+        } as const;
+        let outputObject: Awaited<ReturnType<typeof context.spool.put>> | undefined;
+        let memoryOutput: Uint8Array | undefined;
         let report: ExportReport;
         try {
-          const output = await renderPreparedDocxExport(prepared, { signal: context.signal });
-          outputBytes = exactOwnedBytes(output.bytes);
-          report = output.report;
+          if (prepared.packagingMode === "stream") {
+            const output = await renderPreparedDocxExportStream(prepared, {
+              signal: context.signal,
+              readMedia: (sourceRef) => options.readyToRender.readMedia({
+                checkpoint: checkpoint!,
+                sourceRef,
+                jobId: context.jobId,
+                leaseEpoch: context.leaseEpoch,
+                signal: context.signal,
+              }),
+            });
+            outputObject = await context.spool.put(
+              outputRef,
+              boundedDocxOutput(
+                output.bytes,
+                checkpoint.estimate.outputBytes,
+                context.signal,
+              ),
+              { signal: context.signal },
+            );
+            report = output.report();
+          } else {
+            const output = await renderPreparedDocxExport(prepared, {
+              signal: context.signal,
+            });
+            memoryOutput = exactOwnedBytes(output.bytes);
+            report = output.report;
+          }
         } finally {
           prepared = undefined;
         }
         throwIfAborted(context.signal);
         await progress(context, now, "validate", 0, 1, "Validating DOCX output");
-        if (outputBytes.byteLength > checkpoint.estimate.outputBytes) {
+        const outputByteLength = outputObject?.byteLength ?? memoryOutput?.byteLength;
+        if (outputByteLength === undefined) {
+          throw new Error("DOCX renderer completed without output bytes.");
+        }
+        if (outputByteLength > checkpoint.estimate.outputBytes) {
           throw new Error(
-            `DOCX output exceeds its hard estimate (${outputBytes.byteLength} > ${checkpoint.estimate.outputBytes}).`,
+            `DOCX output exceeds its hard estimate (${outputByteLength} > ${checkpoint.estimate.outputBytes}).`,
           );
         }
-        await reservation.reconcile({ outputBytes: outputBytes.byteLength, signal: context.signal });
-        const artifactSha256 = await sha256Hex(outputBytes, context.signal);
+        await reservation.reconcile({
+          outputBytes: outputByteLength,
+          signal: context.signal,
+        });
+        const artifactSha256 = outputObject?.sha256
+          ?? await sha256Hex(memoryOutput!, context.signal);
         const summary = reportSummary(report);
         parseExportReportSummaryV1(summary);
         const telemetry = buildProductiveExportTelemetryV1(
           {
             pageCount: checkpoint.sourcePageCount ?? 1,
             preparedBytes: checkpoint.preparedByteLength,
-            outputBytes: outputBytes.byteLength,
+            outputBytes: outputByteLength,
             renderAttempts: checkpoint.renderAttempts,
             embeddedAssets: report.embeddedImages,
             skippedAssets: report.skippedImages,
@@ -967,17 +1104,17 @@ export function createTypescriptDocxExportJobExecutor(
         );
         await progress(context, now, "validate", 1, 1, "DOCX output validated");
         await progress(context, now, "commit", 0, 1, "Staging DOCX artifact and report");
-        if (!resultKey) throw new Error("DOCX result key was not derived from its checkpoint.");
 
         const artifact: PendingArtifactV1 = {
           mediaType: DOCX_MEDIA_TYPE,
           filename: report.filename,
-          byteLength: outputBytes.byteLength,
+          byteLength: outputByteLength,
           sha256: artifactSha256,
-          bytes: (async function* (): AsyncIterable<Uint8Array> {
-            // Borrowed until results.stage resolves; the store must consume it.
-            yield outputBytes!;
-          })(),
+          bytes: outputObject
+            ? context.spool.read(outputRef, { signal: context.signal })
+            : (async function* (): AsyncIterable<Uint8Array> {
+                yield memoryOutput!;
+              })(),
         };
         const intent: DocxExportResultIntentV1 = {
           schema: "atlcli.docx-result-intent/1",
@@ -1009,7 +1146,7 @@ export function createTypescriptDocxExportJobExecutor(
           await progress(context, now, "commit", 1, 1, "DOCX artifact and report staged");
           return validateExecutionResult(result, context, preparedIntent);
         } finally {
-          outputBytes = undefined;
+          memoryOutput = undefined;
         }
       } finally {
         await reservation.release();

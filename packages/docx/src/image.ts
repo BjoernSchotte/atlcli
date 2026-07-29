@@ -37,6 +37,7 @@ import {
   type ImageInfo,
   type TargetSize,
 } from "@atlcli/export-media";
+import { isPrecompressedRasterPart } from "./opc-stream.js";
 
 // Inspection, sizing, and raster budgets moved to `@atlcli/export-media`
 // (issue #118 Phase 1) so the PDF and DOCX engines share one implementation.
@@ -583,7 +584,16 @@ export class ImageEmbedder {
     } while (this.zip.file(`word/media/${filename}`));
 
     ensureContentTypeDefault(this.zip, info.ext, info.mime);
-    this.zip.file(`word/media/${filename}`, bytes);
+    const path = `word/media/${filename}`;
+    const write = this.zip.file as unknown as (
+      path: string,
+      content: Uint8Array,
+      options: { binary: boolean; compression?: "STORE" },
+    ) => PizZip;
+    write.call(this.zip, path, bytes, {
+      binary: true,
+      ...(isPrecompressedRasterPart(path) ? { compression: "STORE" as const } : {}),
+    });
     return filename;
   }
 

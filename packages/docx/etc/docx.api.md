@@ -63,6 +63,7 @@ export interface ExportInput {
     complete?: boolean;
     signal?: AbortSignal;
     onProgress?: ExportProgressCallback;
+    streamingPreparedBytesThreshold?: number;
     template: TemplateMeta;
     exportDate?: Date;
     deps?: ResolveDeps;
@@ -215,6 +216,7 @@ export type PlaceholderStatus = "supported" | "unsupported" | "never";
 export interface PreparedDocxExportV1 {
     schema: "atlcli.prepared-docx-export/1";
     renderState: PreparedDocxRenderStateV1 | undefined;
+    packagingMode?: "memory" | "stream";
     archiveDateMs?: number;
     filename: string;
     codeTheme: CodeThemeId;
@@ -232,6 +234,15 @@ export interface PreparedDocxExportV1 {
     startedAt: number;
 }
 
+// export: PreparedDocxMediaPartV1
+export interface PreparedDocxMediaPartV1 {
+    path: string;
+    byteLength: number;
+    sha256: string;
+    bytes?: Uint8Array;
+    sourceRef?: string;
+}
+
 // export: PreparedDocxRenderStateV1
 export interface PreparedDocxRenderStateV1 {
     archiveBytes: Uint8Array;
@@ -240,6 +251,7 @@ export interface PreparedDocxRenderStateV1 {
         key: string,
         xml: string
     ]>;
+    mediaParts?: PreparedDocxMediaPartV1[];
 }
 
 // export: prepareDocxExport
@@ -261,7 +273,13 @@ export declare function renderPreparedDocxExport(prepared: PreparedDocxExportV1,
 // export: RenderPreparedDocxExportInput
 export interface RenderPreparedDocxExportInput {
     signal?: AbortSignal;
+    readMedia?(sourceRef: string, options?: {
+        signal?: AbortSignal;
+    }): AsyncIterable<Uint8Array>;
 }
+
+// export: renderPreparedDocxExportStream
+export declare function renderPreparedDocxExportStream(prepared: PreparedDocxExportV1, input?: RenderPreparedDocxExportInput): Promise<StreamedDocxExportResult>;
 
 // export: ResolveDeps
 export interface ResolveDeps {
@@ -301,6 +319,12 @@ export interface ScanResult {
     foreignPlaceholders?: string[];
     riskyFieldInstructions?: string[];
     seqSequenceNames?: string[];
+}
+
+// export: StreamedDocxExportResult
+export interface StreamedDocxExportResult {
+    bytes: AsyncIterable<Uint8Array>;
+    report(): ExportReport;
 }
 
 // export: SvgRasterizer
@@ -385,6 +409,7 @@ export interface ExportInput {
     complete?: boolean;
     signal?: AbortSignal;
     onProgress?: ExportProgressCallback;
+    streamingPreparedBytesThreshold?: number;
     template: TemplateMeta;
     exportDate?: Date;
     deps?: ResolveDeps;
@@ -543,6 +568,7 @@ export type PlaceholderStatus = "supported" | "unsupported" | "never";
 export interface PreparedDocxExportV1 {
     schema: "atlcli.prepared-docx-export/1";
     renderState: PreparedDocxRenderStateV1 | undefined;
+    packagingMode?: "memory" | "stream";
     archiveDateMs?: number;
     filename: string;
     codeTheme: CodeThemeId;
@@ -560,6 +586,15 @@ export interface PreparedDocxExportV1 {
     startedAt: number;
 }
 
+// export: PreparedDocxMediaPartV1
+export interface PreparedDocxMediaPartV1 {
+    path: string;
+    byteLength: number;
+    sha256: string;
+    bytes?: Uint8Array;
+    sourceRef?: string;
+}
+
 // export: PreparedDocxRenderStateV1
 export interface PreparedDocxRenderStateV1 {
     archiveBytes: Uint8Array;
@@ -568,6 +603,7 @@ export interface PreparedDocxRenderStateV1 {
         key: string,
         xml: string
     ]>;
+    mediaParts?: PreparedDocxMediaPartV1[];
 }
 
 // export: prepareDocxExport
@@ -589,7 +625,13 @@ export declare function renderPreparedDocxExport(prepared: PreparedDocxExportV1,
 // export: RenderPreparedDocxExportInput
 export interface RenderPreparedDocxExportInput {
     signal?: AbortSignal;
+    readMedia?(sourceRef: string, options?: {
+        signal?: AbortSignal;
+    }): AsyncIterable<Uint8Array>;
 }
+
+// export: renderPreparedDocxExportStream
+export declare function renderPreparedDocxExportStream(prepared: PreparedDocxExportV1, input?: RenderPreparedDocxExportInput): Promise<StreamedDocxExportResult>;
 
 // export: ResolveDeps
 export interface ResolveDeps {
@@ -639,6 +681,12 @@ export interface ScanResult {
     foreignPlaceholders?: string[];
     riskyFieldInstructions?: string[];
     seqSequenceNames?: string[];
+}
+
+// export: StreamedDocxExportResult
+export interface StreamedDocxExportResult {
+    bytes: AsyncIterable<Uint8Array>;
+    report(): ExportReport;
 }
 
 // export: SvgRasterizer
@@ -723,6 +771,7 @@ export interface ExportInput {
     complete?: boolean;
     signal?: AbortSignal;
     onProgress?: ExportProgressCallback;
+    streamingPreparedBytesThreshold?: number;
     template: TemplateMeta;
     exportDate?: Date;
     deps?: ResolveDeps;
@@ -875,6 +924,7 @@ export type PlaceholderStatus = "supported" | "unsupported" | "never";
 export interface PreparedDocxExportV1 {
     schema: "atlcli.prepared-docx-export/1";
     renderState: PreparedDocxRenderStateV1 | undefined;
+    packagingMode?: "memory" | "stream";
     archiveDateMs?: number;
     filename: string;
     codeTheme: CodeThemeId;
@@ -892,6 +942,15 @@ export interface PreparedDocxExportV1 {
     startedAt: number;
 }
 
+// export: PreparedDocxMediaPartV1
+export interface PreparedDocxMediaPartV1 {
+    path: string;
+    byteLength: number;
+    sha256: string;
+    bytes?: Uint8Array;
+    sourceRef?: string;
+}
+
 // export: PreparedDocxRenderStateV1
 export interface PreparedDocxRenderStateV1 {
     archiveBytes: Uint8Array;
@@ -900,6 +959,7 @@ export interface PreparedDocxRenderStateV1 {
         key: string,
         xml: string
     ]>;
+    mediaParts?: PreparedDocxMediaPartV1[];
 }
 
 // export: prepareDocxExport
@@ -921,7 +981,13 @@ export declare function renderPreparedDocxExport(prepared: PreparedDocxExportV1,
 // export: RenderPreparedDocxExportInput
 export interface RenderPreparedDocxExportInput {
     signal?: AbortSignal;
+    readMedia?(sourceRef: string, options?: {
+        signal?: AbortSignal;
+    }): AsyncIterable<Uint8Array>;
 }
+
+// export: renderPreparedDocxExportStream
+export declare function renderPreparedDocxExportStream(prepared: PreparedDocxExportV1, input?: RenderPreparedDocxExportInput): Promise<StreamedDocxExportResult>;
 
 // export: ResolveDeps
 export interface ResolveDeps {
@@ -961,6 +1027,12 @@ export interface ScanResult {
     foreignPlaceholders?: string[];
     riskyFieldInstructions?: string[];
     seqSequenceNames?: string[];
+}
+
+// export: StreamedDocxExportResult
+export interface StreamedDocxExportResult {
+    bytes: AsyncIterable<Uint8Array>;
+    report(): ExportReport;
 }
 
 // export: SvgRasterizer
@@ -1078,6 +1150,7 @@ export interface ExportInput {
     complete?: boolean;
     signal?: AbortSignal;
     onProgress?: ExportProgressCallback;
+    streamingPreparedBytesThreshold?: number;
     template: TemplateMeta;
     exportDate?: Date;
     deps?: ResolveDeps;
@@ -1236,6 +1309,7 @@ export type PlaceholderStatus = "supported" | "unsupported" | "never";
 export interface PreparedDocxExportV1 {
     schema: "atlcli.prepared-docx-export/1";
     renderState: PreparedDocxRenderStateV1 | undefined;
+    packagingMode?: "memory" | "stream";
     archiveDateMs?: number;
     filename: string;
     codeTheme: CodeThemeId;
@@ -1253,6 +1327,15 @@ export interface PreparedDocxExportV1 {
     startedAt: number;
 }
 
+// export: PreparedDocxMediaPartV1
+export interface PreparedDocxMediaPartV1 {
+    path: string;
+    byteLength: number;
+    sha256: string;
+    bytes?: Uint8Array;
+    sourceRef?: string;
+}
+
 // export: PreparedDocxRenderStateV1
 export interface PreparedDocxRenderStateV1 {
     archiveBytes: Uint8Array;
@@ -1261,6 +1344,7 @@ export interface PreparedDocxRenderStateV1 {
         key: string,
         xml: string
     ]>;
+    mediaParts?: PreparedDocxMediaPartV1[];
 }
 
 // export: prepareDocxCodeHighlighting
@@ -1287,7 +1371,13 @@ export declare function renderPreparedDocxExport(prepared: PreparedDocxExportV1,
 // export: RenderPreparedDocxExportInput
 export interface RenderPreparedDocxExportInput {
     signal?: AbortSignal;
+    readMedia?(sourceRef: string, options?: {
+        signal?: AbortSignal;
+    }): AsyncIterable<Uint8Array>;
 }
+
+// export: renderPreparedDocxExportStream
+export declare function renderPreparedDocxExportStream(prepared: PreparedDocxExportV1, input?: RenderPreparedDocxExportInput): Promise<StreamedDocxExportResult>;
 
 // export: ResolveDeps
 export interface ResolveDeps {
@@ -1331,6 +1421,12 @@ export interface ScanResult {
 
 // export: scanTemplate
 export declare function scanTemplate(bytes: Uint8Array): ScanResult;
+
+// export: StreamedDocxExportResult
+export interface StreamedDocxExportResult {
+    bytes: AsyncIterable<Uint8Array>;
+    report(): ExportReport;
+}
 
 // export: SvgRasterizer
 export interface SvgRasterizer {
@@ -1820,6 +1916,7 @@ export interface ExportInput {
     complete?: boolean;
     signal?: AbortSignal;
     onProgress?: ExportProgressCallback;
+    streamingPreparedBytesThreshold?: number;
     template: TemplateMeta;
     exportDate?: Date;
     deps?: ResolveDeps;
@@ -1889,6 +1986,7 @@ export interface Fetched {
 // export: FieldRefreshOptions
 export interface FieldRefreshOptions {
     trustedSeqSequences?: ReadonlySet<string>;
+    additionalXmlParts?: readonly string[];
 }
 
 // export: FieldUse
@@ -2218,6 +2316,7 @@ export type PlaceholderStatus = "supported" | "unsupported" | "never";
 export interface PreparedDocxExportV1 {
     schema: "atlcli.prepared-docx-export/1";
     renderState: PreparedDocxRenderStateV1 | undefined;
+    packagingMode?: "memory" | "stream";
     archiveDateMs?: number;
     filename: string;
     codeTheme: CodeThemeId;
@@ -2235,6 +2334,15 @@ export interface PreparedDocxExportV1 {
     startedAt: number;
 }
 
+// export: PreparedDocxMediaPartV1
+export interface PreparedDocxMediaPartV1 {
+    path: string;
+    byteLength: number;
+    sha256: string;
+    bytes?: Uint8Array;
+    sourceRef?: string;
+}
+
 // export: PreparedDocxRenderStateV1
 export interface PreparedDocxRenderStateV1 {
     archiveBytes: Uint8Array;
@@ -2243,6 +2351,7 @@ export interface PreparedDocxRenderStateV1 {
         key: string,
         xml: string
     ]>;
+    mediaParts?: PreparedDocxMediaPartV1[];
 }
 
 // export: prepareDocxExport
@@ -2272,7 +2381,13 @@ export declare function renderPreparedDocxExport(prepared: PreparedDocxExportV1,
 // export: RenderPreparedDocxExportInput
 export interface RenderPreparedDocxExportInput {
     signal?: AbortSignal;
+    readMedia?(sourceRef: string, options?: {
+        signal?: AbortSignal;
+    }): AsyncIterable<Uint8Array>;
 }
+
+// export: renderPreparedDocxExportStream
+export declare function renderPreparedDocxExportStream(prepared: PreparedDocxExportV1, input?: RenderPreparedDocxExportInput): Promise<StreamedDocxExportResult>;
 
 // export: resolveCaptionLang
 export declare function resolveCaptionLang(raw: string | undefined): {
@@ -2416,6 +2531,12 @@ export interface SerializeResult {
 // export: statusBadgeRun
 export declare function statusBadgeRun(text: string, color: string, fontSizeHalfPoints?: number): string;
 
+// export: StreamedDocxExportResult
+export interface StreamedDocxExportResult {
+    bytes: AsyncIterable<Uint8Array>;
+    report(): ExportReport;
+}
+
 // export: synthesizeA4SectPr
 export declare function synthesizeA4SectPr(): string;
 
@@ -2530,6 +2651,7 @@ export interface ExportInput {
     complete?: boolean;
     signal?: AbortSignal;
     onProgress?: ExportProgressCallback;
+    streamingPreparedBytesThreshold?: number;
     template: TemplateMeta;
     exportDate?: Date;
     deps?: ResolveDeps;
@@ -2688,6 +2810,7 @@ export type PlaceholderStatus = "supported" | "unsupported" | "never";
 export interface PreparedDocxExportV1 {
     schema: "atlcli.prepared-docx-export/1";
     renderState: PreparedDocxRenderStateV1 | undefined;
+    packagingMode?: "memory" | "stream";
     archiveDateMs?: number;
     filename: string;
     codeTheme: CodeThemeId;
@@ -2705,6 +2828,15 @@ export interface PreparedDocxExportV1 {
     startedAt: number;
 }
 
+// export: PreparedDocxMediaPartV1
+export interface PreparedDocxMediaPartV1 {
+    path: string;
+    byteLength: number;
+    sha256: string;
+    bytes?: Uint8Array;
+    sourceRef?: string;
+}
+
 // export: PreparedDocxRenderStateV1
 export interface PreparedDocxRenderStateV1 {
     archiveBytes: Uint8Array;
@@ -2713,6 +2845,7 @@ export interface PreparedDocxRenderStateV1 {
         key: string,
         xml: string
     ]>;
+    mediaParts?: PreparedDocxMediaPartV1[];
 }
 
 // export: prepareDocxExport
@@ -2734,7 +2867,13 @@ export declare function renderPreparedDocxExport(prepared: PreparedDocxExportV1,
 // export: RenderPreparedDocxExportInput
 export interface RenderPreparedDocxExportInput {
     signal?: AbortSignal;
+    readMedia?(sourceRef: string, options?: {
+        signal?: AbortSignal;
+    }): AsyncIterable<Uint8Array>;
 }
+
+// export: renderPreparedDocxExportStream
+export declare function renderPreparedDocxExportStream(prepared: PreparedDocxExportV1, input?: RenderPreparedDocxExportInput): Promise<StreamedDocxExportResult>;
 
 // export: ResolveDeps
 export interface ResolveDeps {
@@ -2784,6 +2923,12 @@ export interface ScanResult {
     foreignPlaceholders?: string[];
     riskyFieldInstructions?: string[];
     seqSequenceNames?: string[];
+}
+
+// export: StreamedDocxExportResult
+export interface StreamedDocxExportResult {
+    bytes: AsyncIterable<Uint8Array>;
+    report(): ExportReport;
 }
 
 // export: SvgRasterizer
@@ -2881,6 +3026,7 @@ export type DocxErrorKind = "not-zip" | "not-docx" | "too-large" | "too-many-ent
 // export: FieldRefreshOptions
 export interface FieldRefreshOptions {
     trustedSeqSequences?: ReadonlySet<string>;
+    additionalXmlParts?: readonly string[];
 }
 
 // export: FieldUse

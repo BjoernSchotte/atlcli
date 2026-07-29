@@ -1,9 +1,11 @@
 import { describe, expect, it } from "bun:test";
 import type { ExportBlock } from "@atlcli/confluence";
+import PizZip from "pizzip";
 import {
   exportDocx,
   prepareDocxExport,
   renderPreparedDocxExport,
+  renderPreparedDocxExportStream,
   type ExportInput,
   type ExportReport,
 } from "./export.js";
@@ -45,6 +47,37 @@ function stableReport(report: ExportReport): unknown {
   };
 }
 
+async function collect(source: AsyncIterable<Uint8Array>): Promise<{
+  bytes: Uint8Array;
+  chunks: Uint8Array[];
+}> {
+  const chunks: Uint8Array[] = [];
+  let byteLength = 0;
+  for await (const chunk of source) {
+    const owned = chunk.slice();
+    chunks.push(owned);
+    byteLength += owned.byteLength;
+  }
+  const bytes = new Uint8Array(byteLength);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return { bytes, chunks };
+}
+
+function expectEquivalentParts(leftBytes: Uint8Array, rightBytes: Uint8Array): void {
+  const left = new PizZip(leftBytes);
+  const right = new PizZip(rightBytes);
+  expect(Object.keys(right.files).sort()).toEqual(Object.keys(left.files).sort());
+  for (const [path, entry] of Object.entries(left.files)) {
+    if (!entry.dir) {
+      expect(right.file(path)?.asUint8Array()).toEqual(entry.asUint8Array());
+    }
+  }
+}
+
 describe("prepared DOCX export", () => {
   it("keeps direct and explicitly staged artifact/report output equal", async () => {
     const direct = await exportDocx(input());
@@ -55,6 +88,80 @@ describe("prepared DOCX export", () => {
     expect(stableReport(staged.report)).toEqual(stableReport(direct.report));
     expect(prepared.codeTheme).toBe("github-light");
     expect(staged.report.codeTheme).toBe("github-light");
+  });
+
+  it("detaches media only when the executor selects streamed packaging", async () => {
+    const template = new PizZip(TEMPLATE);
+    const media = new Uint8Array(8 * 1024).fill(0x5a);
+    template.file("word/media/existing.png", media, { binary: true });
+    const templateBytes = template.generate({
+      type: "uint8array",
+      compression: "DEFLATE",
+    }) as unknown as Uint8Array;
+
+    const inMemory = await prepareDocxExport({
+      ...input(),
+      templateBytes,
+      streamingPreparedBytesThreshold: 1024 * 1024,
+    });
+    expect(inMemory.packagingMode).toBe("memory");
+    expect(inMemory.renderState?.mediaParts).toBeUndefined();
+    expect(new PizZip(inMemory.renderState!.archiveBytes)
+      .file("word/media/existing.png")?.asUint8Array()).toEqual(media);
+
+    const streamed = await prepareDocxExport({
+      ...input(),
+      templateBytes,
+      streamingPreparedBytesThreshold: 1,
+    });
+    expect(streamed.packagingMode).toBe("stream");
+    expect(streamed.renderState?.mediaParts?.[0]?.bytes).toEqual(media);
+    expect(new PizZip(streamed.renderState!.archiveBytes)
+      .file("word/media/existing.png")?.asUint8Array()).toEqual(new Uint8Array());
+  });
+
+  it("streams semantically identical OPC parts and exposes the report only after completion", async () => {
+    const preparedForLegacy = await prepareDocxExport(input());
+    const preparedForStream = structuredClone(preparedForLegacy);
+    const legacy = await renderPreparedDocxExport(preparedForLegacy);
+    const streamed = await renderPreparedDocxExportStream(preparedForStream);
+
+    expect(() => streamed.report()).toThrow("only after");
+    const output = await collect(streamed.bytes);
+
+    expect(output.chunks.length).toBeGreaterThan(3);
+    expect(output.chunks.every((chunk) => chunk.byteLength < output.bytes.byteLength)).toBe(true);
+    expectEquivalentParts(legacy.bytes, output.bytes);
+    expect(stableReport(streamed.report())).toEqual(stableReport(legacy.report));
+  });
+
+  it("streams a body anchored in a header without leaking its random sentinel", async () => {
+    const anchored = input();
+    anchored.templateBytes = buildDocx({
+      body: para("Static main story with {literal} braces"),
+      header: para("$scroll.content"),
+    });
+    anchored.blocks = [{
+      type: "paragraph",
+      content: [{
+        type: "text",
+        text: "Header body keeps $scroll.title and {{ customer syntax }} literal.",
+      }],
+    }];
+    const preparedForLegacy = await prepareDocxExport(anchored);
+    const preparedForStream = structuredClone(preparedForLegacy);
+    const legacy = await renderPreparedDocxExport(preparedForLegacy);
+    const streamed = await renderPreparedDocxExportStream(preparedForStream);
+    const output = await collect(streamed.bytes);
+
+    expectEquivalentParts(legacy.bytes, output.bytes);
+    const zip = new PizZip(output.bytes);
+    const header = zip.file("word/header1.xml")?.asText() ?? "";
+    const document = zip.file("word/document.xml")?.asText() ?? "";
+    expect(header).toContain("Header body keeps $scroll.title");
+    expect(header).toContain("{{ customer syntax }}");
+    expect(document).toContain("{literal}");
+    expect(JSON.stringify({ header, document })).not.toContain("ATLCLI_BODY_");
   });
 
   it("persists and reports a non-default code theme", async () => {

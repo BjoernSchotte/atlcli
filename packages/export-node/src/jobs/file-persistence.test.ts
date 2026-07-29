@@ -371,7 +371,18 @@ describe("file export persistence", () => {
     await persistence.jobs.create({ request: docxRequest }); const claimed = (await persistence.jobs.claimNext({ ownerId: "a", now: 1, leaseDurationMs: 100_000 }))!;
     const prepared: PreparedDocxExportV1 = {
       schema: "atlcli.prepared-docx-export/1",
-      renderState: { archiveBytes: Uint8Array.of(80, 75, 3, 4), bodyXml: "<w:p/>", includes: [["include-1", "<w:p><w:r/></w:p>"]] },
+      packagingMode: "stream",
+      renderState: {
+        archiveBytes: Uint8Array.of(80, 75, 3, 4),
+        bodyXml: "<w:p/>",
+        includes: [["include-1", "<w:p><w:r/></w:p>"]],
+        mediaParts: [{
+          path: "word/media/deferred.png",
+          byteLength: 4,
+          sha256: "b".repeat(64),
+          bytes: Uint8Array.of(1, 2, 3, 4),
+        }],
+      },
       filename: "x.docx", codeTheme: "github-light", complete: true, updateFields: "auto", trustedSeqSequenceNames: [], resolvedCount: 0, unsupportedNames: [], embeddedImages: 0, renderedDiagrams: 0,
       scan: { supported: [], unsupported: [], never: [], parts: ["word/document.xml"], hasContentPlaceholder: true, stylerefStyleNames: [], foreignPlaceholders: [], riskyFieldInstructions: [], seqSequenceNames: [] },
       sourceNotes: [], baseNotes: [], timings: { resolveMs: 0, bodyMs: 0, logoFetchMs: 0, includeFetchMs: 0, renderMs: 0, imageFetchMs: 0, imageFetches: 0, diagramRenderMs: 0, diagramRasterMs: 0 }, startedAt: 1,
@@ -383,6 +394,23 @@ describe("file export persistence", () => {
     const materialized = await restarted.docxReadyToRender.materialize({ checkpoint, jobId: claimed.id, leaseEpoch: claimed.leaseEpoch, signal: new AbortController().signal });
     expect([...materialized.renderState!.archiveBytes]).toEqual([80, 75, 3, 4]);
     expect(materialized.renderState!.includes).toEqual([["include-1", "<w:p><w:r/></w:p>"]]);
+    expect(materialized.renderState!.mediaParts).toEqual([{
+      path: "word/media/deferred.png",
+      byteLength: 4,
+      sha256: "b".repeat(64),
+      sourceRef: "1",
+    }]);
+    const recoveredMedia: number[] = [];
+    for await (const chunk of restarted.docxReadyToRender.readMedia({
+      checkpoint,
+      sourceRef: materialized.renderState!.mediaParts![0]!.sourceRef!,
+      jobId: claimed.id,
+      leaseEpoch: claimed.leaseEpoch,
+      signal: new AbortController().signal,
+    })) {
+      recoveredMedia.push(...chunk);
+    }
+    expect(recoveredMedia).toEqual([1, 2, 3, 4]);
   });
 
   it("keeps report refs logical and resolves report bytes through the store", async () => {

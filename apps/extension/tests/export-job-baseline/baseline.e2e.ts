@@ -12,6 +12,8 @@ import { cpus, hostname, platform, release, totalmem } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type {
+  BrowserJobBaselineCorpus,
+  BrowserJobBaselineDocxMode,
   BrowserJobBaselineFormat,
   BrowserJobBaselinePages,
 } from "./protocol.js";
@@ -76,6 +78,34 @@ function formats(): BrowserJobBaselineFormat[] {
   return values as BrowserJobBaselineFormat[];
 }
 
+function corpusKind(): BrowserJobBaselineCorpus {
+  const value = process.env.ATLCLI_EXPORT_JOB_BASELINE_CORPUS ?? "text";
+  if (value !== "text" && value !== "mixed" && value !== "image-heavy") {
+    throw new Error(
+      "ATLCLI_EXPORT_JOB_BASELINE_CORPUS must be text, mixed, or image-heavy.",
+    );
+  }
+  return value;
+}
+
+function imageScale(): number | undefined {
+  const raw = process.env.ATLCLI_EXPORT_JOB_BASELINE_IMAGE_SCALE;
+  if (raw === undefined) return undefined;
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value <= 0 || value > 1) {
+    throw new Error("ATLCLI_EXPORT_JOB_BASELINE_IMAGE_SCALE must be in (0, 1].");
+  }
+  return value;
+}
+
+function docxMode(): BrowserJobBaselineDocxMode {
+  const value = process.env.ATLCLI_EXPORT_JOB_BASELINE_DOCX_MODE ?? "adaptive";
+  if (value !== "adaptive" && value !== "memory") {
+    throw new Error("ATLCLI_EXPORT_JOB_BASELINE_DOCX_MODE must be adaptive or memory.");
+  }
+  return value;
+}
+
 function positiveInt(name: string, fallback: number): number {
   const value = Number(process.env[name] ?? fallback);
   if (!Number.isSafeInteger(value) || value < 1) {
@@ -84,8 +114,7 @@ function positiveInt(name: string, fallback: number): number {
   return value;
 }
 
-async function heap(session: CDPSession): Promise<ChromeHeapBuckets> {
-  await session.send("HeapProfiler.collectGarbage");
+async function currentHeap(session: CDPSession): Promise<ChromeHeapBuckets> {
   const value = (await session.send("Runtime.getHeapUsage")) as {
     usedSize: number;
     totalSize: number;
@@ -97,6 +126,24 @@ async function heap(session: CDPSession): Promise<ChromeHeapBuckets> {
     jsHeapTotalBytes: value.totalSize,
     embedderHeapUsedBytes: value.embedderHeapUsedSize,
     backingStorageBytes: value.backingStorageSize,
+    rssBytes: null,
+    rssPeakBytes: null,
+  };
+}
+
+async function heap(session: CDPSession): Promise<ChromeHeapBuckets> {
+  await session.send("HeapProfiler.collectGarbage");
+  return currentHeap(session);
+}
+
+function peakHeap(samples: ChromeHeapBuckets[]): ChromeHeapBuckets {
+  const maximum = (key: keyof ChromeHeapBuckets): number =>
+    Math.max(...samples.map((sample) => sample[key] ?? 0));
+  return {
+    jsHeapUsedBytes: maximum("jsHeapUsedBytes"),
+    jsHeapTotalBytes: maximum("jsHeapTotalBytes"),
+    embedderHeapUsedBytes: maximum("embedderHeapUsedBytes"),
+    backingStorageBytes: maximum("backingStorageBytes"),
     rssBytes: null,
     rssPeakBytes: null,
   };
@@ -199,6 +246,9 @@ async function browserVersion(): Promise<Record<string, string>> {
 test("records productive POST-QUEUE DOCX and PDF jobs in real Chromium", async () => {
   const requestedPages = pages();
   const requestedFormats = formats();
+  const requestedCorpus = corpusKind();
+  const requestedImageScale = imageScale();
+  const requestedDocxMode = docxMode();
   const repeat = positiveInt("ATLCLI_EXPORT_JOB_BASELINE_REPEAT", 3);
   const seed =
     positiveInt("ATLCLI_EXPORT_JOB_BASELINE_SEED", 0x9e37_79b9) >>> 0;
@@ -212,6 +262,9 @@ test("records productive POST-QUEUE DOCX and PDF jobs in real Chromium", async (
     formats: requestedFormats,
     repeat,
     seed,
+    corpus: requestedCorpus,
+    imageScale: requestedImageScale ?? null,
+    docxMode: requestedDocxMode,
   };
   const provenance = {
     schema: "atlcli.post-queue-export-provenance/1",
@@ -314,13 +367,31 @@ test("records productive POST-QUEUE DOCX and PDF jobs in real Chromium", async (
           const engineReady = await heap(cdp);
           const prepared = await page.evaluate(
             (options) => window.atlcliExportJobBaseline.prepare(options),
-            { pages: pageCount, seed },
+            {
+              pages: pageCount,
+              seed,
+              corpusKind: requestedCorpus,
+              docxMode: requestedDocxMode,
+              ...(requestedImageScale === undefined
+                ? {}
+                : { imageScale: requestedImageScale }),
+            },
           );
           const corpusPrepared = await heap(cdp);
-          const exported = await page.evaluate(
+          let exportSettled = false;
+          const exportPromise = page.evaluate(
             (value) => window.atlcliExportJobBaseline.run(value),
             format,
-          );
+          ).finally(() => {
+            exportSettled = true;
+          });
+          const duringJobSamples: ChromeHeapBuckets[] = [];
+          while (!exportSettled) {
+            duringJobSamples.push(await currentHeap(cdp));
+            await new Promise((resolveDelay) => setTimeout(resolveDelay, 25));
+          }
+          const exported = await exportPromise;
+          duringJobSamples.push(await currentHeap(cdp));
           const jobCompleted = await heap(cdp);
 
           expect(exported.state).toBe("succeeded");
@@ -348,6 +419,8 @@ test("records productive POST-QUEUE DOCX and PDF jobs in real Chromium", async (
                 corpusPrepared,
                 jobCompleted,
               },
+              observedDuringJobPeak: peakHeap(duringJobSamples),
+              observedDuringJobSamples: duringJobSamples.length,
               dedicatedWorker: null,
               offscreenDocument: null,
               wasmLinearMemoryBytes: null,

@@ -141,6 +141,10 @@ class MemoryReadyStore implements DocxReadyToRenderStoreV1 {
     return prepared;
   }
 
+  async *readMedia(): AsyncIterable<Uint8Array> {
+    throw new Error("MemoryReadyStore keeps media bytes materialized.");
+  }
+
   async beginRenderAttempt(input: Parameters<DocxReadyToRenderStoreV1["beginRenderAttempt"]>[0]) {
     this.attempts += 1;
     this.order.push(`attempt-${this.attempts}`);
@@ -154,6 +158,7 @@ function executionContext(
   signal = new AbortController().signal,
   options: {
     leaseEpoch?: number;
+    spoolFailureAfterChunks?: number;
     checkpoint?: (ref: string) => void | Promise<void>;
     progress?: (
       value: Parameters<ExportJobExecutionContext["updateProgress"]>[0],
@@ -161,21 +166,83 @@ function executionContext(
   } = {},
 ) {
   let artifactBytes: Uint8Array | undefined;
+  let stagedChunks: Uint8Array[] = [];
+  const spoolChunks = new Map<string, Uint8Array[]>();
+  const spoolWrites: Array<{ namespace: string; key: string; chunks: number }> = [];
+  const spoolKey = (ref: { namespace: string; key: string }): string =>
+    `${ref.namespace}\0${ref.key}`;
+  const join = (chunks: readonly Uint8Array[]): Uint8Array => {
+    const byteLength = chunks.reduce((total, chunk) => total + chunk.byteLength, 0);
+    const bytes = new Uint8Array(byteLength);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return bytes;
+  };
   const context: ExportJobExecutionContext = {
     jobId: "job-1",
     leaseEpoch: options.leaseEpoch ?? 1,
     signal,
     spool: {
-      async put() { throw new Error("unused"); },
-      async *read() { throw new Error("unused"); },
-      async stat() { return undefined; },
+      async put(ref, source, putOptions) {
+        const chunks: Uint8Array[] = [];
+        for await (const chunk of source) {
+          putOptions?.signal?.throwIfAborted();
+          chunks.push(chunk.slice());
+          if (
+            options.spoolFailureAfterChunks !== undefined &&
+            chunks.length >= options.spoolFailureAfterChunks
+          ) {
+            throw new Error("simulated spool sink failure");
+          }
+        }
+        const bytes = join(chunks);
+        spoolChunks.set(spoolKey(ref), chunks);
+        spoolWrites.push({ ...ref, chunks: chunks.length });
+        return {
+          ref: {
+            ...ref,
+            jobId: "job-1",
+            leaseEpoch: options.leaseEpoch ?? 1,
+          },
+          byteLength: bytes.byteLength,
+          sha256: await sha256Hex(bytes),
+          committedAt: 9,
+        };
+      },
+      async *read(ref, readOptions) {
+        const chunks = spoolChunks.get(spoolKey(ref));
+        if (!chunks) throw new Error("missing test spool object");
+        for (const chunk of chunks) {
+          readOptions?.signal?.throwIfAborted();
+          yield chunk.slice();
+        }
+      },
+      async stat(ref) {
+        const chunks = spoolChunks.get(spoolKey(ref));
+        if (!chunks) return undefined;
+        const bytes = join(chunks);
+        return {
+          ref: {
+            ...ref,
+            jobId: "job-1",
+            leaseEpoch: options.leaseEpoch ?? 1,
+          },
+          byteLength: bytes.byteLength,
+          sha256: await sha256Hex(bytes),
+          committedAt: 9,
+        };
+      },
     },
     artifacts: {
       async stage(pending: PendingArtifactV1): Promise<StagedArtifactV1> {
         order.push("artifact-stage");
         const chunks: Uint8Array[] = [];
         for await (const chunk of pending.bytes) chunks.push(chunk.slice());
-        artifactBytes = chunks.length === 1 ? chunks[0] : undefined;
+        stagedChunks = chunks;
+        artifactBytes = join(chunks);
         return {
           ref: "staged:job-1",
           mediaType: pending.mediaType,
@@ -200,7 +267,12 @@ function executionContext(
       order.push("checkpoint-publish");
     },
   };
-  return { context, artifactBytes: () => artifactBytes };
+  return {
+    context,
+    artifactBytes: () => artifactBytes,
+    artifactChunks: () => stagedChunks,
+    spoolWrites: () => spoolWrites,
+  };
 }
 
 function executorOptions(input: {
@@ -210,6 +282,7 @@ function executorOptions(input: {
   templateBytes?: Uint8Array;
   noRecovery?: boolean;
   lostStageReturnOnce?: boolean;
+  streamingPreparedBytesThreshold?: number;
   resolveInput?: CreateTypescriptDocxExportJobExecutorOptionsV1["resolveInput"];
 } = {}) {
   const order = input.order ?? [];
@@ -294,14 +367,17 @@ function executorOptions(input: {
         };
       },
     },
+    ...(input.streamingPreparedBytesThreshold === undefined
+      ? {}
+      : { streamingPreparedBytesThreshold: input.streamingPreparedBytesThreshold }),
     now: (() => { let tick = 0; return () => tick++; })(),
   };
   return { options, ready, order, templateResolves: () => templateResolves };
 }
 
 describe("createTypescriptDocxExportJobExecutor", () => {
-  it("reserves before resolving template/PizZip and stages one owned DOCX", async () => {
-    const setup = executorOptions();
+  it("reserves before resolving template/PizZip and stages a streamed DOCX", async () => {
+    const setup = executorOptions({ streamingPreparedBytesThreshold: 1 });
     const context = executionContext(setup.order);
     const stats: ExportJobStatsV1[] = [];
     const events: ExportJobEventDraftV1[] = [];
@@ -318,6 +394,13 @@ describe("createTypescriptDocxExportJobExecutor", () => {
     const bytes = context.artifactBytes();
     expect(bytes).toBeDefined();
     expect(readPart(bytes!, "word/document.xml")).toContain("DOCX job");
+    expect(context.spoolWrites()).toEqual([
+      expect.objectContaining({ namespace: "docx-output-v1" }),
+    ]);
+    expect(context.spoolWrites()[0]!.chunks).toBeGreaterThan(3);
+    expect(context.artifactChunks()).toHaveLength(context.spoolWrites()[0]!.chunks);
+    expect(context.artifactChunks().every((chunk) => chunk.byteLength < bytes!.byteLength)).toBe(true);
+    expect(await sha256Hex(bytes!)).toBe(result.stagedArtifact.sha256);
     expect(stats).toHaveLength(1);
     expect(stats[0]).toMatchObject({
       pages: { discovered: 4, fetched: 4, composed: 4, skipped: 0 },
@@ -327,6 +410,20 @@ describe("createTypescriptDocxExportJobExecutor", () => {
     });
     expect(events.every((event) => event.kind === "issue")).toBe(true);
     expect(setup.order.at(-1)).toBe("reservation-release");
+  });
+
+  it("keeps the fast in-memory packaging path below the adaptive threshold", async () => {
+    const setup = executorOptions();
+    const context = executionContext(setup.order);
+    const result = await createTypescriptDocxExportJobExecutor(setup.options).execute(
+      await request(),
+      context.context,
+    );
+
+    expect(setup.ready.prepared?.packagingMode).toBe("memory");
+    expect(context.spoolWrites()).toHaveLength(0);
+    expect(context.artifactChunks()).toHaveLength(1);
+    expect(await sha256Hex(context.artifactBytes()!)).toBe(result.stagedArtifact.sha256);
   });
 
   it("rejects a pinned template hash mismatch before prepare/checkpoint", async () => {
@@ -568,6 +665,37 @@ describe("createTypescriptDocxExportJobExecutor", () => {
     expect(setup.order).toContain("result-recover");
     expect(recoveredStats).toHaveLength(1);
     expect(recoveredStats[0]?.pages.composed).toBe(4);
+  });
+
+  it("retries from the ready checkpoint after a streaming sink failure", async () => {
+    const setup = executorOptions({
+      noRecovery: true,
+      streamingPreparedBytesThreshold: 1,
+    });
+    const executor = createTypescriptDocxExportJobExecutor(setup.options);
+    const failedContext = executionContext(
+      setup.order,
+      new AbortController().signal,
+      { spoolFailureAfterChunks: 2 },
+    );
+
+    await expect(
+      executor.execute(await request(), failedContext.context),
+    ).rejects.toThrow("simulated spool sink failure");
+    expect(setup.ready.commits).toBe(1);
+    expect(setup.ready.attempts).toBe(1);
+    expect(setup.order).not.toContain("result-prepare");
+    expect(setup.order).not.toContain("artifact-stage");
+    expect(failedContext.spoolWrites()).toHaveLength(0);
+    expect(setup.order.at(-1)).toBe("reservation-release");
+
+    const retryContext = executionContext(setup.order);
+    const recovered = await executor.execute(await request(), retryContext.context);
+    expect(recovered.stagedArtifact.mediaType).toBe(MEDIA_TYPE);
+    expect(setup.ready.commits).toBe(1);
+    expect(setup.ready.attempts).toBe(2);
+    expect(setup.templateResolves()).toBe(1);
+    expect(retryContext.spoolWrites()).toHaveLength(1);
   });
 
   it("enforces the output estimate as a hard cap before result staging", async () => {
