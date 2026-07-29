@@ -16,6 +16,10 @@ import {
   type DiagramEmbedSeam,
 } from "./serialize.js";
 import { renderDiagram } from "@atlcli/diagram";
+import {
+  plainCodeHighlight,
+  type CodeHighlightRuntime,
+} from "@atlcli/code-highlight/contract";
 import { dataTable, parseStyleNames, resolveCaptionLang } from "./ooxml.js";
 import { headingStyle, stylesXml } from "./fixtures.js";
 import { collectDocxCodeHighlightUsage } from "./code-highlighting.js";
@@ -51,12 +55,97 @@ describe("DOCX code-highlighting preparation", () => {
         }],
       },
       { type: "codeBlock", code: "plain" },
+      {
+        type: "unknown",
+        macroName: "nested-code",
+        body: [
+          { type: "codeBlock", language: "TS", code: "const z = 3;" },
+        ],
+        extensionFrames: [{
+          content: [
+            { type: "codeBlock", language: "rust", code: "let z = 3;" },
+          ],
+        }],
+      },
     ];
 
     expect(collectDocxCodeHighlightUsage(blocks)).toEqual({
-      codeBlocks: 5,
-      languages: ["typescript", "python"],
+      codeBlocks: 7,
+      languages: ["typescript", "python", "rust"],
     });
+  });
+
+  it("loads one injected runtime after usage and prepares canonical languages once", async () => {
+    let loaderCalls = 0;
+    const preparations: Array<{ languages: readonly string[]; theme?: string }> = [];
+    const highlights: Array<string | undefined> = [];
+    const runtime: CodeHighlightRuntime = {
+      prepare: async (languages, theme) => {
+        preparations.push({ languages: [...languages], theme });
+      },
+      highlight: async (code, language, theme) => {
+        highlights.push(language);
+        return plainCodeHighlight(code, theme);
+      },
+    };
+
+    await serializeBlocks([
+      { type: "codeBlock", language: "TS", code: "const x = 1;" },
+      {
+        type: "callout",
+        kind: "info",
+        content: [
+          { type: "codeBlock", language: "python", code: "x = 1" },
+          { type: "codeBlock", language: "typescript", code: "const y = 2;" },
+        ],
+      },
+    ], {
+      styleNames: noStyles,
+      codeTheme: "dracula",
+      codeHighlightRuntimeLoader: async () => {
+        loaderCalls += 1;
+        return runtime;
+      },
+    });
+
+    expect(loaderCalls).toBe(1);
+    expect(preparations).toEqual([{
+      languages: ["typescript", "python"],
+      theme: "dracula",
+    }]);
+    expect(highlights).toEqual(["typescript", "python", "typescript"]);
+  });
+
+  it("keeps no-code, missing, unknown, and Mermaid-only input runtime-free", async () => {
+    let loaderCalls = 0;
+    const result = await serializeBlocks([
+      { type: "paragraph", content: [{ type: "text", text: "No code" }] },
+      { type: "codeBlock", code: "plain" },
+      { type: "codeBlock", language: "not-a-language", code: "plain" },
+      { type: "codeBlock", language: "mermaid", code: "graph TD; A-->B" },
+    ], {
+      styleNames: noStyles,
+      codeHighlightRuntimeLoader: async () => {
+        loaderCalls += 1;
+        throw new Error("runtime must stay gated");
+      },
+    });
+
+    expect(loaderCalls).toBe(0);
+    expect(result.xml).toContain("No code");
+    expect(result.xml).toContain("plain");
+    expect(result.xml).toContain("graph TD; A--&gt;B");
+  });
+
+  it("has no static package-root edge from DOCX export or serialization", async () => {
+    const [exportSource, serializeSource] = await Promise.all([
+      Bun.file(new URL("./export.ts", import.meta.url)).text(),
+      Bun.file(new URL("./serialize.ts", import.meta.url)).text(),
+    ]);
+
+    for (const source of [exportSource, serializeSource]) {
+      expect(source).not.toContain('from "@atlcli/code-highlight";');
+    }
   });
 
   it("reports tokenization counts without changing serialized source", async () => {

@@ -129,15 +129,17 @@ import { prepareDocxExportRuntime, runExport } from "@atlcli/docx";
 import { buildDocx, para, readPart } from "@atlcli/docx/fixtures";
 import { unzipDocx } from "@atlcli/docx/scan";
 import { storageToBlocks } from "@atlcli/confluence";
-import { getCodeHighlightEngineId } from "@atlcli/code-highlight";
+import { getCodeHighlightEngineId } from "@atlcli/code-highlight/engine/state";
 
 const resolved = import.meta.resolve("@atlcli/docx");
 if (!resolved.includes("/dist/")) {
   throw new Error(\`@atlcli/docx resolved to \${resolved} — expected the built dist/ output\`);
 }
 
-if (getCodeHighlightEngineId() !== "oniguruma") {
-  throw new Error(\`Node DOCX selected \${getCodeHighlightEngineId()} instead of Oniguruma\`);
+const assertSharedCodeHighlightState =
+  process.env.ATLCLI_ASSERT_SHARED_CODE_HIGHLIGHT_STATE !== "0";
+if (assertSharedCodeHighlightState && getCodeHighlightEngineId() !== null) {
+  throw new Error(\`Node DOCX initialized highlighting before document usage: \${getCodeHighlightEngineId()}\`);
 }
 
 const storage =
@@ -174,6 +176,9 @@ try {
 }
 if (prepared.codeFontBytes !== 273900) {
   throw new Error("warm DOCX preparation did not retain the committed code font");
+}
+if (assertSharedCodeHighlightState && getCodeHighlightEngineId() !== "oniguruma") {
+  throw new Error(\`Node DOCX selected \${getCodeHighlightEngineId()} instead of Oniguruma after code usage\`);
 }
 
 const templateBytes = buildDocx({ body: para("$scroll.title") + para("$scroll.content") });

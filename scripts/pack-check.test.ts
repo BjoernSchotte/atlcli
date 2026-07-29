@@ -308,6 +308,39 @@ describe("pack-check (spec 009)", () => {
     });
   });
 
+  it("packed DOCX/PDF entries keep the concrete highlighter behind the lazy contract", () => {
+    const codeHighlight = packageOf(
+      packages.find((p) => p.name === "@atlcli/code-highlight") ??
+        (undefined as never),
+    );
+    const docx = packageOf(
+      packages.find((p) => p.name === "@atlcli/docx") ??
+        (undefined as never),
+    );
+    const pdf = packageOf(
+      packages.find((p) => p.name === "@atlcli/pdf") ??
+        (undefined as never),
+    );
+    const contract = tarExtract(
+      codeHighlight.tarball,
+      "package/dist/contract.js",
+    );
+    const gatedConsumers = [
+      tarExtract(docx.tarball, "package/dist/export.js"),
+      tarExtract(docx.tarball, "package/dist/serialize.js"),
+      tarExtract(docx.tarball, "package/dist/code-highlighting.js"),
+      tarExtract(pdf.tarball, "package/dist/prepare.js"),
+    ];
+
+    expect(contract).toContain('import("@atlcli/code-highlight")');
+    expect(contract).not.toContain("loaders.generated");
+    expect(contract).not.toContain("shiki/");
+    for (const source of gatedConsumers) {
+      expect(source).not.toContain('from "@atlcli/code-highlight";');
+      expect(source).not.toContain("loaders.generated");
+    }
+  });
+
   it("@atlcli/pdf ships exactly the PDF_RUNTIME_ASSETS font set plus the OFL licenses (files beats .gitignore)", () => {
     const { entries } = packageOf(
       packages.find((p) => p.name === "@atlcli/pdf") ?? (undefined as never),

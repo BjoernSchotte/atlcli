@@ -10,11 +10,15 @@
 
 ### Entry point `. (browser)` — experimental
 
-- exported symbols (28): CODE_LANGUAGES, CODE_LANGUAGE_IDS, CODE_THEMES, CODE_THEME_IDS, CODE_THEME_METADATA, CodeHighlightEngine, CodeHighlightEngineConfigurationError, CodeHighlightOptions, CodeHighlightTiming, CodeLanguageId, CodeLine, CodeThemeId, CodeToken, DEFAULT_CODE_THEME, HighlightResult, HighlightSkip, HighlightedCode, InvalidCodeThemeError, ResolvedCodeTheme, canonicalCodeLanguage, getCodeHighlightEngineId, highlightCode, installCodeHighlightEngine, isCodeThemeId, prepareCodeHighlighting, resolveCodeTheme, resolveCodeThemeId, warmHighlight
+- exported symbols (34): CODE_LANGUAGES, CODE_LANGUAGE_IDS, CODE_THEMES, CODE_THEME_IDS, CODE_THEME_METADATA, CodeHighlightEngine, CodeHighlightEngineConfigurationError, CodeHighlightOptions, CodeHighlightRuntime, CodeHighlightRuntimeLoader, CodeHighlightTiming, CodeLanguageId, CodeLine, CodeThemeId, CodeToken, DEFAULT_CODE_THEME, HighlightResult, HighlightSkip, HighlightedCode, InvalidCodeThemeError, ResolvedCodeTheme, canonicalCodeLanguage, codeHighlightRuntime, getCodeHighlightEngineId, highlightCode, highlightCodeWithRuntime, installCodeHighlightEngine, isCodeThemeId, loadCodeHighlightRuntime, plainCodeHighlight, prepareCodeHighlighting, resolveCodeTheme, resolveCodeThemeId, warmHighlight
 
 ### Entry point `. (default)` — experimental
 
-- exported symbols (28): CODE_LANGUAGES, CODE_LANGUAGE_IDS, CODE_THEMES, CODE_THEME_IDS, CODE_THEME_METADATA, CodeHighlightEngine, CodeHighlightEngineConfigurationError, CodeHighlightOptions, CodeHighlightTiming, CodeLanguageId, CodeLine, CodeThemeId, CodeToken, DEFAULT_CODE_THEME, HighlightResult, HighlightSkip, HighlightedCode, InvalidCodeThemeError, ResolvedCodeTheme, canonicalCodeLanguage, getCodeHighlightEngineId, highlightCode, installCodeHighlightEngine, isCodeThemeId, prepareCodeHighlighting, resolveCodeTheme, resolveCodeThemeId, warmHighlight
+- exported symbols (34): CODE_LANGUAGES, CODE_LANGUAGE_IDS, CODE_THEMES, CODE_THEME_IDS, CODE_THEME_METADATA, CodeHighlightEngine, CodeHighlightEngineConfigurationError, CodeHighlightOptions, CodeHighlightRuntime, CodeHighlightRuntimeLoader, CodeHighlightTiming, CodeLanguageId, CodeLine, CodeThemeId, CodeToken, DEFAULT_CODE_THEME, HighlightResult, HighlightSkip, HighlightedCode, InvalidCodeThemeError, ResolvedCodeTheme, canonicalCodeLanguage, codeHighlightRuntime, getCodeHighlightEngineId, highlightCode, highlightCodeWithRuntime, installCodeHighlightEngine, isCodeThemeId, loadCodeHighlightRuntime, plainCodeHighlight, prepareCodeHighlighting, resolveCodeTheme, resolveCodeThemeId, warmHighlight
+
+### Entry point `./contract` — experimental
+
+- exported symbols (12): CodeHighlightOptions, CodeHighlightRuntime, CodeHighlightRuntimeLoader, CodeHighlightTiming, CodeLine, CodeToken, HighlightResult, HighlightSkip, HighlightedCode, highlightCodeWithRuntime, loadCodeHighlightRuntime, plainCodeHighlight
 
 ### Entry point `./engine/javascript` — experimental
 
@@ -23,6 +27,10 @@
 ### Entry point `./engine/oniguruma` — experimental
 
 - exported symbols (1): installOnigurumaHighlightEngine
+
+### Entry point `./engine/state` — experimental
+
+- exported symbols (5): CodeHighlightEngine, CodeHighlightEngineConfigurationError, getCodeHighlightEngineId, installCodeHighlightEngine, lockCodeHighlightEngine
 
 ### Entry point `./registry` — experimental
 

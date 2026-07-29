@@ -193,7 +193,19 @@ test("empty DOCX preparation defers the code font unless preload is explicit", a
     ({ startTime }) =>
       startTime >= explicit.benchmark.phases.warmStartedAt,
   );
+  const deferredHighlightRuntime = deferred.resources.filter(({ name }) =>
+    INITIALIZATION_CHUNK_RE.test(name),
+  );
+  const explicitHighlightRuntime = explicit.resources.filter(({ name }) =>
+    INITIALIZATION_CHUNK_RE.test(name),
+  );
 
+  expect(deferred.benchmark.engineBefore).toBeNull();
+  expect(deferred.benchmark.engineAfter).toBeNull();
+  expect(explicit.benchmark.engineBefore).toBeNull();
+  expect(explicit.benchmark.engineAfter).toBeNull();
+  expect(deferredHighlightRuntime).toEqual([]);
+  expect(explicitHighlightRuntime).toEqual([]);
   expect(deferred.benchmark.cold.codeFontBytes).toBe(0);
   expect(deferred.benchmark.cold.codeFontMs).toBe(0);
   expect(deferred.benchmark.warm.codeFontBytes).toBe(0);
@@ -219,6 +231,9 @@ test("empty DOCX preparation defers the code font unless preload is explicit", a
       deferred: {
         coldMs: deferred.benchmark.coldMs,
         warmMs: deferred.benchmark.warmMs,
+        pdfPreparationMs: deferred.benchmark.pdfPreparationMs,
+        engineBefore: deferred.benchmark.engineBefore,
+        engineAfter: deferred.benchmark.engineAfter,
         requestCount: deferred.resources.length,
         fontRequestCount: deferredFonts.length,
         fontDecodedBytes: 0,
@@ -228,6 +243,9 @@ test("empty DOCX preparation defers the code font unless preload is explicit", a
       explicit: {
         coldMs: explicit.benchmark.coldMs,
         warmMs: explicit.benchmark.warmMs,
+        pdfPreparationMs: explicit.benchmark.pdfPreparationMs,
+        engineBefore: explicit.benchmark.engineBefore,
+        engineAfter: explicit.benchmark.engineAfter,
         requestCount: explicit.resources.length,
         fontRequestCount: explicitFonts.length,
         fontTransferBytes: explicitFonts.reduce(
@@ -375,6 +393,7 @@ test("one-language preparation requests only its direct grammar and theme after 
     const requestedNames = result.requestedResources.map(({ name }) => name);
     expect(requestedNames).toEqual(
       expect.arrayContaining([
+        expect.stringMatching(/^index[.]browser-[^/]+[.]js$/),
         expect.stringMatching(/^core-[^/]+[.]js$/),
         expect.stringMatching(/^engine-javascript-[^/]+[.]js$/),
         expect.stringMatching(/^github-light-[^/]+[.]js$/),
@@ -384,7 +403,16 @@ test("one-language preparation requests only its direct grammar and theme after 
     const requestedJavaScript = requestedNames.filter((name) =>
       name.endsWith(".js"),
     );
-    expect(requestedJavaScript).toHaveLength(5);
+    expect(requestedJavaScript).toHaveLength(6);
+    expect(
+      requestedJavaScript.filter((name) =>
+        /^index[.]browser-[^/]+[.]js$/.test(name),
+      ),
+    ).toHaveLength(1);
+    const requestedRuntimeEntry = requestedJavaScript.find((name) =>
+      /^index[.]browser-[^/]+[.]js$/.test(name),
+    );
+    expect(requestedRuntimeEntry).toBeDefined();
     expect(
       requestedJavaScript.filter((name) => /^core-[^/]+[.]js$/.test(name)),
     ).toHaveLength(1);
@@ -412,6 +440,9 @@ test("one-language preparation requests only its direct grammar and theme after 
         ),
       ),
     ).toBe(false);
+    expect(
+      result.beforeIntentResources.map(({ name }) => name),
+    ).not.toContain(requestedRuntimeEntry);
     expect(
       requestedNames.some((name) =>
         /^(?:langs|themes|bundle-full|bundle-web)-[^/]+[.]js$/.test(name),

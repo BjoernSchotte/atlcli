@@ -13,10 +13,8 @@ import type {
 } from "@atlcli/confluence";
 import type { TemplateManifest } from "@atlcli/template-pack";
 import type { ValidatedPdfTemplatePackV1 } from "./template-pack.js";
-import type {
-  CodeThemeId,
-  HighlightedCode,
-} from "@atlcli/code-highlight";
+import type { HighlightedCode } from "@atlcli/code-highlight/contract";
+import type { CodeThemeId } from "@atlcli/code-highlight/registry";
 
 export interface PdfExportMetadata {
   title: string;

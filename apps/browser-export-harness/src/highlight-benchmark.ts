@@ -1,8 +1,5 @@
-import {
-  getCodeHighlightEngineId,
-  prepareCodeHighlighting,
-  type CodeThemeId,
-} from "@atlcli/code-highlight";
+import { getCodeHighlightEngineId } from "@atlcli/code-highlight/engine/state";
+import type { CodeThemeId } from "@atlcli/code-highlight/registry";
 import type { ExportBlock } from "@atlcli/confluence";
 import {
   memoryTemplateSource,
@@ -95,10 +92,13 @@ export interface HighlightBenchmarkResult {
 }
 
 export interface RuntimePreparationBenchmarkResult {
+  engineBefore: string | null;
+  engineAfter: string | null;
   cold: Awaited<ReturnType<typeof prepareDocxExportRuntime>>;
   warm: Awaited<ReturnType<typeof prepareDocxExportRuntime>>;
   coldMs: number;
   warmMs: number;
+  pdfPreparationMs: number;
   sampledPeakJsHeapBytes: number;
   phases: {
     coldStartedAt: number;
@@ -200,6 +200,7 @@ async function runRuntimePreparationBenchmark(
   };
   const sampler = setInterval(sample, 1);
   try {
+    const engineBefore = getCodeHighlightEngineId();
     const coldStartedAt = performance.now();
     const cold = await prepareDocxExportRuntime([], {
       ...(preloadCodeFont ? { preloadCodeFont: true } : {}),
@@ -214,11 +215,29 @@ async function runRuntimePreparationBenchmark(
     const warmEndedAt = performance.now();
     const warmMs = warmEndedAt - warmStartedAt;
     sample();
+    const pdfStartedAt = performance.now();
+    const { preparePdfDocument } = await import("@atlcli/pdf/browser");
+    await preparePdfDocument(
+      [{
+        type: "paragraph",
+        content: [{ type: "text", text: "No highlighted code" }],
+      }],
+      {
+        resolve: async () => {
+          throw new Error("the no-code PDF preparation requested an asset");
+        },
+      },
+    );
+    const pdfPreparationMs = performance.now() - pdfStartedAt;
+    sample();
     return {
+      engineBefore,
+      engineAfter: getCodeHighlightEngineId(),
       cold,
       warm,
       coldMs,
       warmMs,
+      pdfPreparationMs,
       sampledPeakJsHeapBytes,
       phases: {
         coldStartedAt,
@@ -236,7 +255,8 @@ async function prepareHighlightModules(
   languages: readonly string[],
   theme: CodeThemeId,
 ): Promise<void> {
-  await prepareCodeHighlighting(languages, theme);
+  const { codeHighlightRuntime } = await import("@atlcli/code-highlight");
+  await codeHighlightRuntime.prepare(languages, theme);
 }
 
 declare global {

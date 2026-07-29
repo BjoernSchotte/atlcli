@@ -10,51 +10,27 @@ import {
 import {
   canonicalCodeLanguage,
   DEFAULT_CODE_THEME,
-  resolveCodeTheme,
   type CodeLanguageId,
   type CodeThemeId,
-  type ResolvedCodeTheme,
 } from "./registry.js";
 import { lockCodeHighlightEngine } from "./highlight-engine-state.js";
+import {
+  plainCodeHighlight,
+  type CodeHighlightOptions,
+  type CodeHighlightRuntime,
+  type CodeHighlightTiming,
+  type CodeLine,
+  type HighlightedCode,
+} from "./contract.js";
 
 export * from "./registry.js";
+export * from "./contract.js";
 export {
   CodeHighlightEngineConfigurationError,
   getCodeHighlightEngineId,
   installCodeHighlightEngine,
   type CodeHighlightEngine,
 } from "./highlight-engine-state.js";
-
-export interface CodeToken {
-  text: string;
-  color?: `#${string}`;
-}
-
-export type CodeLine = CodeToken[];
-export type HighlightSkip = "unknown-language" | "highlight-failed";
-
-export interface HighlightedCode {
-  theme: ResolvedCodeTheme;
-  lines: CodeLine[];
-  skipped: HighlightSkip | null;
-}
-
-/** Backward-friendly name for consumers migrating from engine-local adapters. */
-export type HighlightResult = HighlightedCode;
-
-/**
- * Newly performed highlighting work. Engine and grammar timings are zero when
- * an earlier preload already populated the relevant caches.
- */
-export interface CodeHighlightTiming {
-  engineInitMs: number;
-  grammarLoadMs: number;
-  tokenizeMs: number;
-}
-
-export interface CodeHighlightOptions {
-  onTiming?: (timing: CodeHighlightTiming) => void;
-}
 
 interface HighlighterRecord {
   highlighter: HighlighterCore;
@@ -106,10 +82,6 @@ function opaqueHex(value: string, background: `#${string}`): `#${string}` {
       .padStart(2, "0"),
   );
   return `#${channels.join("").toUpperCase()}`;
-}
-
-function plainLines(code: string): CodeLine[] {
-  return code.split("\n").map((line) => [{ text: line }]);
 }
 
 async function getHighlighter(
@@ -228,17 +200,14 @@ export async function highlightCode(
   theme: CodeThemeId = DEFAULT_CODE_THEME,
   options: CodeHighlightOptions = {},
 ): Promise<HighlightedCode> {
-  const resolvedTheme = resolveCodeTheme(theme);
+  const plain = plainCodeHighlight(code, theme);
+  const resolvedTheme = plain.theme;
   if (!language) {
-    return { theme: resolvedTheme, lines: plainLines(code), skipped: null };
+    return plain;
   }
   const canonical = canonicalCodeLanguage(language);
   if (!canonical) {
-    return {
-      theme: resolvedTheme,
-      lines: plainLines(code),
-      skipped: "unknown-language",
-    };
+    return { ...plain, skipped: "unknown-language" };
   }
   try {
     let timing = await loadLanguage(theme, canonical);
@@ -276,13 +245,9 @@ export async function highlightCode(
         (line, index) => line !== sourceTextLines[index],
       )
     ) {
-      return {
-        theme: resolvedTheme,
-        lines: plainLines(code),
-        skipped: "highlight-failed",
-      };
+      return { ...plain, skipped: "highlight-failed" };
     }
-    const sourceLines = plainLines(code);
+    const sourceLines = plain.lines;
     if (lines.length < sourceLines.length) {
       lines.push(...sourceLines.slice(lines.length));
     }
@@ -292,11 +257,7 @@ export async function highlightCode(
       skipped: null,
     };
   } catch {
-    return {
-      theme: resolvedTheme,
-      lines: plainLines(code),
-      skipped: "highlight-failed",
-    };
+    return { ...plain, skipped: "highlight-failed" };
   }
 }
 
@@ -307,3 +268,9 @@ export function warmHighlight(
 ): void {
   void prepareCodeHighlighting(languages, theme).catch(() => {});
 }
+
+/** Condition-selected concrete capability, imported only after usage is known. */
+export const codeHighlightRuntime: CodeHighlightRuntime = {
+  prepare: prepareCodeHighlighting,
+  highlight: highlightCode,
+};

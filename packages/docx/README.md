@@ -14,8 +14,8 @@ browser and under Node/Bun; hosts inject template/asset/output seams via
     memory-template, and canvas-rasterizer capabilities in one graph.
   - `./browser` — compatibility engine barrel without Node adapters.
   - `./browser-runtime` — browser bootstrap (installs the byte helpers;
-    import before PizZip/docxtemplater run in a browser host), the
-    JavaScript-only Shiki engine, and the runtime-preparation API.
+    import before PizZip/docxtemplater run in a browser host) and the
+    runtime-preparation API.
   - `./vite` — build-time define map for browser bundlers.
   - `./scan` — template scanning (`scanTemplate`, `unzipDocx`).
   - `./fixtures` — programmatic minimal-docx builders (dev/test API).
@@ -61,7 +61,10 @@ const preparation = await prepareDocxExportRuntime(blocks, {
 });
 ```
 
-The call always warms known Shiki grammars. It validates the bundled
+The call warms only known Shiki grammars found by the nested usage scan. With
+no known language it leaves the condition-selected runtime and engine
+unloaded. Missing/unknown languages and Mermaid source fallback stay plain
+without crossing that boundary. It validates the bundled
 `JetBrainsMono-Regular.ttf` concurrently only when `preloadCodeFont: true` is
 explicit. Otherwise the renderer stages it after macro/include resolution and
 only when completed OOXML uses the code face; `prepareDocxExportRuntime([])`
@@ -70,8 +73,9 @@ concurrent-safe, retryable cache. Cancellation stops only that caller's wait;
 shared initialization continues for the next caller. Starting it from a DOCX
 modal, Word-template selection, or explicit export action keeps ordinary page
 loads untouched. The returned timings cover only intent-to-ready preparation;
-`ExportReport.timings` still describes render work. Browser builds use Shiki's
-JavaScript RegExp engine; Node/Bun imports use Oniguruma.
+`ExportReport.timings` still describes render work. Once actual code usage is
+proven, browser builds select Shiki's JavaScript RegExp engine and Node/Bun
+selects Oniguruma through the same condition-selected runtime loader.
 
 `./browser` and `./browser-runtime` remain available for compatibility and
 specialized bundles. New intent hosts should use `./browser-entry`.
