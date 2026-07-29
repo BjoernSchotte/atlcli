@@ -32,13 +32,16 @@ export {
   exportDocx,
   prepareDocxExport,
   renderPreparedDocxExport,
+  renderPreparedDocxExportStream,
   DocxRenderError,
 } from "./export.js";
 export type {
   ExportInput,
   ExportReport,
   ExportResult,
+  StreamedDocxExportResult,
   ExportTimings,
+  PreparedDocxMediaPartV1,
   PreparedDocxExportV1,
   PreparedDocxRenderStateV1,
   RenderPreparedDocxExportInput,

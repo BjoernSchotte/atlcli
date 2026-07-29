@@ -63,6 +63,40 @@ function hydrate(value: unknown, blobs: Uint8Array[]): unknown {
   return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([key, entry]) => [key, hydrate(entry, blobs)]));
 }
 
+function deferPreparedDocxMediaBlobs(value: unknown, blobCount: number): Set<number> {
+  const deferred = new Set<number>();
+  if (value === null || typeof value !== "object") return deferred;
+  const prepared = value as {
+    packagingMode?: unknown;
+    renderState?: { mediaParts?: unknown };
+  };
+  if (prepared.packagingMode !== "stream" || !Array.isArray(prepared.renderState?.mediaParts)) {
+    return deferred;
+  }
+  for (const [partIndex, valuePart] of prepared.renderState.mediaParts.entries()) {
+    if (valuePart === null || typeof valuePart !== "object") {
+      throw new Error(`Prepared DOCX media part ${partIndex} is invalid.`);
+    }
+    const part = valuePart as {
+      bytes?: Partial<BytesPlaceholderV1>;
+      sourceRef?: string;
+    };
+    const blobIndex = part.bytes?.__atlcliBytes;
+    if (
+      !Number.isSafeInteger(blobIndex)
+      || blobIndex! < 0
+      || blobIndex! >= blobCount
+      || deferred.has(blobIndex!)
+    ) {
+      throw new Error(`Prepared DOCX media part ${partIndex} has an invalid blob binding.`);
+    }
+    delete part.bytes;
+    part.sourceRef = String(blobIndex);
+    deferred.add(blobIndex!);
+  }
+  return deferred;
+}
+
 async function collect(source: AsyncIterable<Uint8Array>, maxBytes: number, signal: AbortSignal, expectedByteLength?: number): Promise<Uint8Array> {
   if (expectedByteLength !== undefined) {
     // Known-length object (spool stat): preallocate instead of chunk list +
@@ -93,7 +127,7 @@ export interface FileExecutorStoreOptionsV1 {
 }
 
 class FileReadyStoreBase {
-  readonly #jobs: FileExportJobStore; readonly #spool: FileExportSpoolStore; readonly #limits: SpoolWriteLimitsV1; readonly #now: () => number;
+  readonly #jobs: FileExportJobStore; readonly #spool: FileExportSpoolStore; readonly #limits: SpoolWriteLimitsV1; readonly #now: () => number; readonly #lazyMediaRefs = new Map<string, SpoolRefV1[]>();
   constructor(options: FileExecutorStoreOptionsV1) { this.#jobs = options.jobs; this.#spool = options.spool; this.#limits = options.spoolLimits; this.#now = options.now ?? Date.now; }
   async commit<TPrepared, TCheckpoint extends { ref: string }>(input: { format: "pdf" | "docx"; jobId: string; leaseEpoch: number; requestId: string; requestKey: string; prepared: TPrepared; checkpoint: TCheckpoint; signal: AbortSignal }): Promise<TCheckpoint> {
     const key = checkpointKey(input.format, input.jobId, input.requestId, input.requestKey); const blobs: Uint8Array[] = [];
@@ -108,16 +142,31 @@ class FileReadyStoreBase {
     return this.#jobs.commitExecutorCheckpoint({ key, jobId: input.jobId, leaseEpoch: input.leaseEpoch, checkpoint: input.checkpoint, manifestRef, at: this.#now() });
   }
   async load<T>(format: "pdf" | "docx", jobId: string, requestId: string, requestKey: string): Promise<T | undefined> { return (await this.#jobs.loadExecutorCheckpoint<T>(checkpointKey(format, jobId, requestId, requestKey)))?.checkpoint; }
-  async materialize<T>(format: "pdf" | "docx", checkpoint: { jobId: string; requestId: string; requestKey: string }, signal: AbortSignal): Promise<T> {
+  async materialize<T>(format: "pdf" | "docx", checkpoint: { ref: string; jobId: string; requestId: string; requestKey: string }, signal: AbortSignal): Promise<T> {
     const stored = await this.#jobs.loadExecutorCheckpoint<T>(checkpointKey(format, checkpoint.jobId, checkpoint.requestId, checkpoint.requestKey)); if (!stored) throw new Error("Prepared checkpoint was not found.");
     const manifestBytes = await collect(this.#spool.read(stored.manifestRef, { signal }), this.#limits.maxObjectBytes, signal);
     const manifest = JSON.parse(new TextDecoder().decode(manifestBytes)) as PreparedManifestV1; if (manifest.schema !== "atlcli.node-prepared-payload/1") throw new Error("Prepared manifest schema is unsupported.");
-    const blobs: Uint8Array[] = [];
-    for (const ref of manifest.blobs) {
+    const deferred = format === "docx"
+      ? deferPreparedDocxMediaBlobs(manifest.value, manifest.blobs.length)
+      : new Set<number>();
+    const blobs: Uint8Array[] = new Array(manifest.blobs.length);
+    for (const [index, ref] of manifest.blobs.entries()) {
+      if (deferred.has(index)) continue;
       const stat = await this.#spool.stat(ref);
-      blobs.push(await collect(this.#spool.read(ref, { signal }), this.#limits.maxObjectBytes, signal, stat?.byteLength));
+      blobs[index] = await collect(this.#spool.read(ref, { signal }), this.#limits.maxObjectBytes, signal, stat?.byteLength);
     }
+    this.#lazyMediaRefs.set(checkpoint.ref, manifest.blobs);
     return hydrate(manifest.value, blobs) as T;
+  }
+  async *readMedia(checkpointRef: string, sourceRef: string, signal: AbortSignal): AsyncIterable<Uint8Array> {
+    throwIfAborted(signal);
+    const refs = this.#lazyMediaRefs.get(checkpointRef);
+    const index = Number(sourceRef);
+    if (!refs || !Number.isSafeInteger(index) || index < 0 || index >= refs.length) {
+      throw new Error("Prepared DOCX media source is not bound to this checkpoint.");
+    }
+    yield* this.#spool.read(refs[index]!, { signal });
+    throwIfAborted(signal);
   }
   advance<T extends { renderAttempts: number }>(format: "pdf" | "docx", input: { checkpoint: T & { jobId: string; requestId: string; requestKey: string }; jobId: string; leaseEpoch: number }): Promise<T> {
     return this.#jobs.advanceExecutorCheckpointAttempt({ key: checkpointKey(format, input.checkpoint.jobId, input.checkpoint.requestId, input.checkpoint.requestKey), jobId: input.jobId, leaseEpoch: input.leaseEpoch, expected: input.checkpoint });
@@ -148,6 +197,11 @@ export function createFileDocxReadyToRenderStore(options: FileExecutorStoreOptio
       return base.commit({ format: "docx", jobId: input.jobId, leaseEpoch: input.leaseEpoch, requestId: input.request.id, requestKey: input.request.idempotencyKey, prepared: input.prepared, checkpoint, signal: input.signal });
     },
     materialize: (input) => base.materialize("docx", input.checkpoint, input.signal),
+    readMedia: (input) => base.readMedia(
+      input.checkpoint.ref,
+      input.sourceRef,
+      input.signal,
+    ),
     beginRenderAttempt: (input) => base.advance("docx", input),
   };
 }

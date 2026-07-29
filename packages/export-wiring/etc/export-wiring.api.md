@@ -672,6 +672,7 @@ export interface CreateTypescriptDocxExportJobExecutorOptionsV1 {
     readyToRender: DocxReadyToRenderStoreV1;
     renderReservations: DocxRenderReservationPortV1;
     results: DocxExportResultStoreV1;
+    streamingPreparedBytesThreshold?: number;
     now?: () => number;
 }
 
@@ -787,6 +788,13 @@ export interface DocxReadyToRenderStoreV1 {
         leaseEpoch: number;
         signal: AbortSignal;
     }): Promise<PreparedDocxExportV1>;
+    readMedia(input: {
+        checkpoint: DocxReadyToRenderCheckpointV1;
+        sourceRef: string;
+        jobId: string;
+        leaseEpoch: number;
+        signal: AbortSignal;
+    }): AsyncIterable<Uint8Array>;
     beginRenderAttempt(input: {
         checkpoint: DocxReadyToRenderCheckpointV1;
         jobId: string;

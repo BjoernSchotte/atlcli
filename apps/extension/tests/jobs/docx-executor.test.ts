@@ -218,6 +218,14 @@ describe("productive extension DOCX executor", () => {
       template: { name: "recovery.docx", modificationDate: new Date(0) },
       templateBytes,
     });
+    const deferredMedia = Uint8Array.of(137, 80, 78, 71, 13, 10, 26, 10);
+    prepared.packagingMode = "stream";
+    prepared.renderState!.mediaParts = [{
+      path: "word/media/deferred.png",
+      byteLength: deferredMedia.byteLength,
+      sha256: await sha256Hex(deferredMedia),
+      bytes: deferredMedia,
+    }];
     const ready = createExtensionDocxReadyToRenderStore({
       factory,
       now: () => now,
@@ -276,6 +284,23 @@ describe("productive extension DOCX executor", () => {
     expect(materialized.renderState?.archiveBytes).toEqual(
       prepared.renderState?.archiveBytes,
     );
+    expect(materialized.renderState?.mediaParts).toEqual([{
+      path: "word/media/deferred.png",
+      byteLength: deferredMedia.byteLength,
+      sha256: await sha256Hex(deferredMedia),
+      sourceRef: "1",
+    }]);
+    const recoveredMedia: number[] = [];
+    for await (const chunk of ready.readMedia({
+      checkpoint,
+      sourceRef: materialized.renderState!.mediaParts![0]!.sourceRef!,
+      jobId: request.id,
+      leaseEpoch: recovered!.leaseEpoch,
+      signal: new AbortController().signal,
+    })) {
+      recoveredMedia.push(...chunk);
+    }
+    expect(recoveredMedia).toEqual([...deferredMedia]);
     await expect(ready.beginRenderAttempt({
       checkpoint,
       jobId: request.id,

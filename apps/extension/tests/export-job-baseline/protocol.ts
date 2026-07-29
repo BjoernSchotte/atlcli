@@ -1,13 +1,16 @@
-import type { LargeExportCorpusCounts } from "@atlcli/export-fixtures";
-
 export type BrowserJobBaselineFormat = "docx" | "pdf";
 export type BrowserJobBaselinePages = 50 | 500;
+export type BrowserJobBaselineCorpus = "text" | "mixed" | "image-heavy";
+export type BrowserJobBaselineDocxMode = "adaptive" | "memory";
 
 export interface BrowserJobBaselinePrepareResult {
   pages: BrowserJobBaselinePages;
   seed: number;
+  corpusKind: BrowserJobBaselineCorpus;
+  docxMode: BrowserJobBaselineDocxMode;
+  imageScale: number | null;
   corpusDigest: string;
-  counts: LargeExportCorpusCounts;
+  counts: Record<string, number>;
   composedBlocks: number;
   logicalInputBytes: number;
   corpusAndComposeMs: number;
@@ -47,6 +50,9 @@ export interface BrowserExportJobBaselineApi {
   prepare(options: {
     pages: BrowserJobBaselinePages;
     seed: number;
+    corpusKind?: BrowserJobBaselineCorpus;
+    docxMode?: BrowserJobBaselineDocxMode;
+    imageScale?: number;
   }): Promise<BrowserJobBaselinePrepareResult>;
   run(format: BrowserJobBaselineFormat): Promise<BrowserJobBaselineExportResult>;
   cleanup(): Promise<void>;

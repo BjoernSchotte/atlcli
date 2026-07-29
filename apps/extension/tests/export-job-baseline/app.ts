@@ -29,8 +29,12 @@ import {
 import {
   DOCX_TEMPLATE_BYTES,
   digestLargeExportCorpus,
+  generateImageHeavyCorpus,
   generateLargeExportCorpus,
+  generateMixedExportCorpus,
+  type ImageHeavyCorpus,
   type LargeExportCorpus,
+  type MixedExportCorpus,
 } from "@atlcli/export-fixtures";
 import {
   checkpointDocxAssetsV1,
@@ -65,6 +69,8 @@ import type {
   BrowserJobBaselineExportResult,
   BrowserJobBaselineFormat,
   BrowserJobBaselinePrepareResult,
+  BrowserJobBaselineCorpus,
+  BrowserJobBaselineDocxMode,
   BrowserJobSpoolBreakdown,
 } from "./protocol.js";
 
@@ -85,7 +91,27 @@ const fontUrls = new Map<string, string>([
 
 const EXPORT_DATE = new Date("2026-07-22T00:00:00.000Z");
 const MIB = 1024 * 1024;
-let corpus: LargeExportCorpus | undefined;
+interface BrowserBaselineAsset {
+  pageId?: string;
+  filename: string;
+  mediaType: string;
+  bytes: Uint8Array;
+}
+
+interface BrowserBaselineCorpus {
+  kind: BrowserJobBaselineCorpus;
+  pages: 50 | 500;
+  seed: number;
+  blocks: ReturnType<typeof composeChapters>["blocks"];
+  assets: BrowserBaselineAsset[];
+  counts: Record<string, number>;
+  digest: string;
+  imageScale: number | null;
+  docxMode: BrowserJobBaselineDocxMode;
+  text?: LargeExportCorpus;
+}
+
+let corpus: BrowserBaselineCorpus | undefined;
 let composedBlocks = 0;
 let compilerPromise: Promise<BrowserPdfCompiler> | undefined;
 
@@ -136,9 +162,9 @@ async function setup(
   return { setupMs: performance.now() - started };
 }
 
-function logicalInputBytes(value: LargeExportCorpus): number {
+function logicalInputBytes(value: BrowserBaselineCorpus): number {
   return (
-    new TextEncoder().encode(JSON.stringify(value.nodes)).byteLength +
+    new TextEncoder().encode(JSON.stringify(value.blocks)).byteLength +
     value.assets.reduce((sum, asset) => sum + asset.bytes.byteLength, 0)
   );
 }
@@ -146,20 +172,77 @@ function logicalInputBytes(value: LargeExportCorpus): number {
 async function prepare(options: {
   pages: 50 | 500;
   seed: number;
+  corpusKind?: BrowserJobBaselineCorpus;
+  docxMode?: BrowserJobBaselineDocxMode;
+  imageScale?: number;
 }): Promise<BrowserJobBaselinePrepareResult> {
   const corpusStarted = performance.now();
-  corpus = generateLargeExportCorpus(options);
-  const composed = composeChapters(corpus.nodes);
-  composedBlocks = composed.blocks.length;
+  const corpusKind = options.corpusKind ?? "text";
+  const docxMode = options.docxMode ?? "adaptive";
+  if (corpusKind === "text") {
+    const text = generateLargeExportCorpus(options);
+    const composed = composeChapters(text.nodes);
+    corpus = {
+      kind: corpusKind,
+      pages: options.pages,
+      seed: options.seed,
+      blocks: composed.blocks,
+      assets: [...text.assets],
+      counts: { ...text.counts },
+      digest: await digestLargeExportCorpus(text),
+      imageScale: null,
+      docxMode,
+      text,
+    };
+  } else if (corpusKind === "mixed") {
+    const mixed: MixedExportCorpus = generateMixedExportCorpus({
+      seed: options.seed,
+      ...(options.imageScale === undefined ? {} : { imageScale: options.imageScale }),
+    });
+    corpus = {
+      kind: corpusKind,
+      pages: options.pages,
+      seed: options.seed,
+      blocks: mixed.blocks,
+      assets: [
+        ...mixed.text.assets,
+        ...mixed.images.assets,
+      ],
+      counts: { ...mixed.counts },
+      digest: await sha256(mixed.identity),
+      imageScale: mixed.images.scale,
+      docxMode,
+    };
+  } else {
+    const images: ImageHeavyCorpus = generateImageHeavyCorpus({
+      seed: options.seed,
+      ...(options.imageScale === undefined ? {} : { scale: options.imageScale }),
+    });
+    corpus = {
+      kind: corpusKind,
+      pages: options.pages,
+      seed: options.seed,
+      blocks: images.blocks,
+      assets: [...images.assets],
+      counts: { ...images.counts },
+      digest: images.manifestSha256,
+      imageScale: images.scale,
+      docxMode,
+    };
+  }
+  composedBlocks = corpus.blocks.length;
   const corpusAndComposeMs = performance.now() - corpusStarted;
   const fingerprintStarted = performance.now();
   const bytes = logicalInputBytes(corpus);
-  const corpusDigest = await digestLargeExportCorpus(corpus);
+  const corpusDigest = corpus.digest;
   const corpusFingerprintMs = performance.now() - fingerprintStarted;
-  output(`prepared:${options.pages}`);
+  output(`prepared:${corpusKind}:${options.pages}`);
   return {
     pages: options.pages,
     seed: options.seed,
+    corpusKind,
+    docxMode,
+    imageScale: corpus.imageScale,
     corpusDigest,
     counts: corpus.counts,
     composedBlocks,
@@ -172,7 +255,7 @@ async function prepare(options: {
 function assetFor(
   pageId: string | undefined,
   filename: string,
-): LargeExportCorpus["assets"][number] {
+): BrowserBaselineAsset {
   if (!corpus) throw new Error("Prepare the corpus before resolving assets.");
   const exact = corpus.assets.find(
     (asset) => asset.pageId === pageId && asset.filename === filename,
@@ -232,7 +315,7 @@ function requestBase(
   return {
     schema: "atlcli.export-job-request/1",
     id,
-    idempotencyKey: `chrome-post-queue:${format}:${corpus.pages}:${id}`,
+    idempotencyKey: `chrome-post-queue:${corpus.kind}:${format}:${corpus.pages}:${id}`,
     source: {
       kind: "confluence",
       siteOrigin: "https://example.invalid",
@@ -240,8 +323,8 @@ function requestBase(
       scope: { kind: "tree", includeRoot: true },
     },
     authRef: "benchmark:synthetic",
-    displayName: `Large browser job benchmark (${corpus.pages} pages)`,
-    requestedFilename: `large-export-${corpus.pages}.${format}`,
+    displayName: `${corpus.kind} browser job benchmark (${corpus.pages} pages)`,
+    requestedFilename: `${corpus.kind}-export-${corpus.pages}.${format}`,
     createdAt: EXPORT_DATE.getTime(),
     priority: "interactive",
     output: { policy: "collect" },
@@ -252,7 +335,7 @@ async function request(
   format: BrowserJobBaselineFormat,
 ): Promise<PdfExportJobRequestV1 | DocxExportJobRequestV1> {
   if (!corpus) throw new Error("Prepare the corpus before creating a job.");
-  const id = `chrome-${format}-${corpus.pages}-${corpus.seed.toString(16)}`;
+  const id = `chrome-${corpus.kind}-${format}-${corpus.pages}-${corpus.seed.toString(16)}`;
   const base = requestBase(id, format);
   if (format === "pdf") {
     return {
@@ -305,10 +388,32 @@ async function durableBlocks(
 ): Promise<ReturnType<typeof composeChapters>["blocks"]> {
   if (!corpus) throw new Error("Prepare the corpus before durable composition.");
   const store = createExportTreeBodySpoolV1(context, requestKey);
-  const entries = manifestEntries(corpus);
+  if (!corpus.text) {
+    const entry = {
+      ordinal: 0,
+      key: `${corpus.kind}:v1`,
+      pageId: `${corpus.kind}-root`,
+      title: `${corpus.kind} synthetic corpus`,
+    };
+    await store.prepare([entry], { signal: context.signal });
+    const existing = await store.load(entry, { signal: context.signal });
+    if (existing?.ok) return existing.blocks;
+    const result = {
+      ok: true as const,
+      pageId: entry.pageId,
+      title: entry.title,
+      source: { representation: "storage" as const, degraded: false },
+      blocks: structuredClone(corpus.blocks),
+      notes: [],
+      meta: { version: 1, labels: [] },
+    };
+    await store.commit(entry, result, { signal: context.signal });
+    return result.blocks;
+  }
+  const entries = manifestEntries(corpus.text);
   await store.prepare(entries, { signal: context.signal });
   const nodes: ExportPageNode[] = [];
-  for (const [ordinal, node] of corpus.nodes.entries()) {
+  for (const [ordinal, node] of corpus.text.nodes.entries()) {
     const entry = entries[ordinal]!;
     const existing = await store.load(entry, { signal: context.signal });
     const result = existing ?? {
@@ -342,7 +447,9 @@ function estimate(format: BrowserJobBaselineFormat): ResourceEstimateV1 {
   return {
     heapBytes: Math.max(64 * MIB, logicalBytes * 8),
     spoolBytes: Math.max(16 * MIB, logicalBytes * 4),
-    outputBytes: format === "pdf" ? 64 * MIB : 32 * MIB,
+    outputBytes: format === "pdf"
+      ? 64 * MIB
+      : Math.min(64 * MIB, Math.max(32 * MIB, Math.ceil(logicalBytes * 1.25) + 4 * MIB)),
     rasterPixels: 32 * MIB,
     confidence: "estimated",
   };
@@ -494,6 +601,9 @@ async function run(
       : createProductiveExtensionDocxExecutor({
           bytes,
           renderPool,
+          ...(preparedCorpus.docxMode === "memory"
+            ? { streamingPreparedBytesThreshold: Number.MAX_SAFE_INTEGER }
+            : {}),
           async resolveInput(docxRequest, context): Promise<
             Omit<ExportInput, "templateBytes" | "signal" | "onProgress"> & {
               jobTelemetry: { sourcePageCount: number };

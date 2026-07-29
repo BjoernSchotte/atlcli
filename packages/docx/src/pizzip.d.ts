@@ -17,6 +17,20 @@ declare module "pizzip" {
     dir: boolean;
     /** ZIP header timestamp; writable like JSZip's/PizZip's runtime object. */
     date: Date;
+    /** Optional per-entry comment and DOS attributes preserved by streaming output. */
+    comment?: string;
+    dosPermissions?: number;
+    options: {
+      /** Per-entry choice overrides the global generate() compression. */
+      compression?: "STORE" | "DEFLATE";
+    };
+  }
+
+  interface PizZipFileOptions {
+    binary?: boolean;
+    compression?: "STORE" | "DEFLATE";
+    compressionOptions?: { level?: number };
+    date?: Date;
   }
 
   interface PizZipGenerateOptions {
@@ -32,9 +46,17 @@ declare module "pizzip" {
     /** Read an entry (returns `null` when absent). */
     file(path: string): PizZipObject | null;
     /** Write/overwrite an entry. */
-    file(path: string, content: string | ArrayBuffer | Uint8Array): this;
+    file(
+      path: string,
+      content: string | ArrayBuffer | Uint8Array,
+      options?: PizZipFileOptions,
+    ): this;
     /** Serialize the archive. */
     generate(options?: PizZipGenerateOptions): Uint8Array & string & ArrayBuffer;
+  }
+
+  namespace PizZip {
+    type ZipObject = PizZipObject;
   }
 
   export = PizZip;

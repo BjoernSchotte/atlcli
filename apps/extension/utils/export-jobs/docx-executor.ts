@@ -57,6 +57,8 @@ export interface CreateProductiveExtensionDocxExecutorOptionsV1 {
   bytes: IndexedDbExportByteStore;
   renderPool: BrowserRenderReservationPoolV1;
   now?: () => number;
+  /** Override the adaptive in-memory versus streamed packaging boundary. */
+  streamingPreparedBytesThreshold?: number;
   spoolLimits?: SpoolWriteLimitsV1;
   storageOptions?: Omit<
     ExtensionDocxExecutorStoreOptionsV1,
@@ -111,6 +113,7 @@ export function createProductiveExtensionDocxExecutor(
         renderReservations: options.renderPool.docx,
         results,
         now,
+        streamingPreparedBytesThreshold: options.streamingPreparedBytesThreshold,
       }).execute(request, context);
     },
   };

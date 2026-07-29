@@ -1153,6 +1153,12 @@ export interface FieldRefreshOptions {
    * nothing", i.e. any `SEQ` field sets the flag.
    */
   trustedSeqSequences?: ReadonlySet<string>;
+  /**
+   * WordprocessingML fragments not yet materialized into the archive. The
+   * streaming DOCX route uses this for the sentinel-backed main body so field
+   * policy stays identical without first joining the complete target part.
+   */
+  additionalXmlParts?: readonly string[];
 }
 
 /**
@@ -1171,8 +1177,12 @@ export interface FieldRefreshOptions {
  */
 export function needsFieldRefresh(zip: PizZip, opts: FieldRefreshOptions = {}): boolean {
   const trusted = opts.trustedSeqSequences;
-  for (const part of wordprocessingPartNames(zip)) {
-    for (const use of collectFieldUses(readPartText(zip, part))) {
+  const xmlParts = [
+    ...wordprocessingPartNames(zip).map((part) => readPartText(zip, part)),
+    ...(opts.additionalXmlParts ?? []),
+  ];
+  for (const xml of xmlParts) {
+    for (const use of collectFieldUses(xml)) {
       if (!REFRESH_SENSITIVE_FIELDS.has(use.keyword)) continue;
       if (use.keyword === "SEQ" && trusted?.size) {
         const name = seqSequenceName(use.instruction);

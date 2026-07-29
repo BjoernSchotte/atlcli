@@ -132,6 +132,9 @@ async function jobRun(
   let time = 0;
   const now = () => time++;
   const fixtureResolveInput = fixture.resolveInput?.(rasterizer);
+  const spoolObjects = new Map<string, Uint8Array[]>();
+  const spoolKey = (ref: { namespace: string; key: string }): string =>
+    `${ref.namespace}\0${ref.key}`;
 
   const executor = createTypescriptDocxExportJobExecutor({
     async resolveInput(jobRequest, executionContext) {
@@ -188,6 +191,9 @@ async function jobRun(
         if (!prepared) throw new Error("DOCX parity prepared state is missing.");
         return structuredClone(prepared);
       },
+      async *readMedia() {
+        throw new Error("DOCX parity store keeps media bytes materialized.");
+      },
       async beginRenderAttempt(input) {
         checkpoint = { ...input.checkpoint, renderAttempts: input.checkpoint.renderAttempts + 1 };
         return checkpoint;
@@ -232,14 +238,43 @@ async function jobRun(
     leaseEpoch: 1,
     signal: new AbortController().signal,
     spool: {
-      async put(): Promise<never> {
-        throw new Error("DOCX parity executor unexpectedly wrote source spool bytes.");
+      async put(ref, source, options) {
+        const chunks: Uint8Array[] = [];
+        for await (const chunk of source) {
+          options?.signal?.throwIfAborted();
+          chunks.push(chunk.slice());
+        }
+        const bytes = await collect((async function* () {
+          yield* chunks;
+        })());
+        spoolObjects.set(spoolKey(ref), chunks);
+        return {
+          ref: { ...ref, jobId: request.id, leaseEpoch: 1 },
+          byteLength: bytes.byteLength,
+          sha256: await sha256Hex(bytes),
+          committedAt: now(),
+        };
       },
-      async *read(): AsyncIterable<Uint8Array> {
-        throw new Error("DOCX parity executor unexpectedly read source spool bytes.");
+      async *read(ref, options): AsyncIterable<Uint8Array> {
+        const chunks = spoolObjects.get(spoolKey(ref));
+        if (!chunks) throw new Error("DOCX parity output spool object is missing.");
+        for (const chunk of chunks) {
+          options?.signal?.throwIfAborted();
+          yield chunk.slice();
+        }
       },
-      async stat() {
-        return undefined;
+      async stat(ref) {
+        const chunks = spoolObjects.get(spoolKey(ref));
+        if (!chunks) return undefined;
+        const bytes = await collect((async function* () {
+          yield* chunks;
+        })());
+        return {
+          ref: { ...ref, jobId: request.id, leaseEpoch: 1 },
+          byteLength: bytes.byteLength,
+          sha256: await sha256Hex(bytes),
+          committedAt: now(),
+        };
       },
     },
     artifacts: {

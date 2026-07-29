@@ -100,6 +100,24 @@ only browser-serializable data. It deliberately excludes host callbacks and the
 attempt's `AbortSignal`; rendering clears `renderState` before docxtemplater can
 mutate the archive, so a retry must start from a fresh durable clone.
 
+Queued browser hosts use an adaptive packaging boundary. Prepared payloads
+below 1 MiB keep the established in-memory render; larger text or media
+payloads detach `word/media/*` into hash-bound spool objects and finalize OPC
+through `renderPreparedDocxExportStream`. The stream emits bounded chunks,
+hashes them incrementally, uses ZIP `STORE` for PNG/JPEG/GIF and DEFLATE for
+XML/text, and writes the Central Directory only after every part succeeds.
+Cancellation, size/count limits, and sink failures abort the stream without
+publishing a partial artifact. Customer templates stay on the same
+PizZip/docxtemplater path: a unique sentinel splits the actual content part
+into prefix, verbatim body, and suffix, including the supported
+header/footer-content case.
+
+The durable checkpoint owns media either as bytes or as an opaque `sourceRef`,
+never both. A `DocxReadyToRenderStoreV1` must implement `readMedia` for the
+latter so final packaging reads each media object from its spool rather than
+rehydrating the aggregate image set. Direct `exportDocx` calls do not opt into
+this queue-only split and retain their compatible in-memory behavior.
+
 `TemplateSource.getBytes` and `SvgRasterizer.rasterize` receive an optional
 `HostCallContext`. Hosts should honor its cancellation signal so cancellation
 during template load, image fetch, or rasterization cannot reach final output.

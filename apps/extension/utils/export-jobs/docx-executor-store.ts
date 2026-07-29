@@ -47,6 +47,10 @@ interface PreparedManifestV1 {
   blobs: SpoolRefV1[];
 }
 
+interface BytesPlaceholderV1 {
+  __atlcliBytes: number;
+}
+
 interface ExtensionDocxCheckpointRowV1 {
   key: string;
   jobId: string;
@@ -98,12 +102,47 @@ function blobRef(jobId: string, leaseEpoch: number, key: string, index: number):
   return { jobId, leaseEpoch, namespace: "ready-docx", key: `${key}:blob:${index}` };
 }
 
+function deferPreparedMediaBlobs(value: unknown, blobCount: number): Set<number> {
+  const deferred = new Set<number>();
+  if (value === null || typeof value !== "object") return deferred;
+  const prepared = value as {
+    packagingMode?: unknown;
+    renderState?: { mediaParts?: unknown };
+  };
+  if (prepared.packagingMode !== "stream" || !Array.isArray(prepared.renderState?.mediaParts)) {
+    return deferred;
+  }
+  for (const [partIndex, valuePart] of prepared.renderState.mediaParts.entries()) {
+    if (valuePart === null || typeof valuePart !== "object") {
+      throw new Error(`Prepared DOCX media part ${partIndex} is invalid.`);
+    }
+    const part = valuePart as {
+      bytes?: Partial<BytesPlaceholderV1>;
+      sourceRef?: string;
+    };
+    const blobIndex = part.bytes?.__atlcliBytes;
+    if (
+      !Number.isSafeInteger(blobIndex)
+      || blobIndex! < 0
+      || blobIndex! >= blobCount
+      || deferred.has(blobIndex!)
+    ) {
+      throw new Error(`Prepared DOCX media part ${partIndex} has an invalid blob binding.`);
+    }
+    delete part.bytes;
+    part.sourceRef = String(blobIndex);
+    deferred.add(blobIndex!);
+  }
+  return deferred;
+}
+
 export function createExtensionDocxReadyToRenderStore(
   options: ExtensionDocxExecutorStoreOptionsV1 = {},
 ): DocxReadyToRenderStoreV1 {
   const bytes = options.bytes ?? new IndexedDbExportByteStore(options);
   const limits = options.spoolLimits ?? EXTENSION_EXPORT_EXECUTOR_DEFAULT_SPOOL_LIMITS_V1;
   const now = options.now ?? Date.now;
+  const lazyMediaRefs = new Map<string, SpoolRefV1[]>();
   return {
     async load({ jobId, request, signal }) {
       throwIfExecutorAborted(signal);
@@ -236,20 +275,39 @@ export function createExtensionDocxReadyToRenderStore(
       if (manifest.schema !== "atlcli.extension-prepared-payload/1") {
         throw new Error("Prepared DOCX manifest schema is unsupported.");
       }
-      const blobs: Uint8Array[] = [];
-      for (const ref of manifest.blobs) {
+      const deferred = deferPreparedMediaBlobs(manifest.value, manifest.blobs.length);
+      const blobs: Uint8Array[] = new Array(manifest.blobs.length);
+      for (const [index, ref] of manifest.blobs.entries()) {
+        if (deferred.has(index)) continue;
         // Exact-size preallocation via the store's own metadata (issue #118
         // Phase 0.5) — same shape as the PDF twin.
         const stat = await bytes.stat(ref);
-        blobs.push(await collectExecutorBytes(
+        blobs[index] = await collectExecutorBytes(
           bytes.read(ref, { signal: input.signal }),
           limits.maxObjectBytes,
           input.signal,
           stat?.byteLength,
-        ));
+        );
       }
+      lazyMediaRefs.set(input.checkpoint.ref, manifest.blobs);
       throwIfExecutorAborted(input.signal);
       return hydrateExecutorValue(manifest.value, blobs) as PreparedDocxExportV1;
+    },
+
+    async *readMedia(input) {
+      throwIfExecutorAborted(input.signal);
+      const refs = lazyMediaRefs.get(input.checkpoint.ref);
+      const index = Number(input.sourceRef);
+      if (
+        !refs
+        || !Number.isSafeInteger(index)
+        || index < 0
+        || index >= refs.length
+      ) {
+        throw new Error("Prepared DOCX media source is not bound to this checkpoint.");
+      }
+      yield* bytes.read(refs[index]!, { signal: input.signal });
+      throwIfExecutorAborted(input.signal);
     },
 
     async beginRenderAttempt(input) {
