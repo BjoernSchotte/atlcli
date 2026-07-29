@@ -136,7 +136,9 @@ if (!resolved.includes("/dist/")) {
   throw new Error(\`@atlcli/docx resolved to \${resolved} — expected the built dist/ output\`);
 }
 
-if (getCodeHighlightEngineId() !== null) {
+const assertSharedCodeHighlightState =
+  process.env.ATLCLI_ASSERT_SHARED_CODE_HIGHLIGHT_STATE !== "0";
+if (assertSharedCodeHighlightState && getCodeHighlightEngineId() !== null) {
   throw new Error(\`Node DOCX initialized highlighting before document usage: \${getCodeHighlightEngineId()}\`);
 }
 
@@ -175,7 +177,7 @@ try {
 if (prepared.codeFontBytes !== 273900) {
   throw new Error("warm DOCX preparation did not retain the committed code font");
 }
-if (getCodeHighlightEngineId() !== "oniguruma") {
+if (assertSharedCodeHighlightState && getCodeHighlightEngineId() !== "oniguruma") {
   throw new Error(\`Node DOCX selected \${getCodeHighlightEngineId()} instead of Oniguruma after code usage\`);
 }
 

@@ -41,6 +41,15 @@ export interface FilelinkSmokeResult {
   smokes: SmokeRunResult;
 }
 
+export const FILELINK_SMOKE_ENV: Record<string, string> = {
+  NODE_ENV: "production",
+  // Bun 1.3.14 gives a direct `file:` dependency and a transitive
+  // override-backed `workspace:*` edge distinct physical package identities.
+  // The DOCX output and report timings below remain authoritative; a singleton
+  // imported from the direct copy cannot observe the runtime used by DOCX.
+  ATLCLI_ASSERT_SHARED_CODE_HIGHLIGHT_STATE: "0",
+};
+
 export async function runFilelinkSmoke(baseDir?: string): Promise<FilelinkSmokeResult> {
   const workDir = baseDir ?? join(tmpdir(), `atlcli-filelink-smoke-${process.pid}`);
   rmSync(workDir, { recursive: true, force: true });
@@ -82,8 +91,8 @@ export async function runFilelinkSmoke(baseDir?: string): Promise<FilelinkSmokeR
 
   // Defensive NODE_ENV=production (Bun skips `development` by default anyway
   // unless --conditions=development is passed) — the fixtures assert /dist/.
-  runEntrypointsSmoke(projectDir, ["bun"], { NODE_ENV: "production" });
-  const smokes = runSmokes(projectDir, ["bun"], { NODE_ENV: "production" });
+  runEntrypointsSmoke(projectDir, ["bun"], FILELINK_SMOKE_ENV);
+  const smokes = runSmokes(projectDir, ["bun"], FILELINK_SMOKE_ENV);
   return { projectDir, smokes };
 }
 

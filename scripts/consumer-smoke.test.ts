@@ -1,6 +1,9 @@
-import { describe, it } from "bun:test";
+import { describe, expect, it } from "bun:test";
 import { runTarballSmoke } from "./consumer-smoke.js";
-import { runFilelinkSmoke } from "./consumer-smoke-filelink.js";
+import {
+  FILELINK_SMOKE_ENV,
+  runFilelinkSmoke,
+} from "./consumer-smoke-filelink.js";
 import { runNodeSmoke } from "./consumer-smoke-node.js";
 import { runViteSmoke } from "./consumer-smoke-vite.js";
 
@@ -15,6 +18,15 @@ import { runViteSmoke } from "./consumer-smoke-vite.js";
  */
 
 const enabled = process.env.ATLCLI_CONSUMER_SMOKE === "1";
+
+describe("filesystem-link package identity", () => {
+  it("does not compare state across Bun's distinct direct and transitive file: copies", () => {
+    expect(FILELINK_SMOKE_ENV).toEqual({
+      NODE_ENV: "production",
+      ATLCLI_ASSERT_SHARED_CODE_HIGHLIGHT_STATE: "0",
+    });
+  });
+});
 
 if (!enabled) {
   console.log(
