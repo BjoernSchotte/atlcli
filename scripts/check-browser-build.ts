@@ -68,6 +68,7 @@ import { dirname, join, parse as parsePath } from "node:path";
 export const BROWSER_ENTRYPOINTS = [
   "packages/confluence/src/markdown.ts",
   "packages/confluence/src/client.ts",
+  "packages/confluence/src/attachment-delivery.ts",
   "packages/jira/src/client.ts",
   "packages/core/src/index.browser.ts",
   "packages/confluence/src/index.browser.ts",
@@ -122,7 +123,7 @@ export const BARE_BUILTIN_MODULES = [
  * too: the `(?:/|$)` boundary keeps `pathe`, `oslllo-svg2`, `utils` out.
  */
 const BUILTIN_SPECIFIER_RE = new RegExp(
-  `^(?:node:|bun:|(?:${BARE_BUILTIN_MODULES.join("|")})(?:/|$))`
+  `^(?:@forge/|node:|bun:|(?:${BARE_BUILTIN_MODULES.join("|")})(?:/|$))`
 );
 
 /**
@@ -315,9 +316,10 @@ function builtinScanPlugin(sink: BuiltinImport[], cwd: string): import("bun").Bu
         if (!importer || importer.startsWith(BUN_POLYFILL_IMPORTER_PREFIX)) return undefined;
 
         const bare = args.path.replace(/^(?:node|bun):/, "");
-        const prefixed = args.path !== bare;
+        const prefixed = args.path !== bare || args.path.startsWith("@forge/");
         // A `node:`/`bun:` prefix is unambiguous; a bare name is only a builtin
-        // when no real package of that name shadows it.
+        // when no real package of that name shadows it. Forge imports are also
+        // unambiguous host-only dependencies: consumers inject requestConfluence.
         if (!prefixed && shadowedByRealPackage(bare, dirname(importer))) return undefined;
 
         sink.push({
