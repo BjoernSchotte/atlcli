@@ -88,6 +88,17 @@ describe("buildMacroResolutionOptions", () => {
     expect(pdf.live).toBe(false);
   });
 
+  test("carries the trusted site origin separately from the cache identity", () => {
+    const options = buildMacroResolutionOptions({
+      siteBaseUrl: BASE,
+      confluence,
+      targetEngine: "docx",
+    });
+    const context = options.contextFor({ id: "1" });
+    expect(context.siteId).toBe(BASE);
+    expect(context.siteOrigin).toBe(BASE);
+  });
+
   test("`live` is absent (not false) when the host does not set it", () => {
     const options = buildMacroResolutionOptions({
       siteBaseUrl: BASE,

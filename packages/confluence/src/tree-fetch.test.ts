@@ -399,6 +399,14 @@ describe("fetchExportTree — cycles, folders, unsupported", () => {
     // code, so `info` here would let a silent content loss pass CI. Contrast
     // `label-filtered`, which stays `info` because the user asked for it.
     expect(unsupported.every((n) => n.level === "warning")).toBe(true);
+    const whiteboard = unsupported.find((note) =>
+      note.message.includes("direct Whiteboard child")
+    );
+    expect(whiteboard).toBeDefined();
+    expect(whiteboard?.message).not.toContain("wb");
+    expect(whiteboard?.message).not.toContain("WB");
+    expect(whiteboard?.message).toContain("not traversable");
+    expect(whiteboard?.message).toContain("Embedded Whiteboard links");
   });
 });
 
@@ -1201,7 +1209,42 @@ describe("fetchExportTree — representation-neutral sources", () => {
     expect(node.notes.length).toBeGreaterThan(0);
     expect(node.notes.every((note) => note.source?.pageId === "root")).toBe(true);
     expect(node.notes.every((note) => note.source?.pageTitle === "Root")).toBe(true);
-    expect(result.sourceSummary.degradedPages).toBe(1);
+    // The extension note is provisional and owned by the later macro resolver;
+    // sourceSummary counts lossy decoding, not an unresolved pass that has not
+    // run yet.
+    expect(result.sourceSummary.degradedPages).toBe(0);
+  });
+
+  test("does not mark an embedded Whiteboard page source-degraded before macro resolution", async () => {
+    const source = inMemoryTreeSource(fixture.slice(0, 1));
+    source.getPage = async () => ({
+      id: "root",
+      title: "Root",
+      version: 1,
+      labels: [],
+      spaceKey: "SYNTHETIC",
+      exportSource: adfSource("ignored", 1, [{
+        type: "extension",
+        attrs: {
+          extensionType: "com.atlassian.confluence.macro.core",
+          extensionKey: "native-embed:whiteboard",
+          parameters: {
+            macroParams: {
+              url: { value: "/wiki/spaces/SYNTHETIC/whiteboard/41" },
+            },
+          },
+        },
+      }]),
+    });
+
+    const result = await fetchExportTree(source, tree("root"));
+    const node = result.nodes[0] as ExportPageNode;
+    expect(node.blocks).toEqual([expect.objectContaining({
+      type: "unknown",
+      macroName: "native-embed:whiteboard",
+    })]);
+    expect(node.notes.map((note) => note.code)).toEqual(["macro-not-rendered"]);
+    expect(result.sourceSummary.degradedPages).toBe(0);
   });
 
   for (const mode of ["strict", "partial"] as const) {

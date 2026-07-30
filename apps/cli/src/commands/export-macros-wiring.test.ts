@@ -7,10 +7,17 @@
  * the shared policy is deliberately STRONGER than the CLI's own copy was.
  */
 import { describe, expect, test, afterEach } from "bun:test";
-import { isPortError, type MacroExportContext } from "@atlcli/export-macros";
+import {
+  isPortError,
+  resolveMacroBlocks,
+  type MacroExportContext,
+} from "@atlcli/export-macros";
 import type { Profile } from "@atlcli/core";
 import type { JiraClient, JiraIssue } from "@atlcli/jira";
-import type { ExportBlock } from "@atlcli/confluence";
+import {
+  adfToBlocks,
+  type ExportBlock,
+} from "@atlcli/confluence";
 import { exportDocx, type AssetRef } from "@atlcli/docx";
 import { buildDocx, para } from "@atlcli/docx/fixtures";
 import { preparePdfDocument } from "@atlcli/pdf";
@@ -296,6 +303,7 @@ describe("buildMacroResolutionOptions — the CLI's half of the shared builder",
     const ctx: MacroExportContext = options.contextFor!({ id: "9", spaceKey: "DOC" });
 
     expect(ctx.siteId).toBe(BASE);
+    expect(ctx.siteOrigin).toBe(BASE);
     expect(ctx.flags?.targetEngine).toBe("docx");
     expect(options.live).toBe(true);
     expect((await ctx.jira!.getIssue("ATL-3")).url).toBe(`${BASE}/browse/ATL-3`);
@@ -304,6 +312,79 @@ describe("buildMacroResolutionOptions — the CLI's half of the shared builder",
     await expect(
       ctx.externalAssets!.fetch("https://api.media.atlassian.com/file/a/binary", { maxBytes: 10 })
     ).rejects.toThrow(/blocked by the export asset policy/);
+  });
+
+  test("resolves an embedded Whiteboard offline without calling Confluence", async () => {
+    const calls: string[] = [];
+    const noRequestConfluence = {
+      async getPage() {
+        calls.push("getPage");
+        throw new Error("The pure Whiteboard renderer must not fetch");
+      },
+      async getChildrenWithPosition() {
+        calls.push("getChildrenWithPosition");
+        throw new Error("The pure Whiteboard renderer must not fetch");
+      },
+      async getAttachments() {
+        calls.push("getAttachments");
+        throw new Error("The pure Whiteboard renderer must not fetch");
+      },
+    } as unknown as ConfluenceClient;
+    const options = buildMacroResolutionOptions({
+      profile,
+      confluence: noRequestConfluence,
+      targetEngine: "docx",
+      live: false,
+    });
+    const page = { id: "9", version: 1, spaceKey: "DOC" };
+    const decoded = adfToBlocks({
+      version: 1,
+      type: "doc",
+      content: [{
+        type: "extension",
+        attrs: {
+          extensionType: "com.atlassian.confluence.macro.core",
+          extensionKey: "native-embed:whiteboard",
+          parameters: {
+            macroParams: {
+              url: {
+                value:
+                  `${BASE}/wiki/spaces/DOC/whiteboard/41?source=cli`,
+              },
+            },
+          },
+        },
+      }],
+    }, { pageContext: page });
+
+    const result = await resolveMacroBlocks(
+      decoded,
+      options.registry,
+      options.contextFor(page),
+      {
+        live: false,
+        contextFor: (source) => options.contextFor(source ?? page),
+        targetEngine: "docx",
+      },
+    );
+
+    expect(calls).toEqual([]);
+    expect(result.blocks).toEqual([{
+      type: "smartCard",
+      card: {
+        appearance: "block",
+        source: "url",
+        url: `${BASE}/wiki/spaces/DOC/whiteboard/41`,
+        target: {
+          kind: "external",
+          href: `${BASE}/wiki/spaces/DOC/whiteboard/41`,
+        },
+        title: "Atlassian Whiteboard",
+      },
+    }]);
+    expect(result.notes.map((note) => note.code)).toEqual([
+      "macro-rendered-via",
+    ]);
   });
 
   test("contextFor builds from the page it is handed, never a remembered root", () => {

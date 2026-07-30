@@ -347,6 +347,24 @@ describe("serializeBlocks — Smart Cards", () => {
     expect(xml.match(/<w:pBdr>/gu)).toHaveLength(2);
     expect(xml.match(/w:fill="F4F5F7"/gu)).toHaveLength(2);
   });
+
+  it("keeps the Whiteboard card label and canonical target clickable", async () => {
+    const url = "https://tenant.invalid/wiki/spaces/TEST/whiteboard/41";
+    const { xml } = await serializeBlocks([{
+      type: "smartCard",
+      card: {
+        appearance: "block",
+        source: "url",
+        url,
+        target: { kind: "external", href: url },
+        title: "Atlassian Whiteboard",
+      },
+    }], { styleNames: noStyles });
+
+    expect(xml).toContain(`HYPERLINK "${url}"`);
+    expect(xml).toContain(">Atlassian Whiteboard</w:t>");
+    expect(xml).toContain("<w:u");
+  });
 });
 
 describe("serializeBlocks — heading style mapping", () => {

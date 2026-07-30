@@ -15,6 +15,7 @@
  */
 import { afterEach, describe, expect, it } from "bun:test";
 import {
+  adfToBlocks,
   ConfluenceClient,
   storageToBlocks,
   type StorageToBlocksResult,
@@ -314,6 +315,67 @@ describe("dynamic-macro toggle OFF", () => {
   });
 });
 
+describe("embedded Whiteboard offline resolution", () => {
+  it("uses the MV3 session builder but performs no request", async () => {
+    const log = installFetch(() => {
+      throw new Error("The pure Whiteboard renderer must not fetch");
+    });
+    const decoded = adfToBlocks({
+      version: 1,
+      type: "doc",
+      content: [{
+        type: "extension",
+        attrs: {
+          extensionType: "com.atlassian.confluence.macro.core",
+          extensionKey: "native-embed:whiteboard",
+          parameters: {
+            macroParams: {
+              url: {
+                value:
+                  "/wiki/spaces/DOCSY/whiteboard/41?source=extension",
+              },
+            },
+          },
+        },
+      }],
+    }, {
+      pageContext: { id: ROOT_ID, spaceKey: "DOCSY" },
+    });
+    const built = buildSessionMacroResolutionOptions({
+      pageUrl: PAGE_URL,
+      targetEngine: "pdf",
+      live: false,
+    });
+    const page = { id: ROOT_ID, version: 3, spaceKey: "DOCSY" };
+    const result = await resolveMacroBlocks(
+      decoded,
+      built.options.registry,
+      built.options.contextFor(page),
+      {
+        live: false,
+        contextFor: (source) => built.options.contextFor(source ?? page),
+        targetEngine: "pdf",
+      },
+    );
+
+    expect(log.urls).toEqual([]);
+    expect(result.blocks).toEqual([{
+      type: "smartCard",
+      card: {
+        appearance: "block",
+        source: "url",
+        url: `${SITE}/wiki/spaces/DOCSY/whiteboard/41`,
+        target: {
+          kind: "external",
+          href: `${SITE}/wiki/spaces/DOCSY/whiteboard/41`,
+        },
+        title: "Atlassian Whiteboard",
+      },
+    }]);
+    expect(codes(result.notes)).toEqual(["macro-rendered-via"]);
+  });
+});
+
 describe("per-source-page context (contextFor passed through unchanged)", () => {
   it("resolves a child page's macro against THAT page, never the export root", async () => {
     const log = installFetch((url) => {
@@ -347,6 +409,7 @@ describe("per-source-page context (contextFor passed through unchanged)", () => 
     expect(ctx.page).toEqual({ id: CHILD_ID, version: 9, spaceKey: "OTHER" });
     expect(ctx.flags?.targetEngine).toBe("docx");
     expect(ctx.siteId).toBe(SITE);
+    expect(ctx.siteOrigin).toBe(SITE);
   });
 
   it("falls back to the single-macro v1 endpoints when the batch body lacks the macro", async () => {

@@ -23,6 +23,7 @@ const JOB_K = "e23e4567-e89b-42d3-a456-426614174000";
 const JOB_L = "f23e4567-e89b-42d3-a456-426614174000";
 const JOB_M = "013e4567-e89b-42d3-a456-426614174001";
 const JOB_N = "113e4567-e89b-42d3-a456-426614174001";
+const JOB_O = "213e4567-e89b-42d3-a456-426614174001";
 const SHA_ABC =
   "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
 
@@ -96,6 +97,7 @@ async function installOffscreenFetchStub(
   childrenByPageId: Record<string, string[]> = {},
   assetBytesByPath: Record<string, number[]> = {},
   holdAssetPaths: string[] = [],
+  adfByPageId: Record<string, string> = {},
 ): Promise<void> {
   await packedOffscreen?.close();
   const root = await context.newCDPSession(page);
@@ -114,6 +116,7 @@ async function installOffscreenFetchStub(
     const storageByPageId = ${JSON.stringify(storageByPageId)};
     const childrenByPageId = ${JSON.stringify(childrenByPageId)};
     const assetBytesByPath = ${JSON.stringify(assetBytesByPath)};
+    const adfByPageId = ${JSON.stringify(adfByPageId)};
     const heldAssets = new Set(${JSON.stringify(holdAssetPaths)});
     const releases = Object.create(null);
     const released = new Set();
@@ -123,6 +126,7 @@ async function installOffscreenFetchStub(
     globalThis.__atlcliPackedFetchReleased = released;
     globalThis.__atlcliPackedBodyFetches = bodyFetches;
     globalThis.__atlcliPackedAssetFetches = assetFetches;
+    globalThis.__atlcliPackedWhiteboardFetches = 0;
     const nativeFetch = globalThis.fetch.bind(globalThis);
     globalThis.fetch = async (input) => {
       const rawUrl =
@@ -133,6 +137,9 @@ async function installOffscreenFetchStub(
             : input.url;
       const url = new URL(rawUrl, location.href);
       if (url.origin === location.origin) return nativeFetch(input);
+      if (/\\/whiteboard(?:s)?(?:\\/|$)/.test(url.pathname)) {
+        globalThis.__atlcliPackedWhiteboardFetches += 1;
+      }
       if (assetBytesByPath[url.pathname]) {
         assetFetches[url.pathname] = (assetFetches[url.pathname] || 0) + 1;
         if (heldAssets.has(url.pathname) && !released.has(url.pathname)) {
@@ -175,6 +182,19 @@ async function installOffscreenFetchStub(
       }
       const adfPage = url.pathname.match(/\\/api\\/v2\\/pages\\/([^/]+)$/);
       if (adfPage && url.searchParams.get("body-format") === "atlas_doc_format") {
+        const pageId = decodeURIComponent(adfPage[1]);
+        if (adfByPageId[pageId]) {
+          return new Response(JSON.stringify({
+            id: pageId,
+            version: { number: 1 },
+            body: {
+              atlas_doc_format: {
+                representation: "atlas_doc_format",
+                value: adfByPageId[pageId]
+              }
+            }
+          }), { status: 200, headers: { "content-type": "application/json" } });
+        }
         return new Response(JSON.stringify({
           message: "body-format atlas_doc_format is unsupported by this synthetic host"
         }), { status: 400, headers: { "content-type": "application/json" } });
@@ -260,6 +280,26 @@ async function readOffscreenAssetFetches(): Promise<Record<string, number>> {
     throw new Error(`Could not read packed asset fetch counts: ${JSON.stringify(result)}`);
   }
   return result.result.value as Record<string, number>;
+}
+
+async function readOffscreenWhiteboardFetches(): Promise<number> {
+  if (!packedOffscreen) throw new Error("Packed offscreen target is not attached.");
+  const result = await packedOffscreen.send<{
+    result?: { value?: unknown };
+    exceptionDetails?: unknown;
+  }>("Runtime.evaluate", {
+    expression: "globalThis.__atlcliPackedWhiteboardFetches",
+    returnByValue: true,
+  });
+  if (
+    result.exceptionDetails ||
+    typeof result.result?.value !== "number"
+  ) {
+    throw new Error(
+      `Could not read packed Whiteboard fetch count: ${JSON.stringify(result)}`,
+    );
+  }
+  return result.result.value;
 }
 
 async function createPackedPngBytes(): Promise<number[]> {
@@ -545,15 +585,22 @@ async function submitPackedDocx(
   });
 }
 
-async function submitPackedPdf(jobId: string): Promise<string> {
-  return page.evaluate(async (id) => {
+async function submitPackedPdf(
+  jobId: string,
+  siteOrigin = "https://site.atlassian.net",
+): Promise<string> {
+  return page.evaluate(async ({ id, origin }) => {
     const probe = (globalThis as unknown as {
       exportJobStoreProbe: {
-        submitPdf(exportJobId: string): Promise<string>;
+        submitPdf(
+          exportJobId: string,
+          scopeKind?: "page" | "tree",
+          siteOrigin?: string,
+        ): Promise<string>;
       };
     }).exportJobStoreProbe;
-    return probe.submitPdf(id);
-  }, jobId);
+    return probe.submitPdf(id, "page", origin);
+  }, { id: jobId, origin: siteOrigin });
 }
 
 async function submitPackedTreePdf(jobId: string): Promise<string> {
@@ -957,6 +1004,91 @@ test("two packed-extension wakeups produce exactly one claim", async () => {
     byteLength: succeeded.snapshot.artifact.byteLength,
     filename: `${JOB_A}.pdf`,
     complete: true,
+  });
+});
+
+test("a packed MV3 PDF resolves embedded Whiteboard ADF offline", async () => {
+  await ensureCatalog();
+  // The preceding fallback test intentionally proves ADF unavailable for the
+  // default synthetic origin. Use another tenant to prove the production
+  // capability cache stays origin-scoped while this test receives real ADF.
+  const siteOrigin = "https://whiteboard-site.atlassian.net";
+  const whiteboardUrl =
+    `${siteOrigin}/wiki/spaces/DOCS/whiteboard/41`;
+  const adf = JSON.stringify({
+    type: "doc",
+    version: 1,
+    content: [{
+      type: "extension",
+      attrs: {
+        extensionType: "com.atlassian.confluence.macro.core",
+        extensionKey: "native-embed:whiteboard",
+        parameters: {
+          macroParams: {
+            url: { value: `${whiteboardUrl}?source=packed` },
+          },
+        },
+      },
+    }],
+  });
+  await installOffscreenFetchStub(
+    [],
+    {},
+    [],
+    {},
+    {},
+    [],
+    { [JOB_O]: adf },
+  );
+
+  await expect(submitPackedPdf(JOB_O, siteOrigin)).resolves.toBe(JOB_O);
+  const succeeded = await waitForJobState(JOB_O, "succeeded", 45_000);
+  expect(succeeded.snapshot).toMatchObject({
+    state: "succeeded",
+    format: "pdf",
+    reportSummary: { completeness: "complete" },
+  });
+  expect(await readOffscreenWhiteboardFetches()).toBe(0);
+  if (!succeeded.snapshot.artifact || !succeeded.snapshot.reportRef) {
+    throw new Error(
+      "Packed Whiteboard PDF did not retain both artifact and report refs.",
+    );
+  }
+  const retained = await page.evaluate(
+    async ({ artifactRef, reportRef }) => {
+      const probe = (globalThis as unknown as {
+        exportJobStoreProbe: {
+          retainedPdf(
+            artifactRef: string,
+            reportRef: string,
+          ): Promise<{
+            prefix: string;
+            byteLength: number;
+            filename?: string;
+            complete?: boolean;
+            sourceNotes?: Array<{ code: string; macroName?: string }>;
+          }>;
+        };
+      }).exportJobStoreProbe;
+      return probe.retainedPdf(artifactRef, reportRef);
+    },
+    {
+      artifactRef: succeeded.snapshot.artifact.ref,
+      reportRef: succeeded.snapshot.reportRef,
+    },
+  );
+  expect(retained).toMatchObject({
+    prefix: "%PDF-",
+    byteLength: succeeded.snapshot.artifact.byteLength,
+    complete: true,
+  });
+  expect(retained.sourceNotes).toContainEqual({
+    code: "macro-rendered-via",
+    macroName: "native-embed:whiteboard",
+  });
+  expect(retained.sourceNotes).not.toContainEqual({
+    code: "macro-degraded",
+    macroName: "native-embed:whiteboard",
   });
 });
 

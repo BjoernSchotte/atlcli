@@ -667,6 +667,52 @@ function compareChildren(a: TreeChild, b: TreeChild): number {
   return a.title.localeCompare(b.title);
 }
 
+function unsupportedChildNote(child: TreeChild): ExportNote {
+  const kind = child.unsupportedKind ?? "unknown";
+  if (kind.toLowerCase() === "whiteboard") {
+    return {
+      level: "warning",
+      code: "unsupported-child-type",
+      message:
+        "A direct Whiteboard child is not traversable and was skipped; " +
+        "its board content was not exported. Embedded Whiteboard links on " +
+        "exported pages are retained separately.",
+    };
+  }
+  // `warning`, not `info`: content the user asked for is being DROPPED from
+  // the export. Contrast `label-filtered`, which is informational because the
+  // user explicitly requested that exclusion.
+  return {
+    level: "warning",
+    code: "unsupported-child-type",
+    message:
+      `Child "${child.title}" (${child.id}) is an unsupported type ` +
+      `"${kind}" and was skipped.`,
+  };
+}
+
+const PROVISIONAL_ADF_RESOLUTION_CODES = new Set([
+  "macro-not-rendered",
+  "inline-extension-not-rendered",
+]);
+
+/**
+ * `sourceSummary.degradedPages` describes lossy source decoding, not a macro
+ * resolution pass that has not run yet. Pending ADF extension notes are owned
+ * and replaced by the downstream macro resolver; counting a page as degraded
+ * solely for those provisional notes would leave a successful pure renderer
+ * (such as the Whiteboard linked card) permanently marked degraded.
+ */
+function sourceDecodeDegraded(decoded: BlocksResult): boolean {
+  if (decoded.degraded !== true) return false;
+  // A zero diagnostic budget can suppress a real degradation note. Preserve
+  // the decoder's boolean when there is no evidence that it was provisional.
+  if (decoded.notes.length === 0) return true;
+  return decoded.notes.some(
+    (note) => !PROVISIONAL_ADF_RESOLUTION_CODES.has(note.code),
+  );
+}
+
 function normalizedScopeKey(scope: ExportScope): string {
   try {
     validateExportScope(scope);
@@ -1126,17 +1172,7 @@ export async function fetchExportTree(
     for (const child of sorted) {
       throwIfAborted(signal);
       if (child.kind === "unsupported") {
-        treeNotes.push({
-          // `warning`, not `info`: content the user asked for is being DROPPED
-          // from the export. Once note levels drive issue severity (and with it
-          // `--strict`'s exit code), classifying a silent content loss as
-          // informational is exactly the false negative `--strict` exists to
-          // prevent. Contrast `label-filtered`, which is info because the user
-          // explicitly asked for that exclusion.
-          level: "warning",
-          code: "unsupported-child-type",
-          message: `Child "${child.title}" (${child.id}) is an unsupported type "${child.unsupportedKind ?? "unknown"}" and was skipped.`,
-        });
+        treeNotes.push(unsupportedChildNote(child));
         continue;
       }
       if (child.kind === "folder") {
@@ -1189,17 +1225,7 @@ export async function fetchExportTree(
     }
     for (const child of [...children].sort(compareChildren)) {
       if (child.kind === "unsupported") {
-        treeNotes.push({
-          // `warning`, not `info`: content the user asked for is being DROPPED
-          // from the export. Once note levels drive issue severity (and with it
-          // `--strict`'s exit code), classifying a silent content loss as
-          // informational is exactly the false negative `--strict` exists to
-          // prevent. Contrast `label-filtered`, which is info because the user
-          // explicitly asked for that exclusion.
-          level: "warning",
-          code: "unsupported-child-type",
-          message: `Child "${child.title}" (${child.id}) is an unsupported type "${child.unsupportedKind ?? "unknown"}" and was skipped.`,
-        });
+        treeNotes.push(unsupportedChildNote(child));
         continue;
       }
       if (child.kind === "folder") {
@@ -1473,7 +1499,7 @@ export async function fetchExportTree(
           source: {
             representation:
               decoded.representation ?? exportSource.primary.representation,
-            degraded: decoded.degraded === true,
+            degraded: sourceDecodeDegraded(decoded),
           },
           blocks: decoded.blocks,
           notes: decoded.notes,

@@ -167,6 +167,7 @@ export interface MacroExportContext {
     signal?: AbortSignal;
     budget?: MacroResolutionBudget;
     siteId?: string;
+    siteOrigin?: string;
     flags?: {
         nativeTocPresent?: boolean;
         targetEngine?: "docx" | "pdf";
@@ -381,4 +382,22 @@ export declare function tocFromHeadings(blocks: ExportBlock[], opts?: {
 
 // export: tocRenderer
 export declare function tocRenderer(): MacroRenderer;
+
+// export: whiteboardRenderer
+export declare function whiteboardRenderer(): MacroRenderer;
+
+// export: WhiteboardTargetFailure
+export type WhiteboardTargetFailure = "missing-url" | "trusted-site-unavailable" | "malformed-url" | "unsupported-scheme" | "protocol-relative" | "unsafe-relative" | "credentials" | "fragment" | "cross-site" | "malformed-route" | "invalid-space-key" | "invalid-whiteboard-id";
+
+// export: whiteboardTargetVerdict
+export declare function whiteboardTargetVerdict(rawUrl: string | undefined, siteOrigin: string | undefined): WhiteboardTargetVerdict;
+
+// export: WhiteboardTargetVerdict
+export type WhiteboardTargetVerdict = {
+    safe: true;
+    url: string;
+} | {
+    safe: false;
+    reason: WhiteboardTargetFailure;
+};
 ```

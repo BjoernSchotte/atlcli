@@ -488,6 +488,59 @@ This is a real PDF.
     }
   }, 60_000);
 
+  it("emits the Whiteboard linked card as a real external annotation in tagged PDF", async () => {
+    const url = "https://tenant.invalid/wiki/spaces/TEST/whiteboard/41";
+    const prepared = await preparePdfDocument([{
+      type: "smartCard",
+      card: {
+        appearance: "block",
+        source: "url",
+        url,
+        target: { kind: "external", href: url },
+        title: "Atlassian Whiteboard",
+      },
+    }], {
+      resolve: async () => {
+        throw new Error("no assets in fixture");
+      },
+    });
+    const bundle = serializePdfDocument(prepared, {
+      metadata: {
+        title: "Whiteboard linked card",
+        language: "en",
+        exporter: "atlcli",
+        exportedAt: new Date("2026-07-30T00:00:00Z"),
+      },
+    });
+    const result = await sharedCompiler().compile(bundle);
+    expect(result.diagnostics).toEqual([]);
+    expect(validatePdfOutput(result.pdf!)).toMatchObject({ tagged: true });
+
+    const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+    const task = pdfjs.getDocument({ data: new Uint8Array(result.pdf!) });
+    const document = await task.promise;
+    try {
+      const links: string[] = [];
+      const text: string[] = [];
+      for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
+        const page = await document.getPage(pageNumber);
+        for (const annotation of await page.getAnnotations({ intent: "display" })) {
+          if (annotation.subtype === "Link" && typeof annotation.url === "string") {
+            links.push(annotation.url);
+          }
+        }
+        const content = await page.getTextContent();
+        text.push(...content.items.flatMap((item) =>
+          "str" in item && typeof item.str === "string" ? [item.str] : []
+        ));
+      }
+      expect(links).toContain(url);
+      expect(text.join(" ")).toContain("Atlassian Whiteboard");
+    } finally {
+      await task.destroy();
+    }
+  }, 60_000);
+
   it("compiles Confluence ri:url links in table prose into external PDF annotations", async () => {
     const visibleUrl =
       "https://obi.atlassian.net/wiki/x/ImKFFg/a/long/path/that/wraps/in/a/narrow/table/cell";

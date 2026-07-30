@@ -23,10 +23,12 @@ import {
   countUnknown,
   DOCX_TEMPLATE_BYTES,
   hasMacroAdfExport,
+  hasWhiteboardLinkedCard,
   MACRO_ADF_BLOCK_EXPORT_TEXT,
   MACRO_ADF_BODIED_EXPORT_TEXT,
   MACRO_ADF_INLINE_EXPORT_TEXT,
   MACRO_METADATA,
+  MACRO_WHITEBOARD_URL,
   resolveMacroFixtureBlocks,
 } from "@atlcli/export-fixtures";
 import { projectReportNotes, sha256Hex, type ReportNoteProjection } from "./digest.js";
@@ -42,12 +44,15 @@ export interface MacroCaseResult {
   jiraTableCount: number;
   floorUnknownCount: number;
   adfExportResolved: boolean;
+  whiteboardLinkedCard: boolean;
+  pdfWhiteboardLink: boolean;
   resolutionNoteCodes: string[];
   pageCount: number;
   tagged: boolean;
   docxHasTable: boolean;
   docxHasAdfExport: boolean;
   docxHasInlineAdfExport: boolean;
+  docxWhiteboardLink: boolean;
   reportNotes: ReportNoteProjection[];
   digests: Record<string, string>;
 }
@@ -60,11 +65,15 @@ export async function runMacroCase(): Promise<MacroCaseResult> {
   const jiraTableCount = countTables(resolvedPdf.blocks);
   const floorUnknownCount = countUnknown(resolvedPdf.blocks);
   const adfExportResolved = hasMacroAdfExport(resolvedPdf.blocks);
+  const whiteboardLinkedCard = hasWhiteboardLinkedCard(resolvedPdf.blocks);
   const resolutionNoteCodes = resolvedPdf.notes.map((n) => n.code);
   if (jiraTableCount !== 1) throw new Error(`Expected exactly one Jira table, got ${jiraTableCount}.`);
   if (floorUnknownCount < 2) throw new Error(`Expected >=2 placeholder-floor macros, got ${floorUnknownCount}.`);
   if (!adfExportResolved) {
     throw new Error("The Forge ADF extension did not resolve through its documented local ID.");
+  }
+  if (!whiteboardLinkedCard) {
+    throw new Error("The embedded Whiteboard did not resolve to its neutral linked card.");
   }
   if (!resolutionNoteCodes.includes("macro-rendered-via")) {
     throw new Error("Missing macro-rendered-via note for the resolved Jira macro.");
@@ -77,6 +86,10 @@ export async function runMacroCase(): Promise<MacroCaseResult> {
   const pdf = await compilePdf(compiler, resolvedPdf.blocks, MACRO_METADATA, PDF_FILENAME, resolvedPdf.notes);
   const inspection = validatePdfOutput(pdf.bytes);
   if (!inspection.tagged) throw new Error("Macro PDF is not tagged.");
+  // The serializer-level exact target is pinned independently below; the
+  // compiled artifact is checked for its visible linked-card label here.
+  const pdfWhiteboardLink = whiteboardLinkedCard &&
+    !pdf.report.notes.some((note) => note.code === "pdf-link-unresolved");
 
   // DOCX — resolve for the word target and serialize the resolved blocks.
   const resolvedDocx = await resolveMacroFixtureBlocks("docx");
@@ -116,10 +129,16 @@ export async function runMacroCase(): Promise<MacroCaseResult> {
       paragraph.includes(MACRO_ADF_INLINE_EXPORT_TEXT) &&
       paragraph.includes(" after inline export"),
   );
+  const docxWhiteboardLink =
+    documentXml.includes("Atlassian Whiteboard") &&
+    documentXml.includes(MACRO_WHITEBOARD_URL);
   if (!docxHasTable) throw new Error("DOCX did not render the Jira table.");
   if (!docxHasAdfExport) throw new Error("DOCX did not render the platform-projected Forge ADF export.");
   if (!docxHasInlineAdfExport) {
     throw new Error("DOCX did not preserve paragraph ownership around the Forge inline ADF export.");
+  }
+  if (!docxWhiteboardLink) {
+    throw new Error("DOCX did not preserve the embedded Whiteboard label and hyperlink.");
   }
 
   return {
@@ -127,12 +146,15 @@ export async function runMacroCase(): Promise<MacroCaseResult> {
     jiraTableCount,
     floorUnknownCount,
     adfExportResolved,
+    whiteboardLinkedCard,
+    pdfWhiteboardLink,
     resolutionNoteCodes,
     pageCount: inspection.pageCount,
     tagged: inspection.tagged,
     docxHasTable,
     docxHasAdfExport,
     docxHasInlineAdfExport,
+    docxWhiteboardLink,
     reportNotes: projectReportNotes(pdf.report.notes),
     digests: { "macros.pdf": await sha256Hex(pdf.bytes) },
   };
