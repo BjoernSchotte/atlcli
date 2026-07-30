@@ -14,6 +14,7 @@ import {
   loadConfig,
   output,
   readTextFile,
+  resolveDeploymentType,
   resolveDefaults,
   slugify,
   writeTextFile,
@@ -395,6 +396,7 @@ export async function handleDocs(args: string[], flags: Record<string, string | 
 type ClientWithDefaults = {
   client: ConfluenceClient;
   defaults: { project?: string; space?: string; board?: number };
+  deploymentType: "cloud" | "data-center";
 };
 
 async function getClient(
@@ -420,7 +422,11 @@ async function getClient(
   assertCliAuthSupported(profile, opts);
   const client = new ConfluenceClient(profile);
   if (withDefaults) {
-    return { client, defaults: resolveDefaults(config, profile) };
+    return {
+      client,
+      defaults: resolveDefaults(config, profile),
+      deploymentType: resolveDeploymentType(profile),
+    };
   }
   return client;
 }
@@ -581,7 +587,7 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
     fail(opts, 1, ERROR_CODES.USAGE, "--space, --page-id, or --ancestor is required (or run 'docs init' first).");
   }
 
-  const client = await getClient(flags, opts);
+  const { client, deploymentType } = await getClient(flags, opts, true);
 
   // For single page or tree scope without space, auto-detect space from page
   if (!space && (scope.type === "page" || scope.type === "tree")) {
@@ -715,8 +721,8 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
     }
   }
 
-  // Detect and fetch folders (Confluence Cloud feature)
-  // Folders are detected by checking if page parents are not in the page set
+  // Detect and fetch folders (Confluence Cloud feature). Data Center has no
+  // folders, so never probe its nonexistent v2 folder endpoints.
   let folders: ConfluenceFolder[] = [];
   const pageIdSet = new Set(pageDetails.map((p) => p.id));
   const potentialFolderIds = new Set<string>();
@@ -735,7 +741,7 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
   }
 
   // Fetch folder details for potential folder IDs
-  if (potentialFolderIds.size > 0) {
+  if (deploymentType === "cloud" && potentialFolderIds.size > 0) {
     for (const folderId of potentialFolderIds) {
       try {
         const folder = await client.getFolder(folderId);
@@ -752,7 +758,7 @@ async function handlePull(args: string[], flags: Record<string, string | boolean
   const folderIdSet = new Set(folders.map((f) => f.id));
   const EMPTY_FOLDER_SCAN_THRESHOLD = 100;
 
-  if (pageDetails.length < EMPTY_FOLDER_SCAN_THRESHOLD) {
+  if (deploymentType === "cloud" && pageDetails.length < EMPTY_FOLDER_SCAN_THRESHOLD) {
     for (const page of pageDetails) {
       try {
         const children = await client.getPageDirectChildren(page.id);
