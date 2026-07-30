@@ -7,6 +7,8 @@ downloads, and UI. Reusable format behavior lives in `@atlcli/docx`, `@atlcli/pd
 browser-only `@atlcli/pdf-compiler-browser` package.
 
 Built with [WXT](https://wxt.dev) `0.20.x` (Vite-based, MV3-aware) and React 19.
+The side-panel UI is branded **Kiteweave Browser**; the package and manifest retain the
+`atlcli` engineering name.
 
 ## Prerequisites
 
@@ -63,7 +65,7 @@ still starts; only the automatic Chrome launch is skipped.
 
 Both formats create a durable Activity row before the first source read. After
 submission, navigate to another tab/page or close the side panel: the
-background/offscreen runner continues. **Activity** shows progress, statistics,
+background/offscreen runner continues. **History** shows progress, statistics,
 bounded events, Retry/Run again, resume after sign-in, and download. The toolbar
 badge shows the active count and unread success/failure state.
 
@@ -87,6 +89,15 @@ an independent production Vite/Chromium host.
 
 ## Design notes
 
+- The compact shell has a scalable product-area switcher. **Publishing** is active;
+  **Jira SafeOps** and **Automations** are labelled as planned rather than exposed as
+  working features. Publishing screens remain registry-driven: **Create**, **Preview**,
+  **Templates**, and **History**.
+- Primary navigation keeps text labels at the 320 px minimum width and implements the
+  tab keyboard pattern (Left/Right/Home/End). The product menu implements
+  Up/Down/Home/End/Escape and restores focus to its trigger.
+- PDF and Word remain format-specific flows. PDF uses the built-in document design;
+  Word export stays disabled until an explicit DOCX template is available.
 - **No remote-hosted UI / no inline scripts** — everything renders from bundled,
   local assets (MV3 CSP `script-src 'self' 'wasm-unsafe-eval'`). The bundled
   offscreen document hosts the PDF compiler worker.

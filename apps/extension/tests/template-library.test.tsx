@@ -82,6 +82,7 @@ describe("the library list", () => {
     await renderPanel(library);
     expect(dom.maybeFind("template-library-empty")).not.toBeNull();
     expect(dom.maybeFind("template-library-list")).toBeNull();
+    expect(dom.find("template-library-upload").textContent).toContain("Add a Word template");
   });
 
   it("lists name, scope badge and upload date, and marks the active entry", async () => {

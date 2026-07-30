@@ -378,6 +378,23 @@ describe("the Jobs screen", () => {
     expect(find("jobs-empty")).toBeDefined();
   });
 
+  it("routes the empty-state action back to Create", async () => {
+    const destinations: string[] = [];
+    await render(
+      <DurableJobsProvider port={port()}>
+        <JobsScreen
+          {...screenProps()}
+          navigate={(id) => {
+            destinations.push(id);
+          }}
+        />
+      </DurableJobsProvider>
+    );
+
+    await click("jobs-empty-action");
+    expect(destinations).toEqual(["export"]);
+  });
+
   it("re-attaches on mount to a job that is still compiling, with its progress", async () => {
     await putPdfJob(
       {

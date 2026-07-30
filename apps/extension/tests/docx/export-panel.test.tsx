@@ -25,6 +25,44 @@ const SCAN: ScanResult = {
 };
 
 describe("DocxExportPanel — honest preview wiring", () => {
+  it("keeps Word export disabled until an explicit template is available", async () => {
+    const store: DocxTemplateStore = {
+      async get() {
+        return null;
+      },
+      async put(record) {
+        return { ...record, uploadedAt: 1 };
+      },
+      async remove() {},
+    };
+    const port: DocxExportPort = {
+      async scan() {
+        return SCAN;
+      },
+      async run() {
+        throw new Error("export must stay disabled");
+      },
+    };
+
+    await dom.render(
+      <I18nProvider locale="en">
+        <ExportRunsProvider identity="docx-template-required">
+          <DocxExportPanel
+            port={port}
+            store={store}
+            page={null}
+            pageUrl={null}
+          />
+        </ExportRunsProvider>
+      </I18nProvider>
+    );
+    await dom.flush();
+
+    expect(dom.maybeFind("template-export")).toBeNull();
+    expect((dom.find("template-export-disabled") as HTMLButtonElement).disabled).toBe(true);
+    expect(dom.find("template-section").textContent).toContain("Required");
+  });
+
   it("places the Word-rendering explanation beside the persisted template scan", async () => {
     const bytes = new ArrayBuffer(8);
     const warmOptions: unknown[] = [];
