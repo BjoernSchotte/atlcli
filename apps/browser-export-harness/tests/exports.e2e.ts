@@ -16,12 +16,16 @@ test("every registered conformance case passes from nested production output", a
   const consoleErrors: string[] = [];
   const failedRequests: string[] = [];
   const foreignRequests: string[] = [];
+  const fontRequests: string[] = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
   page.on("console", (entry) => {
     if (entry.type() === "error") consoleErrors.push(entry.text());
   });
   page.on("requestfailed", (request) => failedRequests.push(`${request.url()}: ${request.failure()?.errorText}`));
   page.on("request", (request) => {
+    if (/\.(?:ttf|otf)(?:$|\?)/i.test(request.url())) {
+      fontRequests.push(request.url());
+    }
     if (new URL(request.url()).origin !== HARNESS_ORIGIN) {
       foreignRequests.push(request.url());
     }
@@ -37,6 +41,7 @@ test("every registered conformance case passes from nested production output", a
 
   for (const meta of CONFORMANCE_MANIFEST) {
     await test.step(`case ${meta.id}`, async () => {
+      const fontRequestStart = fontRequests.length;
       await page.getByTestId(`run-${meta.id}`).click();
       // PDF compiles can be slow (real Typst WASM); give them room.
       await expect(page.getByTestId(`${meta.id}-state`)).toHaveText("passed", { timeout: 90_000 });
@@ -48,6 +53,15 @@ test("every registered conformance case passes from nested production output", a
         expect(result.digests, `case ${meta.id} must expose digests`).toBeTruthy();
         expect(result.compilerVersion, `case ${meta.id} must expose compilerVersion`).toBeTruthy();
         digestManifest[meta.id] = result;
+      }
+      if (meta.id === "pdf") {
+        const requestedFonts = new Set(fontRequests.slice(fontRequestStart));
+        expect(result.fullBundleFallback).toBe(false);
+        expect(result.fontRequirementCount).toBeLessThan(12);
+        expect(result.registeredFontAssetIds).toHaveLength(
+          result.fontRequirementCount,
+        );
+        expect(requestedFonts.size).toBe(result.fontRequirementCount);
       }
     });
   }
@@ -79,6 +93,8 @@ test("every registered conformance case passes from nested production output", a
   expect(pdf.hasOutline).toBe(true);
   expect(pdf.embeddedFontFiles).toBeGreaterThan(0);
   expect(pdf.diagnosticCount).toBeGreaterThan(0);
+  expect(pdf.fontRequirementCount).toBeLessThan(12);
+  expect(pdf.fullBundleFallback).toBe(false);
 
   const pdfJobParity = JSON.parse(
     (await page.getByTestId("pdf-job-parity-result").textContent()) ?? "null",

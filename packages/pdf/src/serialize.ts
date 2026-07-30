@@ -33,6 +33,7 @@ import {
 import { escapeTypstContent, safeColor, typstLabel, typstString } from "./escape.js";
 import { resolvePdfSettings, typstSettingsDict, type ResolvedPdfDesign } from "./settings.js";
 import { createAtlcliTypstTemplate } from "./template.js";
+import { resolvePdfFontRequirementsV1 } from "./font-requirements.js";
 import {
   pdfColorContrast,
   pdfTableCellForeground,
@@ -2070,6 +2071,16 @@ ${body}${commentAppendix}
     ],
     sourceMap: resolveSourceMap(main, writer.sourceMap),
     notes: writer.notes,
+    fontRequirements: resolvePdfFontRequirementsV1({
+      document,
+      metadata: options.metadata,
+      settings,
+      ...(options.templatePack?.manifest
+        ? { manifest: options.templatePack.manifest }
+        : options.templateManifest
+          ? { manifest: options.templateManifest }
+          : {}),
+    }),
   };
 }
 

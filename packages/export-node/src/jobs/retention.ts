@@ -117,7 +117,7 @@ async function reconcilePendingTombstones(
       await persistence.jobs.markTombstoneCleanupComplete(
         tombstone.jobId,
         tombstone.ref,
-        now,
+        Math.max(now, tombstone.deletedAt),
       );
       reconciled += 1;
     }

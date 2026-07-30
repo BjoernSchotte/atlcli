@@ -27,7 +27,7 @@ its embedded copy. This page is the contract those subpaths follow.
 | Subpath | Contents |
 |---|---|
 | `@atlcli/pdf-compiler-browser/wasm` | The vendored, CSP-patched typst.ts compiler wasm (`typst_ts_web_compiler_bg.wasm`) |
-| `@atlcli/pdf/fonts/<file>.ttf` | The ten sha256-pinned Source Sans 3 / Source Serif 4 / Source Code Pro TTFs |
+| `@atlcli/pdf/fonts/<file>.ttf` | The twelve sha256-pinned Source Sans 3 / Source Serif 4 / Source Code Pro / Noto Symbols / Noto Emoji TTFs |
 | `@atlcli/pdf/licenses/<file>` | The SIL OFL 1.1 license texts accompanying those fonts |
 | `@atlcli/docx/fonts/<file>` | The committed Inter TTFs used by SVG rasterization and the JetBrains Mono face embedded for inline/block code |
 
@@ -54,14 +54,22 @@ require exactly one emitted copy.
 `@atlcli/pdf-compiler-browser`'s compiler takes the loaded bytes:
 
 ```ts
+interface BrowserPdfCompilerFontSourceV1 {
+  assetId: string;
+  sha256: string;
+  load(context?: PdfCompileContext): Promise<Uint8Array> | Uint8Array;
+}
+
 interface BrowserPdfCompilerAssets {
   wasm: ArrayBuffer | URL | Response;
-  fonts: Uint8Array[];
+  fonts: readonly Uint8Array[] | readonly BrowserPdfCompilerFontSourceV1[];
 }
 ```
 
-Pass whatever your host loads most naturally: an `ArrayBuffer` (Bun/Node `readFile`,
-`fetch(...).arrayBuffer()`), a `URL`, or a `Response` (browser `fetch` streaming).
+Pass the wasm in the shape your host loads most naturally. A legacy font byte
+array registers the complete set. A demand-aware host supplies one hash-bound
+source per `PDF_RUNTIME_ASSETS.fonts` entry; the compiler invokes only the
+sources named by the final bundle's `ResolvedPdfFontRequirementsV1`.
 
 ## Vite `?url` example
 
@@ -84,17 +92,26 @@ async function fetchBytes(url: string): Promise<Uint8Array> {
 
 // Collect one URL per font you import (repeat the static import pattern above
 // for every entry in PDF_RUNTIME_ASSETS.fonts).
-const fontUrls = [sansRegularUrl /* , serifRegularUrl, monoRegularUrl, … */];
+const fontUrls = new Map([
+  ["SourceSans3-Regular.ttf", sansRegularUrl],
+  // …one statically imported URL per manifest entry
+]);
 
 const compiler = new BrowserPdfCompiler({
   wasm: await fetch(wasmUrl), // Response is accepted directly
-  fonts: await Promise.all(fontUrls.map(fetchBytes)),
+  fonts: PDF_RUNTIME_ASSETS.fonts.map((font) => ({
+    assetId: font.assetId,
+    sha256: font.sha256,
+    load: ({ signal } = {}) => fetchBytes(fontUrls.get(font.fileName), signal),
+  })),
 });
 ```
 
 Recommended Vite settings (matching the harness): `resolve.conditions: ["browser"]`,
 `build.assetsInlineLimit: 0` (keep the wasm/fonts as real files). The static import is the
-compile-time existence proof — a typo'd font name fails the build, not the first export.
+compile-time existence proof — a typo'd font name fails the build, not the
+first export. License imports remain static packaging evidence; they are not
+fetched for each compile.
 
 ## Ambient type declarations
 

@@ -7,6 +7,9 @@
 ### Entry point `. (browser)`
 
 ```ts
+// export: assertResolvedPdfFontRequirementsV1
+export declare function assertResolvedPdfFontRequirementsV1(value: unknown): asserts value is ResolvedPdfFontRequirementsV1;
+
 // export: buildUniformPdfPageBorderV1
 export declare function buildUniformPdfPageBorderV1(sections: readonly DocxUniformPageBorderInputV1[], inset?: string): WikiPdfTemplatePageBorderV1 | undefined;
 
@@ -448,6 +451,7 @@ export interface PdfCompileResult {
     pdf?: Uint8Array;
     diagnostics: PdfCompilerDiagnostic[];
     compilerVersion: string;
+    fontEvidence?: PdfFontLoadEvidenceV1;
 }
 
 // export: PdfDesignResolutionTraceEntry
@@ -512,6 +516,8 @@ export interface PdfExportReport {
     sourceNotes?: ExportNote[];
     complete: boolean;
     compilerDiagnostics?: PdfCompilerDiagnostic[];
+    fontRequirements?: ResolvedPdfFontRequirementsV1;
+    fontEvidence?: PdfFontLoadEvidenceV1;
     timings: PdfExportTimings;
 }
 
@@ -521,6 +527,24 @@ export interface PdfExportTimings {
     compileMs: number;
     emitMs: number;
     totalMs: number;
+}
+
+// export: PdfFontLoadEvidenceV1
+export interface PdfFontLoadEvidenceV1 {
+    schema: "atlcli.pdf-font-load-evidence/1";
+    requirementKey: string;
+    registeredAssetIds: readonly string[];
+    loadedFontNames: readonly string[];
+    fullBundleFallback: boolean;
+}
+
+// export: PdfFontRequirementReasonKindV1
+export type PdfFontRequirementReasonKindV1 = "document-style" | "fallback" | "full-bundle-conformance" | "renderer-synthetic" | "template-role";
+
+// export: PdfFontRequirementReasonV1
+export interface PdfFontRequirementReasonV1 {
+    kind: PdfFontRequirementReasonKindV1;
+    detail: string;
 }
 
 // export: PdfGeneratedTemplateProofCompiler
@@ -565,6 +589,7 @@ export interface PdfResolvedAsset {
 
 // export: PdfRuntimeFontAsset
 export interface PdfRuntimeFontAsset {
+    assetId: `canonical/${string}`;
     fileName: string;
     family: "Source Sans 3" | "Source Serif 4" | "Source Code Pro" | "Noto Sans Symbols2" | "Noto Emoji";
     style: "normal" | "italic";
@@ -594,6 +619,7 @@ export interface PdfSourceBundle {
     assets: PreparedPdfAsset[];
     sourceMap: PdfSourceMapEntry[];
     notes: ExportNote[];
+    fontRequirements?: ResolvedPdfFontRequirementsV1;
 }
 
 // export: PdfSourceMapEntry
@@ -967,6 +993,29 @@ export interface RenderPreparedPdfExportInput {
 // export: ResolvedPdfDesign
 export type ResolvedPdfDesign = WikiPdfTemplateDesignV1;
 
+// export: ResolvedPdfFontAssetRequirementV1
+export interface ResolvedPdfFontAssetRequirementV1 {
+    assetId: string;
+    source: "canonical" | "custom";
+    family: string;
+    style: "normal" | "italic";
+    weight: number;
+    sha256: string;
+    fileName?: string;
+    reasons: readonly PdfFontRequirementReasonV1[];
+}
+
+// export: ResolvedPdfFontRequirementsV1
+export interface ResolvedPdfFontRequirementsV1 {
+    schema: "atlcli.pdf-font-requirements/1";
+    template: {
+        id: string;
+        version: string;
+    };
+    key: string;
+    assets: readonly ResolvedPdfFontAssetRequirementV1[];
+}
+
 // export: ResolvedPdfLabels
 export type ResolvedPdfLabels = Record<string, string>;
 
@@ -1016,6 +1065,20 @@ export interface ResolvedPdfWatermark {
     angle: number;
     size: number;
 }
+
+// export: resolveFullPdfFontRequirementsV1
+export declare function resolveFullPdfFontRequirementsV1(manifest?: TemplateManifest): ResolvedPdfFontRequirementsV1;
+
+// export: ResolvePdfFontRequirementsInputV1
+export interface ResolvePdfFontRequirementsInputV1 {
+    document: PreparedPdfDocument;
+    metadata: PdfExportMetadata;
+    settings: ResolvedPdfSettings;
+    manifest?: TemplateManifest;
+}
+
+// export: resolvePdfFontRequirementsV1
+export declare function resolvePdfFontRequirementsV1(input: ResolvePdfFontRequirementsInputV1): ResolvedPdfFontRequirementsV1;
 
 // export: resolvePdfSettings
 export declare function resolvePdfSettings(options?: PdfTemplateSettings, context?: ResolvePdfSettingsContext): ResolvedPdfSettings;
@@ -1118,6 +1181,9 @@ export interface WikiPdfTemplateDesignV1 {
 ### Entry point `. (default)`
 
 ```ts
+// export: assertResolvedPdfFontRequirementsV1
+export declare function assertResolvedPdfFontRequirementsV1(value: unknown): asserts value is ResolvedPdfFontRequirementsV1;
+
 // export: buildUniformPdfPageBorderV1
 export declare function buildUniformPdfPageBorderV1(sections: readonly DocxUniformPageBorderInputV1[], inset?: string): WikiPdfTemplatePageBorderV1 | undefined;
 
@@ -1559,6 +1625,7 @@ export interface PdfCompileResult {
     pdf?: Uint8Array;
     diagnostics: PdfCompilerDiagnostic[];
     compilerVersion: string;
+    fontEvidence?: PdfFontLoadEvidenceV1;
 }
 
 // export: PdfDesignResolutionTraceEntry
@@ -1623,6 +1690,8 @@ export interface PdfExportReport {
     sourceNotes?: ExportNote[];
     complete: boolean;
     compilerDiagnostics?: PdfCompilerDiagnostic[];
+    fontRequirements?: ResolvedPdfFontRequirementsV1;
+    fontEvidence?: PdfFontLoadEvidenceV1;
     timings: PdfExportTimings;
 }
 
@@ -1632,6 +1701,24 @@ export interface PdfExportTimings {
     compileMs: number;
     emitMs: number;
     totalMs: number;
+}
+
+// export: PdfFontLoadEvidenceV1
+export interface PdfFontLoadEvidenceV1 {
+    schema: "atlcli.pdf-font-load-evidence/1";
+    requirementKey: string;
+    registeredAssetIds: readonly string[];
+    loadedFontNames: readonly string[];
+    fullBundleFallback: boolean;
+}
+
+// export: PdfFontRequirementReasonKindV1
+export type PdfFontRequirementReasonKindV1 = "document-style" | "fallback" | "full-bundle-conformance" | "renderer-synthetic" | "template-role";
+
+// export: PdfFontRequirementReasonV1
+export interface PdfFontRequirementReasonV1 {
+    kind: PdfFontRequirementReasonKindV1;
+    detail: string;
 }
 
 // export: PdfGeneratedTemplateProofCompiler
@@ -1676,6 +1763,7 @@ export interface PdfResolvedAsset {
 
 // export: PdfRuntimeFontAsset
 export interface PdfRuntimeFontAsset {
+    assetId: `canonical/${string}`;
     fileName: string;
     family: "Source Sans 3" | "Source Serif 4" | "Source Code Pro" | "Noto Sans Symbols2" | "Noto Emoji";
     style: "normal" | "italic";
@@ -1705,6 +1793,7 @@ export interface PdfSourceBundle {
     assets: PreparedPdfAsset[];
     sourceMap: PdfSourceMapEntry[];
     notes: ExportNote[];
+    fontRequirements?: ResolvedPdfFontRequirementsV1;
 }
 
 // export: PdfSourceMapEntry
@@ -2078,6 +2167,29 @@ export interface RenderPreparedPdfExportInput {
 // export: ResolvedPdfDesign
 export type ResolvedPdfDesign = WikiPdfTemplateDesignV1;
 
+// export: ResolvedPdfFontAssetRequirementV1
+export interface ResolvedPdfFontAssetRequirementV1 {
+    assetId: string;
+    source: "canonical" | "custom";
+    family: string;
+    style: "normal" | "italic";
+    weight: number;
+    sha256: string;
+    fileName?: string;
+    reasons: readonly PdfFontRequirementReasonV1[];
+}
+
+// export: ResolvedPdfFontRequirementsV1
+export interface ResolvedPdfFontRequirementsV1 {
+    schema: "atlcli.pdf-font-requirements/1";
+    template: {
+        id: string;
+        version: string;
+    };
+    key: string;
+    assets: readonly ResolvedPdfFontAssetRequirementV1[];
+}
+
 // export: ResolvedPdfLabels
 export type ResolvedPdfLabels = Record<string, string>;
 
@@ -2127,6 +2239,20 @@ export interface ResolvedPdfWatermark {
     angle: number;
     size: number;
 }
+
+// export: resolveFullPdfFontRequirementsV1
+export declare function resolveFullPdfFontRequirementsV1(manifest?: TemplateManifest): ResolvedPdfFontRequirementsV1;
+
+// export: ResolvePdfFontRequirementsInputV1
+export interface ResolvePdfFontRequirementsInputV1 {
+    document: PreparedPdfDocument;
+    metadata: PdfExportMetadata;
+    settings: ResolvedPdfSettings;
+    manifest?: TemplateManifest;
+}
+
+// export: resolvePdfFontRequirementsV1
+export declare function resolvePdfFontRequirementsV1(input: ResolvePdfFontRequirementsInputV1): ResolvedPdfFontRequirementsV1;
 
 // export: resolvePdfSettings
 export declare function resolvePdfSettings(options?: PdfTemplateSettings, context?: ResolvePdfSettingsContext): ResolvedPdfSettings;
@@ -2229,6 +2355,9 @@ export interface WikiPdfTemplateDesignV1 {
 ### Entry point `./browser`
 
 ```ts
+// export: assertResolvedPdfFontRequirementsV1
+export declare function assertResolvedPdfFontRequirementsV1(value: unknown): asserts value is ResolvedPdfFontRequirementsV1;
+
 // export: buildUniformPdfPageBorderV1
 export declare function buildUniformPdfPageBorderV1(sections: readonly DocxUniformPageBorderInputV1[], inset?: string): WikiPdfTemplatePageBorderV1 | undefined;
 
@@ -2670,6 +2799,7 @@ export interface PdfCompileResult {
     pdf?: Uint8Array;
     diagnostics: PdfCompilerDiagnostic[];
     compilerVersion: string;
+    fontEvidence?: PdfFontLoadEvidenceV1;
 }
 
 // export: PdfDesignResolutionTraceEntry
@@ -2734,6 +2864,8 @@ export interface PdfExportReport {
     sourceNotes?: ExportNote[];
     complete: boolean;
     compilerDiagnostics?: PdfCompilerDiagnostic[];
+    fontRequirements?: ResolvedPdfFontRequirementsV1;
+    fontEvidence?: PdfFontLoadEvidenceV1;
     timings: PdfExportTimings;
 }
 
@@ -2743,6 +2875,24 @@ export interface PdfExportTimings {
     compileMs: number;
     emitMs: number;
     totalMs: number;
+}
+
+// export: PdfFontLoadEvidenceV1
+export interface PdfFontLoadEvidenceV1 {
+    schema: "atlcli.pdf-font-load-evidence/1";
+    requirementKey: string;
+    registeredAssetIds: readonly string[];
+    loadedFontNames: readonly string[];
+    fullBundleFallback: boolean;
+}
+
+// export: PdfFontRequirementReasonKindV1
+export type PdfFontRequirementReasonKindV1 = "document-style" | "fallback" | "full-bundle-conformance" | "renderer-synthetic" | "template-role";
+
+// export: PdfFontRequirementReasonV1
+export interface PdfFontRequirementReasonV1 {
+    kind: PdfFontRequirementReasonKindV1;
+    detail: string;
 }
 
 // export: PdfGeneratedTemplateProofCompiler
@@ -2787,6 +2937,7 @@ export interface PdfResolvedAsset {
 
 // export: PdfRuntimeFontAsset
 export interface PdfRuntimeFontAsset {
+    assetId: `canonical/${string}`;
     fileName: string;
     family: "Source Sans 3" | "Source Serif 4" | "Source Code Pro" | "Noto Sans Symbols2" | "Noto Emoji";
     style: "normal" | "italic";
@@ -2816,6 +2967,7 @@ export interface PdfSourceBundle {
     assets: PreparedPdfAsset[];
     sourceMap: PdfSourceMapEntry[];
     notes: ExportNote[];
+    fontRequirements?: ResolvedPdfFontRequirementsV1;
 }
 
 // export: PdfSourceMapEntry
@@ -3189,6 +3341,29 @@ export interface RenderPreparedPdfExportInput {
 // export: ResolvedPdfDesign
 export type ResolvedPdfDesign = WikiPdfTemplateDesignV1;
 
+// export: ResolvedPdfFontAssetRequirementV1
+export interface ResolvedPdfFontAssetRequirementV1 {
+    assetId: string;
+    source: "canonical" | "custom";
+    family: string;
+    style: "normal" | "italic";
+    weight: number;
+    sha256: string;
+    fileName?: string;
+    reasons: readonly PdfFontRequirementReasonV1[];
+}
+
+// export: ResolvedPdfFontRequirementsV1
+export interface ResolvedPdfFontRequirementsV1 {
+    schema: "atlcli.pdf-font-requirements/1";
+    template: {
+        id: string;
+        version: string;
+    };
+    key: string;
+    assets: readonly ResolvedPdfFontAssetRequirementV1[];
+}
+
 // export: ResolvedPdfLabels
 export type ResolvedPdfLabels = Record<string, string>;
 
@@ -3238,6 +3413,20 @@ export interface ResolvedPdfWatermark {
     angle: number;
     size: number;
 }
+
+// export: resolveFullPdfFontRequirementsV1
+export declare function resolveFullPdfFontRequirementsV1(manifest?: TemplateManifest): ResolvedPdfFontRequirementsV1;
+
+// export: ResolvePdfFontRequirementsInputV1
+export interface ResolvePdfFontRequirementsInputV1 {
+    document: PreparedPdfDocument;
+    metadata: PdfExportMetadata;
+    settings: ResolvedPdfSettings;
+    manifest?: TemplateManifest;
+}
+
+// export: resolvePdfFontRequirementsV1
+export declare function resolvePdfFontRequirementsV1(input: ResolvePdfFontRequirementsInputV1): ResolvedPdfFontRequirementsV1;
 
 // export: resolvePdfSettings
 export declare function resolvePdfSettings(options?: PdfTemplateSettings, context?: ResolvePdfSettingsContext): ResolvedPdfSettings;

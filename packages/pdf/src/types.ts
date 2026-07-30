@@ -13,6 +13,7 @@ import type {
 } from "@atlcli/confluence";
 import type { TemplateManifest } from "@atlcli/template-pack";
 import type { ValidatedPdfTemplatePackV1 } from "./template-pack.js";
+import type { ResolvedPdfFontRequirementsV1 } from "./font-requirements.js";
 import type { HighlightedCode } from "@atlcli/code-highlight/contract";
 import type { CodeThemeId } from "@atlcli/code-highlight/registry";
 
@@ -188,6 +189,12 @@ export interface PdfSourceBundle {
   assets: PreparedPdfAsset[];
   sourceMap: PdfSourceMapEntry[];
   notes: ExportNote[];
+  /**
+   * Deterministic semantic font subset for this fully resolved document.
+   * Legacy hand-built bundles may omit it; compiler adapters must then retain
+   * full-bundle compatibility.
+   */
+  fontRequirements?: ResolvedPdfFontRequirementsV1;
 }
 
 export type PdfProfile = "tagged" | "pdf-ua-1";
@@ -313,6 +320,15 @@ export interface PdfExportTimings {
   totalMs: number;
 }
 
+export interface PdfFontLoadEvidenceV1 {
+  schema: "atlcli.pdf-font-load-evidence/1";
+  requirementKey: string;
+  registeredAssetIds: readonly string[];
+  loadedFontNames: readonly string[];
+  /** True only for a legacy hand-built bundle without semantic requirements. */
+  fullBundleFallback: boolean;
+}
+
 export interface PdfExportReport {
   /** Effective bundled Shiki theme used by code blocks. */
   codeTheme: CodeThemeId;
@@ -347,6 +363,9 @@ export interface PdfExportReport {
    * a clean compile); optional so hand-built report literals stay additive.
    */
   compilerDiagnostics?: PdfCompilerDiagnostic[];
+  /** Exact font requirements and compiler registration evidence for this run. */
+  fontRequirements?: ResolvedPdfFontRequirementsV1;
+  fontEvidence?: PdfFontLoadEvidenceV1;
   timings: PdfExportTimings;
 }
 

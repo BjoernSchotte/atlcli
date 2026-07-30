@@ -1,9 +1,14 @@
-import type { PdfCompilerDiagnostic, PdfSourceBundle } from "./types.js";
+import type {
+  PdfCompilerDiagnostic,
+  PdfFontLoadEvidenceV1,
+  PdfSourceBundle,
+} from "./types.js";
 
 export interface PdfCompileResult {
   pdf?: Uint8Array;
   diagnostics: PdfCompilerDiagnostic[];
   compilerVersion: string;
+  fontEvidence?: PdfFontLoadEvidenceV1;
 }
 
 export interface PdfCompileContext {
