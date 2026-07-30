@@ -7,6 +7,7 @@ import { pathToFileURL } from "node:url";
 import {
   bindExportJobArtifacts,
   bindExportJobSpool,
+  COMPACT_HISTORY_RETENTION_MS_V1,
   createEmptyExportJobStatsV1,
   DELIVERED_ARTIFACT_RETENTION_MS_V1,
   FULL_REPORT_RETENTION_MS_V1,
@@ -582,6 +583,23 @@ describe("file export persistence", () => {
       payloadReleases: 0,
       historyDeleted: 0,
       tombstonesReconciled: 0,
+    });
+
+    const sweepStartedAt = 1 + COMPACT_HISTORY_RETENTION_MS_V1;
+    now = sweepStartedAt + 1;
+    expect(
+      await sweepFileExportJobRetentionV1(restarted, sweepStartedAt),
+    ).toEqual({
+      payloadReleases: 0,
+      historyDeleted: 1,
+      tombstonesReconciled: 1,
+    });
+    expect(await restarted.jobs.get(claimed.id)).toBeUndefined();
+    expect(
+      await restarted.jobs.getTombstone(claimed.id),
+    ).toMatchObject({
+      cleanupCompletedAt: now,
+      deletedAt: now,
     });
   });
 

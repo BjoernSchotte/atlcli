@@ -4,6 +4,7 @@ import { deflateSync, inflateSync } from "node:zlib";
 import {
   PDF_RUNTIME_ASSETS,
   preparePdfDocument,
+  resolveFullPdfFontRequirementsV1,
   validatePdfOutput,
   type ExportBlock,
   type PdfSourceBundle,
@@ -19,7 +20,11 @@ import {
 } from "../../export-fixtures/src/image-heavy-corpus.js";
 import { ensurePdfFonts } from "../../pdf/scripts/ensure-fonts.js";
 import { ensureVendoredTypst } from "../scripts/vendor-typst.js";
-import { BrowserPdfCompiler, PDF_BROWSER_COMPILER_VERSION } from "./index.js";
+import {
+  BrowserPdfCompiler,
+  PDF_BROWSER_COMPILER_VERSION,
+  type BrowserPdfCompilerFontSourceV1,
+} from "./index.js";
 
 let canonicalCompiler: BrowserPdfCompiler | undefined;
 
@@ -44,6 +49,30 @@ async function createCompiler(): Promise<BrowserPdfCompiler> {
     ...PDF_RUNTIME_ASSETS.fonts.map((font) => packageBytes(`@atlcli/pdf/fonts/${font.fileName}`)),
   ]);
   return new BrowserPdfCompiler({ wasm: wasm.buffer, fonts });
+}
+
+async function createDemandAwareCompiler(
+  onLoad: (assetId: string) => void = () => {},
+  sourcesTransform: (
+    sources: BrowserPdfCompilerFontSourceV1[],
+  ) => BrowserPdfCompilerFontSourceV1[] = (sources) => sources,
+): Promise<BrowserPdfCompiler> {
+  const wasm = await packageBytes("@atlcli/pdf-compiler-browser/wasm");
+  const sources = PDF_RUNTIME_ASSETS.fonts.map(
+    (font): BrowserPdfCompilerFontSourceV1 => ({
+      assetId: font.assetId,
+      sha256: font.sha256,
+      load: async (context = {}) => {
+        context.signal?.throwIfAborted();
+        onLoad(font.assetId);
+        return packageBytes(`@atlcli/pdf/fonts/${font.fileName}`);
+      },
+    }),
+  );
+  return new BrowserPdfCompiler({
+    wasm: wasm.buffer,
+    fonts: sourcesTransform(sources),
+  });
 }
 
 function sharedCompiler(): BrowserPdfCompiler {
@@ -138,6 +167,175 @@ function tinyPng(): Uint8Array {
 }
 
 describe("BrowserPdfCompiler package", () => {
+  it("loads, registers, and reports only the resolved font subset", async () => {
+    const loaded: string[] = [];
+    const compiler = await createDemandAwareCompiler((assetId) => loaded.push(assetId));
+    try {
+      const source = settingsBundle({ cover: false, outline: false });
+      const expected = source.fontRequirements!.assets.map((asset) => asset.assetId);
+      const result = await compiler.compile(source);
+
+      expect(result.diagnostics).toEqual([]);
+      expect(validatePdfOutput(result.pdf!)).toMatchObject({ tagged: true });
+      expect(loaded).toEqual(expected);
+      expect(result.fontEvidence).toMatchObject({
+        schema: "atlcli.pdf-font-load-evidence/1",
+        requirementKey: source.fontRequirements!.key,
+        registeredAssetIds: expected,
+        fullBundleFallback: false,
+      });
+      expect(result.fontEvidence!.registeredAssetIds.length).toBeLessThan(
+        PDF_RUNTIME_ASSETS.fonts.length,
+      );
+      expect(result.fontEvidence!.loadedFontNames.join("\n")).not.toContain(
+        "Source Code Pro",
+      );
+
+      await compiler.compile(source);
+      expect(loaded).toEqual(expected);
+    } finally {
+      await compiler.reset();
+    }
+  }, 30_000);
+
+  it("rebuilds one compiler when the deterministic requirement key changes", async () => {
+    const loaded: string[] = [];
+    const compiler = await createDemandAwareCompiler((assetId) => loaded.push(assetId));
+    try {
+      const prose = settingsBundle({ cover: false, outline: false });
+      const full = {
+        ...prose,
+        fontRequirements: resolveFullPdfFontRequirementsV1(),
+      };
+      await compiler.compile(prose);
+      const proseLoadCount = loaded.length;
+      const result = await compiler.compile(full);
+
+      expect(loaded.slice(proseLoadCount)).toEqual(
+        PDF_RUNTIME_ASSETS.fonts.map((font) => font.assetId),
+      );
+      expect(result.fontEvidence?.registeredAssetIds).toEqual(
+        PDF_RUNTIME_ASSETS.fonts.map((font) => font.assetId),
+      );
+      expect(result.fontEvidence?.fullBundleFallback).toBe(false);
+    } finally {
+      await compiler.reset();
+    }
+  }, 30_000);
+
+  it("serializes process-global font ownership across compiler instances", async () => {
+    const first = await createDemandAwareCompiler();
+    const second = await createDemandAwareCompiler();
+    const prose = settingsBundle({ cover: false, outline: false });
+    const full = {
+      ...prose,
+      fontRequirements: resolveFullPdfFontRequirementsV1(),
+    };
+    try {
+      const [firstProse, fullResult, secondProse] = await Promise.all([
+        first.compile(prose),
+        second.compile(full),
+        first.compile(prose),
+      ]);
+
+      expect(firstProse.diagnostics).toEqual([]);
+      expect(fullResult.diagnostics).toEqual([]);
+      expect(secondProse.diagnostics).toEqual([]);
+      expect(secondProse.pdf).toEqual(firstProse.pdf);
+      expect(firstProse.fontEvidence?.registeredAssetIds).toEqual(
+        prose.fontRequirements!.assets.map((asset) => asset.assetId),
+      );
+      expect(fullResult.fontEvidence?.registeredAssetIds).toEqual(
+        PDF_RUNTIME_ASSETS.fonts.map((font) => font.assetId),
+      );
+    } finally {
+      await first.reset();
+      await second.reset();
+    }
+  }, 30_000);
+
+  it("rejects missing and hash-mismatched font sources before compilation", async () => {
+    const source = settingsBundle({ cover: false, outline: false });
+    const required = source.fontRequirements!.assets[0]!;
+    const missing = await createDemandAwareCompiler(
+      () => {},
+      (sources) => sources.filter((candidate) => candidate.assetId !== required.assetId),
+    );
+    const mismatched = await createDemandAwareCompiler(
+      () => {},
+      (sources) => sources.map((candidate) =>
+        candidate.assetId === required.assetId
+          ? { ...candidate, sha256: "0".repeat(64) }
+          : candidate
+      ),
+    );
+    try {
+      await expect(missing.compile(source)).rejects.toThrow(
+        `font source is missing ${required.assetId}`,
+      );
+      await expect(mismatched.compile(source)).rejects.toThrow(
+        "does not match the required SHA-256",
+      );
+    } finally {
+      await missing.reset();
+      await mismatched.reset();
+    }
+  });
+
+  it("does not invoke font loaders for a compile cancelled before initialization", async () => {
+    let loads = 0;
+    const compiler = await createDemandAwareCompiler(() => {
+      loads += 1;
+    });
+    const controller = new AbortController();
+    controller.abort(new DOMException("cancelled", "AbortError"));
+    try {
+      await expect(
+        compiler.compile(settingsBundle(), { signal: controller.signal }),
+      ).rejects.toThrow("cancelled");
+      expect(loads).toBe(0);
+    } finally {
+      await compiler.reset();
+    }
+  });
+
+  it("clears a failed initialization so the same compiler can retry", async () => {
+    let attempts = 0;
+    const source = settingsBundle({ cover: false, outline: false });
+    const firstRequired = source.fontRequirements!.assets[0]!.assetId;
+    const compiler = await createDemandAwareCompiler(
+      () => {},
+      (sources) => sources.map((candidate) =>
+        candidate.assetId === firstRequired
+          ? {
+              ...candidate,
+              load: async () => {
+                attempts += 1;
+                if (attempts === 1) throw new Error("transient font read");
+                return packageBytes(
+                  `@atlcli/pdf/fonts/${
+                    PDF_RUNTIME_ASSETS.fonts.find(
+                      (font) => font.assetId === firstRequired,
+                    )!.fileName
+                  }`,
+                );
+              },
+            }
+          : candidate
+      ),
+    );
+    try {
+      await expect(compiler.compile(source)).rejects.toThrow(
+        "transient font read",
+      );
+      const result = await compiler.compile(source);
+      expect(result.diagnostics).toEqual([]);
+      expect(attempts).toBe(2);
+    } finally {
+      await compiler.reset();
+    }
+  }, 30_000);
+
   it("compiles with the complete canonical font set", async () => {
     const compiler = sharedCompiler();
     const result = await compiler.compile(bundle(String.raw`#set text(font: "Source Sans 3")

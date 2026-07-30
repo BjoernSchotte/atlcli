@@ -175,8 +175,9 @@ await runPdfExport({ blocks: doc.blocks, metadata, filename: "handbook.pdf" },
 ```
 
 `nodePdfEnv` wires the token-auth asset resolver (verified disk cache under
-`~/.atlcli/cache/assets`), the CSP-patched wasm compiler with the ten canonical fonts (all
-resolved from the installed packages), and a directory output sink. For DOCX with zero
+`~/.atlcli/cache/assets`), the CSP-patched wasm compiler with twelve canonical
+fonts exposed as hash-bound lazy sources, and a directory output sink. Each
+compile reads only its resolved subset from the installed packages. For DOCX with zero
 template setup, `nodeDocxEnv({ outPath })` resolves a programmatically built default template
 (`bundledDefaultTemplate()` — no binary asset shipped); pass `templatePath` to use your own.
 
@@ -219,7 +220,8 @@ snippet):
 ```ts
 import wasmUrl from "@atlcli/pdf-compiler-browser/wasm?url";
 import sansRegularUrl from "@atlcli/pdf/fonts/SourceSans3-Regular.ttf?url";
-// …one import per font in PDF_RUNTIME_ASSETS.fonts, fetched at runtime
+// …one import per font in PDF_RUNTIME_ASSETS.fonts; wrap each URL in a lazy
+// BrowserPdfCompilerFontSourceV1 so only the resolved subset is fetched
 ```
 
 ## Troubleshooting

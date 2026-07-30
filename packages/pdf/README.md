@@ -10,7 +10,8 @@ compiled, tagged PDF via an injected compiler port (`PdfCompilePort`).
     `PDF_RUNTIME_ASSETS`, and the shared types.
   - `./template` — the raw Typst template (`ATLCLI_TYPST_TEMPLATE`).
   - `./internal` — **non-frozen** prepare/serialize/theme/validate internals.
-  - `./fonts/*` — the ten sha256-pinned Source Sans/Serif/Code Pro TTFs.
+  - `./fonts/*` — the twelve sha256-pinned Source Sans/Serif/Code Pro,
+    Noto Symbols, and Noto Emoji TTFs.
   - `./licenses/*` — their SIL OFL 1.1 license texts.
 - **Runtime:** Node ≥ 20, Bun, and browsers (fully isomorphic).
 - **Install:** filesystem link or packed tarball — no registry publish today.
@@ -25,6 +26,18 @@ await runPdfExport(
   { assets, compiler: new BrowserPdfCompiler({ wasm, fonts }), output },
 );
 ```
+
+Every newly serialized `PdfSourceBundle` carries
+`ResolvedPdfFontRequirementsV1`: a byte-free, URL-free, deterministic subset
+resolved from the final prepared document, nested content, effective settings,
+template roles, synthetic labels, styles, and Unicode coverage. The full
+`PDF_RUNTIME_ASSETS` manifest remains the distributable set. Demand-aware hosts
+map its stable `assetId` values to local lazy loaders; legacy hand-built bundles
+without requirements deliberately fall back to all fonts.
+
+`PdfExportReport.fontRequirements` and `.fontEvidence` expose the requested and
+actually registered asset IDs without document text or font bytes. Coverage
+metadata is generated from, and hash-bound to, the pinned sfnt files.
 
 PDF template packs use three fail-closed validation phases:
 

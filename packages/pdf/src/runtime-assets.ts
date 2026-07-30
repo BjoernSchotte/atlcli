@@ -1,4 +1,6 @@
 export interface PdfRuntimeFontAsset {
+  /** Stable host-neutral identity. Hosts map this to their own static URL/path. */
+  assetId: `canonical/${string}`;
   fileName: string;
   family:
     | "Source Sans 3"
@@ -30,7 +32,7 @@ function googleFontsRaw(path: string): string {
   return `https://raw.githubusercontent.com/google/fonts/${GOOGLE_FONTS_COMMIT}/${path}`;
 }
 
-const fonts: readonly PdfRuntimeFontAsset[] = [
+const fontRecords: readonly Omit<PdfRuntimeFontAsset, "assetId">[] = [
   { fileName: "SourceSans3-Regular.ttf", family: "Source Sans 3", style: "normal", weight: 400, sourceUrl: adobeRaw("source-sans", SOURCE_SANS_COMMIT, "SourceSans3-Regular.ttf"), sha256: "4644c81b86ec9caaa76b634889968ed3c4f4f52f054855933acc7c2b21e53b0f" },
   { fileName: "SourceSans3-It.ttf", family: "Source Sans 3", style: "italic", weight: 400, sourceUrl: adobeRaw("source-sans", SOURCE_SANS_COMMIT, "SourceSans3-It.ttf"), sha256: "192afd78f0f54a3c69eaf02d43f4d9a821e9d6110e41d3d25d61a7385cd580e4" },
   { fileName: "SourceSans3-Semibold.ttf", family: "Source Sans 3", style: "normal", weight: 600, sourceUrl: adobeRaw("source-sans", SOURCE_SANS_COMMIT, "SourceSans3-Semibold.ttf"), sha256: "a3f4f8dcf343a8f24dc61951de93f3ba1558b15cd250ba24af8a40e957081b7d" },
@@ -44,6 +46,13 @@ const fonts: readonly PdfRuntimeFontAsset[] = [
   { fileName: "NotoSansSymbols2-Regular.ttf", family: "Noto Sans Symbols2", style: "normal", weight: 400, sourceUrl: notoRaw("NotoSansSymbols2-Regular.ttf"), sha256: "630846d528dbe4c4981370a4d0a9475a1fd1491a129bb411f8e157cdb5de13c6" },
   { fileName: "NotoEmoji-wght.ttf", family: "Noto Emoji", style: "normal", weight: 400, sourceUrl: googleFontsRaw("ofl/notoemoji/NotoEmoji%5Bwght%5D.ttf"), sha256: "de6c18832938afc99caf132b39d6a30a19bac7f2e812e28db2535b4608d27551" },
 ];
+
+const fonts: readonly PdfRuntimeFontAsset[] = fontRecords.map((font) =>
+  Object.freeze({
+    ...font,
+    assetId: `canonical/${font.fileName}`,
+  })
+);
 
 export const PDF_RUNTIME_ASSETS = Object.freeze({
   fonts,

@@ -23,6 +23,7 @@ import {
   BrowserPdfCompiler,
 } from "@atlcli/pdf-compiler-browser";
 import { PDF_RUNTIME_ASSETS, formatPdfCompilerDiagnostics } from "@atlcli/pdf/browser";
+import type { PdfCompileContext } from "@atlcli/pdf/browser";
 import {
   claimPdfJob,
   completePdfJob,
@@ -33,8 +34,11 @@ import type { PdfWorkerRequest, PdfWorkerResponse } from "../utils/pdf/worker-pr
 
 const workerScope = self as unknown as DedicatedWorkerGlobalScope;
 
-async function fetchBytes(url: string): Promise<Uint8Array<ArrayBuffer>> {
-  const response = await fetch(url);
+async function fetchBytes(
+  url: string,
+  signal?: AbortSignal,
+): Promise<Uint8Array<ArrayBuffer>> {
+  const response = await fetch(url, signal ? { signal } : {});
   if (!response.ok) throw new Error(`Packaged PDF compiler asset failed to load (${response.status}).`);
   return new Uint8Array(await response.arrayBuffer());
 }
@@ -76,6 +80,7 @@ function assertStaticAssetParity(): void {
   // The static import itself is the compile-time existence proof. Avoid a
   // unary truthiness check because Vite rewrites `?url` bindings to URL
   // expressions and can otherwise change operator precedence in output.
+  void compilerLicenseUrl;
   if (PDF_RUNTIME_ASSETS.compilerLicense.fileName !== "LICENSE") {
     throw new Error("Extension compiler license import does not match the canonical manifest.");
   }
@@ -84,15 +89,15 @@ function assertStaticAssetParity(): void {
 function getCompiler(): Promise<BrowserPdfCompiler> {
   if (!compilerPromise) {
     assertStaticAssetParity();
-    compilerPromise = Promise.all([
-      fetchBytes(wasmUrl),
-      ...PDF_RUNTIME_ASSETS.fonts.map((asset) => fetchBytes(fontUrls.get(asset.fileName)!)),
-      ...PDF_RUNTIME_ASSETS.licenses.map((asset) => fetchBytes(licenseUrls.get(asset.fileName)!)),
-      fetchBytes(compilerLicenseUrl),
-    ])
-      .then(([wasm, ...fontAndLicenseBytes]) => new BrowserPdfCompiler({
+    compilerPromise = fetchBytes(wasmUrl)
+      .then((wasm) => new BrowserPdfCompiler({
         wasm: wasm.buffer,
-        fonts: fontAndLicenseBytes.slice(0, PDF_RUNTIME_ASSETS.fonts.length),
+        fonts: PDF_RUNTIME_ASSETS.fonts.map((asset) => ({
+          assetId: asset.assetId,
+          sha256: asset.sha256,
+          load: (context: PdfCompileContext = {}) =>
+            fetchBytes(fontUrls.get(asset.fileName)!, context.signal),
+        })),
       }))
       .catch((error) => {
         compilerPromise = null;
@@ -119,6 +124,7 @@ async function compileJob(jobId: string): Promise<PdfWorkerResponse> {
       pdf: result.pdf,
       diagnostics: result.diagnostics,
       compilerVersion: result.compilerVersion,
+      ...(result.fontEvidence ? { fontEvidence: result.fontEvidence } : {}),
     });
     if (!completed || completed.status !== "complete") {
       throw new Error("PDF job was cancelled before the result could be stored.");

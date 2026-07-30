@@ -12,6 +12,7 @@
   "scripts": {
     "start": "bun --conditions=development run --cwd apps/cli src/index.ts",
     "fonts:ensure": "bun packages/pdf/scripts/ensure-fonts.ts",
+    "fonts:coverage": "bun packages/pdf/scripts/generate-font-coverage.ts",
     "vendor:typst": "bun packages/pdf-compiler-browser/scripts/vendor-typst.ts",
     "clean:browser-artifacts": "bun scripts/clean-browser-artifacts.ts all",
     "clean:extension-output": "bun scripts/clean-browser-artifacts.ts extension",

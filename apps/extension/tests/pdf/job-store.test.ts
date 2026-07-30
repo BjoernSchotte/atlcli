@@ -83,10 +83,21 @@ describe("PDF job store", () => {
       pdf: new Uint8Array([37, 80, 68, 70]),
       diagnostics: [],
       compilerVersion: "test",
+      fontEvidence: {
+        schema: "atlcli.pdf-font-load-evidence/1",
+        requirementKey: "font-key",
+        registeredAssetIds: ["canonical/SourceSans3-Regular.ttf"],
+        loadedFontNames: ["Source Sans 3"],
+        fullBundleFallback: false,
+      },
     }, factory);
     const result = await getPdfJob(id, factory);
     expect(result?.status).toBe("complete");
     expect([...result!.pdf!]).toEqual([37, 80, 68, 70]);
+    expect(result?.fontEvidence).toMatchObject({
+      requirementKey: "font-key",
+      fullBundleFallback: false,
+    });
   });
 
   it("gives a legacy PDF job to exactly one compiler", async () => {

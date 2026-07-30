@@ -37,7 +37,11 @@ export type { PdfBytesHandle } from "./bytes-handle.js";
 
 // --- Compile port contract (compiler.ts) ---
 export { formatPdfCompilerDiagnostics } from "./compiler.js";
-export type { PdfCompilePort, PdfCompileResult, PdfCompileContext } from "./compiler.js";
+export type {
+  PdfCompilePort,
+  PdfCompileResult,
+  PdfCompileContext,
+} from "./compiler.js";
 
 // --- Pre-compile asset resolution (prepare.ts) ---
 export { preparePdfDocument } from "./prepare.js";
@@ -73,6 +77,20 @@ export type { PdfOutputInspection } from "./validate.js";
 // --- Runtime asset manifest (runtime-assets.ts) ---
 export { PDF_RUNTIME_ASSETS } from "./runtime-assets.js";
 export type { PdfRuntimeFontAsset } from "./runtime-assets.js";
+
+// --- Demand-aware PDF font requirements (issue #126) ---
+export {
+  resolvePdfFontRequirementsV1,
+  resolveFullPdfFontRequirementsV1,
+  assertResolvedPdfFontRequirementsV1,
+} from "./font-requirements.js";
+export type {
+  PdfFontRequirementReasonKindV1,
+  PdfFontRequirementReasonV1,
+  ResolvedPdfFontAssetRequirementV1,
+  ResolvedPdfFontRequirementsV1,
+  ResolvePdfFontRequirementsInputV1,
+} from "./font-requirements.js";
 
 // --- Template visual-asset capability contract ---
 export { PDF_TEMPLATE_ASSET_CAPABILITIES_V1 } from "./template-asset-capabilities.js";
@@ -162,6 +180,7 @@ export type {
   PdfTemplateSettings,
   PdfSerializeOptions,
   PdfExportTimings,
+  PdfFontLoadEvidenceV1,
   PdfExportReport,
   PdfCompilerDiagnostic,
   FontAsset,
