@@ -57,6 +57,50 @@ describe("Actions timing summary", () => {
     expect(summary.jobs[1]?.runnerSeconds).toBeNull();
   });
 
+  test("ignores GitHub timestamp anomalies for skipped jobs", () => {
+    const summary = summarizeActionsJobs([
+      {
+        id: 1,
+        name: "required",
+        status: "completed",
+        conclusion: "success",
+        created_at: "2026-07-30T10:00:00Z",
+        started_at: "2026-07-30T10:00:01Z",
+        completed_at: "2026-07-30T10:00:05Z",
+      },
+      {
+        id: 2,
+        name: "skipped-attestation",
+        status: "completed",
+        conclusion: "skipped",
+        created_at: "2026-07-30T10:00:00Z",
+        started_at: "2026-07-30T10:00:10Z",
+        completed_at: "2026-07-30T10:00:09Z",
+        steps: [
+          {
+            name: "skipped-step",
+            conclusion: "skipped",
+            started_at: "2026-07-30T10:00:10Z",
+            completed_at: "2026-07-30T10:00:09Z",
+          },
+        ],
+      },
+    ]);
+
+    expect(summary).toMatchObject({
+      sampleClass: "green",
+      eligibleForGreenPercentiles: true,
+      workflowWallSeconds: 5,
+      criticalPathSeconds: 5,
+      criticalPathJobs: ["required"],
+    });
+    expect(summary.jobs[1]).toMatchObject({
+      queueSeconds: null,
+      runnerSeconds: null,
+      phases: [{ name: "skipped-step", durationSeconds: null }],
+    });
+  });
+
   test("labels failures separately from green percentile samples", () => {
     const summary = summarizeActionsJobs([
       {

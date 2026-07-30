@@ -86,6 +86,7 @@ function criticalPath(
   if (workflowStart === null) return { seconds: null, jobs: [] };
   const byName = new Map(jobs.map((job) => [job.name, job]));
   const completed = jobs
+    .filter((job) => job.conclusion !== "skipped")
     .map((job) => ({ job, completed: timestamp(job.completed_at, `${job.name} completion`) }))
     .filter(
       (entry): entry is { job: ActionsJob; completed: number } =>
@@ -101,7 +102,10 @@ function criticalPath(
   while (true) {
     const parents = (dependencies[current] ?? [])
       .map((name) => byName.get(name))
-      .filter((job): job is ActionsJob => Boolean(job))
+      .filter(
+        (job): job is ActionsJob =>
+          Boolean(job) && job?.conclusion !== "skipped",
+      )
       .map((job) => ({
         job,
         completed: timestamp(job.completed_at, `${job.name} completion`),
@@ -132,6 +136,7 @@ export function summarizeActionsJobs(
     .map((job) => timestamp(job.created_at, `${job.name} creation`))
     .filter((value): value is number => value !== null);
   const completedTimes = jobs
+    .filter((job) => job.conclusion !== "skipped")
     .map((job) => timestamp(job.completed_at, `${job.name} completion`))
     .filter((value): value is number => value !== null);
   const workflowStart = createdTimes.length > 0 ? Math.min(...createdTimes) : null;
@@ -141,8 +146,13 @@ export function summarizeActionsJobs(
   }
 
   const timings = jobs.map((job): JobTiming => {
-    const runnerSeconds = elapsedSeconds(job.started_at, job.completed_at, job.name);
-    const queueSeconds = elapsedSeconds(job.created_at, job.started_at, `${job.name} queue`);
+    const skipped = job.conclusion === "skipped";
+    const runnerSeconds = skipped
+      ? null
+      : elapsedSeconds(job.started_at, job.completed_at, job.name);
+    const queueSeconds = skipped
+      ? null
+      : elapsedSeconds(job.created_at, job.started_at, `${job.name} queue`);
     return {
       id: job.id,
       name: job.name,
@@ -152,11 +162,13 @@ export function summarizeActionsJobs(
       phases: (job.steps ?? []).map((step) => ({
         name: step.name,
         conclusion: step.conclusion,
-        durationSeconds: elapsedSeconds(
-          step.started_at,
-          step.completed_at,
-          `${job.name} / ${step.name}`,
-        ),
+        durationSeconds: skipped
+          ? null
+          : elapsedSeconds(
+              step.started_at,
+              step.completed_at,
+              `${job.name} / ${step.name}`,
+            ),
       })),
     };
   });
