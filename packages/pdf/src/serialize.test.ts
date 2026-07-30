@@ -1259,6 +1259,32 @@ describe("PDF preparation and serialization", () => {
     expect(bundle.main.match(/stroke: rgb\\?\("#B3BAC5"/gu)).toHaveLength(2);
   });
 
+  it("keeps the Whiteboard card label and canonical target clickable", async () => {
+    const url = "https://tenant.invalid/wiki/spaces/TEST/whiteboard/41";
+    const prepared = await preparePdfDocument([{
+      type: "smartCard",
+      card: {
+        appearance: "block",
+        source: "url",
+        url,
+        target: { kind: "external", href: url },
+        title: "Atlassian Whiteboard",
+      },
+    }], {
+      resolve: async () => {
+        throw new Error("unused");
+      },
+    });
+    const bundle = serializePdfDocument(prepared, { metadata });
+
+    expect(bundle.main).toContain(
+      `#link("${url}")[#text("Atlassian Whiteboard")]`,
+    );
+    expect(bundle.notes.some((note) => note.code === "pdf-link-unresolved")).toBe(
+      false,
+    );
+  });
+
   it("preserves arbitrary inline background colors as breakable Typst highlights", async () => {
     const prepared = await preparePdfDocument(
       [

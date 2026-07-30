@@ -691,6 +691,28 @@ function unsupportedChildNote(child: TreeChild): ExportNote {
   };
 }
 
+const PROVISIONAL_ADF_RESOLUTION_CODES = new Set([
+  "macro-not-rendered",
+  "inline-extension-not-rendered",
+]);
+
+/**
+ * `sourceSummary.degradedPages` describes lossy source decoding, not a macro
+ * resolution pass that has not run yet. Pending ADF extension notes are owned
+ * and replaced by the downstream macro resolver; counting a page as degraded
+ * solely for those provisional notes would leave a successful pure renderer
+ * (such as the Whiteboard linked card) permanently marked degraded.
+ */
+function sourceDecodeDegraded(decoded: BlocksResult): boolean {
+  if (decoded.degraded !== true) return false;
+  // A zero diagnostic budget can suppress a real degradation note. Preserve
+  // the decoder's boolean when there is no evidence that it was provisional.
+  if (decoded.notes.length === 0) return true;
+  return decoded.notes.some(
+    (note) => !PROVISIONAL_ADF_RESOLUTION_CODES.has(note.code),
+  );
+}
+
 function normalizedScopeKey(scope: ExportScope): string {
   try {
     validateExportScope(scope);
@@ -1477,7 +1499,7 @@ export async function fetchExportTree(
           source: {
             representation:
               decoded.representation ?? exportSource.primary.representation,
-            degraded: decoded.degraded === true,
+            degraded: sourceDecodeDegraded(decoded),
           },
           blocks: decoded.blocks,
           notes: decoded.notes,

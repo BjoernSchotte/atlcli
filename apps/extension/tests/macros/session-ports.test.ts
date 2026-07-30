@@ -15,6 +15,7 @@
  */
 import { afterEach, describe, expect, it } from "bun:test";
 import {
+  adfToBlocks,
   ConfluenceClient,
   storageToBlocks,
   type StorageToBlocksResult,
@@ -311,6 +312,67 @@ describe("dynamic-macro toggle OFF", () => {
     expect(codes(result.notes)).toContain("macro-skipped-by-config");
     expect(codes(result.notes)).not.toContain("macro-degraded");
     expect(built.ports.state.expired).toBe(false);
+  });
+});
+
+describe("embedded Whiteboard offline resolution", () => {
+  it("uses the MV3 session builder but performs no request", async () => {
+    const log = installFetch(() => {
+      throw new Error("The pure Whiteboard renderer must not fetch");
+    });
+    const decoded = adfToBlocks({
+      version: 1,
+      type: "doc",
+      content: [{
+        type: "extension",
+        attrs: {
+          extensionType: "com.atlassian.confluence.macro.core",
+          extensionKey: "native-embed:whiteboard",
+          parameters: {
+            macroParams: {
+              url: {
+                value:
+                  "/wiki/spaces/DOCSY/whiteboard/41?source=extension",
+              },
+            },
+          },
+        },
+      }],
+    }, {
+      pageContext: { id: ROOT_ID, spaceKey: "DOCSY" },
+    });
+    const built = buildSessionMacroResolutionOptions({
+      pageUrl: PAGE_URL,
+      targetEngine: "pdf",
+      live: false,
+    });
+    const page = { id: ROOT_ID, version: 3, spaceKey: "DOCSY" };
+    const result = await resolveMacroBlocks(
+      decoded,
+      built.options.registry,
+      built.options.contextFor(page),
+      {
+        live: false,
+        contextFor: (source) => built.options.contextFor(source ?? page),
+        targetEngine: "pdf",
+      },
+    );
+
+    expect(log.urls).toEqual([]);
+    expect(result.blocks).toEqual([{
+      type: "smartCard",
+      card: {
+        appearance: "block",
+        source: "url",
+        url: `${SITE}/wiki/spaces/DOCSY/whiteboard/41`,
+        target: {
+          kind: "external",
+          href: `${SITE}/wiki/spaces/DOCSY/whiteboard/41`,
+        },
+        title: "Atlassian Whiteboard",
+      },
+    }]);
+    expect(codes(result.notes)).toEqual(["macro-rendered-via"]);
   });
 });
 

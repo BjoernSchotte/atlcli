@@ -122,8 +122,12 @@ export const BARE_BUILTIN_MODULES = [
  * construction. A bare name that merely *starts* with a builtin name is safe
  * too: the `(?:/|$)` boundary keeps `pathe`, `oslllo-svg2`, `utils` out.
  */
-const BUILTIN_SPECIFIER_RE = new RegExp(
-  `^(?:@forge/|node:|bun:|(?:${BARE_BUILTIN_MODULES.join("|")})(?:/|$))`
+const HOST_ONLY_SPECIFIER_RE = new RegExp(
+  `^(?:` +
+    `@forge/|@wxt-dev/|wxt(?:/|$)|react(?:/|$)|react-dom(?:/|$)|` +
+    `webextension-polyfill(?:/|$)|node:|bun:|` +
+    `(?:${BARE_BUILTIN_MODULES.join("|")})(?:/|$)` +
+  `)`
 );
 
 /**
@@ -175,6 +179,7 @@ export interface EntryCheckResult {
   hostGraphViolations: Array<{
     category:
       | "cli"
+      | "extension"
       | "filesystem-adapter"
       | "process-lock"
       | "terminal";
@@ -191,6 +196,7 @@ const HOST_GRAPH_RULES: readonly {
   pattern: RegExp;
 }[] = [
   { category: "cli", pattern: /\/apps\/cli\//u },
+  { category: "extension", pattern: /\/apps\/extension\//u },
   {
     category: "filesystem-adapter",
     pattern: /\/(?:pdf-template-project-writer|file-system|filesystem)\.[cm]?[jt]s$/u,
@@ -310,16 +316,23 @@ function builtinScanPlugin(sink: BuiltinImport[], cwd: string): import("bun").Bu
   return {
     name: "atlcli-builtin-scan",
     setup(build) {
-      build.onResolve({ filter: BUILTIN_SPECIFIER_RE }, (args) => {
+      build.onResolve({ filter: HOST_ONLY_SPECIFIER_RE }, (args) => {
         const importer = args.importer;
         // Bun's own polyfill graph — see BUN_POLYFILL_IMPORTER_PREFIX.
         if (!importer || importer.startsWith(BUN_POLYFILL_IMPORTER_PREFIX)) return undefined;
 
         const bare = args.path.replace(/^(?:node|bun):/, "");
-        const prefixed = args.path !== bare || args.path.startsWith("@forge/");
+        const hostOnlyPackage =
+          args.path.startsWith("@forge/") ||
+          args.path.startsWith("@wxt-dev/") ||
+          /^(?:wxt|react|react-dom|webextension-polyfill)(?:\/|$)/u.test(
+            args.path,
+          );
+        const prefixed = args.path !== bare || hostOnlyPackage;
         // A `node:`/`bun:` prefix is unambiguous; a bare name is only a builtin
-        // when no real package of that name shadows it. Forge imports are also
-        // unambiguous host-only dependencies: consumers inject requestConfluence.
+        // when no real package of that name shadows it. Framework/host imports
+        // are also unambiguous here: shared exporters must remain independent
+        // of Forge, React, WXT, and WebExtension APIs.
         if (!prefixed && shadowedByRealPackage(bare, dirname(importer))) return undefined;
 
         sink.push({

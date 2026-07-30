@@ -80,6 +80,7 @@ describe("browser-build gate (spec 001 task 6)", () => {
 
   for (const [category, relative] of [
     ["cli", "apps/cli/command.ts"],
+    ["extension", "apps/extension/background.ts"],
     ["filesystem-adapter", "src/pdf-template-project-writer.ts"],
     ["process-lock", "src/process-lock.ts"],
     ["terminal", "src/prompt.ts"],
@@ -146,6 +147,30 @@ describe("browser-build gate (spec 001 task 6)", () => {
       expect.objectContaining({ specifier: "@forge/bridge" }),
     ]);
   });
+
+  for (const specifier of [
+    "@wxt-dev/module-react",
+    "wxt/utils/define-background",
+    "react",
+    "react-dom/client",
+    "webextension-polyfill",
+  ]) {
+    test(`a seeded ${specifier} import turns the host-neutral graph gate red`, async () => {
+      const dir = fixtureDir();
+      const file = join(dir, "host-coupled.ts");
+      writeFileSync(
+        file,
+        `import * as host from ${JSON.stringify(specifier)};\nexport { host };\n`,
+      );
+
+      const result = await checkEntrypoint(file);
+
+      expect(result.ok).toBe(false);
+      expect(result.builtinImports).toEqual([
+        expect.objectContaining({ specifier }),
+      ]);
+    });
+  }
 
   test("the specifier scan ignores Bun's inlined polyfill diagnostic strings (no false positive)", async () => {
     // A string literal that merely *contains* the text `node:buffer` must not be
