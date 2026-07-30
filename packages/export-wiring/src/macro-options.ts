@@ -137,6 +137,7 @@ export function buildMacroResolutionOptions(args: BuildMacroOptionsArgs): MacroR
         depth: 0,
         visited: new Set(),
         siteId,
+        siteOrigin: args.siteBaseUrl,
         ...(args.signal ? { signal: args.signal } : {}),
         flags: {
           ...(args.nativeTocPresent ? { nativeTocPresent: true } : {}),

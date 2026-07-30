@@ -8,6 +8,8 @@ const DIGEST_MANIFEST = resolve(
   dirname(fileURLToPath(import.meta.url)),
   "../test-results/digests.json",
 );
+const HARNESS_ORIGIN =
+  `http://127.0.0.1:${process.env.ATLCLI_HARNESS_PORT ?? "4179"}`;
 
 test("every registered conformance case passes from nested production output", async ({ page }) => {
   const pageErrors: string[] = [];
@@ -20,7 +22,9 @@ test("every registered conformance case passes from nested production output", a
   });
   page.on("requestfailed", (request) => failedRequests.push(`${request.url()}: ${request.failure()?.errorText}`));
   page.on("request", (request) => {
-    if (new URL(request.url()).origin !== "http://127.0.0.1:4179") foreignRequests.push(request.url());
+    if (new URL(request.url()).origin !== HARNESS_ORIGIN) {
+      foreignRequests.push(request.url());
+    }
   });
 
   const response = await page.goto("./");
@@ -140,6 +144,9 @@ test("every registered conformance case passes from nested production output", a
   expect(macros.adfExportResolved).toBe(true);
   expect(macros.docxHasAdfExport).toBe(true);
   expect(macros.docxHasInlineAdfExport).toBe(true);
+  expect(macros.whiteboardLinkedCard).toBe(true);
+  expect(macros.pdfWhiteboardLink).toBe(true);
+  expect(macros.docxWhiteboardLink).toBe(true);
 
   mkdirSync(dirname(DIGEST_MANIFEST), { recursive: true });
   writeFileSync(DIGEST_MANIFEST, JSON.stringify(digestManifest, null, 2));

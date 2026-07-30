@@ -1,6 +1,9 @@
 import { defineConfig, devices } from "@playwright/test";
 
-const port = 4179;
+const port = Number(process.env.ATLCLI_HARNESS_PORT ?? "4179");
+if (!Number.isInteger(port) || port < 1 || port > 65_535) {
+  throw new Error("ATLCLI_HARNESS_PORT must be a valid TCP port.");
+}
 const mountUrl = `http://127.0.0.1:${port}/browser-export-harness/`;
 const browserChannel = process.env.ATLCLI_PLAYWRIGHT_CHANNEL as
   | "chrome"

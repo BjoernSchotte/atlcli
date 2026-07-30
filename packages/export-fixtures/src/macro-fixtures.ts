@@ -118,6 +118,8 @@ export const MACRO_STORAGE: string =
 export const MACRO_ADF_BLOCK_EXTENSION_LOCAL_ID = "forge-block-extension-local-id";
 export const MACRO_ADF_BODIED_EXTENSION_LOCAL_ID = "forge-bodied-extension-local-id";
 export const MACRO_ADF_INLINE_EXTENSION_LOCAL_ID = "forge-inline-extension-local-id";
+export const MACRO_WHITEBOARD_URL =
+  "https://tenant.invalid/wiki/spaces/TEST/whiteboard/41";
 export const MACRO_ADF_EXTENSION = {
   type: "doc",
   version: 1,
@@ -161,6 +163,19 @@ export const MACRO_ADF_EXTENSION = {
         { type: "text", text: " after inline export" },
       ],
     },
+    {
+      type: "extension",
+      attrs: {
+        extensionType: "com.atlassian.confluence.macro.core",
+        extensionKey: "native-embed:whiteboard",
+        parameters: {
+          macroParams: {
+            _parentId: { value: "100" },
+            url: { value: `${MACRO_WHITEBOARD_URL}?source=fixture` },
+          },
+        },
+      },
+    },
   ],
 } as const;
 
@@ -195,6 +210,7 @@ function macroContext(): MacroExportContext {
     exportView: macroExportViewPort(),
     depth: 0,
     visited: new Set<string>(),
+    siteOrigin: "https://tenant.invalid",
   };
 }
 
@@ -243,4 +259,17 @@ export function hasMacroAdfExport(blocks: readonly ExportBlock[]): boolean {
   return serialized.includes(MACRO_ADF_BLOCK_EXPORT_TEXT) &&
     serialized.includes(MACRO_ADF_BODIED_EXPORT_TEXT) &&
     serialized.includes(MACRO_ADF_INLINE_EXPORT_TEXT);
+}
+
+/** True when the embedded Whiteboard became the canonical neutral linked card. */
+export function hasWhiteboardLinkedCard(
+  blocks: readonly ExportBlock[],
+): boolean {
+  return blocks.some((block) =>
+    block.type === "smartCard" &&
+    block.card.title === "Atlassian Whiteboard" &&
+    block.card.url === MACRO_WHITEBOARD_URL &&
+    block.card.target?.kind === "external" &&
+    block.card.target.href === MACRO_WHITEBOARD_URL
+  );
 }

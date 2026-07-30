@@ -94,4 +94,17 @@ describe("defaultRegistry — the shipped renderer set", () => {
     const jira = registry.renderers.find((r) => r.id === "jira");
     expect(jira?.macros).toEqual(["jira", "jiraissues"]);
   });
+
+  test("routes embedded Whiteboards before the live export-view floor", () => {
+    const registry = defaultRegistry(deps);
+    const whiteboardIndex = registry.renderers.findIndex(
+      (renderer) => renderer.id === "whiteboard-linked-card",
+    );
+    const exportViewIndex = registry.renderers.findIndex(
+      (renderer) => renderer.id === "export-view",
+    );
+    expect(whiteboardIndex).toBeGreaterThanOrEqual(0);
+    expect(whiteboardIndex).toBeLessThan(exportViewIndex);
+    expect(registry.renderers[whiteboardIndex]?.requiresLivePort).toBe(false);
+  });
 });

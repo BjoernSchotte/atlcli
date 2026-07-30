@@ -21,6 +21,7 @@ import { scrollTableLayoutRenderer } from "./table-layout.js";
 import { childrenRenderer } from "./children.js";
 import { includeRenderer, excerptIncludeRenderer, excerptRenderer } from "./include-excerpt.js";
 import { pagePropertiesReportRenderer } from "./page-properties-report.js";
+import { whiteboardRenderer } from "./whiteboard.js";
 import { exportViewFallbackRenderer } from "./export-view.js";
 
 /**
@@ -123,8 +124,8 @@ function validateRenderers(
  * Assemble the standard renderer order: TOC first (pure reference renderer),
  * then the specific renderers (Jira, Confluence list, diagram,
  * multiexcerpt-include, scroll-tablelayout, children, include/excerpt,
- * page-properties-report), `exportViewFallbackRenderer` last as the `"*"`
- * catch-all.
+ * page-properties-report), the pure embedded-Whiteboard link renderer, then
+ * `exportViewFallbackRenderer` last as the `"*"` catch-all.
  */
 export function defaultRegistry(deps: DefaultRegistryDeps): MacroRendererRegistry {
   return createRegistry([
@@ -148,6 +149,7 @@ export function defaultRegistry(deps: DefaultRegistryDeps): MacroRendererRegistr
       storageToBlocks: deps.storageToBlocks,
       parsePageProperties: deps.parsePageProperties,
     }),
+    whiteboardRenderer(),
     exportViewFallbackRenderer({ htmlToExportBlocks: deps.htmlToExportBlocks }),
   ]);
 }

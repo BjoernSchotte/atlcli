@@ -104,6 +104,10 @@ PDF and Word files:
   TOC, anchors, excerpts, Jira issue tables, datasources, children, details
   summaries, includes, Scroll export controls, and more render natively or
   through a controlled fallback chain.
+- **Safe Whiteboard navigation** — embedded Atlassian Whiteboards become
+  deterministic tenant-local link cards in DOCX and PDF. The export keeps the
+  navigation target without claiming to include Whiteboard pixels, editable
+  content, metadata, or previews.
 - **Mermaid as a real diagram** — flowcharts, state, sequence, class, ER, and
   XY charts render as vector SVG. DOCX also embeds a high-resolution PNG
   fallback for older Word and LibreOffice versions.

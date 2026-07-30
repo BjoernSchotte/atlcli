@@ -46,7 +46,9 @@ const PAGE = {
   title: "JSON Contract Fixture",
   space: { key: "DOCSY" },
   version: { number: 3, when: "2026-07-20T00:00:00.000Z" },
-  ancestors: [],
+  // A non-page ancestor exercises the potential-folder probe as well as the
+  // direct-children scan. Neither Cloud-only v2 path may be requested on DC.
+  ancestors: [{ id: "folder-parent-77", title: "Potential Folder Parent" }],
   history: {
     createdDate: "2026-07-19T00:00:00.000Z",
     createdBy: { accountId: "acc-1", displayName: "Fixture Author" },
@@ -60,6 +62,8 @@ const PAGE = {
 let server: ReturnType<typeof Bun.serve>;
 let home: string;
 let tree: string;
+/** Every requested path, used to verify deployment-specific API routing. */
+let requests: string[] = [];
 /** Any non-GET request would mean the test wrote to "Confluence". */
 let writes: string[] = [];
 
@@ -70,6 +74,7 @@ beforeAll(async () => {
     port: 0,
     fetch(req) {
       const { pathname } = new URL(req.url);
+      requests.push(pathname);
       if (req.method !== "GET") writes.push(`${req.method} ${pathname}`);
 
       // Data-center shape (bearer auth => no /wiki prefix).
@@ -157,6 +162,7 @@ function parseSingleDocument(stdout: string): Record<string, unknown> {
 async function freshTree(): Promise<void> {
   if (tree) await rm(tree, { recursive: true, force: true });
   tree = await mkdtemp(join(tmpdir(), "atlcli-jsondoc-tree-"));
+  requests = [];
   writes = [];
 
   const init = await runCli(["wiki", "docs", "init", ".", "--page-id", PAGE_ID, "--space", "DOCSY"]);
@@ -166,6 +172,16 @@ async function freshTree(): Promise<void> {
   expect(pull.exitCode, `${pull.stdout}${pull.stderr}`).toBe(0);
   expect(await readFile(pagePath(), "utf8")).toContain("Remote body.");
 }
+
+describe("docs pull on Data Center", () => {
+  beforeEach(async () => {
+    await freshTree();
+  });
+
+  it("does not probe Cloud-only v2 folder endpoints", () => {
+    expect(requests.filter((path) => path.includes("/api/v2/"))).toEqual([]);
+  });
+});
 
 describe("docs pull --json: one document even when a file is skipped", () => {
   beforeEach(async () => {

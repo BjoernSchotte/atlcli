@@ -152,6 +152,18 @@ describe("CI workflow policy", () => {
     expect(trigger).toContain("types: [opened, synchronize, reopened, ready_for_review]");
   });
 
+  it("is ready to run full proof for merge-queue candidates", async () => {
+    const ci = await workflow("ci.yml");
+    expect(ci).toContain("merge_group:");
+    expect(ci).toContain("types: [checks_requested]");
+    expect(ci).toContain("github.event.merge_group.base_sha");
+    expect(ci).toContain("github.event.merge_group.head_sha");
+    expect(ci).toContain("github.event_name == 'merge_group'");
+    const required = block(ci, /^ {2}required:\s*$/, 2);
+    expect(required).not.toBeNull();
+    expect(required).toContain("name: required");
+  });
+
   it("spells out the same trigger types on every pull_request workflow", async () => {
     for (const name of await workflowNames()) {
       const trigger = pullRequestTrigger(await workflow(name));
@@ -196,6 +208,20 @@ describe("CI workflow policy", () => {
     );
   });
 
+  it("keeps system Chrome as a scheduled non-required neutral canary", async () => {
+    const ci = await workflow("ci.yml");
+    const canary = block(ci, /^ {2}browser-system-chrome-canary:\s*$/, 2);
+    const required = block(ci, /^ {2}required:\s*$/, 2);
+    expect(canary).not.toBeNull();
+    expect(canary).toContain("continue-on-error: true");
+    expect(canary).toContain("github.event_name == 'schedule'");
+    expect(canary).toContain("ATLCLI_PLAYWRIGHT_CHANNEL: chrome");
+    expect(canary).toContain("google-chrome --version");
+    expect(canary).not.toContain("playwright@1.55.0 install");
+    expect(required).not.toBeNull();
+    expect(required).not.toContain("browser-system-chrome-canary");
+  });
+
   it("keeps four complete blocking Bun shards with unique reports and a fail-closed aggregate", async () => {
     const reusable = await workflow("reusable-quality.yml");
     const staticQuality = block(reusable, /^ {2}static-quality:\s*$/, 2);
@@ -220,6 +246,8 @@ describe("CI workflow policy", () => {
     expect(tests).toContain("0 fail");
     expect(tests).toContain("if: always()");
     expect(tests).toContain("bun-test-shard-${{ matrix.shard }}.xml");
+    expect(tests).toContain("Upload failed test shard log");
+    expect(tests).toContain("if: failure()");
     expect(tests).toContain("bun-test-shard-${{ matrix.shard }}.log");
     expect(tests).not.toContain("continue-on-error:");
 
@@ -238,6 +266,62 @@ describe("CI workflow policy", () => {
     expect(complete).toContain(
       '[[ "$ATTESTATION_REQUIRED" == "true" && "$ATTESTATION" != "success" ]]',
     );
+  });
+
+  it("keeps timing telemetry outside every required status dependency graph", async () => {
+    const ci = await workflow("ci.yml");
+    const telemetry = block(ci, /^ {2}telemetry:\s*$/, 2);
+    const required = block(ci, /^ {2}required:\s*$/, 2);
+    expect(telemetry).not.toBeNull();
+    expect(telemetry).toContain("name: Non-required CI timing telemetry");
+    expect(telemetry).toContain("needs: [changes, required]");
+    expect(telemetry).toContain("if: always()");
+    expect(telemetry).toContain("actions/download-artifact@v5");
+    expect(telemetry).toContain("bun scripts/ci/telemetry-summary.ts");
+    expect(required).not.toBeNull();
+    expect(required).not.toContain("telemetry");
+
+    for (const statusName of ["required", "draft-fast", "superseded"]) {
+      const status = block(ci, new RegExp(`^ {2}${statusName}:\\s*$`), 2);
+      if (status !== null) expect(status).not.toMatch(/needs:[^\n]*telemetry/);
+    }
+  });
+
+  it("keeps duration-aware topology comparisons off pull requests", async () => {
+    const comparison = await workflow("ci-topology-canary.yml");
+    expect(comparison).not.toContain("pull_request:");
+    for (const topology of [
+      "general-2x1",
+      "general-3x1",
+      "general-2x2-workers",
+    ]) {
+      expect(comparison).toContain(topology);
+    }
+    expect(comparison).toContain("bun scripts/ci/test-lanes.ts --check");
+    expect(comparison).toContain("bun scripts/ci/run-test-lane.ts");
+    expect(comparison).toContain("shard: [1, 2, 3, 4]");
+    expect(comparison).toContain("if: matrix.poppler");
+    expect(comparison).toContain("if: matrix.fonts");
+  });
+
+  it("keeps the standalone security attestation dependency-free", async () => {
+    const attestation = await workflow("security-attestation.yml");
+    const source = await readFile(
+      join(REPO_ROOT, "scripts", "security", "attest.ts"),
+      "utf8",
+    );
+    const imports = [
+      ...source.matchAll(
+        /^\s*import\s+[^;\n]+?\s+from\s+["']([^"']+)["'];?\s*$/gm,
+      ),
+      ...source.matchAll(
+        /^\s*import\(\s*["']([^"']+)["']\s*\)/gm,
+      ),
+    ].map((match) => match[1]!);
+    expect(imports.length).toBeGreaterThan(0);
+    expect(imports.every((specifier) => specifier.startsWith("node:"))).toBe(true);
+    expect(attestation).not.toContain("bun install --frozen-lockfile");
+    expect(attestation).toContain("bun scripts/security/attest.ts");
   });
 
   it("keeps the pinned consumer gate in CI and moves latest to a canary", async () => {

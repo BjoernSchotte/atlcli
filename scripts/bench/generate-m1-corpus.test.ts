@@ -18,12 +18,13 @@ import {
   corpusBlockCount,
   labelledPageCount,
   MACRO_ADF_INLINE_EXPORT_TEXT,
+  MACRO_WHITEBOARD_URL,
   M1_CORPUS_PAGES,
   M1_CORPUS_VERSION,
 } from "@atlcli/export-fixtures";
 
 /** Structural golden — a stable sha256 of the corpus node JSON. */
-const M1_CORPUS_DIGEST = "9a0c8c822d795cdcca24abae8b4f0fb26e987c03f2e03245772d5cfb3d658b0b";
+const M1_CORPUS_DIGEST = "edd87bfd77bc5821f61be4ee425fbc24f274432d18872911e23d6bd66203baca";
 
 describe("M1 acceptance corpus", () => {
   it("is deterministic: same version → byte-identical JSON", async () => {
@@ -36,7 +37,7 @@ describe("M1 acceptance corpus", () => {
     const corpus = await buildM1Corpus();
     expect(corpus.version).toBe(M1_CORPUS_VERSION);
     expect(corpus.nodes.length).toBe(M1_CORPUS_PAGES);
-    expect(corpusBlockCount(corpus)).toBe(196);
+    expect(corpusBlockCount(corpus)).toBe(204);
     expect(labelledPageCount(corpus)).toBe(16);
   });
 
@@ -53,6 +54,12 @@ describe("M1 acceptance corpus", () => {
     expect(flat.some((b) => b.type === "orientation")).toBe(true); // scroll-landscape
     expect(flat.some((b) => b.type === "pageBreak")).toBe(true); // scroll-pagebreak
     expect(flat.some((b) => b.type === "unknown")).toBe(true); // draw.io floor
+    expect(flat.some(
+      (block) =>
+        block.type === "smartCard" &&
+        block.card.title === "Atlassian Whiteboard" &&
+        block.card.url === MACRO_WHITEBOARD_URL,
+    )).toBe(true);
     expect(flat.some(
       (block) =>
         block.type === "paragraph"
