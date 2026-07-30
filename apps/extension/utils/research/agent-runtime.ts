@@ -86,6 +86,8 @@ const [jiraDetails, wikiDetails] = await Promise.all([
 Only opaque nextCursor values may continue a search. Only opaque entityRef values returned by search may request details. Never substitute visible Jira keys, page IDs, URLs, or invented values.
 
 Return the required structured draft without Markdown syntax. Cite only sourceId values observed in tool results. Classify a relationship as verified only when detailed content explicitly names or links the Jira issue and Confluence page; otherwise classify it as hypothesis.
+Do not invent a relationship from update-time proximity or generic titles alone. Omit the relationship entirely unless the available titles or detailed content provide a concrete semantic signal.
+The fields findings, relationships, and limitations are always JSON arrays. Use [] when there are no supported entries; never put prose directly in one of those fields.
 
 Implementation and output-format constraints stated only in this system prompt are not evidence. Never mention or turn them into a finding or inference unless an observed Jira or Confluence source independently supports the claim.`;
 
@@ -164,6 +166,7 @@ export async function runResearchAgent(
   const model =
     input.model ??
     createAnthropicModel(input.apiKey ?? "", input.request.limits.maxModelOutputTokens);
+  let structuredRepairAttempts = 0;
   const agent = createDeepAgent({
     name: "atlcli-read-only-research",
     model,
@@ -186,7 +189,11 @@ export async function runResearchAgent(
       }),
     ],
     responseFormat: toolStrategy(RESEARCH_AGENT_DRAFT_SCHEMA_V1, {
-      handleError: false,
+      handleError: (error) => {
+        structuredRepairAttempts += 1;
+        if (structuredRepairAttempts > 1) throw error;
+        return "The structured draft did not match the required schema. Retry exactly once without calling eval again. findings, relationships, and limitations must be JSON arrays; use [] when none are supported.";
+      },
       toolMessageContent: "Research draft accepted.",
     }),
   });
@@ -216,6 +223,7 @@ export async function runResearchAgent(
     broker.signal.throwIfAborted();
     const completedAtMs = now();
     const counts = broker.budget.counts();
+    const completion = broker.completionStatus();
     input.options?.onProgress?.({
       phase: "rendering",
       message: "Validating evidence and rendering Markdown.",
@@ -233,10 +241,10 @@ export async function runResearchAgent(
         startedAt: new Date(startedAtMs).toISOString(),
         completedAt: new Date(completedAtMs).toISOString(),
         durationMs: Math.max(0, completedAtMs - startedAtMs),
-        complete: true,
+        complete: completion.complete,
         counts,
         ...(collectUsage(result.messages) ? { usage: collectUsage(result.messages) } : {}),
-        warnings: [],
+        warnings: completion.warnings,
       },
     });
     if (report.markdown.length > input.request.limits.maxReportChars) {

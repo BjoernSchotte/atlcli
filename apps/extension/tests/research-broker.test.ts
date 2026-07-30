@@ -214,6 +214,10 @@ describe("bounded research capability broker", () => {
       complete: true,
       termination: "index-exhausted",
     });
+    expect(broker.completionStatus()).toEqual({
+      complete: true,
+      warnings: [],
+    });
     expect(providers.calls[0]?.jql).toContain('project in ("DEMO")');
     expect(providers.calls[1]?.cql).toContain('space in ("KB")');
   });
@@ -312,6 +316,13 @@ describe("bounded research capability broker", () => {
       query: {},
     })) as ResearchSearchOutputV1;
     expect(result.page).toEqual({ complete: false, termination: "page-limit" });
+    expect(broker.completionStatus()).toEqual({
+      complete: false,
+      warnings: [
+        "Jira search did not reach a terminal page.",
+        "Confluence search incomplete: page-limit.",
+      ],
+    });
   });
 
   it("counts invalid PTC calls and enforces HTTP attempts synchronously", async () => {

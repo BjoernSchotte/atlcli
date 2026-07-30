@@ -169,6 +169,13 @@ export class ResearchCapabilityBroker {
   readonly #sources = new Map<string, ResearchSourceReferenceV1>();
   readonly #detailEvidence = new Map<string, ResearchDetailEvidenceV1>();
   readonly #controller = new AbortController();
+  readonly #searchCompletion: Record<
+    "jira" | "confluence",
+    { complete: boolean; termination?: ResearchTerminationCode }
+  > = {
+    jira: { complete: false },
+    confluence: { complete: false },
+  };
 
   constructor(
     request: ResearchRequestV1,
@@ -215,6 +222,21 @@ export class ResearchCapabilityBroker {
         linkTargets: [...entry.content.linkTargets],
       },
     }));
+  }
+
+  completionStatus(): { complete: boolean; warnings: string[] } {
+    const warnings: string[] = [];
+    for (const product of ["jira", "confluence"] as const) {
+      const status = this.#searchCompletion[product];
+      if (status.complete) continue;
+      const label = product === "jira" ? "Jira" : "Confluence";
+      warnings.push(
+        status.termination
+          ? `${label} search incomplete: ${status.termination}.`
+          : `${label} search did not reach a terminal page.`
+      );
+    }
+    return { complete: warnings.length === 0, warnings };
   }
 
   async invoke(tool: ResearchToolId, input: unknown): Promise<unknown> {
@@ -359,14 +381,19 @@ export class ResearchCapabilityBroker {
             nextProviderCursor
           )
         : undefined;
+    const page: ResearchSearchOutputV1["page"] = nextCursor
+      ? { nextCursor, complete: false }
+      : nextProviderCursor
+        ? { complete: false, termination: termination ?? "item-limit" }
+        : { complete: true, termination: "index-exhausted" };
+    this.#searchCompletion[product] = {
+      complete: page.complete,
+      ...(page.termination ? { termination: page.termination } : {}),
+    };
     return {
       schema: RESEARCH_CAPABILITY_SCHEMAS[tool].output,
       items,
-      page: nextCursor
-        ? { nextCursor, complete: false }
-        : nextProviderCursor
-          ? { complete: false, termination: termination ?? "item-limit" }
-          : { complete: true, termination: "index-exhausted" },
+      page,
       budget: this.budget.snapshot(),
     };
   }

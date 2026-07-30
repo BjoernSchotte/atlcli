@@ -132,6 +132,23 @@ describe("research agent draft finalization", () => {
     expect(report.markdown).toContain("Relationship hypotheses");
   });
 
+  it("drops a time-only relationship guess with no semantic or detail evidence", () => {
+    const unrelatedSources: ResearchSourceReferenceV1[] = [
+      { ...sources[0]!, title: "Code quality review" },
+      { ...sources[1]!, title: "Munich conversations" },
+    ];
+    const report = finalizeResearchAgentDraftV1({
+      draft: draft("hypothesis"),
+      request,
+      sources: unrelatedSources,
+      detailEvidence: [],
+      run,
+    });
+
+    expect(report.relationships).toEqual([]);
+    expect(report.markdown).toContain("Relationship hypotheses\n\n_None._");
+  });
+
   it("rejects model-authored fields outside the narrow structured draft", () => {
     expect(() =>
       finalizeResearchAgentDraftV1({

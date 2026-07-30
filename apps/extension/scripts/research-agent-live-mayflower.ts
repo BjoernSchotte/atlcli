@@ -11,15 +11,17 @@ import {
   runResearchAgent,
 } from "../utils/research/agent-runtime.js";
 
-const PROFILE_NAME = "mayflower";
-const PROJECT_KEY = "ATLCLI";
-const SPACE_KEY = "DOCSY";
+const PROFILE_NAME = Bun.env.ATLCLI_RESEARCH_PROFILE?.trim() || "mayflower";
+const PROJECT_KEY = Bun.env.ATLCLI_RESEARCH_JIRA_PROJECT?.trim() || "ATLCLI";
+const SPACE_KEY = Bun.env.ATLCLI_RESEARCH_CONFLUENCE_SPACE?.trim() || "DOCSY";
+const WINDOW_FROM = Bun.env.ATLCLI_RESEARCH_FROM?.trim();
+const WINDOW_TO = Bun.env.ATLCLI_RESEARCH_TO?.trim();
 
 function questionFromArguments(): string {
   const value = Bun.argv.slice(2).join(" ").trim();
   return (
     value ||
-    "Welche aktuellen Arbeiten und Dokumentationen im Jira-Projekt ATLCLI und Confluence-Space DOCSY betreffen browserbasierte Exporte oder Agentenfunktionalitäten, und welche Jira-Confluence-Beziehungen sind explizit belegt?"
+    `Welche aktuellen Arbeiten und Dokumentationen im Jira-Projekt ${PROJECT_KEY} und Confluence-Space ${SPACE_KEY} betreffen browserbasierte Exporte oder Agentenfunktionalitäten, und welche Jira-Confluence-Beziehungen sind explizit belegt?`
   );
 }
 
@@ -44,6 +46,14 @@ async function main(): Promise<void> {
       siteOrigin,
       jiraProjectKeys: [PROJECT_KEY],
       confluenceSpaceKeys: [SPACE_KEY],
+      ...((WINDOW_FROM || WINDOW_TO)
+        ? {
+            timeWindow: {
+              ...(WINDOW_FROM ? { from: WINDOW_FROM } : {}),
+              ...(WINDOW_TO ? { to: WINDOW_TO } : {}),
+            },
+          }
+        : {}),
     },
     limits: {
       ...DEFAULT_RESEARCH_LIMITS_V1,
@@ -75,7 +85,7 @@ async function main(): Promise<void> {
     request,
     providers,
     budget,
-    runId: `mayflower-live-${crypto.randomUUID()}`,
+    runId: `profile-live-${crypto.randomUUID()}`,
     onPtcDiagnostic: (diagnostic) =>
       console.error(`[research-live] ptc=${JSON.stringify(diagnostic)}`),
     options: {

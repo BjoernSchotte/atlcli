@@ -89,4 +89,21 @@ describe("bounded research content projection", () => {
     expect(new TextEncoder().encode(result.text).byteLength).toBe(4);
     expect(result.truncated).toBe(true);
   });
+
+  it("degrades an oversized Confluence page to bounded text instead of losing the detail", () => {
+    const result = projectConfluenceStorage(
+      `<p>See <a href="/browse/DEMO-1">DEMO-1</a>.</p><p>${"bounded content ".repeat(
+        200
+      )}</p>`,
+      "https://example.atlassian.net",
+      { ...limits, maxTextChars: 80, maxTextBytes: 320 }
+    );
+
+    expect(result.text).toContain("See DEMO-1.");
+    expect(result.linkTargets).toEqual([
+      "https://example.atlassian.net/browse/DEMO-1",
+    ]);
+    expect(result.text.length).toBeLessThanOrEqual(80);
+    expect(result.truncated).toBe(true);
+  });
 });

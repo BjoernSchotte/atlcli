@@ -88,6 +88,54 @@ function isVerifiedRelationship(
   );
 }
 
+const RELATIONSHIP_STOP_WORDS = new Set([
+  "confluence",
+  "dokumentation",
+  "issue",
+  "jira",
+  "page",
+  "seite",
+  "ticket",
+  "updated",
+  "wurde",
+]);
+
+function meaningfulTokens(value: string): Set<string> {
+  return new Set(
+    (value.toLocaleLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []).filter(
+      (token) => token.length >= 4 && !RELATIONSHIP_STOP_WORDS.has(token)
+    )
+  );
+}
+
+function isPlausibleRelationshipHypothesis(
+  relationship: ResearchAgentDraftV1["relationships"][number],
+  sources: ReadonlyMap<string, ResearchSourceReferenceV1>,
+  detailEvidence: readonly ResearchDetailEvidenceV1[]
+): boolean {
+  const jiraId = `jira:${relationship.jiraIssueKey}`;
+  const wikiId = `wiki:${relationship.confluenceContentId}`;
+  if (
+    !relationship.sourceIds.includes(jiraId) ||
+    !relationship.sourceIds.includes(wikiId)
+  ) {
+    return false;
+  }
+  const jira = sources.get(jiraId);
+  const wiki = sources.get(wikiId);
+  if (!jira || !wiki) return false;
+  const detailById = new Map(
+    detailEvidence.map((entry) => [entry.source.id, entry.content.text])
+  );
+  const jiraTokens = meaningfulTokens(
+    `${jira.title}\n${detailById.get(jiraId) ?? ""}`
+  );
+  const wikiTokens = meaningfulTokens(
+    `${wiki.title}\n${detailById.get(wikiId) ?? ""}`
+  );
+  return [...jiraTokens].some((token) => wikiTokens.has(token));
+}
+
 function normalizeRelationships(
   relationships: ResearchAgentDraftV1["relationships"],
   sources: ReadonlyMap<string, ResearchSourceReferenceV1>,
@@ -98,12 +146,22 @@ function normalizeRelationships(
   for (const relationship of relationships) {
     const sourceIds = uniqueKnownSourceIds(relationship.sourceIds, sources);
     if (sourceIds.length === 0) continue;
-    const verified =
+    const hostVerified =
       relationship.classification === "verified" &&
       isVerifiedRelationship(relationship, detailEvidence, siteOrigin);
+    if (
+      !hostVerified &&
+      !isPlausibleRelationshipHypothesis(
+        relationship,
+        sources,
+        detailEvidence
+      )
+    ) {
+      continue;
+    }
     normalized.push({
       id: `relationship-${normalized.length + 1}`,
-      classification: verified ? "verified" : "hypothesis",
+      classification: hostVerified ? "verified" : "hypothesis",
       jiraIssueKey: relationship.jiraIssueKey,
       confluenceContentId: relationship.confluenceContentId,
       summary: relationship.summary,

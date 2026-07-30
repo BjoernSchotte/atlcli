@@ -1,4 +1,5 @@
 import {
+  StorageParseError,
   storageToBlocks,
   type ExportBlock,
   type InlineNode,
@@ -95,6 +96,10 @@ class ProjectionCollector {
 
   separator(): void {
     this.#parts.push("\n");
+  }
+
+  markTruncated(): void {
+    this.#truncated = true;
   }
 
   link(href: string | undefined): void {
@@ -248,19 +253,111 @@ function walkUnknownBlocks(
   }
 }
 
+function decodeFallbackEntities(value: string): string {
+  const named: Record<string, string> = {
+    amp: "&",
+    apos: "'",
+    gt: ">",
+    lt: "<",
+    nbsp: "\u00a0",
+    quot: '"',
+  };
+  return value.replace(
+    /&(#(?:x[0-9a-f]+|\d+)|amp|apos|gt|lt|nbsp|quot);/gi,
+    (match, encoded: string) => {
+      if (!encoded.startsWith("#")) return named[encoded.toLowerCase()] ?? match;
+      const hexadecimal = encoded[1]?.toLowerCase() === "x";
+      const codePoint = Number.parseInt(encoded.slice(hexadecimal ? 2 : 1), hexadecimal ? 16 : 10);
+      if (
+        !Number.isSafeInteger(codePoint) ||
+        codePoint <= 0 ||
+        codePoint > 0x10ffff ||
+        (codePoint >= 0xd800 && codePoint <= 0xdfff)
+      ) {
+        return "";
+      }
+      return String.fromCodePoint(codePoint);
+    }
+  );
+}
+
+/**
+ * Produce a bounded partial projection when the full storage parser rejects a
+ * page on its node/depth/text budget. This scanner never builds a DOM/tree and
+ * examines only a fixed prefix, so oversized pages remain useful without
+ * weakening the primary parser's resource limits.
+ */
+function projectOversizedConfluenceStorage(
+  storage: string,
+  siteOrigin: string,
+  limits: ContentProjectionLimits,
+  inputBytes: number
+): BoundedContentProjectionV1 {
+  const collector = new ProjectionCollector(siteOrigin, limits);
+  const scanLength = Math.min(
+    storage.length,
+    Math.max(16_384, Math.min(256_000, limits.maxTextChars * 32))
+  );
+  let cursor = 0;
+  while (cursor < scanLength) {
+    const opening = storage.indexOf("<", cursor);
+    if (opening === -1 || opening >= scanLength) {
+      collector.text(decodeFallbackEntities(storage.slice(cursor, scanLength)));
+      break;
+    }
+    if (opening > cursor) {
+      collector.text(decodeFallbackEntities(storage.slice(cursor, opening)));
+    }
+    if (storage.startsWith("<![CDATA[", opening)) {
+      const end = storage.indexOf("]]>", opening + 9);
+      const stop = end === -1 ? scanLength : Math.min(end, scanLength);
+      collector.text(storage.slice(opening + 9, stop));
+      cursor = end === -1 ? scanLength : end + 3;
+      continue;
+    }
+    if (storage.startsWith("<!--", opening)) {
+      const end = storage.indexOf("-->", opening + 4);
+      cursor = end === -1 ? scanLength : end + 3;
+      continue;
+    }
+    const closing = storage.indexOf(">", opening + 1);
+    if (closing === -1 || closing >= scanLength) break;
+    const tag = storage.slice(opening + 1, closing);
+    const href = tag.match(/\bhref\s*=\s*(["'])(.*?)\1/i)?.[2];
+    if (href) collector.link(decodeFallbackEntities(href));
+    if (/^\/?(?:p|h[1-6]|li|tr|div|br)\b/i.test(tag.trim())) {
+      collector.separator();
+    }
+    cursor = closing + 1;
+  }
+  collector.markTruncated();
+  return collector.finish(inputBytes);
+}
+
 export function projectConfluenceStorage(
   storage: string,
   siteOrigin: string,
   limits: ContentProjectionLimits
 ): BoundedContentProjectionV1 {
-  const collector = new ProjectionCollector(siteOrigin, limits);
-  const { blocks } = storageToBlocks(storage, {
-    parseBudget: {
-      maxNodes: limits.maxNodes,
-      maxDepth: limits.maxDepth,
-      maxTextLength: limits.maxTextChars * 2,
-    },
-  });
-  walkUnknownBlocks(blocks as ExportBlock[], collector, 1);
-  return collector.finish(new TextEncoder().encode(storage).byteLength);
+  const inputBytes = new TextEncoder().encode(storage).byteLength;
+  try {
+    const collector = new ProjectionCollector(siteOrigin, limits);
+    const { blocks } = storageToBlocks(storage, {
+      parseBudget: {
+        maxNodes: limits.maxNodes,
+        maxDepth: limits.maxDepth,
+        maxTextLength: limits.maxTextChars * 2,
+      },
+    });
+    walkUnknownBlocks(blocks as ExportBlock[], collector, 1);
+    return collector.finish(inputBytes);
+  } catch (error) {
+    if (!(error instanceof StorageParseError)) throw error;
+    return projectOversizedConfluenceStorage(
+      storage,
+      siteOrigin,
+      limits,
+      inputBytes
+    );
+  }
 }
