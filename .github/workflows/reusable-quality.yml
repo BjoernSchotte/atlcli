@@ -134,14 +134,20 @@ jobs:
 
           exit "$TEST_EXIT"
 
-      - name: Upload test shard reports
+      - name: Upload test shard JUnit
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: bun-test-shard-${{ matrix.shard }}-${{ github.sha }}
-          path: |
-            test-results/bun-test-shard-${{ matrix.shard }}.xml
-            test-results/bun-test-shard-${{ matrix.shard }}.log
+          path: test-results/bun-test-shard-${{ matrix.shard }}.xml
+          if-no-files-found: error
+
+      - name: Upload failed test shard log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bun-test-shard-${{ matrix.shard }}-failure-log-${{ github.sha }}
+          path: test-results/bun-test-shard-${{ matrix.shard }}.log
           if-no-files-found: error
 
   security-attestation:

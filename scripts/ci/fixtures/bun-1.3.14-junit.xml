@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="bun test" tests="2" assertions="2" failures="0" skipped="1" time="0.03">
+  <testsuite name="packages/example/src/example.test.ts" file="packages/example/src/example.test.ts" tests="2" assertions="2" failures="0" skipped="1" time="0">
+    <testsuite name="example" file="packages/example/src/example.test.ts" line="4" tests="2" assertions="2" failures="0" skipped="1" time="0.03">
+      <testcase name="passes" classname="example" time="0.02" file="packages/example/src/example.test.ts" line="5" assertions="1" />
+      <testcase name="is optional" classname="example" time="0.01" file="packages/example/src/example.test.ts" line="6" assertions="1"><skipped /></testcase>
+    </testsuite>
+  </testsuite>
+</testsuites>
