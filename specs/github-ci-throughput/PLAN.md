@@ -20,14 +20,22 @@ The implementation must:
 1. keep every currently required correctness, packaging, platform, browser,
    and consumer contract;
 2. balance tests by measured duration instead of file count;
-3. avoid rebuilding the same publishable packages in isolated jobs;
-4. give draft pull requests fast feedback and reserve full proof for
+3. compare GitHub job fan-out with Bun worker-process parallelism and promote
+   the fastest topology that preserves isolation and coverage;
+4. avoid rebuilding the same publishable packages in isolated jobs when
+   artifact transfer or a producer dependency does not lengthen the critical
+   path;
+5. give draft pull requests fast feedback and reserve full proof for
    merge-ready commits;
-5. run only impact-relevant gates after the selector has proved that it fails
+6. run only impact-relevant gates after the selector has proved that it fails
    open safely;
-6. keep a full scheduled drift guard and a manual full-run escape hatch;
-7. retain Playwright and a Playwright-matched Chromium for packed MV3 tests;
-8. keep the stable `required` status name used by branch protection.
+7. keep classifier latency below a defined budget before selective routing is
+   promoted;
+8. allow no more than one required runner allocation after the final selected
+   product proof;
+9. keep a full scheduled drift guard and a manual full-run escape hatch;
+10. retain Playwright and a Playwright-matched Chromium for packed MV3 tests;
+11. keep the stable `required` status name used by branch protection.
 
 This plan changes CI and test orchestration only. It does not change product
 behavior.
@@ -37,19 +45,60 @@ behavior.
 Implement the work in evidence-gated stages:
 
 1. add timing and selection observability without skipping any existing gate;
-2. eliminate the known Bun file-link flake and duplicate package builds;
-3. replace the four file-count shards with deterministic duration-aware lanes;
-4. shadow a package/dependency-aware change selector before allowing it to
+2. eliminate the known Bun file-link flake;
+3. replace the four file-count shards with deterministic duration-aware lanes
+   and compare two sequential lanes, three sequential lanes, and two
+   two-worker lanes on the same timing snapshot;
+4. compare a narrow publishable-package artifact fan-out with a co-located
+   package-proof topology before choosing the build-reuse design;
+5. flatten the required tail and parallelize only independent setup/proof
+   steps;
+6. shadow a package/dependency-aware change selector before allowing it to
    skip work;
-5. split draft feedback from merge-ready proof;
-6. optimize browser provisioning after the Linux test critical path has moved;
-7. prepare, but do not activate, GitHub merge-queue support until the
+7. split draft feedback from merge-ready proof;
+8. optimize browser provisioning after the Linux test critical path has moved;
+9. prepare, but do not activate, GitHub merge-queue support until the
    repository ownership requirement is resolved.
 
-Do **not** begin with more shards, larger runners, remote Turbo cache, removing
-Playwright, disabling strict branch protection, or broad test retries. Those
-changes either fail to address the measured bottleneck, add unproven external
-state, or weaken the evidence contract.
+Do **not** add shards or workers blindly, purchase larger runners, introduce a
+remote Turbo cache, remove Playwright, disable strict branch protection, or add
+broad test retries. A third lane and Bun `--parallel=2` are explicit bounded
+A/B candidates in this plan; neither is promoted without measured critical
+path, queue, runner-minute, isolation, and coverage evidence.
+
+## OSS patterns adopted and bounded
+
+This plan uses current primary-source patterns, but keeps their external
+services and repository-scale assumptions optional:
+
+- [Next.js CI](https://github.com/vercel/next.js/blob/canary/.github/workflows/build_and_test.yml)
+  freezes a timing artifact for duration-weighted groups and uses one stable
+  aggregate. Atlcli adopts the frozen snapshot and timing-based assignment,
+  without requiring Next.js's external timing service.
+- [pnpm CI](https://github.com/pnpm/pnpm/blob/main/.github/workflows/ci.yml)
+  compiles once for artifact consumers, separates producer dependency fronts,
+  and keeps one aggregate; its
+  [test workflow](https://github.com/pnpm/pnpm/blob/main/.github/workflows/test.yml)
+  uses reverse-dependent affected packages and bounded workers. Atlcli adopts
+  those candidates only behind fail-open routing and artifact/self-build A/B
+  evidence.
+- [Playwright primary CI](https://github.com/microsoft/playwright/blob/main/.github/workflows/tests_primary.yml)
+  uses measured unequal shard weights and atomic stateful groups. Atlcli mirrors
+  weighted ownership and retains serial boundaries for persistent browser and
+  real Typst state.
+- [Turborepo CI](https://github.com/vercel/turborepo/blob/main/.github/workflows/turborepo-test.yml)
+  uses GitHub's native parallel steps for independent setup. Atlcli adopts
+  step-level A/B probes but not Turborepo's larger OSS runners or remote cache
+  in the initial rollout.
+- [Vite CI](https://github.com/vitejs/vite/blob/main/.github/workflows/ci.yml)
+  co-locates build-dependent proof where transfer overhead would dominate.
+  That is the reason T3 compares co-located package proof with artifact fan-out
+  instead of mandating one architecture.
+
+Next.js's mid-stack PR optimizer is a later throughput option only if atlcli
+adopts stacked pull requests operationally. It is not part of required proof in
+this plan: every PR must still receive a current full merge-ready result before
+merge.
 
 ## Measured baseline
 
@@ -65,7 +114,10 @@ They are the baseline against which the implementation is accepted.
 | Last green pre-sync full workflow | 5 min 37 s |
 | Final merge-SHA first attempt, red only from consumer flake | 5 min 28 s |
 | Final validation including one flaky retry | 7 min 55 s |
+| Change-classifier job | about 6 s |
 | Browser job | 1 min 55 s |
+| Neutral browser E2E payload inside that job | about 24 s |
+| Packed MV3 build plus two proof payloads inside that job | about 37 s |
 | Consumer smoke | 1 min 51 s before the retry |
 | Same-SHA draft-to-ready work discarded in PR #135 | about 10 runner-minutes |
 
@@ -105,8 +157,8 @@ PR #135 also demonstrated the merge-throughput problem:
 | Path | Current responsibility | Relevant constraint |
 | --- | --- | --- |
 | `.github/workflows/ci.yml` | Event routing, platform/browser jobs, stable `required` aggregate | Every product change selects almost every gate |
-| `.github/workflows/reusable-quality.yml` | Static quality, four Bun shards, security attestation | Four shards repeat install, Poppler, and font setup |
-| `.github/workflows/reusable-consumer-smoke.yml` | Pinned and latest external-consumer matrix | Rebuilds packages and has no bounded known-flake recovery |
+| `.github/workflows/reusable-quality.yml` | Static quality, root build, four Bun shards, security attestation | Four shards repeat install, Poppler, and font setup; inner aggregate adds a tail runner |
+| `.github/workflows/reusable-consumer-smoke.yml` | Pinned and latest external-consumer matrix | Rebuilds packages, serializes independent consumer contracts, and has no bounded known-flake recovery |
 | `.github/workflows/security-attestation.yml` | Exact-SHA attestation on every main push | Installs the full workspace although `attest.ts` imports only Bun/Node built-ins |
 | `scripts/ci/classify-changes.ts` | Conservative path classifier | One broad `code` bit covers all `apps/`, `packages/`, and product scripts |
 | `scripts/ci/classify-changes.test.ts` | Classifier regression tests | Unknown and workflow paths deliberately fail open |
@@ -116,8 +168,8 @@ PR #135 also demonstrated the merge-throughput problem:
 | `scripts/api-report.test.ts` | Builds packages and validates public API reports/closures | Build runs inside a general Bun shard |
 | `scripts/dist-hygiene.test.ts` | Builds packages and validates emitted artifacts | Performs a second isolated package build |
 | `scripts/consumer-smoke-filelink.ts` | Creates a throwaway `file:` consumer | One un-retried `bun install` can fail with the known Bun `EEXIST` signature |
-| `apps/browser-export-harness/playwright.config.ts` | Neutral ordinary-browser contract | Supports `chrome` or `chromium`, currently one worker |
-| `apps/extension/tests/jobs/packed/job-recovery.e2e.ts` | Packed MV3 durable-job behavior | Requires persistent extension context and `channel: "chromium"` |
+| `apps/browser-export-harness/playwright.config.ts` | Neutral ordinary-browser contract | Supports `chrome` or `chromium`, currently one worker; CI runs it serially before MV3 proof |
+| `apps/extension/tests/jobs/packed/job-recovery.e2e.ts` | Packed MV3 durable-job behavior | Requires persistent extension context and `channel: "chromium"`; its branch is currently serialized after neutral E2E |
 
 The authoritative root test command remains:
 
@@ -135,6 +187,13 @@ resolution.
 
 - Every test file discovered by the repository's Bun test conventions is
   assigned to exactly one required full-proof lane.
+- The topology selected for required CI uses a fixed, reviewed worker count.
+  It never uses Bun's CPU-count default, and it never enables global
+  `--concurrent`.
+- Bun process-parallel candidates may run only files proved independent under
+  `--parallel=2`, which implies per-file isolation. Stateful/order-sensitive
+  groups, package-contract work, and real Typst/PDF proof remain explicit
+  serial lanes unless separately isolated.
 - A newly added test file is never silently omitted because it lacks historical
   timing data.
 - Duplicate and missing assignments fail before any test lane is allowed to
@@ -166,6 +225,12 @@ resolution.
 - A merge-ready `required` job verifies the current PR head SHA and non-draft
   state through a read-only GitHub API check immediately before reporting
   success. Event payload state alone is not sufficient for this final guard.
+- There is at most one required runner job after the slowest selected product
+  proof. No `quality-complete -> final-pr-state -> required` runner chain is
+  permitted.
+- Timing/selection telemetry is a non-required sibling. `required`, draft
+  status, and final PR-state proof must never depend on telemetry completion or
+  success.
 - Strict up-to-date protection remains enabled unless a separately approved
   merge-queue migration replaces the manual update workflow.
 
@@ -173,13 +238,18 @@ resolution.
 
 - Local consumer tests remain self-contained: without a verified CI build
   manifest they build packages exactly as today.
-- CI may reuse a package artifact only when its manifest matches the exact
+- CI may reuse a package artifact or verified co-located build only when its
+  manifest matches the exact
   workflow SHA, lockfile digest, package list, and expected `dist` files.
 - A missing, stale, incomplete, or mismatched build manifest must trigger a
   rebuild or fail; it must never make publication tests vacuous.
 - The Bun `EEXIST` retry is limited to the exact known file-link signature,
   recreates the throwaway consumer, and runs at most once.
 - No other package-manager, build, resolution, or smoke failure is retried.
+- Build reuse is not a correctness goal at the expense of wall time. If the
+  complete producer/transfer/consumer chain is slower than the current
+  self-contained baseline, retain the faster self-build path and record the
+  artifact topology as rejected.
 
 ### Browser shapes
 
@@ -218,7 +288,11 @@ resolution.
 - automatically transferring the repository to a GitHub organization;
 - automatically enabling a merge queue or changing repository settings;
 - running live Atlassian credentials in GitHub Actions;
-- suppressing the full weekly drift guard.
+- suppressing the full weekly drift guard;
+- forcing artifact fan-out when same-job reuse or the existing self-contained
+  path is faster;
+- making timing telemetry part of the required dependency graph;
+- using Bun's unbounded/default CPU worker count or global `--concurrent`.
 
 ## Target modes and gate topology
 
@@ -240,31 +314,45 @@ resolution.
 The intended full topology is:
 
 1. `changes` computes proof mode, affected packages/capabilities, current
-   PR-state validity, and fail-open overrides.
-2. A caller-level `package-build` job, or a single-purpose reusable workflow
-   called directly by `ci.yml`, builds publishable outputs once and emits an
-   exact-SHA artifact manifest.
+   PR-state validity, and fail-open overrides within a p95 budget of ten
+   seconds.
+2. One selected package-proof topology owns the package/consumer path. The
+   preferred candidates build publishable outputs once through either a narrow
+   caller-level artifact producer followed by parallel consumers or a
+   co-located job with parallel proof branches. If both are slower, the
+   measured self-build baseline remains temporarily authoritative. No topology
+   places a full root/private-app build in front of package consumers.
 3. `static-quality` performs offline contract checks and typecheck in parallel
-   with the build.
-4. `package-contract` and `consumer-smoke` depend directly on the caller-level
-   build job and consume its same-run artifact in parallel. Neither waits for
-   the complete reusable-quality workflow.
-5. `unit-tests` runs two deterministic, duration-balanced lanes without
-   Poppler.
+   with package proof.
+4. Package-contract and consumer contracts start at the earliest verified
+   publishable-package boundary. They never wait for the complete reusable
+   quality workflow, private app builds, or extension-output checks.
+5. `unit-tests` uses the A/B winner among two sequential lanes, three
+   sequential lanes, or two lanes with exactly two Bun worker processes. It
+   never installs Poppler.
 6. `pdf-typst-proof` runs real Typst/PDF tests with only their required fonts
    and Poppler tools.
 7. macOS PDF, Windows sink, neutral browser, and packed MV3 gates are selected
    by affected capabilities or by full-run policy.
-8. The aggregate job uses a mode-dependent name: `draft-fast` for draft
+8. The combined browser topology overlaps neutral and packed-MV3 branches only
+   after their profile roots, ports, outputs, and browser state are proved
+   independent; otherwise it keeps them serial or uses the measured split-job
+   winner.
+9. Exactly one aggregate job follows the final selected proof. It performs the
+   last live PR-state check itself and uses a mode-dependent name:
+   `draft-fast` for draft
    feedback, `superseded` for stale events, and the stable `required` name only
    for merge-ready/full evidence.
+10. Telemetry runs as a non-required sibling fan-in and cannot delay or satisfy
+    the aggregate.
 
-Two general-purpose unit lanes are the starting point, not an immutable count.
-The measured payload remaining after package-contract and real-Typst work is
-removed is expected to be about 269 seconds, or about 135 seconds per balanced
-lane. This preserves current job-count pressure while moving the outliers into
-explicit lanes. Increase the lane count only if post-change measurements prove
-that runner availability, rather than job fan-out, is not the limiting factor.
+The measured general payload after package-contract and real-Typst work is
+removed is about 269 seconds. Two sequential lanes have a theoretical payload
+ceiling of about 135 seconds; three sequential lanes reduce it to about 90
+seconds. Two `--parallel=2` lanes may achieve similar or better wall time
+without a third GitHub runner, but change file isolation and therefore require
+the strongest stability proof. The executor must collect all three candidates
+before choosing; the plan does not preselect a winner.
 
 ## Performance and safety acceptance gates
 
@@ -276,9 +364,14 @@ runs. Keep correctness gates independent from performance gates.
 | Gate | Required evidence |
 | --- | --- |
 | Weighted-lane completeness | Three consecutive scheduled/manual comparisons with identical discovered file sets, zero duplicates, and zero missing test cases |
-| Weighted-lane balance | Slowest general unit lane no more than 1.5 times the fastest general unit lane |
+| Lane execution topology | Same-SHA comparisons of two sequential lanes, three sequential lanes, and two `--parallel=2` lanes; winner has zero coverage/isolation differences, lower p50 critical path, and no unacceptable queue/runner-minute regression |
+| Weighted-lane balance | For the selected job topology, slowest general unit job no more than 1.5 times the fastest |
+| Package-proof topology | At least three same-SHA comparisons of current self-build, narrow artifact fan-out, and co-located proof; promote only a topology that preserves every contract and shortens the complete package/consumer critical path |
+| Required tail | Workflow-policy proof and three live runs show at most one required runner allocation after the slowest selected product proof; telemetry is not an ancestor |
+| Classifier budget | Over at least 20 representative runs, classifier p95 at most 10 s and every error/unknown input fails open |
 | Selective routing | At least 20 representative product PRs or 14 calendar days in shadow mode, zero under-selection findings |
 | Consumer retry | Synthetic signature tests pass; exact known failure retries once; every adjacent/nonmatching failure does not retry |
+| Step-level parallelism | At least ten comparisons show isolated paths/outputs, identical results, lower critical path, and no more than 10% runner-minute regression |
 | System Chrome canary | Nonblocking only in this plan; record ten distinct runner Image Version values, and require a separate Playwright-upgrade/compatibility plan before any promotion |
 | Merge queue | Repository is organization-owned, queue is enabled, `merge_group` full proof is green for at least ten merges |
 
@@ -288,7 +381,12 @@ runs. Keep correctness gates independent from performance gates.
 | --- | ---: |
 | Merge-ready p50 wall time over at least 10 product PRs | at most 3 min 30 s |
 | Merge-ready p95 wall time over at least 20 product PRs | at most 5 min |
+| Merge-ready stretch p50 after all safe A/B promotions | at most 2 min 30 s |
+| Merge-ready stretch p95 after all safe A/B promotions | at most 4 min |
 | Slowest required Linux test lane p95 | at most 2 min 45 s |
+| Change classifier p95 | at most 10 s |
+| Tail from final selected proof completion to aggregate completion p95 | at most 15 s |
+| Required runner jobs after the final selected proof | at most 1 |
 | Draft-fast p50 wall time | at most 2 min |
 | Runner-minute reduction for comparable product PRs | at least 25% |
 | Classified infrastructure false failures over 30 merge-ready runs | zero |
@@ -296,9 +394,18 @@ runs. Keep correctness gates independent from performance gates.
 | Test files omitted or duplicated in a full run | zero |
 | Typical targeted product jobs after routing promotion | at most 6 |
 
+Planning hypothesis, not a promotion guarantee: for a PR-135-shaped full run
+without abnormal external runner queueing, the combined safe winners should
+move merge-ready p50 into roughly 2 minutes 15 seconds to 2 minutes 45 seconds.
+T0 evidence replaces this range; the executor must not tune measurements or
+weaken gates merely to make the estimate true.
+
 If the correctness promotion gates pass but the performance target does not,
 stop and measure job setup, runner queue time, and artifact transfer separately.
-Do not add shards or caches based only on intuition.
+The hard p50/p95 targets remain completion gates; the stretch targets guide
+topology selection but do not justify a correctness or runner-minute
+regression. Do not add shards, workers, caches, or containers based only on
+intuition.
 
 ## Commands required by the executor
 
@@ -334,13 +441,15 @@ The implementation may modify or create files in these areas only:
 - `.github/workflows/reusable-consumer-smoke.yml`
 - a new `.github/workflows/reusable-package-build.yml`
 - a new `.github/workflows/reusable-package-contract.yml`
+- a new `.github/workflows/reusable-package-proof.yml` only if the measured
+  co-located topology wins
 - `.github/workflows/security-attestation.yml`
 - `.github/workflows/consumer-smoke.yml`
 - `.github/workflows/release-core.yml`
 - `.github/workflows/release-cli.yml`
 - `.github/workflows/release.yml`, limited to wiring the existing preflight to
   the shared package-build producer
-- a new reusable browser or package-build workflow only if the final topology
+- a new reusable browser or package-proof workflow only if the final topology
   is clearer than extending the files above
 - `scripts/ci/**`
 - `scripts/ci/classify-changes.ts`
@@ -352,6 +461,8 @@ The implementation may modify or create files in these areas only:
 - `scripts/consumer-smoke-filelink.ts`
 - `scripts/consumer-smoke.test.ts`
 - `scripts/install-matrix.test.ts`
+- new `scripts/ci/run-consumer-leg.ts` and focused consumer-leg test entrypoints
+  only if required by the selected bounded parallel topology
 - `package.json`
 - `turbo.json`
 - test/package manifests needed to expose explicit CI commands
@@ -400,12 +511,12 @@ default.
 | --- | --- | --- |
 | T0 | Establish exact timing and selection telemetry | none |
 | T1 | Make the Bun file-link smoke deterministically retry only the known flake | T0 |
-| T2 | Build a fail-closed test inventory and duration-aware lane planner | T0 |
-| T3 | Reuse one package build and promote weighted full-test lanes | T1, T2 |
+| T2 | Build a fail-closed test inventory and benchmark lane/worker topologies | T0 |
+| T3 | Select the fastest verified package-proof and weighted-test topology | T1, T2 |
 | T4 | Shadow package/capability-aware change routing | T0 |
 | T5 | Promote safe selective routing | T3, T4 |
 | T6 | Separate draft-fast feedback from merge-ready proof | T5 |
-| T7 | Optimize neutral-browser and packed-MV3 provisioning | T3, T5 |
+| T7 | Parallelize and optimize neutral-browser and packed-MV3 provisioning | T3, T5 |
 | T8 | Prepare merge-queue support without changing repository ownership | T6 |
 | T9 | Document, validate, and record rollout evidence | T1–T8 as selected |
 
@@ -459,7 +570,7 @@ coverage, lane balance, critical path, or selected-versus-skipped gates.
    Keep skipped/unstarted jobs out of runner-minute totals, and label
    cancelled/failed attempts separately so they cannot enter green-run
    p50/p95 samples.
-4. Add a workflow summary job or step that downloads same-run JUnit artifacts,
+4. Add a non-required workflow summary job that downloads same-run JUnit artifacts,
    writes:
    - selected proof mode and routes;
    - per-lane setup and test duration;
@@ -470,14 +581,39 @@ coverage, lane balance, critical path, or selected-versus-skipped gates.
    to `$GITHUB_STEP_SUMMARY` and a JSON artifact.
    Do not derive checkout, setup, queue, artifact-transfer, critical-path, or
    runner-minute values from JUnit.
-5. Upload JUnit XML on every run. Upload full raw test logs only on failure;
+5. Record named phase timings in addition to job totals:
+   - checkout, runtime setup, each cache restore, dependency installation,
+     fonts, Poppler, browser provisioning, artifact upload/download/verify;
+   - filtered publishable-package build, pack hooks, and package-contract;
+   - each consumer contract (`file-link`, tarball/Vite, Node/npm, npm/pnpm);
+   - neutral browser E2E, packed MV3 build, packed worker proof, packed durable
+     jobs proof, and shape parity;
+   - final-product-proof completion and aggregate completion.
+   Phase names are a versioned schema and must be stable across A/B candidates.
+6. Make the timing summary a non-required sibling fan-in with `if: always()`.
+   `scripts/ci/workflow-policy.test.ts` must fail if `required`,
+   `draft-fast`, `superseded`, or any live PR-state guard declares telemetry as
+   a `needs` dependency. Telemetry failure remains visible but can neither
+   delay nor satisfy merge proof.
+7. Upload JUnit XML on every run. Upload full raw test logs only on failure;
    timing evidence must not depend on retaining successful console logs.
-6. Do not automatically commit timings from a PR. A scheduled/manual main run
+8. Do not automatically commit timings from a PR. A scheduled/manual main run
    may emit a candidate timing artifact for explicit review.
-7. Bootstrap the first checked timing snapshot from the final PR #135 artifacts
+9. Bootstrap the first checked timing snapshot from the final PR #135 artifacts
    if still available. If they have expired, run one complete baseline and use
    that result. Do not fabricate missing durations.
-8. Remove the `bun install --frozen-lockfile` step from
+10. At the beginning of each scheduled/manual topology comparison, upload one
+    validated timing snapshot as a run-local artifact containing its schema,
+    source SHA/run, and content digest. Every candidate lane and rerun in that
+    comparison consumes that immutable snapshot. Candidate jobs must not
+    independently refresh or redistribute timings during a run. Newly
+    discovered files receive T2's conservative fallback weight.
+11. Tag every comparison with a topology identifier:
+    `legacy-4-shard`, `general-2x1`, `general-3x1`,
+    `general-2x2-workers`, `package-self-build`, `package-artifact-fanout`,
+    `package-colocated`, `browser-combined-serial`,
+    `browser-combined-parallel`, or `browser-split`.
+12. Remove the `bun install --frozen-lockfile` step from
    `.github/workflows/security-attestation.yml` after adding a workflow-policy
    assertion that `scripts/security/attest.ts` remains dependency-free. Its
    current imports are all `node:` built-ins and the script reads repository
@@ -498,8 +634,10 @@ Trigger one manual full workflow. Expected:
 
 - all legacy gates still run;
 - `required` remains green only when all selected gates pass;
+- the telemetry job is not an ancestor of any required/status job;
 - the summary lists 405 test files at the planning baseline, subject only to
   legitimate test additions after that baseline;
+- phase timings and the frozen timing-snapshot digest are present;
 - no source, environment secret, absolute home path, or private identifier
   appears in the timing artifact.
 
@@ -586,12 +724,14 @@ retries exactly once.
 
 `fix(ci): bound the known Bun filelink retry`
 
-## T2 — Build a fail-closed test inventory and duration-aware lane planner
+## T2 — Build a fail-closed test inventory and benchmark lane/worker topologies
 
 ### Purpose
 
 Replace Bun's file-count shard selection with deterministic longest-processing-
-time assignment based on measured test-file duration.
+time assignment based on measured test-file duration, then measure GitHub-job
+fan-out against bounded Bun worker-process parallelism before choosing the
+required topology.
 
 ### Changes
 
@@ -615,13 +755,20 @@ time assignment based on measured test-file duration.
      `general`, `package-contract`, or `pdf-typst`;
    - zero or more orthogonal setup requirements such as `fonts`, `poppler`,
      or `typst-runtime`;
+   - an optional atomic-group identifier for files that must share one serial
+     process because they intentionally exercise order/global-state behavior;
    - no test outcome or private data.
 4. Add `scripts/ci/test-lanes.ts`:
    - assign every inventory file to exactly one lane, defaulting a new
      unannotated file to `general`;
    - assign `package-contract` and `pdf-typst` files to their explicit lanes;
-   - assign remaining files to two general lanes with deterministic
+   - accept only the candidate shapes `general-2x1`, `general-3x1`, and
+     `general-2x2-workers`;
+   - assign remaining files to two or three general jobs with deterministic
      longest-processing-time bin packing;
+   - keep atomic groups indivisible and emit them as explicit serial execution
+     groups inside the least-loaded candidate job; account for that serial tail
+     in job-duration balancing;
    - give a newly discovered file without timing the larger of the historical
      p95 duration and a conservative fixed default;
    - reject duplicate, stale, conflicting, or invalid metadata;
@@ -630,9 +777,16 @@ time assignment based on measured test-file duration.
      shell-evaluate a path.
 5. Add `scripts/ci/run-test-lane.ts`. It must:
    - load one already validated lane by identifier;
-   - spawn `bun run test -- ./repo-relative-file...` with an argv array, never a
-     constructed shell string or command substitution;
+   - spawn `bun run test -- [--parallel=2] ./repo-relative-file...` with an argv
+     array, never a constructed shell string or command substitution;
    - preserve the root `development` condition and JUnit reporter arguments;
+   - accept only worker counts `1` or `2`; never omit the value and inherit the
+     runner CPU count;
+   - never add global `--concurrent`;
+   - reject worker count `2` when the selected execution group contains an
+     atomic group, package-contract work, real Typst/PDF proof, or any explicit
+     stateful override; a `general-2x2-workers` job may run a separate serial
+     execution group before/after its worker-safe group;
    - reject an empty, unknown, duplicate, absolute, or escaping path before
      spawning Bun.
 6. Add `scripts/ci/test-lanes.test.ts` covering:
@@ -645,13 +799,39 @@ time assignment based on measured test-file duration.
    - combined requirements such as `fonts` plus `poppler`;
    - zero-file lanes;
    - spaces/special characters and colliding filename filters;
+   - accepted/rejected worker counts and exact `--parallel=2` argv placement;
+   - atomic groups remaining serial and indivisible;
+   - rejection of `--concurrent`, implicit/default worker counts, and parallel
+     package/Typst/stateful lanes;
    - exact union and pairwise-disjoint lane sets.
 7. Add a coverage assertion that compares inventory with the union of planned
    lanes before tests start. The assertion must fail before a zero-test lane can
    be accepted.
-8. On scheduled/manual runs only, run the legacy four shards and candidate lanes
-   side by side until the promotion gate is satisfied. Compare file identities
-   and JUnit test cases, not only totals.
+8. On scheduled/manual runs only, compare the legacy four shards with one
+   candidate topology at a time. Every comparison must use the same SHA and the
+   frozen T0 timing snapshot. Rotate through:
+   - `general-2x1`;
+   - `general-3x1`;
+   - `general-2x2-workers`.
+   Do not execute every candidate in every PR run. Compare file identities and
+   JUnit test cases, not only totals.
+9. For `general-2x2-workers`, add a stability probe that repeats the complete
+   candidate with at least ten fixed, recorded random seeds across the three
+   comparison runs and fails on any file/testcase difference, leaked handle,
+   port collision, temp/output collision, or order-dependent result. Use Bun's
+   `--randomize` only in this non-required probe; required lanes remain
+   deterministically ordered.
+10. Select the required topology only after at least three green comparisons
+    per candidate. Rank candidates by:
+    - identical coverage and zero isolation findings first;
+    - p50/p95 full-workflow critical path;
+    - p50/p95 job queue delay;
+    - summed runner-minutes;
+    - rerun granularity and debuggability.
+    A third GitHub lane may be promoted only if its wall-time improvement
+    survives queueing and runner-minute growth. Prefer bounded in-job workers
+    when they are equally fast and equally stable because they consume fewer
+    runner allocations.
 
 ### Initial capability ownership
 
@@ -666,6 +846,11 @@ At minimum, assign:
 - tests that resolve pinned PDF fonts as requiring `fonts`;
 - all other Bun tests as `general`.
 
+At minimum, inspect the existing registry/auth isolation probes and every test
+that spawns a nested Bun test process. Mark only the outer orchestration file
+atomic when required; do not broadly serialize an entire package without
+evidence.
+
 Search actual imports and subprocess calls before finalizing the list. Do not
 infer setup needs from filenames alone. A file may have one lane and multiple
 requirements, for example lane `pdf-typst` with both `fonts` and `poppler`.
@@ -674,139 +859,192 @@ requirements, for example lane `pdf-typst` with both `fonts` and `poppler`.
 
 ```bash
 bun run test scripts/ci/test-inventory.test.ts scripts/ci/test-lanes.test.ts scripts/ci/test-timings.test.ts
-bun scripts/ci/test-lanes.ts --check
+bun scripts/ci/test-lanes.ts --check --topology general-2x1
+bun scripts/ci/test-lanes.ts --check --topology general-3x1
+bun scripts/ci/test-lanes.ts --check --topology general-2x2-workers
 ```
 
 Expected:
 
 - every discovered test file is assigned exactly once;
 - no stale metadata remains;
-- two general lanes have an estimated duration ratio at or below 1.5;
+- every candidate has exact union/pairwise-disjoint coverage;
+- every candidate's slowest general job has an estimated duration ratio at or
+  below 1.5 compared with its fastest general job;
+- every worker-safe group in `general-2x2-workers` emits exactly
+  `--parallel=2`, never `--concurrent`; every stateful/atomic file appears once
+  in a separately reported serial group, and no Typst/package-contract file is
+  present;
 - explicit package and Typst lanes contain their known heavy tests.
 
-Run three scheduled/manual legacy-versus-candidate comparisons. Record workflow
-URLs and exact coverage comparison in
+Run three scheduled/manual legacy-versus-candidate comparisons for each
+candidate topology. Record workflow URLs, exact coverage comparison, phase
+timings, queue delay, runner-minutes, and the promotion decision in
 `specs/github-ci-throughput/EVIDENCE.md`.
 
 ### Commit
 
-`perf(ci): plan tests by measured duration`
+`perf(ci): benchmark duration-aware test topologies`
 
-## T3 — Reuse one package build and promote weighted full-test lanes
+## T3 — Select the fastest verified package-proof and weighted-test topology
 
 ### Purpose
 
-Remove repeated package builds and repeated PDF tool setup from general unit
-workers, then make the duration-aware lanes the required full proof.
+Remove the measured duplicate publishable-package builds and repeated PDF setup
+without replacing them with a longer producer/upload/download chain. Promote
+the T2 lane/worker winner and a package-proof topology only after end-to-end
+same-SHA comparisons.
 
 ### Changes
 
-1. Add `.github/workflows/reusable-package-build.yml` as the single-purpose
-   build producer. `ci.yml` calls it as a top-level `package-build` job directly
-   after `changes`. Build-independent reusable quality starts after `changes`
-   in parallel; only package-contract and consumer jobs declare
-   `needs: [changes, package-build]`. The producer:
-   - installs pinned dependencies;
-   - restores the existing Bun and Turbo caches;
-   - owns the workflow's single full `bun run build` invocation;
-   - runs build-dependent output checks such as
-     `bun run check:extension-output`;
+1. Before changing required CI, use T0 phase telemetry to establish:
+   - the current `package-self-build` path from job start through every
+     package-contract and consumer assertion;
+   - filtered publishable-package build and pack-hook time;
+   - each consumer contract time (`file-link`, tarball/Vite, Node/npm,
+     npm/pnpm);
+   - checkout/install/cache/setup, artifact transfer, verification, queue, and
+     aggregate-tail time.
+   Keep the current 1 minute 51 second consumer job as the historical reference,
+   but compare complete topology critical paths rather than subtracting phases
+   arithmetically.
+2. Implement two non-required same-SHA candidates behind a
+   `workflow_dispatch` topology input:
+   - `package-artifact-fanout`: a narrow producer builds/packs publishable
+     packages, then package-contract and consumer legs download and verify the
+     same artifact in parallel;
+   - `package-colocated`: one job builds publishable packages once, verifies a
+     local manifest, then runs independent package-contract and consumer legs
+     in bounded step/process parallelism within that workspace.
+   Compare each candidate with `package-self-build` at least three times. If
+   neither candidate shortens the complete merge-ready critical path without a
+   correctness or unacceptable runner-minute regression, retain self-build and
+   record both candidates as rejected. Do not force artifact reuse merely to
+   make a "build once" metric green.
+3. For `package-artifact-fanout`, add
+   `.github/workflows/reusable-package-build.yml` as a single-purpose,
+   caller-level producer directly after `changes`. The producer:
+   - installs pinned dependencies and restores existing Bun/Turbo caches;
+   - runs the existing narrow publishable-package command
+     `bunx turbo run build --filter=./packages/* --output-logs=errors-only`,
+     not the full root `bun run build`;
+   - does not build private CLI, extension, or browser-harness apps and does not
+     run `check:extension-output`;
    - stages the complete generated consumer closure, not only `dist/**`:
      publishable JS/declarations/maps, package `files` assets, PDF fonts and
-     licenses, DOCX fonts, compiler vendor/WASM files, and the tarballs produced
-     by real prepack/pack hooks;
-   - derives that closure from the publishable package manifests and actual
-     pack output, with explicit regression fixtures for
-     `packages/pdf`, `packages/docx`, and
+     licenses, DOCX fonts, compiler vendor/WASM files, and tarballs produced by
+     real prepack/pack hooks;
+   - derives the closure from publishable manifests and actual pack output,
+     with regression fixtures for `packages/pdf`, `packages/docx`, and
      `packages/pdf-compiler-browser`;
    - writes a manifest containing exact workflow SHA, Bun version, `bun.lock`
      digest, package names, artifact role (`workspace-overlay` or `tarball`),
-     and a SHA-256 for every regular artifact file;
-   - uploads the closed closure plus the manifest under an exact-SHA artifact
-     name;
-   - exposes the immutable v4 upload's `artifact-id` and `artifact-digest` as
-     caller outputs.
-2. Add `scripts/ci/package-build-artifact.ts` and
-   `scripts/ci/package-build-artifact.test.ts`.
-   - Reject a different SHA or lock digest.
+     and SHA-256 for every regular artifact file;
+   - uploads the closure and manifest under a unique exact-SHA/run-attempt name
+     with `retention-days: 1`;
+   - A/B-measures the default compression against `compression-level: 0` for
+     already compressed tarball/WASM/font payloads and keeps zero compression
+     only when upload plus download wall time improves in at least three
+     same-SHA comparisons;
+   - exposes the immutable upload's `artifact-id` and `artifact-digest`.
+4. Add `scripts/ci/package-build-artifact.ts` and
+   `scripts/ci/package-build-artifact.test.ts` for both artifact and
+   co-located manifests.
+   - Reject a different SHA, Bun version, lock digest, package list, or role.
    - Verify every listed regular file's SHA-256.
-   - Reject missing/unexpected package directories, files not listed in the
-     closed manifest, and missing JS/declaration output.
+   - Reject missing/unexpected package directories, unlisted files, and missing
+     JS/declaration output.
    - Reject path traversal, symlinks, sockets, devices, and other special files.
-   - Verify before any artifact file is imported, packed, linked, or passed to
-     `bun install`.
-   - Accept artifacts only by the `needs: package-build` same-run ID/digest;
-     prohibit cross-run and `workflow_run` downloads.
-3. Refactor `scripts/api-report.test.ts` and
-   `scripts/dist-hygiene.test.ts` so:
-   - local/default execution still builds packages first;
-   - the `package-contract` CI job may skip only the build step after the
-     verified artifact is present;
-   - all API report, closure, dist-path, Node-import, and publication
-     assertions remain unchanged.
-4. Apply the same verified-prebuilt contract to consumer helpers. Do not
-   recognize a bare boolean such as `CI=1` as proof; require the manifest.
-   `ci.yml` must make reusable package-contract and reusable consumer calls
-   depend directly on `package-build` and pass the artifact ID/digest. The
-   build-independent quality caller must not depend on package-build. Do not
-   express this as `consumer-smoke needs: test`, which would serialize the
-   consumer behind the complete reusable quality workflow.
-   - File-link tests overlay the verified generated package files onto their
-     checkout before linking the real package directories.
-   - Tarball/Node tests consume the verified tarballs produced by the real pack
-     hooks.
-   - Consumer assertions still prove installed `/dist/` resolution and package
-     contents; reuse must not turn packaging into a mocked shape.
-5. Add `.github/workflows/reusable-package-contract.yml` to consume and verify
-   the build artifact before running API reports, closure, dist hygiene, and
-   package assertions. Replace the four `--shard=N/4` jobs in
-   `.github/workflows/reusable-quality.yml` with:
-   - two general unit lanes;
-   - one `pdf-typst-proof` lane.
-   Package-contract is a separate caller-level reusable job so it can wait for
-   the build without delaying static, unit, or PDF lanes.
-6. General lanes:
-   - do not install Poppler;
-   - do not provision fonts unless their exact file list requires them;
-   - invoke the root test contract with explicit file arguments;
-   - upload JUnit XML always and raw logs on failure.
-7. The PDF/Typst lane installs only its proved OS tools and fonts.
-8. The package-contract reusable workflow downloads/verifies the build artifact
-   before running its explicit files.
-9. Consumer smoke downloads/verifies the same exact-run artifact instead of
-   rebuilding it.
-10. Remove the full build from `static-quality`; otherwise the new build owner
-    would still duplicate publishable builds on another runner. Keep its
-    non-build static/type checks parallel with package build, unit, and PDF
-    lanes whenever there is no artifact dependency.
-11. Update `scripts/ci/workflow-policy.test.ts` to prove:
-    - there are no legacy `--shard=N/4` required jobs after promotion;
-    - the selected full topology contains exactly one `bun run build` owner;
-    - each planned lane has a unique report;
+   - Verify before any generated file is imported, packed, linked, or passed to
+     a package manager.
+   - Artifact consumers accept only the `needs: package-build` same-run
+     ID/digest; prohibit cross-run and `workflow_run` downloads.
+5. For `package-colocated`, add a single-purpose reusable package-proof
+   workflow or equivalent caller-level job. After the narrow filtered build and
+   local manifest verification, it:
+   - runs package-contract and consumer legs with GitHub `parallel`/`background`
+     or a small checked subprocess coordinator;
+   - gives every leg a unique temporary root, cache/profile/output paths, JUnit
+     file, and raw failure log;
+   - aggregates every exit code fail closed and never lets an early success
+     hide a later failure;
+   - keeps the known T1 retry inside the `file-link` leg only;
+   - accepts worse rerun granularity only if the end-to-end wall-time win is
+     measured.
+6. Refactor `scripts/api-report.test.ts` and
+   `scripts/dist-hygiene.test.ts` so local/default execution remains
+   self-contained and builds first. CI may skip only their build phase after
+   the exact verified manifest is present. Preserve every API report, closure,
+   dist-path, Node-import, and publication assertion.
+7. Refactor consumer orchestration into independently timed legs:
+   - Bun file-link;
+   - Bun tarball plus Vite/browser-shaped consumer;
+   - Node/npm plus npm/pnpm install matrix.
+   File-link overlays verified generated files before linking real package
+   directories. Tarball/Node legs consume real pack-hook tarballs. Every leg
+   must still prove installed `/dist/` resolution and package contents; build
+   reuse must not become a mocked package shape.
+8. In artifact mode, add
+   `.github/workflows/reusable-package-contract.yml` and make package-contract
+   plus consumer legs depend directly on `package-build`. They must not depend
+   on complete reusable quality. In co-located mode, do not create empty
+   artifact download jobs merely to mimic this DAG.
+9. Replace the legacy four `--shard=N/4` jobs with the T2 winner plus one
+   explicit serial `pdf-typst-proof` lane:
+   - general jobs install neither Poppler nor unrelated fonts;
+   - PDF/Typst installs only proved tools/fonts;
+   - every job invokes the root test contract with explicit argv-safe files;
+   - JUnit uploads always and raw logs only on failure.
+10. Use GitHub's native step `parallel` only for independent setup work after
+    checkout, for example Bun setup beside disjoint cache restores. Do not
+    parallelize two cache actions that mutate the same path or run dependency
+    installation before setup/cache completion. Capture a serial and parallel
+    comparison over at least ten runs; retain parallel setup only when it is
+    faster and stable.
+11. Remove the full root build from `static-quality`; it must not sit in front
+    of package consumers. Preserve complete build coverage explicitly:
+    - the selected package path builds all publishable packages;
+    - static/app proof builds the CLI without rebuilding all packages;
+    - T7 owns browser-harness and extension builds plus their output checks;
+    - T9 still runs the complete local `bun run build`.
+    If a direct app build cannot consume current package output without
+    rebuilding dependencies, measure that targeted duplication separately; do
+    not put an unrelated private-app build into the package producer.
+12. Flatten aggregation while changing the topology:
+    - remove the inner `quality-complete` runner allocation;
+    - expose caller-level single-purpose results to one fail-closed aggregate;
+    - permit no more than one required runner job after the slowest selected
+      product proof;
+    - keep telemetry outside that dependency graph.
+    T6 must extend this same aggregate with final live PR-state validation, not
+    add another tail job.
+13. Update `scripts/ci/workflow-policy.test.ts` to prove:
+    - no legacy `--shard=N/4` job remains after promotion;
+    - the selected T2 topology and exact worker count are fixed;
+    - every planned lane/consumer leg has a unique report;
     - Poppler appears only in the PDF proof lane;
-    - package/consumer jobs depend directly on the caller-level build and
-      require same-run manifest verification;
-    - aggregates remain fail closed.
-12. Keep a manual `workflow_dispatch` legacy-full topology that is independent
-    of the new planner and artifact path. Retain it through T5/T6 promotion and
-    at least 30 subsequent green merge-ready full runs. Remove it only in a
-    separate PR after its rollback value is explicitly reviewed.
-13. Update every in-repository caller atomically:
-    - `ci.yml` starts build-independent reusable quality beside the pinned
-      package build, then passes build outputs only to reusable
-      package-contract and pinned consumer smoke;
-    - `release-core.yml`, `release-cli.yml`, and `release.yml` start
-      build-independent quality beside the pinned producer and make their
-      package-contract/preflight aggregate depend on both;
-    - `consumer-smoke.yml` adds a producer using the selected `latest` Bun leg
-      so the floating canary remains a latest-runtime build and install test.
-    Add workflow-policy tests that enumerate every `uses:
-    ./.github/workflows/reusable-quality.yml` and
-    `uses: ./.github/workflows/reusable-package-contract.yml` or
-    `uses: ./.github/workflows/reusable-consumer-smoke.yml` caller. Fail if a
-    package-contract/consumer caller lacks its build inputs/`needs` edge, or if
-    build-independent quality incorrectly waits for package-build.
-14. Do not change release publishing jobs or execute a release. Run only the
+    - a package artifact consumer has a direct producer edge and exact
+      same-run manifest verification;
+    - no full root/private-app build blocks package consumers;
+    - all publishable packages and all three apps retain an owning build gate;
+    - one aggregate is the only required tail job;
+    - telemetry is not an ancestor of any status job;
+    - selected/unselected results remain fail closed.
+14. Keep a manual `workflow_dispatch` legacy-full topology independent of the
+    new planner and package path. Retain it through T5/T6 promotion and at least
+    30 subsequent green merge-ready full runs. Remove it only in a separate PR
+    after explicit review.
+15. Update every in-repository caller according to the selected topology:
+    - `ci.yml` starts build-independent static/unit/PDF proof immediately after
+      classification and starts package proof at the earliest safe boundary;
+    - release preflights remain self-contained unless the selected verified
+      reusable package topology clearly applies; do not serialize release
+      quality behind unrelated app builds;
+    - `consumer-smoke.yml` keeps the selected `latest` Bun leg as a
+      latest-runtime build-and-install canary.
+    Workflow-policy tests must enumerate every reusable quality/package/consumer
+    caller and reject missing inputs/edges or unnecessary build dependencies.
+16. Do not change release publishing jobs or execute a release. Run only the
     documented release dry-run if release-preflight wiring needs end-to-end
     validation.
 
@@ -835,6 +1073,8 @@ No consumer or contract test may skip its build on any rejected manifest.
 
 ```bash
 bun run test scripts/ci/test-inventory.test.ts scripts/ci/test-lanes.test.ts scripts/ci/package-build-artifact.test.ts scripts/ci/workflow-policy.test.ts scripts/api-report.test.ts scripts/dist-hygiene.test.ts
+bun run test scripts/consumer-smoke.test.ts scripts/install-matrix.test.ts
+ATLCLI_CONSUMER_SMOKE=1 bun run test scripts/consumer-smoke.test.ts scripts/install-matrix.test.ts
 bun run test
 bun run typecheck
 bun run build
@@ -843,15 +1083,22 @@ bun run build
 Expected: all commands pass. In the first promoted full workflow:
 
 - the lane coverage guard reports every current test file exactly once;
-- the slowest general lane is no more than 1.5 times the fastest;
+- the selected T2 topology is named and its slowest general job is no more than
+  1.5 times the fastest;
 - Poppler installation occurs only in its owning lane;
-- package build executes once;
-- the consumer and package-contract jobs verify and reuse that artifact;
+- the chosen package topology beats or matches the retained self-build
+  baseline under its promotion constraints;
+- package/consumer legs verify the exact manifest and none waits for private
+  app builds or complete reusable quality;
+- every publishable package and CLI/browser/extension app still has an owning
+  build gate;
+- exactly one required aggregate follows the final selected product proof;
+- telemetry completes independently;
 - `required` is green.
 
 ### Commit
 
-`perf(ci): reuse package builds across balanced lanes`
+`perf(ci): select the fastest verified quality topology`
 
 ## T4 — Shadow package/capability-aware change routing
 
@@ -921,27 +1168,40 @@ full.
    and both sides of renames without shell word splitting. For a deleted or
    renamed workspace manifest, load the base graph as well as the head graph;
    fail open if either side cannot be reconstructed.
-3. Preserve a compact CLI that writes GitHub outputs.
-4. Add table-driven tests for every workspace/capability family, mixed changes,
+3. Preserve a compact CLI that writes GitHub outputs and keep the classifier
+   off dependency installation. Replace `fetch-depth: 0` with the minimum
+   event-specific checkout/fetch:
+   - pull request: exact base and head commits/trees;
+   - `merge_group`: exact group base and head;
+   - `push`: before/head when valid, otherwise fail open;
+   - schedule/manual full mode: HEAD only because no diff is needed.
+   Do not fetch complete history merely to reconstruct two workspace graphs.
+4. Measure checkout, runtime setup, graph/import scan, GitHub API lookup, and
+   output emission separately. Keep the existing pinned Bun setup while total
+   classifier p95 remains at or below ten seconds. Only if it breaches that
+   budget, A/B a workspace-install-free runner such as a checked,
+   reproducibly generated Node-compatible JS entrypoint. Do not add generated
+   classifier code and its maintenance cost for an unmeasured one-second win.
+5. Add table-driven tests for every workspace/capability family, mixed changes,
    renamed/deleted files, Windows separators, empty input, workflow changes,
    unknown roots, dependency cycles, static cross-package test imports, dynamic
    override edges, and deleted manifests.
-5. In shadow mode, workflows continue running the existing full selected
+6. In shadow mode, workflows continue running the existing full selected
    product proof but display:
    - candidate gates;
    - gates that would have been skipped;
    - affected packages;
    - fail-open reason.
-6. For each shadow PR, compare the candidate lane file set against the full
+7. For each shadow PR, compare the candidate lane file set against the full
    inventory and package graph. Record any test failure that would have occurred
    outside the candidate set as an under-selection finding.
-7. Add counterfactual route tests before collecting passive shadow evidence:
+8. Add counterfactual route tests before collecting passive shadow evidence:
    - for every route family, mutate a synthetic workspace/capability fixture
      so one owning gate is the only failing gate;
    - assert that the candidate route necessarily selects that gate;
    - assert that removing the relevant dependency/capability edge makes the
      regression test fail.
-8. Replay the changed-path sets from known historical red commits/runs:
+9. Replay the changed-path sets from known historical red commits/runs:
    - PR #135 API report/closure failure
      [run 30515886454](https://github.com/BjoernSchotte/atlcli/actions/runs/30515886454)
      must select package-contract proof;
@@ -954,8 +1214,12 @@ full.
      Confluence/export-path diff.
    Fetch exact paths/SHAs from the public run/PR evidence; do not encode
    abbreviated or guessed commit IDs.
-9. Keep scheduled, manual, and `main` runs full regardless of candidate output.
-10. Add a manual `workflow_dispatch` full run as the operator's recovery path.
+10. Keep scheduled, manual, and `main` runs full regardless of candidate output.
+11. Add a manual `workflow_dispatch` full run as the operator's recovery path.
+12. Add workflow-policy checks that every product job still waits only for the
+    classifier outputs it needs. Always-required static/package work may start
+    immediately only when doing so cannot create a second status path or violate
+    draft routing; optional gates remain classifier-controlled.
 
 ### Promotion gate
 
@@ -965,6 +1229,10 @@ broader surface coverage. The observation window is drift evidence, not proof
 by itself that skipped gates would catch a future regression. Evidence must
 include CLI, Jira, Confluence/export, publishable-package, extension, browser
 harness, PDF, workflow/global, and mixed changes.
+
+The same observation set must show classifier p95 at or below ten seconds.
+Selective routing is not promoted if graph/import precision saves jobs but adds
+more than the budgeted serial startup latency.
 
 If any under-selection is found:
 
@@ -980,7 +1248,9 @@ bun scripts/ci/classify-changes.ts --full
 ```
 
 Expected: full output selects every gate; fixtures produce the documented
-candidate routes; unknown inputs fail open.
+candidate routes; unknown inputs fail open; full schedule/manual mode needs
+only HEAD; representative base/head fixtures avoid a full-history checkout;
+classifier p95 evidence is at most ten seconds before promotion.
 
 ### Commit
 
@@ -1061,15 +1331,16 @@ ensuring Ready always produces a fresh, complete required result.
    live PR. Fail closed to merge-ready/full if current state cannot be read.
 3. Include `converted_to_draft` in the PR event policy so superseded full work
    can be cancelled on a best-effort basis and replaced with the fast lane.
-4. Add a `final-pr-state` job after selected proof gates and immediately before
-   the aggregate. It re-reads current head/draft state and exposes the final
-   display mode. Use one always-running aggregate with a name derived from this
-   final-state output:
+4. Do not add a separate `final-pr-state` runner job. Extend the one
+   fail-closed aggregate retained by T3. Its display name is derived from the
+   initial live-state-aware `changes` output:
    - `draft-fast` for draft evidence;
    - `superseded` for stale events;
    - `required` only for non-draft merge-ready/full proof.
    A skipped job named `required` is not acceptable because GitHub can treat a
-   skipped required check as successful.
+   skipped required check as successful. If a run initially qualifies as
+   merge-ready and becomes stale later, its already named `required` must fail;
+   a later current run replaces it.
 5. `draft-fast` runs:
    - change classification;
    - impacted general unit tests;
@@ -1090,9 +1361,9 @@ ensuring Ready always produces a fresh, complete required result.
    - the run's proof mode is merge-ready;
    - every selected gate succeeded.
    If state changed or cannot be read, fail the already named check. A run that
-   became stale in the narrow interval after `final-pr-state` may therefore
-   produce a red `required`, but never a green one. The live race probe must
-   prove that a later valid run can replace that red result.
+   became stale after initial classification may therefore produce a red
+   `required`, but never a green one. The live race probe must prove that a
+   later valid run can replace that red result.
 9. Treat GitHub concurrency cancellation as a cost optimization only; GitHub
    does not guarantee run ordering inside one concurrency group. Correctness
    comes from the live-state/head guards and mode-dependent check names. Add
@@ -1104,8 +1375,13 @@ ensuring Ready always produces a fresh, complete required result.
    - avoid toggling Ready merely to restart CI;
    - use "rerun failed jobs" only for a classified infrastructure failure.
 11. Add workflow-policy fixtures for opened draft, draft synchronization,
-   converted-to-draft, ready-for-review, ready synchronization, reopened ready,
-   delayed/superseded events, main push, schedule, and dispatch.
+    converted-to-draft, ready-for-review, ready synchronization, reopened ready,
+    delayed/superseded events, main push, schedule, and dispatch. Assert that:
+    - there is no `final-pr-state` job;
+    - `quality-complete` has not reappeared;
+    - the mode-named aggregate is the only required runner allocation after
+      selected proof;
+    - telemetry is not in its `needs` graph.
 
 ### Acceptance
 
@@ -1117,6 +1393,8 @@ ensuring Ready always produces a fresh, complete required result.
   the fresh current-head `required` run succeeds.
 - Draft p50 is at most two minutes over ten representative runs.
 - The required context name remains `required`.
+- The tail from the slowest selected proof completion through aggregate
+  completion has p95 at most 15 seconds and contains one runner job.
 
 ### Verification
 
@@ -1136,7 +1414,9 @@ Open a disposable Draft PR changing a synthetic test fixture:
    merge-ready proof;
 7. deliver a delayed old-event fixture/probe and confirm it reports
    `superseded` when detected by final state, and never reports a successful
-   stale `required`.
+   stale `required`;
+8. confirm the workflow graph contains no intermediate aggregate/final-state
+   runner and record the proof-to-aggregate tail duration.
 
 Do not use customer data or create remote Atlassian resources for this workflow
 probe.
@@ -1145,14 +1425,14 @@ probe.
 
 `perf(ci): reserve full proof for merge-ready changes`
 
-## T7 — Optimize neutral-browser and packed-MV3 provisioning
+## T7 — Parallelize and optimize neutral-browser and packed-MV3 provisioning
 
 ### Purpose
 
-Reduce browser setup and allow neutral and extension-specific contracts to run
-independently without confusing system Chrome with hermetic extension proof.
-This task follows the Linux critical-path work because the current 1 minute
-55 second browser job is not the bottleneck.
+Reduce browser setup and overlap independent neutral/MV3 proof branches without
+confusing system Chrome with hermetic extension proof. This task follows the
+Linux critical-path work because the current 1 minute 55 second browser job is
+not the initial bottleneck, but it can become the slowest gate after T2/T3.
 
 ### Decisions
 
@@ -1164,46 +1444,80 @@ extensions because stable Chrome/Edge removed the relevant command-line flags.
 References:
 
 - [GitHub-hosted runner images](https://docs.github.com/en/actions/concepts/runners/github-hosted-runners#runner-images)
+- [GitHub Actions parallel/background steps](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#jobsjob_idstepsparallel)
 - [Playwright Chrome extension testing](https://playwright.dev/docs/chrome-extensions)
 - [Playwright Chromium headless modes](https://playwright.dev/docs/browsers#chromium-new-headless-mode)
 
 ### Changes
 
-1. First implement a non-required same-SHA A/B experiment:
-   - A keeps the current combined browser job;
-   - B separates neutral and MV3 setup.
-   Measure workflow wall time, each setup/test phase, and summed runner-minutes
-   for full/global, harness-only, and extension-only route fixtures.
-2. Promote the split only if all hold over at least ten comparisons:
-   - full/global browser critical path does not regress;
-   - full/global browser runner-minutes increase by no more than 10%;
+1. Implement three non-required same-SHA topology candidates:
+   - `browser-combined-serial`: today's shared setup and serial proof order;
+   - `browser-combined-parallel`: one shared job that overlaps independent
+     neutral and packed-MV3 branches with GitHub `background`/`wait`;
+   - `browser-split`: separate neutral and MV3 jobs.
+   Measure full workflow/browser wall time, every phase, queue delay, and summed
+   runner-minutes for full/global, harness-only, and extension-only fixtures.
+2. In `browser-combined-parallel`, complete shared checkout, runtime/cache
+   setup, dependency install, fonts/vendor setup, and required browser
+   provisioning first. Then execute two bounded branches:
+   - neutral: harness build/output/conformance, neutral E2E, then shape parity;
+   - MV3: one packed extension build, worker proof, then durable-job proof.
+   Shape parity remains in the neutral branch because it consumes
+   `test-results/digests.json`; it must not wait for or consume MV3 output.
+3. Before overlapping those branches, prove they use different:
+   - Playwright output/report directories;
+   - persistent profile/user-data roots;
+   - temporary directories and generated output roots;
+   - ports/service processes;
+   - JUnit/raw-log artifact names.
+   Run at least ten non-required contention probes. Any shared IndexedDB,
+   service worker, cache, profile, output cleanup, or fixed-port dependency
+   keeps the affected branch serial until isolated.
+4. Also A/B native step `parallel` for independent setup actions after checkout,
+   such as Bun setup and disjoint cache restores. Do not parallelize actions
+   that write the same cache/tool path, dependency installation before runtime
+   setup, or browser installation with a cache restore to the same directory.
+5. Promote `browser-combined-parallel` only when at least ten comparisons show:
+   - identical conformance cases, digests, browser assertions, and artifacts;
+   - full/global browser critical path improves by at least 15 seconds;
+   - no new flake, leak, collision, or resource-exhaustion signature;
+   - runner-minutes increase by no more than 10%.
+   Based on PR #135, the neutral E2E payload was about 24 seconds and the MV3
+   build/proof branch about 37 seconds, so useful overlap is plausible but not
+   assumed.
+6. Promote `browser-split` instead only if:
+   - it beats both combined candidates for full/global wall time, or does not
+     regress full/global wall time;
+   - its runner-minute increase is at most 10%;
    - representative narrow harness/extension routes save at least 25% browser
      runner-minutes.
-   Otherwise keep one job and use step-level route selection; do not duplicate
-   checkout, Bun install, fonts, browser provisioning, and caches for no
-   measured gain.
-3. If the split passes, use:
+   Otherwise keep the faster combined topology; do not duplicate checkout, Bun
+   install, fonts, browser provisioning, and caches for no measured gain.
+7. If split wins, use:
    - `browser-neutral`: harness build/output/conformance/E2E followed by shape
-     parity, because `check:parity` consumes the harness-produced
-     `test-results/digests.json`;
+     parity;
    - `browser-extension-mv3`: one packed extension build, worker proof, and
      durable-job proof.
-   Do not place shape parity in the MV3 job or run it without the neutral digest
-   artifact.
-4. Keep both jobs selected for full/global changes. T5 may select them
-   independently for narrow changes.
-5. Keep the required MV3 job on `channel: "chromium"` with Playwright's matched
-   full Chromium and persistent contexts.
-6. Use Playwright's supported `install --no-shell chromium` form when the job
-   needs the full browser for extension loading and does not need the separate
-   headless shell.
-7. Benchmark, rather than assume, Playwright browser cache value:
+   Keep both selected for full/global changes; T5 may select them independently
+   for narrow changes.
+8. Measure three distinct provisioning contracts rather than treating
+   "Playwright" as one browser download:
+   - system Google Chrome for a fast, permanently non-required neutral canary;
+   - Playwright's matched headless shell for hermetic neutral harness work when
+     the pinned Playwright version supports that exact project;
+   - Playwright's matched full Chromium for required MV3 extension loading.
+   Record browser executable/version/channel per branch.
+9. Keep the required MV3 path on `channel: "chromium"` with Playwright's matched
+   full Chromium and persistent contexts. Use the supported
+   `install --no-shell chromium` form when that path needs full Chromium but not
+   the separate headless shell.
+10. Benchmark, rather than assume, Playwright browser cache value:
    - cache restore plus dependency install;
    - fresh browser install;
    - `--with-deps` versus runner-provided libraries in a nonblocking canary.
    Do not remove `--with-deps` from the required lane until ten **distinct**
    recorded GitHub runner Image Version values pass.
-8. Add a permanently nonblocking neutral-harness compatibility project using
+11. Add a permanently nonblocking neutral-harness compatibility project using
    `ATLCLI_PLAYWRIGHT_CHANNEL=chrome` and the runner's system Google Chrome.
    At the planning baseline Playwright 1.55 is matched to Chromium 140/tested
    stable Chrome 139 while the observed runner image carried Chrome 150.
@@ -1211,15 +1525,21 @@ References:
    system Chrome requires a separate Playwright-upgrade PR/plan, full hermetic
    browser proof, and ten distinct runner-image versions. Keep MV3 on bundled
    Chromium regardless.
-9. Preserve a visible Playwright, bundled Chromium, system Chrome, and runner
-   Image Version summary.
-10. Do not increase Playwright workers while packed tests share persistent
+12. Preserve a visible Playwright, bundled Chromium/headless-shell, system
+    Chrome, and runner Image Version summary.
+13. Do not increase Playwright workers while packed tests share persistent
    profile, cache, service worker, or IndexedDB state.
-11. If parallelism is pursued later, first create independent profile roots and
-   fixtures per test, prove no test depends on state established by an earlier
-   test, then increase workers in a separate PR.
-12. Upload traces only on failure; keep the existing production-build and
+14. Branch-level overlap is not permission to increase Playwright's per-project
+    worker count. If worker parallelism is pursued later, first create
+    independent profile roots and fixtures per test, prove no test depends on
+    state established by an earlier test, then increase workers in a separate
+    PR.
+15. Upload traces only on failure; keep the existing production-build and
     artifact scans.
+16. Add workflow-policy checks for the selected topology identifier, unique
+    outputs/profile roots, required full Chromium on MV3, non-required system
+    Chrome, and the absence of an unnecessary serial dependency between proven
+    independent branches.
 
 ### Verification
 
@@ -1231,15 +1551,18 @@ bun run test:browser-export-harness
 bun run --cwd apps/extension test:worker-extension-browser
 bun run --cwd apps/extension test:jobs-extension-browser
 bun run check:parity
+bun run test scripts/ci/workflow-policy.test.ts
 ```
 
 Expected: all hermetic gates pass on bundled Chromium. The system-Chrome canary
 is reported separately and cannot satisfy or replace any required result in
-this plan. If the split does not meet its A/B gate, the combined job remains.
+this plan. Record all three topology comparisons. Promote the fastest candidate
+that meets its correctness and runner-minute gates; otherwise retain the
+combined serial job.
 
 ### Commit
 
-`perf(ci): separate neutral and MV3 browser proof`
+`perf(ci): parallelize isolated browser proof`
 
 ## T8 — Prepare merge-queue support without changing repository ownership
 
@@ -1280,8 +1603,23 @@ the repository has no queue.
 8. Retain full `main` push proof until at least ten queue merges demonstrate
    that the tested merge-group SHA and landed main SHA provide equivalent
    evidence.
-9. Only then evaluate whether redundant post-merge product jobs can be reduced.
-   Security attestation and release evidence remain exact-SHA requirements.
+9. For those ten merges, record the merge-group tree SHA, landed-main tree SHA,
+   workflow revision, required result, post-merge result, queue wait, and
+   runner-minutes. Any tree/workflow mismatch resets the equivalence window and
+   keeps full `main`.
+10. Only then run a separate non-required A/B evaluation of:
+    - current full post-merge product CI;
+    - minimal post-merge exact-SHA evidence containing security attestation,
+      docs/deployment ownership, and a lightweight product smoke while weekly,
+      manual, release, and every merge group remain full.
+    Reduction of `main` product CI is a runner-capacity optimization for the
+    next PR, not proof for the PR that already merged.
+11. Promote minimal post-merge evidence only when the queue cannot land a tree
+    other than the full-proven merge-group tree, branch/ruleset enforcement
+    prevents bypass, and at least ten further shadow comparisons show no
+    evidence difference. Otherwise keep full `main`.
+12. Security attestation, release evidence, and any deployment-specific proof
+    remain exact-landed-SHA requirements regardless of product-CI reduction.
 
 ### Personal-repository fallback
 
@@ -1306,7 +1644,9 @@ After activation, record ten queue workflow URLs and prove:
 - each group ran full required evidence;
 - superseded groups were cancelled safely;
 - the merged SHA corresponds to the proven candidate;
-- no PR author had to merge/rebase `main` manually.
+- no PR author had to merge/rebase `main` manually;
+- the tree/workflow equivalence and post-merge shadow tables are complete
+  before any reduction is proposed.
 
 ### Commit
 
@@ -1324,10 +1664,13 @@ Update `src/content/docs/contributing.md` with a concise CI section covering:
 - draft-fast versus merge-ready proof;
 - the stable `required` check;
 - how affected routes fail open;
+- the selected lane/worker, package-proof, and browser topology identifiers;
+- why Bun worker count is fixed and why `--concurrent` is not used;
 - how to run the full suite locally;
 - when to synchronize `main`;
 - how to start a manual full run;
 - what qualifies for a targeted infrastructure retry;
+- how to trigger the legacy/manual full fallback;
 - how to inspect timing/selection summaries.
 
 Create `specs/github-ci-throughput/EVIDENCE.md` during implementation. It may
@@ -1385,10 +1728,18 @@ For each promoted phase record:
 
 - baseline and candidate workflow URLs;
 - exact SHA and event/proof mode;
+- frozen timing-snapshot source SHA/run and content digest;
+- lane, package, and browser topology identifiers;
 - selected gates and fail-open reason;
 - discovered/assigned test files;
 - per-lane setup/test/wall duration;
+- per-consumer-contract and per-browser-branch duration;
+- classifier checkout/runtime/graph/import/API/output phases and p50/p95;
+- artifact build/pack/compression/upload/download/verify phases;
 - workflow critical path and runner-minutes;
+- queue delay for every critical-path job;
+- completion time of the last selected product proof, aggregate completion, and
+  number of tail runner allocations;
 - retries and their exact classification;
 - p50/p95 window calculation;
 - correctness promotion-gate result;
@@ -1401,10 +1752,15 @@ For each promoted phase record:
 | Missing or duplicate test file | Restore full legacy topology and fail the planner check | Patch the count or ignore the file |
 | Selective route misses a relevant failure | Force that capability to full, add regression fixture, restart shadow window | Leave selective routing active while investigating |
 | Package artifact verification fails | Rebuild locally in the owning job or fail | Set a generic skip-build flag |
+| Package artifact/producer chain is slower than self-build | Retain self-build or co-located winner and record rejection | Force fan-out to satisfy "build once" |
 | Consumer exact retry fails twice | Keep the gate red and diagnose Bun/package identity | Add more retries |
 | General lanes remain imbalanced | Refresh real timings and recompute | Add random shards |
+| `--parallel=2` changes coverage/state or flakes | Keep sequential lane winner and add isolation evidence | Add retries or global `--concurrent` |
+| Native parallel steps race on cache/output/profile state | Restore serial step/branch order | Hide the race with `continue-on-error` |
 | System Chrome canary flakes | Keep it nonblocking or remove it | Replace MV3 bundled Chromium |
 | Runner queue time rises from job fan-out | Reduce general lane count and keep explicit heavy lanes | Buy larger runners without measurement |
+| Classifier p95 exceeds 10 seconds | Hold selective-routing promotion and optimize measured phase | Accept fixed serial latency to save speculative jobs |
+| More than one runner follows final product proof | Flatten final guard into the aggregate | Add another summary/status job |
 | Ready PR displays only draft proof | Disable merge until event/aggregate policy is fixed | Merge based on stale green status |
 | Merge-group SHA cannot be mapped | Keep strict manual synchronization | Turn strict protection off |
 
@@ -1420,18 +1776,37 @@ complete:
       critical path, and runner-minutes.
 - [ ] The known Bun file-link `EEXIST` retries exactly once and every other
       error remains fail closed.
-- [ ] Package build output is produced once and consumed only after exact-SHA
-      manifest verification.
+- [ ] Every package topology uses exact-SHA manifest verification; if a
+      build-reuse candidate wins, it produces publishable output once for its
+      consumer branches.
 - [ ] Every full-run Bun test file is assigned exactly once.
-- [ ] Three legacy-versus-weighted comparisons show no coverage difference.
+- [ ] Each of `general-2x1`, `general-3x1`, and
+      `general-2x2-workers` has three legacy comparisons with no coverage
+      difference.
+- [ ] The selected lane/worker topology is recorded with fixed worker count,
+      queue/runner-minute evidence, and zero isolation findings.
 - [ ] General unit lane duration ratio is at most 1.5.
 - [ ] Poppler and font setup occur only in owning lanes.
+- [ ] Current package self-build, narrow artifact fan-out, and co-located proof
+      have same-SHA comparisons; the fastest topology satisfying every
+      correctness/runner-minute gate is selected.
+- [ ] Consumer contracts are independently timed and use isolated roots when
+      executed concurrently.
+- [ ] The full root/private-app build does not block package consumers.
+- [ ] Classifier p95 is at most 10 seconds before selective routing is promoted.
 - [ ] Selective routing has at least 20 PRs or 14 days of zero-miss shadow
       evidence.
-- [ ] Global, unknown, scheduled, manual, and main events run full.
+- [ ] Global/unknown changes plus scheduled/manual events run full; `main`
+      remains full unless T8's separately proven merge-queue equivalence and
+      post-merge shadow gate explicitly select the minimal mode.
 - [ ] Draft-fast and merge-ready modes are structurally and live proven.
 - [ ] The required branch-protection status remains exactly `required`.
+- [ ] Exactly one required runner job follows the final selected product proof,
+      its tail p95 is at most 15 seconds, and telemetry is not an ancestor.
 - [ ] Packed MV3 proof uses Playwright-matched Chromium.
+- [ ] Serial combined, parallel combined, and split browser topologies are
+      measured; any promoted overlap has unique profiles/ports/outputs and ten
+      stable comparisons.
 - [ ] System Chrome, if used, remains a separate compatibility signal until its
       separately planned Playwright-upgrade/compatibility promotion is approved.
 - [ ] Merge-queue support is either proven after an approved organization move
@@ -1439,6 +1814,8 @@ complete:
 - [ ] Merge-ready p50 is at most 3 minutes 30 seconds and p95 at most 5 minutes
       over the required sample windows, or the initiative remains open with
       measured blockers.
+- [ ] The 2 minute 30 second p50 / 4 minute p95 stretch result is reported
+      honestly as met or missed; missing it does not permit weaker proof.
 - [ ] Comparable product PR runner-minutes fall by at least 25%.
 - [ ] Full test, typecheck, build, docs, browser, consumer, and required local
       E2E gates pass.
@@ -1452,18 +1829,29 @@ Stop and report instead of improvising if:
 - the live workflow/test topology no longer matches the current-state map;
 - Bun's discovered test set cannot be reconciled exactly with the inventory;
 - a required test depends on execution order or state from a different lane;
+- Bun `--parallel=2` changes file/testcase coverage, exposes unexplained
+  order/global-state dependence, or requires global `--concurrent`;
 - GitHub treats an older same-SHA `required` success as mergeable after a
   Draft-to-Ready transition before the fresh run is pending; do not promote
   draft-fast in that state—retain full draft CI or require a new head SHA;
 - weighted selection changes product assertions or test semantics;
 - package output cannot be safely reused without weakening local self-contained
   tests;
+- all package reuse candidates lengthen the complete critical path; retain the
+  measured self-build winner and stop package-topology expansion rather than
+  improvising a broader artifact;
 - the consumer failure signature is broader or mixed with another real error;
 - a route cannot be derived confidently from package/capability ownership;
+- classifier p95 exceeds ten seconds during the promotion window;
 - shadow mode finds any under-selection;
 - the stable `required` context would need to be renamed;
 - system Chrome would be required for packed MV3 extension loading;
 - Playwright or GitHub runner image drift makes the canary unreliable;
+- browser branch overlap shares a profile, port, cache, IndexedDB,
+  service-worker, output-cleanup, or temporary-directory boundary that cannot
+  be isolated within scope;
+- more than one required runner allocation would remain after final product
+  proof, or telemetry would become a required ancestor;
 - completion requires a remote cache token, larger-runner purchase, repository
   transfer, branch-protection change, or other new external authority;
 - live E2E requires committing or logging private identifiers;
@@ -1474,6 +1862,10 @@ Stop and report instead of improvising if:
 - Timing metadata will drift as tests are added or become heavier. Refresh it
   from successful main/scheduled evidence, review the diff, and keep unknown
   files conservatively weighted.
+- Freeze one timing snapshot per comparison run. Never let reruns or candidate
+  jobs rebalance from different timing data.
+- Keep Bun worker count explicit. A runner image with more CPUs must not
+  silently increase CI concurrency.
 - A package dependency change can expand reverse-dependent tests and gates.
   Classifier tests must be updated in the same PR as new workspaces or
   capabilities.
@@ -1483,6 +1875,9 @@ Stop and report instead of improvising if:
   drift guard is the backstop that detects selector assumptions becoming stale.
 - GitHub runner images and system Chrome update independently of this
   repository. Keep the version visible and the MV3 gate hermetic.
+- GitHub native `parallel`/`background` steps still share one runner filesystem
+  and CPU/memory budget. Revalidate path/profile/cache ownership whenever a
+  participating command changes.
 - Revisit remote Turbo cache only after local build reuse and routing are
   measured. If the remaining wall time is predominantly repeated uncached
   builds, write a separate threat/cost/availability plan before adding a
@@ -1498,9 +1893,10 @@ Stop and report instead of improvising if:
    Playwright upgrade plus ten distinct runner Image Version values; it is not
    completed by this plan.
 3. **Remote Turbo cache** — recommended default: out of scope. Reassess only
-   after single-build reuse and weighted lanes have produced at least 20
+   after the selected package topology and weighted lanes have produced at least 20
    merge-ready samples.
-4. **Performance threshold adjustment** — recommended default: keep the
-   proposed 3 minute 30 second p50 and 5 minute p95. Change them only from
-   measured runner availability, not to declare an underperforming rollout
-   complete.
+4. **Performance threshold adjustment** — recommended default: keep
+   3 minutes 30 seconds p50 and 5 minutes p95 as hard completion gates, and add
+   2 minutes 30 seconds p50 / 4 minutes p95 as stretch targets for the complete
+   safe A/B rollout. Change hard gates only from measured runner availability,
+   not to declare an underperforming rollout complete.

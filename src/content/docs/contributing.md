@@ -35,23 +35,53 @@ workspace imports resolve to live source instead of stale `dist/` output.
 
 ### CI cadence
 
-CI classifies the changed paths before starting expensive jobs. Product,
-consumer-package, and documentation gates run only when their surface is
-affected; an unknown path or global build file deliberately enables every
-gate. The always-present **required** job aggregates the selected results and
-is the check that branch protection should require.
+CI classifies changed paths before starting expensive jobs. Documentation-only
+changes can stay lightweight; product, workflow, dependency, and unknown
+changes deliberately fail open to the complete product proof. The
+always-present **required** job aggregates the selected results and is the
+single check that branch protection should require.
+
+The required test topology remains the legacy four-shard suite while three
+duration-aware candidates collect same-SHA comparison evidence:
+`general-2x1`, `general-3x1`, and `general-2x2-workers`. Worker count is fixed
+at one or two; CI never uses global `--concurrent`. Real Typst/PDF and
+package-contract tests are explicit serial lanes, and stateful isolation probes
+remain serial.
 
 | Cadence | Gates |
 |---------|-------|
-| Pull request | Affected product/platform gates, pinned consumer smoke, and documentation build |
+| Pull request | Selected product/platform gates, pinned consumer smoke, and documentation build |
 | Push to `main` | Affected product/platform gates, security attestation, and documentation deployment when relevant |
 | Daily | Blocking M1 cross-host acceptance, performance trend, and floating-Bun consumer canary |
-| Weekly | Full unfiltered CI matrix to detect routing drift |
+| Weekly | Full unfiltered CI matrix, one rotating topology comparison, and a non-required system-Chrome compatibility signal |
 | Release tag | Shared SHA-bound quality preflight and attestation before binary publication |
 
 Superseded pull-request runs and Pages deployments are cancelled. Product CI
 on `main`, nightly runs, and release evidence are never cancelled by a newer
 commit.
+
+Draft pull requests currently receive the same required product proof as Ready
+pull requests. The proposed `draft-fast` mode is not active until its
+live-state and affected-test promotion gates have passed. Before marking a PR
+Ready, finish draft commits and synchronize `main`; do not toggle Ready merely
+to restart CI.
+
+Run the complete local suite with:
+
+```bash
+bun run test
+```
+
+Start **CI topology comparison** manually in GitHub Actions to compare one
+duration-aware candidate with all four legacy shards on the same SHA. The
+workflow is non-required and cannot replace **required**. Timing JSON is
+available from the `ci-timing-<attempt>-<sha>` artifact and the run summary.
+The system Google Chrome job is also a compatibility canary only; required
+packed MV3 proof continues to use Playwright-matched Chromium.
+
+Use **Re-run failed jobs** only after a failure has been classified as
+infrastructure-related. Product failures and a second failure after the narrow
+Bun file-link retry require diagnosis.
 
 ### README media
 
