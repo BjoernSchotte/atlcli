@@ -2,7 +2,10 @@
 
 ## Status
 
-Implementation plan for [issue #138](https://github.com/BjoernSchotte/atlcli/issues/138).
+T0–T4 implemented on 2026-07-30 for
+[issue #138](https://github.com/BjoernSchotte/atlcli/issues/138). T5 is a
+documented NO-GO for this spike because no curated AGG operation with a measured
+advantage over REST was identified. See [EVIDENCE.md](./EVIDENCE.md).
 
 The spike proves one bounded workflow in the packed MV3 extension:
 
@@ -118,10 +121,9 @@ repository gates pass, push it to the Draft PR before starting the next task.
 
 ## Unresolved questions
 
-- Which exact Claude model/version gives the best packed-browser PTC result?
-  Select and pin it during T2 from current provider support; do not add a model
-  picker to the spike.
-- Does a curated AGG Confluence operation materially beat REST? T5 answers this;
-  the question is intentionally non-blocking for T0–T4.
+- Resolved: the spike pins `claude-sonnet-4-6`; there is no model picker.
+- Resolved for the spike: AGG remains out because there is no named,
+  measured REST-call or field advantage. Revisit only with a frozen operation
+  and the T5 A/B gates.
 - Is interpreted model-generated code acceptable for a future Web Store build?
   This needs a separate policy decision after the technical spike.

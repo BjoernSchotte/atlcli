@@ -1,10 +1,12 @@
 # @atlcli/extension
 
-Chrome extension (Manifest V3) workspace for atlcli — spec `002-extension-workspace`.
-It detects Confluence pages and exports DOCX and PDF from a side panel. The extension owns
-Chrome/session policy, IndexedDB template and job stores, background/offscreen routing, browser
-downloads, and UI. Reusable format behavior lives in `@atlcli/docx`, `@atlcli/pdf`, and the
-browser-only `@atlcli/pdf-compiler-browser` package.
+Chrome extension (Manifest V3) workspace for atlcli — spec
+`002-extension-workspace`. It detects Atlassian pages, exports Confluence
+content to DOCX and PDF, and includes a bounded Jira + Confluence research
+spike. The extension owns Chrome/session policy, IndexedDB template and job
+stores, background/offscreen routing, browser downloads, and UI. Reusable
+format behavior lives in `@atlcli/docx`, `@atlcli/pdf`, and the browser-only
+`@atlcli/pdf-compiler-browser` package.
 
 Built with [WXT](https://wxt.dev) `0.20.x` (Vite-based, MV3-aware) and React 19.
 The side-panel UI is branded **Kiteweave Browser**; the package and manifest retain the
@@ -31,6 +33,7 @@ utils/
   offscreen.ts        # idempotent ensureOffscreen() helper
 workers/
   pdf-compiler.ts      # static WASM/font/license imports + compiler package
+  research-agent.ts    # DeepAgentsJS + QuickJS PTC in a fresh worker per run
 scripts/
   check-output-build.ts  # manifest, inventory, CSP, and runtime-leak scan
 ```
@@ -76,11 +79,42 @@ this manual step is only needed for `build` (production) artifacts.
 Inspect the service worker via the **service worker** link on the card; the
 offscreen document appears in the card's inspect list while a WASM job is active.
 
+## Labs · Research
+
+The Research spike creates one cited Markdown report from bounded, read-only
+Jira and Confluence searches. It uses `claude-sonnet-4-6` through
+DeepAgentsJS, while `@langchain/quickjs` can call only four host capabilities:
+Jira search/detail and Confluence search/detail.
+
+1. Open a Jira or Confluence page on the Atlassian Cloud site you want to
+   research, then open the extension side panel.
+2. Select **Research**.
+3. Enter an Anthropic API key. The extension stores it only in
+   `chrome.storage.session`; **Forget key** removes it immediately.
+4. Enter a question. Name the Jira project key and Confluence space key in the
+   question, or fill the two explicit key fields.
+5. Optionally select **From** and **To**, review the resolved site and limits,
+   and confirm the disclosure.
+6. Select **Run research**. Use **Cancel** to terminate the active worker.
+7. Review **Formatted** or **Raw Markdown**, then copy or download the `.md`
+   result.
+
+The key and Atlassian session never enter QuickJS. QuickJS has no `fetch`,
+Chrome, filesystem, shell, raw JQL/CQL/GraphQL, write tools, subagents, or
+persistent memory. Search cursors and detail references are opaque,
+run-scoped host values. Jira/Confluence content selected for the report is sent
+to Anthropic only after the disclosure is confirmed.
+
+The report contract is structured data with a deterministic Markdown
+projection. Markdown is the portable hand-off for a later DOCX/PDF adapter;
+this spike does not yet connect it to the export engines.
+
 ## Checks
 
 ```bash
 bun run --cwd apps/extension typecheck     # wxt prepare && tsc --noEmit
 bun run --cwd apps/extension check:output  # scan built bundle for leaks
+bun run --cwd apps/extension test:research-extension-browser:prebuilt
 ```
 
 The repository-level `bun run check:browser-export-harness` and
