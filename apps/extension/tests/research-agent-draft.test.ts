@@ -148,11 +148,20 @@ describe("research agent draft finalization", () => {
           },
         },
       ],
-      run,
+      run: { ...run, complete: false },
     });
 
     expect(report.findings[0]?.detail).toContain(
       "statements about its content apply only to the captured excerpt"
+    );
+    expect(report.executiveSummary).toStartWith(
+      "Evidence coverage: 0 of 1 returned Jira items and 1 of 1 returned Confluence items were read in detail."
+    );
+    expect(report.executiveSummary).toContain(
+      "1 detail projections were truncated."
+    );
+    expect(report.executiveSummary).toContain(
+      "At least one search was incomplete."
     );
     expect(report.markdown).toContain(
       "statements about its content apply only to the captured excerpt"

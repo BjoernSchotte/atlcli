@@ -48,7 +48,10 @@ UTF-8-safe excerpt with `truncated: true`. A repeat live run read both details
 and found no explicit Jira reference in the bounded evidence. Negative
 content findings that cite truncated detail are now constrained twice: the
 agent prompt requires excerpt-scoped wording, and the host appends the same
-evidence boundary independently. The initial report is superseded.
+evidence boundary independently. The host also prefixes the executive summary
+with exact Jira/Confluence detail coverage, truncation count, and incomplete
+search status whenever the evidence is partial. The initial report is
+superseded.
 
 ## Packed metrics
 

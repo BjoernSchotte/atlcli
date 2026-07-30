@@ -205,6 +205,44 @@ function normalizeFindings(
   return normalized;
 }
 
+function evidenceCoverageBoundary(
+  sources: readonly ResearchSourceReferenceV1[],
+  detailEvidence: readonly ResearchDetailEvidenceV1[],
+  run: ResearchRunSummaryV1
+): string | undefined {
+  const jiraSources = sources.filter((source) => source.product === "jira");
+  const wikiSources = sources.filter(
+    (source) => source.product === "confluence"
+  );
+  const detailedSourceIds = new Set(
+    detailEvidence.map((entry) => entry.source.id)
+  );
+  const detailedJira = jiraSources.filter((source) =>
+    detailedSourceIds.has(source.id)
+  ).length;
+  const detailedWiki = wikiSources.filter((source) =>
+    detailedSourceIds.has(source.id)
+  ).length;
+  const truncatedDetails = detailEvidence.filter(
+    (entry) => entry.content.truncated
+  ).length;
+  const detailCoverageIsPartial =
+    detailedJira < jiraSources.length || detailedWiki < wikiSources.length;
+  if (run.complete && !detailCoverageIsPartial && truncatedDetails === 0) {
+    return undefined;
+  }
+
+  const qualifications = [
+    `Evidence coverage: ${detailedJira} of ${jiraSources.length} returned Jira items and ${detailedWiki} of ${wikiSources.length} returned Confluence items were read in detail.`,
+    ...(truncatedDetails > 0
+      ? [`${truncatedDetails} detail projections were truncated.`]
+      : []),
+    ...(!run.complete ? ["At least one search was incomplete."] : []),
+    "Negative content claims apply only to the captured detail evidence.",
+  ];
+  return qualifications.join(" ");
+}
+
 export function finalizeResearchAgentDraftV1(input: {
   draft: unknown;
   request: ResearchRequestV1;
@@ -215,12 +253,19 @@ export function finalizeResearchAgentDraftV1(input: {
   const draft = RESEARCH_AGENT_DRAFT_SCHEMA_V1.parse(input.draft);
   const sources = input.sources.map((source) => ({ ...source }));
   const sourcesById = new Map(sources.map((source) => [source.id, source]));
+  const coverageBoundary = evidenceCoverageBoundary(
+    sources,
+    input.detailEvidence,
+    input.run
+  );
   return finalizeResearchReportV1({
     schema: RESEARCH_REPORT_SCHEMA_V1,
     title: draft.title,
     question: input.request.question,
     scope: input.request.scope,
-    executiveSummary: draft.executiveSummary,
+    executiveSummary: [coverageBoundary, draft.executiveSummary]
+      .filter(Boolean)
+      .join("\n\n"),
     findings: normalizeFindings(
       draft.findings,
       sourcesById,
