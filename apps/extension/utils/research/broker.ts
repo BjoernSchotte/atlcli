@@ -82,6 +82,11 @@ export interface ResearchReadProviders {
   };
 }
 
+export interface ResearchDetailEvidenceV1 {
+  source: ResearchSourceReferenceV1;
+  content: BoundedContentProjectionV1;
+}
+
 interface BrokerOptions {
   createCursorId?: () => string;
   createEntityId?: () => string;
@@ -162,6 +167,7 @@ export class ResearchCapabilityBroker {
   readonly #entityVault: ResearchEntityVault;
   readonly #gate: ConcurrencyGate;
   readonly #sources = new Map<string, ResearchSourceReferenceV1>();
+  readonly #detailEvidence = new Map<string, ResearchDetailEvidenceV1>();
   readonly #controller = new AbortController();
 
   constructor(
@@ -194,10 +200,21 @@ export class ResearchCapabilityBroker {
     this.#cursorVault.clear();
     this.#entityVault.clear();
     this.#sources.clear();
+    this.#detailEvidence.clear();
   }
 
   sourceLedger(): ResearchSourceReferenceV1[] {
     return [...this.#sources.values()].map((source) => ({ ...source }));
+  }
+
+  detailEvidenceLedger(): ResearchDetailEvidenceV1[] {
+    return [...this.#detailEvidence.values()].map((entry) => ({
+      source: { ...entry.source },
+      content: {
+        ...entry.content,
+        linkTargets: [...entry.content.linkTargets],
+      },
+    }));
   }
 
   async invoke(tool: ResearchToolId, input: unknown): Promise<unknown> {
@@ -436,6 +453,13 @@ export class ResearchCapabilityBroker {
       throw new ResearchContractError("access-denied", "Jira detail is outside the run scope.");
     }
     const source = this.#jiraSource(detail);
+    this.#detailEvidence.set(source.id, {
+      source,
+      content: {
+        ...detail.content,
+        linkTargets: [...detail.content.linkTargets],
+      },
+    });
     return {
       schema: RESEARCH_CAPABILITY_SCHEMAS["jira.issue.get"].output,
       source: publicSource(source),
@@ -463,6 +487,13 @@ export class ResearchCapabilityBroker {
       );
     }
     const source = this.#wikiSource(detail);
+    this.#detailEvidence.set(source.id, {
+      source,
+      content: {
+        ...detail.content,
+        linkTargets: [...detail.content.linkTargets],
+      },
+    });
     return {
       schema: RESEARCH_CAPABILITY_SCHEMAS["wiki.page.get"].output,
       source: publicSource(source),

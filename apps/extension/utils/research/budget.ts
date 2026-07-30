@@ -2,6 +2,7 @@ import {
   ResearchContractError,
   type ResearchLimitsV1,
   type ResearchProduct,
+  type ResearchRunCountsV1,
 } from "./contracts.js";
 import type { ResearchBudgetSnapshotV1 } from "./capability-contracts.js";
 
@@ -130,6 +131,15 @@ export class ResearchRunBudget {
         0,
         this.#limits.maxTotalResponseBytes - this.#responseBytes
       ),
+    };
+  }
+
+  counts(): ResearchRunCountsV1 {
+    return {
+      ptcCalls: this.#ptcCalls,
+      httpCalls: this.#httpAttempts,
+      jiraItems: this.#items.jira,
+      confluenceItems: this.#items.confluence,
     };
   }
 }
