@@ -34,7 +34,10 @@ import {
   type PdfExportMetadata,
 } from "@atlcli/pdf";
 import { MANUSCRIPT_PDF_TEMPLATE_MANIFEST } from "@atlcli/pdf/internal";
-import { BrowserPdfCompiler } from "@atlcli/pdf-compiler-browser";
+import {
+  BrowserPdfCompiler,
+  type BrowserPdfCompilerFontSourceV1,
+} from "@atlcli/pdf-compiler-browser";
 import {
   BLOCKS_ALL_FIELDS,
   BLOCKS_METADATA,
@@ -105,10 +108,14 @@ function deadlineCompiler(inner: PdfCompilePort): PdfCompilePort {
 
 async function buildBunCompiler(): Promise<PdfCompilePort> {
   await ensurePdfFonts({ logger: () => {} });
-  const [wasm, ...fonts] = await Promise.all([
-    packageBytes("@atlcli/pdf-compiler-browser/wasm"),
-    ...PDF_RUNTIME_ASSETS.fonts.map((font) => packageBytes(`@atlcli/pdf/fonts/${font.fileName}`)),
-  ]);
+  const wasm = await packageBytes("@atlcli/pdf-compiler-browser/wasm");
+  const fonts = PDF_RUNTIME_ASSETS.fonts.map(
+    (font): BrowserPdfCompilerFontSourceV1 => ({
+      assetId: font.assetId,
+      sha256: font.sha256,
+      load: () => packageBytes(`@atlcli/pdf/fonts/${font.fileName}`),
+    }),
+  );
   const compiler = new BrowserPdfCompiler({
     wasm: wasm.buffer.slice(wasm.byteOffset, wasm.byteOffset + wasm.byteLength) as ArrayBuffer,
     fonts,

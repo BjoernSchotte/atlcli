@@ -65,6 +65,15 @@ describe("browser harness boundaries", () => {
     expect(worker).toContain("assertStaticAssetParity");
   });
 
+  it("compares browser output against the same demand-aware compiler shape", () => {
+    const parity = read("scripts/check-parity.ts");
+    expect(parity).toContain("BrowserPdfCompilerFontSourceV1");
+    expect(parity).toContain("assetId: font.assetId");
+    expect(parity).toContain("sha256: font.sha256");
+    expect(parity).toContain('load: () => packageBytes(`@atlcli/pdf/fonts/${font.fileName}`)');
+    expect(parity).not.toContain("const [wasm, ...fonts]");
+  });
+
   it("serves a restrictive CSP without unsafe-eval", () => {
     const server = read("scripts/serve-dist.ts");
     expect(server).toContain("'wasm-unsafe-eval'");
