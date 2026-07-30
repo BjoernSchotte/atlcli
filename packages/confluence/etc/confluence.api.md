@@ -373,6 +373,44 @@ export type AtlasDocFormatPageBody = Extract<PageBody, {
     representation: "atlas_doc_format";
 }>;
 
+// export: AttachmentBodyV1
+export type AttachmentBodyV1 = Blob | Uint8Array;
+
+// export: AttachmentDeliveryError
+export declare class AttachmentDeliveryError extends Error {
+    readonly kind: AttachmentDeliveryFailureKind;
+    readonly operation: AttachmentDeliveryOperation;
+    readonly pageId: string;
+    readonly filename?: string;
+    readonly attachmentId?: string;
+    readonly status?: number;
+    readonly retryAfterMs?: number;
+    readonly requestMayHaveSucceeded: boolean;
+    readonly requerySuggested: boolean;
+    readonly diagnostic?: string;
+    constructor(kind: AttachmentDeliveryFailureKind, options: AttachmentDeliveryErrorOptions);
+}
+
+// export: AttachmentDeliveryErrorOptions
+export interface AttachmentDeliveryErrorOptions {
+    operation: AttachmentDeliveryOperation;
+    pageId: string;
+    filename?: string;
+    attachmentId?: string;
+    status?: number;
+    retryAfterMs?: number;
+    requestMayHaveSucceeded?: boolean;
+    requerySuggested?: boolean;
+    diagnostic?: string;
+    cause?: unknown;
+}
+
+// export: AttachmentDeliveryFailureKind
+export type AttachmentDeliveryFailureKind = "forbidden" | "not-found" | "name-conflict" | "rate-limited" | "too-large" | "invalid-response" | "transport";
+
+// export: AttachmentDeliveryOperation
+export type AttachmentDeliveryOperation = "find-by-filename" | "create" | "update-data";
+
 // export: AttachmentInfo
 export interface AttachmentInfo {
     id: string;
@@ -728,6 +766,7 @@ export declare class ConfluenceClient {
         signal?: AbortSignal;
     }): Promise<Uint8Array>;
     private requestMultipart;
+    private pageAttachmentWriter;
     private requestBinary;
     private parseAttachmentResponse;
     private detectMimeType;
@@ -895,6 +934,9 @@ export type ConfluencePageDetails = ConfluencePage & {
     editorVersion?: "v2" | "v1" | null;
 };
 
+// export: ConfluenceProductRequestV1
+export type ConfluenceProductRequestV1 = (path: string, init?: RequestInit) => Promise<Response>;
+
 // export: ConfluenceSearchDetail
 export type ConfluenceSearchDetail = {
     id: string;
@@ -966,6 +1008,19 @@ export declare function createAdfMediaAttachmentResolver(attachments: readonly A
 
 // export: createInOrderLimiter
 export declare function createInOrderLimiter(limit: number): <T>(task: () => Promise<T>) => Promise<T>;
+
+// export: CreatePageAttachmentInputV1
+export interface CreatePageAttachmentInputV1 {
+    pageId: string;
+    filename: string;
+    body: AttachmentBodyV1;
+    mimeType: string;
+    comment?: string;
+    minorEdit?: boolean;
+}
+
+// export: createPageAttachmentWriterV1
+export declare function createPageAttachmentWriterV1(request: ConfluenceProductRequestV1, options?: PageAttachmentWriterOptionsV1): PageAttachmentWriterV1;
 
 // export: Datasource
 export interface Datasource {
@@ -1625,6 +1680,12 @@ export interface FetchExportTreeResult {
     sourceSummary: TreeSourceSummary;
 }
 
+// export: FindPageAttachmentByFilenameInputV1
+export interface FindPageAttachmentByFilenameInputV1 {
+    pageId: string;
+    filename: string;
+}
+
 // export: findSvgSafetyViolation
 export declare function findSvgSafetyViolation(source: string): SvgSafetyViolation | undefined;
 
@@ -1996,6 +2057,18 @@ export interface PageAttachmentMediaResult {
 
 // export: PageAttachmentMediaTermination
 export type PageAttachmentMediaTermination = "index-exhausted" | "required-file-ids-satisfied" | "attachment-limit-reached" | "request-limit-reached";
+
+// export: PageAttachmentWriterOptionsV1
+export interface PageAttachmentWriterOptionsV1 {
+    pathPrefix?: string;
+}
+
+// export: PageAttachmentWriterV1
+export interface PageAttachmentWriterV1 {
+    findByFilename(input: FindPageAttachmentByFilenameInputV1): Promise<AttachmentInfo | undefined>;
+    create(input: CreatePageAttachmentInputV1): Promise<AttachmentInfo>;
+    updateData(input: UpdatePageAttachmentDataInputV1): Promise<AttachmentInfo>;
+}
 
 // export: PageBody
 export type PageBody = {
@@ -2636,6 +2709,11 @@ export declare function unsafeLinkMessage(result: Extract<LinkSanitizeResult, {
 
 // export: UnsafeLinkReason
 export type UnsafeLinkReason = "empty" | "blocked-scheme";
+
+// export: UpdatePageAttachmentDataInputV1
+export interface UpdatePageAttachmentDataInputV1 extends CreatePageAttachmentInputV1 {
+    attachmentId: string;
+}
 
 // export: UserInfo
 export interface UserInfo {
@@ -3060,6 +3138,44 @@ export type AtlasDocFormatPageBody = Extract<PageBody, {
     representation: "atlas_doc_format";
 }>;
 
+// export: AttachmentBodyV1
+export type AttachmentBodyV1 = Blob | Uint8Array;
+
+// export: AttachmentDeliveryError
+export declare class AttachmentDeliveryError extends Error {
+    readonly kind: AttachmentDeliveryFailureKind;
+    readonly operation: AttachmentDeliveryOperation;
+    readonly pageId: string;
+    readonly filename?: string;
+    readonly attachmentId?: string;
+    readonly status?: number;
+    readonly retryAfterMs?: number;
+    readonly requestMayHaveSucceeded: boolean;
+    readonly requerySuggested: boolean;
+    readonly diagnostic?: string;
+    constructor(kind: AttachmentDeliveryFailureKind, options: AttachmentDeliveryErrorOptions);
+}
+
+// export: AttachmentDeliveryErrorOptions
+export interface AttachmentDeliveryErrorOptions {
+    operation: AttachmentDeliveryOperation;
+    pageId: string;
+    filename?: string;
+    attachmentId?: string;
+    status?: number;
+    retryAfterMs?: number;
+    requestMayHaveSucceeded?: boolean;
+    requerySuggested?: boolean;
+    diagnostic?: string;
+    cause?: unknown;
+}
+
+// export: AttachmentDeliveryFailureKind
+export type AttachmentDeliveryFailureKind = "forbidden" | "not-found" | "name-conflict" | "rate-limited" | "too-large" | "invalid-response" | "transport";
+
+// export: AttachmentDeliveryOperation
+export type AttachmentDeliveryOperation = "find-by-filename" | "create" | "update-data";
+
 // export: AttachmentInfo
 export interface AttachmentInfo {
     id: string;
@@ -3415,6 +3531,7 @@ export declare class ConfluenceClient {
         signal?: AbortSignal;
     }): Promise<Uint8Array>;
     private requestMultipart;
+    private pageAttachmentWriter;
     private requestBinary;
     private parseAttachmentResponse;
     private detectMimeType;
@@ -3582,6 +3699,9 @@ export type ConfluencePageDetails = ConfluencePage & {
     editorVersion?: "v2" | "v1" | null;
 };
 
+// export: ConfluenceProductRequestV1
+export type ConfluenceProductRequestV1 = (path: string, init?: RequestInit) => Promise<Response>;
+
 // export: ConfluenceSearchDetail
 export type ConfluenceSearchDetail = {
     id: string;
@@ -3653,6 +3773,19 @@ export declare function createAdfMediaAttachmentResolver(attachments: readonly A
 
 // export: createInOrderLimiter
 export declare function createInOrderLimiter(limit: number): <T>(task: () => Promise<T>) => Promise<T>;
+
+// export: CreatePageAttachmentInputV1
+export interface CreatePageAttachmentInputV1 {
+    pageId: string;
+    filename: string;
+    body: AttachmentBodyV1;
+    mimeType: string;
+    comment?: string;
+    minorEdit?: boolean;
+}
+
+// export: createPageAttachmentWriterV1
+export declare function createPageAttachmentWriterV1(request: ConfluenceProductRequestV1, options?: PageAttachmentWriterOptionsV1): PageAttachmentWriterV1;
 
 // export: Datasource
 export interface Datasource {
@@ -4312,6 +4445,12 @@ export interface FetchExportTreeResult {
     sourceSummary: TreeSourceSummary;
 }
 
+// export: FindPageAttachmentByFilenameInputV1
+export interface FindPageAttachmentByFilenameInputV1 {
+    pageId: string;
+    filename: string;
+}
+
 // export: findSvgSafetyViolation
 export declare function findSvgSafetyViolation(source: string): SvgSafetyViolation | undefined;
 
@@ -4683,6 +4822,18 @@ export interface PageAttachmentMediaResult {
 
 // export: PageAttachmentMediaTermination
 export type PageAttachmentMediaTermination = "index-exhausted" | "required-file-ids-satisfied" | "attachment-limit-reached" | "request-limit-reached";
+
+// export: PageAttachmentWriterOptionsV1
+export interface PageAttachmentWriterOptionsV1 {
+    pathPrefix?: string;
+}
+
+// export: PageAttachmentWriterV1
+export interface PageAttachmentWriterV1 {
+    findByFilename(input: FindPageAttachmentByFilenameInputV1): Promise<AttachmentInfo | undefined>;
+    create(input: CreatePageAttachmentInputV1): Promise<AttachmentInfo>;
+    updateData(input: UpdatePageAttachmentDataInputV1): Promise<AttachmentInfo>;
+}
 
 // export: PageBody
 export type PageBody = {
@@ -5323,6 +5474,11 @@ export declare function unsafeLinkMessage(result: Extract<LinkSanitizeResult, {
 
 // export: UnsafeLinkReason
 export type UnsafeLinkReason = "empty" | "blocked-scheme";
+
+// export: UpdatePageAttachmentDataInputV1
+export interface UpdatePageAttachmentDataInputV1 extends CreatePageAttachmentInputV1 {
+    attachmentId: string;
+}
 
 // export: UserInfo
 export interface UserInfo {
@@ -5747,6 +5903,44 @@ export type AtlasDocFormatPageBody = Extract<PageBody, {
     representation: "atlas_doc_format";
 }>;
 
+// export: AttachmentBodyV1
+export type AttachmentBodyV1 = Blob | Uint8Array;
+
+// export: AttachmentDeliveryError
+export declare class AttachmentDeliveryError extends Error {
+    readonly kind: AttachmentDeliveryFailureKind;
+    readonly operation: AttachmentDeliveryOperation;
+    readonly pageId: string;
+    readonly filename?: string;
+    readonly attachmentId?: string;
+    readonly status?: number;
+    readonly retryAfterMs?: number;
+    readonly requestMayHaveSucceeded: boolean;
+    readonly requerySuggested: boolean;
+    readonly diagnostic?: string;
+    constructor(kind: AttachmentDeliveryFailureKind, options: AttachmentDeliveryErrorOptions);
+}
+
+// export: AttachmentDeliveryErrorOptions
+export interface AttachmentDeliveryErrorOptions {
+    operation: AttachmentDeliveryOperation;
+    pageId: string;
+    filename?: string;
+    attachmentId?: string;
+    status?: number;
+    retryAfterMs?: number;
+    requestMayHaveSucceeded?: boolean;
+    requerySuggested?: boolean;
+    diagnostic?: string;
+    cause?: unknown;
+}
+
+// export: AttachmentDeliveryFailureKind
+export type AttachmentDeliveryFailureKind = "forbidden" | "not-found" | "name-conflict" | "rate-limited" | "too-large" | "invalid-response" | "transport";
+
+// export: AttachmentDeliveryOperation
+export type AttachmentDeliveryOperation = "find-by-filename" | "create" | "update-data";
+
 // export: AttachmentInfo
 export interface AttachmentInfo {
     id: string;
@@ -6102,6 +6296,7 @@ export declare class ConfluenceClient {
         signal?: AbortSignal;
     }): Promise<Uint8Array>;
     private requestMultipart;
+    private pageAttachmentWriter;
     private requestBinary;
     private parseAttachmentResponse;
     private detectMimeType;
@@ -6269,6 +6464,9 @@ export type ConfluencePageDetails = ConfluencePage & {
     editorVersion?: "v2" | "v1" | null;
 };
 
+// export: ConfluenceProductRequestV1
+export type ConfluenceProductRequestV1 = (path: string, init?: RequestInit) => Promise<Response>;
+
 // export: ConfluenceSearchDetail
 export type ConfluenceSearchDetail = {
     id: string;
@@ -6340,6 +6538,19 @@ export declare function createAdfMediaAttachmentResolver(attachments: readonly A
 
 // export: createInOrderLimiter
 export declare function createInOrderLimiter(limit: number): <T>(task: () => Promise<T>) => Promise<T>;
+
+// export: CreatePageAttachmentInputV1
+export interface CreatePageAttachmentInputV1 {
+    pageId: string;
+    filename: string;
+    body: AttachmentBodyV1;
+    mimeType: string;
+    comment?: string;
+    minorEdit?: boolean;
+}
+
+// export: createPageAttachmentWriterV1
+export declare function createPageAttachmentWriterV1(request: ConfluenceProductRequestV1, options?: PageAttachmentWriterOptionsV1): PageAttachmentWriterV1;
 
 // export: Datasource
 export interface Datasource {
@@ -6999,6 +7210,12 @@ export interface FetchExportTreeResult {
     sourceSummary: TreeSourceSummary;
 }
 
+// export: FindPageAttachmentByFilenameInputV1
+export interface FindPageAttachmentByFilenameInputV1 {
+    pageId: string;
+    filename: string;
+}
+
 // export: findSvgSafetyViolation
 export declare function findSvgSafetyViolation(source: string): SvgSafetyViolation | undefined;
 
@@ -7370,6 +7587,18 @@ export interface PageAttachmentMediaResult {
 
 // export: PageAttachmentMediaTermination
 export type PageAttachmentMediaTermination = "index-exhausted" | "required-file-ids-satisfied" | "attachment-limit-reached" | "request-limit-reached";
+
+// export: PageAttachmentWriterOptionsV1
+export interface PageAttachmentWriterOptionsV1 {
+    pathPrefix?: string;
+}
+
+// export: PageAttachmentWriterV1
+export interface PageAttachmentWriterV1 {
+    findByFilename(input: FindPageAttachmentByFilenameInputV1): Promise<AttachmentInfo | undefined>;
+    create(input: CreatePageAttachmentInputV1): Promise<AttachmentInfo>;
+    updateData(input: UpdatePageAttachmentDataInputV1): Promise<AttachmentInfo>;
+}
 
 // export: PageBody
 export type PageBody = {
@@ -8010,6 +8239,11 @@ export declare function unsafeLinkMessage(result: Extract<LinkSanitizeResult, {
 
 // export: UnsafeLinkReason
 export type UnsafeLinkReason = "empty" | "blocked-scheme";
+
+// export: UpdatePageAttachmentDataInputV1
+export interface UpdatePageAttachmentDataInputV1 extends CreatePageAttachmentInputV1 {
+    attachmentId: string;
+}
 
 // export: UserInfo
 export interface UserInfo {
@@ -8581,6 +8815,7 @@ export declare class ConfluenceClient {
         signal?: AbortSignal;
     }): Promise<Uint8Array>;
     private requestMultipart;
+    private pageAttachmentWriter;
     private requestBinary;
     private parseAttachmentResponse;
     private detectMimeType;
@@ -11407,6 +11642,44 @@ export type AtlasDocFormatPageBody = Extract<PageBody, {
     representation: "atlas_doc_format";
 }>;
 
+// export: AttachmentBodyV1
+export type AttachmentBodyV1 = Blob | Uint8Array;
+
+// export: AttachmentDeliveryError
+export declare class AttachmentDeliveryError extends Error {
+    readonly kind: AttachmentDeliveryFailureKind;
+    readonly operation: AttachmentDeliveryOperation;
+    readonly pageId: string;
+    readonly filename?: string;
+    readonly attachmentId?: string;
+    readonly status?: number;
+    readonly retryAfterMs?: number;
+    readonly requestMayHaveSucceeded: boolean;
+    readonly requerySuggested: boolean;
+    readonly diagnostic?: string;
+    constructor(kind: AttachmentDeliveryFailureKind, options: AttachmentDeliveryErrorOptions);
+}
+
+// export: AttachmentDeliveryErrorOptions
+export interface AttachmentDeliveryErrorOptions {
+    operation: AttachmentDeliveryOperation;
+    pageId: string;
+    filename?: string;
+    attachmentId?: string;
+    status?: number;
+    retryAfterMs?: number;
+    requestMayHaveSucceeded?: boolean;
+    requerySuggested?: boolean;
+    diagnostic?: string;
+    cause?: unknown;
+}
+
+// export: AttachmentDeliveryFailureKind
+export type AttachmentDeliveryFailureKind = "forbidden" | "not-found" | "name-conflict" | "rate-limited" | "too-large" | "invalid-response" | "transport";
+
+// export: AttachmentDeliveryOperation
+export type AttachmentDeliveryOperation = "find-by-filename" | "create" | "update-data";
+
 // export: AttachmentInfo
 export interface AttachmentInfo {
     id: string;
@@ -11762,6 +12035,7 @@ export declare class ConfluenceClient {
         signal?: AbortSignal;
     }): Promise<Uint8Array>;
     private requestMultipart;
+    private pageAttachmentWriter;
     private requestBinary;
     private parseAttachmentResponse;
     private detectMimeType;
@@ -11929,6 +12203,9 @@ export type ConfluencePageDetails = ConfluencePage & {
     editorVersion?: "v2" | "v1" | null;
 };
 
+// export: ConfluenceProductRequestV1
+export type ConfluenceProductRequestV1 = (path: string, init?: RequestInit) => Promise<Response>;
+
 // export: ConfluenceSearchDetail
 export type ConfluenceSearchDetail = {
     id: string;
@@ -12000,6 +12277,19 @@ export declare function createAdfMediaAttachmentResolver(attachments: readonly A
 
 // export: createInOrderLimiter
 export declare function createInOrderLimiter(limit: number): <T>(task: () => Promise<T>) => Promise<T>;
+
+// export: CreatePageAttachmentInputV1
+export interface CreatePageAttachmentInputV1 {
+    pageId: string;
+    filename: string;
+    body: AttachmentBodyV1;
+    mimeType: string;
+    comment?: string;
+    minorEdit?: boolean;
+}
+
+// export: createPageAttachmentWriterV1
+export declare function createPageAttachmentWriterV1(request: ConfluenceProductRequestV1, options?: PageAttachmentWriterOptionsV1): PageAttachmentWriterV1;
 
 // export: Datasource
 export interface Datasource {
@@ -12659,6 +12949,12 @@ export interface FetchExportTreeResult {
     sourceSummary: TreeSourceSummary;
 }
 
+// export: FindPageAttachmentByFilenameInputV1
+export interface FindPageAttachmentByFilenameInputV1 {
+    pageId: string;
+    filename: string;
+}
+
 // export: findSvgSafetyViolation
 export declare function findSvgSafetyViolation(source: string): SvgSafetyViolation | undefined;
 
@@ -13030,6 +13326,18 @@ export interface PageAttachmentMediaResult {
 
 // export: PageAttachmentMediaTermination
 export type PageAttachmentMediaTermination = "index-exhausted" | "required-file-ids-satisfied" | "attachment-limit-reached" | "request-limit-reached";
+
+// export: PageAttachmentWriterOptionsV1
+export interface PageAttachmentWriterOptionsV1 {
+    pathPrefix?: string;
+}
+
+// export: PageAttachmentWriterV1
+export interface PageAttachmentWriterV1 {
+    findByFilename(input: FindPageAttachmentByFilenameInputV1): Promise<AttachmentInfo | undefined>;
+    create(input: CreatePageAttachmentInputV1): Promise<AttachmentInfo>;
+    updateData(input: UpdatePageAttachmentDataInputV1): Promise<AttachmentInfo>;
+}
 
 // export: PageBody
 export type PageBody = {
@@ -13670,6 +13978,11 @@ export declare function unsafeLinkMessage(result: Extract<LinkSanitizeResult, {
 
 // export: UnsafeLinkReason
 export type UnsafeLinkReason = "empty" | "blocked-scheme";
+
+// export: UpdatePageAttachmentDataInputV1
+export interface UpdatePageAttachmentDataInputV1 extends CreatePageAttachmentInputV1 {
+    attachmentId: string;
+}
 
 // export: UserInfo
 export interface UserInfo {

@@ -115,7 +115,10 @@ import { runPdfExport, isPdfBytesHandle, PDF_RUNTIME_ASSETS } from "@atlcli/pdf"
 import type { PdfBytesHandle } from "@atlcli/pdf";
 import { validatePdfOutput } from "@atlcli/pdf/internal";
 import { BrowserPdfCompiler } from "@atlcli/pdf-compiler-browser";
-import { storageToBlocks } from "@atlcli/confluence";
+import {
+  createPageAttachmentWriterV1,
+  storageToBlocks,
+} from "@atlcli/confluence/browser";
 import {
   createPdfExportJobExecutor,
   createTypescriptDocxExportJobExecutor,
@@ -145,6 +148,52 @@ type LoadBytes = (url: string) => Promise<Uint8Array>;
   jobsEntrypointLoaded:
     typeof createPdfExportJobExecutor === "function" &&
     typeof createTypescriptDocxExportJobExecutor === "function",
+  async attachmentContract() {
+    let calls = 0;
+    let createPath = "";
+    let contentTypeIntroduced = false;
+    let authorizationIntroduced = false;
+    let minorEdit = "";
+    let fileSize = -1;
+    const writer = createPageAttachmentWriterV1(async (path, init) => {
+      calls++;
+      if (init?.method === "GET") {
+        return new Response(JSON.stringify({ results: [] }), { status: 200 });
+      }
+      createPath = path;
+      const headers = new Headers(init?.headers);
+      contentTypeIntroduced = headers.has("Content-Type");
+      authorizationIntroduced = headers.has("Authorization");
+      const form = init?.body as FormData;
+      minorEdit = String(form.get("minorEdit"));
+      fileSize = (form.get("file") as File).size;
+      return new Response(JSON.stringify({
+        results: [{
+          id: "packed-att-1",
+          title: "packed.pdf",
+          metadata: { mediaType: "application/pdf" },
+          extensions: { fileSize },
+          version: { number: 1 },
+          _links: { download: "/download/attachments/123/packed.pdf" },
+        }],
+      }), { status: 200 });
+    });
+    const attachment = await writer.create({
+      pageId: "123",
+      filename: "packed.pdf",
+      body: new Blob(["packed-pdf"], { type: "application/pdf" }),
+      mimeType: "application/pdf",
+    });
+    return {
+      calls,
+      createPath,
+      contentTypeIntroduced,
+      authorizationIntroduced,
+      minorEdit,
+      fileSize,
+      attachmentId: attachment.id,
+    };
+  },
   async compileDocx() {
     // Test setup injects a known-good binary fixture. The production consumer
     // imports only the stable browser entry, not the fixture subpath.
@@ -365,13 +414,22 @@ export async function runViteSmoke(baseDir?: string): Promise<ViteSmokeResult> {
   }
 
   // --- Execute the PRODUCTION chunk and compile with the EMITTED assets. ---
-  const { hook, docxResult } = await withBrowserBufferScope(async () => {
+  const { hook, docxResult, attachmentResult } = await withBrowserBufferScope(async () => {
     await import(chunkPath);
     const hook = (globalThis as Record<string, unknown>).__ATLCLI_VITE_SMOKE as {
       wasmUrl: string;
       fontUrls: Record<string, string>;
       expectedFonts: string[];
       jobsEntrypointLoaded: boolean;
+      attachmentContract(): Promise<{
+        calls: number;
+        createPath: string;
+        contentTypeIntroduced: boolean;
+        authorizationIntroduced: boolean;
+        minorEdit: string;
+        fileSize: number;
+        attachmentId: string;
+      }>;
       compileDocx(): Promise<{
         byteLength: number;
         filename: string;
@@ -399,7 +457,11 @@ export async function runViteSmoke(baseDir?: string): Promise<ViteSmokeResult> {
         "packed @atlcli/export-wiring/jobs did not expose both PDF and TypeScript DOCX executors",
       );
     }
-    return { hook, docxResult: await hook.compileDocx() };
+    return {
+      hook,
+      docxResult: await hook.compileDocx(),
+      attachmentResult: await hook.attachmentContract(),
+    };
   });
   if (
     docxResult.byteLength < 1_000
@@ -409,6 +471,19 @@ export async function runViteSmoke(baseDir?: string): Promise<ViteSmokeResult> {
   ) {
     throw new Error(
       `vite smoke combined DOCX entry produced implausible output: ${JSON.stringify(docxResult)}`,
+    );
+  }
+  if (
+    attachmentResult.calls !== 2
+    || attachmentResult.createPath !== "/wiki/rest/api/content/123/child/attachment"
+    || attachmentResult.contentTypeIntroduced
+    || attachmentResult.authorizationIntroduced
+    || attachmentResult.minorEdit !== "true"
+    || attachmentResult.fileSize !== 10
+    || attachmentResult.attachmentId !== "packed-att-1"
+  ) {
+    throw new Error(
+      `vite smoke attachment writer contract failed: ${JSON.stringify(attachmentResult)}`,
     );
   }
   const docxCodeFontAssets = ttfAssets.filter((asset) =>

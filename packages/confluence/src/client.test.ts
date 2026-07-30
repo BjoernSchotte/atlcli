@@ -1207,11 +1207,13 @@ describe("ConfluenceClient", () => {
     };
 
     /** Capture the RequestInit of the last fetch call. */
-    function captureFetch(response: () => Response): { last: () => RequestInit | undefined } {
+    function captureFetch(
+      response: (url: string, init?: RequestInit) => Response,
+    ): { last: () => RequestInit | undefined } {
       let last: RequestInit | undefined;
-      globalThis.fetch = mock((_url: string, init: RequestInit) => {
+      globalThis.fetch = mock((_url: string | URL, init: RequestInit) => {
         last = init;
-        return Promise.resolve(response());
+        return Promise.resolve(response(String(_url), init));
       }) as unknown as typeof fetch;
       return { last: () => last };
     }
@@ -1247,20 +1249,41 @@ describe("ConfluenceClient", () => {
     });
 
     test("attachment upload: no Authorization header, credentials include", async () => {
-      const cap = captureFetch(() =>
-        new Response(
-          JSON.stringify({ results: [{ id: "att1", title: "f.png", version: { number: 1 } }] }),
-          { status: 200 }
-        )
-      );
+      const captured: RequestInit[] = [];
+      globalThis.fetch = mock((_url: string | URL, init: RequestInit) => {
+        captured.push(init);
+        const payload = init.method === "GET"
+          ? { results: [] }
+          : { results: [{ id: "att1", title: "f.png", version: { number: 1 } }] };
+        return Promise.resolve(new Response(JSON.stringify(payload), { status: 200 }));
+      }) as unknown as typeof fetch;
       await new ConfluenceClient(sessionProfile).uploadAttachment({
         pageId: "123",
         filename: "f.png",
         data: new Uint8Array([1, 2, 3]),
       });
-      const init = cap.last();
-      expect(new Headers(init?.headers).has("Authorization")).toBe(false);
-      expect(init?.credentials).toBe("include");
+      expect(captured).toHaveLength(2);
+      for (const init of captured) {
+        expect(new Headers(init.headers).has("Authorization")).toBe(false);
+        expect(init.credentials).toBe("include");
+      }
+    });
+
+    test("attachment upload preserves the session authentication redirect wording", async () => {
+      globalThis.fetch = mock(() =>
+        Promise.resolve(new Response(null, {
+          status: 302,
+          headers: { Location: "https://id.atlassian.com/login" },
+        }))
+      ) as unknown as typeof fetch;
+
+      await expect(
+        new ConfluenceClient(sessionProfile).uploadAttachment({
+          pageId: "123",
+          filename: "f.png",
+          data: new Uint8Array([1, 2, 3]),
+        }),
+      ).rejects.toThrow("authentication redirect");
     });
 
     test("attachment download: no Authorization header, credentials include", async () => {
@@ -1279,6 +1302,92 @@ describe("ConfluenceClient", () => {
       const init = cap.last();
       expect(new Headers(init?.headers).get("Authorization")).toMatch(/^Basic /);
       expect(init?.credentials).toBeUndefined();
+    });
+  });
+
+  describe("attachment delivery transport", () => {
+    test("token client proves Cloud preflight, create, and update-data requests", async () => {
+      const calls: Array<{ url: string; init: RequestInit }> = [];
+      globalThis.fetch = mock((url: string | URL, init: RequestInit) => {
+        calls.push({ url: String(url), init });
+        if (init.method === "GET") {
+          return Promise.resolve(new Response(JSON.stringify({ results: [] }), {
+            status: 200,
+          }));
+        }
+        const isUpdate = String(url).endsWith("/child/attachment/att-1/data");
+        const content = {
+          id: "att-1",
+          title: "report.pdf",
+          metadata: { mediaType: "application/pdf" },
+          extensions: { fileSize: 3 },
+          version: { number: isUpdate ? 2 : 1 },
+          _links: { download: "/download/attachments/123/report.pdf" },
+        };
+        return Promise.resolve(new Response(JSON.stringify(
+          isUpdate ? content : { results: [content] },
+        ), { status: 200 }));
+      }) as unknown as typeof fetch;
+
+      const client = new ConfluenceClient(mockProfile);
+      await client.uploadAttachment({
+        pageId: "123",
+        filename: "report.pdf",
+        data: new Uint8Array([1, 2, 3]),
+        mimeType: "application/pdf",
+      });
+      const updated = await client.updateAttachment({
+        pageId: "123",
+        attachmentId: "att-1",
+        filename: "report.pdf",
+        data: new Uint8Array([4, 5, 6]),
+        mimeType: "application/pdf",
+      });
+
+      expect(calls.map((call) => new URL(call.url).pathname)).toEqual([
+        "/wiki/api/v2/pages/123/attachments",
+        "/wiki/rest/api/content/123/child/attachment",
+        "/wiki/rest/api/content/123/child/attachment/att-1/data",
+      ]);
+      expect(new URL(calls[0]!.url).searchParams.get("filename")).toBe("report.pdf");
+      expect(new URL(calls[0]!.url).searchParams.get("limit")).toBe("1");
+      for (const call of calls) {
+        expect(new Headers(call.init.headers).get("Authorization")).toMatch(/^Basic /);
+        expect(call.init.credentials).toBeUndefined();
+      }
+      for (const call of calls.slice(1)) {
+        const headers = new Headers(call.init.headers);
+        expect(headers.has("Content-Type")).toBe(false);
+        const form = call.init.body as FormData;
+        expect(form.get("minorEdit")).toBe("true");
+      }
+      expect(updated.version).toBe(2);
+    });
+
+    test("Data Center create stays on v1, sends minorEdit, and is never retried", async () => {
+      let calls = 0;
+      let capturedInit: RequestInit | undefined;
+      globalThis.fetch = mock((_url: string | URL, init: RequestInit) => {
+        calls++;
+        capturedInit = init;
+        return Promise.resolve(new Response("temporary failure", { status: 500 }));
+      }) as unknown as typeof fetch;
+
+      await expect(
+        new ConfluenceClient({
+          ...mockProfile,
+          baseUrl: "https://confluence.example.com/confluence",
+          deploymentType: "data-center",
+        }).uploadAttachment({
+          pageId: "123",
+          filename: "report.pdf",
+          data: new Uint8Array([1, 2, 3]),
+        }),
+      ).rejects.toThrow("Attachment upload error (500)");
+
+      expect(calls).toBe(1);
+      expect((capturedInit?.body as FormData).get("minorEdit")).toBe("true");
+      expect(new Headers(capturedInit?.headers).has("Content-Type")).toBe(false);
     });
   });
 

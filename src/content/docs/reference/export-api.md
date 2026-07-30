@@ -18,6 +18,7 @@ entrypoint's full symbol list and transitive type closure is committed and CI-gu
 - [Stability classes](#stability-classes)
 - [Document model: ExportBlock & storageToBlocks](#document-model-exportblock--storagetoblocks)
 - [ADF media discovery and targeted attachments](#adf-media-discovery-and-targeted-attachments)
+- [Attachment delivery: PageAttachmentWriterV1](#attachment-delivery-pageattachmentwriterv1)
 - [Tree export: TreeSource, fetchExportTree, composeChapters](#tree-export-treesource-fetchexporttree-composechapters)
 - [DOCX engine: ExportEnv & runExport](#docx-engine-exportenv--runexport)
 - [PDF engine: PdfExportEnv & runPdfExport](#pdf-engine-pdfexportenv--runpdfexport)
@@ -84,6 +85,55 @@ Most exporters should call `getExportPageDetailsWithMedia()` instead of wiring
 the two operations manually. It performs zero attachment requests for
 media-free or invalid ADF and preserves unresolved references as visible
 `adf-media-unresolved` export notes.
+
+## Attachment delivery: PageAttachmentWriterV1
+
+`@atlcli/confluence/browser` exports a host-neutral writer for delivering a
+generated DOCX/PDF back to a Confluence page. The host injects
+`ConfluenceProductRequestV1`; atlcli owns the bounded filename preflight,
+multipart fields, response normalization, and typed failures.
+
+| Host | Request/auth owner | Preferred body |
+|---|---|---|
+| CLI | Existing `ConfluenceClient` token/Bearer fetch | `Uint8Array` or `Blob` |
+| Browser extension | Ambient Confluence session fetch | `Blob` |
+| Normal browser | Explicit same-origin/session adapter | `Blob` |
+| Forge Custom UI | Consumer adapter around `requestConfluence` | `Blob` |
+
+Minimal browser example:
+
+```ts
+import { createPageAttachmentWriterV1 } from "@atlcli/confluence/browser";
+
+const writer = createPageAttachmentWriterV1((path, init) =>
+  fetch(new URL(path, location.origin), {
+    ...init,
+    credentials: "include",
+  }),
+);
+
+await writer.create({
+  pageId,
+  filename: "page.pdf",
+  body: pdfBlob,
+  mimeType: "application/pdf",
+});
+```
+
+For create-or-update flows, call `findByFilename()` and then `updateData()` for
+an existing attachment. `create()` repeats the exact-name preflight before its
+POST and treats a concurrent duplicate as `name-conflict`; it never silently
+switches to update. No non-idempotent POST is retried internally.
+
+The normal-browser adapter does not bypass CORS. Forge consumers import
+`@forge/bridge` in their own repository and pass `requestConfluence` into this
+factory; atlcli has no Forge dependency. Blob inputs are appended to
+`FormData` without `arrayBuffer()` materialization. Forge still serializes
+multipart data across its bridge, and the common contract does not promise
+cancellation because host adapters differ.
+
+See the package README for complete CLI/session/Forge examples and
+[Attachments](/confluence/attachments/) for page-sync behavior.
 
 ## Tree export: TreeSource, fetchExportTree, composeChapters
 
