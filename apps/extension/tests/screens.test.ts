@@ -127,6 +127,7 @@ describe("resolveScreens", () => {
       "durable-jobs",
       "pdf-preview",
       "settings-persistence",
+      "confluence-page-customization",
     ] as const;
     const keys = capabilities.map((capability) =>
       requirementReasonKey({ kind: "capability", capability })

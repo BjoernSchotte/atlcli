@@ -77,6 +77,29 @@ describe("built manifest.json", () => {
     expect(existsSync(join(OUTPUT_DIR, path as string))).toBe(true);
   });
 
+  it("registers the Rovo content script only on Confluence Cloud wiki pages", () => {
+    const scripts: unknown = manifest.content_scripts;
+    expect(Array.isArray(scripts)).toBe(true);
+    const rovo = (scripts as Array<Record<string, unknown>>).find(
+      (entry) =>
+        Array.isArray(entry.matches) &&
+        entry.matches.includes("https://*.atlassian.net/wiki/*")
+    );
+    expect(rovo).toBeDefined();
+    expect(rovo?.matches).toEqual(["https://*.atlassian.net/wiki/*"]);
+    expect(rovo?.run_at).toBe("document_start");
+    expect(rovo?.world).toBe("ISOLATED");
+
+    for (const kind of ["js", "css"] as const) {
+      const files = rovo?.[kind];
+      expect(Array.isArray(files)).toBe(true);
+      expect((files as string[]).length).toBeGreaterThan(0);
+      for (const file of files as string[]) {
+        expect(existsSync(join(OUTPUT_DIR, file))).toBe(true);
+      }
+    }
+  });
+
   it("sets the exact normative CSP — no extra sources", () => {
     const csp: unknown = manifest.content_security_policy.extension_pages;
     expect(csp).toBe(NORMATIVE_CSP);

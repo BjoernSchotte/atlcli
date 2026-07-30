@@ -229,6 +229,15 @@ async function selectValue(testId: string, value: string): Promise<void> {
   await flush();
 }
 
+async function setChecked(testId: string, checked: boolean): Promise<void> {
+  const { act } = await import("react");
+  const element = find(testId) as unknown as HTMLInputElement;
+  await act(async () => {
+    if (element.checked !== checked) element.click();
+  });
+  await flush();
+}
+
 // ---------------------------------------------------------------------------
 // Fakes — the only mocked layer
 // ---------------------------------------------------------------------------
@@ -717,7 +726,71 @@ describe("i18n reaches the rendered app", () => {
     await click("nav-settings");
     await selectValue("settings-language", "de");
 
-    expect(await settings.load()).toEqual({ locale: "de" });
+    expect(await settings.load()).toEqual({
+      locale: "de",
+      hideRovoEntrypoints: false,
+    });
+  });
+
+  it("shows and persists the Rovo toggle only for a capable host", async () => {
+    const settings = memorySettingsStore();
+    const capabilities: readonly HostCapability[] = [
+      "pdf-export",
+      "docx-export",
+      "docx-template-store",
+      "settings-persistence",
+      "confluence-page-customization",
+    ];
+    await render(
+      <ExportApp
+        ports={makePorts(newRecorder(), { settings }, capabilities)}
+        localeCandidates={["en"]}
+      />
+    );
+    await click("nav-settings");
+
+    const checkbox = find("settings-hide-rovo") as unknown as HTMLInputElement;
+    expect(checkbox.checked).toBe(false);
+    await setChecked("settings-hide-rovo", true);
+
+    expect((find("settings-hide-rovo") as unknown as HTMLInputElement).checked).toBe(true);
+    expect(await settings.load()).toEqual({
+      locale: null,
+      hideRovoEntrypoints: true,
+    });
+  });
+
+  it("does not expose browser-page customization in an incapable host", async () => {
+    await render(<ExportApp ports={makePorts(newRecorder())} localeCandidates={["en"]} />);
+    await click("nav-settings");
+    expect(maybeFind("settings-hide-rovo")).toBeNull();
+  });
+
+  it("rolls an optimistic Rovo toggle back when persistence fails", async () => {
+    const capabilities: readonly HostCapability[] = [
+      "settings-persistence",
+      "confluence-page-customization",
+    ];
+    const settings: AppPorts["settings"] = {
+      load: async () => ({
+        locale: null,
+        hideRovoEntrypoints: false,
+      }),
+      save: async () => {
+        throw new Error("storage unavailable");
+      },
+    };
+    await render(
+      <ExportApp
+        ports={makePorts(newRecorder(), { settings }, capabilities)}
+        localeCandidates={["en"]}
+      />
+    );
+    await click("nav-settings");
+    await setChecked("settings-hide-rovo", true);
+
+    expect((find("settings-hide-rovo") as unknown as HTMLInputElement).checked).toBe(false);
+    expect(maybeFind("settings-error")).not.toBeNull();
   });
 });
 

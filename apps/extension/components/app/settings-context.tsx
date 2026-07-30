@@ -5,7 +5,15 @@
  * `settings.locale ?? host language` is resolved here and handed down, so no
  * component ever asks the host what language it is in.
  */
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   DEFAULT_SETTINGS,
   type AppSettings,
@@ -28,13 +36,21 @@ export function SettingsProvider({
   children: React.ReactNode;
 }): React.JSX.Element {
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
+  const currentRef = useRef<AppSettings>(DEFAULT_SETTINGS);
+  const persistedRef = useRef<AppSettings>(DEFAULT_SETTINGS);
+  const revisionRef = useRef(0);
+  const saveTailRef = useRef<Promise<void>>(Promise.resolve());
 
   useEffect(() => {
     let cancelled = false;
     void store
       .load()
       .then((loaded) => {
-        if (!cancelled) setSettings(loaded);
+        if (!cancelled) {
+          currentRef.current = loaded;
+          persistedRef.current = loaded;
+          setSettings(loaded);
+        }
       })
       .catch(() => {
         // A host that cannot read preferences still gets a working app on the
@@ -47,13 +63,35 @@ export function SettingsProvider({
 
   const update = useCallback<AppSettingsApi["update"]>(
     async (patch) => {
-      const next = { ...settings, ...patch };
+      const next = { ...currentRef.current, ...patch };
+      const revision = revisionRef.current + 1;
+      revisionRef.current = revision;
       // Optimistic: the UI must not lag behind a language switch while storage
-      // round-trips. A rejected save propagates to the caller.
+      // round-trips. Saves are serialized so rapid patches cannot overwrite one
+      // another with stale whole-record snapshots.
+      currentRef.current = next;
       setSettings(next);
-      await store.save(next);
+
+      const save = saveTailRef.current.then(async () => {
+        await store.save(next);
+        persistedRef.current = next;
+      });
+      saveTailRef.current = save.catch(() => undefined);
+
+      try {
+        await save;
+      } catch (error) {
+        // Only the newest failed update may roll the UI back. If a newer save
+        // is queued, its whole-record snapshot includes this patch and becomes
+        // the next authority. Otherwise return to the last durable record.
+        if (revisionRef.current === revision) {
+          currentRef.current = persistedRef.current;
+          setSettings(persistedRef.current);
+        }
+        throw error;
+      }
     },
-    [settings, store]
+    [store]
   );
 
   const value = useMemo<AppSettingsApi>(() => ({ settings, update }), [settings, update]);
