@@ -4,14 +4,15 @@
  *
  * Rebuilds every isomorphic entrypoint with `--target=browser` and asserts, per
  * entrypoint, that the build succeeds AND that nothing in its transitive graph
- * reaches a Node/Bun builtin.
+ * reaches a Node/Bun builtin or a host-only framework/runtime.
  *
  * ## Three rules, because one is not enough
  *
  * 1. **Source-graph scan (primary).** A `Bun.build` plugin observes every
- *    module specifier the bundler resolves and flags the builtins — in BOTH
- *    spellings, `node:fs` *and* the legacy bare `fs`. It names the importing
- *    source file, so a failure points at the line to change.
+ *    module specifier the bundler resolves and flags builtins — in BOTH
+ *    spellings, `node:fs` *and* the legacy bare `fs` — plus host-only Forge,
+ *    WXT, React, and WebExtension imports. It names the importing source file,
+ *    so a failure points at the line to change.
  * 2. **Output specifier scan.** The original rule, kept as belt-and-suspenders:
  *    `bun build --target=browser` sometimes *externalizes* a `node:` import
  *    instead of failing, producing a "successful" but browser-broken bundle.

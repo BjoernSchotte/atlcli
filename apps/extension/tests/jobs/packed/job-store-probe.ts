@@ -479,16 +479,30 @@ const probe = {
   async retainedPdf(
     artifactRef: string,
     reportRef: string,
-  ): Promise<{ prefix: string; byteLength: number; filename?: string; complete?: boolean }> {
+  ): Promise<{
+    prefix: string;
+    byteLength: number;
+    filename?: string;
+    complete?: boolean;
+    sourceNotes?: Array<{ code: string; macroName?: string }>;
+  }> {
     const stored: number[] = [];
     for await (const chunk of new IndexedDbExportByteStore().read(artifactRef)) {
       for (const byte of chunk) stored.push(byte);
     }
     const report = await readExtensionPdfExportReport(reportRef);
+    const sourceNotes = report?.sourceNotes?.map((note) => ({
+      code: note.code,
+      ...(note.macroName ? { macroName: note.macroName } : {}),
+    }));
     return {
       prefix: new TextDecoder().decode(Uint8Array.from(stored.slice(0, 5))),
       byteLength: stored.length,
-      ...(report ? { filename: report.filename, complete: report.complete } : {}),
+      ...(report ? {
+        filename: report.filename,
+        complete: report.complete,
+        ...(sourceNotes ? { sourceNotes } : {}),
+      } : {}),
     };
   },
   async retainedDocx(

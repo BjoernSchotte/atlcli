@@ -31,6 +31,8 @@ import { InMemoryTemplateAssetStore } from "@atlcli/pdf-template-authoring";
  *   - `ATLCLI_E2E_PAGE_ID`      — an existing DOCSY page with a heading + image.
  *   - `ATLCLI_E2E_TREE_ROOT_ID` — the root of folder 002's DOCSY fixture tree
  *     (do not build a second tree; 002's tasks own and clean the shared one).
+ *   - `ATLCLI_E2E_WHITEBOARD_PAGE_ID` — optional DOCSY page whose ADF embeds an
+ *     Atlassian Whiteboard. The Whiteboard-specific test skips when absent.
  *   - profile `mayflower` is configured (or ephemeral ATLCLI_* env vars are set).
  */
 const RUN = process.env.ATLCLI_E2E === "1";
@@ -38,6 +40,8 @@ const CLI = fileURLToPath(new URL("../index.ts", import.meta.url));
 const PROFILE = process.env.ATLCLI_E2E_PROFILE ?? "mayflower";
 const PAGE_ID = process.env.ATLCLI_E2E_PAGE_ID ?? "";
 const TREE_ROOT_ID = process.env.ATLCLI_E2E_TREE_ROOT_ID ?? "";
+const WHITEBOARD_PAGE_ID =
+  process.env.ATLCLI_E2E_WHITEBOARD_PAGE_ID ?? "";
 
 if (RUN && PAGE_ID.trim() === "") {
   throw new Error(
@@ -202,6 +206,58 @@ describe("wiki export live E2E pack setup", () => {
 });
 
 describe.skipIf(!RUN)("wiki export --format pdf (live E2E)", () => {
+  it.skipIf(WHITEBOARD_PAGE_ID.trim() === "")(
+    "exports an embedded Whiteboard as a linked card in live DOCX and PDF",
+    async () => {
+      const dir = await mkdtemp(join(tmpdir(), "atlcli-e2e-whiteboard-"));
+      try {
+        for (const format of ["docx", "pdf"] as const) {
+          const out = join(dir, `whiteboard.${format}`);
+          const result = await runCli([
+            "wiki",
+            "export",
+            WHITEBOARD_PAGE_ID,
+            "--format",
+            format,
+            "--profile",
+            PROFILE,
+            "--output",
+            out,
+            "--report",
+            "json",
+          ]);
+          expect(result.code).toBe(0);
+          const report = JSON.parse(result.stdout);
+          expect(report.schema).toBe("atlcli.export-report/1");
+          expect(report.format).toBe(format);
+          expect(report.complete).toBe(true);
+          expect(report.warnings).toHaveLength(0);
+          expect(report.errors).toHaveLength(0);
+          expect(report.notesByCode?.["macro-rendered-via"]).toBe(1);
+          expect(report.notesByCode?.["macro-degraded"]).toBeUndefined();
+          expect(report.sourcePages).toHaveLength(1);
+          expect(
+            report.sourcePages[0].notes.map(
+              (note: { code: string }) => note.code
+            )
+          ).toEqual(["macro-rendered-via"]);
+
+          const bytes = new Uint8Array(await readFile(out));
+          expect(bytes.byteLength).toBeGreaterThan(0);
+          if (format === "pdf") {
+            const inspection = validatePdfOutput(bytes);
+            expect(inspection.pageCount).toBeGreaterThanOrEqual(1);
+            expect(inspection.tagged).toBe(true);
+            expect(inspection.hasOutline).toBe(true);
+          }
+        }
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    },
+    180_000
+  );
+
   it("exports a single page to a tagged PDF with a schema-v1 report", async () => {
     const dir = await mkdtemp(join(tmpdir(), "atlcli-e2e-pdf-"));
     try {

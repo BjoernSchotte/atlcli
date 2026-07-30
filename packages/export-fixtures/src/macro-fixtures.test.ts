@@ -80,7 +80,7 @@ test("a Forge-shaped consumer injects requestConfluence only for page acquisitio
           value: {
             type: "doc",
             version: 1,
-            content: [MACRO_ADF_EXTENSION.content.at(-1)],
+            content: [MACRO_ADF_EXTENSION.content[3]],
           },
         },
       },

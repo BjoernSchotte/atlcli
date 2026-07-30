@@ -35,19 +35,19 @@ editable content, metadata, or a preview were exported.
 
 ## Implementation order
 
-- [ ] Pin valid, invalid, repeated, and nested ADF fixtures with synthetic IDs.
-- [ ] Implement tenant-local Whiteboard URL canonicalization and linked-card
+- [x] Pin valid, invalid, repeated, and nested ADF fixtures with synthetic IDs.
+- [x] Implement tenant-local Whiteboard URL canonicalization and linked-card
       rendering in the shared macro registry.
-- [ ] Reconcile valid/invalid macro outcomes without leaking source values.
-- [ ] Prove shared Smart Card link semantics in DOCX and tagged PDF.
-- [ ] Prove CLI/Node/Bun export adds no Whiteboard request.
-- [ ] Prove packed MV3 side-panel/offscreen behavior and dependency boundaries.
-- [ ] Prove ordinary-browser behavior under the neutral browser harness.
-- [ ] Add a Forge-shaped injected-page-read consumer proof with no Forge import
+- [x] Reconcile valid/invalid macro outcomes without leaking source values.
+- [x] Prove shared Smart Card link semantics in DOCX and tagged PDF.
+- [x] Prove CLI/Node/Bun export adds no Whiteboard request.
+- [x] Prove packed MV3 side-panel/offscreen behavior and dependency boundaries.
+- [x] Prove ordinary-browser behavior under the neutral browser harness.
+- [x] Add a Forge-shaped injected-page-read consumer proof with no Forge import
       or `read:whiteboard:confluence` requirement.
-- [ ] Prove embedded-tree retention and honest direct-child non-traversal.
-- [ ] Update user documentation and generated public API reports if required.
-- [ ] Run focused tests, full workspace tests, typecheck, production/package
+- [x] Prove embedded-tree retention and honest direct-child non-traversal.
+- [x] Update user documentation and generated public API reports if required.
+- [x] Run focused tests, full workspace tests, typecheck, production/package
       gates, and the required live E2E with private artifacts cleaned up.
 
 ## Acceptance matrix
@@ -70,12 +70,14 @@ editable content, metadata, or a preview were exported.
 - Treat CI as a regression gate, not as a substitute for the required live E2E
   and artifact cleanup.
 
-## Unresolved questions
+## Resolved decisions
 
-- Confirm the exact trusted source-context field already carried into macro
-  resolution and whether it contains a site origin, a source page URL, or both.
-- Confirm which existing Forge-shaped consumer smoke is authoritative for this
-  repository and whether it runs fully locally or also needs an external pinned
-  consumer check.
-- Confirm whether canonical Whiteboard navigation needs any query parameter.
-  Until proven necessary, the renderer will drop all query parameters.
+- Macro resolution now receives a dedicated optional `siteOrigin`; `siteId`
+  retains its existing meaning and is not overloaded.
+- The repository's authoritative local host proofs are the injected
+  Forge-shaped page-read test, neutral browser harness, and packed MV3
+  side-panel/offscreen test. The shared packages import no host framework.
+- Canonical navigation needs no query parameter. The renderer discards the
+  source query and emits only the validated tenant-local Whiteboard route.
+
+Detailed local verification is recorded in [EVIDENCE.md](./EVIDENCE.md).
