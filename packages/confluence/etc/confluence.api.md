@@ -14192,3 +14192,555 @@ export interface XmlText {
     text: string;
 }
 ```
+
+### Entry point `./research`
+
+```ts
+// export: ConfluenceClient
+export declare class ConfluenceClient {
+    private confluenceBaseUrl;
+    private deploymentType;
+    private capabilityOrigin;
+    private authHeader;
+    private useSession;
+    private maxRetries;
+    private baseDelayMs;
+    private tlsOptions;
+    private guardTransport;
+    private observeTransport;
+    private sessionRedirectPolicy;
+    private exportSourcePolicy;
+    constructor(profile: Profile, options?: ConfluenceClientOptions);
+    private emitTransport;
+    getInstanceUrl(): string;
+    private buildWebUrl;
+    private sleep;
+    private applyFetchOptions;
+    private authRedirectError;
+    private assertNotAuthRedirect;
+    private assertSessionJsonOk;
+    private request;
+    private requestV2;
+    getCurrentUser(options?: {
+        signal?: AbortSignal;
+    }): Promise<{
+        accountId: string;
+        displayName: string;
+        email?: string;
+    }>;
+    getPage(id: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluencePage & {
+        storage: string;
+    }>;
+    getPageAdf(id: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluencePageAdf>;
+    getMacroBodyByMacroId(pageId: string, version: number, macroId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<string | undefined>;
+    convertToExportView(storageFragment: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<string | undefined>;
+    getExportViewMacros(pageId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<Map<string, string>>;
+    getPageDetails(id: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluencePageDetails>;
+    getExportPageDetails(id: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluenceExportPageDetails>;
+    getExportPageDetailsWithMedia(id: string, options?: {
+        signal?: AbortSignal;
+        maxAttachments?: number;
+        maxInlineComments?: number;
+    }): Promise<ConfluenceExportPageDetails>;
+    getAncestors(pageId: string): Promise<{
+        id: string;
+        title: string;
+    }[]>;
+    search(cql: string, options?: {
+        limit?: number;
+        start?: number;
+        excerpt?: boolean;
+        detail?: "minimal" | "standard" | "full";
+        signal?: AbortSignal;
+    }): Promise<SearchResults>;
+    searchDetailed(cql: string, options?: {
+        limit?: number;
+        contentStatuses?: string[];
+        signal?: AbortSignal;
+    }): Promise<ConfluenceDetailedSearchResults>;
+    private parseSearchDetail;
+    searchPages(cql: string, limit?: number, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluenceSearchResult[]>;
+    searchNextPage(providerCursor: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<SearchResults>;
+    findPagesByTitle(title: string, options?: {
+        spaceKey?: string;
+        limit?: number;
+        signal?: AbortSignal;
+    }): Promise<Array<{
+        id: string;
+        title: string;
+        spaceKey?: string;
+    }>>;
+    private searchByUrl;
+    private parseSearchResult;
+    createPage(params: {
+        spaceKey: string;
+        title: string;
+        storage: string;
+        parentId?: string;
+    }): Promise<ConfluencePage>;
+    updatePage(params: {
+        id: string;
+        title: string;
+        storage: string;
+        version: number;
+    }): Promise<ConfluencePage>;
+    movePage(pageId: string, newParentId: string): Promise<ConfluencePage>;
+    movePageToPosition(pageId: string, position: "before" | "after" | "append", targetId: string): Promise<ConfluencePage>;
+    getChildrenWithPosition(parentId: string, options?: {
+        limit?: number;
+        signal?: AbortSignal;
+    }): Promise<Array<ConfluencePage & {
+        position: number | null;
+    }>>;
+    copyPage(params: {
+        sourceId: string;
+        targetSpaceKey?: string;
+        newTitle?: string;
+        parentId?: string;
+    }): Promise<ConfluencePage>;
+    getChildren(pageId: string, options?: {
+        limit?: number;
+    }): Promise<ConfluenceSearchResult[]>;
+    getPageDirectChildren(pageId: string, options?: {
+        limit?: number;
+        signal?: AbortSignal;
+    }): Promise<FolderChild[]>;
+    deletePage(pageId: string): Promise<void>;
+    archivePage(pageId: string): Promise<ConfluencePage>;
+    bulkOperation<T>(pageIds: string[], operation: (pageId: string) => Promise<T>, options?: {
+        concurrency?: number;
+        onProgress?: (done: number, total: number) => void;
+    }): Promise<BulkOperationResult>;
+    createSpace(params: {
+        key: string;
+        name: string;
+        description?: string;
+    }): Promise<ConfluenceSpace>;
+    listSpaces(limit?: number): Promise<ConfluenceSpace[]>;
+    getSpace(key: string): Promise<ConfluenceSpace>;
+    getSpaceIcon(key: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<SpaceIcon | null>;
+    getSpaceWithIcon(key: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<{
+        space: ConfluenceSpace;
+        icon: SpaceIcon | null;
+    }>;
+    getPageVersion(id: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<PageChangeInfo>;
+    getPagesSince(params: {
+        scope: SyncScope;
+        since: string;
+        limit?: number;
+    }): Promise<PageChangeInfo[]>;
+    getAllPages(params: {
+        scope: SyncScope;
+        limit?: number;
+    }): Promise<PageChangeInfo[]>;
+    private getAllPagesInSpaceV2;
+    private searchPagesAsChangeInfo;
+    getPagesBatch(ids: string[], concurrency?: number): Promise<(ConfluencePage & {
+        storage: string;
+    })[]>;
+    listPageAttachmentMedia(pageId: string, options: {
+        maxAttachments?: number;
+        signal?: AbortSignal;
+        requiredFileIds: readonly string[];
+    }): Promise<TargetedPageAttachmentMediaResult>;
+    listPageAttachmentMedia(pageId: string, options?: {
+        maxAttachments?: number;
+        signal?: AbortSignal;
+    }): Promise<PageAttachmentMediaResult>;
+    listAttachments(pageId: string, options?: {
+        limit?: number;
+        signal?: AbortSignal;
+    }): Promise<AttachmentInfo[]>;
+    getAttachment(attachmentId: string): Promise<AttachmentInfo>;
+    uploadAttachment(params: {
+        pageId: string;
+        filename: string;
+        data: Uint8Array;
+        mimeType?: string;
+        comment?: string;
+    }): Promise<AttachmentInfo>;
+    updateAttachment(params: {
+        attachmentId: string;
+        pageId: string;
+        filename?: string;
+        data: Uint8Array;
+        mimeType?: string;
+        comment?: string;
+    }): Promise<AttachmentInfo>;
+    deleteAttachment(attachmentId: string): Promise<void>;
+    downloadAttachment(attachment: AttachmentInfo | {
+        downloadUrl: string;
+    }, options?: {
+        signal?: AbortSignal;
+    }): Promise<Uint8Array>;
+    private requestMultipart;
+    private pageAttachmentWriter;
+    private requestBinary;
+    private parseAttachmentResponse;
+    private detectMimeType;
+    registerWebhook(params: {
+        name: string;
+        url: string;
+        events: string[];
+    }): Promise<WebhookRegistration>;
+    listWebhooks(): Promise<WebhookRegistration[]>;
+    deleteWebhook(webhookId: string): Promise<void>;
+    private webhookRequest;
+    getLabels(pageId: string): Promise<LabelInfo[]>;
+    addLabels(pageId: string, labels: string[]): Promise<LabelInfo[]>;
+    removeLabel(pageId: string, label: string): Promise<void>;
+    getPagesByLabel(label: string, options?: {
+        spaceKey?: string;
+        limit?: number;
+    }): Promise<PageChangeInfo[]>;
+    getPageHistory(pageId: string, options?: {
+        limit?: number;
+    }): Promise<PageHistory>;
+    getPageAtVersion(pageId: string, version: number): Promise<ConfluencePage & {
+        storage: string;
+    }>;
+    restorePageVersion(pageId: string, version: number, message?: string): Promise<ConfluencePage>;
+    getFooterComments(pageId: string, options?: {
+        limit?: number;
+    }): Promise<FooterComment[]>;
+    getFooterCommentReplies(commentId: string, options?: {
+        limit?: number;
+    }): Promise<FooterComment[]>;
+    getInlineComments(pageId: string, options?: {
+        limit?: number;
+    }): Promise<InlineComment[]>;
+    getInlineCommentReplies(commentId: string, options?: {
+        limit?: number;
+    }): Promise<InlineComment[]>;
+    listPageInlineCommentsForExport(pageId: string, options?: {
+        signal?: AbortSignal;
+        maxInlineComments?: number;
+    }): Promise<PageInlineCommentsExportResult>;
+    getAllComments(pageId: string, options?: {
+        limit?: number;
+    }): Promise<PageComments>;
+    private parseFooterComment;
+    private parseInlineComment;
+    createFooterComment(params: {
+        pageId: string;
+        body: string;
+        parentCommentId?: string;
+    }): Promise<FooterComment>;
+    createInlineComment(params: {
+        pageId: string;
+        body: string;
+        textSelection: string;
+        textSelectionMatchCount?: number;
+        textSelectionMatchIndex?: number;
+        parentCommentId?: string;
+    }): Promise<InlineComment>;
+    resolveComment(commentId: string, type: "footer" | "inline"): Promise<void>;
+    deleteComment(commentId: string, type: "footer" | "inline"): Promise<void>;
+    getFolder(folderId: string): Promise<ConfluenceFolder>;
+    updateFolder(folderId: string, title: string): Promise<ConfluenceFolder>;
+    getFolderChildren(folderId: string, options?: {
+        limit?: number;
+        signal?: AbortSignal;
+    }): Promise<FolderChild[]>;
+    getSpaceFolders(spaceKey: string): Promise<ConfluenceFolder[]>;
+    createFolder(params: {
+        spaceId: string;
+        title: string;
+        parentFolderId?: string;
+    }): Promise<ConfluenceFolder>;
+    deleteFolder(folderId: string): Promise<void>;
+    getFolderVersion(folderId: string): Promise<number>;
+    getAllFoldersWithVersions(params: {
+        scope: SyncScope;
+    }): Promise<Array<{
+        id: string;
+        title: string;
+        version: number;
+    }>>;
+    getFoldersInTree(parentId: string): Promise<ConfluenceFolder[]>;
+    movePageToFolder(pageId: string, folderId: string): Promise<ConfluencePage>;
+    getUser(accountId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<UserInfo | null>;
+    getSpaceHomepageStorage(spaceKey: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<string | null>;
+    getSpaceHomepageId(spaceKey: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<string | null>;
+    getPageOwner(pageId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluenceUser | null>;
+    getUsersBulk(accountIds: string[], options?: {
+        concurrency?: number;
+        signal?: AbortSignal;
+    }): Promise<Map<string, UserInfo | null>>;
+    getVersionHistory(pageId: string, options?: {
+        limit?: number;
+    }): Promise<PageHistory>;
+    getEditorVersion(pageId: string): Promise<"v2" | "v1" | null>;
+    setEditorVersion(pageId: string, version: "v2" | "v1"): Promise<void>;
+}
+
+// export: ConfluenceTransportEvent
+export type ConfluenceTransportEvent = {
+    type: "attempt";
+    method: string;
+    attempt: number;
+} | {
+    type: "response";
+    method: string;
+    attempt: number;
+    status: number;
+    durationMs: number;
+    responseBytes: number;
+    retryAfterMs?: number;
+} | {
+    type: "error";
+    method: string;
+    attempt: number;
+    durationMs: number;
+};
+
+// export: ExportBlock
+export type ExportBlock = {
+    type: "heading";
+    level: 1 | 2 | 3 | 4 | 5 | 6;
+    content: InlineNode[];
+    explicitAnchor?: string;
+    presentation?: BlockPresentation;
+    localId?: string;
+} | {
+    type: "paragraph";
+    content: InlineNode[];
+    presentation?: BlockPresentation;
+    localId?: string;
+} | {
+    type: "smartCard";
+    card: SmartCardSemantics;
+} | {
+    type: "codeBlock";
+    language?: string;
+    code: string;
+    title?: string;
+    initiallyCollapsed?: boolean;
+    caption?: Caption;
+    wrap?: boolean;
+    hideLineNumbers?: boolean;
+    firstLineNumber?: number;
+    localId?: string;
+    uniqueId?: string;
+    breakout?: LayoutBreakout;
+} | {
+    type: "callout";
+    kind: CalloutKind;
+    title?: string;
+    content: ExportBlock[];
+    localId?: string;
+    panelColor?: string;
+    panelIcon?: string;
+    panelIconId?: string;
+    panelIconText?: string;
+    panelIconProjection?: PortableEmojiProjection;
+    suppressDefaultIcon?: boolean;
+    syncedContent?: SyncedContentProvenance;
+} | {
+    type: "expand";
+    nested: boolean;
+    content: ExportBlock[];
+    title?: string;
+    localId?: string;
+    macroId?: string;
+    breakout?: LayoutBreakout;
+} | {
+    type: "list";
+    ordered: boolean;
+    items: ListItem[];
+    start?: number;
+    listKind?: "task" | "decision";
+    localId?: string;
+} | ({
+    type: "layout";
+} & PageLayout) | {
+    type: "table";
+    rows: TableRow[];
+    columnWidths?: number[];
+    presentation?: TablePresentation;
+    caption?: Caption;
+    fragments?: AdfFragmentIdentity[];
+} | {
+    type: "image";
+    source: ImageSource;
+    media?: UnresolvedMediaIdentity;
+    alt?: string;
+    width?: number;
+    height?: number;
+    mediaPresentation?: MediaPresentation;
+    mediaGroup?: MediaGroupPosition;
+    border?: MediaBorder;
+    caption?: Caption;
+    annotations?: AdfAnnotationIdentity[];
+    link?: ExportLink;
+} | {
+    type: "mediaFallback";
+    label: string;
+    media: UnresolvedMediaIdentity;
+    caption?: Caption;
+    alt?: string;
+    width?: number;
+    height?: number;
+    mediaPresentation?: MediaPresentation;
+    mediaGroup?: MediaGroupPosition;
+    border?: MediaBorder;
+    annotations?: AdfAnnotationIdentity[];
+    link?: ExportLink;
+} | {
+    type: "blockquote";
+    content: ExportBlock[];
+} | {
+    type: "divider";
+} | {
+    type: "pageBreak";
+} | {
+    type: "orientation";
+    landscape: boolean;
+    content: ExportBlock[];
+} | {
+    type: "anchor";
+    name: string;
+} | {
+    type: "unknown";
+    macroName: string;
+    params?: MacroParameter[];
+    body?: ExportBlock[];
+    plainBody?: string;
+    macroId?: string;
+    adfExtension?: AdfExtensionIdentity;
+    extensionFrames?: AdfExtensionFrame[];
+    fragments?: AdfFragmentIdentity[];
+    unsupportedAdf?: AdfUnsupportedNodeProvenance;
+    bodyNotes?: ExportNote[];
+    sourcePage?: {
+        id: string;
+        version?: number;
+        spaceKey?: string;
+    };
+};
+
+// export: InlineNode
+export type InlineNode = {
+    type: "text";
+    text: string;
+    marks?: InlineMark[];
+    color?: string;
+    backgroundColor?: string;
+    emoji?: EmojiSemantics;
+    adfExtension?: AdfExtensionIdentity;
+    extensionParams?: MacroParameter[];
+    sourcePage?: {
+        id: string;
+        version?: number;
+        spaceKey?: string;
+    };
+    annotations?: AdfAnnotationIdentity[];
+    fragments?: AdfFragmentIdentity[];
+    unsupportedAdf?: AdfUnsupportedNodeProvenance[];
+} | ({
+    type: "link";
+    content: InlineNode[];
+} & ExportLink) | {
+    type: "mention";
+    accountId: string;
+    displayName?: string;
+    sourceText?: string;
+    localId?: string;
+    accessLevel?: string;
+    userType?: "DEFAULT" | "SPECIAL" | "APP";
+} | {
+    type: "date";
+    timestamp: string;
+    localId?: string;
+} | {
+    type: "status";
+    text: string;
+    color: string;
+    localId?: string;
+    style?: string;
+} | {
+    type: "smartCard";
+    card: SmartCardSemantics;
+} | {
+    type: "media";
+    media: UnresolvedMediaIdentity;
+    source?: ImageSource;
+    alt?: string;
+    width?: number;
+    height?: number;
+    border?: MediaBorder;
+    annotations?: AdfAnnotationIdentity[];
+    link?: ExportLink;
+} | {
+    type: "placeholder";
+    text: string;
+    localId?: string;
+    placeholderType?: string;
+} | {
+    type: "lineBreak";
+};
+
+// export: LinkTarget
+export type LinkTarget = {
+    kind: "external";
+    href: string;
+} | {
+    kind: "page";
+    contentTitle: string;
+    contentId?: string;
+    spaceKey?: string;
+    anchor?: string;
+    href?: string;
+} | {
+    kind: "attachment";
+    filename: string;
+    href?: string;
+} | {
+    kind: "anchor";
+    anchor: string;
+};
+
+// export: sanitizeLinkHref
+export declare function sanitizeLinkHref(href: string): LinkSanitizeResult;
+
+// export: StorageParseError
+export declare class StorageParseError extends Error {
+    readonly kind: StorageParseErrorKind;
+    constructor(kind: StorageParseErrorKind, message: string);
+}
+
+// export: storageToBlocks
+export declare function storageToBlocks(storage: string, options?: StorageToBlocksOptions): StorageToBlocksResult;
+```

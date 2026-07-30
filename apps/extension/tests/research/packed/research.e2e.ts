@@ -5,6 +5,7 @@ import {
   type BrowserContext,
   type CDPSession,
   type Page,
+  type Worker,
 } from "@playwright/test";
 import {
   cpSync,
@@ -568,6 +569,15 @@ async function installEventCapture(page: Page): Promise<void> {
   }, CHANNEL_NAME);
 }
 
+function isExtensionBackgroundWorker(worker: Worker): boolean {
+  try {
+    const url = new URL(worker.url());
+    return url.protocol === "chrome-extension:" && url.pathname === "/background.js";
+  } catch {
+    return false;
+  }
+}
+
 async function openResearchScreen(page: Page): Promise<void> {
   await page.getByTestId("nav-research").click();
   await expect(page.getByTestId("research-screen")).toBeVisible();
@@ -615,10 +625,13 @@ test.beforeAll(async () => {
       `--load-extension=${extensionDir}`,
     ],
   });
-  let serviceWorker = context.serviceWorkers()[0];
-  serviceWorker ??= await context.waitForEvent("serviceworker", {
-    timeout: 30_000,
-  });
+  let serviceWorker = context.serviceWorkers().find(isExtensionBackgroundWorker);
+  while (!serviceWorker) {
+    const candidate = await context.waitForEvent("serviceworker", {
+      timeout: 30_000,
+    });
+    if (isExtensionBackgroundWorker(candidate)) serviceWorker = candidate;
+  }
   extensionId = new URL(serviceWorker.url()).host;
 
   page = await context.newPage();

@@ -6,6 +6,15 @@
  * DedicatedWorkerGlobalScope. Research needs only the REST client, the
  * dependency-free Storage→ExportBlock parser, and URL sanitization.
  */
-export * from "./client.js";
-export * from "./export-blocks.js";
-export * from "./link-safety.js";
+export {
+  ConfluenceClient,
+  type ConfluenceTransportEvent,
+} from "./client.js";
+export {
+  StorageParseError,
+  storageToBlocks,
+  type ExportBlock,
+  type InlineNode,
+  type LinkTarget,
+} from "./export-blocks.js";
+export { sanitizeLinkHref } from "./link-safety.js";

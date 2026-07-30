@@ -79,6 +79,9 @@ bun run test <15 focused research/boundary files>
 bun run test apps/extension/tests/output-scan.test.ts
   52 passed, 0 failed
 
+bun run test
+  5,994 passed, 15 skipped, 0 failed across 423 files
+
 bun run --cwd apps/extension test:research-extension-browser:prebuilt
   1 passed
 
@@ -88,6 +91,12 @@ bun run --cwd apps/extension check:output
 bun run typecheck
   passed
 ```
+
+The Confluence research subpath is intentionally limited to eight public
+type/runtime symbols; its generated API and closure reports are current. The
+packed browser harness selects the extension's `background.js` service worker
+explicitly, so unrelated Chromium service workers cannot be mistaken for the
+extension host.
 
 The output scan still rejects executable Node/Bun globals, remote scripts,
 dynamic code, fake Buffer globals, and missing/unpinned runtime assets. Its

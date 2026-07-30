@@ -39,3 +39,10 @@
 - same-package closure references: 187
 - reaches `@atlcli/core` (0.x — frozen-by-closure): Profile
 - reachable-but-unexported gaps: none
+
+### Entry point `./research` — stable
+
+- exported symbols (8): ConfluenceClient, ConfluenceTransportEvent, ExportBlock, InlineNode, LinkTarget, StorageParseError, sanitizeLinkHref, storageToBlocks
+- same-package closure references: 59
+- reaches `@atlcli/core` (0.x — frozen-by-closure): Profile
+- reachable-but-unexported gaps: none
