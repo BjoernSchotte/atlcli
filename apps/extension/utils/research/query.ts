@@ -1,0 +1,94 @@
+import type {
+  ResearchScopeV1,
+  ResearchTimeWindowV1,
+} from "./contracts.js";
+import type { ResearchSearchQueryV1 } from "./capability-contracts.js";
+
+function stripControls(value: string): string {
+  return value.replace(/[\u0000-\u001f\u007f-\u009f]/g, "");
+}
+
+export function escapeResearchJqlLiteral(value: string): string {
+  return stripControls(value).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+export function escapeResearchCqlLiteral(value: string): string {
+  return stripControls(value).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+function quotedList(values: readonly string[], escape: (value: string) => string): string {
+  return values.map((value) => `"${escape(value)}"`).join(", ");
+}
+
+function addDateClauses(
+  clauses: string[],
+  field: string,
+  window: ResearchTimeWindowV1 | undefined
+): void {
+  if (window?.from) clauses.push(`${field} >= "${window.from}"`);
+  if (window?.to) clauses.push(`${field} <= "${window.to}"`);
+}
+
+export function buildResearchJql(
+  scope: ResearchScopeV1,
+  query: ResearchSearchQueryV1
+): string {
+  const clauses = [
+    `project in (${quotedList(scope.jiraProjectKeys, escapeResearchJqlLiteral)})`,
+  ];
+  addDateClauses(clauses, "updated", scope.timeWindow);
+  if (query.text) clauses.push(`text ~ "${escapeResearchJqlLiteral(query.text)}"`);
+  return `${clauses.join(" AND ")} ORDER BY updated DESC, key ASC`;
+}
+
+export function buildResearchCql(
+  scope: ResearchScopeV1,
+  query: ResearchSearchQueryV1
+): string {
+  const clauses = [
+    "type = page",
+    `space in (${quotedList(scope.confluenceSpaceKeys, escapeResearchCqlLiteral)})`,
+  ];
+  addDateClauses(clauses, "lastmodified", scope.timeWindow);
+  if (query.text) clauses.push(`text ~ "${escapeResearchCqlLiteral(query.text)}"`);
+  return `${clauses.join(" AND ")} ORDER BY lastmodified DESC`;
+}
+
+export function researchQueryFingerprint(
+  tool: "jira.issue.search" | "wiki.search",
+  query: ResearchSearchQueryV1,
+  pageSize: number
+): string {
+  return JSON.stringify({ tool, query, pageSize });
+}
+
+export function parseResearchQueryFingerprint(value: string): {
+  tool: "jira.issue.search" | "wiki.search";
+  query: ResearchSearchQueryV1;
+  pageSize: number;
+} {
+  const parsed = JSON.parse(value) as unknown;
+  if (typeof parsed !== "object" || parsed === null) throw new Error("Invalid query state.");
+  const candidate = parsed as Record<string, unknown>;
+  if (candidate.tool !== "jira.issue.search" && candidate.tool !== "wiki.search") {
+    throw new Error("Invalid query tool.");
+  }
+  if (
+    typeof candidate.pageSize !== "number" ||
+    !Number.isSafeInteger(candidate.pageSize)
+  ) {
+    throw new Error("Invalid query page size.");
+  }
+  const query =
+    typeof candidate.query === "object" && candidate.query !== null
+      ? (candidate.query as Record<string, unknown>)
+      : {};
+  if (query.text !== undefined && typeof query.text !== "string") {
+    throw new Error("Invalid query text.");
+  }
+  return {
+    tool: candidate.tool,
+    query: query.text ? { text: query.text } : {},
+    pageSize: candidate.pageSize,
+  };
+}

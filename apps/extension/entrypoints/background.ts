@@ -20,6 +20,12 @@ import {
   type PdfCompileHints,
   isExportJobsChanged,
 } from "../utils/messages.js";
+import type { ResearchRequestV1 } from "../utils/research/contracts.js";
+import {
+  ResearchContractError,
+  normalizeResearchRequestV1,
+} from "../utils/research/contracts.js";
+import { profileFromTabUrl } from "../utils/profile.js";
 import { handleExtMessage } from "../utils/listeners.js";
 import { closeOffscreen, ensureOffscreen } from "../utils/offscreen.js";
 import { createIdleTimer } from "../utils/idle-timer.js";
@@ -411,6 +417,61 @@ export default defineBackground({
       return { state: result.state, value: result.detection };
     });
 
+  const runResearch = async (
+    runId: string,
+    windowId: number,
+    value: ResearchRequestV1
+  ) => {
+    const request = normalizeResearchRequestV1(value);
+    const tabs = await chrome.tabs.query({ active: true, windowId });
+    const profile = tabs[0]?.url ? profileFromTabUrl(tabs[0].url) : null;
+    if (!profile || new URL(profile.baseUrl).origin !== request.scope.siteOrigin) {
+      throw new ResearchContractError(
+        "access-denied",
+        "The active Atlassian tab no longer matches the research site."
+      );
+    }
+    offscreenActivity.begin();
+    try {
+      await ensureOffscreen();
+      const response = (await chrome.runtime.sendMessage({
+        kind: "offscreen:research-run",
+        runId,
+        request,
+      })) as OffscreenResponse | undefined;
+      if (
+        !response ||
+        response.kind !== "offscreen:research-run-result" ||
+        response.runId !== runId
+      ) {
+        throw new ResearchContractError(
+          "provider-error",
+          "The research worker host returned no correlated result."
+        );
+      }
+      if (!response.ok) {
+        throw new ResearchContractError(response.code, response.error);
+      }
+      return response.report;
+    } finally {
+      offscreenActivity.end();
+    }
+  };
+
+  const cancelResearch = async (runId: string): Promise<boolean> => {
+    await ensureOffscreen();
+    const response = (await chrome.runtime.sendMessage({
+      kind: "offscreen:research-cancel",
+      runId,
+    })) as OffscreenResponse | undefined;
+    return Boolean(
+      response &&
+        response.kind === "offscreen:research-cancel-result" &&
+        response.runId === runId &&
+        response.cancelled
+    );
+  };
+
   // Start-up pass: a worker that just woke may be looking at records whose
   // compile died with the previous one.
   sweepJobs(true);
@@ -433,6 +494,8 @@ export default defineBackground({
       runPdfCancel,
       prepareDocxRuntime,
       runJobsWake,
+      runResearch,
+      cancelResearch,
     });
     if (handled) {
       // Opening or reading the panel is not acknowledgement. Productive queue

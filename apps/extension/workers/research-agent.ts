@@ -1,0 +1,62 @@
+import type { Profile } from "@atlcli/core";
+import {
+  normalizeResearchRequestV1,
+  type ResearchProgressV1,
+} from "../utils/research/contracts.js";
+import { ResearchRunBudget } from "../utils/research/budget.js";
+import { createRestResearchProviders } from "../utils/research/rest-provider.js";
+import { runResearchAgent } from "../utils/research/agent-runtime.js";
+import { classifyResearchError } from "../utils/research/redaction.js";
+import type {
+  ResearchWorkerRequestV1,
+  ResearchWorkerResponseV1,
+} from "../utils/research/worker-protocol.js";
+
+function post(message: ResearchWorkerResponseV1): void {
+  globalThis.postMessage(message);
+}
+
+globalThis.addEventListener("message", (event: MessageEvent<unknown>) => {
+  const message = event.data as Partial<ResearchWorkerRequestV1> | null;
+  if (
+    !message ||
+    message.kind !== "research-worker:run" ||
+    typeof message.runId !== "string" ||
+    typeof message.apiKey !== "string"
+  ) {
+    return;
+  }
+  const runId = message.runId;
+  void (async () => {
+    try {
+      const request = normalizeResearchRequestV1(message.request);
+      const profile: Profile = {
+        name: "research-session",
+        baseUrl: request.scope.siteOrigin,
+        deploymentType: "cloud",
+        auth: { type: "session" },
+      };
+      const budget = new ResearchRunBudget(request.limits);
+      const providers = createRestResearchProviders(profile, request, budget);
+      const onProgress = (progress: ResearchProgressV1): void =>
+        post({ kind: "research-worker:progress", runId, progress });
+      const report = await runResearchAgent({
+        apiKey: message.apiKey,
+        request,
+        providers,
+        budget,
+        runId,
+        options: { onProgress },
+      });
+      post({ kind: "research-worker:complete", runId, report });
+    } catch (error) {
+      const classified = classifyResearchError(error);
+      post({
+        kind: "research-worker:error",
+        runId,
+        code: classified.code,
+        error: classified.message,
+      });
+    }
+  })();
+});

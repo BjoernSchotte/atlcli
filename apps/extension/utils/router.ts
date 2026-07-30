@@ -15,6 +15,10 @@ import type {
   PdfCompileHints,
 } from "./messages.js";
 import type { CodeThemeId } from "@atlcli/code-highlight/registry";
+import type {
+  ResearchReportV1,
+  ResearchRequestV1,
+} from "./research/contracts.js";
 
 /** Injected side effects the router needs to fulfil requests. */
 export interface RouterDeps {
@@ -42,6 +46,12 @@ export interface RouterDeps {
     jobIds?: string[],
     options?: { resumeWaiting?: boolean },
   ) => Promise<string | undefined>;
+  runResearch?: (
+    runId: string,
+    windowId: number,
+    request: ResearchRequestV1
+  ) => Promise<ResearchReportV1>;
+  cancelResearch?: (runId: string) => Promise<boolean>;
 }
 
 /**
@@ -125,6 +135,39 @@ export async function routeMessage(
           error: error instanceof Error ? error.message : String(error),
         };
       }
+    }
+    case "research:run": {
+      if (!deps.runResearch) {
+        return {
+          kind: "research:run-result",
+          runId: msg.runId,
+          ok: false,
+          code: "provider-error",
+          error: "Research is not configured.",
+        };
+      }
+      try {
+        const report = await deps.runResearch(msg.runId, msg.windowId, msg.request);
+        return { kind: "research:run-result", runId: msg.runId, ok: true, report };
+      } catch (error) {
+        const { classifyResearchError } = await import("./research/redaction.js");
+        const classified = classifyResearchError(error);
+        return {
+          kind: "research:run-result",
+          runId: msg.runId,
+          ok: false,
+          code: classified.code,
+          error: classified.message,
+        };
+      }
+    }
+    case "research:cancel": {
+      const cancelled = await deps.cancelResearch?.(msg.runId).catch(() => false);
+      return {
+        kind: "research:cancel-result",
+        runId: msg.runId,
+        cancelled: cancelled ?? false,
+      };
     }
     default: {
       // Exhaustiveness: adding a request kind without handling it fails typecheck.

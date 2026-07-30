@@ -578,11 +578,12 @@ export declare class ConfluenceClient {
     private maxRetries;
     private baseDelayMs;
     private tlsOptions;
+    private guardTransport;
+    private observeTransport;
     private sessionRedirectPolicy;
     private exportSourcePolicy;
-    constructor(profile: Profile, options?: {
-        exportSourcePolicy?: ExportSourcePolicy;
-    });
+    constructor(profile: Profile, options?: ConfluenceClientOptions);
+    private emitTransport;
     getInstanceUrl(): string;
     private buildWebUrl;
     private sleep;
@@ -647,6 +648,9 @@ export declare class ConfluenceClient {
     searchPages(cql: string, limit?: number, options?: {
         signal?: AbortSignal;
     }): Promise<ConfluenceSearchResult[]>;
+    searchNextPage(providerCursor: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<SearchResults>;
     findPagesByTitle(title: string, options?: {
         spaceKey?: string;
         limit?: number;
@@ -874,6 +878,13 @@ export declare class ConfluenceClient {
     setEditorVersion(pageId: string, version: "v2" | "v1"): Promise<void>;
 }
 
+// export: ConfluenceClientOptions
+export interface ConfluenceClientOptions {
+    exportSourcePolicy?: ExportSourcePolicy;
+    guardTransport?: (event: ConfluenceTransportEvent) => void;
+    observeTransport?: (event: ConfluenceTransportEvent) => void;
+}
+
 // export: ConfluenceDetailedSearchResults
 export type ConfluenceDetailedSearchResults = {
     results: ConfluenceSearchDetail[];
@@ -981,6 +992,26 @@ export type ConfluenceSpace = {
     name: string;
     type: "global" | "personal";
     url?: string;
+};
+
+// export: ConfluenceTransportEvent
+export type ConfluenceTransportEvent = {
+    type: "attempt";
+    method: string;
+    attempt: number;
+} | {
+    type: "response";
+    method: string;
+    attempt: number;
+    status: number;
+    durationMs: number;
+    responseBytes: number;
+    retryAfterMs?: number;
+} | {
+    type: "error";
+    method: string;
+    attempt: number;
+    durationMs: number;
 };
 
 // export: confluenceTreeSource
@@ -3343,11 +3374,12 @@ export declare class ConfluenceClient {
     private maxRetries;
     private baseDelayMs;
     private tlsOptions;
+    private guardTransport;
+    private observeTransport;
     private sessionRedirectPolicy;
     private exportSourcePolicy;
-    constructor(profile: Profile, options?: {
-        exportSourcePolicy?: ExportSourcePolicy;
-    });
+    constructor(profile: Profile, options?: ConfluenceClientOptions);
+    private emitTransport;
     getInstanceUrl(): string;
     private buildWebUrl;
     private sleep;
@@ -3412,6 +3444,9 @@ export declare class ConfluenceClient {
     searchPages(cql: string, limit?: number, options?: {
         signal?: AbortSignal;
     }): Promise<ConfluenceSearchResult[]>;
+    searchNextPage(providerCursor: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<SearchResults>;
     findPagesByTitle(title: string, options?: {
         spaceKey?: string;
         limit?: number;
@@ -3639,6 +3674,13 @@ export declare class ConfluenceClient {
     setEditorVersion(pageId: string, version: "v2" | "v1"): Promise<void>;
 }
 
+// export: ConfluenceClientOptions
+export interface ConfluenceClientOptions {
+    exportSourcePolicy?: ExportSourcePolicy;
+    guardTransport?: (event: ConfluenceTransportEvent) => void;
+    observeTransport?: (event: ConfluenceTransportEvent) => void;
+}
+
 // export: ConfluenceDetailedSearchResults
 export type ConfluenceDetailedSearchResults = {
     results: ConfluenceSearchDetail[];
@@ -3746,6 +3788,26 @@ export type ConfluenceSpace = {
     name: string;
     type: "global" | "personal";
     url?: string;
+};
+
+// export: ConfluenceTransportEvent
+export type ConfluenceTransportEvent = {
+    type: "attempt";
+    method: string;
+    attempt: number;
+} | {
+    type: "response";
+    method: string;
+    attempt: number;
+    status: number;
+    durationMs: number;
+    responseBytes: number;
+    retryAfterMs?: number;
+} | {
+    type: "error";
+    method: string;
+    attempt: number;
+    durationMs: number;
 };
 
 // export: confluenceTreeSource
@@ -6108,11 +6170,12 @@ export declare class ConfluenceClient {
     private maxRetries;
     private baseDelayMs;
     private tlsOptions;
+    private guardTransport;
+    private observeTransport;
     private sessionRedirectPolicy;
     private exportSourcePolicy;
-    constructor(profile: Profile, options?: {
-        exportSourcePolicy?: ExportSourcePolicy;
-    });
+    constructor(profile: Profile, options?: ConfluenceClientOptions);
+    private emitTransport;
     getInstanceUrl(): string;
     private buildWebUrl;
     private sleep;
@@ -6177,6 +6240,9 @@ export declare class ConfluenceClient {
     searchPages(cql: string, limit?: number, options?: {
         signal?: AbortSignal;
     }): Promise<ConfluenceSearchResult[]>;
+    searchNextPage(providerCursor: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<SearchResults>;
     findPagesByTitle(title: string, options?: {
         spaceKey?: string;
         limit?: number;
@@ -6404,6 +6470,13 @@ export declare class ConfluenceClient {
     setEditorVersion(pageId: string, version: "v2" | "v1"): Promise<void>;
 }
 
+// export: ConfluenceClientOptions
+export interface ConfluenceClientOptions {
+    exportSourcePolicy?: ExportSourcePolicy;
+    guardTransport?: (event: ConfluenceTransportEvent) => void;
+    observeTransport?: (event: ConfluenceTransportEvent) => void;
+}
+
 // export: ConfluenceDetailedSearchResults
 export type ConfluenceDetailedSearchResults = {
     results: ConfluenceSearchDetail[];
@@ -6511,6 +6584,26 @@ export type ConfluenceSpace = {
     name: string;
     type: "global" | "personal";
     url?: string;
+};
+
+// export: ConfluenceTransportEvent
+export type ConfluenceTransportEvent = {
+    type: "attempt";
+    method: string;
+    attempt: number;
+} | {
+    type: "response";
+    method: string;
+    attempt: number;
+    status: number;
+    durationMs: number;
+    responseBytes: number;
+    retryAfterMs?: number;
+} | {
+    type: "error";
+    method: string;
+    attempt: number;
+    durationMs: number;
 };
 
 // export: confluenceTreeSource
@@ -8627,11 +8720,12 @@ export declare class ConfluenceClient {
     private maxRetries;
     private baseDelayMs;
     private tlsOptions;
+    private guardTransport;
+    private observeTransport;
     private sessionRedirectPolicy;
     private exportSourcePolicy;
-    constructor(profile: Profile, options?: {
-        exportSourcePolicy?: ExportSourcePolicy;
-    });
+    constructor(profile: Profile, options?: ConfluenceClientOptions);
+    private emitTransport;
     getInstanceUrl(): string;
     private buildWebUrl;
     private sleep;
@@ -8696,6 +8790,9 @@ export declare class ConfluenceClient {
     searchPages(cql: string, limit?: number, options?: {
         signal?: AbortSignal;
     }): Promise<ConfluenceSearchResult[]>;
+    searchNextPage(providerCursor: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<SearchResults>;
     findPagesByTitle(title: string, options?: {
         spaceKey?: string;
         limit?: number;
@@ -8923,6 +9020,13 @@ export declare class ConfluenceClient {
     setEditorVersion(pageId: string, version: "v2" | "v1"): Promise<void>;
 }
 
+// export: ConfluenceClientOptions
+export interface ConfluenceClientOptions {
+    exportSourcePolicy?: ExportSourcePolicy;
+    guardTransport?: (event: ConfluenceTransportEvent) => void;
+    observeTransport?: (event: ConfluenceTransportEvent) => void;
+}
+
 // export: ConfluenceDetailedSearchResults
 export type ConfluenceDetailedSearchResults = {
     results: ConfluenceSearchDetail[];
@@ -9029,6 +9133,26 @@ export type ConfluenceSpace = {
     name: string;
     type: "global" | "personal";
     url?: string;
+};
+
+// export: ConfluenceTransportEvent
+export type ConfluenceTransportEvent = {
+    type: "attempt";
+    method: string;
+    attempt: number;
+} | {
+    type: "response";
+    method: string;
+    attempt: number;
+    status: number;
+    durationMs: number;
+    responseBytes: number;
+    retryAfterMs?: number;
+} | {
+    type: "error";
+    method: string;
+    attempt: number;
+    durationMs: number;
 };
 
 // export: ConfluenceUser
@@ -11847,11 +11971,12 @@ export declare class ConfluenceClient {
     private maxRetries;
     private baseDelayMs;
     private tlsOptions;
+    private guardTransport;
+    private observeTransport;
     private sessionRedirectPolicy;
     private exportSourcePolicy;
-    constructor(profile: Profile, options?: {
-        exportSourcePolicy?: ExportSourcePolicy;
-    });
+    constructor(profile: Profile, options?: ConfluenceClientOptions);
+    private emitTransport;
     getInstanceUrl(): string;
     private buildWebUrl;
     private sleep;
@@ -11916,6 +12041,9 @@ export declare class ConfluenceClient {
     searchPages(cql: string, limit?: number, options?: {
         signal?: AbortSignal;
     }): Promise<ConfluenceSearchResult[]>;
+    searchNextPage(providerCursor: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<SearchResults>;
     findPagesByTitle(title: string, options?: {
         spaceKey?: string;
         limit?: number;
@@ -12143,6 +12271,13 @@ export declare class ConfluenceClient {
     setEditorVersion(pageId: string, version: "v2" | "v1"): Promise<void>;
 }
 
+// export: ConfluenceClientOptions
+export interface ConfluenceClientOptions {
+    exportSourcePolicy?: ExportSourcePolicy;
+    guardTransport?: (event: ConfluenceTransportEvent) => void;
+    observeTransport?: (event: ConfluenceTransportEvent) => void;
+}
+
 // export: ConfluenceDetailedSearchResults
 export type ConfluenceDetailedSearchResults = {
     results: ConfluenceSearchDetail[];
@@ -12250,6 +12385,26 @@ export type ConfluenceSpace = {
     name: string;
     type: "global" | "personal";
     url?: string;
+};
+
+// export: ConfluenceTransportEvent
+export type ConfluenceTransportEvent = {
+    type: "attempt";
+    method: string;
+    attempt: number;
+} | {
+    type: "response";
+    method: string;
+    attempt: number;
+    status: number;
+    durationMs: number;
+    responseBytes: number;
+    retryAfterMs?: number;
+} | {
+    type: "error";
+    method: string;
+    attempt: number;
+    durationMs: number;
 };
 
 // export: confluenceTreeSource

@@ -24,6 +24,11 @@ import {
 import { createExtensionExportQueueRunner } from "../../utils/export-jobs/queue-runner.js";
 import { BrowserRenderReservationPoolV1 } from "../../utils/export-jobs/render-reservation.js";
 import { runClaimedExtensionExportJob } from "../../utils/export-jobs/runtime.js";
+import { ResearchAgentWorkerHost } from "../../utils/research/worker-host.js";
+import {
+  RESEARCH_ANTHROPIC_SESSION_KEY,
+  normalizeAnthropicApiKey,
+} from "../../utils/research/credential.js";
 
 const pdfHost = new ChromeWorkerCompilerHost({
   createWorker: () =>
@@ -31,6 +36,14 @@ const pdfHost = new ChromeWorkerCompilerHost({
       type: "module",
       name: "atlcli-pdf-compiler",
   }),
+});
+
+const researchHost = new ResearchAgentWorkerHost({
+  createWorker: () =>
+    new Worker(new URL("../../workers/research-agent.ts", import.meta.url), {
+      type: "module",
+      name: "atlcli-research-agent",
+    }),
 });
 
 const exportCatalog = new IndexedDbExportJobCatalog();
@@ -121,5 +134,26 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) =>
       });
     },
     runJobsWake: (jobIds, options) => exportQueue.wake(jobIds, options),
+    runResearch: async (runId, request) => {
+      const stored = await chrome.storage.session.get([
+        RESEARCH_ANTHROPIC_SESSION_KEY,
+      ]);
+      const apiKey = normalizeAnthropicApiKey(
+        stored[RESEARCH_ANTHROPIC_SESSION_KEY]
+      );
+      return researchHost.run({
+        runId,
+        apiKey,
+        request,
+        onProgress: (progress) => {
+          void chrome.runtime.sendMessage({
+            kind: "research:progress",
+            runId,
+            progress,
+          }).catch(() => undefined);
+        },
+      });
+    },
+    cancelResearch: async (runId) => researchHost.cancel(runId),
   })
 );
