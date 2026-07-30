@@ -416,7 +416,16 @@ import {
   type PdfOutputSink,
   type PdfBytesHandle,
 } from "@atlcli/pdf";
-import { storageToBlocks, type ExportBlock, type ExportNote } from "@atlcli/confluence";
+import {
+  AttachmentDeliveryError,
+  createPageAttachmentWriterV1,
+  storageToBlocks,
+  type AttachmentBodyV1,
+  type ConfluenceProductRequestV1,
+  type ExportBlock,
+  type ExportNote,
+  type PageAttachmentWriterV1,
+} from "@atlcli/confluence";
 import {
   BrowserPdfCompiler,
   type BrowserPdfCompilerAssets,
@@ -436,6 +445,14 @@ import { renderDiagram, type DiagramRenderResult } from "@atlcli/diagram";
 import type { AtlcliPlugin } from "@atlcli/plugin-api";
 
 const converted: { blocks: ExportBlock[]; notes: ExportNote[] } = storageToBlocks("<p>t</p>");
+const productRequest: ConfluenceProductRequestV1 = async (_path, _init) =>
+  new Response(JSON.stringify({ results: [] }), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  });
+const attachmentWriter: PageAttachmentWriterV1 =
+  createPageAttachmentWriterV1(productRequest);
+const attachmentBody: AttachmentBodyV1 = new Blob(["smoke"]);
 
 // A consumer must be able to NAME the emit contract, not merely receive it:
 // a typed PdfOutputSink written against the barrel's own PdfBytesHandle type
@@ -475,6 +492,9 @@ const surfaces: unknown[] = [
   bundledDefaultTemplate,
   createPdfExportJobExecutor,
   createTypescriptDocxExportJobExecutor,
+  AttachmentDeliveryError,
+  attachmentWriter,
+  attachmentBody,
   pdfSink,
   emittedByteShape,
 ];
