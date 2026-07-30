@@ -46,7 +46,9 @@ const PAGE = {
   title: "JSON Contract Fixture",
   space: { key: "DOCSY" },
   version: { number: 3, when: "2026-07-20T00:00:00.000Z" },
-  ancestors: [],
+  // A non-page ancestor exercises the potential-folder probe as well as the
+  // direct-children scan. Neither Cloud-only v2 path may be requested on DC.
+  ancestors: [{ id: "folder-parent-77", title: "Potential Folder Parent" }],
   history: {
     createdDate: "2026-07-19T00:00:00.000Z",
     createdBy: { accountId: "acc-1", displayName: "Fixture Author" },
