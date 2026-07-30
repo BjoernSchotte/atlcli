@@ -345,6 +345,12 @@ export interface MacroExportContext {
    */
   siteId?: string;
   /**
+   * Trusted Confluence site origin used to validate tenant-local navigation
+   * targets retained from untrusted page content. Unlike {@link siteId}, this
+   * field is a URL security boundary rather than an opaque cache identity.
+   */
+  siteOrigin?: string;
+  /**
    * Renderer-level flags threaded from {@link MacroResolutionOptions}. E.g.
    * `nativeTocPresent` lets the TOC renderer suppress a duplicate body-TOC when
    * the DOCX template already carries a native TOC field.

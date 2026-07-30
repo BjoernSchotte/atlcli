@@ -691,7 +691,12 @@ export function buildSessionMacroResolutionOptions(
       versionOf: input.versionOf ?? ((pageId) => pageVersions.get(pageId)),
     });
   const registry = createSessionMacroRegistry();
-  const siteId = profileFromTabUrl(input.pageUrl)?.baseUrl ?? input.pageUrl;
+  // Only the normalized, manifest-approved Atlassian profile origin is a URL
+  // trust boundary. `siteId` keeps its historical opaque-cache fallback when
+  // callers inject prebuilt ports, while `siteOrigin` deliberately does not.
+  const trustedProfile = profileFromTabUrl(input.pageUrl);
+  const siteId = trustedProfile?.baseUrl ?? input.pageUrl;
+  const siteOrigin = trustedProfile?.baseUrl;
   const anchors = input.chapterAnchorById;
   const pageScope: MacroPageScope | undefined = anchors
     ? { chapterAnchorFor: (pageId) => anchors.get(pageId) }
@@ -714,6 +719,7 @@ export function buildSessionMacroResolutionOptions(
         depth: 0,
         visited: new Set<string>(),
         siteId,
+        ...(siteOrigin ? { siteOrigin } : {}),
         ...(input.signal ? { signal: input.signal } : {}),
         flags: {
           ...(input.nativeTocPresent ? { nativeTocPresent: true } : {}),

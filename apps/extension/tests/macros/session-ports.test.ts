@@ -347,6 +347,7 @@ describe("per-source-page context (contextFor passed through unchanged)", () => 
     expect(ctx.page).toEqual({ id: CHILD_ID, version: 9, spaceKey: "OTHER" });
     expect(ctx.flags?.targetEngine).toBe("docx");
     expect(ctx.siteId).toBe(SITE);
+    expect(ctx.siteOrigin).toBe(SITE);
   });
 
   it("falls back to the single-macro v1 endpoints when the batch body lacks the macro", async () => {

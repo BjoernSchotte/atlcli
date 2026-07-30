@@ -399,6 +399,14 @@ describe("fetchExportTree — cycles, folders, unsupported", () => {
     // code, so `info` here would let a silent content loss pass CI. Contrast
     // `label-filtered`, which stays `info` because the user asked for it.
     expect(unsupported.every((n) => n.level === "warning")).toBe(true);
+    const whiteboard = unsupported.find((note) =>
+      note.message.includes("direct Whiteboard child")
+    );
+    expect(whiteboard).toBeDefined();
+    expect(whiteboard?.message).not.toContain("wb");
+    expect(whiteboard?.message).not.toContain("WB");
+    expect(whiteboard?.message).toContain("not traversable");
+    expect(whiteboard?.message).toContain("Embedded Whiteboard links");
   });
 });
 

@@ -667,6 +667,30 @@ function compareChildren(a: TreeChild, b: TreeChild): number {
   return a.title.localeCompare(b.title);
 }
 
+function unsupportedChildNote(child: TreeChild): ExportNote {
+  const kind = child.unsupportedKind ?? "unknown";
+  if (kind.toLowerCase() === "whiteboard") {
+    return {
+      level: "warning",
+      code: "unsupported-child-type",
+      message:
+        "A direct Whiteboard child is not traversable and was skipped; " +
+        "its board content was not exported. Embedded Whiteboard links on " +
+        "exported pages are retained separately.",
+    };
+  }
+  // `warning`, not `info`: content the user asked for is being DROPPED from
+  // the export. Contrast `label-filtered`, which is informational because the
+  // user explicitly requested that exclusion.
+  return {
+    level: "warning",
+    code: "unsupported-child-type",
+    message:
+      `Child "${child.title}" (${child.id}) is an unsupported type ` +
+      `"${kind}" and was skipped.`,
+  };
+}
+
 function normalizedScopeKey(scope: ExportScope): string {
   try {
     validateExportScope(scope);
@@ -1126,17 +1150,7 @@ export async function fetchExportTree(
     for (const child of sorted) {
       throwIfAborted(signal);
       if (child.kind === "unsupported") {
-        treeNotes.push({
-          // `warning`, not `info`: content the user asked for is being DROPPED
-          // from the export. Once note levels drive issue severity (and with it
-          // `--strict`'s exit code), classifying a silent content loss as
-          // informational is exactly the false negative `--strict` exists to
-          // prevent. Contrast `label-filtered`, which is info because the user
-          // explicitly asked for that exclusion.
-          level: "warning",
-          code: "unsupported-child-type",
-          message: `Child "${child.title}" (${child.id}) is an unsupported type "${child.unsupportedKind ?? "unknown"}" and was skipped.`,
-        });
+        treeNotes.push(unsupportedChildNote(child));
         continue;
       }
       if (child.kind === "folder") {
@@ -1189,17 +1203,7 @@ export async function fetchExportTree(
     }
     for (const child of [...children].sort(compareChildren)) {
       if (child.kind === "unsupported") {
-        treeNotes.push({
-          // `warning`, not `info`: content the user asked for is being DROPPED
-          // from the export. Once note levels drive issue severity (and with it
-          // `--strict`'s exit code), classifying a silent content loss as
-          // informational is exactly the false negative `--strict` exists to
-          // prevent. Contrast `label-filtered`, which is info because the user
-          // explicitly asked for that exclusion.
-          level: "warning",
-          code: "unsupported-child-type",
-          message: `Child "${child.title}" (${child.id}) is an unsupported type "${child.unsupportedKind ?? "unknown"}" and was skipped.`,
-        });
+        treeNotes.push(unsupportedChildNote(child));
         continue;
       }
       if (child.kind === "folder") {

@@ -17,4 +17,5 @@ export * from "./table-layout.js";
 export * from "./children.js";
 export * from "./include-excerpt.js";
 export * from "./page-properties-report.js";
+export * from "./whiteboard.js";
 export * from "./export-view.js";
