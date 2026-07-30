@@ -585,15 +585,22 @@ async function submitPackedDocx(
   });
 }
 
-async function submitPackedPdf(jobId: string): Promise<string> {
-  return page.evaluate(async (id) => {
+async function submitPackedPdf(
+  jobId: string,
+  siteOrigin = "https://site.atlassian.net",
+): Promise<string> {
+  return page.evaluate(async ({ id, origin }) => {
     const probe = (globalThis as unknown as {
       exportJobStoreProbe: {
-        submitPdf(exportJobId: string): Promise<string>;
+        submitPdf(
+          exportJobId: string,
+          scopeKind?: "page" | "tree",
+          siteOrigin?: string,
+        ): Promise<string>;
       };
     }).exportJobStoreProbe;
-    return probe.submitPdf(id);
-  }, jobId);
+    return probe.submitPdf(id, "page", origin);
+  }, { id: jobId, origin: siteOrigin });
 }
 
 async function submitPackedTreePdf(jobId: string): Promise<string> {
@@ -1002,8 +1009,12 @@ test("two packed-extension wakeups produce exactly one claim", async () => {
 
 test("a packed MV3 PDF resolves embedded Whiteboard ADF offline", async () => {
   await ensureCatalog();
+  // The preceding fallback test intentionally proves ADF unavailable for the
+  // default synthetic origin. Use another tenant to prove the production
+  // capability cache stays origin-scoped while this test receives real ADF.
+  const siteOrigin = "https://whiteboard-site.atlassian.net";
   const whiteboardUrl =
-    "https://site.atlassian.net/wiki/spaces/DOCS/whiteboard/41";
+    `${siteOrigin}/wiki/spaces/DOCS/whiteboard/41`;
   const adf = JSON.stringify({
     type: "doc",
     version: 1,
@@ -1030,7 +1041,7 @@ test("a packed MV3 PDF resolves embedded Whiteboard ADF offline", async () => {
     { [JOB_O]: adf },
   );
 
-  await expect(submitPackedPdf(JOB_O)).resolves.toBe(JOB_O);
+  await expect(submitPackedPdf(JOB_O, siteOrigin)).resolves.toBe(JOB_O);
   const succeeded = await waitForJobState(JOB_O, "succeeded", 45_000);
   expect(succeeded.snapshot).toMatchObject({
     state: "succeeded",

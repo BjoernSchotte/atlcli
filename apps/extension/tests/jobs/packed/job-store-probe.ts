@@ -641,10 +641,11 @@ const probe = {
   async submitPdf(
     id: string,
     scopeKind: "page" | "tree" = "page",
+    siteOrigin = "https://site.atlassian.net",
   ): Promise<string> {
     const catalog = new IndexedDbExportJobCatalog();
     const submitted = await submitExtensionPdfExport({
-      pageUrl: `https://site.atlassian.net/wiki/spaces/DOCS/pages/${id}/Packed`,
+      pageUrl: `${siteOrigin}/wiki/spaces/DOCS/pages/${id}/Packed`,
       page: {
         details: {
           id,

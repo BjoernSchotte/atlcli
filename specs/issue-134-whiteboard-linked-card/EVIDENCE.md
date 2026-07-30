@@ -40,8 +40,9 @@ identifiers and derived artifacts were not retained.
 - Browser-entrypoint build gate: 27 entrypoints green.
 - Production browser harness build, CSP/output scan, export parity, and
   Whiteboard export E2E: green.
-- Production WXT build, packed-output scan, extension typecheck, and packed MV3
-  Whiteboard job E2E: green.
+- Production WXT build, packed-output scan, extension typecheck, and the full
+  packed MV3 browser suite: 23 passed, including the Whiteboard job after an
+  earlier fallback test had populated the origin-scoped ADF capability cache.
 - API report, API closure, and M1 corpus structural goldens: regenerated and
   green.
 - Live `mayflower` / `DOCSY` E2E: one temporary real Whiteboard embedded in a
