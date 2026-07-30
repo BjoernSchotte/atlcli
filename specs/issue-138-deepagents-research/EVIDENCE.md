@@ -45,8 +45,10 @@ unavailable. Search and detail HTTP reads had succeeded; the local Storage
 projection rejected the oversized bodies, and the acquisition code classified
 that local error too broadly. The corrected projector emits a bounded,
 UTF-8-safe excerpt with `truncated: true`. A repeat live run read both details
-and found no explicit Jira reference in the bounded evidence. The initial
-report is superseded.
+and found no explicit Jira reference in the bounded evidence. Negative
+content findings that cite truncated detail are now constrained twice: the
+agent prompt requires excerpt-scoped wording, and the host appends the same
+evidence boundary independently. The initial report is superseded.
 
 ## Packed metrics
 

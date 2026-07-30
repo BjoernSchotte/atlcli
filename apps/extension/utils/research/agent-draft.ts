@@ -173,17 +173,32 @@ function normalizeRelationships(
 
 function normalizeFindings(
   findings: ResearchAgentDraftV1["findings"],
-  sources: ReadonlyMap<string, ResearchSourceReferenceV1>
+  sources: ReadonlyMap<string, ResearchSourceReferenceV1>,
+  detailEvidence: readonly ResearchDetailEvidenceV1[]
 ): ResearchFindingV1[] {
+  const truncatedSourceIds = new Set(
+    detailEvidence
+      .filter((entry) => entry.content.truncated)
+      .map((entry) => entry.source.id)
+  );
   const normalized: ResearchFindingV1[] = [];
   for (const finding of findings) {
     const sourceIds = uniqueKnownSourceIds(finding.sourceIds, sources);
     if (sourceIds.length === 0) continue;
+    const citesTruncatedDetail = sourceIds.some((sourceId) =>
+      truncatedSourceIds.has(sourceId)
+    );
+    const evidenceBoundary = citesTruncatedDetail
+      ? "At least one cited detail was truncated; statements about its content apply only to the captured excerpt."
+      : undefined;
+    const detail = [finding.detail, evidenceBoundary]
+      .filter(Boolean)
+      .join("\n\n");
     normalized.push({
       id: `finding-${normalized.length + 1}`,
       classification: finding.classification,
       summary: finding.summary,
-      ...(finding.detail ? { detail: finding.detail } : {}),
+      ...(detail ? { detail } : {}),
       sourceIds,
     });
   }
@@ -206,7 +221,11 @@ export function finalizeResearchAgentDraftV1(input: {
     question: input.request.question,
     scope: input.request.scope,
     executiveSummary: draft.executiveSummary,
-    findings: normalizeFindings(draft.findings, sourcesById),
+    findings: normalizeFindings(
+      draft.findings,
+      sourcesById,
+      input.detailEvidence
+    ),
     relationships: normalizeRelationships(
       draft.relationships,
       sourcesById,

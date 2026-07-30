@@ -132,6 +132,33 @@ describe("research agent draft finalization", () => {
     expect(report.markdown).toContain("Relationship hypotheses");
   });
 
+  it("qualifies findings that cite truncated detail evidence", () => {
+    const report = finalizeResearchAgentDraftV1({
+      draft: draft(),
+      request,
+      sources,
+      detailEvidence: [
+        {
+          source: sources[1]!,
+          content: {
+            text: "Captured prefix without a Jira link.",
+            linkTargets: [],
+            truncated: true,
+            inputBytes: 20_000,
+          },
+        },
+      ],
+      run,
+    });
+
+    expect(report.findings[0]?.detail).toContain(
+      "statements about its content apply only to the captured excerpt"
+    );
+    expect(report.markdown).toContain(
+      "statements about its content apply only to the captured excerpt"
+    );
+  });
+
   it("drops a time-only relationship guess with no semantic or detail evidence", () => {
     const unrelatedSources: ResearchSourceReferenceV1[] = [
       { ...sources[0]!, title: "Code quality review" },
