@@ -21,6 +21,8 @@ The side-panel UI is branded **Kiteweave Browser**; the package and manifest ret
 ```
 entrypoints/
   background.ts       # service worker: message router + offscreen lifecycle
+  confluence-rovo.content/
+                      # page-local Rovo visibility preference + scoped CSS
   sidepanel/          # React side panel (index.html + main.tsx + App.tsx)
   offscreen/          # headless PDF compiler host (index.html + main.ts)
 utils/
@@ -101,6 +103,10 @@ an independent production Vite/Chromium host.
 - **No remote-hosted UI / no inline scripts** — everything renders from bundled,
   local assets (MV3 CSP `script-src 'self' 'wasm-unsafe-eval'`). The bundled
   offscreen document hosts the PDF compiler worker.
+- The optional **Hide Rovo controls** preference is applied by a narrow,
+  isolated-world content script on `https://*.atlassian.net/wiki/*`. It reads
+  only extension-local settings, injects no remote code, and changes no page
+  content beyond a reversible visibility attribute owned by Kiteweave.
 - The **UI ↔ extension-capability boundary is the typed message protocol**
   (`utils/messages.ts`). Large source and result bytes remain in the extension's job store;
   messages carry bounded control data.

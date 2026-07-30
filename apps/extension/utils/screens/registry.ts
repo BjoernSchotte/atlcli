@@ -105,6 +105,8 @@ const CAPABILITY_REASON_KEYS: Record<HostCapability, MessageKey> = {
   "durable-jobs": "screen.unmet.capability.durableJobs",
   "pdf-preview": "screen.unmet.capability.pdfPreview",
   "settings-persistence": "screen.unmet.capability.settingsPersistence",
+  "confluence-page-customization":
+    "screen.unmet.capability.confluencePageCustomization",
 };
 
 /** The i18n key explaining a single unmet requirement. */

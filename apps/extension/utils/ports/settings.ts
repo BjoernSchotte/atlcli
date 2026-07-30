@@ -10,9 +10,17 @@ import { isLocale, type Locale } from "../i18n/messages.js";
 export interface AppSettings {
   /** `null` = follow the host/browser language. */
   locale: Locale | null;
+  /** Hide the two persistent Rovo entry points in the Confluence Cloud UI. */
+  hideRovoEntrypoints: boolean;
 }
 
-export const DEFAULT_SETTINGS: AppSettings = { locale: null };
+export const DEFAULT_SETTINGS: AppSettings = {
+  locale: null,
+  hideRovoEntrypoints: false,
+};
+
+/** Shared record key used by every Chrome extension context. */
+export const APP_SETTINGS_STORAGE_KEY = "app-settings-v1";
 
 export interface SettingsStore {
   load(): Promise<AppSettings>;
@@ -28,8 +36,15 @@ export interface SettingsStore {
  */
 export function normalizeSettings(value: unknown): AppSettings {
   if (typeof value !== "object" || value === null) return { ...DEFAULT_SETTINGS };
-  const locale = (value as { locale?: unknown }).locale;
-  return { locale: isLocale(locale) ? locale : null };
+  const candidate = value as {
+    locale?: unknown;
+    hideRovoEntrypoints?: unknown;
+  };
+  return {
+    locale: isLocale(candidate.locale) ? candidate.locale : null,
+    // Fail open: malformed or legacy records must never hide host UI.
+    hideRovoEntrypoints: candidate.hideRovoEntrypoints === true,
+  };
 }
 
 /** In-memory store — the default for hosts without persistence, and for tests. */

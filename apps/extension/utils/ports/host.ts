@@ -29,7 +29,9 @@ export type HostCapability =
   /** Can render a PDF preview of the bytes an export would produce (T5.3). */
   | "pdf-preview"
   /** Preferences survive a reload. */
-  | "settings-persistence";
+  | "settings-persistence"
+  /** Can adjust selected controls in the surrounding Confluence page UI. */
+  | "confluence-page-customization";
 
 export interface HostInfo {
   /**

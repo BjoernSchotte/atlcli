@@ -68,7 +68,7 @@ disappearing.
 | **Preview** | Compile the PDF and page through it before downloading. Opt-in — nothing compiles until you ask. |
 | **Template sets** | Named Word templates with global or per-space scope. See [Export template library](/confluence/export-templates/). |
 | **Activity** | Running and finished exports, so a long export is something you can walk away from. |
-| **Settings** | Panel language (English/German, or follow the browser). Exported documents keep the page's own language. |
+| **Settings** | Panel language (English/German, or follow the browser) and an optional browser-local switch that hides the top and bottom-right Rovo entry points on Confluence pages. Exported documents keep the page's own language. |
 | **About** | Version, host, and which capabilities this host advertises. |
 
 ## Panel vs. CLI
@@ -111,6 +111,10 @@ Nowhere. This is the point of the extension, so it is worth stating precisely:
   `script-src 'self' 'wasm-unsafe-eval'` — no CDN, no inline scripts, no
   string-to-code constructors. A build-time scan over the packed output enforces
   it.
+- **The Rovo visibility switch is local and reversible.** A bundled content
+  script reads only the extension's own preference record and toggles one
+  Kiteweave-owned marker on the Confluence document. It does not read, transmit,
+  or rewrite page content.
 - **External images are not fetched.** An image hosted outside your Atlassian
   site is exported as a readable fallback with a note, not silently downloaded.
 - Bytes in flight live in your browser's IndexedDB. Succeeded artifacts that
