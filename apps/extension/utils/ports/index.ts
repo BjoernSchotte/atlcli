@@ -39,6 +39,7 @@ import type {
   TemplateLibraryPort,
 } from "./export.js";
 import type { SettingsStore } from "./settings.js";
+import type { ResearchPort } from "../research/contracts.js";
 
 /**
  * What the host knows about the page it is showing.
@@ -81,6 +82,8 @@ export interface AppPorts {
   /** `null` when this host cannot persist template bytes. */
   docxTemplates: DocxTemplateStore | null;
   settings: SettingsStore;
+  /** Single-shot, bounded Jira + Confluence research. */
+  research?: ResearchPort | null;
 
   /**
    * The multi-slot template library (spec 010 T5.2).

@@ -1683,7 +1683,13 @@ export class ConfluenceClient {
    */
   private async searchByUrl(url: string, signal?: AbortSignal): Promise<SearchResults> {
     const apiBase = new URL(`${this.confluenceBaseUrl}/rest/api/`);
-    const resolved = new URL(url, apiBase);
+    // Confluence Cloud currently emits both site-relative links
+    // (`/wiki/rest/api/...`) and product-relative links (`/rest/api/...`).
+    // A leading slash normally resets the URL path, so resolve the latter
+    // relative to the configured product REST base explicitly.
+    const resolved = url.startsWith("/rest/api/")
+      ? new URL(url.slice("/rest/api/".length), apiBase)
+      : new URL(url, apiBase);
     if (
       resolved.origin.toLowerCase() !== this.capabilityOrigin ||
       !resolved.pathname.startsWith(apiBase.pathname)

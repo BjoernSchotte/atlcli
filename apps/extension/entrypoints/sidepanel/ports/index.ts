@@ -32,6 +32,7 @@ import { chromePdfExportPort } from "./pdf.js";
 import { chromeDocxExportPort, chromeDocxTemplateStore } from "./docx.js";
 import { chromeTemplateLibrary } from "./templates.js";
 import { chromeSettingsStore } from "./settings.js";
+import { chromeResearchPort } from "./research.js";
 
 /**
  * What the Chrome side panel can actually do today.
@@ -50,6 +51,7 @@ export const CHROME_CAPABILITIES: readonly HostCapability[] = [
   "pdf-preview",
   "template-library",
   "durable-jobs",
+  "research",
   "settings-persistence",
 ];
 
@@ -84,6 +86,7 @@ export function createChromePorts(): AppPorts {
     docxTemplates: chromeDocxTemplateStore(site),
     templates: chromeTemplateLibrary(site),
     settings: chromeSettingsStore(),
+    research: chromeResearchPort(),
     // `countScopePages` is deliberately NOT supplied — see the note above.
   };
 }

@@ -88,6 +88,32 @@ describe("Confluence research read boundary", () => {
     expect(JSON.stringify(events)).not.toContain("KB");
   });
 
+  it("normalizes a product-relative REST cursor under the configured wiki base", async () => {
+    const urls: string[] = [];
+    globalThis.fetch = (async (url: string | URL | Request) => {
+      urls.push(String(url));
+      return new Response(
+        JSON.stringify({
+          results: [],
+          _links: {},
+        }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }
+      );
+    }) as unknown as typeof fetch;
+    const client = new ConfluenceClient(profile);
+
+    await client.searchNextPage(
+      "/rest/api/content/search?cursor=next-product-relative&limit=1"
+    );
+
+    expect(urls).toEqual([
+      "https://example.atlassian.net/wiki/rest/api/content/search?cursor=next-product-relative&limit=1",
+    ]);
+  });
+
   it("rejects a foreign or non-REST pagination URL before fetching", async () => {
     let calls = 0;
     globalThis.fetch = (async () => {

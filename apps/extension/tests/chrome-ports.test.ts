@@ -56,6 +56,7 @@ describe("CHROME_CAPABILITIES", () => {
       "pdf-preview",
       "template-library",
       "durable-jobs",
+      "research",
       "settings-persistence",
     ]);
   });

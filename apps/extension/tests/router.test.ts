@@ -1,6 +1,10 @@
 import { describe, expect, it } from "bun:test";
 import { routeMessage, type RouterDeps } from "../utils/router.js";
 import type { EntityDetection } from "../utils/messages.js";
+import type {
+  ResearchReportV1,
+  ResearchRequestV1,
+} from "../utils/research/contracts.js";
 
 const noEntity: EntityDetection = { windowId: 7, url: null, entity: null, seq: 0 };
 const preparation = {
@@ -9,6 +13,9 @@ const preparation = {
   codeFontMs: 10,
   codeFontBytes: 273_900,
 };
+const researchReport = {
+  schema: "atlcli.research-report/v1",
+} as ResearchReportV1;
 
 const okDeps: RouterDeps = {
   runWasmSmoke: async (a, b) => a + b,
@@ -17,6 +24,8 @@ const okDeps: RouterDeps = {
   runPdfCancel: async () => true,
   prepareDocxRuntime: async () => preparation,
   runJobsWake: async (jobIds) => jobIds?.[0],
+  runResearch: async () => researchReport,
+  cancelResearch: async () => true,
 };
 
 describe("routeMessage (pure router)", () => {
@@ -185,5 +194,36 @@ describe("routeMessage (pure router)", () => {
       { kind: "jobs:wake", jobIds: ["job-1"] },
       { ...okDeps, runJobsWake: async () => { throw new Error("catalog blocked"); } },
     )).toEqual({ kind: "jobs:wake-result", error: "catalog blocked" });
+  });
+
+  it("routes research runs and cancellation without carrying a credential", async () => {
+    const request = {
+      schema: "atlcli.research-request/v1",
+    } as ResearchRequestV1;
+    expect(await routeMessage({
+      kind: "research:run",
+      runId: "run-1",
+      windowId: 7,
+      request,
+    }, okDeps)).toEqual({
+      kind: "research:run-result",
+      runId: "run-1",
+      ok: true,
+      report: researchReport,
+    });
+    expect(await routeMessage({
+      kind: "research:cancel",
+      runId: "run-1",
+    }, okDeps)).toEqual({
+      kind: "research:cancel-result",
+      runId: "run-1",
+      cancelled: true,
+    });
+    expect(JSON.stringify({
+      kind: "research:run",
+      runId: "run-1",
+      windowId: 7,
+      request,
+    })).not.toContain("apiKey");
   });
 });

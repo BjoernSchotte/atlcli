@@ -201,6 +201,8 @@ export interface ResearchPort {
   setApiKey(apiKey: string): Promise<void>;
   clearApiKey(): Promise<void>;
   run(request: ResearchRequestV1, options?: ResearchRunOptions): Promise<ResearchReportV1>;
+  copyMarkdown(markdown: string): Promise<void>;
+  downloadMarkdown(markdown: string, filename: string): Promise<void>;
 }
 
 const LIMIT_BOUNDS: {

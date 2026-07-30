@@ -126,6 +126,7 @@ describe("resolveScreens", () => {
       "template-library",
       "durable-jobs",
       "pdf-preview",
+      "research",
       "settings-persistence",
     ] as const;
     const keys = capabilities.map((capability) =>
@@ -175,15 +176,37 @@ describe("pickActiveScreen", () => {
 });
 
 describe("the shipped registry", () => {
-  it("registers Export, Preview, Templates, Activity, Settings and About", () => {
+  it("registers Export, Preview, Templates, Activity, Research, Settings and About", () => {
     expect(defaultScreens.map((s) => s.id)).toEqual([
       SCREEN_IDS.export,
       SCREEN_IDS.preview,
       SCREEN_IDS.templates,
       SCREEN_IDS.activity,
+      SCREEN_IDS.research,
       SCREEN_IDS.settings,
       SCREEN_IDS.about,
     ]);
+  });
+
+  it("gates Research on the dedicated host capability", () => {
+    const withoutResearch = resolveScreens(defaultScreens, {
+      hasLoadedPage: true,
+      capabilities: ["pdf-export"],
+    });
+    const unavailable = withoutResearch.find(
+      (screen) => screen.definition.id === SCREEN_IDS.research
+    );
+    expect(unavailable?.available).toBe(false);
+    expect(unavailable?.reasonKey).toBe("screen.unmet.capability.research");
+
+    const withResearch = resolveScreens(defaultScreens, {
+      hasLoadedPage: false,
+      capabilities: ["research"],
+    });
+    expect(
+      withResearch.find((screen) => screen.definition.id === SCREEN_IDS.research)
+        ?.available
+    ).toBe(true);
   });
 
   // Both wave-2/3 screens land the same way: registered, and gated on a

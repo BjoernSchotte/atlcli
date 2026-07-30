@@ -24,7 +24,19 @@ import {
   type ContentProjectionLimits,
 } from "./content-projection.js";
 
-function assertBoundProfile(profile: Profile, request: ResearchRequestV1): void {
+export interface RestResearchProviderOptions {
+  /**
+   * Node-only live-test escape hatch. The packed extension must leave this
+   * false so only its active browser session can authenticate.
+   */
+  allowProfileAuth?: boolean;
+}
+
+function assertBoundProfile(
+  profile: Profile,
+  request: ResearchRequestV1,
+  options: RestResearchProviderOptions
+): void {
   let profileOrigin: string;
   try {
     profileOrigin = new URL(profile.baseUrl).origin;
@@ -32,7 +44,7 @@ function assertBoundProfile(profile: Profile, request: ResearchRequestV1): void 
     throw new ResearchContractError("not-atlassian", "The active Atlassian site is invalid.");
   }
   if (
-    profile.auth.type !== "session" ||
+    (!options.allowProfileAuth && profile.auth.type !== "session") ||
     profileOrigin !== request.scope.siteOrigin
   ) {
     throw new ResearchContractError(
@@ -75,9 +87,10 @@ function guardTransport(
 export function createRestResearchProviders(
   profile: Profile,
   request: ResearchRequestV1,
-  budget: ResearchRunBudget
+  budget: ResearchRunBudget,
+  options: RestResearchProviderOptions = {}
 ): ResearchReadProviders {
-  assertBoundProfile(profile, request);
+  assertBoundProfile(profile, request, options);
   const guard = guardTransport(budget);
   const jira = new JiraClient(profile, { guardTransport: guard });
   const wiki = new ConfluenceClient(profile, { guardTransport: guard });

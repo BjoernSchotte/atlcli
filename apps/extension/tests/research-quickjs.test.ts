@@ -2,6 +2,13 @@ import { afterEach, describe, expect, it } from "bun:test";
 import { ReplSession } from "@langchain/quickjs";
 import { tool } from "@langchain/core/tools";
 import { z } from "zod/v4";
+import {
+  DEFAULT_RESEARCH_LIMITS_V1,
+  RESEARCH_REQUEST_SCHEMA_V1,
+  normalizeResearchRequestV1,
+} from "../utils/research/contracts.js";
+import { ResearchCapabilityBroker } from "../utils/research/broker.js";
+import { createResearchPtcTools } from "../utils/research/agent-tools.js";
 
 const toolNames = [
   "jira_issue_search",
@@ -26,6 +33,80 @@ afterEach(() => {
 });
 
 describe("QuickJS research sandbox", () => {
+  it("keeps wire schema ids host-owned while exposing simple model arguments", async () => {
+    const request = normalizeResearchRequestV1({
+      schema: RESEARCH_REQUEST_SCHEMA_V1,
+      question: "Find the bounded issue.",
+      scope: {
+        siteOrigin: "https://example.atlassian.net",
+        jiraProjectKeys: ["DEMO"],
+        confluenceSpaceKeys: ["KB"],
+      },
+      limits: DEFAULT_RESEARCH_LIMITS_V1,
+      wikiProvider: "rest",
+    });
+    const broker = new ResearchCapabilityBroker(request, {
+      jira: {
+        async searchPage({ providerCursor }) {
+          return providerCursor
+            ? {
+                items: [
+                  {
+                    issueKey: "DEMO-2",
+                    projectKey: "DEMO",
+                    title: "Second bounded issue",
+                  },
+                ],
+              }
+            : {
+            items: [
+              {
+                issueKey: "DEMO-1",
+                projectKey: "DEMO",
+                title: "Bounded issue",
+              },
+            ],
+                nextProviderCursor: "provider-page-2",
+              };
+        },
+        async getIssue() {
+          throw new Error("not used");
+        },
+      },
+      wiki: {
+        async searchPage() {
+          return { items: [] };
+        },
+        async getPage() {
+          throw new Error("not used");
+        },
+      },
+    });
+    try {
+      const jiraSearch = createResearchPtcTools(broker).find(
+        (candidate) => candidate.name === "jira_issue_search"
+      );
+      expect(jiraSearch).toBeDefined();
+      const result = JSON.parse(
+        String(await jiraSearch!.invoke({ query: {} }))
+      ) as {
+        items: Array<{ issueKey: string }>;
+        page: { nextCursor: string };
+      };
+      expect(result.items[0]?.issueKey).toBe("DEMO-1");
+      const continuation = JSON.parse(
+        String(
+          await jiraSearch!.invoke({
+            query: { cursor: result.page.nextCursor },
+          })
+        )
+      ) as { items: Array<{ issueKey: string }> };
+      expect(continuation.items[0]?.issueKey).toBe("DEMO-2");
+    } finally {
+      broker.cancel();
+    }
+  });
+
   it("exposes exactly the four PTC reads and no host escape hatches", async () => {
     const session = new ReplSession("research-sandbox-contract", {
       tools: readTools(),

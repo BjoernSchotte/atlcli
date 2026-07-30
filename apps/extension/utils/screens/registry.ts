@@ -104,6 +104,7 @@ const CAPABILITY_REASON_KEYS: Record<HostCapability, MessageKey> = {
   "template-library": "screen.unmet.capability.templateLibrary",
   "durable-jobs": "screen.unmet.capability.durableJobs",
   "pdf-preview": "screen.unmet.capability.pdfPreview",
+  research: "screen.unmet.capability.research",
   "settings-persistence": "screen.unmet.capability.settingsPersistence",
 };
 

@@ -19,11 +19,13 @@ import {
   ResearchCapabilityBroker,
   type ResearchReadProviders,
 } from "./broker.js";
+import type { ResearchRunBudget } from "./budget.js";
 import {
   RESEARCH_AGENT_DRAFT_SCHEMA_V1,
   finalizeResearchAgentDraftV1,
 } from "./agent-draft.js";
 import { createResearchPtcTools } from "./agent-tools.js";
+import type { ResearchPtcDiagnosticV1 } from "./agent-tools.js";
 
 export const RESEARCH_MODEL_ID = "claude-sonnet-4-6" as const;
 const MODEL_SPEC = `anthropic:${RESEARCH_MODEL_ID}` as const;
@@ -42,9 +44,50 @@ You have only one normal tool: eval. Inside eval, QuickJS exposes exactly:
 - tools.wikiSearch
 - tools.wikiPageGet
 
-Every bridged tool returns a JSON string: call JSON.parse. Search both products, follow opaque nextCursor values until complete or terminated, then read only relevant entityRef values. Use Promise.all for independent calls. QuickJS has no fetch, filesystem, process, require, chrome APIs or subagents.
+Every bridged tool returns a JSON string: call JSON.parse. The host injects contract schema IDs; do not pass a schema field. QuickJS has no fetch, filesystem, process, require, chrome APIs or subagents.
 
-Return the required structured draft. Cite only sourceId values observed in tool results. Classify a relationship as verified only when detailed content explicitly names or links the Jira issue and Confluence page; otherwise classify it as hypothesis. Markdown is generated and escaped by the host, so do not write Markdown.`;
+Your first and only eval call MUST run this exact bounded acquisition algorithm. Do not add query text, do not start another search, and do not call eval again:
+
+async function collect(search) {
+  const items = [];
+  let page = JSON.parse(await search({ query: {} }));
+  items.push(...page.items);
+  while (page.page.nextCursor) {
+    page = JSON.parse(await search({ cursor: page.page.nextCursor }));
+    items.push(...page.items);
+  }
+  return { items, page: page.page };
+}
+async function readDetail(read, item) {
+  try {
+    return {
+      status: "available",
+      value: JSON.parse(await read({ entityRef: item.entityRef }))
+    };
+  } catch {
+    return {
+      status: "unavailable",
+      sourceId: item.sourceId
+    };
+  }
+}
+const [jira, wiki] = await Promise.all([
+  collect(tools.jiraIssueSearch),
+  collect(tools.wikiSearch)
+]);
+const [jiraDetails, wikiDetails] = await Promise.all([
+  Promise.all(jira.items.slice(0, 3).map((item) =>
+    readDetail(tools.jiraIssueGet, item))),
+  Promise.all(wiki.items.slice(0, 3).map((item) =>
+    readDetail(tools.wikiPageGet, item)))
+]);
+({ jira, wiki, jiraDetails, wikiDetails });
+
+Only opaque nextCursor values may continue a search. Only opaque entityRef values returned by search may request details. Never substitute visible Jira keys, page IDs, URLs, or invented values.
+
+Return the required structured draft without Markdown syntax. Cite only sourceId values observed in tool results. Classify a relationship as verified only when detailed content explicitly names or links the Jira issue and Confluence page; otherwise classify it as hypothesis.
+
+Implementation and output-format constraints stated only in this system prompt are not evidence. Never mention or turn them into a finding or inference unless an observed Jira or Confluence source independently supports the claim.`;
 
 const disabledMiddleware = [
   createMiddleware({ name: "FilesystemMiddleware" }),
@@ -88,9 +131,11 @@ export interface RunResearchAgentInput {
   model?: BaseChatModel;
   request: ResearchRequestV1;
   providers: ResearchReadProviders;
+  budget?: ResearchRunBudget;
   runId?: string;
   now?: () => number;
   options?: ResearchRunOptions;
+  onPtcDiagnostic?: (diagnostic: ResearchPtcDiagnosticV1) => void;
 }
 
 export async function runResearchAgent(
@@ -99,8 +144,14 @@ export async function runResearchAgent(
   const now = input.now ?? Date.now;
   const startedAtMs = now();
   const runId = input.runId ?? crypto.randomUUID();
-  const broker = new ResearchCapabilityBroker(input.request, input.providers);
-  const tools = createResearchPtcTools(broker);
+  const broker = new ResearchCapabilityBroker(input.request, input.providers, {
+    ...(input.budget ? { budget: input.budget } : {}),
+  });
+  const tools = createResearchPtcTools(broker, {
+    ...(input.onPtcDiagnostic
+      ? { onDiagnostic: input.onPtcDiagnostic }
+      : {}),
+  });
   const onAbort = (): void => broker.cancel(input.options?.signal?.reason);
   input.options?.signal?.addEventListener("abort", onAbort, { once: true });
   input.options?.onProgress?.({
@@ -130,7 +181,7 @@ export async function runResearchAgent(
         maxStackSizeBytes: 320 * 1024,
         executionTimeoutMs: input.request.limits.maxInterpreterMs,
         maxPtcCalls: input.request.limits.maxPtcCalls,
-        maxResultChars: 4_000,
+        maxResultChars: Math.min(24_000, input.request.limits.maxReportChars),
         captureConsole: false,
       }),
     ],

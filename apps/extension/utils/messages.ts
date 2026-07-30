@@ -16,6 +16,12 @@ import {
   isCodeThemeId,
   type CodeThemeId,
 } from "@atlcli/code-highlight/registry";
+import type {
+  ResearchErrorCode,
+  ResearchProgressV1,
+  ResearchReportV1,
+  ResearchRequestV1,
+} from "./research/contracts.js";
 
 /**
  * Detection payload shared by the SW push (`entity-changed`) and the
@@ -80,7 +86,14 @@ export type ExtRequest =
   | ({ kind: "pdf:compile"; jobId: string } & PdfCompileHints)
   | { kind: "pdf:cancel"; jobId: string }
   | { kind: "docx:prepare-runtime"; codeTheme?: CodeThemeId }
-  | { kind: "jobs:wake"; jobIds?: string[]; resumeWaiting?: boolean };
+  | { kind: "jobs:wake"; jobIds?: string[]; resumeWaiting?: boolean }
+  | {
+      kind: "research:run";
+      runId: string;
+      windowId: number;
+      request: ResearchRequestV1;
+    }
+  | { kind: "research:cancel"; runId: string };
 
 /** Response messages returned to the panel. */
 export type ExtResponse =
@@ -94,7 +107,16 @@ export type ExtResponse =
   | { kind: "docx:prepare-runtime-result"; ok: true; preparation: DocxRuntimePreparationMessage }
   | { kind: "docx:prepare-runtime-result"; ok: false; error: string }
   | { kind: "jobs:wake-result"; claimedJobId?: string; error?: never }
-  | { kind: "jobs:wake-result"; error: string; claimedJobId?: never };
+  | { kind: "jobs:wake-result"; error: string; claimedJobId?: never }
+  | { kind: "research:run-result"; runId: string; ok: true; report: ResearchReportV1 }
+  | {
+      kind: "research:run-result";
+      runId: string;
+      ok: false;
+      code: ResearchErrorCode;
+      error: string;
+    }
+  | { kind: "research:cancel-result"; runId: string; cancelled: boolean };
 
 /**
  * Push message: the service worker (canonical tab observer, PLAN §2.1) notifies
@@ -105,6 +127,11 @@ export type ExtResponse =
 export type EntityChanged = { kind: "entity-changed"; detection: EntityDetection };
 /** Fire-and-forget hint; durable snapshots remain the badge correctness path. */
 export type ExportJobsChanged = { kind: "jobs:changed"; jobId: string };
+export type ResearchProgressMessage = {
+  kind: "research:progress";
+  runId: string;
+  progress: ResearchProgressV1;
+};
 
 /**
  * Internal messages the service worker forwards to the offscreen document.
@@ -116,7 +143,9 @@ export type OffscreenRequest =
   | ({ kind: "offscreen:pdf-compile"; jobId: string } & PdfCompileHints)
   | { kind: "offscreen:pdf-cancel"; jobId: string }
   | { kind: "offscreen:docx-prepare-runtime"; codeTheme?: CodeThemeId }
-  | { kind: "offscreen:jobs-wake"; jobIds?: string[]; resumeWaiting?: boolean };
+  | { kind: "offscreen:jobs-wake"; jobIds?: string[]; resumeWaiting?: boolean }
+  | { kind: "offscreen:research-run"; runId: string; request: ResearchRequestV1 }
+  | { kind: "offscreen:research-cancel"; runId: string };
 export type OffscreenResponse =
   | { kind: "offscreen:wasm-add-result"; ok: true; result: number }
   | { kind: "offscreen:wasm-add-result"; ok: false; error: string }
@@ -126,7 +155,21 @@ export type OffscreenResponse =
   | { kind: "offscreen:docx-prepare-runtime-result"; ok: true; preparation: DocxRuntimePreparationMessage }
   | { kind: "offscreen:docx-prepare-runtime-result"; ok: false; error: string }
   | { kind: "offscreen:jobs-wake-result"; claimedJobId?: string; error?: never }
-  | { kind: "offscreen:jobs-wake-result"; error: string; claimedJobId?: never };
+  | { kind: "offscreen:jobs-wake-result"; error: string; claimedJobId?: never }
+  | {
+      kind: "offscreen:research-run-result";
+      runId: string;
+      ok: true;
+      report: ResearchReportV1;
+    }
+  | {
+      kind: "offscreen:research-run-result";
+      runId: string;
+      ok: false;
+      code: ResearchErrorCode;
+      error: string;
+    }
+  | { kind: "offscreen:research-cancel-result"; runId: string; cancelled: boolean };
 
 /** Every message that can travel over the protocol. */
 export type ExtMessage =
@@ -134,6 +177,7 @@ export type ExtMessage =
   | ExtResponse
   | EntityChanged
   | ExportJobsChanged
+  | ResearchProgressMessage
   | OffscreenRequest
   | OffscreenResponse;
 
@@ -152,6 +196,8 @@ export interface ResponseMap {
   "pdf:cancel": Extract<ExtResponse, { kind: "pdf:cancel-result" }>;
   "docx:prepare-runtime": Extract<ExtResponse, { kind: "docx:prepare-runtime-result" }>;
   "jobs:wake": Extract<ExtResponse, { kind: "jobs:wake-result" }>;
+  "research:run": Extract<ExtResponse, { kind: "research:run-result" }>;
+  "research:cancel": Extract<ExtResponse, { kind: "research:cancel-result" }>;
 }
 
 export type ResponseFor<K extends ExtRequestKind> = ResponseMap[K];
@@ -175,6 +221,18 @@ export function isExtRequest(value: unknown): value is ExtRequest {
       (wake.resumeWaiting === undefined || typeof wake.resumeWaiting === "boolean") &&
       (wake.resumeWaiting !== true || Array.isArray(wake.jobIds));
   }
+  if (kind === "research:run") {
+    const run = value as { runId?: unknown; windowId?: unknown; request?: unknown };
+    return hasOnlyKeys(value, ["kind", "runId", "windowId", "request"]) &&
+      isResearchRunId(run.runId) &&
+      isWindowId(run.windowId) &&
+      typeof run.request === "object" &&
+      run.request !== null;
+  }
+  if (kind === "research:cancel") {
+    const cancel = value as { runId?: unknown };
+    return hasOnlyKeys(value, ["kind", "runId"]) && isResearchRunId(cancel.runId);
+  }
   if (kind === "get-current-entity") return hasOnlyKeys(value, ["kind", "windowId"]) && isWindowId(candidate.windowId);
   if (kind === "ping") return hasOnlyKeys(value, ["kind"]);
   return kind === "wasm-smoke"
@@ -195,6 +253,26 @@ export function isExportJobsChanged(value: unknown): value is ExportJobsChanged 
   return candidate.kind === "jobs:changed" &&
     hasOnlyKeys(value, ["kind", "jobId"]) &&
     isOpaqueExportJobId(candidate.jobId);
+}
+
+export function isResearchProgress(
+  value: unknown,
+  runId?: string
+): value is ResearchProgressMessage {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as {
+    kind?: unknown;
+    runId?: unknown;
+    progress?: { phase?: unknown };
+  };
+  return candidate.kind === "research:progress" &&
+    isResearchRunId(candidate.runId) &&
+    (runId === undefined || candidate.runId === runId) &&
+    typeof candidate.progress === "object" &&
+    candidate.progress !== null &&
+    ["preparing", "researching", "rendering", "complete"].includes(
+      String(candidate.progress.phase)
+    );
 }
 
 /** Narrow a broadcast push to the Chrome window owned by one side panel. */
@@ -224,6 +302,17 @@ export function isOffscreenRequest(value: unknown): value is OffscreenRequest {
       hasValidJobIds(wake.jobIds) &&
       (wake.resumeWaiting === undefined || typeof wake.resumeWaiting === "boolean") &&
       (wake.resumeWaiting !== true || Array.isArray(wake.jobIds));
+  }
+  if (candidate.kind === "offscreen:research-run") {
+    const run = value as { runId?: unknown; request?: unknown };
+    return hasOnlyKeys(value, ["kind", "runId", "request"]) &&
+      isResearchRunId(run.runId) &&
+      typeof run.request === "object" &&
+      run.request !== null;
+  }
+  if (candidate.kind === "offscreen:research-cancel") {
+    const cancel = value as { runId?: unknown };
+    return hasOnlyKeys(value, ["kind", "runId"]) && isResearchRunId(cancel.runId);
   }
   return candidate.kind === "offscreen:wasm-add"
     && hasOnlyKeys(value, ["kind", "a", "b"])
@@ -277,4 +366,8 @@ function isPdfJobId(value: unknown): value is string {
 
 function isWindowId(value: unknown): value is number {
   return Number.isInteger(value) && (value as number) >= 0;
+}
+
+function isResearchRunId(value: unknown): value is string {
+  return typeof value === "string" && /^[A-Za-z0-9-]{1,200}$/.test(value);
 }

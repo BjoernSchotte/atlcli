@@ -18,6 +18,10 @@ import {
   type PdfCompileHints,
 } from "./messages.js";
 import type { CodeThemeId } from "@atlcli/code-highlight/registry";
+import type {
+  ResearchReportV1,
+  ResearchRequestV1,
+} from "./research/contracts.js";
 import { routeMessage, type RouterDeps } from "./router.js";
 import { runWasmAdd } from "./wasm-smoke.js";
 
@@ -36,6 +40,11 @@ export interface OffscreenListenerDeps {
     jobIds?: string[],
     options?: { resumeWaiting?: boolean },
   ) => Promise<string | undefined>;
+  runResearch?: (
+    runId: string,
+    request: ResearchRequestV1
+  ) => Promise<ResearchReportV1>;
+  cancelResearch?: (runId: string) => Promise<boolean>;
 }
 
 const toMessage = (err: unknown): string =>
@@ -74,6 +83,22 @@ export function handleExtMessage(
             kind: "docx:prepare-runtime-result",
             ok: false,
             error: toMessage(err),
+          });
+          break;
+        case "research:run":
+          sendResponse({
+            kind: "research:run-result",
+            runId: message.runId,
+            ok: false,
+            code: "provider-error",
+            error: toMessage(err),
+          });
+          break;
+        case "research:cancel":
+          sendResponse({
+            kind: "research:cancel-result",
+            runId: message.runId,
+            cancelled: false,
           });
           break;
         case "ping":
@@ -151,6 +176,41 @@ export function handleOffscreenMessage(
         .catch((error) => sendResponse({
           kind: "offscreen:jobs-wake-result",
           error: toMessage(error),
+        }));
+      break;
+    case "offscreen:research-run":
+      (deps.runResearch
+        ? deps.runResearch(message.runId, message.request)
+        : Promise.reject(new Error("Research worker host is not configured.")))
+        .then((report) => sendResponse({
+          kind: "offscreen:research-run-result",
+          runId: message.runId,
+          ok: true,
+          report,
+        }))
+        .catch(async (error) => {
+          const { classifyResearchError } = await import("./research/redaction.js");
+          const classified = classifyResearchError(error);
+          sendResponse({
+            kind: "offscreen:research-run-result",
+            runId: message.runId,
+            ok: false,
+            code: classified.code,
+            error: classified.message,
+          });
+        });
+      break;
+    case "offscreen:research-cancel":
+      (deps.cancelResearch?.(message.runId) ?? Promise.resolve(false))
+        .then((cancelled) => sendResponse({
+          kind: "offscreen:research-cancel-result",
+          runId: message.runId,
+          cancelled,
+        }))
+        .catch(() => sendResponse({
+          kind: "offscreen:research-cancel-result",
+          runId: message.runId,
+          cancelled: false,
         }));
       break;
   }

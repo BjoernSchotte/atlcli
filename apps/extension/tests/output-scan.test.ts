@@ -6,7 +6,7 @@ import { spawnSync } from "node:child_process";
 import {
   PDFJS_ARTIFACT_PATTERNS,
   scanText,
-  validatePdfArtifactInventory,
+  validateExtensionArtifactInventory,
 } from "../scripts/check-output-build.js";
 import { EXTENSION_ROOT, ensureExtensionBuilt, OUTPUT_DIR } from "./build-helper.js";
 
@@ -64,6 +64,14 @@ describe("scanText classification", () => {
     expect(scanText(`import a from "./local.js";`)).toEqual([]);
     // A bare URL string (not an import/script) is not a remote SCRIPT origin.
     expect(scanText(`const url = "https://api.atlassian.net/rest";`)).toEqual([]);
+  });
+
+  it("does not flag node/global words inside inert diagnostics", () => {
+    expect(
+      scanText(
+        `const help = "set process.env or import('node:buffer').File; never call eval(userInput)";`
+      )
+    ).toEqual([]);
   });
 
   // Regression (finding #6 hardening): bare node GLOBALS are invisible to the
@@ -139,6 +147,16 @@ describe("scanText classification", () => {
 
   it("does not confuse method names with direct eval", () => {
     expect(scanText(`const value = parser.eval(source);`)).toEqual([]);
+    expect(
+      scanText(`class Interpreter { async eval(source, options) { return source; } }`)
+    ).toEqual([]);
+    expect(
+      scanText(`const Interpreter = { eval(source) { return source; } };`)
+    ).toEqual([]);
+  });
+
+  it("still scans executable template expressions", () => {
+    expect(scanText("const value = `${eval(userInput)}`;")).toContain("eval(");
   });
 });
 
@@ -167,36 +185,43 @@ describe("PDF artifact inventory", () => {
     { path: "assets/LICENSE-Noto-Sans-Symbols-2-abc.txt", size: 4_000 },
     { path: "assets/LICENSE-Noto-Emoji-abc.txt", size: 4_000 },
     { path: "assets/LICENSE-abc.", size: 11_000 },
+    { path: "assets/research-agent-abc.js", size: 2_000_000 },
+    {
+      path: "assets/emscripten-module-quickjs.wasm",
+      size: 1_075_905,
+      sha256:
+        "3742fb828ff9841d57dd7350657e3bc9ae2ae52a1d079615f100166c1274052f",
+    },
   ];
 
   it("accepts a complete local PDF runtime", () => {
-    expect(validatePdfArtifactInventory(complete)).toEqual([]);
+    expect(validateExtensionArtifactInventory(complete)).toEqual([]);
   });
 
   it("names missing and truncated compiler artifacts", () => {
     const missingWorker = complete.filter((artifact) => !artifact.path.includes("pdf-compiler"));
-    expect(validatePdfArtifactInventory(missingWorker).join("\n")).toContain(
+    expect(validateExtensionArtifactInventory(missingWorker).join("\n")).toContain(
       "PDF compiler worker"
     );
 
     const truncated = complete.map((artifact) =>
       artifact.path.endsWith(".wasm") ? { ...artifact, size: 1024 } : artifact
     );
-    expect(validatePdfArtifactInventory(truncated).join("\n")).toContain(
+    expect(validateExtensionArtifactInventory(truncated).join("\n")).toContain(
       "unexpectedly small"
     );
 
     const tampered = complete.map((artifact) =>
       artifact.path.includes("SourceSans3-Regular") ? { ...artifact, sha256: "tampered" } : artifact
     );
-    expect(validatePdfArtifactInventory(tampered).join("\n")).toContain("SHA-256");
+    expect(validateExtensionArtifactInventory(tampered).join("\n")).toContain("SHA-256");
   });
 
   it("requires exactly one pinned DOCX code font", () => {
     const missing = complete.filter(
       (artifact) => !artifact.path.includes("JetBrainsMono-Regular"),
     );
-    expect(validatePdfArtifactInventory(missing).join("\n")).toContain(
+    expect(validateExtensionArtifactInventory(missing).join("\n")).toContain(
       "DOCX code font",
     );
 
@@ -208,13 +233,13 @@ describe("PDF artifact inventory", () => {
         sha256: "a0bf60ef0f83c5ed4d7a75d45838548b1f6873372dfac88f71804491898d138f",
       },
     ];
-    expect(validatePdfArtifactInventory(duplicate).join("\n")).toContain(
+    expect(validateExtensionArtifactInventory(duplicate).join("\n")).toContain(
       "expected exactly one bundled artifact",
     );
   });
 
   it("rejects Oniguruma WASM and aggregate Shiki catalogue chunks", () => {
-    const issues = validatePdfArtifactInventory([
+    const issues = validateExtensionArtifactInventory([
       ...complete,
       { path: "assets/onig-seeded.wasm", size: 20_000 },
       { path: "chunks/themes-seeded.js", size: 6_000 },
@@ -235,12 +260,12 @@ describe("PDF artifact inventory", () => {
     ["PDF.js worker", "pdf.worker.min-abc.mjs"],
   ])("requires %s to be present and unmodified", (label, file) => {
     const missing = complete.filter((artifact) => !artifact.path.endsWith(file));
-    expect(validatePdfArtifactInventory(missing).join("\n")).toContain(label);
+    expect(validateExtensionArtifactInventory(missing).join("\n")).toContain(label);
 
     const tampered = complete.map((artifact) =>
       artifact.path.endsWith(file) ? { ...artifact, sha256: "tampered" } : artifact
     );
-    expect(validatePdfArtifactInventory(tampered).join("\n")).toContain("SHA-256");
+    expect(validateExtensionArtifactInventory(tampered).join("\n")).toContain("SHA-256");
   });
 });
 

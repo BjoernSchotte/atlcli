@@ -57,8 +57,12 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { createHash } from "node:crypto";
 
-/** Quoted `node:`/`bun:` module specifier — a real import/require target. */
-const NODE_BUN_RE = /["'`](node|bun):[A-Za-z0-9_./-]*["'`]/g;
+/** Real `node:`/`bun:` import/require syntax, excluding inert diagnostic text. */
+const NODE_BUN_RES: RegExp[] = [
+  /\b(?:import|require)\s*\(\s*["'`](?:node|bun):[A-Za-z0-9_./-]*["'`]\s*\)/g,
+  /\bimport\s*(?:[^"'`()]*\bfrom\s*)?["'`](?:node|bun):[A-Za-z0-9_./-]*["'`]/g,
+  /\bexport\s+[^"'`()]*\bfrom\s*["'`](?:node|bun):[A-Za-z0-9_./-]*["'`]/g,
+];
 
 /**
  * Bare node/Bun GLOBALS that do not exist in the extension runtime. Matched as
@@ -87,7 +91,7 @@ const FAKE_BUFFER_GLOBAL_RES: RegExp[] = [
 const DYNAMIC_CODE_RES: RegExp[] = [
   /\bnew\s+Function\s*\(/g,
   /(?:^|[=(:,!&|?;{}])\s*Function\s*\(\s*["'`]/g,
-  /(?:^|[^\w.])eval\s*\(/g,
+  /(?<![\w.])\beval\s*\(/g,
 ];
 const ONIGURUMA_RUNTIME_RES: RegExp[] = [
   /\bfindNextOnigScannerMatch\b/g,
@@ -233,6 +237,21 @@ const REQUIRED_PDF_ARTIFACTS = [
   },
 ] as const;
 
+const REQUIRED_RESEARCH_ARTIFACTS = [
+  {
+    label: "DeepAgents research worker",
+    pattern: /(?:^|\/)assets\/research-agent-[^/]+\.js$/,
+    minimumSize: 100_000,
+  },
+  {
+    label: "QuickJS asyncify WASM",
+    pattern: /(?:^|\/)assets\/emscripten-module-[^/]+\.wasm$/,
+    minimumSize: 1_000_000,
+    selectedSha256:
+      "3742fb828ff9841d57dd7350657e3bc9ae2ae52a1d079615f100166c1274052f",
+  },
+] as const;
+
 /**
  * Remote script origin: any executable form that would pull code from an
  * http(s) URL —
@@ -264,6 +283,100 @@ export interface FileLeak {
   findings: string[];
 }
 
+function maskLiteralsAndComments(text: string): string {
+  const output = [...text];
+  let mode: "code" | "single" | "double" | "template" | "line" | "block" =
+    "code";
+  const templateExpressionDepth: number[] = [];
+
+  const mask = (index: number): void => {
+    if (output[index] !== "\n" && output[index] !== "\r") output[index] = " ";
+  };
+
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index]!;
+    const next = text[index + 1];
+
+    if (mode === "line") {
+      mask(index);
+      if (character === "\n") mode = "code";
+      continue;
+    }
+    if (mode === "block") {
+      mask(index);
+      if (character === "*" && next === "/") {
+        mask(index + 1);
+        index += 1;
+        mode = "code";
+      }
+      continue;
+    }
+    if (mode === "single" || mode === "double") {
+      mask(index);
+      if (character === "\\") {
+        mask(index + 1);
+        index += 1;
+      } else if (
+        (mode === "single" && character === "'") ||
+        (mode === "double" && character === '"')
+      ) {
+        mode = "code";
+      }
+      continue;
+    }
+    if (mode === "template") {
+      mask(index);
+      if (character === "\\") {
+        mask(index + 1);
+        index += 1;
+      } else if (character === "`") {
+        mode = "code";
+      } else if (character === "$" && next === "{") {
+        output[index] = "$";
+        output[index + 1] = "{";
+        index += 1;
+        templateExpressionDepth.push(1);
+        mode = "code";
+      }
+      continue;
+    }
+
+    if (templateExpressionDepth.length > 0) {
+      if (character === "{") {
+        templateExpressionDepth[templateExpressionDepth.length - 1]! += 1;
+      } else if (character === "}") {
+        templateExpressionDepth[templateExpressionDepth.length - 1]! -= 1;
+        if (templateExpressionDepth.at(-1) === 0) {
+          templateExpressionDepth.pop();
+          mode = "template";
+          continue;
+        }
+      }
+    }
+    if (character === "/" && next === "/") {
+      mask(index);
+      mask(index + 1);
+      index += 1;
+      mode = "line";
+    } else if (character === "/" && next === "*") {
+      mask(index);
+      mask(index + 1);
+      index += 1;
+      mode = "block";
+    } else if (character === "'") {
+      mask(index);
+      mode = "single";
+    } else if (character === '"') {
+      mask(index);
+      mode = "double";
+    } else if (character === "`") {
+      mask(index);
+      mode = "template";
+    }
+  }
+  return output.join("");
+}
+
 function walk(dir: string, exts: string[]): string[] {
   const out: string[] = [];
   for (const name of readdirSync(dir)) {
@@ -280,16 +393,40 @@ function walk(dir: string, exts: string[]): string[] {
 /** Extract all disallowed findings from one file's text. */
 export function scanText(text: string): string[] {
   const found = new Set<string>();
-  for (const m of text.matchAll(NODE_BUN_RE)) found.add(m[0].slice(1, -1));
+  const code = maskLiteralsAndComments(text);
+  for (const re of NODE_BUN_RES) {
+    for (const match of text.matchAll(re)) {
+      const start = match.index ?? 0;
+      // The same words can appear inside an SDK diagnostic string. The
+      // literal/comment mask preserves executable keywords at their offsets.
+      if (!/\b(?:import|require|export)\b/.test(code.slice(start, start + 12))) {
+        continue;
+      }
+      const specifier = match[0].match(/["'`]((?:node|bun):[^"'`]*)["'`]/);
+      if (specifier?.[1]) found.add(specifier[1]);
+    }
+  }
   for (const re of REMOTE_SCRIPT_RES) {
     for (const m of text.matchAll(re)) found.add(m[0]);
   }
-  for (const m of text.matchAll(NODE_GLOBAL_RE)) found.add(m[0]);
+  for (const m of code.matchAll(NODE_GLOBAL_RE)) found.add(m[0]);
   for (const re of FAKE_BUFFER_GLOBAL_RES) {
     for (const m of text.matchAll(re)) found.add(m[0]);
   }
-  for (const re of DYNAMIC_CODE_RES) {
-    for (const m of text.matchAll(re)) found.add(m[0].trim());
+  const dynamicCode = code.replace(
+    /\b(?:async\s+)?eval\s*\([^()]*\)\s*\{/g,
+    (declaration) => declaration.replace(/\beval\b/, "method")
+  );
+  for (const re of DYNAMIC_CODE_RES.slice(0, 2)) {
+    for (const match of text.matchAll(re)) {
+      const start = match.index ?? 0;
+      if (code.slice(start, start + match[0].length).includes("Function")) {
+        found.add(match[0].trim());
+      }
+    }
+  }
+  for (const match of dynamicCode.matchAll(DYNAMIC_CODE_RES[2]!)) {
+    found.add(match[0].trim());
   }
   for (const re of ONIGURUMA_RUNTIME_RES) {
     for (const m of text.matchAll(re)) found.add(m[0].trim());
@@ -309,8 +446,10 @@ export function scanText(text: string): string[] {
   return findings;
 }
 
-/** Verify that every binary runtime asset needed for browser exports exists. */
-export function validatePdfArtifactInventory(artifacts: OutputArtifact[]): string[] {
+/** Verify that every local binary/runtime asset needed by the extension exists. */
+export function validateExtensionArtifactInventory(
+  artifacts: OutputArtifact[]
+): string[] {
   const issues: string[] = [];
   for (const artifact of artifacts) {
     if (/(?:^|\/)(?:onig|shiki)[^/]*[.]wasm$/i.test(artifact.path)) {
@@ -324,8 +463,19 @@ export function validatePdfArtifactInventory(artifacts: OutputArtifact[]): strin
       issues.push(`aggregate Shiki catalogue: unexpected extension artifact ${artifact.path}`);
     }
   }
-  for (const requirement of REQUIRED_PDF_ARTIFACTS) {
-    const matches = artifacts.filter((artifact) => requirement.pattern.test(artifact.path));
+  for (const requirement of [
+    ...REQUIRED_PDF_ARTIFACTS,
+    ...REQUIRED_RESEARCH_ARTIFACTS,
+  ]) {
+    const candidates = artifacts.filter((artifact) =>
+      requirement.pattern.test(artifact.path)
+    );
+    const matches =
+      "selectedSha256" in requirement
+        ? candidates.filter(
+            (artifact) => artifact.sha256 === requirement.selectedSha256
+          )
+        : candidates;
     if (matches.length !== 1) {
       issues.push(
         `${requirement.label}: expected exactly one bundled artifact, found ${matches.length}`
@@ -401,7 +551,7 @@ async function main(): Promise<void> {
   let artifactIssues: string[];
   try {
     leaks = scanOutputDir(root);
-    artifactIssues = validatePdfArtifactInventory(collectArtifacts(root));
+    artifactIssues = validateExtensionArtifactInventory(collectArtifacts(root));
   } catch (err) {
     console.error(
       `✗ extension output scan could not read '${root}': ${

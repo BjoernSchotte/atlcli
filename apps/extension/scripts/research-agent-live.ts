@@ -200,6 +200,8 @@ async function main(): Promise<void> {
     request,
     providers: syntheticProviders(),
     runId: `synthetic-live-${crypto.randomUUID()}`,
+    onPtcDiagnostic: (diagnostic) =>
+      console.error(`[research-live] ptc=${JSON.stringify(diagnostic)}`),
     options: {
       signal: AbortSignal.timeout(request.limits.maxRunMs),
       onProgress: (progress) =>

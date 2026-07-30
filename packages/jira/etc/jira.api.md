@@ -259,12 +259,15 @@ export declare class JiraClient {
     private baseDelayMs;
     private isCloud;
     private tlsOptions;
+    private guardTransport;
+    private observeTransport;
     private sessionRedirectPolicy;
-    constructor(profile: Profile);
+    constructor(profile: Profile, options?: JiraClientOptions);
     private get apiPath();
     private get agilePath();
     private sleep;
     private applyFetchOptions;
+    private emitTransport;
     private request;
     getCurrentUser(): Promise<JiraUser>;
     listProjects(options?: {
@@ -617,6 +620,12 @@ export declare class JiraClient {
     adfToText(adf: AdfDocument | string | null | undefined): string;
 }
 
+// export: JiraClientOptions
+export interface JiraClientOptions {
+    guardTransport?: (event: JiraTransportEvent) => void;
+    observeTransport?: (event: JiraTransportEvent) => void;
+}
+
 // export: JiraComment
 export interface JiraComment {
     id: string;
@@ -902,6 +911,26 @@ export interface JiraTransitionField {
     fieldId: string;
     allowedValues?: unknown[];
 }
+
+// export: JiraTransportEvent
+export type JiraTransportEvent = {
+    type: "attempt";
+    method: string;
+    attempt: number;
+} | {
+    type: "response";
+    method: string;
+    attempt: number;
+    status: number;
+    durationMs: number;
+    responseBytes: number;
+    retryAfterMs?: number;
+} | {
+    type: "error";
+    method: string;
+    attempt: number;
+    durationMs: number;
+};
 
 // export: JiraUser
 export interface JiraUser {
@@ -1451,12 +1480,15 @@ export declare class JiraClient {
     private baseDelayMs;
     private isCloud;
     private tlsOptions;
+    private guardTransport;
+    private observeTransport;
     private sessionRedirectPolicy;
-    constructor(profile: Profile);
+    constructor(profile: Profile, options?: JiraClientOptions);
     private get apiPath();
     private get agilePath();
     private sleep;
     private applyFetchOptions;
+    private emitTransport;
     private request;
     getCurrentUser(): Promise<JiraUser>;
     listProjects(options?: {
@@ -1807,6 +1839,12 @@ export declare class JiraClient {
     }>;
     textToAdf(text: string): AdfDocument;
     adfToText(adf: AdfDocument | string | null | undefined): string;
+}
+
+// export: JiraClientOptions
+export interface JiraClientOptions {
+    guardTransport?: (event: JiraTransportEvent) => void;
+    observeTransport?: (event: JiraTransportEvent) => void;
 }
 
 // export: JiraComment
@@ -2194,6 +2232,26 @@ export interface JiraTransitionField {
     fieldId: string;
     allowedValues?: unknown[];
 }
+
+// export: JiraTransportEvent
+export type JiraTransportEvent = {
+    type: "attempt";
+    method: string;
+    attempt: number;
+} | {
+    type: "response";
+    method: string;
+    attempt: number;
+    status: number;
+    durationMs: number;
+    responseBytes: number;
+    retryAfterMs?: number;
+} | {
+    type: "error";
+    method: string;
+    attempt: number;
+    durationMs: number;
+};
 
 // export: JiraUser
 export interface JiraUser {
@@ -2846,12 +2904,15 @@ export declare class JiraClient {
     private baseDelayMs;
     private isCloud;
     private tlsOptions;
+    private guardTransport;
+    private observeTransport;
     private sessionRedirectPolicy;
-    constructor(profile: Profile);
+    constructor(profile: Profile, options?: JiraClientOptions);
     private get apiPath();
     private get agilePath();
     private sleep;
     private applyFetchOptions;
+    private emitTransport;
     private request;
     getCurrentUser(): Promise<JiraUser>;
     listProjects(options?: {
@@ -3204,6 +3265,12 @@ export declare class JiraClient {
     adfToText(adf: AdfDocument | string | null | undefined): string;
 }
 
+// export: JiraClientOptions
+export interface JiraClientOptions {
+    guardTransport?: (event: JiraTransportEvent) => void;
+    observeTransport?: (event: JiraTransportEvent) => void;
+}
+
 // export: JiraComment
 export interface JiraComment {
     id: string;
@@ -3489,6 +3556,26 @@ export interface JiraTransitionField {
     fieldId: string;
     allowedValues?: unknown[];
 }
+
+// export: JiraTransportEvent
+export type JiraTransportEvent = {
+    type: "attempt";
+    method: string;
+    attempt: number;
+} | {
+    type: "response";
+    method: string;
+    attempt: number;
+    status: number;
+    durationMs: number;
+    responseBytes: number;
+    retryAfterMs?: number;
+} | {
+    type: "error";
+    method: string;
+    attempt: number;
+    durationMs: number;
+};
 
 // export: JiraUser
 export interface JiraUser {
@@ -4038,12 +4125,15 @@ export declare class JiraClient {
     private baseDelayMs;
     private isCloud;
     private tlsOptions;
+    private guardTransport;
+    private observeTransport;
     private sessionRedirectPolicy;
-    constructor(profile: Profile);
+    constructor(profile: Profile, options?: JiraClientOptions);
     private get apiPath();
     private get agilePath();
     private sleep;
     private applyFetchOptions;
+    private emitTransport;
     private request;
     getCurrentUser(): Promise<JiraUser>;
     listProjects(options?: {
@@ -4394,6 +4484,12 @@ export declare class JiraClient {
     }>;
     textToAdf(text: string): AdfDocument;
     adfToText(adf: AdfDocument | string | null | undefined): string;
+}
+
+// export: JiraClientOptions
+export interface JiraClientOptions {
+    guardTransport?: (event: JiraTransportEvent) => void;
+    observeTransport?: (event: JiraTransportEvent) => void;
 }
 
 // export: JiraComment
@@ -4781,6 +4877,26 @@ export interface JiraTransitionField {
     fieldId: string;
     allowedValues?: unknown[];
 }
+
+// export: JiraTransportEvent
+export type JiraTransportEvent = {
+    type: "attempt";
+    method: string;
+    attempt: number;
+} | {
+    type: "response";
+    method: string;
+    attempt: number;
+    status: number;
+    durationMs: number;
+    responseBytes: number;
+    retryAfterMs?: number;
+} | {
+    type: "error";
+    method: string;
+    attempt: number;
+    durationMs: number;
+};
 
 // export: JiraUser
 export interface JiraUser {
