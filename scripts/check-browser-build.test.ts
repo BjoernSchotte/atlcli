@@ -36,6 +36,7 @@ describe("browser-build gate (spec 001 task 6)", () => {
     expect(BROWSER_ENTRYPOINTS).toEqual([
       "packages/confluence/src/markdown.ts",
       "packages/confluence/src/client.ts",
+      "packages/confluence/src/attachment-delivery.ts",
       "packages/jira/src/client.ts",
       "packages/core/src/index.browser.ts",
       "packages/confluence/src/index.browser.ts",
@@ -128,6 +129,22 @@ describe("browser-build gate (spec 001 task 6)", () => {
     expect(result.buildFailed).toBe(true);
     expect(result.specifiers).toContain("node:os");
     expect(result.entrypoint).toBe(file); // named in the failure output
+  });
+
+  test("a seeded Forge import turns the host-neutral graph gate red", async () => {
+    const dir = fixtureDir();
+    const file = join(dir, "forge-coupled.ts");
+    writeFileSync(
+      file,
+      `import { requestConfluence } from "@forge/bridge";\nexport { requestConfluence };\n`,
+    );
+
+    const result = await checkEntrypoint(file);
+
+    expect(result.ok).toBe(false);
+    expect(result.builtinImports).toEqual([
+      expect.objectContaining({ specifier: "@forge/bridge" }),
+    ]);
   });
 
   test("the specifier scan ignores Bun's inlined polyfill diagnostic strings (no false positive)", async () => {

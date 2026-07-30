@@ -32,6 +32,12 @@ import {
   type ExportSourceFallbackReason,
   type ExportSourcePolicy,
 } from "./page-body.js";
+import {
+  AttachmentDeliveryError,
+  createPageAttachmentWriterV1,
+  type AttachmentDeliveryOperation,
+  type ConfluenceProductRequestV1,
+} from "./attachment-delivery.js";
 
 type V2FailureClassification = "adf-body-format-unsupported";
 
@@ -2468,12 +2474,27 @@ export class ConfluenceClient {
   }): Promise<AttachmentInfo> {
     const { pageId, filename, data, mimeType, comment } = params;
 
+    // The exact-name preflight is a Confluence Cloud v2 contract. Preserve the
+    // existing Data Center create path, whose configured context path may be
+    // arbitrary and whose v2 attachment endpoint is not part of atlcli's
+    // compatibility contract.
+    if (this.deploymentType !== "data-center") {
+      return this.pageAttachmentWriter().create({
+        pageId,
+        filename,
+        body: data,
+        mimeType: mimeType ?? this.detectMimeType(filename),
+        comment,
+      });
+    }
+
     const formData = new FormData();
     const fileData = new Uint8Array(data.buffer, data.byteOffset, data.byteLength) as unknown as BlobPart;
     const file = new File([fileData], filename, {
       type: mimeType ?? this.detectMimeType(filename),
     });
     formData.append("file", file);
+    formData.append("minorEdit", "true");
 
     if (comment) {
       formData.append("comment", comment);
@@ -2502,26 +2523,17 @@ export class ConfluenceClient {
   }): Promise<AttachmentInfo> {
     const { attachmentId, pageId, filename, data, mimeType, comment } = params;
 
-    const formData = new FormData();
     const detectedMimeType = filename
       ? this.detectMimeType(filename)
       : "application/octet-stream";
-    const fileData = new Uint8Array(data.buffer, data.byteOffset, data.byteLength) as unknown as BlobPart;
-    const file = new File([fileData], filename ?? "file", {
-      type: mimeType ?? detectedMimeType,
+    return this.pageAttachmentWriter().updateData({
+      attachmentId,
+      pageId,
+      filename: filename ?? "file",
+      body: data,
+      mimeType: mimeType ?? detectedMimeType,
+      comment,
     });
-    formData.append("file", file);
-
-    if (comment) {
-      formData.append("comment", comment);
-    }
-
-    const result = await this.requestMultipart(
-      `/content/${pageId}/child/attachment/${attachmentId}/data`,
-      formData
-    );
-
-    return this.parseAttachmentResponse(result, pageId);
   }
 
   /**
@@ -2574,82 +2586,141 @@ export class ConfluenceClient {
       body: "[multipart/form-data]",
     });
 
-    let lastError: Error | null = null;
+    // Do not retry multipart POSTs: after an ambiguous 429/5xx/transport
+    // failure, Confluence may already have created the attachment/version.
+    const res = await fetch(url.toString(), this.applyFetchOptions({
+      method: "POST",
+      headers: {
+        Authorization: this.authHeader,
+        Accept: "application/json",
+        "X-Atlassian-Token": "nocheck",
+        // Note: Do NOT set Content-Type - fetch will set it with boundary
+      },
+      body: formData,
+    }));
 
-    for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
-      const res = await fetch(url.toString(), this.applyFetchOptions({
-        method: "POST",
-        headers: {
-          Authorization: this.authHeader,
-          Accept: "application/json",
-          "X-Atlassian-Token": "nocheck",
-          // Note: Do NOT set Content-Type - fetch will set it with boundary
-        },
-        body: formData,
-      }));
-
-      if (res.status === 429) {
-        const delayMs =
-          parseRetryAfterMs(res.headers.get("Retry-After")) ??
-          this.baseDelayMs * Math.pow(2, attempt);
-
-        if (attempt < this.maxRetries) {
-          await this.sleep(delayMs);
-          continue;
-        }
-        const error = new Error(`Rate limited after ${this.maxRetries} retries`);
-        logger.api("response", {
-          requestId,
-          status: res.status,
-          statusText: "Too Many Requests",
-          durationMs: Date.now() - startTime,
-          error: error.message,
-        });
-        throw error;
+    const text = await res.text();
+    let data: unknown = text;
+    if (text) {
+      try {
+        data = JSON.parse(text);
+      } catch {
+        data = text;
       }
+    }
 
-      const text = await res.text();
-      let data: unknown = text;
-      if (text) {
-        try {
-          data = JSON.parse(text);
-        } catch {
-          data = text;
-        }
-      }
-
-      if (!res.ok) {
-        const message = typeof data === "string" ? data : JSON.stringify(data);
-        lastError = new Error(`Attachment upload error (${res.status}): ${message}`);
-
-        if (res.status >= 500 && attempt < this.maxRetries) {
-          await this.sleep(this.baseDelayMs * Math.pow(2, attempt));
-          continue;
-        }
-        logger.api("response", {
-          requestId,
-          status: res.status,
-          statusText: res.statusText,
-          body: redactSensitive(data),
-          durationMs: Date.now() - startTime,
-          error: lastError.message,
-        });
-        throw lastError;
-      }
-
-      // Log successful response
+    if (!res.ok) {
+      const message = typeof data === "string" ? data : JSON.stringify(data);
+      const error = new Error(`Attachment upload error (${res.status}): ${message}`);
       logger.api("response", {
         requestId,
         status: res.status,
         statusText: res.statusText,
-        body: redactSensitive(data),
         durationMs: Date.now() - startTime,
+        error: error.message,
       });
-
-      return data;
+      throw error;
     }
 
-    throw lastError ?? new Error("Upload failed after retries");
+    // Log successful response
+    logger.api("response", {
+      requestId,
+      status: res.status,
+      statusText: res.statusText,
+      body: redactSensitive(data),
+      durationMs: Date.now() - startTime,
+    });
+
+    return data;
+  }
+
+  /**
+   * Host adapter for the browser-safe attachment writer.
+   *
+   * The common writer owns product paths, multipart construction, response
+   * validation, and typed failures. This adapter alone owns absolute URLs and
+   * the client's token/session transport policy.
+   */
+  private pageAttachmentWriter() {
+    const request: ConfluenceProductRequestV1 = async (path, init = {}) => {
+      const url = new URL(`${this.confluenceBaseUrl}${path}`);
+      const commonHeaders: Record<string, string> = {};
+      new Headers(init.headers).forEach((value, key) => {
+        commonHeaders[key] = value;
+      });
+      const headers = this.authHeader
+        ? { ...commonHeaders, Authorization: this.authHeader }
+        : commonHeaders;
+      const logger = getLogger();
+      const requestId = generateRequestId();
+      const startTime = Date.now();
+      const method = init.method ?? "GET";
+
+      logger.api("request", {
+        requestId,
+        method,
+        url: url.toString(),
+        path,
+        headers: redactSensitive(headers),
+        body: init.body instanceof FormData ? "[multipart/form-data]" : undefined,
+      });
+
+      let response: Response;
+      try {
+        response = await fetch(url, this.applyFetchOptions({
+          ...init,
+          headers,
+        }));
+        this.assertNotAuthRedirect(response);
+      } catch (error) {
+        logger.api("response", {
+          requestId,
+          status: 0,
+          statusText: "Transport Error",
+          durationMs: Date.now() - startTime,
+          error: error instanceof Error ? error.message : "Attachment transport failed",
+        });
+        // The session redirect wording is consumed by the extension's existing
+        // not-logged-in classifier. Preserve it inside the new typed model
+        // rather than allowing the writer to replace it with a generic
+        // transport message.
+        if (
+          error instanceof Error &&
+          (error.message.includes("authentication redirect") ||
+            error.message.includes("session not logged in"))
+        ) {
+          const operation: AttachmentDeliveryOperation =
+            method === "GET"
+              ? "find-by-filename"
+              : path.endsWith("/data")
+                ? "update-data"
+                : "create";
+          const encodedPageId =
+            path.match(/\/pages\/([^/]+)\/attachments/u)?.[1] ??
+            path.match(/\/content\/([^/]+)\/child\/attachment/u)?.[1] ??
+            "";
+          throw new AttachmentDeliveryError("forbidden", {
+            operation,
+            pageId: decodeURIComponent(encodedPageId),
+            diagnostic: error.message,
+            cause: error,
+          });
+        }
+        throw error;
+      }
+
+      // Response bodies are parsed and sanitized by the shared writer. Logging
+      // only status metadata here prevents product error envelopes from leaking.
+      logger.api("response", {
+        requestId,
+        status: response.status,
+        statusText: response.statusText,
+        durationMs: Date.now() - startTime,
+      });
+      return response;
+    };
+
+    return createPageAttachmentWriterV1(request, { pathPrefix: "" });
   }
 
   /**
