@@ -171,15 +171,28 @@ export function DocxExportPanel({
       />
 
       {!template ? (
-        <div>
-          <Button
-            onClick={() => fileRef.current?.click()}
-            disabled={busy}
-            data-testid="template-upload"
-          >
-            {uploading ? t("docx.scanning") : t("docx.upload")}
-          </Button>
-        </div>
+        <Card>
+          <CardContent className="flex flex-col gap-2.5 p-3">
+            <div className="flex items-center justify-between gap-3 text-[13px] font-bold">
+              <span>{t("docx.title")}</span>
+              <span className="text-xs font-bold text-warning">{t("docx.required")}</span>
+            </div>
+            <p className="m-0 text-xs leading-relaxed text-muted-foreground">
+              {t("docx.templateHelp")}
+            </p>
+            <Button
+              variant="outline"
+              onClick={() => fileRef.current?.click()}
+              disabled={busy}
+              data-testid="template-upload"
+            >
+              {uploading ? t("docx.scanning") : t("docx.upload")}
+            </Button>
+            <Button disabled className="w-full" data-testid="template-export-disabled">
+              {t("docx.selectTemplate")}
+            </Button>
+          </CardContent>
+        </Card>
       ) : (
         <Card data-testid="template-current">
           <CardContent className="p-3">

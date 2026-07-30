@@ -20,6 +20,8 @@ const LOCALE_LABEL_KEYS = {
   de: "settings.language.de",
 } as const;
 
+export const SETTINGS_SCREEN_ID = "settings";
+
 export function SettingsScreen(_props: ScreenProps): React.JSX.Element {
   const { t } = useI18n();
   const { settings, update } = useAppSettings();

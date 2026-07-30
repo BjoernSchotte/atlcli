@@ -33,10 +33,9 @@ import {
   CheckboxField,
   FieldHelp,
   Label,
-  RadioField,
-  SectionHeading,
   Select,
 } from "../ui/field.js";
+import { cn } from "../ui/utils.js";
 
 const DEPTHS: readonly number[] = Array.from(
   { length: SCOPE_MAX_DEPTH - SCOPE_MIN_DEPTH + 1 },
@@ -47,6 +46,12 @@ const KIND_LABEL_KEYS: Record<ScopeKind, MessageKey> = {
   page: "scope.kind.page",
   tree: "scope.kind.tree",
   space: "scope.kind.space",
+};
+
+const KIND_DETAIL_KEYS: Record<ScopeKind, MessageKey> = {
+  page: "scope.kind.pageDetail",
+  tree: "scope.kind.treeDetail",
+  space: "scope.kind.spaceDetail",
 };
 
 export interface ScopeSectionProps {
@@ -95,7 +100,7 @@ function LabelField({
         onChange={(event) =>
           dispatch({ type: "set-labels", field, input: event.target.value })
         }
-        className="h-8 w-full rounded-md border bg-background px-2 text-sm text-foreground placeholder:text-muted-foreground disabled:opacity-50"
+        className="h-11 w-full rounded-md border bg-background px-2.5 text-sm text-foreground placeholder:text-muted-foreground disabled:opacity-50"
       />
       <FieldHelp>{t(helpKey)}</FieldHelp>
       {labels.length > 0 && (
@@ -132,26 +137,52 @@ export function ScopeSection({
 
   return (
     <section data-testid="scope-section" className="flex flex-col gap-2">
-      <SectionHeading>{t("scope.title")}</SectionHeading>
-
-      <div role="radiogroup" aria-label={t("scope.title")} className="flex flex-col gap-1">
+      <div role="radiogroup" aria-label={t("scope.title")} className="grid grid-cols-3 gap-1.5">
         {(["page", "tree", "space"] as const).map((kind) => {
           const unavailable = kind === "space" && !spaceAllowed;
           return (
-            <RadioField
+            <label
               key={kind}
-              name="scope-kind"
-              value={kind}
-              checked={state.kind === kind}
-              disabled={disabled || unavailable}
-              data-testid={`scope-kind-${kind}`}
-              label={t(KIND_LABEL_KEYS[kind])}
-              help={unavailable ? t("scope.kind.spaceUnavailable") : undefined}
-              onChange={() => dispatch({ type: "set-kind", kind })}
-            />
+              className={cn(
+                "relative min-w-0",
+                disabled || unavailable ? "cursor-not-allowed opacity-50" : "cursor-pointer"
+              )}
+            >
+              <input
+                type="radio"
+                className="peer sr-only"
+                name="scope-kind"
+                value={kind}
+                checked={state.kind === kind}
+                disabled={disabled || unavailable}
+                data-testid={`scope-kind-${kind}`}
+                onChange={() => dispatch({ type: "set-kind", kind })}
+              />
+              <span
+                className={cn(
+                  "grid min-h-[58px] min-w-0 content-center gap-1 rounded-lg border bg-card px-2 py-2",
+                  "text-left transition-colors peer-focus-visible:outline peer-focus-visible:outline-2",
+                  "peer-focus-visible:outline-offset-2 peer-focus-visible:outline-ring",
+                  "peer-checked:border-primary/45 peer-checked:bg-accent peer-checked:text-primary",
+                  !disabled && !unavailable && "hover:border-input hover:bg-muted"
+                )}
+              >
+                <strong className="truncate text-xs font-bold leading-tight">
+                  {t(KIND_LABEL_KEYS[kind])}
+                </strong>
+                <span className="truncate text-xs leading-tight text-muted-foreground">
+                  {t(KIND_DETAIL_KEYS[kind])}
+                </span>
+              </span>
+            </label>
           );
         })}
       </div>
+      {!spaceAllowed && (
+        <FieldHelp data-testid="scope-space-unavailable">
+          {t("scope.kind.spaceUnavailable")}
+        </FieldHelp>
+      )}
 
       {state.kind === "tree" && (
         <div className="flex flex-col gap-1.5" data-testid="scope-tree-options">
@@ -194,8 +225,10 @@ export function ScopeSection({
         this. `<details>` gives the disclosure, the keyboard behaviour and the
         screen-reader semantics for free.
       */}
-      <details data-testid="scope-advanced" className="rounded-md border px-2 py-1.5">
-        <summary className="cursor-pointer text-xs font-medium">{t("scope.advanced")}</summary>
+      <details data-testid="scope-advanced" className="border-t">
+        <summary className="flex min-h-11 cursor-pointer items-center text-xs font-semibold text-muted-foreground">
+          {t("scope.advanced")}
+        </summary>
         <div className="mt-2 flex flex-col gap-3">
           <LabelField
             field="include"

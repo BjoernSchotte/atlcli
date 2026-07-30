@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { ClipboardList } from "lucide-react";
+import { ArrowRight, ClipboardList } from "lucide-react";
 import type { ExportJobEventV1, ExportJobState } from "@atlcli/export-jobs";
 import type {
   ScreenDefinition,
@@ -627,7 +627,7 @@ export function JobsSection({
   );
 }
 
-export function JobsScreen({ page }: ScreenProps): React.JSX.Element {
+export function JobsScreen({ page, navigate }: ScreenProps): React.JSX.Element {
   const t = useT();
   const siteOrigin = siteOriginOf(page);
   const [allSites, setAllSites] = useState(siteOrigin === null);
@@ -641,6 +641,47 @@ export function JobsScreen({ page }: ScreenProps): React.JSX.Element {
     [jobs.jobs, format, status, time, now],
   );
   const empty = filtered.length === 0 && !jobs.error;
+  const noJobs = jobs.jobs.length === 0 && !jobs.error;
+  const pulseControl = (
+    <CheckboxField
+      checked={jobs.pulseEnabled}
+      onChange={(event) => jobs.setPulseEnabled(event.target.checked)}
+      label={t("jobs.pulse.label")}
+      help={t("jobs.pulse.help")}
+      data-testid="jobs-pulse-enabled"
+    />
+  );
+
+  if (noJobs && jobs.loaded) {
+    return (
+      <div className="flex flex-col gap-4" data-testid="activity-screen">
+        <div
+          className="grid min-h-[320px] content-start gap-3 px-2 py-10"
+          data-testid="jobs-empty"
+        >
+          <span className="text-xs font-extrabold uppercase tracking-[0.1em] text-primary">
+            {t("jobs.title")}
+          </span>
+          <h1 className="m-0 font-serif text-2xl font-semibold tracking-[-0.035em]">
+            {t("jobs.empty")}
+          </h1>
+          <p className="m-0 max-w-[34ch] text-sm leading-relaxed text-muted-foreground">
+            {t("jobs.emptyDetail")}
+          </p>
+          <Button
+            className="w-fit"
+            variant="outline"
+            onClick={() => navigate("export")}
+            data-testid="jobs-empty-action"
+          >
+            {t("jobs.emptyAction")}
+            <ArrowRight aria-hidden="true" />
+          </Button>
+        </div>
+        {pulseControl}
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-4" data-testid="activity-screen">
@@ -700,13 +741,7 @@ export function JobsScreen({ page }: ScreenProps): React.JSX.Element {
           </Select>
         </Label>
       </div>
-      <CheckboxField
-        checked={jobs.pulseEnabled}
-        onChange={(event) => jobs.setPulseEnabled(event.target.checked)}
-        label={t("jobs.pulse.label")}
-        help={t("jobs.pulse.help")}
-        data-testid="jobs-pulse-enabled"
-      />
+      {pulseControl}
 
       {boundList(jobs, filtered, now)}
       {empty && jobs.loaded && (

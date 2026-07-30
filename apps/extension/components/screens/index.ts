@@ -28,7 +28,7 @@ import type { ScreenDefinition } from "../../utils/screens/registry.js";
 import { ExportScreen } from "./ExportScreen.js";
 import { previewScreenDefinition } from "./PreviewScreen.js";
 import { templatesScreenDefinition } from "./TemplatesScreen.js";
-import { SettingsScreen } from "./SettingsScreen.js";
+import { SETTINGS_SCREEN_ID, SettingsScreen } from "./SettingsScreen.js";
 import { AboutScreen } from "./AboutScreen.js";
 import { jobsScreenDefinition } from "./JobsScreen.js";
 
@@ -37,7 +37,7 @@ export const SCREEN_IDS = {
   preview: "preview",
   templates: "templates",
   activity: "activity",
-  settings: "settings",
+  settings: SETTINGS_SCREEN_ID,
   about: "about",
 } as const;
 

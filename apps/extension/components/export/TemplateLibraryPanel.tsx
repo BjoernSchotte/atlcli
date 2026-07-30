@@ -187,15 +187,17 @@ export function TemplateLibraryPanel({
         data-testid="template-library-file"
         className="hidden"
       />
-      <div>
-        <Button
-          onClick={() => fileRef.current?.click()}
-          disabled={uploading}
-          data-testid="template-library-upload"
-        >
-          {uploading ? t("docx.scanning") : t("docx.upload")}
-        </Button>
-      </div>
+      {items !== null && items.length > 0 && (
+        <div>
+          <Button
+            onClick={() => fileRef.current?.click()}
+            disabled={uploading}
+            data-testid="template-library-upload"
+          >
+            {uploading ? t("docx.scanning") : t("docx.upload")}
+          </Button>
+        </div>
+      )}
 
       {error && (
         <Alert role="alert" tone="danger" data-testid="template-library-error">
@@ -206,7 +208,29 @@ export function TemplateLibraryPanel({
       {items === null ? (
         <FieldHelp data-testid="template-library-loading">{t("templates.loading")}</FieldHelp>
       ) : items.length === 0 ? (
-        <FieldHelp data-testid="template-library-empty">{t("templates.empty")}</FieldHelp>
+        <div
+          className="grid min-h-[320px] content-start gap-3 px-2 py-10"
+          data-testid="template-library-empty"
+        >
+          <span className="text-xs font-extrabold uppercase tracking-[0.1em] text-primary">
+            {t("templates.title")}
+          </span>
+          <h2 className="m-0 font-serif text-2xl font-semibold tracking-[-0.035em]">
+            {t("templates.emptyTitle")}
+          </h2>
+          <p className="m-0 max-w-[34ch] text-sm leading-relaxed text-muted-foreground">
+            {t("templates.empty")}
+          </p>
+          <Button
+            className="w-fit"
+            variant="outline"
+            onClick={() => fileRef.current?.click()}
+            disabled={uploading}
+            data-testid="template-library-upload"
+          >
+            {uploading ? t("docx.scanning") : t("templates.emptyAction")}
+          </Button>
+        </div>
       ) : (
         <ul className="m-0 flex list-none flex-col gap-2 p-0" data-testid="template-library-list">
           {items.map((item) => {

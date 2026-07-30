@@ -24,11 +24,11 @@
  * one — see `settings-schema.ts`.
  */
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { FileText, FileType2 } from "lucide-react";
+import { Check, FileText, FileType2, Settings2 } from "lucide-react";
 import type { ScreenProps } from "../../utils/screens/registry.js";
 import { useT } from "../../utils/i18n/context.js";
 import { Button } from "../ui/button.js";
-import { Card, CardContent } from "../ui/card.js";
+import { cn } from "../ui/utils.js";
 import { PageSummary } from "../export/PageSummary.js";
 import { PdfExportPanel } from "../export/PdfExportPanel.js";
 import { DocxExportPanel } from "../export/DocxExportPanel.js";
@@ -40,6 +40,7 @@ import {
   PDF_LEVEL_A_SETTINGS,
 } from "../export/pdf-settings.js";
 import { TEMPLATES_SCREEN_ID } from "./TemplatesScreen.js";
+import { SETTINGS_SCREEN_ID } from "./SettingsScreen.js";
 import { PreviewScreen } from "./PreviewScreen.js";
 import {
   PublishingDraftProvider,
@@ -70,6 +71,7 @@ function ExportScreenBody({ ports, page, retry, navigate }: ScreenProps): React.
   if (page.status !== "loaded") {
     return (
       <div className="flex flex-col gap-3" data-testid="publishing-studio">
+        <StudioHeading onOpenSettings={() => navigate(SETTINGS_SCREEN_ID)} />
         <PageSummary state={page} onRetry={retry} />
       </div>
     );
@@ -184,9 +186,10 @@ function LoadedExportScreenBody({ ports, page, retry, navigate }: ScreenProps): 
 
   return (
     <div className="flex flex-col gap-3" data-testid="publishing-studio">
+      <StudioHeading onOpenSettings={() => navigate(SETTINGS_SCREEN_ID)} />
       <PageSummary state={page} onRetry={retry} />
 
-      <StudioStep number="01" label={t("studio.step.scope")}>
+      <StudioStep number="01" label={t("studio.step.scope")} complete>
         <ScopeSection
           state={scope}
           dispatch={dispatchScope}
@@ -196,7 +199,7 @@ function LoadedExportScreenBody({ ports, page, retry, navigate }: ScreenProps): 
         />
       </StudioStep>
 
-      <StudioStep number="02" label={t("studio.step.format")}>
+      <StudioStep number="02" label={t("studio.step.format")} complete>
         <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label={t("studio.format.label")}>
           {ports.pdf && (
             <FormatChoice
@@ -238,6 +241,9 @@ function LoadedExportScreenBody({ ports, page, retry, navigate }: ScreenProps): 
           className="flex flex-col gap-3"
         >
           <StudioStep number="03" label={t("studio.step.design")}>
+            <p className="m-0 rounded-lg border bg-muted px-3 py-2.5 text-xs leading-relaxed text-muted-foreground">
+              {t("pdf.builtIn")}
+            </p>
             <div className="flex flex-col gap-1">
               <label className="text-xs font-medium" htmlFor="pdf-image-quality">
                 {t("export.imageQuality")}
@@ -245,7 +251,7 @@ function LoadedExportScreenBody({ ports, page, retry, navigate }: ScreenProps): 
               <select
                 id="pdf-image-quality"
                 data-testid="pdf-image-quality"
-                className="h-8 rounded border bg-background px-2 text-sm"
+                className="h-11 rounded-md border bg-background px-2.5 text-sm"
                 value={imageProfile}
                 onChange={(event) =>
                   setImageProfile(event.target.value as "original" | "standard" | "print")
@@ -261,7 +267,7 @@ function LoadedExportScreenBody({ ports, page, retry, navigate }: ScreenProps): 
                   min={72}
                   max={1200}
                   data-testid="pdf-image-ppi"
-                  className="h-8 rounded border bg-background px-2 text-sm"
+                  className="h-11 rounded-md border bg-background px-2.5 text-sm"
                   placeholder={t("export.imageQuality.ppi")}
                   value={imagePpi ?? ""}
                   onChange={(event) => {
@@ -353,19 +359,36 @@ function StudioStep({
   number,
   label,
   children,
+  complete = false,
 }: {
   number: string;
   label: string;
   children: React.ReactNode;
+  complete?: boolean;
 }): React.JSX.Element {
+  const t = useT();
   return (
-    <section className="flex flex-col gap-1.5" data-testid={`studio-step-${number}`}>
-      <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
-        <span className="text-primary">{number}</span>
-        <span>{label}</span>
-        <span className="h-px flex-1 bg-border" aria-hidden="true" />
+    <section
+      className="relative grid grid-cols-[28px_minmax(0,1fr)] gap-2.5 pb-5 after:absolute after:bottom-0 after:left-[13px] after:top-7 after:w-px after:bg-border last:pb-0 last:after:hidden"
+      data-testid={`studio-step-${number}`}
+    >
+      <span
+        className={cn(
+          "relative z-10 grid size-7 place-items-center rounded-full border bg-background text-xs font-bold",
+          complete
+            ? "border-success/30 bg-success/10 text-success"
+            : "border-input text-muted-foreground"
+        )}
+        aria-label={complete ? t("studio.step.complete") : undefined}
+      >
+        {complete ? <Check size={14} aria-hidden="true" /> : number}
+      </span>
+      <div className="min-w-0 pt-0.5">
+        <h2 className="m-0 text-[13px] font-bold tracking-[-0.01em]">{label}</h2>
+        <div className="mt-2">
+          {children}
+        </div>
       </div>
-      {children}
     </section>
   );
 }
@@ -386,22 +409,60 @@ function FormatChoice({
   testId: string;
 }): React.JSX.Element {
   return (
-    <button
-      type="button"
-      role="radio"
-      aria-checked={active}
-      data-testid={testId}
-      onClick={onClick}
-      className={
-        "min-h-16 rounded-lg border p-2 text-left transition-colors " +
-        (active
-          ? "border-primary bg-accent text-foreground shadow-sm"
-          : "bg-card text-foreground hover:border-primary/40 hover:bg-accent/50")
-      }
-    >
-      <span className="mb-1 block text-primary [&>svg]:size-4">{icon}</span>
-      <span className="block text-xs font-semibold">{title}</span>
-      <span className="block text-[10px] leading-tight text-muted-foreground">{detail}</span>
-    </button>
+    <label className="relative min-w-0 cursor-pointer" data-testid={testId}>
+      <input
+        type="radio"
+        name="publishing-format"
+        value={title}
+        checked={active}
+        onChange={onClick}
+        className="peer sr-only"
+      />
+      <span
+        className={cn(
+          "grid min-h-[58px] content-center gap-1 rounded-lg border bg-card px-2.5 py-2 text-left",
+          "transition-colors peer-focus-visible:outline peer-focus-visible:outline-2",
+          "peer-focus-visible:outline-offset-2 peer-focus-visible:outline-ring",
+          "peer-checked:border-primary/45 peer-checked:bg-accent peer-checked:text-primary hover:border-input hover:bg-muted"
+        )}
+      >
+        <span className="inline-flex items-center gap-1.5 text-xs font-bold [&>svg]:size-4">
+          {icon}
+          {title}
+        </span>
+        <span className="truncate text-xs leading-tight text-muted-foreground">{detail}</span>
+      </span>
+    </label>
+  );
+}
+
+function StudioHeading({
+  onOpenSettings,
+}: {
+  onOpenSettings: () => void;
+}): React.JSX.Element {
+  const t = useT();
+  return (
+    <div className="mb-1 flex items-start justify-between gap-4">
+      <div>
+        <span className="mb-1 block text-xs font-extrabold uppercase tracking-[0.13em] text-primary">
+          {t("studio.kicker")}
+        </span>
+        <h1 className="m-0 font-serif text-[26px] font-semibold leading-none tracking-[-0.04em]">
+          {t("studio.heading")}
+        </h1>
+      </div>
+      <Button
+        size="icon"
+        variant="ghost"
+        className="shrink-0"
+        aria-label={t("studio.settings")}
+        title={t("studio.settings")}
+        onClick={onOpenSettings}
+        data-testid="publishing-settings"
+      >
+        <Settings2 aria-hidden="true" />
+      </Button>
+    </div>
   );
 }

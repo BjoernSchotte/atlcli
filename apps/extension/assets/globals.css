@@ -52,29 +52,29 @@
 :root {
   --radius: 0.625rem;
 
-  --background: oklch(0.992 0.004 210);
-  --foreground: oklch(0.25 0.055 255);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.25 0.055 255);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.25 0.055 255);
-  --primary: oklch(0.54 0.105 190);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.28 0.05 255);
-  --muted: oklch(0.965 0.012 210);
-  --muted-foreground: oklch(0.53 0.035 250);
-  --accent: oklch(0.955 0.035 195);
-  --accent-foreground: oklch(0.27 0.06 250);
-  --destructive: oklch(0.577 0.245 27.325);
-  --destructive-foreground: oklch(0.985 0 0);
-  --success: oklch(0.55 0.13 152);
-  --success-foreground: oklch(0.985 0 0);
-  --warning: oklch(0.63 0.14 70);
-  --warning-foreground: oklch(0.145 0 0);
-  --border: oklch(0.89 0.018 230);
-  --input: oklch(0.89 0.018 230);
-  --ring: oklch(0.54 0.105 190);
+  --background: #ffffff;
+  --foreground: #172b4d;
+  --card: #ffffff;
+  --card-foreground: #172b4d;
+  --popover: #ffffff;
+  --popover-foreground: #172b4d;
+  --primary: #0c66e4;
+  --primary-foreground: #ffffff;
+  --secondary: #f1f6fc;
+  --secondary-foreground: #172b4d;
+  --muted: #f7f9fc;
+  --muted-foreground: #44546f;
+  --accent: #e9f2ff;
+  --accent-foreground: #172b4d;
+  --destructive: #c9372c;
+  --destructive-foreground: #ffffff;
+  --success: #006644;
+  --success-foreground: #ffffff;
+  --warning: #a54800;
+  --warning-foreground: #172b4d;
+  --border: #d5deea;
+  --input: #b8c5d6;
+  --ring: #579dff;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -144,6 +144,7 @@ html.theme-dark {
   html,
   body {
     height: 100%;
+    min-width: 320px;
   }
 
   body {
@@ -162,9 +163,19 @@ html.theme-dark {
   }
 }
 
-@media (max-width: 360px) {
-  .publishing-primary-nav .publishing-nav-label {
-    display: none;
+@media (forced-colors: active) {
+  .screen-tab[aria-selected="true"] {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
   }
 }
 
