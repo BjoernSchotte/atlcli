@@ -2644,7 +2644,10 @@ export class ConfluenceClient {
   private pageAttachmentWriter() {
     const request: ConfluenceProductRequestV1 = async (path, init = {}) => {
       const url = new URL(`${this.confluenceBaseUrl}${path}`);
-      const commonHeaders = Object.fromEntries(new Headers(init.headers).entries());
+      const commonHeaders: Record<string, string> = {};
+      new Headers(init.headers).forEach((value, key) => {
+        commonHeaders[key] = value;
+      });
       const headers = this.authHeader
         ? { ...commonHeaders, Authorization: this.authHeader }
         : commonHeaders;
