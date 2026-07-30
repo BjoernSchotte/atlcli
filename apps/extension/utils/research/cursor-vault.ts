@@ -7,6 +7,11 @@ interface CursorRecord {
   expiresAt: number;
 }
 
+export interface ResearchCursorResolution {
+  queryFingerprint: string;
+  providerCursor: string;
+}
+
 export interface ResearchCursorVaultOptions {
   maxEntries?: number;
   createId?: () => string;
@@ -77,15 +82,13 @@ export class ResearchCursorVault {
 
   resolve(
     tool: ResearchToolId,
-    queryFingerprint: string,
     token: string | undefined
-  ): string | undefined {
+  ): ResearchCursorResolution | undefined {
     if (token === undefined) return undefined;
     const record = this.#records.get(token);
     if (
       !record ||
       record.tool !== tool ||
-      record.queryFingerprint !== queryFingerprint ||
       record.expiresAt < this.#now()
     ) {
       this.#records.delete(token);
@@ -95,7 +98,10 @@ export class ResearchCursorVault {
       );
     }
     this.#records.delete(token);
-    return record.providerCursor;
+    return {
+      queryFingerprint: record.queryFingerprint,
+      providerCursor: record.providerCursor,
+    };
   }
 
   clear(): void {

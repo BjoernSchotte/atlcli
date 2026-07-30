@@ -94,4 +94,22 @@ describe("Jira research read boundary", () => {
     expect(message).not.toContain(sentinel);
     expect(JSON.stringify(sink.entries)).not.toContain(sentinel);
   });
+
+  it("lets a synchronous run budget stop an HTTP attempt before fetch", async () => {
+    let calls = 0;
+    globalThis.fetch = (async () => {
+      calls += 1;
+      return new Response("{}", { status: 200 });
+    }) as unknown as typeof fetch;
+    const client = new JiraClient(profile, {
+      guardTransport: (event) => {
+        if (event.type === "attempt") throw new Error("HTTP budget exhausted");
+      },
+    });
+
+    await expect(client.getIssue("DEMO-1")).rejects.toThrow(
+      "HTTP budget exhausted"
+    );
+    expect(calls).toBe(0);
+  });
 });

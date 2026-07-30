@@ -84,6 +84,7 @@ describe("issue-138 research request contract", () => {
     expect(
       normalizeResearchLimitsV1({
         pageSize: 0,
+        maxSearchPagesPerProduct: 99,
         maxItemsPerProduct: 999,
         maxDetailItemsPerProduct: 999,
         maxBodyCharsPerItem: 1,
@@ -102,6 +103,7 @@ describe("issue-138 research request contract", () => {
       })
     ).toEqual({
       pageSize: 1,
+      maxSearchPagesPerProduct: 10,
       maxItemsPerProduct: 250,
       maxDetailItemsPerProduct: 50,
       maxBodyCharsPerItem: 256,
@@ -155,31 +157,23 @@ describe("per-run opaque research cursors", () => {
 
     expect(token).toBe("research-cursor:id-1");
     expect(token).not.toContain("atlassian.net");
-    expect(vault.resolve("wiki.search", "query:implementation", token)).toContain(
-      "cursor=secret"
-    );
-    expect(() =>
-      vault.resolve("wiki.search", "query:implementation", token)
-    ).toThrow("unknown");
+    expect(vault.resolve("wiki.search", token)).toEqual({
+      queryFingerprint: "query:implementation",
+      providerCursor:
+        "https://example.atlassian.net/wiki/rest/api/content/search?cursor=secret",
+    });
+    expect(() => vault.resolve("wiki.search", token)).toThrow("unknown");
 
-    const wrongQueryToken = vault.issue(
-      "wiki.search",
-      "query:implementation",
-      "next-query"
-    );
-    expect(() =>
-      vault.resolve("wiki.search", "query:different", wrongQueryToken)
-    ).toThrow("capability query");
     const wrongToolToken = vault.issue(
       "wiki.search",
       "query:implementation",
       "next-tool"
     );
     expect(() =>
-      vault.resolve("jira.issue.search", "query:implementation", wrongToolToken)
+      vault.resolve("jira.issue.search", wrongToolToken)
     ).toThrow("capability query");
     expect(() =>
-      vault.resolve("wiki.search", "query:implementation", "research-cursor:other")
+      vault.resolve("wiki.search", "research-cursor:other")
     ).toThrow(
       "unknown"
     );
@@ -213,8 +207,6 @@ describe("per-run opaque research cursors", () => {
       "repeated"
     );
     now = 1_101;
-    expect(() =>
-      vault.resolve("jira.issue.search", "query:open", token)
-    ).toThrow("unknown");
+    expect(() => vault.resolve("jira.issue.search", token)).toThrow("unknown");
   });
 });

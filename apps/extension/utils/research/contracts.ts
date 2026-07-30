@@ -34,6 +34,7 @@ export interface ResearchScopeV1 {
 
 export interface ResearchLimitsV1 {
   pageSize: number;
+  maxSearchPagesPerProduct: number;
   maxItemsPerProduct: number;
   maxDetailItemsPerProduct: number;
   maxBodyCharsPerItem: number;
@@ -53,6 +54,7 @@ export interface ResearchLimitsV1 {
 
 export const DEFAULT_RESEARCH_LIMITS_V1: Readonly<ResearchLimitsV1> = {
   pageSize: 25,
+  maxSearchPagesPerProduct: 5,
   maxItemsPerProduct: 100,
   maxDetailItemsPerProduct: 20,
   maxBodyCharsPerItem: 12_000,
@@ -205,6 +207,7 @@ const LIMIT_BOUNDS: {
   [K in keyof ResearchLimitsV1]: readonly [minimum: number, maximum: number];
 } = {
   pageSize: [1, 50],
+  maxSearchPagesPerProduct: [1, 10],
   maxItemsPerProduct: [1, 250],
   maxDetailItemsPerProduct: [1, 50],
   maxBodyCharsPerItem: [256, 50_000],

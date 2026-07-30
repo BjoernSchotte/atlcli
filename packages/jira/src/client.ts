@@ -70,6 +70,12 @@ export type JiraTransportEvent =
 
 export interface JiraClientOptions {
   /**
+   * Synchronous budget guard. Unlike passive telemetry, this callback may
+   * throw to prevent an attempt or reject an oversized response before JSON is
+   * exposed to the caller.
+   */
+  guardTransport?: (event: JiraTransportEvent) => void;
+  /**
    * Content-free transport telemetry for bounded hosts such as the extension
    * research broker. Events deliberately omit URLs, query/body data, headers,
    * response content, and error messages.
@@ -95,6 +101,7 @@ export class JiraClient {
   private baseDelayMs = 1000;
   private isCloud: boolean;
   private tlsOptions: TlsOptions | undefined;
+  private guardTransport: ((event: JiraTransportEvent) => void) | undefined;
   private observeTransport: ((event: JiraTransportEvent) => void) | undefined;
   /**
    * Where a SESSION-mode attachment download may be redirected to. Injected into
@@ -117,6 +124,7 @@ export class JiraClient {
     this.useSession = profile.auth.type === "session";
     this.authHeader = this.useSession ? "" : buildAuthHeader(profile);
     this.tlsOptions = buildTlsOptions(profile);
+    this.guardTransport = options.guardTransport;
     this.observeTransport = options.observeTransport;
     this.sessionRedirectPolicy = createAtlassianSessionRedirectPolicy({
       siteOrigin: this.baseUrl,
@@ -206,6 +214,7 @@ export class JiraClient {
   }
 
   private emitTransport(event: JiraTransportEvent): void {
+    this.guardTransport?.(event);
     try {
       this.observeTransport?.(event);
     } catch {

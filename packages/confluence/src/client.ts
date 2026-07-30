@@ -474,6 +474,11 @@ export type ConfluenceTransportEvent =
 export interface ConfluenceClientOptions {
   exportSourcePolicy?: ExportSourcePolicy;
   /**
+   * Synchronous budget guard. It may throw before an attempt or after a body is
+   * measured, preventing further retries or exposure to the caller.
+   */
+  guardTransport?: (event: ConfluenceTransportEvent) => void;
+  /**
    * Content-free transport telemetry for bounded hosts. Events omit URLs,
    * query/body data, headers, response content, and error messages.
    */
@@ -494,6 +499,7 @@ export class ConfluenceClient {
   private maxRetries = 3;
   private baseDelayMs = 1000;
   private tlsOptions: TlsOptions | undefined;
+  private guardTransport: ((event: ConfluenceTransportEvent) => void) | undefined;
   private observeTransport: ((event: ConfluenceTransportEvent) => void) | undefined;
   /**
    * Where a SESSION-mode binary download may be redirected to. Injected into
@@ -520,6 +526,7 @@ export class ConfluenceClient {
     this.useSession = profile.auth.type === "session";
     this.authHeader = this.useSession ? "" : buildAuthHeader(profile);
     this.tlsOptions = buildTlsOptions(profile);
+    this.guardTransport = options.guardTransport;
     this.observeTransport = options.observeTransport;
     this.sessionRedirectPolicy = createAtlassianSessionRedirectPolicy({
       siteOrigin: this.confluenceBaseUrl,
@@ -528,6 +535,7 @@ export class ConfluenceClient {
   }
 
   private emitTransport(event: ConfluenceTransportEvent): void {
+    this.guardTransport?.(event);
     try {
       this.observeTransport?.(event);
     } catch {
