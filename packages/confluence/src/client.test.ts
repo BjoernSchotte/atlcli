@@ -1269,6 +1269,23 @@ describe("ConfluenceClient", () => {
       }
     });
 
+    test("attachment upload preserves the session authentication redirect wording", async () => {
+      globalThis.fetch = mock(() =>
+        Promise.resolve(new Response(null, {
+          status: 302,
+          headers: { Location: "https://id.atlassian.com/login" },
+        }))
+      ) as unknown as typeof fetch;
+
+      await expect(
+        new ConfluenceClient(sessionProfile).uploadAttachment({
+          pageId: "123",
+          filename: "f.png",
+          data: new Uint8Array([1, 2, 3]),
+        }),
+      ).rejects.toThrow("authentication redirect");
+    });
+
     test("attachment download: no Authorization header, credentials include", async () => {
       const cap = captureFetch(() => new Response(new Uint8Array([1, 2, 3]), { status: 200 }));
       await new ConfluenceClient(sessionProfile).downloadAttachment({

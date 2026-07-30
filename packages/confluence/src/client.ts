@@ -33,7 +33,9 @@ import {
   type ExportSourcePolicy,
 } from "./page-body.js";
 import {
+  AttachmentDeliveryError,
   createPageAttachmentWriterV1,
+  type AttachmentDeliveryOperation,
   type ConfluenceProductRequestV1,
 } from "./attachment-delivery.js";
 
@@ -2675,6 +2677,32 @@ export class ConfluenceClient {
           durationMs: Date.now() - startTime,
           error: error instanceof Error ? error.message : "Attachment transport failed",
         });
+        // The session redirect wording is consumed by the extension's existing
+        // not-logged-in classifier. Preserve it inside the new typed model
+        // rather than allowing the writer to replace it with a generic
+        // transport message.
+        if (
+          error instanceof Error &&
+          (error.message.includes("authentication redirect") ||
+            error.message.includes("session not logged in"))
+        ) {
+          const operation: AttachmentDeliveryOperation =
+            method === "GET"
+              ? "find-by-filename"
+              : path.endsWith("/data")
+                ? "update-data"
+                : "create";
+          const encodedPageId =
+            path.match(/\/pages\/([^/]+)\/attachments/u)?.[1] ??
+            path.match(/\/content\/([^/]+)\/child\/attachment/u)?.[1] ??
+            "";
+          throw new AttachmentDeliveryError("forbidden", {
+            operation,
+            pageId: decodeURIComponent(encodedPageId),
+            diagnostic: error.message,
+            cause: error,
+          });
+        }
         throw error;
       }
 

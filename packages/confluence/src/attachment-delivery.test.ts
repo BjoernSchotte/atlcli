@@ -351,6 +351,22 @@ describe("createPageAttachmentWriterV1", () => {
     );
   });
 
+  test("redacts authentication material from safe diagnostics", async () => {
+    const writer = createPageAttachmentWriterV1(async () =>
+      jsonResponse({
+        message: "Authorization: Bearer secret-token password=hunter2",
+      }, { status: 403 })
+    );
+    const error = expectDeliveryError(
+      await rejected(
+        writer.findByFilename({ pageId: "123", filename: "report.pdf" }),
+      ),
+      "forbidden",
+    );
+    expect(error.message).not.toContain("secret-token");
+    expect(error.message).not.toContain("hunter2");
+  });
+
   test("surfaces a create transport failure as ambiguous and does not retry", async () => {
     let postCount = 0;
     const writer = createPageAttachmentWriterV1(async (_path, init) => {

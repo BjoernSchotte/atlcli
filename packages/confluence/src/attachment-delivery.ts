@@ -152,7 +152,15 @@ function safeDiagnostic(payload: unknown): string | undefined {
   for (const key of ["message", "errorMessage", "reason", "error"]) {
     const value = payload[key];
     if (typeof value === "string" && value.trim() !== "") {
-      return value.replace(/\s+/gu, " ").trim().slice(0, 512);
+      return value
+        .replace(/\b(?:Bearer|Basic)\s+[A-Za-z0-9+/=._-]+/giu, "[redacted auth]")
+        .replace(
+          /\b(authorization|api[_ -]?token|token|password|cookie)\b\s*[:=]\s*\S+/giu,
+          "$1=[redacted]",
+        )
+        .replace(/\s+/gu, " ")
+        .trim()
+        .slice(0, 512);
     }
   }
   return undefined;
@@ -433,8 +441,8 @@ export function createPageAttachmentWriterV1(
     };
     if (existing) {
       throw deliveryError("name-conflict", context, {
-        status: 409,
         diagnostic: "an attachment with this filename already exists",
+        requestMayHaveSucceeded: false,
         requerySuggested: true,
       });
     }
