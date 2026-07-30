@@ -25,7 +25,7 @@
  */
 
 import { decodeHTML } from "entities";
-import { KNOWN_MACROS } from "./markdown.js";
+import { KNOWN_MACROS } from "./known-macros.js";
 import { UNSAFE_LINK_NOTE_CODE, sanitizeLinkHref, unsafeLinkMessage } from "./link-safety.js";
 import { translateDatasourceLink } from "./datasource.js";
 import type { AdfJsonValue } from "./adf-types.js";

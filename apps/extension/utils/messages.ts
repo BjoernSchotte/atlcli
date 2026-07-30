@@ -144,7 +144,12 @@ export type OffscreenRequest =
   | { kind: "offscreen:pdf-cancel"; jobId: string }
   | { kind: "offscreen:docx-prepare-runtime"; codeTheme?: CodeThemeId }
   | { kind: "offscreen:jobs-wake"; jobIds?: string[]; resumeWaiting?: boolean }
-  | { kind: "offscreen:research-run"; runId: string; request: ResearchRequestV1 }
+  | {
+      kind: "offscreen:research-run";
+      runId: string;
+      apiKey: string;
+      request: ResearchRequestV1;
+    }
   | { kind: "offscreen:research-cancel"; runId: string };
 export type OffscreenResponse =
   | { kind: "offscreen:wasm-add-result"; ok: true; result: number }
@@ -304,9 +309,10 @@ export function isOffscreenRequest(value: unknown): value is OffscreenRequest {
       (wake.resumeWaiting !== true || Array.isArray(wake.jobIds));
   }
   if (candidate.kind === "offscreen:research-run") {
-    const run = value as { runId?: unknown; request?: unknown };
-    return hasOnlyKeys(value, ["kind", "runId", "request"]) &&
+    const run = value as { runId?: unknown; apiKey?: unknown; request?: unknown };
+    return hasOnlyKeys(value, ["kind", "runId", "apiKey", "request"]) &&
       isResearchRunId(run.runId) &&
+      isResearchApiKey(run.apiKey) &&
       typeof run.request === "object" &&
       run.request !== null;
   }
@@ -322,6 +328,13 @@ export function isOffscreenRequest(value: unknown): value is OffscreenRequest {
 function hasOnlyKeys(value: unknown, allowed: readonly string[]): boolean {
   return typeof value === "object" && value !== null
     && Object.keys(value).every((key) => allowed.includes(key));
+}
+
+function isResearchApiKey(value: unknown): value is string {
+  return typeof value === "string" &&
+    value.trim().length > 0 &&
+    value.length <= 1_000 &&
+    !/[\u0000-\u0020\u007f]/.test(value);
 }
 
 function hasValidJobIds(value: unknown): boolean {

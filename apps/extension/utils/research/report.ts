@@ -1,4 +1,4 @@
-import { sanitizeLinkHref } from "@atlcli/confluence/browser";
+import { sanitizeLinkHref } from "@atlcli/confluence/research";
 import {
   RESEARCH_REPORT_SCHEMA_V1,
   ResearchContractError,

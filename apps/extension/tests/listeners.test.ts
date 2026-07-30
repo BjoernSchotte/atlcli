@@ -5,6 +5,10 @@ import {
   type OffscreenListenerDeps,
 } from "../utils/listeners.js";
 import type { ExtResponse, OffscreenResponse } from "../utils/messages.js";
+import type {
+  ResearchReportV1,
+  ResearchRequestV1,
+} from "../utils/research/contracts.js";
 import type { RouterDeps } from "../utils/router.js";
 
 const preparation = {
@@ -215,6 +219,37 @@ describe("handleOffscreenMessage (offscreen listener adapter)", () => {
       kind: "offscreen:docx-prepare-runtime-result",
       ok: true,
       preparation,
+    }]);
+  });
+
+  it("passes the transient session key only to the offscreen research host", async () => {
+    const cap = captureResponse<OffscreenResponse>();
+    const report = { schema: "atlcli.research-report/v1" } as ResearchReportV1;
+    const request = { schema: "atlcli.research-request/v1" } as ResearchRequestV1;
+    const received: unknown[] = [];
+    expect(handleOffscreenMessage(
+      {
+        kind: "offscreen:research-run",
+        runId: "run-1",
+        apiKey: "sk-ant-test-listener",
+        request,
+      },
+      cap.sendResponse,
+      {
+        ...okOffscreenDeps,
+        runResearch: async (runId, apiKey, receivedRequest) => {
+          received.push(runId, apiKey, receivedRequest);
+          return report;
+        },
+      },
+    )).toBe(true);
+    await cap.called;
+    expect(received).toEqual(["run-1", "sk-ant-test-listener", request]);
+    expect(cap.values).toEqual([{
+      kind: "offscreen:research-run-result",
+      runId: "run-1",
+      ok: true,
+      report,
     }]);
   });
 

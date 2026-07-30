@@ -6,7 +6,7 @@ import {
 import {
   ConfluenceClient,
   type ConfluenceTransportEvent,
-} from "@atlcli/confluence/browser";
+} from "@atlcli/confluence/research";
 import {
   ResearchContractError,
   type ResearchRequestV1,

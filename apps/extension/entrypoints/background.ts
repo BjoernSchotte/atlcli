@@ -25,6 +25,10 @@ import {
   ResearchContractError,
   normalizeResearchRequestV1,
 } from "../utils/research/contracts.js";
+import {
+  RESEARCH_ANTHROPIC_SESSION_KEY,
+  normalizeAnthropicApiKey,
+} from "../utils/research/credential.js";
 import { profileFromTabUrl } from "../utils/profile.js";
 import { handleExtMessage } from "../utils/listeners.js";
 import { closeOffscreen, ensureOffscreen } from "../utils/offscreen.js";
@@ -423,20 +427,27 @@ export default defineBackground({
     value: ResearchRequestV1
   ) => {
     const request = normalizeResearchRequestV1(value);
-    const tabs = await chrome.tabs.query({ active: true, windowId });
-    const profile = tabs[0]?.url ? profileFromTabUrl(tabs[0].url) : null;
+    const detection = await getCurrentEntity(windowId);
+    const profile = detection.url ? profileFromTabUrl(detection.url) : null;
     if (!profile || new URL(profile.baseUrl).origin !== request.scope.siteOrigin) {
       throw new ResearchContractError(
         "access-denied",
         "The active Atlassian tab no longer matches the research site."
       );
     }
+    const stored = await chrome.storage.session.get([
+      RESEARCH_ANTHROPIC_SESSION_KEY,
+    ]);
+    const apiKey = normalizeAnthropicApiKey(
+      stored[RESEARCH_ANTHROPIC_SESSION_KEY]
+    );
     offscreenActivity.begin();
     try {
       await ensureOffscreen();
       const response = (await chrome.runtime.sendMessage({
         kind: "offscreen:research-run",
         runId,
+        apiKey,
         request,
       })) as OffscreenResponse | undefined;
       if (

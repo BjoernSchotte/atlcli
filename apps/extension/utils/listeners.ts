@@ -24,6 +24,7 @@ import type {
 } from "./research/contracts.js";
 import { routeMessage, type RouterDeps } from "./router.js";
 import { runWasmAdd } from "./wasm-smoke.js";
+import { classifyResearchError } from "./research/redaction.js";
 
 /** Effects the offscreen listener depends on (injectable for tests). */
 export interface OffscreenListenerDeps {
@@ -42,6 +43,7 @@ export interface OffscreenListenerDeps {
   ) => Promise<string | undefined>;
   runResearch?: (
     runId: string,
+    apiKey: string,
     request: ResearchRequestV1
   ) => Promise<ResearchReportV1>;
   cancelResearch?: (runId: string) => Promise<boolean>;
@@ -180,7 +182,7 @@ export function handleOffscreenMessage(
       break;
     case "offscreen:research-run":
       (deps.runResearch
-        ? deps.runResearch(message.runId, message.request)
+        ? deps.runResearch(message.runId, message.apiKey, message.request)
         : Promise.reject(new Error("Research worker host is not configured.")))
         .then((report) => sendResponse({
           kind: "offscreen:research-run-result",
@@ -188,8 +190,7 @@ export function handleOffscreenMessage(
           ok: true,
           report,
         }))
-        .catch(async (error) => {
-          const { classifyResearchError } = await import("./research/redaction.js");
+        .catch((error) => {
           const classified = classifyResearchError(error);
           sendResponse({
             kind: "offscreen:research-run-result",

@@ -393,7 +393,12 @@ function walk(dir: string, exts: string[]): string[] {
 /** Extract all disallowed findings from one file's text. */
 export function scanText(text: string): string[] {
   const found = new Set<string>();
-  const code = maskLiteralsAndComments(text);
+  const textWithNodeGlobalLabelsMasked = text.replace(
+    /(["'`])process[.]env\[['"][A-Za-z0-9_]+['"]\]\1/g,
+    (diagnostic) =>
+      `${diagnostic[0]}${" ".repeat(diagnostic.length - 2)}${diagnostic.at(-1)}`
+  );
+  const code = maskLiteralsAndComments(textWithNodeGlobalLabelsMasked);
   for (const re of NODE_BUN_RES) {
     for (const match of text.matchAll(re)) {
       const start = match.index ?? 0;

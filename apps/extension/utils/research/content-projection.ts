@@ -4,7 +4,7 @@ import {
   type ExportBlock,
   type InlineNode,
   type LinkTarget,
-} from "@atlcli/confluence/browser";
+} from "@atlcli/confluence/research";
 import type { AdfDocument, AdfNode } from "@atlcli/jira/browser";
 import type { BoundedContentProjectionV1 } from "./capability-contracts.js";
 

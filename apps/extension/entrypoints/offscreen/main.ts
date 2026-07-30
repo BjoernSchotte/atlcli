@@ -26,7 +26,6 @@ import { BrowserRenderReservationPoolV1 } from "../../utils/export-jobs/render-r
 import { runClaimedExtensionExportJob } from "../../utils/export-jobs/runtime.js";
 import { ResearchAgentWorkerHost } from "../../utils/research/worker-host.js";
 import {
-  RESEARCH_ANTHROPIC_SESSION_KEY,
   normalizeAnthropicApiKey,
 } from "../../utils/research/credential.js";
 
@@ -134,13 +133,8 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) =>
       });
     },
     runJobsWake: (jobIds, options) => exportQueue.wake(jobIds, options),
-    runResearch: async (runId, request) => {
-      const stored = await chrome.storage.session.get([
-        RESEARCH_ANTHROPIC_SESSION_KEY,
-      ]);
-      const apiKey = normalizeAnthropicApiKey(
-        stored[RESEARCH_ANTHROPIC_SESSION_KEY]
-      );
+    runResearch: async (runId, key, request) => {
+      const apiKey = normalizeAnthropicApiKey(key);
       return researchHost.run({
         runId,
         apiKey,

@@ -395,16 +395,36 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
           <CardHeader>
             <CardTitle>{report.title}</CardTitle>
             <div className="flex flex-wrap gap-2">
-              <Button size="sm" variant={raw ? "outline" : "secondary"} onClick={() => setRaw(false)}>
+              <Button
+                size="sm"
+                variant={raw ? "outline" : "secondary"}
+                onClick={() => setRaw(false)}
+                data-testid="research-formatted"
+              >
                 {t("research.formatted")}
               </Button>
-              <Button size="sm" variant={raw ? "secondary" : "outline"} onClick={() => setRaw(true)}>
+              <Button
+                size="sm"
+                variant={raw ? "secondary" : "outline"}
+                onClick={() => setRaw(true)}
+                data-testid="research-raw"
+              >
                 {t("research.raw")}
               </Button>
-              <Button size="sm" variant="outline" onClick={() => void port.copyMarkdown(report.markdown).then(() => setActionStatus(t("research.copied")))}>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => void port.copyMarkdown(report.markdown).then(() => setActionStatus(t("research.copied")))}
+                data-testid="research-copy"
+              >
                 {t("research.copy")}
               </Button>
-              <Button size="sm" variant="outline" onClick={() => void port.downloadMarkdown(report.markdown, `${report.title}.md`).then(() => setActionStatus(t("research.downloaded")))}>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => void port.downloadMarkdown(report.markdown, `${report.title}.md`).then(() => setActionStatus(t("research.downloaded")))}
+                data-testid="research-download"
+              >
                 {t("research.download")}
               </Button>
             </div>

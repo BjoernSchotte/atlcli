@@ -37,6 +37,7 @@ describe("browser-build gate (spec 001 task 6)", () => {
       "packages/confluence/src/markdown.ts",
       "packages/confluence/src/client.ts",
       "packages/confluence/src/attachment-delivery.ts",
+      "packages/confluence/src/research.ts",
       "packages/jira/src/client.ts",
       "packages/core/src/index.browser.ts",
       "packages/confluence/src/index.browser.ts",

@@ -19,6 +19,7 @@ import type {
   ResearchReportV1,
   ResearchRequestV1,
 } from "./research/contracts.js";
+import { classifyResearchError } from "./research/redaction.js";
 
 /** Injected side effects the router needs to fulfil requests. */
 export interface RouterDeps {
@@ -150,7 +151,6 @@ export async function routeMessage(
         const report = await deps.runResearch(msg.runId, msg.windowId, msg.request);
         return { kind: "research:run-result", runId: msg.runId, ok: true, report };
       } catch (error) {
-        const { classifyResearchError } = await import("./research/redaction.js");
         const classified = classifyResearchError(error);
         return {
           kind: "research:run-result",

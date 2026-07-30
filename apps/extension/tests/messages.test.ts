@@ -125,6 +125,23 @@ describe("message guards", () => {
       kind: "offscreen:jobs-wake",
       resumeWaiting: true,
     })).toBe(false);
+    expect(isOffscreenRequest({
+      kind: "offscreen:research-run",
+      runId: "run-1",
+      apiKey: "sk-ant-test-message",
+      request: {},
+    })).toBe(true);
+    expect(isOffscreenRequest({
+      kind: "offscreen:research-run",
+      runId: "run-1",
+      request: {},
+    })).toBe(false);
+    expect(isOffscreenRequest({
+      kind: "offscreen:research-run",
+      runId: "run-1",
+      apiKey: "sk-ant-test message",
+      request: {},
+    })).toBe(false);
     expect(isOffscreenRequest({ kind: "offscreen:jobs-wake", jobIds: ["job-1"] })).toBe(true);
     expect(isOffscreenRequest({ kind: "offscreen:jobs-wake", bytes: new Uint8Array([1]) })).toBe(false);
     expect(isOffscreenRequest({ kind: "offscreen:pdf-compile", jobId: "bad" })).toBe(false);

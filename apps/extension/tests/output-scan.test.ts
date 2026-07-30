@@ -74,6 +74,12 @@ describe("scanText classification", () => {
     ).toEqual([]);
   });
 
+  it("does not flag an SDK process.env label after minified regex syntax", () => {
+    const source =
+      "const delimiter=/[\"'`]/g;this.logLevel=parse(value,`process.env['ANTHROPIC_LOG']`);";
+    expect(scanText(source)).toEqual([]);
+  });
+
   // Regression (finding #6 hardening): bare node GLOBALS are invisible to the
   // import-specifier scan (nothing is imported), yet they are undefined in the
   // extension runtime and throw at use — exactly how the unknown-macro `Buffer`
