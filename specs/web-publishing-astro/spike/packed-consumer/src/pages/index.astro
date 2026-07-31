@@ -1,0 +1,29 @@
+---
+import ExportDocument from "@atlcli/export-blocks-astro/document";
+import "@atlcli/export-blocks-astro/styles.css";
+import Paragraph from "../Paragraph.astro";
+import blocks from "../blocks-all-fields.json";
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width" />
+    <title>Packed render-kit consumer</title>
+  </head>
+  <body>
+    <main>
+      <ExportDocument
+        blocks={blocks}
+        context={{ locale: "en", direction: "ltr" }}
+        overrides={{ paragraph: Paragraph }}
+      />
+    </main>
+    <style>
+      [data-atlcli-export-document] {
+        --atlcli-content-accent: #6d28d9;
+      }
+    </style>
+  </body>
+</html>

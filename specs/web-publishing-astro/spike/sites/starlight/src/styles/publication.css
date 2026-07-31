@@ -1,0 +1,51 @@
+@font-face {
+  font-family: "Atlcli Inter";
+  src: url("../../../../../../../packages/docx/fonts/Inter-Regular.ttf") format("truetype");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Atlcli Inter";
+  src: url("../../../../../../../packages/docx/fonts/Inter-SemiBold.ttf") format("truetype");
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+}
+
+:root {
+  --sl-font: "Atlcli Inter", ui-sans-serif, system-ui, sans-serif;
+}
+
+@layer starlight.components {
+  [data-renderer-override="starlight-paragraph"] {
+    border-inline-start: 0.2rem solid var(--sl-color-accent);
+    padding-inline-start: 0.75rem;
+  }
+
+  [data-confluence-edit-link] {
+    align-items: center;
+    gap: 0.35rem;
+  }
+
+  [data-publication-breadcrumb] ol {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    list-style: none;
+    margin-block: 0 1rem;
+    padding: 0;
+  }
+
+  [data-publication-breadcrumb] li + li::before {
+    content: "/";
+    margin-inline-end: 0.35rem;
+  }
+
+  [data-related-pages] {
+    border-block-start: 1px solid var(--sl-color-gray-5);
+    margin-block-start: 2rem;
+    padding-block-start: 1rem;
+  }
+}

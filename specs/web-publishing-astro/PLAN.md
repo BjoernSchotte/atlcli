@@ -3,7 +3,7 @@
 - Status: **Planned**
 - Planning baseline: `cdf11eb7d1f642528b6d8c995ea90ab75fffd77b`
   (`origin/main`, 2026-07-30)
-- First builder: Astro `>=7.1.0 <8`
+- First builder: Astro `>=7.1.6 <8`
 - Delivery shape: independent, plan-only Draft PR
 - Estimated size: **XL**; deliver through the gated task DAG below
 
@@ -345,9 +345,9 @@ materially, stop and update this plan before runtime edits.
 
 T0 pins and tests the smallest complete supported stack instead of assuming
 that an Astro-adjacent package supports Astro 7. The minimum lane is Node
-`22.12.0`, Astro `7.1.0`, `@astrojs/markdown-remark` `7.2.1`, Starlight
-`0.41.5`, `@astrojs/mdx` `7.0.4`, `@astrojs/markdown-satteri` `0.3.4`,
-`@astrojs/internal-helpers` `0.10.1`,
+`22.12.0`, Astro `7.1.6`, `@astrojs/markdown-remark` `7.2.2`, Starlight
+`0.41.5`, `@astrojs/mdx` `7.0.5`, `@astrojs/markdown-satteri` `0.3.5`,
+`@astrojs/internal-helpers` `0.10.2`,
 `@astrojs/sitemap` `3.7.3`, `astro-expressive-code` `0.44.1`, Pagefind and
 `@pagefind/default-ui` `1.5.2`, Sharp `0.34.5`, and optional
 `@plausible-analytics/tracker` `0.4.5`. The default Pagefind UI is tested only
@@ -355,17 +355,28 @@ if the shipped UI consumes it; otherwise atlcli owns the accessible UI against
 Pagefind's browser API.
 
 The package manifests support this lane: Astro requires Node `>=22.12.0` and
-exactly Markdown `7.2.1`; Starlight peers Astro `^7.0.2` and Markdown `^7.2.0`;
-MDX `7.0.4` peers Astro `^7` and depends on Markdown `7.2.1`; and Expressive
-Code includes Astro `^7`. MDX `7.0.5` already moves to Markdown `7.2.2`, so the
-minimum lane pins the coherent cohort instead of letting Starlight's caret
-silently cross it. Satteri and internal helpers are pinned to the exact Astro
-`7.1.0`/MDX `7.0.4` cohort. Pagefind is an Astro-independent post-build
-binary/browser runtime; its CLI and default UI stay on the same release.
+exactly Markdown `7.2.2`; Starlight peers Astro `^7.0.2` and Markdown `^7.2.0`;
+MDX `7.0.5` peers Astro `^7` and depends on Markdown `7.2.2`; and Expressive
+Code includes Astro `^7`. The minimum lane pins that coherent cohort instead of
+letting Starlight's caret silently cross it. Satteri and internal helpers are
+resolved through the exact official Astro `7.1.6`/MDX `7.0.5` lock. Pagefind is
+an Astro-independent post-build binary/browser runtime; its CLI and default UI
+stay on the same release.
 Sitemap, Sharp, and the Plausible browser tracker declare no conflicting Astro
 peer. T0 must still prove a clean install and real build because compatible
 ranges are necessary evidence, not runtime proof. Latest supported Astro 7 and
 Node 24 remain a separate forward lane.
+
+The Bun-based monorepo fixture uses Bun's explicit `hoisted` linker. Astro's
+generated prerender entry imports Astro-owned runtime dependencies from the
+site output, which is intentionally outside a dependency package's private
+scope. This fixture setting must not leak into the public package contract or
+force consumers to declare Astro's transitive dependencies themselves.
+
+The automated `MAL-2026-10726` classification of Astro `7.1.0` was withdrawn as
+a false positive. T0 nevertheless uses the current official `7.1.6` patch as
+its minimum rather than freezing a superseded `.0` release. Dependency
+provenance and current advisories remain part of the compatibility gate.
 
 No unnamed third-party Starlight theme or plugin receives a V1 compatibility
 claim. New integrations enter only through an explicit allowlist plus the same
@@ -478,7 +489,7 @@ same dependency-free public boundary first and migrate imports incrementally;
   semantic slots, and `data-*` styling hooks;
 - named component, document, style, island, schema/type, and test-fixture
   exports suitable for a plain Astro consumer;
-- peer dependency `astro >=7.1.0 <8`; and
+- peer dependency `astro >=7.1.6 <8`; and
 - no Starlight, Confluence, authentication, acquisition, route/site shell,
   Pagefind, SEO, deployment/service-worker/runtime-cache code, analytics,
   edit-link, Node filesystem, or network code.
@@ -495,7 +506,7 @@ same dependency-free public boundary first and migrate imports incrementally;
 - sitemap/SEO/i18n/media/font/code capabilities;
 - optional analytics and Confluence edit-link components; and
 - Astro config/route/build/search hooks and output manifest production;
-- peer dependency `astro >=7.1.0 <8`, Node `>=22.12.0`;
+- peer dependency `astro >=7.1.6 <8`, Node `>=22.12.0`;
 - no embedded second Astro and no private Astro/Vite API contract.
 
 `@atlcli/web-publish-starlight` is the first public-0.x experience adapter:
@@ -1302,62 +1313,62 @@ T11 ──> T12 Docs and real provider proof
 
 ### T0 — Freeze contracts, threat model, and feasibility gates
 
-- [ ] Re-audit all code-backed seams in section 6 against current `main` and
+- [x] Re-audit all code-backed seams in section 6 against current `main` and
       record exact SHA/file references in `EVIDENCE.md`.
-- [ ] Pin the minimum test lane to Astro `7.1.0`, public peer range to
-      `>=7.1.0 <8`, Node engine to Astro's supported minimum, and the coherent
+- [x] Pin the minimum test lane to official Astro `7.1.6`, public peer range to
+      `>=7.1.6 <8`, pin Node to Astro's supported minimum, and use the coherent
       section 6.1 dependency cohort; prove a frozen-lock clean install with no
       peer warnings.
-- [ ] Prove a network-disabled production Astro build from structured typed
+- [x] Prove a network-disabled production Astro build from structured typed
       data at `base: "/docs"`; no Markdown, Confluence request, or generated
       code.
-- [ ] Prove a custom build-time content loader, static catch-all route,
+- [x] Prove a custom build-time content loader, static catch-all route,
       handwritten-route collision detection, and private `build:done` manifest
       using only documented Astro APIs.
-- [ ] Prove that source strings such as `</script><script>` remain inert and
+- [x] Prove that source strings such as `</script><script>` remain inert and
       that source data cannot select/import a component.
-- [ ] Spike a trusted static chart and an opt-in island over one frozen,
+- [x] Spike a trusted static chart and an opt-in island over one frozen,
       schema-validated model; verify useful JS-disabled fallback.
-- [ ] Prove a packed plain Astro project can consume only
+- [x] Prove a packed plain Astro project can consume only
       `@atlcli/export-blocks-astro`, render the all-fields ExportBlock fixture,
       apply trusted overrides/tokens, and build without Starlight, Confluence,
       auth, network, publication loader, Pagefind, deployment, service-worker,
       or runtime-cache dependencies.
-- [ ] Freeze the dependency-free `@atlcli/export-blocks` extraction and
+- [x] Freeze the dependency-free `@atlcli/export-blocks` extraction and
       compatibility-re-export strategy; prove DOCX/PDF/browser consumers retain
       their existing imports, schemas, artifacts, and tree-shaking boundary.
-- [ ] Build the same bundle with the supported Starlight experience and one
+- [x] Build the same bundle with the supported Starlight experience and one
       deliberately small non-shipped conformance experience; freeze semantic
       slots, tokens, capability negotiation, and override rules without
       promising arbitrary Astro-theme compatibility.
-- [ ] Run a pinned Pagefind proof after the nested-base Astro build; prove
+- [x] Run a pinned Pagefind proof after the nested-base Astro build; prove
       keyboard search, facets, multilingual partitioning, route correctness,
       deleted-page removal, no hosted search backend, and deterministic index
       inventory.
-- [ ] Freeze V1 completion at
+- [x] Freeze V1 completion at
       `Astro -> Pagefind -> verified StaticPublicationManifestV1`; record
       installable PWA/offline delivery as a separate post-build follow-up with
       no V1 schema, capability, path, or dependency claim.
-- [ ] Prove Starlight navigation, breadcrumbs, TOC, previous/next, label/root
+- [x] Prove Starlight navigation, breadcrumbs, TOC, previous/next, label/root
       landing pages, related pages, 404 search, SEO artifacts, locale/RTL,
       responsive images, vendored fonts, and Expressive Code on representative
       content before treating them as committed V1 capabilities.
-- [ ] Prove optional analytics with its endpoint blocked and with hostile URL
+- [x] Prove optional analytics with its endpoint blocked and with hostile URL
       data, plus Cloud/DC provider-returned edit relations and unsafe-origin
       rejection; freeze the no-search-term/no-persistent-queue/replay rules.
-- [ ] Decide whether durable publish jobs are required in V1. Default to direct
+- [x] Decide whether durable publish jobs are required in V1. Default to direct
       serializable runs; create `@atlcli/publish-jobs` only with an evidenced
       recovery/scheduling requirement.
-- [ ] Freeze route, active-attachment, strict/partial, macro freshness, island,
+- [x] Freeze route, active-attachment, strict/partial, macro freshness, island,
       render-kit props/overrides/styling, experience, search,
       SEO/i18n/media/code, analytics, edit-link, output, workspace, and retention
       policies.
-- [ ] Record the additive future `ADF -> ExportBlock[] -> Astro` seam and the
+- [x] Record the additive future `ADF -> ExportBlock[] -> Astro` seam and the
       minimum resolver/support-matrix requirements without implementing or
       claiming a V1 raw-ADF API.
-- [ ] Record a threat model for ADF/Storage/macro input, remote assets, bundle
+- [x] Record a threat model for ADF/Storage/macro input, remote assets, bundle
       paths, Astro build, islands, output directory, and future deployment.
-- [ ] STOP and re-plan if Astro needs source-derived code, a networked loader,
+- [x] STOP and re-plan if Astro needs source-derived code, a networked loader,
       private APIs, unbounded output, or cannot render a complete accessible
       static fallback.
 
@@ -1520,6 +1531,11 @@ the active bundle is always complete and digest-valid.
 - [ ] Implement accessible static chart SVG/HTML from normalized chart data.
 - [ ] Implement the optional block-local chart island with frozen data, explicit
       opt-in, byte/row/node limits, no network/auth access, and static fallback.
+- [ ] Keep chart rendering behind a vendor-neutral `ChartRendererAdapter` and
+      re-run the TanStack Charts Astro/SSR/hydration/accessibility/bundle/
+      performance spike at T6. Use it as the preferred adapter only if the
+      selected release passes the production-maturity gate; never serialize
+      TanStack definitions, callbacks, or functions into the bundle.
 - [ ] Prove CSP, no event-handler/script/CSS injection, unsafe URL rejection,
       SVG safety, and no opaque datasource/provenance serialization.
 - [ ] Build a packed plain-Astro consumer with the all-fields fixture, one
@@ -1690,10 +1706,11 @@ orchestrates it without hiding the plan, bundle, build, or verification digest.
 - [ ] Extend pack checks, publishable-dependency checks, Node consumer smoke,
       Vite/browser consumer smoke, and add separate packed plain-Astro render-kit
       and full Starlight publishing consumers.
-- [ ] Pin Astro `7.1.0` in the minimum fixture and test latest supported 7.x
+- [ ] Pin official Astro `7.1.6` in the minimum fixture and test latest
+      supported 7.x
       separately.
-- [ ] Test Ubuntu Node 22.12/Astro 7.1.0, Ubuntu Node 24/latest 7.x, and Windows
-      Node 24/Astro 7.1.0 path portability.
+- [ ] Test Ubuntu Node 22.12/Astro 7.1.6, Ubuntu Node 24/latest 7.x, and Windows
+      Node 24/Astro 7.1.6 path portability.
 - [ ] Add a production Astro publishing harness with Cloud ADF and DC Storage
       synthetic fixtures, assets, links, macros, Starlight, the non-shipped
       experience conformance fixture, Pagefind search/facets, chart
@@ -1974,12 +1991,17 @@ choices should be confirmed at the T0 gate:
 
 ## 20. Primary references
 
-- [Astro 7.1 release](https://github.com/withastro/astro/releases/tag/astro%407.1.0)
+- [Official Astro 7.1.6 release](https://github.com/withastro/astro/releases/tag/astro%407.1.6)
+- [Withdrawn `astro@7.1.0` false-positive record](https://osv.dev/vulnerability/MAL-2026-10726)
+- [GitHub Advisory Database false-positive report](https://github.com/github/advisory-database/issues/8871)
 - [Astro configuration reference](https://docs.astro.build/en/reference/configuration-reference/)
 - [Astro content loader reference](https://docs.astro.build/en/reference/content-loader-reference/)
 - [Astro integration API](https://docs.astro.build/en/reference/integrations-reference/)
 - [Astro components](https://docs.astro.build/en/basics/astro-components/)
 - [Astro integration/component npm publishing](https://docs.astro.build/en/guides/integrations/#publishing-your-integration-to-npm)
+- [TanStack Charts repository and pre-alpha status](https://github.com/TanStack/charts)
+- [TanStack Charts `0.0.2` release](https://github.com/TanStack/charts/releases/tag/v0.0.2)
+- [TanStack portable chart spec](https://github.com/TanStack/charts/blob/main/PORTABLE-CHART-SPEC.md)
 - [Astro routing](https://docs.astro.build/en/guides/routing/)
 - [Astro images](https://docs.astro.build/en/guides/images/)
 - [Astro themes catalog](https://astro.build/themes/)

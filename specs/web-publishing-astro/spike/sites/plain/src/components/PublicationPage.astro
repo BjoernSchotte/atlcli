@@ -1,0 +1,57 @@
+---
+import type { CollectionEntry } from "astro:content";
+import ExportDocument from "@atlcli/export-blocks-astro/document";
+import "@atlcli/export-blocks-astro/styles.css";
+import PlainParagraph from "./PlainParagraph.astro";
+import { publicationCanonicalPath } from "../lib/publication-paths";
+
+interface Props {
+  entry: CollectionEntry<"publicationPages">;
+}
+
+const { entry } = Astro.props;
+const page = entry.data;
+const canonical = new URL(publicationCanonicalPath(page), Astro.site);
+---
+
+<!doctype html>
+<html lang={page.locale} dir={page.direction}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width" />
+    <meta name="description" content={page.description} />
+    <link rel="canonical" href={canonical} />
+    <title>{page.title} · Neutral Astro</title>
+  </head>
+  <body>
+    <header>
+      <a href="/docs/publish/">Structured publishing</a>
+    </header>
+    <main
+      data-pagefind-body
+      data-page-title={page.title}
+      data-pagefind-meta="title[data-page-title]"
+    >
+      <div hidden aria-hidden="true" data-pagefind-ignore>
+        <span data-pagefind-filter={`language:${page.locale}`}></span>
+        <span data-pagefind-filter={`space:${page.spaceKey}`}></span>
+        <span data-pagefind-filter={`content-type:${page.contentType}`}></span>
+        {page.labels.map((label) => <span data-pagefind-filter={`label:${label}`}></span>)}
+      </div>
+      <ExportDocument
+        blocks={page.blocks}
+        context={{ locale: page.locale, resolvedAssets: page.resolvedAssets }}
+        overrides={{ paragraph: PlainParagraph }}
+        chart={page.chart}
+        interactiveChart={page.id === "page-charts"}
+      />
+    </main>
+  </body>
+</html>
+
+<style is:global>
+  :root { color-scheme: light dark; font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
+  body { max-inline-size: 72rem; margin: 0 auto; padding: 1rem; }
+  header { display: flex; gap: 1rem; padding-block: 1rem; border-block-end: 1px solid #8090a8; }
+  main { max-inline-size: 54rem; }
+</style>

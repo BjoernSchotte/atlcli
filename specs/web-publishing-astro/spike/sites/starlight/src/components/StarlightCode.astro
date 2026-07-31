@@ -1,0 +1,11 @@
+---
+import { Code } from "astro-expressive-code/components";
+
+const { block } = Astro.props;
+const requestedLanguage = typeof block?.language === "string" ? block.language.toLowerCase() : "text";
+const language = /^[a-z0-9_+-]{1,32}$/u.test(requestedLanguage) ? requestedLanguage : "text";
+---
+
+<div data-renderer-override="starlight-expressive-code">
+  <Code code={String(block?.code ?? "")} lang={language} />
+</div>

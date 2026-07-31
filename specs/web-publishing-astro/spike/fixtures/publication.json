@@ -1,0 +1,283 @@
+{
+  "schema": "atlcli.publication-bundle/1-t0",
+  "revision": "t0-fixture-r1",
+  "providerOrigins": [
+    "https://confluence.example.test",
+    "https://example.atlassian.net"
+  ],
+  "pages": [
+    {
+      "id": "page-home",
+      "route": "/",
+      "title": "Structured publishing",
+      "description": "A structured ExportBlock publication without generated Markdown.",
+      "locale": "en",
+      "direction": "ltr",
+      "spaceKey": "PUB",
+      "labels": ["overview"],
+      "contentType": "landing",
+      "translationKey": "publication-start",
+      "position": 0,
+      "headings": [
+        { "depth": 1, "slug": "structured-publishing", "text": "Structured publishing" }
+      ],
+      "blocks": [
+        {
+          "type": "heading",
+          "level": 1,
+          "explicitAnchor": "structured-publishing",
+          "content": [{ "type": "text", "text": "Structured publishing" }]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            { "type": "text", "text": "This page came from structured JSON, not Markdown. " },
+            {
+              "type": "link",
+              "target": { "href": "/docs/publish/guide/" },
+              "content": [{ "type": "text", "text": "Open the guide" }]
+            }
+          ]
+        },
+        {
+          "type": "callout",
+          "kind": "info",
+          "title": "One render model",
+          "content": [
+            {
+              "type": "paragraph",
+              "content": [{ "type": "text", "text": "The neutral and Starlight experiences render the same blocks." }]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "page-guide",
+      "route": "/guide",
+      "title": "ExportBlock coverage",
+      "description": "The repository all-fields fixture rendered by a standalone Astro component package.",
+      "locale": "en",
+      "direction": "ltr",
+      "spaceKey": "PUB",
+      "labels": ["guide", "coverage"],
+      "contentType": "page",
+      "parentId": "page-home",
+      "position": 1,
+      "headings": [
+        { "depth": 1, "slug": "intro", "text": "Block model coverage" },
+        { "depth": 2, "slug": "captions-and-widths", "text": "Captions and widths" }
+      ],
+      "resolvedAssets": {
+        "coverage.svg": "/docs/publish-assets/coverage.svg"
+      },
+      "editRelation": {
+        "deployment": "cloud",
+        "kind": "edit",
+        "href": "https://example.atlassian.net/wiki/spaces/PUB/pages/123/ExportBlock+coverage?mode=edit"
+      },
+      "blocks": [
+        {
+          "type": "heading",
+          "level": 1,
+          "content": [{ "type": "text", "text": "Block model coverage" }],
+          "explicitAnchor": "intro"
+        },
+        {
+          "type": "paragraph",
+          "content": [{ "type": "text", "text": "Every enriched field renders in both hosts." }]
+        },
+        { "type": "pageBreak" },
+        {
+          "type": "heading",
+          "level": 2,
+          "content": [{ "type": "text", "text": "Captions and widths" }]
+        },
+        {
+          "type": "table",
+          "columnWidths": [300, 100],
+          "caption": { "kind": "table", "content": [{ "type": "text", "text": "Sizing matrix" }] },
+          "rows": [
+            {
+              "cells": [
+                {
+                  "header": true,
+                  "colspan": 1,
+                  "rowspan": 1,
+                  "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Wide" }] }]
+                },
+                {
+                  "header": true,
+                  "colspan": 1,
+                  "rowspan": 1,
+                  "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Narrow" }] }]
+                }
+              ]
+            },
+            {
+              "cells": [
+                {
+                  "header": false,
+                  "colspan": 1,
+                  "rowspan": 1,
+                  "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "left" }] }]
+                },
+                {
+                  "header": false,
+                  "colspan": 1,
+                  "rowspan": 1,
+                  "content": [
+                    {
+                      "type": "callout",
+                      "kind": "warning",
+                      "content": [
+                        { "type": "paragraph", "content": [{ "type": "text", "text": "Dense table warning" }] }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "list",
+          "ordered": false,
+          "items": [
+            {
+              "content": [
+                { "type": "paragraph", "content": [{ "type": "text", "text": "List callout container" }] },
+                {
+                  "type": "callout",
+                  "kind": "tip",
+                  "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Tip inside list item" }] }]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "callout",
+          "kind": "info",
+          "content": [
+            { "type": "paragraph", "content": [{ "type": "text", "text": "Outer info callout" }] },
+            {
+              "type": "callout",
+              "kind": "note",
+              "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Note inside callout" }] }]
+            }
+          ]
+        },
+        {
+          "type": "codeBlock",
+          "language": "typescript",
+          "code": "export const answer = 42;",
+          "title": "Legacy code header",
+          "initiallyCollapsed": true,
+          "caption": { "kind": "code", "content": [{ "type": "text", "text": "Listing one" }] }
+        },
+        {
+          "type": "orientation",
+          "landscape": true,
+          "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "This region is landscape." }] }]
+        },
+        { "type": "anchor", "name": "appendix" },
+        {
+          "type": "unknown",
+          "macroName": "customwidget",
+          "params": [{ "name": "id", "text": "42" }],
+          "body": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Preserved widget body." }] }]
+        },
+        {
+          "type": "image",
+          "source": { "filename": "coverage.svg" },
+          "alt": "A safe local publication asset"
+        }
+      ]
+    },
+    {
+      "id": "page-charts",
+      "route": "/charts",
+      "title": "Static and interactive charts",
+      "description": "Accessible static chart output with an optional progressive island.",
+      "locale": "en",
+      "direction": "ltr",
+      "spaceKey": "PUB",
+      "labels": ["guide", "charts"],
+      "contentType": "page",
+      "parentId": "page-home",
+      "position": 2,
+      "headings": [
+        { "depth": 1, "slug": "chart-proof", "text": "Chart proof" }
+      ],
+      "editRelation": {
+        "deployment": "data-center",
+        "kind": "webui",
+        "href": "https://confluence.example.test/pages/viewpage.action?pageId=42"
+      },
+      "blocks": [
+        {
+          "type": "heading",
+          "level": 1,
+          "explicitAnchor": "chart-proof",
+          "content": [{ "type": "text", "text": "Chart proof" }]
+        },
+        {
+          "type": "paragraph",
+          "content": [{ "type": "text", "text": "The table remains available when JavaScript is disabled." }]
+        }
+      ],
+      "chart": {
+        "schema": "atlcli.chart-model/1-t0",
+        "title": "Quarterly adoption </script><script>window.__hostile = true</script>",
+        "description": "Validated chart data remains inert.",
+        "categories": ["Q1", "Q2", "Q3"],
+        "series": [
+          { "key": "teams", "label": "Teams", "values": [12, 25, 41] },
+          { "key": "spaces", "label": "Spaces", "values": [30, 55, 89] }
+        ]
+      }
+    },
+    {
+      "id": "page-de",
+      "route": "/de/einstieg",
+      "title": "Deutschsprachiger Einstieg",
+      "description": "Eine lokalisierte Seite für Suche und Navigation.",
+      "locale": "de",
+      "direction": "ltr",
+      "spaceKey": "PUB",
+      "labels": ["guide", "deutsch"],
+      "contentType": "page",
+      "translationKey": "publication-start",
+      "position": 3,
+      "headings": [{ "depth": 1, "slug": "einstieg", "text": "Einstieg" }],
+      "blocks": [
+        { "type": "heading", "level": 1, "explicitAnchor": "einstieg", "content": [{ "type": "text", "text": "Einstieg" }] },
+        { "type": "paragraph", "content": [{ "type": "text", "text": "Vollständig statische Suche ohne gehostetes Backend." }] }
+      ]
+    },
+    {
+      "id": "page-ar",
+      "route": "/ar/start",
+      "title": "بداية النشر",
+      "description": "صفحة من اليمين إلى اليسار.",
+      "locale": "ar",
+      "direction": "rtl",
+      "spaceKey": "PUB",
+      "labels": ["guide", "arabic"],
+      "contentType": "page",
+      "translationKey": "publication-start",
+      "position": 4,
+      "headings": [{ "depth": 1, "slug": "start", "text": "بداية النشر" }],
+      "editRelation": {
+        "deployment": "cloud",
+        "kind": "edit",
+        "href": "https://attacker.example/wiki/edit?pageId=99"
+      },
+      "blocks": [
+        { "type": "heading", "level": 1, "explicitAnchor": "start", "content": [{ "type": "text", "text": "بداية النشر" }] },
+        { "type": "paragraph", "content": [{ "type": "text", "text": "محتوى منظم وتجربة قابلة للوصول." }] }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,217 @@
+# Web publishing T0 evidence
+
+This record is scoped to the T0 contract and feasibility gate. It does not
+claim that the production packages or CLI lifecycle exist yet.
+
+## Repository baseline re-audit
+
+- Re-audited commit: `9c974bd2277f3acc338f4f8fac38e6536b18aae4`
+  (`origin/main`, 2026-07-31).
+- `packages/confluence/src/export-blocks.ts:765` still defines the shared
+  `ExportBlock` discriminated union. It is consumed by DOCX, Typst PDF, browser
+  runtime, extension, and export-wiring code through `@atlcli/confluence`.
+- `packages/confluence/src/tree-fetch.ts:138` still exposes ordered
+  `ExportPageNode` values with per-page blocks, notes, identity, hierarchy,
+  position, version, labels, and space metadata.
+- `packages/confluence/src/tree-fetch.ts:348` still returns that page/folder
+  graph in `FetchExportTreeResult`; raw ADF/Storage bodies do not leave the
+  body-fetch jobs.
+- `packages/confluence/src/page-body.ts:20-105` still owns the Cloud
+  ADF-primary/Data Center Storage-primary source policy and the neutral decoder
+  result. Raw bodies are explicitly transient.
+- `packages/confluence/src/compose-document.ts:803` still turns the ordered
+  graph into one chapterized document. This remains a DOCX/PDF boundary, not a
+  publication input.
+- `packages/export-wiring/src/jobs/confluence-source-resolver.ts:381-512` still
+  fetches the graph once and calls `composeChapters()` only for tree/space
+  document export; the page graph therefore remains available before
+  composition.
+- `packages/export-jobs/src/request.ts:31-133`,
+  `packages/export-jobs/src/source.ts:2`, and
+  `packages/export-jobs/src/artifact.ts:4-12` remain a deliberately closed
+  DOCX/PDF, one-artifact lifecycle. Web publishing must not extend these V1
+  unions.
+- Current macro/export controls are also closed to document targets:
+  `packages/export-macros/src/deps.ts:13`,
+  `packages/export-macros/src/types.ts:366`, and
+  `packages/confluence/src/export-blocks.ts:1396,1732` use `pdf|word` or
+  `docx|pdf`. A future web target is additive and must retain the old truth
+  tables.
+
+No audited seam invalidates the plan. T1 should add a public pre-compose graph
+contract around the existing traversal rather than create a second walker.
+
+## ExportBlock extraction freeze
+
+T2 will create dependency-free `@atlcli/export-blocks` and move only the model,
+schemas, and pure model helpers. It will not move ADF/Storage parsers,
+Confluence clients, acquisition policy, Node APIs, or renderers.
+
+The first extraction commit must keep `@atlcli/confluence` compatibility
+re-exports, so existing DOCX, PDF, browser, extension, and export-wiring imports
+continue to compile unchanged. The new Astro render kit imports the neutral
+package directly. Deliberate consumer migrations may follow only after API,
+browser-entry, tree-shaking, packed-consumer, and deterministic-artifact gates
+prove there is no widened dependency surface.
+
+## Astro 7.1 cohort
+
+The frozen minimum lane is:
+
+| Component | Version / range | T0 result |
+| --- | --- | --- |
+| Node | `>=22.12.0`; tested `22.18.0` | package engine, network-disabled production builds, and packed-consumer gate |
+| Astro | official `7.1.6`; peer `>=7.1.6 <8` | clean install, check, and production builds |
+| Starlight | `0.41.5` | production static build and browser proof |
+| MDX | `7.0.5` | exact cohort; uses Markdown runtime only as a Starlight dependency, not as publication input |
+| Markdown Remark | `7.2.2` | exact Astro 7.1.6 cohort |
+| Markdown Satteri | `0.3.5` | exact cohort |
+| Internal helpers | `0.10.2` | exact cohort |
+| Sitemap | `3.7.3` | nested-base sitemap generated |
+| Expressive Code | `0.44.1` | Starlight override rendered with copy action |
+| Pagefind / default UI | `1.5.2` | multilingual post-build index and browser search |
+| Sharp | `0.34.5` | network-disabled AVIF/WebP/PNG transforms |
+| Plausible tracker | `0.4.5` | optional build only; default output contains none |
+
+An automated advisory temporarily classified `astro@7.1.0` as malicious, but
+the source OSV record `MAL-2026-10726` is withdrawn as a false positive and the
+remaining GitHub Advisory Database entry is tracked as false-positive issue
+[#8871](https://github.com/github/advisory-database/issues/8871). The
+isolated dependency tree was paused and inspected: the named dependencies have
+legitimate upstreams, no suspicious install hooks were present, and no
+exfiltration/persistence primitive was found in the executed entrypoints. T0
+still regenerates all final evidence on the current official `7.1.6` patch so
+the minimum lane does not freeze a superseded `.0` release.
+
+After all root and workspace dependency trees were moved aside, the frozen-lock
+install completed with 445 packages and no peer warnings or lock changes.
+The exact overrides follow Astro 7.1.6's own Markdown peer and runtime
+dependencies so the minimum lane cannot silently split into two cohorts.
+The nested Bun workspace selects the documented `hoisted` linker explicitly:
+Astro's generated prerender entry imports Astro-owned runtime dependencies from
+the site output, while Bun's isolated workspace linker deliberately does not
+make transitive dependencies visible there. Published consumers still declare
+only Astro and the render kit; this is a fixture package-manager setting, not a
+new public dependency.
+
+The previously considered PWA plugin does not support this Astro lane. PWA,
+service workers, installability, and runtime offline caching are therefore a
+separate future compatibility spike and are absent from every T0 output.
+
+## Dynamic chart adapter candidate
+
+The separate chart spike built Astro `7.1.6`, `@astrojs/react` `6.0.1`, React
+`19.1.1`, `@tanstack/charts` `0.0.2`, and `@tanstack/react-charts` `0.0.2` as a
+static Astro site. The resulting HTML contained the full accessible SVG before
+hydration, and the opt-in React island hydrated successfully. This proves the
+technical Astro integration shape, not production maturity.
+
+TanStack Charts' own [repository](https://github.com/TanStack/charts) documents
+a framework-neutral grammar, static SVG/SSR, hydration, responsive themes,
+interaction, accessibility, and export, which align closely with the frozen
+adapter boundary. The same source explicitly labels
+[release `0.0.2`](https://github.com/TanStack/charts/releases/tag/v0.0.2)
+pre-alpha and not ready for production. It is therefore the preferred adapter
+candidate behind `ChartRendererAdapter`, never the publication/bundle schema.
+T6 must re-run compatibility, accessibility, bundle, performance, and maturity
+gates before selecting it for the shipped V1 adapter.
+
+## Artifact and browser proofs
+
+The private spike is under `specs/web-publishing-astro/spike/`. Its publication
+input is JSON containing typed per-page blocks; it creates no Markdown, MDX,
+`.astro`, JavaScript, or component-import source from publication data.
+
+Proven locally on 2026-07-31:
+
+- the complete frozen-lock install and both final production builds pass under
+  Node `22.18.0`, within Astro's minimum supported Node 22 lane;
+- both the plain and Starlight sites pass `astro check` on official Astro 7.1.6;
+- both production builds pass with Node network primitives blocked and Astro
+  telemetry explicitly disabled;
+- the Starlight output builds at `base: "/docs"` with a custom documented
+  content loader, static catch-all routes, a private `build:done` inventory,
+  and explicit collision failure for `/publish/reserved`;
+- the same structured bundle renders in plain Astro and Starlight;
+- a tar-packed plain Astro consumer depends only on Astro and
+  `@atlcli/export-blocks-astro`, contains no `src/`, and builds the historical
+  all-fields fixture without Starlight, Confluence, auth, Pagefind, loader,
+  deployment, service-worker, or runtime-cache dependencies; the fixture covers
+  every block family and inline type, public block/inline subpath composition,
+  trusted overrides, tokens, print/RTL attributes, visible future-type
+  fallbacks, unsafe-link rejection, and account-ID non-disclosure;
+- hostile `</script><script>` chart text remains inert;
+- the chart has a useful semantic static table with JavaScript disabled and an
+  allowlisted progressive island with JavaScript enabled;
+- Starlight's paragraph and Expressive Code overrides change presentation while
+  the neutral package retains its complete semantic fallbacks;
+- Pagefind search works by mouse and `ControlOrMeta+K`, returns the expected
+  nested-base URL, exposes language/space/type/label facets, indexes English,
+  German, and Arabic independently, and removes deleted pages on a same-output
+  rebuild;
+- the final Starlight experience has locale-correct real language targets,
+  RTL output, derived navigation, breadcrumbs, TOC, previous/next, deterministic
+  related pages, label landing pages, and a Starlight 404 whose search dialog
+  works;
+- canonical, OpenGraph, intentional robots, sitemap, valid existing hreflang,
+  and escaped JSON-LD output are generated at the nested base;
+- vendored Inter fonts and build-time AVIF/WebP/PNG `srcset` assets are emitted
+  without network access and no runtime `/_image` endpoint exists;
+- Cloud `edit` and Data Center `webui` provider relations render with truthful
+  labels; a relation on an untrusted origin renders no action;
+- analytics is `none` by default with no tracker code/configuration in output;
+  the optional Plausible build accepts only an allowlisted HTTPS `/api/event`
+  endpoint, strips query/fragment/referrer/properties from pageviews, has no
+  persistent queue/replay, and leaves all content usable when CSP blocks the
+  endpoint; and
+- no `manifest.webmanifest`, `sw.js`, or `service-worker.js` is emitted.
+
+The unchanged DOCX/PDF/browser source boundary was re-proven with the existing
+`@atlcli/confluence` imports: 450 tests across ExportBlock conversion,
+composition, source resolution, DOCX browser runtime/serialization, and Typst
+PDF serialization pass with two snapshots and 1,381 expectations. T0 changes
+no production import, schema, or artifact path.
+
+Starlight emits one known non-fatal warning that its conventional `docs`
+collection is empty. The spike intentionally uses a separate structured
+`publicationPages` loader and the documented public `StarlightPage` component
+instead of pretending publication JSON is Markdown/MDX. T7 must eliminate that
+warning through a documented Starlight integration path or an upstream change;
+it may not silence it by adding fake Markdown or relying on private content
+semantics.
+
+The live local inspection URL for this milestone is
+`http://127.0.0.1:4327/docs/publish/`.
+
+## Reproducibility finding
+
+Identical cold/warm Starlight builds produce the same semantic page/search
+inventory. Pagefind 1.5.2 can nevertheless change some compressed filter/meta
+filenames and bytes, which changes the physical artifact digest. T0 therefore
+records both a stable semantic digest and a complete sorted physical inventory.
+Production verification must bind the deployed candidate to its actual
+artifact digest while reproducibility comparisons use the semantic manifest;
+it must not falsely promise bit-identical Pagefind output.
+
+The retained final manifests record:
+
+| Experience | Semantic digest | Physical artifact evidence |
+| --- | --- | --- |
+| Plain Astro | `30b00fe46bd212f853968726c9732a4e6eafbf0e31f7c8401a809a9a8dace1fd` | 7 pages / 8 files |
+| Starlight cold | `599477076cc1a2f043bfb78f5f96331a9f3af20288f0419eeca451a2adc4fc00` | 15 pages / 83 files; artifact `cae8186bfc1e32af28d63e8f8e3a4f5757bee1bb16b76698c9bc6c67d80138cf` |
+| Starlight warm | `599477076cc1a2f043bfb78f5f96331a9f3af20288f0419eeca451a2adc4fc00` | 15 pages / 83 files; artifact `2b5e0b44a8273cb9ec9522067afd9907b544e2a79094b6064f79c6d084bd1832` |
+
+## Commands retained as proof recipes
+
+```bash
+bun install --frozen-lockfile
+bun run test
+bun run typecheck
+ASTRO_TELEMETRY_DISABLED=1 NODE_OPTIONS=--import=<spike>/scripts/no-network.mjs <node-22>/node <spike>/node_modules/astro/bin/astro.mjs build # run from each site directory
+node scripts/packed-consumer.mjs
+node scripts/inventory.mjs plain
+node scripts/inventory.mjs starlight
+```
+
+Runtime tests and provider E2E beyond T0 are still required by T1-T12. This
+evidence does not claim live Cloud/DC acquisition or remote deployment.

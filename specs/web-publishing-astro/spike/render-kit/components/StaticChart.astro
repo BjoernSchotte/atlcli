@@ -1,0 +1,43 @@
+---
+import { assertT0ChartModel, safeHtmlId } from "../contract.mjs";
+
+const { model } = Astro.props;
+assertT0ChartModel(model);
+const id = `chart-${safeHtmlId(model.title) ?? "untitled"}`;
+const allValues = model.series.flatMap((series) => series.values);
+const maximum = Math.max(1, ...allValues.map((value) => Math.abs(value)));
+const rowHeight = 32;
+const chartHeight = model.categories.length * model.series.length * rowHeight + 24;
+const chartWidth = 720;
+const labelWidth = 160;
+const barWidth = chartWidth - labelWidth - 40;
+---
+
+<figure data-atlcli-chart="static" aria-labelledby={`${id}-title`} aria-describedby={`${id}-description`}>
+  <figcaption>
+    <strong id={`${id}-title`}>{model.title}</strong>
+    <p id={`${id}-description`}>{model.description}</p>
+  </figcaption>
+  <svg viewBox={`0 0 ${chartWidth} ${chartHeight}`} role="img" aria-hidden="true">
+    {model.categories.flatMap((category, categoryIndex) => model.series.map((series, seriesIndex) => {
+      const value = series.values[categoryIndex];
+      const y = (categoryIndex * model.series.length + seriesIndex) * rowHeight + 8;
+      const width = Math.max(1, Math.abs(value) / maximum * barWidth);
+      return (
+        <g>
+          <text x="0" y={y + 18}>{category} · {series.label}</text>
+          <rect data-chart-bar x={labelWidth} y={y} width={width} height="22" rx="3" />
+          <text x={labelWidth + width + 8} y={y + 17}>{value}{model.unit ?? ""}</text>
+        </g>
+      );
+    }))}
+  </svg>
+  <table data-chart-table>
+    <thead><tr><th>Category</th>{model.series.map((series) => <th>{series.label}</th>)}</tr></thead>
+    <tbody>
+      {model.categories.map((category, index) => (
+        <tr><th>{category}</th>{model.series.map((series) => <td>{series.values[index]}{model.unit ?? ""}</td>)}</tr>
+      ))}
+    </tbody>
+  </table>
+</figure>

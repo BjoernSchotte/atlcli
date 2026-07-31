@@ -1,0 +1,12 @@
+---
+import LabelLanding from "../../../../components/LabelLanding.astro";
+import { getLabelPaths } from "../../../../lib/publication-paths";
+
+export async function getStaticPaths() {
+  return getLabelPaths("ar");
+}
+
+const { entries, label, navigation } = Astro.props;
+---
+
+<LabelLanding entries={entries} label={label} navigation={navigation} />

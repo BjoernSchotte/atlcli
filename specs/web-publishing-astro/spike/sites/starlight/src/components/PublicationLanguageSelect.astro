@@ -1,0 +1,35 @@
+---
+import { publicationLocaleLinks } from "../lib/publication-i18n";
+
+const { currentLocale, selectorLinks } = await publicationLocaleLinks(Astro.url.pathname, import.meta.env.BASE_URL);
+---
+
+<publication-language-select>
+  <nav aria-label="Publication language" data-publication-language-select>
+    <label>
+      <span class="sr-only">Select language</span>
+      <select autocomplete="off">
+        {selectorLinks.map((link) => (
+          <option value={link.href} selected={link.locale === currentLocale}>{link.label}</option>
+        ))}
+      </select>
+    </label>
+    <noscript>
+      <ul>{selectorLinks.map((link) => <li><a href={link.href} lang={link.locale}>{link.label}</a></li>)}</ul>
+    </noscript>
+  </nav>
+</publication-language-select>
+
+<script>
+  class PublicationLanguageSelect extends HTMLElement {
+    connectedCallback() {
+      const select = this.querySelector("select");
+      select?.addEventListener("change", () => {
+        if (select.value) window.location.assign(select.value);
+      });
+    }
+  }
+  if (!customElements.get("publication-language-select")) {
+    customElements.define("publication-language-select", PublicationLanguageSelect);
+  }
+</script>
