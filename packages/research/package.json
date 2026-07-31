@@ -53,6 +53,11 @@
       "development": "./src/scope-catalog.ts",
       "types": "./dist/scope-catalog.d.ts",
       "default": "./dist/scope-catalog.js"
+    },
+    "./scope-catalog-broker": {
+      "development": "./src/scope-catalog-broker.ts",
+      "types": "./dist/scope-catalog-broker.d.ts",
+      "default": "./dist/scope-catalog-broker.js"
     }
   },
   "scripts": {
