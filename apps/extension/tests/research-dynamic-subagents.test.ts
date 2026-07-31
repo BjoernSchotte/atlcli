@@ -247,7 +247,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       tools: [
         tool(async ({ query }) => JSON.stringify({
           items: [{
-            title: `RCM — ${query.text}`,
+            title: `KB — ${query.text}`,
             sourceId: `wiki:${query.text}`,
             entityRef: `opaque:${query.text}`,
           }],

@@ -27,6 +27,7 @@
     "check:browser": "turbo run check:browser:internal",
     "check:browser:internal": "bun scripts/check-browser-build.ts",
     "check:readme-media": "bun scripts/ci/validate-readme-media.ts",
+    "check:research-privacy": "bun scripts/ci/research-privacy.ts",
     "typecheck:extension": "turbo run typecheck --filter=@atlcli/extension",
     "typecheck:pdf-compiler-browser": "turbo run typecheck --filter=@atlcli/pdf-compiler-browser",
     "typecheck:browser-export-harness": "turbo run typecheck --filter=@atlcli/browser-export-harness",

@@ -25,8 +25,8 @@ import {
 } from "../../utils/docx/template-store.js";
 import { seedLegacyV1 } from "../docx/seed-v1.js";
 
-const SITE_A = "https://mayflower.atlassian.net";
-const SITE_B = "https://mayflower-staging.atlassian.net";
+const SITE_A = "https://tenant-a.atlassian.net";
+const SITE_B = "https://tenant-b.atlassian.net";
 const FIXED_DOCX_DATE = new Date("2020-01-01T00:00:00.000Z");
 
 let factory: IDBFactory;

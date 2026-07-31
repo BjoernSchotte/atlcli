@@ -25,7 +25,7 @@ import {
 import { scanTemplate } from "@atlcli/docx/scan";
 import { buildDocx, para } from "@atlcli/docx/fixtures";
 
-const SITE = "https://mayflower.atlassian.net";
+const SITE = "https://tenant-a.atlassian.net";
 const RECORD_KEY = buildRecordKey({
   siteOrigin: SITE,
   engine: "docx",

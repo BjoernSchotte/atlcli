@@ -14,24 +14,23 @@ import {
 import { macroParamText } from "./export-blocks.js";
 
 /**
- * The VERBATIM `data-datasource` attribute of DOCSY page 1126236245
- * ("M1 Abnahme Abschnitt 7.7"), as Confluence Cloud stores it — HTML entities
- * intact. This is the artifact that exposed the whole defect; every parser
- * change is measured against it rather than against a hand-written idealization.
+ * A privacy-sanitized `data-datasource` fixture preserving Confluence Cloud's
+ * HTML-entity encoding and structural shape. Every parser change is measured
+ * against this captured shape rather than a hand-written idealization.
  */
 const REAL_ATTR_ENCODED =
   "{&quot;id&quot;:&quot;d8b75300-dfda-4519-b6cd-e49abbd50401&quot;," +
-  "&quot;parameters&quot;:{&quot;cloudId&quot;:&quot;ca7c5cc9-632e-4985-b88e-fb2a96c0b9ca&quot;," +
-  "&quot;jql&quot;:&quot;project in (GROW) and status in (Review) ORDER BY created DESC&quot;}," +
+  "&quot;parameters&quot;:{&quot;cloudId&quot;:&quot;11111111-2222-4333-8444-555555555555&quot;," +
+  "&quot;jql&quot;:&quot;project in (DEMO) and status in (Review) ORDER BY created DESC&quot;}," +
   "&quot;views&quot;:[{&quot;type&quot;:&quot;table&quot;,&quot;properties&quot;:{&quot;columns&quot;:[" +
   "{&quot;key&quot;:&quot;issuetype&quot;},{&quot;key&quot;:&quot;key&quot;},{&quot;key&quot;:&quot;summary&quot;}," +
   "{&quot;key&quot;:&quot;assignee&quot;},{&quot;key&quot;:&quot;priority&quot;},{&quot;key&quot;:&quot;status&quot;}," +
   "{&quot;key&quot;:&quot;updated&quot;}]}}]}";
 
 const REAL_HREF =
-  "https://mayflowergmbh.atlassian.net/issues/?jql=project%20in%20(GROW)%20and%20status%20in%20(Review)%20ORDER%20BY%20created%20DESC";
+  "https://example.atlassian.net/issues/?jql=project%20in%20(DEMO)%20and%20status%20in%20(Review)%20ORDER%20BY%20created%20DESC";
 
-const REAL_JQL = "project in (GROW) and status in (Review) ORDER BY created DESC";
+const REAL_JQL = "project in (DEMO) and status in (Review) ORDER BY created DESC";
 
 /** Build a datasource attribute value (already decoded) from parts. */
 function attr(payload: unknown): string {
@@ -242,7 +241,7 @@ describe("translateDatasourceLink — the real artifact", () => {
     if (outcome.kind !== "macro") throw new Error("expected macro");
     expect(macroParamText(outcome.params, "datasourceId")).toBe(JIRA_DATASOURCE_ID);
     expect(macroParamText(outcome.params, "datasourceCloudId")).toBe(
-      "ca7c5cc9-632e-4985-b88e-fb2a96c0b9ca"
+      "11111111-2222-4333-8444-555555555555"
     );
     expect(macroParamText(outcome.params, "datasourceUrl")).toBe(REAL_HREF);
   });
@@ -368,8 +367,8 @@ describe("translateDatasourceLink — degradation", () => {
  */
 const REAL_CONFLUENCE_ATTR_ENCODED =
   "{&quot;id&quot;:&quot;768fc736-3af4-4a8f-b27e-203602bff8ca&quot;," +
-  "&quot;parameters&quot;:{&quot;cloudId&quot;:&quot;ca7c5cc9-632e-4985-b88e-fb2a96c0b9ca&quot;," +
-  "&quot;contributorAccountIds&quot;:[&quot;70121:666cbd78-32fa-4764-90a1-d3368305f07b&quot;]," +
+  "&quot;parameters&quot;:{&quot;cloudId&quot;:&quot;11111111-2222-4333-8444-555555555555&quot;," +
+  "&quot;contributorAccountIds&quot;:[&quot;fixture-account-001&quot;]," +
   "&quot;searchString&quot;:&quot;&quot;}," +
   "&quot;views&quot;:[{&quot;type&quot;:&quot;table&quot;,&quot;properties&quot;:{&quot;columns&quot;:[" +
   "{&quot;key&quot;:&quot;type&quot;},{&quot;key&quot;:&quot;title&quot;},{&quot;key&quot;:&quot;space&quot;}," +
@@ -377,7 +376,7 @@ const REAL_CONFLUENCE_ATTR_ENCODED =
   "{&quot;key&quot;:&quot;labels&quot;},{&quot;key&quot;:&quot;status&quot;}]}}]}";
 
 const REAL_CONFLUENCE_HREF =
-  "https://mayflowergmbh.atlassian.net/wiki/search?text=&contributors=70121%3A666cbd78-32fa-4764-90a1-d3368305f07b";
+  "https://example.atlassian.net/wiki/search?text=&contributors=fixture-account-001";
 
 function confluenceList(parameters: Record<string, unknown>, columns: string[] = ["title"]): string {
   return attr({
@@ -404,7 +403,7 @@ describe("Confluence list — the real artifact (DOCSY 1126236229)", () => {
     expect(out.kind).toBe("macro");
     if (out.kind !== "macro") return;
     const cql = macroParamText(out.params, "cql");
-    expect(cql).toBe('contributor in ("70121:666cbd78-32fa-4764-90a1-d3368305f07b")');
+    expect(cql).toBe('contributor in ("fixture-account-001")');
     // The whole trap: keying on `searchString` would have produced a `text ~ ""`
     // fragment (or concluded "no query"). Neither may appear.
     expect(cql).not.toContain("text ~");
@@ -424,7 +423,7 @@ describe("Confluence list — the real artifact (DOCSY 1126236229)", () => {
     if (out.kind !== "macro") throw new Error("expected a macro");
     expect(macroParamText(out.params, "maximumResults")).toBe(String(DATASOURCE_DEFAULT_MAX_ROWS));
     expect(macroParamText(out.params, "datasourceId")).toBe(CONFLUENCE_SEARCH_DATASOURCE_ID);
-    expect(macroParamText(out.params, "datasourceCloudId")).toBe("ca7c5cc9-632e-4985-b88e-fb2a96c0b9ca");
+    expect(macroParamText(out.params, "datasourceCloudId")).toBe("11111111-2222-4333-8444-555555555555");
     expect(macroParamText(out.params, "datasourceUrl")).toBe(REAL_CONFLUENCE_HREF);
   });
 });

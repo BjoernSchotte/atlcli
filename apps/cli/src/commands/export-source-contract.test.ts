@@ -708,7 +708,7 @@ describe("image-note vocabulary parity across engines (spec 010)", () => {
  * The page storage is the VERBATIM artifact of DOCSY page 1126236229, with only
  * the site origin rewritten to the stub's (the renderer's cross-site guard
  * compares the datasource `href` origin against the export's own site, so a
- * literal `mayflowergmbh.atlassian.net` here would correctly degrade and the
+ * literal cross-tenant origin here would correctly degrade and the
  * suite would be testing nothing).
  */
 const LIST_PAGE_ID = "1126236229";
@@ -724,12 +724,12 @@ const LIST_COLUMN_KEYS = [
 ];
 
 function listStorage(origin: string): string {
-  const href = `${origin}/wiki/search?text=&contributors=70121%3A666cbd78-32fa-4764-90a1-d3368305f07b`;
+  const href = `${origin}/wiki/search?text=&contributors=fixture-account-001`;
   const datasource = JSON.stringify({
     id: "768fc736-3af4-4a8f-b27e-203602bff8ca",
     parameters: {
-      cloudId: "ca7c5cc9-632e-4985-b88e-fb2a96c0b9ca",
-      contributorAccountIds: ["70121:666cbd78-32fa-4764-90a1-d3368305f07b"],
+      cloudId: "11111111-2222-4333-8444-555555555555",
+      contributorAccountIds: ["fixture-account-001"],
       searchString: "",
     },
     views: [{ type: "table", properties: { columns: LIST_COLUMN_KEYS.map((key) => ({ key })) } }],
@@ -906,7 +906,7 @@ describe("Confluence-list datasource parity across engines (spec SUPPORT-DATASOU
     // The CQL is composed from the FILTERS, not from the empty `searchString`.
     expect(searches).toHaveLength(2);
     for (const cql of searches) {
-      expect(cql).toBe('contributor in ("70121:666cbd78-32fa-4764-90a1-d3368305f07b")');
+      expect(cql).toBe('contributor in ("fixture-account-001")');
     }
 
     for (const [engine, report] of [["docx", docx], ["pdf", pdf]] as const) {

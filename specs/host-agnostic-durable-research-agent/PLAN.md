@@ -2249,8 +2249,8 @@ CLI:
       Proven 2026-07-31: the harness requires a new absolute `.md` output path
       outside the repository, writes it with mode `0600`, refuses overwrite,
       accepts no API-key flag, and emits only aggregate PTC/subagent/run
-      metrics. A real RCM/GROW dynamic run wrote its full report under the
-      operator-owned `~/Documents/atlcli/artefacts/` tree.
+      metrics. A real run against operator-supplied scopes wrote its full
+      report under the operator-owned `~/Documents/atlcli/artefacts/` tree.
 - [x] Prove the fixed-date cross-product question through the `mayflower`
       profile and operator-supplied local project/space keys; preserve the
       generated Markdown for review without committing it.
@@ -2303,8 +2303,13 @@ Gate:
       tests passed in 3.4 seconds; provider-native JSON Schema, the productive
       dynamic graph, worker lifecycle, cancellation, and safe Markdown are
       exercised.
-- [ ] No tracked file contains an Anthropic key, Atlassian credential, tenant
+- [x] No tracked file contains an Anthropic key, Atlassian credential, tenant
       content, private URL, or customer-derived report.
+      Proven 2026-07-31 by the always-on `check:research-privacy` CI gate and
+      six focused regression cases. The scanner permits the approved test
+      scopes, rejects operator-classified non-test scope identifiers and
+      tenant identity values, ignores compressed binary coincidences, and
+      reports only file paths plus rule IDs.
 
 ### T1 — Create the shared `@atlcli/research` package without changing behavior
 

@@ -62,12 +62,12 @@ describe("dynamic research graph composition", () => {
 
   test("reserves dedicated joins for deep or explicitly adversarial relation research", () => {
     const standard = composeResearchGraphV1(brief(
-      "How do these pages describe the funnel, and which GROW work items correspond to each stage?",
+      "How do these pages describe the funnel, and which DEMO work items correspond to each stage?",
       ["jira", "confluence"],
     ));
     expect(standard.selectedRoleIds).not.toContain("cross-product-join");
     const deep = composeResearchGraphV1(brief(
-      "How do these pages describe the funnel, and which GROW work items correspond to each stage?",
+      "How do these pages describe the funnel, and which DEMO work items correspond to each stage?",
       ["jira", "confluence"],
       "auto",
       "deep",

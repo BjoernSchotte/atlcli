@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { ResearchScopeCatalogBroker } from "@atlcli/research/scope-catalog-broker";
 import { createResearchScopeCatalogPtcTools, RESEARCH_SCOPE_CATALOG_TOOL_NAMES } from "../utils/research/scope-catalog-tools.js";
 
-const tenantOrigin = "https://mayflower.atlassian.net";
+const tenantOrigin = "https://tenant-a.atlassian.net";
 
 function candidate(key: string, product: "jira" | "confluence", entityKind: "project" | "space") {
   return {

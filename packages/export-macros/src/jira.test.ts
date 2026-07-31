@@ -105,8 +105,8 @@ describe("jiraMacroRenderer", () => {
 // Datasource smart links (SUPPORT-DATASOURCE-JIRA)
 // ---------------------------------------------------------------------------
 
-const SITE = "https://mayflowergmbh.atlassian.net";
-const DATASOURCE_HREF = `${SITE}/issues/?jql=project%20in%20(GROW)`;
+const SITE = "https://example.atlassian.net";
+const DATASOURCE_HREF = `${SITE}/issues/?jql=project%20in%20(DEMO)`;
 const JIRA_DATASOURCE_ID = "d8b75300-dfda-4519-b6cd-e49abbd50401";
 
 function siteCtx(jira: JiraIssuePort | undefined, siteId: string | undefined): MacroExportContext {
@@ -124,11 +124,11 @@ function datasourceInstance(overrides: Partial<{ href: string }> = {}) {
   return {
     name: "jira",
     params: [
-      param("jqlquery", "project in (GROW) and status in (Review) ORDER BY created DESC"),
+      param("jqlquery", "project in (DEMO) and status in (Review) ORDER BY created DESC"),
       param("columns", "issuetype,key,summary,assignee,priority,status,updated"),
       param("maximumissues", "100"),
       param("datasourceid", JIRA_DATASOURCE_ID),
-      param("datasourcecloudid", "ca7c5cc9-632e-4985-b88e-fb2a96c0b9ca"),
+      param("datasourcecloudid", "11111111-2222-4333-8444-555555555555"),
       param("datasourceurl", overrides.href ?? DATASOURCE_HREF),
     ],
     body: [

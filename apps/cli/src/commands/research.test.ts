@@ -4,7 +4,7 @@ import { buildResearchRequest, parseResearchCliInput, researchArtifactPath } fro
 
 const profile: Profile = {
   name: "mayflower",
-  baseUrl: "https://mayflower.atlassian.net",
+  baseUrl: "https://tenant-a.atlassian.net",
   project: "ATLCLI",
   space: "DOCSY",
   auth: { type: "apiToken", email: "test@example.invalid", token: "test" },
@@ -45,7 +45,7 @@ describe("research CLI one-shot contract", () => {
     const input = parseResearchCliInput(["Find related content"], {});
     const request = buildResearchRequest(input, profile);
     expect(request.scope).toMatchObject({
-      siteOrigin: "https://mayflower.atlassian.net",
+      siteOrigin: "https://tenant-a.atlassian.net",
       jiraProjectKeys: ["ATLCLI"],
       confluenceSpaceKeys: ["DOCSY"],
     });

@@ -7,7 +7,7 @@ import { RESEARCH_SCOPE_CATALOG_SCHEMAS } from "./scope-catalog.js";
 
 const baseCandidate = {
   id: "research-scope-candidate:atlcli",
-  tenantOrigin: "https://mayflower.atlassian.net",
+  tenantOrigin: "https://tenant-a.atlassian.net",
   product: "jira" as const,
   entityKind: "project" as const,
   entityRef: "research-scope-entity:atlcli",
@@ -25,7 +25,7 @@ function providers(): ResearchScopeCatalogProvidersV1 & { seenCursors: string[] 
       async listProjects(input) {
         seenCursors.push(input.providerCursor ?? "");
         return input.providerCursor
-          ? { candidates: [{ ...baseCandidate, id: "research-scope-candidate:second", key: "GROW", name: "Growth" }] }
+          ? { candidates: [{ ...baseCandidate, id: "research-scope-candidate:second", key: "OPS", name: "Operations" }] }
           : { candidates: [{ ...baseCandidate, id: "research-scope-candidate:first" }], nextProviderCursor: "provider-secret-cursor" };
       },
     },
@@ -44,7 +44,7 @@ describe("scope catalog broker", () => {
   test("keeps provider pagination cursors opaque", async () => {
     const host = providers();
     const broker = new ResearchScopeCatalogBroker({
-      tenantOrigin: "https://mayflower.atlassian.net",
+      tenantOrigin: "https://tenant-a.atlassian.net",
       providers: host,
     });
     const first = await broker.invoke("jira.project.search", {
@@ -68,7 +68,7 @@ describe("scope catalog broker", () => {
       cursorRef: nextCursorRef,
       maxCandidates: 25,
     });
-    expect(second).toMatchObject({ candidates: [{ key: "GROW" }] });
+    expect(second).toMatchObject({ candidates: [{ key: "OPS" }] });
     expect(host.seenCursors).toEqual(["", "provider-secret-cursor"]);
   });
 
@@ -77,7 +77,7 @@ describe("scope catalog broker", () => {
     host.jira.listProjects = async () => ({
       candidates: [{ ...baseCandidate, tenantOrigin: "https://other.atlassian.net" }],
     });
-    const broker = new ResearchScopeCatalogBroker({ tenantOrigin: "https://mayflower.atlassian.net", providers: host });
+    const broker = new ResearchScopeCatalogBroker({ tenantOrigin: "https://tenant-a.atlassian.net", providers: host });
     await expect(broker.invoke("jira.project.search", {
       schema: RESEARCH_SCOPE_CATALOG_SCHEMAS["jira.project.search"].input,
       product: "jira",

@@ -11,8 +11,8 @@ import type { EntityDetection } from "../utils/messages.js";
 
 const detection: EntityDetection = {
   windowId: 7,
-  url: "https://myco.atlassian.net/wiki/spaces/RCM/pages/1031503874/Page",
-  entity: { product: "confluence", type: "page", pageId: "1031503874", spaceKey: "RCM" },
+  url: "https://myco.atlassian.net/wiki/spaces/KB/pages/12345/Page",
+  entity: { product: "confluence", type: "page", pageId: "12345", spaceKey: "KB" },
   seq: 4,
 };
 

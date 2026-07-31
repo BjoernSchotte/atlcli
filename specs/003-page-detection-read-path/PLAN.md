@@ -147,7 +147,7 @@ tested; rendering is the thin shell.
 Joint session against the real instance (profile context: Björn's browser logged in to
 `mayflower.atlassian.net`, space `DOCSY`):
 
-- [x] Open a Confluence page → panel auto-detects and loads: correct title/space/version shown <!-- E2E 2026-07-15 with Björn: real Cloud page (space RCM, v45, 2497 words) loaded zero-config via browser session — the positive half of the cookie proof. Known issue found: table with ac:local-id/p-local-id markup passed through unconverted in the markdown preview (fix in progress, regression-tested) -->
+- [x] Open a Confluence page → panel auto-detects and loads: correct title/space/version shown <!-- E2E 2026-07-15 with Björn: an operator-selected non-test Cloud page loaded zero-config via browser session — the positive half of the cookie proof. Known issue found: table with ac:local-id/p-local-id markup passed through unconverted in the markdown preview (fix in progress, regression-tested) -->
 - [x] Tab-switch between two Confluence pages → panel follows without manual action <!-- E2E 2026-07-15: confirmed -->
 - [x] Confluence SPA navigation (click a page-tree link, no full reload) → panel follows <!-- E2E 2026-07-15: confirmed -->
 - [x] Jira tab → "detected, not exportable" state <!-- E2E 2026-07-15: "Detected Jira board MLBOT. Nothing to export here yet…" -->

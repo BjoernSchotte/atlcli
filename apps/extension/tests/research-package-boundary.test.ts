@@ -27,14 +27,14 @@ describe("@atlcli/research browser boundary", () => {
       schema: RESEARCH_REQUEST_SCHEMA_V1,
       question: "Which pages relate to ATLCLI issues?",
       scope: {
-        siteOrigin: "https://mayflower.atlassian.net",
+        siteOrigin: "https://tenant-a.atlassian.net",
         jiraProjectKeys: ["ATLCLI"],
         confluenceSpaceKeys: ["DOCSY"],
       },
       limits: DEFAULT_RESEARCH_LIMITS_V1,
       wikiProvider: "rest",
     });
-    expect(request.scope.siteOrigin).toBe("https://mayflower.atlassian.net");
+    expect(request.scope.siteOrigin).toBe("https://tenant-a.atlassian.net");
     expect(request.scope.jiraProjectKeys).toEqual(["ATLCLI"]);
   });
 
@@ -50,7 +50,7 @@ describe("@atlcli/research browser boundary", () => {
       },
       candidates: [{
         id: "candidate:package",
-        tenantOrigin: "https://mayflower.atlassian.net",
+        tenantOrigin: "https://tenant-a.atlassian.net",
         product: "confluence",
         entityKind: "space",
         entityRef: "research-entity:docsy",
@@ -60,7 +60,7 @@ describe("@atlcli/research browser boundary", () => {
         providerFreshnessAt: "2026-07-31T10:00:00.000Z",
       }],
       catalogComplete: false,
-      expectedTenantOrigin: "https://mayflower.atlassian.net",
+      expectedTenantOrigin: "https://tenant-a.atlassian.net",
     });
     expect(result.state).toBe("resolved");
     expect(result.uniquenessProof).toBe("exact_key_lookup");

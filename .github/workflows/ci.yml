@@ -82,6 +82,22 @@ jobs:
           git diff --name-only -z "$BASE_SHA" "$HEAD_SHA" | \
             bun scripts/ci/classify-changes.ts --null >> "$GITHUB_OUTPUT"
 
+  research-privacy:
+    name: Tracked research privacy
+    needs: changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Scan tracked research data
+        run: bun run check:research-privacy
+
   docs:
     name: Documentation
     needs: changes

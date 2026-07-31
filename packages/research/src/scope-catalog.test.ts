@@ -33,7 +33,7 @@ describe("scope catalog capability contracts", () => {
       product: "confluence",
       entityKind: "space",
       includeArchived: false,
-      cursorRef: "https://mayflower.atlassian.net/wiki/spaces",
+      cursorRef: "https://tenant-a.atlassian.net/wiki/spaces",
       maxCandidates: 25,
     }, 50)).toThrow("cursor");
   });
@@ -59,15 +59,15 @@ describe("scope catalog capability contracts", () => {
   test("validates exact current-tenant reference resolution intents", () => {
     const result = decodeResearchReferenceResolveIntentV1({
       schema: RESEARCH_SCOPE_CATALOG_SCHEMAS["atlassian.reference.resolve"].input,
-      reference: "https://mayflower.atlassian.net/wiki/spaces/DOCSY/pages/123",
-      expectedTenantOrigin: "https://mayflower.atlassian.net",
+      reference: "https://tenant-a.atlassian.net/wiki/spaces/DOCSY/pages/123",
+      expectedTenantOrigin: "https://tenant-a.atlassian.net",
       expectedKinds: ["page", "space"],
     });
     expect(result.expectedKinds).toEqual(["page", "space"]);
     expect(() => decodeResearchReferenceResolveIntentV1({
       schema: result.schema,
       reference: "https://other.atlassian.net/wiki/spaces/DOCSY/pages/123",
-      expectedTenantOrigin: "https://mayflower.atlassian.net",
+      expectedTenantOrigin: "https://tenant-a.atlassian.net",
       expectedKinds: ["page"],
     })).not.toThrow();
   });
