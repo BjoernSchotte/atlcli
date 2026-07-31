@@ -219,6 +219,12 @@ export type ConfluenceSpace = {
   url?: string;
 };
 
+/** A single bounded page from the cursor-paginated v2 spaces endpoint. */
+export type ConfluenceSpacePageV2 = {
+  spaces: ConfluenceSpace[];
+  nextCursor?: string;
+};
+
 /** A space's logo, from `GET /space/{key}?expand=icon` (spec 005, gap G3). */
 export type SpaceIcon = {
   /** Wiki-base-relative download path (e.g. `/download/attachments/…`). */
@@ -2149,6 +2155,44 @@ export class ConfluenceClient {
       type: item.type ?? "global",
       url: item._links?.base ? `${item._links.base}${item._links.webui}` : undefined,
     }));
+  }
+
+  /**
+   * List one bounded page of spaces using Confluence's cursor-paginated v2 API.
+   *
+   * This deliberately does not drain pagination. Callers such as the research
+   * scope broker own the page/cursor budget and keep the provider cursor opaque.
+   */
+  async listSpacesV2(
+    options: { limit?: number; cursor?: string; signal?: AbortSignal } = {},
+  ): Promise<ConfluenceSpacePageV2> {
+    const requestedLimit = options.limit ?? 25;
+    const limit = Math.min(Math.max(Math.trunc(requestedLimit), 1), 250);
+    const data = (await this.requestV2("/spaces", {
+      query: { limit, cursor: options.cursor },
+      signal: options.signal,
+    })) as any;
+    const results = Array.isArray(data?.results) ? data.results : [];
+    const spaces = results.flatMap((item: any): ConfluenceSpace[] => {
+      if (!item || typeof item !== "object") return [];
+      const id = typeof item.id === "string" ? item.id : undefined;
+      const key = typeof item.key === "string" ? item.key : undefined;
+      const name = typeof item.name === "string" ? item.name : undefined;
+      if (!id || !key || !name) return [];
+      const type = item.type === "personal" ? "personal" : "global";
+      return [{
+        id,
+        key,
+        name,
+        type,
+        url: this.buildWebUrl(item._links?.webui),
+      }];
+    });
+    const nextLink = typeof data?._links?.next === "string" ? data._links.next : undefined;
+    return {
+      spaces,
+      nextCursor: extractCursor(nextLink, `${this.confluenceBaseUrl}/api/v2/spaces`),
+    };
   }
 
   /**
