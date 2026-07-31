@@ -1,16 +1,21 @@
-import type { ResearchProduct, ResearchScopeV1 } from "./contracts.js";
+import {
+  RESEARCH_SCOPE_SOURCE_PRECEDENCE_V1,
+  type ResearchProduct,
+  type ResearchScopeAuthorityV1,
+  type ResearchScopeBindingV1,
+  type ResearchScopeEntityKindV1,
+  type ResearchScopeSeedV1,
+  type ResearchScopeSourceV1,
+  type ResearchScopeV1,
+} from "./contracts.js";
 
-export type ResearchScopeEntityKindV1 = "project" | "space" | "issue" | "page";
-export type ResearchScopeSourceV1 =
-  | "cli_flag"
-  | "ui_added"
-  | "natural_language"
-  | "current_context"
-  | "profile_default"
-  | "global_default"
-  | "exact_link"
-  | "research_discovery";
-export type ResearchScopeAuthorityV1 = "candidate" | "resolved" | "approved" | "locked";
+export type {
+  ResearchScopeAuthorityV1,
+  ResearchScopeBindingV1,
+  ResearchScopeEntityKindV1,
+  ResearchScopeSeedV1,
+  ResearchScopeSourceV1,
+} from "./contracts.js";
 
 export interface ResearchScopeMentionV1 {
   id: string;
@@ -39,21 +44,6 @@ export interface ResearchScopeCandidateV1 {
   providerFreshnessAt: string;
 }
 
-export interface ResearchScopeBindingV1 {
-  id: string;
-  tenantOrigin: string;
-  product: ResearchProduct;
-  entityKind: ResearchScopeEntityKindV1;
-  entityRef: string;
-  key?: string;
-  name: string;
-  source: ResearchScopeSourceV1;
-  authority: ResearchScopeAuthorityV1;
-  mentionId?: string;
-  candidateId?: string;
-  approvedAt?: string;
-}
-
 export interface ResearchScopeResolutionV1 {
   mentionId: string;
   state: "resolved" | "ambiguous" | "not_found" | "unavailable" | "incomplete";
@@ -72,22 +62,6 @@ export interface ResearchScopeResolutionInputV1 {
   maxCandidates?: number;
   allowArchived?: boolean;
 }
-
-export interface ResearchScopeSeedV1 {
-  binding: ResearchScopeBindingV1;
-  precedence: number;
-}
-
-const SOURCE_PRECEDENCE: Record<ResearchScopeSourceV1, number> = {
-  cli_flag: 500,
-  ui_added: 500,
-  natural_language: 400,
-  current_context: 300,
-  profile_default: 200,
-  global_default: 100,
-  exact_link: 50,
-  research_discovery: 0,
-};
 
 const MATCH_RANK: Record<NonNullable<ResearchScopeCandidateV1["match"]>, number> = {
   exact_key: 500,
@@ -150,6 +124,33 @@ export function createResearchScopeBindingV1(input: { candidate: ResearchScopeCa
   return { id: input.bindingId ?? `scope-binding:${input.candidate.id}`, tenantOrigin: input.candidate.tenantOrigin, product: input.candidate.product, entityKind: input.candidate.entityKind, entityRef: input.candidate.entityRef, ...(input.candidate.key ? { key: input.candidate.key } : {}), name: input.candidate.name, source: input.source, authority: input.authority, ...(input.mentionId ? { mentionId: input.mentionId } : {}), candidateId: input.candidate.id, ...(input.approvedAt ? { approvedAt: input.approvedAt } : {}) };
 }
 
+/** Build a deterministic whole-scope seed for a CLI/UI/context key. */
+export function createResearchKeyScopeSeedV1(input: {
+  tenantOrigin: string;
+  product: "jira" | "confluence";
+  key: string;
+  source: ResearchScopeSourceV1;
+  authority: "approved" | "locked";
+}): ResearchScopeSeedV1 {
+  const key = input.product === "jira" ? input.key.trim().toUpperCase() : input.key.trim();
+  const entityKind = input.product === "jira" ? "project" : "space";
+  const encodedKey = encodeURIComponent(key);
+  return {
+    binding: {
+      id: `scope-binding:${input.source}:${input.product}:${encodedKey}`,
+      tenantOrigin: input.tenantOrigin,
+      product: input.product,
+      entityKind,
+      entityRef: `scope-key:${input.product}:${encodedKey}`,
+      key,
+      name: key,
+      source: input.source,
+      authority: input.authority,
+    },
+    precedence: scopeSourcePrecedence(input.source),
+  };
+}
+
 export function selectResearchScopeSeedsV1(seeds: readonly ResearchScopeSeedV1[]): ResearchScopeBindingV1[] {
   const selected = new Map<string, ResearchScopeSeedV1[]>();
   for (const seed of seeds) {
@@ -172,7 +173,7 @@ export function selectResearchScopeSeedsV1(seeds: readonly ResearchScopeSeedV1[]
 }
 
 export function scopeSourcePrecedence(source: ResearchScopeSourceV1): number {
-  return SOURCE_PRECEDENCE[source];
+  return RESEARCH_SCOPE_SOURCE_PRECEDENCE_V1[source];
 }
 
 export function projectApprovedWholeScopeV1(bindings: readonly ResearchScopeBindingV1[], base: ResearchScopeV1): ResearchScopeV1 {

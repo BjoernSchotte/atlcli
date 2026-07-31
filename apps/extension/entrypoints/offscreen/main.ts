@@ -146,6 +146,13 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) =>
             progress,
           }).catch(() => undefined);
         },
+        onEvent: (event) => {
+          void chrome.runtime.sendMessage({
+            kind: "research:event",
+            runId,
+            event,
+          }).catch(() => undefined);
+        },
       });
     },
     cancelResearch: async (runId) => researchHost.cancel(runId),

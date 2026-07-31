@@ -17,6 +17,7 @@ export const runResearchAgent = browserRuntime.runResearchAgent;
 export {
   RESEARCH_MODEL_ID,
   buildDynamicSupervisorPrompt,
+  researchRecursionLimitV1,
 } from "./agent-runtime-core.js";
 export type {
   RunResearchAgentInput,

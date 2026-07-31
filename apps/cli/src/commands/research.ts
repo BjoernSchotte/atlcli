@@ -21,10 +21,14 @@ import {
   RESEARCH_MODEL_ID,
   RESEARCH_REQUEST_SCHEMA_V1,
   ResearchRunBudget,
+  createResearchKeyScopeSeedV1,
   createRestResearchProviders,
   normalizeResearchRequestV1,
   runResearchAgent,
   type ResearchRequestV1,
+  type ResearchOneShotEventV1,
+  type ResearchReportV1,
+  type ResearchScopeSeedV1,
   type ResearchWorkspace,
 } from "@atlcli/research/node";
 import { composeStandardResearchGraphV1 } from "@atlcli/research/graph";
@@ -45,35 +49,164 @@ export interface ResearchCliInput {
 
 const DEFAULT_MAX_RUN_MINUTES = 10;
 const MAX_MAX_RUN_MINUTES = 10;
+const T2_RESEARCH_FLAGS = new Set([
+  "profile",
+  "project",
+  "space",
+  "from",
+  "to",
+  "as-of",
+  "timezone",
+  "max-run-minutes",
+  "output",
+  "keep-session",
+  "json",
+  "no-log",
+  "help",
+  "h",
+]);
+const T2_VALUE_FLAGS = [
+  "profile",
+  "project",
+  "space",
+  "from",
+  "to",
+  "as-of",
+  "timezone",
+  "max-run-minutes",
+  "output",
+] as const;
+const T2_SINGLE_VALUE_FLAGS = T2_VALUE_FLAGS.filter(
+  (key) => key !== "project" && key !== "space",
+);
+const T2_BOOLEAN_FLAGS = ["keep-session", "json", "no-log", "help", "h"] as const;
+
+export interface ResearchCliWorkspace extends ResearchWorkspace {
+  readonly root: string;
+  dispose(): Promise<void>;
+}
+
+export interface ResearchCliAgentInput {
+  apiKey: string;
+  profile: Profile;
+  request: ResearchRequestV1;
+  workspace: ResearchCliWorkspace;
+  sessionId: string;
+  signal: AbortSignal;
+  onEvent: (event: ResearchOneShotEventV1) => void;
+  writeDiagnostic: (message: string) => void;
+}
+
+export interface ResearchCliDependencies {
+  resolveProfile(name?: string): Promise<Profile | undefined>;
+  readApiKey(): string | undefined;
+  createWorkspace(): Promise<ResearchCliWorkspace>;
+  runAgent(input: ResearchCliAgentInput): Promise<ResearchReportV1>;
+  writeAtomic(path: string, contents: string): Promise<void>;
+  artifactPath(): string;
+  createSessionId(): string;
+  writeStdout(contents: string): void;
+  writeStderr(contents: string): void;
+  emitOutput(data: unknown, opts: OutputOptions): void;
+  fail(
+    opts: OutputOptions,
+    code: number,
+    errCode: string,
+    message: string,
+    details?: Record<string, unknown>,
+  ): never;
+  scheduleAbort(callback: () => void, milliseconds: number): unknown;
+  cancelScheduledAbort(handle: unknown): void;
+  listenForInterrupt(callback: () => void): () => void;
+}
 
 export function researchArtifactPath(now = new Date()): string {
   const timestamp = now.toISOString().replace(/[T:.Z]/g, "-").replace(/-+$/, "");
   return join(homedir(), "Documents", "atlcli", "artefacts", `research-${timestamp}`, "report.md");
 }
 
-function uniqueKeys(values: string[]): string[] {
-  return [...new Set(values.map((value) => value.trim().toUpperCase()).filter(Boolean))];
+function uniqueKeys(values: string[], uppercase = true): string[] {
+  return [...new Set(
+    values
+      .flatMap((value) => value.split(","))
+      .map((value) => value.trim())
+      .filter(Boolean)
+      .map((value) => uppercase ? value.toUpperCase() : value),
+  )];
+}
+
+function normalizeAsOf(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    const parsed = new Date(`${value}T00:00:00.000Z`);
+    if (!Number.isNaN(parsed.valueOf()) && parsed.toISOString().slice(0, 10) === value) {
+      return value;
+    }
+  }
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?(?:Z|[+-]\d{2}:\d{2})$/.test(value)) {
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.valueOf())) return parsed.toISOString();
+  }
+  throw new Error("--as-of must use YYYY-MM-DD or an ISO 8601 timestamp with timezone.");
+}
+
+function normalizeTimezone(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: value }).format();
+    return value;
+  } catch {
+    throw new Error("--timezone must be a valid IANA timezone name.");
+  }
 }
 
 export function parseResearchCliInput(
   args: string[],
   flags: Record<string, string | boolean | string[]>,
 ): ResearchCliInput {
-  const unsupported = ["session", "resume", "plan-approval", "plan-only"].filter((key) => hasFlag(flags, key));
+  const unsupported = [
+    "effort",
+    "scope-expansion",
+    "reconciliation",
+    "plan-approval",
+    "plan-only",
+    "session",
+    "resume",
+  ].filter((key) => hasFlag(flags, key));
   if (unsupported.length > 0) {
     throw new Error(`The following research flags are reserved for durable sessions: ${unsupported.map((key) => `--${key}`).join(", ")}`);
+  }
+  const secretFlags = ["api-key", "apikey", "anthropic-key", "key"].filter((key) => hasFlag(flags, key));
+  if (secretFlags.length > 0) {
+    throw new Error("Anthropic API keys are never accepted as command-line flags. Set ANTHROPIC_API_KEY in the process environment.");
+  }
+  const unknown = Object.keys(flags).filter((key) => !T2_RESEARCH_FLAGS.has(key));
+  if (unknown.length > 0) {
+    throw new Error(`Unknown research option${unknown.length === 1 ? "" : "s"}: ${unknown.map((key) => `--${key}`).join(", ")}. Run \`atlcli research --help\`.`);
+  }
+  for (const key of T2_VALUE_FLAGS) {
+    if (!hasFlag(flags, key)) continue;
+    const value = flags[key];
+    const values = typeof value === "string" ? [value] : Array.isArray(value) ? value : [];
+    if (values.length === 0 || values.some((entry) => entry.trim().length === 0)) {
+      throw new Error(`--${key} requires a value.`);
+    }
+  }
+  for (const key of T2_SINGLE_VALUE_FLAGS) {
+    if (Array.isArray(flags[key])) throw new Error(`--${key} may be specified only once.`);
+  }
+  for (const key of T2_BOOLEAN_FLAGS) {
+    if (flags[key] !== undefined && flags[key] !== true) {
+      throw new Error(`--${key} does not accept a value.`);
+    }
   }
   const question = args.join(" ").trim();
   if (!question) throw new Error("A research question is required. Example: atlcli research \"Which Jira and Confluence items are related?\"");
   const from = getFlag(flags, "from");
   const to = getFlag(flags, "to");
-  const asOf = getFlag(flags, "as-of");
-  const timezone = getFlag(flags, "timezone");
+  const asOf = normalizeAsOf(getFlag(flags, "as-of"));
+  const timezone = normalizeTimezone(getFlag(flags, "timezone"));
   const maxRunMinutesFlag = getFlag(flags, "max-run-minutes");
-  if (asOf && !/^\d{4}-\d{2}-\d{2}$/.test(asOf)) throw new Error("--as-of must use YYYY-MM-DD.");
-  if (hasFlag(flags, "max-run-minutes") && maxRunMinutesFlag === undefined) {
-    throw new Error("--max-run-minutes requires an integer value.");
-  }
   const maxRunMinutes = maxRunMinutesFlag === undefined
     ? DEFAULT_MAX_RUN_MINUTES
     : Number(maxRunMinutesFlag);
@@ -84,7 +217,7 @@ export function parseResearchCliInput(
     question: [question, asOf ? `As-of date: ${asOf}.` : "", timezone ? `Timezone: ${timezone}.` : ""].filter(Boolean).join("\n\n"),
     profile: getFlag(flags, "profile"),
     projectKeys: uniqueKeys(getFlags(flags, "project")),
-    spaceKeys: uniqueKeys(getFlags(flags, "space")),
+    spaceKeys: uniqueKeys(getFlags(flags, "space"), false),
     ...(from ? { from } : {}),
     ...(to ? { to } : {}),
     ...(asOf ? { asOf } : {}),
@@ -98,8 +231,24 @@ export function parseResearchCliInput(
 export function buildResearchRequest(input: ResearchCliInput, profile: Profile): ResearchRequestV1 {
   const defaults = resolveDefaults({ profiles: {}, currentProfile: undefined }, profile);
   const projectKeys = input.projectKeys.length > 0 ? input.projectKeys : uniqueKeys(defaults.project ? [defaults.project] : []);
-  const spaceKeys = input.spaceKeys.length > 0 ? input.spaceKeys : uniqueKeys(defaults.space ? [defaults.space] : []);
+  const spaceKeys = input.spaceKeys.length > 0 ? input.spaceKeys : uniqueKeys(defaults.space ? [defaults.space] : [], false);
   const siteOrigin = new URL(profile.baseUrl).origin;
+  const scopeSeeds: ResearchScopeSeedV1[] = [
+    ...projectKeys.map((key) => createResearchKeyScopeSeedV1({
+      tenantOrigin: siteOrigin,
+      product: "jira",
+      key,
+      source: input.projectKeys.length > 0 ? "cli_flag" : "profile_default",
+      authority: input.projectKeys.length > 0 ? "locked" : "approved",
+    })),
+    ...spaceKeys.map((key) => createResearchKeyScopeSeedV1({
+      tenantOrigin: siteOrigin,
+      product: "confluence",
+      key,
+      source: input.spaceKeys.length > 0 ? "cli_flag" : "profile_default",
+      authority: input.spaceKeys.length > 0 ? "locked" : "approved",
+    })),
+  ];
   return normalizeResearchRequestV1({
     schema: RESEARCH_REQUEST_SCHEMA_V1,
     question: input.question,
@@ -114,6 +263,7 @@ export function buildResearchRequest(input: ResearchCliInput, profile: Profile):
         },
       } : {}),
     },
+    scopeSeeds,
     limits: {
       ...DEFAULT_RESEARCH_LIMITS_V1,
       pageSize: 10,
@@ -135,7 +285,7 @@ export function buildResearchRequest(input: ResearchCliInput, profile: Profile):
   });
 }
 
-async function writeAtomic(path: string, contents: string): Promise<void> {
+export async function writeResearchMarkdownAtomic(path: string, contents: string): Promise<void> {
   await mkdir(dirname(path), { recursive: true });
   const temporary = `${path}.tmp-${randomUUID()}`;
   try {
@@ -146,71 +296,129 @@ async function writeAtomic(path: string, contents: string): Promise<void> {
   }
 }
 
-function assertApiKey(): string {
-  const key = process.env.ANTHROPIC_API_KEY?.trim();
+function assertApiKey(dependencies: ResearchCliDependencies): string {
+  const key = dependencies.readApiKey()?.trim();
   if (!key) throw new Error("ANTHROPIC_API_KEY is missing. Set it in the process environment; it is never read from a CLI flag.");
   return key;
 }
+
+export const defaultResearchCliDependencies: ResearchCliDependencies = {
+  async resolveProfile(name) {
+    return getActiveProfile(await loadConfig(), name);
+  },
+  readApiKey: () => process.env.ANTHROPIC_API_KEY,
+  createWorkspace: () => FileSystemResearchWorkspace.createTemporary(),
+  async runAgent(input) {
+    const budget = new ResearchRunBudget(input.request.limits);
+    const providers = createRestResearchProviders(
+      input.profile,
+      input.request,
+      budget,
+      { allowProfileAuth: true },
+    );
+    return runResearchAgent({
+      apiKey: input.apiKey,
+      request: input.request,
+      providers,
+      budget,
+      runId: input.sessionId,
+      researchGraph: composeStandardResearchGraphV1(input.request.question),
+      workspace: input.workspace,
+      options: {
+        signal: input.signal,
+        onEvent: input.onEvent,
+      },
+    });
+  },
+  writeAtomic: writeResearchMarkdownAtomic,
+  artifactPath: () => researchArtifactPath(),
+  createSessionId: () => `research-${randomUUID()}`,
+  writeStdout: (contents) => process.stdout.write(contents),
+  writeStderr: (contents) => process.stderr.write(contents),
+  emitOutput: output,
+  fail,
+  scheduleAbort: (callback, milliseconds) => setTimeout(callback, milliseconds),
+  cancelScheduledAbort: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
+  listenForInterrupt(callback) {
+    process.once("SIGINT", callback);
+    return () => process.removeListener("SIGINT", callback);
+  },
+};
 
 export async function handleResearch(
   args: string[],
   flags: Record<string, string | boolean | string[]>,
   opts: OutputOptions,
+  dependencies: ResearchCliDependencies = defaultResearchCliDependencies,
 ): Promise<void> {
   if (hasFlag(flags, "help") || hasFlag(flags, "h")) {
-    output(researchHelp(), opts);
+    dependencies.emitOutput(researchHelp(), opts);
     return;
   }
   const input = parseResearchCliInput(args, flags);
-  const config = await loadConfig();
-  const profile = getActiveProfile(config, input.profile);
+  const profile = await dependencies.resolveProfile(input.profile);
   if (!profile) {
-    fail(opts, 1, ERROR_CODES.AUTH, "No active profile found. Run `atlcli auth login` or select --profile.", { profile: input.profile });
+    dependencies.fail(opts, 1, ERROR_CODES.AUTH, "No active profile found. Run `atlcli auth login` or select --profile.", { profile: input.profile });
   }
   const request = buildResearchRequest(input, profile);
-  const researchGraph = composeStandardResearchGraphV1(request.question);
-  const apiKey = assertApiKey();
-  const workspace = await FileSystemResearchWorkspace.createTemporary();
-  const sessionId = `research-${randomUUID()}`;
-  const budget = new ResearchRunBudget(request.limits);
+  const apiKey = assertApiKey(dependencies);
+  const workspace = await dependencies.createWorkspace();
+  const sessionId = dependencies.createSessionId();
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(new Error("Research run timed out.")), request.limits.maxRunMs);
+  const timeout = dependencies.scheduleAbort(
+    () => controller.abort(new Error("Research run timed out.")),
+    request.limits.maxRunMs,
+  );
   const onInterrupt = (): void => controller.abort(new Error("Research run cancelled."));
-  process.once("SIGINT", onInterrupt);
+  const removeInterruptListener = dependencies.listenForInterrupt(onInterrupt);
   try {
-    await workspace.writeFile("/session/request.json", JSON.stringify({ ...request, sessionId }, null, 2));
-    const providers = createRestResearchProviders(profile, request, budget, { allowProfileAuth: true });
-    process.stderr.write(`[research] model=${RESEARCH_MODEL_ID} profile=${profile.name} project=${request.scope.jiraProjectKeys.join(",")} space=${request.scope.confluenceSpaceKeys.join(",")} key=present\n`);
-    const report = await runResearchAgent({
+    dependencies.writeStderr(`[research] model=${RESEARCH_MODEL_ID} profile=${profile.name} project=${request.scope.jiraProjectKeys.join(",")} space=${request.scope.confluenceSpaceKeys.join(",")}\n`);
+    if (input.keepSession) {
+      dependencies.writeStderr(`[research] session=${sessionId} workspace=${workspace.root}\n`);
+    }
+    const report = await dependencies.runAgent({
       apiKey,
+      profile,
       request,
-      providers,
-      budget,
-      runId: sessionId,
-      researchGraph,
-      onPtcDiagnostic: (diagnostic) => process.stderr.write(`[research] ptc=${diagnostic.tool} kind=${diagnostic.inputKind} outcome=${diagnostic.outcome}${diagnostic.itemCount === undefined ? "" : ` items=${diagnostic.itemCount}`}${diagnostic.termination === undefined ? "" : ` termination=${diagnostic.termination}`}${diagnostic.errorCode === undefined ? "" : ` error=${diagnostic.errorCode}`}\n`),
-      onSubagentDiagnostic: (diagnostic) => process.stderr.write(`[research] subagent=${diagnostic.role} status=${diagnostic.status}${diagnostic.durationMs === undefined ? "" : ` duration_ms=${diagnostic.durationMs}`}${diagnostic.errorCode === undefined ? "" : ` error=${diagnostic.errorCode}`}${diagnostic.errorMessage === undefined ? "" : ` message=${JSON.stringify(diagnostic.errorMessage)}`}\n`),
-      options: {
-        signal: controller.signal,
-        onProgress: (progress) => process.stderr.write(`[research] phase=${progress.phase} calls=${progress.completedCalls}/${progress.maxCalls}\n`),
+      workspace,
+      sessionId,
+      signal: controller.signal,
+      writeDiagnostic: (message) => dependencies.writeStderr(`[research] ${message}\n`),
+      onEvent: (event) => {
+        if (event.kind === "phase") {
+          dependencies.writeStderr(`[research] phase=${event.phase}\n`);
+        } else if (event.kind === "progress") {
+          dependencies.writeStderr(`[research] calls=${event.completed}/${event.maximum}\n`);
+        } else if (event.kind === "capability") {
+          dependencies.writeStderr(
+            `[research] tool=${event.toolId} call=${event.callId} kind=${event.inputKind} status=${event.status}${event.itemCount === undefined ? "" : ` items=${event.itemCount}`}${event.termination === undefined ? "" : ` termination=${event.termination}`}${event.durationMs === undefined ? "" : ` duration_ms=${event.durationMs}`}${event.errorCode === undefined ? "" : ` error=${event.errorCode}`}\n`,
+          );
+        } else if (event.kind === "subagent") {
+          dependencies.writeStderr(
+            `[research] subagent=${event.roleId} task=${event.taskId} status=${event.status}${event.attempt === undefined ? "" : ` attempt=${event.attempt}`}${event.durationMs === undefined ? "" : ` duration_ms=${event.durationMs}`}${event.errorCode === undefined ? "" : ` error=${event.errorCode}`}\n`,
+          );
+        } else if (event.kind === "decision") {
+          dependencies.writeStderr(
+            `[research] decision=${event.decisionId} status=${event.status} reason=${event.reasonCode}${event.taskId === undefined ? "" : ` task=${event.taskId}`}\n`,
+          );
+        } else if (event.kind === "artifact") {
+          dependencies.writeStderr(`[research] workspace_artifact=${event.path}\n`);
+        }
       },
     });
-    await workspace.writeFile("/artifacts/report.md", report.markdown);
-    const artifactPath = researchArtifactPath();
+    const artifactPath = dependencies.artifactPath();
     try {
-      await writeAtomic(artifactPath, report.markdown);
-      process.stderr.write(`[research] artifact=${artifactPath}\n`);
+      await dependencies.writeAtomic(artifactPath, report.markdown);
+      dependencies.writeStderr(`[research] artifact=${artifactPath}\n`);
     } catch (error) {
-      process.stderr.write(`[research] artifact=unavailable reason=${error instanceof Error ? error.name : "unknown"}\n`);
+      dependencies.writeStderr(`[research] artifact=unavailable reason=${error instanceof Error ? error.name : "unknown"}\n`);
     }
-    if (input.outputPath) await writeAtomic(input.outputPath, report.markdown);
-    if (input.keepSession) {
-      process.stderr.write(`[research] session=${sessionId} workspace=${workspace.root}\n`);
-    }
-    output(opts.json ? { sessionId, artifactPath, report } : report.markdown, opts);
+    if (input.outputPath) await dependencies.writeAtomic(input.outputPath, report.markdown);
+    if (opts.json) dependencies.emitOutput({ sessionId, artifactPath, report }, opts);
+    else dependencies.writeStdout(report.markdown);
   } finally {
-    clearTimeout(timeout);
-    process.removeListener("SIGINT", onInterrupt);
+    dependencies.cancelScheduledAbort(timeout);
+    removeInterruptListener();
     if (!input.keepSession) await workspace.dispose();
   }
 }
@@ -226,7 +434,7 @@ Options:
   --space <key>          Confluence space key (repeatable; profile default otherwise)
   --from <YYYY-MM-DD>    Inclusive lower date bound
   --to <YYYY-MM-DD>      Inclusive upper date bound
-  --as-of <YYYY-MM-DD>   Add a fixed as-of date to the question
+  --as-of <date/time>    Add a fixed date or timezone-qualified timestamp
   --timezone <name>      Add an explicit timezone to the question
   --max-run-minutes <n>  Complete workflow deadline, 1-10 (default: 10)
   --output <path>        Atomically write the generated Markdown

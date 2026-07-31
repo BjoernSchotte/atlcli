@@ -29,7 +29,6 @@
     "prebench:export-jobs-chrome": "bun run --cwd ../.. fonts:ensure && bun run --cwd ../.. vendor:typst && vite build --config tests/export-job-baseline/vite.config.ts",
     "bench:export-jobs-chrome": "playwright test --config tests/export-job-baseline/playwright.config.ts",
     "research:live": "bun --env-file=../../.env --conditions=development scripts/research-agent-live.ts",
-    "research:live:mayflower": "bun --env-file=../../.env --conditions=development scripts/research-agent-live-mayflower.ts",
     "postinstall": "wxt prepare",
     "pretypecheck": "bun run --cwd ../.. fonts:ensure",
     "typecheck": "wxt prepare && tsc --noEmit",

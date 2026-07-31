@@ -7,6 +7,7 @@
 import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { materializeQuickJsCliRuntimeAsset } from "./build-assets.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -43,4 +44,10 @@ const proc = Bun.spawn(["bun", ...args], {
 });
 
 const exitCode = await proc.exited;
+if (exitCode === 0) {
+  const asset = await materializeQuickJsCliRuntimeAsset({
+    outputDirectory: join(__dirname, "../../dist"),
+  });
+  console.log(`Materialized QuickJS runtime: ${asset}`);
+}
 process.exit(exitCode);

@@ -51,9 +51,11 @@ function jsonResult(value: unknown): string {
 }
 
 export interface ResearchPtcDiagnosticV1 {
+  callId: string;
   tool: ResearchToolId;
   inputKind: "search" | "continuation" | "detail";
-  outcome: "success" | "error";
+  outcome: "started" | "success" | "error";
+  durationMs?: number;
   itemCount?: number;
   complete?: boolean;
   termination?: string;
@@ -64,6 +66,7 @@ export interface ResearchPtcDiagnosticV1 {
 
 export interface ResearchPtcToolOptions {
   onDiagnostic?: (diagnostic: ResearchPtcDiagnosticV1) => void;
+  now?: () => number;
 }
 
 function inputKind(
@@ -88,11 +91,21 @@ export function createResearchPtcTools(
   broker: ResearchCapabilityBroker,
   options: ResearchPtcToolOptions = {}
 ): DynamicStructuredTool[] {
+  let callSequence = 0;
+  const now = options.now ?? Date.now;
   const invoke = async (
     id: ResearchToolId,
     input: unknown
   ): Promise<string> => {
     const kind = inputKind(input);
+    const callId = `${id}:${++callSequence}`;
+    const startedAt = now();
+    options.onDiagnostic?.({
+      callId,
+      tool: id,
+      inputKind: kind,
+      outcome: "started",
+    });
     try {
       const record =
         typeof input === "object" && input !== null ? input : {};
@@ -113,9 +126,11 @@ export function createResearchPtcTools(
           ? result.page
           : undefined;
       options.onDiagnostic?.({
+        callId,
         tool: id,
         inputKind: kind,
         outcome: "success",
+        durationMs: Math.max(0, now() - startedAt),
         ...(typeof result === "object" &&
         result !== null &&
         "items" in result &&
@@ -138,9 +153,11 @@ export function createResearchPtcTools(
       return jsonResult(result);
     } catch (error) {
       options.onDiagnostic?.({
+        callId,
         tool: id,
         inputKind: kind,
         outcome: "error",
+        durationMs: Math.max(0, now() - startedAt),
         inputKeys:
           typeof input === "object" && input !== null
             ? Object.keys(input).sort()

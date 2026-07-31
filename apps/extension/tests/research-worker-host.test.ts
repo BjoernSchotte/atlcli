@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import type {
+  ResearchOneShotEventV1,
   ResearchProgressV1,
   ResearchReportV1,
   ResearchRequestV1,
@@ -43,11 +44,13 @@ describe("dedicated research worker host", () => {
     const worker = new FakeWorker();
     const host = new ResearchAgentWorkerHost({ createWorker: () => worker });
     const progress: ResearchProgressV1[] = [];
+    const events: ResearchOneShotEventV1[] = [];
     const resultPromise = host.run({
       runId: "run-1",
       apiKey: "synthetic-key",
       request,
       onProgress: (value) => progress.push(value),
+      onEvent: (value) => events.push(value),
     });
 
     expect(worker.posted).toEqual([
@@ -69,6 +72,16 @@ describe("dedicated research worker host", () => {
       },
     });
     worker.emit({
+      kind: "research-worker:event",
+      runId: "run-1",
+      event: {
+        kind: "artifact",
+        seq: 1,
+        at: "2026-07-31T12:00:00.000Z",
+        path: "/artifacts/report.md",
+      },
+    });
+    worker.emit({
       kind: "research-worker:complete",
       runId: "run-1",
       report,
@@ -76,6 +89,7 @@ describe("dedicated research worker host", () => {
 
     expect(await resultPromise).toBe(report);
     expect(progress).toHaveLength(1);
+    expect(events).toEqual([expect.objectContaining({ kind: "artifact" })]);
     expect(worker.terminated).toBe(true);
   });
 

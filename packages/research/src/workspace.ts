@@ -1,6 +1,7 @@
 import { ResearchContractError } from "./contracts.js";
 
 export const RESEARCH_WORKSPACE_SCHEMA_V1 = "atlcli.research-workspace/v1" as const;
+export const RESEARCH_ONE_SHOT_REQUEST_PATH_V1 = "/session/request.json" as const;
 
 export interface ResearchWorkspace {
   readFile(path: string): Promise<string | undefined>;

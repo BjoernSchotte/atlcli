@@ -282,7 +282,7 @@ function linkedMarkdownText(
     .map((token) => token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
     .join("|");
   if (!pattern) return markdownText(value);
-  return value
+  const linkKnownTokens = (fragment: string): string => fragment
     .split(new RegExp(`(${pattern})`, "g"))
     .filter(Boolean)
     .map((part) => {
@@ -291,6 +291,14 @@ function linkedMarkdownText(
         ? `[${markdownText(source.issueKey ?? source.title)}](${safeSourceHref(source, siteOrigin)})`
         : markdownTextFragment(part);
     })
+    .join("");
+  return value
+    // A model may repeat a canonical source URL in prose. Keep the URL as one
+    // plain fragment so an issue-key token inside `/browse/KEY-1` cannot turn
+    // into a nested Markdown link.
+    .split(/(https?:\/\/[^\s<>]+)/g)
+    .filter(Boolean)
+    .map((part) => /^https?:\/\//.test(part) ? markdownTextFragment(part) : linkKnownTokens(part))
     .join("")
     .replace(/\s+/g, " ")
     .trim();

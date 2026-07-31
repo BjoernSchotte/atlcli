@@ -12,7 +12,10 @@ import type {
 } from "@atlcli/research/graph";
 import { validateResearchGraphV1 } from "@atlcli/research/graph";
 import { createResearchPtcTools, type ResearchPtcDiagnosticV1 } from "./agent-tools.js";
-import { RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1 } from "./agent-draft.js";
+import {
+  RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1,
+  parseResearchAgentDraftV1,
+} from "./agent-draft.js";
 import type { ResearchCapabilityBroker } from "./broker.js";
 
 export const RESEARCH_WORKER_PACKET_SCHEMA_V1: Record<string, unknown> = {
@@ -338,8 +341,12 @@ function roleTools(
   node: ResearchGraphNodeV1,
   broker: ResearchCapabilityBroker,
   onDiagnostic?: (diagnostic: ResearchPtcDiagnosticV1) => void,
+  now?: () => number,
 ): DynamicStructuredTool[] {
-  const tools = createResearchPtcTools(broker, onDiagnostic ? { onDiagnostic } : {});
+  const tools = createResearchPtcTools(broker, {
+    ...(onDiagnostic ? { onDiagnostic } : {}),
+    ...(now ? { now } : {}),
+  });
   const allowed = new Set(node.grantedCapabilityIds.map((capability) => toolForCapability[capability]));
   // The interpreter enforces a fresh per-eval call limit and the broker owns
   // the run-wide budget. Do not close over a per-role counter here: declarative
@@ -359,6 +366,7 @@ export interface DynamicResearchSubagentOptions {
   maxDetailItemsPerProduct: number;
   maxPacketChars: number;
   onPtcDiagnostic?: (diagnostic: ResearchPtcDiagnosticV1) => void;
+  now?: () => number;
 }
 
 export interface ResearchSubagentRuntimeBindings {
@@ -377,7 +385,7 @@ export function compileDynamicResearchSubagents(
 ): SubAgent[] {
   validateResearchGraphV1(graph);
   return graph.nodes.map((node) => {
-    const ptc = roleTools(node, options.broker, options.onPtcDiagnostic);
+    const ptc = roleTools(node, options.broker, options.onPtcDiagnostic, options.now);
     const searchCallBudget = node.role === "jira-retrieval"
       ? Math.min(4, options.maxSearchPagesPerProduct)
       : node.role === "wiki-retrieval"
@@ -439,6 +447,7 @@ export function createBoundedResearchSubagentMiddleware(
   options: {
     now?: () => number;
     onDiagnostic?: (diagnostic: ResearchSubagentDiagnosticV1) => void;
+    onFatal?: (error: unknown) => void;
     structuredOutputStrategy?: "tool" | "provider";
   } = {},
 ) {
@@ -452,12 +461,13 @@ export function createBoundedResearchSubagentMiddleware(
   if (!upstreamTask) throw new Error("DeepAgentsJS did not provide the declarative task tool.");
 
   const roleNames = new Set(subagents.map((subagent) => subagent.name));
-  const singletonRuns = new Map<string, Promise<unknown>>();
+  const singletonRuns = new Map<string, { taskId: string; run: Promise<unknown> }>();
   const taskCounts = new Map<string, number>();
-  let initialJoinRun: Promise<unknown> | undefined;
+  let initialJoinRun: { taskId: string; run: Promise<unknown> } | undefined;
   let reconcilerCompleted = false;
   let activeTasks = 0;
   let uniqueTasks = 0;
+  let taskSequence = 0;
   const now = options.now ?? Date.now;
 
   const boundedTask = tool(async (input, config) => {
@@ -469,13 +479,13 @@ export function createBoundedResearchSubagentMiddleware(
     if (SINGLETON_ROLES.has(role)) {
       const existing = singletonRuns.get(role);
       if (existing) {
-        options.onDiagnostic?.({ role, status: "coalesced", uniqueTask: false });
-        return existing;
+        options.onDiagnostic?.({ taskId: existing.taskId, role, status: "coalesced", uniqueTask: false });
+        return existing.run;
       }
     }
     if (role === "cross-product-join" && !reconcilerCompleted && initialJoinRun) {
-      options.onDiagnostic?.({ role, status: "coalesced", uniqueTask: false });
-      return initialJoinRun;
+      options.onDiagnostic?.({ taskId: initialJoinRun.taskId, role, status: "coalesced", uniqueTask: false });
+      return initialJoinRun.run;
     }
     if (uniqueTasks >= MAX_UNIQUE_SUBAGENT_TASKS) {
       throw new Error(`Research task budget exceeded (max=${MAX_UNIQUE_SUBAGENT_TASKS}).`);
@@ -495,7 +505,8 @@ export function createBoundedResearchSubagentMiddleware(
     activeTasks += 1;
     taskCounts.set(role, roleCount + 1);
     const startedAt = now();
-    options.onDiagnostic?.({ role, status: "started", uniqueTask: true });
+    const taskId = `research-task:${++taskSequence}`;
+    options.onDiagnostic?.({ taskId, role, status: "started", uniqueTask: true });
     // QuickJS requires a schema on every dynamic task. The host still owns
     // the authoritative role binding so generated code cannot widen or swap
     // an intermediate packet schema.
@@ -509,11 +520,55 @@ export function createBoundedResearchSubagentMiddleware(
           : roleSchema,
       },
     };
+    const structuredCandidate = (result: unknown): unknown => {
+      if (typeof result === "string") return JSON.parse(result);
+      if (!result || typeof result !== "object" || !("update" in result)) return result;
+      const update = result.update;
+      if (!update || typeof update !== "object" || !("messages" in update) || !Array.isArray(update.messages)) {
+        return result;
+      }
+      const message = update.messages.at(-1);
+      if (!message || typeof message !== "object" || !("content" in message)) return result;
+      return typeof message.content === "string" ? JSON.parse(message.content) : message.content;
+    };
+    const validateResult = (result: unknown): unknown => {
+      if (role !== "synthesizer") return result;
+      try {
+        parseResearchAgentDraftV1(structuredCandidate(result));
+        return result;
+      } catch {
+        throw new Error("Structured output did not match the authoritative response schema.");
+      }
+    };
+    const invokeWithStructuredRepair = async (): Promise<unknown> => {
+      try {
+        return validateResult(await upstreamTask.invoke(input, roleConfig));
+      } catch (error) {
+        const structuredOutputFailure = error instanceof Error &&
+          /structured output|response schema/i.test(error.message);
+        if (role !== "synthesizer" || !structuredOutputFailure || config.signal?.aborted) {
+          throw error;
+        }
+        options.onDiagnostic?.({
+          taskId,
+          role,
+          status: "repairing",
+          uniqueTask: true,
+          attempt: 2,
+        });
+        const repaired = await upstreamTask.invoke({
+          ...input,
+          description: `${input.description}\n\nStructured-output repair: the previous draft did not validate. Return at most four findings and four relationships. Use only the required fields, keep findings, relationships, and limitations as JSON arrays, and omit unsupported claims. Do not perform research or call tools.`,
+        }, roleConfig);
+        return validateResult(repaired);
+      }
+    };
     const run = Promise.resolve()
-      .then(() => upstreamTask.invoke(input, roleConfig))
+      .then(invokeWithStructuredRepair)
       .then((result) => {
         if (role === "reconciler") reconcilerCompleted = true;
         options.onDiagnostic?.({
+          taskId,
           role,
           status: "completed",
           uniqueTask: true,
@@ -522,6 +577,7 @@ export function createBoundedResearchSubagentMiddleware(
         return result;
       }, (error) => {
         options.onDiagnostic?.({
+          taskId,
           role,
           status: "failed",
           uniqueTask: true,
@@ -531,14 +587,15 @@ export function createBoundedResearchSubagentMiddleware(
             ? error.message.replace(/[\r\n\t]+/g, " ").slice(0, 500)
             : "Unknown subagent failure.",
         });
+        if (role === "synthesizer") options.onFatal?.(error);
         throw error;
       })
       .finally(() => {
         activeTasks -= 1;
       });
-    if (SINGLETON_ROLES.has(role)) singletonRuns.set(role, run);
+    if (SINGLETON_ROLES.has(role)) singletonRuns.set(role, { taskId, run });
     if (role === "cross-product-join" && !reconcilerCompleted && !initialJoinRun) {
-      initialJoinRun = run;
+      initialJoinRun = { taskId, run };
     }
     return run;
   }, {
@@ -558,9 +615,11 @@ export function createBoundedResearchSubagentMiddleware(
 }
 
 export interface ResearchSubagentDiagnosticV1 {
+  taskId: string;
   role: ResearchGraphRoleV1;
-  status: "started" | "completed" | "failed" | "coalesced";
+  status: "started" | "repairing" | "completed" | "failed" | "coalesced";
   uniqueTask: boolean;
+  attempt?: number;
   durationMs?: number;
   errorCode?: string;
   errorMessage?: string;

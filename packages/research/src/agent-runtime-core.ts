@@ -4,7 +4,10 @@ import { createMiddleware, providerStrategy, toolStrategy } from "langchain";
 import type { AIMessage } from "@langchain/core/messages";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import {
+  RESEARCH_REPORT_ARTIFACT_PATH_V1,
   ResearchContractError,
+  type ResearchOneShotEventV1,
+  type ResearchProgressV1,
   type ResearchReportV1,
   type ResearchRequestV1,
   type ResearchRunOptions,
@@ -35,15 +38,47 @@ import {
   providerCompatibleResearchSchema,
   type ResearchSubagentDiagnosticV1,
 } from "./dynamic-subagents.js";
+import {
+  RESEARCH_ONE_SHOT_REQUEST_PATH_V1,
+  createMemoryResearchWorkspace,
+  type ResearchWorkspace,
+} from "./workspace.js";
 
 export const RESEARCH_MODEL_ID = "claude-sonnet-4-6" as const;
 const MODEL_SPEC = `anthropic:${RESEARCH_MODEL_ID}` as const;
+const LEGACY_RESEARCH_RECURSION_LIMIT_V1 = 24;
+const MIN_DYNAMIC_RESEARCH_RECURSION_LIMIT_V1 = 32;
+const MAX_DYNAMIC_RESEARCH_RECURSION_LIMIT_V1 = 96;
 
 export interface ResearchAgentRuntimeBindings {
   StateBackend: typeof import("deepagents/browser").StateBackend;
   createDeepAgent: typeof import("deepagents/browser").createDeepAgent;
   createSubAgentMiddleware: typeof import("deepagents/browser").createSubAgentMiddleware;
   registerHarnessProfile: typeof import("deepagents/browser").registerHarnessProfile;
+}
+
+/**
+ * Bound LangGraph super-steps to the validated workflow envelope.
+ *
+ * DeepAgents subgraphs and structured-output repair consume graph super-steps
+ * in addition to the visible supervisor turns. The allowance scales with the
+ * admitted node count and the closed research/reconciliation wave limits,
+ * while retaining a hard ceiling for loop protection.
+ */
+export function researchRecursionLimitV1(graph?: ResearchGraphV1): number {
+  if (!graph) return LEGACY_RESEARCH_RECURSION_LIMIT_V1;
+  const supervisorAndPublicationSteps = 16;
+  const stepsPerAdmittedNode = 6;
+  const stepsPerWave = 4;
+  return Math.min(
+    MAX_DYNAMIC_RESEARCH_RECURSION_LIMIT_V1,
+    Math.max(
+      MIN_DYNAMIC_RESEARCH_RECURSION_LIMIT_V1,
+      supervisorAndPublicationSteps +
+        graph.nodes.length * stepsPerAdmittedNode +
+        (graph.maxResearchWaves + graph.maxReconciliationWaves) * stepsPerWave,
+    ),
+  );
 }
 
 const SYSTEM_PROMPT = `You are a read-only Jira and Confluence research agent.
@@ -174,8 +209,11 @@ function createAnthropicSubagentModels(
     // the Jira top-item packet. Too small a cap causes structured-output
     // repair loops instead of a faster response.
     "wiki-retrieval": createAnthropicModel(apiKey, 3_000),
-    "cross-product-join": createAnthropicModel(apiKey, 1_600),
-    verification: createAnthropicModel(apiKey, 1_400, "low"),
+    // Relationship packets carry two endpoint references plus per-claim
+    // support arrays. The smaller PoC caps did not leave reliable headroom
+    // for provider-structured cross-product responses in live runs.
+    "cross-product-join": createAnthropicModel(apiKey, 2_400),
+    verification: createAnthropicModel(apiKey, 2_000, "low"),
     reconciler: createAnthropicModel(apiKey, 2_400, "low"),
     synthesizer: createAnthropicModel(apiKey, 4_096, "low"),
   };
@@ -205,11 +243,19 @@ export interface RunResearchAgentInput {
   runId?: string;
   now?: () => number;
   options?: ResearchRunOptions;
+  /** Host-owned virtual workspace; a bounded in-memory backend is the fallback. */
+  workspace?: ResearchWorkspace;
   /** Optional per-run graph. When present, createDeepAgent receives dynamic SubAgent specs. */
   researchGraph?: ResearchGraphV1;
   onPtcDiagnostic?: (diagnostic: ResearchPtcDiagnosticV1) => void;
   onSubagentDiagnostic?: (diagnostic: ResearchSubagentDiagnosticV1) => void;
 }
+
+type ResearchOneShotEventInputV1 = ResearchOneShotEventV1 extends infer Event
+  ? Event extends ResearchOneShotEventV1
+    ? Omit<Event, "seq" | "at">
+    : never
+  : never;
 
 async function runResearchAgentWithBindings(
   input: RunResearchAgentInput,
@@ -224,17 +270,79 @@ async function runResearchAgentWithBindings(
   const now = input.now ?? Date.now;
   const startedAtMs = now();
   const runId = input.runId ?? crypto.randomUUID();
+  const workspace = input.workspace ?? createMemoryResearchWorkspace();
+  let eventSequence = 0;
+  const emitEvent = (event: ResearchOneShotEventInputV1): void => {
+    input.options?.onEvent?.({
+      ...event,
+      seq: ++eventSequence,
+      at: new Date(now()).toISOString(),
+    } as ResearchOneShotEventV1);
+  };
+  const emitProgress = (progress: ResearchProgressV1): void => {
+    input.options?.onProgress?.(progress);
+    emitEvent({ kind: "phase", phase: progress.phase });
+    emitEvent({
+      kind: "progress",
+      graphRevision: 1,
+      completed: progress.completedCalls,
+      maximum: progress.maxCalls,
+    });
+  };
+  const emitPtcDiagnostic = (diagnostic: ResearchPtcDiagnosticV1): void => {
+    input.onPtcDiagnostic?.(diagnostic);
+    emitEvent({
+      kind: "capability",
+      callId: diagnostic.callId,
+      toolId: diagnostic.tool,
+      inputKind: diagnostic.inputKind,
+      status: diagnostic.outcome === "started"
+        ? "started"
+        : diagnostic.outcome === "success"
+          ? "completed"
+          : "failed",
+      ...(diagnostic.itemCount === undefined ? {} : { itemCount: diagnostic.itemCount }),
+      ...(diagnostic.complete === undefined ? {} : { complete: diagnostic.complete }),
+      ...(diagnostic.termination === undefined ? {} : { termination: diagnostic.termination }),
+      ...(diagnostic.durationMs === undefined ? {} : { durationMs: diagnostic.durationMs }),
+      ...(diagnostic.errorCode === undefined ? {} : { errorCode: diagnostic.errorCode }),
+    });
+  };
+  const emitSubagentDiagnostic = (diagnostic: ResearchSubagentDiagnosticV1): void => {
+    input.onSubagentDiagnostic?.(diagnostic);
+    emitEvent({
+      kind: "subagent",
+      taskId: diagnostic.taskId,
+      roleId: diagnostic.role,
+      status: diagnostic.status,
+      ...(diagnostic.attempt === undefined ? {} : { attempt: diagnostic.attempt }),
+      ...(diagnostic.durationMs === undefined ? {} : { durationMs: diagnostic.durationMs }),
+      ...(diagnostic.errorCode === undefined ? {} : { errorCode: diagnostic.errorCode }),
+    });
+    if (diagnostic.status === "repairing") {
+      emitEvent({
+        kind: "decision",
+        decisionId: `${diagnostic.taskId}:structured-output-repair`,
+        status: "started",
+        reasonCode: "authoritative-schema-rejected",
+        taskId: diagnostic.taskId,
+      });
+    }
+  };
+  await workspace.writeFile(
+    RESEARCH_ONE_SHOT_REQUEST_PATH_V1,
+    JSON.stringify({ runId, request: input.request }, null, 2),
+  );
   const broker = new ResearchCapabilityBroker(input.request, input.providers, {
     ...(input.budget ? { budget: input.budget } : {}),
   });
   const tools = createResearchPtcTools(broker, {
-    ...(input.onPtcDiagnostic
-      ? { onDiagnostic: input.onPtcDiagnostic }
-      : {}),
+    onDiagnostic: emitPtcDiagnostic,
+    now,
   });
   const onAbort = (): void => broker.cancel(input.options?.signal?.reason);
   input.options?.signal?.addEventListener("abort", onAbort, { once: true });
-  input.options?.onProgress?.({
+  emitProgress({
     phase: "preparing",
     message: "Preparing bounded read-only research.",
     completedCalls: 0,
@@ -259,16 +367,21 @@ async function runResearchAgentWithBindings(
         maxSearchPagesPerProduct: input.request.limits.maxSearchPagesPerProduct,
         maxDetailItemsPerProduct: input.request.limits.maxDetailItemsPerProduct,
         maxPacketChars: Math.min(24_000, input.request.limits.maxReportChars),
-        ...(input.onPtcDiagnostic ? { onPtcDiagnostic: input.onPtcDiagnostic } : {}),
+        onPtcDiagnostic: emitPtcDiagnostic,
+        now,
       })
     : [];
   const isDynamic = input.researchGraph !== undefined;
+  let fatalSubagentError: unknown;
   const boundedSubagentMiddleware = isDynamic
-    ? createBoundedResearchSubagentMiddleware(model, dynamicSubagents, runtime, {
+      ? createBoundedResearchSubagentMiddleware(model, dynamicSubagents, runtime, {
         structuredOutputStrategy: input.model ? "tool" : "provider",
-        ...(input.onSubagentDiagnostic
-          ? { onDiagnostic: input.onSubagentDiagnostic }
-          : {}),
+        now,
+        onFatal: (error) => {
+          fatalSubagentError = error;
+          broker.cancel(error);
+        },
+        onDiagnostic: emitSubagentDiagnostic,
       })
     : undefined;
   let structuredRepairAttempts = 0;
@@ -329,14 +442,22 @@ async function runResearchAgentWithBindings(
         })
       : providerStrategy(providerCompatibleResearchSchema(RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1)),
   });
+  let supervisorActive = false;
 
   try {
-    input.options?.onProgress?.({
+    emitProgress({
       phase: "researching",
       message: "Researching Jira and Confluence.",
       completedCalls: 0,
       maxCalls: input.request.limits.maxPtcCalls,
     });
+    emitEvent({
+      kind: "decision",
+      decisionId: "central-supervisor-run",
+      status: "started",
+      reasonCode: "generate-and-orchestrate-workflow",
+    });
+    supervisorActive = true;
     const result = await agent.invoke(
       {
         messages: [
@@ -348,19 +469,32 @@ async function runResearchAgentWithBindings(
       },
       {
         configurable: { thread_id: runId },
-        recursionLimit: 24,
+        recursionLimit: researchRecursionLimitV1(input.researchGraph),
         signal: broker.signal,
       }
     );
+    emitEvent({
+      kind: "decision",
+      decisionId: "central-supervisor-run",
+      status: "completed",
+      reasonCode: "workflow-returned-for-validation",
+    });
+    supervisorActive = false;
     broker.signal.throwIfAborted();
     const completedAtMs = now();
     const counts = broker.budget.counts();
     const completion = broker.completionStatus();
-    input.options?.onProgress?.({
+    emitProgress({
       phase: "rendering",
       message: "Validating evidence and rendering Markdown.",
       completedCalls: counts.ptcCalls,
       maxCalls: input.request.limits.maxPtcCalls,
+    });
+    emitEvent({
+      kind: "decision",
+      decisionId: "deterministic-evidence-validation",
+      status: "started",
+      reasonCode: "validate-before-render",
     });
     const report = finalizeResearchAgentDraftV1({
       draft: result.structuredResponse,
@@ -379,13 +513,21 @@ async function runResearchAgentWithBindings(
         warnings: completion.warnings,
       },
     });
+    emitEvent({
+      kind: "decision",
+      decisionId: "deterministic-evidence-validation",
+      status: "completed",
+      reasonCode: "validated-before-render",
+    });
     if (report.markdown.length > input.request.limits.maxReportChars) {
       throw new ResearchContractError(
         "limit-exceeded",
         "The rendered report exceeds the report character limit."
       );
     }
-    input.options?.onProgress?.({
+    await workspace.writeFile(RESEARCH_REPORT_ARTIFACT_PATH_V1, report.markdown);
+    emitEvent({ kind: "artifact", path: RESEARCH_REPORT_ARTIFACT_PATH_V1 });
+    emitProgress({
       phase: "complete",
       message: "Research report complete.",
       completedCalls: counts.ptcCalls,
@@ -393,6 +535,20 @@ async function runResearchAgentWithBindings(
     });
     return report;
   } catch (error) {
+    if (supervisorActive) {
+      emitEvent({
+        kind: "decision",
+        decisionId: "central-supervisor-run",
+        status: "failed",
+        reasonCode: "supervisor-run-failed",
+      });
+    }
+    if (fatalSubagentError !== undefined) {
+      throw new ResearchContractError(
+        "invalid-report",
+        "The final synthesizer did not return a valid structured report.",
+      );
+    }
     if (broker.signal.aborted) {
       throw new ResearchContractError("cancelled", "The research run was cancelled.");
     }

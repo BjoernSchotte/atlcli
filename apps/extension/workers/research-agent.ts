@@ -4,6 +4,8 @@ import {
   classifyResearchError,
   createRestResearchProviders,
   normalizeResearchRequestV1,
+  createMemoryResearchWorkspace,
+  type ResearchOneShotEventV1,
   type ResearchProgressV1,
 } from "@atlcli/research/browser";
 import { runResearchAgent } from "@atlcli/research/browser/agent";
@@ -40,8 +42,11 @@ globalThis.addEventListener("message", (event: MessageEvent<unknown>) => {
       const budget = new ResearchRunBudget(request.limits);
       const providers = createRestResearchProviders(profile, request, budget);
       const researchGraph = composeStandardResearchGraphV1(request.question);
+      const workspace = createMemoryResearchWorkspace();
       const onProgress = (progress: ResearchProgressV1): void =>
         post({ kind: "research-worker:progress", runId, progress });
+      const onEvent = (event: ResearchOneShotEventV1): void =>
+        post({ kind: "research-worker:event", runId, event });
       const report = await runResearchAgent({
         apiKey: message.apiKey,
         request,
@@ -49,7 +54,8 @@ globalThis.addEventListener("message", (event: MessageEvent<unknown>) => {
         budget,
         runId,
         researchGraph,
-        options: { onProgress },
+        workspace,
+        options: { onProgress, onEvent },
       });
       post({ kind: "research-worker:complete", runId, report });
     } catch (error) {

@@ -1615,7 +1615,9 @@ type ResearchEventV1 =
   | { kind: "plan_diff"; seq: number; at: string; from: number; to: number }
   | { kind: "control"; seq: number; at: string; action: string; status: string; revision: number }
   | { kind: "task"; seq: number; at: string; taskId: string; status: string }
-  | { kind: "subagent"; seq: number; at: string; taskId: string; roleId: string; status: string }
+  | { kind: "subagent"; seq: number; at: string; taskId: string; roleId: string; status: string; attempt?: number; durationMs?: number; errorCode?: string }
+  | { kind: "capability"; seq: number; at: string; callId: string; toolId: ResearchToolId; inputKind: "search" | "continuation" | "detail"; status: "started" | "completed" | "failed"; itemCount?: number; complete?: boolean; termination?: string; durationMs?: number; errorCode?: string }
+  | { kind: "decision"; seq: number; at: string; decisionId: string; status: "started" | "completed" | "failed"; reasonCode: string; taskId?: string }
   | { kind: "reconciliation"; seq: number; at: string; taskId: string; status: string }
   | { kind: "reconciliation_disposition"; seq: number; at: string; dispositionId: string; status: string }
   | { kind: "steering"; seq: number; at: string; revision: number; status: string }
@@ -1635,7 +1637,10 @@ type ResearchEventV1 =
 
 Events must not contain source bodies, prompts, model responses, credentials,
 provider cursors, raw errors, customer-specific query text, subagent task
-descriptions, critique explanations, or plan prose. Consumers fetch sanitized
+descriptions, critique explanations, hidden chain-of-thought, or plan prose.
+Structured decision reason codes are the reviewable reasoning surface; they
+must never be reconstructed from or presented as hidden model reasoning.
+Consumers fetch sanitized
 brief, graph, diff, packet metadata, and artifacts through bounded session
 queries. Event cursors are reconnectable and do not assume a living producer.
 
@@ -2370,59 +2375,70 @@ the built extension output passed its Node/CSP check.
 
 Shared:
 
-- [ ] Add an injected workspace backend to the shared runtime while retaining
+- [x] Add an injected workspace backend to the shared runtime while retaining
       the issue-138 one-question behavior.
-- [ ] Define shared progress/event shapes used by both hosts.
+- [x] Define shared progress/event shapes used by both hosts.
 - [x] Persist `/artifacts/report.md` through the workspace before returning the
       final result.
 
 CLI:
 
-- [ ] Register `research` in `apps/cli/src/index.ts`, root help, and
+- [x] Register `research` in `apps/cli/src/index.ts`, root help, and
       command-specific help.
-- [ ] Implement positional question parsing and only the T2 flags assigned in
+- [x] Implement positional question parsing and only the T2 flags assigned in
       **CLI contract**; later-phase flags must fail with clear help rather than
       imply unavailable durability.
-- [ ] Resolve the selected profile and defaults with existing
+- [x] Resolve the selected profile and defaults with existing
       `loadConfig()`, `getActiveProfile()`, and `resolveDefaults()` behavior.
-- [ ] Normalize repeatable explicit project/space keys as locked scope seeds
+- [x] Normalize repeatable explicit project/space keys as locked scope seeds
       and preserve their order and provenance through the shared request.
       T2 does not infer names or discover related scopes.
-- [ ] Create a unique real temporary session directory with mode-restricted
+- [x] Create a unique real temporary session directory with mode-restricted
       access and a virtualized filesystem backend rooted inside it.
-- [ ] Reject parent traversal, absolute virtual paths outside the root, and
+- [x] Reject parent traversal, absolute virtual paths outside the root, and
       symlink escape in unit tests.
-- [ ] Load `ANTHROPIC_API_KEY` only from the environment and redact its presence
+- [x] Load `ANTHROPIC_API_KEY` only from the environment and redact its presence
       from errors and logs.
-- [ ] Write Markdown atomically for `--output`; keep stdout and file bytes
+- [x] Write Markdown atomically for `--output`; keep stdout and file bytes
       identical.
-- [ ] Support `--json` without mixing progress into stdout.
-- [ ] Add `--keep-session`; delete unretained one-shot workspaces after
+- [x] Support `--json` without mixing progress into stdout.
+- [x] Add `--keep-session`; delete unretained one-shot workspaces after
       successful delivery and after handled failure.
-- [ ] Replace the extension-owned live script with a CLI-owned E2E harness.
+- [x] Replace the extension-owned live script with a CLI-owned E2E harness.
 
 Extension/browser:
 
-- [ ] Route the current one-shot extension through the same shared workspace,
+- [x] Route the current one-shot extension through the same shared workspace,
       progress, structured report, and Markdown contracts.
-- [ ] Capture the detected current Jira project or Confluence space as an
+- [x] Capture the detected current Jira project or Confluence space as an
       explicit removable `current_context` seed and preserve any manually
       added scope as a locked seed. T2 does not let detected context replace
       manual scope.
-- [ ] Keep a temporary in-memory/IndexedDB browser workspace implementation
+- [x] Keep a temporary in-memory/IndexedDB browser workspace implementation
       until T4 adds durable sessions.
 
 Gate:
 
-- [ ] Shared deterministic scenario produces schema-equivalent reports and
+- [x] Shared deterministic scenario produces schema-equivalent reports and
       byte-identical Markdown in CLI and packed browser hosts.
-- [ ] CLI command tests cover help, required key, missing profile, scope
+- [x] CLI command tests cover help, required key, missing profile, scope
       seed provenance and precedence, dates, cancellation, stdout, JSON,
       output file, cleanup, and retained workspace.
-- [ ] Source-mode and built CLI one-shot commands both pass.
+- [x] Source-mode and built CLI one-shot commands both pass.
 - [x] A real Mayflower CLI E2E against operator-supplied local project/space
       keys succeeds and its complete Markdown is presented to the reviewer.
-- [ ] The packed extension E2E still passes.
+- [x] The packed extension E2E still passes.
+
+T2 evidence, 2026-07-31: source-mode and built CLI runs completed against the
+approved test scopes, including the QuickJS WASM asset materialized beside the
+built CLI. The affected unit/integration corridor passed 89 tests, the packed
+MV3 suite passed 2 tests, typecheck and docs build passed, all 29 browser
+entrypoints passed the isomorphism gate, and the extension output, API report,
+privacy scan, and whitespace checks passed. Both hosts expose the same bounded
+live activity contract: phase/progress, capability calls with safe result
+metadata, subagent lifecycle, supervisor decision reason codes, validation,
+and artifact delivery. Raw source bodies, provider errors, prompts, secrets,
+and hidden chain-of-thought are not part of that contract.
 
 ### T3 — Prove dynamic supervisor composition in a bounded one-shot MVP
 

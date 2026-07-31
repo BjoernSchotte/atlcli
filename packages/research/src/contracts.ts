@@ -8,6 +8,7 @@
 
 export const RESEARCH_REQUEST_SCHEMA_V1 = "atlcli.research-request/v1" as const;
 export const RESEARCH_REPORT_SCHEMA_V1 = "atlcli.research-report/v1" as const;
+export const RESEARCH_REPORT_ARTIFACT_PATH_V1 = "/artifacts/report.md" as const;
 
 export const RESEARCH_TOOL_IDS = [
   "jira.issue.search",
@@ -19,6 +20,57 @@ export const RESEARCH_TOOL_IDS = [
 export type ResearchToolId = (typeof RESEARCH_TOOL_IDS)[number];
 export type ResearchProvider = "rest" | "agg";
 export type ResearchProduct = "jira" | "confluence";
+
+export const RESEARCH_SCOPE_SOURCES_V1 = [
+  "cli_flag",
+  "ui_added",
+  "natural_language",
+  "current_context",
+  "profile_default",
+  "global_default",
+  "exact_link",
+  "research_discovery",
+] as const;
+export const RESEARCH_SCOPE_AUTHORITIES_V1 = [
+  "candidate",
+  "resolved",
+  "approved",
+  "locked",
+] as const;
+export const RESEARCH_SCOPE_SOURCE_PRECEDENCE_V1 = {
+  cli_flag: 500,
+  ui_added: 500,
+  natural_language: 400,
+  current_context: 300,
+  profile_default: 200,
+  global_default: 100,
+  exact_link: 50,
+  research_discovery: 0,
+} as const;
+
+export type ResearchScopeEntityKindV1 = "project" | "space" | "issue" | "page";
+export type ResearchScopeSourceV1 = (typeof RESEARCH_SCOPE_SOURCES_V1)[number];
+export type ResearchScopeAuthorityV1 = (typeof RESEARCH_SCOPE_AUTHORITIES_V1)[number];
+
+export interface ResearchScopeBindingV1 {
+  id: string;
+  tenantOrigin: string;
+  product: ResearchProduct;
+  entityKind: ResearchScopeEntityKindV1;
+  entityRef: string;
+  key?: string;
+  name: string;
+  source: ResearchScopeSourceV1;
+  authority: ResearchScopeAuthorityV1;
+  mentionId?: string;
+  candidateId?: string;
+  approvedAt?: string;
+}
+
+export interface ResearchScopeSeedV1 {
+  binding: ResearchScopeBindingV1;
+  precedence: number;
+}
 
 export interface ResearchTimeWindowV1 {
   from?: string;
@@ -78,6 +130,8 @@ export interface ResearchRequestV1 {
   scope: ResearchScopeV1;
   limits: ResearchLimitsV1;
   wikiProvider: ResearchProvider;
+  /** Ordered host-originated scope provenance; omitted by legacy V1 callers. */
+  scopeSeeds?: ResearchScopeSeedV1[];
 }
 
 export interface ResearchSourceReferenceV1 {
@@ -161,6 +215,77 @@ export interface ResearchProgressV1 {
   maxCalls: number;
 }
 
+/**
+ * Sanitized, body-free event stream shape shared by CLI and browser hosts.
+ * T2 emits phase/progress/artifact events; durable phases extend usage of the
+ * same union without putting prompts, source bodies, cursors, or secrets in it.
+ */
+export type ResearchEventV1 =
+  | { kind: "state"; seq: number; at: string; from: string; to: string }
+  | { kind: "phase"; seq: number; at: string; phase: string }
+  | { kind: "progress"; seq: number; at: string; graphRevision: number; completed: number; maximum: number }
+  | { kind: "brief"; seq: number; at: string; revision: number }
+  | { kind: "clarification"; seq: number; at: string; briefRevision: number; status: string }
+  | { kind: "scope"; seq: number; at: string; briefRevision: number; proposalId?: string; status: string }
+  | { kind: "plan"; seq: number; at: string; revision: number; status: string }
+  | { kind: "plan_diff"; seq: number; at: string; from: number; to: number }
+  | { kind: "control"; seq: number; at: string; action: string; status: string; revision: number }
+  | { kind: "task"; seq: number; at: string; taskId: string; status: string }
+  | {
+      kind: "subagent";
+      seq: number;
+      at: string;
+      taskId: string;
+      roleId: string;
+      status: string;
+      attempt?: number;
+      durationMs?: number;
+      errorCode?: string;
+    }
+  | {
+      kind: "capability";
+      seq: number;
+      at: string;
+      callId: string;
+      toolId: ResearchToolId;
+      inputKind: "search" | "continuation" | "detail";
+      status: "started" | "completed" | "failed";
+      itemCount?: number;
+      complete?: boolean;
+      termination?: string;
+      durationMs?: number;
+      errorCode?: string;
+    }
+  | {
+      kind: "decision";
+      seq: number;
+      at: string;
+      decisionId: string;
+      status: "started" | "completed" | "failed";
+      reasonCode: string;
+      taskId?: string;
+    }
+  | { kind: "reconciliation"; seq: number; at: string; taskId: string; status: string }
+  | { kind: "reconciliation_disposition"; seq: number; at: string; dispositionId: string; status: string }
+  | { kind: "steering"; seq: number; at: string; revision: number; status: string }
+  | {
+      kind: "budget";
+      seq: number;
+      at: string;
+      metric: "capability_calls" | "tokens" | "bytes" | "duration_ms" | "cost_micros";
+      consumed: number;
+      maximum: number;
+    }
+  | { kind: "evidence"; seq: number; at: string; evidenceId: string }
+  | { kind: "warning"; seq: number; at: string; code: string }
+  | { kind: "recovery"; seq: number; at: string; checkpointRef: string }
+  | { kind: "artifact"; seq: number; at: string; path: typeof RESEARCH_REPORT_ARTIFACT_PATH_V1 };
+
+export type ResearchOneShotEventV1 = Extract<
+  ResearchEventV1,
+  { kind: "phase" | "progress" | "subagent" | "capability" | "decision" | "artifact" }
+>;
+
 export type ResearchErrorCode =
   | "invalid-request"
   | "missing-key"
@@ -188,6 +313,7 @@ export class ResearchContractError extends Error {
 export interface ResearchRunOptions {
   signal?: AbortSignal;
   onProgress?: (progress: ResearchProgressV1) => void;
+  onEvent?: (event: ResearchOneShotEventV1) => void;
 }
 
 /**
@@ -345,6 +471,127 @@ export function normalizeResearchScopeV1(value: unknown): ResearchScopeV1 {
   };
 }
 
+function boundedScopeSeedString(
+  value: unknown,
+  label: string,
+  maximum = 512,
+): string {
+  if (typeof value !== "string" || value.trim().length === 0 || value.length > maximum) {
+    throw new ResearchContractError("invalid-request", `${label} is invalid.`);
+  }
+  return value.trim();
+}
+
+function selectedWholeScopeKeys(
+  seeds: readonly ResearchScopeSeedV1[],
+  product: ResearchProduct,
+  entityKind: "project" | "space",
+): string[] {
+  const matching = seeds.filter((seed) =>
+    seed.binding.product === product && seed.binding.entityKind === entityKind
+  );
+  const maximum = Math.max(...matching.map((seed) => seed.precedence));
+  return [...new Set(
+    matching
+      .filter((seed) => seed.precedence === maximum)
+      .map((seed) => seed.binding.key!)
+  )];
+}
+
+export function normalizeResearchScopeSeedsV1(
+  value: unknown,
+  scope: ResearchScopeV1,
+): ResearchScopeSeedV1[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.length === 0 || value.length > 40) {
+    throw new ResearchContractError(
+      "invalid-request",
+      "Research scope provenance must contain between 1 and 40 seeds.",
+    );
+  }
+  const sources = new Set<string>(RESEARCH_SCOPE_SOURCES_V1);
+  const normalized = value.map((candidate, index): ResearchScopeSeedV1 => {
+    if (!candidate || typeof candidate !== "object") {
+      throw new ResearchContractError("invalid-request", `Scope seed ${index + 1} is invalid.`);
+    }
+    const seed = candidate as { binding?: unknown; precedence?: unknown };
+    if (!seed.binding || typeof seed.binding !== "object") {
+      throw new ResearchContractError("invalid-request", `Scope seed ${index + 1} has no binding.`);
+    }
+    const binding = seed.binding as Partial<Record<keyof ResearchScopeBindingV1, unknown>>;
+    const product = binding.product;
+    const entityKind = binding.entityKind;
+    if (product !== "jira" && product !== "confluence") {
+      throw new ResearchContractError("invalid-request", `Scope seed ${index + 1} has an invalid product.`);
+    }
+    if (
+      (entityKind !== "project" && entityKind !== "space") ||
+      (product === "jira" && entityKind !== "project") ||
+      (product === "confluence" && entityKind !== "space")
+    ) {
+      throw new ResearchContractError(
+        "invalid-request",
+        "One-shot scope seeds must bind whole Jira projects or Confluence spaces.",
+      );
+    }
+    if (binding.tenantOrigin !== scope.siteOrigin) {
+      throw new ResearchContractError("invalid-request", "Scope seed tenant does not match the request tenant.");
+    }
+    if (typeof binding.source !== "string" || !sources.has(binding.source)) {
+      throw new ResearchContractError("invalid-request", `Scope seed ${index + 1} has an invalid source.`);
+    }
+    const source = binding.source as ResearchScopeSourceV1;
+    if (binding.authority !== "approved" && binding.authority !== "locked") {
+      throw new ResearchContractError(
+        "invalid-request",
+        "One-shot scope seeds must be approved or locked.",
+      );
+    }
+    const expectedPrecedence = RESEARCH_SCOPE_SOURCE_PRECEDENCE_V1[source];
+    if (seed.precedence !== expectedPrecedence) {
+      throw new ResearchContractError("invalid-request", "Scope seed precedence does not match its source.");
+    }
+    const rawKey = boundedScopeSeedString(binding.key, `Scope seed ${index + 1} key`, 255);
+    const key = product === "jira" ? rawKey.toUpperCase() : rawKey;
+    return {
+      binding: {
+        id: boundedScopeSeedString(binding.id, `Scope seed ${index + 1} id`),
+        tenantOrigin: scope.siteOrigin,
+        product,
+        entityKind,
+        entityRef: boundedScopeSeedString(binding.entityRef, `Scope seed ${index + 1} entity reference`),
+        key,
+        name: boundedScopeSeedString(binding.name, `Scope seed ${index + 1} name`, 255),
+        source,
+        authority: binding.authority,
+        ...(binding.mentionId !== undefined
+          ? { mentionId: boundedScopeSeedString(binding.mentionId, `Scope seed ${index + 1} mention id`) }
+          : {}),
+        ...(binding.candidateId !== undefined
+          ? { candidateId: boundedScopeSeedString(binding.candidateId, `Scope seed ${index + 1} candidate id`) }
+          : {}),
+        ...(binding.approvedAt !== undefined
+          ? { approvedAt: boundedScopeSeedString(binding.approvedAt, `Scope seed ${index + 1} approval time`) }
+          : {}),
+      },
+      precedence: expectedPrecedence,
+    };
+  });
+
+  const selectedProjects = selectedWholeScopeKeys(normalized, "jira", "project");
+  const selectedSpaces = selectedWholeScopeKeys(normalized, "confluence", "space");
+  if (
+    JSON.stringify(selectedProjects) !== JSON.stringify(scope.jiraProjectKeys) ||
+    JSON.stringify(selectedSpaces) !== JSON.stringify(scope.confluenceSpaceKeys)
+  ) {
+    throw new ResearchContractError(
+      "invalid-request",
+      "Projected scope does not match the highest-precedence scope seeds.",
+    );
+  }
+  return normalized;
+}
+
 export function normalizeResearchRequestV1(value: unknown): ResearchRequestV1 {
   if (typeof value !== "object" || value === null) {
     throw new ResearchContractError("invalid-request", "The research request is missing.");
@@ -363,11 +610,14 @@ export function normalizeResearchRequestV1(value: unknown): ResearchRequestV1 {
   if (request.wikiProvider !== "rest" && request.wikiProvider !== "agg") {
     throw new ResearchContractError("invalid-request", "Unknown Confluence read provider.");
   }
+  const scope = normalizeResearchScopeV1(request.scope);
+  const scopeSeeds = normalizeResearchScopeSeedsV1(request.scopeSeeds, scope);
   return {
     schema: RESEARCH_REQUEST_SCHEMA_V1,
     question,
-    scope: normalizeResearchScopeV1(request.scope),
+    scope,
     limits: normalizeResearchLimitsV1(request.limits),
     wikiProvider: request.wikiProvider,
+    ...(scopeSeeds ? { scopeSeeds } : {}),
   };
 }

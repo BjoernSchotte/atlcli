@@ -202,7 +202,7 @@ export class ResearchCapabilityBroker {
     return this.#controller.signal;
   }
 
-  cancel(reason = new DOMException("Cancelled", "AbortError")): void {
+  cancel(reason: unknown = new DOMException("Cancelled", "AbortError")): void {
     if (!this.#controller.signal.aborted) this.#controller.abort(reason);
     this.#cursorVault.clear();
     this.#entityVault.clear();

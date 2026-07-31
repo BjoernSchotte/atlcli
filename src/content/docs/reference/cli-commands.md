@@ -758,6 +758,22 @@ Example: `helloworld` → `FLAG_HELLOWORLD`, `export.backend` → `FLAG_EXPORT_B
 
 ## Utility Commands
 
+### Research
+
+```bash
+ANTHROPIC_API_KEY=... atlcli research \
+  "Which Jira work is explicitly related to our Confluence documentation?" \
+  --profile work --project PLATFORM --space DOCS \
+  --from 2026-07-24 --to 2026-07-31 \
+  --max-run-minutes 10 --output /absolute/path/report.md
+```
+
+Normal stdout is the canonical Markdown; progress is written to stderr.
+`--json` emits one structured report document. Project and space flags are
+repeatable and accept comma-separated keys. See
+[Jira and Confluence Research](research.md) for the complete contract and
+security boundaries.
+
 ### Helloworld
 
 Test command to verify the feature flag system works. Only available when `flag.helloworld` is `true`.

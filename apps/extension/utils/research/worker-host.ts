@@ -1,5 +1,6 @@
 import {
   ResearchContractError,
+  type ResearchOneShotEventV1,
   type ResearchProgressV1,
   type ResearchReportV1,
   type ResearchRequestV1,
@@ -35,6 +36,7 @@ export class ResearchAgentWorkerHost {
     apiKey: string;
     request: ResearchRequestV1;
     onProgress?: (progress: ResearchProgressV1) => void;
+    onEvent?: (event: ResearchOneShotEventV1) => void;
   }): Promise<ResearchReportV1> {
     if (this.#active.has(input.runId)) {
       throw new ResearchContractError("invalid-request", "Research run id is already active.");
@@ -47,6 +49,10 @@ export class ResearchAgentWorkerHost {
         if (message.runId !== input.runId) return;
         if (message.kind === "research-worker:progress") {
           input.onProgress?.(message.progress);
+          return;
+        }
+        if (message.kind === "research-worker:event") {
+          input.onEvent?.(message.event);
           return;
         }
         if (message.kind === "research-worker:complete") {

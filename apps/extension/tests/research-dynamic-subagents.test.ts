@@ -15,6 +15,7 @@ import {
 } from "@atlcli/research";
 import {
   buildDynamicSupervisorPrompt,
+  researchRecursionLimitV1,
   runResearchAgent,
 } from "@atlcli/research/browser/agent";
 import {
@@ -23,6 +24,7 @@ import {
   RESEARCH_WORKER_PACKET_SCHEMA_V1,
   buildResearchAcquisitionProgram,
   compileDynamicResearchSubagents,
+  createBoundedResearchSubagentMiddleware,
   providerCompatibleResearchSchema,
   responseSchemaForResearchRole,
 } from "@atlcli/research/browser/agent";
@@ -31,6 +33,7 @@ import {
   RESEARCH_REQUEST_SCHEMA_V1,
   normalizeResearchRequestV1,
 } from "../utils/research/contracts.js";
+import { createMemoryResearchWorkspace } from "@atlcli/research";
 import { z } from "zod/v4";
 
 const request = normalizeResearchRequestV1({
@@ -115,6 +118,151 @@ function jiraAndSynthesisGraph(): ResearchGraphV1 {
     maxReconciliationWaves: 1,
   };
 }
+
+test("derives a bounded LangGraph super-step allowance from the admitted workflow", () => {
+  expect(researchRecursionLimitV1()).toBe(24);
+  expect(researchRecursionLimitV1(synthesisOnlyGraph())).toBe(34);
+  expect(researchRecursionLimitV1(crossProductGraph())).toBe(58);
+});
+
+test("repairs one synthesizer schema failure and fails fast after the bounded retry", async () => {
+  const validDraft = JSON.stringify({
+    title: "Repaired",
+    executiveSummary: "No supported relationship was found.",
+    findings: [],
+    relationships: [],
+    limitations: ["No Jira detail evidence was retrieved."],
+  });
+  const diagnostics: string[] = [];
+  let invokes = 0;
+  let fatal: unknown;
+  const upstreamTask = tool(async () => {
+    invokes += 1;
+    if (invokes === 1) throw new Error("Failed to parse structured output for response schema.");
+    return validDraft;
+  }, {
+    name: "task",
+    description: "Synthetic upstream task.",
+    schema: z.object({
+      description: z.string(),
+      subagent_type: z.string(),
+    }),
+  });
+  const middleware = createBoundedResearchSubagentMiddleware(
+    model,
+    [{
+      name: "synthesizer",
+      description: "Synthetic synthesizer.",
+      systemPrompt: "Return a draft.",
+      tools: [],
+    }],
+    {
+      createSubAgentMiddleware: (() => ({
+        name: "subAgentMiddleware",
+        tools: [upstreamTask],
+      })) as never,
+    },
+    {
+      structuredOutputStrategy: "tool",
+      onDiagnostic: (diagnostic) => diagnostics.push(`${diagnostic.status}:${diagnostic.attempt ?? 1}`),
+      onFatal: (error) => { fatal = error; },
+    },
+  );
+  const taskTool = middleware.tools?.[0];
+  expect(taskTool).toBeDefined();
+  await expect(taskTool!.invoke({
+    description: "Write the report.",
+    subagent_type: "synthesizer",
+  })).resolves.toBe(validDraft);
+  expect(invokes).toBe(2);
+  expect(diagnostics).toEqual(["started:1", "repairing:2", "completed:1"]);
+  expect(fatal).toBeUndefined();
+
+  invokes = 0;
+  fatal = undefined;
+  const alwaysFailingTask = tool(async () => {
+    invokes += 1;
+    throw new Error("Failed to parse structured output for response schema.");
+  }, {
+    name: "task",
+    description: "Synthetic failing task.",
+    schema: z.object({ description: z.string(), subagent_type: z.string() }),
+  });
+  const failing = createBoundedResearchSubagentMiddleware(
+    model,
+    [{
+      name: "synthesizer",
+      description: "Synthetic synthesizer.",
+      systemPrompt: "Return a draft.",
+      tools: [],
+    }],
+    {
+      createSubAgentMiddleware: (() => ({
+        name: "subAgentMiddleware",
+        tools: [alwaysFailingTask],
+      })) as never,
+    },
+    { onFatal: (error) => { fatal = error; } },
+  );
+  await expect(failing.tools![0]!.invoke({
+    description: "Write the report.",
+    subagent_type: "synthesizer",
+  })).rejects.toThrow("structured output");
+  expect(invokes).toBe(2);
+  expect(fatal).toBeInstanceOf(Error);
+});
+
+test("repairs a provider-shaped synthesizer result rejected by the authoritative host schema", async () => {
+  const diagnostics: string[] = [];
+  let invokes = 0;
+  const invalidDraft = JSON.stringify({
+    title: "Invalid",
+    executiveSummary: "Unsupported finding.",
+    findings: [{ classification: "fact", summary: "Unsupported", sourceIds: [] }],
+    relationships: [],
+    limitations: [],
+  });
+  const validDraft = JSON.stringify({
+    title: "Repaired",
+    executiveSummary: "No supported finding.",
+    findings: [],
+    relationships: [],
+    limitations: ["The unsupported finding was omitted."],
+  });
+  const upstreamTask = tool(async () => {
+    invokes += 1;
+    return invokes === 1 ? invalidDraft : validDraft;
+  }, {
+    name: "task",
+    description: "Synthetic upstream task.",
+    schema: z.object({ description: z.string(), subagent_type: z.string() }),
+  });
+  const middleware = createBoundedResearchSubagentMiddleware(
+    model,
+    [{
+      name: "synthesizer",
+      description: "Synthetic synthesizer.",
+      systemPrompt: "Return a draft.",
+      tools: [],
+    }],
+    {
+      createSubAgentMiddleware: (() => ({
+        name: "subAgentMiddleware",
+        tools: [upstreamTask],
+      })) as never,
+    },
+    {
+      onDiagnostic: (diagnostic) => diagnostics.push(diagnostic.status),
+    },
+  );
+
+  await expect(middleware.tools![0]!.invoke({
+    description: "Write the report.",
+    subagent_type: "synthesizer",
+  })).resolves.toBe(validDraft);
+  expect(invokes).toBe(2);
+  expect(diagnostics).toEqual(["started", "repairing", "completed"]);
+});
 
 describe("dynamic DeepAgentsJS subagent composition", () => {
   test("fails closed when a production model run has no validated graph", async () => {
@@ -399,6 +547,8 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       .respondWithTools([{ name: "AtlcliResearchAgentDraftV1", args: draft }])
       .respondWithTools([{ name: "AtlcliResearchAgentDraftV1", args: draft }]);
 
+    const workspace = createMemoryResearchWorkspace();
+    const eventKinds: string[] = [];
     const report = await runResearchAgent({
       model: dynamicModel,
       request,
@@ -408,6 +558,8 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       },
       researchGraph: synthesisOnlyGraph(),
       runId: "dynamic-native-task-invocation",
+      workspace,
+      options: { onEvent: (event) => eventKinds.push(event.kind) },
     });
 
     expect(report.title).toBe(draft.title);
@@ -415,6 +567,22 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       "No non-empty, non-truncated detail evidence supported a publishable finding"
     );
     expect(report.markdown).not.toContain(draft.executiveSummary);
+    expect(await workspace.readFile("/artifacts/report.md")).toBe(report.markdown);
+    expect(JSON.parse((await workspace.readFile("/session/request.json"))!)).toMatchObject({
+      runId: "dynamic-native-task-invocation",
+      request: { schema: "atlcli.research-request/v1" },
+    });
+    expect(eventKinds).toEqual([
+      "phase", "progress",
+      "phase", "progress",
+      "decision",
+      "subagent", "subagent",
+      "decision",
+      "phase", "progress",
+      "decision", "decision",
+      "artifact",
+      "phase", "progress",
+    ]);
     expect(dynamicModel.callCount).toBe(3);
     expect(dynamicModel.calls[0]?.messages.some((message) => message.text.includes("Run this as a workflow"))).toBe(true);
     expect(dynamicModel.calls[1]?.messages.some((message) => message.text.includes("empty accepted packet set"))).toBe(true);

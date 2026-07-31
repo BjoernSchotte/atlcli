@@ -94,7 +94,9 @@ through `@langchain/quickjs`.
 3. Enter an Anthropic API key. The extension stores it only in
    `chrome.storage.session`; **Forget key** removes it immediately.
 4. Enter a question. Name the Jira project key and Confluence space key in the
-   question, or fill the two explicit key fields.
+   question, or fill the two explicit key fields. Explicit fields are locked;
+   the detected current Jira/Confluence context is a separate removable seed
+   and cannot replace them.
 5. Optionally select **From** and **To**, review the resolved site and limits,
    and confirm the disclosure.
 6. Select **Run research**. Use **Cancel** to terminate the active worker.

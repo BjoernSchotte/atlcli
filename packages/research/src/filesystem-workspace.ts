@@ -48,6 +48,26 @@ export class FileSystemResearchWorkspace implements ResearchWorkspace {
     }
   }
 
+  private async ensureDirectory(target: string): Promise<void> {
+    const relativeTarget = relative(this.root, target);
+    let current = this.root;
+    for (const segment of relativeTarget.split(sep).filter(Boolean)) {
+      current = join(current, segment);
+      try {
+        await mkdir(current, { mode: 0o700 });
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+      }
+      const info = await lstat(current);
+      if (info.isSymbolicLink()) {
+        throw new ResearchContractError("access-denied", "Workspace symlink escape is not allowed.");
+      }
+      if (!info.isDirectory()) {
+        throw new ResearchContractError("access-denied", "Workspace parent path is not a directory.");
+      }
+    }
+  }
+
   async readFile(path: string): Promise<string | undefined> {
     const target = this.resolveVirtual(path);
     await this.assertNoSymlink(target);
@@ -63,8 +83,7 @@ export class FileSystemResearchWorkspace implements ResearchWorkspace {
     if (contents.length > 2_000_000) throw new ResearchContractError("limit-exceeded", "Workspace file is too large.");
     const target = this.resolveVirtual(path);
     const parent = dirname(target);
-    await mkdir(parent, { recursive: true, mode: 0o700 });
-    await this.assertNoSymlink(parent);
+    await this.ensureDirectory(parent);
     const temporary = join(parent, `.atlcli-write-${randomUUID()}.tmp`);
     try {
       await writeFile(temporary, contents, { encoding: "utf8", mode: 0o600, flag: "wx" });

@@ -78,6 +78,7 @@
         "@atlcli/plugin-api": "workspace:*",
         "@atlcli/research": "workspace:*",
         "@atlcli/template-pack": "workspace:*",
+        "@jitl/quickjs-ng-wasmfile-release-asyncify": "0.32.0",
         "@myriaddreamin/typst-ts-web-compiler": "0.7.0",
         "@resvg/resvg-wasm": "2.6.2",
       },

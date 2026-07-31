@@ -6,7 +6,10 @@ import {
   RESEARCH_ANTHROPIC_SESSION_KEY,
   normalizeAnthropicApiKey,
 } from "../../../utils/research/credential.js";
-import { isResearchProgress } from "../../../utils/messages.js";
+import {
+  isResearchEvent,
+  isResearchProgress,
+} from "../../../utils/messages.js";
 
 function safeFilename(value: string): string {
   const normalized = value
@@ -65,6 +68,9 @@ export function chromeResearchPort(): ResearchPort {
       const onProgress = (message: unknown): void => {
         if (isResearchProgress(message, runId)) {
           options?.onProgress?.(message.progress);
+        }
+        if (isResearchEvent(message, runId)) {
+          options?.onEvent?.(message.event);
         }
       };
       const cancel = (): void => {

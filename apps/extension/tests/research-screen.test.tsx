@@ -137,14 +137,42 @@ describe("research scope inference", () => {
   it("extracts the project and space keys from the question the user described", () => {
     expect(
       inferResearchScope({
+        siteOrigin: "https://example.atlassian.net",
         question:
           "Nutze Jira Projektkey ATLCLI und Confluence Spacekey DOCSY für den Bericht.",
         jiraProjects: "",
         confluenceSpaces: "",
+        activeSpaceKey: "CURRENT",
       })
-    ).toEqual({
+    ).toMatchObject({
       jiraProjectKeys: ["ATLCLI"],
       confluenceSpaceKeys: ["DOCSY"],
+      scopeSeeds: [
+        { binding: { key: "ATLCLI", source: "natural_language", authority: "approved" }, precedence: 400 },
+        { binding: { key: "DOCSY", source: "natural_language", authority: "approved" }, precedence: 400 },
+        { binding: { key: "CURRENT", source: "current_context", authority: "approved" }, precedence: 300 },
+      ],
+    });
+  });
+
+  it("keeps manual scope locked while retaining removable current context", () => {
+    expect(inferResearchScope({
+      siteOrigin: "https://example.atlassian.net",
+      question: "Research the current context.",
+      jiraProjects: "MANUAL, SECOND",
+      confluenceSpaces: "DOCS",
+      activeProjectKey: "CURRENT",
+      activeSpaceKey: "CURRENTSPACE",
+    })).toMatchObject({
+      jiraProjectKeys: ["MANUAL", "SECOND"],
+      confluenceSpaceKeys: ["DOCS"],
+      scopeSeeds: [
+        { binding: { key: "MANUAL", source: "ui_added", authority: "locked" }, precedence: 500 },
+        { binding: { key: "SECOND", source: "ui_added", authority: "locked" }, precedence: 500 },
+        { binding: { key: "CURRENT", source: "current_context", authority: "approved" }, precedence: 300 },
+        { binding: { key: "DOCS", source: "ui_added", authority: "locked" }, precedence: 500 },
+        { binding: { key: "CURRENTSPACE", source: "current_context", authority: "approved" }, precedence: 300 },
+      ],
     });
   });
 });
@@ -168,6 +196,26 @@ describe("portable Research screen", () => {
           message: "Synthetic progress",
           completedCalls: 2,
           maxCalls: 32,
+        });
+        options?.onEvent?.({
+          kind: "subagent",
+          seq: 1,
+          at: "2026-07-31T12:00:00.000Z",
+          taskId: "research-task:1",
+          roleId: "wiki-retrieval",
+          status: "started",
+        });
+        options?.onEvent?.({
+          kind: "capability",
+          seq: 2,
+          at: "2026-07-31T12:00:00.000Z",
+          callId: "wiki.search:1",
+          toolId: "wiki.search",
+          inputKind: "search",
+          status: "completed",
+          itemCount: 10,
+          termination: "item-limit",
+          durationMs: 42,
         });
         return report;
       },
@@ -194,9 +242,29 @@ describe("portable Research screen", () => {
       jiraProjectKeys: ["DEMO"],
       confluenceSpaceKeys: ["KB"],
     });
+    expect(observed[0]!.scopeSeeds).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        binding: expect.objectContaining({ source: "natural_language", key: "DEMO" }),
+      }),
+      expect.objectContaining({
+        binding: expect.objectContaining({ source: "current_context", key: "KB" }),
+      }),
+    ]));
     expect(dom.find("research-formatted-report").textContent).toContain(
       "The page explicitly links the issue."
     );
+    expect(dom.find("research-activity").textContent).toContain(
+      "agent · wiki-retrieval · started"
+    );
+    expect(dom.find("research-activity").textContent).toContain(
+      "tool · wiki.search · search · completed · 10 items · item-limit · 42 ms"
+    );
+    await dom.toggle("research-current-context");
+    await dom.click("research-run");
+    await dom.flush();
+    expect(observed[1]!.scopeSeeds?.some(
+      (seed) => seed.binding.source === "current_context",
+    )).toBe(false);
     expect(dom.html()).not.toContain("<script");
     expect((globalThis as Record<string, unknown>).chrome).toBeUndefined();
   });

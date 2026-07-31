@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { symlink } from "node:fs/promises";
+import { access, symlink } from "node:fs/promises";
 import { createMemoryResearchWorkspace, normalizeResearchWorkspacePath } from "./workspace.js";
 import { FileSystemResearchWorkspace } from "./filesystem-workspace.js";
 
@@ -35,6 +35,8 @@ describe("research workspace paths", () => {
     try {
       await symlink(outside.root, `${filesystem.root}/escape`);
       await expect(filesystem.writeFile("/escape/secret.txt", "nope")).rejects.toThrow("symlink escape");
+      await expect(filesystem.writeFile("/escape/new/secret.txt", "nope")).rejects.toThrow("symlink escape");
+      await expect(access(`${outside.root}/new`)).rejects.toMatchObject({ code: "ENOENT" });
     } finally {
       await outside.dispose();
     }

@@ -68,6 +68,15 @@ export declare function createResearchDispatchInterceptionAdapter(options: {
     onDiagnostic?: (diagnostic: ResearchDispatchDiagnosticV1) => void;
 }): ResearchDispatchInterceptionAdapter;
 
+// export: createResearchKeyScopeSeedV1
+export declare function createResearchKeyScopeSeedV1(input: {
+    tenantOrigin: string;
+    product: "jira" | "confluence";
+    key: string;
+    source: ResearchScopeSourceV1;
+    authority: "approved" | "locked";
+}): ResearchScopeSeedV1;
+
 // export: createResearchScopeBindingV1
 export declare function createResearchScopeBindingV1(input: {
     candidate: ResearchScopeCandidateV1;
@@ -154,11 +163,17 @@ export declare function normalizeResearchRequestV1(value: unknown): ResearchRequ
 // export: normalizeResearchScopeMentionText
 export declare function normalizeResearchScopeMentionText(value: string): string;
 
+// export: normalizeResearchScopeSeedsV1
+export declare function normalizeResearchScopeSeedsV1(value: unknown, scope: ResearchScopeV1): ResearchScopeSeedV1[] | undefined;
+
 // export: normalizeResearchScopeV1
 export declare function normalizeResearchScopeV1(value: unknown): ResearchScopeV1;
 
 // export: normalizeResearchWorkspacePath
 export declare function normalizeResearchWorkspacePath(value: string): string;
+
+// export: parseResearchAgentDraftV1
+export declare function parseResearchAgentDraftV1(input: unknown): ResearchAgentDraftV1;
 
 // export: parseResearchQueryFingerprint
 export declare function parseResearchQueryFingerprint(value: string): {
@@ -266,11 +281,25 @@ export declare const RESEARCH_GRAPH_SCHEMA_V1: "atlcli.research-graph/v1";
 // export: RESEARCH_LANGCHAIN_TOOL_NAMES
 export declare const RESEARCH_LANGCHAIN_TOOL_NAMES: Record<ResearchToolId, string>;
 
+// export: RESEARCH_ONE_SHOT_REQUEST_PATH_V1
+export declare const RESEARCH_ONE_SHOT_REQUEST_PATH_V1: "/session/request.json";
+
+// export: RESEARCH_REPORT_ARTIFACT_PATH_V1
+export declare const RESEARCH_REPORT_ARTIFACT_PATH_V1: "/artifacts/report.md";
+
 // export: RESEARCH_REPORT_SCHEMA_V1
 export declare const RESEARCH_REPORT_SCHEMA_V1: "atlcli.research-report/v1";
 
 // export: RESEARCH_REQUEST_SCHEMA_V1
 export declare const RESEARCH_REQUEST_SCHEMA_V1: "atlcli.research-request/v1";
+
+// export: RESEARCH_SCOPE_AUTHORITIES_V1
+export declare const RESEARCH_SCOPE_AUTHORITIES_V1: readonly [
+    "candidate",
+    "resolved",
+    "approved",
+    "locked"
+];
 
 // export: RESEARCH_SCOPE_CATALOG_CAPABILITY_IDS
 export declare const RESEARCH_SCOPE_CATALOG_CAPABILITY_IDS: readonly [
@@ -294,6 +323,30 @@ export declare const RESEARCH_SCOPE_CATALOG_SCHEMAS: {
         readonly output: "atlcli.ptc/atlassian.reference.resolve.output/v1";
     };
 };
+
+// export: RESEARCH_SCOPE_SOURCE_PRECEDENCE_V1
+export declare const RESEARCH_SCOPE_SOURCE_PRECEDENCE_V1: {
+    readonly cli_flag: 500;
+    readonly ui_added: 500;
+    readonly natural_language: 400;
+    readonly current_context: 300;
+    readonly profile_default: 200;
+    readonly global_default: 100;
+    readonly exact_link: 50;
+    readonly research_discovery: 0;
+};
+
+// export: RESEARCH_SCOPE_SOURCES_V1
+export declare const RESEARCH_SCOPE_SOURCES_V1: readonly [
+    "cli_flag",
+    "ui_added",
+    "natural_language",
+    "current_context",
+    "profile_default",
+    "global_default",
+    "exact_link",
+    "research_discovery"
+];
 
 // export: RESEARCH_TASK_DISPATCH_SCHEMA_V1
 export declare const RESEARCH_TASK_DISPATCH_SCHEMA_V1: "atlcli.research-task-dispatch/v1";
@@ -340,7 +393,7 @@ export declare class ResearchCapabilityBroker {
     readonly budget: ResearchRunBudget;
     constructor(request: ResearchRequestV1, providers: ResearchReadProviders, options?: BrokerOptions);
     get signal(): AbortSignal;
-    cancel(reason?: DOMException): void;
+    cancel(reason?: unknown): void;
     sourceLedger(): ResearchSourceReferenceV1[];
     detailEvidenceLedger(): ResearchDetailEvidenceV1[];
     completionStatus(): {
@@ -466,6 +519,146 @@ export interface ResearchEntityVaultOptions {
 // export: ResearchErrorCode
 export type ResearchErrorCode = "invalid-request" | "missing-key" | "invalid-key" | "not-atlassian" | "not-authenticated" | "access-denied" | "rate-limited" | "provider-error" | "limit-exceeded" | "cancelled" | "invalid-report" | "unknown";
 
+// export: ResearchEventV1
+export type ResearchEventV1 = {
+    kind: "state";
+    seq: number;
+    at: string;
+    from: string;
+    to: string;
+} | {
+    kind: "phase";
+    seq: number;
+    at: string;
+    phase: string;
+} | {
+    kind: "progress";
+    seq: number;
+    at: string;
+    graphRevision: number;
+    completed: number;
+    maximum: number;
+} | {
+    kind: "brief";
+    seq: number;
+    at: string;
+    revision: number;
+} | {
+    kind: "clarification";
+    seq: number;
+    at: string;
+    briefRevision: number;
+    status: string;
+} | {
+    kind: "scope";
+    seq: number;
+    at: string;
+    briefRevision: number;
+    proposalId?: string;
+    status: string;
+} | {
+    kind: "plan";
+    seq: number;
+    at: string;
+    revision: number;
+    status: string;
+} | {
+    kind: "plan_diff";
+    seq: number;
+    at: string;
+    from: number;
+    to: number;
+} | {
+    kind: "control";
+    seq: number;
+    at: string;
+    action: string;
+    status: string;
+    revision: number;
+} | {
+    kind: "task";
+    seq: number;
+    at: string;
+    taskId: string;
+    status: string;
+} | {
+    kind: "subagent";
+    seq: number;
+    at: string;
+    taskId: string;
+    roleId: string;
+    status: string;
+    attempt?: number;
+    durationMs?: number;
+    errorCode?: string;
+} | {
+    kind: "capability";
+    seq: number;
+    at: string;
+    callId: string;
+    toolId: ResearchToolId;
+    inputKind: "search" | "continuation" | "detail";
+    status: "started" | "completed" | "failed";
+    itemCount?: number;
+    complete?: boolean;
+    termination?: string;
+    durationMs?: number;
+    errorCode?: string;
+} | {
+    kind: "decision";
+    seq: number;
+    at: string;
+    decisionId: string;
+    status: "started" | "completed" | "failed";
+    reasonCode: string;
+    taskId?: string;
+} | {
+    kind: "reconciliation";
+    seq: number;
+    at: string;
+    taskId: string;
+    status: string;
+} | {
+    kind: "reconciliation_disposition";
+    seq: number;
+    at: string;
+    dispositionId: string;
+    status: string;
+} | {
+    kind: "steering";
+    seq: number;
+    at: string;
+    revision: number;
+    status: string;
+} | {
+    kind: "budget";
+    seq: number;
+    at: string;
+    metric: "capability_calls" | "tokens" | "bytes" | "duration_ms" | "cost_micros";
+    consumed: number;
+    maximum: number;
+} | {
+    kind: "evidence";
+    seq: number;
+    at: string;
+    evidenceId: string;
+} | {
+    kind: "warning";
+    seq: number;
+    at: string;
+    code: string;
+} | {
+    kind: "recovery";
+    seq: number;
+    at: string;
+    checkpointRef: string;
+} | {
+    kind: "artifact";
+    seq: number;
+    at: string;
+    path: typeof RESEARCH_REPORT_ARTIFACT_PATH_V1;
+};
+
 // export: ResearchFindingV1
 export interface ResearchFindingV1 {
     id: string;
@@ -544,6 +737,11 @@ export interface ResearchLimitsV1 {
     maxReportChars: number;
     maxRunMs: number;
 }
+
+// export: ResearchOneShotEventV1
+export type ResearchOneShotEventV1 = Extract<ResearchEventV1, {
+    kind: "phase" | "progress" | "subagent" | "capability" | "decision" | "artifact";
+}>;
 
 // export: ResearchPort
 export interface ResearchPort {
@@ -649,6 +847,7 @@ export interface ResearchRequestV1 {
     scope: ResearchScopeV1;
     limits: ResearchLimitsV1;
     wikiProvider: ResearchProvider;
+    scopeSeeds?: ResearchScopeSeedV1[];
 }
 
 // export: ResearchRunBudget
@@ -679,6 +878,7 @@ export interface ResearchRunCountsV1 {
 export interface ResearchRunOptions {
     signal?: AbortSignal;
     onProgress?: (progress: ResearchProgressV1) => void;
+    onEvent?: (event: ResearchOneShotEventV1) => void;
 }
 
 // export: ResearchRunSummaryV1
@@ -701,7 +901,7 @@ export interface ResearchRunUsageV1 {
 }
 
 // export: ResearchScopeAuthorityV1
-export type ResearchScopeAuthorityV1 = "candidate" | "resolved" | "approved" | "locked";
+export type ResearchScopeAuthorityV1 = (typeof RESEARCH_SCOPE_AUTHORITIES_V1)[number];
 
 // export: ResearchScopeBindingV1
 export interface ResearchScopeBindingV1 {
@@ -859,7 +1059,7 @@ export interface ResearchScopeSeedV1 {
 }
 
 // export: ResearchScopeSourceV1
-export type ResearchScopeSourceV1 = "cli_flag" | "ui_added" | "natural_language" | "current_context" | "profile_default" | "global_default" | "exact_link" | "research_discovery";
+export type ResearchScopeSourceV1 = (typeof RESEARCH_SCOPE_SOURCES_V1)[number];
 
 // export: ResearchScopeV1
 export interface ResearchScopeV1 {
@@ -1055,6 +1255,15 @@ export declare function createResearchDispatchInterceptionAdapter(options: {
     onDiagnostic?: (diagnostic: ResearchDispatchDiagnosticV1) => void;
 }): ResearchDispatchInterceptionAdapter;
 
+// export: createResearchKeyScopeSeedV1
+export declare function createResearchKeyScopeSeedV1(input: {
+    tenantOrigin: string;
+    product: "jira" | "confluence";
+    key: string;
+    source: ResearchScopeSourceV1;
+    authority: "approved" | "locked";
+}): ResearchScopeSeedV1;
+
 // export: createResearchScopeBindingV1
 export declare function createResearchScopeBindingV1(input: {
     candidate: ResearchScopeCandidateV1;
@@ -1132,11 +1341,17 @@ export declare function normalizeResearchRequestV1(value: unknown): ResearchRequ
 // export: normalizeResearchScopeMentionText
 export declare function normalizeResearchScopeMentionText(value: string): string;
 
+// export: normalizeResearchScopeSeedsV1
+export declare function normalizeResearchScopeSeedsV1(value: unknown, scope: ResearchScopeV1): ResearchScopeSeedV1[] | undefined;
+
 // export: normalizeResearchScopeV1
 export declare function normalizeResearchScopeV1(value: unknown): ResearchScopeV1;
 
 // export: normalizeResearchWorkspacePath
 export declare function normalizeResearchWorkspacePath(value: string): string;
+
+// export: parseResearchAgentDraftV1
+export declare function parseResearchAgentDraftV1(input: unknown): ResearchAgentDraftV1;
 
 // export: parseResearchQueryFingerprint
 export declare function parseResearchQueryFingerprint(value: string): {
@@ -1244,11 +1459,25 @@ export declare const RESEARCH_GRAPH_SCHEMA_V1: "atlcli.research-graph/v1";
 // export: RESEARCH_LANGCHAIN_TOOL_NAMES
 export declare const RESEARCH_LANGCHAIN_TOOL_NAMES: Record<ResearchToolId, string>;
 
+// export: RESEARCH_ONE_SHOT_REQUEST_PATH_V1
+export declare const RESEARCH_ONE_SHOT_REQUEST_PATH_V1: "/session/request.json";
+
+// export: RESEARCH_REPORT_ARTIFACT_PATH_V1
+export declare const RESEARCH_REPORT_ARTIFACT_PATH_V1: "/artifacts/report.md";
+
 // export: RESEARCH_REPORT_SCHEMA_V1
 export declare const RESEARCH_REPORT_SCHEMA_V1: "atlcli.research-report/v1";
 
 // export: RESEARCH_REQUEST_SCHEMA_V1
 export declare const RESEARCH_REQUEST_SCHEMA_V1: "atlcli.research-request/v1";
+
+// export: RESEARCH_SCOPE_AUTHORITIES_V1
+export declare const RESEARCH_SCOPE_AUTHORITIES_V1: readonly [
+    "candidate",
+    "resolved",
+    "approved",
+    "locked"
+];
 
 // export: RESEARCH_SCOPE_CATALOG_CAPABILITY_IDS
 export declare const RESEARCH_SCOPE_CATALOG_CAPABILITY_IDS: readonly [
@@ -1272,6 +1501,30 @@ export declare const RESEARCH_SCOPE_CATALOG_SCHEMAS: {
         readonly output: "atlcli.ptc/atlassian.reference.resolve.output/v1";
     };
 };
+
+// export: RESEARCH_SCOPE_SOURCE_PRECEDENCE_V1
+export declare const RESEARCH_SCOPE_SOURCE_PRECEDENCE_V1: {
+    readonly cli_flag: 500;
+    readonly ui_added: 500;
+    readonly natural_language: 400;
+    readonly current_context: 300;
+    readonly profile_default: 200;
+    readonly global_default: 100;
+    readonly exact_link: 50;
+    readonly research_discovery: 0;
+};
+
+// export: RESEARCH_SCOPE_SOURCES_V1
+export declare const RESEARCH_SCOPE_SOURCES_V1: readonly [
+    "cli_flag",
+    "ui_added",
+    "natural_language",
+    "current_context",
+    "profile_default",
+    "global_default",
+    "exact_link",
+    "research_discovery"
+];
 
 // export: RESEARCH_TASK_DISPATCH_SCHEMA_V1
 export declare const RESEARCH_TASK_DISPATCH_SCHEMA_V1: "atlcli.research-task-dispatch/v1";
@@ -1318,7 +1571,7 @@ export declare class ResearchCapabilityBroker {
     readonly budget: ResearchRunBudget;
     constructor(request: ResearchRequestV1, providers: ResearchReadProviders, options?: BrokerOptions);
     get signal(): AbortSignal;
-    cancel(reason?: DOMException): void;
+    cancel(reason?: unknown): void;
     sourceLedger(): ResearchSourceReferenceV1[];
     detailEvidenceLedger(): ResearchDetailEvidenceV1[];
     completionStatus(): {
@@ -1444,6 +1697,146 @@ export interface ResearchEntityVaultOptions {
 // export: ResearchErrorCode
 export type ResearchErrorCode = "invalid-request" | "missing-key" | "invalid-key" | "not-atlassian" | "not-authenticated" | "access-denied" | "rate-limited" | "provider-error" | "limit-exceeded" | "cancelled" | "invalid-report" | "unknown";
 
+// export: ResearchEventV1
+export type ResearchEventV1 = {
+    kind: "state";
+    seq: number;
+    at: string;
+    from: string;
+    to: string;
+} | {
+    kind: "phase";
+    seq: number;
+    at: string;
+    phase: string;
+} | {
+    kind: "progress";
+    seq: number;
+    at: string;
+    graphRevision: number;
+    completed: number;
+    maximum: number;
+} | {
+    kind: "brief";
+    seq: number;
+    at: string;
+    revision: number;
+} | {
+    kind: "clarification";
+    seq: number;
+    at: string;
+    briefRevision: number;
+    status: string;
+} | {
+    kind: "scope";
+    seq: number;
+    at: string;
+    briefRevision: number;
+    proposalId?: string;
+    status: string;
+} | {
+    kind: "plan";
+    seq: number;
+    at: string;
+    revision: number;
+    status: string;
+} | {
+    kind: "plan_diff";
+    seq: number;
+    at: string;
+    from: number;
+    to: number;
+} | {
+    kind: "control";
+    seq: number;
+    at: string;
+    action: string;
+    status: string;
+    revision: number;
+} | {
+    kind: "task";
+    seq: number;
+    at: string;
+    taskId: string;
+    status: string;
+} | {
+    kind: "subagent";
+    seq: number;
+    at: string;
+    taskId: string;
+    roleId: string;
+    status: string;
+    attempt?: number;
+    durationMs?: number;
+    errorCode?: string;
+} | {
+    kind: "capability";
+    seq: number;
+    at: string;
+    callId: string;
+    toolId: ResearchToolId;
+    inputKind: "search" | "continuation" | "detail";
+    status: "started" | "completed" | "failed";
+    itemCount?: number;
+    complete?: boolean;
+    termination?: string;
+    durationMs?: number;
+    errorCode?: string;
+} | {
+    kind: "decision";
+    seq: number;
+    at: string;
+    decisionId: string;
+    status: "started" | "completed" | "failed";
+    reasonCode: string;
+    taskId?: string;
+} | {
+    kind: "reconciliation";
+    seq: number;
+    at: string;
+    taskId: string;
+    status: string;
+} | {
+    kind: "reconciliation_disposition";
+    seq: number;
+    at: string;
+    dispositionId: string;
+    status: string;
+} | {
+    kind: "steering";
+    seq: number;
+    at: string;
+    revision: number;
+    status: string;
+} | {
+    kind: "budget";
+    seq: number;
+    at: string;
+    metric: "capability_calls" | "tokens" | "bytes" | "duration_ms" | "cost_micros";
+    consumed: number;
+    maximum: number;
+} | {
+    kind: "evidence";
+    seq: number;
+    at: string;
+    evidenceId: string;
+} | {
+    kind: "warning";
+    seq: number;
+    at: string;
+    code: string;
+} | {
+    kind: "recovery";
+    seq: number;
+    at: string;
+    checkpointRef: string;
+} | {
+    kind: "artifact";
+    seq: number;
+    at: string;
+    path: typeof RESEARCH_REPORT_ARTIFACT_PATH_V1;
+};
+
 // export: ResearchFindingV1
 export interface ResearchFindingV1 {
     id: string;
@@ -1522,6 +1915,11 @@ export interface ResearchLimitsV1 {
     maxReportChars: number;
     maxRunMs: number;
 }
+
+// export: ResearchOneShotEventV1
+export type ResearchOneShotEventV1 = Extract<ResearchEventV1, {
+    kind: "phase" | "progress" | "subagent" | "capability" | "decision" | "artifact";
+}>;
 
 // export: ResearchPort
 export interface ResearchPort {
@@ -1627,6 +2025,7 @@ export interface ResearchRequestV1 {
     scope: ResearchScopeV1;
     limits: ResearchLimitsV1;
     wikiProvider: ResearchProvider;
+    scopeSeeds?: ResearchScopeSeedV1[];
 }
 
 // export: ResearchRunBudget
@@ -1657,6 +2056,7 @@ export interface ResearchRunCountsV1 {
 export interface ResearchRunOptions {
     signal?: AbortSignal;
     onProgress?: (progress: ResearchProgressV1) => void;
+    onEvent?: (event: ResearchOneShotEventV1) => void;
 }
 
 // export: ResearchRunSummaryV1
@@ -1679,7 +2079,7 @@ export interface ResearchRunUsageV1 {
 }
 
 // export: ResearchScopeAuthorityV1
-export type ResearchScopeAuthorityV1 = "candidate" | "resolved" | "approved" | "locked";
+export type ResearchScopeAuthorityV1 = (typeof RESEARCH_SCOPE_AUTHORITIES_V1)[number];
 
 // export: ResearchScopeBindingV1
 export interface ResearchScopeBindingV1 {
@@ -1837,7 +2237,7 @@ export interface ResearchScopeSeedV1 {
 }
 
 // export: ResearchScopeSourceV1
-export type ResearchScopeSourceV1 = "cli_flag" | "ui_added" | "natural_language" | "current_context" | "profile_default" | "global_default" | "exact_link" | "research_discovery";
+export type ResearchScopeSourceV1 = (typeof RESEARCH_SCOPE_SOURCES_V1)[number];
 
 // export: ResearchScopeV1
 export interface ResearchScopeV1 {
@@ -2022,6 +2422,15 @@ export declare function createResearchDispatchInterceptionAdapter(options: {
     onDiagnostic?: (diagnostic: ResearchDispatchDiagnosticV1) => void;
 }): ResearchDispatchInterceptionAdapter;
 
+// export: createResearchKeyScopeSeedV1
+export declare function createResearchKeyScopeSeedV1(input: {
+    tenantOrigin: string;
+    product: "jira" | "confluence";
+    key: string;
+    source: ResearchScopeSourceV1;
+    authority: "approved" | "locked";
+}): ResearchScopeSeedV1;
+
 // export: createResearchScopeBindingV1
 export declare function createResearchScopeBindingV1(input: {
     candidate: ResearchScopeCandidateV1;
@@ -2108,11 +2517,17 @@ export declare function normalizeResearchRequestV1(value: unknown): ResearchRequ
 // export: normalizeResearchScopeMentionText
 export declare function normalizeResearchScopeMentionText(value: string): string;
 
+// export: normalizeResearchScopeSeedsV1
+export declare function normalizeResearchScopeSeedsV1(value: unknown, scope: ResearchScopeV1): ResearchScopeSeedV1[] | undefined;
+
 // export: normalizeResearchScopeV1
 export declare function normalizeResearchScopeV1(value: unknown): ResearchScopeV1;
 
 // export: normalizeResearchWorkspacePath
 export declare function normalizeResearchWorkspacePath(value: string): string;
+
+// export: parseResearchAgentDraftV1
+export declare function parseResearchAgentDraftV1(input: unknown): ResearchAgentDraftV1;
 
 // export: parseResearchQueryFingerprint
 export declare function parseResearchQueryFingerprint(value: string): {
@@ -2220,11 +2635,25 @@ export declare const RESEARCH_GRAPH_SCHEMA_V1: "atlcli.research-graph/v1";
 // export: RESEARCH_LANGCHAIN_TOOL_NAMES
 export declare const RESEARCH_LANGCHAIN_TOOL_NAMES: Record<ResearchToolId, string>;
 
+// export: RESEARCH_ONE_SHOT_REQUEST_PATH_V1
+export declare const RESEARCH_ONE_SHOT_REQUEST_PATH_V1: "/session/request.json";
+
+// export: RESEARCH_REPORT_ARTIFACT_PATH_V1
+export declare const RESEARCH_REPORT_ARTIFACT_PATH_V1: "/artifacts/report.md";
+
 // export: RESEARCH_REPORT_SCHEMA_V1
 export declare const RESEARCH_REPORT_SCHEMA_V1: "atlcli.research-report/v1";
 
 // export: RESEARCH_REQUEST_SCHEMA_V1
 export declare const RESEARCH_REQUEST_SCHEMA_V1: "atlcli.research-request/v1";
+
+// export: RESEARCH_SCOPE_AUTHORITIES_V1
+export declare const RESEARCH_SCOPE_AUTHORITIES_V1: readonly [
+    "candidate",
+    "resolved",
+    "approved",
+    "locked"
+];
 
 // export: RESEARCH_SCOPE_CATALOG_CAPABILITY_IDS
 export declare const RESEARCH_SCOPE_CATALOG_CAPABILITY_IDS: readonly [
@@ -2248,6 +2677,30 @@ export declare const RESEARCH_SCOPE_CATALOG_SCHEMAS: {
         readonly output: "atlcli.ptc/atlassian.reference.resolve.output/v1";
     };
 };
+
+// export: RESEARCH_SCOPE_SOURCE_PRECEDENCE_V1
+export declare const RESEARCH_SCOPE_SOURCE_PRECEDENCE_V1: {
+    readonly cli_flag: 500;
+    readonly ui_added: 500;
+    readonly natural_language: 400;
+    readonly current_context: 300;
+    readonly profile_default: 200;
+    readonly global_default: 100;
+    readonly exact_link: 50;
+    readonly research_discovery: 0;
+};
+
+// export: RESEARCH_SCOPE_SOURCES_V1
+export declare const RESEARCH_SCOPE_SOURCES_V1: readonly [
+    "cli_flag",
+    "ui_added",
+    "natural_language",
+    "current_context",
+    "profile_default",
+    "global_default",
+    "exact_link",
+    "research_discovery"
+];
 
 // export: RESEARCH_TASK_DISPATCH_SCHEMA_V1
 export declare const RESEARCH_TASK_DISPATCH_SCHEMA_V1: "atlcli.research-task-dispatch/v1";
@@ -2294,7 +2747,7 @@ export declare class ResearchCapabilityBroker {
     readonly budget: ResearchRunBudget;
     constructor(request: ResearchRequestV1, providers: ResearchReadProviders, options?: BrokerOptions);
     get signal(): AbortSignal;
-    cancel(reason?: DOMException): void;
+    cancel(reason?: unknown): void;
     sourceLedger(): ResearchSourceReferenceV1[];
     detailEvidenceLedger(): ResearchDetailEvidenceV1[];
     completionStatus(): {
@@ -2420,6 +2873,146 @@ export interface ResearchEntityVaultOptions {
 // export: ResearchErrorCode
 export type ResearchErrorCode = "invalid-request" | "missing-key" | "invalid-key" | "not-atlassian" | "not-authenticated" | "access-denied" | "rate-limited" | "provider-error" | "limit-exceeded" | "cancelled" | "invalid-report" | "unknown";
 
+// export: ResearchEventV1
+export type ResearchEventV1 = {
+    kind: "state";
+    seq: number;
+    at: string;
+    from: string;
+    to: string;
+} | {
+    kind: "phase";
+    seq: number;
+    at: string;
+    phase: string;
+} | {
+    kind: "progress";
+    seq: number;
+    at: string;
+    graphRevision: number;
+    completed: number;
+    maximum: number;
+} | {
+    kind: "brief";
+    seq: number;
+    at: string;
+    revision: number;
+} | {
+    kind: "clarification";
+    seq: number;
+    at: string;
+    briefRevision: number;
+    status: string;
+} | {
+    kind: "scope";
+    seq: number;
+    at: string;
+    briefRevision: number;
+    proposalId?: string;
+    status: string;
+} | {
+    kind: "plan";
+    seq: number;
+    at: string;
+    revision: number;
+    status: string;
+} | {
+    kind: "plan_diff";
+    seq: number;
+    at: string;
+    from: number;
+    to: number;
+} | {
+    kind: "control";
+    seq: number;
+    at: string;
+    action: string;
+    status: string;
+    revision: number;
+} | {
+    kind: "task";
+    seq: number;
+    at: string;
+    taskId: string;
+    status: string;
+} | {
+    kind: "subagent";
+    seq: number;
+    at: string;
+    taskId: string;
+    roleId: string;
+    status: string;
+    attempt?: number;
+    durationMs?: number;
+    errorCode?: string;
+} | {
+    kind: "capability";
+    seq: number;
+    at: string;
+    callId: string;
+    toolId: ResearchToolId;
+    inputKind: "search" | "continuation" | "detail";
+    status: "started" | "completed" | "failed";
+    itemCount?: number;
+    complete?: boolean;
+    termination?: string;
+    durationMs?: number;
+    errorCode?: string;
+} | {
+    kind: "decision";
+    seq: number;
+    at: string;
+    decisionId: string;
+    status: "started" | "completed" | "failed";
+    reasonCode: string;
+    taskId?: string;
+} | {
+    kind: "reconciliation";
+    seq: number;
+    at: string;
+    taskId: string;
+    status: string;
+} | {
+    kind: "reconciliation_disposition";
+    seq: number;
+    at: string;
+    dispositionId: string;
+    status: string;
+} | {
+    kind: "steering";
+    seq: number;
+    at: string;
+    revision: number;
+    status: string;
+} | {
+    kind: "budget";
+    seq: number;
+    at: string;
+    metric: "capability_calls" | "tokens" | "bytes" | "duration_ms" | "cost_micros";
+    consumed: number;
+    maximum: number;
+} | {
+    kind: "evidence";
+    seq: number;
+    at: string;
+    evidenceId: string;
+} | {
+    kind: "warning";
+    seq: number;
+    at: string;
+    code: string;
+} | {
+    kind: "recovery";
+    seq: number;
+    at: string;
+    checkpointRef: string;
+} | {
+    kind: "artifact";
+    seq: number;
+    at: string;
+    path: typeof RESEARCH_REPORT_ARTIFACT_PATH_V1;
+};
+
 // export: ResearchFindingV1
 export interface ResearchFindingV1 {
     id: string;
@@ -2498,6 +3091,11 @@ export interface ResearchLimitsV1 {
     maxReportChars: number;
     maxRunMs: number;
 }
+
+// export: ResearchOneShotEventV1
+export type ResearchOneShotEventV1 = Extract<ResearchEventV1, {
+    kind: "phase" | "progress" | "subagent" | "capability" | "decision" | "artifact";
+}>;
 
 // export: ResearchPort
 export interface ResearchPort {
@@ -2603,6 +3201,7 @@ export interface ResearchRequestV1 {
     scope: ResearchScopeV1;
     limits: ResearchLimitsV1;
     wikiProvider: ResearchProvider;
+    scopeSeeds?: ResearchScopeSeedV1[];
 }
 
 // export: ResearchRunBudget
@@ -2633,6 +3232,7 @@ export interface ResearchRunCountsV1 {
 export interface ResearchRunOptions {
     signal?: AbortSignal;
     onProgress?: (progress: ResearchProgressV1) => void;
+    onEvent?: (event: ResearchOneShotEventV1) => void;
 }
 
 // export: ResearchRunSummaryV1
@@ -2655,7 +3255,7 @@ export interface ResearchRunUsageV1 {
 }
 
 // export: ResearchScopeAuthorityV1
-export type ResearchScopeAuthorityV1 = "candidate" | "resolved" | "approved" | "locked";
+export type ResearchScopeAuthorityV1 = (typeof RESEARCH_SCOPE_AUTHORITIES_V1)[number];
 
 // export: ResearchScopeBindingV1
 export interface ResearchScopeBindingV1 {
@@ -2813,7 +3413,7 @@ export interface ResearchScopeSeedV1 {
 }
 
 // export: ResearchScopeSourceV1
-export type ResearchScopeSourceV1 = "cli_flag" | "ui_added" | "natural_language" | "current_context" | "profile_default" | "global_default" | "exact_link" | "research_discovery";
+export type ResearchScopeSourceV1 = (typeof RESEARCH_SCOPE_SOURCES_V1)[number];
 
 // export: ResearchScopeV1
 export interface ResearchScopeV1 {
@@ -2973,7 +3573,7 @@ export interface BoundedContentProjectionV1 {
 export declare function buildDynamicSupervisorPrompt(graph: ResearchGraphV1): string;
 
 // export: buildResearchAcquisitionProgram
-export declare function buildResearchAcquisitionProgram(node: ResearchGraphNodeV1, question: string): string;
+export declare function buildResearchAcquisitionProgram(node: ResearchGraphNodeV1, question: string, maxDetailItems: number): string;
 
 // export: buildResearchCql
 export declare function buildResearchCql(scope: ResearchScopeV1, query: ResearchSearchQueryV1): string;
@@ -3009,6 +3609,7 @@ export interface ContentProjectionLimits {
 export declare function createBoundedResearchSubagentMiddleware(model: BaseChatModel, subagents: SubAgent[], runtime: ResearchSubagentRuntimeBindings, options?: {
     now?: () => number;
     onDiagnostic?: (diagnostic: ResearchSubagentDiagnosticV1) => void;
+    onFatal?: (error: unknown) => void;
     structuredOutputStrategy?: "tool" | "provider";
 }): {
     name: string;
@@ -3059,6 +3660,15 @@ export declare function createResearchDispatchInterceptionAdapter(options: {
     invokeUpstream(input: ResearchTaskToolInputV1, config: RunnableConfig): Promise<unknown>;
     onDiagnostic?: (diagnostic: ResearchDispatchDiagnosticV1) => void;
 }): ResearchDispatchInterceptionAdapter;
+
+// export: createResearchKeyScopeSeedV1
+export declare function createResearchKeyScopeSeedV1(input: {
+    tenantOrigin: string;
+    product: "jira" | "confluence";
+    key: string;
+    source: ResearchScopeSourceV1;
+    authority: "approved" | "locked";
+}): ResearchScopeSeedV1;
 
 // export: createResearchPtcTools
 export declare function createResearchPtcTools(broker: ResearchCapabilityBroker, options?: ResearchPtcToolOptions): DynamicStructuredTool[];
@@ -3112,8 +3722,11 @@ export interface DynamicResearchSubagentOptions {
     maxInterpreterMs: number;
     maxInterpreterMemoryBytes: number;
     maxPtcCalls: number;
+    maxSearchPagesPerProduct: number;
+    maxDetailItemsPerProduct: number;
     maxPacketChars: number;
     onPtcDiagnostic?: (diagnostic: ResearchPtcDiagnosticV1) => void;
+    now?: () => number;
 }
 
 // export: encodeResearchTaskDescriptionV1
@@ -3165,11 +3778,17 @@ export declare function normalizeResearchRequestV1(value: unknown): ResearchRequ
 // export: normalizeResearchScopeMentionText
 export declare function normalizeResearchScopeMentionText(value: string): string;
 
+// export: normalizeResearchScopeSeedsV1
+export declare function normalizeResearchScopeSeedsV1(value: unknown, scope: ResearchScopeV1): ResearchScopeSeedV1[] | undefined;
+
 // export: normalizeResearchScopeV1
 export declare function normalizeResearchScopeV1(value: unknown): ResearchScopeV1;
 
 // export: normalizeResearchWorkspacePath
 export declare function normalizeResearchWorkspacePath(value: string): string;
+
+// export: parseResearchAgentDraftV1
+export declare function parseResearchAgentDraftV1(input: unknown): ResearchAgentDraftV1;
 
 // export: parseResearchQueryFingerprint
 export declare function parseResearchQueryFingerprint(value: string): {
@@ -3292,11 +3911,25 @@ export declare const RESEARCH_LANGCHAIN_TOOL_NAMES: Record<ResearchToolId, strin
 // export: RESEARCH_MODEL_ID
 export declare const RESEARCH_MODEL_ID: "claude-sonnet-4-6";
 
+// export: RESEARCH_ONE_SHOT_REQUEST_PATH_V1
+export declare const RESEARCH_ONE_SHOT_REQUEST_PATH_V1: "/session/request.json";
+
+// export: RESEARCH_REPORT_ARTIFACT_PATH_V1
+export declare const RESEARCH_REPORT_ARTIFACT_PATH_V1: "/artifacts/report.md";
+
 // export: RESEARCH_REPORT_SCHEMA_V1
 export declare const RESEARCH_REPORT_SCHEMA_V1: "atlcli.research-report/v1";
 
 // export: RESEARCH_REQUEST_SCHEMA_V1
 export declare const RESEARCH_REQUEST_SCHEMA_V1: "atlcli.research-request/v1";
+
+// export: RESEARCH_SCOPE_AUTHORITIES_V1
+export declare const RESEARCH_SCOPE_AUTHORITIES_V1: readonly [
+    "candidate",
+    "resolved",
+    "approved",
+    "locked"
+];
 
 // export: RESEARCH_SCOPE_CATALOG_CAPABILITY_IDS
 export declare const RESEARCH_SCOPE_CATALOG_CAPABILITY_IDS: readonly [
@@ -3327,6 +3960,30 @@ export declare const RESEARCH_SCOPE_CATALOG_TOOL_NAMES: {
     readonly "wiki.space.search": "wiki_space_search";
     readonly "atlassian.reference.resolve": "atlassian_reference_resolve";
 };
+
+// export: RESEARCH_SCOPE_SOURCE_PRECEDENCE_V1
+export declare const RESEARCH_SCOPE_SOURCE_PRECEDENCE_V1: {
+    readonly cli_flag: 500;
+    readonly ui_added: 500;
+    readonly natural_language: 400;
+    readonly current_context: 300;
+    readonly profile_default: 200;
+    readonly global_default: 100;
+    readonly exact_link: 50;
+    readonly research_discovery: 0;
+};
+
+// export: RESEARCH_SCOPE_SOURCES_V1
+export declare const RESEARCH_SCOPE_SOURCES_V1: readonly [
+    "cli_flag",
+    "ui_added",
+    "natural_language",
+    "current_context",
+    "profile_default",
+    "global_default",
+    "exact_link",
+    "research_discovery"
+];
 
 // export: RESEARCH_TASK_DISPATCH_SCHEMA_V1
 export declare const RESEARCH_TASK_DISPATCH_SCHEMA_V1: "atlcli.research-task-dispatch/v1";
@@ -3384,7 +4041,7 @@ export declare class ResearchCapabilityBroker {
     readonly budget: ResearchRunBudget;
     constructor(request: ResearchRequestV1, providers: ResearchReadProviders, options?: BrokerOptions);
     get signal(): AbortSignal;
-    cancel(reason?: DOMException): void;
+    cancel(reason?: unknown): void;
     sourceLedger(): ResearchSourceReferenceV1[];
     detailEvidenceLedger(): ResearchDetailEvidenceV1[];
     completionStatus(): {
@@ -3510,6 +4167,146 @@ export interface ResearchEntityVaultOptions {
 // export: ResearchErrorCode
 export type ResearchErrorCode = "invalid-request" | "missing-key" | "invalid-key" | "not-atlassian" | "not-authenticated" | "access-denied" | "rate-limited" | "provider-error" | "limit-exceeded" | "cancelled" | "invalid-report" | "unknown";
 
+// export: ResearchEventV1
+export type ResearchEventV1 = {
+    kind: "state";
+    seq: number;
+    at: string;
+    from: string;
+    to: string;
+} | {
+    kind: "phase";
+    seq: number;
+    at: string;
+    phase: string;
+} | {
+    kind: "progress";
+    seq: number;
+    at: string;
+    graphRevision: number;
+    completed: number;
+    maximum: number;
+} | {
+    kind: "brief";
+    seq: number;
+    at: string;
+    revision: number;
+} | {
+    kind: "clarification";
+    seq: number;
+    at: string;
+    briefRevision: number;
+    status: string;
+} | {
+    kind: "scope";
+    seq: number;
+    at: string;
+    briefRevision: number;
+    proposalId?: string;
+    status: string;
+} | {
+    kind: "plan";
+    seq: number;
+    at: string;
+    revision: number;
+    status: string;
+} | {
+    kind: "plan_diff";
+    seq: number;
+    at: string;
+    from: number;
+    to: number;
+} | {
+    kind: "control";
+    seq: number;
+    at: string;
+    action: string;
+    status: string;
+    revision: number;
+} | {
+    kind: "task";
+    seq: number;
+    at: string;
+    taskId: string;
+    status: string;
+} | {
+    kind: "subagent";
+    seq: number;
+    at: string;
+    taskId: string;
+    roleId: string;
+    status: string;
+    attempt?: number;
+    durationMs?: number;
+    errorCode?: string;
+} | {
+    kind: "capability";
+    seq: number;
+    at: string;
+    callId: string;
+    toolId: ResearchToolId;
+    inputKind: "search" | "continuation" | "detail";
+    status: "started" | "completed" | "failed";
+    itemCount?: number;
+    complete?: boolean;
+    termination?: string;
+    durationMs?: number;
+    errorCode?: string;
+} | {
+    kind: "decision";
+    seq: number;
+    at: string;
+    decisionId: string;
+    status: "started" | "completed" | "failed";
+    reasonCode: string;
+    taskId?: string;
+} | {
+    kind: "reconciliation";
+    seq: number;
+    at: string;
+    taskId: string;
+    status: string;
+} | {
+    kind: "reconciliation_disposition";
+    seq: number;
+    at: string;
+    dispositionId: string;
+    status: string;
+} | {
+    kind: "steering";
+    seq: number;
+    at: string;
+    revision: number;
+    status: string;
+} | {
+    kind: "budget";
+    seq: number;
+    at: string;
+    metric: "capability_calls" | "tokens" | "bytes" | "duration_ms" | "cost_micros";
+    consumed: number;
+    maximum: number;
+} | {
+    kind: "evidence";
+    seq: number;
+    at: string;
+    evidenceId: string;
+} | {
+    kind: "warning";
+    seq: number;
+    at: string;
+    code: string;
+} | {
+    kind: "recovery";
+    seq: number;
+    at: string;
+    checkpointRef: string;
+} | {
+    kind: "artifact";
+    seq: number;
+    at: string;
+    path: typeof RESEARCH_REPORT_ARTIFACT_PATH_V1;
+};
+
 // export: ResearchFindingV1
 export interface ResearchFindingV1 {
     id: string;
@@ -3589,6 +4386,11 @@ export interface ResearchLimitsV1 {
     maxRunMs: number;
 }
 
+// export: ResearchOneShotEventV1
+export type ResearchOneShotEventV1 = Extract<ResearchEventV1, {
+    kind: "phase" | "progress" | "subagent" | "capability" | "decision" | "artifact";
+}>;
+
 // export: ResearchPort
 export interface ResearchPort {
     hasApiKey(): Promise<boolean>;
@@ -3624,9 +4426,11 @@ export interface ResearchProviderPage<T> {
 
 // export: ResearchPtcDiagnosticV1
 export interface ResearchPtcDiagnosticV1 {
+    callId: string;
     tool: ResearchToolId;
     inputKind: "search" | "continuation" | "detail";
-    outcome: "success" | "error";
+    outcome: "started" | "success" | "error";
+    durationMs?: number;
     itemCount?: number;
     complete?: boolean;
     termination?: string;
@@ -3638,6 +4442,7 @@ export interface ResearchPtcDiagnosticV1 {
 // export: ResearchPtcToolOptions
 export interface ResearchPtcToolOptions {
     onDiagnostic?: (diagnostic: ResearchPtcDiagnosticV1) => void;
+    now?: () => number;
 }
 
 // export: researchQueryFingerprint
@@ -3673,6 +4478,9 @@ export interface ResearchReadProviders {
 
 // export: ResearchReconciliationPolicyV1
 export type ResearchReconciliationPolicyV1 = "off" | "auto" | "required";
+
+// export: researchRecursionLimitV1
+export declare function researchRecursionLimitV1(graph?: ResearchGraphV1): number;
 
 // export: ResearchReferenceResolveIntentV1
 export interface ResearchReferenceResolveIntentV1 {
@@ -3711,6 +4519,7 @@ export interface ResearchRequestV1 {
     scope: ResearchScopeV1;
     limits: ResearchLimitsV1;
     wikiProvider: ResearchProvider;
+    scopeSeeds?: ResearchScopeSeedV1[];
 }
 
 // export: ResearchRunBudget
@@ -3741,6 +4550,7 @@ export interface ResearchRunCountsV1 {
 export interface ResearchRunOptions {
     signal?: AbortSignal;
     onProgress?: (progress: ResearchProgressV1) => void;
+    onEvent?: (event: ResearchOneShotEventV1) => void;
 }
 
 // export: ResearchRunSummaryV1
@@ -3763,7 +4573,7 @@ export interface ResearchRunUsageV1 {
 }
 
 // export: ResearchScopeAuthorityV1
-export type ResearchScopeAuthorityV1 = "candidate" | "resolved" | "approved" | "locked";
+export type ResearchScopeAuthorityV1 = (typeof RESEARCH_SCOPE_AUTHORITIES_V1)[number];
 
 // export: ResearchScopeBindingV1
 export interface ResearchScopeBindingV1 {
@@ -3926,7 +4736,7 @@ export interface ResearchScopeSeedV1 {
 }
 
 // export: ResearchScopeSourceV1
-export type ResearchScopeSourceV1 = "cli_flag" | "ui_added" | "natural_language" | "current_context" | "profile_default" | "global_default" | "exact_link" | "research_discovery";
+export type ResearchScopeSourceV1 = (typeof RESEARCH_SCOPE_SOURCES_V1)[number];
 
 // export: ResearchScopeV1
 export interface ResearchScopeV1 {
@@ -3979,9 +4789,11 @@ export interface ResearchSourceReferenceV1 {
 
 // export: ResearchSubagentDiagnosticV1
 export interface ResearchSubagentDiagnosticV1 {
+    taskId: string;
     role: ResearchGraphRoleV1;
-    status: "started" | "completed" | "failed" | "coalesced";
+    status: "started" | "repairing" | "completed" | "failed" | "coalesced";
     uniqueTask: boolean;
+    attempt?: number;
     durationMs?: number;
     errorCode?: string;
     errorMessage?: string;
@@ -4065,6 +4877,7 @@ export interface RunResearchAgentInput {
     runId?: string;
     now?: () => number;
     options?: ResearchRunOptions;
+    workspace?: ResearchWorkspace;
     researchGraph?: ResearchGraphV1;
     onPtcDiagnostic?: (diagnostic: ResearchPtcDiagnosticV1) => void;
     onSubagentDiagnostic?: (diagnostic: ResearchSubagentDiagnosticV1) => void;
@@ -4223,14 +5036,52 @@ export declare function normalizeResearchLimitsV1(value: unknown): ResearchLimit
 // export: normalizeResearchRequestV1
 export declare function normalizeResearchRequestV1(value: unknown): ResearchRequestV1;
 
+// export: normalizeResearchScopeSeedsV1
+export declare function normalizeResearchScopeSeedsV1(value: unknown, scope: ResearchScopeV1): ResearchScopeSeedV1[] | undefined;
+
 // export: normalizeResearchScopeV1
 export declare function normalizeResearchScopeV1(value: unknown): ResearchScopeV1;
+
+// export: RESEARCH_REPORT_ARTIFACT_PATH_V1
+export declare const RESEARCH_REPORT_ARTIFACT_PATH_V1: "/artifacts/report.md";
 
 // export: RESEARCH_REPORT_SCHEMA_V1
 export declare const RESEARCH_REPORT_SCHEMA_V1: "atlcli.research-report/v1";
 
 // export: RESEARCH_REQUEST_SCHEMA_V1
 export declare const RESEARCH_REQUEST_SCHEMA_V1: "atlcli.research-request/v1";
+
+// export: RESEARCH_SCOPE_AUTHORITIES_V1
+export declare const RESEARCH_SCOPE_AUTHORITIES_V1: readonly [
+    "candidate",
+    "resolved",
+    "approved",
+    "locked"
+];
+
+// export: RESEARCH_SCOPE_SOURCE_PRECEDENCE_V1
+export declare const RESEARCH_SCOPE_SOURCE_PRECEDENCE_V1: {
+    readonly cli_flag: 500;
+    readonly ui_added: 500;
+    readonly natural_language: 400;
+    readonly current_context: 300;
+    readonly profile_default: 200;
+    readonly global_default: 100;
+    readonly exact_link: 50;
+    readonly research_discovery: 0;
+};
+
+// export: RESEARCH_SCOPE_SOURCES_V1
+export declare const RESEARCH_SCOPE_SOURCES_V1: readonly [
+    "cli_flag",
+    "ui_added",
+    "natural_language",
+    "current_context",
+    "profile_default",
+    "global_default",
+    "exact_link",
+    "research_discovery"
+];
 
 // export: RESEARCH_TOOL_IDS
 export declare const RESEARCH_TOOL_IDS: readonly [
@@ -4248,6 +5099,146 @@ export declare class ResearchContractError extends Error {
 
 // export: ResearchErrorCode
 export type ResearchErrorCode = "invalid-request" | "missing-key" | "invalid-key" | "not-atlassian" | "not-authenticated" | "access-denied" | "rate-limited" | "provider-error" | "limit-exceeded" | "cancelled" | "invalid-report" | "unknown";
+
+// export: ResearchEventV1
+export type ResearchEventV1 = {
+    kind: "state";
+    seq: number;
+    at: string;
+    from: string;
+    to: string;
+} | {
+    kind: "phase";
+    seq: number;
+    at: string;
+    phase: string;
+} | {
+    kind: "progress";
+    seq: number;
+    at: string;
+    graphRevision: number;
+    completed: number;
+    maximum: number;
+} | {
+    kind: "brief";
+    seq: number;
+    at: string;
+    revision: number;
+} | {
+    kind: "clarification";
+    seq: number;
+    at: string;
+    briefRevision: number;
+    status: string;
+} | {
+    kind: "scope";
+    seq: number;
+    at: string;
+    briefRevision: number;
+    proposalId?: string;
+    status: string;
+} | {
+    kind: "plan";
+    seq: number;
+    at: string;
+    revision: number;
+    status: string;
+} | {
+    kind: "plan_diff";
+    seq: number;
+    at: string;
+    from: number;
+    to: number;
+} | {
+    kind: "control";
+    seq: number;
+    at: string;
+    action: string;
+    status: string;
+    revision: number;
+} | {
+    kind: "task";
+    seq: number;
+    at: string;
+    taskId: string;
+    status: string;
+} | {
+    kind: "subagent";
+    seq: number;
+    at: string;
+    taskId: string;
+    roleId: string;
+    status: string;
+    attempt?: number;
+    durationMs?: number;
+    errorCode?: string;
+} | {
+    kind: "capability";
+    seq: number;
+    at: string;
+    callId: string;
+    toolId: ResearchToolId;
+    inputKind: "search" | "continuation" | "detail";
+    status: "started" | "completed" | "failed";
+    itemCount?: number;
+    complete?: boolean;
+    termination?: string;
+    durationMs?: number;
+    errorCode?: string;
+} | {
+    kind: "decision";
+    seq: number;
+    at: string;
+    decisionId: string;
+    status: "started" | "completed" | "failed";
+    reasonCode: string;
+    taskId?: string;
+} | {
+    kind: "reconciliation";
+    seq: number;
+    at: string;
+    taskId: string;
+    status: string;
+} | {
+    kind: "reconciliation_disposition";
+    seq: number;
+    at: string;
+    dispositionId: string;
+    status: string;
+} | {
+    kind: "steering";
+    seq: number;
+    at: string;
+    revision: number;
+    status: string;
+} | {
+    kind: "budget";
+    seq: number;
+    at: string;
+    metric: "capability_calls" | "tokens" | "bytes" | "duration_ms" | "cost_micros";
+    consumed: number;
+    maximum: number;
+} | {
+    kind: "evidence";
+    seq: number;
+    at: string;
+    evidenceId: string;
+} | {
+    kind: "warning";
+    seq: number;
+    at: string;
+    code: string;
+} | {
+    kind: "recovery";
+    seq: number;
+    at: string;
+    checkpointRef: string;
+} | {
+    kind: "artifact";
+    seq: number;
+    at: string;
+    path: typeof RESEARCH_REPORT_ARTIFACT_PATH_V1;
+};
 
 // export: ResearchFindingV1
 export interface ResearchFindingV1 {
@@ -4278,6 +5269,11 @@ export interface ResearchLimitsV1 {
     maxReportChars: number;
     maxRunMs: number;
 }
+
+// export: ResearchOneShotEventV1
+export type ResearchOneShotEventV1 = Extract<ResearchEventV1, {
+    kind: "phase" | "progress" | "subagent" | "capability" | "decision" | "artifact";
+}>;
 
 // export: ResearchPort
 export interface ResearchPort {
@@ -4328,6 +5324,7 @@ export interface ResearchRequestV1 {
     scope: ResearchScopeV1;
     limits: ResearchLimitsV1;
     wikiProvider: ResearchProvider;
+    scopeSeeds?: ResearchScopeSeedV1[];
 }
 
 // export: ResearchRunCountsV1
@@ -4342,6 +5339,7 @@ export interface ResearchRunCountsV1 {
 export interface ResearchRunOptions {
     signal?: AbortSignal;
     onProgress?: (progress: ResearchProgressV1) => void;
+    onEvent?: (event: ResearchOneShotEventV1) => void;
 }
 
 // export: ResearchRunSummaryV1
@@ -4362,6 +5360,37 @@ export interface ResearchRunUsageV1 {
     inputTokens?: number;
     outputTokens?: number;
 }
+
+// export: ResearchScopeAuthorityV1
+export type ResearchScopeAuthorityV1 = (typeof RESEARCH_SCOPE_AUTHORITIES_V1)[number];
+
+// export: ResearchScopeBindingV1
+export interface ResearchScopeBindingV1 {
+    id: string;
+    tenantOrigin: string;
+    product: ResearchProduct;
+    entityKind: ResearchScopeEntityKindV1;
+    entityRef: string;
+    key?: string;
+    name: string;
+    source: ResearchScopeSourceV1;
+    authority: ResearchScopeAuthorityV1;
+    mentionId?: string;
+    candidateId?: string;
+    approvedAt?: string;
+}
+
+// export: ResearchScopeEntityKindV1
+export type ResearchScopeEntityKindV1 = "project" | "space" | "issue" | "page";
+
+// export: ResearchScopeSeedV1
+export interface ResearchScopeSeedV1 {
+    binding: ResearchScopeBindingV1;
+    precedence: number;
+}
+
+// export: ResearchScopeSourceV1
+export type ResearchScopeSourceV1 = (typeof RESEARCH_SCOPE_SOURCES_V1)[number];
 
 // export: ResearchScopeV1
 export interface ResearchScopeV1 {
@@ -4513,7 +5542,7 @@ export interface BoundedContentProjectionV1 {
 export declare function buildDynamicSupervisorPrompt(graph: ResearchGraphV1): string;
 
 // export: buildResearchAcquisitionProgram
-export declare function buildResearchAcquisitionProgram(node: ResearchGraphNodeV1, question: string): string;
+export declare function buildResearchAcquisitionProgram(node: ResearchGraphNodeV1, question: string, maxDetailItems: number): string;
 
 // export: buildResearchCql
 export declare function buildResearchCql(scope: ResearchScopeV1, query: ResearchSearchQueryV1): string;
@@ -4549,6 +5578,7 @@ export interface ContentProjectionLimits {
 export declare function createBoundedResearchSubagentMiddleware(model: BaseChatModel, subagents: SubAgent[], runtime: ResearchSubagentRuntimeBindings, options?: {
     now?: () => number;
     onDiagnostic?: (diagnostic: ResearchSubagentDiagnosticV1) => void;
+    onFatal?: (error: unknown) => void;
     structuredOutputStrategy?: "tool" | "provider";
 }): {
     name: string;
@@ -4599,6 +5629,15 @@ export declare function createResearchDispatchInterceptionAdapter(options: {
     invokeUpstream(input: ResearchTaskToolInputV1, config: RunnableConfig): Promise<unknown>;
     onDiagnostic?: (diagnostic: ResearchDispatchDiagnosticV1) => void;
 }): ResearchDispatchInterceptionAdapter;
+
+// export: createResearchKeyScopeSeedV1
+export declare function createResearchKeyScopeSeedV1(input: {
+    tenantOrigin: string;
+    product: "jira" | "confluence";
+    key: string;
+    source: ResearchScopeSourceV1;
+    authority: "approved" | "locked";
+}): ResearchScopeSeedV1;
 
 // export: createResearchPtcTools
 export declare function createResearchPtcTools(broker: ResearchCapabilityBroker, options?: ResearchPtcToolOptions): DynamicStructuredTool[];
@@ -4652,8 +5691,11 @@ export interface DynamicResearchSubagentOptions {
     maxInterpreterMs: number;
     maxInterpreterMemoryBytes: number;
     maxPtcCalls: number;
+    maxSearchPagesPerProduct: number;
+    maxDetailItemsPerProduct: number;
     maxPacketChars: number;
     onPtcDiagnostic?: (diagnostic: ResearchPtcDiagnosticV1) => void;
+    now?: () => number;
 }
 
 // export: encodeResearchTaskDescriptionV1
@@ -4672,6 +5714,7 @@ export declare class FileSystemResearchWorkspace implements ResearchWorkspace {
     static createTemporary(prefix?: string): Promise<FileSystemResearchWorkspace>;
     private resolveVirtual;
     private assertNoSymlink;
+    private ensureDirectory;
     readFile(path: string): Promise<string | undefined>;
     writeFile(path: string, contents: string): Promise<void>;
     remove(path: string): Promise<void>;
@@ -4719,11 +5762,17 @@ export declare function normalizeResearchRequestV1(value: unknown): ResearchRequ
 // export: normalizeResearchScopeMentionText
 export declare function normalizeResearchScopeMentionText(value: string): string;
 
+// export: normalizeResearchScopeSeedsV1
+export declare function normalizeResearchScopeSeedsV1(value: unknown, scope: ResearchScopeV1): ResearchScopeSeedV1[] | undefined;
+
 // export: normalizeResearchScopeV1
 export declare function normalizeResearchScopeV1(value: unknown): ResearchScopeV1;
 
 // export: normalizeResearchWorkspacePath
 export declare function normalizeResearchWorkspacePath(value: string): string;
+
+// export: parseResearchAgentDraftV1
+export declare function parseResearchAgentDraftV1(input: unknown): ResearchAgentDraftV1;
 
 // export: parseResearchQueryFingerprint
 export declare function parseResearchQueryFingerprint(value: string): {
@@ -4846,11 +5895,25 @@ export declare const RESEARCH_LANGCHAIN_TOOL_NAMES: Record<ResearchToolId, strin
 // export: RESEARCH_MODEL_ID
 export declare const RESEARCH_MODEL_ID: "claude-sonnet-4-6";
 
+// export: RESEARCH_ONE_SHOT_REQUEST_PATH_V1
+export declare const RESEARCH_ONE_SHOT_REQUEST_PATH_V1: "/session/request.json";
+
+// export: RESEARCH_REPORT_ARTIFACT_PATH_V1
+export declare const RESEARCH_REPORT_ARTIFACT_PATH_V1: "/artifacts/report.md";
+
 // export: RESEARCH_REPORT_SCHEMA_V1
 export declare const RESEARCH_REPORT_SCHEMA_V1: "atlcli.research-report/v1";
 
 // export: RESEARCH_REQUEST_SCHEMA_V1
 export declare const RESEARCH_REQUEST_SCHEMA_V1: "atlcli.research-request/v1";
+
+// export: RESEARCH_SCOPE_AUTHORITIES_V1
+export declare const RESEARCH_SCOPE_AUTHORITIES_V1: readonly [
+    "candidate",
+    "resolved",
+    "approved",
+    "locked"
+];
 
 // export: RESEARCH_SCOPE_CATALOG_CAPABILITY_IDS
 export declare const RESEARCH_SCOPE_CATALOG_CAPABILITY_IDS: readonly [
@@ -4881,6 +5944,30 @@ export declare const RESEARCH_SCOPE_CATALOG_TOOL_NAMES: {
     readonly "wiki.space.search": "wiki_space_search";
     readonly "atlassian.reference.resolve": "atlassian_reference_resolve";
 };
+
+// export: RESEARCH_SCOPE_SOURCE_PRECEDENCE_V1
+export declare const RESEARCH_SCOPE_SOURCE_PRECEDENCE_V1: {
+    readonly cli_flag: 500;
+    readonly ui_added: 500;
+    readonly natural_language: 400;
+    readonly current_context: 300;
+    readonly profile_default: 200;
+    readonly global_default: 100;
+    readonly exact_link: 50;
+    readonly research_discovery: 0;
+};
+
+// export: RESEARCH_SCOPE_SOURCES_V1
+export declare const RESEARCH_SCOPE_SOURCES_V1: readonly [
+    "cli_flag",
+    "ui_added",
+    "natural_language",
+    "current_context",
+    "profile_default",
+    "global_default",
+    "exact_link",
+    "research_discovery"
+];
 
 // export: RESEARCH_TASK_DISPATCH_SCHEMA_V1
 export declare const RESEARCH_TASK_DISPATCH_SCHEMA_V1: "atlcli.research-task-dispatch/v1";
@@ -4938,7 +6025,7 @@ export declare class ResearchCapabilityBroker {
     readonly budget: ResearchRunBudget;
     constructor(request: ResearchRequestV1, providers: ResearchReadProviders, options?: BrokerOptions);
     get signal(): AbortSignal;
-    cancel(reason?: DOMException): void;
+    cancel(reason?: unknown): void;
     sourceLedger(): ResearchSourceReferenceV1[];
     detailEvidenceLedger(): ResearchDetailEvidenceV1[];
     completionStatus(): {
@@ -5064,6 +6151,146 @@ export interface ResearchEntityVaultOptions {
 // export: ResearchErrorCode
 export type ResearchErrorCode = "invalid-request" | "missing-key" | "invalid-key" | "not-atlassian" | "not-authenticated" | "access-denied" | "rate-limited" | "provider-error" | "limit-exceeded" | "cancelled" | "invalid-report" | "unknown";
 
+// export: ResearchEventV1
+export type ResearchEventV1 = {
+    kind: "state";
+    seq: number;
+    at: string;
+    from: string;
+    to: string;
+} | {
+    kind: "phase";
+    seq: number;
+    at: string;
+    phase: string;
+} | {
+    kind: "progress";
+    seq: number;
+    at: string;
+    graphRevision: number;
+    completed: number;
+    maximum: number;
+} | {
+    kind: "brief";
+    seq: number;
+    at: string;
+    revision: number;
+} | {
+    kind: "clarification";
+    seq: number;
+    at: string;
+    briefRevision: number;
+    status: string;
+} | {
+    kind: "scope";
+    seq: number;
+    at: string;
+    briefRevision: number;
+    proposalId?: string;
+    status: string;
+} | {
+    kind: "plan";
+    seq: number;
+    at: string;
+    revision: number;
+    status: string;
+} | {
+    kind: "plan_diff";
+    seq: number;
+    at: string;
+    from: number;
+    to: number;
+} | {
+    kind: "control";
+    seq: number;
+    at: string;
+    action: string;
+    status: string;
+    revision: number;
+} | {
+    kind: "task";
+    seq: number;
+    at: string;
+    taskId: string;
+    status: string;
+} | {
+    kind: "subagent";
+    seq: number;
+    at: string;
+    taskId: string;
+    roleId: string;
+    status: string;
+    attempt?: number;
+    durationMs?: number;
+    errorCode?: string;
+} | {
+    kind: "capability";
+    seq: number;
+    at: string;
+    callId: string;
+    toolId: ResearchToolId;
+    inputKind: "search" | "continuation" | "detail";
+    status: "started" | "completed" | "failed";
+    itemCount?: number;
+    complete?: boolean;
+    termination?: string;
+    durationMs?: number;
+    errorCode?: string;
+} | {
+    kind: "decision";
+    seq: number;
+    at: string;
+    decisionId: string;
+    status: "started" | "completed" | "failed";
+    reasonCode: string;
+    taskId?: string;
+} | {
+    kind: "reconciliation";
+    seq: number;
+    at: string;
+    taskId: string;
+    status: string;
+} | {
+    kind: "reconciliation_disposition";
+    seq: number;
+    at: string;
+    dispositionId: string;
+    status: string;
+} | {
+    kind: "steering";
+    seq: number;
+    at: string;
+    revision: number;
+    status: string;
+} | {
+    kind: "budget";
+    seq: number;
+    at: string;
+    metric: "capability_calls" | "tokens" | "bytes" | "duration_ms" | "cost_micros";
+    consumed: number;
+    maximum: number;
+} | {
+    kind: "evidence";
+    seq: number;
+    at: string;
+    evidenceId: string;
+} | {
+    kind: "warning";
+    seq: number;
+    at: string;
+    code: string;
+} | {
+    kind: "recovery";
+    seq: number;
+    at: string;
+    checkpointRef: string;
+} | {
+    kind: "artifact";
+    seq: number;
+    at: string;
+    path: typeof RESEARCH_REPORT_ARTIFACT_PATH_V1;
+};
+
 // export: ResearchFindingV1
 export interface ResearchFindingV1 {
     id: string;
@@ -5143,6 +6370,11 @@ export interface ResearchLimitsV1 {
     maxRunMs: number;
 }
 
+// export: ResearchOneShotEventV1
+export type ResearchOneShotEventV1 = Extract<ResearchEventV1, {
+    kind: "phase" | "progress" | "subagent" | "capability" | "decision" | "artifact";
+}>;
+
 // export: ResearchPort
 export interface ResearchPort {
     hasApiKey(): Promise<boolean>;
@@ -5178,9 +6410,11 @@ export interface ResearchProviderPage<T> {
 
 // export: ResearchPtcDiagnosticV1
 export interface ResearchPtcDiagnosticV1 {
+    callId: string;
     tool: ResearchToolId;
     inputKind: "search" | "continuation" | "detail";
-    outcome: "success" | "error";
+    outcome: "started" | "success" | "error";
+    durationMs?: number;
     itemCount?: number;
     complete?: boolean;
     termination?: string;
@@ -5192,6 +6426,7 @@ export interface ResearchPtcDiagnosticV1 {
 // export: ResearchPtcToolOptions
 export interface ResearchPtcToolOptions {
     onDiagnostic?: (diagnostic: ResearchPtcDiagnosticV1) => void;
+    now?: () => number;
 }
 
 // export: researchQueryFingerprint
@@ -5227,6 +6462,9 @@ export interface ResearchReadProviders {
 
 // export: ResearchReconciliationPolicyV1
 export type ResearchReconciliationPolicyV1 = "off" | "auto" | "required";
+
+// export: researchRecursionLimitV1
+export declare function researchRecursionLimitV1(graph?: ResearchGraphV1): number;
 
 // export: ResearchReferenceResolveIntentV1
 export interface ResearchReferenceResolveIntentV1 {
@@ -5265,6 +6503,7 @@ export interface ResearchRequestV1 {
     scope: ResearchScopeV1;
     limits: ResearchLimitsV1;
     wikiProvider: ResearchProvider;
+    scopeSeeds?: ResearchScopeSeedV1[];
 }
 
 // export: ResearchRunBudget
@@ -5295,6 +6534,7 @@ export interface ResearchRunCountsV1 {
 export interface ResearchRunOptions {
     signal?: AbortSignal;
     onProgress?: (progress: ResearchProgressV1) => void;
+    onEvent?: (event: ResearchOneShotEventV1) => void;
 }
 
 // export: ResearchRunSummaryV1
@@ -5317,7 +6557,7 @@ export interface ResearchRunUsageV1 {
 }
 
 // export: ResearchScopeAuthorityV1
-export type ResearchScopeAuthorityV1 = "candidate" | "resolved" | "approved" | "locked";
+export type ResearchScopeAuthorityV1 = (typeof RESEARCH_SCOPE_AUTHORITIES_V1)[number];
 
 // export: ResearchScopeBindingV1
 export interface ResearchScopeBindingV1 {
@@ -5480,7 +6720,7 @@ export interface ResearchScopeSeedV1 {
 }
 
 // export: ResearchScopeSourceV1
-export type ResearchScopeSourceV1 = "cli_flag" | "ui_added" | "natural_language" | "current_context" | "profile_default" | "global_default" | "exact_link" | "research_discovery";
+export type ResearchScopeSourceV1 = (typeof RESEARCH_SCOPE_SOURCES_V1)[number];
 
 // export: ResearchScopeV1
 export interface ResearchScopeV1 {
@@ -5533,9 +6773,11 @@ export interface ResearchSourceReferenceV1 {
 
 // export: ResearchSubagentDiagnosticV1
 export interface ResearchSubagentDiagnosticV1 {
+    taskId: string;
     role: ResearchGraphRoleV1;
-    status: "started" | "completed" | "failed" | "coalesced";
+    status: "started" | "repairing" | "completed" | "failed" | "coalesced";
     uniqueTask: boolean;
+    attempt?: number;
     durationMs?: number;
     errorCode?: string;
     errorMessage?: string;
@@ -5619,6 +6861,7 @@ export interface RunResearchAgentInput {
     runId?: string;
     now?: () => number;
     options?: ResearchRunOptions;
+    workspace?: ResearchWorkspace;
     researchGraph?: ResearchGraphV1;
     onPtcDiagnostic?: (diagnostic: ResearchPtcDiagnosticV1) => void;
     onSubagentDiagnostic?: (diagnostic: ResearchSubagentDiagnosticV1) => void;
@@ -5780,6 +7023,15 @@ export interface ResearchScopeCatalogProvidersV1 {
 ### Entry point `./scope-discovery`
 
 ```ts
+// export: createResearchKeyScopeSeedV1
+export declare function createResearchKeyScopeSeedV1(input: {
+    tenantOrigin: string;
+    product: "jira" | "confluence";
+    key: string;
+    source: ResearchScopeSourceV1;
+    authority: "approved" | "locked";
+}): ResearchScopeSeedV1;
+
 // export: createResearchScopeBindingV1
 export declare function createResearchScopeBindingV1(input: {
     candidate: ResearchScopeCandidateV1;
@@ -5797,7 +7049,7 @@ export declare function normalizeResearchScopeMentionText(value: string): string
 export declare function projectApprovedWholeScopeV1(bindings: readonly ResearchScopeBindingV1[], base: ResearchScopeV1): ResearchScopeV1;
 
 // export: ResearchScopeAuthorityV1
-export type ResearchScopeAuthorityV1 = "candidate" | "resolved" | "approved" | "locked";
+export type ResearchScopeAuthorityV1 = (typeof RESEARCH_SCOPE_AUTHORITIES_V1)[number];
 
 // export: ResearchScopeBindingV1
 export interface ResearchScopeBindingV1 {
@@ -5878,7 +7130,7 @@ export interface ResearchScopeSeedV1 {
 }
 
 // export: ResearchScopeSourceV1
-export type ResearchScopeSourceV1 = "cli_flag" | "ui_added" | "natural_language" | "current_context" | "profile_default" | "global_default" | "exact_link" | "research_discovery";
+export type ResearchScopeSourceV1 = (typeof RESEARCH_SCOPE_SOURCES_V1)[number];
 
 // export: resolveResearchScopeMentionV1
 export declare function resolveResearchScopeMentionV1(input: ResearchScopeResolutionInputV1): ResearchScopeResolutionV1;

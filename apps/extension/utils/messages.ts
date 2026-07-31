@@ -18,9 +18,14 @@ import {
 } from "@atlcli/code-highlight/registry";
 import type {
   ResearchErrorCode,
+  ResearchOneShotEventV1,
   ResearchProgressV1,
   ResearchReportV1,
   ResearchRequestV1,
+} from "./research/contracts.js";
+import {
+  RESEARCH_REPORT_ARTIFACT_PATH_V1,
+  RESEARCH_TOOL_IDS,
 } from "./research/contracts.js";
 
 /**
@@ -132,6 +137,11 @@ export type ResearchProgressMessage = {
   runId: string;
   progress: ResearchProgressV1;
 };
+export type ResearchEventMessage = {
+  kind: "research:event";
+  runId: string;
+  event: ResearchOneShotEventV1;
+};
 
 /**
  * Internal messages the service worker forwards to the offscreen document.
@@ -183,6 +193,7 @@ export type ExtMessage =
   | EntityChanged
   | ExportJobsChanged
   | ResearchProgressMessage
+  | ResearchEventMessage
   | OffscreenRequest
   | OffscreenResponse;
 
@@ -278,6 +289,89 @@ export function isResearchProgress(
     ["preparing", "researching", "rendering", "complete"].includes(
       String(candidate.progress.phase)
     );
+}
+
+export function isResearchEvent(
+  value: unknown,
+  runId?: string,
+): value is ResearchEventMessage {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as {
+    kind?: unknown;
+    runId?: unknown;
+    event?: { kind?: unknown; seq?: unknown; at?: unknown };
+  };
+  if (!(candidate.kind === "research:event" &&
+    hasOnlyKeys(value, ["kind", "runId", "event"]) &&
+    isResearchRunId(candidate.runId) &&
+    (runId === undefined || candidate.runId === runId) &&
+    typeof candidate.event === "object" &&
+    candidate.event !== null &&
+    Number.isSafeInteger(candidate.event.seq) &&
+    Number(candidate.event.seq) > 0 &&
+    typeof candidate.event.at === "string" &&
+    candidate.event.at.length <= 64 &&
+    Number.isFinite(Date.parse(candidate.event.at)))) return false;
+
+  const event = candidate.event as Record<string, unknown>;
+  if (event.kind === "phase") {
+    return hasOnlyKeys(event, ["kind", "seq", "at", "phase"]) &&
+      typeof event.phase === "string" &&
+      event.phase.length > 0 &&
+      event.phase.length <= 64;
+  }
+  if (event.kind === "progress") {
+    return hasOnlyKeys(event, ["kind", "seq", "at", "graphRevision", "completed", "maximum"]) &&
+      Number.isSafeInteger(event.graphRevision) && Number(event.graphRevision) > 0 &&
+      Number.isSafeInteger(event.completed) && Number(event.completed) >= 0 &&
+      Number.isSafeInteger(event.maximum) && Number(event.maximum) >= Number(event.completed);
+  }
+  const boundedToken = (entry: unknown, maximum = 160): entry is string =>
+    typeof entry === "string" &&
+    entry.length > 0 &&
+    entry.length <= maximum &&
+    /^[A-Za-z0-9._:-]+$/.test(entry);
+  const optionalNonNegativeInteger = (entry: unknown): boolean =>
+    entry === undefined || (Number.isSafeInteger(entry) && Number(entry) >= 0);
+  if (event.kind === "capability") {
+    return hasOnlyKeys(event, [
+      "kind", "seq", "at", "callId", "toolId", "inputKind", "status",
+      "itemCount", "complete", "termination", "durationMs", "errorCode",
+    ]) &&
+      boundedToken(event.callId) &&
+      RESEARCH_TOOL_IDS.includes(event.toolId as (typeof RESEARCH_TOOL_IDS)[number]) &&
+      ["search", "continuation", "detail"].includes(String(event.inputKind)) &&
+      ["started", "completed", "failed"].includes(String(event.status)) &&
+      optionalNonNegativeInteger(event.itemCount) &&
+      (event.complete === undefined || typeof event.complete === "boolean") &&
+      (event.termination === undefined || boundedToken(event.termination)) &&
+      optionalNonNegativeInteger(event.durationMs) &&
+      (event.errorCode === undefined || boundedToken(event.errorCode));
+  }
+  if (event.kind === "subagent") {
+    return hasOnlyKeys(event, [
+      "kind", "seq", "at", "taskId", "roleId", "status", "attempt",
+      "durationMs", "errorCode",
+    ]) &&
+      boundedToken(event.taskId) &&
+      boundedToken(event.roleId) &&
+      ["started", "repairing", "completed", "failed", "coalesced"].includes(String(event.status)) &&
+      (event.attempt === undefined || (Number.isSafeInteger(event.attempt) && Number(event.attempt) > 0)) &&
+      optionalNonNegativeInteger(event.durationMs) &&
+      (event.errorCode === undefined || boundedToken(event.errorCode));
+  }
+  if (event.kind === "decision") {
+    return hasOnlyKeys(event, [
+      "kind", "seq", "at", "decisionId", "status", "reasonCode", "taskId",
+    ]) &&
+      boundedToken(event.decisionId) &&
+      ["started", "completed", "failed"].includes(String(event.status)) &&
+      boundedToken(event.reasonCode) &&
+      (event.taskId === undefined || boundedToken(event.taskId));
+  }
+  return event.kind === "artifact" &&
+    hasOnlyKeys(event, ["kind", "seq", "at", "path"]) &&
+    event.path === RESEARCH_REPORT_ARTIFACT_PATH_V1;
 }
 
 /** Narrow a broadcast push to the Chrome window owned by one side panel. */

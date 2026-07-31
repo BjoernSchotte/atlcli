@@ -9,8 +9,11 @@ import {
   RESEARCH_REQUEST_SCHEMA_V1,
   ResearchContractError,
   normalizeResearchRequestV1,
+  type ResearchOneShotEventV1,
   type ResearchReportV1,
+  type ResearchScopeSeedV1,
 } from "../../utils/research/contracts.js";
+import { createResearchKeyScopeSeedV1 } from "@atlcli/research/scope-discovery";
 import { useT } from "../../utils/i18n/context.js";
 import { Alert, AlertTitle } from "../ui/alert.js";
 import { Button } from "../ui/button.js";
@@ -25,45 +28,132 @@ import {
 import { cn } from "../ui/utils.js";
 
 export const RESEARCH_SCREEN_ID = "research";
+const MAX_RESEARCH_ACTIVITY_EVENTS = 100;
+
+export function formatResearchActivityEvent(event: ResearchOneShotEventV1): string {
+  switch (event.kind) {
+    case "phase":
+      return `phase · ${event.phase}`;
+    case "progress":
+      return `budget · ${event.completed}/${event.maximum} calls`;
+    case "capability":
+      return [
+        `tool · ${event.toolId}`,
+        event.inputKind,
+        event.status,
+        event.itemCount === undefined ? "" : `${event.itemCount} items`,
+        event.termination ?? "",
+        event.durationMs === undefined ? "" : `${event.durationMs} ms`,
+        event.errorCode ?? "",
+      ].filter(Boolean).join(" · ");
+    case "subagent":
+      return [
+        `agent · ${event.roleId}`,
+        event.status,
+        event.attempt === undefined ? "" : `attempt ${event.attempt}`,
+        event.durationMs === undefined ? "" : `${event.durationMs} ms`,
+        event.errorCode ?? "",
+      ].filter(Boolean).join(" · ");
+    case "decision":
+      return `decision · ${event.reasonCode} · ${event.status}`;
+    case "artifact":
+      return `artifact · ${event.path}`;
+  }
+}
 
 export function inferResearchScope(input: {
+  siteOrigin: string;
   question: string;
   jiraProjects: string;
   confluenceSpaces: string;
   activeSpaceKey?: string;
-}): { jiraProjectKeys: string[]; confluenceSpaceKeys: string[] } {
+  activeProjectKey?: string;
+}): {
+  jiraProjectKeys: string[];
+  confluenceSpaceKeys: string[];
+  scopeSeeds: ResearchScopeSeedV1[];
+} {
   const values = (value: string): string[] =>
     [...new Set(value.split(/[\s,;]+/).map((entry) => entry.trim()).filter(Boolean))];
-  let jiraProjectKeys = values(input.jiraProjects).map((key) => key.toUpperCase());
-  let confluenceSpaceKeys = values(input.confluenceSpaces);
-  if (jiraProjectKeys.length === 0) {
-    jiraProjectKeys = [
+  const manualProjects = values(input.jiraProjects).map((key) => key.toUpperCase());
+  const manualSpaces = values(input.confluenceSpaces);
+  let questionProjects: string[] = [];
+  let questionSpaces: string[] = [];
+  if (manualProjects.length === 0) {
+    questionProjects = [
       ...new Set(
         [...input.question.matchAll(/\b([A-Z][A-Z0-9]{1,19})-\d+\b/g)].map(
           (match) => match[1]!
         )
       ),
     ];
-    if (jiraProjectKeys.length === 0) {
+    if (questionProjects.length === 0) {
       const named = input.question.match(
         /jira[-\s]*(?:projekt|project)(?:key)?\s*[:=]?\s*([A-Z][A-Z0-9]{1,19})/i
       );
-      if (named?.[1]) jiraProjectKeys = [named[1].toUpperCase()];
+      if (named?.[1]) questionProjects = [named[1].toUpperCase()];
     }
   }
-  if (confluenceSpaceKeys.length === 0) {
+  if (manualSpaces.length === 0) {
     const named = input.question.match(
       /(?:confluence[-\s]*)?space(?:key)?\s*[:=]?\s*([A-Za-z0-9~][A-Za-z0-9._~-]{0,254})/i
     );
-    if (named?.[1]) confluenceSpaceKeys = [named[1]];
-    else if (input.activeSpaceKey) confluenceSpaceKeys = [input.activeSpaceKey];
+    if (named?.[1]) questionSpaces = [named[1]];
   }
-  return { jiraProjectKeys, confluenceSpaceKeys };
+  const currentProjects = input.activeProjectKey ? [input.activeProjectKey.toUpperCase()] : [];
+  const currentSpaces = input.activeSpaceKey ? [input.activeSpaceKey] : [];
+  const jiraProjectKeys = manualProjects.length > 0
+    ? manualProjects
+    : questionProjects.length > 0
+      ? questionProjects
+      : currentProjects;
+  const confluenceSpaceKeys = manualSpaces.length > 0
+    ? manualSpaces
+    : questionSpaces.length > 0
+      ? questionSpaces
+      : currentSpaces;
+  const seeds = (
+    product: "jira" | "confluence",
+    manual: string[],
+    natural: string[],
+    current: string[],
+  ): ResearchScopeSeedV1[] => [
+    ...manual.map((key) => createResearchKeyScopeSeedV1({
+      tenantOrigin: input.siteOrigin,
+      product,
+      key,
+      source: "ui_added",
+      authority: "locked",
+    })),
+    ...natural.map((key) => createResearchKeyScopeSeedV1({
+      tenantOrigin: input.siteOrigin,
+      product,
+      key,
+      source: "natural_language",
+      authority: "approved",
+    })),
+    ...current.map((key) => createResearchKeyScopeSeedV1({
+      tenantOrigin: input.siteOrigin,
+      product,
+      key,
+      source: "current_context",
+      authority: "approved",
+    })),
+  ];
+  return {
+    jiraProjectKeys,
+    confluenceSpaceKeys,
+    scopeSeeds: [
+      ...seeds("jira", manualProjects, questionProjects, currentProjects),
+      ...seeds("confluence", manualSpaces, questionSpaces, currentSpaces),
+    ],
+  };
 }
 
 function currentSite(page: ScreenProps["page"]): {
   origin: string;
   activeSpaceKey?: string;
+  activeProjectKey?: string;
 } | null {
   const url =
     page.status === "loaded" || page.status === "loading" || page.status === "error"
@@ -74,19 +164,21 @@ function currentSite(page: ScreenProps["page"]): {
   if (!url) return null;
   try {
     const parsed = new URL(url);
-    const activeSpaceKey =
-      page.status === "loaded"
+    const entity = page.status === "unsupported"
+      ? page.entity
+      : page.status === "loading" || page.status === "loaded" || page.status === "error"
+        ? page.ref.entity
+        : undefined;
+    const activeSpaceKey = entity?.product === "confluence" && "spaceKey" in entity
+      ? entity.spaceKey
+      : page.status === "loaded"
         ? page.page.details.spaceKey
-        : page.status !== "idle" &&
-            page.status !== "loading" &&
-            page.status !== "error" &&
-            page.entity.product === "confluence" &&
-            "spaceKey" in page.entity
-          ? String(page.entity.spaceKey)
-          : undefined;
+        : undefined;
+    const activeProjectKey = entity?.product === "jira" ? entity.projectKey : undefined;
     return {
       origin: parsed.origin,
       ...(activeSpaceKey ? { activeSpaceKey } : {}),
+      ...(activeProjectKey ? { activeProjectKey } : {}),
     };
   } catch {
     return null;
@@ -189,11 +281,13 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
   const [question, setQuestion] = useState("");
   const [jiraProjects, setJiraProjects] = useState("");
   const [confluenceSpaces, setConfluenceSpaces] = useState("");
+  const [includeCurrentContext, setIncludeCurrentContext] = useState(true);
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [disclosed, setDisclosed] = useState(false);
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState("");
+  const [activity, setActivity] = useState<ResearchOneShotEventV1[]>([]);
   const [report, setReport] = useState<ResearchReportV1 | null>(null);
   const [raw, setRaw] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -210,12 +304,6 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
       abortRef.current?.abort();
     };
   }, [port]);
-
-  useEffect(() => {
-    if (!confluenceSpaces && site?.activeSpaceKey) {
-      setConfluenceSpaces(site.activeSpaceKey);
-    }
-  }, [confluenceSpaces, site?.activeSpaceKey]);
 
   if (!port) return <Alert tone="muted">{t("screen.unmet.capability.research")}</Alert>;
 
@@ -235,10 +323,12 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
         throw new ResearchContractError("missing-key", t("research.key.missing"));
       }
       const scope = inferResearchScope({
+        siteOrigin: site.origin,
         question,
         jiraProjects,
         confluenceSpaces,
-        activeSpaceKey: site.activeSpaceKey,
+        activeSpaceKey: includeCurrentContext ? site.activeSpaceKey : undefined,
+        activeProjectKey: includeCurrentContext ? site.activeProjectKey : undefined,
       });
       const request = normalizeResearchRequestV1({
         schema: RESEARCH_REQUEST_SCHEMA_V1,
@@ -252,6 +342,7 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
             ...(to ? { to } : {}),
           },
         },
+        scopeSeeds: scope.scopeSeeds,
         limits: DEFAULT_RESEARCH_LIMITS_V1,
         wikiProvider: "rest",
       });
@@ -259,10 +350,14 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
       abortRef.current = controller;
       setRunning(true);
       setProgress(t("research.running"));
+      setActivity([]);
       setReport(null);
       const result = await port!.run(request, {
         signal: controller.signal,
         onProgress: (value) => setProgress(value.message),
+        onEvent: (event) => setActivity((current) =>
+          [...current, event].slice(-MAX_RESEARCH_ACTIVITY_EVENTS)
+        ),
       });
       setReport(result);
       setProgress("");
@@ -340,6 +435,17 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
             </div>
           </div>
           <FieldHelp>{t("research.keys.help")}</FieldHelp>
+          {(site?.activeProjectKey || site?.activeSpaceKey) && (
+            <CheckboxField
+              checked={includeCurrentContext}
+              onChange={(event) => setIncludeCurrentContext(event.target.checked)}
+              disabled={running}
+              label={t("research.currentContext", {
+                context: site.activeProjectKey ?? site.activeSpaceKey ?? "",
+              })}
+              data-testid="research-current-context"
+            />
+          )}
           <div className="grid grid-cols-2 gap-2">
             <div className="flex flex-col gap-1">
               <Label htmlFor="research-from">{t("research.from")}</Label>
@@ -380,6 +486,18 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
             </Button>
           </div>
           {progress && <p role="status" className="m-0 text-xs text-muted-foreground">{progress}</p>}
+          {activity.length > 0 && (
+            <section aria-live="polite" data-testid="research-activity">
+              <p className="m-0 mt-2 text-xs font-medium">{t("research.activity")}</p>
+              <ol className="m-0 mt-1 max-h-64 space-y-1 overflow-auto pl-5 text-xs text-muted-foreground">
+                {activity.map((event) => (
+                  <li key={event.seq} data-event-kind={event.kind}>
+                    <code>{formatResearchActivityEvent(event)}</code>
+                  </li>
+                ))}
+              </ol>
+            </section>
+          )}
         </CardContent>
       </Card>
 

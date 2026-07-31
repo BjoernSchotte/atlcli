@@ -1,5 +1,6 @@
 import type {
   ResearchErrorCode,
+  ResearchOneShotEventV1,
   ResearchProgressV1,
   ResearchReportV1,
   ResearchRequestV1,
@@ -13,6 +14,11 @@ export type ResearchWorkerRequestV1 = {
 };
 
 export type ResearchWorkerResponseV1 =
+  | {
+      kind: "research-worker:event";
+      runId: string;
+      event: ResearchOneShotEventV1;
+    }
   | {
       kind: "research-worker:progress";
       runId: string;

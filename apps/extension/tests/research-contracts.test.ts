@@ -7,6 +7,7 @@ import {
   normalizeResearchRequestV1,
 } from "../utils/research/contracts.js";
 import { ResearchCursorVault } from "@atlcli/research";
+import { createResearchKeyScopeSeedV1 } from "@atlcli/research/scope-discovery";
 
 describe("issue-138 research request contract", () => {
   it("normalizes one bounded Jira + Confluence request", () => {
@@ -78,6 +79,53 @@ describe("issue-138 research request contract", () => {
         },
       })
     ).toThrow("start date");
+  });
+
+  it("preserves ordered scope provenance and rejects a projection mismatch", () => {
+    const origin = "https://example.atlassian.net";
+    const seeds = [
+      createResearchKeyScopeSeedV1({
+        tenantOrigin: origin,
+        product: "jira",
+        key: "DEMO",
+        source: "cli_flag",
+        authority: "locked",
+      }),
+      createResearchKeyScopeSeedV1({
+        tenantOrigin: origin,
+        product: "jira",
+        key: "OLD",
+        source: "profile_default",
+        authority: "approved",
+      }),
+      createResearchKeyScopeSeedV1({
+        tenantOrigin: origin,
+        product: "confluence",
+        key: "KB",
+        source: "current_context",
+        authority: "approved",
+      }),
+    ];
+    const input = {
+      question: "Find the relevant work",
+      scope: {
+        siteOrigin: origin,
+        jiraProjectKeys: ["DEMO"],
+        confluenceSpaceKeys: ["KB"],
+      },
+      scopeSeeds: seeds,
+      limits: {},
+      wikiProvider: "rest",
+    };
+    expect(normalizeResearchRequestV1(input).scopeSeeds).toEqual(seeds);
+    expect(() => normalizeResearchRequestV1({
+      ...input,
+      scope: { ...input.scope, jiraProjectKeys: ["OLD"] },
+    })).toThrow("highest-precedence scope seeds");
+    expect(() => normalizeResearchRequestV1({
+      ...input,
+      scopeSeeds: [{ ...seeds[0], precedence: 1 }, ...seeds.slice(1)],
+    })).toThrow("precedence");
   });
 
   it("clamps every public resource budget", () => {

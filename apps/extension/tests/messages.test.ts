@@ -5,6 +5,7 @@ import {
   isExtRequest,
   isExportJobsChanged,
   isOffscreenRequest,
+  isResearchEvent,
 } from "../utils/messages.js";
 
 describe("message guards", () => {
@@ -100,6 +101,140 @@ describe("message guards", () => {
       unexpected: true,
     })).toBe(false);
     expect(isExportJobsChanged({ kind: "ping" })).toBe(false);
+  });
+
+  it("accepts only complete body-free one-shot research events", () => {
+    const base = {
+      kind: "research:event",
+      runId: "run-1",
+    };
+    expect(isResearchEvent({
+      ...base,
+      event: {
+        kind: "phase",
+        seq: 1,
+        at: "2026-07-31T12:00:00.000Z",
+        phase: "researching",
+      },
+    }, "run-1")).toBe(true);
+    expect(isResearchEvent({
+      ...base,
+      event: {
+        kind: "progress",
+        seq: 2,
+        at: "2026-07-31T12:00:00.000Z",
+        graphRevision: 1,
+        completed: 3,
+        maximum: 8,
+      },
+    })).toBe(true);
+    expect(isResearchEvent({
+      ...base,
+      event: {
+        kind: "capability",
+        seq: 3,
+        at: "2026-07-31T12:00:00.000Z",
+        callId: "wiki.search:1",
+        toolId: "wiki.search",
+        inputKind: "search",
+        status: "completed",
+        itemCount: 10,
+        durationMs: 42,
+      },
+    })).toBe(true);
+    expect(isResearchEvent({
+      ...base,
+      event: {
+        kind: "subagent",
+        seq: 4,
+        at: "2026-07-31T12:00:00.000Z",
+        taskId: "research-task:1",
+        roleId: "wiki-retrieval",
+        status: "completed",
+        durationMs: 84,
+      },
+    })).toBe(true);
+    expect(isResearchEvent({
+      ...base,
+      event: {
+        kind: "decision",
+        seq: 5,
+        at: "2026-07-31T12:00:00.000Z",
+        decisionId: "deterministic-evidence-validation",
+        status: "started",
+        reasonCode: "validate-before-render",
+      },
+    })).toBe(true);
+    expect(isResearchEvent({
+      ...base,
+      event: {
+        kind: "artifact",
+        seq: 6,
+        at: "2026-07-31T12:00:00.000Z",
+        path: "/artifacts/report.md",
+      },
+    })).toBe(true);
+    expect(isResearchEvent({
+      ...base,
+      event: {
+        kind: "phase",
+        seq: 1,
+        at: "2026-07-31T12:00:00.000Z",
+        phase: "researching",
+        sourceBody: "must not cross the event bus",
+      },
+    })).toBe(false);
+    expect(isResearchEvent({
+      ...base,
+      event: {
+        kind: "progress",
+        seq: 2,
+        at: "2026-07-31T12:00:00.000Z",
+        graphRevision: 1,
+        completed: 9,
+        maximum: 8,
+      },
+    })).toBe(false);
+    expect(isResearchEvent({
+      ...base,
+      event: {
+        kind: "capability",
+        seq: 3,
+        at: "2026-07-31T12:00:00.000Z",
+        callId: "wiki.search:1",
+        toolId: "wiki.search",
+        inputKind: "search",
+        status: "completed",
+        sourceBody: "must not cross the event bus",
+      },
+    })).toBe(false);
+    expect(isResearchEvent({
+      ...base,
+      event: {
+        kind: "artifact",
+        seq: 3,
+        at: "invalid",
+        path: "/workspace/private.md",
+      },
+    })).toBe(false);
+    expect(isResearchEvent({
+      ...base,
+      event: {
+        kind: "phase",
+        seq: 1,
+        at: "2026-07-31T12:00:00.000Z",
+      },
+    })).toBe(false);
+    expect(isResearchEvent({
+      ...base,
+      unexpected: true,
+      event: {
+        kind: "phase",
+        seq: 1,
+        at: "2026-07-31T12:00:00.000Z",
+        phase: "researching",
+      },
+    })).toBe(false);
   });
 
   it("isOffscreenRequest accepts offscreen-bound requests only", () => {

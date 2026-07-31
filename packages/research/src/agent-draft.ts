@@ -414,6 +414,15 @@ function clampProviderDraft(input: unknown): unknown {
   };
 }
 
+/**
+ * Apply provider-bound normalization and then the authoritative host schema at
+ * every synthesizer boundary. The provider receives a deliberately narrower
+ * JSON Schema, so its result is not trusted until this parser succeeds.
+ */
+export function parseResearchAgentDraftV1(input: unknown): ResearchAgentDraftV1 {
+  return RESEARCH_AGENT_DRAFT_SCHEMA_V1.parse(clampProviderDraft(input));
+}
+
 export function finalizeResearchAgentDraftV1(input: {
   draft: unknown;
   request: ResearchRequestV1;
@@ -421,7 +430,7 @@ export function finalizeResearchAgentDraftV1(input: {
   detailEvidence: readonly ResearchDetailEvidenceV1[];
   run: ResearchRunSummaryV1;
 }): ResearchReportV1 {
-  const draft = RESEARCH_AGENT_DRAFT_SCHEMA_V1.parse(clampProviderDraft(input.draft));
+  const draft = parseResearchAgentDraftV1(input.draft);
   const sources = input.sources.map((source) => ({ ...source }));
   const sourcesById = new Map(sources.map((source) => [source.id, source]));
   const evidenceBoundary = evidenceQualityBoundary(input.detailEvidence, input.run);

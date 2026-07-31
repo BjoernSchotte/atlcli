@@ -162,4 +162,18 @@ describe("research report validation and Markdown projection", () => {
     expect(finalized.markdown).not.toContain("<img");
     expect(finalized.markdown).toBe(finalizeResearchReportV1(report()).markdown);
   });
+
+  it("does not relink issue keys inside canonical URLs", () => {
+    const input = report();
+    input.findings[0] = {
+      ...input.findings[0]!,
+      detail: "Issue DEMO-138 is available at https://example.atlassian.net/browse/DEMO-138.",
+    };
+
+    const markdown = finalizeResearchReportV1(input).markdown;
+    expect(markdown).toContain(
+      "Issue [DEMO-138](https://example.atlassian.net/browse/DEMO-138) is available at https://example.atlassian.net/browse/DEMO-138."
+    );
+    expect(markdown).not.toContain("browse/[DEMO-138]");
+  });
 });

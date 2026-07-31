@@ -24,13 +24,16 @@
     "@atlcli/pdf-compiler-browser": "workspace:*",
     "@atlcli/plugin-api": "workspace:*",
     "@atlcli/research": "workspace:*",
+    "@jitl/quickjs-ng-wasmfile-release-asyncify": "0.32.0",
     "@myriaddreamin/typst-ts-web-compiler": "0.7.0",
     "@resvg/resvg-wasm": "2.6.2"
   },
   "scripts": {
     "start": "bun run src/index.ts",
     "build": "bun run build.ts",
-    "build:minify": "bun run build.ts --minify"
+    "build:minify": "bun run build.ts --minify",
+    "research:e2e:source": "bun --env-file=../../.env --conditions=development src/e2e/research-live.ts --mode source",
+    "research:e2e:built": "bun --env-file=../../.env --conditions=development src/e2e/research-live.ts --mode built"
   },
   "devDependencies": {
     "@atlcli/export-fixtures": "workspace:*",
