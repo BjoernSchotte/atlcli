@@ -1,14 +1,9 @@
 /**
  * Browser-safe entrypoint for `@atlcli/research`.
  *
- * Only JSON-safe, host-neutral research and capability contracts belong in
- * this graph. Hosts provide credentials, persistence, Atlassian transport,
- * model access, and sandbox execution through later adapters.
+ * This entrypoint adds only browser-safe REST adapters. The model runtime is
+ * isolated behind `@atlcli/research/browser/agent`.
  */
-export * from "./contracts.js";
-export * from "./capability-contracts.js";
-export * from "./scope-discovery.js";
-export * from "./scope-catalog.js";
-export * from "./scope-catalog-broker.js";
-export * from "./workspace.js";
-export * from "./graph.js";
+export * from "./index.js";
+export * from "./rest-provider.js";
+export * from "./scope-catalog-provider.js";

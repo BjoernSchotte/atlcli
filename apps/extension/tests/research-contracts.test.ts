@@ -6,7 +6,7 @@ import {
   normalizeResearchLimitsV1,
   normalizeResearchRequestV1,
 } from "../utils/research/contracts.js";
-import { ResearchCursorVault } from "../utils/research/cursor-vault.js";
+import { ResearchCursorVault } from "@atlcli/research";
 
 describe("issue-138 research request contract", () => {
   it("normalizes one bounded Jira + Confluence request", () => {

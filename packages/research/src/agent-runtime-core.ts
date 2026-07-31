@@ -1,10 +1,5 @@
 import { ChatAnthropic } from "@langchain/anthropic";
 import { createCodeInterpreterMiddleware } from "@langchain/quickjs";
-import {
-  StateBackend,
-  createDeepAgent,
-  registerHarnessProfile,
-} from "deepagents/browser";
 import { createMiddleware, providerStrategy, toolStrategy } from "langchain";
 import type { AIMessage } from "@langchain/core/messages";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
@@ -44,9 +39,12 @@ import {
 export const RESEARCH_MODEL_ID = "claude-sonnet-4-6" as const;
 const MODEL_SPEC = `anthropic:${RESEARCH_MODEL_ID}` as const;
 
-registerHarnessProfile(MODEL_SPEC, {
-  generalPurposeSubagent: { enabled: false },
-});
+export interface ResearchAgentRuntimeBindings {
+  StateBackend: typeof import("deepagents/browser").StateBackend;
+  createDeepAgent: typeof import("deepagents/browser").createDeepAgent;
+  createSubAgentMiddleware: typeof import("deepagents/browser").createSubAgentMiddleware;
+  registerHarnessProfile: typeof import("deepagents/browser").registerHarnessProfile;
+}
 
 const SYSTEM_PROMPT = `You are a read-only Jira and Confluence research agent.
 
@@ -213,8 +211,9 @@ export interface RunResearchAgentInput {
   onSubagentDiagnostic?: (diagnostic: ResearchSubagentDiagnosticV1) => void;
 }
 
-export async function runResearchAgent(
-  input: RunResearchAgentInput
+async function runResearchAgentWithBindings(
+  input: RunResearchAgentInput,
+  runtime: ResearchAgentRuntimeBindings,
 ): Promise<ResearchReportV1> {
   if (!input.model && !input.researchGraph) {
     throw new ResearchContractError(
@@ -263,7 +262,7 @@ export async function runResearchAgent(
     : [];
   const isDynamic = input.researchGraph !== undefined;
   const boundedSubagentMiddleware = isDynamic
-    ? createBoundedResearchSubagentMiddleware(model, dynamicSubagents, {
+    ? createBoundedResearchSubagentMiddleware(model, dynamicSubagents, runtime, {
         structuredOutputStrategy: input.model ? "tool" : "provider",
         ...(input.onSubagentDiagnostic
           ? { onDiagnostic: input.onSubagentDiagnostic }
@@ -271,12 +270,12 @@ export async function runResearchAgent(
       })
     : undefined;
   let structuredRepairAttempts = 0;
-  const agent = createDeepAgent({
+  const agent = runtime.createDeepAgent({
     name: isDynamic
       ? "atlcli-read-only-research-supervisor"
       : "atlcli-read-only-research",
     model,
-    backend: new StateBackend(),
+    backend: new runtime.StateBackend(),
     tools: [],
     subagents: [],
     systemPrompt: isDynamic
@@ -400,4 +399,17 @@ export async function runResearchAgent(
     input.options?.signal?.removeEventListener("abort", onAbort);
     broker.cancel();
   }
+}
+
+export function createResearchAgentRuntime(
+  runtime: ResearchAgentRuntimeBindings,
+): {
+  runResearchAgent(input: RunResearchAgentInput): Promise<ResearchReportV1>;
+} {
+  runtime.registerHarnessProfile(MODEL_SPEC, {
+    generalPurposeSubagent: { enabled: false },
+  });
+  return {
+    runResearchAgent: (input) => runResearchAgentWithBindings(input, runtime),
+  };
 }

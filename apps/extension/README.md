@@ -83,8 +83,10 @@ offscreen document appears in the card's inspect list while a WASM job is active
 
 The Research spike creates one cited Markdown report from bounded, read-only
 Jira and Confluence searches. It uses `claude-sonnet-4-6` through
-DeepAgentsJS, while `@langchain/quickjs` can call only four host capabilities:
-Jira search/detail and Confluence search/detail.
+DeepAgentsJS. The central supervisor composes a question-specific workflow
+from a bounded declarative subagent catalog; retrieval subagents can call only
+the granted Jira search/detail and Confluence search/detail capabilities
+through `@langchain/quickjs`.
 
 1. Open a Jira or Confluence page on the Atlassian Cloud site you want to
    research, then open the extension side panel.
@@ -100,10 +102,12 @@ Jira search/detail and Confluence search/detail.
    result.
 
 The key and Atlassian session never enter QuickJS. QuickJS has no `fetch`,
-Chrome, filesystem, shell, raw JQL/CQL/GraphQL, write tools, subagents, or
-persistent memory. Search cursors and detail references are opaque,
-run-scoped host values. Jira/Confluence content selected for the report is sent
-to Anthropic only after the disclosure is confirmed.
+Chrome, filesystem, shell, raw JQL/CQL/GraphQL, write tools, or persistent
+memory. The supervisor sandbox can dispatch only the declared bounded task
+roles; retrieval sandboxes receive only their allowlisted read capabilities.
+Search cursors and detail references are opaque, run-scoped host values.
+Jira/Confluence content selected for the report is sent to Anthropic only after
+the disclosure is confirmed.
 
 The report contract is structured data with a deterministic Markdown
 projection. Markdown is the portable hand-off for a later DOCX/PDF adapter;

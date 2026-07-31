@@ -9,14 +9,14 @@ import {
   type ResearchBriefV1,
   type ResearchGraphV1,
 } from "@atlcli/research/graph";
-import { ResearchCapabilityBroker } from "../utils/research/broker.js";
+import { ResearchCapabilityBroker } from "@atlcli/research";
 import {
   RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1,
-} from "../utils/research/agent-draft.js";
+} from "@atlcli/research";
 import {
   buildDynamicSupervisorPrompt,
   runResearchAgent,
-} from "../utils/research/agent-runtime.js";
+} from "@atlcli/research/browser/agent";
 import {
   RESEARCH_ANALYSIS_PACKET_SCHEMA_V1,
   RESEARCH_CRITIQUE_SCHEMA_V1,
@@ -25,7 +25,7 @@ import {
   compileDynamicResearchSubagents,
   providerCompatibleResearchSchema,
   responseSchemaForResearchRole,
-} from "../utils/research/dynamic-subagents.js";
+} from "@atlcli/research/browser/agent";
 import {
   DEFAULT_RESEARCH_LIMITS_V1,
   RESEARCH_REQUEST_SCHEMA_V1,

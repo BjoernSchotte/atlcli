@@ -24,7 +24,7 @@ import type {
 } from "./research/contracts.js";
 import { routeMessage, type RouterDeps } from "./router.js";
 import { runWasmAdd } from "./wasm-smoke.js";
-import { classifyResearchError } from "./research/redaction.js";
+import { classifyResearchError } from "@atlcli/research";
 
 /** Effects the offscreen listener depends on (injectable for tests). */
 export interface OffscreenListenerDeps {

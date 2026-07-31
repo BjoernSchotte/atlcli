@@ -12,12 +12,12 @@ import {
 import {
   ResearchCapabilityBroker,
   type ResearchReadProviders,
-} from "../utils/research/broker.js";
+} from "@atlcli/research";
 import {
   buildResearchCql,
   buildResearchJql,
   jiraResearchTextTerms,
-} from "../utils/research/query.js";
+} from "@atlcli/research";
 
 function request(
   limits: Record<string, number> = {}

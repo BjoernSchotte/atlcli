@@ -19,6 +19,7 @@ import {
 import {
   decodeResearchSearchInputV1 as decodeFromExtension,
 } from "../../../apps/extension/utils/research/capability-contracts.js";
+import { runResearchAgent as runNodeResearchAgent } from "@atlcli/research/node";
 
 describe("@atlcli/research import boundaries", () => {
   it("keeps default, browser, and legacy extension imports behavior-identical", () => {
@@ -31,13 +32,13 @@ describe("@atlcli/research import boundaries", () => {
     expect(decodeFromDefault).toBe(decodeFromExtension);
   });
 
-  it("passes the repository browser graph gate as a standalone entrypoint", () => {
+  it("loads the host-neutral root with no browser or Node host graph", () => {
     const result = spawnSync(
       process.execPath,
       [
         "scripts/check-browser-build.ts",
         "--json",
-        "packages/research/src/index.browser.ts",
+        "packages/research/src/index.ts",
       ],
       {
         cwd: `${import.meta.dir}/../../..`,
@@ -58,5 +59,31 @@ describe("@atlcli/research import boundaries", () => {
         hostGraphViolations: [],
       }),
     ]);
+  });
+
+  it("constructs the synthetic Node runtime directly from the node entrypoint", async () => {
+    await expect(runNodeResearchAgent({
+      apiKey: "synthetic-test-key",
+      request: normalizeFromDefault({
+        schema: "atlcli.research-request/v1",
+        question: "Summarize the synthetic Jira and Confluence evidence.",
+        scope: {
+          siteOrigin: "https://synthetic.atlassian.net",
+          jiraProjectKeys: ["DEMO"],
+          confluenceSpaceKeys: ["KB"],
+        },
+        wikiProvider: "rest",
+      }),
+      providers: {
+        jira: {
+          async searchPage() { return { items: [] }; },
+          async getIssue() { throw new Error("not reached"); },
+        },
+        wiki: {
+          async searchPage() { return { items: [] }; },
+          async getPage() { throw new Error("not reached"); },
+        },
+      },
+    })).rejects.toThrow("validated research graph");
   });
 });

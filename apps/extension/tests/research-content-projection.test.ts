@@ -4,7 +4,7 @@ import {
   projectJiraDescription,
   prependBoundedDetailText,
   type ContentProjectionLimits,
-} from "../utils/research/content-projection.js";
+} from "@atlcli/research";
 
 const limits: ContentProjectionLimits = {
   maxTextChars: 1_000,

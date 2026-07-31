@@ -19,7 +19,7 @@ import type {
   ResearchReportV1,
   ResearchRequestV1,
 } from "./research/contracts.js";
-import { classifyResearchError } from "./research/redaction.js";
+import { classifyResearchError } from "@atlcli/research";
 
 /** Injected side effects the router needs to fulfil requests. */
 export interface RouterDeps {

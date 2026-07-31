@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { ResearchScopeCatalogBroker } from "@atlcli/research/scope-catalog-broker";
-import { createResearchScopeCatalogPtcTools, RESEARCH_SCOPE_CATALOG_TOOL_NAMES } from "../utils/research/scope-catalog-tools.js";
+import { createResearchScopeCatalogPtcTools, RESEARCH_SCOPE_CATALOG_TOOL_NAMES } from "@atlcli/research/browser/agent";
 
 const tenantOrigin = "https://tenant-a.atlassian.net";
 

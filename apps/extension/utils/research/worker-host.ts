@@ -4,7 +4,7 @@ import {
   type ResearchReportV1,
   type ResearchRequestV1,
 } from "./contracts.js";
-import { classifyResearchError } from "./redaction.js";
+import { classifyResearchError } from "@atlcli/research";
 import type {
   ResearchWorkerRequestV1,
   ResearchWorkerResponseV1,

@@ -6,7 +6,7 @@ import {
 import {
   assertResearchReportV1,
   finalizeResearchReportV1,
-} from "../utils/research/report.js";
+} from "@atlcli/research";
 
 function report(): Omit<ResearchReportV1, "markdown"> {
   return {

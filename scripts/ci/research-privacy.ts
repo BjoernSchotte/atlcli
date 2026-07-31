@@ -109,24 +109,37 @@ async function trackedFiles(repoRoot: string): Promise<ResearchPrivacyFile[]> {
   }
   const files: ResearchPrivacyFile[] = [];
   for (const path of result.stdout.toString().split("\0").filter(Boolean)) {
-    const absolute = resolve(repoRoot, path);
-    const info = await lstat(absolute);
-    if (info.isSymbolicLink()) {
-      files.push({ path, content: await readlink(absolute) });
-      continue;
-    }
-    const bytes = await readFile(absolute);
-    const lowercasePath = path.toLocaleLowerCase("en-US");
-    const binary =
-      [...binaryExtensions].some((extension) => lowercasePath.endsWith(extension)) ||
-      bytes.subarray(0, Math.min(bytes.byteLength, 8_192)).includes(0);
-    files.push({
-      path,
-      content: binary ? "" : new TextDecoder().decode(bytes),
-      ...(binary ? { binary: true } : {}),
-    });
+    const file = await readTrackedResearchPrivacyFile(repoRoot, path);
+    if (file) files.push(file);
   }
   return files;
+}
+
+export async function readTrackedResearchPrivacyFile(
+  repoRoot: string,
+  path: string,
+): Promise<ResearchPrivacyFile | undefined> {
+  const absolute = resolve(repoRoot, path);
+  let info: Awaited<ReturnType<typeof lstat>>;
+  try {
+    info = await lstat(absolute);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    throw error;
+  }
+  if (info.isSymbolicLink()) {
+    return { path, content: await readlink(absolute) };
+  }
+  const bytes = await readFile(absolute);
+  const lowercasePath = path.toLocaleLowerCase("en-US");
+  const binary =
+    [...binaryExtensions].some((extension) => lowercasePath.endsWith(extension)) ||
+    bytes.subarray(0, Math.min(bytes.byteLength, 8_192)).includes(0);
+  return {
+    path,
+    content: binary ? "" : new TextDecoder().decode(bytes),
+    ...(binary ? { binary: true } : {}),
+  };
 }
 
 async function main(): Promise<void> {

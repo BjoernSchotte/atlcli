@@ -1,7 +1,23 @@
 /**
  * Default entrypoint for `@atlcli/research`.
  *
- * The first extraction slice is intentionally identical to the browser
- * surface. Host-specific adapters will live behind explicit subpaths.
+ * This surface contains only host-neutral contracts and deterministic logic.
+ * Runtime construction lives behind the explicit browser and node entrypoints.
  */
-export * from "./index.browser.js";
+export * from "./contracts.js";
+export * from "./capability-contracts.js";
+export * from "./scope-discovery.js";
+export * from "./scope-catalog.js";
+export * from "./scope-catalog-broker.js";
+export * from "./workspace.js";
+export * from "./graph.js";
+export * from "./budget.js";
+export * from "./redaction.js";
+export * from "./query.js";
+export * from "./content-projection.js";
+export * from "./cursor-vault.js";
+export * from "./entity-vault.js";
+export * from "./broker.js";
+export * from "./report.js";
+export * from "./agent-draft.js";
+export * from "./dispatch-adapter.js";

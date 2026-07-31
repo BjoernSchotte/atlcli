@@ -2315,47 +2315,56 @@ Gate:
 
 Shared:
 
-- [ ] Create `packages/research/package.json`, build config, browser-safe export
+- [x] Create `packages/research/package.json`, build config, browser-safe export
       map, and public API report.
-- [ ] Move pure contracts, validation, budgets, redaction, query compilation,
+- [x] Move pure contracts, validation, budgets, redaction, query compilation,
       report finalization, Markdown rendering, the existing V1 capability
       broker logic, and deterministic testing helpers out of
       `apps/extension/utils/research/`. Do not pre-design the T3 graph, task, or
       packet domain during this behavior-preserving extraction.
-- [ ] Preserve the existing Jira project-list and Confluence space-list public
+- [x] Preserve the existing Jira project-list and Confluence space-list public
       behavior while introducing only the normalized provider-port seam proven
       in T0. Do not expose it to the agent before the T3 contracts exist.
-- [ ] Preserve every V1 schema string and serialized output.
-- [ ] Split shared agent configuration from environment-specific
+- [x] Preserve every V1 schema string and serialized output.
+- [x] Split shared agent configuration from environment-specific
       `deepagents` versus `deepagents/browser` construction.
-- [ ] Move the DeepAgents, LangChain, Anthropic, and QuickJS dependencies to the
+- [x] Move the DeepAgents, LangChain, Anthropic, and QuickJS dependencies to the
       package that owns their imports. Avoid duplicate versions across CLI and
       extension.
-- [ ] Replace the deprecated backend factory form with injected backend
+- [x] Replace the deprecated backend factory form with injected backend
       instances.
-- [ ] Add import-boundary tests proving the root package loads with no DOM,
+- [x] Add import-boundary tests proving the root package loads with no DOM,
       Chrome, Node filesystem, or Bun globals.
 
 CLI:
 
-- [ ] Add a Node/Bun import smoke that creates the synthetic runtime directly
+- [x] Add a Node/Bun import smoke that creates the synthetic runtime directly
       from `@atlcli/research/node`.
 
 Extension/browser:
 
-- [ ] Switch existing research imports to `@atlcli/research` and
+- [x] Switch existing research imports to `@atlcli/research` and
       `@atlcli/research/browser`.
-- [ ] Preserve the current sidebar behavior, session-only key, worker protocol,
+- [x] Preserve the current sidebar behavior, session-only key, worker protocol,
       and Markdown bytes.
 
 Gate:
 
-- [ ] All existing research unit and packed extension tests pass unchanged or
+- [x] All existing research unit and packed extension tests pass unchanged or
       with import-only updates.
-- [ ] `bun run typecheck` passes.
-- [ ] `bun run build` passes.
-- [ ] `bun run check:browser` passes.
-- [ ] The extension production output contains no Node builtin import.
+- [x] `bun run typecheck` passes.
+- [x] `bun run build` passes.
+- [x] `bun run check:browser` passes.
+- [x] The extension production output contains no Node builtin import.
+
+**T1 evidence (2026-07-31):** `@atlcli/research` now owns the shared V1
+contracts and deterministic runtime; `/browser` is a model-free browser-safe
+REST surface, `/browser/agent` constructs `deepagents/browser`, and `/node`
+constructs `deepagents/node` plus the filesystem workspace. The existing V1
+compatibility fixtures remained byte-stable. The focused research suite passed
+147 tests, the packed MV3 suite passed 2 tests, the monorepo build and
+typecheck passed, all 29 browser entrypoints passed the isomorphism gate, and
+the built extension output passed its Node/CSP check.
 
 ### T2 — Deliver the equal CLI one-shot host
 

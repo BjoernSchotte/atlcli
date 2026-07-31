@@ -8,7 +8,7 @@ import {
   type ResearchReportV1,
 } from "../utils/research/contracts.js";
 import { RESEARCH_CAPABILITY_SCHEMAS } from "../utils/research/capability-contracts.js";
-import { finalizeResearchReportV1 } from "../utils/research/report.js";
+import { finalizeResearchReportV1 } from "@atlcli/research";
 import type { ResearchWorkerResponseV1 } from "../utils/research/worker-protocol.js";
 
 const EXPECTED_ERROR_CODES = [

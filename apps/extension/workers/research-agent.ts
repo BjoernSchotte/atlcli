@@ -1,12 +1,12 @@
 import type { Profile } from "@atlcli/core";
 import {
+  ResearchRunBudget,
+  classifyResearchError,
+  createRestResearchProviders,
   normalizeResearchRequestV1,
   type ResearchProgressV1,
-} from "../utils/research/contracts.js";
-import { ResearchRunBudget } from "../utils/research/budget.js";
-import { createRestResearchProviders } from "../utils/research/rest-provider.js";
-import { runResearchAgent } from "../utils/research/agent-runtime.js";
-import { classifyResearchError } from "../utils/research/redaction.js";
+} from "@atlcli/research/browser";
+import { runResearchAgent } from "@atlcli/research/browser/agent";
 import { composeStandardResearchGraphV1 } from "@atlcli/research/graph";
 import type {
   ResearchWorkerRequestV1,

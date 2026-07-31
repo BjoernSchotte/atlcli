@@ -14,7 +14,7 @@ import {
   ResearchDispatchError,
   createResearchDispatchInterceptionAdapter,
   encodeResearchTaskDescriptionV1,
-} from "../../utils/research/dispatch-adapter.js";
+} from "@atlcli/research";
 import { characterizeProductionResponseSchemas } from "./production-response-schema-characterization.js";
 import type { ProductionResponseSchemaCharacterization } from "./production-response-schema-characterization.js";
 import { createDeterministicResearchModelScriptV1 } from "./deterministic-model-script.js";

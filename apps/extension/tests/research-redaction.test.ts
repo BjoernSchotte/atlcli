@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import {
   classifyResearchError,
   redactResearchSecrets,
-} from "../utils/research/redaction.js";
+} from "@atlcli/research";
 
 describe("research error redaction", () => {
   it("removes Anthropic-shaped keys and authorization headers", () => {

@@ -6,8 +6,8 @@ import {
   type ResearchRunSummaryV1,
   type ResearchSourceReferenceV1,
 } from "../utils/research/contracts.js";
-import { finalizeResearchAgentDraftV1 } from "../utils/research/agent-draft.js";
-import type { ResearchDetailEvidenceV1 } from "../utils/research/broker.js";
+import { finalizeResearchAgentDraftV1 } from "@atlcli/research";
+import type { ResearchDetailEvidenceV1 } from "@atlcli/research";
 
 const request = normalizeResearchRequestV1({
   schema: RESEARCH_REQUEST_SCHEMA_V1,

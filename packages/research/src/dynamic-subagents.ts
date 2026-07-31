@@ -1,10 +1,7 @@
 import { createCodeInterpreterMiddleware } from "@langchain/quickjs";
 import type { BaseChatModel } from "@langchain/core/language_models/chat_models";
 import { tool, type DynamicStructuredTool } from "@langchain/core/tools";
-import {
-  createSubAgentMiddleware,
-  type SubAgent,
-} from "deepagents/browser";
+import type { SubAgent } from "deepagents/browser";
 import { providerStrategy } from "langchain";
 import { z } from "zod/v4";
 import type {
@@ -353,6 +350,10 @@ export interface DynamicResearchSubagentOptions {
   onPtcDiagnostic?: (diagnostic: ResearchPtcDiagnosticV1) => void;
 }
 
+export interface ResearchSubagentRuntimeBindings {
+  createSubAgentMiddleware: typeof import("deepagents/browser").createSubAgentMiddleware;
+}
+
 /**
  * Build the declarative role catalog supplied to one `createDeepAgent` run.
  * The supervisor dynamically decides how many instances to dispatch and how
@@ -403,13 +404,14 @@ export function compileDynamicResearchSubagents(
 export function createBoundedResearchSubagentMiddleware(
   model: BaseChatModel,
   subagents: SubAgent[],
+  runtime: ResearchSubagentRuntimeBindings,
   options: {
     now?: () => number;
     onDiagnostic?: (diagnostic: ResearchSubagentDiagnosticV1) => void;
     structuredOutputStrategy?: "tool" | "provider";
   } = {},
 ) {
-  const upstream = createSubAgentMiddleware({
+  const upstream = runtime.createSubAgentMiddleware({
     defaultModel: model,
     defaultTools: [],
     subagents,

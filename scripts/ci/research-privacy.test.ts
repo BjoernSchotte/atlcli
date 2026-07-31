@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   findResearchPrivacyViolations,
+  readTrackedResearchPrivacyFile,
   type ResearchPrivacyFile,
 } from "./research-privacy.js";
 
@@ -58,5 +59,12 @@ describe("research privacy gate", () => {
   test("does not interpret compressed binary bytes as text", () => {
     const coincidentalBytes = ["R", "CM"].join("");
     expect(scan({ path: "image.png", content: coincidentalBytes, binary: true })).toEqual([]);
+  });
+
+  test("skips a tracked path deleted in the working tree", async () => {
+    await expect(readTrackedResearchPrivacyFile(
+      "/tmp/atlcli-research-privacy-missing-root",
+      "deleted-tracked-file.ts",
+    )).resolves.toBeUndefined();
   });
 });

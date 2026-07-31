@@ -20,11 +20,11 @@ import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1 } from "../../../utils/research/agent-draft.js";
+import { RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1 } from "@atlcli/research";
 import {
   RESEARCH_CRITIQUE_SCHEMA_V1,
   RESEARCH_WORKER_PACKET_SCHEMA_V1,
-} from "../../../utils/research/dynamic-subagents.js";
+} from "@atlcli/research/browser/agent";
 
 const EXTENSION_ROOT = fileURLToPath(new URL("../../..", import.meta.url));
 const OUTPUT_DIR = join(EXTENSION_ROOT, ".output", "chrome-mv3");

@@ -1,16 +1,12 @@
 import {
   DEFAULT_RESEARCH_LIMITS_V1,
+  RESEARCH_MODEL_ID,
   RESEARCH_REQUEST_SCHEMA_V1,
   normalizeResearchRequestV1,
-} from "../utils/research/contracts.js";
-import type {
-  ResearchProviderPage,
-  ResearchReadProviders,
-} from "../utils/research/broker.js";
-import {
-  RESEARCH_MODEL_ID,
   runResearchAgent,
-} from "../utils/research/agent-runtime.js";
+  type ResearchProviderPage,
+  type ResearchReadProviders,
+} from "@atlcli/research/node";
 import { composeStandardResearchGraphV1 } from "@atlcli/research/graph";
 
 const SITE_ORIGIN = "https://synthetic.atlassian.net";

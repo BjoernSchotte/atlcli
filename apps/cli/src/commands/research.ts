@@ -17,18 +17,14 @@ import {
 import type { Profile } from "@atlcli/core";
 import {
   DEFAULT_RESEARCH_LIMITS_V1,
-  RESEARCH_REQUEST_SCHEMA_V1,
-  normalizeResearchRequestV1,
-  type ResearchRequestV1,
-} from "../../../extension/utils/research/contracts.js";
-import { ResearchRunBudget } from "../../../extension/utils/research/budget.js";
-import { createRestResearchProviders } from "../../../extension/utils/research/rest-provider.js";
-import {
-  RESEARCH_MODEL_ID,
-  runResearchAgent,
-} from "../../../extension/utils/research/agent-runtime.js";
-import {
   FileSystemResearchWorkspace,
+  RESEARCH_MODEL_ID,
+  RESEARCH_REQUEST_SCHEMA_V1,
+  ResearchRunBudget,
+  createRestResearchProviders,
+  normalizeResearchRequestV1,
+  runResearchAgent,
+  type ResearchRequestV1,
   type ResearchWorkspace,
 } from "@atlcli/research/node";
 import { composeStandardResearchGraphV1 } from "@atlcli/research/graph";

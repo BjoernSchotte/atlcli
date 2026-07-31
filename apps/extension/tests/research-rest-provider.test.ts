@@ -5,8 +5,8 @@ import {
   RESEARCH_REQUEST_SCHEMA_V1,
   normalizeResearchRequestV1,
 } from "../utils/research/contracts.js";
-import { ResearchRunBudget } from "../utils/research/budget.js";
-import { createRestResearchProviders } from "../utils/research/rest-provider.js";
+import { ResearchRunBudget } from "@atlcli/research";
+import { createRestResearchProviders } from "@atlcli/research/browser";
 
 const request = normalizeResearchRequestV1({
   schema: RESEARCH_REQUEST_SCHEMA_V1,

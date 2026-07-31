@@ -7,6 +7,9 @@
 ### Entry point `. (browser)`
 
 ```ts
+// export: assertResearchReportV1
+export declare function assertResearchReportV1(value: unknown): asserts value is ResearchReportV1;
+
 // export: AtlassianRelationshipV1
 export interface AtlassianRelationshipV1 {
     id: string;
@@ -25,11 +28,45 @@ export interface BoundedContentProjectionV1 {
     inputBytes: number;
 }
 
+// export: buildResearchCql
+export declare function buildResearchCql(scope: ResearchScopeV1, query: ResearchSearchQueryV1): string;
+
+// export: buildResearchJql
+export declare function buildResearchJql(scope: ResearchScopeV1, query: ResearchSearchQueryV1): string;
+
+// export: classifyResearchError
+export declare function classifyResearchError(value: unknown): {
+    code: ResearchErrorCode;
+    message: string;
+};
+
 // export: composeResearchGraphV1
 export declare function composeResearchGraphV1(brief: ResearchBriefV1, options?: ResearchGraphCompositionOptionsV1): ResearchGraphV1;
 
+// export: composeStandardResearchGraphV1
+export declare function composeStandardResearchGraphV1(question: string): ResearchGraphV1;
+
+// export: ContentProjectionLimits
+export interface ContentProjectionLimits {
+    maxTextChars: number;
+    maxTextBytes: number;
+    maxLinks: number;
+    maxNodes: number;
+    maxDepth: number;
+}
+
 // export: createMemoryResearchWorkspace
 export declare function createMemoryResearchWorkspace(): ResearchWorkspace;
+
+// export: createResearchDispatchInterceptionAdapter
+export declare function createResearchDispatchInterceptionAdapter(options: {
+    admissions: readonly ResearchTaskAdmissionV1[];
+    maxTasks: number;
+    maxConcurrency: number;
+    signal?: AbortSignal;
+    invokeUpstream(input: ResearchTaskToolInputV1, config: RunnableConfig): Promise<unknown>;
+    onDiagnostic?: (diagnostic: ResearchDispatchDiagnosticV1) => void;
+}): ResearchDispatchInterceptionAdapter;
 
 // export: createResearchScopeBindingV1
 export declare function createResearchScopeBindingV1(input: {
@@ -40,6 +77,15 @@ export declare function createResearchScopeBindingV1(input: {
     approvedAt?: string;
     bindingId?: string;
 }): ResearchScopeBindingV1;
+
+// export: createRestResearchBroker
+export declare function createRestResearchBroker(profile: Profile, request: ResearchRequestV1): ResearchCapabilityBroker;
+
+// export: createRestResearchProviders
+export declare function createRestResearchProviders(profile: Profile, request: ResearchRequestV1, budget: ResearchRunBudget, options?: RestResearchProviderOptions): ResearchReadProviders;
+
+// export: createRestScopeCatalogProviders
+export declare function createRestScopeCatalogProviders(profile: Profile, expectedTenantOrigin: string, options?: RestScopeCatalogProviderOptions): ResearchScopeCatalogProvidersV1;
 
 // export: decodeResearchGetInputV1
 export declare function decodeResearchGetInputV1(tool: "jira.issue.get" | "wiki.page.get", value: unknown): ResearchGetInputV1;
@@ -53,8 +99,51 @@ export declare function decodeResearchScopeCatalogIntentV1(capability: "jira.pro
 // export: decodeResearchSearchInputV1
 export declare function decodeResearchSearchInputV1(tool: "jira.issue.search" | "wiki.search", value: unknown, maximumPageSize: number): ResearchSearchInputV1;
 
+// export: DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY
+export declare const DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY = "__deepagents_subagent_response_format";
+
 // export: DEFAULT_RESEARCH_LIMITS_V1
 export declare const DEFAULT_RESEARCH_LIMITS_V1: Readonly<ResearchLimitsV1>;
+
+// export: encodeResearchTaskDescriptionV1
+export declare function encodeResearchTaskDescriptionV1(value: Omit<ResearchTaskDescriptionV1, "schema">): string;
+
+// export: escapeResearchCqlLiteral
+export declare function escapeResearchCqlLiteral(value: string): string;
+
+// export: escapeResearchJqlLiteral
+export declare function escapeResearchJqlLiteral(value: string): string;
+
+// export: finalizeResearchAgentDraftV1
+export declare function finalizeResearchAgentDraftV1(input: {
+    draft: unknown;
+    request: ResearchRequestV1;
+    sources: readonly ResearchSourceReferenceV1[];
+    detailEvidence: readonly ResearchDetailEvidenceV1[];
+    run: ResearchRunSummaryV1;
+}): ResearchReportV1;
+
+// export: finalizeResearchReportV1
+export declare function finalizeResearchReportV1(report: Omit<ResearchReportV1, "markdown"> & {
+    markdown?: string;
+}): ResearchReportV1;
+
+// export: JiraResearchDetail
+export interface JiraResearchDetail extends JiraResearchSummary {
+    content: BoundedContentProjectionV1;
+}
+
+// export: JiraResearchSummary
+export interface JiraResearchSummary {
+    issueKey: string;
+    projectKey: string;
+    title: string;
+    updatedAt?: string;
+    excerpt?: string;
+}
+
+// export: jiraResearchTextTerms
+export declare function jiraResearchTextTerms(value: string): string[];
 
 // export: normalizeResearchLimitsV1
 export declare function normalizeResearchLimitsV1(value: unknown): ResearchLimitsV1;
@@ -71,8 +160,61 @@ export declare function normalizeResearchScopeV1(value: unknown): ResearchScopeV
 // export: normalizeResearchWorkspacePath
 export declare function normalizeResearchWorkspacePath(value: string): string;
 
+// export: parseResearchQueryFingerprint
+export declare function parseResearchQueryFingerprint(value: string): {
+    tool: "jira.issue.search" | "wiki.search";
+    query: ResearchSearchQueryV1;
+    pageSize: number;
+};
+
+// export: prependBoundedDetailText
+export declare function prependBoundedDetailText(projection: BoundedContentProjectionV1, prefix: string, limits: ContentProjectionLimits): BoundedContentProjectionV1;
+
 // export: projectApprovedWholeScopeV1
 export declare function projectApprovedWholeScopeV1(bindings: readonly ResearchScopeBindingV1[], base: ResearchScopeV1): ResearchScopeV1;
+
+// export: projectConfluenceStorage
+export declare function projectConfluenceStorage(storage: string, siteOrigin: string, limits: ContentProjectionLimits): BoundedContentProjectionV1;
+
+// export: projectJiraDescription
+export declare function projectJiraDescription(description: AdfDocument | string | null | undefined, siteOrigin: string, limits: ContentProjectionLimits): BoundedContentProjectionV1;
+
+// export: redactResearchSecrets
+export declare function redactResearchSecrets(value: unknown): string;
+
+// export: renderResearchReportMarkdown
+export declare function renderResearchReportMarkdown(report: Omit<ResearchReportV1, "markdown"> & {
+    markdown?: string;
+}): string;
+
+// export: RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1
+export declare const RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1: Record<string, unknown>;
+
+// export: RESEARCH_AGENT_DRAFT_SCHEMA_V1
+export declare const RESEARCH_AGENT_DRAFT_SCHEMA_V1: z.ZodObject<{
+    title: z.ZodString;
+    executiveSummary: z.ZodString;
+    findings: z.ZodArray<z.ZodObject<{
+        classification: z.ZodEnum<{
+            fact: "fact";
+            inference: "inference";
+        }>;
+        summary: z.ZodString;
+        detail: z.ZodOptional<z.ZodString>;
+        sourceIds: z.ZodArray<z.ZodString>;
+    }, z.core.$strict>>;
+    relationships: z.ZodArray<z.ZodObject<{
+        classification: z.ZodEnum<{
+            verified: "verified";
+            hypothesis: "hypothesis";
+        }>;
+        jiraIssueKey: z.ZodString;
+        confluenceContentId: z.ZodString;
+        summary: z.ZodString;
+        sourceIds: z.ZodArray<z.ZodString>;
+    }, z.core.$strict>>;
+    limitations: z.ZodArray<z.ZodString>;
+}, z.core.$strict>;
 
 // export: RESEARCH_BRIEF_SCHEMA_V1
 export declare const RESEARCH_BRIEF_SCHEMA_V1: "atlcli.research-brief/v1";
@@ -153,6 +295,15 @@ export declare const RESEARCH_SCOPE_CATALOG_SCHEMAS: {
     };
 };
 
+// export: RESEARCH_TASK_DISPATCH_SCHEMA_V1
+export declare const RESEARCH_TASK_DISPATCH_SCHEMA_V1: "atlcli.research-task-dispatch/v1";
+
+// export: RESEARCH_TASK_GRANTS_CONFIG_KEY
+export declare const RESEARCH_TASK_GRANTS_CONFIG_KEY = "__atlcli_research_task_granted_capability_ids";
+
+// export: RESEARCH_TASK_ID_CONFIG_KEY
+export declare const RESEARCH_TASK_ID_CONFIG_KEY = "__atlcli_research_task_id";
+
 // export: RESEARCH_TOOL_IDS
 export declare const RESEARCH_TOOL_IDS: readonly [
     "jira.issue.search",
@@ -163,6 +314,9 @@ export declare const RESEARCH_TOOL_IDS: readonly [
 
 // export: RESEARCH_WORKSPACE_SCHEMA_V1
 export declare const RESEARCH_WORKSPACE_SCHEMA_V1: "atlcli.research-workspace/v1";
+
+// export: ResearchAgentDraftV1
+export type ResearchAgentDraftV1 = z.infer<typeof RESEARCH_AGENT_DRAFT_SCHEMA_V1>;
 
 // export: ResearchBriefV1
 export interface ResearchBriefV1 {
@@ -180,14 +334,104 @@ export interface ResearchBudgetSnapshotV1 {
     responseBytesRemaining: number;
 }
 
+// export: ResearchCapabilityBroker
+export declare class ResearchCapabilityBroker {
+    #private;
+    readonly budget: ResearchRunBudget;
+    constructor(request: ResearchRequestV1, providers: ResearchReadProviders, options?: BrokerOptions);
+    get signal(): AbortSignal;
+    cancel(reason?: DOMException): void;
+    sourceLedger(): ResearchSourceReferenceV1[];
+    detailEvidenceLedger(): ResearchDetailEvidenceV1[];
+    completionStatus(): {
+        complete: boolean;
+        warnings: string[];
+    };
+    invoke(tool: ResearchToolId, input: unknown): Promise<unknown>;
+}
+
 // export: ResearchContractError
 export declare class ResearchContractError extends Error {
     readonly code: ResearchErrorCode;
     constructor(code: ResearchErrorCode, message: string);
 }
 
+// export: ResearchCursorResolution
+export interface ResearchCursorResolution {
+    queryFingerprint: string;
+    providerCursor: string;
+}
+
+// export: ResearchCursorVault
+export declare class ResearchCursorVault {
+    #private;
+    constructor(options?: ResearchCursorVaultOptions);
+    issue(tool: ResearchToolId, queryFingerprint: string, providerCursor: string | undefined): string | undefined;
+    resolve(tool: ResearchToolId, token: string | undefined): ResearchCursorResolution | undefined;
+    clear(): void;
+}
+
+// export: ResearchCursorVaultOptions
+export interface ResearchCursorVaultOptions {
+    maxEntries?: number;
+    createId?: () => string;
+    now?: () => number;
+    ttlMs?: number;
+}
+
+// export: ResearchDetailEvidenceV1
+export interface ResearchDetailEvidenceV1 {
+    source: ResearchSourceReferenceV1;
+    content: BoundedContentProjectionV1;
+}
+
+// export: ResearchDispatchDiagnosticV1
+export interface ResearchDispatchDiagnosticV1 {
+    taskId?: string;
+    status: ResearchDispatchStatusV1;
+    code?: ResearchDispatchErrorCodeV1;
+    resultBytes?: number;
+}
+
+// export: ResearchDispatchError
+export declare class ResearchDispatchError extends Error {
+    readonly code: ResearchDispatchErrorCodeV1;
+    constructor(code: ResearchDispatchErrorCodeV1, message: string);
+}
+
+// export: ResearchDispatchErrorCodeV1
+export type ResearchDispatchErrorCodeV1 = "invalid-task-description" | "unknown-task" | "subagent-type-mismatch" | "response-schema-mismatch" | "task-budget-exceeded" | "task-already-dispatched" | "concurrency-exceeded" | "capability-denied" | "result-too-large" | "aborted" | "late-result";
+
+// export: ResearchDispatchInterceptionAdapter
+export interface ResearchDispatchInterceptionAdapter {
+    invoke(input: ResearchTaskToolInputV1, config?: RunnableConfig): Promise<unknown>;
+    assertCapability(taskId: string, capabilityId: string): void;
+    snapshot(): ResearchDispatchSnapshotV1;
+}
+
+// export: ResearchDispatchSnapshotV1
+export interface ResearchDispatchSnapshotV1 {
+    dispatchedTasks: number;
+    activeInvocations: number;
+    taskStatuses: Readonly<Record<string, ResearchDispatchStatusV1>>;
+}
+
+// export: ResearchDispatchStatusV1
+export type ResearchDispatchStatusV1 = "started" | "completed" | "failed" | "cancelled" | "quarantined" | "rejected";
+
 // export: ResearchEffortV1
 export type ResearchEffortV1 = "shallow" | "standard" | "deep";
+
+// export: ResearchEntityKind
+export type ResearchEntityKind = "jira" | "wiki";
+
+// export: ResearchEntityRecord
+export interface ResearchEntityRecord {
+    kind: ResearchEntityKind;
+    entityId: string;
+    projectKey?: string;
+    spaceKey?: string;
+}
 
 // export: ResearchEntitySummaryV1
 export interface ResearchEntitySummaryV1 {
@@ -202,6 +446,21 @@ export interface ResearchEntitySummaryV1 {
     spaceKey?: string;
     updatedAt?: string;
     excerpt?: string;
+}
+
+// export: ResearchEntityVault
+export declare class ResearchEntityVault {
+    #private;
+    constructor(options: ResearchEntityVaultOptions);
+    issue(record: ResearchEntityRecord): string;
+    resolve(kind: ResearchEntityKind, ref: string): ResearchEntityRecord;
+    clear(): void;
+}
+
+// export: ResearchEntityVaultOptions
+export interface ResearchEntityVaultOptions {
+    maxEntries: number;
+    createId?: () => string;
 }
 
 // export: ResearchErrorCode
@@ -313,6 +572,43 @@ export interface ResearchProgressV1 {
 // export: ResearchProvider
 export type ResearchProvider = "rest" | "agg";
 
+// export: ResearchProviderPage
+export interface ResearchProviderPage<T> {
+    items: T[];
+    nextProviderCursor?: string;
+}
+
+// export: researchQueryFingerprint
+export declare function researchQueryFingerprint(tool: "jira.issue.search" | "wiki.search", query: ResearchSearchQueryV1, pageSize: number): string;
+
+// export: ResearchReadProviders
+export interface ResearchReadProviders {
+    jira: {
+        searchPage(input: {
+            jql: string;
+            pageSize: number;
+            providerCursor?: string;
+            signal: AbortSignal;
+        }): Promise<ResearchProviderPage<JiraResearchSummary>>;
+        getIssue(input: {
+            issueKey: string;
+            signal: AbortSignal;
+        }): Promise<JiraResearchDetail>;
+    };
+    wiki: {
+        searchPage(input: {
+            cql: string;
+            pageSize: number;
+            providerCursor?: string;
+            signal: AbortSignal;
+        }): Promise<ResearchProviderPage<WikiResearchSummary>>;
+        getPage(input: {
+            contentId: string;
+            signal: AbortSignal;
+        }): Promise<WikiResearchDetail>;
+    };
+}
+
 // export: ResearchReconciliationPolicyV1
 export type ResearchReconciliationPolicyV1 = "off" | "auto" | "required";
 
@@ -353,6 +649,22 @@ export interface ResearchRequestV1 {
     scope: ResearchScopeV1;
     limits: ResearchLimitsV1;
     wikiProvider: ResearchProvider;
+}
+
+// export: ResearchRunBudget
+export declare class ResearchRunBudget {
+    #private;
+    constructor(limits: ResearchLimitsV1);
+    beginPtc(input: unknown): void;
+    completePtc(output: unknown): void;
+    guardTransport(event: TransportBudgetEvent): void;
+    beginSearchPage(product: ResearchProduct): void;
+    canSearchAnotherPage(product: ResearchProduct): boolean;
+    remainingItems(product: ResearchProduct): number;
+    addItems(product: ResearchProduct, count: number): void;
+    beginDetail(product: ResearchProduct): void;
+    snapshot(): ResearchBudgetSnapshotV1;
+    counts(): ResearchRunCountsV1;
 }
 
 // export: ResearchRunCountsV1
@@ -598,6 +910,29 @@ export interface ResearchSourceReferenceV1 {
     updatedAt?: string;
 }
 
+// export: ResearchTaskAdmissionV1
+export interface ResearchTaskAdmissionV1 {
+    taskId: string;
+    subagentType: string;
+    grantedCapabilityIds: readonly string[];
+    responseSchema: Record<string, unknown>;
+    maxResultBytes: number;
+    maxDurationMs: number;
+}
+
+// export: ResearchTaskDescriptionV1
+export interface ResearchTaskDescriptionV1 {
+    schema: typeof RESEARCH_TASK_DISPATCH_SCHEMA_V1;
+    taskId: string;
+    objective: string;
+}
+
+// export: ResearchTaskToolInputV1
+export interface ResearchTaskToolInputV1 {
+    description: string;
+    subagent_type: string;
+}
+
 // export: ResearchTerminationCode
 export type ResearchTerminationCode = "index-exhausted" | "item-limit" | "page-limit" | "http-limit" | "response-byte-limit";
 
@@ -621,6 +956,17 @@ export interface ResearchWorkspace {
 // export: resolveResearchScopeMentionV1
 export declare function resolveResearchScopeMentionV1(input: ResearchScopeResolutionInputV1): ResearchScopeResolutionV1;
 
+// export: RestResearchProviderOptions
+export interface RestResearchProviderOptions {
+    allowProfileAuth?: boolean;
+}
+
+// export: RestScopeCatalogProviderOptions
+export interface RestScopeCatalogProviderOptions {
+    allowProfileAuth?: boolean;
+    now?: () => string;
+}
+
 // export: scopeSourcePrecedence
 export declare function scopeSourcePrecedence(source: ResearchScopeSourceV1): number;
 
@@ -629,11 +975,28 @@ export declare function selectResearchScopeSeedsV1(seeds: readonly ResearchScope
 
 // export: validateResearchGraphV1
 export declare function validateResearchGraphV1(graph: ResearchGraphV1): void;
+
+// export: WikiResearchDetail
+export interface WikiResearchDetail extends WikiResearchSummary {
+    content: BoundedContentProjectionV1;
+}
+
+// export: WikiResearchSummary
+export interface WikiResearchSummary {
+    contentId: string;
+    spaceKey: string;
+    title: string;
+    updatedAt?: string;
+    excerpt?: string;
+}
 ```
 
 ### Entry point `. (default)`
 
 ```ts
+// export: assertResearchReportV1
+export declare function assertResearchReportV1(value: unknown): asserts value is ResearchReportV1;
+
 // export: AtlassianRelationshipV1
 export interface AtlassianRelationshipV1 {
     id: string;
@@ -652,11 +1015,45 @@ export interface BoundedContentProjectionV1 {
     inputBytes: number;
 }
 
+// export: buildResearchCql
+export declare function buildResearchCql(scope: ResearchScopeV1, query: ResearchSearchQueryV1): string;
+
+// export: buildResearchJql
+export declare function buildResearchJql(scope: ResearchScopeV1, query: ResearchSearchQueryV1): string;
+
+// export: classifyResearchError
+export declare function classifyResearchError(value: unknown): {
+    code: ResearchErrorCode;
+    message: string;
+};
+
 // export: composeResearchGraphV1
 export declare function composeResearchGraphV1(brief: ResearchBriefV1, options?: ResearchGraphCompositionOptionsV1): ResearchGraphV1;
 
+// export: composeStandardResearchGraphV1
+export declare function composeStandardResearchGraphV1(question: string): ResearchGraphV1;
+
+// export: ContentProjectionLimits
+export interface ContentProjectionLimits {
+    maxTextChars: number;
+    maxTextBytes: number;
+    maxLinks: number;
+    maxNodes: number;
+    maxDepth: number;
+}
+
 // export: createMemoryResearchWorkspace
 export declare function createMemoryResearchWorkspace(): ResearchWorkspace;
+
+// export: createResearchDispatchInterceptionAdapter
+export declare function createResearchDispatchInterceptionAdapter(options: {
+    admissions: readonly ResearchTaskAdmissionV1[];
+    maxTasks: number;
+    maxConcurrency: number;
+    signal?: AbortSignal;
+    invokeUpstream(input: ResearchTaskToolInputV1, config: RunnableConfig): Promise<unknown>;
+    onDiagnostic?: (diagnostic: ResearchDispatchDiagnosticV1) => void;
+}): ResearchDispatchInterceptionAdapter;
 
 // export: createResearchScopeBindingV1
 export declare function createResearchScopeBindingV1(input: {
@@ -680,8 +1077,51 @@ export declare function decodeResearchScopeCatalogIntentV1(capability: "jira.pro
 // export: decodeResearchSearchInputV1
 export declare function decodeResearchSearchInputV1(tool: "jira.issue.search" | "wiki.search", value: unknown, maximumPageSize: number): ResearchSearchInputV1;
 
+// export: DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY
+export declare const DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY = "__deepagents_subagent_response_format";
+
 // export: DEFAULT_RESEARCH_LIMITS_V1
 export declare const DEFAULT_RESEARCH_LIMITS_V1: Readonly<ResearchLimitsV1>;
+
+// export: encodeResearchTaskDescriptionV1
+export declare function encodeResearchTaskDescriptionV1(value: Omit<ResearchTaskDescriptionV1, "schema">): string;
+
+// export: escapeResearchCqlLiteral
+export declare function escapeResearchCqlLiteral(value: string): string;
+
+// export: escapeResearchJqlLiteral
+export declare function escapeResearchJqlLiteral(value: string): string;
+
+// export: finalizeResearchAgentDraftV1
+export declare function finalizeResearchAgentDraftV1(input: {
+    draft: unknown;
+    request: ResearchRequestV1;
+    sources: readonly ResearchSourceReferenceV1[];
+    detailEvidence: readonly ResearchDetailEvidenceV1[];
+    run: ResearchRunSummaryV1;
+}): ResearchReportV1;
+
+// export: finalizeResearchReportV1
+export declare function finalizeResearchReportV1(report: Omit<ResearchReportV1, "markdown"> & {
+    markdown?: string;
+}): ResearchReportV1;
+
+// export: JiraResearchDetail
+export interface JiraResearchDetail extends JiraResearchSummary {
+    content: BoundedContentProjectionV1;
+}
+
+// export: JiraResearchSummary
+export interface JiraResearchSummary {
+    issueKey: string;
+    projectKey: string;
+    title: string;
+    updatedAt?: string;
+    excerpt?: string;
+}
+
+// export: jiraResearchTextTerms
+export declare function jiraResearchTextTerms(value: string): string[];
 
 // export: normalizeResearchLimitsV1
 export declare function normalizeResearchLimitsV1(value: unknown): ResearchLimitsV1;
@@ -698,8 +1138,61 @@ export declare function normalizeResearchScopeV1(value: unknown): ResearchScopeV
 // export: normalizeResearchWorkspacePath
 export declare function normalizeResearchWorkspacePath(value: string): string;
 
+// export: parseResearchQueryFingerprint
+export declare function parseResearchQueryFingerprint(value: string): {
+    tool: "jira.issue.search" | "wiki.search";
+    query: ResearchSearchQueryV1;
+    pageSize: number;
+};
+
+// export: prependBoundedDetailText
+export declare function prependBoundedDetailText(projection: BoundedContentProjectionV1, prefix: string, limits: ContentProjectionLimits): BoundedContentProjectionV1;
+
 // export: projectApprovedWholeScopeV1
 export declare function projectApprovedWholeScopeV1(bindings: readonly ResearchScopeBindingV1[], base: ResearchScopeV1): ResearchScopeV1;
+
+// export: projectConfluenceStorage
+export declare function projectConfluenceStorage(storage: string, siteOrigin: string, limits: ContentProjectionLimits): BoundedContentProjectionV1;
+
+// export: projectJiraDescription
+export declare function projectJiraDescription(description: AdfDocument | string | null | undefined, siteOrigin: string, limits: ContentProjectionLimits): BoundedContentProjectionV1;
+
+// export: redactResearchSecrets
+export declare function redactResearchSecrets(value: unknown): string;
+
+// export: renderResearchReportMarkdown
+export declare function renderResearchReportMarkdown(report: Omit<ResearchReportV1, "markdown"> & {
+    markdown?: string;
+}): string;
+
+// export: RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1
+export declare const RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1: Record<string, unknown>;
+
+// export: RESEARCH_AGENT_DRAFT_SCHEMA_V1
+export declare const RESEARCH_AGENT_DRAFT_SCHEMA_V1: z.ZodObject<{
+    title: z.ZodString;
+    executiveSummary: z.ZodString;
+    findings: z.ZodArray<z.ZodObject<{
+        classification: z.ZodEnum<{
+            fact: "fact";
+            inference: "inference";
+        }>;
+        summary: z.ZodString;
+        detail: z.ZodOptional<z.ZodString>;
+        sourceIds: z.ZodArray<z.ZodString>;
+    }, z.core.$strict>>;
+    relationships: z.ZodArray<z.ZodObject<{
+        classification: z.ZodEnum<{
+            verified: "verified";
+            hypothesis: "hypothesis";
+        }>;
+        jiraIssueKey: z.ZodString;
+        confluenceContentId: z.ZodString;
+        summary: z.ZodString;
+        sourceIds: z.ZodArray<z.ZodString>;
+    }, z.core.$strict>>;
+    limitations: z.ZodArray<z.ZodString>;
+}, z.core.$strict>;
 
 // export: RESEARCH_BRIEF_SCHEMA_V1
 export declare const RESEARCH_BRIEF_SCHEMA_V1: "atlcli.research-brief/v1";
@@ -780,6 +1273,15 @@ export declare const RESEARCH_SCOPE_CATALOG_SCHEMAS: {
     };
 };
 
+// export: RESEARCH_TASK_DISPATCH_SCHEMA_V1
+export declare const RESEARCH_TASK_DISPATCH_SCHEMA_V1: "atlcli.research-task-dispatch/v1";
+
+// export: RESEARCH_TASK_GRANTS_CONFIG_KEY
+export declare const RESEARCH_TASK_GRANTS_CONFIG_KEY = "__atlcli_research_task_granted_capability_ids";
+
+// export: RESEARCH_TASK_ID_CONFIG_KEY
+export declare const RESEARCH_TASK_ID_CONFIG_KEY = "__atlcli_research_task_id";
+
 // export: RESEARCH_TOOL_IDS
 export declare const RESEARCH_TOOL_IDS: readonly [
     "jira.issue.search",
@@ -790,6 +1292,9 @@ export declare const RESEARCH_TOOL_IDS: readonly [
 
 // export: RESEARCH_WORKSPACE_SCHEMA_V1
 export declare const RESEARCH_WORKSPACE_SCHEMA_V1: "atlcli.research-workspace/v1";
+
+// export: ResearchAgentDraftV1
+export type ResearchAgentDraftV1 = z.infer<typeof RESEARCH_AGENT_DRAFT_SCHEMA_V1>;
 
 // export: ResearchBriefV1
 export interface ResearchBriefV1 {
@@ -807,14 +1312,104 @@ export interface ResearchBudgetSnapshotV1 {
     responseBytesRemaining: number;
 }
 
+// export: ResearchCapabilityBroker
+export declare class ResearchCapabilityBroker {
+    #private;
+    readonly budget: ResearchRunBudget;
+    constructor(request: ResearchRequestV1, providers: ResearchReadProviders, options?: BrokerOptions);
+    get signal(): AbortSignal;
+    cancel(reason?: DOMException): void;
+    sourceLedger(): ResearchSourceReferenceV1[];
+    detailEvidenceLedger(): ResearchDetailEvidenceV1[];
+    completionStatus(): {
+        complete: boolean;
+        warnings: string[];
+    };
+    invoke(tool: ResearchToolId, input: unknown): Promise<unknown>;
+}
+
 // export: ResearchContractError
 export declare class ResearchContractError extends Error {
     readonly code: ResearchErrorCode;
     constructor(code: ResearchErrorCode, message: string);
 }
 
+// export: ResearchCursorResolution
+export interface ResearchCursorResolution {
+    queryFingerprint: string;
+    providerCursor: string;
+}
+
+// export: ResearchCursorVault
+export declare class ResearchCursorVault {
+    #private;
+    constructor(options?: ResearchCursorVaultOptions);
+    issue(tool: ResearchToolId, queryFingerprint: string, providerCursor: string | undefined): string | undefined;
+    resolve(tool: ResearchToolId, token: string | undefined): ResearchCursorResolution | undefined;
+    clear(): void;
+}
+
+// export: ResearchCursorVaultOptions
+export interface ResearchCursorVaultOptions {
+    maxEntries?: number;
+    createId?: () => string;
+    now?: () => number;
+    ttlMs?: number;
+}
+
+// export: ResearchDetailEvidenceV1
+export interface ResearchDetailEvidenceV1 {
+    source: ResearchSourceReferenceV1;
+    content: BoundedContentProjectionV1;
+}
+
+// export: ResearchDispatchDiagnosticV1
+export interface ResearchDispatchDiagnosticV1 {
+    taskId?: string;
+    status: ResearchDispatchStatusV1;
+    code?: ResearchDispatchErrorCodeV1;
+    resultBytes?: number;
+}
+
+// export: ResearchDispatchError
+export declare class ResearchDispatchError extends Error {
+    readonly code: ResearchDispatchErrorCodeV1;
+    constructor(code: ResearchDispatchErrorCodeV1, message: string);
+}
+
+// export: ResearchDispatchErrorCodeV1
+export type ResearchDispatchErrorCodeV1 = "invalid-task-description" | "unknown-task" | "subagent-type-mismatch" | "response-schema-mismatch" | "task-budget-exceeded" | "task-already-dispatched" | "concurrency-exceeded" | "capability-denied" | "result-too-large" | "aborted" | "late-result";
+
+// export: ResearchDispatchInterceptionAdapter
+export interface ResearchDispatchInterceptionAdapter {
+    invoke(input: ResearchTaskToolInputV1, config?: RunnableConfig): Promise<unknown>;
+    assertCapability(taskId: string, capabilityId: string): void;
+    snapshot(): ResearchDispatchSnapshotV1;
+}
+
+// export: ResearchDispatchSnapshotV1
+export interface ResearchDispatchSnapshotV1 {
+    dispatchedTasks: number;
+    activeInvocations: number;
+    taskStatuses: Readonly<Record<string, ResearchDispatchStatusV1>>;
+}
+
+// export: ResearchDispatchStatusV1
+export type ResearchDispatchStatusV1 = "started" | "completed" | "failed" | "cancelled" | "quarantined" | "rejected";
+
 // export: ResearchEffortV1
 export type ResearchEffortV1 = "shallow" | "standard" | "deep";
+
+// export: ResearchEntityKind
+export type ResearchEntityKind = "jira" | "wiki";
+
+// export: ResearchEntityRecord
+export interface ResearchEntityRecord {
+    kind: ResearchEntityKind;
+    entityId: string;
+    projectKey?: string;
+    spaceKey?: string;
+}
 
 // export: ResearchEntitySummaryV1
 export interface ResearchEntitySummaryV1 {
@@ -829,6 +1424,21 @@ export interface ResearchEntitySummaryV1 {
     spaceKey?: string;
     updatedAt?: string;
     excerpt?: string;
+}
+
+// export: ResearchEntityVault
+export declare class ResearchEntityVault {
+    #private;
+    constructor(options: ResearchEntityVaultOptions);
+    issue(record: ResearchEntityRecord): string;
+    resolve(kind: ResearchEntityKind, ref: string): ResearchEntityRecord;
+    clear(): void;
+}
+
+// export: ResearchEntityVaultOptions
+export interface ResearchEntityVaultOptions {
+    maxEntries: number;
+    createId?: () => string;
 }
 
 // export: ResearchErrorCode
@@ -940,6 +1550,43 @@ export interface ResearchProgressV1 {
 // export: ResearchProvider
 export type ResearchProvider = "rest" | "agg";
 
+// export: ResearchProviderPage
+export interface ResearchProviderPage<T> {
+    items: T[];
+    nextProviderCursor?: string;
+}
+
+// export: researchQueryFingerprint
+export declare function researchQueryFingerprint(tool: "jira.issue.search" | "wiki.search", query: ResearchSearchQueryV1, pageSize: number): string;
+
+// export: ResearchReadProviders
+export interface ResearchReadProviders {
+    jira: {
+        searchPage(input: {
+            jql: string;
+            pageSize: number;
+            providerCursor?: string;
+            signal: AbortSignal;
+        }): Promise<ResearchProviderPage<JiraResearchSummary>>;
+        getIssue(input: {
+            issueKey: string;
+            signal: AbortSignal;
+        }): Promise<JiraResearchDetail>;
+    };
+    wiki: {
+        searchPage(input: {
+            cql: string;
+            pageSize: number;
+            providerCursor?: string;
+            signal: AbortSignal;
+        }): Promise<ResearchProviderPage<WikiResearchSummary>>;
+        getPage(input: {
+            contentId: string;
+            signal: AbortSignal;
+        }): Promise<WikiResearchDetail>;
+    };
+}
+
 // export: ResearchReconciliationPolicyV1
 export type ResearchReconciliationPolicyV1 = "off" | "auto" | "required";
 
@@ -980,6 +1627,22 @@ export interface ResearchRequestV1 {
     scope: ResearchScopeV1;
     limits: ResearchLimitsV1;
     wikiProvider: ResearchProvider;
+}
+
+// export: ResearchRunBudget
+export declare class ResearchRunBudget {
+    #private;
+    constructor(limits: ResearchLimitsV1);
+    beginPtc(input: unknown): void;
+    completePtc(output: unknown): void;
+    guardTransport(event: TransportBudgetEvent): void;
+    beginSearchPage(product: ResearchProduct): void;
+    canSearchAnotherPage(product: ResearchProduct): boolean;
+    remainingItems(product: ResearchProduct): number;
+    addItems(product: ResearchProduct, count: number): void;
+    beginDetail(product: ResearchProduct): void;
+    snapshot(): ResearchBudgetSnapshotV1;
+    counts(): ResearchRunCountsV1;
 }
 
 // export: ResearchRunCountsV1
@@ -1225,6 +1888,29 @@ export interface ResearchSourceReferenceV1 {
     updatedAt?: string;
 }
 
+// export: ResearchTaskAdmissionV1
+export interface ResearchTaskAdmissionV1 {
+    taskId: string;
+    subagentType: string;
+    grantedCapabilityIds: readonly string[];
+    responseSchema: Record<string, unknown>;
+    maxResultBytes: number;
+    maxDurationMs: number;
+}
+
+// export: ResearchTaskDescriptionV1
+export interface ResearchTaskDescriptionV1 {
+    schema: typeof RESEARCH_TASK_DISPATCH_SCHEMA_V1;
+    taskId: string;
+    objective: string;
+}
+
+// export: ResearchTaskToolInputV1
+export interface ResearchTaskToolInputV1 {
+    description: string;
+    subagent_type: string;
+}
+
 // export: ResearchTerminationCode
 export type ResearchTerminationCode = "index-exhausted" | "item-limit" | "page-limit" | "http-limit" | "response-byte-limit";
 
@@ -1256,11 +1942,28 @@ export declare function selectResearchScopeSeedsV1(seeds: readonly ResearchScope
 
 // export: validateResearchGraphV1
 export declare function validateResearchGraphV1(graph: ResearchGraphV1): void;
+
+// export: WikiResearchDetail
+export interface WikiResearchDetail extends WikiResearchSummary {
+    content: BoundedContentProjectionV1;
+}
+
+// export: WikiResearchSummary
+export interface WikiResearchSummary {
+    contentId: string;
+    spaceKey: string;
+    title: string;
+    updatedAt?: string;
+    excerpt?: string;
+}
 ```
 
 ### Entry point `./browser`
 
 ```ts
+// export: assertResearchReportV1
+export declare function assertResearchReportV1(value: unknown): asserts value is ResearchReportV1;
+
 // export: AtlassianRelationshipV1
 export interface AtlassianRelationshipV1 {
     id: string;
@@ -1279,11 +1982,45 @@ export interface BoundedContentProjectionV1 {
     inputBytes: number;
 }
 
+// export: buildResearchCql
+export declare function buildResearchCql(scope: ResearchScopeV1, query: ResearchSearchQueryV1): string;
+
+// export: buildResearchJql
+export declare function buildResearchJql(scope: ResearchScopeV1, query: ResearchSearchQueryV1): string;
+
+// export: classifyResearchError
+export declare function classifyResearchError(value: unknown): {
+    code: ResearchErrorCode;
+    message: string;
+};
+
 // export: composeResearchGraphV1
 export declare function composeResearchGraphV1(brief: ResearchBriefV1, options?: ResearchGraphCompositionOptionsV1): ResearchGraphV1;
 
+// export: composeStandardResearchGraphV1
+export declare function composeStandardResearchGraphV1(question: string): ResearchGraphV1;
+
+// export: ContentProjectionLimits
+export interface ContentProjectionLimits {
+    maxTextChars: number;
+    maxTextBytes: number;
+    maxLinks: number;
+    maxNodes: number;
+    maxDepth: number;
+}
+
 // export: createMemoryResearchWorkspace
 export declare function createMemoryResearchWorkspace(): ResearchWorkspace;
+
+// export: createResearchDispatchInterceptionAdapter
+export declare function createResearchDispatchInterceptionAdapter(options: {
+    admissions: readonly ResearchTaskAdmissionV1[];
+    maxTasks: number;
+    maxConcurrency: number;
+    signal?: AbortSignal;
+    invokeUpstream(input: ResearchTaskToolInputV1, config: RunnableConfig): Promise<unknown>;
+    onDiagnostic?: (diagnostic: ResearchDispatchDiagnosticV1) => void;
+}): ResearchDispatchInterceptionAdapter;
 
 // export: createResearchScopeBindingV1
 export declare function createResearchScopeBindingV1(input: {
@@ -1294,6 +2031,15 @@ export declare function createResearchScopeBindingV1(input: {
     approvedAt?: string;
     bindingId?: string;
 }): ResearchScopeBindingV1;
+
+// export: createRestResearchBroker
+export declare function createRestResearchBroker(profile: Profile, request: ResearchRequestV1): ResearchCapabilityBroker;
+
+// export: createRestResearchProviders
+export declare function createRestResearchProviders(profile: Profile, request: ResearchRequestV1, budget: ResearchRunBudget, options?: RestResearchProviderOptions): ResearchReadProviders;
+
+// export: createRestScopeCatalogProviders
+export declare function createRestScopeCatalogProviders(profile: Profile, expectedTenantOrigin: string, options?: RestScopeCatalogProviderOptions): ResearchScopeCatalogProvidersV1;
 
 // export: decodeResearchGetInputV1
 export declare function decodeResearchGetInputV1(tool: "jira.issue.get" | "wiki.page.get", value: unknown): ResearchGetInputV1;
@@ -1307,8 +2053,51 @@ export declare function decodeResearchScopeCatalogIntentV1(capability: "jira.pro
 // export: decodeResearchSearchInputV1
 export declare function decodeResearchSearchInputV1(tool: "jira.issue.search" | "wiki.search", value: unknown, maximumPageSize: number): ResearchSearchInputV1;
 
+// export: DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY
+export declare const DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY = "__deepagents_subagent_response_format";
+
 // export: DEFAULT_RESEARCH_LIMITS_V1
 export declare const DEFAULT_RESEARCH_LIMITS_V1: Readonly<ResearchLimitsV1>;
+
+// export: encodeResearchTaskDescriptionV1
+export declare function encodeResearchTaskDescriptionV1(value: Omit<ResearchTaskDescriptionV1, "schema">): string;
+
+// export: escapeResearchCqlLiteral
+export declare function escapeResearchCqlLiteral(value: string): string;
+
+// export: escapeResearchJqlLiteral
+export declare function escapeResearchJqlLiteral(value: string): string;
+
+// export: finalizeResearchAgentDraftV1
+export declare function finalizeResearchAgentDraftV1(input: {
+    draft: unknown;
+    request: ResearchRequestV1;
+    sources: readonly ResearchSourceReferenceV1[];
+    detailEvidence: readonly ResearchDetailEvidenceV1[];
+    run: ResearchRunSummaryV1;
+}): ResearchReportV1;
+
+// export: finalizeResearchReportV1
+export declare function finalizeResearchReportV1(report: Omit<ResearchReportV1, "markdown"> & {
+    markdown?: string;
+}): ResearchReportV1;
+
+// export: JiraResearchDetail
+export interface JiraResearchDetail extends JiraResearchSummary {
+    content: BoundedContentProjectionV1;
+}
+
+// export: JiraResearchSummary
+export interface JiraResearchSummary {
+    issueKey: string;
+    projectKey: string;
+    title: string;
+    updatedAt?: string;
+    excerpt?: string;
+}
+
+// export: jiraResearchTextTerms
+export declare function jiraResearchTextTerms(value: string): string[];
 
 // export: normalizeResearchLimitsV1
 export declare function normalizeResearchLimitsV1(value: unknown): ResearchLimitsV1;
@@ -1325,8 +2114,61 @@ export declare function normalizeResearchScopeV1(value: unknown): ResearchScopeV
 // export: normalizeResearchWorkspacePath
 export declare function normalizeResearchWorkspacePath(value: string): string;
 
+// export: parseResearchQueryFingerprint
+export declare function parseResearchQueryFingerprint(value: string): {
+    tool: "jira.issue.search" | "wiki.search";
+    query: ResearchSearchQueryV1;
+    pageSize: number;
+};
+
+// export: prependBoundedDetailText
+export declare function prependBoundedDetailText(projection: BoundedContentProjectionV1, prefix: string, limits: ContentProjectionLimits): BoundedContentProjectionV1;
+
 // export: projectApprovedWholeScopeV1
 export declare function projectApprovedWholeScopeV1(bindings: readonly ResearchScopeBindingV1[], base: ResearchScopeV1): ResearchScopeV1;
+
+// export: projectConfluenceStorage
+export declare function projectConfluenceStorage(storage: string, siteOrigin: string, limits: ContentProjectionLimits): BoundedContentProjectionV1;
+
+// export: projectJiraDescription
+export declare function projectJiraDescription(description: AdfDocument | string | null | undefined, siteOrigin: string, limits: ContentProjectionLimits): BoundedContentProjectionV1;
+
+// export: redactResearchSecrets
+export declare function redactResearchSecrets(value: unknown): string;
+
+// export: renderResearchReportMarkdown
+export declare function renderResearchReportMarkdown(report: Omit<ResearchReportV1, "markdown"> & {
+    markdown?: string;
+}): string;
+
+// export: RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1
+export declare const RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1: Record<string, unknown>;
+
+// export: RESEARCH_AGENT_DRAFT_SCHEMA_V1
+export declare const RESEARCH_AGENT_DRAFT_SCHEMA_V1: z.ZodObject<{
+    title: z.ZodString;
+    executiveSummary: z.ZodString;
+    findings: z.ZodArray<z.ZodObject<{
+        classification: z.ZodEnum<{
+            fact: "fact";
+            inference: "inference";
+        }>;
+        summary: z.ZodString;
+        detail: z.ZodOptional<z.ZodString>;
+        sourceIds: z.ZodArray<z.ZodString>;
+    }, z.core.$strict>>;
+    relationships: z.ZodArray<z.ZodObject<{
+        classification: z.ZodEnum<{
+            verified: "verified";
+            hypothesis: "hypothesis";
+        }>;
+        jiraIssueKey: z.ZodString;
+        confluenceContentId: z.ZodString;
+        summary: z.ZodString;
+        sourceIds: z.ZodArray<z.ZodString>;
+    }, z.core.$strict>>;
+    limitations: z.ZodArray<z.ZodString>;
+}, z.core.$strict>;
 
 // export: RESEARCH_BRIEF_SCHEMA_V1
 export declare const RESEARCH_BRIEF_SCHEMA_V1: "atlcli.research-brief/v1";
@@ -1407,6 +2249,15 @@ export declare const RESEARCH_SCOPE_CATALOG_SCHEMAS: {
     };
 };
 
+// export: RESEARCH_TASK_DISPATCH_SCHEMA_V1
+export declare const RESEARCH_TASK_DISPATCH_SCHEMA_V1: "atlcli.research-task-dispatch/v1";
+
+// export: RESEARCH_TASK_GRANTS_CONFIG_KEY
+export declare const RESEARCH_TASK_GRANTS_CONFIG_KEY = "__atlcli_research_task_granted_capability_ids";
+
+// export: RESEARCH_TASK_ID_CONFIG_KEY
+export declare const RESEARCH_TASK_ID_CONFIG_KEY = "__atlcli_research_task_id";
+
 // export: RESEARCH_TOOL_IDS
 export declare const RESEARCH_TOOL_IDS: readonly [
     "jira.issue.search",
@@ -1417,6 +2268,9 @@ export declare const RESEARCH_TOOL_IDS: readonly [
 
 // export: RESEARCH_WORKSPACE_SCHEMA_V1
 export declare const RESEARCH_WORKSPACE_SCHEMA_V1: "atlcli.research-workspace/v1";
+
+// export: ResearchAgentDraftV1
+export type ResearchAgentDraftV1 = z.infer<typeof RESEARCH_AGENT_DRAFT_SCHEMA_V1>;
 
 // export: ResearchBriefV1
 export interface ResearchBriefV1 {
@@ -1434,14 +2288,104 @@ export interface ResearchBudgetSnapshotV1 {
     responseBytesRemaining: number;
 }
 
+// export: ResearchCapabilityBroker
+export declare class ResearchCapabilityBroker {
+    #private;
+    readonly budget: ResearchRunBudget;
+    constructor(request: ResearchRequestV1, providers: ResearchReadProviders, options?: BrokerOptions);
+    get signal(): AbortSignal;
+    cancel(reason?: DOMException): void;
+    sourceLedger(): ResearchSourceReferenceV1[];
+    detailEvidenceLedger(): ResearchDetailEvidenceV1[];
+    completionStatus(): {
+        complete: boolean;
+        warnings: string[];
+    };
+    invoke(tool: ResearchToolId, input: unknown): Promise<unknown>;
+}
+
 // export: ResearchContractError
 export declare class ResearchContractError extends Error {
     readonly code: ResearchErrorCode;
     constructor(code: ResearchErrorCode, message: string);
 }
 
+// export: ResearchCursorResolution
+export interface ResearchCursorResolution {
+    queryFingerprint: string;
+    providerCursor: string;
+}
+
+// export: ResearchCursorVault
+export declare class ResearchCursorVault {
+    #private;
+    constructor(options?: ResearchCursorVaultOptions);
+    issue(tool: ResearchToolId, queryFingerprint: string, providerCursor: string | undefined): string | undefined;
+    resolve(tool: ResearchToolId, token: string | undefined): ResearchCursorResolution | undefined;
+    clear(): void;
+}
+
+// export: ResearchCursorVaultOptions
+export interface ResearchCursorVaultOptions {
+    maxEntries?: number;
+    createId?: () => string;
+    now?: () => number;
+    ttlMs?: number;
+}
+
+// export: ResearchDetailEvidenceV1
+export interface ResearchDetailEvidenceV1 {
+    source: ResearchSourceReferenceV1;
+    content: BoundedContentProjectionV1;
+}
+
+// export: ResearchDispatchDiagnosticV1
+export interface ResearchDispatchDiagnosticV1 {
+    taskId?: string;
+    status: ResearchDispatchStatusV1;
+    code?: ResearchDispatchErrorCodeV1;
+    resultBytes?: number;
+}
+
+// export: ResearchDispatchError
+export declare class ResearchDispatchError extends Error {
+    readonly code: ResearchDispatchErrorCodeV1;
+    constructor(code: ResearchDispatchErrorCodeV1, message: string);
+}
+
+// export: ResearchDispatchErrorCodeV1
+export type ResearchDispatchErrorCodeV1 = "invalid-task-description" | "unknown-task" | "subagent-type-mismatch" | "response-schema-mismatch" | "task-budget-exceeded" | "task-already-dispatched" | "concurrency-exceeded" | "capability-denied" | "result-too-large" | "aborted" | "late-result";
+
+// export: ResearchDispatchInterceptionAdapter
+export interface ResearchDispatchInterceptionAdapter {
+    invoke(input: ResearchTaskToolInputV1, config?: RunnableConfig): Promise<unknown>;
+    assertCapability(taskId: string, capabilityId: string): void;
+    snapshot(): ResearchDispatchSnapshotV1;
+}
+
+// export: ResearchDispatchSnapshotV1
+export interface ResearchDispatchSnapshotV1 {
+    dispatchedTasks: number;
+    activeInvocations: number;
+    taskStatuses: Readonly<Record<string, ResearchDispatchStatusV1>>;
+}
+
+// export: ResearchDispatchStatusV1
+export type ResearchDispatchStatusV1 = "started" | "completed" | "failed" | "cancelled" | "quarantined" | "rejected";
+
 // export: ResearchEffortV1
 export type ResearchEffortV1 = "shallow" | "standard" | "deep";
+
+// export: ResearchEntityKind
+export type ResearchEntityKind = "jira" | "wiki";
+
+// export: ResearchEntityRecord
+export interface ResearchEntityRecord {
+    kind: ResearchEntityKind;
+    entityId: string;
+    projectKey?: string;
+    spaceKey?: string;
+}
 
 // export: ResearchEntitySummaryV1
 export interface ResearchEntitySummaryV1 {
@@ -1456,6 +2400,21 @@ export interface ResearchEntitySummaryV1 {
     spaceKey?: string;
     updatedAt?: string;
     excerpt?: string;
+}
+
+// export: ResearchEntityVault
+export declare class ResearchEntityVault {
+    #private;
+    constructor(options: ResearchEntityVaultOptions);
+    issue(record: ResearchEntityRecord): string;
+    resolve(kind: ResearchEntityKind, ref: string): ResearchEntityRecord;
+    clear(): void;
+}
+
+// export: ResearchEntityVaultOptions
+export interface ResearchEntityVaultOptions {
+    maxEntries: number;
+    createId?: () => string;
 }
 
 // export: ResearchErrorCode
@@ -1567,6 +2526,43 @@ export interface ResearchProgressV1 {
 // export: ResearchProvider
 export type ResearchProvider = "rest" | "agg";
 
+// export: ResearchProviderPage
+export interface ResearchProviderPage<T> {
+    items: T[];
+    nextProviderCursor?: string;
+}
+
+// export: researchQueryFingerprint
+export declare function researchQueryFingerprint(tool: "jira.issue.search" | "wiki.search", query: ResearchSearchQueryV1, pageSize: number): string;
+
+// export: ResearchReadProviders
+export interface ResearchReadProviders {
+    jira: {
+        searchPage(input: {
+            jql: string;
+            pageSize: number;
+            providerCursor?: string;
+            signal: AbortSignal;
+        }): Promise<ResearchProviderPage<JiraResearchSummary>>;
+        getIssue(input: {
+            issueKey: string;
+            signal: AbortSignal;
+        }): Promise<JiraResearchDetail>;
+    };
+    wiki: {
+        searchPage(input: {
+            cql: string;
+            pageSize: number;
+            providerCursor?: string;
+            signal: AbortSignal;
+        }): Promise<ResearchProviderPage<WikiResearchSummary>>;
+        getPage(input: {
+            contentId: string;
+            signal: AbortSignal;
+        }): Promise<WikiResearchDetail>;
+    };
+}
+
 // export: ResearchReconciliationPolicyV1
 export type ResearchReconciliationPolicyV1 = "off" | "auto" | "required";
 
@@ -1607,6 +2603,22 @@ export interface ResearchRequestV1 {
     scope: ResearchScopeV1;
     limits: ResearchLimitsV1;
     wikiProvider: ResearchProvider;
+}
+
+// export: ResearchRunBudget
+export declare class ResearchRunBudget {
+    #private;
+    constructor(limits: ResearchLimitsV1);
+    beginPtc(input: unknown): void;
+    completePtc(output: unknown): void;
+    guardTransport(event: TransportBudgetEvent): void;
+    beginSearchPage(product: ResearchProduct): void;
+    canSearchAnotherPage(product: ResearchProduct): boolean;
+    remainingItems(product: ResearchProduct): number;
+    addItems(product: ResearchProduct, count: number): void;
+    beginDetail(product: ResearchProduct): void;
+    snapshot(): ResearchBudgetSnapshotV1;
+    counts(): ResearchRunCountsV1;
 }
 
 // export: ResearchRunCountsV1
@@ -1852,6 +2864,29 @@ export interface ResearchSourceReferenceV1 {
     updatedAt?: string;
 }
 
+// export: ResearchTaskAdmissionV1
+export interface ResearchTaskAdmissionV1 {
+    taskId: string;
+    subagentType: string;
+    grantedCapabilityIds: readonly string[];
+    responseSchema: Record<string, unknown>;
+    maxResultBytes: number;
+    maxDurationMs: number;
+}
+
+// export: ResearchTaskDescriptionV1
+export interface ResearchTaskDescriptionV1 {
+    schema: typeof RESEARCH_TASK_DISPATCH_SCHEMA_V1;
+    taskId: string;
+    objective: string;
+}
+
+// export: ResearchTaskToolInputV1
+export interface ResearchTaskToolInputV1 {
+    description: string;
+    subagent_type: string;
+}
+
 // export: ResearchTerminationCode
 export type ResearchTerminationCode = "index-exhausted" | "item-limit" | "page-limit" | "http-limit" | "response-byte-limit";
 
@@ -1875,6 +2910,17 @@ export interface ResearchWorkspace {
 // export: resolveResearchScopeMentionV1
 export declare function resolveResearchScopeMentionV1(input: ResearchScopeResolutionInputV1): ResearchScopeResolutionV1;
 
+// export: RestResearchProviderOptions
+export interface RestResearchProviderOptions {
+    allowProfileAuth?: boolean;
+}
+
+// export: RestScopeCatalogProviderOptions
+export interface RestScopeCatalogProviderOptions {
+    allowProfileAuth?: boolean;
+    now?: () => string;
+}
+
 // export: scopeSourcePrecedence
 export declare function scopeSourcePrecedence(source: ResearchScopeSourceV1): number;
 
@@ -1883,6 +2929,1169 @@ export declare function selectResearchScopeSeedsV1(seeds: readonly ResearchScope
 
 // export: validateResearchGraphV1
 export declare function validateResearchGraphV1(graph: ResearchGraphV1): void;
+
+// export: WikiResearchDetail
+export interface WikiResearchDetail extends WikiResearchSummary {
+    content: BoundedContentProjectionV1;
+}
+
+// export: WikiResearchSummary
+export interface WikiResearchSummary {
+    contentId: string;
+    spaceKey: string;
+    title: string;
+    updatedAt?: string;
+    excerpt?: string;
+}
+```
+
+### Entry point `./browser/agent`
+
+```ts
+// export: assertResearchReportV1
+export declare function assertResearchReportV1(value: unknown): asserts value is ResearchReportV1;
+
+// export: AtlassianRelationshipV1
+export interface AtlassianRelationshipV1 {
+    id: string;
+    classification: "verified" | "hypothesis";
+    jiraIssueKey: string;
+    confluenceContentId: string;
+    summary: string;
+    sourceIds: string[];
+}
+
+// export: BoundedContentProjectionV1
+export interface BoundedContentProjectionV1 {
+    text: string;
+    linkTargets: string[];
+    truncated: boolean;
+    inputBytes: number;
+}
+
+// export: buildDynamicSupervisorPrompt
+export declare function buildDynamicSupervisorPrompt(graph: ResearchGraphV1): string;
+
+// export: buildResearchAcquisitionProgram
+export declare function buildResearchAcquisitionProgram(node: ResearchGraphNodeV1, question: string): string;
+
+// export: buildResearchCql
+export declare function buildResearchCql(scope: ResearchScopeV1, query: ResearchSearchQueryV1): string;
+
+// export: buildResearchJql
+export declare function buildResearchJql(scope: ResearchScopeV1, query: ResearchSearchQueryV1): string;
+
+// export: classifyResearchError
+export declare function classifyResearchError(value: unknown): {
+    code: ResearchErrorCode;
+    message: string;
+};
+
+// export: compileDynamicResearchSubagents
+export declare function compileDynamicResearchSubagents(graph: ResearchGraphV1, options: DynamicResearchSubagentOptions): SubAgent[];
+
+// export: composeResearchGraphV1
+export declare function composeResearchGraphV1(brief: ResearchBriefV1, options?: ResearchGraphCompositionOptionsV1): ResearchGraphV1;
+
+// export: composeStandardResearchGraphV1
+export declare function composeStandardResearchGraphV1(question: string): ResearchGraphV1;
+
+// export: ContentProjectionLimits
+export interface ContentProjectionLimits {
+    maxTextChars: number;
+    maxTextBytes: number;
+    maxLinks: number;
+    maxNodes: number;
+    maxDepth: number;
+}
+
+// export: createBoundedResearchSubagentMiddleware
+export declare function createBoundedResearchSubagentMiddleware(model: BaseChatModel, subagents: SubAgent[], runtime: ResearchSubagentRuntimeBindings, options?: {
+    now?: () => number;
+    onDiagnostic?: (diagnostic: ResearchSubagentDiagnosticV1) => void;
+    structuredOutputStrategy?: "tool" | "provider";
+}): {
+    name: string;
+    tools: DynamicStructuredTool<z.ZodObject<{
+        description: z.ZodString;
+        subagent_type: z.ZodString;
+    }, z.core.$strip>, {
+        description: string;
+        subagent_type: string;
+    }, {
+        description: string;
+        subagent_type: string;
+    }, unknown, unknown, "task">[];
+    "~middlewareTypes"?: import("langchain").MiddlewareTypeConfig<undefined, undefined, unknown, readonly [
+        DynamicStructuredTool<z.ZodObject<{
+            description: z.ZodString;
+            subagent_type: z.ZodString;
+        }, z.core.$strip>, {
+            description: string;
+            subagent_type: string;
+        }, {
+            description: string;
+            subagent_type: string;
+        }, string | import("@langchain/langgraph").Command<unknown, Record<string, unknown>, string>, unknown, "task">
+    ], readonly [
+    ]> | undefined;
+    stateSchema?: undefined;
+    contextSchema?: undefined;
+    streamTransformers?: readonly [
+    ] | undefined;
+    wrapToolCall?: import("langchain").WrapToolCallHook<undefined, unknown> | undefined;
+    wrapModelCall?: import("langchain").WrapModelCallHook<undefined, unknown> | undefined;
+    beforeAgent?: import("langchain").BeforeAgentHook<undefined, unknown> | undefined;
+    beforeModel?: import("langchain").BeforeModelHook<undefined, unknown> | undefined;
+    afterModel?: import("langchain").AfterModelHook<undefined, unknown> | undefined;
+    afterAgent?: import("langchain").AfterAgentHook<undefined, unknown> | undefined;
+};
+
+// export: createMemoryResearchWorkspace
+export declare function createMemoryResearchWorkspace(): ResearchWorkspace;
+
+// export: createResearchDispatchInterceptionAdapter
+export declare function createResearchDispatchInterceptionAdapter(options: {
+    admissions: readonly ResearchTaskAdmissionV1[];
+    maxTasks: number;
+    maxConcurrency: number;
+    signal?: AbortSignal;
+    invokeUpstream(input: ResearchTaskToolInputV1, config: RunnableConfig): Promise<unknown>;
+    onDiagnostic?: (diagnostic: ResearchDispatchDiagnosticV1) => void;
+}): ResearchDispatchInterceptionAdapter;
+
+// export: createResearchPtcTools
+export declare function createResearchPtcTools(broker: ResearchCapabilityBroker, options?: ResearchPtcToolOptions): DynamicStructuredTool[];
+
+// export: createResearchScopeBindingV1
+export declare function createResearchScopeBindingV1(input: {
+    candidate: ResearchScopeCandidateV1;
+    source: ResearchScopeSourceV1;
+    authority: "approved" | "locked";
+    mentionId?: string;
+    approvedAt?: string;
+    bindingId?: string;
+}): ResearchScopeBindingV1;
+
+// export: createResearchScopeCatalogPtcTools
+export declare function createResearchScopeCatalogPtcTools(broker: ResearchScopeCatalogBroker, options: ResearchScopeCatalogPtcOptions): StructuredToolInterface[];
+
+// export: createRestResearchBroker
+export declare function createRestResearchBroker(profile: Profile, request: ResearchRequestV1): ResearchCapabilityBroker;
+
+// export: createRestResearchProviders
+export declare function createRestResearchProviders(profile: Profile, request: ResearchRequestV1, budget: ResearchRunBudget, options?: RestResearchProviderOptions): ResearchReadProviders;
+
+// export: createRestScopeCatalogProviders
+export declare function createRestScopeCatalogProviders(profile: Profile, expectedTenantOrigin: string, options?: RestScopeCatalogProviderOptions): ResearchScopeCatalogProvidersV1;
+
+// export: decodeResearchGetInputV1
+export declare function decodeResearchGetInputV1(tool: "jira.issue.get" | "wiki.page.get", value: unknown): ResearchGetInputV1;
+
+// export: decodeResearchReferenceResolveIntentV1
+export declare function decodeResearchReferenceResolveIntentV1(value: unknown): ResearchReferenceResolveIntentV1;
+
+// export: decodeResearchScopeCatalogIntentV1
+export declare function decodeResearchScopeCatalogIntentV1(capability: "jira.project.search" | "wiki.space.search", value: unknown, maximumPageSize: number): ResearchScopeCatalogIntentV1;
+
+// export: decodeResearchSearchInputV1
+export declare function decodeResearchSearchInputV1(tool: "jira.issue.search" | "wiki.search", value: unknown, maximumPageSize: number): ResearchSearchInputV1;
+
+// export: DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY
+export declare const DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY = "__deepagents_subagent_response_format";
+
+// export: DEFAULT_RESEARCH_LIMITS_V1
+export declare const DEFAULT_RESEARCH_LIMITS_V1: Readonly<ResearchLimitsV1>;
+
+// export: DynamicResearchSubagentOptions
+export interface DynamicResearchSubagentOptions {
+    model: BaseChatModel;
+    modelsByRole?: Partial<Record<ResearchGraphRoleV1, BaseChatModel>>;
+    broker: ResearchCapabilityBroker;
+    question: string;
+    maxInterpreterMs: number;
+    maxInterpreterMemoryBytes: number;
+    maxPtcCalls: number;
+    maxPacketChars: number;
+    onPtcDiagnostic?: (diagnostic: ResearchPtcDiagnosticV1) => void;
+}
+
+// export: encodeResearchTaskDescriptionV1
+export declare function encodeResearchTaskDescriptionV1(value: Omit<ResearchTaskDescriptionV1, "schema">): string;
+
+// export: escapeResearchCqlLiteral
+export declare function escapeResearchCqlLiteral(value: string): string;
+
+// export: escapeResearchJqlLiteral
+export declare function escapeResearchJqlLiteral(value: string): string;
+
+// export: finalizeResearchAgentDraftV1
+export declare function finalizeResearchAgentDraftV1(input: {
+    draft: unknown;
+    request: ResearchRequestV1;
+    sources: readonly ResearchSourceReferenceV1[];
+    detailEvidence: readonly ResearchDetailEvidenceV1[];
+    run: ResearchRunSummaryV1;
+}): ResearchReportV1;
+
+// export: finalizeResearchReportV1
+export declare function finalizeResearchReportV1(report: Omit<ResearchReportV1, "markdown"> & {
+    markdown?: string;
+}): ResearchReportV1;
+
+// export: JiraResearchDetail
+export interface JiraResearchDetail extends JiraResearchSummary {
+    content: BoundedContentProjectionV1;
+}
+
+// export: JiraResearchSummary
+export interface JiraResearchSummary {
+    issueKey: string;
+    projectKey: string;
+    title: string;
+    updatedAt?: string;
+    excerpt?: string;
+}
+
+// export: jiraResearchTextTerms
+export declare function jiraResearchTextTerms(value: string): string[];
+
+// export: normalizeResearchLimitsV1
+export declare function normalizeResearchLimitsV1(value: unknown): ResearchLimitsV1;
+
+// export: normalizeResearchRequestV1
+export declare function normalizeResearchRequestV1(value: unknown): ResearchRequestV1;
+
+// export: normalizeResearchScopeMentionText
+export declare function normalizeResearchScopeMentionText(value: string): string;
+
+// export: normalizeResearchScopeV1
+export declare function normalizeResearchScopeV1(value: unknown): ResearchScopeV1;
+
+// export: normalizeResearchWorkspacePath
+export declare function normalizeResearchWorkspacePath(value: string): string;
+
+// export: parseResearchQueryFingerprint
+export declare function parseResearchQueryFingerprint(value: string): {
+    tool: "jira.issue.search" | "wiki.search";
+    query: ResearchSearchQueryV1;
+    pageSize: number;
+};
+
+// export: prependBoundedDetailText
+export declare function prependBoundedDetailText(projection: BoundedContentProjectionV1, prefix: string, limits: ContentProjectionLimits): BoundedContentProjectionV1;
+
+// export: projectApprovedWholeScopeV1
+export declare function projectApprovedWholeScopeV1(bindings: readonly ResearchScopeBindingV1[], base: ResearchScopeV1): ResearchScopeV1;
+
+// export: projectConfluenceStorage
+export declare function projectConfluenceStorage(storage: string, siteOrigin: string, limits: ContentProjectionLimits): BoundedContentProjectionV1;
+
+// export: projectJiraDescription
+export declare function projectJiraDescription(description: AdfDocument | string | null | undefined, siteOrigin: string, limits: ContentProjectionLimits): BoundedContentProjectionV1;
+
+// export: providerCompatibleResearchSchema
+export declare function providerCompatibleResearchSchema(value: Record<string, unknown>): {
+    type: "object";
+    [key: string]: unknown;
+};
+
+// export: redactResearchSecrets
+export declare function redactResearchSecrets(value: unknown): string;
+
+// export: renderResearchReportMarkdown
+export declare function renderResearchReportMarkdown(report: Omit<ResearchReportV1, "markdown"> & {
+    markdown?: string;
+}): string;
+
+// export: RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1
+export declare const RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1: Record<string, unknown>;
+
+// export: RESEARCH_AGENT_DRAFT_SCHEMA_V1
+export declare const RESEARCH_AGENT_DRAFT_SCHEMA_V1: z.ZodObject<{
+    title: z.ZodString;
+    executiveSummary: z.ZodString;
+    findings: z.ZodArray<z.ZodObject<{
+        classification: z.ZodEnum<{
+            fact: "fact";
+            inference: "inference";
+        }>;
+        summary: z.ZodString;
+        detail: z.ZodOptional<z.ZodString>;
+        sourceIds: z.ZodArray<z.ZodString>;
+    }, z.core.$strict>>;
+    relationships: z.ZodArray<z.ZodObject<{
+        classification: z.ZodEnum<{
+            verified: "verified";
+            hypothesis: "hypothesis";
+        }>;
+        jiraIssueKey: z.ZodString;
+        confluenceContentId: z.ZodString;
+        summary: z.ZodString;
+        sourceIds: z.ZodArray<z.ZodString>;
+    }, z.core.$strict>>;
+    limitations: z.ZodArray<z.ZodString>;
+}, z.core.$strict>;
+
+// export: RESEARCH_ANALYSIS_PACKET_SCHEMA_V1
+export declare const RESEARCH_ANALYSIS_PACKET_SCHEMA_V1: Record<string, unknown>;
+
+// export: RESEARCH_BRIEF_SCHEMA_V1
+export declare const RESEARCH_BRIEF_SCHEMA_V1: "atlcli.research-brief/v1";
+
+// export: RESEARCH_CAPABILITY_SCHEMAS
+export declare const RESEARCH_CAPABILITY_SCHEMAS: {
+    readonly "jira.issue.search": {
+        readonly input: "atlcli.ptc/jira.issue.search.input/v1";
+        readonly output: "atlcli.ptc/jira.issue.search.output/v1";
+    };
+    readonly "jira.issue.get": {
+        readonly input: "atlcli.ptc/jira.issue.get.input/v1";
+        readonly output: "atlcli.ptc/jira.issue.get.output/v1";
+    };
+    readonly "wiki.search": {
+        readonly input: "atlcli.ptc/wiki.search.input/v1";
+        readonly output: "atlcli.ptc/wiki.search.output/v1";
+    };
+    readonly "wiki.page.get": {
+        readonly input: "atlcli.ptc/wiki.page.get.input/v1";
+        readonly output: "atlcli.ptc/wiki.page.get.output/v1";
+    };
+};
+
+// export: RESEARCH_CRITIQUE_SCHEMA_V1
+export declare const RESEARCH_CRITIQUE_SCHEMA_V1: Record<string, unknown>;
+
+// export: RESEARCH_GRAPH_CAPABILITIES
+export declare const RESEARCH_GRAPH_CAPABILITIES: readonly [
+    "jira.issue.search",
+    "jira.issue.get",
+    "wiki.search",
+    "wiki.page.get",
+    "jira.project.search",
+    "wiki.space.search",
+    "atlassian.reference.resolve"
+];
+
+// export: RESEARCH_GRAPH_ROLES
+export declare const RESEARCH_GRAPH_ROLES: readonly [
+    "jira-retrieval",
+    "wiki-retrieval",
+    "cross-product-join",
+    "verification",
+    "reconciler",
+    "synthesizer"
+];
+
+// export: RESEARCH_GRAPH_SCHEMA_V1
+export declare const RESEARCH_GRAPH_SCHEMA_V1: "atlcli.research-graph/v1";
+
+// export: RESEARCH_LANGCHAIN_TOOL_NAMES
+export declare const RESEARCH_LANGCHAIN_TOOL_NAMES: Record<ResearchToolId, string>;
+
+// export: RESEARCH_MODEL_ID
+export declare const RESEARCH_MODEL_ID: "claude-sonnet-4-6";
+
+// export: RESEARCH_REPORT_SCHEMA_V1
+export declare const RESEARCH_REPORT_SCHEMA_V1: "atlcli.research-report/v1";
+
+// export: RESEARCH_REQUEST_SCHEMA_V1
+export declare const RESEARCH_REQUEST_SCHEMA_V1: "atlcli.research-request/v1";
+
+// export: RESEARCH_SCOPE_CATALOG_CAPABILITY_IDS
+export declare const RESEARCH_SCOPE_CATALOG_CAPABILITY_IDS: readonly [
+    "jira.project.search",
+    "wiki.space.search",
+    "atlassian.reference.resolve"
+];
+
+// export: RESEARCH_SCOPE_CATALOG_SCHEMAS
+export declare const RESEARCH_SCOPE_CATALOG_SCHEMAS: {
+    readonly "jira.project.search": {
+        readonly input: "atlcli.ptc/jira.project.search.input/v1";
+        readonly output: "atlcli.ptc/jira.project.search.output/v1";
+    };
+    readonly "wiki.space.search": {
+        readonly input: "atlcli.ptc/wiki.space.search.input/v1";
+        readonly output: "atlcli.ptc/wiki.space.search.output/v1";
+    };
+    readonly "atlassian.reference.resolve": {
+        readonly input: "atlcli.ptc/atlassian.reference.resolve.input/v1";
+        readonly output: "atlcli.ptc/atlassian.reference.resolve.output/v1";
+    };
+};
+
+// export: RESEARCH_SCOPE_CATALOG_TOOL_NAMES
+export declare const RESEARCH_SCOPE_CATALOG_TOOL_NAMES: {
+    readonly "jira.project.search": "jira_project_search";
+    readonly "wiki.space.search": "wiki_space_search";
+    readonly "atlassian.reference.resolve": "atlassian_reference_resolve";
+};
+
+// export: RESEARCH_TASK_DISPATCH_SCHEMA_V1
+export declare const RESEARCH_TASK_DISPATCH_SCHEMA_V1: "atlcli.research-task-dispatch/v1";
+
+// export: RESEARCH_TASK_GRANTS_CONFIG_KEY
+export declare const RESEARCH_TASK_GRANTS_CONFIG_KEY = "__atlcli_research_task_granted_capability_ids";
+
+// export: RESEARCH_TASK_ID_CONFIG_KEY
+export declare const RESEARCH_TASK_ID_CONFIG_KEY = "__atlcli_research_task_id";
+
+// export: RESEARCH_TOOL_IDS
+export declare const RESEARCH_TOOL_IDS: readonly [
+    "jira.issue.search",
+    "jira.issue.get",
+    "wiki.search",
+    "wiki.page.get"
+];
+
+// export: RESEARCH_WORKER_PACKET_SCHEMA_V1
+export declare const RESEARCH_WORKER_PACKET_SCHEMA_V1: Record<string, unknown>;
+
+// export: RESEARCH_WORKSPACE_SCHEMA_V1
+export declare const RESEARCH_WORKSPACE_SCHEMA_V1: "atlcli.research-workspace/v1";
+
+// export: ResearchAgentDraftV1
+export type ResearchAgentDraftV1 = z.infer<typeof RESEARCH_AGENT_DRAFT_SCHEMA_V1>;
+
+// export: ResearchAgentRuntimeBindings
+export interface ResearchAgentRuntimeBindings {
+    StateBackend: typeof import("deepagents/browser").StateBackend;
+    createDeepAgent: typeof import("deepagents/browser").createDeepAgent;
+    createSubAgentMiddleware: typeof import("deepagents/browser").createSubAgentMiddleware;
+    registerHarnessProfile: typeof import("deepagents/browser").registerHarnessProfile;
+}
+
+// export: ResearchBriefV1
+export interface ResearchBriefV1 {
+    schema: typeof RESEARCH_BRIEF_SCHEMA_V1;
+    question: string;
+    products: ResearchProduct[];
+    effort: ResearchEffortV1;
+    reconciliation: ResearchReconciliationPolicyV1;
+}
+
+// export: ResearchBudgetSnapshotV1
+export interface ResearchBudgetSnapshotV1 {
+    ptcRemaining: number;
+    httpAttemptsRemaining: number;
+    responseBytesRemaining: number;
+}
+
+// export: ResearchCapabilityBroker
+export declare class ResearchCapabilityBroker {
+    #private;
+    readonly budget: ResearchRunBudget;
+    constructor(request: ResearchRequestV1, providers: ResearchReadProviders, options?: BrokerOptions);
+    get signal(): AbortSignal;
+    cancel(reason?: DOMException): void;
+    sourceLedger(): ResearchSourceReferenceV1[];
+    detailEvidenceLedger(): ResearchDetailEvidenceV1[];
+    completionStatus(): {
+        complete: boolean;
+        warnings: string[];
+    };
+    invoke(tool: ResearchToolId, input: unknown): Promise<unknown>;
+}
+
+// export: ResearchContractError
+export declare class ResearchContractError extends Error {
+    readonly code: ResearchErrorCode;
+    constructor(code: ResearchErrorCode, message: string);
+}
+
+// export: ResearchCursorResolution
+export interface ResearchCursorResolution {
+    queryFingerprint: string;
+    providerCursor: string;
+}
+
+// export: ResearchCursorVault
+export declare class ResearchCursorVault {
+    #private;
+    constructor(options?: ResearchCursorVaultOptions);
+    issue(tool: ResearchToolId, queryFingerprint: string, providerCursor: string | undefined): string | undefined;
+    resolve(tool: ResearchToolId, token: string | undefined): ResearchCursorResolution | undefined;
+    clear(): void;
+}
+
+// export: ResearchCursorVaultOptions
+export interface ResearchCursorVaultOptions {
+    maxEntries?: number;
+    createId?: () => string;
+    now?: () => number;
+    ttlMs?: number;
+}
+
+// export: ResearchDetailEvidenceV1
+export interface ResearchDetailEvidenceV1 {
+    source: ResearchSourceReferenceV1;
+    content: BoundedContentProjectionV1;
+}
+
+// export: ResearchDispatchDiagnosticV1
+export interface ResearchDispatchDiagnosticV1 {
+    taskId?: string;
+    status: ResearchDispatchStatusV1;
+    code?: ResearchDispatchErrorCodeV1;
+    resultBytes?: number;
+}
+
+// export: ResearchDispatchError
+export declare class ResearchDispatchError extends Error {
+    readonly code: ResearchDispatchErrorCodeV1;
+    constructor(code: ResearchDispatchErrorCodeV1, message: string);
+}
+
+// export: ResearchDispatchErrorCodeV1
+export type ResearchDispatchErrorCodeV1 = "invalid-task-description" | "unknown-task" | "subagent-type-mismatch" | "response-schema-mismatch" | "task-budget-exceeded" | "task-already-dispatched" | "concurrency-exceeded" | "capability-denied" | "result-too-large" | "aborted" | "late-result";
+
+// export: ResearchDispatchInterceptionAdapter
+export interface ResearchDispatchInterceptionAdapter {
+    invoke(input: ResearchTaskToolInputV1, config?: RunnableConfig): Promise<unknown>;
+    assertCapability(taskId: string, capabilityId: string): void;
+    snapshot(): ResearchDispatchSnapshotV1;
+}
+
+// export: ResearchDispatchSnapshotV1
+export interface ResearchDispatchSnapshotV1 {
+    dispatchedTasks: number;
+    activeInvocations: number;
+    taskStatuses: Readonly<Record<string, ResearchDispatchStatusV1>>;
+}
+
+// export: ResearchDispatchStatusV1
+export type ResearchDispatchStatusV1 = "started" | "completed" | "failed" | "cancelled" | "quarantined" | "rejected";
+
+// export: ResearchEffortV1
+export type ResearchEffortV1 = "shallow" | "standard" | "deep";
+
+// export: ResearchEntityKind
+export type ResearchEntityKind = "jira" | "wiki";
+
+// export: ResearchEntityRecord
+export interface ResearchEntityRecord {
+    kind: ResearchEntityKind;
+    entityId: string;
+    projectKey?: string;
+    spaceKey?: string;
+}
+
+// export: ResearchEntitySummaryV1
+export interface ResearchEntitySummaryV1 {
+    sourceId: string;
+    entityRef: string;
+    product: "jira" | "confluence";
+    title: string;
+    url: string;
+    issueKey?: string;
+    contentId?: string;
+    projectKey?: string;
+    spaceKey?: string;
+    updatedAt?: string;
+    excerpt?: string;
+}
+
+// export: ResearchEntityVault
+export declare class ResearchEntityVault {
+    #private;
+    constructor(options: ResearchEntityVaultOptions);
+    issue(record: ResearchEntityRecord): string;
+    resolve(kind: ResearchEntityKind, ref: string): ResearchEntityRecord;
+    clear(): void;
+}
+
+// export: ResearchEntityVaultOptions
+export interface ResearchEntityVaultOptions {
+    maxEntries: number;
+    createId?: () => string;
+}
+
+// export: ResearchErrorCode
+export type ResearchErrorCode = "invalid-request" | "missing-key" | "invalid-key" | "not-atlassian" | "not-authenticated" | "access-denied" | "rate-limited" | "provider-error" | "limit-exceeded" | "cancelled" | "invalid-report" | "unknown";
+
+// export: ResearchFindingV1
+export interface ResearchFindingV1 {
+    id: string;
+    classification: "fact" | "inference";
+    summary: string;
+    detail?: string;
+    sourceIds: string[];
+}
+
+// export: ResearchGetInputV1
+export interface ResearchGetInputV1 {
+    schema: string;
+    entityRef: string;
+}
+
+// export: ResearchGetOutputV1
+export interface ResearchGetOutputV1 {
+    schema: string;
+    source: Omit<ResearchEntitySummaryV1, "entityRef" | "excerpt">;
+    content: BoundedContentProjectionV1;
+    budget: ResearchBudgetSnapshotV1;
+}
+
+// export: ResearchGraphCapabilityV1
+export type ResearchGraphCapabilityV1 = (typeof RESEARCH_GRAPH_CAPABILITIES)[number];
+
+// export: ResearchGraphCompositionOptionsV1
+export interface ResearchGraphCompositionOptionsV1 {
+    briefRevision?: number;
+    graphRevision?: number;
+    grants?: Partial<Record<ResearchGraphRoleV1, readonly ResearchGraphCapabilityV1[]>>;
+}
+
+// export: ResearchGraphNodeV1
+export interface ResearchGraphNodeV1 {
+    id: string;
+    role: ResearchGraphRoleV1;
+    dependsOn: string[];
+    requestedCapabilityIds: ResearchGraphCapabilityV1[];
+    grantedCapabilityIds: ResearchGraphCapabilityV1[];
+    depth: 0;
+    phase: "research" | "reconciliation" | "synthesis";
+}
+
+// export: ResearchGraphRoleV1
+export type ResearchGraphRoleV1 = (typeof RESEARCH_GRAPH_ROLES)[number];
+
+// export: ResearchGraphV1
+export interface ResearchGraphV1 {
+    schema: typeof RESEARCH_GRAPH_SCHEMA_V1;
+    briefRevision: number;
+    graphRevision: number;
+    nodes: ResearchGraphNodeV1[];
+    selectedRoleIds: ResearchGraphRoleV1[];
+    maxResearchWaves: 2;
+    maxReconciliationWaves: 1;
+}
+
+// export: ResearchLimitsV1
+export interface ResearchLimitsV1 {
+    pageSize: number;
+    maxSearchPagesPerProduct: number;
+    maxItemsPerProduct: number;
+    maxDetailItemsPerProduct: number;
+    maxBodyCharsPerItem: number;
+    maxPtcCalls: number;
+    maxHttpCalls: number;
+    maxConcurrentCalls: number;
+    maxPtcInputBytes: number;
+    maxPtcOutputBytes: number;
+    maxTotalResponseBytes: number;
+    maxInterpreterMemoryBytes: number;
+    maxInterpreterMs: number;
+    maxModelInputTokens: number;
+    maxModelOutputTokens: number;
+    maxReportChars: number;
+    maxRunMs: number;
+}
+
+// export: ResearchPort
+export interface ResearchPort {
+    hasApiKey(): Promise<boolean>;
+    setApiKey(apiKey: string): Promise<void>;
+    clearApiKey(): Promise<void>;
+    run(request: ResearchRequestV1, options?: ResearchRunOptions): Promise<ResearchReportV1>;
+    copyMarkdown(markdown: string): Promise<void>;
+    downloadMarkdown(markdown: string, filename: string): Promise<void>;
+}
+
+// export: ResearchProduct
+export type ResearchProduct = "jira" | "confluence";
+
+// export: ResearchProgressPhase
+export type ResearchProgressPhase = "preparing" | "researching" | "rendering" | "complete";
+
+// export: ResearchProgressV1
+export interface ResearchProgressV1 {
+    phase: ResearchProgressPhase;
+    message: string;
+    completedCalls: number;
+    maxCalls: number;
+}
+
+// export: ResearchProvider
+export type ResearchProvider = "rest" | "agg";
+
+// export: ResearchProviderPage
+export interface ResearchProviderPage<T> {
+    items: T[];
+    nextProviderCursor?: string;
+}
+
+// export: ResearchPtcDiagnosticV1
+export interface ResearchPtcDiagnosticV1 {
+    tool: ResearchToolId;
+    inputKind: "search" | "continuation" | "detail";
+    outcome: "success" | "error";
+    itemCount?: number;
+    complete?: boolean;
+    termination?: string;
+    errorCode?: string;
+    inputKeys?: string[];
+    queryKeys?: string[];
+}
+
+// export: ResearchPtcToolOptions
+export interface ResearchPtcToolOptions {
+    onDiagnostic?: (diagnostic: ResearchPtcDiagnosticV1) => void;
+}
+
+// export: researchQueryFingerprint
+export declare function researchQueryFingerprint(tool: "jira.issue.search" | "wiki.search", query: ResearchSearchQueryV1, pageSize: number): string;
+
+// export: ResearchReadProviders
+export interface ResearchReadProviders {
+    jira: {
+        searchPage(input: {
+            jql: string;
+            pageSize: number;
+            providerCursor?: string;
+            signal: AbortSignal;
+        }): Promise<ResearchProviderPage<JiraResearchSummary>>;
+        getIssue(input: {
+            issueKey: string;
+            signal: AbortSignal;
+        }): Promise<JiraResearchDetail>;
+    };
+    wiki: {
+        searchPage(input: {
+            cql: string;
+            pageSize: number;
+            providerCursor?: string;
+            signal: AbortSignal;
+        }): Promise<ResearchProviderPage<WikiResearchSummary>>;
+        getPage(input: {
+            contentId: string;
+            signal: AbortSignal;
+        }): Promise<WikiResearchDetail>;
+    };
+}
+
+// export: ResearchReconciliationPolicyV1
+export type ResearchReconciliationPolicyV1 = "off" | "auto" | "required";
+
+// export: ResearchReferenceResolveIntentV1
+export interface ResearchReferenceResolveIntentV1 {
+    schema: string;
+    reference: string;
+    expectedTenantOrigin: string;
+    expectedKinds: ResearchScopeEntityKindV1[];
+}
+
+// export: ResearchReferenceResolveOutputV1
+export interface ResearchReferenceResolveOutputV1 {
+    schema: string;
+    candidate?: ResearchScopeCandidateV1;
+    unavailable: boolean;
+}
+
+// export: ResearchReportV1
+export interface ResearchReportV1 {
+    schema: typeof RESEARCH_REPORT_SCHEMA_V1;
+    title: string;
+    question: string;
+    scope: ResearchScopeV1;
+    executiveSummary: string;
+    findings: ResearchFindingV1[];
+    relationships: AtlassianRelationshipV1[];
+    limitations: string[];
+    sources: ResearchSourceReferenceV1[];
+    run: ResearchRunSummaryV1;
+    markdown: string;
+}
+
+// export: ResearchRequestV1
+export interface ResearchRequestV1 {
+    schema: typeof RESEARCH_REQUEST_SCHEMA_V1;
+    question: string;
+    scope: ResearchScopeV1;
+    limits: ResearchLimitsV1;
+    wikiProvider: ResearchProvider;
+}
+
+// export: ResearchRunBudget
+export declare class ResearchRunBudget {
+    #private;
+    constructor(limits: ResearchLimitsV1);
+    beginPtc(input: unknown): void;
+    completePtc(output: unknown): void;
+    guardTransport(event: TransportBudgetEvent): void;
+    beginSearchPage(product: ResearchProduct): void;
+    canSearchAnotherPage(product: ResearchProduct): boolean;
+    remainingItems(product: ResearchProduct): number;
+    addItems(product: ResearchProduct, count: number): void;
+    beginDetail(product: ResearchProduct): void;
+    snapshot(): ResearchBudgetSnapshotV1;
+    counts(): ResearchRunCountsV1;
+}
+
+// export: ResearchRunCountsV1
+export interface ResearchRunCountsV1 {
+    ptcCalls: number;
+    httpCalls: number;
+    jiraItems: number;
+    confluenceItems: number;
+}
+
+// export: ResearchRunOptions
+export interface ResearchRunOptions {
+    signal?: AbortSignal;
+    onProgress?: (progress: ResearchProgressV1) => void;
+}
+
+// export: ResearchRunSummaryV1
+export interface ResearchRunSummaryV1 {
+    model: string;
+    wikiProvider: ResearchProvider;
+    startedAt: string;
+    completedAt: string;
+    durationMs: number;
+    complete: boolean;
+    counts: ResearchRunCountsV1;
+    usage?: ResearchRunUsageV1;
+    warnings: string[];
+}
+
+// export: ResearchRunUsageV1
+export interface ResearchRunUsageV1 {
+    inputTokens?: number;
+    outputTokens?: number;
+}
+
+// export: ResearchScopeAuthorityV1
+export type ResearchScopeAuthorityV1 = "candidate" | "resolved" | "approved" | "locked";
+
+// export: ResearchScopeBindingV1
+export interface ResearchScopeBindingV1 {
+    id: string;
+    tenantOrigin: string;
+    product: ResearchProduct;
+    entityKind: ResearchScopeEntityKindV1;
+    entityRef: string;
+    key?: string;
+    name: string;
+    source: ResearchScopeSourceV1;
+    authority: ResearchScopeAuthorityV1;
+    mentionId?: string;
+    candidateId?: string;
+    approvedAt?: string;
+}
+
+// export: ResearchScopeCandidateV1
+export interface ResearchScopeCandidateV1 {
+    id: string;
+    tenantOrigin: string;
+    product: ResearchProduct;
+    entityKind: ResearchScopeEntityKindV1;
+    entityRef: string;
+    key?: string;
+    name: string;
+    aliases?: string[];
+    canonicalUrl?: string;
+    status?: "current" | "archived";
+    match?: "exact_key" | "exact_name" | "alias" | "current_context" | "exact_link" | "prefix" | "fuzzy";
+    accessible: true;
+    providerFreshnessAt: string;
+}
+
+// export: ResearchScopeCatalogBroker
+export declare class ResearchScopeCatalogBroker {
+    #private;
+    constructor(input: {
+        tenantOrigin: string;
+        providers: ResearchScopeCatalogProvidersV1;
+        limits?: Partial<ResearchScopeCatalogBrokerLimitsV1>;
+    });
+    cancel(reason?: DOMException): void;
+    get signal(): AbortSignal;
+    invoke(capability: ResearchScopeCatalogCapabilityId, value: unknown): Promise<ResearchScopeCatalogPageV1 | ResearchReferenceResolveOutputV1>;
+    private putCursor;
+    private takeCursor;
+}
+
+// export: ResearchScopeCatalogBrokerLimitsV1
+export interface ResearchScopeCatalogBrokerLimitsV1 {
+    maxPages: number;
+    maxCandidates: number;
+    maxResultBytes: number;
+    maxCursorEntries: number;
+    cursorTtlMs: number;
+}
+
+// export: ResearchScopeCatalogCapabilityId
+export type ResearchScopeCatalogCapabilityId = (typeof RESEARCH_SCOPE_CATALOG_CAPABILITY_IDS)[number];
+
+// export: ResearchScopeCatalogIntentV1
+export interface ResearchScopeCatalogIntentV1 {
+    schema: string;
+    product: ResearchProduct;
+    entityKind: "project" | "space";
+    normalizedQuery?: string;
+    includeArchived: boolean;
+    cursorRef?: string;
+    maxCandidates: number;
+}
+
+// export: ResearchScopeCatalogPageV1
+export interface ResearchScopeCatalogPageV1 {
+    schema: string;
+    candidates: ResearchScopeCandidateV1[];
+    nextCursorRef?: string;
+    truncated: boolean;
+}
+
+// export: ResearchScopeCatalogProviderPageV1
+export interface ResearchScopeCatalogProviderPageV1 {
+    candidates: ResearchScopeCandidateV1[];
+    nextProviderCursor?: string;
+}
+
+// export: ResearchScopeCatalogProvidersV1
+export interface ResearchScopeCatalogProvidersV1 {
+    jira: {
+        listProjects(input: {
+            query?: string;
+            includeArchived: boolean;
+            providerCursor?: string;
+            maxCandidates: number;
+            signal: AbortSignal;
+        }): Promise<ResearchScopeCatalogProviderPageV1>;
+    };
+    confluence: {
+        listSpaces(input: {
+            query?: string;
+            includeArchived: boolean;
+            providerCursor?: string;
+            maxCandidates: number;
+            signal: AbortSignal;
+        }): Promise<ResearchScopeCatalogProviderPageV1>;
+    };
+    resolveReference(input: ResearchReferenceResolveIntentV1 & {
+        signal: AbortSignal;
+    }): Promise<ResearchScopeCandidateV1 | undefined>;
+}
+
+// export: ResearchScopeCatalogPtcOptions
+export interface ResearchScopeCatalogPtcOptions {
+    tenantOrigin: string;
+}
+
+// export: ResearchScopeEntityKindV1
+export type ResearchScopeEntityKindV1 = "project" | "space" | "issue" | "page";
+
+// export: ResearchScopeMentionV1
+export interface ResearchScopeMentionV1 {
+    id: string;
+    productHint?: ResearchProduct;
+    entityKindHint?: ResearchScopeEntityKindV1;
+    source: ResearchScopeSourceV1;
+    text: string;
+    normalizedText: string;
+    questionTextRange?: {
+        start: number;
+        end: number;
+    };
+    exactReference?: string;
+}
+
+// export: ResearchScopeResolutionInputV1
+export interface ResearchScopeResolutionInputV1 {
+    mention: ResearchScopeMentionV1;
+    candidates: readonly ResearchScopeCandidateV1[];
+    catalogComplete: boolean;
+    expectedTenantOrigin: string;
+    maxCandidates?: number;
+    allowArchived?: boolean;
+}
+
+// export: ResearchScopeResolutionV1
+export interface ResearchScopeResolutionV1 {
+    mentionId: string;
+    state: "resolved" | "ambiguous" | "not_found" | "unavailable" | "incomplete";
+    candidateIds: string[];
+    resolvedCandidateId?: string;
+    uniquenessProof?: "exact_key_lookup" | "exact_reference_lookup" | "provider_exact_query" | "complete_catalog";
+    catalogComplete: boolean;
+    requiresUserChoice: boolean;
+}
+
+// export: ResearchScopeSeedV1
+export interface ResearchScopeSeedV1 {
+    binding: ResearchScopeBindingV1;
+    precedence: number;
+}
+
+// export: ResearchScopeSourceV1
+export type ResearchScopeSourceV1 = "cli_flag" | "ui_added" | "natural_language" | "current_context" | "profile_default" | "global_default" | "exact_link" | "research_discovery";
+
+// export: ResearchScopeV1
+export interface ResearchScopeV1 {
+    siteOrigin: string;
+    jiraProjectKeys: string[];
+    confluenceSpaceKeys: string[];
+    timeWindow?: ResearchTimeWindowV1;
+}
+
+// export: ResearchSearchInputV1
+export type ResearchSearchInputV1 = {
+    schema: string;
+    query: ResearchSearchQueryV1;
+    pageSize?: number;
+} | {
+    schema: string;
+    cursor: string;
+};
+
+// export: ResearchSearchOutputV1
+export interface ResearchSearchOutputV1 {
+    schema: string;
+    items: ResearchEntitySummaryV1[];
+    page: {
+        nextCursor?: string;
+        complete: boolean;
+        termination?: ResearchTerminationCode;
+    };
+    budget: ResearchBudgetSnapshotV1;
+}
+
+// export: ResearchSearchQueryV1
+export interface ResearchSearchQueryV1 {
+    text?: string;
+}
+
+// export: ResearchSourceReferenceV1
+export interface ResearchSourceReferenceV1 {
+    id: string;
+    product: ResearchProduct;
+    title: string;
+    url: string;
+    issueKey?: string;
+    contentId?: string;
+    projectKey?: string;
+    spaceKey?: string;
+    excerpt?: string;
+    updatedAt?: string;
+}
+
+// export: ResearchSubagentDiagnosticV1
+export interface ResearchSubagentDiagnosticV1 {
+    role: ResearchGraphRoleV1;
+    status: "started" | "completed" | "failed" | "coalesced";
+    uniqueTask: boolean;
+    durationMs?: number;
+    errorCode?: string;
+    errorMessage?: string;
+}
+
+// export: ResearchSubagentRuntimeBindings
+export interface ResearchSubagentRuntimeBindings {
+    createSubAgentMiddleware: typeof import("deepagents/browser").createSubAgentMiddleware;
+}
+
+// export: ResearchTaskAdmissionV1
+export interface ResearchTaskAdmissionV1 {
+    taskId: string;
+    subagentType: string;
+    grantedCapabilityIds: readonly string[];
+    responseSchema: Record<string, unknown>;
+    maxResultBytes: number;
+    maxDurationMs: number;
+}
+
+// export: ResearchTaskDescriptionV1
+export interface ResearchTaskDescriptionV1 {
+    schema: typeof RESEARCH_TASK_DISPATCH_SCHEMA_V1;
+    taskId: string;
+    objective: string;
+}
+
+// export: ResearchTaskToolInputV1
+export interface ResearchTaskToolInputV1 {
+    description: string;
+    subagent_type: string;
+}
+
+// export: ResearchTerminationCode
+export type ResearchTerminationCode = "index-exhausted" | "item-limit" | "page-limit" | "http-limit" | "response-byte-limit";
+
+// export: ResearchTimeWindowV1
+export interface ResearchTimeWindowV1 {
+    from?: string;
+    to?: string;
+}
+
+// export: ResearchToolId
+export type ResearchToolId = (typeof RESEARCH_TOOL_IDS)[number];
+
+// export: ResearchWorkspace
+export interface ResearchWorkspace {
+    readFile(path: string): Promise<string | undefined>;
+    writeFile(path: string, contents: string): Promise<void>;
+    remove(path: string): Promise<void>;
+    list(prefix?: string): Promise<string[]>;
+}
+
+// export: resolveResearchScopeMentionV1
+export declare function resolveResearchScopeMentionV1(input: ResearchScopeResolutionInputV1): ResearchScopeResolutionV1;
+
+// export: responseSchemaForResearchRole
+export declare function responseSchemaForResearchRole(role: ResearchGraphRoleV1): Record<string, unknown>;
+
+// export: RestResearchProviderOptions
+export interface RestResearchProviderOptions {
+    allowProfileAuth?: boolean;
+}
+
+// export: RestScopeCatalogProviderOptions
+export interface RestScopeCatalogProviderOptions {
+    allowProfileAuth?: boolean;
+    now?: () => string;
+}
+
+// export: runResearchAgent
+export declare const runResearchAgent: (input: import("./agent-runtime-core.js").RunResearchAgentInput) => Promise<import("./contracts.js").ResearchReportV1>;
+
+// export: RunResearchAgentInput
+export interface RunResearchAgentInput {
+    apiKey?: string;
+    model?: BaseChatModel;
+    request: ResearchRequestV1;
+    providers: ResearchReadProviders;
+    budget?: ResearchRunBudget;
+    runId?: string;
+    now?: () => number;
+    options?: ResearchRunOptions;
+    researchGraph?: ResearchGraphV1;
+    onPtcDiagnostic?: (diagnostic: ResearchPtcDiagnosticV1) => void;
+    onSubagentDiagnostic?: (diagnostic: ResearchSubagentDiagnosticV1) => void;
+}
+
+// export: scopeSourcePrecedence
+export declare function scopeSourcePrecedence(source: ResearchScopeSourceV1): number;
+
+// export: selectResearchScopeSeedsV1
+export declare function selectResearchScopeSeedsV1(seeds: readonly ResearchScopeSeedV1[]): ResearchScopeBindingV1[];
+
+// export: validateResearchGraphV1
+export declare function validateResearchGraphV1(graph: ResearchGraphV1): void;
+
+// export: WikiResearchDetail
+export interface WikiResearchDetail extends WikiResearchSummary {
+    content: BoundedContentProjectionV1;
+}
+
+// export: WikiResearchSummary
+export interface WikiResearchSummary {
+    contentId: string;
+    spaceKey: string;
+    title: string;
+    updatedAt?: string;
+    excerpt?: string;
+}
 ```
 
 ### Entry point `./capability-contracts`
@@ -2192,6 +4401,9 @@ export type ResearchToolId = (typeof RESEARCH_TOOL_IDS)[number];
 // export: composeResearchGraphV1
 export declare function composeResearchGraphV1(brief: ResearchBriefV1, options?: ResearchGraphCompositionOptionsV1): ResearchGraphV1;
 
+// export: composeStandardResearchGraphV1
+export declare function composeStandardResearchGraphV1(question: string): ResearchGraphV1;
+
 // export: RESEARCH_BRIEF_SCHEMA_V1
 export declare const RESEARCH_BRIEF_SCHEMA_V1: "atlcli.research-brief/v1";
 
@@ -2276,6 +4488,9 @@ export declare function validateResearchGraphV1(graph: ResearchGraphV1): void;
 ### Entry point `./node`
 
 ```ts
+// export: assertResearchReportV1
+export declare function assertResearchReportV1(value: unknown): asserts value is ResearchReportV1;
+
 // export: AtlassianRelationshipV1
 export interface AtlassianRelationshipV1 {
     id: string;
@@ -2294,11 +4509,99 @@ export interface BoundedContentProjectionV1 {
     inputBytes: number;
 }
 
+// export: buildDynamicSupervisorPrompt
+export declare function buildDynamicSupervisorPrompt(graph: ResearchGraphV1): string;
+
+// export: buildResearchAcquisitionProgram
+export declare function buildResearchAcquisitionProgram(node: ResearchGraphNodeV1, question: string): string;
+
+// export: buildResearchCql
+export declare function buildResearchCql(scope: ResearchScopeV1, query: ResearchSearchQueryV1): string;
+
+// export: buildResearchJql
+export declare function buildResearchJql(scope: ResearchScopeV1, query: ResearchSearchQueryV1): string;
+
+// export: classifyResearchError
+export declare function classifyResearchError(value: unknown): {
+    code: ResearchErrorCode;
+    message: string;
+};
+
+// export: compileDynamicResearchSubagents
+export declare function compileDynamicResearchSubagents(graph: ResearchGraphV1, options: DynamicResearchSubagentOptions): SubAgent[];
+
 // export: composeResearchGraphV1
 export declare function composeResearchGraphV1(brief: ResearchBriefV1, options?: ResearchGraphCompositionOptionsV1): ResearchGraphV1;
 
+// export: composeStandardResearchGraphV1
+export declare function composeStandardResearchGraphV1(question: string): ResearchGraphV1;
+
+// export: ContentProjectionLimits
+export interface ContentProjectionLimits {
+    maxTextChars: number;
+    maxTextBytes: number;
+    maxLinks: number;
+    maxNodes: number;
+    maxDepth: number;
+}
+
+// export: createBoundedResearchSubagentMiddleware
+export declare function createBoundedResearchSubagentMiddleware(model: BaseChatModel, subagents: SubAgent[], runtime: ResearchSubagentRuntimeBindings, options?: {
+    now?: () => number;
+    onDiagnostic?: (diagnostic: ResearchSubagentDiagnosticV1) => void;
+    structuredOutputStrategy?: "tool" | "provider";
+}): {
+    name: string;
+    tools: DynamicStructuredTool<z.ZodObject<{
+        description: z.ZodString;
+        subagent_type: z.ZodString;
+    }, z.core.$strip>, {
+        description: string;
+        subagent_type: string;
+    }, {
+        description: string;
+        subagent_type: string;
+    }, unknown, unknown, "task">[];
+    "~middlewareTypes"?: import("langchain").MiddlewareTypeConfig<undefined, undefined, unknown, readonly [
+        DynamicStructuredTool<z.ZodObject<{
+            description: z.ZodString;
+            subagent_type: z.ZodString;
+        }, z.core.$strip>, {
+            description: string;
+            subagent_type: string;
+        }, {
+            description: string;
+            subagent_type: string;
+        }, string | import("@langchain/langgraph").Command<unknown, Record<string, unknown>, string>, unknown, "task">
+    ], readonly [
+    ]> | undefined;
+    stateSchema?: undefined;
+    contextSchema?: undefined;
+    streamTransformers?: readonly [
+    ] | undefined;
+    wrapToolCall?: import("langchain").WrapToolCallHook<undefined, unknown> | undefined;
+    wrapModelCall?: import("langchain").WrapModelCallHook<undefined, unknown> | undefined;
+    beforeAgent?: import("langchain").BeforeAgentHook<undefined, unknown> | undefined;
+    beforeModel?: import("langchain").BeforeModelHook<undefined, unknown> | undefined;
+    afterModel?: import("langchain").AfterModelHook<undefined, unknown> | undefined;
+    afterAgent?: import("langchain").AfterAgentHook<undefined, unknown> | undefined;
+};
+
 // export: createMemoryResearchWorkspace
 export declare function createMemoryResearchWorkspace(): ResearchWorkspace;
+
+// export: createResearchDispatchInterceptionAdapter
+export declare function createResearchDispatchInterceptionAdapter(options: {
+    admissions: readonly ResearchTaskAdmissionV1[];
+    maxTasks: number;
+    maxConcurrency: number;
+    signal?: AbortSignal;
+    invokeUpstream(input: ResearchTaskToolInputV1, config: RunnableConfig): Promise<unknown>;
+    onDiagnostic?: (diagnostic: ResearchDispatchDiagnosticV1) => void;
+}): ResearchDispatchInterceptionAdapter;
+
+// export: createResearchPtcTools
+export declare function createResearchPtcTools(broker: ResearchCapabilityBroker, options?: ResearchPtcToolOptions): DynamicStructuredTool[];
 
 // export: createResearchScopeBindingV1
 export declare function createResearchScopeBindingV1(input: {
@@ -2309,6 +4612,18 @@ export declare function createResearchScopeBindingV1(input: {
     approvedAt?: string;
     bindingId?: string;
 }): ResearchScopeBindingV1;
+
+// export: createResearchScopeCatalogPtcTools
+export declare function createResearchScopeCatalogPtcTools(broker: ResearchScopeCatalogBroker, options: ResearchScopeCatalogPtcOptions): StructuredToolInterface[];
+
+// export: createRestResearchBroker
+export declare function createRestResearchBroker(profile: Profile, request: ResearchRequestV1): ResearchCapabilityBroker;
+
+// export: createRestResearchProviders
+export declare function createRestResearchProviders(profile: Profile, request: ResearchRequestV1, budget: ResearchRunBudget, options?: RestResearchProviderOptions): ResearchReadProviders;
+
+// export: createRestScopeCatalogProviders
+export declare function createRestScopeCatalogProviders(profile: Profile, expectedTenantOrigin: string, options?: RestScopeCatalogProviderOptions): ResearchScopeCatalogProvidersV1;
 
 // export: decodeResearchGetInputV1
 export declare function decodeResearchGetInputV1(tool: "jira.issue.get" | "wiki.page.get", value: unknown): ResearchGetInputV1;
@@ -2322,8 +4637,33 @@ export declare function decodeResearchScopeCatalogIntentV1(capability: "jira.pro
 // export: decodeResearchSearchInputV1
 export declare function decodeResearchSearchInputV1(tool: "jira.issue.search" | "wiki.search", value: unknown, maximumPageSize: number): ResearchSearchInputV1;
 
+// export: DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY
+export declare const DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY = "__deepagents_subagent_response_format";
+
 // export: DEFAULT_RESEARCH_LIMITS_V1
 export declare const DEFAULT_RESEARCH_LIMITS_V1: Readonly<ResearchLimitsV1>;
+
+// export: DynamicResearchSubagentOptions
+export interface DynamicResearchSubagentOptions {
+    model: BaseChatModel;
+    modelsByRole?: Partial<Record<ResearchGraphRoleV1, BaseChatModel>>;
+    broker: ResearchCapabilityBroker;
+    question: string;
+    maxInterpreterMs: number;
+    maxInterpreterMemoryBytes: number;
+    maxPtcCalls: number;
+    maxPacketChars: number;
+    onPtcDiagnostic?: (diagnostic: ResearchPtcDiagnosticV1) => void;
+}
+
+// export: encodeResearchTaskDescriptionV1
+export declare function encodeResearchTaskDescriptionV1(value: Omit<ResearchTaskDescriptionV1, "schema">): string;
+
+// export: escapeResearchCqlLiteral
+export declare function escapeResearchCqlLiteral(value: string): string;
+
+// export: escapeResearchJqlLiteral
+export declare function escapeResearchJqlLiteral(value: string): string;
 
 // export: FileSystemResearchWorkspace
 export declare class FileSystemResearchWorkspace implements ResearchWorkspace {
@@ -2338,6 +4678,37 @@ export declare class FileSystemResearchWorkspace implements ResearchWorkspace {
     list(prefix?: string): Promise<string[]>;
     dispose(): Promise<void>;
 }
+
+// export: finalizeResearchAgentDraftV1
+export declare function finalizeResearchAgentDraftV1(input: {
+    draft: unknown;
+    request: ResearchRequestV1;
+    sources: readonly ResearchSourceReferenceV1[];
+    detailEvidence: readonly ResearchDetailEvidenceV1[];
+    run: ResearchRunSummaryV1;
+}): ResearchReportV1;
+
+// export: finalizeResearchReportV1
+export declare function finalizeResearchReportV1(report: Omit<ResearchReportV1, "markdown"> & {
+    markdown?: string;
+}): ResearchReportV1;
+
+// export: JiraResearchDetail
+export interface JiraResearchDetail extends JiraResearchSummary {
+    content: BoundedContentProjectionV1;
+}
+
+// export: JiraResearchSummary
+export interface JiraResearchSummary {
+    issueKey: string;
+    projectKey: string;
+    title: string;
+    updatedAt?: string;
+    excerpt?: string;
+}
+
+// export: jiraResearchTextTerms
+export declare function jiraResearchTextTerms(value: string): string[];
 
 // export: normalizeResearchLimitsV1
 export declare function normalizeResearchLimitsV1(value: unknown): ResearchLimitsV1;
@@ -2354,8 +4725,70 @@ export declare function normalizeResearchScopeV1(value: unknown): ResearchScopeV
 // export: normalizeResearchWorkspacePath
 export declare function normalizeResearchWorkspacePath(value: string): string;
 
+// export: parseResearchQueryFingerprint
+export declare function parseResearchQueryFingerprint(value: string): {
+    tool: "jira.issue.search" | "wiki.search";
+    query: ResearchSearchQueryV1;
+    pageSize: number;
+};
+
+// export: prependBoundedDetailText
+export declare function prependBoundedDetailText(projection: BoundedContentProjectionV1, prefix: string, limits: ContentProjectionLimits): BoundedContentProjectionV1;
+
 // export: projectApprovedWholeScopeV1
 export declare function projectApprovedWholeScopeV1(bindings: readonly ResearchScopeBindingV1[], base: ResearchScopeV1): ResearchScopeV1;
+
+// export: projectConfluenceStorage
+export declare function projectConfluenceStorage(storage: string, siteOrigin: string, limits: ContentProjectionLimits): BoundedContentProjectionV1;
+
+// export: projectJiraDescription
+export declare function projectJiraDescription(description: AdfDocument | string | null | undefined, siteOrigin: string, limits: ContentProjectionLimits): BoundedContentProjectionV1;
+
+// export: providerCompatibleResearchSchema
+export declare function providerCompatibleResearchSchema(value: Record<string, unknown>): {
+    type: "object";
+    [key: string]: unknown;
+};
+
+// export: redactResearchSecrets
+export declare function redactResearchSecrets(value: unknown): string;
+
+// export: renderResearchReportMarkdown
+export declare function renderResearchReportMarkdown(report: Omit<ResearchReportV1, "markdown"> & {
+    markdown?: string;
+}): string;
+
+// export: RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1
+export declare const RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1: Record<string, unknown>;
+
+// export: RESEARCH_AGENT_DRAFT_SCHEMA_V1
+export declare const RESEARCH_AGENT_DRAFT_SCHEMA_V1: z.ZodObject<{
+    title: z.ZodString;
+    executiveSummary: z.ZodString;
+    findings: z.ZodArray<z.ZodObject<{
+        classification: z.ZodEnum<{
+            fact: "fact";
+            inference: "inference";
+        }>;
+        summary: z.ZodString;
+        detail: z.ZodOptional<z.ZodString>;
+        sourceIds: z.ZodArray<z.ZodString>;
+    }, z.core.$strict>>;
+    relationships: z.ZodArray<z.ZodObject<{
+        classification: z.ZodEnum<{
+            verified: "verified";
+            hypothesis: "hypothesis";
+        }>;
+        jiraIssueKey: z.ZodString;
+        confluenceContentId: z.ZodString;
+        summary: z.ZodString;
+        sourceIds: z.ZodArray<z.ZodString>;
+    }, z.core.$strict>>;
+    limitations: z.ZodArray<z.ZodString>;
+}, z.core.$strict>;
+
+// export: RESEARCH_ANALYSIS_PACKET_SCHEMA_V1
+export declare const RESEARCH_ANALYSIS_PACKET_SCHEMA_V1: Record<string, unknown>;
 
 // export: RESEARCH_BRIEF_SCHEMA_V1
 export declare const RESEARCH_BRIEF_SCHEMA_V1: "atlcli.research-brief/v1";
@@ -2379,6 +4812,9 @@ export declare const RESEARCH_CAPABILITY_SCHEMAS: {
         readonly output: "atlcli.ptc/wiki.page.get.output/v1";
     };
 };
+
+// export: RESEARCH_CRITIQUE_SCHEMA_V1
+export declare const RESEARCH_CRITIQUE_SCHEMA_V1: Record<string, unknown>;
 
 // export: RESEARCH_GRAPH_CAPABILITIES
 export declare const RESEARCH_GRAPH_CAPABILITIES: readonly [
@@ -2406,6 +4842,9 @@ export declare const RESEARCH_GRAPH_SCHEMA_V1: "atlcli.research-graph/v1";
 
 // export: RESEARCH_LANGCHAIN_TOOL_NAMES
 export declare const RESEARCH_LANGCHAIN_TOOL_NAMES: Record<ResearchToolId, string>;
+
+// export: RESEARCH_MODEL_ID
+export declare const RESEARCH_MODEL_ID: "claude-sonnet-4-6";
 
 // export: RESEARCH_REPORT_SCHEMA_V1
 export declare const RESEARCH_REPORT_SCHEMA_V1: "atlcli.research-report/v1";
@@ -2436,6 +4875,22 @@ export declare const RESEARCH_SCOPE_CATALOG_SCHEMAS: {
     };
 };
 
+// export: RESEARCH_SCOPE_CATALOG_TOOL_NAMES
+export declare const RESEARCH_SCOPE_CATALOG_TOOL_NAMES: {
+    readonly "jira.project.search": "jira_project_search";
+    readonly "wiki.space.search": "wiki_space_search";
+    readonly "atlassian.reference.resolve": "atlassian_reference_resolve";
+};
+
+// export: RESEARCH_TASK_DISPATCH_SCHEMA_V1
+export declare const RESEARCH_TASK_DISPATCH_SCHEMA_V1: "atlcli.research-task-dispatch/v1";
+
+// export: RESEARCH_TASK_GRANTS_CONFIG_KEY
+export declare const RESEARCH_TASK_GRANTS_CONFIG_KEY = "__atlcli_research_task_granted_capability_ids";
+
+// export: RESEARCH_TASK_ID_CONFIG_KEY
+export declare const RESEARCH_TASK_ID_CONFIG_KEY = "__atlcli_research_task_id";
+
 // export: RESEARCH_TOOL_IDS
 export declare const RESEARCH_TOOL_IDS: readonly [
     "jira.issue.search",
@@ -2444,8 +4899,22 @@ export declare const RESEARCH_TOOL_IDS: readonly [
     "wiki.page.get"
 ];
 
+// export: RESEARCH_WORKER_PACKET_SCHEMA_V1
+export declare const RESEARCH_WORKER_PACKET_SCHEMA_V1: Record<string, unknown>;
+
 // export: RESEARCH_WORKSPACE_SCHEMA_V1
 export declare const RESEARCH_WORKSPACE_SCHEMA_V1: "atlcli.research-workspace/v1";
+
+// export: ResearchAgentDraftV1
+export type ResearchAgentDraftV1 = z.infer<typeof RESEARCH_AGENT_DRAFT_SCHEMA_V1>;
+
+// export: ResearchAgentRuntimeBindings
+export interface ResearchAgentRuntimeBindings {
+    StateBackend: typeof import("deepagents/browser").StateBackend;
+    createDeepAgent: typeof import("deepagents/browser").createDeepAgent;
+    createSubAgentMiddleware: typeof import("deepagents/browser").createSubAgentMiddleware;
+    registerHarnessProfile: typeof import("deepagents/browser").registerHarnessProfile;
+}
 
 // export: ResearchBriefV1
 export interface ResearchBriefV1 {
@@ -2463,14 +4932,104 @@ export interface ResearchBudgetSnapshotV1 {
     responseBytesRemaining: number;
 }
 
+// export: ResearchCapabilityBroker
+export declare class ResearchCapabilityBroker {
+    #private;
+    readonly budget: ResearchRunBudget;
+    constructor(request: ResearchRequestV1, providers: ResearchReadProviders, options?: BrokerOptions);
+    get signal(): AbortSignal;
+    cancel(reason?: DOMException): void;
+    sourceLedger(): ResearchSourceReferenceV1[];
+    detailEvidenceLedger(): ResearchDetailEvidenceV1[];
+    completionStatus(): {
+        complete: boolean;
+        warnings: string[];
+    };
+    invoke(tool: ResearchToolId, input: unknown): Promise<unknown>;
+}
+
 // export: ResearchContractError
 export declare class ResearchContractError extends Error {
     readonly code: ResearchErrorCode;
     constructor(code: ResearchErrorCode, message: string);
 }
 
+// export: ResearchCursorResolution
+export interface ResearchCursorResolution {
+    queryFingerprint: string;
+    providerCursor: string;
+}
+
+// export: ResearchCursorVault
+export declare class ResearchCursorVault {
+    #private;
+    constructor(options?: ResearchCursorVaultOptions);
+    issue(tool: ResearchToolId, queryFingerprint: string, providerCursor: string | undefined): string | undefined;
+    resolve(tool: ResearchToolId, token: string | undefined): ResearchCursorResolution | undefined;
+    clear(): void;
+}
+
+// export: ResearchCursorVaultOptions
+export interface ResearchCursorVaultOptions {
+    maxEntries?: number;
+    createId?: () => string;
+    now?: () => number;
+    ttlMs?: number;
+}
+
+// export: ResearchDetailEvidenceV1
+export interface ResearchDetailEvidenceV1 {
+    source: ResearchSourceReferenceV1;
+    content: BoundedContentProjectionV1;
+}
+
+// export: ResearchDispatchDiagnosticV1
+export interface ResearchDispatchDiagnosticV1 {
+    taskId?: string;
+    status: ResearchDispatchStatusV1;
+    code?: ResearchDispatchErrorCodeV1;
+    resultBytes?: number;
+}
+
+// export: ResearchDispatchError
+export declare class ResearchDispatchError extends Error {
+    readonly code: ResearchDispatchErrorCodeV1;
+    constructor(code: ResearchDispatchErrorCodeV1, message: string);
+}
+
+// export: ResearchDispatchErrorCodeV1
+export type ResearchDispatchErrorCodeV1 = "invalid-task-description" | "unknown-task" | "subagent-type-mismatch" | "response-schema-mismatch" | "task-budget-exceeded" | "task-already-dispatched" | "concurrency-exceeded" | "capability-denied" | "result-too-large" | "aborted" | "late-result";
+
+// export: ResearchDispatchInterceptionAdapter
+export interface ResearchDispatchInterceptionAdapter {
+    invoke(input: ResearchTaskToolInputV1, config?: RunnableConfig): Promise<unknown>;
+    assertCapability(taskId: string, capabilityId: string): void;
+    snapshot(): ResearchDispatchSnapshotV1;
+}
+
+// export: ResearchDispatchSnapshotV1
+export interface ResearchDispatchSnapshotV1 {
+    dispatchedTasks: number;
+    activeInvocations: number;
+    taskStatuses: Readonly<Record<string, ResearchDispatchStatusV1>>;
+}
+
+// export: ResearchDispatchStatusV1
+export type ResearchDispatchStatusV1 = "started" | "completed" | "failed" | "cancelled" | "quarantined" | "rejected";
+
 // export: ResearchEffortV1
 export type ResearchEffortV1 = "shallow" | "standard" | "deep";
+
+// export: ResearchEntityKind
+export type ResearchEntityKind = "jira" | "wiki";
+
+// export: ResearchEntityRecord
+export interface ResearchEntityRecord {
+    kind: ResearchEntityKind;
+    entityId: string;
+    projectKey?: string;
+    spaceKey?: string;
+}
 
 // export: ResearchEntitySummaryV1
 export interface ResearchEntitySummaryV1 {
@@ -2485,6 +5044,21 @@ export interface ResearchEntitySummaryV1 {
     spaceKey?: string;
     updatedAt?: string;
     excerpt?: string;
+}
+
+// export: ResearchEntityVault
+export declare class ResearchEntityVault {
+    #private;
+    constructor(options: ResearchEntityVaultOptions);
+    issue(record: ResearchEntityRecord): string;
+    resolve(kind: ResearchEntityKind, ref: string): ResearchEntityRecord;
+    clear(): void;
+}
+
+// export: ResearchEntityVaultOptions
+export interface ResearchEntityVaultOptions {
+    maxEntries: number;
+    createId?: () => string;
 }
 
 // export: ResearchErrorCode
@@ -2596,6 +5170,61 @@ export interface ResearchProgressV1 {
 // export: ResearchProvider
 export type ResearchProvider = "rest" | "agg";
 
+// export: ResearchProviderPage
+export interface ResearchProviderPage<T> {
+    items: T[];
+    nextProviderCursor?: string;
+}
+
+// export: ResearchPtcDiagnosticV1
+export interface ResearchPtcDiagnosticV1 {
+    tool: ResearchToolId;
+    inputKind: "search" | "continuation" | "detail";
+    outcome: "success" | "error";
+    itemCount?: number;
+    complete?: boolean;
+    termination?: string;
+    errorCode?: string;
+    inputKeys?: string[];
+    queryKeys?: string[];
+}
+
+// export: ResearchPtcToolOptions
+export interface ResearchPtcToolOptions {
+    onDiagnostic?: (diagnostic: ResearchPtcDiagnosticV1) => void;
+}
+
+// export: researchQueryFingerprint
+export declare function researchQueryFingerprint(tool: "jira.issue.search" | "wiki.search", query: ResearchSearchQueryV1, pageSize: number): string;
+
+// export: ResearchReadProviders
+export interface ResearchReadProviders {
+    jira: {
+        searchPage(input: {
+            jql: string;
+            pageSize: number;
+            providerCursor?: string;
+            signal: AbortSignal;
+        }): Promise<ResearchProviderPage<JiraResearchSummary>>;
+        getIssue(input: {
+            issueKey: string;
+            signal: AbortSignal;
+        }): Promise<JiraResearchDetail>;
+    };
+    wiki: {
+        searchPage(input: {
+            cql: string;
+            pageSize: number;
+            providerCursor?: string;
+            signal: AbortSignal;
+        }): Promise<ResearchProviderPage<WikiResearchSummary>>;
+        getPage(input: {
+            contentId: string;
+            signal: AbortSignal;
+        }): Promise<WikiResearchDetail>;
+    };
+}
+
 // export: ResearchReconciliationPolicyV1
 export type ResearchReconciliationPolicyV1 = "off" | "auto" | "required";
 
@@ -2636,6 +5265,22 @@ export interface ResearchRequestV1 {
     scope: ResearchScopeV1;
     limits: ResearchLimitsV1;
     wikiProvider: ResearchProvider;
+}
+
+// export: ResearchRunBudget
+export declare class ResearchRunBudget {
+    #private;
+    constructor(limits: ResearchLimitsV1);
+    beginPtc(input: unknown): void;
+    completePtc(output: unknown): void;
+    guardTransport(event: TransportBudgetEvent): void;
+    beginSearchPage(product: ResearchProduct): void;
+    canSearchAnotherPage(product: ResearchProduct): boolean;
+    remainingItems(product: ResearchProduct): number;
+    addItems(product: ResearchProduct, count: number): void;
+    beginDetail(product: ResearchProduct): void;
+    snapshot(): ResearchBudgetSnapshotV1;
+    counts(): ResearchRunCountsV1;
 }
 
 // export: ResearchRunCountsV1
@@ -2784,6 +5429,11 @@ export interface ResearchScopeCatalogProvidersV1 {
     }): Promise<ResearchScopeCandidateV1 | undefined>;
 }
 
+// export: ResearchScopeCatalogPtcOptions
+export interface ResearchScopeCatalogPtcOptions {
+    tenantOrigin: string;
+}
+
 // export: ResearchScopeEntityKindV1
 export type ResearchScopeEntityKindV1 = "project" | "space" | "issue" | "page";
 
@@ -2881,6 +5531,44 @@ export interface ResearchSourceReferenceV1 {
     updatedAt?: string;
 }
 
+// export: ResearchSubagentDiagnosticV1
+export interface ResearchSubagentDiagnosticV1 {
+    role: ResearchGraphRoleV1;
+    status: "started" | "completed" | "failed" | "coalesced";
+    uniqueTask: boolean;
+    durationMs?: number;
+    errorCode?: string;
+    errorMessage?: string;
+}
+
+// export: ResearchSubagentRuntimeBindings
+export interface ResearchSubagentRuntimeBindings {
+    createSubAgentMiddleware: typeof import("deepagents/browser").createSubAgentMiddleware;
+}
+
+// export: ResearchTaskAdmissionV1
+export interface ResearchTaskAdmissionV1 {
+    taskId: string;
+    subagentType: string;
+    grantedCapabilityIds: readonly string[];
+    responseSchema: Record<string, unknown>;
+    maxResultBytes: number;
+    maxDurationMs: number;
+}
+
+// export: ResearchTaskDescriptionV1
+export interface ResearchTaskDescriptionV1 {
+    schema: typeof RESEARCH_TASK_DISPATCH_SCHEMA_V1;
+    taskId: string;
+    objective: string;
+}
+
+// export: ResearchTaskToolInputV1
+export interface ResearchTaskToolInputV1 {
+    description: string;
+    subagent_type: string;
+}
+
 // export: ResearchTerminationCode
 export type ResearchTerminationCode = "index-exhausted" | "item-limit" | "page-limit" | "http-limit" | "response-byte-limit";
 
@@ -2904,6 +5592,38 @@ export interface ResearchWorkspace {
 // export: resolveResearchScopeMentionV1
 export declare function resolveResearchScopeMentionV1(input: ResearchScopeResolutionInputV1): ResearchScopeResolutionV1;
 
+// export: responseSchemaForResearchRole
+export declare function responseSchemaForResearchRole(role: ResearchGraphRoleV1): Record<string, unknown>;
+
+// export: RestResearchProviderOptions
+export interface RestResearchProviderOptions {
+    allowProfileAuth?: boolean;
+}
+
+// export: RestScopeCatalogProviderOptions
+export interface RestScopeCatalogProviderOptions {
+    allowProfileAuth?: boolean;
+    now?: () => string;
+}
+
+// export: runResearchAgent
+export declare const runResearchAgent: (input: import("./agent-runtime-core.js").RunResearchAgentInput) => Promise<import("./contracts.js").ResearchReportV1>;
+
+// export: RunResearchAgentInput
+export interface RunResearchAgentInput {
+    apiKey?: string;
+    model?: BaseChatModel;
+    request: ResearchRequestV1;
+    providers: ResearchReadProviders;
+    budget?: ResearchRunBudget;
+    runId?: string;
+    now?: () => number;
+    options?: ResearchRunOptions;
+    researchGraph?: ResearchGraphV1;
+    onPtcDiagnostic?: (diagnostic: ResearchPtcDiagnosticV1) => void;
+    onSubagentDiagnostic?: (diagnostic: ResearchSubagentDiagnosticV1) => void;
+}
+
 // export: scopeSourcePrecedence
 export declare function scopeSourcePrecedence(source: ResearchScopeSourceV1): number;
 
@@ -2912,6 +5632,20 @@ export declare function selectResearchScopeSeedsV1(seeds: readonly ResearchScope
 
 // export: validateResearchGraphV1
 export declare function validateResearchGraphV1(graph: ResearchGraphV1): void;
+
+// export: WikiResearchDetail
+export interface WikiResearchDetail extends WikiResearchSummary {
+    content: BoundedContentProjectionV1;
+}
+
+// export: WikiResearchSummary
+export interface WikiResearchSummary {
+    contentId: string;
+    spaceKey: string;
+    title: string;
+    updatedAt?: string;
+    excerpt?: string;
+}
 ```
 
 ### Entry point `./scope-catalog`

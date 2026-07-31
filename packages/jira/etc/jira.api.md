@@ -282,7 +282,9 @@ export declare class JiraClient {
         values: JiraProject[];
         total: number;
     }>;
-    getProject(keyOrId: string): Promise<JiraProject>;
+    getProject(keyOrId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<JiraProject>;
     createProject(params: {
         key: string;
         name: string;
@@ -1505,7 +1507,9 @@ export declare class JiraClient {
         values: JiraProject[];
         total: number;
     }>;
-    getProject(keyOrId: string): Promise<JiraProject>;
+    getProject(keyOrId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<JiraProject>;
     createProject(params: {
         key: string;
         name: string;
@@ -2931,7 +2935,9 @@ export declare class JiraClient {
         values: JiraProject[];
         total: number;
     }>;
-    getProject(keyOrId: string): Promise<JiraProject>;
+    getProject(keyOrId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<JiraProject>;
     createProject(params: {
         key: string;
         name: string;
@@ -4154,7 +4160,9 @@ export declare class JiraClient {
         values: JiraProject[];
         total: number;
     }>;
-    getProject(keyOrId: string): Promise<JiraProject>;
+    getProject(keyOrId: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<JiraProject>;
     createProject(params: {
         key: string;
         name: string;

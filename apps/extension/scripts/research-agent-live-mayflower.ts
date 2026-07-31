@@ -4,22 +4,20 @@ import { dirname, extname, isAbsolute, relative, resolve, sep } from "node:path"
 import { fileURLToPath } from "node:url";
 import {
   DEFAULT_RESEARCH_LIMITS_V1,
-  RESEARCH_REQUEST_SCHEMA_V1,
-  normalizeResearchRequestV1,
-  type ResearchReportV1,
-} from "../utils/research/contracts.js";
-import { ResearchRunBudget } from "../utils/research/budget.js";
-import { createRestResearchProviders } from "../utils/research/rest-provider.js";
-import {
   RESEARCH_MODEL_ID,
+  RESEARCH_REQUEST_SCHEMA_V1,
+  ResearchRunBudget,
+  createRestResearchProviders,
+  normalizeResearchRequestV1,
   runResearchAgent,
-} from "../utils/research/agent-runtime.js";
-import type { ResearchPtcDiagnosticV1 } from "../utils/research/agent-tools.js";
+  type ResearchPtcDiagnosticV1,
+  type ResearchReportV1,
+  type ResearchSubagentDiagnosticV1,
+} from "@atlcli/research/node";
 import {
   composeStandardResearchGraphV1,
   type ResearchGraphRoleV1,
 } from "@atlcli/research/graph";
-import type { ResearchSubagentDiagnosticV1 } from "../utils/research/dynamic-subagents.js";
 
 const PROFILE_NAME = Bun.env.ATLCLI_RESEARCH_PROFILE?.trim() || "mayflower";
 const PROJECT_KEY = Bun.env.ATLCLI_RESEARCH_JIRA_PROJECT?.trim() || "ATLCLI";

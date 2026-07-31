@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
 import type { Profile } from "@atlcli/core";
-import { createRestScopeCatalogProviders } from "../utils/research/scope-catalog-provider.js";
+import { createRestScopeCatalogProviders } from "@atlcli/research/browser";
 
 const originalFetch = globalThis.fetch;
 const profile: Profile = {

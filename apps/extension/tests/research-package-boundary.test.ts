@@ -4,13 +4,13 @@ import {
   RESEARCH_REQUEST_SCHEMA_V1,
   RESEARCH_TOOL_IDS,
   normalizeResearchRequestV1,
-} from "@atlcli/research/browser";
+} from "@atlcli/research";
 import {
   normalizeResearchScopeMentionText,
   resolveResearchScopeMentionV1,
 } from "@atlcli/research/scope-discovery";
 
-describe("@atlcli/research browser boundary", () => {
+describe("@atlcli/research host-neutral boundary", () => {
   test("exports the host-neutral contract without browser or node adapters", () => {
     expect(RESEARCH_REQUEST_SCHEMA_V1).toBe("atlcli.research-request/v1");
     expect(RESEARCH_TOOL_IDS).toEqual([

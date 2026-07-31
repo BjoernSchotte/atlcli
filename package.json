@@ -95,5 +95,8 @@
   "patchedDependencies": {
     "@myriaddreamin/typst-ts-web-compiler@0.7.0": "patches/@myriaddreamin%2Ftypst-ts-web-compiler@0.7.0.patch",
     "@langchain/anthropic@1.5.2": "patches/@langchain%2Fanthropic@1.5.2.patch"
+  },
+  "overrides": {
+    "deepagents": "https://pkg.pr.new/deepagents@717"
   }
 }

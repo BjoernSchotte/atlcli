@@ -7,8 +7,8 @@ import {
   RESEARCH_REQUEST_SCHEMA_V1,
   normalizeResearchRequestV1,
 } from "../utils/research/contracts.js";
-import { ResearchCapabilityBroker } from "../utils/research/broker.js";
-import { createResearchPtcTools } from "../utils/research/agent-tools.js";
+import { ResearchCapabilityBroker } from "@atlcli/research";
+import { createResearchPtcTools } from "@atlcli/research/browser/agent";
 
 const toolNames = [
   "jira_issue_search",

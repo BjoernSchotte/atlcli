@@ -8,7 +8,7 @@ import {
   encodeResearchTaskDescriptionV1,
   type ResearchDispatchDiagnosticV1,
   type ResearchTaskAdmissionV1,
-} from "../utils/research/dispatch-adapter.js";
+} from "@atlcli/research";
 import { runDeclarativeDispatchCharacterization } from "./research/dispatch-adapter-declarative-harness.js";
 
 const PACKET_SCHEMA = {

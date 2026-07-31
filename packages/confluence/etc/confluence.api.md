@@ -713,7 +713,9 @@ export declare class ConfluenceClient {
         status?: "current" | "archived";
         signal?: AbortSignal;
     }): Promise<ConfluenceSpacePageV2>;
-    getSpace(key: string): Promise<ConfluenceSpace>;
+    getSpace(key: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluenceSpace>;
     getSpaceIcon(key: string, options?: {
         signal?: AbortSignal;
     }): Promise<SpaceIcon | null>;
@@ -998,6 +1000,7 @@ export type ConfluenceSpace = {
     name: string;
     type: "global" | "personal";
     status?: "current" | "archived" | "trashed";
+    aliases?: string[];
     url?: string;
 };
 
@@ -3522,7 +3525,9 @@ export declare class ConfluenceClient {
         status?: "current" | "archived";
         signal?: AbortSignal;
     }): Promise<ConfluenceSpacePageV2>;
-    getSpace(key: string): Promise<ConfluenceSpace>;
+    getSpace(key: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluenceSpace>;
     getSpaceIcon(key: string, options?: {
         signal?: AbortSignal;
     }): Promise<SpaceIcon | null>;
@@ -3807,6 +3812,7 @@ export type ConfluenceSpace = {
     name: string;
     type: "global" | "personal";
     status?: "current" | "archived" | "trashed";
+    aliases?: string[];
     url?: string;
 };
 
@@ -6331,7 +6337,9 @@ export declare class ConfluenceClient {
         status?: "current" | "archived";
         signal?: AbortSignal;
     }): Promise<ConfluenceSpacePageV2>;
-    getSpace(key: string): Promise<ConfluenceSpace>;
+    getSpace(key: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluenceSpace>;
     getSpaceIcon(key: string, options?: {
         signal?: AbortSignal;
     }): Promise<SpaceIcon | null>;
@@ -6616,6 +6624,7 @@ export type ConfluenceSpace = {
     name: string;
     type: "global" | "personal";
     status?: "current" | "archived" | "trashed";
+    aliases?: string[];
     url?: string;
 };
 
@@ -8894,7 +8903,9 @@ export declare class ConfluenceClient {
         status?: "current" | "archived";
         signal?: AbortSignal;
     }): Promise<ConfluenceSpacePageV2>;
-    getSpace(key: string): Promise<ConfluenceSpace>;
+    getSpace(key: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluenceSpace>;
     getSpaceIcon(key: string, options?: {
         signal?: AbortSignal;
     }): Promise<SpaceIcon | null>;
@@ -9178,6 +9189,7 @@ export type ConfluenceSpace = {
     name: string;
     type: "global" | "personal";
     status?: "current" | "archived" | "trashed";
+    aliases?: string[];
     url?: string;
 };
 
@@ -12158,7 +12170,9 @@ export declare class ConfluenceClient {
         status?: "current" | "archived";
         signal?: AbortSignal;
     }): Promise<ConfluenceSpacePageV2>;
-    getSpace(key: string): Promise<ConfluenceSpace>;
+    getSpace(key: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluenceSpace>;
     getSpaceIcon(key: string, options?: {
         signal?: AbortSignal;
     }): Promise<SpaceIcon | null>;
@@ -12443,6 +12457,7 @@ export type ConfluenceSpace = {
     name: string;
     type: "global" | "personal";
     status?: "current" | "archived" | "trashed";
+    aliases?: string[];
     url?: string;
 };
 
@@ -14406,7 +14421,9 @@ export declare class ConfluenceClient {
         status?: "current" | "archived";
         signal?: AbortSignal;
     }): Promise<ConfluenceSpacePageV2>;
-    getSpace(key: string): Promise<ConfluenceSpace>;
+    getSpace(key: string, options?: {
+        signal?: AbortSignal;
+    }): Promise<ConfluenceSpace>;
     getSpaceIcon(key: string, options?: {
         signal?: AbortSignal;
     }): Promise<SpaceIcon | null>;
@@ -14584,6 +14601,7 @@ export type ConfluenceSpace = {
     name: string;
     type: "global" | "personal";
     status?: "current" | "archived" | "trashed";
+    aliases?: string[];
     url?: string;
 };
 
