@@ -86,6 +86,13 @@ describe("buildMacroResolutionOptions", () => {
     expect(ctx.flags?.targetEngine).toBe("pdf");
     expect(ctx.flags?.nativeTocPresent).toBe(true);
     expect(pdf.live).toBe(false);
+
+    const web = buildMacroResolutionOptions({
+      siteBaseUrl: BASE,
+      confluence,
+      targetEngine: "web",
+    });
+    expect(web.contextFor!({ id: "web", spaceKey: "D" }).flags?.targetEngine).toBe("web");
   });
 
   test("carries the trusted site origin separately from the cache identity", () => {

@@ -1295,7 +1295,7 @@ function exportControlKeeps(
     note("export-controls-passthrough", `ADF ${macro} content was retained because export controls are in passthrough mode.`);
     return true;
   }
-  if (target && target !== "pdf" && target !== "word") {
+  if (target && target !== "pdf" && target !== "word" && target !== "web") {
     note(
       base === "scroll-only" ? "scroll-only-unknown-exporter" : "scroll-ignore-unknown-exporter",
       `ADF ${macro} named an unknown exporter; its content was retained to avoid silent loss.`,

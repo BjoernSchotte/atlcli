@@ -363,7 +363,7 @@ export interface MacroExportContext {
      * arbitrary-SVG-attachment seam yet (blocked on 006-word-quality G4/T1.15),
      * so it stays on the PNG preview.
      */
-    targetEngine?: "docx" | "pdf";
+    targetEngine?: "docx" | "pdf" | "web";
   };
   /**
    * The whole composed document's block tree, set by the resolver. The TOC

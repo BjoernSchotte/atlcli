@@ -88,7 +88,7 @@ export async function resolveMacroBlocks(
     contextFor?: (page: UnknownBlock["sourcePage"]) => MacroExportContext;
     /** Stamped onto every per-instance context so the diagram renderer picks
      *  the SVG (pdf) vs. PNG (docx) preview correctly. */
-    targetEngine?: "docx" | "pdf";
+    targetEngine?: "docx" | "pdf" | "web";
   }
 ): Promise<StorageToBlocksResult> {
   const live = opts?.live !== false;
@@ -531,7 +531,7 @@ function buildInstanceCtx(
   base: MacroExportContext,
   contextFor: ((page: UnknownBlock["sourcePage"]) => MacroExportContext) | undefined,
   shared: SharedState,
-  targetEngine: "docx" | "pdf" | undefined
+  targetEngine: "docx" | "pdf" | "web" | undefined
 ): MacroExportContext {
   return buildSourceCtx(
     block.sourcePage,
@@ -547,7 +547,7 @@ function buildSourceCtx(
   base: MacroExportContext,
   contextFor: ((page: UnknownBlock["sourcePage"]) => MacroExportContext) | undefined,
   shared: SharedState,
-  targetEngine: "docx" | "pdf" | undefined,
+  targetEngine: "docx" | "pdf" | "web" | undefined,
 ): MacroExportContext {
   // Cross-plan sync point with 002: resolve each macro against its own source
   // page. `contextFor` (when supplied) yields a fresh ports/context bundle for

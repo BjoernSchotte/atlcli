@@ -57,7 +57,7 @@ export interface BuildMacroOptionsArgs {
   confluence: ConfluenceClient;
   /** Present only when the host has Jira access configured. */
   jira?: JiraClientLike;
-  targetEngine: "docx" | "pdf";
+  targetEngine: "docx" | "pdf" | "web";
   /** `false` for `--no-live-macros` (compliance/deterministic exports). */
   live?: boolean;
   /** Whether the DOCX template already carries a native TOC field. */

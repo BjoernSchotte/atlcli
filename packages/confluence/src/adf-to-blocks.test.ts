@@ -2106,6 +2106,9 @@ describe("adfToBlocks", () => {
       "scroll-only-skipped-other-exporter",
     ]);
 
+    const web = adfToBlocks(source, { exporter: "web" });
+    expect(web).toEqual(pdf);
+
     const word = adfToBlocks(source, { exporter: "word" });
     expect(word.blocks).toEqual([
       { type: "paragraph", content: [{ type: "text", text: "word only" }] },

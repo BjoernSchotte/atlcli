@@ -117,7 +117,7 @@ export interface StorageToBlocksOptions {
    * unconditionally (a macro's `exporter` param cannot mismatch an absent
    * identity), matching the pre-003 default.
    */
-  exporter?: "pdf" | "word";
+  exporter?: "pdf" | "word" | "web";
   /**
    * Whether the export-control macros (`scroll-only`/`scroll-ignore`, spec 003
    * C4) filter at all. `"apply"` (default) runs the C4 truth table; the
@@ -453,7 +453,7 @@ function parseAttributes(source: string): Record<string, string> {
 interface WalkCtx {
   notes: ExportNote[];
   /** Exporter identity (from options); undefined for hosts that don't set it. */
-  exporter?: "pdf" | "word";
+  exporter?: "pdf" | "word" | "web";
   /**
    * Export-control filtering mode (from options). `"apply"` (default) runs the
    * C4 truth table; `"passthrough"` keeps both `scroll-only`/`scroll-ignore`
@@ -1071,13 +1071,15 @@ export function normalizeCaptionKind(
 // ---- Exporter-parameter matching (C4) -------------------------------------
 
 /** Normalize a macro `exporter` parameter value to a known exporter or null. */
-function normalizeExporterValue(raw: string): "pdf" | "word" | null {
+function normalizeExporterValue(raw: string): "pdf" | "word" | "web" | null {
   const key = raw.trim().toLowerCase();
   switch (key) {
     case "pdf":
     case "scroll-pdf":
     case "scrollpdf":
       return "pdf";
+    case "web":
+      return "web";
     case "word":
     case "office":
     case "scroll-word":

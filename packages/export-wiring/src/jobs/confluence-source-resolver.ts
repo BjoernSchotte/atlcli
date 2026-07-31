@@ -91,7 +91,7 @@ export function confluenceSourceResolverPortFromClientV1(
 }
 
 export interface ResolveConfluenceSourceOptionsV1 {
-  exporter: "pdf" | "word";
+  exporter: "pdf" | "word" | "web";
   port: ConfluenceSourceResolverPortV1;
   signal: AbortSignal;
   resolveExternalUrl?: NonNullable<ComposeOptions["resolveExternalUrl"]>;

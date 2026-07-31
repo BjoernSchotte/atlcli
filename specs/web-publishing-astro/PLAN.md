@@ -1440,7 +1440,7 @@ digest; route identity survives rename/move; every internal reference resolves.
 
 ### T3 — Add explicit web targeting and per-page macro resolution
 
-- [ ] Add `web` additively to Confluence export-control, macro target, source
+- [x] Add `web` additively to Confluence export-control, macro target, source
       resolver, and macro option contracts.
 - [ ] Freeze existing DOCX/PDF/Word target truth tables and API output.
 - [ ] Resolve macros independently per page with correct page identity and
