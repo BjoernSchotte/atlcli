@@ -178,6 +178,7 @@ export async function handleResearch(
       budget,
       runId: sessionId,
       researchGraph,
+      onPtcDiagnostic: (diagnostic) => process.stderr.write(`[research] ptc=${diagnostic.tool} kind=${diagnostic.inputKind} outcome=${diagnostic.outcome}${diagnostic.itemCount === undefined ? "" : ` items=${diagnostic.itemCount}`}${diagnostic.termination === undefined ? "" : ` termination=${diagnostic.termination}`}\n`),
       options: {
         signal: controller.signal,
         onProgress: (progress) => process.stderr.write(`[research] phase=${progress.phase} calls=${progress.completedCalls}/${progress.maxCalls}\n`),

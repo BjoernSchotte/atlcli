@@ -11,7 +11,7 @@ import type {
   ResearchGraphV1,
 } from "@atlcli/research/graph";
 import { validateResearchGraphV1 } from "@atlcli/research/graph";
-import { createResearchPtcTools } from "./agent-tools.js";
+import { createResearchPtcTools, type ResearchPtcDiagnosticV1 } from "./agent-tools.js";
 import type { ResearchCapabilityBroker } from "./broker.js";
 
 const disabledMiddleware = [
@@ -66,8 +66,9 @@ function rolePrompt(node: ResearchGraphNodeV1): string {
 function roleTools(
   node: ResearchGraphNodeV1,
   broker: ResearchCapabilityBroker,
+  onDiagnostic?: (diagnostic: ResearchPtcDiagnosticV1) => void,
 ): DynamicStructuredTool[] {
-  const tools = createResearchPtcTools(broker);
+  const tools = createResearchPtcTools(broker, onDiagnostic ? { onDiagnostic } : {});
   const allowed = new Set(node.grantedCapabilityIds.map((capability) => toolForCapability[capability]));
   return tools.filter((candidate) => allowed.has(candidate.name));
 }
@@ -79,6 +80,7 @@ export interface DynamicResearchSubagentOptions {
   maxInterpreterMemoryBytes: number;
   maxPtcCalls: number;
   maxPacketChars: number;
+  onPtcDiagnostic?: (diagnostic: ResearchPtcDiagnosticV1) => void;
 }
 
 /**
@@ -105,7 +107,7 @@ export function compileDynamicResearchSubagents(
       ...(node.grantedCapabilityIds.length > 0
         ? [
             createCodeInterpreterMiddleware({
-              ptc: roleTools(node, options.broker),
+              ptc: roleTools(node, options.broker, options.onPtcDiagnostic),
               subagents: false,
               toolName: "eval",
               memoryLimitBytes: options.maxInterpreterMemoryBytes,

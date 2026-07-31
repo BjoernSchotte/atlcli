@@ -196,6 +196,7 @@ export async function runResearchAgent(
         maxInterpreterMemoryBytes: input.request.limits.maxInterpreterMemoryBytes,
         maxPtcCalls: input.request.limits.maxPtcCalls,
         maxPacketChars: Math.min(24_000, input.request.limits.maxReportChars),
+        ...(input.onPtcDiagnostic ? { onPtcDiagnostic: input.onPtcDiagnostic } : {}),
       })
     : [];
   const isDynamic = input.researchGraph !== undefined;
