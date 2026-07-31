@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { Profile } from "@atlcli/core";
-import { buildResearchRequest, parseResearchCliInput } from "./research.js";
+import { buildResearchRequest, parseResearchCliInput, researchArtifactPath } from "./research.js";
 
 const profile: Profile = {
   name: "mayflower",
@@ -41,5 +41,11 @@ describe("research CLI one-shot contract", () => {
 
   test("keeps future durable-session flags out of the one-shot contract", () => {
     expect(() => parseResearchCliInput(["question"], { resume: "r1" })).toThrow("reserved for durable sessions");
+  });
+
+  test("places every report in a timestamped Downloads artifact directory", () => {
+    expect(researchArtifactPath(new Date("2026-07-31T08:55:17.123Z"))).toMatch(
+      /Downloads\/atlcli-research-2026-07-31-08-55-17-123\/report\.md$/,
+    );
   });
 });

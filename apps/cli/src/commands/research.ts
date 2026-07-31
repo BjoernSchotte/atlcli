@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, rename, unlink, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
+import { homedir } from "node:os";
 import {
   ERROR_CODES,
   type OutputOptions,
@@ -42,6 +43,11 @@ export interface ResearchCliInput {
   timezone?: string;
   outputPath?: string;
   keepSession: boolean;
+}
+
+export function researchArtifactPath(now = new Date()): string {
+  const timestamp = now.toISOString().replace(/[T:.Z]/g, "-").replace(/-+$/, "");
+  return join(homedir(), "Downloads", `atlcli-research-${timestamp}`, "report.md");
 }
 
 function uniqueKeys(values: string[]): string[] {
@@ -169,11 +175,18 @@ export async function handleResearch(
       },
     });
     await workspace.writeFile("/artifacts/report.md", report.markdown);
+    const artifactPath = researchArtifactPath();
+    try {
+      await writeAtomic(artifactPath, report.markdown);
+      process.stderr.write(`[research] artifact=${artifactPath}\n`);
+    } catch (error) {
+      process.stderr.write(`[research] artifact=unavailable reason=${error instanceof Error ? error.name : "unknown"}\n`);
+    }
     if (input.outputPath) await writeAtomic(input.outputPath, report.markdown);
     if (input.keepSession) {
       process.stderr.write(`[research] session=${sessionId} workspace=${workspace.root}\n`);
     }
-    output(opts.json ? { sessionId, report } : report.markdown, opts);
+    output(opts.json ? { sessionId, artifactPath, report } : report.markdown, opts);
   } finally {
     clearTimeout(timeout);
     process.removeListener("SIGINT", onInterrupt);

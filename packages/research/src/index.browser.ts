@@ -11,3 +11,4 @@ export * from "./scope-discovery.js";
 export * from "./scope-catalog.js";
 export * from "./scope-catalog-broker.js";
 export * from "./workspace.js";
+export * from "./graph.js";
