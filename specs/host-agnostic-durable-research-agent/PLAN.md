@@ -2455,7 +2455,7 @@ content-scope expansion belongs to T6.
 
 Shared:
 
-- [ ] Add `ResearchBriefV1`, effort resolution, `ResearchGraphV1`,
+- [x] Add `ResearchBriefV1`, effort resolution, `ResearchGraphV1`,
       `ResearchGraphNodeV1`, `ResearchSubagentRoleV1`,
       `ResearchPacketBodyV1`, `ResearchReconciliationInputV1`,
       `ReconciliationBodyV1`, `ResearchAcceptedPacketV1`,
@@ -2480,7 +2480,7 @@ Shared:
       with bounded candidate IDs for ambiguous, weak, archived-only,
       unavailable, incomplete/truncated, or not-found mentions. Perform zero
       content-detail or subagent calls before resolution succeeds.
-- [ ] Register only the closed role set defined above and keep the
+- [x] Register only the closed role set defined above and keep the
       general-purpose subagent disabled. Mark `outline-planner` unavailable
       until T5. Register `synthesizer` as the only role permitted to return
       `ResearchAgentDraftV1`.
@@ -2492,12 +2492,12 @@ Shared:
 - [ ] Before graph proposal, return `ResearchClarificationRequiredV1` and stop
       when the brief contains a required question or user-decision assumption.
       T3 never fabricates an answer or enters an undurable wait.
-- [ ] Reject cycles, unknown roles/capabilities, Depth greater than 1,
+- [x] Reject cycles, unknown roles/capabilities, Depth greater than 1,
       incompatible dependencies, unapproved content-scope expansion, duplicate
       node IDs, excessive node/wave counts, unavailable roles, and over-budget
       proposals. Persist each node's requested capabilities, host-granted
       intersection, and typed-intent references.
-- [ ] Derive the selected-role projection from validated executable nodes.
+- [x] Derive the selected-role projection from validated executable nodes.
       Require exactly one consistent selected/omitted decision for every
       phase-available role; never accept a separate model-authored visible role
       list.
@@ -2582,12 +2582,12 @@ Extension/browser:
 
 Gate:
 
-- [ ] An exact-lookup report fixture selects no research subagent and exactly
+- [x] An exact-lookup report fixture selects no research subagent and exactly
       one synthesizer; a cross-product fixture selects at least two independent
       research nodes and exactly one synthesizer; a contradiction fixture
       selects verification, task-dependent reconciliation, and exactly one
       synthesizer. Their normalized graphs are structurally different.
-- [ ] Graph fixtures reject missing, duplicate, or inconsistent role decisions
+- [x] Graph fixtures reject missing, duplicate, or inconsistent role decisions
       and prove that execution, UI projection, and normalized comparisons
       derive the identical selected-role set from executable nodes.
 - [x] No test or production prompt encodes a fixed sequence containing every

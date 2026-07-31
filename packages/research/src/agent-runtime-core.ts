@@ -142,7 +142,8 @@ Implementation and output-format constraints stated only in this system prompt a
 
 export function buildDynamicSupervisorPrompt(graph: ResearchGraphV1): string {
   const roles = graph.nodes
-    .map((node) => `- ${node.role}: ${node.grantedCapabilityIds.length > 0 ? node.grantedCapabilityIds.join(", ") : "no source capabilities"}`)
+    .filter((node) => node.executor === "subagent" && node.roleId)
+    .map((node) => `- ${node.id} uses ${node.roleId}: ${node.grantedCapabilityIds.length > 0 ? node.grantedCapabilityIds.join(", ") : "no source capabilities"}; depends on ${node.dependencies.join(", ") || "none"}`)
     .join("\n");
   return [
     "You are the central supervisor for a bounded, read-only Jira and Confluence deep-research workflow.",
@@ -160,9 +161,9 @@ export function buildDynamicSupervisorPrompt(graph: ResearchGraphV1): string {
     `Final synthesizer responseSchema: ${JSON.stringify(RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1)}`,
     "",
     "Workflow rules:",
-    "1. Choose a task-specific workflow and dispatch independent work in Promise.all groups of at most three tasks. Dispatch at most one jira-retrieval task and at most one wiki-retrieval task. Run them concurrently only when their search intents are independent. When Jira relevance depends on named Confluence pages, concepts, stages, or terminology, run wiki-retrieval first and include its compact packet in the jira-retrieval task description so Jira can form relevant bounded queries. Duplicate retrieval instances would repeat the same reads. Analysis and verification tasks remain dynamically optional.",
-    `2. Use at most ${graph.maxResearchWaves} research waves. Later tasks receive only the compact structured packets they depend on. Use cross-product-join or verification only when the question or evidence needs them. Dispatch at most one cross-product-join in the initial analysis group; a second instance is permitted only as a non-overlapping repair explicitly justified by the critic.`,
-    `3. When reconciler is available, dispatch exactly one fresh-context independent critic after the initial evidence/analysis groups. It receives the question and compact packets, never child trajectories. Use its critique to decide whether one bounded analysis-only repair group is necessary; do not repeat jira-retrieval or wiki-retrieval in this one-shot runtime, and do not exceed ${graph.maxReconciliationWaves} critique pass.`,
+    `1. Execute only the host-admitted graph nodes above. Include each node ID in its task description. Dispatch independent ready nodes in Promise.all groups of at most ${graph.maxParallelNodes}. A focused-researcher acquires Jira or Confluence evidence only through that node's granted capabilities. Duplicate node dispatches would repeat the same reads.`,
+    `2. Use at most ${graph.maxResearchWaves} research waves. Later tasks receive only compact accepted predecessor packets. Use document-distiller, contradiction-verifier, or coverage-moderator only when represented by an admitted node.`,
+    `3. When reconciler is admitted, dispatch exactly one fresh-context independent critic after its dependencies complete. It receives the question and compact packets, never child trajectories. Do not repeat focused-researcher nodes in this one-shot runtime, and do not exceed ${graph.maxReconciliationWaves} critique pass.`,
     "4. Dispatch exactly one synthesizer as the final task. Give it the question, accepted packets, critic result, and any repair packets. It must use the final synthesizer responseSchema and author the complete structured report draft.",
     "5. Return the synthesizer's typed object as the eval result. After eval, copy that object unchanged into the required parent structured response. Do not re-research or rewrite its prose in the supervisor.",
     "",
@@ -204,16 +205,10 @@ function createAnthropicSubagentModels(
   apiKey: string,
 ): Partial<Record<ResearchGraphRoleV1, BaseChatModel>> {
   return {
-    "jira-retrieval": createAnthropicModel(apiKey, 3_000),
-    // Four named Confluence pages need more structured-output headroom than
-    // the Jira top-item packet. Too small a cap causes structured-output
-    // repair loops instead of a faster response.
-    "wiki-retrieval": createAnthropicModel(apiKey, 3_000),
-    // Relationship packets carry two endpoint references plus per-claim
-    // support arrays. The smaller PoC caps did not leave reliable headroom
-    // for provider-structured cross-product responses in live runs.
-    "cross-product-join": createAnthropicModel(apiKey, 2_400),
-    verification: createAnthropicModel(apiKey, 2_000, "low"),
+    "focused-researcher": createAnthropicModel(apiKey, 3_000),
+    "document-distiller": createAnthropicModel(apiKey, 2_400),
+    "contradiction-verifier": createAnthropicModel(apiKey, 2_000, "low"),
+    "coverage-moderator": createAnthropicModel(apiKey, 2_000, "low"),
     reconciler: createAnthropicModel(apiKey, 2_400, "low"),
     synthesizer: createAnthropicModel(apiKey, 4_096, "low"),
   };
@@ -284,7 +279,7 @@ async function runResearchAgentWithBindings(
     emitEvent({ kind: "phase", phase: progress.phase });
     emitEvent({
       kind: "progress",
-      graphRevision: 1,
+      graphRevision: input.researchGraph?.revision ?? 1,
       completed: progress.completedCalls,
       maximum: progress.maxCalls,
     });

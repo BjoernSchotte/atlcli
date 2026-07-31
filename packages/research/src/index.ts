@@ -8,6 +8,7 @@ export * from "./contracts.js";
 export * from "./capability-contracts.js";
 export * from "./scope-discovery.js";
 export * from "./scope-resolution.js";
+export * from "./brief.js";
 export * from "./scope-catalog.js";
 export * from "./scope-catalog-broker.js";
 export * from "./workspace.js";

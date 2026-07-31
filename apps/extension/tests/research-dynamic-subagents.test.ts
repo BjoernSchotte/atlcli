@@ -9,7 +9,7 @@ import {
   type ResearchBriefV1,
   type ResearchGraphV1,
 } from "@atlcli/research/graph";
-import { ResearchCapabilityBroker } from "@atlcli/research";
+import { ResearchCapabilityBroker, createResearchBriefV1 } from "@atlcli/research";
 import {
   RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1,
 } from "@atlcli/research";
@@ -58,71 +58,55 @@ const model = {
 } as unknown as BaseChatModel;
 
 function crossProductGraph() {
-  const brief: ResearchBriefV1 = {
-    schema: "atlcli.research-brief/v1",
-    question: request.question,
-    products: ["jira", "confluence"],
-    effort: "deep",
-    reconciliation: "auto",
-  };
-  return composeResearchGraphV1(brief);
+  return composeResearchGraphV1(graphBrief(request.question, ["jira", "confluence"], "deep"));
+}
+
+function graphBrief(
+  objective: string,
+  sourceClasses: ("jira" | "confluence")[],
+  requestedEffort: "lookup" | "analysis" | "deep" = "analysis",
+  requestedReconciliation: "off" | "auto" | "required" = "auto",
+): ResearchBriefV1 {
+  return createResearchBriefV1({
+    sessionId: "research-session:extension-test",
+    turnId: "research-turn:extension-test",
+    objective,
+    scope: {
+      siteOrigin: "https://example.atlassian.net",
+      jiraProjectKeys: sourceClasses.includes("jira") ? ["DEMO"] : [],
+      confluenceSpaceKeys: sourceClasses.includes("confluence") ? ["KB"] : [],
+    },
+    sourceClasses,
+    asOf: "2026-01-01T00:00:00.000Z",
+    timezone: "UTC",
+    requestedEffort,
+    requestedPlanApproval: "automatic",
+    requestedReconciliation,
+  });
 }
 
 function synthesisOnlyGraph(): ResearchGraphV1 {
-  return {
-    schema: RESEARCH_GRAPH_SCHEMA_V1,
-    briefRevision: 1,
-    graphRevision: 1,
-    nodes: [{
-      id: "research-node:synthesizer",
-      role: "synthesizer",
-      dependsOn: [],
-      requestedCapabilityIds: [],
-      grantedCapabilityIds: [],
-      depth: 0,
-      phase: "synthesis",
-    }],
-    selectedRoleIds: ["synthesizer"],
-    maxResearchWaves: 2,
-    maxReconciliationWaves: 1,
-  };
+  return composeResearchGraphV1(graphBrief(
+    "Get the exact bounded Jira item.",
+    ["jira"],
+    "lookup",
+    "off",
+  ));
 }
 
 function jiraAndSynthesisGraph(): ResearchGraphV1 {
-  return {
-    schema: RESEARCH_GRAPH_SCHEMA_V1,
-    briefRevision: 1,
-    graphRevision: 1,
-    nodes: [
-      {
-        id: "research-node:jira-retrieval",
-        role: "jira-retrieval",
-        dependsOn: [],
-        requestedCapabilityIds: ["jira.issue.search", "jira.issue.get"],
-        grantedCapabilityIds: ["jira.issue.search", "jira.issue.get"],
-        depth: 0,
-        phase: "research",
-      },
-      {
-        id: "research-node:synthesizer",
-        role: "synthesizer",
-        dependsOn: ["research-node:jira-retrieval"],
-        requestedCapabilityIds: [],
-        grantedCapabilityIds: [],
-        depth: 0,
-        phase: "synthesis",
-      },
-    ],
-    selectedRoleIds: ["jira-retrieval", "synthesizer"],
-    maxResearchWaves: 2,
-    maxReconciliationWaves: 1,
-  };
+  return composeResearchGraphV1(graphBrief(
+    "Analyze bounded Jira work.",
+    ["jira"],
+    "analysis",
+    "off",
+  ));
 }
 
 test("derives a bounded LangGraph super-step allowance from the admitted workflow", () => {
   expect(researchRecursionLimitV1()).toBe(24);
-  expect(researchRecursionLimitV1(synthesisOnlyGraph())).toBe(34);
-  expect(researchRecursionLimitV1(crossProductGraph())).toBe(58);
+  expect(researchRecursionLimitV1(synthesisOnlyGraph())).toBe(40);
+  expect(researchRecursionLimitV1(crossProductGraph())).toBe(64);
 });
 
 test("repairs one synthesizer schema failure and fails fast after the bounded retry", async () => {
@@ -295,9 +279,9 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
   });
 
   test("binds dynamic roles to host-authoritative response schemas", () => {
-    expect(responseSchemaForResearchRole("jira-retrieval")).toBe(RESEARCH_WORKER_PACKET_SCHEMA_V1);
-    expect(responseSchemaForResearchRole("cross-product-join")).toBe(RESEARCH_ANALYSIS_PACKET_SCHEMA_V1);
-    expect(responseSchemaForResearchRole("verification")).toBe(RESEARCH_ANALYSIS_PACKET_SCHEMA_V1);
+    expect(responseSchemaForResearchRole("focused-researcher")).toBe(RESEARCH_WORKER_PACKET_SCHEMA_V1);
+    expect(responseSchemaForResearchRole("document-distiller")).toBe(RESEARCH_ANALYSIS_PACKET_SCHEMA_V1);
+    expect(responseSchemaForResearchRole("contradiction-verifier")).toBe(RESEARCH_ANALYSIS_PACKET_SCHEMA_V1);
     expect(responseSchemaForResearchRole("reconciler")).toBe(RESEARCH_CRITIQUE_SCHEMA_V1);
     expect(responseSchemaForResearchRole("synthesizer")).toBe(RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1);
   });
@@ -324,15 +308,15 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     });
 
     expect(specs.map((spec) => spec.name)).toEqual([
-      "jira-retrieval",
-      "wiki-retrieval",
-      "cross-product-join",
+      "focused-researcher",
+      "document-distiller",
+      "coverage-moderator",
       "reconciler",
       "synthesizer",
     ]);
     expect(specs.every((spec) => spec.tools?.length === 0)).toBe(true);
     expect(specs[0]?.middleware).toHaveLength(1);
-    expect(specs[1]?.middleware).toHaveLength(1);
+    expect(specs[1]?.middleware).toHaveLength(0);
     expect(specs[2]?.middleware).toHaveLength(0);
     expect(specs[3]?.middleware).toHaveLength(0);
     expect(specs[4]?.middleware).toHaveLength(0);
@@ -341,20 +325,14 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     expect(specs[0]?.systemPrompt).toContain("Inspect every returned candidate summary");
     expect(specs[0]?.systemPrompt).toContain("Search summaries are screening evidence only");
     expect(specs[0]?.systemPrompt).toContain("at most 8 selected candidates");
-    expect(specs[1]?.systemPrompt).toContain("Make exactly one eval call");
+    expect(specs[0]?.systemPrompt).toContain("Make exactly one eval call");
     expect(specs[0]?.systemPrompt).toContain("tools.jiraIssueSearch");
     expect(specs[4]?.systemPrompt).toContain("sole report author");
   });
 
   test("preserves successful named-page searches when a later bounded query fails", () => {
     const question = "Compare “One”, “Two”, “Three”, and “Four” with Jira.";
-    const graph = composeResearchGraphV1({
-      schema: "atlcli.research-brief/v1",
-      question,
-      products: ["jira", "confluence"],
-      effort: "standard",
-      reconciliation: "auto",
-    });
+    const graph = composeResearchGraphV1(graphBrief(question, ["jira", "confluence"]));
     const specs = compileDynamicResearchSubagents(graph, {
       model,
       broker,
@@ -366,32 +344,25 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       maxDetailItemsPerProduct: 4,
       maxPacketChars: 8_000,
     });
-    const wiki = specs.find((spec) => spec.name === "wiki-retrieval");
-    const jira = specs.find((spec) => spec.name === "jira-retrieval");
+    const focused = specs.find((spec) => spec.name === "focused-researcher");
 
-    expect(wiki?.systemPrompt).toContain("partial-title-query-set");
-    expect(wiki?.systemPrompt).toContain("catch { failures += 1; }");
-    expect(wiki?.systemPrompt).toContain('["One", "Two", "Three", "Four"]');
-    expect(wiki?.systemPrompt).toContain("queryText: group.text");
-    expect(wiki?.systemPrompt).toContain("const chosen = exact ?? matches[0]");
-    expect(jira?.systemPrompt).toContain(
+    expect(focused?.systemPrompt).toContain("partial-title-query-set");
+    expect(focused?.systemPrompt).toContain("catch { failures += 1; }");
+    expect(focused?.systemPrompt).toContain('["One", "Two", "Three", "Four"]');
+    expect(focused?.systemPrompt).toContain("queryText: group.text");
+    expect(focused?.systemPrompt).toContain("const chosen = exact ?? matches[0]");
+    expect(focused?.systemPrompt).toContain(
       'const requiredQueryTexts = ["One","Two","Three","Four"];'
     );
-    expect(jira?.systemPrompt).toContain(
+    expect(focused?.systemPrompt).toContain(
       "Do not omit, rewrite, or reorder requiredQueryTexts"
     );
   });
 
   test("executes four named-page searches and reads one opaque detail per query", async () => {
     const question = "Compare “One”, “Two”, “Three”, and “Four” with Jira.";
-    const graph = composeResearchGraphV1({
-      schema: "atlcli.research-brief/v1",
-      question,
-      products: ["jira", "confluence"],
-      effort: "standard",
-      reconciliation: "auto",
-    });
-    const wikiNode = graph.nodes.find((node) => node.role === "wiki-retrieval")!;
+    const graph = composeResearchGraphV1(graphBrief(question, ["jira", "confluence"]));
+    const wikiNode = graph.nodes.find((node) => node.grantedCapabilityIds.includes("wiki.search"))!;
     const detailRefs: string[] = [];
     const session = new ReplSession("research-named-page-acquisition", {
       captureConsole: false,
@@ -444,14 +415,8 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
 
   test("uses the host detail budget after paginating ordinary Confluence search results", async () => {
     const question = "Which DOCSY pages document recent ATLCLI work?";
-    const graph = composeResearchGraphV1({
-      schema: "atlcli.research-brief/v1",
-      question,
-      products: ["jira", "confluence"],
-      effort: "standard",
-      reconciliation: "auto",
-    });
-    const wikiNode = graph.nodes.find((node) => node.role === "wiki-retrieval")!;
+    const graph = composeResearchGraphV1(graphBrief(question, ["jira", "confluence"]));
+    const wikiNode = graph.nodes.find((node) => node.grantedCapabilityIds.includes("wiki.search"))!;
     const summaries = Array.from({ length: 10 }, (_, index) => ({
       title: `Page ${index + 1}`,
       sourceId: `wiki:${index + 1}`,
@@ -507,13 +472,12 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     const prompt = buildDynamicSupervisorPrompt(crossProductGraph());
 
     expect(prompt).toContain("Write the JavaScript yourself for this question");
-    expect(prompt).toContain("Promise.all groups of at most three tasks");
-    expect(prompt).toContain("at most one jira-retrieval task and at most one wiki-retrieval task");
-    expect(prompt).toContain("run wiki-retrieval first");
-    expect(prompt).toContain("include its compact packet in the jira-retrieval task description");
+    expect(prompt).toContain("Promise.all groups of at most 3");
+    expect(prompt).toContain("Execute only the host-admitted graph nodes");
+    expect(prompt).toContain("focused-researcher acquires Jira or Confluence evidence");
     expect(prompt).toContain("Every task call must include its appropriate responseSchema");
     expect(prompt).toContain("exactly one fresh-context independent critic");
-    expect(prompt).toContain("do not repeat jira-retrieval or wiki-retrieval");
+    expect(prompt).toContain("Do not repeat focused-researcher nodes");
     expect(prompt).toContain("exactly one synthesizer as the final task");
     expect(prompt).toContain("copy that object unchanged");
     expect(prompt).toContain("do not execute a fixed all-roles pipeline");
@@ -523,7 +487,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       ((RESEARCH_CRITIQUE_SCHEMA_V1.properties as Record<string, unknown>).suggestedRepairTasks as {
         items: { properties: { subagentType: { enum: string[] } } };
       }).items.properties.subagentType.enum,
-    ).toEqual(["cross-product-join", "verification"]);
+    ).toEqual(["document-distiller", "contradiction-verifier"]);
   });
 
   test("uses one createDeepAgent invocation and native task dispatch for final synthesis", async () => {
@@ -591,7 +555,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
 
   test("coalesces duplicate singleton retrieval dispatches before model or provider work", async () => {
     const packet = {
-      role: "jira-retrieval",
+      role: "coverage-moderator",
       summary: "One bounded Jira packet.",
       findings: [],
       limitations: [],
@@ -605,8 +569,8 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     };
     const code = `
       const packets = await Promise.all([
-        task({ description: "Run singleton acquisition A.", subagentType: "jira-retrieval", responseSchema: ${JSON.stringify(RESEARCH_WORKER_PACKET_SCHEMA_V1)} }),
-        task({ description: "Run singleton acquisition B.", subagentType: "jira-retrieval", responseSchema: ${JSON.stringify(RESEARCH_WORKER_PACKET_SCHEMA_V1)} })
+        task({ description: "Run singleton coverage check A.", subagentType: "coverage-moderator", responseSchema: ${JSON.stringify(RESEARCH_ANALYSIS_PACKET_SCHEMA_V1)} }),
+        task({ description: "Run singleton coverage check B.", subagentType: "coverage-moderator", responseSchema: ${JSON.stringify(RESEARCH_ANALYSIS_PACKET_SCHEMA_V1)} })
       ]);
       const finalDraft = await task({
         description: "Synthesize " + JSON.stringify(packets),
@@ -617,7 +581,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     `;
     const dynamicModel = fakeModel()
       .respondWithTools([{ name: "eval", args: { code } }])
-      .respondWithTools([{ name: "AtlcliResearchWorkerPacketV1", args: packet }])
+      .respondWithTools([{ name: "AtlcliResearchAnalysisPacketV1", args: packet }])
       .respondWithTools([{ name: "AtlcliResearchAgentDraftV1", args: draft }])
       .respondWithTools([{ name: "AtlcliResearchAgentDraftV1", args: draft }]);
     const diagnostics: string[] = [];
@@ -629,18 +593,18 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
         jira: { async searchPage() { throw new Error("model skipped PTC"); }, async getIssue() { throw new Error("model skipped PTC"); } },
         wiki: { async searchPage() { return { items: [] }; }, async getPage() { throw new Error("unused"); } },
       },
-      researchGraph: jiraAndSynthesisGraph(),
+      researchGraph: crossProductGraph(),
       runId: "dynamic-singleton-coalescing",
       onSubagentDiagnostic: (diagnostic) => diagnostics.push(`${diagnostic.role}:${diagnostic.status}`),
     });
 
     expect(report.title).toBe(draft.title);
     expect(dynamicModel.callCount).toBe(4);
-    expect(dynamicModel.calls.filter((call) => call.messages.some((message) => message.text.includes("Run singleton acquisition")))).toHaveLength(1);
+    expect(dynamicModel.calls.filter((call) => call.messages.some((message) => message.text.includes("Run singleton coverage check")))).toHaveLength(1);
     expect(diagnostics).toEqual([
-      "jira-retrieval:started",
-      "jira-retrieval:coalesced",
-      "jira-retrieval:completed",
+      "coverage-moderator:started",
+      "coverage-moderator:coalesced",
+      "coverage-moderator:completed",
       "synthesizer:started",
       "synthesizer:completed",
     ]);
@@ -683,8 +647,8 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
         const critiqueSchema = ${critiqueSchema};
         const finalSchema = ${finalSchema};
         const packets = await Promise.all([
-          task({ description: "Research Jira", subagentType: "jira-retrieval", responseSchema: workerSchema }),
-          task({ description: "Research Confluence", subagentType: "wiki-retrieval", responseSchema: workerSchema })
+          task({ description: "Research Jira", subagentType: "focused-researcher", responseSchema: workerSchema }),
+          task({ description: "Research Confluence", subagentType: "focused-researcher", responseSchema: workerSchema })
         ]);
         const critique = await task({
           description: "Critique " + JSON.stringify(packets),
@@ -702,8 +666,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       expect(result).toMatchObject({ ok: true, value: { summary: "final" } });
       expect(maxActive).toBe(2);
       expect(events.slice(0, 2).every((event) => event.startsWith("start:"))).toBe(true);
-      expect(events.indexOf("start:reconciler")).toBeGreaterThan(events.indexOf("end:jira-retrieval"));
-      expect(events.indexOf("start:reconciler")).toBeGreaterThan(events.indexOf("end:wiki-retrieval"));
+      expect(events.indexOf("start:reconciler")).toBeGreaterThan(events.lastIndexOf("end:focused-researcher"));
       expect(events.indexOf("start:synthesizer")).toBeGreaterThan(events.indexOf("end:reconciler"));
       expect(responseSchemas).toEqual([
         RESEARCH_WORKER_PACKET_SCHEMA_V1,
@@ -719,13 +682,12 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
   });
 
   test("does not expose catalog tools unless the graph explicitly grants them", () => {
-    const graph = composeResearchGraphV1({
-      schema: "atlcli.research-brief/v1",
-      question: "Find the project and space first.",
-      products: ["jira", "confluence"],
-      effort: "shallow",
-      reconciliation: "off",
-    });
+    const graph = composeResearchGraphV1(graphBrief(
+      "Find the project and space first.",
+      ["jira", "confluence"],
+      "analysis",
+      "off",
+    ));
     const specs = compileDynamicResearchSubagents(graph, {
       model,
       broker,
@@ -742,14 +704,13 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
   });
 
   test("does not reference a detail capability removed by the host grant intersection", () => {
-    const graph = composeResearchGraphV1({
-      schema: "atlcli.research-brief/v1",
-      question: "List Jira tickets.",
-      products: ["jira"],
-      effort: "shallow",
-      reconciliation: "off",
-    }, {
-      grants: { "jira-retrieval": ["jira.issue.search"] },
+    const graph = composeResearchGraphV1(graphBrief(
+      "List Jira tickets.",
+      ["jira"],
+      "analysis",
+      "off",
+    ), {
+      grants: { "focused-researcher": ["jira.issue.search"] },
     });
     const specs = compileDynamicResearchSubagents(graph, {
       model,
@@ -762,7 +723,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       maxDetailItemsPerProduct: 5,
       maxPacketChars: 8_000,
     });
-    const jira = specs.find((spec) => spec.name === "jira-retrieval");
+    const jira = specs.find((spec) => spec.name === "focused-researcher");
 
     expect(jira?.systemPrompt).toContain("tools.jiraIssueSearch");
     expect(jira?.systemPrompt).not.toContain("tools.jiraIssueGet");

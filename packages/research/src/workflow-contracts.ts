@@ -4,6 +4,10 @@ import {
 } from "./agent-draft.js";
 import { ResearchContractError } from "./contracts.js";
 import type { ResearchGraphCapabilityV1 } from "./graph.js";
+import type {
+  ResearchResolvedEffortV1,
+  ResearchScopeDiscoveryPolicyV1,
+} from "./brief.js";
 
 export const RESEARCH_PACKET_BODY_SCHEMA_V1 =
   "atlcli.research-packet-body/v1" as const;
@@ -45,6 +49,22 @@ export interface ResearchNodeBudgetV1 {
   maxResultBytes: number;
   maxDurationMs: number;
   maxCostMicros: number;
+}
+
+export type ResearchReconciliationTriggerV1 =
+  | "multi_branch"
+  | "low_coverage"
+  | "contradiction"
+  | "negative_claim"
+  | "high_impact_claim"
+  | "stale_or_truncated"
+  | "user_requested";
+
+export interface ResearchGraphReconciliationPolicyV1 {
+  mode: "off" | "auto" | "required";
+  triggers: ResearchReconciliationTriggerV1[];
+  maxPasses: 0 | 1;
+  minimumRemainingBudget: ResearchNodeBudgetV1;
 }
 
 export interface ResearchTaskUsageV1 {
@@ -325,6 +345,10 @@ export interface ResearchApprovalEnvelopeV1 {
   scopeFingerprint: string;
   scopeBindingFingerprint: string;
   allowedScopeBindingIds: string[];
+  scopeDiscoveryPolicy: ResearchScopeDiscoveryPolicyV1;
+  coverageTargetFingerprint: string;
+  allowedCoverageTargetIds: string[];
+  resolvedEffort: ResearchResolvedEffortV1;
   allowedRoleIds: ResearchSubagentRoleIdV1[];
   allowedCapabilityIds: ResearchGraphCapabilityV1[];
   totalBudgetCeiling: ResearchNodeBudgetV1;
@@ -332,6 +356,7 @@ export interface ResearchApprovalEnvelopeV1 {
   maxResearchWaves: number;
   maxReconciliationWaves: number;
   maxDepth: 0 | 1;
+  reconciliationPolicy: ResearchGraphReconciliationPolicyV1;
   approvedAt?: string;
 }
 

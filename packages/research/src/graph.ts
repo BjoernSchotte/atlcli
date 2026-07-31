@@ -1,17 +1,25 @@
-import { ResearchContractError, type ResearchProduct } from "./contracts.js";
+import { ResearchContractError } from "./contracts.js";
+import {
+  RESEARCH_BRIEF_SCHEMA_V1,
+  createResearchBriefV1,
+  type ResearchBriefV1,
+  type ResearchRequestedReconciliationV1,
+  type ResearchResolvedEffortV1,
+} from "./brief.js";
+import {
+  RESEARCH_APPROVAL_ENVELOPE_SCHEMA_V1,
+  RESEARCH_SUBAGENT_ROLE_IDS_V1,
+  RESEARCH_SUBAGENT_ROLE_REGISTRY_V1,
+  type ResearchApprovalEnvelopeV1,
+  type ResearchGraphReconciliationPolicyV1,
+  type ResearchNodeBudgetV1,
+  type ResearchSubagentRoleIdV1,
+} from "./workflow-contracts.js";
+
+export { RESEARCH_BRIEF_SCHEMA_V1 } from "./brief.js";
+export type { ResearchBriefV1 } from "./brief.js";
 
 export const RESEARCH_GRAPH_SCHEMA_V1 = "atlcli.research-graph/v1" as const;
-export const RESEARCH_BRIEF_SCHEMA_V1 = "atlcli.research-brief/v1" as const;
-
-export const RESEARCH_GRAPH_ROLES = [
-  "jira-retrieval",
-  "wiki-retrieval",
-  "cross-product-join",
-  "verification",
-  "reconciler",
-  "synthesizer",
-] as const;
-export type ResearchGraphRoleV1 = (typeof RESEARCH_GRAPH_ROLES)[number];
 
 export const RESEARCH_GRAPH_CAPABILITIES = [
   "jira.issue.search",
@@ -22,133 +30,386 @@ export const RESEARCH_GRAPH_CAPABILITIES = [
   "wiki.space.search",
   "atlassian.reference.resolve",
 ] as const;
-export type ResearchGraphCapabilityV1 = (typeof RESEARCH_GRAPH_CAPABILITIES)[number];
+export type ResearchGraphCapabilityV1 =
+  (typeof RESEARCH_GRAPH_CAPABILITIES)[number];
 
-export type ResearchEffortV1 = "shallow" | "standard" | "deep";
-export type ResearchReconciliationPolicyV1 = "off" | "auto" | "required";
+export const RESEARCH_GRAPH_ROLES = RESEARCH_SUBAGENT_ROLE_IDS_V1;
+export const RESEARCH_T3_GRAPH_ROLES = RESEARCH_SUBAGENT_ROLE_IDS_V1.filter(
+  (roleId) => RESEARCH_SUBAGENT_ROLE_REGISTRY_V1[roleId].availableFromPhase === "T3",
+);
+export type ResearchGraphRoleV1 = ResearchSubagentRoleIdV1;
+/** @deprecated Use ResearchResolvedEffortV1 from the brief contract. */
+export type ResearchEffortV1 = ResearchResolvedEffortV1;
+/** @deprecated Use ResearchRequestedReconciliationV1 from the brief contract. */
+export type ResearchReconciliationModeV1 = ResearchRequestedReconciliationV1;
 
-export interface ResearchBriefV1 {
-  schema: typeof RESEARCH_BRIEF_SCHEMA_V1;
-  question: string;
-  products: ResearchProduct[];
-  effort: ResearchEffortV1;
-  reconciliation: ResearchReconciliationPolicyV1;
+export type ResearchNodeStatusV1 =
+  | "proposed"
+  | "ready"
+  | "running"
+  | "complete"
+  | "failed"
+  | "blocked"
+  | "pruned"
+  | "quarantined";
+
+export type ResearchCompositionReasonV1 =
+  | "simple_lookup"
+  | "independent_branch"
+  | "cross_product_join"
+  | "scope_resolution"
+  | "related_scope_discovery"
+  | "exact_reference_follow"
+  | "large_document_set"
+  | "hierarchy_traversal"
+  | "coverage_gap"
+  | "contradiction"
+  | "negative_claim"
+  | "high_impact_claim"
+  | "user_requested"
+  | "budget_pruned"
+  | "not_applicable";
+
+export interface ResearchNodeCompletionPolicyV1 {
+  requiredCoverageTargetIds: string[];
+  allowAbstention: boolean;
+  stopOnFirstSupportedAnswer: boolean;
 }
 
 export interface ResearchGraphNodeV1 {
   id: string;
-  role: ResearchGraphRoleV1;
-  dependsOn: string[];
+  kind: "resolve_scope" | "search" | "expand" | "distill" | "verify" | "moderate" | "outline" | "reconcile";
+  executor: "ptc" | "subagent";
+  roleId?: ResearchSubagentRoleIdV1;
+  objective: string;
   requestedCapabilityIds: ResearchGraphCapabilityV1[];
   grantedCapabilityIds: ResearchGraphCapabilityV1[];
-  depth: 0;
-  phase: "research" | "reconciliation" | "synthesis";
+  typedIntentRefs: string[];
+  dependencies: string[];
+  parentNodeId?: string;
+  createdFromEvidenceIds: string[];
+  reasonCodes: ResearchCompositionReasonV1[];
+  status: ResearchNodeStatusV1;
+  depth: 0 | 1;
+  priority: number;
+  attempt: number;
+  maxAttempts: number;
+  budget: ResearchNodeBudgetV1;
+  completion: ResearchNodeCompletionPolicyV1;
+  packetRef?: string;
+  stopReason?: string;
+}
+
+export interface ResearchGraphRoleDecisionV1 {
+  roleId: ResearchSubagentRoleIdV1;
+  decision: "selected" | "omitted";
+  reasonCodes: ResearchCompositionReasonV1[];
 }
 
 export interface ResearchGraphV1 {
   schema: typeof RESEARCH_GRAPH_SCHEMA_V1;
-  briefRevision: number;
-  graphRevision: number;
+  sessionId: string;
+  turnId: string;
+  revision: number;
+  basedOnBriefRevision: number;
+  status: "proposed" | "approved" | "running" | "revising" | "complete";
+  resolvedEffort: ResearchResolvedEffortV1;
   nodes: ResearchGraphNodeV1[];
-  selectedRoleIds: ResearchGraphRoleV1[];
-  maxResearchWaves: 2;
-  maxReconciliationWaves: 1;
+  roleDecisions: ResearchGraphRoleDecisionV1[];
+  maxParallelNodes: number;
+  maxResearchWaves: number;
+  maxReconciliationWaves: number;
+  researchWavesCompleted: number;
+  reconciliationWavesCompleted: number;
+  reconciliationPolicy: ResearchGraphReconciliationPolicyV1;
+  totalBudget: ResearchNodeBudgetV1;
+  approvalEnvelope: ResearchApprovalEnvelopeV1;
+  createdAt: string;
+  approvedAt?: string;
 }
 
 export interface ResearchGraphCompositionOptionsV1 {
-  briefRevision?: number;
   graphRevision?: number;
-  grants?: Partial<Record<ResearchGraphRoleV1, readonly ResearchGraphCapabilityV1[]>>;
+  grants?: Partial<Record<string, readonly ResearchGraphCapabilityV1[]>>;
+  createdAt?: string;
 }
 
-export function composeStandardResearchGraphV1(
-  question: string,
-): ResearchGraphV1 {
-  return composeResearchGraphV1({
-    schema: RESEARCH_BRIEF_SCHEMA_V1,
-    question,
-    products: ["jira", "confluence"],
-    effort: "standard",
-    reconciliation: "auto",
-  });
-}
-
-const ROLE_CAPABILITIES: Record<ResearchGraphRoleV1, readonly ResearchGraphCapabilityV1[]> = {
-  "jira-retrieval": ["jira.issue.search", "jira.issue.get"],
-  "wiki-retrieval": ["wiki.search", "wiki.page.get"],
-  "cross-product-join": [],
-  verification: [],
-  reconciler: [],
-  synthesizer: [],
+const DEFAULT_NODE_BUDGET: ResearchNodeBudgetV1 = {
+  maxCapabilityCalls: 8,
+  maxInputTokens: 20_000,
+  maxOutputTokens: 3_000,
+  maxResultBytes: 64_000,
+  maxDurationMs: 180_000,
+  maxCostMicros: 2_000_000,
 };
+
+const PTC_CAPABILITIES = new Set<ResearchGraphCapabilityV1>(RESEARCH_GRAPH_CAPABILITIES);
 
 function invalid(message: string): never {
   throw new ResearchContractError("invalid-request", message);
 }
 
-function normalizedQuestion(question: string): string {
-  if (typeof question !== "string" || question.trim() === "") invalid("Research brief question is required.");
-  if (question.length > 4_000) invalid("Research brief question is too long.");
-  return question.toLocaleLowerCase("en-US");
+function normalizedObjective(objective: string): string {
+  if (typeof objective !== "string" || objective.trim() === "") invalid("Research brief objective is required.");
+  if (objective.length > 4_000) invalid("Research brief objective is too long.");
+  return objective.toLocaleLowerCase("en-US");
 }
 
-function hasAny(question: string, terms: readonly string[]): boolean {
-  return terms.some((term) => question.includes(term));
+function hasAny(value: string, terms: readonly string[]): boolean {
+  return terms.some((term) => value.includes(term));
 }
 
-function requestedRoles(brief: ResearchBriefV1): ResearchGraphRoleV1[] {
-  const question = normalizedQuestion(brief.question);
-  const jira = brief.products.includes("jira") || hasAny(question, ["jira", "ticket", "issue", "project"]);
-  const wiki = brief.products.includes("confluence") || hasAny(question, ["confluence", "wiki", "space", "page", "content"]);
-  const relation = jira && wiki && hasAny(question, [
-    "relate",
-    "related",
-    "belong",
-    "join",
-    "link",
-    "between",
-    "correspond",
-    "match",
-    "mapping",
-    "map",
-    "funnel",
-    "pipeline",
-    "stage",
-    "opportunit",
-    "zuord",
-    "gehören",
-    "zusammenhang",
+function fingerprint(value: unknown): string {
+  const canonicalJson = (candidate: unknown): string => {
+    if (Array.isArray(candidate)) return `[${candidate.map(canonicalJson).join(",")}]`;
+    if (candidate && typeof candidate === "object") {
+      return `{${Object.entries(candidate as Record<string, unknown>)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, nested]) => `${JSON.stringify(key)}:${canonicalJson(nested)}`)
+        .join(",")}}`;
+    }
+    const serialized = JSON.stringify(candidate);
+    return serialized === undefined ? "null" : serialized;
+  };
+  const canonical = canonicalJson(value);
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < canonical.length; index += 1) {
+    hash ^= canonical.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return `fnv1a32:${hash.toString(16).padStart(8, "0")}`;
+}
+
+function nodeBudget(
+  brief: ResearchBriefV1,
+  roleId?: ResearchSubagentRoleIdV1,
+): ResearchNodeBudgetV1 {
+  const roleBudget = roleId
+    ? RESEARCH_SUBAGENT_ROLE_REGISTRY_V1[roleId].maxBudget
+    : DEFAULT_NODE_BUDGET;
+  return {
+    maxCapabilityCalls: Math.min(roleBudget.maxCapabilityCalls, brief.limits.maxPtcCalls),
+    maxInputTokens: Math.min(roleBudget.maxInputTokens, brief.limits.maxModelInputTokens),
+    maxOutputTokens: Math.min(roleBudget.maxOutputTokens, brief.limits.maxModelOutputTokens),
+    maxResultBytes: Math.min(roleBudget.maxResultBytes, brief.limits.maxTotalResponseBytes),
+    maxDurationMs: Math.min(roleBudget.maxDurationMs, brief.limits.maxRunMs),
+    maxCostMicros: roleBudget.maxCostMicros,
+  };
+}
+
+function aggregateBudget(nodes: readonly ResearchGraphNodeV1[]): ResearchNodeBudgetV1 {
+  return nodes.reduce<ResearchNodeBudgetV1>((total, node) => ({
+    maxCapabilityCalls: total.maxCapabilityCalls + node.budget.maxCapabilityCalls,
+    maxInputTokens: total.maxInputTokens + node.budget.maxInputTokens,
+    maxOutputTokens: total.maxOutputTokens + node.budget.maxOutputTokens,
+    maxResultBytes: total.maxResultBytes + node.budget.maxResultBytes,
+    maxDurationMs: Math.max(total.maxDurationMs, node.budget.maxDurationMs),
+    maxCostMicros: total.maxCostMicros + node.budget.maxCostMicros,
+  }), {
+    maxCapabilityCalls: 0,
+    maxInputTokens: 0,
+    maxOutputTokens: 0,
+    maxResultBytes: 0,
+    maxDurationMs: 0,
+    maxCostMicros: 0,
+  });
+}
+
+function reconciliationPolicy(brief: ResearchBriefV1, relation: boolean): ResearchGraphReconciliationPolicyV1 {
+  const mode = brief.requestedReconciliation;
+  const triggers: ResearchGraphReconciliationPolicyV1["triggers"] = [];
+  if (relation) triggers.push("multi_branch");
+  if (brief.resolvedEffort === "deep") triggers.push("low_coverage", "contradiction", "stale_or_truncated");
+  if (mode === "required") triggers.push("user_requested");
+  return {
+    mode,
+    triggers: [...new Set(triggers)],
+    maxPasses: mode === "off" ? 0 : 1,
+    minimumRemainingBudget: {
+      maxCapabilityCalls: 0,
+      maxInputTokens: 4_000,
+      maxOutputTokens: 1_000,
+      maxResultBytes: 16_000,
+      maxDurationMs: 30_000,
+      maxCostMicros: 100_000,
+    },
+  };
+}
+
+interface NodeSeed {
+  id: string;
+  kind: ResearchGraphNodeV1["kind"];
+  executor: ResearchGraphNodeV1["executor"];
+  roleId?: ResearchSubagentRoleIdV1;
+  objective: string;
+  requestedCapabilityIds: ResearchGraphCapabilityV1[];
+  dependencies: string[];
+  reasonCodes: ResearchCompositionReasonV1[];
+  priority: number;
+}
+
+function grantFor(
+  seed: NodeSeed,
+  grants: ResearchGraphCompositionOptionsV1["grants"],
+): ResearchGraphCapabilityV1[] {
+  const allowedByRole = seed.roleId
+    ? RESEARCH_SUBAGENT_ROLE_REGISTRY_V1[seed.roleId].allowedCapabilityIds
+    : RESEARCH_GRAPH_CAPABILITIES;
+  const hostGrant = grants?.[seed.id] ?? (seed.roleId ? grants?.[seed.roleId] : undefined);
+  return seed.requestedCapabilityIds.filter((capability) =>
+    allowedByRole.includes(capability) && (!hostGrant || hostGrant.includes(capability)),
+  );
+}
+
+function nodeFromSeed(
+  seed: NodeSeed,
+  brief: ResearchBriefV1,
+  graphApproved: boolean,
+  grants: ResearchGraphCompositionOptionsV1["grants"],
+): ResearchGraphNodeV1 {
+  return {
+    ...seed,
+    ...(seed.roleId ? { roleId: seed.roleId } : {}),
+    grantedCapabilityIds: grantFor(seed, grants),
+    typedIntentRefs: seed.requestedCapabilityIds.length > 0 ? [`intent:${seed.id}`] : [],
+    createdFromEvidenceIds: [],
+    status: graphApproved && seed.dependencies.length === 0 ? "ready" : graphApproved ? "blocked" : "proposed",
+    depth: 0,
+    attempt: 0,
+    maxAttempts: seed.roleId === "synthesizer" ? 2 : 1,
+    budget: nodeBudget(brief, seed.roleId),
+    completion: {
+      requiredCoverageTargetIds: brief.coverageTargets.filter((target) => target.required).map((target) => target.id),
+      allowAbstention: true,
+      stopOnFirstSupportedAnswer: brief.resolvedEffort === "lookup",
+    },
+  };
+}
+
+function composeSeeds(brief: ResearchBriefV1): NodeSeed[] {
+  const objective = normalizedObjective(brief.objective);
+  const jira = brief.sourceClasses.includes("jira");
+  const wiki = brief.sourceClasses.includes("confluence");
+  const relation = jira && wiki && hasAny(objective, [
+    "relate", "related", "belong", "join", "link", "between", "correspond", "match",
+    "mapping", "map", "funnel", "pipeline", "stage", "opportunit", "zuord", "gehören", "zusammenhang",
   ]);
-  const explicitVerification = relation && hasAny(question, [
-    "verify",
-    "explicit",
-    "contradict",
-    "conflict",
-    "belegt",
-    "widerspruch",
-  ]);
-  const roles: ResearchGraphRoleV1[] = [];
-  if (jira || (!jira && !wiki)) roles.push("jira-retrieval");
-  if (wiki || (!jira && !wiki)) roles.push("wiki-retrieval");
-  // Standard relation questions can be reconciled from the two compact
-  // retrieval packets and joined by the final report author. Reserve a
-  // dedicated intermediate join for deep or explicitly adversarial work.
-  if (relation && (brief.effort === "deep" || explicitVerification)) roles.push("cross-product-join");
-  if (explicitVerification) roles.push("verification");
-  if (brief.reconciliation === "required" || (brief.reconciliation === "auto" && (relation || brief.effort === "deep"))) roles.push("reconciler");
-  roles.push("synthesizer");
-  return roles;
+  const contradiction = hasAny(objective, ["verify", "explicit", "contradict", "conflict", "belegt", "widerspruch"]);
+  const deep = brief.resolvedEffort === "deep";
+  const seeds: NodeSeed[] = [];
+
+  if (brief.resolvedEffort === "lookup") {
+    if (jira) seeds.push({ id: "research-node:jira-lookup", kind: "search", executor: "ptc", objective: "Read the exact bounded Jira lookup intent.", requestedCapabilityIds: ["jira.issue.search", "jira.issue.get"], dependencies: [], reasonCodes: ["simple_lookup"], priority: 100 });
+    if (wiki) seeds.push({ id: "research-node:wiki-lookup", kind: "search", executor: "ptc", objective: "Read the exact bounded Confluence lookup intent.", requestedCapabilityIds: ["wiki.search", "wiki.page.get"], dependencies: [], reasonCodes: ["simple_lookup"], priority: 100 });
+  } else {
+    if (jira) seeds.push({ id: "research-node:jira-research", kind: "search", executor: "subagent", roleId: "focused-researcher", objective: "Acquire detail-backed Jira evidence for the accepted objective.", requestedCapabilityIds: ["jira.issue.search", "jira.issue.get"], dependencies: [], reasonCodes: ["independent_branch"], priority: 100 });
+    if (wiki) seeds.push({ id: "research-node:wiki-research", kind: "search", executor: "subagent", roleId: "focused-researcher", objective: "Acquire detail-backed Confluence evidence for the accepted objective.", requestedCapabilityIds: ["wiki.search", "wiki.page.get"], dependencies: [], reasonCodes: ["independent_branch"], priority: 100 });
+  }
+
+  const researchIds = seeds.map((seed) => seed.id);
+  if (relation && (deep || contradiction)) {
+    seeds.push({ id: "research-node:cross-product-join", kind: "distill", executor: "subagent", roleId: "document-distiller", objective: "Join accepted Jira and Confluence packets without new reads.", requestedCapabilityIds: [], dependencies: [...researchIds], reasonCodes: ["cross_product_join"], priority: 80 });
+  }
+  const joinId = seeds.some((seed) => seed.id === "research-node:cross-product-join")
+    ? "research-node:cross-product-join"
+    : undefined;
+  if (contradiction) {
+    seeds.push({ id: "research-node:contradiction-verification", kind: "verify", executor: "subagent", roleId: "contradiction-verifier", objective: "Challenge contradiction candidates against accepted packets.", requestedCapabilityIds: [], dependencies: joinId ? [joinId] : [...researchIds], reasonCodes: ["contradiction"], priority: 70 });
+  }
+  if (deep) {
+    seeds.push({ id: "research-node:coverage-moderation", kind: "moderate", executor: "subagent", roleId: "coverage-moderator", objective: "Assess whether accepted packets cover every required target.", requestedCapabilityIds: [], dependencies: [...seeds.filter((seed) => seed.executor !== "ptc" || seed.kind === "search").map((seed) => seed.id)], reasonCodes: ["coverage_gap"], priority: 60 });
+  }
+  const beforeReconciliation = seeds.map((seed) => seed.id);
+  const shouldReconcile = brief.requestedReconciliation === "required" ||
+    (brief.requestedReconciliation === "auto" && (relation || deep || contradiction));
+  if (shouldReconcile) {
+    seeds.push({ id: "research-node:reconciler", kind: "reconcile", executor: "subagent", roleId: "reconciler", objective: "Critique accepted packets in fresh context and return typed defects.", requestedCapabilityIds: [], dependencies: beforeReconciliation, reasonCodes: contradiction ? ["contradiction"] : ["coverage_gap"], priority: 40 });
+  }
+  seeds.push({
+    id: "research-node:synthesizer",
+    kind: "distill",
+    executor: "subagent",
+    roleId: "synthesizer",
+    objective: "Write exactly one typed final report draft from accepted packets and dispositions.",
+    requestedCapabilityIds: [],
+    dependencies: seeds.map((seed) => seed.id),
+    reasonCodes: ["user_requested"],
+    priority: 10,
+  });
+  return seeds;
 }
 
-function nodeId(role: ResearchGraphRoleV1): string {
-  return `research-node:${role}`;
+export function projectSelectedResearchRolesV1(graph: Pick<ResearchGraphV1, "nodes">): ResearchSubagentRoleIdV1[] {
+  const selected = new Set(
+    graph.nodes
+      .filter((node) => node.executor === "subagent" && node.status !== "pruned" && node.roleId)
+      .map((node) => node.roleId!),
+  );
+  return RESEARCH_T3_GRAPH_ROLES.filter((roleId) => selected.has(roleId));
 }
 
-function grantFor(role: ResearchGraphRoleV1, grants: ResearchGraphCompositionOptionsV1["grants"]): ResearchGraphCapabilityV1[] {
-  const requested = ROLE_CAPABILITIES[role];
-  const allowed = grants?.[role];
-  if (!allowed) return [...requested];
-  return requested.filter((capability) => allowed.includes(capability));
+function roleDecisions(nodes: ResearchGraphNodeV1[]): ResearchGraphRoleDecisionV1[] {
+  const selected = new Set(projectSelectedResearchRolesV1({ nodes }));
+  return RESEARCH_T3_GRAPH_ROLES.map((roleId) => ({
+    roleId,
+    decision: selected.has(roleId) ? "selected" : "omitted",
+    reasonCodes: selected.has(roleId)
+      ? [...new Set(nodes.filter((node) => node.roleId === roleId).flatMap((node) => node.reasonCodes))]
+      : ["not_applicable"],
+  }));
+}
+
+function approvalEnvelope(
+  brief: ResearchBriefV1,
+  revision: number,
+  nodes: ResearchGraphNodeV1[],
+  policy: ResearchGraphReconciliationPolicyV1,
+  budget: ResearchNodeBudgetV1,
+  createdAt: string,
+): ResearchApprovalEnvelopeV1 {
+  const automatic = brief.resolvedPlanApproval === "automatic";
+  const approvedBindings = brief.scopeBindings.filter((binding) => binding.authority === "approved" || binding.authority === "locked");
+  return {
+    schema: RESEARCH_APPROVAL_ENVELOPE_SCHEMA_V1,
+    id: `research-approval:${brief.turnId}:${revision}`,
+    status: automatic ? "approved" : "proposed",
+    basedOnGraphRevision: revision,
+    basedOnBriefRevision: brief.revision,
+    scopeFingerprint: fingerprint(brief.scope),
+    scopeBindingFingerprint: fingerprint(approvedBindings.map((binding) => binding.id)),
+    allowedScopeBindingIds: approvedBindings.map((binding) => binding.id),
+    scopeDiscoveryPolicy: structuredClone(brief.scopeDiscoveryPolicy),
+    coverageTargetFingerprint: fingerprint(brief.coverageTargets.map((target) => ({ id: target.id, question: target.question }))),
+    allowedCoverageTargetIds: brief.coverageTargets.map((target) => target.id),
+    resolvedEffort: brief.resolvedEffort,
+    allowedRoleIds: projectSelectedResearchRolesV1({ nodes }),
+    allowedCapabilityIds: [...new Set(nodes.flatMap((node) => node.grantedCapabilityIds))],
+    totalBudgetCeiling: budget,
+    maxParallelNodes: 3,
+    maxResearchWaves: 2,
+    maxReconciliationWaves: 1,
+    maxDepth: 0,
+    reconciliationPolicy: structuredClone(policy),
+    ...(automatic ? { approvedAt: createdAt } : {}),
+  };
+}
+
+export function composeStandardResearchGraphV1(question: string): ResearchGraphV1 {
+  return composeResearchGraphV1(createResearchBriefV1({
+    sessionId: "research-session:standard",
+    turnId: "research-turn:standard",
+    objective: question,
+    scope: {
+      siteOrigin: "https://example.atlassian.net",
+      jiraProjectKeys: ["DEMO"],
+      confluenceSpaceKeys: ["DOCS"],
+    },
+    asOf: "2026-01-01T00:00:00.000Z",
+    timezone: "UTC",
+    requestedEffort: "analysis",
+    requestedPlanApproval: "automatic",
+    requestedReconciliation: "auto",
+  }));
 }
 
 export function composeResearchGraphV1(
@@ -156,58 +417,98 @@ export function composeResearchGraphV1(
   options: ResearchGraphCompositionOptionsV1 = {},
 ): ResearchGraphV1 {
   if (brief.schema !== RESEARCH_BRIEF_SCHEMA_V1) invalid("Unsupported research brief schema.");
-  const roles = requestedRoles(brief);
-  const nodes = roles.map((role): ResearchGraphNodeV1 => {
-    const dependsOn: string[] = role === "cross-product-join"
-      ? [nodeId("jira-retrieval"), nodeId("wiki-retrieval")]
-      : role === "verification"
-        ? [nodeId("cross-product-join")]
-        : role === "reconciler"
-          ? roles.filter((candidate) => candidate !== "reconciler" && candidate !== "synthesizer").map(nodeId)
-          : role === "synthesizer"
-            ? roles.filter((candidate) => candidate !== "synthesizer").map(nodeId)
-            : [];
-    return {
-      id: nodeId(role),
-      role,
-      dependsOn,
-      requestedCapabilityIds: [...ROLE_CAPABILITIES[role]],
-      grantedCapabilityIds: grantFor(role, options.grants),
-      depth: 0,
-      phase: role === "reconciler"
-        ? "reconciliation"
-        : role === "synthesizer"
-          ? "synthesis"
-          : "research",
-    };
-  });
+  const revision = options.graphRevision ?? 1;
+  if (!Number.isSafeInteger(revision) || revision < 1) invalid("Research graph revision is invalid.");
+  const createdAt = options.createdAt ?? brief.asOf;
+  const automatic = brief.resolvedPlanApproval === "automatic";
+  const seeds = composeSeeds(brief);
+  const nodes = seeds.map((seed) => nodeFromSeed(seed, brief, automatic, options.grants));
+  const relation = brief.sourceClasses.includes("jira") && brief.sourceClasses.includes("confluence");
+  const policy = reconciliationPolicy(brief, relation);
+  const totalBudget = aggregateBudget(nodes);
   const graph: ResearchGraphV1 = {
     schema: RESEARCH_GRAPH_SCHEMA_V1,
-    briefRevision: options.briefRevision ?? 1,
-    graphRevision: options.graphRevision ?? 1,
+    sessionId: brief.sessionId,
+    turnId: brief.turnId,
+    revision,
+    basedOnBriefRevision: brief.revision,
+    status: automatic ? "approved" : "proposed",
+    resolvedEffort: brief.resolvedEffort,
     nodes,
-    selectedRoleIds: roles,
+    roleDecisions: roleDecisions(nodes),
+    maxParallelNodes: 3,
     maxResearchWaves: 2,
     maxReconciliationWaves: 1,
+    researchWavesCompleted: 0,
+    reconciliationWavesCompleted: 0,
+    reconciliationPolicy: policy,
+    totalBudget,
+    approvalEnvelope: approvalEnvelope(brief, revision, nodes, policy, totalBudget, createdAt),
+    createdAt,
+    ...(automatic ? { approvedAt: createdAt } : {}),
   };
   validateResearchGraphV1(graph);
   return graph;
 }
 
+function equalSet(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length && left.every((value) => right.includes(value));
+}
+
+function validateBudget(budget: ResearchNodeBudgetV1, label: string): void {
+  for (const [key, value] of Object.entries(budget)) {
+    if (!Number.isSafeInteger(value) || value < 0) invalid(`${label} ${key} is invalid.`);
+  }
+}
+
+function equalBudget(left: ResearchNodeBudgetV1, right: ResearchNodeBudgetV1): boolean {
+  return Object.keys(left).every((key) =>
+    left[key as keyof ResearchNodeBudgetV1] === right[key as keyof ResearchNodeBudgetV1]
+  );
+}
+
+function executionRank(node: ResearchGraphNodeV1): number {
+  if (node.executor === "ptc") return 0;
+  switch (node.roleId) {
+    case "focused-researcher": return 0;
+    case "document-distiller": return 1;
+    case "contradiction-verifier": return 2;
+    case "coverage-moderator": return 3;
+    case "reconciler": return 4;
+    case "synthesizer": return 5;
+    case "outline-planner": return 6;
+    case undefined: return 6;
+  }
+}
+
 export function validateResearchGraphV1(graph: ResearchGraphV1): void {
   if (graph.schema !== RESEARCH_GRAPH_SCHEMA_V1) invalid("Unsupported research graph schema.");
-  if (!Number.isSafeInteger(graph.briefRevision) || graph.briefRevision < 1 || !Number.isSafeInteger(graph.graphRevision) || graph.graphRevision < 1) invalid("Research graph revisions are invalid.");
-  if (graph.maxResearchWaves !== 2 || graph.maxReconciliationWaves !== 1) invalid("Research graph wave limits are invalid.");
+  if (!/^research-session:[A-Za-z0-9._-]{1,120}$/.test(graph.sessionId) || !/^research-turn:[A-Za-z0-9._-]{1,120}$/.test(graph.turnId)) invalid("Research graph identity is invalid.");
+  if (!Number.isSafeInteger(graph.revision) || graph.revision < 1 || !Number.isSafeInteger(graph.basedOnBriefRevision) || graph.basedOnBriefRevision < 1) invalid("Research graph revisions are invalid.");
+  if (graph.maxParallelNodes < 1 || graph.maxParallelNodes > 3 || graph.maxResearchWaves !== 2 || graph.maxReconciliationWaves !== 1) invalid("Research graph concurrency or wave limits are invalid.");
   if (graph.nodes.length === 0 || graph.nodes.length > 8) invalid("Research graph node count is invalid.");
+  if (graph.researchWavesCompleted < 0 || graph.researchWavesCompleted > graph.maxResearchWaves || graph.reconciliationWavesCompleted < 0 || graph.reconciliationWavesCompleted > graph.maxReconciliationWaves) invalid("Research graph completed-wave count is invalid.");
   const ids = new Set<string>();
   for (const node of graph.nodes) {
-    if (ids.has(node.id)) invalid("Research graph node IDs must be unique.");
+    if (!/^research-node:[A-Za-z0-9._-]{1,120}$/.test(node.id) || ids.has(node.id)) invalid("Research graph node IDs must be valid and unique.");
     ids.add(node.id);
-    if (!RESEARCH_GRAPH_ROLES.includes(node.role) || node.depth !== 0) invalid("Research graph role or depth is invalid.");
-    if (node.dependsOn.includes(node.id)) invalid("Research graph dependencies must be acyclic.");
-    if (node.dependsOn.some((dependency) => !graph.nodes.some((candidate) => candidate.id === dependency))) invalid("Research graph dependency is invalid.");
-    for (const capability of node.requestedCapabilityIds) if (!RESEARCH_GRAPH_CAPABILITIES.includes(capability)) invalid("Research graph requests an unknown capability.");
-    for (const capability of node.grantedCapabilityIds) if (!node.requestedCapabilityIds.includes(capability)) invalid("Research graph grants an unrequested capability.");
+    if (node.depth !== 0) invalid("Research graph depth is unavailable before T6.");
+    if (node.kind === "expand") invalid("Research graph content-scope expansion is unavailable before T6.");
+    if (node.executor === "subagent") {
+      if (!node.roleId || !RESEARCH_T3_GRAPH_ROLES.includes(node.roleId)) invalid("Research graph subagent role is unknown or unavailable.");
+      const role = RESEARCH_SUBAGENT_ROLE_REGISTRY_V1[node.roleId];
+      if (node.grantedCapabilityIds.some((capability) => !role.allowedCapabilityIds.includes(capability))) invalid("Research graph grants a capability outside the selected role.");
+    } else if (node.roleId) {
+      invalid("Research graph PTC nodes cannot carry subagent roles.");
+    }
+    if (node.requestedCapabilityIds.some((capability) => !PTC_CAPABILITIES.has(capability))) invalid("Research graph requests an unknown capability.");
+    if (node.grantedCapabilityIds.some((capability) => !node.requestedCapabilityIds.includes(capability))) invalid("Research graph grants an unrequested capability.");
+    if (node.requestedCapabilityIds.length > 0 && node.typedIntentRefs.length === 0) invalid("Research graph capability nodes require typed intent references.");
+    if (node.dependencies.includes(node.id)) invalid("Research graph dependencies must be acyclic.");
+    if (node.dependencies.some((dependency) => !graph.nodes.some((candidate) => candidate.id === dependency))) invalid("Research graph dependency is invalid.");
+    if (node.dependencies.some((dependency) => executionRank(graph.nodes.find((candidate) => candidate.id === dependency)!) >= executionRank(node))) invalid("Research graph dependency is incompatible with the execution phase.");
+    if (!Number.isSafeInteger(node.priority) || node.priority < 0 || !Number.isSafeInteger(node.attempt) || node.attempt < 0 || !Number.isSafeInteger(node.maxAttempts) || node.maxAttempts < 1 || node.attempt > node.maxAttempts) invalid("Research graph node scheduling fields are invalid.");
+    validateBudget(node.budget, `Research graph node ${node.id} budget`);
   }
   const visiting = new Set<string>();
   const visited = new Set<string>();
@@ -215,12 +516,94 @@ export function validateResearchGraphV1(graph: ResearchGraphV1): void {
     if (visiting.has(id)) invalid("Research graph dependencies must be acyclic.");
     if (visited.has(id)) return;
     visiting.add(id);
-    const node = graph.nodes.find((candidate) => candidate.id === id)!;
-    node.dependsOn.forEach(visit);
+    graph.nodes.find((node) => node.id === id)!.dependencies.forEach(visit);
     visiting.delete(id);
     visited.add(id);
   };
   graph.nodes.forEach((node) => visit(node.id));
-  const derived = graph.nodes.map((node) => node.role);
-  if (derived.length !== graph.selectedRoleIds.length || derived.some((role, index) => role !== graph.selectedRoleIds[index])) invalid("Selected roles must derive from executable graph nodes.");
+  const synthesizers = graph.nodes.filter((node) => node.roleId === "synthesizer" && node.executor === "subagent" && node.status !== "pruned");
+  if (synthesizers.length !== 1) invalid("Research graph requires exactly one final synthesizer.");
+  if (graph.nodes.some((node) => node.roleId === "outline-planner")) invalid("Outline planner is unavailable before T5.");
+  const decisions = new Map<ResearchSubagentRoleIdV1, ResearchGraphRoleDecisionV1>();
+  for (const decision of graph.roleDecisions) {
+    if (!RESEARCH_T3_GRAPH_ROLES.includes(decision.roleId) || decisions.has(decision.roleId)) invalid("Research graph role decisions are missing, duplicated, or unavailable.");
+    decisions.set(decision.roleId, decision);
+  }
+  if (decisions.size !== RESEARCH_T3_GRAPH_ROLES.length) invalid("Research graph role decisions are missing, duplicated, or unavailable.");
+  const projected = new Set(projectSelectedResearchRolesV1(graph));
+  for (const roleId of RESEARCH_T3_GRAPH_ROLES) {
+    const decision = decisions.get(roleId)!;
+    if ((decision.decision === "selected") !== projected.has(roleId)) invalid("Research graph role decisions must derive from executable nodes.");
+  }
+  if (graph.approvalEnvelope.schema !== RESEARCH_APPROVAL_ENVELOPE_SCHEMA_V1 || graph.approvalEnvelope.basedOnGraphRevision !== graph.revision || graph.approvalEnvelope.basedOnBriefRevision !== graph.basedOnBriefRevision) invalid("Research graph approval envelope revision is invalid.");
+  if (!equalSet(graph.approvalEnvelope.allowedRoleIds, [...projected])) invalid("Research graph approval roles do not match executable nodes.");
+  const granted = [...new Set(graph.nodes.flatMap((node) => node.grantedCapabilityIds))];
+  if (!equalSet(graph.approvalEnvelope.allowedCapabilityIds, granted)) invalid("Research graph approval capabilities do not match executable nodes.");
+  if (graph.approvalEnvelope.maxParallelNodes !== graph.maxParallelNodes || graph.approvalEnvelope.maxResearchWaves !== graph.maxResearchWaves || graph.approvalEnvelope.maxReconciliationWaves !== graph.maxReconciliationWaves || graph.approvalEnvelope.maxDepth !== 0) invalid("Research graph approval execution limits are inconsistent.");
+  validateBudget(graph.totalBudget, "Research graph total budget");
+  const derivedBudget = aggregateBudget(graph.nodes);
+  if (!equalBudget(graph.totalBudget, derivedBudget) || !equalBudget(graph.approvalEnvelope.totalBudgetCeiling, derivedBudget)) invalid("Research graph total budget must derive from executable nodes.");
+  if ((graph.status === "proposed") !== (graph.approvalEnvelope.status === "proposed")) invalid("Research graph approval status is inconsistent.");
+}
+
+export type ResearchGraphUpdateV1 =
+  | { kind: "approve"; expectedRevision: number; approvedAt: string }
+  | { kind: "start_node"; expectedRevision: number; nodeId: string }
+  | { kind: "complete_node"; expectedRevision: number; nodeId: string; packetRef: string }
+  | { kind: "fail_node"; expectedRevision: number; nodeId: string; stopReason: string }
+  | { kind: "quarantine_node"; expectedRevision: number; nodeId: string; stopReason: string }
+  | { kind: "prune_node"; expectedRevision: number; nodeId: string; stopReason: string };
+
+function readyDependents(nodes: ResearchGraphNodeV1[]): ResearchGraphNodeV1[] {
+  const complete = new Set(nodes.filter((node) => node.status === "complete" || node.status === "pruned").map((node) => node.id));
+  return nodes.map((node) => node.status === "blocked" && node.dependencies.every((dependency) => complete.has(dependency))
+    ? { ...node, status: "ready" }
+    : node);
+}
+
+/** Pure revision-fenced T3 graph state reducer. */
+export function reduceResearchGraphV1(graph: ResearchGraphV1, update: ResearchGraphUpdateV1): ResearchGraphV1 {
+  validateResearchGraphV1(graph);
+  if (update.expectedRevision !== graph.revision) invalid("Research graph update revision is stale.");
+  if (update.kind === "approve") {
+    if (graph.status !== "proposed" || graph.approvalEnvelope.status !== "proposed") invalid("Only a proposed research graph can be approved.");
+    const approved: ResearchGraphV1 = {
+      ...graph,
+      status: "approved",
+      nodes: graph.nodes.map((node) => ({ ...node, status: node.dependencies.length === 0 ? "ready" : "blocked" })),
+      approvalEnvelope: { ...graph.approvalEnvelope, status: "approved", approvedAt: update.approvedAt },
+      approvedAt: update.approvedAt,
+    };
+    validateResearchGraphV1(approved);
+    return approved;
+  }
+  const index = graph.nodes.findIndex((node) => node.id === update.nodeId);
+  if (index < 0) invalid("Research graph update references an unknown node.");
+  const node = graph.nodes[index]!;
+  const nodes = graph.nodes.map((candidate) => ({ ...candidate }));
+  if (update.kind === "start_node") {
+    if (node.status !== "ready") invalid("Only a ready research node can start.");
+    nodes[index] = { ...node, status: "running", attempt: node.attempt + 1 };
+  } else if (update.kind === "complete_node") {
+    if (node.status !== "running" || !/^packet:[A-Za-z0-9:._-]{1,200}$/.test(update.packetRef)) invalid("Only a running research node can accept a packet.");
+    nodes[index] = { ...node, status: "complete", packetRef: update.packetRef };
+  } else if (update.kind === "fail_node") {
+    if (node.status !== "running") invalid("Only a running research node can fail.");
+    nodes[index] = { ...node, status: "failed", stopReason: update.stopReason.slice(0, 200) };
+  } else if (update.kind === "quarantine_node") {
+    if (node.status !== "running") invalid("Only a running research node can be quarantined.");
+    nodes[index] = { ...node, status: "quarantined", stopReason: update.stopReason.slice(0, 200) };
+  } else {
+    if (node.status !== "proposed" && node.status !== "ready" && node.status !== "blocked") invalid("Only an undispatched research node can be pruned.");
+    nodes[index] = { ...node, status: "pruned", stopReason: update.stopReason.slice(0, 200) };
+  }
+  const unlocked = readyDependents(nodes);
+  const synth = unlocked.find((candidate) => candidate.roleId === "synthesizer");
+  const next: ResearchGraphV1 = {
+    ...graph,
+    status: synth?.status === "complete" ? "complete" : "running",
+    nodes: unlocked,
+  };
+  validateResearchGraphV1(next);
+  return next;
 }

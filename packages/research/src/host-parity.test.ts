@@ -10,8 +10,7 @@ import {
 import { runResearchAgent as runBrowserResearchAgent } from "./agent-runtime.browser.js";
 import { runResearchAgent as runNodeResearchAgent } from "./agent-runtime.node.js";
 import {
-  RESEARCH_GRAPH_SCHEMA_V1,
-  type ResearchGraphV1,
+  composeStandardResearchGraphV1,
 } from "./graph.js";
 
 const request = normalizeResearchRequestV1({
@@ -25,23 +24,7 @@ const request = normalizeResearchRequestV1({
   wikiProvider: "rest",
 });
 
-const graph: ResearchGraphV1 = {
-  schema: RESEARCH_GRAPH_SCHEMA_V1,
-  briefRevision: 1,
-  graphRevision: 1,
-  nodes: [{
-    id: "research-node:synthesizer",
-    role: "synthesizer",
-    dependsOn: [],
-    requestedCapabilityIds: [],
-    grantedCapabilityIds: [],
-    depth: 0,
-    phase: "synthesis",
-  }],
-  selectedRoleIds: ["synthesizer"],
-  maxResearchWaves: 2,
-  maxReconciliationWaves: 1,
-};
+const graph = composeStandardResearchGraphV1(request.question);
 
 const draft = {
   title: "Cross-host synthetic report",
