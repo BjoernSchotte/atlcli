@@ -100,6 +100,7 @@
         "@atlcli/jira": "workspace:*",
         "@atlcli/pdf": "workspace:*",
         "@atlcli/pdf-compiler-browser": "workspace:*",
+        "@atlcli/research": "workspace:*",
         "@langchain/anthropic": "1.5.2",
         "@langchain/core": "1.2.3",
         "@langchain/langgraph": "1.4.8",
@@ -319,6 +320,10 @@
       "name": "@atlcli/plugin-api",
       "version": "0.6.0",
     },
+    "packages/research": {
+      "name": "@atlcli/research",
+      "version": "0.1.0",
+    },
     "packages/template-pack": {
       "name": "@atlcli/template-pack",
       "version": "0.6.0",
@@ -428,6 +433,8 @@
     "@atlcli/pdf-template-authoring": ["@atlcli/pdf-template-authoring@workspace:packages/pdf-template-authoring"],
 
     "@atlcli/plugin-api": ["@atlcli/plugin-api@workspace:packages/plugin-api"],
+
+    "@atlcli/research": ["@atlcli/research@workspace:packages/research"],
 
     "@atlcli/template-pack": ["@atlcli/template-pack@workspace:packages/template-pack"],
 

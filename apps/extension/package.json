@@ -53,6 +53,7 @@
     "@atlcli/jira": "workspace:*",
     "@atlcli/pdf": "workspace:*",
     "@atlcli/pdf-compiler-browser": "workspace:*",
+    "@atlcli/research": "workspace:*",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "deepagents": "1.12.0",

@@ -75,6 +75,7 @@ export const BROWSER_ENTRYPOINTS = [
   "packages/core/src/index.browser.ts",
   "packages/confluence/src/index.browser.ts",
   "packages/jira/src/index.browser.ts",
+  "packages/research/src/index.browser.ts",
   "packages/code-highlight/src/index.browser.ts",
   "packages/docx/src/index.browser.ts",
   "packages/docx/src/internal.ts",

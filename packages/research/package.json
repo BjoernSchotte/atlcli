@@ -1,0 +1,55 @@
+{
+  "name": "@atlcli/research",
+  "version": "0.1.0",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "atlcli": {
+    "publish": "public-0.x"
+  },
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "development": {
+        "browser": "./src/index.browser.ts",
+        "default": "./src/index.ts"
+      },
+      "browser": {
+        "types": "./dist/index.browser.d.ts",
+        "default": "./dist/index.browser.js"
+      },
+      "default": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    },
+    "./browser": {
+      "development": "./src/index.browser.ts",
+      "types": "./dist/index.browser.d.ts",
+      "default": "./dist/index.browser.js"
+    },
+    "./contracts": {
+      "development": "./src/contracts.ts",
+      "types": "./dist/contracts.d.ts",
+      "default": "./dist/contracts.js"
+    },
+    "./capability-contracts": {
+      "development": "./src/capability-contracts.ts",
+      "types": "./dist/capability-contracts.d.ts",
+      "default": "./dist/capability-contracts.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "clean": "rm -rf dist",
+    "prepack": "bun ../../scripts/strip-dev-condition.ts strip",
+    "postpack": "bun ../../scripts/strip-dev-condition.ts restore"
+  },
+  "dependencies": {}
+}
