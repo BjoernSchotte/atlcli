@@ -38,6 +38,14 @@ export interface FreezeDecision {
  * Recorded here as the single source the closure files render from.
  */
 export const FREEZE_DECISIONS: Record<string, FreezeDecision> = {
+  "@atlcli/export-blocks": {
+    version: "0.x",
+    frozen: false,
+    reasoning:
+      "STAYS 0.x: extracted as the dependency-free, consumer-neutral document model for " +
+      "DOCX, PDF, and web publishing. Keep it experimental while the first standalone " +
+      "Astro renderer and an external package consumer prove the separated contract.",
+  },
   "@atlcli/code-highlight": {
     version: "0.x",
     frozen: false,

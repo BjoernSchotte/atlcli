@@ -53,6 +53,7 @@
   },
   "dependencies": {
     "@atlcli/core": "workspace:*",
+    "@atlcli/export-blocks": "workspace:*",
     "diff": "^8.0.2",
     "entities": "^6.0.0",
     "ignore": "^7.0.5",

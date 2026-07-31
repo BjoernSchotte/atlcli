@@ -136,6 +136,7 @@
       "version": "1.0.0",
       "dependencies": {
         "@atlcli/core": "workspace:*",
+        "@atlcli/export-blocks": "workspace:*",
         "diff": "^8.0.2",
         "entities": "^6.0.0",
         "ignore": "^7.0.5",
@@ -197,6 +198,10 @@
         "@atlcli/pdf": "workspace:*",
         "pizzip": "^3.2.0",
       },
+    },
+    "packages/export-blocks": {
+      "name": "@atlcli/export-blocks",
+      "version": "0.1.0",
     },
     "packages/export-fixtures": {
       "name": "@atlcli/export-fixtures",
@@ -390,6 +395,8 @@
     "@atlcli/docx": ["@atlcli/docx@workspace:packages/docx"],
 
     "@atlcli/docx-template-intake": ["@atlcli/docx-template-intake@workspace:packages/docx-template-intake"],
+
+    "@atlcli/export-blocks": ["@atlcli/export-blocks@workspace:packages/export-blocks"],
 
     "@atlcli/export-fixtures": ["@atlcli/export-fixtures@workspace:packages/export-fixtures"],
 
