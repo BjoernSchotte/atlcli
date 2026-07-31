@@ -9,6 +9,8 @@
 export {
   ConfluenceClient,
   type ConfluenceTransportEvent,
+  type ConfluenceSpace,
+  type ConfluenceSpacePageV2,
 } from "./client.js";
 export {
   StorageParseError,

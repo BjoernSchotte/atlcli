@@ -47,6 +47,8 @@ export interface JiraProject {
   avatarUrls?: Record<string, string>;
   /** Whether the project is simplified (next-gen) */
   simplified?: boolean;
+  /** Whether the project is archived (returned by project search when available). */
+  archived?: boolean;
 }
 
 /** Project category */

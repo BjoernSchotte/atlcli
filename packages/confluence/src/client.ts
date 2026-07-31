@@ -216,6 +216,7 @@ export type ConfluenceSpace = {
   key: string;
   name: string;
   type: "global" | "personal";
+  status?: "current" | "archived" | "trashed";
   url?: string;
 };
 
@@ -2164,12 +2165,17 @@ export class ConfluenceClient {
    * scope broker own the page/cursor budget and keep the provider cursor opaque.
    */
   async listSpacesV2(
-    options: { limit?: number; cursor?: string; signal?: AbortSignal } = {},
+    options: {
+      limit?: number;
+      cursor?: string;
+      status?: "current" | "archived";
+      signal?: AbortSignal;
+    } = {},
   ): Promise<ConfluenceSpacePageV2> {
     const requestedLimit = options.limit ?? 25;
     const limit = Math.min(Math.max(Math.trunc(requestedLimit), 1), 250);
     const data = (await this.requestV2("/spaces", {
-      query: { limit, cursor: options.cursor },
+      query: { limit, cursor: options.cursor, status: options.status },
       signal: options.signal,
     })) as any;
     const results = Array.isArray(data?.results) ? data.results : [];
@@ -2185,6 +2191,9 @@ export class ConfluenceClient {
         key,
         name,
         type,
+        ...(item.status === "archived" || item.status === "trashed" || item.status === "current"
+          ? { status: item.status }
+          : {}),
         url: this.buildWebUrl(item._links?.webui),
       }];
     });

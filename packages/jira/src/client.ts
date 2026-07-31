@@ -553,6 +553,7 @@ export class JiraClient {
       style: data.style,
       avatarUrls: data.avatarUrls,
       simplified: data.simplified,
+      ...(typeof data.archived === "boolean" ? { archived: data.archived } : {}),
     };
   }
 
