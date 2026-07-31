@@ -33,6 +33,16 @@ advantage. No generic GraphQL capability is shipped.
 | Packed MV3 Chromium | Synthetic Atlassian and Anthropic responses; real production bundles | Sidebar → background → offscreen → fresh worker, DeepAgentsJS/QuickJS PTC, WASM loading, pagination, details, safe report rendering, session-key reload, cancellation, worker recreation, and cleanup |
 | Node live runner | Real user-approved Atlassian profile and Anthropic model; same request, broker, providers, budgets, QuickJS, and agent runtime | Jira and Confluence return scoped read results and readable detail content without any Atlassian write |
 
+An additional authenticated browser-session check ran on 2026-07-31 from an
+already signed-in Mayflower Confluence page. One bounded Jira request and one
+bounded Confluence request each returned HTTP 200, exactly one result, a
+scope-match boolean of `true`, and an opaque-identity boolean of `true`. The
+check retained no title, key, content ID, URL, excerpt, response body, account
+identifier, cookie, or credential. It proves that the real browser session can
+reach both read ports; the packed synthetic test separately proves the MV3
+host/offscreen/worker lifecycle. It is not recorded as the later full
+installed-extension live E2E.
+
 The Node runner has an explicit test-only profile-auth switch. The packed
 extension leaves that switch disabled and binds reads to the active browser
 session and Atlassian origin. A real Node run does not substitute for the
@@ -173,8 +183,8 @@ snapshot path that escapes its private case directory. The scoring protocol
 freezes equal scope, as-of time, permissions and comparable budgets across
 native Jira/Confluence search, issue-138, S0-S3, Rovo and Rovo Deep Research;
 it also requires blinded review and three-to-five-run variance for stochastic
-systems. No private source, answer, report, key, URL or provider transcript is
-committed.
+systems. These fixtures introduce no private source, answer, report, key, URL,
+or provider transcript.
 
 ## Packed metrics
 

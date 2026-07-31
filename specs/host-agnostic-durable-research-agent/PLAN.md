@@ -2256,8 +2256,13 @@ Extension/browser:
       Proven 2026-07-31 from a fresh production WXT build: two packed Chromium
       tests pass, covering native dynamic-schema dispatch plus the complete
       sidebar/background/offscreen/fresh-worker/PTC/report/cancel lifecycle.
-- [ ] Re-run one authenticated Mayflower browser-session read and record only
+- [x] Re-run one authenticated Mayflower browser-session read and record only
       sanitized evidence in the existing evidence document.
+      Proven 2026-07-31 from an already authenticated Confluence browser tab:
+      Jira and Confluence each returned HTTP 200, one scope-conforming result,
+      and an opaque identity. Only counts, statuses, and booleans were retained.
+      This complements rather than replaces the packed MV3 lifecycle proof;
+      the later installed-extension live E2E remains a separate release gate.
 
 Gate:
 
