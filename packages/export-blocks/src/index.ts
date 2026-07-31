@@ -1394,4 +1394,7 @@ export interface ExportNote {
   source?: ExportNoteSource;
 }
 
+export * from "./schema.js";
+export * from "./visit.js";
+
 /** Result of {@link storageToBlocks}: the block tree plus report notes. */

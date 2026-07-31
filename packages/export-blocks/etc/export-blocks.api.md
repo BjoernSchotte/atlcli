@@ -105,6 +105,9 @@ export interface Caption {
 // export: CaptionKind
 export type CaptionKind = "figure" | "table" | "code" | "equation";
 
+// export: DEFAULT_EXPORT_BLOCK_VALIDATION_BUDGET_V1
+export declare const DEFAULT_EXPORT_BLOCK_VALIDATION_BUDGET_V1: Readonly<ExportBlockValidationBudgetV1>;
+
 // export: EmojiSemantics
 export interface EmojiSemantics {
     shortName: string;
@@ -113,6 +116,9 @@ export interface EmojiSemantics {
     renderedFrom: "source-text" | "catalog-projection" | "short-name";
     projection?: PortableEmojiProjection;
 }
+
+// export: EXPORT_BLOCK_MODEL_SCHEMA_V1
+export declare const EXPORT_BLOCK_MODEL_SCHEMA_V1: "atlcli.export-blocks/1";
 
 // export: EXPORT_NOTE_CODES
 export declare const EXPORT_NOTE_CODES: readonly [
@@ -373,6 +379,43 @@ export type ExportBlock = {
     };
 };
 
+// export: ExportBlockDocumentV1
+export interface ExportBlockDocumentV1 {
+    schema: typeof EXPORT_BLOCK_MODEL_SCHEMA_V1;
+    blocks: readonly ExportBlock[];
+    notes: readonly ExportNote[];
+}
+
+// export: ExportBlockValidationBudgetV1
+export interface ExportBlockValidationBudgetV1 {
+    maxDepth: number;
+    maxNodes: number;
+    maxStringBytes: number;
+}
+
+// export: ExportBlockValidationErrorV1
+export declare class ExportBlockValidationErrorV1 extends Error {
+    readonly path: string;
+    constructor(path: string, message: string);
+}
+
+// export: ExportBlockVisitContextV1
+export interface ExportBlockVisitContextV1 {
+    path: string;
+    ancestors: readonly ExportBlock[];
+}
+
+// export: ExportBlockVisitorV1
+export interface ExportBlockVisitorV1 {
+    block?(block: ExportBlock, context: ExportBlockVisitContextV1): void;
+    inline?(inline: InlineNode, context: ExportInlineVisitContextV1): void;
+}
+
+// export: ExportInlineVisitContextV1
+export interface ExportInlineVisitContextV1 extends ExportBlockVisitContextV1 {
+    owner: ExportBlock;
+}
+
 // export: ExportLink
 export interface ExportLink {
     target: LinkTarget;
@@ -619,6 +662,15 @@ export declare function panelIconDisplayText(panel: {
 // export: parseAdfDateTimestamp
 export declare function parseAdfDateTimestamp(timestamp: string): Date | undefined;
 
+// export: parseExportBlockDocumentV1
+export declare function parseExportBlockDocumentV1(value: unknown, budget?: ExportBlockValidationBudgetV1): ExportBlockDocumentV1;
+
+// export: parseExportBlocksV1
+export declare function parseExportBlocksV1(value: unknown, budget?: ExportBlockValidationBudgetV1): readonly ExportBlock[];
+
+// export: parseExportNotesV1
+export declare function parseExportNotesV1(value: unknown, budget?: ExportBlockValidationBudgetV1): readonly ExportNote[];
+
 // export: resolveCalloutIcon
 export declare function resolveCalloutIcon(callout: {
     kind: CalloutKind;
@@ -747,4 +799,7 @@ export interface UnresolvedMediaIdentity {
     webuiLink?: string;
     downloadLink?: string;
 }
+
+// export: visitExportBlocksV1
+export declare function visitExportBlocksV1(blocks: readonly ExportBlock[], visitor: ExportBlockVisitorV1): void;
 ```
