@@ -2229,10 +2229,17 @@ Shared:
       The executable rule additionally forbids regressions in recall,
       coverage, completeness, branch coverage, scope resolution, catalog
       completeness, duplicate work, and unnecessary expansion proposals.
-- [ ] Create a local-only Mayflower gold-set format and add its path patterns to
+- [x] Create a local-only Mayflower gold-set format and add its path patterns to
       ignore rules. Commit only a synthetic example schema, never real content.
-- [ ] Record current PoC, native Jira/Confluence search, and Rovo scoring
+      The canonical registry is outside the repo under
+      `~/Documents/atlcli/research-register/gold-sets/`; tracked files contain
+      only the V1 JSON Schema, a customer-free example, format tests, and
+      privacy suffixes.
+- [x] Record current PoC, native Jira/Confluence search, and Rovo scoring
       instructions. Do not commit private Rovo transcripts.
+      `GOLD-SET.md` freezes equal scope/as-of/permissions, comparable budgets,
+      blind scoring, repeat policy, missing-control handling, and the exact
+      boundary between local artifacts and aggregate repository evidence.
 
 CLI:
 
@@ -2270,7 +2277,7 @@ Gate:
       4; reconciliation 1,638 / 16 / 5.
 - [x] `bun run test apps/extension/tests/research-*.test.ts` passes.
       Proven 2026-07-31: 97 passed, 0 failed across 18 extension files;
-      the two customer-free package evaluation fixtures add 11 passing tests.
+      the three customer-free package evaluation fixtures add 14 passing tests.
 - [ ] `bun run --cwd apps/extension test:research-extension-browser` passes.
 - [ ] No tracked file contains an Anthropic key, Atlassian credential, tenant
       content, private URL, or customer-derived report.

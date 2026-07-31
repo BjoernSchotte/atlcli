@@ -158,6 +158,24 @@ model cost is capped at 2.0 times S1, and at least one of these gains is
 required: source coverage or supported-claim recall by 10 percentage points,
 peak supervisor context by 25%, or median latency by 20%.
 
+## Private gold-set boundary
+
+The committed V1 gold-set JSON Schema and example are customer-free. The real
+registry lives outside the repository under the operator's
+`~/Documents/atlcli/research-register/gold-sets/` hierarchy; reports and run or
+Rovo transcripts go only to timestamped local artifact directories. Explicit
+private filename suffixes and an optional checkout-local safety directory are
+ignored by Git.
+
+Schema tests prove the synthetic example is valid and reject a non-HTTPS
+tenant, a raw account identifier in place of a salted fingerprint, and a
+snapshot path that escapes its private case directory. The scoring protocol
+freezes equal scope, as-of time, permissions and comparable budgets across
+native Jira/Confluence search, issue-138, S0-S3, Rovo and Rovo Deep Research;
+it also requires blinded review and three-to-five-run variance for stochastic
+systems. No private source, answer, report, key, URL or provider transcript is
+committed.
+
 ## Packed metrics
 
 Single synthetic acceptance run:
