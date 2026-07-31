@@ -27,4 +27,23 @@ describe("research error redaction", () => {
     });
     expect(JSON.stringify(classified)).not.toContain(secret);
   });
+
+  it("classifies exhausted REST rate limits without provider details", () => {
+    expect(classifyResearchError(new Error("Rate limited by Jira API after 3 retries"))).toEqual({
+      code: "rate-limited",
+      message: "The provider rate limit was reached.",
+    });
+  });
+
+  it("classifies inaccessible catalog entities without echoing a response body", () => {
+    const classified = classifyResearchError(
+      new Error("Confluence API error (404): PRIVATE_NOT_FOUND_PAYLOAD"),
+    );
+
+    expect(classified).toEqual({
+      code: "access-denied",
+      message: "The Atlassian resource is unavailable.",
+    });
+    expect(JSON.stringify(classified)).not.toContain("PRIVATE_NOT_FOUND_PAYLOAD");
+  });
 });

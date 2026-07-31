@@ -2145,20 +2145,28 @@ Shared:
       exact Jira-to-Confluence links, hypotheses, truncation, unavailable
       details, conflicting evidence, no-answer behavior, and Atlassian content
       containing instructions that must be treated as untrusted source text.
-- [ ] Characterize Jira project search and Confluence space listing against
+- [x] Characterize Jira project search and Confluence space listing against
       fake and local authenticated providers: query behavior, cursor/page
       semantics, permission filtering, duplicate normalized names, aliases,
       archived entries, inaccessible/deleted entries, maximum page size,
       ordering stability, rate limits, cancellation, and sanitized errors.
-- [ ] Compare the current Confluence v1 `listSpaces` wrapper with v2 cursor
+      Proven 2026-07-31 with customer-free fixtures plus a sanitized local
+      authenticated run; exact observations and provider contracts are recorded
+      in `specs/issue-138-deepagents-research/EVIDENCE.md`.
+- [x] Compare the current Confluence v1 `listSpaces` wrapper with v2 cursor
       pagination. Measure optional `space.title` CQL only as a candidate
       accelerator and verify every returned candidate through the space API.
       Freeze the chosen normalized provider-port fixtures before T1.
-- [ ] Freeze deterministic scope-resolution fixtures for exact key, exact
+      Chosen provider: v2 space pagination across current and archived phases.
+      The bounded v1 page was incomplete, and current Atlassian CQL documents
+      no `space.title` field, so the proposed CQL accelerator is a NO-GO.
+- [x] Freeze deterministic scope-resolution fixtures for exact key, exact
       normalized name, alias, duplicate name, weak fuzzy match, current
       context, exact current-tenant link, foreign-tenant link, explicit-scope
       precedence, archived scope, inaccessible scope, and catalog metadata
       containing prompt-injection text.
+      Fixtures also preserve multiple explicit project/space bindings at the
+      winning precedence instead of collapsing them to a single scope.
 - [ ] Add a fake model script whose outputs are deterministic and can execute
       through both a Node/Bun runtime and a packed browser runtime.
 - [ ] Define baseline metrics: source recall, detail coverage, citation
@@ -2230,18 +2238,23 @@ Extension/browser:
 
 Gate:
 
-- [ ] The Node/Bun and packed-MV3 dispatch adapter spike passes. If there is no
+- [x] The Node/Bun and packed-MV3 dispatch adapter spike passes. If there is no
       supported interception point that can enforce the named boundaries,
       STOP before T1 and revise the dispatch design.
-- [ ] Jira and Confluence catalog characterization can enumerate all bounded
+      Proven with the one-central-DeepAgent harness and upstream runnable-config
+      fix described above.
+- [x] Jira and Confluence catalog characterization can enumerate all bounded
       accessible fixture pages without leaking provider cursors, returning
       inaccessible entities as selectable candidates, or treating catalog
       metadata as instructions. Otherwise STOP and redesign the provider port
       before T1.
+      Provider cursors remain broker-opaque; inaccessible/trashed candidates are
+      unavailable; prompt-like names/aliases are data only.
 - [ ] Every production response schema stays within the pinned runtime's 4,096
       serialized-byte, 32-property, and depth-5 limits in both hosts. Exceeding
       a limit is a T0 STOP requiring schema redesign before extraction.
-- [ ] `bun run test apps/extension/tests/research-*.test.ts` passes.
+- [x] `bun run test apps/extension/tests/research-*.test.ts` passes.
+      Proven 2026-07-31: 96 passed, 0 failed across 17 files.
 - [ ] `bun run --cwd apps/extension test:research-extension-browser` passes.
 - [ ] No tracked file contains an Anthropic key, Atlassian credential, tenant
       content, private URL, or customer-derived report.

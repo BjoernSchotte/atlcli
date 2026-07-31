@@ -217,6 +217,8 @@ export type ConfluenceSpace = {
   name: string;
   type: "global" | "personal";
   status?: "current" | "archived" | "trashed";
+  /** Active human-facing aliases advertised by the v2 space catalog. */
+  aliases?: string[];
   url?: string;
 };
 
@@ -2177,6 +2179,7 @@ export class ConfluenceClient {
     const data = (await this.requestV2("/spaces", {
       query: { limit, cursor: options.cursor, status: options.status },
       signal: options.signal,
+      logBody: "meta-only",
     })) as any;
     const results = Array.isArray(data?.results) ? data.results : [];
     const spaces = results.flatMap((item: any): ConfluenceSpace[] => {
@@ -2194,6 +2197,9 @@ export class ConfluenceClient {
         ...(item.status === "archived" || item.status === "trashed" || item.status === "current"
           ? { status: item.status }
           : {}),
+        ...(typeof item.currentActiveAlias === "string" && item.currentActiveAlias.trim()
+          ? { aliases: [item.currentActiveAlias.trim()] }
+          : {}),
         url: this.buildWebUrl(item._links?.webui),
       }];
     });
@@ -2207,13 +2213,22 @@ export class ConfluenceClient {
   /**
    * Get a space by key.
    */
-  async getSpace(key: string): Promise<ConfluenceSpace> {
-    const data = (await this.request(`/space/${key}`, {})) as any;
+  async getSpace(
+    key: string,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<ConfluenceSpace> {
+    const data = (await this.request(`/space/${key}`, {
+      signal: options.signal,
+      logBody: "meta-only",
+    })) as any;
     return {
       id: data.id,
       key: data.key,
       name: data.name,
       type: data.type ?? "global",
+      ...(data.status === "current" || data.status === "archived" || data.status === "trashed"
+        ? { status: data.status }
+        : {}),
       url: data._links?.base ? `${data._links.base}${data._links.webui}` : undefined,
     };
   }

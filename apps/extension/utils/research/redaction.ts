@@ -43,7 +43,17 @@ export function classifyResearchError(value: unknown): {
   ) {
     return classifiedError("invalid-key", "The Anthropic API key was rejected.");
   }
-  if (normalized.includes("rate_limit") || normalized.includes("status 429")) {
+  if (/\(401\)|status\s*401/.test(normalized)) {
+    return classifiedError("not-authenticated", "The Atlassian session is not authenticated.");
+  }
+  if (/\((?:403|404)\)|status\s*(?:403|404)/.test(normalized)) {
+    return classifiedError("access-denied", "The Atlassian resource is unavailable.");
+  }
+  if (
+    normalized.includes("rate_limit") ||
+    normalized.includes("rate limited") ||
+    normalized.includes("status 429")
+  ) {
     return classifiedError("rate-limited", "The provider rate limit was reached.");
   }
   if (normalized.includes("abort") || normalized.includes("cancel")) {

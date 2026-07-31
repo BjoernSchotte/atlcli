@@ -104,6 +104,13 @@ function normalize(value: string): string {
 }
 
 function matchFor(mention: ResearchScopeMentionV1, candidate: ResearchScopeCandidateV1): NonNullable<ResearchScopeCandidateV1["match"]> | undefined {
+  if (
+    mention.exactReference &&
+    candidate.match === "exact_link" &&
+    candidate.canonicalUrl === mention.exactReference
+  ) {
+    return "exact_link";
+  }
   const needle = mention.normalizedText.trim() || normalize(mention.text);
   const key = candidate.key ? normalize(candidate.key) : "";
   const name = normalize(candidate.name);
@@ -129,8 +136,12 @@ export function resolveResearchScopeMentionV1(input: ResearchScopeResolutionInpu
   const candidateIds = ranked.slice(0, maxCandidates).map(({ candidate }) => candidate.id);
   const exactKey = ranked.filter(({ match }) => match === "exact_key");
   if (exactKey.length === 1) return { mentionId: input.mention.id, state: "resolved", candidateIds, resolvedCandidateId: exactKey[0]!.candidate.id, uniquenessProof: "exact_key_lookup", catalogComplete: input.catalogComplete, requiresUserChoice: false };
+  const exactReference = ranked.filter(({ match }) => match === "exact_link");
+  if (exactReference.length === 1) return { mentionId: input.mention.id, state: "resolved", candidateIds, resolvedCandidateId: exactReference[0]!.candidate.id, uniquenessProof: "exact_reference_lookup", catalogComplete: input.catalogComplete, requiresUserChoice: false };
   const exactName = ranked.filter(({ match }) => match === "exact_name");
   if (exactName.length === 1 && input.catalogComplete) return { mentionId: input.mention.id, state: "resolved", candidateIds, resolvedCandidateId: exactName[0]!.candidate.id, uniquenessProof: "complete_catalog", catalogComplete: true, requiresUserChoice: false };
+  const exactAlias = ranked.filter(({ match }) => match === "alias");
+  if (exactAlias.length === 1 && input.catalogComplete) return { mentionId: input.mention.id, state: "resolved", candidateIds, resolvedCandidateId: exactAlias[0]!.candidate.id, uniquenessProof: "complete_catalog", catalogComplete: true, requiresUserChoice: false };
   if (ranked.length > 0) return { mentionId: input.mention.id, state: input.catalogComplete ? "ambiguous" : "incomplete", candidateIds, catalogComplete: input.catalogComplete, requiresUserChoice: true };
   return { mentionId: input.mention.id, state: input.catalogComplete ? "not_found" : "incomplete", candidateIds: [], catalogComplete: input.catalogComplete, requiresUserChoice: !input.catalogComplete };
 }
@@ -140,13 +151,24 @@ export function createResearchScopeBindingV1(input: { candidate: ResearchScopeCa
 }
 
 export function selectResearchScopeSeedsV1(seeds: readonly ResearchScopeSeedV1[]): ResearchScopeBindingV1[] {
-  const selected = new Map<string, ResearchScopeSeedV1>();
+  const selected = new Map<string, ResearchScopeSeedV1[]>();
   for (const seed of seeds) {
     const key = `${seed.binding.tenantOrigin}:${seed.binding.product}:${seed.binding.entityKind}`;
-    const current = selected.get(key);
-    if (!current || seed.precedence > current.precedence) selected.set(key, seed);
+    const current = selected.get(key) ?? [];
+    const currentPrecedence = current[0]?.precedence;
+    if (currentPrecedence === undefined || seed.precedence > currentPrecedence) {
+      selected.set(key, [seed]);
+    } else if (
+      seed.precedence === currentPrecedence &&
+      !current.some((entry) => entry.binding.entityRef === seed.binding.entityRef)
+    ) {
+      current.push(seed);
+    }
   }
-  return [...selected.values()].sort((left, right) => right.precedence - left.precedence || left.binding.id.localeCompare(right.binding.id)).map(({ binding }) => binding);
+  return [...selected.values()]
+    .flat()
+    .sort((left, right) => right.precedence - left.precedence || left.binding.id.localeCompare(right.binding.id))
+    .map(({ binding }) => binding);
 }
 
 export function scopeSourcePrecedence(source: ResearchScopeSourceV1): number {
@@ -163,4 +185,3 @@ export function projectApprovedWholeScopeV1(bindings: readonly ResearchScopeBind
   }
   return { ...base, jiraProjectKeys: [...jiraProjectKeys], confluenceSpaceKeys: [...confluenceSpaceKeys] };
 }
-

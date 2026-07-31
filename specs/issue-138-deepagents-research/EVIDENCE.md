@@ -53,6 +53,57 @@ with exact Jira/Confluence detail coverage, truncation count, and incomplete
 search status whenever the evidence is partial. The initial report is
 superseded.
 
+## Scope catalog characterization
+
+Verified on 2026-07-31 with customer-free fixtures and an approved local
+authenticated profile. The live harness emitted counts, booleans, and latency
+only; it did not emit a tenant URL, profile credential, project/space key,
+name, entity ID, provider cursor, or content.
+
+The normalized providers are Jira `GET /rest/api/3/project/search` and
+Confluence v2 `GET /wiki/api/v2/spaces`. Atlassian documents that the Jira
+endpoint is paginated/searchable and returns only projects for which the caller
+has Browse Projects, Administer Projects, or Administer Jira permission:
+<https://developer.atlassian.com/cloud/jira/platform/rest/v3/api-group-projects/>.
+The Confluence v2 endpoint is cursor-paginated, sorted by ID ascending, supports
+status filtering, and returns only viewable spaces:
+<https://developer.atlassian.com/cloud/confluence/rest/v2/api-group-space/>.
+
+Sanitized live observations:
+
+- Jira drained 142 visible projects in 3 pages in 4,284 ms; the repeated first
+  page was stable, the exact query returned one verified result in 200 ms, and
+  pre-abort stopped before a request.
+- Confluence v1 returned one bounded 250-item page in 1,145 ms. It did not
+  expose a continuation contract and therefore was not a complete catalog.
+- Confluence v2 drained 242 current spaces in 5 pages (1,181 ms) and 66
+  archived spaces in 2 pages (576 ms). Both phases completed, the repeated
+  first page was stable, exact-key verification succeeded, and pre-abort
+  stopped before a request.
+- The live space catalog contained 2 duplicate normalized names and advertised
+  an active alias for 308 entries. This confirms that names and aliases cannot
+  be assumed unique; only an exact unique key/reference or a unique match from
+  a complete bounded catalog may auto-resolve.
+- The bounded v1 page and complete v2 current catalog overlapped on 194 keys;
+  56 appeared only in the v1 page and 48 only in the v2 current set. The
+  difference is consistent with v1 truncation and differing status/default
+  behavior, so v1 is rejected for normalized discovery.
+
+The optional `space.title` CQL accelerator is a NO-GO. Atlassian's current CQL
+field reference documents `space` as a content-search field addressable by
+space key and has no `space.title` field:
+<https://developer.atlassian.com/cloud/confluence/cql-fields/>. Content search
+therefore cannot stand in for a permission-filtered space catalog. Exact links
+are verified through a tenant-bound project/space read; foreign, inaccessible,
+404, archived-without-opt-in, and trashed candidates remain unselectable.
+
+Fixture coverage proves opaque cursors, bounded pages, deterministic page
+ordering, duplicate names and aliases, archived/trashed filtering, exact
+normalized names, exact aliases, weak fuzzy ambiguity, current-context versus
+explicit-scope precedence, multiple equal-precedence explicit scopes, exact
+tenant links, foreign links, cancellation, rate-limit classification, sanitized
+errors, and prompt-like catalog metadata treated only as inert data.
+
 ## Packed metrics
 
 Single synthetic acceptance run:

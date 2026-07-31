@@ -485,6 +485,7 @@ export class JiraClient {
         expand: options.expand,
       },
       signal: options.signal,
+      logBody: "meta-only",
     });
 
     return {
@@ -498,9 +499,14 @@ export class JiraClient {
    *
    * GET /rest/api/3/project/{projectIdOrKey}
    */
-  async getProject(keyOrId: string): Promise<JiraProject> {
+  async getProject(
+    keyOrId: string,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<JiraProject> {
     const data = await this.request<JiraProject>(`/project/${keyOrId}`, {
       query: { expand: "description,lead,issueTypes" },
+      signal: options.signal,
+      logBody: "meta-only",
     });
     return this.parseProject(data);
   }

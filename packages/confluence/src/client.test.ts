@@ -39,6 +39,7 @@ describe("Confluence v2 space pagination", () => {
                 key: "DOCSY",
                 name: "Documentation",
                 type: "global",
+                currentActiveAlias: "Docs team",
                 _links: { webui: "/spaces/DOCSY" },
               },
               { id: "missing-name", key: "SKIP" },
@@ -63,6 +64,7 @@ describe("Confluence v2 space pagination", () => {
         key: "DOCSY",
         name: "Documentation",
         type: "global",
+        aliases: ["Docs team"],
         url: "https://test.atlassian.net/wiki/spaces/DOCSY",
       },
     ]);
@@ -83,6 +85,23 @@ describe("Confluence v2 space pagination", () => {
       spaces: [],
       nextCursor: undefined,
     });
+  });
+
+  test("clamps the requested page size to the documented client boundary", async () => {
+    let requested = "";
+    globalThis.fetch = mock((url: string) => {
+      requested = url;
+      return Promise.resolve(
+        new Response(JSON.stringify({ results: [] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+    }) as unknown as typeof fetch;
+
+    await new ConfluenceClient(mockProfile).listSpacesV2({ limit: 10_000 });
+
+    expect(requested).toContain("limit=250");
   });
 });
 
