@@ -1481,7 +1481,7 @@ inputs, and does not alter existing export targets.
       verified manifest and reserve owned paths through the route/output
       registry; add no V1 service-worker paths or PWA schema.
 - [x] Write the private output manifest outside the public output root.
-- [ ] Keep programmatic Astro APIs and experimental collection storage out of
+- [x] Keep programmatic Astro APIs and experimental collection storage out of
       public contracts.
 - [ ] STOP on private Astro/Vite dependency, non-static route, ambient docs-site
       config, or Confluence/network access in the loader.

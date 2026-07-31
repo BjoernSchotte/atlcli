@@ -19,6 +19,23 @@ test("declares Astro as a peer, never a bundled runtime dependency", async () =>
   expect(manifest.dependencies?.astro).toBeUndefined();
 });
 
+test("keeps programmatic Astro runners and experimental collection storage out of the public contract", async () => {
+  const [entrypoint, integration, loader, apiReport] = await Promise.all([
+    readFile(new URL("./index.ts", import.meta.url), "utf8"),
+    readFile(new URL("./integration.ts", import.meta.url), "utf8"),
+    readFile(new URL("./loader.ts", import.meta.url), "utf8"),
+    readFile(new URL("../etc/web-publish-astro.api.md", import.meta.url), "utf8"),
+  ]);
+  for (const source of [entrypoint, integration, loader, apiReport]) {
+    expect(source).not.toContain("astro:content");
+    expect(source).not.toContain("astro.build(");
+    expect(source).not.toContain("experimental collection storage");
+    expect(source).not.toContain("unstable_");
+  }
+  expect(apiReport).not.toContain("astro.build");
+  expect(apiReport).not.toContain("ContentLayer");
+});
+
 const page = {
   schema: "atlcli.publication-page/1",
   sourceId: "guide",
