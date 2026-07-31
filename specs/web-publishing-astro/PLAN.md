@@ -1534,7 +1534,7 @@ the active bundle is always complete and digest-valid.
 - [x] Export minimal accessible baseline styles, semantic slots, versioned CSS
       custom properties, and documented `data-atlcli-*` hooks without treating
       generated classes/full DOM snapshots as public compatibility.
-- [ ] Implement accessible static chart SVG/HTML from normalized chart data.
+- [x] Implement accessible static chart SVG/HTML from normalized chart data.
 - [ ] Implement the optional block-local chart island with frozen data, explicit
       opt-in, byte/row/node limits, no network/auth access, and static fallback.
 - [ ] Keep chart rendering behind a vendor-neutral `ChartRendererAdapter`; use

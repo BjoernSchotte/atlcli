@@ -26,6 +26,7 @@
       "default": "./dist/fixtures.js"
     },
     "./components/ExportDocument.astro": "./dist/components/ExportDocument.astro",
+    "./components/StaticChart.astro": "./dist/components/StaticChart.astro",
     "./styles.css": "./dist/styles.css"
   },
   "scripts": {

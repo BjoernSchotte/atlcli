@@ -55,3 +55,11 @@ export {
   type AstroExportBlockOverrideSelectionV1,
   type AstroExportBlockOverrideSlotV1,
 } from "./overrides.js";
+
+export {
+  StaticChartValidationErrorV1,
+  normalizeStaticChartV1,
+  type NormalizedStaticChartV1,
+  type StaticChartModelV1,
+  type StaticChartSeriesV1,
+} from "./charts.js";

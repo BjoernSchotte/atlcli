@@ -89,6 +89,31 @@ export interface AstroResolvedLinkV1 {
 
 // export: createAstroExportBlockOverrideRegistryV1
 export declare function createAstroExportBlockOverrideRegistryV1(available: readonly AstroExportBlockOverrideDescriptorV1[], selection: AstroExportBlockOverrideSelectionV1): ReadonlyMap<AstroExportBlockOverrideSlotV1, AstroExportBlockOverrideDescriptorV1>;
+
+// export: NormalizedStaticChartV1
+export interface NormalizedStaticChartV1 extends StaticChartModelV1 {
+    maximum: number;
+}
+
+// export: normalizeStaticChartV1
+export declare function normalizeStaticChartV1(model: StaticChartModelV1): NormalizedStaticChartV1;
+
+// export: StaticChartModelV1
+export interface StaticChartModelV1 {
+    title: string;
+    labels: readonly string[];
+    series: readonly StaticChartSeriesV1[];
+}
+
+// export: StaticChartSeriesV1
+export interface StaticChartSeriesV1 {
+    name: string;
+    values: readonly number[];
+}
+
+// export: StaticChartValidationErrorV1
+export declare class StaticChartValidationErrorV1 extends Error {
+}
 ```
 
 ### Entry point `./fixtures`
