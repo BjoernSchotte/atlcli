@@ -81,7 +81,7 @@ export declare function createResearchKeyScopeSeedV1(input: {
 export declare function createResearchScopeBindingV1(input: {
     candidate: ResearchScopeCandidateV1;
     source: ResearchScopeSourceV1;
-    authority: "approved" | "locked";
+    authority: "resolved" | "approved" | "locked";
     mentionId?: string;
     approvedAt?: string;
     bindingId?: string;
@@ -301,6 +301,9 @@ export declare const RESEARCH_CAPABILITY_SCHEMAS: {
     };
 };
 
+// export: RESEARCH_CLARIFICATION_REQUIRED_SCHEMA_V1
+export declare const RESEARCH_CLARIFICATION_REQUIRED_SCHEMA_V1: "atlcli.research-clarification-required/v1";
+
 // export: RESEARCH_GRAPH_CAPABILITIES
 export declare const RESEARCH_GRAPH_CAPABILITIES: readonly [
     "jira.issue.search",
@@ -517,6 +520,17 @@ export declare class ResearchCapabilityBroker {
         warnings: string[];
     };
     invoke(tool: ResearchToolId, input: unknown): Promise<unknown>;
+}
+
+// export: ResearchClarificationRequiredV1
+export interface ResearchClarificationRequiredV1 {
+    schema: typeof RESEARCH_CLARIFICATION_REQUIRED_SCHEMA_V1;
+    reason: ResearchScopeClarificationReasonV1;
+    mentionId: string;
+    candidateIds: string[];
+    productHint?: "jira" | "confluence";
+    entityKindHint?: "project" | "space" | "issue" | "page";
+    rerunGuidance: string[];
 }
 
 // export: ResearchContractError
@@ -857,6 +871,18 @@ export interface ResearchGraphV1 {
     maxReconciliationWaves: 1;
 }
 
+// export: ResearchInitialScopeResolutionOutcomeV1
+export type ResearchInitialScopeResolutionOutcomeV1 = {
+    kind: "ready";
+    scope: ResearchScopeV1;
+    bindings: ResearchScopeBindingV1[];
+    resolutions: ResearchScopeResolutionV1[];
+} | {
+    kind: "clarification_required";
+    clarification: ResearchClarificationRequiredV1;
+    resolutions: ResearchScopeResolutionV1[];
+};
+
 // export: ResearchLimitsV1
 export interface ResearchLimitsV1 {
     pageSize: number;
@@ -1190,6 +1216,11 @@ export interface ResearchScopeCatalogIntentV1 {
     maxCandidates: number;
 }
 
+// export: ResearchScopeCatalogInvokePortV1
+export interface ResearchScopeCatalogInvokePortV1 {
+    invoke(capability: ResearchScopeCatalogCapabilityId, value: unknown): Promise<ResearchScopeCatalogPageV1 | ResearchReferenceResolveOutputV1>;
+}
+
 // export: ResearchScopeCatalogPageV1
 export interface ResearchScopeCatalogPageV1 {
     schema: string;
@@ -1228,6 +1259,9 @@ export interface ResearchScopeCatalogProvidersV1 {
         signal: AbortSignal;
     }): Promise<ResearchScopeCandidateV1 | undefined>;
 }
+
+// export: ResearchScopeClarificationReasonV1
+export type ResearchScopeClarificationReasonV1 = "ambiguous" | "weak_match" | "archived_only" | "unavailable" | "incomplete" | "not_found";
 
 // export: ResearchScopeEntityKindV1
 export type ResearchScopeEntityKindV1 = "project" | "space" | "issue" | "page";
@@ -1484,6 +1518,16 @@ export interface ResearchWorkspace {
     remove(path: string): Promise<void>;
     list(prefix?: string): Promise<string[]>;
 }
+
+// export: resolveInitialResearchScopeV1
+export declare function resolveInitialResearchScopeV1(input: {
+    baseScope: ResearchScopeV1;
+    existingBindings: readonly ResearchScopeBindingV1[];
+    mentions: readonly ResearchScopeMentionV1[];
+    catalog: ResearchScopeCatalogInvokePortV1;
+    automaticApproval: boolean;
+    maximumCatalogPages?: number;
+}): Promise<ResearchInitialScopeResolutionOutcomeV1>;
 
 // export: resolveResearchScopeMentionV1
 export declare function resolveResearchScopeMentionV1(input: ResearchScopeResolutionInputV1): ResearchScopeResolutionV1;
@@ -1617,7 +1661,7 @@ export declare function createResearchKeyScopeSeedV1(input: {
 export declare function createResearchScopeBindingV1(input: {
     candidate: ResearchScopeCandidateV1;
     source: ResearchScopeSourceV1;
-    authority: "approved" | "locked";
+    authority: "resolved" | "approved" | "locked";
     mentionId?: string;
     approvedAt?: string;
     bindingId?: string;
@@ -1827,6 +1871,9 @@ export declare const RESEARCH_CAPABILITY_SCHEMAS: {
         readonly output: "atlcli.ptc/wiki.page.get.output/v1";
     };
 };
+
+// export: RESEARCH_CLARIFICATION_REQUIRED_SCHEMA_V1
+export declare const RESEARCH_CLARIFICATION_REQUIRED_SCHEMA_V1: "atlcli.research-clarification-required/v1";
 
 // export: RESEARCH_GRAPH_CAPABILITIES
 export declare const RESEARCH_GRAPH_CAPABILITIES: readonly [
@@ -2044,6 +2091,17 @@ export declare class ResearchCapabilityBroker {
         warnings: string[];
     };
     invoke(tool: ResearchToolId, input: unknown): Promise<unknown>;
+}
+
+// export: ResearchClarificationRequiredV1
+export interface ResearchClarificationRequiredV1 {
+    schema: typeof RESEARCH_CLARIFICATION_REQUIRED_SCHEMA_V1;
+    reason: ResearchScopeClarificationReasonV1;
+    mentionId: string;
+    candidateIds: string[];
+    productHint?: "jira" | "confluence";
+    entityKindHint?: "project" | "space" | "issue" | "page";
+    rerunGuidance: string[];
 }
 
 // export: ResearchContractError
@@ -2384,6 +2442,18 @@ export interface ResearchGraphV1 {
     maxReconciliationWaves: 1;
 }
 
+// export: ResearchInitialScopeResolutionOutcomeV1
+export type ResearchInitialScopeResolutionOutcomeV1 = {
+    kind: "ready";
+    scope: ResearchScopeV1;
+    bindings: ResearchScopeBindingV1[];
+    resolutions: ResearchScopeResolutionV1[];
+} | {
+    kind: "clarification_required";
+    clarification: ResearchClarificationRequiredV1;
+    resolutions: ResearchScopeResolutionV1[];
+};
+
 // export: ResearchLimitsV1
 export interface ResearchLimitsV1 {
     pageSize: number;
@@ -2717,6 +2787,11 @@ export interface ResearchScopeCatalogIntentV1 {
     maxCandidates: number;
 }
 
+// export: ResearchScopeCatalogInvokePortV1
+export interface ResearchScopeCatalogInvokePortV1 {
+    invoke(capability: ResearchScopeCatalogCapabilityId, value: unknown): Promise<ResearchScopeCatalogPageV1 | ResearchReferenceResolveOutputV1>;
+}
+
 // export: ResearchScopeCatalogPageV1
 export interface ResearchScopeCatalogPageV1 {
     schema: string;
@@ -2755,6 +2830,9 @@ export interface ResearchScopeCatalogProvidersV1 {
         signal: AbortSignal;
     }): Promise<ResearchScopeCandidateV1 | undefined>;
 }
+
+// export: ResearchScopeClarificationReasonV1
+export type ResearchScopeClarificationReasonV1 = "ambiguous" | "weak_match" | "archived_only" | "unavailable" | "incomplete" | "not_found";
 
 // export: ResearchScopeEntityKindV1
 export type ResearchScopeEntityKindV1 = "project" | "space" | "issue" | "page";
@@ -3012,6 +3090,16 @@ export interface ResearchWorkspace {
     list(prefix?: string): Promise<string[]>;
 }
 
+// export: resolveInitialResearchScopeV1
+export declare function resolveInitialResearchScopeV1(input: {
+    baseScope: ResearchScopeV1;
+    existingBindings: readonly ResearchScopeBindingV1[];
+    mentions: readonly ResearchScopeMentionV1[];
+    catalog: ResearchScopeCatalogInvokePortV1;
+    automaticApproval: boolean;
+    maximumCatalogPages?: number;
+}): Promise<ResearchInitialScopeResolutionOutcomeV1>;
+
 // export: resolveResearchScopeMentionV1
 export declare function resolveResearchScopeMentionV1(input: ResearchScopeResolutionInputV1): ResearchScopeResolutionV1;
 
@@ -3133,7 +3221,7 @@ export declare function createResearchKeyScopeSeedV1(input: {
 export declare function createResearchScopeBindingV1(input: {
     candidate: ResearchScopeCandidateV1;
     source: ResearchScopeSourceV1;
-    authority: "approved" | "locked";
+    authority: "resolved" | "approved" | "locked";
     mentionId?: string;
     approvedAt?: string;
     bindingId?: string;
@@ -3353,6 +3441,9 @@ export declare const RESEARCH_CAPABILITY_SCHEMAS: {
     };
 };
 
+// export: RESEARCH_CLARIFICATION_REQUIRED_SCHEMA_V1
+export declare const RESEARCH_CLARIFICATION_REQUIRED_SCHEMA_V1: "atlcli.research-clarification-required/v1";
+
 // export: RESEARCH_GRAPH_CAPABILITIES
 export declare const RESEARCH_GRAPH_CAPABILITIES: readonly [
     "jira.issue.search",
@@ -3569,6 +3660,17 @@ export declare class ResearchCapabilityBroker {
         warnings: string[];
     };
     invoke(tool: ResearchToolId, input: unknown): Promise<unknown>;
+}
+
+// export: ResearchClarificationRequiredV1
+export interface ResearchClarificationRequiredV1 {
+    schema: typeof RESEARCH_CLARIFICATION_REQUIRED_SCHEMA_V1;
+    reason: ResearchScopeClarificationReasonV1;
+    mentionId: string;
+    candidateIds: string[];
+    productHint?: "jira" | "confluence";
+    entityKindHint?: "project" | "space" | "issue" | "page";
+    rerunGuidance: string[];
 }
 
 // export: ResearchContractError
@@ -3909,6 +4011,18 @@ export interface ResearchGraphV1 {
     maxReconciliationWaves: 1;
 }
 
+// export: ResearchInitialScopeResolutionOutcomeV1
+export type ResearchInitialScopeResolutionOutcomeV1 = {
+    kind: "ready";
+    scope: ResearchScopeV1;
+    bindings: ResearchScopeBindingV1[];
+    resolutions: ResearchScopeResolutionV1[];
+} | {
+    kind: "clarification_required";
+    clarification: ResearchClarificationRequiredV1;
+    resolutions: ResearchScopeResolutionV1[];
+};
+
 // export: ResearchLimitsV1
 export interface ResearchLimitsV1 {
     pageSize: number;
@@ -4242,6 +4356,11 @@ export interface ResearchScopeCatalogIntentV1 {
     maxCandidates: number;
 }
 
+// export: ResearchScopeCatalogInvokePortV1
+export interface ResearchScopeCatalogInvokePortV1 {
+    invoke(capability: ResearchScopeCatalogCapabilityId, value: unknown): Promise<ResearchScopeCatalogPageV1 | ResearchReferenceResolveOutputV1>;
+}
+
 // export: ResearchScopeCatalogPageV1
 export interface ResearchScopeCatalogPageV1 {
     schema: string;
@@ -4280,6 +4399,9 @@ export interface ResearchScopeCatalogProvidersV1 {
         signal: AbortSignal;
     }): Promise<ResearchScopeCandidateV1 | undefined>;
 }
+
+// export: ResearchScopeClarificationReasonV1
+export type ResearchScopeClarificationReasonV1 = "ambiguous" | "weak_match" | "archived_only" | "unavailable" | "incomplete" | "not_found";
 
 // export: ResearchScopeEntityKindV1
 export type ResearchScopeEntityKindV1 = "project" | "space" | "issue" | "page";
@@ -4536,6 +4658,16 @@ export interface ResearchWorkspace {
     remove(path: string): Promise<void>;
     list(prefix?: string): Promise<string[]>;
 }
+
+// export: resolveInitialResearchScopeV1
+export declare function resolveInitialResearchScopeV1(input: {
+    baseScope: ResearchScopeV1;
+    existingBindings: readonly ResearchScopeBindingV1[];
+    mentions: readonly ResearchScopeMentionV1[];
+    catalog: ResearchScopeCatalogInvokePortV1;
+    automaticApproval: boolean;
+    maximumCatalogPages?: number;
+}): Promise<ResearchInitialScopeResolutionOutcomeV1>;
 
 // export: resolveResearchScopeMentionV1
 export declare function resolveResearchScopeMentionV1(input: ResearchScopeResolutionInputV1): ResearchScopeResolutionV1;
@@ -4724,7 +4856,7 @@ export declare function createResearchPtcTools(broker: ResearchCapabilityBroker,
 export declare function createResearchScopeBindingV1(input: {
     candidate: ResearchScopeCandidateV1;
     source: ResearchScopeSourceV1;
-    authority: "approved" | "locked";
+    authority: "resolved" | "approved" | "locked";
     mentionId?: string;
     approvedAt?: string;
     bindingId?: string;
@@ -4972,6 +5104,9 @@ export declare const RESEARCH_CAPABILITY_SCHEMAS: {
     };
 };
 
+// export: RESEARCH_CLARIFICATION_REQUIRED_SCHEMA_V1
+export declare const RESEARCH_CLARIFICATION_REQUIRED_SCHEMA_V1: "atlcli.research-clarification-required/v1";
+
 // export: RESEARCH_CRITIQUE_SCHEMA_V1
 export declare const RESEARCH_CRITIQUE_SCHEMA_V1: Record<string, unknown>;
 
@@ -5212,6 +5347,17 @@ export declare class ResearchCapabilityBroker {
         warnings: string[];
     };
     invoke(tool: ResearchToolId, input: unknown): Promise<unknown>;
+}
+
+// export: ResearchClarificationRequiredV1
+export interface ResearchClarificationRequiredV1 {
+    schema: typeof RESEARCH_CLARIFICATION_REQUIRED_SCHEMA_V1;
+    reason: ResearchScopeClarificationReasonV1;
+    mentionId: string;
+    candidateIds: string[];
+    productHint?: "jira" | "confluence";
+    entityKindHint?: "project" | "space" | "issue" | "page";
+    rerunGuidance: string[];
 }
 
 // export: ResearchContractError
@@ -5551,6 +5697,18 @@ export interface ResearchGraphV1 {
     maxResearchWaves: 2;
     maxReconciliationWaves: 1;
 }
+
+// export: ResearchInitialScopeResolutionOutcomeV1
+export type ResearchInitialScopeResolutionOutcomeV1 = {
+    kind: "ready";
+    scope: ResearchScopeV1;
+    bindings: ResearchScopeBindingV1[];
+    resolutions: ResearchScopeResolutionV1[];
+} | {
+    kind: "clarification_required";
+    clarification: ResearchClarificationRequiredV1;
+    resolutions: ResearchScopeResolutionV1[];
+};
 
 // export: ResearchLimitsV1
 export interface ResearchLimitsV1 {
@@ -5909,6 +6067,11 @@ export interface ResearchScopeCatalogIntentV1 {
     maxCandidates: number;
 }
 
+// export: ResearchScopeCatalogInvokePortV1
+export interface ResearchScopeCatalogInvokePortV1 {
+    invoke(capability: ResearchScopeCatalogCapabilityId, value: unknown): Promise<ResearchScopeCatalogPageV1 | ResearchReferenceResolveOutputV1>;
+}
+
 // export: ResearchScopeCatalogPageV1
 export interface ResearchScopeCatalogPageV1 {
     schema: string;
@@ -5952,6 +6115,9 @@ export interface ResearchScopeCatalogProvidersV1 {
 export interface ResearchScopeCatalogPtcOptions {
     tenantOrigin: string;
 }
+
+// export: ResearchScopeClarificationReasonV1
+export type ResearchScopeClarificationReasonV1 = "ambiguous" | "weak_match" | "archived_only" | "unavailable" | "incomplete" | "not_found";
 
 // export: ResearchScopeEntityKindV1
 export type ResearchScopeEntityKindV1 = "project" | "space" | "issue" | "page";
@@ -6225,6 +6391,16 @@ export interface ResearchWorkspace {
     remove(path: string): Promise<void>;
     list(prefix?: string): Promise<string[]>;
 }
+
+// export: resolveInitialResearchScopeV1
+export declare function resolveInitialResearchScopeV1(input: {
+    baseScope: ResearchScopeV1;
+    existingBindings: readonly ResearchScopeBindingV1[];
+    mentions: readonly ResearchScopeMentionV1[];
+    catalog: ResearchScopeCatalogInvokePortV1;
+    automaticApproval: boolean;
+    maximumCatalogPages?: number;
+}): Promise<ResearchInitialScopeResolutionOutcomeV1>;
 
 // export: resolveResearchScopeMentionV1
 export declare function resolveResearchScopeMentionV1(input: ResearchScopeResolutionInputV1): ResearchScopeResolutionV1;
@@ -7042,7 +7218,7 @@ export declare function createResearchPtcTools(broker: ResearchCapabilityBroker,
 export declare function createResearchScopeBindingV1(input: {
     candidate: ResearchScopeCandidateV1;
     source: ResearchScopeSourceV1;
-    authority: "approved" | "locked";
+    authority: "resolved" | "approved" | "locked";
     mentionId?: string;
     approvedAt?: string;
     bindingId?: string;
@@ -7305,6 +7481,9 @@ export declare const RESEARCH_CAPABILITY_SCHEMAS: {
     };
 };
 
+// export: RESEARCH_CLARIFICATION_REQUIRED_SCHEMA_V1
+export declare const RESEARCH_CLARIFICATION_REQUIRED_SCHEMA_V1: "atlcli.research-clarification-required/v1";
+
 // export: RESEARCH_CRITIQUE_SCHEMA_V1
 export declare const RESEARCH_CRITIQUE_SCHEMA_V1: Record<string, unknown>;
 
@@ -7545,6 +7724,17 @@ export declare class ResearchCapabilityBroker {
         warnings: string[];
     };
     invoke(tool: ResearchToolId, input: unknown): Promise<unknown>;
+}
+
+// export: ResearchClarificationRequiredV1
+export interface ResearchClarificationRequiredV1 {
+    schema: typeof RESEARCH_CLARIFICATION_REQUIRED_SCHEMA_V1;
+    reason: ResearchScopeClarificationReasonV1;
+    mentionId: string;
+    candidateIds: string[];
+    productHint?: "jira" | "confluence";
+    entityKindHint?: "project" | "space" | "issue" | "page";
+    rerunGuidance: string[];
 }
 
 // export: ResearchContractError
@@ -7884,6 +8074,18 @@ export interface ResearchGraphV1 {
     maxResearchWaves: 2;
     maxReconciliationWaves: 1;
 }
+
+// export: ResearchInitialScopeResolutionOutcomeV1
+export type ResearchInitialScopeResolutionOutcomeV1 = {
+    kind: "ready";
+    scope: ResearchScopeV1;
+    bindings: ResearchScopeBindingV1[];
+    resolutions: ResearchScopeResolutionV1[];
+} | {
+    kind: "clarification_required";
+    clarification: ResearchClarificationRequiredV1;
+    resolutions: ResearchScopeResolutionV1[];
+};
 
 // export: ResearchLimitsV1
 export interface ResearchLimitsV1 {
@@ -8242,6 +8444,11 @@ export interface ResearchScopeCatalogIntentV1 {
     maxCandidates: number;
 }
 
+// export: ResearchScopeCatalogInvokePortV1
+export interface ResearchScopeCatalogInvokePortV1 {
+    invoke(capability: ResearchScopeCatalogCapabilityId, value: unknown): Promise<ResearchScopeCatalogPageV1 | ResearchReferenceResolveOutputV1>;
+}
+
 // export: ResearchScopeCatalogPageV1
 export interface ResearchScopeCatalogPageV1 {
     schema: string;
@@ -8285,6 +8492,9 @@ export interface ResearchScopeCatalogProvidersV1 {
 export interface ResearchScopeCatalogPtcOptions {
     tenantOrigin: string;
 }
+
+// export: ResearchScopeClarificationReasonV1
+export type ResearchScopeClarificationReasonV1 = "ambiguous" | "weak_match" | "archived_only" | "unavailable" | "incomplete" | "not_found";
 
 // export: ResearchScopeEntityKindV1
 export type ResearchScopeEntityKindV1 = "project" | "space" | "issue" | "page";
@@ -8559,6 +8769,16 @@ export interface ResearchWorkspace {
     list(prefix?: string): Promise<string[]>;
 }
 
+// export: resolveInitialResearchScopeV1
+export declare function resolveInitialResearchScopeV1(input: {
+    baseScope: ResearchScopeV1;
+    existingBindings: readonly ResearchScopeBindingV1[];
+    mentions: readonly ResearchScopeMentionV1[];
+    catalog: ResearchScopeCatalogInvokePortV1;
+    automaticApproval: boolean;
+    maximumCatalogPages?: number;
+}): Promise<ResearchInitialScopeResolutionOutcomeV1>;
+
 // export: resolveResearchScopeMentionV1
 export declare function resolveResearchScopeMentionV1(input: ResearchScopeResolutionInputV1): ResearchScopeResolutionV1;
 
@@ -8781,7 +9001,7 @@ export declare function createResearchKeyScopeSeedV1(input: {
 export declare function createResearchScopeBindingV1(input: {
     candidate: ResearchScopeCandidateV1;
     source: ResearchScopeSourceV1;
-    authority: "approved" | "locked";
+    authority: "resolved" | "approved" | "locked";
     mentionId?: string;
     approvedAt?: string;
     bindingId?: string;

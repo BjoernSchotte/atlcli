@@ -2474,7 +2474,7 @@ Shared:
       per-node grant mechanism as other capabilities. An omitted catalog query
       performs only a capped paginated list; QuickJS receives opaque cursor
       references and a bounded candidate projection.
-- [ ] Resolve one unique exact accessible key/name match during briefing,
+- [x] Resolve one unique exact accessible key/name match during briefing,
       record the binding provenance, and project only approved/locked
       whole-scope bindings into `ResearchScopeV1`. Return a typed clarification
       with bounded candidate IDs for ambiguous, weak, archived-only,
