@@ -2501,7 +2501,7 @@ Shared:
       Require exactly one consistent selected/omitted decision for every
       phase-available role; never accept a separate model-authored visible role
       list.
-- [ ] Add an in-memory `ResearchSubagentDispatchPort` and task ledger that use
+- [x] Add an in-memory `ResearchSubagentDispatchPort` and task ledger that use
       final graph-node, task-attempt, accepted-packet, and dispatch contracts.
 - [ ] Implement pure revision-fenced graph/task/packet reducers plus in-memory
       conformance and failure-injection tests in T3. T4 may aggregate and

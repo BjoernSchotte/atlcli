@@ -137,6 +137,28 @@ export declare function finalizeResearchReportV1(report: Omit<ResearchReportV1, 
     markdown?: string;
 }): ResearchReportV1;
 
+// export: InMemoryResearchSubagentDispatchPort
+export declare class InMemoryResearchSubagentDispatchPort implements ResearchSubagentDispatchPort {
+    #private;
+    constructor(options: {
+        maxResultBytes: number;
+    });
+    admit(attempt: ResearchTaskAttemptV1): void;
+    start(taskId: string, graphRevision: number, at: string): ResearchTaskAttemptV1;
+    accept(input: {
+        taskId: string;
+        graphRevision: number;
+        body: unknown;
+        usage: ResearchTaskUsageV1;
+        acceptedAt: string;
+        availableSourceIds: readonly string[];
+    }): ResearchAcceptedPacketV1;
+    fail(taskId: string, graphRevision: number, at: string): ResearchTaskAttemptV1;
+    quarantine(taskId: string, graphRevision: number, at: string): ResearchTaskAttemptV1;
+    attempt(taskId: string): ResearchTaskAttemptV1 | undefined;
+    packet(packetRef: string): ResearchAcceptedPacketV1 | undefined;
+}
+
 // export: JiraResearchDetail
 export interface JiraResearchDetail extends JiraResearchSummary {
     content: BoundedContentProjectionV1;
@@ -172,8 +194,14 @@ export declare function normalizeResearchScopeV1(value: unknown): ResearchScopeV
 // export: normalizeResearchWorkspacePath
 export declare function normalizeResearchWorkspacePath(value: string): string;
 
+// export: parseReconciliationBodyV1
+export declare function parseReconciliationBodyV1(value: unknown): ReconciliationBodyV1;
+
 // export: parseResearchAgentDraftV1
 export declare function parseResearchAgentDraftV1(input: unknown): ResearchAgentDraftV1;
+
+// export: parseResearchPacketBodyV1
+export declare function parseResearchPacketBodyV1(value: unknown): ResearchPacketBodyV1;
 
 // export: parseResearchQueryFingerprint
 export declare function parseResearchQueryFingerprint(value: string): {
@@ -181,6 +209,9 @@ export declare function parseResearchQueryFingerprint(value: string): {
     query: ResearchSearchQueryV1;
     pageSize: number;
 };
+
+// export: parseResearchTaskBodyV1
+export declare function parseResearchTaskBodyV1(schema: ResearchTaskOutputSchemaV1, value: unknown): ResearchPacketBodyV1 | ReconciliationBodyV1 | ResearchAgentDraftV1;
 
 // export: prependBoundedDetailText
 export declare function prependBoundedDetailText(projection: BoundedContentProjectionV1, prefix: string, limits: ContentProjectionLimits): BoundedContentProjectionV1;
@@ -194,13 +225,26 @@ export declare function projectConfluenceStorage(storage: string, siteOrigin: st
 // export: projectJiraDescription
 export declare function projectJiraDescription(description: AdfDocument | string | null | undefined, siteOrigin: string, limits: ContentProjectionLimits): BoundedContentProjectionV1;
 
+// export: ReconciliationBodyV1
+export interface ReconciliationBodyV1 {
+    schema: typeof RESEARCH_RECONCILIATION_BODY_SCHEMA_V1;
+    defects: ResearchReconciliationDefectV1[];
+    proposedFollowUps: ResearchFollowUpProposalV1[];
+}
+
 // export: redactResearchSecrets
 export declare function redactResearchSecrets(value: unknown): string;
+
+// export: reduceResearchTaskAttemptV1
+export declare function reduceResearchTaskAttemptV1(current: ResearchTaskAttemptV1, event: ResearchTaskAttemptEventV1): ResearchTaskAttemptV1;
 
 // export: renderResearchReportMarkdown
 export declare function renderResearchReportMarkdown(report: Omit<ResearchReportV1, "markdown"> & {
     markdown?: string;
 }): string;
+
+// export: RESEARCH_ACCEPTED_PACKET_SCHEMA_V1
+export declare const RESEARCH_ACCEPTED_PACKET_SCHEMA_V1: "atlcli.accepted-research-packet/v1";
 
 // export: RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1
 export declare const RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1: Record<string, unknown>;
@@ -230,6 +274,9 @@ export declare const RESEARCH_AGENT_DRAFT_SCHEMA_V1: z.ZodObject<{
     }, z.core.$strict>>;
     limitations: z.ZodArray<z.ZodString>;
 }, z.core.$strict>;
+
+// export: RESEARCH_APPROVAL_ENVELOPE_SCHEMA_V1
+export declare const RESEARCH_APPROVAL_ENVELOPE_SCHEMA_V1: "atlcli.research-approval-envelope/v1";
 
 // export: RESEARCH_BRIEF_SCHEMA_V1
 export declare const RESEARCH_BRIEF_SCHEMA_V1: "atlcli.research-brief/v1";
@@ -283,6 +330,18 @@ export declare const RESEARCH_LANGCHAIN_TOOL_NAMES: Record<ResearchToolId, strin
 
 // export: RESEARCH_ONE_SHOT_REQUEST_PATH_V1
 export declare const RESEARCH_ONE_SHOT_REQUEST_PATH_V1: "/session/request.json";
+
+// export: RESEARCH_PACKET_BODY_SCHEMA_V1
+export declare const RESEARCH_PACKET_BODY_SCHEMA_V1: "atlcli.research-packet-body/v1";
+
+// export: RESEARCH_RECONCILIATION_BODY_SCHEMA_V1
+export declare const RESEARCH_RECONCILIATION_BODY_SCHEMA_V1: "atlcli.reconciliation-body/v1";
+
+// export: RESEARCH_RECONCILIATION_DISPOSITION_SCHEMA_V1
+export declare const RESEARCH_RECONCILIATION_DISPOSITION_SCHEMA_V1: "atlcli.reconciliation-disposition/v1";
+
+// export: RESEARCH_RECONCILIATION_INPUT_SCHEMA_V1
+export declare const RESEARCH_RECONCILIATION_INPUT_SCHEMA_V1: "atlcli.reconciliation-input/v1";
 
 // export: RESEARCH_REPORT_ARTIFACT_PATH_V1
 export declare const RESEARCH_REPORT_ARTIFACT_PATH_V1: "/artifacts/report.md";
@@ -348,6 +407,23 @@ export declare const RESEARCH_SCOPE_SOURCES_V1: readonly [
     "research_discovery"
 ];
 
+// export: RESEARCH_SUBAGENT_ROLE_IDS_V1
+export declare const RESEARCH_SUBAGENT_ROLE_IDS_V1: readonly [
+    "focused-researcher",
+    "document-distiller",
+    "contradiction-verifier",
+    "coverage-moderator",
+    "outline-planner",
+    "reconciler",
+    "synthesizer"
+];
+
+// export: RESEARCH_SUBAGENT_ROLE_REGISTRY_V1
+export declare const RESEARCH_SUBAGENT_ROLE_REGISTRY_V1: Readonly<Record<ResearchSubagentRoleIdV1, ResearchSubagentRoleV1>>;
+
+// export: RESEARCH_TASK_ATTEMPT_SCHEMA_V1
+export declare const RESEARCH_TASK_ATTEMPT_SCHEMA_V1: "atlcli.research-task-attempt/v1";
+
 // export: RESEARCH_TASK_DISPATCH_SCHEMA_V1
 export declare const RESEARCH_TASK_DISPATCH_SCHEMA_V1: "atlcli.research-task-dispatch/v1";
 
@@ -368,8 +444,45 @@ export declare const RESEARCH_TOOL_IDS: readonly [
 // export: RESEARCH_WORKSPACE_SCHEMA_V1
 export declare const RESEARCH_WORKSPACE_SCHEMA_V1: "atlcli.research-workspace/v1";
 
+// export: ResearchAcceptedPacketV1
+export interface ResearchAcceptedPacketV1 {
+    schema: typeof RESEARCH_ACCEPTED_PACKET_SCHEMA_V1;
+    packetRef: string;
+    taskId: string;
+    graphRevision: number;
+    attempt: number;
+    executor: "ptc" | "subagent";
+    roleId?: ResearchSubagentRoleIdV1;
+    grantedCapabilityIds: ResearchGraphCapabilityV1[];
+    typedIntentRefs: string[];
+    expectedOutputSchema: ResearchTaskOutputSchemaV1;
+    body: ResearchPacketBodyV1 | ReconciliationBodyV1 | ResearchAgentDraftV1;
+    hostObservedUsage: ResearchTaskUsageV1;
+    acceptedAt: string;
+}
+
 // export: ResearchAgentDraftV1
 export type ResearchAgentDraftV1 = z.infer<typeof RESEARCH_AGENT_DRAFT_SCHEMA_V1>;
+
+// export: ResearchApprovalEnvelopeV1
+export interface ResearchApprovalEnvelopeV1 {
+    schema: typeof RESEARCH_APPROVAL_ENVELOPE_SCHEMA_V1;
+    id: string;
+    status: "proposed" | "approved";
+    basedOnGraphRevision: number;
+    basedOnBriefRevision: number;
+    scopeFingerprint: string;
+    scopeBindingFingerprint: string;
+    allowedScopeBindingIds: string[];
+    allowedRoleIds: ResearchSubagentRoleIdV1[];
+    allowedCapabilityIds: ResearchGraphCapabilityV1[];
+    totalBudgetCeiling: ResearchNodeBudgetV1;
+    maxParallelNodes: number;
+    maxResearchWaves: number;
+    maxReconciliationWaves: number;
+    maxDepth: 0 | 1;
+    approvedAt?: string;
+}
 
 // export: ResearchBriefV1
 export interface ResearchBriefV1 {
@@ -659,12 +772,36 @@ export type ResearchEventV1 = {
     path: typeof RESEARCH_REPORT_ARTIFACT_PATH_V1;
 };
 
+// export: ResearchFindingCandidateV1
+export interface ResearchFindingCandidateV1 {
+    id: string;
+    classification: "fact" | "inference";
+    summary: string;
+    sourceIds: string[];
+}
+
 // export: ResearchFindingV1
 export interface ResearchFindingV1 {
     id: string;
     classification: "fact" | "inference";
     summary: string;
     detail?: string;
+    sourceIds: string[];
+}
+
+// export: ResearchFollowUpProposalV1
+export interface ResearchFollowUpProposalV1 {
+    id: string;
+    objective: string;
+    reasonCode: "coverage_gap" | "contradiction" | "negative_claim" | "stale_or_truncated";
+    sourceIds: string[];
+}
+
+// export: ResearchGapV1
+export interface ResearchGapV1 {
+    id: string;
+    summary: string;
+    targetId?: string;
     sourceIds: string[];
 }
 
@@ -738,10 +875,33 @@ export interface ResearchLimitsV1 {
     maxRunMs: number;
 }
 
+// export: ResearchNodeBudgetV1
+export interface ResearchNodeBudgetV1 {
+    maxCapabilityCalls: number;
+    maxInputTokens: number;
+    maxOutputTokens: number;
+    maxResultBytes: number;
+    maxDurationMs: number;
+    maxCostMicros: number;
+}
+
 // export: ResearchOneShotEventV1
 export type ResearchOneShotEventV1 = Extract<ResearchEventV1, {
     kind: "phase" | "progress" | "subagent" | "capability" | "decision" | "artifact";
 }>;
+
+// export: ResearchPacketBodyV1
+export interface ResearchPacketBodyV1 {
+    schema: typeof RESEARCH_PACKET_BODY_SCHEMA_V1;
+    answeredQuestion: string;
+    sourceIds: string[];
+    findingCandidates: ResearchFindingCandidateV1[];
+    relationshipCandidates: ResearchRelationshipCandidateV1[];
+    gaps: ResearchGapV1[];
+    proposedFollowUps: ResearchFollowUpProposalV1[];
+    coverageLimits: string[];
+    abstentionReason?: string;
+}
 
 // export: ResearchPort
 export interface ResearchPort {
@@ -807,6 +967,49 @@ export interface ResearchReadProviders {
     };
 }
 
+// export: ResearchReconciliationDefectV1
+export interface ResearchReconciliationDefectV1 {
+    id: string;
+    severity: "blocking" | "important" | "minor";
+    target: {
+        kind: "finding" | "relationship" | "claim" | "section" | "node" | "coverage";
+        id: string;
+    };
+    code: "unsupported" | "contradicted" | "missing_coverage" | "overstated" | "instruction_mismatch" | "duplicate" | "stale";
+    references: ResearchSupportRefV1[];
+    explanation: string;
+    suggestedAction: "accept" | "revise" | "downgrade" | "add_follow_up" | "abstain";
+}
+
+// export: ResearchReconciliationDispositionV1
+export interface ResearchReconciliationDispositionV1 {
+    schema: typeof RESEARCH_RECONCILIATION_DISPOSITION_SCHEMA_V1;
+    id: string;
+    reconciliationPacketRef: string;
+    defectId: string;
+    basedOnGraphRevision: number;
+    decision: "reject_defect" | "revise" | "downgrade" | "add_follow_up" | "abstain" | "no_change";
+    reasonCode: "invalid_reference" | "already_resolved" | "supported_by_evidence" | "material_defect" | "insufficient_budget" | "outside_approval_envelope";
+    resultingGraphRevision?: number;
+    resultingNodeId?: string;
+    resultingClaimIds: string[];
+    recordedAt: string;
+}
+
+// export: ResearchReconciliationInputV1
+export interface ResearchReconciliationInputV1 {
+    schema: typeof RESEARCH_RECONCILIATION_INPUT_SCHEMA_V1;
+    briefRevision: number;
+    graphRevision: number;
+    acceptedPacketRefs: string[];
+    coverageTargetIds: string[];
+    projection: {
+        kind: "v1-packet-set";
+        findingCandidateIds: string[];
+        relationshipCandidateIds: string[];
+    };
+}
+
 // export: ResearchReconciliationPolicyV1
 export type ResearchReconciliationPolicyV1 = "off" | "auto" | "required";
 
@@ -823,6 +1026,16 @@ export interface ResearchReferenceResolveOutputV1 {
     schema: string;
     candidate?: ResearchScopeCandidateV1;
     unavailable: boolean;
+}
+
+// export: ResearchRelationshipCandidateV1
+export interface ResearchRelationshipCandidateV1 {
+    id: string;
+    classification: "verified" | "hypothesis";
+    jiraIssueKey: string;
+    confluenceContentId: string;
+    summary: string;
+    sourceIds: string[];
 }
 
 // export: ResearchReportV1
@@ -1110,6 +1323,48 @@ export interface ResearchSourceReferenceV1 {
     updatedAt?: string;
 }
 
+// export: ResearchSubagentDispatchPort
+export interface ResearchSubagentDispatchPort {
+    admit(attempt: ResearchTaskAttemptV1): void;
+    start(taskId: string, graphRevision: number, at: string): ResearchTaskAttemptV1;
+    accept(input: {
+        taskId: string;
+        graphRevision: number;
+        body: unknown;
+        usage: ResearchTaskUsageV1;
+        acceptedAt: string;
+        availableSourceIds: readonly string[];
+    }): ResearchAcceptedPacketV1;
+    fail(taskId: string, graphRevision: number, at: string): ResearchTaskAttemptV1;
+    quarantine(taskId: string, graphRevision: number, at: string): ResearchTaskAttemptV1;
+    attempt(taskId: string): ResearchTaskAttemptV1 | undefined;
+    packet(packetRef: string): ResearchAcceptedPacketV1 | undefined;
+}
+
+// export: ResearchSubagentRoleIdV1
+export type ResearchSubagentRoleIdV1 = (typeof RESEARCH_SUBAGENT_ROLE_IDS_V1)[number];
+
+// export: ResearchSubagentRoleV1
+export interface ResearchSubagentRoleV1 {
+    id: ResearchSubagentRoleIdV1;
+    description: string;
+    phase: "acquisition" | "analysis" | "verification" | "reconciliation" | "synthesis";
+    availableFromPhase: "T3" | "T5";
+    allowedCapabilityIds: ResearchGraphCapabilityV1[];
+    supportedOutputSchemas: ResearchTaskOutputSchemaV1[];
+    maxBudget: ResearchNodeBudgetV1;
+    mayProposeFollowUps: boolean;
+}
+
+// export: ResearchSupportRefV1
+export type ResearchSupportRefV1 = {
+    kind: "source";
+    id: string;
+} | {
+    kind: "evidence";
+    id: string;
+};
+
 // export: ResearchTaskAdmissionV1
 export interface ResearchTaskAdmissionV1 {
     taskId: string;
@@ -1120,6 +1375,52 @@ export interface ResearchTaskAdmissionV1 {
     maxDurationMs: number;
 }
 
+// export: ResearchTaskAttemptEventV1
+export type ResearchTaskAttemptEventV1 = {
+    kind: "dispatch_started";
+    at: string;
+    providerRequestId?: string;
+} | {
+    kind: "outcome_unknown";
+    at: string;
+} | {
+    kind: "failed";
+    at: string;
+} | {
+    kind: "cancelled";
+    at: string;
+} | {
+    kind: "quarantined";
+    at: string;
+} | {
+    kind: "result_committed";
+    at: string;
+    packetRef: string;
+    usage: ResearchTaskUsageV1;
+};
+
+// export: ResearchTaskAttemptV1
+export interface ResearchTaskAttemptV1 {
+    schema: typeof RESEARCH_TASK_ATTEMPT_SCHEMA_V1;
+    taskId: string;
+    nodeId: string;
+    graphRevision: number;
+    attempt: number;
+    executor: "ptc" | "subagent";
+    roleId?: ResearchSubagentRoleIdV1;
+    grantedCapabilityIds: ResearchGraphCapabilityV1[];
+    typedIntentRefs: string[];
+    expectedOutputSchema: ResearchTaskOutputSchemaV1;
+    status: "ready" | "running" | "outcome_unknown" | "complete" | "failed" | "cancelled" | "quarantined";
+    dispatchState: "not_started" | "dispatch_started" | "result_committed" | "outcome_unknown";
+    providerRequestId?: string;
+    createdAt: string;
+    startedAt?: string;
+    finishedAt?: string;
+    acceptedPacketRef?: string;
+    hostObservedUsage?: ResearchTaskUsageV1;
+}
+
 // export: ResearchTaskDescriptionV1
 export interface ResearchTaskDescriptionV1 {
     schema: typeof RESEARCH_TASK_DISPATCH_SCHEMA_V1;
@@ -1127,10 +1428,23 @@ export interface ResearchTaskDescriptionV1 {
     objective: string;
 }
 
+// export: ResearchTaskOutputSchemaV1
+export type ResearchTaskOutputSchemaV1 = typeof RESEARCH_PACKET_BODY_SCHEMA_V1 | "atlcli.research-packet-body/v2" | typeof RESEARCH_RECONCILIATION_BODY_SCHEMA_V1 | "atlcli.research-agent-draft/v1";
+
 // export: ResearchTaskToolInputV1
 export interface ResearchTaskToolInputV1 {
     description: string;
     subagent_type: string;
+}
+
+// export: ResearchTaskUsageV1
+export interface ResearchTaskUsageV1 {
+    capabilityCalls: number;
+    inputTokens: number;
+    outputTokens: number;
+    resultBytes: number;
+    durationMs: number;
+    costMicros: number;
 }
 
 // export: ResearchTerminationCode
@@ -1175,6 +1489,15 @@ export declare function selectResearchScopeSeedsV1(seeds: readonly ResearchScope
 
 // export: validateResearchGraphV1
 export declare function validateResearchGraphV1(graph: ResearchGraphV1): void;
+
+// export: validateResearchTaskAdmissionV1
+export declare function validateResearchTaskAdmissionV1(input: {
+    executor: "ptc" | "subagent";
+    roleId?: ResearchSubagentRoleIdV1;
+    expectedOutputSchema: ResearchTaskOutputSchemaV1;
+    grantedCapabilityIds: readonly ResearchGraphCapabilityV1[];
+    phase?: "T3" | "T5";
+}): void;
 
 // export: WikiResearchDetail
 export interface WikiResearchDetail extends WikiResearchSummary {
@@ -1315,6 +1638,28 @@ export declare function finalizeResearchReportV1(report: Omit<ResearchReportV1, 
     markdown?: string;
 }): ResearchReportV1;
 
+// export: InMemoryResearchSubagentDispatchPort
+export declare class InMemoryResearchSubagentDispatchPort implements ResearchSubagentDispatchPort {
+    #private;
+    constructor(options: {
+        maxResultBytes: number;
+    });
+    admit(attempt: ResearchTaskAttemptV1): void;
+    start(taskId: string, graphRevision: number, at: string): ResearchTaskAttemptV1;
+    accept(input: {
+        taskId: string;
+        graphRevision: number;
+        body: unknown;
+        usage: ResearchTaskUsageV1;
+        acceptedAt: string;
+        availableSourceIds: readonly string[];
+    }): ResearchAcceptedPacketV1;
+    fail(taskId: string, graphRevision: number, at: string): ResearchTaskAttemptV1;
+    quarantine(taskId: string, graphRevision: number, at: string): ResearchTaskAttemptV1;
+    attempt(taskId: string): ResearchTaskAttemptV1 | undefined;
+    packet(packetRef: string): ResearchAcceptedPacketV1 | undefined;
+}
+
 // export: JiraResearchDetail
 export interface JiraResearchDetail extends JiraResearchSummary {
     content: BoundedContentProjectionV1;
@@ -1350,8 +1695,14 @@ export declare function normalizeResearchScopeV1(value: unknown): ResearchScopeV
 // export: normalizeResearchWorkspacePath
 export declare function normalizeResearchWorkspacePath(value: string): string;
 
+// export: parseReconciliationBodyV1
+export declare function parseReconciliationBodyV1(value: unknown): ReconciliationBodyV1;
+
 // export: parseResearchAgentDraftV1
 export declare function parseResearchAgentDraftV1(input: unknown): ResearchAgentDraftV1;
+
+// export: parseResearchPacketBodyV1
+export declare function parseResearchPacketBodyV1(value: unknown): ResearchPacketBodyV1;
 
 // export: parseResearchQueryFingerprint
 export declare function parseResearchQueryFingerprint(value: string): {
@@ -1359,6 +1710,9 @@ export declare function parseResearchQueryFingerprint(value: string): {
     query: ResearchSearchQueryV1;
     pageSize: number;
 };
+
+// export: parseResearchTaskBodyV1
+export declare function parseResearchTaskBodyV1(schema: ResearchTaskOutputSchemaV1, value: unknown): ResearchPacketBodyV1 | ReconciliationBodyV1 | ResearchAgentDraftV1;
 
 // export: prependBoundedDetailText
 export declare function prependBoundedDetailText(projection: BoundedContentProjectionV1, prefix: string, limits: ContentProjectionLimits): BoundedContentProjectionV1;
@@ -1372,13 +1726,26 @@ export declare function projectConfluenceStorage(storage: string, siteOrigin: st
 // export: projectJiraDescription
 export declare function projectJiraDescription(description: AdfDocument | string | null | undefined, siteOrigin: string, limits: ContentProjectionLimits): BoundedContentProjectionV1;
 
+// export: ReconciliationBodyV1
+export interface ReconciliationBodyV1 {
+    schema: typeof RESEARCH_RECONCILIATION_BODY_SCHEMA_V1;
+    defects: ResearchReconciliationDefectV1[];
+    proposedFollowUps: ResearchFollowUpProposalV1[];
+}
+
 // export: redactResearchSecrets
 export declare function redactResearchSecrets(value: unknown): string;
+
+// export: reduceResearchTaskAttemptV1
+export declare function reduceResearchTaskAttemptV1(current: ResearchTaskAttemptV1, event: ResearchTaskAttemptEventV1): ResearchTaskAttemptV1;
 
 // export: renderResearchReportMarkdown
 export declare function renderResearchReportMarkdown(report: Omit<ResearchReportV1, "markdown"> & {
     markdown?: string;
 }): string;
+
+// export: RESEARCH_ACCEPTED_PACKET_SCHEMA_V1
+export declare const RESEARCH_ACCEPTED_PACKET_SCHEMA_V1: "atlcli.accepted-research-packet/v1";
 
 // export: RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1
 export declare const RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1: Record<string, unknown>;
@@ -1408,6 +1775,9 @@ export declare const RESEARCH_AGENT_DRAFT_SCHEMA_V1: z.ZodObject<{
     }, z.core.$strict>>;
     limitations: z.ZodArray<z.ZodString>;
 }, z.core.$strict>;
+
+// export: RESEARCH_APPROVAL_ENVELOPE_SCHEMA_V1
+export declare const RESEARCH_APPROVAL_ENVELOPE_SCHEMA_V1: "atlcli.research-approval-envelope/v1";
 
 // export: RESEARCH_BRIEF_SCHEMA_V1
 export declare const RESEARCH_BRIEF_SCHEMA_V1: "atlcli.research-brief/v1";
@@ -1461,6 +1831,18 @@ export declare const RESEARCH_LANGCHAIN_TOOL_NAMES: Record<ResearchToolId, strin
 
 // export: RESEARCH_ONE_SHOT_REQUEST_PATH_V1
 export declare const RESEARCH_ONE_SHOT_REQUEST_PATH_V1: "/session/request.json";
+
+// export: RESEARCH_PACKET_BODY_SCHEMA_V1
+export declare const RESEARCH_PACKET_BODY_SCHEMA_V1: "atlcli.research-packet-body/v1";
+
+// export: RESEARCH_RECONCILIATION_BODY_SCHEMA_V1
+export declare const RESEARCH_RECONCILIATION_BODY_SCHEMA_V1: "atlcli.reconciliation-body/v1";
+
+// export: RESEARCH_RECONCILIATION_DISPOSITION_SCHEMA_V1
+export declare const RESEARCH_RECONCILIATION_DISPOSITION_SCHEMA_V1: "atlcli.reconciliation-disposition/v1";
+
+// export: RESEARCH_RECONCILIATION_INPUT_SCHEMA_V1
+export declare const RESEARCH_RECONCILIATION_INPUT_SCHEMA_V1: "atlcli.reconciliation-input/v1";
 
 // export: RESEARCH_REPORT_ARTIFACT_PATH_V1
 export declare const RESEARCH_REPORT_ARTIFACT_PATH_V1: "/artifacts/report.md";
@@ -1526,6 +1908,23 @@ export declare const RESEARCH_SCOPE_SOURCES_V1: readonly [
     "research_discovery"
 ];
 
+// export: RESEARCH_SUBAGENT_ROLE_IDS_V1
+export declare const RESEARCH_SUBAGENT_ROLE_IDS_V1: readonly [
+    "focused-researcher",
+    "document-distiller",
+    "contradiction-verifier",
+    "coverage-moderator",
+    "outline-planner",
+    "reconciler",
+    "synthesizer"
+];
+
+// export: RESEARCH_SUBAGENT_ROLE_REGISTRY_V1
+export declare const RESEARCH_SUBAGENT_ROLE_REGISTRY_V1: Readonly<Record<ResearchSubagentRoleIdV1, ResearchSubagentRoleV1>>;
+
+// export: RESEARCH_TASK_ATTEMPT_SCHEMA_V1
+export declare const RESEARCH_TASK_ATTEMPT_SCHEMA_V1: "atlcli.research-task-attempt/v1";
+
 // export: RESEARCH_TASK_DISPATCH_SCHEMA_V1
 export declare const RESEARCH_TASK_DISPATCH_SCHEMA_V1: "atlcli.research-task-dispatch/v1";
 
@@ -1546,8 +1945,45 @@ export declare const RESEARCH_TOOL_IDS: readonly [
 // export: RESEARCH_WORKSPACE_SCHEMA_V1
 export declare const RESEARCH_WORKSPACE_SCHEMA_V1: "atlcli.research-workspace/v1";
 
+// export: ResearchAcceptedPacketV1
+export interface ResearchAcceptedPacketV1 {
+    schema: typeof RESEARCH_ACCEPTED_PACKET_SCHEMA_V1;
+    packetRef: string;
+    taskId: string;
+    graphRevision: number;
+    attempt: number;
+    executor: "ptc" | "subagent";
+    roleId?: ResearchSubagentRoleIdV1;
+    grantedCapabilityIds: ResearchGraphCapabilityV1[];
+    typedIntentRefs: string[];
+    expectedOutputSchema: ResearchTaskOutputSchemaV1;
+    body: ResearchPacketBodyV1 | ReconciliationBodyV1 | ResearchAgentDraftV1;
+    hostObservedUsage: ResearchTaskUsageV1;
+    acceptedAt: string;
+}
+
 // export: ResearchAgentDraftV1
 export type ResearchAgentDraftV1 = z.infer<typeof RESEARCH_AGENT_DRAFT_SCHEMA_V1>;
+
+// export: ResearchApprovalEnvelopeV1
+export interface ResearchApprovalEnvelopeV1 {
+    schema: typeof RESEARCH_APPROVAL_ENVELOPE_SCHEMA_V1;
+    id: string;
+    status: "proposed" | "approved";
+    basedOnGraphRevision: number;
+    basedOnBriefRevision: number;
+    scopeFingerprint: string;
+    scopeBindingFingerprint: string;
+    allowedScopeBindingIds: string[];
+    allowedRoleIds: ResearchSubagentRoleIdV1[];
+    allowedCapabilityIds: ResearchGraphCapabilityV1[];
+    totalBudgetCeiling: ResearchNodeBudgetV1;
+    maxParallelNodes: number;
+    maxResearchWaves: number;
+    maxReconciliationWaves: number;
+    maxDepth: 0 | 1;
+    approvedAt?: string;
+}
 
 // export: ResearchBriefV1
 export interface ResearchBriefV1 {
@@ -1837,12 +2273,36 @@ export type ResearchEventV1 = {
     path: typeof RESEARCH_REPORT_ARTIFACT_PATH_V1;
 };
 
+// export: ResearchFindingCandidateV1
+export interface ResearchFindingCandidateV1 {
+    id: string;
+    classification: "fact" | "inference";
+    summary: string;
+    sourceIds: string[];
+}
+
 // export: ResearchFindingV1
 export interface ResearchFindingV1 {
     id: string;
     classification: "fact" | "inference";
     summary: string;
     detail?: string;
+    sourceIds: string[];
+}
+
+// export: ResearchFollowUpProposalV1
+export interface ResearchFollowUpProposalV1 {
+    id: string;
+    objective: string;
+    reasonCode: "coverage_gap" | "contradiction" | "negative_claim" | "stale_or_truncated";
+    sourceIds: string[];
+}
+
+// export: ResearchGapV1
+export interface ResearchGapV1 {
+    id: string;
+    summary: string;
+    targetId?: string;
     sourceIds: string[];
 }
 
@@ -1916,10 +2376,33 @@ export interface ResearchLimitsV1 {
     maxRunMs: number;
 }
 
+// export: ResearchNodeBudgetV1
+export interface ResearchNodeBudgetV1 {
+    maxCapabilityCalls: number;
+    maxInputTokens: number;
+    maxOutputTokens: number;
+    maxResultBytes: number;
+    maxDurationMs: number;
+    maxCostMicros: number;
+}
+
 // export: ResearchOneShotEventV1
 export type ResearchOneShotEventV1 = Extract<ResearchEventV1, {
     kind: "phase" | "progress" | "subagent" | "capability" | "decision" | "artifact";
 }>;
+
+// export: ResearchPacketBodyV1
+export interface ResearchPacketBodyV1 {
+    schema: typeof RESEARCH_PACKET_BODY_SCHEMA_V1;
+    answeredQuestion: string;
+    sourceIds: string[];
+    findingCandidates: ResearchFindingCandidateV1[];
+    relationshipCandidates: ResearchRelationshipCandidateV1[];
+    gaps: ResearchGapV1[];
+    proposedFollowUps: ResearchFollowUpProposalV1[];
+    coverageLimits: string[];
+    abstentionReason?: string;
+}
 
 // export: ResearchPort
 export interface ResearchPort {
@@ -1985,6 +2468,49 @@ export interface ResearchReadProviders {
     };
 }
 
+// export: ResearchReconciliationDefectV1
+export interface ResearchReconciliationDefectV1 {
+    id: string;
+    severity: "blocking" | "important" | "minor";
+    target: {
+        kind: "finding" | "relationship" | "claim" | "section" | "node" | "coverage";
+        id: string;
+    };
+    code: "unsupported" | "contradicted" | "missing_coverage" | "overstated" | "instruction_mismatch" | "duplicate" | "stale";
+    references: ResearchSupportRefV1[];
+    explanation: string;
+    suggestedAction: "accept" | "revise" | "downgrade" | "add_follow_up" | "abstain";
+}
+
+// export: ResearchReconciliationDispositionV1
+export interface ResearchReconciliationDispositionV1 {
+    schema: typeof RESEARCH_RECONCILIATION_DISPOSITION_SCHEMA_V1;
+    id: string;
+    reconciliationPacketRef: string;
+    defectId: string;
+    basedOnGraphRevision: number;
+    decision: "reject_defect" | "revise" | "downgrade" | "add_follow_up" | "abstain" | "no_change";
+    reasonCode: "invalid_reference" | "already_resolved" | "supported_by_evidence" | "material_defect" | "insufficient_budget" | "outside_approval_envelope";
+    resultingGraphRevision?: number;
+    resultingNodeId?: string;
+    resultingClaimIds: string[];
+    recordedAt: string;
+}
+
+// export: ResearchReconciliationInputV1
+export interface ResearchReconciliationInputV1 {
+    schema: typeof RESEARCH_RECONCILIATION_INPUT_SCHEMA_V1;
+    briefRevision: number;
+    graphRevision: number;
+    acceptedPacketRefs: string[];
+    coverageTargetIds: string[];
+    projection: {
+        kind: "v1-packet-set";
+        findingCandidateIds: string[];
+        relationshipCandidateIds: string[];
+    };
+}
+
 // export: ResearchReconciliationPolicyV1
 export type ResearchReconciliationPolicyV1 = "off" | "auto" | "required";
 
@@ -2001,6 +2527,16 @@ export interface ResearchReferenceResolveOutputV1 {
     schema: string;
     candidate?: ResearchScopeCandidateV1;
     unavailable: boolean;
+}
+
+// export: ResearchRelationshipCandidateV1
+export interface ResearchRelationshipCandidateV1 {
+    id: string;
+    classification: "verified" | "hypothesis";
+    jiraIssueKey: string;
+    confluenceContentId: string;
+    summary: string;
+    sourceIds: string[];
 }
 
 // export: ResearchReportV1
@@ -2288,6 +2824,48 @@ export interface ResearchSourceReferenceV1 {
     updatedAt?: string;
 }
 
+// export: ResearchSubagentDispatchPort
+export interface ResearchSubagentDispatchPort {
+    admit(attempt: ResearchTaskAttemptV1): void;
+    start(taskId: string, graphRevision: number, at: string): ResearchTaskAttemptV1;
+    accept(input: {
+        taskId: string;
+        graphRevision: number;
+        body: unknown;
+        usage: ResearchTaskUsageV1;
+        acceptedAt: string;
+        availableSourceIds: readonly string[];
+    }): ResearchAcceptedPacketV1;
+    fail(taskId: string, graphRevision: number, at: string): ResearchTaskAttemptV1;
+    quarantine(taskId: string, graphRevision: number, at: string): ResearchTaskAttemptV1;
+    attempt(taskId: string): ResearchTaskAttemptV1 | undefined;
+    packet(packetRef: string): ResearchAcceptedPacketV1 | undefined;
+}
+
+// export: ResearchSubagentRoleIdV1
+export type ResearchSubagentRoleIdV1 = (typeof RESEARCH_SUBAGENT_ROLE_IDS_V1)[number];
+
+// export: ResearchSubagentRoleV1
+export interface ResearchSubagentRoleV1 {
+    id: ResearchSubagentRoleIdV1;
+    description: string;
+    phase: "acquisition" | "analysis" | "verification" | "reconciliation" | "synthesis";
+    availableFromPhase: "T3" | "T5";
+    allowedCapabilityIds: ResearchGraphCapabilityV1[];
+    supportedOutputSchemas: ResearchTaskOutputSchemaV1[];
+    maxBudget: ResearchNodeBudgetV1;
+    mayProposeFollowUps: boolean;
+}
+
+// export: ResearchSupportRefV1
+export type ResearchSupportRefV1 = {
+    kind: "source";
+    id: string;
+} | {
+    kind: "evidence";
+    id: string;
+};
+
 // export: ResearchTaskAdmissionV1
 export interface ResearchTaskAdmissionV1 {
     taskId: string;
@@ -2298,6 +2876,52 @@ export interface ResearchTaskAdmissionV1 {
     maxDurationMs: number;
 }
 
+// export: ResearchTaskAttemptEventV1
+export type ResearchTaskAttemptEventV1 = {
+    kind: "dispatch_started";
+    at: string;
+    providerRequestId?: string;
+} | {
+    kind: "outcome_unknown";
+    at: string;
+} | {
+    kind: "failed";
+    at: string;
+} | {
+    kind: "cancelled";
+    at: string;
+} | {
+    kind: "quarantined";
+    at: string;
+} | {
+    kind: "result_committed";
+    at: string;
+    packetRef: string;
+    usage: ResearchTaskUsageV1;
+};
+
+// export: ResearchTaskAttemptV1
+export interface ResearchTaskAttemptV1 {
+    schema: typeof RESEARCH_TASK_ATTEMPT_SCHEMA_V1;
+    taskId: string;
+    nodeId: string;
+    graphRevision: number;
+    attempt: number;
+    executor: "ptc" | "subagent";
+    roleId?: ResearchSubagentRoleIdV1;
+    grantedCapabilityIds: ResearchGraphCapabilityV1[];
+    typedIntentRefs: string[];
+    expectedOutputSchema: ResearchTaskOutputSchemaV1;
+    status: "ready" | "running" | "outcome_unknown" | "complete" | "failed" | "cancelled" | "quarantined";
+    dispatchState: "not_started" | "dispatch_started" | "result_committed" | "outcome_unknown";
+    providerRequestId?: string;
+    createdAt: string;
+    startedAt?: string;
+    finishedAt?: string;
+    acceptedPacketRef?: string;
+    hostObservedUsage?: ResearchTaskUsageV1;
+}
+
 // export: ResearchTaskDescriptionV1
 export interface ResearchTaskDescriptionV1 {
     schema: typeof RESEARCH_TASK_DISPATCH_SCHEMA_V1;
@@ -2305,10 +2929,23 @@ export interface ResearchTaskDescriptionV1 {
     objective: string;
 }
 
+// export: ResearchTaskOutputSchemaV1
+export type ResearchTaskOutputSchemaV1 = typeof RESEARCH_PACKET_BODY_SCHEMA_V1 | "atlcli.research-packet-body/v2" | typeof RESEARCH_RECONCILIATION_BODY_SCHEMA_V1 | "atlcli.research-agent-draft/v1";
+
 // export: ResearchTaskToolInputV1
 export interface ResearchTaskToolInputV1 {
     description: string;
     subagent_type: string;
+}
+
+// export: ResearchTaskUsageV1
+export interface ResearchTaskUsageV1 {
+    capabilityCalls: number;
+    inputTokens: number;
+    outputTokens: number;
+    resultBytes: number;
+    durationMs: number;
+    costMicros: number;
 }
 
 // export: ResearchTerminationCode
@@ -2342,6 +2979,15 @@ export declare function selectResearchScopeSeedsV1(seeds: readonly ResearchScope
 
 // export: validateResearchGraphV1
 export declare function validateResearchGraphV1(graph: ResearchGraphV1): void;
+
+// export: validateResearchTaskAdmissionV1
+export declare function validateResearchTaskAdmissionV1(input: {
+    executor: "ptc" | "subagent";
+    roleId?: ResearchSubagentRoleIdV1;
+    expectedOutputSchema: ResearchTaskOutputSchemaV1;
+    grantedCapabilityIds: readonly ResearchGraphCapabilityV1[];
+    phase?: "T3" | "T5";
+}): void;
 
 // export: WikiResearchDetail
 export interface WikiResearchDetail extends WikiResearchSummary {
@@ -2491,6 +3137,28 @@ export declare function finalizeResearchReportV1(report: Omit<ResearchReportV1, 
     markdown?: string;
 }): ResearchReportV1;
 
+// export: InMemoryResearchSubagentDispatchPort
+export declare class InMemoryResearchSubagentDispatchPort implements ResearchSubagentDispatchPort {
+    #private;
+    constructor(options: {
+        maxResultBytes: number;
+    });
+    admit(attempt: ResearchTaskAttemptV1): void;
+    start(taskId: string, graphRevision: number, at: string): ResearchTaskAttemptV1;
+    accept(input: {
+        taskId: string;
+        graphRevision: number;
+        body: unknown;
+        usage: ResearchTaskUsageV1;
+        acceptedAt: string;
+        availableSourceIds: readonly string[];
+    }): ResearchAcceptedPacketV1;
+    fail(taskId: string, graphRevision: number, at: string): ResearchTaskAttemptV1;
+    quarantine(taskId: string, graphRevision: number, at: string): ResearchTaskAttemptV1;
+    attempt(taskId: string): ResearchTaskAttemptV1 | undefined;
+    packet(packetRef: string): ResearchAcceptedPacketV1 | undefined;
+}
+
 // export: JiraResearchDetail
 export interface JiraResearchDetail extends JiraResearchSummary {
     content: BoundedContentProjectionV1;
@@ -2526,8 +3194,14 @@ export declare function normalizeResearchScopeV1(value: unknown): ResearchScopeV
 // export: normalizeResearchWorkspacePath
 export declare function normalizeResearchWorkspacePath(value: string): string;
 
+// export: parseReconciliationBodyV1
+export declare function parseReconciliationBodyV1(value: unknown): ReconciliationBodyV1;
+
 // export: parseResearchAgentDraftV1
 export declare function parseResearchAgentDraftV1(input: unknown): ResearchAgentDraftV1;
+
+// export: parseResearchPacketBodyV1
+export declare function parseResearchPacketBodyV1(value: unknown): ResearchPacketBodyV1;
 
 // export: parseResearchQueryFingerprint
 export declare function parseResearchQueryFingerprint(value: string): {
@@ -2535,6 +3209,9 @@ export declare function parseResearchQueryFingerprint(value: string): {
     query: ResearchSearchQueryV1;
     pageSize: number;
 };
+
+// export: parseResearchTaskBodyV1
+export declare function parseResearchTaskBodyV1(schema: ResearchTaskOutputSchemaV1, value: unknown): ResearchPacketBodyV1 | ReconciliationBodyV1 | ResearchAgentDraftV1;
 
 // export: prependBoundedDetailText
 export declare function prependBoundedDetailText(projection: BoundedContentProjectionV1, prefix: string, limits: ContentProjectionLimits): BoundedContentProjectionV1;
@@ -2548,13 +3225,26 @@ export declare function projectConfluenceStorage(storage: string, siteOrigin: st
 // export: projectJiraDescription
 export declare function projectJiraDescription(description: AdfDocument | string | null | undefined, siteOrigin: string, limits: ContentProjectionLimits): BoundedContentProjectionV1;
 
+// export: ReconciliationBodyV1
+export interface ReconciliationBodyV1 {
+    schema: typeof RESEARCH_RECONCILIATION_BODY_SCHEMA_V1;
+    defects: ResearchReconciliationDefectV1[];
+    proposedFollowUps: ResearchFollowUpProposalV1[];
+}
+
 // export: redactResearchSecrets
 export declare function redactResearchSecrets(value: unknown): string;
+
+// export: reduceResearchTaskAttemptV1
+export declare function reduceResearchTaskAttemptV1(current: ResearchTaskAttemptV1, event: ResearchTaskAttemptEventV1): ResearchTaskAttemptV1;
 
 // export: renderResearchReportMarkdown
 export declare function renderResearchReportMarkdown(report: Omit<ResearchReportV1, "markdown"> & {
     markdown?: string;
 }): string;
+
+// export: RESEARCH_ACCEPTED_PACKET_SCHEMA_V1
+export declare const RESEARCH_ACCEPTED_PACKET_SCHEMA_V1: "atlcli.accepted-research-packet/v1";
 
 // export: RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1
 export declare const RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1: Record<string, unknown>;
@@ -2584,6 +3274,9 @@ export declare const RESEARCH_AGENT_DRAFT_SCHEMA_V1: z.ZodObject<{
     }, z.core.$strict>>;
     limitations: z.ZodArray<z.ZodString>;
 }, z.core.$strict>;
+
+// export: RESEARCH_APPROVAL_ENVELOPE_SCHEMA_V1
+export declare const RESEARCH_APPROVAL_ENVELOPE_SCHEMA_V1: "atlcli.research-approval-envelope/v1";
 
 // export: RESEARCH_BRIEF_SCHEMA_V1
 export declare const RESEARCH_BRIEF_SCHEMA_V1: "atlcli.research-brief/v1";
@@ -2637,6 +3330,18 @@ export declare const RESEARCH_LANGCHAIN_TOOL_NAMES: Record<ResearchToolId, strin
 
 // export: RESEARCH_ONE_SHOT_REQUEST_PATH_V1
 export declare const RESEARCH_ONE_SHOT_REQUEST_PATH_V1: "/session/request.json";
+
+// export: RESEARCH_PACKET_BODY_SCHEMA_V1
+export declare const RESEARCH_PACKET_BODY_SCHEMA_V1: "atlcli.research-packet-body/v1";
+
+// export: RESEARCH_RECONCILIATION_BODY_SCHEMA_V1
+export declare const RESEARCH_RECONCILIATION_BODY_SCHEMA_V1: "atlcli.reconciliation-body/v1";
+
+// export: RESEARCH_RECONCILIATION_DISPOSITION_SCHEMA_V1
+export declare const RESEARCH_RECONCILIATION_DISPOSITION_SCHEMA_V1: "atlcli.reconciliation-disposition/v1";
+
+// export: RESEARCH_RECONCILIATION_INPUT_SCHEMA_V1
+export declare const RESEARCH_RECONCILIATION_INPUT_SCHEMA_V1: "atlcli.reconciliation-input/v1";
 
 // export: RESEARCH_REPORT_ARTIFACT_PATH_V1
 export declare const RESEARCH_REPORT_ARTIFACT_PATH_V1: "/artifacts/report.md";
@@ -2702,6 +3407,23 @@ export declare const RESEARCH_SCOPE_SOURCES_V1: readonly [
     "research_discovery"
 ];
 
+// export: RESEARCH_SUBAGENT_ROLE_IDS_V1
+export declare const RESEARCH_SUBAGENT_ROLE_IDS_V1: readonly [
+    "focused-researcher",
+    "document-distiller",
+    "contradiction-verifier",
+    "coverage-moderator",
+    "outline-planner",
+    "reconciler",
+    "synthesizer"
+];
+
+// export: RESEARCH_SUBAGENT_ROLE_REGISTRY_V1
+export declare const RESEARCH_SUBAGENT_ROLE_REGISTRY_V1: Readonly<Record<ResearchSubagentRoleIdV1, ResearchSubagentRoleV1>>;
+
+// export: RESEARCH_TASK_ATTEMPT_SCHEMA_V1
+export declare const RESEARCH_TASK_ATTEMPT_SCHEMA_V1: "atlcli.research-task-attempt/v1";
+
 // export: RESEARCH_TASK_DISPATCH_SCHEMA_V1
 export declare const RESEARCH_TASK_DISPATCH_SCHEMA_V1: "atlcli.research-task-dispatch/v1";
 
@@ -2722,8 +3444,45 @@ export declare const RESEARCH_TOOL_IDS: readonly [
 // export: RESEARCH_WORKSPACE_SCHEMA_V1
 export declare const RESEARCH_WORKSPACE_SCHEMA_V1: "atlcli.research-workspace/v1";
 
+// export: ResearchAcceptedPacketV1
+export interface ResearchAcceptedPacketV1 {
+    schema: typeof RESEARCH_ACCEPTED_PACKET_SCHEMA_V1;
+    packetRef: string;
+    taskId: string;
+    graphRevision: number;
+    attempt: number;
+    executor: "ptc" | "subagent";
+    roleId?: ResearchSubagentRoleIdV1;
+    grantedCapabilityIds: ResearchGraphCapabilityV1[];
+    typedIntentRefs: string[];
+    expectedOutputSchema: ResearchTaskOutputSchemaV1;
+    body: ResearchPacketBodyV1 | ReconciliationBodyV1 | ResearchAgentDraftV1;
+    hostObservedUsage: ResearchTaskUsageV1;
+    acceptedAt: string;
+}
+
 // export: ResearchAgentDraftV1
 export type ResearchAgentDraftV1 = z.infer<typeof RESEARCH_AGENT_DRAFT_SCHEMA_V1>;
+
+// export: ResearchApprovalEnvelopeV1
+export interface ResearchApprovalEnvelopeV1 {
+    schema: typeof RESEARCH_APPROVAL_ENVELOPE_SCHEMA_V1;
+    id: string;
+    status: "proposed" | "approved";
+    basedOnGraphRevision: number;
+    basedOnBriefRevision: number;
+    scopeFingerprint: string;
+    scopeBindingFingerprint: string;
+    allowedScopeBindingIds: string[];
+    allowedRoleIds: ResearchSubagentRoleIdV1[];
+    allowedCapabilityIds: ResearchGraphCapabilityV1[];
+    totalBudgetCeiling: ResearchNodeBudgetV1;
+    maxParallelNodes: number;
+    maxResearchWaves: number;
+    maxReconciliationWaves: number;
+    maxDepth: 0 | 1;
+    approvedAt?: string;
+}
 
 // export: ResearchBriefV1
 export interface ResearchBriefV1 {
@@ -3013,12 +3772,36 @@ export type ResearchEventV1 = {
     path: typeof RESEARCH_REPORT_ARTIFACT_PATH_V1;
 };
 
+// export: ResearchFindingCandidateV1
+export interface ResearchFindingCandidateV1 {
+    id: string;
+    classification: "fact" | "inference";
+    summary: string;
+    sourceIds: string[];
+}
+
 // export: ResearchFindingV1
 export interface ResearchFindingV1 {
     id: string;
     classification: "fact" | "inference";
     summary: string;
     detail?: string;
+    sourceIds: string[];
+}
+
+// export: ResearchFollowUpProposalV1
+export interface ResearchFollowUpProposalV1 {
+    id: string;
+    objective: string;
+    reasonCode: "coverage_gap" | "contradiction" | "negative_claim" | "stale_or_truncated";
+    sourceIds: string[];
+}
+
+// export: ResearchGapV1
+export interface ResearchGapV1 {
+    id: string;
+    summary: string;
+    targetId?: string;
     sourceIds: string[];
 }
 
@@ -3092,10 +3875,33 @@ export interface ResearchLimitsV1 {
     maxRunMs: number;
 }
 
+// export: ResearchNodeBudgetV1
+export interface ResearchNodeBudgetV1 {
+    maxCapabilityCalls: number;
+    maxInputTokens: number;
+    maxOutputTokens: number;
+    maxResultBytes: number;
+    maxDurationMs: number;
+    maxCostMicros: number;
+}
+
 // export: ResearchOneShotEventV1
 export type ResearchOneShotEventV1 = Extract<ResearchEventV1, {
     kind: "phase" | "progress" | "subagent" | "capability" | "decision" | "artifact";
 }>;
+
+// export: ResearchPacketBodyV1
+export interface ResearchPacketBodyV1 {
+    schema: typeof RESEARCH_PACKET_BODY_SCHEMA_V1;
+    answeredQuestion: string;
+    sourceIds: string[];
+    findingCandidates: ResearchFindingCandidateV1[];
+    relationshipCandidates: ResearchRelationshipCandidateV1[];
+    gaps: ResearchGapV1[];
+    proposedFollowUps: ResearchFollowUpProposalV1[];
+    coverageLimits: string[];
+    abstentionReason?: string;
+}
 
 // export: ResearchPort
 export interface ResearchPort {
@@ -3161,6 +3967,49 @@ export interface ResearchReadProviders {
     };
 }
 
+// export: ResearchReconciliationDefectV1
+export interface ResearchReconciliationDefectV1 {
+    id: string;
+    severity: "blocking" | "important" | "minor";
+    target: {
+        kind: "finding" | "relationship" | "claim" | "section" | "node" | "coverage";
+        id: string;
+    };
+    code: "unsupported" | "contradicted" | "missing_coverage" | "overstated" | "instruction_mismatch" | "duplicate" | "stale";
+    references: ResearchSupportRefV1[];
+    explanation: string;
+    suggestedAction: "accept" | "revise" | "downgrade" | "add_follow_up" | "abstain";
+}
+
+// export: ResearchReconciliationDispositionV1
+export interface ResearchReconciliationDispositionV1 {
+    schema: typeof RESEARCH_RECONCILIATION_DISPOSITION_SCHEMA_V1;
+    id: string;
+    reconciliationPacketRef: string;
+    defectId: string;
+    basedOnGraphRevision: number;
+    decision: "reject_defect" | "revise" | "downgrade" | "add_follow_up" | "abstain" | "no_change";
+    reasonCode: "invalid_reference" | "already_resolved" | "supported_by_evidence" | "material_defect" | "insufficient_budget" | "outside_approval_envelope";
+    resultingGraphRevision?: number;
+    resultingNodeId?: string;
+    resultingClaimIds: string[];
+    recordedAt: string;
+}
+
+// export: ResearchReconciliationInputV1
+export interface ResearchReconciliationInputV1 {
+    schema: typeof RESEARCH_RECONCILIATION_INPUT_SCHEMA_V1;
+    briefRevision: number;
+    graphRevision: number;
+    acceptedPacketRefs: string[];
+    coverageTargetIds: string[];
+    projection: {
+        kind: "v1-packet-set";
+        findingCandidateIds: string[];
+        relationshipCandidateIds: string[];
+    };
+}
+
 // export: ResearchReconciliationPolicyV1
 export type ResearchReconciliationPolicyV1 = "off" | "auto" | "required";
 
@@ -3177,6 +4026,16 @@ export interface ResearchReferenceResolveOutputV1 {
     schema: string;
     candidate?: ResearchScopeCandidateV1;
     unavailable: boolean;
+}
+
+// export: ResearchRelationshipCandidateV1
+export interface ResearchRelationshipCandidateV1 {
+    id: string;
+    classification: "verified" | "hypothesis";
+    jiraIssueKey: string;
+    confluenceContentId: string;
+    summary: string;
+    sourceIds: string[];
 }
 
 // export: ResearchReportV1
@@ -3464,6 +4323,48 @@ export interface ResearchSourceReferenceV1 {
     updatedAt?: string;
 }
 
+// export: ResearchSubagentDispatchPort
+export interface ResearchSubagentDispatchPort {
+    admit(attempt: ResearchTaskAttemptV1): void;
+    start(taskId: string, graphRevision: number, at: string): ResearchTaskAttemptV1;
+    accept(input: {
+        taskId: string;
+        graphRevision: number;
+        body: unknown;
+        usage: ResearchTaskUsageV1;
+        acceptedAt: string;
+        availableSourceIds: readonly string[];
+    }): ResearchAcceptedPacketV1;
+    fail(taskId: string, graphRevision: number, at: string): ResearchTaskAttemptV1;
+    quarantine(taskId: string, graphRevision: number, at: string): ResearchTaskAttemptV1;
+    attempt(taskId: string): ResearchTaskAttemptV1 | undefined;
+    packet(packetRef: string): ResearchAcceptedPacketV1 | undefined;
+}
+
+// export: ResearchSubagentRoleIdV1
+export type ResearchSubagentRoleIdV1 = (typeof RESEARCH_SUBAGENT_ROLE_IDS_V1)[number];
+
+// export: ResearchSubagentRoleV1
+export interface ResearchSubagentRoleV1 {
+    id: ResearchSubagentRoleIdV1;
+    description: string;
+    phase: "acquisition" | "analysis" | "verification" | "reconciliation" | "synthesis";
+    availableFromPhase: "T3" | "T5";
+    allowedCapabilityIds: ResearchGraphCapabilityV1[];
+    supportedOutputSchemas: ResearchTaskOutputSchemaV1[];
+    maxBudget: ResearchNodeBudgetV1;
+    mayProposeFollowUps: boolean;
+}
+
+// export: ResearchSupportRefV1
+export type ResearchSupportRefV1 = {
+    kind: "source";
+    id: string;
+} | {
+    kind: "evidence";
+    id: string;
+};
+
 // export: ResearchTaskAdmissionV1
 export interface ResearchTaskAdmissionV1 {
     taskId: string;
@@ -3474,6 +4375,52 @@ export interface ResearchTaskAdmissionV1 {
     maxDurationMs: number;
 }
 
+// export: ResearchTaskAttemptEventV1
+export type ResearchTaskAttemptEventV1 = {
+    kind: "dispatch_started";
+    at: string;
+    providerRequestId?: string;
+} | {
+    kind: "outcome_unknown";
+    at: string;
+} | {
+    kind: "failed";
+    at: string;
+} | {
+    kind: "cancelled";
+    at: string;
+} | {
+    kind: "quarantined";
+    at: string;
+} | {
+    kind: "result_committed";
+    at: string;
+    packetRef: string;
+    usage: ResearchTaskUsageV1;
+};
+
+// export: ResearchTaskAttemptV1
+export interface ResearchTaskAttemptV1 {
+    schema: typeof RESEARCH_TASK_ATTEMPT_SCHEMA_V1;
+    taskId: string;
+    nodeId: string;
+    graphRevision: number;
+    attempt: number;
+    executor: "ptc" | "subagent";
+    roleId?: ResearchSubagentRoleIdV1;
+    grantedCapabilityIds: ResearchGraphCapabilityV1[];
+    typedIntentRefs: string[];
+    expectedOutputSchema: ResearchTaskOutputSchemaV1;
+    status: "ready" | "running" | "outcome_unknown" | "complete" | "failed" | "cancelled" | "quarantined";
+    dispatchState: "not_started" | "dispatch_started" | "result_committed" | "outcome_unknown";
+    providerRequestId?: string;
+    createdAt: string;
+    startedAt?: string;
+    finishedAt?: string;
+    acceptedPacketRef?: string;
+    hostObservedUsage?: ResearchTaskUsageV1;
+}
+
 // export: ResearchTaskDescriptionV1
 export interface ResearchTaskDescriptionV1 {
     schema: typeof RESEARCH_TASK_DISPATCH_SCHEMA_V1;
@@ -3481,10 +4428,23 @@ export interface ResearchTaskDescriptionV1 {
     objective: string;
 }
 
+// export: ResearchTaskOutputSchemaV1
+export type ResearchTaskOutputSchemaV1 = typeof RESEARCH_PACKET_BODY_SCHEMA_V1 | "atlcli.research-packet-body/v2" | typeof RESEARCH_RECONCILIATION_BODY_SCHEMA_V1 | "atlcli.research-agent-draft/v1";
+
 // export: ResearchTaskToolInputV1
 export interface ResearchTaskToolInputV1 {
     description: string;
     subagent_type: string;
+}
+
+// export: ResearchTaskUsageV1
+export interface ResearchTaskUsageV1 {
+    capabilityCalls: number;
+    inputTokens: number;
+    outputTokens: number;
+    resultBytes: number;
+    durationMs: number;
+    costMicros: number;
 }
 
 // export: ResearchTerminationCode
@@ -3529,6 +4489,15 @@ export declare function selectResearchScopeSeedsV1(seeds: readonly ResearchScope
 
 // export: validateResearchGraphV1
 export declare function validateResearchGraphV1(graph: ResearchGraphV1): void;
+
+// export: validateResearchTaskAdmissionV1
+export declare function validateResearchTaskAdmissionV1(input: {
+    executor: "ptc" | "subagent";
+    roleId?: ResearchSubagentRoleIdV1;
+    expectedOutputSchema: ResearchTaskOutputSchemaV1;
+    grantedCapabilityIds: readonly ResearchGraphCapabilityV1[];
+    phase?: "T3" | "T5";
+}): void;
 
 // export: WikiResearchDetail
 export interface WikiResearchDetail extends WikiResearchSummary {
@@ -3752,6 +4721,28 @@ export declare function finalizeResearchReportV1(report: Omit<ResearchReportV1, 
     markdown?: string;
 }): ResearchReportV1;
 
+// export: InMemoryResearchSubagentDispatchPort
+export declare class InMemoryResearchSubagentDispatchPort implements ResearchSubagentDispatchPort {
+    #private;
+    constructor(options: {
+        maxResultBytes: number;
+    });
+    admit(attempt: ResearchTaskAttemptV1): void;
+    start(taskId: string, graphRevision: number, at: string): ResearchTaskAttemptV1;
+    accept(input: {
+        taskId: string;
+        graphRevision: number;
+        body: unknown;
+        usage: ResearchTaskUsageV1;
+        acceptedAt: string;
+        availableSourceIds: readonly string[];
+    }): ResearchAcceptedPacketV1;
+    fail(taskId: string, graphRevision: number, at: string): ResearchTaskAttemptV1;
+    quarantine(taskId: string, graphRevision: number, at: string): ResearchTaskAttemptV1;
+    attempt(taskId: string): ResearchTaskAttemptV1 | undefined;
+    packet(packetRef: string): ResearchAcceptedPacketV1 | undefined;
+}
+
 // export: JiraResearchDetail
 export interface JiraResearchDetail extends JiraResearchSummary {
     content: BoundedContentProjectionV1;
@@ -3787,8 +4778,14 @@ export declare function normalizeResearchScopeV1(value: unknown): ResearchScopeV
 // export: normalizeResearchWorkspacePath
 export declare function normalizeResearchWorkspacePath(value: string): string;
 
+// export: parseReconciliationBodyV1
+export declare function parseReconciliationBodyV1(value: unknown): ReconciliationBodyV1;
+
 // export: parseResearchAgentDraftV1
 export declare function parseResearchAgentDraftV1(input: unknown): ResearchAgentDraftV1;
+
+// export: parseResearchPacketBodyV1
+export declare function parseResearchPacketBodyV1(value: unknown): ResearchPacketBodyV1;
 
 // export: parseResearchQueryFingerprint
 export declare function parseResearchQueryFingerprint(value: string): {
@@ -3796,6 +4793,9 @@ export declare function parseResearchQueryFingerprint(value: string): {
     query: ResearchSearchQueryV1;
     pageSize: number;
 };
+
+// export: parseResearchTaskBodyV1
+export declare function parseResearchTaskBodyV1(schema: ResearchTaskOutputSchemaV1, value: unknown): ResearchPacketBodyV1 | ReconciliationBodyV1 | ResearchAgentDraftV1;
 
 // export: prependBoundedDetailText
 export declare function prependBoundedDetailText(projection: BoundedContentProjectionV1, prefix: string, limits: ContentProjectionLimits): BoundedContentProjectionV1;
@@ -3815,13 +4815,26 @@ export declare function providerCompatibleResearchSchema(value: Record<string, u
     [key: string]: unknown;
 };
 
+// export: ReconciliationBodyV1
+export interface ReconciliationBodyV1 {
+    schema: typeof RESEARCH_RECONCILIATION_BODY_SCHEMA_V1;
+    defects: ResearchReconciliationDefectV1[];
+    proposedFollowUps: ResearchFollowUpProposalV1[];
+}
+
 // export: redactResearchSecrets
 export declare function redactResearchSecrets(value: unknown): string;
+
+// export: reduceResearchTaskAttemptV1
+export declare function reduceResearchTaskAttemptV1(current: ResearchTaskAttemptV1, event: ResearchTaskAttemptEventV1): ResearchTaskAttemptV1;
 
 // export: renderResearchReportMarkdown
 export declare function renderResearchReportMarkdown(report: Omit<ResearchReportV1, "markdown"> & {
     markdown?: string;
 }): string;
+
+// export: RESEARCH_ACCEPTED_PACKET_SCHEMA_V1
+export declare const RESEARCH_ACCEPTED_PACKET_SCHEMA_V1: "atlcli.accepted-research-packet/v1";
 
 // export: RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1
 export declare const RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1: Record<string, unknown>;
@@ -3854,6 +4867,9 @@ export declare const RESEARCH_AGENT_DRAFT_SCHEMA_V1: z.ZodObject<{
 
 // export: RESEARCH_ANALYSIS_PACKET_SCHEMA_V1
 export declare const RESEARCH_ANALYSIS_PACKET_SCHEMA_V1: Record<string, unknown>;
+
+// export: RESEARCH_APPROVAL_ENVELOPE_SCHEMA_V1
+export declare const RESEARCH_APPROVAL_ENVELOPE_SCHEMA_V1: "atlcli.research-approval-envelope/v1";
 
 // export: RESEARCH_BRIEF_SCHEMA_V1
 export declare const RESEARCH_BRIEF_SCHEMA_V1: "atlcli.research-brief/v1";
@@ -3913,6 +4929,18 @@ export declare const RESEARCH_MODEL_ID: "claude-sonnet-4-6";
 
 // export: RESEARCH_ONE_SHOT_REQUEST_PATH_V1
 export declare const RESEARCH_ONE_SHOT_REQUEST_PATH_V1: "/session/request.json";
+
+// export: RESEARCH_PACKET_BODY_SCHEMA_V1
+export declare const RESEARCH_PACKET_BODY_SCHEMA_V1: "atlcli.research-packet-body/v1";
+
+// export: RESEARCH_RECONCILIATION_BODY_SCHEMA_V1
+export declare const RESEARCH_RECONCILIATION_BODY_SCHEMA_V1: "atlcli.reconciliation-body/v1";
+
+// export: RESEARCH_RECONCILIATION_DISPOSITION_SCHEMA_V1
+export declare const RESEARCH_RECONCILIATION_DISPOSITION_SCHEMA_V1: "atlcli.reconciliation-disposition/v1";
+
+// export: RESEARCH_RECONCILIATION_INPUT_SCHEMA_V1
+export declare const RESEARCH_RECONCILIATION_INPUT_SCHEMA_V1: "atlcli.reconciliation-input/v1";
 
 // export: RESEARCH_REPORT_ARTIFACT_PATH_V1
 export declare const RESEARCH_REPORT_ARTIFACT_PATH_V1: "/artifacts/report.md";
@@ -3985,6 +5013,23 @@ export declare const RESEARCH_SCOPE_SOURCES_V1: readonly [
     "research_discovery"
 ];
 
+// export: RESEARCH_SUBAGENT_ROLE_IDS_V1
+export declare const RESEARCH_SUBAGENT_ROLE_IDS_V1: readonly [
+    "focused-researcher",
+    "document-distiller",
+    "contradiction-verifier",
+    "coverage-moderator",
+    "outline-planner",
+    "reconciler",
+    "synthesizer"
+];
+
+// export: RESEARCH_SUBAGENT_ROLE_REGISTRY_V1
+export declare const RESEARCH_SUBAGENT_ROLE_REGISTRY_V1: Readonly<Record<ResearchSubagentRoleIdV1, ResearchSubagentRoleV1>>;
+
+// export: RESEARCH_TASK_ATTEMPT_SCHEMA_V1
+export declare const RESEARCH_TASK_ATTEMPT_SCHEMA_V1: "atlcli.research-task-attempt/v1";
+
 // export: RESEARCH_TASK_DISPATCH_SCHEMA_V1
 export declare const RESEARCH_TASK_DISPATCH_SCHEMA_V1: "atlcli.research-task-dispatch/v1";
 
@@ -4008,6 +5053,23 @@ export declare const RESEARCH_WORKER_PACKET_SCHEMA_V1: Record<string, unknown>;
 // export: RESEARCH_WORKSPACE_SCHEMA_V1
 export declare const RESEARCH_WORKSPACE_SCHEMA_V1: "atlcli.research-workspace/v1";
 
+// export: ResearchAcceptedPacketV1
+export interface ResearchAcceptedPacketV1 {
+    schema: typeof RESEARCH_ACCEPTED_PACKET_SCHEMA_V1;
+    packetRef: string;
+    taskId: string;
+    graphRevision: number;
+    attempt: number;
+    executor: "ptc" | "subagent";
+    roleId?: ResearchSubagentRoleIdV1;
+    grantedCapabilityIds: ResearchGraphCapabilityV1[];
+    typedIntentRefs: string[];
+    expectedOutputSchema: ResearchTaskOutputSchemaV1;
+    body: ResearchPacketBodyV1 | ReconciliationBodyV1 | ResearchAgentDraftV1;
+    hostObservedUsage: ResearchTaskUsageV1;
+    acceptedAt: string;
+}
+
 // export: ResearchAgentDraftV1
 export type ResearchAgentDraftV1 = z.infer<typeof RESEARCH_AGENT_DRAFT_SCHEMA_V1>;
 
@@ -4017,6 +5079,26 @@ export interface ResearchAgentRuntimeBindings {
     createDeepAgent: typeof import("deepagents/browser").createDeepAgent;
     createSubAgentMiddleware: typeof import("deepagents/browser").createSubAgentMiddleware;
     registerHarnessProfile: typeof import("deepagents/browser").registerHarnessProfile;
+}
+
+// export: ResearchApprovalEnvelopeV1
+export interface ResearchApprovalEnvelopeV1 {
+    schema: typeof RESEARCH_APPROVAL_ENVELOPE_SCHEMA_V1;
+    id: string;
+    status: "proposed" | "approved";
+    basedOnGraphRevision: number;
+    basedOnBriefRevision: number;
+    scopeFingerprint: string;
+    scopeBindingFingerprint: string;
+    allowedScopeBindingIds: string[];
+    allowedRoleIds: ResearchSubagentRoleIdV1[];
+    allowedCapabilityIds: ResearchGraphCapabilityV1[];
+    totalBudgetCeiling: ResearchNodeBudgetV1;
+    maxParallelNodes: number;
+    maxResearchWaves: number;
+    maxReconciliationWaves: number;
+    maxDepth: 0 | 1;
+    approvedAt?: string;
 }
 
 // export: ResearchBriefV1
@@ -4307,12 +5389,36 @@ export type ResearchEventV1 = {
     path: typeof RESEARCH_REPORT_ARTIFACT_PATH_V1;
 };
 
+// export: ResearchFindingCandidateV1
+export interface ResearchFindingCandidateV1 {
+    id: string;
+    classification: "fact" | "inference";
+    summary: string;
+    sourceIds: string[];
+}
+
 // export: ResearchFindingV1
 export interface ResearchFindingV1 {
     id: string;
     classification: "fact" | "inference";
     summary: string;
     detail?: string;
+    sourceIds: string[];
+}
+
+// export: ResearchFollowUpProposalV1
+export interface ResearchFollowUpProposalV1 {
+    id: string;
+    objective: string;
+    reasonCode: "coverage_gap" | "contradiction" | "negative_claim" | "stale_or_truncated";
+    sourceIds: string[];
+}
+
+// export: ResearchGapV1
+export interface ResearchGapV1 {
+    id: string;
+    summary: string;
+    targetId?: string;
     sourceIds: string[];
 }
 
@@ -4386,10 +5492,33 @@ export interface ResearchLimitsV1 {
     maxRunMs: number;
 }
 
+// export: ResearchNodeBudgetV1
+export interface ResearchNodeBudgetV1 {
+    maxCapabilityCalls: number;
+    maxInputTokens: number;
+    maxOutputTokens: number;
+    maxResultBytes: number;
+    maxDurationMs: number;
+    maxCostMicros: number;
+}
+
 // export: ResearchOneShotEventV1
 export type ResearchOneShotEventV1 = Extract<ResearchEventV1, {
     kind: "phase" | "progress" | "subagent" | "capability" | "decision" | "artifact";
 }>;
+
+// export: ResearchPacketBodyV1
+export interface ResearchPacketBodyV1 {
+    schema: typeof RESEARCH_PACKET_BODY_SCHEMA_V1;
+    answeredQuestion: string;
+    sourceIds: string[];
+    findingCandidates: ResearchFindingCandidateV1[];
+    relationshipCandidates: ResearchRelationshipCandidateV1[];
+    gaps: ResearchGapV1[];
+    proposedFollowUps: ResearchFollowUpProposalV1[];
+    coverageLimits: string[];
+    abstentionReason?: string;
+}
 
 // export: ResearchPort
 export interface ResearchPort {
@@ -4476,6 +5605,49 @@ export interface ResearchReadProviders {
     };
 }
 
+// export: ResearchReconciliationDefectV1
+export interface ResearchReconciliationDefectV1 {
+    id: string;
+    severity: "blocking" | "important" | "minor";
+    target: {
+        kind: "finding" | "relationship" | "claim" | "section" | "node" | "coverage";
+        id: string;
+    };
+    code: "unsupported" | "contradicted" | "missing_coverage" | "overstated" | "instruction_mismatch" | "duplicate" | "stale";
+    references: ResearchSupportRefV1[];
+    explanation: string;
+    suggestedAction: "accept" | "revise" | "downgrade" | "add_follow_up" | "abstain";
+}
+
+// export: ResearchReconciliationDispositionV1
+export interface ResearchReconciliationDispositionV1 {
+    schema: typeof RESEARCH_RECONCILIATION_DISPOSITION_SCHEMA_V1;
+    id: string;
+    reconciliationPacketRef: string;
+    defectId: string;
+    basedOnGraphRevision: number;
+    decision: "reject_defect" | "revise" | "downgrade" | "add_follow_up" | "abstain" | "no_change";
+    reasonCode: "invalid_reference" | "already_resolved" | "supported_by_evidence" | "material_defect" | "insufficient_budget" | "outside_approval_envelope";
+    resultingGraphRevision?: number;
+    resultingNodeId?: string;
+    resultingClaimIds: string[];
+    recordedAt: string;
+}
+
+// export: ResearchReconciliationInputV1
+export interface ResearchReconciliationInputV1 {
+    schema: typeof RESEARCH_RECONCILIATION_INPUT_SCHEMA_V1;
+    briefRevision: number;
+    graphRevision: number;
+    acceptedPacketRefs: string[];
+    coverageTargetIds: string[];
+    projection: {
+        kind: "v1-packet-set";
+        findingCandidateIds: string[];
+        relationshipCandidateIds: string[];
+    };
+}
+
 // export: ResearchReconciliationPolicyV1
 export type ResearchReconciliationPolicyV1 = "off" | "auto" | "required";
 
@@ -4495,6 +5667,16 @@ export interface ResearchReferenceResolveOutputV1 {
     schema: string;
     candidate?: ResearchScopeCandidateV1;
     unavailable: boolean;
+}
+
+// export: ResearchRelationshipCandidateV1
+export interface ResearchRelationshipCandidateV1 {
+    id: string;
+    classification: "verified" | "hypothesis";
+    jiraIssueKey: string;
+    confluenceContentId: string;
+    summary: string;
+    sourceIds: string[];
 }
 
 // export: ResearchReportV1
@@ -4799,10 +5981,52 @@ export interface ResearchSubagentDiagnosticV1 {
     errorMessage?: string;
 }
 
+// export: ResearchSubagentDispatchPort
+export interface ResearchSubagentDispatchPort {
+    admit(attempt: ResearchTaskAttemptV1): void;
+    start(taskId: string, graphRevision: number, at: string): ResearchTaskAttemptV1;
+    accept(input: {
+        taskId: string;
+        graphRevision: number;
+        body: unknown;
+        usage: ResearchTaskUsageV1;
+        acceptedAt: string;
+        availableSourceIds: readonly string[];
+    }): ResearchAcceptedPacketV1;
+    fail(taskId: string, graphRevision: number, at: string): ResearchTaskAttemptV1;
+    quarantine(taskId: string, graphRevision: number, at: string): ResearchTaskAttemptV1;
+    attempt(taskId: string): ResearchTaskAttemptV1 | undefined;
+    packet(packetRef: string): ResearchAcceptedPacketV1 | undefined;
+}
+
+// export: ResearchSubagentRoleIdV1
+export type ResearchSubagentRoleIdV1 = (typeof RESEARCH_SUBAGENT_ROLE_IDS_V1)[number];
+
+// export: ResearchSubagentRoleV1
+export interface ResearchSubagentRoleV1 {
+    id: ResearchSubagentRoleIdV1;
+    description: string;
+    phase: "acquisition" | "analysis" | "verification" | "reconciliation" | "synthesis";
+    availableFromPhase: "T3" | "T5";
+    allowedCapabilityIds: ResearchGraphCapabilityV1[];
+    supportedOutputSchemas: ResearchTaskOutputSchemaV1[];
+    maxBudget: ResearchNodeBudgetV1;
+    mayProposeFollowUps: boolean;
+}
+
 // export: ResearchSubagentRuntimeBindings
 export interface ResearchSubagentRuntimeBindings {
     createSubAgentMiddleware: typeof import("deepagents/browser").createSubAgentMiddleware;
 }
+
+// export: ResearchSupportRefV1
+export type ResearchSupportRefV1 = {
+    kind: "source";
+    id: string;
+} | {
+    kind: "evidence";
+    id: string;
+};
 
 // export: ResearchTaskAdmissionV1
 export interface ResearchTaskAdmissionV1 {
@@ -4814,6 +6038,52 @@ export interface ResearchTaskAdmissionV1 {
     maxDurationMs: number;
 }
 
+// export: ResearchTaskAttemptEventV1
+export type ResearchTaskAttemptEventV1 = {
+    kind: "dispatch_started";
+    at: string;
+    providerRequestId?: string;
+} | {
+    kind: "outcome_unknown";
+    at: string;
+} | {
+    kind: "failed";
+    at: string;
+} | {
+    kind: "cancelled";
+    at: string;
+} | {
+    kind: "quarantined";
+    at: string;
+} | {
+    kind: "result_committed";
+    at: string;
+    packetRef: string;
+    usage: ResearchTaskUsageV1;
+};
+
+// export: ResearchTaskAttemptV1
+export interface ResearchTaskAttemptV1 {
+    schema: typeof RESEARCH_TASK_ATTEMPT_SCHEMA_V1;
+    taskId: string;
+    nodeId: string;
+    graphRevision: number;
+    attempt: number;
+    executor: "ptc" | "subagent";
+    roleId?: ResearchSubagentRoleIdV1;
+    grantedCapabilityIds: ResearchGraphCapabilityV1[];
+    typedIntentRefs: string[];
+    expectedOutputSchema: ResearchTaskOutputSchemaV1;
+    status: "ready" | "running" | "outcome_unknown" | "complete" | "failed" | "cancelled" | "quarantined";
+    dispatchState: "not_started" | "dispatch_started" | "result_committed" | "outcome_unknown";
+    providerRequestId?: string;
+    createdAt: string;
+    startedAt?: string;
+    finishedAt?: string;
+    acceptedPacketRef?: string;
+    hostObservedUsage?: ResearchTaskUsageV1;
+}
+
 // export: ResearchTaskDescriptionV1
 export interface ResearchTaskDescriptionV1 {
     schema: typeof RESEARCH_TASK_DISPATCH_SCHEMA_V1;
@@ -4821,10 +6091,23 @@ export interface ResearchTaskDescriptionV1 {
     objective: string;
 }
 
+// export: ResearchTaskOutputSchemaV1
+export type ResearchTaskOutputSchemaV1 = typeof RESEARCH_PACKET_BODY_SCHEMA_V1 | "atlcli.research-packet-body/v2" | typeof RESEARCH_RECONCILIATION_BODY_SCHEMA_V1 | "atlcli.research-agent-draft/v1";
+
 // export: ResearchTaskToolInputV1
 export interface ResearchTaskToolInputV1 {
     description: string;
     subagent_type: string;
+}
+
+// export: ResearchTaskUsageV1
+export interface ResearchTaskUsageV1 {
+    capabilityCalls: number;
+    inputTokens: number;
+    outputTokens: number;
+    resultBytes: number;
+    durationMs: number;
+    costMicros: number;
 }
 
 // export: ResearchTerminationCode
@@ -4891,6 +6174,15 @@ export declare function selectResearchScopeSeedsV1(seeds: readonly ResearchScope
 
 // export: validateResearchGraphV1
 export declare function validateResearchGraphV1(graph: ResearchGraphV1): void;
+
+// export: validateResearchTaskAdmissionV1
+export declare function validateResearchTaskAdmissionV1(input: {
+    executor: "ptc" | "subagent";
+    roleId?: ResearchSubagentRoleIdV1;
+    expectedOutputSchema: ResearchTaskOutputSchemaV1;
+    grantedCapabilityIds: readonly ResearchGraphCapabilityV1[];
+    phase?: "T3" | "T5";
+}): void;
 
 // export: WikiResearchDetail
 export interface WikiResearchDetail extends WikiResearchSummary {
@@ -5736,6 +7028,28 @@ export declare function finalizeResearchReportV1(report: Omit<ResearchReportV1, 
     markdown?: string;
 }): ResearchReportV1;
 
+// export: InMemoryResearchSubagentDispatchPort
+export declare class InMemoryResearchSubagentDispatchPort implements ResearchSubagentDispatchPort {
+    #private;
+    constructor(options: {
+        maxResultBytes: number;
+    });
+    admit(attempt: ResearchTaskAttemptV1): void;
+    start(taskId: string, graphRevision: number, at: string): ResearchTaskAttemptV1;
+    accept(input: {
+        taskId: string;
+        graphRevision: number;
+        body: unknown;
+        usage: ResearchTaskUsageV1;
+        acceptedAt: string;
+        availableSourceIds: readonly string[];
+    }): ResearchAcceptedPacketV1;
+    fail(taskId: string, graphRevision: number, at: string): ResearchTaskAttemptV1;
+    quarantine(taskId: string, graphRevision: number, at: string): ResearchTaskAttemptV1;
+    attempt(taskId: string): ResearchTaskAttemptV1 | undefined;
+    packet(packetRef: string): ResearchAcceptedPacketV1 | undefined;
+}
+
 // export: JiraResearchDetail
 export interface JiraResearchDetail extends JiraResearchSummary {
     content: BoundedContentProjectionV1;
@@ -5771,8 +7085,14 @@ export declare function normalizeResearchScopeV1(value: unknown): ResearchScopeV
 // export: normalizeResearchWorkspacePath
 export declare function normalizeResearchWorkspacePath(value: string): string;
 
+// export: parseReconciliationBodyV1
+export declare function parseReconciliationBodyV1(value: unknown): ReconciliationBodyV1;
+
 // export: parseResearchAgentDraftV1
 export declare function parseResearchAgentDraftV1(input: unknown): ResearchAgentDraftV1;
+
+// export: parseResearchPacketBodyV1
+export declare function parseResearchPacketBodyV1(value: unknown): ResearchPacketBodyV1;
 
 // export: parseResearchQueryFingerprint
 export declare function parseResearchQueryFingerprint(value: string): {
@@ -5780,6 +7100,9 @@ export declare function parseResearchQueryFingerprint(value: string): {
     query: ResearchSearchQueryV1;
     pageSize: number;
 };
+
+// export: parseResearchTaskBodyV1
+export declare function parseResearchTaskBodyV1(schema: ResearchTaskOutputSchemaV1, value: unknown): ResearchPacketBodyV1 | ReconciliationBodyV1 | ResearchAgentDraftV1;
 
 // export: prependBoundedDetailText
 export declare function prependBoundedDetailText(projection: BoundedContentProjectionV1, prefix: string, limits: ContentProjectionLimits): BoundedContentProjectionV1;
@@ -5799,13 +7122,26 @@ export declare function providerCompatibleResearchSchema(value: Record<string, u
     [key: string]: unknown;
 };
 
+// export: ReconciliationBodyV1
+export interface ReconciliationBodyV1 {
+    schema: typeof RESEARCH_RECONCILIATION_BODY_SCHEMA_V1;
+    defects: ResearchReconciliationDefectV1[];
+    proposedFollowUps: ResearchFollowUpProposalV1[];
+}
+
 // export: redactResearchSecrets
 export declare function redactResearchSecrets(value: unknown): string;
+
+// export: reduceResearchTaskAttemptV1
+export declare function reduceResearchTaskAttemptV1(current: ResearchTaskAttemptV1, event: ResearchTaskAttemptEventV1): ResearchTaskAttemptV1;
 
 // export: renderResearchReportMarkdown
 export declare function renderResearchReportMarkdown(report: Omit<ResearchReportV1, "markdown"> & {
     markdown?: string;
 }): string;
+
+// export: RESEARCH_ACCEPTED_PACKET_SCHEMA_V1
+export declare const RESEARCH_ACCEPTED_PACKET_SCHEMA_V1: "atlcli.accepted-research-packet/v1";
 
 // export: RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1
 export declare const RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1: Record<string, unknown>;
@@ -5838,6 +7174,9 @@ export declare const RESEARCH_AGENT_DRAFT_SCHEMA_V1: z.ZodObject<{
 
 // export: RESEARCH_ANALYSIS_PACKET_SCHEMA_V1
 export declare const RESEARCH_ANALYSIS_PACKET_SCHEMA_V1: Record<string, unknown>;
+
+// export: RESEARCH_APPROVAL_ENVELOPE_SCHEMA_V1
+export declare const RESEARCH_APPROVAL_ENVELOPE_SCHEMA_V1: "atlcli.research-approval-envelope/v1";
 
 // export: RESEARCH_BRIEF_SCHEMA_V1
 export declare const RESEARCH_BRIEF_SCHEMA_V1: "atlcli.research-brief/v1";
@@ -5897,6 +7236,18 @@ export declare const RESEARCH_MODEL_ID: "claude-sonnet-4-6";
 
 // export: RESEARCH_ONE_SHOT_REQUEST_PATH_V1
 export declare const RESEARCH_ONE_SHOT_REQUEST_PATH_V1: "/session/request.json";
+
+// export: RESEARCH_PACKET_BODY_SCHEMA_V1
+export declare const RESEARCH_PACKET_BODY_SCHEMA_V1: "atlcli.research-packet-body/v1";
+
+// export: RESEARCH_RECONCILIATION_BODY_SCHEMA_V1
+export declare const RESEARCH_RECONCILIATION_BODY_SCHEMA_V1: "atlcli.reconciliation-body/v1";
+
+// export: RESEARCH_RECONCILIATION_DISPOSITION_SCHEMA_V1
+export declare const RESEARCH_RECONCILIATION_DISPOSITION_SCHEMA_V1: "atlcli.reconciliation-disposition/v1";
+
+// export: RESEARCH_RECONCILIATION_INPUT_SCHEMA_V1
+export declare const RESEARCH_RECONCILIATION_INPUT_SCHEMA_V1: "atlcli.reconciliation-input/v1";
 
 // export: RESEARCH_REPORT_ARTIFACT_PATH_V1
 export declare const RESEARCH_REPORT_ARTIFACT_PATH_V1: "/artifacts/report.md";
@@ -5969,6 +7320,23 @@ export declare const RESEARCH_SCOPE_SOURCES_V1: readonly [
     "research_discovery"
 ];
 
+// export: RESEARCH_SUBAGENT_ROLE_IDS_V1
+export declare const RESEARCH_SUBAGENT_ROLE_IDS_V1: readonly [
+    "focused-researcher",
+    "document-distiller",
+    "contradiction-verifier",
+    "coverage-moderator",
+    "outline-planner",
+    "reconciler",
+    "synthesizer"
+];
+
+// export: RESEARCH_SUBAGENT_ROLE_REGISTRY_V1
+export declare const RESEARCH_SUBAGENT_ROLE_REGISTRY_V1: Readonly<Record<ResearchSubagentRoleIdV1, ResearchSubagentRoleV1>>;
+
+// export: RESEARCH_TASK_ATTEMPT_SCHEMA_V1
+export declare const RESEARCH_TASK_ATTEMPT_SCHEMA_V1: "atlcli.research-task-attempt/v1";
+
 // export: RESEARCH_TASK_DISPATCH_SCHEMA_V1
 export declare const RESEARCH_TASK_DISPATCH_SCHEMA_V1: "atlcli.research-task-dispatch/v1";
 
@@ -5992,6 +7360,23 @@ export declare const RESEARCH_WORKER_PACKET_SCHEMA_V1: Record<string, unknown>;
 // export: RESEARCH_WORKSPACE_SCHEMA_V1
 export declare const RESEARCH_WORKSPACE_SCHEMA_V1: "atlcli.research-workspace/v1";
 
+// export: ResearchAcceptedPacketV1
+export interface ResearchAcceptedPacketV1 {
+    schema: typeof RESEARCH_ACCEPTED_PACKET_SCHEMA_V1;
+    packetRef: string;
+    taskId: string;
+    graphRevision: number;
+    attempt: number;
+    executor: "ptc" | "subagent";
+    roleId?: ResearchSubagentRoleIdV1;
+    grantedCapabilityIds: ResearchGraphCapabilityV1[];
+    typedIntentRefs: string[];
+    expectedOutputSchema: ResearchTaskOutputSchemaV1;
+    body: ResearchPacketBodyV1 | ReconciliationBodyV1 | ResearchAgentDraftV1;
+    hostObservedUsage: ResearchTaskUsageV1;
+    acceptedAt: string;
+}
+
 // export: ResearchAgentDraftV1
 export type ResearchAgentDraftV1 = z.infer<typeof RESEARCH_AGENT_DRAFT_SCHEMA_V1>;
 
@@ -6001,6 +7386,26 @@ export interface ResearchAgentRuntimeBindings {
     createDeepAgent: typeof import("deepagents/browser").createDeepAgent;
     createSubAgentMiddleware: typeof import("deepagents/browser").createSubAgentMiddleware;
     registerHarnessProfile: typeof import("deepagents/browser").registerHarnessProfile;
+}
+
+// export: ResearchApprovalEnvelopeV1
+export interface ResearchApprovalEnvelopeV1 {
+    schema: typeof RESEARCH_APPROVAL_ENVELOPE_SCHEMA_V1;
+    id: string;
+    status: "proposed" | "approved";
+    basedOnGraphRevision: number;
+    basedOnBriefRevision: number;
+    scopeFingerprint: string;
+    scopeBindingFingerprint: string;
+    allowedScopeBindingIds: string[];
+    allowedRoleIds: ResearchSubagentRoleIdV1[];
+    allowedCapabilityIds: ResearchGraphCapabilityV1[];
+    totalBudgetCeiling: ResearchNodeBudgetV1;
+    maxParallelNodes: number;
+    maxResearchWaves: number;
+    maxReconciliationWaves: number;
+    maxDepth: 0 | 1;
+    approvedAt?: string;
 }
 
 // export: ResearchBriefV1
@@ -6291,12 +7696,36 @@ export type ResearchEventV1 = {
     path: typeof RESEARCH_REPORT_ARTIFACT_PATH_V1;
 };
 
+// export: ResearchFindingCandidateV1
+export interface ResearchFindingCandidateV1 {
+    id: string;
+    classification: "fact" | "inference";
+    summary: string;
+    sourceIds: string[];
+}
+
 // export: ResearchFindingV1
 export interface ResearchFindingV1 {
     id: string;
     classification: "fact" | "inference";
     summary: string;
     detail?: string;
+    sourceIds: string[];
+}
+
+// export: ResearchFollowUpProposalV1
+export interface ResearchFollowUpProposalV1 {
+    id: string;
+    objective: string;
+    reasonCode: "coverage_gap" | "contradiction" | "negative_claim" | "stale_or_truncated";
+    sourceIds: string[];
+}
+
+// export: ResearchGapV1
+export interface ResearchGapV1 {
+    id: string;
+    summary: string;
+    targetId?: string;
     sourceIds: string[];
 }
 
@@ -6370,10 +7799,33 @@ export interface ResearchLimitsV1 {
     maxRunMs: number;
 }
 
+// export: ResearchNodeBudgetV1
+export interface ResearchNodeBudgetV1 {
+    maxCapabilityCalls: number;
+    maxInputTokens: number;
+    maxOutputTokens: number;
+    maxResultBytes: number;
+    maxDurationMs: number;
+    maxCostMicros: number;
+}
+
 // export: ResearchOneShotEventV1
 export type ResearchOneShotEventV1 = Extract<ResearchEventV1, {
     kind: "phase" | "progress" | "subagent" | "capability" | "decision" | "artifact";
 }>;
+
+// export: ResearchPacketBodyV1
+export interface ResearchPacketBodyV1 {
+    schema: typeof RESEARCH_PACKET_BODY_SCHEMA_V1;
+    answeredQuestion: string;
+    sourceIds: string[];
+    findingCandidates: ResearchFindingCandidateV1[];
+    relationshipCandidates: ResearchRelationshipCandidateV1[];
+    gaps: ResearchGapV1[];
+    proposedFollowUps: ResearchFollowUpProposalV1[];
+    coverageLimits: string[];
+    abstentionReason?: string;
+}
 
 // export: ResearchPort
 export interface ResearchPort {
@@ -6460,6 +7912,49 @@ export interface ResearchReadProviders {
     };
 }
 
+// export: ResearchReconciliationDefectV1
+export interface ResearchReconciliationDefectV1 {
+    id: string;
+    severity: "blocking" | "important" | "minor";
+    target: {
+        kind: "finding" | "relationship" | "claim" | "section" | "node" | "coverage";
+        id: string;
+    };
+    code: "unsupported" | "contradicted" | "missing_coverage" | "overstated" | "instruction_mismatch" | "duplicate" | "stale";
+    references: ResearchSupportRefV1[];
+    explanation: string;
+    suggestedAction: "accept" | "revise" | "downgrade" | "add_follow_up" | "abstain";
+}
+
+// export: ResearchReconciliationDispositionV1
+export interface ResearchReconciliationDispositionV1 {
+    schema: typeof RESEARCH_RECONCILIATION_DISPOSITION_SCHEMA_V1;
+    id: string;
+    reconciliationPacketRef: string;
+    defectId: string;
+    basedOnGraphRevision: number;
+    decision: "reject_defect" | "revise" | "downgrade" | "add_follow_up" | "abstain" | "no_change";
+    reasonCode: "invalid_reference" | "already_resolved" | "supported_by_evidence" | "material_defect" | "insufficient_budget" | "outside_approval_envelope";
+    resultingGraphRevision?: number;
+    resultingNodeId?: string;
+    resultingClaimIds: string[];
+    recordedAt: string;
+}
+
+// export: ResearchReconciliationInputV1
+export interface ResearchReconciliationInputV1 {
+    schema: typeof RESEARCH_RECONCILIATION_INPUT_SCHEMA_V1;
+    briefRevision: number;
+    graphRevision: number;
+    acceptedPacketRefs: string[];
+    coverageTargetIds: string[];
+    projection: {
+        kind: "v1-packet-set";
+        findingCandidateIds: string[];
+        relationshipCandidateIds: string[];
+    };
+}
+
 // export: ResearchReconciliationPolicyV1
 export type ResearchReconciliationPolicyV1 = "off" | "auto" | "required";
 
@@ -6479,6 +7974,16 @@ export interface ResearchReferenceResolveOutputV1 {
     schema: string;
     candidate?: ResearchScopeCandidateV1;
     unavailable: boolean;
+}
+
+// export: ResearchRelationshipCandidateV1
+export interface ResearchRelationshipCandidateV1 {
+    id: string;
+    classification: "verified" | "hypothesis";
+    jiraIssueKey: string;
+    confluenceContentId: string;
+    summary: string;
+    sourceIds: string[];
 }
 
 // export: ResearchReportV1
@@ -6783,10 +8288,52 @@ export interface ResearchSubagentDiagnosticV1 {
     errorMessage?: string;
 }
 
+// export: ResearchSubagentDispatchPort
+export interface ResearchSubagentDispatchPort {
+    admit(attempt: ResearchTaskAttemptV1): void;
+    start(taskId: string, graphRevision: number, at: string): ResearchTaskAttemptV1;
+    accept(input: {
+        taskId: string;
+        graphRevision: number;
+        body: unknown;
+        usage: ResearchTaskUsageV1;
+        acceptedAt: string;
+        availableSourceIds: readonly string[];
+    }): ResearchAcceptedPacketV1;
+    fail(taskId: string, graphRevision: number, at: string): ResearchTaskAttemptV1;
+    quarantine(taskId: string, graphRevision: number, at: string): ResearchTaskAttemptV1;
+    attempt(taskId: string): ResearchTaskAttemptV1 | undefined;
+    packet(packetRef: string): ResearchAcceptedPacketV1 | undefined;
+}
+
+// export: ResearchSubagentRoleIdV1
+export type ResearchSubagentRoleIdV1 = (typeof RESEARCH_SUBAGENT_ROLE_IDS_V1)[number];
+
+// export: ResearchSubagentRoleV1
+export interface ResearchSubagentRoleV1 {
+    id: ResearchSubagentRoleIdV1;
+    description: string;
+    phase: "acquisition" | "analysis" | "verification" | "reconciliation" | "synthesis";
+    availableFromPhase: "T3" | "T5";
+    allowedCapabilityIds: ResearchGraphCapabilityV1[];
+    supportedOutputSchemas: ResearchTaskOutputSchemaV1[];
+    maxBudget: ResearchNodeBudgetV1;
+    mayProposeFollowUps: boolean;
+}
+
 // export: ResearchSubagentRuntimeBindings
 export interface ResearchSubagentRuntimeBindings {
     createSubAgentMiddleware: typeof import("deepagents/browser").createSubAgentMiddleware;
 }
+
+// export: ResearchSupportRefV1
+export type ResearchSupportRefV1 = {
+    kind: "source";
+    id: string;
+} | {
+    kind: "evidence";
+    id: string;
+};
 
 // export: ResearchTaskAdmissionV1
 export interface ResearchTaskAdmissionV1 {
@@ -6798,6 +8345,52 @@ export interface ResearchTaskAdmissionV1 {
     maxDurationMs: number;
 }
 
+// export: ResearchTaskAttemptEventV1
+export type ResearchTaskAttemptEventV1 = {
+    kind: "dispatch_started";
+    at: string;
+    providerRequestId?: string;
+} | {
+    kind: "outcome_unknown";
+    at: string;
+} | {
+    kind: "failed";
+    at: string;
+} | {
+    kind: "cancelled";
+    at: string;
+} | {
+    kind: "quarantined";
+    at: string;
+} | {
+    kind: "result_committed";
+    at: string;
+    packetRef: string;
+    usage: ResearchTaskUsageV1;
+};
+
+// export: ResearchTaskAttemptV1
+export interface ResearchTaskAttemptV1 {
+    schema: typeof RESEARCH_TASK_ATTEMPT_SCHEMA_V1;
+    taskId: string;
+    nodeId: string;
+    graphRevision: number;
+    attempt: number;
+    executor: "ptc" | "subagent";
+    roleId?: ResearchSubagentRoleIdV1;
+    grantedCapabilityIds: ResearchGraphCapabilityV1[];
+    typedIntentRefs: string[];
+    expectedOutputSchema: ResearchTaskOutputSchemaV1;
+    status: "ready" | "running" | "outcome_unknown" | "complete" | "failed" | "cancelled" | "quarantined";
+    dispatchState: "not_started" | "dispatch_started" | "result_committed" | "outcome_unknown";
+    providerRequestId?: string;
+    createdAt: string;
+    startedAt?: string;
+    finishedAt?: string;
+    acceptedPacketRef?: string;
+    hostObservedUsage?: ResearchTaskUsageV1;
+}
+
 // export: ResearchTaskDescriptionV1
 export interface ResearchTaskDescriptionV1 {
     schema: typeof RESEARCH_TASK_DISPATCH_SCHEMA_V1;
@@ -6805,10 +8398,23 @@ export interface ResearchTaskDescriptionV1 {
     objective: string;
 }
 
+// export: ResearchTaskOutputSchemaV1
+export type ResearchTaskOutputSchemaV1 = typeof RESEARCH_PACKET_BODY_SCHEMA_V1 | "atlcli.research-packet-body/v2" | typeof RESEARCH_RECONCILIATION_BODY_SCHEMA_V1 | "atlcli.research-agent-draft/v1";
+
 // export: ResearchTaskToolInputV1
 export interface ResearchTaskToolInputV1 {
     description: string;
     subagent_type: string;
+}
+
+// export: ResearchTaskUsageV1
+export interface ResearchTaskUsageV1 {
+    capabilityCalls: number;
+    inputTokens: number;
+    outputTokens: number;
+    resultBytes: number;
+    durationMs: number;
+    costMicros: number;
 }
 
 // export: ResearchTerminationCode
@@ -6875,6 +8481,15 @@ export declare function selectResearchScopeSeedsV1(seeds: readonly ResearchScope
 
 // export: validateResearchGraphV1
 export declare function validateResearchGraphV1(graph: ResearchGraphV1): void;
+
+// export: validateResearchTaskAdmissionV1
+export declare function validateResearchTaskAdmissionV1(input: {
+    executor: "ptc" | "subagent";
+    roleId?: ResearchSubagentRoleIdV1;
+    expectedOutputSchema: ResearchTaskOutputSchemaV1;
+    grantedCapabilityIds: readonly ResearchGraphCapabilityV1[];
+    phase?: "T3" | "T5";
+}): void;
 
 // export: WikiResearchDetail
 export interface WikiResearchDetail extends WikiResearchSummary {
