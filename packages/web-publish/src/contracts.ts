@@ -475,11 +475,14 @@ export interface AstroAtlcliIntegrationOptionsV1 {
   trustedLayoutEntrypoint?: string;
 }
 
+/** Builder-neutral static URL/file profile applied after route planning. */
+export type PublicationOutputProfileV1 = "directory" | "portable-file";
+
 export interface AstroPublicationBuilderOptionsV1 {
   builder: "astro-static";
   projectDir: string;
   integrationOptions: AstroAtlcliIntegrationOptionsV1;
-  outputProfile: "directory" | "portable-file";
+  outputProfile: PublicationOutputProfileV1;
   base: string;
   site?: string;
   buildCommand: readonly [string, ...string[]];
@@ -560,7 +563,7 @@ export interface StaticPublicationManifestV1 {
   configDigest: string;
   lockfileDigest: string;
   base: string;
-  outputProfile: "directory" | "portable-file";
+  outputProfile: PublicationOutputProfileV1;
   pages: readonly BuiltPageV1[];
   assets: readonly BuiltAssetV1[];
   experience: { id: string; version: string; digest: string };

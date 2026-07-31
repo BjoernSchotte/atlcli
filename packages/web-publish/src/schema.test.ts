@@ -342,6 +342,33 @@ describe("web publication runtime schemas v1", () => {
     })).toThrow("$.experience.componentOverrides.arbitraryScript: unknown field");
   });
 
+  test("reject unsafe, non-canonical, and out-of-prefix routes", () => {
+    expect(() => parsePublicationProjectV1({
+      ...project,
+      routes: { ...project.routes, prefix: "/docs/../escape" },
+    })).toThrow("$.routes.prefix");
+    expect(() => parsePublicationProjectV1({
+      ...project,
+      routes: {
+        ...project.routes,
+        customRoutes: [{ sourceId: "100", route: "/outside/" }],
+      },
+    })).toThrow("outside prefix");
+    expect(() => parsePublicationProjectV1({
+      ...project,
+      routes: {
+        ...project.routes,
+        customRoutes: [{ sourceId: "100", route: "/docs/guide" }],
+      },
+    })).toThrow("expected canonical route \"/docs/guide/\"");
+    expect(() => parsePublicationBundleV1({
+      ...bundle,
+      routes: [{ ...bundle.routes[0], route: "/../escape/" }],
+    })).toThrow("$.routes[0].route");
+    expect(() => parsePublicationPageV1({ ...page, route: "/guide\\escape/" }))
+      .toThrow("$.route");
+  });
+
   test("reject cycles, non-finite data, non-plain objects, and resource overruns", () => {
     const cyclic: Record<string, unknown> = { ...project };
     cyclic.self = cyclic;

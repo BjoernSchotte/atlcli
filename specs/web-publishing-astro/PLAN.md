@@ -1421,7 +1421,7 @@ existing export behavior remains regression-green.
       SEO/i18n/media/code, analytics, and edit-link contracts.
 - [x] Extract shared page-link resolution from `compose-document.ts`; keep its
       existing truth table unchanged.
-- [ ] Implement stable route registry, custom routes, tombstones, safe slugs,
+- [x] Implement stable route registry, custom routes, tombstones, safe slugs,
       deterministic collisions, and case/output-path collision rejection.
 - [ ] Implement stable page-local anchors and builder-neutral typed page/asset
       references.

@@ -28,6 +28,11 @@ import {
   type PublishRunRequestV1,
   type StaticPublicationManifestV1,
 } from "./contracts.js";
+import {
+  PublicationRoutePlanningErrorV1,
+  normalizePublicationRouteForPrefixV1,
+  normalizePublicationRoutePrefixV1,
+} from "./routes.js";
 
 export interface PublicationValidationBudgetV1 {
   maxDepth: number;
@@ -287,6 +292,31 @@ function partialStringRecord<T extends string>(
   }
 }
 
+function safeRoute(value: unknown, path: string, canonical: boolean): string {
+  const route = nonEmptyString(value, path);
+  try {
+    const normalized = normalizePublicationRouteForPrefixV1(route, "");
+    if (canonical && normalized !== route) {
+      fail(path, `expected canonical route ${JSON.stringify(normalized)}`);
+    }
+    return route;
+  } catch (error) {
+    if (error instanceof PublicationRoutePlanningErrorV1) fail(path, error.message);
+    throw error;
+  }
+}
+
+function safeRoutePrefix(value: unknown, path: string): string {
+  const prefix = string(value, path);
+  try {
+    normalizePublicationRoutePrefixV1(prefix);
+    return prefix;
+  } catch (error) {
+    if (error instanceof PublicationRoutePlanningErrorV1) fail(path, error.message);
+    throw error;
+  }
+}
+
 function jsonSafetyPass(value: unknown, budget: PublicationValidationBudgetV1): void {
   if (
     !Number.isSafeInteger(budget.maxDepth) || budget.maxDepth < 1 ||
@@ -404,7 +434,7 @@ function sourcePolicy(value: unknown, path: string): void {
 function routePolicy(value: unknown, path: string): void {
   const candidate = object(value, path);
   keys(candidate, path, ["prefix", "generatedStyle", "collisions", "tombstones", "customRoutes"]);
-  string(candidate.prefix, `${path}.prefix`);
+  const prefix = safeRoutePrefix(candidate.prefix, `${path}.prefix`);
   literal(candidate.generatedStyle, `${path}.generatedStyle`, "stable-pretty");
   literal(candidate.collisions, `${path}.collisions`, "stable-source-suffix");
   literal(candidate.tombstones, `${path}.tombstones`, "retain");
@@ -412,7 +442,15 @@ function routePolicy(value: unknown, path: string): void {
     const override = object(entry, entryPath);
     keys(override, entryPath, ["sourceId", "route"]);
     nonEmptyString(override.sourceId, `${entryPath}.sourceId`);
-    nonEmptyString(override.route, `${entryPath}.route`);
+    const route = safeRoute(override.route, `${entryPath}.route`, true);
+    try {
+      normalizePublicationRouteForPrefixV1(route, prefix);
+    } catch (error) {
+      if (error instanceof PublicationRoutePlanningErrorV1) {
+        fail(`${entryPath}.route`, error.message);
+      }
+      throw error;
+    }
   });
 }
 
@@ -718,10 +756,12 @@ function routeRecord(value: unknown, path: string): void {
   const candidate = object(value, path);
   keys(candidate, path, ["sourceId", "route", "state", "assignedBy", "previousRoutes"]);
   nonEmptyString(candidate.sourceId, `${path}.sourceId`);
-  nonEmptyString(candidate.route, `${path}.route`);
+  safeRoute(candidate.route, `${path}.route`, true);
   oneOf(candidate.state, `${path}.state`, ["active", "tombstone"]);
   oneOf(candidate.assignedBy, `${path}.assignedBy`, ["generated", "operator"]);
-  stringValues(candidate.previousRoutes, `${path}.previousRoutes`);
+  values(candidate.previousRoutes, `${path}.previousRoutes`, (entry, entryPath) => {
+    safeRoute(entry, entryPath, true);
+  });
 }
 
 function linkReference(value: unknown, path: string): void {
@@ -774,7 +814,7 @@ function publicationPage(value: unknown, path: string): void {
   optional(candidate, "parentId", path, nonEmptyString);
   safeInteger(candidate.position, `${path}.position`, 0);
   safeInteger(candidate.depth, `${path}.depth`, 0);
-  nonEmptyString(candidate.route, `${path}.route`);
+  safeRoute(candidate.route, `${path}.route`, true);
   try {
     parseExportBlockDocumentV1({
       schema: EXPORT_BLOCK_MODEL_SCHEMA_V1,
@@ -901,7 +941,7 @@ function builtPage(value: unknown, path: string): void {
   const candidate = object(value, path);
   keys(candidate, path, ["sourceId", "route", "outputPath", "sha256", "byteLength"]);
   nonEmptyString(candidate.sourceId, `${path}.sourceId`);
-  nonEmptyString(candidate.route, `${path}.route`);
+  safeRoute(candidate.route, `${path}.route`, true);
   nonEmptyString(candidate.outputPath, `${path}.outputPath`);
   nonEmptyString(candidate.sha256, `${path}.sha256`);
   safeInteger(candidate.byteLength, `${path}.byteLength`, 0);

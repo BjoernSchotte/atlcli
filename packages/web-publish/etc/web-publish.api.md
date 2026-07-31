@@ -20,7 +20,7 @@ export interface AstroPublicationBuilderOptionsV1 {
     builder: "astro-static";
     projectDir: string;
     integrationOptions: AstroAtlcliIntegrationOptionsV1;
-    outputProfile: "directory" | "portable-file";
+    outputProfile: PublicationOutputProfileV1;
     base: string;
     site?: string;
     buildCommand: readonly [
@@ -99,6 +99,15 @@ export declare function negotiatePublicationRenderersV1(policy: PublicationRende
 // export: negotiatePublicationSearchV1
 export declare function negotiatePublicationSearchV1(options: PublicationSearchOptionsV1, providerValue: unknown, experience: PublicationExperienceDescriptorV1): PublicationSearchNegotiationV1;
 
+// export: normalizePublicationRouteForPrefixV1
+export declare function normalizePublicationRouteForPrefixV1(route: string, prefix: string): string;
+
+// export: normalizePublicationRoutePrefixV1
+export declare function normalizePublicationRoutePrefixV1(prefix: string): string;
+
+// export: normalizePublicationRouteV1
+export declare function normalizePublicationRouteV1(route: string): string;
+
 // export: parsePublicationBuildRequestV1
 export declare function parsePublicationBuildRequestV1(value: unknown, budget?: PublicationValidationBudgetV1): PublicationBuildRequestV1;
 
@@ -131,6 +140,9 @@ export declare function parsePublishRunRequestV1(value: unknown, budget?: Public
 
 // export: parseStaticPublicationManifestV1
 export declare function parseStaticPublicationManifestV1(value: unknown, budget?: PublicationValidationBudgetV1): StaticPublicationManifestV1;
+
+// export: planPublicationRoutesV1
+export declare function planPublicationRoutesV1(request: PublicationRoutePlanRequestV1): PublicationRoutePlanV1;
 
 // export: planPublicationWebQualityV1
 export declare function planPublicationWebQualityV1(projectValue: unknown, experienceValue: unknown): PublicationWebQualityPlanV1;
@@ -415,6 +427,9 @@ export interface PublicationNegotiationIssueV1 {
     message: string;
 }
 
+// export: PublicationOutputProfileV1
+export type PublicationOutputProfileV1 = "directory" | "portable-file";
+
 // export: PublicationPageEntryV1
 export interface PublicationPageEntryV1 {
     sourceId: string;
@@ -525,10 +540,69 @@ export interface PublicationRetentionPolicyV1 {
     graceSeconds: number;
 }
 
+// export: PublicationRouteChangeV1
+export interface PublicationRouteChangeV1 {
+    kind: "assigned" | "changed" | "reactivated" | "tombstoned";
+    sourceId: string;
+    previousRoute?: string;
+    nextRoute: string;
+}
+
+// export: PublicationRouteOutputV1
+export interface PublicationRouteOutputV1 {
+    sourceId: string;
+    route: string;
+    outputPath: string;
+}
+
 // export: PublicationRouteOverrideV1
 export interface PublicationRouteOverrideV1 {
     sourceId: string;
     route: string;
+}
+
+// export: PublicationRoutePageV1
+export interface PublicationRoutePageV1 {
+    sourceId: string;
+    title: string;
+}
+
+// export: PublicationRoutePlanningErrorCodeV1
+export type PublicationRoutePlanningErrorCodeV1 = "duplicate-source-id" | "duplicate-route-record" | "duplicate-custom-route" | "unknown-custom-source" | "unknown-tombstone-source" | "conflicting-source-state" | "invalid-route-policy" | "invalid-route-record" | "unsafe-prefix" | "unsafe-route" | "unsafe-output-path" | "route-collision" | "output-path-collision";
+
+// export: PublicationRoutePlanningErrorV1
+export declare class PublicationRoutePlanningErrorV1 extends Error {
+    readonly code: PublicationRoutePlanningErrorCodeV1;
+    readonly details: Readonly<{
+        sourceId?: string;
+        otherSourceId?: string;
+        route?: string;
+        path?: string;
+    }>;
+    constructor(code: PublicationRoutePlanningErrorCodeV1, message: string, details?: Readonly<{
+        sourceId?: string;
+        otherSourceId?: string;
+        route?: string;
+        path?: string;
+    }>);
+}
+
+// export: PublicationRoutePlanRequestV1
+export interface PublicationRoutePlanRequestV1 {
+    pages: readonly PublicationRoutePageV1[];
+    previousRoutes: readonly PublicationRouteRecordV1[];
+    tombstoneSourceIds: readonly string[];
+    policy: PublicationRoutePolicyV1;
+    outputProfile: PublicationOutputProfileV1;
+    reservedRoutes?: readonly string[];
+    reservedOutputPaths?: readonly string[];
+}
+
+// export: PublicationRoutePlanV1
+export interface PublicationRoutePlanV1 {
+    routes: readonly PublicationRouteRecordV1[];
+    activeOutputs: readonly PublicationRouteOutputV1[];
+    changes: readonly PublicationRouteChangeV1[];
 }
 
 // export: PublicationRoutePolicyV1
@@ -548,6 +622,9 @@ export interface PublicationRouteRecordV1 {
     assignedBy: "generated" | "operator";
     previousRoutes: readonly string[];
 }
+
+// export: publicationRouteToOutputPathV1
+export declare function publicationRouteToOutputPathV1(route: string, outputProfile: PublicationOutputProfileV1): string;
 
 // export: PublicationScopeV1
 export type PublicationScopeV1 = {
@@ -611,6 +688,9 @@ export interface PublicationSeoOptionsV1 {
     socialCards: "metadata-only" | "generated";
     feed: "disabled" | "rss" | "atom";
 }
+
+// export: publicationSlugV1
+export declare function publicationSlugV1(title: string): string;
 
 // export: PublicationSourcePageSnapshotV1
 export interface PublicationSourcePageSnapshotV1 {
@@ -756,7 +836,7 @@ export interface StaticPublicationManifestV1 {
     configDigest: string;
     lockfileDigest: string;
     base: string;
-    outputProfile: "directory" | "portable-file";
+    outputProfile: PublicationOutputProfileV1;
     pages: readonly BuiltPageV1[];
     assets: readonly BuiltAssetV1[];
     experience: {
@@ -772,6 +852,9 @@ export interface StaticPublicationManifestV1 {
     verification: PublicationVerificationSummaryV1;
     buildDigest: string;
 }
+
+// export: validatePublicationOutputPathV1
+export declare function validatePublicationOutputPathV1(path: string): string;
 ```
 
 ### Entry point `./node`
