@@ -26,6 +26,12 @@ asset references while they are still logical bundle route/path values. It
 rejects unsafe fragments, duplicate anchors, unsafe external URLs, and dangling
 page, anchor, or asset references before any builder can emit HTML.
 
+`canonicalPublicationJsonV1()` and the `digestPublication*V1()` helpers use
+browser Web Crypto over sorted canonical JSON. They preserve array order,
+exclude recognized private/volatile fields and self digests, reject ambiguous
+JSON/cycles, and validate bundle-page-route-link-asset integrity before a
+bundle identity is calculated.
+
 Use `@atlcli/web-publish/node` for bounded filesystem helpers. Astro,
 Starlight, Pagefind execution, Confluence acquisition/authentication, CLI
 orchestration, and deployment belong to separate adapters or hosts.

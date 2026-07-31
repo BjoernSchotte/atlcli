@@ -1425,7 +1425,7 @@ existing export behavior remains regression-green.
       deterministic collisions, and case/output-path collision rejection.
 - [x] Implement stable page-local anchors and builder-neutral typed page/asset
       references.
-- [ ] Implement canonical JSON/digest functions that exclude volatile/private
+- [x] Implement canonical JSON/digest functions that exclude volatile/private
       data and reject cycles/dangling references.
 - [ ] Implement refresh diff semantics that distinguish delete, exclude,
       out-of-scope, and inaccessible.

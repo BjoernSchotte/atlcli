@@ -7,6 +7,9 @@
 ### Entry point `.`
 
 ```ts
+// export: assertPublicationBundleReferencesV1
+export declare function assertPublicationBundleReferencesV1(bundle: PublicationBundleV1, pages: readonly PublicationPageV1[]): void;
+
 // export: AstroAtlcliIntegrationOptionsV1
 export interface AstroAtlcliIntegrationOptionsV1 {
     bundlePath: string;
@@ -84,11 +87,26 @@ export interface BuiltSeoArtifactsV1 {
     digest: string;
 }
 
+// export: canonicalPublicationJsonV1
+export declare function canonicalPublicationJsonV1(value: unknown): string;
+
 // export: createPublicationRendererRegistryV1
 export declare function createPublicationRendererRegistryV1(descriptorValues: readonly unknown[]): PublicationRendererRegistryV1;
 
 // export: DEFAULT_PUBLICATION_VALIDATION_BUDGET_V1
 export declare const DEFAULT_PUBLICATION_VALIDATION_BUDGET_V1: Readonly<PublicationValidationBudgetV1>;
+
+// export: digestPublicationBundleV1
+export declare function digestPublicationBundleV1(bundle: PublicationBundleV1, pages: readonly PublicationPageV1[]): Promise<string>;
+
+// export: digestPublicationJsonV1
+export declare function digestPublicationJsonV1(value: unknown): Promise<string>;
+
+// export: digestPublicationPageV1
+export declare function digestPublicationPageV1(page: PublicationPageV1): Promise<string>;
+
+// export: digestPublicationRefreshPlanV1
+export declare function digestPublicationRefreshPlanV1(plan: PublicationRefreshPlanV1): Promise<string>;
 
 // export: negotiatePublicationExperienceV1
 export declare function negotiatePublicationExperienceV1(selection: PublicationExperienceSelectionV1, descriptorValue: unknown, tokenValidator: PublicationDesignTokenValidatorV1): PublicationExperienceNegotiationV1;
@@ -257,6 +275,9 @@ export interface PublicationBuildResultV1 {
     outputDirectory: string;
 }
 
+// export: publicationBundleDigestInputV1
+export declare function publicationBundleDigestInputV1(bundle: PublicationBundleV1): Omit<PublicationBundleV1, "bundleDigest" | "createdBy">;
+
 // export: PublicationBundleV1
 export interface PublicationBundleV1 {
     schema: typeof PUBLICATION_BUNDLE_SCHEMA_V1;
@@ -314,6 +335,15 @@ export interface PublicationDesignTokenValidatorV1 {
 
 // export: PublicationDesignTokenValueV1
 export type PublicationDesignTokenValueV1 = string | number | boolean;
+
+// export: PublicationDigestErrorCodeV1
+export type PublicationDigestErrorCodeV1 = "unsupported-value" | "cyclic-value" | "missing-web-crypto" | "duplicate-page" | "duplicate-bundle-page" | "bundle-page-mismatch" | "missing-active-route" | "route-mismatch" | "duplicate-route-record";
+
+// export: PublicationDigestErrorV1
+export declare class PublicationDigestErrorV1 extends Error {
+    readonly code: PublicationDigestErrorCodeV1;
+    constructor(code: PublicationDigestErrorCodeV1, message: string);
+}
 
 // export: PublicationEditLinkOptionsV1
 export type PublicationEditLinkOptionsV1 = {
@@ -451,6 +481,9 @@ export interface PublicationNegotiationIssueV1 {
 // export: PublicationOutputProfileV1
 export type PublicationOutputProfileV1 = "directory" | "portable-file";
 
+// export: publicationPageDigestInputV1
+export declare function publicationPageDigestInputV1(page: PublicationPageV1): Omit<PublicationPageV1, "pageDigest">;
+
 // export: PublicationPageEntryV1
 export interface PublicationPageEntryV1 {
     sourceId: string;
@@ -532,6 +565,9 @@ export declare class PublicationReferencePlanningErrorV1 extends Error {
 export interface PublicationReferencePlanV1 {
     pages: readonly PublicationPageReferencesV1[];
 }
+
+// export: publicationRefreshPlanDigestInputV1
+export declare function publicationRefreshPlanDigestInputV1(plan: PublicationRefreshPlanV1): Omit<PublicationRefreshPlanV1, "previousBundleDigest" | "planDigest">;
 
 // export: PublicationRefreshPlanV1
 export interface PublicationRefreshPlanV1 {
