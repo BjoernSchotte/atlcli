@@ -10,7 +10,7 @@
 
 ### Entry point `.` — experimental
 
-- exported symbols (7): ASTRO_EXPORT_BLOCKS_DATA_PREFIX_V1, AstroExportBlockRenderContextV1, AstroExportDocumentPropsV1, AstroResolvedAssetV1, AstroResolvedHeadingV1, AstroResolvedLinkV1, astroExportAssetKeyV1
+- exported symbols (13): ASTRO_EXPORT_BLOCKS_DATA_PREFIX_V1, ASTRO_EXPORT_BLOCK_OVERRIDE_SLOTS_V1, AstroExportBlockOverrideDescriptorV1, AstroExportBlockOverrideErrorV1, AstroExportBlockOverrideSelectionV1, AstroExportBlockOverrideSlotV1, AstroExportBlockRenderContextV1, AstroExportDocumentPropsV1, AstroResolvedAssetV1, AstroResolvedHeadingV1, AstroResolvedLinkV1, astroExportAssetKeyV1, createAstroExportBlockOverrideRegistryV1
 
 ### Entry point `./fixtures` — internal
 

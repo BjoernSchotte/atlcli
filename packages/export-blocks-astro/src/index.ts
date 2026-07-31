@@ -46,3 +46,12 @@ export function astroExportAssetKeyV1(source: ImageSource): string {
 
 /** The stable semantic marker prefix used by the render kit's stylesheet. */
 export const ASTRO_EXPORT_BLOCKS_DATA_PREFIX_V1 = "data-atlcli-block";
+
+export {
+  ASTRO_EXPORT_BLOCK_OVERRIDE_SLOTS_V1,
+  AstroExportBlockOverrideErrorV1,
+  createAstroExportBlockOverrideRegistryV1,
+  type AstroExportBlockOverrideDescriptorV1,
+  type AstroExportBlockOverrideSelectionV1,
+  type AstroExportBlockOverrideSlotV1,
+} from "./overrides.js";

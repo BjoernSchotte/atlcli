@@ -7,11 +7,49 @@
 ### Entry point `.`
 
 ```ts
+// export: ASTRO_EXPORT_BLOCK_OVERRIDE_SLOTS_V1
+export declare const ASTRO_EXPORT_BLOCK_OVERRIDE_SLOTS_V1: readonly [
+    "heading",
+    "paragraph",
+    "code",
+    "callout",
+    "expand",
+    "list",
+    "layout",
+    "table",
+    "image",
+    "media-fallback",
+    "blockquote",
+    "smart-card",
+    "unknown"
+];
+
 // export: ASTRO_EXPORT_BLOCKS_DATA_PREFIX_V1
 export declare const ASTRO_EXPORT_BLOCKS_DATA_PREFIX_V1 = "data-atlcli-block";
 
 // export: astroExportAssetKeyV1
 export declare function astroExportAssetKeyV1(source: ImageSource): string;
+
+// export: AstroExportBlockOverrideDescriptorV1
+export interface AstroExportBlockOverrideDescriptorV1 {
+    id: string;
+    version: string;
+    slot: AstroExportBlockOverrideSlotV1;
+    module: string;
+}
+
+// export: AstroExportBlockOverrideErrorV1
+export declare class AstroExportBlockOverrideErrorV1 extends Error {
+}
+
+// export: AstroExportBlockOverrideSelectionV1
+export interface AstroExportBlockOverrideSelectionV1 {
+    schema: "atlcli.export-blocks-astro-overrides/1";
+    selected: Readonly<Partial<Record<AstroExportBlockOverrideSlotV1, string>>>;
+}
+
+// export: AstroExportBlockOverrideSlotV1
+export type AstroExportBlockOverrideSlotV1 = (typeof ASTRO_EXPORT_BLOCK_OVERRIDE_SLOTS_V1)[number];
 
 // export: AstroExportBlockRenderContextV1
 export interface AstroExportBlockRenderContextV1 {
@@ -48,6 +86,9 @@ export interface AstroResolvedLinkV1 {
     href: string;
     kind: "page" | "asset" | "external" | "unresolved";
 }
+
+// export: createAstroExportBlockOverrideRegistryV1
+export declare function createAstroExportBlockOverrideRegistryV1(available: readonly AstroExportBlockOverrideDescriptorV1[], selection: AstroExportBlockOverrideSelectionV1): ReadonlyMap<AstroExportBlockOverrideSlotV1, AstroExportBlockOverrideDescriptorV1>;
 ```
 
 ### Entry point `./fixtures`

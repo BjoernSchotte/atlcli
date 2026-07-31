@@ -1528,7 +1528,7 @@ the active bundle is always complete and digest-valid.
 - [x] Accept only `ExportBlock[]` plus the versioned locale/heading/link/asset/
       note render context; perform no acquisition, auth, or implicit network I/O.
 - [x] Use Astro escaping by default; expose no caller/raw-string `set:html` API.
-- [ ] Implement a closed, build-selected override registry with versioned
+- [x] Implement a closed, build-selected override registry with versioned
       descriptors and schema-validated payloads; source content can never select
       or parameterize a component/module import.
 - [ ] Export minimal accessible baseline styles, semantic slots, versioned CSS
