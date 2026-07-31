@@ -1423,7 +1423,7 @@ existing export behavior remains regression-green.
       existing truth table unchanged.
 - [x] Implement stable route registry, custom routes, tombstones, safe slugs,
       deterministic collisions, and case/output-path collision rejection.
-- [ ] Implement stable page-local anchors and builder-neutral typed page/asset
+- [x] Implement stable page-local anchors and builder-neutral typed page/asset
       references.
 - [ ] Implement canonical JSON/digest functions that exclude volatile/private
       data and reject cycles/dangling references.

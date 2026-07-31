@@ -20,6 +20,12 @@ case-folded, or final output-path collisions. Logical routes stay independent
 of Astro; `publicationRouteToOutputPathV1()` performs the final directory/file
 profile mapping.
 
+`planPublicationReferencesV1()` performs the next, builder-neutral stage. It
+derives stable page-local heading/bookmark anchors and resolves typed page and
+asset references while they are still logical bundle route/path values. It
+rejects unsafe fragments, duplicate anchors, unsafe external URLs, and dangling
+page, anchor, or asset references before any builder can emit HTML.
+
 Use `@atlcli/web-publish/node` for bounded filesystem helpers. Astro,
 Starlight, Pagefind execution, Confluence acquisition/authentication, CLI
 orchestration, and deployment belong to separate adapters or hosts.

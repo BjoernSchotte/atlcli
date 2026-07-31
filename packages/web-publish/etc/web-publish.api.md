@@ -99,6 +99,9 @@ export declare function negotiatePublicationRenderersV1(policy: PublicationRende
 // export: negotiatePublicationSearchV1
 export declare function negotiatePublicationSearchV1(options: PublicationSearchOptionsV1, providerValue: unknown, experience: PublicationExperienceDescriptorV1): PublicationSearchNegotiationV1;
 
+// export: normalizePublicationAnchorReferenceV1
+export declare function normalizePublicationAnchorReferenceV1(value: string): string;
+
 // export: normalizePublicationRouteForPrefixV1
 export declare function normalizePublicationRouteForPrefixV1(route: string, prefix: string): string;
 
@@ -141,6 +144,15 @@ export declare function parsePublishRunRequestV1(value: unknown, budget?: Public
 // export: parseStaticPublicationManifestV1
 export declare function parseStaticPublicationManifestV1(value: unknown, budget?: PublicationValidationBudgetV1): StaticPublicationManifestV1;
 
+// export: PlanPublicationReferencesRequestV1
+export interface PlanPublicationReferencesRequestV1 {
+    pages: readonly PublicationReferencePageInputV1[];
+    assets: readonly PublicationAssetEntryV1[];
+}
+
+// export: planPublicationReferencesV1
+export declare function planPublicationReferencesV1(request: PlanPublicationReferencesRequestV1): PublicationReferencePlanV1;
+
 // export: planPublicationRoutesV1
 export declare function planPublicationRoutesV1(request: PublicationRoutePlanRequestV1): PublicationRoutePlanV1;
 
@@ -180,6 +192,15 @@ export type PublicationAnalyticsOptionsV1 = {
     respectDoNotTrack: true;
     searchTerms: false;
 };
+
+// export: PublicationAnchorV1
+export interface PublicationAnchorV1 {
+    anchorId: string;
+    sourceAnchor?: string;
+    kind: "heading" | "bookmark";
+    level?: 1 | 2 | 3 | 4 | 5 | 6;
+    text?: string;
+}
 
 // export: PublicationAssetEntryV1
 export interface PublicationAssetEntryV1 {
@@ -437,6 +458,15 @@ export interface PublicationPageEntryV1 {
     pageDigest: string;
 }
 
+// export: PublicationPageReferencesV1
+export interface PublicationPageReferencesV1 {
+    sourceId: string;
+    route: string;
+    anchors: readonly PublicationAnchorV1[];
+    links: readonly ResolvedPublicationLinkReferenceV1[];
+    assets: readonly ResolvedPublicationAssetV1[];
+}
+
 // export: PublicationPageV1
 export interface PublicationPageV1 {
     schema: typeof PUBLICATION_PAGE_SCHEMA_V1;
@@ -478,6 +508,29 @@ export interface PublicationProjectV1 {
     builder: AstroPublicationBuilderOptionsV1;
     retention: PublicationRetentionPolicyV1;
     activeBundleDigest?: string;
+}
+
+// export: PublicationReferencePageInputV1
+export interface PublicationReferencePageInputV1 {
+    sourceId: string;
+    route: string;
+    blocks: readonly ExportBlock[];
+    links: readonly PublicationLinkReferenceV1[];
+    assetIds: readonly string[];
+}
+
+// export: PublicationReferencePlanningErrorCodeV1
+export type PublicationReferencePlanningErrorCodeV1 = "duplicate-page" | "duplicate-route" | "duplicate-asset" | "duplicate-reference" | "duplicate-anchor" | "unsafe-anchor" | "unsafe-external-link" | "dangling-page-reference" | "dangling-anchor-reference" | "dangling-asset-reference";
+
+// export: PublicationReferencePlanningErrorV1
+export declare class PublicationReferencePlanningErrorV1 extends Error {
+    readonly code: PublicationReferencePlanningErrorCodeV1;
+    constructor(code: PublicationReferencePlanningErrorCodeV1, message: string);
+}
+
+// export: PublicationReferencePlanV1
+export interface PublicationReferencePlanV1 {
+    pages: readonly PublicationPageReferencesV1[];
 }
 
 // export: PublicationRefreshPlanV1
@@ -797,6 +850,12 @@ export interface ResolvedPublicationAssetV1 {
     byteLength: number;
     sha256: string;
     disposition: PublicationAssetEntryV1["disposition"];
+}
+
+// export: ResolvedPublicationLinkReferenceV1
+export interface ResolvedPublicationLinkReferenceV1 {
+    referenceId: string;
+    target: ResolvedPublicationLinkV1;
 }
 
 // export: ResolvedPublicationLinkV1

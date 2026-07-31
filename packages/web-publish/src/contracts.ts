@@ -238,6 +238,25 @@ export type ResolvedPublicationLinkV1 =
   | { kind: "external"; href: string }
   | { kind: "unresolved"; label: string };
 
+/**
+ * One safe, page-local HTML fragment identity. `sourceAnchor` preserves the
+ * normalized source-side lookup key when an authored bookmark supplied one;
+ * builders use only `anchorId` and never need to know the source format.
+ */
+export interface PublicationAnchorV1 {
+  anchorId: string;
+  sourceAnchor?: string;
+  kind: "heading" | "bookmark";
+  level?: 1 | 2 | 3 | 4 | 5 | 6;
+  text?: string;
+}
+
+/** A resolved reference retains its owner and source-local identity. */
+export interface ResolvedPublicationLinkReferenceV1 {
+  referenceId: string;
+  target: ResolvedPublicationLinkV1;
+}
+
 export interface PublicationAssetReferenceV1 {
   kind: "asset";
   assetId: string;
@@ -256,6 +275,23 @@ export interface ResolvedHeadingV1 {
   anchorId: string;
   level: 1 | 2 | 3 | 4 | 5 | 6;
   text: string;
+}
+
+/**
+ * Builder-neutral reference material for one source page. Routes and asset
+ * paths remain logical bundle paths: the Astro integration applies `base` and
+ * its selected output URL profile only while it writes HTML.
+ */
+export interface PublicationPageReferencesV1 {
+  sourceId: string;
+  route: string;
+  anchors: readonly PublicationAnchorV1[];
+  links: readonly ResolvedPublicationLinkReferenceV1[];
+  assets: readonly ResolvedPublicationAssetV1[];
+}
+
+export interface PublicationReferencePlanV1 {
+  pages: readonly PublicationPageReferencesV1[];
 }
 
 export interface PublicationDependencyV1 {
