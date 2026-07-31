@@ -1442,7 +1442,7 @@ digest; route identity survives rename/move; every internal reference resolves.
 
 - [x] Add `web` additively to Confluence export-control, macro target, source
       resolver, and macro option contracts.
-- [ ] Freeze existing DOCX/PDF/Word target truth tables and API output.
+- [x] Freeze existing DOCX/PDF/Word target truth tables and API output.
 - [ ] Resolve macros independently per page with correct page identity and
       page-local TOC/document context.
 - [ ] Define closed macro-to-render-model mappings, starting with TOC, Jira
