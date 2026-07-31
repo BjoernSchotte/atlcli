@@ -1520,14 +1520,14 @@ the active bundle is always complete and digest-valid.
 - [x] Add Astro-native, Starlight-free `@atlcli/export-blocks-astro` as a
       public-0.x package with Astro peer range, README, API report, closure
       report, named exports, fixture exports, and no Node-only default entry.
-- [ ] Implement `ExportDocument.astro` plus trusted components for every
+- [x] Implement `ExportDocument.astro` plus trusted components for every
       `ExportBlock` and inline discriminator with compile-time exhaustiveness.
 - [ ] Cover headings/anchors, paragraphs/marks, lists/tasks, tables/spans,
       callouts, code, figures/captions, layouts, expand/details, status, links,
       assets, Smart Cards, and visible unknown fallbacks.
-- [ ] Accept only `ExportBlock[]` plus the versioned locale/heading/link/asset/
+- [x] Accept only `ExportBlock[]` plus the versioned locale/heading/link/asset/
       note render context; perform no acquisition, auth, or implicit network I/O.
-- [ ] Use Astro escaping by default; expose no caller/raw-string `set:html` API.
+- [x] Use Astro escaping by default; expose no caller/raw-string `set:html` API.
 - [ ] Implement a closed, build-selected override registry with versioned
       descriptors and schema-validated payloads; source content can never select
       or parameterize a component/module import.

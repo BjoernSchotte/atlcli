@@ -10,6 +10,9 @@
 // export: ASTRO_EXPORT_BLOCKS_DATA_PREFIX_V1
 export declare const ASTRO_EXPORT_BLOCKS_DATA_PREFIX_V1 = "data-atlcli-block";
 
+// export: astroExportAssetKeyV1
+export declare function astroExportAssetKeyV1(source: ImageSource): string;
+
 // export: AstroExportBlockRenderContextV1
 export interface AstroExportBlockRenderContextV1 {
     locale: string;
@@ -50,6 +53,9 @@ export interface AstroResolvedLinkV1 {
 ### Entry point `./fixtures`
 
 ```ts
+// export: EXPORT_BLOCKS_ASTRO_ALL_FIELDS_FIXTURE_V1
+export declare const EXPORT_BLOCKS_ASTRO_ALL_FIELDS_FIXTURE_V1: readonly ExportBlock[];
+
 // export: EXPORT_BLOCKS_ASTRO_MINIMAL_CONTEXT_V1
 export declare const EXPORT_BLOCKS_ASTRO_MINIMAL_CONTEXT_V1: AstroExportBlockRenderContextV1;
 

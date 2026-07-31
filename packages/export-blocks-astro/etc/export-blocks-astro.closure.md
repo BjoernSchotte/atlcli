@@ -10,8 +10,8 @@
 
 ### Entry point `.` — experimental
 
-- exported symbols (6): ASTRO_EXPORT_BLOCKS_DATA_PREFIX_V1, AstroExportBlockRenderContextV1, AstroExportDocumentPropsV1, AstroResolvedAssetV1, AstroResolvedHeadingV1, AstroResolvedLinkV1
+- exported symbols (7): ASTRO_EXPORT_BLOCKS_DATA_PREFIX_V1, AstroExportBlockRenderContextV1, AstroExportDocumentPropsV1, AstroResolvedAssetV1, AstroResolvedHeadingV1, AstroResolvedLinkV1, astroExportAssetKeyV1
 
 ### Entry point `./fixtures` — internal
 
-- exported symbols (2): EXPORT_BLOCKS_ASTRO_MINIMAL_CONTEXT_V1, EXPORT_BLOCKS_ASTRO_MINIMAL_FIXTURE_V1
+- exported symbols (3): EXPORT_BLOCKS_ASTRO_ALL_FIELDS_FIXTURE_V1, EXPORT_BLOCKS_ASTRO_MINIMAL_CONTEXT_V1, EXPORT_BLOCKS_ASTRO_MINIMAL_FIXTURE_V1

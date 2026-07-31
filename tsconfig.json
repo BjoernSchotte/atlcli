@@ -13,6 +13,7 @@
     "src",
     "astro.config.mjs",
     "apps/browser-export-harness",
-    "packages/web-publish-astro/fixtures/**"
+    "packages/web-publish-astro/fixtures/**",
+    "packages/export-blocks-astro/fixtures/**"
   ]
 }

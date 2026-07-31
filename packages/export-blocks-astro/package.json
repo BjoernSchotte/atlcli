@@ -25,6 +25,7 @@
       "types": "./dist/fixtures.d.ts",
       "default": "./dist/fixtures.js"
     },
+    "./components/ExportDocument.astro": "./dist/components/ExportDocument.astro",
     "./styles.css": "./dist/styles.css"
   },
   "scripts": {

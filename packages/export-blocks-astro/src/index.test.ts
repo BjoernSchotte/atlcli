@@ -21,3 +21,17 @@ test("is a Starlight-free Astro render-kit package with only the normalized bloc
   await expect(access(resolve(packageRoot, "src/components/ExportDocument.astro"))).resolves.toBeNull();
   await expect(access(resolve(packageRoot, "src/styles.css"))).resolves.toBeNull();
 });
+
+test("render-kit sources expose no implicit acquisition, network, or raw-html sink", async () => {
+  const packageRoot = resolve(import.meta.dir, "..");
+  const sources = await Promise.all([
+    "src/index.ts", "src/contracts.ts", "src/components/ExportDocument.astro",
+    "src/components/Block.astro", "src/components/Inline.astro", "src/components/InlineNode.astro",
+  ].map((path) => readFile(resolve(packageRoot, path), "utf8")));
+  for (const source of sources) {
+    expect(source).not.toContain("fetch(");
+    expect(source).not.toContain("set:html");
+    expect(source).not.toContain("@atlcli/confluence");
+    expect(source).not.toContain("from \"node:");
+  }
+});

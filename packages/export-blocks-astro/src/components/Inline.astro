@@ -1,0 +1,9 @@
+---
+import type { InlineNode } from "@atlcli/export-blocks";
+import InlineNodeView from "./InlineNode.astro";
+
+interface Props { nodes: readonly InlineNode[]; locale: string; }
+const { nodes, locale } = Astro.props;
+---
+
+{nodes.map((node) => <InlineNodeView node={node} locale={locale} />)}

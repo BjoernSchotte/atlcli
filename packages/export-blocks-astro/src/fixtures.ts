@@ -23,6 +23,47 @@ export const EXPORT_BLOCKS_ASTRO_MINIMAL_CONTEXT_V1: AstroExportBlockRenderConte
     "publication-guide": Object.freeze({ id: "publication-guide", level: 1, text: "Publication guide" }),
   }),
   links: Object.freeze({}),
-  assets: Object.freeze({}),
+  assets: Object.freeze({
+    "attachment::diagram.svg": Object.freeze({
+      src: "/assets/diagram.svg",
+      mediaType: "image/svg+xml",
+      alt: "Resolved diagram",
+    }),
+  }),
   notes: "inline",
 });
+
+/** Exhaustive discriminator fixture for the plain-Astro render-kit consumer. */
+export const EXPORT_BLOCKS_ASTRO_ALL_FIELDS_FIXTURE_V1: readonly ExportBlock[] = Object.freeze([
+  {
+    type: "heading", level: 1, explicitAnchor: "all-fields",
+    content: [{ type: "text", text: "All fields", marks: ["bold", "underline"] }],
+  },
+  {
+    type: "paragraph",
+    content: [
+      { type: "text", text: "Text " },
+      { type: "link", target: { kind: "external", href: "https://example.test/guide" }, content: [{ type: "text", text: "link" }] },
+      { type: "mention", accountId: "private", displayName: "Reader" },
+      { type: "date", timestamp: "1704067200000" },
+      { type: "status", text: "done", color: "green" },
+      { type: "smartCard", card: { appearance: "inline", source: "url", title: "Inline card", url: "https://example.test/card" } },
+      { type: "media", media: { filename: "inline.png" }, alt: "Inline media" },
+      { type: "placeholder", text: "hidden" }, { type: "lineBreak" },
+    ],
+  },
+  { type: "smartCard", card: { appearance: "block", source: "url", title: "Block card", url: "https://example.test/card" } },
+  { type: "codeBlock", language: "ts", title: "example.ts", code: "const answer = 42;" },
+  { type: "callout", kind: "info", title: "Notice", content: [{ type: "paragraph", content: [{ type: "text", text: "Callout body" }] }] },
+  { type: "expand", nested: false, title: "Details", content: [{ type: "paragraph", content: [{ type: "text", text: "Expanded" }] }] },
+  { type: "list", ordered: true, start: 3, listKind: "task", items: [{ kind: "task", checked: true, content: [{ type: "paragraph", content: [{ type: "text", text: "Task" }] }] }] },
+  { type: "layout", columns: [{ width: 50, content: [{ type: "paragraph", content: [{ type: "text", text: "Column" }] }] }, { width: 50, content: [] }] },
+  { type: "table", rows: [{ cells: [{ header: true, colspan: 1, rowspan: 1, content: [{ type: "paragraph", content: [{ type: "text", text: "Header" }] }] }, { header: false, colspan: 1, rowspan: 1, content: [{ type: "paragraph", content: [{ type: "text", text: "Cell" }] }] }] }] },
+  { type: "image", source: { kind: "attachment", filename: "diagram.svg" }, alt: "Diagram" },
+  { type: "mediaFallback", label: "Movie", media: { mediaType: "video", filename: "movie.mp4" } },
+  { type: "blockquote", content: [{ type: "paragraph", content: [{ type: "text", text: "Quote" }] }] },
+  { type: "divider" }, { type: "pageBreak" },
+  { type: "orientation", landscape: true, content: [{ type: "paragraph", content: [{ type: "text", text: "Landscape" }] }] },
+  { type: "anchor", name: "bookmark" },
+  { type: "unknown", macroName: "custom-widget", plainBody: "<not-html-executed />", body: [{ type: "paragraph", content: [{ type: "text", text: "Fallback body" }] }] },
+]);

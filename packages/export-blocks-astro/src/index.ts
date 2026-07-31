@@ -1,4 +1,4 @@
-import type { ExportBlock } from "@atlcli/export-blocks";
+import type { ExportBlock, ImageSource } from "@atlcli/export-blocks";
 
 export interface AstroResolvedHeadingV1 {
   id: string;
@@ -35,6 +35,13 @@ export interface AstroExportBlockRenderContextV1 {
 export interface AstroExportDocumentPropsV1 {
   blocks: readonly ExportBlock[];
   context: AstroExportBlockRenderContextV1;
+}
+
+/** Stable asset-context key; the source URL itself is never a rendering input. */
+export function astroExportAssetKeyV1(source: ImageSource): string {
+  return source.kind === "attachment"
+    ? `attachment:${source.pageId ?? ""}:${source.filename}`
+    : `external:${source.url}`;
 }
 
 /** The stable semantic marker prefix used by the render kit's stylesheet. */

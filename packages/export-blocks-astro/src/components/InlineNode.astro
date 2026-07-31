@@ -1,0 +1,57 @@
+---
+import {
+  formatAdfDateTimestamp,
+  inlineMediaDisplayText,
+  mentionDisplayText,
+  smartCardDisplayText,
+  statusDisplayText,
+  type InlineNode,
+} from "@atlcli/export-blocks";
+import { inlineNodeKindV1 } from "../contracts.js";
+import Inline from "./Inline.astro";
+
+interface Props { node: InlineNode; locale: string; }
+const { node, locale } = Astro.props;
+const kind = inlineNodeKindV1(node);
+const textClasses = kind === "text" ? {
+  "atlcli-mark-bold": node.marks?.includes("bold") ?? false,
+  "atlcli-mark-italic": node.marks?.includes("italic") ?? false,
+  "atlcli-mark-code": node.marks?.includes("code") ?? false,
+  "atlcli-mark-strike": node.marks?.includes("strike") ?? false,
+  "atlcli-mark-underline": node.marks?.includes("underline") ?? false,
+  "atlcli-mark-subscript": node.marks?.includes("subscript") ?? false,
+  "atlcli-mark-superscript": node.marks?.includes("superscript") ?? false,
+} : {};
+
+function safeHref(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  if (value.startsWith("/") || value.startsWith("#")) return value;
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" || url.protocol === "http:" || url.protocol === "mailto:" ? value : undefined;
+  } catch { return undefined; }
+}
+
+function hrefFor(node: Extract<InlineNode, { type: "link" }>): string | undefined {
+  switch (node.target.kind) {
+    case "external": return safeHref(node.target.href);
+    case "page": return safeHref(node.target.href);
+    case "attachment": return safeHref(node.target.href);
+    case "anchor": return safeHref(`#${node.target.anchor}`);
+  }
+}
+
+const linkHref = kind === "link" ? hrefFor(node) : undefined;
+---
+
+{kind === "text" && <span class:list={textClasses} style={node.color ? `color:${node.color}` : undefined}>{node.text}</span>}
+{kind === "link" && (linkHref
+  ? <a href={linkHref}><Inline nodes={node.content} locale={locale} /></a>
+  : <span data-atlcli-link-unresolved><Inline nodes={node.content} locale={locale} /></span>)}
+{kind === "mention" && <span data-atlcli-mention>@{mentionDisplayText(node)}</span>}
+{kind === "date" && <time datetime={node.timestamp}>{formatAdfDateTimestamp(node.timestamp, locale)}</time>}
+{kind === "status" && <span data-atlcli-status data-color={node.color}>{statusDisplayText(node)}</span>}
+{kind === "smartCard" && <span data-atlcli-smart-card>{smartCardDisplayText(node.card)}</span>}
+{kind === "media" && <span data-atlcli-inline-media>{inlineMediaDisplayText(node)}</span>}
+{kind === "placeholder" && <span data-atlcli-placeholder-hidden aria-hidden="true"></span>}
+{kind === "lineBreak" && <br />}

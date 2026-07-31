@@ -1,15 +1,16 @@
 ---
 import type { ExportBlock } from "@atlcli/export-blocks";
+import Block from "./Block.astro";
+import type { AstroExportBlockRenderContextV1 } from "../index.js";
 
 interface Props {
   blocks: readonly ExportBlock[];
-  locale: string;
-  direction: "ltr" | "rtl";
+  context: AstroExportBlockRenderContextV1;
 }
 
-const { blocks, locale, direction } = Astro.props;
+const { blocks, context } = Astro.props;
 ---
 
-<article data-atlcli-document data-atlcli-block-count={blocks.length} lang={locale} dir={direction}>
-  <slot />
+<article data-atlcli-document data-atlcli-block-count={blocks.length} lang={context.locale} dir={context.direction}>
+  {blocks.map((block) => <Block block={block} context={context} />)}
 </article>

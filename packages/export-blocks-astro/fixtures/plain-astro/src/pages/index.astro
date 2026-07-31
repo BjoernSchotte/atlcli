@@ -1,0 +1,17 @@
+---
+import ExportDocument from "@atlcli/export-blocks-astro/components/ExportDocument.astro";
+import {
+  EXPORT_BLOCKS_ASTRO_MINIMAL_CONTEXT_V1,
+  EXPORT_BLOCKS_ASTRO_ALL_FIELDS_FIXTURE_V1,
+} from "@atlcli/export-blocks-astro/fixtures";
+---
+
+<!doctype html>
+<html lang="en">
+  <body>
+    <ExportDocument
+      blocks={EXPORT_BLOCKS_ASTRO_ALL_FIELDS_FIXTURE_V1}
+      context={EXPORT_BLOCKS_ASTRO_MINIMAL_CONTEXT_V1}
+    />
+  </body>
+</html>
