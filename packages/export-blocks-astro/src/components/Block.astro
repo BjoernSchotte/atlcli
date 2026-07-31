@@ -2,6 +2,7 @@
 import {
   materializeTable,
   mediaFallbackDisplayText,
+  resolveCalloutIcon,
   smartCardDisplayText,
   type ExportBlock,
 } from "@atlcli/export-blocks";
@@ -9,6 +10,7 @@ import { exportBlockKindV1 } from "../contracts.js";
 import { astroExportAssetKeyV1, type AstroExportBlockRenderContextV1 } from "../index.js";
 import Inline from "./Inline.astro";
 import ExportDocument from "./ExportDocument.astro";
+import Caption from "./Caption.astro";
 
 interface Props { block: ExportBlock; context: AstroExportBlockRenderContextV1; }
 const { block, context } = Astro.props;
@@ -16,20 +18,21 @@ const kind = exportBlockKindV1(block);
 const table = kind === "table" ? materializeTable(block) : undefined;
 const HeadingTag = kind === "heading" ? `h${block.level}` : "div";
 const asset = kind === "image" ? context.assets[astroExportAssetKeyV1(block.source)] : undefined;
+const calloutIcon = kind === "callout" ? resolveCalloutIcon(block) : undefined;
 ---
 
 {kind === "heading" && <HeadingTag id={block.explicitAnchor} data-atlcli-block="heading"><Inline nodes={block.content} locale={context.locale} /></HeadingTag>}
 {kind === "paragraph" && <p data-atlcli-block="paragraph"><Inline nodes={block.content} locale={context.locale} /></p>}
 {kind === "smartCard" && <aside data-atlcli-block="smart-card">{smartCardDisplayText(block.card)}</aside>}
-{kind === "codeBlock" && <section data-atlcli-block="code"><pre><code class:list={{ [`language-${block.language ?? "plain"}`]: true }}>{block.code}</code></pre></section>}
-{kind === "callout" && <aside data-atlcli-block="callout" data-kind={block.kind}><strong>{block.title ?? block.kind}</strong><ExportDocument blocks={block.content} context={context} /></aside>}
+{kind === "codeBlock" && <figure data-atlcli-block="code">{block.title && <header>{block.title}</header>}<pre><code class:list={{ [`language-${block.language ?? "plain"}`]: true }}>{block.code}</code></pre>{block.caption && <Caption caption={block.caption} locale={context.locale} />}</figure>}
+{kind === "callout" && <aside data-atlcli-block="callout" data-kind={block.kind}>{calloutIcon && <span aria-hidden="true">{calloutIcon.source === "explicit" ? calloutIcon.text : calloutIcon.icon.symbol}</span>}<strong>{block.title ?? block.kind}</strong><ExportDocument blocks={block.content} context={context} /></aside>}
 {kind === "expand" && <details data-atlcli-block="expand" open><summary>{block.title ?? "Details"}</summary><ExportDocument blocks={block.content} context={context} /></details>}
 {kind === "list" && (block.ordered
-  ? <ol data-atlcli-block="list" start={block.start}>{block.items.map((item) => <li data-atlcli-task={item.kind === "task" ? String(item.checked === true) : undefined}><ExportDocument blocks={item.content} context={context} /></li>)}</ol>
-  : <ul data-atlcli-block="list">{block.items.map((item) => <li data-atlcli-task={item.kind === "task" ? String(item.checked === true) : undefined}><ExportDocument blocks={item.content} context={context} /></li>)}</ul>)}
+  ? <ol data-atlcli-block="list" start={block.start}>{block.items.map((item) => <li data-atlcli-task={item.kind === "task" ? String(item.checked === true) : undefined}>{item.kind === "task" && <input type="checkbox" checked={item.checked === true} disabled aria-label="Task status" />}<ExportDocument blocks={item.content} context={context} /></li>)}</ol>
+  : <ul data-atlcli-block="list">{block.items.map((item) => <li data-atlcli-task={item.kind === "task" ? String(item.checked === true) : undefined}>{item.kind === "task" && <input type="checkbox" checked={item.checked === true} disabled aria-label="Task status" />}<ExportDocument blocks={item.content} context={context} /></li>)}</ul>)}
 {kind === "layout" && <section data-atlcli-block="layout" style={`--atlcli-layout-columns:${block.columns.length}`}>{block.columns.map((column) => <div style={`--atlcli-layout-width:${column.width}%`}><ExportDocument blocks={column.content} context={context} /></div>)}</section>}
-{kind === "table" && <table data-atlcli-block="table"><tbody>{table?.rows.map((row) => <tr>{row.cells.map((cell) => cell.header ? <th colspan={cell.colspan} rowspan={cell.rowspan}><ExportDocument blocks={cell.content} context={context} /></th> : <td colspan={cell.colspan} rowspan={cell.rowspan}><ExportDocument blocks={cell.content} context={context} /></td>)}</tr>)}</tbody></table>}
-{kind === "image" && <figure data-atlcli-block="image">{asset ? <img src={asset.src} alt={block.alt ?? asset.alt ?? ""} /> : <span data-atlcli-asset-unresolved>{block.alt ?? (block.source.kind === "attachment" ? block.source.filename : "Image")}</span>}</figure>}
+{kind === "table" && <table data-atlcli-block="table">{block.caption && <caption><Inline nodes={block.caption.content} locale={context.locale} /></caption>}<tbody>{table?.rows.map((row) => <tr>{row.cells.map((cell) => cell.header ? <th scope="col" colspan={cell.colspan} rowspan={cell.rowspan}><ExportDocument blocks={cell.content} context={context} /></th> : <td colspan={cell.colspan} rowspan={cell.rowspan}><ExportDocument blocks={cell.content} context={context} /></td>)}</tr>)}</tbody></table>}
+{kind === "image" && <figure data-atlcli-block="image">{asset ? <img src={asset.src} alt={block.alt ?? asset.alt ?? ""} /> : <span data-atlcli-asset-unresolved>{block.alt ?? (block.source.kind === "attachment" ? block.source.filename : "Image")}</span>}{block.caption && <Caption caption={block.caption} locale={context.locale} />}</figure>}
 {kind === "mediaFallback" && <aside data-atlcli-block="media-fallback">{mediaFallbackDisplayText(block)}</aside>}
 {kind === "blockquote" && <blockquote data-atlcli-block="blockquote"><ExportDocument blocks={block.content} context={context} /></blockquote>}
 {kind === "divider" && <hr data-atlcli-block="divider" />}

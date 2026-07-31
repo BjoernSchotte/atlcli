@@ -27,6 +27,12 @@ test("plain Astro consumer renders every normalized discriminator without raw HT
     "anchor", "unknown",
   ]) expect(html).toContain(`data-atlcli-block=\"${kind}\"`);
   expect(html).toContain('src="/assets/diagram.svg"');
+  expect(html).toContain("<caption><span>Example table</span></caption>");
+  expect(html).toContain('data-atlcli-caption data-kind="code"');
+  expect(html).toContain('data-atlcli-caption data-kind="figure"');
+  expect(html).toContain('input type="checkbox" checked disabled');
+  expect(html).toContain('data-atlcli-status data-color="green"');
+  expect(html).toContain('href="https://example.test/guide"');
   expect(html).toContain("&lt;not-html-executed /&gt;");
   expect(html).not.toContain("<not-html-executed");
   expect(html).not.toContain("<script");

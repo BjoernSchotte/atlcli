@@ -1522,7 +1522,7 @@ the active bundle is always complete and digest-valid.
       report, named exports, fixture exports, and no Node-only default entry.
 - [x] Implement `ExportDocument.astro` plus trusted components for every
       `ExportBlock` and inline discriminator with compile-time exhaustiveness.
-- [ ] Cover headings/anchors, paragraphs/marks, lists/tasks, tables/spans,
+- [x] Cover headings/anchors, paragraphs/marks, lists/tasks, tables/spans,
       callouts, code, figures/captions, layouts, expand/details, status, links,
       assets, Smart Cards, and visible unknown fallbacks.
 - [x] Accept only `ExportBlock[]` plus the versioned locale/heading/link/asset/

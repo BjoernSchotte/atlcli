@@ -1,0 +1,10 @@
+---
+import type { Caption as CaptionModel } from "@atlcli/export-blocks";
+import Inline from "./Inline.astro";
+
+interface Props { caption: CaptionModel; locale: string; }
+const { caption, locale } = Astro.props;
+const label = caption.kind === "code" ? "Code" : caption.kind[0].toUpperCase() + caption.kind.slice(1);
+---
+
+<figcaption data-atlcli-caption data-kind={caption.kind}><span data-atlcli-caption-label>{label}: </span><Inline nodes={caption.content} locale={locale} /></figcaption>
