@@ -16,6 +16,7 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -499,6 +500,24 @@ globalThis.fetch = async (input, init) => {
 }
 
 function installHarness(extensionDir: string): void {
+  execFileSync(
+    "bun",
+    [
+      "run",
+      join(
+        EXTENSION_ROOT,
+        "scripts/build-research-dispatch-characterization.ts"
+      ),
+      join(
+        extensionDir,
+        "assets/research-dispatch-characterization.js"
+      ),
+    ],
+    {
+      cwd: join(EXTENSION_ROOT, "../.."),
+      stdio: "pipe",
+    }
+  );
   writeFileSync(
     join(extensionDir, "research-offscreen-bootstrap.js"),
     offscreenBootstrap()
@@ -669,6 +688,67 @@ test.afterAll(async () => {
   if (suiteRoot) rmSync(suiteRoot, { recursive: true, force: true });
 });
 
+test("intercepts declarative dynamic-schema dispatches in a packed MV3 worker", async () => {
+  const response = await page.evaluate(async () => {
+    const worker = new Worker(
+      chrome.runtime.getURL("assets/research-dispatch-characterization.js"),
+      { type: "module", name: "atlcli-research-dispatch-characterization" }
+    );
+    try {
+      return await new Promise<{
+        ok: boolean;
+        result?: {
+          messages: string[];
+          providerCalls: { jira: number; wiki: number };
+          denied: string[];
+          subagentModelCalls: number;
+          ptcConfigTaskId: string;
+          taskStatuses: Record<string, string>;
+        };
+        error?: { name: string; message: string; stack?: string };
+      }>((resolve, reject) => {
+        const timeout = setTimeout(
+          () => reject(new Error("Packed dispatch characterization timed out.")),
+          15_000
+        );
+        worker.addEventListener("message", (event) => {
+          if (event.data?.kind !== "dispatch-characterization-result") return;
+          clearTimeout(timeout);
+          resolve(event.data);
+        });
+        worker.addEventListener("error", (event) => {
+          clearTimeout(timeout);
+          reject(new Error(event.message));
+        });
+        worker.postMessage({ kind: "run-dispatch-characterization" });
+      });
+    } finally {
+      worker.terminate();
+    }
+  });
+
+  expect(response.ok, response.error?.stack ?? response.error?.message).toBe(true);
+  expect(
+    response.result?.providerCalls,
+    JSON.stringify(response, null, 2)
+  ).toEqual({ jira: 1, wiki: 1 });
+  expect(response.result?.denied).toEqual([
+    "deep-jira:wiki.search",
+    "deep-wiki:jira.issue.search",
+  ]);
+  expect(
+    response.result?.subagentModelCalls,
+    JSON.stringify(response, null, 2)
+  ).toBe(2);
+  expect(response.result?.ptcConfigTaskId).toBe("ptc-browser-task");
+  expect(response.result?.taskStatuses).toEqual({
+    "deep-jira": "completed",
+    "deep-wiki": "completed",
+  });
+  expect(response.result?.messages.some((message) => message.includes("deep-jira"))).toBe(true);
+  expect(response.result?.messages.some((message) => message.includes("deep-wiki"))).toBe(true);
+});
+
 test("runs bounded PTC in packed MV3, recreates workers, cancels, and renders safe Markdown", async ({
 }, testInfo) => {
   await openResearchScreen(page);
@@ -768,9 +848,28 @@ test("runs bounded PTC in packed MV3, recreates workers, cancels, and renders sa
     channel.postMessage({ kind: "release", marker: "hold-after-ptc" });
   }, CHANNEL_NAME);
 
-  await expect(page.getByTestId("research-report")).toBeVisible({
-    timeout: 60_000,
-  });
+  try {
+    await expect(page.getByTestId("research-report")).toBeVisible({
+      timeout: 60_000,
+    });
+  } catch (error) {
+    throw new Error(
+      JSON.stringify(
+        {
+          cause: error instanceof Error ? error.message : String(error),
+          events: await harnessEvents(page),
+          status: await page.getByRole("status").textContent().catch(() => null),
+          uiError:
+            (await page.getByTestId("research-error").count()) > 0
+              ? await page.getByTestId("research-error").textContent()
+              : null,
+          workerTargets: await researchWorkerTargets(root),
+        },
+        null,
+        2
+      )
+    );
+  }
   await expect(page.getByTestId("research-formatted-report")).toContainText(
     "DEMO-1"
   );

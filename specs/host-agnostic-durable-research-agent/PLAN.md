@@ -2173,7 +2173,7 @@ Shared:
       cross-eval/process state, guest clock/randomness, and child-state
       propagation. Assert the locally observed `@langchain/quickjs@1.0.0`
       behavior so an upstream upgrade cannot silently change the safety model.
-- [ ] Before package extraction, spike the research-owned dispatch interception
+- [x] Before package extraction, spike the research-owned dispatch interception
       adapter in both Node/Bun and a packed MV3 worker with a synthetic native
       `task()`. Prove host task-ID validation, task counting, concurrency
       admission, abort propagation, result-byte rejection, and quarantine of a
@@ -2186,6 +2186,15 @@ Shared:
       summarization, and general-purpose subagent middleware disabled in this
       spike and through T6. Preserve the successful adapter as a
       characterization harness.
+      Proven 2026-07-31 with one central `createDeepAgent`: the same synthetic
+      harness passes in Bun and a packed MV3 worker, dispatches two parallel
+      declarative subagents through native `task()` with dynamic
+      `responseSchema`, keeps disjoint Jira/Confluence grants isolated, and
+      proves task admission, concurrency, abort, late-result quarantine,
+      result-byte rejection, and explicit QuickJS PTC config propagation.
+      Browser context propagation is supplied by upstream PR
+      `langchain-ai/deepagentsjs#717`; the extension pins that PR's official
+      `pkg.pr.new` artifacts until released patch versions replace them.
 - [ ] Generate the exact production `ResearchPacketBodyV1`,
       `ResearchPacketBodyV2`, and `ReconciliationBodyV1` response schemas for
       every applicable role and admit each through the pinned QuickJS
