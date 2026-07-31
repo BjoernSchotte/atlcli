@@ -59,6 +59,11 @@
       "types": "./dist/scope-catalog-broker.d.ts",
       "default": "./dist/scope-catalog-broker.js"
     },
+    "./graph": {
+      "development": "./src/graph.ts",
+      "types": "./dist/graph.d.ts",
+      "default": "./dist/graph.js"
+    },
     "./node": {
       "development": "./src/index.node.ts",
       "types": "./dist/index.node.d.ts",

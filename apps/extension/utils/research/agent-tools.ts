@@ -1,4 +1,4 @@
-import { tool, type StructuredToolInterface } from "@langchain/core/tools";
+import { tool, type DynamicStructuredTool } from "@langchain/core/tools";
 import { z } from "zod/v4";
 import type { ResearchCapabilityBroker } from "./broker.js";
 import {
@@ -87,7 +87,7 @@ function inputKind(
 export function createResearchPtcTools(
   broker: ResearchCapabilityBroker,
   options: ResearchPtcToolOptions = {}
-): StructuredToolInterface[] {
+): DynamicStructuredTool[] {
   const invoke = async (
     id: ResearchToolId,
     input: unknown

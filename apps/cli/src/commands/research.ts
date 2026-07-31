@@ -31,6 +31,7 @@ import {
   FileSystemResearchWorkspace,
   type ResearchWorkspace,
 } from "@atlcli/research/node";
+import { composeResearchGraphV1 } from "@atlcli/research/graph";
 
 export interface ResearchCliInput {
   question: string;
@@ -151,6 +152,13 @@ export async function handleResearch(
     fail(opts, 1, ERROR_CODES.AUTH, "No active profile found. Run `atlcli auth login` or select --profile.", { profile: input.profile });
   }
   const request = buildResearchRequest(input, profile);
+  const researchGraph = composeResearchGraphV1({
+    schema: "atlcli.research-brief/v1",
+    question: request.question,
+    products: ["jira", "confluence"],
+    effort: "standard",
+    reconciliation: "auto",
+  });
   const apiKey = assertApiKey();
   const workspace = await FileSystemResearchWorkspace.createTemporary();
   const sessionId = `research-${randomUUID()}`;
@@ -169,6 +177,7 @@ export async function handleResearch(
       providers,
       budget,
       runId: sessionId,
+      researchGraph,
       options: {
         signal: controller.signal,
         onProgress: (progress) => process.stderr.write(`[research] phase=${progress.phase} calls=${progress.completedCalls}/${progress.maxCalls}\n`),
