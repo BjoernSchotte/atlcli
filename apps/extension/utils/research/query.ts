@@ -29,15 +29,60 @@ function addDateClauses(
   if (window?.to) clauses.push(`${field} <= "${window.to}"`);
 }
 
+const JIRA_RESEARCH_STOP_WORDS = new Set([
+  "and",
+  "confluence",
+  "der",
+  "die",
+  "for",
+  "jira",
+  "project",
+  "the",
+  "ticket",
+  "und",
+  "work",
+]);
+
+/**
+ * Turn an agent research intent into a small disjunction of Atlassian text
+ * terms. JQL's quoted `text ~ "multi word phrase"` is too exact for discovery
+ * across independently worded Confluence and Jira content. Every term remains
+ * host-escaped and the project/date clauses remain mandatory.
+ */
+export function jiraResearchTextTerms(value: string): string[] {
+  return [...new Set(
+    (stripControls(value).match(/[\p{L}\p{N}][\p{L}\p{N}_-]*/gu) ?? [])
+      .map((term) => term.trim())
+      .filter(
+        (term) =>
+          term.length >= 3 &&
+          !JIRA_RESEARCH_STOP_WORDS.has(term.toLocaleLowerCase())
+      )
+  )].slice(0, 6);
+}
+
 export function buildResearchJql(
   scope: ResearchScopeV1,
   query: ResearchSearchQueryV1
 ): string {
   const clauses = [
     `project in (${quotedList(scope.jiraProjectKeys, escapeResearchJqlLiteral)})`,
+    // The research detail capability currently projects the Jira description.
+    // Issues without one cannot support a publishable content claim and would
+    // only consume the bounded detail budget.
+    "description IS NOT EMPTY",
   ];
   addDateClauses(clauses, "updated", scope.timeWindow);
-  if (query.text) clauses.push(`text ~ "${escapeResearchJqlLiteral(query.text)}"`);
+  if (query.text) {
+    const terms = jiraResearchTextTerms(query.text);
+    if (terms.length > 0) {
+      clauses.push(
+        `(${terms
+          .map((term) => `text ~ "${escapeResearchJqlLiteral(term)}"`)
+          .join(" OR ")})`
+      );
+    }
+  }
   return `${clauses.join(" AND ")} ORDER BY updated DESC, key ASC`;
 }
 

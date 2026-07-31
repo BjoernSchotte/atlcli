@@ -259,10 +259,51 @@ function markdownText(value: string): string {
     .trim();
 }
 
-function markdownParagraph(value: string): string {
+function markdownTextFragment(value: string): string {
+  return value
+    .replace(/[\u0000-\u001f\u007f]/g, " ")
+    .replace(/\\/g, "\\\\")
+    .replace(/([`*_[\]<>])/g, "\\$1")
+    .replace(/\s+/g, " ");
+}
+
+function linkedMarkdownText(
+  value: string,
+  sources: Map<string, ResearchSourceReferenceV1>,
+  siteOrigin: string
+): string {
+  const tokens = new Map<string, ResearchSourceReferenceV1>();
+  for (const source of sources.values()) {
+    tokens.set(source.id, source);
+    if (source.issueKey) tokens.set(source.issueKey, source);
+  }
+  const pattern = [...tokens.keys()]
+    .sort((left, right) => right.length - left.length)
+    .map((token) => token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+    .join("|");
+  if (!pattern) return markdownText(value);
+  return value
+    .split(new RegExp(`(${pattern})`, "g"))
+    .filter(Boolean)
+    .map((part) => {
+      const source = tokens.get(part);
+      return source
+        ? `[${markdownText(source.issueKey ?? source.title)}](${safeSourceHref(source, siteOrigin)})`
+        : markdownTextFragment(part);
+    })
+    .join("")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function linkedMarkdownParagraph(
+  value: string,
+  sources: Map<string, ResearchSourceReferenceV1>,
+  siteOrigin: string
+): string {
   return value
     .split(/\n{2,}/)
-    .map((paragraph) => markdownText(paragraph))
+    .map((paragraph) => linkedMarkdownText(paragraph, sources, siteOrigin))
     .filter(Boolean)
     .join("\n\n");
 }
@@ -292,8 +333,13 @@ function renderFindings(
   const lines = [`## ${title}`, ""];
   if (findings.length === 0) return [...lines, "_None._", ""];
   for (const [index, finding] of findings.entries()) {
-    lines.push(`### ${index + 1}. ${markdownText(finding.summary)}`, "");
-    if (finding.detail) lines.push(markdownParagraph(finding.detail), "");
+    lines.push(
+      `### ${index + 1}. ${linkedMarkdownText(finding.summary, sources, siteOrigin)}`,
+      ""
+    );
+    if (finding.detail) {
+      lines.push(linkedMarkdownParagraph(finding.detail, sources, siteOrigin), "");
+    }
     lines.push(`Sources: ${sourceLinks(finding.sourceIds, sources, siteOrigin)}`, "");
   }
   return lines;
@@ -308,10 +354,26 @@ function renderRelationships(
   const lines = [`## ${title}`, ""];
   if (relationships.length === 0) return [...lines, "_None._", ""];
   for (const relationship of relationships) {
+    const jiraSource = [...sources.values()].find(
+      (source) => source.issueKey === relationship.jiraIssueKey
+    );
+    const wikiSource = [...sources.values()].find(
+      (source) => source.contentId === relationship.confluenceContentId
+    );
+    if (!jiraSource || !wikiSource) {
+      throw new ResearchContractError(
+        "invalid-report",
+        "Relationship endpoint sources are missing."
+      );
+    }
     lines.push(
-      `- \`${markdownText(relationship.jiraIssueKey)}\` ↔ Confluence \`${markdownText(
-        relationship.confluenceContentId
-      )}\`: ${markdownText(relationship.summary)} — ${sourceLinks(
+      `- [${markdownText(relationship.jiraIssueKey)}](${safeSourceHref(
+        jiraSource,
+        siteOrigin
+      )}) ↔ [${markdownText(wikiSource.title)}](${safeSourceHref(
+        wikiSource,
+        siteOrigin
+      )}): ${linkedMarkdownText(relationship.summary, sources, siteOrigin)} — Evidence: ${sourceLinks(
         relationship.sourceIds,
         sources,
         siteOrigin
@@ -350,7 +412,7 @@ export function renderResearchReportMarkdown(
     "",
     "## Executive summary",
     "",
-    markdownParagraph(report.executiveSummary),
+    linkedMarkdownParagraph(report.executiveSummary, sources, report.scope.siteOrigin),
     "",
     ...renderFindings("Findings", facts, sources, report.scope.siteOrigin),
     ...renderRelationships(
@@ -369,7 +431,10 @@ export function renderResearchReportMarkdown(
     "## Limitations",
     "",
     ...(report.limitations.length > 0
-      ? report.limitations.map((limitation) => `- ${markdownText(limitation)}`)
+      ? report.limitations.map(
+          (limitation) =>
+            `- ${linkedMarkdownText(limitation, sources, report.scope.siteOrigin)}`
+        )
       : ["_None reported._"]),
     "",
     "## Sources",

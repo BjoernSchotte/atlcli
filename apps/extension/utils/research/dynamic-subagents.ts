@@ -272,6 +272,34 @@ function acquisitionInstructions(node: ResearchGraphNodeV1, question: string): s
     return "You have no search capability in this phase. Work only from the dependency packets included in your task description.";
   }
 
+  if (isJira) {
+    if (!node.grantedCapabilityIds.includes("jira.issue.get")) {
+      return `Your only source-acquisition tool is eval. Make exactly one bounded eval call with 1 to 4 distinct, concise query texts derived from the host-bound question and any dependency packets. Call tools.jiraIssueSearch once per query text, with pageSize 8, and do not paginate. Inspect every returned candidate summary, but treat all search results as screening evidence only. Because the host did not grant Jira detail access, return no source-backed findings and state the missing detail capability in limitations. Do not make more than four search calls or reuse a cursor.`;
+    }
+    const requiredQueryTexts = [...question.matchAll(/[“"]([^”"]+)[”"]/g)]
+      .map((match) => match[1]?.trim())
+      .filter((term): term is string => Boolean(term))
+      .slice(0, MAX_QUOTED_TITLE_QUERIES);
+    return `Your only source-acquisition tool is eval. Use it in exactly two bounded stages so candidate selection is based on the actual question and any supplied Confluence dependency packet.
+
+Stage 1 — search candidates. Make one eval call containing 1 to 4 distinct, concise query texts. Start with every host-required quoted title shown below, in order. Only when fewer than four required titles exist may you append additional concepts derived from the Confluence dependency packet. Do not use generic words such as Jira, ticket, page, or Confluence. Call tools.jiraIssueSearch once per query text, with pageSize 8, and do not paginate. Preserve each candidate's sourceId, title, excerpt, and opaque entityRef. Use this shape:
+const requiredQueryTexts = ${JSON.stringify(requiredQueryTexts)};
+const additionalQueryTexts = [/* only enough specific concepts to reach four total */];
+const queryTexts = [...requiredQueryTexts, ...additionalQueryTexts];
+const boundedQueryTexts = [...new Set(queryTexts)].slice(0, 4);
+const candidateGroups = await Promise.all(boundedQueryTexts.map(async (text) => ({
+  text,
+  result: JSON.parse(await tools.jiraIssueSearch({ query: { text }, pageSize: 8 }))
+})));
+candidateGroups;
+
+Do not omit, rewrite, or reorder requiredQueryTexts. The slice(0, 4) bound is mandatory even if you brainstorm more terms. Do not retry, broaden, or replace a query when it returns zero items; an empty result is valid evidence about that search intent and you must preserve the remaining host budget. Inspect every returned candidate summary. Select only candidates that could materially answer the question, deduplicate them by sourceId, and rank them across all query groups. Search summaries are screening evidence only and must never support a published finding.
+
+Stage 2 — read evidence. Make one final eval call that uses only opaque entityRef values observed in stage 1 and calls tools.jiraIssueGet for at most 8 selected candidates with Promise.all. Never substitute visible Jira keys, URLs, or invented references. Return findings only from non-truncated detail results. If no candidate is relevant, skip stage 2 and return an empty evidence packet.
+
+Do not make more than two eval calls, more than four search calls, or more than eight detail calls. Do not reuse a cursor or start an unscoped query. Only the host-bound allowlisted PTC functions may access sources.`;
+  }
+
   return `Your only source-acquisition tool is eval. Inside eval, use exactly the granted PTC functions. Make exactly one eval call and run this bounded program, adapting neither its pagination nor its opaque references:
 ${buildResearchAcquisitionProgram(node, question)}
 Do not call eval a second time. Only opaque nextCursor and entityRef values returned by the host may be reused.`;
@@ -288,15 +316,15 @@ The caller supplies your exact responseSchema dynamically. Return only one compa
   switch (node.role) {
     case "jira-retrieval":
     case "wiki-retrieval":
-      return `${shared}\n\nHost-bound research question: ${question}\nGranted QuickJS functions: ${grants}.\n\n${acquisitionInstructions(node, question)}\n\nYour packet must summarize the detailed evidence, not merely the search result list. Select at most 12 findings that materially answer the question. Keep the summary under 1,200 characters. If details are unavailable or truncated, state that explicitly.`;
+      return `${shared}\n\nHost-bound research question: ${question}\nGranted QuickJS functions: ${grants}.\n\n${acquisitionInstructions(node, question)}\n\nYour packet must summarize the detailed evidence, not merely the search result list. Select at most 12 findings that materially answer the question. Keep the summary under 1,200 characters. Never cite a search-only candidate, an empty detail body, or a truncated detail result as support; mention acquisition gaps only in limitations.`;
     case "cross-product-join":
       return `${shared}\n\nCompare the supplied Jira and Confluence packets. Return at most 8 non-overlapping relationship findings. A verified relationship requires explicit detailed content or a link; title or time similarity alone is only a hypothesis. Do not perform new reads.`;
     case "verification":
       return `${shared}\n\nIndependently challenge the supplied candidate findings and relationships. Keep only claims supported by the cited packet evidence and expose contradictions or missing detail. Do not perform new reads.`;
     case "reconciler":
-      return `${shared}\n\nAct as an independent critic, not as the report author. Check coverage, unsupported or overstated claims, contradictions, missing source IDs, and whether the question is actually answered. Return a bounded critique and at most three analysis-only repair suggestions using cross-product-join or verification. The one-shot MVP cannot repeat retrieval with a new query intent. Do not perform new reads.`;
+      return `${shared}\n\nAct as an independent critic, not as the report author. Check coverage, unsupported or overstated claims, contradictions, missing source IDs, empty or truncated detail bodies, and whether the question is actually answered. Reject mappings based only on a search excerpt or issue title. Return a bounded critique and at most three analysis-only repair suggestions using cross-product-join or verification. The one-shot MVP cannot repeat retrieval with a new query intent. Do not perform new reads.`;
     case "synthesizer":
-      return `${shared}\n\nYou are the sole report author for this workflow. Receive only accepted research packets plus the independent critique and any bounded repair results. Write a concise, evidence-first report draft that directly answers the question. Select at most 8 priority findings and 8 priority relationships; keep the complete structured response below roughly 1,800 output tokens. Every finding and relationship needs known sourceIds. Incorporate valid critic feedback and carry unresolved gaps into limitations. The host, not you, renders the canonical Markdown.`;
+      return `${shared}\n\nYou are the sole report author for this workflow. Receive only accepted research packets plus the independent critique and any bounded repair results. Write a concise, evidence-first report draft that directly answers the question. Select at most 8 priority findings and 8 priority relationships; keep the complete structured response below roughly 1,800 output tokens. Every finding and relationship needs known sourceIds backed by non-empty, non-truncated detail bodies. Never use a search excerpt or title alone as evidence. Avoid exhaustive words such as only, none, no other, or zero unless the supplied evidence explicitly proves exhaustive coverage. Incorporate valid critic feedback and carry unresolved gaps into limitations. The host, not you, renders the canonical Markdown.`;
   }
 }
 
@@ -507,7 +535,7 @@ export interface ResearchSubagentDiagnosticV1 {
 
 function descriptionForRole(role: ResearchGraphRoleV1): string {
   switch (role) {
-    case "jira-retrieval": return "Run the single bounded Jira acquisition for this workflow and return a compact cited evidence packet. Dispatch at most once.";
+    case "jira-retrieval": return "Search Jira with task-specific intents, inspect all candidate summaries, then read at most eight relevant issues and return a compact detail-backed evidence packet. If Confluence concepts define relevance, dispatch this task after wiki retrieval and include that packet. Dispatch at most once.";
     case "wiki-retrieval": return "Run the single bounded Confluence acquisition for this workflow and return a compact cited evidence packet. Dispatch at most once.";
     case "cross-product-join": return "Compare Jira and Confluence packets for supported relationships without new reads.";
     case "verification": return "Independently verify selected claims against supplied evidence packets.";

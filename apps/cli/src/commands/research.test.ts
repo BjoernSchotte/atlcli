@@ -51,6 +51,7 @@ describe("research CLI one-shot contract", () => {
     });
     expect(request.limits).toMatchObject({
       maxSearchPagesPerProduct: 4,
+      maxBodyCharsPerItem: 50_000,
       maxRunMs: 600_000,
     });
   });

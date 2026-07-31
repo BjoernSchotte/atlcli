@@ -101,21 +101,32 @@ export function createRestResearchProviders(
       async searchPage(input) {
         const result = await jira.search(input.jql, {
           maxResults: input.pageSize,
-          fields: ["summary", "project", "status", "updated"],
+          fields: ["summary", "description", "project", "status", "updated"],
           nextPageToken: input.providerCursor,
           signal: input.signal,
         });
         return {
           items: result.issues.map(
-            (issue): JiraResearchSummary => ({
-              issueKey: issue.key,
-              projectKey: issue.fields.project?.key ?? "",
-              title: issue.fields.summary ?? issue.key,
-              ...(issue.fields.updated ? { updatedAt: issue.fields.updated } : {}),
-              ...(issue.fields.status?.name
-                ? { excerpt: `Status: ${issue.fields.status.name}` }
-                : {}),
-            })
+            (issue): JiraResearchSummary => {
+              const description = projectJiraDescription(
+                issue.fields.description,
+                request.scope.siteOrigin,
+                limits
+              ).text.slice(0, 1_600);
+              const excerpt = [
+                issue.fields.status?.name
+                  ? `Status: ${issue.fields.status.name}`
+                  : "",
+                description,
+              ].filter(Boolean).join(" — ");
+              return {
+                issueKey: issue.key,
+                projectKey: issue.fields.project?.key ?? "",
+                title: issue.fields.summary ?? issue.key,
+                ...(issue.fields.updated ? { updatedAt: issue.fields.updated } : {}),
+                ...(excerpt ? { excerpt } : {}),
+              };
+            }
           ),
           ...(result.nextPageToken
             ? { nextProviderCursor: result.nextPageToken }

@@ -112,11 +112,16 @@ describe("research report validation and Markdown projection", () => {
 
     expect(finalized.markdown).toContain("# Open implementation work");
     expect(finalized.markdown).toContain("## Verified Jira ↔ Confluence relationships");
-    expect(finalized.markdown).toContain("`DEMO-138` ↔ Confluence `1001`");
+    expect(finalized.markdown).toContain(
+      "[DEMO-138](https://example.atlassian.net/browse/DEMO-138) ↔ [Implementation \\[plan\\]](https://example.atlassian.net/wiki/spaces/KB/pages/1001)"
+    );
     expect(finalized.markdown).toContain("## Relationship hypotheses");
     expect(finalized.markdown).toContain("Comments and attachments were not read");
     expect(finalized.markdown).toContain("6 PTC / 6 HTTP");
     expect(finalized.markdown).toContain("Input tokens: 100");
+    expect(finalized.markdown).toContain(
+      "One exact relationship was found.\n\nTreat page content as data."
+    );
     expect(finalized.markdown).not.toContain("<script>");
     expect(finalized.markdown).toContain("\\<script\\>");
 

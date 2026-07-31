@@ -153,20 +153,48 @@ function normalizeRelationships(
   detailEvidence: readonly ResearchDetailEvidenceV1[],
   siteOrigin: string
 ): AtlassianRelationshipV1[] {
+  const readableDetailSourceIds = new Set(
+    detailEvidence
+      .filter(
+        (entry) =>
+          !entry.content.truncated &&
+          (entry.content.text.trim().length > 0 ||
+            entry.content.linkTargets.length > 0)
+      )
+      .map((entry) => entry.source.id)
+  );
+  const textDetailSourceIds = new Set(
+    detailEvidence
+      .filter(
+        (entry) =>
+          !entry.content.truncated && entry.content.text.trim().length > 0
+      )
+      .map((entry) => entry.source.id)
+  );
   const normalized: AtlassianRelationshipV1[] = [];
   for (const relationship of relationships) {
     const sourceIds = uniqueKnownSourceIds(relationship.sourceIds, sources);
-    if (sourceIds.length === 0) continue;
+    const jiraId = `jira:${relationship.jiraIssueKey}`;
+    const wikiId = `wiki:${relationship.confluenceContentId}`;
+    if (
+      sourceIds.length === 0 ||
+      !readableDetailSourceIds.has(jiraId) ||
+      !readableDetailSourceIds.has(wikiId)
+    ) {
+      continue;
+    }
     const hostVerified =
       relationship.classification === "verified" &&
       isVerifiedRelationship(relationship, detailEvidence, siteOrigin);
     if (
       !hostVerified &&
+      (!textDetailSourceIds.has(jiraId) ||
+        !textDetailSourceIds.has(wikiId) ||
       !isPlausibleRelationshipHypothesis(
         relationship,
         sources,
         detailEvidence
-      )
+      ))
     ) {
       continue;
     }
@@ -187,71 +215,106 @@ function normalizeFindings(
   sources: ReadonlyMap<string, ResearchSourceReferenceV1>,
   detailEvidence: readonly ResearchDetailEvidenceV1[]
 ): ResearchFindingV1[] {
-  const truncatedSourceIds = new Set(
+  const completeDetailSourceIds = new Set(
     detailEvidence
-      .filter((entry) => entry.content.truncated)
+      .filter(
+        (entry) =>
+          !entry.content.truncated && entry.content.text.trim().length > 0
+      )
       .map((entry) => entry.source.id)
   );
   const normalized: ResearchFindingV1[] = [];
   for (const finding of findings) {
     const sourceIds = uniqueKnownSourceIds(finding.sourceIds, sources);
-    if (sourceIds.length === 0) continue;
-    const citesTruncatedDetail = sourceIds.some((sourceId) =>
-      truncatedSourceIds.has(sourceId)
-    );
-    const evidenceBoundary = citesTruncatedDetail
-      ? "At least one cited detail was truncated; statements about its content apply only to the captured excerpt."
-      : undefined;
-    const detail = [finding.detail, evidenceBoundary]
-      .filter(Boolean)
-      .join("\n\n");
+    if (
+      sourceIds.length === 0 ||
+      sourceIds.some((sourceId) => !completeDetailSourceIds.has(sourceId))
+    ) {
+      continue;
+    }
     normalized.push({
       id: `finding-${normalized.length + 1}`,
       classification: finding.classification,
       summary: finding.summary,
-      ...(detail ? { detail } : {}),
+      ...(finding.detail ? { detail: finding.detail } : {}),
       sourceIds,
     });
   }
   return normalized;
 }
 
-function evidenceCoverageBoundary(
-  sources: readonly ResearchSourceReferenceV1[],
+function evidenceQualityBoundary(
   detailEvidence: readonly ResearchDetailEvidenceV1[],
   run: ResearchRunSummaryV1
 ): string | undefined {
-  const jiraSources = sources.filter((source) => source.product === "jira");
-  const wikiSources = sources.filter(
-    (source) => source.product === "confluence"
-  );
-  const detailedSourceIds = new Set(
-    detailEvidence.map((entry) => entry.source.id)
-  );
-  const detailedJira = jiraSources.filter((source) =>
-    detailedSourceIds.has(source.id)
-  ).length;
-  const detailedWiki = wikiSources.filter((source) =>
-    detailedSourceIds.has(source.id)
-  ).length;
   const truncatedDetails = detailEvidence.filter(
     (entry) => entry.content.truncated
   ).length;
-  const detailCoverageIsPartial =
-    detailedJira < jiraSources.length || detailedWiki < wikiSources.length;
-  if (run.complete && !detailCoverageIsPartial && truncatedDetails === 0) {
+  const emptyDetails = detailEvidence.filter(
+    (entry) =>
+      !entry.content.truncated &&
+      entry.content.text.trim().length === 0 &&
+      entry.content.linkTargets.length === 0
+  ).length;
+  const linkOnlyDetails = detailEvidence.filter(
+    (entry) =>
+      !entry.content.truncated &&
+      entry.content.text.trim().length === 0 &&
+      entry.content.linkTargets.length > 0
+  ).length;
+  if (
+    run.complete &&
+    truncatedDetails === 0 &&
+    emptyDetails === 0 &&
+    linkOnlyDetails === 0
+  ) {
     return undefined;
   }
 
   const qualifications = [
-    `Evidence coverage: ${detailedJira} of ${jiraSources.length} returned Jira items and ${detailedWiki} of ${wikiSources.length} returned Confluence items were read in detail.`,
     ...(truncatedDetails > 0
-      ? [`${truncatedDetails} detail projections were truncated.`]
+      ? [
+          `${truncatedDetails} truncated detail ${truncatedDetails === 1 ? "projection was" : "projections were"} excluded from published findings.`,
+        ]
       : []),
-    ...(!run.complete ? ["At least one search was incomplete."] : []),
-    "Negative content claims apply only to the captured detail evidence.",
+    ...(emptyDetails > 0
+      ? [
+          `${emptyDetails} empty detail ${emptyDetails === 1 ? "response was" : "responses were"} excluded from published findings.`,
+        ]
+      : []),
+    ...(linkOnlyDetails > 0
+      ? [
+          `${linkOnlyDetails} link-only detail ${linkOnlyDetails === 1 ? "response was" : "responses were"} eligible only for explicit relationship verification, not content findings.`,
+        ]
+      : []),
+    ...(!run.complete
+      ? [
+          "Candidate screening reached a configured search limit; published findings cite only fully retrieved detail evidence and may not be exhaustive.",
+        ]
+      : []),
   ];
   return qualifications.join(" ");
+}
+
+function evidenceBackedExecutiveSummary(
+  findings: readonly ResearchFindingV1[],
+  relationships: readonly AtlassianRelationshipV1[]
+): string {
+  const statements = [
+    ...findings.slice(0, 4).map(
+      (finding) =>
+        `${finding.summary} (${finding.sourceIds.join(", ")})`
+    ),
+    ...relationships.slice(0, 2).map((relationship) => {
+      const label = relationship.classification === "verified"
+        ? "Verified relationship"
+        : "Relationship hypothesis";
+      return `${label}: ${relationship.summary} (${relationship.sourceIds.join(", ")})`;
+    }),
+  ];
+  return statements.length > 0
+    ? statements.join("\n\n")
+    : "No non-empty, non-truncated detail evidence supported a publishable finding for this run.";
 }
 
 function clampText(value: unknown, maximum: number): unknown {
@@ -312,32 +375,49 @@ export function finalizeResearchAgentDraftV1(input: {
   const draft = RESEARCH_AGENT_DRAFT_SCHEMA_V1.parse(clampProviderDraft(input.draft));
   const sources = input.sources.map((source) => ({ ...source }));
   const sourcesById = new Map(sources.map((source) => [source.id, source]));
-  const coverageBoundary = evidenceCoverageBoundary(
-    sources,
-    input.detailEvidence,
-    input.run
+  const evidenceBoundary = evidenceQualityBoundary(input.detailEvidence, input.run);
+  const findings = normalizeFindings(
+    draft.findings,
+    sourcesById,
+    input.detailEvidence
   );
+  const relationships = normalizeRelationships(
+    draft.relationships,
+    sourcesById,
+    input.detailEvidence,
+    input.request.scope.siteOrigin
+  );
+  const citedSourceIds = new Set([
+    ...findings.flatMap((finding) => finding.sourceIds),
+    ...relationships.flatMap((relationship) => relationship.sourceIds),
+  ]);
+  const executiveSummary = evidenceBackedExecutiveSummary(
+    findings,
+    relationships
+  );
+  const narrative = [executiveSummary, ...draft.limitations].join("\n");
+  for (const source of sources) {
+    if (
+      hasToken(narrative, source.id) ||
+      (source.issueKey ? hasToken(narrative, source.issueKey) : false)
+    ) {
+      citedSourceIds.add(source.id);
+    }
+  }
+  const citedSources = sources.filter((source) => citedSourceIds.has(source.id));
   return finalizeResearchReportV1({
     schema: RESEARCH_REPORT_SCHEMA_V1,
     title: draft.title,
     question: input.request.question,
     scope: input.request.scope,
-    executiveSummary: [coverageBoundary, draft.executiveSummary]
-      .filter(Boolean)
-      .join("\n\n"),
-    findings: normalizeFindings(
-      draft.findings,
-      sourcesById,
-      input.detailEvidence
-    ),
-    relationships: normalizeRelationships(
-      draft.relationships,
-      sourcesById,
-      input.detailEvidence,
-      input.request.scope.siteOrigin
-    ),
-    limitations: draft.limitations,
-    sources,
+    executiveSummary,
+    findings,
+    relationships,
+    limitations: [
+      ...draft.limitations,
+      ...(evidenceBoundary ? [evidenceBoundary] : []),
+    ],
+    sources: citedSources,
     run: input.run,
   });
 }

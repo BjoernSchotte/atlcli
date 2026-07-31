@@ -124,7 +124,10 @@ export function buildResearchRequest(input: ResearchCliInput, profile: Profile):
       maxSearchPagesPerProduct: 4,
       maxItemsPerProduct: 30,
       maxDetailItemsPerProduct: 8,
-      maxBodyCharsPerItem: 6_000,
+      // Research claims may only cite complete detail projections. Keep the
+      // contract maximum so ordinary long-form Confluence pages are not
+      // silently reduced to excerpts before synthesis.
+      maxBodyCharsPerItem: 50_000,
       maxPtcCalls: 32,
       maxHttpCalls: 40,
       maxModelOutputTokens: 4_096,

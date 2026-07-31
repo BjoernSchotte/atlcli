@@ -59,7 +59,7 @@ const run: ResearchRunSummaryV1 = {
 function draft(classification: "verified" | "hypothesis" = "verified") {
   return {
     title: "DEMO research",
-    executiveSummary: "The issue and page describe the same guarded research flow.",
+    executiveSummary: "DEMO-1 and wiki:1001 describe the same guarded research flow.",
     findings: [
       {
         classification: "fact",
@@ -116,10 +116,60 @@ describe("research agent draft finalization", () => {
     expect(report.relationships[0]?.classification).toBe("verified");
     expect(report.findings[0]?.sourceIds).toEqual(["wiki:1001"]);
     expect(report.markdown).toContain("Verified Jira ↔ Confluence relationships");
-    expect(report.markdown).toContain("`DEMO-1`");
+    expect(report.markdown).toContain(
+      "[DEMO-1](https://example.atlassian.net/browse/DEMO-1)"
+    );
+    expect(report.markdown).toContain(
+      "[Research design](https://example.atlassian.net/wiki/spaces/KB/pages/1001)"
+    );
+    expect(report.markdown).not.toContain("wiki:1001");
+    expect(report.executiveSummary).toContain(
+      "The implementation is documented. (wiki:1001)"
+    );
+    expect(report.executiveSummary).not.toContain(
+      "describe the same guarded research flow"
+    );
   });
 
-  it("downgrades an unproven model claim to a hypothesis", () => {
+  it("allows link-only Jira detail solely for an explicit verified relationship", () => {
+    const evidence: ResearchDetailEvidenceV1[] = [
+      {
+        source: sources[0]!,
+        content: {
+          text: "",
+          linkTargets: [
+            "https://example.atlassian.net/wiki/spaces/KB/pages/1001",
+          ],
+          truncated: false,
+          inputBytes: 88,
+        },
+      },
+      {
+        source: sources[1]!,
+        content: {
+          text: "Complete page without an issue key.",
+          linkTargets: [],
+          truncated: false,
+          inputBytes: 35,
+        },
+      },
+    ];
+    const report = finalizeResearchAgentDraftV1({
+      draft: draft(),
+      request,
+      sources,
+      detailEvidence: evidence,
+      run,
+    });
+
+    expect(report.findings).toHaveLength(1);
+    expect(report.relationships[0]?.classification).toBe("verified");
+    expect(report.limitations.at(-1)).toContain(
+      "1 link-only detail response was eligible only for explicit relationship verification"
+    );
+  });
+
+  it("drops a relationship when either endpoint was not read in full", () => {
     const report = finalizeResearchAgentDraftV1({
       draft: draft(),
       request,
@@ -128,11 +178,13 @@ describe("research agent draft finalization", () => {
       run,
     });
 
-    expect(report.relationships[0]?.classification).toBe("hypothesis");
-    expect(report.markdown).toContain("Relationship hypotheses");
+    expect(report.relationships).toEqual([]);
+    expect(report.findings).toEqual([]);
+    expect(report.sources).toEqual([]);
+    expect(report.executiveSummary).toContain("No non-empty, non-truncated");
   });
 
-  it("qualifies findings that cite truncated detail evidence", () => {
+  it("excludes truncated evidence from published claims", () => {
     const report = finalizeResearchAgentDraftV1({
       draft: draft(),
       request,
@@ -151,20 +203,63 @@ describe("research agent draft finalization", () => {
       run: { ...run, complete: false },
     });
 
-    expect(report.findings[0]?.detail).toContain(
-      "statements about its content apply only to the captured excerpt"
+    expect(report.findings).toEqual([]);
+    expect(report.relationships).toEqual([]);
+    expect(report.sources).toEqual([]);
+    expect(report.executiveSummary).toContain("No non-empty, non-truncated");
+    expect(report.limitations.at(-1)).toStartWith(
+      "1 truncated detail projection was excluded from published findings."
     );
-    expect(report.executiveSummary).toStartWith(
-      "Evidence coverage: 0 of 1 returned Jira items and 1 of 1 returned Confluence items were read in detail."
+    expect(report.limitations.at(-1)).toContain(
+      "Candidate screening reached a configured search limit"
     );
-    expect(report.executiveSummary).toContain(
-      "1 detail projections were truncated."
-    );
-    expect(report.executiveSummary).toContain(
-      "At least one search was incomplete."
+    expect(report.markdown).not.toContain("captured excerpt");
+  });
+
+  it("keeps empty detail responses only as linked limitations", () => {
+    const emptyDetailDraft = draft("hypothesis");
+    emptyDetailDraft.limitations = [
+      "DEMO-1 returned an empty description; wiki:1001 was readable.",
+    ];
+    const report = finalizeResearchAgentDraftV1({
+      draft: emptyDetailDraft,
+      request,
+      sources,
+      detailEvidence: [
+        {
+          source: sources[0]!,
+          content: {
+            text: "",
+            linkTargets: [],
+            truncated: false,
+            inputBytes: 0,
+          },
+        },
+        {
+          source: sources[1]!,
+          content: {
+            text: "Complete wiki detail.",
+            linkTargets: [],
+            truncated: false,
+            inputBytes: 21,
+          },
+        },
+      ],
+      run,
+    });
+
+    expect(report.findings).toHaveLength(1);
+    expect(report.findings[0]?.sourceIds).toEqual(["wiki:1001"]);
+    expect(report.relationships).toEqual([]);
+    expect(report.sources.map((source) => source.id)).toEqual([
+      "jira:DEMO-1",
+      "wiki:1001",
+    ]);
+    expect(report.limitations.at(-1)).toContain(
+      "1 empty detail response was excluded"
     );
     expect(report.markdown).toContain(
-      "statements about its content apply only to the captured excerpt"
+      "[DEMO-1](https://example.atlassian.net/browse/DEMO-1) returned"
     );
   });
 
@@ -207,7 +302,17 @@ describe("research agent draft finalization", () => {
       draft: oversized,
       request,
       sources,
-      detailEvidence: [],
+      detailEvidence: [
+        {
+          source: sources[1]!,
+          content: {
+            text: "Complete page detail.",
+            linkTargets: [],
+            truncated: false,
+            inputBytes: 21,
+          },
+        },
+      ],
       run,
     });
     expect(report.findings[0]?.sourceIds).toEqual(["wiki:1001"]);

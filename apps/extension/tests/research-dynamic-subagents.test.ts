@@ -170,7 +170,11 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     expect(specs[3]?.middleware).toHaveLength(0);
     expect(specs[4]?.middleware).toHaveLength(0);
     expect(specs.every((spec) => !("responseFormat" in spec))).toBe(true);
-    expect(specs[0]?.systemPrompt).toContain("Make exactly one eval call");
+    expect(specs[0]?.systemPrompt).toContain("exactly two bounded stages");
+    expect(specs[0]?.systemPrompt).toContain("Inspect every returned candidate summary");
+    expect(specs[0]?.systemPrompt).toContain("Search summaries are screening evidence only");
+    expect(specs[0]?.systemPrompt).toContain("at most 8 selected candidates");
+    expect(specs[1]?.systemPrompt).toContain("Make exactly one eval call");
     expect(specs[0]?.systemPrompt).toContain("tools.jiraIssueSearch");
     expect(specs[4]?.systemPrompt).toContain("sole report author");
   });
@@ -194,12 +198,19 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       maxPacketChars: 8_000,
     });
     const wiki = specs.find((spec) => spec.name === "wiki-retrieval");
+    const jira = specs.find((spec) => spec.name === "jira-retrieval");
 
     expect(wiki?.systemPrompt).toContain("partial-title-query-set");
     expect(wiki?.systemPrompt).toContain("catch { failures += 1; }");
     expect(wiki?.systemPrompt).toContain('["One", "Two", "Three", "Four"]');
     expect(wiki?.systemPrompt).toContain("queryText: group.text");
     expect(wiki?.systemPrompt).toContain("const chosen = exact ?? matches[0]");
+    expect(jira?.systemPrompt).toContain(
+      'const requiredQueryTexts = ["One","Two","Three","Four"];'
+    );
+    expect(jira?.systemPrompt).toContain(
+      "Do not omit, rewrite, or reorder requiredQueryTexts"
+    );
   });
 
   test("executes four named-page searches and reads one opaque detail per query", async () => {
@@ -268,6 +279,8 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     expect(prompt).toContain("Write the JavaScript yourself for this question");
     expect(prompt).toContain("Promise.all groups of at most three tasks");
     expect(prompt).toContain("at most one jira-retrieval task and at most one wiki-retrieval task");
+    expect(prompt).toContain("run wiki-retrieval first");
+    expect(prompt).toContain("include its compact packet in the jira-retrieval task description");
     expect(prompt).toContain("Every task call must include its appropriate responseSchema");
     expect(prompt).toContain("exactly one fresh-context independent critic");
     expect(prompt).toContain("do not repeat jira-retrieval or wiki-retrieval");
@@ -316,7 +329,10 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     });
 
     expect(report.title).toBe(draft.title);
-    expect(report.markdown).toContain(draft.executiveSummary);
+    expect(report.markdown).toContain(
+      "No non-empty, non-truncated detail evidence supported a publishable finding"
+    );
+    expect(report.markdown).not.toContain(draft.executiveSummary);
     expect(dynamicModel.callCount).toBe(3);
     expect(dynamicModel.calls[0]?.messages.some((message) => message.text.includes("Run this as a workflow"))).toBe(true);
     expect(dynamicModel.calls[1]?.messages.some((message) => message.text.includes("empty accepted packet set"))).toBe(true);
@@ -496,6 +512,6 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
 
     expect(jira?.systemPrompt).toContain("tools.jiraIssueSearch");
     expect(jira?.systemPrompt).not.toContain("tools.jiraIssueGet");
-    expect(jira?.systemPrompt).toContain("const details = [];");
+    expect(jira?.systemPrompt).toContain("return no source-backed findings");
   });
 });

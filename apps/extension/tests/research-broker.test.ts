@@ -16,6 +16,7 @@ import {
 import {
   buildResearchCql,
   buildResearchJql,
+  jiraResearchTextTerms,
 } from "../utils/research/query.js";
 
 function request(
@@ -145,10 +146,37 @@ describe("research query builders", () => {
     const text = '" OR project = "OTHER"\n';
 
     expect(buildResearchJql(scope, { text })).toBe(
-      'project in ("DEMO") AND updated >= "2026-01-01" AND updated <= "2026-07-30" AND text ~ "\\" OR project = \\"OTHER\\"" ORDER BY updated DESC, key ASC'
+      'project in ("DEMO") AND description IS NOT EMPTY AND updated >= "2026-01-01" AND updated <= "2026-07-30" AND (text ~ "OTHER") ORDER BY updated DESC, key ASC'
     );
     expect(buildResearchCql(scope, { text })).toBe(
       'type = page AND space in ("KB") AND lastmodified >= "2026-01-01" AND lastmodified <= "2026-07-30" AND text ~ "\\" OR project = \\"OTHER\\"" ORDER BY lastmodified DESC'
+    );
+  });
+
+  it("expands a cross-product Jira intent into bounded safe discovery terms", () => {
+    expect(
+      jiraResearchTextTerms(
+        "Jira lead qualification and Account-based Data-Aggregation pilot discovery"
+      )
+    ).toEqual([
+      "lead",
+      "qualification",
+      "Account-based",
+      "Data-Aggregation",
+      "pilot",
+      "discovery",
+    ]);
+    expect(
+      buildResearchJql(request().scope, {
+        text: "lead qualification discovery pilot",
+      })
+    ).toContain("description IS NOT EMPTY");
+    expect(
+      buildResearchJql(request().scope, {
+        text: "lead qualification discovery pilot",
+      })
+    ).toContain(
+      '(text ~ "lead" OR text ~ "qualification" OR text ~ "discovery" OR text ~ "pilot")'
     );
   });
 
