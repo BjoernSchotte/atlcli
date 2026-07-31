@@ -427,6 +427,7 @@ export async function renderPreparedPdfExport(
       { phase: "compile" },
     );
   }
+  const fontRequirements = bundle.fontRequirements;
   // Move, do not borrow: while Typst/WASM and the resulting PDF are alive, the
   // caller-visible prepared value must not keep a second route to the complete
   // VFS. A retry rematerializes a fresh clone from the durable checkpoint.
@@ -488,6 +489,8 @@ export async function renderPreparedPdfExport(
     filename: prepared.filename,
     profile: prepared.profile,
     compilerVersion: compiled.compilerVersion,
+    ...(fontRequirements ? { fontRequirements } : {}),
+    ...(compiled.fontEvidence ? { fontEvidence: compiled.fontEvidence } : {}),
     pageCount: inspection.pageCount,
     embeddedImages: prepared.counts.images,
     renderedDiagrams: prepared.counts.diagrams,

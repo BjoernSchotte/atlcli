@@ -115,6 +115,7 @@ export function createOffscreenPrivatePdfCompilePort(
             pdf: job.pdf,
             diagnostics: job.diagnostics ?? [],
             compilerVersion: job.compilerVersion ?? "unknown",
+            ...(job.fontEvidence ? { fontEvidence: job.fontEvidence } : {}),
           };
         }
         if (job?.status === "failed" && (job.diagnostics?.length ?? 0) > 0) {

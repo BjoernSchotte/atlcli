@@ -62,6 +62,7 @@ const DOM_GLOBALS = [
   "Event",
   "CustomEvent",
   "MouseEvent",
+  "KeyboardEvent",
   "getComputedStyle",
   "requestAnimationFrame",
   "cancelAnimationFrame",
@@ -202,6 +203,20 @@ async function click(testId: string): Promise<void> {
   await flush();
 }
 
+async function keyDown(testId: string, key: string): Promise<void> {
+  const { act } = await import("react");
+  const element = find(testId);
+  await act(async () => {
+    element.dispatchEvent(
+      new (harness!.window as unknown as { KeyboardEvent: typeof KeyboardEvent }).KeyboardEvent(
+        "keydown",
+        { bubbles: true, cancelable: true, key }
+      )
+    );
+  });
+  await flush();
+}
+
 async function selectValue(testId: string, value: string): Promise<void> {
   const { act } = await import("react");
   const element = find(testId) as unknown as HTMLSelectElement;
@@ -210,6 +225,15 @@ async function selectValue(testId: string, value: string): Promise<void> {
     element.dispatchEvent(
       new (harness!.window as unknown as { Event: typeof Event }).Event("change", { bubbles: true })
     );
+  });
+  await flush();
+}
+
+async function setChecked(testId: string, checked: boolean): Promise<void> {
+  const { act } = await import("react");
+  const element = find(testId) as unknown as HTMLInputElement;
+  await act(async () => {
+    if (element.checked !== checked) element.click();
   });
   await flush();
 }
@@ -456,6 +480,8 @@ describe("ExportApp without chrome (Phase 0 acceptance criterion)", () => {
     expect(find("loaded-title").textContent).toBe("Deployment Handbook");
     expect(find("loaded-space").textContent).toBe("DOCSY");
     expect(find("loaded-version").textContent).toBe("v7");
+    expect(find("state-loaded").textContent).toContain("Page connected");
+    expect(find("kiteweave-brand").getAttribute("src")).toBe("/kiteweave-icon.svg");
     expect((globalThis as Record<string, unknown>).chrome).toBeUndefined();
   });
 
@@ -529,7 +555,7 @@ describe("the shell renders from the registry", () => {
   it("renders one nav entry per visible screen and opens the requested one", async () => {
     await render(<ExportApp ports={makePorts(newRecorder())} localeCandidates={["en"]} />);
 
-    for (const id of ["export", "templates", "activity", "settings", "about"]) {
+    for (const id of ["export", "preview", "templates", "activity", "settings", "about"]) {
       expect(maybeFind(`nav-${id}`)).not.toBeNull();
     }
     expect(maybeFind("screen-export")).not.toBeNull();
@@ -597,7 +623,7 @@ describe("the shell renders from the registry", () => {
     expect((find("scope-kind-tree") as unknown as HTMLInputElement).checked).toBe(true);
   });
 
-  it("integrates Preview into Studio instead of adding a fourth local tab", async () => {
+  it("keeps Preview both in the guided Create flow and as a primary workspace", async () => {
     await render(
       <ExportApp
         ports={makePorts(newRecorder(), {}, [
@@ -614,24 +640,67 @@ describe("the shell renders from the registry", () => {
     expect(find("studio-step-04").textContent).toContain("Review");
     expect(find("studio-step-05").textContent).toContain("Export");
     expect(find("pdf-settings-summary").textContent).toContain("A4 · Portrait");
-    expect(maybeFind("nav-preview")).toBeNull();
+    expect(maybeFind("nav-preview")).not.toBeNull();
   });
 
   it("uses the compact editorial density of the sidebar mockup", async () => {
     await render(<ExportApp ports={makePorts(newRecorder())} localeCandidates={["en"]} />);
 
     const header = find("app-shell").querySelector("header");
-    expect(header?.className).toContain("min-h-12");
-    expect(find("nav-export").className).toContain("min-h-8");
-    expect(find("format-pdf").className).toContain("min-h-16");
-    expect(html()).not.toContain(">Publishing Studio</h1>");
+    expect(header?.className).toContain("min-h-[62px]");
+    expect(find("nav-export").className).toContain("min-h-14");
+    expect(find("format-pdf").textContent).toContain("Print-ready document");
+    expect(find("publishing-studio").textContent).toContain("Make this content travel.");
+  });
+
+  it("keeps all four Publishing labels visible in the narrow sidebar", async () => {
+    await render(<ExportApp ports={makePorts(newRecorder())} localeCandidates={["en"]} />);
+
+    expect(find("nav-export").textContent).toContain("Create");
+    expect(find("nav-preview").textContent).toContain("Preview");
+    expect(find("nav-templates").textContent).toContain("Templates");
+    expect(find("nav-activity").textContent).toContain("History");
+
+    const css = await Bun.file(new URL("../assets/globals.css", import.meta.url)).text();
+    expect(css).not.toMatch(/publishing-nav-label\s*\{[^}]*display:\s*none/s);
+  });
+
+  it("moves through available primary workspaces with the tab arrow-key contract", async () => {
+    await render(
+      <ExportApp
+        ports={makePorts(newRecorder(), {}, [
+          "pdf-export",
+          "docx-export",
+          "docx-template-store",
+          "pdf-preview",
+        ])}
+        localeCandidates={["en"]}
+      />
+    );
+
+    await keyDown("nav-export", "ArrowRight");
+    expect(maybeFind("screen-preview")).not.toBeNull();
+    expect(find("nav-preview").getAttribute("aria-selected")).toBe("true");
+  });
+
+  it("keeps future product areas selectable but labels their status honestly", async () => {
+    await render(<ExportApp ports={makePorts(newRecorder())} localeCandidates={["en"]} />);
+
+    await click("area-menu-toggle");
+    expect(find("area-menu").hasAttribute("hidden")).toBe(false);
+    await click("area-safe-ops");
+
+    expect(find("planned-area-status").textContent).toContain(
+      "Jira SafeOps is planned for a future release."
+    );
+    expect(find("area-menu").hasAttribute("hidden")).toBe(true);
   });
 });
 
 describe("i18n reaches the rendered app", () => {
   it("renders German when the host language is German", async () => {
     await render(<ExportApp ports={makePorts(newRecorder())} localeCandidates={["de-AT"]} />);
-    expect(find("nav-export").textContent).toContain("Studio");
+    expect(find("nav-export").textContent).toContain("Erstellen");
     expect(find("nav-settings").textContent).toContain("Einstellungen");
     expect(find("nav-activity").getAttribute("title")).toBe(
       "Hintergrund-Jobs gibt es in dieser App noch nicht."
@@ -646,7 +715,7 @@ describe("i18n reaches the rendered app", () => {
     await selectValue("settings-language", "de");
 
     expect(find("nav-settings").textContent).toContain("Einstellungen");
-    expect(find("nav-export").textContent).toContain("Studio");
+    expect(find("nav-export").textContent).toContain("Erstellen");
   });
 
   it("persists the language through the settings port", async () => {
@@ -657,7 +726,71 @@ describe("i18n reaches the rendered app", () => {
     await click("nav-settings");
     await selectValue("settings-language", "de");
 
-    expect(await settings.load()).toEqual({ locale: "de" });
+    expect(await settings.load()).toEqual({
+      locale: "de",
+      hideRovoEntrypoints: false,
+    });
+  });
+
+  it("shows and persists the Rovo toggle only for a capable host", async () => {
+    const settings = memorySettingsStore();
+    const capabilities: readonly HostCapability[] = [
+      "pdf-export",
+      "docx-export",
+      "docx-template-store",
+      "settings-persistence",
+      "confluence-page-customization",
+    ];
+    await render(
+      <ExportApp
+        ports={makePorts(newRecorder(), { settings }, capabilities)}
+        localeCandidates={["en"]}
+      />
+    );
+    await click("nav-settings");
+
+    const checkbox = find("settings-hide-rovo") as unknown as HTMLInputElement;
+    expect(checkbox.checked).toBe(false);
+    await setChecked("settings-hide-rovo", true);
+
+    expect((find("settings-hide-rovo") as unknown as HTMLInputElement).checked).toBe(true);
+    expect(await settings.load()).toEqual({
+      locale: null,
+      hideRovoEntrypoints: true,
+    });
+  });
+
+  it("does not expose browser-page customization in an incapable host", async () => {
+    await render(<ExportApp ports={makePorts(newRecorder())} localeCandidates={["en"]} />);
+    await click("nav-settings");
+    expect(maybeFind("settings-hide-rovo")).toBeNull();
+  });
+
+  it("rolls an optimistic Rovo toggle back when persistence fails", async () => {
+    const capabilities: readonly HostCapability[] = [
+      "settings-persistence",
+      "confluence-page-customization",
+    ];
+    const settings: AppPorts["settings"] = {
+      load: async () => ({
+        locale: null,
+        hideRovoEntrypoints: false,
+      }),
+      save: async () => {
+        throw new Error("storage unavailable");
+      },
+    };
+    await render(
+      <ExportApp
+        ports={makePorts(newRecorder(), { settings }, capabilities)}
+        localeCandidates={["en"]}
+      />
+    );
+    await click("nav-settings");
+    await setChecked("settings-hide-rovo", true);
+
+    expect((find("settings-hide-rovo") as unknown as HTMLInputElement).checked).toBe(false);
+    expect(maybeFind("settings-error")).not.toBeNull();
   });
 });
 

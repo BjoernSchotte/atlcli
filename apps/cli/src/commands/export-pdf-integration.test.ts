@@ -3,6 +3,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  PDF_RUNTIME_ASSETS,
   runPdfExport,
   validatePdfOutput,
   type ExportBlock,
@@ -52,6 +53,13 @@ describe("PDF export chain writes a valid tagged PDF to disk", () => {
         }
       );
       expect(report.compilerDiagnostics).toEqual([]);
+      expect(report.fontRequirements?.assets.length).toBeLessThan(
+        PDF_RUNTIME_ASSETS.fonts.length,
+      );
+      expect(report.fontEvidence?.registeredAssetIds).toEqual(
+        report.fontRequirements?.assets.map((asset) => asset.assetId),
+      );
+      expect(report.fontEvidence?.fullBundleFallback).toBe(false);
       const bytes = new Uint8Array(await readFile(outPath));
       expect(new TextDecoder("latin1").decode(bytes.subarray(0, 5))).toBe("%PDF-");
       const inspection = validatePdfOutput(bytes);

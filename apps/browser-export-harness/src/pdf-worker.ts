@@ -21,7 +21,7 @@ import emojiLicenseUrl from "@atlcli/pdf/licenses/LICENSE-Noto-Emoji.txt?url&no-
 import compilerLicenseUrl from "../../../LICENSE?url&no-inline";
 import { PDF_RUNTIME_ASSETS } from "@atlcli/pdf/browser";
 import { BrowserPdfCompiler } from "@atlcli/pdf-compiler-browser";
-import type { PdfCompileResult } from "@atlcli/pdf/browser";
+import type { PdfCompileContext, PdfCompileResult } from "@atlcli/pdf/browser";
 import type { PdfWorkerRequest, PdfWorkerResponse } from "./pdf-worker-protocol.js";
 
 const scope = self as unknown as DedicatedWorkerGlobalScope;
@@ -63,13 +63,17 @@ export function assertStaticAssetParity(): void {
   // The static import itself is the compile-time existence proof. Avoid a
   // unary truthiness check here: Vite rewrites `?url` bindings to URL
   // expressions, and `!binding` can lose parentheses during that transform.
+  void compilerLicenseUrl;
   if (PDF_RUNTIME_ASSETS.compilerLicense.fileName !== "LICENSE") {
     throw new Error("The harness's compiler license import does not match the canonical manifest.");
   }
 }
 
-async function fetchBytes(url: string): Promise<Uint8Array<ArrayBuffer>> {
-  const response = await fetch(url);
+async function fetchBytes(
+  url: string,
+  signal?: AbortSignal,
+): Promise<Uint8Array<ArrayBuffer>> {
+  const response = await fetch(url, signal ? { signal } : {});
   if (!response.ok) throw new Error(`Packaged PDF runtime asset failed to load (${response.status}).`);
   return new Uint8Array(await response.arrayBuffer());
 }
@@ -79,14 +83,14 @@ let compilerPromise: Promise<BrowserPdfCompiler> | null = null;
 function getCompiler(): Promise<BrowserPdfCompiler> {
   if (compilerPromise) return compilerPromise;
   assertStaticAssetParity();
-  compilerPromise = Promise.all([
-    fetchBytes(wasmUrl),
-    ...PDF_RUNTIME_ASSETS.fonts.map((asset) => fetchBytes(fontUrls.get(asset.fileName)!)),
-    ...PDF_RUNTIME_ASSETS.licenses.map((asset) => fetchBytes(licenseUrls.get(asset.fileName)!)),
-    fetchBytes(compilerLicenseUrl),
-  ])
-    .then(([wasm, ...fontAndLicenseBytes]) => {
-      const fonts = fontAndLicenseBytes.slice(0, PDF_RUNTIME_ASSETS.fonts.length);
+  compilerPromise = fetchBytes(wasmUrl)
+    .then((wasm) => {
+      const fonts = PDF_RUNTIME_ASSETS.fonts.map((asset) => ({
+        assetId: asset.assetId,
+        sha256: asset.sha256,
+        load: (context: PdfCompileContext = {}) =>
+          fetchBytes(fontUrls.get(asset.fileName)!, context.signal),
+      }));
       return new BrowserPdfCompiler({ wasm: wasm.buffer, fonts });
     })
     .catch((error) => {

@@ -21,7 +21,7 @@ export function Select({
   return (
     <select
       className={cn(
-        "h-8 w-full rounded-md border bg-background px-2 text-sm text-foreground",
+        "h-11 w-full rounded-md border bg-background px-2.5 text-sm text-foreground",
         className
       )}
       {...props}
@@ -43,7 +43,7 @@ export function Input({
   return (
     <input
       className={cn(
-        "h-8 w-full rounded-md border bg-background px-2 text-sm text-foreground",
+        "h-11 w-full rounded-md border bg-background px-2.5 text-sm text-foreground",
         "placeholder:text-muted-foreground disabled:opacity-50",
         className
       )}
@@ -116,7 +116,7 @@ export function Badge({
   return (
     <span
       className={cn(
-        "inline-flex shrink-0 items-center rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+        "inline-flex shrink-0 items-center rounded px-1.5 py-0.5 text-xs font-semibold uppercase tracking-wide",
         tone === "accent" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground",
         className
       )}
@@ -132,7 +132,7 @@ export function SectionHeading({
   return (
     <h2
       className={cn(
-        "m-0 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground",
+        "m-0 text-xs font-semibold uppercase tracking-wide text-muted-foreground",
         className
       )}
       {...props}

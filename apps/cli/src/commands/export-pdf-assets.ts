@@ -39,6 +39,7 @@ import { readFile } from "node:fs/promises";
 import { isAbsolute, resolve } from "node:path";
 import { PDF_RUNTIME_ASSETS } from "@atlcli/pdf";
 import type { PdfCompilePort } from "@atlcli/pdf";
+import type { BrowserPdfCompilerFontSourceV1 } from "@atlcli/pdf-compiler-browser";
 
 /**
  * Resolve a `with { type: "file" }` import path to something `readFile` can open
@@ -112,6 +113,25 @@ export async function loadPdfCompilerAssets(): Promise<{ wasm: ArrayBuffer; font
 
 let compilerPromise: Promise<PdfCompilePort> | null = null;
 
+function demandAwareFontSources(): BrowserPdfCompilerFontSourceV1[] {
+  assertPdfAssetParity();
+  return FONT_FILES.map((font, index) => {
+    const manifest = PDF_RUNTIME_ASSETS.fonts[index]!;
+    return {
+      assetId: manifest.assetId,
+      sha256: manifest.sha256,
+      load: async (context = {}) => {
+        context.signal?.throwIfAborted();
+        const bytes = new Uint8Array(
+          await readFile(assetFilePath(font.path)),
+        );
+        context.signal?.throwIfAborted();
+        return bytes;
+      },
+    };
+  });
+}
+
 /**
  * Lazily create ONE compiler per CLI process (spike lifecycle decision T3.1):
  * `reset_shadow()` runs between pages inside `compile()`, so a single instance
@@ -123,8 +143,16 @@ export function getPdfCompiler(): Promise<PdfCompilePort> {
   if (compilerPromise) return compilerPromise;
   compilerPromise = (async () => {
     const { BrowserPdfCompiler } = await import("@atlcli/pdf-compiler-browser");
-    const { wasm, fonts } = await loadPdfCompilerAssets();
-    return new BrowserPdfCompiler({ wasm, fonts });
+    assertPdfAssetParity();
+    const wasmBytes = await readFile(assetFilePath(typstWasm));
+    const wasm = wasmBytes.buffer.slice(
+      wasmBytes.byteOffset,
+      wasmBytes.byteOffset + wasmBytes.byteLength,
+    );
+    return new BrowserPdfCompiler({
+      wasm,
+      fonts: demandAwareFontSources(),
+    });
   })().catch((error) => {
     compilerPromise = null;
     throw error;

@@ -127,6 +127,7 @@ describe("resolveScreens", () => {
       "durable-jobs",
       "pdf-preview",
       "settings-persistence",
+      "confluence-page-customization",
     ] as const;
     const keys = capabilities.map((capability) =>
       requirementReasonKey({ kind: "capability", capability })
@@ -231,9 +232,9 @@ describe("the shipped registry", () => {
     expect(new Set(orders).size).toBe(orders.length);
   });
 
-  it("treats Preview as a Studio capability, not a competing primary area", () => {
+  it("keeps Preview in the Publishing area's primary navigation", () => {
     expect(defaultScreens.find((screen) => screen.id === SCREEN_IDS.preview)?.navigation).toBe(
-      "hidden"
+      "primary"
     );
     expect(defaultScreens.find((screen) => screen.id === SCREEN_IDS.export)?.navigation).toBe(
       "primary"

@@ -57,6 +57,7 @@ describe("CHROME_CAPABILITIES", () => {
       "template-library",
       "durable-jobs",
       "settings-persistence",
+      "confluence-page-customization",
     ]);
   });
 

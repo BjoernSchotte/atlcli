@@ -628,7 +628,7 @@ export function PreviewScreen({
                   <div className="min-w-0">
                     <div className="text-xs font-semibold">{t("preview.status.label")}</div>
                     <div
-                      className="mt-0.5 truncate text-[10px] text-muted-foreground"
+                      className="mt-0.5 truncate text-xs text-muted-foreground"
                       title={t("preview.publishedOnly")}
                       data-testid="preview-metadata"
                     >
@@ -642,7 +642,7 @@ export function PreviewScreen({
                   </div>
                   <span
                     className={cn(
-                      "shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold",
+                      "shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold",
                       statusClass
                     )}
                     data-testid="preview-status"
@@ -666,7 +666,6 @@ export function PreviewScreen({
                   <Button
                     size={previewStatus === "current" && shell.openLargePreview ? "icon" : "sm"}
                     variant={previewStatus === "current" && shell.openLargePreview ? "ghost" : "default"}
-                    className={cn(previewStatus === "current" && shell.openLargePreview && "size-7")}
                     onClick={() => void compile()}
                     disabled={phase === "compiling"}
                     aria-label={
@@ -695,7 +694,6 @@ export function PreviewScreen({
                     <Button
                       size="icon"
                       variant="outline"
-                      className="size-7"
                       onClick={shell.openLargePreview}
                       aria-label={t("preview.openLarge")}
                       title={t("preview.openLarge")}
@@ -706,13 +704,13 @@ export function PreviewScreen({
                   )}
                   <details className="relative ml-auto text-xs" data-testid="preview-options">
                     <summary
-                      className="flex size-7 cursor-pointer list-none items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground [&::-webkit-details-marker]:hidden"
+                      className="flex size-11 cursor-pointer list-none items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground [&::-webkit-details-marker]:hidden"
                       aria-label={t("preview.options")}
                       title={t("preview.options")}
                     >
                       <MoreHorizontal className="size-4" aria-hidden="true" />
                     </summary>
-                    <div className="absolute right-0 top-8 z-20 flex w-64 flex-col gap-1.5 rounded-md border bg-popover p-2 text-popover-foreground shadow-md">
+                    <div className="absolute right-0 top-12 z-20 flex w-64 flex-col gap-1.5 rounded-md border bg-popover p-2 text-popover-foreground shadow-md">
                       <label className="flex items-center gap-2 font-medium">
                         <input
                           type="checkbox"
@@ -786,7 +784,29 @@ export function PreviewScreen({
       )}
 
       {!embedded && phase === "idle" && loadedPage && (
-        <Alert data-testid="preview-empty">{t("preview.empty")}</Alert>
+        <div
+          className="grid min-h-[280px] content-start gap-3 px-2 py-10"
+          data-testid="preview-empty"
+        >
+          <span className="text-xs font-extrabold uppercase tracking-[0.1em] text-primary">
+            {t("preview.title")}
+          </span>
+          <h2 className="m-0 font-serif text-2xl font-semibold tracking-[-0.035em]">
+            {t("preview.emptyTitle")}
+          </h2>
+          <p className="m-0 max-w-[34ch] text-sm leading-relaxed text-muted-foreground">
+            {t("preview.emptyDetail")}
+          </p>
+          <Button
+            className="w-fit"
+            variant="outline"
+            onClick={() => void compile()}
+            data-testid="preview-empty-generate"
+          >
+            <Eye aria-hidden="true" />
+            {t("preview.emptyAction")}
+          </Button>
+        </div>
       )}
 
       {hasPreview && result && (
@@ -963,5 +983,5 @@ export const previewScreenDefinition: ScreenDefinition = {
   component: PreviewScreen,
   requirements: [{ kind: "loaded-page" }, { kind: "capability", capability: PREVIEW_CAPABILITY }],
   order: 15,
-  navigation: "hidden",
+  navigation: "primary",
 };

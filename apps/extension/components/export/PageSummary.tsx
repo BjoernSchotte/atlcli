@@ -8,7 +8,7 @@
  * the export surface.
  */
 import React from "react";
-import { RefreshCw } from "lucide-react";
+import { CircleCheck, FileText, RefreshCw } from "lucide-react";
 import type { AtlassianEntity } from "@atlcli/core";
 import type { PanelState } from "../../utils/panel-state.js";
 import type { ReadErrorKind } from "../../utils/read-path.js";
@@ -99,15 +99,17 @@ function LoadedPageCard({
   const modified = details.modified ? new Date(details.modified).toLocaleString() : undefined;
 
   return (
-    <Card className="rounded-lg" data-testid="state-loaded">
-      <CardContent className="p-2">
-        <div className="flex items-start gap-1.5">
-          <span className="mt-1.5 size-2 shrink-0 rounded-full bg-primary" aria-hidden="true" />
+    <Card className="rounded-xl bg-muted" data-testid="state-loaded">
+      <CardContent className="p-2.5">
+        <div className="grid grid-cols-[34px_minmax(0,1fr)_44px] items-center gap-2.5">
+          <span className="grid size-[34px] place-items-center rounded-lg border border-primary/25 bg-accent text-primary">
+            <FileText size={17} aria-hidden="true" />
+          </span>
           <div className="min-w-0 flex-1">
             <h2 className="m-0 truncate text-[13px] font-semibold leading-5" data-testid="loaded-title">
               {details.title}
             </h2>
-            <p className="m-0 truncate text-[11px] text-muted-foreground">
+            <p className="m-0 truncate text-xs text-muted-foreground">
               <span data-testid="loaded-space">{details.spaceKey ?? "—"}</span>
               {" · "}
               <span data-testid="loaded-version">
@@ -116,11 +118,15 @@ function LoadedPageCard({
               {" · "}
               <span data-testid="loaded-wordcount">{wordCount}</span> {t("page.meta.words").toLowerCase()}
             </p>
+            <span className="mt-0.5 inline-flex items-center gap-1 text-xs font-semibold text-success">
+              <CircleCheck size={13} aria-hidden="true" />
+              {t("page.connected")}
+            </span>
           </div>
           <Button
             size="icon"
             variant="ghost"
-            className="size-7 shrink-0"
+            className="shrink-0"
             aria-label={t("page.reload")}
             title={t("page.reload")}
             onClick={onRetry}
@@ -130,9 +136,11 @@ function LoadedPageCard({
           </Button>
         </div>
 
-        <details className="mt-1 text-[11px]">
-          <summary className="cursor-pointer text-muted-foreground">{t("page.details")}</summary>
-          <dl className="m-0 mt-1.5 grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 text-[11px] text-muted-foreground">
+        <details className="mt-1 text-xs">
+          <summary className="flex min-h-9 cursor-pointer items-center text-muted-foreground">
+            {t("page.details")}
+          </summary>
+          <dl className="m-0 mt-1.5 grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
             {modified && (
             <Meta
               label={t("page.meta.modified")}

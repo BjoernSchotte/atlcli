@@ -453,6 +453,7 @@ describe("PreviewScreen", () => {
     await mount(loadedState(), runtime);
     expect(runtime.compiles).toBe(0);
     expect(maybeFind("preview-empty")).not.toBeNull();
+    expect(maybeFind("preview-empty-generate")).not.toBeNull();
     expect(maybeFind("preview-canvas")).toBeNull();
     // The auto-update toggle is off by default, for the same reason.
     expect((find("preview-auto") as unknown as HTMLInputElement).checked).toBe(false);
@@ -483,7 +484,7 @@ describe("PreviewScreen", () => {
     expect(find("preview-status").getAttribute("data-status")).toBe("current");
     expect(find("preview-metadata").textContent).toBe("v7 · 4 pages");
     expect(find("preview-open-large").textContent).toContain("Large preview");
-    expect(find("preview-open-large").className).toContain("h-7");
+    expect(find("preview-open-large").className).toContain("min-h-9");
     expect(find("preview-generate").getAttribute("aria-label")).toContain("Refresh");
     expect(maybeFind("preview-document")).not.toBeNull();
 
@@ -862,7 +863,7 @@ describe("PreviewScreen — one screen, two shells", () => {
 
     const close = find("preview-close");
     expect(close.getAttribute("aria-label")).toContain("Close");
-    expect(close.className).toContain("size-8");
+    expect(close.className).toContain("size-11");
     await click("preview-close");
     expect(closed).toBe(1);
   });

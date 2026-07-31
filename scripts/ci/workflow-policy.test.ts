@@ -184,7 +184,7 @@ describe("CI workflow policy", () => {
     expect(browser).not.toContain("needs: test");
   });
 
-  it("builds the packed MV3 extension once before both prebuilt browser suites", async () => {
+  it("builds the packed MV3 extension once before all prebuilt browser suites", async () => {
     const ci = await workflow("ci.yml");
     const extension = JSON.parse(await readFile(join(REPO_ROOT, "apps/extension/package.json"), "utf8")) as {
       scripts: Record<string, string>;
@@ -194,17 +194,22 @@ describe("CI workflow policy", () => {
     expect(browser.match(/bun run --cwd apps\/extension build/g)).toHaveLength(1);
     expect(browser).toContain("test:worker-extension-browser:prebuilt");
     expect(browser).toContain("test:jobs-extension-browser:prebuilt");
-    expect(browser).not.toMatch(/test:(?:worker|jobs)-extension-browser\s*$/m);
+    expect(browser).toContain("test:rovo-extension-browser:prebuilt");
+    expect(browser).not.toMatch(/test:(?:worker|jobs|rovo)-extension-browser\s*$/m);
 
     // Local commands remain self-contained; CI alone opts into the prebuilt
     // variants after its one explicit build.
     expect(extension.scripts["pretest:worker-extension-browser"]).toBe("bun run build");
     expect(extension.scripts["pretest:jobs-extension-browser"]).toBe("bun run build");
+    expect(extension.scripts["pretest:rovo-extension-browser"]).toBe("bun run build");
     expect(extension.scripts["test:worker-extension-browser"]).toBe(
       "bun run test:worker-extension-browser:prebuilt",
     );
     expect(extension.scripts["test:jobs-extension-browser"]).toBe(
       "bun run test:jobs-extension-browser:prebuilt",
+    );
+    expect(extension.scripts["test:rovo-extension-browser"]).toBe(
+      "bun run test:rovo-extension-browser:prebuilt",
     );
   });
 
