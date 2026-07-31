@@ -54,6 +54,14 @@ export const FREEZE_DECISIONS: Record<string, FreezeDecision> = {
       "experience, and build contract layer. Keep it experimental while Astro/Starlight " +
       "adapters and a second experience consumer prove capability negotiation and closure.",
   },
+  "@atlcli/web-publish-astro": {
+    version: "0.x",
+    frozen: false,
+    reasoning:
+      "STAYS 0.x: Node-only Astro structured-data loader and static integration introduced " +
+      "for web publishing. Keep it experimental until packed clean-project, Starlight, and " +
+      "real Cloud/Data Center publication artifacts prove the integration contract.",
+  },
   "@atlcli/code-highlight": {
     version: "0.x",
     frozen: false,

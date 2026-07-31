@@ -1460,7 +1460,7 @@ inputs, and does not alter existing export targets.
 
 ### T4 — Establish the Astro 7.1 integration/loader contract
 
-- [ ] Add the Node-only `@atlcli/web-publish-astro` package with Astro peer
+- [x] Add the Node-only `@atlcli/web-publish-astro` package with Astro peer
       dependency and no bundled Astro/private Vite internals.
 - [ ] Export the default integration factory and named structured-data loader.
 - [ ] Implement loader entry IDs from immutable source IDs, schema validation,
