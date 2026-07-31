@@ -8,3 +8,4 @@
 export * from "./contracts.js";
 export * from "./capability-contracts.js";
 export * from "./scope-discovery.js";
+export * from "./scope-catalog.js";

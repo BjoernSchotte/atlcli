@@ -48,6 +48,11 @@
       "development": "./src/scope-discovery.ts",
       "types": "./dist/scope-discovery.d.ts",
       "default": "./dist/scope-discovery.js"
+    },
+    "./scope-catalog": {
+      "development": "./src/scope-catalog.ts",
+      "types": "./dist/scope-catalog.d.ts",
+      "default": "./dist/scope-catalog.js"
     }
   },
   "scripts": {
