@@ -27,6 +27,7 @@ function macroOptions(calls: string[]): MacroResolutionOptions {
     id: "page-identity",
     macros: ["widget"],
     requiresLivePort: true,
+    webRenderModel: { kind: "jira-data", dependencies: ["jira"] },
     async render(_macro, context) {
       const headings = context.documentBlocks
         ?.filter((block) => block.type === "heading")
@@ -72,6 +73,24 @@ describe("resolveWebPageMacrosV1", () => {
       { type: "paragraph", content: [{ type: "text", text: "resolved:child" }] },
     ]);
     expect(resolved.every((entry) => entry.usedLive)).toBe(true);
+    expect(resolved.map((entry) => entry.renderModels)).toEqual([
+      [{
+        sourceId: "root",
+        macroName: "widget",
+        kind: "jira-data",
+        rendererId: "page-identity",
+        provenance: "frozen-live",
+        dependencies: ["jira"],
+      }],
+      [{
+        sourceId: "child",
+        macroName: "widget",
+        kind: "jira-data",
+        rendererId: "page-identity",
+        provenance: "frozen-live",
+        dependencies: ["jira"],
+      }],
+    ]);
   });
 
   test("static-only permits pure output but never invokes a live renderer", async () => {
@@ -86,7 +105,36 @@ describe("resolveWebPageMacrosV1", () => {
 
     expect(calls).toEqual([]);
     expect(resolved[0]?.usedLive).toBe(false);
+    expect(resolved[0]?.renderModels).toEqual([{
+      sourceId: "guide",
+      macroName: "widget",
+      kind: "unknown",
+      provenance: "fallback",
+      dependencies: [],
+    }]);
     expect(resolved[0]?.blocks).toEqual([{ type: "unknown", macroName: "widget" }]);
+  });
+
+  test("keeps an unsupported requested chart as a closed visible fallback", async () => {
+    const resolved = await resolveWebPageMacrosV1([
+      page("guide", [{ type: "unknown", macroName: "chart", plainBody: "<raw-chart/>" }]),
+    ], {
+      macros: macroOptions([]),
+      policy: { mode: "static-only" },
+      now: () => 2_000,
+    });
+
+    expect(resolved[0]?.renderModels).toEqual([{
+      sourceId: "guide",
+      macroName: "chart",
+      kind: "unknown",
+      requestedKind: "chart",
+      provenance: "fallback",
+      dependencies: [],
+    }]);
+    // The model does not become a second source payload; rendering consumes the
+    // normalized blocks and cannot retrieve an opaque chart body from metadata.
+    expect(JSON.stringify(resolved[0]?.renderModels)).not.toContain("raw-chart");
   });
 
   test("reuses only a version-matching, explicitly fresh frozen live result", async () => {
@@ -96,6 +144,7 @@ describe("resolveWebPageMacrosV1", () => {
       sourceVersion: 1,
       blocks: [{ type: "paragraph", content: [{ type: "text", text: "frozen" }] }],
       notes: [],
+      renderModels: [],
       resolvedAtEpochMs: 1_000,
       usedLive: true,
     };

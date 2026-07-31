@@ -1445,7 +1445,7 @@ digest; route identity survives rename/move; every internal reference resolves.
 - [x] Freeze existing DOCX/PDF/Word target truth tables and API output.
 - [x] Resolve macros independently per page with correct page identity and
       page-local TOC/document context.
-- [ ] Define closed macro-to-render-model mappings, starting with TOC, Jira
+- [x] Define closed macro-to-render-model mappings, starting with TOC, Jira
       data, diagram/Mermaid, chart, status, Smart Card, and unknown fallback.
 - [ ] Prefer validated SVG/static models for web diagrams/charts.
 - [ ] Implement `live`, `no-live`, freshness, dependency, and frozen-provenance

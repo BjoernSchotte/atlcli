@@ -190,6 +190,7 @@ export function whiteboardRenderer(): MacroRenderer {
     id: "whiteboard-linked-card",
     macros: [WHITEBOARD_EXTENSION_KEY],
     requiresLivePort: false,
+    webRenderModel: { kind: "smart-card", dependencies: [] },
     async render(
       macro: MacroInstance,
       ctx: MacroExportContext,

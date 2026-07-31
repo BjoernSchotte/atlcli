@@ -1,11 +1,32 @@
 import type { ExportBlock, ExportNote, ExportPageNode } from "@atlcli/confluence";
-import { resolveMacroBlocks, type MacroResolutionOptions } from "@atlcli/export-macros";
+import {
+  resolveMacroBlocks,
+  type MacroResolutionOptions,
+  type MacroResolutionTraceV1,
+  type MacroWebRenderModelKindV1,
+} from "@atlcli/export-macros";
 
 /** The web publication policy visible at the macro-resolution boundary. */
 export interface WebMacroResolutionPolicyV1 {
   mode: "static-only" | "allow-frozen-live";
   /** A prior live result is reusable only inside this explicit freshness window. */
   liveFreshnessSeconds?: number;
+}
+
+/**
+ * Closed, renderer-owned macro category stored beside a publication page.
+ * It gives a web renderer semantic context without persisting raw macro
+ * parameters, untrusted HTML, or a live port response.
+ */
+export interface WebMacroRenderModelV1 {
+  sourceId: string;
+  macroName: string;
+  kind: MacroWebRenderModelKindV1;
+  /** The requested semantic kind when an unsupported macro retained its fallback. */
+  requestedKind?: Exclude<MacroWebRenderModelKindV1, "unknown">;
+  rendererId?: string;
+  provenance: "static" | "frozen-live" | "fallback";
+  dependencies: readonly ("jira" | "confluence" | "attachment" | "export-view")[];
 }
 
 /**
@@ -18,8 +39,51 @@ export interface ResolvedWebMacroPageV1 {
   sourceVersion?: number;
   blocks: readonly ExportBlock[];
   notes: readonly ExportNote[];
+  /** Closed semantic macro metadata; `blocks` remains the sole content payload. */
+  renderModels: readonly WebMacroRenderModelV1[];
   resolvedAtEpochMs: number;
   usedLive: boolean;
+}
+
+const REQUESTED_WEB_MACRO_KINDS: Readonly<Record<string, Exclude<MacroWebRenderModelKindV1, "unknown">>> = {
+  toc: "toc",
+  jira: "jira-data",
+  jiraissues: "jira-data",
+  drawio: "diagram",
+  "inc-drawio": "diagram",
+  "drawio-sketch": "diagram",
+  gliffy: "diagram",
+  mermaid: "diagram",
+  chart: "chart",
+  charts: "chart",
+  status: "status",
+  "smart-card": "smart-card",
+};
+
+function webModelFromTrace(
+  sourceId: string,
+  trace: MacroResolutionTraceV1,
+): WebMacroRenderModelV1 {
+  const requestedKind = REQUESTED_WEB_MACRO_KINDS[trace.macroName.toLowerCase()];
+  if (trace.outcome !== "rendered" || trace.webRenderModel === undefined) {
+    return {
+      sourceId,
+      macroName: trace.macroName,
+      kind: "unknown",
+      ...(requestedKind === undefined ? {} : { requestedKind }),
+      provenance: "fallback",
+      dependencies: [],
+    };
+  }
+
+  return {
+    sourceId,
+    macroName: trace.macroName,
+    kind: trace.webRenderModel.kind,
+    rendererId: trace.rendererId,
+    provenance: trace.rendererRequiresLivePort ? "frozen-live" : "static",
+    dependencies: [...trace.webRenderModel.dependencies],
+  };
 }
 
 export interface ResolveWebPageMacrosOptionsV1 {
@@ -95,6 +159,7 @@ export async function resolveWebPageMacrosV1(
       ...(page.meta.version === undefined ? {} : { version: page.meta.version }),
       ...(page.meta.spaceKey === undefined ? {} : { spaceKey: page.meta.spaceKey }),
     };
+    const renderModels: WebMacroRenderModelV1[] = [];
     const resolved = await resolveMacroBlocks(
       { blocks: page.blocks, notes: page.notes },
       options.macros.registry,
@@ -103,6 +168,7 @@ export async function resolveWebPageMacrosV1(
         live: options.policy.mode === "allow-frozen-live" && options.macros.live !== false,
         contextFor: (macroSourcePage) => options.macros.contextFor(macroSourcePage ?? sourcePage),
         targetEngine: "web",
+        onResolvedMacro: (trace) => renderModels.push(webModelFromTrace(page.pageId, trace)),
       },
     );
     result.push({
@@ -110,6 +176,7 @@ export async function resolveWebPageMacrosV1(
       ...(page.meta.version === undefined ? {} : { sourceVersion: page.meta.version }),
       blocks: resolved.blocks,
       notes: resolved.notes,
+      renderModels,
       resolvedAtEpochMs,
       usedLive: options.policy.mode === "allow-frozen-live" && options.macros.live !== false,
     });

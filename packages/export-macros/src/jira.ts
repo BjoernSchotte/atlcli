@@ -221,6 +221,7 @@ export function jiraMacroRenderer(): MacroRenderer {
     id: "jira",
     macros: ["jira", "jiraissues"],
     requiresLivePort: true,
+    webRenderModel: { kind: "jira-data", dependencies: ["jira"] },
     async render(m: MacroInstance, ctx: MacroExportContext): Promise<MacroRenderResult> {
       // Cross-site guard runs BEFORE the port check: a datasource pointing at
       // another Jira site must degrade to its link with a stated reason, not

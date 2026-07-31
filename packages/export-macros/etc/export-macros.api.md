@@ -197,6 +197,7 @@ export interface MacroPageScope {
 export interface MacroRenderer {
     readonly macros: readonly string[];
     readonly id: string;
+    readonly webRenderModel?: MacroWebRenderModelDescriptorV1;
     readonly requiresLivePort: boolean;
     render(m: MacroInstance, ctx: MacroExportContext): Promise<MacroRenderResult>;
 }
@@ -236,6 +237,26 @@ export interface MacroResolutionOptions {
     live?: boolean;
 }
 
+// export: MacroResolutionTraceV1
+export interface MacroResolutionTraceV1 {
+    readonly macroName: string;
+    readonly sourcePage?: UnknownBlock["sourcePage"];
+    readonly replacement: readonly ExportBlock[];
+    readonly outcome: "rendered" | "fallback";
+    readonly rendererId?: string;
+    readonly rendererRequiresLivePort?: boolean;
+    readonly webRenderModel?: MacroWebRenderModelDescriptorV1;
+}
+
+// export: MacroWebRenderModelDescriptorV1
+export interface MacroWebRenderModelDescriptorV1 {
+    readonly kind: MacroWebRenderModelKindV1;
+    readonly dependencies: readonly ("jira" | "confluence" | "attachment" | "export-view")[];
+}
+
+// export: MacroWebRenderModelKindV1
+export type MacroWebRenderModelKindV1 = "toc" | "jira-data" | "diagram" | "chart" | "status" | "smart-card" | "unknown";
+
 // export: ParsePagePropertiesDep
 export type ParsePagePropertiesDep = (storage: string) => {
     id?: string;
@@ -265,6 +286,7 @@ export declare function resolveMacroBlocks(input: StorageToBlocksResult, registr
     live?: boolean;
     contextFor?: (page: UnknownBlock["sourcePage"]) => MacroExportContext;
     targetEngine?: "docx" | "pdf" | "web";
+    onResolvedMacro?: (trace: MacroResolutionTraceV1) => void;
 }): Promise<StorageToBlocksResult>;
 
 // export: StorageToBlocksDep

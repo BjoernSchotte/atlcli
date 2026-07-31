@@ -62,6 +62,7 @@ export function diagramMacroRenderer(): MacroRenderer {
     id: "diagram",
     macros: DIAGRAM_MACROS,
     requiresLivePort: true,
+    webRenderModel: { kind: "diagram", dependencies: ["attachment"] },
     async render(m: MacroInstance, ctx: MacroExportContext): Promise<MacroRenderResult> {
       const name = diagramName(m);
       if (!name) return { kind: "skip" };

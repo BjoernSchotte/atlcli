@@ -416,6 +416,7 @@ export interface ResolvedWebMacroPageV1 {
     sourceVersion?: number;
     blocks: readonly ExportBlock[];
     notes: readonly ExportNote[];
+    renderModels: readonly WebMacroRenderModelV1[];
     resolvedAtEpochMs: number;
     usedLive: boolean;
 }
@@ -466,6 +467,17 @@ export declare function trustRoutingAssetFetcher(inner: AssetFetcher, external: 
 
 // export: trustRoutingPdfAssetResolver
 export declare function trustRoutingPdfAssetResolver(inner: PdfAssetResolver, external: ExternalAssetFetcher): PdfAssetResolver;
+
+// export: WebMacroRenderModelV1
+export interface WebMacroRenderModelV1 {
+    sourceId: string;
+    macroName: string;
+    kind: MacroWebRenderModelKindV1;
+    requestedKind?: Exclude<MacroWebRenderModelKindV1, "unknown">;
+    rendererId?: string;
+    provenance: "static" | "frozen-live" | "fallback";
+    dependencies: readonly ("jira" | "confluence" | "attachment" | "export-view")[];
+}
 
 // export: WebMacroResolutionPolicyV1
 export interface WebMacroResolutionPolicyV1 {
@@ -1156,6 +1168,7 @@ export interface ResolvedWebMacroPageV1 {
     sourceVersion?: number;
     blocks: readonly ExportBlock[];
     notes: readonly ExportNote[];
+    renderModels: readonly WebMacroRenderModelV1[];
     resolvedAtEpochMs: number;
     usedLive: boolean;
 }
@@ -1210,6 +1223,17 @@ export type TypescriptDocxExportJobResolvedInputV1 = TypescriptDocxExportJobEngi
         sourcePageCount: number;
     };
 };
+
+// export: WebMacroRenderModelV1
+export interface WebMacroRenderModelV1 {
+    sourceId: string;
+    macroName: string;
+    kind: MacroWebRenderModelKindV1;
+    requestedKind?: Exclude<MacroWebRenderModelKindV1, "unknown">;
+    rendererId?: string;
+    provenance: "static" | "frozen-live" | "fallback";
+    dependencies: readonly ("jira" | "confluence" | "attachment" | "export-view")[];
+}
 
 // export: WebMacroResolutionPolicyV1
 export interface WebMacroResolutionPolicyV1 {
