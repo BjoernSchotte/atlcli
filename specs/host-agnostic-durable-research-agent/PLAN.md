@@ -2139,7 +2139,7 @@ reduce commit count.
 
 Shared:
 
-- [ ] Record the current issue-138 request, capability, report, and error
+- [x] Record the current issue-138 request, capability, report, and error
       schemas as V1 compatibility fixtures.
 - [ ] Extract a customer-free deterministic scenario containing pagination,
       exact Jira-to-Confluence links, hypotheses, truncation, unavailable
