@@ -17,6 +17,12 @@ beforeAll(async () => {
       const { pathname } = new URL(req.url);
       requestPaths.push(pathname);
 
+      if (pathname === "/rest/api/user/current" || pathname === "/rest/api/2/myself") {
+        if (req.headers.get("authorization") !== "Bearer fixture-token") {
+          return Response.json({ message: "Unauthorized" }, { status: 401 });
+        }
+      }
+
       if (pathname === "/rest/api/user/current") {
         return Response.json({ accountId: "doctor-user", displayName: "Doctor User" });
       }
@@ -93,7 +99,7 @@ describe("doctor credential resolution", () => {
     expect(output.summary.failed).toBe(0);
     expect(requestPaths).toContain("/rest/api/user/current");
     expect(requestPaths).toContain("/rest/api/2/myself");
-    expect(result.stdout).not.toContain("fixture-token");
+    expect(`${result.stdout}${result.stderr}`).not.toContain("fixture-token");
   });
 
   it("reports a missing resolved token instead of requiring email on bearer auth", async () => {

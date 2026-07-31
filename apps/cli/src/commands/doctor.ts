@@ -263,7 +263,8 @@ async function checkActiveProfile(): Promise<CheckResult> {
     }
 
     // Resolve credentials through the same env → keychain → config chain used
-    // by API clients. Session auth is validated by the connectivity checks.
+    // by API clients. Session profiles have no token to resolve; the
+    // connectivity checks report the explicit CLI unsupported-session error.
     if (profile.auth.type !== "session" && !resolveToken(profile)) {
       return {
         name: "active_profile",

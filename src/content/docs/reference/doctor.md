@@ -27,7 +27,7 @@ atlcli doctor --json
 | Config exists | Config | Verifies `~/.atlcli/config.json` exists |
 | Config valid | Config | Validates config file is proper JSON |
 | Profile exists | Auth | At least one profile is configured |
-| Active profile | Auth | Active profile has credentials resolvable from environment, keychain, or config |
+| Active profile | Auth | Validates auth-specific requirements and resolves token credentials from environment, keychain, or config. Session profiles are reported by the connectivity checks |
 | Confluence API | Connectivity | Tests Confluence authentication and latency |
 | Jira API | Connectivity | Tests Jira authentication and latency |
 | Log directory | Permissions | Verifies `~/.atlcli/logs/` is writable |
@@ -68,24 +68,19 @@ atlcli doctor
 
   Authentication
     ✓ 1 profile(s) configured
-    ✗ Active profile missing credentials
-      → Run: atlcli auth login
-
-  Connectivity
-    ✗ Confluence auth failed
-      → Run: atlcli auth login
-    ✓ Jira API OK (198ms)
+    ✗ Profile 'work' missing credentials
+      → Set ATLCLI_API_TOKEN, configure a token, or store one in the keychain
 
   Permissions
     ⚠ Log directory missing
       → Run: atlcli doctor --fix
 
-  4 passed, 1 warning, 2 failed
+  3 passed, 1 warning, 1 failed
 ```
 
 ## Options
 
-Credentials are resolved through the same precedence as normal API calls: `ATLCLI_API_TOKEN`, macOS Keychain, then profile configuration.
+Token-based credentials are resolved through the same precedence as normal API calls: `ATLCLI_API_TOKEN`, macOS Keychain, then profile configuration. Session profiles do not resolve a token in the CLI; the connectivity checks report the unsupported session mode explicitly.
 
 ### `--fix`
 
