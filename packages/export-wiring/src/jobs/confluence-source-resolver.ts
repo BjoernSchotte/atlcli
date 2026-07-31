@@ -5,6 +5,7 @@ import {
   fetchExportTree,
   type ComposeOptions,
   type ExportBlock,
+  type ExportNode,
   type ExportNote,
   type ExportScope,
   type ExportTreeBodyStoreV1,
@@ -121,6 +122,29 @@ export interface ResolvedConfluenceSourcePageV1 {
   version?: number;
   spaceKey?: string;
   notes: readonly ExportNote[];
+}
+
+/**
+ * The ordered, decoded Confluence page graph before document composition.
+ *
+ * Nodes preserve page/folder hierarchy and per-page blocks while raw ADF and
+ * Storage bodies remain confined to `fetchExportTree()`. Publication builders
+ * consume this boundary instead of reverse-engineering a chapterized document.
+ */
+export interface ResolvedConfluencePageGraphV1 {
+  scope: ExportScope;
+  nodes: readonly ExportNode[];
+  sourceNotes: readonly ExportNote[];
+  complete: boolean;
+  root: {
+    id: string;
+    title: string;
+    version?: number;
+    spaceKey?: string;
+  };
+  pages: readonly ResolvedConfluenceSourcePageV1[];
+  pageCount: number;
+  sourceSummary: TreeSourceSummary;
 }
 
 /**
@@ -288,17 +312,17 @@ async function resolveScope(
 }
 
 /**
- * Fetch, validate, decode, and compose one durable Confluence source request.
+ * Fetch, validate, and decode one durable Confluence source request.
  *
  * Raw page representations live only inside `TreeSource.getPage()` and the
  * bounded decoder slot in `fetchExportTree()`. The returned diagnostics are
  * aggregate metadata plus decoder notes; no source body is copied into job
  * progress, errors, or checkpoints by this seam.
  */
-async function resolveConfluenceSourceUnsafeV1(
+async function resolveConfluencePageGraphUnsafeV1(
   sourceRequest: ExportSourceV1,
   options: ResolveConfluenceSourceOptionsV1,
-): Promise<ResolvedConfluenceSourceV1> {
+): Promise<ResolvedConfluencePageGraphV1> {
   throwIfAborted(options.signal);
   let persistedPlan: PersistedConfluenceSourcePlanV1 | undefined;
   if (options.sourcePlanCheckpoint) {
@@ -462,6 +486,7 @@ async function resolveConfluenceSourceUnsafeV1(
       : [],
   );
   const pageNotes = pages.flatMap((page) => page.notes);
+  const sourceNotes = [...fetched.notes, ...pageNotes];
 
   if (resolved.scope.kind === "page") {
     const pageNode = fetched.nodes.find((node) => node.kind === "page");
@@ -469,8 +494,9 @@ async function resolveConfluenceSourceUnsafeV1(
       throw new Error("The Confluence page source resolved without a page node.");
     }
     return {
-      blocks: pageNode.blocks,
-      sourceNotes: [...fetched.notes, ...pageNotes],
+      scope: resolved.scope,
+      nodes: fetched.nodes,
+      sourceNotes,
       complete: fetched.complete,
       root: {
         id: pageNode.pageId,
@@ -484,9 +510,6 @@ async function resolveConfluenceSourceUnsafeV1(
     };
   }
 
-  const composed = composeChapters(fetched.nodes, {
-    ...(options.resolveExternalUrl ? { resolveExternalUrl: options.resolveExternalUrl } : {}),
-  });
   const firstPage = pages[0];
   const root = resolved.rootId !== undefined && rootSnapshot
     ? {
@@ -508,33 +531,97 @@ async function resolveConfluenceSourceUnsafeV1(
   if (!root) throw new Error("The Confluence tree source resolved without a root page.");
 
   return {
-    blocks: composed.blocks,
-    sourceNotes: [...fetched.notes, ...pageNotes, ...composed.notes],
+    scope: resolved.scope,
+    nodes: fetched.nodes,
+    sourceNotes,
     complete: fetched.complete,
     root,
     pages,
     pageCount: pages.length,
     sourceSummary: fetched.sourceSummary,
+  };
+}
+
+function composeResolvedConfluencePageGraphV1(
+  graph: ResolvedConfluencePageGraphV1,
+  options: ResolveConfluenceSourceOptionsV1,
+): ResolvedConfluenceSourceV1 {
+  if (graph.scope.kind === "page") {
+    const pageNode = graph.nodes.find((node) => node.kind === "page");
+    if (!pageNode || pageNode.kind !== "page") {
+      throw new Error("The Confluence page source resolved without a page node.");
+    }
+    return {
+      blocks: pageNode.blocks,
+      sourceNotes: [...graph.sourceNotes],
+      complete: graph.complete,
+      root: graph.root,
+      pages: graph.pages,
+      pageCount: graph.pageCount,
+      sourceSummary: graph.sourceSummary,
+    };
+  }
+
+  const composed = composeChapters(graph.nodes, {
+    ...(options.resolveExternalUrl ? { resolveExternalUrl: options.resolveExternalUrl } : {}),
+  });
+  return {
+    blocks: composed.blocks,
+    sourceNotes: [...graph.sourceNotes, ...composed.notes],
+    complete: graph.complete,
+    root: graph.root,
+    pages: graph.pages,
+    pageCount: graph.pageCount,
+    sourceSummary: graph.sourceSummary,
     chapterAnchorById: composed.chapterAnchorById,
   };
 }
 
+function throwConfluenceSourceResolutionFailureV1(
+  error: unknown,
+  options: ResolveConfluenceSourceOptionsV1,
+): never {
+  if (options.signal.aborted) {
+    throw options.signal.reason ?? error;
+  }
+  if (error instanceof ConfluenceSourceVersionMismatchError) throw error;
+  // The underlying error remains intentionally outside this durable-facing
+  // value. Client/parser messages can contain titles, URLs, or source
+  // fragments and must not become a persisted job error summary.
+  throw new ConfluenceSourceResolutionError(
+    options.classifyError?.(error) ?? "unknown",
+  );
+}
+
+/**
+ * Resolve the existing ordered page/folder graph exactly once, before document
+ * composition. The returned value contains normalized blocks but never raw
+ * ADF or Storage source.
+ */
+export async function resolveConfluencePageGraphV1(
+  sourceRequest: ExportSourceV1,
+  options: ResolveConfluenceSourceOptionsV1,
+): Promise<ResolvedConfluencePageGraphV1> {
+  try {
+    return await resolveConfluencePageGraphUnsafeV1(sourceRequest, options);
+  } catch (error) {
+    return throwConfluenceSourceResolutionFailureV1(error, options);
+  }
+}
+
+/**
+ * Compatibility document resolver. Tree and space results are composed from
+ * the same pre-compose graph returned by `resolveConfluencePageGraphV1()`;
+ * discovery and body reads are never repeated.
+ */
 export async function resolveConfluenceSourceV1(
   sourceRequest: ExportSourceV1,
   options: ResolveConfluenceSourceOptionsV1,
 ): Promise<ResolvedConfluenceSourceV1> {
   try {
-    return await resolveConfluenceSourceUnsafeV1(sourceRequest, options);
+    const graph = await resolveConfluencePageGraphUnsafeV1(sourceRequest, options);
+    return composeResolvedConfluencePageGraphV1(graph, options);
   } catch (error) {
-    if (options.signal.aborted) {
-      throw options.signal.reason ?? error;
-    }
-    if (error instanceof ConfluenceSourceVersionMismatchError) throw error;
-    // The underlying error remains intentionally outside this durable-facing
-    // value. Client/parser messages can contain titles, URLs, or source
-    // fragments and must not become a persisted job error summary.
-    throw new ConfluenceSourceResolutionError(
-      options.classifyError?.(error) ?? "unknown",
-    );
+    return throwConfluenceSourceResolutionFailureV1(error, options);
   }
 }

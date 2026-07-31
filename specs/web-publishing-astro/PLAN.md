@@ -1382,17 +1382,17 @@ passes.
 
 ### T1 — Expose the Confluence page graph before document composition
 
-- [ ] Add `ResolvedConfluencePageGraphV1` and
+- [x] Add `ResolvedConfluencePageGraphV1` and
       `resolveConfluencePageGraphV1()` in export wiring.
-- [ ] Preserve ordered page/folder nodes, parent/depth/position, per-page
+- [x] Preserve ordered page/folder nodes, parent/depth/position, per-page
       blocks/notes, source version/metadata, completeness, and summary.
-- [ ] Make current `resolveConfluenceSourceV1()` a compatibility wrapper that
+- [x] Make current `resolveConfluenceSourceV1()` a compatibility wrapper that
       still composes tree/space documents exactly as before.
-- [ ] Prove one discovery/body-fetch pass, cancellation, checkpoint/version,
+- [x] Prove one discovery/body-fetch pass, cancellation, checkpoint/version,
       partial-result, and placeholder behavior.
-- [ ] Generate/update public API reports deliberately.
-- [ ] Keep all DOCX/PDF resolver fixtures and deterministic artifacts unchanged.
-- [ ] STOP if implementation duplicates traversal/fetch, persists raw source,
+- [x] Generate/update public API reports deliberately.
+- [x] Keep all DOCX/PDF resolver fixtures and deterministic artifacts unchanged.
+- [x] STOP if implementation duplicates traversal/fetch, persists raw source,
       changes existing resolver output, or changes document bytes/notes.
 
 Acceptance: publishing can consume the exact pre-compose page graph while all

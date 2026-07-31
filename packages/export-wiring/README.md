@@ -1,7 +1,7 @@
 # @atlcli/export-wiring
 
 Host wiring for Confluence/Jira exports: the adapters that turn a REST **client**
-into the inputs `@atlcli/docx` and `@atlcli/pdf` accept.
+into normalized renderer and publishing inputs.
 
 Isomorphic — it builds for `--target=browser` with zero `node:`/`bun:`
 specifiers (enforced by `scripts/check-browser-build.ts`), so the CLI, the
@@ -16,6 +16,7 @@ each.
 | Asset security boundary | `createExternalAssetPolicy`, `createExternalAssetFetcher`, `defaultExternalAssetPolicy`, `defaultExternalAssetFetcher`, `isPrivateHost`, `parseIpv6` |
 | Sink-side trust routing | `trustRoutingAssetFetcher`, `trustRoutingPdfAssetResolver` |
 | Resolution options | `buildMacroResolutionOptions`, `createMacroRegistry` |
+| Confluence source graph | `resolveConfluencePageGraphV1` exposes ordered normalized page/folder nodes before document composition; `resolveConfluenceSourceV1` remains the DOCX/PDF compatibility wrapper |
 | Background export orchestration | `@atlcli/export-wiring/jobs`: ordered checkpoint pipeline, bounded asset streaming, and separate host-neutral TypeScript DOCX/PDF job executors |
 | Parity contract | `@atlcli/export-wiring/fixtures` |
 
@@ -65,6 +66,20 @@ const macros = buildMacroResolutionOptions({
 // that reach the ENGINE's asset seam, not the macro renderer's fetcher.
 const assets = trustRoutingPdfAssetResolver(hostResolver, externalAssets);
 ```
+
+## Page graph before document composition
+
+`resolveConfluencePageGraphV1(sourceRequest, options)` performs the same
+version-pinned discovery and body fetch as the existing document resolver, but
+returns the ordered `ExportNode[]` graph before `composeChapters()`. Page and
+folder hierarchy, positions, normalized per-page blocks/notes, source metadata,
+completeness, and aggregate source diagnostics remain available to publishing
+consumers. Raw ADF and Storage source never crosses this boundary.
+
+Existing DOCX/PDF hosts keep calling `resolveConfluenceSourceV1()`. It composes
+the graph from that same resolution pass, preserving the established document
+blocks, notes, page summaries, and chapter-anchor map without a second traversal
+or body read.
 
 ## The rule that is easy to forget
 

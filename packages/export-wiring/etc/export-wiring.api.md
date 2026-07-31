@@ -348,6 +348,9 @@ export interface PersistedOrderedSourceCheckpointV1<Cursor> {
     ref: string;
 }
 
+// export: resolveConfluencePageGraphV1
+export declare function resolveConfluencePageGraphV1(sourceRequest: ExportSourceV1, options: ResolveConfluenceSourceOptionsV1): Promise<ResolvedConfluencePageGraphV1>;
+
 // export: ResolveConfluenceSourceOptionsV1
 export interface ResolveConfluenceSourceOptionsV1 {
     exporter: "pdf" | "word";
@@ -363,6 +366,23 @@ export interface ResolveConfluenceSourceOptionsV1 {
 
 // export: resolveConfluenceSourceV1
 export declare function resolveConfluenceSourceV1(sourceRequest: ExportSourceV1, options: ResolveConfluenceSourceOptionsV1): Promise<ResolvedConfluenceSourceV1>;
+
+// export: ResolvedConfluencePageGraphV1
+export interface ResolvedConfluencePageGraphV1 {
+    scope: ExportScope;
+    nodes: readonly ExportNode[];
+    sourceNotes: readonly ExportNote[];
+    complete: boolean;
+    root: {
+        id: string;
+        title: string;
+        version?: number;
+        spaceKey?: string;
+    };
+    pages: readonly ResolvedConfluenceSourcePageV1[];
+    pageCount: number;
+    sourceSummary: TreeSourceSummary;
+}
 
 // export: ResolvedConfluenceSourcePageV1
 export interface ResolvedConfluenceSourcePageV1 {
@@ -1041,6 +1061,9 @@ export interface PersistedOrderedSourceCheckpointV1<Cursor> {
     ref: string;
 }
 
+// export: resolveConfluencePageGraphV1
+export declare function resolveConfluencePageGraphV1(sourceRequest: ExportSourceV1, options: ResolveConfluenceSourceOptionsV1): Promise<ResolvedConfluencePageGraphV1>;
+
 // export: ResolveConfluenceSourceOptionsV1
 export interface ResolveConfluenceSourceOptionsV1 {
     exporter: "pdf" | "word";
@@ -1056,6 +1079,23 @@ export interface ResolveConfluenceSourceOptionsV1 {
 
 // export: resolveConfluenceSourceV1
 export declare function resolveConfluenceSourceV1(sourceRequest: ExportSourceV1, options: ResolveConfluenceSourceOptionsV1): Promise<ResolvedConfluenceSourceV1>;
+
+// export: ResolvedConfluencePageGraphV1
+export interface ResolvedConfluencePageGraphV1 {
+    scope: ExportScope;
+    nodes: readonly ExportNode[];
+    sourceNotes: readonly ExportNote[];
+    complete: boolean;
+    root: {
+        id: string;
+        title: string;
+        version?: number;
+        spaceKey?: string;
+    };
+    pages: readonly ResolvedConfluenceSourcePageV1[];
+    pageCount: number;
+    sourceSummary: TreeSourceSummary;
+}
 
 // export: ResolvedConfluenceSourcePageV1
 export interface ResolvedConfluenceSourcePageV1 {
