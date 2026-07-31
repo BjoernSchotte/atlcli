@@ -65,7 +65,8 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     expect(specs[1]?.middleware).toHaveLength(5);
     expect(specs[2]?.middleware).toHaveLength(4);
     expect(specs[3]?.middleware).toHaveLength(4);
-    expect(specs[0]?.responseFormat).toBeDefined();
+    expect(specs[0]?.responseFormat).toBeUndefined();
+    expect(specs[2]?.responseFormat).toBeDefined();
     expect(specs[0]?.systemPrompt).toContain("exactly one eval call");
     expect(specs[0]?.systemPrompt).toContain("tools.jiraIssueSearch");
   });
