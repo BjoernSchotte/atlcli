@@ -47,7 +47,7 @@ export interface ResearchCliInput {
 
 export function researchArtifactPath(now = new Date()): string {
   const timestamp = now.toISOString().replace(/[T:.Z]/g, "-").replace(/-+$/, "");
-  return join(homedir(), "Downloads", `atlcli-research-${timestamp}`, "report.md");
+  return join(homedir(), "Documents", "atlcli", "artefacts", `research-${timestamp}`, "report.md");
 }
 
 function uniqueKeys(values: string[]): string[] {

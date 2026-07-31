@@ -43,9 +43,9 @@ describe("research CLI one-shot contract", () => {
     expect(() => parseResearchCliInput(["question"], { resume: "r1" })).toThrow("reserved for durable sessions");
   });
 
-  test("places every report in a timestamped Downloads artifact directory", () => {
+  test("places every report in a timestamped Documents artifact directory", () => {
     expect(researchArtifactPath(new Date("2026-07-31T08:55:17.123Z"))).toMatch(
-      /Downloads\/atlcli-research-2026-07-31-08-55-17-123\/report\.md$/,
+      /Documents\/atlcli\/artefacts\/research-2026-07-31-08-55-17-123\/report\.md$/,
     );
   });
 });
