@@ -83,7 +83,6 @@ export function compileDynamicResearchSubagents(
     description: descriptionForRole(node.role),
     model: options.model,
     systemPrompt: rolePrompt(node),
-    tools: roleTools(node, options.broker),
     middleware: [
       ...disabledMiddleware,
       ...(node.grantedCapabilityIds.length > 0
