@@ -146,7 +146,6 @@ const quickJsToolForCapability: Record<ResearchGraphCapabilityV1, string> = {
   "atlassian.reference.resolve": "tools.atlassianReferenceResolve",
 };
 
-const MAX_RETRIEVAL_WORKER_PTC_CALLS = 8;
 const MAX_QUOTED_TITLE_QUERIES = 4;
 const MAX_UNIQUE_SUBAGENT_TASKS = 8;
 const MAX_CONCURRENT_SUBAGENT_TASKS = 3;
@@ -224,6 +223,7 @@ export function providerCompatibleResearchSchema(
 export function buildResearchAcquisitionProgram(
   node: ResearchGraphNodeV1,
   question: string,
+  maxDetailItems: number,
 ): string {
   const isJira = node.grantedCapabilityIds.includes("jira.issue.search");
   const isWiki = node.grantedCapabilityIds.includes("wiki.search");
@@ -244,9 +244,10 @@ export function buildResearchAcquisitionProgram(
   const initialSearch = wikiTitleQueries.length > 0
     ? `await (async () => { const groups = []; let failures = 0; for (const text of [${wikiTitleQueries.join(", ")}]) { try { const page = JSON.parse(await search({ query: { text } })); groups.push({ text, items: page.items }); } catch { failures += 1; } } return { items: groups.flatMap((group) => group.items.map((item) => ({ ...item, queryText: group.text }))), page: { complete: failures === 0, termination: failures === 0 ? "title-query-set" : "partial-title-query-set" } }; })()`
     : "JSON.parse(await search({ query: {} }))";
+  const detailLimit = Math.max(1, Math.min(Math.trunc(maxDetailItems), 50));
   const detailSelection = wikiTitleQueries.length > 0
-    ? `const wantedTitles = ${JSON.stringify(quotedTerms)}; const detailItems = wantedTitles.flatMap((wanted) => { const matches = result.items.filter((item) => item.queryText === wanted); const exact = matches.find((item) => item.title.toLocaleLowerCase() === wanted.toLocaleLowerCase()); const chosen = exact ?? matches[0]; return chosen ? [chosen] : []; }).filter((item, index, items) => items.findIndex((candidate) => candidate.entityRef === item.entityRef) === index).slice(0, 4);`
-    : "const detailItems = result.items.slice(0, 3);";
+    ? `const wantedTitles = ${JSON.stringify(quotedTerms)}; const detailItems = wantedTitles.flatMap((wanted) => { const matches = result.items.filter((item) => item.queryText === wanted); const exact = matches.find((item) => item.title.toLocaleLowerCase() === wanted.toLocaleLowerCase()); const chosen = exact ?? matches[0]; return chosen ? [chosen] : []; }).filter((item, index, items) => items.findIndex((candidate) => candidate.entityRef === item.entityRef) === index).slice(0, ${detailLimit});`
+    : `const detailItems = result.items.slice(0, ${detailLimit});`;
   const detailProgram = hasDetailGrant
     ? `${detailSelection}\nconst details = await Promise.all(detailItems.map((item) => readDetail(${detail}, item)));`
     : "const details = [];";
@@ -259,7 +260,11 @@ ${detailProgram}
 ({ result, details });`;
 }
 
-function acquisitionInstructions(node: ResearchGraphNodeV1, question: string): string {
+function acquisitionInstructions(
+  node: ResearchGraphNodeV1,
+  question: string,
+  maxDetailItems: number,
+): string {
   if (node.grantedCapabilityIds.length === 0) {
     return "You have no source tools. Work only from the dependency packets included in your task description.";
   }
@@ -292,17 +297,21 @@ candidateGroups;
 
 Do not omit, rewrite, or reorder requiredQueryTexts. The slice(0, 4) bound is mandatory even if you brainstorm more terms. Do not retry, broaden, or replace a query when it returns zero items; an empty result is valid evidence about that search intent and you must preserve the remaining host budget. Inspect every returned candidate summary. Select only candidates that could materially answer the question, deduplicate them by sourceId, and rank them across all query groups. Search summaries are screening evidence only and must never support a published finding.
 
-Stage 2 — read evidence. Make one final eval call that uses only opaque entityRef values observed in stage 1 and calls tools.jiraIssueGet for at most 8 selected candidates with Promise.all. Never substitute visible Jira keys, URLs, or invented references. Return findings only from non-truncated detail results. If no candidate is relevant, skip stage 2 and return an empty evidence packet.
+Stage 2 — read evidence. Make one final eval call that uses only opaque entityRef values observed in stage 1 and calls tools.jiraIssueGet for at most ${maxDetailItems} selected candidates with Promise.all. Never substitute visible Jira keys, URLs, or invented references. Return findings only from non-truncated detail results. If no candidate is relevant, skip stage 2 and return an empty evidence packet.
 
-Do not make more than two eval calls, more than four search calls, or more than eight detail calls. Do not reuse a cursor or start an unscoped query. Only the host-bound allowlisted PTC functions may access sources.`;
+Do not make more than two eval calls, more than four search calls, or more than ${maxDetailItems} detail calls. Do not reuse a cursor or start an unscoped query. Only the host-bound allowlisted PTC functions may access sources.`;
   }
 
   return `Your only source-acquisition tool is eval. Inside eval, use exactly the granted PTC functions. Make exactly one eval call and run this bounded program, adapting neither its pagination nor its opaque references:
-${buildResearchAcquisitionProgram(node, question)}
+${buildResearchAcquisitionProgram(node, question, maxDetailItems)}
 Do not call eval a second time. Only opaque nextCursor and entityRef values returned by the host may be reused.`;
 }
 
-function rolePrompt(node: ResearchGraphNodeV1, question: string): string {
+function rolePrompt(
+  node: ResearchGraphNodeV1,
+  question: string,
+  maxDetailItems: number,
+): string {
   const grants = node.grantedCapabilityIds.length > 0
     ? node.grantedCapabilityIds.map((capability) => quickJsToolForCapability[capability]).join(", ")
     : "none";
@@ -313,7 +322,7 @@ The caller supplies your exact responseSchema dynamically. Return only one compa
   switch (node.role) {
     case "jira-retrieval":
     case "wiki-retrieval":
-      return `${shared}\n\nHost-bound research question: ${question}\nGranted QuickJS functions: ${grants}.\n\n${acquisitionInstructions(node, question)}\n\nYour packet must summarize the detailed evidence, not merely the search result list. Select at most 12 findings that materially answer the question. Keep the summary under 1,200 characters. Never cite a search-only candidate, an empty detail body, or a truncated detail result as support; mention acquisition gaps only in limitations.`;
+      return `${shared}\n\nHost-bound research question: ${question}\nGranted QuickJS functions: ${grants}.\n\n${acquisitionInstructions(node, question, maxDetailItems)}\n\nYour packet must summarize the detailed evidence, not merely the search result list. Select at most 12 findings that materially answer the question. Keep the summary under 1,200 characters. Never cite a search-only candidate, an empty detail body, or a truncated detail result as support; mention acquisition gaps only in limitations.`;
     case "cross-product-join":
       return `${shared}\n\nCompare the supplied Jira and Confluence packets. Return at most 8 non-overlapping relationship findings. A verified relationship requires explicit detailed content or a link; title or time similarity alone is only a hypothesis. Do not perform new reads.`;
     case "verification":
@@ -346,6 +355,8 @@ export interface DynamicResearchSubagentOptions {
   maxInterpreterMs: number;
   maxInterpreterMemoryBytes: number;
   maxPtcCalls: number;
+  maxSearchPagesPerProduct: number;
+  maxDetailItemsPerProduct: number;
   maxPacketChars: number;
   onPtcDiagnostic?: (diagnostic: ResearchPtcDiagnosticV1) => void;
 }
@@ -367,11 +378,28 @@ export function compileDynamicResearchSubagents(
   validateResearchGraphV1(graph);
   return graph.nodes.map((node) => {
     const ptc = roleTools(node, options.broker, options.onPtcDiagnostic);
+    const searchCallBudget = node.role === "jira-retrieval"
+      ? Math.min(4, options.maxSearchPagesPerProduct)
+      : node.role === "wiki-retrieval"
+        ? Math.max(
+            options.maxSearchPagesPerProduct,
+            Math.min(MAX_QUOTED_TITLE_QUERIES, options.maxDetailItemsPerProduct),
+          )
+        : 0;
+    const detailCallBudget = node.grantedCapabilityIds.some((capability) =>
+      capability === "jira.issue.get" || capability === "wiki.page.get"
+    )
+      ? options.maxDetailItemsPerProduct
+      : 0;
     return {
       name: node.role,
       description: descriptionForRole(node.role),
       model: options.modelsByRole?.[node.role] ?? options.model,
-      systemPrompt: rolePrompt(node, options.question),
+      systemPrompt: rolePrompt(
+        node,
+        options.question,
+        options.maxDetailItemsPerProduct,
+      ),
       tools: [],
       middleware: ptc.length > 0
         ? [
@@ -385,7 +413,10 @@ export function compileDynamicResearchSubagents(
               memoryLimitBytes: options.maxInterpreterMemoryBytes,
               maxStackSizeBytes: 320 * 1024,
               executionTimeoutMs: options.maxInterpreterMs,
-              maxPtcCalls: Math.min(options.maxPtcCalls, MAX_RETRIEVAL_WORKER_PTC_CALLS),
+              maxPtcCalls: Math.min(
+                options.maxPtcCalls,
+                searchCallBudget + detailCallBudget,
+              ),
               maxResultChars: options.maxPacketChars,
               captureConsole: false,
             }),

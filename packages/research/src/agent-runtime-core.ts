@@ -256,6 +256,8 @@ async function runResearchAgentWithBindings(
         maxInterpreterMs: input.request.limits.maxInterpreterMs,
         maxInterpreterMemoryBytes: input.request.limits.maxInterpreterMemoryBytes,
         maxPtcCalls: input.request.limits.maxPtcCalls,
+        maxSearchPagesPerProduct: input.request.limits.maxSearchPagesPerProduct,
+        maxDetailItemsPerProduct: input.request.limits.maxDetailItemsPerProduct,
         maxPacketChars: Math.min(24_000, input.request.limits.maxReportChars),
         ...(input.onPtcDiagnostic ? { onPtcDiagnostic: input.onPtcDiagnostic } : {}),
       })

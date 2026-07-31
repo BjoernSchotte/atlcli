@@ -170,6 +170,8 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       maxInterpreterMs: 5_000,
       maxInterpreterMemoryBytes: 8_000_000,
       maxPtcCalls: 8,
+      maxSearchPagesPerProduct: 2,
+      maxDetailItemsPerProduct: 8,
       maxPacketChars: 8_000,
     });
 
@@ -212,6 +214,8 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       maxInterpreterMs: 5_000,
       maxInterpreterMemoryBytes: 8_000_000,
       maxPtcCalls: 8,
+      maxSearchPagesPerProduct: 2,
+      maxDetailItemsPerProduct: 4,
       maxPacketChars: 8_000,
     });
     const wiki = specs.find((spec) => spec.name === "wiki-retrieval");
@@ -269,7 +273,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     });
 
     try {
-      const result = await session.eval(buildResearchAcquisitionProgram(wikiNode, question), 5_000);
+      const result = await session.eval(buildResearchAcquisitionProgram(wikiNode, question, 4), 5_000);
       expect(result.ok).toBe(true);
       const value = result.value as {
         result: { items: Array<{ queryText: string }> };
@@ -283,6 +287,67 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
         "opaque:Four",
       ]);
       expect(value.details).toHaveLength(4);
+    } finally {
+      session.dispose();
+      ReplSession.clearCache();
+      ReplSession.resetSharedModule();
+    }
+  });
+
+  test("uses the host detail budget after paginating ordinary Confluence search results", async () => {
+    const question = "Which DOCSY pages document recent ATLCLI work?";
+    const graph = composeResearchGraphV1({
+      schema: "atlcli.research-brief/v1",
+      question,
+      products: ["jira", "confluence"],
+      effort: "standard",
+      reconciliation: "auto",
+    });
+    const wikiNode = graph.nodes.find((node) => node.role === "wiki-retrieval")!;
+    const summaries = Array.from({ length: 10 }, (_, index) => ({
+      title: `Page ${index + 1}`,
+      sourceId: `wiki:${index + 1}`,
+      entityRef: `opaque:${index + 1}`,
+    }));
+    const detailRefs: string[] = [];
+    const session = new ReplSession("research-budgeted-detail-acquisition", {
+      captureConsole: false,
+      maxPtcCalls: 10,
+      tools: [
+        tool(async ({ cursor }) => JSON.stringify({
+          items: cursor ? summaries.slice(5) : summaries.slice(0, 5),
+          page: cursor
+            ? { complete: true, termination: "index-exhausted" }
+            : { complete: false, nextCursor: "opaque:next" },
+        }), {
+          name: "wiki_search",
+          description: "Synthetic paginated wiki search",
+          schema: z.object({
+            query: z.object({}).optional(),
+            cursor: z.string().optional(),
+          }),
+        }),
+        tool(async ({ entityRef }) => {
+          detailRefs.push(entityRef);
+          return JSON.stringify({ source: { id: entityRef }, content: { text: "detail" } });
+        }, {
+          name: "wiki_page_get",
+          description: "Synthetic wiki detail",
+          schema: z.object({ entityRef: z.string() }),
+        }),
+      ],
+    });
+
+    try {
+      const result = await session.eval(
+        buildResearchAcquisitionProgram(wikiNode, question, 8),
+        5_000,
+      );
+      expect(result.ok).toBe(true);
+      expect(detailRefs).toEqual(
+        Array.from({ length: 8 }, (_, index) => `opaque:${index + 1}`),
+      );
+      expect((result.value as { details: unknown[] }).details).toHaveLength(8);
     } finally {
       session.dispose();
       ReplSession.clearCache();
@@ -500,6 +565,8 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       maxInterpreterMs: 5_000,
       maxInterpreterMemoryBytes: 8_000_000,
       maxPtcCalls: 8,
+      maxSearchPagesPerProduct: 2,
+      maxDetailItemsPerProduct: 5,
       maxPacketChars: 8_000,
     });
     expect(specs.flatMap((spec) => spec.tools?.map((candidate) => candidate.name) ?? [])).not.toContain("jira_project_search");
@@ -523,6 +590,8 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       maxInterpreterMs: 5_000,
       maxInterpreterMemoryBytes: 8_000_000,
       maxPtcCalls: 8,
+      maxSearchPagesPerProduct: 2,
+      maxDetailItemsPerProduct: 5,
       maxPacketChars: 8_000,
     });
     const jira = specs.find((spec) => spec.name === "jira-retrieval");
