@@ -1517,7 +1517,7 @@ the active bundle is always complete and digest-valid.
 
 ### T6 — Build the standalone ExportBlock Astro render kit
 
-- [ ] Add Astro-native, Starlight-free `@atlcli/export-blocks-astro` as a
+- [x] Add Astro-native, Starlight-free `@atlcli/export-blocks-astro` as a
       public-0.x package with Astro peer range, README, API report, closure
       report, named exports, fixture exports, and no Node-only default entry.
 - [ ] Implement `ExportDocument.astro` plus trusted components for every

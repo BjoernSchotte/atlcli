@@ -46,6 +46,14 @@ export const FREEZE_DECISIONS: Record<string, FreezeDecision> = {
       "DOCX, PDF, and web publishing. Keep it experimental while the first standalone " +
       "Astro renderer and an external package consumer prove the separated contract.",
   },
+  "@atlcli/export-blocks-astro": {
+    version: "0.x",
+    frozen: false,
+    reasoning:
+      "STAYS 0.x: theme-neutral Astro render-kit for the dependency-free ExportBlock model. " +
+      "Keep it experimental until exhaustive block/macro rendering, a packed plain-Astro consumer, " +
+      "and Starlight-independent accessibility/security evidence prove its public component contract.",
+  },
   "@atlcli/web-publish": {
     version: "0.x",
     frozen: false,

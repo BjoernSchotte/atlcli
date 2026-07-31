@@ -1,0 +1,15 @@
+/*
+ * Minimal, theme-neutral baseline. Experiences may override these variables,
+ * but semantic elements and data-atlcli-block hooks stay stable.
+ */
+[data-atlcli-block] {
+  --atlcli-content-foreground: inherit;
+  --atlcli-content-muted: currentColor;
+  --atlcli-content-border: color-mix(in srgb, currentColor 22%, transparent);
+  color: var(--atlcli-content-foreground);
+}
+
+[data-atlcli-block="callout"] {
+  border-inline-start: 0.25rem solid var(--atlcli-content-border);
+  padding-inline-start: 1rem;
+}

@@ -1,0 +1,15 @@
+---
+import type { ExportBlock } from "@atlcli/export-blocks";
+
+interface Props {
+  blocks: readonly ExportBlock[];
+  locale: string;
+  direction: "ltr" | "rtl";
+}
+
+const { blocks, locale, direction } = Astro.props;
+---
+
+<article data-atlcli-document data-atlcli-block-count={blocks.length} lang={locale} dir={direction}>
+  <slot />
+</article>

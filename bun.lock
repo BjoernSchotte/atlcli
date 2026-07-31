@@ -203,6 +203,16 @@
       "name": "@atlcli/export-blocks",
       "version": "0.1.0",
     },
+    "packages/export-blocks-astro": {
+      "name": "@atlcli/export-blocks-astro",
+      "version": "0.1.0",
+      "dependencies": {
+        "@atlcli/export-blocks": "workspace:*",
+      },
+      "peerDependencies": {
+        "astro": ">=7.1.6 <8",
+      },
+    },
     "packages/export-fixtures": {
       "name": "@atlcli/export-fixtures",
       "version": "0.0.0",
@@ -414,6 +424,8 @@
     "@atlcli/docx-template-intake": ["@atlcli/docx-template-intake@workspace:packages/docx-template-intake"],
 
     "@atlcli/export-blocks": ["@atlcli/export-blocks@workspace:packages/export-blocks"],
+
+    "@atlcli/export-blocks-astro": ["@atlcli/export-blocks-astro@workspace:packages/export-blocks-astro"],
 
     "@atlcli/export-fixtures": ["@atlcli/export-fixtures@workspace:packages/export-fixtures"],
 
