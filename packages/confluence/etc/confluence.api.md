@@ -1022,6 +1022,9 @@ export interface CreatePageAttachmentInputV1 {
 // export: createPageAttachmentWriterV1
 export declare function createPageAttachmentWriterV1(request: ConfluenceProductRequestV1, options?: PageAttachmentWriterOptionsV1): PageAttachmentWriterV1;
 
+// export: createPageLinkResolver
+export declare function createPageLinkResolver(pages: readonly PageLinkCandidate[]): PageLinkResolver;
+
 // export: Datasource
 export interface Datasource {
     id: string;
@@ -2169,6 +2172,30 @@ export interface PageLayout {
     columns: LayoutColumn[];
     localId?: string;
     breakout?: LayoutBreakout;
+}
+
+// export: PageLinkCandidate
+export interface PageLinkCandidate {
+    id: string;
+    title: string;
+    spaceKey?: string;
+}
+
+// export: PageLinkResolution
+export type PageLinkResolution = {
+    kind: "resolved";
+    targetId: string;
+} | {
+    kind: "ambiguous";
+} | {
+    kind: "out-of-scope";
+};
+
+// export: PageLinkResolver
+export interface PageLinkResolver {
+    resolve(target: Extract<LinkTarget, {
+        kind: "page";
+    }>, currentSpaceKey?: string): PageLinkResolution;
 }
 
 // export: PagePropertiesMacro
@@ -3842,6 +3869,9 @@ export interface CreatePageAttachmentInputV1 {
 // export: createPageAttachmentWriterV1
 export declare function createPageAttachmentWriterV1(request: ConfluenceProductRequestV1, options?: PageAttachmentWriterOptionsV1): PageAttachmentWriterV1;
 
+// export: createPageLinkResolver
+export declare function createPageLinkResolver(pages: readonly PageLinkCandidate[]): PageLinkResolver;
+
 // export: Datasource
 export interface Datasource {
     id: string;
@@ -4989,6 +5019,30 @@ export interface PageLayout {
     columns: LayoutColumn[];
     localId?: string;
     breakout?: LayoutBreakout;
+}
+
+// export: PageLinkCandidate
+export interface PageLinkCandidate {
+    id: string;
+    title: string;
+    spaceKey?: string;
+}
+
+// export: PageLinkResolution
+export type PageLinkResolution = {
+    kind: "resolved";
+    targetId: string;
+} | {
+    kind: "ambiguous";
+} | {
+    kind: "out-of-scope";
+};
+
+// export: PageLinkResolver
+export interface PageLinkResolver {
+    resolve(target: Extract<LinkTarget, {
+        kind: "page";
+    }>, currentSpaceKey?: string): PageLinkResolution;
 }
 
 // export: PagePropertiesMacro
@@ -6662,6 +6716,9 @@ export interface CreatePageAttachmentInputV1 {
 // export: createPageAttachmentWriterV1
 export declare function createPageAttachmentWriterV1(request: ConfluenceProductRequestV1, options?: PageAttachmentWriterOptionsV1): PageAttachmentWriterV1;
 
+// export: createPageLinkResolver
+export declare function createPageLinkResolver(pages: readonly PageLinkCandidate[]): PageLinkResolver;
+
 // export: Datasource
 export interface Datasource {
     id: string;
@@ -7809,6 +7866,30 @@ export interface PageLayout {
     columns: LayoutColumn[];
     localId?: string;
     breakout?: LayoutBreakout;
+}
+
+// export: PageLinkCandidate
+export interface PageLinkCandidate {
+    id: string;
+    title: string;
+    spaceKey?: string;
+}
+
+// export: PageLinkResolution
+export type PageLinkResolution = {
+    kind: "resolved";
+    targetId: string;
+} | {
+    kind: "ambiguous";
+} | {
+    kind: "out-of-scope";
+};
+
+// export: PageLinkResolver
+export interface PageLinkResolver {
+    resolve(target: Extract<LinkTarget, {
+        kind: "page";
+    }>, currentSpaceKey?: string): PageLinkResolution;
 }
 
 // export: PagePropertiesMacro
@@ -9257,6 +9338,9 @@ export declare function createContributorRecords(page: ConfluencePageDetails, pa
 // export: createIgnore
 export declare function createIgnore(patterns: string[]): Ignore;
 
+// export: createPageLinkResolver
+export declare function createPageLinkResolver(pages: readonly PageLinkCandidate[]): PageLinkResolver;
+
 // export: createPagePoller
 export declare function createPagePoller(client: ConfluenceClient, pageId: string, intervalMs?: number): ConfluencePoller;
 
@@ -10539,6 +10623,30 @@ export interface PageLayout {
     columns: LayoutColumn[];
     localId?: string;
     breakout?: LayoutBreakout;
+}
+
+// export: PageLinkCandidate
+export interface PageLinkCandidate {
+    id: string;
+    title: string;
+    spaceKey?: string;
+}
+
+// export: PageLinkResolution
+export type PageLinkResolution = {
+    kind: "resolved";
+    targetId: string;
+} | {
+    kind: "ambiguous";
+} | {
+    kind: "out-of-scope";
+};
+
+// export: PageLinkResolver
+export interface PageLinkResolver {
+    resolve(target: Extract<LinkTarget, {
+        kind: "page";
+    }>, currentSpaceKey?: string): PageLinkResolution;
 }
 
 // export: PagePropertiesMacro
@@ -12511,6 +12619,9 @@ export interface CreatePageAttachmentInputV1 {
 // export: createPageAttachmentWriterV1
 export declare function createPageAttachmentWriterV1(request: ConfluenceProductRequestV1, options?: PageAttachmentWriterOptionsV1): PageAttachmentWriterV1;
 
+// export: createPageLinkResolver
+export declare function createPageLinkResolver(pages: readonly PageLinkCandidate[]): PageLinkResolver;
+
 // export: Datasource
 export interface Datasource {
     id: string;
@@ -13658,6 +13769,30 @@ export interface PageLayout {
     columns: LayoutColumn[];
     localId?: string;
     breakout?: LayoutBreakout;
+}
+
+// export: PageLinkCandidate
+export interface PageLinkCandidate {
+    id: string;
+    title: string;
+    spaceKey?: string;
+}
+
+// export: PageLinkResolution
+export type PageLinkResolution = {
+    kind: "resolved";
+    targetId: string;
+} | {
+    kind: "ambiguous";
+} | {
+    kind: "out-of-scope";
+};
+
+// export: PageLinkResolver
+export interface PageLinkResolver {
+    resolve(target: Extract<LinkTarget, {
+        kind: "page";
+    }>, currentSpaceKey?: string): PageLinkResolution;
 }
 
 // export: PagePropertiesMacro

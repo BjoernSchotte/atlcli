@@ -748,6 +748,12 @@ parameters. Static SVG/HTML is required. The optional island consumes the same
 frozen model; it may add interaction but no network/auth code. Chart capability
 must be tested with JavaScript both enabled and disabled.
 
+TanStack Charts is the preferred V1 island adapter because its portable chart
+model and expected ecosystem momentum fit this boundary. The T6 spike still
+pins and verifies the then-current release before adoption; if it misses the
+production gate, V1 retains the same vendor-neutral adapter and static fallback
+instead of weakening accessibility, security, determinism, or bundle budgets.
+
 #### 9.5.1 Astro component-library contract
 
 The default `@atlcli/export-blocks-astro` entry renders a document without a
@@ -1413,7 +1419,7 @@ existing export behavior remains regression-green.
 - [x] Implement experience descriptor/selection, capability negotiation,
       semantic slot, design-token, component-override, search-provider,
       SEO/i18n/media/code, analytics, and edit-link contracts.
-- [ ] Extract shared page-link resolution from `compose-document.ts`; keep its
+- [x] Extract shared page-link resolution from `compose-document.ts`; keep its
       existing truth table unchanged.
 - [ ] Implement stable route registry, custom routes, tombstones, safe slugs,
       deterministic collisions, and case/output-path collision rejection.
@@ -1531,11 +1537,11 @@ the active bundle is always complete and digest-valid.
 - [ ] Implement accessible static chart SVG/HTML from normalized chart data.
 - [ ] Implement the optional block-local chart island with frozen data, explicit
       opt-in, byte/row/node limits, no network/auth access, and static fallback.
-- [ ] Keep chart rendering behind a vendor-neutral `ChartRendererAdapter` and
-      re-run the TanStack Charts Astro/SSR/hydration/accessibility/bundle/
-      performance spike at T6. Use it as the preferred adapter only if the
-      selected release passes the production-maturity gate; never serialize
-      TanStack definitions, callbacks, or functions into the bundle.
+- [ ] Keep chart rendering behind a vendor-neutral `ChartRendererAdapter`; use
+      TanStack Charts as the preferred V1 island adapter after re-running its
+      Astro/SSR/hydration/accessibility/bundle/performance spike against the
+      selected release at T6. It must pass the production-maturity gate; never
+      serialize TanStack definitions, callbacks, or functions into the bundle.
 - [ ] Prove CSP, no event-handler/script/CSS injection, unsafe URL rejection,
       SVG safety, and no opaque datasource/provenance serialization.
 - [ ] Build a packed plain-Astro consumer with the all-fields fixture, one

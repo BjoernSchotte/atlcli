@@ -105,6 +105,9 @@ export interface Caption {
 // export: CaptionKind
 export type CaptionKind = "figure" | "table" | "code" | "equation";
 
+// export: createPageLinkResolver
+export declare function createPageLinkResolver(pages: readonly PageLinkCandidate[]): PageLinkResolver;
+
 // export: DEFAULT_EXPORT_BLOCK_VALIDATION_BUDGET_V1
 export declare const DEFAULT_EXPORT_BLOCK_VALIDATION_BUDGET_V1: Readonly<ExportBlockValidationBudgetV1>;
 
@@ -650,6 +653,30 @@ export interface PageLayout {
     columns: LayoutColumn[];
     localId?: string;
     breakout?: LayoutBreakout;
+}
+
+// export: PageLinkCandidate
+export interface PageLinkCandidate {
+    id: string;
+    title: string;
+    spaceKey?: string;
+}
+
+// export: PageLinkResolution
+export type PageLinkResolution = {
+    kind: "resolved";
+    targetId: string;
+} | {
+    kind: "ambiguous";
+} | {
+    kind: "out-of-scope";
+};
+
+// export: PageLinkResolver
+export interface PageLinkResolver {
+    resolve(target: Extract<LinkTarget, {
+        kind: "page";
+    }>, currentSpaceKey?: string): PageLinkResolution;
 }
 
 // export: panelIconDisplayText
