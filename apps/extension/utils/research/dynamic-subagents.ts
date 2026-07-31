@@ -59,7 +59,7 @@ function rolePrompt(node: ResearchGraphNodeV1): string {
     : "no direct tools";
   const acquisition = node.grantedCapabilityIds.length > 0
     ? `Your only normal tool is eval. Inside eval, QuickJS exposes exactly the PTC tools listed above. For a retrieval role, make exactly one eval call using this bounded algorithm (adapt the product/tool names to your grant):
-async function collect(search) { const items = []; let page = JSON.parse(await search({ query: {} })); items.push(...page.items); while (page.page.nextCursor) { page = JSON.parse(await search({ cursor: page.page.nextCursor })); items.push(...page.items); } return { items, page: page.page }; }
+async function collect(search) { const items = []; try { let page = JSON.parse(await search({ query: {} })); items.push(...page.items); while (page.page.nextCursor) { page = JSON.parse(await search({ cursor: page.page.nextCursor })); items.push(...page.items); } return { items, page: page.page }; } catch (error) { return { items, page: { complete: false, termination: "provider-error" } }; } }
 async function detail(read, item) { try { return { status: "available", value: JSON.parse(await read({ entityRef: item.entityRef })) }; } catch { return { status: "unavailable", sourceId: item.sourceId }; } }
 const result = await collect(${node.grantedCapabilityIds.includes("jira.issue.search") ? "tools.jiraIssueSearch" : "tools.wikiSearch"});
 const details = ${node.grantedCapabilityIds.includes("jira.issue.get") || node.grantedCapabilityIds.includes("wiki.page.get") ? "await Promise.all(result.items.slice(0, 8).map((item) => detail(" + (node.grantedCapabilityIds.includes("jira.issue.get") ? "tools.jiraIssueGet" : "tools.wikiPageGet") + ", item)))" : "[]"};
