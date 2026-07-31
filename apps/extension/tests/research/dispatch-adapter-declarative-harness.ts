@@ -17,6 +17,8 @@ import {
 } from "../../utils/research/dispatch-adapter.js";
 import { characterizeProductionResponseSchemas } from "./production-response-schema-characterization.js";
 import type { ProductionResponseSchemaCharacterization } from "./production-response-schema-characterization.js";
+import { createDeterministicResearchModelScriptV1 } from "./deterministic-model-script.js";
+import type { DeterministicResearchModelScriptV1 } from "./deterministic-model-script.js";
 
 export const DISPATCH_CHARACTERIZATION_PACKET_SCHEMA = {
   title: "DispatchPacketV1",
@@ -37,6 +39,7 @@ export interface DeclarativeDispatchCharacterizationResult {
   ptcConfigTaskId: string;
   taskStatuses: Readonly<Record<string, string>>;
   productionSchemas: ProductionResponseSchemaCharacterization;
+  modelScript: Omit<DeterministicResearchModelScriptV1, "code">;
 }
 
 /**
@@ -52,12 +55,13 @@ export async function runDeclarativeDispatchCharacterization(): Promise<Declarat
     taskId: "deep-wiki",
     objective: "Research the Confluence slice.",
   });
-  const code = `await Promise.all([
-    task({ description: ${JSON.stringify(jiraDescription)}, subagentType: "focused-researcher", responseSchema: ${JSON.stringify(DISPATCH_CHARACTERIZATION_PACKET_SCHEMA)} }),
-    task({ description: ${JSON.stringify(wikiDescription)}, subagentType: "focused-researcher", responseSchema: ${JSON.stringify(DISPATCH_CHARACTERIZATION_PACKET_SCHEMA)} })
-  ])`;
+  const modelScript = createDeterministicResearchModelScriptV1({
+    jiraDescription,
+    wikiDescription,
+    responseSchema: DISPATCH_CHARACTERIZATION_PACKET_SCHEMA,
+  });
   const supervisorModel = fakeModel()
-    .respondWithTools([{ name: "eval", args: { code } }])
+    .respondWithTools([{ name: "eval", args: { code: modelScript.code } }])
     .respond(new AIMessage("Dispatch characterization complete."));
   const subagentModel = fakeModel()
     .respondWithTools([{
@@ -223,5 +227,11 @@ export async function runDeclarativeDispatchCharacterization(): Promise<Declarat
     ptcConfigTaskId,
     taskStatuses: adapter.snapshot().taskStatuses,
     productionSchemas,
+    modelScript: {
+      schema: modelScript.schema,
+      id: modelScript.id,
+      codeBytes: modelScript.codeBytes,
+      taskIds: modelScript.taskIds,
+    },
   };
 }

@@ -712,6 +712,12 @@ test("intercepts declarative dynamic-schema dispatches in a packed MV3 worker", 
             }>;
             admittedRoles: string[];
           };
+          modelScript: {
+            schema: string;
+            id: string;
+            codeBytes: number;
+            taskIds: string[];
+          };
         };
         error?: { name: string; message: string; stack?: string };
       }>((resolve, reject) => {
@@ -778,6 +784,12 @@ test("intercepts declarative dynamic-schema dispatches in a packed MV3 worker", 
     "outline-planner",
     "reconciler",
   ]);
+  expect(response.result?.modelScript).toEqual({
+    schema: "atlcli.deterministic-research-model-script/v1",
+    id: "parallel-cross-product-acquisition",
+    codeBytes: 779,
+    taskIds: ["deep-jira", "deep-wiki"],
+  });
   expect(response.result?.messages.some((message) => message.includes("deep-jira"))).toBe(true);
   expect(response.result?.messages.some((message) => message.includes("deep-wiki"))).toBe(true);
 });

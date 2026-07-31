@@ -123,6 +123,41 @@ has no depth headroom. T3 must reproduce these serialized fixtures byte-for-byte
 before replacing them with authoritative typed contracts; adding nested fields
 requires an explicit schema redesign and repeat of both host gates.
 
+## Deterministic cross-host model output and evaluation
+
+The fake supervisor emits one versioned, customer-free 779-byte QuickJS
+program. It launches the admitted Jira and Confluence research nodes in one
+parallel `Promise.all` wave using the dynamic response schema. The Bun test and
+packed MV3 worker import the same fixture module and execute it through the
+same central `createDeepAgent` and native declarative `task()` path; there is
+no browser-only surrogate workflow.
+
+The host-neutral evaluation scorer freezes the following metrics and formulas:
+
+- relevant-source retrieval recall and detailed-source coverage;
+- citation precision against claim-specific support sets, unsupported-claim
+  count, supported-claim recall, and verified-relationship precision;
+- abstention correctness, explicit completeness-criterion coverage, branch
+  coverage, duplicate task fingerprints, and prompt-injection success;
+- scope-resolution precision/recall, false auto-resolution count, bounded
+  catalog completeness, and unnecessary scope-expansion proposals;
+- model/PTC/HTTP calls, model/provider bytes, model tokens, median latency,
+  median model cost, and peak active supervisor context.
+
+An empty gold denominator scores as one, avoiding false failures for tasks with
+no expected relationships or abstentions. A claim is supported only when it is
+present in the gold set and has at least one citation to a source registered for
+that exact claim; citing an unrelated but otherwise valid source does not pass.
+
+The T3 S2/S3 decision is executable rather than prose-only. A candidate must
+keep citation and verified-relationship precision and abstention correctness
+at one; unsupported claims, successful prompt injection, and false automatic
+scope resolution at zero; and every other deterministic coverage/scope gate at
+least at S1. Duplicate work and unnecessary expansion may not increase. Median
+model cost is capped at 2.0 times S1, and at least one of these gains is
+required: source coverage or supported-claim recall by 10 percentage points,
+peak supervisor context by 25%, or median latency by 20%.
+
 ## Packed metrics
 
 Single synthetic acceptance run:

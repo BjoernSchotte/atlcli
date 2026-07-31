@@ -2167,15 +2167,22 @@ Shared:
       containing prompt-injection text.
       Fixtures also preserve multiple explicit project/space bindings at the
       winning precedence instead of collapsing them to a single scope.
-- [ ] Add a fake model script whose outputs are deterministic and can execute
+- [x] Add a fake model script whose outputs are deterministic and can execute
       through both a Node/Bun runtime and a packed browser runtime.
-- [ ] Define baseline metrics: source recall, detail coverage, citation
+      Proven 2026-07-31: the 779-byte versioned fake-supervisor output is
+      imported by the Bun characterization and bundled into the packed MV3
+      worker. Both execute it through the same central `createDeepAgent`,
+      native QuickJS `eval`, and parallel declarative `task()` path.
+- [x] Define baseline metrics: source recall, detail coverage, citation
       precision, unsupported claims, verified-relationship precision,
       abstention correctness, calls, bytes, tokens, latency, completeness,
       active supervisor context, branch coverage, duplicate work, and
       prompt-injection success plus scope-resolution precision/recall,
       false-auto-resolution, catalog completeness, and unnecessary
       scope-expansion proposals.
+      A host-neutral scorer now freezes formulas, empty-denominator behavior,
+      operational totals, medians, duplicate detection, claim-to-source
+      support, and scope/catalog scoring with customer-free fixtures.
 - [x] Add pinned-runtime characterization tests for QuickJS `task()` counting,
       result-size handling, timeout versus cancellation, late results,
       cross-eval/process state, guest clock/randomness, and child-state
@@ -2214,11 +2221,14 @@ Shared:
       Proven 2026-07-31 in Bun and packed MV3 through six native `task()`
       dispatches. Metrics are recorded in the issue-138 evidence document;
       V2 uses 31/32 properties and reconciliation reaches depth 5/5.
-- [ ] Pre-register the T3 directional value rule: S2/S3 must preserve every
+- [x] Pre-register the T3 directional value rule: S2/S3 must preserve every
       deterministic safety/accuracy gate and, relative to S1, improve at least
       one of source coverage or supported-claim recall by 10 percentage
       points, peak supervisor context by 25%, or median latency by 20%, while
       median model cost remains at or below 2.0 times S1.
+      The executable rule additionally forbids regressions in recall,
+      coverage, completeness, branch coverage, scope resolution, catalog
+      completeness, duplicate work, and unnecessary expansion proposals.
 - [ ] Create a local-only Mayflower gold-set format and add its path patterns to
       ignore rules. Commit only a synthetic example schema, never real content.
 - [ ] Record current PoC, native Jira/Confluence search, and Rovo scoring
@@ -2259,7 +2269,8 @@ Gate:
       Exact results: V1 2,140 bytes / 23 properties / depth 4; V2 2,806 / 31 /
       4; reconciliation 1,638 / 16 / 5.
 - [x] `bun run test apps/extension/tests/research-*.test.ts` passes.
-      Proven 2026-07-31: 96 passed, 0 failed across 17 files.
+      Proven 2026-07-31: 97 passed, 0 failed across 18 extension files;
+      the two customer-free package evaluation fixtures add 11 passing tests.
 - [ ] `bun run --cwd apps/extension test:research-extension-browser` passes.
 - [ ] No tracked file contains an Anthropic key, Atlassian credential, tenant
       content, private URL, or customer-derived report.

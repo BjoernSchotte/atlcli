@@ -296,5 +296,11 @@ describe("research-owned native task dispatch interception", () => {
       "outline-planner",
       "reconciler",
     ]);
+    expect(result.modelScript).toEqual({
+      schema: "atlcli.deterministic-research-model-script/v1",
+      id: "parallel-cross-product-acquisition",
+      codeBytes: 779,
+      taskIds: ["deep-jira", "deep-wiki"],
+    });
   });
 });
