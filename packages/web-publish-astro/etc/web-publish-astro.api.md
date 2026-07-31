@@ -32,6 +32,13 @@ export interface AtlcliAstroPublicationLoaderV1 {
 export interface AtlcliAstroPublishingIntegrationV1 {
     name: string;
     hooks: {
+        "astro:config:setup"?(context: {
+            injectRoute(route: {
+                pattern: string;
+                entrypoint: string;
+                prerender: boolean;
+            }): void;
+        }): void;
         "astro:config:done"(context: {
             config: {
                 output: string;
@@ -66,6 +73,7 @@ export declare function atlcliPublishingIntegration(options: AtlcliPublishingInt
 export interface AtlcliPublishingIntegrationOptionsV1 extends AtlcliPublicationLoaderOptionsV1 {
     manifestPath: string;
     routePrefix: string;
+    trustedLayoutEntrypoint?: string;
 }
 
 // export: LoadedPublicationBundleV1
@@ -76,6 +84,16 @@ export interface LoadedPublicationBundleV1 {
 
 // export: publicationRoutePathV1
 export declare function publicationRoutePathV1(route: string, routePrefix: string): string;
+
+// export: publicationStaticPathsV1
+export declare function publicationStaticPathsV1(options: AtlcliPublicationLoaderOptionsV1): Promise<readonly {
+    params: {
+        slug?: string;
+    };
+    props: {
+        sourceId: string;
+    };
+}[]>;
 
 // export: readPublicationBundlePagesV1
 export declare function readPublicationBundlePagesV1(options: AtlcliPublicationLoaderOptionsV1): Promise<LoadedPublicationBundleV1>;

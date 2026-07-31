@@ -1462,8 +1462,8 @@ inputs, and does not alter existing export targets.
 
 - [x] Add the Node-only `@atlcli/web-publish-astro` package with Astro peer
       dependency and no bundled Astro/private Vite internals.
-- [ ] Export the default integration factory and named structured-data loader.
-- [ ] Implement loader entry IDs from immutable source IDs, schema validation,
+- [x] Export the default integration factory and named structured-data loader.
+- [x] Implement loader entry IDs from immutable source IDs, schema validation,
       page digests, metadata revision, and deletion reconciliation.
 - [ ] Validate `output: "static"`, URL profile, `base`, `site`, `outDir`, and
       `publicDir` without silently rewriting owner configuration.

@@ -10,4 +10,4 @@
 
 ### Entry point `.` — experimental
 
-- exported symbols (9): AtlcliAstroPublicationLoaderV1, AtlcliAstroPublishingIntegrationV1, AtlcliPublicationLoaderOptionsV1, AtlcliPublishingIntegrationOptionsV1, LoadedPublicationBundleV1, atlcliPublicationLoader, atlcliPublishingIntegration, publicationRoutePathV1, readPublicationBundlePagesV1
+- exported symbols (10): AtlcliAstroPublicationLoaderV1, AtlcliAstroPublishingIntegrationV1, AtlcliPublicationLoaderOptionsV1, AtlcliPublishingIntegrationOptionsV1, LoadedPublicationBundleV1, atlcliPublicationLoader, atlcliPublishingIntegration, publicationRoutePathV1, publicationStaticPathsV1, readPublicationBundlePagesV1

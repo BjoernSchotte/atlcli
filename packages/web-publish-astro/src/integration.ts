@@ -10,6 +10,11 @@ export interface AtlcliPublishingIntegrationOptionsV1 extends AtlcliPublicationL
   manifestPath: string;
   /** Route namespace owned by the publishing integration. */
   routePrefix: string;
+  /**
+   * Operator-owned Astro route component. It is optional because an existing
+   * project may declare its route manually, and never comes from page content.
+   */
+  trustedLayoutEntrypoint?: string;
 }
 
 /**
@@ -20,6 +25,13 @@ export interface AtlcliPublishingIntegrationOptionsV1 extends AtlcliPublicationL
 export interface AtlcliAstroPublishingIntegrationV1 {
   name: string;
   hooks: {
+    "astro:config:setup"?(context: {
+      injectRoute(route: {
+        pattern: string;
+        entrypoint: string;
+        prerender: boolean;
+      }): void;
+    }): void;
     "astro:config:done"(context: { config: { output: string } }): void;
     "astro:routes:resolved"(context: {
       routes: readonly { pathname?: string }[];
@@ -48,6 +60,24 @@ export function publicationRoutePathV1(route: string, routePrefix: string): stri
   const prefix = normalizePublicationRoutePrefixV1(routePrefix);
   if (route === "/") return prefix;
   return `${prefix}${route}`.replace(/\/$/u, "");
+}
+
+/**
+ * Static path records for an operator-owned `[...slug].astro` route. The
+ * immutable source ID is the sole prop; the component loads its structured
+ * collection entry by this ID rather than trusting a URL as page identity.
+ */
+export async function publicationStaticPathsV1(
+  options: AtlcliPublicationLoaderOptionsV1,
+): Promise<readonly { params: { slug?: string }; props: { sourceId: string } }[]> {
+  const { pages } = await readPublicationBundlePagesV1(options);
+  return pages.map((page) => {
+    const slug = page.route === "/" ? undefined : page.route.slice(1).replace(/\/$/u, "");
+    return {
+      params: slug === undefined ? {} : { slug },
+      props: { sourceId: page.sourceId },
+    };
+  });
 }
 
 async function inventory(root: string): Promise<readonly OutputFileV1[]> {
@@ -89,6 +119,12 @@ export function atlcliPublishingIntegration(
   assertNonEmptyPath(options.bundlePath, "bundlePath");
   assertNonEmptyPath(options.manifestPath, "manifestPath");
   const routePrefix = normalizePublicationRoutePrefixV1(options.routePrefix);
+  if (
+    options.trustedLayoutEntrypoint !== undefined &&
+    (typeof options.trustedLayoutEntrypoint !== "string" || options.trustedLayoutEntrypoint.length === 0)
+  ) {
+    throw new TypeError("trustedLayoutEntrypoint must be a non-empty string when configured");
+  }
   let routeInventory: readonly {
     pathname?: string;
   }[] = [];
@@ -96,6 +132,19 @@ export function atlcliPublishingIntegration(
   return {
     name: "atlcli-publishing",
     hooks: {
+      ...(options.trustedLayoutEntrypoint === undefined
+        ? {}
+        : {
+            "astro:config:setup": ({ injectRoute }: {
+              injectRoute(route: { pattern: string; entrypoint: string; prerender: boolean }): void;
+            }) => {
+              injectRoute({
+                pattern: `${routePrefix}/[...slug]`,
+                entrypoint: options.trustedLayoutEntrypoint!,
+                prerender: true,
+              });
+            },
+          }),
       "astro:config:done": ({ config }) => {
         if (config.output !== "static") {
           throw new Error("atlcli publishing requires Astro static output");

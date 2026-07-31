@@ -8,6 +8,7 @@ export {
 export {
   atlcliPublishingIntegration,
   publicationRoutePathV1,
+  publicationStaticPathsV1,
   type AtlcliPublishingIntegrationOptionsV1,
   type AtlcliAstroPublishingIntegrationV1,
 } from "./integration.js";

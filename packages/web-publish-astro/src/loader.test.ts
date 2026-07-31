@@ -6,6 +6,7 @@ import { pathToFileURL } from "node:url";
 import {
   atlcliPublishingIntegration,
   publicationRoutePathV1,
+  publicationStaticPathsV1,
 } from "./integration.js";
 import { readPublicationBundlePagesV1 } from "./loader.js";
 
@@ -118,6 +119,10 @@ test("uses only static Astro hooks, detects collisions, and writes private inven
   try {
     expect(publicationRoutePathV1("/", "/publish")).toBe("/publish");
     expect(publicationRoutePathV1("/guide/", "/publish")).toBe("/publish/guide");
+    await expect(publicationStaticPathsV1({ bundlePath })).resolves.toEqual([{
+      params: { slug: "guide" },
+      props: { sourceId: "guide" },
+    }]);
     expect(() => integration.hooks["astro:config:done"]({ config: { output: "server" } })).toThrow("static output");
     await expect(integration.hooks["astro:routes:resolved"]({
       routes: [{ pathname: "/publish/guide" }],
@@ -138,4 +143,27 @@ test("uses only static Astro hooks, detects collisions, and writes private inven
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+test("injects a static catch-all only for an operator-owned layout entrypoint", () => {
+  const withoutLayout = atlcliPublishingIntegration({
+    bundlePath: "/bundle.json",
+    manifestPath: "/private/inventory.json",
+    routePrefix: "/publish",
+  });
+  expect(withoutLayout.hooks["astro:config:setup"]).toBeUndefined();
+
+  const withLayout = atlcliPublishingIntegration({
+    bundlePath: "/bundle.json",
+    manifestPath: "/private/inventory.json",
+    routePrefix: "/publish",
+    trustedLayoutEntrypoint: "/operator/src/pages/publish/[...slug].astro",
+  });
+  const injected: unknown[] = [];
+  withLayout.hooks["astro:config:setup"]?.({ injectRoute: (route) => injected.push(route) });
+  expect(injected).toEqual([{
+    pattern: "/publish/[...slug]",
+    entrypoint: "/operator/src/pages/publish/[...slug].astro",
+    prerender: true,
+  }]);
 });
