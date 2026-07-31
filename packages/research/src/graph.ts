@@ -61,6 +61,18 @@ export interface ResearchGraphCompositionOptionsV1 {
   grants?: Partial<Record<ResearchGraphRoleV1, readonly ResearchGraphCapabilityV1[]>>;
 }
 
+export function composeStandardResearchGraphV1(
+  question: string,
+): ResearchGraphV1 {
+  return composeResearchGraphV1({
+    schema: RESEARCH_BRIEF_SCHEMA_V1,
+    question,
+    products: ["jira", "confluence"],
+    effort: "standard",
+    reconciliation: "auto",
+  });
+}
+
 const ROLE_CAPABILITIES: Record<ResearchGraphRoleV1, readonly ResearchGraphCapabilityV1[]> = {
   "jira-retrieval": ["jira.issue.search", "jira.issue.get"],
   "wiki-retrieval": ["wiki.search", "wiki.page.get"],

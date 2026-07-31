@@ -117,6 +117,23 @@ function jiraAndSynthesisGraph(): ResearchGraphV1 {
 }
 
 describe("dynamic DeepAgentsJS subagent composition", () => {
+  test("fails closed when a production model run has no validated graph", async () => {
+    await expect(runResearchAgent({
+      apiKey: "test-only-key",
+      request,
+      providers: {
+        jira: {
+          async searchPage() { throw new Error("must not run"); },
+          async getIssue() { throw new Error("must not run"); },
+        },
+        wiki: {
+          async searchPage() { throw new Error("must not run"); },
+          async getPage() { throw new Error("must not run"); },
+        },
+      },
+    })).rejects.toThrow("validated research graph");
+  });
+
   test("keeps every dynamic task schema within the native QuickJS bridge limits", () => {
     for (const schema of [
       RESEARCH_WORKER_PACKET_SCHEMA_V1,

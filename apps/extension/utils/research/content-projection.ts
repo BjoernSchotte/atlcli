@@ -184,6 +184,32 @@ export function projectJiraDescription(
   return collector.finish(jsonBytes(description));
 }
 
+/**
+ * Add fields fetched by the Jira detail endpoint to its bounded description
+ * projection. Search-result metadata remains screening-only; the same fields
+ * become evidence only after the scoped detail read has succeeded.
+ */
+export function prependBoundedDetailText(
+  projection: BoundedContentProjectionV1,
+  prefix: string,
+  limits: ContentProjectionLimits,
+): BoundedContentProjectionV1 {
+  const normalizedPrefix = prefix.replace(/\r\n?/g, "\n").trim();
+  const combined = [normalizedPrefix, projection.text].filter(Boolean).join("\n\n");
+  const bounded = truncateUtf8(
+    combined,
+    limits.maxTextChars,
+    limits.maxTextBytes,
+  );
+  return {
+    text: bounded.value,
+    linkTargets: [...projection.linkTargets],
+    truncated: projection.truncated || bounded.truncated,
+    inputBytes:
+      projection.inputBytes + new TextEncoder().encode(normalizedPrefix).byteLength,
+  };
+}
+
 function walkInline(
   node: InlineNode,
   collector: ProjectionCollector,

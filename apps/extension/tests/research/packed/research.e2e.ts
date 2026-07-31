@@ -20,6 +20,11 @@ import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1 } from "../../../utils/research/agent-draft.js";
+import {
+  RESEARCH_CRITIQUE_SCHEMA_V1,
+  RESEARCH_WORKER_PACKET_SCHEMA_V1,
+} from "../../../utils/research/dynamic-subagents.js";
 
 const EXTENSION_ROOT = fileURLToPath(new URL("../../..", import.meta.url));
 const OUTPUT_DIR = join(EXTENSION_ROOT, ".output", "chrome-mv3");
@@ -28,41 +33,86 @@ const ATLASSIAN_PAGE = `${SITE_ORIGIN}/wiki/spaces/KB/pages/1001/Packed-research
 const CHANNEL_NAME = "atlcli-packed-research-v1";
 const FAKE_KEY = "sk-ant-packed-extension-test-only";
 
-const ACQUISITION_CODE = `
-async function collect(search) {
+const WIKI_ACQUISITION_CODE = `
+async function collect() {
   const items = [];
-  let page = JSON.parse(await search({ query: {} }));
+  let page = JSON.parse(await tools.wikiSearch({ query: {} }));
   items.push(...page.items);
   while (page.page.nextCursor) {
-    page = JSON.parse(await search({ cursor: page.page.nextCursor }));
+    page = JSON.parse(await tools.wikiSearch({ cursor: page.page.nextCursor }));
     items.push(...page.items);
   }
   return { items, page: page.page };
 }
-async function readDetail(read, item) {
-  try {
-    return {
-      status: "available",
-      value: JSON.parse(await read({ entityRef: item.entityRef }))
-    };
-  } catch {
-    return {
-      status: "unavailable",
-      sourceId: item.sourceId
-    };
+const result = await collect();
+const details = await Promise.all(result.items.slice(0, 2).map(async (item) => ({
+  status: "available",
+  value: JSON.parse(await tools.wikiPageGet({ entityRef: item.entityRef }))
+})));
+({ result, details });
+`.trim();
+
+const JIRA_ACQUISITION_CODE = `
+async function collect() {
+  const items = [];
+  let page = JSON.parse(await tools.jiraIssueSearch({ query: {} }));
+  items.push(...page.items);
+  while (page.page.nextCursor) {
+    page = JSON.parse(await tools.jiraIssueSearch({ cursor: page.page.nextCursor }));
+    items.push(...page.items);
   }
+  return { items, page: page.page };
 }
-const [jira, wiki] = await Promise.all([
-  collect(tools.jiraIssueSearch),
-  collect(tools.wikiSearch)
-]);
-const [jiraDetails, wikiDetails] = await Promise.all([
-  Promise.all(jira.items.slice(0, 3).map((item) =>
-    readDetail(tools.jiraIssueGet, item))),
-  Promise.all(wiki.items.slice(0, 3).map((item) =>
-    readDetail(tools.wikiPageGet, item)))
-]);
-({ jira, wiki, jiraDetails, wikiDetails });
+const result = await collect();
+const details = await Promise.all(result.items.slice(0, 2).map(async (item) => ({
+  status: "available",
+  value: JSON.parse(await tools.jiraIssueGet({ entityRef: item.entityRef }))
+})));
+({ result, details });
+`.trim();
+
+const PACKED_REPORT_INPUT = {
+  title: 'Packed <img src=x onerror="globalThis.__packedXss=1"> report',
+  executiveSummary:
+    "DEMO-1 is explicitly linked to the packed Confluence design page. [unsafe](javascript:globalThis.__packedXss=1)",
+  findings: [{
+    classification: "fact",
+    summary: "The design page names DEMO-1.",
+    detail: "Prompt-injection text remained untrusted source content.",
+    sourceIds: ["jira:DEMO-1", "wiki:1001"],
+  }],
+  relationships: [{
+    classification: "verified",
+    jiraIssueKey: "DEMO-1",
+    confluenceContentId: "1001",
+    summary: "The Confluence page explicitly names the Jira issue.",
+    sourceIds: ["jira:DEMO-1", "wiki:1001"],
+  }],
+  limitations: ["Synthetic packed-browser evidence only."],
+};
+
+const PACKED_WORKFLOW_CODE = `
+const wiki = await task({
+  description: "Retrieve the bounded Confluence evidence packet.",
+  subagentType: "wiki-retrieval",
+  responseSchema: ${JSON.stringify(RESEARCH_WORKER_PACKET_SCHEMA_V1)}
+});
+const jira = await task({
+  description: "Retrieve the bounded Jira evidence packet using this Confluence context: " + JSON.stringify(wiki),
+  subagentType: "jira-retrieval",
+  responseSchema: ${JSON.stringify(RESEARCH_WORKER_PACKET_SCHEMA_V1)}
+});
+const critique = await task({
+  description: "Critique these packets: " + JSON.stringify({ wiki, jira }),
+  subagentType: "reconciler",
+  responseSchema: ${JSON.stringify(RESEARCH_CRITIQUE_SCHEMA_V1)}
+});
+const finalDraft = await task({
+  description: "Synthesize the accepted packets and critique: " + JSON.stringify({ wiki, jira, critique }),
+  subagentType: "synthesizer",
+  responseSchema: ${JSON.stringify(RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1)}
+});
+finalDraft;
 `.trim();
 
 interface TargetInfo {
@@ -277,6 +327,32 @@ function anthropicMessage(content, stopReason, call) {
   });
 }
 
+const packedReportInput = ${JSON.stringify(PACKED_REPORT_INPUT)};
+const wikiPacket = {
+  role: "wiki-retrieval",
+  summary: "The packed design page explicitly names DEMO-1.",
+  findings: [{
+    summary: "The packed design page explicitly names DEMO-1.",
+    sourceIds: ["wiki:1001"],
+  }],
+  limitations: [],
+};
+const jiraPacket = {
+  role: "jira-retrieval",
+  summary: "DEMO-1 links directly to the packed design page.",
+  findings: [{
+    summary: "DEMO-1 links directly to the packed design page.",
+    sourceIds: ["jira:DEMO-1"],
+  }],
+  limitations: [],
+};
+const critique = {
+  status: "satisfied",
+  assessment: "The explicit cross-link is supported by both retrieved details.",
+  defects: [],
+  suggestedRepairTasks: [],
+};
+
 const nativeFetch = globalThis.fetch.bind(globalThis);
 globalThis.fetch = async (input, init) => {
   const request = input instanceof Request ? input : new Request(input, init);
@@ -287,6 +363,7 @@ globalThis.fetch = async (input, init) => {
   if (url.origin === "https://api.anthropic.com") {
     modelCalls += 1;
     const serializedMessages = JSON.stringify(body.messages ?? []);
+    const serializedRequest = JSON.stringify(body);
     const toolNames = Array.isArray(body.tools)
       ? body.tools.map((tool) => tool?.name).filter((name) => typeof name === "string")
       : [];
@@ -303,54 +380,104 @@ globalThis.fetch = async (input, init) => {
     if (serializedMessages.includes("cancel-before-ptc") && modelCalls === 1) {
       await waitForRelease("never", request.signal);
     }
-    if (serializedMessages.includes("hold-after-ptc") && modelCalls === 2) {
+    if (
+      serializedRequest.includes("hold-after-ptc") &&
+      modelCalls === 3
+    ) {
       channel.postMessage({ kind: "model-held", workerId, modelCall: modelCalls });
       await waitForRelease("hold-after-ptc", request.signal);
     }
 
-    if (modelCalls === 1) {
+    const providerSchema = body.output_config?.format?.schema;
+    const structured = (value) => {
+      if (body.output_config?.format?.type === "json_schema") {
+        return anthropicMessage(
+          [{ type: "text", text: JSON.stringify(value) }],
+          "end_turn",
+          modelCalls,
+        );
+      }
+      const structuredTool = Array.isArray(body.tools)
+        ? body.tools.find((candidate) => candidate?.name !== "eval")
+        : undefined;
+      if (!structuredTool?.name) {
+        channel.postMessage({ kind: "missing-structured-tool", workerId, toolNames });
+        return anthropicMessage(
+          [{ type: "text", text: "Packed fixture could not find the structured response tool." }],
+          "end_turn",
+          modelCalls,
+        );
+      }
+      return anthropicMessage(
+        [{
+          type: "tool_use",
+          id: "toolu_packed_structured_" + modelCalls,
+          name: structuredTool.name,
+          input: value,
+        }],
+        "tool_use",
+        modelCalls,
+      );
+    };
+
+    if (serializedRequest.includes("You are the wiki-retrieval specialist")) {
+      if (!serializedMessages.includes("atlcli.ptc/wiki.page.get.output/v1")) {
+        return anthropicMessage(
+          [{
+            type: "tool_use",
+            id: "toolu_packed_wiki_eval",
+            name: "eval",
+            input: { code: ${JSON.stringify(WIKI_ACQUISITION_CODE)} },
+          }],
+          "tool_use",
+          modelCalls,
+        );
+      }
+      return structured(wikiPacket);
+    }
+
+    if (serializedRequest.includes("You are the jira-retrieval specialist")) {
+      if (!serializedMessages.includes("atlcli.ptc/jira.issue.get.output/v1")) {
+        return anthropicMessage(
+          [{
+            type: "tool_use",
+            id: "toolu_packed_jira_eval",
+            name: "eval",
+            input: { code: ${JSON.stringify(JIRA_ACQUISITION_CODE)} },
+          }],
+          "tool_use",
+          modelCalls,
+        );
+      }
+      return structured(jiraPacket);
+    }
+
+    if (serializedRequest.includes("You are the reconciler specialist")) {
+      return structured(critique);
+    }
+
+    if (serializedRequest.includes("You are the synthesizer specialist")) {
+      return structured(packedReportInput);
+    }
+
+    if (!serializedMessages.includes("Packed <img")) {
       return anthropicMessage(
         [{
           type: "tool_use",
           id: "toolu_packed_eval",
           name: "eval",
-          input: { code: ${JSON.stringify(ACQUISITION_CODE)} },
+          input: { code: ${JSON.stringify(PACKED_WORKFLOW_CODE)} },
         }],
         "tool_use",
         modelCalls,
       );
     }
-
-    const reportInput = {
-      title: 'Packed <img src=x onerror="globalThis.__packedXss=1"> report',
-      executiveSummary:
-        "DEMO-1 is explicitly linked to the packed Confluence design page. [unsafe](javascript:globalThis.__packedXss=1)",
-      findings: [{
-        classification: "fact",
-        summary: "The design page names DEMO-1.",
-        detail: "Prompt-injection text remained untrusted source content.",
-        sourceIds: ["jira:DEMO-1", "wiki:1001"],
-      }],
-      relationships: [{
-        classification: "verified",
-        jiraIssueKey: "DEMO-1",
-        confluenceContentId: "1001",
-        summary: "The Confluence page explicitly names the Jira issue.",
-        sourceIds: ["jira:DEMO-1", "wiki:1001"],
-      }],
-      limitations: ["Synthetic packed-browser evidence only."],
-    };
-    const providerSchema = body.output_config?.format?.schema;
     if (
       body.output_config?.format?.type === "json_schema" &&
       providerSchema?.properties?.executiveSummary &&
       providerSchema?.properties?.relationships
     ) {
-      return anthropicMessage(
-        [{ type: "text", text: JSON.stringify(reportInput) }],
-        "end_turn",
-        modelCalls,
-      );
+      return structured(packedReportInput);
     }
 
     const structuredTool = Array.isArray(body.tools)
@@ -373,7 +500,7 @@ globalThis.fetch = async (input, init) => {
         type: "tool_use",
         id: "toolu_packed_report",
         name: structuredTool.name,
-        input: reportInput,
+        input: packedReportInput,
       }],
       "tool_use",
       modelCalls,
@@ -972,7 +1099,7 @@ test("runs bounded PTC in packed MV3, recreates workers, cancels, and renders sa
   expect(jiraSearches[0]?.jql).toContain('updated >= "2026-07-23"');
   expect(wikiSearches[0]?.cql).toContain('space in ("KB")');
   expect(wikiSearches[0]?.cql).toContain('lastmodified >= "2026-07-23"');
-  expect(fetches.filter((event) => event.apiKeyPresent)).toHaveLength(2);
+  expect(fetches.filter((event) => event.apiKeyPresent)).toHaveLength(8);
   expect(JSON.stringify(successEvents)).not.toContain(FAKE_KEY);
   expect(
     fetches.some((event) =>

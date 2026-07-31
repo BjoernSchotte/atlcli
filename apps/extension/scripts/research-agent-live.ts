@@ -11,6 +11,7 @@ import {
   RESEARCH_MODEL_ID,
   runResearchAgent,
 } from "../utils/research/agent-runtime.js";
+import { composeStandardResearchGraphV1 } from "@atlcli/research/graph";
 
 const SITE_ORIGIN = "https://synthetic.atlassian.net";
 const PROJECT_KEY = "DEMO";
@@ -200,6 +201,7 @@ async function main(): Promise<void> {
     request,
     providers: syntheticProviders(),
     runId: `synthetic-live-${crypto.randomUUID()}`,
+    researchGraph: composeStandardResearchGraphV1(request.question),
     onPtcDiagnostic: (diagnostic) =>
       console.error(`[research-live] ptc=${JSON.stringify(diagnostic)}`),
     options: {

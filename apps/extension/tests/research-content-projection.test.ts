@@ -2,6 +2,7 @@ import { describe, expect, it } from "bun:test";
 import {
   projectConfluenceStorage,
   projectJiraDescription,
+  prependBoundedDetailText,
   type ContentProjectionLimits,
 } from "../utils/research/content-projection.js";
 
@@ -88,6 +89,41 @@ describe("bounded research content projection", () => {
     expect(result.text).toBe("äö");
     expect(new TextEncoder().encode(result.text).byteLength).toBe(4);
     expect(result.truncated).toBe(true);
+  });
+
+  it("turns detail-fetched Jira fields into bounded evidence without losing links", () => {
+    const description = projectJiraDescription(
+      {
+        type: "doc",
+        version: 1,
+        content: [{
+          type: "paragraph",
+          content: [{
+            type: "text",
+            text: "Design",
+            marks: [{
+              type: "link",
+              attrs: {
+                href: "https://example.atlassian.net/wiki/spaces/KB/pages/1001",
+              },
+            }],
+          }],
+        }],
+      },
+      "https://example.atlassian.net",
+      limits,
+    );
+    const detail = prependBoundedDetailText(
+      description,
+      "Summary: Implement design\nStatus: In Progress",
+      limits,
+    );
+
+    expect(detail.text).toContain("Summary: Implement design");
+    expect(detail.text).toContain("Status: In Progress");
+    expect(detail.text).toContain("Design");
+    expect(detail.linkTargets).toEqual(description.linkTargets);
+    expect(detail.truncated).toBe(false);
   });
 
   it("degrades an oversized Confluence page to bounded text instead of losing the detail", () => {

@@ -21,6 +21,7 @@ import { ResearchRunBudget } from "./budget.js";
 import {
   projectConfluenceStorage,
   projectJiraDescription,
+  prependBoundedDetailText,
   type ContentProjectionLimits,
 } from "./content-projection.js";
 
@@ -138,16 +139,23 @@ export function createRestResearchProviders(
           fields: ["summary", "description", "project", "status", "updated"],
           signal: input.signal,
         });
+        const description = projectJiraDescription(
+          issue.fields.description,
+          request.scope.siteOrigin,
+          limits
+        );
+        const detailFields = [
+          `Summary: ${issue.fields.summary ?? issue.key}`,
+          issue.fields.status?.name
+            ? `Status: ${issue.fields.status.name}`
+            : "",
+        ].filter(Boolean).join("\n");
         return {
           issueKey: issue.key,
           projectKey: issue.fields.project?.key ?? "",
           title: issue.fields.summary ?? issue.key,
           ...(issue.fields.updated ? { updatedAt: issue.fields.updated } : {}),
-          content: projectJiraDescription(
-            issue.fields.description,
-            request.scope.siteOrigin,
-            limits
-          ),
+          content: prependBoundedDetailText(description, detailFields, limits),
         };
       },
     },

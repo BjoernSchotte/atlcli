@@ -7,6 +7,7 @@ import { ResearchRunBudget } from "../utils/research/budget.js";
 import { createRestResearchProviders } from "../utils/research/rest-provider.js";
 import { runResearchAgent } from "../utils/research/agent-runtime.js";
 import { classifyResearchError } from "../utils/research/redaction.js";
+import { composeStandardResearchGraphV1 } from "@atlcli/research/graph";
 import type {
   ResearchWorkerRequestV1,
   ResearchWorkerResponseV1,
@@ -38,6 +39,7 @@ globalThis.addEventListener("message", (event: MessageEvent<unknown>) => {
       };
       const budget = new ResearchRunBudget(request.limits);
       const providers = createRestResearchProviders(profile, request, budget);
+      const researchGraph = composeStandardResearchGraphV1(request.question);
       const onProgress = (progress: ResearchProgressV1): void =>
         post({ kind: "research-worker:progress", runId, progress });
       const report = await runResearchAgent({
@@ -46,6 +48,7 @@ globalThis.addEventListener("message", (event: MessageEvent<unknown>) => {
         providers,
         budget,
         runId,
+        researchGraph,
         options: { onProgress },
       });
       post({ kind: "research-worker:complete", runId, report });

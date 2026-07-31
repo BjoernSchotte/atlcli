@@ -146,10 +146,10 @@ describe("research query builders", () => {
     const text = '" OR project = "OTHER"\n';
 
     expect(buildResearchJql(scope, { text })).toBe(
-      'project in ("DEMO") AND description IS NOT EMPTY AND updated >= "2026-01-01" AND updated <= "2026-07-30" AND (text ~ "OTHER") ORDER BY updated DESC, key ASC'
+      'project in ("DEMO") AND updated >= "2026-01-01" AND updated <= "2026-07-30" AND (text ~ "OTHER") ORDER BY updated DESC, key ASC'
     );
     expect(buildResearchCql(scope, { text })).toBe(
-      'type = page AND space in ("KB") AND lastmodified >= "2026-01-01" AND lastmodified <= "2026-07-30" AND text ~ "\\" OR project = \\"OTHER\\"" ORDER BY lastmodified DESC'
+      'type = page AND space in ("KB") AND lastmodified >= "2026-01-01" AND lastmodified <= "2026-07-30" AND (title ~ "\\"\\" OR project = \\"OTHER\\"\\"" OR text ~ "\\"\\" OR project = \\"OTHER\\"\\"") ORDER BY lastmodified DESC'
     );
   });
 
@@ -170,13 +170,15 @@ describe("research query builders", () => {
       buildResearchJql(request().scope, {
         text: "lead qualification discovery pilot",
       })
-    ).toContain("description IS NOT EMPTY");
-    expect(
-      buildResearchJql(request().scope, {
-        text: "lead qualification discovery pilot",
-      })
     ).toContain(
       '(text ~ "lead" OR text ~ "qualification" OR text ~ "discovery" OR text ~ "pilot")'
+    );
+    expect(
+      buildResearchCql(request().scope, {
+        text: "Lead Pipeline: Modernisierung",
+      }),
+    ).toContain(
+      '(title ~ "\\"Lead Pipeline: Modernisierung\\"" OR text ~ "\\"Lead Pipeline: Modernisierung\\"")',
     );
   });
 

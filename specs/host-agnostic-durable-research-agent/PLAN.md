@@ -2243,9 +2243,14 @@ Shared:
 
 CLI:
 
-- [ ] Convert `apps/extension/scripts/research-agent-live-mayflower.ts` into a
+- [x] Convert `apps/extension/scripts/research-agent-live-mayflower.ts` into a
       characterization test/harness that records only sanitized metrics and
       emits the full Markdown to an operator-selected path outside the repo.
+      Proven 2026-07-31: the harness requires a new absolute `.md` output path
+      outside the repository, writes it with mode `0600`, refuses overwrite,
+      accepts no API-key flag, and emits only aggregate PTC/subagent/run
+      metrics. A real RCM/GROW dynamic run wrote its full report under the
+      operator-owned `~/Documents/atlcli/artefacts/` tree.
 - [x] Prove the fixed-date cross-product question through the `mayflower`
       profile and operator-supplied local project/space keys; preserve the
       generated Markdown for review without committing it.
@@ -2256,6 +2261,10 @@ Extension/browser:
       Proven 2026-07-31 from a fresh production WXT build: two packed Chromium
       tests pass, covering native dynamic-schema dispatch plus the complete
       sidebar/background/offscreen/fresh-worker/PTC/report/cancel lifecycle.
+      The complete UI run now executes the same standard graph as the CLI:
+      central supervisor, capability-scoped Wiki and Jira retrieval, fresh
+      reconciler, synthesizer, and parent acceptance through one
+      `createDeepAgent` instance (8 model calls, 8 PTC/HTTP reads).
 - [x] Re-run one authenticated Mayflower browser-session read and record only
       sanitized evidence in the existing evidence document.
       Proven 2026-07-31 from an already authenticated Confluence browser tab:
@@ -2284,11 +2293,16 @@ Gate:
       Exact results: V1 2,140 bytes / 23 properties / depth 4; V2 2,806 / 31 /
       4; reconciliation 1,638 / 16 / 5.
 - [x] `bun run test apps/extension/tests/research-*.test.ts` passes.
-      Proven 2026-07-31: 97 passed, 0 failed across 18 extension files;
-      the three customer-free package evaluation fixtures add 14 passing tests.
+      Proven 2026-07-31 before the final T0 commit: the focused extension and
+      package suites include regression coverage for production graph
+      enforcement, cross-host standard graph composition, private live
+      artifacts, sanitized diagnostics, exact-title CQL, bounded Jira detail
+      fields, and deterministic explicit-link relationships.
 - [x] `bun run --cwd apps/extension test:research-extension-browser` passes.
       Proven 2026-07-31: production build succeeded and both packed Chromium
-      tests passed; the provider-native JSON Schema response path is exercised.
+      tests passed in 3.4 seconds; provider-native JSON Schema, the productive
+      dynamic graph, worker lifecycle, cancellation, and safe Markdown are
+      exercised.
 - [ ] No tracked file contains an Anthropic key, Atlassian credential, tenant
       content, private URL, or customer-derived report.
 

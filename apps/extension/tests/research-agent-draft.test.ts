@@ -169,6 +169,51 @@ describe("research agent draft finalization", () => {
     );
   });
 
+  it("derives a verified relationship when the synthesizer misfiles an explicit link", () => {
+    const misfiled = draft();
+    misfiled.relationships = [];
+    const report = finalizeResearchAgentDraftV1({
+      draft: misfiled,
+      request,
+      sources,
+      detailEvidence: [
+        {
+          source: sources[0]!,
+          content: {
+            text: "Summary: Implement guarded research",
+            linkTargets: [
+              "https://example.atlassian.net/wiki/spaces/KB/pages/1001",
+            ],
+            truncated: false,
+            inputBytes: 90,
+          },
+        },
+        {
+          source: sources[1]!,
+          content: {
+            text: "Complete research design.",
+            linkTargets: [],
+            truncated: false,
+            inputBytes: 25,
+          },
+        },
+      ],
+      run,
+    });
+
+    expect(report.relationships).toEqual([
+      {
+        id: "relationship-1",
+        classification: "verified",
+        jiraIssueKey: "DEMO-1",
+        confluenceContentId: "1001",
+        summary:
+          "Retrieved Jira and Confluence detail evidence contains an explicit cross-reference.",
+        sourceIds: ["jira:DEMO-1", "wiki:1001"],
+      },
+    ]);
+  });
+
   it("drops a relationship when either endpoint was not read in full", () => {
     const report = finalizeResearchAgentDraftV1({
       draft: draft(),

@@ -210,6 +210,55 @@ function normalizeRelationships(
   return normalized;
 }
 
+function deriveVerifiedRelationships(
+  existing: readonly AtlassianRelationshipV1[],
+  detailEvidence: readonly ResearchDetailEvidenceV1[],
+  siteOrigin: string,
+): AtlassianRelationshipV1[] {
+  const readable = detailEvidence.filter(
+    (entry) =>
+      !entry.content.truncated &&
+      (entry.content.text.trim().length > 0 || entry.content.linkTargets.length > 0),
+  );
+  const jiraEvidence = readable.filter(
+    (entry) => entry.source.product === "jira" && entry.source.issueKey,
+  );
+  const wikiEvidence = readable.filter(
+    (entry) => entry.source.product === "confluence" && entry.source.contentId,
+  );
+  const seen = new Set(
+    existing.map(
+      (relationship) =>
+        `${relationship.jiraIssueKey}:${relationship.confluenceContentId}`,
+    ),
+  );
+  const derived = [...existing];
+  for (const jira of jiraEvidence) {
+    for (const wiki of wikiEvidence) {
+      if (derived.length >= 12) return derived;
+      const issueKey = jira.source.issueKey!;
+      const contentId = wiki.source.contentId!;
+      const key = `${issueKey}:${contentId}`;
+      if (seen.has(key)) continue;
+      const candidate = {
+        classification: "verified" as const,
+        jiraIssueKey: issueKey,
+        confluenceContentId: contentId,
+        summary:
+          "Retrieved Jira and Confluence detail evidence contains an explicit cross-reference.",
+        sourceIds: [jira.source.id, wiki.source.id],
+      };
+      if (!isVerifiedRelationship(candidate, readable, siteOrigin)) continue;
+      seen.add(key);
+      derived.push({
+        id: `relationship-${derived.length + 1}`,
+        ...candidate,
+      });
+    }
+  }
+  return derived;
+}
+
 function normalizeFindings(
   findings: ResearchAgentDraftV1["findings"],
   sources: ReadonlyMap<string, ResearchSourceReferenceV1>,
@@ -381,11 +430,15 @@ export function finalizeResearchAgentDraftV1(input: {
     sourcesById,
     input.detailEvidence
   );
-  const relationships = normalizeRelationships(
-    draft.relationships,
-    sourcesById,
+  const relationships = deriveVerifiedRelationships(
+    normalizeRelationships(
+      draft.relationships,
+      sourcesById,
+      input.detailEvidence,
+      input.request.scope.siteOrigin
+    ),
     input.detailEvidence,
-    input.request.scope.siteOrigin
+    input.request.scope.siteOrigin,
   );
   const citedSourceIds = new Set([
     ...findings.flatMap((finding) => finding.sourceIds),

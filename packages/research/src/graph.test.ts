@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   RESEARCH_BRIEF_SCHEMA_V1,
   composeResearchGraphV1,
+  composeStandardResearchGraphV1,
   validateResearchGraphV1,
   type ResearchGraphV1,
 } from "./graph.js";
@@ -20,6 +21,18 @@ const brief = (
 });
 
 describe("dynamic research graph composition", () => {
+  test("gives every productive host the same standard cross-product graph", () => {
+    const graph = composeStandardResearchGraphV1(
+      "Which Confluence pages correspond to Jira work items?",
+    );
+    expect(graph.selectedRoleIds).toEqual([
+      "jira-retrieval",
+      "wiki-retrieval",
+      "reconciler",
+      "synthesizer",
+    ]);
+  });
+
   test("selects structurally different roles for Jira-only and cross-product briefs", () => {
     const jiraOnly = composeResearchGraphV1(brief("List open Jira tickets", ["jira"], "off"));
     const crossProduct = composeResearchGraphV1(brief("Which Confluence content is related to Jira tickets?", ["jira", "confluence"]));

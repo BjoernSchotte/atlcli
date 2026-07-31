@@ -67,10 +67,6 @@ export function buildResearchJql(
 ): string {
   const clauses = [
     `project in (${quotedList(scope.jiraProjectKeys, escapeResearchJqlLiteral)})`,
-    // The research detail capability currently projects the Jira description.
-    // Issues without one cannot support a publishable content claim and would
-    // only consume the bounded detail budget.
-    "description IS NOT EMPTY",
   ];
   addDateClauses(clauses, "updated", scope.timeWindow);
   if (query.text) {
@@ -95,7 +91,10 @@ export function buildResearchCql(
     `space in (${quotedList(scope.confluenceSpaceKeys, escapeResearchCqlLiteral)})`,
   ];
   addDateClauses(clauses, "lastmodified", scope.timeWindow);
-  if (query.text) clauses.push(`text ~ "${escapeResearchCqlLiteral(query.text)}"`);
+  if (query.text) {
+    const phrase = `\\"${escapeResearchCqlLiteral(query.text)}\\"`;
+    clauses.push(`(title ~ "${phrase}" OR text ~ "${phrase}")`);
+  }
   return `${clauses.join(" AND ")} ORDER BY lastmodified DESC`;
 }
 

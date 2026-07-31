@@ -216,6 +216,12 @@ export interface RunResearchAgentInput {
 export async function runResearchAgent(
   input: RunResearchAgentInput
 ): Promise<ResearchReportV1> {
+  if (!input.model && !input.researchGraph) {
+    throw new ResearchContractError(
+      "invalid-request",
+      "A validated research graph is required for a production model run."
+    );
+  }
   const now = input.now ?? Date.now;
   const startedAtMs = now();
   const runId = input.runId ?? crypto.randomUUID();
