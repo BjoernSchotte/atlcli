@@ -19,9 +19,21 @@ Markdown synchronization, but do not model it as another file format:
 | Web publishing | refreshable page graph, immutable site bundle, build and verification | multi-route static site |
 
 The first implementation uses Astro 7.1 to build a static site from typed data.
-Astro can consume Markdown, but this pipeline deliberately does not. It loads
-per-page `ExportBlock[]` documents and assets from a versioned publication
-bundle and maps blocks and macros to trusted Astro components.
+Astro supports Markdown, but Markdown is not the interchange format of this
+pipeline. A custom Astro content loader reads typed, per-page `ExportBlock[]`
+documents and verified assets from the versioned publication bundle. Trusted
+Astro and Starlight components render those structures directly, using static
+output by default and explicitly allowlisted client islands where interaction
+adds value.
+
+The block-to-Astro translation is a standalone product boundary, not an
+implementation detail of Starlight. V1 therefore provides a Starlight-free
+`@atlcli/export-blocks-astro` package whose semantic Astro components consume
+the same consumer-neutral `ExportBlock[]` model as DOCX/PDF. The Starlight
+experience composes and styles that package but does not own it. This preserves
+an additive path to a future pure `ADF -> ExportBlock[]` adapter and direct
+`AdfDocument` convenience component if external Astro-community demand warrants
+them; neither is required for V1.
 
 V1 is a world-class publishing experience rather than a bare HTML proof. Its
 first supported experience is an atlcli adapter for Astro Starlight, with a
@@ -110,6 +122,34 @@ If JavaScript is disabled, the static fallback must still convey the content.
 Live charts, request-time Confluence reads, SSR/on-demand rendering, server
 islands, and authenticated runtime APIs require a separate server-publishing
 design and deployment threat model.
+
+### 2.2 Standalone Astro render-kit boundary
+
+The V1 component library maps the already normalized publication model rather
+than implementing a second Confluence decoder:
+
+```text
+Cloud ADF ---------> existing pure/source normalization --+
+DC Storage XHTML --> existing pure/source normalization --+--> ExportBlock[]
+                                                              -> @atlcli/export-blocks-astro
+                                                              -> semantic HTML and opt-in islands
+                                                              -> Starlight or another experience
+```
+
+`@atlcli/export-blocks-astro` owns exhaustive block/inline dispatch, semantic
+Astro components, a trusted override map, resolved-link/asset render context,
+minimal accessible baseline styles, public CSS custom properties/data
+attributes, and block-local static/island behavior. It does not own page
+acquisition, Confluence auth/network access, route discovery, navigation shell,
+Starlight, Pagefind, SEO, PWA, analytics, or edit links.
+
+The public V1 input is `ExportBlock[]`, which is already the shared normalized
+model across Cloud/DC and document consumers. A future community adapter may
+accept raw ADF and convert supported nodes/marks/extensions to the same model,
+with explicit media/mention/extension resolvers and visible unknown fallbacks.
+It must be an additive facade over the same component library, not a parallel
+ADF-specific renderer. Direct raw-ADF input and its support matrix are deferred
+until there is external demand and a separately evidenced contract.
 
 ## 3. Product boundary and user journey
 
@@ -210,26 +250,28 @@ in place.
 9. Ship Starlight as the first supported publishing experience and prove a
    versioned capability, slot, token, component-override, and accessibility
    contract through which further themes can be added.
-10. Ship world-class static client-side search in V1, including keyboard-first
+10. Ship the exhaustive `ExportBlock[] -> Astro` translation as a standalone,
+    Starlight-free, public-0.x component package with a plain-Astro consumer.
+11. Ship world-class static client-side search in V1, including keyboard-first
     UI, facets, metadata, multilingual indexing, and nested-base support.
-11. Ship production information architecture: responsive tree navigation,
+12. Ship production information architecture: responsive tree navigation,
     breadcrumbs, page TOC, previous/next, related pages, label landing pages,
     deep-link actions, and a searchable 404 experience.
-12. Ship SEO/discovery output: canonical and alternate-language links,
+13. Ship SEO/discovery output: canonical and alternate-language links,
     sitemap, robots policy, OpenGraph/social metadata, JSON-LD, and optional
     RSS/Atom change feeds.
-13. Ship locale-aware routes/UI/search plus responsive images, self-hosted
+14. Ship locale-aware routes/UI/search plus responsive images, self-hosted
     fonts, technical code presentation, and explicit performance budgets.
-14. Ship installable PWA/offline support whose cache and update model is bound
+15. Ship installable PWA/offline support whose cache and update model is bound
     to the exact verified build and includes the final Pagefind index.
-15. Support optional privacy-respecting analytics and an optional trusted
+16. Support optional privacy-respecting analytics and an optional trusted
     Confluence edit link without making either a publication prerequisite.
-16. Support trusted static renderers and opt-in client islands with frozen data.
-17. Fail closed on incomplete acquisition, unsafe active content, route/output
+17. Support trusted static renderers and opt-in client islands with frozen data.
+18. Fail closed on incomplete acquisition, unsafe active content, route/output
     collisions, XSS, SSRF, path traversal, and secret/private-URL leakage.
-18. Verify the final static artifact, including Starlight, search, SEO, PWA,
+19. Verify the final static artifact, including Starlight, search, SEO, PWA,
     analytics, and edit-link output, not only serializer inputs.
-19. Leave DOCX/PDF export, Markdown sync, and DOCX import behavior unchanged.
+20. Leave DOCX/PDF export, Markdown sync, and DOCX import behavior unchanged.
 
 ## 5. Non-goals
 
@@ -246,6 +288,8 @@ in place.
 - generating a new customer Astro project as the only supported integration;
 - promising that arbitrary themes from Astro's catalog satisfy the atlcli
   publishing contract without an explicit adapter and conformance proof;
+- shipping a direct raw-ADF Astro API in V1; a future pure adapter and
+  `AdfDocument` facade remain additive community-driven follow-ups;
 - promising incremental Astro output builds: only acquisition/normalization is
   incremental in V1;
 - requiring a hosted search service, crawler, account, or runtime backend for
@@ -262,7 +306,10 @@ in place.
 The planning baseline already has most of the source-side semantic model:
 
 - `packages/confluence/src/export-blocks.ts` defines consumer-neutral blocks
-  and never passes raw Storage through as output.
+  and never passes raw Storage through as output, but its current package
+  ownership would make a standalone Astro renderer depend on the broader
+  Confluence surface. V1 must extract or otherwise freeze a dependency-free
+  `@atlcli/export-blocks` boundary with compatibility re-exports.
 - `ExportPageNode` in `packages/confluence/src/tree-fetch.ts` already carries
   page ID, blocks, notes, parent, depth, position, version, labels, and space
   metadata before document composition.
@@ -361,6 +408,20 @@ materially, stop and update this plan before runtime edits.
 
 ### 8.1 Packages
 
+`@atlcli/export-blocks` becomes the public, fully isomorphic semantic model:
+
+- `ExportBlock`, inline, note, link, asset-reference, caption, normalized macro,
+  and chart-model types plus their versioned runtime schemas;
+- pure exhaustive visitors and validation helpers only;
+- no Confluence client, ADF/Storage parser, Astro, Node, auth, or renderer; and
+- compatibility re-exports from `@atlcli/confluence` so extraction does not
+  break existing DOCX/PDF/browser consumers in the same change.
+
+Task 0 must validate the extraction against the then-current dependency graph.
+If a physical package split would destabilize existing consumers, freeze the
+same dependency-free public boundary first and migrate imports incrementally;
+`@atlcli/export-blocks-astro` must never need the Confluence client surface.
+
 `@atlcli/web-publish` is the public, mostly isomorphic core:
 
 - versioned project, refresh-plan, bundle, page, route, link, asset, renderer,
@@ -373,13 +434,28 @@ materially, stop and update this plan before runtime edits.
 - browser-safe default entry point;
 - a Node subpath for bounded filesystem bundle/cache stores.
 
+`@atlcli/export-blocks-astro` is Astro-native, Starlight-free, and public-0.x:
+
+- exhaustive `ExportDocument.astro`/block/inline components over
+  `@atlcli/export-blocks` plus a trusted build-selected override registry;
+- semantic static HTML, block-local opt-in islands, visible unknown fallbacks,
+  resolved link/asset context, and diagnostics propagation;
+- minimal accessible baseline styles and versioned CSS custom properties,
+  semantic slots, and `data-*` styling hooks;
+- named component, document, style, island, schema/type, and test-fixture
+  exports suitable for a plain Astro consumer;
+- peer dependency `astro >=7.1.0 <8`; and
+- no Starlight, Confluence, authentication, acquisition, route/site shell,
+  Pagefind, SEO, PWA, analytics, edit-link, Node filesystem, or network code.
+
 `@atlcli/web-publish-astro` is Node-only and public-0.x:
 
 - default Astro integration factory;
 - named build-time content loader;
-- trusted route, layouts, block components, styles, and islands;
-- a first-class Starlight experience adapter plus a theme/experience contract
-  and non-shipped conformance fixture for future implementations;
+- trusted publication routes, layout/experience ports, asset staging, and
+  consumption of `@atlcli/export-blocks-astro`;
+- a theme/experience contract and non-shipped plain-Astro conformance
+  experience for future implementations;
 - a post-build Pagefind indexer plus theme-neutral accessible search components;
 - sitemap/SEO/i18n/media/font/code capabilities;
 - PWA manifest/service-worker/offline generation after Pagefind;
@@ -387,6 +463,17 @@ materially, stop and update this plan before runtime edits.
 - Astro config/route/build/search/PWA hooks and output manifest production;
 - peer dependency `astro >=7.1.0 <8`, Node `>=22.12.0`;
 - no embedded second Astro and no private Astro/Vite API contract.
+
+`@atlcli/web-publish-starlight` is the first public-0.x experience adapter:
+
+- the supported Starlight descriptor and compatibility range;
+- page shell, sidebar/navigation, breadcrumbs, page TOC, previous/next,
+  landing/related/404 views, search/action slots, and theme-mode integration;
+- mapping from Starlight tokens and documented component/plugin overrides to
+  the stable `@atlcli/export-blocks-astro` token/slot/override contract;
+- optional experience-owned placement of analytics and Confluence actions; and
+- no duplicate ExportBlock dispatch, ADF/Storage conversion, Confluence client,
+  authentication, build execution, output ownership, or PWA cache authority.
 
 `@atlcli/publish-jobs` is added only if Task 0 proves durable background jobs
 are required for V1. It must be a separate request/snapshot/result family and
@@ -406,20 +493,25 @@ Host wiring remains close to authentication and I/O:
 ### 8.2 Allowed dependency direction
 
 ```text
-@atlcli/confluence -----------+
-@atlcli/export-macros -------+----> @atlcli/web-publish
-@atlcli/core ----------------+
-                                      ^
-                                      |
-                           @atlcli/web-publish-astro ---> Astro peer
-                                      ^
-                                      |
-export-wiring / export-node ports ---> CLI
+@atlcli/export-blocks
+  ├──> @atlcli/confluence / @atlcli/export-macros
+  ├──> @atlcli/web-publish
+  └──> @atlcli/export-blocks-astro ───────────────> Astro peer
+             ├──> @atlcli/web-publish-astro ──────> Astro/Node peers
+             └──> @atlcli/web-publish-starlight ──> Astro/Starlight peers
+
+web-publish + web-publish-astro + selected experience
+  <── export-wiring / export-node ports <── CLI
 ```
 
 Forbidden edges:
 
 - web-publish core -> Astro, Node built-ins, CLI, Forge, extension, React, Vite;
+- export-blocks core -> Confluence, Astro, Starlight, Node, or host code;
+- export-blocks-astro -> Starlight, Confluence/auth/network, publication loader,
+  routes, Pagefind, PWA, analytics, or edit-link ownership;
+- Starlight adapter -> ADF/Storage parsing, duplicate ExportBlock dispatch,
+  Confluence auth/network, build execution, or output/cache ownership;
 - Confluence content -> generated source/module/component imports;
 - Astro loader -> Confluence client/auth or network acquisition;
 - Markdown sync -> publication bundle as its new authority;
@@ -610,6 +702,58 @@ parameters. Static SVG/HTML is required. The optional island consumes the same
 frozen model; it may add interaction but no network/auth code. Chart capability
 must be tested with JavaScript both enabled and disabled.
 
+#### 9.5.1 Astro component-library contract
+
+The default `@atlcli/export-blocks-astro` entry renders a document without a
+publication project or Starlight installation:
+
+```astro
+---
+import ExportDocument from "@atlcli/export-blocks-astro/document";
+---
+
+<ExportDocument blocks={blocks} context={renderContext} />
+```
+
+Its conceptual props are versioned and contain only resolved, render-safe data:
+
+```ts
+interface AstroExportDocumentPropsV1 {
+  blocks: readonly ExportBlock[];
+  context: AstroExportBlockRenderContextV1;
+  overrides?: AstroExportBlockOverridesV1;
+}
+
+interface AstroExportBlockRenderContextV1 {
+  locale: string;
+  direction: "ltr" | "rtl";
+  headings: Readonly<Record<string, ResolvedHeadingV1>>;
+  links: Readonly<Record<string, ResolvedPublicationLinkV1>>;
+  assets: Readonly<Record<string, ResolvedPublicationAssetV1>>;
+  notes: "inline" | "collect" | "omit-noncritical";
+}
+```
+
+The package exports the exhaustive document dispatcher and named semantic
+components so a plain Astro project may compose or override individual block
+kinds. Overrides are trusted installed modules selected by project/build
+configuration; source content can never name a component or module. The base
+components must remain complete and accessible without an experience adapter.
+
+The stable styling contract is semantic HTML, declared slots, versioned CSS
+custom properties, and documented `data-atlcli-*` hooks. Generated class names,
+Starlight DOM/CSS, and full HTML whitespace are not compatibility contracts.
+Starlight may map its tokens and replace a block renderer through the trusted
+override map, but it must not fork dispatch or change link/asset/security
+semantics.
+
+V1 does not export `AdfDocument`. A later `@atlcli/adf-export-blocks` package or
+`/adf` facade may add pure ADF normalization and an `AdfDocument` convenience
+component over this exact renderer. It must declare node/mark/extension
+coverage, accept explicit media/mention/extension resolvers, preserve visible
+unknown fallbacks, perform no implicit authenticated fetch, and introduce no
+second ADF-specific Astro component tree.
+
 ### 9.6 Builder port and Astro options
 
 ```ts
@@ -636,11 +780,12 @@ and `trailingSlash: "always"`. For `portable-file`, it uses
 internal URLs and in the build key. Production canonical/sitemap support
 requires `site`.
 
-The Astro package exports:
+`@atlcli/web-publish-astro` exports:
 
 - default `atlcliPublishingIntegration(options)` for `astro add` compatibility;
 - named `atlcliPublicationLoader(options)`;
-- bundle schemas/types and trusted default components; and
+- builder/integration options and bundle-facing loader types, while referring
+  semantic component consumers to `@atlcli/export-blocks-astro`; and
 - no programmatic Astro runner in its public API.
 
 The loader uses immutable source ID as collection entry ID and route as data.
@@ -662,7 +807,7 @@ It may use `astro:config:setup` only for a documented route/virtual-module,
 experience, search, PWA, or asset plugin. It must not depend on Astro/Vite private
 internals.
 
-### 9.7 Theme and search contracts
+### 9.7 Experience and search contracts
 
 Publishing experiences/themes are trusted installed code selected by the
 operator, never by source content. Astro Starlight is the first concrete V1
@@ -701,7 +846,10 @@ type PublicationExperienceCapabilityV1 =
 V1 ships one supported atlcli Starlight experience. Starlight is an Astro
 documentation integration rather than a generic swappable skin, so the adapter
 owns the translation between publication contracts and Starlight's navigation,
-components, overrides, Pagefind, i18n, SEO, Expressive Code, and theme modes.
+page shell, overrides, Pagefind, i18n, SEO, Expressive Code, and theme modes. It
+consumes the complete `@atlcli/export-blocks-astro` render kit and may provide
+trusted presentation overrides, but owns neither ExportBlock dispatch nor the
+base semantic components.
 One deliberately small non-shipped test experience implements the same
 descriptor to prove that the contract is not Starlight-private. Adding a second
 production theme is a later adapter, not a V1 shipping requirement.
@@ -1024,18 +1172,17 @@ it is never silently omitted.
 
 The existing Astro project remains owner of installed theme packages, approved
 design-token values, project chrome, and handwritten routes. The atlcli
-integration contributes:
+packages contribute distinct layers:
 
-- a configurable publication route prefix;
-- a trusted default catch-all route enumerated by `getStaticPaths()`;
-- a closed component registry and the supported atlcli Starlight experience;
-- a validated experience-adapter contract with capability negotiation and a
-  deliberately non-shipped conformance fixture;
-- bundle-backed content collection entries; and
-- generated information architecture, SEO/i18n/media/code capabilities;
-- post-build Pagefind indexing followed by PWA/offline generation;
-- optional privacy-respecting analytics and Confluence edit-link slots; and
-- private build-manifest production.
+- `@atlcli/export-blocks-astro` contributes the closed semantic content
+  registry, exhaustive components, baseline styles, and block-local islands;
+- `@atlcli/web-publish-astro` contributes the configurable route prefix,
+  `getStaticPaths()` route, bundle-backed collection entries, asset/output
+  integration, Pagefind/PWA stages, and private manifest; and
+- `@atlcli/web-publish-starlight` contributes the supported page experience,
+  generated information architecture, Starlight token/override mapping,
+  SEO/i18n/media/code presentation, search/actions placement, and optional
+  analytics/edit-link slots.
 
 Experience selection is project configuration. Confluence pages and macro data
 cannot choose packages, component imports, arbitrary CSS, or scripts. Replacing
@@ -1070,6 +1217,12 @@ facets, keyboard navigation, deep-link result URLs, deleted-page removal,
 optional analytics/edit-link modes, offline navigation/search, and
 JavaScript-disabled graceful degradation to normal site navigation.
 
+Before the Starlight matrix, a packed plain-Astro consumer imports only
+`@atlcli/export-blocks-astro`, renders the all-fields fixture, applies one
+trusted component override and custom-token set, and proves that no Starlight,
+Confluence, publication builder, auth, network, Pagefind, or PWA dependency is
+required for semantic block rendering.
+
 Astro's static redirect output cannot promise HTTP redirect status codes.
 Redirect candidates stay in the private manifest for a future deployment
 provider.
@@ -1091,6 +1244,8 @@ provider.
 | static chart | supported | SVG/HTML visual/a11y proof |
 | interactive chart island | opt-in V1 target | JS-on/off, CSP, payload proof |
 | live/request-time chart | deferred | explicitly unsupported |
+| standalone ExportBlock Astro render kit | required V1 package | packed plain-Astro consumer + dependency/fixture proof |
+| direct raw-ADF Astro input | additive future adapter | deferred; no V1 `AdfDocument` claim |
 | Starlight experience | required V1 baseline | packed artifact/a11y/visual proof |
 | future experience adapters | supported contract | non-shipped capability/slot/negative conformance fixture |
 | light/dark/system + responsive | V1 experience requirement | keyboard/mobile/contrast proof |
@@ -1125,12 +1280,13 @@ T0 Contract/security/Astro spike
 ├── T3 Web target and per-page macros
 └── T4 Astro 7.1 loader/integration spike
 T1 + T2 + T3 ──> T5 Refresh, assets and immutable bundle
-T2 + T3 + T4 ──> T6 Starlight experience, renderers and charts
-T2 + T4 + T5 + T6 ──> T7 Static output, discovery and web quality
-T7 ──> T8 PWA/offline, analytics and Confluence edit link
-T5 + T7 + T8 ──> T9 CLI lifecycle and verification
-T9 ──> T10 Package/API/consumer/CI gates
-T10 ──> T11 Docs and real provider proof
+T2 + T3 + T4 ──> T6 Standalone ExportBlock Astro render kit
+T2 + T4 + T6 ──> T7 Starlight experience adapter
+T2 + T4 + T5 + T6 + T7 ──> T8 Static output, discovery and web quality
+T8 ──> T9 PWA/offline, analytics and Confluence edit link
+T5 + T8 + T9 ──> T10 CLI lifecycle and verification
+T10 ──> T11 Package/API/consumer/CI gates
+T11 ──> T12 Docs and real provider proof
 ```
 
 ## 14. Checkable implementation tasks
@@ -1150,6 +1306,13 @@ T10 ──> T11 Docs and real provider proof
       that source data cannot select/import a component.
 - [ ] Spike a trusted static chart and an opt-in island over one frozen,
       schema-validated model; verify useful JS-disabled fallback.
+- [ ] Prove a packed plain Astro project can consume only
+      `@atlcli/export-blocks-astro`, render the all-fields ExportBlock fixture,
+      apply trusted overrides/tokens, and build without Starlight, Confluence,
+      auth, network, publication loader, Pagefind, or PWA dependencies.
+- [ ] Freeze the dependency-free `@atlcli/export-blocks` extraction and
+      compatibility-re-export strategy; prove DOCX/PDF/browser consumers retain
+      their existing imports, schemas, artifacts, and tree-shaking boundary.
 - [ ] Build the same bundle with the supported Starlight experience and one
       deliberately small non-shipped conformance experience; freeze semantic
       slots, tokens, capability negotiation, and override rules without
@@ -1172,20 +1335,25 @@ T10 ──> T11 Docs and real provider proof
       serializable runs; create `@atlcli/publish-jobs` only with an evidenced
       recovery/scheduling requirement.
 - [ ] Freeze route, active-attachment, strict/partial, macro freshness, island,
-      experience, search, SEO/i18n/media/code, PWA, analytics, edit-link, output,
-      workspace, and retention policies.
+      render-kit props/overrides/styling, experience, search,
+      SEO/i18n/media/code, PWA, analytics, edit-link, output, workspace, and
+      retention policies.
+- [ ] Record the additive future `ADF -> ExportBlock[] -> Astro` seam and the
+      minimum resolver/support-matrix requirements without implementing or
+      claiming a V1 raw-ADF API.
 - [ ] Record a threat model for ADF/Storage/macro input, remote assets, bundle
       paths, Astro build, islands, output directory, and future deployment.
 - [ ] STOP and re-plan if Astro needs source-derived code, a networked loader,
       private APIs, unbounded output, or cannot render a complete accessible
       static fallback.
 
-Acceptance: the spike produces a bounded, searchable, installable Starlight
-static directory and private manifest, with nested-base links, facets, keyboard
-and offline search, PWA update proof, SEO/i18n/media/code output, optional
-analytics/edit-link modes, and hostile content remaining inert. The non-shipped
-experience fixture proves adapter neutrality. No production package contract
-is frozen until this gate passes.
+Acceptance: the spike first proves the standalone render kit in plain Astro,
+then produces a bounded, searchable, installable Starlight static directory and
+private manifest, with nested-base links, facets, keyboard/offline search, PWA
+update proof, SEO/i18n/media/code output, optional analytics/edit-link modes,
+and hostile content remaining inert. The non-shipped experience fixture proves
+adapter neutrality. No production package contract is frozen until this gate
+passes.
 
 ### T1 — Expose the Confluence page graph before document composition
 
@@ -1207,6 +1375,12 @@ existing export behavior remains regression-green.
 
 ### T2 — Implement core project, diff, route, link, and bundle contracts
 
+- [ ] Extract the dependency-free `@atlcli/export-blocks` model/schema/helpers
+      package or the Task-0-approved equivalent boundary; retain deliberate
+      compatibility re-exports from `@atlcli/confluence`.
+- [ ] Move no ADF/Storage parser, Confluence client, host, Node, or renderer code
+      into the model package; update consumers incrementally with API/closure and
+      deterministic DOCX/PDF/browser regression proof.
 - [ ] Add `@atlcli/web-publish` with public-0.x classification, strict ESM,
       browser-safe default entry point, Node filesystem subpath, README, API
       report, and closure report.
@@ -1269,8 +1443,6 @@ inputs, and does not alter existing export targets.
 - [ ] Load only installed operator-selected experience descriptors; validate
       required capabilities/slots and include experience/version/config in the
       build key.
-- [ ] Implement the Starlight adapter only through supported Starlight/Astro
-      configuration, plugin, component-override, and integration surfaces.
 - [ ] Reserve collision-safe owned paths for Pagefind output and expose the
       standard experience search slots without coupling the loader to
       Starlight-private DOM.
@@ -1311,45 +1483,80 @@ Acceptance: unchanged deterministic pages/assets are reused; changed and live
 dependencies refresh; removed content is acted on only with authoritative proof;
 the active bundle is always complete and digest-valid.
 
-### T6 — Build the Starlight experience, trusted renderers, and charts
+### T6 — Build the standalone ExportBlock Astro render kit
 
-- [ ] Implement trusted Astro components for every `ExportBlock` and inline
-      discriminator with compile-time exhaustiveness.
+- [ ] Add Astro-native, Starlight-free `@atlcli/export-blocks-astro` as a
+      public-0.x package with Astro peer range, README, API report, closure
+      report, named exports, fixture exports, and no Node-only default entry.
+- [ ] Implement `ExportDocument.astro` plus trusted components for every
+      `ExportBlock` and inline discriminator with compile-time exhaustiveness.
 - [ ] Cover headings/anchors, paragraphs/marks, lists/tasks, tables/spans,
       callouts, code, figures/captions, layouts, expand/details, status, links,
       assets, Smart Cards, and visible unknown fallbacks.
+- [ ] Accept only `ExportBlock[]` plus the versioned locale/heading/link/asset/
+      note render context; perform no acquisition, auth, or implicit network I/O.
 - [ ] Use Astro escaping by default; expose no caller/raw-string `set:html` API.
-- [ ] Implement a closed renderer registry with versioned descriptors and
-      schema-validated payloads.
-- [ ] Implement the versioned experience runtime and semantic slots without
-      exposing generated-DOM selectors as a compatibility contract.
-- [ ] Ship one feature-complete atlcli Starlight experience with responsive
-      hierarchical navigation, breadcrumbs, page TOC, previous/next, search
-      slots, related pages, landing pages, deep-link actions, useful 404,
-      dark/light/system modes, print styles, and accessible token defaults.
-- [ ] Implement Starlight configuration, component overrides, and Expressive
-      Code mapping without forking Starlight or depending on generated DOM.
-- [ ] Implement a deliberately small non-shipped experience adapter fixture;
-      source content may never select or parameterize component/module imports.
+- [ ] Implement a closed, build-selected override registry with versioned
+      descriptors and schema-validated payloads; source content can never select
+      or parameterize a component/module import.
+- [ ] Export minimal accessible baseline styles, semantic slots, versioned CSS
+      custom properties, and documented `data-atlcli-*` hooks without treating
+      generated classes/full DOM snapshots as public compatibility.
 - [ ] Implement accessible static chart SVG/HTML from normalized chart data.
-- [ ] Implement the optional chart island with frozen data, explicit opt-in,
-      byte/row/node limits, no network/auth access, and static fallback.
+- [ ] Implement the optional block-local chart island with frozen data, explicit
+      opt-in, byte/row/node limits, no network/auth access, and static fallback.
 - [ ] Prove CSP, no event-handler/script/CSS injection, unsafe URL rejection,
       SVG safety, and no opaque datasource/provenance serialization.
-- [ ] Prove keyboard/screen-reader semantics and meaningful JS-disabled output.
-- [ ] Prove Starlight plus the adapter conformance fixture at mobile/desktop
-      widths, high zoom, forced colors, reduced motion, light/dark/system modes,
-      print, long titles, deep trees, RTL-safe layout, and custom tokens.
-- [ ] Add deterministic semantic goldens and browser DOM/a11y tests rather than
-      brittle full Astro HTML/CSS whitespace snapshots.
-- [ ] STOP if source content can become executable code, disabled JS loses the
-      represented information, or unsupported blocks disappear silently.
+- [ ] Build a packed plain-Astro consumer with the all-fields fixture, one
+      trusted component override, custom tokens, JS on/off, accessibility, RTL,
+      print, hostile data, and deterministic semantic goldens.
+- [ ] Add negative dependency gates for Starlight, Confluence client/auth,
+      publication loader/routes, Node filesystem, Pagefind, PWA, analytics, and
+      edit-link code.
+- [ ] Document the deferred additive ADF-adapter seam but export no V1
+      `AdfDocument` or raw-ADF capability claim.
+- [ ] STOP if the base renderer requires Starlight/project chrome, source data
+      can become executable code, disabled JS loses represented information, or
+      unsupported blocks disappear silently.
 
-Acceptance: the all-fields fixture renders safely and accessibly in Starlight;
-the non-shipped experience fixture proves the neutral adapter contract; chart
-output works statically and the optional island adds only bounded interaction.
+Acceptance: a packed plain Astro project independently renders the all-fields
+ExportBlock fixture safely and accessibly with the documented override/styling
+contract. The package contains no Starlight, Confluence, site-build, auth,
+network, search, or PWA dependency; chart interaction remains bounded and has a
+complete static fallback.
 
-### T7 — Build static output, discovery, and production web quality
+### T7 — Build the Starlight experience adapter
+
+- [ ] Add `@atlcli/web-publish-starlight` as the first public-0.x experience
+      package with pinned compatible Starlight/Astro peers and no duplicated
+      ExportBlock dispatcher or build runner.
+- [ ] Implement the versioned experience descriptor/runtime and semantic slots
+      without exposing Starlight-generated DOM selectors as compatibility.
+- [ ] Consume `@atlcli/export-blocks-astro` for all document bodies and map
+      Starlight tokens to its public custom-property/slot contract.
+- [ ] Implement supported Starlight configuration, plugins, component
+      overrides, and Expressive Code integration without forking Starlight.
+- [ ] Ship responsive hierarchical navigation, breadcrumbs, page TOC,
+      previous/next, search slots, related pages, landing pages, deep-link
+      actions, useful 404, dark/light/system modes, print styles, and accessible
+      token defaults.
+- [ ] Implement a deliberately small non-shipped plain-Astro experience fixture
+      over the same contracts; it must not reimplement ExportBlock dispatch.
+- [ ] Prove Starlight plus the experience fixture at mobile/desktop widths, high
+      zoom, forced colors, reduced motion, light/dark/system modes, print, long
+      titles, deep trees, RTL-safe layout, and custom tokens.
+- [ ] Prove a Starlight renderer override changes presentation without changing
+      normalized content, resolved links/assets, routes, indexed text, or
+      security diagnostics.
+- [ ] STOP on Starlight-private content semantics, duplicate render trees,
+      source-selected imports, undocumented override hooks, or an experience
+      becoming the authority for acquisition/build/cache/security.
+
+Acceptance: Starlight is a feature-complete first consumer of the standalone
+render kit, not its owner. The non-shipped experience fixture proves that page
+and presentation contracts are not Starlight-private.
+
+### T8 — Build static output, discovery, and production web quality
 
 - [ ] Implement a builder adapter over immutable bundle + trusted Astro project;
       do not expose Astro's experimental programmatic API publicly.
@@ -1402,7 +1609,7 @@ search, SEO/discovery, i18n, media, code, and performance proof is produced
 from the bundle without Confluence access or a hosted search service; its exact
 pre-PWA inventory is ready for the final offline stage.
 
-### T8 — Add PWA/offline, analytics, and Confluence edit links
+### T9 — Add PWA/offline, analytics, and Confluence edit links
 
 - [ ] Pin `@vite-pwa/astro` and Workbox versions and use documented
       `injectManifest`/Astro integration surfaces only.
@@ -1448,7 +1655,7 @@ including Pagefind, works and updates safely offline. Analytics and Confluence
 edit links remain optional/off-by-default, narrowly configured, privacy-bounded,
 and unable to weaken content, search, caching, or origin security.
 
-### T9 — Add CLI lifecycle, reports, and artifact verification
+### T10 — Add CLI lifecycle, reports, and artifact verification
 
 - [ ] Add `wiki publish plan|refresh|build|verify|run|status|prune` command
       routing, help, JSON output, and shell completion.
@@ -1475,13 +1682,15 @@ and unable to weaken content, search, caching, or origin security.
 Acceptance: the four-stage journey is independently repeatable and `run`
 orchestrates it without hiding the plan, bundle, build, or verification digest.
 
-### T10 — Prove packages, consumers, hosts, and required CI
+### T11 — Prove packages, consumers, hosts, and required CI
 
 - [ ] Add API/closure reports and deliberate public-0.x classifications.
-- [ ] Add browser-build entry only for genuinely isomorphic web-publish core;
-      add a negative gate that Astro/Node code cannot enter it.
+- [ ] Add browser-build entries only for genuinely isomorphic export-block and
+      web-publish cores; add negative gates that Astro/Node code cannot enter
+      them.
 - [ ] Extend pack checks, publishable-dependency checks, Node consumer smoke,
-      Vite/browser consumer smoke, and add a real packed Astro consumer build.
+      Vite/browser consumer smoke, and add separate packed plain-Astro render-kit
+      and full Starlight publishing consumers.
 - [ ] Pin Astro `7.1.0` in the minimum fixture and test latest supported 7.x
       separately.
 - [ ] Test Ubuntu Node 22.12/Astro 7.1.0, Ubuntu Node 24/latest 7.x, and Windows
@@ -1490,6 +1699,9 @@ orchestrates it without hiding the plan, bundle, build, or verification digest.
       synthetic fixtures, assets, links, macros, Starlight, the non-shipped
       experience conformance fixture, Pagefind search/facets, chart
       static/island, and strict/partial failures.
+- [ ] Assert the packed plain-Astro render-kit consumer has no Starlight,
+      Confluence client/auth, web-publish builder, Pagefind, PWA, analytics, or
+      edit-link transitive/runtime dependency and performs no network request.
 - [ ] Serve directory output with a directory-index server and portable-file
       output with a simple file server; crawl every route/link/asset.
 - [ ] Run Playwright with JS on/off, CSP, accessibility, offline/no-network,
@@ -1510,15 +1722,23 @@ orchestrates it without hiding the plan, bundle, build, or verification digest.
 - [ ] Wire all publishing checks into the required CI aggregator so path routing
       cannot report green after skipping them.
 
-Acceptance: packed real consumers, not source-only tests, prove both the
-browser-safe core and Node-only Astro boundary.
+Acceptance: packed real consumers, not source-only tests, prove the
+browser-safe cores, standalone Astro render kit, Starlight experience, and
+Node-only publishing boundary independently.
 
-### T11 — Documentation, real E2E, and delivery gates
+### T12 — Documentation, real E2E, and delivery gates
 
 - [ ] Add a task-focused Web Publishing guide, configuration reference,
       experience-adapter authoring/migration guide, search/index/ranking guide,
       renderer/chart guide, security/privacy guide, operations/refresh/rollback
       guide, troubleshooting, examples, and related-topic links.
+- [ ] Add a standalone `@atlcli/export-blocks-astro` guide/API reference with a
+      plain Astro minimal example, advanced override/token example, complete
+      block support matrix, baseline-style contract, accessibility/security
+      rules, and package-boundary explanation.
+- [ ] Document `ExportBlock[]` as the V1 public renderer input and the deferred
+      additive `ADF -> ExportBlock[]`/`AdfDocument` seam without implying direct
+      raw-ADF support has shipped.
 - [ ] Document the supported Starlight experience and neutral adapter contract,
       tokens/slots/capabilities, Pagefind facets/metadata/languages, search
       accessibility, index budgets, and future-experience boundary without
@@ -1561,9 +1781,13 @@ Implementation PRs must use repository wrappers and add named scripts as
 needed. At minimum:
 
 ```bash
+bun run test packages/export-blocks
+bun run test packages/export-blocks-astro
 bun run test packages/web-publish
 bun run test packages/web-publish-astro
+bun run test packages/web-publish-starlight
 bun run test packages/confluence packages/export-macros packages/export-wiring
+bun run test:publish-render-kit
 bun run test:publish-experiences
 bun run test:publish-search
 bun run test:publish-seo
@@ -1584,8 +1808,10 @@ scope (`git diff --check`); it introduces no runtime behavior.
 Proof remains layered:
 
 1. pure unit/property tests prove contracts, routes, digests, diff, escaping;
-2. package tests prove graph/macro/assets/Astro integration seams;
-3. packed consumers prove published tarballs and dependency boundaries;
+2. package tests prove graph/macro/assets, render-kit, experience, and Astro
+   integration seams;
+3. packed plain-Astro and Starlight consumers prove published tarballs and
+   dependency boundaries;
 4. real Astro production artifacts prove routes, links, assets, CSP/a11y;
 5. live Cloud/DC E2E proves provider acquisition only; and
 6. remote deployment remains unproven and unclaimed.
@@ -1594,24 +1820,26 @@ Proof remains layered:
 
 Recommended implementation PR stack/commit boundaries:
 
-1. `refactor(confluence): expose pre-compose page graph`
-2. `feat(publish): add publication contracts and route planning`
-3. `feat(macros): add web publication target`
-4. `feat(publish): add cache and immutable bundle materialization`
-5. `feat(publish-astro): add Astro 7.1 loader and integration`
-6. `feat(publish-astro): add Starlight experience and trusted renderers`
-7. `feat(publish-astro): add Pagefind, navigation, SEO and web quality`
-8. `feat(publish-astro): add PWA, analytics and Confluence edit links`
-9. `feat(cli): add local web publishing lifecycle`
-10. `test(publish): add packed Astro and browser conformance gates`
-11. `docs(publish): document static web publishing`
+1. `refactor(export): extract consumer-neutral ExportBlock package`
+2. `refactor(confluence): expose pre-compose page graph`
+3. `feat(publish): add publication contracts and route planning`
+4. `feat(macros): add web publication target`
+5. `feat(publish): add cache and immutable bundle materialization`
+6. `feat(export-blocks-astro): add standalone semantic render kit`
+7. `feat(publish-astro): add Astro 7.1 loader and integration`
+8. `feat(publish-starlight): add first publishing experience`
+9. `feat(publish-astro): add Pagefind, navigation, SEO and web quality`
+10. `feat(publish-astro): add PWA, analytics and Confluence edit links`
+11. `feat(cli): add local web publishing lifecycle`
+12. `test(publish): add packed Astro and browser conformance gates`
+13. `docs(publish): document static web publishing`
 
 Each boundary must keep existing DOCX/PDF and Markdown behavior green. Draft
 PRs stay Draft until their own acceptance gates pass; no automatic release.
 
 ## 17. Definition of done
 
-- [ ] T0–T11 are complete with no unresolved STOP condition.
+- [ ] T0–T12 are complete with no unresolved STOP condition.
 - [ ] Page/tree/space Cloud acquisition and local Astro static output are
       fixture-, packed-artifact-, browser-, and live-E2E proven.
 - [ ] DC Storage behavior is fixture-proven and either live-proven or labelled
@@ -1622,6 +1850,11 @@ PRs stay Draft until their own acceptance gates pass; no automatic release.
       are deterministic and tested.
 - [ ] Every block has safe static output; the optional chart island works with
       bounded frozen data and degrades usefully without JavaScript.
+- [ ] `@atlcli/export-blocks-astro` is independently packable and renders the
+      all-fields fixture in plain Astro with no Starlight, Confluence, auth,
+      network, builder, search, or PWA dependency.
+- [ ] The ExportBlock model has a dependency-free public boundary with
+      compatibility re-exports and unchanged DOCX/PDF/browser behavior.
 - [ ] The supported Starlight experience passes the semantic, responsive, mode,
       print, accessibility, and search contract; a non-shipped experience
       fixture proves the adapter contract without a second production theme.
@@ -1647,6 +1880,8 @@ PRs stay Draft until their own acceptance gates pass; no automatic release.
 - [ ] `wiki publish` reports local bundle/build/verification truthfully and does
       not claim remote deployment.
 - [ ] Public APIs, pack/consumer/browser/CI gates and user docs are complete.
+- [ ] No direct raw-ADF Astro API is claimed in V1; the future adapter can be
+      added without changing the render-kit or Starlight contracts.
 - [ ] No customer/tenant data, raw source, credentials, or private artifacts are
       committed.
 
@@ -1675,15 +1910,23 @@ PRs stay Draft until their own acceptance gates pass; no automatic release.
    core content contract. The non-shipped conformance fixture must prove that
    route/search/security/PWA semantics do not depend on Starlight-private DOM.
    Arbitrary catalog-theme compatibility requires an explicit future adapter.
-10. **Offline version skew and quota:** Pagefind is generated after Astro, so a
+10. **Render-kit leakage:** putting Starlight, Confluence resolution, routes, or
+    build concerns into block components would destroy their standalone value.
+    Gate package closure and prove a packed plain-Astro consumer before the
+    Starlight experience is accepted.
+11. **Premature ADF API:** a direct ADF component appears simple but media,
+    mentions, extensions, versions, and unknown-node behavior require an honest
+    support/resolver contract. Keep it additive and deferred; never implement a
+    second component tree or advertise raw-ADF support from internal fixtures.
+12. **Offline version skew and quota:** Pagefind is generated after Astro, so a
     generic PWA hook can cache an incomplete or mixed build. Freeze the ordering,
     digest-bound cache namespace, prompted update, budgets, and cleanup proof;
     stop if exact inventory cannot be guaranteed.
-11. **Analytics privacy drift:** “Privacy-respecting” is a narrow technical
+13. **Analytics privacy drift:** “Privacy-respecting” is a narrow technical
     configuration, not a legal conclusion. Keep analytics optional/off, accept
     only the closed provider/events, emit disclosure/CSP evidence, and never add
     query/search/source/user data or offline replay without re-planning.
-12. **Edit-link disclosure:** a Confluence action may reveal a tenant hostname
+14. **Edit-link disclosure:** a Confluence action may reveal a tenant hostname
     or route on a public site. Keep it off by default, require explicit public
     acknowledgement, validate provider-returned same-origin relations, and omit
     rather than synthesize an editor URL.
@@ -1723,6 +1966,14 @@ choices should be confirmed at the T0 gate:
 10. Should the Confluence action ever default to public visibility?
     Recommendation: no; default to off/internal and require an explicit
     disclosure acknowledgement for `visibility: "all"`.
+11. Should `@atlcli/export-blocks-astro` be published to npm with the first
+    publishing release? Recommendation: make it independently packable,
+    documented, and public-0.x in V1, but make the external npm/community
+    publication a deliberate post-conformance release decision.
+12. Should the standalone baseline stylesheet load automatically?
+    Recommendation: no hidden global CSS; export a documented stylesheet that
+    plain-Astro consumers opt into and that the Starlight adapter maps/imports
+    explicitly.
 
 ## 20. Primary references
 
@@ -1730,6 +1981,8 @@ choices should be confirmed at the T0 gate:
 - [Astro configuration reference](https://docs.astro.build/en/reference/configuration-reference/)
 - [Astro content loader reference](https://docs.astro.build/en/reference/content-loader-reference/)
 - [Astro integration API](https://docs.astro.build/en/reference/integrations-reference/)
+- [Astro components](https://docs.astro.build/en/basics/astro-components/)
+- [Astro integration/component npm publishing](https://docs.astro.build/en/guides/integrations/#publishing-your-integration-to-npm)
 - [Astro routing](https://docs.astro.build/en/guides/routing/)
 - [Astro images](https://docs.astro.build/en/guides/images/)
 - [Astro themes catalog](https://astro.build/themes/)
