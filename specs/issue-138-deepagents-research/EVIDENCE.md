@@ -104,6 +104,25 @@ explicit-scope precedence, multiple equal-precedence explicit scopes, exact
 tenant links, foreign links, cancellation, rate-limit classification, sanitized
 errors, and prompt-like catalog metadata treated only as inert data.
 
+## Production response-schema feasibility
+
+The T0 fixtures freeze the intended child-to-supervisor bodies without
+exporting premature graph/task domain contracts. Every applicable role was
+admitted through the pinned QuickJS native `task({ responseSchema })` path in
+both Bun and the packed MV3 worker.
+
+| Schema | Serialized bytes | Properties | Depth | Admitted roles |
+| --- | ---: | ---: | ---: | --- |
+| `ResearchPacketBodyV1` | 2,140 | 23 | 4 | focused researcher, document distiller, contradiction verifier, coverage moderator |
+| `ResearchPacketBodyV2` | 2,806 | 31 | 4 | outline planner |
+| `ReconciliationBodyV1` | 1,638 | 16 | 5 | reconciler |
+
+All stay within the pinned runtime limits of 4,096 serialized bytes, 32
+properties, and depth 5. V2 has one property of headroom and reconciliation
+has no depth headroom. T3 must reproduce these serialized fixtures byte-for-byte
+before replacing them with authoritative typed contracts; adding nested fields
+requires an explicit schema redesign and repeat of both host gates.
+
 ## Packed metrics
 
 Single synthetic acceptance run:

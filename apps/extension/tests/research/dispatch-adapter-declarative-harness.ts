@@ -15,6 +15,8 @@ import {
   createResearchDispatchInterceptionAdapter,
   encodeResearchTaskDescriptionV1,
 } from "../../utils/research/dispatch-adapter.js";
+import { characterizeProductionResponseSchemas } from "./production-response-schema-characterization.js";
+import type { ProductionResponseSchemaCharacterization } from "./production-response-schema-characterization.js";
 
 export const DISPATCH_CHARACTERIZATION_PACKET_SCHEMA = {
   title: "DispatchPacketV1",
@@ -34,6 +36,7 @@ export interface DeclarativeDispatchCharacterizationResult {
   subagentModelCalls: number;
   ptcConfigTaskId: string;
   taskStatuses: Readonly<Record<string, string>>;
+  productionSchemas: ProductionResponseSchemaCharacterization;
 }
 
 /**
@@ -206,6 +209,9 @@ export async function runDeclarativeDispatchCharacterization(): Promise<Declarat
       },
     },
   );
+  const productionSchemas = await characterizeProductionResponseSchemas(
+    "dispatch-characterization-production-schemas",
+  );
 
   return {
     messages: (result.messages as Array<{ text?: string }>)
@@ -216,5 +222,6 @@ export async function runDeclarativeDispatchCharacterization(): Promise<Declarat
     subagentModelCalls: subagentModel.callCount,
     ptcConfigTaskId,
     taskStatuses: adapter.snapshot().taskStatuses,
+    productionSchemas,
   };
 }

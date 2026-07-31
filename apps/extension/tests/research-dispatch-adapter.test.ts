@@ -271,5 +271,30 @@ describe("research-owned native task dispatch interception", () => {
       "deep-jira": "completed",
       "deep-wiki": "completed",
     });
+    expect(result.productionSchemas.metrics).toEqual({
+      ResearchPacketBodyV1: {
+        serializedBytes: 2_140,
+        propertyCount: 23,
+        nestingDepth: 4,
+      },
+      ResearchPacketBodyV2: {
+        serializedBytes: 2_806,
+        propertyCount: 31,
+        nestingDepth: 4,
+      },
+      ReconciliationBodyV1: {
+        serializedBytes: 1_638,
+        propertyCount: 16,
+        nestingDepth: 5,
+      },
+    });
+    expect(result.productionSchemas.admittedRoles).toEqual([
+      "contradiction-verifier",
+      "coverage-moderator",
+      "document-distiller",
+      "focused-researcher",
+      "outline-planner",
+      "reconciler",
+    ]);
   });
 });

@@ -2203,7 +2203,7 @@ Shared:
       Browser context propagation is supplied by upstream PR
       `langchain-ai/deepagentsjs#717`; the extension pins that PR's official
       `pkg.pr.new` artifacts until released patch versions replace them.
-- [ ] Generate the exact production `ResearchPacketBodyV1`,
+- [x] Generate the exact production `ResearchPacketBodyV1`,
       `ResearchPacketBodyV2`, and `ReconciliationBodyV1` response schemas for
       every applicable role and admit each through the pinned QuickJS
       validator in Node/Bun and the packed MV3 bundle. Record serialized bytes,
@@ -2211,6 +2211,9 @@ Shared:
       schema. These are frozen schema-feasibility fixtures, not prematurely
       exported graph/task domain contracts; T3 owns the typed contracts and
       must reproduce the admitted schemas byte-for-byte.
+      Proven 2026-07-31 in Bun and packed MV3 through six native `task()`
+      dispatches. Metrics are recorded in the issue-138 evidence document;
+      V2 uses 31/32 properties and reconciliation reaches depth 5/5.
 - [ ] Pre-register the T3 directional value rule: S2/S3 must preserve every
       deterministic safety/accuracy gate and, relative to S1, improve at least
       one of source coverage or supported-claim recall by 10 percentage
@@ -2250,9 +2253,11 @@ Gate:
       before T1.
       Provider cursors remain broker-opaque; inaccessible/trashed candidates are
       unavailable; prompt-like names/aliases are data only.
-- [ ] Every production response schema stays within the pinned runtime's 4,096
+- [x] Every production response schema stays within the pinned runtime's 4,096
       serialized-byte, 32-property, and depth-5 limits in both hosts. Exceeding
       a limit is a T0 STOP requiring schema redesign before extraction.
+      Exact results: V1 2,140 bytes / 23 properties / depth 4; V2 2,806 / 31 /
+      4; reconciliation 1,638 / 16 / 5.
 - [x] `bun run test apps/extension/tests/research-*.test.ts` passes.
       Proven 2026-07-31: 96 passed, 0 failed across 17 files.
 - [ ] `bun run --cwd apps/extension test:research-extension-browser` passes.

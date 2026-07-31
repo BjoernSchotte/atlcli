@@ -704,6 +704,14 @@ test("intercepts declarative dynamic-schema dispatches in a packed MV3 worker", 
           subagentModelCalls: number;
           ptcConfigTaskId: string;
           taskStatuses: Record<string, string>;
+          productionSchemas: {
+            metrics: Record<string, {
+              serializedBytes: number;
+              propertyCount: number;
+              nestingDepth: number;
+            }>;
+            admittedRoles: string[];
+          };
         };
         error?: { name: string; message: string; stack?: string };
       }>((resolve, reject) => {
@@ -745,6 +753,31 @@ test("intercepts declarative dynamic-schema dispatches in a packed MV3 worker", 
     "deep-jira": "completed",
     "deep-wiki": "completed",
   });
+  expect(response.result?.productionSchemas.metrics).toEqual({
+    ResearchPacketBodyV1: {
+      serializedBytes: 2_140,
+      propertyCount: 23,
+      nestingDepth: 4,
+    },
+    ResearchPacketBodyV2: {
+      serializedBytes: 2_806,
+      propertyCount: 31,
+      nestingDepth: 4,
+    },
+    ReconciliationBodyV1: {
+      serializedBytes: 1_638,
+      propertyCount: 16,
+      nestingDepth: 5,
+    },
+  });
+  expect(response.result?.productionSchemas.admittedRoles).toEqual([
+    "contradiction-verifier",
+    "coverage-moderator",
+    "document-distiller",
+    "focused-researcher",
+    "outline-planner",
+    "reconciler",
+  ]);
   expect(response.result?.messages.some((message) => message.includes("deep-jira"))).toBe(true);
   expect(response.result?.messages.some((message) => message.includes("deep-wiki"))).toBe(true);
 });
