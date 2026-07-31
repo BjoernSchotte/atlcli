@@ -15,7 +15,7 @@ export interface BuildMacroOptionsArgs {
     siteBaseUrl: string;
     confluence: ConfluenceClient;
     jira?: JiraClientLike;
-    targetEngine: "docx" | "pdf";
+    targetEngine: "docx" | "pdf" | "web";
     live?: boolean;
     nativeTocPresent?: boolean;
     policy?: ExternalAssetPolicy;
@@ -353,7 +353,7 @@ export declare function resolveConfluencePageGraphV1(sourceRequest: ExportSource
 
 // export: ResolveConfluenceSourceOptionsV1
 export interface ResolveConfluenceSourceOptionsV1 {
-    exporter: "pdf" | "word";
+    exporter: "pdf" | "word" | "web";
     port: ConfluenceSourceResolverPortV1;
     signal: AbortSignal;
     resolveExternalUrl?: NonNullable<ComposeOptions["resolveExternalUrl"]>;
@@ -410,6 +410,27 @@ export interface ResolvedConfluenceSourceV1 {
     chapterAnchorById?: ReadonlyMap<string, string>;
 }
 
+// export: ResolvedWebMacroPageV1
+export interface ResolvedWebMacroPageV1 {
+    sourceId: string;
+    sourceVersion?: number;
+    blocks: readonly ExportBlock[];
+    notes: readonly ExportNote[];
+    resolvedAtEpochMs: number;
+    usedLive: boolean;
+}
+
+// export: ResolveWebPageMacrosOptionsV1
+export interface ResolveWebPageMacrosOptionsV1 {
+    macros: MacroResolutionOptions;
+    policy: WebMacroResolutionPolicyV1;
+    previousBySourceId?: ReadonlyMap<string, ResolvedWebMacroPageV1>;
+    now?: () => number;
+}
+
+// export: resolveWebPageMacrosV1
+export declare function resolveWebPageMacrosV1(pages: readonly ExportPageNode[], options: ResolveWebPageMacrosOptionsV1): Promise<readonly ResolvedWebMacroPageV1[]>;
+
 // export: runCheckpointedOrderedSourcePipeline
 export declare function runCheckpointedOrderedSourcePipeline<Value, Cursor, Result>(options: CheckpointedOrderedSourcePipelineOptionsV1<Value, Cursor, Result>): Promise<CheckpointedOrderedSourcePipelineResultV1<Cursor>>;
 
@@ -445,6 +466,12 @@ export declare function trustRoutingAssetFetcher(inner: AssetFetcher, external: 
 
 // export: trustRoutingPdfAssetResolver
 export declare function trustRoutingPdfAssetResolver(inner: PdfAssetResolver, external: ExternalAssetFetcher): PdfAssetResolver;
+
+// export: WebMacroResolutionPolicyV1
+export interface WebMacroResolutionPolicyV1 {
+    mode: "static-only" | "allow-frozen-live";
+    liveFreshnessSeconds?: number;
+}
 ```
 
 ### Entry point `./fixtures`
@@ -1066,7 +1093,7 @@ export declare function resolveConfluencePageGraphV1(sourceRequest: ExportSource
 
 // export: ResolveConfluenceSourceOptionsV1
 export interface ResolveConfluenceSourceOptionsV1 {
-    exporter: "pdf" | "word";
+    exporter: "pdf" | "word" | "web";
     port: ConfluenceSourceResolverPortV1;
     signal: AbortSignal;
     resolveExternalUrl?: NonNullable<ComposeOptions["resolveExternalUrl"]>;
@@ -1123,6 +1150,27 @@ export interface ResolvedConfluenceSourceV1 {
     chapterAnchorById?: ReadonlyMap<string, string>;
 }
 
+// export: ResolvedWebMacroPageV1
+export interface ResolvedWebMacroPageV1 {
+    sourceId: string;
+    sourceVersion?: number;
+    blocks: readonly ExportBlock[];
+    notes: readonly ExportNote[];
+    resolvedAtEpochMs: number;
+    usedLive: boolean;
+}
+
+// export: ResolveWebPageMacrosOptionsV1
+export interface ResolveWebPageMacrosOptionsV1 {
+    macros: MacroResolutionOptions;
+    policy: WebMacroResolutionPolicyV1;
+    previousBySourceId?: ReadonlyMap<string, ResolvedWebMacroPageV1>;
+    now?: () => number;
+}
+
+// export: resolveWebPageMacrosV1
+export declare function resolveWebPageMacrosV1(pages: readonly ExportPageNode[], options: ResolveWebPageMacrosOptionsV1): Promise<readonly ResolvedWebMacroPageV1[]>;
+
 // export: runCheckpointedOrderedSourcePipeline
 export declare function runCheckpointedOrderedSourcePipeline<Value, Cursor, Result>(options: CheckpointedOrderedSourcePipelineOptionsV1<Value, Cursor, Result>): Promise<CheckpointedOrderedSourcePipelineResultV1<Cursor>>;
 
@@ -1162,4 +1210,10 @@ export type TypescriptDocxExportJobResolvedInputV1 = TypescriptDocxExportJobEngi
         sourcePageCount: number;
     };
 };
+
+// export: WebMacroResolutionPolicyV1
+export interface WebMacroResolutionPolicyV1 {
+    mode: "static-only" | "allow-frozen-live";
+    liveFreshnessSeconds?: number;
+}
 ```

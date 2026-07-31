@@ -170,7 +170,7 @@ export interface MacroExportContext {
     siteOrigin?: string;
     flags?: {
         nativeTocPresent?: boolean;
-        targetEngine?: "docx" | "pdf";
+        targetEngine?: "docx" | "pdf" | "web";
     };
     documentBlocks?: readonly ExportBlock[];
 }
@@ -264,12 +264,12 @@ export type PortErrorKind = "permission" | "not-found" | "rate-limited" | "netwo
 export declare function resolveMacroBlocks(input: StorageToBlocksResult, registry: MacroRendererRegistry, ctx: MacroExportContext, opts?: {
     live?: boolean;
     contextFor?: (page: UnknownBlock["sourcePage"]) => MacroExportContext;
-    targetEngine?: "docx" | "pdf";
+    targetEngine?: "docx" | "pdf" | "web";
 }): Promise<StorageToBlocksResult>;
 
 // export: StorageToBlocksDep
 export type StorageToBlocksDep = (storage: string, opts?: {
-    exporter?: "pdf" | "word";
+    exporter?: "pdf" | "word" | "web";
     pageContext?: {
         id: string;
         version?: number;

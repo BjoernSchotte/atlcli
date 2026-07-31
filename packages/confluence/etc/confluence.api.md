@@ -2500,7 +2500,7 @@ export declare function storageToBlocks(storage: string, options?: StorageToBloc
 
 // export: StorageToBlocksOptions
 export interface StorageToBlocksOptions {
-    exporter?: "pdf" | "word";
+    exporter?: "pdf" | "word" | "web";
     exportControls?: "apply" | "passthrough";
     pageContext?: {
         id: string;
@@ -5347,7 +5347,7 @@ export declare function storageToBlocks(storage: string, options?: StorageToBloc
 
 // export: StorageToBlocksOptions
 export interface StorageToBlocksOptions {
-    exporter?: "pdf" | "word";
+    exporter?: "pdf" | "word" | "web";
     exportControls?: "apply" | "passthrough";
     pageContext?: {
         id: string;
@@ -8194,7 +8194,7 @@ export declare function storageToBlocks(storage: string, options?: StorageToBloc
 
 // export: StorageToBlocksOptions
 export interface StorageToBlocksOptions {
-    exporter?: "pdf" | "word";
+    exporter?: "pdf" | "word" | "web";
     exportControls?: "apply" | "passthrough";
     pageContext?: {
         id: string;
@@ -11138,7 +11138,7 @@ export declare function storageToBlocks(storage: string, options?: StorageToBloc
 
 // export: StorageToBlocksOptions
 export interface StorageToBlocksOptions {
-    exporter?: "pdf" | "word";
+    exporter?: "pdf" | "word" | "web";
     exportControls?: "apply" | "passthrough";
     pageContext?: {
         id: string;
@@ -14097,7 +14097,7 @@ export declare function storageToBlocks(storage: string, options?: StorageToBloc
 
 // export: StorageToBlocksOptions
 export interface StorageToBlocksOptions {
-    exporter?: "pdf" | "word";
+    exporter?: "pdf" | "word" | "web";
     exportControls?: "apply" | "passthrough";
     pageContext?: {
         id: string;
