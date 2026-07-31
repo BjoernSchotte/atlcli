@@ -6,6 +6,8 @@ export const PUBLICATION_REFRESH_PLAN_SCHEMA_V1 = "atlcli.publication-refresh-pl
 export const PUBLICATION_BUNDLE_SCHEMA_V1 = "atlcli.publication-bundle/1" as const;
 export const PUBLICATION_PAGE_SCHEMA_V1 = "atlcli.publication-page/1" as const;
 export const PUBLICATION_EXPERIENCE_SCHEMA_V1 = "atlcli.publication-experience/1" as const;
+export const PUBLICATION_SEARCH_PROVIDER_SCHEMA_V1 =
+  "atlcli.publication-search-provider/1" as const;
 export const STATIC_PUBLICATION_MANIFEST_SCHEMA_V1 =
   "atlcli.static-publication-manifest/1" as const;
 
@@ -72,7 +74,9 @@ export interface PublicationExperienceSelectionV1 {
   expectedVersion?: string;
   requiredCapabilities: readonly PublicationExperienceCapabilityV1[];
   designTokens: Readonly<Record<string, PublicationDesignTokenValueV1>>;
-  componentOverrides: Readonly<Record<string, string>>;
+  componentOverrides: Readonly<
+    Partial<Record<PublicationComponentOverrideV1, string>>
+  >;
 }
 
 export interface PublicationRetentionPolicyV1 {
@@ -401,6 +405,19 @@ export interface PublicationSearchOptionsV1 {
   ranking: PublicationSearchRankingV1;
   ui: "modal" | "page" | "both";
   shortcut: "mod+k" | "/" | "none";
+}
+
+export interface PublicationSearchProviderDescriptorV1 {
+  schema: typeof PUBLICATION_SEARCH_PROVIDER_SCHEMA_V1;
+  id: "pagefind";
+  version: string;
+  execution: "static-post-build";
+  runtimeNetwork: false;
+  languagePartitions: boolean;
+  supportedFilters: readonly PublicationSearchOptionsV1["filters"][number][];
+  supportedMetadata: readonly PublicationSearchOptionsV1["metadata"][number][];
+  supportedUi: readonly PublicationSearchOptionsV1["ui"][];
+  supportedShortcuts: readonly PublicationSearchOptionsV1["shortcut"][];
 }
 
 export interface PublicationSeoOptionsV1 {

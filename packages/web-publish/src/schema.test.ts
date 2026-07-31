@@ -333,6 +333,13 @@ describe("web publication runtime schemas v1", () => {
       deterministic: true,
       externalRuntimeData: true,
     })).toThrow("$.externalRuntimeData: expected false");
+    expect(() => parsePublicationProjectV1({
+      ...project,
+      experience: {
+        ...project.experience,
+        componentOverrides: { arbitraryScript: "./unsafe.js" },
+      },
+    })).toThrow("$.experience.componentOverrides.arbitraryScript: unknown field");
   });
 
   test("reject cycles, non-finite data, non-plain objects, and resource overruns", () => {

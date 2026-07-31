@@ -8,6 +8,7 @@ import {
   PUBLICATION_PAGE_SCHEMA_V1,
   PUBLICATION_PROJECT_SCHEMA_V1,
   PUBLICATION_REFRESH_PLAN_SCHEMA_V1,
+  PUBLICATION_SEARCH_PROVIDER_SCHEMA_V1,
   PUBLISH_RUN_REQUEST_SCHEMA_V1,
   STATIC_PUBLICATION_MANIFEST_SCHEMA_V1,
   type PublicationBundleV1,
@@ -23,6 +24,7 @@ import {
   type PublicationRefreshPlanV1,
   type PublicationRenderableKindV1,
   type PublicationRendererDescriptorV1,
+  type PublicationSearchProviderDescriptorV1,
   type PublishRunRequestV1,
   type StaticPublicationManifestV1,
 } from "./contracts.js";
@@ -131,6 +133,11 @@ const ISSUE_CODES = [
   "other",
 ] as const satisfies readonly PublicationIssueCodeV1[];
 
+const COMPONENT_OVERRIDES = [
+  "page-shell", "navigation", "breadcrumbs", "search", "page-toc", "previous-next",
+  "footer", "edit-link", "analytics",
+] as const satisfies readonly PublicationComponentOverrideV1[];
+
 type AssertNever<T extends never> = T;
 type ExperienceCapabilityCoverage = AssertNever<
   Exclude<PublicationExperienceCapabilityV1, (typeof EXPERIENCE_CAPABILITIES)[number]>
@@ -143,6 +150,9 @@ type RenderableKindCoverage = AssertNever<
 >;
 type IssueCodeCoverage = AssertNever<
   Exclude<PublicationIssueCodeV1, (typeof ISSUE_CODES)[number]>
+>;
+type ComponentOverrideCoverage = AssertNever<
+  Exclude<PublicationComponentOverrideV1, (typeof COMPONENT_OVERRIDES)[number]>
 >;
 
 function fail(path: string, message: string): never {
@@ -450,7 +460,7 @@ function experienceSelection(value: unknown, path: string): void {
   optional(candidate, "expectedVersion", path, nonEmptyString);
   enumValues(candidate.requiredCapabilities, `${path}.requiredCapabilities`, EXPERIENCE_CAPABILITIES);
   scalarRecord(candidate.designTokens, `${path}.designTokens`);
-  stringRecord(candidate.componentOverrides, `${path}.componentOverrides`);
+  partialStringRecord(candidate.componentOverrides, `${path}.componentOverrides`, COMPONENT_OVERRIDES);
 }
 
 function searchOptions(value: unknown, path: string): void {
@@ -839,15 +849,6 @@ function rendererDescriptor(value: unknown, path: string): void {
   literal(candidate.externalRuntimeData, `${path}.externalRuntimeData`, false);
 }
 
-const COMPONENT_OVERRIDES = [
-  "page-shell", "navigation", "breadcrumbs", "search", "page-toc", "previous-next",
-  "footer", "edit-link", "analytics",
-] as const satisfies readonly PublicationComponentOverrideV1[];
-
-type ComponentOverrideCoverage = AssertNever<
-  Exclude<PublicationComponentOverrideV1, (typeof COMPONENT_OVERRIDES)[number]>
->;
-
 function experienceComponents(value: unknown, path: string): void {
   const candidate = object(value, path);
   keys(candidate, path, ["slots", "overrides", "blockOverrides"]);
@@ -870,6 +871,30 @@ function experienceDescriptor(value: unknown, path: string): void {
   enumValues(candidate.slots, `${path}.slots`, EXPERIENCE_SLOTS);
   nonEmptyString(candidate.designTokensSchema, `${path}.designTokensSchema`);
   experienceComponents(candidate.components, `${path}.components`);
+}
+
+function searchProviderDescriptor(value: unknown, path: string): void {
+  const candidate = object(value, path);
+  keys(candidate, path, [
+    "schema", "id", "version", "execution", "runtimeNetwork", "languagePartitions",
+    "supportedFilters", "supportedMetadata", "supportedUi", "supportedShortcuts",
+  ]);
+  literal(candidate.schema, `${path}.schema`, PUBLICATION_SEARCH_PROVIDER_SCHEMA_V1);
+  literal(candidate.id, `${path}.id`, "pagefind");
+  nonEmptyString(candidate.version, `${path}.version`);
+  literal(candidate.execution, `${path}.execution`, "static-post-build");
+  literal(candidate.runtimeNetwork, `${path}.runtimeNetwork`, false);
+  boolean(candidate.languagePartitions, `${path}.languagePartitions`);
+  enumValues(candidate.supportedFilters, `${path}.supportedFilters`, [
+    "space", "label", "content-type", "language",
+  ]);
+  enumValues(candidate.supportedMetadata, `${path}.supportedMetadata`, [
+    "title", "description", "breadcrumbs", "image",
+  ]);
+  enumValues(candidate.supportedUi, `${path}.supportedUi`, ["modal", "page", "both"]);
+  enumValues(candidate.supportedShortcuts, `${path}.supportedShortcuts`, [
+    "mod+k", "/", "none",
+  ]);
 }
 
 function builtPage(value: unknown, path: string): void {
@@ -1031,6 +1056,13 @@ export function parsePublicationExperienceDescriptorV1(
   budget: PublicationValidationBudgetV1 = DEFAULT_PUBLICATION_VALIDATION_BUDGET_V1,
 ): PublicationExperienceDescriptorV1 {
   return parse(value, budget, experienceDescriptor);
+}
+
+export function parsePublicationSearchProviderDescriptorV1(
+  value: unknown,
+  budget: PublicationValidationBudgetV1 = DEFAULT_PUBLICATION_VALIDATION_BUDGET_V1,
+): PublicationSearchProviderDescriptorV1 {
+  return parse(value, budget, searchProviderDescriptor);
 }
 
 export function parseStaticPublicationManifestV1(

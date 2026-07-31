@@ -84,8 +84,20 @@ export interface BuiltSeoArtifactsV1 {
     digest: string;
 }
 
+// export: createPublicationRendererRegistryV1
+export declare function createPublicationRendererRegistryV1(descriptorValues: readonly unknown[]): PublicationRendererRegistryV1;
+
 // export: DEFAULT_PUBLICATION_VALIDATION_BUDGET_V1
 export declare const DEFAULT_PUBLICATION_VALIDATION_BUDGET_V1: Readonly<PublicationValidationBudgetV1>;
+
+// export: negotiatePublicationExperienceV1
+export declare function negotiatePublicationExperienceV1(selection: PublicationExperienceSelectionV1, descriptorValue: unknown, tokenValidator: PublicationDesignTokenValidatorV1): PublicationExperienceNegotiationV1;
+
+// export: negotiatePublicationRenderersV1
+export declare function negotiatePublicationRenderersV1(policy: PublicationRendererPolicyV1, registry: PublicationRendererRegistryV1, experience: PublicationExperienceDescriptorV1): PublicationRendererNegotiationV1;
+
+// export: negotiatePublicationSearchV1
+export declare function negotiatePublicationSearchV1(options: PublicationSearchOptionsV1, providerValue: unknown, experience: PublicationExperienceDescriptorV1): PublicationSearchNegotiationV1;
 
 // export: parsePublicationBuildRequestV1
 export declare function parsePublicationBuildRequestV1(value: unknown, budget?: PublicationValidationBudgetV1): PublicationBuildRequestV1;
@@ -111,14 +123,23 @@ export declare function parsePublicationRefreshPlanV1(value: unknown, budget?: P
 // export: parsePublicationRendererDescriptorV1
 export declare function parsePublicationRendererDescriptorV1(value: unknown, budget?: PublicationValidationBudgetV1): PublicationRendererDescriptorV1;
 
+// export: parsePublicationSearchProviderDescriptorV1
+export declare function parsePublicationSearchProviderDescriptorV1(value: unknown, budget?: PublicationValidationBudgetV1): PublicationSearchProviderDescriptorV1;
+
 // export: parsePublishRunRequestV1
 export declare function parsePublishRunRequestV1(value: unknown, budget?: PublicationValidationBudgetV1): PublishRunRequestV1;
 
 // export: parseStaticPublicationManifestV1
 export declare function parseStaticPublicationManifestV1(value: unknown, budget?: PublicationValidationBudgetV1): StaticPublicationManifestV1;
 
+// export: planPublicationWebQualityV1
+export declare function planPublicationWebQualityV1(projectValue: unknown, experienceValue: unknown): PublicationWebQualityPlanV1;
+
 // export: PUBLICATION_BUNDLE_SCHEMA_V1
 export declare const PUBLICATION_BUNDLE_SCHEMA_V1: "atlcli.publication-bundle/1";
+
+// export: PUBLICATION_CAPABILITY_SLOT_REQUIREMENTS_V1
+export declare const PUBLICATION_CAPABILITY_SLOT_REQUIREMENTS_V1: Readonly<Partial<Record<PublicationExperienceCapabilityV1, readonly PublicationExperienceSlotV1[]>>>;
 
 // export: PUBLICATION_EXPERIENCE_SCHEMA_V1
 export declare const PUBLICATION_EXPERIENCE_SCHEMA_V1: "atlcli.publication-experience/1";
@@ -131,6 +152,9 @@ export declare const PUBLICATION_PROJECT_SCHEMA_V1: "atlcli.publication-project/
 
 // export: PUBLICATION_REFRESH_PLAN_SCHEMA_V1
 export declare const PUBLICATION_REFRESH_PLAN_SCHEMA_V1: "atlcli.publication-refresh-plan/1";
+
+// export: PUBLICATION_SEARCH_PROVIDER_SCHEMA_V1
+export declare const PUBLICATION_SEARCH_PROVIDER_SCHEMA_V1: "atlcli.publication-search-provider/1";
 
 // export: PublicationAnalyticsOptionsV1
 export type PublicationAnalyticsOptionsV1 = {
@@ -171,6 +195,11 @@ export interface PublicationAssetPolicyV1 {
 export interface PublicationAssetReferenceV1 {
     kind: "asset";
     assetId: string;
+}
+
+// export: PublicationBuilderContractErrorV1
+export declare class PublicationBuilderContractErrorV1 extends Error {
+    constructor(message: string);
 }
 
 // export: PublicationBuilderV1
@@ -238,6 +267,18 @@ export interface PublicationDependencyV1 {
     live: boolean;
 }
 
+// export: PublicationDesignTokenValidationIssueV1
+export interface PublicationDesignTokenValidationIssueV1 {
+    token: string;
+    message: string;
+}
+
+// export: PublicationDesignTokenValidatorV1
+export interface PublicationDesignTokenValidatorV1 {
+    readonly schema: string;
+    validate(tokens: Readonly<Record<string, PublicationDesignTokenValueV1>>): readonly PublicationDesignTokenValidationIssueV1[];
+}
+
 // export: PublicationDesignTokenValueV1
 export type PublicationDesignTokenValueV1 = string | number | boolean;
 
@@ -275,13 +316,22 @@ export interface PublicationExperienceDescriptorV1 {
     components: PublicationExperienceComponentsV1;
 }
 
+// export: PublicationExperienceNegotiationV1
+export interface PublicationExperienceNegotiationV1 {
+    compatible: boolean;
+    issues: readonly PublicationNegotiationIssueV1[];
+    descriptor: PublicationExperienceDescriptorV1;
+    designTokens: Readonly<Record<string, PublicationDesignTokenValueV1>>;
+    componentOverrides: Readonly<Partial<Record<PublicationComponentOverrideV1, string>>>;
+}
+
 // export: PublicationExperienceSelectionV1
 export interface PublicationExperienceSelectionV1 {
     id: string;
     expectedVersion?: string;
     requiredCapabilities: readonly PublicationExperienceCapabilityV1[];
     designTokens: Readonly<Record<string, PublicationDesignTokenValueV1>>;
-    componentOverrides: Readonly<Record<string, string>>;
+    componentOverrides: Readonly<Partial<Record<PublicationComponentOverrideV1, string>>>;
 }
 
 // export: PublicationExperienceSlotV1
@@ -353,6 +403,16 @@ export interface PublicationMediaOptionsV1 {
     fonts: "system" | "vendored-local";
     imageZoom: boolean;
     code: "expressive-code";
+}
+
+// export: PublicationNegotiationIssueCodeV1
+export type PublicationNegotiationIssueCodeV1 = "experience-id-mismatch" | "experience-version-mismatch" | "missing-capability" | "missing-slot" | "undeclared-slot-component" | "unsupported-component-override" | "design-token-schema-mismatch" | "invalid-design-token" | "duplicate-declaration" | "search-provider-mismatch" | "unsupported-search-feature" | "unknown-renderer" | "renderer-island-disabled" | "renderer-island-capability-mismatch" | "renderer-nondeterministic";
+
+// export: PublicationNegotiationIssueV1
+export interface PublicationNegotiationIssueV1 {
+    code: PublicationNegotiationIssueCodeV1;
+    path: string;
+    message: string;
 }
 
 // export: PublicationPageEntryV1
@@ -430,6 +490,14 @@ export interface PublicationRendererDescriptorV1 {
     externalRuntimeData: false;
 }
 
+// export: PublicationRendererNegotiationV1
+export interface PublicationRendererNegotiationV1 {
+    compatible: boolean;
+    issues: readonly PublicationNegotiationIssueV1[];
+    selected: readonly PublicationRendererDescriptorV1[];
+    byKind: Readonly<Partial<Record<PublicationRenderableKindV1, PublicationRendererDescriptorV1>>>;
+}
+
 // export: PublicationRendererPolicyV1
 export interface PublicationRendererPolicyV1 {
     allowedRendererIds: readonly string[];
@@ -437,6 +505,17 @@ export interface PublicationRendererPolicyV1 {
     maxIslandBytes: number;
     maxChartRows: number;
     maxChartSeries: number;
+}
+
+// export: PublicationRendererRegistryErrorV1
+export declare class PublicationRendererRegistryErrorV1 extends Error {
+    constructor(message: string);
+}
+
+// export: PublicationRendererRegistryV1
+export interface PublicationRendererRegistryV1 {
+    descriptors: readonly PublicationRendererDescriptorV1[];
+    get(id: string): PublicationRendererDescriptorV1 | undefined;
 }
 
 // export: PublicationRetentionPolicyV1
@@ -482,6 +561,13 @@ export type PublicationScopeV1 = {
     spaceKey: string;
 };
 
+// export: PublicationSearchNegotiationV1
+export interface PublicationSearchNegotiationV1 {
+    compatible: boolean;
+    issues: readonly PublicationNegotiationIssueV1[];
+    provider: PublicationSearchProviderDescriptorV1;
+}
+
 // export: PublicationSearchOptionsV1
 export interface PublicationSearchOptionsV1 {
     provider: "pagefind";
@@ -492,6 +578,20 @@ export interface PublicationSearchOptionsV1 {
     ranking: PublicationSearchRankingV1;
     ui: "modal" | "page" | "both";
     shortcut: "mod+k" | "/" | "none";
+}
+
+// export: PublicationSearchProviderDescriptorV1
+export interface PublicationSearchProviderDescriptorV1 {
+    schema: typeof PUBLICATION_SEARCH_PROVIDER_SCHEMA_V1;
+    id: "pagefind";
+    version: string;
+    execution: "static-post-build";
+    runtimeNetwork: false;
+    languagePartitions: boolean;
+    supportedFilters: readonly PublicationSearchOptionsV1["filters"][number][];
+    supportedMetadata: readonly PublicationSearchOptionsV1["metadata"][number][];
+    supportedUi: readonly PublicationSearchOptionsV1["ui"][];
+    supportedShortcuts: readonly PublicationSearchOptionsV1["shortcut"][];
 }
 
 // export: PublicationSearchRankingV1
@@ -569,6 +669,27 @@ export interface PublicationVerificationSummaryV1 {
     issues: readonly PublicationIssueV1[];
 }
 
+// export: PublicationWebQualityIssueCodeV1
+export type PublicationWebQualityIssueCodeV1 = "site-required" | "invalid-site" | "internal-indexing" | "feed-requires-public" | "locale-set-invalid" | "locale-fallback-invalid" | "media-profile-mismatch" | "analytics-endpoint-invalid" | "analytics-domain-invalid" | "public-edit-link-disclosure-required" | "experience-capability-required";
+
+// export: PublicationWebQualityIssueV1
+export interface PublicationWebQualityIssueV1 {
+    code: PublicationWebQualityIssueCodeV1;
+    path: string;
+    message: string;
+}
+
+// export: PublicationWebQualityPlanV1
+export interface PublicationWebQualityPlanV1 {
+    compatible: boolean;
+    issues: readonly PublicationWebQualityIssueV1[];
+    canonicalSite?: string;
+    locales: readonly string[];
+    requiredExperienceCapabilities: readonly PublicationExperienceCapabilityV1[];
+    analytics: PublicationAnalyticsOptionsV1;
+    editLink: PublicationEditLinkOptionsV1;
+}
+
 // export: PUBLISH_RUN_REQUEST_SCHEMA_V1
 export declare const PUBLISH_RUN_REQUEST_SCHEMA_V1: "atlcli.publish-run-request/1";
 
@@ -615,6 +736,9 @@ export type ResolvedPublicationLinkV1 = {
     kind: "unresolved";
     label: string;
 };
+
+// export: runPublicationBuildV1
+export declare function runPublicationBuildV1(builder: PublicationBuilderV1, requestValue: unknown): Promise<PublicationBuildResultV1>;
 
 // export: STATIC_PUBLICATION_MANIFEST_SCHEMA_V1
 export declare const STATIC_PUBLICATION_MANIFEST_SCHEMA_V1: "atlcli.static-publication-manifest/1";
