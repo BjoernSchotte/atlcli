@@ -1429,7 +1429,7 @@ existing export behavior remains regression-green.
       data and reject cycles/dangling references.
 - [x] Implement refresh diff semantics that distinguish delete, exclude,
       out-of-scope, and inaccessible.
-- [ ] Unit-test duplicate titles/IDs, rename/move, non-ASCII, long names,
+- [x] Unit-test duplicate titles/IDs, rename/move, non-ASCII, long names,
       reserved names, separators, `..`, backslashes, case folding, base paths,
       and ambiguous/out-of-scope links.
 - [ ] STOP on title-only identity, duplicated link truth tables, path escape,

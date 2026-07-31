@@ -110,6 +110,27 @@ describe("publication page references", () => {
     }]);
   });
 
+  test("preserves upstream ambiguous and outside-scope links as typed unresolved references", () => {
+    const result = plan({
+      pages: [{
+        sourceId: "guide",
+        route: "/docs/guide/",
+        blocks: [],
+        links: [
+          { referenceId: "ambiguous", kind: "unresolved", reason: "ambiguous", label: "Guide" },
+          { referenceId: "outside", kind: "unresolved", reason: "outside-scope", label: "Private page" },
+        ],
+        assetIds: [],
+      }],
+      assets: [],
+    });
+
+    expect(result.pages[0]?.links).toEqual([
+      { referenceId: "ambiguous", target: { kind: "unresolved", label: "Guide" } },
+      { referenceId: "outside", target: { kind: "unresolved", label: "Private page" } },
+    ]);
+  });
+
   test("canonicalizes only bounded plain fragment names", () => {
     expect(normalizePublicationAnchorReferenceV1("  Crème  brûlée ")).toBe("creme-brulee");
     expectError(() => normalizePublicationAnchorReferenceV1("../private"), "unsafe-anchor");
