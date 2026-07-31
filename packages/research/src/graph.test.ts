@@ -41,6 +41,14 @@ describe("dynamic research graph composition", () => {
     expect(jira.grantedCapabilityIds).toEqual(["jira.issue.search"]);
   });
 
+  test("recognizes funnel and correspondence questions as cross-product joins", () => {
+    const graph = composeResearchGraphV1(brief(
+      "How do these pages describe the funnel, and which GROW work items correspond to each stage?",
+      ["jira", "confluence"],
+    ));
+    expect(graph.selectedRoleIds).toContain("cross-product-join");
+  });
+
   test("rejects cycles, unknown dependencies, and model-authored role projections", () => {
     const graph = composeResearchGraphV1(brief("List Jira tickets", ["jira"], "off"));
     const cyclic = { ...graph, nodes: graph.nodes.map((node) => ({ ...node, dependsOn: [node.id] })) };

@@ -86,7 +86,24 @@ function requestedRoles(brief: ResearchBriefV1): ResearchGraphRoleV1[] {
   const question = normalizedQuestion(brief.question);
   const jira = brief.products.includes("jira") || hasAny(question, ["jira", "ticket", "issue", "project"]);
   const wiki = brief.products.includes("confluence") || hasAny(question, ["confluence", "wiki", "space", "page", "content"]);
-  const relation = jira && wiki && hasAny(question, ["related", "belong", "join", "link", "between", "gehören", "zusammenhang"]);
+  const relation = jira && wiki && hasAny(question, [
+    "related",
+    "belong",
+    "join",
+    "link",
+    "between",
+    "correspond",
+    "match",
+    "mapping",
+    "map",
+    "funnel",
+    "pipeline",
+    "stage",
+    "opportunit",
+    "zuord",
+    "gehören",
+    "zusammenhang",
+  ]);
   const roles: ResearchGraphRoleV1[] = [];
   if (jira || (!jira && !wiki)) roles.push("jira-retrieval");
   if (wiki || (!jira && !wiki)) roles.push("wiki-retrieval");
