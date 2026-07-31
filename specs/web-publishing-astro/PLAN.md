@@ -23,6 +23,12 @@ Astro can consume Markdown, but this pipeline deliberately does not. It loads
 per-page `ExportBlock[]` documents and assets from a versioned publication
 bundle and maps blocks and macros to trusted Astro components.
 
+V1 is a world-class publishing experience rather than a bare HTML proof. It
+ships a stable multi-theme contract, at least two first-party themes, a
+project-owned theme adapter, and required Pagefind-powered client-side search
+with accessible keyboard UI, facets, metadata, multilingual indexes, and
+offline static operation.
+
 The architecture is:
 
 ```text
@@ -127,7 +133,8 @@ The configuration selects:
 - strict or explicitly partial completeness;
 - route, macro, asset, active-content, and island policies;
 - publication workspace and retention policy;
-- Astro project, base path, URL profile, layout/theme, and build script; and
+- Astro project, base path, URL profile, theme/tokens, search, and build script;
+  and
 - local output and private manifest locations.
 
 The build command is executed as an executable plus argument vector with
@@ -198,11 +205,16 @@ in place.
 7. Resolve internal page links, anchors, assets, navigation, breadcrumbs, and
    removals deterministically.
 8. Provide a builder-neutral contract and an Astro 7.1 implementation.
-9. Support trusted static renderers and opt-in client islands with frozen data.
-10. Fail closed on incomplete acquisition, unsafe active content, route/output
+9. Support multiple versioned themes with a stable capability, slot, token,
+   component-override, and accessibility contract.
+10. Ship world-class static client-side search in V1, including keyboard-first
+    UI, facets, metadata, multilingual indexing, and nested-base support.
+11. Support trusted static renderers and opt-in client islands with frozen data.
+12. Fail closed on incomplete acquisition, unsafe active content, route/output
     collisions, XSS, SSRF, path traversal, and secret/private-URL leakage.
-11. Verify the final static artifact, not only serializer inputs.
-12. Leave DOCX/PDF export, Markdown sync, and DOCX import behavior unchanged.
+13. Verify the final static artifact, including theme and search output, not
+    only serializer inputs.
+14. Leave DOCX/PDF export, Markdown sync, and DOCX import behavior unchanged.
 
 ## 5. Non-goals
 
@@ -219,7 +231,8 @@ in place.
 - generating a new customer Astro project as the only supported integration;
 - promising incremental Astro output builds: only acquisition/normalization is
   incremental in V1;
-- client-side search in V1;
+- requiring a hosted search service, crawler, account, or runtime backend for
+  the V1 search baseline;
 - automatic publication-permission inference beyond what Confluence APIs can
   prove;
 - browser/extension/Forge execution of the Node-only Astro build; and
@@ -332,7 +345,7 @@ materially, stop and update this plan before runtime edits.
 `@atlcli/web-publish` is the public, mostly isomorphic core:
 
 - versioned project, refresh-plan, bundle, page, route, link, asset, renderer,
-  build, manifest, report, and issue contracts;
+  theme, search, build, manifest, report, and issue contracts;
 - route registry and diff planning;
 - canonical digest and bundle validation;
 - link/anchor/output-path planning;
@@ -344,8 +357,11 @@ materially, stop and update this plan before runtime edits.
 
 - default Astro integration factory;
 - named build-time content loader;
-- trusted default route, layouts, block components, styles, and islands;
-- Astro config/route/build hooks and output manifest production;
+- trusted default route, layouts, block components, styles, themes, and islands;
+- a theme-package contract with at least two first-party reference themes and a
+  validated project-owned theme adapter;
+- a post-build Pagefind indexer plus theme-neutral accessible search components;
+- Astro config/route/build/search hooks and output manifest production;
 - peer dependency `astro >=7.1.0 <8`, Node `>=22.12.0`;
 - no embedded second Astro and no private Astro/Vite API contract.
 
@@ -406,6 +422,8 @@ interface PublicationProjectV1 {
   macros: PublicationMacroPolicyV1;
   assets: PublicationAssetPolicyV1;
   renderers: PublicationRendererPolicyV1;
+  theme: PublicationThemeSelectionV1;
+  search: PublicationSearchOptionsV1;
   builder: AstroPublicationBuilderOptionsV1;
   retention: PublicationRetentionPolicyV1;
   activeBundleDigest?: string;
@@ -611,10 +629,96 @@ The integration uses only documented hooks:
 - `astro:build:done` inventories built pages/assets and writes the private
   manifest outside the public output root.
 
-It may use `astro:config:setup` only for a documented route/virtual-module or
-asset plugin. It must not depend on Astro/Vite private internals.
+It may use `astro:config:setup` only for a documented route/virtual-module,
+theme, search, or asset plugin. It must not depend on Astro/Vite private
+internals.
 
-### 9.7 Static publication manifest
+### 9.7 Theme and search contracts
+
+Themes are trusted installed code selected by the operator, never by source
+content:
+
+```ts
+interface PublicationThemeDescriptorV1 {
+  schema: "atlcli.publication-theme/1";
+  id: string;
+  version: string;
+  engine: "astro";
+  capabilities: readonly PublicationThemeCapabilityV1[];
+  slots: readonly PublicationThemeSlotV1[];
+  designTokensSchema: string;
+  components: PublicationThemeComponentsV1;
+}
+
+type PublicationThemeCapabilityV1 =
+  | "responsive-navigation"
+  | "light-dark-system"
+  | "search-modal"
+  | "search-page"
+  | "faceted-search"
+  | "table-of-contents"
+  | "breadcrumbs"
+  | "previous-next"
+  | "chart-islands"
+  | "i18n"
+  | "print-styles";
+```
+
+V1 ships at least two visually and structurally distinct first-party reference
+themes: a feature-complete documentation/knowledge-base theme and a minimal
+content theme. It also supports a validated project-owned theme package through
+the same descriptor. A theme owns presentation but may not change source,
+route, search, security, or completeness semantics.
+
+The stable customization surface is semantic slots, design tokens, and closed
+component overrides, not selectors into generated DOM. Required slots cover
+document head, header, primary navigation, left navigation, breadcrumbs,
+search trigger/modal, main content, page TOC, previous/next, footer, and
+renderer/island styling. Every theme must provide responsive behavior,
+keyboard/focus states, reduced-motion behavior, usable print styles, and a
+light/dark/system color mode or explicitly declare a single accessible mode.
+
+V1 search is static and local-first, with Pagefind as the pinned first provider:
+
+```ts
+interface PublicationSearchOptionsV1 {
+  provider: "pagefind";
+  enabled: true;
+  languages: "from-pages" | readonly string[];
+  filters: readonly ("space" | "label" | "content-type" | "language")[];
+  metadata: readonly ("title" | "description" | "breadcrumbs" | "image")[];
+  ranking: PublicationSearchRankingV1;
+  ui: "modal" | "page" | "both";
+  shortcut: "mod+k" | "/" | "none";
+}
+```
+
+Pagefind runs after the complete Astro static build and writes a fully static
+index into the owned output tree. It has no server component. Generated pages
+mark only canonical content with `data-pagefind-body`; navigation, duplicate
+chrome, hidden diagnostics, and private metadata are excluded. Labels, space,
+content type, and language are allowlisted facets. Title, description,
+breadcrumbs, and optional safe image references are explicit result metadata.
+
+The search UI is lazy-loaded, base-aware, themeable through the search slots,
+usable with keyboard and screen readers, and multilingual. Search works offline
+after the index is loaded and uses Pagefind's worker path when available with a
+tested main-thread fallback. Result URLs must use the same route/output profile
+as the site. Search excerpts are treated as untrusted presentation data:
+themes either use plain excerpts and their own escaped highlighting or a narrow
+reviewed `<mark>` sanitizer; arbitrary excerpt HTML never reaches `set:html`.
+
+The indexer version/config, indexed page set, filters, language partitions,
+index file hashes, total compressed/uncompressed bytes, and search manifest
+digest participate in build verification. V1 rebuilds the complete search index
+after each site build and makes no incremental-index claim. Deleted, excluded,
+partial, private, redirect-only, and non-canonical pages must not remain
+searchable.
+
+The provider contract may allow later Algolia/Typesense adapters, but V1 does
+not require a hosted provider, account, network crawler, or runtime secret.
+
+### 9.8 Static publication manifest
 
 ```ts
 interface StaticPublicationManifestV1 {
@@ -628,6 +732,8 @@ interface StaticPublicationManifestV1 {
   outputProfile: "directory" | "portable-file";
   pages: readonly BuiltPageV1[];
   assets: readonly BuiltAssetV1[];
+  theme: { id: string; version: string; digest: string };
+  search: BuiltSearchIndexV1;
   removedOwnedPaths: readonly string[];
   verification: PublicationVerificationSummaryV1;
   buildDigest: string;
@@ -695,15 +801,27 @@ it is never silently omitted.
 
 ## 11. Astro integration behavior
 
-The existing Astro project remains owner of layout, theme, global navigation,
-and handwritten routes. The atlcli integration contributes:
+The existing Astro project remains owner of installed theme packages, approved
+design-token values, project chrome, and handwritten routes. The atlcli
+integration contributes:
 
 - a configurable publication route prefix;
 - a trusted default catch-all route enumerated by `getStaticPaths()`;
-- a closed component registry and default accessible theme;
-- an optional validated user layout entry point, proven in Task 0;
+- a closed component registry and at least two first-party accessible themes;
+- a validated project-owned theme adapter with capability negotiation;
 - bundle-backed content collection entries; and
-- private build-manifest production.
+- post-build Pagefind indexing, theme-owned accessible search UI slots, and
+  private build-manifest production.
+
+Theme selection is project configuration. Confluence pages and macro data
+cannot choose packages, component imports, arbitrary CSS, or scripts. Switching
+themes must not change canonical routes, page identity, indexed content, link
+targets, completeness, or asset trust. Theme ID/version/config and generated
+CSS/JS participate in the build digest.
+
+The Pagefind baseline is required in every first-party V1 theme. A custom theme
+must either implement the standard search trigger/modal/page slots or fail
+capability validation before build; silently losing search is not allowed.
 
 The integration rejects rather than silently rewrites incompatible
 configuration: server output, non-prerendered publication routes, base/profile
@@ -717,6 +835,11 @@ The first real build matrix is:
 | normal static host | `/` | directory/always | `/guide/index.html` |
 | nested static host | `/docs` | directory/always | base-aware links/assets |
 | portable file host | `/docs` | file/never | `/guide.html` and matching links |
+
+Every case is built with both first-party themes and search enabled. The matrix
+also covers a project-owned theme adapter, multilingual pages, label/space
+facets, keyboard navigation, deep-link result URLs, deleted-page removal, and
+JavaScript-disabled graceful degradation to normal site navigation.
 
 Astro's static redirect output cannot promise HTTP redirect status codes.
 Redirect candidates stay in the private manifest for a future deployment
@@ -739,6 +862,13 @@ provider.
 | static chart | supported | SVG/HTML visual/a11y proof |
 | interactive chart island | opt-in V1 target | JS-on/off, CSP, payload proof |
 | live/request-time chart | deferred | explicitly unsupported |
+| first-party themes | at least docs + minimal | two-theme artifact/a11y/visual proof |
+| project-owned theme | supported contract | capability/slot/negative fixture proof |
+| light/dark/system + responsive | V1 theme requirement | keyboard/mobile/contrast proof |
+| Pagefind client search | required V1 baseline | production index + browser E2E |
+| search facets/metadata | label/space/type/language | result/facet correctness proof |
+| multilingual search | supported | language-partition/stemming/UI proof |
+| hosted search provider | optional future adapter | deferred, not required |
 | local static build | supported | packed Astro production build |
 | remote deployment | deferred | no shipped claim |
 | browser core | supported | browser package gate |
@@ -758,8 +888,8 @@ T0 Contract/security/Astro spike
 ├── T3 Web target and per-page macros
 └── T4 Astro 7.1 loader/integration spike
 T1 + T2 + T3 ──> T5 Refresh, assets and immutable bundle
-T2 + T3 + T4 ──> T6 Trusted renderer registry and charts
-T2 + T4 + T5 + T6 ──> T7 Astro builder and output manifest
+T2 + T3 + T4 ──> T6 Trusted renderers, themes and charts
+T2 + T4 + T5 + T6 ──> T7 Astro builder, Pagefind and output manifest
 T5 + T7 ──> T8 CLI lifecycle and verification
 T8 ──> T9 Package/API/consumer/CI gates
 T9 ──> T10 Docs and real provider proof
@@ -782,20 +912,26 @@ T9 ──> T10 Docs and real provider proof
       that source data cannot select/import a component.
 - [ ] Spike a trusted static chart and an opt-in island over one frozen,
       schema-validated model; verify useful JS-disabled fallback.
+- [ ] Build the same bundle with two structurally distinct theme fixtures and
+      freeze semantic slots, tokens, capability negotiation, and override rules.
+- [ ] Run a pinned Pagefind proof after the nested-base Astro build; prove
+      keyboard search, facets, multilingual partitioning, route correctness,
+      deleted-page removal, offline behavior, and deterministic index inventory.
 - [ ] Decide whether durable publish jobs are required in V1. Default to direct
       serializable runs; create `@atlcli/publish-jobs` only with an evidenced
       recovery/scheduling requirement.
 - [ ] Freeze route, active-attachment, strict/partial, macro freshness, island,
-      output, workspace, and retention policies.
+      theme, search, output, workspace, and retention policies.
 - [ ] Record a threat model for ADF/Storage/macro input, remote assets, bundle
       paths, Astro build, islands, output directory, and future deployment.
 - [ ] STOP and re-plan if Astro needs source-derived code, a networked loader,
       private APIs, unbounded output, or cannot render a complete accessible
       static fallback.
 
-Acceptance: the spike produces a bounded static directory and private manifest
-offline, with nested-base links working and hostile content inert. No production
-package contract is frozen until this gate passes.
+Acceptance: the spike produces a bounded, searchable static directory and
+private manifest offline, with two themes, nested-base links, facets, keyboard
+search, and hostile content remaining inert. No production package contract is
+frozen until this gate passes.
 
 ### T1 — Expose the Confluence page graph before document composition
 
@@ -821,6 +957,8 @@ existing export behavior remains regression-green.
       browser-safe default entry point, Node filesystem subpath, README, API
       report, and closure report.
 - [ ] Implement and validate the versioned contracts from section 9.
+- [ ] Implement theme descriptor/selection, capability negotiation, semantic
+      slot, design-token, component-override, and search-provider contracts.
 - [ ] Extract shared page-link resolution from `compose-document.ts`; keep its
       existing truth table unchanged.
 - [ ] Implement stable route registry, custom routes, tombstones, safe slugs,
@@ -873,6 +1011,10 @@ inputs, and does not alter existing export targets.
       prerendering/collision behavior in documented integration hooks.
 - [ ] Define an optional trusted user layout entrypoint and ensure content
       cannot influence module resolution.
+- [ ] Load only installed operator-selected theme descriptors; validate required
+      capabilities/slots and include theme/version/config in the build key.
+- [ ] Reserve collision-safe owned paths for Pagefind output and expose the
+      standard theme search slots without coupling the loader to one theme.
 - [ ] Write the private output manifest outside the public output root.
 - [ ] Keep programmatic Astro APIs and experimental collection storage out of
       public contracts.
@@ -908,7 +1050,7 @@ Acceptance: unchanged deterministic pages/assets are reused; changed and live
 dependencies refresh; removed content is acted on only with authoritative proof;
 the active bundle is always complete and digest-valid.
 
-### T6 — Build exhaustive trusted renderers and chart capabilities
+### T6 — Build exhaustive trusted renderers, themes, and chart capabilities
 
 - [ ] Implement trusted Astro components for every `ExportBlock` and inline
       discriminator with compile-time exhaustiveness.
@@ -918,21 +1060,33 @@ the active bundle is always complete and digest-valid.
 - [ ] Use Astro escaping by default; expose no caller/raw-string `set:html` API.
 - [ ] Implement a closed renderer registry with versioned descriptors and
       schema-validated payloads.
+- [ ] Implement the versioned theme runtime and semantic slots without exposing
+      generated-DOM selectors as a compatibility contract.
+- [ ] Ship feature-complete documentation/knowledge-base and minimal-content
+      reference themes with responsive navigation, breadcrumbs, page TOC,
+      previous/next, search slots, dark/light/system modes, print styles, and
+      accessible design-token defaults.
+- [ ] Implement and validate a project-owned theme adapter; source content may
+      never select or parameterize component/module imports.
 - [ ] Implement accessible static chart SVG/HTML from normalized chart data.
 - [ ] Implement the optional chart island with frozen data, explicit opt-in,
       byte/row/node limits, no network/auth access, and static fallback.
 - [ ] Prove CSP, no event-handler/script/CSS injection, unsafe URL rejection,
       SVG safety, and no opaque datasource/provenance serialization.
 - [ ] Prove keyboard/screen-reader semantics and meaningful JS-disabled output.
+- [ ] Prove both themes at mobile/desktop widths, high zoom, forced colors,
+      reduced motion, light/dark/system modes, print, long titles, deep trees,
+      RTL-safe layout, and custom tokens.
 - [ ] Add deterministic semantic goldens and browser DOM/a11y tests rather than
       brittle full Astro HTML/CSS whitespace snapshots.
 - [ ] STOP if source content can become executable code, disabled JS loses the
       represented information, or unsupported blocks disappear silently.
 
-Acceptance: the all-fields fixture renders safely and accessibly; chart output
-works statically and the optional island adds only bounded client interaction.
+Acceptance: the all-fields fixture renders safely and accessibly in both
+first-party themes and one custom-theme fixture; chart output works statically
+and the optional island adds only bounded client interaction.
 
-### T7 — Build static output and produce a private manifest
+### T7 — Build static output, Pagefind search, and a private manifest
 
 - [ ] Implement a builder adapter over immutable bundle + trusted Astro project;
       do not expose Astro's experimental programmatic API publicly.
@@ -941,18 +1095,31 @@ works statically and the optional island adds only bounded client interaction.
 - [ ] Materialize generated assets/routes without overwriting handwritten
       project sources or `public/` files.
 - [ ] Build the three URL/base profiles from section 11.
+- [ ] Pin Pagefind, annotate canonical content/facets/metadata in trusted
+      components, and run the full static indexer after each Astro build.
+- [ ] Provide theme-neutral accessible modal and full-page search components
+      with keyboard shortcut, worker/main-thread fallback, translated UI,
+      filters, result excerpts, and nested-base URL handling.
+- [ ] Exclude navigation chrome, private diagnostics, partial/hidden pages,
+      redirects, and deleted pages; never index raw bundle/source data.
+- [ ] Treat result excerpts safely and prove that indexed hostile text cannot
+      become executable markup in either theme.
+- [ ] Enforce measured search-index, initial-JS, query-latency, and memory
+      budgets on small, representative, and large deterministic corpora.
 - [ ] Inventory every generated page/asset/output path and reject unexplained or
       escaping output.
 - [ ] Produce `StaticPublicationManifestV1` with bundle, builder, Astro,
-      project/config/lockfile, route/asset, and normalized output digests.
+      project/config/lockfile, theme, route/asset, Pagefind index, and normalized
+      output digests.
 - [ ] Prove a build with network disabled and no runtime `/_image` or private
       Confluence dependencies.
 - [ ] Prove cold/warm builds of one bundle yield equivalent semantic manifests.
 - [ ] STOP on mixed old/new output, source-derived build modules, ambient repo
       docs config, unexpected executable JS, or an unbounded output inventory.
 
-Acceptance: a verified local static candidate and private exact manifest are
-produced from the bundle without any Confluence access.
+Acceptance: a verified, themed, searchable local static candidate and private
+exact manifest are produced from the bundle without any Confluence access or
+hosted search service.
 
 ### T8 — Add CLI lifecycle, reports, and artifact verification
 
@@ -990,12 +1157,18 @@ orchestrates it without hiding the plan, bundle, build, or verification digest.
 - [ ] Test Ubuntu Node 22.12/Astro 7.1.0, Ubuntu Node 24/latest 7.x, and Windows
       Node 24/Astro 7.1.0 path portability.
 - [ ] Add a production Astro publishing harness with Cloud ADF and DC Storage
-      synthetic fixtures, assets, links, macros, chart static/island, and
+      synthetic fixtures, assets, links, macros, both first-party themes,
+      custom-theme adapter, Pagefind search/facets, chart static/island, and
       strict/partial failures.
 - [ ] Serve directory output with a directory-index server and portable-file
       output with a simple file server; crawl every route/link/asset.
 - [ ] Run Playwright with JS on/off, CSP, accessibility, offline/no-network,
       privacy, and deterministic-manifest gates.
+- [ ] Exercise search by mouse and keyboard in every theme/profile: query,
+      empty/no-result, excerpts, anchors, facets, language, Unicode/diacritics,
+      large result sets, back/forward, deleted pages, and worker fallback.
+- [ ] Measure theme CSS/JS, island JS, search bootstrap/index shards, LCP/CLS,
+      search interaction latency, and accessibility budgets; gate regressions.
 - [ ] Seed negative fixtures for route collision, path traversal, Node import in
       browser core, XSS, unsafe SVG, private URL, digest mismatch, and missing
       asset; prove each named gate fails.
@@ -1008,8 +1181,12 @@ browser-safe core and Node-only Astro boundary.
 ### T10 — Documentation, real E2E, and delivery gates
 
 - [ ] Add a task-focused Web Publishing guide, configuration reference,
+      theme authoring/migration guide, search/index/ranking guide,
       renderer/chart guide, security/privacy guide, operations/refresh/rollback
       guide, troubleshooting, examples, and related-topic links.
+- [ ] Document both first-party themes, the project-owned theme contract,
+      tokens/slots/capabilities, Pagefind facets/metadata/languages, search
+      accessibility, index budgets, and hosted-provider extension boundary.
 - [ ] Document static vs. island vs. live capability and state clearly that
       deployment is deferred.
 - [ ] Document `.gitignore`, cache/bundle/build retention, reproducibility,
@@ -1018,7 +1195,8 @@ browser-safe core and Node-only Astro boundary.
       docs site's Astro theme as customer runtime.
 - [ ] Run focused tests, full `bun run test`, `bun run typecheck`, build,
       API/closure, browser, pack/consumer, docs, Astro production harness,
-      link/a11y/security/privacy, and Windows path gates.
+      theme/search performance, link/a11y/security/privacy, and Windows path
+      gates.
 - [ ] Run required real read-only Cloud E2E with profile `mayflower`, space
       `DOCSY`, on representative page/tree/space content; build/inspect both URL
       profiles and abort/retry; keep private identifiers/artifacts out of Git.
@@ -1041,6 +1219,8 @@ needed. At minimum:
 bun run test packages/web-publish
 bun run test packages/web-publish-astro
 bun run test packages/confluence packages/export-macros packages/export-wiring
+bun run test:publish-themes
+bun run test:publish-search
 bun run typecheck
 bun run build
 bun run check:browser
@@ -1071,10 +1251,11 @@ Recommended implementation PR stack/commit boundaries:
 3. `feat(macros): add web publication target`
 4. `feat(publish): add cache and immutable bundle materialization`
 5. `feat(publish-astro): add Astro 7.1 loader and integration`
-6. `feat(publish-astro): add trusted renderers and chart island`
-7. `feat(cli): add local web publishing lifecycle`
-8. `test(publish): add packed Astro and browser conformance gates`
-9. `docs(publish): document static web publishing`
+6. `feat(publish-astro): add trusted renderers and theme contract`
+7. `feat(publish-astro): add Pagefind search and chart island`
+8. `feat(cli): add local web publishing lifecycle`
+9. `test(publish): add packed Astro and browser conformance gates`
+10. `docs(publish): document static web publishing`
 
 Each boundary must keep existing DOCX/PDF and Markdown behavior green. Draft
 PRs stay Draft until their own acceptance gates pass; no automatic release.
@@ -1092,6 +1273,12 @@ PRs stay Draft until their own acceptance gates pass; no automatic release.
       are deterministic and tested.
 - [ ] Every block has safe static output; the optional chart island works with
       bounded frozen data and degrades usefully without JavaScript.
+- [ ] At least two first-party themes and one project-owned theme fixture pass
+      the same semantic, responsive, mode, print, accessibility, and search
+      contract without changing routes or indexed content.
+- [ ] Pagefind client search is production-built, offline, keyboard-accessible,
+      multilingual, faceted, base-aware, privacy-safe, budgeted, and free of
+      deleted/excluded/private content.
 - [ ] Strict completeness, XSS, SSRF, path, active-content, secret/private URL,
       CSP, accessibility, and privacy gates pass.
 - [ ] Existing export and Markdown sync schemas/fixtures/artifacts are unchanged.
@@ -1122,8 +1309,11 @@ PRs stay Draft until their own acceptance gates pass; no automatic release.
    directory to another base without rebuilding is unsupported.
 8. **Host claims:** browser-safe core proof does not certify Astro in MV3,
    ordinary browser, or Forge.
-9. **Scope pressure:** deployment, search, live runtime, user code/MDX, and
-   broad theme generation require follow-up specs rather than hidden V1 work.
+9. **Theme and search fragmentation:** V1 deliberately includes multiple themes
+   and Pagefind, but a theme cannot silently replace route/search/security
+   semantics. Hosted search providers, arbitrary catalog-theme compatibility,
+   deployment, live runtime, and user code/MDX still require explicit adapters
+   or follow-up specs.
 
 ## 19. Decisions to confirm before T1
 
@@ -1132,9 +1322,9 @@ choices should be confirmed at the T0 gate:
 
 1. Is the opt-in interactive chart island part of the first release, or should
    V1 ship static charts only while retaining the renderer capability contract?
-2. Should V1 support an existing Astro project only, or also ship a managed
-   starter project/theme? Recommendation: existing project plus one maintained
-   example/harness; add a starter only after the integration is proven.
+2. Which two first-party theme directions should V1 ship? Recommendation:
+   feature-complete documentation/knowledge-base plus minimal editorial
+   content, both implementing the same slots/capabilities/search contract.
 3. Is local directory output the only V1 destination? Recommendation: yes;
    remote deployment is a separate provider/PR.
 4. Is the stable first-assigned pretty route policy acceptable for rename/move?
@@ -1146,6 +1336,9 @@ choices should be confirmed at the T0 gate:
 6. Which chart macro/data shapes are the first supported normalized chart
    model? Freeze the smallest provider-backed set in T0 rather than accepting
    arbitrary chart configuration.
+7. Which Pagefind facets and ranking defaults should be visible initially?
+   Recommendation: space, label, content type, and language; boost title and
+   headings, then validate relevance on representative English/German corpora.
 
 ## 20. Primary references
 
@@ -1155,5 +1348,18 @@ choices should be confirmed at the T0 gate:
 - [Astro integration API](https://docs.astro.build/en/reference/integrations-reference/)
 - [Astro routing](https://docs.astro.build/en/guides/routing/)
 - [Astro images](https://docs.astro.build/en/guides/images/)
+- [Astro themes catalog](https://astro.build/themes/)
+- [Astro integrations catalog](https://astro.build/integrations/)
+- [Astro fonts](https://docs.astro.build/en/guides/fonts/)
+- [Astro internationalization](https://docs.astro.build/en/guides/internationalization/)
+- [Astro prefetch](https://docs.astro.build/en/guides/prefetch/)
+- [Astro view transitions](https://docs.astro.build/en/guides/view-transitions/)
+- [Pagefind static search](https://pagefind.app/docs/)
+- [Pagefind Component UI](https://pagefind.app/docs/search-ui/)
+- [Pagefind indexing](https://pagefind.app/docs/indexing/)
+- [Pagefind filters](https://pagefind.app/docs/filtering/)
+- [Pagefind multilingual search](https://pagefind.app/docs/multilingual/)
+- [Starlight capabilities](https://starlight.astro.build/)
+- [Starlight plugin ecosystem](https://starlight.astro.build/resources/plugins/)
 - [Astro programmatic API](https://docs.astro.build/en/reference/programmatic-reference/)
 - [Astro template directives and `set:html`](https://docs.astro.build/en/reference/directives-reference/#sethtml)
