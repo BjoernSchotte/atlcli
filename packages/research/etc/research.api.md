@@ -383,6 +383,9 @@ export declare const RESEARCH_SCOPE_CATALOG_SCHEMAS: {
     };
 };
 
+// export: RESEARCH_SCOPE_MENTION_PROPOSAL_SCHEMA_V1
+export declare const RESEARCH_SCOPE_MENTION_PROPOSAL_SCHEMA_V1: "atlcli.research-scope-mention-proposal/v1";
+
 // export: RESEARCH_SCOPE_SOURCE_PRECEDENCE_V1
 export declare const RESEARCH_SCOPE_SOURCE_PRECEDENCE_V1: {
     readonly cli_flag: 500;
@@ -1229,6 +1232,21 @@ export interface ResearchScopeCatalogProvidersV1 {
 // export: ResearchScopeEntityKindV1
 export type ResearchScopeEntityKindV1 = "project" | "space" | "issue" | "page";
 
+// export: ResearchScopeMentionProposalV1
+export interface ResearchScopeMentionProposalV1 {
+    schema: typeof RESEARCH_SCOPE_MENTION_PROPOSAL_SCHEMA_V1;
+    id: string;
+    productHint?: ResearchProduct;
+    entityKindHint?: ResearchScopeEntityKindV1;
+    text: string;
+    normalizedText: string;
+    questionTextRange: {
+        start: number;
+        end: number;
+    };
+    exactReference?: string;
+}
+
 // export: ResearchScopeMentionV1
 export interface ResearchScopeMentionV1 {
     id: string;
@@ -1489,6 +1507,14 @@ export declare function selectResearchScopeSeedsV1(seeds: readonly ResearchScope
 
 // export: validateResearchGraphV1
 export declare function validateResearchGraphV1(graph: ResearchGraphV1): void;
+
+// export: validateResearchScopeMentionProposalsV1
+export declare function validateResearchScopeMentionProposalsV1(input: {
+    question: string;
+    proposals: readonly ResearchScopeMentionProposalV1[];
+    expectedTenantOrigin: string;
+    maxMentions?: number;
+}): ResearchScopeMentionV1[];
 
 // export: validateResearchTaskAdmissionV1
 export declare function validateResearchTaskAdmissionV1(input: {
@@ -1884,6 +1910,9 @@ export declare const RESEARCH_SCOPE_CATALOG_SCHEMAS: {
     };
 };
 
+// export: RESEARCH_SCOPE_MENTION_PROPOSAL_SCHEMA_V1
+export declare const RESEARCH_SCOPE_MENTION_PROPOSAL_SCHEMA_V1: "atlcli.research-scope-mention-proposal/v1";
+
 // export: RESEARCH_SCOPE_SOURCE_PRECEDENCE_V1
 export declare const RESEARCH_SCOPE_SOURCE_PRECEDENCE_V1: {
     readonly cli_flag: 500;
@@ -2730,6 +2759,21 @@ export interface ResearchScopeCatalogProvidersV1 {
 // export: ResearchScopeEntityKindV1
 export type ResearchScopeEntityKindV1 = "project" | "space" | "issue" | "page";
 
+// export: ResearchScopeMentionProposalV1
+export interface ResearchScopeMentionProposalV1 {
+    schema: typeof RESEARCH_SCOPE_MENTION_PROPOSAL_SCHEMA_V1;
+    id: string;
+    productHint?: ResearchProduct;
+    entityKindHint?: ResearchScopeEntityKindV1;
+    text: string;
+    normalizedText: string;
+    questionTextRange: {
+        start: number;
+        end: number;
+    };
+    exactReference?: string;
+}
+
 // export: ResearchScopeMentionV1
 export interface ResearchScopeMentionV1 {
     id: string;
@@ -2979,6 +3023,14 @@ export declare function selectResearchScopeSeedsV1(seeds: readonly ResearchScope
 
 // export: validateResearchGraphV1
 export declare function validateResearchGraphV1(graph: ResearchGraphV1): void;
+
+// export: validateResearchScopeMentionProposalsV1
+export declare function validateResearchScopeMentionProposalsV1(input: {
+    question: string;
+    proposals: readonly ResearchScopeMentionProposalV1[];
+    expectedTenantOrigin: string;
+    maxMentions?: number;
+}): ResearchScopeMentionV1[];
 
 // export: validateResearchTaskAdmissionV1
 export declare function validateResearchTaskAdmissionV1(input: {
@@ -3383,6 +3435,9 @@ export declare const RESEARCH_SCOPE_CATALOG_SCHEMAS: {
     };
 };
 
+// export: RESEARCH_SCOPE_MENTION_PROPOSAL_SCHEMA_V1
+export declare const RESEARCH_SCOPE_MENTION_PROPOSAL_SCHEMA_V1: "atlcli.research-scope-mention-proposal/v1";
+
 // export: RESEARCH_SCOPE_SOURCE_PRECEDENCE_V1
 export declare const RESEARCH_SCOPE_SOURCE_PRECEDENCE_V1: {
     readonly cli_flag: 500;
@@ -4229,6 +4284,21 @@ export interface ResearchScopeCatalogProvidersV1 {
 // export: ResearchScopeEntityKindV1
 export type ResearchScopeEntityKindV1 = "project" | "space" | "issue" | "page";
 
+// export: ResearchScopeMentionProposalV1
+export interface ResearchScopeMentionProposalV1 {
+    schema: typeof RESEARCH_SCOPE_MENTION_PROPOSAL_SCHEMA_V1;
+    id: string;
+    productHint?: ResearchProduct;
+    entityKindHint?: ResearchScopeEntityKindV1;
+    text: string;
+    normalizedText: string;
+    questionTextRange: {
+        start: number;
+        end: number;
+    };
+    exactReference?: string;
+}
+
 // export: ResearchScopeMentionV1
 export interface ResearchScopeMentionV1 {
     id: string;
@@ -4489,6 +4559,14 @@ export declare function selectResearchScopeSeedsV1(seeds: readonly ResearchScope
 
 // export: validateResearchGraphV1
 export declare function validateResearchGraphV1(graph: ResearchGraphV1): void;
+
+// export: validateResearchScopeMentionProposalsV1
+export declare function validateResearchScopeMentionProposalsV1(input: {
+    question: string;
+    proposals: readonly ResearchScopeMentionProposalV1[];
+    expectedTenantOrigin: string;
+    maxMentions?: number;
+}): ResearchScopeMentionV1[];
 
 // export: validateResearchTaskAdmissionV1
 export declare function validateResearchTaskAdmissionV1(input: {
@@ -4988,6 +5066,9 @@ export declare const RESEARCH_SCOPE_CATALOG_TOOL_NAMES: {
     readonly "wiki.space.search": "wiki_space_search";
     readonly "atlassian.reference.resolve": "atlassian_reference_resolve";
 };
+
+// export: RESEARCH_SCOPE_MENTION_PROPOSAL_SCHEMA_V1
+export declare const RESEARCH_SCOPE_MENTION_PROPOSAL_SCHEMA_V1: "atlcli.research-scope-mention-proposal/v1";
 
 // export: RESEARCH_SCOPE_SOURCE_PRECEDENCE_V1
 export declare const RESEARCH_SCOPE_SOURCE_PRECEDENCE_V1: {
@@ -5875,6 +5956,21 @@ export interface ResearchScopeCatalogPtcOptions {
 // export: ResearchScopeEntityKindV1
 export type ResearchScopeEntityKindV1 = "project" | "space" | "issue" | "page";
 
+// export: ResearchScopeMentionProposalV1
+export interface ResearchScopeMentionProposalV1 {
+    schema: typeof RESEARCH_SCOPE_MENTION_PROPOSAL_SCHEMA_V1;
+    id: string;
+    productHint?: ResearchProduct;
+    entityKindHint?: ResearchScopeEntityKindV1;
+    text: string;
+    normalizedText: string;
+    questionTextRange: {
+        start: number;
+        end: number;
+    };
+    exactReference?: string;
+}
+
 // export: ResearchScopeMentionV1
 export interface ResearchScopeMentionV1 {
     id: string;
@@ -6174,6 +6270,14 @@ export declare function selectResearchScopeSeedsV1(seeds: readonly ResearchScope
 
 // export: validateResearchGraphV1
 export declare function validateResearchGraphV1(graph: ResearchGraphV1): void;
+
+// export: validateResearchScopeMentionProposalsV1
+export declare function validateResearchScopeMentionProposalsV1(input: {
+    question: string;
+    proposals: readonly ResearchScopeMentionProposalV1[];
+    expectedTenantOrigin: string;
+    maxMentions?: number;
+}): ResearchScopeMentionV1[];
 
 // export: validateResearchTaskAdmissionV1
 export declare function validateResearchTaskAdmissionV1(input: {
@@ -7296,6 +7400,9 @@ export declare const RESEARCH_SCOPE_CATALOG_TOOL_NAMES: {
     readonly "atlassian.reference.resolve": "atlassian_reference_resolve";
 };
 
+// export: RESEARCH_SCOPE_MENTION_PROPOSAL_SCHEMA_V1
+export declare const RESEARCH_SCOPE_MENTION_PROPOSAL_SCHEMA_V1: "atlcli.research-scope-mention-proposal/v1";
+
 // export: RESEARCH_SCOPE_SOURCE_PRECEDENCE_V1
 export declare const RESEARCH_SCOPE_SOURCE_PRECEDENCE_V1: {
     readonly cli_flag: 500;
@@ -8182,6 +8289,21 @@ export interface ResearchScopeCatalogPtcOptions {
 // export: ResearchScopeEntityKindV1
 export type ResearchScopeEntityKindV1 = "project" | "space" | "issue" | "page";
 
+// export: ResearchScopeMentionProposalV1
+export interface ResearchScopeMentionProposalV1 {
+    schema: typeof RESEARCH_SCOPE_MENTION_PROPOSAL_SCHEMA_V1;
+    id: string;
+    productHint?: ResearchProduct;
+    entityKindHint?: ResearchScopeEntityKindV1;
+    text: string;
+    normalizedText: string;
+    questionTextRange: {
+        start: number;
+        end: number;
+    };
+    exactReference?: string;
+}
+
 // export: ResearchScopeMentionV1
 export interface ResearchScopeMentionV1 {
     id: string;
@@ -8482,6 +8604,14 @@ export declare function selectResearchScopeSeedsV1(seeds: readonly ResearchScope
 // export: validateResearchGraphV1
 export declare function validateResearchGraphV1(graph: ResearchGraphV1): void;
 
+// export: validateResearchScopeMentionProposalsV1
+export declare function validateResearchScopeMentionProposalsV1(input: {
+    question: string;
+    proposals: readonly ResearchScopeMentionProposalV1[];
+    expectedTenantOrigin: string;
+    maxMentions?: number;
+}): ResearchScopeMentionV1[];
+
 // export: validateResearchTaskAdmissionV1
 export declare function validateResearchTaskAdmissionV1(input: {
     executor: "ptc" | "subagent";
@@ -8663,6 +8793,9 @@ export declare function normalizeResearchScopeMentionText(value: string): string
 // export: projectApprovedWholeScopeV1
 export declare function projectApprovedWholeScopeV1(bindings: readonly ResearchScopeBindingV1[], base: ResearchScopeV1): ResearchScopeV1;
 
+// export: RESEARCH_SCOPE_MENTION_PROPOSAL_SCHEMA_V1
+export declare const RESEARCH_SCOPE_MENTION_PROPOSAL_SCHEMA_V1: "atlcli.research-scope-mention-proposal/v1";
+
 // export: ResearchScopeAuthorityV1
 export type ResearchScopeAuthorityV1 = (typeof RESEARCH_SCOPE_AUTHORITIES_V1)[number];
 
@@ -8701,6 +8834,21 @@ export interface ResearchScopeCandidateV1 {
 
 // export: ResearchScopeEntityKindV1
 export type ResearchScopeEntityKindV1 = "project" | "space" | "issue" | "page";
+
+// export: ResearchScopeMentionProposalV1
+export interface ResearchScopeMentionProposalV1 {
+    schema: typeof RESEARCH_SCOPE_MENTION_PROPOSAL_SCHEMA_V1;
+    id: string;
+    productHint?: ResearchProduct;
+    entityKindHint?: ResearchScopeEntityKindV1;
+    text: string;
+    normalizedText: string;
+    questionTextRange: {
+        start: number;
+        end: number;
+    };
+    exactReference?: string;
+}
 
 // export: ResearchScopeMentionV1
 export interface ResearchScopeMentionV1 {
@@ -8755,4 +8903,12 @@ export declare function scopeSourcePrecedence(source: ResearchScopeSourceV1): nu
 
 // export: selectResearchScopeSeedsV1
 export declare function selectResearchScopeSeedsV1(seeds: readonly ResearchScopeSeedV1[]): ResearchScopeBindingV1[];
+
+// export: validateResearchScopeMentionProposalsV1
+export declare function validateResearchScopeMentionProposalsV1(input: {
+    question: string;
+    proposals: readonly ResearchScopeMentionProposalV1[];
+    expectedTenantOrigin: string;
+    maxMentions?: number;
+}): ResearchScopeMentionV1[];
 ```

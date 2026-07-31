@@ -28,6 +28,24 @@ export interface ResearchScopeMentionV1 {
   exactReference?: string;
 }
 
+export const RESEARCH_SCOPE_MENTION_PROPOSAL_SCHEMA_V1 =
+  "atlcli.research-scope-mention-proposal/v1" as const;
+
+/**
+ * Model-proposed mention. The host accepts it only when text and normalization
+ * exactly match the referenced question range.
+ */
+export interface ResearchScopeMentionProposalV1 {
+  schema: typeof RESEARCH_SCOPE_MENTION_PROPOSAL_SCHEMA_V1;
+  id: string;
+  productHint?: ResearchProduct;
+  entityKindHint?: ResearchScopeEntityKindV1;
+  text: string;
+  normalizedText: string;
+  questionTextRange: { start: number; end: number };
+  exactReference?: string;
+}
+
 export interface ResearchScopeCandidateV1 {
   id: string;
   tenantOrigin: string;
@@ -98,6 +116,105 @@ function matchFor(mention: ResearchScopeMentionV1, candidate: ResearchScopeCandi
 
 export function normalizeResearchScopeMentionText(value: string): string {
   return normalize(value);
+}
+
+function invalidMention(message: string): never {
+  throw new Error(message);
+}
+
+function isExactCurrentTenantReference(value: string, expectedTenantOrigin: string): boolean {
+  try {
+    const reference = new URL(value);
+    return reference.origin === expectedTenantOrigin &&
+      (reference.pathname.startsWith("/browse/") || reference.pathname.startsWith("/wiki/"));
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Convert untrusted model proposals into host-verified natural-language
+ * mentions. No catalog lookup may run on the proposal objects themselves.
+ */
+export function validateResearchScopeMentionProposalsV1(input: {
+  question: string;
+  proposals: readonly ResearchScopeMentionProposalV1[];
+  expectedTenantOrigin: string;
+  maxMentions?: number;
+}): ResearchScopeMentionV1[] {
+  const maximum = Math.max(1, Math.min(input.maxMentions ?? 8, 12));
+  if (typeof input.question !== "string" || input.question.trim() === "" || input.question.length > 4_000) {
+    invalidMention("Research question is invalid for scope mention validation.");
+  }
+  if (!Array.isArray(input.proposals) || input.proposals.length > maximum) {
+    invalidMention("Research scope mention proposal count is invalid.");
+  }
+  let expectedOrigin: string;
+  try {
+    expectedOrigin = new URL(input.expectedTenantOrigin).origin;
+  } catch {
+    invalidMention("Expected research tenant origin is invalid.");
+  }
+  if (expectedOrigin !== input.expectedTenantOrigin || !expectedOrigin.startsWith("https://")) {
+    invalidMention("Expected research tenant origin must be an HTTPS origin.");
+  }
+  const seenIds = new Set<string>();
+  const accepted = input.proposals.map((proposal): ResearchScopeMentionV1 => {
+    if (!proposal || proposal.schema !== RESEARCH_SCOPE_MENTION_PROPOSAL_SCHEMA_V1) {
+      invalidMention("Unsupported research scope mention proposal schema.");
+    }
+    if (!/^mention:[A-Za-z0-9._-]{1,80}$/.test(proposal.id) || seenIds.has(proposal.id)) {
+      invalidMention("Research scope mention proposal ID is invalid or duplicated.");
+    }
+    seenIds.add(proposal.id);
+    const { start, end } = proposal.questionTextRange ?? {};
+    if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 0 || end <= start || end > input.question.length) {
+      invalidMention("Research scope mention question range is invalid.");
+    }
+    const exactText = input.question.slice(start, end);
+    if (exactText !== proposal.text || exactText.trim() === "" || exactText.length > 240) {
+      invalidMention("Research scope mention text does not match its exact question range.");
+    }
+    const normalizedText = normalizeResearchScopeMentionText(exactText);
+    if (!normalizedText || proposal.normalizedText !== normalizedText) {
+      invalidMention("Research scope mention normalization is not host-verifiable.");
+    }
+    if (proposal.productHint && proposal.productHint !== "jira" && proposal.productHint !== "confluence") {
+      invalidMention("Research scope mention product hint is invalid.");
+    }
+    if (proposal.entityKindHint && !["project", "space", "issue", "page"].includes(proposal.entityKindHint)) {
+      invalidMention("Research scope mention entity-kind hint is invalid.");
+    }
+    if (proposal.productHint === "jira" && proposal.entityKindHint && !["project", "issue"].includes(proposal.entityKindHint)) {
+      invalidMention("Research scope mention product and entity-kind hints conflict.");
+    }
+    if (proposal.productHint === "confluence" && proposal.entityKindHint && !["space", "page"].includes(proposal.entityKindHint)) {
+      invalidMention("Research scope mention product and entity-kind hints conflict.");
+    }
+    if (proposal.exactReference && !isExactCurrentTenantReference(proposal.exactReference, expectedOrigin)) {
+      invalidMention("Research scope exact reference is outside the current tenant or unsupported.");
+    }
+    return {
+      id: proposal.id,
+      ...(proposal.productHint ? { productHint: proposal.productHint } : {}),
+      ...(proposal.entityKindHint ? { entityKindHint: proposal.entityKindHint } : {}),
+      source: proposal.exactReference ? "exact_link" : "natural_language",
+      text: exactText,
+      normalizedText,
+      questionTextRange: { start, end },
+      ...(proposal.exactReference ? { exactReference: proposal.exactReference } : {}),
+    };
+  });
+  const byRange = [...accepted].sort((left, right) =>
+    left.questionTextRange!.start - right.questionTextRange!.start ||
+    left.questionTextRange!.end - right.questionTextRange!.end,
+  );
+  for (let index = 1; index < byRange.length; index += 1) {
+    if (byRange[index]!.questionTextRange!.start < byRange[index - 1]!.questionTextRange!.end) {
+      invalidMention("Research scope mention ranges must not overlap.");
+    }
+  }
+  return accepted;
 }
 
 export function resolveResearchScopeMentionV1(input: ResearchScopeResolutionInputV1): ResearchScopeResolutionV1 {

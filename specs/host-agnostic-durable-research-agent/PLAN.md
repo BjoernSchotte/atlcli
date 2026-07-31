@@ -2465,7 +2465,7 @@ Shared:
       expansion-proposal contracts without changing `ResearchScopeV1`.
       Implement the documented precedence and authority projection as pure,
       deterministic functions.
-- [ ] Parse natural-language mention proposals into a bounded structured
+- [x] Parse natural-language mention proposals into a bounded structured
       schema, require exact question-text ranges, and host-verify every range
       and normalization before catalog lookup. Reject invented or overlapping
       mentions and keep their text out of the event stream.
