@@ -1,4 +1,4 @@
-# Web publishing MVP — immutable publication bundles and Astro 7.1
+# Web publishing V1 — immutable publication bundles and Astro 7.1
 
 - Status: **Planned**
 - Planning baseline: `cdf11eb7d1f642528b6d8c995ea90ab75fffd77b`
@@ -23,11 +23,13 @@ Astro can consume Markdown, but this pipeline deliberately does not. It loads
 per-page `ExportBlock[]` documents and assets from a versioned publication
 bundle and maps blocks and macros to trusted Astro components.
 
-V1 is a world-class publishing experience rather than a bare HTML proof. It
-ships a stable multi-theme contract, at least two first-party themes, a
-project-owned theme adapter, and required Pagefind-powered client-side search
-with accessible keyboard UI, facets, metadata, multilingual indexes, and
-offline static operation.
+V1 is a world-class publishing experience rather than a bare HTML proof. Its
+first supported experience is an atlcli adapter for Astro Starlight, with a
+stable theme/experience contract that allows further implementations without
+claiming arbitrary Astro-catalog compatibility. V1 also requires
+Pagefind-powered client-side search, installable PWA/offline operation,
+production navigation/SEO/i18n/media/code quality, optional privacy-respecting
+analytics, and an optional provider-validated Confluence edit link.
 
 The architecture is:
 
@@ -41,7 +43,7 @@ Confluence Cloud ADF / Data Center Storage
        -> first implementation: Astro integration + content loader
   -> static site candidate + private StaticPublicationManifestV1
   -> verification
-  -> future deployment adapter (not in this MVP)
+  -> future deployment adapter (not in this V1)
 ```
 
 Acquisition reads the complete selected page bodies and referenced assets. Raw
@@ -88,7 +90,7 @@ Every component renderer declares one of three levels:
 2. `island`: statically rendered markup plus an allowlisted client component
    with frozen, validated bundle data; and
 3. `live`: request-time or remote-data rendering, explicitly unsupported in
-   this static MVP.
+  this static V1.
 
 This makes structured Confluence content more capable than a Markdown
 snapshot. Examples:
@@ -133,8 +135,8 @@ The configuration selects:
 - strict or explicitly partial completeness;
 - route, macro, asset, active-content, and island policies;
 - publication workspace and retention policy;
-- Astro project, base path, URL profile, theme/tokens, search, and build script;
-  and
+- Astro project, base path, URL profile, Starlight/theme options, search,
+  SEO/i18n/media/code, PWA/offline, analytics, edit link, and build script; and
 - local output and private manifest locations.
 
 The build command is executed as an executable plus argument vector with
@@ -205,16 +207,29 @@ in place.
 7. Resolve internal page links, anchors, assets, navigation, breadcrumbs, and
    removals deterministically.
 8. Provide a builder-neutral contract and an Astro 7.1 implementation.
-9. Support multiple versioned themes with a stable capability, slot, token,
-   component-override, and accessibility contract.
+9. Ship Starlight as the first supported publishing experience and prove a
+   versioned capability, slot, token, component-override, and accessibility
+   contract through which further themes can be added.
 10. Ship world-class static client-side search in V1, including keyboard-first
     UI, facets, metadata, multilingual indexing, and nested-base support.
-11. Support trusted static renderers and opt-in client islands with frozen data.
-12. Fail closed on incomplete acquisition, unsafe active content, route/output
+11. Ship production information architecture: responsive tree navigation,
+    breadcrumbs, page TOC, previous/next, related pages, label landing pages,
+    deep-link actions, and a searchable 404 experience.
+12. Ship SEO/discovery output: canonical and alternate-language links,
+    sitemap, robots policy, OpenGraph/social metadata, JSON-LD, and optional
+    RSS/Atom change feeds.
+13. Ship locale-aware routes/UI/search plus responsive images, self-hosted
+    fonts, technical code presentation, and explicit performance budgets.
+14. Ship installable PWA/offline support whose cache and update model is bound
+    to the exact verified build and includes the final Pagefind index.
+15. Support optional privacy-respecting analytics and an optional trusted
+    Confluence edit link without making either a publication prerequisite.
+16. Support trusted static renderers and opt-in client islands with frozen data.
+17. Fail closed on incomplete acquisition, unsafe active content, route/output
     collisions, XSS, SSRF, path traversal, and secret/private-URL leakage.
-13. Verify the final static artifact, including theme and search output, not
-    only serializer inputs.
-14. Leave DOCX/PDF export, Markdown sync, and DOCX import behavior unchanged.
+18. Verify the final static artifact, including Starlight, search, SEO, PWA,
+    analytics, and edit-link output, not only serializer inputs.
+19. Leave DOCX/PDF export, Markdown sync, and DOCX import behavior unchanged.
 
 ## 5. Non-goals
 
@@ -229,12 +244,16 @@ in place.
 - executing source-provided Astro/MDX/JavaScript, arbitrary components, CSS, or
   raw HTML;
 - generating a new customer Astro project as the only supported integration;
+- promising that arbitrary themes from Astro's catalog satisfy the atlcli
+  publishing contract without an explicit adapter and conformance proof;
 - promising incremental Astro output builds: only acquisition/normalization is
   incremental in V1;
 - requiring a hosted search service, crawler, account, or runtime backend for
   the V1 search baseline;
 - automatic publication-permission inference beyond what Confluence APIs can
   prove;
+- accepting arbitrary analytics scripts, arbitrary event payloads, cookies,
+  fingerprinting, or unredacted search-query telemetry;
 - browser/extension/Forge execution of the Node-only Astro build; and
 - calling Astro's server deployment integration an atlcli static builder.
 
@@ -345,7 +364,8 @@ materially, stop and update this plan before runtime edits.
 `@atlcli/web-publish` is the public, mostly isomorphic core:
 
 - versioned project, refresh-plan, bundle, page, route, link, asset, renderer,
-  theme, search, build, manifest, report, and issue contracts;
+  experience/theme, search, SEO, PWA, analytics, edit-link, build, manifest,
+  report, and issue contracts;
 - route registry and diff planning;
 - canonical digest and bundle validation;
 - link/anchor/output-path planning;
@@ -357,11 +377,14 @@ materially, stop and update this plan before runtime edits.
 
 - default Astro integration factory;
 - named build-time content loader;
-- trusted default route, layouts, block components, styles, themes, and islands;
-- a theme-package contract with at least two first-party reference themes and a
-  validated project-owned theme adapter;
+- trusted route, layouts, block components, styles, and islands;
+- a first-class Starlight experience adapter plus a theme/experience contract
+  and non-shipped conformance fixture for future implementations;
 - a post-build Pagefind indexer plus theme-neutral accessible search components;
-- Astro config/route/build/search hooks and output manifest production;
+- sitemap/SEO/i18n/media/font/code capabilities;
+- PWA manifest/service-worker/offline generation after Pagefind;
+- optional analytics and Confluence edit-link components; and
+- Astro config/route/build/search/PWA hooks and output manifest production;
 - peer dependency `astro >=7.1.0 <8`, Node `>=22.12.0`;
 - no embedded second Astro and no private Astro/Vite API contract.
 
@@ -422,8 +445,14 @@ interface PublicationProjectV1 {
   macros: PublicationMacroPolicyV1;
   assets: PublicationAssetPolicyV1;
   renderers: PublicationRendererPolicyV1;
-  theme: PublicationThemeSelectionV1;
+  experience: PublicationExperienceSelectionV1;
   search: PublicationSearchOptionsV1;
+  seo: PublicationSeoOptionsV1;
+  i18n: PublicationI18nOptionsV1;
+  media: PublicationMediaOptionsV1;
+  pwa: PublicationPwaOptionsV1;
+  analytics: PublicationAnalyticsOptionsV1;
+  editLink: PublicationEditLinkOptionsV1;
   builder: AstroPublicationBuilderOptionsV1;
   retention: PublicationRetentionPolicyV1;
   activeBundleDigest?: string;
@@ -630,27 +659,28 @@ The integration uses only documented hooks:
   manifest outside the public output root.
 
 It may use `astro:config:setup` only for a documented route/virtual-module,
-theme, search, or asset plugin. It must not depend on Astro/Vite private
+experience, search, PWA, or asset plugin. It must not depend on Astro/Vite private
 internals.
 
 ### 9.7 Theme and search contracts
 
-Themes are trusted installed code selected by the operator, never by source
-content:
+Publishing experiences/themes are trusted installed code selected by the
+operator, never by source content. Astro Starlight is the first concrete V1
+implementation; the contract stays neutral enough for later adapters:
 
 ```ts
-interface PublicationThemeDescriptorV1 {
-  schema: "atlcli.publication-theme/1";
+interface PublicationExperienceDescriptorV1 {
+  schema: "atlcli.publication-experience/1";
   id: string;
   version: string;
   engine: "astro";
-  capabilities: readonly PublicationThemeCapabilityV1[];
-  slots: readonly PublicationThemeSlotV1[];
+  capabilities: readonly PublicationExperienceCapabilityV1[];
+  slots: readonly PublicationExperienceSlotV1[];
   designTokensSchema: string;
-  components: PublicationThemeComponentsV1;
+  components: PublicationExperienceComponentsV1;
 }
 
-type PublicationThemeCapabilityV1 =
+type PublicationExperienceCapabilityV1 =
   | "responsive-navigation"
   | "light-dark-system"
   | "search-modal"
@@ -661,22 +691,32 @@ type PublicationThemeCapabilityV1 =
   | "previous-next"
   | "chart-islands"
   | "i18n"
-  | "print-styles";
+  | "print-styles"
+  | "seo"
+  | "pwa-offline"
+  | "analytics-slot"
+  | "edit-link";
 ```
 
-V1 ships at least two visually and structurally distinct first-party reference
-themes: a feature-complete documentation/knowledge-base theme and a minimal
-content theme. It also supports a validated project-owned theme package through
-the same descriptor. A theme owns presentation but may not change source,
-route, search, security, or completeness semantics.
+V1 ships one supported atlcli Starlight experience. Starlight is an Astro
+documentation integration rather than a generic swappable skin, so the adapter
+owns the translation between publication contracts and Starlight's navigation,
+components, overrides, Pagefind, i18n, SEO, Expressive Code, and theme modes.
+One deliberately small non-shipped test experience implements the same
+descriptor to prove that the contract is not Starlight-private. Adding a second
+production theme is a later adapter, not a V1 shipping requirement.
+
+An experience owns presentation but may not change source, route, search,
+security, completeness, analytics, edit-link, or PWA ownership semantics.
 
 The stable customization surface is semantic slots, design tokens, and closed
 component overrides, not selectors into generated DOM. Required slots cover
 document head, header, primary navigation, left navigation, breadcrumbs,
 search trigger/modal, main content, page TOC, previous/next, footer, and
-renderer/island styling. Every theme must provide responsive behavior,
-keyboard/focus states, reduced-motion behavior, usable print styles, and a
-light/dark/system color mode or explicitly declare a single accessible mode.
+renderer/island styling. Starlight must provide responsive behavior,
+keyboard/focus states, reduced-motion behavior, usable print styles, and
+light/dark/system color modes. Future experiences must declare and satisfy the
+same capabilities they expose.
 
 V1 search is static and local-first, with Pagefind as the pinned first provider:
 
@@ -718,7 +758,182 @@ searchable.
 The provider contract may allow later Algolia/Typesense adapters, but V1 does
 not require a hosted provider, account, network crawler, or runtime secret.
 
-### 9.8 Static publication manifest
+### 9.8 Information architecture, SEO, i18n, media, and code
+
+The Starlight experience implements the complete V1 information architecture
+from the page graph rather than rediscovering it from rendered HTML:
+
+- responsive hierarchical sidebar with active/expanded state;
+- breadcrumbs, page-local heading TOC, and stable deep-link/copy-link actions;
+- deterministic previous/next within configured navigation order;
+- deterministic related pages derived from explicit links, shared labels, and
+  hierarchy, with explainable ranking and no network/AI dependency;
+- label/topic landing pages and space/root landing pages; and
+- a useful 404 page with Pagefind search and top-level navigation.
+
+```ts
+interface PublicationSeoOptionsV1 {
+  sitemap: true;
+  robots: "index" | "noindex";
+  canonical: true;
+  structuredData: readonly ("WebSite" | "TechArticle" | "BreadcrumbList")[];
+  socialCards: "metadata-only" | "generated";
+  feed: "disabled" | "rss" | "atom";
+}
+
+interface PublicationI18nOptionsV1 {
+  defaultLocale: string;
+  locales: readonly string[];
+  routeMode: "prefix-all" | "hide-default";
+  fallback: Readonly<Record<string, string>>;
+  uiTranslations: "starlight" | Readonly<Record<string, string>>;
+}
+
+interface PublicationMediaOptionsV1 {
+  images: "verified-original" | "astro-responsive";
+  formats: readonly ("original" | "avif" | "webp")[];
+  fonts: "system" | "vendored-local";
+  imageZoom: boolean;
+  code: "expressive-code";
+}
+```
+
+Production `site` is required when canonical URLs, sitemap, feeds, or generated
+social cards are enabled. Public/indexable builds emit canonical URLs,
+alternate-language links, sitemap, intentional robots policy, OpenGraph/social
+metadata, and allowlisted JSON-LD. Internal or explicit `noindex` builds do not
+accidentally advertise tenant-derived routes. Feed entries use only canonical
+public metadata and sanitized summaries; publication timestamps and source
+revision timestamps remain distinct.
+
+Locale is explicit page/config metadata, never guessed from arbitrary text.
+Astro i18n route helpers and Pagefind language partitions consume the same
+locale map. Each page emits correct `lang` and `dir`; locale fallback and
+untranslated-page behavior are visible and tested. Route, `base`, format,
+canonical, alternate, sitemap, feed, and search URLs share one URL planner.
+
+The responsive image mode uses Astro's stable image pipeline only for verified
+safe image inputs and preserves a direct original/download path. Dimensions,
+alt text, lazy/eager policy, formats, variants, and transformation budgets are
+manifested. Fonts are system fonts or vendored local bytes; an offline build
+must not contact a font provider. Theme font/image choices participate in the
+build digest and performance budgets.
+
+Expressive Code is the V1 code presentation for the Starlight experience:
+copy, wrap, language label, optional filename/caption, line highlighting, and
+theme-aware output are supported from a normalized code model. Source content
+cannot inject Expressive Code configuration, plugins, CSS, or executable HTML.
+
+### 9.9 PWA and offline contract
+
+PWA/offline support is a V1 requirement for the hosted directory profile. The
+portable-file profile remains independently usable but cannot claim PWA
+installation because service workers require an origin/secure context.
+
+```ts
+interface PublicationPwaOptionsV1 {
+  enabled: true;
+  strategy: "inject-manifest";
+  update: "prompt";
+  precache: "shell-search-and-pages" | "shell-search-and-recent";
+  offlineFallbackRoute: string;
+  maxPrecacheBytes: number;
+  maxAttachmentBytes: number;
+}
+```
+
+The normative production order is:
+
+```text
+Astro static output
+  -> Pagefind index
+  -> complete owned-output inventory
+  -> Web App Manifest + service-worker precache injection
+  -> offline/update verification
+  -> StaticPublicationManifestV1
+```
+
+The implementation uses a pinned `@vite-pwa/astro`/Workbox toolchain only
+through supported APIs. Task 0 must prove that Pagefind shards and all required
+route/theme assets exist before precache injection; if the integration hook
+order cannot guarantee this, PWA generation becomes an explicit post-Astro
+builder stage rather than silently omitting search.
+
+The cache namespace includes publication key and build digest. The default is a
+prompted update so one browsing session cannot silently mix old HTML with new
+search/assets. Activation validates the new manifest before deleting outdated
+caches. The service worker caches only same-origin files owned by the verified
+manifest; it never caches Confluence edit/view URLs, analytics endpoints,
+credentials, private diagnostics, raw bundles, or blocked attachments.
+
+Pagefind uses the build digest as its metadata cache tag. Large downloads are
+runtime-cached only under an explicit bounded policy and are excluded by
+default. The manifest defines install icons, display/name/colors, start URL,
+scope, and offline fallback from trusted project/theme assets. V1 proves first
+install, offline reload/navigation/search, old-to-new update, interrupted
+update, stale-cache cleanup, quota pressure, base path, multi-tab, and complete
+unregister/cleanup behavior.
+
+### 9.10 Analytics and Confluence edit-link contracts
+
+Analytics is optional and disabled by default:
+
+```ts
+type PublicationAnalyticsOptionsV1 =
+  | { provider: "none" }
+  | {
+      provider: "plausible";
+      endpoint: string;
+      siteDomain: string;
+      scriptOrigin: string;
+      pageviews: true;
+      events: readonly ("outbound-link" | "download" | "search-open")[];
+      respectDoNotTrack: true;
+      searchTerms: false;
+    };
+```
+
+Plausible is the first optional provider because it supports cookie-free client
+analytics and self-hosted/custom endpoints. “Privacy-respecting” is a bounded
+technical configuration, not a legal-compliance claim: the operator remains
+responsible for deployment jurisdiction, notices, server logs, and local law.
+
+The adapter accepts only a closed event allowlist and data schema. It strips
+query/fragment values, source IDs, Confluence URLs, page titles, user/account
+data, and arbitrary event properties. Search terms are never collected in V1;
+offline analytics events are dropped rather than persisted or replayed. The
+site remains fully functional when the endpoint/script is blocked. External
+origins participate in CSP/privacy reports and must be explicitly allowlisted.
+
+The edit link is also optional and disabled by default, especially for public
+sites:
+
+```ts
+type PublicationEditLinkOptionsV1 =
+  | { provider: "none" }
+  | {
+      provider: "confluence";
+      label: string;
+      placement: "page-footer" | "page-actions";
+      visibility: "internal" | "all";
+      fallback: "open-page" | "omit";
+    };
+```
+
+Cloud uses the provider-returned `_links.editui`; Data Center uses its returned
+edit relation. The source adapter resolves the link against the trusted
+tenant/base URL, rejects cross-origin/unsafe targets, and records only the
+operator-approved action link. It must not synthesize undocumented editor URLs.
+If the edit relation is absent or unsafe, policy either falls back to the
+validated page `webui` link with truthful “Open in Confluence” copy or omits the
+action and reports a note.
+
+Edit links are excluded from Pagefind, related-page ranking, sitemap/feed/JSON-
+LD, PWA caching, and analytics payloads. The UI must distinguish leaving the
+published site, and public enablement requires an explicit tenant-disclosure
+acknowledgement.
+
+### 9.11 Static publication manifest
 
 ```ts
 interface StaticPublicationManifestV1 {
@@ -732,8 +947,14 @@ interface StaticPublicationManifestV1 {
   outputProfile: "directory" | "portable-file";
   pages: readonly BuiltPageV1[];
   assets: readonly BuiltAssetV1[];
-  theme: { id: string; version: string; digest: string };
+  experience: { id: string; version: string; digest: string };
   search: BuiltSearchIndexV1;
+  seo: BuiltSeoArtifactsV1;
+  pwa:
+    | BuiltPwaArtifactsV1
+    | { state: "not-applicable"; reason: "portable-file" };
+  analytics: BuiltAnalyticsDeclarationV1;
+  editLinks: BuiltEditLinkSummaryV1;
   removedOwnedPaths: readonly string[];
   verification: PublicationVerificationSummaryV1;
   buildDigest: string;
@@ -791,9 +1012,9 @@ content-addressed bytes. Duplicate bytes are stored once even when filenames
 differ.
 
 The Astro integration emits or stages assets without mutating the user's
-handwritten `public/` tree. Arbitrary downloads preserve bytes. Supported image
-optimization may be a later explicit mode; the V1 default copies verified
-bytes and never requires runtime `/_image` URLs.
+handwritten `public/` tree. Arbitrary downloads preserve bytes. V1 defaults to
+copying verified originals and also supports an explicit bounded
+`astro-responsive` mode; neither mode may require runtime `/_image` URLs.
 
 Missing or blocked assets produce a deterministic placeholder and issue.
 Whether that blocks a strict publication depends on issue severity and policy;
@@ -807,20 +1028,24 @@ integration contributes:
 
 - a configurable publication route prefix;
 - a trusted default catch-all route enumerated by `getStaticPaths()`;
-- a closed component registry and at least two first-party accessible themes;
-- a validated project-owned theme adapter with capability negotiation;
+- a closed component registry and the supported atlcli Starlight experience;
+- a validated experience-adapter contract with capability negotiation and a
+  deliberately non-shipped conformance fixture;
 - bundle-backed content collection entries; and
-- post-build Pagefind indexing, theme-owned accessible search UI slots, and
-  private build-manifest production.
+- generated information architecture, SEO/i18n/media/code capabilities;
+- post-build Pagefind indexing followed by PWA/offline generation;
+- optional privacy-respecting analytics and Confluence edit-link slots; and
+- private build-manifest production.
 
-Theme selection is project configuration. Confluence pages and macro data
-cannot choose packages, component imports, arbitrary CSS, or scripts. Switching
-themes must not change canonical routes, page identity, indexed content, link
-targets, completeness, or asset trust. Theme ID/version/config and generated
-CSS/JS participate in the build digest.
+Experience selection is project configuration. Confluence pages and macro data
+cannot choose packages, component imports, arbitrary CSS, or scripts. Replacing
+the Starlight adapter with a future conforming experience must not change
+canonical routes, page identity, indexed content, link targets, completeness,
+or asset trust. Experience ID/version/config and generated CSS/JS participate
+in the build digest.
 
-The Pagefind baseline is required in every first-party V1 theme. A custom theme
-must either implement the standard search trigger/modal/page slots or fail
+The Pagefind baseline is required in the Starlight V1 experience. A future
+experience must implement the declared search trigger/modal/page slots or fail
 capability validation before build; silently losing search is not allowed.
 
 The integration rejects rather than silently rewrites incompatible
@@ -836,9 +1061,13 @@ The first real build matrix is:
 | nested static host | `/docs` | directory/always | base-aware links/assets |
 | portable file host | `/docs` | file/never | `/guide.html` and matching links |
 
-Every case is built with both first-party themes and search enabled. The matrix
-also covers a project-owned theme adapter, multilingual pages, label/space
-facets, keyboard navigation, deep-link result URLs, deleted-page removal, and
+Every case is built with the Starlight experience and search enabled. The two
+directory cases require PWA installation/offline proof; the portable-file case
+records PWA as not applicable. A small non-shipped conformance experience proves
+that route, content, search, security, and manifest contracts are not
+Starlight-private. The matrix also covers multilingual pages, label/space
+facets, keyboard navigation, deep-link result URLs, deleted-page removal,
+optional analytics/edit-link modes, offline navigation/search, and
 JavaScript-disabled graceful degradation to normal site navigation.
 
 Astro's static redirect output cannot promise HTTP redirect status codes.
@@ -862,12 +1091,20 @@ provider.
 | static chart | supported | SVG/HTML visual/a11y proof |
 | interactive chart island | opt-in V1 target | JS-on/off, CSP, payload proof |
 | live/request-time chart | deferred | explicitly unsupported |
-| first-party themes | at least docs + minimal | two-theme artifact/a11y/visual proof |
-| project-owned theme | supported contract | capability/slot/negative fixture proof |
-| light/dark/system + responsive | V1 theme requirement | keyboard/mobile/contrast proof |
+| Starlight experience | required V1 baseline | packed artifact/a11y/visual proof |
+| future experience adapters | supported contract | non-shipped capability/slot/negative conformance fixture |
+| light/dark/system + responsive | V1 experience requirement | keyboard/mobile/contrast proof |
 | Pagefind client search | required V1 baseline | production index + browser E2E |
 | search facets/metadata | label/space/type/language | result/facet correctness proof |
 | multilingual search | supported | language-partition/stemming/UI proof |
+| navigation/TOC/related/404 | required V1 baseline | route graph + browser/a11y proof |
+| SEO/sitemap/social/structured data | required for public builds | artifact-schema/link proof |
+| i18n/locale routing | supported V1 baseline | locale/RTL/hreflang/search proof |
+| responsive images/local fonts | supported and offline-safe | transform/inventory/network proof |
+| Expressive Code | required Starlight code renderer | hostile-input/a11y/visual proof |
+| PWA/offline | required for directory profile | install/offline/update/cache E2E |
+| privacy-respecting analytics | optional, off by default | allowlist/redaction/blocked-network proof |
+| Confluence edit link | optional, off by default | Cloud/DC relation/origin/exclusion proof |
 | hosted search provider | optional future adapter | deferred, not required |
 | local static build | supported | packed Astro production build |
 | remote deployment | deferred | no shipped claim |
@@ -888,11 +1125,12 @@ T0 Contract/security/Astro spike
 ├── T3 Web target and per-page macros
 └── T4 Astro 7.1 loader/integration spike
 T1 + T2 + T3 ──> T5 Refresh, assets and immutable bundle
-T2 + T3 + T4 ──> T6 Trusted renderers, themes and charts
-T2 + T4 + T5 + T6 ──> T7 Astro builder, Pagefind and output manifest
-T5 + T7 ──> T8 CLI lifecycle and verification
-T8 ──> T9 Package/API/consumer/CI gates
-T9 ──> T10 Docs and real provider proof
+T2 + T3 + T4 ──> T6 Starlight experience, renderers and charts
+T2 + T4 + T5 + T6 ──> T7 Static output, discovery and web quality
+T7 ──> T8 PWA/offline, analytics and Confluence edit link
+T5 + T7 + T8 ──> T9 CLI lifecycle and verification
+T9 ──> T10 Package/API/consumer/CI gates
+T10 ──> T11 Docs and real provider proof
 ```
 
 ## 14. Checkable implementation tasks
@@ -912,26 +1150,42 @@ T9 ──> T10 Docs and real provider proof
       that source data cannot select/import a component.
 - [ ] Spike a trusted static chart and an opt-in island over one frozen,
       schema-validated model; verify useful JS-disabled fallback.
-- [ ] Build the same bundle with two structurally distinct theme fixtures and
-      freeze semantic slots, tokens, capability negotiation, and override rules.
+- [ ] Build the same bundle with the supported Starlight experience and one
+      deliberately small non-shipped conformance experience; freeze semantic
+      slots, tokens, capability negotiation, and override rules without
+      promising arbitrary Astro-theme compatibility.
 - [ ] Run a pinned Pagefind proof after the nested-base Astro build; prove
       keyboard search, facets, multilingual partitioning, route correctness,
       deleted-page removal, offline behavior, and deterministic index inventory.
+- [ ] Prove the final production order `Astro -> Pagefind -> PWA injection` so
+      the service worker inventories the complete search index. If supported
+      Astro integration hooks cannot guarantee it, freeze an explicit
+      post-Astro PWA stage.
+- [ ] Prove Starlight navigation, breadcrumbs, TOC, previous/next, label/root
+      landing pages, related pages, 404 search, SEO artifacts, locale/RTL,
+      responsive images, vendored fonts, and Expressive Code on representative
+      content before treating them as committed V1 capabilities.
+- [ ] Prove optional analytics with its endpoint blocked and with hostile URL
+      data, plus Cloud/DC provider-returned edit relations and unsafe-origin
+      rejection; freeze the no-search-term/no-offline-replay rules.
 - [ ] Decide whether durable publish jobs are required in V1. Default to direct
       serializable runs; create `@atlcli/publish-jobs` only with an evidenced
       recovery/scheduling requirement.
 - [ ] Freeze route, active-attachment, strict/partial, macro freshness, island,
-      theme, search, output, workspace, and retention policies.
+      experience, search, SEO/i18n/media/code, PWA, analytics, edit-link, output,
+      workspace, and retention policies.
 - [ ] Record a threat model for ADF/Storage/macro input, remote assets, bundle
       paths, Astro build, islands, output directory, and future deployment.
 - [ ] STOP and re-plan if Astro needs source-derived code, a networked loader,
       private APIs, unbounded output, or cannot render a complete accessible
       static fallback.
 
-Acceptance: the spike produces a bounded, searchable static directory and
-private manifest offline, with two themes, nested-base links, facets, keyboard
-search, and hostile content remaining inert. No production package contract is
-frozen until this gate passes.
+Acceptance: the spike produces a bounded, searchable, installable Starlight
+static directory and private manifest, with nested-base links, facets, keyboard
+and offline search, PWA update proof, SEO/i18n/media/code output, optional
+analytics/edit-link modes, and hostile content remaining inert. The non-shipped
+experience fixture proves adapter neutrality. No production package contract
+is frozen until this gate passes.
 
 ### T1 — Expose the Confluence page graph before document composition
 
@@ -957,8 +1211,9 @@ existing export behavior remains regression-green.
       browser-safe default entry point, Node filesystem subpath, README, API
       report, and closure report.
 - [ ] Implement and validate the versioned contracts from section 9.
-- [ ] Implement theme descriptor/selection, capability negotiation, semantic
-      slot, design-token, component-override, and search-provider contracts.
+- [ ] Implement experience descriptor/selection, capability negotiation,
+      semantic slot, design-token, component-override, search-provider,
+      SEO/i18n/media/code, PWA, analytics, and edit-link contracts.
 - [ ] Extract shared page-link resolution from `compose-document.ts`; keep its
       existing truth table unchanged.
 - [ ] Implement stable route registry, custom routes, tombstones, safe slugs,
@@ -1011,10 +1266,16 @@ inputs, and does not alter existing export targets.
       prerendering/collision behavior in documented integration hooks.
 - [ ] Define an optional trusted user layout entrypoint and ensure content
       cannot influence module resolution.
-- [ ] Load only installed operator-selected theme descriptors; validate required
-      capabilities/slots and include theme/version/config in the build key.
+- [ ] Load only installed operator-selected experience descriptors; validate
+      required capabilities/slots and include experience/version/config in the
+      build key.
+- [ ] Implement the Starlight adapter only through supported Starlight/Astro
+      configuration, plugin, component-override, and integration surfaces.
 - [ ] Reserve collision-safe owned paths for Pagefind output and expose the
-      standard theme search slots without coupling the loader to one theme.
+      standard experience search slots without coupling the loader to
+      Starlight-private DOM.
+- [ ] Reserve and validate owned manifest/service-worker/icon/offline paths and
+      the documented Pagefind-to-PWA post-build ordering seam.
 - [ ] Write the private output manifest outside the public output root.
 - [ ] Keep programmatic Astro APIs and experimental collection storage out of
       public contracts.
@@ -1050,7 +1311,7 @@ Acceptance: unchanged deterministic pages/assets are reused; changed and live
 dependencies refresh; removed content is acted on only with authoritative proof;
 the active bundle is always complete and digest-valid.
 
-### T6 — Build exhaustive trusted renderers, themes, and chart capabilities
+### T6 — Build the Starlight experience, trusted renderers, and charts
 
 - [ ] Implement trusted Astro components for every `ExportBlock` and inline
       discriminator with compile-time exhaustiveness.
@@ -1060,33 +1321,35 @@ the active bundle is always complete and digest-valid.
 - [ ] Use Astro escaping by default; expose no caller/raw-string `set:html` API.
 - [ ] Implement a closed renderer registry with versioned descriptors and
       schema-validated payloads.
-- [ ] Implement the versioned theme runtime and semantic slots without exposing
-      generated-DOM selectors as a compatibility contract.
-- [ ] Ship feature-complete documentation/knowledge-base and minimal-content
-      reference themes with responsive navigation, breadcrumbs, page TOC,
-      previous/next, search slots, dark/light/system modes, print styles, and
-      accessible design-token defaults.
-- [ ] Implement and validate a project-owned theme adapter; source content may
-      never select or parameterize component/module imports.
+- [ ] Implement the versioned experience runtime and semantic slots without
+      exposing generated-DOM selectors as a compatibility contract.
+- [ ] Ship one feature-complete atlcli Starlight experience with responsive
+      hierarchical navigation, breadcrumbs, page TOC, previous/next, search
+      slots, related pages, landing pages, deep-link actions, useful 404,
+      dark/light/system modes, print styles, and accessible token defaults.
+- [ ] Implement Starlight configuration, component overrides, and Expressive
+      Code mapping without forking Starlight or depending on generated DOM.
+- [ ] Implement a deliberately small non-shipped experience adapter fixture;
+      source content may never select or parameterize component/module imports.
 - [ ] Implement accessible static chart SVG/HTML from normalized chart data.
 - [ ] Implement the optional chart island with frozen data, explicit opt-in,
       byte/row/node limits, no network/auth access, and static fallback.
 - [ ] Prove CSP, no event-handler/script/CSS injection, unsafe URL rejection,
       SVG safety, and no opaque datasource/provenance serialization.
 - [ ] Prove keyboard/screen-reader semantics and meaningful JS-disabled output.
-- [ ] Prove both themes at mobile/desktop widths, high zoom, forced colors,
-      reduced motion, light/dark/system modes, print, long titles, deep trees,
-      RTL-safe layout, and custom tokens.
+- [ ] Prove Starlight plus the adapter conformance fixture at mobile/desktop
+      widths, high zoom, forced colors, reduced motion, light/dark/system modes,
+      print, long titles, deep trees, RTL-safe layout, and custom tokens.
 - [ ] Add deterministic semantic goldens and browser DOM/a11y tests rather than
       brittle full Astro HTML/CSS whitespace snapshots.
 - [ ] STOP if source content can become executable code, disabled JS loses the
       represented information, or unsupported blocks disappear silently.
 
-Acceptance: the all-fields fixture renders safely and accessibly in both
-first-party themes and one custom-theme fixture; chart output works statically
-and the optional island adds only bounded client interaction.
+Acceptance: the all-fields fixture renders safely and accessibly in Starlight;
+the non-shipped experience fixture proves the neutral adapter contract; chart
+output works statically and the optional island adds only bounded interaction.
 
-### T7 — Build static output, Pagefind search, and a private manifest
+### T7 — Build static output, discovery, and production web quality
 
 - [ ] Implement a builder adapter over immutable bundle + trusted Astro project;
       do not expose Astro's experimental programmatic API publicly.
@@ -1103,25 +1366,89 @@ and the optional island adds only bounded client interaction.
 - [ ] Exclude navigation chrome, private diagnostics, partial/hidden pages,
       redirects, and deleted pages; never index raw bundle/source data.
 - [ ] Treat result excerpts safely and prove that indexed hostile text cannot
-      become executable markup in either theme.
+      become executable markup in Starlight or the conformance experience.
 - [ ] Enforce measured search-index, initial-JS, query-latency, and memory
       budgets on small, representative, and large deterministic corpora.
+- [ ] Generate the complete navigation model, deterministic related-page
+      ranking, root/space/label landing pages, breadcrumbs, page TOC,
+      previous/next, deep-link actions, and searchable 404 from the page graph.
+- [ ] Generate canonical and alternate-language links, intentional robots
+      policy, sitemap, OpenGraph/social metadata, allowlisted JSON-LD, and
+      optional RSS/Atom from the shared route/locale planner.
+- [ ] Implement explicit locale metadata, localized routes/UI/search, language
+      fallback, correct `lang`/`dir`, RTL, and canonical/hreflang consistency.
+- [ ] Implement verified-original and bounded Astro-responsive image modes,
+      original download links, local/system fonts, and no remote font runtime.
+- [ ] Implement the normalized Expressive Code surface with copy, wrap,
+      language label, filename/caption, highlights, and hostile-input proof.
+- [ ] Enable base-aware prefetch only for verified same-origin routes; allow
+      native cross-document view transitions as progressive enhancement but do
+      not make Starlight's client router or SPA state a correctness dependency.
+- [ ] Set and gate budgets for critical CSS, initial JS, fonts, transformed
+      images, LCP, CLS, navigation, and search interaction.
 - [ ] Inventory every generated page/asset/output path and reject unexplained or
       escaping output.
-- [ ] Produce `StaticPublicationManifestV1` with bundle, builder, Astro,
-      project/config/lockfile, theme, route/asset, Pagefind index, and normalized
-      output digests.
+- [ ] Produce the pre-PWA manifest inventory with bundle, builder, Astro,
+      project/config/lockfile, experience, route/asset, Pagefind, SEO/i18n/media,
+      and normalized output digests.
 - [ ] Prove a build with network disabled and no runtime `/_image` or private
       Confluence dependencies.
 - [ ] Prove cold/warm builds of one bundle yield equivalent semantic manifests.
 - [ ] STOP on mixed old/new output, source-derived build modules, ambient repo
       docs config, unexpected executable JS, or an unbounded output inventory.
 
-Acceptance: a verified, themed, searchable local static candidate and private
-exact manifest are produced from the bundle without any Confluence access or
-hosted search service.
+Acceptance: a Starlight candidate with complete information architecture,
+search, SEO/discovery, i18n, media, code, and performance proof is produced
+from the bundle without Confluence access or a hosted search service; its exact
+pre-PWA inventory is ready for the final offline stage.
 
-### T8 — Add CLI lifecycle, reports, and artifact verification
+### T8 — Add PWA/offline, analytics, and Confluence edit links
+
+- [ ] Pin `@vite-pwa/astro` and Workbox versions and use documented
+      `injectManifest`/Astro integration surfaces only.
+- [ ] Generate a trusted Web App Manifest with base-aware scope/start URL,
+      install names, display/colors, and locally verified icon assets.
+- [ ] Generate the service worker only after Astro and Pagefind output are
+      complete; inject an owned, digest-verified precache inventory including
+      the selected page/search/offline assets.
+- [ ] Namespace caches by publication key and build digest; use prompted updates
+      and prove no browsing session mixes old HTML, search, assets, or code.
+- [ ] Add a useful offline fallback and bounded policies for full-page versus
+      recent-page precache, large downloads, quota exhaustion, and same-origin
+      runtime caching.
+- [ ] Exclude Confluence URLs, analytics endpoints, private manifests/bundles,
+      credentials, diagnostics, and blocked attachments from every cache.
+- [ ] Prove install, reload, navigation and Pagefind search offline; interrupted
+      and multi-tab update; stale-cache cleanup; nested base; quota pressure;
+      and complete service-worker unregister/cache cleanup.
+- [ ] Implement analytics as `none` by default and a closed optional Plausible
+      adapter with explicit endpoint/origin, pageviews, and allowlisted events.
+- [ ] Strip query/fragment, title, source ID, Confluence URL, account data, and
+      arbitrary properties; never collect search terms or persist/replay events
+      offline; respect Do Not Track as configured.
+- [ ] Prove blocking the analytics script/endpoint cannot affect content,
+      navigation, search, PWA, accessibility, or verification; emit an exact CSP
+      and privacy declaration for enabled external origins.
+- [ ] Implement the optional Confluence action from provider-returned Cloud
+      `_links.editui` and Data Center edit relations; resolve only against the
+      trusted tenant/base origin and never synthesize editor URLs.
+- [ ] Implement validated `webui` fallback with truthful “Open in Confluence”
+      copy or omission, internal/all visibility, placement, and explicit public
+      tenant-disclosure acknowledgement.
+- [ ] Exclude edit URLs/actions from Pagefind, related ranking, sitemap, feeds,
+      JSON-LD, PWA caches, and analytics payloads.
+- [ ] Finalize `StaticPublicationManifestV1` with PWA files/cache policy,
+      analytics declaration, edit-link summary, and exact final output digests.
+- [ ] STOP on incomplete precache inventory, silent update, offline analytics
+      replay, source-controlled event data, synthesized/cross-origin edit URL,
+      or any private/provider URL leaking to unrelated public artifacts.
+
+Acceptance: the directory profile is installable and its exact verified build,
+including Pagefind, works and updates safely offline. Analytics and Confluence
+edit links remain optional/off-by-default, narrowly configured, privacy-bounded,
+and unable to weaken content, search, caching, or origin security.
+
+### T9 — Add CLI lifecycle, reports, and artifact verification
 
 - [ ] Add `wiki publish plan|refresh|build|verify|run|status|prune` command
       routing, help, JSON output, and shell completion.
@@ -1134,6 +1461,9 @@ hosted search service.
 - [ ] Verify manifest ownership, expected route/file set, internal links,
       anchors, images/downloads, base mapping, hashes, CSP/active content,
       secret/private URLs, and absence of bundle-internal references.
+- [ ] Verify Starlight capability declarations, Pagefind/SEO/i18n/media output,
+      Web App Manifest/service-worker/precache consistency, analytics
+      declarations, and edit-link origins/exclusions.
 - [ ] Fail on non-empty/unowned output targets; use sibling staging plus
       recoverable promotion for replacement.
 - [ ] Report `bundle-ready`, `built`, and `verified`; never `deployed`.
@@ -1145,7 +1475,7 @@ hosted search service.
 Acceptance: the four-stage journey is independently repeatable and `run`
 orchestrates it without hiding the plan, bundle, build, or verification digest.
 
-### T9 — Prove packages, consumers, hosts, and required CI
+### T10 — Prove packages, consumers, hosts, and required CI
 
 - [ ] Add API/closure reports and deliberate public-0.x classifications.
 - [ ] Add browser-build entry only for genuinely isomorphic web-publish core;
@@ -1157,18 +1487,23 @@ orchestrates it without hiding the plan, bundle, build, or verification digest.
 - [ ] Test Ubuntu Node 22.12/Astro 7.1.0, Ubuntu Node 24/latest 7.x, and Windows
       Node 24/Astro 7.1.0 path portability.
 - [ ] Add a production Astro publishing harness with Cloud ADF and DC Storage
-      synthetic fixtures, assets, links, macros, both first-party themes,
-      custom-theme adapter, Pagefind search/facets, chart static/island, and
-      strict/partial failures.
+      synthetic fixtures, assets, links, macros, Starlight, the non-shipped
+      experience conformance fixture, Pagefind search/facets, chart
+      static/island, and strict/partial failures.
 - [ ] Serve directory output with a directory-index server and portable-file
       output with a simple file server; crawl every route/link/asset.
 - [ ] Run Playwright with JS on/off, CSP, accessibility, offline/no-network,
-      privacy, and deterministic-manifest gates.
-- [ ] Exercise search by mouse and keyboard in every theme/profile: query,
+      PWA install/update/unregister, privacy, and deterministic-manifest gates.
+- [ ] Exercise search by mouse and keyboard in every output/experience fixture:
+      query,
       empty/no-result, excerpts, anchors, facets, language, Unicode/diacritics,
       large result sets, back/forward, deleted pages, and worker fallback.
-- [ ] Measure theme CSS/JS, island JS, search bootstrap/index shards, LCP/CLS,
-      search interaction latency, and accessibility budgets; gate regressions.
+- [ ] Exercise Cloud/DC edit relation present/missing/unsafe cases and analytics
+      disabled/enabled/blocked/redacted cases; assert no indexing/caching/event
+      leakage.
+- [ ] Measure experience CSS/JS, island JS, search bootstrap/index shards,
+      service-worker/precache size, responsive images/fonts, LCP/CLS, navigation
+      and search latency, and accessibility budgets; gate regressions.
 - [ ] Seed negative fixtures for route collision, path traversal, Node import in
       browser core, XSS, unsafe SVG, private URL, digest mismatch, and missing
       asset; prove each named gate fails.
@@ -1178,15 +1513,25 @@ orchestrates it without hiding the plan, bundle, build, or verification digest.
 Acceptance: packed real consumers, not source-only tests, prove both the
 browser-safe core and Node-only Astro boundary.
 
-### T10 — Documentation, real E2E, and delivery gates
+### T11 — Documentation, real E2E, and delivery gates
 
 - [ ] Add a task-focused Web Publishing guide, configuration reference,
-      theme authoring/migration guide, search/index/ranking guide,
+      experience-adapter authoring/migration guide, search/index/ranking guide,
       renderer/chart guide, security/privacy guide, operations/refresh/rollback
       guide, troubleshooting, examples, and related-topic links.
-- [ ] Document both first-party themes, the project-owned theme contract,
+- [ ] Document the supported Starlight experience and neutral adapter contract,
       tokens/slots/capabilities, Pagefind facets/metadata/languages, search
-      accessibility, index budgets, and hosted-provider extension boundary.
+      accessibility, index budgets, and future-experience boundary without
+      claiming arbitrary Astro-theme compatibility.
+- [ ] Document navigation/related-page rules, SEO/sitemap/social/feed controls,
+      i18n/RTL, responsive media/fonts, Expressive Code, prefetch/progressive
+      transitions, and performance budgets.
+- [ ] Document PWA installation, precache selection, updates, offline limits,
+      storage/quota, cleanup/unregister, and the portable-file limitation.
+- [ ] Document analytics as optional/off-by-default with its exact collected
+      fields, DNT/CSP/endpoint configuration and operator legal responsibility;
+      document edit-link visibility, fallback, origin validation, and public
+      tenant disclosure.
 - [ ] Document static vs. island vs. live capability and state clearly that
       deployment is deferred.
 - [ ] Document `.gitignore`, cache/bundle/build retention, reproducibility,
@@ -1195,8 +1540,8 @@ browser-safe core and Node-only Astro boundary.
       docs site's Astro theme as customer runtime.
 - [ ] Run focused tests, full `bun run test`, `bun run typecheck`, build,
       API/closure, browser, pack/consumer, docs, Astro production harness,
-      theme/search performance, link/a11y/security/privacy, and Windows path
-      gates.
+      Starlight/search/PWA performance, SEO/i18n/media, link/a11y/security/
+      privacy, analytics/edit-link, and Windows path gates.
 - [ ] Run required real read-only Cloud E2E with profile `mayflower`, space
       `DOCSY`, on representative page/tree/space content; build/inspect both URL
       profiles and abort/retry; keep private identifiers/artifacts out of Git.
@@ -1219,8 +1564,11 @@ needed. At minimum:
 bun run test packages/web-publish
 bun run test packages/web-publish-astro
 bun run test packages/confluence packages/export-macros packages/export-wiring
-bun run test:publish-themes
+bun run test:publish-experiences
 bun run test:publish-search
+bun run test:publish-seo
+bun run test:publish-pwa
+bun run test:publish-analytics-edit
 bun run typecheck
 bun run build
 bun run check:browser
@@ -1251,18 +1599,19 @@ Recommended implementation PR stack/commit boundaries:
 3. `feat(macros): add web publication target`
 4. `feat(publish): add cache and immutable bundle materialization`
 5. `feat(publish-astro): add Astro 7.1 loader and integration`
-6. `feat(publish-astro): add trusted renderers and theme contract`
-7. `feat(publish-astro): add Pagefind search and chart island`
-8. `feat(cli): add local web publishing lifecycle`
-9. `test(publish): add packed Astro and browser conformance gates`
-10. `docs(publish): document static web publishing`
+6. `feat(publish-astro): add Starlight experience and trusted renderers`
+7. `feat(publish-astro): add Pagefind, navigation, SEO and web quality`
+8. `feat(publish-astro): add PWA, analytics and Confluence edit links`
+9. `feat(cli): add local web publishing lifecycle`
+10. `test(publish): add packed Astro and browser conformance gates`
+11. `docs(publish): document static web publishing`
 
 Each boundary must keep existing DOCX/PDF and Markdown behavior green. Draft
 PRs stay Draft until their own acceptance gates pass; no automatic release.
 
 ## 17. Definition of done
 
-- [ ] T0–T10 are complete with no unresolved STOP condition.
+- [ ] T0–T11 are complete with no unresolved STOP condition.
 - [ ] Page/tree/space Cloud acquisition and local Astro static output are
       fixture-, packed-artifact-, browser-, and live-E2E proven.
 - [ ] DC Storage behavior is fixture-proven and either live-proven or labelled
@@ -1273,12 +1622,25 @@ PRs stay Draft until their own acceptance gates pass; no automatic release.
       are deterministic and tested.
 - [ ] Every block has safe static output; the optional chart island works with
       bounded frozen data and degrades usefully without JavaScript.
-- [ ] At least two first-party themes and one project-owned theme fixture pass
-      the same semantic, responsive, mode, print, accessibility, and search
-      contract without changing routes or indexed content.
+- [ ] The supported Starlight experience passes the semantic, responsive, mode,
+      print, accessibility, and search contract; a non-shipped experience
+      fixture proves the adapter contract without a second production theme.
 - [ ] Pagefind client search is production-built, offline, keyboard-accessible,
       multilingual, faceted, base-aware, privacy-safe, budgeted, and free of
       deleted/excluded/private content.
+- [ ] Navigation, breadcrumbs, TOC, previous/next, related/landing/404 pages,
+      canonical/hreflang/sitemap/robots/social/JSON-LD/feed output, localized
+      routes, responsive images, local fonts, Expressive Code, prefetch, and
+      performance budgets are artifact- and browser-proven.
+- [ ] Directory output is installable and its exact pages, Pagefind index, and
+      owned assets work offline; prompted updates, interrupted/multi-tab updates,
+      quota pressure, stale-cache cleanup, and unregister are browser-proven.
+- [ ] Analytics is off by default and the optional Plausible configuration is
+      redacted, allowlisted, DNT-aware, non-persistent offline, and harmless
+      when blocked.
+- [ ] The optional Confluence edit action uses validated provider-returned
+      Cloud/DC relations, never synthesized URLs, and is excluded from search,
+      discovery metadata, PWA caches, and analytics.
 - [ ] Strict completeness, XSS, SSRF, path, active-content, secret/private URL,
       CSP, accessibility, and privacy gates pass.
 - [ ] Existing export and Markdown sync schemas/fixtures/artifacts are unchanged.
@@ -1309,11 +1671,22 @@ PRs stay Draft until their own acceptance gates pass; no automatic release.
    directory to another base without rebuilding is unsupported.
 8. **Host claims:** browser-safe core proof does not certify Astro in MV3,
    ordinary browser, or Forge.
-9. **Theme and search fragmentation:** V1 deliberately includes multiple themes
-   and Pagefind, but a theme cannot silently replace route/search/security
-   semantics. Hosted search providers, arbitrary catalog-theme compatibility,
-   deployment, live runtime, and user code/MDX still require explicit adapters
-   or follow-up specs.
+9. **Starlight coupling:** Starlight is the first supported experience, not the
+   core content contract. The non-shipped conformance fixture must prove that
+   route/search/security/PWA semantics do not depend on Starlight-private DOM.
+   Arbitrary catalog-theme compatibility requires an explicit future adapter.
+10. **Offline version skew and quota:** Pagefind is generated after Astro, so a
+    generic PWA hook can cache an incomplete or mixed build. Freeze the ordering,
+    digest-bound cache namespace, prompted update, budgets, and cleanup proof;
+    stop if exact inventory cannot be guaranteed.
+11. **Analytics privacy drift:** “Privacy-respecting” is a narrow technical
+    configuration, not a legal conclusion. Keep analytics optional/off, accept
+    only the closed provider/events, emit disclosure/CSP evidence, and never add
+    query/search/source/user data or offline replay without re-planning.
+12. **Edit-link disclosure:** a Confluence action may reveal a tenant hostname
+    or route on a public site. Keep it off by default, require explicit public
+    acknowledgement, validate provider-returned same-origin relations, and omit
+    rather than synthesize an editor URL.
 
 ## 19. Decisions to confirm before T1
 
@@ -1322,9 +1695,10 @@ choices should be confirmed at the T0 gate:
 
 1. Is the opt-in interactive chart island part of the first release, or should
    V1 ship static charts only while retaining the renderer capability contract?
-2. Which two first-party theme directions should V1 ship? Recommendation:
-   feature-complete documentation/knowledge-base plus minimal editorial
-   content, both implementing the same slots/capabilities/search contract.
+2. Which Starlight customization surface should V1 expose initially?
+   Recommendation: documented Starlight configuration plus atlcli semantic
+   tokens, slots, and closed component overrides; do not promise arbitrary CSS
+   selectors or compatibility with unadapted Astro themes.
 3. Is local directory output the only V1 destination? Recommendation: yes;
    remote deployment is a separate provider/PR.
 4. Is the stable first-assigned pretty route policy acceptable for rename/move?
@@ -1339,6 +1713,16 @@ choices should be confirmed at the T0 gate:
 7. Which Pagefind facets and ranking defaults should be visible initially?
    Recommendation: space, label, content type, and language; boost title and
    headings, then validate relevance on representative English/German corpora.
+8. Which offline page policy should be the default for large publications?
+   Recommendation: precache shell, Pagefind, landing/navigation pages, and a
+   bounded recent-page set; allow explicit all-page precache only within proven
+   byte/entry budgets.
+9. Should RSS/Atom be enabled automatically for public builds? Recommendation:
+   no; keep feeds off by default because publication/revision semantics and
+   intended audience must be selected explicitly.
+10. Should the Confluence action ever default to public visibility?
+    Recommendation: no; default to off/internal and require an explicit
+    disclosure acknowledgement for `visibility: "all"`.
 
 ## 20. Primary references
 
@@ -1360,6 +1744,19 @@ choices should be confirmed at the T0 gate:
 - [Pagefind filters](https://pagefind.app/docs/filtering/)
 - [Pagefind multilingual search](https://pagefind.app/docs/multilingual/)
 - [Starlight capabilities](https://starlight.astro.build/)
+- [Starlight configuration](https://starlight.astro.build/reference/configuration/)
+- [Starlight component overrides](https://starlight.astro.build/guides/overriding-components/)
 - [Starlight plugin ecosystem](https://starlight.astro.build/resources/plugins/)
+- [Astro sitemap integration](https://docs.astro.build/en/guides/integrations-guide/sitemap/)
+- [Astro RSS](https://docs.astro.build/en/recipes/rss/)
+- [Expressive Code](https://expressive-code.com/)
+- [`@vite-pwa/astro`](https://vite-pwa-org.netlify.app/frameworks/astro)
+- [Vite PWA service-worker strategies](https://vite-pwa-org.netlify.app/guide/service-worker-strategies-and-behaviors)
+- [Vite PWA precache](https://vite-pwa-org.netlify.app/guide/service-worker-precache)
+- [Vite PWA `injectManifest`](https://vite-pwa-org.netlify.app/guide/inject-manifest)
+- [Plausible analytics documentation](https://plausible.io/docs)
+- [Plausible script extensions and custom endpoints](https://plausible.io/docs/script-extensions)
+- [Confluence Cloud page API](https://developer.atlassian.com/cloud/confluence/rest/v2/api-group-page/)
+- [Confluence Data Center REST examples](https://developer.atlassian.com/server/confluence/confluence-rest-api-examples/)
 - [Astro programmatic API](https://docs.astro.build/en/reference/programmatic-reference/)
 - [Astro template directives and `set:html`](https://docs.astro.build/en/reference/directives-reference/#sethtml)
