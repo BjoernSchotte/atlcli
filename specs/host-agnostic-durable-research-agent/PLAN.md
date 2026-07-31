@@ -2168,7 +2168,7 @@ Shared:
       prompt-injection success plus scope-resolution precision/recall,
       false-auto-resolution, catalog completeness, and unnecessary
       scope-expansion proposals.
-- [ ] Add pinned-runtime characterization tests for QuickJS `task()` counting,
+- [x] Add pinned-runtime characterization tests for QuickJS `task()` counting,
       result-size handling, timeout versus cancellation, late results,
       cross-eval/process state, guest clock/randomness, and child-state
       propagation. Assert the locally observed `@langchain/quickjs@1.0.0`
