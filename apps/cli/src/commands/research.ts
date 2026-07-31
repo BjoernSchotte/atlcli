@@ -43,8 +43,12 @@ export interface ResearchCliInput {
   asOf?: string;
   timezone?: string;
   outputPath?: string;
+  maxRunMinutes: number;
   keepSession: boolean;
 }
+
+const DEFAULT_MAX_RUN_MINUTES = 10;
+const MAX_MAX_RUN_MINUTES = 10;
 
 export function researchArtifactPath(now = new Date()): string {
   const timestamp = now.toISOString().replace(/[T:.Z]/g, "-").replace(/-+$/, "");
@@ -69,7 +73,17 @@ export function parseResearchCliInput(
   const to = getFlag(flags, "to");
   const asOf = getFlag(flags, "as-of");
   const timezone = getFlag(flags, "timezone");
+  const maxRunMinutesFlag = getFlag(flags, "max-run-minutes");
   if (asOf && !/^\d{4}-\d{2}-\d{2}$/.test(asOf)) throw new Error("--as-of must use YYYY-MM-DD.");
+  if (hasFlag(flags, "max-run-minutes") && maxRunMinutesFlag === undefined) {
+    throw new Error("--max-run-minutes requires an integer value.");
+  }
+  const maxRunMinutes = maxRunMinutesFlag === undefined
+    ? DEFAULT_MAX_RUN_MINUTES
+    : Number(maxRunMinutesFlag);
+  if (!Number.isSafeInteger(maxRunMinutes) || maxRunMinutes < 1 || maxRunMinutes > MAX_MAX_RUN_MINUTES) {
+    throw new Error(`--max-run-minutes must be an integer between 1 and ${MAX_MAX_RUN_MINUTES}.`);
+  }
   return {
     question: [question, asOf ? `As-of date: ${asOf}.` : "", timezone ? `Timezone: ${timezone}.` : ""].filter(Boolean).join("\n\n"),
     profile: getFlag(flags, "profile"),
@@ -80,6 +94,7 @@ export function parseResearchCliInput(
     ...(asOf ? { asOf } : {}),
     ...(timezone ? { timezone } : {}),
     ...(getFlag(flags, "output") ? { outputPath: getFlag(flags, "output") } : {}),
+    maxRunMinutes,
     keepSession: hasFlag(flags, "keep-session"),
   };
 }
@@ -106,14 +121,16 @@ export function buildResearchRequest(input: ResearchCliInput, profile: Profile):
     limits: {
       ...DEFAULT_RESEARCH_LIMITS_V1,
       pageSize: 10,
-      maxSearchPagesPerProduct: 3,
+      maxSearchPagesPerProduct: 4,
       maxItemsPerProduct: 30,
       maxDetailItemsPerProduct: 8,
       maxBodyCharsPerItem: 6_000,
       maxPtcCalls: 32,
       maxHttpCalls: 40,
       maxModelOutputTokens: 4_096,
-      maxRunMs: 180_000,
+      // The CLI controls only the complete workflow deadline. Individual
+      // QuickJS/PTC operations retain their tighter contract limits.
+      maxRunMs: input.maxRunMinutes * 60_000,
     },
     wikiProvider: "rest",
   });
@@ -178,7 +195,8 @@ export async function handleResearch(
       budget,
       runId: sessionId,
       researchGraph,
-      onPtcDiagnostic: (diagnostic) => process.stderr.write(`[research] ptc=${diagnostic.tool} kind=${diagnostic.inputKind} outcome=${diagnostic.outcome}${diagnostic.itemCount === undefined ? "" : ` items=${diagnostic.itemCount}`}${diagnostic.termination === undefined ? "" : ` termination=${diagnostic.termination}`}\n`),
+      onPtcDiagnostic: (diagnostic) => process.stderr.write(`[research] ptc=${diagnostic.tool} kind=${diagnostic.inputKind} outcome=${diagnostic.outcome}${diagnostic.itemCount === undefined ? "" : ` items=${diagnostic.itemCount}`}${diagnostic.termination === undefined ? "" : ` termination=${diagnostic.termination}`}${diagnostic.errorCode === undefined ? "" : ` error=${diagnostic.errorCode}`}\n`),
+      onSubagentDiagnostic: (diagnostic) => process.stderr.write(`[research] subagent=${diagnostic.role} status=${diagnostic.status}${diagnostic.durationMs === undefined ? "" : ` duration_ms=${diagnostic.durationMs}`}${diagnostic.errorCode === undefined ? "" : ` error=${diagnostic.errorCode}`}${diagnostic.errorMessage === undefined ? "" : ` message=${JSON.stringify(diagnostic.errorMessage)}`}\n`),
       options: {
         signal: controller.signal,
         onProgress: (progress) => process.stderr.write(`[research] phase=${progress.phase} calls=${progress.completedCalls}/${progress.maxCalls}\n`),
@@ -217,6 +235,7 @@ Options:
   --to <YYYY-MM-DD>      Inclusive upper date bound
   --as-of <YYYY-MM-DD>   Add a fixed as-of date to the question
   --timezone <name>      Add an explicit timezone to the question
+  --max-run-minutes <n>  Complete workflow deadline, 1-10 (default: 10)
   --output <path>        Atomically write the generated Markdown
   --keep-session         Retain the temporary session workspace
   --json                 Emit the structured report as JSON

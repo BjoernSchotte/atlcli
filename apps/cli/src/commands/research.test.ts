@@ -25,8 +25,20 @@ describe("research CLI one-shot contract", () => {
     expect(input.projectKeys).toEqual(["ATLCLI"]);
     expect(input.spaceKeys).toEqual(["DOCSY"]);
     expect(input.keepSession).toBe(true);
+    expect(input.maxRunMinutes).toBe(10);
     expect(input.question).toContain("As-of date: 2026-07-31.");
     expect(input.question).toContain("Timezone: Europe/Berlin.");
+  });
+
+  test("accepts a bounded workflow deadline override", () => {
+    const input = parseResearchCliInput(["Find related content"], { "max-run-minutes": "7" });
+    const request = buildResearchRequest(input, profile);
+    expect(input.maxRunMinutes).toBe(7);
+    expect(request.limits.maxRunMs).toBe(7 * 60_000);
+    expect(() => parseResearchCliInput(["question"], { "max-run-minutes": true })).toThrow("requires an integer");
+    expect(() => parseResearchCliInput(["question"], { "max-run-minutes": "0" })).toThrow("between 1 and 10");
+    expect(() => parseResearchCliInput(["question"], { "max-run-minutes": "2.5" })).toThrow("between 1 and 10");
+    expect(() => parseResearchCliInput(["question"], { "max-run-minutes": "11" })).toThrow("between 1 and 10");
   });
 
   test("uses profile defaults only when explicit keys are absent", () => {
@@ -36,6 +48,10 @@ describe("research CLI one-shot contract", () => {
       siteOrigin: "https://mayflower.atlassian.net",
       jiraProjectKeys: ["ATLCLI"],
       confluenceSpaceKeys: ["DOCSY"],
+    });
+    expect(request.limits).toMatchObject({
+      maxSearchPagesPerProduct: 4,
+      maxRunMs: 600_000,
     });
   });
 

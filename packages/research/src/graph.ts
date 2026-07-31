@@ -9,6 +9,7 @@ export const RESEARCH_GRAPH_ROLES = [
   "cross-product-join",
   "verification",
   "reconciler",
+  "synthesizer",
 ] as const;
 export type ResearchGraphRoleV1 = (typeof RESEARCH_GRAPH_ROLES)[number];
 
@@ -41,7 +42,7 @@ export interface ResearchGraphNodeV1 {
   requestedCapabilityIds: ResearchGraphCapabilityV1[];
   grantedCapabilityIds: ResearchGraphCapabilityV1[];
   depth: 0;
-  phase: "research" | "reconciliation";
+  phase: "research" | "reconciliation" | "synthesis";
 }
 
 export interface ResearchGraphV1 {
@@ -64,8 +65,9 @@ const ROLE_CAPABILITIES: Record<ResearchGraphRoleV1, readonly ResearchGraphCapab
   "jira-retrieval": ["jira.issue.search", "jira.issue.get"],
   "wiki-retrieval": ["wiki.search", "wiki.page.get"],
   "cross-product-join": [],
-  verification: ["jira.issue.get", "wiki.page.get"],
+  verification: [],
   reconciler: [],
+  synthesizer: [],
 };
 
 function invalid(message: string): never {
@@ -87,6 +89,7 @@ function requestedRoles(brief: ResearchBriefV1): ResearchGraphRoleV1[] {
   const jira = brief.products.includes("jira") || hasAny(question, ["jira", "ticket", "issue", "project"]);
   const wiki = brief.products.includes("confluence") || hasAny(question, ["confluence", "wiki", "space", "page", "content"]);
   const relation = jira && wiki && hasAny(question, [
+    "relate",
     "related",
     "belong",
     "join",
@@ -104,12 +107,24 @@ function requestedRoles(brief: ResearchBriefV1): ResearchGraphRoleV1[] {
     "gehören",
     "zusammenhang",
   ]);
+  const explicitVerification = relation && hasAny(question, [
+    "verify",
+    "explicit",
+    "contradict",
+    "conflict",
+    "belegt",
+    "widerspruch",
+  ]);
   const roles: ResearchGraphRoleV1[] = [];
   if (jira || (!jira && !wiki)) roles.push("jira-retrieval");
   if (wiki || (!jira && !wiki)) roles.push("wiki-retrieval");
-  if (relation) roles.push("cross-product-join");
-  if (relation && hasAny(question, ["verify", "explicit", "contradict", "conflict", "belegt", "widerspruch"])) roles.push("verification");
+  // Standard relation questions can be reconciled from the two compact
+  // retrieval packets and joined by the final report author. Reserve a
+  // dedicated intermediate join for deep or explicitly adversarial work.
+  if (relation && (brief.effort === "deep" || explicitVerification)) roles.push("cross-product-join");
+  if (explicitVerification) roles.push("verification");
   if (brief.reconciliation === "required" || (brief.reconciliation === "auto" && (relation || brief.effort === "deep"))) roles.push("reconciler");
+  roles.push("synthesizer");
   return roles;
 }
 
@@ -136,8 +151,10 @@ export function composeResearchGraphV1(
       : role === "verification"
         ? [nodeId("cross-product-join")]
         : role === "reconciler"
-          ? roles.filter((candidate) => candidate !== "reconciler").map(nodeId)
-          : [];
+          ? roles.filter((candidate) => candidate !== "reconciler" && candidate !== "synthesizer").map(nodeId)
+          : role === "synthesizer"
+            ? roles.filter((candidate) => candidate !== "synthesizer").map(nodeId)
+            : [];
     return {
       id: nodeId(role),
       role,
@@ -145,7 +162,11 @@ export function composeResearchGraphV1(
       requestedCapabilityIds: [...ROLE_CAPABILITIES[role]],
       grantedCapabilityIds: grantFor(role, options.grants),
       depth: 0,
-      phase: role === "reconciler" ? "reconciliation" : "research",
+      phase: role === "reconciler"
+        ? "reconciliation"
+        : role === "synthesizer"
+          ? "synthesis"
+          : "research",
     };
   });
   const graph: ResearchGraphV1 = {

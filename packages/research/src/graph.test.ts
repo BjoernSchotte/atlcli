@@ -6,11 +6,16 @@ import {
   type ResearchGraphV1,
 } from "./graph.js";
 
-const brief = (question: string, products: ("jira" | "confluence")[], reconciliation: "off" | "auto" | "required" = "auto") => ({
+const brief = (
+  question: string,
+  products: ("jira" | "confluence")[],
+  reconciliation: "off" | "auto" | "required" = "auto",
+  effort: "shallow" | "standard" | "deep" = "standard",
+) => ({
   schema: RESEARCH_BRIEF_SCHEMA_V1,
   question,
   products,
-  effort: "standard" as const,
+  effort,
   reconciliation,
 });
 
@@ -18,16 +23,17 @@ describe("dynamic research graph composition", () => {
   test("selects structurally different roles for Jira-only and cross-product briefs", () => {
     const jiraOnly = composeResearchGraphV1(brief("List open Jira tickets", ["jira"], "off"));
     const crossProduct = composeResearchGraphV1(brief("Which Confluence content is related to Jira tickets?", ["jira", "confluence"]));
-    expect(jiraOnly.selectedRoleIds).toEqual(["jira-retrieval"]);
+    expect(jiraOnly.selectedRoleIds).toEqual(["jira-retrieval", "synthesizer"]);
     expect(crossProduct.selectedRoleIds).toEqual([
       "jira-retrieval",
       "wiki-retrieval",
-      "cross-product-join",
       "reconciler",
+      "synthesizer",
     ]);
-    expect(crossProduct.nodes.find((node) => node.role === "cross-product-join")?.dependsOn).toEqual([
+    expect(crossProduct.nodes.find((node) => node.role === "synthesizer")?.dependsOn).toEqual([
       "research-node:jira-retrieval",
       "research-node:wiki-retrieval",
+      "research-node:reconciler",
     ]);
   });
 
@@ -41,12 +47,23 @@ describe("dynamic research graph composition", () => {
     expect(jira.grantedCapabilityIds).toEqual(["jira.issue.search"]);
   });
 
-  test("recognizes funnel and correspondence questions as cross-product joins", () => {
-    const graph = composeResearchGraphV1(brief(
+  test("reserves dedicated joins for deep or explicitly adversarial relation research", () => {
+    const standard = composeResearchGraphV1(brief(
       "How do these pages describe the funnel, and which GROW work items correspond to each stage?",
       ["jira", "confluence"],
     ));
-    expect(graph.selectedRoleIds).toContain("cross-product-join");
+    expect(standard.selectedRoleIds).not.toContain("cross-product-join");
+    const deep = composeResearchGraphV1(brief(
+      "How do these pages describe the funnel, and which GROW work items correspond to each stage?",
+      ["jira", "confluence"],
+      "auto",
+      "deep",
+    ));
+    expect(deep.selectedRoleIds).toContain("cross-product-join");
+    expect(composeResearchGraphV1(brief(
+      "Which Confluence content explicitly relates to Jira tickets?",
+      ["jira", "confluence"],
+    )).selectedRoleIds).toContain("cross-product-join");
   });
 
   test("rejects cycles, unknown dependencies, and model-authored role projections", () => {

@@ -277,6 +277,7 @@ export declare class JiraClient {
         query?: string;
         typeKey?: string;
         expand?: string;
+        signal?: AbortSignal;
     }): Promise<{
         values: JiraProject[];
         total: number;
@@ -817,6 +818,7 @@ export interface JiraProject {
     style?: string;
     avatarUrls?: Record<string, string>;
     simplified?: boolean;
+    archived?: boolean;
 }
 
 // export: JiraProjectCategory
@@ -1498,6 +1500,7 @@ export declare class JiraClient {
         query?: string;
         typeKey?: string;
         expand?: string;
+        signal?: AbortSignal;
     }): Promise<{
         values: JiraProject[];
         total: number;
@@ -2038,6 +2041,7 @@ export interface JiraProject {
     style?: string;
     avatarUrls?: Record<string, string>;
     simplified?: boolean;
+    archived?: boolean;
 }
 
 // export: JiraProjectCategory
@@ -2922,6 +2926,7 @@ export declare class JiraClient {
         query?: string;
         typeKey?: string;
         expand?: string;
+        signal?: AbortSignal;
     }): Promise<{
         values: JiraProject[];
         total: number;
@@ -3462,6 +3467,7 @@ export interface JiraProject {
     style?: string;
     avatarUrls?: Record<string, string>;
     simplified?: boolean;
+    archived?: boolean;
 }
 
 // export: JiraProjectCategory
@@ -4143,6 +4149,7 @@ export declare class JiraClient {
         query?: string;
         typeKey?: string;
         expand?: string;
+        signal?: AbortSignal;
     }): Promise<{
         values: JiraProject[];
         total: number;
@@ -4683,6 +4690,7 @@ export interface JiraProject {
     style?: string;
     avatarUrls?: Record<string, string>;
     simplified?: boolean;
+    archived?: boolean;
 }
 
 // export: JiraProjectCategory

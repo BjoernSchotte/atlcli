@@ -196,4 +196,20 @@ describe("research agent draft finalization", () => {
       })
     ).toThrow();
   });
+
+  it("deterministically clamps provider-native arrays before strict host validation", () => {
+    const oversized = draft();
+    oversized.findings[0]!.sourceIds = [
+      "wiki:1001",
+      ...Array.from({ length: 20 }, (_, index) => `unknown:${index}`),
+    ];
+    const report = finalizeResearchAgentDraftV1({
+      draft: oversized,
+      request,
+      sources,
+      detailEvidence: [],
+      run,
+    });
+    expect(report.findings[0]?.sourceIds).toEqual(["wiki:1001"]);
+  });
 });

@@ -14,8 +14,9 @@ extension/browser as equal product hosts:
 
 - one central DeepAgentsJS supervisor owns the brief, dynamically composes a
   typed research graph from a closed registry of capability-scoped subagent
-  roles, replans between bounded waves, reconciles their outputs, and owns the
-  final synthesis;
+  roles, replans between bounded waves, accepts or rejects their outputs, and
+  owns publication; for report-producing runs exactly one final `synthesizer`
+  subagent normally authors the structured report draft;
 - the CLI initially accepts one question as a positional argument, uses an
   atlcli profile such as `mayflower`, creates a real isolated session
   directory, and writes the canonical Markdown report;
@@ -30,8 +31,9 @@ extension/browser as equal product hosts:
   QuickJS interpreter remaining alive;
 - dynamic composition means that the supervisor chooses the number, role,
   objective, dependencies, fan-out, and optional self-critique/reconciliation
-  nodes for each question. It does not mean unbounded role creation, arbitrary
-  tools, recursive agent trees, or model-owned durable state;
+  nodes for each question and writes the task-shaped QuickJS orchestration
+  program for the accepted graph. It does not mean unbounded role creation,
+  arbitrary tools, recursive agent trees, or model-owned durable state;
 - Jira project and Confluence space discovery are first-class read-only
   research capabilities. The supervisor and dynamically selected subagents may
   search bounded catalogs, resolve natural-language scope mentions, and
@@ -101,14 +103,18 @@ runtime tests:
   [dynamic-subagent design](https://www.langchain.com/blog/introducing-dynamic-subagents-in-deep-agents)
   and
   [JavaScript contract](https://docs.langchain.com/oss/javascript/deepagents/dynamic-subagents)
-  prove QuickJS `task()` fan-out, branching, multiple waves, and structured
-  `responseSchema` outputs. The installed package must remain the source of
+  prove that the parent agent writes task-specific JavaScript using QuickJS
+  `task()`, fan-out, branching, multiple waves, and structured
+  `responseSchema` outputs. The patterns emerge from the task rather than from
+  a configured fixed pipeline. The installed package remains the source of
   truth for exact lifecycle and safety behavior.
-- LangChain's
-  [interpreter-skills design](https://www.langchain.com/blog/interpreter-skills)
-  supports the split used here: the supervisor dynamically selects and
-  parameterizes work while reviewed code owns deterministic scheduling,
-  validation, and partial-failure behavior.
+- Anthropic's 2026
+  [dynamic-workflow harness guidance](https://claude.com/blog/a-harness-for-every-task-dynamic-workflows-in-claude-code)
+  explicitly describes fan-out-and-synthesize, adversarial verification, and
+  deep research that fans out search, verifies claims, and synthesizes a cited
+  report. It also cautions that the concrete harness is generated for the task
+  and that these patterns should be composed rather than run as a mandatory
+  all-role pipeline.
 - Anthropic's
   [multi-agent research report](https://www.anthropic.com/engineering/multi-agent-research-system)
   supports isolated breadth-first workers and compact handoffs, but also
@@ -117,8 +123,10 @@ runtime tests:
 - Google's 2026
   [agent-scaling study](https://research.google/blog/towards-a-science-of-scaling-agent-systems-when-and-why-agent-systems-work/)
   found centralized coordination helpful for parallelizable work and harmful
-  multi-agent overhead for sequential work. This plan keeps planning,
-  reconciliation, and synthesis in one supervisor.
+  multi-agent overhead for sequential work. This plan keeps planning, control,
+  gap decisions, acceptance, and publication in one supervisor while
+  delegating report authorship to one bounded final synthesizer when a report
+  is requested.
 - Atlassian's
   [Rovo Deep Research v2 architecture](https://www.atlassian.com/blog/artificial-intelligence/rovo-deep-research-v2)
   motivates a shared editable plan, dynamic outline, evidence/claim memory,
@@ -185,20 +193,25 @@ closed. It promises durable state and correct resumption.
 
 - Exactly one central supervisor owns `ResearchBriefV1`, the current
   `ResearchGraphV1` revision, replanning, budget allocation, acceptance or
-  rejection of subagent proposals, and final synthesis.
+  rejection of subagent proposals, repair decisions, final acceptance, and
+  publication. It normally does not author report prose.
 - The supervisor dynamically selects only registered subagent roles. The
   initial registry contains focused researcher, document distiller,
   contradiction verifier, coverage moderator, outline planner, and
-  reconciler roles; no role is mandatory for every run.
+  reconciler roles plus one `synthesizer` role. No research or critique role is
+  mandatory for every run; exactly one synthesizer is mandatory only when the
+  requested terminal artifact is a report.
 - A role definition fixes its description, allowed capabilities, supported
   versioned output schemas, activation phase, maximum per-node budget, and
   whether it may propose follow-up work. The dispatch ledger selects exactly
   one supported schema per task. The supervisor may vary composition but may
   not widen those boundaries.
-- Subagents may propose evidence, claims, contradictions, gaps, outline
-  changes, follow-ups, or reconciliation defects. They never commit a graph
-  revision, accept evidence, finalize an outline, approve a claim, or publish
-  a report.
+- Research and critique subagents may propose evidence, claims,
+  contradictions, gaps, outline changes, follow-ups, or reconciliation
+  defects. The final synthesizer may author one schema-bound candidate report
+  from accepted packets and reconciliation dispositions. No subagent may
+  commit a graph revision, accept evidence, finalize an outline, approve a
+  claim, render trusted Markdown, or publish a report.
 - The general-purpose DeepAgents subagent remains disabled. Initial subagent
   depth is exactly one; subagents cannot spawn subagents.
 - `ResearchGraphV1` is authoritative durable state. `/workspace/plan.md` is a
@@ -206,9 +219,13 @@ closed. It promises durable state and correct resumption.
 - The host validates every graph revision for acyclicity, known role and
   capability IDs, scope, depth, node count, fan-out, dependency closure,
   budgets, and checkpoint revision before execution.
-- A deterministic scheduler selects the ready frontier. QuickJS may execute a
-  host-compiled wave and call DeepAgentsJS subagents, but neither generated
-  JavaScript nor the QuickJS heap is the durable workflow definition.
+- The supervisor writes task-specific QuickJS orchestration code for the
+  host-validated graph and role catalog. The code may use loops, branches, and
+  `Promise.all` groups, but every `task()` dispatch is checked by the
+  research-owned dispatch ledger against the accepted node, role, schema,
+  capability, concurrency, and budget envelope. The committed graph and
+  ledger, not generated JavaScript or the QuickJS heap, remain the durable
+  workflow definition.
 - Reconciliation is dynamically composed. A fresh-context `reconciler`
   subagent runs only when the graph policy or supervisor identifies material
   complexity, contradictions, weak coverage, high-impact claims, or an
@@ -217,6 +234,10 @@ closed. It promises durable state and correct resumption.
 - The supervisor records whether each reconciliation defect was accepted,
   rejected, or converted into a bounded follow-up node. The deterministic
   validator remains the final authority over claims and Markdown.
+- After critique and any permitted repair wave, exactly one fresh-context
+  `synthesizer` receives only accepted packets, dispositions, unresolved gaps,
+  and the report contract. The supervisor accepts or rejects that typed draft
+  and hands it to the deterministic finalizer without silently rewriting it.
 
 ### Scope discovery and authority
 
@@ -1059,7 +1080,8 @@ interface ResearchGraphV1 {
 type ResearchTaskOutputSchemaV1 =
   | "atlcli.research-packet-body/v1"
   | "atlcli.research-packet-body/v2"
-  | "atlcli.reconciliation-body/v1";
+  | "atlcli.reconciliation-body/v1"
+  | "atlcli.research-agent-draft/v1";
 
 interface ResearchSubagentRoleV1 {
   id:
@@ -1068,9 +1090,10 @@ interface ResearchSubagentRoleV1 {
     | "contradiction-verifier"
     | "coverage-moderator"
     | "outline-planner"
-    | "reconciler";
+    | "reconciler"
+    | "synthesizer";
   description: string;
-  phase: "acquisition" | "analysis" | "verification" | "reconciliation";
+  phase: "acquisition" | "analysis" | "verification" | "reconciliation" | "synthesis";
   availableFromPhase: "T3" | "T5";
   allowedCapabilityIds: ResearchCapabilityId[];
   supportedOutputSchemas: ResearchTaskOutputSchemaV1[];
@@ -1080,10 +1103,11 @@ interface ResearchSubagentRoleV1 {
 ```
 
 The registry is static, reviewed code. Composition is dynamic data. For every
-turn the supervisor may select different roles, create a different graph,
-choose sequential or parallel dependencies, and omit all subagents for a
-lookup. The host may clamp or reject a proposal but must not silently replace
-it with a fixed role pipeline.
+turn the supervisor may select different roles, create a different graph, and
+choose sequential or parallel dependencies. A lookup may omit all research
+subagents; when it still produces a report it retains exactly one final
+synthesizer. The host may clamp or reject a proposal but must not silently
+replace it with a fixed role pipeline.
 
 Each executable node requests the smallest capability set and references only
 host-owned typed intents. The host persists `grantedCapabilityIds` after
@@ -1221,10 +1245,9 @@ interface ResearchReconciliationInputV1 {
   coverageTargetIds: string[];
   projection:
     | {
-        kind: "v1-draft";
-        findingIds: string[];
-        relationshipIds: string[];
-        sectionIds: string[];
+        kind: "v1-packet-set";
+        findingCandidateIds: string[];
+        relationshipCandidateIds: string[];
       }
     | {
         kind: "v2-outline";
@@ -1284,7 +1307,11 @@ interface ResearchAcceptedPacketV1 {
   grantedCapabilityIds: ResearchCapabilityId[];
   typedIntentRefs: string[];
   expectedOutputSchema: ResearchTaskOutputSchemaV1;
-  body: ResearchPacketBodyV1 | ResearchPacketBodyV2 | ReconciliationBodyV1;
+  body:
+    | ResearchPacketBodyV1
+    | ResearchPacketBodyV2
+    | ReconciliationBodyV1
+    | ResearchAgentDraftV1;
   hostObservedUsage: ResearchTaskUsageV1;
   acceptedAt: string;
 }
@@ -1351,10 +1378,11 @@ new graph revision before it can run.
 The reconciler starts with a fresh context containing the accepted brief,
 current graph, `ResearchReconciliationInputV1`, coverage and contradiction
 state, and only the relevant V1 source projections or V2 evidence spans. T3
-uses the `v1-draft` projection; T5 switches new turns to the `v2-outline`
-projection. It does not receive the supervisor's hidden reasoning or all raw
-source bodies. In the MVP it may run at most once and may not call another
-subagent.
+uses the `v1-packet-set` projection before report authorship; T5 switches new
+turns to the `v2-outline` projection. It does not receive the supervisor's
+hidden reasoning, a self-authored provisional report, child trajectories, or
+all raw source bodies. In the MVP it may run at most once and may not call
+another subagent.
 
 Every validated reconciliation defect receives exactly one durable
 `ResearchReconciliationDispositionV1` from the central supervisor. The host
@@ -1362,6 +1390,15 @@ validates its packet/defect/revision references and atomically commits any
 resulting graph or claim change with the disposition. The reconciler cannot
 author, omit, or overwrite this record; unresolved or invalid dispositions
 block finalization.
+
+After all required dispositions and at most one bounded repair wave, the
+supervisor dispatches exactly one `synthesizer` task for a report-producing
+run. Its fresh context contains the accepted brief, accepted packet bodies,
+dispositions, unresolved gaps, source references, and the exact
+`ResearchAgentDraftV1` response schema. The typed draft is host-validated and
+accepted or rejected as a task result before the existing deterministic
+finalizer renders Markdown. The supervisor may retry one schema repair without
+new research, but it does not silently rewrite the synthesizer's prose.
 
 ### User steering and plan revisions
 
@@ -1788,9 +1825,10 @@ accept turn
   -> central supervisor proposes ResearchGraphV1
   -> host validates graph, role capabilities, scope, and budgets
   -> optional user plan approval
-  -> durable scheduler selects one ready frontier
-  -> host compiles bounded typed search intents and/or a QuickJS task wave
-  -> QuickJS PTC retrieves, joins, filters, and aggregates
+  -> supervisor writes one task-specific bounded QuickJS workflow for the
+     accepted graph and currently available role catalog
+  -> QuickJS runs dependency-ordered Promise.all groups; worker-local PTC
+     retrieves, joins, filters, and aggregates within host grants
   -> dynamically selected Depth-1 subagents return the dispatch ledger's
      required packet version
   -> host validates and persists accepted packets, phase-appropriate
@@ -1806,6 +1844,8 @@ accept turn
   -> create claim ledger and evidence-linked OutlineV1
   -> optionally compose one fresh-context reconciliation node
   -> supervisor resolves reconciliation defects and bounded follow-ups
+  -> exactly one fresh-context synthesizer authors the structured report draft
+  -> supervisor accepts or rejects the draft without rewriting report prose
   -> deterministic validation
   -> structured report
   -> deterministic Markdown
@@ -1822,8 +1862,8 @@ QuickJS PTC remains the programmable join/filter/aggregation surface. It may:
 - join exact Jira keys and Confluence links;
 - rank or group bounded results;
 - calculate coverage and simple statistics.
-- execute a host-compiled ready-frontier wave that invokes only the validated
-  graph nodes and role schemas for that wave.
+- execute the supervisor-authored ready-frontier program while a host dispatch
+  adapter admits only validated graph nodes and role schemas for that wave.
 
 It may not:
 
@@ -1847,7 +1887,8 @@ The central supervisor composes the workflow at runtime from the accepted
 brief and current evidence. There is no fixed `Jira researcher -> Confluence
 researcher -> verifier -> writer` pipeline. Examples that must be possible:
 
-- an exact lookup remains supervisor-only with no subagent;
+- an exact lookup may remain supervisor-only during research and use only the
+  final synthesizer when it produces a report;
 - a cross-product temporal question fans out into independent Jira and
   Confluence research nodes and joins their packets;
 - a hierarchy-heavy question selects a document distiller but no
@@ -1861,6 +1902,8 @@ researcher -> verifier -> writer` pipeline. Examples that must be possible:
 - conflicting or high-impact claims add a verifier and possibly a final
   reconciler;
 - a no-evidence path stops and abstains without launching decorative agents.
+- a report-producing path ends with one `synthesizer`; lookup/control outcomes
+  that intentionally produce no report do not launch it.
 
 For the T3 MVP:
 
@@ -1874,11 +1917,17 @@ For the T3 MVP:
 - every node returns a structured packet through `responseSchema`;
 - the supervisor receives packet summaries and references, not child
   trajectories or all tool outputs;
-- the host compiler creates the QuickJS wave from the validated graph. The
-  task-enabled interpreter is not exposed as an unconstrained model scratch
-  REPL;
-- a model-authored QuickJS workflow is an explicit T9 A/B experiment, not the
-  production default.
+- the supervisor writes task-shaped JavaScript that holds compact packets in
+  interpreter variables and dispatches native `task({ description,
+  subagentType, responseSchema })` calls. Independent tasks use `Promise.all`;
+  dependent groups run only after their inputs exist;
+- the host does not paste a fixed all-role program into the prompt. The
+  task-enabled interpreter remains capability-scoped, one-eval bounded, and
+  unable to access network, credentials, arbitrary files, or unregistered
+  roles;
+- critique precedes report authorship. After the optional bounded repair group,
+  exactly one synthesizer authors the structured draft and the supervisor only
+  accepts/rejects and publishes it through the deterministic host finalizer.
 
 Dynamic composition is proven only when task-different fixtures produce
 structurally different valid graphs and role sets. Merely calling the same
@@ -1900,7 +1949,7 @@ call. `ResearchReconciliationPolicyV1` considers at least:
 
 The reconciler performs independent, fresh-context self-critique across the
 brief, graph, accepted packets, claim ledger, coverage, contradictions, and
-outline. It does not rewrite the report. It returns typed defects and proposed
+outline before report prose is written. It returns typed defects and proposed
 follow-ups. The supervisor reconciles those findings with the existing state,
 records an accept/reject/downgrade/follow-up decision per defect, and may add
 one bounded follow-up only if both total budget and a research-wave slot
@@ -1908,7 +1957,9 @@ remain. A follow-up after reconciliation consumes one of the same two T3
 research waves; there is never a third research wave. If both research waves
 were already consumed, the supervisor must accept, revise from existing
 support, downgrade, or abstain. The deterministic finalizer runs after
-reconciliation and can still reject the result.
+reconciliation and can still reject the result. Exactly one final synthesizer
+then receives the accepted material and disposition set; this ordering avoids
+asking the supervisor to critique and author its own report.
 
 ### QuickJS and dispatch safety for the pinned runtime
 
@@ -2158,7 +2209,7 @@ CLI:
 - [ ] Convert `apps/extension/scripts/research-agent-live-mayflower.ts` into a
       characterization test/harness that records only sanitized metrics and
       emits the full Markdown to an operator-selected path outside the repo.
-- [ ] Prove the fixed-date cross-product question through the `mayflower`
+- [x] Prove the fixed-date cross-product question through the `mayflower`
       profile and operator-supplied local project/space keys; preserve the
       generated Markdown for review without committing it.
 
@@ -2239,7 +2290,7 @@ Shared:
 - [ ] Add an injected workspace backend to the shared runtime while retaining
       the issue-138 one-question behavior.
 - [ ] Define shared progress/event shapes used by both hosts.
-- [ ] Persist `/artifacts/report.md` through the workspace before returning the
+- [x] Persist `/artifacts/report.md` through the workspace before returning the
       final result.
 
 CLI:
@@ -2286,7 +2337,7 @@ Gate:
       seed provenance and precedence, dates, cancellation, stdout, JSON,
       output file, cleanup, and retained workspace.
 - [ ] Source-mode and built CLI one-shot commands both pass.
-- [ ] A real Mayflower CLI E2E against operator-supplied local project/space
+- [x] A real Mayflower CLI E2E against operator-supplied local project/space
       keys succeeds and its complete Markdown is presented to the reviewer.
 - [ ] The packed extension E2E still passes.
 
@@ -2332,10 +2383,13 @@ Shared:
       content-detail or subagent calls before resolution succeeds.
 - [ ] Register only the closed role set defined above and keep the
       general-purpose subagent disabled. Mark `outline-planner` unavailable
-      until T5.
+      until T5. Register `synthesizer` as the only role permitted to return
+      `ResearchAgentDraftV1`.
 - [ ] Make the central supervisor return a structured graph proposal whose
       role selection, dependencies, fan-out, and reconciliation policy vary by
-      brief.
+      brief. For each accepted frontier, let the same supervisor author the
+      task-shaped QuickJS program instead of injecting a host-fixed all-role
+      program.
 - [ ] Before graph proposal, return `ResearchClarificationRequiredV1` and stop
       when the brief contains a required question or user-decision assumption.
       T3 never fabricates an answer or enters an undurable wait.
@@ -2353,9 +2407,11 @@ Shared:
 - [ ] Implement pure revision-fenced graph/task/packet reducers plus in-memory
       conformance and failure-injection tests in T3. T4 may aggregate and
       persist them but may not replace their transition semantics.
-- [ ] Compile the validated ready frontier into a deterministic QuickJS wave
-      that uses `task()` and per-role `responseSchema`; do not expose the
-      task-enabled interpreter as an unconstrained supervisor tool.
+- [ ] Execute the supervisor-authored ready frontier in exactly one bounded
+      QuickJS eval using native `task()` and per-role `responseSchema`.
+      Independent tasks must run in `Promise.all` groups and dependent groups
+      must receive only compact typed predecessor results. The dispatch port
+      rejects any call not represented by the accepted graph/envelope.
 - [ ] Enforce at most three concurrent nodes, `maxResearchWaves = 2`,
       `maxReconciliationWaves = 1`, and host-side task count, result size, timeout,
       cancellation, late-result quarantine, token, byte, and cost limits.
@@ -2368,10 +2424,16 @@ Shared:
       `reconciler` that returns defects and suggested follow-ups. Record the
       supervisor's validated `ResearchReconciliationDispositionV1` for every
       defect; an unresolved defect blocks finalization.
-- [ ] Give the T3 reconciler the provisional structured V1 draft, stable
-      finding/relationship/section IDs, accepted packets, coverage, and source
-      references through the `v1-draft` reconciliation projection. It runs
-      before the existing finalizer and cannot emit trusted Markdown.
+- [ ] Give the T3 reconciler stable finding/relationship candidate IDs,
+      accepted packets, coverage, and source references through the
+      `v1-packet-set` reconciliation projection before any report prose is
+      written. It cannot emit trusted Markdown or call another subagent.
+- [ ] After critique and any permitted repair group, dispatch exactly one
+      fresh-context `synthesizer` with accepted packets, reconciliation
+      dispositions, unresolved gaps, and the exact
+      `ResearchAgentDraftV1` response schema. The supervisor accepts or rejects
+      the typed draft and does not rewrite it; no second out-of-band agent or
+      transcript extraction path is allowed.
 - [ ] Keep the existing V1 deterministic report finalizer authoritative. In
       this phase `ResearchPacketBodyV1` cites existing V1 `sourceId` values.
       T5 introduces `ResearchPacketBodyV2` with exact chunk spans and the V2
@@ -2421,15 +2483,20 @@ Extension/browser:
 
 Gate:
 
-- [ ] An exact-lookup fixture selects no subagent; a cross-product fixture
-      selects at least two independent nodes; a contradiction fixture selects
-      verification and task-dependent reconciliation. Their normalized graphs
-      are structurally different.
+- [ ] An exact-lookup report fixture selects no research subagent and exactly
+      one synthesizer; a cross-product fixture selects at least two independent
+      research nodes and exactly one synthesizer; a contradiction fixture
+      selects verification, task-dependent reconciliation, and exactly one
+      synthesizer. Their normalized graphs are structurally different.
 - [ ] Graph fixtures reject missing, duplicate, or inconsistent role decisions
       and prove that execution, UI projection, and normalized comparisons
       derive the identical selected-role set from executable nodes.
-- [ ] No test or production prompt encodes a fixed sequence containing every
+- [x] No test or production prompt encodes a fixed sequence containing every
       registered role.
+- [x] Invocation-level tests prove native dynamic `responseSchema` hand-off,
+      parallel `Promise.all` groups, dependency barriers, one parent eval,
+      fresh critic context, exactly one final synthesizer, and zero transcript
+      scraping or out-of-band synthesis agent.
 - [ ] T3's generated per-role response schemas are byte-identical to the
       exact schema-feasibility fixtures admitted in T0.
 - [ ] In a no-fault deterministic branch-coverage fixture, every validated
@@ -2951,10 +3018,11 @@ Evaluation:
       context, concurrency, and cost.
 - [ ] Repeat a representative subset three to five times and record variance;
       a single stochastic win does not select an architecture.
-- [ ] Compare host-compiled dynamic graph execution with model-authored
-      task-enabled QuickJS behind an explicit experiment flag. The generated
-      variant is eligible only if it improves quality or cost without weakening
-      replay, budget, cancellation, or security gates.
+- [ ] Compare unconstrained task-shaped generation, policy-prompted generation,
+      and reusable reviewed workflow templates that the supervisor may adapt
+      rather than execute verbatim. Retain the least restrictive variant that
+      preserves quality while satisfying replay, budget, cancellation, and
+      security gates; never regress to a fixed all-role pipeline.
 - [ ] Add adversarial runs proving Jira/Confluence content and catalog metadata
       cannot alter scope, role capabilities, graph budgets, approval state, or
       report instructions and cannot turn an exact-entity grant into
@@ -2977,7 +3045,7 @@ Cross-host release gates:
 - [ ] `bun run build` passes.
 - [ ] `bun run check:browser` passes.
 - [ ] Source-mode and built CLI commands pass synthetic E2E.
-- [ ] CLI Mayflower live E2E passes and the full Markdown is shown to the
+- [x] CLI Mayflower live E2E passes and the full Markdown is shown to the
       reviewer.
 - [ ] Packed extension synthetic E2E passes.
 - [ ] Authenticated extension Mayflower E2E passes and the full Markdown is
@@ -3196,7 +3264,9 @@ Confirmed for implementation on 2026-07-31:
 
 - [x] Use `@atlcli/research` as the shared package name.
 - [x] Keep exactly one central supervisor responsible for the brief, dynamic
-      graph composition, replanning, reconciliation decisions, and synthesis.
+      graph composition, replanning, reconciliation decisions, final
+      acceptance, and publication. Delegate report authorship to exactly one
+      final synthesizer for report-producing runs.
 - [x] Compose subagent roles, nodes, dependencies, fan-out, waves, and optional
       reconciliation dynamically per task from a closed capability-scoped
       registry; do not implement a fixed role pipeline.
@@ -3216,9 +3286,10 @@ Confirmed for implementation on 2026-07-31:
       reconciles them and the deterministic validator remains authoritative.
 - [x] Persist one supervisor-owned disposition per reconciliation defect; no
       defect or child output can bypass deterministic finalization.
-- [x] Use a host-validated dynamic graph and host-compiled QuickJS wave as the
-      default. Keep model-authored task-enabled QuickJS behind a measured T9
-      experiment.
+- [x] Use a host-validated dynamic graph and let the central supervisor author
+      task-shaped QuickJS orchestration with native `task()`, `Promise.all`,
+      branching, and dynamic `responseSchema`. Enforce it through the dispatch
+      ledger rather than a host-fixed all-role program.
 - [x] Require the T0 Node and packed-MV3 spike to prove per-node grants,
       response-schema admission, budgets, cancellation, and late-result
       quarantine before package extraction.
@@ -3235,7 +3306,8 @@ Confirmed for implementation on 2026-07-31:
 - [x] Use IndexedDB for browser session/checkpoint/workspace/evidence storage
       and add OPFS only after measurement.
 - [x] Keep QuickJS disposable and limited to allowlisted PTC computation plus
-      bounded host-compiled dynamic subagent waves.
+      bounded supervisor-authored dynamic subagent waves admitted by the host
+      graph, role, schema, capability, and budget envelope.
 - [x] Make Jira project search, Confluence space search, and exact Atlassian
       reference resolution freely selectable read-only research capabilities
       within per-node grants and independent catalog budgets.

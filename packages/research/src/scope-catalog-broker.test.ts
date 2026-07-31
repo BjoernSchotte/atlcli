@@ -6,6 +6,7 @@ import {
 import { RESEARCH_SCOPE_CATALOG_SCHEMAS } from "./scope-catalog.js";
 
 const baseCandidate = {
+  id: "research-scope-candidate:atlcli",
   tenantOrigin: "https://mayflower.atlassian.net",
   product: "jira" as const,
   entityKind: "project" as const,

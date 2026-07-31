@@ -92,6 +92,7 @@
     "typst-ts-web-compiler-rc8": "npm:@myriaddreamin/typst-ts-web-compiler@0.8.0-rc3"
   },
   "patchedDependencies": {
-    "@myriaddreamin/typst-ts-web-compiler@0.7.0": "patches/@myriaddreamin%2Ftypst-ts-web-compiler@0.7.0.patch"
+    "@myriaddreamin/typst-ts-web-compiler@0.7.0": "patches/@myriaddreamin%2Ftypst-ts-web-compiler@0.7.0.patch",
+    "@langchain/anthropic@1.5.2": "patches/@langchain%2Fanthropic@1.5.2.patch"
   }
 }

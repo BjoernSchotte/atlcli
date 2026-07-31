@@ -707,6 +707,12 @@ export declare class ConfluenceClient {
         description?: string;
     }): Promise<ConfluenceSpace>;
     listSpaces(limit?: number): Promise<ConfluenceSpace[]>;
+    listSpacesV2(options?: {
+        limit?: number;
+        cursor?: string;
+        status?: "current" | "archived";
+        signal?: AbortSignal;
+    }): Promise<ConfluenceSpacePageV2>;
     getSpace(key: string): Promise<ConfluenceSpace>;
     getSpaceIcon(key: string, options?: {
         signal?: AbortSignal;
@@ -991,7 +997,14 @@ export type ConfluenceSpace = {
     key: string;
     name: string;
     type: "global" | "personal";
+    status?: "current" | "archived" | "trashed";
     url?: string;
+};
+
+// export: ConfluenceSpacePageV2
+export type ConfluenceSpacePageV2 = {
+    spaces: ConfluenceSpace[];
+    nextCursor?: string;
 };
 
 // export: ConfluenceTransportEvent
@@ -3503,6 +3516,12 @@ export declare class ConfluenceClient {
         description?: string;
     }): Promise<ConfluenceSpace>;
     listSpaces(limit?: number): Promise<ConfluenceSpace[]>;
+    listSpacesV2(options?: {
+        limit?: number;
+        cursor?: string;
+        status?: "current" | "archived";
+        signal?: AbortSignal;
+    }): Promise<ConfluenceSpacePageV2>;
     getSpace(key: string): Promise<ConfluenceSpace>;
     getSpaceIcon(key: string, options?: {
         signal?: AbortSignal;
@@ -3787,7 +3806,14 @@ export type ConfluenceSpace = {
     key: string;
     name: string;
     type: "global" | "personal";
+    status?: "current" | "archived" | "trashed";
     url?: string;
+};
+
+// export: ConfluenceSpacePageV2
+export type ConfluenceSpacePageV2 = {
+    spaces: ConfluenceSpace[];
+    nextCursor?: string;
 };
 
 // export: ConfluenceTransportEvent
@@ -6299,6 +6325,12 @@ export declare class ConfluenceClient {
         description?: string;
     }): Promise<ConfluenceSpace>;
     listSpaces(limit?: number): Promise<ConfluenceSpace[]>;
+    listSpacesV2(options?: {
+        limit?: number;
+        cursor?: string;
+        status?: "current" | "archived";
+        signal?: AbortSignal;
+    }): Promise<ConfluenceSpacePageV2>;
     getSpace(key: string): Promise<ConfluenceSpace>;
     getSpaceIcon(key: string, options?: {
         signal?: AbortSignal;
@@ -6583,7 +6615,14 @@ export type ConfluenceSpace = {
     key: string;
     name: string;
     type: "global" | "personal";
+    status?: "current" | "archived" | "trashed";
     url?: string;
+};
+
+// export: ConfluenceSpacePageV2
+export type ConfluenceSpacePageV2 = {
+    spaces: ConfluenceSpace[];
+    nextCursor?: string;
 };
 
 // export: ConfluenceTransportEvent
@@ -8849,6 +8888,12 @@ export declare class ConfluenceClient {
         description?: string;
     }): Promise<ConfluenceSpace>;
     listSpaces(limit?: number): Promise<ConfluenceSpace[]>;
+    listSpacesV2(options?: {
+        limit?: number;
+        cursor?: string;
+        status?: "current" | "archived";
+        signal?: AbortSignal;
+    }): Promise<ConfluenceSpacePageV2>;
     getSpace(key: string): Promise<ConfluenceSpace>;
     getSpaceIcon(key: string, options?: {
         signal?: AbortSignal;
@@ -9132,7 +9177,14 @@ export type ConfluenceSpace = {
     key: string;
     name: string;
     type: "global" | "personal";
+    status?: "current" | "archived" | "trashed";
     url?: string;
+};
+
+// export: ConfluenceSpacePageV2
+export type ConfluenceSpacePageV2 = {
+    spaces: ConfluenceSpace[];
+    nextCursor?: string;
 };
 
 // export: ConfluenceTransportEvent
@@ -12100,6 +12152,12 @@ export declare class ConfluenceClient {
         description?: string;
     }): Promise<ConfluenceSpace>;
     listSpaces(limit?: number): Promise<ConfluenceSpace[]>;
+    listSpacesV2(options?: {
+        limit?: number;
+        cursor?: string;
+        status?: "current" | "archived";
+        signal?: AbortSignal;
+    }): Promise<ConfluenceSpacePageV2>;
     getSpace(key: string): Promise<ConfluenceSpace>;
     getSpaceIcon(key: string, options?: {
         signal?: AbortSignal;
@@ -12384,7 +12442,14 @@ export type ConfluenceSpace = {
     key: string;
     name: string;
     type: "global" | "personal";
+    status?: "current" | "archived" | "trashed";
     url?: string;
+};
+
+// export: ConfluenceSpacePageV2
+export type ConfluenceSpacePageV2 = {
+    spaces: ConfluenceSpace[];
+    nextCursor?: string;
 };
 
 // export: ConfluenceTransportEvent
@@ -14335,6 +14400,12 @@ export declare class ConfluenceClient {
         description?: string;
     }): Promise<ConfluenceSpace>;
     listSpaces(limit?: number): Promise<ConfluenceSpace[]>;
+    listSpacesV2(options?: {
+        limit?: number;
+        cursor?: string;
+        status?: "current" | "archived";
+        signal?: AbortSignal;
+    }): Promise<ConfluenceSpacePageV2>;
     getSpace(key: string): Promise<ConfluenceSpace>;
     getSpaceIcon(key: string, options?: {
         signal?: AbortSignal;
@@ -14505,6 +14576,22 @@ export declare class ConfluenceClient {
     getEditorVersion(pageId: string): Promise<"v2" | "v1" | null>;
     setEditorVersion(pageId: string, version: "v2" | "v1"): Promise<void>;
 }
+
+// export: ConfluenceSpace
+export type ConfluenceSpace = {
+    id: string;
+    key: string;
+    name: string;
+    type: "global" | "personal";
+    status?: "current" | "archived" | "trashed";
+    url?: string;
+};
+
+// export: ConfluenceSpacePageV2
+export type ConfluenceSpacePageV2 = {
+    spaces: ConfluenceSpace[];
+    nextCursor?: string;
+};
 
 // export: ConfluenceTransportEvent
 export type ConfluenceTransportEvent = {

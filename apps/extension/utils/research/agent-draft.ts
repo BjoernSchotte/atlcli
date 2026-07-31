@@ -17,19 +17,19 @@ const boundedText = (maximum: number): z.ZodString =>
 export const RESEARCH_AGENT_DRAFT_SCHEMA_V1 = z
   .object({
     title: boundedText(300),
-    executiveSummary: boundedText(4_000),
+    executiveSummary: boundedText(2_000),
     findings: z
       .array(
         z
           .object({
             classification: z.enum(["fact", "inference"]),
-            summary: boundedText(1_000),
-            detail: boundedText(4_000).optional(),
-            sourceIds: z.array(boundedText(200)).min(1).max(20),
+            summary: boundedText(800),
+            detail: boundedText(2_000).optional(),
+            sourceIds: z.array(boundedText(200)).min(1).max(12),
           })
           .strict()
       )
-      .max(50),
+      .max(12),
     relationships: z
       .array(
         z
@@ -37,17 +37,28 @@ export const RESEARCH_AGENT_DRAFT_SCHEMA_V1 = z
             classification: z.enum(["verified", "hypothesis"]),
             jiraIssueKey: boundedText(100),
             confluenceContentId: boundedText(200),
-            summary: boundedText(1_000),
-            sourceIds: z.array(boundedText(200)).min(1).max(20),
+            summary: boundedText(800),
+            sourceIds: z.array(boundedText(200)).min(1).max(12),
           })
           .strict()
       )
-      .max(50),
-    limitations: z.array(boundedText(1_000)).max(30),
+      .max(12),
+    limitations: z.array(boundedText(700)).max(12),
   })
-  .strict();
+  .strict()
+  .meta({ title: "AtlcliResearchAgentDraftV1" });
 
 export type ResearchAgentDraftV1 = z.infer<typeof RESEARCH_AGENT_DRAFT_SCHEMA_V1>;
+
+/**
+ * JSON-Schema form used by QuickJS dynamic `task()` dispatches. Keeping this
+ * next to the authoritative Zod schema prevents the synthesizer and the host
+ * finalizer from drifting onto different report contracts.
+ */
+export const RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1 = {
+  ...z.toJSONSchema(RESEARCH_AGENT_DRAFT_SCHEMA_V1, { target: "draft-7" }),
+  title: "AtlcliResearchAgentDraftV1",
+} as Record<string, unknown>;
 
 function uniqueKnownSourceIds(
   sourceIds: readonly string[],
@@ -243,6 +254,54 @@ function evidenceCoverageBoundary(
   return qualifications.join(" ");
 }
 
+function clampText(value: unknown, maximum: number): unknown {
+  return typeof value === "string" ? value.slice(0, maximum) : value;
+}
+
+function clampProviderDraft(input: unknown): unknown {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return input;
+  const draft = input as Record<string, unknown>;
+  const clampSourceIds = (value: unknown): unknown => Array.isArray(value)
+    ? value.slice(0, 12).map((sourceId) => clampText(sourceId, 200))
+    : value;
+  const findings = Array.isArray(draft.findings)
+    ? draft.findings.slice(0, 12).map((value) => {
+        if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+        const finding = value as Record<string, unknown>;
+        return {
+          ...finding,
+          summary: clampText(finding.summary, 800),
+          ...(finding.detail === undefined ? {} : { detail: clampText(finding.detail, 2_000) }),
+          sourceIds: clampSourceIds(finding.sourceIds),
+        };
+      })
+    : draft.findings;
+  const relationships = Array.isArray(draft.relationships)
+    ? draft.relationships.slice(0, 12).map((value) => {
+        if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+        const relationship = value as Record<string, unknown>;
+        return {
+          ...relationship,
+          jiraIssueKey: clampText(relationship.jiraIssueKey, 100),
+          confluenceContentId: clampText(relationship.confluenceContentId, 200),
+          summary: clampText(relationship.summary, 800),
+          sourceIds: clampSourceIds(relationship.sourceIds),
+        };
+      })
+    : draft.relationships;
+  const limitations = Array.isArray(draft.limitations)
+    ? draft.limitations.slice(0, 12).map((value) => clampText(value, 700))
+    : draft.limitations;
+  return {
+    ...draft,
+    title: clampText(draft.title, 300),
+    executiveSummary: clampText(draft.executiveSummary, 2_000),
+    findings,
+    relationships,
+    limitations,
+  };
+}
+
 export function finalizeResearchAgentDraftV1(input: {
   draft: unknown;
   request: ResearchRequestV1;
@@ -250,7 +309,7 @@ export function finalizeResearchAgentDraftV1(input: {
   detailEvidence: readonly ResearchDetailEvidenceV1[];
   run: ResearchRunSummaryV1;
 }): ResearchReportV1 {
-  const draft = RESEARCH_AGENT_DRAFT_SCHEMA_V1.parse(input.draft);
+  const draft = RESEARCH_AGENT_DRAFT_SCHEMA_V1.parse(clampProviderDraft(input.draft));
   const sources = input.sources.map((source) => ({ ...source }));
   const sourcesById = new Map(sources.map((source) => [source.id, source]));
   const coverageBoundary = evidenceCoverageBoundary(
