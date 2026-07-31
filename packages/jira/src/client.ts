@@ -468,6 +468,7 @@ export class JiraClient {
     query?: string;
     typeKey?: string;
     expand?: string;
+    signal?: AbortSignal;
   } = {}): Promise<{ values: JiraProject[]; total: number }> {
     const data = await this.request<{
       values: JiraProject[];
@@ -483,6 +484,7 @@ export class JiraClient {
         typeKey: options.typeKey,
         expand: options.expand,
       },
+      signal: options.signal,
     });
 
     return {
