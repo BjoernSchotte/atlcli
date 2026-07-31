@@ -11,6 +11,15 @@ export const PUBLICATION_SEARCH_PROVIDER_SCHEMA_V1 =
 export const STATIC_PUBLICATION_MANIFEST_SCHEMA_V1 =
   "atlcli.static-publication-manifest/1" as const;
 
+/** Publication planning diagnostics; distinct from Confluence ExportNote codes. */
+export const PUBLICATION_ISSUE_CODES_V1 = {
+  PARTIAL_SOURCE: "partial-source",
+  INACCESSIBLE_SOURCE: "inaccessible-source",
+  CONFIRMED_DELETE: "confirmed-delete",
+  EXCLUDED_SOURCE: "excluded-source",
+  OUT_OF_SCOPE_SOURCE: "out-of-scope-source",
+} as const;
+
 export type PublicationScopeV1 =
   | { kind: "page"; pageId: string }
   | { kind: "tree"; rootPageId: string }
@@ -178,6 +187,7 @@ export type PublicationChangeKindV1 =
   | "route-change"
   | "asset-change"
   | "exclude"
+  | "out-of-scope"
   | "inaccessible"
   | "confirmed-delete";
 

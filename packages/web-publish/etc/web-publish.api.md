@@ -171,6 +171,18 @@ export interface PlanPublicationReferencesRequestV1 {
 // export: planPublicationReferencesV1
 export declare function planPublicationReferencesV1(request: PlanPublicationReferencesRequestV1): PublicationReferencePlanV1;
 
+// export: PlanPublicationRefreshRequestV1
+export interface PlanPublicationRefreshRequestV1 {
+    previousBundleDigest?: string;
+    previous?: PublicationSourceSnapshotV1;
+    current: PublicationSourceSnapshotV1;
+    previousRoutes?: readonly PublicationRouteRecordV1[];
+    currentRoutes?: readonly PublicationRouteRecordV1[];
+}
+
+// export: planPublicationRefreshV1
+export declare function planPublicationRefreshV1(request: PlanPublicationRefreshRequestV1): Promise<PublicationRefreshPlanV1>;
+
 // export: planPublicationRoutesV1
 export declare function planPublicationRoutesV1(request: PublicationRoutePlanRequestV1): PublicationRoutePlanV1;
 
@@ -185,6 +197,15 @@ export declare const PUBLICATION_CAPABILITY_SLOT_REQUIREMENTS_V1: Readonly<Parti
 
 // export: PUBLICATION_EXPERIENCE_SCHEMA_V1
 export declare const PUBLICATION_EXPERIENCE_SCHEMA_V1: "atlcli.publication-experience/1";
+
+// export: PUBLICATION_ISSUE_CODES_V1
+export declare const PUBLICATION_ISSUE_CODES_V1: {
+    readonly PARTIAL_SOURCE: "partial-source";
+    readonly INACCESSIBLE_SOURCE: "inaccessible-source";
+    readonly CONFIRMED_DELETE: "confirmed-delete";
+    readonly EXCLUDED_SOURCE: "excluded-source";
+    readonly OUT_OF_SCOPE_SOURCE: "out-of-scope-source";
+};
 
 // export: PUBLICATION_PAGE_SCHEMA_V1
 export declare const PUBLICATION_PAGE_SCHEMA_V1: "atlcli.publication-page/1";
@@ -297,7 +318,7 @@ export interface PublicationBundleV1 {
 }
 
 // export: PublicationChangeKindV1
-export type PublicationChangeKindV1 = "add" | "content-change" | "metadata-change" | "move" | "route-change" | "asset-change" | "exclude" | "inaccessible" | "confirmed-delete";
+export type PublicationChangeKindV1 = "add" | "content-change" | "metadata-change" | "move" | "route-change" | "asset-change" | "exclude" | "out-of-scope" | "inaccessible" | "confirmed-delete";
 
 // export: PublicationChangeV1
 export interface PublicationChangeV1 {
@@ -568,6 +589,15 @@ export interface PublicationReferencePlanV1 {
 
 // export: publicationRefreshPlanDigestInputV1
 export declare function publicationRefreshPlanDigestInputV1(plan: PublicationRefreshPlanV1): Omit<PublicationRefreshPlanV1, "previousBundleDigest" | "planDigest">;
+
+// export: PublicationRefreshPlanningErrorCodeV1
+export type PublicationRefreshPlanningErrorCodeV1 = "duplicate-previous-page" | "duplicate-current-page" | "duplicate-previous-route" | "duplicate-current-route" | "unconfirmed-delete";
+
+// export: PublicationRefreshPlanningErrorV1
+export declare class PublicationRefreshPlanningErrorV1 extends Error {
+    readonly code: PublicationRefreshPlanningErrorCodeV1;
+    constructor(code: PublicationRefreshPlanningErrorCodeV1, message: string);
+}
 
 // export: PublicationRefreshPlanV1
 export interface PublicationRefreshPlanV1 {

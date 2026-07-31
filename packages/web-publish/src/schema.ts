@@ -728,7 +728,7 @@ function publicationChange(value: unknown, path: string): void {
   ]);
   oneOf(candidate.kind, `${path}.kind`, [
     "add", "content-change", "metadata-change", "move", "route-change", "asset-change",
-    "exclude", "inaccessible", "confirmed-delete",
+    "exclude", "out-of-scope", "inaccessible", "confirmed-delete",
   ]);
   nonEmptyString(candidate.sourceId, `${path}.sourceId`);
   optional(candidate, "previousDigest", path, nonEmptyString);

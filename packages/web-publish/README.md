@@ -32,6 +32,12 @@ exclude recognized private/volatile fields and self digests, reject ambiguous
 JSON/cycles, and validate bundle-page-route-link-asset integrity before a
 bundle identity is calculated.
 
+`planPublicationRefreshV1()` compares two source snapshots without conflating
+absence with deletion. It emits separate `exclude`, `out-of-scope`, and
+`inaccessible` changes; only a complete traversal carrying explicit
+`complete-scan` authority may emit `confirmed-delete`. Content, metadata,
+tree-position, asset metadata, and route changes remain independently visible.
+
 Use `@atlcli/web-publish/node` for bounded filesystem helpers. Astro,
 Starlight, Pagefind execution, Confluence acquisition/authentication, CLI
 orchestration, and deployment belong to separate adapters or hosts.

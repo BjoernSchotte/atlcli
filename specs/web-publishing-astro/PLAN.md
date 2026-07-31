@@ -1427,7 +1427,7 @@ existing export behavior remains regression-green.
       references.
 - [x] Implement canonical JSON/digest functions that exclude volatile/private
       data and reject cycles/dangling references.
-- [ ] Implement refresh diff semantics that distinguish delete, exclude,
+- [x] Implement refresh diff semantics that distinguish delete, exclude,
       out-of-scope, and inaccessible.
 - [ ] Unit-test duplicate titles/IDs, rename/move, non-ASCII, long names,
       reserved names, separators, `..`, backslashes, case folding, base paths,
