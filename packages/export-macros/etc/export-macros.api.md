@@ -241,7 +241,6 @@ export interface MacroResolutionOptions {
 export interface MacroResolutionTraceV1 {
     readonly macroName: string;
     readonly sourcePage?: UnknownBlock["sourcePage"];
-    readonly replacement: readonly ExportBlock[];
     readonly outcome: "rendered" | "fallback";
     readonly rendererId?: string;
     readonly rendererRequiresLivePort?: boolean;

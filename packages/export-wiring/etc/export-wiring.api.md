@@ -417,6 +417,7 @@ export interface ResolvedWebMacroPageV1 {
     blocks: readonly ExportBlock[];
     notes: readonly ExportNote[];
     renderModels: readonly WebMacroRenderModelV1[];
+    frozenProvenance: WebMacroFrozenProvenanceV1;
     resolvedAtEpochMs: number;
     usedLive: boolean;
 }
@@ -426,6 +427,7 @@ export interface ResolveWebPageMacrosOptionsV1 {
     macros: MacroResolutionOptions;
     policy: WebMacroResolutionPolicyV1;
     previousBySourceId?: ReadonlyMap<string, ResolvedWebMacroPageV1>;
+    dependencyDigestForPage?: (page: ExportPageNode) => string | undefined;
     now?: () => number;
 }
 
@@ -467,6 +469,15 @@ export declare function trustRoutingAssetFetcher(inner: AssetFetcher, external: 
 
 // export: trustRoutingPdfAssetResolver
 export declare function trustRoutingPdfAssetResolver(inner: PdfAssetResolver, external: ExternalAssetFetcher): PdfAssetResolver;
+
+// export: WebMacroFrozenProvenanceV1
+export interface WebMacroFrozenProvenanceV1 {
+    sourceId: string;
+    sourceVersion?: number;
+    resolvedAtEpochMs: number;
+    dependencyDigest?: string;
+    dependencies: readonly ("jira" | "confluence" | "attachment" | "export-view")[];
+}
 
 // export: WebMacroRenderModelV1
 export interface WebMacroRenderModelV1 {
@@ -1169,6 +1180,7 @@ export interface ResolvedWebMacroPageV1 {
     blocks: readonly ExportBlock[];
     notes: readonly ExportNote[];
     renderModels: readonly WebMacroRenderModelV1[];
+    frozenProvenance: WebMacroFrozenProvenanceV1;
     resolvedAtEpochMs: number;
     usedLive: boolean;
 }
@@ -1178,6 +1190,7 @@ export interface ResolveWebPageMacrosOptionsV1 {
     macros: MacroResolutionOptions;
     policy: WebMacroResolutionPolicyV1;
     previousBySourceId?: ReadonlyMap<string, ResolvedWebMacroPageV1>;
+    dependencyDigestForPage?: (page: ExportPageNode) => string | undefined;
     now?: () => number;
 }
 
@@ -1223,6 +1236,15 @@ export type TypescriptDocxExportJobResolvedInputV1 = TypescriptDocxExportJobEngi
         sourcePageCount: number;
     };
 };
+
+// export: WebMacroFrozenProvenanceV1
+export interface WebMacroFrozenProvenanceV1 {
+    sourceId: string;
+    sourceVersion?: number;
+    resolvedAtEpochMs: number;
+    dependencyDigest?: string;
+    dependencies: readonly ("jira" | "confluence" | "attachment" | "export-view")[];
+}
 
 // export: WebMacroRenderModelV1
 export interface WebMacroRenderModelV1 {

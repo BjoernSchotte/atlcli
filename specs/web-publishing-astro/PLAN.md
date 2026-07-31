@@ -1448,7 +1448,7 @@ digest; route identity survives rename/move; every internal reference resolves.
 - [x] Define closed macro-to-render-model mappings, starting with TOC, Jira
       data, diagram/Mermaid, chart, status, Smart Card, and unknown fallback.
 - [ ] Prefer validated SVG/static models for web diagrams/charts.
-- [ ] Implement `live`, `no-live`, freshness, dependency, and frozen-provenance
+- [x] Implement `live`, `no-live`, freshness, dependency, and frozen-provenance
       policies without leaking source data.
 - [ ] Prove raw `export_view` HTML never reaches bundle/output.
 - [ ] Add Cloud ADF and DC Storage fixture parity for web target behavior.

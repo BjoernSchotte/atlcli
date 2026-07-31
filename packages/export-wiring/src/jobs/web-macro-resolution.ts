@@ -30,6 +30,19 @@ export interface WebMacroRenderModelV1 {
 }
 
 /**
+ * Frozen, non-content provenance for a page's dynamic macro result. The
+ * optional digest is supplied by the acquisition layer and must be a SHA-256
+ * value over dependency versions/metadata, never a query, response, or URL.
+ */
+export interface WebMacroFrozenProvenanceV1 {
+  sourceId: string;
+  sourceVersion?: number;
+  resolvedAtEpochMs: number;
+  dependencyDigest?: string;
+  dependencies: readonly ("jira" | "confluence" | "attachment" | "export-view")[];
+}
+
+/**
  * One page's resolved, renderer-neutral macro projection. `blocks` never
  * carries source HTML: `resolveMacroBlocks()` only returns trusted ExportBlock
  * values produced by the decoder or registered macro renderers.
@@ -41,6 +54,7 @@ export interface ResolvedWebMacroPageV1 {
   notes: readonly ExportNote[];
   /** Closed semantic macro metadata; `blocks` remains the sole content payload. */
   renderModels: readonly WebMacroRenderModelV1[];
+  frozenProvenance: WebMacroFrozenProvenanceV1;
   resolvedAtEpochMs: number;
   usedLive: boolean;
 }
@@ -91,8 +105,19 @@ export interface ResolveWebPageMacrosOptionsV1 {
   policy: WebMacroResolutionPolicyV1;
   /** A trusted, already-frozen result from the active publication bundle. */
   previousBySourceId?: ReadonlyMap<string, ResolvedWebMacroPageV1>;
+  /**
+   * Optional trusted fingerprint of a page's dynamic dependency metadata. If
+   * it is unavailable, a previous live result is deliberately never reused.
+   */
+  dependencyDigestForPage?: (page: ExportPageNode) => string | undefined;
   /** Injected for deterministic tests and reproducible refresh planning. */
   now?: () => number;
+}
+
+function assertDependencyDigest(value: string | undefined): void {
+  if (value !== undefined && !/^[a-f0-9]{64}$/u.test(value)) {
+    throw new TypeError("web macro dependency digest must be a lowercase SHA-256 hex digest");
+  }
 }
 
 function assertPolicy(policy: WebMacroResolutionPolicyV1): void {
@@ -112,13 +137,16 @@ function isFresh(
   page: ExportPageNode,
   policy: WebMacroResolutionPolicyV1,
   now: number,
+  dependencyDigest: string | undefined,
 ): previous is ResolvedWebMacroPageV1 {
   if (
     previous === undefined ||
     !previous.usedLive ||
     policy.mode !== "allow-frozen-live" ||
     policy.liveFreshnessSeconds === undefined ||
-    previous.sourceVersion !== page.meta.version
+    previous.sourceVersion !== page.meta.version ||
+    dependencyDigest === undefined ||
+    previous.frozenProvenance.dependencyDigest !== dependencyDigest
   ) {
     return false;
   }
@@ -149,7 +177,9 @@ export async function resolveWebPageMacrosV1(
 
     const resolvedAtEpochMs = now();
     const previous = options.previousBySourceId?.get(page.pageId);
-    if (isFresh(previous, page, options.policy, resolvedAtEpochMs)) {
+    const dependencyDigest = options.dependencyDigestForPage?.(page);
+    assertDependencyDigest(dependencyDigest);
+    if (isFresh(previous, page, options.policy, resolvedAtEpochMs, dependencyDigest)) {
       result.push(previous);
       continue;
     }
@@ -178,7 +208,16 @@ export async function resolveWebPageMacrosV1(
       notes: resolved.notes,
       renderModels,
       resolvedAtEpochMs,
-      usedLive: options.policy.mode === "allow-frozen-live" && options.macros.live !== false,
+      usedLive: renderModels.some((model) => model.provenance === "frozen-live"),
+      frozenProvenance: {
+        sourceId: page.pageId,
+        ...(page.meta.version === undefined ? {} : { sourceVersion: page.meta.version }),
+        resolvedAtEpochMs,
+        ...(renderModels.some((model) => model.provenance === "frozen-live") && dependencyDigest !== undefined
+          ? { dependencyDigest }
+          : {}),
+        dependencies: [...new Set(renderModels.flatMap((model) => model.dependencies))].sort(),
+      },
     });
   }
   return result;

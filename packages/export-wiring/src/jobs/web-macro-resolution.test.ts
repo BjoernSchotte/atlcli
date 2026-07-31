@@ -73,6 +73,20 @@ describe("resolveWebPageMacrosV1", () => {
       { type: "paragraph", content: [{ type: "text", text: "resolved:child" }] },
     ]);
     expect(resolved.every((entry) => entry.usedLive)).toBe(true);
+    expect(resolved.map((entry) => entry.frozenProvenance)).toEqual([
+      {
+        sourceId: "root",
+        sourceVersion: 1,
+        resolvedAtEpochMs: 1_000,
+        dependencies: ["jira"],
+      },
+      {
+        sourceId: "child",
+        sourceVersion: 1,
+        resolvedAtEpochMs: 1_000,
+        dependencies: ["jira"],
+      },
+    ]);
     expect(resolved.map((entry) => entry.renderModels)).toEqual([
       [{
         sourceId: "root",
@@ -147,6 +161,13 @@ describe("resolveWebPageMacrosV1", () => {
       renderModels: [],
       resolvedAtEpochMs: 1_000,
       usedLive: true,
+      frozenProvenance: {
+        sourceId: "guide",
+        sourceVersion: 1,
+        resolvedAtEpochMs: 1_000,
+        dependencyDigest: "a".repeat(64),
+        dependencies: ["jira"],
+      },
     };
     const fresh = await resolveWebPageMacrosV1([
       page("guide", [{ type: "unknown", macroName: "widget" }]),
@@ -154,6 +175,7 @@ describe("resolveWebPageMacrosV1", () => {
       macros: macroOptions(calls),
       policy: { mode: "allow-frozen-live", liveFreshnessSeconds: 60 },
       previousBySourceId: new Map([["guide", previous]]),
+      dependencyDigestForPage: () => "a".repeat(64),
       now: () => 61_000,
     });
     expect(fresh).toEqual([previous]);
@@ -165,6 +187,7 @@ describe("resolveWebPageMacrosV1", () => {
       macros: macroOptions(calls),
       policy: { mode: "allow-frozen-live", liveFreshnessSeconds: 60 },
       previousBySourceId: new Map([["guide", previous]]),
+      dependencyDigestForPage: () => "b".repeat(64),
       now: () => 61_001,
     });
     expect(calls).toEqual(["guide:"]);
@@ -176,5 +199,12 @@ describe("resolveWebPageMacrosV1", () => {
     await expect(resolveWebPageMacrosV1([
       page("duplicate", []), page("duplicate", []),
     ], { macros: macroOptions([]), policy: { mode: "static-only" } })).rejects.toThrow("duplicate page");
+    await expect(resolveWebPageMacrosV1([
+      page("digest", []),
+    ], {
+      macros: macroOptions([]),
+      policy: { mode: "static-only" },
+      dependencyDigestForPage: () => "not-a-digest",
+    })).rejects.toThrow("dependency digest");
   });
 });
