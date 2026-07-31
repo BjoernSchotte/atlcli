@@ -1465,7 +1465,7 @@ inputs, and does not alter existing export targets.
 - [x] Export the default integration factory and named structured-data loader.
 - [x] Implement loader entry IDs from immutable source IDs, schema validation,
       page digests, metadata revision, and deletion reconciliation.
-- [ ] Validate `output: "static"`, URL profile, `base`, `site`, `outDir`, and
+- [x] Validate `output: "static"`, URL profile, `base`, `site`, `outDir`, and
       `publicDir` without silently rewriting owner configuration.
 - [x] Inject/enumerate publication routes with `getStaticPaths()` and prove
       prerendering/collision behavior in documented integration hooks.

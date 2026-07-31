@@ -9,6 +9,8 @@ export {
   atlcliPublishingIntegration,
   publicationRoutePathV1,
   publicationStaticPathsV1,
+  type AstroPublicationConfigExpectationV1,
   type AtlcliPublishingIntegrationOptionsV1,
   type AtlcliAstroPublishingIntegrationV1,
+  type ResolvedAstroPublishingConfigV1,
 } from "./integration.js";

@@ -70,6 +70,40 @@ function bundle(overrides: Record<string, unknown> = {}): Record<string, unknown
   };
 }
 
+function expectedConfig(root: string): {
+  base: string;
+  outputProfile: "directory";
+  outDir: string;
+  publicDir: string;
+} {
+  return {
+    base: "/docs/",
+    outputProfile: "directory",
+    outDir: join(root, "dist"),
+    publicDir: join(root, "public"),
+  };
+}
+
+function resolvedConfig(root: string, overrides: Record<string, unknown> = {}): {
+  output: string;
+  base: string;
+  site?: URL;
+  outDir: URL;
+  publicDir: URL;
+  build: { format: string };
+  trailingSlash: string;
+} {
+  return {
+    output: "static",
+    base: "/docs/",
+    outDir: pathToFileURL(join(root, "dist")),
+    publicDir: pathToFileURL(join(root, "public")),
+    build: { format: "directory" },
+    trailingSlash: "always",
+    ...overrides,
+  };
+}
+
 async function fixture(bundleValue = bundle()): Promise<{ root: string; bundlePath: string }> {
   const root = await mkdtemp(join(tmpdir(), "atlcli-web-publish-astro-"));
   await mkdir(join(root, "pages"));
@@ -115,7 +149,12 @@ test("uses only static Astro hooks, detects collisions, and writes private inven
   const manifest = join(root, "private", "inventory.json");
   await mkdir(output);
   await writeFile(join(output, "index.html"), "<main>Guide</main>");
-  const integration = atlcliPublishingIntegration({ bundlePath, manifestPath: manifest, routePrefix: "/publish" });
+  const integration = atlcliPublishingIntegration({
+    bundlePath,
+    manifestPath: manifest,
+    routePrefix: "/publish",
+    expectedConfig: expectedConfig(root),
+  });
   try {
     expect(publicationRoutePathV1("/", "/publish")).toBe("/publish");
     expect(publicationRoutePathV1("/guide/", "/publish")).toBe("/publish/guide");
@@ -123,7 +162,9 @@ test("uses only static Astro hooks, detects collisions, and writes private inven
       params: { slug: "guide" },
       props: { sourceId: "guide" },
     }]);
-    expect(() => integration.hooks["astro:config:done"]({ config: { output: "server" } })).toThrow("static output");
+    expect(() => integration.hooks["astro:config:done"]({
+      config: resolvedConfig(root, { output: "server" }),
+    })).toThrow("static output");
     await expect(integration.hooks["astro:routes:resolved"]({
       routes: [{ pathname: "/publish/guide" }],
     })).rejects.toThrow("route collision");
@@ -145,11 +186,55 @@ test("uses only static Astro hooks, detects collisions, and writes private inven
   }
 });
 
+test("validates the operator-owned Astro URL and output profile without rewriting it", async () => {
+  const { root, bundlePath } = await fixture();
+  const options = {
+    bundlePath,
+    manifestPath: join(root, "private", "inventory.json"),
+    routePrefix: "/publish",
+    expectedConfig: {
+      ...expectedConfig(root),
+      site: "https://publish.example/docs/",
+    },
+  };
+  const integration = atlcliPublishingIntegration(options);
+  const valid = resolvedConfig(root, { site: new URL("https://publish.example/docs/") });
+  try {
+    expect(() => integration.hooks["astro:config:done"]({ config: valid })).not.toThrow();
+    expect(() => integration.hooks["astro:config:done"]({
+      config: resolvedConfig(root, { base: "/elsewhere", site: valid.site }),
+    })).toThrow("base mismatch");
+    expect(() => integration.hooks["astro:config:done"]({
+      config: resolvedConfig(root, { build: { format: "file" }, site: valid.site }),
+    })).toThrow("directory profile");
+    expect(() => integration.hooks["astro:config:done"]({
+      config: resolvedConfig(root, { trailingSlash: "never", site: valid.site }),
+    })).toThrow("directory profile");
+    expect(() => integration.hooks["astro:config:done"]({
+      config: resolvedConfig(root, { site: new URL("https://other.example/docs/") }),
+    })).toThrow("site mismatch");
+    expect(() => integration.hooks["astro:config:done"]({
+      config: resolvedConfig(root, { outDir: pathToFileURL(join(root, "other-dist")), site: valid.site }),
+    })).toThrow("outDir mismatch");
+    expect(() => integration.hooks["astro:config:done"]({
+      config: resolvedConfig(root, { publicDir: pathToFileURL(join(root, "other-public")), site: valid.site }),
+    })).toThrow("publicDir mismatch");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("injects a static catch-all only for an operator-owned layout entrypoint", () => {
   const withoutLayout = atlcliPublishingIntegration({
     bundlePath: "/bundle.json",
     manifestPath: "/private/inventory.json",
     routePrefix: "/publish",
+    expectedConfig: {
+      base: "/docs",
+      outputProfile: "directory",
+      outDir: "/dist",
+      publicDir: "/public",
+    },
   });
   const updates: unknown[] = [];
   withoutLayout.hooks["astro:config:setup"]?.({
@@ -157,6 +242,7 @@ test("injects a static catch-all only for an operator-owned layout entrypoint", 
     updateConfig: (config) => updates.push(config),
   });
   expect(updates).toHaveLength(1);
+  expect(Object.keys(updates[0] as object)).toEqual(["vite"]);
   const plugin = (updates[0] as {
     vite: { plugins: Array<{
       name: string;
@@ -176,6 +262,12 @@ test("injects a static catch-all only for an operator-owned layout entrypoint", 
     bundlePath: "/bundle.json",
     manifestPath: "/private/inventory.json",
     routePrefix: "/publish",
+    expectedConfig: {
+      base: "/docs",
+      outputProfile: "directory",
+      outDir: "/dist",
+      publicDir: "/public",
+    },
     trustedLayoutEntrypoint: "/operator/src/pages/publish/[...slug].astro",
   });
   const injected: unknown[] = [];

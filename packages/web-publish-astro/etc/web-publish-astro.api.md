@@ -7,6 +7,15 @@
 ### Entry point `.`
 
 ```ts
+// export: AstroPublicationConfigExpectationV1
+export interface AstroPublicationConfigExpectationV1 {
+    base: string;
+    outputProfile: PublicationOutputProfileV1;
+    site?: string;
+    outDir: string;
+    publicDir: string;
+}
+
 // export: AtlcliAstroPublicationLoaderV1
 export interface AtlcliAstroPublicationLoaderV1 {
     name: string;
@@ -41,9 +50,7 @@ export interface AtlcliAstroPublishingIntegrationV1 {
             updateConfig(config: unknown): void;
         }): void;
         "astro:config:done"(context: {
-            config: {
-                output: string;
-            };
+            config: ResolvedAstroPublishingConfigV1;
         }): void;
         "astro:routes:resolved"(context: {
             routes: readonly {
@@ -74,6 +81,7 @@ export declare function atlcliPublishingIntegration(options: AtlcliPublishingInt
 export interface AtlcliPublishingIntegrationOptionsV1 extends AtlcliPublicationLoaderOptionsV1 {
     manifestPath: string;
     routePrefix: string;
+    expectedConfig: AstroPublicationConfigExpectationV1;
     trustedLayoutEntrypoint?: string;
 }
 
@@ -98,4 +106,17 @@ export declare function publicationStaticPathsV1(options: AtlcliPublicationLoade
 
 // export: readPublicationBundlePagesV1
 export declare function readPublicationBundlePagesV1(options: AtlcliPublicationLoaderOptionsV1): Promise<LoadedPublicationBundleV1>;
+
+// export: ResolvedAstroPublishingConfigV1
+export interface ResolvedAstroPublishingConfigV1 {
+    output: string;
+    base: string;
+    site?: URL;
+    outDir: URL;
+    publicDir: URL;
+    build: {
+        format: string;
+    };
+    trailingSlash: string;
+}
 ```
