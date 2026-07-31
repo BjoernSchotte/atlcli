@@ -83,6 +83,10 @@ export function compileDynamicResearchSubagents(
     description: descriptionForRole(node.role),
     model: options.model,
     systemPrompt: rolePrompt(node),
+    // Keep the normal-tool surface empty. Atlassian access is exposed only by
+    // the QuickJS PTC middleware below; createSubAgent still requires tools to
+    // be present in the declarative spec.
+    tools: [],
     middleware: [
       ...disabledMiddleware,
       ...(node.grantedCapabilityIds.length > 0

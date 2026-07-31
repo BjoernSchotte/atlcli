@@ -59,8 +59,8 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       "cross-product-join",
       "reconciler",
     ]);
-    expect(specs[0]?.tools).toBeUndefined();
-    expect(specs[1]?.tools).toBeUndefined();
+    expect(specs[0]?.tools).toEqual([]);
+    expect(specs[1]?.tools).toEqual([]);
     expect(specs[0]?.middleware).toHaveLength(5);
     expect(specs[1]?.middleware).toHaveLength(5);
     expect(specs[2]?.middleware).toHaveLength(4);
