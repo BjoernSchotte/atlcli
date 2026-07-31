@@ -68,6 +68,7 @@ import { dirname, join, parse as parsePath } from "node:path";
 /** The entrypoints that MUST build for the browser (spec 001 §6). */
 export const BROWSER_ENTRYPOINTS = [
   "packages/export-blocks/src/index.ts",
+  "packages/web-publish/src/index.ts",
   "packages/confluence/src/markdown.ts",
   "packages/confluence/src/client.ts",
   "packages/confluence/src/attachment-delivery.ts",

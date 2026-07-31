@@ -1406,7 +1406,7 @@ existing export behavior remains regression-green.
 - [x] Move no ADF/Storage parser, Confluence client, host, Node, or renderer code
       into the model package; update consumers incrementally with API/closure and
       deterministic DOCX/PDF/browser regression proof.
-- [ ] Add `@atlcli/web-publish` with public-0.x classification, strict ESM,
+- [x] Add `@atlcli/web-publish` with public-0.x classification, strict ESM,
       browser-safe default entry point, Node filesystem subpath, README, API
       report, and closure report.
 - [ ] Implement and validate the versioned contracts from section 9.

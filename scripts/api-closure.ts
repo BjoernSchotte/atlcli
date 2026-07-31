@@ -46,6 +46,14 @@ export const FREEZE_DECISIONS: Record<string, FreezeDecision> = {
       "DOCX, PDF, and web publishing. Keep it experimental while the first standalone " +
       "Astro renderer and an external package consumer prove the separated contract.",
   },
+  "@atlcli/web-publish": {
+    version: "0.x",
+    frozen: false,
+    reasoning:
+      "STAYS 0.x: introduced as the mostly isomorphic publication project, bundle, " +
+      "experience, and build contract layer. Keep it experimental while Astro/Starlight " +
+      "adapters and a second experience consumer prove capability negotiation and closure.",
+  },
   "@atlcli/code-highlight": {
     version: "0.x",
     frozen: false,
