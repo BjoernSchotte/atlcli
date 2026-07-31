@@ -1,6 +1,7 @@
 ---
 import ExportDocument from "@atlcli/export-blocks-astro/components/ExportDocument.astro";
 import StaticChart from "@atlcli/export-blocks-astro/components/StaticChart.astro";
+import InteractiveChart from "@atlcli/export-blocks-astro/components/InteractiveChart.astro";
 import "@atlcli/export-blocks-astro/styles.css";
 import {
   EXPORT_BLOCKS_ASTRO_MINIMAL_CONTEXT_V1,
@@ -19,6 +20,11 @@ import {
       title: "Published pages",
       labels: ["Jan", "Feb"],
       series: [{ name: "Pages", values: [12, 18] }],
+    }} />
+    <InteractiveChart enabled chart={{
+      title: "Interactive published pages",
+      labels: ["January", "February", "March"],
+      series: [{ name: "Pages", values: [12, 18, 21] }],
     }} />
   </body>
 </html>

@@ -59,6 +59,7 @@ export {
 export {
   StaticChartValidationErrorV1,
   normalizeStaticChartV1,
+  validateInteractiveChartV1,
   type NormalizedStaticChartV1,
   type StaticChartModelV1,
   type StaticChartSeriesV1,

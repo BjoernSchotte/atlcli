@@ -114,6 +114,9 @@ export interface StaticChartSeriesV1 {
 // export: StaticChartValidationErrorV1
 export declare class StaticChartValidationErrorV1 extends Error {
 }
+
+// export: validateInteractiveChartV1
+export declare function validateInteractiveChartV1(model: StaticChartModelV1): NormalizedStaticChartV1;
 ```
 
 ### Entry point `./fixtures`

@@ -1535,7 +1535,7 @@ the active bundle is always complete and digest-valid.
       custom properties, and documented `data-atlcli-*` hooks without treating
       generated classes/full DOM snapshots as public compatibility.
 - [x] Implement accessible static chart SVG/HTML from normalized chart data.
-- [ ] Implement the optional block-local chart island with frozen data, explicit
+- [x] Implement the optional block-local chart island with frozen data, explicit
       opt-in, byte/row/node limits, no network/auth access, and static fallback.
 - [ ] Keep chart rendering behind a vendor-neutral `ChartRendererAdapter`; use
       TanStack Charts as the preferred V1 island adapter after re-running its
