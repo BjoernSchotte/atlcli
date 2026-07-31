@@ -5,6 +5,10 @@ import {
   RESEARCH_TOOL_IDS,
   normalizeResearchRequestV1,
 } from "@atlcli/research/browser";
+import {
+  normalizeResearchScopeMentionText,
+  resolveResearchScopeMentionV1,
+} from "@atlcli/research/scope-discovery";
 
 describe("@atlcli/research browser boundary", () => {
   test("exports the host-neutral contract without browser or node adapters", () => {
@@ -33,5 +37,32 @@ describe("@atlcli/research browser boundary", () => {
     expect(request.scope.siteOrigin).toBe("https://mayflower.atlassian.net");
     expect(request.scope.jiraProjectKeys).toEqual(["ATLCLI"]);
   });
-});
 
+  test("keeps scope discovery on the same browser-safe package", () => {
+    const result = resolveResearchScopeMentionV1({
+      mention: {
+        id: "mention:package",
+        source: "natural_language",
+        text: "DOCSY",
+        normalizedText: normalizeResearchScopeMentionText("DOCSY"),
+        productHint: "confluence",
+        entityKindHint: "space",
+      },
+      candidates: [{
+        id: "candidate:package",
+        tenantOrigin: "https://mayflower.atlassian.net",
+        product: "confluence",
+        entityKind: "space",
+        entityRef: "research-entity:docsy",
+        key: "DOCSY",
+        name: "Documentation",
+        accessible: true,
+        providerFreshnessAt: "2026-07-31T10:00:00.000Z",
+      }],
+      catalogComplete: false,
+      expectedTenantOrigin: "https://mayflower.atlassian.net",
+    });
+    expect(result.state).toBe("resolved");
+    expect(result.uniquenessProof).toBe("exact_key_lookup");
+  });
+});

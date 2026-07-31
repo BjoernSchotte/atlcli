@@ -43,6 +43,11 @@
       "development": "./src/capability-contracts.ts",
       "types": "./dist/capability-contracts.d.ts",
       "default": "./dist/capability-contracts.js"
+    },
+    "./scope-discovery": {
+      "development": "./src/scope-discovery.ts",
+      "types": "./dist/scope-discovery.d.ts",
+      "default": "./dist/scope-discovery.js"
     }
   },
   "scripts": {
