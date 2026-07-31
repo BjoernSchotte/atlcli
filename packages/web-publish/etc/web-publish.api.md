@@ -84,6 +84,39 @@ export interface BuiltSeoArtifactsV1 {
     digest: string;
 }
 
+// export: DEFAULT_PUBLICATION_VALIDATION_BUDGET_V1
+export declare const DEFAULT_PUBLICATION_VALIDATION_BUDGET_V1: Readonly<PublicationValidationBudgetV1>;
+
+// export: parsePublicationBuildRequestV1
+export declare function parsePublicationBuildRequestV1(value: unknown, budget?: PublicationValidationBudgetV1): PublicationBuildRequestV1;
+
+// export: parsePublicationBuildResultV1
+export declare function parsePublicationBuildResultV1(value: unknown, budget?: PublicationValidationBudgetV1): PublicationBuildResultV1;
+
+// export: parsePublicationBundleV1
+export declare function parsePublicationBundleV1(value: unknown, budget?: PublicationValidationBudgetV1): PublicationBundleV1;
+
+// export: parsePublicationExperienceDescriptorV1
+export declare function parsePublicationExperienceDescriptorV1(value: unknown, budget?: PublicationValidationBudgetV1): PublicationExperienceDescriptorV1;
+
+// export: parsePublicationPageV1
+export declare function parsePublicationPageV1(value: unknown, budget?: PublicationValidationBudgetV1): PublicationPageV1;
+
+// export: parsePublicationProjectV1
+export declare function parsePublicationProjectV1(value: unknown, budget?: PublicationValidationBudgetV1): PublicationProjectV1;
+
+// export: parsePublicationRefreshPlanV1
+export declare function parsePublicationRefreshPlanV1(value: unknown, budget?: PublicationValidationBudgetV1): PublicationRefreshPlanV1;
+
+// export: parsePublicationRendererDescriptorV1
+export declare function parsePublicationRendererDescriptorV1(value: unknown, budget?: PublicationValidationBudgetV1): PublicationRendererDescriptorV1;
+
+// export: parsePublishRunRequestV1
+export declare function parsePublishRunRequestV1(value: unknown, budget?: PublicationValidationBudgetV1): PublishRunRequestV1;
+
+// export: parseStaticPublicationManifestV1
+export declare function parseStaticPublicationManifestV1(value: unknown, budget?: PublicationValidationBudgetV1): StaticPublicationManifestV1;
+
 // export: PUBLICATION_BUNDLE_SCHEMA_V1
 export declare const PUBLICATION_BUNDLE_SCHEMA_V1: "atlcli.publication-bundle/1";
 
@@ -512,6 +545,20 @@ export interface PublicationSourceSnapshotV1 {
     deletionAuthority: "complete-scan" | "none";
     rootIds: readonly string[];
     pages: readonly PublicationSourcePageSnapshotV1[];
+}
+
+// export: PublicationValidationBudgetV1
+export interface PublicationValidationBudgetV1 {
+    maxDepth: number;
+    maxNodes: number;
+    maxStringBytes: number;
+    maxArrayLength: number;
+}
+
+// export: PublicationValidationErrorV1
+export declare class PublicationValidationErrorV1 extends Error {
+    readonly path: string;
+    constructor(path: string, message: string);
 }
 
 // export: PublicationVerificationSummaryV1

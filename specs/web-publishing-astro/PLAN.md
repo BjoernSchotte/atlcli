@@ -1409,7 +1409,7 @@ existing export behavior remains regression-green.
 - [x] Add `@atlcli/web-publish` with public-0.x classification, strict ESM,
       browser-safe default entry point, Node filesystem subpath, README, API
       report, and closure report.
-- [ ] Implement and validate the versioned contracts from section 9.
+- [x] Implement and validate the versioned contracts from section 9.
 - [ ] Implement experience descriptor/selection, capability negotiation,
       semantic slot, design-token, component-override, search-provider,
       SEO/i18n/media/code, analytics, and edit-link contracts.

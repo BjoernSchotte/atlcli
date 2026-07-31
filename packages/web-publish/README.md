@@ -6,7 +6,8 @@ Confluence content as verified static sites.
 The default entry point is browser-safe and owns publication projects, refresh
 plans, routes, typed links/assets, immutable bundles, experiences, search,
 SEO/i18n/media, analytics, edit links, build results, manifests, and issues.
-It depends only on `@atlcli/export-blocks`.
+It also exports strict V1 runtime parsers with bounded JSON validation and
+closed registries. It depends only on `@atlcli/export-blocks`.
 
 Use `@atlcli/web-publish/node` for bounded filesystem helpers. Astro,
 Starlight, Pagefind execution, Confluence acquisition/authentication, CLI
