@@ -1,0 +1,26 @@
+---
+import { getEntry } from "astro:content";
+import { publicationStaticPathsV1 } from "@atlcli/web-publish-astro";
+import { bundlePath } from "virtual:atlcli-publication";
+
+export async function getStaticPaths() {
+  return publicationStaticPathsV1({
+    bundlePath,
+  });
+}
+
+const { sourceId } = Astro.props;
+const entry = await getEntry("publications", sourceId);
+if (!entry) throw new Error(`Missing publication entry ${sourceId}`);
+---
+
+<!doctype html>
+<html lang="en">
+  <head><title>{entry.data.title}</title></head>
+  <body>
+    <article data-atlcli-source-id={entry.data.sourceId} data-atlcli-bundle={entry.data.bundleDigest}>
+      <h1>{entry.data.title}</h1>
+      <p>Structured blocks: {entry.data.blocks.length}</p>
+    </article>
+  </body>
+</html>

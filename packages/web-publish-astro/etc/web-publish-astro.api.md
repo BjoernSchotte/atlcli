@@ -38,6 +38,7 @@ export interface AtlcliAstroPublishingIntegrationV1 {
                 entrypoint: string;
                 prerender: boolean;
             }): void;
+            updateConfig(config: unknown): void;
         }): void;
         "astro:config:done"(context: {
             config: {

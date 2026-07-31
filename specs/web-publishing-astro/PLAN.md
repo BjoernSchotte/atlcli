@@ -1467,9 +1467,9 @@ inputs, and does not alter existing export targets.
       page digests, metadata revision, and deletion reconciliation.
 - [ ] Validate `output: "static"`, URL profile, `base`, `site`, `outDir`, and
       `publicDir` without silently rewriting owner configuration.
-- [ ] Inject/enumerate publication routes with `getStaticPaths()` and prove
+- [x] Inject/enumerate publication routes with `getStaticPaths()` and prove
       prerendering/collision behavior in documented integration hooks.
-- [ ] Define an optional trusted user layout entrypoint and ensure content
+- [x] Define an optional trusted user layout entrypoint and ensure content
       cannot influence module resolution.
 - [ ] Load only installed operator-selected experience descriptors; validate
       required capabilities/slots and include experience/version/config in the
@@ -1480,7 +1480,7 @@ inputs, and does not alter existing export targets.
 - [ ] Document that a future post-build augmenter must consume the completed
       verified manifest and reserve owned paths through the route/output
       registry; add no V1 service-worker paths or PWA schema.
-- [ ] Write the private output manifest outside the public output root.
+- [x] Write the private output manifest outside the public output root.
 - [ ] Keep programmatic Astro APIs and experimental collection storage out of
       public contracts.
 - [ ] STOP on private Astro/Vite dependency, non-static route, ambient docs-site

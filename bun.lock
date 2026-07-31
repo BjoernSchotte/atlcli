@@ -330,6 +330,16 @@
         "@atlcli/export-blocks": "workspace:*",
       },
     },
+    "packages/web-publish-astro": {
+      "name": "@atlcli/web-publish-astro",
+      "version": "0.1.0",
+      "dependencies": {
+        "@atlcli/web-publish": "workspace:*",
+      },
+      "peerDependencies": {
+        "astro": ">=7.1.6 <8",
+      },
+    },
   },
   "patchedDependencies": {
     "@myriaddreamin/typst-ts-web-compiler@0.7.0": "patches/@myriaddreamin%2Ftypst-ts-web-compiler@0.7.0.patch",
@@ -432,6 +442,8 @@
     "@atlcli/template-pack": ["@atlcli/template-pack@workspace:packages/template-pack"],
 
     "@atlcli/web-publish": ["@atlcli/web-publish@workspace:packages/web-publish"],
+
+    "@atlcli/web-publish-astro": ["@atlcli/web-publish-astro@workspace:packages/web-publish-astro"],
 
     "@babel/code-frame": ["@babel/code-frame@7.29.7", "", { "dependencies": { "@babel/helper-validator-identifier": "^7.29.7", "js-tokens": "^4.0.0", "picocolors": "^1.1.1" } }, "sha512-Aup7aUOfpbAUg2ROOJN6Iw5f9DMBlzu0mIkm/malLQFN/YQgO48wCj0Kxa3sEHJvPVFg7siR+qRInwXd2qhQKw=="],
 

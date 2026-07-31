@@ -1,0 +1,16 @@
+{
+  "schema": "atlcli.publication-page/1",
+  "sourceId": "guide",
+  "sourceVersion": "1",
+  "title": "Guide",
+  "position": 0,
+  "depth": 0,
+  "route": "/guide/",
+  "blocks": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Guide" }] }],
+  "notes": [],
+  "labels": [],
+  "links": [],
+  "assetIds": [],
+  "renderDependencies": [],
+  "pageDigest": "page-digest"
+}

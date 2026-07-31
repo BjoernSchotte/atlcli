@@ -151,7 +151,26 @@ test("injects a static catch-all only for an operator-owned layout entrypoint", 
     manifestPath: "/private/inventory.json",
     routePrefix: "/publish",
   });
-  expect(withoutLayout.hooks["astro:config:setup"]).toBeUndefined();
+  const updates: unknown[] = [];
+  withoutLayout.hooks["astro:config:setup"]?.({
+    injectRoute: () => { throw new Error("must not inject without a layout"); },
+    updateConfig: (config) => updates.push(config),
+  });
+  expect(updates).toHaveLength(1);
+  const plugin = (updates[0] as {
+    vite: { plugins: Array<{
+      name: string;
+      resolveId(id: string): string | undefined;
+      load(id: string): string | undefined;
+    }> };
+  }).vite.plugins[0]!;
+  expect(plugin.name).toBe("atlcli-publication-bundle-path");
+  expect(plugin.resolveId("virtual:atlcli-publication")).toBe("\0virtual:atlcli-publication");
+  expect(plugin.resolveId("unrelated-module")).toBeUndefined();
+  expect(plugin.load("\0virtual:atlcli-publication")).toBe(
+    'export const bundlePath = "/bundle.json";',
+  );
+  expect(plugin.load("unrelated-module")).toBeUndefined();
 
   const withLayout = atlcliPublishingIntegration({
     bundlePath: "/bundle.json",
@@ -160,7 +179,10 @@ test("injects a static catch-all only for an operator-owned layout entrypoint", 
     trustedLayoutEntrypoint: "/operator/src/pages/publish/[...slug].astro",
   });
   const injected: unknown[] = [];
-  withLayout.hooks["astro:config:setup"]?.({ injectRoute: (route) => injected.push(route) });
+  withLayout.hooks["astro:config:setup"]?.({
+    injectRoute: (route) => injected.push(route),
+    updateConfig: () => {},
+  });
   expect(injected).toEqual([{
     pattern: "/publish/[...slug]",
     entrypoint: "/operator/src/pages/publish/[...slug].astro",

@@ -31,6 +31,7 @@ export interface AtlcliAstroPublishingIntegrationV1 {
         entrypoint: string;
         prerender: boolean;
       }): void;
+      updateConfig(config: unknown): void;
     }): void;
     "astro:config:done"(context: { config: { output: string } }): void;
     "astro:routes:resolved"(context: {
@@ -132,19 +133,36 @@ export function atlcliPublishingIntegration(
   return {
     name: "atlcli-publishing",
     hooks: {
-      ...(options.trustedLayoutEntrypoint === undefined
-        ? {}
-        : {
-            "astro:config:setup": ({ injectRoute }: {
-              injectRoute(route: { pattern: string; entrypoint: string; prerender: boolean }): void;
-            }) => {
-              injectRoute({
-                pattern: `${routePrefix}/[...slug]`,
-                entrypoint: options.trustedLayoutEntrypoint!,
-                prerender: true,
-              });
-            },
-          }),
+      "astro:config:setup": ({ injectRoute, updateConfig }: {
+        injectRoute(route: { pattern: string; entrypoint: string; prerender: boolean }): void;
+        updateConfig(config: unknown): void;
+      }) => {
+        // The virtual module contains only an operator-configured absolute path.
+        // It is consumed during the Node build and never copied into published
+        // page data or static output.
+        updateConfig({
+          vite: {
+            plugins: [{
+              name: "atlcli-publication-bundle-path",
+              resolveId(id: string) {
+                return id === "virtual:atlcli-publication" ? "\0virtual:atlcli-publication" : undefined;
+              },
+              load(id: string) {
+                return id === "\0virtual:atlcli-publication"
+                  ? `export const bundlePath = ${JSON.stringify(resolve(options.bundlePath))};`
+                  : undefined;
+              },
+            }],
+          },
+        });
+        if (options.trustedLayoutEntrypoint !== undefined) {
+          injectRoute({
+            pattern: `${routePrefix}/[...slug]`,
+            entrypoint: options.trustedLayoutEntrypoint,
+            prerender: true,
+          });
+        }
+      },
       "astro:config:done": ({ config }) => {
         if (config.output !== "static") {
           throw new Error("atlcli publishing requires Astro static output");

@@ -1,0 +1,30 @@
+{
+  "schema": "atlcli.publication-bundle/1",
+  "bundleDigest": "bundle-digest",
+  "createdBy": { "name": "atlcli", "version": "0.1.0" },
+  "sourceSnapshot": {
+    "sourceDigest": "source-digest",
+    "complete": true,
+    "deletionAuthority": "complete-scan",
+    "rootIds": ["guide"],
+    "pages": [{
+      "sourceId": "guide",
+      "sourceVersion": "1",
+      "representation": "atlas_doc_format",
+      "position": 0,
+      "depth": 0,
+      "title": "Guide",
+      "contentDigest": "content-digest",
+      "metadataDigest": "metadata-digest",
+      "assetMetadataDigest": "asset-metadata-digest",
+      "state": "included"
+    }]
+  },
+  "sourcePolicyDigest": "policy-digest",
+  "complete": true,
+  "rootIds": ["guide"],
+  "pages": [{ "sourceId": "guide", "path": "pages/guide.json", "pageDigest": "page-digest" }],
+  "routes": [{ "sourceId": "guide", "route": "/guide/", "state": "active", "assignedBy": "generated", "previousRoutes": [] }],
+  "assets": [],
+  "issues": []
+}
