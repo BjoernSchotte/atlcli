@@ -75,11 +75,10 @@ export function diagramMacroRenderer(): MacroRenderer {
         const svgName = `${name}.svg`;
         const pngName = `${name}.png`;
 
-        // Prefer SVG only for the PDF engine (renders SVG natively). DOCX has no
-        // arbitrary-SVG-attachment seam yet (TODO(T1.15), blocked on
-        // 006-word-quality G4), so DOCX always gets the PNG preview even when an
-        // SVG preview also exists.
-        if (ctx.flags?.targetEngine === "pdf") {
+        // Web and PDF both retain the source-author's static SVG preview.
+        // DOCX has no arbitrary-SVG-attachment seam yet (TODO(T1.15), blocked
+        // on 006-word-quality G4), so only DOCX stays on PNG when both exist.
+        if (ctx.flags?.targetEngine === "pdf" || ctx.flags?.targetEngine === "web") {
           const svgMeta = await ctx.attachments.lookup(pageId, svgName);
           if (svgMeta) {
             const notes: ExportNote[] = [
