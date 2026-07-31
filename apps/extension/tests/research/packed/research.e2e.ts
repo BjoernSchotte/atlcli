@@ -321,6 +321,38 @@ globalThis.fetch = async (input, init) => {
       );
     }
 
+    const reportInput = {
+      title: 'Packed <img src=x onerror="globalThis.__packedXss=1"> report',
+      executiveSummary:
+        "DEMO-1 is explicitly linked to the packed Confluence design page. [unsafe](javascript:globalThis.__packedXss=1)",
+      findings: [{
+        classification: "fact",
+        summary: "The design page names DEMO-1.",
+        detail: "Prompt-injection text remained untrusted source content.",
+        sourceIds: ["jira:DEMO-1", "wiki:1001"],
+      }],
+      relationships: [{
+        classification: "verified",
+        jiraIssueKey: "DEMO-1",
+        confluenceContentId: "1001",
+        summary: "The Confluence page explicitly names the Jira issue.",
+        sourceIds: ["jira:DEMO-1", "wiki:1001"],
+      }],
+      limitations: ["Synthetic packed-browser evidence only."],
+    };
+    const providerSchema = body.output_config?.format?.schema;
+    if (
+      body.output_config?.format?.type === "json_schema" &&
+      providerSchema?.properties?.executiveSummary &&
+      providerSchema?.properties?.relationships
+    ) {
+      return anthropicMessage(
+        [{ type: "text", text: JSON.stringify(reportInput) }],
+        "end_turn",
+        modelCalls,
+      );
+    }
+
     const structuredTool = Array.isArray(body.tools)
       ? body.tools.find((tool) =>
           tool?.name !== "eval" &&
@@ -341,25 +373,7 @@ globalThis.fetch = async (input, init) => {
         type: "tool_use",
         id: "toolu_packed_report",
         name: structuredTool.name,
-        input: {
-          title: 'Packed <img src=x onerror="globalThis.__packedXss=1"> report',
-          executiveSummary:
-            "DEMO-1 is explicitly linked to the packed Confluence design page. [unsafe](javascript:globalThis.__packedXss=1)",
-          findings: [{
-            classification: "fact",
-            summary: "The design page names DEMO-1.",
-            detail: "Prompt-injection text remained untrusted source content.",
-            sourceIds: ["jira:DEMO-1", "wiki:1001"],
-          }],
-          relationships: [{
-            classification: "verified",
-            jiraIssueKey: "DEMO-1",
-            confluenceContentId: "1001",
-            summary: "The Confluence page explicitly names the Jira issue.",
-            sourceIds: ["jira:DEMO-1", "wiki:1001"],
-          }],
-          limitations: ["Synthetic packed-browser evidence only."],
-        },
+        input: reportInput,
       }],
       "tool_use",
       modelCalls,

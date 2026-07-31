@@ -183,14 +183,15 @@ Single synthetic acceptance run:
 - report: complete, 8 PTC calls / 8 HTTP calls, 2 Jira items /
   2 Confluence items, 40 input tokens / 20 output tokens;
 - report duration: 53 ms in the captured deterministic run;
-- packed browser test: 1 passed in 2.0 s, including reload and cancellation;
-- extension output: 55,196 KiB on disk;
-- research worker JavaScript: 1,959,111 bytes;
+- packed browser tests: 2 passed in 2.3 s, including dynamic-schema dispatch,
+  reload, cancellation, worker recreation, and safe report rendering;
+- extension output: 55,224 KiB on disk;
+- research worker JavaScript: 1,988,056 bytes;
 - selected QuickJS asyncify WASM: 1,075,905 bytes, SHA-256 pinned by the
   artifact gate;
 - QuickJS linear-memory limit: 64,000,000 bytes;
 - side-panel V8 heap proxy while the agent worker was held after PTC:
-  10,343,664 bytes used, 13,664,256 bytes total, 3,627,243 bytes backing
+  10,441,904 bytes used, 13,664,256 bytes total, 3,629,781 bytes backing
   storage.
 
 Chromium exposes the active MV3 dedicated-worker target with no URL and did not
@@ -211,7 +212,7 @@ bun run test
   5,994 passed, 15 skipped, 0 failed across 423 files
 
 bun run --cwd apps/extension test:research-extension-browser:prebuilt
-  1 passed
+  2 passed
 
 bun run --cwd apps/extension check:output
   passed
@@ -231,6 +232,14 @@ dynamic code, fake Buffer globals, and missing/unpinned runtime assets. Its
 only new classification is that exact quoted SDK labels such as
 `process.env['ANTHROPIC_LOG']` are inert diagnostic text; an executable
 `process.env` read remains a failing fixture.
+
+The packed Anthropic fixture follows the current provider-native structured
+output contract: when the request carries
+`output_config.format.type = json_schema`, it returns terminal JSON text for
+LangChain to parse and validate. The dynamic `task({ responseSchema })`
+characterization separately retains tool-structured output. This distinction
+prevents a stale fake tool response from masking the real browser request
+shape.
 
 ## Markdown and later export
 

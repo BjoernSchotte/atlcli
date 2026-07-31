@@ -2252,7 +2252,10 @@ CLI:
 
 Extension/browser:
 
-- [ ] Re-run the existing packed synthetic research E2E.
+- [x] Re-run the existing packed synthetic research E2E.
+      Proven 2026-07-31 from a fresh production WXT build: two packed Chromium
+      tests pass, covering native dynamic-schema dispatch plus the complete
+      sidebar/background/offscreen/fresh-worker/PTC/report/cancel lifecycle.
 - [ ] Re-run one authenticated Mayflower browser-session read and record only
       sanitized evidence in the existing evidence document.
 
@@ -2278,7 +2281,9 @@ Gate:
 - [x] `bun run test apps/extension/tests/research-*.test.ts` passes.
       Proven 2026-07-31: 97 passed, 0 failed across 18 extension files;
       the three customer-free package evaluation fixtures add 14 passing tests.
-- [ ] `bun run --cwd apps/extension test:research-extension-browser` passes.
+- [x] `bun run --cwd apps/extension test:research-extension-browser` passes.
+      Proven 2026-07-31: production build succeeded and both packed Chromium
+      tests passed; the provider-native JSON Schema response path is exercised.
 - [ ] No tracked file contains an Anthropic key, Atlassian credential, tenant
       content, private URL, or customer-derived report.
 
