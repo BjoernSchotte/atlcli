@@ -26,6 +26,7 @@ import { handleLog } from "./commands/log.js";
 import { handlePlugin } from "./commands/plugin.js";
 import { handleJira } from "./commands/jira.js";
 import { handleHelloworld } from "./commands/helloworld.js";
+import { handleResearch, researchHelp } from "./commands/research.js";
 import { handleAudit } from "./commands/audit.js";
 import {
   handlePdfTemplate,
@@ -145,6 +146,9 @@ async function main(): Promise<void> {
       case "jira":
         await handleJira(rest, parsed.flags, opts);
         break;
+      case "research":
+        await handleResearch(rest, parsed.flags, opts);
+        break;
       case "audit":
         await handleAudit(rest, parsed.flags, opts);
         break;
@@ -253,6 +257,9 @@ function showCommandHelp(
     case "jira":
       handleJira(subArgs, helpFlags, opts);
       break;
+    case "research":
+      output(researchHelp(), opts);
+      break;
     case "pdf-template":
       output(pdfTemplateHelp(), opts);
       break;
@@ -358,6 +365,7 @@ Commands:
   flag        Manage feature flags
   wiki        Confluence operations (page, space, docs, search)
   jira        Jira operations (issue, board, sprint, epic)
+  research    Run bounded read-only Jira + Confluence research
   pdf-template Create reviewed PDF template packs from Word documents
   log         Query and manage logs
   plugin      Manage plugins

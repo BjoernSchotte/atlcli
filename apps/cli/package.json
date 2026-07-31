@@ -23,6 +23,7 @@
     "@atlcli/jira": "workspace:*",
     "@atlcli/pdf-compiler-browser": "workspace:*",
     "@atlcli/plugin-api": "workspace:*",
+    "@atlcli/research": "workspace:*",
     "@myriaddreamin/typst-ts-web-compiler": "0.7.0",
     "@resvg/resvg-wasm": "2.6.2"
   },

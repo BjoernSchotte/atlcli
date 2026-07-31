@@ -76,6 +76,7 @@
         "@atlcli/pdf-compiler-browser": "workspace:*",
         "@atlcli/pdf-template-authoring": "workspace:*",
         "@atlcli/plugin-api": "workspace:*",
+        "@atlcli/research": "workspace:*",
         "@atlcli/template-pack": "workspace:*",
         "@myriaddreamin/typst-ts-web-compiler": "0.7.0",
         "@resvg/resvg-wasm": "2.6.2",
