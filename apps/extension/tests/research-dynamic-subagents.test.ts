@@ -66,6 +66,8 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     expect(specs[2]?.middleware).toHaveLength(4);
     expect(specs[3]?.middleware).toHaveLength(4);
     expect(specs[0]?.responseFormat).toBeDefined();
+    expect(specs[0]?.systemPrompt).toContain("exactly one eval call");
+    expect(specs[0]?.systemPrompt).toContain("tools.jiraIssueSearch");
   });
 
   test("does not expose catalog tools unless the graph explicitly grants them", () => {
