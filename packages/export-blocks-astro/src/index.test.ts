@@ -35,3 +35,18 @@ test("render-kit sources expose no implicit acquisition, network, or raw-html si
     expect(source).not.toContain("from \"node:");
   }
 });
+
+test("documents versioned theme variables and semantic hooks instead of generated DOM classes", async () => {
+  const packageRoot = resolve(import.meta.dir, "..");
+  const [stylesheet, readme] = await Promise.all([
+    readFile(resolve(packageRoot, "src/styles.css"), "utf8"),
+    readFile(resolve(packageRoot, "README.md"), "utf8"),
+  ]);
+  for (const hook of ["data-atlcli-document", "data-atlcli-block", "data-atlcli-caption", "data-atlcli-status", "data-atlcli-asset-unresolved"]) {
+    expect(readme).toContain(hook);
+  }
+  for (const variable of ["--atlcli-content-foreground", "--atlcli-content-muted", "--atlcli-content-border", "--atlcli-content-surface", "--atlcli-content-code-background"]) {
+    expect(stylesheet).toContain(variable);
+    expect(readme).toContain(variable);
+  }
+});

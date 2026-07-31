@@ -1531,7 +1531,7 @@ the active bundle is always complete and digest-valid.
 - [x] Implement a closed, build-selected override registry with versioned
       descriptors and schema-validated payloads; source content can never select
       or parameterize a component/module import.
-- [ ] Export minimal accessible baseline styles, semantic slots, versioned CSS
+- [x] Export minimal accessible baseline styles, semantic slots, versioned CSS
       custom properties, and documented `data-atlcli-*` hooks without treating
       generated classes/full DOM snapshots as public compatibility.
 - [ ] Implement accessible static chart SVG/HTML from normalized chart data.

@@ -6,8 +6,25 @@
   --atlcli-content-foreground: inherit;
   --atlcli-content-muted: currentColor;
   --atlcli-content-border: color-mix(in srgb, currentColor 22%, transparent);
+  --atlcli-content-surface: color-mix(in srgb, currentColor 5%, transparent);
+  --atlcli-content-code-background: color-mix(in srgb, currentColor 8%, transparent);
   color: var(--atlcli-content-foreground);
 }
+
+[data-atlcli-document] :where(a) { text-decoration-thickness: max(1px, 0.08em); }
+[data-atlcli-document] :where(pre) { overflow-x: auto; background: var(--atlcli-content-code-background); padding: 0.75rem; }
+[data-atlcli-document] :where(table) { border-collapse: collapse; max-width: 100%; }
+[data-atlcli-document] :where(th, td) { border: 1px solid var(--atlcli-content-border); padding: 0.5rem; text-align: start; vertical-align: top; }
+[data-atlcli-document] :where(caption) { caption-side: bottom; color: var(--atlcli-content-muted); text-align: start; }
+[data-atlcli-block="layout"] { display: grid; gap: 1rem; grid-template-columns: repeat(var(--atlcli-layout-columns), minmax(0, 1fr)); }
+[data-atlcli-block="unknown"], [data-atlcli-asset-unresolved] { background: var(--atlcli-content-surface); }
+.atlcli-mark-bold { font-weight: 700; }
+.atlcli-mark-italic { font-style: italic; }
+.atlcli-mark-code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--atlcli-content-code-background); }
+.atlcli-mark-strike { text-decoration: line-through; }
+.atlcli-mark-underline { text-decoration: underline; }
+.atlcli-mark-subscript { vertical-align: sub; font-size: 0.8em; }
+.atlcli-mark-superscript { vertical-align: super; font-size: 0.8em; }
 
 [data-atlcli-block="callout"] {
   border-inline-start: 0.25rem solid var(--atlcli-content-border);
