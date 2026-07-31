@@ -1,40 +1,25 @@
 ---
-import { validateInteractiveChartV1, type StaticChartModelV1 } from "../charts.js";
+import { resolveChartRendererAdapterV1, type ChartRendererAdapterIdV1, type StaticChartModelV1 } from "../charts.js";
 import StaticChart from "./StaticChart.astro";
 
 interface Props {
   chart: StaticChartModelV1;
   /** A trusted project must select interaction explicitly. Source content cannot. */
   enabled?: boolean;
+  /** Closed renderer selection owned by the Astro project, never by source content. */
+  renderer?: ChartRendererAdapterIdV1;
 }
 
-const { chart, enabled = false } = Astro.props;
-if (enabled) validateInteractiveChartV1(chart);
+const { chart, enabled = false, renderer = "tanstack-v0.3" } = Astro.props;
+const adapter = resolveChartRendererAdapterV1(renderer);
+if (enabled) adapter.validate(chart);
 ---
 
-<section data-atlcli-chart-island={enabled ? "enabled" : "static"}>
+<section data-atlcli-chart-island={enabled ? "enabled" : "static"} data-atlcli-chart-renderer={enabled ? adapter.id : undefined}>
   <StaticChart chart={chart} />
-  {enabled && <output data-atlcli-chart-tooltip aria-live="polite" aria-atomic="true">Select a chart bar for its value.</output>}
 </section>
 
 {enabled && <script>
-  function activateChartIsland(root: HTMLElement): void {
-    const output = root.querySelector<HTMLOutputElement>("[data-atlcli-chart-tooltip]");
-    if (!output) return;
-    const show = (element: SVGRectElement): void => {
-      const series = element.dataset.atlcliChartSeries;
-      const label = element.dataset.atlcliChartLabel;
-      const value = element.dataset.atlcliChartValue;
-      if (series && label && value) output.textContent = `${series}, ${label}: ${value}`;
-    };
-    for (const element of root.querySelectorAll<SVGRectElement>("rect[data-atlcli-chart-value]")) {
-      element.setAttribute("tabindex", "0");
-      element.setAttribute("role", "button");
-      element.setAttribute("aria-label", `${element.dataset.atlcliChartSeries ?? "Series"}, ${element.dataset.atlcliChartLabel ?? "label"}: ${element.dataset.atlcliChartValue ?? ""}`);
-      element.addEventListener("pointerenter", () => show(element));
-      element.addEventListener("focus", () => show(element));
-      element.addEventListener("click", () => show(element));
-    }
-  }
-  for (const root of document.querySelectorAll<HTMLElement>("[data-atlcli-chart-island=enabled]")) activateChartIsland(root);
+  import { activateChartIslandV1 } from "./chart-island-client.ts";
+  for (const root of document.querySelectorAll<HTMLElement>("[data-atlcli-chart-island=enabled]")) activateChartIslandV1(root);
 </script>}

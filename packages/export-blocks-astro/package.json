@@ -37,9 +37,14 @@
     "postpack": "bun ../../scripts/strip-dev-condition.ts restore"
   },
   "dependencies": {
-    "@atlcli/export-blocks": "workspace:*"
+    "@atlcli/export-blocks": "workspace:*",
+    "@tanstack/charts": "0.3.1",
+    "d3-scale": "4.0.2"
   },
   "peerDependencies": {
     "astro": ">=7.1.6 <8"
+  },
+  "devDependencies": {
+    "@types/d3-scale": "4.0.9"
   }
 }

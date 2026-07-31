@@ -749,10 +749,13 @@ frozen model; it may add interaction but no network/auth code. Chart capability
 must be tested with JavaScript both enabled and disabled.
 
 TanStack Charts is the preferred V1 island adapter because its portable chart
-model and expected ecosystem momentum fit this boundary. The T6 spike still
-pins and verifies the then-current release before adoption; if it misses the
-production gate, V1 retains the same vendor-neutral adapter and static fallback
-instead of weakening accessibility, security, determinism, or bundle budgets.
+model and expected ecosystem momentum fit this boundary. The product owner
+explicitly accepts its current pre-alpha status for the bounded, opt-in
+bar-chart island: the package version is pinned, the adapter is replaceable,
+and the T6 spike must prove SSR fallback, hydration, keyboard accessibility,
+no client error, and an external runtime bundle no larger than 100 KiB. This
+exception does not claim a stable TanStack API or permit weakening
+accessibility, security, determinism, or bundle budgets.
 
 #### 9.5.1 Astro component-library contract
 
@@ -1537,11 +1540,12 @@ the active bundle is always complete and digest-valid.
 - [x] Implement accessible static chart SVG/HTML from normalized chart data.
 - [x] Implement the optional block-local chart island with frozen data, explicit
       opt-in, byte/row/node limits, no network/auth access, and static fallback.
-- [ ] Keep chart rendering behind a vendor-neutral `ChartRendererAdapter`; use
-      TanStack Charts as the preferred V1 island adapter after re-running its
-      Astro/SSR/hydration/accessibility/bundle/performance spike against the
-      selected release at T6. It must pass the production-maturity gate; never
-      serialize TanStack definitions, callbacks, or functions into the bundle.
+- [x] Keep chart rendering behind a vendor-neutral `ChartRendererAdapter`; use
+      TanStack Charts `0.3.1` as the pinned, product-owner-approved pre-alpha
+      adapter only for the bounded opt-in bar-chart profile. Prove Astro SSR
+      fallback, hydration, keyboard accessibility, no client error, and a
+      <=100 KiB external runtime bundle; never serialize TanStack definitions,
+      callbacks, or functions into the bundle.
 - [ ] Prove CSP, no event-handler/script/CSS injection, unsafe URL rejection,
       SVG safety, and no opaque datasource/provenance serialization.
 - [ ] Build a packed plain-Astro consumer with the all-fields fixture, one
@@ -2006,7 +2010,7 @@ choices should be confirmed at the T0 gate:
 - [Astro components](https://docs.astro.build/en/basics/astro-components/)
 - [Astro integration/component npm publishing](https://docs.astro.build/en/guides/integrations/#publishing-your-integration-to-npm)
 - [TanStack Charts repository and pre-alpha status](https://github.com/TanStack/charts)
-- [TanStack Charts `0.0.2` release](https://github.com/TanStack/charts/releases/tag/v0.0.2)
+- [TanStack Charts `0.3.1` release](https://github.com/TanStack/charts/releases/tag/v0.3.1)
 - [TanStack portable chart spec](https://github.com/TanStack/charts/blob/main/PORTABLE-CHART-SPEC.md)
 - [Astro routing](https://docs.astro.build/en/guides/routing/)
 - [Astro images](https://docs.astro.build/en/guides/images/)

@@ -87,6 +87,17 @@ export interface AstroResolvedLinkV1 {
     kind: "page" | "asset" | "external" | "unresolved";
 }
 
+// export: ChartRendererAdapterIdV1
+export type ChartRendererAdapterIdV1 = "tanstack-v0.3";
+
+// export: ChartRendererAdapterV1
+export interface ChartRendererAdapterV1 {
+    readonly id: ChartRendererAdapterIdV1;
+    readonly capability: "bounded-interactive-bar";
+    readonly runtime: "client-only";
+    validate(model: StaticChartModelV1): NormalizedStaticChartV1;
+}
+
 // export: createAstroExportBlockOverrideRegistryV1
 export declare function createAstroExportBlockOverrideRegistryV1(available: readonly AstroExportBlockOverrideDescriptorV1[], selection: AstroExportBlockOverrideSelectionV1): ReadonlyMap<AstroExportBlockOverrideSlotV1, AstroExportBlockOverrideDescriptorV1>;
 
@@ -97,6 +108,9 @@ export interface NormalizedStaticChartV1 extends StaticChartModelV1 {
 
 // export: normalizeStaticChartV1
 export declare function normalizeStaticChartV1(model: StaticChartModelV1): NormalizedStaticChartV1;
+
+// export: resolveChartRendererAdapterV1
+export declare function resolveChartRendererAdapterV1(id?: ChartRendererAdapterIdV1): ChartRendererAdapterV1;
 
 // export: StaticChartModelV1
 export interface StaticChartModelV1 {
@@ -114,6 +128,9 @@ export interface StaticChartSeriesV1 {
 // export: StaticChartValidationErrorV1
 export declare class StaticChartValidationErrorV1 extends Error {
 }
+
+// export: TANSTACK_CHART_RENDERER_ADAPTER_V1
+export declare const TANSTACK_CHART_RENDERER_ADAPTER_V1: ChartRendererAdapterV1;
 
 // export: validateInteractiveChartV1
 export declare function validateInteractiveChartV1(model: StaticChartModelV1): NormalizedStaticChartV1;

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { resolve } from "node:path";
 
 const packageRoot = resolve(import.meta.dir, "..");
@@ -39,6 +39,9 @@ test("plain Astro consumer renders every normalized discriminator without raw HT
   expect(html).toContain("Published pages");
   expect(html).toContain('role="img"');
   expect(html).toContain('data-atlcli-chart-island="enabled"');
-  expect(html).toContain('data-atlcli-chart-tooltip');
-  expect(html).toContain('<script type="module">');
+  expect(html).toContain('data-atlcli-chart-renderer="tanstack-v0.3"');
+  const asset = html.match(/src="\/_astro\/([^\"]+)"/)?.[1];
+  expect(asset).toBeDefined();
+  expect((await stat(resolve(fixture, "dist/_astro", asset!))).size).toBeLessThanOrEqual(100 * 1024);
+  expect(html).not.toContain("defineChart");
 }, 20_000);

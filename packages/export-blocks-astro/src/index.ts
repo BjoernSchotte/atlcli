@@ -58,8 +58,12 @@ export {
 
 export {
   StaticChartValidationErrorV1,
+  TANSTACK_CHART_RENDERER_ADAPTER_V1,
   normalizeStaticChartV1,
+  resolveChartRendererAdapterV1,
   validateInteractiveChartV1,
+  type ChartRendererAdapterIdV1,
+  type ChartRendererAdapterV1,
   type NormalizedStaticChartV1,
   type StaticChartModelV1,
   type StaticChartSeriesV1,

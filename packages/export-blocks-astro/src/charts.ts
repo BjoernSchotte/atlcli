@@ -13,6 +13,16 @@ export interface NormalizedStaticChartV1 extends StaticChartModelV1 {
   maximum: number;
 }
 
+/** Closed set of build-selected renderer implementations. */
+export type ChartRendererAdapterIdV1 = "tanstack-v0.3";
+
+export interface ChartRendererAdapterV1 {
+  readonly id: ChartRendererAdapterIdV1;
+  readonly capability: "bounded-interactive-bar";
+  readonly runtime: "client-only";
+  validate(model: StaticChartModelV1): NormalizedStaticChartV1;
+}
+
 export class StaticChartValidationErrorV1 extends Error {}
 
 const MAX_ROWS = 200;
@@ -52,4 +62,27 @@ export function validateInteractiveChartV1(model: StaticChartModelV1): Normalize
     throw new StaticChartValidationErrorV1("interactive chart exceeds payload byte limit");
   }
   return normalized;
+}
+
+/**
+ * The preferred V1 interactive renderer. Its code creates the chart definition
+ * locally from bounded static DOM data; definitions and callbacks are never a
+ * PublicationBundle serialization format.
+ */
+export const TANSTACK_CHART_RENDERER_ADAPTER_V1: ChartRendererAdapterV1 = Object.freeze({
+  id: "tanstack-v0.3",
+  capability: "bounded-interactive-bar",
+  runtime: "client-only",
+  validate: validateInteractiveChartV1,
+});
+
+export function resolveChartRendererAdapterV1(id: ChartRendererAdapterIdV1 = "tanstack-v0.3"): ChartRendererAdapterV1 {
+  switch (id) {
+    case "tanstack-v0.3": return TANSTACK_CHART_RENDERER_ADAPTER_V1;
+    default: return assertNeverChartRendererAdapterV1(id);
+  }
+}
+
+function assertNeverChartRendererAdapterV1(value: never): never {
+  throw new StaticChartValidationErrorV1(`unsupported chart renderer adapter: ${String(value)}`);
 }
