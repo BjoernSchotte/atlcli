@@ -13,37 +13,7 @@ export interface ResearchPrivacyViolation {
   rule: string;
 }
 
-const confidentialProject = ["GR", "OW"].join("");
-const confidentialSpace = ["R", "CM"].join("");
-const privateTenantHost = ["mayflower", "gmbh", ".atlassian.net"].join("");
-const privateAccountId = [
-  "70121:666cbd78",
-  "-32fa-4764-90a1-",
-  "d3368305f07b",
-].join("");
-const privateCloudId = [
-  "ca7c5cc9-632e-",
-  "4985-b88e-",
-  "fb2a96c0b9ca",
-].join("");
-
 const textRules: readonly { rule: string; pattern: RegExp }[] = [
-  {
-    rule: "confidential-atlassian-scope",
-    pattern: new RegExp(`\\b(?:${confidentialProject}|${confidentialSpace})\\b`, "u"),
-  },
-  {
-    rule: "private-atlassian-tenant",
-    pattern: new RegExp(privateTenantHost.replaceAll(".", "\\."), "iu"),
-  },
-  {
-    rule: "private-atlassian-account-id",
-    pattern: new RegExp(privateAccountId, "u"),
-  },
-  {
-    rule: "private-atlassian-cloud-id",
-    pattern: new RegExp(privateCloudId, "iu"),
-  },
   {
     rule: "anthropic-api-key",
     pattern: /\bsk-ant-(?!(?:test-|packed-extension-test-only\b))[A-Za-z0-9_-]{20,}\b/u,
@@ -83,6 +53,7 @@ function pathRule(path: string): string | undefined {
 
 export function findResearchPrivacyViolations(
   files: readonly ResearchPrivacyFile[],
+  privateMarkers: readonly string[] = [],
 ): ResearchPrivacyViolation[] {
   const violations: ResearchPrivacyViolation[] = [];
   for (const file of files) {
@@ -92,10 +63,22 @@ export function findResearchPrivacyViolations(
     for (const { rule, pattern } of textRules) {
       if (pattern.test(file.content)) violations.push({ path: file.path, rule });
     }
+    if (privateMarkers.some((marker) => marker.length > 0 && file.content.includes(marker))) {
+      violations.push({ path: file.path, rule: "configured-private-marker" });
+    }
   }
   return violations.sort((left, right) =>
     left.path.localeCompare(right.path) || left.rule.localeCompare(right.rule)
   );
+}
+
+export function parseResearchPrivateMarkers(value: string | undefined): string[] {
+  if (!value?.trim()) return [];
+  const parsed: unknown = JSON.parse(value);
+  if (!Array.isArray(parsed) || parsed.some((marker) => typeof marker !== "string")) {
+    throw new Error("ATLCLI_RESEARCH_PRIVATE_MARKERS must be a JSON array of strings");
+  }
+  return [...new Set(parsed.map((marker) => marker.trim()).filter(Boolean))];
 }
 
 async function trackedFiles(repoRoot: string): Promise<ResearchPrivacyFile[]> {
@@ -144,7 +127,13 @@ export async function readTrackedResearchPrivacyFile(
 
 async function main(): Promise<void> {
   const repoRoot = fileURLToPath(new URL("../..", import.meta.url));
-  const violations = findResearchPrivacyViolations(await trackedFiles(repoRoot));
+  const privateMarkers = parseResearchPrivateMarkers(
+    Bun.env.ATLCLI_RESEARCH_PRIVATE_MARKERS,
+  );
+  const violations = findResearchPrivacyViolations(
+    await trackedFiles(repoRoot),
+    privateMarkers,
+  );
   if (violations.length > 0) {
     for (const violation of violations) {
       console.error(`Research privacy: ${violation.path}: ${violation.rule}`);

@@ -1,56 +1,58 @@
 import { describe, expect, test } from "bun:test";
 import {
   findResearchPrivacyViolations,
+  parseResearchPrivateMarkers,
   readTrackedResearchPrivacyFile,
   type ResearchPrivacyFile,
 } from "./research-privacy.js";
 
-const scan = (...files: ResearchPrivacyFile[]) =>
-  findResearchPrivacyViolations(files).map(({ path, rule }) => `${path}:${rule}`);
+const scan = (files: ResearchPrivacyFile[], privateMarkers: readonly string[] = []) =>
+  findResearchPrivacyViolations(files, privateMarkers)
+    .map(({ path, rule }) => `${path}:${rule}`);
 
 describe("research privacy gate", () => {
   test("allows approved test scopes, synthetic tenants, and explicit fake keys", () => {
-    expect(scan({
+    expect(scan([{
       path: "fixture.ts",
       content: [
         "DOCSY ATLCLI https://example.atlassian.net",
         "sk-ant-test-fixture-only",
         "sk-ant-packed-extension-test-only",
       ].join("\n"),
-    })).toEqual([]);
+    }])).toEqual([]);
   });
 
-  test("rejects confidential project and space keys without embedding them in this fixture", () => {
-    const project = ["GR", "OW"].join("");
-    const space = ["R", "CM"].join("");
-    expect(scan({ path: "report.md", content: `${project} ${space}` })).toEqual([
-      "report.md:confidential-atlassian-scope",
+  test("rejects configured private markers without storing them in the scanner", () => {
+    const markers = ["PRIVATE_PROJECT", "private-tenant.atlassian.invalid"];
+    expect(scan([
+      { path: "report.md", content: "PRIVATE_PROJECT" },
+      { path: "fixture.json", content: "https://private-tenant.atlassian.invalid" },
+    ], markers)).toEqual([
+      "fixture.json:configured-private-marker",
+      "report.md:configured-private-marker",
     ]);
   });
 
-  test("rejects private Atlassian identity values", () => {
-    const tenant = ["mayflower", "gmbh", ".atlassian.net"].join("");
-    const account = ["70121:666cbd78", "-32fa-4764-90a1-", "d3368305f07b"].join("");
-    const cloud = ["ca7c5cc9-632e-", "4985-b88e-", "fb2a96c0b9ca"].join("");
-    expect(scan({ path: "fixture.json", content: `${tenant} ${account} ${cloud}` })).toEqual([
-      "fixture.json:private-atlassian-account-id",
-      "fixture.json:private-atlassian-cloud-id",
-      "fixture.json:private-atlassian-tenant",
-    ]);
+  test("parses, trims and deduplicates private markers from the environment", () => {
+    expect(parseResearchPrivateMarkers('[" PRIVATE_PROJECT ","PRIVATE_PROJECT",""]'))
+      .toEqual(["PRIVATE_PROJECT"]);
+    expect(parseResearchPrivateMarkers(undefined)).toEqual([]);
+    expect(() => parseResearchPrivateMarkers('{"marker":"PRIVATE_PROJECT"}'))
+      .toThrow("ATLCLI_RESEARCH_PRIVATE_MARKERS must be a JSON array of strings");
   });
 
   test("rejects live-looking Anthropic keys but reports no secret content", () => {
     const key = ["sk-ant-api03-", "abcdefghijklmnopqrstuvwxyz0123456789"].join("");
-    expect(scan({ path: "leak.txt", content: key })).toEqual([
+    expect(scan([{ path: "leak.txt", content: key }])).toEqual([
       "leak.txt:anthropic-api-key",
     ]);
   });
 
   test("rejects tracked private artifacts and environment files", () => {
-    expect(scan(
+    expect(scan([
       { path: ".env.local", content: "" },
       { path: "tmp/run.research-report.private.md", content: "" },
-    )).toEqual([
+    ])).toEqual([
       ".env.local:tracked-environment-file",
       "tmp/run.research-report.private.md:tracked-private-research-artifact",
     ]);
@@ -58,7 +60,7 @@ describe("research privacy gate", () => {
 
   test("does not interpret compressed binary bytes as text", () => {
     const coincidentalBytes = ["R", "CM"].join("");
-    expect(scan({ path: "image.png", content: coincidentalBytes, binary: true })).toEqual([]);
+    expect(scan([{ path: "image.png", content: coincidentalBytes, binary: true }])).toEqual([]);
   });
 
   test("skips a tracked path deleted in the working tree", async () => {
