@@ -7,6 +7,8 @@ export {
 } from "./loader.js";
 export {
   atlcliPublishingIntegration,
+  PAGEFIND_OWNED_OUTPUT_PATH_PREFIX_V1,
+  PUBLICATION_SEARCH_SEMANTIC_SLOTS_V1,
   publicationRoutePathV1,
   publicationStaticPathsV1,
   type AstroPublicationConfigExpectationV1,

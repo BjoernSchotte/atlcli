@@ -356,6 +356,15 @@ describe("planPublicationRoutesV1", () => {
       pages: [{ sourceId: "10", title: "Guide" }],
       reservedOutputPaths: ["GUIDE/index.html"],
     }), "output-path-collision");
+    expectPlanningError(() => plan({
+      pages: [{ sourceId: "10", title: "Pagefind" }],
+      reservedOutputPathPrefixes: ["pagefind"],
+    }), "output-path-collision");
+    expect(plan({
+      pages: [{ sourceId: "10", title: "Pagefind" }],
+      outputProfile: "portable-file",
+      reservedOutputPathPrefixes: ["pagefind"],
+    }).activeOutputs[0]?.outputPath).toBe("pagefind.html");
   });
 
   test("rejects handwritten route collisions before generated allocation", () => {

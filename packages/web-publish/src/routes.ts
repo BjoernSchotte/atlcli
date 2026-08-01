@@ -64,6 +64,8 @@ export interface PublicationRoutePlanRequestV1 {
   reservedRoutes?: readonly string[];
   /** Handwritten/generated output files that publishing must never overwrite. */
   reservedOutputPaths?: readonly string[];
+  /** Output directory prefixes owned by a post-build stage such as Pagefind. */
+  reservedOutputPathPrefixes?: readonly string[];
 }
 
 export interface PublicationRouteOutputV1 {
@@ -368,7 +370,19 @@ function claimOutput(
   owner: OutputOwner,
   exact: Map<string, OutputOwner>,
   folded: Map<string, OutputOwner>,
+  reservedPrefixes: readonly string[],
 ): void {
+  const normalizedOwnerPath = outputPathFold(owner.path);
+  const matchingPrefix = reservedPrefixes.find((prefix) =>
+    normalizedOwnerPath === outputPathFold(prefix) || normalizedOwnerPath.startsWith(`${outputPathFold(prefix)}/`)
+  );
+  if (matchingPrefix !== undefined && !owner.sourceId.startsWith("[reserved-prefix:")) {
+    throw new PublicationRoutePlanningErrorV1(
+      "output-path-collision",
+      `Output path "${owner.path}" is reserved under "${matchingPrefix}/".`,
+      { sourceId: owner.sourceId, route: owner.route, path: owner.path },
+    );
+  }
   const existingExact = exact.get(owner.path);
   const foldedKey = outputPathFold(owner.path);
   const existingFolded = folded.get(foldedKey);
@@ -637,12 +651,19 @@ export function planPublicationRoutesV1(
 
   const outputExact = new Map<string, OutputOwner>();
   const outputFolded = new Map<string, OutputOwner>();
+  const reservedPrefixes = (request.reservedOutputPathPrefixes ?? []).map((prefix) => {
+    const normalized = validatePublicationOutputPathV1(prefix);
+    if (normalized !== prefix) {
+      throw new PublicationRoutePlanningErrorV1("unsafe-output-path", `Reserved output prefix "${prefix}" is not canonical; expected "${normalized}".`, { path: prefix });
+    }
+    return normalized;
+  });
   for (const route of reservedRoutes) {
     const path = publicationRouteToOutputPathV1(route, request.outputProfile);
     claimOutput(
       { sourceId: `[reserved-route:${route}]`, route, path },
       outputExact,
-      outputFolded,
+      outputFolded, reservedPrefixes,
     );
   }
   for (const path of request.reservedOutputPaths ?? []) {
@@ -657,7 +678,7 @@ export function planPublicationRoutesV1(
     claimOutput(
       { sourceId: `[reserved:${path}]`, path },
       outputExact,
-      outputFolded,
+      outputFolded, reservedPrefixes,
     );
   }
 
@@ -668,7 +689,7 @@ export function planPublicationRoutesV1(
     compareStrings(left, right))) {
     for (const route of [record.route, ...record.previousRoutes]) {
       const path = publicationRouteToOutputPathV1(route, request.outputProfile);
-      claimOutput({ sourceId, route, path }, outputExact, outputFolded);
+      claimOutput({ sourceId, route, path }, outputExact, outputFolded, reservedPrefixes);
     }
   }
 

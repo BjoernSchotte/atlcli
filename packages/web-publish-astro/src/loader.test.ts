@@ -6,6 +6,8 @@ import { pathToFileURL } from "node:url";
 import { STARLIGHT_PUBLISHING_EXPERIENCE_V1 } from "@atlcli/web-publish-starlight";
 import {
   atlcliPublishingIntegration,
+  PAGEFIND_OWNED_OUTPUT_PATH_PREFIX_V1,
+  PUBLICATION_SEARCH_SEMANTIC_SLOTS_V1,
   publicationRoutePathV1,
   publicationStaticPathsV1,
 } from "./integration.js";
@@ -18,6 +20,12 @@ test("declares Astro as a peer, never a bundled runtime dependency", async () =>
   };
   expect(manifest.peerDependencies?.astro).toBe(">=7.1.6 <8");
   expect(manifest.dependencies?.astro).toBeUndefined();
+});
+
+test("exports Pagefind ownership and search semantics without theme DOM selectors", () => {
+  expect(PAGEFIND_OWNED_OUTPUT_PATH_PREFIX_V1).toBe("pagefind");
+  expect(PUBLICATION_SEARCH_SEMANTIC_SLOTS_V1).toEqual(["search-trigger", "search-modal", "main-content"]);
+  expect(JSON.stringify(PUBLICATION_SEARCH_SEMANTIC_SLOTS_V1)).not.toContain("sl-");
 });
 
 test("keeps programmatic Astro runners and experimental collection storage out of the public contract", async () => {

@@ -96,6 +96,16 @@ export interface LoadedPublicationBundleV1 {
     pages: readonly PublicationPageV1[];
 }
 
+// export: PAGEFIND_OWNED_OUTPUT_PATH_PREFIX_V1
+export declare const PAGEFIND_OWNED_OUTPUT_PATH_PREFIX_V1 = "pagefind";
+
+// export: PUBLICATION_SEARCH_SEMANTIC_SLOTS_V1
+export declare const PUBLICATION_SEARCH_SEMANTIC_SLOTS_V1: readonly [
+    "search-trigger",
+    "search-modal",
+    "main-content"
+];
+
 // export: publicationRoutePathV1
 export declare function publicationRoutePathV1(route: string, routePrefix: string): string;
 

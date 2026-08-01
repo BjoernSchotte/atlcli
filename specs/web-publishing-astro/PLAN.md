@@ -1477,7 +1477,7 @@ inputs, and does not alter existing export targets.
 - [x] Load only installed operator-selected experience descriptors; validate
       required capabilities/slots and include experience/version/config in the
       build key.
-- [ ] Reserve collision-safe owned paths for Pagefind output and expose the
+- [x] Reserve collision-safe owned paths for Pagefind output and expose the
       standard experience search slots without coupling the loader to
       Starlight-private DOM.
 - [ ] Document that a future post-build augmenter must consume the completed

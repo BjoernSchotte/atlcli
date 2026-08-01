@@ -13,6 +13,11 @@ import {
 } from "@atlcli/web-publish";
 import { readPublicationBundlePagesV1, type AtlcliPublicationLoaderOptionsV1 } from "./loader.js";
 
+/** Directory owned by the static Pagefind post-build stage. */
+export const PAGEFIND_OWNED_OUTPUT_PATH_PREFIX_V1 = "pagefind";
+/** Neutral semantic regions a conforming search experience must expose. */
+export const PUBLICATION_SEARCH_SEMANTIC_SLOTS_V1 = ["search-trigger", "search-modal", "main-content"] as const;
+
 export interface AstroPublicationConfigExpectationV1 {
   /** The public URL base declared by the operator-owned Astro project. */
   base: string;

@@ -715,6 +715,7 @@ export interface PublicationRoutePlanRequestV1 {
     outputProfile: PublicationOutputProfileV1;
     reservedRoutes?: readonly string[];
     reservedOutputPaths?: readonly string[];
+    reservedOutputPathPrefixes?: readonly string[];
 }
 
 // export: PublicationRoutePlanV1
