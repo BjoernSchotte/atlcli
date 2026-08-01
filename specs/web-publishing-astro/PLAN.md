@@ -1579,7 +1579,7 @@ interaction remains bounded and has a complete static fallback.
       Starlight tokens to its public custom-property/slot contract.
 - [x] Implement supported Starlight configuration, plugins, component
       overrides, and Expressive Code integration without forking Starlight.
-- [ ] Ship responsive hierarchical navigation, breadcrumbs, page TOC,
+- [x] Ship responsive hierarchical navigation, breadcrumbs, page TOC,
       previous/next, search slots, related pages, landing pages, deep-link
       actions, useful 404, dark/light/system modes, print styles, and accessible
       token defaults.

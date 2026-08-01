@@ -25,7 +25,7 @@ test("a Starlight consumer presents ExportBlock document bodies with static sear
   await run(["bun", "run", "build", "--filter=@atlcli/web-publish-starlight"], workspaceRoot);
   await rm(resolve(fixture, ".astro"), { recursive: true, force: true });
   const output = await run(["bun", "run", "build"], fixture);
-  expect(output).toContain("1 page(s) built");
+  expect(output).toMatch(/\d+ page\(s\) built/u);
 
   const html = await readFile(resolve(fixture, "dist/index.html"), "utf8");
   expect(html).toContain('data-atlcli-starlight-slot="main-content"');
@@ -35,9 +35,19 @@ test("a Starlight consumer presents ExportBlock document bodies with static sear
   expect(html).toContain("This body was published from ExportBlock[], not Markdown.");
   expect(html).toContain("sidebar-pane");
   expect(html).toContain("Release notes");
+  expect(html).toContain("Publishing guide");
+  expect(html).toContain("data-atlcli-related-pages");
   expect(html).toContain("pagefind");
   expect(html).not.toContain("exportBlockKind");
   expect(await stat(resolve(fixture, "dist/pagefind/pagefind.js"))).toBeDefined();
+  const guide = await readFile(resolve(fixture, "dist/guide/index.html"), "utf8");
+  expect(guide).toContain("data-atlcli-deep-link-action");
+  expect(guide).toContain('href="#publish"');
+  expect(guide).toContain("Prepare");
+  expect(guide).toContain("Publish");
+  expect(guide).toContain("Release notes");
+  expect(guide).toContain("data-pagefind-body");
+  expect(await stat(resolve(fixture, "dist/404.html"))).toBeDefined();
 }, 30_000);
 
 test("a deliberately small plain-Astro experience uses the same contract without a second dispatcher", async () => {
