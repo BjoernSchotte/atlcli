@@ -136,6 +136,15 @@ export interface AtlcliPublishingIntegrationOptionsV1 extends AtlcliPublicationL
     };
 }
 
+// export: BuildPagefindIndexOptionsV1
+export interface BuildPagefindIndexOptionsV1 {
+    outputDirectory: string;
+    pageOutputPaths: readonly string[];
+}
+
+// export: buildPagefindIndexV1
+export declare function buildPagefindIndexV1(options: BuildPagefindIndexOptionsV1): Promise<void>;
+
 // export: CreateAstroStaticManifestOptionsV1
 export interface CreateAstroStaticManifestOptionsV1 {
     request: PublicationBuildRequestV1;
@@ -163,6 +172,9 @@ export interface LoadedPublicationBundleV1 {
 
 // export: PAGEFIND_OWNED_OUTPUT_PATH_PREFIX_V1
 export declare const PAGEFIND_OWNED_OUTPUT_PATH_PREFIX_V1 = "pagefind";
+
+// export: PAGEFIND_VERSION_V1
+export declare const PAGEFIND_VERSION_V1 = "1.5.2";
 
 // export: PUBLICATION_SEARCH_SEMANTIC_SLOTS_V1
 export declare const PUBLICATION_SEARCH_SEMANTIC_SLOTS_V1: readonly [
