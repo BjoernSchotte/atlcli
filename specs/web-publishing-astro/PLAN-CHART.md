@@ -369,6 +369,10 @@ only and must be safe to include in a public site manifest.
 
 ### 10.1 Contract and unit tests
 
+- [x] Provide one tenant-free, IO-free all-shapes acceptance corpus shared by
+      every host proof. It covers multiple series, signed values,
+      horizontal/stacked bars, sparse XY data, stepped paths, explicit locale
+      metadata, pie labels/explode, and Gantt progress/dependencies.
 - [x] Validator tests cover every `ChartKindV1`, every data mode, option bounds,
       malformed rows, duplicate IDs, date parsing, and deterministic digests.
 - [x] Cloud ADF fixtures cover all twelve kinds and every P0 parameter family.

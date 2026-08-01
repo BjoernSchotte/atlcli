@@ -90,6 +90,22 @@ describe("ChartModelV1", () => {
     expect(() => validateChartModelV1({ ...model("bar"), style: { colors: Array.from({ length: 65 }, () => "#ffffff") } })).toThrow("palette");
   });
 
+  test("retains finite signed category values for mixed-sign static charts", () => {
+    const validated = validateChartModelV1({
+      ...model("bar"),
+      data: {
+        mode: "categories",
+        labels: ["Ahead", "Behind"],
+        series: [{ id: "variance", label: "Variance", values: [12, -7] }],
+      },
+    });
+    expect(validated.data).toEqual({
+      mode: "categories",
+      labels: ["Ahead", "Behind"],
+      series: [{ id: "variance", label: "Variance", values: [12, -7] }],
+    });
+  });
+
   test("validates bounded source diagnostics for lenient chart imports", () => {
     expect(validateChartDiagnosticsV1([{ code: "skipped-row", message: "Row 3 was ignored", row: 3 }])).toEqual([
       { code: "skipped-row", message: "Row 3 was ignored", row: 3 },

@@ -50,6 +50,8 @@ world-class semantic/visual gate is still open; — intentionally static.
 
 ## Evidence
 
+- Shared tenant-free all-shapes acceptance corpus:
+  `packages/export-fixtures/src/chart-world-class-corpus.ts`
 - Cloud/DC all-shape normalization tests:
   `packages/confluence/src/chart-macro.test.ts`
 - Shared validator and diagnostic tests:

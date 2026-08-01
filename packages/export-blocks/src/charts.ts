@@ -257,8 +257,7 @@ function validateCategoryData(data: Extract<ChartDataV1, { mode: "categories" }>
       throw new ChartValidationErrorV1("category series must align with labels");
     }
     for (const [valueIndex, value] of series.values.entries()) {
-      const numeric = finite(value, `series ${seriesIndex + 1} value ${valueIndex + 1}`);
-      if (numeric < 0) throw new ChartValidationErrorV1("chart values must be non-negative");
+      finite(value, `series ${seriesIndex + 1} value ${valueIndex + 1}`);
     }
   }
 }
