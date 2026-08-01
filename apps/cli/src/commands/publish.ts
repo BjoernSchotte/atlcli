@@ -350,7 +350,7 @@ async function executeRefresh(state: PublishProjectStateV1, flags: Flags): Promi
           async fetchAttachment(input) {
             const attachments = await client.listAttachments(input.pageId, { limit: 500, signal: input.signal });
             const attachment = attachments.find((candidate) => candidate.filename === input.filename);
-            if (!attachment) throw new Error(`Publication attachment is missing: ${input.filename}`);
+            if (!attachment) throw new Error(`Publication attachment is missing on page ${input.pageId}: ${input.filename}`);
             return { bytes: await client.downloadAttachment(attachment, { signal: input.signal }), mediaType: attachment.mediaType };
           },
         },

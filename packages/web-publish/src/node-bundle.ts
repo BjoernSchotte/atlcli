@@ -494,8 +494,9 @@ function validateRefreshPlan(refreshPlan: PublicationRefreshPlanV1): Promise<voi
     let parsed: PublicationRefreshPlanV1;
     try {
       parsed = parsePublicationRefreshPlanV1(refreshPlan);
-    } catch {
-      fail("invalid-refresh-plan", "publication refresh plan violates its schema");
+    } catch (error) {
+      const detail = error instanceof Error ? ` (${error.message})` : "";
+      fail("invalid-refresh-plan", `publication refresh plan violates its schema${detail}`);
     }
     if (await digestPublicationRefreshPlanV1(parsed) !== parsed.planDigest) {
       fail("invalid-refresh-plan", "publication refresh plan digest is invalid");

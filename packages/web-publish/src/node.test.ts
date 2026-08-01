@@ -372,6 +372,15 @@ describe("@atlcli/web-publish/node immutable bundle activation", () => {
     expect(await readFile(currentPath, "utf8")).toBe(before);
   });
 
+  test("surfaces the bounded refresh-plan validation path without echoing source values", async () => {
+    const { root } = await fixture();
+    const request = await publicationFixture(root);
+    await expect(materializeNodePublicationBundleV1({
+      ...request,
+      refreshPlan: { ...request.refreshPlan, complete: "yes" as never },
+    })).rejects.toThrow("publication refresh plan violates its schema ($.complete: expected a boolean)");
+  });
+
   test("serializes concurrent activation and fences the stale writer at the active pointer", async () => {
     const { root } = await fixture();
     const request = await publicationFixture(root);
