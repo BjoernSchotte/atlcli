@@ -13,6 +13,7 @@ import {
   initializeResearchSessionTurnV1,
   prepareResearchBriefPreflightV1,
   type ResearchReportV1,
+  type ResearchSessionV1,
 } from "@atlcli/research";
 import {
   composeResearchGraphV1,
@@ -258,6 +259,30 @@ async function seedAuthenticationWaitingSession(harness: CliHarness): Promise<{
   return { sessionId, turnId };
 }
 
+async function seedFailedSession(harness: CliHarness): Promise<ResearchSessionV1> {
+  const sessionId = "research-session:delete-test";
+  let session = await harness.durableStore.create(createResearchSessionV1({
+    sessionId,
+    ownerId: "owner:prior-cli",
+    createdAt: "2026-08-01T12:00:00.000Z",
+    leaseExpiresAt: "2026-08-01T12:05:00.000Z",
+  }));
+  session = (await harness.durableStore.commit(sessionId, {
+    kind: "create_turn",
+    turnId: "research-turn:delete-test",
+    expectedRevision: session.revision,
+    expectedLeaseEpoch: session.lease.epoch,
+    at: "2026-08-01T12:00:01.000Z",
+  })).session;
+  return (await harness.durableStore.commit(sessionId, {
+    kind: "fail",
+    reason: "Synthetic terminal session for deletion.",
+    expectedRevision: session.revision,
+    expectedLeaseEpoch: session.lease.epoch,
+    at: "2026-08-01T12:00:02.000Z",
+  })).session;
+}
+
 const temporaryRoots: string[] = [];
 afterEach(async () => {
   await Promise.all(temporaryRoots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
@@ -355,6 +380,38 @@ describe("research CLI one-shot contract", () => {
       planMutable: false,
     });
     expect(reject.stderr.join("")).toContain("action=reject-plan");
+  });
+
+  test("deletes only the exact terminal session revision and erases its owned durable state", async () => {
+    const harness = cliHarness();
+    const terminal = await seedFailedSession(harness);
+    await handleResearch(
+      ["sessions", "delete", terminal.sessionId],
+      { revision: String(terminal.revision) },
+      { json: true },
+      harness.dependencies,
+    );
+    expect(JSON.parse(harness.stdout.join(""))).toEqual({
+      schema: "atlcli.research-session-deletion/v1",
+      sessionId: terminal.sessionId,
+      deleted: true,
+    });
+    await expect(harness.durableStore.read(terminal.sessionId)).resolves.toBeUndefined();
+    await expect(harness.durableStore.list()).resolves.toEqual({ sessions: [] });
+    expect(harness.stderr.join("")).toContain(`session=${terminal.sessionId} action=delete erased=true`);
+
+    const stale = cliHarness();
+    const staleTerminal = await seedFailedSession(stale);
+    await expect(handleResearch(
+      ["sessions", "delete", staleTerminal.sessionId],
+      { revision: String(staleTerminal.revision - 1) },
+      { json: true },
+      stale.dependencies,
+    )).rejects.toThrow("revision is stale");
+    await expect(stale.durableStore.read(staleTerminal.sessionId)).resolves.toMatchObject({
+      status: "failed",
+      revision: staleTerminal.revision,
+    });
   });
 
   test("validates bounded durable session command inputs before storage access", async () => {

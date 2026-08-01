@@ -3162,7 +3162,7 @@ CLI:
       execution.
 - [x] Add non-interactive `research sessions list` and `show` operations with
       bounded, body-free output.
-- [ ] Add non-interactive `research sessions delete` with complete owned-data
+- [x] Add non-interactive `research sessions delete` with complete owned-data
       cleanup after the durable execution lifecycle is wired.
 - [x] Add `--plan-only`; it persists and emits the sanitized durable brief and
       graph before any key, workspace, provider, or model access.

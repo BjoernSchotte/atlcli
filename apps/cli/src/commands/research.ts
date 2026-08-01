@@ -538,7 +538,7 @@ export async function handleResearchSessions(
     }
     return;
   }
-  if (command !== "show" && command !== "plan" && command !== "approve" && command !== "reject-plan") {
+  if (command !== "show" && command !== "plan" && command !== "approve" && command !== "reject-plan" && command !== "delete") {
     throw new Error(`Unknown research sessions command: ${command}. Run \`atlcli research --help\`.`);
   }
   const sessionId = requireSessionId(sessionArg);
@@ -549,6 +549,40 @@ export async function handleResearchSessions(
     try {
       const session = await requireStoredResearchSession(opened.store, sessionId);
       dependencies.emitOutput(command === "plan" ? projectResearchSessionPlanV1(session) : projectResearchSessionV1(session), opts);
+    } finally {
+      opened.close();
+    }
+    return;
+  }
+  if (command === "delete") {
+    if (args.length !== 2) throw new Error("Usage: atlcli research sessions delete <session-id> --revision <session-revision>.");
+    assertSessionFlags(flags, ["revision"]);
+    const revision = expectedSessionRevision(singleSessionFlag(flags, "revision", true));
+    const opened = await dependencies.openSessionStore();
+    try {
+      let session = await requireStoredResearchSession(opened.store, sessionId);
+      if (session.revision !== revision) throw new Error("Research session revision is stale; inspect the current session and retry with its exact revision.");
+      session = (await opened.store.commit(sessionId, {
+        kind: "request_deletion",
+        expectedRevision: session.revision,
+        expectedLeaseEpoch: session.lease.epoch,
+        at: new Date().toISOString(),
+      })).session;
+      session = (await opened.store.commit(sessionId, {
+        kind: "delete",
+        expectedRevision: session.revision,
+        expectedLeaseEpoch: session.lease.epoch,
+        at: new Date().toISOString(),
+      })).session;
+      if (!await opened.store.eraseDeleted(session.sessionId)) {
+        throw new Error("Research session deletion did not remove the owned data.");
+      }
+      dependencies.writeStderr(`[research] session=${sessionId} action=delete erased=true\n`);
+      dependencies.emitOutput({
+        schema: "atlcli.research-session-deletion/v1",
+        sessionId,
+        deleted: true,
+      }, opts);
     } finally {
       opened.close();
     }
@@ -1161,7 +1195,7 @@ export async function handleResearch(
 export function researchHelp(): string {
   return `atlcli research <question>
 atlcli research --resume <session-id>
-atlcli research sessions <list|show|plan|approve|reject-plan>
+atlcli research sessions <list|show|plan|approve|reject-plan|delete>
 
 Run a bounded, read-only Jira + Confluence research question through DeepAgentsJS and QuickJS PTC.
 
@@ -1191,6 +1225,7 @@ Durable session commands:
   sessions plan <session-id>
   sessions approve <session-id> --revision <session-revision>
   sessions reject-plan <session-id> --revision <session-revision> --reason <reason>
+  sessions delete <session-id> --revision <session-revision>
 
 ANTHROPIC_API_KEY must be supplied through the process environment.
 --plan-only persists the brief and graph before any key, workspace, provider, or model access.
