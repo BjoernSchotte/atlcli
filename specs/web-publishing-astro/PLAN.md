@@ -1636,7 +1636,7 @@ and presentation contracts are not Starlight-private.
       not make Starlight's client router or SPA state a correctness dependency.
 - [ ] Set and gate budgets for critical CSS, initial JS, fonts, transformed
       images, LCP, CLS, navigation, and search interaction.
-- [ ] Inventory every generated page/asset/output path and reject unexplained or
+- [x] Inventory every generated page/asset/output path and reject unexplained or
       escaping output.
 - [ ] Produce the final V1 static-publication manifest inventory with bundle,
       builder, Astro,

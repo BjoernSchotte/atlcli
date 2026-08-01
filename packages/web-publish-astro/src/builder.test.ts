@@ -13,6 +13,7 @@ const request = {
     bundleDigest: "bundle-digest",
     complete: true,
     pages: [{ sourceId: "guide", path: "pages/guide.json", pageDigest: "guide-page" }],
+    routes: [{ sourceId: "guide", route: "/guide/", state: "active" }],
     assets: [{
       assetId: "fixture-asset",
       path: "assets/f0dad327e22e8cddc2e8057cf16d9b16ea6e36e87d31f46ee4d5943c69609c4f/fixture.txt",

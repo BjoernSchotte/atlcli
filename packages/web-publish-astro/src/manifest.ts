@@ -1,5 +1,8 @@
 import {
   digestPublicationJsonV1,
+  normalizePublicationRouteV1,
+  publicationRouteToOutputPathV1,
+  validatePublicationOutputPathV1,
   type PublicationBuildRequestV1,
   type StaticPublicationManifestV1,
 } from "@atlcli/web-publish";
@@ -20,8 +23,57 @@ export interface CreateAstroStaticManifestOptionsV1 {
 }
 
 function outputPathForPage(pathname: string, profile: "directory" | "portable-file"): string {
-  const normalized = pathname.replace(/^\/+|\/+$/gu, "");
-  return profile === "directory" ? `${normalized}/index.html` : `${normalized}.html`;
+  const stem = pathname.replace(/^\/+|\/+$/gu, "");
+  const route = normalizePublicationRouteV1(stem === "" ? "/" : `/${stem}/`);
+  return publicationRouteToOutputPathV1(route, profile);
+}
+
+function assertInventoryOutput(inventory: AstroBuildInventoryV1): Map<string, AstroBuildInventoryV1["output"][number]> {
+  const outputs = new Map<string, AstroBuildInventoryV1["output"][number]>();
+  for (const output of inventory.output) {
+    const path = validatePublicationOutputPathV1(output.path);
+    if (path !== output.path) throw new TypeError(`Astro build inventory output path is not canonical: ${output.path}`);
+    if (!/^[a-f0-9]{64}$/u.test(output.sha256) || !Number.isSafeInteger(output.byteLength) || output.byteLength < 0) {
+      throw new TypeError(`Astro build inventory has invalid output integrity data: ${path}`);
+    }
+    if (outputs.has(path)) throw new TypeError(`Astro build inventory has duplicate output path: ${path}`);
+    outputs.set(path, output);
+  }
+  return outputs;
+}
+
+function assertInventoryPages(request: PublicationBuildRequestV1, inventory: AstroBuildInventoryV1): Map<string, AstroBuildInventoryV1["pages"][number]> {
+  const bundlePageIds = new Set(request.bundle.pages.map((page) => page.sourceId));
+  const pages = new Map<string, AstroBuildInventoryV1["pages"][number]>();
+  for (const page of inventory.pages) {
+    if (!bundlePageIds.has(page.sourceId)) throw new TypeError(`Astro build inventory has unexplained publication page '${page.sourceId}'`);
+    if (pages.has(page.sourceId)) throw new TypeError(`Astro build inventory has duplicate publication page '${page.sourceId}'`);
+    const expectedRoute = request.bundle.routes.find((route) => route.sourceId === page.sourceId && route.state === "active")?.route;
+    if (expectedRoute === undefined || page.route !== expectedRoute) {
+      throw new TypeError(`Astro build inventory route does not match publication page '${page.sourceId}'`);
+    }
+    // This validates the Astro pathname before it becomes an output path.
+    outputPathForPage(page.pathname, request.project.builder.outputProfile);
+    pages.set(page.sourceId, page);
+  }
+  return pages;
+}
+
+function isTrustedGeneratedOutput(path: string): boolean {
+  return path.startsWith("_astro/") ||
+    path.startsWith("pagefind/") ||
+    /(?:^|\/)(?:sitemap[^/]*\.xml|robots\.txt|[^/]+\.xml)$/u.test(path);
+}
+
+function assertNoUnexplainedOutput(
+  outputs: ReadonlyMap<string, AstroBuildInventoryV1["output"][number]>,
+  pagePaths: ReadonlySet<string>,
+  assetPaths: ReadonlySet<string>,
+): void {
+  for (const path of outputs.keys()) {
+    if (pagePaths.has(path) || assetPaths.has(path) || isTrustedGeneratedOutput(path)) continue;
+    throw new TypeError(`Astro build inventory has unexplained output path: ${path}`);
+  }
 }
 
 /**
@@ -36,8 +88,8 @@ export async function createAstroStaticPublicationManifestV1(
   if (inventory.schema !== "atlcli.astro-build-inventory/1" || inventory.bundleDigest !== request.bundle.bundleDigest) {
     throw new TypeError("Astro build inventory does not belong to the requested immutable bundle");
   }
-  const outputs = new Map(inventory.output.map((entry) => [entry.path, entry]));
-  const bySourceId = new Map(inventory.pages.map((page) => [page.sourceId, page]));
+  const outputs = assertInventoryOutput(inventory);
+  const bySourceId = assertInventoryPages(request, inventory);
   const pages = request.bundle.pages.map((entry) => {
     const inventoryPage = bySourceId.get(entry.sourceId);
     if (inventoryPage === undefined) throw new TypeError(`Astro build inventory omitted publication page '${entry.sourceId}'`);
@@ -51,6 +103,11 @@ export async function createAstroStaticPublicationManifestV1(
     if (output === undefined) throw new TypeError(`Astro build inventory omitted publication asset '${asset.assetId}'`);
     return { assetId: asset.assetId, outputPath: asset.path, sha256: output.sha256, byteLength: output.byteLength, mediaType: asset.mediaType };
   });
+  assertNoUnexplainedOutput(
+    outputs,
+    new Set(pages.map((page) => page.outputPath)),
+    new Set(assets.map((asset) => asset.outputPath)),
+  );
   const searchFiles = inventory.output.filter((entry) => entry.path.startsWith("pagefind/")).sort((a, b) => a.path.localeCompare(b.path));
   const seoFiles = inventory.output.filter((entry) => /(?:^|\/)(?:sitemap[^/]*\.xml|robots\.txt|[^/]+\.xml)$/u.test(entry.path));
   const seoDigest = await digestPublicationJsonV1(seoFiles);

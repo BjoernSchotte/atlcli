@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
@@ -277,6 +277,25 @@ test("materializes verified bundle assets but never overwrites an Astro output c
       dir: pathToFileURL(`${output}/`), pages: [{ pathname: "/publish/guide" }],
     })).rejects.toThrow("collides with existing Astro output");
     expect(await readFile(destination, "utf8")).toBe("handwritten output\n");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("rejects output symlinks before writing the private inventory", async () => {
+  const { root, bundlePath } = await fixture();
+  const output = join(root, "dist");
+  try {
+    await mkdir(output);
+    await writeFile(join(root, "outside.html"), "outside");
+    await symlink(join(root, "outside.html"), join(output, "escape.html"));
+    const integration = atlcliPublishingIntegration({
+      bundlePath, manifestPath: join(root, "private", "inventory.json"), routePrefix: "/publish",
+      expectedConfig: expectedConfig(root),
+    });
+    await expect(integration.hooks["astro:build:done"]!({
+      dir: pathToFileURL(`${output}/`), pages: [{ pathname: "/publish/guide" }],
+    })).rejects.toThrow("non-regular entry");
   } finally {
     await rm(root, { recursive: true, force: true });
   }

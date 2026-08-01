@@ -233,6 +233,7 @@ async function inventory(root: string): Promise<readonly OutputFileV1[]> {
       const absolute = resolve(directory, entry.name);
       if (entry.isDirectory()) await walk(absolute);
       else if (entry.isFile()) files.push(absolute);
+      else throw new TypeError(`Astro output contains a non-regular entry: ${absolute}`);
     }
   };
   await walk(root);
