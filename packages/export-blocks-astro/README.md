@@ -34,3 +34,17 @@ TanStack Charts `0.3.1` is an explicit, pinned pre-alpha dependency. The
 adapter is replaceable behind `ChartRendererAdapterV1`; its production use is
 limited to the tested bounded bar-chart profile until a later compatibility
 review promotes or replaces it.
+
+## Security boundary
+
+Components escape content by default and never accept raw HTML. Links have a
+renderer-side scheme allowlist, assets must be local bundle paths, and
+user-derived CSS is restricted to canonical colors and numeric layout shares.
+The project that builds pages validates original SVG bytes and all asset
+provenance before this package receives a render context.
+
+The included Astro consumer proves a CSP with external scripts and styles,
+`connect-src 'none'`, and no inline module scripts. It permits inline styles
+only for the component's validated numeric layout and color attributes; an
+experience that needs a stricter `style-src` can extract these bounded values
+into its build-owned stylesheet.

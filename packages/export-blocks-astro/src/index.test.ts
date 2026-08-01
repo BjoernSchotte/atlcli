@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { access, readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
-test("is a Starlight-free Astro render-kit package with only the normalized block-model dependency", async () => {
+test("is a Starlight-free Astro render-kit package with an isolated chart runtime", async () => {
   const packageRoot = resolve(import.meta.dir, "..");
   const manifest = JSON.parse(await readFile(resolve(packageRoot, "package.json"), "utf8")) as {
     dependencies?: Record<string, string>;
@@ -12,7 +12,11 @@ test("is a Starlight-free Astro render-kit package with only the normalized bloc
   };
   expect(manifest.atlcli?.publish).toBe("public-0.x");
   expect(manifest.peerDependencies?.astro).toBe(">=7.1.6 <8");
-  expect(manifest.dependencies).toEqual({ "@atlcli/export-blocks": "workspace:*" });
+  expect(manifest.dependencies).toEqual({
+    "@atlcli/export-blocks": "workspace:*",
+    "@tanstack/charts": "0.3.1",
+    "d3-scale": "4.0.2",
+  });
   expect(manifest.exports).toMatchObject({ "./fixtures": { default: "./dist/fixtures.js" } });
   const source = await readFile(resolve(packageRoot, "src/index.ts"), "utf8");
   expect(source).not.toContain("starlight");
@@ -27,6 +31,7 @@ test("render-kit sources expose no implicit acquisition, network, or raw-html si
   const sources = await Promise.all([
     "src/index.ts", "src/contracts.ts", "src/components/ExportDocument.astro",
     "src/components/Block.astro", "src/components/Inline.astro", "src/components/InlineNode.astro",
+    "src/components/InteractiveChart.astro", "src/components/chart-island-client.ts", "src/security.ts",
   ].map((path) => readFile(resolve(packageRoot, path), "utf8")));
   for (const source of sources) {
     expect(source).not.toContain("fetch(");

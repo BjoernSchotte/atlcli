@@ -8,6 +8,7 @@ import {
   type InlineNode,
 } from "@atlcli/export-blocks";
 import { inlineNodeKindV1 } from "../contracts.js";
+import { safeExportBlockColorV1, safeExportBlockHrefV1 } from "../security.js";
 import Inline from "./Inline.astro";
 
 interface Props { node: InlineNode; locale: string; }
@@ -23,28 +24,20 @@ const textClasses = kind === "text" ? {
   "atlcli-mark-superscript": node.marks?.includes("superscript") ?? false,
 } : {};
 
-function safeHref(value: string | undefined): string | undefined {
-  if (!value) return undefined;
-  if (value.startsWith("/") || value.startsWith("#")) return value;
-  try {
-    const url = new URL(value);
-    return url.protocol === "https:" || url.protocol === "http:" || url.protocol === "mailto:" ? value : undefined;
-  } catch { return undefined; }
-}
-
 function hrefFor(node: Extract<InlineNode, { type: "link" }>): string | undefined {
   switch (node.target.kind) {
-    case "external": return safeHref(node.target.href);
-    case "page": return safeHref(node.target.href);
-    case "attachment": return safeHref(node.target.href);
-    case "anchor": return safeHref(`#${node.target.anchor}`);
+    case "external": return safeExportBlockHrefV1(node.target.href);
+    case "page": return safeExportBlockHrefV1(node.target.href);
+    case "attachment": return safeExportBlockHrefV1(node.target.href);
+    case "anchor": return safeExportBlockHrefV1(`#${node.target.anchor}`);
   }
 }
 
 const linkHref = kind === "link" ? hrefFor(node) : undefined;
+const textColor = kind === "text" ? safeExportBlockColorV1(node.color) : undefined;
 ---
 
-{kind === "text" && <span class:list={textClasses} style={node.color ? `color:${node.color}` : undefined}>{node.text}</span>}
+{kind === "text" && <span class:list={textClasses} style={textColor ? `color:${textColor}` : undefined}>{node.text}</span>}
 {kind === "link" && (linkHref
   ? <a href={linkHref}><Inline nodes={node.content} locale={locale} /></a>
   : <span data-atlcli-link-unresolved><Inline nodes={node.content} locale={locale} /></span>)}

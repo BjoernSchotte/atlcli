@@ -27,6 +27,12 @@ test("plain Astro consumer renders every normalized discriminator without raw HT
     "anchor", "unknown",
   ]) expect(html).toContain(`data-atlcli-block=\"${kind}\"`);
   expect(html).toContain('src="/assets/diagram.svg"');
+  expect(html).toContain("Content-Security-Policy");
+  expect(html).toContain('script-src \'self\'');
+  expect(html).toContain('connect-src \'none\'');
+  expect(html).not.toContain("<style");
+  expect(html).toContain('<script type="module" src="/_astro/');
+  expect(html).not.toContain('<script type="module">');
   expect(html).toContain("<caption><span>Example table</span></caption>");
   expect(html).toContain('data-atlcli-caption data-kind="code"');
   expect(html).toContain('data-atlcli-caption data-kind="figure"');
@@ -35,6 +41,15 @@ test("plain Astro consumer renders every normalized discriminator without raw HT
   expect(html).toContain('href="https://example.test/guide"');
   expect(html).toContain("&lt;not-html-executed /&gt;");
   expect(html).not.toContain("<not-html-executed");
+  expect(html).toContain('&lt;img src=x onerror=&quot;alert(1)&quot;&gt;');
+  expect(html).toContain('data-atlcli-link-unresolved');
+  expect(html).toContain('data-atlcli-asset-unresolved');
+  expect(html).toContain("Datasource card");
+  expect(html).not.toContain("javascript:alert(1)");
+  expect(html).not.toContain("background:url(https://evil.test/x)");
+  expect(html).not.toContain("data:image/svg+xml");
+  expect(html).not.toContain("opaque-datasource-secret");
+  expect(html).not.toContain('accountId="private"');
   expect(html).toContain('data-atlcli-block="chart"');
   expect(html).toContain("Published pages");
   expect(html).toContain('role="img"');

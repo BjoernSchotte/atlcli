@@ -7,10 +7,34 @@ import {
   EXPORT_BLOCKS_ASTRO_MINIMAL_CONTEXT_V1,
   EXPORT_BLOCKS_ASTRO_ALL_FIELDS_FIXTURE_V1,
 } from "@atlcli/export-blocks-astro/fixtures";
+
+const HOSTILE_RENDERER_CONTEXT_V1 = {
+  ...EXPORT_BLOCKS_ASTRO_MINIMAL_CONTEXT_V1,
+  assets: {
+    ...EXPORT_BLOCKS_ASTRO_MINIMAL_CONTEXT_V1.assets,
+    "attachment::hostile.svg": { src: "data:image/svg+xml,<svg onload=alert(1) />", mediaType: "image/svg+xml" },
+  },
+};
+
+const HOSTILE_RENDERER_BLOCKS_V1 = [{
+  type: "paragraph" as const,
+  content: [
+    { type: "text" as const, text: '<img src=x onerror="alert(1)">', color: "red;background:url(https://evil.test/x)" },
+    { type: "link" as const, target: { kind: "external" as const, href: "java\tscript:alert(1)" }, content: [{ type: "text" as const, text: "unsafe link" }] },
+    { type: "smartCard" as const, card: { appearance: "inline" as const, source: "datasource" as const, title: "Datasource card", datasource: { secret: "opaque-datasource-secret" } } },
+  ],
+}, {
+  type: "image" as const,
+  source: { kind: "attachment" as const, filename: "hostile.svg" },
+  alt: "hostile asset",
+}];
 ---
 
 <!doctype html>
 <html lang="en">
+  <head>
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" />
+  </head>
   <body>
     <ExportDocument
       blocks={EXPORT_BLOCKS_ASTRO_ALL_FIELDS_FIXTURE_V1}
@@ -26,5 +50,6 @@ import {
       labels: ["January", "February", "March"],
       series: [{ name: "Pages", values: [12, 18, 21] }],
     }} />
+    <ExportDocument blocks={HOSTILE_RENDERER_BLOCKS_V1} context={HOSTILE_RENDERER_CONTEXT_V1} />
   </body>
 </html>

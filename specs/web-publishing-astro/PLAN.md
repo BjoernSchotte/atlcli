@@ -1546,7 +1546,7 @@ the active bundle is always complete and digest-valid.
       fallback, hydration, keyboard accessibility, no client error, and a
       <=100 KiB external runtime bundle; never serialize TanStack definitions,
       callbacks, or functions into the bundle.
-- [ ] Prove CSP, no event-handler/script/CSS injection, unsafe URL rejection,
+- [x] Prove CSP, no event-handler/script/CSS injection, unsafe URL rejection,
       SVG safety, and no opaque datasource/provenance serialization.
 - [ ] Build a packed plain-Astro consumer with the all-fields fixture, one
       trusted component override, custom tokens, JS on/off, accessibility, RTL,

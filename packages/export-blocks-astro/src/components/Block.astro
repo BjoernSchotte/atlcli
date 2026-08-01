@@ -8,6 +8,7 @@ import {
 } from "@atlcli/export-blocks";
 import { exportBlockKindV1 } from "../contracts.js";
 import { astroExportAssetKeyV1, type AstroExportBlockRenderContextV1 } from "../index.js";
+import { safeExportBlockAssetSrcV1, safeExportBlockPercentageV1 } from "../security.js";
 import Inline from "./Inline.astro";
 import ExportDocument from "./ExportDocument.astro";
 import Caption from "./Caption.astro";
@@ -18,6 +19,7 @@ const kind = exportBlockKindV1(block);
 const table = kind === "table" ? materializeTable(block) : undefined;
 const HeadingTag = kind === "heading" ? `h${block.level}` : "div";
 const asset = kind === "image" ? context.assets[astroExportAssetKeyV1(block.source)] : undefined;
+const assetSrc = safeExportBlockAssetSrcV1(asset?.src);
 const calloutIcon = kind === "callout" ? resolveCalloutIcon(block) : undefined;
 ---
 
@@ -30,9 +32,9 @@ const calloutIcon = kind === "callout" ? resolveCalloutIcon(block) : undefined;
 {kind === "list" && (block.ordered
   ? <ol data-atlcli-block="list" start={block.start}>{block.items.map((item) => <li data-atlcli-task={item.kind === "task" ? String(item.checked === true) : undefined}>{item.kind === "task" && <input type="checkbox" checked={item.checked === true} disabled aria-label="Task status" />}<ExportDocument blocks={item.content} context={context} /></li>)}</ol>
   : <ul data-atlcli-block="list">{block.items.map((item) => <li data-atlcli-task={item.kind === "task" ? String(item.checked === true) : undefined}>{item.kind === "task" && <input type="checkbox" checked={item.checked === true} disabled aria-label="Task status" />}<ExportDocument blocks={item.content} context={context} /></li>)}</ul>)}
-{kind === "layout" && <section data-atlcli-block="layout" style={`--atlcli-layout-columns:${block.columns.length}`}>{block.columns.map((column) => <div style={`--atlcli-layout-width:${column.width}%`}><ExportDocument blocks={column.content} context={context} /></div>)}</section>}
+{kind === "layout" && <section data-atlcli-block="layout" style={`--atlcli-layout-columns:${block.columns.length}`}>{block.columns.map((column) => <div style={safeExportBlockPercentageV1(column.width) ? `--atlcli-layout-width:${safeExportBlockPercentageV1(column.width)}` : undefined}><ExportDocument blocks={column.content} context={context} /></div>)}</section>}
 {kind === "table" && <table data-atlcli-block="table">{block.caption && <caption><Inline nodes={block.caption.content} locale={context.locale} /></caption>}<tbody>{table?.rows.map((row) => <tr>{row.cells.map((cell) => cell.header ? <th scope="col" colspan={cell.colspan} rowspan={cell.rowspan}><ExportDocument blocks={cell.content} context={context} /></th> : <td colspan={cell.colspan} rowspan={cell.rowspan}><ExportDocument blocks={cell.content} context={context} /></td>)}</tr>)}</tbody></table>}
-{kind === "image" && <figure data-atlcli-block="image">{asset ? <img src={asset.src} alt={block.alt ?? asset.alt ?? ""} /> : <span data-atlcli-asset-unresolved>{block.alt ?? (block.source.kind === "attachment" ? block.source.filename : "Image")}</span>}{block.caption && <Caption caption={block.caption} locale={context.locale} />}</figure>}
+{kind === "image" && <figure data-atlcli-block="image">{assetSrc ? <img src={assetSrc} alt={block.alt ?? asset?.alt ?? ""} /> : <span data-atlcli-asset-unresolved>{block.alt ?? (block.source.kind === "attachment" ? block.source.filename : "Image")}</span>}{block.caption && <Caption caption={block.caption} locale={context.locale} />}</figure>}
 {kind === "mediaFallback" && <aside data-atlcli-block="media-fallback">{mediaFallbackDisplayText(block)}</aside>}
 {kind === "blockquote" && <blockquote data-atlcli-block="blockquote"><ExportDocument blocks={block.content} context={context} /></blockquote>}
 {kind === "divider" && <hr data-atlcli-block="divider" />}
