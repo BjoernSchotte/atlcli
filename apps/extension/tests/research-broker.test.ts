@@ -11,7 +11,9 @@ import {
 } from "../utils/research/capability-contracts.js";
 import {
   ResearchCapabilityBroker,
+  WorkspaceResearchClaimLedgerV1,
   WorkspaceResearchEvidenceStoreV1,
+  createResearchClaimV1,
   createMemoryResearchWorkspace,
   type ResearchReadProviders,
 } from "@atlcli/research";
@@ -140,6 +142,11 @@ function fakeProviders(): ResearchReadProviders & {
       },
     },
   };
+}
+
+async function sha256(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
 describe("research query builders", () => {
@@ -278,6 +285,86 @@ describe("bounded research capability broker", () => {
     expect(broker.detailEvidenceLedger()).toMatchObject([
       { source: { id: "jira:DEMO-1" } },
     ]);
+  });
+
+  it("invalidates claims that depend on a superseded provider detail version", async () => {
+    const workspace = createMemoryResearchWorkspace();
+    const evidence = new WorkspaceResearchEvidenceStoreV1(workspace);
+    const claims = new WorkspaceResearchClaimLedgerV1(workspace, evidence);
+    const providers = fakeProviders();
+    let detailReads = 0;
+    providers.jira.getIssue = async ({ issueKey }) => {
+      detailReads += 1;
+      return {
+        issueKey,
+        projectKey: "DEMO",
+        title: "Scoped issue",
+        updatedAt: `2026-08-0${detailReads}T12:00:00.000Z`,
+        content: {
+          text: detailReads === 1
+            ? "The first detail version has a direct implementation reference."
+            : "The revised detail version changes the implementation reference.",
+          linkTargets: [],
+          truncated: false,
+          inputBytes: 70,
+        },
+      };
+    };
+    const broker = new ResearchCapabilityBroker(request({ maxDetailItemsPerProduct: 2 }), providers, {
+      createEntityId: () => "claim-invalidation-entity",
+      evidence: {
+        store: evidence,
+        claimLedger: claims,
+        scopeBindings: [{
+          schema: "atlcli.research-scope-binding/v1",
+          id: "scope-binding:test:jira:DEMO",
+          tenantOrigin: "https://example.atlassian.net",
+          product: "jira",
+          entityKind: "project",
+          entityRef: "scope-key:jira:DEMO",
+          key: "DEMO",
+          name: "DEMO",
+          source: "cli_flag",
+          authority: "locked",
+        }],
+        capturedAt: () => `2026-08-0${detailReads + 1}T12:01:00.000Z`,
+      },
+    });
+    const page = await broker.invoke("jira.issue.search", {
+      schema: RESEARCH_CAPABILITY_SCHEMAS["jira.issue.search"].input,
+      query: {},
+    }) as ResearchSearchOutputV1;
+    const entityRef = page.items[0]!.entityRef;
+    await broker.invoke("jira.issue.get", {
+      schema: RESEARCH_CAPABILITY_SCHEMAS["jira.issue.get"].input,
+      entityRef,
+    });
+    const firstEvidence = (await evidence.list()).records[0]!;
+    const firstChunk = (await evidence.chunks(firstEvidence.id))[0]!;
+    const quote = firstChunk.text.slice(0, 12);
+    const claim = await createResearchClaimV1({
+      evidenceStore: evidence,
+      classification: "fact",
+      statement: "The issue has an implementation reference.",
+      evidenceSpans: [{
+        evidenceId: firstEvidence.id,
+        chunkId: firstChunk.id,
+        start: firstChunk.start,
+        end: firstChunk.start + quote.length,
+        textHash: await sha256(quote),
+      }],
+      createdAt: "2026-08-01T12:02:00.000Z",
+    });
+    await claims.put(claim);
+
+    await broker.invoke("jira.issue.get", {
+      schema: RESEARCH_CAPABILITY_SCHEMAS["jira.issue.get"].input,
+      entityRef,
+    });
+    await expect(claims.get(claim.id)).resolves.toMatchObject({
+      freshness: "invalidated",
+      invalidationReason: "evidence_changed",
+    });
   });
 
   it("paginates both products without exposing provider cursors or out-of-scope hits", async () => {

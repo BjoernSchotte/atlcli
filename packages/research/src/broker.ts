@@ -24,6 +24,7 @@ import {
   createResearchEvidenceRecordV1,
   type ResearchEvidenceStoreV1,
 } from "./evidence-store.js";
+import type { ResearchClaimLedgerV1 } from "./claim-ledger.js";
 import {
   buildResearchCql,
   buildResearchJql,
@@ -99,6 +100,7 @@ interface BrokerOptions {
   /** Optional private evidence sink for durable session-backed detail reads. */
   evidence?: {
     store: ResearchEvidenceStoreV1;
+    claimLedger?: ResearchClaimLedgerV1;
     scopeBindings: readonly ResearchScopeBindingV1[];
     capturedAt?: () => string;
   };
@@ -249,6 +251,22 @@ export class ResearchCapabilityBroker {
         scopeBindings: this.#evidence.scopeBindings,
         capturedAt: this.#evidence.capturedAt?.() ?? new Date().toISOString(),
       });
+      const priorVersions = await this.#evidence.store.recordsForCanonicalIdentity(
+        evidence.record.identity.canonicalId,
+      );
+      const supersededEvidenceIds = priorVersions
+        .map((record) => record.id)
+        .filter((id) => id !== evidence.record.id);
+      // Invalidate before publishing the new version. A write interruption may
+      // be conservative, but it can never leave an older claim current after
+      // the host has observed a changed provider version.
+      if (supersededEvidenceIds.length > 0 && this.#evidence.claimLedger) {
+        await this.#evidence.claimLedger.invalidateByEvidenceIds({
+          evidenceIds: supersededEvidenceIds,
+          at: evidence.record.version.capturedAt,
+          reason: "evidence_changed",
+        });
+      }
       await this.#evidence.store.put(evidence.record, evidence.chunks);
     }
     this.#detailEvidence.set(source.id, {

@@ -39,6 +39,7 @@ import {
 } from "./session-store.js";
 import { ResearchSessionWorkspaceCheckpointerV1 } from "./workspace-checkpointer.js";
 import { WorkspaceResearchEvidenceStoreV1 } from "./evidence-store.js";
+import { WorkspaceResearchClaimLedgerV1 } from "./claim-ledger.js";
 import { researchThreadIdForSessionV1 } from "./checkpoint-identity.js";
 /*
  * Keep graph execution admission here, before workspace/provider/model setup.
@@ -1133,11 +1134,15 @@ async function runResearchAgentWithBindings(
   const durableEvidence = input.durableSession && input.brief?.scopeBindings.length
     ? new WorkspaceResearchEvidenceStoreV1(workspace)
     : undefined;
+  const durableClaims = durableEvidence
+    ? new WorkspaceResearchClaimLedgerV1(workspace, durableEvidence)
+    : undefined;
   const broker = new ResearchCapabilityBroker(input.request, input.providers, {
     ...(input.budget ? { budget: input.budget } : {}),
     ...(durableEvidence && input.brief ? {
       evidence: {
         store: durableEvidence,
+        ...(durableClaims ? { claimLedger: durableClaims } : {}),
         scopeBindings: input.brief.scopeBindings,
         capturedAt: () => new Date(now()).toISOString(),
       },

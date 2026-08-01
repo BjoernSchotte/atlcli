@@ -81,6 +81,7 @@ export interface ResearchEvidenceSpanV1 {
 export interface ResearchEvidenceStoreV1 {
   put(record: ResearchEvidenceRecordV1, chunks: readonly ResearchEvidenceChunkV1[]): Promise<ResearchEvidenceRecordV1>;
   get(evidenceId: string): Promise<ResearchEvidenceRecordV1 | undefined>;
+  recordsForCanonicalIdentity(canonicalId: string): Promise<ResearchEvidenceRecordV1[]>;
   list(input?: { limit?: number; cursor?: string }): Promise<{ records: ResearchEvidenceRecordV1[]; nextCursor?: string }>;
   chunks(evidenceId: string): Promise<ResearchEvidenceChunkV1[]>;
   remove(evidenceId: string): Promise<boolean>;
@@ -556,6 +557,24 @@ export class WorkspaceResearchEvidenceStoreV1 implements ResearchEvidenceStoreV1
       const record = await this.#readRecord(validatedId);
       if (!record) invalid("Evidence store index references a missing record.");
       return clone(record);
+    });
+  }
+
+  async recordsForCanonicalIdentity(canonicalId: string): Promise<ResearchEvidenceRecordV1[]> {
+    return this.#exclusive(async () => {
+      await this.#hydrate();
+      const identity = boundedText(canonicalId, "Evidence canonical identity", 1_024);
+      const records: ResearchEvidenceRecordV1[] = [];
+      for (const id of this.#index.recordIds) {
+        const record = await this.#readRecord(id);
+        if (!record) invalid("Evidence store index references a missing record.");
+        if (record.identity.canonicalId === identity) records.push(clone(record));
+      }
+      return records.sort((left, right) =>
+        (right.version.updatedAt ?? right.version.capturedAt).localeCompare(
+          left.version.updatedAt ?? left.version.capturedAt,
+        ) || right.id.localeCompare(left.id),
+      );
     });
   }
 

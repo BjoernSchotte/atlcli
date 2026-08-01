@@ -3271,6 +3271,10 @@ Shared:
       validation, source-binding inheritance, deterministic claim identity,
       truncated-source fencing, freshness refresh, transitive evidence
       invalidation, and interrupted-index recovery.
+- [x] Invalidate dependent claims at the detail-read boundary before publishing
+      a newly observed version of the same canonical Jira issue or Confluence
+      page. An interrupted new-version write may be conservative, but cannot
+      leave an older claim current after a changed provider version was seen.
 - [ ] Add evidence, chunk, claim, contradiction, freshness, and coverage
       contracts plus evidence-linked `OutlineV1`.
 - [ ] Add bounded evidence, claim, contradiction, coverage, and outline store

@@ -120,6 +120,13 @@ describe("research evidence store", () => {
     const newerVersion = await record({ source: source({ updatedAt: "2026-08-02T12:00:00.000Z" }) });
     expect(newerVersion.record.id).not.toBe(original.record.id);
     expect(newerVersion.record.identity).toEqual(original.record.identity);
+    const store = new WorkspaceResearchEvidenceStoreV1(createMemoryResearchWorkspace());
+    await store.put(original.record, original.chunks);
+    await store.put(newerVersion.record, newerVersion.chunks);
+    await expect(store.recordsForCanonicalIdentity(original.record.identity.canonicalId)).resolves.toMatchObject([
+      { id: newerVersion.record.id },
+      { id: original.record.id },
+    ]);
 
     await expect(createResearchEvidenceRecordV1({
       source: source({ projectKey: "OTHER" }),
