@@ -93,6 +93,14 @@ const PACKED_REPORT_INPUT = {
   limitations: ["Synthetic packed-browser evidence only."],
 };
 
+const PACKED_JIRA_ONLY_REPORT_INPUT = {
+  title: "Packed Jira-only report",
+  executiveSummary: "The bounded Jira-only acquisition completed.",
+  findings: [],
+  relationships: [],
+  limitations: ["Synthetic packed Jira-only evidence only."],
+};
+
 const PACKED_WORKFLOW_CODE = `
 const acceptedGraph = JSON.parse(await tools.researchGraphPropose({
   basedOnBriefRevision: 1,
@@ -193,6 +201,36 @@ const finalDraft = await task({
 finalDraft;
 `.trim();
 
+const PACKED_JIRA_ONLY_WORKFLOW_CODE = `
+const acceptedGraph = JSON.parse(await tools.researchGraphPropose({
+  basedOnBriefRevision: 1,
+  basedOnGraphRevision: 1,
+  nodes: [
+    { nodeId: "research-node:jira-lookup", dependencies: [], reasonCodes: ["simple_lookup"] },
+    { nodeId: "research-node:synthesizer", dependencies: ["research-node:jira-lookup"], reasonCodes: ["user_requested"] }
+  ]
+}));
+if (acceptedGraph.schema !== "atlcli.accepted-research-graph/v1") {
+  throw new Error("Packed Jira-only graph proposal was not accepted.");
+}
+const jira = await task({
+  description: JSON.stringify({ schema: "atlcli.research-task-dispatch/v1", taskId: "research-task:r1:jira-lookup:a1", objective: "Acquire detail-backed Jira evidence for the exact bounded lookup intent." }),
+  subagentType: "focused-researcher-jira-lookup",
+  responseSchema: ${JSON.stringify(RESEARCH_WORKER_PACKET_SCHEMA_V1)}
+});
+const finalDraft = await task({
+  description: JSON.stringify({
+    schema: "atlcli.research-task-dispatch/v1",
+    taskId: "research-task:r1:synthesizer:a1",
+    objective: "Write exactly one typed final report draft from accepted packets and dispositions.",
+    dependencyResults: [{ taskId: "research-task:r1:jira-lookup:a1", result: jira }]
+  }),
+  subagentType: "synthesizer",
+  responseSchema: ${JSON.stringify(RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1)}
+});
+finalDraft;
+`.trim();
+
 interface TargetInfo {
   targetId: string;
   type: string;
@@ -212,6 +250,12 @@ interface HarnessEvent {
   jql?: string;
   cql?: string;
   messageKind?: string;
+  code?: string;
+  error?: string;
+  eventKind?: string;
+  status?: string;
+  reasonCode?: string;
+  errorCode?: string;
 }
 
 function offscreenBootstrap(): string {
@@ -278,9 +322,21 @@ function offscreenBootstrap(): string {
           url: target.href,
         });
         this.addEventListener("message", (event) => {
+          const researchEvent = event.data?.event;
           harnessChannel.postMessage({
             kind: "offscreen-worker-message",
             messageKind: event.data?.kind,
+            ...(event.data?.kind === "research-worker:event"
+              ? {
+                  eventKind: researchEvent?.kind,
+                  status: researchEvent?.status,
+                  reasonCode: researchEvent?.reasonCode,
+                  errorCode: researchEvent?.errorCode,
+                }
+              : {}),
+            ...(event.data?.kind === "research-worker:error"
+              ? { code: event.data?.code, error: event.data?.error }
+              : {}),
           });
         });
         return;
@@ -342,6 +398,8 @@ function workerFixture(): string {
 const channel = new BroadcastChannel("atlcli-packed-research-v1");
 const workerId = crypto.randomUUID();
 let modelCalls = 0;
+let packedJiraOnlyRun = false;
+let supervisorWorkflowStarted = false;
 channel.postMessage({ kind: "worker-start", workerId });
 globalThis.addEventListener("error", (event) => {
   channel.postMessage({
@@ -442,6 +500,7 @@ function anthropicMessage(content, stopReason, call) {
 }
 
 const packedReportInput = ${JSON.stringify(PACKED_REPORT_INPUT)};
+const packedJiraOnlyReportInput = ${JSON.stringify(PACKED_JIRA_ONLY_REPORT_INPUT)};
 const wikiPacket = {
   schema: "atlcli.research-packet-body/v1",
   answeredQuestion: "The packed design page explicitly names DEMO-1.",
@@ -611,7 +670,10 @@ globalThis.fetch = async (input, init) => {
       return structured(wikiPacket);
     }
 
-    if (serializedRequest.includes("Host-admitted specialization research-node:jira-research:")) {
+    if (
+      serializedRequest.includes("Host-admitted specialization research-node:jira-research:") ||
+      serializedRequest.includes("Host-admitted specialization research-node:jira-lookup:")
+    ) {
       if (!serializedMessages.includes("atlcli.ptc/jira.issue.get.output/v1")) {
         return anthropicMessage(
           [{
@@ -640,16 +702,22 @@ globalThis.fetch = async (input, init) => {
     }
 
     if (serializedRequest.includes("You are the synthesizer specialist")) {
-      return structured(packedReportInput);
+      return structured(packedJiraOnlyRun ? packedJiraOnlyReportInput : packedReportInput);
     }
 
-    if (!serializedMessages.includes("Packed <img")) {
+    if (!supervisorWorkflowStarted) {
+      supervisorWorkflowStarted = true;
+      packedJiraOnlyRun = serializedRequest.includes("packed-jira-only");
       return anthropicMessage(
         [{
           type: "tool_use",
           id: "toolu_packed_eval",
           name: "eval",
-          input: { code: ${JSON.stringify(PACKED_WORKFLOW_CODE)} },
+          input: {
+            code: packedJiraOnlyRun
+              ? ${JSON.stringify(PACKED_JIRA_ONLY_WORKFLOW_CODE)}
+              : ${JSON.stringify(PACKED_WORKFLOW_CODE)},
+          },
         }],
         "tool_use",
         modelCalls,
@@ -660,7 +728,7 @@ globalThis.fetch = async (input, init) => {
       providerSchema?.properties?.executiveSummary &&
       providerSchema?.properties?.relationships
     ) {
-      return structured(packedReportInput);
+      return structured(packedJiraOnlyRun ? packedJiraOnlyReportInput : packedReportInput);
     }
 
     const structuredTool = Array.isArray(body.tools)
@@ -683,7 +751,7 @@ globalThis.fetch = async (input, init) => {
         type: "tool_use",
         id: "toolu_packed_report",
         name: structuredTool.name,
-        input: packedReportInput,
+        input: packedJiraOnlyRun ? packedJiraOnlyReportInput : packedReportInput,
       }],
       "tool_use",
       modelCalls,
@@ -1174,9 +1242,64 @@ test("stops a packed natural-name scope ambiguity before key storage or agent wo
   expect(events.some((event) => event.url?.includes("api.anthropic.com"))).toBe(false);
 });
 
+test("selects and streams a Jira-only composition in the packed production bundle", async () => {
+  await openResearchScreen(page);
+  await installEventCapture(page);
+  await page.getByTestId("research-current-context").uncheck();
+  await fillResearchForm(
+    page,
+    "packed-jira-only: Find the exact Jira project DEMO work item.",
+    { includeScope: false },
+  );
+  await page.getByTestId("research-jira").fill("DEMO");
+  await page.getByTestId("research-run").click();
+
+  try {
+    await page.waitForFunction(
+      () =>
+        document.querySelector('[data-testid="research-report"]') !== null ||
+        document.querySelector('[data-testid="research-error"]') !== null,
+      undefined,
+      { timeout: 20_000 },
+    );
+  } catch (error) {
+    const root = await context.newCDPSession(page);
+    try {
+      throw new Error(JSON.stringify({
+        cause: error instanceof Error ? error.message : String(error),
+        events: await harnessEvents(page),
+        targets: await targets(root),
+        status: await page.getByRole("status").textContent().catch(() => null),
+      }, null, 2));
+    } finally {
+      await root.detach();
+    }
+  }
+  const errorLocator = page.getByTestId("research-error");
+  if (await errorLocator.count()) {
+    throw new Error(JSON.stringify({
+      events: await harnessEvents(page),
+      uiError: await errorLocator.textContent(),
+    }, null, 2));
+  }
+  await expect(page.getByTestId("research-report")).toBeVisible();
+  await expect(page.getByTestId("research-formatted-report")).toContainText("Jira-only");
+  const activity = await page.getByTestId("research-activity").innerText();
+  expect(activity).toContain("2 nodes in 2 waves");
+  expect(activity).toContain("task · research-task:r1:jira-lookup:a1");
+  expect(activity).not.toContain("wiki-research");
+
+  const events = await harnessEvents(page);
+  const fetches = events.filter((event) => event.kind === "fetch");
+  expect(fetches.some((event) => event.url?.includes("/rest/api/3/search/jql"))).toBe(true);
+  expect(fetches.some((event) => event.url?.includes("/wiki/rest/api/content/search"))).toBe(false);
+  expect(events.some((event) => event.kind === "worker-error")).toBe(false);
+});
+
 test("runs bounded PTC in packed MV3, recreates workers, cancels, and renders safe Markdown", async ({
 }, testInfo) => {
   await openResearchScreen(page);
+  await installEventCapture(page);
   await expect(page.getByTestId("research-key")).toHaveAttribute(
     "type",
     "password"

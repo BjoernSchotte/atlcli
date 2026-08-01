@@ -2711,10 +2711,16 @@ Extension/browser:
       ranked set. Component tests change the active tab after submission and
       prove both the dispatched request and submitted snapshot retain the
       original scope.
-- [ ] Prove the production bundle can dynamically select and stream different
+- [x] Prove the production bundle can dynamically select and stream different
       role compositions without Node imports. A second live Mayflower browser
       run is not required in this phase because T2 already preserves the live
-      one-shot path and T4/T6 prove lifecycle and richer retrieval.
+      one-shot path and T4/T6 prove lifecycle and richer retrieval. Proven
+      2026-08-01 by the packed MV3 production-output suite: a Jira-only lookup
+      selected and streamed one focused-researcher plus one synthesizer in two
+      waves with Jira-only PTC, while the existing cross-product fixture
+      selected the independent Jira/Confluence acquisition, join,
+      reconciliation, repair, and sole-synthesizer path. The four-test suite
+      also retains the Node-import and worker-lifecycle guards.
 
 Gate:
 
