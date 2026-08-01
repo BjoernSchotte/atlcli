@@ -1501,7 +1501,7 @@ load a bundle and build all routes with build-time network access disabled.
       body versions.
 - [ ] Build a complete `PublicationRefreshPlanV1` before mutating active state;
       surface all destructive and partial changes.
-- [ ] Reuse existing asset trust routing and SVG validation at the final fetch
+- [x] Reuse existing asset trust routing and SVG validation at the final fetch
       and materialization seam.
 - [ ] Validate MIME/magic bytes, size/pixel/node budgets, redirects/private
       networks, digest, safe filenames, root containment, and symlinks.

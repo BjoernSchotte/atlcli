@@ -65,6 +65,20 @@ export type {
   ExternalAssetFetcherDeps,
 } from "./asset-policy.js";
 
+// --- Static-publication asset materialization ---
+export {
+  fetchAndMaterializePublicationAssetV1,
+  PublicationAssetMaterializationErrorV1,
+} from "./publication-assets.js";
+export type {
+  MaterializedPublicationAssetV1,
+  PublicationAssetMaterializationDepsV1,
+  PublicationAssetMaterializationErrorCodeV1,
+  PublicationAssetRequestV1,
+  PublicationAssetSourceV1,
+  PublicationAttachmentAssetPortV1,
+} from "./publication-assets.js";
+
 // --- Ports over the real clients ---
 export {
   attachmentLookupFromClient,

@@ -14,6 +14,7 @@ each.
 |---|---|
 | Macro ports | `confluenceContentPortFromClient`, `exportViewPortFromClient`, `attachmentLookupFromClient`, `jiraIssuePortFromClient`, `classifyClientError` |
 | Asset security boundary | `createExternalAssetPolicy`, `createExternalAssetFetcher`, `defaultExternalAssetPolicy`, `defaultExternalAssetFetcher`, `isPrivateHost`, `parseIpv6` |
+| Publication assets | `fetchAndMaterializePublicationAssetV1`: policy-routed fetch, magic/MIME validation, SVG safety, dimensions/budgets, and content-addressed output metadata |
 | Sink-side trust routing | `trustRoutingAssetFetcher`, `trustRoutingPdfAssetResolver` |
 | Resolution options | `buildMacroResolutionOptions`, `createMacroRegistry` |
 | Confluence source graph | `resolveConfluencePageGraphV1` exposes ordered normalized page/folder nodes before document composition; `resolveConfluenceSourceV1` remains the DOCX/PDF compatibility wrapper |
@@ -80,6 +81,17 @@ Existing DOCX/PDF hosts keep calling `resolveConfluenceSourceV1()`. It composes
 the graph from that same resolution pass, preserving the established document
 blocks, notes, page summaries, and chapter-anchor map without a second traversal
 or body read.
+
+## Static-publication assets
+
+`fetchAndMaterializePublicationAssetV1()` is the hand-off from source access to
+a static publication bundle. Attachment bytes come from an injected,
+host-authorized port. External bytes can only come from the existing
+policy-wrapped external fetcher, which omits credentials and checks every
+redirect. The function accepts PNG, JPEG, GIF, and self-contained SVG only;
+it rejects MIME/magic mismatches, unsafe SVG content, excessive SVG nodes, and
+pixel/byte budget violations. Its result contains digest-addressed local asset
+metadata and bytes, never a Confluence page ID or source URL.
 
 ## The rule that is easy to forget
 

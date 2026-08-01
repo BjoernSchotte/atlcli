@@ -233,6 +233,9 @@ export declare class ExternalAssetTimeoutError extends Error {
     constructor(url: string, timeoutMs: number);
 }
 
+// export: fetchAndMaterializePublicationAssetV1
+export declare function fetchAndMaterializePublicationAssetV1(request: PublicationAssetRequestV1, policy: PublicationAssetPolicyV1, deps: PublicationAssetMaterializationDepsV1, signal?: AbortSignal): Promise<MaterializedPublicationAssetV1>;
+
 // export: isExternalAssetBlockedError
 export declare function isExternalAssetBlockedError(error: unknown): error is ExternalAssetBlockedError;
 
@@ -296,6 +299,12 @@ export declare function jiraIssuePortFromClient(client: JiraClientLike, browseBa
 // export: jiraIssueRef
 export declare function jiraIssueRef(issue: JiraIssueLike, browseBaseUrl: string): JiraIssueRef;
 
+// export: MaterializedPublicationAssetV1
+export interface MaterializedPublicationAssetV1 {
+    entry: PublicationAssetEntryV1;
+    bytes: Uint8Array;
+}
+
 // export: OrderedSourceCheckpointV1
 export interface OrderedSourceCheckpointV1<Cursor> {
     version: 1;
@@ -346,6 +355,51 @@ export type PdfConfluenceResolvedInputExtrasV1 = Omit<PdfExportJobEngineInputV1,
 export interface PersistedOrderedSourceCheckpointV1<Cursor> {
     checkpoint: OrderedSourceCheckpointV1<Cursor>;
     ref: string;
+}
+
+// export: PublicationAssetMaterializationDepsV1
+export interface PublicationAssetMaterializationDepsV1 {
+    attachmentPort?: PublicationAttachmentAssetPortV1;
+    externalFetcher?: ExternalAssetFetcher;
+}
+
+// export: PublicationAssetMaterializationErrorCodeV1
+export type PublicationAssetMaterializationErrorCodeV1 = "invalid-request" | "missing-fetch-port" | "too-large" | "unsupported-media" | "mime-mismatch" | "unsafe-svg" | "svg-node-budget" | "image-pixel-budget";
+
+// export: PublicationAssetMaterializationErrorV1
+export declare class PublicationAssetMaterializationErrorV1 extends Error {
+    readonly code: PublicationAssetMaterializationErrorCodeV1;
+    constructor(code: PublicationAssetMaterializationErrorCodeV1, message: string);
+}
+
+// export: PublicationAssetRequestV1
+export interface PublicationAssetRequestV1 {
+    assetId: string;
+    source: PublicationAssetSourceV1;
+}
+
+// export: PublicationAssetSourceV1
+export type PublicationAssetSourceV1 = {
+    kind: "attachment";
+    pageId: string;
+    filename: string;
+} | {
+    kind: "external";
+    url: string;
+    filename: string;
+};
+
+// export: PublicationAttachmentAssetPortV1
+export interface PublicationAttachmentAssetPortV1 {
+    fetchAttachment(request: {
+        pageId: string;
+        filename: string;
+        maxBytes: number;
+        signal?: AbortSignal;
+    }): Promise<{
+        bytes: Uint8Array;
+        mediaType?: string;
+    }>;
 }
 
 // export: resolveConfluencePageGraphV1
