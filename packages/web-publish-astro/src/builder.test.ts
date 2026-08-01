@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { readFile, rm } from "node:fs/promises";
+import { lstat, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { PublicationBuildRequestV1 } from "@atlcli/web-publish";
 import { createAstroStaticPublicationBuilderV1 } from "./builder.js";
@@ -99,3 +99,40 @@ test("cold and warm builds of one immutable bundle produce equivalent semantic m
     await rm(inventoryPath, { force: true });
   }
 }, 60_000);
+
+test("restores the last valid output when a fresh Astro inventory is corrupt", async () => {
+  try {
+    const first = await builder();
+    const outputBefore = await readFile(resolve(outputDirectory, "publish/guide/index.html"), "utf8");
+    const inventoryBefore = await readFile(inventoryPath, "utf8");
+    const corruptCommand = [
+      process.execPath,
+      "-e",
+      `require("node:fs").writeFileSync(${JSON.stringify(inventoryPath)}, "not-json")`,
+    ] as const;
+    await expect(builder(corruptCommand)).rejects.toThrow(/JSON Parse error/u);
+    expect(await readFile(resolve(outputDirectory, "publish/guide/index.html"), "utf8")).toBe(outputBefore);
+    expect(await readFile(inventoryPath, "utf8")).toBe(inventoryBefore);
+    expect(first.manifest.verification.valid).toBe(true);
+  } finally {
+    await rm(inventoryPath, { force: true });
+  }
+}, 30_000);
+
+test("fails closed on a symlinked output target without touching its referent", async () => {
+  const outside = resolve(fixtureDirectory, "../builder-outside");
+  try {
+    await builder();
+    await rm(outside, { recursive: true, force: true });
+    await writeFile(outside, "outside output");
+    await rm(outputDirectory, { recursive: true, force: true });
+    await symlink(outside, outputDirectory);
+    await expect(builder()).rejects.toThrow("outputDirectory must be a real directory");
+    expect((await lstat(outputDirectory)).isSymbolicLink()).toBe(true);
+    expect(await readFile(outside, "utf8")).toBe("outside output");
+  } finally {
+    await rm(outputDirectory, { recursive: true, force: true });
+    await rm(outside, { recursive: true, force: true });
+    await rm(inventoryPath, { force: true });
+  }
+}, 30_000);

@@ -251,6 +251,18 @@ route/path tests, the browser-core negative import gate, the packed hostile-
 content consumer, SVG/link security tests, and the output verifier's
 digest/private-URL/asset checks.
 
+The T10 recovery matrix is now explicit. `builder.test.ts` proves that a
+corrupt fresh Astro inventory restores the previous output and private
+inventory byte-for-byte, and that a symlinked output target is rejected without
+touching its referent. The immutable bundle suite proves retry after an expired
+activation lease, stale expected-bundle fencing, corrupt-manifest retention,
+cancelled/incomplete candidate rejection, and symlinked project-owned paths;
+the builder suite proves build-failure rollback, while the output verifier
+suite proves verification-failure rejection. Promotion uses sibling staging
+paths for both output and inventory, so the rename boundary stays on the
+destination filesystem and an `EXDEV` cross-device move cannot produce a
+mixed visible destination.
+
 The unchanged DOCX/PDF/browser source boundary was re-proven with the existing
 `@atlcli/confluence` imports: 450 tests across ExportBlock conversion,
 composition, source resolution, DOCX browser runtime/serialization, and Typst

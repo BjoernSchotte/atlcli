@@ -1706,7 +1706,7 @@ artifact integrity, or origin security.
 - [x] Fail on non-empty/unowned output targets; use sibling staging plus
       recoverable promotion for replacement.
 - [x] Report `bundle-ready`, `built`, and `verified`; never `deployed`.
-- [ ] Test retry/recovery, stale expected digest, corrupt manifest, symlink
+- [x] Test retry/recovery, stale expected digest, corrupt manifest, symlink
       target, cross-device destination, build failure, and verification failure.
 - [ ] STOP if cleanup/delete authority comes from a title/glob or failure leaves
       a mixed visible destination.
