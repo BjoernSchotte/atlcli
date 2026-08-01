@@ -655,10 +655,10 @@ export declare const RESEARCH_SCOPE_SOURCE_PRECEDENCE_V1: {
     readonly cli_flag: 500;
     readonly ui_added: 500;
     readonly natural_language: 400;
+    readonly exact_link: 400;
     readonly current_context: 300;
     readonly profile_default: 200;
     readonly global_default: 100;
-    readonly exact_link: 50;
     readonly research_discovery: 0;
 };
 
@@ -2863,10 +2863,10 @@ export declare const RESEARCH_SCOPE_SOURCE_PRECEDENCE_V1: {
     readonly cli_flag: 500;
     readonly ui_added: 500;
     readonly natural_language: 400;
+    readonly exact_link: 400;
     readonly current_context: 300;
     readonly profile_default: 200;
     readonly global_default: 100;
-    readonly exact_link: 50;
     readonly research_discovery: 0;
 };
 
@@ -5069,10 +5069,10 @@ export declare const RESEARCH_SCOPE_SOURCE_PRECEDENCE_V1: {
     readonly cli_flag: 500;
     readonly ui_added: 500;
     readonly natural_language: 400;
+    readonly exact_link: 400;
     readonly current_context: 300;
     readonly profile_default: 200;
     readonly global_default: 100;
-    readonly exact_link: 50;
     readonly research_discovery: 0;
 };
 
@@ -6927,6 +6927,7 @@ export declare const DEFAULT_RESEARCH_SCOPE_DISCOVERY_POLICY_V1: Readonly<Resear
 export interface DynamicResearchSubagentOptions {
     model: BaseChatModel;
     modelsByRole?: Partial<Record<ResearchGraphRoleV1, BaseChatModel>>;
+    modelsByNode?: Partial<Record<string, BaseChatModel>>;
     broker: ResearchCapabilityBroker;
     scopeCatalog?: {
         broker: ResearchScopeCatalogBroker;
@@ -7447,10 +7448,10 @@ export declare const RESEARCH_SCOPE_SOURCE_PRECEDENCE_V1: {
     readonly cli_flag: 500;
     readonly ui_added: 500;
     readonly natural_language: 400;
+    readonly exact_link: 400;
     readonly current_context: 300;
     readonly profile_default: 200;
     readonly global_default: 100;
-    readonly exact_link: 50;
     readonly research_discovery: 0;
 };
 
@@ -9056,6 +9057,7 @@ export interface RunResearchAgentInput {
     options?: ResearchRunOptions;
     workspace?: ResearchWorkspace;
     researchGraph?: ResearchGraphV1;
+    subagentModelsByNode?: Partial<Record<string, BaseChatModel>>;
     brief?: ResearchBriefV1;
     scopeCatalog?: {
         broker: ResearchScopeCatalogBroker;
@@ -9322,10 +9324,10 @@ export declare const RESEARCH_SCOPE_SOURCE_PRECEDENCE_V1: {
     readonly cli_flag: 500;
     readonly ui_added: 500;
     readonly natural_language: 400;
+    readonly exact_link: 400;
     readonly current_context: 300;
     readonly profile_default: 200;
     readonly global_default: 100;
-    readonly exact_link: 50;
     readonly research_discovery: 0;
 };
 
@@ -10336,6 +10338,7 @@ export declare const DEFAULT_RESEARCH_SCOPE_DISCOVERY_POLICY_V1: Readonly<Resear
 export interface DynamicResearchSubagentOptions {
     model: BaseChatModel;
     modelsByRole?: Partial<Record<ResearchGraphRoleV1, BaseChatModel>>;
+    modelsByNode?: Partial<Record<string, BaseChatModel>>;
     broker: ResearchCapabilityBroker;
     scopeCatalog?: {
         broker: ResearchScopeCatalogBroker;
@@ -10871,10 +10874,10 @@ export declare const RESEARCH_SCOPE_SOURCE_PRECEDENCE_V1: {
     readonly cli_flag: 500;
     readonly ui_added: 500;
     readonly natural_language: 400;
+    readonly exact_link: 400;
     readonly current_context: 300;
     readonly profile_default: 200;
     readonly global_default: 100;
-    readonly exact_link: 50;
     readonly research_discovery: 0;
 };
 
@@ -12480,6 +12483,7 @@ export interface RunResearchAgentInput {
     options?: ResearchRunOptions;
     workspace?: ResearchWorkspace;
     researchGraph?: ResearchGraphV1;
+    subagentModelsByNode?: Partial<Record<string, BaseChatModel>>;
     brief?: ResearchBriefV1;
     scopeCatalog?: {
         broker: ResearchScopeCatalogBroker;

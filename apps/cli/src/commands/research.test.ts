@@ -14,6 +14,7 @@ import {
 import { createStandardResearchBriefV1 } from "@atlcli/research/graph";
 import {
   buildResearchRequest,
+  defaultResearchCliDependencies,
   handleResearch,
   parseResearchCliInput,
   researchArtifactPath,
@@ -463,6 +464,68 @@ describe("research CLI one-shot contract", () => {
         "scope-binding:cli_flag:confluence:ACCOUNT",
       ]));
     expect(harness.stderr.join("")).toContain("confluence:ACCOUNT:cli_flag:locked");
+  });
+
+  test("resolves exact Jira keys and same-tenant project links through the production CLI catalog boundary", async () => {
+    const originalFetch = globalThis.fetch;
+    const requests: string[] = [];
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = new URL(input instanceof Request ? input.url : input.toString());
+      requests.push(url.href);
+      if (url.pathname === "/rest/api/3/project/search" && url.searchParams.get("query") === "DEMO") {
+        return Response.json({
+          values: [{ id: "103", key: "DEMO", name: "Demo project", archived: false }],
+          total: 1,
+        });
+      }
+      if (url.pathname === "/rest/api/3/project/DEMO") {
+        return Response.json({ id: "103", key: "DEMO", name: "Demo project", archived: false });
+      }
+      return new Response("Not found", { status: 404 });
+    }) as typeof fetch;
+
+    try {
+      const keyOutcome = await defaultResearchCliDependencies.resolveScope({
+        profile,
+        request: buildResearchRequest(
+          parseResearchCliInput(["Research", "Jira", "project", "DEMO."], {}),
+          profile,
+        ),
+      });
+      const link = `${profile.baseUrl}/projects/DEMO/summary`;
+      const linkOutcome = await defaultResearchCliDependencies.resolveScope({
+        profile,
+        request: buildResearchRequest(
+          parseResearchCliInput(["Research", `${link}.`], {}),
+          profile,
+        ),
+      });
+
+      expect(keyOutcome).toMatchObject({
+        kind: "ready",
+        request: { scope: { jiraProjectKeys: ["DEMO"], confluenceSpaceKeys: ["DOCSY"] } },
+        resolutions: [{
+          state: "resolved",
+          resolvedCandidateId: "research-scope-candidate:jira-project-demo",
+          uniquenessProof: "exact_key_lookup",
+          requiresUserChoice: false,
+        }],
+      });
+      expect(linkOutcome).toMatchObject({
+        kind: "ready",
+        request: { scope: { jiraProjectKeys: ["DEMO"], confluenceSpaceKeys: ["DOCSY"] } },
+        resolutions: [{
+          state: "resolved",
+          resolvedCandidateId: "research-scope-candidate:jira-project-demo",
+          uniquenessProof: "exact_reference_lookup",
+          requiresUserChoice: false,
+        }],
+      });
+      expect(requests.filter((url) => url.includes("/rest/api/3/project/search"))).toHaveLength(1);
+      expect(requests.filter((url) => url.includes("/rest/api/3/project/DEMO"))).toHaveLength(1);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 
   test("stops a default deep plan before reading the key, workspace, or agent", async () => {

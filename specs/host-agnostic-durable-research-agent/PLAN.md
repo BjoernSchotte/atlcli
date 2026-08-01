@@ -2874,11 +2874,15 @@ API/closure, pack, and two-test packed-MV3 gates passed.
 T3 scope-resolution checkpoint (2026-08-01): the shared preflight grammar and
 validator now treat the literal `Jira` product qualifier as grammar rather than
 a project name, and accept a same-tenant Jira `/projects/...` reference through
-the same exact-reference validation path used by the catalog provider. A packed
-MV3 regression sends real `research:resolve-scope` messages to the production
-background handler and proves that an exact project key and the equivalent
-same-tenant project link yield a ready, exact binding before an agent worker can
-start. The existing packed ambiguity regression continues to prove that a
+the same exact-reference validation path used by the catalog provider. An exact
+project/space link named in the accepted question has the same precedence as a
+natural-language scope mention: it replaces a profile default or detected
+current context, while explicit CLI/UI scope stays locked above it. Production
+CLI REST and packed-MV3 background regressions prove that an exact project key
+and the equivalent same-tenant project link yield the same ready, exact binding
+before an agent worker can start. The packed case begins with a lower-precedence
+current-project context; the CLI case begins with a lower-precedence profile
+default. The existing packed ambiguity regression continues to prove that a
 duplicate natural-language name stops before key storage or agent work. This
 advances, but does not close, the full CLI/packed resolution-matrix gate above:
 the remaining name, alias, archive, access, pagination, precedence, context,

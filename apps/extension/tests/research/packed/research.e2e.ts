@@ -27,6 +27,7 @@ import {
   type ResearchRequestV1,
   type ResearchScopePreflightOutcomeV1,
 } from "@atlcli/research";
+import { createResearchKeyScopeSeedV1 } from "@atlcli/research/scope-discovery";
 import {
   RESEARCH_ANALYSIS_PACKET_SCHEMA_V1,
   RESEARCH_CRITIQUE_SCHEMA_V1,
@@ -1049,15 +1050,28 @@ interface PackedScopeResponse {
   error?: string;
 }
 
-function packedScopeRequest(question: string): ResearchRequestV1 {
+function packedScopeRequest(
+  question: string,
+  options: { currentProjectKey?: string } = {},
+): ResearchRequestV1 {
+  const currentProjectKey = options.currentProjectKey?.toUpperCase();
   return {
     schema: RESEARCH_REQUEST_SCHEMA_V1,
     question,
     scope: {
       siteOrigin: SITE_ORIGIN,
-      jiraProjectKeys: [],
+      jiraProjectKeys: currentProjectKey ? [currentProjectKey] : [],
       confluenceSpaceKeys: [],
     },
+    ...(currentProjectKey ? {
+      scopeSeeds: [createResearchKeyScopeSeedV1({
+        tenantOrigin: SITE_ORIGIN,
+        product: "jira",
+        key: currentProjectKey,
+        source: "current_context",
+        authority: "approved",
+      })],
+    } : {}),
     limits: { ...DEFAULT_RESEARCH_LIMITS_V1 },
     wikiProvider: "rest",
   };
@@ -1272,12 +1286,12 @@ test("resolves exact Jira keys and same-tenant project links through the packed 
   await installEventCapture(page);
   const keyOutcome = await resolveScopeInPackedBackground(
     page,
-    packedScopeRequest("Research Jira project DEMO."),
+    packedScopeRequest("Research Jira project DEMO.", { currentProjectKey: "FALLBACK" }),
   );
   const link = `${SITE_ORIGIN}/projects/DEMO/summary`;
   const linkOutcome = await resolveScopeInPackedBackground(
     page,
-    packedScopeRequest(`Research ${link}.`),
+    packedScopeRequest(`Research ${link}.`, { currentProjectKey: "FALLBACK" }),
   );
   const events = await harnessEvents(page);
 

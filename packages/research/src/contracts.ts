@@ -112,10 +112,12 @@ export const RESEARCH_SCOPE_SOURCE_PRECEDENCE_V1 = {
   cli_flag: 500,
   ui_added: 500,
   natural_language: 400,
+  // A current-tenant project/space URL in the accepted question is an exact
+  // natural-language scope mention, not a later research-discovery candidate.
+  exact_link: 400,
   current_context: 300,
   profile_default: 200,
   global_default: 100,
-  exact_link: 50,
   research_discovery: 0,
 } as const;
 
