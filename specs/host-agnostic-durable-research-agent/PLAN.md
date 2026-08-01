@@ -3062,7 +3062,10 @@ the durable dispatch lifecycle is wired.
       status, accepted packet metadata, and event/outbox record. Large
       content-addressed packet or bounded V1 source bodies may be published
       outside that transaction only through an idempotent prepare/commit
-      protocol.
+      protocol. Before task admission, commit the exact supervisor-selected
+      subset under the already-approved envelope and fence that one
+      pre-dispatch selection with the session revision. The envelope graph
+      revision continues to fence node/task identity.
 - [ ] Commit every reconciliation disposition atomically with the graph,
       node, or claim mutation it authorizes; finalization rejects missing,
       duplicate, stale, or dangling defect dispositions.

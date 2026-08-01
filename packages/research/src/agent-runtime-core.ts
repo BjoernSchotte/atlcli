@@ -320,6 +320,14 @@ export function createResearchGraphProposalPtcTool(
   options: {
     canPropose?: () => boolean;
     onAccepted?: (graph: ResearchGraphV1) => void;
+    /**
+     * Runs before the graph is exposed back to QuickJS. Durable hosts use it
+     * to commit the exact selected subset before any task can be dispatched.
+     */
+    onAcceptedProposal?: (
+      proposal: import("./graph.js").ResearchGraphProposalV1,
+      graph: ResearchGraphV1,
+    ) => void | Promise<void>;
     onDiagnostic?: (status: "started" | "completed" | "failed", errorCode?: string) => void;
   } = {},
 ): DynamicStructuredTool {
@@ -341,10 +349,12 @@ export function createResearchGraphProposalPtcTool(
           "The supervisor cannot change graph composition after task dispatch begins.",
         );
       }
-      const accepted = acceptResearchGraphProposalV1(catalogGraph, {
+      const acceptedProposal = {
         schema: "atlcli.research-graph-proposal/v1",
         ...proposal,
-      });
+      } as const;
+      const accepted = acceptResearchGraphProposalV1(catalogGraph, acceptedProposal);
+      await options.onAcceptedProposal?.(acceptedProposal, accepted);
       options.onAccepted?.(accepted);
       options.onDiagnostic?.("completed");
       return JSON.stringify(projectAcceptedResearchGraphV1(accepted));

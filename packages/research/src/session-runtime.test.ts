@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { createResearchBriefV1 } from "./brief.js";
-import { composeResearchGraphV1 } from "./graph.js";
+import {
+  composeResearchGraphV1,
+  type ResearchGraphProposalV1,
+} from "./graph.js";
 import { initializeResearchSessionTurnV1 } from "./session-runtime.js";
 import { InMemoryResearchSessionStoreV1 } from "./session-store.js";
 import { createResearchSessionV1 } from "./session.js";
@@ -56,5 +59,50 @@ describe("durable research session execution gate", () => {
     });
     expect(result).toMatchObject({ status: "waiting_plan_approval", revision: 4 });
     expect((await store.events(result.sessionId)).map((event) => event.kind)).toEqual(["create_turn", "record_brief", "propose_graph"]);
+  });
+
+  test("commits the supervisor-selected subset with its journal event before task admission", async () => {
+    const acceptedBrief = brief("automatic");
+    const store = new InMemoryResearchSessionStoreV1();
+    const initialized = await initializeResearchSessionTurnV1({
+      store,
+      session: session(),
+      brief: acceptedBrief,
+      graph: composeResearchGraphV1(acceptedBrief),
+      approveAutomatically: true,
+      at: "2026-08-01T15:00:01.000Z",
+    });
+    const graph = initialized.turns[0]!.graph!;
+    const selectedNodeIds = new Set(graph.nodes
+      .filter((node) => node.kind !== "repair")
+      .map((node) => node.id));
+    const proposal: ResearchGraphProposalV1 = {
+      schema: "atlcli.research-graph-proposal/v1",
+      basedOnBriefRevision: graph.basedOnBriefRevision,
+      basedOnGraphRevision: graph.revision,
+      nodes: graph.nodes.filter((node) => selectedNodeIds.has(node.id)).map((node) => ({
+        nodeId: node.id,
+        dependencies: node.dependencies.filter((dependency) => selectedNodeIds.has(dependency)),
+        reasonCodes: [...node.reasonCodes],
+      })),
+    };
+
+    const committed = await store.commit(initialized.sessionId, {
+      kind: "commit_graph_selection",
+      proposal,
+      expectedRevision: initialized.revision,
+      expectedLeaseEpoch: initialized.lease.epoch,
+      at: "2026-08-01T15:00:02.000Z",
+    });
+
+    expect(committed.session.turns[0]).toMatchObject({
+      graphSelectionCommittedAt: "2026-08-01T15:00:02.000Z",
+      tasks: [],
+    });
+    expect(committed.session.turns[0]!.graph?.nodes).toHaveLength(proposal.nodes.length);
+    expect((await store.events(initialized.sessionId)).at(-1)).toMatchObject({
+      kind: "commit_graph_selection",
+      sessionRevision: committed.session.revision,
+    });
   });
 });

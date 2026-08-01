@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { createResearchBriefV1 } from "./brief.js";
-import { composeResearchGraphV1 } from "./graph.js";
+import {
+  composeResearchGraphV1,
+  type ResearchGraphProposalV1,
+} from "./graph.js";
 import {
   createResearchSessionV1,
   reduceResearchSessionV1,
@@ -80,6 +83,22 @@ function readyToRun(): ResearchSessionV1 {
   return update(current, { kind: "approve_graph", graphRevision: graph.revision }, "2026-08-01T09:00:04.000Z");
 }
 
+function fullGraphProposal(current: ResearchSessionV1): ResearchGraphProposalV1 {
+  const graph = current.turns[0]!.graph!;
+  return {
+    schema: "atlcli.research-graph-proposal/v1",
+    basedOnBriefRevision: graph.basedOnBriefRevision,
+    basedOnGraphRevision: graph.revision,
+    nodes: graph.nodes
+      .filter((node) => node.kind !== "repair")
+      .map((node) => ({
+        nodeId: node.id,
+        dependencies: [...node.dependencies],
+        reasonCodes: [...node.reasonCodes],
+      })),
+  };
+}
+
 describe("durable host-neutral research session reducer", () => {
   test("persists a revision-fenced accepted turn and plan before any dispatch", () => {
     const running = readyToRun();
@@ -118,6 +137,23 @@ describe("durable host-neutral research session reducer", () => {
     expect(turn.tasks).toMatchObject([{ status: "complete", dispatchState: "result_committed", acceptedPacketRef: "packet:task:durable-1:1" }]);
     expect(turn.acceptedPackets).toHaveLength(1);
     expect(turn.graph?.nodes.find((node) => node.id === task.nodeId)).toMatchObject({ status: "complete", packetRef: "packet:task:durable-1:1" });
+  });
+
+  test("commits the exact supervisor graph selection before task admission", () => {
+    let current = readyToRun();
+    current = update(current, {
+      kind: "commit_graph_selection",
+      proposal: fullGraphProposal(current),
+    }, "2026-08-01T09:00:04.500Z");
+
+    const turn = current.turns[0]!;
+    expect(turn.graphSelectionCommittedAt).toBe("2026-08-01T09:00:04.500Z");
+    expect(turn.graph?.nodes.every((node) => node.kind !== "repair")).toBe(true);
+    expect(turn.graph?.nodes.some((node) => node.status === "ready")).toBe(true);
+    expect(() => update(current, {
+      kind: "commit_graph_selection",
+      proposal: fullGraphProposal(current),
+    }, "2026-08-01T09:00:04.600Z")).toThrow("immutable");
   });
 
   test("rejects stale writers without mutating its input", () => {

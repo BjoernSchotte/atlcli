@@ -1,8 +1,10 @@
 import { ResearchContractError, type ResearchScopeBindingV1 } from "./contracts.js";
 import type { ResearchBriefV1 } from "./brief.js";
 import {
+  acceptResearchGraphProposalV1,
   reduceResearchGraphV1,
   validateResearchGraphV1,
+  type ResearchGraphProposalV1,
   type ResearchGraphV1,
 } from "./graph.js";
 import type {
@@ -102,6 +104,12 @@ export interface ResearchSessionTurnV1 {
   createdAt: string;
   brief?: ResearchBriefV1;
   graph?: ResearchGraphV1;
+  /**
+   * The supervisor's selected executable subset was committed under the
+   * already approved graph envelope. The session revision, rather than the
+   * envelope's graph revision, fences this one pre-dispatch selection.
+   */
+  graphSelectionCommittedAt?: string;
   scopeCandidates: ResearchScopeCandidateV1[];
   scopeBindings: ResearchScopeBindingV1[];
   scopeResolutions: ResearchScopeResolutionV1[];
@@ -151,6 +159,10 @@ export type ResearchSessionUpdateV1 =
     })
   | (ResearchSessionFencedUpdateV1 & { kind: "propose_graph"; graph: ResearchGraphV1 })
   | (ResearchSessionFencedUpdateV1 & { kind: "approve_graph"; graphRevision: number })
+  | (ResearchSessionFencedUpdateV1 & {
+      kind: "commit_graph_selection";
+      proposal: ResearchGraphProposalV1;
+    })
   | (ResearchSessionFencedUpdateV1 & { kind: "revise_graph"; graph: ResearchGraphV1 })
   | (ResearchSessionFencedUpdateV1 & {
       kind: "record_clarification";
@@ -392,6 +404,23 @@ export function reduceResearchSessionV1(
     const current = ensureActive(session, ["waiting_plan_approval"]);
     const graph = requireGraph(current, update.graphRevision);
     const nextTurn = { ...current, graph: reduceResearchGraphV1(graph, { kind: "approve", expectedRevision: graph.revision, approvedAt: update.at }) };
+    return withNext(session, update, { status: "running", turns: replaceTurn(session, nextTurn) });
+  }
+
+  if (update.kind === "commit_graph_selection") {
+    const current = ensureActive(session, ["running"]);
+    const graph = requireGraph(current);
+    if (current.graphSelectionCommittedAt || current.tasks.length > 0 ||
+        current.acceptedPackets.length > 0 || current.reconciliationDispositions.length > 0) {
+      invalid("Research graph selection is immutable after it is committed or dispatch begins.");
+    }
+    const selected = acceptResearchGraphProposalV1(graph, update.proposal);
+    const nextTurn = {
+      ...current,
+      graph: selected,
+      graphSelectionCommittedAt: update.at,
+      revision: current.revision + 1,
+    };
     return withNext(session, update, { status: "running", turns: replaceTurn(session, nextTurn) });
   }
 
