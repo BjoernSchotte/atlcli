@@ -1,10 +1,13 @@
 import { expect, test } from "bun:test";
 import { readFile, rm, stat } from "node:fs/promises";
 import { resolve } from "node:path";
+import { negotiatePublicationExperienceV1 } from "@atlcli/web-publish";
+import { PLAIN_PUBLISHING_EXPERIENCE_FIXTURE_V1 } from "../fixtures/plain-experience/src/experience.js";
 
 const packageRoot = resolve(import.meta.dir, "..");
 const workspaceRoot = resolve(packageRoot, "../..");
 const fixture = resolve(packageRoot, "fixtures/starlight");
+const plainExperienceFixture = resolve(packageRoot, "fixtures/plain-experience");
 
 async function run(command: string[], cwd: string): Promise<string> {
   const process = Bun.spawn(command, { cwd, stdout: "pipe", stderr: "pipe" });
@@ -35,4 +38,32 @@ test("a Starlight consumer presents ExportBlock document bodies with static sear
   expect(html).toContain("pagefind");
   expect(html).not.toContain("exportBlockKind");
   expect(await stat(resolve(fixture, "dist/pagefind/pagefind.js"))).toBeDefined();
+}, 30_000);
+
+test("a deliberately small plain-Astro experience uses the same contract without a second dispatcher", async () => {
+  const negotiation = negotiatePublicationExperienceV1(
+    {
+      id: "fixture.plain-astro",
+      expectedVersion: "1.0.0",
+      requiredCapabilities: [],
+      designTokens: {},
+      componentOverrides: {},
+    },
+    PLAIN_PUBLISHING_EXPERIENCE_FIXTURE_V1,
+    { schema: "fixture.plain-astro.tokens/1", validate: () => [] },
+  );
+  expect(negotiation.compatible).toBe(true);
+  expect(negotiation.descriptor.components.slots).toEqual({ "main-content": "ExportDocument" });
+
+  await rm(resolve(plainExperienceFixture, ".astro"), { recursive: true, force: true });
+  const output = await run(["bun", "run", "build"], plainExperienceFixture);
+  expect(output).toContain("1 page(s) built");
+  const html = await readFile(resolve(plainExperienceFixture, "dist/index.html"), "utf8");
+  expect(html).toContain('data-atlcli-experience="fixture.plain-astro"');
+  expect(html).toContain('data-atlcli-document');
+  expect(html).toContain("Structured ExportBlock fixture.");
+  const source = await readFile(resolve(plainExperienceFixture, "src/pages/index.astro"), "utf8");
+  expect(source).toContain("ExportDocument");
+  expect(source).not.toContain("exportBlockKind");
+  expect(source).not.toContain("switch (");
 }, 30_000);
