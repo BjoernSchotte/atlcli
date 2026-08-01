@@ -1,0 +1,10 @@
+---
+interface Props {
+  href: string;
+  label?: string;
+}
+
+const { href, label = "Open in Confluence" } = Astro.props;
+---
+
+<a href={href} rel="external" data-atlcli-edit-link data-pagefind-ignore class="print:hidden">{label}</a>

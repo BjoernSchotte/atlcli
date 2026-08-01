@@ -27,6 +27,10 @@ test("plain Astro consumer renders every normalized discriminator without raw HT
     "anchor", "unknown",
   ]) expect(html).toContain(`data-atlcli-block=\"${kind}\"`);
   expect(html).toContain('src="/assets/diagram.svg"');
+  expect(html).toContain('data-atlcli-image-mode="astro-responsive"');
+  expect(html).toContain('srcset="/assets/diagram.svg 320w, /assets/diagram.svg 960w"');
+  expect(html).toContain('sizes="(max-width: 60rem) 100vw, 60rem"');
+  expect(html).toContain('data-atlcli-original-download');
   expect(html).toContain("Content-Security-Policy");
   expect(html).toContain('script-src \'self\'');
   expect(html).toContain('connect-src \'none\'');
@@ -48,6 +52,8 @@ test("plain Astro consumer renders every normalized discriminator without raw HT
   expect(html).not.toContain("javascript:alert(1)");
   expect(html).not.toContain("background:url(https://evil.test/x)");
   expect(html).not.toContain("data:image/svg+xml");
+  expect(html).not.toContain("javascript:alert(1)");
+  expect(html).not.toContain("evil.test/private.svg");
   expect(html).not.toContain("opaque-datasource-secret");
   expect(html).not.toContain('accountId="private"');
   expect(html).toContain("data-fixture-trusted-override");

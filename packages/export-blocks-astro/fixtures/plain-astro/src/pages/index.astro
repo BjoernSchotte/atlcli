@@ -15,7 +15,12 @@ const HOSTILE_RENDERER_CONTEXT_V1 = {
   ...EXPORT_BLOCKS_ASTRO_MINIMAL_CONTEXT_V1,
   assets: {
     ...EXPORT_BLOCKS_ASTRO_MINIMAL_CONTEXT_V1.assets,
-    "attachment::hostile.svg": { src: "data:image/svg+xml,<svg onload=alert(1) />", mediaType: "image/svg+xml" },
+    "attachment::hostile.svg": {
+      src: "data:image/svg+xml,<svg onload=alert(1) />",
+      mediaType: "image/svg+xml",
+      srcset: [{ src: "javascript:alert(1)", width: 320, mediaType: "image/svg+xml" }],
+      downloadHref: "https://evil.test/private.svg",
+    },
   },
 };
 

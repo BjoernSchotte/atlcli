@@ -67,3 +67,28 @@ export {
   type PublicationSeoPageMetadataV1,
   type PublicationSeoPlanOptionsV1,
 } from "./seo.js";
+export {
+  planPublicationPrefetchLinksV1,
+  type PublicationPrefetchOptionsV1,
+} from "./prefetch.js";
+export {
+  PLAUSIBLE_TRACKER_VERSION_V1,
+  createPublicationAnalyticsCspV1,
+  createPublicationAnalyticsPrivacyDeclarationV1,
+  createPlausibleAnalyticsRuntimeV1,
+  normalizePlausibleAnalyticsConfigV1,
+  type PlausibleAnalyticsConfigV1,
+  type PublicationAnalyticsPrivacyDeclarationV1,
+} from "./analytics.js";
+export {
+  resolveConfluenceEditLinkV1,
+  type ConfluenceEditRelationV1,
+  type PublicationEditLinkV1,
+} from "./edit-links.js";
+export {
+  assertAstroStaticPerformanceBudgetV1,
+  measureAstroStaticPerformanceV1,
+  PUBLICATION_PERFORMANCE_BUDGET_V1,
+  type PublicationPerformanceBudgetV1,
+  type PublicationPerformanceMeasurementV1,
+} from "./performance-budget.js";

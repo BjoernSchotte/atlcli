@@ -79,6 +79,17 @@ export interface AstroResolvedAssetV1 {
     src: string;
     mediaType: string;
     alt?: string;
+    srcset?: readonly {
+        src: string;
+        width: number;
+        mediaType?: string;
+    }[];
+    sizes?: string;
+    width?: number;
+    height?: number;
+    downloadHref?: string;
+    downloadName?: string;
+    mode?: "verified-original" | "astro-responsive";
 }
 
 // export: AstroResolvedHeadingV1

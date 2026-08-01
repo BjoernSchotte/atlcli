@@ -16,6 +16,10 @@
 [data-atlcli-document] :where(table) { border-collapse: collapse; max-width: 100%; }
 [data-atlcli-document] :where(th, td) { border: 1px solid var(--atlcli-content-border); padding: 0.5rem; text-align: start; vertical-align: top; }
 [data-atlcli-document] :where(caption) { caption-side: bottom; color: var(--atlcli-content-muted); text-align: start; }
+[data-atlcli-document] :where(picture, img) { display: block; max-width: 100%; }
+[data-atlcli-document] :where(img) { height: auto; }
+[data-atlcli-original-download] { display: inline-block; margin-block-start: 0.35rem; }
+[data-atlcli-document] { font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
 [data-atlcli-block="layout"] { display: grid; gap: 1rem; grid-template-columns: repeat(var(--atlcli-layout-columns), minmax(0, 1fr)); }
 [data-atlcli-block="unknown"], [data-atlcli-asset-unresolved] { background: var(--atlcli-content-surface); }
 .atlcli-mark-bold { font-weight: 700; }

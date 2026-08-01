@@ -7,6 +7,9 @@
 ### Entry point `.`
 
 ```ts
+// export: assertAstroStaticPerformanceBudgetV1
+export declare function assertAstroStaticPerformanceBudgetV1(measurement: PublicationPerformanceMeasurementV1, budget?: PublicationPerformanceBudgetV1): void;
+
 // export: assertPagefindSearchBudgetV1
 export declare function assertPagefindSearchBudgetV1(measurement: PublicationSearchBudgetMeasurementV1, budget?: PublicationSearchBudgetV1): void;
 
@@ -166,6 +169,13 @@ export interface BuildPagefindIndexOptionsV1 {
 // export: buildPagefindIndexV1
 export declare function buildPagefindIndexV1(options: BuildPagefindIndexOptionsV1): Promise<PublicationSearchBudgetMeasurementV1>;
 
+// export: ConfluenceEditRelationV1
+export interface ConfluenceEditRelationV1 {
+    sourceId: string;
+    editui?: string;
+    webui?: string;
+}
+
 // export: CreateAstroStaticManifestOptionsV1
 export interface CreateAstroStaticManifestOptionsV1 {
     request: PublicationBuildRequestV1;
@@ -184,6 +194,15 @@ export declare function createAstroStaticPublicationBuilderV1(options: AstroStat
 
 // export: createAstroStaticPublicationManifestV1
 export declare function createAstroStaticPublicationManifestV1(options: CreateAstroStaticManifestOptionsV1): Promise<StaticPublicationManifestV1>;
+
+// export: createPlausibleAnalyticsRuntimeV1
+export declare function createPlausibleAnalyticsRuntimeV1(config: PlausibleAnalyticsConfigV1): string;
+
+// export: createPublicationAnalyticsCspV1
+export declare function createPublicationAnalyticsCspV1(config: PlausibleAnalyticsConfigV1): string;
+
+// export: createPublicationAnalyticsPrivacyDeclarationV1
+export declare function createPublicationAnalyticsPrivacyDeclarationV1(): PublicationAnalyticsPrivacyDeclarationV1;
 
 // export: createPublicationSeoHeadTagsV1
 export declare function createPublicationSeoHeadTagsV1(metadata: PublicationSeoPageMetadataV1, siteName?: string): readonly PublicationSeoHeadTagV1[];
@@ -207,6 +226,12 @@ export interface LoadedPublicationNavigationV1 {
     navigation: ReturnType<typeof planPublicationNavigationV1>;
 }
 
+// export: measureAstroStaticPerformanceV1
+export declare function measureAstroStaticPerformanceV1(outputs: readonly {
+    path: string;
+    byteLength: number;
+}[], pageCount: number): PublicationPerformanceMeasurementV1;
+
 // export: measurePagefindSearchBudgetV1
 export declare function measurePagefindSearchBudgetV1(options: {
     outputDirectory: string;
@@ -216,6 +241,13 @@ export declare function measurePagefindSearchBudgetV1(options: {
 
 // export: normalizePagefindSearchFiltersV1
 export declare function normalizePagefindSearchFiltersV1(labels: readonly string[], filters: readonly PagefindSearchFilterV1[] | undefined): readonly PagefindSearchFilterV1[];
+
+// export: normalizePlausibleAnalyticsConfigV1
+export declare function normalizePlausibleAnalyticsConfigV1(input: {
+    endpoint: string;
+    siteDomain: string;
+    events?: readonly ("outbound-link" | "download" | "search-open")[];
+}): PlausibleAnalyticsConfigV1;
 
 // export: PAGEFIND_OWNED_OUTPUT_PATH_PREFIX_V1
 export declare const PAGEFIND_OWNED_OUTPUT_PATH_PREFIX_V1 = "pagefind";
@@ -249,6 +281,25 @@ export interface PagefindSearchMessagesV1 {
 // export: PagefindSearchRuntimeV1
 export type PagefindSearchRuntimeV1 = "auto" | "main-thread";
 
+// export: planPublicationPrefetchLinksV1
+export declare function planPublicationPrefetchLinksV1(options: PublicationPrefetchOptionsV1): readonly string[];
+
+// export: PLAUSIBLE_TRACKER_VERSION_V1
+export declare const PLAUSIBLE_TRACKER_VERSION_V1 = "0.4.5";
+
+// export: PlausibleAnalyticsConfigV1
+export interface PlausibleAnalyticsConfigV1 {
+    provider: "plausible";
+    endpoint: string;
+    siteDomain: string;
+    respectDoNotTrack: true;
+    events: readonly ("outbound-link" | "download" | "search-open")[];
+    searchTerms: false;
+}
+
+// export: PUBLICATION_PERFORMANCE_BUDGET_V1
+export declare const PUBLICATION_PERFORMANCE_BUDGET_V1: PublicationPerformanceBudgetV1;
+
 // export: PUBLICATION_SEARCH_BUDGETS_V1
 export declare const PUBLICATION_SEARCH_BUDGETS_V1: Readonly<Record<PublicationSearchCorpusClassV1, PublicationSearchBudgetV1>>;
 
@@ -259,8 +310,60 @@ export declare const PUBLICATION_SEARCH_SEMANTIC_SLOTS_V1: readonly [
     "main-content"
 ];
 
+// export: PublicationAnalyticsPrivacyDeclarationV1
+export interface PublicationAnalyticsPrivacyDeclarationV1 {
+    provider: "plausible";
+    trackerVersion: string;
+    collected: readonly [
+        "pageview-pathname"
+    ];
+    excluded: readonly [
+        "query",
+        "fragment",
+        "title",
+        "source-id",
+        "confluence-url",
+        "account-data",
+        "search-terms"
+    ];
+    persistentQueue: false;
+}
+
+// export: PublicationEditLinkV1
+export interface PublicationEditLinkV1 {
+    sourceId: string;
+    href: string;
+    label: string;
+}
+
 // export: publicationLocaleRoutePathV1
 export declare function publicationLocaleRoutePathV1(route: string, routePrefix: string, locale: string | undefined, i18n: PublicationI18nOptionsV1 | undefined): string;
+
+// export: PublicationPerformanceBudgetV1
+export interface PublicationPerformanceBudgetV1 {
+    readonly maxCriticalCssBytes: number;
+    readonly maxInitialJsBytes: number;
+    readonly maxFontBytes: number;
+    readonly maxTransformedImageBytes: number;
+    readonly maxPageBytes: number;
+}
+
+// export: PublicationPerformanceMeasurementV1
+export interface PublicationPerformanceMeasurementV1 {
+    readonly pageCount: number;
+    readonly criticalCssBytes: number;
+    readonly initialJsBytes: number;
+    readonly fontBytes: number;
+    readonly transformedImageBytes: number;
+    readonly largestPageBytes: number;
+}
+
+// export: PublicationPrefetchOptionsV1
+export interface PublicationPrefetchOptionsV1 {
+    origin: string;
+    verifiedRoutes: readonly string[];
+    hrefs: readonly string[];
+}
 
 // export: publicationRoutePathV1
 export declare function publicationRoutePathV1(route: string, routePrefix: string): string;
@@ -392,6 +495,17 @@ export declare function readPublicationBundlePagesV1(options: AtlcliPublicationL
 export declare function readPublicationNavigationV1(options: AtlcliPublicationLoaderOptionsV1 & {
     labelRoutePrefix?: string;
 }): Promise<LoadedPublicationNavigationV1>;
+
+// export: resolveConfluenceEditLinkV1
+export declare function resolveConfluenceEditLinkV1(options: {
+    relation: ConfluenceEditRelationV1;
+    trustedOrigin: string;
+    label: string;
+    fallback: "open-page" | "omit";
+    visibility: "internal" | "all";
+    publicationVisibility: "internal" | "public";
+    publicTenantDisclosureAcknowledged?: true;
+}): PublicationEditLinkV1 | undefined;
 
 // export: ResolvedAstroPublishingConfigV1
 export interface ResolvedAstroPublishingConfigV1 {

@@ -8,6 +8,7 @@ import type {
 } from "../navigation.js";
 import StarlightDocumentBody from "./StarlightDocumentBody.astro";
 import StarlightPublicationNavigation from "./StarlightPublicationNavigation.astro";
+import StarlightPublicationEditLink from "./StarlightPublicationEditLink.astro";
 
 interface PublicationSeoHeadTagV1 {
   tag: "title" | "meta" | "link" | "script";
@@ -32,9 +33,11 @@ interface Props {
   };
   /** Shared SEO tags generated from the publication route/locale planner. */
   seoHead?: readonly PublicationSeoHeadTagV1[];
+  /** Optional provider-validated action; the component never derives an URL. */
+  editLink?: { href: string; label?: string };
 }
 
-const { page, navigation, sidebar, context, copy, seoHead } = Astro.props;
+const { page, navigation, sidebar, context, copy, seoHead, editLink } = Astro.props;
 ---
 
 <StarlightPage
@@ -51,6 +54,7 @@ const { page, navigation, sidebar, context, copy, seoHead } = Astro.props;
   headings={navigation.toc.map((heading) => ({ depth: heading.level, slug: heading.anchorId, text: heading.text }))}
   sidebar={sidebar}
 >
+  {editLink && <StarlightPublicationEditLink href={editLink.href} label={editLink.label} />}
   <StarlightPublicationNavigation navigation={navigation} copy={copy} />
   <slot />
   <StarlightDocumentBody

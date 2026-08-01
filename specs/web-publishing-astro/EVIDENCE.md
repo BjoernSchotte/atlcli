@@ -100,21 +100,27 @@ separate future compatibility spike and are absent from every T0 output.
 
 ## Dynamic chart adapter candidate
 
-The separate chart spike built Astro `7.1.6`, `@astrojs/react` `6.0.1`, React
-`19.1.1`, `@tanstack/charts` `0.0.2`, and `@tanstack/react-charts` `0.0.2` as a
-static Astro site. The resulting HTML contained the full accessible SVG before
-hydration, and the opt-in React island hydrated successfully. This proves the
-technical Astro integration shape, not production maturity.
+The separate chart spike originally built Astro `7.1.6`, `@astrojs/react`
+`6.0.1`, React `19.1.1`, `@tanstack/charts` `0.0.2`, and
+`@tanstack/react-charts` `0.0.2` as a static Astro site. The resulting HTML
+contained the full accessible SVG before hydration, and the opt-in React island
+hydrated successfully. This historical experiment proves the technical Astro
+integration shape, not the version shipped by the render kit.
 
 TanStack Charts' own [repository](https://github.com/TanStack/charts) documents
 a framework-neutral grammar, static SVG/SSR, hydration, responsive themes,
 interaction, accessibility, and export, which align closely with the frozen
 adapter boundary. The same source explicitly labels
 [release `0.0.2`](https://github.com/TanStack/charts/releases/tag/v0.0.2)
-pre-alpha and not ready for production. It is therefore the preferred adapter
-candidate behind `ChartRendererAdapter`, never the publication/bundle schema.
-T6 must re-run compatibility, accessibility, bundle, performance, and maturity
-gates before selecting it for the shipped V1 adapter.
+pre-alpha and not ready for production. The current render kit has since
+re-run the compatibility gate against the available `@tanstack/charts`
+`0.3.1` package and pins that exact version in both
+`packages/export-blocks-astro/package.json` and `bun.lock`. It is used only
+behind the closed `tanstack-v0.3` `ChartRendererAdapter` for the bounded,
+opt-in bar-chart profile; chart definitions, callbacks, and functions never
+enter the publication bundle. The adapter remains replaceable and its
+pre-alpha status is an explicit product risk, not a claim of general chart
+feature completeness.
 
 ## Artifact and browser proofs
 

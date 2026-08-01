@@ -64,6 +64,20 @@ test("builder runs the trusted Astro project and consumes only its fresh private
       sha256: expect.stringMatching(/^[a-f0-9]{64}$/u),
       byteLength: expect.any(Number),
     }]);
+    expect(result.manifest).toMatchObject({
+      bundleDigest: "bundle-digest",
+      builder: { id: "astro-static", astroVersion: "7.1.6" },
+      projectDigest: "project-digest",
+      configDigest: "config-digest",
+      lockfileDigest: "lockfile-digest",
+      experience: { id: "test.experience" },
+      search: { provider: "pagefind", files: expect.arrayContaining([expect.objectContaining({ path: "pagefind/pagefind.js" })]), languages: ["en"] },
+      seo: { digest: expect.stringMatching(/^[a-f0-9]{64}$/u) },
+      analytics: { provider: "none" },
+      editLinks: { provider: "none", includedSourceIds: [], omittedSourceIds: ["guide"] },
+      verification: { valid: true, checkedPages: 1 },
+      buildDigest: expect.stringMatching(/^[a-f0-9]{64}$/u),
+    });
     const html = await readFile(resolve(outputDirectory, "publish/guide/index.html"), "utf8");
     expect(html).toContain('data-atlcli-source-id="guide"');
     expect(await readFile(resolve(outputDirectory, "assets/f0dad327e22e8cddc2e8057cf16d9b16ea6e36e87d31f46ee4d5943c69609c4f/fixture.txt"), "utf8"))

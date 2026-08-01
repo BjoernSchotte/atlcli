@@ -21,6 +21,12 @@ const table = kind === "table" ? materializeTable(block) : undefined;
 const HeadingTag = kind === "heading" ? `h${block.level}` : "div";
 const asset = kind === "image" ? context.assets[astroExportAssetKeyV1(block.source)] : undefined;
 const assetSrc = safeExportBlockAssetSrcV1(asset?.src);
+const assetVariants = asset?.srcset?.flatMap((variant) => {
+  const src = safeExportBlockAssetSrcV1(variant.src);
+  return src === undefined || !Number.isSafeInteger(variant.width) || variant.width < 1 ? [] : [{ ...variant, src }];
+}) ?? [];
+const assetSizes = typeof asset?.sizes === "string" && asset.sizes.length <= 200 ? asset.sizes : undefined;
+const assetDownload = safeExportBlockAssetSrcV1(asset?.downloadHref);
 const calloutIcon = kind === "callout" ? resolveCalloutIcon(block) : undefined;
 function overrideSlotForKind(value: ExportBlock["type"]): AstroExportBlockOverrideSlotV1 | undefined {
   switch (value) {
@@ -48,7 +54,13 @@ const BlockOverride = overrideSlot ? overrides?.[overrideSlot] : undefined;
   : <ul data-atlcli-block="list">{block.items.map((item) => <li data-atlcli-task={item.kind === "task" ? String(item.checked === true) : undefined}>{item.kind === "task" && <input type="checkbox" checked={item.checked === true} disabled aria-label="Task status" />}<ExportDocument blocks={item.content} context={context} overrides={overrides} /></li>)}</ul>)}
 {kind === "layout" && <section data-atlcli-block="layout" style={`--atlcli-layout-columns:${block.columns.length}`}>{block.columns.map((column) => <div style={safeExportBlockPercentageV1(column.width) ? `--atlcli-layout-width:${safeExportBlockPercentageV1(column.width)}` : undefined}><ExportDocument blocks={column.content} context={context} overrides={overrides} /></div>)}</section>}
 {kind === "table" && <table data-atlcli-block="table">{block.caption && <caption><Inline nodes={block.caption.content} locale={context.locale} /></caption>}<tbody>{table?.rows.map((row) => <tr>{row.cells.map((cell) => cell.header ? <th scope="col" colspan={cell.colspan} rowspan={cell.rowspan}><ExportDocument blocks={cell.content} context={context} overrides={overrides} /></th> : <td colspan={cell.colspan} rowspan={cell.rowspan}><ExportDocument blocks={cell.content} context={context} overrides={overrides} /></td>)}</tr>)}</tbody></table>}
-{kind === "image" && <figure data-atlcli-block="image">{assetSrc ? <img src={assetSrc} alt={block.alt ?? asset?.alt ?? ""} /> : <span data-atlcli-asset-unresolved>{block.alt ?? (block.source.kind === "attachment" ? block.source.filename : "Image")}</span>}{block.caption && <Caption caption={block.caption} locale={context.locale} />}</figure>}
+{kind === "image" && <figure data-atlcli-block="image">{assetSrc ? <>
+  <picture data-atlcli-image-mode={asset?.mode ?? "verified-original"}>
+    {assetVariants.map((variant) => <source srcset={`${variant.src} ${variant.width}w`} type={variant.mediaType} />)}
+    <img src={assetSrc} alt={block.alt ?? asset?.alt ?? ""} srcset={assetVariants.length === 0 ? undefined : assetVariants.map((variant) => `${variant.src} ${variant.width}w`).join(", ")} sizes={assetSizes} width={asset?.width} height={asset?.height} loading="lazy" decoding="async" />
+  </picture>
+  {assetDownload && <a href={assetDownload} download={asset?.downloadName} data-atlcli-original-download>Download original</a>}
+</> : <span data-atlcli-asset-unresolved>{block.alt ?? (block.source.kind === "attachment" ? block.source.filename : "Image")}</span>}{block.caption && <Caption caption={block.caption} locale={context.locale} />}</figure>}
 {kind === "mediaFallback" && <aside data-atlcli-block="media-fallback">{mediaFallbackDisplayText(block)}</aside>}
 {kind === "blockquote" && <blockquote data-atlcli-block="blockquote"><ExportDocument blocks={block.content} context={context} overrides={overrides} /></blockquote>}
 {kind === "divider" && <hr data-atlcli-block="divider" />}

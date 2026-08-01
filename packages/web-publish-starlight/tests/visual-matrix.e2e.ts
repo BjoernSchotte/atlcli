@@ -99,3 +99,51 @@ test("the Starlight Expressive Code surface keeps fixed presentation controls an
   await expect(hostileCode.getByText("</script><img src=x onerror=alert(1)>", { exact: true })).toBeVisible();
   await context.close();
 });
+
+test("the published page stays within the browser quality budgets", async ({ page }) => {
+  await page.goto("/starlight/", { waitUntil: "networkidle" });
+  const metrics = await page.evaluate(async () => {
+    await document.fonts.ready;
+    await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+    const navigation = performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined;
+    const resources = performance.getEntriesByType("resource") as PerformanceResourceTiming[];
+    let lcp = 0;
+    try {
+      const observer = new PerformanceObserver((list) => {
+        const entries = list.getEntries();
+        const last = entries.at(-1);
+        if (last !== undefined) lcp = last.startTime;
+      });
+      observer.observe({ type: "largest-contentful-paint", buffered: true });
+      observer.takeRecords();
+      observer.disconnect();
+    } catch {
+      // Browsers without LCP expose a zero sentinel; static byte budgets still run.
+    }
+    let cls = 0;
+    try {
+      const observer = new PerformanceObserver((list) => {
+        for (const entry of list.getEntries() as (PerformanceEntry & { value?: number; hadRecentInput?: boolean })[]) {
+          if (!entry.hadRecentInput) cls += entry.value ?? 0;
+        }
+      });
+      observer.observe({ type: "layout-shift", buffered: true });
+      observer.takeRecords();
+      observer.disconnect();
+    } catch {
+      // See LCP note above.
+    }
+    return {
+      lcp,
+      cls,
+      ttfb: navigation?.responseStart ?? 0,
+      totalBlockingJs: resources.filter((entry) => entry.name.endsWith(".js")).reduce((total, entry) => total + entry.duration, 0),
+      external: resources.filter((entry) => /^https?:/u.test(entry.name) && new URL(entry.name).origin !== location.origin).map((entry) => entry.name),
+    };
+  });
+  expect(metrics.external).toEqual([]);
+  expect(metrics.ttfb).toBeLessThan(1000);
+  expect(metrics.totalBlockingJs).toBeLessThan(1500);
+  if (metrics.lcp > 0) expect(metrics.lcp).toBeLessThan(5000);
+  expect(metrics.cls).toBeLessThan(0.25);
+});

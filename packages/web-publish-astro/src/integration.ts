@@ -22,6 +22,7 @@ import {
 import { readPublicationBundlePagesV1, type AtlcliPublicationLoaderOptionsV1 } from "./loader.js";
 import { buildPagefindIndexV1 } from "./pagefind.js";
 import { createPublicationSeoPlanV1 } from "./seo.js";
+import { assertAstroStaticPerformanceBudgetV1, measureAstroStaticPerformanceV1 } from "./performance-budget.js";
 
 /** Directory owned by the static Pagefind post-build stage. */
 export const PAGEFIND_OWNED_OUTPUT_PATH_PREFIX_V1 = "pagefind";
@@ -668,6 +669,8 @@ export function atlcliPublishingIntegration(
             await writeGeneratedOutputText(outputRoot, seoPlan.feedPath, seoPlan.feed);
           }
         }
+        const output = await inventory(outputRoot);
+        assertAstroStaticPerformanceBudgetV1(measureAstroStaticPerformanceV1(output, builtSourcePages.length));
         await writePrivateJson(manifestPath, {
           schema: "atlcli.astro-build-inventory/1",
           bundlePath: "<private>",
@@ -684,7 +687,7 @@ export function atlcliPublishingIntegration(
           labelLandings: builtLabelLandings,
           projectPages: builtProjectPages,
           routes: routeInventory,
-          output: await inventory(outputRoot),
+          output,
         });
       },
     },

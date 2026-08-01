@@ -16,6 +16,15 @@ export interface AstroResolvedAssetV1 {
   src: string;
   mediaType: string;
   alt?: string;
+  /** Optional build-generated responsive variants; URLs are validated at render time. */
+  srcset?: readonly { src: string; width: number; mediaType?: string }[];
+  sizes?: string;
+  width?: number;
+  height?: number;
+  /** Optional verified original/download URL, never inferred from source content. */
+  downloadHref?: string;
+  downloadName?: string;
+  mode?: "verified-original" | "astro-responsive";
 }
 
 /**

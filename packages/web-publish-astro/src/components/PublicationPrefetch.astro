@@ -1,0 +1,14 @@
+---
+import { planPublicationPrefetchLinksV1 } from "../prefetch.js";
+
+interface Props {
+  origin: string;
+  verifiedRoutes: readonly string[];
+  hrefs: readonly string[];
+}
+
+const { origin, verifiedRoutes, hrefs } = Astro.props;
+const links = planPublicationPrefetchLinksV1({ origin, verifiedRoutes, hrefs });
+---
+
+{links.map((href) => <link rel="prefetch" href={href} data-atlcli-prefetch="verified-same-origin" />)}

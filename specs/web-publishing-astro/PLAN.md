@@ -1619,7 +1619,7 @@ and presentation contracts are not Starlight-private.
       become executable markup in Starlight or the conformance experience.
 - [x] Enforce measured search-index, initial-JS, query-latency, and memory
       budgets on small, representative, and large deterministic corpora.
-- [ ] Generate the complete navigation model, deterministic related-page
+- [x] Generate the complete navigation model, deterministic related-page
       ranking, root/space/label landing pages, breadcrumbs, page TOC,
       previous/next, deep-link actions, and searchable 404 from the page graph.
 - [x] Generate canonical and alternate-language links, intentional robots
@@ -1627,18 +1627,18 @@ and presentation contracts are not Starlight-private.
       optional RSS/Atom from the shared route/locale planner.
 - [x] Implement explicit locale metadata, localized routes/UI/search, language
       fallback, correct `lang`/`dir`, RTL, and canonical/hreflang consistency.
-- [ ] Implement verified-original and bounded Astro-responsive image modes,
+- [x] Implement verified-original and bounded Astro-responsive image modes,
       original download links, local/system fonts, and no remote font runtime.
 - [x] Implement the normalized Expressive Code surface with copy, wrap,
       language label, filename/caption, highlights, and hostile-input proof.
-- [ ] Enable base-aware prefetch only for verified same-origin routes; allow
+- [x] Enable base-aware prefetch only for verified same-origin routes; allow
       native cross-document view transitions as progressive enhancement but do
       not make Starlight's client router or SPA state a correctness dependency.
-- [ ] Set and gate budgets for critical CSS, initial JS, fonts, transformed
+- [x] Set and gate budgets for critical CSS, initial JS, fonts, transformed
       images, LCP, CLS, navigation, and search interaction.
 - [x] Inventory every generated page/asset/output path and reject unexplained or
       escaping output.
-- [ ] Produce the final V1 static-publication manifest inventory with bundle,
+- [x] Produce the final V1 static-publication manifest inventory with bundle,
       builder, Astro,
       project/config/lockfile, experience, route/asset, Pagefind, SEO/i18n/media,
       and normalized output digests.
@@ -1656,22 +1656,22 @@ adapter.
 
 ### T9 — Add optional analytics and Confluence edit links
 
-- [ ] Implement analytics as `none` by default and a closed optional Plausible
+- [x] Implement analytics as `none` by default and a closed optional Plausible
       adapter with a bundled pinned tracker, explicit endpoint/origin,
       pageviews, and allowlisted events.
-- [ ] Strip query/fragment, title, source ID, Confluence URL, account data, and
+- [x] Strip query/fragment, title, source ID, Confluence URL, account data, and
       arbitrary properties; never collect search terms or persist/replay events
       later; respect Do Not Track as configured.
-- [ ] Prove blocking the analytics endpoint cannot affect content,
+- [x] Prove blocking the analytics endpoint cannot affect content,
       navigation, search, accessibility, or verification; emit an exact CSP and
       privacy declaration for enabled external origins.
-- [ ] Implement the optional Confluence action from provider-returned Cloud
+- [x] Implement the optional Confluence action from provider-returned Cloud
       `_links.editui` and Data Center edit relations; resolve only against the
       trusted tenant/base origin and never synthesize editor URLs.
-- [ ] Implement validated `webui` fallback with truthful “Open in Confluence”
+- [x] Implement validated `webui` fallback with truthful “Open in Confluence”
       copy or omission, internal/all visibility, placement, and explicit public
       tenant-disclosure acknowledgement.
-- [ ] Exclude edit URLs/actions from Pagefind, related ranking, sitemap, feeds,
+- [x] Exclude edit URLs/actions from Pagefind, related ranking, sitemap, feeds,
       JSON-LD, deployment/runtime-cache metadata, and analytics payloads.
 - [ ] Finalize `StaticPublicationManifestV1` with analytics declaration,
       edit-link summary, and exact final output digests.

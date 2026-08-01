@@ -21,7 +21,9 @@
     },
     "./components/PagefindSearch.astro": "./dist/components/PagefindSearch.astro",
     "./components/PagefindSearchPage.astro": "./dist/components/PagefindSearchPage.astro",
-    "./components/PublicationSeoHead.astro": "./dist/components/PublicationSeoHead.astro"
+    "./components/PublicationSeoHead.astro": "./dist/components/PublicationSeoHead.astro",
+    "./components/PublicationPrefetch.astro": "./dist/components/PublicationPrefetch.astro",
+    "./components/PublicationAnalytics.astro": "./dist/components/PublicationAnalytics.astro"
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json && bun scripts/copy-assets.ts",
