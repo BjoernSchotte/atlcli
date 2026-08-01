@@ -775,6 +775,11 @@ export async function preparePdfDocument(
             const { caption: _sourceCaption, ...fallback } = block;
             return { ...fallback, ...(caption ? { caption } : {}) };
           }
+          case "chart": {
+            const caption = await prepareCaption(block.caption, `${path}.caption`);
+            const { caption: _sourceCaption, ...chart } = block;
+            return { ...chart, ...(caption ? { caption } : {}) };
+          }
           case "smartCard":
           case "divider":
           case "pageBreak":

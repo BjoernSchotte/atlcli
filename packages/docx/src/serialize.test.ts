@@ -26,6 +26,23 @@ import { collectDocxCodeHighlightUsage } from "./code-highlighting.js";
 
 const noStyles = new Map<string, string>();
 
+it("serializes a chart ExportBlock as a deterministic accessible data table", async () => {
+  const result = await serializeBlocks([{
+    type: "chart",
+    chart: {
+      schema: "atlcli.chart/1",
+      kind: "bar",
+      title: "Revenue",
+      data: { mode: "categories", labels: ["Jan", "Feb"], series: [{ id: "revenue", label: "Value", values: [10, 20] }] },
+      source: { kind: "cloud-adf", macroName: "chart" },
+    },
+  }], { styleNames: noStyles });
+  expect(result.xml).toContain("Revenue");
+  expect(result.xml).toContain("Jan");
+  expect(result.xml).toContain("20");
+  expect(result.xml).toContain("<w:tbl");
+});
+
 describe("DOCX code-highlighting preparation", () => {
   it("collects nested aliases once, counts blocks, and excludes Mermaid", () => {
     const blocks: ExportBlock[] = [

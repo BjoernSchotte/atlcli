@@ -25,6 +25,7 @@ import type {
   TableCell,
   TablePresentation,
   TableRow,
+  ChartModelV1,
 } from "@atlcli/confluence";
 import {
   computeHeadingOffset,
@@ -734,6 +735,9 @@ function prefetchBlocks(blocks: ExportBlock[], ctx: SerializeContext): void {
           walkCaption(block.caption);
           for (const row of block.rows) for (const cell of row.cells) walk(cell.content);
           break;
+        case "chart":
+          walkCaption(block.caption);
+          break;
         case "mediaFallback":
           walkCaption(block.caption);
           break;
@@ -1020,6 +1024,23 @@ async function serializeBlock(
       return block.caption ? await captionXml(block.caption, ctx, notes) + tableXml : tableXml;
     }
 
+    case "chart": {
+      // Word's native chart DrawingML is template-owned and cannot safely be
+      // synthesized from an arbitrary Confluence macro. Preserve every value
+      // and label as a deterministic, accessible table instead of dropping the
+      // block or relying on the former page-level chart sidecar.
+      const tableXml = await serializeTable(
+        chartTableRows(block.chart),
+        undefined,
+        undefined,
+        { ...ctx, defaultTextColor: undefined },
+        notes,
+      );
+      const title = block.chart.title ? paragraph(run(block.chart.title, { bold: true })) : "";
+      const caption = block.caption ? await captionXml(block.caption, ctx, notes) : "";
+      return title + tableXml + caption;
+    }
+
     case "blockquote": {
       const inner = await serializeChildren(block.content, ctx, notes, depth + 1);
       // Indent + left accent bar on EVERY paragraph, including styled ones
@@ -1224,6 +1245,54 @@ async function serializeBlock(
       return _exhaustive;
     }
   }
+}
+
+function chartTextCell(value: string | number): TableCell {
+  return {
+    header: false,
+    colspan: 1,
+    rowspan: 1,
+    content: [{ type: "paragraph", content: [{ type: "text", text: String(value) }] }],
+  };
+}
+
+function chartHeaderCell(value: string): TableCell {
+  return { ...chartTextCell(value), header: true };
+}
+
+function chartTableRows(chart: ChartModelV1): TableRow[] {
+  const data = chart.data;
+  if (data.mode === "categories") {
+    return [
+      { cells: [chartHeaderCell("Label"), ...data.series.map((series) => chartHeaderCell(series.label))] },
+      ...data.labels.map((label, index) => ({
+        cells: [chartHeaderCell(label), ...data.series.map((series) => chartTextCell(series.values[index] ?? ""))],
+      })),
+    ];
+  }
+  if (data.mode === "points") {
+    const count = Math.max(...data.series.map((series) => series.points.length));
+    return [
+      { cells: [chartHeaderCell("X"), ...data.series.map((series) => chartHeaderCell(series.label))] },
+      ...Array.from({ length: count }, (_, index) => ({
+        cells: [
+          chartHeaderCell(String(data.series[0]?.points[index]?.x ?? index + 1)),
+          ...data.series.map((series) => chartTextCell(series.points[index]?.y ?? "")),
+        ],
+      })),
+    ];
+  }
+  return [
+    { cells: [chartHeaderCell("Task"), chartHeaderCell("Start"), chartHeaderCell("End"), chartHeaderCell("Progress")] },
+    ...data.tasks.map((task) => ({
+      cells: [
+        chartHeaderCell(task.label),
+        chartTextCell(task.start),
+        chartTextCell(task.end),
+        chartTextCell(task.progress === undefined ? "" : `${Math.round(task.progress * 100)}%`),
+      ],
+    })),
+  ];
 }
 
 function describeImage(block: Extract<ExportBlock, { type: "image" }>): string {

@@ -20,6 +20,24 @@ const metadata = {
   exportedAt: new Date("2026-07-16T12:00:00Z"),
 };
 
+it("serializes a chart ExportBlock as a deterministic Typst data table", async () => {
+  const prepared = await preparePdfDocument([{
+    type: "chart",
+    chart: {
+      schema: "atlcli.chart/1",
+      kind: "bar",
+      title: "Revenue",
+      data: { mode: "categories", labels: ["Jan", "Feb"], series: [{ id: "revenue", label: "Value", values: [10, 20] }] },
+      source: { kind: "cloud-adf", macroName: "chart" },
+    },
+  }], { resolve: async () => { throw new Error("unused"); } });
+  const bundle = serializePdfDocument(prepared, { metadata });
+  expect(bundle.main).toContain('#text("Revenue")');
+  expect(bundle.main).toContain('#text("Jan")');
+  expect(bundle.main).toContain('#text("20")');
+  expect(bundle.main).toContain("#table(columns: 2");
+});
+
 function pngBytes(): Uint8Array {
   return new Uint8Array([
     0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,

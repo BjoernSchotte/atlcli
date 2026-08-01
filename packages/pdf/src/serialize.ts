@@ -191,6 +191,8 @@ function blocksPlainText(blocks: PreparedPdfBlock[]): string {
           return block.alt ?? block.label;
         case "smartCard":
           return smartCardDisplayText(block.card);
+        case "chart":
+          return chartPlainText(block.chart);
         case "diagram":
           return block.alt ?? "Diagram";
         case "divider":
@@ -1725,6 +1727,21 @@ function serializeBlock(
         : `#${tableBlockExpr}`;
       break;
     }
+    case "chart": {
+      // Typst receives a deterministic semantic table. This keeps every chart
+      // value available in tagged PDF output without synthesizing unsafe
+      // provider-specific DrawingML or a live renderer.
+      const rows = chartRows(block.chart);
+      const columns = Math.max(1, rows.reduce((max, row) => Math.max(max, row.length), 0));
+      const cells = rows.flatMap((row) => Array.from({ length: columns }, (_, index) => literalText(row[index] ?? "")));
+      const table = `#table(columns: ${columns}, stroke: rgb(${typstString(writer.catalogDesign.tokens.colors.tableStroke)}), ${cells.join(", ")})`;
+      const title = block.chart.title ? `#par[${literalText(block.chart.title)}]\n` : "";
+      const caption = block.caption
+        ? `\n#figure(block(width: 100%)[${table}], ${captionFigureArgs(block.caption, writer)})`
+        : "";
+      value = title + table + caption;
+      break;
+    }
     case "divider":
       value = `#line(length: 100%, stroke: rgb(${typstString(writer.catalogDesign.tokens.colors.tableStroke)}))`;
       break;
@@ -1864,6 +1881,44 @@ function serializeBlock(
     value += annotationMarkers(block.annotations, context.comments);
   }
   return writeMapped(block, writer, path, value, summary);
+}
+
+function chartPlainText(chart: import("@atlcli/export-blocks").ChartModelV1): string {
+  const data = chart.data;
+  if (data.mode === "categories") {
+    return [chart.title, ...data.labels, ...data.series.flatMap((series) => [series.label, ...series.values.map(String)])]
+      .filter(Boolean).join(" ");
+  }
+  if (data.mode === "points") {
+    return [chart.title, ...data.series.flatMap((series) => [series.label, ...series.points.flatMap((point) => [String(point.x), String(point.y)])])]
+      .filter(Boolean).join(" ");
+  }
+  return [chart.title, ...data.tasks.flatMap((task) => [task.label, task.start, task.end, task.progress === undefined ? "" : `${task.progress * 100}%`])]
+    .filter(Boolean).join(" ");
+}
+
+function chartRows(chart: import("@atlcli/export-blocks").ChartModelV1): string[][] {
+  const data = chart.data;
+  if (data.mode === "categories") {
+    return [
+      ["Label", ...data.series.map((series) => series.label)],
+      ...data.labels.map((label, index) => [label, ...data.series.map((series) => String(series.values[index] ?? ""))]),
+    ];
+  }
+  if (data.mode === "points") {
+    const count = Math.max(...data.series.map((series) => series.points.length));
+    return [
+      ["X", ...data.series.map((series) => series.label)],
+      ...Array.from({ length: count }, (_, index) => [
+        String(data.series[0]?.points[index]?.x ?? index + 1),
+        ...data.series.map((series) => String(series.points[index]?.y ?? "")),
+      ]),
+    ];
+  }
+  return [
+    ["Task", "Start", "End", "Progress"],
+    ...data.tasks.map((task) => [task.label, task.start, task.end, task.progress === undefined ? "" : `${Math.round(task.progress * 100)}%`]),
+  ];
 }
 
 function mediaImageWidth(
