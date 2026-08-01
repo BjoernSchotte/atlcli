@@ -3000,8 +3000,8 @@ and body-free event with one WAL-backed revision/epoch CAS transaction. It
 keeps opaque V1 source-ref metadata in SQLite and creates a 0700 directory per
 retained session for atomic `manifest.json`, `/workspace/`, and `/artifacts/`
 writes. It passes the unchanged shared conformance/failure suite and a close/
-reopen test. A SQLite-backed LangGraph saver and the CLI session commands still
-remain to complete the CLI portion of T4.
+reopen test. CLI session commands still remain to complete the CLI portion of
+T4.
 
 - [x] Add a LangGraph checkpointer adapter implementing required checkpoint,
       pending-write, lookup, and history operations.
@@ -3013,8 +3013,7 @@ T4 LangGraph checkpoint checkpoint (2026-08-01):
 derives the stable, one-to-one `atlcli:research:<sessionId>` thread identifier,
 requires that thread on `put`, pending writes, lookup, history, and deletion,
 and rejects a foreign session config before storage access. The test corridor
-exercises each operation; physical store-backed checkpointers inherit the same
-scope fence when their adapters land.
+exercises each operation.
 
 T4 IndexedDB catalog checkpoint (2026-08-01):
 `IndexedDbResearchSessionStoreV1` opens an explicit versioned database with a
@@ -3024,8 +3023,26 @@ snapshot and body-free event in one IndexedDB transaction; graph, task, packet,
 and checkpoint inspection derives from that committed snapshot. It passes the
 same adapter conformance/failure suite as memory and SQLite, plus a real
 fake-indexeddb close/reopen test for browser workspace, opaque refs, and a
-Markdown artifact. The IndexedDB-backed LangGraph saver and extension protocol
-wiring remain pending.
+Markdown artifact. Extension protocol resume/recovery wiring remains pending.
+
+- [x] Persist the native LangGraph checkpoint and pending-write journal inside
+      the durable per-session workspace, use it from the one shared runtime,
+      and restore it from fresh SQLite/filesystem and IndexedDB hosts.
+
+T4 physical LangGraph checkpoint checkpoint (2026-08-01):
+`ResearchSessionWorkspaceCheckpointerV1` preserves the installed
+`MemorySaver`/`BaseCheckpointSaver` behavior while journaling serialized
+checkpoint and pending-write bytes beneath a private virtual workspace path.
+Each bounded blob is stored before the atomically replaced index references
+it, so an interrupted write retains the last complete checkpoint journal. The
+adapter scopes every operation to the derived session thread, rejects foreign
+index/session pairs, uses no Node-only APIs, and limits the journal to 2,000
+operations, 64 MB total serialized payload, and 4 MB per blob. The shared
+runtime now resolves a durable session's workspace itself instead of silently
+falling back to a transient workspace. Tests prove direct checkpoint replay,
+SQLite close/reopen replay, IndexedDB close/reopen replay, and a fresh saver
+reading the actual message checkpoint produced by a native dynamic
+`createDeepAgent` run; the packed MV3 regression suite passes 16/16.
 
 - [x] Ensure accepted turns are durable before execution begins.
 - [x] Persist brief and graph revisions before plan approval or execution.
@@ -3134,8 +3151,8 @@ task until the bounded retry/abstain policy is implemented.
 
 CLI:
 
-- [x] Implement a Bun SQLite session catalog. The physical checkpointer remains
-      pending.
+- [x] Implement a Bun SQLite session catalog and filesystem-workspace-backed
+      physical LangGraph checkpoint journal.
 - [x] Use one real directory per retained session, with atomic manifest and
       artifact writes.
 - [x] Create and hand off an accepted durable one-shot turn plus its retained

@@ -37,7 +37,7 @@ import {
   RESEARCH_SESSION_ARTIFACT_SCHEMA_V1,
   type ResearchSessionStoreV1,
 } from "./session-store.js";
-import { ResearchSessionMemoryCheckpointerV1 } from "./langgraph-checkpointer.js";
+import { ResearchSessionWorkspaceCheckpointerV1 } from "./workspace-checkpointer.js";
 import { researchThreadIdForSessionV1 } from "./checkpoint-identity.js";
 /*
  * Keep graph execution admission here, before workspace/provider/model setup.
@@ -965,16 +965,20 @@ async function runResearchAgentWithBindings(
         now: () => new Date(now()).toISOString(),
       })
     : undefined;
-  const workspace = input.workspace ?? createMemoryResearchWorkspace();
+  const workspace = input.workspace
+    ?? (input.durableSession
+      ? await input.durableSession.store.workspace(input.durableSession.sessionId)
+      : createMemoryResearchWorkspace());
   // DeepAgentsJS persists LangGraph state by configurable thread ID. A retry
   // attempt has a new run ID, but it must remain in the durable conversation's
-  // session thread. The physical store-backed saver is added separately; this
-  // session-scoped saver establishes the identical DeepAgentsJS contract now.
+  // session thread. Its checkpoints live in the host-neutral session
+  // workspace, which is SQLite/filesystem-backed in the CLI and IndexedDB-
+  // backed in MV3.
   const checkpointThreadId = input.durableSession
     ? researchThreadIdForSessionV1(input.durableSession.sessionId)
     : runId;
   const checkpointer = input.durableSession
-    ? new ResearchSessionMemoryCheckpointerV1(input.durableSession.sessionId)
+    ? new ResearchSessionWorkspaceCheckpointerV1(input.durableSession.sessionId, workspace)
     : undefined;
   let eventSequence = 0;
   let subagentTaskStarted = false;

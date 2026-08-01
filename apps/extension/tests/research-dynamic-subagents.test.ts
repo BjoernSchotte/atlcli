@@ -14,6 +14,7 @@ import {
 } from "@atlcli/research/graph";
 import {
   ResearchCapabilityBroker,
+  ResearchSessionWorkspaceCheckpointerV1,
   InMemoryResearchSessionStoreV1,
   RESEARCH_ACCEPTED_PACKET_SCHEMA_V1,
   RESEARCH_PACKET_BODY_SCHEMA_V1,
@@ -24,6 +25,7 @@ import {
   encodeResearchTaskDescriptionV1,
   initializeResearchSessionTurnV1,
   projectResearchReconciliationInputV1,
+  researchCheckpointConfigV1,
   type ResearchAcceptedPacketV1,
   type ResearchOneShotEventV1,
 } from "@atlcli/research";
@@ -1848,6 +1850,12 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       }),
       contents: report.markdown,
     });
+    const durableWorkspace = await durableStore.workspace(graph.sessionId);
+    expect(await durableWorkspace.list("/.atlcli/langgraph-checkpoints/v1"))
+      .not.toHaveLength(0);
+    const recoveredCheckpoint = await new ResearchSessionWorkspaceCheckpointerV1(graph.sessionId, durableWorkspace)
+      .getTuple(researchCheckpointConfigV1({ sessionId: graph.sessionId }));
+    expect(recoveredCheckpoint?.checkpoint.channel_values.messages).toBeArray();
     expect((await durableStore.events(graph.sessionId)).map((event) => event.kind)).toContain(
       "record_reconciliation",
     );

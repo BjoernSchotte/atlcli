@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test";
 import {
   ResearchSessionMemoryCheckpointerV1,
 } from "./langgraph-checkpointer.js";
+import { ResearchSessionWorkspaceCheckpointerV1 } from "./workspace-checkpointer.js";
+import { createMemoryResearchWorkspace } from "./workspace.js";
 import {
   researchCheckpointConfigV1,
   researchThreadIdForSessionV1,
@@ -53,5 +55,82 @@ describe("research LangGraph checkpointer adapter", () => {
     const foreign = researchCheckpointConfigV1({ sessionId: "research-session:other" });
     await expect(saver.getTuple(foreign)).rejects.toThrow("outside the research session thread");
     await expect(saver.deleteThread(researchThreadIdForSessionV1("research-session:other"))).rejects.toThrow("outside the research session thread");
+  });
+
+  test("replays checkpoint and pending-write bytes from a durable workspace after a host restart", async () => {
+    const workspace = createMemoryResearchWorkspace();
+    const config = researchCheckpointConfigV1({ sessionId, checkpointNamespace: "research" });
+    const firstHost = new ResearchSessionWorkspaceCheckpointerV1(sessionId, workspace);
+    const saved = await firstHost.put(config, {
+      v: 4,
+      id: "checkpoint:durable-1",
+      ts: "2026-08-01T12:00:00.000Z",
+      channel_values: { durable_state: { revision: 1, note: "resumable" } },
+      channel_versions: { durable_state: 1 },
+      versions_seen: {},
+    }, {
+      source: "input",
+      step: -1,
+      parents: {},
+    });
+    await firstHost.putWrites(saved, [["durable_write", { revision: 2 }]], "task:durable");
+
+    const secondHost = new ResearchSessionWorkspaceCheckpointerV1(sessionId, workspace);
+    await expect(secondHost.getTuple(saved)).resolves.toMatchObject({
+      checkpoint: { id: "checkpoint:durable-1", channel_values: { durable_state: { note: "resumable" } } },
+      pendingWrites: [["task:durable", "durable_write", { revision: 2 }]],
+    });
+    expect(await workspace.list("/.atlcli/langgraph-checkpoints/v1")).not.toHaveLength(0);
+  });
+
+  test("fails closed when a workspace checkpoint index belongs to another session", async () => {
+    const workspace = createMemoryResearchWorkspace();
+    await workspace.writeFile("/.atlcli/langgraph-checkpoints/v1/index.json", JSON.stringify({
+      schema: "atlcli.research-langgraph-workspace-checkpoints/v1",
+      threadId: researchThreadIdForSessionV1("research-session:other"),
+      payloadBytes: 0,
+      operations: [],
+    }));
+    const saver = new ResearchSessionWorkspaceCheckpointerV1(sessionId, workspace);
+    await expect(saver.getTuple(researchCheckpointConfigV1({ sessionId }))).rejects.toThrow("does not match this research session");
+  });
+
+  test("retains the prior complete checkpoint when publishing a later index fails", async () => {
+    const durableWorkspace = createMemoryResearchWorkspace();
+    let indexWrites = 0;
+    const interruptedWorkspace = {
+      readFile: (path: string) => durableWorkspace.readFile(path),
+      async writeFile(path: string, contents: string) {
+        if (path === "/.atlcli/langgraph-checkpoints/v1/index.json" && indexWrites++ > 0) {
+          throw new Error("injected checkpoint index interruption");
+        }
+        await durableWorkspace.writeFile(path, contents);
+      },
+      remove: (path: string) => durableWorkspace.remove(path),
+      list: (prefix?: string) => durableWorkspace.list(prefix),
+    };
+    const config = researchCheckpointConfigV1({ sessionId, checkpointNamespace: "research" });
+    const saver = new ResearchSessionWorkspaceCheckpointerV1(sessionId, interruptedWorkspace);
+    const first = await saver.put(config, {
+      v: 4,
+      id: "checkpoint:complete-1",
+      ts: "2026-08-01T12:00:00.000Z",
+      channel_values: { durable_state: { revision: 1 } },
+      channel_versions: { durable_state: 1 },
+      versions_seen: {},
+    }, { source: "input", step: -1, parents: {} });
+    await expect(saver.put(first, {
+      v: 4,
+      id: "checkpoint:interrupted-2",
+      ts: "2026-08-01T12:00:01.000Z",
+      channel_values: { durable_state: { revision: 2 } },
+      channel_versions: { durable_state: 2 },
+      versions_seen: {},
+    }, { source: "loop", step: 0, parents: {} })).rejects.toThrow("injected checkpoint index interruption");
+
+    const recovered = new ResearchSessionWorkspaceCheckpointerV1(sessionId, durableWorkspace);
+    await expect(recovered.getTuple(config)).resolves.toMatchObject({
+      checkpoint: { id: "checkpoint:complete-1", channel_values: { durable_state: { revision: 1 } } },
+    });
   });
 });

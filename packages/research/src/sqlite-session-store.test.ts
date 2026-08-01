@@ -3,8 +3,10 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createResearchSessionV1, type ResearchSessionUpdateV1, type ResearchSessionV1 } from "./session.js";
+import { researchCheckpointConfigV1 } from "./checkpoint-identity.js";
 import { verifyResearchSessionStoreConformanceV1 } from "./session-store-conformance.js";
 import { SqliteResearchSessionStoreV1 } from "./sqlite-session-store.js";
+import { ResearchSessionWorkspaceCheckpointerV1 } from "./workspace-checkpointer.js";
 
 function session(): ResearchSessionV1 {
   return createResearchSessionV1({
@@ -79,6 +81,43 @@ describe("SQLite durable research session store", () => {
         expect(await reopened.artifact(committed.sessionId, "artifact:report")).toMatchObject({ contents: "# Report\n" });
         const manifest = JSON.parse(await readFile(join(sessionRoot, "sessions", "sqlite-test", "manifest.json"), "utf8"));
         expect(manifest.revision).toBe(2);
+      } finally {
+        reopened.close();
+      }
+    } finally {
+      try { first.close(); } catch { /* already closed */ }
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("replays LangGraph checkpoints from the per-session filesystem workspace after reopening SQLite", async () => {
+    const root = await mkdtemp(join(tmpdir(), "atlcli-research-sqlite-checkpoint-"));
+    const databasePath = join(root, "catalog.sqlite");
+    const sessionRoot = join(root, "session-data");
+    const first = new SqliteResearchSessionStoreV1({ databasePath, root: sessionRoot });
+    try {
+      const created = await first.create(session());
+      const workspace = await first.workspace(created.sessionId);
+      const config = researchCheckpointConfigV1({ sessionId: created.sessionId, checkpointNamespace: "agent" });
+      const saver = new ResearchSessionWorkspaceCheckpointerV1(created.sessionId, workspace);
+      const saved = await saver.put(config, {
+        v: 4,
+        id: "checkpoint:sqlite-reopen",
+        ts: "2026-08-01T13:00:00.000Z",
+        channel_values: { session: { durable: true } },
+        channel_versions: { session: 1 },
+        versions_seen: {},
+      }, { source: "input", step: -1, parents: {} });
+      await saver.putWrites(saved, [["pending", { sequence: 1 }]], "task:sqlite-checkpoint");
+      first.close();
+
+      const reopened = new SqliteResearchSessionStoreV1({ databasePath, root: sessionRoot });
+      try {
+        const recovered = new ResearchSessionWorkspaceCheckpointerV1(created.sessionId, await reopened.workspace(created.sessionId));
+        await expect(recovered.getTuple(saved)).resolves.toMatchObject({
+          checkpoint: { id: "checkpoint:sqlite-reopen", channel_values: { session: { durable: true } } },
+          pendingWrites: [["task:sqlite-checkpoint", "pending", { sequence: 1 }]],
+        });
       } finally {
         reopened.close();
       }

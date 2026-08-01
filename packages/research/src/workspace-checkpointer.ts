@@ -1,0 +1,441 @@
+import type { RunnableConfig } from "@langchain/core/runnables";
+import {
+  MemorySaver,
+  type ChannelVersions,
+  type Checkpoint,
+  type CheckpointListOptions,
+  type CheckpointMetadata,
+  type CheckpointTuple,
+  type DeltaChannelHistory,
+  type PendingWrite,
+} from "@langchain/langgraph-checkpoint";
+import { ResearchContractError } from "./contracts.js";
+import { researchThreadIdForSessionV1 } from "./checkpoint-identity.js";
+import type { ResearchWorkspace } from "./workspace.js";
+
+/**
+ * Private, session-local storage for the LangGraph checkpoint journal. These
+ * files are implementation state, never report artifacts or generic research
+ * workspace files.
+ */
+const ROOT_PATH = "/.atlcli/langgraph-checkpoints/v1";
+const INDEX_PATH = `${ROOT_PATH}/index.json`;
+const SCHEMA = "atlcli.research-langgraph-workspace-checkpoints/v1" as const;
+const MAXIMUM_OPERATIONS = 2_000;
+const MAXIMUM_PAYLOAD_BYTES = 64_000_000;
+const MAXIMUM_BLOB_BYTES = 4_000_000;
+const BLOB_CHUNK_BYTES = 500_000;
+
+interface PersistedBlobV1 {
+  bytes: number;
+  chunks: number;
+}
+
+interface PersistedCheckpointOperationV1 {
+  id: string;
+  kind: "checkpoint";
+  namespace: string;
+  checkpointId: string;
+  parentCheckpointId?: string;
+  checkpoint: PersistedBlobV1;
+  metadata: PersistedBlobV1;
+}
+
+interface PersistedWriteV1 {
+  key: string;
+  taskId: string;
+  channel: string;
+  value: PersistedBlobV1;
+}
+
+interface PersistedWritesOperationV1 {
+  id: string;
+  kind: "writes";
+  namespace: string;
+  checkpointId: string;
+  writes: PersistedWriteV1[];
+}
+
+type PersistedOperationV1 = PersistedCheckpointOperationV1 | PersistedWritesOperationV1;
+
+interface PersistedIndexV1 {
+  schema: typeof SCHEMA;
+  threadId: string;
+  payloadBytes: number;
+  operations: PersistedOperationV1[];
+}
+
+function invalid(message: string): never {
+  throw new ResearchContractError("invalid-request", message);
+}
+
+function limitedString(value: unknown, label: string, allowEmpty = false): string {
+  if (typeof value !== "string" || (!allowEmpty && !value) || value.length > 1_024 || value.includes("\u0000")) {
+    invalid(`Stored LangGraph ${label} is invalid.`);
+  }
+  return value;
+}
+
+function operationId(value: unknown): string {
+  const id = limitedString(value, "operation ID");
+  if (!/^operation-\d{6}$/.test(id)) invalid("Stored LangGraph operation ID is invalid.");
+  return id;
+}
+
+function limitedCount(value: unknown, label: string, maximum: number): number {
+  if (!Number.isSafeInteger(value) || (value as number) < 0 || (value as number) > maximum) {
+    invalid(`Stored LangGraph ${label} is invalid.`);
+  }
+  return value as number;
+}
+
+function blob(value: unknown, label: string): PersistedBlobV1 {
+  if (!value || typeof value !== "object") invalid(`Stored LangGraph ${label} is invalid.`);
+  const candidate = value as Partial<PersistedBlobV1>;
+  const bytes = limitedCount(candidate.bytes, `${label} byte count`, MAXIMUM_BLOB_BYTES);
+  const chunks = limitedCount(candidate.chunks, `${label} chunk count`, Math.ceil(MAXIMUM_BLOB_BYTES / BLOB_CHUNK_BYTES));
+  if ((bytes === 0 && chunks !== 0) || (bytes > 0 && chunks !== Math.ceil(bytes / BLOB_CHUNK_BYTES))) {
+    invalid(`Stored LangGraph ${label} has inconsistent chunks.`);
+  }
+  return { bytes, chunks };
+}
+
+function operation(value: unknown): PersistedOperationV1 {
+  if (!value || typeof value !== "object") invalid("Stored LangGraph operation is invalid.");
+  const candidate = value as Partial<PersistedOperationV1>;
+  const id = operationId(candidate.id);
+  const namespace = limitedString(candidate.namespace, "namespace", true);
+  const checkpointId = limitedString(candidate.checkpointId, "checkpoint ID");
+  if (candidate.kind === "checkpoint") {
+    const parentCheckpointId = candidate.parentCheckpointId === undefined
+      ? undefined
+      : limitedString(candidate.parentCheckpointId, "parent checkpoint ID");
+    return {
+      id,
+      kind: "checkpoint",
+      namespace,
+      checkpointId,
+      ...(parentCheckpointId ? { parentCheckpointId } : {}),
+      checkpoint: blob(candidate.checkpoint, "checkpoint"),
+      metadata: blob(candidate.metadata, "metadata"),
+    };
+  }
+  if (candidate.kind !== "writes" || !Array.isArray(candidate.writes) || candidate.writes.length > 1_024) {
+    invalid("Stored LangGraph write operation is invalid.");
+  }
+  const writes = candidate.writes.map((entry) => {
+    if (!entry || typeof entry !== "object") invalid("Stored LangGraph write is invalid.");
+    const write = entry as Partial<PersistedWriteV1>;
+    return {
+      key: limitedString(write.key, "write key"),
+      taskId: limitedString(write.taskId, "write task ID"),
+      channel: limitedString(write.channel, "write channel"),
+      value: blob(write.value, "write value"),
+    };
+  });
+  return { id, kind: "writes", namespace, checkpointId, writes };
+}
+
+function parseIndex(contents: string, expectedThreadId: string): PersistedIndexV1 {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(contents);
+  } catch {
+    invalid("Stored LangGraph checkpoint index is not JSON.");
+  }
+  if (!parsed || typeof parsed !== "object") invalid("Stored LangGraph checkpoint index is invalid.");
+  const candidate = parsed as Partial<PersistedIndexV1>;
+  if (candidate.schema !== SCHEMA || candidate.threadId !== expectedThreadId || !Array.isArray(candidate.operations)) {
+    invalid("Stored LangGraph checkpoint index does not match this research session.");
+  }
+  if (candidate.operations.length > MAXIMUM_OPERATIONS) invalid("Stored LangGraph checkpoint operation limit is exceeded.");
+  const operations = candidate.operations.map(operation);
+  const ids = new Set<string>();
+  for (const entry of operations) {
+    if (ids.has(entry.id)) invalid("Stored LangGraph checkpoint operation IDs are duplicated.");
+    ids.add(entry.id);
+  }
+  const payloadBytes = limitedCount(candidate.payloadBytes, "payload byte count", MAXIMUM_PAYLOAD_BYTES);
+  const calculatedBytes = operations.reduce((total, entry) => total + (entry.kind === "checkpoint"
+    ? entry.checkpoint.bytes + entry.metadata.bytes
+    : entry.writes.reduce((writeTotal, write) => writeTotal + write.value.bytes, 0)), 0);
+  if (calculatedBytes !== payloadBytes) invalid("Stored LangGraph checkpoint payload accounting is invalid.");
+  return { schema: SCHEMA, threadId: expectedThreadId, payloadBytes, operations };
+}
+
+function encodeHex(bytes: Uint8Array): string {
+  let encoded = "";
+  for (const byte of bytes) encoded += byte.toString(16).padStart(2, "0");
+  return encoded;
+}
+
+function decodeHex(value: string, expectedBytes: number): Uint8Array {
+  if (value.length !== expectedBytes * 2 || !/^[0-9a-f]*$/i.test(value)) {
+    invalid("Stored LangGraph checkpoint blob is invalid.");
+  }
+  const result = new Uint8Array(expectedBytes);
+  for (let index = 0; index < expectedBytes; index += 1) {
+    result[index] = Number.parseInt(value.slice(index * 2, index * 2 + 2), 16);
+  }
+  return result;
+}
+
+function outerWriteKey(threadId: string, namespace: string, checkpointId: string): string {
+  return JSON.stringify([threadId, namespace, checkpointId]);
+}
+
+function rejectForeignThread(config: RunnableConfig, expectedThreadId: string): void {
+  if (config.configurable?.thread_id !== expectedThreadId) {
+    throw new ResearchContractError("access-denied", "LangGraph checkpoint operation is outside the research session thread.");
+  }
+}
+
+/**
+ * Host-neutral physical checkpoint saver. It keeps LangGraph's native
+ * `MemorySaver` semantics in memory during a run and journals the serialized
+ * checkpoint bytes into the durable session workspace. A fresh saver over the
+ * same workspace replays that journal exactly, so SQLite/filesystem and
+ * IndexedDB hosts resume the same thread without a Node-only dependency.
+ */
+export class ResearchSessionWorkspaceCheckpointerV1 extends MemorySaver {
+  readonly #threadId: string;
+  readonly #workspace: ResearchWorkspace;
+  #index: PersistedIndexV1;
+  #loaded = false;
+  #tail: Promise<void> = Promise.resolve();
+  #writeFailure: unknown;
+
+  constructor(sessionId: string, workspace: ResearchWorkspace) {
+    super();
+    this.#threadId = researchThreadIdForSessionV1(sessionId);
+    this.#workspace = workspace;
+    this.#index = { schema: SCHEMA, threadId: this.#threadId, payloadBytes: 0, operations: [] };
+  }
+
+  async #exclusive<T>(callback: () => Promise<T>): Promise<T> {
+    const previous = this.#tail;
+    let release!: () => void;
+    this.#tail = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await previous;
+    try {
+      if (this.#writeFailure) throw this.#writeFailure;
+      return await callback();
+    } finally {
+      release();
+    }
+  }
+
+  #operationPath(operationId: string, label: string, chunk: number): string {
+    return `${ROOT_PATH}/${operationId}/${label}-${String(chunk).padStart(4, "0")}.hex`;
+  }
+
+  async #writeBlob(operationId: string, label: string, value: Uint8Array): Promise<PersistedBlobV1> {
+    if (value.byteLength > MAXIMUM_BLOB_BYTES) {
+      throw new ResearchContractError("limit-exceeded", "Research LangGraph checkpoint blob is too large.");
+    }
+    const chunks = Math.ceil(value.byteLength / BLOB_CHUNK_BYTES);
+    for (let chunk = 0; chunk < chunks; chunk += 1) {
+      const start = chunk * BLOB_CHUNK_BYTES;
+      await this.#workspace.writeFile(this.#operationPath(operationId, label, chunk), encodeHex(value.slice(start, start + BLOB_CHUNK_BYTES)));
+    }
+    return { bytes: value.byteLength, chunks };
+  }
+
+  async #readBlob(operationId: string, label: string, persisted: PersistedBlobV1): Promise<Uint8Array> {
+    const result = new Uint8Array(persisted.bytes);
+    for (let chunk = 0; chunk < persisted.chunks; chunk += 1) {
+      const start = chunk * BLOB_CHUNK_BYTES;
+      const expectedBytes = Math.min(BLOB_CHUNK_BYTES, persisted.bytes - start);
+      const contents = await this.#workspace.readFile(this.#operationPath(operationId, label, chunk));
+      if (contents === undefined) invalid("Stored LangGraph checkpoint blob is missing.");
+      result.set(decodeHex(contents, expectedBytes), start);
+    }
+    return result;
+  }
+
+  async #persistIndex(): Promise<void> {
+    const contents = JSON.stringify(this.#index);
+    if (new TextEncoder().encode(contents).byteLength > 2_000_000) {
+      throw new ResearchContractError("limit-exceeded", "Research LangGraph checkpoint index is too large.");
+    }
+    await this.#workspace.writeFile(INDEX_PATH, contents);
+  }
+
+  #nextOperationId(): string {
+    return `operation-${String(this.#index.operations.length + 1).padStart(6, "0")}`;
+  }
+
+  #assertAppendBytes(bytes: number): void {
+    if (this.#index.operations.length >= MAXIMUM_OPERATIONS || bytes > MAXIMUM_PAYLOAD_BYTES - this.#index.payloadBytes) {
+      throw new ResearchContractError("limit-exceeded", "Research LangGraph checkpoint budget is exhausted.");
+    }
+  }
+
+  async #append(operation: PersistedOperationV1, payloadBytes: number): Promise<void> {
+    this.#assertAppendBytes(payloadBytes);
+    this.#index = {
+      ...this.#index,
+      payloadBytes: this.#index.payloadBytes + payloadBytes,
+      operations: [...this.#index.operations, operation],
+    };
+    await this.#persistIndex();
+  }
+
+  async #hydrate(): Promise<void> {
+    if (this.#loaded) return;
+    const contents = await this.#workspace.readFile(INDEX_PATH);
+    if (contents === undefined) {
+      this.#loaded = true;
+      return;
+    }
+    const index = parseIndex(contents, this.#threadId);
+    this.storage = Object.create(null);
+    this.writes = Object.create(null);
+    this.storage[this.#threadId] = Object.create(null);
+    for (const entry of index.operations) {
+      if (entry.kind === "checkpoint") {
+        const namespace = this.storage[this.#threadId][entry.namespace] ??= Object.create(null);
+        namespace[entry.checkpointId] = [
+          await this.#readBlob(entry.id, "checkpoint", entry.checkpoint),
+          await this.#readBlob(entry.id, "metadata", entry.metadata),
+          entry.parentCheckpointId,
+        ];
+        continue;
+      }
+      const key = outerWriteKey(this.#threadId, entry.namespace, entry.checkpointId);
+      const writes = this.writes[key] ??= Object.create(null);
+      for (let index = 0; index < entry.writes.length; index += 1) {
+        const write = entry.writes[index]!;
+        writes[write.key] = [
+          write.taskId,
+          write.channel,
+          await this.#readBlob(entry.id, `write-${index}`, write.value),
+        ];
+      }
+    }
+    this.#index = index;
+    this.#loaded = true;
+  }
+
+  async #failWrite(error: unknown): Promise<never> {
+    this.#writeFailure = error;
+    throw error;
+  }
+
+  override async getTuple(config: RunnableConfig): Promise<CheckpointTuple | undefined> {
+    rejectForeignThread(config, this.#threadId);
+    return this.#exclusive(async () => {
+      await this.#hydrate();
+      return super.getTuple(config);
+    });
+  }
+
+  override async *list(config: RunnableConfig, options?: CheckpointListOptions): AsyncGenerator<CheckpointTuple> {
+    rejectForeignThread(config, this.#threadId);
+    if (options?.before) rejectForeignThread(options.before, this.#threadId);
+    const tuples = await this.#exclusive(async () => {
+      await this.#hydrate();
+      const collected: CheckpointTuple[] = [];
+      for await (const tuple of super.list(config, options)) collected.push(tuple);
+      return collected;
+    });
+    yield* tuples;
+  }
+
+  override async put(
+    config: RunnableConfig,
+    checkpoint: Checkpoint,
+    metadata: CheckpointMetadata,
+    _newVersions?: ChannelVersions,
+  ): Promise<RunnableConfig> {
+    rejectForeignThread(config, this.#threadId);
+    return this.#exclusive(async () => {
+      await this.#hydrate();
+      let saved: RunnableConfig;
+      try {
+        saved = await super.put(config, checkpoint, metadata);
+        const namespace = saved.configurable?.checkpoint_ns ?? "";
+        const checkpointId = saved.configurable?.checkpoint_id;
+        if (!checkpointId) invalid("LangGraph did not return a checkpoint ID.");
+        const stored = this.storage[this.#threadId]?.[namespace]?.[checkpointId];
+        if (!stored) invalid("LangGraph did not retain the checkpoint it returned.");
+        const operationId = this.#nextOperationId();
+        await this.#workspace.remove(`${ROOT_PATH}/${operationId}`);
+        const checkpointBlob = await this.#writeBlob(operationId, "checkpoint", stored[0]);
+        const metadataBlob = await this.#writeBlob(operationId, "metadata", stored[1]);
+        await this.#append({
+          id: operationId,
+          kind: "checkpoint",
+          namespace,
+          checkpointId,
+          ...(stored[2] ? { parentCheckpointId: stored[2] } : {}),
+          checkpoint: checkpointBlob,
+          metadata: metadataBlob,
+        }, checkpointBlob.bytes + metadataBlob.bytes);
+      } catch (error) {
+        return this.#failWrite(error);
+      }
+      return saved;
+    });
+  }
+
+  override async putWrites(config: RunnableConfig, writes: PendingWrite[], taskId: string): Promise<void> {
+    rejectForeignThread(config, this.#threadId);
+    return this.#exclusive(async () => {
+      await this.#hydrate();
+      try {
+        const namespace = config.configurable?.checkpoint_ns ?? "";
+        const checkpointId = config.configurable?.checkpoint_id;
+        if (!checkpointId) invalid("LangGraph pending writes are missing a checkpoint ID.");
+        const key = outerWriteKey(this.#threadId, namespace, checkpointId);
+        const before = new Set(Object.keys(this.writes[key] ?? {}));
+        await super.putWrites(config, writes, taskId);
+        const after = this.writes[key] ?? {};
+        const added = Object.entries(after).filter(([writeKey]) => !before.has(writeKey));
+        if (added.length === 0) return;
+        const operationId = this.#nextOperationId();
+        await this.#workspace.remove(`${ROOT_PATH}/${operationId}`);
+        const persistedWrites: PersistedWriteV1[] = [];
+        for (let index = 0; index < added.length; index += 1) {
+          const [writeKey, [storedTaskId, channel, value]] = added[index]!;
+          persistedWrites.push({
+            key: writeKey,
+            taskId: storedTaskId,
+            channel,
+            value: await this.#writeBlob(operationId, `write-${index}`, value),
+          });
+        }
+        await this.#append({ id: operationId, kind: "writes", namespace, checkpointId, writes: persistedWrites }, persistedWrites.reduce((total, write) => total + write.value.bytes, 0));
+      } catch (error) {
+        return this.#failWrite(error);
+      }
+    });
+  }
+
+  override async getDeltaChannelHistory(options: { config: RunnableConfig; channels: string[] }): Promise<Record<string, DeltaChannelHistory>> {
+    rejectForeignThread(options.config, this.#threadId);
+    return this.#exclusive(async () => {
+      await this.#hydrate();
+      return super.getDeltaChannelHistory(options);
+    });
+  }
+
+  override async deleteThread(threadId: string): Promise<void> {
+    if (threadId !== this.#threadId) {
+      throw new ResearchContractError("access-denied", "LangGraph checkpoint deletion is outside the research session thread.");
+    }
+    return this.#exclusive(async () => {
+      await this.#hydrate();
+      try {
+        await this.#workspace.remove(ROOT_PATH);
+        await super.deleteThread(threadId);
+        this.#index = { schema: SCHEMA, threadId: this.#threadId, payloadBytes: 0, operations: [] };
+        this.#loaded = true;
+      } catch (error) {
+        return this.#failWrite(error);
+      }
+    });
+  }
+}
