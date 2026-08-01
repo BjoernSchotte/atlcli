@@ -1,0 +1,11 @@
+{
+  "blockTypes": [
+    "heading", "paragraph", "smart-card", "code", "callout", "expand",
+    "list", "layout", "table", "image", "media-fallback", "blockquote",
+    "divider", "page-break", "orientation", "anchor", "unknown", "chart"
+  ],
+  "trustedHeadingOverride": true,
+  "rtlDocument": true,
+  "staticChartFallback": true,
+  "hostileValuesInert": true
+}

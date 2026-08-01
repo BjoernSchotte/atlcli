@@ -2,9 +2,12 @@
 import ExportDocument from "@atlcli/export-blocks-astro/components/ExportDocument.astro";
 import StaticChart from "@atlcli/export-blocks-astro/components/StaticChart.astro";
 import InteractiveChart from "@atlcli/export-blocks-astro/components/InteractiveChart.astro";
+import BrandedHeading from "../components/BrandedHeading.astro";
 import "@atlcli/export-blocks-astro/styles.css";
+import "../styles/fixture.css";
 import {
   EXPORT_BLOCKS_ASTRO_MINIMAL_CONTEXT_V1,
+  EXPORT_BLOCKS_ASTRO_MINIMAL_FIXTURE_V1,
   EXPORT_BLOCKS_ASTRO_ALL_FIELDS_FIXTURE_V1,
 } from "@atlcli/export-blocks-astro/fixtures";
 
@@ -39,6 +42,7 @@ const HOSTILE_RENDERER_BLOCKS_V1 = [{
     <ExportDocument
       blocks={EXPORT_BLOCKS_ASTRO_ALL_FIELDS_FIXTURE_V1}
       context={EXPORT_BLOCKS_ASTRO_MINIMAL_CONTEXT_V1}
+      overrides={{ heading: BrandedHeading }}
     />
     <StaticChart chart={{
       title: "Published pages",
@@ -51,5 +55,9 @@ const HOSTILE_RENDERER_BLOCKS_V1 = [{
       series: [{ name: "Pages", values: [12, 18, 21] }],
     }} />
     <ExportDocument blocks={HOSTILE_RENDERER_BLOCKS_V1} context={HOSTILE_RENDERER_CONTEXT_V1} />
+    <ExportDocument
+      blocks={EXPORT_BLOCKS_ASTRO_MINIMAL_FIXTURE_V1}
+      context={{ ...EXPORT_BLOCKS_ASTRO_MINIMAL_CONTEXT_V1, direction: "rtl" }}
+    />
   </body>
 </html>

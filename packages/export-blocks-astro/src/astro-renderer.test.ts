@@ -50,6 +50,8 @@ test("plain Astro consumer renders every normalized discriminator without raw HT
   expect(html).not.toContain("data:image/svg+xml");
   expect(html).not.toContain("opaque-datasource-secret");
   expect(html).not.toContain('accountId="private"');
+  expect(html).toContain("data-fixture-trusted-override");
+  expect(html).toContain('dir="rtl"');
   expect(html).toContain('data-atlcli-block="chart"');
   expect(html).toContain("Published pages");
   expect(html).toContain('role="img"');
@@ -59,4 +61,24 @@ test("plain Astro consumer renders every normalized discriminator without raw HT
   expect(asset).toBeDefined();
   expect((await stat(resolve(fixture, "dist/_astro", asset!))).size).toBeLessThanOrEqual(100 * 1024);
   expect(html).not.toContain("defineChart");
+  const stylesheet = html.match(/href="\/_astro\/([^\"]+\.css)"/)?.[1];
+  expect(stylesheet).toBeDefined();
+  const css = await readFile(resolve(fixture, "dist/_astro", stylesheet!), "utf8");
+  expect(css).toContain("--atlcli-content-foreground:#172b4d");
+  expect(css).toContain("@media print");
+  const golden = JSON.parse(await readFile(resolve(fixture, "semantic-golden.json"), "utf8")) as {
+    blockTypes: string[];
+    trustedHeadingOverride: boolean;
+    rtlDocument: boolean;
+    staticChartFallback: boolean;
+    hostileValuesInert: boolean;
+  };
+  const semantic = {
+    blockTypes: [...new Set(Array.from(html.matchAll(/data-atlcli-block="([^"]+)"/g), (match) => match[1]!))].sort(),
+    trustedHeadingOverride: html.includes("data-fixture-trusted-override"),
+    rtlDocument: html.includes('dir="rtl"'),
+    staticChartFallback: html.includes('data-atlcli-chart-island="enabled"') && html.includes('role="img"'),
+    hostileValuesInert: !html.includes("javascript:alert(1)") && !html.includes("data:image/svg+xml"),
+  };
+  expect(semantic).toEqual({ ...golden, blockTypes: [...golden.blockTypes].sort() });
 }, 20_000);

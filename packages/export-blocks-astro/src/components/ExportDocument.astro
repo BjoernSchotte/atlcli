@@ -1,16 +1,17 @@
 ---
 import type { ExportBlock } from "@atlcli/export-blocks";
 import Block from "./Block.astro";
-import type { AstroExportBlockRenderContextV1 } from "../index.js";
+import type { AstroExportBlockOverridesV1, AstroExportBlockRenderContextV1 } from "../index.js";
 
 interface Props {
   blocks: readonly ExportBlock[];
   context: AstroExportBlockRenderContextV1;
+  overrides?: AstroExportBlockOverridesV1;
 }
 
-const { blocks, context } = Astro.props;
+const { blocks, context, overrides } = Astro.props;
 ---
 
 <article data-atlcli-document data-atlcli-block-count={blocks.length} lang={context.locale} dir={context.direction}>
-  {blocks.map((block) => <Block block={block} context={context} />)}
+  {blocks.map((block) => <Block block={block} context={context} overrides={overrides} />)}
 </article>

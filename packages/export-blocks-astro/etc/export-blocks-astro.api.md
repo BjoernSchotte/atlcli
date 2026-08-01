@@ -30,6 +30,9 @@ export declare const ASTRO_EXPORT_BLOCKS_DATA_PREFIX_V1 = "data-atlcli-block";
 // export: astroExportAssetKeyV1
 export declare function astroExportAssetKeyV1(source: ImageSource): string;
 
+// export: AstroExportBlockOverrideComponentV1
+export type AstroExportBlockOverrideComponentV1 = (props: Record<string, unknown>) => unknown;
+
 // export: AstroExportBlockOverrideDescriptorV1
 export interface AstroExportBlockOverrideDescriptorV1 {
     id: string;
@@ -51,6 +54,9 @@ export interface AstroExportBlockOverrideSelectionV1 {
 // export: AstroExportBlockOverrideSlotV1
 export type AstroExportBlockOverrideSlotV1 = (typeof ASTRO_EXPORT_BLOCK_OVERRIDE_SLOTS_V1)[number];
 
+// export: AstroExportBlockOverridesV1
+export type AstroExportBlockOverridesV1 = Readonly<Partial<Record<AstroExportBlockOverrideSlotV1, AstroExportBlockOverrideComponentV1>>>;
+
 // export: AstroExportBlockRenderContextV1
 export interface AstroExportBlockRenderContextV1 {
     locale: string;
@@ -65,6 +71,7 @@ export interface AstroExportBlockRenderContextV1 {
 export interface AstroExportDocumentPropsV1 {
     blocks: readonly ExportBlock[];
     context: AstroExportBlockRenderContextV1;
+    overrides?: AstroExportBlockOverridesV1;
 }
 
 // export: AstroResolvedAssetV1

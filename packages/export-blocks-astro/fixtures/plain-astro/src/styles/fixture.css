@@ -1,0 +1,14 @@
+:root {
+  --atlcli-content-foreground: #172b4d;
+  --atlcli-content-muted: #5e6c84;
+  --atlcli-content-border: #0c66e4;
+  --atlcli-content-surface: #deebff;
+  --atlcli-content-code-background: #f1f2f4;
+}
+
+[data-fixture-trusted-override] { color: #0055cc; }
+
+@media print {
+  [data-atlcli-document] { color: #000; }
+  [data-atlcli-chart-island] { break-inside: avoid; }
+}

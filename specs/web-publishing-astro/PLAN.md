@@ -1548,7 +1548,7 @@ the active bundle is always complete and digest-valid.
       callbacks, or functions into the bundle.
 - [x] Prove CSP, no event-handler/script/CSS injection, unsafe URL rejection,
       SVG safety, and no opaque datasource/provenance serialization.
-- [ ] Build a packed plain-Astro consumer with the all-fields fixture, one
+- [x] Build a packed plain-Astro consumer with the all-fields fixture, one
       trusted component override, custom tokens, JS on/off, accessibility, RTL,
       print, hostile data, and deterministic semantic goldens.
 - [ ] Add negative dependency gates for Starlight, Confluence client/auth,

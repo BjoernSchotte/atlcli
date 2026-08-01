@@ -1,4 +1,5 @@
 import type { ExportBlock, ImageSource } from "@atlcli/export-blocks";
+import type { AstroExportBlockOverrideSlotV1 } from "./overrides.js";
 
 export interface AstroResolvedHeadingV1 {
   id: string;
@@ -31,10 +32,24 @@ export interface AstroExportBlockRenderContextV1 {
   notes: "inline" | "collect" | "omit-noncritical";
 }
 
+/**
+ * Structural component input deliberately avoids importing Astro internals in
+ * the public declaration build. Astro projects pass a statically imported
+ * `.astro` factory; source content can never provide one.
+ */
+export type AstroExportBlockOverrideComponentV1 = (props: Record<string, unknown>) => unknown;
+
+/** Components statically imported by trusted Astro project code at build time. */
+export type AstroExportBlockOverridesV1 = Readonly<Partial<Record<
+  AstroExportBlockOverrideSlotV1,
+  AstroExportBlockOverrideComponentV1
+>>>;
+
 /** Input contract reserved for the future exhaustive `ExportDocument.astro`. */
 export interface AstroExportDocumentPropsV1 {
   blocks: readonly ExportBlock[];
   context: AstroExportBlockRenderContextV1;
+  overrides?: AstroExportBlockOverridesV1;
 }
 
 /** Stable asset-context key; the source URL itself is never a rendering input. */

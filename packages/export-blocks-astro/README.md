@@ -21,6 +21,25 @@ Stable integration hooks are semantic HTML plus `data-atlcli-document`,
 `data-atlcli-asset-unresolved`. Generated class names and whitespace are not
 public compatibility contracts.
 
+## Trusted component overrides
+
+An Astro project may statically import a component and pass it through the
+`overrides` prop. This is a build-time integration surface, not source data:
+
+```astro
+---
+import ExportDocument from "@atlcli/export-blocks-astro/components/ExportDocument.astro";
+import BrandHeading from "./BrandHeading.astro";
+---
+
+<ExportDocument blocks={blocks} context={context} overrides={{ heading: BrandHeading }} />
+```
+
+Every named slot in `ASTRO_EXPORT_BLOCK_OVERRIDE_SLOTS_V1` receives its source
+block and render context. The project must resolve and validate its selected
+override descriptors before rendering; page data cannot name a slot, module,
+or component.
+
 ## Charts
 
 `StaticChart.astro` always produces an accessible SVG fallback. A trusted
