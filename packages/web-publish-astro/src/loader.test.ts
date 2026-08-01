@@ -45,6 +45,21 @@ test("keeps programmatic Astro runners and experimental collection storage out o
   expect(apiReport).not.toContain("ContentLayer");
 });
 
+test("stops on private build APIs or Confluence/network access in the loader boundary", async () => {
+  const [manifest, integration, loader] = await Promise.all([
+    readFile(new URL("../package.json", import.meta.url), "utf8"),
+    readFile(new URL("./integration.ts", import.meta.url), "utf8"),
+    readFile(new URL("./loader.ts", import.meta.url), "utf8"),
+  ]);
+  expect(manifest).not.toContain("@atlcli/confluence");
+  for (const source of [integration, loader]) {
+    expect(source).not.toContain("fetch(");
+    expect(source).not.toContain("@astrojs/");
+    expect(source).not.toContain("vite/dist");
+    expect(source).not.toContain("node_modules/.bun");
+  }
+});
+
 test("documents a verified-manifest-only future augmenter boundary without PWA paths", async () => {
   const readme = await readFile(new URL("../README.md", import.meta.url), "utf8");
   expect(readme).toContain("completed manifest");
