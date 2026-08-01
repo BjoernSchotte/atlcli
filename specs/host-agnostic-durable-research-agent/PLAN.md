@@ -2894,11 +2894,13 @@ starts the worker. The production CLI and direct packed-background boundaries
 also resolve `Confluence space KB` to the same exact-key binding while retaining
 the other product's lower-precedence default/current binding. Both boundaries
 also resolve one `Knowledge Hub` Confluence alias only after the current and
-archived catalog phases complete; duplicate natural-language names remain a
-typed stop before key storage or agent work. This advances, but does not close,
-the full CLI/packed resolution-matrix gate above: the remaining duplicate alias,
-archive, access, pagination, precedence, context, cross-tenant, and
-prompt-injection parity cases still require their own host-boundary fixtures.
+archived catalog phases complete, and return `archived_only` for a matching
+archived `LEGACY` space; the packed UI stops before key storage or agent work.
+Duplicate natural-language names remain a typed stop before key storage or
+agent work. This advances, but does not close, the full CLI/packed
+resolution-matrix gate above: the remaining duplicate alias, access,
+pagination, precedence, context, cross-tenant, and prompt-injection parity
+cases still require their own host-boundary fixtures.
 
 ### T4 — Add durable session, workspace, graph, and checkpoint stores
 

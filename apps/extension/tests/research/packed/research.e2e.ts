@@ -426,7 +426,9 @@ function backgroundBootstrap(): string {
               status: "current",
               currentActiveAlias: "Knowledge Hub",
             }]
-        : [];
+        : exactKey === "LEGACY"
+          ? [{ id: "203", key: "LEGACY", name: "Legacy Knowledge", status: "archived" }]
+          : [];
       harnessChannel.postMessage({
         kind: "scope-catalog-fetch",
         url: url.href,
@@ -1407,6 +1409,40 @@ test("resolves exact keys and a unique Confluence alias through the packed backg
   expect(referenceFetches).toHaveLength(1);
   expect(referenceFetches[0]?.url).toContain("/rest/api/3/project/DEMO");
   expect(events.some((event) => event.kind === "worker-start")).toBe(false);
+});
+
+test("stops an archived Confluence key before key storage or agent work", async () => {
+  await openResearchScreen(page);
+  await installEventCapture(page);
+  await page.getByTestId("research-current-context").uncheck();
+  await fillResearchForm(
+    page,
+    "Research Confluence space LEGACY.",
+    { includeKey: false, includeScope: false },
+  );
+  await page.getByTestId("research-run").click();
+
+  const clarification = page.getByTestId("research-scope-clarification-required");
+  await expect(clarification).toBeVisible();
+  await expect(clarification).toContainText("archived_only");
+  const events = await harnessEvents(page);
+  const spaceCatalogFetches = events.filter((event) =>
+    event.kind === "scope-catalog-fetch" && event.url?.includes("/wiki/api/v2/spaces")
+  );
+  expect(spaceCatalogFetches).toHaveLength(4);
+  expect(spaceCatalogFetches.filter((event) => event.url?.includes("keys=LEGACY"))).toHaveLength(2);
+  expect(spaceCatalogFetches.some((event) => event.url?.includes("status=archived"))).toBe(true);
+
+  const stored = await page.evaluate(async (key) => chrome.storage.session.get(key), RESEARCH_ANTHROPIC_SESSION_KEY);
+  expect(stored[RESEARCH_ANTHROPIC_SESSION_KEY]).toBeUndefined();
+  const root = await context.newCDPSession(page);
+  try {
+    await expect.poll(async () => (await researchWorkerTargets(root)).length).toBe(0);
+  } finally {
+    await root.detach();
+  }
+  expect(events.some((event) => event.kind === "worker-start")).toBe(false);
+  expect(events.some((event) => event.url?.includes("api.anthropic.com"))).toBe(false);
 });
 
 test("stops a packed natural-name scope ambiguity before key storage or agent work", async () => {

@@ -466,7 +466,7 @@ describe("research CLI one-shot contract", () => {
     expect(harness.stderr.join("")).toContain("confluence:ACCOUNT:cli_flag:locked");
   });
 
-  test("resolves exact keys and a unique Confluence alias through the production CLI catalog boundary", async () => {
+  test("resolves exact keys and aliases while stopping archived Confluence scope through the production CLI catalog boundary", async () => {
     const originalFetch = globalThis.fetch;
     const requests: string[] = [];
     globalThis.fetch = (async (input: RequestInfo | URL) => {
@@ -495,7 +495,9 @@ describe("research CLI one-shot contract", () => {
                   status: "current",
                   currentActiveAlias: "Knowledge Hub",
                 }]
-            : [],
+            : exactKey === "LEGACY"
+              ? [{ id: "203", key: "LEGACY", name: "Legacy Knowledge", status: "archived" }]
+              : [],
         });
       }
       return new Response("Not found", { status: 404 });
@@ -528,6 +530,13 @@ describe("research CLI one-shot contract", () => {
         profile,
         request: buildResearchRequest(
           parseResearchCliInput(["Research", '"Knowledge Hub"', "Confluence", "space."], {}),
+          profile,
+        ),
+      });
+      const archivedOutcome = await defaultResearchCliDependencies.resolveScope({
+        profile,
+        request: buildResearchRequest(
+          parseResearchCliInput(["Research", "Confluence", "space", "LEGACY."], {}),
           profile,
         ),
       });
@@ -572,10 +581,19 @@ describe("research CLI one-shot contract", () => {
           requiresUserChoice: false,
         }],
       });
+      expect(archivedOutcome).toMatchObject({
+        kind: "clarification_required",
+        clarification: {
+          reason: "archived_only",
+          candidateIds: ["research-scope-candidate:confluence-space-legacy"],
+        },
+        candidateChoices: [],
+      });
       expect(requests.filter((url) => url.includes("/rest/api/3/project/search"))).toHaveLength(1);
       expect(requests.filter((url) => url.includes("/rest/api/3/project/DEMO"))).toHaveLength(1);
-      expect(requests.filter((url) => url.includes("/wiki/api/v2/spaces"))).toHaveLength(6);
+      expect(requests.filter((url) => url.includes("/wiki/api/v2/spaces"))).toHaveLength(10);
       expect(requests.filter((url) => url.includes("keys=KB"))).toHaveLength(2);
+      expect(requests.filter((url) => url.includes("keys=LEGACY"))).toHaveLength(2);
     } finally {
       globalThis.fetch = originalFetch;
     }
