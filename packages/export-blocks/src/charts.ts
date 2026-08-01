@@ -146,15 +146,36 @@ export type ChartDiagnosticCodeV1 =
   | "unsupported-kind"
   | "malformed-data"
   | "invalid-option"
+  | "locale-parse"
   | "skipped-row"
   | "missing-attachment"
-  | "truncated";
+  | "truncated"
+  | "renderer-fallback";
 
 export interface ChartDiagnosticV1 {
   code: ChartDiagnosticCodeV1;
   message: string;
   parameter?: string;
   row?: number;
+}
+
+/** Validate diagnostics retained on a chart block after lenient source parsing. */
+export function validateChartDiagnosticsV1(diagnostics: readonly ChartDiagnosticV1[]): readonly ChartDiagnosticV1[] {
+  const codes = new Set<ChartDiagnosticCodeV1>([
+    "unsupported-kind", "malformed-data", "invalid-option", "locale-parse", "skipped-row",
+    "missing-attachment", "truncated", "renderer-fallback",
+  ]);
+  if (diagnostics.length > 256) throw new ChartValidationErrorV1("chart diagnostics exceed limits");
+  return diagnostics.map((diagnostic, index) => {
+    if (!diagnostic || !codes.has(diagnostic.code)) throw new ChartValidationErrorV1(`chart diagnostic ${index + 1} code is invalid`);
+    const message = boundedText(diagnostic.message, `chart diagnostic ${index + 1} message`);
+    if (!message) throw new ChartValidationErrorV1(`chart diagnostic ${index + 1} message must be non-empty`);
+    if (diagnostic.parameter !== undefined) boundedText(diagnostic.parameter, `chart diagnostic ${index + 1} parameter`);
+    if (diagnostic.row !== undefined && (!Number.isSafeInteger(diagnostic.row) || diagnostic.row < 1)) {
+      throw new ChartValidationErrorV1(`chart diagnostic ${index + 1} row is invalid`);
+    }
+    return { ...diagnostic, message };
+  });
 }
 
 export class ChartValidationErrorV1 extends Error {
@@ -186,6 +207,7 @@ export const CHART_LIMITS_V1 = Object.freeze({
   maxTasks: 5_000,
   maxTextLength: 10_000,
   maxPayloadBytes: 512 * 1024,
+  maxPaletteEntries: 64,
 });
 
 const HEX_COLOR = /^#[0-9a-f]{6}(?:[0-9a-f]{2})?$/iu;
@@ -224,9 +246,13 @@ function validateCategoryData(data: Extract<ChartDataV1, { mode: "categories" }>
   const labels = data.labels.map((label, index) => boundedText(label, `label ${index + 1}`));
   if (labels.some((label) => label.length === 0)) throw new ChartValidationErrorV1("chart labels must be non-empty");
   validateSeriesCount(data.series);
+  const ids = new Set<string>();
   for (const [seriesIndex, series] of data.series.entries()) {
-    boundedText(series.id, `series ${seriesIndex + 1} id`);
-    boundedText(series.label, `series ${seriesIndex + 1} label`);
+    const id = boundedText(series.id, `series ${seriesIndex + 1} id`);
+    const label = boundedText(series.label, `series ${seriesIndex + 1} label`);
+    if (!id || ids.has(id)) throw new ChartValidationErrorV1("chart series ids must be unique and non-empty");
+    if (!label) throw new ChartValidationErrorV1("chart series labels must be non-empty");
+    ids.add(id);
     if (series.values.length !== labels.length) {
       throw new ChartValidationErrorV1("category series must align with labels");
     }
@@ -239,10 +265,14 @@ function validateCategoryData(data: Extract<ChartDataV1, { mode: "categories" }>
 
 function validatePointData(data: Extract<ChartDataV1, { mode: "points" }>): void {
   validateSeriesCount(data.series);
+  const ids = new Set<string>();
   let points = 0;
   for (const [seriesIndex, series] of data.series.entries()) {
-    boundedText(series.id, `series ${seriesIndex + 1} id`);
-    boundedText(series.label, `series ${seriesIndex + 1} label`);
+    const id = boundedText(series.id, `series ${seriesIndex + 1} id`);
+    const label = boundedText(series.label, `series ${seriesIndex + 1} label`);
+    if (!id || ids.has(id)) throw new ChartValidationErrorV1("chart series ids must be unique and non-empty");
+    if (!label) throw new ChartValidationErrorV1("chart series labels must be non-empty");
+    ids.add(id);
     if (series.points.length === 0 || series.points.length > CHART_LIMITS_V1.maxRows) {
       throw new ChartValidationErrorV1("chart point rows exceed limits");
     }
@@ -347,6 +377,12 @@ export function validateChartModelV1(model: ChartModelV1): ChartModelV1 {
   validateAxis(model.axes?.y, "axes.y");
   for (const color of [model.style?.backgroundColor, model.style?.borderColor, ...(model.style?.colors ?? [])]) {
     if (color !== undefined && !HEX_COLOR.test(color)) throw new ChartValidationErrorV1("chart colors must be canonical hex values");
+  }
+  if ((model.style?.colors?.length ?? 0) > CHART_LIMITS_V1.maxPaletteEntries) {
+    throw new ChartValidationErrorV1("chart palette exceeds limits");
+  }
+  for (const [index, color] of (model.style?.colors ?? []).entries()) {
+    if (!color.trim()) throw new ChartValidationErrorV1(`chart palette entry ${index + 1} must be non-empty`);
   }
   if (model.data.mode === "categories") validateCategoryData(model.data);
   else if (model.data.mode === "points") validatePointData(model.data);

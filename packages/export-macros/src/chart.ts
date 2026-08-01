@@ -20,6 +20,7 @@ export function chartMacroRenderer(deps: { normalizeChartMacro: NormalizeChartMa
       const block: Extract<ExportBlock, { type: "chart" }> = {
         type: "chart",
         chart: result.model,
+        ...(result.diagnostics.length > 0 ? { diagnostics: [...result.diagnostics] } : {}),
         ...(m.adfExtension?.localId ? { localId: m.adfExtension.localId } : {}),
       };
       return { kind: "blocks", blocks: [block], notes };

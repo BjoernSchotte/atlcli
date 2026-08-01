@@ -53,6 +53,10 @@ function mountTanStackChartV1(root: HTMLElement): void {
 
   const mount = document.createElement("div");
   mount.setAttribute("data-atlcli-chart-runtime", root.dataset.atlcliChartCapability ?? "tanstack-v0.3");
+  mount.setAttribute("role", "group");
+  mount.setAttribute("aria-label", title);
+  mount.setAttribute("aria-description", `Interactive chart: ${title}. Use arrow keys to inspect data points.`);
+  mount.dataset.atlcliChartA11y = "keyboard-table";
   fallback.after(mount);
   const definition = defineChart({
     marks: [barY(rows, { x: "label", y: "value", color: "series", layout: group({ padding: 0.2 }) })],
@@ -68,9 +72,13 @@ function mountTanStackChartV1(root: HTMLElement): void {
       ariaLabel: title,
       ariaDescription: `Interactive chart: ${title}`,
       idPrefix: "atlcli-chart",
+      tabIndex: 0,
     });
-    fallback.hidden = true;
+    const staticSvg = fallback.querySelector<SVGSVGElement>("svg");
+    if (staticSvg) staticSvg.style.display = "none";
+    fallback.dataset.atlcliChartFallback = "static-hidden";
     root.dataset.atlcliChartIsland = "hydrated";
+    root.dataset.atlcliChartA11y = "keyboard-table-fallback";
   } catch {
     mount.remove();
   }

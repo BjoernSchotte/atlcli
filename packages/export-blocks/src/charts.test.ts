@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   CHART_KINDS_V1,
   chartModelDigestV1,
+  validateChartDiagnosticsV1,
   validateChartModelV1,
   type ChartKindV1,
   type ChartModelV1,
@@ -44,6 +45,27 @@ describe("ChartModelV1", () => {
       ...model("bar"),
       data: { mode: "categories", labels: ["A"], series: [{ id: "s", label: "S", values: [1, 2] }] },
     })).toThrow("align");
+    expect(() => validateChartModelV1({
+      ...model("bar"),
+      data: { mode: "categories", labels: ["A"], series: [
+        { id: "same", label: "S1", values: [1] },
+        { id: "same", label: "S2", values: [2] },
+      ] },
+    })).toThrow("unique");
+    expect(() => validateChartModelV1({
+      ...model("bar"),
+      data: { mode: "categories", labels: [""], series: [{ id: "s", label: "S", values: [1] }] },
+    })).toThrow("non-empty");
+    expect(() => validateChartModelV1({ ...model("bar"), style: { colors: Array.from({ length: 65 }, () => "#ffffff") } })).toThrow("palette");
+  });
+
+  test("validates bounded source diagnostics for lenient chart imports", () => {
+    expect(validateChartDiagnosticsV1([{ code: "skipped-row", message: "Row 3 was ignored", row: 3 }])).toEqual([
+      { code: "skipped-row", message: "Row 3 was ignored", row: 3 },
+    ]);
+    expect(validateChartDiagnosticsV1([{ code: "locale-parse", message: "Timestamp used the deterministic UTC fallback." }, { code: "renderer-fallback", message: "Static table fallback used." }])).toHaveLength(2);
+    expect(() => validateChartDiagnosticsV1([{ code: "not-a-code" as never, message: "bad" }])).toThrow("code");
+    expect(() => validateChartDiagnosticsV1([{ code: "skipped-row", message: "", row: 1 }])).toThrow("non-empty");
   });
 
   test("validates closed axis and presentation enums", () => {

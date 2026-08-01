@@ -66,6 +66,20 @@ test("plain Astro consumer renders every normalized discriminator without raw HT
   expect(html).toContain('data-atlcli-chart-island="enabled"');
   expect(html).toContain('data-atlcli-chart-renderer="tanstack-v0.3"');
   expect(html).toContain('data-atlcli-chart-capability="tanstack-v0.3/bar"');
+  expect(html).toContain('data-atlcli-chart-diagnostics="true"');
+  expect(html).toContain("One malformed source row was skipped.");
+  for (const kind of [
+    "pie", "bar", "line", "area", "xyArea", "xyBar", "xyLine", "xyStep",
+    "xyStepArea", "scatter", "timeSeries", "gantt",
+  ]) expect(html).toContain(`data-atlcli-chart-kind="${kind}"`);
+  expect(html).toContain('data-atlcli-chart-legend');
+  expect(html).toContain('data-atlcli-chart-kind="pie"');
+  expect(html).toContain('<path');
+  expect(html).toContain('<polyline');
+  expect(html).toContain('<polygon');
+  expect(html).toContain('data-atlcli-chart-kind="xyBar"');
+  expect(html).toContain('data-atlcli-chart-kind="gantt"');
+  expect(html).toContain('role="listitem"');
   const asset = html.match(/src="\/_astro\/([^\"]+)"/)?.[1];
   expect(asset).toBeDefined();
   expect((await stat(resolve(fixture, "dist/_astro", asset!))).size).toBeLessThanOrEqual(100 * 1024);

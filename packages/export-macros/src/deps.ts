@@ -5,7 +5,7 @@
  * any `@atlcli/*` package.
  */
 import type { ExportBlock, ExportNote } from "@atlcli/confluence";
-import type { ChartModelV1, ChartSourceKindV1, MacroParameter } from "@atlcli/export-blocks";
+import type { ChartDiagnosticV1, ChartModelV1, ChartSourceKindV1, MacroParameter } from "@atlcli/export-blocks";
 
 /** The `storageToBlocks` walker, injected. */
 export type StorageToBlocksDep = (
@@ -48,4 +48,4 @@ export type NormalizeChartMacroDep = (
   params: readonly MacroParameter[],
   body: readonly ExportBlock[],
   source: ChartSourceKindV1,
-) => { model?: ChartModelV1; diagnostics: readonly { code: string; message: string }[] };
+) => { model?: ChartModelV1; diagnostics: readonly ChartDiagnosticV1[] };

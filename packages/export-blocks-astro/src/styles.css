@@ -37,10 +37,25 @@
 
 [data-atlcli-block="chart"] { overflow-x: auto; }
 [data-atlcli-block="chart"] svg { display: block; width: 100%; min-height: 12rem; overflow: visible; }
+[data-atlcli-block="chart"] svg[hidden] { display: none; }
+[data-atlcli-chart-runtime] { min-height: 20rem; width: 100%; outline-offset: 0.2rem; }
+[data-atlcli-chart-runtime]:focus-visible { outline: 0.2rem solid currentColor; border-radius: 0.25rem; }
+[data-atlcli-chart-fallback-status] { border-inline-start: 0.2rem solid var(--atlcli-content-border); padding-inline-start: 0.75rem; color: var(--atlcli-content-muted); }
+[data-atlcli-chart-fallback="static-hidden"] [data-atlcli-chart-data] { margin-block-start: 0.75rem; }
 [data-atlcli-block="chart"] [data-atlcli-chart-data] { width: 100%; margin-block: 0.75rem; }
 [data-atlcli-block="chart"] [data-atlcli-chart-heading] { margin-block-end: 0.5rem; }
 [data-atlcli-block="chart"] [data-atlcli-chart-heading] :where(h3, p) { margin-block: 0.2rem; }
+.atlcli-chart-description { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.atlcli-chart-legend { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; list-style: none; margin: 0.5rem 0; padding: 0; }
+.atlcli-chart-legend li { display: inline-flex; align-items: center; gap: 0.35rem; }
+.atlcli-chart-legend li span { display: inline-block; width: 0.75rem; height: 0.75rem; border-radius: 0.15rem; border: 1px solid currentColor; }
+.atlcli-chart-diagnostics { border-inline-start: 0.2rem solid #d97706; padding: 0.5rem 0.75rem; margin-block: 0.5rem; background: color-mix(in srgb, #d97706 10%, transparent); }
 .atlcli-gantt { display: grid; gap: 0.5rem; min-width: 32rem; }
 .atlcli-gantt-row { display: grid; grid-template-columns: minmax(8rem, 18rem) minmax(10rem, 1fr) auto auto; gap: 0.5rem; align-items: center; }
-.atlcli-gantt-track { display: block; min-height: 0.8rem; border-radius: 999px; background: var(--atlcli-content-surface); overflow: hidden; }
-.atlcli-gantt-bar { display: block; min-height: 0.8rem; border-radius: inherit; }
+.atlcli-gantt-track { display: block; min-height: 0.8rem; border-radius: 999px; background: var(--atlcli-content-surface); overflow: hidden; position: relative; }
+.atlcli-gantt-bar { display: block; min-height: 0.8rem; border-radius: inherit; position: absolute; inset-block-start: 0; }
+.atlcli-gantt-bar > span { display: block; height: 100%; border-radius: inherit; background: color-mix(in srgb, white 35%, transparent); }
+
+@media (prefers-reduced-motion: reduce) {
+  [data-atlcli-chart-runtime] *, [data-atlcli-block="chart"] * { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; scroll-behavior: auto !important; }
+}

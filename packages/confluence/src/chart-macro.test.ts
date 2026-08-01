@@ -64,4 +64,64 @@ describe("Confluence Chart macro normalization", () => {
       },
     });
   });
+
+  test("normalizes every documented chart kind for the Data Center Storage adapter", () => {
+    const pointKinds = new Set(["xyArea", "xyBar", "xyLine", "xyStep", "xyStepArea", "scatter", "timeSeries"]);
+    const gantt = `<ac:rich-text-body><table><tbody><tr><th>Task</th><th>Start</th><th>End</th><th>Progress</th></tr><tr><td>Build</td><td>2026-01-01</td><td>2026-01-03</td><td>50%</td></tr></tbody></table></ac:rich-text-body>`;
+    for (const kind of ["pie", "bar", "line", "area", ...pointKinds, "gantt"]) {
+      const body = kind === "gantt"
+        ? gantt
+        : pointKinds.has(kind)
+          ? `<ac:rich-text-body><table><tbody><tr><th>X</th><th>Value</th></tr><tr><td>1</td><td>10</td></tr><tr><td>2</td><td>20</td></tr></tbody></table></ac:rich-text-body>`
+          : `<ac:rich-text-body><table><tbody><tr><th>Label</th><th>Value</th></tr><tr><td>A</td><td>10</td></tr><tr><td>B</td><td>20</td></tr></tbody></table></ac:rich-text-body>`;
+      const result = storageToBlocks(`<ac:structured-macro ac:name="chart"><ac:parameter ac:name="type">${kind}</ac:parameter>${body}</ac:structured-macro>`);
+      expect(result.blocks[0]).toMatchObject({ type: "chart", chart: { kind } });
+    }
+  });
+
+  test("normalizes every documented chart kind for the Cloud ADF adapter", () => {
+    const pointKinds = new Set(["xyArea", "xyBar", "xyLine", "xyStep", "xyStepArea", "scatter", "timeSeries"]);
+    for (const kind of ["pie", "bar", "line", "area", ...pointKinds, "gantt"]) {
+      const headers = kind === "gantt" ? ["Task", "Start", "End"] : pointKinds.has(kind) ? ["X", "Value"] : ["Label", "Value"];
+      const values = kind === "gantt" ? ["Build", "2026-01-01", "2026-01-03"] : pointKinds.has(kind) ? ["1", "10"] : ["A", "10"];
+      const content = [headers, values].map((row, rowIndex) => ({
+        type: "tableRow",
+        content: row.map((text) => ({
+          type: rowIndex === 0 ? "tableHeader" : "tableCell",
+          content: [{ type: "paragraph", content: [{ type: "text", text }] }],
+        })),
+      }));
+      const result = adfToBlocks(JSON.stringify({ version: 1, type: "doc", content: [{
+        type: "bodiedExtension",
+        attrs: { extensionType: "com.atlassian.confluence.macro.core", extensionKey: "chart", parameters: { type: kind } },
+        content: [{ type: "table", content }],
+      }] }));
+      expect(result.blocks[0]).toMatchObject({ type: "chart", chart: { kind } });
+    }
+  });
+
+  test("keeps unsupported and partial source diagnostics visible on the chart block", () => {
+    const unsupported = storageToBlocks(`<ac:structured-macro ac:name="chart"><ac:parameter ac:name="type">radar</ac:parameter></ac:structured-macro>`);
+    expect(unsupported.blocks[0]).toMatchObject({ type: "unknown", macroName: "chart" });
+    expect(unsupported.notes.some((note) => note.message.includes("Unsupported Confluence Chart macro type"))).toBeTrue();
+
+    const partial = storageToBlocks(storageChart("bar", `<ac:rich-text-body><table><tbody><tr><th>Month</th><th>Revenue</th></tr><tr><td>Jan</td><td>not-a-number</td></tr></tbody></table></ac:rich-text-body>`));
+    expect(partial.blocks[0]).toMatchObject({ type: "chart", diagnostics: [{ code: "skipped-row" }] });
+  });
+
+  test("makes leniency and approximated presentation choices explicit", () => {
+    const result = storageToBlocks(storageChart("bar", [
+      '<ac:parameter ac:name="3d">true</ac:parameter>',
+      '<ac:parameter ac:name="forgive">true</ac:parameter>',
+      '<ac:parameter ac:name="orientation">horizontal</ac:parameter>',
+    ].join("")));
+    expect(result.blocks[0]).toMatchObject({ type: "chart", chart: { orientation: "horizontal", threeD: true }, diagnostics: [{ code: "invalid-option" }] });
+
+    const strict = storageToBlocks(storageChart("bar", [
+      '<ac:parameter ac:name="forgive">false</ac:parameter>',
+      '<ac:rich-text-body><table><tbody><tr><th>Label</th><th>Value</th></tr><tr><td>A</td><td>bad</td></tr></tbody></table></ac:rich-text-body>',
+    ].join("")));
+    expect(strict.blocks[0]).toMatchObject({ type: "unknown", macroName: "chart" });
+    expect(strict.notes.some((note) => note.message.includes("strict"))).toBeTrue();
+  });
 });

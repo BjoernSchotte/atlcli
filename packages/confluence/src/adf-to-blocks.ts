@@ -1149,6 +1149,7 @@ function decodeExtension(node: AdfNode, ctx: DecodeContext, path: string): Expor
       return {
         type: "chart",
         chart: result.model,
+        ...(result.diagnostics.length > 0 ? { diagnostics: result.diagnostics } : {}),
         ...(optionalStringAttr(node, "localId") !== undefined
           ? { localId: optionalStringAttr(node, "localId") }
           : {}),

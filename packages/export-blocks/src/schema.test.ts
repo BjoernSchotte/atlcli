@@ -63,6 +63,7 @@ describe("ExportBlock runtime schema v1", () => {
           }],
         },
         source: { kind: "cloud-adf", macroName: "chart" },
+        diagnostics: [{ code: "skipped-row", message: "One row was ignored", row: 3 }],
       },
     } as const;
     expect(parseExportBlocksV1([chart])).toEqual([chart]);
@@ -70,6 +71,11 @@ describe("ExportBlock runtime schema v1", () => {
       ...chart,
       chart: { ...chart.chart, kind: "not-a-chart" },
     }])).toThrow("invalid ChartModel");
+    expect(parseExportBlocksV1([{
+      ...chart,
+      caption: { kind: "figure", content: [{ type: "text", text: "Published pages" }] },
+      localId: "chart-pages",
+    }])).toHaveLength(1);
   });
 
   test("rejects unknown variants, fields, non-finite values, and cycles", () => {

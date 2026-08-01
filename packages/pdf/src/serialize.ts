@@ -1912,12 +1912,16 @@ function chartRows(chart: import("@atlcli/export-blocks").ChartModelV1): string[
     ];
   }
   if (data.mode === "points") {
-    const count = Math.max(...data.series.map((series) => series.points.length));
+    const keys = [...new Set(data.series.flatMap((series) => series.points.map((point) => `${typeof point.x}:${String(point.x)}`)))];
+    const valueAt = (series: (typeof data.series)[number], key: string): string | number => {
+      const point = series.points.find((candidate) => `${typeof candidate.x}:${String(candidate.x)}` === key);
+      return point?.y ?? "";
+    };
     return [
       ["X", ...data.series.map((series) => series.label)],
-      ...Array.from({ length: count }, (_, index) => [
-        String(data.series[0]?.points[index]?.x ?? index + 1),
-        ...data.series.map((series) => String(series.points[index]?.y ?? "")),
+      ...keys.map((key) => [
+        key.slice(key.indexOf(":") + 1),
+        ...data.series.map((series) => String(valueAt(series, key))),
       ]),
     ];
   }

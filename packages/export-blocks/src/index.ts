@@ -890,6 +890,7 @@ export type ExportBlock =
       type: "chart";
       chart: import("./charts.js").ChartModelV1;
       caption?: Caption;
+      diagnostics?: import("./charts.js").ChartDiagnosticV1[];
       /** Stable ADF/Storage editor identity, retained as non-visual metadata. */
       localId?: string;
     }

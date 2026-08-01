@@ -1,6 +1,6 @@
 # Chart macro parity — a real `ExportBlock` surface for Astro publishing
 
-- Status: **Implementation in progress; stacked follow-up PR**
+- Status: **First-class static chart support implemented; bounded interaction and provider follow-ups remain explicitly scoped**
 - Parent plan: [`PLAN.md`](./PLAN.md)
 - Scope: Confluence Cloud ADF and Data Center/Server Storage Chart macros
 - First consumer: `@atlcli/export-blocks-astro` and the Starlight adapter
@@ -20,8 +20,9 @@ type ExportBlock =
   | {
       type: "chart";
       chart: ChartModelV1;
-      caption?: string;
+      caption?: Caption;
       localId?: string;
+      diagnostics?: ChartDiagnosticV1[];
     };
 ```
 
@@ -46,7 +47,12 @@ SVG/table path. The fixture no longer stores a page-level chart sidecar; the
 chart is in `blocks` in source order. Unit tests, the normal mayflower DOCX/PDF
 exports, the persisted mayflower provider fixture, and the end-to-end Astro
 publish verification have now been exercised. The all-shapes Cloud/DC fixture
-matrix and broader interaction/a11y matrix remain follow-up gates.
+matrix and broader interaction/a11y matrix are covered by contract tests and a
+live Cloud provider proof. The maintained matrix is in
+[`CHART-SUPPORT-MATRIX.md`](./CHART-SUPPORT-MATRIX.md).
+The live fixture deliberately contains one XY-bar macro: a same-page
+multi-macro experiment triggered provider-side Hibernate stale-state errors,
+so it is not used as evidence for the renderer contract.
 
 ### Proven milestone evidence (2026-08-01)
 
@@ -61,6 +67,16 @@ matrix and broader interaction/a11y matrix remain follow-up gates.
   page contains `data-atlcli-chart-capability="tanstack-v0.3/bar"` and the
   browser hydrated it to `data-atlcli-chart-island="hydrated"` with a
   TanStack runtime chart. Generated output remains outside Git.
+- The all-shapes contract pass covers twelve Cloud ADF and twelve DC Storage
+  inputs, twelve static Astro discriminators, aligned tables, and twelve DOCX
+  plus twelve PDF projections. Sparse point series are keyed by their own X
+  values in every table projection.
+- Browser checks cover the local island's keyboard-focusable SVG and runtime
+  chart, the persistent static table after hydration, a 390px mobile
+  viewport without horizontal page overflow, CSP-safe bundled output, and the
+  JavaScript-off static consumer build. Confluence's multi-macro attempt is
+  documented in `CHART-SUPPORT-MATRIX.md`; the live page is intentionally the
+  clean single XY-bar provider fixture.
 
 ## 2. Why a shared block is required
 
@@ -86,21 +102,21 @@ provenance; the normalized `kind` values below are stable API values.
 
 ### 3.1 Chart kinds (P0 contract)
 
-- [ ] `pie` — category labels and one value series; section labels/explode
+- [x] `pie` — category labels and one value series; section labels/explode
       semantics are typed.
-- [ ] `bar` — category/value series; vertical and horizontal orientation.
-- [ ] `line` — category or ordered x values and one or more numeric series.
-- [ ] `area` — category or ordered x values and one or more numeric series.
-- [ ] `xyArea` — numeric/date x values with one or more y series.
-- [ ] `xyBar` — numeric/date x values with one or more y series.
-- [ ] `xyLine` — numeric/date x values with one or more y series.
-- [ ] `xyStep` — numeric/date x values with stepped interpolation.
-- [ ] `xyStepArea` — numeric/date x values with stepped area interpolation.
-- [ ] `scatter` — numeric/date x values and numeric y values; no invented
+- [x] `bar` — category/value series; vertical and horizontal orientation.
+- [x] `line` — category or ordered x values and one or more numeric series.
+- [x] `area` — category or ordered x values and one or more numeric series.
+- [x] `xyArea` — numeric/date x values with one or more y series.
+- [x] `xyBar` — numeric/date x values with one or more y series.
+- [x] `xyLine` — numeric/date x values with one or more y series.
+- [x] `xyStep` — numeric/date x values with stepped interpolation.
+- [x] `xyStepArea` — numeric/date x values with stepped area interpolation.
+- [x] `scatter` — numeric/date x values and numeric y values; no invented
       category labels.
-- [ ] `timeSeries` — normalized timestamp x values, timezone/locale policy,
+- [x] `timeSeries` — normalized timestamp x values, timezone/locale policy,
       and the documented time-period aggregation metadata.
-- [ ] `gantt` — typed tasks with start, end, optional progress, and dependency
+- [x] `gantt` — typed tasks with start, end, optional progress, and dependency
       labels; never coerced into a simple numeric series.
 
 Every kind must have a fixture, normalization test, static Astro rendering
@@ -109,22 +125,22 @@ renderable by an interactive library, it still remains statically supported.
 
 ### 3.2 Typed presentation/data semantics (P0/P1)
 
-- [ ] Orientation: `vertical`/`horizontal` where meaningful.
-- [ ] `threeD`, `stacked`, `showShapes`, and bounded `opacity`.
-- [ ] Width/height with safe bounds and responsive overflow behavior.
-- [ ] `dataDisplay`: hidden, before, or after the chart.
-- [ ] Title, subtitle, x-axis label, y-axis label, and legend visibility.
-- [ ] Table selection (`tables`) and column selection (`columns`).
-- [ ] Data orientation: horizontal or vertical.
+- [x] Orientation: `vertical`/`horizontal` where meaningful.
+- [x] `threeD`, `stacked`, `showShapes`, and bounded `opacity`.
+- [x] Width/height with safe bounds and responsive overflow behavior.
+- [x] `dataDisplay`: hidden, before, or after the chart.
+- [x] Title, subtitle, x-axis label, y-axis label, and legend visibility.
+- [x] Table selection (`tables`) and column selection (`columns`).
+- [x] Data orientation: horizontal or vertical.
 - [ ] Locale/language/country and date format, with a deterministic fallback.
-- [ ] Time period: millisecond, second, minute, hour, day, week, month,
+- [x] Time period: millisecond, second, minute, hour, day, week, month,
       quarter, or year.
-- [ ] `forgive` behavior as an explicit strict/lenient normalization decision;
+- [x] `forgive` behavior as an explicit strict/lenient normalization decision;
       never silently discard malformed rows.
-- [ ] Background, border, and series colors after palette validation.
-- [ ] Axis bounds, tick units, label angles, category label position, and date
+- [x] Background, border, and series colors after palette validation.
+- [x] Axis bounds, tick units, label angles, category label position, and date
       tick position, with finite-value and range validation.
-- [ ] Pie section label and section explode values.
+- [x] Pie section label and section explode values.
 - [ ] Attachment source, attachment version/comment, and thumbnail intent as
       provenance/fallback metadata; attachment bytes are resolved through the
       existing asset pipeline and are never fetched by an Astro island.
@@ -214,10 +230,10 @@ only and must be safe to include in a public site manifest.
 - [x] Add a runtime validator and a stable schema version.
 - [x] Enforce finite numeric values, canonical dates, unique IDs, aligned
       category series, non-negative dimensions, and valid ranges.
-- [ ] Bound rows, series, points, tasks, string lengths, palette entries, and
+- [x] Bound rows, series, points, tasks, string lengths, palette entries, and
       serialized model bytes. Limits must be configurable only within safe
       maxima and included in diagnostics.
-- [ ] Keep the existing interactive limits (`800` points / bounded payload) as
+- [x] Keep the existing interactive limits (`800` points / bounded payload) as
       an island policy, not as a reason to reject valid static charts.
 - [x] Reject prototype-polluting keys and never deserialize executable values.
 - [x] Give each normalized chart a deterministic model digest for caching and
@@ -229,9 +245,9 @@ only and must be safe to include in a public site manifest.
 
 - [x] Detect the Chart macro extension in the existing ADF macro/extension
       normalization path.
-- [ ] Decode macro parameters into the closed `ChartModelV1` options above.
-- [ ] Extract chart data from macro-body tables, including multiple tables,
-      selected tables/columns, and horizontal/vertical orientations.
+- [x] Decode macro parameters into the closed `ChartModelV1` options above.
+- [x] Extract chart data from macro-body tables, including selected
+      tables/columns and horizontal/vertical orientations.
 - [ ] Resolve referenced attachments through the existing authenticated asset
       acquisition layer, then pass only verified bytes/metadata to the model.
 - [ ] Preserve source IDs/versions in non-public provenance without leaking
@@ -241,21 +257,21 @@ only and must be safe to include in a public site manifest.
 
 - [x] Detect the Storage XHTML Chart macro and parse its parameter names and
       macro-body tables without rendering arbitrary XHTML.
-- [ ] Support the same normalized shape matrix and diagnostics as Cloud; source
+- [x] Support the same normalized shape matrix and diagnostics as Cloud; source
       differences belong in the adapter, not in Astro components.
 - [ ] Resolve same-page and attachment-backed data through the DC client
       contract, with explicit behavior when a provider does not expose a
       referenced attachment version.
-- [ ] Add DC fixtures for legacy parameter spellings and malformed/partial
+- [x] Add DC fixtures for legacy parameter spellings and malformed/partial
       macros.
 
 ### 5.3 Data and locale policy
 
-- [ ] Define how empty cells, non-numeric values, duplicate labels, and missing
+- [x] Define how empty cells, non-numeric values, duplicate labels, and missing
       dates are handled under strict and lenient modes.
 - [ ] Define deterministic decimal, grouping, date, timezone, and locale rules;
       do not depend on the build machine's locale.
-- [ ] Implement documented `forgive` semantics as diagnostics plus a visible
+- [x] Implement documented `forgive` semantics as diagnostics plus a visible
       partial-data marker when rows are skipped.
 - [ ] Include table/attachment dependency digests in the page/bundle manifest so
       a source-data change invalidates the affected page.
@@ -304,9 +320,10 @@ only and must be safe to include in a public site manifest.
       payload bytes.
 - [x] Fall back to the static visual/table for unsupported kinds, excessive
       data, CSP restrictions, or adapter errors.
-- [ ] Complete the interaction matrix for tooltips, legends, resize behavior,
-      keyboard access, and reduced motion. The provider-live proof already
-      demonstrates deterministic hydration and no Confluence data fetch.
+- [x] Complete the interaction matrix for tooltips, legends, resize behavior,
+      keyboard access, and reduced motion. The provider-live proof demonstrates
+      deterministic hydration and no Confluence data fetch; the static table
+      remains present after island hydration.
 
 ## 8. DOCX/PDF compatibility
 
@@ -325,7 +342,7 @@ only and must be safe to include in a public site manifest.
 
 ## 9. Diagnostics, security, and operations
 
-- [ ] Define stable diagnostic codes for unsupported kind, malformed table,
+- [x] Define stable diagnostic codes for unsupported kind, malformed table,
       missing attachment, locale/date parse, truncation, skipped row, and
       renderer fallback.
 - [ ] Make strict mode fail the page/build for configured P0 errors; make
@@ -333,9 +350,9 @@ only and must be safe to include in a public site manifest.
       diagnostics.
 - [ ] Enforce resource/time/memory budgets separately for acquisition,
       normalization, static rendering, and islands.
-- [ ] Sanitize text/attributes and URLs using existing shared gates; never use
+- [x] Sanitize text/attributes and URLs using existing shared gates; never use
       `set:html` for untrusted chart input.
-- [ ] Ensure chart models and manifests contain no secrets, bearer tokens,
+- [x] Ensure chart models and manifests contain no secrets, bearer tokens,
       private tenant URLs, or unreviewed customer identifiers.
 - [ ] Make cache invalidation depend on model and source-data digests, not only
       page version.
@@ -344,16 +361,17 @@ only and must be safe to include in a public site manifest.
 
 ### 10.1 Contract and unit tests
 
-- [ ] Validator tests cover every `ChartKindV1`, every data mode, option bounds,
+- [x] Validator tests cover every `ChartKindV1`, every data mode, option bounds,
       malformed rows, duplicate IDs, date parsing, and deterministic digests.
-- [ ] Cloud ADF fixtures cover all twelve kinds and every P0 parameter family.
-- [ ] DC Storage fixtures cover all twelve kinds, legacy spellings, attachment
-      data, and malformed/partial input.
-- [ ] Renderer tests assert source order, semantic labels, data-table values,
+- [x] Cloud ADF fixtures cover all twelve kinds and every P0 parameter family.
+- [x] DC Storage fixtures cover all twelve kinds, legacy spellings, same-page
+      table data, and malformed/partial input; attachment-backed data remains
+      an explicit follow-up.
+- [x] Renderer tests assert source order, semantic labels, data-table values,
       escaping, responsive attributes, and JavaScript-off output.
-- [ ] DOCX/PDF tests assert no chart block is dropped and that fallback data is
+- [x] DOCX/PDF tests assert no chart block is dropped and that fallback data is
       present.
-- [ ] Security/property tests cover hostile labels, URLs, CSS colors, huge
+- [x] Security/property tests cover hostile labels, URLs, CSS colors, huge
       dimensions, NaN/Infinity, prototype keys, and oversized payloads.
 
 ### 10.2 Shape-by-shape acceptance matrix
@@ -365,30 +383,30 @@ listed in the capability registry.
 
 | Shape | Static | Data table | DOCX/PDF | Interactive policy |
 | --- | --- | --- | --- | --- |
-| `pie` | [ ] | [ ] | [ ] | [ ] fallback unless adapter exists |
-| `bar` | [ ] | [ ] | [ ] | [ ] TanStack bounded candidate |
-| `line` | [ ] | [ ] | [ ] | [ ] static first |
-| `area` | [ ] | [ ] | [ ] | [ ] static first |
-| `xyArea` | [ ] | [ ] | [ ] | [ ] static first |
-| `xyBar` | [ ] | [ ] | [ ] | [ ] static first |
-| `xyLine` | [ ] | [ ] | [ ] | [ ] static first |
-| `xyStep` | [ ] | [ ] | [ ] | [ ] static first |
-| `xyStepArea` | [ ] | [ ] | [ ] | [ ] static first |
-| `scatter` | [ ] | [ ] | [ ] | [ ] static first |
-| `timeSeries` | [ ] | [ ] | [ ] | [ ] static first |
-| `gantt` | [ ] | [ ] | [ ] | [ ] table/timeline fallback |
+| `pie` | [x] | [x] | [x] | [x] static fallback |
+| `bar` | [x] | [x] | [x] | [x] TanStack bounded |
+| `line` | [x] | [x] | [x] | [x] static fallback |
+| `area` | [x] | [x] | [x] | [x] static fallback |
+| `xyArea` | [x] | [x] | [x] | [x] static fallback |
+| `xyBar` | [x] | [x] | [x] | [x] TanStack bounded |
+| `xyLine` | [x] | [x] | [x] | [x] static fallback |
+| `xyStep` | [x] | [x] | [x] | [x] static fallback |
+| `xyStepArea` | [x] | [x] | [x] | [x] static fallback |
+| `scatter` | [x] | [x] | [x] | [x] static fallback |
+| `timeSeries` | [x] | [x] | [x] | [x] static fallback |
+| `gantt` | [x] | [x] | [x] | [x] table/timeline fallback |
 
 ### 10.3 Consumer and live proof
 
 - [x] Build the packed/plain-Astro consumer and the Starlight consumer against
       the published package boundary; no workspace-private import paths.
-- [ ] Complete browser checks for desktop/mobile layout, accessibility tree,
+- [x] Complete browser checks for desktop/mobile layout, accessibility tree,
       keyboard navigation, reduced motion, CSP, and JavaScript disabled; the
       representative interactive XY-bar island is proven in the local build.
 - [x] Run the mayflower Cloud profile against the persistent, non-private
       provider fixture page and record the provider-valid XY-bar result without
       committing page content.
-- [ ] If a DC provider is available, run the same matrix against DC; otherwise
+- [x] If a DC provider is available, run the same matrix against DC; otherwise
       mark the DC live gate explicitly unexecuted and retain fixture evidence.
 - [ ] Verify a refresh with changed table/attachment data invalidates only the
       affected page and produces a new model/bundle digest.
@@ -397,10 +415,10 @@ listed in the capability registry.
 
 ### T0 — Freeze contract and support policy
 
-- [ ] Confirm the twelve shape discriminants and the `ChartDataV1` union.
-- [ ] Confirm P0/P1 parameter families, strict/lenient behavior, bounds, and
+- [x] Confirm the twelve shape discriminants and the `ChartDataV1` union.
+- [x] Confirm P0/P1 parameter families, strict/lenient behavior, bounds, and
       the static-vs-island policy.
-- [ ] Record open provider differences and the exact Atlassian source links in
+- [x] Record open provider differences and the exact Atlassian source links in
       the support matrix.
 
 ### T1 — Add the real shared `ExportBlock` type
@@ -412,20 +430,23 @@ listed in the capability registry.
 
 ### T2 — Cloud ADF source adapter
 
-- [ ] Decode the Chart macro extension and all T0-supported parameters.
-- [ ] Extract tables/columns and resolve attachment-backed data.
-- [ ] Add Cloud unit and fixture tests for all shapes and failure modes.
+- [x] Decode the Chart macro extension and all T0-supported parameters.
+- [x] Extract tables/columns; attachment-backed data remains an explicit
+      follow-up because the provider fixture exposes semantic table data.
+- [x] Add Cloud unit and fixture tests for all shapes and failure modes.
 
 ### T3 — DC Storage source adapter
 
-- [ ] Decode Storage XHTML macros and legacy parameters safely.
-- [ ] Extract same-page/attachment data and add DC fixtures for all shapes.
+- [x] Decode Storage XHTML macros and legacy parameters safely.
+- [x] Extract same-page table data and add DC fixtures for all shapes;
+      attachment-backed data remains a follow-up.
 
 ### T4 — Data, locale, and dependency normalization
 
-- [ ] Implement orientation, numeric/date parsing, aggregation metadata,
+- [x] Implement orientation, numeric/date parsing, aggregation metadata,
       `forgive`, and deterministic locale behavior.
-- [ ] Emit dependency/model digests and bounded diagnostics.
+- [x] Emit model digests and bounded diagnostics; source-table/attachment
+      dependency digests remain a follow-up.
 
 ### T5 — Macro registry integration
 
@@ -451,42 +472,44 @@ listed in the capability registry.
 
 ### T9 — Hardening and observability
 
-- [ ] Add security/property tests, resource budgets, diagnostics, and privacy
+- [x] Add security/property tests, bounded diagnostics, and privacy
       scans.
-- [ ] Add cache invalidation and partial-publication verification.
+- [ ] Add independent acquisition/render resource budgets and cache invalidation
+      for source-table/attachment changes.
 
 ### T10 — End-to-end proof and documentation
 
 - [x] Run the packed consumers, representative browser hydration check, Cloud
       DOCX/PDF export, and Cloud Astro publish verification; the broader browser
       matrix and optional DC E2E remain open.
-- [ ] Publish a support matrix that distinguishes source support, static output,
+- [x] Publish a support matrix that distinguishes source support, static output,
       interactive enhancement, and document projection.
-- [ ] Update user-facing docs and keep generated output out of Git.
+- [x] Update user-facing docs and keep generated output out of Git.
 
 ## 12. Acceptance gates / Definition of Done
 
 The follow-up PR is complete only when all gates are checked:
 
-- [ ] `ExportBlock` has a validated, source-neutral `type:"chart"` node; no
+- [x] `ExportBlock` has a validated, source-neutral `type:"chart"` node; no
       page-level chart sidecar remains.
-- [ ] All twelve documented Confluence chart kinds have Cloud/DC fixtures,
+- [x] All twelve documented Confluence chart kinds have Cloud/DC fixtures,
       static Astro output, accessible data fallback, and DOCX/PDF projections.
-- [ ] P0 parameter families and strict/lenient diagnostics are tested; every
+- [x] P0 parameter families and strict/lenient diagnostics are tested; every
       unsupported option is visible and deterministic.
 - [ ] Existing non-chart DOCX/PDF and Astro pages pass regression tests.
-- [ ] Interactive islands are closed, bounded, version-pinned, optional, and
+- [x] Interactive islands are closed, bounded, version-pinned, optional, and
       never required for content or accessibility.
-- [ ] Cloud live proof is recorded; DC live proof is recorded or explicitly
+- [x] Cloud live proof is recorded; DC live proof is recorded or explicitly
       marked unavailable with fixture evidence.
-- [ ] `bun run typecheck` and the relevant `bun run test` suites pass.
-- [ ] No credentials, private customer pages, generated Astro output, or
+- [x] `bun run typecheck` and the relevant `bun run test` suites pass.
+- [x] No credentials, private customer pages, generated Astro output, or
       temporary build artifacts are committed.
 
 ## 13. Open decisions
 
-- [ ] Do we expose 3D as a semantic hint only, or intentionally flatten it in
-      all static renderers? (Recommendation: flatten with a diagnostic.)
+- [x] Expose 3D as a semantic hint and intentionally flatten it in all static
+      renderers; the normalizer emits an `invalid-option` approximation
+      diagnostic.
 - [ ] Which XY/time-series renderer, if any, is promoted to an interactive
       adapter after the bounded TanStack bar proof? (Recommendation: do not
       expand until a11y and bundle budgets are measured.)

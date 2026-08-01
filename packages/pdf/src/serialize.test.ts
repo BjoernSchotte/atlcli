@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import type { ExportBlock, ExportNode, ExportNote } from "@atlcli/confluence";
+import { CHART_KINDS_V1 } from "@atlcli/export-blocks";
 import {
   CONFLUENCE_LEGACY_EMOJI_PROJECTIONS,
   composeChapters,
@@ -38,6 +39,38 @@ it("serializes a chart ExportBlock as a deterministic Typst data table", async (
   expect(bundle.main).toContain("#table(columns: 2");
   expect(bundle.main).toContain('[#text("Revenue")]');
   expect(bundle.main).not.toContain(', #text("Revenue")');
+});
+
+it("keeps sparse XY series aligned by their own x keys", async () => {
+  const prepared = await preparePdfDocument([{
+    type: "chart",
+    chart: {
+      schema: "atlcli.chart/1", kind: "xyLine", title: "Sparse",
+      data: { mode: "points", series: [
+        { id: "a", label: "A", points: [{ x: 1, y: 10 }, { x: 2, y: 20 }] },
+        { id: "b", label: "B", points: [{ x: 2, y: 30 }] },
+      ] },
+      source: { kind: "cloud-adf", macroName: "chart" },
+    },
+  }], { resolve: async () => { throw new Error("unused"); } });
+  const bundle = serializePdfDocument(prepared, { metadata });
+  expect(bundle.main).toContain('#text("2")');
+  expect(bundle.main).toContain('#text("20")');
+  expect(bundle.main).toContain('#text("30")');
+});
+
+it("projects every normalized chart shape into a non-empty PDF table", async () => {
+  const blocks: ExportBlock[] = CHART_KINDS_V1.map((kind) => ({
+    type: "chart" as const,
+    chart: kind === "gantt"
+      ? { schema: "atlcli.chart/1" as const, kind, title: `shape-${kind}`, data: { mode: "gantt" as const, tasks: [{ id: "t", label: "Task", start: "2026-01-01", end: "2026-01-02" }] }, source: { kind: "cloud-adf" as const, macroName: "chart" as const } }
+      : ["xyArea", "xyBar", "xyLine", "xyStep", "xyStepArea", "scatter", "timeSeries"].includes(kind)
+        ? { schema: "atlcli.chart/1" as const, kind, title: `shape-${kind}`, data: { mode: "points" as const, series: [{ id: "s", label: "Value", points: [{ x: kind === "timeSeries" ? "2026-01-01" : 1, y: 2 }] }] }, source: { kind: "cloud-adf" as const, macroName: "chart" as const } }
+        : { schema: "atlcli.chart/1" as const, kind, title: `shape-${kind}`, data: { mode: "categories" as const, labels: ["A"], series: [{ id: "s", label: "Value", values: [2] }] }, source: { kind: "cloud-adf" as const, macroName: "chart" as const } },
+  }));
+  const prepared = await preparePdfDocument(blocks, { resolve: async () => { throw new Error("unused"); } });
+  const bundle = serializePdfDocument(prepared, { metadata });
+  for (const kind of CHART_KINDS_V1) expect(bundle.main).toContain(`shape-${kind}`);
 });
 
 function pngBytes(): Uint8Array {

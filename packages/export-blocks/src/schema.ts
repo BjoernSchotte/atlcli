@@ -4,7 +4,7 @@ import {
   type ExportNote,
   type InlineNode,
 } from "./index.js";
-import { validateChartModelV1, type ChartModelV1 } from "./charts.js";
+import { validateChartDiagnosticsV1, validateChartModelV1, type ChartDiagnosticV1, type ChartModelV1 } from "./charts.js";
 
 export const EXPORT_BLOCK_MODEL_SCHEMA_V1 = "atlcli.export-blocks/1" as const;
 
@@ -341,12 +341,22 @@ function block(value: unknown, path: string): void {
       optionalInlineContent(node, "caption", path);
       return;
     case "chart":
-      keys(node, path, ["type", "chart"]);
+      keys(node, path, ["type", "chart", "caption", "localId", "diagnostics"]);
       record(node.chart, `${path}.chart`);
       try {
         validateChartModelV1(node.chart as ChartModelV1);
       } catch (error) {
         fail(`${path}.chart`, `invalid ChartModel: ${error instanceof Error ? error.message : "unknown error"}`);
+      }
+      optionalInlineContent(node, "caption", path);
+      optional(node, "localId", path, string);
+      if (node.diagnostics !== undefined) {
+        array(node.diagnostics, `${path}.diagnostics`);
+        try {
+          validateChartDiagnosticsV1(node.diagnostics as ChartDiagnosticV1[]);
+        } catch (error) {
+          fail(`${path}.diagnostics`, `invalid chart diagnostics: ${error instanceof Error ? error.message : "unknown error"}`);
+        }
       }
       return;
     case "image":

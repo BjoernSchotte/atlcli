@@ -1410,6 +1410,7 @@ function walkMacro(el: XmlElement, ctx: WalkCtx): ExportBlock[] {
       return [{
         type: "chart",
         chart: result.model,
+        ...(result.diagnostics.length > 0 ? { diagnostics: result.diagnostics } : {}),
         ...(storageLocalId(el) !== undefined ? { localId: storageLocalId(el) } : {}),
       }];
     }

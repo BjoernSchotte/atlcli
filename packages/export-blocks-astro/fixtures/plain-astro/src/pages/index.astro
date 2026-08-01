@@ -9,6 +9,7 @@ import {
   EXPORT_BLOCKS_ASTRO_MINIMAL_CONTEXT_V1,
   EXPORT_BLOCKS_ASTRO_MINIMAL_FIXTURE_V1,
   EXPORT_BLOCKS_ASTRO_ALL_FIELDS_FIXTURE_V1,
+  EXPORT_BLOCKS_ASTRO_CHART_SHAPES_FIXTURE_V1,
 } from "@atlcli/export-blocks-astro/fixtures";
 
 const normalizedChartBlock = EXPORT_BLOCKS_ASTRO_ALL_FIELDS_FIXTURE_V1.find((block) => block.type === "chart");
@@ -51,6 +52,10 @@ const HOSTILE_RENDERER_BLOCKS_V1 = [{
       blocks={EXPORT_BLOCKS_ASTRO_ALL_FIELDS_FIXTURE_V1}
       context={EXPORT_BLOCKS_ASTRO_MINIMAL_CONTEXT_V1}
       overrides={{ heading: BrandedHeading }}
+    />
+    <ExportDocument
+      blocks={EXPORT_BLOCKS_ASTRO_CHART_SHAPES_FIXTURE_V1}
+      context={EXPORT_BLOCKS_ASTRO_MINIMAL_CONTEXT_V1}
     />
     <StaticChart chart={{
       title: "Published pages",
