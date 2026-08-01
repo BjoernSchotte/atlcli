@@ -16,6 +16,14 @@ export interface InitializeResearchSessionTurnInputV1 {
   at: string;
 }
 
+export interface RecoverResearchSessionForResumeInputV1 {
+  store: ResearchSessionStoreV1;
+  sessionId: string;
+  ownerId: string;
+  leaseExpiresAt: string;
+  at: string;
+}
+
 /**
  * The durable execution gate. It stores the turn, brief, and exact proposed
  * graph before any host may construct a workspace, provider, model, or agent.
@@ -55,6 +63,38 @@ export async function initializeResearchSessionTurnV1(
     graphRevision: staged.revision,
     expectedRevision: current.revision,
     expectedLeaseEpoch: current.lease.epoch,
+    at: input.at,
+  })).session;
+}
+
+/**
+ * Claim an explicitly durable wait after its former owner has released the
+ * lease, then make its active turn runnable again. The caller must still
+ * enforce its host-specific retry policy before dispatching any stored work.
+ */
+export async function recoverResearchSessionForResumeV1(
+  input: RecoverResearchSessionForResumeInputV1,
+): Promise<ResearchSessionV1> {
+  const current = await input.store.read(input.sessionId);
+  if (!current) throw new Error("Research session was not found.");
+  if (!current.activeTurnId || !["paused", "waiting_authentication", "waiting_quota"].includes(current.status)) {
+    throw new Error("Research session is not in a resumable durable wait state.");
+  }
+  if (Date.parse(input.at) <= Date.parse(current.lease.expiresAt)) {
+    throw new Error("Research session lease has not been released or expired.");
+  }
+  const recovered = await input.store.commit(input.sessionId, {
+    kind: "recover",
+    ownerId: input.ownerId,
+    expiresAt: input.leaseExpiresAt,
+    expectedRevision: current.revision,
+    expectedLeaseEpoch: current.lease.epoch,
+    at: input.at,
+  });
+  return (await input.store.commit(input.sessionId, {
+    kind: "resume",
+    expectedRevision: recovered.session.revision,
+    expectedLeaseEpoch: recovered.session.lease.epoch,
     at: input.at,
   })).session;
 }

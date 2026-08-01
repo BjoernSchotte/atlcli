@@ -8,11 +8,16 @@ import {
   RESEARCH_SCOPE_PREFLIGHT_OUTCOME_SCHEMA_V1,
   ResearchContractError,
   InMemoryResearchSessionStoreV1,
+  createResearchSessionV1,
   createMemoryResearchWorkspace,
+  initializeResearchSessionTurnV1,
   prepareResearchBriefPreflightV1,
   type ResearchReportV1,
 } from "@atlcli/research";
-import { createStandardResearchBriefV1 } from "@atlcli/research/graph";
+import {
+  composeResearchGraphV1,
+  createStandardResearchBriefV1,
+} from "@atlcli/research/graph";
 import {
   buildResearchRequest,
   defaultResearchCliDependencies,
@@ -194,6 +199,63 @@ function cliHarness(options: {
     runInputs,
     triggerInterrupt: () => interrupt?.(),
   };
+}
+
+async function seedAuthenticationWaitingSession(harness: CliHarness): Promise<{
+  sessionId: string;
+  turnId: string;
+}> {
+  const sessionId = "research-session:resume-test";
+  const turnId = "research-turn:resume-test";
+  const request = buildResearchRequest({
+    question: "Find the stored Jira and Confluence relationship.",
+    projectKeys: ["ATLCLI"],
+    spaceKeys: ["DOCSY"],
+    maxRunMinutes: 5,
+    keepSession: false,
+    planOnly: false,
+    policy: {
+      schema: "atlcli.research-one-shot-policy/v1",
+      requestedEffort: "lookup",
+      requestedPlanApproval: "automatic",
+      scopeExpansionMode: "ask",
+      requestedReconciliation: "off",
+    },
+  }, profile);
+  const briefOutcome = harness.dependencies.prepareBrief({
+    request,
+    policy: {
+      schema: "atlcli.research-one-shot-policy/v1",
+      requestedEffort: "lookup",
+      requestedPlanApproval: "automatic",
+      scopeExpansionMode: "ask",
+      requestedReconciliation: "off",
+    },
+    asOf: "2026-08-01T12:00:00.000Z",
+    sessionId,
+    turnId,
+  });
+  if (briefOutcome.kind !== "ready") throw new Error("Expected a resumable test brief.");
+  const initialized = await initializeResearchSessionTurnV1({
+    store: harness.durableStore,
+    session: createResearchSessionV1({
+      sessionId,
+      ownerId: "owner:prior-cli",
+      createdAt: "2026-08-01T12:00:00.000Z",
+      leaseExpiresAt: "2026-08-01T12:05:00.000Z",
+    }),
+    brief: briefOutcome.brief,
+    graph: composeResearchGraphV1(briefOutcome.brief),
+    approveAutomatically: true,
+    at: "2026-08-01T12:00:01.000Z",
+  });
+  await harness.durableStore.commit(sessionId, {
+    kind: "wait_authentication",
+    expectedRevision: initialized.revision,
+    expectedLeaseEpoch: initialized.lease.epoch,
+    at: "2026-08-01T12:00:02.000Z",
+  });
+  return { sessionId, turnId };
 }
 
 const temporaryRoots: string[] = [];
@@ -383,8 +445,13 @@ describe("research CLI one-shot contract", () => {
     ]);
   });
 
-  test("accepts one-shot policy flags, plan-only, and keeps resume reserved", () => {
-    expect(() => parseResearchCliInput(["question"], { resume: "r1" })).toThrow("reserved for durable sessions");
+  test("accepts one-shot policy flags, plan-only, and a bounded authentication resume", () => {
+    expect(parseResearchCliInput([], { resume: "research-session:resume-test" }))
+      .toMatchObject({ resumeSessionId: "research-session:resume-test", question: "" });
+    expect(() => parseResearchCliInput(["question"], { resume: "research-session:resume-test" }))
+      .toThrow("does not accept a new research question");
+    expect(() => parseResearchCliInput([], { resume: "research-session:resume-test", project: "ATLCLI" }))
+      .toThrow("cannot change persisted scope");
     expect(parseResearchCliInput(["question"], { "plan-only": true }).planOnly).toBe(true);
     expect(parseResearchCliInput(["question"], {
       effort: "deep",
@@ -450,6 +517,44 @@ describe("research CLI one-shot contract", () => {
     expect(missingKey.stderr.join("")).toContain(
       "session=research-session:cli-plan status=waiting_authentication stop_reason=authentication-required",
     );
+  });
+
+  test("recovers a no-dispatch authentication wait without changing its accepted scope or graph", async () => {
+    const harness = cliHarness();
+    const { sessionId, turnId } = await seedAuthenticationWaitingSession(harness);
+    let scopeResolutions = 0;
+    harness.dependencies.resolveScope = async () => {
+      scopeResolutions += 1;
+      throw new Error("A durable resume must not repeat scope resolution.");
+    };
+    await handleResearch([], { resume: sessionId }, { json: false }, harness.dependencies);
+    expect(scopeResolutions).toBe(0);
+    expect(harness.runInputs).toHaveLength(1);
+    expect(harness.runInputs[0]).toMatchObject({
+      request: {
+        question: "Find the stored Jira and Confluence relationship.",
+        scope: { jiraProjectKeys: ["ATLCLI"], confluenceSpaceKeys: ["DOCSY"] },
+      },
+      durableSession: { sessionId, turnId },
+    });
+    await expect(harness.durableStore.read(sessionId)).resolves.toMatchObject({
+      status: "running",
+      lease: { epoch: 2 },
+    });
+    expect(harness.stderr.join("")).toContain(`session=${sessionId} status=running recovery=claimed lease_epoch=2`);
+  });
+
+  test("leaves a durable authentication wait untouched when the resumed host lacks a key", async () => {
+    const harness = cliHarness();
+    harness.dependencies.readApiKey = () => undefined;
+    const { sessionId } = await seedAuthenticationWaitingSession(harness);
+    await expect(handleResearch([], { resume: sessionId }, { json: false }, harness.dependencies))
+      .rejects.toThrow("ANTHROPIC_API_KEY is missing");
+    expect(harness.runInputs).toHaveLength(0);
+    await expect(harness.durableStore.read(sessionId)).resolves.toMatchObject({
+      status: "waiting_authentication",
+      lease: { epoch: 1 },
+    });
   });
 
   test("stops on typed scope clarification before reading the key or creating a workspace", async () => {

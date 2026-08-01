@@ -4,7 +4,10 @@ import {
   composeResearchGraphV1,
   type ResearchGraphProposalV1,
 } from "./graph.js";
-import { initializeResearchSessionTurnV1 } from "./session-runtime.js";
+import {
+  initializeResearchSessionTurnV1,
+  recoverResearchSessionForResumeV1,
+} from "./session-runtime.js";
 import { InMemoryResearchSessionStoreV1 } from "./session-store.js";
 import { createResearchSessionV1 } from "./session.js";
 
@@ -104,5 +107,35 @@ describe("durable research session execution gate", () => {
       kind: "commit_graph_selection",
       sessionRevision: committed.session.revision,
     });
+  });
+
+  test("reclaims a released authentication wait with a new lease epoch before resuming", async () => {
+    const acceptedBrief = brief("automatic");
+    const store = new InMemoryResearchSessionStoreV1();
+    const initialized = await initializeResearchSessionTurnV1({
+      store,
+      session: session(),
+      brief: acceptedBrief,
+      graph: composeResearchGraphV1(acceptedBrief),
+      approveAutomatically: true,
+      at: "2026-08-01T15:00:01.000Z",
+    });
+    const waiting = await store.commit(initialized.sessionId, {
+      kind: "wait_authentication",
+      expectedRevision: initialized.revision,
+      expectedLeaseEpoch: initialized.lease.epoch,
+      at: "2026-08-01T15:00:02.000Z",
+    });
+    const resumed = await recoverResearchSessionForResumeV1({
+      store,
+      sessionId: initialized.sessionId,
+      ownerId: "owner:resumed",
+      leaseExpiresAt: "2026-08-01T15:10:00.000Z",
+      at: "2026-08-01T15:00:02.001Z",
+    });
+    expect(waiting.session).toMatchObject({ status: "waiting_authentication", lease: { epoch: 1 } });
+    expect(resumed).toMatchObject({ status: "running", lease: { epoch: 2, ownerId: "owner:resumed" } });
+    expect((await store.events(initialized.sessionId)).slice(-2).map((event) => event.kind))
+      .toEqual(["recover", "resume"]);
   });
 });

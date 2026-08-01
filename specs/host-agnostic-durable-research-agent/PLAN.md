@@ -3127,8 +3127,10 @@ non-durable `ANTHROPIC_API_KEY`. If the key is unavailable, it commits the
 revision-fenced `waiting_authentication` transition and prints the safe session
 reference; it does not create a workspace, provider, agent, task attempt, or
 content request. The real Mayflower `DOCSY`/`ATLCLI` preflight proved this
-persisted no-dispatch boundary. Resume is intentionally still unavailable until
-the lease-recovery and retry policy are implemented.
+persisted no-dispatch boundary. `atlcli research --resume <session-id>` now
+reclaims that released lease with a new epoch and reuses its exact brief, graph,
+scope, limits, and virtual workspace; it refuses any session with a dispatched
+task until the bounded retry/abstain policy is implemented.
 
 CLI:
 

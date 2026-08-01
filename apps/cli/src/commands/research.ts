@@ -50,6 +50,7 @@ import {
   type ResearchSessionV1,
   type ResearchWorkspace,
   initializeResearchSessionTurnV1,
+  recoverResearchSessionForResumeV1,
 } from "@atlcli/research/node";
 import { SqliteResearchSessionStoreV1 } from "@atlcli/research/bun";
 import {
@@ -73,6 +74,8 @@ export interface ResearchCliInput {
   maxRunMinutes: number;
   keepSession: boolean;
   planOnly: boolean;
+  /** Resume is deliberately limited to a no-dispatch authentication wait in T4. */
+  resumeSessionId?: string;
   policy: ResearchOneShotPolicyV1;
 }
 
@@ -94,6 +97,7 @@ const T2_RESEARCH_FLAGS = new Set([
   "reconciliation",
   "keep-session",
   "plan-only",
+  "resume",
   "json",
   "no-log",
   "help",
@@ -113,6 +117,7 @@ const T2_VALUE_FLAGS = [
   "plan-approval",
   "scope-expansion",
   "reconciliation",
+  "resume",
 ] as const;
 const T2_SINGLE_VALUE_FLAGS = T2_VALUE_FLAGS.filter(
   (key) => key !== "project" && key !== "space",
@@ -243,10 +248,7 @@ export function parseResearchCliInput(
   args: string[],
   flags: Record<string, string | boolean | string[]>,
 ): ResearchCliInput {
-  const unsupported = [
-    "session",
-    "resume",
-  ].filter((key) => hasFlag(flags, key));
+  const unsupported = ["session"].filter((key) => hasFlag(flags, key));
   if (unsupported.length > 0) {
     throw new Error(`The following research flags are reserved for durable sessions: ${unsupported.map((key) => `--${key}`).join(", ")}`);
   }
@@ -273,6 +275,31 @@ export function parseResearchCliInput(
     if (flags[key] !== undefined && flags[key] !== true) {
       throw new Error(`--${key} does not accept a value.`);
     }
+  }
+  const resumeSessionId = getFlag(flags, "resume");
+  if (resumeSessionId !== undefined) {
+    requireSessionId(resumeSessionId);
+    if (args.length > 0) {
+      throw new Error("--resume does not accept a new research question. Start a new turn after durable multi-turn support is available.");
+    }
+    const incompatible = Object.keys(flags).filter((key) => ![
+      "resume", "profile", "output", "keep-session", "json", "no-log", "help", "h",
+    ].includes(key));
+    if (incompatible.length > 0) {
+      throw new Error(`--resume cannot change persisted scope, policy, or deadline: ${incompatible.map((key) => `--${key}`).join(", ")}.`);
+    }
+    return {
+      question: "",
+      profile: getFlag(flags, "profile"),
+      projectKeys: [],
+      spaceKeys: [],
+      ...(getFlag(flags, "output") ? { outputPath: getFlag(flags, "output") } : {}),
+      maxRunMinutes: DEFAULT_MAX_RUN_MINUTES,
+      keepSession: hasFlag(flags, "keep-session"),
+      planOnly: false,
+      resumeSessionId,
+      policy: DEFAULT_RESEARCH_ONE_SHOT_POLICY_V1,
+    };
   }
   const question = args.join(" ").trim();
   if (!question) throw new Error("A research question is required. Example: atlcli research \"Which Jira and Confluence items are related?\"");
@@ -735,6 +762,203 @@ export const defaultResearchCliDependencies: ResearchCliDependencies = {
   },
 };
 
+interface RunEstablishedResearchCliSessionInput {
+  input: ResearchCliInput;
+  opts: OutputOptions;
+  dependencies: ResearchCliDependencies;
+  profile: Profile;
+  request: ResearchRequestV1;
+  workspace: ResearchWorkspace;
+  store: ResearchSessionStoreV1;
+  sessionId: string;
+  turnId: string;
+  researchGraph: ResearchGraphV1;
+  brief: ResearchBriefV1;
+  apiKey: string;
+}
+
+async function runEstablishedResearchCliSession(
+  input: RunEstablishedResearchCliSessionInput,
+): Promise<void> {
+  const controller = new AbortController();
+  const timeout = input.dependencies.scheduleAbort(
+    () => controller.abort(new Error("Research run timed out.")),
+    input.request.limits.maxRunMs,
+  );
+  const removeInterruptListener = input.dependencies.listenForInterrupt(
+    () => controller.abort(new Error("Research run cancelled.")),
+  );
+  try {
+    input.dependencies.writeStderr(
+      `[research] model=${RESEARCH_MODEL_ID} profile=${input.profile.name} project=${input.request.scope.jiraProjectKeys.join(",")} space=${input.request.scope.confluenceSpaceKeys.join(",")}\n`,
+    );
+    if (input.input.keepSession) {
+      const root = "root" in input.workspace && typeof input.workspace.root === "string"
+        ? input.workspace.root
+        : "host-owned";
+      input.dependencies.writeStderr(`[research] session=${input.sessionId} workspace=${root}\n`);
+    }
+    const report = await input.dependencies.runAgent({
+      apiKey: input.apiKey,
+      profile: input.profile,
+      request: input.request,
+      workspace: input.workspace,
+      sessionId: input.sessionId,
+      durableSession: {
+        store: input.store,
+        sessionId: input.sessionId,
+        turnId: input.turnId,
+      },
+      researchGraph: input.researchGraph,
+      brief: input.brief,
+      signal: controller.signal,
+      writeDiagnostic: (message) => input.dependencies.writeStderr(`[research] ${message}\n`),
+      onEvent: (event) => {
+        if (event.kind === "phase") {
+          input.dependencies.writeStderr(`[research] phase=${event.phase}\n`);
+        } else if (event.kind === "progress") {
+          input.dependencies.writeStderr(`[research] calls=${event.completed}/${event.maximum}\n`);
+        } else if (event.kind === "brief") {
+          input.dependencies.writeStderr(`[research] brief_revision=${event.revision}\n`);
+        } else if (event.kind === "plan") {
+          input.dependencies.writeStderr(
+            `[research] graph_revision=${event.revision} graph_status=${event.status} effort=${event.resolvedEffort} nodes=${event.nodeCount} waves=${event.waveCount} max_parallel=${event.maxParallelNodes} roles=${event.selectedRoleIds.join(",") || "none"}\n`,
+          );
+        } else if (event.kind === "capability") {
+          input.dependencies.writeStderr(
+            `[research] tool=${event.toolId} call=${event.callId} kind=${event.inputKind} status=${event.status}${event.inputKeys === undefined ? "" : ` input_keys=${event.inputKeys.join(",") || "none"}`}${event.queryKeys === undefined ? "" : ` query_keys=${event.queryKeys.join(",") || "none"}`}${event.itemCount === undefined ? "" : ` items=${event.itemCount}`}${event.complete === undefined ? "" : ` complete=${event.complete}`}${event.termination === undefined ? "" : ` termination=${event.termination}`}${event.resultBytes === undefined ? "" : ` result_bytes=${event.resultBytes}`}${event.truncated === undefined ? "" : ` truncated=${event.truncated}`}${event.durationMs === undefined ? "" : ` duration_ms=${event.durationMs}`}${event.errorCode === undefined ? "" : ` error=${event.errorCode}`}\n`,
+          );
+        } else if (event.kind === "subagent") {
+          input.dependencies.writeStderr(
+            `[research] subagent=${event.roleId} task=${event.taskId} status=${event.status}${event.attempt === undefined ? "" : ` attempt=${event.attempt}`}${event.durationMs === undefined ? "" : ` duration_ms=${event.durationMs}`}${event.errorCode === undefined ? "" : ` error=${event.errorCode}`}\n`,
+          );
+        } else if (event.kind === "task") {
+          input.dependencies.writeStderr(
+            `[research] task=${event.taskId} status=${event.status}${event.roleId === undefined ? "" : ` role=${event.roleId}`}${event.wave === undefined ? "" : ` wave=${event.wave}`}${event.dependencyTaskIds === undefined ? "" : ` dependencies=${event.dependencyTaskIds.length}`}${event.grantedCapabilityIds === undefined ? "" : ` grants=${event.grantedCapabilityIds.join(",") || "none"}`}${event.sourceCount === undefined ? "" : ` sources=${event.sourceCount}`}${event.findingCount === undefined ? "" : ` findings=${event.findingCount}`}${event.relationshipCount === undefined ? "" : ` relationships=${event.relationshipCount}`}${event.gapCount === undefined ? "" : ` gaps=${event.gapCount}`}${event.defectCount === undefined ? "" : ` defects=${event.defectCount}`}${event.inputTokens === undefined ? "" : ` input_tokens=${event.inputTokens}`}${event.outputTokens === undefined ? "" : ` output_tokens=${event.outputTokens}`}${event.resultBytes === undefined ? "" : ` result_bytes=${event.resultBytes}`}\n`,
+          );
+        } else if (event.kind === "decision") {
+          input.dependencies.writeStderr(
+            `[research] decision=${event.decisionId} status=${event.status} reason=${event.reasonCode}${event.taskId === undefined ? "" : ` task=${event.taskId}`}${event.codeBytes === undefined ? "" : ` code_bytes=${event.codeBytes}`}${event.codeHash === undefined ? "" : ` code_hash=${event.codeHash}`}${event.errorCode === undefined ? "" : ` error=${event.errorCode}`}\n`,
+          );
+        } else if (event.kind === "reconciliation") {
+          input.dependencies.writeStderr(
+            `[research] reconciliation=${event.taskId} status=${event.status}${event.defectCount === undefined ? "" : ` defects=${event.defectCount}`}${event.proposedFollowUpCount === undefined ? "" : ` follow_ups=${event.proposedFollowUpCount}`}\n`,
+          );
+        } else if (event.kind === "budget") {
+          input.dependencies.writeStderr(
+            `[research] budget=${event.metric} consumed=${event.consumed} maximum=${event.maximum}\n`,
+          );
+        } else if (event.kind === "artifact") {
+          input.dependencies.writeStderr(`[research] workspace_artifact=${event.path}\n`);
+        } else {
+          input.dependencies.writeStderr(`[research] trace=${formatResearchOneShotEventV1(event)}\n`);
+        }
+      },
+    });
+    const artifactPath = input.dependencies.artifactPath();
+    try {
+      await input.dependencies.writeAtomic(artifactPath, report.markdown);
+      input.dependencies.writeStderr(`[research] artifact=${artifactPath}\n`);
+    } catch (error) {
+      input.dependencies.writeStderr(`[research] artifact=unavailable reason=${error instanceof Error ? error.name : "unknown"}\n`);
+    }
+    if (input.input.outputPath) await input.dependencies.writeAtomic(input.input.outputPath, report.markdown);
+    if (input.opts.json) input.dependencies.emitOutput({ sessionId: input.sessionId, artifactPath, report }, input.opts);
+    else input.dependencies.writeStdout(report.markdown);
+  } finally {
+    input.dependencies.cancelScheduledAbort(timeout);
+    removeInterruptListener();
+  }
+}
+
+function requestFromStoredResearchBrief(brief: ResearchBriefV1): ResearchRequestV1 {
+  return {
+    schema: RESEARCH_REQUEST_SCHEMA_V1,
+    question: brief.objective,
+    scope: structuredClone(brief.scope),
+    limits: structuredClone(brief.limits),
+    wikiProvider: "rest",
+  };
+}
+
+async function resumeAuthenticationWaitingResearchSession(
+  input: ResearchCliInput,
+  opts: OutputOptions,
+  dependencies: ResearchCliDependencies,
+): Promise<void> {
+  const sessionId = input.resumeSessionId;
+  if (!sessionId) throw new Error("A durable research session ID is required to resume.");
+  const profile = await dependencies.resolveProfile(input.profile);
+  if (!profile) {
+    dependencies.fail(opts, 1, ERROR_CODES.AUTH, "No active profile found. Run `atlcli auth login` or select --profile.", { profile: input.profile });
+  }
+  const opened = await dependencies.openSessionStore();
+  let disposeWorkspace: (() => Promise<void>) | undefined;
+  try {
+    const stored = await requireStoredResearchSession(opened.store, sessionId);
+    const turn = activeSessionTurn(stored);
+    if (!turn?.brief || !turn.graph || stored.status !== "waiting_authentication") {
+      throw new Error("Only a durable authentication wait can be resumed by this command.");
+    }
+    if (turn.tasks.length > 0 || turn.acceptedPackets.length > 0 || turn.graphSelectionCommittedAt) {
+      throw new Error("This durable session already has dispatch state. Retry recovery is not available until the bounded task-retry policy is implemented.");
+    }
+    if (turn.graph.status !== "approved" || turn.graph.approvalEnvelope.status !== "approved") {
+      throw new Error("The durable research graph is not approved for authentication resume.");
+    }
+    if (new URL(profile.baseUrl).origin !== turn.brief.scope.siteOrigin) {
+      throw new Error("The selected profile belongs to a different Atlassian tenant than the durable research session.");
+    }
+    const apiKey = readApiKey(dependencies);
+    if (!apiKey) {
+      dependencies.writeStderr(
+        `[research] session=${stored.sessionId} status=${stored.status} stop_reason=authentication-required\n`,
+      );
+      throw new Error("ANTHROPIC_API_KEY is missing. Set it in the process environment; it is never read from a CLI flag.");
+    }
+    const request = requestFromStoredResearchBrief(turn.brief);
+    const now = new Date().toISOString();
+    const resumed = await recoverResearchSessionForResumeV1({
+      store: opened.store,
+      sessionId: stored.sessionId,
+      ownerId: `owner:cli-${process.pid}`,
+      leaseExpiresAt: new Date(Date.parse(now) + request.limits.maxRunMs).toISOString(),
+      at: now,
+    });
+    const resumedTurn = activeSessionTurn(resumed);
+    if (!resumedTurn?.brief || !resumedTurn.graph || resumedTurn.id !== turn.id) {
+      throw new Error("Recovered research session no longer has its accepted turn and graph.");
+    }
+    const workspace = opened.workspace
+      ? await opened.workspace(resumed.sessionId)
+      : await dependencies.createWorkspace();
+    if (!opened.workspace) {
+      const temporaryWorkspace = workspace as ResearchCliWorkspace;
+      disposeWorkspace = () => temporaryWorkspace.dispose();
+    }
+    dependencies.writeStderr(
+      `[research] session=${resumed.sessionId} status=${resumed.status} recovery=claimed lease_epoch=${resumed.lease.epoch}\n`,
+    );
+    await runEstablishedResearchCliSession({
+      input,
+      opts,
+      dependencies,
+      profile,
+      request,
+      workspace,
+      store: opened.store,
+      sessionId: resumed.sessionId,
+      turnId: resumedTurn.id,
+      researchGraph: resumedTurn.graph,
+      brief: resumedTurn.brief,
+      apiKey,
+    });
+  } finally {
+    if (!input.keepSession) await disposeWorkspace?.();
+    opened.close();
+  }
+}
+
 export async function handleResearch(
   args: string[],
   flags: Record<string, string | boolean | string[]>,
@@ -750,6 +974,10 @@ export async function handleResearch(
     return;
   }
   const input = parseResearchCliInput(args, flags);
+  if (input.resumeSessionId) {
+    await resumeAuthenticationWaitingResearchSession(input, opts, dependencies);
+    return;
+  }
   const profile = await dependencies.resolveProfile(input.profile);
   if (!profile) {
     dependencies.fail(opts, 1, ERROR_CODES.AUTH, "No active profile found. Run `atlcli auth login` or select --profile.", { profile: input.profile });
@@ -871,8 +1099,6 @@ export async function handleResearch(
   const opened = await dependencies.openSessionStore();
   let workspace: ResearchWorkspace | undefined;
   let disposeWorkspace: (() => Promise<void>) | undefined;
-  let timeout: unknown;
-  let removeInterruptListener: (() => void) | undefined;
   try {
     const now = new Date().toISOString();
     const durableSession = await initializeResearchSessionTurnV1({
@@ -909,91 +1135,21 @@ export async function handleResearch(
       workspace = temporaryWorkspace;
       disposeWorkspace = () => temporaryWorkspace.dispose();
     }
-    const sessionId = durableSession.sessionId;
-    const controller = new AbortController();
-    timeout = dependencies.scheduleAbort(
-      () => controller.abort(new Error("Research run timed out.")),
-      request.limits.maxRunMs,
-    );
-    const onInterrupt = (): void => controller.abort(new Error("Research run cancelled."));
-    removeInterruptListener = dependencies.listenForInterrupt(onInterrupt);
-    dependencies.writeStderr(`[research] model=${RESEARCH_MODEL_ID} profile=${profile.name} project=${request.scope.jiraProjectKeys.join(",")} space=${request.scope.confluenceSpaceKeys.join(",")}\n`);
-    if (input.keepSession) {
-      const root = "root" in workspace && typeof workspace.root === "string"
-        ? workspace.root
-        : "host-owned";
-      dependencies.writeStderr(`[research] session=${sessionId} workspace=${root}\n`);
-    }
-    const report = await dependencies.runAgent({
-      apiKey,
+    await runEstablishedResearchCliSession({
+      input,
+      opts,
+      dependencies,
       profile,
       request,
       workspace,
-      sessionId,
-      durableSession: {
-        store: opened.store,
-        sessionId,
-        turnId: durableTurnId,
-      },
+      store: opened.store,
+      sessionId: durableSession.sessionId,
+      turnId: durableTurnId,
       researchGraph,
       brief: briefOutcome.brief,
-      signal: controller.signal,
-      writeDiagnostic: (message) => dependencies.writeStderr(`[research] ${message}\n`),
-      onEvent: (event) => {
-        if (event.kind === "phase") {
-          dependencies.writeStderr(`[research] phase=${event.phase}\n`);
-        } else if (event.kind === "progress") {
-          dependencies.writeStderr(`[research] calls=${event.completed}/${event.maximum}\n`);
-        } else if (event.kind === "brief") {
-          dependencies.writeStderr(`[research] brief_revision=${event.revision}\n`);
-        } else if (event.kind === "plan") {
-          dependencies.writeStderr(
-            `[research] graph_revision=${event.revision} graph_status=${event.status} effort=${event.resolvedEffort} nodes=${event.nodeCount} waves=${event.waveCount} max_parallel=${event.maxParallelNodes} roles=${event.selectedRoleIds.join(",") || "none"}\n`,
-          );
-        } else if (event.kind === "capability") {
-          dependencies.writeStderr(
-            `[research] tool=${event.toolId} call=${event.callId} kind=${event.inputKind} status=${event.status}${event.inputKeys === undefined ? "" : ` input_keys=${event.inputKeys.join(",") || "none"}`}${event.queryKeys === undefined ? "" : ` query_keys=${event.queryKeys.join(",") || "none"}`}${event.itemCount === undefined ? "" : ` items=${event.itemCount}`}${event.complete === undefined ? "" : ` complete=${event.complete}`}${event.termination === undefined ? "" : ` termination=${event.termination}`}${event.resultBytes === undefined ? "" : ` result_bytes=${event.resultBytes}`}${event.truncated === undefined ? "" : ` truncated=${event.truncated}`}${event.durationMs === undefined ? "" : ` duration_ms=${event.durationMs}`}${event.errorCode === undefined ? "" : ` error=${event.errorCode}`}\n`,
-          );
-        } else if (event.kind === "subagent") {
-          dependencies.writeStderr(
-            `[research] subagent=${event.roleId} task=${event.taskId} status=${event.status}${event.attempt === undefined ? "" : ` attempt=${event.attempt}`}${event.durationMs === undefined ? "" : ` duration_ms=${event.durationMs}`}${event.errorCode === undefined ? "" : ` error=${event.errorCode}`}\n`,
-          );
-        } else if (event.kind === "task") {
-          dependencies.writeStderr(
-            `[research] task=${event.taskId} status=${event.status}${event.roleId === undefined ? "" : ` role=${event.roleId}`}${event.wave === undefined ? "" : ` wave=${event.wave}`}${event.dependencyTaskIds === undefined ? "" : ` dependencies=${event.dependencyTaskIds.length}`}${event.grantedCapabilityIds === undefined ? "" : ` grants=${event.grantedCapabilityIds.join(",") || "none"}`}${event.sourceCount === undefined ? "" : ` sources=${event.sourceCount}`}${event.findingCount === undefined ? "" : ` findings=${event.findingCount}`}${event.relationshipCount === undefined ? "" : ` relationships=${event.relationshipCount}`}${event.gapCount === undefined ? "" : ` gaps=${event.gapCount}`}${event.defectCount === undefined ? "" : ` defects=${event.defectCount}`}${event.inputTokens === undefined ? "" : ` input_tokens=${event.inputTokens}`}${event.outputTokens === undefined ? "" : ` output_tokens=${event.outputTokens}`}${event.resultBytes === undefined ? "" : ` result_bytes=${event.resultBytes}`}\n`,
-          );
-        } else if (event.kind === "decision") {
-          dependencies.writeStderr(
-            `[research] decision=${event.decisionId} status=${event.status} reason=${event.reasonCode}${event.taskId === undefined ? "" : ` task=${event.taskId}`}${event.codeBytes === undefined ? "" : ` code_bytes=${event.codeBytes}`}${event.codeHash === undefined ? "" : ` code_hash=${event.codeHash}`}${event.errorCode === undefined ? "" : ` error=${event.errorCode}`}\n`,
-          );
-        } else if (event.kind === "reconciliation") {
-          dependencies.writeStderr(
-            `[research] reconciliation=${event.taskId} status=${event.status}${event.defectCount === undefined ? "" : ` defects=${event.defectCount}`}${event.proposedFollowUpCount === undefined ? "" : ` follow_ups=${event.proposedFollowUpCount}`}\n`,
-          );
-        } else if (event.kind === "budget") {
-          dependencies.writeStderr(
-            `[research] budget=${event.metric} consumed=${event.consumed} maximum=${event.maximum}\n`,
-          );
-        } else if (event.kind === "artifact") {
-          dependencies.writeStderr(`[research] workspace_artifact=${event.path}\n`);
-        } else {
-          dependencies.writeStderr(`[research] trace=${formatResearchOneShotEventV1(event)}\n`);
-        }
-      },
+      apiKey,
     });
-    const artifactPath = dependencies.artifactPath();
-    try {
-      await dependencies.writeAtomic(artifactPath, report.markdown);
-      dependencies.writeStderr(`[research] artifact=${artifactPath}\n`);
-    } catch (error) {
-      dependencies.writeStderr(`[research] artifact=unavailable reason=${error instanceof Error ? error.name : "unknown"}\n`);
-    }
-    if (input.outputPath) await dependencies.writeAtomic(input.outputPath, report.markdown);
-    if (opts.json) dependencies.emitOutput({ sessionId, artifactPath, report }, opts);
-    else dependencies.writeStdout(report.markdown);
   } finally {
-    if (timeout !== undefined) dependencies.cancelScheduledAbort(timeout);
-    removeInterruptListener?.();
     if (!input.keepSession) await disposeWorkspace?.();
     opened.close();
   }
@@ -1001,6 +1157,7 @@ export async function handleResearch(
 
 export function researchHelp(): string {
   return `atlcli research <question>
+atlcli research --resume <session-id>
 atlcli research sessions <list|show|plan|approve|reject-plan>
 
 Run a bounded, read-only Jira + Confluence research question through DeepAgentsJS and QuickJS PTC.
@@ -1019,6 +1176,7 @@ Options:
   --scope-expansion <m>   strict|ask|exact-linked (default: ask)
   --reconciliation <m>    off|auto|required (default: auto)
   --plan-only             Persist and print the sanitized durable research plan; do not run research
+  --resume <session-id>   Resume a no-dispatch durable authentication wait
   --output <path>        Atomically write the generated Markdown
   --keep-session         Print the retained session workspace path
   --json                 Emit the structured report as JSON
@@ -1033,7 +1191,7 @@ Durable session commands:
 
 ANTHROPIC_API_KEY must be supplied through the process environment.
 --plan-only persists the brief and graph before any key, workspace, provider, or model access.
-Session resume, steering, scope, and clarification commands arrive in later T4 checkpoints.
+--resume preserves the accepted brief, graph, scope, and limits; task retry, steering, scope, and clarification commands arrive in later T4 checkpoints.
 Approving a durable plan persists its exact revision only; it starts no model research until durable task dispatch arrives.
 `;
 }

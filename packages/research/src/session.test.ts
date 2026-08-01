@@ -210,4 +210,23 @@ describe("durable host-neutral research session reducer", () => {
     expect(current).toMatchObject({ status: "paused" });
     expect(current.turns[0]!.pausedAt).toBe("2026-08-01T09:00:06.000Z");
   });
+
+  test("releases a durable authentication wait before a fresh owner recovers it", () => {
+    let current = readyToRun();
+    current = update(current, { kind: "wait_authentication" }, "2026-08-01T09:00:05.000Z");
+    expect(current).toMatchObject({
+      status: "waiting_authentication",
+      lease: { epoch: 1, expiresAt: "2026-08-01T09:00:05.000Z" },
+    });
+    current = update(current, {
+      kind: "recover",
+      ownerId: "owner:resumed",
+      expiresAt: "2026-08-01T09:10:00.000Z",
+    }, "2026-08-01T09:00:05.001Z");
+    current = update(current, { kind: "resume" }, "2026-08-01T09:00:05.002Z");
+    expect(current).toMatchObject({
+      status: "running",
+      lease: { epoch: 2, ownerId: "owner:resumed" },
+    });
+  });
 });

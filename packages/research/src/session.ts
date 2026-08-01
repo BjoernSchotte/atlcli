@@ -682,7 +682,23 @@ export function reduceResearchSessionV1(
 
   if (update.kind === "wait_authentication" || update.kind === "wait_quota") {
     ensureActive(session, ["running"]);
-    return withNext(session, update, { status: update.kind === "wait_authentication" ? "waiting_authentication" : "waiting_quota" });
+    // A durable wait has no living owner. Release the current lease at this
+    // checkpoint so a fresh CLI process, extension worker, or browser restart
+    // can recover it immediately with a new epoch instead of waiting for the
+    // former execution deadline to elapse.
+    const releasedAt = Math.max(
+      Date.parse(update.at),
+      Date.parse(session.lease.heartbeatAt) + 1,
+    );
+    return {
+      ...withNext(session, update, {
+        status: update.kind === "wait_authentication" ? "waiting_authentication" : "waiting_quota",
+      }),
+      lease: {
+        ...session.lease,
+        expiresAt: new Date(releasedAt).toISOString(),
+      },
+    };
   }
 
   if (update.kind === "heartbeat") {
