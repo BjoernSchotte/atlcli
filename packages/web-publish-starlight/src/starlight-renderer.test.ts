@@ -356,9 +356,10 @@ test("a packed Starlight consumer builds from the published package boundary wit
   const consumer = resolve(root, "consumer");
   try {
     await run(["bun", "run", "build", "--filter=@atlcli/export-blocks-astro", "--filter=@atlcli/web-publish-astro", "--filter=@atlcli/web-publish-starlight"], workspaceRoot);
-    const [exportBlocks, exportBlocksAstro, webPublish, webPublishAstro, webPublishStarlight] = await Promise.all([
+    const [exportBlocks, exportBlocksAstro, exportChartsTanStack, webPublish, webPublishAstro, webPublishStarlight] = await Promise.all([
       packPackage("export-blocks", resolve(tarballs, "export-blocks")),
       packPackage("export-blocks-astro", resolve(tarballs, "export-blocks-astro")),
+      packPackage("export-charts-tanstack", resolve(tarballs, "export-charts-tanstack")),
       packPackage("web-publish", resolve(tarballs, "web-publish")),
       packPackage("web-publish-astro", resolve(tarballs, "web-publish-astro")),
       packPackage("web-publish-starlight", resolve(tarballs, "web-publish-starlight")),
@@ -380,6 +381,7 @@ test("a packed Starlight consumer builds from the published package boundary wit
       overrides: {
         "@atlcli/export-blocks": `file:${exportBlocks}`,
         "@atlcli/export-blocks-astro": `file:${exportBlocksAstro}`,
+        "@atlcli/export-charts-tanstack": `file:${exportChartsTanStack}`,
         "@atlcli/web-publish": `file:${webPublish}`,
         "@atlcli/web-publish-astro": `file:${webPublishAstro}`,
       },
@@ -452,9 +454,10 @@ test("a production harness converts Cloud ADF and DC Storage before a packed Ast
     expect(JSON.stringify([...resolvedCloud.blocks, ...resolvedDc.blocks])).not.toContain("type\":\"doc\"");
 
     await run(["bun", "run", "build", "--filter=@atlcli/export-blocks-astro", "--filter=@atlcli/web-publish-astro", "--filter=@atlcli/web-publish-starlight"], workspaceRoot);
-    const [exportBlocks, exportBlocksAstro, webPublish, webPublishAstro, webPublishStarlight] = await Promise.all([
+    const [exportBlocks, exportBlocksAstro, exportChartsTanStack, webPublish, webPublishAstro, webPublishStarlight] = await Promise.all([
       packPackage("export-blocks", resolve(tarballs, "export-blocks")),
       packPackage("export-blocks-astro", resolve(tarballs, "export-blocks-astro")),
+      packPackage("export-charts-tanstack", resolve(tarballs, "export-charts-tanstack")),
       packPackage("web-publish", resolve(tarballs, "web-publish")),
       packPackage("web-publish-astro", resolve(tarballs, "web-publish-astro")),
       packPackage("web-publish-starlight", resolve(tarballs, "web-publish-starlight")),
@@ -523,6 +526,7 @@ import InteractiveChart from "@atlcli/export-blocks-astro/components/Interactive
       overrides: {
         "@atlcli/export-blocks": `file:${exportBlocks}`,
         "@atlcli/export-blocks-astro": `file:${exportBlocksAstro}`,
+        "@atlcli/export-charts-tanstack": `file:${exportChartsTanStack}`,
         "@atlcli/web-publish": `file:${webPublish}`,
         "@atlcli/web-publish-astro": `file:${webPublishAstro}`,
       },

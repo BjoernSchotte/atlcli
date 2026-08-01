@@ -17,7 +17,7 @@ async function run(command: string[], cwd: string): Promise<string> {
   return stdout;
 }
 
-async function packPackage(name: "export-blocks" | "export-blocks-astro", destination: string): Promise<string> {
+async function packPackage(name: "export-blocks" | "export-blocks-astro" | "export-charts-tanstack", destination: string): Promise<string> {
   await run(["bun", "pm", "pack", "--destination", destination], join(workspaceRoot, "packages", name));
   const tarballs = (await readdir(destination)).filter((entry) => entry.endsWith(".tgz"));
   expect(tarballs).toHaveLength(1);
@@ -30,14 +30,20 @@ test("a network-disabled, packed plain-Astro consumer keeps overrides and static
   const consumer = join(root, "consumer");
   try {
     await run(["bun", "run", "build", "--filter=@atlcli/export-blocks-astro"], workspaceRoot);
-    const [exportBlocks, exportBlocksAstro] = await Promise.all([
+    const [exportBlocks, exportBlocksAstro, exportChartsTanStack] = await Promise.all([
       packPackage("export-blocks", join(tarballs, "export-blocks")),
       packPackage("export-blocks-astro", join(tarballs, "export-blocks-astro")),
+      packPackage("export-charts-tanstack", join(tarballs, "export-charts-tanstack")),
     ]);
     await cp(fixtureDirectory, consumer, {
       recursive: true,
       filter: (source) => !source.includes("/dist"),
     });
+    const pagePath = join(consumer, "src/pages/index.astro");
+    const page = await readFile(pagePath, "utf8");
+    await writeFile(pagePath, page
+      .replace('import { chartWorldClassBlocksV1 } from "@atlcli/export-fixtures";', 'import { EXPORT_BLOCKS_ASTRO_CHART_SHAPES_FIXTURE_V1 } from "@atlcli/export-blocks-astro/fixtures";')
+      .replace("const WORLD_CLASS_CHART_BLOCKS_V1 = chartWorldClassBlocksV1();", "const WORLD_CLASS_CHART_BLOCKS_V1 = EXPORT_BLOCKS_ASTRO_CHART_SHAPES_FIXTURE_V1;"));
     await writeFile(join(consumer, "package.json"), JSON.stringify({
       name: "packed-export-blocks-astro-consumer",
       private: true,
@@ -46,9 +52,13 @@ test("a network-disabled, packed plain-Astro consumer keeps overrides and static
       dependencies: {
         "@atlcli/export-blocks": `file:${exportBlocks}`,
         "@atlcli/export-blocks-astro": `file:${exportBlocksAstro}`,
+        "@atlcli/export-charts-tanstack": `file:${exportChartsTanStack}`,
         astro: "7.1.6",
       },
-      overrides: { "@atlcli/export-blocks": `file:${exportBlocks}` },
+      overrides: {
+        "@atlcli/export-blocks": `file:${exportBlocks}`,
+        "@atlcli/export-charts-tanstack": `file:${exportChartsTanStack}`,
+      },
     }, null, 2));
     await writeFile(join(consumer, "block-network.mjs"), "globalThis.fetch = async () => { throw new Error('network access is forbidden'); };\n");
     await writeFile(join(consumer, "assert-packed.mjs"), [

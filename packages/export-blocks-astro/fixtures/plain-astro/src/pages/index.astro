@@ -2,6 +2,7 @@
 import ExportDocument from "@atlcli/export-blocks-astro/components/ExportDocument.astro";
 import StaticChart from "@atlcli/export-blocks-astro/components/StaticChart.astro";
 import InteractiveChart from "@atlcli/export-blocks-astro/components/InteractiveChart.astro";
+import { chartWorldClassBlocksV1 } from "@atlcli/export-fixtures";
 import BrandedHeading from "../components/BrandedHeading.astro";
 import "@atlcli/export-blocks-astro/styles.css";
 import "../styles/fixture.css";
@@ -9,11 +10,11 @@ import {
   EXPORT_BLOCKS_ASTRO_MINIMAL_CONTEXT_V1,
   EXPORT_BLOCKS_ASTRO_MINIMAL_FIXTURE_V1,
   EXPORT_BLOCKS_ASTRO_ALL_FIELDS_FIXTURE_V1,
-  EXPORT_BLOCKS_ASTRO_CHART_SHAPES_FIXTURE_V1,
 } from "@atlcli/export-blocks-astro/fixtures";
 
 const normalizedChartBlock = EXPORT_BLOCKS_ASTRO_ALL_FIELDS_FIXTURE_V1.find((block) => block.type === "chart");
 if (!normalizedChartBlock || normalizedChartBlock.type !== "chart") throw new TypeError("chart fixture missing");
+const WORLD_CLASS_CHART_BLOCKS_V1 = chartWorldClassBlocksV1();
 
 const HOSTILE_RENDERER_CONTEXT_V1 = {
   ...EXPORT_BLOCKS_ASTRO_MINIMAL_CONTEXT_V1,
@@ -39,12 +40,26 @@ const HOSTILE_RENDERER_BLOCKS_V1 = [{
   type: "image" as const,
   source: { kind: "attachment" as const, filename: "hostile.svg" },
   alt: "hostile asset",
+}, {
+  type: "chart" as const,
+  chart: {
+    schema: "atlcli.chart/1" as const,
+    kind: "bar" as const,
+    title: "Hostile \"><img src=x onerror=alert(2)>",
+    data: {
+      mode: "categories" as const,
+      labels: ["</text><script>alert(3)</script>"],
+      series: [{ id: "hostile", label: "\"><foreignObject>", values: [1] }],
+    },
+    source: { kind: "cloud-adf" as const, macroName: "chart" as const },
+  },
 }];
 ---
 
 <!doctype html>
 <html lang="en">
   <head>
+    <meta charset="utf-8" />
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" />
   </head>
   <body>
@@ -54,7 +69,7 @@ const HOSTILE_RENDERER_BLOCKS_V1 = [{
       overrides={{ heading: BrandedHeading }}
     />
     <ExportDocument
-      blocks={EXPORT_BLOCKS_ASTRO_CHART_SHAPES_FIXTURE_V1}
+      blocks={WORLD_CLASS_CHART_BLOCKS_V1}
       context={EXPORT_BLOCKS_ASTRO_MINIMAL_CONTEXT_V1}
     />
     <StaticChart chart={{

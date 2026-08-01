@@ -10,18 +10,18 @@ world-class semantic/visual gate is still open; — intentionally static.
 
 | Shape | Cloud ADF normalization | DC Storage normalization | Astro static visual | Accessible data table | DOCX/PDF visual | Client interaction |
 | --- | --- | --- | --- | --- | --- | --- |
-| `pie` | ✅ fixture/adapter | ✅ fixture/adapter | 🟡 paths + legend; labels pending | ✅ | ✅ TanStack SVG + table, visually proven | — |
-| `bar` | ✅ fixture/adapter | ✅ fixture/adapter | 🟡 vertical baseline; horizontal/mixed-sign pending | ✅ | ✅ signed horizontal stack visually proven | ✅ bounded TanStack baseline |
-| `line` | ✅ fixture/adapter | ✅ fixture/adapter | 🟡 line baseline; full axes pending | ✅ | ✅ TanStack SVG + table, visually proven | — |
-| `area` | ✅ fixture/adapter | ✅ fixture/adapter | 🟡 area baseline; mixed-sign baseline pending | ✅ | ✅ TanStack SVG + table, visually proven | — |
-| `xyArea` | ✅ fixture/adapter | ✅ fixture/adapter | 🟡 numeric path; full axes pending | ✅ | ✅ TanStack SVG + table, visually proven | — |
-| `xyBar` | ✅ fixture/adapter | ✅ fixture/adapter | ✅ one provider-valid positive series | ✅ | ✅ grouped edge bars visually proven | ✅ bounded TanStack baseline |
-| `xyLine` | ✅ fixture/adapter | ✅ fixture/adapter | 🟡 numeric path; full axes pending | ✅ | ✅ TanStack SVG + table, visually proven | — |
-| `xyStep` | ✅ fixture/adapter | ✅ fixture/adapter | 🟡 Astro step baseline | ✅ | ✅ native stepped SVG visually proven | — |
-| `xyStepArea` | ✅ fixture/adapter | ✅ fixture/adapter | 🟡 Astro stepped-area baseline | ✅ | ✅ native stepped-area SVG visually proven | — |
-| `scatter` | ✅ fixture/adapter | ✅ fixture/adapter | 🟡 point baseline; full axes pending | ✅ | ✅ TanStack SVG + table, visually proven | — |
-| `timeSeries` | ✅ fixture/adapter | ✅ fixture/adapter | 🟡 raw timestamp path; locale/timezone pending | ✅ | ✅ deterministic UTC/locale labels proven | — |
-| `gantt` | ✅ fixture/adapter | ✅ fixture/adapter | 🟡 timeline/list; dependency edges pending | ✅ | ✅ progress/dependency visual proven | — |
+| `pie` | ✅ fixture/adapter | ✅ fixture/adapter | ✅ labels + legend, visually proven | ✅ | ✅ TanStack SVG + table, visually proven | — |
+| `bar` | ✅ fixture/adapter | ✅ fixture/adapter | ✅ signed horizontal stack proven | ✅ | ✅ signed horizontal stack visually proven | ✅ bounded TanStack baseline |
+| `line` | ✅ fixture/adapter | ✅ fixture/adapter | ✅ axes + signed series proven | ✅ | ✅ TanStack SVG + table, visually proven | — |
+| `area` | ✅ fixture/adapter | ✅ fixture/adapter | ✅ multi-series area proven | ✅ | ✅ TanStack SVG + table, visually proven | — |
+| `xyArea` | ✅ fixture/adapter | ✅ fixture/adapter | ✅ numeric axes proven | ✅ | ✅ TanStack SVG + table, visually proven | — |
+| `xyBar` | ✅ fixture/adapter | ✅ fixture/adapter | ✅ grouped signed bars proven | ✅ | ✅ grouped edge bars visually proven | ✅ bounded TanStack baseline |
+| `xyLine` | ✅ fixture/adapter | ✅ fixture/adapter | ✅ sparse X-series proven | ✅ | ✅ TanStack SVG + table, visually proven | — |
+| `xyStep` | ✅ fixture/adapter | ✅ fixture/adapter | ✅ native stepped SVG proven | ✅ | ✅ native stepped SVG visually proven | — |
+| `xyStepArea` | ✅ fixture/adapter | ✅ fixture/adapter | ✅ stepped-area SVG proven | ✅ | ✅ native stepped-area SVG visually proven | — |
+| `scatter` | ✅ fixture/adapter | ✅ fixture/adapter | ✅ multi-series points proven | ✅ | ✅ TanStack SVG + table, visually proven | — |
+| `timeSeries` | ✅ fixture/adapter | ✅ fixture/adapter | ✅ deterministic UTC/locale labels proven | ✅ | ✅ deterministic UTC/locale labels proven | — |
+| `gantt` | ✅ fixture/adapter | ✅ fixture/adapter | ✅ progress/dependency visual proven | ✅ | ✅ progress/dependency visual proven | — |
 
 ## Shared guarantees
 
@@ -37,10 +37,11 @@ world-class semantic/visual gate is still open; — intentionally static.
   codes. Lenient charts remain visibly marked in Astro and continue through
   document table projections.
 - Every current static chart retains a title/description and aligned data
-  table. Document projection is visually proven for all twelve shapes.
-  Complete Astro semantic axes, option fidelity, responsive layout, and
-  keyboard/accessibility proof remain acceptance work except for the proven
-  XY-bar path.
+  table. Astro and document projection are visually proven for all twelve
+  shapes from the same TanStack scene. The production Astro proof covers
+  desktop and 390px containment, a labelled focusable mobile scroll region,
+  strict CSP, hostile labels, and its accessibility tree. The explicit
+  JavaScript-disabled and complete interaction matrix remain open.
 - DOCX and PDF use the same source order and union X keys for sparse point
   series, so a missing point in one series never shifts another series' value.
   Both targets call the shared pinned TanStack SVG adapter; DOCX additionally

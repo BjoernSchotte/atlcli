@@ -32,6 +32,7 @@ test("plain Astro consumer renders every normalized discriminator without raw HT
   expect(html).toContain('sizes="(max-width: 60rem) 100vw, 60rem"');
   expect(html).toContain('data-atlcli-original-download');
   expect(html).toContain("Content-Security-Policy");
+  expect(html).toContain('<meta charset="utf-8">');
   expect(html).toContain('script-src \'self\'');
   expect(html).toContain('connect-src \'none\'');
   expect(html).not.toContain("<style");
@@ -73,13 +74,25 @@ test("plain Astro consumer renders every normalized discriminator without raw HT
     "xyStepArea", "scatter", "timeSeries", "gantt",
   ]) expect(html).toContain(`data-atlcli-chart-kind="${kind}"`);
   expect(html).toContain('data-atlcli-chart-legend');
+  expect(html).toContain('data-atlcli-chart-adapter="tanstack-v0.3/all-static"');
+  expect(html).toContain('data-atlcli-chart-visual="tanstack-svg"');
+  expect(html).toContain('aria-label="Portfolio allocation scrollable chart visual" tabindex="0"');
   expect(html).toContain('data-atlcli-chart-kind="pie"');
-  expect(html).toContain('<path');
-  expect(html).toContain('<polyline');
-  expect(html).toContain('<polygon');
+  expect(html).toContain('class="ts-chart__arc"');
+  expect(html).toContain('class="ts-chart__line"');
+  expect(html).toContain('class="ts-chart__area"');
+  expect(html).toContain('class="ts-chart__dot"');
   expect(html).toContain('data-atlcli-chart-kind="xyBar"');
   expect(html).toContain('data-atlcli-chart-kind="gantt"');
-  expect(html).toContain('role="listitem"');
+  expect(html).toContain('class="ts-chart__arrow"');
+  expect(html).toContain("Quarterly variance");
+  expect(html).toContain("2026-01-01");
+  expect(html).toContain("65%");
+  expect(html).toContain("&lt;/text&gt;&lt;script&gt;alert(3)&lt;/script&gt;");
+  expect(html).not.toContain("</text><script>alert(3)</script>");
+  expect(html).not.toContain("<foreignObject>");
+  expect(html).toContain("Hostile &quot;&gt;&lt;img src=x onerror=alert(2)&gt;");
+  expect(html).not.toContain('\"><img src=x onerror=alert(2)>');
   const asset = html.match(/src="\/_astro\/([^\"]+)"/)?.[1];
   expect(asset).toBeDefined();
   expect((await stat(resolve(fixture, "dist/_astro", asset!))).size).toBeLessThanOrEqual(100 * 1024);
@@ -88,6 +101,7 @@ test("plain Astro consumer renders every normalized discriminator without raw HT
   expect(stylesheet).toBeDefined();
   const css = await readFile(resolve(fixture, "dist/_astro", stylesheet!), "utf8");
   expect(css).toContain("--atlcli-content-foreground:#172b4d");
+  expect(css).toContain("[data-atlcli-chart-visual] svg{min-width:40rem}");
   expect(css).toContain("@media print");
   const golden = JSON.parse(await readFile(resolve(fixture, "semantic-golden.json"), "utf8")) as {
     blockTypes: string[];

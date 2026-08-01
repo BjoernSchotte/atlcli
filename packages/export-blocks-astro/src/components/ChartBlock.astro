@@ -1,11 +1,14 @@
 ---
 import {
+  chartModelDigestV1,
   validateChartModelV1,
-  type ChartCategorySeriesV1,
-  type ChartPointSeriesV1,
-  type ChartPointV1,
   type ExportBlock,
 } from "@atlcli/export-blocks";
+import {
+  renderTanStackChartSvgV1,
+  TANSTACK_CHART_ADAPTER_V1,
+  TANSTACK_CHART_SIZE_V1,
+} from "@atlcli/export-charts-tanstack";
 import type { AstroExportBlockRenderContextV1 } from "../index.js";
 import Caption from "./Caption.astro";
 import ChartTable from "./ChartTable.astro";
@@ -15,249 +18,35 @@ interface Props {
   context: AstroExportBlockRenderContextV1;
 }
 
-interface PlotPoint {
-  x: number;
-  y: number;
-  value: number;
-  label: string;
-}
-
-interface BarShape {
-  series: string;
-  label: string;
-  value: number;
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  colorIndex: number;
-}
-
 const { block, context } = Astro.props;
 const chart = validateChartModelV1(block.chart);
 const title = chart.title || `${chart.kind} chart`;
-const chartId = `atlcli-chart-${Math.abs(hash(JSON.stringify(chart)))}`;
-const colors = chart.style?.colors?.length
-  ? chart.style.colors
-  : ["#0c66e4", "#00875a", "#6554c0", "#de350b", "#974f0c", "#00a3bf"];
+const digest = chartModelDigestV1(chart);
+const chartId = `atlcli-chart-${digest}`;
 const displayData = chart.display?.data ?? "after";
-const categoryData = chart.data.mode === "categories" ? chart.data : undefined;
-const pointData = chart.data.mode === "points" ? chart.data : undefined;
-const ganttData = chart.data.mode === "gantt" ? chart.data : undefined;
-const width = chart.display?.width ?? 720;
-const height = chart.display?.height ?? 320;
-const plotLeft = 52;
-const plotRight = width - 18;
-const plotTop = 22;
-const plotBottom = height - 42;
-const plotWidth = Math.max(1, plotRight - plotLeft);
-const plotHeight = Math.max(1, plotBottom - plotTop);
-const opacity = chart.opacity ?? 1;
-
-function hash(value: string): number {
-  let result = 0;
-  for (let index = 0; index < value.length; index += 1) result = (Math.imul(31, result) + value.charCodeAt(index)) | 0;
-  return result;
-}
-
-function color(index: number): string {
-  return colors[index % colors.length]!;
-}
-
-function finiteX(point: ChartPointV1): number {
-  return typeof point.x === "number" ? point.x : Number.isFinite(Date.parse(point.x)) ? Date.parse(point.x) : 0;
-}
-
-function range(values: readonly number[], includeZero = false): { min: number; max: number } {
-  const all = values.length > 0 ? [...values] : [0];
-  const min = Math.min(...all, ...(includeZero ? [0] : []));
-  const max = Math.max(...all, ...(includeZero ? [0] : []), 1);
-  return min === max ? { min: min - 1, max: max + 1 } : { min, max };
-}
-
-function yPosition(value: number, bounds: { min: number; max: number }): number {
-  return plotBottom - ((value - bounds.min) / (bounds.max - bounds.min)) * plotHeight;
-}
-
-function xPosition(value: number, bounds: { min: number; max: number }): number {
-  return plotLeft + ((value - bounds.min) / (bounds.max - bounds.min)) * plotWidth;
-}
-
-function boundedRange(values: readonly number[], includeZero: boolean, axis: { min?: number | string; max?: number | string } | undefined): { min: number; max: number } {
-  const fallback = range(values, includeZero);
-  const axisNumber = (value: number | string | undefined): number | undefined => {
-    if (typeof value === "number" && Number.isFinite(value)) return value;
-    if (typeof value === "string" && Number.isFinite(Date.parse(value))) return Date.parse(value);
-    return undefined;
-  };
-  const min = axisNumber(axis?.min) ?? fallback.min;
-  const max = axisNumber(axis?.max) ?? fallback.max;
-  return min === max ? { min: min - 1, max: max + 1 } : { min: Math.min(min, max), max: Math.max(min, max) };
-}
-
-function pointsAttribute(points: readonly PlotPoint[]): string {
-  return points.map((point) => `${point.x},${point.y}`).join(" ");
-}
-
-function areaPoints(points: readonly PlotPoint[]): string {
-  if (points.length === 0) return "";
-  return `${pointsAttribute(points)} ${points[points.length - 1]!.x},${plotBottom} ${points[0]!.x},${plotBottom}`;
-}
-
-function stepPoints(points: readonly PlotPoint[]): PlotPoint[] {
-  return points.flatMap((point, index) => {
-    if (index === 0) return [point];
-    const previous = points[index - 1]!;
-    return [{ x: point.x, y: previous.y, value: point.value, label: point.label }, point];
-  });
-}
-
-function categoryPoint(series: ChartCategorySeriesV1, index: number, bounds: { min: number; max: number }): PlotPoint {
-  const label = categoryData!.labels[index]!;
-  return {
-    x: plotLeft + ((index + 0.5) / categoryData!.labels.length) * plotWidth,
-    y: yPosition(series.values[index]!, bounds),
-    value: series.values[index]!,
-    label,
-  };
-}
-
-function pointGeometry(series: ChartPointSeriesV1, xBounds: { min: number; max: number }, yBounds: { min: number; max: number }): PlotPoint[] {
-  return series.points.map((point) => ({
-    x: xPosition(finiteX(point), xBounds),
-    y: yPosition(point.y, yBounds),
-    value: point.y,
-    label: point.label ?? String(point.x),
-  }));
-}
-
-const categoryValues = categoryData?.series.flatMap((series) => series.values) ?? [];
-const categoryScaleValues = categoryData?.labels.map((_, labelIndex) =>
-  chart.stacked
-    ? categoryData.series.reduce((sum, series) => sum + (series.values[labelIndex] ?? 0), 0)
-    : Math.max(...categoryData.series.map((series) => series.values[labelIndex] ?? 0), 0),
-) ?? categoryValues;
-const categoryBounds = boundedRange(categoryScaleValues, true, chart.axes?.y);
-const pointValues = pointData?.series.flatMap((series) => series.points.map((point) => point.y)) ?? [];
-const pointXValues = pointData?.series.flatMap((series) => series.points.map(finiteX)) ?? [];
-const pointBounds = boundedRange(pointValues, true, chart.axes?.y);
-const xBounds = boundedRange(pointXValues, false, chart.axes?.x);
-const categoryLines = categoryData?.series.map((series) => ({
-  series,
-  points: series.values.map((_, index) => categoryPoint(series, index, categoryBounds)),
-})) ?? [];
-const pointLines = pointData?.series.map((series) => ({
-  series,
-  points: pointGeometry(series, xBounds, pointBounds),
-})) ?? [];
-const categoryZero = yPosition(0, categoryBounds);
-const pointZero = yPosition(0, pointBounds);
-const categoryGroupWidth = categoryData ? plotWidth / categoryData.labels.length : 0;
-const categoryBarWidth = categoryData ? Math.max(2, (categoryGroupWidth - 12) / Math.max(1, categoryData.series.length)) : 0;
-const pointCount = pointData ? Math.max(1, ...pointData.series.map((series) => series.points.length)) : 0;
-const pointBarWidth = pointData ? Math.max(2, (plotWidth / pointCount - 12) / Math.max(1, pointData.series.length)) : 0;
-const categoryStacked = categoryData?.series.map(() => [] as number[]) ?? [];
-if (categoryData?.series) {
-  for (let index = 0; index < categoryData.labels.length; index += 1) {
-    let cumulative = 0;
-    for (const [seriesIndex, series] of categoryData.series.entries()) {
-      cumulative += series.values[index] ?? 0;
-      categoryStacked[seriesIndex]!.push(cumulative);
-    }
-  }
-}
-
-const categoryBars: BarShape[] = categoryData === undefined || chart.kind !== "bar"
-  ? []
-  : categoryData.series.flatMap((series, seriesIndex) => series.values.map((value, labelIndex) => {
-    const stackedBase = chart.stacked ? (categoryStacked[seriesIndex - 1]?.[labelIndex] ?? 0) : 0;
-    const top = yPosition(stackedBase + value, categoryBounds);
-    const base = yPosition(stackedBase, categoryBounds);
-    return {
-      series: series.label,
-      label: categoryData.labels[labelIndex]!,
-      value,
-      x: chart.orientation === "horizontal"
-        ? plotLeft
-        : plotLeft + labelIndex * categoryGroupWidth + 6 + seriesIndex * categoryBarWidth,
-      y: chart.orientation === "horizontal"
-        ? plotTop + labelIndex * (plotHeight / categoryData.labels.length) + 4 + seriesIndex * (plotHeight / categoryData.labels.length / categoryData.series.length)
-        : top,
-      width: chart.orientation === "horizontal" ? Math.max(1, (value / categoryBounds.max) * plotWidth) : Math.max(1, categoryBarWidth - 2),
-      height: chart.orientation === "horizontal" ? Math.max(2, plotHeight / categoryData.labels.length / categoryData.series.length - 4) : Math.max(0, base - top),
-      colorIndex: seriesIndex,
-    };
-  }));
-
-const pointBars: BarShape[] = pointData === undefined || chart.kind !== "xyBar"
-  ? []
-  : pointLines.flatMap(({ series, points }, seriesIndex) => points.map((point) => ({
-    series: series.label,
-    label: point.label,
-    value: point.value,
-    x: point.x - pointBarWidth * (pointData.series.length / 2 - seriesIndex),
-    y: Math.min(point.y, pointZero),
-    width: Math.max(1, pointBarWidth - 2),
-    height: Math.max(0, Math.abs(point.y - pointZero)),
-    colorIndex: seriesIndex,
-  })));
-const scatterPoints = chart.kind === "scatter"
-  ? pointLines.flatMap(({ series, points }, seriesIndex) => points.map((point) => ({ series: series.label, point, colorIndex: seriesIndex })))
-  : [];
-
-const pieSlices = chart.kind === "pie" && categoryData
-  ? (() => {
-    const values = categoryData.labels.map((_, index) => categoryData.series[0]?.values[index] ?? 0);
-    const total = Math.max(1, values.reduce((sum, value) => sum + value, 0));
-    let start = -Math.PI / 2;
-    return values.map((value, index) => {
-      const end = start + (value / total) * Math.PI * 2;
-      const largeArc = end - start > Math.PI ? 1 : 0;
-      const explode = Math.max(0, chart.pie?.explode?.[index] ?? 0);
-      const centerOffset = Math.min(12, explode);
-      const outer = (angle: number) => ({ x: width / 2 + Math.cos(angle) * (Math.min(plotWidth, plotHeight) * 0.34 + centerOffset), y: height / 2 + Math.sin(angle) * (Math.min(plotWidth, plotHeight) * 0.34 + centerOffset) });
-      const from = outer(start);
-      const to = outer(end);
-      const path = `M ${width / 2} ${height / 2} L ${from.x} ${from.y} A ${Math.min(plotWidth, plotHeight) * 0.34} ${Math.min(plotWidth, plotHeight) * 0.34} 0 ${largeArc} 1 ${to.x} ${to.y} Z`;
-      const slice = { label: categoryData.labels[index]!, value, path };
-      start = end;
-      return slice;
-    });
-  })()
-  : [];
-
-const legendItems = chart.kind === "pie" && categoryData
-  ? categoryData.labels.map((label, index) => ({ label, color: color(index) }))
-  : categoryData?.series.map((series, index) => ({ label: series.label, color: color(index) }))
-    ?? pointData?.series.map((series, index) => ({ label: series.label, color: color(index) }))
-    ?? [];
-const showLegend = chart.legend !== "none" && (legendItems.length > 1 || chart.kind === "pie");
+const diagnostics = block.diagnostics ?? [];
+const diagnosticsText = diagnostics.map((diagnostic) => diagnostic.message).join(" ");
 const description = chart.data.mode === "categories"
   ? chart.data.series.map((series) => `${series.label}: ${series.values.join(", ")}`).join("; ")
   : chart.data.mode === "points"
     ? chart.data.series.map((series) => `${series.label}: ${series.points.map((point) => `${point.x}=${point.y}`).join(", ")}`).join("; ")
     : chart.data.tasks.map((task) => `${task.label}: ${task.start} to ${task.end}`).join("; ");
-const diagnostics = block.diagnostics ?? [];
-const diagnosticsText = diagnostics.map((diagnostic) => diagnostic.message).join(" ");
-const accessibleDescription = diagnostics.length > 0 ? `${description} Chart notes: ${diagnosticsText}` : description;
-const usesCategoryLines = categoryData !== undefined && ["line", "area"].includes(chart.kind);
-const usesPointLines = pointData !== undefined && ["xyLine", "xyArea", "xyStep", "xyStepArea", "timeSeries"].includes(chart.kind);
-const ganttGeometry = ganttData === undefined ? [] : (() => {
-  const starts = ganttData.tasks.map((task) => Date.parse(task.start));
-  const ends = ganttData.tasks.map((task) => Date.parse(task.end));
-  const start = Math.min(...starts);
-  const end = Math.max(...ends, start + 1);
-  return ganttData.tasks.map((task) => {
-    const taskStart = Date.parse(task.start);
-    const taskEnd = Date.parse(task.end);
-    return {
-      task,
-      offset: ((taskStart - start) / (end - start)) * 100,
-      width: Math.max(1, ((taskEnd - taskStart) / (end - start)) * 100),
-      progress: Math.max(0, Math.min(1, task.progress ?? 0)) * 100,
-    };
-  });
-})();
+const accessibleDescription = diagnostics.length > 0
+  ? `${description} Chart notes: ${diagnosticsText}`
+  : description;
+const width = chart.display?.width ?? TANSTACK_CHART_SIZE_V1.width;
+const height = chart.display?.height ?? TANSTACK_CHART_SIZE_V1.height;
+
+// This is the only trusted markup seam in the chart component. The adapter
+// validates the closed ChartModelV1 and escapes every source-derived label
+// before returning deterministic SVG; provider HTML never reaches set:html.
+const svg = renderTanStackChartSvgV1(chart, {
+  width,
+  height,
+  idPrefix: chartId,
+  ariaLabel: title,
+  ariaDescription: accessibleDescription,
+});
 const figureStyle = [
   chart.style?.backgroundColor ? `background:${chart.style.backgroundColor}` : "",
   chart.style?.borderColor ? `border:1px solid ${chart.style.borderColor}` : "",
@@ -270,8 +59,9 @@ const figureStyle = [
   data-atlcli-chart-kind={chart.kind}
   data-atlcli-chart-orientation={chart.orientation}
   data-atlcli-chart-stacked={chart.stacked ? "true" : undefined}
-  aria-describedby={`${chartId}-description`}
+  data-atlcli-chart-adapter={TANSTACK_CHART_ADAPTER_V1.id}
   data-atlcli-chart-diagnostics={diagnostics.length > 0 ? "true" : undefined}
+  aria-describedby={`${chartId}-description`}
   style={figureStyle || undefined}
 >
   <header data-atlcli-chart-heading>
@@ -282,40 +72,15 @@ const figureStyle = [
   {diagnostics.length > 0 && <aside class="atlcli-chart-diagnostics" data-atlcli-chart-diagnostics role="status">
     <strong>Chart data note:</strong> {diagnosticsText}
   </aside>}
-  {showLegend && <ul class="atlcli-chart-legend" data-atlcli-chart-legend data-position={chart.legend ?? "right"}>
-    {legendItems.map((item) => <li><span aria-hidden="true" style={`background:${item.color}`}></span>{item.label}</li>)}
-  </ul>}
   {displayData === "before" && <ChartTable data={chart.data} title={title} />}
-  {ganttData ? <div class="atlcli-gantt" role="list" aria-label={title}>
-    {ganttGeometry.map(({ task, offset, width: taskWidth, progress }) => <div class="atlcli-gantt-row" role="listitem" aria-label={`${task.label}: ${task.start} to ${task.end}`}>
-      <span class="atlcli-gantt-label">{task.label}</span>
-      <span class="atlcli-gantt-track"><span class="atlcli-gantt-bar" style={`inset-inline-start:${offset}%;width:${taskWidth}%;background:${color(0)}`}><span style={`width:${progress}%`}></span></span></span>
-      <time datetime={task.start}>{task.start}</time><time datetime={task.end}>{task.end}</time>
-    </div>)}
-  </div> : <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={title}>
-    <title>{title}</title>
-    <desc>{accessibleDescription}</desc>
-    {categoryData && chart.kind !== "pie" && <line x1={plotLeft} y1={categoryZero} x2={plotRight} y2={categoryZero} stroke="currentColor" opacity="0.28" />}
-    {pointData && <line x1={plotLeft} y1={pointZero} x2={plotRight} y2={pointZero} stroke="currentColor" opacity="0.28" />}
-    {categoryData?.labels.map((label, index) => <text x={plotLeft + ((index + 0.5) / categoryData.labels.length) * plotWidth} y={height - 12} text-anchor="middle" font-size="12">{label}</text>)}
-    {pointData?.series[0]?.points.map((point) => <text x={xPosition(finiteX(point), xBounds)} y={height - 12} text-anchor="middle" font-size="12">{point.label ?? point.x}</text>)}
-    {chart.xLabel && <text x={width / 2} y={height - 1} text-anchor="middle" font-size="12">{chart.xLabel}</text>}
-    {chart.yLabel && <text x="12" y={height / 2} text-anchor="middle" font-size="12" transform={`rotate(-90 12 ${height / 2})`}>{chart.yLabel}</text>}
-    {chart.kind === "pie" && pieSlices.map((slice, index) => <path d={slice.path} fill={color(index)} opacity={opacity} stroke="currentColor" stroke-opacity="0.25"><title>{`${slice.label}: ${slice.value}`}</title></path>)}
-    {categoryBars.map((bar) => <rect data-atlcli-chart-series={bar.series} data-atlcli-chart-label={bar.label} data-atlcli-chart-value={String(bar.value)} x={bar.x} y={bar.y} width={bar.width} height={bar.height} fill={color(bar.colorIndex)} opacity={opacity}><title>{`${bar.series}, ${bar.label}: ${bar.value}`}</title></rect>)}
-    {pointBars.map((bar) => <rect data-atlcli-chart-series={bar.series} data-atlcli-chart-label={bar.label} data-atlcli-chart-value={String(bar.value)} x={bar.x} y={bar.y} width={bar.width} height={bar.height} fill={color(bar.colorIndex)} opacity={opacity}><title>{`${bar.series}, ${bar.label}: ${bar.value}`}</title></rect>)}
-    {usesCategoryLines && categoryLines.map(({ series, points }, seriesIndex) => <g data-atlcli-chart-series={series.label}>
-      {chart.kind === "area" && <polygon points={areaPoints(points)} fill={color(seriesIndex)} opacity={Math.min(0.35, opacity)} />}
-      <polyline points={pointsAttribute(points)} fill="none" stroke={color(seriesIndex)} stroke-width="3" opacity={opacity} />
-      {(chart.showShapes || chart.kind === "line") && points.map((point) => <circle cx={point.x} cy={point.y} r="4" fill={color(seriesIndex)}><title>{`${series.label}, ${point.label}: ${point.value}`}</title></circle>)}
-    </g>)}
-    {usesPointLines && pointLines.map(({ series, points }, seriesIndex) => <g data-atlcli-chart-series={series.label}>
-      {(chart.kind === "xyArea" || chart.kind === "xyStepArea") && <polygon points={areaPoints(["xyStep", "xyStepArea"].includes(chart.kind) ? stepPoints(points) : points)} fill={color(seriesIndex)} opacity={Math.min(0.35, opacity)} />}
-      <polyline points={pointsAttribute(["xyStep", "xyStepArea"].includes(chart.kind) ? stepPoints(points) : points)} fill="none" stroke={color(seriesIndex)} stroke-width="3" opacity={opacity} />
-      {(chart.showShapes || chart.kind === "xyLine" || chart.kind === "timeSeries") && points.map((point) => <circle cx={point.x} cy={point.y} r="4" fill={color(seriesIndex)}><title>{`${series.label}, ${point.label}: ${point.value}`}</title></circle>)}
-    </g>)}
-    {scatterPoints.map(({ series, point, colorIndex }) => <circle data-atlcli-chart-series={series} data-atlcli-chart-value={String(point.value)} cx={point.x} cy={point.y} r="5" fill={color(colorIndex)} opacity={opacity}><title>{`${series}, ${point.label}: ${point.value}`}</title></circle>)}
-  </svg>}
+  <div
+    data-atlcli-chart-visual="tanstack-svg"
+    data-atlcli-chart-legend={chart.legend ?? "right"}
+    role="group"
+    aria-label={`${title} scrollable chart visual`}
+    tabindex="0"
+    set:html={svg}
+  />
   {displayData === "after" && <ChartTable data={chart.data} title={title} />}
   {block.caption && <Caption caption={block.caption} locale={context.locale} context={context} />}
 </figure>

@@ -36,6 +36,8 @@
 }
 
 [data-atlcli-block="chart"] { overflow-x: auto; }
+[data-atlcli-chart-visual] { max-width: 100%; overflow-x: auto; overscroll-behavior-inline: contain; }
+[data-atlcli-chart-visual]:focus-visible { outline: 0.2rem solid currentColor; outline-offset: 0.2rem; border-radius: 0.25rem; }
 [data-atlcli-block="chart"] svg { display: block; width: 100%; min-height: 12rem; overflow: visible; }
 [data-atlcli-block="chart"] svg[hidden] { display: none; }
 [data-atlcli-chart-runtime] { min-height: 20rem; width: 100%; outline-offset: 0.2rem; }
@@ -55,6 +57,10 @@
 .atlcli-gantt-track { display: block; min-height: 0.8rem; border-radius: 999px; background: var(--atlcli-content-surface); overflow: hidden; position: relative; }
 .atlcli-gantt-bar { display: block; min-height: 0.8rem; border-radius: inherit; position: absolute; inset-block-start: 0; }
 .atlcli-gantt-bar > span { display: block; height: 100%; border-radius: inherit; background: color-mix(in srgb, white 35%, transparent); }
+
+@media (max-width: 47.99rem) {
+  [data-atlcli-chart-visual] svg { min-width: 40rem; }
+}
 
 @media (prefers-reduced-motion: reduce) {
   [data-atlcli-chart-runtime] *, [data-atlcli-block="chart"] * { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; scroll-behavior: auto !important; }

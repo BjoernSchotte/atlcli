@@ -1,7 +1,8 @@
 # Chart macro parity — a real `ExportBlock` surface for Astro publishing
 
 - Status: **Implementation in progress — the typed surface and all-shapes
-  TanStack DOCX/PDF projection are proven; Astro and host proof remain open**
+  TanStack Astro/DOCX/PDF projection are proven; host and interaction proof
+  remain open**
 - Parent plan: [`PLAN.md`](./PLAN.md)
 - Scope: Confluence Cloud ADF and Data Center/Server Storage Chart macros
 - First consumer: `@atlcli/export-blocks-astro` and the Starlight adapter
@@ -74,18 +75,19 @@ The shared contract, Cloud/DC normalization seams, dedicated macro registry
 renderer, Astro chart block, DOCX/PDF SVG-plus-table projections, and the
 version-pinned TanStack `ExportBlock` adapter exist in the stacked follow-up
 PR. The tenant-free acceptance corpus now visually proves all twelve chart
-kinds through the real DOCX and PDF engines. The provider-live path remains a
-separate one-XY-bar source proof: its fixture deliberately contains one macro
-because a same-page multi-macro experiment triggered provider-side Hibernate
-stale-state errors.
+kinds through Astro 7.1.6 and the real DOCX/PDF engines. The provider-live path
+remains a separate one-XY-bar source proof: its fixture deliberately contains
+one macro because a same-page multi-macro experiment triggered provider-side
+Hibernate stale-state errors.
 
 An evidence audit on 2026-08-01 reset earlier overclaims. The former
 atlcli-owned document geometry renderer has since been removed: DOCX and PDF
 now consume the same pinned TanStack scene/SVG adapter as the publishing
 surface. The document proof covers signed horizontal stacks, stepped paths,
 pie labels, locale-aware time-series labels, and Gantt progress/dependency
-edges. Astro still requires the corresponding all-shapes visual, responsive,
-interaction, and accessibility proof. The maintained evidence matrix is in
+edges. The production Astro proof covers the corresponding all-shapes visual,
+responsive and accessibility baseline; the full optional interaction and host
+matrix remain open. The maintained evidence matrix is in
 [`CHART-SUPPORT-MATRIX.md`](./CHART-SUPPORT-MATRIX.md).
 
 ### Proven milestone evidence (2026-08-01)
@@ -99,6 +101,11 @@ interaction, and accessibility proof. The maintained evidence matrix is in
   without clipped marks, title/legend collisions, duplicate tables, or broken
   Gantt/pie/step/time-series geometry. Generated proof files stay outside Git;
   `scripts/chart-rendered-proof.ts` makes the proof reproducible.
+- The production Astro 7.1.6 consumer renders the same twelve models through
+  the shared TanStack server-SVG adapter. Desktop and 390px browser inspection
+  confirms all shapes, one semantic table per chart, UTF-8 labels, strict CSP,
+  focusable contained mobile visuals, hostile-label inertness, no document
+  overflow, and no production browser warnings/errors.
 - The normal mayflower DOCX path completed for the persistent provider fixture;
   the generated document contains the shared `chart.svg`, a PNG compatibility
   rendition, the chart title, marker, table headers, and all four values. A
@@ -115,10 +122,12 @@ interaction, and accessibility proof. The maintained evidence matrix is in
   browser hydrated it to `data-atlcli-chart-island="hydrated"` with a
   TanStack runtime chart. Generated output remains outside Git.
 - Contract tests dispatch all twelve Cloud ADF and DC Storage spellings and
-  retain aligned tables, but are not yet accepted as visual all-shapes proof.
-- Browser checks prove the local XY-bar island, static table after hydration,
-  390px overflow behavior, CSP-safe bundled output, and JavaScript-off
-  fallback for that path. They do not yet prove all twelve shapes.
+  retain aligned tables; the shared tenant-free corpus supplies the separate
+  visual all-shapes proof.
+- Browser checks prove all twelve static shapes plus the local XY-bar island,
+  static table after hydration, 390px containment, and CSP-safe bundled output.
+  JavaScript-off fallback is proven for the XY-bar path; the full interaction
+  and explicit JavaScript-disabled all-shapes matrix remain open.
 
 ## 2. Why a shared block is required
 
@@ -167,7 +176,7 @@ renderable by an interactive library, it still remains statically supported.
 
 ### 3.2 Typed presentation/data semantics (P0/P1)
 
-- [ ] Orientation: `vertical`/`horizontal` where meaningful, with equivalent
+- [x] Orientation: `vertical`/`horizontal` where meaningful, with equivalent
       Astro and document geometry.
 - [ ] `threeD`, `stacked`, `showShapes`, and bounded `opacity`; stacked and
       mixed-sign geometry must be visually proven.
@@ -176,7 +185,7 @@ renderable by an interactive library, it still remains statically supported.
 - [ ] Title, subtitle, x-axis label, y-axis label, and all legend positions.
 - [x] Table selection (`tables`) and column selection (`columns`).
 - [x] Data orientation: horizontal or vertical.
-- [ ] Locale/language/country and date format, with a deterministic fallback.
+- [x] Locale/language/country and date format, with a deterministic fallback.
 - [x] Time period: millisecond, second, minute, hour, day, week, month,
       quarter, or year.
 - [x] `forgive` behavior as an explicit strict/lenient normalization decision;
@@ -341,7 +350,7 @@ only and must be safe to include in a public site manifest.
 
 - [x] Add a semantic `ChartBlock.astro` dispatch component to
       `@atlcli/export-blocks-astro`.
-- [ ] Render and visually prove accessible SVG/HTML for every chart kind, with title/description,
+- [x] Render and visually prove accessible SVG/HTML for every chart kind, with title/description,
       keyboard-safe labels, no raw HTML injection, and responsive dimensions.
 - [x] Render an accessible data table before/after the visual when configured;
       when visual rendering is intentionally unavailable, render the table as
@@ -395,8 +404,9 @@ only and must be safe to include in a public site manifest.
       diagnostics.
 - [ ] Enforce resource/time/memory budgets separately for acquisition,
       normalization, static rendering, and islands.
-- [x] Sanitize text/attributes and URLs using existing shared gates; never use
-      `set:html` for untrusted chart input.
+- [x] Sanitize text/attributes and URLs using existing shared gates. The only
+      chart `set:html` seam accepts validated, escaped output from the pinned
+      TanStack adapter; raw provider HTML and macro parameters cannot reach it.
 - [x] Ensure chart models and manifests contain no secrets, bearer tokens,
       private tenant URLs, or unreviewed customer identifiers.
 - [ ] Make cache invalidation depend on model and source-data digests, not only
@@ -416,7 +426,7 @@ only and must be safe to include in a public site manifest.
 - [x] DC Storage fixtures cover all twelve kinds, legacy spellings, same-page
       table data, and malformed/partial input; attachment-backed data remains
       an explicit follow-up.
-- [ ] Renderer tests assert source order, semantic labels, data-table values,
+- [x] Renderer tests assert source order, semantic labels, data-table values,
       escaping, responsive attributes, and JavaScript-off output.
 - [x] DOCX/PDF tests assert no chart block is dropped, the shared SVG visual is
       requested/embedded, and the aligned fallback data table is present.
@@ -453,6 +463,10 @@ listed in the capability registry.
       accessibility tree,
       keyboard navigation, reduced motion, CSP, and JavaScript disabled; the
       representative interactive XY-bar island is proven in the local build.
+      The production Astro 7.1.6 build now proves all twelve static shapes,
+      responsive desktop/390px containment, the accessibility tree, strict
+      CSP, hostile-label inertness, UTF-8 labels, and zero browser errors;
+      explicit JavaScript-disabled and full interaction checks remain open.
 - [x] Run the mayflower Cloud profile against the persistent, non-private
       provider fixture page and record the provider-valid XY-bar result without
       committing page content.
@@ -509,10 +523,10 @@ listed in the capability registry.
 - [x] Add the version-pinned `@atlcli/export-charts-tanstack` package and prove
       that the shared tenant-free all-shapes corpus compiles into non-empty
       TanStack scenes and deterministic, escaped DOM-free SVG output.
-- [ ] Implement the separate `@atlcli/export-charts-tanstack` adapter for all
+- [x] Implement the separate `@atlcli/export-charts-tanstack` adapter for all
       twelve shapes and visually prove Astro's static/server SVG from the
       shared TanStack scene.
-- [ ] Implement and prove data-table/Gantt fallbacks, theme tokens, and a11y behavior.
+- [x] Implement and prove data-table/Gantt fallbacks, theme tokens, and a11y behavior.
 
 ### T7 — Interactive adapter(s)
 
@@ -550,9 +564,8 @@ The follow-up PR is complete only when all gates are checked:
 
 - [x] `ExportBlock` has a validated, source-neutral `type:"chart"` node; no
       page-level chart sidecar remains.
-- [ ] All twelve documented Confluence chart kinds have Cloud/DC fixtures,
+- [x] All twelve documented Confluence chart kinds have Cloud/DC fixtures,
       static Astro output, accessible data fallback, and DOCX/PDF projections.
-      The DOCX/PDF portion is proven; the Astro visual/a11y gate remains open.
 - [ ] P0 parameter families and strict/lenient diagnostics are tested; every
       unsupported option is visible and deterministic.
 - [ ] Existing non-chart DOCX/PDF and Astro pages pass regression tests.
