@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { cp, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
+import { pathToFileURL } from "node:url";
 
 const workspaceRoot = resolve(import.meta.dir, "../../..");
 const fixtureDirectory = resolve(import.meta.dir, "../fixtures/astro-consumer");
@@ -38,6 +39,11 @@ test("Astro consumer harness loads structured pages and emits a private inventor
   expect(html).toContain('data-atlcli-source-id="guide"');
   expect(html).toContain("data-pagefind-body");
   expect(html).toContain("data-atlcli-search");
+  expect(html).toContain('data-atlcli-search-mode="modal"');
+  expect(html).toContain('data-atlcli-search-mode="page"');
+  expect(html).toContain('data-pagefind-runtime="main-thread"');
+  expect(html).toContain("Search publication");
+  expect(html).toContain("Nothing matched.");
   expect(html).toContain("pagefind/pagefind.js");
   expect(html).toContain("&lt;img src=x onerror=alert");
   expect(html).not.toContain("<img src=x onerror");
@@ -66,7 +72,9 @@ test("Astro builds root, nested-directory, and nested-portable URL profiles", as
   try {
     for (const fixture of cases) {
       await run(["bun", "run", "build"], fixtureDirectory, { ATLCLI_ASTRO_FIXTURE_PROFILE: fixture.profile });
-      expect(await readFile(resolve(fixtureDirectory, fixture.output), "utf8")).toContain('data-atlcli-source-id="guide"');
+      const html = await readFile(resolve(fixtureDirectory, fixture.output), "utf8");
+      expect(html).toContain('data-atlcli-source-id="guide"');
+      expect(html).toContain(`data-pagefind-url="${fixture.profile === "root-directory" ? "/" : "/docs/"}pagefind/pagefind.js"`);
       const inventory = JSON.parse(await readFile(resolve(fixtureDirectory, fixture.inventory), "utf8")) as {
         pages: Array<{ pathname: string }>;
       };
@@ -79,6 +87,51 @@ test("Astro builds root, nested-directory, and nested-portable URL profiles", as
       await rm(resolve(fixtureDirectory, fixture.output.split("/")[0]!), { recursive: true, force: true });
       await rm(resolve(fixtureDirectory, fixture.inventory), { force: true });
     }));
+  }
+}, 30_000);
+
+test("the built Pagefind client searches the static index through its main-thread fallback", async () => {
+  await run(["bun", "run", "build"], fixtureDirectory);
+  const outputDirectory = resolve(fixtureDirectory, "dist");
+  const pagefindDirectory = resolve(outputDirectory, "pagefind");
+  const staticOrigin = "https://atlcli-static.test";
+  const originalFetch = globalThis.fetch;
+  Object.defineProperty(globalThis, "fetch", {
+    configurable: true,
+    value: async (input: RequestInfo | URL): Promise<Response> => {
+      const url = input instanceof Request ? new URL(input.url) : new URL(input.toString());
+      if (url.origin !== staticOrigin) throw new Error(`unexpected Pagefind network request: ${url.href}`);
+      const file = resolve(outputDirectory, url.pathname.replace(/^\/+/, ""));
+      if (!file.startsWith(`${outputDirectory}/`)) throw new Error(`Pagefind read escaped output: ${file}`);
+      try {
+        return new Response(await readFile(file), { status: 200 });
+      } catch {
+        return new Response("Not found", { status: 404 });
+      }
+    },
+  });
+  try {
+    const pagefind = await import(`${pathToFileURL(join(pagefindDirectory, "pagefind.js")).href}?main-thread-test=${Date.now()}`) as {
+      createInstance(options: { basePath: string; noWorker: boolean }): {
+        init(): Promise<void>;
+        search(query: string, options?: { filters?: Record<string, string> }): Promise<{
+          results: Array<{ data(): Promise<{ raw_url: string; meta: { title?: string } }> }>;
+        }>;
+      };
+    };
+    const instance = pagefind.createInstance({
+      basePath: `${staticOrigin}/pagefind/`,
+      noWorker: true,
+    });
+    await instance.init();
+    const found = await instance.search("Guide", { filters: { label: "guide" } });
+    expect(found.results).toHaveLength(1);
+    await expect(found.results[0]!.data()).resolves.toMatchObject({
+      raw_url: "/publish/guide/",
+      meta: { title: "Guide" },
+    });
+  } finally {
+    Object.defineProperty(globalThis, "fetch", { configurable: true, value: originalFetch });
   }
 }, 30_000);
 

@@ -164,17 +164,49 @@ export declare function createAstroStaticPublicationBuilderV1(options: AstroStat
 // export: createAstroStaticPublicationManifestV1
 export declare function createAstroStaticPublicationManifestV1(options: CreateAstroStaticManifestOptionsV1): Promise<StaticPublicationManifestV1>;
 
+// export: DEFAULT_PAGEFIND_SEARCH_MESSAGES_V1
+export declare const DEFAULT_PAGEFIND_SEARCH_MESSAGES_V1: PagefindSearchMessagesV1;
+
 // export: LoadedPublicationBundleV1
 export interface LoadedPublicationBundleV1 {
     bundle: PublicationBundleV1;
     pages: readonly PublicationPageV1[];
 }
 
+// export: normalizePagefindSearchFiltersV1
+export declare function normalizePagefindSearchFiltersV1(labels: readonly string[], filters: readonly PagefindSearchFilterV1[] | undefined): readonly PagefindSearchFilterV1[];
+
 // export: PAGEFIND_OWNED_OUTPUT_PATH_PREFIX_V1
 export declare const PAGEFIND_OWNED_OUTPUT_PATH_PREFIX_V1 = "pagefind";
 
 // export: PAGEFIND_VERSION_V1
 export declare const PAGEFIND_VERSION_V1 = "1.5.2";
+
+// export: PagefindSearchFilterV1
+export interface PagefindSearchFilterV1 {
+    name: string;
+    label: string;
+    values: readonly string[];
+}
+
+// export: PagefindSearchMessagesV1
+export interface PagefindSearchMessagesV1 {
+    trigger: string;
+    close: string;
+    dialogLabel: string;
+    pageLabel: string;
+    queryLabel: string;
+    queryPlaceholder: string;
+    filterLabel: string;
+    allFilters: string;
+    searching: string;
+    noResults: string;
+    unavailable: string;
+    resultCount: (count: number) => string;
+}
+
+// export: PagefindSearchRuntimeV1
+export type PagefindSearchRuntimeV1 = "auto" | "main-thread";
 
 // export: PUBLICATION_SEARCH_SEMANTIC_SLOTS_V1
 export declare const PUBLICATION_SEARCH_SEMANTIC_SLOTS_V1: readonly [

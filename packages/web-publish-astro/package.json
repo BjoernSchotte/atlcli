@@ -19,7 +19,8 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
-    "./components/PagefindSearch.astro": "./dist/components/PagefindSearch.astro"
+    "./components/PagefindSearch.astro": "./dist/components/PagefindSearch.astro",
+    "./components/PagefindSearchPage.astro": "./dist/components/PagefindSearchPage.astro"
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json && bun scripts/copy-assets.ts",

@@ -1610,7 +1610,7 @@ and presentation contracts are not Starlight-private.
 - [x] Build the three URL/base profiles from section 11.
 - [x] Pin Pagefind, annotate canonical content/facets/metadata in trusted
       components, and run the full static indexer after each Astro build.
-- [ ] Provide theme-neutral accessible modal and full-page search components
+- [x] Provide theme-neutral accessible modal and full-page search components
       with keyboard shortcut, worker/main-thread fallback, translated UI,
       filters, result excerpts, and nested-base URL handling.
 - [x] Exclude navigation chrome, private diagnostics, partial/hidden pages,

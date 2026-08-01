@@ -37,3 +37,10 @@ export {
   PAGEFIND_VERSION_V1,
   type BuildPagefindIndexOptionsV1,
 } from "./pagefind.js";
+export {
+  DEFAULT_PAGEFIND_SEARCH_MESSAGES_V1,
+  normalizePagefindSearchFiltersV1,
+  type PagefindSearchFilterV1,
+  type PagefindSearchMessagesV1,
+  type PagefindSearchRuntimeV1,
+} from "./search.js";

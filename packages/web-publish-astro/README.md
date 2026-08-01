@@ -7,6 +7,28 @@ it never acquires Confluence content, credentials, or network data.
 Semantic document components are intentionally supplied by
 `@atlcli/export-blocks-astro`, not by this integration package.
 
+## Static search components
+
+The optional theme-neutral components
+`@atlcli/web-publish-astro/components/PagefindSearch.astro` (modal) and
+`@atlcli/web-publish-astro/components/PagefindSearchPage.astro` (full page)
+consume only the Pagefind files produced by the post-build hook. They accept a
+base path, allowlisted facet values, translated visible strings, and either the
+default `auto` Pagefind worker runtime or the explicit `main-thread` fallback.
+Result titles and excerpts are always inserted as text, never HTML.
+
+```astro
+---
+import PagefindSearchPage from "@atlcli/web-publish-astro/components/PagefindSearchPage.astro";
+---
+
+<PagefindSearchPage
+  base="/docs/"
+  filters={[{ name: "language", label: "Language", values: ["en", "de"] }]}
+  messages={{ queryLabel: "Search", noResults: "No matching pages." }}
+/>
+```
+
 ## Post-build boundary
 
 V1 ends after Astro and Pagefind produce a verified static-publication

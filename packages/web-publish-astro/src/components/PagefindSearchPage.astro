@@ -5,12 +5,11 @@ interface Props {
   base?: string;
   labels?: readonly string[];
   filters?: readonly PagefindSearchFilterV1[];
-  shortcut?: "mod+k" | "/" | "none";
   runtime?: PagefindSearchRuntimeV1;
   messages?: Partial<Omit<PagefindSearchMessagesV1, "resultCount">> & { resultCount?: string };
 }
 
-const { base = "/", labels = [], filters, shortcut = "mod+k", runtime = "auto", messages = {} } = Astro.props;
+const { base = "/", labels = [], filters, runtime = "auto", messages = {} } = Astro.props;
 const normalizedBase = base === "/" ? "/" : `/${base.replace(/^\/+|\/+$/gu, "")}/`;
 const copy = { ...DEFAULT_PAGEFIND_SEARCH_MESSAGES_V1, ...messages };
 const searchFilters = normalizePagefindSearchFiltersV1(labels, filters);
@@ -24,21 +23,16 @@ const clientMessages = JSON.stringify({
 
 <section
   data-atlcli-search
-  data-atlcli-search-mode="modal"
+  data-atlcli-search-mode="page"
   data-atlcli-search-messages={clientMessages}
   data-pagefind-runtime={runtime}
   data-pagefind-url={`${normalizedBase}pagefind/pagefind.js`}
-  data-shortcut={shortcut}
-  aria-label={copy.dialogLabel}
+  aria-label={copy.pageLabel}
 >
-  <button type="button" data-atlcli-search-trigger aria-haspopup="dialog">{copy.trigger}</button>
-  <dialog data-atlcli-search-dialog aria-label={copy.dialogLabel}>
-    <form method="dialog"><button type="submit">{copy.close}</button></form>
-    <label>{copy.queryLabel}<input type="search" data-atlcli-search-input autocomplete="off" placeholder={copy.queryPlaceholder} /></label>
-    {searchFilters.map((filter) => <label>{filter.name === "label" ? copy.filterLabel : filter.label}<select data-atlcli-search-filter={filter.name}><option value="">{copy.allFilters}</option>{filter.values.map((value) => <option value={value}>{value}</option>)}</select></label>)}
-    <p data-atlcli-search-status aria-live="polite"></p>
-    <ol data-atlcli-search-results></ol>
-  </dialog>
+  <label>{copy.queryLabel}<input type="search" data-atlcli-search-input autocomplete="off" placeholder={copy.queryPlaceholder} /></label>
+  {searchFilters.map((filter) => <label>{filter.name === "label" ? copy.filterLabel : filter.label}<select data-atlcli-search-filter={filter.name}><option value="">{copy.allFilters}</option>{filter.values.map((value) => <option value={value}>{value}</option>)}</select></label>)}
+  <p data-atlcli-search-status aria-live="polite"></p>
+  <ol data-atlcli-search-results></ol>
 </section>
 
 <script>
