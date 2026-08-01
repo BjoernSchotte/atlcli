@@ -429,8 +429,16 @@ export function finalizeResearchAgentDraftV1(input: {
   sources: readonly ResearchSourceReferenceV1[];
   detailEvidence: readonly ResearchDetailEvidenceV1[];
   run: ResearchRunSummaryV1;
+  /** Host-authored limitations, appended after untrusted model draft validation. */
+  additionalLimitations?: readonly string[];
 }): ResearchReportV1 {
   const draft = parseResearchAgentDraftV1(input.draft);
+  const additionalLimitations = (input.additionalLimitations ?? [])
+    .filter((limitation): limitation is string =>
+      typeof limitation === "string" && limitation.trim().length > 0
+    )
+    .slice(0, 12)
+    .map((limitation) => limitation.slice(0, 700));
   const sources = input.sources.map((source) => ({ ...source }));
   const sourcesById = new Map(sources.map((source) => [source.id, source]));
   const evidenceBoundary = evidenceQualityBoundary(input.detailEvidence, input.run);
@@ -477,6 +485,7 @@ export function finalizeResearchAgentDraftV1(input: {
     relationships,
     limitations: [
       ...draft.limitations,
+      ...additionalLimitations,
       ...(evidenceBoundary ? [evidenceBoundary] : []),
     ],
     sources: citedSources,

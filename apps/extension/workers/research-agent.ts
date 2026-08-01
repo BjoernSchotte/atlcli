@@ -86,6 +86,7 @@ globalThis.addEventListener("message", (event: MessageEvent<unknown>) => {
         scopeCatalog,
         runId,
         researchGraph,
+        brief: briefOutcome.brief,
         workspace,
         options: { onProgress, onEvent, policy },
       });

@@ -2765,10 +2765,17 @@ Gate:
 - [x] Approval fixtures preserve omitted/default versus explicitly automatic
       intent. A T3 `auto -> deep` run with default approval stops before
       research; the otherwise identical explicit-automatic run may proceed.
-- [ ] A required-ambiguity fixture returns the same typed clarification outcome
+- [x] A required-ambiguity fixture returns the same typed clarification outcome
       in CLI and packed browser and performs zero detail/subagent calls. A
       non-required assumption remains visibly proposed in report limitations;
-      it is never silently marked user-accepted.
+      it is never silently marked user-accepted. Proven 2026-08-01: the CLI
+      stop fixture and the packed MV3 service-worker fixture both return the
+      closed clarification schema for an ambiguous named project. The packed
+      path performs one catalog-only project lookup, writes no Anthropic key,
+      and starts no agent worker. The shared runtime projects a non-blocking
+      proposed assumption through deterministic finalization as `Proposed
+      assumption (not user-confirmed)` in the Markdown limitations; a dynamic
+      `createDeepAgent` execution confirms that projection reaches the report.
 - [ ] Exact key/name, duplicate name, alias, archived-only, inaccessible,
       paginated, explicit-precedence, current-context, exact-link,
       cross-tenant, and catalog prompt-injection fixtures return identical

@@ -325,6 +325,24 @@ describe("research agent draft finalization", () => {
     expect(report.markdown).toContain("Relationship hypotheses\n\n_None._");
   });
 
+  it("keeps a host-projected proposed assumption visible as an unconfirmed limitation", () => {
+    const report = finalizeResearchAgentDraftV1({
+      draft: draft(),
+      request,
+      sources,
+      detailEvidence: [],
+      run,
+      additionalLimitations: [
+        "Proposed assumption (not user-confirmed): The intended audience is the delivery team.",
+      ],
+    });
+
+    expect(report.limitations).toContain(
+      "Proposed assumption (not user-confirmed): The intended audience is the delivery team.",
+    );
+    expect(report.markdown).toContain("Proposed assumption (not user-confirmed)");
+  });
+
   it("rejects model-authored fields outside the narrow structured draft", () => {
     expect(() =>
       finalizeResearchAgentDraftV1({

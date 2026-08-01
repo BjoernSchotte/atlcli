@@ -37,6 +37,7 @@ import {
   prepareResearchScopePreflightV1,
   runResearchAgent,
   type ResearchBriefPreflightOutcomeV1,
+  type ResearchBriefV1,
   type ResearchOneShotPolicyV1,
   type ResearchRequestV1,
   type ResearchOneShotEventV1,
@@ -122,6 +123,7 @@ export interface ResearchCliAgentInput {
   workspace: ResearchCliWorkspace;
   sessionId: string;
   researchGraph: ResearchGraphV1;
+  brief: ResearchBriefV1;
   signal: AbortSignal;
   onEvent: (event: ResearchOneShotEventV1) => void;
   writeDiagnostic: (message: string) => void;
@@ -442,6 +444,7 @@ export const defaultResearchCliDependencies: ResearchCliDependencies = {
       },
       runId: input.sessionId,
       researchGraph: input.researchGraph,
+      brief: input.brief,
       workspace: input.workspace,
       options: {
         signal: input.signal,
@@ -561,6 +564,7 @@ export async function handleResearch(
       workspace,
       sessionId,
       researchGraph,
+      brief: briefOutcome.brief,
       signal: controller.signal,
       writeDiagnostic: (message) => dependencies.writeStderr(`[research] ${message}\n`),
       onEvent: (event) => {

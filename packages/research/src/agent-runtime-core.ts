@@ -26,6 +26,10 @@ import {
   RESEARCH_AGENT_DRAFT_SCHEMA_V1,
   finalizeResearchAgentDraftV1,
 } from "./agent-draft.js";
+import {
+  projectResearchProposedAssumptionLimitationsV1,
+  type ResearchBriefV1,
+} from "./brief.js";
 import { createResearchPtcTools } from "./agent-tools.js";
 import type { ResearchPtcDiagnosticV1 } from "./agent-tools.js";
 /*
@@ -881,6 +885,8 @@ export interface RunResearchAgentInput {
   workspace?: ResearchWorkspace;
   /** Optional per-run graph. When present, createDeepAgent receives dynamic SubAgent specs. */
   researchGraph?: ResearchGraphV1;
+  /** Host-owned brief metadata retained across deterministic finalization. */
+  brief?: ResearchBriefV1;
   /** Optional tenant-bound metadata catalog made available only to granted nodes. */
   scopeCatalog?: {
     broker: ResearchScopeCatalogBroker;
@@ -1597,6 +1603,9 @@ async function runResearchAgentWithBindings(
       request: input.request,
       sources: broker.sourceLedger(),
       detailEvidence: broker.detailEvidenceLedger(),
+      ...(input.brief
+        ? { additionalLimitations: projectResearchProposedAssumptionLimitationsV1(input.brief) }
+        : {}),
       run: {
         model: RESEARCH_MODEL_ID,
         wikiProvider: input.request.wikiProvider,

@@ -1248,6 +1248,15 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
 
   test("uses one createDeepAgent invocation and native task dispatch for final synthesis", async () => {
     const graph = synthesisOnlyGraph();
+    const brief: ResearchBriefV1 = {
+      ...graphBrief("Get the exact bounded Jira item.", ["jira"], "lookup", "off"),
+      assumptions: [{
+        id: "assumption:audience",
+        text: "The report is intended for the delivery team.",
+        requiresUserDecision: false,
+        status: "proposed",
+      }],
+    };
     const synthesisTask = taskEnvelope(graph, "research-node:synthesizer");
     const draft = {
       title: "Synthetic workflow report",
@@ -1281,6 +1290,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
         wiki: { async searchPage() { return { items: [] }; }, async getPage() { throw new Error("unused"); } },
       },
       researchGraph: graph,
+      brief,
       runId: "dynamic-native-task-invocation",
       workspace,
       options: { onEvent: (event) => {
@@ -1294,6 +1304,9 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       "No non-empty, non-truncated detail evidence supported a publishable finding"
     );
     expect(report.markdown).not.toContain(draft.executiveSummary);
+    expect(report.limitations).toContain(
+      "Proposed assumption (not user-confirmed): The report is intended for the delivery team.",
+    );
     expect(await workspace.readFile("/artifacts/report.md")).toBe(report.markdown);
     expect(JSON.parse((await workspace.readFile("/session/request.json"))!)).toMatchObject({
       runId: "dynamic-native-task-invocation",

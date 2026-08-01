@@ -3,6 +3,7 @@ import {
   briefRequiresClarificationV1,
   createResearchBriefV1,
   prepareResearchBriefPreflightV1,
+  projectResearchProposedAssumptionLimitationsV1,
   resolveResearchEffortV1,
   resolveResearchPlanApprovalV1,
 } from "./brief.js";
@@ -148,5 +149,29 @@ describe("host-owned research brief", () => {
     })).toThrow("silently accept");
     expect(() => create({ asOf: "2026-07-31" })).toThrow("ISO timestamp");
     expect(() => create({ timezone: "Mars/Olympus" })).toThrow("timezone");
+  });
+
+  test("projects non-blocking proposed assumptions as explicitly unconfirmed report limits", () => {
+    const brief = create({
+      revision: 2,
+      assumptions: [
+        {
+          id: "assumption:audience",
+          text: "The report is intended for the delivery team.",
+          requiresUserDecision: false,
+          status: "proposed",
+        },
+        {
+          id: "assumption:accepted",
+          text: "This was explicitly confirmed.",
+          requiresUserDecision: false,
+          status: "accepted",
+        },
+      ],
+    });
+
+    expect(projectResearchProposedAssumptionLimitationsV1(brief)).toEqual([
+      "Proposed assumption (not user-confirmed): The report is intended for the delivery team.",
+    ]);
   });
 });

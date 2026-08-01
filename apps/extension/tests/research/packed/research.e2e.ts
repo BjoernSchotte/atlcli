@@ -33,6 +33,7 @@ const SITE_ORIGIN = "https://packed-research.atlassian.net";
 const ATLASSIAN_PAGE = `${SITE_ORIGIN}/wiki/spaces/KB/pages/1001/Packed-research`;
 const CHANNEL_NAME = "atlcli-packed-research-v1";
 const FAKE_KEY = "sk-ant-packed-extension-test-only";
+const RESEARCH_ANTHROPIC_SESSION_KEY = "research-anthropic-key-v1";
 
 const WIKI_ACQUISITION_CODE = `
 async function collect() {
@@ -294,6 +295,42 @@ function offscreenBootstrap(): string {
       });
       super.postMessage(message, transfer);
     }
+  };
+})();
+`;
+}
+
+function backgroundBootstrap(): string {
+  return String.raw`
+(() => {
+  const nativeFetch = globalThis.fetch.bind(globalThis);
+  const harnessChannel = new BroadcastChannel("atlcli-packed-research-v1");
+  const json = (value, status = 200) => new Response(JSON.stringify(value), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
+  globalThis.fetch = async (input, init) => {
+    const request = input instanceof Request ? input : new Request(input, init);
+    const url = new URL(request.url);
+    if (
+      url.origin === "https://packed-research.atlassian.net" &&
+      url.pathname === "/rest/api/3/project/search" &&
+      url.searchParams.get("query") === "Shared"
+    ) {
+      harnessChannel.postMessage({
+        kind: "scope-catalog-fetch",
+        url: url.href,
+        method: request.method,
+      });
+      return json({
+        values: [
+          { id: "101", key: "ALPHA", name: "Shared", archived: false },
+          { id: "102", key: "BETA", name: "Shared", archived: false },
+        ],
+        total: 2,
+      });
+    }
+    return nativeFetch(input, init);
   };
 })();
 `;
@@ -833,6 +870,11 @@ function installHarness(extensionDir: string): void {
       '    <script src="/research-offscreen-bootstrap.js"></script>\n' + marker
     )
   );
+  const backgroundPath = join(extensionDir, "background.js");
+  writeFileSync(
+    backgroundPath,
+    `${backgroundBootstrap()}\n${readFileSync(backgroundPath, "utf8")}`,
+  );
 }
 
 async function targets(session: CDPSession): Promise<TargetInfo[]> {
@@ -893,14 +935,16 @@ async function openResearchScreen(page: Page): Promise<void> {
 async function fillResearchForm(
   page: Page,
   question: string,
-  options: { includeKey?: boolean } = {}
+  options: { includeKey?: boolean; includeScope?: boolean } = {}
 ): Promise<void> {
   if (options.includeKey !== false) {
     await page.getByTestId("research-key").fill(FAKE_KEY);
   }
   await page.getByTestId("research-question").fill(question);
-  await page.locator("#research-jira").fill("DEMO");
-  await page.locator("#research-wiki").fill("KB");
+  if (options.includeScope !== false) {
+    await page.locator("#research-jira").fill("DEMO");
+    await page.locator("#research-wiki").fill("KB");
+  }
   await page.locator("#research-from").fill("2026-07-23");
   await page.locator("#research-to").fill("2026-07-30");
   await page.getByTestId("research-disclosure").check();
@@ -940,8 +984,7 @@ test.beforeAll(async () => {
   }
   extensionId = new URL(serviceWorker.url()).host;
 
-  page = await context.newPage();
-  await page.route(`${SITE_ORIGIN}/**`, async (route) => {
+  await context.route(`${SITE_ORIGIN}/**`, async (route) => {
     if (route.request().resourceType() === "document") {
       await route.fulfill({
         status: 200,
@@ -952,6 +995,8 @@ test.beforeAll(async () => {
     }
     await route.abort();
   });
+
+  page = await context.newPage();
   await page.goto(ATLASSIAN_PAGE);
   await expect
     .poll(
@@ -1093,6 +1138,40 @@ test("intercepts declarative dynamic-schema dispatches in a packed MV3 worker", 
   });
   expect(response.result?.messages.some((message) => message.includes("deep-jira"))).toBe(true);
   expect(response.result?.messages.some((message) => message.includes("deep-wiki"))).toBe(true);
+});
+
+test("stops a packed natural-name scope ambiguity before key storage or agent work", async () => {
+  await openResearchScreen(page);
+  await installEventCapture(page);
+  await fillResearchForm(
+    page,
+    "Research the Shared Jira project.",
+    { includeKey: false, includeScope: false },
+  );
+  await page.getByTestId("research-run").click();
+
+  const clarification = page.getByTestId("research-scope-clarification-required");
+  await expect(clarification).toBeVisible();
+  await expect(clarification).toContainText("Scope clarification required");
+  await expect(clarification).toContainText("Shared");
+  await expect(page.getByTestId("research-scope-candidate-picker").locator("option"))
+    .toHaveCount(3);
+  const events = await harnessEvents(page);
+  const catalogFetches = events.filter((event) => event.kind === "scope-catalog-fetch");
+  expect(catalogFetches).toHaveLength(1);
+  expect(catalogFetches[0]?.url).toContain("/rest/api/3/project/search");
+  expect(catalogFetches[0]?.url).toContain("query=Shared");
+
+  const stored = await page.evaluate(async (key) => chrome.storage.session.get(key), RESEARCH_ANTHROPIC_SESSION_KEY);
+  expect(stored[RESEARCH_ANTHROPIC_SESSION_KEY]).toBeUndefined();
+  const root = await context.newCDPSession(page);
+  try {
+    await expect.poll(async () => (await researchWorkerTargets(root)).length).toBe(0);
+  } finally {
+    await root.detach();
+  }
+  expect(events.some((event) => event.kind === "worker-start")).toBe(false);
+  expect(events.some((event) => event.url?.includes("api.anthropic.com"))).toBe(false);
 });
 
 test("runs bounded PTC in packed MV3, recreates workers, cancels, and renders safe Markdown", async ({

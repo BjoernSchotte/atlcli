@@ -292,6 +292,20 @@ export function briefRequiresClarificationV1(brief: ResearchBriefV1): boolean {
 }
 
 /**
+ * Preserve host-authored, non-blocking assumptions as visible report limits.
+ * They remain explicitly unconfirmed; a model draft cannot turn them into an
+ * accepted user decision or a sourced factual claim.
+ */
+export function projectResearchProposedAssumptionLimitationsV1(
+  brief: ResearchBriefV1,
+): string[] {
+  return brief.assumptions
+    .filter((assumption) => !assumption.requiresUserDecision && assumption.status === "proposed")
+    .slice(0, 12)
+    .map((assumption) => `Proposed assumption (not user-confirmed): ${assumption.text}`);
+}
+
+/**
  * Stop a T3 one-shot before graph composition when the host-owned brief needs
  * a user answer. This operation is pure: it cannot create a workspace, invoke
  * a provider, or start a model/subagent. T4 later persists the same typed

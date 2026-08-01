@@ -193,6 +193,7 @@ export declare function finalizeResearchAgentDraftV1(input: {
     sources: readonly ResearchSourceReferenceV1[];
     detailEvidence: readonly ResearchDetailEvidenceV1[];
     run: ResearchRunSummaryV1;
+    additionalLimitations?: readonly string[];
 }): ResearchReportV1;
 
 // export: finalizeResearchReportV1
@@ -327,6 +328,9 @@ export declare function projectConfluenceStorage(storage: string, siteOrigin: st
 
 // export: projectJiraDescription
 export declare function projectJiraDescription(description: AdfDocument | string | null | undefined, siteOrigin: string, limits: ContentProjectionLimits): BoundedContentProjectionV1;
+
+// export: projectResearchProposedAssumptionLimitationsV1
+export declare function projectResearchProposedAssumptionLimitationsV1(brief: ResearchBriefV1): string[];
 
 // export: projectResearchReconciliationInputV1
 export declare function projectResearchReconciliationInputV1(input: {
@@ -2397,6 +2401,7 @@ export declare function finalizeResearchAgentDraftV1(input: {
     sources: readonly ResearchSourceReferenceV1[];
     detailEvidence: readonly ResearchDetailEvidenceV1[];
     run: ResearchRunSummaryV1;
+    additionalLimitations?: readonly string[];
 }): ResearchReportV1;
 
 // export: finalizeResearchReportV1
@@ -2531,6 +2536,9 @@ export declare function projectConfluenceStorage(storage: string, siteOrigin: st
 
 // export: projectJiraDescription
 export declare function projectJiraDescription(description: AdfDocument | string | null | undefined, siteOrigin: string, limits: ContentProjectionLimits): BoundedContentProjectionV1;
+
+// export: projectResearchProposedAssumptionLimitationsV1
+export declare function projectResearchProposedAssumptionLimitationsV1(brief: ResearchBriefV1): string[];
 
 // export: projectResearchReconciliationInputV1
 export declare function projectResearchReconciliationInputV1(input: {
@@ -4599,6 +4607,7 @@ export declare function finalizeResearchAgentDraftV1(input: {
     sources: readonly ResearchSourceReferenceV1[];
     detailEvidence: readonly ResearchDetailEvidenceV1[];
     run: ResearchRunSummaryV1;
+    additionalLimitations?: readonly string[];
 }): ResearchReportV1;
 
 // export: finalizeResearchReportV1
@@ -4733,6 +4742,9 @@ export declare function projectConfluenceStorage(storage: string, siteOrigin: st
 
 // export: projectJiraDescription
 export declare function projectJiraDescription(description: AdfDocument | string | null | undefined, siteOrigin: string, limits: ContentProjectionLimits): BoundedContentProjectionV1;
+
+// export: projectResearchProposedAssumptionLimitationsV1
+export declare function projectResearchProposedAssumptionLimitationsV1(brief: ResearchBriefV1): string[];
 
 // export: projectResearchReconciliationInputV1
 export declare function projectResearchReconciliationInputV1(input: {
@@ -6949,6 +6961,7 @@ export declare function finalizeResearchAgentDraftV1(input: {
     sources: readonly ResearchSourceReferenceV1[];
     detailEvidence: readonly ResearchDetailEvidenceV1[];
     run: ResearchRunSummaryV1;
+    additionalLimitations?: readonly string[];
 }): ResearchReportV1;
 
 // export: finalizeResearchReportV1
@@ -7083,6 +7096,9 @@ export declare function projectConfluenceStorage(storage: string, siteOrigin: st
 
 // export: projectJiraDescription
 export declare function projectJiraDescription(description: AdfDocument | string | null | undefined, siteOrigin: string, limits: ContentProjectionLimits): BoundedContentProjectionV1;
+
+// export: projectResearchProposedAssumptionLimitationsV1
+export declare function projectResearchProposedAssumptionLimitationsV1(brief: ResearchBriefV1): string[];
 
 // export: projectResearchReconciliationInputV1
 export declare function projectResearchReconciliationInputV1(input: {
@@ -9040,6 +9056,7 @@ export interface RunResearchAgentInput {
     options?: ResearchRunOptions;
     workspace?: ResearchWorkspace;
     researchGraph?: ResearchGraphV1;
+    brief?: ResearchBriefV1;
     scopeCatalog?: {
         broker: ResearchScopeCatalogBroker;
         tenantOrigin: string;
@@ -10368,6 +10385,7 @@ export declare function finalizeResearchAgentDraftV1(input: {
     sources: readonly ResearchSourceReferenceV1[];
     detailEvidence: readonly ResearchDetailEvidenceV1[];
     run: ResearchRunSummaryV1;
+    additionalLimitations?: readonly string[];
 }): ResearchReportV1;
 
 // export: finalizeResearchReportV1
@@ -10502,6 +10520,9 @@ export declare function projectConfluenceStorage(storage: string, siteOrigin: st
 
 // export: projectJiraDescription
 export declare function projectJiraDescription(description: AdfDocument | string | null | undefined, siteOrigin: string, limits: ContentProjectionLimits): BoundedContentProjectionV1;
+
+// export: projectResearchProposedAssumptionLimitationsV1
+export declare function projectResearchProposedAssumptionLimitationsV1(brief: ResearchBriefV1): string[];
 
 // export: projectResearchReconciliationInputV1
 export declare function projectResearchReconciliationInputV1(input: {
@@ -12459,6 +12480,7 @@ export interface RunResearchAgentInput {
     options?: ResearchRunOptions;
     workspace?: ResearchWorkspace;
     researchGraph?: ResearchGraphV1;
+    brief?: ResearchBriefV1;
     scopeCatalog?: {
         broker: ResearchScopeCatalogBroker;
         tenantOrigin: string;
