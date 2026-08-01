@@ -74,3 +74,13 @@ test("builder runs the trusted Astro project and consumes only its fresh private
     await rm(inventoryPath, { force: true });
   }
 }, 30_000);
+
+test("cold and warm builds of one immutable bundle produce equivalent semantic manifests", async () => {
+  try {
+    const cold = await builder();
+    const warm = await builder();
+    expect(warm.manifest).toEqual(cold.manifest);
+  } finally {
+    await rm(inventoryPath, { force: true });
+  }
+}, 60_000);

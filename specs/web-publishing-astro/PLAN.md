@@ -1644,7 +1644,7 @@ and presentation contracts are not Starlight-private.
       and normalized output digests.
 - [x] Prove a build with network disabled and no runtime `/_image` or private
       Confluence dependencies.
-- [ ] Prove cold/warm builds of one bundle yield equivalent semantic manifests.
+- [x] Prove cold/warm builds of one bundle yield equivalent semantic manifests.
 - [ ] STOP on mixed old/new output, source-derived build modules, ambient repo
       docs config, unexpected executable JS, or an unbounded output inventory.
 
