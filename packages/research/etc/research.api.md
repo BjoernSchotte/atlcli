@@ -252,6 +252,9 @@ export declare function normalizeResearchOneShotPolicyV1(value: unknown): Resear
 // export: normalizeResearchRequestV1
 export declare function normalizeResearchRequestV1(value: unknown): ResearchRequestV1;
 
+// export: normalizeResearchScopeCandidateSelectionsV1
+export declare function normalizeResearchScopeCandidateSelectionsV1(value: readonly ResearchScopeCandidateSelectionV1[] | undefined): ResearchScopeCandidateSelectionV1[];
+
 // export: normalizeResearchScopeMentionText
 export declare function normalizeResearchScopeMentionText(value: string): string;
 
@@ -298,6 +301,7 @@ export declare function prepareResearchScopePreflightV1(input: {
     catalog: ResearchScopeCatalogInvokePortV1;
     automaticApproval?: boolean;
     maximumCatalogPages?: number;
+    candidateSelections?: readonly ResearchScopeCandidateSelectionV1[];
 }): Promise<ResearchScopePreflightOutcomeV1>;
 
 // export: prependBoundedDetailText
@@ -554,6 +558,9 @@ export declare const RESEARCH_SCOPE_BINDING_SCHEMA_V1: "atlcli.research-scope-bi
 
 // export: RESEARCH_SCOPE_CANDIDATE_SCHEMA_V1
 export declare const RESEARCH_SCOPE_CANDIDATE_SCHEMA_V1: "atlcli.research-scope-candidate/v1";
+
+// export: RESEARCH_SCOPE_CANDIDATE_SELECTION_SCHEMA_V1
+export declare const RESEARCH_SCOPE_CANDIDATE_SELECTION_SCHEMA_V1: "atlcli.research-scope-candidate-selection/v1";
 
 // export: RESEARCH_SCOPE_CATALOG_CAPABILITY_IDS
 export declare const RESEARCH_SCOPE_CATALOG_CAPABILITY_IDS: readonly [
@@ -1281,6 +1288,7 @@ export type ResearchInitialScopeResolutionOutcomeV1 = {
 } | {
     kind: "clarification_required";
     clarification: ResearchClarificationRequiredV1;
+    candidateChoices: ResearchScopeCandidateV1[];
     resolutions: ResearchScopeResolutionV1[];
 };
 
@@ -1374,7 +1382,7 @@ export interface ResearchPort {
     hasApiKey(): Promise<boolean>;
     setApiKey(apiKey: string): Promise<void>;
     clearApiKey(): Promise<void>;
-    resolveScope(request: ResearchRequestV1): Promise<import("./scope-preflight.js").ResearchScopePreflightOutcomeV1>;
+    resolveScope(request: ResearchRequestV1, options?: import("./scope-preflight.js").ResearchScopePreflightOptionsV1): Promise<import("./scope-preflight.js").ResearchScopePreflightOutcomeV1>;
     run(request: ResearchRequestV1, options?: ResearchRunOptions): Promise<ResearchReportV1>;
     copyMarkdown(markdown: string): Promise<void>;
     downloadMarkdown(markdown: string, filename: string): Promise<void>;
@@ -1622,6 +1630,13 @@ export interface ResearchScopeBindingV1 {
     approvedAt?: string;
 }
 
+// export: ResearchScopeCandidateSelectionV1
+export interface ResearchScopeCandidateSelectionV1 {
+    schema: typeof RESEARCH_SCOPE_CANDIDATE_SELECTION_SCHEMA_V1;
+    mentionId: string;
+    candidateId: string;
+}
+
 // export: ResearchScopeCandidateV1
 export interface ResearchScopeCandidateV1 {
     schema: typeof RESEARCH_SCOPE_CANDIDATE_SCHEMA_V1;
@@ -1790,6 +1805,11 @@ export interface ResearchScopeMentionV1 {
     exactReference?: string;
 }
 
+// export: ResearchScopePreflightOptionsV1
+export interface ResearchScopePreflightOptionsV1 {
+    candidateSelections?: ResearchScopeCandidateSelectionV1[];
+}
+
 // export: ResearchScopePreflightOutcomeV1
 export type ResearchScopePreflightOutcomeV1 = {
     schema: typeof RESEARCH_SCOPE_PREFLIGHT_OUTCOME_SCHEMA_V1;
@@ -1801,6 +1821,7 @@ export type ResearchScopePreflightOutcomeV1 = {
     schema: typeof RESEARCH_SCOPE_PREFLIGHT_OUTCOME_SCHEMA_V1;
     kind: "clarification_required";
     clarification: ResearchClarificationRequiredV1;
+    candidateChoices: ResearchScopeCandidateV1[];
     mentions: ResearchScopeMentionV1[];
     resolutions: ResearchScopeResolutionV1[];
 };
@@ -1822,7 +1843,7 @@ export interface ResearchScopeResolutionV1 {
     state: "resolved" | "ambiguous" | "not_found" | "unavailable" | "incomplete";
     candidateIds: string[];
     resolvedCandidateId?: string;
-    uniquenessProof?: "exact_key_lookup" | "exact_reference_lookup" | "provider_exact_query" | "complete_catalog";
+    uniquenessProof?: "exact_key_lookup" | "exact_reference_lookup" | "provider_exact_query" | "complete_catalog" | "user_choice";
     catalogComplete: boolean;
     requiresUserChoice: boolean;
 }
@@ -2047,6 +2068,7 @@ export declare function resolveInitialResearchScopeV1(input: {
     catalog: ResearchScopeCatalogInvokePortV1;
     automaticApproval: boolean;
     maximumCatalogPages?: number;
+    candidateSelections?: readonly ResearchScopeCandidateSelectionV1[];
 }): Promise<ResearchInitialScopeResolutionOutcomeV1>;
 
 // export: resolveResearchEffortV1
@@ -2356,6 +2378,9 @@ export declare function normalizeResearchOneShotPolicyV1(value: unknown): Resear
 // export: normalizeResearchRequestV1
 export declare function normalizeResearchRequestV1(value: unknown): ResearchRequestV1;
 
+// export: normalizeResearchScopeCandidateSelectionsV1
+export declare function normalizeResearchScopeCandidateSelectionsV1(value: readonly ResearchScopeCandidateSelectionV1[] | undefined): ResearchScopeCandidateSelectionV1[];
+
 // export: normalizeResearchScopeMentionText
 export declare function normalizeResearchScopeMentionText(value: string): string;
 
@@ -2402,6 +2427,7 @@ export declare function prepareResearchScopePreflightV1(input: {
     catalog: ResearchScopeCatalogInvokePortV1;
     automaticApproval?: boolean;
     maximumCatalogPages?: number;
+    candidateSelections?: readonly ResearchScopeCandidateSelectionV1[];
 }): Promise<ResearchScopePreflightOutcomeV1>;
 
 // export: prependBoundedDetailText
@@ -2658,6 +2684,9 @@ export declare const RESEARCH_SCOPE_BINDING_SCHEMA_V1: "atlcli.research-scope-bi
 
 // export: RESEARCH_SCOPE_CANDIDATE_SCHEMA_V1
 export declare const RESEARCH_SCOPE_CANDIDATE_SCHEMA_V1: "atlcli.research-scope-candidate/v1";
+
+// export: RESEARCH_SCOPE_CANDIDATE_SELECTION_SCHEMA_V1
+export declare const RESEARCH_SCOPE_CANDIDATE_SELECTION_SCHEMA_V1: "atlcli.research-scope-candidate-selection/v1";
 
 // export: RESEARCH_SCOPE_CATALOG_CAPABILITY_IDS
 export declare const RESEARCH_SCOPE_CATALOG_CAPABILITY_IDS: readonly [
@@ -3385,6 +3414,7 @@ export type ResearchInitialScopeResolutionOutcomeV1 = {
 } | {
     kind: "clarification_required";
     clarification: ResearchClarificationRequiredV1;
+    candidateChoices: ResearchScopeCandidateV1[];
     resolutions: ResearchScopeResolutionV1[];
 };
 
@@ -3478,7 +3508,7 @@ export interface ResearchPort {
     hasApiKey(): Promise<boolean>;
     setApiKey(apiKey: string): Promise<void>;
     clearApiKey(): Promise<void>;
-    resolveScope(request: ResearchRequestV1): Promise<import("./scope-preflight.js").ResearchScopePreflightOutcomeV1>;
+    resolveScope(request: ResearchRequestV1, options?: import("./scope-preflight.js").ResearchScopePreflightOptionsV1): Promise<import("./scope-preflight.js").ResearchScopePreflightOutcomeV1>;
     run(request: ResearchRequestV1, options?: ResearchRunOptions): Promise<ResearchReportV1>;
     copyMarkdown(markdown: string): Promise<void>;
     downloadMarkdown(markdown: string, filename: string): Promise<void>;
@@ -3726,6 +3756,13 @@ export interface ResearchScopeBindingV1 {
     approvedAt?: string;
 }
 
+// export: ResearchScopeCandidateSelectionV1
+export interface ResearchScopeCandidateSelectionV1 {
+    schema: typeof RESEARCH_SCOPE_CANDIDATE_SELECTION_SCHEMA_V1;
+    mentionId: string;
+    candidateId: string;
+}
+
 // export: ResearchScopeCandidateV1
 export interface ResearchScopeCandidateV1 {
     schema: typeof RESEARCH_SCOPE_CANDIDATE_SCHEMA_V1;
@@ -3894,6 +3931,11 @@ export interface ResearchScopeMentionV1 {
     exactReference?: string;
 }
 
+// export: ResearchScopePreflightOptionsV1
+export interface ResearchScopePreflightOptionsV1 {
+    candidateSelections?: ResearchScopeCandidateSelectionV1[];
+}
+
 // export: ResearchScopePreflightOutcomeV1
 export type ResearchScopePreflightOutcomeV1 = {
     schema: typeof RESEARCH_SCOPE_PREFLIGHT_OUTCOME_SCHEMA_V1;
@@ -3905,6 +3947,7 @@ export type ResearchScopePreflightOutcomeV1 = {
     schema: typeof RESEARCH_SCOPE_PREFLIGHT_OUTCOME_SCHEMA_V1;
     kind: "clarification_required";
     clarification: ResearchClarificationRequiredV1;
+    candidateChoices: ResearchScopeCandidateV1[];
     mentions: ResearchScopeMentionV1[];
     resolutions: ResearchScopeResolutionV1[];
 };
@@ -3926,7 +3969,7 @@ export interface ResearchScopeResolutionV1 {
     state: "resolved" | "ambiguous" | "not_found" | "unavailable" | "incomplete";
     candidateIds: string[];
     resolvedCandidateId?: string;
-    uniquenessProof?: "exact_key_lookup" | "exact_reference_lookup" | "provider_exact_query" | "complete_catalog";
+    uniquenessProof?: "exact_key_lookup" | "exact_reference_lookup" | "provider_exact_query" | "complete_catalog" | "user_choice";
     catalogComplete: boolean;
     requiresUserChoice: boolean;
 }
@@ -4151,6 +4194,7 @@ export declare function resolveInitialResearchScopeV1(input: {
     catalog: ResearchScopeCatalogInvokePortV1;
     automaticApproval: boolean;
     maximumCatalogPages?: number;
+    candidateSelections?: readonly ResearchScopeCandidateSelectionV1[];
 }): Promise<ResearchInitialScopeResolutionOutcomeV1>;
 
 // export: resolveResearchEffortV1
@@ -4458,6 +4502,9 @@ export declare function normalizeResearchOneShotPolicyV1(value: unknown): Resear
 // export: normalizeResearchRequestV1
 export declare function normalizeResearchRequestV1(value: unknown): ResearchRequestV1;
 
+// export: normalizeResearchScopeCandidateSelectionsV1
+export declare function normalizeResearchScopeCandidateSelectionsV1(value: readonly ResearchScopeCandidateSelectionV1[] | undefined): ResearchScopeCandidateSelectionV1[];
+
 // export: normalizeResearchScopeMentionText
 export declare function normalizeResearchScopeMentionText(value: string): string;
 
@@ -4504,6 +4551,7 @@ export declare function prepareResearchScopePreflightV1(input: {
     catalog: ResearchScopeCatalogInvokePortV1;
     automaticApproval?: boolean;
     maximumCatalogPages?: number;
+    candidateSelections?: readonly ResearchScopeCandidateSelectionV1[];
 }): Promise<ResearchScopePreflightOutcomeV1>;
 
 // export: prependBoundedDetailText
@@ -4760,6 +4808,9 @@ export declare const RESEARCH_SCOPE_BINDING_SCHEMA_V1: "atlcli.research-scope-bi
 
 // export: RESEARCH_SCOPE_CANDIDATE_SCHEMA_V1
 export declare const RESEARCH_SCOPE_CANDIDATE_SCHEMA_V1: "atlcli.research-scope-candidate/v1";
+
+// export: RESEARCH_SCOPE_CANDIDATE_SELECTION_SCHEMA_V1
+export declare const RESEARCH_SCOPE_CANDIDATE_SELECTION_SCHEMA_V1: "atlcli.research-scope-candidate-selection/v1";
 
 // export: RESEARCH_SCOPE_CATALOG_CAPABILITY_IDS
 export declare const RESEARCH_SCOPE_CATALOG_CAPABILITY_IDS: readonly [
@@ -5487,6 +5538,7 @@ export type ResearchInitialScopeResolutionOutcomeV1 = {
 } | {
     kind: "clarification_required";
     clarification: ResearchClarificationRequiredV1;
+    candidateChoices: ResearchScopeCandidateV1[];
     resolutions: ResearchScopeResolutionV1[];
 };
 
@@ -5580,7 +5632,7 @@ export interface ResearchPort {
     hasApiKey(): Promise<boolean>;
     setApiKey(apiKey: string): Promise<void>;
     clearApiKey(): Promise<void>;
-    resolveScope(request: ResearchRequestV1): Promise<import("./scope-preflight.js").ResearchScopePreflightOutcomeV1>;
+    resolveScope(request: ResearchRequestV1, options?: import("./scope-preflight.js").ResearchScopePreflightOptionsV1): Promise<import("./scope-preflight.js").ResearchScopePreflightOutcomeV1>;
     run(request: ResearchRequestV1, options?: ResearchRunOptions): Promise<ResearchReportV1>;
     copyMarkdown(markdown: string): Promise<void>;
     downloadMarkdown(markdown: string, filename: string): Promise<void>;
@@ -5828,6 +5880,13 @@ export interface ResearchScopeBindingV1 {
     approvedAt?: string;
 }
 
+// export: ResearchScopeCandidateSelectionV1
+export interface ResearchScopeCandidateSelectionV1 {
+    schema: typeof RESEARCH_SCOPE_CANDIDATE_SELECTION_SCHEMA_V1;
+    mentionId: string;
+    candidateId: string;
+}
+
 // export: ResearchScopeCandidateV1
 export interface ResearchScopeCandidateV1 {
     schema: typeof RESEARCH_SCOPE_CANDIDATE_SCHEMA_V1;
@@ -5996,6 +6055,11 @@ export interface ResearchScopeMentionV1 {
     exactReference?: string;
 }
 
+// export: ResearchScopePreflightOptionsV1
+export interface ResearchScopePreflightOptionsV1 {
+    candidateSelections?: ResearchScopeCandidateSelectionV1[];
+}
+
 // export: ResearchScopePreflightOutcomeV1
 export type ResearchScopePreflightOutcomeV1 = {
     schema: typeof RESEARCH_SCOPE_PREFLIGHT_OUTCOME_SCHEMA_V1;
@@ -6007,6 +6071,7 @@ export type ResearchScopePreflightOutcomeV1 = {
     schema: typeof RESEARCH_SCOPE_PREFLIGHT_OUTCOME_SCHEMA_V1;
     kind: "clarification_required";
     clarification: ResearchClarificationRequiredV1;
+    candidateChoices: ResearchScopeCandidateV1[];
     mentions: ResearchScopeMentionV1[];
     resolutions: ResearchScopeResolutionV1[];
 };
@@ -6028,7 +6093,7 @@ export interface ResearchScopeResolutionV1 {
     state: "resolved" | "ambiguous" | "not_found" | "unavailable" | "incomplete";
     candidateIds: string[];
     resolvedCandidateId?: string;
-    uniquenessProof?: "exact_key_lookup" | "exact_reference_lookup" | "provider_exact_query" | "complete_catalog";
+    uniquenessProof?: "exact_key_lookup" | "exact_reference_lookup" | "provider_exact_query" | "complete_catalog" | "user_choice";
     catalogComplete: boolean;
     requiresUserChoice: boolean;
 }
@@ -6253,6 +6318,7 @@ export declare function resolveInitialResearchScopeV1(input: {
     catalog: ResearchScopeCatalogInvokePortV1;
     automaticApproval: boolean;
     maximumCatalogPages?: number;
+    candidateSelections?: readonly ResearchScopeCandidateSelectionV1[];
 }): Promise<ResearchInitialScopeResolutionOutcomeV1>;
 
 // export: resolveResearchEffortV1
@@ -6701,6 +6767,9 @@ export declare function normalizeResearchOneShotPolicyV1(value: unknown): Resear
 // export: normalizeResearchRequestV1
 export declare function normalizeResearchRequestV1(value: unknown): ResearchRequestV1;
 
+// export: normalizeResearchScopeCandidateSelectionsV1
+export declare function normalizeResearchScopeCandidateSelectionsV1(value: readonly ResearchScopeCandidateSelectionV1[] | undefined): ResearchScopeCandidateSelectionV1[];
+
 // export: normalizeResearchScopeMentionText
 export declare function normalizeResearchScopeMentionText(value: string): string;
 
@@ -6747,6 +6816,7 @@ export declare function prepareResearchScopePreflightV1(input: {
     catalog: ResearchScopeCatalogInvokePortV1;
     automaticApproval?: boolean;
     maximumCatalogPages?: number;
+    candidateSelections?: readonly ResearchScopeCandidateSelectionV1[];
 }): Promise<ResearchScopePreflightOutcomeV1>;
 
 // export: prependBoundedDetailText
@@ -7020,6 +7090,9 @@ export declare const RESEARCH_SCOPE_BINDING_SCHEMA_V1: "atlcli.research-scope-bi
 
 // export: RESEARCH_SCOPE_CANDIDATE_SCHEMA_V1
 export declare const RESEARCH_SCOPE_CANDIDATE_SCHEMA_V1: "atlcli.research-scope-candidate/v1";
+
+// export: RESEARCH_SCOPE_CANDIDATE_SELECTION_SCHEMA_V1
+export declare const RESEARCH_SCOPE_CANDIDATE_SELECTION_SCHEMA_V1: "atlcli.research-scope-candidate-selection/v1";
 
 // export: RESEARCH_SCOPE_CATALOG_CAPABILITY_IDS
 export declare const RESEARCH_SCOPE_CATALOG_CAPABILITY_IDS: readonly [
@@ -7766,6 +7839,7 @@ export type ResearchInitialScopeResolutionOutcomeV1 = {
 } | {
     kind: "clarification_required";
     clarification: ResearchClarificationRequiredV1;
+    candidateChoices: ResearchScopeCandidateV1[];
     resolutions: ResearchScopeResolutionV1[];
 };
 
@@ -7859,7 +7933,7 @@ export interface ResearchPort {
     hasApiKey(): Promise<boolean>;
     setApiKey(apiKey: string): Promise<void>;
     clearApiKey(): Promise<void>;
-    resolveScope(request: ResearchRequestV1): Promise<import("./scope-preflight.js").ResearchScopePreflightOutcomeV1>;
+    resolveScope(request: ResearchRequestV1, options?: import("./scope-preflight.js").ResearchScopePreflightOptionsV1): Promise<import("./scope-preflight.js").ResearchScopePreflightOutcomeV1>;
     run(request: ResearchRequestV1, options?: ResearchRunOptions): Promise<ResearchReportV1>;
     copyMarkdown(markdown: string): Promise<void>;
     downloadMarkdown(markdown: string, filename: string): Promise<void>;
@@ -8134,6 +8208,13 @@ export interface ResearchScopeBindingV1 {
     approvedAt?: string;
 }
 
+// export: ResearchScopeCandidateSelectionV1
+export interface ResearchScopeCandidateSelectionV1 {
+    schema: typeof RESEARCH_SCOPE_CANDIDATE_SELECTION_SCHEMA_V1;
+    mentionId: string;
+    candidateId: string;
+}
+
 // export: ResearchScopeCandidateV1
 export interface ResearchScopeCandidateV1 {
     schema: typeof RESEARCH_SCOPE_CANDIDATE_SCHEMA_V1;
@@ -8307,6 +8388,11 @@ export interface ResearchScopeMentionV1 {
     exactReference?: string;
 }
 
+// export: ResearchScopePreflightOptionsV1
+export interface ResearchScopePreflightOptionsV1 {
+    candidateSelections?: ResearchScopeCandidateSelectionV1[];
+}
+
 // export: ResearchScopePreflightOutcomeV1
 export type ResearchScopePreflightOutcomeV1 = {
     schema: typeof RESEARCH_SCOPE_PREFLIGHT_OUTCOME_SCHEMA_V1;
@@ -8318,6 +8404,7 @@ export type ResearchScopePreflightOutcomeV1 = {
     schema: typeof RESEARCH_SCOPE_PREFLIGHT_OUTCOME_SCHEMA_V1;
     kind: "clarification_required";
     clarification: ResearchClarificationRequiredV1;
+    candidateChoices: ResearchScopeCandidateV1[];
     mentions: ResearchScopeMentionV1[];
     resolutions: ResearchScopeResolutionV1[];
 };
@@ -8339,7 +8426,7 @@ export interface ResearchScopeResolutionV1 {
     state: "resolved" | "ambiguous" | "not_found" | "unavailable" | "incomplete";
     candidateIds: string[];
     resolvedCandidateId?: string;
-    uniquenessProof?: "exact_key_lookup" | "exact_reference_lookup" | "provider_exact_query" | "complete_catalog";
+    uniquenessProof?: "exact_key_lookup" | "exact_reference_lookup" | "provider_exact_query" | "complete_catalog" | "user_choice";
     catalogComplete: boolean;
     requiresUserChoice: boolean;
 }
@@ -8587,6 +8674,7 @@ export declare function resolveInitialResearchScopeV1(input: {
     catalog: ResearchScopeCatalogInvokePortV1;
     automaticApproval: boolean;
     maximumCatalogPages?: number;
+    candidateSelections?: readonly ResearchScopeCandidateSelectionV1[];
 }): Promise<ResearchInitialScopeResolutionOutcomeV1>;
 
 // export: resolveResearchEffortV1
@@ -9141,7 +9229,7 @@ export interface ResearchPort {
     hasApiKey(): Promise<boolean>;
     setApiKey(apiKey: string): Promise<void>;
     clearApiKey(): Promise<void>;
-    resolveScope(request: ResearchRequestV1): Promise<import("./scope-preflight.js").ResearchScopePreflightOutcomeV1>;
+    resolveScope(request: ResearchRequestV1, options?: import("./scope-preflight.js").ResearchScopePreflightOptionsV1): Promise<import("./scope-preflight.js").ResearchScopePreflightOutcomeV1>;
     run(request: ResearchRequestV1, options?: ResearchRunOptions): Promise<ResearchReportV1>;
     copyMarkdown(markdown: string): Promise<void>;
     downloadMarkdown(markdown: string, filename: string): Promise<void>;
@@ -9986,6 +10074,9 @@ export declare function normalizeResearchOneShotPolicyV1(value: unknown): Resear
 // export: normalizeResearchRequestV1
 export declare function normalizeResearchRequestV1(value: unknown): ResearchRequestV1;
 
+// export: normalizeResearchScopeCandidateSelectionsV1
+export declare function normalizeResearchScopeCandidateSelectionsV1(value: readonly ResearchScopeCandidateSelectionV1[] | undefined): ResearchScopeCandidateSelectionV1[];
+
 // export: normalizeResearchScopeMentionText
 export declare function normalizeResearchScopeMentionText(value: string): string;
 
@@ -10032,6 +10123,7 @@ export declare function prepareResearchScopePreflightV1(input: {
     catalog: ResearchScopeCatalogInvokePortV1;
     automaticApproval?: boolean;
     maximumCatalogPages?: number;
+    candidateSelections?: readonly ResearchScopeCandidateSelectionV1[];
 }): Promise<ResearchScopePreflightOutcomeV1>;
 
 // export: prependBoundedDetailText
@@ -10305,6 +10397,9 @@ export declare const RESEARCH_SCOPE_BINDING_SCHEMA_V1: "atlcli.research-scope-bi
 
 // export: RESEARCH_SCOPE_CANDIDATE_SCHEMA_V1
 export declare const RESEARCH_SCOPE_CANDIDATE_SCHEMA_V1: "atlcli.research-scope-candidate/v1";
+
+// export: RESEARCH_SCOPE_CANDIDATE_SELECTION_SCHEMA_V1
+export declare const RESEARCH_SCOPE_CANDIDATE_SELECTION_SCHEMA_V1: "atlcli.research-scope-candidate-selection/v1";
 
 // export: RESEARCH_SCOPE_CATALOG_CAPABILITY_IDS
 export declare const RESEARCH_SCOPE_CATALOG_CAPABILITY_IDS: readonly [
@@ -11051,6 +11146,7 @@ export type ResearchInitialScopeResolutionOutcomeV1 = {
 } | {
     kind: "clarification_required";
     clarification: ResearchClarificationRequiredV1;
+    candidateChoices: ResearchScopeCandidateV1[];
     resolutions: ResearchScopeResolutionV1[];
 };
 
@@ -11144,7 +11240,7 @@ export interface ResearchPort {
     hasApiKey(): Promise<boolean>;
     setApiKey(apiKey: string): Promise<void>;
     clearApiKey(): Promise<void>;
-    resolveScope(request: ResearchRequestV1): Promise<import("./scope-preflight.js").ResearchScopePreflightOutcomeV1>;
+    resolveScope(request: ResearchRequestV1, options?: import("./scope-preflight.js").ResearchScopePreflightOptionsV1): Promise<import("./scope-preflight.js").ResearchScopePreflightOutcomeV1>;
     run(request: ResearchRequestV1, options?: ResearchRunOptions): Promise<ResearchReportV1>;
     copyMarkdown(markdown: string): Promise<void>;
     downloadMarkdown(markdown: string, filename: string): Promise<void>;
@@ -11419,6 +11515,13 @@ export interface ResearchScopeBindingV1 {
     approvedAt?: string;
 }
 
+// export: ResearchScopeCandidateSelectionV1
+export interface ResearchScopeCandidateSelectionV1 {
+    schema: typeof RESEARCH_SCOPE_CANDIDATE_SELECTION_SCHEMA_V1;
+    mentionId: string;
+    candidateId: string;
+}
+
 // export: ResearchScopeCandidateV1
 export interface ResearchScopeCandidateV1 {
     schema: typeof RESEARCH_SCOPE_CANDIDATE_SCHEMA_V1;
@@ -11592,6 +11695,11 @@ export interface ResearchScopeMentionV1 {
     exactReference?: string;
 }
 
+// export: ResearchScopePreflightOptionsV1
+export interface ResearchScopePreflightOptionsV1 {
+    candidateSelections?: ResearchScopeCandidateSelectionV1[];
+}
+
 // export: ResearchScopePreflightOutcomeV1
 export type ResearchScopePreflightOutcomeV1 = {
     schema: typeof RESEARCH_SCOPE_PREFLIGHT_OUTCOME_SCHEMA_V1;
@@ -11603,6 +11711,7 @@ export type ResearchScopePreflightOutcomeV1 = {
     schema: typeof RESEARCH_SCOPE_PREFLIGHT_OUTCOME_SCHEMA_V1;
     kind: "clarification_required";
     clarification: ResearchClarificationRequiredV1;
+    candidateChoices: ResearchScopeCandidateV1[];
     mentions: ResearchScopeMentionV1[];
     resolutions: ResearchScopeResolutionV1[];
 };
@@ -11624,7 +11733,7 @@ export interface ResearchScopeResolutionV1 {
     state: "resolved" | "ambiguous" | "not_found" | "unavailable" | "incomplete";
     candidateIds: string[];
     resolvedCandidateId?: string;
-    uniquenessProof?: "exact_key_lookup" | "exact_reference_lookup" | "provider_exact_query" | "complete_catalog";
+    uniquenessProof?: "exact_key_lookup" | "exact_reference_lookup" | "provider_exact_query" | "complete_catalog" | "user_choice";
     catalogComplete: boolean;
     requiresUserChoice: boolean;
 }
@@ -11872,6 +11981,7 @@ export declare function resolveInitialResearchScopeV1(input: {
     catalog: ResearchScopeCatalogInvokePortV1;
     automaticApproval: boolean;
     maximumCatalogPages?: number;
+    candidateSelections?: readonly ResearchScopeCandidateSelectionV1[];
 }): Promise<ResearchInitialScopeResolutionOutcomeV1>;
 
 // export: resolveResearchEffortV1
@@ -12244,7 +12354,7 @@ export interface ResearchScopeResolutionV1 {
     state: "resolved" | "ambiguous" | "not_found" | "unavailable" | "incomplete";
     candidateIds: string[];
     resolvedCandidateId?: string;
-    uniquenessProof?: "exact_key_lookup" | "exact_reference_lookup" | "provider_exact_query" | "complete_catalog";
+    uniquenessProof?: "exact_key_lookup" | "exact_reference_lookup" | "provider_exact_query" | "complete_catalog" | "user_choice";
     catalogComplete: boolean;
     requiresUserChoice: boolean;
 }

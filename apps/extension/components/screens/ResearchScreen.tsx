@@ -16,13 +16,18 @@ import {
   type ResearchRequestedEffortV1,
   type ResearchRequestedPlanApprovalV1,
   type ResearchRequestedReconciliationV1,
+  type ResearchRequestV1,
   type ResearchReportV1,
   type ResearchScopeExpansionModeV1,
   type ResearchScopeSeedV1,
 } from "../../utils/research/contracts.js";
 import { formatResearchOneShotEventV1 } from "../../utils/research/events.js";
 import { createResearchKeyScopeSeedV1 } from "@atlcli/research/scope-discovery";
-import type { ResearchClarificationRequiredV1 } from "@atlcli/research";
+import type {
+  ResearchClarificationRequiredV1,
+  ResearchScopeCandidateSelectionV1,
+  ResearchScopeCandidateV1,
+} from "@atlcli/research";
 import {
   composeStandardResearchGraphV1,
   researchPlanApprovalRequiredV1,
@@ -45,6 +50,12 @@ import { cn } from "../ui/utils.js";
 export const RESEARCH_SCREEN_ID = "research";
 const MAX_RESEARCH_ACTIVITY_EVENTS = 500;
 
+function splitScopeValues(value: string): string[] {
+  return [...new Set(
+    value.split(/[\s,;]+/).map((entry) => entry.trim()).filter(Boolean),
+  )];
+}
+
 export function formatResearchActivityEvent(event: ResearchOneShotEventV1): string {
   return formatResearchOneShotEventV1(event);
 }
@@ -61,10 +72,8 @@ export function inferResearchScope(input: {
   confluenceSpaceKeys: string[];
   scopeSeeds: ResearchScopeSeedV1[];
 } {
-  const values = (value: string): string[] =>
-    [...new Set(value.split(/[\s,;]+/).map((entry) => entry.trim()).filter(Boolean))];
-  const manualProjects = values(input.jiraProjects).map((key) => key.toUpperCase());
-  const manualSpaces = values(input.confluenceSpaces);
+  const manualProjects = splitScopeValues(input.jiraProjects).map((key) => key.toUpperCase());
+  const manualSpaces = splitScopeValues(input.confluenceSpaces);
   let questionProjects: string[] = [];
   let questionSpaces: string[] = [];
   if (manualProjects.length === 0) {
@@ -136,6 +145,18 @@ export function inferResearchScope(input: {
       ...seeds("confluence", manualSpaces, questionSpaces, currentSpaces),
     ],
   };
+}
+
+interface PendingScopeClarification {
+  request: ResearchRequestV1;
+  clarification: ResearchClarificationRequiredV1;
+  candidateChoices: ResearchScopeCandidateV1[];
+  selectedCandidateId: string;
+}
+
+interface ScopePreflightRetry {
+  request: ResearchRequestV1;
+  selection: ResearchScopeCandidateSelectionV1;
 }
 
 function currentSite(page: ScreenProps["page"]): {
@@ -294,7 +315,9 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
   const [planApprovalRequired, setPlanApprovalRequired] =
     useState<ResearchPlanApprovalRequiredV1 | null>(null);
   const [scopeClarification, setScopeClarification] =
-    useState<ResearchClarificationRequiredV1 | null>(null);
+    useState<PendingScopeClarification | null>(null);
+  const [submittedRequest, setSubmittedRequest] =
+    useState<ResearchRequestV1 | null>(null);
   const [actionStatus, setActionStatus] = useState("");
   const abortRef = useRef<AbortController | null>(null);
 
@@ -311,49 +334,61 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
 
   if (!port) return <Alert tone="muted">{t("screen.unmet.capability.research")}</Alert>;
 
-  async function run(): Promise<void> {
+  async function run(retry?: ScopePreflightRetry): Promise<void> {
     setError(null);
     setPlanApprovalRequired(null);
     setScopeClarification(null);
     setActionStatus("");
+    if (!retry) setSubmittedRequest(null);
     try {
       if (!site) throw new ResearchContractError("not-atlassian", t("research.siteMissing"));
       if (!disclosed) {
         throw new ResearchContractError("invalid-request", t("research.disclosure"));
       }
-      const scope = inferResearchScope({
-        siteOrigin: site.origin,
-        question,
-        jiraProjects,
-        confluenceSpaces,
-        activeSpaceKey: includeCurrentContext ? site.activeSpaceKey : undefined,
-        activeProjectKey: includeCurrentContext ? site.activeProjectKey : undefined,
-      });
-      const initialRequest = normalizeResearchRequestV1({
-        schema: RESEARCH_REQUEST_SCHEMA_V1,
-        question,
-        scope: {
+      const initialRequest = retry?.request ?? (() => {
+        const scope = inferResearchScope({
           siteOrigin: site.origin,
-          jiraProjectKeys: scope.jiraProjectKeys,
-          confluenceSpaceKeys: scope.confluenceSpaceKeys,
-          timeWindow: {
-            ...(from ? { from } : {}),
-            ...(to ? { to } : {}),
+          question,
+          jiraProjects,
+          confluenceSpaces,
+          activeSpaceKey: includeCurrentContext ? site.activeSpaceKey : undefined,
+          activeProjectKey: includeCurrentContext ? site.activeProjectKey : undefined,
+        });
+        return normalizeResearchRequestV1({
+          schema: RESEARCH_REQUEST_SCHEMA_V1,
+          question,
+          scope: {
+            siteOrigin: site.origin,
+            jiraProjectKeys: scope.jiraProjectKeys,
+            confluenceSpaceKeys: scope.confluenceSpaceKeys,
+            timeWindow: {
+              ...(from ? { from } : {}),
+              ...(to ? { to } : {}),
+            },
           },
-        },
-        scopeSeeds: scope.scopeSeeds,
-        limits: DEFAULT_RESEARCH_LIMITS_V1,
-        wikiProvider: "rest",
-      });
-      const scopeOutcome = await port!.resolveScope(initialRequest);
+          scopeSeeds: scope.scopeSeeds,
+          limits: DEFAULT_RESEARCH_LIMITS_V1,
+          wikiProvider: "rest",
+        });
+      })();
+      const scopeOutcome = await port!.resolveScope(
+        initialRequest,
+        retry ? { candidateSelections: [retry.selection] } : undefined,
+      );
       if (scopeOutcome.kind === "clarification_required") {
-        setScopeClarification(scopeOutcome.clarification);
+        setScopeClarification({
+          request: structuredClone(initialRequest),
+          clarification: scopeOutcome.clarification,
+          candidateChoices: scopeOutcome.candidateChoices,
+          selectedCandidateId: "",
+        });
         setActivity([]);
         setReport(null);
         setProgress("");
         return;
       }
       const request = scopeOutcome.request;
+      setSubmittedRequest(structuredClone(request));
       const policy = normalizeResearchOneShotPolicyV1({
         schema: RESEARCH_ONE_SHOT_POLICY_SCHEMA_V1,
         requestedEffort: effort,
@@ -405,6 +440,33 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
       abortRef.current = null;
       setRunning(false);
     }
+  }
+
+  const previewScope = site
+    ? inferResearchScope({
+        siteOrigin: site.origin,
+        question,
+        jiraProjects,
+        confluenceSpaces,
+        activeSpaceKey: includeCurrentContext ? site.activeSpaceKey : undefined,
+        activeProjectKey: includeCurrentContext ? site.activeProjectKey : undefined,
+      })
+    : null;
+  const removableScopeSeeds = (previewScope?.scopeSeeds ?? []).filter(
+    (seed) => seed.binding.source === "ui_added" || seed.binding.source === "current_context",
+  );
+
+  function removeScopeChip(seed: ResearchScopeSeedV1): void {
+    if (seed.binding.source === "current_context") {
+      setIncludeCurrentContext(false);
+      return;
+    }
+    const current = seed.binding.product === "jira" ? jiraProjects : confluenceSpaces;
+    const next = splitScopeValues(current).filter(
+      (key) => key.toLocaleUpperCase("en-US") !== seed.binding.key?.toLocaleUpperCase("en-US"),
+    ).join(", ");
+    if (seed.binding.product === "jira") setJiraProjects(next);
+    else setConfluenceSpaces(next);
   }
 
   return (
@@ -465,13 +527,44 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
           <div className="grid grid-cols-2 gap-2">
             <div className="flex flex-col gap-1">
               <Label htmlFor="research-jira">{t("research.jiraProjects")}</Label>
-              <Input id="research-jira" value={jiraProjects} onChange={(event) => setJiraProjects(event.target.value)} disabled={running} />
+              <Input id="research-jira" data-testid="research-jira" value={jiraProjects} onChange={(event) => setJiraProjects(event.target.value)} disabled={running} />
             </div>
             <div className="flex flex-col gap-1">
               <Label htmlFor="research-wiki">{t("research.confluenceSpaces")}</Label>
-              <Input id="research-wiki" value={confluenceSpaces} onChange={(event) => setConfluenceSpaces(event.target.value)} disabled={running} />
+              <Input id="research-wiki" data-testid="research-wiki" value={confluenceSpaces} onChange={(event) => setConfluenceSpaces(event.target.value)} disabled={running} />
             </div>
           </div>
+          {removableScopeSeeds.length > 0 && (
+            <div className="flex flex-wrap gap-1" data-testid="research-scope-chips">
+              {removableScopeSeeds.map((seed, index) => (
+                <button
+                  key={seed.binding.id}
+                  type="button"
+                  className="rounded-full border bg-muted px-2 py-1 text-xs"
+                  disabled={running}
+                  onClick={() => removeScopeChip(seed)}
+                  data-testid={`research-scope-chip-${index}`}
+                  aria-label={t("research.scopeChip.remove", {
+                    scope: `${seed.binding.product}: ${seed.binding.key ?? seed.binding.name}`,
+                  })}
+                >
+                  {seed.binding.product}: {seed.binding.key ?? seed.binding.name} ×
+                </button>
+              ))}
+            </div>
+          )}
+          {submittedRequest && (
+            <div
+              className="rounded-md border bg-muted/50 p-2 text-xs"
+              data-testid="research-submitted-scope"
+            >
+              <strong>{t("research.submittedScope")}</strong>{" "}
+              {[
+                ...submittedRequest.scope.jiraProjectKeys.map((key) => `jira:${key}`),
+                ...submittedRequest.scope.confluenceSpaceKeys.map((key) => `confluence:${key}`),
+              ].join(", ")}
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-2">
             <div className="flex flex-col gap-1">
               <Label htmlFor="research-effort">{t("research.effort")}</Label>
@@ -630,16 +723,53 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
           <AlertTitle>{t("research.scopeClarification")}</AlertTitle>
           <p className="m-0 mt-1">
             {t("research.scopeClarification.value", {
-              reason: scopeClarification.reason,
+              reason: scopeClarification.clarification.reason,
             })}
           </p>
-          {scopeClarification.candidateIds.length > 0 && (
-            <p className="m-0 mt-1 text-xs">
-              {scopeClarification.candidateIds.join(", ")}
-            </p>
+          {scopeClarification.candidateChoices.length > 0 && (
+            <div className="mt-2 flex flex-col gap-2">
+              <Label htmlFor="research-scope-candidate-picker">
+                {t("research.scopeClarification.choose")}
+              </Label>
+              <Select
+                id="research-scope-candidate-picker"
+                data-testid="research-scope-candidate-picker"
+                value={scopeClarification.selectedCandidateId}
+                onChange={(event) => setScopeClarification((current) =>
+                  current ? { ...current, selectedCandidateId: event.target.value } : current
+                )}
+              >
+                <option value="">{t("research.scopeClarification.placeholder")}</option>
+                {scopeClarification.candidateChoices.map((candidate) => (
+                  <option key={candidate.id} value={candidate.id}>
+                    {candidate.product}: {candidate.name}
+                    {candidate.key ? ` (${candidate.key})` : ""}
+                    {candidate.status === "archived" ? " — archived" : ""}
+                  </option>
+                ))}
+              </Select>
+              <Button
+                size="sm"
+                disabled={!scopeClarification.selectedCandidateId || running}
+                data-testid="research-scope-candidate-continue"
+                onClick={() => {
+                  if (!scopeClarification.selectedCandidateId) return;
+                  void run({
+                    request: scopeClarification.request,
+                    selection: {
+                      schema: "atlcli.research-scope-candidate-selection/v1",
+                      mentionId: scopeClarification.clarification.mentionId,
+                      candidateId: scopeClarification.selectedCandidateId,
+                    },
+                  });
+                }}
+              >
+                {t("research.scopeClarification.continue")}
+              </Button>
+            </div>
           )}
           <ul className="mb-0 mt-1 pl-5 text-xs">
-            {scopeClarification.rerunGuidance.map((guidance) => (
+            {scopeClarification.clarification.rerunGuidance.map((guidance) => (
               <li key={guidance}>{guidance}</li>
             ))}
           </ul>

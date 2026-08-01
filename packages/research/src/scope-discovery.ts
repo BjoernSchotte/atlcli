@@ -80,7 +80,7 @@ export interface ResearchScopeResolutionV1 {
   state: "resolved" | "ambiguous" | "not_found" | "unavailable" | "incomplete";
   candidateIds: string[];
   resolvedCandidateId?: string;
-  uniquenessProof?: "exact_key_lookup" | "exact_reference_lookup" | "provider_exact_query" | "complete_catalog";
+  uniquenessProof?: "exact_key_lookup" | "exact_reference_lookup" | "provider_exact_query" | "complete_catalog" | "user_choice";
   catalogComplete: boolean;
   requiresUserChoice: boolean;
 }

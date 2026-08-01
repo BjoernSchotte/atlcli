@@ -46,7 +46,7 @@ export function chromeResearchPort(): ResearchPort {
       await chrome.storage.session.remove(RESEARCH_ANTHROPIC_SESSION_KEY);
     },
 
-    async resolveScope(request) {
+    async resolveScope(request, options) {
       const window = await chrome.windows.getCurrent();
       if (window.id === undefined) {
         throw new ResearchContractError(
@@ -58,6 +58,7 @@ export function chromeResearchPort(): ResearchPort {
         kind: "research:resolve-scope",
         windowId: window.id,
         request,
+        ...(options ? { options } : {}),
       })) as
         | {
             kind: "research:resolve-scope-result";

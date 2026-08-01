@@ -2665,9 +2665,17 @@ Extension/browser:
 
 - [x] Run the same graph compiler, role registry, packet validation, and
       reconciliation scenarios in a packed MV3 fake-provider test.
-- [ ] Add current-context and manually added scope chips plus the ambiguous
+- [x] Add current-context and manually added scope chips plus the ambiguous
       candidate picker against the shared resolver. Prove that changing tabs
       cannot mutate a submitted brief.
+      Proven 2026-08-01: the sidebar renders removable `ui_added` and
+      `current_context` chips separately from an immutable submitted-scope
+      snapshot. Ambiguous choices carry only a versioned mention/candidate ID
+      pair back to the background host; the host repeats the tenant-bound
+      catalog read and accepts only a candidate still present in the fresh
+      ranked set. Component tests change the active tab after submission and
+      prove both the dispatched request and submitted snapshot retain the
+      original scope.
 - [ ] Prove the production bundle can dynamically select and stream different
       role compositions without Node imports. A second live Mayflower browser
       run is not required in this phase because T2 already preserves the live

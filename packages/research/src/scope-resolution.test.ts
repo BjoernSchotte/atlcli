@@ -111,6 +111,47 @@ describe("initial scope resolution stop gate", () => {
           "research-scope-candidate:confluence-space-account-2",
         ],
       },
+      candidateChoices: [
+        { key: "ACCOUNT", name: "Account Management" },
+        { key: "ACCOUNT2", name: "Account Management" },
+      ],
+    });
+  });
+
+  test("accepts only a currently re-verified candidate selected by the user", async () => {
+    const candidates = [
+      candidate(),
+      candidate({
+        id: "research-scope-candidate:confluence-space-account-2",
+        entityRef: "research-scope-entity:confluence-space-account-2",
+        key: "ACCOUNT2",
+      }),
+    ];
+    const output = await resolveInitialResearchScopeV1({
+      baseScope,
+      existingBindings: [],
+      mentions: [mention()],
+      automaticApproval: true,
+      candidateSelections: [{
+        schema: "atlcli.research-scope-candidate-selection/v1",
+        mentionId: "mention:1",
+        candidateId: candidates[1]!.id,
+      }],
+      catalog: catalog(async () => ({
+        schema: "atlcli.ptc/wiki.space.search.output/v1",
+        candidates,
+        truncated: false,
+      })),
+    });
+    expect(output).toMatchObject({
+      kind: "ready",
+      scope: { confluenceSpaceKeys: ["ACCOUNT2"] },
+      bindings: [{ key: "ACCOUNT2", authority: "approved" }],
+      resolutions: [{
+        state: "resolved",
+        resolvedCandidateId: candidates[1]!.id,
+        uniquenessProof: "user_choice",
+      }],
     });
   });
 
@@ -143,7 +184,11 @@ describe("initial scope resolution stop gate", () => {
         truncated: false,
       })),
     });
-    expect(archived).toMatchObject({ kind: "clarification_required", clarification: { reason: "archived_only" } });
+    expect(archived).toMatchObject({
+      kind: "clarification_required",
+      clarification: { reason: "archived_only" },
+      candidateChoices: [],
+    });
 
     const unavailable = await resolveInitialResearchScopeV1({
       baseScope,

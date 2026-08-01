@@ -38,6 +38,7 @@ import {
   ResearchScopeCatalogBroker,
   createRestScopeCatalogProviders,
   prepareResearchScopePreflightV1,
+  type ResearchScopePreflightOptionsV1,
 } from "@atlcli/research/browser";
 import { handleExtMessage } from "../utils/listeners.js";
 import { closeOffscreen, ensureOffscreen } from "../utils/offscreen.js";
@@ -484,6 +485,7 @@ export default defineBackground({
   const resolveResearchScope = async (
     windowId: number,
     value: ResearchRequestV1,
+    options?: ResearchScopePreflightOptionsV1,
   ) => {
     const request = normalizeResearchRequestV1(value);
     const detection = await getCurrentEntity(windowId);
@@ -502,6 +504,7 @@ export default defineBackground({
       request,
       catalog: broker,
       automaticApproval: true,
+      candidateSelections: options?.candidateSelections,
     });
   };
 

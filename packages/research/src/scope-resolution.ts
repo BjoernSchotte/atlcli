@@ -20,6 +20,8 @@ import {
 
 export const RESEARCH_CLARIFICATION_REQUIRED_SCHEMA_V1 =
   "atlcli.research-clarification-required/v1" as const;
+export const RESEARCH_SCOPE_CANDIDATE_SELECTION_SCHEMA_V1 =
+  "atlcli.research-scope-candidate-selection/v1" as const;
 
 export type ResearchScopeClarificationReasonV1 =
   | "ambiguous"
@@ -39,6 +41,41 @@ export interface ResearchClarificationRequiredV1 {
   rerunGuidance: string[];
 }
 
+export interface ResearchScopeCandidateSelectionV1 {
+  schema: typeof RESEARCH_SCOPE_CANDIDATE_SELECTION_SCHEMA_V1;
+  mentionId: string;
+  candidateId: string;
+}
+
+export function normalizeResearchScopeCandidateSelectionsV1(
+  value: readonly ResearchScopeCandidateSelectionV1[] | undefined,
+): ResearchScopeCandidateSelectionV1[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.length > 8) {
+    throw new ResearchContractError(
+      "invalid-request",
+      "Research scope candidate selections must contain no more than 8 entries.",
+    );
+  }
+  const seen = new Set<string>();
+  return value.map((selection) => {
+    if (
+      !selection ||
+      selection.schema !== RESEARCH_SCOPE_CANDIDATE_SELECTION_SCHEMA_V1 ||
+      !/^mention:[A-Za-z0-9._-]{1,80}$/.test(selection.mentionId) ||
+      !/^research-scope-candidate:[A-Za-z0-9._-]{1,200}$/.test(selection.candidateId) ||
+      seen.has(selection.mentionId)
+    ) {
+      throw new ResearchContractError(
+        "invalid-request",
+        "Research scope candidate selection is invalid or duplicated.",
+      );
+    }
+    seen.add(selection.mentionId);
+    return structuredClone(selection);
+  });
+}
+
 export interface ResearchScopeCatalogInvokePortV1 {
   invoke(
     capability: ResearchScopeCatalogCapabilityId,
@@ -56,6 +93,7 @@ export type ResearchInitialScopeResolutionOutcomeV1 =
   | {
       kind: "clarification_required";
       clarification: ResearchClarificationRequiredV1;
+      candidateChoices: ResearchScopeCandidateV1[];
       resolutions: ResearchScopeResolutionV1[];
     };
 
@@ -187,9 +225,15 @@ export async function resolveInitialResearchScopeV1(input: {
   catalog: ResearchScopeCatalogInvokePortV1;
   automaticApproval: boolean;
   maximumCatalogPages?: number;
+  candidateSelections?: readonly ResearchScopeCandidateSelectionV1[];
 }): Promise<ResearchInitialScopeResolutionOutcomeV1> {
   const resolutions: ResearchScopeResolutionV1[] = [];
   const bindings = [...input.existingBindings];
+  const selectedByMention = new Map(
+    normalizeResearchScopeCandidateSelectionsV1(input.candidateSelections).map(
+      (selection) => [selection.mentionId, selection.candidateId],
+    ),
+  );
   const maximumPages = Math.max(1, Math.min(input.maximumCatalogPages ?? 5, 10));
   for (const mention of input.mentions) {
     try {
@@ -217,7 +261,12 @@ export async function resolveInitialResearchScopeV1(input: {
             requiresUserChoice: true,
           };
           resolutions.push(unavailable);
-          return { kind: "clarification_required", clarification: clarification(mention, "unavailable", []), resolutions };
+          return {
+            kind: "clarification_required",
+            clarification: clarification(mention, "unavailable", []),
+            candidateChoices: [],
+            resolutions,
+          };
         }
         ({ candidates, complete } = await collectCandidates(input.catalog, capability, mention, maximumPages));
       }
@@ -228,16 +277,32 @@ export async function resolveInitialResearchScopeV1(input: {
         expectedTenantOrigin: input.baseScope.siteOrigin,
         maxCandidates: 8,
       });
-      resolutions.push(resolution);
-      if (resolution.state !== "resolved" || !resolution.resolvedCandidateId) {
+      const selectedCandidateId = selectedByMention.get(mention.id);
+      const selectedCandidate = selectedCandidateId && resolution.candidateIds.includes(selectedCandidateId)
+        ? candidates.find((candidate) => candidate.id === selectedCandidateId)
+        : undefined;
+      const acceptedResolution: ResearchScopeResolutionV1 = selectedCandidate
+        ? {
+            ...resolution,
+            state: "resolved",
+            resolvedCandidateId: selectedCandidate.id,
+            uniquenessProof: "user_choice",
+            requiresUserChoice: false,
+          }
+        : resolution;
+      resolutions.push(acceptedResolution);
+      if (acceptedResolution.state !== "resolved" || !acceptedResolution.resolvedCandidateId) {
         const unresolved = reasonForResolution(resolution, mention, candidates, input.baseScope.siteOrigin);
         return {
           kind: "clarification_required",
           clarification: clarification(mention, unresolved.reason, unresolved.candidateIds),
+          candidateChoices: candidates.filter((candidate) =>
+            resolution.candidateIds.includes(candidate.id)
+          ),
           resolutions,
         };
       }
-      const candidate = candidates.find((entry) => entry.id === resolution.resolvedCandidateId);
+      const candidate = candidates.find((entry) => entry.id === acceptedResolution.resolvedCandidateId);
       if (!candidate) throw new ResearchContractError("provider-error", "Resolved scope candidate is missing.");
       bindings.push(createResearchScopeBindingV1({
         candidate,
@@ -256,7 +321,12 @@ export async function resolveInitialResearchScopeV1(input: {
         requiresUserChoice: true,
       };
       resolutions.push(unavailable);
-      return { kind: "clarification_required", clarification: clarification(mention, "unavailable", []), resolutions };
+      return {
+        kind: "clarification_required",
+        clarification: clarification(mention, "unavailable", []),
+        candidateChoices: [],
+        resolutions,
+      };
     }
   }
   return {

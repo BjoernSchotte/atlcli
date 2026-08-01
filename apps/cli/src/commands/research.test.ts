@@ -338,6 +338,7 @@ describe("research CLI one-shot contract", () => {
         entityKindHint: "space",
         rerunGuidance: ["Pass an exact Confluence space with --space <KEY>."],
       },
+      candidateChoices: [],
       mentions: [],
       resolutions: [],
     });

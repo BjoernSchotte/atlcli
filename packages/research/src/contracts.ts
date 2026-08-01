@@ -472,7 +472,10 @@ export interface ResearchPort {
   hasApiKey(): Promise<boolean>;
   setApiKey(apiKey: string): Promise<void>;
   clearApiKey(): Promise<void>;
-  resolveScope(request: ResearchRequestV1): Promise<import("./scope-preflight.js").ResearchScopePreflightOutcomeV1>;
+  resolveScope(
+    request: ResearchRequestV1,
+    options?: import("./scope-preflight.js").ResearchScopePreflightOptionsV1,
+  ): Promise<import("./scope-preflight.js").ResearchScopePreflightOutcomeV1>;
   run(request: ResearchRequestV1, options?: ResearchRunOptions): Promise<ResearchReportV1>;
   copyMarkdown(markdown: string): Promise<void>;
   downloadMarkdown(markdown: string, filename: string): Promise<void>;

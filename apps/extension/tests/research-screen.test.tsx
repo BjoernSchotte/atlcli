@@ -90,7 +90,7 @@ const report: ResearchReportV1 = {
   markdown: "# Guarded research\n\nSafe Markdown.",
 };
 
-function screenProps(port: ResearchPort): ScreenProps {
+function screenProps(port: ResearchPort, spaceKey = "KB"): ScreenProps {
   return {
     ports: {
       host: {
@@ -106,12 +106,12 @@ function screenProps(port: ResearchPort): ScreenProps {
       token: 1,
       lastSeq: 1,
       ref: {
-        url: "https://example.atlassian.net/wiki/spaces/KB/pages/1001/Design",
+        url: `https://example.atlassian.net/wiki/spaces/${spaceKey}/pages/1001/Design`,
         entity: {
           product: "confluence",
           type: "page",
           pageId: "1001",
-          spaceKey: "KB",
+          spaceKey,
         },
       },
       contentId: "1001",
@@ -119,7 +119,7 @@ function screenProps(port: ResearchPort): ScreenProps {
         details: {
           id: "1001",
           title: "Design",
-          spaceKey: "KB",
+          spaceKey,
           version: 1,
           storage: "<p>Design</p>",
         },
@@ -390,31 +390,126 @@ describe("portable Research screen", () => {
     );
   });
 
+  it("renders removable context chips and freezes the submitted scope across tab changes", async () => {
+    let observedRequest: ResearchRequestV1 | undefined;
+    const port: ResearchPort = {
+      hasApiKey: async () => true,
+      setApiKey: async () => undefined,
+      clearApiKey: async () => undefined,
+      resolveScope: async (request) => ({
+        schema: "atlcli.research-scope-preflight-outcome/v1",
+        kind: "ready",
+        request,
+        mentions: [],
+        resolutions: [],
+      }),
+      run: async (request) => {
+        observedRequest = structuredClone(request);
+        return report;
+      },
+      copyMarkdown: async () => undefined,
+      downloadMarkdown: async () => undefined,
+    };
+    await dom.render(
+      <I18nProvider locale="en">
+        <ResearchScreen {...screenProps(port, "KB")} />
+      </I18nProvider>,
+    );
+    await dom.setValue("research-question", "Research the current context.");
+    await dom.setValue("research-jira", "MANUAL");
+    expect(dom.find("research-scope-chips").textContent).toContain("jira: MANUAL");
+    expect(dom.find("research-scope-chips").textContent).toContain("confluence: KB");
+
+    await dom.click("research-scope-chip-0");
+    expect((dom.find("research-jira") as HTMLInputElement).value).toBe("");
+    await dom.setValue("research-jira", "MANUAL");
+    await dom.toggle("research-disclosure");
+    await dom.click("research-run");
+    await dom.flush();
+
+    expect(observedRequest?.scope).toMatchObject({
+      jiraProjectKeys: ["MANUAL"],
+      confluenceSpaceKeys: ["KB"],
+    });
+    expect(dom.find("research-submitted-scope").textContent).toContain("confluence:KB");
+
+    await dom.render(
+      <I18nProvider locale="en">
+        <ResearchScreen {...screenProps(port, "OTHER")} />
+      </I18nProvider>,
+    );
+    expect(dom.find("research-scope-chips").textContent).toContain("confluence: OTHER");
+    expect(dom.find("research-submitted-scope").textContent).toContain("confluence:KB");
+    expect(observedRequest?.scope.confluenceSpaceKeys).toEqual(["KB"]);
+  });
+
   it("shows typed scope clarification before storing the key or starting research", async () => {
     let keyWrites = 0;
     let runs = 0;
+    let selectedCandidateId: string | undefined;
+    const candidateChoices = [
+      {
+        schema: "atlcli.research-scope-candidate/v1" as const,
+        id: "research-scope-candidate:confluence-space-account-1",
+        tenantOrigin: "https://example.atlassian.net",
+        product: "confluence" as const,
+        entityKind: "space" as const,
+        entityRef: "research-scope-entity:confluence-space-account-1",
+        key: "ACCOUNT1",
+        name: "Account Management One",
+        accessible: true as const,
+        providerFreshnessAt: "2026-08-01T00:00:00.000Z",
+      },
+      {
+        schema: "atlcli.research-scope-candidate/v1" as const,
+        id: "research-scope-candidate:confluence-space-account-2",
+        tenantOrigin: "https://example.atlassian.net",
+        product: "confluence" as const,
+        entityKind: "space" as const,
+        entityRef: "research-scope-entity:confluence-space-account-2",
+        key: "ACCOUNT2",
+        name: "Account Management Two",
+        accessible: true as const,
+        providerFreshnessAt: "2026-08-01T00:00:00.000Z",
+      },
+    ];
     const port: ResearchPort = {
       hasApiKey: async () => false,
       setApiKey: async () => { keyWrites += 1; },
       clearApiKey: async () => undefined,
-      resolveScope: async () => ({
-        schema: "atlcli.research-scope-preflight-outcome/v1",
-        kind: "clarification_required",
-        clarification: {
-          schema: "atlcli.research-clarification-required/v1",
-          reason: "ambiguous",
-          mentionId: "mention:scope-1",
-          candidateIds: [
-            "research-scope-candidate:confluence-space-account-1",
-            "research-scope-candidate:confluence-space-account-2",
-          ],
-          productHint: "confluence",
-          entityKindHint: "space",
-          rerunGuidance: ["Pass an exact Confluence space key."],
-        },
-        mentions: [],
-        resolutions: [],
-      }),
+      resolveScope: async (request, options) => {
+        selectedCandidateId = options?.candidateSelections?.[0]?.candidateId;
+        return selectedCandidateId
+          ? {
+              schema: "atlcli.research-scope-preflight-outcome/v1",
+              kind: "ready",
+              request: {
+                ...request,
+                scope: {
+                  ...request.scope,
+                  confluenceSpaceKeys: ["ACCOUNT2"],
+                },
+              },
+              mentions: [],
+              resolutions: [],
+            }
+          : {
+              schema: "atlcli.research-scope-preflight-outcome/v1",
+              kind: "clarification_required",
+              clarification: {
+                schema: "atlcli.research-clarification-required/v1",
+                reason: "ambiguous",
+                mentionId: "mention:scope-1",
+                candidateIds: candidateChoices.map((candidate) => candidate.id),
+                productHint: "confluence",
+                entityKindHint: "space",
+                rerunGuidance: ["Pass an exact Confluence space key."],
+              },
+              candidateChoices,
+              mentions: [],
+              resolutions: [],
+            };
+      },
       run: async () => {
         runs += 1;
         return report;
@@ -439,7 +534,22 @@ describe("portable Research screen", () => {
     expect(dom.find("research-scope-clarification-required").textContent)
       .toContain("Scope clarification required");
     expect(dom.find("research-scope-clarification-required").textContent)
-      .toContain("confluence-space-account-1");
+      .toContain("Account Management One");
     expect({ keyWrites, runs }).toEqual({ keyWrites: 0, runs: 0 });
+
+    await dom.setValue(
+      "research-scope-candidate-picker",
+      "research-scope-candidate:confluence-space-account-2",
+    );
+    await dom.click("research-scope-candidate-continue");
+    await dom.flush();
+
+    expect(selectedCandidateId).toBe(
+      "research-scope-candidate:confluence-space-account-2",
+    );
+    expect({ keyWrites, runs }).toEqual({ keyWrites: 1, runs: 1 });
+    expect(dom.find("research-submitted-scope").textContent).toContain(
+      "confluence:ACCOUNT2",
+    );
   });
 });

@@ -217,6 +217,33 @@ describe("research scope preflight", () => {
           "research-scope-candidate:confluence-space-account-2",
         ],
       },
+      candidateChoices: [
+        { key: "ACCOUNT1", name: "Account Management" },
+        { key: "ACCOUNT2", name: "Account Management" },
+      ],
+    });
+
+    if (outcome.kind !== "clarification_required") throw new Error("expected clarification");
+    const selected = await prepareResearchScopePreflightV1({
+      request: request({
+        question: "Research the Account Management space.",
+        scope: { siteOrigin: origin, jiraProjectKeys: ["DEFAULT"], confluenceSpaceKeys: ["DOCS"] },
+        scopeSeeds: request().scopeSeeds,
+      }),
+      candidateSelections: [{
+        schema: "atlcli.research-scope-candidate-selection/v1",
+        mentionId: outcome.clarification.mentionId,
+        candidateId: outcome.candidateChoices[1]!.id,
+      }],
+      catalog: catalog(async () => ({
+        schema: "atlcli.ptc/wiki.space.search.output/v1",
+        candidates: outcome.candidateChoices,
+        truncated: false,
+      })),
+    });
+    expect(selected).toMatchObject({
+      kind: "ready",
+      request: { scope: { confluenceSpaceKeys: ["ACCOUNT2"] } },
     });
   });
 

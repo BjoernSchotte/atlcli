@@ -50,6 +50,24 @@ describe("message guards", () => {
       kind: "research:resolve-scope",
       windowId: 7,
       request: { schema: "atlcli.research-request/v1" },
+      options: {
+        candidateSelections: [{
+          schema: "atlcli.research-scope-candidate-selection/v1",
+          mentionId: "mention:scope-1",
+          candidateId: "research-scope-candidate:confluence-space-account",
+        }],
+      },
+    })).toBe(true);
+    expect(isExtRequest({
+      kind: "research:resolve-scope",
+      windowId: 7,
+      request: { schema: "atlcli.research-request/v1" },
+      options: { candidateSelections: [{ schema: "wrong" }] },
+    })).toBe(false);
+    expect(isExtRequest({
+      kind: "research:resolve-scope",
+      windowId: 7,
+      request: { schema: "atlcli.research-request/v1" },
       apiKey: "must-not-cross",
     })).toBe(false);
     expect(isExtRequest({ kind: "pdf:compile", jobId: "bad" })).toBe(false);

@@ -1,4 +1,5 @@
 import {
+  ResearchContractError,
   normalizeResearchRequestV1,
   type ResearchRequestV1,
   type ResearchScopeBindingV1,
@@ -13,12 +14,15 @@ import {
   validateResearchScopeMentionProposalsV1,
   type ResearchScopeMentionProposalV1,
   type ResearchScopeMentionV1,
+  type ResearchScopeCandidateV1,
   type ResearchScopeResolutionV1,
 } from "./scope-discovery.js";
 import {
+  normalizeResearchScopeCandidateSelectionsV1,
   resolveInitialResearchScopeV1,
   type ResearchClarificationRequiredV1,
   type ResearchScopeCatalogInvokePortV1,
+  type ResearchScopeCandidateSelectionV1,
 } from "./scope-resolution.js";
 
 export const RESEARCH_SCOPE_PREFLIGHT_OUTCOME_SCHEMA_V1 =
@@ -36,9 +40,14 @@ export type ResearchScopePreflightOutcomeV1 =
       schema: typeof RESEARCH_SCOPE_PREFLIGHT_OUTCOME_SCHEMA_V1;
       kind: "clarification_required";
       clarification: ResearchClarificationRequiredV1;
+      candidateChoices: ResearchScopeCandidateV1[];
       mentions: ResearchScopeMentionV1[];
       resolutions: ResearchScopeResolutionV1[];
     };
+
+export interface ResearchScopePreflightOptionsV1 {
+  candidateSelections?: ResearchScopeCandidateSelectionV1[];
+}
 
 interface MentionMatch {
   start: number;
@@ -186,6 +195,7 @@ export async function prepareResearchScopePreflightV1(input: {
   catalog: ResearchScopeCatalogInvokePortV1;
   automaticApproval?: boolean;
   maximumCatalogPages?: number;
+  candidateSelections?: readonly ResearchScopeCandidateSelectionV1[];
 }): Promise<ResearchScopePreflightOutcomeV1> {
   const request = normalizeResearchRequestV1(input.request);
   const existingSeeds = request.scopeSeeds ?? [];
@@ -195,6 +205,19 @@ export async function prepareResearchScopePreflightV1(input: {
     expectedTenantOrigin: request.scope.siteOrigin,
     existingBindings,
   });
+  const candidateSelections = normalizeResearchScopeCandidateSelectionsV1(
+    input.candidateSelections,
+  );
+  if (
+    candidateSelections.some(
+      (selection) => !mentions.some((mention) => mention.id === selection.mentionId),
+    )
+  ) {
+    throw new ResearchContractError(
+      "invalid-request",
+      "Research scope candidate selection does not match the current question.",
+    );
+  }
   if (mentions.length === 0) {
     if (
       request.scope.jiraProjectKeys.length === 0 &&
@@ -212,6 +235,7 @@ export async function prepareResearchScopePreflightV1(input: {
             "Pass --project <KEY> and/or --space <KEY>, or name a Jira project or Confluence space in the question.",
           ],
         },
+        candidateChoices: [],
         mentions: [],
         resolutions: [],
       };
@@ -231,12 +255,14 @@ export async function prepareResearchScopePreflightV1(input: {
     catalog: input.catalog,
     automaticApproval: input.automaticApproval ?? true,
     maximumCatalogPages: input.maximumCatalogPages,
+    candidateSelections,
   });
   if (resolution.kind === "clarification_required") {
     return {
       schema: RESEARCH_SCOPE_PREFLIGHT_OUTCOME_SCHEMA_V1,
       kind: "clarification_required",
       clarification: resolution.clarification,
+      candidateChoices: resolution.candidateChoices,
       mentions,
       resolutions: resolution.resolutions,
     };

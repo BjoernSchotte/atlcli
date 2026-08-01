@@ -24,7 +24,10 @@ import type {
   ResearchReportV1,
   ResearchRequestV1,
 } from "./research/contracts.js";
-import type { ResearchScopePreflightOutcomeV1 } from "@atlcli/research";
+import type {
+  ResearchScopePreflightOptionsV1,
+  ResearchScopePreflightOutcomeV1,
+} from "@atlcli/research";
 import { isResearchOneShotEventV1 } from "./research/events.js";
 
 /**
@@ -95,6 +98,7 @@ export type ExtRequest =
       kind: "research:resolve-scope";
       windowId: number;
       request: ResearchRequestV1;
+      options?: ResearchScopePreflightOptionsV1;
     }
   | {
       kind: "research:run";
@@ -261,11 +265,12 @@ export function isExtRequest(value: unknown): value is ExtRequest {
       (run.policy === undefined || (typeof run.policy === "object" && run.policy !== null));
   }
   if (kind === "research:resolve-scope") {
-    const preflight = value as { windowId?: unknown; request?: unknown };
-    return hasOnlyKeys(value, ["kind", "windowId", "request"]) &&
+    const preflight = value as { windowId?: unknown; request?: unknown; options?: unknown };
+    return hasOnlyKeys(value, ["kind", "windowId", "request", "options"]) &&
       isWindowId(preflight.windowId) &&
       typeof preflight.request === "object" &&
-      preflight.request !== null;
+      preflight.request !== null &&
+      hasValidScopePreflightOptions(preflight.options);
   }
   if (kind === "research:cancel") {
     const cancel = value as { runId?: unknown };
@@ -398,6 +403,27 @@ function isResearchApiKey(value: unknown): value is string {
 
 function hasValidJobIds(value: unknown): boolean {
   return value === undefined || (Array.isArray(value) && value.length <= 100 && value.every(isOpaqueExportJobId));
+}
+
+function hasValidScopePreflightOptions(value: unknown): boolean {
+  if (value === undefined) return true;
+  if (!hasOnlyKeys(value, ["candidateSelections"])) return false;
+  const selections = (value as { candidateSelections?: unknown }).candidateSelections;
+  if (selections === undefined) return true;
+  return Array.isArray(selections) && selections.length <= 8 && selections.every(
+    (selection) =>
+      hasOnlyKeys(selection, ["schema", "mentionId", "candidateId"]) &&
+      (selection as { schema?: unknown }).schema ===
+        "atlcli.research-scope-candidate-selection/v1" &&
+      typeof (selection as { mentionId?: unknown }).mentionId === "string" &&
+      /^mention:[A-Za-z0-9._-]{1,80}$/.test(
+        (selection as { mentionId: string }).mentionId,
+      ) &&
+      typeof (selection as { candidateId?: unknown }).candidateId === "string" &&
+      /^research-scope-candidate:[A-Za-z0-9._-]{1,200}$/.test(
+        (selection as { candidateId: string }).candidateId,
+      ),
+  );
 }
 
 /** Mirrors the host-neutral export-job contract: opaque, non-empty, bounded text. */

@@ -259,16 +259,29 @@ describe("routeMessage (pure router)", () => {
         candidateIds: ["research-scope-candidate:confluence-space-a"],
         rerunGuidance: ["Pass --space <KEY>."],
       },
+      candidateChoices: [],
       mentions: [],
       resolutions: [],
     };
+    const options = {
+      candidateSelections: [{
+        schema: "atlcli.research-scope-candidate-selection/v1" as const,
+        mentionId: "mention:scope-1",
+        candidateId: "research-scope-candidate:confluence-space-a",
+      }],
+    };
+    let observedOptions: unknown;
     expect(await routeMessage({
       kind: "research:resolve-scope",
       windowId: 7,
       request,
+      options,
     }, {
       ...okDeps,
-      resolveResearchScope: async () => outcome,
+      resolveResearchScope: async (_windowId, _request, value) => {
+        observedOptions = value;
+        return outcome;
+      },
     })).toEqual({
       kind: "research:resolve-scope-result",
       ok: true,
@@ -278,6 +291,8 @@ describe("routeMessage (pure router)", () => {
       kind: "research:resolve-scope",
       windowId: 7,
       request,
+      options,
     })).not.toContain("apiKey");
+    expect(observedOptions).toEqual(options);
   });
 });
