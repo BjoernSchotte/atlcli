@@ -46,9 +46,10 @@ test("Astro consumer harness loads structured pages and emits a private inventor
   expect(inventory.outputRoot).toBe("<private>");
   expect(inventory.bundleDigest).toBe("bundle-digest");
   expect(inventory.pages).toEqual([{ sourceId: "guide", route: "/guide/", pathname: "publish/guide/" }]);
-  expect(inventory.output).toHaveLength(2);
+  expect(inventory.output.length).toBeGreaterThanOrEqual(2);
   expect(inventory.output).toContainEqual(expect.objectContaining({ path: "publish/guide/index.html" }));
   expect(inventory.output).toContainEqual(expect.objectContaining({ path: "assets/f0dad327e22e8cddc2e8057cf16d9b16ea6e36e87d31f46ee4d5943c69609c4f/fixture.txt" }));
+  expect(inventory.output).toContainEqual(expect.objectContaining({ path: "pagefind/pagefind.js" }));
 }, 30_000);
 
 test("Astro builds root, nested-directory, and nested-portable URL profiles", async () => {

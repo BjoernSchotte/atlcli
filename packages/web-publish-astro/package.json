@@ -27,7 +27,8 @@
     "postpack": "bun ../../scripts/strip-dev-condition.ts restore"
   },
   "dependencies": {
-    "@atlcli/web-publish": "workspace:*"
+    "@atlcli/web-publish": "workspace:*",
+    "pagefind": "1.5.2"
   },
   "peerDependencies": {
     "astro": ">=7.1.6 <8"

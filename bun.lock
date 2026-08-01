@@ -274,7 +274,9 @@
         "@atlcli/docx": "workspace:*",
         "@atlcli/export-jobs": "workspace:*",
         "@atlcli/export-macros": "workspace:*",
+        "@atlcli/export-media": "workspace:*",
         "@atlcli/pdf": "workspace:*",
+        "@atlcli/web-publish": "workspace:*",
       },
       "devDependencies": {
         "@atlcli/template-pack": "workspace:*",
@@ -350,6 +352,7 @@
       "version": "0.1.0",
       "dependencies": {
         "@atlcli/web-publish": "workspace:*",
+        "pagefind": "1.5.2",
       },
       "devDependencies": {
         "@atlcli/web-publish-starlight": "workspace:*",

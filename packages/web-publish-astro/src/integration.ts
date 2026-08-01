@@ -14,6 +14,7 @@ import {
   validatePublicationOutputPathV1,
 } from "@atlcli/web-publish";
 import { readPublicationBundlePagesV1, type AtlcliPublicationLoaderOptionsV1 } from "./loader.js";
+import { buildPagefindIndexV1 } from "./pagefind.js";
 
 /** Directory owned by the static Pagefind post-build stage. */
 export const PAGEFIND_OWNED_OUTPUT_PATH_PREFIX_V1 = "pagefind";
@@ -447,6 +448,15 @@ export function atlcliPublishingIntegration(
           throw new Error("Astro did not build exactly one route for every publication page");
         }
         await materializePublicationAssets(options.bundlePath, outputRoot, loaded.bundle.assets);
+        await buildPagefindIndexV1({
+          outputDirectory: outputRoot,
+          pageOutputPaths: builtPages.map((page) => {
+            const stem = page.pathname.replace(/^\/+|\/+$/gu, "");
+            return options.expectedConfig.outputProfile === "directory"
+              ? `${stem}/index.html`
+              : `${stem}.html`;
+          }),
+        });
         await writePrivateJson(manifestPath, {
           schema: "atlcli.astro-build-inventory/1",
           bundlePath: "<private>",

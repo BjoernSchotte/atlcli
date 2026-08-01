@@ -32,3 +32,8 @@ export {
   createAstroStaticPublicationBuilderV1,
   type AstroStaticPublicationBuilderOptionsV1,
 } from "./builder.js";
+export {
+  buildPagefindIndexV1,
+  PAGEFIND_VERSION_V1,
+  type BuildPagefindIndexOptionsV1,
+} from "./pagefind.js";
