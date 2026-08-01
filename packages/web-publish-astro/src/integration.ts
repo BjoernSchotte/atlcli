@@ -170,9 +170,11 @@ function assertResolvedAstroConfig(
     ? expected.base.slice(0, -1)
     : expected.base;
   const normalizedBase = normalizePublicationRoutePrefixV1(suppliedBase);
-  // Astro's resolved config canonically retains a trailing slash for a
-  // non-root base, independent of the spelling in defineConfig().
-  const expectedBase = normalizedBase === "/" ? "/" : `${normalizedBase}/`;
+  // Astro's resolved config follows the selected URL profile: directory output
+  // retains the non-root trailing slash, while portable-file output removes it.
+  const expectedBase = normalizedBase === "/" ? "/" : expected.outputProfile === "directory"
+    ? `${normalizedBase}/`
+    : normalizedBase;
   if (config.base !== expectedBase) {
     throw new Error(`atlcli publishing base mismatch: expected ${expectedBase}, received ${config.base}`);
   }

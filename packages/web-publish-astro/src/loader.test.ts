@@ -374,6 +374,15 @@ test("validates the operator-owned Astro URL and output profile without rewritin
     expect(() => integration.hooks["astro:config:done"]({
       config: resolvedConfig(root, { publicDir: pathToFileURL(join(root, "other-public")), site: valid.site }),
     })).toThrow("publicDir mismatch");
+    const portable = atlcliPublishingIntegration({
+      ...options,
+      expectedConfig: { ...options.expectedConfig, outputProfile: "portable-file" },
+    });
+    expect(() => portable.hooks["astro:config:done"]({
+      config: resolvedConfig(root, {
+        base: "/docs", build: { format: "file" }, trailingSlash: "never", site: valid.site,
+      }),
+    })).not.toThrow();
   } finally {
     await rm(root, { recursive: true, force: true });
   }

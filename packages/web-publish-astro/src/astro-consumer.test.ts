@@ -6,12 +6,16 @@ import { tmpdir } from "node:os";
 const workspaceRoot = resolve(import.meta.dir, "../../..");
 const fixtureDirectory = resolve(import.meta.dir, "../fixtures/astro-consumer");
 
-async function run(command: string[], cwd: string): Promise<{ stdout: string; stderr: string }> {
-  const process = Bun.spawn(command, { cwd, stdout: "pipe", stderr: "pipe" });
+async function run(
+  command: string[],
+  cwd: string,
+  environment: Record<string, string> = {},
+): Promise<{ stdout: string; stderr: string }> {
+  const child = Bun.spawn(command, { cwd, env: { ...process.env, ...environment }, stdout: "pipe", stderr: "pipe" });
   const [exitCode, stdout, stderr] = await Promise.all([
-    process.exited,
-    new Response(process.stdout).text(),
-    new Response(process.stderr).text(),
+    child.exited,
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
   ]);
   expect(exitCode, stderr).toBe(0);
   return { stdout, stderr };
@@ -45,6 +49,31 @@ test("Astro consumer harness loads structured pages and emits a private inventor
   expect(inventory.output).toHaveLength(2);
   expect(inventory.output).toContainEqual(expect.objectContaining({ path: "publish/guide/index.html" }));
   expect(inventory.output).toContainEqual(expect.objectContaining({ path: "assets/f0dad327e22e8cddc2e8057cf16d9b16ea6e36e87d31f46ee4d5943c69609c4f/fixture.txt" }));
+}, 30_000);
+
+test("Astro builds root, nested-directory, and nested-portable URL profiles", async () => {
+  const cases = [
+    { profile: "root-directory", output: "dist-root/publish/guide/index.html", inventory: "../evidence/build-inventory-root-directory.json" },
+    { profile: "nested-directory", output: "dist/publish/guide/index.html", inventory: "../evidence/build-inventory.json" },
+    { profile: "nested-portable", output: "dist-file/publish/guide.html", inventory: "../evidence/build-inventory-nested-portable.json" },
+  ] as const;
+  try {
+    for (const fixture of cases) {
+      await run(["bun", "run", "build"], fixtureDirectory, { ATLCLI_ASTRO_FIXTURE_PROFILE: fixture.profile });
+      expect(await readFile(resolve(fixtureDirectory, fixture.output), "utf8")).toContain('data-atlcli-source-id="guide"');
+      const inventory = JSON.parse(await readFile(resolve(fixtureDirectory, fixture.inventory), "utf8")) as {
+        pages: Array<{ pathname: string }>;
+      };
+      expect(inventory.pages).toEqual([expect.objectContaining({
+        pathname: fixture.profile === "nested-portable" ? "publish/guide" : "publish/guide/",
+      })]);
+    }
+  } finally {
+    await Promise.all(cases.filter((fixture) => fixture.profile !== "nested-directory").map(async (fixture) => {
+      await rm(resolve(fixtureDirectory, fixture.output.split("/")[0]!), { recursive: true, force: true });
+      await rm(resolve(fixtureDirectory, fixture.inventory), { force: true });
+    }));
+  }
 }, 30_000);
 
 test("packed integration builds a clean Astro project with fetch disabled", async () => {

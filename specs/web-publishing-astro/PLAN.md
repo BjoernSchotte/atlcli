@@ -1607,7 +1607,7 @@ and presentation contracts are not Starlight-private.
       environment, abort/timeout handling, and no inherited secrets by default.
 - [x] Materialize generated assets/routes without overwriting handwritten
       project sources or `public/` files.
-- [ ] Build the three URL/base profiles from section 11.
+- [x] Build the three URL/base profiles from section 11.
 - [ ] Pin Pagefind, annotate canonical content/facets/metadata in trusted
       components, and run the full static indexer after each Astro build.
 - [ ] Provide theme-neutral accessible modal and full-page search components
