@@ -4,6 +4,7 @@ import {
   RESEARCH_OPAQUE_SOURCE_REF_SCHEMA_V1,
   RESEARCH_SESSION_ARTIFACT_SCHEMA_V1,
 } from "./session-store.js";
+import { verifyResearchSessionStoreConformanceV1 } from "./session-store-conformance.js";
 import {
   createResearchSessionV1,
   type ResearchSessionUpdateV1,
@@ -41,6 +42,14 @@ async function commit(
 }
 
 describe("in-memory durable research session store", () => {
+  test("passes the reusable aggregate-CAS and failure-injection conformance suite", async () => {
+    await expect(verifyResearchSessionStoreConformanceV1({
+      create(options) {
+        return new InMemoryResearchSessionStoreV1(options);
+      },
+    })).resolves.toEqual({ aggregateCommit: "passed", staleCas: "passed", failureAtomicity: "passed" });
+  });
+
   test("commits the reduced snapshot and a bounded, body-free journal event together", async () => {
     const store = new InMemoryResearchSessionStoreV1();
     let current = await store.create(session());

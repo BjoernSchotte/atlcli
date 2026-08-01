@@ -2984,7 +2984,15 @@ tests remain pending.
       expansion-proposal records. T4 retains opaque V1 source references; it
       does not invent the T5 evidence/claim storage model.
 - [x] Add an in-memory conformance implementation used only by tests.
-- [ ] Create a reusable store conformance suite and failure-injection suite.
+- [x] Create a reusable store conformance suite and failure-injection suite.
+
+T4 conformance checkpoint (2026-08-01): the reusable
+`verifyResearchSessionStoreConformanceV1` suite now runs against an adapter
+factory, rather than testing memory-only internals. It requires an aggregate
+session-plus-body-free-event commit, rejects a stale CAS retry without mutation,
+and injects failure immediately before journal publication to prove no partial
+snapshot or journal state leaks. SQLite/filesystem and IndexedDB adapters must
+run this unchanged suite when added.
 - [ ] Add a LangGraph checkpointer adapter implementing required checkpoint,
       pending-write, lookup, and history operations.
 - [ ] Derive stable `thread_id` from `sessionId`.
