@@ -18,5 +18,6 @@ import { PUBLISHED_KNOWLEDGE_SIDEBAR_V1 } from "../navigation";
   <StarlightDocumentBody
     blocks={PUBLISHED_RELEASE_BLOCKS_V1}
     context={{ ...EXPORT_BLOCKS_ASTRO_MINIMAL_CONTEXT_V1, page: { id: "release-notes", title: "Release notes" } }}
+    search={{ sourceId: "release-notes", title: "Release notes", labels: ["release", "publishing"] }}
   />
 </StarlightPage>

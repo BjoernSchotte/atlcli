@@ -10,13 +10,24 @@ import StarlightCodeBlock from "./StarlightCodeBlock.astro";
 interface Props {
   blocks: readonly ExportBlock[];
   context: AstroExportBlockRenderContextV1;
+  /** Trusted page-graph data; never derived from rendered/source HTML. */
+  search?: {
+    sourceId: string;
+    title: string;
+    labels: readonly string[];
+  };
   overrides?: AstroExportBlockOverridesV1;
 }
 
-const { blocks, context, overrides } = Astro.props;
+const { blocks, context, search, overrides } = Astro.props;
 const starlightOverrides: AstroExportBlockOverridesV1 = { code: StarlightCodeBlock, ...overrides };
 ---
 
-<section data-atlcli-starlight-slot="main-content">
+<section data-atlcli-starlight-slot="main-content" data-pagefind-body>
+  {search !== undefined && <div data-atlcli-search-metadata aria-hidden="true">
+    <span data-pagefind-meta="title">{search.title}</span>
+    <span data-pagefind-meta="source-id">{search.sourceId}</span>
+    {search.labels.map((label) => <span data-pagefind-filter="label">{label}</span>)}
+  </div>}
   <ExportDocument blocks={blocks} context={context} overrides={starlightOverrides} />
 </section>

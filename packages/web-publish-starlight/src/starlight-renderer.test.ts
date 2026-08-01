@@ -47,6 +47,8 @@ test("a Starlight consumer presents ExportBlock document bodies with static sear
   expect(guide).toContain("Publish");
   expect(guide).toContain("Release notes");
   expect(guide).toContain("data-pagefind-body");
+  expect(guide).toContain('data-pagefind-meta="source-id"');
+  expect(guide).toContain('data-pagefind-filter="label"');
   expect(await stat(resolve(fixture, "dist/404.html"))).toBeDefined();
 }, 30_000);
 
