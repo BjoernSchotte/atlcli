@@ -7,6 +7,16 @@
 ### Entry point `.`
 
 ```ts
+// export: CreateStarlightPublicationNavigationOptionsV1
+export interface CreateStarlightPublicationNavigationOptionsV1 {
+    navigation: PublicationNavigationPlanV1;
+    routePrefix: string;
+    landingLabel: string;
+}
+
+// export: createStarlightPublicationNavigationV1
+export declare function createStarlightPublicationNavigationV1(options: CreateStarlightPublicationNavigationOptionsV1): StarlightPublicationNavigationModelV1;
+
 // export: createStarlightPublishingExperienceRuntimeV1
 export declare function createStarlightPublishingExperienceRuntimeV1(input?: {
     slots?: readonly StarlightPublishingSemanticSlotV1[];
@@ -33,6 +43,57 @@ export declare const STARLIGHT_PUBLISHING_SEMANTIC_SLOTS_V1: readonly [
     "footer",
     "renderer-styles"
 ];
+
+// export: starlightPublicationHrefV1
+export declare function starlightPublicationHrefV1(route: string, routePrefix: string): string;
+
+// export: StarlightPublicationLinkV1
+export interface StarlightPublicationLinkV1 {
+    sourceId: string;
+    title: string;
+    href: string;
+}
+
+// export: StarlightPublicationNavigationErrorV1
+export declare class StarlightPublicationNavigationErrorV1 extends Error {
+    constructor(message: string);
+}
+
+// export: StarlightPublicationNavigationModelV1
+export interface StarlightPublicationNavigationModelV1 {
+    routePrefix: string;
+    sidebar: readonly StarlightPublicationSidebarEntryV1[];
+    pages: readonly StarlightPublicationPageNavigationV1[];
+}
+
+// export: starlightPublicationPageNavigationV1
+export declare function starlightPublicationPageNavigationV1(model: StarlightPublicationNavigationModelV1, sourceId: string): StarlightPublicationPageNavigationV1;
+
+// export: StarlightPublicationPageNavigationV1
+export interface StarlightPublicationPageNavigationV1 {
+    sourceId: string;
+    breadcrumbs: readonly StarlightPublicationLinkV1[];
+    toc: readonly PublicationTocEntryV1[];
+    previous?: StarlightPublicationLinkV1;
+    next?: StarlightPublicationLinkV1;
+    related: readonly StarlightPublicationRelatedLinkV1[];
+}
+
+// export: StarlightPublicationRelatedLinkV1
+export interface StarlightPublicationRelatedLinkV1 extends StarlightPublicationLinkV1 {
+    score: number;
+    reasons: readonly PublicationRelatedPageV1["reasons"][number][];
+}
+
+// export: StarlightPublicationSidebarEntryV1
+export type StarlightPublicationSidebarEntryV1 = {
+    label: string;
+    link: string;
+} | {
+    label: string;
+    collapsed: boolean;
+    items: readonly StarlightPublicationSidebarEntryV1[];
+};
 
 // export: StarlightPublishingExperienceDescriptorV1
 export type StarlightPublishingExperienceDescriptorV1 = PublicationExperienceDescriptorV1;

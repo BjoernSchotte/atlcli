@@ -40,9 +40,13 @@ const server = Bun.serve({
       return new Response("Not found", { status: 404, headers: headers("text/plain") });
     }
     const [, scope, ...parts] = url.pathname.split("/");
-    const root = fixtureRoots[scope as keyof typeof fixtureRoots];
-    if (!root) return new Response("Not found", { status: 404, headers: headers("text/plain") });
-    const path = safePath(root, parts.join("/"));
+    // The published Starlight fixture intentionally uses Astro's root base.
+    // Keep the namespaced entry URL convenient for the visual matrix while
+    // making its root-relative generated navigation links executable as well.
+    const namedRoot = fixtureRoots[scope as keyof typeof fixtureRoots];
+    const root = namedRoot ?? fixtureRoots.starlight;
+    const relativePath = namedRoot === undefined ? url.pathname.slice(1) : parts.join("/");
+    const path = safePath(root, relativePath);
     if (!path) return new Response("Bad request", { status: 400, headers: headers("text/plain") });
     const file = Bun.file(path);
     if (!(await file.exists())) return new Response("Not found", { status: 404, headers: headers("text/plain") });

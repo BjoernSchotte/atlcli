@@ -1,33 +1,18 @@
 ---
-import StarlightPage from "@astrojs/starlight/components/StarlightPage.astro";
-import StarlightDocumentBody from "@atlcli/web-publish-starlight/components/StarlightDocumentBody.astro";
 import { EXPORT_BLOCKS_ASTRO_MINIMAL_CONTEXT_V1 } from "@atlcli/export-blocks-astro/fixtures";
-import { PUBLISHED_KNOWLEDGE_SIDEBAR_V1 } from "../navigation";
-
-const blocks = [
-  { type: "heading", level: 2, explicitAnchor: "prepare", content: [{ type: "text", text: "Prepare" }] },
-  { type: "paragraph", content: [{ type: "text", text: "A responsive Starlight presentation keeps normalized content separate from its theme." }] },
-  { type: "heading", level: 2, explicitAnchor: "publish", content: [{ type: "text", text: "Publish" }] },
-  { type: "paragraph", content: [{ type: "link", target: { kind: "anchor", anchor: "prepare" }, content: [{ type: "text", text: "Return to preparation" }] }] },
-] as const;
+import StarlightPublicationPage from "@atlcli/web-publish-starlight/components/StarlightPublicationPage.astro";
+import {
+  PUBLISHED_GUIDE_NAVIGATION_V1,
+  PUBLISHED_GUIDE_PAGE_V1,
+  PUBLISHED_STARLIGHT_NAVIGATION_V1,
+} from "../publication-navigation";
 ---
 
-<StarlightPage
-  frontmatter={{
-    title: "Publishing guide",
-    description: "Navigation, breadcrumbs, TOC, pagination, and theme modes over normalized content.",
-  }}
-  headings={[
-    { depth: 2, slug: "prepare", text: "Prepare" },
-    { depth: 2, slug: "publish", text: "Publish" },
-  ]}
-  sidebar={PUBLISHED_KNOWLEDGE_SIDEBAR_V1}
+<StarlightPublicationPage
+  page={PUBLISHED_GUIDE_PAGE_V1}
+  navigation={PUBLISHED_GUIDE_NAVIGATION_V1}
+  sidebar={PUBLISHED_STARLIGHT_NAVIGATION_V1.sidebar}
+  context={{ ...EXPORT_BLOCKS_ASTRO_MINIMAL_CONTEXT_V1 }}
 >
   <p><a data-atlcli-deep-link-action href="#publish">Link to publishing</a></p>
-  <aside data-atlcli-related-pages aria-label="Related pages"><a href="/">Release notes</a></aside>
-  <StarlightDocumentBody
-    blocks={blocks}
-    context={{ ...EXPORT_BLOCKS_ASTRO_MINIMAL_CONTEXT_V1, page: { id: "publishing-guide", title: "Publishing guide" } }}
-    search={{ sourceId: "publishing-guide", title: "Publishing guide", labels: ["guide", "publishing"] }}
-  />
-</StarlightPage>
+</StarlightPublicationPage>

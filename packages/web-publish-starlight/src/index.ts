@@ -6,6 +6,19 @@ import {
 
 /** Stable identity for the supported first publishing experience. */
 export const STARLIGHT_PUBLISHING_EXPERIENCE_ID_V1 = "atlcli.starlight";
+
+export {
+  createStarlightPublicationNavigationV1,
+  starlightPublicationHrefV1,
+  starlightPublicationPageNavigationV1,
+  StarlightPublicationNavigationErrorV1,
+  type CreateStarlightPublicationNavigationOptionsV1,
+  type StarlightPublicationLinkV1,
+  type StarlightPublicationNavigationModelV1,
+  type StarlightPublicationPageNavigationV1,
+  type StarlightPublicationRelatedLinkV1,
+  type StarlightPublicationSidebarEntryV1,
+} from "./navigation.js";
 export type StarlightPublishingExperienceDescriptorV1 = PublicationExperienceDescriptorV1;
 
 /** Stable semantic regions, intentionally independent from Starlight DOM selectors. */

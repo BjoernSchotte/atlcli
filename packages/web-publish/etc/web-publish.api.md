@@ -168,6 +168,19 @@ export declare function parsePublishRunRequestV1(value: unknown, budget?: Public
 // export: parseStaticPublicationManifestV1
 export declare function parseStaticPublicationManifestV1(value: unknown, budget?: PublicationValidationBudgetV1): StaticPublicationManifestV1;
 
+// export: planPublicationAnchorsV1
+export declare function planPublicationAnchorsV1(blocks: readonly ExportBlock[]): readonly PublicationAnchorV1[];
+
+// export: PlanPublicationNavigationRequestV1
+export interface PlanPublicationNavigationRequestV1 {
+    pages: readonly PublicationPageV1[];
+    rootIds: readonly string[];
+    maxRelatedPages?: number;
+}
+
+// export: planPublicationNavigationV1
+export declare function planPublicationNavigationV1(request: PlanPublicationNavigationRequestV1): PublicationNavigationPlanV1;
+
 // export: PlanPublicationReferencesRequestV1
 export interface PlanPublicationReferencesRequestV1 {
     pages: readonly PublicationReferencePageInputV1[];
@@ -274,6 +287,13 @@ export interface PublicationAssetPolicyV1 {
 export interface PublicationAssetReferenceV1 {
     kind: "asset";
     assetId: string;
+}
+
+// export: PublicationBreadcrumbV1
+export interface PublicationBreadcrumbV1 {
+    sourceId: string;
+    title: string;
+    route: string;
 }
 
 // export: PublicationBuilderContractErrorV1
@@ -475,6 +495,13 @@ export interface PublicationIssueV1 {
     source?: PublicationIssueSourceV1;
 }
 
+// export: PublicationLabelLandingV1
+export interface PublicationLabelLandingV1 {
+    label: string;
+    slug: string;
+    sourceIds: readonly string[];
+}
+
 // export: PublicationLinkReferenceV1
 export type PublicationLinkReferenceV1 = {
     referenceId: string;
@@ -515,6 +542,30 @@ export interface PublicationMediaOptionsV1 {
     code: "expressive-code";
 }
 
+// export: PublicationNavigationItemV1
+export interface PublicationNavigationItemV1 {
+    sourceId: string;
+    title: string;
+    route: string;
+    children: readonly PublicationNavigationItemV1[];
+}
+
+// export: PublicationNavigationPlanningErrorCodeV1
+export type PublicationNavigationPlanningErrorCodeV1 = "duplicate-page" | "duplicate-route" | "duplicate-root" | "unknown-root" | "unknown-parent" | "root-has-in-scope-parent" | "parent-cycle" | "depth-mismatch" | "invalid-related-limit";
+
+// export: PublicationNavigationPlanningErrorV1
+export declare class PublicationNavigationPlanningErrorV1 extends Error {
+    readonly code: PublicationNavigationPlanningErrorCodeV1;
+    constructor(code: PublicationNavigationPlanningErrorCodeV1, message: string);
+}
+
+// export: PublicationNavigationPlanV1
+export interface PublicationNavigationPlanV1 {
+    roots: readonly PublicationNavigationItemV1[];
+    pages: readonly PublicationPageNavigationV1[];
+    labels: readonly PublicationLabelLandingV1[];
+}
+
 // export: PublicationNegotiationIssueCodeV1
 export type PublicationNegotiationIssueCodeV1 = "experience-id-mismatch" | "experience-version-mismatch" | "missing-capability" | "missing-slot" | "undeclared-slot-component" | "unsupported-component-override" | "design-token-schema-mismatch" | "invalid-design-token" | "duplicate-declaration" | "search-provider-mismatch" | "unsupported-search-feature" | "unknown-renderer" | "renderer-island-disabled" | "renderer-island-capability-mismatch" | "renderer-nondeterministic";
 
@@ -553,6 +604,16 @@ export interface PublicationPageEntryV1 {
     sourceId: string;
     path: string;
     pageDigest: string;
+}
+
+// export: PublicationPageNavigationV1
+export interface PublicationPageNavigationV1 {
+    sourceId: string;
+    breadcrumbs: readonly PublicationBreadcrumbV1[];
+    toc: readonly PublicationTocEntryV1[];
+    previous?: PublicationBreadcrumbV1;
+    next?: PublicationBreadcrumbV1;
+    related: readonly PublicationRelatedPageV1[];
 }
 
 // export: PublicationPageReferencesV1
@@ -652,6 +713,18 @@ export interface PublicationRefreshPlanV1 {
     issues: readonly PublicationIssueV1[];
     planDigest: string;
 }
+
+// export: PublicationRelatedPageV1
+export interface PublicationRelatedPageV1 {
+    sourceId: string;
+    title: string;
+    route: string;
+    score: number;
+    reasons: readonly PublicationRelatedReasonV1[];
+}
+
+// export: PublicationRelatedReasonV1
+export type PublicationRelatedReasonV1 = "outbound-link" | "inbound-link" | "shared-label" | "same-parent" | "same-root";
 
 // export: PublicationRenderableKindV1
 export type PublicationRenderableKindV1 = ExportBlock["type"] | "chart" | "diagram" | "jira-table" | "table-of-contents" | "unknown-macro";
@@ -889,6 +962,13 @@ export interface PublicationSourceSnapshotV1 {
     deletionAuthority: "complete-scan" | "none";
     rootIds: readonly string[];
     pages: readonly PublicationSourcePageSnapshotV1[];
+}
+
+// export: PublicationTocEntryV1
+export interface PublicationTocEntryV1 {
+    anchorId: string;
+    level: 1 | 2 | 3 | 4 | 5 | 6;
+    text: string;
 }
 
 // export: PublicationValidationBudgetV1

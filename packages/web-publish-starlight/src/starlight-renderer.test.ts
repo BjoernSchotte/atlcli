@@ -42,7 +42,11 @@ test("a Starlight consumer presents ExportBlock document bodies with static sear
   expect(html).toContain("sidebar-pane");
   expect(html).toContain("Release notes");
   expect(html).toContain("Publishing guide");
-  expect(html).toContain("data-atlcli-related-pages");
+  expect(html).toContain('data-atlcli-publication-slot="breadcrumbs"');
+  expect(html).toContain('data-atlcli-publication-slot="related-pages"');
+  expect(html).toContain('data-atlcli-publication-slot="previous-next"');
+  expect(html).toContain('data-atlcli-related-reasons="outbound-link inbound-link shared-label same-root"');
+  expect(html).toContain('rel="next" href="/guide/"');
   expect(html).toContain("pagefind");
   expect(html).not.toContain("exportBlockKind");
   expect(await stat(resolve(fixture, "dist/pagefind/pagefind.js"))).toBeDefined();

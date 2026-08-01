@@ -1,23 +1,16 @@
 ---
-import StarlightPage from "@astrojs/starlight/components/StarlightPage.astro";
-import StarlightDocumentBody from "@atlcli/web-publish-starlight/components/StarlightDocumentBody.astro";
 import { EXPORT_BLOCKS_ASTRO_MINIMAL_CONTEXT_V1 } from "@atlcli/export-blocks-astro/fixtures";
-import { PUBLISHED_RELEASE_BLOCKS_V1 } from "../published-release";
-import { PUBLISHED_KNOWLEDGE_SIDEBAR_V1 } from "../navigation";
+import StarlightPublicationPage from "@atlcli/web-publish-starlight/components/StarlightPublicationPage.astro";
+import {
+  PUBLISHED_RELEASE_NAVIGATION_V1,
+  PUBLISHED_RELEASE_PAGE_V1,
+  PUBLISHED_STARLIGHT_NAVIGATION_V1,
+} from "../publication-navigation";
 ---
 
-<StarlightPage
-  frontmatter={{
-    title: "Release notes",
-    description: "ExportBlock content inside a Starlight documentation page.",
-  }}
-  headings={[{ depth: 2, slug: "published-content", text: "Published content" }]}
-  sidebar={PUBLISHED_KNOWLEDGE_SIDEBAR_V1}
->
-  <aside data-atlcli-related-pages aria-label="Related pages"><a href="/guide/">Publishing guide</a></aside>
-  <StarlightDocumentBody
-    blocks={PUBLISHED_RELEASE_BLOCKS_V1}
-    context={{ ...EXPORT_BLOCKS_ASTRO_MINIMAL_CONTEXT_V1, page: { id: "release-notes", title: "Release notes" } }}
-    search={{ sourceId: "release-notes", title: "Release notes", labels: ["release", "publishing"] }}
-  />
-</StarlightPage>
+<StarlightPublicationPage
+  page={PUBLISHED_RELEASE_PAGE_V1}
+  navigation={PUBLISHED_RELEASE_NAVIGATION_V1}
+  sidebar={PUBLISHED_STARLIGHT_NAVIGATION_V1.sidebar}
+  context={{ ...EXPORT_BLOCKS_ASTRO_MINIMAL_CONTEXT_V1 }}
+/>

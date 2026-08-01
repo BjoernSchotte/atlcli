@@ -1,0 +1,50 @@
+---
+import StarlightPage from "@astrojs/starlight/components/StarlightPage.astro";
+import type { AstroExportBlockRenderContextV1 } from "@atlcli/export-blocks-astro";
+import type { PublicationPageV1 } from "@atlcli/web-publish";
+import type {
+  StarlightPublicationPageNavigationV1,
+  StarlightPublicationSidebarEntryV1,
+} from "../navigation.js";
+import StarlightDocumentBody from "./StarlightDocumentBody.astro";
+import StarlightPublicationNavigation from "./StarlightPublicationNavigation.astro";
+
+interface Props {
+  /** Trusted, structured source page selected by the static path identity. */
+  page: PublicationPageV1;
+  /** Navigation preplanned from the complete page graph. */
+  navigation: StarlightPublicationPageNavigationV1;
+  /** Documented Starlight sidebar shape, preplanned from the same graph. */
+  sidebar: readonly StarlightPublicationSidebarEntryV1[];
+  context: AstroExportBlockRenderContextV1;
+  copy?: {
+    breadcrumbs?: string;
+    relatedPages?: string;
+    previous?: string;
+    next?: string;
+    pagination?: string;
+  };
+}
+
+const { page, navigation, sidebar, context, copy } = Astro.props;
+---
+
+<StarlightPage
+  frontmatter={{
+    title: page.title,
+    // The publication planner, rather than Starlight's file/MDX traversal,
+    // owns the deterministic previous/next sequence rendered below.
+    prev: false,
+    next: false,
+  }}
+  headings={navigation.toc.map((heading) => ({ depth: heading.level, slug: heading.anchorId, text: heading.text }))}
+  sidebar={sidebar}
+>
+  <StarlightPublicationNavigation navigation={navigation} copy={copy} />
+  <slot />
+  <StarlightDocumentBody
+    blocks={page.blocks}
+    context={context}
+    search={{ sourceId: page.sourceId, title: page.title, labels: page.labels }}
+  />
+</StarlightPage>

@@ -57,6 +57,10 @@ test("maps only public Starlight tokens into the render-kit document-body slot",
   for (const token of ["--sl-color-text", "--sl-color-gray-3", "--sl-color-gray-5", "--sl-color-gray-6"]) {
     expect(stylesheet).toContain(token);
   }
+  expect(stylesheet).toContain('[data-atlcli-starlight-slot="main-content"]');
+  for (const slot of ["breadcrumbs", "related-pages", "previous-next"]) {
+    expect(stylesheet).toContain(`[data-atlcli-publication-slot="${slot}"]`);
+  }
   expect(stylesheet).not.toContain(".sl-");
 });
 
