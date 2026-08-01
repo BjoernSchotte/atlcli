@@ -1747,7 +1747,7 @@ orchestrates it without hiding the plan, bundle, build, or verification digest.
 - [x] Exercise Cloud/DC edit relation present/missing/unsafe cases and analytics
       disabled/enabled/blocked/redacted cases; assert no indexing/caching/event
       leakage.
-- [ ] Measure experience CSS/JS, island JS, search bootstrap/index shards,
+- [x] Measure experience CSS/JS, island JS, search bootstrap/index shards,
       responsive images/fonts, LCP/CLS, navigation and search latency, and
       accessibility budgets; gate regressions.
 - [x] Seed negative fixtures for route collision, path traversal, Node import in

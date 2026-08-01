@@ -7,7 +7,11 @@ import { adfToBlocks, storageToBlocks } from "@atlcli/confluence";
 import { defaultRegistry, resolveMacroBlocks } from "@atlcli/export-macros";
 import { negotiatePublicationExperienceV1 } from "@atlcli/web-publish";
 import { digestPublicationPageV1, type PublicationPageV1 } from "@atlcli/web-publish";
-import { readPublicationBundlePagesV1 } from "@atlcli/web-publish-astro";
+import {
+  assertAstroStaticPerformanceBudgetV1,
+  measureAstroStaticPerformanceV1,
+  readPublicationBundlePagesV1,
+} from "@atlcli/web-publish-astro";
 import { PLAIN_PUBLISHING_EXPERIENCE_FIXTURE_V1 } from "../fixtures/plain-experience/src/experience.js";
 
 const packageRoot = resolve(import.meta.dir, "..");
@@ -164,6 +168,22 @@ test("a deliberately small plain-Astro experience uses the same contract without
   expect(source).toContain("ExportDocument");
   expect(source).not.toContain("exportBlockKind");
   expect(source).not.toContain("switch (");
+}, 30_000);
+
+test("the production Starlight output satisfies static asset and search-index budgets", async () => {
+  await run(["bun", "run", "build"], publishedConsumerFixture);
+  const inventory = JSON.parse(
+    await readFile(resolve(publishedConsumerFixture, "../evidence/published-consumer-inventory.json"), "utf8"),
+  ) as { pages: readonly unknown[]; output: readonly { path: string; byteLength: number }[] };
+  const measurement = measureAstroStaticPerformanceV1(inventory.output, inventory.pages.length);
+  assertAstroStaticPerformanceBudgetV1(measurement);
+  const paths = new Set(inventory.output.map((entry) => entry.path));
+  expect(paths.has("pagefind/pagefind.js")).toBe(true);
+  expect(paths.has("pagefind/pagefind-worker.js")).toBe(true);
+  expect([...paths].some((path) => /^pagefind\/index\/[^/]+\.pf_index$/u.test(path))).toBe(true);
+  expect(measurement.fontBytes).toBeGreaterThanOrEqual(0);
+  expect(measurement.transformedImageBytes).toBeGreaterThanOrEqual(0);
+  expect(measurement.pageCount).toBeGreaterThanOrEqual(2);
 }, 30_000);
 
 test("a trusted Starlight override changes heading presentation without changing content, assets, security output, or index routes", async () => {

@@ -239,7 +239,7 @@ every inventory output and every same-origin `href`/`src` discovered in the
 representative page. The focused consumer run passed 5 tests and 139
 expectations.
 
-The complete Starlight visual matrix passed on 2026-08-01 with six Playwright
+The complete Starlight visual matrix passed on 2026-08-01 with seven Playwright
 tests. It covers desktop/mobile responsive navigation, color modes, forced
 colors, reduced motion, print and zoom, RTL plain-Astro keyboard access,
 Expressive Code controls, browser performance budgets, the production
@@ -256,6 +256,16 @@ manifest proof remains in the package consumer and builder tests. Named
 negative fixtures are covered by the loader route/path tests, the browser-core
 negative import gate, the packed hostile-content consumer, SVG/link security
 tests, and the output verifier's digest/private-URL/asset checks.
+
+The same browser run includes a semantic accessibility budget: exactly one
+`main`, one level-one heading, and one Pagefind body region; every image has an
+`alt` attribute and every button has a browser-recognized accessible name. The
+packed Starlight consumer also measures the production output inventory and
+asserts the static CSS/JavaScript/search-index budget, required Pagefind
+runtime files, and page-count floor. The visual search path records a five
+second upper bound for a query after the dialog is open. These gates cover the
+shipped fixture's static and browser behavior; they do not claim a universal
+performance score for arbitrary customer themes or content sizes.
 
 The analytics/edit-link matrix also passed on 2026-08-01. The runtime test
 executes the generated Plausible snippet with hostile query/fragment/path data,

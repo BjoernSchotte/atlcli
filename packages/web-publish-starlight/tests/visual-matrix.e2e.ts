@@ -78,8 +78,10 @@ test("Starlight Pagefind search supports mouse opening, keyboard focus/closing, 
   await expect(page).toHaveURL(/\/starlight\/$/u);
   await trigger.click();
   await expect(dialog).toBeVisible();
+  const searchStarted = performance.now();
   await input.fill("ExportBlock");
   await expect(dialog).toContainText(/result for ExportBlock/iu);
+  expect(performance.now() - searchStarted).toBeLessThan(5_000);
   await input.fill("query-with-no-matching-publication");
   await expect(dialog).toContainText(/Searching|No results|unavailable/iu);
   await input.press("Tab");
@@ -176,6 +178,20 @@ test("the published page stays within the browser quality budgets", async ({ pag
   expect(metrics.totalBlockingJs).toBeLessThan(1500);
   if (metrics.lcp > 0) expect(metrics.lcp).toBeLessThan(5000);
   expect(metrics.cls).toBeLessThan(0.25);
+});
+
+test("the published page stays within the semantic accessibility budget", async ({ page }) => {
+  await page.goto("/starlight/", { waitUntil: "networkidle" });
+  expect(await page.getByRole("main").count()).toBe(1);
+  expect(await page.getByRole("heading", { level: 1 }).count()).toBe(1);
+  expect(await page.locator("[data-pagefind-body]").count()).toBe(1);
+  const unlabeledImages = await page.locator("img").evaluateAll((images) => images.filter((image) => !image.hasAttribute("alt")).length);
+  expect(unlabeledImages).toBe(0);
+  const unnamedButtons = await page.locator("button").evaluateAll((buttons) => buttons.filter((button) => {
+    const labelledBy = button.getAttribute("aria-labelledby");
+    return !(button.getAttribute("aria-label") || labelledBy || button.getAttribute("title") || button.textContent?.trim());
+  }).length);
+  expect(unnamedButtons).toBe(0);
 });
 
 test("static content remains usable without JavaScript and stays inside the CSP/privacy boundary", async ({ browser }) => {
