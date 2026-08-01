@@ -65,6 +65,10 @@ export function formatResearchActivityEvent(event: ResearchOneShotEventV1): stri
 
 export function inferResearchScope(input: {
   siteOrigin: string;
+  /**
+   * The question is retained in this host-input shape for callers, but only
+   * the shared, catalog-backed preflight is allowed to derive a scope from it.
+   */
   question: string;
   jiraProjects: string;
   confluenceSpaces: string;
@@ -77,45 +81,17 @@ export function inferResearchScope(input: {
 } {
   const manualProjects = splitScopeValues(input.jiraProjects).map((key) => key.toUpperCase());
   const manualSpaces = splitScopeValues(input.confluenceSpaces);
-  let questionProjects: string[] = [];
-  let questionSpaces: string[] = [];
-  if (manualProjects.length === 0) {
-    questionProjects = [
-      ...new Set(
-        [...input.question.matchAll(/\b([A-Z][A-Z0-9]{1,19})-\d+\b/g)].map(
-          (match) => match[1]!
-        )
-      ),
-    ];
-    if (questionProjects.length === 0) {
-      const named = input.question.match(
-        /jira[-\s]*(?:projekt|project)(?:key)?\s*[:=]?\s*([A-Z][A-Z0-9]{1,19})/i
-      );
-      if (named?.[1]) questionProjects = [named[1].toUpperCase()];
-    }
-  }
-  if (manualSpaces.length === 0) {
-    const named = input.question.match(
-      /(?:confluence[-\s]*)?space(?:key)?\s*[:=]?\s*([A-Za-z0-9~][A-Za-z0-9._~-]{0,254})/i
-    );
-    if (named?.[1]) questionSpaces = [named[1]];
-  }
   const currentProjects = input.activeProjectKey ? [input.activeProjectKey.toUpperCase()] : [];
   const currentSpaces = input.activeSpaceKey ? [input.activeSpaceKey] : [];
   const jiraProjectKeys = manualProjects.length > 0
     ? manualProjects
-    : questionProjects.length > 0
-      ? questionProjects
-      : currentProjects;
+    : currentProjects;
   const confluenceSpaceKeys = manualSpaces.length > 0
     ? manualSpaces
-    : questionSpaces.length > 0
-      ? questionSpaces
-      : currentSpaces;
+    : currentSpaces;
   const seeds = (
     product: "jira" | "confluence",
     manual: string[],
-    natural: string[],
     current: string[],
   ): ResearchScopeSeedV1[] => [
     ...manual.map((key) => createResearchKeyScopeSeedV1({
@@ -124,13 +100,6 @@ export function inferResearchScope(input: {
       key,
       source: "ui_added",
       authority: "locked",
-    })),
-    ...natural.map((key) => createResearchKeyScopeSeedV1({
-      tenantOrigin: input.siteOrigin,
-      product,
-      key,
-      source: "natural_language",
-      authority: "approved",
     })),
     ...current.map((key) => createResearchKeyScopeSeedV1({
       tenantOrigin: input.siteOrigin,
@@ -144,8 +113,8 @@ export function inferResearchScope(input: {
     jiraProjectKeys,
     confluenceSpaceKeys,
     scopeSeeds: [
-      ...seeds("jira", manualProjects, questionProjects, currentProjects),
-      ...seeds("confluence", manualSpaces, questionSpaces, currentSpaces),
+      ...seeds("jira", manualProjects, currentProjects),
+      ...seeds("confluence", manualSpaces, currentSpaces),
     ],
   };
 }

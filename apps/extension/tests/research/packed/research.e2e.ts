@@ -1372,7 +1372,7 @@ test("stops a packed natural-name scope ambiguity before key storage or agent wo
   expect(events.some((event) => event.url?.includes("api.anthropic.com"))).toBe(false);
 });
 
-test("selects and streams a Jira-only composition in the packed production bundle", async () => {
+test("resolves a question-derived Jira scope and streams a Jira-only composition in the packed production bundle", async () => {
   await openResearchScreen(page);
   await installEventCapture(page);
   await page.getByTestId("research-current-context").uncheck();
@@ -1381,7 +1381,6 @@ test("selects and streams a Jira-only composition in the packed production bundl
     "packed-jira-only: Find the exact Jira project DEMO work item.",
     { includeScope: false },
   );
-  await page.getByTestId("research-jira").fill("DEMO");
   await page.getByTestId("research-run").click();
 
   try {
@@ -1420,6 +1419,10 @@ test("selects and streams a Jira-only composition in the packed production bundl
   expect(activity).not.toContain("wiki-research");
 
   const events = await harnessEvents(page);
+  const catalogFetches = events.filter((event) => event.kind === "scope-catalog-fetch");
+  expect(catalogFetches).toHaveLength(1);
+  expect(catalogFetches[0]?.url).toContain("/rest/api/3/project/search");
+  expect(catalogFetches[0]?.url).toContain("query=DEMO");
   const fetches = events.filter((event) => event.kind === "fetch");
   expect(fetches.some((event) => event.url?.includes("/rest/api/3/search/jql"))).toBe(true);
   expect(fetches.some((event) => event.url?.includes("/wiki/rest/api/content/search"))).toBe(false);

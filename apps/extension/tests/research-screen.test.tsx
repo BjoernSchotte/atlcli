@@ -14,6 +14,7 @@ import {
 } from "../components/screens/ResearchScreen.js";
 import { I18nProvider } from "../utils/i18n/context.js";
 import type { ResearchBriefClarificationRequiredV1 } from "@atlcli/research";
+import { createResearchKeyScopeSeedV1 } from "@atlcli/research/scope-discovery";
 import type {
   ResearchPort,
   ResearchReportV1,
@@ -136,7 +137,7 @@ function screenProps(port: ResearchPort, spaceKey = "KB"): ScreenProps {
 }
 
 describe("research scope inference", () => {
-  it("extracts the project and space keys from the question the user described", () => {
+  it("leaves question-derived scope to the shared catalog-backed preflight", () => {
     expect(
       inferResearchScope({
         siteOrigin: "https://example.atlassian.net",
@@ -147,11 +148,9 @@ describe("research scope inference", () => {
         activeSpaceKey: "CURRENT",
       })
     ).toMatchObject({
-      jiraProjectKeys: ["ATLCLI"],
-      confluenceSpaceKeys: ["DOCSY"],
+      jiraProjectKeys: [],
+      confluenceSpaceKeys: ["CURRENT"],
       scopeSeeds: [
-        { binding: { key: "ATLCLI", source: "natural_language", authority: "approved" }, precedence: 400 },
-        { binding: { key: "DOCSY", source: "natural_language", authority: "approved" }, precedence: 400 },
         { binding: { key: "CURRENT", source: "current_context", authority: "approved" }, precedence: 300 },
       ],
     });
@@ -214,6 +213,7 @@ describe("research brief clarification presentation", () => {
 describe("portable Research screen", () => {
   it("stores the key through the port, infers scope, runs, and renders safe structured output", async () => {
     let stored = false;
+    const preflightInputs: ResearchRequestV1[] = [];
     const observed: ResearchRequestV1[] = [];
     const observedPolicies: unknown[] = [];
     const port: ResearchPort = {
@@ -224,13 +224,39 @@ describe("portable Research screen", () => {
       clearApiKey: async () => {
         stored = false;
       },
-      resolveScope: async (request) => ({
-        schema: "atlcli.research-scope-preflight-outcome/v1",
-        kind: "ready",
-        request,
-        mentions: [],
-        resolutions: [],
-      }),
+      resolveScope: async (request) => {
+        preflightInputs.push(request);
+        return {
+          schema: "atlcli.research-scope-preflight-outcome/v1",
+          kind: "ready",
+          request: {
+            ...request,
+            scope: {
+              ...request.scope,
+              jiraProjectKeys: ["DEMO"],
+              confluenceSpaceKeys: ["KB"],
+            },
+            scopeSeeds: [
+              createResearchKeyScopeSeedV1({
+                tenantOrigin: request.scope.siteOrigin,
+                product: "jira",
+                key: "DEMO",
+                source: "natural_language",
+                authority: "approved",
+              }),
+              createResearchKeyScopeSeedV1({
+                tenantOrigin: request.scope.siteOrigin,
+                product: "confluence",
+                key: "KB",
+                source: "natural_language",
+                authority: "approved",
+              }),
+            ],
+          },
+          mentions: [],
+          resolutions: [],
+        };
+      },
       run: async (request, options) => {
         observed.push(request);
         observedPolicies.push(options?.policy);
@@ -317,6 +343,16 @@ describe("portable Research screen", () => {
     await dom.flush();
 
     expect(stored).toBe(true);
+    expect(preflightInputs[0]).toMatchObject({
+      scope: {
+        siteOrigin: "https://example.atlassian.net",
+        jiraProjectKeys: [],
+        confluenceSpaceKeys: ["KB"],
+      },
+      scopeSeeds: [
+        { binding: { key: "KB", source: "current_context", authority: "approved" }, precedence: 300 },
+      ],
+    });
     expect(observed[0]!.scope).toMatchObject({
       siteOrigin: "https://example.atlassian.net",
       jiraProjectKeys: ["DEMO"],
@@ -327,7 +363,7 @@ describe("portable Research screen", () => {
         binding: expect.objectContaining({ source: "natural_language", key: "DEMO" }),
       }),
       expect.objectContaining({
-        binding: expect.objectContaining({ source: "current_context", key: "KB" }),
+        binding: expect.objectContaining({ source: "natural_language", key: "KB" }),
       }),
     ]));
     expect(observedPolicies[0]).toEqual({

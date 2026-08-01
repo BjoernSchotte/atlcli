@@ -2882,12 +2882,16 @@ CLI REST and packed-MV3 background regressions prove that an exact project key
 and the equivalent same-tenant project link yield the same ready, exact binding
 before an agent worker can start. The packed case begins with a lower-precedence
 current-project context; the CLI case begins with a lower-precedence profile
-default. The existing packed ambiguity regression continues to prove that a
-duplicate natural-language name stops before key storage or agent work. This
-advances, but does not close, the full CLI/packed resolution-matrix gate above:
-the remaining name, alias, archive, access, pagination, precedence, context,
-cross-tenant, and prompt-injection parity cases still require their own
-host-boundary fixtures.
+default. The sidebar contributes only manual or detected-current scope seeds:
+it must not pre-authorize formal-looking keys extracted from free text. A
+productive packed-MV3 regression enters no manual project, asks for `Jira
+project DEMO`, proves the background catalog fetch occurs, and only then runs
+the Jira-only graph. The existing packed ambiguity regression continues to
+prove that a duplicate natural-language name stops before key storage or agent
+work. This advances, but does not close, the full CLI/packed resolution-matrix
+gate above: the remaining name, alias, archive, access, pagination,
+precedence, context, cross-tenant, and prompt-injection parity cases still
+require their own host-boundary fixtures.
 
 ### T4 — Add durable session, workspace, graph, and checkpoint stores
 
