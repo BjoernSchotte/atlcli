@@ -101,19 +101,20 @@ export async function appendResearchSessionTurnV1(
 }
 
 /**
- * Claim an explicitly durable wait after its former owner has released the
- * lease, then make its active turn runnable again. The caller must still
- * enforce its host-specific retry policy before dispatching any stored work.
+ * Claim a released durable wait, or an undispatched running plan whose manual
+ * approver released its lease. The caller must still enforce its host-specific
+ * retry policy before dispatching any stored work.
  */
 export async function recoverResearchSessionForResumeV1(
   input: RecoverResearchSessionForResumeInputV1,
 ): Promise<ResearchSessionV1> {
   const current = await input.store.read(input.sessionId);
   if (!current) throw new Error("Research session was not found.");
-  if (!current.activeTurnId || !["paused", "waiting_authentication", "waiting_quota"].includes(current.status)) {
-    throw new Error("Research session is not in a resumable durable wait state.");
+  const resumesWait = ["paused", "waiting_authentication", "waiting_quota"].includes(current.status);
+  if (!current.activeTurnId || (!resumesWait && current.status !== "running")) {
+    throw new Error("Research session is not in a resumable durable state.");
   }
-  if (Date.parse(input.at) <= Date.parse(current.lease.expiresAt)) {
+  if (Date.parse(input.at) < Date.parse(current.lease.expiresAt)) {
     throw new Error("Research session lease has not been released or expired.");
   }
   const recovered = await input.store.commit(input.sessionId, {
@@ -124,6 +125,7 @@ export async function recoverResearchSessionForResumeV1(
     expectedLeaseEpoch: current.lease.epoch,
     at: input.at,
   });
+  if (!resumesWait) return recovered.session;
   return (await input.store.commit(input.sessionId, {
     kind: "resume",
     expectedRevision: recovered.session.revision,

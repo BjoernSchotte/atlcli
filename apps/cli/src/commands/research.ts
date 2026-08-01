@@ -624,7 +624,7 @@ export async function handleResearchSessions(
       if (session.revision !== revision) throw new Error("Research session revision is stale; inspect the current plan and retry with its exact revision.");
       const graph = activeSessionTurn(session)?.graph;
       if (!graph) throw new Error("Research session has no active graph to decide.");
-      const committed = await opened.store.commit(sessionId, command === "approve"
+      let committed = await opened.store.commit(sessionId, command === "approve"
         ? {
             kind: "approve_graph",
             graphRevision: graph.revision,
@@ -640,6 +640,14 @@ export async function handleResearchSessions(
             expectedLeaseEpoch: session.lease.epoch,
             at: new Date().toISOString(),
           });
+      if (command === "approve") {
+        committed = await opened.store.commit(sessionId, {
+          kind: "release_lease",
+          expectedRevision: committed.session.revision,
+          expectedLeaseEpoch: committed.session.lease.epoch,
+          at: new Date().toISOString(),
+        });
+      }
       dependencies.writeStderr(`[research] session=${sessionId} action=${command} revision=${committed.session.revision} status=${committed.session.status}\n`);
       dependencies.emitOutput(projectResearchSessionPlanV1(committed.session), opts);
     } finally {
@@ -1076,8 +1084,8 @@ async function resumeAuthenticationWaitingResearchSession(
   try {
     const stored = await requireStoredResearchSession(opened.store, sessionId);
     const turn = activeSessionTurn(stored);
-    if (!turn?.brief || !turn.graph || stored.status !== "waiting_authentication") {
-      throw new Error("Only a durable authentication wait can be resumed by this command.");
+    if (!turn?.brief || !turn.graph || !["waiting_authentication", "waiting_quota", "paused", "running"].includes(stored.status)) {
+      throw new Error("Only a released, undispatched durable research turn can be resumed by this command.");
     }
     if (turn.tasks.length > 0 || turn.acceptedPackets.length > 0 || turn.graphSelectionCommittedAt) {
       throw new Error("This durable session already has dispatch state. Retry recovery is not available until the bounded task-retry policy is implemented.");
@@ -1090,6 +1098,14 @@ async function resumeAuthenticationWaitingResearchSession(
     }
     const apiKey = readApiKey(dependencies);
     if (!apiKey) {
+      if (stored.status === "running") {
+        await opened.store.commit(stored.sessionId, {
+          kind: "wait_authentication",
+          expectedRevision: stored.revision,
+          expectedLeaseEpoch: stored.lease.epoch,
+          at: new Date().toISOString(),
+        });
+      }
       dependencies.writeStderr(
         `[research] session=${stored.sessionId} status=${stored.status} stop_reason=authentication-required\n`,
       );

@@ -401,7 +401,7 @@ describe("research CLI one-shot contract", () => {
     const approved = JSON.parse(approve.stdout.join(""));
     expect(approved).toMatchObject({
       status: "running",
-      revision: created.sessionRevision + 1,
+      revision: created.sessionRevision + 2,
       turn: { graph: { status: "approved" }, work: { dispatchState: "not_started" } },
     });
     expect(approve.runInputs).toHaveLength(0);
@@ -429,6 +429,31 @@ describe("research CLI one-shot contract", () => {
       planMutable: false,
     });
     expect(reject.stderr.join("")).toContain("action=reject-plan");
+  });
+
+  test("reclaims an approved but undispatched plan after the approval command releases its lease", async () => {
+    const harness = cliHarness();
+    await handleResearch(["Find", "related", "content"], { "plan-only": true, effort: "deep" }, { json: true }, harness.dependencies);
+    const proposed = JSON.parse(harness.stdout.join(""));
+    harness.stdout.length = 0;
+    await handleResearch(
+      ["sessions", "approve", "research-session:cli-plan"],
+      { revision: String(proposed.sessionRevision) },
+      { json: true },
+      harness.dependencies,
+    );
+    harness.stdout.length = 0;
+    await handleResearch([], { resume: "research-session:cli-plan" }, { json: false }, harness.dependencies);
+    expect(harness.runInputs).toHaveLength(1);
+    expect(harness.runInputs[0]).toMatchObject({
+      durableSession: { sessionId: "research-session:cli-plan", turnId: "research-turn:cli-plan" },
+      request: { scope: { jiraProjectKeys: ["ATLCLI"], confluenceSpaceKeys: ["DOCSY"] } },
+    });
+    await expect(harness.durableStore.read("research-session:cli-plan")).resolves.toMatchObject({
+      status: "running",
+      lease: { epoch: 2 },
+    });
+    expect(harness.stderr.join("")).toContain("recovery=claimed lease_epoch=2");
   });
 
   test("deletes only the exact terminal session revision and erases its owned durable state", async () => {

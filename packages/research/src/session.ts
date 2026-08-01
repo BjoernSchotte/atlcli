@@ -233,6 +233,7 @@ export type ResearchSessionUpdateV1 =
   | (ResearchSessionFencedUpdateV1 & { kind: "resume" })
   | (ResearchSessionFencedUpdateV1 & { kind: "wait_authentication" })
   | (ResearchSessionFencedUpdateV1 & { kind: "wait_quota" })
+  | (ResearchSessionFencedUpdateV1 & { kind: "release_lease" })
   | (ResearchSessionFencedUpdateV1 & { kind: "heartbeat"; leaseExpiresAt: string })
   | (ResearchSessionFencedUpdateV1 & { kind: "recover"; ownerId: string; expiresAt: string })
   | (ResearchSessionFencedUpdateV1 & { kind: "cancel" })
@@ -698,6 +699,21 @@ export function reduceResearchSessionV1(
         ...session.lease,
         expiresAt: new Date(releasedAt).toISOString(),
       },
+    };
+  }
+
+  if (update.kind === "release_lease") {
+    const current = ensureActive(session, ["running"]);
+    if (current.tasks.length > 0 || current.acceptedPackets.length > 0 || current.graphSelectionCommittedAt) {
+      invalid("Only an undispatched research turn may release its lease.");
+    }
+    const expiresAt = new Date(Math.max(
+      Date.parse(update.at),
+      Date.parse(session.lease.heartbeatAt) + 1,
+    )).toISOString();
+    return {
+      ...withNext(session, update, { status: "running" }),
+      lease: { ...session.lease, expiresAt },
     };
   }
 
