@@ -2,6 +2,7 @@ import {
   RESEARCH_TOOL_IDS,
   ResearchContractError,
   type ResearchRequestV1,
+  type ResearchScopeBindingV1,
   type ResearchSourceReferenceV1,
   type ResearchToolId,
 } from "./contracts.js";
@@ -19,6 +20,10 @@ import {
 import { ResearchRunBudget } from "./budget.js";
 import { ResearchCursorVault } from "./cursor-vault.js";
 import { ResearchEntityVault } from "./entity-vault.js";
+import {
+  createResearchEvidenceRecordV1,
+  type ResearchEvidenceStoreV1,
+} from "./evidence-store.js";
 import {
   buildResearchCql,
   buildResearchJql,
@@ -91,6 +96,12 @@ interface BrokerOptions {
   createCursorId?: () => string;
   createEntityId?: () => string;
   budget?: ResearchRunBudget;
+  /** Optional private evidence sink for durable session-backed detail reads. */
+  evidence?: {
+    store: ResearchEvidenceStoreV1;
+    scopeBindings: readonly ResearchScopeBindingV1[];
+    capturedAt?: () => string;
+  };
 }
 
 class ConcurrencyGate {
@@ -168,6 +179,7 @@ export class ResearchCapabilityBroker {
   readonly #gate: ConcurrencyGate;
   readonly #sources = new Map<string, ResearchSourceReferenceV1>();
   readonly #detailEvidence = new Map<string, ResearchDetailEvidenceV1>();
+  readonly #evidence?: NonNullable<BrokerOptions["evidence"]>;
   readonly #controller = new AbortController();
   readonly #searchCompletion: Record<
     "jira" | "confluence",
@@ -195,6 +207,7 @@ export class ResearchCapabilityBroker {
       maxEntries: request.limits.maxItemsPerProduct * 2,
       createId: options.createEntityId,
     });
+    this.#evidence = options.evidence;
     this.#gate = new ConcurrencyGate(request.limits.maxConcurrentCalls);
   }
 
@@ -222,6 +235,29 @@ export class ResearchCapabilityBroker {
         linkTargets: [...entry.content.linkTargets],
       },
     }));
+  }
+
+  async #recordDetailEvidence(
+    source: ResearchSourceReferenceV1,
+    content: BoundedContentProjectionV1,
+  ): Promise<void> {
+    if (this.#evidence) {
+      const evidence = await createResearchEvidenceRecordV1({
+        source,
+        content,
+        scope: this.#request.scope,
+        scopeBindings: this.#evidence.scopeBindings,
+        capturedAt: this.#evidence.capturedAt?.() ?? new Date().toISOString(),
+      });
+      await this.#evidence.store.put(evidence.record, evidence.chunks);
+    }
+    this.#detailEvidence.set(source.id, {
+      source,
+      content: {
+        ...content,
+        linkTargets: [...content.linkTargets],
+      },
+    });
   }
 
   completionStatus(): { complete: boolean; warnings: string[] } {
@@ -480,13 +516,7 @@ export class ResearchCapabilityBroker {
       throw new ResearchContractError("access-denied", "Jira detail is outside the run scope.");
     }
     const source = this.#jiraSource(detail);
-    this.#detailEvidence.set(source.id, {
-      source,
-      content: {
-        ...detail.content,
-        linkTargets: [...detail.content.linkTargets],
-      },
-    });
+    await this.#recordDetailEvidence(source, detail.content);
     return {
       schema: RESEARCH_CAPABILITY_SCHEMAS["jira.issue.get"].output,
       source: publicSource(source),
@@ -514,13 +544,7 @@ export class ResearchCapabilityBroker {
       );
     }
     const source = this.#wikiSource(detail);
-    this.#detailEvidence.set(source.id, {
-      source,
-      content: {
-        ...detail.content,
-        linkTargets: [...detail.content.linkTargets],
-      },
-    });
+    await this.#recordDetailEvidence(source, detail.content);
     return {
       schema: RESEARCH_CAPABILITY_SCHEMAS["wiki.page.get"].output,
       source: publicSource(source),

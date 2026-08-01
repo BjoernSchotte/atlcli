@@ -38,6 +38,7 @@ import {
   type ResearchSessionStoreV1,
 } from "./session-store.js";
 import { ResearchSessionWorkspaceCheckpointerV1 } from "./workspace-checkpointer.js";
+import { WorkspaceResearchEvidenceStoreV1 } from "./evidence-store.js";
 import { researchThreadIdForSessionV1 } from "./checkpoint-identity.js";
 /*
  * Keep graph execution admission here, before workspace/provider/model setup.
@@ -965,10 +966,12 @@ async function runResearchAgentWithBindings(
         now: () => new Date(now()).toISOString(),
       })
     : undefined;
-  const workspace = input.workspace
-    ?? (input.durableSession
-      ? await input.durableSession.store.workspace(input.durableSession.sessionId)
-      : createMemoryResearchWorkspace());
+  // A durable execution may not redirect checkpoint or evidence writes into a
+  // caller-owned transient workspace. The durable session store is the one
+  // authoritative private filesystem on every host.
+  const workspace = input.durableSession
+    ? await input.durableSession.store.workspace(input.durableSession.sessionId)
+    : input.workspace ?? createMemoryResearchWorkspace();
   // DeepAgentsJS persists LangGraph state by configurable thread ID. A retry
   // attempt has a new run ID, but it must remain in the durable conversation's
   // session thread. Its checkpoints live in the host-neutral session
@@ -1124,8 +1127,18 @@ async function runResearchAgentWithBindings(
     RESEARCH_ONE_SHOT_REQUEST_PATH_V1,
     JSON.stringify({ runId, request: input.request }, null, 2),
   );
+  const durableEvidence = input.durableSession && input.brief?.scopeBindings.length
+    ? new WorkspaceResearchEvidenceStoreV1(workspace)
+    : undefined;
   const broker = new ResearchCapabilityBroker(input.request, input.providers, {
     ...(input.budget ? { budget: input.budget } : {}),
+    ...(durableEvidence && input.brief ? {
+      evidence: {
+        store: durableEvidence,
+        scopeBindings: input.brief.scopeBindings,
+        capturedAt: () => new Date(now()).toISOString(),
+      },
+    } : {}),
   });
   const tools = createResearchPtcTools(broker, {
     onDiagnostic: emitPtcDiagnostic,

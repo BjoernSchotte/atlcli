@@ -3263,6 +3263,10 @@ Shared:
       Proven through memory, SQLite/filesystem reopen, and IndexedDB reopen;
       source text stays private under the session workspace and is not an
       artifact or model transcript.
+- [x] Bind durable Jira/Confluence detail acquisition to that evidence sink:
+      a detail body enters the broker ledger only after its approved,
+      tenant-bound evidence record is durable. Persistence errors fail closed
+      before a report can treat that detail as support.
 - [ ] Add evidence, chunk, claim, contradiction, freshness, and coverage
       contracts plus evidence-linked `OutlineV1`.
 - [ ] Add bounded evidence, claim, contradiction, coverage, and outline store

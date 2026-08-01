@@ -11,6 +11,8 @@ import {
 } from "../utils/research/capability-contracts.js";
 import {
   ResearchCapabilityBroker,
+  WorkspaceResearchEvidenceStoreV1,
+  createMemoryResearchWorkspace,
   type ResearchReadProviders,
 } from "@atlcli/research";
 import {
@@ -217,6 +219,65 @@ describe("bounded research capability broker", () => {
     expect(broker.budget.canReadAnotherDetail("jira")).toBe(false);
     expect(broker.budget.canSearchAnotherPage("confluence")).toBe(true);
     expect(broker.budget.canReadAnotherDetail("confluence")).toBe(true);
+  });
+
+  it("persists approved, tenant-bound evidence before publishing a detail body to the broker ledger", async () => {
+    const workspace = createMemoryResearchWorkspace();
+    const evidence = new WorkspaceResearchEvidenceStoreV1(workspace);
+    const broker = new ResearchCapabilityBroker(request(), fakeProviders(), {
+      createEntityId: () => "evidence-entity",
+      evidence: {
+        store: evidence,
+        scopeBindings: [
+          {
+            schema: "atlcli.research-scope-binding/v1",
+            id: "scope-binding:test:jira:DEMO",
+            tenantOrigin: "https://example.atlassian.net",
+            product: "jira",
+            entityKind: "project",
+            entityRef: "scope-key:jira:DEMO",
+            key: "DEMO",
+            name: "DEMO",
+            source: "cli_flag",
+            authority: "locked",
+          },
+          {
+            schema: "atlcli.research-scope-binding/v1",
+            id: "scope-binding:test:confluence:KB",
+            tenantOrigin: "https://example.atlassian.net",
+            product: "confluence",
+            entityKind: "space",
+            entityRef: "scope-key:confluence:KB",
+            key: "KB",
+            name: "KB",
+            source: "cli_flag",
+            authority: "locked",
+          },
+        ],
+        capturedAt: () => "2026-08-01T12:00:00.000Z",
+      },
+    });
+    const page = await broker.invoke("jira.issue.search", {
+      schema: RESEARCH_CAPABILITY_SCHEMAS["jira.issue.search"].input,
+      query: {},
+    }) as ResearchSearchOutputV1;
+    await broker.invoke("jira.issue.get", {
+      schema: RESEARCH_CAPABILITY_SCHEMAS["jira.issue.get"].input,
+      entityRef: page.items[0]!.entityRef,
+    });
+
+    const retained = await evidence.list();
+    expect(retained.records).toMatchObject([{
+      source: { id: "jira:DEMO-1" },
+      identity: { canonicalId: "https://example.atlassian.net|jira|issue|DEMO-1" },
+      authority: { bindingId: "scope-binding:test:jira:DEMO" },
+    }]);
+    expect(await evidence.chunks(retained.records[0]!.id)).toMatchObject([
+      { text: "The Jira issue links to the implementation page." },
+    ]);
+    expect(broker.detailEvidenceLedger()).toMatchObject([
+      { source: { id: "jira:DEMO-1" } },
+    ]);
   });
 
   it("paginates both products without exposing provider cursors or out-of-scope hits", async () => {
