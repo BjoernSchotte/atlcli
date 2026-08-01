@@ -3015,6 +3015,18 @@ requires that thread on `put`, pending writes, lookup, history, and deletion,
 and rejects a foreign session config before storage access. The test corridor
 exercises each operation; physical store-backed checkpointers inherit the same
 scope fence when their adapters land.
+
+T4 IndexedDB catalog checkpoint (2026-08-01):
+`IndexedDbResearchSessionStoreV1` opens an explicit versioned database with a
+bounded blocked-upgrade error path and separate session, journal, source-ref,
+artifact, and workspace stores. Its revision/epoch CAS updates the session
+snapshot and body-free event in one IndexedDB transaction; graph, task, packet,
+and checkpoint inspection derives from that committed snapshot. It passes the
+same adapter conformance/failure suite as memory and SQLite, plus a real
+fake-indexeddb close/reopen test for browser workspace, opaque refs, and a
+Markdown artifact. The IndexedDB-backed LangGraph saver and extension protocol
+wiring remain pending.
+
 - [ ] Ensure accepted turns are durable before execution begins.
 - [ ] Persist brief and graph revisions before plan approval or execution.
 - [ ] Persist ready nodes before dispatch. Accept or quarantine a result with

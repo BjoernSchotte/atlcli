@@ -9,7 +9,7 @@ import type {
 } from "./session-store.js";
 
 export interface ResearchSessionStoreConformanceFactoryV1 {
-  create(options?: { failureInjection?: ResearchSessionStoreFailureInjectionV1 }): ResearchSessionStoreV1;
+  create(options?: { failureInjection?: ResearchSessionStoreFailureInjectionV1 }): ResearchSessionStoreV1 | Promise<ResearchSessionStoreV1>;
 }
 
 export interface ResearchSessionStoreConformanceResultV1 {
@@ -50,7 +50,7 @@ export async function verifyResearchSessionStoreConformanceV1(
   factory: ResearchSessionStoreConformanceFactoryV1,
   prefix = "research-session:conformance",
 ): Promise<ResearchSessionStoreConformanceResultV1> {
-  const store = factory.create();
+  const store = await factory.create();
   const initial = await store.create(session(`${prefix}-commit`));
   const committed = await store.commit(initial.sessionId, createTurnUpdate(initial, "2026-08-01T11:00:01.000Z"));
   assert(committed.session.revision === 2 && committed.session.status === "planning", "committed snapshot is missing");
@@ -67,7 +67,7 @@ export async function verifyResearchSessionStoreConformanceV1(
   const afterStale = await store.read(initial.sessionId);
   assert(afterStale?.revision === 2 && (await store.events(initial.sessionId)).length === 1, "stale write mutated session or journal");
 
-  const failing = factory.create({
+  const failing = await factory.create({
     failureInjection: {
       onStage(stage) {
         if (stage === "before_event_append") throw new Error("conformance injected journal failure");
