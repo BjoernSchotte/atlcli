@@ -70,6 +70,14 @@ export const FREEZE_DECISIONS: Record<string, FreezeDecision> = {
       "for web publishing. Keep it experimental until packed clean-project, Starlight, and " +
       "real Cloud/Data Center publication artifacts prove the integration contract.",
   },
+  "@atlcli/web-publish-starlight": {
+    version: "0.x",
+    frozen: false,
+    reasoning:
+      "STAYS 0.x: first supported Starlight publishing experience, deliberately separated " +
+      "from acquisition, build execution, and ExportBlock rendering. Keep it experimental until " +
+      "a production Starlight artifact and a non-Starlight experience prove the slot and theme contract.",
+  },
   "@atlcli/code-highlight": {
     version: "0.x",
     frozen: false,

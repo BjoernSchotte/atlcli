@@ -1568,7 +1568,7 @@ interaction remains bounded and has a complete static fallback.
 
 ### T7 — Build the Starlight experience adapter
 
-- [ ] Add `@atlcli/web-publish-starlight` as the first public-0.x experience
+- [x] Add `@atlcli/web-publish-starlight` as the first public-0.x experience
       package with pinned compatible Starlight/Astro peers and no duplicated
       ExportBlock dispatcher or build runner.
 - [ ] Implement the versioned experience descriptor/runtime and semantic slots
