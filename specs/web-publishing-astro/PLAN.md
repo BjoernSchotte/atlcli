@@ -1601,9 +1601,9 @@ and presentation contracts are not Starlight-private.
 
 ### T8 — Build static output, discovery, and production web quality
 
-- [ ] Implement a builder adapter over immutable bundle + trusted Astro project;
+- [x] Implement a builder adapter over immutable bundle + trusted Astro project;
       do not expose Astro's experimental programmatic API publicly.
-- [ ] Invoke the project-owned build executable/argv with `shell: false`, bounded
+- [x] Invoke the project-owned build executable/argv with `shell: false`, bounded
       environment, abort/timeout handling, and no inherited secrets by default.
 - [ ] Materialize generated assets/routes without overwriting handwritten
       project sources or `public/` files.

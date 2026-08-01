@@ -28,3 +28,7 @@ export {
   type AstroBuildInventoryV1,
   type CreateAstroStaticManifestOptionsV1,
 } from "./manifest.js";
+export {
+  createAstroStaticPublicationBuilderV1,
+  type AstroStaticPublicationBuilderOptionsV1,
+} from "./builder.js";

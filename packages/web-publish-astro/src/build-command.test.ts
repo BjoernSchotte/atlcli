@@ -27,5 +27,7 @@ test("rejects failing, aborted, and oversized commands with bounded diagnostics"
     controller.abort();
     await expect(runAstroBuildCommandV1({ projectDirectory: directory, command: [process.execPath, "-e", "process.exit(0)"], signal: controller.signal }))
       .rejects.toMatchObject({ kind: "aborted" } satisfies Partial<AstroBuildCommandErrorV1>);
+    await expect(runAstroBuildCommandV1({ projectDirectory: directory, command: ["definitely-not-an-atlcli-executable"] }))
+      .rejects.toMatchObject({ kind: "spawn" } satisfies Partial<AstroBuildCommandErrorV1>);
   } finally { await rm(directory, { recursive: true, force: true }); }
 });

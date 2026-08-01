@@ -49,6 +49,19 @@ export interface AstroPublicationConfigExpectationV1 {
     publicDir: string;
 }
 
+// export: AstroStaticPublicationBuilderOptionsV1
+export interface AstroStaticPublicationBuilderOptionsV1 {
+    version: string;
+    astroVersion: string;
+    inventoryPath: string;
+    outputDirectory: string;
+    experience: {
+        id: string;
+        version: string;
+        digest: string;
+    };
+}
+
 // export: AtlcliAstroPublicationLoaderV1
 export interface AtlcliAstroPublicationLoaderV1 {
     name: string;
@@ -135,6 +148,9 @@ export interface CreateAstroStaticManifestOptionsV1 {
         digest: string;
     };
 }
+
+// export: createAstroStaticPublicationBuilderV1
+export declare function createAstroStaticPublicationBuilderV1(options: AstroStaticPublicationBuilderOptionsV1): PublicationBuilderV1;
 
 // export: createAstroStaticPublicationManifestV1
 export declare function createAstroStaticPublicationManifestV1(options: CreateAstroStaticManifestOptionsV1): Promise<StaticPublicationManifestV1>;

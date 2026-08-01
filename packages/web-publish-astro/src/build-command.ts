@@ -79,11 +79,28 @@ export async function runAstroBuildCommandV1(
   let terminalKind: AstroBuildCommandFailureKindV1 | undefined;
   let child: ReturnType<typeof spawn> | undefined;
   const text = (chunks: Buffer[]) => Buffer.concat(chunks).toString("utf8");
-  const kill = (): void => { child?.kill("SIGTERM"); };
 
   await new Promise<void>((resolvePromise, reject) => {
-    const timer = setTimeout(() => { terminalKind = "timeout"; kill(); }, timeoutMs);
-    const abort = (): void => { terminalKind = "aborted"; kill(); };
+    let settled = false;
+    let forceKill: ReturnType<typeof setTimeout> | undefined;
+    const settle = (callback: () => void): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (forceKill !== undefined) clearTimeout(forceKill);
+      options.signal?.removeEventListener("abort", abort);
+      callback();
+    };
+    const terminate = (kind: AstroBuildCommandFailureKindV1): void => {
+      if (terminalKind !== undefined) return;
+      terminalKind = kind;
+      child?.kill("SIGTERM");
+      // A project-owned executable must not be able to make cancellation or a
+      // timeout unbounded by ignoring SIGTERM.
+      forceKill = setTimeout(() => { child?.kill("SIGKILL"); }, 1_000);
+    };
+    const timer = setTimeout(() => { terminate("timeout"); }, timeoutMs);
+    const abort = (): void => { terminate("aborted"); };
     options.signal?.addEventListener("abort", abort, { once: true });
     try {
       const spawned = spawn(executable, arguments_, {
@@ -96,28 +113,30 @@ export async function runAstroBuildCommandV1(
       if (spawned.stdout === null || spawned.stderr === null) throw new Error("build command output pipes are unavailable");
       spawned.stdout.on("data", (chunk: Buffer) => {
         try { stdoutBytes = collect(stdout, stdoutBytes, chunk, maxOutputBytes); }
-        catch { terminalKind = "output-limit"; kill(); }
+        catch { terminate("output-limit"); }
       });
       spawned.stderr.on("data", (chunk: Buffer) => {
         try { stderrBytes = collect(stderr, stderrBytes, chunk, maxOutputBytes); }
-        catch { terminalKind = "output-limit"; kill(); }
+        catch { terminate("output-limit"); }
       });
-      spawned.once("error", () => { terminalKind = "spawn"; });
-      spawned.once("close", (code) => {
-        clearTimeout(timer);
-        options.signal?.removeEventListener("abort", abort);
+      spawned.once("error", () => {
         const capturedOut = text(stdout);
         const capturedErr = text(stderr);
-        if (terminalKind !== undefined) {
-          reject(new AstroBuildCommandErrorV1(terminalKind, `Astro build command ${terminalKind}`, capturedOut, capturedErr));
-        } else if (code !== 0) {
-          reject(new AstroBuildCommandErrorV1("exit", `Astro build command exited with ${code ?? "signal"}`, capturedOut, capturedErr));
-        } else resolvePromise();
+        settle(() => reject(new AstroBuildCommandErrorV1("spawn", "Astro build command spawn", capturedOut, capturedErr)));
+      });
+      spawned.once("close", (code) => {
+        const capturedOut = text(stdout);
+        const capturedErr = text(stderr);
+        settle(() => {
+          if (terminalKind !== undefined) {
+            reject(new AstroBuildCommandErrorV1(terminalKind, `Astro build command ${terminalKind}`, capturedOut, capturedErr));
+          } else if (code !== 0) {
+            reject(new AstroBuildCommandErrorV1("exit", `Astro build command exited with ${code ?? "signal"}`, capturedOut, capturedErr));
+          } else resolvePromise();
+        });
       });
     } catch (error) {
-      clearTimeout(timer);
-      options.signal?.removeEventListener("abort", abort);
-      reject(error);
+      settle(() => reject(error));
     }
   });
   return { stdout: text(stdout), stderr: text(stderr) };
