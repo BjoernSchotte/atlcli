@@ -2902,9 +2902,11 @@ and starts no worker. Duplicate Jira natural-language names return the same
 typed ambiguity in the production CLI and packed sidebar before key storage or
 agent work. A foreign-tenant Jira link is not promoted to a mention in either
 host: it retains the already bound scope and triggers neither catalog/reference
-nor worker work. This advances, but does not close, the full CLI/packed
-resolution-matrix gate above: the remaining duplicate alias, pagination,
-precedence, context, and prompt-injection parity cases still require their own
+nor worker work. Natural scope replaces lower-precedence profile/current
+context, while both host boundaries preserve an explicitly locked CLI/UI
+project without any catalog work. This advances, but does not close, the full
+CLI/packed resolution-matrix gate above: the remaining duplicate alias,
+pagination, and prompt-injection parity cases still require their own
 host-boundary fixtures.
 
 ### T4 — Add durable session, workspace, graph, and checkpoint stores

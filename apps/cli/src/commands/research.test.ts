@@ -466,7 +466,7 @@ describe("research CLI one-shot contract", () => {
     expect(harness.stderr.join("")).toContain("confluence:ACCOUNT:cli_flag:locked");
   });
 
-  test("resolves exact keys and aliases while stopping ambiguous, archived, inaccessible, and foreign scope through the production CLI catalog boundary", async () => {
+  test("resolves exact keys and aliases while enforcing scope priority and stopping ambiguous, archived, inaccessible, and foreign scope through the production CLI catalog boundary", async () => {
     const originalFetch = globalThis.fetch;
     const requests: string[] = [];
     globalThis.fetch = (async (input: RequestInfo | URL) => {
@@ -577,6 +577,14 @@ describe("research CLI one-shot contract", () => {
           foreignProfile,
         ),
       });
+      const requestsBeforeLockedScope = requests.length;
+      const lockedScopeOutcome = await defaultResearchCliDependencies.resolveScope({
+        profile,
+        request: buildResearchRequest(
+          parseResearchCliInput(["Research", "Jira", "project", "DEMO."], { project: "LOCKED" }),
+          profile,
+        ),
+      });
 
       expect(keyOutcome).toMatchObject({
         kind: "ready",
@@ -653,6 +661,14 @@ describe("research CLI one-shot contract", () => {
         mentions: [],
         resolutions: [],
       });
+      expect(lockedScopeOutcome).toMatchObject({
+        kind: "ready",
+        request: {
+          scope: { jiraProjectKeys: ["LOCKED"], confluenceSpaceKeys: ["DOCSY"] },
+        },
+        mentions: [],
+        resolutions: [],
+      });
       expect(requests.filter((url) => url.includes("/rest/api/3/project/search"))).toHaveLength(2);
       expect(requests.filter((url) => url.includes("/rest/api/3/project/DEMO"))).toHaveLength(1);
       expect(requests.filter((url) => url.includes("/wiki/api/v2/spaces"))).toHaveLength(10);
@@ -660,6 +676,7 @@ describe("research CLI one-shot contract", () => {
       expect(requests.filter((url) => url.includes("keys=LEGACY"))).toHaveLength(2);
       expect(requests.filter((url) => url.includes("/wiki/rest/api/space/PRIVATE"))).toHaveLength(1);
       expect(requests).toHaveLength(requestsBeforeForeignLink);
+      expect(requests).toHaveLength(requestsBeforeLockedScope);
     } finally {
       globalThis.fetch = originalFetch;
     }

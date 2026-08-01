@@ -1089,24 +1089,26 @@ interface PackedScopeResponse {
 
 function packedScopeRequest(
   question: string,
-  options: { currentProjectKey?: string } = {},
+  options: { currentProjectKey?: string; manualProjectKey?: string } = {},
 ): ResearchRequestV1 {
+  const manualProjectKey = options.manualProjectKey?.toUpperCase();
   const currentProjectKey = options.currentProjectKey?.toUpperCase();
+  const projectKey = manualProjectKey ?? currentProjectKey;
   return {
     schema: RESEARCH_REQUEST_SCHEMA_V1,
     question,
     scope: {
       siteOrigin: SITE_ORIGIN,
-      jiraProjectKeys: currentProjectKey ? [currentProjectKey] : [],
+      jiraProjectKeys: projectKey ? [projectKey] : [],
       confluenceSpaceKeys: [],
     },
-    ...(currentProjectKey ? {
+    ...(projectKey ? {
       scopeSeeds: [createResearchKeyScopeSeedV1({
         tenantOrigin: SITE_ORIGIN,
         product: "jira",
-        key: currentProjectKey,
-        source: "current_context",
-        authority: "approved",
+        key: projectKey,
+        source: manualProjectKey ? "ui_added" : "current_context",
+        authority: manualProjectKey ? "locked" : "approved",
       })],
     } : {}),
     limits: { ...DEFAULT_RESEARCH_LIMITS_V1 },
@@ -1439,6 +1441,29 @@ test("keeps a foreign-tenant link out of the packed background scope", async () 
     outcome: {
       kind: "ready",
       request: { scope: { jiraProjectKeys: ["FALLBACK"], confluenceSpaceKeys: [] } },
+      mentions: [],
+      resolutions: [],
+    },
+  });
+  expect(events.some((event) => event.kind === "scope-catalog-fetch")).toBe(false);
+  expect(events.some((event) => event.kind === "scope-reference-fetch")).toBe(false);
+  expect(events.some((event) => event.kind === "worker-start")).toBe(false);
+});
+
+test("preserves a locked manual scope over a question-derived project key", async () => {
+  await installEventCapture(page);
+  const outcome = await resolveScopeInPackedBackground(
+    page,
+    packedScopeRequest("Research Jira project DEMO.", { manualProjectKey: "LOCKED" }),
+  );
+  const events = await harnessEvents(page);
+
+  expect(outcome).toMatchObject({
+    kind: "research:resolve-scope-result",
+    ok: true,
+    outcome: {
+      kind: "ready",
+      request: { scope: { jiraProjectKeys: ["LOCKED"], confluenceSpaceKeys: [] } },
       mentions: [],
       resolutions: [],
     },
