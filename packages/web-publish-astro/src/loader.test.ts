@@ -309,6 +309,55 @@ test("plans, reserves, and inventories collision-checked label landing routes fr
   }
 });
 
+test("reuses and verifies a builder-owned sitemap index instead of duplicating discovery output", async () => {
+  const { root, bundlePath } = await fixture();
+  const output = join(root, "dist");
+  const manifest = join(root, "private", "inventory.json");
+  try {
+    await mkdir(output);
+    await writeBuiltGuide(output);
+    await writeFile(join(output, "sitemap-0.xml"),
+      "<urlset><url><loc>https://publish.example/docs/publish/guide/</loc></url></urlset>\n");
+    await writeFile(join(output, "sitemap-index.xml"),
+      "<sitemapindex><sitemap><loc>https://publish.example/docs/sitemap-0.xml</loc></sitemap></sitemapindex>\n");
+    const integration = atlcliPublishingIntegration({
+      bundlePath,
+      manifestPath: manifest,
+      routePrefix: "/publish",
+      expectedConfig: {
+        ...expectedConfig(root),
+        site: "https://publish.example",
+        seo: {
+          sitemap: true,
+          robots: "index",
+          canonical: true,
+          structuredData: ["WebSite"],
+          socialCards: "metadata-only",
+          feed: "disabled",
+        },
+        i18n: {
+          defaultLocale: "en",
+          locales: ["en"],
+          routeMode: "hide-default",
+          fallback: {},
+          uiTranslations: "starlight",
+        },
+      },
+    });
+    await integration.hooks["astro:routes:resolved"]!({ routes: [] });
+    await integration.hooks["astro:build:done"]!({
+      dir: pathToFileURL(`${output}/`),
+      pages: [{ pathname: "/publish/guide" }],
+    });
+    expect(await readFile(join(output, "robots.txt"), "utf8")).toContain(
+      "Sitemap: https://publish.example/docs/sitemap-index.xml",
+    );
+    await expect(readFile(join(output, "sitemap.xml"), "utf8")).rejects.toThrow();
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("materializes verified bundle assets but never overwrites an Astro output collision", async () => {
   const digest = "f0dad327e22e8cddc2e8057cf16d9b16ea6e36e87d31f46ee4d5943c69609c4f";
   const relativeAssetPath = `assets/${digest}/fixture.txt`;
@@ -532,7 +581,7 @@ test("injects a static catch-all only for an operator-owned layout entrypoint", 
   expect(plugin.resolveId("virtual:atlcli-publication")).toBe("\0virtual:atlcli-publication");
   expect(plugin.resolveId("unrelated-module")).toBeUndefined();
   expect(plugin.load("\0virtual:atlcli-publication")).toBe(
-    'export const bundlePath = "/bundle.json";\nexport const labelRoutePrefix = undefined;',
+    'export const bundlePath = "/bundle.json";\nexport const labelRoutePrefix = undefined;\nexport const publicationSite = undefined;\nexport const publicationSiteName = undefined;\nexport const publicationSeo = undefined;\nexport const publicationI18n = undefined;',
   );
   expect(plugin.load("unrelated-module")).toBeUndefined();
 

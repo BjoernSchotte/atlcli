@@ -1,0 +1,25 @@
+---
+import type { PublicationSeoPageMetadataV1 } from "../seo.js";
+
+interface Props {
+  metadata: PublicationSeoPageMetadataV1;
+  siteName?: string;
+}
+
+const { metadata, siteName } = Astro.props;
+---
+
+<title>{metadata.title}{siteName === undefined ? "" : ` | ${siteName}`}</title>
+<meta name="description" content={metadata.description} />
+<meta property="og:title" content={metadata.title} />
+<meta property="og:description" content={metadata.description} />
+<meta property="og:type" content="article" />
+<meta property="og:url" content={metadata.canonicalUrl} />
+{metadata.imageUrl !== undefined && <meta property="og:image" content={metadata.imageUrl} />}
+<meta name="twitter:card" content={metadata.imageUrl === undefined ? "summary" : "summary_large_image"} />
+<meta name="twitter:title" content={metadata.title} />
+<meta name="twitter:description" content={metadata.description} />
+{metadata.imageUrl !== undefined && <meta name="twitter:image" content={metadata.imageUrl} />}
+<link rel="canonical" href={metadata.canonicalUrl} />
+{metadata.alternates.map((alternate) => <link rel="alternate" hreflang={alternate.locale} href={alternate.href} />)}
+<script type="application/ld+json" set:html={metadata.structuredDataJson} />

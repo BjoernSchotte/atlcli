@@ -47,3 +47,13 @@ export {
   type PagefindSearchMessagesV1,
   type PagefindSearchRuntimeV1,
 } from "./search.js";
+export {
+  createPublicationSeoHeadTagsV1,
+  createPublicationSeoPlanV1,
+  type PublicationSeoAlternateV1,
+  type PublicationSeoArtifactsV1,
+  type PublicationSeoHeadTagV1,
+  type PublicationSeoPageInputV1,
+  type PublicationSeoPageMetadataV1,
+  type PublicationSeoPlanOptionsV1,
+} from "./seo.js";

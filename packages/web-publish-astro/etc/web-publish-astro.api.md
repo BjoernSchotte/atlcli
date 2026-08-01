@@ -58,6 +58,9 @@ export interface AstroPublicationConfigExpectationV1 {
     base: string;
     outputProfile: PublicationOutputProfileV1;
     site?: string;
+    seo?: PublicationSeoOptionsV1;
+    i18n?: PublicationI18nOptionsV1;
+    siteName?: string;
     outDir: string;
     publicDir: string;
 }
@@ -178,6 +181,12 @@ export declare function createAstroStaticPublicationBuilderV1(options: AstroStat
 // export: createAstroStaticPublicationManifestV1
 export declare function createAstroStaticPublicationManifestV1(options: CreateAstroStaticManifestOptionsV1): Promise<StaticPublicationManifestV1>;
 
+// export: createPublicationSeoHeadTagsV1
+export declare function createPublicationSeoHeadTagsV1(metadata: PublicationSeoPageMetadataV1, siteName?: string): readonly PublicationSeoHeadTagV1[];
+
+// export: createPublicationSeoPlanV1
+export declare function createPublicationSeoPlanV1(options: PublicationSeoPlanOptionsV1): PublicationSeoArtifactsV1;
+
 // export: DEFAULT_PAGEFIND_SEARCH_MESSAGES_V1
 export declare const DEFAULT_PAGEFIND_SEARCH_MESSAGES_V1: PagefindSearchMessagesV1;
 
@@ -239,6 +248,69 @@ export declare const PUBLICATION_SEARCH_SEMANTIC_SLOTS_V1: readonly [
 // export: publicationRoutePathV1
 export declare function publicationRoutePathV1(route: string, routePrefix: string): string;
 
+// export: PublicationSeoAlternateV1
+export interface PublicationSeoAlternateV1 {
+    locale: string;
+    href: string;
+}
+
+// export: PublicationSeoArtifactsV1
+export interface PublicationSeoArtifactsV1 {
+    pages: readonly PublicationSeoPageMetadataV1[];
+    sitemap: string;
+    robots: string;
+    feed?: string;
+    feedPath?: "feed.xml" | "feed.atom.xml";
+    site: string;
+    siteName: string;
+}
+
+// export: PublicationSeoHeadTagV1
+export interface PublicationSeoHeadTagV1 {
+    tag: "title" | "meta" | "link" | "script";
+    attrs?: Readonly<Record<string, string>>;
+    content?: string;
+}
+
+// export: PublicationSeoPageInputV1
+export interface PublicationSeoPageInputV1 {
+    sourceId: string;
+    title: string;
+    route: string;
+    locale?: string;
+    translationKey?: string;
+    description?: string;
+    imageUrl?: string;
+    breadcrumbs?: readonly {
+        title: string;
+        route: string;
+    }[];
+}
+
+// export: PublicationSeoPageMetadataV1
+export interface PublicationSeoPageMetadataV1 {
+    sourceId: string;
+    title: string;
+    description: string;
+    locale: string;
+    direction: "ltr" | "rtl";
+    canonicalUrl: string;
+    alternates: readonly PublicationSeoAlternateV1[];
+    imageUrl?: string;
+    structuredData: readonly Record<string, unknown>[];
+    structuredDataJson: string;
+}
+
+// export: PublicationSeoPlanOptionsV1
+export interface PublicationSeoPlanOptionsV1 {
+    site: string;
+    base: string;
+    seo: PublicationSeoOptionsV1;
+    i18n: PublicationI18nOptionsV1;
+    pages: readonly PublicationSeoPageInputV1[];
+    siteName?: string;
+}
+
 // export: publicationStaticPathsV1
 export declare function publicationStaticPathsV1(options: AtlcliPublicationLoaderOptionsV1 & {
     labelRoutePrefix?: string;
@@ -275,7 +347,7 @@ export declare function readPublicationNavigationV1(options: AtlcliPublicationLo
 export interface ResolvedAstroPublishingConfigV1 {
     output: string;
     base: string;
-    site?: URL;
+    site?: URL | string;
     outDir: URL;
     publicDir: URL;
     build: {

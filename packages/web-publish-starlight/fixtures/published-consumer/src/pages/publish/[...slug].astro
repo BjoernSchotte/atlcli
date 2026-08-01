@@ -1,6 +1,8 @@
 ---
 import { EXPORT_BLOCKS_ASTRO_MINIMAL_CONTEXT_V1 } from "@atlcli/export-blocks-astro/fixtures";
 import {
+  createPublicationSeoHeadTagsV1,
+  createPublicationSeoPlanV1,
   publicationStaticPathsV1,
   readPublicationNavigationV1,
 } from "@atlcli/web-publish-astro";
@@ -11,7 +13,14 @@ import {
 } from "@atlcli/web-publish-starlight";
 import StarlightPublicationLabelLanding from "@atlcli/web-publish-starlight/components/StarlightPublicationLabelLanding.astro";
 import StarlightPublicationPage from "@atlcli/web-publish-starlight/components/StarlightPublicationPage.astro";
-import { bundlePath, labelRoutePrefix } from "virtual:atlcli-publication";
+import {
+  bundlePath,
+  labelRoutePrefix,
+  publicationI18n,
+  publicationSeo,
+  publicationSite,
+  publicationSiteName,
+} from "virtual:atlcli-publication";
 
 export async function getStaticPaths() {
   return publicationStaticPathsV1({
@@ -25,16 +34,42 @@ const loaded = await readPublicationNavigationV1({
   bundlePath,
   ...(labelRoutePrefix === undefined ? {} : { labelRoutePrefix }),
 });
+const base = import.meta.env.BASE_URL === "/" ? "/" : import.meta.env.BASE_URL.replace(/\/$/u, "");
 const navigation = createStarlightPublicationNavigationV1({
   navigation: loaded.navigation,
   routePrefix: "/publish",
   base: import.meta.env.BASE_URL === "/" ? "" : import.meta.env.BASE_URL.slice(0, -1),
   landingLabel: "Overview",
 });
+const seoPlan = publicationSite !== undefined && publicationSeo !== undefined && publicationI18n !== undefined
+  ? createPublicationSeoPlanV1({
+    site: publicationSite,
+    base,
+    seo: publicationSeo,
+    i18n: publicationI18n,
+    siteName: publicationSiteName,
+    pages: [
+      ...loaded.pages.map((entry) => ({
+        sourceId: entry.sourceId,
+        title: entry.title,
+        route: `/publish${entry.route}`,
+        breadcrumbs: loaded.navigation.pages.find((candidate) => candidate.sourceId === entry.sourceId)?.breadcrumbs
+          .map((breadcrumb) => ({ title: breadcrumb.title, route: `/publish${breadcrumb.route}` })),
+      })),
+      ...loaded.navigation.labels.map((label) => ({
+        sourceId: `label:${label.slug}`,
+        title: `Topic: ${label.label}`,
+        route: `/publish${label.route}`,
+      })),
+    ],
+  })
+  : undefined;
 const page = path.kind === "page" ? loaded.pages.find((entry) => entry.sourceId === path.sourceId) : undefined;
 const landing = path.kind === "label" ? starlightPublicationLabelLandingV1(navigation, path.slug) : undefined;
 if (path.kind === "page" && page === undefined) throw new Error(`Missing publication page ${path.sourceId}`);
 if (path.kind === "label" && landing === undefined) throw new Error(`Missing publication label landing ${path.slug}`);
+const seoMetadata = seoPlan?.pages.find((entry) => entry.sourceId === (path.kind === "page" ? path.sourceId : `label:${path.slug}`));
+const seoHead = seoMetadata === undefined ? undefined : createPublicationSeoHeadTagsV1(seoMetadata, seoPlan?.siteName);
 ---
 
 {path.kind === "page" ? <StarlightPublicationPage
@@ -42,4 +77,5 @@ if (path.kind === "label" && landing === undefined) throw new Error(`Missing pub
   navigation={starlightPublicationPageNavigationV1(navigation, page!.sourceId)}
   sidebar={navigation.sidebar}
   context={{ ...EXPORT_BLOCKS_ASTRO_MINIMAL_CONTEXT_V1 }}
-/> : <StarlightPublicationLabelLanding landing={landing!} sidebar={navigation.sidebar} />}
+  seoHead={seoHead}
+/> : <StarlightPublicationLabelLanding landing={landing!} sidebar={navigation.sidebar} seoHead={seoHead} />}

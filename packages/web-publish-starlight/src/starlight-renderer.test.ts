@@ -89,6 +89,17 @@ test("a bundle-driven Starlight consumer owns source, graph landing, and trusted
   expect(label.match(/\bdata-pagefind-body\b/gu)).toHaveLength(1);
   expect(await stat(resolve(publishedConsumerFixture, "dist/404.html"))).toBeDefined();
   expect(await stat(resolve(publishedConsumerFixture, "dist/pagefind/pagefind.js"))).toBeDefined();
+  const sitemap = await readFile(resolve(publishedConsumerFixture, "dist/sitemap-0.xml"), "utf8");
+  expect(sitemap).toContain("https://publish.example/docs/publish/guide/");
+  expect(sitemap).toContain("https://publish.example/docs/publish/topics/guide/");
+  expect(await readFile(resolve(publishedConsumerFixture, "dist/robots.txt"), "utf8")).toContain(
+    "Sitemap: https://publish.example/docs/sitemap-index.xml",
+  );
+  expect(await readFile(resolve(publishedConsumerFixture, "dist/feed.xml"), "utf8")).toContain("Bundle publishing guide");
+  expect(page).toContain('rel="canonical" href="https://publish.example/docs/publish/guide/"');
+  expect(page).toContain('rel="alternate" hreflang="en" href="https://publish.example/docs/publish/guide/"');
+  expect(page).toContain('property="og:title" content="Bundle publishing guide"');
+  expect(page).toContain('type="application/ld+json"');
 
   const inventory = JSON.parse(
     await readFile(resolve(publishedConsumerFixture, "../evidence/published-consumer-inventory.json"), "utf8"),

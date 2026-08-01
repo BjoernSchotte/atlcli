@@ -11,13 +11,16 @@ import {
   type PublicationDesignTokenValidatorV1,
   type PublicationExperienceDescriptorV1,
   type PublicationExperienceSelectionV1,
+  type PublicationI18nOptionsV1,
   type PublicationOutputProfileV1,
   type PublicationBundleV1,
   type PublicationPageV1,
+  type PublicationSeoOptionsV1,
   validatePublicationOutputPathV1,
 } from "@atlcli/web-publish";
 import { readPublicationBundlePagesV1, type AtlcliPublicationLoaderOptionsV1 } from "./loader.js";
 import { buildPagefindIndexV1 } from "./pagefind.js";
+import { createPublicationSeoPlanV1 } from "./seo.js";
 
 /** Directory owned by the static Pagefind post-build stage. */
 export const PAGEFIND_OWNED_OUTPUT_PATH_PREFIX_V1 = "pagefind";
@@ -31,6 +34,12 @@ export interface AstroPublicationConfigExpectationV1 {
   outputProfile: PublicationOutputProfileV1;
   /** Optional canonical-site authority. Omit it only for intentionally non-public builds. */
   site?: string;
+  /** Optional shared SEO policy. When enabled, the integration owns discovery artifacts. */
+  seo?: PublicationSeoOptionsV1;
+  /** Optional shared locale policy consumed by SEO and the selected experience. */
+  i18n?: PublicationI18nOptionsV1;
+  /** Optional deterministic site name used by metadata, JSON-LD, and feeds. */
+  siteName?: string;
   /** Operator-owned public build directory, checked but never rewritten. */
   outDir: string;
   /** Operator-owned Astro public-assets directory, checked but never rewritten. */
@@ -71,7 +80,8 @@ export interface AtlcliPublishingIntegrationOptionsV1 extends AtlcliPublicationL
 export interface ResolvedAstroPublishingConfigV1 {
   output: string;
   base: string;
-  site?: URL;
+  /** Astro 7 resolves this field as a URL in some hooks and a string in others. */
+  site?: URL | string;
   outDir: URL;
   publicDir: URL;
   build: { format: string };
@@ -142,6 +152,13 @@ function assertExpectedConfig(value: AstroPublicationConfigExpectationV1): void 
       throw new TypeError("expectedConfig.site must be an absolute http(s) URL");
     }
   }
+  if ((value.seo === undefined) !== (value.i18n === undefined)) {
+    throw new TypeError("expectedConfig.seo and expectedConfig.i18n must be configured together");
+  }
+  if (value.seo !== undefined && value.site === undefined) {
+    throw new TypeError("expectedConfig.site is required when SEO output is enabled");
+  }
+  if (value.siteName !== undefined) assertNonEmptyPath(value.siteName, "expectedConfig.siteName");
 }
 
 interface ValidatedExperienceV1 {
@@ -203,7 +220,7 @@ function assertResolvedAstroConfig(
     );
   }
   const expectedSite = expected.site === undefined ? undefined : new URL(expected.site).href;
-  const actualSite = config.site?.href;
+  const actualSite = config.site === undefined ? undefined : config.site instanceof URL ? config.site.href : new URL(config.site).href;
   if (actualSite !== expectedSite) {
     throw new Error(`atlcli publishing site mismatch: expected ${expectedSite ?? "undefined"}, received ${actualSite ?? "undefined"}`);
   }
@@ -399,6 +416,45 @@ async function writePrivateJson(path: string, value: unknown): Promise<void> {
   await rename(temporary, destination);
 }
 
+/** Write an integration-owned discovery artifact without overwriting project output. */
+async function writeGeneratedOutputText(outputRoot: string, path: string, contents: string): Promise<void> {
+  const normalized = validatePublicationOutputPathV1(path);
+  await ensureOutputParents(outputRoot, normalized);
+  try {
+    await writeFile(resolve(outputRoot, normalized), contents, { encoding: "utf8", flag: "wx" });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "EEXIST") {
+      throw new TypeError(`publication generated output collides with existing Astro output: ${normalized}`);
+    }
+    throw error;
+  }
+}
+
+async function existingRegularOutput(outputRoot: string, path: string): Promise<boolean> {
+  try {
+    const state = await lstat(resolve(outputRoot, validatePublicationOutputPathV1(path)));
+    if (state.isSymbolicLink() || !state.isFile()) {
+      throw new TypeError(`publication generated output is not a regular file: ${path}`);
+    }
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw error;
+  }
+}
+
+/** Verify that a pre-existing Astro/host sitemap contains every planned URL. */
+async function assertSitemapCoverage(outputRoot: string, expectedSitemap: string): Promise<void> {
+  const expectedUrls = [...expectedSitemap.matchAll(/<loc>([^<]+)<\/loc>/gu)].map((match) => match[1]!);
+  const xmlFiles = (await inventory(outputRoot)).filter((entry) => /(?:^|\/)sitemap[^/]*\.xml$/u.test(entry.path));
+  const contents = await Promise.all(xmlFiles.map((entry) => readFile(resolve(outputRoot, entry.path), "utf8")));
+  for (const url of expectedUrls) {
+    if (!contents.some((content) => content.includes(url))) {
+      throw new Error(`existing sitemap does not contain planned publication URL: ${url}`);
+    }
+  }
+}
+
 /**
  * Documented-hook-only Astro integration. It owns no routes or page renderer:
  * a selected trusted experience supplies those, while this integration validates
@@ -444,6 +500,10 @@ export function atlcliPublishingIntegration(
                   ? [
                     `export const bundlePath = ${JSON.stringify(resolve(options.bundlePath))};`,
                     `export const labelRoutePrefix = ${JSON.stringify(options.labelRoutePrefix)};`,
+                    `export const publicationSite = ${JSON.stringify(options.expectedConfig.site)};`,
+                    `export const publicationSiteName = ${JSON.stringify(options.expectedConfig.siteName)};`,
+                    `export const publicationSeo = ${JSON.stringify(options.expectedConfig.seo)};`,
+                    `export const publicationI18n = ${JSON.stringify(options.expectedConfig.i18n)};`,
                   ].join("\n")
                   : undefined;
               },
@@ -525,6 +585,58 @@ export function atlcliPublishingIntegration(
               : `${stem}.html`;
           }),
         });
+        const seo = options.expectedConfig.seo;
+        const i18n = options.expectedConfig.i18n;
+        const site = options.expectedConfig.site;
+        if (seo !== undefined && i18n !== undefined && site !== undefined) {
+          const seoPlan = createPublicationSeoPlanV1({
+            site,
+            base: options.expectedConfig.base,
+            seo,
+            i18n,
+            siteName: options.expectedConfig.siteName,
+            pages: [
+              ...loaded.pages.map((page) => ({
+                sourceId: page.sourceId,
+                title: page.title,
+                route: publicationRoutePathV1(page.route, routePrefix),
+                breadcrumbs: loaded.navigation.pages.find((entry) => entry.sourceId === page.sourceId)?.breadcrumbs
+                  .map((breadcrumb) => ({ title: breadcrumb.title, route: publicationRoutePathV1(breadcrumb.route, routePrefix) })),
+              })),
+              ...loaded.navigation.labels.map((label) => ({
+                sourceId: `label:${label.slug}`,
+                title: `Topic: ${label.label}`,
+                route: publicationRoutePathV1(label.route, routePrefix),
+              })),
+            ],
+          });
+          let sitemapPath = "sitemap.xml";
+          if (seo.sitemap) {
+            const existingSitemapIndex = await existingRegularOutput(outputRoot, "sitemap-index.xml");
+            const existingSitemap = await existingRegularOutput(outputRoot, "sitemap.xml");
+            if (existingSitemapIndex || existingSitemap) {
+              sitemapPath = existingSitemapIndex ? "sitemap-index.xml" : "sitemap.xml";
+              await assertSitemapCoverage(outputRoot, seoPlan.sitemap);
+            } else {
+              await writeGeneratedOutputText(outputRoot, sitemapPath, seoPlan.sitemap);
+            }
+          }
+          const suppliedBase = options.expectedConfig.base.length > 1 && options.expectedConfig.base.endsWith("/")
+            ? options.expectedConfig.base.slice(0, -1)
+            : options.expectedConfig.base;
+          const basePrefix = normalizePublicationRoutePrefixV1(suppliedBase);
+          const sitemapPathForUrl = basePrefix === "/" ? `/${sitemapPath}` : `${basePrefix}/${sitemapPath}`;
+          const plannedSitemapUrl = new URL(sitemapPathForUrl, `${site}/`).href;
+          const defaultSitemapPathForUrl = basePrefix === "/" ? "/sitemap.xml" : `${basePrefix}/sitemap.xml`;
+          const robots = seoPlan.robots.replace(
+            new URL(defaultSitemapPathForUrl, `${site}/`).href,
+            plannedSitemapUrl,
+          );
+          await writeGeneratedOutputText(outputRoot, "robots.txt", robots);
+          if (seoPlan.feed !== undefined && seoPlan.feedPath !== undefined) {
+            await writeGeneratedOutputText(outputRoot, seoPlan.feedPath, seoPlan.feed);
+          }
+        }
         await writePrivateJson(manifestPath, {
           schema: "atlcli.astro-build-inventory/1",
           bundlePath: "<private>",

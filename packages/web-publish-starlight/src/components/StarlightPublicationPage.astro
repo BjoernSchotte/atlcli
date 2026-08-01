@@ -9,6 +9,12 @@ import type {
 import StarlightDocumentBody from "./StarlightDocumentBody.astro";
 import StarlightPublicationNavigation from "./StarlightPublicationNavigation.astro";
 
+interface PublicationSeoHeadTagV1 {
+  tag: "title" | "meta" | "link" | "script";
+  attrs?: Readonly<Record<string, string>>;
+  content?: string;
+}
+
 interface Props {
   /** Trusted, structured source page selected by the static path identity. */
   page: PublicationPageV1;
@@ -24,9 +30,11 @@ interface Props {
     next?: string;
     pagination?: string;
   };
+  /** Shared SEO tags generated from the publication route/locale planner. */
+  seoHead?: readonly PublicationSeoHeadTagV1[];
 }
 
-const { page, navigation, sidebar, context, copy } = Astro.props;
+const { page, navigation, sidebar, context, copy, seoHead } = Astro.props;
 ---
 
 <StarlightPage
@@ -36,6 +44,7 @@ const { page, navigation, sidebar, context, copy } = Astro.props;
     // owns the deterministic previous/next sequence rendered below.
     prev: false,
     next: false,
+    ...(seoHead === undefined ? {} : { head: seoHead }),
   }}
   headings={navigation.toc.map((heading) => ({ depth: heading.level, slug: heading.anchorId, text: heading.text }))}
   sidebar={sidebar}

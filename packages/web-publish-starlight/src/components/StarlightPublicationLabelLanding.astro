@@ -5,19 +5,26 @@ import type {
   StarlightPublicationSidebarEntryV1,
 } from "../navigation.js";
 
+interface PublicationSeoHeadTagV1 {
+  tag: "title" | "meta" | "link" | "script";
+  attrs?: Readonly<Record<string, string>>;
+  content?: string;
+}
+
 interface Props {
   /** A preplanned label landing; URL and members are never inferred from HTML. */
   landing: StarlightPublicationLabelLandingV1;
   sidebar: readonly StarlightPublicationSidebarEntryV1[];
   copy?: { heading?: string; pages?: string };
+  seoHead?: readonly PublicationSeoHeadTagV1[];
 }
 
-const { landing, sidebar, copy = {} } = Astro.props;
+const { landing, sidebar, copy = {}, seoHead } = Astro.props;
 const title = copy.heading === undefined ? `Topic: ${landing.label}` : `${copy.heading}: ${landing.label}`;
 const pagesLabel = copy.pages ?? "Pages";
 ---
 
-<StarlightPage frontmatter={{ title, prev: false, next: false }} headings={[]} sidebar={sidebar}>
+<StarlightPage frontmatter={{ title, prev: false, next: false, ...(seoHead === undefined ? {} : { head: seoHead }) }} headings={[]} sidebar={sidebar}>
   <!-- StarlightPage owns the single canonical Pagefind body region. -->
   <article data-atlcli-publication-slot="label-landing">
     <p data-pagefind-filter="label">{landing.label}</p>

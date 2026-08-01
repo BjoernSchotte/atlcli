@@ -1622,7 +1622,7 @@ and presentation contracts are not Starlight-private.
 - [ ] Generate the complete navigation model, deterministic related-page
       ranking, root/space/label landing pages, breadcrumbs, page TOC,
       previous/next, deep-link actions, and searchable 404 from the page graph.
-- [ ] Generate canonical and alternate-language links, intentional robots
+- [x] Generate canonical and alternate-language links, intentional robots
       policy, sitemap, OpenGraph/social metadata, allowlisted JSON-LD, and
       optional RSS/Atom from the shared route/locale planner.
 - [ ] Implement explicit locale metadata, localized routes/UI/search, language
