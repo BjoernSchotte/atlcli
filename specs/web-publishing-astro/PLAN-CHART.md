@@ -388,10 +388,10 @@ listed in the capability registry.
 
 ### T1 — Add the real shared `ExportBlock` type
 
-- [ ] Implement `ChartModelV1`, provenance, diagnostics, and `type:"chart"`
+- [x] Implement `ChartModelV1`, provenance, diagnostics, and `type:"chart"`
       in `packages/export-blocks`.
-- [ ] Add runtime validation, schema versioning, and public exports.
-- [ ] Replace page-level chart sidecars in fixtures and contract tests.
+- [x] Add runtime validation, schema versioning, and public exports.
+- [x] Replace page-level chart sidecars in fixtures and contract tests.
 
 ### T2 — Cloud ADF source adapter
 
@@ -412,14 +412,14 @@ listed in the capability registry.
 
 ### T5 — Macro registry integration
 
-- [ ] Register the dedicated Chart renderer and remove chart reliance on the
+- [x] Register the dedicated Chart renderer and remove chart reliance on the
       generic fallback.
-- [ ] Emit source-ordered chart blocks and update capability reporting.
+- [x] Emit source-ordered chart blocks and update capability reporting.
 
 ### T6 — Static Astro components
 
-- [ ] Implement dispatch and static renderers for all twelve kinds.
-- [ ] Implement data-table/Gantt fallbacks, theme tokens, and a11y behavior.
+- [x] Implement dispatch and static renderers for all twelve kinds.
+- [x] Implement data-table/Gantt fallbacks, theme tokens, and a11y behavior.
 
 ### T7 — Interactive adapter(s)
 
@@ -429,8 +429,8 @@ listed in the capability registry.
 
 ### T8 — DOCX/PDF projections
 
-- [ ] Implement chart rendering/table fallback in both document engines.
-- [ ] Add no-regression fixtures for existing export surfaces.
+- [x] Implement chart rendering/table fallback in both document engines.
+- [x] Add no-regression fixtures for existing export surfaces.
 
 ### T9 — Hardening and observability
 
