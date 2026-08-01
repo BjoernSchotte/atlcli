@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { readFile, rm, stat } from "node:fs/promises";
 import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { negotiatePublicationExperienceV1 } from "@atlcli/web-publish";
 import { PLAIN_PUBLISHING_EXPERIENCE_FIXTURE_V1 } from "../fixtures/plain-experience/src/experience.js";
 
@@ -78,4 +79,59 @@ test("a deliberately small plain-Astro experience uses the same contract without
   expect(source).toContain("ExportDocument");
   expect(source).not.toContain("exportBlockKind");
   expect(source).not.toContain("switch (");
+}, 30_000);
+
+test("a trusted Starlight override changes heading presentation without changing content, assets, security output, or index routes", async () => {
+  await run(["bun", "run", "build"], fixture);
+  const outputDirectory = resolve(fixture, "dist");
+  const [baseline, overridden] = await Promise.all([
+    readFile(resolve(outputDirectory, "override-baseline/index.html"), "utf8"),
+    readFile(resolve(outputDirectory, "override/index.html"), "utf8"),
+  ]);
+  expect(baseline).not.toContain("data-fixture-trusted-heading");
+  expect(overridden).toContain("data-fixture-trusted-heading");
+  for (const html of [baseline, overridden]) {
+    expect(html).toContain("override-invariant-token");
+    expect(html).toContain('href="https://docs.example.test/invariant"');
+    expect(html).toContain('src="/assets/diagram.svg"');
+    expect(html).toContain('data-atlcli-block="unknown"');
+    expect(html).toContain("&lt;script&gt;must-not-execute&lt;/script&gt;");
+    expect(html).not.toContain("<script>must-not-execute</script>");
+    expect(html).toContain("data-pagefind-body");
+  }
+
+  const pagefindDirectory = resolve(outputDirectory, "pagefind");
+  const staticOrigin = "https://atlcli-static.test";
+  const originalFetch = globalThis.fetch;
+  Object.defineProperty(globalThis, "fetch", {
+    configurable: true,
+    value: async (input: RequestInfo | URL): Promise<Response> => {
+      const url = input instanceof Request ? new URL(input.url) : new URL(input.toString());
+      if (url.origin !== staticOrigin) throw new Error(`unexpected Pagefind network request: ${url.href}`);
+      const file = resolve(outputDirectory, url.pathname.replace(/^\/+/, ""));
+      if (!file.startsWith(`${outputDirectory}/`)) throw new Error(`Pagefind read escaped output: ${file}`);
+      try {
+        return new Response(await readFile(file), { status: 200 });
+      } catch {
+        return new Response("Not found", { status: 404 });
+      }
+    },
+  });
+  try {
+    const pagefind = await import(`${pathToFileURL(resolve(pagefindDirectory, "pagefind.js")).href}?override-invariant=${Date.now()}`) as {
+      createInstance(options: { basePath: string; noWorker: boolean }): {
+        init(): Promise<void>;
+        search(query: string, options?: { filters?: Record<string, string> }): Promise<{
+          results: Array<{ data(): Promise<{ raw_url: string }> }>;
+        }>;
+      };
+    };
+    const instance = pagefind.createInstance({ basePath: `${staticOrigin}/pagefind/`, noWorker: true });
+    await instance.init();
+    const result = await instance.search("override-invariant-token", { filters: { label: "invariant" } });
+    const paths = (await Promise.all(result.results.map(async (entry) => (await entry.data()).raw_url))).sort();
+    expect(paths).toEqual(["/override-baseline/", "/override/"]);
+  } finally {
+    Object.defineProperty(globalThis, "fetch", { configurable: true, value: originalFetch });
+  }
 }, 30_000);

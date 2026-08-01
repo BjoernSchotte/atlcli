@@ -1588,7 +1588,7 @@ interaction remains bounded and has a complete static fallback.
 - [ ] Prove Starlight plus the experience fixture at mobile/desktop widths, high
       zoom, forced colors, reduced motion, light/dark/system modes, print, long
       titles, deep trees, RTL-safe layout, and custom tokens.
-- [ ] Prove a Starlight renderer override changes presentation without changing
+- [x] Prove a Starlight renderer override changes presentation without changing
       normalized content, resolved links/assets, routes, indexed text, or
       security diagnostics.
 - [ ] STOP on Starlight-private content semantics, duplicate render trees,
