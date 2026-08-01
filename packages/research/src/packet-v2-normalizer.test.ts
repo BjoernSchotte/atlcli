@@ -182,4 +182,35 @@ describe("V2 research packet normalization", () => {
     })).rejects.toThrow("does not exactly match");
     await expect(claimLedger.list()).resolves.toEqual({ claims: [] });
   });
+
+  test("retains an abstaining V2 packet without creating a synthetic claim", async () => {
+    const workspace = createMemoryResearchWorkspace();
+    const evidenceStore = new WorkspaceResearchEvidenceStoreV1(workspace);
+    const claimLedger = new WorkspaceResearchClaimLedgerV1(workspace, evidenceStore);
+    await expect(normalizeResearchPacketModelBodyV2({
+      modelBody: {
+        schema: "atlcli.research-packet-body/v2",
+        claimCandidates: [],
+        contradictionCandidates: [],
+        outlineProposals: [],
+        gaps: [{
+          id: "gap:no-detail",
+          summary: "No detailed source was available for the bounded lookup.",
+          sourceIds: [],
+        }],
+        proposedFollowUps: [],
+        coverageLimits: ["No detailed source was retrieved."],
+        abstentionReason: "The bounded lookup has no detail-backed support.",
+      },
+      detailEvidence: [],
+      evidenceStore,
+      claimLedger,
+      createdAt: "2026-08-01T12:02:00.000Z",
+    })).resolves.toMatchObject({
+      claims: [],
+      gaps: [{ id: "gap:no-detail" }],
+      abstentionReason: "The bounded lookup has no detail-backed support.",
+    });
+    await expect(claimLedger.list()).resolves.toEqual({ claims: [] });
+  });
 });

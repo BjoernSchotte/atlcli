@@ -18,12 +18,15 @@ import {
 } from "./brief.js";
 import {
   RESEARCH_APPROVAL_ENVELOPE_SCHEMA_V1,
+  RESEARCH_PACKET_BODY_SCHEMA_V1,
+  RESEARCH_PACKET_BODY_SCHEMA_V2,
   RESEARCH_SUBAGENT_ROLE_IDS_V1,
   RESEARCH_SUBAGENT_ROLE_REGISTRY_V1,
   type ResearchApprovalEnvelopeV1,
   type ResearchGraphReconciliationPolicyV1,
   type ResearchNodeBudgetV1,
   type ResearchSubagentRoleIdV1,
+  type ResearchTaskOutputSchemaV1,
 } from "./workflow-contracts.js";
 
 export { RESEARCH_BRIEF_SCHEMA_V1 } from "./brief.js";
@@ -126,6 +129,8 @@ export interface ResearchGraphNodeV1 {
   kind: "resolve_scope" | "search" | "expand" | "distill" | "verify" | "moderate" | "outline" | "reconcile" | "repair";
   executor: "ptc" | "subagent";
   roleId?: ResearchSubagentRoleIdV1;
+  /** Host-selected schema; the supervisor may not change this per dispatch. */
+  outputSchema: ResearchTaskOutputSchemaV1;
   objective: string;
   requestedCapabilityIds: ResearchGraphCapabilityV1[];
   grantedCapabilityIds: ResearchGraphCapabilityV1[];
@@ -177,6 +182,8 @@ export interface ResearchGraphCompositionOptionsV1 {
   graphRevision?: number;
   grants?: Partial<Record<string, readonly ResearchGraphCapabilityV1[]>>;
   createdAt?: string;
+  /** New durable turns may choose V2; legacy/T3 graphs retain V1 by default. */
+  packetOutputSchema?: typeof RESEARCH_PACKET_BODY_SCHEMA_V1 | typeof RESEARCH_PACKET_BODY_SCHEMA_V2;
 }
 
 const DEFAULT_NODE_BUDGET: ResearchNodeBudgetV1 = {
@@ -293,6 +300,25 @@ interface NodeSeed {
   priority: number;
 }
 
+function outputSchemaForNode(
+  roleId: ResearchSubagentRoleIdV1 | undefined,
+  requestedCapabilityIds: readonly ResearchGraphCapabilityV1[],
+  allowV2DetailPacket: boolean,
+  packetOutputSchema: ResearchGraphCompositionOptionsV1["packetOutputSchema"],
+): ResearchTaskOutputSchemaV1 {
+  if (roleId === "synthesizer") return "atlcli.research-agent-draft/v1";
+  if (roleId === "reconciler") return "atlcli.reconciliation-body/v1";
+  // V2 requires a model to quote exact detail text. Analysis-only nodes see
+  // compact host projections rather than source bodies, so they remain V1
+  // until the later V2 analysis/reference packet contract is introduced.
+  const hasDetailRead = requestedCapabilityIds.includes("jira.issue.get") ||
+    requestedCapabilityIds.includes("wiki.page.get");
+  return packetOutputSchema === RESEARCH_PACKET_BODY_SCHEMA_V2 &&
+    allowV2DetailPacket && hasDetailRead
+    ? RESEARCH_PACKET_BODY_SCHEMA_V2
+    : RESEARCH_PACKET_BODY_SCHEMA_V1;
+}
+
 function grantFor(
   seed: NodeSeed,
   grants: ResearchGraphCompositionOptionsV1["grants"],
@@ -311,10 +337,17 @@ function nodeFromSeed(
   brief: ResearchBriefV1,
   graphApproved: boolean,
   grants: ResearchGraphCompositionOptionsV1["grants"],
+  packetOutputSchema: ResearchGraphCompositionOptionsV1["packetOutputSchema"],
 ): ResearchGraphNodeV1 {
   return {
     ...seed,
     ...(seed.roleId ? { roleId: seed.roleId } : {}),
+    outputSchema: outputSchemaForNode(
+      seed.roleId,
+      seed.requestedCapabilityIds,
+      brief.resolvedEffort === "lookup",
+      packetOutputSchema,
+    ),
     grantedCapabilityIds: grantFor(seed, grants),
     typedIntentRefs: seed.requestedCapabilityIds.length > 0 ? [`intent:${seed.id}`] : [],
     createdFromEvidenceIds: [],
@@ -569,7 +602,13 @@ export function composeResearchGraphV1(
   const createdAt = options.createdAt ?? brief.asOf;
   const automatic = brief.resolvedPlanApproval === "automatic";
   const seeds = composeSeeds(brief);
-  const nodes = seeds.map((seed) => nodeFromSeed(seed, brief, automatic, options.grants));
+  const nodes = seeds.map((seed) => nodeFromSeed(
+    seed,
+    brief,
+    automatic,
+    options.grants,
+    options.packetOutputSchema,
+  ));
   const relation = brief.sourceClasses.includes("jira") && brief.sourceClasses.includes("confluence");
   const policy = reconciliationPolicy(brief, relation);
   const totalBudget = aggregateBudget(nodes);
@@ -699,8 +738,11 @@ export function validateResearchGraphV1(graph: ResearchGraphV1): void {
       if (!node.roleId || !RESEARCH_T3_GRAPH_ROLES.includes(node.roleId)) invalid("Research graph subagent role is unknown or unavailable.");
       const role = RESEARCH_SUBAGENT_ROLE_REGISTRY_V1[node.roleId];
       if (node.grantedCapabilityIds.some((capability) => !role.allowedCapabilityIds.includes(capability))) invalid("Research graph grants a capability outside the selected role.");
+      if (!role.supportedOutputSchemas.includes(node.outputSchema)) invalid("Research graph output schema is not allowed for the selected role.");
     } else if (node.roleId) {
       invalid("Research graph PTC nodes cannot carry subagent roles.");
+    } else if (node.outputSchema !== RESEARCH_PACKET_BODY_SCHEMA_V1) {
+      invalid("Research graph PTC nodes must use the V1 packet schema.");
     }
     if (node.requestedCapabilityIds.some((capability) => !PTC_CAPABILITIES.has(capability))) invalid("Research graph requests an unknown capability.");
     if (node.grantedCapabilityIds.some((capability) => !node.requestedCapabilityIds.includes(capability))) invalid("Research graph grants an unrequested capability.");

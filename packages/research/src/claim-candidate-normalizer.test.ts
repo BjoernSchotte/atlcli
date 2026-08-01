@@ -134,6 +134,37 @@ describe("research claim candidate normalization", () => {
       .rejects.toThrow("does not reference durably retained");
   });
 
+  test("does not retain an earlier claim when a later candidate fails verification", async () => {
+    const workspace = createMemoryResearchWorkspace();
+    const retained = await retainedEvidence({ workspace });
+    const claims = new WorkspaceResearchClaimLedgerV1(workspace, retained.store);
+    await expect(normalizeResearchClaimCandidatesV2({
+      candidates: [
+        {
+          id: "candidate:valid-first",
+          classification: "fact",
+          summary: "The issue contains an explicit link.",
+          support: [{ sourceId: retained.record.source.id, quote: "explicitly links the issue to the retained Confluence page" }],
+        },
+        {
+          id: "candidate:invalid-second",
+          classification: "fact",
+          summary: "An unsupported paraphrase.",
+          support: [{ sourceId: retained.record.source.id, quote: "The issue contains a retained page link." }],
+        },
+      ],
+      detailEvidence: [{
+        source: retained.record.source,
+        content: { text: retained.chunks[0]!.text, linkTargets: [], truncated: false, inputBytes: 90 },
+        evidenceId: retained.record.id,
+      }],
+      evidenceStore: retained.store,
+      claimLedger: claims,
+      createdAt: "2026-08-01T12:02:00.000Z",
+    })).rejects.toThrow("does not exactly match");
+    await expect(claims.list()).resolves.toEqual({ claims: [] });
+  });
+
   test("rejects a quote that names an evidence version superseded before acceptance", async () => {
     const workspace = createMemoryResearchWorkspace();
     const first = await retainedEvidence({ workspace, updatedAt: "2026-08-01T12:00:00.000Z" });

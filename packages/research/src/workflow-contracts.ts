@@ -195,7 +195,7 @@ export const RESEARCH_SUBAGENT_ROLE_REGISTRY_V1: Readonly<
       "wiki.space.search",
       "atlassian.reference.resolve",
     ],
-    supportedOutputSchemas: [RESEARCH_PACKET_BODY_SCHEMA_V1],
+    supportedOutputSchemas: [RESEARCH_PACKET_BODY_SCHEMA_V1, RESEARCH_PACKET_BODY_SCHEMA_V2],
     mayProposeFollowUps: true,
   }),
   "document-distiller": role({
@@ -204,7 +204,7 @@ export const RESEARCH_SUBAGENT_ROLE_REGISTRY_V1: Readonly<
     phase: "analysis",
     availableFromPhase: "T3",
     allowedCapabilityIds: [],
-    supportedOutputSchemas: [RESEARCH_PACKET_BODY_SCHEMA_V1],
+    supportedOutputSchemas: [RESEARCH_PACKET_BODY_SCHEMA_V1, RESEARCH_PACKET_BODY_SCHEMA_V2],
     mayProposeFollowUps: true,
   }),
   "contradiction-verifier": role({
@@ -218,7 +218,7 @@ export const RESEARCH_SUBAGENT_ROLE_REGISTRY_V1: Readonly<
       "wiki.search",
       "wiki.page.get",
     ],
-    supportedOutputSchemas: [RESEARCH_PACKET_BODY_SCHEMA_V1],
+    supportedOutputSchemas: [RESEARCH_PACKET_BODY_SCHEMA_V1, RESEARCH_PACKET_BODY_SCHEMA_V2],
     mayProposeFollowUps: true,
   }),
   "coverage-moderator": role({
@@ -227,7 +227,7 @@ export const RESEARCH_SUBAGENT_ROLE_REGISTRY_V1: Readonly<
     phase: "verification",
     availableFromPhase: "T3",
     allowedCapabilityIds: [],
-    supportedOutputSchemas: [RESEARCH_PACKET_BODY_SCHEMA_V1],
+    supportedOutputSchemas: [RESEARCH_PACKET_BODY_SCHEMA_V1, RESEARCH_PACKET_BODY_SCHEMA_V2],
     mayProposeFollowUps: true,
   }),
   "outline-planner": role({

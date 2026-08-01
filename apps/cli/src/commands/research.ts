@@ -20,6 +20,7 @@ import {
   DEFAULT_RESEARCH_LIMITS_V1,
   FileSystemResearchWorkspace,
   RESEARCH_MODEL_ID,
+  RESEARCH_PACKET_BODY_SCHEMA_V2,
   RESEARCH_ONE_SHOT_POLICY_SCHEMA_V1,
   RESEARCH_REQUESTED_EFFORTS_V1,
   RESEARCH_REQUESTED_RECONCILIATIONS_V1,
@@ -1024,7 +1025,9 @@ export async function handleResearch(
       { outcome: briefOutcome },
     );
   }
-  const researchGraph = composeResearchGraphV1(briefOutcome.brief);
+  const researchGraph = composeResearchGraphV1(briefOutcome.brief, {
+    packetOutputSchema: RESEARCH_PACKET_BODY_SCHEMA_V2,
+  });
   const selectedRoles = projectSelectedResearchRolesV1(researchGraph);
   dependencies.writeStderr(
     `[research] brief_revision=${researchGraph.basedOnBriefRevision} graph_revision=${researchGraph.revision} graph_status=${researchGraph.status} effort=${researchGraph.resolvedEffort} plan_approval=${researchGraph.approvalEnvelope.status} scope_expansion=${researchGraph.approvalEnvelope.scopeDiscoveryPolicy.expansionMode} reconciliation=${researchGraph.reconciliationPolicy.mode}\n`,

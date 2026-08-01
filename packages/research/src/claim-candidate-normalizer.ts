@@ -109,7 +109,7 @@ export async function normalizeResearchClaimCandidatesV2(input: {
   claimLedger: ResearchClaimLedgerV1;
   createdAt: string;
 }): Promise<NormalizedResearchClaimCandidateV2[]> {
-  if (!Array.isArray(input.candidates) || input.candidates.length === 0 || input.candidates.length > MAXIMUM_CANDIDATES) {
+  if (!Array.isArray(input.candidates) || input.candidates.length > MAXIMUM_CANDIDATES) {
     invalid("Research claim candidates are invalid.");
   }
   const detailsBySourceId = new Map<string, ResearchDetailEvidenceV1>();
@@ -118,8 +118,12 @@ export async function normalizeResearchClaimCandidatesV2(input: {
     detailsBySourceId.set(detail.source.id, detail);
   }
   const seenCandidateIds = new Set<string>();
-  const seenClaimIds = new Set<string>();
-  const normalized: NormalizedResearchClaimCandidateV2[] = [];
+  const prepared: Array<{
+    candidateId: string;
+    classification: ResearchClaimClassificationV1;
+    summary: string;
+    spans: ResearchEvidenceSpanV1[];
+  }> = [];
   for (const candidate of input.candidates) {
     const candidateId = bounded(candidate?.id, "Research claim candidate ID", 160);
     if (seenCandidateIds.has(candidateId)) invalid("Research claim candidate IDs are duplicated.");
@@ -136,16 +140,32 @@ export async function normalizeResearchClaimCandidatesV2(input: {
     ));
     const identities = new Set(spans.map((span) => `${span.evidenceId}\u0000${span.chunkId}\u0000${span.start}\u0000${span.end}`));
     if (identities.size !== spans.length) invalid("Research claim candidate support is duplicated.");
-    const claim = await createResearchClaimV1({
+    prepared.push({
+      candidateId,
+      classification: candidate.classification,
+      summary,
+      spans,
+    });
+  }
+  // Resolve every untrusted quote before writing the first claim. An invalid
+  // later candidate must not leave an orphaned earlier claim in the session.
+  const proposed = await Promise.all(prepared.map(async (candidate) => ({
+    candidateId: candidate.candidateId,
+    claim: await createResearchClaimV1({
       evidenceStore: input.evidenceStore,
       classification: candidate.classification,
-      statement: summary,
-      evidenceSpans: spans,
+      statement: candidate.summary,
+      evidenceSpans: candidate.spans,
       createdAt: input.createdAt,
-    });
+    }),
+  })));
+  const seenClaimIds = new Set<string>();
+  for (const { claim } of proposed) {
     if (seenClaimIds.has(claim.id)) invalid("Research claim candidates normalize to duplicate claims.");
     seenClaimIds.add(claim.id);
-    normalized.push({ candidateId, claim: await input.claimLedger.put(claim) });
   }
-  return normalized;
+  return Promise.all(proposed.map(async ({ candidateId, claim }) => ({
+    candidateId,
+    claim: await input.claimLedger.put(claim),
+  })));
 }

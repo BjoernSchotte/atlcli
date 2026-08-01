@@ -40,6 +40,7 @@ import {
 import { ResearchSessionWorkspaceCheckpointerV1 } from "./workspace-checkpointer.js";
 import { WorkspaceResearchEvidenceStoreV1 } from "./evidence-store.js";
 import { WorkspaceResearchClaimLedgerV1 } from "./claim-ledger.js";
+import { normalizeResearchPacketModelBodyV2 } from "./packet-v2-normalizer.js";
 import { researchThreadIdForSessionV1 } from "./checkpoint-identity.js";
 /*
  * Keep graph execution admission here, before workspace/provider/model setup.
@@ -1188,6 +1189,74 @@ async function runResearchAgentWithBindings(
     visit(nodeId);
     return [...collected].sort();
   };
+  const normalizePacketV2 = durableEvidence && durableClaims
+    ? async (inputForPacket: {
+        taskId: string;
+        node: ResearchGraphV1["nodes"][number];
+        modelBody: unknown;
+      }) => {
+        const allowedSourceIds = new Set(availableSourceIdsForNode(inputForPacket.node.id));
+        const detailEvidence = broker.detailEvidenceLedger().filter((detail) =>
+          allowedSourceIds.has(detail.source.id),
+        );
+        const packet = await normalizeResearchPacketModelBodyV2({
+          modelBody: inputForPacket.modelBody,
+          detailEvidence,
+          evidenceStore: durableEvidence,
+          claimLedger: durableClaims,
+          createdAt: new Date(now()).toISOString(),
+        });
+        const sourceIdsByEvidenceId = new Map(
+          detailEvidence
+            .filter((detail): detail is typeof detail & { evidenceId: string } =>
+              typeof detail.evidenceId === "string",
+            )
+            .map((detail) => [detail.evidenceId, detail.source.id] as const),
+        );
+        const claims = await Promise.all(packet.claims.map(async ({ claimId }) => {
+          const claim = await durableClaims.get(claimId);
+          if (!claim) {
+            throw new ResearchContractError(
+              "invalid-report",
+              "A normalized V2 packet references a missing claim.",
+            );
+          }
+          const sourceIds = claim.evidenceIds.map((evidenceId) => {
+            const sourceId = sourceIdsByEvidenceId.get(evidenceId);
+            if (!sourceId) {
+              throw new ResearchContractError(
+                "invalid-report",
+                "A normalized V2 claim is outside the admitted task evidence.",
+              );
+            }
+            return sourceId;
+          });
+          return {
+            claimId: claim.id,
+            classification: claim.classification,
+            statement: claim.statement,
+            freshness: claim.freshness,
+            evidenceIds: [...claim.evidenceIds],
+            sourceIds: [...new Set(sourceIds)].sort(),
+          };
+        }));
+        return {
+          packet,
+          dependencyResult: {
+            schema: "atlcli.research-dependency-packet/v2",
+            packetSchema: packet.schema,
+            sourceIds: [...new Set(claims.flatMap((claim) => claim.sourceIds))].sort(),
+            claims,
+            contradictions: structuredClone(packet.contradictions),
+            outlineProposals: structuredClone(packet.outlineProposals),
+            gaps: structuredClone(packet.gaps),
+            proposedFollowUps: structuredClone(packet.proposedFollowUps),
+            coverageLimits: [...packet.coverageLimits],
+            ...(packet.abstentionReason ? { abstentionReason: packet.abstentionReason } : {}),
+          },
+        };
+      }
+    : undefined;
   const dynamicSubagents = input.researchGraph
     ? compileDynamicResearchSubagents(input.researchGraph, {
         model,
@@ -1217,6 +1286,7 @@ async function runResearchAgentWithBindings(
           sourceIds.add(result.source.sourceId);
           directDetailSourceIdsByNode.set(nodeId, sourceIds);
         },
+        ...(normalizePacketV2 ? { normalizePacketV2 } : {}),
         now,
       })
     : [];
@@ -1234,6 +1304,7 @@ async function runResearchAgentWithBindings(
         availableSourceIdsForNode,
         capabilityCallsForNode: (nodeId) => capabilityCallsByNode.get(nodeId) ?? 0,
         activeGraph: () => acceptedGraph,
+        ...(normalizePacketV2 ? { normalizePacketV2 } : {}),
         ...(durableDispatchJournal ? { durableDispatchJournal } : {}),
         reconciliationInputContext: () => {
           const graph = acceptedGraph;

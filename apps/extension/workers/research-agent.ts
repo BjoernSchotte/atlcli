@@ -1,6 +1,7 @@
 import type { Profile } from "@atlcli/core";
 import {
   ResearchRunBudget,
+  RESEARCH_PACKET_BODY_SCHEMA_V2,
   ResearchScopeCatalogBroker,
   ResearchContractError,
   classifyResearchError,
@@ -65,7 +66,9 @@ globalThis.addEventListener("message", (event: MessageEvent<unknown>) => {
           "Research brief requires clarification before graph composition.",
         );
       }
-      const researchGraph = composeResearchGraphV1(briefOutcome.brief);
+      const researchGraph = composeResearchGraphV1(briefOutcome.brief, {
+        packetOutputSchema: RESEARCH_PACKET_BODY_SCHEMA_V2,
+      });
       assertResearchGraphExecutableV1(researchGraph);
       const store = await IndexedDbResearchSessionStoreV1.open();
       try {

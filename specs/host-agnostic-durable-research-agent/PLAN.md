@@ -3320,8 +3320,21 @@ evidence version, derives its own chunk offsets and SHA-256 hash, and stores
 the resulting immutable `ClaimV1`. It rejects paraphrases, duplicate matches,
 missing durable detail, source/evidence identity mismatch, and a source version
 superseded before acceptance. Its return value contains candidate and claim IDs
-plus validated spans, never the private quote. Wiring this normalizer into the
-V2 task packet admission and activating the planner remains pending.
+plus validated spans, never the private quote.
+
+T5 V2 packet-admission checkpoint (2026-08-01): a graph node now persists its
+host-selected output schema, and the dynamic DeepAgentsJS dispatch validates a
+V2 model body only as transient input. Before task-journal acceptance it calls
+the evidence-quote normalizer and replaces that body with canonical claim and
+evidence IDs; the returned dependency projection contains claim summaries,
+freshness, and source IDs but no raw quote or child trajectory. A malformed or
+unverifiable quote rejects the task before publication, and an abstaining V2
+packet creates no synthetic claim. The first production activation is limited
+to durable, detail-reading `lookup` nodes. Multi-wave analysis and
+reconciliation continue to use V1 until their explicit V2 claim-reference and
+`v2-outline` reconciliation projections are implemented; this avoids treating
+a compact dependency summary as quote-bearing source evidence. The planner and
+full V2 report remain pending.
 - [ ] Build and revise `OutlineV1` from brief coverage targets, claim IDs,
       contradiction IDs, and evidence IDs. A section draft receives only its
       linked accepted evidence.

@@ -23,7 +23,10 @@ import {
 } from "../../utils/research/contracts.js";
 import { formatResearchOneShotEventV1 } from "../../utils/research/events.js";
 import { createResearchKeyScopeSeedV1 } from "@atlcli/research/scope-discovery";
-import { prepareResearchBriefPreflightV1 } from "@atlcli/research";
+import {
+  prepareResearchBriefPreflightV1,
+  RESEARCH_PACKET_BODY_SCHEMA_V2,
+} from "@atlcli/research";
 import type {
   ResearchBriefClarificationRequiredV1,
   ResearchScopeCandidateSelectionV1,
@@ -423,7 +426,9 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
         setProgress("");
         return;
       }
-      const graph = composeResearchGraphV1(briefOutcome.brief);
+      const graph = composeResearchGraphV1(briefOutcome.brief, {
+        packetOutputSchema: RESEARCH_PACKET_BODY_SCHEMA_V2,
+      });
       const approvalRequired = researchPlanApprovalRequiredV1(graph);
       if (approvalRequired) {
         setPlanApprovalRequired(approvalRequired);

@@ -16,6 +16,7 @@ import { DEFAULT_RESEARCH_LIMITS_V1 } from "./contracts.js";
 import {
   RESEARCH_ONE_SHOT_POLICY_SCHEMA_V1,
 } from "./contracts.js";
+import { RESEARCH_PACKET_BODY_SCHEMA_V1, RESEARCH_PACKET_BODY_SCHEMA_V2 } from "./workflow-contracts.js";
 
 const brief = (
   question: string,
@@ -139,6 +140,31 @@ describe("dynamic research graph composition", () => {
       "research-node:reconciler",
       "research-node:reconciliation-repair",
     ]);
+  });
+
+  test("pins V2 only to detail-reading nodes in a host-selected durable graph", () => {
+    const graph = composeResearchGraphV1(
+      brief("Get the exact bounded Jira item.", ["jira"], "off", "lookup"),
+      { packetOutputSchema: RESEARCH_PACKET_BODY_SCHEMA_V2 },
+    );
+    validateResearchGraphV1(graph);
+    expect(graph.nodes.filter((node) =>
+      node.requestedCapabilityIds.includes("jira.issue.get") ||
+      node.requestedCapabilityIds.includes("wiki.page.get"),
+    ).every((node) => node.outputSchema === RESEARCH_PACKET_BODY_SCHEMA_V2)).toBe(true);
+    expect(graph.nodes.filter((node) =>
+      !node.requestedCapabilityIds.includes("jira.issue.get") &&
+      !node.requestedCapabilityIds.includes("wiki.page.get"),
+    ).every((node) => node.outputSchema === RESEARCH_PACKET_BODY_SCHEMA_V1 ||
+      node.outputSchema === "atlcli.reconciliation-body/v1" ||
+      node.outputSchema === "atlcli.research-agent-draft/v1")).toBe(true);
+    const invalid = {
+      ...graph,
+      nodes: graph.nodes.map((node) => node.roleId === "synthesizer"
+        ? { ...node, outputSchema: RESEARCH_PACKET_BODY_SCHEMA_V2 }
+        : node),
+    };
+    expect(() => validateResearchGraphV1(invalid)).toThrow("output schema");
   });
 
   test("persists the host-granted intersection rather than widening model requests", () => {

@@ -18,6 +18,7 @@ import {
   InMemoryResearchSessionStoreV1,
   RESEARCH_ACCEPTED_PACKET_SCHEMA_V1,
   RESEARCH_PACKET_BODY_SCHEMA_V1,
+  RESEARCH_PACKET_BODY_SCHEMA_V2,
   RESEARCH_RECONCILIATION_BODY_SCHEMA_V1,
   RESEARCH_RECONCILIATION_INPUT_SCHEMA_V1,
   createResearchBriefV1,
@@ -759,6 +760,98 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     expect(responseSchemaForResearchRole("contradiction-verifier")).toBe(RESEARCH_ANALYSIS_PACKET_SCHEMA_V1);
     expect(responseSchemaForResearchRole("reconciler")).toBe(RESEARCH_CRITIQUE_SCHEMA_V1);
     expect(responseSchemaForResearchRole("synthesizer")).toBe(RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1);
+  });
+
+  test("normalizes a V2 model packet before journal acceptance or dependency publication", async () => {
+    const graph = composeResearchGraphV1(
+      graphBrief("Get the exact bounded Jira item.", ["jira"], "lookup", "off"),
+      { packetOutputSchema: RESEARCH_PACKET_BODY_SCHEMA_V2 },
+    );
+    const node = graph.nodes.find((candidate) => candidate.id === "research-node:jira-lookup")!;
+    const rawQuote = "the exact retained implementation detail";
+    const rawModelBody = {
+      schema: RESEARCH_PACKET_BODY_SCHEMA_V2,
+      claimCandidates: [{
+        id: "candidate:detail",
+        classification: "fact",
+        summary: "The issue contains one retained implementation detail.",
+        support: [{ sourceId: "jira:DEMO-1", quote: rawQuote }],
+      }],
+      contradictionCandidates: [],
+      outlineProposals: [],
+      gaps: [],
+      proposedFollowUps: [],
+      coverageLimits: [],
+    };
+    const accepted: ResearchAcceptedPacketV1[] = [];
+    const upstreamTask = tool(async () => rawModelBody, {
+      name: "task",
+      description: "Synthetic upstream task.",
+      schema: z.object({ description: z.string(), subagent_type: z.string() }),
+    });
+    const middleware = createBoundedResearchSubagentMiddleware(
+      model,
+      graph,
+      compileDynamicResearchSubagents(graph, {
+        model,
+        broker,
+        question: request.question,
+        maxInterpreterMs: 5_000,
+        maxInterpreterMemoryBytes: 8_000_000,
+        maxPtcCalls: 8,
+        maxSearchPagesPerProduct: 2,
+        maxDetailItemsPerProduct: 5,
+        maxPacketChars: 8_000,
+      }),
+      {
+        createSubAgentMiddleware: (() => ({
+          name: "subAgentMiddleware",
+          tools: [upstreamTask],
+        })) as never,
+      },
+      {
+        availableSourceIdsForNode: () => ["jira:DEMO-1"],
+        normalizePacketV2: async ({ taskId, modelBody }) => {
+          expect(modelBody).toEqual(rawModelBody);
+          return {
+            packet: {
+              schema: RESEARCH_PACKET_BODY_SCHEMA_V2,
+              claims: [{ candidateId: "candidate:detail", claimId: `claim:${"b".repeat(48)}` }],
+              contradictions: [],
+              outlineProposals: [],
+              gaps: [],
+              proposedFollowUps: [],
+              coverageLimits: [],
+            },
+            dependencyResult: {
+              schema: "atlcli.research-dependency-packet/v2",
+              packetSchema: RESEARCH_PACKET_BODY_SCHEMA_V2,
+              sourceIds: ["jira:DEMO-1"],
+              claims: [{ claimId: `claim:${"b".repeat(48)}`, statement: "Host-projected claim." }],
+            },
+          };
+        },
+        onAcceptedPacket: (packet) => {
+          accepted.push(packet);
+        },
+      },
+    );
+    const task = taskEnvelope(graph, node.id);
+    const returned = await middleware.tools![0]!.invoke({
+      description: task.description,
+      subagent_type: task.subagentType,
+    });
+    expect(returned).toMatchObject({
+      schema: "atlcli.research-dependency-packet/v2",
+      sourceIds: ["jira:DEMO-1"],
+    });
+    expect(accepted).toHaveLength(1);
+    expect(accepted[0]!.body).toMatchObject({
+      schema: RESEARCH_PACKET_BODY_SCHEMA_V2,
+      claims: [{ candidateId: "candidate:detail", claimId: `claim:${"b".repeat(48)}` }],
+    });
+    expect(JSON.stringify(accepted[0])).not.toContain(rawQuote);
+    expect(JSON.stringify(returned)).not.toContain(rawQuote);
   });
 
   test("removes provider-unsupported bounds without weakening the host schema", () => {
