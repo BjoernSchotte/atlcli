@@ -288,3 +288,20 @@ node scripts/inventory.mjs starlight
 
 Runtime tests and provider E2E beyond T0 are still required by T1-T12. This
 evidence does not claim live Cloud/DC acquisition or remote deployment.
+
+## T11 production Astro harness
+
+The packed Starlight consumer test now includes a production-shaped fixture
+lane. It constructs one Cloud ADF document and one Data Center Storage
+fragment, passes both through `adfToBlocks`/`storageToBlocks` and the injected
+`defaultRegistry`/`resolveMacroBlocks` web target, and asserts that no raw ADF
+or Storage markup reaches the normalized blocks. The fixture covers a heading,
+paragraph, Cloud Jira datasource card, TOC, Storage table, and an unknown
+Marketplace macro with a visible fallback. The resulting pages are digested,
+written into a complete immutable bundle, and consumed through a packed
+Astro/Starlight project with Astro `7.1.6`, Pagefind, base-aware routes, and
+localized output. The same harness also builds a static TanStack chart and an
+opt-in interactive chart island, and proves that a `complete: false` bundle is
+rejected before Astro loading. The focused test passed on 2026-08-01 with 27
+expectations; the required CI publishing job already runs the containing
+`starlight-renderer.test.ts` file.

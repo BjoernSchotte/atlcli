@@ -3,7 +3,11 @@ import { cp, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/pro
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { adfToBlocks, storageToBlocks } from "@atlcli/confluence";
+import { defaultRegistry, resolveMacroBlocks } from "@atlcli/export-macros";
 import { negotiatePublicationExperienceV1 } from "@atlcli/web-publish";
+import { digestPublicationPageV1, type PublicationPageV1 } from "@atlcli/web-publish";
+import { readPublicationBundlePagesV1 } from "@atlcli/web-publish-astro";
 import { PLAIN_PUBLISHING_EXPERIENCE_FIXTURE_V1 } from "../fixtures/plain-experience/src/experience.js";
 
 const packageRoot = resolve(import.meta.dir, "..");
@@ -262,3 +266,152 @@ test("a packed Starlight consumer builds from the published package boundary wit
     await rm(root, { recursive: true, force: true });
   }
 }, 120_000);
+
+test("a production harness converts Cloud ADF and DC Storage before a packed Astro build", async () => {
+  const root = await mkdtemp(resolve(tmpdir(), "atlcli-astro-production-harness-"));
+  const tarballs = resolve(root, "tarballs");
+  const consumer = resolve(root, "consumer");
+  try {
+    const cloud = adfToBlocks(JSON.stringify({
+      version: 1,
+      type: "doc",
+      content: [
+        { type: "heading", attrs: { level: 1 }, content: [{ type: "text", text: "Cloud ADF publication" }] },
+        { type: "paragraph", content: [{ type: "text", text: "Cloud content was normalized before Astro." }] },
+        {
+          type: "extension",
+          attrs: {
+            extensionType: "com.atlassian.confluence.macro.core",
+            extensionKey: "toc",
+            localId: "cloud-toc",
+          },
+        },
+        {
+          type: "blockCard",
+          attrs: {
+            datasource: {
+              id: "d8b75300-dfda-4519-b6cd-e49abbd50401",
+              parameters: { cloudId: "cloud-1", jql: "project = ATL ORDER BY created DESC" },
+              views: [{ type: "table", properties: { columns: [{ key: "key" }, { key: "summary" }] } }],
+            },
+            url: "https://jira.example.test/browse/ATL-1",
+          },
+        },
+      ],
+    }), { pageContext: { id: "guide", version: 7 } });
+    const dc = storageToBlocks([
+      '<h1>Data Center Storage publication</h1>',
+      '<p>Storage content was normalized before Astro.</p>',
+      '<ac:structured-macro ac:name="toc" ac:macro-id="dc-toc"/>',
+      '<table><tbody><tr><th>Environment</th><td>DC</td></tr></tbody></table>',
+      '<ac:structured-macro ac:name="unknown-marketplace-macro"><ac:plain-text-body><![CDATA[Visible DC fallback]]></ac:plain-text-body></ac:structured-macro>',
+    ].join(""), { pageContext: { id: "guide-ar", version: 11 } });
+    const registry = defaultRegistry({
+      storageToBlocks: (storage, options) => storageToBlocks(storage, options),
+      htmlToExportBlocks: (html, options) => storageToBlocks(html, options),
+      parsePageProperties: () => [],
+      extractMacroBody: () => undefined,
+    });
+    const [resolvedCloud, resolvedDc] = await Promise.all([
+      resolveMacroBlocks(cloud, registry, { page: { id: "guide", version: 7 }, depth: 0, visited: new Set() }, { live: false, targetEngine: "web" }),
+      resolveMacroBlocks(dc, registry, { page: { id: "guide-ar", version: 11 }, depth: 0, visited: new Set() }, { live: false, targetEngine: "web" }),
+    ]);
+    expect(resolvedCloud.blocks.some((block) => block.type === "heading" && block.content.some((node) => node.type === "text" && node.text === "Cloud ADF publication"))).toBe(true);
+    expect(resolvedCloud.blocks.some((block) => block.type === "unknown" && block.macroName === "jira")).toBe(true);
+    expect(resolvedDc.blocks.some((block) => block.type === "table")).toBe(true);
+    expect(resolvedDc.blocks.some((block) => block.type === "unknown" && block.macroName === "unknown-marketplace-macro")).toBe(true);
+    expect(JSON.stringify([...resolvedCloud.blocks, ...resolvedDc.blocks])).not.toContain("<ac:");
+    expect(JSON.stringify([...resolvedCloud.blocks, ...resolvedDc.blocks])).not.toContain("type\":\"doc\"");
+
+    await run(["bun", "run", "build", "--filter=@atlcli/export-blocks-astro", "--filter=@atlcli/web-publish-astro", "--filter=@atlcli/web-publish-starlight"], workspaceRoot);
+    const [exportBlocks, exportBlocksAstro, webPublish, webPublishAstro, webPublishStarlight] = await Promise.all([
+      packPackage("export-blocks", resolve(tarballs, "export-blocks")),
+      packPackage("export-blocks-astro", resolve(tarballs, "export-blocks-astro")),
+      packPackage("web-publish", resolve(tarballs, "web-publish")),
+      packPackage("web-publish-astro", resolve(tarballs, "web-publish-astro")),
+      packPackage("web-publish-starlight", resolve(tarballs, "web-publish-starlight")),
+    ]);
+    await cp(publishedConsumerFixture, consumer, { recursive: true });
+    await cp(resolve(packageRoot, "fixtures", "evidence"), resolve(root, "evidence"), { recursive: true });
+
+    const cloudPage = JSON.parse(await readFile(resolve(consumer, "publication/pages/guide.json"), "utf8")) as PublicationPageV1;
+    const dcPage = JSON.parse(await readFile(resolve(consumer, "publication/pages/guide-ar.json"), "utf8")) as PublicationPageV1;
+    const materialize = async (page: PublicationPageV1, result: { blocks: typeof cloud.blocks; notes: typeof cloud.notes }, representation: "atlas_doc_format" | "storage") => {
+      const candidate = {
+        ...page,
+        title: representation === "storage" ? "Data Center Storage publication" : "Cloud ADF publication",
+        blocks: result.blocks,
+        notes: result.notes,
+        renderDependencies: [],
+        pageDigest: "",
+      } satisfies PublicationPageV1;
+      return { ...candidate, pageDigest: await digestPublicationPageV1(candidate) };
+    };
+    const [cloudPageOut, dcPageOut] = await Promise.all([
+      materialize(cloudPage, resolvedCloud, "atlas_doc_format"),
+      materialize(dcPage, resolvedDc, "storage"),
+    ]);
+    await writeFile(resolve(consumer, "publication/pages/guide.json"), JSON.stringify(cloudPageOut, null, 2));
+    await writeFile(resolve(consumer, "publication/pages/guide-ar.json"), JSON.stringify(dcPageOut, null, 2));
+    const bundlePath = resolve(consumer, "publication/bundle.json");
+    const bundle = JSON.parse(await readFile(bundlePath, "utf8")) as {
+      pages: { sourceId: string; path: string; pageDigest: string }[];
+      sourceSnapshot: { pages: { sourceId: string; representation: "atlas_doc_format" | "storage" }[] };
+      complete: boolean;
+    };
+    bundle.pages = bundle.pages.map((entry) => ({
+      ...entry,
+      pageDigest: entry.sourceId === "guide" ? cloudPageOut.pageDigest : dcPageOut.pageDigest,
+    }));
+    bundle.sourceSnapshot.pages = bundle.sourceSnapshot.pages.map((entry) => ({
+      ...entry,
+      representation: entry.sourceId === "guide" ? "atlas_doc_format" : "storage",
+    }));
+    await writeFile(bundlePath, JSON.stringify(bundle, null, 2));
+    const partialBundlePath = resolve(consumer, "publication/partial-bundle.json");
+    await writeFile(partialBundlePath, JSON.stringify({ ...bundle, complete: false }, null, 2));
+    await expect(readPublicationBundlePagesV1({ bundlePath: partialBundlePath })).rejects.toThrow("complete bundle");
+    await rm(partialBundlePath, { force: true });
+
+    await writeFile(resolve(consumer, "src/pages/synthetic-charts.astro"), `---
+import StaticChart from "@atlcli/export-blocks-astro/components/StaticChart.astro";
+import InteractiveChart from "@atlcli/export-blocks-astro/components/InteractiveChart.astro";
+---
+<StaticChart chart={{ title: "Synthetic publication", labels: ["ADF", "Storage"], series: [{ name: "Pages", values: [1, 1] }] }} />
+<InteractiveChart enabled chart={{ title: "Synthetic island", labels: ["ADF", "Storage"], series: [{ name: "Pages", values: [1, 1] }] }} />
+`);
+    await writeFile(resolve(consumer, "package.json"), JSON.stringify({
+      name: "atlcli-production-harness-consumer",
+      private: true,
+      type: "module",
+      scripts: { build: "astro build" },
+      dependencies: {
+        "@atlcli/web-publish": `file:${webPublish}`,
+        "@atlcli/web-publish-astro": `file:${webPublishAstro}`,
+        "@atlcli/web-publish-starlight": `file:${webPublishStarlight}`,
+        "@astrojs/starlight": "0.41.5",
+        astro: "7.1.6",
+      },
+      overrides: {
+        "@atlcli/export-blocks": `file:${exportBlocks}`,
+        "@atlcli/export-blocks-astro": `file:${exportBlocksAstro}`,
+        "@atlcli/web-publish": `file:${webPublish}`,
+        "@atlcli/web-publish-astro": `file:${webPublishAstro}`,
+      },
+    }, null, 2));
+    await run(["bun", "install", "--offline"], consumer);
+    await run(["bun", "run", "build"], consumer);
+    const cloudHtml = await readFile(resolve(consumer, "dist/docs/publish/guide/index.html"), "utf8").catch(async () => readFile(resolve(consumer, "dist/publish/guide/index.html"), "utf8"));
+    const dcHtml = await readFile(resolve(consumer, "dist/ar/publish/guide/index.html"), "utf8");
+    const chartHtml = await readFile(resolve(consumer, "dist/synthetic-charts/index.html"), "utf8");
+    expect(cloudHtml).toContain("Cloud ADF publication");
+    expect(cloudHtml).toContain('data-macro-name="jira"');
+    expect(dcHtml).toContain("Data Center Storage publication");
+    expect(dcHtml).toContain("Visible DC fallback");
+    expect(chartHtml).toContain('data-atlcli-block="chart"');
+    expect(chartHtml).toContain('data-atlcli-chart-island="enabled"');
+    expect(await stat(resolve(consumer, "dist/pagefind/pagefind.js"))).toBeDefined();
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+}, 180_000);

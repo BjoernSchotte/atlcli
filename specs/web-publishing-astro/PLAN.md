@@ -1728,7 +1728,7 @@ orchestrates it without hiding the plan, bundle, build, or verification digest.
       separately.
 - [ ] Test Ubuntu Node 22.12/Astro 7.1.6, Ubuntu Node 24/latest 7.x, and Windows
       Node 24/Astro 7.1.6 path portability.
-- [ ] Add a production Astro publishing harness with Cloud ADF and DC Storage
+- [x] Add a production Astro publishing harness with Cloud ADF and DC Storage
       synthetic fixtures, assets, links, macros, Starlight, the non-shipped
       experience conformance fixture, Pagefind search/facets, chart
       static/island, and strict/partial failures.
