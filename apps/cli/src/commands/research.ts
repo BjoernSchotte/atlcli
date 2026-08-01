@@ -46,7 +46,9 @@ import {
   type ResearchReportV1,
   type ResearchScopePreflightOutcomeV1,
   type ResearchScopeSeedV1,
+  type ResearchSessionTurnV1,
   type ResearchSessionStoreV1,
+  type ResearchSessionV1,
   type ResearchWorkspace,
   initializeResearchSessionTurnV1,
 } from "@atlcli/research/node";
@@ -116,6 +118,7 @@ const T2_SINGLE_VALUE_FLAGS = T2_VALUE_FLAGS.filter(
   (key) => key !== "project" && key !== "space",
 );
 const T2_BOOLEAN_FLAGS = ["keep-session", "plan-only", "json", "no-log", "help", "h"] as const;
+const RESEARCH_SESSION_ID_PATTERN = /^research-session:[A-Za-z0-9._-]{1,120}$/;
 
 export interface ResearchCliWorkspace extends ResearchWorkspace {
   readonly root: string;
@@ -321,6 +324,235 @@ export function parseResearchCliInput(
   };
 }
 
+function requireSessionId(value: string | undefined): string {
+  if (!value || !RESEARCH_SESSION_ID_PATTERN.test(value)) {
+    throw new Error("A valid durable research session ID is required.");
+  }
+  return value;
+}
+
+function singleSessionFlag(
+  flags: Record<string, string | boolean | string[]>,
+  key: string,
+  required = false,
+): string | undefined {
+  const value = flags[key];
+  if (value === undefined) {
+    if (required) throw new Error(`--${key} requires a value.`);
+    return undefined;
+  }
+  if (typeof value !== "string" || !value.trim()) throw new Error(`--${key} requires a value.`);
+  return value.trim();
+}
+
+function assertSessionFlags(
+  flags: Record<string, string | boolean | string[]>,
+  allowed: readonly string[],
+): void {
+  const permitted = new Set([...allowed, "json", "no-log", "help", "h"]);
+  const unknown = Object.keys(flags).filter((key) => !permitted.has(key));
+  if (unknown.length > 0) {
+    throw new Error(`Unknown research session option${unknown.length === 1 ? "" : "s"}: ${unknown.map((key) => `--${key}`).join(", ")}.`);
+  }
+  for (const key of ["json", "no-log", "help", "h"]) {
+    if (flags[key] !== undefined && flags[key] !== true) throw new Error(`--${key} does not accept a value.`);
+  }
+  for (const key of allowed) {
+    if (flags[key] !== undefined && (typeof flags[key] !== "string" || Array.isArray(flags[key]) || !flags[key])) {
+      throw new Error(`--${key} requires a value.`);
+    }
+  }
+}
+
+function boundedSessionLimit(value: string | undefined): number | undefined {
+  if (value === undefined) return undefined;
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < 1 || parsed > 100) {
+    throw new Error("--limit must be an integer between 1 and 100.");
+  }
+  return parsed;
+}
+
+function expectedSessionRevision(value: string | undefined): number {
+  if (value === undefined) throw new Error("--revision requires a value.");
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < 1) throw new Error("--revision must be a positive integer.");
+  return parsed;
+}
+
+function activeSessionTurn(session: ResearchSessionV1): ResearchSessionTurnV1 | undefined {
+  return session.turns.find((turn) => turn.id === session.activeTurnId) ?? session.turns.at(-1);
+}
+
+function projectSessionGraph(graph: ResearchGraphV1 | undefined): Record<string, unknown> | undefined {
+  if (!graph) return undefined;
+  return {
+    revision: graph.revision,
+    status: graph.status,
+    resolvedEffort: graph.resolvedEffort,
+    roles: projectSelectedResearchRolesV1(graph),
+    nodes: graph.nodes.map((node) => ({
+      id: node.id,
+      roleId: node.roleId,
+      dependencies: node.dependencies,
+      grantedCapabilityIds: node.grantedCapabilityIds,
+      budget: node.budget,
+      status: node.status,
+    })),
+    approvalEnvelope: graph.approvalEnvelope,
+    reconciliationPolicy: graph.reconciliationPolicy,
+  };
+}
+
+/** Excludes source bodies, task prompts, provider data, packet bodies, and hidden reasoning. */
+function projectResearchSessionV1(session: ResearchSessionV1): Record<string, unknown> {
+  const turn = activeSessionTurn(session);
+  const taskStatusCounts: Record<string, number> = {};
+  for (const task of turn?.tasks ?? []) taskStatusCounts[task.status] = (taskStatusCounts[task.status] ?? 0) + 1;
+  return {
+    schema: "atlcli.research-session-view/v1",
+    sessionId: session.sessionId,
+    revision: session.revision,
+    status: session.status,
+    createdAt: session.createdAt,
+    updatedAt: session.updatedAt,
+    lease: { epoch: session.lease.epoch, expiresAt: session.lease.expiresAt },
+    retention: session.retention,
+    turn: turn && {
+      id: turn.id,
+      revision: turn.revision,
+      createdAt: turn.createdAt,
+      brief: turn.brief && {
+        revision: turn.brief.revision,
+        objective: turn.brief.objective,
+        scope: turn.brief.scope,
+        scopeBindings: turn.scopeBindings,
+        limits: turn.brief.limits,
+        clarificationQuestionIds: turn.brief.clarificationQuestions.map((question) => question.id),
+        unresolvedAssumptionIds: turn.brief.assumptions
+          .filter((assumption) => assumption.requiresUserDecision && !turn.assumptionDecisions.some((decision) => decision.assumptionId === assumption.id))
+          .map((assumption) => assumption.id),
+      },
+      graph: projectSessionGraph(turn.graph),
+      scope: {
+        candidateCount: turn.scopeCandidates.length,
+        bindingCount: turn.scopeBindings.length,
+        resolutionCount: turn.scopeResolutions.length,
+        pendingExpansionProposalIds: turn.scopeExpansionProposals
+          .filter((proposal) => proposal.status === "proposed")
+          .map((proposal) => proposal.id),
+      },
+      work: {
+        taskCount: turn.tasks.length,
+        taskStatusCounts,
+        dispatchState: turn.tasks.length === 0 ? "not_started" : "recorded",
+        acceptedPacketCount: turn.acceptedPackets.length,
+        reconciliationDispositionCount: turn.reconciliationDispositions.length,
+        checkpointCount: turn.checkpoints.length,
+      },
+    },
+  };
+}
+
+function projectResearchSessionPlanV1(session: ResearchSessionV1): Record<string, unknown> {
+  return {
+    ...projectResearchSessionV1(session),
+    kind: "plan",
+    planMutable: session.status === "waiting_plan_approval",
+  };
+}
+
+async function requireStoredResearchSession(
+  store: ResearchSessionStoreV1,
+  sessionId: string,
+): Promise<ResearchSessionV1> {
+  const session = await store.read(sessionId);
+  if (!session) throw new Error("Research session was not found.");
+  return session;
+}
+
+export async function handleResearchSessions(
+  args: string[],
+  flags: Record<string, string | boolean | string[]>,
+  opts: OutputOptions,
+  dependencies: ResearchCliDependencies = defaultResearchCliDependencies,
+): Promise<void> {
+  const [command, sessionArg] = args;
+  if (!command || command === "help") {
+    dependencies.emitOutput(researchHelp(), opts);
+    return;
+  }
+  if (command === "list") {
+    if (args.length !== 1) throw new Error("Usage: atlcli research sessions list [--limit <1-100>] [--cursor <session-id>].");
+    assertSessionFlags(flags, ["limit", "cursor"]);
+    const limit = boundedSessionLimit(singleSessionFlag(flags, "limit"));
+    const cursor = singleSessionFlag(flags, "cursor");
+    if (cursor !== undefined) requireSessionId(cursor);
+    const opened = await dependencies.openSessionStore();
+    try {
+      const page = await opened.store.list({ ...(limit === undefined ? {} : { limit }), ...(cursor === undefined ? {} : { cursor }) });
+      dependencies.emitOutput({
+        schema: "atlcli.research-session-list/v1",
+        sessions: page.sessions.map(projectResearchSessionV1),
+        ...(page.nextCursor ? { nextCursor: page.nextCursor } : {}),
+      }, opts);
+    } finally {
+      opened.close();
+    }
+    return;
+  }
+  if (command !== "show" && command !== "plan" && command !== "approve" && command !== "reject-plan") {
+    throw new Error(`Unknown research sessions command: ${command}. Run \`atlcli research --help\`.`);
+  }
+  const sessionId = requireSessionId(sessionArg);
+  if (command === "show" || command === "plan") {
+    if (args.length !== 2) throw new Error(`Usage: atlcli research sessions ${command} <session-id>.`);
+    assertSessionFlags(flags, []);
+    const opened = await dependencies.openSessionStore();
+    try {
+      const session = await requireStoredResearchSession(opened.store, sessionId);
+      dependencies.emitOutput(command === "plan" ? projectResearchSessionPlanV1(session) : projectResearchSessionV1(session), opts);
+    } finally {
+      opened.close();
+    }
+    return;
+  }
+  if (command === "approve" || command === "reject-plan") {
+    if (args.length !== 2) throw new Error(`Usage: atlcli research sessions ${command} <session-id> --revision <session-revision>${command === "reject-plan" ? " --reason <reason>" : ""}.`);
+    assertSessionFlags(flags, command === "approve" ? ["revision"] : ["revision", "reason"]);
+    const revision = expectedSessionRevision(singleSessionFlag(flags, "revision", true));
+    const reason = command === "reject-plan" ? singleSessionFlag(flags, "reason", true) : undefined;
+    const opened = await dependencies.openSessionStore();
+    try {
+      const session = await requireStoredResearchSession(opened.store, sessionId);
+      if (session.revision !== revision) throw new Error("Research session revision is stale; inspect the current plan and retry with its exact revision.");
+      const graph = activeSessionTurn(session)?.graph;
+      if (!graph) throw new Error("Research session has no active graph to decide.");
+      const committed = await opened.store.commit(sessionId, command === "approve"
+        ? {
+            kind: "approve_graph",
+            graphRevision: graph.revision,
+            expectedRevision: session.revision,
+            expectedLeaseEpoch: session.lease.epoch,
+            at: new Date().toISOString(),
+          }
+        : {
+            kind: "reject_plan",
+            graphRevision: graph.revision,
+            reason: reason!,
+            expectedRevision: session.revision,
+            expectedLeaseEpoch: session.lease.epoch,
+            at: new Date().toISOString(),
+          });
+      dependencies.writeStderr(`[research] session=${sessionId} action=${command} revision=${committed.session.revision} status=${committed.session.status}\n`);
+      dependencies.emitOutput(projectResearchSessionPlanV1(committed.session), opts);
+    } finally {
+      opened.close();
+    }
+    return;
+  }
+}
+
 export function buildResearchRequest(input: ResearchCliInput, profile: Profile): ResearchRequestV1 {
   const defaults = resolveDefaults({ profiles: {}, currentProfile: undefined }, profile);
   const projectKeys = input.projectKeys.length > 0 ? input.projectKeys : uniqueKeys(defaults.project ? [defaults.project] : []);
@@ -499,6 +731,10 @@ export async function handleResearch(
 ): Promise<void> {
   if (hasFlag(flags, "help") || hasFlag(flags, "h")) {
     dependencies.emitOutput(researchHelp(), opts);
+    return;
+  }
+  if (args[0] === "sessions") {
+    await handleResearchSessions(args.slice(1), flags, opts, dependencies);
     return;
   }
   const input = parseResearchCliInput(args, flags);
@@ -706,6 +942,7 @@ export async function handleResearch(
 
 export function researchHelp(): string {
   return `atlcli research <question>
+atlcli research sessions <list|show|plan|approve|reject-plan>
 
 Run a bounded, read-only Jira + Confluence research question through DeepAgentsJS and QuickJS PTC.
 
@@ -728,8 +965,16 @@ Options:
   --json                 Emit the structured report as JSON
   --help                 Show this help
 
+Durable session commands:
+  sessions list [--limit <1-100>] [--cursor <session-id>]
+  sessions show <session-id>
+  sessions plan <session-id>
+  sessions approve <session-id> --revision <session-revision>
+  sessions reject-plan <session-id> --revision <session-revision> --reason <reason>
+
 ANTHROPIC_API_KEY must be supplied through the process environment.
 --plan-only persists the brief and graph before any key, workspace, provider, or model access.
-Session resume and revision-fenced plan/steering commands arrive in later T4 checkpoints.
+Session resume, steering, scope, and clarification commands arrive in later T4 checkpoints.
+Approving a durable plan persists its exact revision only; it starts no model research until durable task dispatch arrives.
 `;
 }

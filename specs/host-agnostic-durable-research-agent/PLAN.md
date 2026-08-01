@@ -3048,6 +3048,14 @@ approved/proposed graph, role grants, dependencies, budgets, and approval
 envelope. The CLI has no resume or plan-mutation command yet, so this is an
 inspectable durable-plan boundary rather than a falsely advertised durable run.
 
+T4 CLI plan-control checkpoint (2026-08-01): `research sessions list`, `show`,
+and `plan` page or project the bounded session state without serializing source
+refs, source or packet bodies, prompts, provider data, or hidden reasoning.
+`approve` and `reject-plan` require the exact stored session revision and commit
+through the existing revision/lease-epoch CAS. Approval changes the graph state
+but exposes a `not_started` dispatch state and starts no model research until
+the durable dispatch lifecycle is wired.
+
 - [ ] Persist ready nodes before dispatch. Accept or quarantine a result with
       one aggregate revision-fenced journal/CAS operation covering graph
       revision, graph-node status and packet reference, task-attempt terminal
@@ -3075,12 +3083,16 @@ CLI:
       artifact writes.
 - [ ] Add `--session <id>` for a new turn and `--resume <id>` for interrupted
       execution.
-- [ ] Add non-interactive `research sessions list`, `show`, and `delete`
-      operations with bounded output.
+- [x] Add non-interactive `research sessions list` and `show` operations with
+      bounded, body-free output.
+- [ ] Add non-interactive `research sessions delete` with complete owned-data
+      cleanup after the durable execution lifecycle is wired.
 - [x] Add `--plan-only`; it persists and emits the sanitized durable brief and
       graph before any key, workspace, provider, or model access.
-- [ ] Add revision-fenced `sessions plan`, `approve`, `reject-plan`,
-      `revise-plan`, `approve-scope`, `reject-scope`,
+- [x] Add revision-fenced `sessions plan`, `approve`, and `reject-plan`.
+      Approval persists only the exact plan revision; it starts no model work
+      before durable dispatch is implemented.
+- [ ] Add revision-fenced `sessions revise-plan`, `approve-scope`, `reject-scope`,
       `clarify`, `steer`, `pause`, `resume`, and `cancel` commands from the CLI
       contract.
 - [ ] Show the sanitized brief, graph, selected roles, dependencies, budgets,

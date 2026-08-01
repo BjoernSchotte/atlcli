@@ -81,6 +81,7 @@ function cliHarness(options: {
   const writes = new Map<string, string>();
   const workspaces: Array<ResearchCliWorkspace & { disposed: boolean }> = [];
   const runInputs: Parameters<ResearchCliDependencies["runAgent"]>[0][] = [];
+  const durableStore = new InMemoryResearchSessionStoreV1();
   let interrupt: (() => void) | undefined;
   const dependencies: ResearchCliDependencies = {
     resolveProfile: async () => options.profile ?? profile,
@@ -162,8 +163,7 @@ function cliHarness(options: {
     createDurableSessionId: () => "research-session:cli-plan",
     createDurableTurnId: () => "research-turn:cli-plan",
     async openSessionStore() {
-      const store = new InMemoryResearchSessionStoreV1();
-      return { store, close: () => undefined };
+      return { store: durableStore, close: () => undefined };
     },
     writeStdout: (contents) => { stdout.push(contents); },
     writeStderr: (contents) => { stderr.push(contents); },
@@ -213,6 +213,97 @@ describe("research CLI one-shot contract", () => {
       graph: { status: "approved" },
     });
     expect(harness.stderr.join("")).toContain("plan_only=true");
+  });
+
+  test("lists and projects a durable required plan without source bodies, prompts, packets, or hidden reasoning", async () => {
+    const harness = cliHarness();
+    await handleResearch(["Find", "related", "content"], { "plan-only": true, effort: "deep" }, { json: true }, harness.dependencies);
+    const created = JSON.parse(harness.stdout.join(""));
+    expect(created).toMatchObject({
+      sessionId: "research-session:cli-plan",
+      status: "waiting_plan_approval",
+      graph: { status: "proposed" },
+    });
+
+    harness.stdout.length = 0;
+    await handleResearch(["sessions", "list"], { limit: "1" }, { json: true }, harness.dependencies);
+    const listed = JSON.parse(harness.stdout.join(""));
+    expect(listed).toMatchObject({
+      schema: "atlcli.research-session-list/v1",
+      sessions: [{ sessionId: "research-session:cli-plan", status: "waiting_plan_approval" }],
+    });
+
+    harness.stdout.length = 0;
+    await handleResearch(["sessions", "plan", "research-session:cli-plan"], {}, { json: true }, harness.dependencies);
+    const projected = JSON.parse(harness.stdout.join(""));
+    expect(projected).toMatchObject({
+      schema: "atlcli.research-session-view/v1",
+      kind: "plan",
+      planMutable: true,
+      revision: created.sessionRevision,
+      turn: {
+        brief: { objective: expect.any(String) },
+        graph: { status: "proposed", roles: expect.any(Array) },
+      },
+    });
+    expect(JSON.stringify(projected)).not.toContain("acceptedPackets");
+    expect(JSON.stringify(projected)).not.toContain("sourceRefs");
+  });
+
+  test("approves or rejects only the exact durable plan revision", async () => {
+    const approve = cliHarness();
+    await handleResearch(["Find", "related", "content"], { "plan-only": true, effort: "deep" }, { json: true }, approve.dependencies);
+    const created = JSON.parse(approve.stdout.join(""));
+    approve.stdout.length = 0;
+    await handleResearch(
+      ["sessions", "approve", "research-session:cli-plan"],
+      { revision: String(created.sessionRevision) },
+      { json: true },
+      approve.dependencies,
+    );
+    const approved = JSON.parse(approve.stdout.join(""));
+    expect(approved).toMatchObject({
+      status: "running",
+      revision: created.sessionRevision + 1,
+      turn: { graph: { status: "approved" }, work: { dispatchState: "not_started" } },
+    });
+    expect(approve.runInputs).toHaveLength(0);
+    expect(approve.stderr.join("")).toContain("action=approve");
+    await expect(handleResearch(
+      ["sessions", "approve", "research-session:cli-plan"],
+      { revision: String(created.sessionRevision) },
+      { json: true },
+      approve.dependencies,
+    )).rejects.toThrow("revision is stale");
+
+    const reject = cliHarness();
+    await handleResearch(["Find", "related", "content"], { "plan-only": true, effort: "deep" }, { json: true }, reject.dependencies);
+    const proposed = JSON.parse(reject.stdout.join(""));
+    reject.stdout.length = 0;
+    await handleResearch(
+      ["sessions", "reject-plan", "research-session:cli-plan"],
+      { revision: String(proposed.sessionRevision), reason: "Need a narrower scope." },
+      { json: true },
+      reject.dependencies,
+    );
+    expect(JSON.parse(reject.stdout.join(""))).toMatchObject({
+      status: "waiting_plan_revision",
+      revision: proposed.sessionRevision + 1,
+      planMutable: false,
+    });
+    expect(reject.stderr.join("")).toContain("action=reject-plan");
+  });
+
+  test("validates bounded durable session command inputs before storage access", async () => {
+    const harness = cliHarness();
+    await expect(handleResearch(["sessions", "list"], { limit: "101" }, { json: true }, harness.dependencies))
+      .rejects.toThrow("--limit");
+    await expect(handleResearch(["sessions", "show", "not-a-session"], {}, { json: true }, harness.dependencies))
+      .rejects.toThrow("session ID");
+    await expect(handleResearch(["sessions", "approve", "research-session:cli-plan"], { revision: "1", reason: "no" }, { json: true }, harness.dependencies))
+      .rejects.toThrow("Unknown research session option");
+    await expect(handleResearch(["sessions", "unknown"], {}, { json: true }, harness.dependencies))
+      .rejects.toThrow("Unknown research sessions command");
   });
 
   test("parses repeatable locked scope flags and the fixed-date question context", () => {
