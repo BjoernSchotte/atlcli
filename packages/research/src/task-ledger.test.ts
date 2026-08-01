@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   InMemoryResearchSubagentDispatchPort,
+  reduceResearchAcceptedPacketV1,
   reduceResearchTaskAttemptV1,
 } from "./task-ledger.js";
 import {
@@ -32,6 +33,14 @@ function attempt(overrides: Partial<ResearchTaskAttemptV1> = {}): ResearchTaskAt
     grantedCapabilityIds: ["jira.issue.search"],
     typedIntentRefs: ["intent:1"],
     expectedOutputSchema: RESEARCH_PACKET_BODY_SCHEMA_V1,
+    budget: {
+      maxCapabilityCalls: 4,
+      maxInputTokens: 1_000,
+      maxOutputTokens: 500,
+      maxResultBytes: 8_192,
+      maxDurationMs: 1_000,
+      maxCostMicros: 1_000,
+    },
     status: "ready",
     dispatchState: "not_started",
     createdAt: "2026-07-31T00:00:00.000Z",
@@ -150,5 +159,83 @@ describe("revision-fenced T3 task ledger", () => {
       packetRef: "packet:late",
       usage,
     })).toThrow("Only a running task");
+  });
+
+  test("reduces packet acceptance atomically and enforces every host budget", () => {
+    const running = reduceResearchTaskAttemptV1(attempt(), {
+      kind: "dispatch_started",
+      at: "2026-07-31T00:00:01.000Z",
+    });
+    const reduced = reduceResearchAcceptedPacketV1({
+      current: running,
+      body: packet(),
+      usage,
+      acceptedAt: "2026-07-31T00:00:02.000Z",
+      availableSourceIds: ["jira:DEMO-1"],
+      maximumResultBytes: 8_192,
+    });
+    expect(reduced).toMatchObject({
+      attempt: { status: "complete", dispatchState: "result_committed" },
+      packet: { packetRef: "packet:task:1:1", hostObservedUsage: usage },
+    });
+    expect(running.status).toBe("running");
+
+    const dimensions: Array<[keyof ResearchTaskUsageV1, number]> = [
+      ["capabilityCalls", 5],
+      ["inputTokens", 1_001],
+      ["outputTokens", 501],
+      ["resultBytes", 8_193],
+      ["durationMs", 1_001],
+      ["costMicros", 1_001],
+    ];
+    for (const [key, value] of dimensions) {
+      expect(() => reduceResearchAcceptedPacketV1({
+        current: running,
+        body: packet(),
+        usage: { ...usage, [key]: value },
+        acceptedAt: "2026-07-31T00:00:02.000Z",
+        availableSourceIds: ["jira:DEMO-1"],
+        maximumResultBytes: 8_192,
+      })).toThrow("exceeds");
+      expect(running.status).toBe("running");
+    }
+  });
+
+  test("keeps in-memory state unchanged across injected packet failures", () => {
+    const ledger = new InMemoryResearchSubagentDispatchPort({ maxResultBytes: 8_192 });
+    ledger.admit(attempt());
+    ledger.start("task:1", 3, "2026-07-31T00:00:01.000Z");
+    const before = ledger.attempt("task:1");
+    const failures = [
+      () => ledger.accept({
+        taskId: "task:1",
+        graphRevision: 3,
+        body: { ...packet(), schema: "wrong" },
+        usage,
+        acceptedAt: "2026-07-31T00:00:02.000Z",
+        availableSourceIds: ["jira:DEMO-1"],
+      }),
+      () => ledger.accept({
+        taskId: "task:1",
+        graphRevision: 3,
+        body: packet("jira:UNKNOWN-1"),
+        usage,
+        acceptedAt: "2026-07-31T00:00:02.000Z",
+        availableSourceIds: ["jira:DEMO-1"],
+      }),
+      () => ledger.accept({
+        taskId: "task:1",
+        graphRevision: 3,
+        body: packet(),
+        usage: { ...usage, inputTokens: 1_001 },
+        acceptedAt: "2026-07-31T00:00:02.000Z",
+        availableSourceIds: ["jira:DEMO-1"],
+      }),
+    ];
+    for (const inject of failures) {
+      expect(inject).toThrow();
+      expect(ledger.attempt("task:1")).toEqual(before);
+      expect(ledger.packet("packet:task:1:1")).toBeUndefined();
+    }
   });
 });

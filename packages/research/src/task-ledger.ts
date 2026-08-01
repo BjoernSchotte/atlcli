@@ -4,6 +4,7 @@ import {
   RESEARCH_TASK_ATTEMPT_SCHEMA_V1,
   parseResearchTaskBodyV1,
   validateResearchTaskAdmissionV1,
+  validateResearchTaskUsageV1,
   type ResearchAcceptedPacketV1,
   type ReconciliationBodyV1,
   type ResearchPacketBodyV1,
@@ -33,6 +34,7 @@ export function reduceResearchTaskAttemptV1(
   event: ResearchTaskAttemptEventV1,
 ): ResearchTaskAttemptV1 {
   if (current.schema !== RESEARCH_TASK_ATTEMPT_SCHEMA_V1) invalid("Unsupported research task attempt schema.");
+  validateResearchTaskAdmissionV1(current);
   if (event.kind === "dispatch_started") {
     if (current.status !== "ready" || current.dispatchState !== "not_started") invalid("Research task can be dispatched only once from ready state.");
     return {
@@ -49,6 +51,7 @@ export function reduceResearchTaskAttemptV1(
   }
   if (event.kind === "result_committed") {
     if (current.status !== "running" || current.dispatchState !== "dispatch_started") invalid("Only a running task can commit a result.");
+    validateResearchTaskUsageV1(event.usage, current.budget);
     return {
       ...current,
       status: "complete",
@@ -92,6 +95,88 @@ function clone<T>(value: T): T {
   return structuredClone(value);
 }
 
+export interface ResearchAcceptedPacketReductionV1 {
+  attempt: ResearchTaskAttemptV1;
+  packet: ResearchAcceptedPacketV1;
+}
+
+/**
+ * Pure T3 packet-acceptance reducer. It validates the complete host envelope
+ * before returning either the committed attempt and packet together or
+ * throwing without changing caller-owned state.
+ */
+export function reduceResearchAcceptedPacketV1(input: {
+  current: ResearchTaskAttemptV1;
+  body: unknown;
+  usage: ResearchTaskUsageV1;
+  acceptedAt: string;
+  availableSourceIds: readonly string[];
+  maximumResultBytes: number;
+}): ResearchAcceptedPacketReductionV1 {
+  const current = clone(input.current);
+  if (current.status !== "running" || current.dispatchState !== "dispatch_started") {
+    invalid("Research task result arrived outside its active dispatch.");
+  }
+  if (!Number.isSafeInteger(input.maximumResultBytes) || input.maximumResultBytes < 1) {
+    invalid("Research task result byte limit is invalid.");
+  }
+  validateResearchTaskUsageV1(input.usage, current.budget);
+  const bytes = encodedBytes(input.body);
+  if (
+    bytes > input.maximumResultBytes ||
+    bytes > current.budget.maxResultBytes ||
+    bytes > input.usage.resultBytes
+  ) {
+    invalid("Research task result exceeds its host-observed byte envelope.");
+  }
+  const body = parseResearchTaskBodyV1(current.expectedOutputSchema, input.body);
+  const available = new Set(input.availableSourceIds);
+  const sourceIds = current.expectedOutputSchema === "atlcli.research-packet-body/v1"
+    ? (body as ResearchPacketBodyV1).sourceIds
+    : current.expectedOutputSchema === "atlcli.reconciliation-body/v1"
+      ? (body as ReconciliationBodyV1).defects.flatMap((defect) =>
+          defect.references
+            .filter((reference) => reference.kind === "source")
+            .map((reference) => reference.id)
+        )
+      : [
+          ...(body as { findings: Array<{ sourceIds: string[] }> }).findings.flatMap(
+            (finding) => finding.sourceIds,
+          ),
+          ...(body as { relationships: Array<{ sourceIds: string[] }> }).relationships.flatMap(
+            (relationship) => relationship.sourceIds,
+          ),
+        ];
+  for (const sourceId of sourceIds) {
+    if (!available.has(sourceId)) {
+      invalid("Research task result references unknown evidence.");
+    }
+  }
+  const packetRef = `packet:${current.taskId}:${current.attempt}`;
+  const packet: ResearchAcceptedPacketV1 = {
+    schema: RESEARCH_ACCEPTED_PACKET_SCHEMA_V1,
+    packetRef,
+    taskId: current.taskId,
+    graphRevision: current.graphRevision,
+    attempt: current.attempt,
+    executor: current.executor,
+    ...(current.roleId ? { roleId: current.roleId } : {}),
+    grantedCapabilityIds: [...current.grantedCapabilityIds],
+    typedIntentRefs: [...current.typedIntentRefs],
+    expectedOutputSchema: current.expectedOutputSchema,
+    body,
+    hostObservedUsage: clone(input.usage),
+    acceptedAt: input.acceptedAt,
+  };
+  const attempt = reduceResearchTaskAttemptV1(current, {
+    kind: "result_committed",
+    at: input.acceptedAt,
+    packetRef,
+    usage: input.usage,
+  });
+  return { attempt, packet };
+}
+
 export class InMemoryResearchSubagentDispatchPort implements ResearchSubagentDispatchPort {
   readonly #attempts = new Map<string, ResearchTaskAttemptV1>();
   readonly #packets = new Map<string, ResearchAcceptedPacketV1>();
@@ -132,48 +217,20 @@ export class InMemoryResearchSubagentDispatchPort implements ResearchSubagentDis
     availableSourceIds: readonly string[];
   }): ResearchAcceptedPacketV1 {
     const current = this.#current(input.taskId, input.graphRevision);
-    if (current.status !== "running" || current.dispatchState !== "dispatch_started") invalid("Research task result arrived outside its active dispatch.");
     if (this.#acceptedNodeIds.has(current.nodeId)) invalid("A research graph node already accepted a packet.");
-    const bytes = encodedBytes(input.body);
-    if (bytes > this.#maxResultBytes || bytes > input.usage.resultBytes) invalid("Research task result exceeds its host-observed byte envelope.");
-    const body = parseResearchTaskBodyV1(current.expectedOutputSchema, input.body);
-    const available = new Set(input.availableSourceIds);
-    const sourceIds = current.expectedOutputSchema === "atlcli.research-packet-body/v1"
-      ? (body as ResearchPacketBodyV1).sourceIds
-      : current.expectedOutputSchema === "atlcli.reconciliation-body/v1"
-        ? (body as ReconciliationBodyV1).defects.flatMap((defect) => defect.references.filter((reference) => reference.kind === "source").map((reference) => reference.id))
-        : [
-            ...(body as { findings: Array<{ sourceIds: string[] }> }).findings.flatMap((finding) => finding.sourceIds),
-            ...(body as { relationships: Array<{ sourceIds: string[] }> }).relationships.flatMap((relationship) => relationship.sourceIds),
-          ];
-    for (const sourceId of sourceIds) if (!available.has(sourceId)) invalid("Research task result references unknown evidence.");
-    const packetRef = `packet:${current.taskId}:${current.attempt}`;
-    if (this.#packets.has(packetRef)) invalid("Research packet reference already exists.");
-    const packet: ResearchAcceptedPacketV1 = {
-      schema: RESEARCH_ACCEPTED_PACKET_SCHEMA_V1,
-      packetRef,
-      taskId: current.taskId,
-      graphRevision: current.graphRevision,
-      attempt: current.attempt,
-      executor: current.executor,
-      ...(current.roleId ? { roleId: current.roleId } : {}),
-      grantedCapabilityIds: [...current.grantedCapabilityIds],
-      typedIntentRefs: [...current.typedIntentRefs],
-      expectedOutputSchema: current.expectedOutputSchema,
-      body,
-      hostObservedUsage: clone(input.usage),
-      acceptedAt: input.acceptedAt,
-    };
-    const next = reduceResearchTaskAttemptV1(current, {
-      kind: "result_committed",
-      at: input.acceptedAt,
-      packetRef,
+    const reduced = reduceResearchAcceptedPacketV1({
+      current,
+      body: input.body,
       usage: input.usage,
+      acceptedAt: input.acceptedAt,
+      availableSourceIds: input.availableSourceIds,
+      maximumResultBytes: this.#maxResultBytes,
     });
-    this.#packets.set(packetRef, clone(packet));
-    this.#attempts.set(current.taskId, next);
+    if (this.#packets.has(reduced.packet.packetRef)) invalid("Research packet reference already exists.");
+    this.#packets.set(reduced.packet.packetRef, clone(reduced.packet));
+    this.#attempts.set(current.taskId, clone(reduced.attempt));
     this.#acceptedNodeIds.add(current.nodeId);
-    return clone(packet);
+    return clone(reduced.packet);
   }
 
   fail(taskId: string, graphRevision: number, at: string): ResearchTaskAttemptV1 {

@@ -18,6 +18,15 @@ import {
   type ResearchReconciliationDispositionV1,
 } from "./workflow-contracts.js";
 
+const taskBudget = {
+  maxCapabilityCalls: 4,
+  maxInputTokens: 1_000,
+  maxOutputTokens: 500,
+  maxResultBytes: 8_192,
+  maxDurationMs: 1_000,
+  maxCostMicros: 1_000,
+};
+
 function packet(): ResearchPacketBodyV1 {
   return {
     schema: RESEARCH_PACKET_BODY_SCHEMA_V1,
@@ -91,6 +100,7 @@ describe("T3 workflow contracts", () => {
       roleId: "outline-planner",
       expectedOutputSchema: "atlcli.research-packet-body/v2",
       grantedCapabilityIds: [],
+      budget: taskBudget,
       phase: "T3",
     })).toThrow("unavailable");
   });
@@ -226,18 +236,21 @@ describe("T3 workflow contracts", () => {
       roleId: "focused-researcher",
       expectedOutputSchema: RESEARCH_PACKET_BODY_SCHEMA_V1,
       grantedCapabilityIds: ["jira.issue.search"],
+      budget: taskBudget,
     })).not.toThrow();
     expect(() => validateResearchTaskAdmissionV1({
       executor: "subagent",
       roleId: "reconciler",
       expectedOutputSchema: RESEARCH_PACKET_BODY_SCHEMA_V1,
       grantedCapabilityIds: [],
+      budget: taskBudget,
     })).toThrow("output schema");
     expect(() => validateResearchTaskAdmissionV1({
       executor: "subagent",
       roleId: "coverage-moderator",
       expectedOutputSchema: RESEARCH_PACKET_BODY_SCHEMA_V1,
       grantedCapabilityIds: ["wiki.page.get"],
+      budget: taskBudget,
     })).toThrow("capability");
   });
 });

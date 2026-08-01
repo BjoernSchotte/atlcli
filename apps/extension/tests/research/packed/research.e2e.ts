@@ -955,13 +955,27 @@ test.beforeAll(async () => {
   await page.goto(ATLASSIAN_PAGE);
   await expect
     .poll(
-      () =>
-        serviceWorker.evaluate(async () => {
-          const stored = await chrome.storage.session.get([
-            "tab-observer-state-v1",
-          ]);
-          return JSON.stringify(stored["tab-observer-state-v1"] ?? null);
-        }),
+      async () => {
+        // MV3 service workers are disposable. Navigation may retire the worker
+        // that supplied the extension ID, so observe state through the current
+        // background target instead of retaining a stale execution context.
+        const activeWorker = context.serviceWorkers().find(
+          isExtensionBackgroundWorker
+        );
+        if (!activeWorker) return "background-worker-unavailable";
+        try {
+          return await activeWorker.evaluate(async () => {
+            const stored = await chrome.storage.session.get([
+              "tab-observer-state-v1",
+            ]);
+            return JSON.stringify(stored["tab-observer-state-v1"] ?? null);
+          });
+        } catch (error) {
+          return `background-worker-evaluation-error:${
+            error instanceof Error ? error.message : String(error)
+          }`;
+        }
+      },
       { timeout: 10_000 }
     )
     .toContain(ATLASSIAN_PAGE);

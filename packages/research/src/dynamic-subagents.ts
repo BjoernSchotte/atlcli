@@ -501,6 +501,7 @@ export function createBoundedResearchSubagentMiddleware(
       grantedCapabilityIds: [...node.grantedCapabilityIds],
       typedIntentRefs: [...node.typedIntentRefs],
       expectedOutputSchema: expectedOutputSchema(node.roleId),
+      budget: structuredClone(node.budget),
       status: "ready",
       dispatchState: "not_started",
       createdAt: graph.createdAt,

@@ -53,6 +53,7 @@ export type ResearchDispatchErrorCodeV1 =
   | "structured-output-invalid"
   | "subagent-provider-error"
   | "aborted"
+  | "timeout"
   | "late-result"
   | "admissions-locked";
 
@@ -185,6 +186,13 @@ function serializedBytes(value: unknown): number {
 
 function abortError(): ResearchDispatchError {
   return new ResearchDispatchError("aborted", "Research task dispatch was aborted.");
+}
+
+function timeoutError(maxDurationMs: number): ResearchDispatchError {
+  return new ResearchDispatchError(
+    "timeout",
+    `Research task dispatch timed out after ${maxDurationMs} ms.`,
+  );
 }
 
 type InvocationOutcome =
@@ -404,10 +412,18 @@ export function createResearchDispatchInterceptionAdapter(options: {
     emit({ taskId, status: "started" });
 
     const controller = new AbortController();
-    const abort = (): void => controller.abort(abortError());
+    let abortCode: "aborted" | "timeout" | undefined;
+    const abortWith = (code: "aborted" | "timeout"): void => {
+      if (controller.signal.aborted) return;
+      abortCode = code;
+      controller.abort(
+        code === "timeout" ? timeoutError(admission.maxDurationMs) : abortError(),
+      );
+    };
+    const abort = (): void => abortWith("aborted");
     options.signal?.addEventListener("abort", abort, { once: true });
     config.signal?.addEventListener("abort", abort, { once: true });
-    const timeout = setTimeout(abort, admission.maxDurationMs);
+    const timeout = setTimeout(() => abortWith("timeout"), admission.maxDurationMs);
     const upstreamConfig: RunnableConfig = {
       ...config,
       signal: controller.signal,
@@ -447,7 +463,8 @@ export function createResearchDispatchInterceptionAdapter(options: {
     config.signal?.removeEventListener("abort", abort);
 
     if (first.kind === "aborted") {
-      emit({ taskId, status: "cancelled", code: "aborted" });
+      const code = abortCode ?? "aborted";
+      emit({ taskId, status: "cancelled", code });
       void upstreamOutcome.then((late) => {
         emit({
           taskId,
@@ -458,7 +475,7 @@ export function createResearchDispatchInterceptionAdapter(options: {
             : {}),
         });
       });
-      throw abortError();
+      throw code === "timeout" ? timeoutError(admission.maxDurationMs) : abortError();
     }
     if (first.kind === "error") {
       emit({

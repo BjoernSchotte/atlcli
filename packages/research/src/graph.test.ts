@@ -333,6 +333,29 @@ describe("dynamic research graph composition", () => {
     })).toThrow("derive");
   });
 
+  test("rejects excessive concurrency, waves, and graph fan-out", () => {
+    const graph = composeResearchGraphV1(brief("List Jira tickets", ["jira"], "off"));
+    for (const limits of [
+      { maxParallelNodes: 4, maxResearchWaves: 2, maxReconciliationWaves: 1 },
+      { maxParallelNodes: 3, maxResearchWaves: 3, maxReconciliationWaves: 1 },
+      { maxParallelNodes: 3, maxResearchWaves: 2, maxReconciliationWaves: 2 },
+    ]) {
+      expect(() => validateResearchGraphV1({
+        ...graph,
+        ...limits,
+        approvalEnvelope: {
+          ...graph.approvalEnvelope,
+          ...limits,
+        },
+      })).toThrow("concurrency or wave limits");
+    }
+
+    expect(() => validateResearchGraphV1({
+      ...graph,
+      nodes: Array.from({ length: 9 }, () => graph.nodes[0]!),
+    })).toThrow("node count");
+  });
+
   test("keeps required plan approval proposed until the exact revision is approved", () => {
     const proposed = composeResearchGraphV1(brief(
       "Perform exhaustive contradiction analysis.",
@@ -394,5 +417,51 @@ describe("dynamic research graph composition", () => {
     graph = reduceResearchGraphV1(graph, { kind: "start_node", expectedRevision: 1, nodeId: "research-node:synthesizer" });
     graph = reduceResearchGraphV1(graph, { kind: "complete_node", expectedRevision: 1, nodeId: "research-node:synthesizer", packetRef: "packet:task:2" });
     expect(graph.status).toBe("complete");
+  });
+
+  test("keeps graph failure transitions revision-fenced and immutable", () => {
+    const initial = composeResearchGraphV1(brief("List Jira tickets", ["jira"], "off"));
+    const snapshot = structuredClone(initial);
+    expect(() => reduceResearchGraphV1(initial, {
+      kind: "start_node",
+      expectedRevision: 2,
+      nodeId: "research-node:jira-research",
+    })).toThrow("stale");
+    expect(() => reduceResearchGraphV1(initial, {
+      kind: "start_node",
+      expectedRevision: 1,
+      nodeId: "research-node:unknown",
+    })).toThrow("unknown node");
+
+    const running = reduceResearchGraphV1(initial, {
+      kind: "start_node",
+      expectedRevision: 1,
+      nodeId: "research-node:jira-research",
+    });
+    expect(initial).toEqual(snapshot);
+    expect(() => reduceResearchGraphV1(running, {
+      kind: "start_node",
+      expectedRevision: 1,
+      nodeId: "research-node:jira-research",
+    })).toThrow("ready");
+
+    const quarantined = reduceResearchGraphV1(running, {
+      kind: "quarantine_node",
+      expectedRevision: 1,
+      nodeId: "research-node:jira-research",
+      stopReason: "late-result",
+    });
+    expect(quarantined.nodes.find(
+      (node) => node.id === "research-node:jira-research",
+    )).toMatchObject({ status: "quarantined", stopReason: "late-result" });
+    expect(quarantined.nodes.find(
+      (node) => node.id === "research-node:synthesizer",
+    )?.status).toBe("blocked");
+    expect(() => reduceResearchGraphV1(quarantined, {
+      kind: "complete_node",
+      expectedRevision: 1,
+      nodeId: "research-node:jira-research",
+      packetRef: "packet:late",
+    })).toThrow("running");
   });
 });

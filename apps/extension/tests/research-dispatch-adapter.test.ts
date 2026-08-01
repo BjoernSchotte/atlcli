@@ -294,6 +294,54 @@ describe("research-owned native task dispatch interception", () => {
     }
   });
 
+  test("classifies a host timeout and quarantines its deliberately late result", async () => {
+    const diagnostics: ResearchDispatchDiagnosticV1[] = [];
+    let upstreamSignalAborted = false;
+    let release!: () => void;
+    const late = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const adapter = createResearchDispatchInterceptionAdapter({
+      admissions: [admission("timeout-task", [], { maxDurationMs: 10 })],
+      maxTasks: 1,
+      maxConcurrency: 1,
+      async invokeUpstream(_input, config) {
+        config.signal?.addEventListener(
+          "abort",
+          () => {
+            upstreamSignalAborted = true;
+          },
+          { once: true },
+        );
+        await late;
+        return { taskId: "timeout-task", answer: "too late" };
+      },
+      onDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
+    });
+    const session = sessionFor(adapter);
+    try {
+      const result = await session.eval(`${guestTask("timeout-task")}`, 5_000);
+      expect(result.ok).toBe(false);
+      expect(result.error?.message).toContain("timed out after 10 ms");
+      expect(upstreamSignalAborted).toBe(true);
+      expect(diagnostics).toEqual([
+        { taskId: "timeout-task", status: "started" },
+        { taskId: "timeout-task", status: "cancelled", code: "timeout" },
+      ]);
+
+      release();
+      await new Promise<void>((resolve) => setTimeout(resolve, 10));
+      expect(diagnostics.at(-1)).toEqual(expect.objectContaining({
+        taskId: "timeout-task",
+        status: "quarantined",
+        code: "late-result",
+      }));
+      expect(adapter.snapshot().taskStatuses["timeout-task"]).toBe("quarantined");
+    } finally {
+      session.dispose();
+    }
+  });
+
   test("keeps disjoint grants isolated for two nodes using the same role", async () => {
     const providerCalls = { jira: 0, wiki: 0 };
     const denied: string[] = [];

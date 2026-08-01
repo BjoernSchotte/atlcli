@@ -345,6 +345,16 @@ export interface ReconciliationBodyV1 {
 // export: redactResearchSecrets
 export declare function redactResearchSecrets(value: unknown): string;
 
+// export: reduceResearchAcceptedPacketV1
+export declare function reduceResearchAcceptedPacketV1(input: {
+    current: ResearchTaskAttemptV1;
+    body: unknown;
+    usage: ResearchTaskUsageV1;
+    acceptedAt: string;
+    availableSourceIds: readonly string[];
+    maximumResultBytes: number;
+}): ResearchAcceptedPacketReductionV1;
+
 // export: reduceResearchGraphV1
 export declare function reduceResearchGraphV1(graph: ResearchGraphV1, update: ResearchGraphUpdateV1): ResearchGraphV1;
 
@@ -674,6 +684,12 @@ export declare const RESEARCH_TOOL_IDS: readonly [
 // export: RESEARCH_WORKSPACE_SCHEMA_V1
 export declare const RESEARCH_WORKSPACE_SCHEMA_V1: "atlcli.research-workspace/v1";
 
+// export: ResearchAcceptedPacketReductionV1
+export interface ResearchAcceptedPacketReductionV1 {
+    attempt: ResearchTaskAttemptV1;
+    packet: ResearchAcceptedPacketV1;
+}
+
 // export: ResearchAcceptedPacketV1
 export interface ResearchAcceptedPacketV1 {
     schema: typeof RESEARCH_ACCEPTED_PACKET_SCHEMA_V1;
@@ -863,7 +879,7 @@ export declare class ResearchDispatchError extends Error {
 }
 
 // export: ResearchDispatchErrorCodeV1
-export type ResearchDispatchErrorCodeV1 = "invalid-task-description" | "unknown-task" | "subagent-type-mismatch" | "response-schema-mismatch" | "task-budget-exceeded" | "task-already-dispatched" | "dependency-not-ready" | "dependency-result-mismatch" | "graph-proposal-required" | "repair-not-authorized" | "concurrency-exceeded" | "capability-denied" | "result-too-large" | "structured-output-invalid" | "subagent-provider-error" | "aborted" | "late-result" | "admissions-locked";
+export type ResearchDispatchErrorCodeV1 = "invalid-task-description" | "unknown-task" | "subagent-type-mismatch" | "response-schema-mismatch" | "task-budget-exceeded" | "task-already-dispatched" | "dependency-not-ready" | "dependency-result-mismatch" | "graph-proposal-required" | "repair-not-authorized" | "concurrency-exceeded" | "capability-denied" | "result-too-large" | "structured-output-invalid" | "subagent-provider-error" | "aborted" | "timeout" | "late-result" | "admissions-locked";
 
 // export: ResearchDispatchInterceptionAdapter
 export interface ResearchDispatchInterceptionAdapter {
@@ -1997,6 +2013,7 @@ export interface ResearchTaskAttemptV1 {
     grantedCapabilityIds: ResearchGraphCapabilityV1[];
     typedIntentRefs: string[];
     expectedOutputSchema: ResearchTaskOutputSchemaV1;
+    budget: ResearchNodeBudgetV1;
     status: "ready" | "running" | "outcome_unknown" | "complete" | "failed" | "cancelled" | "quarantined";
     dispatchState: "not_started" | "dispatch_started" | "result_committed" | "outcome_unknown";
     providerRequestId?: string;
@@ -2107,6 +2124,9 @@ export declare function selectResearchScopeSeedsV1(seeds: readonly ResearchScope
 // export: validateResearchGraphV1
 export declare function validateResearchGraphV1(graph: ResearchGraphV1): void;
 
+// export: validateResearchNodeBudgetV1
+export declare function validateResearchNodeBudgetV1(budget: ResearchNodeBudgetV1, label?: string): void;
+
 // export: validateResearchScopeMentionProposalsV1
 export declare function validateResearchScopeMentionProposalsV1(input: {
     question: string;
@@ -2121,8 +2141,12 @@ export declare function validateResearchTaskAdmissionV1(input: {
     roleId?: ResearchSubagentRoleIdV1;
     expectedOutputSchema: ResearchTaskOutputSchemaV1;
     grantedCapabilityIds: readonly ResearchGraphCapabilityV1[];
+    budget: ResearchNodeBudgetV1;
     phase?: "T3" | "T5";
 }): void;
+
+// export: validateResearchTaskUsageV1
+export declare function validateResearchTaskUsageV1(usage: ResearchTaskUsageV1, budget: ResearchNodeBudgetV1): void;
 
 // export: WikiResearchDetail
 export interface WikiResearchDetail extends WikiResearchSummary {
@@ -2471,6 +2495,16 @@ export interface ReconciliationBodyV1 {
 // export: redactResearchSecrets
 export declare function redactResearchSecrets(value: unknown): string;
 
+// export: reduceResearchAcceptedPacketV1
+export declare function reduceResearchAcceptedPacketV1(input: {
+    current: ResearchTaskAttemptV1;
+    body: unknown;
+    usage: ResearchTaskUsageV1;
+    acceptedAt: string;
+    availableSourceIds: readonly string[];
+    maximumResultBytes: number;
+}): ResearchAcceptedPacketReductionV1;
+
 // export: reduceResearchGraphV1
 export declare function reduceResearchGraphV1(graph: ResearchGraphV1, update: ResearchGraphUpdateV1): ResearchGraphV1;
 
@@ -2800,6 +2834,12 @@ export declare const RESEARCH_TOOL_IDS: readonly [
 // export: RESEARCH_WORKSPACE_SCHEMA_V1
 export declare const RESEARCH_WORKSPACE_SCHEMA_V1: "atlcli.research-workspace/v1";
 
+// export: ResearchAcceptedPacketReductionV1
+export interface ResearchAcceptedPacketReductionV1 {
+    attempt: ResearchTaskAttemptV1;
+    packet: ResearchAcceptedPacketV1;
+}
+
 // export: ResearchAcceptedPacketV1
 export interface ResearchAcceptedPacketV1 {
     schema: typeof RESEARCH_ACCEPTED_PACKET_SCHEMA_V1;
@@ -2989,7 +3029,7 @@ export declare class ResearchDispatchError extends Error {
 }
 
 // export: ResearchDispatchErrorCodeV1
-export type ResearchDispatchErrorCodeV1 = "invalid-task-description" | "unknown-task" | "subagent-type-mismatch" | "response-schema-mismatch" | "task-budget-exceeded" | "task-already-dispatched" | "dependency-not-ready" | "dependency-result-mismatch" | "graph-proposal-required" | "repair-not-authorized" | "concurrency-exceeded" | "capability-denied" | "result-too-large" | "structured-output-invalid" | "subagent-provider-error" | "aborted" | "late-result" | "admissions-locked";
+export type ResearchDispatchErrorCodeV1 = "invalid-task-description" | "unknown-task" | "subagent-type-mismatch" | "response-schema-mismatch" | "task-budget-exceeded" | "task-already-dispatched" | "dependency-not-ready" | "dependency-result-mismatch" | "graph-proposal-required" | "repair-not-authorized" | "concurrency-exceeded" | "capability-denied" | "result-too-large" | "structured-output-invalid" | "subagent-provider-error" | "aborted" | "timeout" | "late-result" | "admissions-locked";
 
 // export: ResearchDispatchInterceptionAdapter
 export interface ResearchDispatchInterceptionAdapter {
@@ -4123,6 +4163,7 @@ export interface ResearchTaskAttemptV1 {
     grantedCapabilityIds: ResearchGraphCapabilityV1[];
     typedIntentRefs: string[];
     expectedOutputSchema: ResearchTaskOutputSchemaV1;
+    budget: ResearchNodeBudgetV1;
     status: "ready" | "running" | "outcome_unknown" | "complete" | "failed" | "cancelled" | "quarantined";
     dispatchState: "not_started" | "dispatch_started" | "result_committed" | "outcome_unknown";
     providerRequestId?: string;
@@ -4222,6 +4263,9 @@ export declare function selectResearchScopeSeedsV1(seeds: readonly ResearchScope
 // export: validateResearchGraphV1
 export declare function validateResearchGraphV1(graph: ResearchGraphV1): void;
 
+// export: validateResearchNodeBudgetV1
+export declare function validateResearchNodeBudgetV1(budget: ResearchNodeBudgetV1, label?: string): void;
+
 // export: validateResearchScopeMentionProposalsV1
 export declare function validateResearchScopeMentionProposalsV1(input: {
     question: string;
@@ -4236,8 +4280,12 @@ export declare function validateResearchTaskAdmissionV1(input: {
     roleId?: ResearchSubagentRoleIdV1;
     expectedOutputSchema: ResearchTaskOutputSchemaV1;
     grantedCapabilityIds: readonly ResearchGraphCapabilityV1[];
+    budget: ResearchNodeBudgetV1;
     phase?: "T3" | "T5";
 }): void;
+
+// export: validateResearchTaskUsageV1
+export declare function validateResearchTaskUsageV1(usage: ResearchTaskUsageV1, budget: ResearchNodeBudgetV1): void;
 
 // export: WikiResearchDetail
 export interface WikiResearchDetail extends WikiResearchSummary {
@@ -4595,6 +4643,16 @@ export interface ReconciliationBodyV1 {
 // export: redactResearchSecrets
 export declare function redactResearchSecrets(value: unknown): string;
 
+// export: reduceResearchAcceptedPacketV1
+export declare function reduceResearchAcceptedPacketV1(input: {
+    current: ResearchTaskAttemptV1;
+    body: unknown;
+    usage: ResearchTaskUsageV1;
+    acceptedAt: string;
+    availableSourceIds: readonly string[];
+    maximumResultBytes: number;
+}): ResearchAcceptedPacketReductionV1;
+
 // export: reduceResearchGraphV1
 export declare function reduceResearchGraphV1(graph: ResearchGraphV1, update: ResearchGraphUpdateV1): ResearchGraphV1;
 
@@ -4924,6 +4982,12 @@ export declare const RESEARCH_TOOL_IDS: readonly [
 // export: RESEARCH_WORKSPACE_SCHEMA_V1
 export declare const RESEARCH_WORKSPACE_SCHEMA_V1: "atlcli.research-workspace/v1";
 
+// export: ResearchAcceptedPacketReductionV1
+export interface ResearchAcceptedPacketReductionV1 {
+    attempt: ResearchTaskAttemptV1;
+    packet: ResearchAcceptedPacketV1;
+}
+
 // export: ResearchAcceptedPacketV1
 export interface ResearchAcceptedPacketV1 {
     schema: typeof RESEARCH_ACCEPTED_PACKET_SCHEMA_V1;
@@ -5113,7 +5177,7 @@ export declare class ResearchDispatchError extends Error {
 }
 
 // export: ResearchDispatchErrorCodeV1
-export type ResearchDispatchErrorCodeV1 = "invalid-task-description" | "unknown-task" | "subagent-type-mismatch" | "response-schema-mismatch" | "task-budget-exceeded" | "task-already-dispatched" | "dependency-not-ready" | "dependency-result-mismatch" | "graph-proposal-required" | "repair-not-authorized" | "concurrency-exceeded" | "capability-denied" | "result-too-large" | "structured-output-invalid" | "subagent-provider-error" | "aborted" | "late-result" | "admissions-locked";
+export type ResearchDispatchErrorCodeV1 = "invalid-task-description" | "unknown-task" | "subagent-type-mismatch" | "response-schema-mismatch" | "task-budget-exceeded" | "task-already-dispatched" | "dependency-not-ready" | "dependency-result-mismatch" | "graph-proposal-required" | "repair-not-authorized" | "concurrency-exceeded" | "capability-denied" | "result-too-large" | "structured-output-invalid" | "subagent-provider-error" | "aborted" | "timeout" | "late-result" | "admissions-locked";
 
 // export: ResearchDispatchInterceptionAdapter
 export interface ResearchDispatchInterceptionAdapter {
@@ -6247,6 +6311,7 @@ export interface ResearchTaskAttemptV1 {
     grantedCapabilityIds: ResearchGraphCapabilityV1[];
     typedIntentRefs: string[];
     expectedOutputSchema: ResearchTaskOutputSchemaV1;
+    budget: ResearchNodeBudgetV1;
     status: "ready" | "running" | "outcome_unknown" | "complete" | "failed" | "cancelled" | "quarantined";
     dispatchState: "not_started" | "dispatch_started" | "result_committed" | "outcome_unknown";
     providerRequestId?: string;
@@ -6357,6 +6422,9 @@ export declare function selectResearchScopeSeedsV1(seeds: readonly ResearchScope
 // export: validateResearchGraphV1
 export declare function validateResearchGraphV1(graph: ResearchGraphV1): void;
 
+// export: validateResearchNodeBudgetV1
+export declare function validateResearchNodeBudgetV1(budget: ResearchNodeBudgetV1, label?: string): void;
+
 // export: validateResearchScopeMentionProposalsV1
 export declare function validateResearchScopeMentionProposalsV1(input: {
     question: string;
@@ -6371,8 +6439,12 @@ export declare function validateResearchTaskAdmissionV1(input: {
     roleId?: ResearchSubagentRoleIdV1;
     expectedOutputSchema: ResearchTaskOutputSchemaV1;
     grantedCapabilityIds: readonly ResearchGraphCapabilityV1[];
+    budget: ResearchNodeBudgetV1;
     phase?: "T3" | "T5";
 }): void;
+
+// export: validateResearchTaskUsageV1
+export declare function validateResearchTaskUsageV1(usage: ResearchTaskUsageV1, budget: ResearchNodeBudgetV1): void;
 
 // export: WikiResearchDetail
 export interface WikiResearchDetail extends WikiResearchSummary {
@@ -6866,6 +6938,16 @@ export interface ReconciliationBodyV1 {
 // export: redactResearchSecrets
 export declare function redactResearchSecrets(value: unknown): string;
 
+// export: reduceResearchAcceptedPacketV1
+export declare function reduceResearchAcceptedPacketV1(input: {
+    current: ResearchTaskAttemptV1;
+    body: unknown;
+    usage: ResearchTaskUsageV1;
+    acceptedAt: string;
+    availableSourceIds: readonly string[];
+    maximumResultBytes: number;
+}): ResearchAcceptedPacketReductionV1;
+
 // export: reduceResearchGraphV1
 export declare function reduceResearchGraphV1(graph: ResearchGraphV1, update: ResearchGraphUpdateV1): ResearchGraphV1;
 
@@ -7217,6 +7299,12 @@ export declare const RESEARCH_WORKER_PACKET_SCHEMA_V1: Record<string, unknown>;
 // export: RESEARCH_WORKSPACE_SCHEMA_V1
 export declare const RESEARCH_WORKSPACE_SCHEMA_V1: "atlcli.research-workspace/v1";
 
+// export: ResearchAcceptedPacketReductionV1
+export interface ResearchAcceptedPacketReductionV1 {
+    attempt: ResearchTaskAttemptV1;
+    packet: ResearchAcceptedPacketV1;
+}
+
 // export: ResearchAcceptedPacketV1
 export interface ResearchAcceptedPacketV1 {
     schema: typeof RESEARCH_ACCEPTED_PACKET_SCHEMA_V1;
@@ -7414,7 +7502,7 @@ export declare class ResearchDispatchError extends Error {
 }
 
 // export: ResearchDispatchErrorCodeV1
-export type ResearchDispatchErrorCodeV1 = "invalid-task-description" | "unknown-task" | "subagent-type-mismatch" | "response-schema-mismatch" | "task-budget-exceeded" | "task-already-dispatched" | "dependency-not-ready" | "dependency-result-mismatch" | "graph-proposal-required" | "repair-not-authorized" | "concurrency-exceeded" | "capability-denied" | "result-too-large" | "structured-output-invalid" | "subagent-provider-error" | "aborted" | "late-result" | "admissions-locked";
+export type ResearchDispatchErrorCodeV1 = "invalid-task-description" | "unknown-task" | "subagent-type-mismatch" | "response-schema-mismatch" | "task-budget-exceeded" | "task-already-dispatched" | "dependency-not-ready" | "dependency-result-mismatch" | "graph-proposal-required" | "repair-not-authorized" | "concurrency-exceeded" | "capability-denied" | "result-too-large" | "structured-output-invalid" | "subagent-provider-error" | "aborted" | "timeout" | "late-result" | "admissions-locked";
 
 // export: ResearchDispatchInterceptionAdapter
 export interface ResearchDispatchInterceptionAdapter {
@@ -8600,6 +8688,7 @@ export interface ResearchTaskAttemptV1 {
     grantedCapabilityIds: ResearchGraphCapabilityV1[];
     typedIntentRefs: string[];
     expectedOutputSchema: ResearchTaskOutputSchemaV1;
+    budget: ResearchNodeBudgetV1;
     status: "ready" | "running" | "outcome_unknown" | "complete" | "failed" | "cancelled" | "quarantined";
     dispatchState: "not_started" | "dispatch_started" | "result_committed" | "outcome_unknown";
     providerRequestId?: string;
@@ -8735,6 +8824,9 @@ export declare function selectResearchScopeSeedsV1(seeds: readonly ResearchScope
 // export: validateResearchGraphV1
 export declare function validateResearchGraphV1(graph: ResearchGraphV1): void;
 
+// export: validateResearchNodeBudgetV1
+export declare function validateResearchNodeBudgetV1(budget: ResearchNodeBudgetV1, label?: string): void;
+
 // export: validateResearchScopeMentionProposalsV1
 export declare function validateResearchScopeMentionProposalsV1(input: {
     question: string;
@@ -8749,8 +8841,12 @@ export declare function validateResearchTaskAdmissionV1(input: {
     roleId?: ResearchSubagentRoleIdV1;
     expectedOutputSchema: ResearchTaskOutputSchemaV1;
     grantedCapabilityIds: readonly ResearchGraphCapabilityV1[];
+    budget: ResearchNodeBudgetV1;
     phase?: "T3" | "T5";
 }): void;
+
+// export: validateResearchTaskUsageV1
+export declare function validateResearchTaskUsageV1(usage: ResearchTaskUsageV1, budget: ResearchNodeBudgetV1): void;
 
 // export: WikiResearchDetail
 export interface WikiResearchDetail extends WikiResearchSummary {
@@ -10173,6 +10269,16 @@ export interface ReconciliationBodyV1 {
 // export: redactResearchSecrets
 export declare function redactResearchSecrets(value: unknown): string;
 
+// export: reduceResearchAcceptedPacketV1
+export declare function reduceResearchAcceptedPacketV1(input: {
+    current: ResearchTaskAttemptV1;
+    body: unknown;
+    usage: ResearchTaskUsageV1;
+    acceptedAt: string;
+    availableSourceIds: readonly string[];
+    maximumResultBytes: number;
+}): ResearchAcceptedPacketReductionV1;
+
 // export: reduceResearchGraphV1
 export declare function reduceResearchGraphV1(graph: ResearchGraphV1, update: ResearchGraphUpdateV1): ResearchGraphV1;
 
@@ -10524,6 +10630,12 @@ export declare const RESEARCH_WORKER_PACKET_SCHEMA_V1: Record<string, unknown>;
 // export: RESEARCH_WORKSPACE_SCHEMA_V1
 export declare const RESEARCH_WORKSPACE_SCHEMA_V1: "atlcli.research-workspace/v1";
 
+// export: ResearchAcceptedPacketReductionV1
+export interface ResearchAcceptedPacketReductionV1 {
+    attempt: ResearchTaskAttemptV1;
+    packet: ResearchAcceptedPacketV1;
+}
+
 // export: ResearchAcceptedPacketV1
 export interface ResearchAcceptedPacketV1 {
     schema: typeof RESEARCH_ACCEPTED_PACKET_SCHEMA_V1;
@@ -10721,7 +10833,7 @@ export declare class ResearchDispatchError extends Error {
 }
 
 // export: ResearchDispatchErrorCodeV1
-export type ResearchDispatchErrorCodeV1 = "invalid-task-description" | "unknown-task" | "subagent-type-mismatch" | "response-schema-mismatch" | "task-budget-exceeded" | "task-already-dispatched" | "dependency-not-ready" | "dependency-result-mismatch" | "graph-proposal-required" | "repair-not-authorized" | "concurrency-exceeded" | "capability-denied" | "result-too-large" | "structured-output-invalid" | "subagent-provider-error" | "aborted" | "late-result" | "admissions-locked";
+export type ResearchDispatchErrorCodeV1 = "invalid-task-description" | "unknown-task" | "subagent-type-mismatch" | "response-schema-mismatch" | "task-budget-exceeded" | "task-already-dispatched" | "dependency-not-ready" | "dependency-result-mismatch" | "graph-proposal-required" | "repair-not-authorized" | "concurrency-exceeded" | "capability-denied" | "result-too-large" | "structured-output-invalid" | "subagent-provider-error" | "aborted" | "timeout" | "late-result" | "admissions-locked";
 
 // export: ResearchDispatchInterceptionAdapter
 export interface ResearchDispatchInterceptionAdapter {
@@ -11907,6 +12019,7 @@ export interface ResearchTaskAttemptV1 {
     grantedCapabilityIds: ResearchGraphCapabilityV1[];
     typedIntentRefs: string[];
     expectedOutputSchema: ResearchTaskOutputSchemaV1;
+    budget: ResearchNodeBudgetV1;
     status: "ready" | "running" | "outcome_unknown" | "complete" | "failed" | "cancelled" | "quarantined";
     dispatchState: "not_started" | "dispatch_started" | "result_committed" | "outcome_unknown";
     providerRequestId?: string;
@@ -12042,6 +12155,9 @@ export declare function selectResearchScopeSeedsV1(seeds: readonly ResearchScope
 // export: validateResearchGraphV1
 export declare function validateResearchGraphV1(graph: ResearchGraphV1): void;
 
+// export: validateResearchNodeBudgetV1
+export declare function validateResearchNodeBudgetV1(budget: ResearchNodeBudgetV1, label?: string): void;
+
 // export: validateResearchScopeMentionProposalsV1
 export declare function validateResearchScopeMentionProposalsV1(input: {
     question: string;
@@ -12056,8 +12172,12 @@ export declare function validateResearchTaskAdmissionV1(input: {
     roleId?: ResearchSubagentRoleIdV1;
     expectedOutputSchema: ResearchTaskOutputSchemaV1;
     grantedCapabilityIds: readonly ResearchGraphCapabilityV1[];
+    budget: ResearchNodeBudgetV1;
     phase?: "T3" | "T5";
 }): void;
+
+// export: validateResearchTaskUsageV1
+export declare function validateResearchTaskUsageV1(usage: ResearchTaskUsageV1, budget: ResearchNodeBudgetV1): void;
 
 // export: WikiResearchDetail
 export interface WikiResearchDetail extends WikiResearchSummary {

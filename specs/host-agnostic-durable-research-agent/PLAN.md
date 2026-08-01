@@ -2541,17 +2541,33 @@ Shared:
       list.
 - [x] Add an in-memory `ResearchSubagentDispatchPort` and task ledger that use
       final graph-node, task-attempt, accepted-packet, and dispatch contracts.
-- [ ] Implement pure revision-fenced graph/task/packet reducers plus in-memory
+- [x] Implement pure revision-fenced graph/task/packet reducers plus in-memory
       conformance and failure-injection tests in T3. T4 may aggregate and
       persist them but may not replace their transition semantics.
+      Proven 2026-08-01: the graph reducer rejects stale revisions, unknown or
+      duplicate starts, blocked completion, and late completion after
+      quarantine without mutating its input. The task reducer validates its
+      complete admission and legal lifecycle, while the atomic packet reducer
+      returns the committed attempt and accepted packet together only after
+      schema, source-ledger, byte-envelope, and all six usage-budget checks.
+      Malformed schema, unknown evidence, and token-overrun injections leave
+      the in-memory attempt unchanged and create no packet.
 - [x] Execute the supervisor-authored ready frontier in exactly one bounded
       QuickJS eval using native `task()` and per-role `responseSchema`.
       Independent tasks must run in `Promise.all` groups and dependent groups
       must receive only compact typed predecessor results. The dispatch port
       rejects any call not represented by the accepted graph/envelope.
-- [ ] Enforce at most three concurrent nodes, `maxResearchWaves = 2`,
+- [x] Enforce at most three concurrent nodes, `maxResearchWaves = 2`,
       `maxReconciliationWaves = 1`, and host-side task count, result size, timeout,
       cancellation, late-result quarantine, token, byte, and cost limits.
+      Proven 2026-08-01: graph validation rejects concurrency above three,
+      changed research/reconciliation wave counts, and more than eight nodes;
+      native task interception rejects excess task count/concurrency and
+      oversized results before guest acceptance. Host-owned attempt budgets
+      reject capability-call, input-token, output-token, result-byte,
+      duration, and cost overruns atomically. Timer expiry is distinguished
+      from operator cancellation, aborts the upstream signal, and quarantines
+      a deliberately late result.
 - [x] Validate every model-returned body against the dispatch ledger's exact
       schema, source/evidence references, scope, and size. Construct the
       accepted packet envelope from host-owned task ID, graph revision,
@@ -2716,10 +2732,17 @@ Gate:
       ready node dispatches once. Across retry/failure fixtures each logical
       node accepts at most one packet, and failed, outcome-unknown, or
       quarantined attempts are never silently treated as complete.
-- [ ] Cancellation, timeout, duplicate dispatch, stale graph revision,
+- [x] Cancellation, timeout, duplicate dispatch, stale graph revision,
       excessive fan-out, oversized packet, unknown evidence, and late-result
       tests all fail closed without duplicate model/provider work being
       accepted.
+      Proven 2026-08-01 by the pure graph/task/packet failure matrix, native
+      DeepAgentsJS dispatch-adapter tests, and the packed MV3 lifecycle suite.
+      The focused reducer/dispatch corridor passed 39 tests with 173
+      assertions; the complete Extension research corridor passed 158 tests;
+      the packed suite passed 2/2 under nvm Node 22.18.0 after replacing a
+      retained service-worker target with lifecycle-correct active-worker
+      observation.
 - [x] Approval fixtures preserve omitted/default versus explicitly automatic
       intent. A T3 `auto -> deep` run with default approval stops before
       research; the otherwise identical explicit-automatic run may proceed.

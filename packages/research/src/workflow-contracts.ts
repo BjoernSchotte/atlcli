@@ -92,6 +92,54 @@ export interface ResearchTaskUsageV1 {
   costMicros: number;
 }
 
+const RESEARCH_BUDGET_KEYS_V1 = [
+  "maxCapabilityCalls",
+  "maxInputTokens",
+  "maxOutputTokens",
+  "maxResultBytes",
+  "maxDurationMs",
+  "maxCostMicros",
+] as const satisfies readonly (keyof ResearchNodeBudgetV1)[];
+
+export function validateResearchNodeBudgetV1(
+  budget: ResearchNodeBudgetV1,
+  label = "Research node budget",
+): void {
+  for (const key of RESEARCH_BUDGET_KEYS_V1) {
+    const value = budget[key];
+    if (!Number.isSafeInteger(value) || value < 0) {
+      invalid(`${label} ${key} is invalid.`);
+    }
+  }
+}
+
+export function validateResearchTaskUsageV1(
+  usage: ResearchTaskUsageV1,
+  budget: ResearchNodeBudgetV1,
+): void {
+  validateResearchNodeBudgetV1(budget);
+  const dimensions: Array<{
+    usage: keyof ResearchTaskUsageV1;
+    budget: keyof ResearchNodeBudgetV1;
+  }> = [
+    { usage: "capabilityCalls", budget: "maxCapabilityCalls" },
+    { usage: "inputTokens", budget: "maxInputTokens" },
+    { usage: "outputTokens", budget: "maxOutputTokens" },
+    { usage: "resultBytes", budget: "maxResultBytes" },
+    { usage: "durationMs", budget: "maxDurationMs" },
+    { usage: "costMicros", budget: "maxCostMicros" },
+  ];
+  for (const dimension of dimensions) {
+    const observed = usage[dimension.usage];
+    if (!Number.isSafeInteger(observed) || observed < 0) {
+      invalid(`Research task usage ${dimension.usage} is invalid.`);
+    }
+    if (observed > budget[dimension.budget]) {
+      invalid(`Research task usage exceeds ${dimension.budget}.`);
+    }
+  }
+}
+
 export interface ResearchSubagentRoleV1 {
   id: ResearchSubagentRoleIdV1;
   description: string;
@@ -308,6 +356,7 @@ export interface ResearchTaskAttemptV1 {
   grantedCapabilityIds: ResearchGraphCapabilityV1[];
   typedIntentRefs: string[];
   expectedOutputSchema: ResearchTaskOutputSchemaV1;
+  budget: ResearchNodeBudgetV1;
   status: "ready" | "running" | "outcome_unknown" | "complete" | "failed" | "cancelled" | "quarantined";
   dispatchState: "not_started" | "dispatch_started" | "result_committed" | "outcome_unknown";
   providerRequestId?: string;
@@ -744,8 +793,10 @@ export function validateResearchTaskAdmissionV1(input: {
   roleId?: ResearchSubagentRoleIdV1;
   expectedOutputSchema: ResearchTaskOutputSchemaV1;
   grantedCapabilityIds: readonly ResearchGraphCapabilityV1[];
+  budget: ResearchNodeBudgetV1;
   phase?: "T3" | "T5";
 }): void {
+  validateResearchNodeBudgetV1(input.budget, "Research task budget");
   if (input.executor === "ptc") {
     if (input.roleId) invalid("A PTC task cannot carry a subagent role.");
     if (input.expectedOutputSchema !== RESEARCH_PACKET_BODY_SCHEMA_V1) invalid("A T3 PTC task must return ResearchPacketBodyV1.");
