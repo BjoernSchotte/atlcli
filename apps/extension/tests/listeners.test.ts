@@ -238,6 +238,8 @@ describe("handleOffscreenMessage (offscreen listener adapter)", () => {
       {
         kind: "offscreen:research-run",
         runId: "run-1",
+        sessionId: "research-session:run-1",
+        turnId: "research-turn:run-1",
         apiKey: "sk-ant-test-listener",
         request,
         policy,
@@ -245,14 +247,21 @@ describe("handleOffscreenMessage (offscreen listener adapter)", () => {
       cap.sendResponse,
       {
         ...okOffscreenDeps,
-        runResearch: async (runId, apiKey, receivedRequest, receivedPolicy) => {
-          received.push(runId, apiKey, receivedRequest, receivedPolicy);
+        runResearch: async (runId, sessionId, turnId, apiKey, receivedRequest, receivedPolicy) => {
+          received.push(runId, sessionId, turnId, apiKey, receivedRequest, receivedPolicy);
           return report;
         },
       },
     )).toBe(true);
     await cap.called;
-    expect(received).toEqual(["run-1", "sk-ant-test-listener", request, policy]);
+    expect(received).toEqual([
+      "run-1",
+      "research-session:run-1",
+      "research-turn:run-1",
+      "sk-ant-test-listener",
+      request,
+      policy,
+    ]);
     expect(cap.values).toEqual([{
       kind: "offscreen:research-run-result",
       runId: "run-1",

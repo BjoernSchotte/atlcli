@@ -93,6 +93,8 @@ export function chromeResearchPort(): ResearchPort {
         throw new ResearchContractError("cancelled", "The research run was cancelled.");
       }
       const runId = crypto.randomUUID();
+      const sessionId = `research-session:${crypto.randomUUID()}`;
+      const turnId = `research-turn:${crypto.randomUUID()}`;
       const policy = normalizeResearchOneShotPolicyV1(options?.policy);
       activeRunId = runId;
       const window = await chrome.windows.getCurrent();
@@ -124,6 +126,8 @@ export function chromeResearchPort(): ResearchPort {
         const response = (await chrome.runtime.sendMessage({
           kind: "research:run",
           runId,
+          sessionId,
+          turnId,
           windowId: window.id,
           request,
           policy,

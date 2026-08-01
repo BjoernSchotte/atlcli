@@ -131,6 +131,11 @@ export interface ResearchCliAgentInput {
   request: ResearchRequestV1;
   workspace: ResearchCliWorkspace;
   sessionId: string;
+  durableSession: {
+    store: ResearchSessionStoreV1;
+    sessionId: string;
+    turnId: string;
+  };
   researchGraph: ResearchGraphV1;
   brief: ResearchBriefV1;
   signal: AbortSignal;
@@ -157,7 +162,6 @@ export interface ResearchCliDependencies {
   runAgent(input: ResearchCliAgentInput): Promise<ResearchReportV1>;
   writeAtomic(path: string, contents: string): Promise<void>;
   artifactPath(): string;
-  createSessionId(): string;
   createDurableSessionId(): string;
   createDurableTurnId(): string;
   openSessionStore(): Promise<{ store: ResearchSessionStoreV1; close(): void }>;
@@ -691,6 +695,7 @@ export const defaultResearchCliDependencies: ResearchCliDependencies = {
       researchGraph: input.researchGraph,
       brief: input.brief,
       workspace: input.workspace,
+      durableSession: input.durableSession,
       options: {
         signal: input.signal,
         onEvent: input.onEvent,
@@ -699,7 +704,6 @@ export const defaultResearchCliDependencies: ResearchCliDependencies = {
   },
   writeAtomic: writeResearchMarkdownAtomic,
   artifactPath: () => researchArtifactPath(),
-  createSessionId: () => `research-${randomUUID()}`,
   createDurableSessionId: () => `research-session:${randomUUID()}`,
   createDurableTurnId: () => `research-turn:${randomUUID()}`,
   async openSessionStore() {
@@ -761,15 +765,15 @@ export async function handleResearch(
     );
   }
   const request = scopeOutcome.request;
-  const durableSessionId = input.planOnly ? dependencies.createDurableSessionId() : undefined;
-  const durableTurnId = input.planOnly ? dependencies.createDurableTurnId() : undefined;
+  const durableSessionId = dependencies.createDurableSessionId();
+  const durableTurnId = dependencies.createDurableTurnId();
   const briefOutcome = dependencies.prepareBrief({
     request,
     policy: input.policy,
     asOf: new Date().toISOString(),
     timezone: input.timezone,
-    ...(durableSessionId ? { sessionId: durableSessionId } : {}),
-    ...(durableTurnId ? { turnId: durableTurnId } : {}),
+    sessionId: durableSessionId,
+    turnId: durableTurnId,
   });
   if (briefOutcome.kind === "clarification_required") {
     const clarification = briefOutcome.clarification;
@@ -857,16 +861,34 @@ export async function handleResearch(
     );
   }
   const apiKey = assertApiKey(dependencies);
-  const workspace = await dependencies.createWorkspace();
-  const sessionId = dependencies.createSessionId();
-  const controller = new AbortController();
-  const timeout = dependencies.scheduleAbort(
-    () => controller.abort(new Error("Research run timed out.")),
-    request.limits.maxRunMs,
-  );
-  const onInterrupt = (): void => controller.abort(new Error("Research run cancelled."));
-  const removeInterruptListener = dependencies.listenForInterrupt(onInterrupt);
+  const opened = await dependencies.openSessionStore();
+  let workspace: ResearchCliWorkspace | undefined;
+  let timeout: unknown;
+  let removeInterruptListener: (() => void) | undefined;
   try {
+    const now = new Date().toISOString();
+    const durableSession = await initializeResearchSessionTurnV1({
+      store: opened.store,
+      session: createResearchSessionV1({
+        sessionId: durableSessionId,
+        ownerId: `owner:cli-${process.pid}`,
+        createdAt: now,
+        leaseExpiresAt: new Date(Date.parse(now) + request.limits.maxRunMs).toISOString(),
+      }),
+      brief: briefOutcome.brief,
+      graph: researchGraph,
+      approveAutomatically: true,
+      at: now,
+    });
+    workspace = await dependencies.createWorkspace();
+    const sessionId = durableSession.sessionId;
+    const controller = new AbortController();
+    timeout = dependencies.scheduleAbort(
+      () => controller.abort(new Error("Research run timed out.")),
+      request.limits.maxRunMs,
+    );
+    const onInterrupt = (): void => controller.abort(new Error("Research run cancelled."));
+    removeInterruptListener = dependencies.listenForInterrupt(onInterrupt);
     dependencies.writeStderr(`[research] model=${RESEARCH_MODEL_ID} profile=${profile.name} project=${request.scope.jiraProjectKeys.join(",")} space=${request.scope.confluenceSpaceKeys.join(",")}\n`);
     if (input.keepSession) {
       dependencies.writeStderr(`[research] session=${sessionId} workspace=${workspace.root}\n`);
@@ -877,6 +899,11 @@ export async function handleResearch(
       request,
       workspace,
       sessionId,
+      durableSession: {
+        store: opened.store,
+        sessionId,
+        turnId: durableTurnId,
+      },
       researchGraph,
       brief: briefOutcome.brief,
       signal: controller.signal,
@@ -934,9 +961,10 @@ export async function handleResearch(
     if (opts.json) dependencies.emitOutput({ sessionId, artifactPath, report }, opts);
     else dependencies.writeStdout(report.markdown);
   } finally {
-    dependencies.cancelScheduledAbort(timeout);
-    removeInterruptListener();
-    if (!input.keepSession) await workspace.dispose();
+    if (timeout !== undefined) dependencies.cancelScheduledAbort(timeout);
+    removeInterruptListener?.();
+    if (workspace && !input.keepSession) await workspace.dispose();
+    opened.close();
   }
 }
 

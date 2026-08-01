@@ -159,7 +159,6 @@ function cliHarness(options: {
     },
     async writeAtomic(path, contents) { writes.set(path, contents); },
     artifactPath: () => "/external/artifact/report.md",
-    createSessionId: () => "research-test-run",
     createDurableSessionId: () => "research-session:cli-plan",
     createDurableTurnId: () => "research-turn:cli-plan",
     async openSessionStore() {
@@ -1015,6 +1014,10 @@ describe("research CLI one-shot contract", () => {
     expect(harness.stderr.join("")).not.toContain(secret);
     expect(harness.stderr.join("")).not.toContain("key=present");
     expect(harness.runInputs[0]?.apiKey).toBe(secret);
+    expect(harness.runInputs[0]?.durableSession).toMatchObject({
+      sessionId: "research-session:cli-plan",
+      turnId: "research-turn:cli-plan",
+    });
     expect(harness.workspaces[0]?.disposed).toBe(true);
   });
 
@@ -1046,7 +1049,7 @@ describe("research CLI one-shot contract", () => {
     const harness = cliHarness();
     await handleResearch(["question"], { "keep-session": true }, { json: false }, harness.dependencies);
     expect(harness.workspaces[0]?.disposed).toBe(false);
-    expect(harness.stderr.join("")).toContain("session=research-test-run");
+    expect(harness.stderr.join("")).toContain("session=research-session:cli-plan");
     expect(harness.stderr.join("")).toContain("workspace=/tmp/research-workspace-1");
   });
 

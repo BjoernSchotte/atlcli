@@ -433,6 +433,8 @@ export default defineBackground({
 
   const runResearch = async (
     runId: string,
+    sessionId: string,
+    turnId: string,
     windowId: number,
     value: ResearchRequestV1,
     policyValue?: ResearchOneShotPolicyV1,
@@ -459,6 +461,8 @@ export default defineBackground({
       const response = (await chrome.runtime.sendMessage({
         kind: "offscreen:research-run",
         runId,
+        sessionId,
+        turnId,
         apiKey,
         request,
         policy,

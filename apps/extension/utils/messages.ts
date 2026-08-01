@@ -103,6 +103,8 @@ export type ExtRequest =
   | {
       kind: "research:run";
       runId: string;
+      sessionId: string;
+      turnId: string;
       windowId: number;
       request: ResearchRequestV1;
       policy?: ResearchOneShotPolicyV1;
@@ -173,6 +175,8 @@ export type OffscreenRequest =
   | {
       kind: "offscreen:research-run";
       runId: string;
+      sessionId: string;
+      turnId: string;
       apiKey: string;
       request: ResearchRequestV1;
       policy?: ResearchOneShotPolicyV1;
@@ -256,9 +260,11 @@ export function isExtRequest(value: unknown): value is ExtRequest {
       (wake.resumeWaiting !== true || Array.isArray(wake.jobIds));
   }
   if (kind === "research:run") {
-    const run = value as { runId?: unknown; windowId?: unknown; request?: unknown; policy?: unknown };
-    return hasOnlyKeys(value, ["kind", "runId", "windowId", "request", "policy"]) &&
+    const run = value as { runId?: unknown; sessionId?: unknown; turnId?: unknown; windowId?: unknown; request?: unknown; policy?: unknown };
+    return hasOnlyKeys(value, ["kind", "runId", "sessionId", "turnId", "windowId", "request", "policy"]) &&
       isResearchRunId(run.runId) &&
+      isResearchSessionId(run.sessionId) &&
+      isResearchTurnId(run.turnId) &&
       isWindowId(run.windowId) &&
       typeof run.request === "object" &&
       run.request !== null &&
@@ -372,9 +378,11 @@ export function isOffscreenRequest(value: unknown): value is OffscreenRequest {
       (wake.resumeWaiting !== true || Array.isArray(wake.jobIds));
   }
   if (candidate.kind === "offscreen:research-run") {
-    const run = value as { runId?: unknown; apiKey?: unknown; request?: unknown; policy?: unknown };
-    return hasOnlyKeys(value, ["kind", "runId", "apiKey", "request", "policy"]) &&
+    const run = value as { runId?: unknown; sessionId?: unknown; turnId?: unknown; apiKey?: unknown; request?: unknown; policy?: unknown };
+    return hasOnlyKeys(value, ["kind", "runId", "sessionId", "turnId", "apiKey", "request", "policy"]) &&
       isResearchRunId(run.runId) &&
+      isResearchSessionId(run.sessionId) &&
+      isResearchTurnId(run.turnId) &&
       isResearchApiKey(run.apiKey) &&
       typeof run.request === "object" &&
       run.request !== null &&
@@ -468,4 +476,12 @@ function isWindowId(value: unknown): value is number {
 
 function isResearchRunId(value: unknown): value is string {
   return typeof value === "string" && /^[A-Za-z0-9-]{1,200}$/.test(value);
+}
+
+function isResearchSessionId(value: unknown): value is string {
+  return typeof value === "string" && /^research-session:[A-Za-z0-9._-]{1,120}$/.test(value);
+}
+
+function isResearchTurnId(value: unknown): value is string {
+  return typeof value === "string" && /^research-turn:[A-Za-z0-9._-]{1,120}$/.test(value);
 }

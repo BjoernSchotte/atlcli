@@ -54,6 +54,8 @@ describe("dedicated research worker host", () => {
     const events: ResearchOneShotEventV1[] = [];
     const resultPromise = host.run({
       runId: "run-1",
+      sessionId: "research-session:run-1",
+      turnId: "research-turn:run-1",
       apiKey: "synthetic-key",
       request,
       policy,
@@ -65,6 +67,8 @@ describe("dedicated research worker host", () => {
       {
         kind: "research-worker:run",
         runId: "run-1",
+        sessionId: "research-session:run-1",
+        turnId: "research-turn:run-1",
         apiKey: "synthetic-key",
         request,
         policy,
@@ -107,6 +111,8 @@ describe("dedicated research worker host", () => {
     const host = new ResearchAgentWorkerHost({ createWorker: () => worker });
     const resultPromise = host.run({
       runId: "run-cancel",
+      sessionId: "research-session:run-cancel",
+      turnId: "research-turn:run-cancel",
       apiKey: "synthetic-key",
       request,
     });

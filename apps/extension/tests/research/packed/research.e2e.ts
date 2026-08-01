@@ -1481,11 +1481,42 @@ async function runPackedResearchInBackground(
     return chrome.runtime.sendMessage({
       kind: "research:run",
       runId,
+      sessionId: `research-session:${runId}`,
+      turnId: `research-turn:${runId}`,
       windowId: window.id,
       request,
       policy,
     });
   }, { request, runId, policy: HOST_PARITY_POLICY }) as Promise<PackedRunResponse>;
+}
+
+async function readPackedDurableResearchSession(
+  page: Page,
+  sessionId: string,
+  artifactId: string,
+): Promise<{
+  session: { state: { status: string; turns: Array<{ id: string; tasks: unknown[]; acceptedPackets: unknown[] }> } };
+  artifact: { metadata: { path: string; contentType: string }; contents: string } | undefined;
+}> {
+  return page.evaluate(async ({ sessionId, artifactId }) => {
+    const open = await new Promise<IDBDatabase>((resolve, reject) => {
+      const request = indexedDB.open("atlcli-research-sessions");
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    try {
+      const read = <T>(request: IDBRequest<T>): Promise<T> => new Promise((resolve, reject) => {
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+      const transaction = open.transaction(["sessions", "artifacts"], "readonly");
+      const session = await read(transaction.objectStore("sessions").get(sessionId));
+      const artifact = await read(transaction.objectStore("artifacts").get([sessionId, artifactId]));
+      return { session, artifact };
+    } finally {
+      open.close();
+    }
+  }, { sessionId, artifactId });
 }
 
 let context: BrowserContext;
@@ -1698,6 +1729,26 @@ test("keeps Node and packed MV3 artifacts byte-identical and concurrent progress
   expect(new TextEncoder().encode(packed.report.markdown)).toEqual(
     new TextEncoder().encode(node.report.markdown),
   );
+  const durable = await readPackedDurableResearchSession(
+    page,
+    "research-session:packed-host-parity",
+    "artifact:report:research-turn:packed-host-parity",
+  );
+  expect(durable.session.state.status).toBe("complete");
+  expect(durable.session.state.turns).toEqual([
+    expect.objectContaining({
+      id: "research-turn:packed-host-parity",
+      tasks: expect.any(Array),
+      acceptedPackets: expect.any(Array),
+    }),
+  ]);
+  expect(durable.artifact).toEqual(expect.objectContaining({
+    metadata: expect.objectContaining({
+      path: "/artifacts/report.md",
+      contentType: "text/markdown",
+    }),
+    contents: node.report.markdown,
+  }));
 
   const events = await harnessEvents(page);
   const packedEvents = events.flatMap((event) => event.researchEvent ? [event.researchEvent] : []);

@@ -1840,6 +1840,14 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       followUp: { id: "follow-up:synthetic-coverage" },
     });
     expect(durableTurn.graph?.status).toBe("complete");
+    expect(await durableStore.artifact(graph.sessionId, `artifact:report:${graph.turnId}`)).toEqual({
+      metadata: expect.objectContaining({
+        path: "/artifacts/report.md",
+        contentType: "text/markdown",
+        bytes: new TextEncoder().encode(report.markdown).byteLength,
+      }),
+      contents: report.markdown,
+    });
     expect((await durableStore.events(graph.sessionId)).map((event) => event.kind)).toContain(
       "record_reconciliation",
     );

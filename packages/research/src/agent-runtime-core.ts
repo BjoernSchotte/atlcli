@@ -33,7 +33,10 @@ import {
 import { createResearchPtcTools } from "./agent-tools.js";
 import type { ResearchPtcDiagnosticV1 } from "./agent-tools.js";
 import { ResearchSessionDispatchJournalV1 } from "./session-dispatch-journal.js";
-import type { ResearchSessionStoreV1 } from "./session-store.js";
+import {
+  RESEARCH_SESSION_ARTIFACT_SCHEMA_V1,
+  type ResearchSessionStoreV1,
+} from "./session-store.js";
 /*
  * Keep graph execution admission here, before workspace/provider/model setup.
  * Productive hosts also preflight for UX, but this boundary is authoritative.
@@ -1702,6 +1705,16 @@ async function runResearchAgentWithBindings(
       );
     }
     await workspace.writeFile(RESEARCH_REPORT_ARTIFACT_PATH_V1, report.markdown);
+    if (input.durableSession) {
+      await input.durableSession.store.writeArtifact(input.durableSession.sessionId, {
+        schema: RESEARCH_SESSION_ARTIFACT_SCHEMA_V1,
+        id: `artifact:report:${input.durableSession.turnId}`,
+        path: RESEARCH_REPORT_ARTIFACT_PATH_V1,
+        contentType: "text/markdown",
+        bytes: new TextEncoder().encode(report.markdown).byteLength,
+        createdAt: new Date(completedAtMs).toISOString(),
+      }, report.markdown);
+    }
     await durableDispatchJournal?.complete();
     emitEvent({ kind: "artifact", path: RESEARCH_REPORT_ARTIFACT_PATH_V1 });
     emitProgress({

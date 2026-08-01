@@ -34,6 +34,8 @@ export class ResearchAgentWorkerHost {
 
   run(input: {
     runId: string;
+    sessionId: string;
+    turnId: string;
     apiKey: string;
     request: ResearchRequestV1;
     policy?: ResearchOneShotPolicyV1;
@@ -70,6 +72,8 @@ export class ResearchAgentWorkerHost {
       worker.postMessage({
         kind: "research-worker:run",
         runId: input.runId,
+        sessionId: input.sessionId,
+        turnId: input.turnId,
         apiKey: input.apiKey,
         request: input.request,
         ...(input.policy ? { policy: input.policy } : {}),

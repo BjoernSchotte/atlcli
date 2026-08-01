@@ -3036,8 +3036,9 @@ accepted turn, brief, and an exact graph proposal before it can return a
 `running` session. An explicitly automatic plan is converted to a persisted
 proposal and then approved through its own journal event; a required plan
 remains durably `waiting_plan_approval` with no approval event. The first host
-integration must call this gate before credentials, workspace, provider, or
-agent construction.
+integration must call this gate before workspace, provider, or agent
+construction. Host credentials remain non-durable inputs and are never written
+to the session store.
 
 T4 CLI plan checkpoint (2026-08-01): `atlcli research --plan-only` is the
 first host integration of that gate. It creates a SQLite-backed durable session
@@ -3107,12 +3108,27 @@ abort, upstream, or persistence failures and quarantines invalid/late results.
 The transient local adapter remains disposable; recovery and the bounded
 retry/abstain policy still belong to the pending CLI/browser session runner.
 
+T4 durable one-shot host checkpoint (2026-08-01): ordinary CLI runs now create
+the SQLite-backed turn and pass its exact owner to the shared runtime before
+creating the workspace, provider, or agent. The runtime writes the canonical
+Markdown to the durable artifact store before it records terminal completion;
+the CLI still mirrors the completed report to its operator-selected external
+artifact path. The MV3 side panel now creates explicit session/turn/run IDs and
+the service-worker, offscreen, and dedicated-worker protocols preserve them.
+The dedicated worker initializes the IndexedDB turn, uses its virtual workspace,
+and passes the same durable owner to the shared runtime. A fresh production
+bundle E2E proves the terminal IndexedDB session and Markdown bytes, in addition
+to cross-host report equivalence. Resume/retry, expiry recovery, and session UI
+remain pending.
+
 CLI:
 
 - [x] Implement a Bun SQLite session catalog. The physical checkpointer remains
       pending.
 - [x] Use one real directory per retained session, with atomic manifest and
       artifact writes.
+- [x] Create and hand off an accepted durable one-shot turn to the shared CLI
+      runtime, and persist the canonical Markdown artifact before completion.
 - [ ] Add `--session <id>` for a new turn and `--resume <id>` for interrupted
       execution.
 - [x] Add non-interactive `research sessions list` and `show` operations with
@@ -3140,11 +3156,14 @@ CLI:
 
 Extension/browser:
 
-- [ ] Implement IndexedDB session, event, checkpointer, workspace, graph, task,
+- [x] Implement IndexedDB session, event, workspace, graph, task,
       packet, and artifact stores.
-- [ ] Use an explicit database version and blocked-upgrade error path.
-- [ ] Replace run-local ownership with session/turn/run references in the
+- [x] Use an explicit database version and blocked-upgrade error path.
+- [x] Replace run-local ownership with session/turn/run references in the
       service-worker, offscreen, and dedicated-worker protocols.
+- [x] Initialize and hand off an accepted durable one-shot turn to the shared
+      browser runtime, use its virtual workspace, and persist the canonical
+      Markdown artifact before completion.
 - [ ] Recover expired leases at offscreen startup and on an explicit session
       resume.
 - [ ] Persist plan-approval and steering waits before notifying the sidebar;

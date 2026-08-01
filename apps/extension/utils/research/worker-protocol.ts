@@ -10,6 +10,8 @@ import type {
 export type ResearchWorkerRequestV1 = {
   kind: "research-worker:run";
   runId: string;
+  sessionId: string;
+  turnId: string;
   apiKey: string;
   request: ResearchRequestV1;
   policy?: ResearchOneShotPolicyV1;

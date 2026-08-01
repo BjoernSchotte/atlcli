@@ -44,6 +44,8 @@ export interface OffscreenListenerDeps {
   ) => Promise<string | undefined>;
   runResearch?: (
     runId: string,
+    sessionId: string,
+    turnId: string,
     apiKey: string,
     request: ResearchRequestV1,
     policy?: ResearchOneShotPolicyV1,
@@ -192,7 +194,14 @@ export function handleOffscreenMessage(
       break;
     case "offscreen:research-run":
       (deps.runResearch
-        ? deps.runResearch(message.runId, message.apiKey, message.request, message.policy)
+        ? deps.runResearch(
+          message.runId,
+          message.sessionId,
+          message.turnId,
+          message.apiKey,
+          message.request,
+          message.policy,
+        )
         : Promise.reject(new Error("Research worker host is not configured.")))
         .then((report) => sendResponse({
           kind: "offscreen:research-run-result",

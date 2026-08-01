@@ -212,12 +212,14 @@ describe("routeMessage (pure router)", () => {
     expect(await routeMessage({
       kind: "research:run",
       runId: "run-1",
+      sessionId: "research-session:run-1",
+      turnId: "research-turn:run-1",
       windowId: 7,
       request,
       policy,
     }, {
       ...okDeps,
-      runResearch: async (_runId, _windowId, _request, receivedPolicy) => {
+      runResearch: async (_runId, _sessionId, _turnId, _windowId, _request, receivedPolicy) => {
         observed.push(receivedPolicy);
         return researchReport;
       },
@@ -238,6 +240,8 @@ describe("routeMessage (pure router)", () => {
     expect(JSON.stringify({
       kind: "research:run",
       runId: "run-1",
+      sessionId: "research-session:run-1",
+      turnId: "research-turn:run-1",
       windowId: 7,
       request,
       policy,

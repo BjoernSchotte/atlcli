@@ -54,6 +54,8 @@ export interface RouterDeps {
   ) => Promise<string | undefined>;
   runResearch?: (
     runId: string,
+    sessionId: string,
+    turnId: string,
     windowId: number,
     request: ResearchRequestV1,
     policy?: ResearchOneShotPolicyV1,
@@ -159,7 +161,14 @@ export async function routeMessage(
         };
       }
       try {
-        const report = await deps.runResearch(msg.runId, msg.windowId, msg.request, msg.policy);
+        const report = await deps.runResearch(
+          msg.runId,
+          msg.sessionId,
+          msg.turnId,
+          msg.windowId,
+          msg.request,
+          msg.policy,
+        );
         return { kind: "research:run-result", runId: msg.runId, ok: true, report };
       } catch (error) {
         const classified = classifyResearchError(error);

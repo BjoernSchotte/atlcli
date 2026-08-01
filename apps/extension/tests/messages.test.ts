@@ -432,6 +432,8 @@ describe("message guards", () => {
     expect(isOffscreenRequest({
       kind: "offscreen:research-run",
       runId: "run-1",
+      sessionId: "research-session:run-1",
+      turnId: "research-turn:run-1",
       apiKey: "sk-ant-test-message",
       request: {},
     })).toBe(true);
