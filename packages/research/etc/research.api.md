@@ -115,6 +115,7 @@ export declare function createResearchDispatchInterceptionAdapter(options: {
     signal?: AbortSignal;
     invokeUpstream(input: ResearchTaskToolInputV1, config: RunnableConfig): Promise<unknown>;
     projectResult?: (value: unknown) => unknown;
+    projectDependencyResult?: (taskId: string, acceptedResult: unknown) => unknown | undefined;
     acceptResult?: (taskId: string, result: unknown, rawResult: unknown) => void;
     onDiagnostic?: (diagnostic: ResearchDispatchDiagnosticV1) => void;
 }): ResearchDispatchInterceptionAdapter;
@@ -140,6 +141,14 @@ export declare function createResearchScopeBindingV1(input: {
 
 // export: createResearchScopeExpansionProposalV1
 export declare function createResearchScopeExpansionProposalV1(input: Omit<ResearchScopeExpansionProposalV1, "schema">): ResearchScopeExpansionProposalV1;
+
+// export: createResearchSessionV1
+export declare function createResearchSessionV1(input: {
+    sessionId: string;
+    ownerId: string;
+    createdAt: string;
+    leaseExpiresAt: string;
+}): ResearchSessionV1;
 
 // export: createRestResearchBroker
 export declare function createRestResearchBroker(profile: Profile, request: ResearchRequestV1): ResearchCapabilityBroker;
@@ -203,6 +212,42 @@ export declare function finalizeResearchReportV1(report: Omit<ResearchReportV1, 
 
 // export: formatResearchOneShotEventV1
 export declare function formatResearchOneShotEventV1(event: ResearchOneShotEventV1): string;
+
+// export: InMemoryResearchSessionStoreV1
+export declare class InMemoryResearchSessionStoreV1 implements ResearchSessionStoreV1 {
+    #private;
+    constructor(options?: {
+        failureInjection?: ResearchSessionStoreFailureInjectionV1;
+    });
+    create(session: ResearchSessionV1): Promise<ResearchSessionV1>;
+    read(sessionId: string): Promise<ResearchSessionV1 | undefined>;
+    list(input?: {
+        limit?: number;
+        cursor?: string;
+    }): Promise<{
+        sessions: ResearchSessionV1[];
+        nextCursor?: string;
+    }>;
+    commit(sessionId: string, update: ResearchSessionUpdateV1): Promise<ResearchSessionCommitV1>;
+    events(sessionId: string, input?: {
+        afterRevision?: number;
+        limit?: number;
+    }): Promise<ResearchSessionEventV1[]>;
+    checkpoints(sessionId: string, turnId: string): Promise<ResearchSessionCheckpointV1[]>;
+    graph(sessionId: string, turnId: string): Promise<ResearchGraphV1 | undefined>;
+    tasks(sessionId: string, turnId: string): Promise<ResearchTaskAttemptV1[]>;
+    packet(sessionId: string, packetRef: string): Promise<ResearchAcceptedPacketV1 | undefined>;
+    workspace(sessionId: string): Promise<ResearchWorkspace>;
+    replaceOpaqueSourceRefs(sessionId: string, refs: ResearchOpaqueSourceRefV1[]): Promise<void>;
+    opaqueSourceRefs(sessionId: string): Promise<ResearchOpaqueSourceRefV1[]>;
+    writeArtifact(sessionId: string, artifact: ResearchSessionArtifactV1, contents: string): Promise<void>;
+    artifact(sessionId: string, artifactId: string): Promise<{
+        metadata: ResearchSessionArtifactV1;
+        contents: string;
+    } | undefined>;
+    listArtifacts(sessionId: string): Promise<ResearchSessionArtifactV1[]>;
+    eraseDeleted(sessionId: string): Promise<boolean>;
+}
 
 // export: InMemoryResearchSubagentDispatchPort
 export declare class InMemoryResearchSubagentDispatchPort implements ResearchSubagentDispatchPort {
@@ -374,6 +419,9 @@ export declare function reduceResearchAcceptedPacketV1(input: {
 // export: reduceResearchGraphV1
 export declare function reduceResearchGraphV1(graph: ResearchGraphV1, update: ResearchGraphUpdateV1): ResearchGraphV1;
 
+// export: reduceResearchSessionV1
+export declare function reduceResearchSessionV1(value: ResearchSessionV1, update: ResearchSessionUpdateV1): ResearchSessionV1;
+
 // export: reduceResearchTaskAttemptV1
 export declare function reduceResearchTaskAttemptV1(current: ResearchTaskAttemptV1, event: ResearchTaskAttemptEventV1): ResearchTaskAttemptV1;
 
@@ -512,6 +560,9 @@ export declare const RESEARCH_ONE_SHOT_POLICY_SCHEMA_V1: "atlcli.research-one-sh
 
 // export: RESEARCH_ONE_SHOT_REQUEST_PATH_V1
 export declare const RESEARCH_ONE_SHOT_REQUEST_PATH_V1: "/session/request.json";
+
+// export: RESEARCH_OPAQUE_SOURCE_REF_SCHEMA_V1
+export declare const RESEARCH_OPAQUE_SOURCE_REF_SCHEMA_V1: "atlcli.research-opaque-source-ref/v1";
 
 // export: RESEARCH_PACKET_BODY_JSON_SCHEMA_V1
 export declare const RESEARCH_PACKET_BODY_JSON_SCHEMA_V1: Record<string, unknown>;
@@ -673,6 +724,18 @@ export declare const RESEARCH_SCOPE_SOURCES_V1: readonly [
     "exact_link",
     "research_discovery"
 ];
+
+// export: RESEARCH_SESSION_ARTIFACT_SCHEMA_V1
+export declare const RESEARCH_SESSION_ARTIFACT_SCHEMA_V1: "atlcli.research-session-artifact/v1";
+
+// export: RESEARCH_SESSION_CHECKPOINT_SCHEMA_V1
+export declare const RESEARCH_SESSION_CHECKPOINT_SCHEMA_V1: "atlcli.research-session-checkpoint/v1";
+
+// export: RESEARCH_SESSION_EVENT_SCHEMA_V1
+export declare const RESEARCH_SESSION_EVENT_SCHEMA_V1: "atlcli.research-session-event/v1";
+
+// export: RESEARCH_SESSION_SCHEMA_V1
+export declare const RESEARCH_SESSION_SCHEMA_V1: "atlcli.research-session/v1";
 
 // export: RESEARCH_SUBAGENT_ROLE_IDS_V1
 export declare const RESEARCH_SUBAGENT_ROLE_IDS_V1: readonly [
@@ -850,6 +913,13 @@ export declare class ResearchCapabilityBroker {
 
 // export: ResearchCapabilityEventToolIdV1
 export type ResearchCapabilityEventToolIdV1 = (typeof RESEARCH_CAPABILITY_EVENT_TOOL_IDS_V1)[number];
+
+// export: researchCheckpointConfigV1
+export declare function researchCheckpointConfigV1(input: {
+    sessionId: string;
+    checkpointNamespace?: string;
+    checkpointId?: string;
+}): RunnableConfig;
 
 // export: ResearchClarificationQuestionV1
 export interface ResearchClarificationQuestionV1 {
@@ -1409,6 +1479,15 @@ export interface ResearchOneShotPolicyV1 {
     requestedReconciliation: ResearchRequestedReconciliationV1;
 }
 
+// export: ResearchOpaqueSourceRefV1
+export interface ResearchOpaqueSourceRefV1 {
+    schema: typeof RESEARCH_OPAQUE_SOURCE_REF_SCHEMA_V1;
+    id: string;
+    product: "jira" | "confluence";
+    sourceRef: string;
+    capturedAt: string;
+}
+
 // export: ResearchPacketBodyV1
 export interface ResearchPacketBodyV1 {
     schema: typeof RESEARCH_PACKET_BODY_SCHEMA_V1;
@@ -1966,6 +2045,310 @@ export interface ResearchSearchQueryV1 {
     text?: string;
 }
 
+// export: ResearchSessionArtifactV1
+export interface ResearchSessionArtifactV1 {
+    schema: typeof RESEARCH_SESSION_ARTIFACT_SCHEMA_V1;
+    id: string;
+    path: string;
+    contentType: "text/markdown" | "application/json";
+    bytes: number;
+    createdAt: string;
+}
+
+// export: ResearchSessionAssumptionDecisionV1
+export interface ResearchSessionAssumptionDecisionV1 {
+    briefRevision: number;
+    assumptionId: string;
+    decision: "accepted" | "rejected";
+    decidedAt: string;
+}
+
+// export: ResearchSessionCheckpointV1
+export interface ResearchSessionCheckpointV1 {
+    schema: typeof RESEARCH_SESSION_CHECKPOINT_SCHEMA_V1;
+    id: string;
+    sessionRevision: number;
+    turnId: string;
+    graphRevision?: number;
+    kind: "turn_accepted" | "brief" | "plan" | "dispatch" | "packet" | "reconciliation" | "pause" | "terminal";
+    recordedAt: string;
+    artifactRefs: string[];
+}
+
+// export: ResearchSessionClarificationV1
+export interface ResearchSessionClarificationV1 {
+    briefRevision: number;
+    questionId: string;
+    response: string;
+    assumptionId?: string;
+    assumptionDecision?: "accepted" | "rejected";
+    answeredAt: string;
+}
+
+// export: ResearchSessionCommitV1
+export interface ResearchSessionCommitV1 {
+    session: ResearchSessionV1;
+    event: ResearchSessionEventV1;
+}
+
+// export: ResearchSessionEventV1
+export interface ResearchSessionEventV1 {
+    schema: typeof RESEARCH_SESSION_EVENT_SCHEMA_V1;
+    sessionId: string;
+    sessionRevision: number;
+    leaseEpoch: number;
+    kind: ResearchSessionUpdateV1["kind"];
+    status: ResearchSessionV1["status"];
+    turnId?: string;
+    at: string;
+}
+
+// export: ResearchSessionLeaseV1
+export interface ResearchSessionLeaseV1 {
+    epoch: number;
+    ownerId: string;
+    heartbeatAt: string;
+    expiresAt: string;
+}
+
+// export: ResearchSessionMemoryCheckpointerV1
+export declare class ResearchSessionMemoryCheckpointerV1 extends MemorySaver {
+    #private;
+    constructor(sessionId: string);
+    getTuple(config: RunnableConfig): Promise<CheckpointTuple | undefined>;
+    list(config: RunnableConfig, options?: CheckpointListOptions): AsyncGenerator<CheckpointTuple>;
+    put(config: RunnableConfig, checkpoint: Checkpoint, metadata: CheckpointMetadata, _newVersions?: ChannelVersions): Promise<RunnableConfig>;
+    putWrites(config: RunnableConfig, writes: PendingWrite[], taskId: string): Promise<void>;
+    deleteThread(threadId: string): Promise<void>;
+}
+
+// export: ResearchSessionRetentionV1
+export interface ResearchSessionRetentionV1 {
+    state: "active" | "retained" | "deletion_requested" | "deleted";
+    retainedUntil?: string;
+}
+
+// export: ResearchSessionStatusV1
+export type ResearchSessionStatusV1 = "idle" | "planning" | "waiting_clarification" | "waiting_plan_approval" | "waiting_plan_revision" | "waiting_scope_approval" | "waiting_steering" | "pause_requested" | "paused" | "running" | "waiting_authentication" | "waiting_quota" | "cancelling" | "cancelled" | "complete" | "failed" | "deleted";
+
+// export: ResearchSessionSteeringV1
+export interface ResearchSessionSteeringV1 {
+    id: string;
+    request: string;
+    requestedAt: string;
+    acknowledgedAt?: string;
+}
+
+// export: ResearchSessionStoreConformanceFactoryV1
+export interface ResearchSessionStoreConformanceFactoryV1 {
+    create(options?: {
+        failureInjection?: ResearchSessionStoreFailureInjectionV1;
+    }): ResearchSessionStoreV1;
+}
+
+// export: ResearchSessionStoreConformanceResultV1
+export interface ResearchSessionStoreConformanceResultV1 {
+    aggregateCommit: "passed";
+    staleCas: "passed";
+    failureAtomicity: "passed";
+}
+
+// export: ResearchSessionStoreFailureInjectionV1
+export interface ResearchSessionStoreFailureInjectionV1 {
+    onStage?(stage: ResearchSessionStoreFailureStageV1, sessionId: string): void;
+}
+
+// export: ResearchSessionStoreFailureStageV1
+export type ResearchSessionStoreFailureStageV1 = "before_create" | "before_state_commit" | "before_event_append" | "before_artifact_write" | "before_source_ref_write" | "before_delete";
+
+// export: ResearchSessionStoreV1
+export interface ResearchSessionStoreV1 {
+    create(session: ResearchSessionV1): Promise<ResearchSessionV1>;
+    read(sessionId: string): Promise<ResearchSessionV1 | undefined>;
+    list(input?: {
+        limit?: number;
+        cursor?: string;
+    }): Promise<{
+        sessions: ResearchSessionV1[];
+        nextCursor?: string;
+    }>;
+    commit(sessionId: string, update: ResearchSessionUpdateV1): Promise<ResearchSessionCommitV1>;
+    events(sessionId: string, input?: {
+        afterRevision?: number;
+        limit?: number;
+    }): Promise<ResearchSessionEventV1[]>;
+    checkpoints(sessionId: string, turnId: string): Promise<ResearchSessionCheckpointV1[]>;
+    graph(sessionId: string, turnId: string): Promise<ResearchGraphV1 | undefined>;
+    tasks(sessionId: string, turnId: string): Promise<ResearchTaskAttemptV1[]>;
+    packet(sessionId: string, packetRef: string): Promise<ResearchAcceptedPacketV1 | undefined>;
+    workspace(sessionId: string): Promise<ResearchWorkspace>;
+    replaceOpaqueSourceRefs(sessionId: string, refs: ResearchOpaqueSourceRefV1[]): Promise<void>;
+    opaqueSourceRefs(sessionId: string): Promise<ResearchOpaqueSourceRefV1[]>;
+    writeArtifact(sessionId: string, artifact: ResearchSessionArtifactV1, contents: string): Promise<void>;
+    artifact(sessionId: string, artifactId: string): Promise<{
+        metadata: ResearchSessionArtifactV1;
+        contents: string;
+    } | undefined>;
+    listArtifacts(sessionId: string): Promise<ResearchSessionArtifactV1[]>;
+    eraseDeleted(sessionId: string): Promise<boolean>;
+}
+
+// export: ResearchSessionTurnV1
+export interface ResearchSessionTurnV1 {
+    id: string;
+    revision: number;
+    createdAt: string;
+    brief?: ResearchBriefV1;
+    graph?: ResearchGraphV1;
+    scopeCandidates: ResearchScopeCandidateV1[];
+    scopeBindings: ResearchScopeBindingV1[];
+    scopeResolutions: ResearchScopeResolutionV1[];
+    scopeExpansionProposals: ResearchScopeExpansionProposalV1[];
+    clarifications: ResearchSessionClarificationV1[];
+    assumptionDecisions: ResearchSessionAssumptionDecisionV1[];
+    steering: ResearchSessionSteeringV1[];
+    tasks: ResearchTaskAttemptV1[];
+    acceptedPackets: ResearchAcceptedPacketV1[];
+    reconciliationDispositions: ResearchReconciliationDispositionV1[];
+    checkpoints: ResearchSessionCheckpointV1[];
+    pauseRequestedAt?: string;
+    pausedAt?: string;
+    completedAt?: string;
+    cancelledAt?: string;
+    failureReason?: string;
+}
+
+// export: ResearchSessionUpdateV1
+export type ResearchSessionUpdateV1 = (ResearchSessionFencedUpdateV1 & {
+    kind: "create_turn";
+    turnId: string;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "record_brief";
+    brief: ResearchBriefV1;
+    scopeCandidates?: ResearchScopeCandidateV1[];
+    scopeBindings?: ResearchScopeBindingV1[];
+    scopeResolutions?: ResearchScopeResolutionV1[];
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "propose_graph";
+    graph: ResearchGraphV1;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "approve_graph";
+    graphRevision: number;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "revise_graph";
+    graph: ResearchGraphV1;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "record_clarification";
+    briefRevision: number;
+    questionId: string;
+    response: string;
+    assumptionId?: string;
+    assumptionDecision?: "accepted" | "rejected";
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "record_assumption_decision";
+    briefRevision: number;
+    assumptionId: string;
+    decision: "accepted" | "rejected";
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "reject_plan";
+    graphRevision: number;
+    reason: string;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "propose_scope_expansion";
+    proposal: ResearchScopeExpansionProposalV1;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "approve_scope_expansion";
+    proposalId: string;
+    binding: ResearchScopeBindingV1;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "reject_scope_expansion";
+    proposalId: string;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "request_steering";
+    steeringId: string;
+    request: string;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "acknowledge_steering";
+    steeringId: string;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "request_pause";
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "acknowledge_pause";
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "admit_tasks";
+    graphRevision: number;
+    tasks: ResearchTaskAttemptV1[];
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "dispatch_started";
+    taskId: string;
+    graphRevision: number;
+    providerRequestId?: string;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "outcome_unknown";
+    taskId: string;
+    graphRevision: number;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "accept_packet";
+    taskId: string;
+    graphRevision: number;
+    body: unknown;
+    usage: ResearchTaskUsageV1;
+    availableSourceIds: string[];
+    maximumResultBytes: number;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "quarantine_packet";
+    taskId: string;
+    graphRevision: number;
+    reason: string;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "record_reconciliation";
+    disposition: unknown;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "record_checkpoint";
+    checkpoint: Omit<ResearchSessionCheckpointV1, "schema" | "sessionRevision">;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "resume";
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "wait_authentication";
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "wait_quota";
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "heartbeat";
+    leaseExpiresAt: string;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "recover";
+    ownerId: string;
+    expiresAt: string;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "cancel";
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "complete";
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "fail";
+    reason: string;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "retain";
+    retainedUntil?: string;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "request_deletion";
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "delete";
+});
+
+// export: ResearchSessionV1
+export interface ResearchSessionV1 {
+    schema: typeof RESEARCH_SESSION_SCHEMA_V1;
+    sessionId: string;
+    revision: number;
+    status: ResearchSessionStatusV1;
+    lease: ResearchSessionLeaseV1;
+    retention: ResearchSessionRetentionV1;
+    activeTurnId?: string;
+    turns: ResearchSessionTurnV1[];
+    createdAt: string;
+    updatedAt: string;
+}
+
 // export: ResearchSourceReferenceV1
 export interface ResearchSourceReferenceV1 {
     id: string;
@@ -2118,6 +2501,9 @@ export interface ResearchTaskUsageV1 {
 // export: ResearchTerminationCode
 export type ResearchTerminationCode = "index-exhausted" | "item-limit" | "page-limit" | "http-limit" | "response-byte-limit";
 
+// export: researchThreadIdForSessionV1
+export declare function researchThreadIdForSessionV1(sessionId: string): string;
+
 // export: ResearchTimeWindowV1
 export interface ResearchTimeWindowV1 {
     from?: string;
@@ -2205,6 +2591,9 @@ export declare function validateResearchTaskAdmissionV1(input: {
 
 // export: validateResearchTaskUsageV1
 export declare function validateResearchTaskUsageV1(usage: ResearchTaskUsageV1, budget: ResearchNodeBudgetV1): void;
+
+// export: verifyResearchSessionStoreConformanceV1
+export declare function verifyResearchSessionStoreConformanceV1(factory: ResearchSessionStoreConformanceFactoryV1, prefix?: string): Promise<ResearchSessionStoreConformanceResultV1>;
 
 // export: WikiResearchDetail
 export interface WikiResearchDetail extends WikiResearchSummary {
@@ -2332,6 +2721,7 @@ export declare function createResearchDispatchInterceptionAdapter(options: {
     signal?: AbortSignal;
     invokeUpstream(input: ResearchTaskToolInputV1, config: RunnableConfig): Promise<unknown>;
     projectResult?: (value: unknown) => unknown;
+    projectDependencyResult?: (taskId: string, acceptedResult: unknown) => unknown | undefined;
     acceptResult?: (taskId: string, result: unknown, rawResult: unknown) => void;
     onDiagnostic?: (diagnostic: ResearchDispatchDiagnosticV1) => void;
 }): ResearchDispatchInterceptionAdapter;
@@ -2357,6 +2747,14 @@ export declare function createResearchScopeBindingV1(input: {
 
 // export: createResearchScopeExpansionProposalV1
 export declare function createResearchScopeExpansionProposalV1(input: Omit<ResearchScopeExpansionProposalV1, "schema">): ResearchScopeExpansionProposalV1;
+
+// export: createResearchSessionV1
+export declare function createResearchSessionV1(input: {
+    sessionId: string;
+    ownerId: string;
+    createdAt: string;
+    leaseExpiresAt: string;
+}): ResearchSessionV1;
 
 // export: createStandardResearchBriefV1
 export declare function createStandardResearchBriefV1(question: string, options?: ComposeStandardResearchGraphOptionsV1): ResearchBriefV1;
@@ -2411,6 +2809,42 @@ export declare function finalizeResearchReportV1(report: Omit<ResearchReportV1, 
 
 // export: formatResearchOneShotEventV1
 export declare function formatResearchOneShotEventV1(event: ResearchOneShotEventV1): string;
+
+// export: InMemoryResearchSessionStoreV1
+export declare class InMemoryResearchSessionStoreV1 implements ResearchSessionStoreV1 {
+    #private;
+    constructor(options?: {
+        failureInjection?: ResearchSessionStoreFailureInjectionV1;
+    });
+    create(session: ResearchSessionV1): Promise<ResearchSessionV1>;
+    read(sessionId: string): Promise<ResearchSessionV1 | undefined>;
+    list(input?: {
+        limit?: number;
+        cursor?: string;
+    }): Promise<{
+        sessions: ResearchSessionV1[];
+        nextCursor?: string;
+    }>;
+    commit(sessionId: string, update: ResearchSessionUpdateV1): Promise<ResearchSessionCommitV1>;
+    events(sessionId: string, input?: {
+        afterRevision?: number;
+        limit?: number;
+    }): Promise<ResearchSessionEventV1[]>;
+    checkpoints(sessionId: string, turnId: string): Promise<ResearchSessionCheckpointV1[]>;
+    graph(sessionId: string, turnId: string): Promise<ResearchGraphV1 | undefined>;
+    tasks(sessionId: string, turnId: string): Promise<ResearchTaskAttemptV1[]>;
+    packet(sessionId: string, packetRef: string): Promise<ResearchAcceptedPacketV1 | undefined>;
+    workspace(sessionId: string): Promise<ResearchWorkspace>;
+    replaceOpaqueSourceRefs(sessionId: string, refs: ResearchOpaqueSourceRefV1[]): Promise<void>;
+    opaqueSourceRefs(sessionId: string): Promise<ResearchOpaqueSourceRefV1[]>;
+    writeArtifact(sessionId: string, artifact: ResearchSessionArtifactV1, contents: string): Promise<void>;
+    artifact(sessionId: string, artifactId: string): Promise<{
+        metadata: ResearchSessionArtifactV1;
+        contents: string;
+    } | undefined>;
+    listArtifacts(sessionId: string): Promise<ResearchSessionArtifactV1[]>;
+    eraseDeleted(sessionId: string): Promise<boolean>;
+}
 
 // export: InMemoryResearchSubagentDispatchPort
 export declare class InMemoryResearchSubagentDispatchPort implements ResearchSubagentDispatchPort {
@@ -2582,6 +3016,9 @@ export declare function reduceResearchAcceptedPacketV1(input: {
 // export: reduceResearchGraphV1
 export declare function reduceResearchGraphV1(graph: ResearchGraphV1, update: ResearchGraphUpdateV1): ResearchGraphV1;
 
+// export: reduceResearchSessionV1
+export declare function reduceResearchSessionV1(value: ResearchSessionV1, update: ResearchSessionUpdateV1): ResearchSessionV1;
+
 // export: reduceResearchTaskAttemptV1
 export declare function reduceResearchTaskAttemptV1(current: ResearchTaskAttemptV1, event: ResearchTaskAttemptEventV1): ResearchTaskAttemptV1;
 
@@ -2720,6 +3157,9 @@ export declare const RESEARCH_ONE_SHOT_POLICY_SCHEMA_V1: "atlcli.research-one-sh
 
 // export: RESEARCH_ONE_SHOT_REQUEST_PATH_V1
 export declare const RESEARCH_ONE_SHOT_REQUEST_PATH_V1: "/session/request.json";
+
+// export: RESEARCH_OPAQUE_SOURCE_REF_SCHEMA_V1
+export declare const RESEARCH_OPAQUE_SOURCE_REF_SCHEMA_V1: "atlcli.research-opaque-source-ref/v1";
 
 // export: RESEARCH_PACKET_BODY_JSON_SCHEMA_V1
 export declare const RESEARCH_PACKET_BODY_JSON_SCHEMA_V1: Record<string, unknown>;
@@ -2881,6 +3321,18 @@ export declare const RESEARCH_SCOPE_SOURCES_V1: readonly [
     "exact_link",
     "research_discovery"
 ];
+
+// export: RESEARCH_SESSION_ARTIFACT_SCHEMA_V1
+export declare const RESEARCH_SESSION_ARTIFACT_SCHEMA_V1: "atlcli.research-session-artifact/v1";
+
+// export: RESEARCH_SESSION_CHECKPOINT_SCHEMA_V1
+export declare const RESEARCH_SESSION_CHECKPOINT_SCHEMA_V1: "atlcli.research-session-checkpoint/v1";
+
+// export: RESEARCH_SESSION_EVENT_SCHEMA_V1
+export declare const RESEARCH_SESSION_EVENT_SCHEMA_V1: "atlcli.research-session-event/v1";
+
+// export: RESEARCH_SESSION_SCHEMA_V1
+export declare const RESEARCH_SESSION_SCHEMA_V1: "atlcli.research-session/v1";
 
 // export: RESEARCH_SUBAGENT_ROLE_IDS_V1
 export declare const RESEARCH_SUBAGENT_ROLE_IDS_V1: readonly [
@@ -3058,6 +3510,13 @@ export declare class ResearchCapabilityBroker {
 
 // export: ResearchCapabilityEventToolIdV1
 export type ResearchCapabilityEventToolIdV1 = (typeof RESEARCH_CAPABILITY_EVENT_TOOL_IDS_V1)[number];
+
+// export: researchCheckpointConfigV1
+export declare function researchCheckpointConfigV1(input: {
+    sessionId: string;
+    checkpointNamespace?: string;
+    checkpointId?: string;
+}): RunnableConfig;
 
 // export: ResearchClarificationQuestionV1
 export interface ResearchClarificationQuestionV1 {
@@ -3617,6 +4076,15 @@ export interface ResearchOneShotPolicyV1 {
     requestedReconciliation: ResearchRequestedReconciliationV1;
 }
 
+// export: ResearchOpaqueSourceRefV1
+export interface ResearchOpaqueSourceRefV1 {
+    schema: typeof RESEARCH_OPAQUE_SOURCE_REF_SCHEMA_V1;
+    id: string;
+    product: "jira" | "confluence";
+    sourceRef: string;
+    capturedAt: string;
+}
+
 // export: ResearchPacketBodyV1
 export interface ResearchPacketBodyV1 {
     schema: typeof RESEARCH_PACKET_BODY_SCHEMA_V1;
@@ -4174,6 +4642,310 @@ export interface ResearchSearchQueryV1 {
     text?: string;
 }
 
+// export: ResearchSessionArtifactV1
+export interface ResearchSessionArtifactV1 {
+    schema: typeof RESEARCH_SESSION_ARTIFACT_SCHEMA_V1;
+    id: string;
+    path: string;
+    contentType: "text/markdown" | "application/json";
+    bytes: number;
+    createdAt: string;
+}
+
+// export: ResearchSessionAssumptionDecisionV1
+export interface ResearchSessionAssumptionDecisionV1 {
+    briefRevision: number;
+    assumptionId: string;
+    decision: "accepted" | "rejected";
+    decidedAt: string;
+}
+
+// export: ResearchSessionCheckpointV1
+export interface ResearchSessionCheckpointV1 {
+    schema: typeof RESEARCH_SESSION_CHECKPOINT_SCHEMA_V1;
+    id: string;
+    sessionRevision: number;
+    turnId: string;
+    graphRevision?: number;
+    kind: "turn_accepted" | "brief" | "plan" | "dispatch" | "packet" | "reconciliation" | "pause" | "terminal";
+    recordedAt: string;
+    artifactRefs: string[];
+}
+
+// export: ResearchSessionClarificationV1
+export interface ResearchSessionClarificationV1 {
+    briefRevision: number;
+    questionId: string;
+    response: string;
+    assumptionId?: string;
+    assumptionDecision?: "accepted" | "rejected";
+    answeredAt: string;
+}
+
+// export: ResearchSessionCommitV1
+export interface ResearchSessionCommitV1 {
+    session: ResearchSessionV1;
+    event: ResearchSessionEventV1;
+}
+
+// export: ResearchSessionEventV1
+export interface ResearchSessionEventV1 {
+    schema: typeof RESEARCH_SESSION_EVENT_SCHEMA_V1;
+    sessionId: string;
+    sessionRevision: number;
+    leaseEpoch: number;
+    kind: ResearchSessionUpdateV1["kind"];
+    status: ResearchSessionV1["status"];
+    turnId?: string;
+    at: string;
+}
+
+// export: ResearchSessionLeaseV1
+export interface ResearchSessionLeaseV1 {
+    epoch: number;
+    ownerId: string;
+    heartbeatAt: string;
+    expiresAt: string;
+}
+
+// export: ResearchSessionMemoryCheckpointerV1
+export declare class ResearchSessionMemoryCheckpointerV1 extends MemorySaver {
+    #private;
+    constructor(sessionId: string);
+    getTuple(config: RunnableConfig): Promise<CheckpointTuple | undefined>;
+    list(config: RunnableConfig, options?: CheckpointListOptions): AsyncGenerator<CheckpointTuple>;
+    put(config: RunnableConfig, checkpoint: Checkpoint, metadata: CheckpointMetadata, _newVersions?: ChannelVersions): Promise<RunnableConfig>;
+    putWrites(config: RunnableConfig, writes: PendingWrite[], taskId: string): Promise<void>;
+    deleteThread(threadId: string): Promise<void>;
+}
+
+// export: ResearchSessionRetentionV1
+export interface ResearchSessionRetentionV1 {
+    state: "active" | "retained" | "deletion_requested" | "deleted";
+    retainedUntil?: string;
+}
+
+// export: ResearchSessionStatusV1
+export type ResearchSessionStatusV1 = "idle" | "planning" | "waiting_clarification" | "waiting_plan_approval" | "waiting_plan_revision" | "waiting_scope_approval" | "waiting_steering" | "pause_requested" | "paused" | "running" | "waiting_authentication" | "waiting_quota" | "cancelling" | "cancelled" | "complete" | "failed" | "deleted";
+
+// export: ResearchSessionSteeringV1
+export interface ResearchSessionSteeringV1 {
+    id: string;
+    request: string;
+    requestedAt: string;
+    acknowledgedAt?: string;
+}
+
+// export: ResearchSessionStoreConformanceFactoryV1
+export interface ResearchSessionStoreConformanceFactoryV1 {
+    create(options?: {
+        failureInjection?: ResearchSessionStoreFailureInjectionV1;
+    }): ResearchSessionStoreV1;
+}
+
+// export: ResearchSessionStoreConformanceResultV1
+export interface ResearchSessionStoreConformanceResultV1 {
+    aggregateCommit: "passed";
+    staleCas: "passed";
+    failureAtomicity: "passed";
+}
+
+// export: ResearchSessionStoreFailureInjectionV1
+export interface ResearchSessionStoreFailureInjectionV1 {
+    onStage?(stage: ResearchSessionStoreFailureStageV1, sessionId: string): void;
+}
+
+// export: ResearchSessionStoreFailureStageV1
+export type ResearchSessionStoreFailureStageV1 = "before_create" | "before_state_commit" | "before_event_append" | "before_artifact_write" | "before_source_ref_write" | "before_delete";
+
+// export: ResearchSessionStoreV1
+export interface ResearchSessionStoreV1 {
+    create(session: ResearchSessionV1): Promise<ResearchSessionV1>;
+    read(sessionId: string): Promise<ResearchSessionV1 | undefined>;
+    list(input?: {
+        limit?: number;
+        cursor?: string;
+    }): Promise<{
+        sessions: ResearchSessionV1[];
+        nextCursor?: string;
+    }>;
+    commit(sessionId: string, update: ResearchSessionUpdateV1): Promise<ResearchSessionCommitV1>;
+    events(sessionId: string, input?: {
+        afterRevision?: number;
+        limit?: number;
+    }): Promise<ResearchSessionEventV1[]>;
+    checkpoints(sessionId: string, turnId: string): Promise<ResearchSessionCheckpointV1[]>;
+    graph(sessionId: string, turnId: string): Promise<ResearchGraphV1 | undefined>;
+    tasks(sessionId: string, turnId: string): Promise<ResearchTaskAttemptV1[]>;
+    packet(sessionId: string, packetRef: string): Promise<ResearchAcceptedPacketV1 | undefined>;
+    workspace(sessionId: string): Promise<ResearchWorkspace>;
+    replaceOpaqueSourceRefs(sessionId: string, refs: ResearchOpaqueSourceRefV1[]): Promise<void>;
+    opaqueSourceRefs(sessionId: string): Promise<ResearchOpaqueSourceRefV1[]>;
+    writeArtifact(sessionId: string, artifact: ResearchSessionArtifactV1, contents: string): Promise<void>;
+    artifact(sessionId: string, artifactId: string): Promise<{
+        metadata: ResearchSessionArtifactV1;
+        contents: string;
+    } | undefined>;
+    listArtifacts(sessionId: string): Promise<ResearchSessionArtifactV1[]>;
+    eraseDeleted(sessionId: string): Promise<boolean>;
+}
+
+// export: ResearchSessionTurnV1
+export interface ResearchSessionTurnV1 {
+    id: string;
+    revision: number;
+    createdAt: string;
+    brief?: ResearchBriefV1;
+    graph?: ResearchGraphV1;
+    scopeCandidates: ResearchScopeCandidateV1[];
+    scopeBindings: ResearchScopeBindingV1[];
+    scopeResolutions: ResearchScopeResolutionV1[];
+    scopeExpansionProposals: ResearchScopeExpansionProposalV1[];
+    clarifications: ResearchSessionClarificationV1[];
+    assumptionDecisions: ResearchSessionAssumptionDecisionV1[];
+    steering: ResearchSessionSteeringV1[];
+    tasks: ResearchTaskAttemptV1[];
+    acceptedPackets: ResearchAcceptedPacketV1[];
+    reconciliationDispositions: ResearchReconciliationDispositionV1[];
+    checkpoints: ResearchSessionCheckpointV1[];
+    pauseRequestedAt?: string;
+    pausedAt?: string;
+    completedAt?: string;
+    cancelledAt?: string;
+    failureReason?: string;
+}
+
+// export: ResearchSessionUpdateV1
+export type ResearchSessionUpdateV1 = (ResearchSessionFencedUpdateV1 & {
+    kind: "create_turn";
+    turnId: string;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "record_brief";
+    brief: ResearchBriefV1;
+    scopeCandidates?: ResearchScopeCandidateV1[];
+    scopeBindings?: ResearchScopeBindingV1[];
+    scopeResolutions?: ResearchScopeResolutionV1[];
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "propose_graph";
+    graph: ResearchGraphV1;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "approve_graph";
+    graphRevision: number;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "revise_graph";
+    graph: ResearchGraphV1;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "record_clarification";
+    briefRevision: number;
+    questionId: string;
+    response: string;
+    assumptionId?: string;
+    assumptionDecision?: "accepted" | "rejected";
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "record_assumption_decision";
+    briefRevision: number;
+    assumptionId: string;
+    decision: "accepted" | "rejected";
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "reject_plan";
+    graphRevision: number;
+    reason: string;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "propose_scope_expansion";
+    proposal: ResearchScopeExpansionProposalV1;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "approve_scope_expansion";
+    proposalId: string;
+    binding: ResearchScopeBindingV1;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "reject_scope_expansion";
+    proposalId: string;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "request_steering";
+    steeringId: string;
+    request: string;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "acknowledge_steering";
+    steeringId: string;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "request_pause";
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "acknowledge_pause";
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "admit_tasks";
+    graphRevision: number;
+    tasks: ResearchTaskAttemptV1[];
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "dispatch_started";
+    taskId: string;
+    graphRevision: number;
+    providerRequestId?: string;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "outcome_unknown";
+    taskId: string;
+    graphRevision: number;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "accept_packet";
+    taskId: string;
+    graphRevision: number;
+    body: unknown;
+    usage: ResearchTaskUsageV1;
+    availableSourceIds: string[];
+    maximumResultBytes: number;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "quarantine_packet";
+    taskId: string;
+    graphRevision: number;
+    reason: string;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "record_reconciliation";
+    disposition: unknown;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "record_checkpoint";
+    checkpoint: Omit<ResearchSessionCheckpointV1, "schema" | "sessionRevision">;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "resume";
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "wait_authentication";
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "wait_quota";
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "heartbeat";
+    leaseExpiresAt: string;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "recover";
+    ownerId: string;
+    expiresAt: string;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "cancel";
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "complete";
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "fail";
+    reason: string;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "retain";
+    retainedUntil?: string;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "request_deletion";
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "delete";
+});
+
+// export: ResearchSessionV1
+export interface ResearchSessionV1 {
+    schema: typeof RESEARCH_SESSION_SCHEMA_V1;
+    sessionId: string;
+    revision: number;
+    status: ResearchSessionStatusV1;
+    lease: ResearchSessionLeaseV1;
+    retention: ResearchSessionRetentionV1;
+    activeTurnId?: string;
+    turns: ResearchSessionTurnV1[];
+    createdAt: string;
+    updatedAt: string;
+}
+
 // export: ResearchSourceReferenceV1
 export interface ResearchSourceReferenceV1 {
     id: string;
@@ -4326,6 +5098,9 @@ export interface ResearchTaskUsageV1 {
 // export: ResearchTerminationCode
 export type ResearchTerminationCode = "index-exhausted" | "item-limit" | "page-limit" | "http-limit" | "response-byte-limit";
 
+// export: researchThreadIdForSessionV1
+export declare function researchThreadIdForSessionV1(sessionId: string): string;
+
 // export: ResearchTimeWindowV1
 export interface ResearchTimeWindowV1 {
     from?: string;
@@ -4402,6 +5177,9 @@ export declare function validateResearchTaskAdmissionV1(input: {
 
 // export: validateResearchTaskUsageV1
 export declare function validateResearchTaskUsageV1(usage: ResearchTaskUsageV1, budget: ResearchNodeBudgetV1): void;
+
+// export: verifyResearchSessionStoreConformanceV1
+export declare function verifyResearchSessionStoreConformanceV1(factory: ResearchSessionStoreConformanceFactoryV1, prefix?: string): Promise<ResearchSessionStoreConformanceResultV1>;
 
 // export: WikiResearchDetail
 export interface WikiResearchDetail extends WikiResearchSummary {
@@ -4529,6 +5307,7 @@ export declare function createResearchDispatchInterceptionAdapter(options: {
     signal?: AbortSignal;
     invokeUpstream(input: ResearchTaskToolInputV1, config: RunnableConfig): Promise<unknown>;
     projectResult?: (value: unknown) => unknown;
+    projectDependencyResult?: (taskId: string, acceptedResult: unknown) => unknown | undefined;
     acceptResult?: (taskId: string, result: unknown, rawResult: unknown) => void;
     onDiagnostic?: (diagnostic: ResearchDispatchDiagnosticV1) => void;
 }): ResearchDispatchInterceptionAdapter;
@@ -4554,6 +5333,14 @@ export declare function createResearchScopeBindingV1(input: {
 
 // export: createResearchScopeExpansionProposalV1
 export declare function createResearchScopeExpansionProposalV1(input: Omit<ResearchScopeExpansionProposalV1, "schema">): ResearchScopeExpansionProposalV1;
+
+// export: createResearchSessionV1
+export declare function createResearchSessionV1(input: {
+    sessionId: string;
+    ownerId: string;
+    createdAt: string;
+    leaseExpiresAt: string;
+}): ResearchSessionV1;
 
 // export: createRestResearchBroker
 export declare function createRestResearchBroker(profile: Profile, request: ResearchRequestV1): ResearchCapabilityBroker;
@@ -4617,6 +5404,42 @@ export declare function finalizeResearchReportV1(report: Omit<ResearchReportV1, 
 
 // export: formatResearchOneShotEventV1
 export declare function formatResearchOneShotEventV1(event: ResearchOneShotEventV1): string;
+
+// export: InMemoryResearchSessionStoreV1
+export declare class InMemoryResearchSessionStoreV1 implements ResearchSessionStoreV1 {
+    #private;
+    constructor(options?: {
+        failureInjection?: ResearchSessionStoreFailureInjectionV1;
+    });
+    create(session: ResearchSessionV1): Promise<ResearchSessionV1>;
+    read(sessionId: string): Promise<ResearchSessionV1 | undefined>;
+    list(input?: {
+        limit?: number;
+        cursor?: string;
+    }): Promise<{
+        sessions: ResearchSessionV1[];
+        nextCursor?: string;
+    }>;
+    commit(sessionId: string, update: ResearchSessionUpdateV1): Promise<ResearchSessionCommitV1>;
+    events(sessionId: string, input?: {
+        afterRevision?: number;
+        limit?: number;
+    }): Promise<ResearchSessionEventV1[]>;
+    checkpoints(sessionId: string, turnId: string): Promise<ResearchSessionCheckpointV1[]>;
+    graph(sessionId: string, turnId: string): Promise<ResearchGraphV1 | undefined>;
+    tasks(sessionId: string, turnId: string): Promise<ResearchTaskAttemptV1[]>;
+    packet(sessionId: string, packetRef: string): Promise<ResearchAcceptedPacketV1 | undefined>;
+    workspace(sessionId: string): Promise<ResearchWorkspace>;
+    replaceOpaqueSourceRefs(sessionId: string, refs: ResearchOpaqueSourceRefV1[]): Promise<void>;
+    opaqueSourceRefs(sessionId: string): Promise<ResearchOpaqueSourceRefV1[]>;
+    writeArtifact(sessionId: string, artifact: ResearchSessionArtifactV1, contents: string): Promise<void>;
+    artifact(sessionId: string, artifactId: string): Promise<{
+        metadata: ResearchSessionArtifactV1;
+        contents: string;
+    } | undefined>;
+    listArtifacts(sessionId: string): Promise<ResearchSessionArtifactV1[]>;
+    eraseDeleted(sessionId: string): Promise<boolean>;
+}
 
 // export: InMemoryResearchSubagentDispatchPort
 export declare class InMemoryResearchSubagentDispatchPort implements ResearchSubagentDispatchPort {
@@ -4788,6 +5611,9 @@ export declare function reduceResearchAcceptedPacketV1(input: {
 // export: reduceResearchGraphV1
 export declare function reduceResearchGraphV1(graph: ResearchGraphV1, update: ResearchGraphUpdateV1): ResearchGraphV1;
 
+// export: reduceResearchSessionV1
+export declare function reduceResearchSessionV1(value: ResearchSessionV1, update: ResearchSessionUpdateV1): ResearchSessionV1;
+
 // export: reduceResearchTaskAttemptV1
 export declare function reduceResearchTaskAttemptV1(current: ResearchTaskAttemptV1, event: ResearchTaskAttemptEventV1): ResearchTaskAttemptV1;
 
@@ -4926,6 +5752,9 @@ export declare const RESEARCH_ONE_SHOT_POLICY_SCHEMA_V1: "atlcli.research-one-sh
 
 // export: RESEARCH_ONE_SHOT_REQUEST_PATH_V1
 export declare const RESEARCH_ONE_SHOT_REQUEST_PATH_V1: "/session/request.json";
+
+// export: RESEARCH_OPAQUE_SOURCE_REF_SCHEMA_V1
+export declare const RESEARCH_OPAQUE_SOURCE_REF_SCHEMA_V1: "atlcli.research-opaque-source-ref/v1";
 
 // export: RESEARCH_PACKET_BODY_JSON_SCHEMA_V1
 export declare const RESEARCH_PACKET_BODY_JSON_SCHEMA_V1: Record<string, unknown>;
@@ -5087,6 +5916,18 @@ export declare const RESEARCH_SCOPE_SOURCES_V1: readonly [
     "exact_link",
     "research_discovery"
 ];
+
+// export: RESEARCH_SESSION_ARTIFACT_SCHEMA_V1
+export declare const RESEARCH_SESSION_ARTIFACT_SCHEMA_V1: "atlcli.research-session-artifact/v1";
+
+// export: RESEARCH_SESSION_CHECKPOINT_SCHEMA_V1
+export declare const RESEARCH_SESSION_CHECKPOINT_SCHEMA_V1: "atlcli.research-session-checkpoint/v1";
+
+// export: RESEARCH_SESSION_EVENT_SCHEMA_V1
+export declare const RESEARCH_SESSION_EVENT_SCHEMA_V1: "atlcli.research-session-event/v1";
+
+// export: RESEARCH_SESSION_SCHEMA_V1
+export declare const RESEARCH_SESSION_SCHEMA_V1: "atlcli.research-session/v1";
 
 // export: RESEARCH_SUBAGENT_ROLE_IDS_V1
 export declare const RESEARCH_SUBAGENT_ROLE_IDS_V1: readonly [
@@ -5264,6 +6105,13 @@ export declare class ResearchCapabilityBroker {
 
 // export: ResearchCapabilityEventToolIdV1
 export type ResearchCapabilityEventToolIdV1 = (typeof RESEARCH_CAPABILITY_EVENT_TOOL_IDS_V1)[number];
+
+// export: researchCheckpointConfigV1
+export declare function researchCheckpointConfigV1(input: {
+    sessionId: string;
+    checkpointNamespace?: string;
+    checkpointId?: string;
+}): RunnableConfig;
 
 // export: ResearchClarificationQuestionV1
 export interface ResearchClarificationQuestionV1 {
@@ -5823,6 +6671,15 @@ export interface ResearchOneShotPolicyV1 {
     requestedReconciliation: ResearchRequestedReconciliationV1;
 }
 
+// export: ResearchOpaqueSourceRefV1
+export interface ResearchOpaqueSourceRefV1 {
+    schema: typeof RESEARCH_OPAQUE_SOURCE_REF_SCHEMA_V1;
+    id: string;
+    product: "jira" | "confluence";
+    sourceRef: string;
+    capturedAt: string;
+}
+
 // export: ResearchPacketBodyV1
 export interface ResearchPacketBodyV1 {
     schema: typeof RESEARCH_PACKET_BODY_SCHEMA_V1;
@@ -6380,6 +7237,310 @@ export interface ResearchSearchQueryV1 {
     text?: string;
 }
 
+// export: ResearchSessionArtifactV1
+export interface ResearchSessionArtifactV1 {
+    schema: typeof RESEARCH_SESSION_ARTIFACT_SCHEMA_V1;
+    id: string;
+    path: string;
+    contentType: "text/markdown" | "application/json";
+    bytes: number;
+    createdAt: string;
+}
+
+// export: ResearchSessionAssumptionDecisionV1
+export interface ResearchSessionAssumptionDecisionV1 {
+    briefRevision: number;
+    assumptionId: string;
+    decision: "accepted" | "rejected";
+    decidedAt: string;
+}
+
+// export: ResearchSessionCheckpointV1
+export interface ResearchSessionCheckpointV1 {
+    schema: typeof RESEARCH_SESSION_CHECKPOINT_SCHEMA_V1;
+    id: string;
+    sessionRevision: number;
+    turnId: string;
+    graphRevision?: number;
+    kind: "turn_accepted" | "brief" | "plan" | "dispatch" | "packet" | "reconciliation" | "pause" | "terminal";
+    recordedAt: string;
+    artifactRefs: string[];
+}
+
+// export: ResearchSessionClarificationV1
+export interface ResearchSessionClarificationV1 {
+    briefRevision: number;
+    questionId: string;
+    response: string;
+    assumptionId?: string;
+    assumptionDecision?: "accepted" | "rejected";
+    answeredAt: string;
+}
+
+// export: ResearchSessionCommitV1
+export interface ResearchSessionCommitV1 {
+    session: ResearchSessionV1;
+    event: ResearchSessionEventV1;
+}
+
+// export: ResearchSessionEventV1
+export interface ResearchSessionEventV1 {
+    schema: typeof RESEARCH_SESSION_EVENT_SCHEMA_V1;
+    sessionId: string;
+    sessionRevision: number;
+    leaseEpoch: number;
+    kind: ResearchSessionUpdateV1["kind"];
+    status: ResearchSessionV1["status"];
+    turnId?: string;
+    at: string;
+}
+
+// export: ResearchSessionLeaseV1
+export interface ResearchSessionLeaseV1 {
+    epoch: number;
+    ownerId: string;
+    heartbeatAt: string;
+    expiresAt: string;
+}
+
+// export: ResearchSessionMemoryCheckpointerV1
+export declare class ResearchSessionMemoryCheckpointerV1 extends MemorySaver {
+    #private;
+    constructor(sessionId: string);
+    getTuple(config: RunnableConfig): Promise<CheckpointTuple | undefined>;
+    list(config: RunnableConfig, options?: CheckpointListOptions): AsyncGenerator<CheckpointTuple>;
+    put(config: RunnableConfig, checkpoint: Checkpoint, metadata: CheckpointMetadata, _newVersions?: ChannelVersions): Promise<RunnableConfig>;
+    putWrites(config: RunnableConfig, writes: PendingWrite[], taskId: string): Promise<void>;
+    deleteThread(threadId: string): Promise<void>;
+}
+
+// export: ResearchSessionRetentionV1
+export interface ResearchSessionRetentionV1 {
+    state: "active" | "retained" | "deletion_requested" | "deleted";
+    retainedUntil?: string;
+}
+
+// export: ResearchSessionStatusV1
+export type ResearchSessionStatusV1 = "idle" | "planning" | "waiting_clarification" | "waiting_plan_approval" | "waiting_plan_revision" | "waiting_scope_approval" | "waiting_steering" | "pause_requested" | "paused" | "running" | "waiting_authentication" | "waiting_quota" | "cancelling" | "cancelled" | "complete" | "failed" | "deleted";
+
+// export: ResearchSessionSteeringV1
+export interface ResearchSessionSteeringV1 {
+    id: string;
+    request: string;
+    requestedAt: string;
+    acknowledgedAt?: string;
+}
+
+// export: ResearchSessionStoreConformanceFactoryV1
+export interface ResearchSessionStoreConformanceFactoryV1 {
+    create(options?: {
+        failureInjection?: ResearchSessionStoreFailureInjectionV1;
+    }): ResearchSessionStoreV1;
+}
+
+// export: ResearchSessionStoreConformanceResultV1
+export interface ResearchSessionStoreConformanceResultV1 {
+    aggregateCommit: "passed";
+    staleCas: "passed";
+    failureAtomicity: "passed";
+}
+
+// export: ResearchSessionStoreFailureInjectionV1
+export interface ResearchSessionStoreFailureInjectionV1 {
+    onStage?(stage: ResearchSessionStoreFailureStageV1, sessionId: string): void;
+}
+
+// export: ResearchSessionStoreFailureStageV1
+export type ResearchSessionStoreFailureStageV1 = "before_create" | "before_state_commit" | "before_event_append" | "before_artifact_write" | "before_source_ref_write" | "before_delete";
+
+// export: ResearchSessionStoreV1
+export interface ResearchSessionStoreV1 {
+    create(session: ResearchSessionV1): Promise<ResearchSessionV1>;
+    read(sessionId: string): Promise<ResearchSessionV1 | undefined>;
+    list(input?: {
+        limit?: number;
+        cursor?: string;
+    }): Promise<{
+        sessions: ResearchSessionV1[];
+        nextCursor?: string;
+    }>;
+    commit(sessionId: string, update: ResearchSessionUpdateV1): Promise<ResearchSessionCommitV1>;
+    events(sessionId: string, input?: {
+        afterRevision?: number;
+        limit?: number;
+    }): Promise<ResearchSessionEventV1[]>;
+    checkpoints(sessionId: string, turnId: string): Promise<ResearchSessionCheckpointV1[]>;
+    graph(sessionId: string, turnId: string): Promise<ResearchGraphV1 | undefined>;
+    tasks(sessionId: string, turnId: string): Promise<ResearchTaskAttemptV1[]>;
+    packet(sessionId: string, packetRef: string): Promise<ResearchAcceptedPacketV1 | undefined>;
+    workspace(sessionId: string): Promise<ResearchWorkspace>;
+    replaceOpaqueSourceRefs(sessionId: string, refs: ResearchOpaqueSourceRefV1[]): Promise<void>;
+    opaqueSourceRefs(sessionId: string): Promise<ResearchOpaqueSourceRefV1[]>;
+    writeArtifact(sessionId: string, artifact: ResearchSessionArtifactV1, contents: string): Promise<void>;
+    artifact(sessionId: string, artifactId: string): Promise<{
+        metadata: ResearchSessionArtifactV1;
+        contents: string;
+    } | undefined>;
+    listArtifacts(sessionId: string): Promise<ResearchSessionArtifactV1[]>;
+    eraseDeleted(sessionId: string): Promise<boolean>;
+}
+
+// export: ResearchSessionTurnV1
+export interface ResearchSessionTurnV1 {
+    id: string;
+    revision: number;
+    createdAt: string;
+    brief?: ResearchBriefV1;
+    graph?: ResearchGraphV1;
+    scopeCandidates: ResearchScopeCandidateV1[];
+    scopeBindings: ResearchScopeBindingV1[];
+    scopeResolutions: ResearchScopeResolutionV1[];
+    scopeExpansionProposals: ResearchScopeExpansionProposalV1[];
+    clarifications: ResearchSessionClarificationV1[];
+    assumptionDecisions: ResearchSessionAssumptionDecisionV1[];
+    steering: ResearchSessionSteeringV1[];
+    tasks: ResearchTaskAttemptV1[];
+    acceptedPackets: ResearchAcceptedPacketV1[];
+    reconciliationDispositions: ResearchReconciliationDispositionV1[];
+    checkpoints: ResearchSessionCheckpointV1[];
+    pauseRequestedAt?: string;
+    pausedAt?: string;
+    completedAt?: string;
+    cancelledAt?: string;
+    failureReason?: string;
+}
+
+// export: ResearchSessionUpdateV1
+export type ResearchSessionUpdateV1 = (ResearchSessionFencedUpdateV1 & {
+    kind: "create_turn";
+    turnId: string;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "record_brief";
+    brief: ResearchBriefV1;
+    scopeCandidates?: ResearchScopeCandidateV1[];
+    scopeBindings?: ResearchScopeBindingV1[];
+    scopeResolutions?: ResearchScopeResolutionV1[];
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "propose_graph";
+    graph: ResearchGraphV1;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "approve_graph";
+    graphRevision: number;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "revise_graph";
+    graph: ResearchGraphV1;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "record_clarification";
+    briefRevision: number;
+    questionId: string;
+    response: string;
+    assumptionId?: string;
+    assumptionDecision?: "accepted" | "rejected";
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "record_assumption_decision";
+    briefRevision: number;
+    assumptionId: string;
+    decision: "accepted" | "rejected";
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "reject_plan";
+    graphRevision: number;
+    reason: string;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "propose_scope_expansion";
+    proposal: ResearchScopeExpansionProposalV1;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "approve_scope_expansion";
+    proposalId: string;
+    binding: ResearchScopeBindingV1;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "reject_scope_expansion";
+    proposalId: string;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "request_steering";
+    steeringId: string;
+    request: string;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "acknowledge_steering";
+    steeringId: string;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "request_pause";
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "acknowledge_pause";
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "admit_tasks";
+    graphRevision: number;
+    tasks: ResearchTaskAttemptV1[];
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "dispatch_started";
+    taskId: string;
+    graphRevision: number;
+    providerRequestId?: string;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "outcome_unknown";
+    taskId: string;
+    graphRevision: number;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "accept_packet";
+    taskId: string;
+    graphRevision: number;
+    body: unknown;
+    usage: ResearchTaskUsageV1;
+    availableSourceIds: string[];
+    maximumResultBytes: number;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "quarantine_packet";
+    taskId: string;
+    graphRevision: number;
+    reason: string;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "record_reconciliation";
+    disposition: unknown;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "record_checkpoint";
+    checkpoint: Omit<ResearchSessionCheckpointV1, "schema" | "sessionRevision">;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "resume";
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "wait_authentication";
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "wait_quota";
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "heartbeat";
+    leaseExpiresAt: string;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "recover";
+    ownerId: string;
+    expiresAt: string;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "cancel";
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "complete";
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "fail";
+    reason: string;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "retain";
+    retainedUntil?: string;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "request_deletion";
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "delete";
+});
+
+// export: ResearchSessionV1
+export interface ResearchSessionV1 {
+    schema: typeof RESEARCH_SESSION_SCHEMA_V1;
+    sessionId: string;
+    revision: number;
+    status: ResearchSessionStatusV1;
+    lease: ResearchSessionLeaseV1;
+    retention: ResearchSessionRetentionV1;
+    activeTurnId?: string;
+    turns: ResearchSessionTurnV1[];
+    createdAt: string;
+    updatedAt: string;
+}
+
 // export: ResearchSourceReferenceV1
 export interface ResearchSourceReferenceV1 {
     id: string;
@@ -6532,6 +7693,9 @@ export interface ResearchTaskUsageV1 {
 // export: ResearchTerminationCode
 export type ResearchTerminationCode = "index-exhausted" | "item-limit" | "page-limit" | "http-limit" | "response-byte-limit";
 
+// export: researchThreadIdForSessionV1
+export declare function researchThreadIdForSessionV1(sessionId: string): string;
+
 // export: ResearchTimeWindowV1
 export interface ResearchTimeWindowV1 {
     from?: string;
@@ -6619,6 +7783,9 @@ export declare function validateResearchTaskAdmissionV1(input: {
 
 // export: validateResearchTaskUsageV1
 export declare function validateResearchTaskUsageV1(usage: ResearchTaskUsageV1, budget: ResearchNodeBudgetV1): void;
+
+// export: verifyResearchSessionStoreConformanceV1
+export declare function verifyResearchSessionStoreConformanceV1(factory: ResearchSessionStoreConformanceFactoryV1, prefix?: string): Promise<ResearchSessionStoreConformanceResultV1>;
 
 // export: WikiResearchDetail
 export interface WikiResearchDetail extends WikiResearchSummary {
@@ -6825,6 +7992,7 @@ export declare function createResearchDispatchInterceptionAdapter(options: {
     signal?: AbortSignal;
     invokeUpstream(input: ResearchTaskToolInputV1, config: RunnableConfig): Promise<unknown>;
     projectResult?: (value: unknown) => unknown;
+    projectDependencyResult?: (taskId: string, acceptedResult: unknown) => unknown | undefined;
     acceptResult?: (taskId: string, result: unknown, rawResult: unknown) => void;
     onDiagnostic?: (diagnostic: ResearchDispatchDiagnosticV1) => void;
 }): ResearchDispatchInterceptionAdapter;
@@ -6886,6 +8054,14 @@ export declare function createResearchScopeCatalogPtcTools(broker: ResearchScope
 
 // export: createResearchScopeExpansionProposalV1
 export declare function createResearchScopeExpansionProposalV1(input: Omit<ResearchScopeExpansionProposalV1, "schema">): ResearchScopeExpansionProposalV1;
+
+// export: createResearchSessionV1
+export declare function createResearchSessionV1(input: {
+    sessionId: string;
+    ownerId: string;
+    createdAt: string;
+    leaseExpiresAt: string;
+}): ResearchSessionV1;
 
 // export: createRestResearchBroker
 export declare function createRestResearchBroker(profile: Profile, request: ResearchRequestV1): ResearchCapabilityBroker;
@@ -6972,6 +8148,42 @@ export declare function finalizeResearchReportV1(report: Omit<ResearchReportV1, 
 
 // export: formatResearchOneShotEventV1
 export declare function formatResearchOneShotEventV1(event: ResearchOneShotEventV1): string;
+
+// export: InMemoryResearchSessionStoreV1
+export declare class InMemoryResearchSessionStoreV1 implements ResearchSessionStoreV1 {
+    #private;
+    constructor(options?: {
+        failureInjection?: ResearchSessionStoreFailureInjectionV1;
+    });
+    create(session: ResearchSessionV1): Promise<ResearchSessionV1>;
+    read(sessionId: string): Promise<ResearchSessionV1 | undefined>;
+    list(input?: {
+        limit?: number;
+        cursor?: string;
+    }): Promise<{
+        sessions: ResearchSessionV1[];
+        nextCursor?: string;
+    }>;
+    commit(sessionId: string, update: ResearchSessionUpdateV1): Promise<ResearchSessionCommitV1>;
+    events(sessionId: string, input?: {
+        afterRevision?: number;
+        limit?: number;
+    }): Promise<ResearchSessionEventV1[]>;
+    checkpoints(sessionId: string, turnId: string): Promise<ResearchSessionCheckpointV1[]>;
+    graph(sessionId: string, turnId: string): Promise<ResearchGraphV1 | undefined>;
+    tasks(sessionId: string, turnId: string): Promise<ResearchTaskAttemptV1[]>;
+    packet(sessionId: string, packetRef: string): Promise<ResearchAcceptedPacketV1 | undefined>;
+    workspace(sessionId: string): Promise<ResearchWorkspace>;
+    replaceOpaqueSourceRefs(sessionId: string, refs: ResearchOpaqueSourceRefV1[]): Promise<void>;
+    opaqueSourceRefs(sessionId: string): Promise<ResearchOpaqueSourceRefV1[]>;
+    writeArtifact(sessionId: string, artifact: ResearchSessionArtifactV1, contents: string): Promise<void>;
+    artifact(sessionId: string, artifactId: string): Promise<{
+        metadata: ResearchSessionArtifactV1;
+        contents: string;
+    } | undefined>;
+    listArtifacts(sessionId: string): Promise<ResearchSessionArtifactV1[]>;
+    eraseDeleted(sessionId: string): Promise<boolean>;
+}
 
 // export: InMemoryResearchSubagentDispatchPort
 export declare class InMemoryResearchSubagentDispatchPort implements ResearchSubagentDispatchPort {
@@ -7149,6 +8361,9 @@ export declare function reduceResearchAcceptedPacketV1(input: {
 // export: reduceResearchGraphV1
 export declare function reduceResearchGraphV1(graph: ResearchGraphV1, update: ResearchGraphUpdateV1): ResearchGraphV1;
 
+// export: reduceResearchSessionV1
+export declare function reduceResearchSessionV1(value: ResearchSessionV1, update: ResearchSessionUpdateV1): ResearchSessionV1;
+
 // export: reduceResearchTaskAttemptV1
 export declare function reduceResearchTaskAttemptV1(current: ResearchTaskAttemptV1, event: ResearchTaskAttemptEventV1): ResearchTaskAttemptV1;
 
@@ -7298,6 +8513,9 @@ export declare const RESEARCH_ONE_SHOT_POLICY_SCHEMA_V1: "atlcli.research-one-sh
 
 // export: RESEARCH_ONE_SHOT_REQUEST_PATH_V1
 export declare const RESEARCH_ONE_SHOT_REQUEST_PATH_V1: "/session/request.json";
+
+// export: RESEARCH_OPAQUE_SOURCE_REF_SCHEMA_V1
+export declare const RESEARCH_OPAQUE_SOURCE_REF_SCHEMA_V1: "atlcli.research-opaque-source-ref/v1";
 
 // export: RESEARCH_PACKET_BODY_JSON_SCHEMA_V1
 export declare const RESEARCH_PACKET_BODY_JSON_SCHEMA_V1: Record<string, unknown>;
@@ -7466,6 +8684,18 @@ export declare const RESEARCH_SCOPE_SOURCES_V1: readonly [
     "exact_link",
     "research_discovery"
 ];
+
+// export: RESEARCH_SESSION_ARTIFACT_SCHEMA_V1
+export declare const RESEARCH_SESSION_ARTIFACT_SCHEMA_V1: "atlcli.research-session-artifact/v1";
+
+// export: RESEARCH_SESSION_CHECKPOINT_SCHEMA_V1
+export declare const RESEARCH_SESSION_CHECKPOINT_SCHEMA_V1: "atlcli.research-session-checkpoint/v1";
+
+// export: RESEARCH_SESSION_EVENT_SCHEMA_V1
+export declare const RESEARCH_SESSION_EVENT_SCHEMA_V1: "atlcli.research-session-event/v1";
+
+// export: RESEARCH_SESSION_SCHEMA_V1
+export declare const RESEARCH_SESSION_SCHEMA_V1: "atlcli.research-session/v1";
 
 // export: RESEARCH_SUBAGENT_ROLE_IDS_V1
 export declare const RESEARCH_SUBAGENT_ROLE_IDS_V1: readonly [
@@ -7655,6 +8885,13 @@ export declare class ResearchCapabilityBroker {
 
 // export: ResearchCapabilityEventToolIdV1
 export type ResearchCapabilityEventToolIdV1 = (typeof RESEARCH_CAPABILITY_EVENT_TOOL_IDS_V1)[number];
+
+// export: researchCheckpointConfigV1
+export declare function researchCheckpointConfigV1(input: {
+    sessionId: string;
+    checkpointNamespace?: string;
+    checkpointId?: string;
+}): RunnableConfig;
 
 // export: ResearchClarificationQuestionV1
 export interface ResearchClarificationQuestionV1 {
@@ -8212,6 +9449,15 @@ export interface ResearchOneShotPolicyV1 {
     requestedPlanApproval: ResearchRequestedPlanApprovalV1;
     scopeExpansionMode: ResearchScopeExpansionModeV1;
     requestedReconciliation: ResearchRequestedReconciliationV1;
+}
+
+// export: ResearchOpaqueSourceRefV1
+export interface ResearchOpaqueSourceRefV1 {
+    schema: typeof RESEARCH_OPAQUE_SOURCE_REF_SCHEMA_V1;
+    id: string;
+    product: "jira" | "confluence";
+    sourceRef: string;
+    capturedAt: string;
 }
 
 // export: ResearchPacketBodyV1
@@ -8809,6 +10055,310 @@ export interface ResearchSearchQueryV1 {
     text?: string;
 }
 
+// export: ResearchSessionArtifactV1
+export interface ResearchSessionArtifactV1 {
+    schema: typeof RESEARCH_SESSION_ARTIFACT_SCHEMA_V1;
+    id: string;
+    path: string;
+    contentType: "text/markdown" | "application/json";
+    bytes: number;
+    createdAt: string;
+}
+
+// export: ResearchSessionAssumptionDecisionV1
+export interface ResearchSessionAssumptionDecisionV1 {
+    briefRevision: number;
+    assumptionId: string;
+    decision: "accepted" | "rejected";
+    decidedAt: string;
+}
+
+// export: ResearchSessionCheckpointV1
+export interface ResearchSessionCheckpointV1 {
+    schema: typeof RESEARCH_SESSION_CHECKPOINT_SCHEMA_V1;
+    id: string;
+    sessionRevision: number;
+    turnId: string;
+    graphRevision?: number;
+    kind: "turn_accepted" | "brief" | "plan" | "dispatch" | "packet" | "reconciliation" | "pause" | "terminal";
+    recordedAt: string;
+    artifactRefs: string[];
+}
+
+// export: ResearchSessionClarificationV1
+export interface ResearchSessionClarificationV1 {
+    briefRevision: number;
+    questionId: string;
+    response: string;
+    assumptionId?: string;
+    assumptionDecision?: "accepted" | "rejected";
+    answeredAt: string;
+}
+
+// export: ResearchSessionCommitV1
+export interface ResearchSessionCommitV1 {
+    session: ResearchSessionV1;
+    event: ResearchSessionEventV1;
+}
+
+// export: ResearchSessionEventV1
+export interface ResearchSessionEventV1 {
+    schema: typeof RESEARCH_SESSION_EVENT_SCHEMA_V1;
+    sessionId: string;
+    sessionRevision: number;
+    leaseEpoch: number;
+    kind: ResearchSessionUpdateV1["kind"];
+    status: ResearchSessionV1["status"];
+    turnId?: string;
+    at: string;
+}
+
+// export: ResearchSessionLeaseV1
+export interface ResearchSessionLeaseV1 {
+    epoch: number;
+    ownerId: string;
+    heartbeatAt: string;
+    expiresAt: string;
+}
+
+// export: ResearchSessionMemoryCheckpointerV1
+export declare class ResearchSessionMemoryCheckpointerV1 extends MemorySaver {
+    #private;
+    constructor(sessionId: string);
+    getTuple(config: RunnableConfig): Promise<CheckpointTuple | undefined>;
+    list(config: RunnableConfig, options?: CheckpointListOptions): AsyncGenerator<CheckpointTuple>;
+    put(config: RunnableConfig, checkpoint: Checkpoint, metadata: CheckpointMetadata, _newVersions?: ChannelVersions): Promise<RunnableConfig>;
+    putWrites(config: RunnableConfig, writes: PendingWrite[], taskId: string): Promise<void>;
+    deleteThread(threadId: string): Promise<void>;
+}
+
+// export: ResearchSessionRetentionV1
+export interface ResearchSessionRetentionV1 {
+    state: "active" | "retained" | "deletion_requested" | "deleted";
+    retainedUntil?: string;
+}
+
+// export: ResearchSessionStatusV1
+export type ResearchSessionStatusV1 = "idle" | "planning" | "waiting_clarification" | "waiting_plan_approval" | "waiting_plan_revision" | "waiting_scope_approval" | "waiting_steering" | "pause_requested" | "paused" | "running" | "waiting_authentication" | "waiting_quota" | "cancelling" | "cancelled" | "complete" | "failed" | "deleted";
+
+// export: ResearchSessionSteeringV1
+export interface ResearchSessionSteeringV1 {
+    id: string;
+    request: string;
+    requestedAt: string;
+    acknowledgedAt?: string;
+}
+
+// export: ResearchSessionStoreConformanceFactoryV1
+export interface ResearchSessionStoreConformanceFactoryV1 {
+    create(options?: {
+        failureInjection?: ResearchSessionStoreFailureInjectionV1;
+    }): ResearchSessionStoreV1;
+}
+
+// export: ResearchSessionStoreConformanceResultV1
+export interface ResearchSessionStoreConformanceResultV1 {
+    aggregateCommit: "passed";
+    staleCas: "passed";
+    failureAtomicity: "passed";
+}
+
+// export: ResearchSessionStoreFailureInjectionV1
+export interface ResearchSessionStoreFailureInjectionV1 {
+    onStage?(stage: ResearchSessionStoreFailureStageV1, sessionId: string): void;
+}
+
+// export: ResearchSessionStoreFailureStageV1
+export type ResearchSessionStoreFailureStageV1 = "before_create" | "before_state_commit" | "before_event_append" | "before_artifact_write" | "before_source_ref_write" | "before_delete";
+
+// export: ResearchSessionStoreV1
+export interface ResearchSessionStoreV1 {
+    create(session: ResearchSessionV1): Promise<ResearchSessionV1>;
+    read(sessionId: string): Promise<ResearchSessionV1 | undefined>;
+    list(input?: {
+        limit?: number;
+        cursor?: string;
+    }): Promise<{
+        sessions: ResearchSessionV1[];
+        nextCursor?: string;
+    }>;
+    commit(sessionId: string, update: ResearchSessionUpdateV1): Promise<ResearchSessionCommitV1>;
+    events(sessionId: string, input?: {
+        afterRevision?: number;
+        limit?: number;
+    }): Promise<ResearchSessionEventV1[]>;
+    checkpoints(sessionId: string, turnId: string): Promise<ResearchSessionCheckpointV1[]>;
+    graph(sessionId: string, turnId: string): Promise<ResearchGraphV1 | undefined>;
+    tasks(sessionId: string, turnId: string): Promise<ResearchTaskAttemptV1[]>;
+    packet(sessionId: string, packetRef: string): Promise<ResearchAcceptedPacketV1 | undefined>;
+    workspace(sessionId: string): Promise<ResearchWorkspace>;
+    replaceOpaqueSourceRefs(sessionId: string, refs: ResearchOpaqueSourceRefV1[]): Promise<void>;
+    opaqueSourceRefs(sessionId: string): Promise<ResearchOpaqueSourceRefV1[]>;
+    writeArtifact(sessionId: string, artifact: ResearchSessionArtifactV1, contents: string): Promise<void>;
+    artifact(sessionId: string, artifactId: string): Promise<{
+        metadata: ResearchSessionArtifactV1;
+        contents: string;
+    } | undefined>;
+    listArtifacts(sessionId: string): Promise<ResearchSessionArtifactV1[]>;
+    eraseDeleted(sessionId: string): Promise<boolean>;
+}
+
+// export: ResearchSessionTurnV1
+export interface ResearchSessionTurnV1 {
+    id: string;
+    revision: number;
+    createdAt: string;
+    brief?: ResearchBriefV1;
+    graph?: ResearchGraphV1;
+    scopeCandidates: ResearchScopeCandidateV1[];
+    scopeBindings: ResearchScopeBindingV1[];
+    scopeResolutions: ResearchScopeResolutionV1[];
+    scopeExpansionProposals: ResearchScopeExpansionProposalV1[];
+    clarifications: ResearchSessionClarificationV1[];
+    assumptionDecisions: ResearchSessionAssumptionDecisionV1[];
+    steering: ResearchSessionSteeringV1[];
+    tasks: ResearchTaskAttemptV1[];
+    acceptedPackets: ResearchAcceptedPacketV1[];
+    reconciliationDispositions: ResearchReconciliationDispositionV1[];
+    checkpoints: ResearchSessionCheckpointV1[];
+    pauseRequestedAt?: string;
+    pausedAt?: string;
+    completedAt?: string;
+    cancelledAt?: string;
+    failureReason?: string;
+}
+
+// export: ResearchSessionUpdateV1
+export type ResearchSessionUpdateV1 = (ResearchSessionFencedUpdateV1 & {
+    kind: "create_turn";
+    turnId: string;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "record_brief";
+    brief: ResearchBriefV1;
+    scopeCandidates?: ResearchScopeCandidateV1[];
+    scopeBindings?: ResearchScopeBindingV1[];
+    scopeResolutions?: ResearchScopeResolutionV1[];
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "propose_graph";
+    graph: ResearchGraphV1;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "approve_graph";
+    graphRevision: number;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "revise_graph";
+    graph: ResearchGraphV1;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "record_clarification";
+    briefRevision: number;
+    questionId: string;
+    response: string;
+    assumptionId?: string;
+    assumptionDecision?: "accepted" | "rejected";
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "record_assumption_decision";
+    briefRevision: number;
+    assumptionId: string;
+    decision: "accepted" | "rejected";
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "reject_plan";
+    graphRevision: number;
+    reason: string;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "propose_scope_expansion";
+    proposal: ResearchScopeExpansionProposalV1;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "approve_scope_expansion";
+    proposalId: string;
+    binding: ResearchScopeBindingV1;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "reject_scope_expansion";
+    proposalId: string;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "request_steering";
+    steeringId: string;
+    request: string;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "acknowledge_steering";
+    steeringId: string;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "request_pause";
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "acknowledge_pause";
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "admit_tasks";
+    graphRevision: number;
+    tasks: ResearchTaskAttemptV1[];
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "dispatch_started";
+    taskId: string;
+    graphRevision: number;
+    providerRequestId?: string;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "outcome_unknown";
+    taskId: string;
+    graphRevision: number;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "accept_packet";
+    taskId: string;
+    graphRevision: number;
+    body: unknown;
+    usage: ResearchTaskUsageV1;
+    availableSourceIds: string[];
+    maximumResultBytes: number;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "quarantine_packet";
+    taskId: string;
+    graphRevision: number;
+    reason: string;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "record_reconciliation";
+    disposition: unknown;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "record_checkpoint";
+    checkpoint: Omit<ResearchSessionCheckpointV1, "schema" | "sessionRevision">;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "resume";
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "wait_authentication";
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "wait_quota";
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "heartbeat";
+    leaseExpiresAt: string;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "recover";
+    ownerId: string;
+    expiresAt: string;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "cancel";
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "complete";
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "fail";
+    reason: string;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "retain";
+    retainedUntil?: string;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "request_deletion";
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "delete";
+});
+
+// export: ResearchSessionV1
+export interface ResearchSessionV1 {
+    schema: typeof RESEARCH_SESSION_SCHEMA_V1;
+    sessionId: string;
+    revision: number;
+    status: ResearchSessionStatusV1;
+    lease: ResearchSessionLeaseV1;
+    retention: ResearchSessionRetentionV1;
+    activeTurnId?: string;
+    turns: ResearchSessionTurnV1[];
+    createdAt: string;
+    updatedAt: string;
+}
+
 // export: ResearchSourceReferenceV1
 export interface ResearchSourceReferenceV1 {
     id: string;
@@ -8984,6 +10534,9 @@ export interface ResearchTaskUsageV1 {
 // export: ResearchTerminationCode
 export type ResearchTerminationCode = "index-exhausted" | "item-limit" | "page-limit" | "http-limit" | "response-byte-limit";
 
+// export: researchThreadIdForSessionV1
+export declare function researchThreadIdForSessionV1(sessionId: string): string;
+
 // export: ResearchTimeWindowV1
 export interface ResearchTimeWindowV1 {
     from?: string;
@@ -9099,6 +10652,9 @@ export declare function validateResearchTaskAdmissionV1(input: {
 
 // export: validateResearchTaskUsageV1
 export declare function validateResearchTaskUsageV1(usage: ResearchTaskUsageV1, budget: ResearchNodeBudgetV1): void;
+
+// export: verifyResearchSessionStoreConformanceV1
+export declare function verifyResearchSessionStoreConformanceV1(factory: ResearchSessionStoreConformanceFactoryV1, prefix?: string): Promise<ResearchSessionStoreConformanceResultV1>;
 
 // export: WikiResearchDetail
 export interface WikiResearchDetail extends WikiResearchSummary {
@@ -10236,6 +11792,7 @@ export declare function createResearchDispatchInterceptionAdapter(options: {
     signal?: AbortSignal;
     invokeUpstream(input: ResearchTaskToolInputV1, config: RunnableConfig): Promise<unknown>;
     projectResult?: (value: unknown) => unknown;
+    projectDependencyResult?: (taskId: string, acceptedResult: unknown) => unknown | undefined;
     acceptResult?: (taskId: string, result: unknown, rawResult: unknown) => void;
     onDiagnostic?: (diagnostic: ResearchDispatchDiagnosticV1) => void;
 }): ResearchDispatchInterceptionAdapter;
@@ -10297,6 +11854,14 @@ export declare function createResearchScopeCatalogPtcTools(broker: ResearchScope
 
 // export: createResearchScopeExpansionProposalV1
 export declare function createResearchScopeExpansionProposalV1(input: Omit<ResearchScopeExpansionProposalV1, "schema">): ResearchScopeExpansionProposalV1;
+
+// export: createResearchSessionV1
+export declare function createResearchSessionV1(input: {
+    sessionId: string;
+    ownerId: string;
+    createdAt: string;
+    leaseExpiresAt: string;
+}): ResearchSessionV1;
 
 // export: createRestResearchBroker
 export declare function createRestResearchBroker(profile: Profile, request: ResearchRequestV1): ResearchCapabilityBroker;
@@ -10398,6 +11963,42 @@ export declare function finalizeResearchReportV1(report: Omit<ResearchReportV1, 
 
 // export: formatResearchOneShotEventV1
 export declare function formatResearchOneShotEventV1(event: ResearchOneShotEventV1): string;
+
+// export: InMemoryResearchSessionStoreV1
+export declare class InMemoryResearchSessionStoreV1 implements ResearchSessionStoreV1 {
+    #private;
+    constructor(options?: {
+        failureInjection?: ResearchSessionStoreFailureInjectionV1;
+    });
+    create(session: ResearchSessionV1): Promise<ResearchSessionV1>;
+    read(sessionId: string): Promise<ResearchSessionV1 | undefined>;
+    list(input?: {
+        limit?: number;
+        cursor?: string;
+    }): Promise<{
+        sessions: ResearchSessionV1[];
+        nextCursor?: string;
+    }>;
+    commit(sessionId: string, update: ResearchSessionUpdateV1): Promise<ResearchSessionCommitV1>;
+    events(sessionId: string, input?: {
+        afterRevision?: number;
+        limit?: number;
+    }): Promise<ResearchSessionEventV1[]>;
+    checkpoints(sessionId: string, turnId: string): Promise<ResearchSessionCheckpointV1[]>;
+    graph(sessionId: string, turnId: string): Promise<ResearchGraphV1 | undefined>;
+    tasks(sessionId: string, turnId: string): Promise<ResearchTaskAttemptV1[]>;
+    packet(sessionId: string, packetRef: string): Promise<ResearchAcceptedPacketV1 | undefined>;
+    workspace(sessionId: string): Promise<ResearchWorkspace>;
+    replaceOpaqueSourceRefs(sessionId: string, refs: ResearchOpaqueSourceRefV1[]): Promise<void>;
+    opaqueSourceRefs(sessionId: string): Promise<ResearchOpaqueSourceRefV1[]>;
+    writeArtifact(sessionId: string, artifact: ResearchSessionArtifactV1, contents: string): Promise<void>;
+    artifact(sessionId: string, artifactId: string): Promise<{
+        metadata: ResearchSessionArtifactV1;
+        contents: string;
+    } | undefined>;
+    listArtifacts(sessionId: string): Promise<ResearchSessionArtifactV1[]>;
+    eraseDeleted(sessionId: string): Promise<boolean>;
+}
 
 // export: InMemoryResearchSubagentDispatchPort
 export declare class InMemoryResearchSubagentDispatchPort implements ResearchSubagentDispatchPort {
@@ -10575,6 +12176,9 @@ export declare function reduceResearchAcceptedPacketV1(input: {
 // export: reduceResearchGraphV1
 export declare function reduceResearchGraphV1(graph: ResearchGraphV1, update: ResearchGraphUpdateV1): ResearchGraphV1;
 
+// export: reduceResearchSessionV1
+export declare function reduceResearchSessionV1(value: ResearchSessionV1, update: ResearchSessionUpdateV1): ResearchSessionV1;
+
 // export: reduceResearchTaskAttemptV1
 export declare function reduceResearchTaskAttemptV1(current: ResearchTaskAttemptV1, event: ResearchTaskAttemptEventV1): ResearchTaskAttemptV1;
 
@@ -10724,6 +12328,9 @@ export declare const RESEARCH_ONE_SHOT_POLICY_SCHEMA_V1: "atlcli.research-one-sh
 
 // export: RESEARCH_ONE_SHOT_REQUEST_PATH_V1
 export declare const RESEARCH_ONE_SHOT_REQUEST_PATH_V1: "/session/request.json";
+
+// export: RESEARCH_OPAQUE_SOURCE_REF_SCHEMA_V1
+export declare const RESEARCH_OPAQUE_SOURCE_REF_SCHEMA_V1: "atlcli.research-opaque-source-ref/v1";
 
 // export: RESEARCH_PACKET_BODY_JSON_SCHEMA_V1
 export declare const RESEARCH_PACKET_BODY_JSON_SCHEMA_V1: Record<string, unknown>;
@@ -10892,6 +12499,18 @@ export declare const RESEARCH_SCOPE_SOURCES_V1: readonly [
     "exact_link",
     "research_discovery"
 ];
+
+// export: RESEARCH_SESSION_ARTIFACT_SCHEMA_V1
+export declare const RESEARCH_SESSION_ARTIFACT_SCHEMA_V1: "atlcli.research-session-artifact/v1";
+
+// export: RESEARCH_SESSION_CHECKPOINT_SCHEMA_V1
+export declare const RESEARCH_SESSION_CHECKPOINT_SCHEMA_V1: "atlcli.research-session-checkpoint/v1";
+
+// export: RESEARCH_SESSION_EVENT_SCHEMA_V1
+export declare const RESEARCH_SESSION_EVENT_SCHEMA_V1: "atlcli.research-session-event/v1";
+
+// export: RESEARCH_SESSION_SCHEMA_V1
+export declare const RESEARCH_SESSION_SCHEMA_V1: "atlcli.research-session/v1";
 
 // export: RESEARCH_SUBAGENT_ROLE_IDS_V1
 export declare const RESEARCH_SUBAGENT_ROLE_IDS_V1: readonly [
@@ -11081,6 +12700,13 @@ export declare class ResearchCapabilityBroker {
 
 // export: ResearchCapabilityEventToolIdV1
 export type ResearchCapabilityEventToolIdV1 = (typeof RESEARCH_CAPABILITY_EVENT_TOOL_IDS_V1)[number];
+
+// export: researchCheckpointConfigV1
+export declare function researchCheckpointConfigV1(input: {
+    sessionId: string;
+    checkpointNamespace?: string;
+    checkpointId?: string;
+}): RunnableConfig;
 
 // export: ResearchClarificationQuestionV1
 export interface ResearchClarificationQuestionV1 {
@@ -11638,6 +13264,15 @@ export interface ResearchOneShotPolicyV1 {
     requestedPlanApproval: ResearchRequestedPlanApprovalV1;
     scopeExpansionMode: ResearchScopeExpansionModeV1;
     requestedReconciliation: ResearchRequestedReconciliationV1;
+}
+
+// export: ResearchOpaqueSourceRefV1
+export interface ResearchOpaqueSourceRefV1 {
+    schema: typeof RESEARCH_OPAQUE_SOURCE_REF_SCHEMA_V1;
+    id: string;
+    product: "jira" | "confluence";
+    sourceRef: string;
+    capturedAt: string;
 }
 
 // export: ResearchPacketBodyV1
@@ -12235,6 +13870,310 @@ export interface ResearchSearchQueryV1 {
     text?: string;
 }
 
+// export: ResearchSessionArtifactV1
+export interface ResearchSessionArtifactV1 {
+    schema: typeof RESEARCH_SESSION_ARTIFACT_SCHEMA_V1;
+    id: string;
+    path: string;
+    contentType: "text/markdown" | "application/json";
+    bytes: number;
+    createdAt: string;
+}
+
+// export: ResearchSessionAssumptionDecisionV1
+export interface ResearchSessionAssumptionDecisionV1 {
+    briefRevision: number;
+    assumptionId: string;
+    decision: "accepted" | "rejected";
+    decidedAt: string;
+}
+
+// export: ResearchSessionCheckpointV1
+export interface ResearchSessionCheckpointV1 {
+    schema: typeof RESEARCH_SESSION_CHECKPOINT_SCHEMA_V1;
+    id: string;
+    sessionRevision: number;
+    turnId: string;
+    graphRevision?: number;
+    kind: "turn_accepted" | "brief" | "plan" | "dispatch" | "packet" | "reconciliation" | "pause" | "terminal";
+    recordedAt: string;
+    artifactRefs: string[];
+}
+
+// export: ResearchSessionClarificationV1
+export interface ResearchSessionClarificationV1 {
+    briefRevision: number;
+    questionId: string;
+    response: string;
+    assumptionId?: string;
+    assumptionDecision?: "accepted" | "rejected";
+    answeredAt: string;
+}
+
+// export: ResearchSessionCommitV1
+export interface ResearchSessionCommitV1 {
+    session: ResearchSessionV1;
+    event: ResearchSessionEventV1;
+}
+
+// export: ResearchSessionEventV1
+export interface ResearchSessionEventV1 {
+    schema: typeof RESEARCH_SESSION_EVENT_SCHEMA_V1;
+    sessionId: string;
+    sessionRevision: number;
+    leaseEpoch: number;
+    kind: ResearchSessionUpdateV1["kind"];
+    status: ResearchSessionV1["status"];
+    turnId?: string;
+    at: string;
+}
+
+// export: ResearchSessionLeaseV1
+export interface ResearchSessionLeaseV1 {
+    epoch: number;
+    ownerId: string;
+    heartbeatAt: string;
+    expiresAt: string;
+}
+
+// export: ResearchSessionMemoryCheckpointerV1
+export declare class ResearchSessionMemoryCheckpointerV1 extends MemorySaver {
+    #private;
+    constructor(sessionId: string);
+    getTuple(config: RunnableConfig): Promise<CheckpointTuple | undefined>;
+    list(config: RunnableConfig, options?: CheckpointListOptions): AsyncGenerator<CheckpointTuple>;
+    put(config: RunnableConfig, checkpoint: Checkpoint, metadata: CheckpointMetadata, _newVersions?: ChannelVersions): Promise<RunnableConfig>;
+    putWrites(config: RunnableConfig, writes: PendingWrite[], taskId: string): Promise<void>;
+    deleteThread(threadId: string): Promise<void>;
+}
+
+// export: ResearchSessionRetentionV1
+export interface ResearchSessionRetentionV1 {
+    state: "active" | "retained" | "deletion_requested" | "deleted";
+    retainedUntil?: string;
+}
+
+// export: ResearchSessionStatusV1
+export type ResearchSessionStatusV1 = "idle" | "planning" | "waiting_clarification" | "waiting_plan_approval" | "waiting_plan_revision" | "waiting_scope_approval" | "waiting_steering" | "pause_requested" | "paused" | "running" | "waiting_authentication" | "waiting_quota" | "cancelling" | "cancelled" | "complete" | "failed" | "deleted";
+
+// export: ResearchSessionSteeringV1
+export interface ResearchSessionSteeringV1 {
+    id: string;
+    request: string;
+    requestedAt: string;
+    acknowledgedAt?: string;
+}
+
+// export: ResearchSessionStoreConformanceFactoryV1
+export interface ResearchSessionStoreConformanceFactoryV1 {
+    create(options?: {
+        failureInjection?: ResearchSessionStoreFailureInjectionV1;
+    }): ResearchSessionStoreV1;
+}
+
+// export: ResearchSessionStoreConformanceResultV1
+export interface ResearchSessionStoreConformanceResultV1 {
+    aggregateCommit: "passed";
+    staleCas: "passed";
+    failureAtomicity: "passed";
+}
+
+// export: ResearchSessionStoreFailureInjectionV1
+export interface ResearchSessionStoreFailureInjectionV1 {
+    onStage?(stage: ResearchSessionStoreFailureStageV1, sessionId: string): void;
+}
+
+// export: ResearchSessionStoreFailureStageV1
+export type ResearchSessionStoreFailureStageV1 = "before_create" | "before_state_commit" | "before_event_append" | "before_artifact_write" | "before_source_ref_write" | "before_delete";
+
+// export: ResearchSessionStoreV1
+export interface ResearchSessionStoreV1 {
+    create(session: ResearchSessionV1): Promise<ResearchSessionV1>;
+    read(sessionId: string): Promise<ResearchSessionV1 | undefined>;
+    list(input?: {
+        limit?: number;
+        cursor?: string;
+    }): Promise<{
+        sessions: ResearchSessionV1[];
+        nextCursor?: string;
+    }>;
+    commit(sessionId: string, update: ResearchSessionUpdateV1): Promise<ResearchSessionCommitV1>;
+    events(sessionId: string, input?: {
+        afterRevision?: number;
+        limit?: number;
+    }): Promise<ResearchSessionEventV1[]>;
+    checkpoints(sessionId: string, turnId: string): Promise<ResearchSessionCheckpointV1[]>;
+    graph(sessionId: string, turnId: string): Promise<ResearchGraphV1 | undefined>;
+    tasks(sessionId: string, turnId: string): Promise<ResearchTaskAttemptV1[]>;
+    packet(sessionId: string, packetRef: string): Promise<ResearchAcceptedPacketV1 | undefined>;
+    workspace(sessionId: string): Promise<ResearchWorkspace>;
+    replaceOpaqueSourceRefs(sessionId: string, refs: ResearchOpaqueSourceRefV1[]): Promise<void>;
+    opaqueSourceRefs(sessionId: string): Promise<ResearchOpaqueSourceRefV1[]>;
+    writeArtifact(sessionId: string, artifact: ResearchSessionArtifactV1, contents: string): Promise<void>;
+    artifact(sessionId: string, artifactId: string): Promise<{
+        metadata: ResearchSessionArtifactV1;
+        contents: string;
+    } | undefined>;
+    listArtifacts(sessionId: string): Promise<ResearchSessionArtifactV1[]>;
+    eraseDeleted(sessionId: string): Promise<boolean>;
+}
+
+// export: ResearchSessionTurnV1
+export interface ResearchSessionTurnV1 {
+    id: string;
+    revision: number;
+    createdAt: string;
+    brief?: ResearchBriefV1;
+    graph?: ResearchGraphV1;
+    scopeCandidates: ResearchScopeCandidateV1[];
+    scopeBindings: ResearchScopeBindingV1[];
+    scopeResolutions: ResearchScopeResolutionV1[];
+    scopeExpansionProposals: ResearchScopeExpansionProposalV1[];
+    clarifications: ResearchSessionClarificationV1[];
+    assumptionDecisions: ResearchSessionAssumptionDecisionV1[];
+    steering: ResearchSessionSteeringV1[];
+    tasks: ResearchTaskAttemptV1[];
+    acceptedPackets: ResearchAcceptedPacketV1[];
+    reconciliationDispositions: ResearchReconciliationDispositionV1[];
+    checkpoints: ResearchSessionCheckpointV1[];
+    pauseRequestedAt?: string;
+    pausedAt?: string;
+    completedAt?: string;
+    cancelledAt?: string;
+    failureReason?: string;
+}
+
+// export: ResearchSessionUpdateV1
+export type ResearchSessionUpdateV1 = (ResearchSessionFencedUpdateV1 & {
+    kind: "create_turn";
+    turnId: string;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "record_brief";
+    brief: ResearchBriefV1;
+    scopeCandidates?: ResearchScopeCandidateV1[];
+    scopeBindings?: ResearchScopeBindingV1[];
+    scopeResolutions?: ResearchScopeResolutionV1[];
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "propose_graph";
+    graph: ResearchGraphV1;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "approve_graph";
+    graphRevision: number;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "revise_graph";
+    graph: ResearchGraphV1;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "record_clarification";
+    briefRevision: number;
+    questionId: string;
+    response: string;
+    assumptionId?: string;
+    assumptionDecision?: "accepted" | "rejected";
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "record_assumption_decision";
+    briefRevision: number;
+    assumptionId: string;
+    decision: "accepted" | "rejected";
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "reject_plan";
+    graphRevision: number;
+    reason: string;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "propose_scope_expansion";
+    proposal: ResearchScopeExpansionProposalV1;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "approve_scope_expansion";
+    proposalId: string;
+    binding: ResearchScopeBindingV1;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "reject_scope_expansion";
+    proposalId: string;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "request_steering";
+    steeringId: string;
+    request: string;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "acknowledge_steering";
+    steeringId: string;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "request_pause";
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "acknowledge_pause";
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "admit_tasks";
+    graphRevision: number;
+    tasks: ResearchTaskAttemptV1[];
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "dispatch_started";
+    taskId: string;
+    graphRevision: number;
+    providerRequestId?: string;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "outcome_unknown";
+    taskId: string;
+    graphRevision: number;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "accept_packet";
+    taskId: string;
+    graphRevision: number;
+    body: unknown;
+    usage: ResearchTaskUsageV1;
+    availableSourceIds: string[];
+    maximumResultBytes: number;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "quarantine_packet";
+    taskId: string;
+    graphRevision: number;
+    reason: string;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "record_reconciliation";
+    disposition: unknown;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "record_checkpoint";
+    checkpoint: Omit<ResearchSessionCheckpointV1, "schema" | "sessionRevision">;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "resume";
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "wait_authentication";
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "wait_quota";
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "heartbeat";
+    leaseExpiresAt: string;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "recover";
+    ownerId: string;
+    expiresAt: string;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "cancel";
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "complete";
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "fail";
+    reason: string;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "retain";
+    retainedUntil?: string;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "request_deletion";
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "delete";
+});
+
+// export: ResearchSessionV1
+export interface ResearchSessionV1 {
+    schema: typeof RESEARCH_SESSION_SCHEMA_V1;
+    sessionId: string;
+    revision: number;
+    status: ResearchSessionStatusV1;
+    lease: ResearchSessionLeaseV1;
+    retention: ResearchSessionRetentionV1;
+    activeTurnId?: string;
+    turns: ResearchSessionTurnV1[];
+    createdAt: string;
+    updatedAt: string;
+}
+
 // export: ResearchSourceReferenceV1
 export interface ResearchSourceReferenceV1 {
     id: string;
@@ -12410,6 +14349,9 @@ export interface ResearchTaskUsageV1 {
 // export: ResearchTerminationCode
 export type ResearchTerminationCode = "index-exhausted" | "item-limit" | "page-limit" | "http-limit" | "response-byte-limit";
 
+// export: researchThreadIdForSessionV1
+export declare function researchThreadIdForSessionV1(sessionId: string): string;
+
 // export: ResearchTimeWindowV1
 export interface ResearchTimeWindowV1 {
     from?: string;
@@ -12499,6 +14441,45 @@ export declare function scopeSourcePrecedence(source: ResearchScopeSourceV1): nu
 // export: selectResearchScopeSeedsV1
 export declare function selectResearchScopeSeedsV1(seeds: readonly ResearchScopeSeedV1[]): ResearchScopeBindingV1[];
 
+// export: SqliteResearchSessionStoreV1
+export declare class SqliteResearchSessionStoreV1 implements ResearchSessionStoreV1 {
+    #private;
+    constructor(options: {
+        databasePath: string;
+        root: string;
+        failureInjection?: ResearchSessionStoreFailureInjectionV1;
+    });
+    close(): void;
+    create(session: ResearchSessionV1): Promise<ResearchSessionV1>;
+    read(sessionId: string): Promise<ResearchSessionV1 | undefined>;
+    list(input?: {
+        limit?: number;
+        cursor?: string;
+    }): Promise<{
+        sessions: ResearchSessionV1[];
+        nextCursor?: string;
+    }>;
+    commit(sessionId: string, update: ResearchSessionUpdateV1): Promise<ResearchSessionCommitV1>;
+    events(sessionId: string, input?: {
+        afterRevision?: number;
+        limit?: number;
+    }): Promise<ResearchSessionEventV1[]>;
+    checkpoints(sessionId: string, turnId: string): Promise<ResearchSessionCheckpointV1[]>;
+    graph(sessionId: string, turnId: string): Promise<ResearchGraphV1 | undefined>;
+    tasks(sessionId: string, turnId: string): Promise<ResearchTaskAttemptV1[]>;
+    packet(sessionId: string, packetRef: string): Promise<ResearchAcceptedPacketV1 | undefined>;
+    workspace(sessionId: string): Promise<ResearchWorkspace>;
+    replaceOpaqueSourceRefs(sessionId: string, refs: ResearchOpaqueSourceRefV1[]): Promise<void>;
+    opaqueSourceRefs(sessionId: string): Promise<ResearchOpaqueSourceRefV1[]>;
+    writeArtifact(sessionId: string, artifact: ResearchSessionArtifactV1, contents: string): Promise<void>;
+    artifact(sessionId: string, artifactId: string): Promise<{
+        metadata: ResearchSessionArtifactV1;
+        contents: string;
+    } | undefined>;
+    listArtifacts(sessionId: string): Promise<ResearchSessionArtifactV1[]>;
+    eraseDeleted(sessionId: string): Promise<boolean>;
+}
+
 // export: validateResearchGraphV1
 export declare function validateResearchGraphV1(graph: ResearchGraphV1): void;
 
@@ -12525,6 +14506,9 @@ export declare function validateResearchTaskAdmissionV1(input: {
 
 // export: validateResearchTaskUsageV1
 export declare function validateResearchTaskUsageV1(usage: ResearchTaskUsageV1, budget: ResearchNodeBudgetV1): void;
+
+// export: verifyResearchSessionStoreConformanceV1
+export declare function verifyResearchSessionStoreConformanceV1(factory: ResearchSessionStoreConformanceFactoryV1, prefix?: string): Promise<ResearchSessionStoreConformanceResultV1>;
 
 // export: WikiResearchDetail
 export interface WikiResearchDetail extends WikiResearchSummary {

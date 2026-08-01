@@ -2993,6 +2993,16 @@ session-plus-body-free-event commit, rejects a stale CAS retry without mutation,
 and injects failure immediately before journal publication to prove no partial
 snapshot or journal state leaks. SQLite/filesystem and IndexedDB adapters must
 run this unchanged suite when added.
+
+T4 SQLite catalog checkpoint (2026-08-01): the Bun-only
+`SqliteResearchSessionStoreV1` now persists the authoritative session snapshot
+and body-free event with one WAL-backed revision/epoch CAS transaction. It
+keeps opaque V1 source-ref metadata in SQLite and creates a 0700 directory per
+retained session for atomic `manifest.json`, `/workspace/`, and `/artifacts/`
+writes. It passes the unchanged shared conformance/failure suite and a close/
+reopen test. A SQLite-backed LangGraph saver and the CLI session commands still
+remain to complete the CLI portion of T4.
+
 - [x] Add a LangGraph checkpointer adapter implementing required checkpoint,
       pending-write, lookup, and history operations.
 - [x] Derive stable `thread_id` from `sessionId`.

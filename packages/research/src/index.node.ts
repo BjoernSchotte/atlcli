@@ -6,3 +6,4 @@ export * from "./scope-catalog-tools.js";
 export * from "./agent-tools.js";
 export * from "./dynamic-subagents.js";
 export * from "./agent-runtime.node.js";
+export * from "./sqlite-session-store.js";
