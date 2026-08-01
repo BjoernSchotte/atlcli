@@ -38,7 +38,37 @@ This is semantic/data parity, not a promise to reproduce Confluence's PNG
 renderer pixel-for-pixel. An original chart image may remain a last-resort
 fallback with a visible diagnostic, but it is not the parity implementation.
 
-## 1.1 Implementation status
+### 1.1 One TanStack rendering source
+
+Do not maintain an atlcli-owned chart geometry engine. Keep `ChartModelV1` in
+the dependency-free `@atlcli/export-blocks` package and add a separate
+`@atlcli/export-charts-tanstack` adapter package pinned to TanStack Charts
+`0.3.1`. The adapter owns the closed mapping from all twelve chart kinds to
+TanStack definitions, explicit scales, marks, guides, legends, theme, fixed
+export dimensions, deterministic UTC/locale formatters, and stable keys.
+
+TanStack then supplies the shared renderer-neutral `ChartScene`:
+
+1. Astro mounts the same definition through TanStack's SVG DOM host for
+   interaction and uses its deterministic server SVG as the no-JavaScript
+   representation.
+2. DOCX/PDF call TanStack's DOM-free `renderChartSvg(scene, options)` at
+   explicit dimensions. PDF embeds that SVG as vector content.
+3. DOCX embeds the same SVG and uses the existing bounded SVG rasterizer to
+   add the required PNG compatibility rendition. This is a deterministic
+   rasterization of the canonical SVG, not a browser screenshot.
+4. The browser-only TanStack `renderChartImage` helper is optional for future
+   user-facing PNG/JPEG/WebP downloads; it is not required by the document
+   export pipeline.
+
+Every target retains the semantic data table. A model that the pinned adapter
+cannot represent must produce a visible diagnostic and table fallback; it must
+never fall into an independent atlcli geometry implementation. TanStack's SVG
+renderer escapes text. Any Astro use of the trusted generated markup must stay
+behind this adapter boundary and hostile-label tests; raw provider HTML or
+macro parameters never reach an HTML injection seam.
+
+## 1.2 Implementation status
 
 The shared contract, Cloud/DC normalization seams, dedicated macro registry
 renderer, Astro chart block, DOCX/PDF SVG-plus-table projections, and the
@@ -469,8 +499,9 @@ listed in the capability registry.
 
 ### T6 — Static Astro components
 
-- [ ] Implement and visually prove dispatch and static renderers for all twelve
-      kinds from shared, target-neutral geometry.
+- [ ] Implement the separate `@atlcli/export-charts-tanstack` adapter for all
+      twelve shapes and visually prove Astro's static/server SVG from the
+      shared TanStack scene.
 - [ ] Implement and prove data-table/Gantt fallbacks, theme tokens, and a11y behavior.
 
 ### T7 — Interactive adapter(s)
@@ -481,8 +512,10 @@ listed in the capability registry.
 
 ### T8 — DOCX/PDF projections
 
-- [ ] Complete and visually prove chart rendering/table fallback for all shapes
-      in both document engines.
+- [ ] Replace the temporary atlcli-owned SVG geometry with the shared TanStack
+      scene/SVG adapter, then visually prove all shapes in both document
+      engines. PDF retains vector SVG; DOCX also retains a bounded PNG
+      compatibility rendition.
 - [ ] Add no-regression fixtures for existing export surfaces.
 
 ### T9 — Hardening and observability

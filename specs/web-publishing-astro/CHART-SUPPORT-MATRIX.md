@@ -28,6 +28,10 @@ world-class semantic/visual gate is still open; — intentionally static.
 - Cloud ADF and DC Storage adapters normalize into the same closed
   `ChartModelV1`; source-specific XML/ADF and provider URLs do not cross the
   renderer boundary.
+- All visual targets converge on one pinned TanStack Charts `0.3.1` adapter and
+  renderer-neutral `ChartScene`. Astro mounts that definition; DOCX/PDF render
+  its deterministic SVG directly. DOCX derives its PNG compatibility part
+  from that SVG rather than capturing an independent browser screenshot.
 - Invalid options, skipped rows, strict-mode rejection, unsupported kinds, and
   approximations such as flattened 3D are represented by bounded diagnostic
   codes. Lenient charts remain visibly marked in Astro and continue through
