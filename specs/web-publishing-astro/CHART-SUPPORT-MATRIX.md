@@ -56,6 +56,8 @@ world-class semantic/visual gate is still open; — intentionally static.
 
 - Shared tenant-free all-shapes acceptance corpus:
   `packages/export-fixtures/src/chart-world-class-corpus.ts`
+- Pinned TanStack all-static adapter and scene/SVG tests:
+  `packages/export-charts-tanstack/src/index.ts` and `index.test.ts`
 - Cloud/DC all-shape normalization tests:
   `packages/confluence/src/chart-macro.test.ts`
 - Shared validator and diagnostic tests:

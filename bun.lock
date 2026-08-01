@@ -179,6 +179,7 @@
         "@atlcli/confluence": "workspace:*",
         "@atlcli/core": "workspace:*",
         "@atlcli/diagram": "workspace:*",
+        "@atlcli/export-blocks": "workspace:*",
         "@atlcli/export-macros": "workspace:*",
         "@atlcli/export-media": "workspace:*",
         "@resvg/resvg-wasm": "2.6.2",
@@ -222,6 +223,20 @@
         "astro": ">=7.1.6 <8",
       },
     },
+    "packages/export-charts-tanstack": {
+      "name": "@atlcli/export-charts-tanstack",
+      "version": "0.1.0",
+      "dependencies": {
+        "@atlcli/export-blocks": "workspace:*",
+        "@tanstack/charts": "0.3.1",
+        "d3-scale": "4.0.2",
+        "d3-shape": "3.2.0",
+      },
+      "devDependencies": {
+        "@types/d3-scale": "4.0.9",
+        "@types/d3-shape": "3.1.8",
+      },
+    },
     "packages/export-fixtures": {
       "name": "@atlcli/export-fixtures",
       "version": "0.0.0",
@@ -233,6 +248,9 @@
         "@atlcli/pdf": "workspace:*",
         "@atlcli/template-pack": "workspace:*",
         "pizzip": "^3.2.0",
+      },
+      "devDependencies": {
+        "@atlcli/export-charts-tanstack": "workspace:*",
       },
     },
     "packages/export-jobs": {
@@ -300,6 +318,7 @@
         "@atlcli/code-highlight": "workspace:*",
         "@atlcli/confluence": "workspace:*",
         "@atlcli/diagram": "workspace:*",
+        "@atlcli/export-blocks": "workspace:*",
         "@atlcli/export-macros": "workspace:*",
         "@atlcli/export-media": "workspace:*",
         "@atlcli/pdf-template-authoring": "workspace:*",
@@ -459,6 +478,8 @@
     "@atlcli/export-blocks": ["@atlcli/export-blocks@workspace:packages/export-blocks"],
 
     "@atlcli/export-blocks-astro": ["@atlcli/export-blocks-astro@workspace:packages/export-blocks-astro"],
+
+    "@atlcli/export-charts-tanstack": ["@atlcli/export-charts-tanstack@workspace:packages/export-charts-tanstack"],
 
     "@atlcli/export-fixtures": ["@atlcli/export-fixtures@workspace:packages/export-fixtures"],
 

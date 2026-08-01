@@ -499,6 +499,9 @@ listed in the capability registry.
 
 ### T6 — Static Astro components
 
+- [x] Add the version-pinned `@atlcli/export-charts-tanstack` package and prove
+      that the shared tenant-free all-shapes corpus compiles into non-empty
+      TanStack scenes and deterministic, escaped DOM-free SVG output.
 - [ ] Implement the separate `@atlcli/export-charts-tanstack` adapter for all
       twelve shapes and visually prove Astro's static/server SVG from the
       shared TanStack scene.

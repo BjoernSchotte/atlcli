@@ -6,6 +6,11 @@ import {
   validateChartModelV1,
 } from "@atlcli/confluence/browser";
 import {
+  TANSTACK_CHART_ADAPTER_V1,
+  createTanStackChartSceneV1,
+  renderTanStackChartSvgV1,
+} from "@atlcli/export-charts-tanstack";
+import {
   CHART_WORLD_CLASS_BLOCKS_V1,
   CHART_WORLD_CLASS_DIGESTS_V1,
   CHART_WORLD_CLASS_KINDS_V1,
@@ -40,4 +45,17 @@ test("callers receive a mutable clone without being able to drift the canonical 
   first[0]!.chart.title = "Changed by a consumer";
   expect(CHART_WORLD_CLASS_BLOCKS_V1[0]!.chart.title).toBe("Portfolio allocation");
   expect(chartWorldClassBlocksV1()[0]!.chart.title).toBe("Portfolio allocation");
+});
+
+test("all twelve world-class corpus models compile through the pinned TanStack scene and SVG renderer", () => {
+  expect(TANSTACK_CHART_ADAPTER_V1.version).toBe("0.3.1");
+  for (const block of CHART_WORLD_CLASS_BLOCKS_V1) {
+    const scene = createTanStackChartSceneV1(block.chart);
+    expect(scene.nodes.length, block.chart.kind).toBeGreaterThan(0);
+    expect(scene.points.length, block.chart.kind).toBeGreaterThan(0);
+    const svg = renderTanStackChartSvgV1(block.chart, { idPrefix: `corpus-${block.chart.kind}` });
+    expect(svg, block.chart.kind).toContain('class="ts-chart"');
+    expect(svg, block.chart.kind).toContain('role="img"');
+    expect(svg, block.chart.kind).not.toContain("<script");
+  }
 });
