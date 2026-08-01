@@ -82,6 +82,7 @@ function observation(): ResearchEvaluationObservationV1 {
     latencySamplesMs: [120, 80, 100, 110],
     modelCostSamplesUsd: [0.03, 0.01, 0.02],
     peakSupervisorContextTokens: 8_000,
+    peakSupervisorContextBytes: 32_000,
   };
 }
 
@@ -117,6 +118,7 @@ describe("research evaluation baseline metrics", () => {
       medianLatencyMs: 105,
       medianModelCostUsd: 0.02,
       peakSupervisorContextTokens: 8_000,
+      peakSupervisorContextBytes: 32_000,
     });
   });
 

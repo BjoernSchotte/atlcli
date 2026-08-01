@@ -53,6 +53,7 @@ export interface ResearchEvaluationObservationV1 {
   latencySamplesMs: readonly number[];
   modelCostSamplesUsd: readonly number[];
   peakSupervisorContextTokens: number;
+  peakSupervisorContextBytes: number;
 }
 
 export interface ResearchEvaluationMetricsV1 {
@@ -80,6 +81,7 @@ export interface ResearchEvaluationMetricsV1 {
   medianLatencyMs: number;
   medianModelCostUsd: number;
   peakSupervisorContextTokens: number;
+  peakSupervisorContextBytes: number;
 }
 
 export interface T3DirectionalValueDecisionV1 {
@@ -270,6 +272,7 @@ export function scoreResearchEvaluationV1(
     medianLatencyMs: median(observation.latencySamplesMs),
     medianModelCostUsd: median(observation.modelCostSamplesUsd),
     peakSupervisorContextTokens: observation.peakSupervisorContextTokens,
+    peakSupervisorContextBytes: observation.peakSupervisorContextBytes,
   };
 }
 

@@ -2645,9 +2645,18 @@ Shared:
       this phase `ResearchPacketBodyV1` cites existing V1 `sourceId` values.
       T5 introduces `ResearchPacketBodyV2` with exact chunk spans and the V2
       claim ledger; it does not reinterpret V1 packet semantics.
-- [ ] Add an S0/S1/S2/S3 comparison harness:
+- [x] Add an S0/S1/S2/S3 comparison harness:
       S0 current single-agent PTC, S1 dynamic graph with one worker, S2 bounded
-      dynamic subagents, S3 S2 plus conditional reconciliation.
+      dynamic subagents, S3 S2 plus conditional reconciliation. Proven
+      2026-08-01 by the host-neutral comparison harness: it serializes all four
+      registered runners against one frozen normalized request and exact budget
+      envelope, rejects scope/provider/budget drift, verifies the distinct
+      single-agent/dynamic worker/reconciliation composition evidence, records
+      one report publication plus concurrency and supervisor-context
+      token/byte measurements, scores every run, and produces a deterministic
+      directional `go`/`hold` decision. This is the measurement harness only;
+      the following gates still require actual S0-S3 runtime and private MVP
+      observations.
 
 CLI:
 
