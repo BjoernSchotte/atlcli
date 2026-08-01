@@ -10,4 +10,4 @@
 
 ### Entry point `.` — experimental
 
-- exported symbols (3): STARLIGHT_PUBLISHING_EXPERIENCE_ID_V1, STARLIGHT_PUBLISHING_EXPERIENCE_V1, StarlightPublishingExperienceDescriptorV1
+- exported symbols (8): STARLIGHT_PUBLISHING_EXPERIENCE_ID_V1, STARLIGHT_PUBLISHING_EXPERIENCE_V1, STARLIGHT_PUBLISHING_SEMANTIC_SLOTS_V1, StarlightPublishingExperienceDescriptorV1, StarlightPublishingExperienceErrorV1, StarlightPublishingExperienceRuntimeV1, StarlightPublishingSemanticSlotV1, createStarlightPublishingExperienceRuntimeV1

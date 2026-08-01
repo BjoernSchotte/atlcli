@@ -7,11 +7,34 @@
 ### Entry point `.`
 
 ```ts
+// export: createStarlightPublishingExperienceRuntimeV1
+export declare function createStarlightPublishingExperienceRuntimeV1(input?: {
+    slots?: readonly StarlightPublishingSemanticSlotV1[];
+}): Readonly<StarlightPublishingExperienceRuntimeV1>;
+
 // export: STARLIGHT_PUBLISHING_EXPERIENCE_ID_V1
 export declare const STARLIGHT_PUBLISHING_EXPERIENCE_ID_V1 = "atlcli.starlight/1";
 
 // export: STARLIGHT_PUBLISHING_EXPERIENCE_V1
 export declare const STARLIGHT_PUBLISHING_EXPERIENCE_V1: Readonly<StarlightPublishingExperienceDescriptorV1>;
+
+// export: STARLIGHT_PUBLISHING_SEMANTIC_SLOTS_V1
+export declare const STARLIGHT_PUBLISHING_SEMANTIC_SLOTS_V1: readonly [
+    "site-header",
+    "primary-navigation",
+    "breadcrumb",
+    "page-actions",
+    "page-toc",
+    "document-body",
+    "related-pages",
+    "previous-next",
+    "search-trigger",
+    "footer",
+    "landing-hero",
+    "not-found",
+    "analytics",
+    "edit-link"
+];
 
 // export: StarlightPublishingExperienceDescriptorV1
 export interface StarlightPublishingExperienceDescriptorV1 {
@@ -22,4 +45,26 @@ export interface StarlightPublishingExperienceDescriptorV1 {
     rendering: "astro-static";
     starlight: "^0.41.3";
 }
+
+// export: StarlightPublishingExperienceErrorV1
+export declare class StarlightPublishingExperienceErrorV1 extends Error {
+}
+
+// export: StarlightPublishingExperienceRuntimeV1
+export interface StarlightPublishingExperienceRuntimeV1 {
+    schema: "atlcli.web-publish-starlight-runtime/1";
+    descriptor: StarlightPublishingExperienceDescriptorV1;
+    slots: readonly StarlightPublishingSemanticSlotV1[];
+    tokens: readonly string[];
+    features: Readonly<{
+        navigation: true;
+        search: true;
+        toc: true;
+        colorModes: true;
+        print: true;
+    }>;
+}
+
+// export: StarlightPublishingSemanticSlotV1
+export type StarlightPublishingSemanticSlotV1 = (typeof STARLIGHT_PUBLISHING_SEMANTIC_SLOTS_V1)[number];
 ```

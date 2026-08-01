@@ -1571,7 +1571,7 @@ interaction remains bounded and has a complete static fallback.
 - [x] Add `@atlcli/web-publish-starlight` as the first public-0.x experience
       package with pinned compatible Starlight/Astro peers and no duplicated
       ExportBlock dispatcher or build runner.
-- [ ] Implement the versioned experience descriptor/runtime and semantic slots
+- [x] Implement the versioned experience descriptor/runtime and semantic slots
       without exposing Starlight-generated DOM selectors as compatibility.
 - [ ] Consume `@atlcli/export-blocks-astro` for all document bodies and map
       Starlight tokens to its public custom-property/slot contract.
