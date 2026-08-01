@@ -21,6 +21,7 @@ if (!entry) throw new Error(`Missing publication entry ${sourceId}`);
   <body>
     <PagefindSearch base="/docs/" labels={["guide"]} />
     <article data-atlcli-source-id={entry.data.sourceId} data-atlcli-bundle={entry.data.bundleDigest} data-pagefind-body>
+      <span data-pagefind-filter="label">guide</span>
       <h1>{entry.data.title}</h1>
       <p>Structured blocks: {entry.data.blocks.length}</p>
     </article>
