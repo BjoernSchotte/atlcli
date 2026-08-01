@@ -78,3 +78,24 @@ test("the plain experience preserves RTL logical layout, custom tokens, keyboard
   await expect(page.getByText("Fallback body", { exact: true })).toBeVisible();
   await context.close();
 });
+
+test("the Starlight Expressive Code surface keeps fixed presentation controls and hostile code inert", async ({ browser }) => {
+  const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+  const page = await context.newPage();
+  await page.goto("/starlight/");
+  const codeBlocks = page.locator('[data-atlcli-code-renderer="starlight-expressive-code"]');
+  await expect(codeBlocks).toHaveCount(2);
+  const normalizedCode = codeBlocks.nth(0);
+  const hostileCode = codeBlocks.nth(1);
+  await expect(normalizedCode.locator('[data-atlcli-code-language="TypeScript"]')).toBeVisible();
+  await expect(normalizedCode.locator("pre.wrap")).toBeVisible();
+  await expect(normalizedCode.locator(".ec-line.highlight.mark")).toBeVisible();
+  const copy = normalizedCode.getByRole("button", { name: "Copy to clipboard" });
+  await expect(copy).toHaveCount(1);
+  await copy.click();
+  await expect(normalizedCode.locator(".copy [aria-live]")).toHaveText("Copied!");
+  await expect(hostileCode.locator('[data-atlcli-code-language="Text"]')).toBeVisible();
+  await expect(hostileCode.locator("img")).toHaveCount(0);
+  await expect(hostileCode.getByText("</script><img src=x onerror=alert(1)>", { exact: true })).toBeVisible();
+  await context.close();
+});

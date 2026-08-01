@@ -25,7 +25,15 @@ export const PUBLISHED_RELEASE_BLOCKS_V1: readonly ExportBlock[] = [
     language: "ts",
     title: "publish.ts",
     code: "const source = 'ExportBlock[]';",
+    wrap: true,
+    highlightLines: [1],
     caption: { kind: "code", content: [{ type: "text", text: "Normalized source data" }] },
+  },
+  {
+    type: "codeBlock",
+    language: "ts\"><script>",
+    title: "hostile\" title {1}",
+    code: "</script><img src=x onerror=alert(1)>",
   },
   {
     type: "list",

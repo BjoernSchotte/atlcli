@@ -32,7 +32,12 @@ test("a Starlight consumer presents ExportBlock document bodies with static sear
   expect(html).toContain('data-atlcli-starlight-slot="main-content"');
   expect(html).toContain('data-atlcli-block="callout"');
   expect(html).toContain('data-atlcli-code-renderer="starlight-expressive-code"');
+  expect(html).toContain('data-atlcli-code-language="TypeScript"');
+  expect(html).toContain('data-atlcli-code-language="Text"');
+  expect(html).toContain("wrap");
   expect(html).toContain("data-code=\"const source = &#x27;ExportBlock[]&#x27;;\"");
+  expect(html).toContain("hostile\" title {1}");
+  expect(html).toContain("&#x3C;/script>&#x3C;img src=x onerror=alert(1)>");
   expect(html).toContain("This body was published from ExportBlock[], not Markdown.");
   expect(html).toContain("sidebar-pane");
   expect(html).toContain("Release notes");

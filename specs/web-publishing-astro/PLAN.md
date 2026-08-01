@@ -1629,7 +1629,7 @@ and presentation contracts are not Starlight-private.
       fallback, correct `lang`/`dir`, RTL, and canonical/hreflang consistency.
 - [ ] Implement verified-original and bounded Astro-responsive image modes,
       original download links, local/system fonts, and no remote font runtime.
-- [ ] Implement the normalized Expressive Code surface with copy, wrap,
+- [x] Implement the normalized Expressive Code surface with copy, wrap,
       language label, filename/caption, highlights, and hostile-input proof.
 - [ ] Enable base-aware prefetch only for verified same-origin routes; allow
       native cross-document view transitions as progressive enhancement but do

@@ -59,6 +59,18 @@ describe("ExportBlock runtime schema v1", () => {
     expect(() => parseExportBlocksV1(cyclic)).toThrow("cyclic value");
   });
 
+  test("accepts only unique positive normalized code highlight lines", () => {
+    expect(() => parseExportBlocksV1([{
+      type: "codeBlock", code: "const value = 1;", highlightLines: [1, 3],
+    }])).not.toThrow();
+    expect(() => parseExportBlocksV1([{
+      type: "codeBlock", code: "const value = 1;", highlightLines: [1, 1],
+    }])).toThrow("unique line numbers");
+    expect(() => parseExportBlocksV1([{
+      type: "codeBlock", code: "const value = 1;", highlightLines: [0],
+    }])).toThrow("positive safe integer");
+  });
+
   test("enforces deterministic resource budgets before typed traversal", () => {
     expect(() => parseExportBlocksV1(nestedBlocks, {
       maxDepth: 2,

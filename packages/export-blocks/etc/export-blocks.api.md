@@ -281,6 +281,7 @@ export type ExportBlock = {
     initiallyCollapsed?: boolean;
     caption?: Caption;
     wrap?: boolean;
+    highlightLines?: readonly number[];
     hideLineNumbers?: boolean;
     firstLineNumber?: number;
     localId?: string;

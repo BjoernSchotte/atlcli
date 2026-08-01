@@ -263,12 +263,20 @@ function block(value: unknown, path: string): void {
       record(node.card, `${path}.card`);
       return;
     case "codeBlock":
-      keys(node, path, ["type", "language", "code", "title", "initiallyCollapsed", "caption", "wrap", "hideLineNumbers", "firstLineNumber", "localId", "uniqueId", "breakout"]);
+      keys(node, path, ["type", "language", "code", "title", "initiallyCollapsed", "caption", "wrap", "highlightLines", "hideLineNumbers", "firstLineNumber", "localId", "uniqueId", "breakout"]);
       string(node.code, `${path}.code`);
       optional(node, "language", path, string);
       optional(node, "title", path, string);
       optional(node, "initiallyCollapsed", path, boolean);
       optional(node, "wrap", path, boolean);
+      if (node.highlightLines !== undefined) {
+        const seen = new Set<number>();
+        array(node.highlightLines, `${path}.highlightLines`).forEach((line, index) => {
+          const value = positiveInteger(line, `${path}.highlightLines[${index}]`);
+          if (seen.has(value)) fail(`${path}.highlightLines[${index}]`, "expected unique line numbers");
+          seen.add(value);
+        });
+      }
       optional(node, "hideLineNumbers", path, boolean);
       if (node.firstLineNumber !== undefined) positiveInteger(node.firstLineNumber, `${path}.firstLineNumber`);
       optionalInlineContent(node, "caption", path);

@@ -815,6 +815,12 @@ export type ExportBlock =
        */
       wrap?: boolean;
       /**
+       * Normalized, one-based source-line highlights. Renderers may use this
+       * bounded data only to select their fixed highlight presentation; it is
+       * never an arbitrary highlighter meta/config string.
+       */
+      highlightLines?: readonly number[];
+      /**
        * Normalized line-number policy. Direct ADF materializes its documented
        * default (`false`); Storage adapters materialize their own legacy
        * default so renderers never have to guess the source representation.

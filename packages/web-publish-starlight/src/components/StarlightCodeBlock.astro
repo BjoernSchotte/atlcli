@@ -3,6 +3,7 @@ import { Code } from "@astrojs/starlight/components";
 import Caption from "@atlcli/export-blocks-astro/components/Caption.astro";
 import type { ExportBlock } from "@atlcli/export-blocks";
 import type { AstroExportBlockRenderContextV1 } from "@atlcli/export-blocks-astro";
+import { resolveStarlightCodePresentationV1 } from "../code.js";
 
 interface Props {
   block: Extract<ExportBlock, { type: "codeBlock" }>;
@@ -10,12 +11,20 @@ interface Props {
 }
 
 const { block, context } = Astro.props;
+const presentation = resolveStarlightCodePresentationV1(block);
 ---
 
 <figure data-atlcli-block="code" data-atlcli-code-renderer="starlight-expressive-code">
-  {block.title && <header>{block.title}</header>}
+  <span data-atlcli-code-language={presentation.languageLabel}>{presentation.languageLabel}</span>
   {block.code.length > 0
-    ? <Code code={block.code} lang={block.language ?? "text"} locale={context.locale} />
-    : <pre><code class:list={{ [`language-${block.language ?? "text"}`]: true }} /></pre>}
+    ? <Code
+        code={block.code}
+        lang={presentation.language}
+        locale={context.locale}
+        wrap={presentation.wrap}
+        meta={presentation.meta}
+        title={block.title}
+      />
+    : <pre><code class:list={{ [`language-${presentation.language}`]: true }} /></pre>}
   {block.caption && <Caption caption={block.caption} locale={context.locale} />}
 </figure>
