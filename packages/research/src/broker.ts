@@ -91,6 +91,8 @@ export interface ResearchReadProviders {
 export interface ResearchDetailEvidenceV1 {
   source: ResearchSourceReferenceV1;
   content: BoundedContentProjectionV1;
+  /** Present only when the detail is durably retained under an approved binding. */
+  evidenceId?: string;
 }
 
 interface BrokerOptions {
@@ -236,6 +238,7 @@ export class ResearchCapabilityBroker {
         ...entry.content,
         linkTargets: [...entry.content.linkTargets],
       },
+      ...(entry.evidenceId === undefined ? {} : { evidenceId: entry.evidenceId }),
     }));
   }
 
@@ -243,6 +246,7 @@ export class ResearchCapabilityBroker {
     source: ResearchSourceReferenceV1,
     content: BoundedContentProjectionV1,
   ): Promise<void> {
+    let evidenceId: string | undefined;
     if (this.#evidence) {
       const evidence = await createResearchEvidenceRecordV1({
         source,
@@ -268,6 +272,7 @@ export class ResearchCapabilityBroker {
         });
       }
       await this.#evidence.store.put(evidence.record, evidence.chunks);
+      evidenceId = evidence.record.id;
     }
     this.#detailEvidence.set(source.id, {
       source,
@@ -275,6 +280,7 @@ export class ResearchCapabilityBroker {
         ...content,
         linkTargets: [...content.linkTargets],
       },
+      ...(evidenceId === undefined ? {} : { evidenceId }),
     });
   }
 

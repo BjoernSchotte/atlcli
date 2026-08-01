@@ -283,7 +283,7 @@ describe("bounded research capability broker", () => {
       { text: "The Jira issue links to the implementation page." },
     ]);
     expect(broker.detailEvidenceLedger()).toMatchObject([
-      { source: { id: "jira:DEMO-1" } },
+      { source: { id: "jira:DEMO-1" }, evidenceId: retained.records[0]!.id },
     ]);
   });
 

@@ -3311,6 +3311,17 @@ retention/deletion, V2 packet, and planner activation work remains pending.
       exact chunk spans for factual packet/claim support; retain completed T3
       V1 accepted packets for inspection but require host retrieval and
       revalidation before any V1 source pointer becomes current V2 support.
+
+T5 evidence-quote normalization checkpoint (2026-08-01): the broker now
+returns a durable evidence ID only after the detail body has passed the
+approved-binding evidence sink. `normalizeResearchClaimCandidatesV2` accepts
+an ephemeral model quote only when it occurs exactly once in that current
+evidence version, derives its own chunk offsets and SHA-256 hash, and stores
+the resulting immutable `ClaimV1`. It rejects paraphrases, duplicate matches,
+missing durable detail, source/evidence identity mismatch, and a source version
+superseded before acceptance. Its return value contains candidate and claim IDs
+plus validated spans, never the private quote. Wiring this normalizer into the
+V2 task packet admission and activating the planner remains pending.
 - [ ] Build and revise `OutlineV1` from brief coverage targets, claim IDs,
       contradiction IDs, and evidence IDs. A section draft receives only its
       linked accepted evidence.
