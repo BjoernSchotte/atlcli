@@ -5,6 +5,7 @@ import { handleDocs } from "./docs.js";
 import { handleSearch, handleRecent, handleMy } from "./search.js";
 import { handleTemplate } from "./template.js";
 import { handleExport } from "./export.js";
+import { handlePublish } from "./publish.js";
 
 export async function handleWiki(
   args: string[],
@@ -44,6 +45,9 @@ export async function handleWiki(
     case "export":
       await handleExport(rest, flags, opts);
       return;
+    case "publish":
+      await handlePublish(rest, flags, opts);
+      return;
     default:
       output(wikiHelp(), opts);
       return;
@@ -64,6 +68,7 @@ Commands:
   recent    Recently modified pages
   template  Page template management
   export    Export page to DOCX or PDF
+  publish   Build and verify a static Astro publication
 
 Options:
   --profile <name>  Use a specific auth profile
@@ -75,5 +80,6 @@ Examples:
   atlcli wiki docs pull ./docs --space TEAM
   atlcli wiki search "API docs" --space DEV
   atlcli wiki export 12345 --template corporate --output ./report.docx
+  atlcli wiki publish run --project .atlcli/publish.json --confirm-public
 `;
 }
