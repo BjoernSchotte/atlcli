@@ -16,22 +16,34 @@ import {
 } from "@atlcli/core";
 import type { Profile } from "@atlcli/core";
 import {
+  DEFAULT_RESEARCH_ONE_SHOT_POLICY_V1,
   DEFAULT_RESEARCH_LIMITS_V1,
   FileSystemResearchWorkspace,
   RESEARCH_MODEL_ID,
+  RESEARCH_ONE_SHOT_POLICY_SCHEMA_V1,
+  RESEARCH_REQUESTED_EFFORTS_V1,
+  RESEARCH_REQUESTED_RECONCILIATIONS_V1,
   RESEARCH_REQUEST_SCHEMA_V1,
+  RESEARCH_SCOPE_EXPANSION_MODES_V1,
   ResearchRunBudget,
   createResearchKeyScopeSeedV1,
   createRestResearchProviders,
+  normalizeResearchOneShotPolicyV1,
   normalizeResearchRequestV1,
   runResearchAgent,
+  type ResearchOneShotPolicyV1,
   type ResearchRequestV1,
   type ResearchOneShotEventV1,
   type ResearchReportV1,
   type ResearchScopeSeedV1,
   type ResearchWorkspace,
 } from "@atlcli/research/node";
-import { composeStandardResearchGraphV1 } from "@atlcli/research/graph";
+import {
+  composeStandardResearchGraphV1,
+  projectSelectedResearchRolesV1,
+  researchPlanApprovalRequiredV1,
+  type ResearchGraphV1,
+} from "@atlcli/research/graph";
 
 export interface ResearchCliInput {
   question: string;
@@ -45,6 +57,7 @@ export interface ResearchCliInput {
   outputPath?: string;
   maxRunMinutes: number;
   keepSession: boolean;
+  policy: ResearchOneShotPolicyV1;
 }
 
 const DEFAULT_MAX_RUN_MINUTES = 10;
@@ -59,6 +72,10 @@ const T2_RESEARCH_FLAGS = new Set([
   "timezone",
   "max-run-minutes",
   "output",
+  "effort",
+  "plan-approval",
+  "scope-expansion",
+  "reconciliation",
   "keep-session",
   "json",
   "no-log",
@@ -75,6 +92,10 @@ const T2_VALUE_FLAGS = [
   "timezone",
   "max-run-minutes",
   "output",
+  "effort",
+  "plan-approval",
+  "scope-expansion",
+  "reconciliation",
 ] as const;
 const T2_SINGLE_VALUE_FLAGS = T2_VALUE_FLAGS.filter(
   (key) => key !== "project" && key !== "space",
@@ -92,6 +113,7 @@ export interface ResearchCliAgentInput {
   request: ResearchRequestV1;
   workspace: ResearchCliWorkspace;
   sessionId: string;
+  researchGraph: ResearchGraphV1;
   signal: AbortSignal;
   onEvent: (event: ResearchOneShotEventV1) => void;
   writeDiagnostic: (message: string) => void;
@@ -160,15 +182,25 @@ function normalizeTimezone(value: string | undefined): string | undefined {
   }
 }
 
+function enumFlag<T extends string>(
+  flags: Record<string, string | boolean | string[]>,
+  key: string,
+  allowed: readonly T[],
+  fallback: T,
+): T {
+  const value = getFlag(flags, key);
+  if (value === undefined) return fallback;
+  if (!allowed.includes(value as T)) {
+    throw new Error(`--${key} must be one of: ${allowed.join(", ")}.`);
+  }
+  return value as T;
+}
+
 export function parseResearchCliInput(
   args: string[],
   flags: Record<string, string | boolean | string[]>,
 ): ResearchCliInput {
   const unsupported = [
-    "effort",
-    "scope-expansion",
-    "reconciliation",
-    "plan-approval",
     "plan-only",
     "session",
     "resume",
@@ -213,6 +245,35 @@ export function parseResearchCliInput(
   if (!Number.isSafeInteger(maxRunMinutes) || maxRunMinutes < 1 || maxRunMinutes > MAX_MAX_RUN_MINUTES) {
     throw new Error(`--max-run-minutes must be an integer between 1 and ${MAX_MAX_RUN_MINUTES}.`);
   }
+  const requestedPlanApproval = getFlag(flags, "plan-approval") ??
+    DEFAULT_RESEARCH_ONE_SHOT_POLICY_V1.requestedPlanApproval;
+  if (requestedPlanApproval !== "default" && requestedPlanApproval !== "automatic") {
+    throw new Error(
+      "--plan-approval supports only automatic in the one-shot path; durable required approval arrives in T4.",
+    );
+  }
+  const policy = normalizeResearchOneShotPolicyV1({
+    schema: RESEARCH_ONE_SHOT_POLICY_SCHEMA_V1,
+    requestedEffort: enumFlag(
+      flags,
+      "effort",
+      RESEARCH_REQUESTED_EFFORTS_V1,
+      DEFAULT_RESEARCH_ONE_SHOT_POLICY_V1.requestedEffort,
+    ),
+    requestedPlanApproval,
+    scopeExpansionMode: enumFlag(
+      flags,
+      "scope-expansion",
+      RESEARCH_SCOPE_EXPANSION_MODES_V1,
+      DEFAULT_RESEARCH_ONE_SHOT_POLICY_V1.scopeExpansionMode,
+    ),
+    requestedReconciliation: enumFlag(
+      flags,
+      "reconciliation",
+      RESEARCH_REQUESTED_RECONCILIATIONS_V1,
+      DEFAULT_RESEARCH_ONE_SHOT_POLICY_V1.requestedReconciliation,
+    ),
+  });
   return {
     question: [question, asOf ? `As-of date: ${asOf}.` : "", timezone ? `Timezone: ${timezone}.` : ""].filter(Boolean).join("\n\n"),
     profile: getFlag(flags, "profile"),
@@ -225,6 +286,7 @@ export function parseResearchCliInput(
     ...(getFlag(flags, "output") ? { outputPath: getFlag(flags, "output") } : {}),
     maxRunMinutes,
     keepSession: hasFlag(flags, "keep-session"),
+    policy,
   };
 }
 
@@ -322,11 +384,7 @@ export const defaultResearchCliDependencies: ResearchCliDependencies = {
       providers,
       budget,
       runId: input.sessionId,
-      researchGraph: composeStandardResearchGraphV1(input.request.question, {
-        scope: input.request.scope,
-        limits: input.request.limits,
-        asOf: new Date().toISOString(),
-      }),
+      researchGraph: input.researchGraph,
       workspace: input.workspace,
       options: {
         signal: input.signal,
@@ -365,6 +423,35 @@ export async function handleResearch(
     dependencies.fail(opts, 1, ERROR_CODES.AUTH, "No active profile found. Run `atlcli auth login` or select --profile.", { profile: input.profile });
   }
   const request = buildResearchRequest(input, profile);
+  const researchGraph = composeStandardResearchGraphV1(request.question, {
+    scope: request.scope,
+    scopeBindings: request.scopeSeeds?.map((seed) => seed.binding),
+    limits: request.limits,
+    asOf: new Date().toISOString(),
+    timezone: input.timezone,
+    policy: input.policy,
+  });
+  const selectedRoles = projectSelectedResearchRolesV1(researchGraph);
+  dependencies.writeStderr(
+    `[research] brief_revision=${researchGraph.basedOnBriefRevision} graph_revision=${researchGraph.revision} graph_status=${researchGraph.status} effort=${researchGraph.resolvedEffort} plan_approval=${researchGraph.approvalEnvelope.status} scope_expansion=${researchGraph.approvalEnvelope.scopeDiscoveryPolicy.expansionMode} reconciliation=${researchGraph.reconciliationPolicy.mode}\n`,
+  );
+  dependencies.writeStderr(
+    `[research] roles=${selectedRoles.join(",") || "none"} nodes=${researchGraph.nodes.map((node) => `${node.id}:${node.status}`).join(",")}\n`,
+  );
+  dependencies.writeStderr(
+    `[research] scope_bindings=${(request.scopeSeeds ?? []).map((seed) => `${seed.binding.product}:${seed.binding.key}:${seed.binding.source}:${seed.binding.authority}`).join(",") || "none"}\n`,
+  );
+  const approvalRequired = researchPlanApprovalRequiredV1(researchGraph);
+  if (approvalRequired) {
+    dependencies.writeStderr("[research] stop_reason=plan-approval-required\n");
+    dependencies.fail(
+      opts,
+      2,
+      ERROR_CODES.VALIDATION,
+      "The resolved research plan requires approval. Review the plan and rerun with --plan-approval automatic.",
+      { outcome: approvalRequired },
+    );
+  }
   const apiKey = assertApiKey(dependencies);
   const workspace = await dependencies.createWorkspace();
   const sessionId = dependencies.createSessionId();
@@ -386,6 +473,7 @@ export async function handleResearch(
       request,
       workspace,
       sessionId,
+      researchGraph,
       signal: controller.signal,
       writeDiagnostic: (message) => dependencies.writeStderr(`[research] ${message}\n`),
       onEvent: (event) => {
@@ -443,12 +531,16 @@ Options:
   --as-of <date/time>    Add a fixed date or timezone-qualified timestamp
   --timezone <name>      Add an explicit timezone to the question
   --max-run-minutes <n>  Complete workflow deadline, 1-10 (default: 10)
+  --effort <mode>         auto|lookup|analysis|deep (default: auto)
+  --plan-approval <mode>  automatic; omitted deep plans stop for review
+  --scope-expansion <m>   strict|ask|exact-linked (default: ask)
+  --reconciliation <m>    off|auto|required (default: auto)
   --output <path>        Atomically write the generated Markdown
   --keep-session         Retain the temporary session workspace
   --json                 Emit the structured report as JSON
   --help                 Show this help
 
 ANTHROPIC_API_KEY must be supplied through the process environment.
-Durable session flags such as --resume are reserved for a later phase.
+Required plan approval and durable session flags such as --resume arrive in T4.
 `;
 }

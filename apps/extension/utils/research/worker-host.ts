@@ -1,5 +1,6 @@
 import {
   ResearchContractError,
+  type ResearchOneShotPolicyV1,
   type ResearchOneShotEventV1,
   type ResearchProgressV1,
   type ResearchReportV1,
@@ -35,6 +36,7 @@ export class ResearchAgentWorkerHost {
     runId: string;
     apiKey: string;
     request: ResearchRequestV1;
+    policy?: ResearchOneShotPolicyV1;
     onProgress?: (progress: ResearchProgressV1) => void;
     onEvent?: (event: ResearchOneShotEventV1) => void;
   }): Promise<ResearchReportV1> {
@@ -70,6 +72,7 @@ export class ResearchAgentWorkerHost {
         runId: input.runId,
         apiKey: input.apiKey,
         request: input.request,
+        ...(input.policy ? { policy: input.policy } : {}),
       });
     }).finally(() => {
       const active = this.#active.get(input.runId);

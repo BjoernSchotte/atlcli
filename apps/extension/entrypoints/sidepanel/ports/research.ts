@@ -1,5 +1,6 @@
 import {
   ResearchContractError,
+  normalizeResearchOneShotPolicyV1,
   type ResearchPort,
 } from "../../../utils/research/contracts.js";
 import {
@@ -56,6 +57,7 @@ export function chromeResearchPort(): ResearchPort {
         throw new ResearchContractError("cancelled", "The research run was cancelled.");
       }
       const runId = crypto.randomUUID();
+      const policy = normalizeResearchOneShotPolicyV1(options?.policy);
       activeRunId = runId;
       const window = await chrome.windows.getCurrent();
       if (window.id === undefined) {
@@ -88,6 +90,7 @@ export function chromeResearchPort(): ResearchPort {
           runId,
           windowId: window.id,
           request,
+          policy,
         })) as
           | {
               kind: "research:run-result";

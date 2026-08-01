@@ -3,13 +3,17 @@ import {
   ResearchRunBudget,
   classifyResearchError,
   createRestResearchProviders,
+  normalizeResearchOneShotPolicyV1,
   normalizeResearchRequestV1,
   createMemoryResearchWorkspace,
   type ResearchOneShotEventV1,
   type ResearchProgressV1,
 } from "@atlcli/research/browser";
 import { runResearchAgent } from "@atlcli/research/browser/agent";
-import { composeStandardResearchGraphV1 } from "@atlcli/research/graph";
+import {
+  assertResearchGraphExecutableV1,
+  composeStandardResearchGraphV1,
+} from "@atlcli/research/graph";
 import type {
   ResearchWorkerRequestV1,
   ResearchWorkerResponseV1,
@@ -33,6 +37,15 @@ globalThis.addEventListener("message", (event: MessageEvent<unknown>) => {
   void (async () => {
     try {
       const request = normalizeResearchRequestV1(message.request);
+      const policy = normalizeResearchOneShotPolicyV1(message.policy);
+      const researchGraph = composeStandardResearchGraphV1(request.question, {
+        scope: request.scope,
+        scopeBindings: request.scopeSeeds?.map((seed) => seed.binding),
+        limits: request.limits,
+        asOf: new Date().toISOString(),
+        policy,
+      });
+      assertResearchGraphExecutableV1(researchGraph);
       const profile: Profile = {
         name: "research-session",
         baseUrl: request.scope.siteOrigin,
@@ -41,11 +54,6 @@ globalThis.addEventListener("message", (event: MessageEvent<unknown>) => {
       };
       const budget = new ResearchRunBudget(request.limits);
       const providers = createRestResearchProviders(profile, request, budget);
-      const researchGraph = composeStandardResearchGraphV1(request.question, {
-        scope: request.scope,
-        limits: request.limits,
-        asOf: new Date().toISOString(),
-      });
       const workspace = createMemoryResearchWorkspace();
       const onProgress = (progress: ResearchProgressV1): void =>
         post({ kind: "research-worker:progress", runId, progress });
@@ -59,7 +67,7 @@ globalThis.addEventListener("message", (event: MessageEvent<unknown>) => {
         runId,
         researchGraph,
         workspace,
-        options: { onProgress, onEvent },
+        options: { onProgress, onEvent, policy },
       });
       post({ kind: "research-worker:complete", runId, report });
     } catch (error) {

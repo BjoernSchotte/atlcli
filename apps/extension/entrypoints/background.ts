@@ -20,9 +20,13 @@ import {
   type PdfCompileHints,
   isExportJobsChanged,
 } from "../utils/messages.js";
-import type { ResearchRequestV1 } from "../utils/research/contracts.js";
+import type {
+  ResearchOneShotPolicyV1,
+  ResearchRequestV1,
+} from "../utils/research/contracts.js";
 import {
   ResearchContractError,
+  normalizeResearchOneShotPolicyV1,
   normalizeResearchRequestV1,
 } from "../utils/research/contracts.js";
 import {
@@ -424,9 +428,11 @@ export default defineBackground({
   const runResearch = async (
     runId: string,
     windowId: number,
-    value: ResearchRequestV1
+    value: ResearchRequestV1,
+    policyValue?: ResearchOneShotPolicyV1,
   ) => {
     const request = normalizeResearchRequestV1(value);
+    const policy = normalizeResearchOneShotPolicyV1(policyValue);
     const detection = await getCurrentEntity(windowId);
     const profile = detection.url ? profileFromTabUrl(detection.url) : null;
     if (!profile || new URL(profile.baseUrl).origin !== request.scope.siteOrigin) {
@@ -449,6 +455,7 @@ export default defineBackground({
         runId,
         apiKey,
         request,
+        policy,
       })) as OffscreenResponse | undefined;
       if (
         !response ||

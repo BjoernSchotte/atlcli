@@ -226,6 +226,13 @@ describe("handleOffscreenMessage (offscreen listener adapter)", () => {
     const cap = captureResponse<OffscreenResponse>();
     const report = { schema: "atlcli.research-report/v1" } as ResearchReportV1;
     const request = { schema: "atlcli.research-request/v1" } as ResearchRequestV1;
+    const policy = {
+      schema: "atlcli.research-one-shot-policy/v1",
+      requestedEffort: "analysis",
+      requestedPlanApproval: "automatic",
+      scopeExpansionMode: "ask",
+      requestedReconciliation: "auto",
+    } as const;
     const received: unknown[] = [];
     expect(handleOffscreenMessage(
       {
@@ -233,18 +240,19 @@ describe("handleOffscreenMessage (offscreen listener adapter)", () => {
         runId: "run-1",
         apiKey: "sk-ant-test-listener",
         request,
+        policy,
       },
       cap.sendResponse,
       {
         ...okOffscreenDeps,
-        runResearch: async (runId, apiKey, receivedRequest) => {
-          received.push(runId, apiKey, receivedRequest);
+        runResearch: async (runId, apiKey, receivedRequest, receivedPolicy) => {
+          received.push(runId, apiKey, receivedRequest, receivedPolicy);
           return report;
         },
       },
     )).toBe(true);
     await cap.called;
-    expect(received).toEqual(["run-1", "sk-ant-test-listener", request]);
+    expect(received).toEqual(["run-1", "sk-ant-test-listener", request, policy]);
     expect(cap.values).toEqual([{
       kind: "offscreen:research-run-result",
       runId: "run-1",

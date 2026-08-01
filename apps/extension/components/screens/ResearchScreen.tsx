@@ -5,15 +5,27 @@ import type {
   ScreenProps,
 } from "../../utils/screens/registry.js";
 import {
+  DEFAULT_RESEARCH_ONE_SHOT_POLICY_V1,
   DEFAULT_RESEARCH_LIMITS_V1,
+  RESEARCH_ONE_SHOT_POLICY_SCHEMA_V1,
   RESEARCH_REQUEST_SCHEMA_V1,
   ResearchContractError,
+  normalizeResearchOneShotPolicyV1,
   normalizeResearchRequestV1,
   type ResearchOneShotEventV1,
+  type ResearchRequestedEffortV1,
+  type ResearchRequestedPlanApprovalV1,
+  type ResearchRequestedReconciliationV1,
   type ResearchReportV1,
+  type ResearchScopeExpansionModeV1,
   type ResearchScopeSeedV1,
 } from "../../utils/research/contracts.js";
 import { createResearchKeyScopeSeedV1 } from "@atlcli/research/scope-discovery";
+import {
+  composeStandardResearchGraphV1,
+  researchPlanApprovalRequiredV1,
+  type ResearchPlanApprovalRequiredV1,
+} from "@atlcli/research/graph";
 import { useT } from "../../utils/i18n/context.js";
 import { Alert, AlertTitle } from "../ui/alert.js";
 import { Button } from "../ui/button.js";
@@ -23,6 +35,7 @@ import {
   FieldHelp,
   Input,
   Label,
+  Select,
   SectionHeading,
 } from "../ui/field.js";
 import { cn } from "../ui/utils.js";
@@ -295,6 +308,18 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
   const [includeCurrentContext, setIncludeCurrentContext] = useState(true);
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
+  const [effort, setEffort] = useState<ResearchRequestedEffortV1>(
+    DEFAULT_RESEARCH_ONE_SHOT_POLICY_V1.requestedEffort,
+  );
+  const [planApproval, setPlanApproval] = useState<ResearchRequestedPlanApprovalV1>(
+    DEFAULT_RESEARCH_ONE_SHOT_POLICY_V1.requestedPlanApproval,
+  );
+  const [scopeExpansion, setScopeExpansion] = useState<ResearchScopeExpansionModeV1>(
+    DEFAULT_RESEARCH_ONE_SHOT_POLICY_V1.scopeExpansionMode,
+  );
+  const [reconciliation, setReconciliation] = useState<ResearchRequestedReconciliationV1>(
+    DEFAULT_RESEARCH_ONE_SHOT_POLICY_V1.requestedReconciliation,
+  );
   const [disclosed, setDisclosed] = useState(false);
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState("");
@@ -302,6 +327,8 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
   const [report, setReport] = useState<ResearchReportV1 | null>(null);
   const [raw, setRaw] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [planApprovalRequired, setPlanApprovalRequired] =
+    useState<ResearchPlanApprovalRequiredV1 | null>(null);
   const [actionStatus, setActionStatus] = useState("");
   const abortRef = useRef<AbortController | null>(null);
 
@@ -320,18 +347,12 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
 
   async function run(): Promise<void> {
     setError(null);
+    setPlanApprovalRequired(null);
     setActionStatus("");
     try {
       if (!site) throw new ResearchContractError("not-atlassian", t("research.siteMissing"));
       if (!disclosed) {
         throw new ResearchContractError("invalid-request", t("research.disclosure"));
-      }
-      if (apiKey.trim()) {
-        await port!.setApiKey(apiKey);
-        setApiKey("");
-        setHasKey(true);
-      } else if (!hasKey) {
-        throw new ResearchContractError("missing-key", t("research.key.missing"));
       }
       const scope = inferResearchScope({
         siteOrigin: site.origin,
@@ -357,6 +378,35 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
         limits: DEFAULT_RESEARCH_LIMITS_V1,
         wikiProvider: "rest",
       });
+      const policy = normalizeResearchOneShotPolicyV1({
+        schema: RESEARCH_ONE_SHOT_POLICY_SCHEMA_V1,
+        requestedEffort: effort,
+        requestedPlanApproval: planApproval,
+        scopeExpansionMode: scopeExpansion,
+        requestedReconciliation: reconciliation,
+      });
+      const graph = composeStandardResearchGraphV1(request.question, {
+        scope: request.scope,
+        scopeBindings: request.scopeSeeds?.map((seed) => seed.binding),
+        limits: request.limits,
+        asOf: new Date().toISOString(),
+        policy,
+      });
+      const approvalRequired = researchPlanApprovalRequiredV1(graph);
+      if (approvalRequired) {
+        setPlanApprovalRequired(approvalRequired);
+        setActivity([]);
+        setReport(null);
+        setProgress("");
+        return;
+      }
+      if (apiKey.trim()) {
+        await port!.setApiKey(apiKey);
+        setApiKey("");
+        setHasKey(true);
+      } else if (!hasKey) {
+        throw new ResearchContractError("missing-key", t("research.key.missing"));
+      }
       const controller = new AbortController();
       abortRef.current = controller;
       setRunning(true);
@@ -365,6 +415,7 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
       setReport(null);
       const result = await port!.run(request, {
         signal: controller.signal,
+        policy,
         onProgress: (value) => setProgress(value.message),
         onEvent: (event) => setActivity((current) =>
           [...current, event].slice(-MAX_RESEARCH_ACTIVITY_EVENTS)
@@ -445,6 +496,65 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
               <Input id="research-wiki" value={confluenceSpaces} onChange={(event) => setConfluenceSpaces(event.target.value)} disabled={running} />
             </div>
           </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="research-effort">{t("research.effort")}</Label>
+              <Select
+                id="research-effort"
+                data-testid="research-effort"
+                value={effort}
+                onChange={(event) => setEffort(event.target.value as ResearchRequestedEffortV1)}
+                disabled={running}
+              >
+                <option value="auto">{t("research.effort.auto")}</option>
+                <option value="lookup">{t("research.effort.lookup")}</option>
+                <option value="analysis">{t("research.effort.analysis")}</option>
+                <option value="deep">{t("research.effort.deep")}</option>
+              </Select>
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="research-plan-approval">{t("research.planApproval")}</Label>
+              <Select
+                id="research-plan-approval"
+                data-testid="research-plan-approval"
+                value={planApproval}
+                onChange={(event) => setPlanApproval(event.target.value as ResearchRequestedPlanApprovalV1)}
+                disabled={running}
+              >
+                <option value="default">{t("research.planApproval.default")}</option>
+                <option value="automatic">{t("research.planApproval.automatic")}</option>
+              </Select>
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="research-scope-expansion">{t("research.scopeExpansion")}</Label>
+              <Select
+                id="research-scope-expansion"
+                data-testid="research-scope-expansion"
+                value={scopeExpansion}
+                onChange={(event) => setScopeExpansion(event.target.value as ResearchScopeExpansionModeV1)}
+                disabled={running}
+              >
+                <option value="strict">{t("research.scopeExpansion.strict")}</option>
+                <option value="ask">{t("research.scopeExpansion.ask")}</option>
+                <option value="exact-linked">{t("research.scopeExpansion.exactLinked")}</option>
+              </Select>
+            </div>
+            <div className="flex flex-col gap-1">
+              <Label htmlFor="research-reconciliation">{t("research.reconciliation")}</Label>
+              <Select
+                id="research-reconciliation"
+                data-testid="research-reconciliation"
+                value={reconciliation}
+                onChange={(event) => setReconciliation(event.target.value as ResearchRequestedReconciliationV1)}
+                disabled={running}
+              >
+                <option value="off">{t("research.reconciliation.off")}</option>
+                <option value="auto">{t("research.reconciliation.auto")}</option>
+                <option value="required">{t("research.reconciliation.required")}</option>
+              </Select>
+            </div>
+          </div>
+          <FieldHelp>{t("research.policy.help")}</FieldHelp>
           <FieldHelp>{t("research.keys.help")}</FieldHelp>
           {(site?.activeProjectKey || site?.activeSpaceKey) && (
             <CheckboxField
@@ -516,6 +626,26 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
         <Alert tone="danger" role="alert" data-testid="research-error">
           <AlertTitle>{t("research.error")}</AlertTitle>
           <p className="m-0 mt-1">{error}</p>
+        </Alert>
+      )}
+
+      {planApprovalRequired && (
+        <Alert tone="muted" role="status" data-testid="research-plan-approval-required">
+          <AlertTitle>{t("research.planRequired")}</AlertTitle>
+          <p className="m-0 mt-1">
+            {t("research.planRequired.value", {
+              effort: planApprovalRequired.resolvedEffort,
+              revision: String(planApprovalRequired.graphRevision),
+            })}
+          </p>
+          <p className="m-0 mt-1 text-xs">
+            {t("research.planRequired.roles")}: {planApprovalRequired.selectedRoleIds.join(", ")}
+          </p>
+          <ul className="mb-0 mt-1 pl-5 text-xs">
+            {planApprovalRequired.rerunGuidance.map((guidance) => (
+              <li key={guidance}>{guidance}</li>
+            ))}
+          </ul>
         </Alert>
       )}
 

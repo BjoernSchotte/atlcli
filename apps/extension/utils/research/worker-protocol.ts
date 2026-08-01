@@ -1,6 +1,7 @@
 import type {
   ResearchErrorCode,
   ResearchOneShotEventV1,
+  ResearchOneShotPolicyV1,
   ResearchProgressV1,
   ResearchReportV1,
   ResearchRequestV1,
@@ -11,6 +12,7 @@ export type ResearchWorkerRequestV1 = {
   runId: string;
   apiKey: string;
   request: ResearchRequestV1;
+  policy?: ResearchOneShotPolicyV1;
 };
 
 export type ResearchWorkerResponseV1 =

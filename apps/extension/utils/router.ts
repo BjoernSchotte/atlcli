@@ -18,6 +18,7 @@ import type { CodeThemeId } from "@atlcli/code-highlight/registry";
 import type {
   ResearchReportV1,
   ResearchRequestV1,
+  ResearchOneShotPolicyV1,
 } from "./research/contracts.js";
 import { classifyResearchError } from "@atlcli/research";
 
@@ -50,7 +51,8 @@ export interface RouterDeps {
   runResearch?: (
     runId: string,
     windowId: number,
-    request: ResearchRequestV1
+    request: ResearchRequestV1,
+    policy?: ResearchOneShotPolicyV1,
   ) => Promise<ResearchReportV1>;
   cancelResearch?: (runId: string) => Promise<boolean>;
 }
@@ -148,7 +150,7 @@ export async function routeMessage(
         };
       }
       try {
-        const report = await deps.runResearch(msg.runId, msg.windowId, msg.request);
+        const report = await deps.runResearch(msg.runId, msg.windowId, msg.request, msg.policy);
         return { kind: "research:run-result", runId: msg.runId, ok: true, report };
       } catch (error) {
         const classified = classifyResearchError(error);

@@ -200,12 +200,27 @@ describe("routeMessage (pure router)", () => {
     const request = {
       schema: "atlcli.research-request/v1",
     } as ResearchRequestV1;
+    const policy = {
+      schema: "atlcli.research-one-shot-policy/v1",
+      requestedEffort: "analysis",
+      requestedPlanApproval: "automatic",
+      scopeExpansionMode: "ask",
+      requestedReconciliation: "auto",
+    } as const;
+    const observed: unknown[] = [];
     expect(await routeMessage({
       kind: "research:run",
       runId: "run-1",
       windowId: 7,
       request,
-    }, okDeps)).toEqual({
+      policy,
+    }, {
+      ...okDeps,
+      runResearch: async (_runId, _windowId, _request, receivedPolicy) => {
+        observed.push(receivedPolicy);
+        return researchReport;
+      },
+    })).toEqual({
       kind: "research:run-result",
       runId: "run-1",
       ok: true,
@@ -224,6 +239,8 @@ describe("routeMessage (pure router)", () => {
       runId: "run-1",
       windowId: 7,
       request,
+      policy,
     })).not.toContain("apiKey");
+    expect(observed).toEqual([policy]);
   });
 });

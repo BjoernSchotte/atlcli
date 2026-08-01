@@ -6,6 +6,7 @@ import { ReplSession, validateResponseSchema } from "@langchain/quickjs";
 import {
   RESEARCH_GRAPH_SCHEMA_V1,
   composeResearchGraphV1,
+  composeStandardResearchGraphV1,
   type ResearchBriefV1,
   type ResearchGraphV1,
 } from "@atlcli/research/graph";
@@ -295,6 +296,48 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
         },
       },
     })).rejects.toThrow("validated research graph");
+  });
+
+  test("rejects a proposed deep graph before workspace, provider, or model effects", async () => {
+    let workspaceWrites = 0;
+    let providerCalls = 0;
+    let modelCalls = 0;
+    const proposed = composeStandardResearchGraphV1(
+      "Perform exhaustive contradiction analysis across Jira and Confluence.",
+      { scope: request.scope, limits: request.limits },
+    );
+    const guardedModel = {
+      invoke: async () => {
+        modelCalls += 1;
+        throw new Error("must not run");
+      },
+    } as unknown as BaseChatModel;
+    await expect(runResearchAgent({
+      model: guardedModel,
+      request,
+      providers: {
+        jira: {
+          async searchPage() { providerCalls += 1; return { items: [] }; },
+          async getIssue() { providerCalls += 1; throw new Error("must not run"); },
+        },
+        wiki: {
+          async searchPage() { providerCalls += 1; return { items: [] }; },
+          async getPage() { providerCalls += 1; throw new Error("must not run"); },
+        },
+      },
+      researchGraph: proposed,
+      workspace: {
+        async readFile() { return undefined; },
+        async writeFile() { workspaceWrites += 1; },
+        async remove() {},
+        async list() { return []; },
+      },
+    })).rejects.toMatchObject({ code: "plan-approval-required" });
+    expect({ workspaceWrites, providerCalls, modelCalls }).toEqual({
+      workspaceWrites: 0,
+      providerCalls: 0,
+      modelCalls: 0,
+    });
   });
 
   test("keeps every dynamic task schema within the native QuickJS bridge limits", () => {

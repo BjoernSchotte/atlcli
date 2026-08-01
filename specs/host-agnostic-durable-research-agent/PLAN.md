@@ -2543,7 +2543,7 @@ Shared:
 
 CLI:
 
-- [ ] Add `--effort`, `--plan-approval automatic`,
+- [x] Add `--effort`, `--plan-approval automatic`,
       `--scope-expansion strict|ask|exact-linked`, and
       `--reconciliation off|auto|required` to the one-shot command. Required
       plan approval, mid-run scope approval, and post-start steering wait for
@@ -2606,7 +2606,7 @@ Gate:
       excessive fan-out, oversized packet, unknown evidence, and late-result
       tests all fail closed without duplicate model/provider work being
       accepted.
-- [ ] Approval fixtures preserve omitted/default versus explicitly automatic
+- [x] Approval fixtures preserve omitted/default versus explicitly automatic
       intent. A T3 `auto -> deep` run with default approval stops before
       research; the otherwise identical explicit-automatic run may proceed.
 - [ ] A required-ambiguity fixture returns the same typed clarification outcome
@@ -2652,6 +2652,18 @@ evidence, rendered the final Markdown deterministically, and emitted the same
 sanitized activity contract as the browser host. The focused 183-test suite,
 screen test, workspace typecheck, production build, privacy scan, browser
 isomorphism gate, and two-test packed MV3 suite passed before this checkpoint.
+
+T3 policy checkpoint (2026-08-01): CLI and extension/browser now consume the
+same closed one-shot policy contract. An omitted/default approval that resolves
+through `auto` to `deep` produces a typed proposed-plan stop before credential
+storage, workspace creation, provider construction, or model execution; the
+otherwise identical explicitly automatic policy may execute. Unit, screen,
+worker-boundary, API-surface, production-build, browser-isomorphism, privacy,
+pack, and packed-MV3 gates passed. An explicitly automatic 10-minute Mayflower
+CLI run against the approved DOCSY/ATLCLI test scopes completed in 327,702 ms,
+performed 18 bounded PTC/HTTP reads, rendered canonical Markdown, and copied
+byte-identical mode-0600 artifacts to the requested timestamped local artifact
+directory.
 
 ### T4 — Add durable session, workspace, graph, and checkpoint stores
 

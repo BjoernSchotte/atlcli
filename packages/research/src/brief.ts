@@ -2,9 +2,23 @@ import {
   DEFAULT_RESEARCH_LIMITS_V1,
   type ResearchLimitsV1,
   type ResearchProduct,
+  type ResearchRequestedEffortV1,
+  type ResearchRequestedPlanApprovalV1,
+  type ResearchRequestedReconciliationV1,
+  type ResearchResolvedEffortV1,
+  type ResearchResolvedPlanApprovalV1,
   type ResearchScopeBindingV1,
+  type ResearchScopeExpansionModeV1,
   type ResearchScopeV1,
   type ResearchTimeWindowV1,
+} from "./contracts.js";
+export type {
+  ResearchRequestedEffortV1,
+  ResearchRequestedPlanApprovalV1,
+  ResearchRequestedReconciliationV1,
+  ResearchResolvedEffortV1,
+  ResearchResolvedPlanApprovalV1,
+  ResearchScopeExpansionModeV1,
 } from "./contracts.js";
 import type {
   ResearchScopeCandidateV1,
@@ -15,13 +29,6 @@ import type {
 export const RESEARCH_BRIEF_SCHEMA_V1 = "atlcli.research-brief/v1" as const;
 export const RESEARCH_SCOPE_DISCOVERY_POLICY_SCHEMA_V1 =
   "atlcli.research-scope-discovery-policy/v1" as const;
-
-export type ResearchRequestedEffortV1 = "auto" | "lookup" | "analysis" | "deep";
-export type ResearchResolvedEffortV1 = "lookup" | "analysis" | "deep";
-export type ResearchRequestedPlanApprovalV1 = "default" | "automatic" | "required";
-export type ResearchResolvedPlanApprovalV1 = "automatic" | "required";
-export type ResearchRequestedReconciliationV1 = "off" | "auto" | "required";
-export type ResearchScopeExpansionModeV1 = "strict" | "ask" | "exact-linked";
 
 export interface ResearchCoverageTargetV1 {
   id: string;
@@ -90,7 +97,7 @@ export interface ResearchBriefV1 {
 export const DEFAULT_RESEARCH_SCOPE_DISCOVERY_POLICY_V1: Readonly<ResearchScopeDiscoveryPolicyV1> = {
   schema: RESEARCH_SCOPE_DISCOVERY_POLICY_SCHEMA_V1,
   catalogDiscovery: "on",
-  expansionMode: "strict",
+  expansionMode: "ask",
   maxCatalogPagesPerCapability: 5,
   maxCandidatesPerMention: 8,
   maxCatalogResultBytes: 128_000,

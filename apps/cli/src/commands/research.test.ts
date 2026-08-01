@@ -138,7 +138,12 @@ function cliHarness(options: {
     writeStdout: (contents) => { stdout.push(contents); },
     writeStderr: (contents) => { stderr.push(contents); },
     emitOutput: (data) => { stdout.push(`${JSON.stringify(data, null, 2)}\n`); },
-    fail(_opts, _code, _errCode, message): never { throw new Error(message); },
+    fail(failOpts, _code, errCode, message, details): never {
+      if (failOpts.json) {
+        stdout.push(`${JSON.stringify({ error: { code: errCode, message, details: details ?? {} } }, null, 2)}\n`);
+      }
+      throw new Error(message);
+    },
     scheduleAbort(callback) {
       if (options.abortAtDeadline) callback();
       return "deadline";
@@ -181,6 +186,13 @@ describe("research CLI one-shot contract", () => {
     expect(input.spaceKeys).toEqual(["DOCSY", "KB"]);
     expect(input.keepSession).toBe(true);
     expect(input.maxRunMinutes).toBe(10);
+    expect(input.policy).toEqual({
+      schema: "atlcli.research-one-shot-policy/v1",
+      requestedEffort: "auto",
+      requestedPlanApproval: "default",
+      scopeExpansionMode: "ask",
+      requestedReconciliation: "auto",
+    });
     expect(input.question).toContain("As-of date: 2026-07-31T10:00:00.000Z.");
     expect(input.question).toContain("Timezone: Europe/Berlin.");
   });
@@ -235,10 +247,23 @@ describe("research CLI one-shot contract", () => {
     ]);
   });
 
-  test("keeps future durable-session flags out of the one-shot contract", () => {
+  test("accepts one-shot policy flags while keeping durable-session flags reserved", () => {
     expect(() => parseResearchCliInput(["question"], { resume: "r1" })).toThrow("reserved for durable sessions");
-    expect(() => parseResearchCliInput(["question"], { effort: "deep" })).toThrow("--effort");
-    expect(() => parseResearchCliInput(["question"], { reconciliation: "auto" })).toThrow("--reconciliation");
+    expect(() => parseResearchCliInput(["question"], { "plan-only": true })).toThrow("--plan-only");
+    expect(parseResearchCliInput(["question"], {
+      effort: "deep",
+      "plan-approval": "automatic",
+      "scope-expansion": "exact-linked",
+      reconciliation: "required",
+    }).policy).toEqual({
+      schema: "atlcli.research-one-shot-policy/v1",
+      requestedEffort: "deep",
+      requestedPlanApproval: "automatic",
+      scopeExpansionMode: "exact-linked",
+      requestedReconciliation: "required",
+    });
+    expect(() => parseResearchCliInput(["question"], { effort: "unbounded" })).toThrow("--effort must be one of");
+    expect(() => parseResearchCliInput(["question"], { "plan-approval": "required" })).toThrow("only automatic");
   });
 
   test("rejects unknown, secret, missing-value and repeated scalar flags", () => {
@@ -281,6 +306,55 @@ describe("research CLI one-shot contract", () => {
     await expect(handleResearch(["question"], {}, { json: false }, missingKey.dependencies))
       .rejects.toThrow("ANTHROPIC_API_KEY is missing");
     expect(missingKey.workspaces).toHaveLength(0);
+  });
+
+  test("stops a default deep plan before reading the key, workspace, or agent", async () => {
+    const harness = cliHarness();
+    let keyReads = 0;
+    harness.dependencies.readApiKey = () => {
+      keyReads += 1;
+      return "sk-ant-must-not-be-read";
+    };
+    await expect(handleResearch(
+      ["Perform exhaustive contradiction analysis across Jira and Confluence."],
+      { effort: "deep", json: true },
+      { json: true },
+      harness.dependencies,
+    )).rejects.toThrow("requires approval");
+    expect(keyReads).toBe(0);
+    expect(harness.workspaces).toHaveLength(0);
+    expect(harness.runInputs).toHaveLength(0);
+    expect(JSON.parse(harness.stdout.join(""))).toMatchObject({
+      error: {
+        code: "ATLCLI_ERR_VALIDATION",
+        details: {
+          outcome: {
+            schema: "atlcli.research-plan-approval-required/v1",
+            kind: "plan_approval_required",
+            resolvedEffort: "deep",
+            resolvedPlanApproval: "required",
+          },
+        },
+      },
+    });
+    expect(harness.stderr.join("")).toContain("stop_reason=plan-approval-required");
+  });
+
+  test("runs the identical deep plan only after explicit automatic approval", async () => {
+    const harness = cliHarness();
+    await handleResearch(
+      ["Perform exhaustive contradiction analysis across Jira and Confluence."],
+      { effort: "deep", "plan-approval": "automatic" },
+      { json: false },
+      harness.dependencies,
+    );
+    expect(harness.runInputs).toHaveLength(1);
+    expect(harness.runInputs[0]?.researchGraph).toMatchObject({
+      resolvedEffort: "deep",
+      status: "approved",
+      approvalEnvelope: { status: "approved" },
+    });
+    expect(harness.stderr.join("")).toContain("effort=deep plan_approval=approved");
   });
 
   test("keeps Markdown stdout and --output bytes identical and redacts the key", async () => {

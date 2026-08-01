@@ -1,10 +1,16 @@
 import {
+  DEFAULT_RESEARCH_ONE_SHOT_POLICY_V1,
   ResearchContractError,
+  normalizeResearchOneShotPolicyV1,
   type ResearchLimitsV1,
+  type ResearchOneShotPolicyV1,
+  type ResearchScopeBindingV1,
   type ResearchScopeV1,
 } from "./contracts.js";
 import {
+  DEFAULT_RESEARCH_SCOPE_DISCOVERY_POLICY_V1,
   RESEARCH_BRIEF_SCHEMA_V1,
+  briefRequiresClarificationV1,
   createResearchBriefV1,
   type ResearchBriefV1,
   type ResearchRequestedReconciliationV1,
@@ -24,6 +30,22 @@ export { RESEARCH_BRIEF_SCHEMA_V1 } from "./brief.js";
 export type { ResearchBriefV1 } from "./brief.js";
 
 export const RESEARCH_GRAPH_SCHEMA_V1 = "atlcli.research-graph/v1" as const;
+export const RESEARCH_PLAN_APPROVAL_REQUIRED_SCHEMA_V1 =
+  "atlcli.research-plan-approval-required/v1" as const;
+
+/** Typed T3 stop returned before credentials, storage, providers, or models. */
+export interface ResearchPlanApprovalRequiredV1 {
+  schema: typeof RESEARCH_PLAN_APPROVAL_REQUIRED_SCHEMA_V1;
+  kind: "plan_approval_required";
+  briefRevision: number;
+  graphRevision: number;
+  resolvedEffort: ResearchResolvedEffortV1;
+  resolvedPlanApproval: "required";
+  selectedRoleIds: ResearchSubagentRoleIdV1[];
+  scopeExpansionMode: ResearchOneShotPolicyV1["scopeExpansionMode"];
+  reconciliationMode: ResearchRequestedReconciliationV1;
+  rerunGuidance: string[];
+}
 
 export const RESEARCH_GRAPH_CAPABILITIES = [
   "jira.issue.search",
@@ -408,9 +430,11 @@ function approvalEnvelope(
 
 export interface ComposeStandardResearchGraphOptionsV1 {
   scope?: ResearchScopeV1;
+  scopeBindings?: readonly ResearchScopeBindingV1[];
   limits?: ResearchLimitsV1;
   asOf?: string;
   timezone?: string;
+  policy?: ResearchOneShotPolicyV1;
 }
 
 /**
@@ -422,6 +446,9 @@ export function composeStandardResearchGraphV1(
   question: string,
   options: ComposeStandardResearchGraphOptionsV1 = {},
 ): ResearchGraphV1 {
+  const policy = normalizeResearchOneShotPolicyV1(
+    options.policy ?? DEFAULT_RESEARCH_ONE_SHOT_POLICY_V1,
+  );
   return composeResearchGraphV1(createResearchBriefV1({
     sessionId: "research-session:standard",
     turnId: "research-turn:standard",
@@ -433,9 +460,14 @@ export function composeStandardResearchGraphV1(
     },
     asOf: options.asOf ?? "2026-01-01T00:00:00.000Z",
     timezone: options.timezone ?? "UTC",
-    requestedEffort: "analysis",
-    requestedPlanApproval: "automatic",
-    requestedReconciliation: "auto",
+    ...(options.scopeBindings ? { scopeBindings: [...options.scopeBindings] } : {}),
+    scopeDiscoveryPolicy: {
+      ...DEFAULT_RESEARCH_SCOPE_DISCOVERY_POLICY_V1,
+      expansionMode: policy.scopeExpansionMode,
+    },
+    requestedEffort: policy.requestedEffort,
+    requestedPlanApproval: policy.requestedPlanApproval,
+    requestedReconciliation: policy.requestedReconciliation,
     ...(options.limits ? { limits: options.limits } : {}),
   }));
 }
@@ -445,6 +477,12 @@ export function composeResearchGraphV1(
   options: ResearchGraphCompositionOptionsV1 = {},
 ): ResearchGraphV1 {
   if (brief.schema !== RESEARCH_BRIEF_SCHEMA_V1) invalid("Unsupported research brief schema.");
+  if (briefRequiresClarificationV1(brief)) {
+    throw new ResearchContractError(
+      "clarification-required",
+      "The research brief requires clarification before a graph can be proposed.",
+    );
+  }
   const revision = options.graphRevision ?? 1;
   if (!Number.isSafeInteger(revision) || revision < 1) invalid("Research graph revision is invalid.");
   const createdAt = options.createdAt ?? brief.asOf;
@@ -477,6 +515,49 @@ export function composeResearchGraphV1(
   };
   validateResearchGraphV1(graph);
   return graph;
+}
+
+/** Project the visible, body-free reason why a T3 one-shot cannot execute. */
+export function researchPlanApprovalRequiredV1(
+  graph: ResearchGraphV1,
+): ResearchPlanApprovalRequiredV1 | undefined {
+  validateResearchGraphV1(graph);
+  if (graph.status !== "proposed" || graph.approvalEnvelope.status !== "proposed") {
+    return undefined;
+  }
+  return {
+    schema: RESEARCH_PLAN_APPROVAL_REQUIRED_SCHEMA_V1,
+    kind: "plan_approval_required",
+    briefRevision: graph.basedOnBriefRevision,
+    graphRevision: graph.revision,
+    resolvedEffort: graph.resolvedEffort,
+    resolvedPlanApproval: "required",
+    selectedRoleIds: projectSelectedResearchRolesV1(graph),
+    scopeExpansionMode: graph.approvalEnvelope.scopeDiscoveryPolicy.expansionMode,
+    reconciliationMode: graph.reconciliationPolicy.mode,
+    rerunGuidance: [
+      "Review the proposed effort, roles, scope policy, and reconciliation mode.",
+      "For the T3 one-shot path, rerun with explicit automatic plan approval.",
+    ],
+  };
+}
+
+/** Enforce approval before any productive host creates provider/model effects. */
+export function assertResearchGraphExecutableV1(graph: ResearchGraphV1): void {
+  validateResearchGraphV1(graph);
+  const stop = researchPlanApprovalRequiredV1(graph);
+  if (stop) {
+    throw new ResearchContractError(
+      "plan-approval-required",
+      "This research plan requires approval. Review it and rerun with explicit automatic plan approval.",
+    );
+  }
+  if (graph.status !== "approved" || graph.approvalEnvelope.status !== "approved") {
+    throw new ResearchContractError(
+      "invalid-request",
+      "Only an approved research graph can start a one-shot run.",
+    );
+  }
 }
 
 function equalSet(left: readonly string[], right: readonly string[]): boolean {

@@ -1,15 +1,45 @@
 import { describe, expect, it } from "bun:test";
 import {
+  DEFAULT_RESEARCH_ONE_SHOT_POLICY_V1,
   DEFAULT_RESEARCH_LIMITS_V1,
+  RESEARCH_ONE_SHOT_POLICY_SCHEMA_V1,
   RESEARCH_REQUEST_SCHEMA_V1,
   ResearchContractError,
   normalizeResearchLimitsV1,
+  normalizeResearchOneShotPolicyV1,
   normalizeResearchRequestV1,
 } from "../utils/research/contracts.js";
 import { ResearchCursorVault } from "@atlcli/research";
 import { createResearchKeyScopeSeedV1 } from "@atlcli/research/scope-discovery";
 
 describe("issue-138 research request contract", () => {
+  it("normalizes one closed host-neutral run policy", () => {
+    expect(normalizeResearchOneShotPolicyV1(undefined)).toEqual(
+      DEFAULT_RESEARCH_ONE_SHOT_POLICY_V1,
+    );
+    expect(normalizeResearchOneShotPolicyV1({
+      schema: RESEARCH_ONE_SHOT_POLICY_SCHEMA_V1,
+      requestedEffort: "deep",
+      requestedPlanApproval: "automatic",
+      scopeExpansionMode: "exact-linked",
+      requestedReconciliation: "required",
+    })).toEqual({
+      schema: RESEARCH_ONE_SHOT_POLICY_SCHEMA_V1,
+      requestedEffort: "deep",
+      requestedPlanApproval: "automatic",
+      scopeExpansionMode: "exact-linked",
+      requestedReconciliation: "required",
+    });
+    expect(() => normalizeResearchOneShotPolicyV1({
+      ...DEFAULT_RESEARCH_ONE_SHOT_POLICY_V1,
+      hiddenOverride: true,
+    })).toThrow("unknown fields");
+    expect(() => normalizeResearchOneShotPolicyV1({
+      ...DEFAULT_RESEARCH_ONE_SHOT_POLICY_V1,
+      requestedEffort: "unbounded",
+    })).toThrow("effort policy");
+  });
+
   it("normalizes one bounded Jira + Confluence request", () => {
     expect(
       normalizeResearchRequestV1({

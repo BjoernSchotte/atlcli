@@ -25,9 +25,14 @@ import {
 } from "./agent-draft.js";
 import { createResearchPtcTools } from "./agent-tools.js";
 import type { ResearchPtcDiagnosticV1 } from "./agent-tools.js";
-import type {
-  ResearchGraphRoleV1,
-  ResearchGraphV1,
+/*
+ * Keep graph execution admission here, before workspace/provider/model setup.
+ * Productive hosts also preflight for UX, but this boundary is authoritative.
+ */
+import {
+  assertResearchGraphExecutableV1,
+  type ResearchGraphRoleV1,
+  type ResearchGraphV1,
 } from "@atlcli/research/graph";
 import {
   RESEARCH_ANALYSIS_PACKET_SCHEMA_V1,
@@ -455,6 +460,7 @@ async function runResearchAgentWithBindings(
       "A validated research graph is required for a production model run."
     );
   }
+  if (input.researchGraph) assertResearchGraphExecutableV1(input.researchGraph);
   const now = input.now ?? Date.now;
   const startedAtMs = now();
   const runId = input.runId ?? crypto.randomUUID();

@@ -3,12 +3,16 @@ import {
   composeResearchGraphV1,
   composeStandardResearchGraphV1,
   projectSelectedResearchRolesV1,
+  researchPlanApprovalRequiredV1,
   reduceResearchGraphV1,
   validateResearchGraphV1,
   type ResearchGraphV1,
 } from "./graph.js";
 import { createResearchBriefV1 } from "./brief.js";
 import { DEFAULT_RESEARCH_LIMITS_V1 } from "./contracts.js";
+import {
+  RESEARCH_ONE_SHOT_POLICY_SCHEMA_V1,
+} from "./contracts.js";
 
 const brief = (
   question: string,
@@ -196,6 +200,42 @@ describe("dynamic research graph composition", () => {
     const approved = reduceResearchGraphV1(proposed, { kind: "approve", expectedRevision: 1, approvedAt: "2026-01-02T00:00:00.000Z" });
     expect(approved.status).toBe("approved");
     expect(approved.nodes.filter((node) => node.dependencies.length === 0).every((node) => node.status === "ready")).toBe(true);
+  });
+
+  test("preserves default versus explicit automatic approval for an identical deep brief", () => {
+    const objective = "Perform exhaustive contradiction analysis across Jira and Confluence.";
+    const proposed = composeStandardResearchGraphV1(objective);
+    expect(proposed).toMatchObject({
+      resolvedEffort: "deep",
+      status: "proposed",
+      approvalEnvelope: {
+        status: "proposed",
+        scopeDiscoveryPolicy: { expansionMode: "ask" },
+      },
+    });
+    expect(researchPlanApprovalRequiredV1(proposed)).toMatchObject({
+      schema: "atlcli.research-plan-approval-required/v1",
+      kind: "plan_approval_required",
+      resolvedEffort: "deep",
+      resolvedPlanApproval: "required",
+      graphRevision: 1,
+    });
+
+    const automatic = composeStandardResearchGraphV1(objective, {
+      policy: {
+        schema: RESEARCH_ONE_SHOT_POLICY_SCHEMA_V1,
+        requestedEffort: "auto",
+        requestedPlanApproval: "automatic",
+        scopeExpansionMode: "ask",
+        requestedReconciliation: "auto",
+      },
+    });
+    expect(automatic).toMatchObject({
+      resolvedEffort: "deep",
+      status: "approved",
+      approvalEnvelope: { status: "approved" },
+    });
+    expect(researchPlanApprovalRequiredV1(automatic)).toBeUndefined();
   });
 
   test("uses a pure revision-fenced reducer to unlock dependency barriers", () => {

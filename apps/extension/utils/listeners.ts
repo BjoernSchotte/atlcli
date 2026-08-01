@@ -21,6 +21,7 @@ import type { CodeThemeId } from "@atlcli/code-highlight/registry";
 import type {
   ResearchReportV1,
   ResearchRequestV1,
+  ResearchOneShotPolicyV1,
 } from "./research/contracts.js";
 import { routeMessage, type RouterDeps } from "./router.js";
 import { runWasmAdd } from "./wasm-smoke.js";
@@ -44,7 +45,8 @@ export interface OffscreenListenerDeps {
   runResearch?: (
     runId: string,
     apiKey: string,
-    request: ResearchRequestV1
+    request: ResearchRequestV1,
+    policy?: ResearchOneShotPolicyV1,
   ) => Promise<ResearchReportV1>;
   cancelResearch?: (runId: string) => Promise<boolean>;
 }
@@ -182,7 +184,7 @@ export function handleOffscreenMessage(
       break;
     case "offscreen:research-run":
       (deps.runResearch
-        ? deps.runResearch(message.runId, message.apiKey, message.request)
+        ? deps.runResearch(message.runId, message.apiKey, message.request, message.policy)
         : Promise.reject(new Error("Research worker host is not configured.")))
         .then((report) => sendResponse({
           kind: "offscreen:research-run-result",

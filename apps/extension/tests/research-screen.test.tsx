@@ -181,6 +181,7 @@ describe("portable Research screen", () => {
   it("stores the key through the port, infers scope, runs, and renders safe structured output", async () => {
     let stored = false;
     const observed: ResearchRequestV1[] = [];
+    const observedPolicies: unknown[] = [];
     const port: ResearchPort = {
       hasApiKey: async () => stored,
       setApiKey: async () => {
@@ -191,6 +192,7 @@ describe("portable Research screen", () => {
       },
       run: async (request, options) => {
         observed.push(request);
+        observedPolicies.push(options?.policy);
         options?.onProgress?.({
           phase: "researching",
           message: "Synthetic progress",
@@ -250,6 +252,13 @@ describe("portable Research screen", () => {
         binding: expect.objectContaining({ source: "current_context", key: "KB" }),
       }),
     ]));
+    expect(observedPolicies[0]).toEqual({
+      schema: "atlcli.research-one-shot-policy/v1",
+      requestedEffort: "auto",
+      requestedPlanApproval: "default",
+      scopeExpansionMode: "ask",
+      requestedReconciliation: "auto",
+    });
     expect(dom.find("research-formatted-report").textContent).toContain(
       "The page explicitly links the issue."
     );
@@ -267,5 +276,57 @@ describe("portable Research screen", () => {
     )).toBe(false);
     expect(dom.html()).not.toContain("<script");
     expect((globalThis as Record<string, unknown>).chrome).toBeUndefined();
+  });
+
+  it("shows the shared deep-plan stop before storing a key or calling the host", async () => {
+    let keyWrites = 0;
+    let runs = 0;
+    const policies: unknown[] = [];
+    const port: ResearchPort = {
+      hasApiKey: async () => false,
+      setApiKey: async () => { keyWrites += 1; },
+      clearApiKey: async () => undefined,
+      run: async (_request, options) => {
+        runs += 1;
+        policies.push(options?.policy);
+        return report;
+      },
+      copyMarkdown: async () => undefined,
+      downloadMarkdown: async () => undefined,
+    };
+    await dom.render(
+      <I18nProvider locale="en">
+        <ResearchScreen {...screenProps(port)} />
+      </I18nProvider>,
+    );
+    await dom.setValue("research-key", "synthetic-key");
+    await dom.setValue(
+      "research-question",
+      "Perform exhaustive contradiction analysis for Jira project DEMO and Confluence space KB.",
+    );
+    await dom.setValue("research-effort", "deep");
+    await dom.toggle("research-disclosure");
+    await dom.click("research-run");
+    await dom.flush();
+
+    expect(dom.find("research-plan-approval-required").textContent).toContain(
+      "Plan review required",
+    );
+    expect(dom.find("research-plan-approval-required").textContent).toContain(
+      "reconciler",
+    );
+    expect({ keyWrites, runs }).toEqual({ keyWrites: 0, runs: 0 });
+
+    await dom.setValue("research-plan-approval", "automatic");
+    await dom.click("research-run");
+    await dom.flush();
+    expect({ keyWrites, runs }).toEqual({ keyWrites: 1, runs: 1 });
+    expect(policies[0]).toMatchObject({
+      requestedEffort: "deep",
+      requestedPlanApproval: "automatic",
+    });
+    expect(dom.find("research-formatted-report").textContent).toContain(
+      "The page explicitly links the issue.",
+    );
   });
 });

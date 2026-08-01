@@ -9,6 +9,67 @@
 export const RESEARCH_REQUEST_SCHEMA_V1 = "atlcli.research-request/v1" as const;
 export const RESEARCH_REPORT_SCHEMA_V1 = "atlcli.research-report/v1" as const;
 export const RESEARCH_REPORT_ARTIFACT_PATH_V1 = "/artifacts/report.md" as const;
+export const RESEARCH_ONE_SHOT_POLICY_SCHEMA_V1 =
+  "atlcli.research-one-shot-policy/v1" as const;
+
+export const RESEARCH_REQUESTED_EFFORTS_V1 = [
+  "auto",
+  "lookup",
+  "analysis",
+  "deep",
+] as const;
+export const RESEARCH_REQUESTED_PLAN_APPROVALS_V1 = [
+  "default",
+  "automatic",
+  "required",
+] as const;
+export const RESEARCH_SCOPE_EXPANSION_MODES_V1 = [
+  "strict",
+  "ask",
+  "exact-linked",
+] as const;
+export const RESEARCH_REQUESTED_RECONCILIATIONS_V1 = [
+  "off",
+  "auto",
+  "required",
+] as const;
+
+export type ResearchRequestedEffortV1 =
+  (typeof RESEARCH_REQUESTED_EFFORTS_V1)[number];
+export type ResearchResolvedEffortV1 = Exclude<ResearchRequestedEffortV1, "auto">;
+export type ResearchRequestedPlanApprovalV1 =
+  (typeof RESEARCH_REQUESTED_PLAN_APPROVALS_V1)[number];
+export type ResearchResolvedPlanApprovalV1 = Exclude<
+  ResearchRequestedPlanApprovalV1,
+  "default"
+>;
+export type ResearchScopeExpansionModeV1 =
+  (typeof RESEARCH_SCOPE_EXPANSION_MODES_V1)[number];
+export type ResearchRequestedReconciliationV1 =
+  (typeof RESEARCH_REQUESTED_RECONCILIATIONS_V1)[number];
+
+/**
+ * Host-neutral controls for the equal CLI/browser one-shot surface.
+ *
+ * This remains separate from ResearchRequestV1 so the frozen source/retrieval
+ * contract stays backwards compatible. Every cross-realm host normalizes this
+ * value independently; it is policy, never model-authored input.
+ */
+export interface ResearchOneShotPolicyV1 {
+  schema: typeof RESEARCH_ONE_SHOT_POLICY_SCHEMA_V1;
+  requestedEffort: ResearchRequestedEffortV1;
+  requestedPlanApproval: ResearchRequestedPlanApprovalV1;
+  scopeExpansionMode: ResearchScopeExpansionModeV1;
+  requestedReconciliation: ResearchRequestedReconciliationV1;
+}
+
+export const DEFAULT_RESEARCH_ONE_SHOT_POLICY_V1: Readonly<ResearchOneShotPolicyV1> = {
+  schema: RESEARCH_ONE_SHOT_POLICY_SCHEMA_V1,
+  requestedEffort: "auto",
+  requestedPlanApproval: "default",
+  scopeExpansionMode: "ask",
+  requestedReconciliation: "auto",
+};
 
 export const RESEARCH_TOOL_IDS = [
   "jira.issue.search",
@@ -293,6 +354,8 @@ export type ResearchOneShotEventV1 = Extract<
 
 export type ResearchErrorCode =
   | "invalid-request"
+  | "plan-approval-required"
+  | "clarification-required"
   | "missing-key"
   | "invalid-key"
   | "not-atlassian"
@@ -317,6 +380,7 @@ export class ResearchContractError extends Error {
 
 export interface ResearchRunOptions {
   signal?: AbortSignal;
+  policy?: ResearchOneShotPolicyV1;
   onProgress?: (progress: ResearchProgressV1) => void;
   onEvent?: (event: ResearchOneShotEventV1) => void;
 }
@@ -365,6 +429,74 @@ function boundedInteger(
 ): number {
   if (typeof value !== "number" || !Number.isSafeInteger(value)) return fallback;
   return Math.min(maximum, Math.max(minimum, value));
+}
+
+/** Normalize an untrusted CLI/browser/worker policy with a closed schema. */
+export function normalizeResearchOneShotPolicyV1(
+  value: unknown,
+): ResearchOneShotPolicyV1 {
+  if (value === undefined) return structuredClone(DEFAULT_RESEARCH_ONE_SHOT_POLICY_V1);
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new ResearchContractError("invalid-request", "Research one-shot policy is invalid.");
+  }
+  const policy = value as Record<string, unknown>;
+  const allowed = [
+    "schema",
+    "requestedEffort",
+    "requestedPlanApproval",
+    "scopeExpansionMode",
+    "requestedReconciliation",
+  ];
+  if (Object.keys(policy).some((key) => !allowed.includes(key))) {
+    throw new ResearchContractError(
+      "invalid-request",
+      "Research one-shot policy contains unknown fields.",
+    );
+  }
+  if (policy.schema !== RESEARCH_ONE_SHOT_POLICY_SCHEMA_V1) {
+    throw new ResearchContractError(
+      "invalid-request",
+      "Unsupported research one-shot policy schema.",
+    );
+  }
+  if (!RESEARCH_REQUESTED_EFFORTS_V1.includes(
+    policy.requestedEffort as ResearchRequestedEffortV1,
+  )) {
+    throw new ResearchContractError("invalid-request", "Research effort policy is invalid.");
+  }
+  if (!RESEARCH_REQUESTED_PLAN_APPROVALS_V1.includes(
+    policy.requestedPlanApproval as ResearchRequestedPlanApprovalV1,
+  )) {
+    throw new ResearchContractError(
+      "invalid-request",
+      "Research plan-approval policy is invalid.",
+    );
+  }
+  if (!RESEARCH_SCOPE_EXPANSION_MODES_V1.includes(
+    policy.scopeExpansionMode as ResearchScopeExpansionModeV1,
+  )) {
+    throw new ResearchContractError(
+      "invalid-request",
+      "Research scope-expansion policy is invalid.",
+    );
+  }
+  if (!RESEARCH_REQUESTED_RECONCILIATIONS_V1.includes(
+    policy.requestedReconciliation as ResearchRequestedReconciliationV1,
+  )) {
+    throw new ResearchContractError(
+      "invalid-request",
+      "Research reconciliation policy is invalid.",
+    );
+  }
+  return {
+    schema: RESEARCH_ONE_SHOT_POLICY_SCHEMA_V1,
+    requestedEffort: policy.requestedEffort as ResearchRequestedEffortV1,
+    requestedPlanApproval:
+      policy.requestedPlanApproval as ResearchRequestedPlanApprovalV1,
+    scopeExpansionMode: policy.scopeExpansionMode as ResearchScopeExpansionModeV1,
+    requestedReconciliation:
+      policy.requestedReconciliation as ResearchRequestedReconciliationV1,
+  };
 }
 
 export function normalizeResearchLimitsV1(value: unknown): ResearchLimitsV1 {

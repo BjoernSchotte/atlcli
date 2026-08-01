@@ -19,6 +19,7 @@ import {
 import type {
   ResearchErrorCode,
   ResearchOneShotEventV1,
+  ResearchOneShotPolicyV1,
   ResearchProgressV1,
   ResearchReportV1,
   ResearchRequestV1,
@@ -97,6 +98,7 @@ export type ExtRequest =
       runId: string;
       windowId: number;
       request: ResearchRequestV1;
+      policy?: ResearchOneShotPolicyV1;
     }
   | { kind: "research:cancel"; runId: string };
 
@@ -159,6 +161,7 @@ export type OffscreenRequest =
       runId: string;
       apiKey: string;
       request: ResearchRequestV1;
+      policy?: ResearchOneShotPolicyV1;
     }
   | { kind: "offscreen:research-cancel"; runId: string };
 export type OffscreenResponse =
@@ -238,12 +241,13 @@ export function isExtRequest(value: unknown): value is ExtRequest {
       (wake.resumeWaiting !== true || Array.isArray(wake.jobIds));
   }
   if (kind === "research:run") {
-    const run = value as { runId?: unknown; windowId?: unknown; request?: unknown };
-    return hasOnlyKeys(value, ["kind", "runId", "windowId", "request"]) &&
+    const run = value as { runId?: unknown; windowId?: unknown; request?: unknown; policy?: unknown };
+    return hasOnlyKeys(value, ["kind", "runId", "windowId", "request", "policy"]) &&
       isResearchRunId(run.runId) &&
       isWindowId(run.windowId) &&
       typeof run.request === "object" &&
-      run.request !== null;
+      run.request !== null &&
+      (run.policy === undefined || (typeof run.policy === "object" && run.policy !== null));
   }
   if (kind === "research:cancel") {
     const cancel = value as { runId?: unknown };
@@ -403,12 +407,13 @@ export function isOffscreenRequest(value: unknown): value is OffscreenRequest {
       (wake.resumeWaiting !== true || Array.isArray(wake.jobIds));
   }
   if (candidate.kind === "offscreen:research-run") {
-    const run = value as { runId?: unknown; apiKey?: unknown; request?: unknown };
-    return hasOnlyKeys(value, ["kind", "runId", "apiKey", "request"]) &&
+    const run = value as { runId?: unknown; apiKey?: unknown; request?: unknown; policy?: unknown };
+    return hasOnlyKeys(value, ["kind", "runId", "apiKey", "request", "policy"]) &&
       isResearchRunId(run.runId) &&
       isResearchApiKey(run.apiKey) &&
       typeof run.request === "object" &&
-      run.request !== null;
+      run.request !== null &&
+      (run.policy === undefined || (typeof run.policy === "object" && run.policy !== null));
   }
   if (candidate.kind === "offscreen:research-cancel") {
     const cancel = value as { runId?: unknown };

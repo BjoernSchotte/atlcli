@@ -38,6 +38,13 @@ const request = {
 const report = {
   schema: "atlcli.research-report/v1",
 } as ResearchReportV1;
+const policy = {
+  schema: "atlcli.research-one-shot-policy/v1",
+  requestedEffort: "analysis",
+  requestedPlanApproval: "automatic",
+  scopeExpansionMode: "ask",
+  requestedReconciliation: "auto",
+} as const;
 
 describe("dedicated research worker host", () => {
   it("forwards progress and terminates the fresh worker after completion", async () => {
@@ -49,6 +56,7 @@ describe("dedicated research worker host", () => {
       runId: "run-1",
       apiKey: "synthetic-key",
       request,
+      policy,
       onProgress: (value) => progress.push(value),
       onEvent: (value) => events.push(value),
     });
@@ -59,6 +67,7 @@ describe("dedicated research worker host", () => {
         runId: "run-1",
         apiKey: "synthetic-key",
         request,
+        policy,
       },
     ]);
     worker.emit({
