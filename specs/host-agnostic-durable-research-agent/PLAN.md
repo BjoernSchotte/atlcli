@@ -2791,7 +2791,7 @@ Gate:
       proposed assumption through deterministic finalization as `Proposed
       assumption (not user-confirmed)` in the Markdown limitations; a dynamic
       `createDeepAgent` execution confirms that projection reaches the report.
-- [ ] Exact key/name, duplicate name, alias, archived-only, inaccessible,
+- [x] Exact key/name, duplicate name, alias, archived-only, inaccessible,
       paginated, explicit-precedence, current-context, exact-link,
       cross-tenant, and catalog prompt-injection fixtures return identical
       normalized resolutions in CLI and packed browser. No weak-only match is
@@ -2904,10 +2904,16 @@ agent work. A foreign-tenant Jira link is not promoted to a mention in either
 host: it retains the already bound scope and triggers neither catalog/reference
 nor worker work. Natural scope replaces lower-precedence profile/current
 context, while both host boundaries preserve an explicitly locked CLI/UI
-project without any catalog work. This advances, but does not close, the full
-CLI/packed resolution-matrix gate above: the remaining duplicate alias,
-pagination, and prompt-injection parity cases still require their own
-host-boundary fixtures.
+project without any catalog work. The production CLI REST and packed-MV3
+fixtures now also return the same typed duplicate-alias stop; resolve a
+complete two-page `Paged Delivery` catalog only after the second page; stop a
+five-page incomplete catalog without treating its name as unique; and return a
+`weak_match` choice rather than auto-binding a prefix-only `Loose Delivery`
+candidate. In both hosts, the exact `Documentation` name wins over an unrelated
+prompt-like catalog entry, and an unanchored phrase reaches neither catalog nor
+reference resolution. These catalog-only tests start no worker, so catalog
+results cannot widen the content scope. This closes the scope-resolution matrix
+gate above; graph/report parity and worker context-sentinel gates remain open.
 
 ### T4 — Add durable session, workspace, graph, and checkpoint stores
 
