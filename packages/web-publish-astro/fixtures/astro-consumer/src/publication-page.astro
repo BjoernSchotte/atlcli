@@ -24,6 +24,7 @@ if (!entry) throw new Error(`Missing publication entry ${sourceId}`);
       <span data-pagefind-filter="label">guide</span>
       <h1>{entry.data.title}</h1>
       <p>Structured blocks: {entry.data.blocks.length}</p>
+      <p>{"<img src=x onerror=alert('pagefind-hostile')> hostile-search-token"}</p>
     </article>
   </body>
 </html>

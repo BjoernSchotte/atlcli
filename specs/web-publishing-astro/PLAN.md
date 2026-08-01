@@ -1615,7 +1615,7 @@ and presentation contracts are not Starlight-private.
       filters, result excerpts, and nested-base URL handling.
 - [ ] Exclude navigation chrome, private diagnostics, partial/hidden pages,
       redirects, and deleted pages; never index raw bundle/source data.
-- [ ] Treat result excerpts safely and prove that indexed hostile text cannot
+- [x] Treat result excerpts safely and prove that indexed hostile text cannot
       become executable markup in Starlight or the conformance experience.
 - [ ] Enforce measured search-index, initial-JS, query-latency, and memory
       budgets on small, representative, and large deterministic corpora.
