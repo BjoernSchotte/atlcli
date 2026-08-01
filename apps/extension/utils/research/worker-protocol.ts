@@ -3,7 +3,7 @@ import type {
   ResearchOneShotEventV1,
   ResearchOneShotPolicyV1,
   ResearchProgressV1,
-  ResearchReportV1,
+  ResearchReport,
   ResearchRequestV1,
 } from "./contracts.js";
 
@@ -31,7 +31,7 @@ export type ResearchWorkerResponseV1 =
   | {
       kind: "research-worker:complete";
       runId: string;
-      report: ResearchReportV1;
+      report: ResearchReport;
     }
   | {
       kind: "research-worker:error";

@@ -538,7 +538,7 @@ export interface ResearchPort {
     request: ResearchRequestV1,
     options?: import("./scope-preflight.js").ResearchScopePreflightOptionsV1,
   ): Promise<import("./scope-preflight.js").ResearchScopePreflightOutcomeV1>;
-  run(request: ResearchRequestV1, options?: ResearchRunOptions): Promise<ResearchReportV1>;
+  run(request: ResearchRequestV1, options?: ResearchRunOptions): Promise<ResearchReport>;
   copyMarkdown(markdown: string): Promise<void>;
   downloadMarkdown(markdown: string, filename: string): Promise<void>;
 }

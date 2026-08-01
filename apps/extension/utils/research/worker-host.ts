@@ -3,7 +3,7 @@ import {
   type ResearchOneShotPolicyV1,
   type ResearchOneShotEventV1,
   type ResearchProgressV1,
-  type ResearchReportV1,
+  type ResearchReport,
   type ResearchRequestV1,
 } from "./contracts.js";
 import { classifyResearchError } from "@atlcli/research";
@@ -41,12 +41,12 @@ export class ResearchAgentWorkerHost {
     policy?: ResearchOneShotPolicyV1;
     onProgress?: (progress: ResearchProgressV1) => void;
     onEvent?: (event: ResearchOneShotEventV1) => void;
-  }): Promise<ResearchReportV1> {
+  }): Promise<ResearchReport> {
     if (this.#active.has(input.runId)) {
       throw new ResearchContractError("invalid-request", "Research run id is already active.");
     }
     const worker = this.#createWorker();
-    return new Promise<ResearchReportV1>((resolve, reject) => {
+    return new Promise<ResearchReport>((resolve, reject) => {
       this.#active.set(input.runId, { worker, reject });
       worker.onmessage = (event) => {
         const message = event.data;

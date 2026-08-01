@@ -21,7 +21,7 @@ import type {
   ResearchOneShotEventV1,
   ResearchOneShotPolicyV1,
   ResearchProgressV1,
-  ResearchReportV1,
+  ResearchReport,
   ResearchRequestV1,
 } from "./research/contracts.js";
 import type {
@@ -131,7 +131,7 @@ export type ExtResponse =
       code: ResearchErrorCode;
       error: string;
     }
-  | { kind: "research:run-result"; runId: string; ok: true; report: ResearchReportV1 }
+  | { kind: "research:run-result"; runId: string; ok: true; report: ResearchReport }
   | {
       kind: "research:run-result";
       runId: string;
@@ -196,7 +196,7 @@ export type OffscreenResponse =
       kind: "offscreen:research-run-result";
       runId: string;
       ok: true;
-      report: ResearchReportV1;
+      report: ResearchReport;
     }
   | {
       kind: "offscreen:research-run-result";

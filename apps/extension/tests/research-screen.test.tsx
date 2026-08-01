@@ -18,6 +18,7 @@ import { createResearchKeyScopeSeedV1 } from "@atlcli/research/scope-discovery";
 import type {
   ResearchPort,
   ResearchReportV1,
+  ResearchReportV2,
   ResearchRequestV1,
 } from "../utils/research/contracts.js";
 import type { ScreenProps } from "../utils/screens/registry.js";
@@ -91,6 +92,44 @@ const report: ResearchReportV1 = {
     warnings: [],
   },
   markdown: "# Guarded research\n\nSafe Markdown.",
+};
+
+const v2Report: ResearchReportV2 = {
+  schema: "atlcli.research-report/v2",
+  title: "Evidence-backed research",
+  question: "What does the validated Jira issue establish?",
+  scope: {
+    siteOrigin: "https://example.atlassian.net",
+    jiraProjectKeys: ["DEMO"],
+    confluenceSpaceKeys: [],
+  },
+  executiveSummaryClaimIds: ["claim:validated"],
+  claims: [{
+    id: "claim:validated",
+    classification: "fact",
+    statement: "The validated Jira issue establishes the implementation fact.",
+    freshness: "current",
+    evidenceIds: ["evidence:validated"],
+    sourceIds: ["jira:DEMO-1"],
+  }],
+  sections: [{
+    id: "section:validated",
+    title: "Validated result",
+    question: "What was established?",
+    claimIds: ["claim:validated"],
+    coverageTargetIds: ["target:validated"],
+  }],
+  coverage: [{
+    targetId: "target:validated",
+    status: "covered",
+    claimIds: ["claim:validated"],
+    evidenceIds: ["evidence:validated"],
+    distinctSourceCount: 1,
+  }],
+  limitations: [],
+  sources: [report.sources[0]!],
+  run: report.run,
+  markdown: "# Evidence-backed research\n\n- The validated Jira issue establishes the implementation fact.",
 };
 
 function screenProps(port: ResearchPort, spaceKey = "KB"): ScreenProps {
@@ -399,6 +438,44 @@ describe("portable Research screen", () => {
     )).toBe(false);
     expect(dom.html()).not.toContain("<script");
     expect((globalThis as Record<string, unknown>).chrome).toBeUndefined();
+  });
+
+  it("renders a V2 claim report and preserves its canonical Markdown", async () => {
+    const port: ResearchPort = {
+      hasApiKey: async () => true,
+      setApiKey: async () => undefined,
+      clearApiKey: async () => undefined,
+      resolveScope: async (request) => ({
+        schema: "atlcli.research-scope-preflight-outcome/v1",
+        kind: "ready",
+        request,
+        mentions: [],
+        resolutions: [],
+      }),
+      run: async () => v2Report,
+      copyMarkdown: async () => undefined,
+      downloadMarkdown: async () => undefined,
+    };
+    await dom.render(
+      <I18nProvider locale="en">
+        <ResearchScreen {...screenProps(port)} />
+      </I18nProvider>,
+    );
+    await dom.setValue("research-question", v2Report.question);
+    await dom.setValue("research-jira", "DEMO");
+    await dom.toggle("research-disclosure");
+    await dom.click("research-run");
+    await dom.flush();
+
+    const formatted = dom.find("research-formatted-report");
+    expect(formatted.textContent).toContain("The validated Jira issue establishes the implementation fact.");
+    expect(formatted.textContent).toContain("Evidence coverage");
+    expect(formatted.textContent).toContain("None reported.");
+    expect(dom.html()).toContain("https://example.atlassian.net/browse/DEMO-1");
+
+    await dom.click("research-raw");
+    await dom.flush();
+    expect(dom.find("research-raw-markdown").textContent).toBe(v2Report.markdown);
   });
 
   it("shows the shared deep-plan stop before storing a key or calling the host", async () => {

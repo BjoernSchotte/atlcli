@@ -2292,6 +2292,141 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     ]));
   });
 
+  test("finalizes a durable V2 report from a host-verified detail claim", async () => {
+    const v2Request = normalizeResearchRequestV1({
+      ...request,
+      question: "Get the exact validated Jira item.",
+      scope: { ...request.scope, confluenceSpaceKeys: [] },
+    });
+    const brief: ResearchBriefV1 = {
+      ...graphBrief(v2Request.question, ["jira"], "lookup", "off"),
+      scopeBindings: [{
+        schema: "atlcli.research-scope-binding/v1",
+        id: "scope-binding:extension-test:jira:DEMO",
+        tenantOrigin: "https://example.atlassian.net",
+        product: "jira",
+        entityKind: "project",
+        entityRef: "scope-key:jira:DEMO",
+        key: "DEMO",
+        name: "DEMO",
+        source: "cli_flag",
+        authority: "locked",
+      }],
+    };
+    const graph = composeResearchGraphV1(brief, {
+      packetOutputSchema: RESEARCH_PACKET_BODY_SCHEMA_V2,
+    });
+    const researcher = graph.nodes.find((node) => node.roleId === "focused-researcher")!;
+    const synthesizer = graph.nodes.find((node) => node.roleId === "synthesizer")!;
+    const researcherTaskId = researchTaskIdForNodeV1(graph, researcher);
+    const rawQuote = "The detail confirms the durable evidence-backed implementation fact.";
+    const packet = {
+      schema: RESEARCH_PACKET_BODY_SCHEMA_V2,
+      claimCandidates: [{
+        id: "candidate:validated-detail",
+        classification: "fact",
+        summary: "The Jira detail confirms one evidence-backed implementation fact.",
+        support: [{ sourceId: "jira:DEMO-1", quote: rawQuote }],
+      }],
+      contradictionCandidates: [],
+      outlineProposals: [],
+      gaps: [],
+      proposedFollowUps: [],
+      coverageLimits: [],
+    };
+    const draft = {
+      title: "Durable V2 report",
+      executiveSummary: "Ignored as factual report prose in V2.",
+      findings: [],
+      relationships: [],
+      limitations: [],
+    };
+    const code = `
+      ${graphProposalPrelude(graph)}
+      const acquired = await task({
+        description: ${JSON.stringify(taskEnvelope(graph, researcher.id).description)},
+        subagentType: ${JSON.stringify(researchSubagentTypeForNodeV1(researcher))},
+        responseSchema: ${JSON.stringify(responseSchemaForResearchRole("focused-researcher", researcher.outputSchema))}
+      });
+      const finalDraft = await task({
+        description: JSON.stringify({
+          schema: "atlcli.research-task-dispatch/v1",
+          taskId: ${JSON.stringify(researchTaskIdForNodeV1(graph, synthesizer))},
+          objective: ${JSON.stringify(synthesizer.objective)},
+          dependencyResults: [{ taskId: ${JSON.stringify(researcherTaskId)}, result: acquired }]
+        }),
+        subagentType: ${JSON.stringify(researchSubagentTypeForNodeV1(synthesizer))},
+        responseSchema: ${JSON.stringify(RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1)}
+      });
+      finalDraft;
+    `;
+    const dynamicModel = fakeModel()
+      .respondWithTools([{ name: "eval", args: { code } }])
+      .respondWithTools([{ name: "eval", args: {
+        code: buildResearchAcquisitionProgram(researcher, v2Request.question, 1),
+      } }])
+      .respondWithTools([{ name: "ResearchPacketModelBodyV2", args: packet }])
+      .respondWithTools([{ name: "AtlcliResearchAgentDraftV1", args: draft }])
+      .respondWithTools([{ name: "AtlcliResearchAgentDraftV1", args: draft }]);
+    const durableStore = new InMemoryResearchSessionStoreV1();
+    await initializeResearchSessionTurnV1({
+      store: durableStore,
+      session: createResearchSessionV1({
+        sessionId: graph.sessionId,
+        ownerId: "owner:extension-test",
+        createdAt: "2026-08-01T18:00:00.000Z",
+        leaseExpiresAt: "2026-08-01T18:10:00.000Z",
+      }),
+      brief,
+      graph,
+      approveAutomatically: true,
+      at: "2026-08-01T18:00:00.000Z",
+    });
+
+    const report = await runResearchAgent({
+      model: dynamicModel,
+      request: v2Request,
+      researchGraph: graph,
+      brief,
+      durableSession: { store: durableStore, sessionId: graph.sessionId, turnId: graph.turnId },
+      runId: "dynamic-v2-report",
+      providers: {
+        jira: {
+          async searchPage() {
+            return { items: [{ issueKey: "DEMO-1", projectKey: "DEMO", title: "Validated implementation" }] };
+          },
+          async getIssue() {
+            return {
+              issueKey: "DEMO-1",
+              projectKey: "DEMO",
+              title: "Validated implementation",
+              updatedAt: "2026-08-01T18:00:00.000Z",
+              content: { text: rawQuote, linkTargets: [], truncated: false, inputBytes: rawQuote.length },
+            };
+          },
+        },
+        wiki: {
+          async searchPage() { throw new Error("V2 Jira lookup must not search Confluence."); },
+          async getPage() { throw new Error("V2 Jira lookup must not read Confluence."); },
+        },
+      },
+    });
+
+    expect(report.schema).toBe("atlcli.research-report/v2");
+    if (report.schema !== "atlcli.research-report/v2") throw new Error("Expected V2 report.");
+    expect(report).toMatchObject({
+      title: draft.title,
+      claims: [{
+        statement: "The Jira detail confirms one evidence-backed implementation fact.",
+        sourceIds: ["jira:DEMO-1"],
+        freshness: "current",
+      }],
+    });
+    expect(report.markdown).toContain("[Validated implementation](https://example.atlassian.net/browse/DEMO-1)");
+    expect(report.markdown).not.toContain(rawQuote);
+    expect((await durableStore.artifact(graph.sessionId, `artifact:report:${graph.turnId}`))?.contents).toBe(report.markdown);
+  });
+
   test("rejects a duplicate graph-node dispatch before duplicate model work", async () => {
     const graph = jiraAndSynthesisGraph();
     const taskInput = taskEnvelope(graph, "research-node:jira-research");

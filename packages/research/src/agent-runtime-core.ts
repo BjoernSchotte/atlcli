@@ -10,7 +10,7 @@ import {
   ResearchContractError,
   type ResearchOneShotEventV1,
   type ResearchProgressV1,
-  type ResearchReportV1,
+  type ResearchReport,
   type ResearchRequestV1,
   type ResearchRunOptions,
   type ResearchRunUsageV1,
@@ -25,7 +25,9 @@ import {
   RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1,
   RESEARCH_AGENT_DRAFT_SCHEMA_V1,
   finalizeResearchAgentDraftV1,
+  parseResearchAgentDraftV1,
 } from "./agent-draft.js";
+import { finalizeResearchReportV2 } from "./report-v2.js";
 import {
   projectResearchProposedAssumptionLimitationsV1,
   type ResearchBriefV1,
@@ -84,6 +86,7 @@ import {
   type ReconciliationBodyV1,
   type ResearchAcceptedPacketV1,
   type ResearchFollowUpProposalV1,
+  type ResearchPacketBodyV2,
   type ResearchReconciliationDefectV1,
   type ResearchReconciliationDispositionV1,
   type ResearchSupportRefV1,
@@ -963,7 +966,7 @@ type ResearchOneShotEventInputV1 = ResearchOneShotEventV1 extends infer Event
 async function runResearchAgentWithBindings(
   input: RunResearchAgentInput,
   runtime: ResearchAgentRuntimeBindings,
-): Promise<ResearchReportV1> {
+): Promise<ResearchReport> {
   if (!input.model && !input.researchGraph) {
     throw new ResearchContractError(
       "invalid-request",
@@ -1887,26 +1890,47 @@ async function runResearchAgentWithBindings(
       status: "started",
       reasonCode: "validate-before-render",
     });
-    const report = finalizeResearchAgentDraftV1({
-      draft: result.structuredResponse,
-      request: input.request,
-      sources: broker.sourceLedger(),
-      detailEvidence: broker.detailEvidenceLedger(),
-      ...(input.brief
-        ? { additionalLimitations: projectResearchProposedAssumptionLimitationsV1(input.brief) }
-        : {}),
-      run: {
-        model: RESEARCH_MODEL_ID,
-        wikiProvider: input.request.wikiProvider,
-        startedAt: new Date(startedAtMs).toISOString(),
-        completedAt: new Date(completedAtMs).toISOString(),
-        durationMs: Math.max(0, completedAtMs - startedAtMs),
-        complete: completion.complete,
-        counts,
-        ...(collectUsage(result.messages) ? { usage: collectUsage(result.messages) } : {}),
-        warnings: completion.warnings,
-      },
-    });
+    const run = {
+      model: RESEARCH_MODEL_ID,
+      wikiProvider: input.request.wikiProvider,
+      startedAt: new Date(startedAtMs).toISOString(),
+      completedAt: new Date(completedAtMs).toISOString(),
+      durationMs: Math.max(0, completedAtMs - startedAtMs),
+      complete: completion.complete,
+      counts,
+      ...(collectUsage(result.messages) ? { usage: collectUsage(result.messages) } : {}),
+      warnings: completion.warnings,
+    };
+    const acceptedV2Bodies = [...acceptedPacketsByTaskId.values()]
+      .map((packet) => isResearchPacketBodyV2(packet.body) ? packet.body : undefined)
+      .filter((body): body is ResearchPacketBodyV2 => body !== undefined);
+    const v2ClaimIds = [...new Set(acceptedV2Bodies.flatMap((body) => [
+      ...body.claims.map((claim) => claim.claimId),
+      ...body.referencedClaimIds,
+    ]))];
+    const report = durableEvidence && durableClaims && acceptedV2Bodies.length > 0
+      ? await finalizeResearchReportV2({
+          request: input.request,
+          evidenceStore: durableEvidence,
+          claimLedger: durableClaims,
+          claimIds: v2ClaimIds,
+          title: parseResearchAgentDraftV1(result.structuredResponse).title,
+          limitations: [
+            ...(input.brief ? projectResearchProposedAssumptionLimitationsV1(input.brief) : []),
+          ],
+          run,
+          checkedAt: new Date(completedAtMs).toISOString(),
+        })
+      : finalizeResearchAgentDraftV1({
+          draft: result.structuredResponse,
+          request: input.request,
+          sources: broker.sourceLedger(),
+          detailEvidence: broker.detailEvidenceLedger(),
+          ...(input.brief
+            ? { additionalLimitations: projectResearchProposedAssumptionLimitationsV1(input.brief) }
+            : {}),
+          run,
+        });
     emitEvent({
       kind: "decision",
       decisionId: "deterministic-evidence-validation",
@@ -1977,7 +2001,7 @@ async function runResearchAgentWithBindings(
 export function createResearchAgentRuntime(
   runtime: ResearchAgentRuntimeBindings,
 ): {
-  runResearchAgent(input: RunResearchAgentInput): Promise<ResearchReportV1>;
+  runResearchAgent(input: RunResearchAgentInput): Promise<ResearchReport>;
 } {
   runtime.registerHarnessProfile(MODEL_SPEC, {
     generalPurposeSubagent: { enabled: false },

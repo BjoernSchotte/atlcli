@@ -29,7 +29,7 @@ import {
   createStandardResearchBriefV1,
   normalizeResearchOneShotPolicyV1,
   type ResearchOneShotEventV1,
-  type ResearchReportV1,
+  type ResearchReport,
   type ResearchRequestV1,
   type ResearchScopePreflightOutcomeV1,
 } from "@atlcli/research";
@@ -415,7 +415,7 @@ interface HarnessEvent {
   reasonCode?: string;
   errorCode?: string;
   researchEvent?: ResearchOneShotEventV1;
-  report?: ResearchReportV1;
+  report?: ResearchReport;
   value?: unknown;
   hasHiddenSupervisorContext?: boolean;
   hasRawChildTrajectory?: boolean;
@@ -1404,7 +1404,7 @@ function packedSentinelRequest(): ResearchRequestV1 {
 }
 
 async function runNodeHostParityFixture(): Promise<{
-  report: ResearchReportV1;
+  report: ResearchReport;
   events: ResearchOneShotEventV1[];
 }> {
   const request = hostParityRequest();
@@ -1449,7 +1449,7 @@ async function runNodeHostParityFixture(): Promise<{
 }
 
 type PackedRunResponse =
-  | { kind: "research:run-result"; runId: string; ok: true; report: ResearchReportV1 }
+  | { kind: "research:run-result"; runId: string; ok: true; report: ResearchReport }
   | { kind: "research:run-result"; runId: string; ok: false; code: string; error: string };
 
 function withoutEventSequence(event: ResearchOneShotEventV1): Omit<ResearchOneShotEventV1, "seq"> {

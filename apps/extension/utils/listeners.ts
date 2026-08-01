@@ -19,7 +19,7 @@ import {
 } from "./messages.js";
 import type { CodeThemeId } from "@atlcli/code-highlight/registry";
 import type {
-  ResearchReportV1,
+  ResearchReport,
   ResearchRequestV1,
   ResearchOneShotPolicyV1,
 } from "./research/contracts.js";
@@ -49,7 +49,7 @@ export interface OffscreenListenerDeps {
     apiKey: string,
     request: ResearchRequestV1,
     policy?: ResearchOneShotPolicyV1,
-  ) => Promise<ResearchReportV1>;
+  ) => Promise<ResearchReport>;
   cancelResearch?: (runId: string) => Promise<boolean>;
 }
 

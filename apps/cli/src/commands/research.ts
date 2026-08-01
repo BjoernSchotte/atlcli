@@ -43,7 +43,7 @@ import {
   type ResearchOneShotPolicyV1,
   type ResearchRequestV1,
   type ResearchOneShotEventV1,
-  type ResearchReportV1,
+  type ResearchReport,
   type ResearchScopePreflightOutcomeV1,
   type ResearchScopeSeedV1,
   type ResearchSessionTurnV1,
@@ -165,7 +165,7 @@ export interface ResearchCliDependencies {
   }): ResearchBriefPreflightOutcomeV1;
   readApiKey(): string | undefined;
   createWorkspace(): Promise<ResearchCliWorkspace>;
-  runAgent(input: ResearchCliAgentInput): Promise<ResearchReportV1>;
+  runAgent(input: ResearchCliAgentInput): Promise<ResearchReport>;
   writeAtomic(path: string, contents: string): Promise<void>;
   artifactPath(): string;
   createDurableSessionId(): string;

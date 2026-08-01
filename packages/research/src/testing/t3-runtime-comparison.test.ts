@@ -393,6 +393,9 @@ async function runtimeEvidence(
     now,
     options: { onEvent: (event) => events.push(event) },
   });
+  if (report.schema !== "atlcli.research-report/v1") {
+    throw new Error("The T3 comparison harness must retain the V1 report contract.");
+  }
   const focusedWorkers = events.filter((event) =>
     event.kind === "subagent" && event.status === "started" && event.roleId === "focused-researcher",
   ).length;

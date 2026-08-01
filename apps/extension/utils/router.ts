@@ -16,7 +16,7 @@ import type {
 } from "./messages.js";
 import type { CodeThemeId } from "@atlcli/code-highlight/registry";
 import type {
-  ResearchReportV1,
+  ResearchReport,
   ResearchRequestV1,
   ResearchOneShotPolicyV1,
 } from "./research/contracts.js";
@@ -59,7 +59,7 @@ export interface RouterDeps {
     windowId: number,
     request: ResearchRequestV1,
     policy?: ResearchOneShotPolicyV1,
-  ) => Promise<ResearchReportV1>;
+  ) => Promise<ResearchReport>;
   resolveResearchScope?: (
     windowId: number,
     request: ResearchRequestV1,

@@ -17,7 +17,7 @@ import {
   type ResearchRequestedPlanApprovalV1,
   type ResearchRequestedReconciliationV1,
   type ResearchRequestV1,
-  type ResearchReportV1,
+  type ResearchReport,
   type ResearchScopeExpansionModeV1,
   type ResearchScopeSeedV1,
 } from "../../utils/research/contracts.js";
@@ -212,7 +212,7 @@ function SourceLinks({
   report,
 }: {
   sourceIds: readonly string[];
-  report: ResearchReportV1;
+  report: Pick<ResearchReport, "sources">;
 }): React.JSX.Element {
   const sources = new Map(report.sources.map((source) => [source.id, source]));
   return (
@@ -233,7 +233,7 @@ function SourceLinks({
   );
 }
 
-function FormattedReport({ report }: { report: ResearchReportV1 }): React.JSX.Element {
+function V1FormattedReport({ report }: { report: Extract<ResearchReport, { schema: "atlcli.research-report/v1" }> }): React.JSX.Element {
   const t = useT();
   return (
     <article className="flex flex-col gap-4 text-sm" data-testid="research-formatted-report">
@@ -294,6 +294,81 @@ function FormattedReport({ report }: { report: ResearchReportV1 }): React.JSX.El
   );
 }
 
+function V2FormattedReport({ report }: { report: Extract<ResearchReport, { schema: "atlcli.research-report/v2" }> }): React.JSX.Element {
+  const t = useT();
+  const claims = new Map(report.claims.map((claim) => [claim.id, claim]));
+  return (
+    <article className="flex flex-col gap-4 text-sm" data-testid="research-formatted-report">
+      <header>
+        <h2 className="m-0 font-serif text-xl font-semibold">{report.title}</h2>
+        <p className="mb-0 mt-1 text-xs text-muted-foreground">{report.question}</p>
+      </header>
+      <section>
+        <h3 className="mb-1 mt-0 text-sm font-semibold">{t("research.summary")}</h3>
+        <ul className="m-0 flex flex-col gap-2 pl-5">
+          {report.executiveSummaryClaimIds.map((claimId) => {
+            const claim = claims.get(claimId);
+            return claim ? <li key={claim.id}>{claim.statement}</li> : null;
+          })}
+        </ul>
+      </section>
+      {report.sections.map((section) => (
+        <section key={section.id}>
+          <h3 className="mb-1 mt-0 text-sm font-semibold">{section.title}</h3>
+          <p className="mb-2 mt-0 text-xs text-muted-foreground">{section.question}</p>
+          <ol className="m-0 flex flex-col gap-3 pl-5">
+            {section.claimIds.map((claimId) => {
+              const claim = claims.get(claimId);
+              return claim ? (
+                <li key={claim.id}>
+                  <strong>{claim.statement}</strong>
+                  <SourceLinks sourceIds={claim.sourceIds} report={report} />
+                </li>
+              ) : null;
+            })}
+          </ol>
+        </section>
+      ))}
+      {report.coverage.length > 0 && (
+        <section>
+          <h3 className="mb-1 mt-0 text-sm font-semibold">{t("research.coverage")}</h3>
+          <ul className="m-0 pl-5">
+            {report.coverage.map((entry) => (
+              <li key={entry.targetId}><code>{entry.targetId}</code>: {entry.status}</li>
+            ))}
+          </ul>
+        </section>
+      )}
+      <section>
+        <h3 className="mb-1 mt-0 text-sm font-semibold">{t("research.limitations")}</h3>
+        <ul className="m-0 pl-5">
+          {report.limitations.length > 0
+            ? report.limitations.map((limitation) => <li key={limitation}>{limitation}</li>)
+            : <li>{t("research.noneReported")}</li>}
+        </ul>
+      </section>
+      <section>
+        <h3 className="mb-1 mt-0 text-sm font-semibold">{t("research.sources")}</h3>
+        <ol className="m-0 pl-5">
+          {report.sources.map((source) => (
+            <li key={source.id}>
+              <a className="underline underline-offset-2" href={source.url} target="_blank" rel="noreferrer">
+                {source.title}
+              </a>
+            </li>
+          ))}
+        </ol>
+      </section>
+    </article>
+  );
+}
+
+function FormattedReport({ report }: { report: ResearchReport }): React.JSX.Element {
+  return report.schema === "atlcli.research-report/v2"
+    ? <V2FormattedReport report={report} />
+    : <V1FormattedReport report={report} />;
+}
+
 export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element {
   const t = useT();
   const port = ports.research;
@@ -322,7 +397,7 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState("");
   const [activity, setActivity] = useState<ResearchOneShotEventV1[]>([]);
-  const [report, setReport] = useState<ResearchReportV1 | null>(null);
+  const [report, setReport] = useState<ResearchReport | null>(null);
   const [raw, setRaw] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [planApprovalRequired, setPlanApprovalRequired] =
