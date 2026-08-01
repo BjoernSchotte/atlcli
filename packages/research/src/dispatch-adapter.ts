@@ -236,7 +236,15 @@ export function createResearchDispatchInterceptionAdapter(options: {
     input: ResearchTaskToolInputV1,
     config: RunnableConfig,
   ): Promise<unknown>;
-  projectResult?: (value: unknown) => unknown;
+  /**
+   * Host-only reduction between the untrusted provider result and durable
+   * acceptance. It may perform asynchronous evidence/claim normalization;
+   * the raw value is never published if this reduction fails.
+   */
+  projectResult?: (value: unknown, input: {
+    taskId: string;
+    admission: ResearchTaskAdmissionV1;
+  }) => unknown | Promise<unknown>;
   /**
    * Host-owned projection returned to QuickJS and dependent tasks after packet
    * acceptance. The authoritative accepted packet may retain more structured
@@ -570,19 +578,21 @@ export function createResearchDispatchInterceptionAdapter(options: {
         `Research task result exceeds ${admission.maxResultBytes} bytes (${resultBytes}).`,
       );
     }
-    const projectedResult = options.projectResult ? options.projectResult(first.value) : first.value;
     try {
+      const projectedResult = options.projectResult
+        ? await options.projectResult(first.value, { taskId, admission })
+        : first.value;
       await options.acceptResult?.(taskId, projectedResult, first.value);
+      const projectedDependency = options.projectDependencyResult?.(taskId, projectedResult);
+      const dependencyResult = projectedDependency === undefined ? first.value : projectedDependency;
+      completedResults.set(taskId, structuredClone(dependencyResult));
+      emit({ taskId, status: "completed", resultBytes });
+      return dependencyResult;
     } catch (error) {
       await observeUncommitted("result-commit-failed", { error });
       emit({ taskId, status: "failed" });
       throw error;
     }
-    const projectedDependency = options.projectDependencyResult?.(taskId, projectedResult);
-    const dependencyResult = projectedDependency === undefined ? first.value : projectedDependency;
-    completedResults.set(taskId, structuredClone(dependencyResult));
-    emit({ taskId, status: "completed", resultBytes });
-    return dependencyResult;
   };
 
   return {

@@ -18,9 +18,9 @@ describe("durable research production response schema feasibility", () => {
         nestingDepth: 4,
       },
       ResearchPacketBodyV2: {
-        serializedBytes: 2_806,
-        propertyCount: 31,
-        nestingDepth: 4,
+        serializedBytes: 3_052,
+        propertyCount: 32,
+        nestingDepth: 5,
       },
       ReconciliationBodyV1: {
         serializedBytes: 1_859,

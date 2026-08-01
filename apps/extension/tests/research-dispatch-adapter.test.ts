@@ -116,6 +116,12 @@ describe("research-owned native task dispatch interception", () => {
         lifecycle.push(`upstream:${String(config.configurable?.[RESEARCH_TASK_ID_CONFIG_KEY])}`);
         return { taskId: "durable-task", answer: "accepted" };
       },
+      async projectResult(value) {
+        lifecycle.push("normalizing");
+        await Promise.resolve();
+        lifecycle.push("normalized");
+        return { ...value as Record<string, unknown>, answer: "accepted-by-host" };
+      },
       acceptResult: async (taskId) => {
         lifecycle.push(`accept:${taskId}`);
         await Promise.resolve();
@@ -137,6 +143,8 @@ describe("research-owned native task dispatch interception", () => {
       "admit:durable-task",
       "started:durable-task",
       "upstream:durable-task",
+      "normalizing",
+      "normalized",
       "accept:durable-task",
       "committed:durable-task",
     ]);
@@ -327,6 +335,10 @@ describe("research-owned native task dispatch interception", () => {
     const outcomes: string[] = [];
     const lateOutcomes: string[] = [];
     let upstreamSignalAborted = false;
+    let upstreamStarted!: () => void;
+    const upstreamReady = new Promise<void>((resolve) => {
+      upstreamStarted = resolve;
+    });
     let release!: () => void;
     const late = new Promise<void>((resolve) => {
       release = resolve;
@@ -344,6 +356,7 @@ describe("research-owned native task dispatch interception", () => {
           },
           { once: true },
         );
+        upstreamStarted();
         await late;
         return { taskId: "late-task", answer: "too late" };
       },
@@ -358,7 +371,7 @@ describe("research-owned native task dispatch interception", () => {
     const session = sessionFor(adapter);
     try {
       const evaluation = session.eval(`${guestTask("late-task")}`, 5_000);
-      await new Promise<void>((resolve) => setTimeout(resolve, 5));
+      await upstreamReady;
       controller.abort("operator-cancelled");
       const result = await evaluation;
       expect(result.ok).toBe(false);
@@ -613,9 +626,9 @@ describe("research-owned native task dispatch interception", () => {
         nestingDepth: 4,
       },
       ResearchPacketBodyV2: {
-        serializedBytes: 2_806,
-        propertyCount: 31,
-        nestingDepth: 4,
+        serializedBytes: 3_052,
+        propertyCount: 32,
+        nestingDepth: 5,
       },
       ReconciliationBodyV1: {
         serializedBytes: 1_859,

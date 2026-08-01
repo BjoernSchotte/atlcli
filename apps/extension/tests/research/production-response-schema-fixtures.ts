@@ -7,141 +7,15 @@
  */
 import {
   RESEARCH_PACKET_BODY_JSON_SCHEMA_V1,
+  RESEARCH_PACKET_MODEL_BODY_JSON_SCHEMA_V2,
   RESEARCH_RECONCILIATION_BODY_JSON_SCHEMA_V1,
 } from "@atlcli/research";
 
 type JsonSchema = Record<string, unknown>;
 
-const boundedString = (maxLength: number): JsonSchema => ({ type: "string", maxLength });
-const boundedStringArray = (maxItems: number, maxLength = 200): JsonSchema => ({
-  type: "array",
-  maxItems,
-  items: boundedString(maxLength),
-});
-const closedObject = (
-  title: string,
-  properties: Record<string, JsonSchema>,
-  required: readonly string[],
-): JsonSchema => ({
-  title,
-  type: "object",
-  additionalProperties: false,
-  required: [...required],
-  properties,
-});
-const boundedObjectArray = (maxItems: number, items: JsonSchema): JsonSchema => ({
-  type: "array",
-  maxItems,
-  items,
-});
-
-const gapSchema = closedObject(
-  "ResearchGapV1",
-  {
-    id: boundedString(160),
-    explanation: boundedString(700),
-  },
-  ["id", "explanation"],
-);
-
-const followUpSchema = closedObject(
-  "ResearchFollowUpProposalV1",
-  {
-    id: boundedString(160),
-    objective: boundedString(700),
-  },
-  ["id", "objective"],
-);
-
-const packetBaseProperties = (): Record<string, JsonSchema> => ({
-  answeredQuestion: boundedString(1_200),
-  gaps: boundedObjectArray(12, gapSchema),
-  proposedFollowUps: boundedObjectArray(8, followUpSchema),
-  coverageLimits: boundedStringArray(12, 600),
-  abstentionReason: boundedString(700),
-});
-
 export const RESEARCH_PACKET_BODY_SCHEMA_V1 = RESEARCH_PACKET_BODY_JSON_SCHEMA_V1;
 
-export const RESEARCH_PACKET_BODY_SCHEMA_V2 = closedObject(
-  "ResearchPacketBodyV2",
-  {
-    schema: { const: "atlcli.research-packet-body/v2" },
-    ...packetBaseProperties(),
-    evidence: boundedObjectArray(
-      48,
-      closedObject(
-        "ResearchEvidenceSpanV2",
-        {
-          evidenceId: boundedString(160),
-          chunkId: boundedString(160),
-          start: { type: "integer", minimum: 0 },
-          end: { type: "integer", minimum: 0 },
-        },
-        ["evidenceId", "chunkId", "start", "end"],
-      ),
-    ),
-    claimCandidates: boundedObjectArray(
-      20,
-      closedObject(
-        "ResearchClaimCandidateV2",
-        {
-          id: boundedString(160),
-          summary: boundedString(800),
-          evidenceIds: boundedStringArray(12),
-        },
-        ["id", "summary", "evidenceIds"],
-      ),
-    ),
-    contradictions: boundedObjectArray(
-      12,
-      closedObject(
-        "ResearchContradictionCandidateV2",
-        {
-          id: boundedString(160),
-          claimIds: boundedStringArray(8),
-          explanation: boundedString(700),
-        },
-        ["id", "claimIds", "explanation"],
-      ),
-    ),
-    outlineProposals: boundedObjectArray(
-      12,
-      closedObject(
-        "ResearchOutlineProposalV1",
-        {
-          id: boundedString(160),
-          sectionId: boundedString(160),
-          title: boundedString(240),
-          question: boundedString(700),
-          claimIds: boundedStringArray(20),
-          evidenceIds: boundedStringArray(32),
-          dependsOnSectionIds: boundedStringArray(12),
-        },
-        [
-          "id",
-          "sectionId",
-          "title",
-          "question",
-          "claimIds",
-          "evidenceIds",
-          "dependsOnSectionIds",
-        ],
-      ),
-    ),
-  },
-  [
-    "schema",
-    "answeredQuestion",
-    "gaps",
-    "proposedFollowUps",
-    "coverageLimits",
-    "evidence",
-    "claimCandidates",
-    "contradictions",
-    "outlineProposals",
-  ],
-);
+export const RESEARCH_PACKET_BODY_SCHEMA_V2 = RESEARCH_PACKET_MODEL_BODY_JSON_SCHEMA_V2;
 
 export const RECONCILIATION_BODY_SCHEMA_V1 = RESEARCH_RECONCILIATION_BODY_JSON_SCHEMA_V1;
 

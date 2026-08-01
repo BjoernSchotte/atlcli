@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   RESEARCH_PACKET_BODY_SCHEMA_V1,
+  RESEARCH_PACKET_BODY_SCHEMA_V2,
   RESEARCH_ACCEPTED_PACKET_SCHEMA_V1,
   RESEARCH_RECONCILIATION_BODY_SCHEMA_V1,
   RESEARCH_RECONCILIATION_DISPOSITION_SCHEMA_V1,
@@ -10,11 +11,15 @@ import {
   parseResearchReconciliationInputV1,
   parseResearchReconciliationDispositionV1,
   parseResearchPacketBodyV1,
+  parseResearchPacketBodyV2,
+  parseResearchPacketModelBodyV2,
+  parseResearchTaskBodyV1,
   projectResearchReconciliationInputV1,
   validateResearchTaskAdmissionV1,
   type ResearchAcceptedPacketV1,
   type ReconciliationBodyV1,
   type ResearchPacketBodyV1,
+  type ResearchPacketModelBodyV2,
   type ResearchReconciliationDispositionV1,
 } from "./workflow-contracts.js";
 
@@ -114,6 +119,40 @@ describe("T3 workflow contracts", () => {
         sourceIds: ["jira:UNKNOWN-1"],
       }],
     })).toThrow("undeclared sourceId");
+  });
+
+  test("keeps model quotes ephemeral and accepts only a normalized V2 packet for durable task reduction", () => {
+    const modelBody: ResearchPacketModelBodyV2 = {
+      schema: RESEARCH_PACKET_BODY_SCHEMA_V2,
+      claimCandidates: [{
+        id: "candidate:one",
+        classification: "fact",
+        summary: "The detail contains one explicit implementation reference.",
+        support: [{ sourceId: "jira:DEMO-1", quote: "explicit implementation reference" }],
+      }],
+      contradictionCandidates: [],
+      outlineProposals: [],
+      gaps: [],
+      proposedFollowUps: [],
+      coverageLimits: [],
+    };
+    expect(parseResearchPacketModelBodyV2(modelBody)).toEqual(modelBody);
+    const canonical = {
+      schema: RESEARCH_PACKET_BODY_SCHEMA_V2,
+      claims: [{ candidateId: "candidate:one", claimId: `claim:${"a".repeat(48)}` }],
+      contradictions: [],
+      outlineProposals: [],
+      gaps: [],
+      proposedFollowUps: [],
+      coverageLimits: [],
+    };
+    expect(parseResearchPacketBodyV2(canonical)).toEqual(canonical);
+    expect(parseResearchTaskBodyV1(RESEARCH_PACKET_BODY_SCHEMA_V2, canonical)).toEqual(canonical);
+    expect(() => parseResearchPacketBodyV2(modelBody)).toThrow("packet body");
+    expect(() => parseResearchPacketModelBodyV2({
+      ...modelBody,
+      claimCandidates: [{ ...modelBody.claimCandidates[0], support: [{ sourceId: "jira:DEMO-1", quote: "x".repeat(641) }] }],
+    })).toThrow("quote");
   });
 
   test("keeps reconciliation defects typed and rejects executable-shaped extra fields", () => {

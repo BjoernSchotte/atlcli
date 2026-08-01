@@ -8,6 +8,7 @@ import {
   type ResearchAcceptedPacketV1,
   type ReconciliationBodyV1,
   type ResearchPacketBodyV1,
+  type ResearchPacketBodyV2,
   type ResearchTaskAttemptV1,
   type ResearchTaskUsageV1,
 } from "./workflow-contracts.js";
@@ -133,6 +134,11 @@ export function reduceResearchAcceptedPacketV1(input: {
   const available = new Set(input.availableSourceIds);
   const sourceIds = current.expectedOutputSchema === "atlcli.research-packet-body/v1"
     ? (body as ResearchPacketBodyV1).sourceIds
+    : current.expectedOutputSchema === "atlcli.research-packet-body/v2"
+      ? [
+          ...(body as ResearchPacketBodyV2).gaps.flatMap((gap) => gap.sourceIds),
+          ...(body as ResearchPacketBodyV2).proposedFollowUps.flatMap((followUp) => followUp.sourceIds),
+        ]
     : current.expectedOutputSchema === "atlcli.reconciliation-body/v1"
       ? (body as ReconciliationBodyV1).defects.flatMap((defect) =>
           defect.references

@@ -99,6 +99,85 @@ export const RESEARCH_PACKET_BODY_JSON_SCHEMA_V1: Record<string, unknown> = clos
   ],
 );
 
+const researchEvidenceQuoteCandidateSchema = closedObject(
+  "ResearchEvidenceQuoteCandidateV2",
+  {
+    sourceId: boundedString(200),
+    quote: boundedString(640),
+  },
+  ["sourceId", "quote"],
+);
+
+const researchClaimCandidateV2Schema = closedObject(
+  "ResearchClaimCandidateV2",
+  {
+    id: boundedString(160),
+    classification: { type: "string", enum: ["fact", "inference"] },
+    summary: boundedString(2_000),
+    support: boundedObjectArray(12, researchEvidenceQuoteCandidateSchema),
+  },
+  ["id", "classification", "summary", "support"],
+);
+
+const researchContradictionCandidateV2Schema = closedObject(
+  "ResearchContradictionCandidateV2",
+  {
+    id: boundedString(160),
+    claimCandidateIds: boundedStringArray(8, 160),
+    summary: boundedString(1_200),
+  },
+  ["id", "claimCandidateIds", "summary"],
+);
+
+const researchOutlineProposalCandidateV2Schema = closedObject(
+  "ResearchOutlineProposalCandidateV2",
+  {
+    id: boundedString(160),
+    sectionId: boundedString(160),
+    title: boundedString(240),
+    question: boundedString(1_200),
+    claimCandidateIds: boundedStringArray(20, 160),
+    dependsOnSectionIds: boundedStringArray(12, 160),
+    coverageTargetIds: boundedStringArray(32, 160),
+  },
+  [
+    "id",
+    "sectionId",
+    "title",
+    "question",
+    "claimCandidateIds",
+    "dependsOnSectionIds",
+    "coverageTargetIds",
+  ],
+);
+
+/**
+ * The provider-facing V2 response shape. The host must normalize its quoted
+ * support into exact private evidence spans before it can persist a V2 packet.
+ */
+export const RESEARCH_PACKET_MODEL_BODY_JSON_SCHEMA_V2: Record<string, unknown> = closedObject(
+  "ResearchPacketModelBodyV2",
+  {
+    schema: { const: "atlcli.research-packet-body/v2" },
+    claimCandidates: boundedObjectArray(20, researchClaimCandidateV2Schema),
+    contradictionCandidates: boundedObjectArray(12, researchContradictionCandidateV2Schema),
+    outlineProposals: boundedObjectArray(12, researchOutlineProposalCandidateV2Schema),
+    gaps: boundedObjectArray(16, gapSchema),
+    proposedFollowUps: boundedObjectArray(3, followUpSchema),
+    coverageLimits: boundedStringArray(16, 600),
+    abstentionReason: boundedString(1_000),
+  },
+  [
+    "schema",
+    "claimCandidates",
+    "contradictionCandidates",
+    "outlineProposals",
+    "gaps",
+    "proposedFollowUps",
+    "coverageLimits",
+  ],
+);
+
 export const RESEARCH_RECONCILIATION_BODY_JSON_SCHEMA_V1: Record<string, unknown> = closedObject(
   "ReconciliationBodyV1",
   {

@@ -36,6 +36,7 @@ export * from "./workspace-checkpointer.js";
 export * from "./evidence-store.js";
 export * from "./claim-ledger.js";
 export * from "./claim-candidate-normalizer.js";
+export * from "./packet-v2-normalizer.js";
 export * from "./outline.js";
 export * from "./indexeddb-session-store.js";
 export * from "./session-runtime.js";
