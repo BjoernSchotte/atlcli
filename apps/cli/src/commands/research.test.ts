@@ -466,7 +466,7 @@ describe("research CLI one-shot contract", () => {
     expect(harness.stderr.join("")).toContain("confluence:ACCOUNT:cli_flag:locked");
   });
 
-  test("resolves exact Jira and Confluence keys through the production CLI catalog boundary", async () => {
+  test("resolves exact keys and a unique Confluence alias through the production CLI catalog boundary", async () => {
     const originalFetch = globalThis.fetch;
     const requests: string[] = [];
     globalThis.fetch = (async (input: RequestInfo | URL) => {
@@ -482,12 +482,19 @@ describe("research CLI one-shot contract", () => {
         return Response.json({ id: "103", key: "DEMO", name: "Demo project", archived: false });
       }
       if (url.pathname === "/wiki/api/v2/spaces") {
-        const isCurrentExactKeyRead =
-          url.searchParams.get("status") === "current" &&
-          url.searchParams.get("keys") === "KB";
+        const current = url.searchParams.get("status") === "current";
+        const exactKey = url.searchParams.get("keys");
         return Response.json({
-          results: isCurrentExactKeyRead
-            ? [{ id: "201", key: "KB", name: "Knowledge Base", status: "current" }]
+          results: current
+            ? exactKey === "KB"
+              ? [{ id: "201", key: "KB", name: "Knowledge Base", status: "current" }]
+              : [{
+                  id: "202",
+                  key: "DOCS",
+                  name: "Documentation",
+                  status: "current",
+                  currentActiveAlias: "Knowledge Hub",
+                }]
             : [],
         });
       }
@@ -514,6 +521,13 @@ describe("research CLI one-shot contract", () => {
         profile,
         request: buildResearchRequest(
           parseResearchCliInput(["Research", "Confluence", "space", "KB."], {}),
+          profile,
+        ),
+      });
+      const aliasOutcome = await defaultResearchCliDependencies.resolveScope({
+        profile,
+        request: buildResearchRequest(
+          parseResearchCliInput(["Research", '"Knowledge Hub"', "Confluence", "space."], {}),
           profile,
         ),
       });
@@ -548,9 +562,19 @@ describe("research CLI one-shot contract", () => {
           requiresUserChoice: false,
         }],
       });
+      expect(aliasOutcome).toMatchObject({
+        kind: "ready",
+        request: { scope: { jiraProjectKeys: ["ATLCLI"], confluenceSpaceKeys: ["DOCS"] } },
+        resolutions: [{
+          state: "resolved",
+          resolvedCandidateId: "research-scope-candidate:confluence-space-docs",
+          uniquenessProof: "complete_catalog",
+          requiresUserChoice: false,
+        }],
+      });
       expect(requests.filter((url) => url.includes("/rest/api/3/project/search"))).toHaveLength(1);
       expect(requests.filter((url) => url.includes("/rest/api/3/project/DEMO"))).toHaveLength(1);
-      expect(requests.filter((url) => url.includes("/wiki/api/v2/spaces"))).toHaveLength(4);
+      expect(requests.filter((url) => url.includes("/wiki/api/v2/spaces"))).toHaveLength(6);
       expect(requests.filter((url) => url.includes("keys=KB"))).toHaveLength(2);
     } finally {
       globalThis.fetch = originalFetch;

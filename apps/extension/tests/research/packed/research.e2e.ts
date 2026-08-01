@@ -416,8 +416,16 @@ function backgroundBootstrap(): string {
     ) {
       const status = url.searchParams.get("status");
       const exactKey = url.searchParams.get("keys");
-      const values = status === "current" && exactKey === "KB"
-        ? [{ id: "201", key: "KB", name: "Knowledge Base", status: "current" }]
+      const values = status === "current"
+        ? exactKey === "KB"
+          ? [{ id: "201", key: "KB", name: "Knowledge Base", status: "current" }]
+          : [{
+              id: "202",
+              key: "DOCS",
+              name: "Documentation",
+              status: "current",
+              currentActiveAlias: "Knowledge Hub",
+            }]
         : [];
       harnessChannel.postMessage({
         kind: "scope-catalog-fetch",
@@ -1298,7 +1306,7 @@ test("intercepts declarative dynamic-schema dispatches in a packed MV3 worker", 
   expect(response.result?.messages.some((message) => message.includes("deep-wiki"))).toBe(true);
 });
 
-test("resolves exact Jira and Confluence keys through the packed background boundary", async () => {
+test("resolves exact keys and a unique Confluence alias through the packed background boundary", async () => {
   await installEventCapture(page);
   const keyOutcome = await resolveScopeInPackedBackground(
     page,
@@ -1312,6 +1320,10 @@ test("resolves exact Jira and Confluence keys through the packed background boun
   const spaceOutcome = await resolveScopeInPackedBackground(
     page,
     packedScopeRequest("Research Confluence space KB.", { currentProjectKey: "FALLBACK" }),
+  );
+  const aliasOutcome = await resolveScopeInPackedBackground(
+    page,
+    packedScopeRequest('Research "Knowledge Hub" Confluence space.', { currentProjectKey: "FALLBACK" }),
   );
   const events = await harnessEvents(page);
 
@@ -1363,6 +1375,22 @@ test("resolves exact Jira and Confluence keys through the packed background boun
       }],
     },
   });
+  expect(aliasOutcome).toMatchObject({
+    kind: "research:resolve-scope-result",
+    ok: true,
+    outcome: {
+      kind: "ready",
+      request: {
+        scope: { jiraProjectKeys: ["FALLBACK"], confluenceSpaceKeys: ["DOCS"] },
+      },
+      resolutions: [{
+        state: "resolved",
+        resolvedCandidateId: "research-scope-candidate:confluence-space-docs",
+        uniquenessProof: "complete_catalog",
+        requiresUserChoice: false,
+      }],
+    },
+  });
 
   const catalogFetches = events.filter((event) => event.kind === "scope-catalog-fetch");
   const referenceFetches = events.filter((event) => event.kind === "scope-reference-fetch");
@@ -1374,7 +1402,7 @@ test("resolves exact Jira and Confluence keys through the packed background boun
   );
   expect(projectCatalogFetches).toHaveLength(1);
   expect(projectCatalogFetches[0]?.url).toContain("query=DEMO");
-  expect(spaceCatalogFetches).toHaveLength(4);
+  expect(spaceCatalogFetches).toHaveLength(6);
   expect(spaceCatalogFetches.filter((event) => event.url?.includes("keys=KB"))).toHaveLength(2);
   expect(referenceFetches).toHaveLength(1);
   expect(referenceFetches[0]?.url).toContain("/rest/api/3/project/DEMO");

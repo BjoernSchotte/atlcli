@@ -2892,10 +2892,11 @@ and `Confluence space KB` through the bound background catalog, walks the
 current and archived Confluence phases with its exact-key filter, and then
 starts the worker. The production CLI and direct packed-background boundaries
 also resolve `Confluence space KB` to the same exact-key binding while retaining
-the other product's lower-precedence default/current binding. The existing
-packed ambiguity regression continues to prove that a duplicate natural-language
-name stops before key storage or agent work. This advances, but does not close,
-the full CLI/packed resolution-matrix gate above: the remaining name, alias,
+the other product's lower-precedence default/current binding. Both boundaries
+also resolve one `Knowledge Hub` Confluence alias only after the current and
+archived catalog phases complete; duplicate natural-language names remain a
+typed stop before key storage or agent work. This advances, but does not close,
+the full CLI/packed resolution-matrix gate above: the remaining duplicate alias,
 archive, access, pagination, precedence, context, cross-tenant, and
 prompt-injection parity cases still require their own host-boundary fixtures.
 
