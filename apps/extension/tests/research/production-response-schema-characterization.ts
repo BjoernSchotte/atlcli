@@ -50,6 +50,6 @@ export async function characterizeProductionResponseSchemas(
         responseSchemaMetrics(fixture.schema),
       ]),
     ),
-    admittedRoles: admittedRoles.sort(),
+    admittedRoles: [...new Set(admittedRoles)].sort(),
   };
 }

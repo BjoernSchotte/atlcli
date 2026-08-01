@@ -16,7 +16,11 @@ import { DEFAULT_RESEARCH_LIMITS_V1 } from "./contracts.js";
 import {
   RESEARCH_ONE_SHOT_POLICY_SCHEMA_V1,
 } from "./contracts.js";
-import { RESEARCH_PACKET_BODY_SCHEMA_V1, RESEARCH_PACKET_BODY_SCHEMA_V2 } from "./workflow-contracts.js";
+import {
+  RESEARCH_PACKET_BODY_SCHEMA_V1,
+  RESEARCH_PACKET_BODY_SCHEMA_V2,
+  RESEARCH_PACKET_REFERENCE_MODEL_SCHEMA_V2,
+} from "./workflow-contracts.js";
 
 const brief = (
   question: string,
@@ -142,22 +146,24 @@ describe("dynamic research graph composition", () => {
     ]);
   });
 
-  test("pins V2 only to detail-reading nodes in a host-selected durable graph", () => {
+  test("uses quote-bearing V2 for detail reads and references-only V2 for analysis", () => {
     const graph = composeResearchGraphV1(
-      brief("Get the exact bounded Jira item.", ["jira"], "off", "lookup"),
+      brief("Join bounded Jira and Confluence evidence.", ["jira", "confluence"]),
       { packetOutputSchema: RESEARCH_PACKET_BODY_SCHEMA_V2 },
     );
     validateResearchGraphV1(graph);
-    expect(graph.nodes.filter((node) =>
+    const detailNodes = graph.nodes.filter((node) =>
       node.requestedCapabilityIds.includes("jira.issue.get") ||
       node.requestedCapabilityIds.includes("wiki.page.get"),
-    ).every((node) => node.outputSchema === RESEARCH_PACKET_BODY_SCHEMA_V2)).toBe(true);
-    expect(graph.nodes.filter((node) =>
-      !node.requestedCapabilityIds.includes("jira.issue.get") &&
-      !node.requestedCapabilityIds.includes("wiki.page.get"),
-    ).every((node) => node.outputSchema === RESEARCH_PACKET_BODY_SCHEMA_V1 ||
-      node.outputSchema === "atlcli.reconciliation-body/v1" ||
-      node.outputSchema === "atlcli.research-agent-draft/v1")).toBe(true);
+    );
+    expect(detailNodes.length).toBeGreaterThanOrEqual(2);
+    expect(detailNodes.every((node) => node.outputSchema === RESEARCH_PACKET_BODY_SCHEMA_V2)).toBe(true);
+    expect(graph.nodes.find((node) => node.roleId === "document-distiller")?.outputSchema)
+      .toBe(RESEARCH_PACKET_REFERENCE_MODEL_SCHEMA_V2);
+    expect(graph.nodes.find((node) => node.roleId === "reconciler")?.outputSchema)
+      .toBe("atlcli.reconciliation-body/v1");
+    expect(graph.nodes.find((node) => node.roleId === "synthesizer")?.outputSchema)
+      .toBe("atlcli.research-agent-draft/v1");
     const invalid = {
       ...graph,
       nodes: graph.nodes.map((node) => node.roleId === "synthesizer"

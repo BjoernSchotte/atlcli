@@ -8,6 +8,7 @@
 import {
   RESEARCH_PACKET_BODY_JSON_SCHEMA_V1,
   RESEARCH_PACKET_MODEL_BODY_JSON_SCHEMA_V2,
+  RESEARCH_PACKET_REFERENCE_MODEL_JSON_SCHEMA_V2,
   RESEARCH_RECONCILIATION_BODY_JSON_SCHEMA_V1,
 } from "@atlcli/research";
 
@@ -16,6 +17,9 @@ type JsonSchema = Record<string, unknown>;
 export const RESEARCH_PACKET_BODY_SCHEMA_V1 = RESEARCH_PACKET_BODY_JSON_SCHEMA_V1;
 
 export const RESEARCH_PACKET_BODY_SCHEMA_V2 = RESEARCH_PACKET_MODEL_BODY_JSON_SCHEMA_V2;
+
+export const RESEARCH_PACKET_REFERENCE_MODEL_SCHEMA_V2 =
+  RESEARCH_PACKET_REFERENCE_MODEL_JSON_SCHEMA_V2;
 
 export const RECONCILIATION_BODY_SCHEMA_V1 = RESEARCH_RECONCILIATION_BODY_JSON_SCHEMA_V1;
 
@@ -32,8 +36,13 @@ export const PRODUCTION_RESPONSE_SCHEMA_FIXTURES = [
   },
   {
     id: "ResearchPacketBodyV2",
-    roles: ["outline-planner"],
+    roles: ["focused-researcher"],
     schema: RESEARCH_PACKET_BODY_SCHEMA_V2,
+  },
+  {
+    id: "ResearchPacketReferenceModelV2",
+    roles: ["document-distiller", "contradiction-verifier", "coverage-moderator", "outline-planner"],
+    schema: RESEARCH_PACKET_REFERENCE_MODEL_SCHEMA_V2,
   },
   {
     id: "ReconciliationBodyV1",

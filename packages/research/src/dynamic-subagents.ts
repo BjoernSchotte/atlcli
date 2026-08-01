@@ -21,6 +21,7 @@ import { createResearchScopeCatalogPtcTools } from "./scope-catalog-tools.js";
 import {
   RESEARCH_PACKET_BODY_JSON_SCHEMA_V1,
   RESEARCH_PACKET_MODEL_BODY_JSON_SCHEMA_V2,
+  RESEARCH_PACKET_REFERENCE_MODEL_JSON_SCHEMA_V2,
   RESEARCH_RECONCILIATION_BODY_JSON_SCHEMA_V1,
 } from "./response-schemas.js";
 import {
@@ -28,8 +29,10 @@ import {
   parseResearchReconciliationInputV1,
   parseResearchPacketBodyV1,
   parseResearchPacketModelBodyV2,
+  parseResearchPacketReferenceModelBodyV2,
   RESEARCH_PACKET_BODY_SCHEMA_V1,
   RESEARCH_PACKET_BODY_SCHEMA_V2,
+  RESEARCH_PACKET_REFERENCE_MODEL_SCHEMA_V2,
   RESEARCH_RECONCILIATION_BODY_SCHEMA_V1,
   RESEARCH_TASK_ATTEMPT_SCHEMA_V1,
   type ResearchAcceptedPacketV1,
@@ -111,6 +114,12 @@ export function responseSchemaForResearchRole(
       throw new Error("The selected research role cannot return a V2 packet.");
     }
     return RESEARCH_PACKET_MODEL_BODY_JSON_SCHEMA_V2;
+  }
+  if (outputSchema === RESEARCH_PACKET_REFERENCE_MODEL_SCHEMA_V2) {
+    if (role === "reconciler" || role === "synthesizer") {
+      throw new Error("The selected research role cannot return a V2 reference packet.");
+    }
+    return RESEARCH_PACKET_REFERENCE_MODEL_JSON_SCHEMA_V2;
   }
   switch (role) {
     case "focused-researcher":
@@ -274,8 +283,11 @@ function rolePrompt(
     ? node.grantedCapabilityIds.map((capability) => quickJsToolForCapability[capability]).join(", ")
     : "none";
   const v2Packet = node.outputSchema === RESEARCH_PACKET_BODY_SCHEMA_V2;
+  const v2ReferencePacket = node.outputSchema === RESEARCH_PACKET_REFERENCE_MODEL_SCHEMA_V2;
   const packetContract = v2Packet
     ? `Return V2 claim candidates only when every support quote is a short exact substring of one non-truncated detailed source available to this node. Include the observed sourceId and the exact quote; never supply offsets, hashes, evidence IDs, URLs, or a top-level source list. The host verifies each quote against retained private evidence, derives spans and IDs, and rejects the whole packet when any quote fails. Use gaps and coverageLimits when no exact detailed support exists. Candidate IDs must be stable, concise, and unique. Never copy another agent's hidden transcript or tool trajectory.`
+    : v2ReferencePacket
+      ? `Return only the Claim IDs included in the host-projected dependency packets. You cannot create a new factual claim, quote source text, invent an Evidence ID, or cite a source outside those projections. You may select current Claim IDs, propose an outline or contradiction over those IDs, and record gaps/limits. The host revalidates every referenced claim and derives all evidence IDs. Use an empty claimIds array with an abstention reason when the dependency claims do not support a useful analysis.`
     : `Cite only sourceId values that appear in tool results or dependency packets. Never invent URLs, scope, source IDs, relationships, or missing evidence. Preserve gaps and coverageLimits and use abstentionReason when support is insufficient. Candidate IDs must be stable, concise, and unique within your packet. Avoid repetition: one findingCandidate should carry one decision-relevant claim. Every sourceId referenced by a finding, relationship, gap, or follow-up must also appear in the packet's top-level sourceIds. A relationshipCandidate is valid only when both its Jira issue key and its Confluence content ID are non-empty identifiers observed in detailed evidence or dependency packets. If either endpoint is unknown, do not emit a relationshipCandidate; record the proposed cross-product check as a gap or proposedFollowUp instead.`;
   const shared = `You are the ${node.roleId ?? "PTC"} specialist in a read-only Atlassian research workflow.
 
@@ -291,6 +303,17 @@ Use this ordering shape inside eval: const page = JSON.parse(await tools.<grante
 Do not broaden scope, invent another follow-up, call a subagent, or retry an empty query. Return schema ${node.outputSchema} with only newly detail-backed evidence and explicit remaining gaps.`;
   }
 
+  if (v2ReferencePacket) {
+    const instruction = node.roleId === "document-distiller"
+      ? "Compare the admitted claims across branches. Retain only Claim IDs relevant to the question, propose compact outline sections when useful, and add a gap instead of inventing a relationship. Do not perform new reads."
+      : node.roleId === "contradiction-verifier"
+        ? "Challenge the admitted claims. Return only Claim IDs that remain relevant and propose a contradiction only when at least two admitted claims conflict. Do not perform new reads."
+        : node.roleId === "coverage-moderator"
+          ? "Assess coverage using only the admitted Claim IDs. Keep the relevant claims and record each unresolved coverage target as a gap or limitation. Do not perform new reads."
+          : "Arrange only admitted Claim IDs into a bounded, evidence-linked analysis. Do not perform new reads.";
+    return `${shared}\n\n${instruction}`;
+  }
+
   switch (node.roleId) {
     case "focused-researcher":
       return `${shared}\n\nHost-bound research question: ${question}\nGranted QuickJS functions: ${grants}.\n\n${acquisitionInstructions(node, question, maxDetailItems)}\n\nReturn schema ${node.outputSchema}. Your packet must summarize detailed evidence, not merely the search result list. ${v2Packet ? "Select at most 20 claimCandidates. Every factual candidate needs one or more exact detail quotes; never cite a search-only candidate, an empty detail body, or a truncated detail result." : "Select at most 12 findingCandidates that materially answer the question. Never cite a search-only candidate, an empty detail body, or a truncated detail result as support."} Represent acquisition failures as typed gaps and coverageLimits.`;
@@ -301,7 +324,7 @@ Do not broaden scope, invent another follow-up, call a subagent, or retry an emp
     case "coverage-moderator":
       return `${shared}\n\nAssess each supplied coverage target against accepted packets. Identify missing distinct sources and require abstention where coverage is insufficient. Do not perform new reads.`;
     case "reconciler":
-      return `${shared}\n\nAct as an independent critic, not as the report author. Return schema atlcli.reconciliation-body/v1. The host appends exactly one atlcli.reconciliation-input/v1 record after task admission. Treat it as the authoritative target/reference namespace: every finding, relationship, gap, coverage, and source ID you mention must appear in that record's projection or coverageTargetIds. The accepted packet refs prove which compact dependency packets were admitted; they do not expose child trajectories. Check coverage, unsupported or overstated candidates, contradictions, missing source IDs, empty or truncated detail bodies, and whether the question is actually answered. Reject mappings based only on a search excerpt or issue title. Claim and section targets are unavailable before T5. Proposed follow-ups are advisory typed objectives; the one-shot MVP cannot repeat retrieval with a new query intent. Do not write Markdown, perform new reads, or call another subagent.`;
+      return `${shared}\n\nAct as an independent critic, not as the report author. Return schema atlcli.reconciliation-body/v1. The host appends exactly one atlcli.reconciliation-input/v1 record after task admission. Treat it as the authoritative target/reference namespace. For a v1-packet-set, every finding, relationship, gap, coverage, and source ID you mention must appear in the projection or coverageTargetIds. For a v2-claim-set, target only listed Claim IDs, gaps, coverage targets, or graph nodes; reference only listed Evidence IDs, never source text or a quote. The accepted packet refs prove which compact dependency packets were admitted; they do not expose child trajectories. Check coverage, unsupported or overstated candidates, contradictions, missing evidence, empty or truncated detail bodies, and whether the question is actually answered. Reject mappings based only on a search excerpt or issue title. Proposed follow-ups are advisory typed objectives; the one-shot MVP cannot repeat retrieval with a new query intent. Do not write Markdown, perform new reads, or call another subagent.`;
     case "synthesizer":
       return `${shared}\n\nYou are the sole report author for this workflow. Receive only accepted research packets plus the independent critique and any bounded repair results. Write a concise, evidence-first report draft that directly answers the question. Select at most 8 priority findings and 8 priority relationships; keep the complete structured response below roughly 1,800 output tokens. Every finding and relationship needs known sourceIds backed by non-empty, non-truncated detail bodies. Never use a search excerpt or title alone as evidence. Put every explicit Jira-to-Confluence link or exact cross-reference in relationships, not only in findings; use classification verified only for such explicit evidence. Avoid exhaustive words such as only, none, no other, or zero unless the supplied evidence explicitly proves exhaustive coverage. Incorporate valid critic feedback and carry unresolved gaps into limitations. The host, not you, renders the canonical Markdown.`;
     case "outline-planner":
@@ -368,6 +391,15 @@ export interface DynamicResearchSubagentOptions {
   onNodePtcResult?: (nodeId: string, tool: ResearchGraphCapabilityV1, result: unknown) => void;
   /** Required only by graph nodes whose host-selected output is V2. */
   normalizePacketV2?: (input: {
+    taskId: string;
+    node: ResearchGraphNodeV1;
+    modelBody: unknown;
+  }) => Promise<{
+    packet: ResearchPacketBodyV2;
+    dependencyResult: unknown;
+  }>;
+  /** Required only by graph nodes whose host-selected output is V2 reference-only. */
+  normalizePacketReferenceV2?: (input: {
     taskId: string;
     node: ResearchGraphNodeV1;
     modelBody: unknown;
@@ -504,6 +536,7 @@ export function createBoundedResearchSubagentMiddleware(
     now?: () => number;
     /** Required only by graph nodes whose host-selected output is V2. */
     normalizePacketV2?: DynamicResearchSubagentOptions["normalizePacketV2"];
+    normalizePacketReferenceV2?: DynamicResearchSubagentOptions["normalizePacketReferenceV2"];
     onDiagnostic?: (diagnostic: ResearchSubagentDiagnosticV1) => void;
     onFatal?: (error: unknown) => void;
     availableSourceIdsForNode?: (nodeId: string) => readonly string[];
@@ -781,6 +814,8 @@ export function createBoundedResearchSubagentMiddleware(
           else if (role === "reconciler") parseReconciliationBodyV1(candidate);
           else if (node.outputSchema === RESEARCH_PACKET_BODY_SCHEMA_V2) {
             parseResearchPacketModelBodyV2(candidate);
+          } else if (node.outputSchema === RESEARCH_PACKET_REFERENCE_MODEL_SCHEMA_V2) {
+            parseResearchPacketReferenceModelBodyV2(candidate);
           } else parseResearchPacketBodyV1(candidate);
           return result;
         } catch (error) {
@@ -818,16 +853,25 @@ export function createBoundedResearchSubagentMiddleware(
       const candidate = structuredCandidate(value);
       const node = nodeByTaskId.get(taskId);
       if (!node) throw new Error(`Research task result has no graph node: ${taskId}`);
-      if (node.outputSchema !== RESEARCH_PACKET_BODY_SCHEMA_V2) return candidate;
-      if (!options.normalizePacketV2) {
+      if (node.outputSchema !== RESEARCH_PACKET_BODY_SCHEMA_V2 &&
+          node.outputSchema !== RESEARCH_PACKET_REFERENCE_MODEL_SCHEMA_V2) return candidate;
+      const normalizer = node.outputSchema === RESEARCH_PACKET_BODY_SCHEMA_V2
+        ? options.normalizePacketV2
+        : options.normalizePacketReferenceV2;
+      if (!normalizer) {
         throw new ResearchDispatchError(
           "structured-output-invalid",
-          "A V2 research task requires host evidence normalization.",
+          node.outputSchema === RESEARCH_PACKET_BODY_SCHEMA_V2
+            ? "A V2 research task requires host evidence normalization."
+            : "A V2 reference task requires host claim normalization.",
         );
       }
-      let normalized: Awaited<ReturnType<NonNullable<typeof options.normalizePacketV2>>>;
+      let normalized: {
+        packet: ResearchPacketBodyV2;
+        dependencyResult: unknown;
+      };
       try {
-        normalized = await options.normalizePacketV2({
+        normalized = await normalizer({
           taskId,
           node,
           modelBody: candidate,
@@ -835,7 +879,9 @@ export function createBoundedResearchSubagentMiddleware(
       } catch {
         throw new ResearchDispatchError(
           "structured-output-invalid",
-          "Structured output did not produce host-verified V2 evidence.",
+          node.outputSchema === RESEARCH_PACKET_BODY_SCHEMA_V2
+            ? "Structured output did not produce host-verified V2 evidence."
+            : "Structured output did not produce host-verified V2 claim references.",
         );
       }
       v2DependencyResults.set(taskId, structuredClone(normalized.dependencyResult));

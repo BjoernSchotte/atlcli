@@ -817,6 +817,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
             packet: {
               schema: RESEARCH_PACKET_BODY_SCHEMA_V2,
               claims: [{ candidateId: "candidate:detail", claimId: `claim:${"b".repeat(48)}` }],
+              referencedClaimIds: [],
               contradictions: [],
               outlineProposals: [],
               gaps: [],
@@ -849,9 +850,146 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     expect(accepted[0]!.body).toMatchObject({
       schema: RESEARCH_PACKET_BODY_SCHEMA_V2,
       claims: [{ candidateId: "candidate:detail", claimId: `claim:${"b".repeat(48)}` }],
+      referencedClaimIds: [],
     });
     expect(JSON.stringify(accepted[0])).not.toContain(rawQuote);
     expect(JSON.stringify(returned)).not.toContain(rawQuote);
+  });
+
+  test("normalizes a V2 analysis packet through admitted claim references only", async () => {
+    const graph = composeResearchGraphV1(
+      graphBrief("Join bounded Jira and Confluence evidence.", ["jira", "confluence"], "analysis", "off"),
+      { packetOutputSchema: RESEARCH_PACKET_BODY_SCHEMA_V2 },
+    );
+    const node = graph.nodes.find((candidate) => candidate.roleId === "document-distiller")!;
+    const detailNodes = graph.nodes.filter((candidate) => candidate.roleId === "focused-researcher");
+    expect(node.outputSchema).toBe("atlcli.research-packet-reference-model/v2");
+    expect(detailNodes).toHaveLength(2);
+    const claimId = `claim:${"c".repeat(48)}`;
+    const rawDetailBody = {
+      schema: RESEARCH_PACKET_BODY_SCHEMA_V2,
+      claimCandidates: [{
+        id: "candidate:detail",
+        classification: "fact",
+        summary: "A short host-verified detail supports the claim.",
+        support: [{ sourceId: "jira:DEMO-1", quote: "exact detail" }],
+      }],
+      contradictionCandidates: [],
+      outlineProposals: [],
+      gaps: [],
+      proposedFollowUps: [],
+      coverageLimits: [],
+    };
+    const rawModelBody = {
+      schema: "atlcli.research-packet-reference-model/v2",
+      claimIds: [claimId],
+      contradictions: [],
+      outlineProposals: [],
+      gaps: [],
+      proposedFollowUps: [],
+      coverageLimits: ["The model received no raw source text."],
+    };
+    const upstreamTask = tool(async (input: { subagent_type: string }) =>
+      input.subagent_type === researchSubagentTypeForNodeV1(node) ? rawModelBody : rawDetailBody, {
+      name: "task",
+      description: "Synthetic upstream task.",
+      schema: z.object({ description: z.string(), subagent_type: z.string() }),
+    });
+    const accepted: ResearchAcceptedPacketV1[] = [];
+    const middleware = createBoundedResearchSubagentMiddleware(
+      model,
+      graph,
+      compileDynamicResearchSubagents(graph, {
+        model,
+        broker,
+        question: request.question,
+        maxInterpreterMs: 5_000,
+        maxInterpreterMemoryBytes: 8_000_000,
+        maxPtcCalls: 8,
+        maxSearchPagesPerProduct: 2,
+        maxDetailItemsPerProduct: 5,
+        maxPacketChars: 8_000,
+      }),
+      {
+        createSubAgentMiddleware: (() => ({
+          name: "subAgentMiddleware",
+          tools: [upstreamTask],
+        })) as never,
+      },
+      {
+        normalizePacketV2: async ({ modelBody }) => {
+          expect(modelBody).toEqual(rawDetailBody);
+          return {
+            packet: {
+              schema: RESEARCH_PACKET_BODY_SCHEMA_V2,
+              claims: [{ candidateId: "candidate:detail", claimId }],
+              referencedClaimIds: [],
+              contradictions: [],
+              outlineProposals: [],
+              gaps: [],
+              proposedFollowUps: [],
+              coverageLimits: [],
+            },
+            dependencyResult: {
+              schema: "atlcli.research-dependency-packet/v2",
+              packetSchema: RESEARCH_PACKET_BODY_SCHEMA_V2,
+              sourceIds: ["jira:DEMO-1"],
+              claims: [{ claimId, statement: "Host-projected claim." }],
+            },
+          };
+        },
+        normalizePacketReferenceV2: async ({ modelBody }) => {
+          expect(modelBody).toEqual(rawModelBody);
+          return {
+            packet: {
+              schema: RESEARCH_PACKET_BODY_SCHEMA_V2,
+              claims: [],
+              referencedClaimIds: [claimId],
+              contradictions: [],
+              outlineProposals: [],
+              gaps: [],
+              proposedFollowUps: [],
+              coverageLimits: ["The model received no raw source text."],
+            },
+            dependencyResult: {
+              schema: "atlcli.research-dependency-packet/v2",
+              packetSchema: RESEARCH_PACKET_BODY_SCHEMA_V2,
+              sourceIds: ["jira:DEMO-1"],
+              claims: [{ claimId, statement: "Host-projected claim." }],
+            },
+          };
+        },
+        onAcceptedPacket: (packet) => {
+          accepted.push(packet);
+        },
+      },
+    );
+
+    const invokeNode = async (
+      target: ResearchGraphNodeV1,
+      dependencyResults?: Array<{ taskId: string; result: unknown }>,
+    ): Promise<Record<string, unknown>> => {
+      const task = taskEnvelope(graph, target.id, dependencyResults);
+      return await middleware.tools![0]!.invoke({
+        description: task.description,
+        subagent_type: task.subagentType,
+      }) as Record<string, unknown>;
+    };
+    const rootResults = await Promise.all(detailNodes.map((detailNode) => invokeNode(detailNode)));
+    const returned = await invokeNode(node, detailNodes.map((detailNode, index) => ({
+      taskId: researchTaskIdForNodeV1(graph, detailNode),
+      result: rootResults[index]!,
+    })));
+    expect(returned).toMatchObject({
+      schema: "atlcli.research-dependency-packet/v2",
+      claims: [{ claimId }],
+    });
+    expect(accepted).toHaveLength(3);
+    expect(accepted.at(-1)!.body).toMatchObject({
+      schema: RESEARCH_PACKET_BODY_SCHEMA_V2,
+      referencedClaimIds: [claimId],
+    });
+    expect(JSON.stringify(accepted[0])).not.toContain("Host-projected claim.");
   });
 
   test("removes provider-unsupported bounds without weakening the host schema", () => {
@@ -1952,6 +2090,206 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     expect((await durableStore.events(graph.sessionId)).map((event) => event.kind)).toContain(
       "record_reconciliation",
     );
+  });
+
+  test("runs the durable V2 graph through claims, analysis, reconciliation, and one synthesizer", async () => {
+    const brief: ResearchBriefV1 = {
+      ...graphBrief(
+        "Which bounded Confluence content relates to Jira tickets?",
+        ["jira", "confluence"],
+        "analysis",
+        "auto",
+      ),
+      scopeBindings: [
+        {
+          schema: "atlcli.research-scope-binding/v1",
+          id: "scope-binding:extension-test:jira:DEMO",
+          tenantOrigin: "https://example.atlassian.net",
+          product: "jira",
+          entityKind: "project",
+          entityRef: "scope-key:jira:DEMO",
+          key: "DEMO",
+          name: "DEMO",
+          source: "cli_flag",
+          authority: "locked",
+        },
+        {
+          schema: "atlcli.research-scope-binding/v1",
+          id: "scope-binding:extension-test:confluence:KB",
+          tenantOrigin: "https://example.atlassian.net",
+          product: "confluence",
+          entityKind: "space",
+          entityRef: "scope-key:confluence:KB",
+          key: "KB",
+          name: "KB",
+          source: "cli_flag",
+          authority: "locked",
+        },
+      ],
+    };
+    const graph = composeResearchGraphV1(brief, {
+      packetOutputSchema: RESEARCH_PACKET_BODY_SCHEMA_V2,
+    });
+    const jira = graph.nodes.find((node) => node.id === "research-node:jira-research")!;
+    const wiki = graph.nodes.find((node) => node.id === "research-node:wiki-research")!;
+    const join = graph.nodes.find((node) => node.id === "research-node:cross-product-join")!;
+    const reconciler = graph.nodes.find((node) => node.id === "research-node:reconciler")!;
+    const synthesizer = graph.nodes.find((node) => node.id === "research-node:synthesizer")!;
+    const taskId = (node: typeof jira) => researchTaskIdForNodeV1(graph, node);
+    const subagentType = (node: typeof jira) => researchSubagentTypeForNodeV1(node);
+    expect([jira, wiki].map((node) => node.outputSchema)).toEqual([
+      RESEARCH_PACKET_BODY_SCHEMA_V2,
+      RESEARCH_PACKET_BODY_SCHEMA_V2,
+    ]);
+    expect(join.outputSchema).toBe("atlcli.research-packet-reference-model/v2");
+    const emptyDetailPacket = {
+      schema: RESEARCH_PACKET_BODY_SCHEMA_V2,
+      claimCandidates: [],
+      contradictionCandidates: [],
+      outlineProposals: [],
+      gaps: [],
+      proposedFollowUps: [],
+      coverageLimits: ["This deterministic run has no detail claim."],
+      abstentionReason: "No detail evidence was supplied in this fixture.",
+    };
+    const emptyAnalysisPacket = {
+      schema: "atlcli.research-packet-reference-model/v2",
+      claimIds: [],
+      contradictions: [],
+      outlineProposals: [],
+      gaps: [],
+      proposedFollowUps: [],
+      coverageLimits: ["No admitted Claim IDs were available to analyze."],
+      abstentionReason: "No claims were admitted from the detail branches.",
+    };
+    const critique = {
+      schema: RESEARCH_RECONCILIATION_BODY_SCHEMA_V1,
+      defects: [],
+      proposedFollowUps: [],
+    };
+    const draft = {
+      title: "V2 claim-graph fixture",
+      executiveSummary: "No detail claim was available in the deterministic V2 fixture.",
+      findings: [],
+      relationships: [],
+      limitations: ["The fixture deliberately contains no detail evidence."],
+    };
+    const code = `
+      ${graphProposalPrelude(graph)}
+      const packets = await Promise.all([
+        task({
+          description: JSON.stringify({ schema: "atlcli.research-task-dispatch/v1", taskId: ${JSON.stringify(taskId(jira))}, objective: ${JSON.stringify(jira.objective)} }),
+          subagentType: ${JSON.stringify(subagentType(jira))},
+          responseSchema: ${JSON.stringify(responseSchemaForResearchRole("focused-researcher", jira.outputSchema))}
+        }),
+        task({
+          description: JSON.stringify({ schema: "atlcli.research-task-dispatch/v1", taskId: ${JSON.stringify(taskId(wiki))}, objective: ${JSON.stringify(wiki.objective)} }),
+          subagentType: ${JSON.stringify(subagentType(wiki))},
+          responseSchema: ${JSON.stringify(responseSchemaForResearchRole("focused-researcher", wiki.outputSchema))}
+        })
+      ]);
+      const joined = await task({
+        description: JSON.stringify({
+          schema: "atlcli.research-task-dispatch/v1",
+          taskId: ${JSON.stringify(taskId(join))},
+          objective: ${JSON.stringify(join.objective)},
+          dependencyResults: [
+            { taskId: ${JSON.stringify(taskId(jira))}, result: packets[0] },
+            { taskId: ${JSON.stringify(taskId(wiki))}, result: packets[1] }
+          ]
+        }),
+        subagentType: ${JSON.stringify(subagentType(join))},
+        responseSchema: ${JSON.stringify(responseSchemaForResearchRole("document-distiller", join.outputSchema))}
+      });
+      const reconciliation = await task({
+        description: JSON.stringify({
+          schema: "atlcli.research-task-dispatch/v1",
+          taskId: ${JSON.stringify(taskId(reconciler))},
+          objective: ${JSON.stringify(reconciler.objective)},
+          dependencyResults: [
+            { taskId: ${JSON.stringify(taskId(jira))}, result: packets[0] },
+            { taskId: ${JSON.stringify(taskId(wiki))}, result: packets[1] },
+            { taskId: ${JSON.stringify(taskId(join))}, result: joined }
+          ]
+        }),
+        subagentType: ${JSON.stringify(subagentType(reconciler))},
+        responseSchema: ${JSON.stringify(RESEARCH_CRITIQUE_SCHEMA_V1)}
+      });
+      const acceptedDispositions = JSON.parse(await tools.researchReconciliationDispositions({
+        basedOnGraphRevision: ${graph.revision},
+        reconciliationTaskId: ${JSON.stringify(taskId(reconciler))},
+        decisions: []
+      }));
+      if (acceptedDispositions.schema !== "atlcli.accepted-reconciliation/v1") {
+        throw new Error("Synthetic V2 reconciliation dispositions were not accepted.");
+      }
+      const finalDraft = await task({
+        description: JSON.stringify({
+          schema: "atlcli.research-task-dispatch/v1",
+          taskId: ${JSON.stringify(taskId(synthesizer))},
+          objective: ${JSON.stringify(synthesizer.objective)},
+          dependencyResults: [
+            { taskId: ${JSON.stringify(taskId(jira))}, result: packets[0] },
+            { taskId: ${JSON.stringify(taskId(wiki))}, result: packets[1] },
+            { taskId: ${JSON.stringify(taskId(join))}, result: joined },
+            { taskId: ${JSON.stringify(taskId(reconciler))}, result: reconciliation }
+          ]
+        }),
+        subagentType: ${JSON.stringify(subagentType(synthesizer))},
+        responseSchema: ${JSON.stringify(RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1)}
+      });
+      finalDraft;
+    `;
+    const dynamicModel = fakeModel()
+      .respondWithTools([{ name: "eval", args: { code } }])
+      .respondWithTools([{ name: "ResearchPacketModelBodyV2", args: emptyDetailPacket }])
+      .respondWithTools([{ name: "ResearchPacketModelBodyV2", args: emptyDetailPacket }])
+      .respondWithTools([{ name: "ResearchPacketReferenceModelBodyV2", args: emptyAnalysisPacket }])
+      .respondWithTools([{ name: "ReconciliationBodyV1", args: critique }])
+      .respondWithTools([{ name: "AtlcliResearchAgentDraftV1", args: draft }])
+      .respondWithTools([{ name: "AtlcliResearchAgentDraftV1", args: draft }]);
+    const durableStore = new InMemoryResearchSessionStoreV1();
+    await initializeResearchSessionTurnV1({
+      store: durableStore,
+      session: createResearchSessionV1({
+        sessionId: graph.sessionId,
+        ownerId: "owner:extension-test",
+        createdAt: "2026-08-01T17:00:00.000Z",
+        leaseExpiresAt: "2026-08-01T17:10:00.000Z",
+      }),
+      brief,
+      graph,
+      approveAutomatically: true,
+      at: "2026-08-01T17:00:00.000Z",
+    });
+
+    const report = await runResearchAgent({
+      model: dynamicModel,
+      request,
+      providers: {
+        jira: { async searchPage() { throw new Error("model skipped PTC"); }, async getIssue() { throw new Error("model skipped PTC"); } },
+        wiki: { async searchPage() { throw new Error("model skipped PTC"); }, async getPage() { throw new Error("model skipped PTC"); } },
+      },
+      researchGraph: graph,
+      brief,
+      durableSession: { store: durableStore, sessionId: graph.sessionId, turnId: graph.turnId },
+      runId: "dynamic-v2-claim-graph",
+    });
+
+    expect(report.title).toBe(draft.title);
+    const reconciliationCall = dynamicModel.calls.find((call) => call.messages.some((message) =>
+      message.text.includes("Host-validated reconciliation input")
+    ));
+    expect(reconciliationCall).toBeDefined();
+    const reconciliationInput = reconciliationCall!.messages.map((message) => message.text).join("\n");
+    expect(reconciliationInput).toContain('"kind":"v2-claim-set"');
+    expect(reconciliationInput).not.toContain("exact detail");
+    const session = await durableStore.read(graph.sessionId);
+    const turn = session!.turns.find((candidate) => candidate.id === graph.turnId)!;
+    expect(turn.acceptedPackets).toHaveLength(5);
+    expect(turn.acceptedPackets.map((packet) => packet.body)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ schema: RESEARCH_PACKET_BODY_SCHEMA_V2, referencedClaimIds: [] }),
+    ]));
   });
 
   test("rejects a duplicate graph-node dispatch before duplicate model work", async () => {

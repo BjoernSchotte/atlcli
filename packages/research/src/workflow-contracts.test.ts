@@ -19,6 +19,7 @@ import {
   type ResearchAcceptedPacketV1,
   type ReconciliationBodyV1,
   type ResearchPacketBodyV1,
+  type ResearchPacketBodyV2,
   type ResearchPacketModelBodyV2,
   type ResearchReconciliationDispositionV1,
 } from "./workflow-contracts.js";
@@ -60,7 +61,7 @@ function packet(): ResearchPacketBodyV1 {
 function acceptedPacket(
   taskId: string,
   packetRef: string,
-  body: ResearchPacketBodyV1,
+  body: ResearchPacketBodyV1 | ResearchPacketBodyV2,
 ): ResearchAcceptedPacketV1 {
   return {
     schema: RESEARCH_ACCEPTED_PACKET_SCHEMA_V1,
@@ -72,7 +73,7 @@ function acceptedPacket(
     roleId: "focused-researcher",
     grantedCapabilityIds: [],
     typedIntentRefs: [],
-    expectedOutputSchema: RESEARCH_PACKET_BODY_SCHEMA_V1,
+    expectedOutputSchema: body.schema,
     body,
     hostObservedUsage: {
       capabilityCalls: 0,
@@ -140,6 +141,7 @@ describe("T3 workflow contracts", () => {
     const canonical = {
       schema: RESEARCH_PACKET_BODY_SCHEMA_V2,
       claims: [{ candidateId: "candidate:one", claimId: `claim:${"a".repeat(48)}` }],
+      referencedClaimIds: [],
       contradictions: [],
       outlineProposals: [],
       gaps: [],
@@ -209,6 +211,69 @@ describe("T3 workflow contracts", () => {
         sourceIds: ["jira:DEMO-1", "wiki:42", "wiki:43"],
       },
     });
+  });
+
+  test("projects V2 claims and evidence without exposing model quotes or source text", () => {
+    const claimId = "claim:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    const evidenceId = "evidence:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+    const detailPacket = acceptedPacket("task:detail", "packet:detail:1", {
+      schema: RESEARCH_PACKET_BODY_SCHEMA_V2,
+      claims: [{
+        claimId,
+        candidateId: "candidate:detail:1",
+      }],
+      referencedClaimIds: [],
+      contradictions: [],
+      outlineProposals: [{
+        id: "outline:v2:1",
+        sectionId: "section:v2:1",
+        title: "Verified detail",
+        question: "What does the verified detail establish?",
+        claimIds: [claimId],
+        evidenceIds: [evidenceId],
+        dependsOnSectionIds: [],
+        coverageTargetIds: [],
+      }],
+      gaps: [],
+      proposedFollowUps: [],
+      coverageLimits: [],
+    });
+    const analysisPacket = acceptedPacket("task:analysis", "packet:analysis:1", {
+      schema: RESEARCH_PACKET_BODY_SCHEMA_V2,
+      claims: [],
+      referencedClaimIds: [claimId],
+      contradictions: [],
+      outlineProposals: [],
+      gaps: [{ id: "gap:v2:1", summary: "The linked evidence was not exhaustive.", sourceIds: [] }],
+      proposedFollowUps: [],
+      coverageLimits: ["One bounded limitation remains."],
+    });
+
+    expect(projectResearchReconciliationInputV1({
+      briefRevision: 2,
+      graphRevision: 3,
+      coverageTargetIds: ["coverage:question"],
+      acceptedPackets: [detailPacket, analysisPacket],
+    })).toEqual({
+      schema: RESEARCH_RECONCILIATION_INPUT_SCHEMA_V1,
+      briefRevision: 2,
+      graphRevision: 3,
+      acceptedPacketRefs: ["packet:detail:1", "packet:analysis:1"],
+      coverageTargetIds: ["coverage:question"],
+      projection: {
+        kind: "v2-claim-set",
+        claimIds: [claimId],
+        evidenceIds: [evidenceId],
+        gapIds: ["gap:v2:1"],
+      },
+    });
+
+    expect(() => projectResearchReconciliationInputV1({
+      briefRevision: 2,
+      graphRevision: 3,
+      coverageTargetIds: ["coverage:question"],
+      acceptedPackets: [acceptedPacket("task:v1", "packet:v1:1", packet()), detailPacket],
+    })).toThrow("cannot mix V1 and V2");
   });
 
   test("rejects duplicate candidate IDs and malformed reconciliation projections", () => {

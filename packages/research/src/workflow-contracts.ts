@@ -17,6 +17,8 @@ export const RESEARCH_PACKET_BODY_SCHEMA_V1 =
   "atlcli.research-packet-body/v1" as const;
 export const RESEARCH_PACKET_BODY_SCHEMA_V2 =
   "atlcli.research-packet-body/v2" as const;
+export const RESEARCH_PACKET_REFERENCE_MODEL_SCHEMA_V2 =
+  "atlcli.research-packet-reference-model/v2" as const;
 export const RESEARCH_RECONCILIATION_INPUT_SCHEMA_V1 =
   "atlcli.reconciliation-input/v1" as const;
 export const RESEARCH_RECONCILIATION_BODY_SCHEMA_V1 =
@@ -61,6 +63,7 @@ export type ResearchSubagentRoleIdV1 =
 export type ResearchTaskOutputSchemaV1 =
   | typeof RESEARCH_PACKET_BODY_SCHEMA_V1
   | typeof RESEARCH_PACKET_BODY_SCHEMA_V2
+  | typeof RESEARCH_PACKET_REFERENCE_MODEL_SCHEMA_V2
   | typeof RESEARCH_RECONCILIATION_BODY_SCHEMA_V1
   | "atlcli.research-agent-draft/v1";
 
@@ -195,7 +198,7 @@ export const RESEARCH_SUBAGENT_ROLE_REGISTRY_V1: Readonly<
       "wiki.space.search",
       "atlassian.reference.resolve",
     ],
-    supportedOutputSchemas: [RESEARCH_PACKET_BODY_SCHEMA_V1, RESEARCH_PACKET_BODY_SCHEMA_V2],
+    supportedOutputSchemas: [RESEARCH_PACKET_BODY_SCHEMA_V1, RESEARCH_PACKET_BODY_SCHEMA_V2, RESEARCH_PACKET_REFERENCE_MODEL_SCHEMA_V2],
     mayProposeFollowUps: true,
   }),
   "document-distiller": role({
@@ -204,7 +207,7 @@ export const RESEARCH_SUBAGENT_ROLE_REGISTRY_V1: Readonly<
     phase: "analysis",
     availableFromPhase: "T3",
     allowedCapabilityIds: [],
-    supportedOutputSchemas: [RESEARCH_PACKET_BODY_SCHEMA_V1, RESEARCH_PACKET_BODY_SCHEMA_V2],
+    supportedOutputSchemas: [RESEARCH_PACKET_BODY_SCHEMA_V1, RESEARCH_PACKET_BODY_SCHEMA_V2, RESEARCH_PACKET_REFERENCE_MODEL_SCHEMA_V2],
     mayProposeFollowUps: true,
   }),
   "contradiction-verifier": role({
@@ -218,7 +221,7 @@ export const RESEARCH_SUBAGENT_ROLE_REGISTRY_V1: Readonly<
       "wiki.search",
       "wiki.page.get",
     ],
-    supportedOutputSchemas: [RESEARCH_PACKET_BODY_SCHEMA_V1, RESEARCH_PACKET_BODY_SCHEMA_V2],
+    supportedOutputSchemas: [RESEARCH_PACKET_BODY_SCHEMA_V1, RESEARCH_PACKET_BODY_SCHEMA_V2, RESEARCH_PACKET_REFERENCE_MODEL_SCHEMA_V2],
     mayProposeFollowUps: true,
   }),
   "coverage-moderator": role({
@@ -227,7 +230,7 @@ export const RESEARCH_SUBAGENT_ROLE_REGISTRY_V1: Readonly<
     phase: "verification",
     availableFromPhase: "T3",
     allowedCapabilityIds: [],
-    supportedOutputSchemas: [RESEARCH_PACKET_BODY_SCHEMA_V1, RESEARCH_PACKET_BODY_SCHEMA_V2],
+    supportedOutputSchemas: [RESEARCH_PACKET_BODY_SCHEMA_V1, RESEARCH_PACKET_BODY_SCHEMA_V2, RESEARCH_PACKET_REFERENCE_MODEL_SCHEMA_V2],
     mayProposeFollowUps: true,
   }),
   "outline-planner": role({
@@ -236,7 +239,7 @@ export const RESEARCH_SUBAGENT_ROLE_REGISTRY_V1: Readonly<
     phase: "analysis",
     availableFromPhase: "T5",
     allowedCapabilityIds: [],
-    supportedOutputSchemas: ["atlcli.research-packet-body/v2"],
+    supportedOutputSchemas: [RESEARCH_PACKET_REFERENCE_MODEL_SCHEMA_V2],
     mayProposeFollowUps: false,
   }),
   reconciler: role({
@@ -335,6 +338,34 @@ export interface ResearchPacketModelBodyV2 {
 }
 
 /**
+ * Ephemeral analysis output. Unlike `ResearchPacketModelBodyV2`, this shape
+ * cannot make a new factual claim: it can only arrange exact Claim IDs that
+ * the host previously projected from admitted dependencies.
+ */
+export interface ResearchPacketReferenceModelBodyV2 {
+  schema: typeof RESEARCH_PACKET_REFERENCE_MODEL_SCHEMA_V2;
+  claimIds: string[];
+  contradictions: Array<{
+    id: string;
+    claimIds: string[];
+    summary: string;
+  }>;
+  outlineProposals: Array<{
+    id: string;
+    sectionId: string;
+    title: string;
+    question: string;
+    claimIds: string[];
+    dependsOnSectionIds: string[];
+    coverageTargetIds: string[];
+  }>;
+  gaps: ResearchGapV1[];
+  proposedFollowUps: ResearchFollowUpProposalV1[];
+  coverageLimits: string[];
+  abstentionReason?: string;
+}
+
+/**
  * Canonical accepted V2 packet. It contains only stable Claim/Evidence IDs
  * and host-derived spans; no model quote or caller-supplied hash/offset.
  */
@@ -344,6 +375,8 @@ export interface ResearchPacketBodyV2 {
     candidateId: string;
     claimId: string;
   }>;
+  /** Current claims carried forward by an analysis-only V2 node. */
+  referencedClaimIds: string[];
   contradictions: Array<{
     id: string;
     claimIds: string[];
@@ -372,13 +405,25 @@ export interface ResearchReconciliationInputV1 {
   graphRevision: number;
   acceptedPacketRefs: string[];
   coverageTargetIds: string[];
-  projection: {
-    kind: "v1-packet-set";
-    findingCandidateIds: string[];
-    relationshipCandidateIds: string[];
-    gapIds: string[];
-    sourceIds: string[];
-  };
+  projection:
+    | {
+        kind: "v1-packet-set";
+        findingCandidateIds: string[];
+        relationshipCandidateIds: string[];
+        gapIds: string[];
+        sourceIds: string[];
+      }
+    | {
+        /**
+         * V2 exposes durable identities only. Reconciliation can challenge a
+         * Claim or point to an Evidence record, but never receives source
+         * text, model quotes, or a child agent's tool trajectory.
+         */
+        kind: "v2-claim-set";
+        claimIds: string[];
+        evidenceIds: string[];
+        gapIds: string[];
+      };
 }
 
 export type ResearchSupportRefV1 =
@@ -447,6 +492,20 @@ export interface ResearchAcceptedPacketV1 {
   body: ResearchPacketBodyV1 | ResearchPacketBodyV2 | ReconciliationBodyV1 | ResearchAgentDraftV1;
   hostObservedUsage: ResearchTaskUsageV1;
   acceptedAt: string;
+}
+
+/** Narrow a heterogeneous accepted task result to one canonical research packet. */
+export function isResearchPacketBodyV1(
+  body: ResearchAcceptedPacketV1["body"],
+): body is ResearchPacketBodyV1 {
+  return "schema" in body && body.schema === RESEARCH_PACKET_BODY_SCHEMA_V1;
+}
+
+/** Narrow a heterogeneous accepted task result to one canonical V2 research packet. */
+export function isResearchPacketBodyV2(
+  body: ResearchAcceptedPacketV1["body"],
+): body is ResearchPacketBodyV2 {
+  return "schema" in body && body.schema === RESEARCH_PACKET_BODY_SCHEMA_V2;
 }
 
 export interface ResearchReconciliationDispositionV1 {
@@ -716,11 +775,97 @@ export function parseResearchPacketModelBodyV2(value: unknown): ResearchPacketMo
   };
 }
 
+/**
+ * Parses an analysis-only V2 model packet. The subsequent host normalizer
+ * verifies that every Claim ID belongs to an admitted dependency and is still
+ * current before it derives the canonical V2 packet.
+ */
+export function parseResearchPacketReferenceModelBodyV2(
+  value: unknown,
+): ResearchPacketReferenceModelBodyV2 {
+  const packet = object(value, "Research V2 reference model packet body");
+  assertKeys(packet, [
+    "schema", "claimIds", "contradictions", "outlineProposals", "gaps",
+    "proposedFollowUps", "coverageLimits", "abstentionReason",
+  ], "Research V2 reference model packet body");
+  if (packet.schema !== RESEARCH_PACKET_REFERENCE_MODEL_SCHEMA_V2 ||
+      !Array.isArray(packet.contradictions) || packet.contradictions.length > 12 ||
+      !Array.isArray(packet.outlineProposals) || packet.outlineProposals.length > 12 ||
+      !Array.isArray(packet.gaps) || packet.gaps.length > 16 ||
+      !Array.isArray(packet.proposedFollowUps) || packet.proposedFollowUps.length > 3) {
+    invalid("Research V2 reference model packet body is invalid.");
+  }
+  const claimIds = stringArray(packet.claimIds, "Research V2 reference claim IDs", 48)
+    .map((claimId) => claimReferenceId(claimId, "Research V2 reference claim ID"));
+  const knownClaims = new Set(claimIds);
+  const contradictionIds = new Set<string>();
+  const contradictions = packet.contradictions.map((value) => {
+    const candidate = object(value, "Research V2 reference contradiction");
+    assertKeys(candidate, ["id", "claimIds", "summary"], "Research V2 reference contradiction");
+    const id = boundedString(candidate.id, "Research V2 reference contradiction ID", 160);
+    if (contradictionIds.has(id)) invalid("Research V2 reference contradiction IDs are duplicated.");
+    contradictionIds.add(id);
+    const contradictionClaimIds = requiredStringArray(
+      candidate.claimIds,
+      "Research V2 reference contradiction claim IDs",
+      8,
+    ).map((claimId) => claimReferenceId(claimId, "Research V2 reference contradiction claim ID"));
+    if (contradictionClaimIds.length < 2 || contradictionClaimIds.some((claimId) => !knownClaims.has(claimId))) {
+      invalid("Research V2 reference contradiction references an unknown or insufficient claim.");
+    }
+    return {
+      id,
+      claimIds: contradictionClaimIds,
+      summary: boundedString(candidate.summary, "Research V2 reference contradiction summary", 1_200),
+    };
+  });
+  const proposalIds = new Set<string>();
+  const outlineProposals = packet.outlineProposals.map((value) => {
+    const proposal = object(value, "Research V2 reference outline proposal");
+    assertKeys(proposal, [
+      "id", "sectionId", "title", "question", "claimIds",
+      "dependsOnSectionIds", "coverageTargetIds",
+    ], "Research V2 reference outline proposal");
+    const id = boundedString(proposal.id, "Research V2 reference outline proposal ID", 160);
+    if (proposalIds.has(id)) invalid("Research V2 reference outline proposal IDs are duplicated.");
+    proposalIds.add(id);
+    const proposalClaimIds = stringArray(
+      proposal.claimIds,
+      "Research V2 reference outline claim IDs",
+      20,
+    ).map((claimId) => claimReferenceId(claimId, "Research V2 reference outline claim ID"));
+    if (proposalClaimIds.some((claimId) => !knownClaims.has(claimId))) {
+      invalid("Research V2 reference outline references an unknown claim.");
+    }
+    return {
+      id,
+      sectionId: boundedString(proposal.sectionId, "Research V2 reference outline section ID", 160),
+      title: boundedString(proposal.title, "Research V2 reference outline title", 240),
+      question: boundedString(proposal.question, "Research V2 reference outline question", 1_200),
+      claimIds: proposalClaimIds,
+      dependsOnSectionIds: stringArray(proposal.dependsOnSectionIds, "Research V2 reference outline dependencies", 12),
+      coverageTargetIds: stringArray(proposal.coverageTargetIds, "Research V2 reference outline coverage targets", 32),
+    };
+  });
+  return {
+    schema: RESEARCH_PACKET_REFERENCE_MODEL_SCHEMA_V2,
+    claimIds,
+    contradictions,
+    outlineProposals,
+    gaps: packet.gaps.map(parseGap),
+    proposedFollowUps: packet.proposedFollowUps.map(parseFollowUp),
+    coverageLimits: stringArray(packet.coverageLimits, "Research V2 reference coverage limits", 16),
+    ...(packet.abstentionReason === undefined
+      ? {}
+      : { abstentionReason: boundedString(packet.abstentionReason, "Research V2 reference abstention reason", 1_000) }),
+  };
+}
+
 /** Parses the normalized V2 packet that is safe to retain in a task journal. */
 export function parseResearchPacketBodyV2(value: unknown): ResearchPacketBodyV2 {
   const packet = object(value, "Research V2 packet body");
   assertKeys(packet, [
-    "schema", "claims", "contradictions", "outlineProposals",
+    "schema", "claims", "referencedClaimIds", "contradictions", "outlineProposals",
     "gaps", "proposedFollowUps", "coverageLimits", "abstentionReason",
   ], "Research V2 packet body");
   if (packet.schema !== RESEARCH_PACKET_BODY_SCHEMA_V2 ||
@@ -743,7 +888,18 @@ export function parseResearchPacketBodyV2(value: unknown): ResearchPacketBodyV2 
       new Set(claims.map((claim) => claim.claimId)).size !== claims.length) {
     invalid("Research V2 claim references are duplicated.");
   }
-  const claimIds = new Set(claims.map((claim) => claim.claimId));
+  const referencedClaimIds = stringArray(
+    packet.referencedClaimIds,
+    "Research V2 referenced claim IDs",
+    48,
+  ).map((claimId) => claimReferenceId(claimId, "Research V2 referenced claim ID"));
+  if (referencedClaimIds.some((claimId) => claims.some((claim) => claim.claimId === claimId))) {
+    invalid("Research V2 referenced claims duplicate newly normalized claims.");
+  }
+  const claimIds = new Set([
+    ...claims.map((claim) => claim.claimId),
+    ...referencedClaimIds,
+  ]);
   const contradictionIds = new Set<string>();
   const contradictions = packet.contradictions.map((value) => {
     const contradiction = object(value, "Research V2 contradiction");
@@ -788,6 +944,7 @@ export function parseResearchPacketBodyV2(value: unknown): ResearchPacketBodyV2 
   return {
     schema: RESEARCH_PACKET_BODY_SCHEMA_V2,
     claims,
+    referencedClaimIds,
     contradictions,
     outlineProposals,
     gaps: packet.gaps.map(parseGap),
@@ -820,23 +977,12 @@ export function parseResearchReconciliationInputV1(
     invalid("Research reconciliation input requires accepted packets.");
   }
   const projection = object(input.projection, "Research reconciliation projection");
-  assertKeys(projection, [
-    "kind", "findingCandidateIds", "relationshipCandidateIds", "gapIds", "sourceIds",
-  ], "Research reconciliation projection");
-  if (projection.kind !== "v1-packet-set") {
-    invalid("Research reconciliation projection kind is invalid.");
-  }
-  return {
-    schema: RESEARCH_RECONCILIATION_INPUT_SCHEMA_V1,
-    briefRevision: Number(input.briefRevision),
-    graphRevision: Number(input.graphRevision),
-    acceptedPacketRefs,
-    coverageTargetIds: stringArray(
-      input.coverageTargetIds,
-      "Research reconciliation coverage target ids",
-      32,
-    ),
-    projection: {
+  let parsedProjection: ResearchReconciliationInputV1["projection"];
+  if (projection.kind === "v1-packet-set") {
+    assertKeys(projection, [
+      "kind", "findingCandidateIds", "relationshipCandidateIds", "gapIds", "sourceIds",
+    ], "Research reconciliation projection");
+    parsedProjection = {
       kind: "v1-packet-set",
       findingCandidateIds: stringArray(
         projection.findingCandidateIds,
@@ -850,7 +996,31 @@ export function parseResearchReconciliationInputV1(
       ),
       gapIds: stringArray(projection.gapIds, "Research reconciliation gap ids", 128),
       sourceIds: stringArray(projection.sourceIds, "Research reconciliation source ids", 256),
-    },
+    };
+  } else if (projection.kind === "v2-claim-set") {
+    assertKeys(projection, ["kind", "claimIds", "evidenceIds", "gapIds"], "Research reconciliation projection");
+    parsedProjection = {
+      kind: "v2-claim-set",
+      claimIds: stringArray(projection.claimIds, "Research reconciliation V2 claim ids", 128)
+        .map((claimId) => claimReferenceId(claimId, "Research reconciliation V2 claim id")),
+      evidenceIds: stringArray(projection.evidenceIds, "Research reconciliation V2 evidence ids", 256)
+        .map((evidenceId) => evidenceReferenceId(evidenceId, "Research reconciliation V2 evidence id")),
+      gapIds: stringArray(projection.gapIds, "Research reconciliation V2 gap ids", 128),
+    };
+  } else {
+    invalid("Research reconciliation projection kind is invalid.");
+  }
+  return {
+    schema: RESEARCH_RECONCILIATION_INPUT_SCHEMA_V1,
+    briefRevision: Number(input.briefRevision),
+    graphRevision: Number(input.graphRevision),
+    acceptedPacketRefs,
+    coverageTargetIds: stringArray(
+      input.coverageTargetIds,
+      "Research reconciliation coverage target ids",
+      32,
+    ),
+    projection: parsedProjection,
   };
 }
 
@@ -866,30 +1036,20 @@ export function projectResearchReconciliationInputV1(input: {
   coverageTargetIds: readonly string[];
   acceptedPackets: readonly ResearchAcceptedPacketV1[];
 }): ResearchReconciliationInputV1 {
-  const findingCandidateIds: string[] = [];
-  const relationshipCandidateIds: string[] = [];
-  const gapIds: string[] = [];
-  const sourceIds: string[] = [];
-  const seenFindingIds = new Set<string>();
-  const seenRelationshipIds = new Set<string>();
-  const seenGapIds = new Set<string>();
-  const seenSourceIds = new Set<string>();
-  const seenTaskIds = new Set<string>();
-
-  const appendUniqueCandidateIds = (
+  function appendUniqueCandidateIds(
     ids: readonly string[],
     seen: Set<string>,
     output: string[],
     label: string,
-  ): void => {
+  ): void {
     for (const id of ids) {
       if (seen.has(id)) invalid(`Research reconciliation ${label} is duplicated across accepted packets: ${id}.`);
       seen.add(id);
       output.push(id);
     }
-  };
-
-  for (const packet of input.acceptedPackets) {
+  }
+  const seenTaskIds = new Set<string>();
+  const packetBodies = input.acceptedPackets.map((packet) => {
     if (packet.schema !== RESEARCH_ACCEPTED_PACKET_SCHEMA_V1 ||
         packet.graphRevision !== input.graphRevision) {
       invalid("Research reconciliation input contains a stale or invalid accepted packet.");
@@ -898,6 +1058,60 @@ export function projectResearchReconciliationInputV1(input: {
       invalid(`Research reconciliation task is duplicated across accepted packets: ${packet.taskId}.`);
     }
     seenTaskIds.add(packet.taskId);
+    if (isResearchPacketBodyV1(packet.body)) return parseResearchPacketBodyV1(packet.body);
+    if (isResearchPacketBodyV2(packet.body)) return parseResearchPacketBodyV2(packet.body);
+    invalid("Research reconciliation input requires research packets.");
+  });
+  const usesV2 = packetBodies.some((body) => body.schema === RESEARCH_PACKET_BODY_SCHEMA_V2);
+  if (usesV2) {
+    if (packetBodies.some((body) => body.schema !== RESEARCH_PACKET_BODY_SCHEMA_V2)) {
+      invalid("Research reconciliation input cannot mix V1 and V2 research packets.");
+    }
+    const claimIds = new Set<string>();
+    const evidenceIds = new Set<string>();
+    const gapIds: string[] = [];
+    const seenGapIds = new Set<string>();
+    for (const body of packetBodies) {
+      if (body.schema !== RESEARCH_PACKET_BODY_SCHEMA_V2) continue;
+      body.claims.forEach((claim) => {
+        claimIds.add(claim.claimId);
+      });
+      body.referencedClaimIds.forEach((claimId) => claimIds.add(claimId));
+      body.contradictions.forEach((contradiction) =>
+        contradiction.evidenceIds.forEach((evidenceId) => evidenceIds.add(evidenceId)));
+      body.outlineProposals.forEach((proposal) =>
+        proposal.evidenceIds.forEach((evidenceId) => evidenceIds.add(evidenceId)));
+      appendUniqueCandidateIds(
+        body.gaps.map((gap) => gap.id),
+        seenGapIds,
+        gapIds,
+        "gap id",
+      );
+    }
+    return parseResearchReconciliationInputV1({
+      schema: RESEARCH_RECONCILIATION_INPUT_SCHEMA_V1,
+      briefRevision: input.briefRevision,
+      graphRevision: input.graphRevision,
+      acceptedPacketRefs: input.acceptedPackets.map((packet) => packet.packetRef),
+      coverageTargetIds: [...input.coverageTargetIds],
+      projection: {
+        kind: "v2-claim-set",
+        claimIds: [...claimIds].sort(),
+        evidenceIds: [...evidenceIds].sort(),
+        gapIds,
+      },
+    });
+  }
+  const findingCandidateIds: string[] = [];
+  const relationshipCandidateIds: string[] = [];
+  const gapIds: string[] = [];
+  const sourceIds: string[] = [];
+  const seenFindingIds = new Set<string>();
+  const seenRelationshipIds = new Set<string>();
+  const seenGapIds = new Set<string>();
+  const seenSourceIds = new Set<string>();
+
+  for (const packet of input.acceptedPackets) {
     const body = parseResearchPacketBodyV1(packet.body);
     appendUniqueCandidateIds(
       body.findingCandidates.map((candidate) => candidate.id),
@@ -1053,6 +1267,7 @@ export function parseResearchTaskBodyV1(
 ): ResearchPacketBodyV1 | ResearchPacketBodyV2 | ReconciliationBodyV1 | ResearchAgentDraftV1 {
   if (schema === RESEARCH_PACKET_BODY_SCHEMA_V1) return parseResearchPacketBodyV1(value);
   if (schema === RESEARCH_PACKET_BODY_SCHEMA_V2) return parseResearchPacketBodyV2(value);
+  if (schema === RESEARCH_PACKET_REFERENCE_MODEL_SCHEMA_V2) return parseResearchPacketBodyV2(value);
   if (schema === RESEARCH_RECONCILIATION_BODY_SCHEMA_V1) return parseReconciliationBodyV1(value);
   if (schema === "atlcli.research-agent-draft/v1") return parseResearchAgentDraftV1(value);
   invalid("Research task output schema is unavailable.");

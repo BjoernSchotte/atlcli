@@ -20,6 +20,7 @@ import {
   RESEARCH_APPROVAL_ENVELOPE_SCHEMA_V1,
   RESEARCH_PACKET_BODY_SCHEMA_V1,
   RESEARCH_PACKET_BODY_SCHEMA_V2,
+  RESEARCH_PACKET_REFERENCE_MODEL_SCHEMA_V2,
   RESEARCH_SUBAGENT_ROLE_IDS_V1,
   RESEARCH_SUBAGENT_ROLE_REGISTRY_V1,
   type ResearchApprovalEnvelopeV1,
@@ -303,20 +304,24 @@ interface NodeSeed {
 function outputSchemaForNode(
   roleId: ResearchSubagentRoleIdV1 | undefined,
   requestedCapabilityIds: readonly ResearchGraphCapabilityV1[],
-  allowV2DetailPacket: boolean,
   packetOutputSchema: ResearchGraphCompositionOptionsV1["packetOutputSchema"],
 ): ResearchTaskOutputSchemaV1 {
+  // PTC-only graph nodes have no role-bound response contract. Keep them on
+  // the original packet shape even when a productive subagent graph uses V2.
+  if (!roleId) return RESEARCH_PACKET_BODY_SCHEMA_V1;
   if (roleId === "synthesizer") return "atlcli.research-agent-draft/v1";
   if (roleId === "reconciler") return "atlcli.reconciliation-body/v1";
-  // V2 requires a model to quote exact detail text. Analysis-only nodes see
-  // compact host projections rather than source bodies, so they remain V1
-  // until the later V2 analysis/reference packet contract is introduced.
+  if (packetOutputSchema !== RESEARCH_PACKET_BODY_SCHEMA_V2) {
+    return RESEARCH_PACKET_BODY_SCHEMA_V1;
+  }
+  // Detail-reading nodes create quote-bearing candidates. Analysis-only nodes
+  // receive only host-projected claims and must use the reference-only model
+  // schema, which cannot introduce a new factual claim.
   const hasDetailRead = requestedCapabilityIds.includes("jira.issue.get") ||
     requestedCapabilityIds.includes("wiki.page.get");
-  return packetOutputSchema === RESEARCH_PACKET_BODY_SCHEMA_V2 &&
-    allowV2DetailPacket && hasDetailRead
+  return hasDetailRead
     ? RESEARCH_PACKET_BODY_SCHEMA_V2
-    : RESEARCH_PACKET_BODY_SCHEMA_V1;
+    : RESEARCH_PACKET_REFERENCE_MODEL_SCHEMA_V2;
 }
 
 function grantFor(
@@ -345,7 +350,6 @@ function nodeFromSeed(
     outputSchema: outputSchemaForNode(
       seed.roleId,
       seed.requestedCapabilityIds,
-      brief.resolvedEffort === "lookup",
       packetOutputSchema,
     ),
     grantedCapabilityIds: grantFor(seed, grants),

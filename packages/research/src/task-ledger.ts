@@ -2,6 +2,7 @@ import { ResearchContractError } from "./contracts.js";
 import {
   RESEARCH_ACCEPTED_PACKET_SCHEMA_V1,
   RESEARCH_TASK_ATTEMPT_SCHEMA_V1,
+  RESEARCH_PACKET_REFERENCE_MODEL_SCHEMA_V2,
   parseResearchTaskBodyV1,
   validateResearchTaskAdmissionV1,
   validateResearchTaskUsageV1,
@@ -134,7 +135,8 @@ export function reduceResearchAcceptedPacketV1(input: {
   const available = new Set(input.availableSourceIds);
   const sourceIds = current.expectedOutputSchema === "atlcli.research-packet-body/v1"
     ? (body as ResearchPacketBodyV1).sourceIds
-    : current.expectedOutputSchema === "atlcli.research-packet-body/v2"
+    : current.expectedOutputSchema === "atlcli.research-packet-body/v2" ||
+        current.expectedOutputSchema === RESEARCH_PACKET_REFERENCE_MODEL_SCHEMA_V2
       ? [
           ...(body as ResearchPacketBodyV2).gaps.flatMap((gap) => gap.sourceIds),
           ...(body as ResearchPacketBodyV2).proposedFollowUps.flatMap((followUp) => followUp.sourceIds),

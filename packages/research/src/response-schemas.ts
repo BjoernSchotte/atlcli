@@ -178,6 +178,65 @@ export const RESEARCH_PACKET_MODEL_BODY_JSON_SCHEMA_V2: Record<string, unknown> 
   ],
 );
 
+const researchReferenceContradictionV2Schema = closedObject(
+  "ResearchReferenceContradictionV2",
+  {
+    id: boundedString(160),
+    claimIds: boundedStringArray(8, 96),
+    summary: boundedString(1_200),
+  },
+  ["id", "claimIds", "summary"],
+);
+
+const researchReferenceOutlineProposalV2Schema = closedObject(
+  "ResearchReferenceOutlineProposalV2",
+  {
+    id: boundedString(160),
+    sectionId: boundedString(160),
+    title: boundedString(240),
+    question: boundedString(1_200),
+    claimIds: boundedStringArray(20, 96),
+    dependsOnSectionIds: boundedStringArray(12, 160),
+    coverageTargetIds: boundedStringArray(32, 160),
+  },
+  [
+    "id",
+    "sectionId",
+    "title",
+    "question",
+    "claimIds",
+    "dependsOnSectionIds",
+    "coverageTargetIds",
+  ],
+);
+
+/**
+ * Provider-facing V2 analysis shape. It receives only host-projected Claim
+ * IDs and therefore cannot introduce quote-bearing or source-text claims.
+ */
+export const RESEARCH_PACKET_REFERENCE_MODEL_JSON_SCHEMA_V2: Record<string, unknown> = closedObject(
+  "ResearchPacketReferenceModelBodyV2",
+  {
+    schema: { const: "atlcli.research-packet-reference-model/v2" },
+    claimIds: boundedStringArray(48, 96),
+    contradictions: boundedObjectArray(12, researchReferenceContradictionV2Schema),
+    outlineProposals: boundedObjectArray(12, researchReferenceOutlineProposalV2Schema),
+    gaps: boundedObjectArray(16, gapSchema),
+    proposedFollowUps: boundedObjectArray(3, followUpSchema),
+    coverageLimits: boundedStringArray(16, 600),
+    abstentionReason: boundedString(1_000),
+  },
+  [
+    "schema",
+    "claimIds",
+    "contradictions",
+    "outlineProposals",
+    "gaps",
+    "proposedFollowUps",
+    "coverageLimits",
+  ],
+);
+
 export const RESEARCH_RECONCILIATION_BODY_JSON_SCHEMA_V1: Record<string, unknown> = closedObject(
   "ReconciliationBodyV1",
   {

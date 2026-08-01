@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { WorkspaceResearchClaimLedgerV1 } from "./claim-ledger.js";
 import { createResearchEvidenceRecordV1, WorkspaceResearchEvidenceStoreV1 } from "./evidence-store.js";
-import { normalizeResearchPacketModelBodyV2 } from "./packet-v2-normalizer.js";
+import {
+  normalizeResearchPacketModelBodyV2,
+  normalizeResearchPacketReferenceModelBodyV2,
+} from "./packet-v2-normalizer.js";
 import { createMemoryResearchWorkspace } from "./workspace.js";
 
 const scope = {
@@ -212,5 +215,84 @@ describe("V2 research packet normalization", () => {
       abstentionReason: "The bounded lookup has no detail-backed support.",
     });
     await expect(claimLedger.list()).resolves.toEqual({ claims: [] });
+  });
+
+  test("carries only admitted current claims through an analysis-only V2 packet", async () => {
+    const workspace = createMemoryResearchWorkspace();
+    const evidenceStore = new WorkspaceResearchEvidenceStoreV1(workspace);
+    const retained = await retainedEvidence({
+      store: evidenceStore,
+      id: "jira:ATLCLI-45",
+      text: "The ticket requires a documented verification step.",
+    });
+    const claimLedger = new WorkspaceResearchClaimLedgerV1(workspace, evidenceStore);
+    const rawQuote = "requires a documented verification step";
+    const rootPacket = await normalizeResearchPacketModelBodyV2({
+      modelBody: {
+        schema: "atlcli.research-packet-body/v2",
+        claimCandidates: [{
+          id: "candidate:verification",
+          classification: "fact",
+          summary: "The ticket requires verification.",
+          support: [{ sourceId: retained.record.source.id, quote: rawQuote }],
+        }],
+        contradictionCandidates: [],
+        outlineProposals: [],
+        gaps: [],
+        proposedFollowUps: [],
+        coverageLimits: [],
+      },
+      detailEvidence: [{
+        source: retained.record.source,
+        content: { text: retained.chunks[0]!.text, linkTargets: [], truncated: false, inputBytes: retained.chunks[0]!.text.length },
+        evidenceId: retained.record.id,
+      }],
+      evidenceStore,
+      claimLedger,
+      createdAt: "2026-08-01T12:02:00.000Z",
+    });
+    const claimId = rootPacket.claims[0]!.claimId;
+    const analysisPacket = await normalizeResearchPacketReferenceModelBodyV2({
+      modelBody: {
+        schema: "atlcli.research-packet-reference-model/v2",
+        claimIds: [claimId],
+        contradictions: [],
+        outlineProposals: [{
+          id: "proposal:verification",
+          sectionId: "section:verification",
+          title: "Verification",
+          question: "What requirement is supported?",
+          claimIds: [claimId],
+          dependsOnSectionIds: [],
+          coverageTargetIds: ["target:verification"],
+        }],
+        gaps: [],
+        proposedFollowUps: [],
+        coverageLimits: [],
+      },
+      allowedClaimIds: [claimId],
+      claimLedger,
+      checkedAt: "2026-08-01T12:03:00.000Z",
+    });
+    expect(analysisPacket).toMatchObject({
+      claims: [],
+      referencedClaimIds: [claimId],
+      outlineProposals: [{ claimIds: [claimId], evidenceIds: [retained.record.id] }],
+    });
+    expect(JSON.stringify(analysisPacket)).not.toContain(rawQuote);
+    await expect(normalizeResearchPacketReferenceModelBodyV2({
+      modelBody: {
+        schema: "atlcli.research-packet-reference-model/v2",
+        claimIds: [`claim:${"d".repeat(48)}`],
+        contradictions: [],
+        outlineProposals: [],
+        gaps: [],
+        proposedFollowUps: [],
+        coverageLimits: [],
+      },
+      allowedClaimIds: [claimId],
+      claimLedger,
+      checkedAt: "2026-08-01T12:03:00.000Z",
+    })).rejects.toThrow("outside its admitted dependencies");
   });
 });

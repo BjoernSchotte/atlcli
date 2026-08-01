@@ -9,6 +9,7 @@ import {
   RESEARCH_PACKET_BODY_SCHEMA_V2,
   parseResearchPacketBodyV2,
   parseResearchPacketModelBodyV2,
+  parseResearchPacketReferenceModelBodyV2,
   type ResearchPacketBodyV2,
 } from "./workflow-contracts.js";
 
@@ -62,6 +63,7 @@ export async function normalizeResearchPacketModelBodyV2(input: {
       candidateId,
       claimId: claim.id,
     })),
+    referencedClaimIds: [],
     contradictions: modelBody.contradictionCandidates.map((candidate) => {
       const claims = claimsFor(candidate.claimCandidateIds);
       return {
@@ -79,6 +81,84 @@ export async function normalizeResearchPacketModelBodyV2(input: {
         title: proposal.title,
         question: proposal.question,
         claimIds: claims.map((claim) => claim.id),
+        evidenceIds: evidenceIdsForClaims(claims),
+        dependsOnSectionIds: proposal.dependsOnSectionIds,
+        coverageTargetIds: proposal.coverageTargetIds,
+      };
+    }),
+    gaps: modelBody.gaps,
+    proposedFollowUps: modelBody.proposedFollowUps,
+    coverageLimits: modelBody.coverageLimits,
+    ...(modelBody.abstentionReason === undefined
+      ? {}
+      : { abstentionReason: modelBody.abstentionReason }),
+  });
+}
+
+/**
+ * Normalizes an analysis-only V2 response. It may carry forward only current
+ * claims that were present in the host-projected dependency envelope; all
+ * evidence IDs for contradictions and outline proposals are derived again by
+ * the host from those claims.
+ */
+export async function normalizeResearchPacketReferenceModelBodyV2(input: {
+  modelBody: unknown;
+  allowedClaimIds: readonly string[];
+  claimLedger: ResearchClaimLedgerV1;
+  checkedAt: string;
+}): Promise<ResearchPacketBodyV2> {
+  const modelBody = parseResearchPacketReferenceModelBodyV2(input.modelBody);
+  const allowed = new Set(input.allowedClaimIds);
+  const claimsById = new Map<string, ResearchClaimV1>();
+  for (const claimId of modelBody.claimIds) {
+    if (!allowed.has(claimId)) {
+      throw new ResearchContractError(
+        "invalid-report",
+        "A V2 analysis packet references a claim outside its admitted dependencies.",
+      );
+    }
+    const claim = await input.claimLedger.refresh(claimId, input.checkedAt);
+    if (!claim || claim.freshness !== "current") {
+      throw new ResearchContractError(
+        "invalid-report",
+        "A V2 analysis packet references a missing or non-current claim.",
+      );
+    }
+    claimsById.set(claimId, claim);
+  }
+  const claimsFor = (claimIds: readonly string[]): ResearchClaimV1[] =>
+    claimIds.map((claimId) => {
+      const claim = claimsById.get(claimId);
+      if (!claim) {
+        throw new ResearchContractError(
+          "invalid-report",
+          "A V2 analysis proposal references a claim outside its packet.",
+        );
+      }
+      return claim;
+    });
+
+  return parseResearchPacketBodyV2({
+    schema: RESEARCH_PACKET_BODY_SCHEMA_V2,
+    claims: [],
+    referencedClaimIds: modelBody.claimIds,
+    contradictions: modelBody.contradictions.map((contradiction) => {
+      const claims = claimsFor(contradiction.claimIds);
+      return {
+        id: contradiction.id,
+        claimIds: contradiction.claimIds,
+        evidenceIds: evidenceIdsForClaims(claims),
+        summary: contradiction.summary,
+      };
+    }),
+    outlineProposals: modelBody.outlineProposals.map((proposal) => {
+      const claims = claimsFor(proposal.claimIds);
+      return {
+        id: proposal.id,
+        sectionId: proposal.sectionId,
+        title: proposal.title,
+        question: proposal.question,
+        claimIds: proposal.claimIds,
         evidenceIds: evidenceIdsForClaims(claims),
         dependsOnSectionIds: proposal.dependsOnSectionIds,
         coverageTargetIds: proposal.coverageTargetIds,

@@ -40,7 +40,10 @@ import {
 import { ResearchSessionWorkspaceCheckpointerV1 } from "./workspace-checkpointer.js";
 import { WorkspaceResearchEvidenceStoreV1 } from "./evidence-store.js";
 import { WorkspaceResearchClaimLedgerV1 } from "./claim-ledger.js";
-import { normalizeResearchPacketModelBodyV2 } from "./packet-v2-normalizer.js";
+import {
+  normalizeResearchPacketModelBodyV2,
+  normalizeResearchPacketReferenceModelBodyV2,
+} from "./packet-v2-normalizer.js";
 import { researchThreadIdForSessionV1 } from "./checkpoint-identity.js";
 /*
  * Keep graph execution admission here, before workspace/provider/model setup.
@@ -74,6 +77,8 @@ import {
   RESEARCH_RECONCILIATION_DECISIONS_V1,
   RESEARCH_RECONCILIATION_DISPOSITION_SCHEMA_V1,
   RESEARCH_RECONCILIATION_REASON_CODES_V1,
+  isResearchPacketBodyV1,
+  isResearchPacketBodyV2,
   parseResearchReconciliationDispositionV1,
   projectResearchReconciliationInputV1,
   type ReconciliationBodyV1,
@@ -81,6 +86,7 @@ import {
   type ResearchFollowUpProposalV1,
   type ResearchReconciliationDefectV1,
   type ResearchReconciliationDispositionV1,
+  type ResearchSupportRefV1,
 } from "./workflow-contracts.js";
 
 export const RESEARCH_MODEL_ID = "claude-sonnet-4-6" as const;
@@ -447,6 +453,11 @@ export function createResearchReconciliationDispositionPtcTool(
       defect: ResearchReconciliationDefectV1,
       packet: ResearchAcceptedPacketV1,
     ) => boolean;
+    isKnownReference?: (
+      reference: ResearchSupportRefV1,
+      defect: ResearchReconciliationDefectV1,
+      packet: ResearchAcceptedPacketV1,
+    ) => boolean;
     canRecord?: () => boolean;
     authorizeRepair?: (input: {
       graph: ResearchGraphV1;
@@ -573,6 +584,14 @@ export function createResearchReconciliationDispositionPtcTool(
           throw new ResearchContractError(
             "invalid-request",
             `Reconciliation defect target is unknown: ${defect.id}`,
+          );
+        }
+        if (defect.references.some((reference) =>
+          options.isKnownReference?.(reference, defect, packet) === false
+        )) {
+          throw new ResearchContractError(
+            "invalid-request",
+            `Reconciliation defect references an unknown source or evidence record: ${defect.id}`,
           );
         }
         const decision = decisionByDefectId.get(defect.id)!;
@@ -1189,6 +1208,96 @@ async function runResearchAgentWithBindings(
     visit(nodeId);
     return [...collected].sort();
   };
+  /**
+   * An analysis-only node may see only Claim IDs admitted by its graph
+   * dependencies. It deliberately cannot enumerate the durable ledger: a
+   * claim from another branch or a previous turn is not an implicit grant.
+   */
+  const availableClaimIdsForNode = (nodeId: string): string[] => {
+    const graph = acceptedGraph ?? input.researchGraph;
+    if (!graph) return [];
+    const nodes = new Map(graph.nodes.map((node) => [node.id, node]));
+    const collected = new Set<string>();
+    const visited = new Set<string>();
+    const visitDependencies = (candidateId: string): void => {
+      if (visited.has(candidateId)) return;
+      visited.add(candidateId);
+      const node = nodes.get(candidateId);
+      if (!node) return;
+      for (const dependencyId of node.dependencies) {
+        const dependencyNode = nodes.get(dependencyId);
+        if (!dependencyNode) continue;
+        const packet = acceptedPacketsByTaskId.get(researchTaskIdForNodeV1(graph, dependencyNode));
+        if (packet && isResearchPacketBodyV2(packet.body)) {
+          packet.body.claims.forEach((claim) => collected.add(claim.claimId));
+          packet.body.referencedClaimIds.forEach((claimId) => collected.add(claimId));
+        }
+        visitDependencies(dependencyId);
+      }
+    };
+    visitDependencies(nodeId);
+    return [...collected].sort();
+  };
+  const projectV2PacketDependency = durableClaims
+    ? async (packet: import("./workflow-contracts.js").ResearchPacketBodyV2) => {
+        const sourceIdsByEvidenceId = new Map<string, string>();
+        for (const detail of broker.detailEvidenceLedger()) {
+          if (!detail.evidenceId) continue;
+          const existing = sourceIdsByEvidenceId.get(detail.evidenceId);
+          if (existing && existing !== detail.source.id) {
+            throw new ResearchContractError(
+              "invalid-report",
+              "One retained evidence record maps to multiple runtime sources.",
+            );
+          }
+          sourceIdsByEvidenceId.set(detail.evidenceId, detail.source.id);
+        }
+        const claimIds = [...new Set([
+          ...packet.claims.map((claim) => claim.claimId),
+          ...packet.referencedClaimIds,
+        ])].sort();
+        const checkedAt = new Date(now()).toISOString();
+        const claims = await Promise.all(claimIds.map(async (claimId) => {
+          const claim = await durableClaims.refresh(claimId, checkedAt);
+          if (!claim || claim.freshness !== "current") {
+            throw new ResearchContractError(
+              "invalid-report",
+              "A normalized V2 packet references a missing or non-current claim.",
+            );
+          }
+          const sourceIds = claim.evidenceIds.map((evidenceId) => {
+            const sourceId = sourceIdsByEvidenceId.get(evidenceId);
+            if (!sourceId) {
+              throw new ResearchContractError(
+                "invalid-report",
+                "A normalized V2 claim is outside the current runtime evidence.",
+              );
+            }
+            return sourceId;
+          });
+          return {
+            claimId: claim.id,
+            classification: claim.classification,
+            statement: claim.statement,
+            freshness: claim.freshness,
+            evidenceIds: [...claim.evidenceIds],
+            sourceIds: [...new Set(sourceIds)].sort(),
+          };
+        }));
+        return {
+          schema: "atlcli.research-dependency-packet/v2",
+          packetSchema: packet.schema,
+          sourceIds: [...new Set(claims.flatMap((claim) => claim.sourceIds))].sort(),
+          claims,
+          contradictions: structuredClone(packet.contradictions),
+          outlineProposals: structuredClone(packet.outlineProposals),
+          gaps: structuredClone(packet.gaps),
+          proposedFollowUps: structuredClone(packet.proposedFollowUps),
+          coverageLimits: [...packet.coverageLimits],
+          ...(packet.abstentionReason ? { abstentionReason: packet.abstentionReason } : {}),
+        };
+      }
+    : undefined;
   const normalizePacketV2 = durableEvidence && durableClaims
     ? async (inputForPacket: {
         taskId: string;
@@ -1206,54 +1315,27 @@ async function runResearchAgentWithBindings(
           claimLedger: durableClaims,
           createdAt: new Date(now()).toISOString(),
         });
-        const sourceIdsByEvidenceId = new Map(
-          detailEvidence
-            .filter((detail): detail is typeof detail & { evidenceId: string } =>
-              typeof detail.evidenceId === "string",
-            )
-            .map((detail) => [detail.evidenceId, detail.source.id] as const),
-        );
-        const claims = await Promise.all(packet.claims.map(async ({ claimId }) => {
-          const claim = await durableClaims.get(claimId);
-          if (!claim) {
-            throw new ResearchContractError(
-              "invalid-report",
-              "A normalized V2 packet references a missing claim.",
-            );
-          }
-          const sourceIds = claim.evidenceIds.map((evidenceId) => {
-            const sourceId = sourceIdsByEvidenceId.get(evidenceId);
-            if (!sourceId) {
-              throw new ResearchContractError(
-                "invalid-report",
-                "A normalized V2 claim is outside the admitted task evidence.",
-              );
-            }
-            return sourceId;
-          });
-          return {
-            claimId: claim.id,
-            classification: claim.classification,
-            statement: claim.statement,
-            freshness: claim.freshness,
-            evidenceIds: [...claim.evidenceIds],
-            sourceIds: [...new Set(sourceIds)].sort(),
-          };
-        }));
         return {
           packet,
-          dependencyResult: {
-            schema: "atlcli.research-dependency-packet/v2",
-            packetSchema: packet.schema,
-            sourceIds: [...new Set(claims.flatMap((claim) => claim.sourceIds))].sort(),
-            claims,
-            contradictions: structuredClone(packet.contradictions),
-            outlineProposals: structuredClone(packet.outlineProposals),
-            gaps: structuredClone(packet.gaps),
-            proposedFollowUps: structuredClone(packet.proposedFollowUps),
-            coverageLimits: [...packet.coverageLimits],
-            ...(packet.abstentionReason ? { abstentionReason: packet.abstentionReason } : {}),
-          },
+          dependencyResult: await projectV2PacketDependency!(packet),
+        };
+      }
+    : undefined;
+  const normalizePacketReferenceV2 = durableClaims && projectV2PacketDependency
+    ? async (inputForPacket: {
+        taskId: string;
+        node: ResearchGraphV1["nodes"][number];
+        modelBody: unknown;
+      }) => {
+        const packet = await normalizeResearchPacketReferenceModelBodyV2({
+          modelBody: inputForPacket.modelBody,
+          allowedClaimIds: availableClaimIdsForNode(inputForPacket.node.id),
+          claimLedger: durableClaims,
+          checkedAt: new Date(now()).toISOString(),
+        });
+        return {
+          packet,
+          dependencyResult: await projectV2PacketDependency(packet),
         };
       }
     : undefined;
@@ -1287,6 +1369,7 @@ async function runResearchAgentWithBindings(
           directDetailSourceIdsByNode.set(nodeId, sourceIds);
         },
         ...(normalizePacketV2 ? { normalizePacketV2 } : {}),
+        ...(normalizePacketReferenceV2 ? { normalizePacketReferenceV2 } : {}),
         now,
       })
     : [];
@@ -1305,6 +1388,7 @@ async function runResearchAgentWithBindings(
         capabilityCallsForNode: (nodeId) => capabilityCallsByNode.get(nodeId) ?? 0,
         activeGraph: () => acceptedGraph,
         ...(normalizePacketV2 ? { normalizePacketV2 } : {}),
+        ...(normalizePacketReferenceV2 ? { normalizePacketReferenceV2 } : {}),
         ...(durableDispatchJournal ? { durableDispatchJournal } : {}),
         reconciliationInputContext: () => {
           const graph = acceptedGraph;
@@ -1527,7 +1611,35 @@ async function runResearchAgentWithBindings(
               packet.body.relationshipCandidates.some((candidate) => candidate.id === defect.target.id)
             );
           }
+          if (defect.target.kind === "claim") {
+            return [...acceptedPacketsByTaskId.values()].some((packet) =>
+              isResearchPacketBodyV2(packet.body) &&
+              (packet.body.claims.some((claim) => claim.claimId === defect.target.id) ||
+                packet.body.referencedClaimIds.includes(defect.target.id))
+            );
+          }
+          if (defect.target.kind === "section") {
+            return [...acceptedPacketsByTaskId.values()].some((packet) =>
+              isResearchPacketBodyV2(packet.body) &&
+              packet.body.outlineProposals.some((proposal) => proposal.sectionId === defect.target.id)
+            );
+          }
           return false;
+        },
+        isKnownReference: (reference) => {
+          if (reference.kind === "source") {
+            return [...acceptedPacketsByTaskId.values()].some((packet) =>
+              isResearchPacketBodyV1(packet.body) &&
+              packet.body.sourceIds.includes(reference.id)
+            );
+          }
+          return [...acceptedPacketsByTaskId.values()].some((packet) =>
+            isResearchPacketBodyV2(packet.body) &&
+            (packet.body.contradictions.some((contradiction) =>
+                contradiction.evidenceIds.includes(reference.id)) ||
+              packet.body.outlineProposals.some((proposal) =>
+                proposal.evidenceIds.includes(reference.id)))
+          );
         },
         canRecord: () => !synthesizerTaskStarted && reconciliationDispositions === undefined,
         authorizeRepair: ({ graph, reconciliationTaskId, defect, followUp }) => {
