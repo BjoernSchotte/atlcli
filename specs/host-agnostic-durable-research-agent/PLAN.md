@@ -3256,6 +3256,13 @@ Gate:
 
 Shared:
 
+- [x] Establish a private, host-neutral immutable evidence-record/chunk store:
+      canonical tenant/entity identity independent of display URL, SHA-256
+      projected-content and span hashes, approved whole-scope binding fencing,
+      bounded chunks, interrupted-index recovery, and retention deletion.
+      Proven through memory, SQLite/filesystem reopen, and IndexedDB reopen;
+      source text stays private under the session workspace and is not an
+      artifact or model transcript.
 - [ ] Add evidence, chunk, claim, contradiction, freshness, and coverage
       contracts plus evidence-linked `OutlineV1`.
 - [ ] Add bounded evidence, claim, contradiction, coverage, and outline store

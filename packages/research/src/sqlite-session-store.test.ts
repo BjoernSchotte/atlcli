@@ -7,6 +7,10 @@ import { researchCheckpointConfigV1 } from "./checkpoint-identity.js";
 import { verifyResearchSessionStoreConformanceV1 } from "./session-store-conformance.js";
 import { SqliteResearchSessionStoreV1 } from "./sqlite-session-store.js";
 import { ResearchSessionWorkspaceCheckpointerV1 } from "./workspace-checkpointer.js";
+import {
+  WorkspaceResearchEvidenceStoreV1,
+  createResearchEvidenceRecordV1,
+} from "./evidence-store.js";
 
 function session(): ResearchSessionV1 {
   return createResearchSessionV1({
@@ -118,6 +122,66 @@ describe("SQLite durable research session store", () => {
           checkpoint: { id: "checkpoint:sqlite-reopen", channel_values: { session: { durable: true } } },
           pendingWrites: [["task:sqlite-checkpoint", "pending", { sequence: 1 }]],
         });
+      } finally {
+        reopened.close();
+      }
+    } finally {
+      try { first.close(); } catch { /* already closed */ }
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("replays private evidence chunks from the per-session filesystem workspace after reopening SQLite", async () => {
+    const root = await mkdtemp(join(tmpdir(), "atlcli-research-sqlite-evidence-"));
+    const databasePath = join(root, "catalog.sqlite");
+    const sessionRoot = join(root, "session-data");
+    const first = new SqliteResearchSessionStoreV1({ databasePath, root: sessionRoot });
+    try {
+      const created = await first.create(session());
+      const evidence = await createResearchEvidenceRecordV1({
+        source: {
+          id: "wiki:123",
+          product: "confluence",
+          title: "Evidence fixture",
+          url: "https://example.atlassian.net/wiki/spaces/DOCSY/pages/123",
+          contentId: "123",
+          spaceKey: "DOCSY",
+          updatedAt: "2026-08-01T13:00:00.000Z",
+        },
+        content: { text: "Private durable evidence.", linkTargets: [], truncated: false, inputBytes: 25 },
+        scope: {
+          siteOrigin: "https://example.atlassian.net",
+          jiraProjectKeys: ["ATLCLI"],
+          confluenceSpaceKeys: ["DOCSY"],
+        },
+        scopeBindings: [{
+          schema: "atlcli.research-scope-binding/v1",
+          id: "scope-binding:sqlite:confluence:DOCSY",
+          tenantOrigin: "https://example.atlassian.net",
+          product: "confluence",
+          entityKind: "space",
+          entityRef: "scope-key:confluence:DOCSY",
+          key: "DOCSY",
+          name: "DOCSY",
+          source: "cli_flag",
+          authority: "locked",
+        }],
+        capturedAt: "2026-08-01T13:00:01.000Z",
+      });
+      const store = new WorkspaceResearchEvidenceStoreV1(await first.workspace(created.sessionId));
+      await store.put(evidence.record, evidence.chunks);
+      first.close();
+
+      const reopened = new SqliteResearchSessionStoreV1({ databasePath, root: sessionRoot });
+      try {
+        const recovered = new WorkspaceResearchEvidenceStoreV1(await reopened.workspace(created.sessionId));
+        await expect(recovered.get(evidence.record.id)).resolves.toMatchObject({
+          id: evidence.record.id,
+          identity: { canonicalId: "https://example.atlassian.net|confluence|page|123" },
+        });
+        await expect(recovered.chunks(evidence.record.id)).resolves.toMatchObject([
+          { text: "Private durable evidence." },
+        ]);
       } finally {
         reopened.close();
       }

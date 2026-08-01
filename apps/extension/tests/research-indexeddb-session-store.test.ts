@@ -5,6 +5,8 @@ import {
   RESEARCH_OPAQUE_SOURCE_REF_SCHEMA_V1,
   RESEARCH_SESSION_ARTIFACT_SCHEMA_V1,
   ResearchSessionWorkspaceCheckpointerV1,
+  WorkspaceResearchEvidenceStoreV1,
+  createResearchEvidenceRecordV1,
   createResearchSessionV1,
   researchCheckpointConfigV1,
   verifyResearchSessionStoreConformanceV1,
@@ -122,5 +124,63 @@ describe("IndexedDB durable research session store", () => {
       checkpoint: { id: "checkpoint:indexeddb-reopen", channel_values: { session: { durable: true } } },
       pendingWrites: [["task:indexeddb-checkpoint", "pending", { sequence: 1 }]],
     });
+  });
+
+  test("replays private evidence chunks from IndexedDB after the worker reconnects", async () => {
+    const factory = new IDBFactory();
+    const databaseName = "research-session-evidence-reopen";
+    const first = await IndexedDbResearchSessionStoreV1.open({ factory: factory as unknown as IDBFactory, databaseName });
+    stores.push(first);
+    const created = await first.create(createResearchSessionV1({
+      sessionId: "research-session:indexeddb-evidence-test",
+      ownerId: "owner:indexeddb-evidence",
+      createdAt: "2026-08-01T14:00:00.000Z",
+      leaseExpiresAt: "2026-08-01T14:10:00.000Z",
+    }));
+    const evidence = await createResearchEvidenceRecordV1({
+      source: {
+        id: "jira:ATLCLI-42",
+        product: "jira",
+        title: "Evidence fixture",
+        url: "https://example.atlassian.net/browse/ATLCLI-42",
+        issueKey: "ATLCLI-42",
+        projectKey: "ATLCLI",
+        updatedAt: "2026-08-01T14:00:00.000Z",
+      },
+      content: { text: "Private browser evidence.", linkTargets: [], truncated: false, inputBytes: 25 },
+      scope: {
+        siteOrigin: "https://example.atlassian.net",
+        jiraProjectKeys: ["ATLCLI"],
+        confluenceSpaceKeys: ["DOCSY"],
+      },
+      scopeBindings: [{
+        schema: "atlcli.research-scope-binding/v1",
+        id: "scope-binding:indexeddb:jira:ATLCLI",
+        tenantOrigin: "https://example.atlassian.net",
+        product: "jira",
+        entityKind: "project",
+        entityRef: "scope-key:jira:ATLCLI",
+        key: "ATLCLI",
+        name: "ATLCLI",
+        source: "cli_flag",
+        authority: "locked",
+      }],
+      capturedAt: "2026-08-01T14:00:01.000Z",
+    });
+    await new WorkspaceResearchEvidenceStoreV1(await first.workspace(created.sessionId))
+      .put(evidence.record, evidence.chunks);
+    first.close();
+    stores.splice(stores.indexOf(first), 1);
+
+    const reopened = await IndexedDbResearchSessionStoreV1.open({ factory: factory as unknown as IDBFactory, databaseName });
+    stores.push(reopened);
+    const recovered = new WorkspaceResearchEvidenceStoreV1(await reopened.workspace(created.sessionId));
+    await expect(recovered.get(evidence.record.id)).resolves.toMatchObject({
+      id: evidence.record.id,
+      identity: { canonicalId: "https://example.atlassian.net|jira|issue|ATLCLI-42" },
+    });
+    await expect(recovered.chunks(evidence.record.id)).resolves.toMatchObject([
+      { text: "Private browser evidence." },
+    ]);
   });
 });
