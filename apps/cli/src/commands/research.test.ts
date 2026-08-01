@@ -488,6 +488,35 @@ describe("research CLI one-shot contract", () => {
     });
   });
 
+  test("releases a plan-only lease and lets an explicit cancel make its owned data deletable", async () => {
+    const harness = cliHarness();
+    await handleResearch(["Find", "related", "content"], { "plan-only": true }, { json: true }, harness.dependencies);
+    const planned = JSON.parse(harness.stdout.join(""));
+    expect(planned).toMatchObject({ status: "running", sessionRevision: 6 });
+    const beforeCancel = await harness.durableStore.read(planned.sessionId);
+    expect(Date.parse(beforeCancel!.lease.expiresAt)).toBeLessThanOrEqual(Date.parse(beforeCancel!.updatedAt));
+
+    harness.stdout.length = 0;
+    await handleResearch(
+      ["sessions", "cancel", planned.sessionId],
+      { revision: String(planned.sessionRevision) },
+      { json: true },
+      harness.dependencies,
+    );
+    const cancelled = JSON.parse(harness.stdout.join(""));
+    expect(cancelled).toMatchObject({ status: "cancelled", revision: planned.sessionRevision + 1 });
+    expect(harness.stderr.join("")).toContain(`session=${planned.sessionId} action=cancel`);
+
+    harness.stdout.length = 0;
+    await handleResearch(
+      ["sessions", "delete", planned.sessionId],
+      { revision: String(cancelled.revision) },
+      { json: true },
+      harness.dependencies,
+    );
+    await expect(harness.durableStore.read(planned.sessionId)).resolves.toBeUndefined();
+  });
+
   test("adds a new question only to a terminal session while preserving its approved scope and prior turn", async () => {
     const harness = cliHarness();
     const terminal = await seedTerminalResearchSession(harness);

@@ -378,7 +378,7 @@ export function reduceResearchSessionV1(
   if (session.status === "deleted") invalid("A deleted research session cannot be updated.");
 
   if (update.kind === "recover") {
-    if (Date.parse(update.at) <= Date.parse(session.lease.expiresAt)) invalid("Research session lease has not expired.");
+    if (Date.parse(update.at) < Date.parse(session.lease.expiresAt)) invalid("Research session lease has not expired.");
     if (!validId(update.ownerId, "owner:") || Date.parse(update.expiresAt) <= Date.parse(update.at)) invalid("Research session recovery lease is invalid.");
     return {
       ...session,

@@ -563,7 +563,7 @@ export async function handleResearchSessions(
     }
     return;
   }
-  if (command !== "show" && command !== "plan" && command !== "approve" && command !== "reject-plan" && command !== "delete") {
+  if (command !== "show" && command !== "plan" && command !== "approve" && command !== "reject-plan" && command !== "cancel" && command !== "delete") {
     throw new Error(`Unknown research sessions command: ${command}. Run \`atlcli research --help\`.`);
   }
   const sessionId = requireSessionId(sessionArg);
@@ -608,6 +608,27 @@ export async function handleResearchSessions(
         sessionId,
         deleted: true,
       }, opts);
+    } finally {
+      opened.close();
+    }
+    return;
+  }
+  if (command === "cancel") {
+    if (args.length !== 2) throw new Error("Usage: atlcli research sessions cancel <session-id> --revision <session-revision>.");
+    assertSessionFlags(flags, ["revision"]);
+    const revision = expectedSessionRevision(singleSessionFlag(flags, "revision", true));
+    const opened = await dependencies.openSessionStore();
+    try {
+      const session = await requireStoredResearchSession(opened.store, sessionId);
+      if (session.revision !== revision) throw new Error("Research session revision is stale; inspect the current session and retry with its exact revision.");
+      const cancelled = await opened.store.commit(sessionId, {
+        kind: "cancel",
+        expectedRevision: session.revision,
+        expectedLeaseEpoch: session.lease.epoch,
+        at: new Date().toISOString(),
+      });
+      dependencies.writeStderr(`[research] session=${sessionId} action=cancel revision=${cancelled.session.revision} status=${cancelled.session.status}\n`);
+      dependencies.emitOutput(projectResearchSessionV1(cancelled.session), opts);
     } finally {
       opened.close();
     }
@@ -1240,7 +1261,7 @@ export async function handleResearch(
     const opened = await dependencies.openSessionStore();
     try {
       const now = new Date().toISOString();
-      const session = await initializeResearchSessionTurnV1({
+      let session = await initializeResearchSessionTurnV1({
         store: opened.store,
         session: createResearchSessionV1({
           sessionId: durableSessionId!,
@@ -1253,6 +1274,14 @@ export async function handleResearch(
         approveAutomatically: briefOutcome.brief.resolvedPlanApproval === "automatic",
         at: now,
       });
+      if (session.status === "running") {
+        session = (await opened.store.commit(session.sessionId, {
+          kind: "release_lease",
+          expectedRevision: session.revision,
+          expectedLeaseEpoch: session.lease.epoch,
+          at: new Date().toISOString(),
+        })).session;
+      }
       const graph = session.turns.find((turn) => turn.id === durableTurnId)?.graph;
       const plan = {
         sessionId: session.sessionId,
@@ -1360,7 +1389,7 @@ export function researchHelp(): string {
   return `atlcli research <question>
 atlcli research --resume <session-id>
 atlcli research --session <session-id> <question>
-atlcli research sessions <list|show|plan|approve|reject-plan|delete>
+atlcli research sessions <list|show|plan|approve|reject-plan|cancel|delete>
 
 Run a bounded, read-only Jira + Confluence research question through DeepAgentsJS and QuickJS PTC.
 
@@ -1391,6 +1420,7 @@ Durable session commands:
   sessions plan <session-id>
   sessions approve <session-id> --revision <session-revision>
   sessions reject-plan <session-id> --revision <session-revision> --reason <reason>
+  sessions cancel <session-id> --revision <session-revision>
   sessions delete <session-id> --revision <session-revision>
 
 ANTHROPIC_API_KEY must be supplied through the process environment.
