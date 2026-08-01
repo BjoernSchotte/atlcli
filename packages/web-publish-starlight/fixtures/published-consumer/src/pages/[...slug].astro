@@ -46,6 +46,7 @@ const navigation = createStarlightPublicationNavigationV1({
   routePrefix,
   base: import.meta.env.BASE_URL === "/" ? "" : import.meta.env.BASE_URL.slice(0, -1),
   landingLabel: "Overview",
+  ...(path.locale === undefined ? {} : { locale: path.locale }),
   ...(publicationI18n === undefined ? {} : { i18n: publicationI18n }),
 });
 const seoPlan = publicationSite !== undefined && publicationSeo !== undefined && publicationI18n !== undefined
@@ -85,7 +86,7 @@ if (path.kind === "page" && page === undefined) throw new Error(`Missing publica
 if (path.kind === "label" && landing === undefined) throw new Error(`Missing publication label landing ${path.slug}`);
 const seoMetadata = seoPlan?.pages.find((entry) => entry.sourceId === (path.kind === "page" ? path.sourceId : `label:${path.slug}`));
 const seoHead = seoMetadata === undefined ? undefined : createPublicationSeoHeadTagsV1(seoMetadata, seoPlan?.siteName);
-const pageLocale = page?.locale ?? publicationI18n?.defaultLocale ?? "en";
+const pageLocale = path.locale ?? page?.locale ?? publicationI18n?.defaultLocale ?? "en";
 const pageContext = { ...EXPORT_BLOCKS_ASTRO_MINIMAL_CONTEXT_V1, locale: pageLocale, direction: publicationLocaleDirectionV1(pageLocale) };
 ---
 

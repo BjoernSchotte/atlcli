@@ -2,6 +2,8 @@ import {
   normalizePublicationRoutePrefixV1,
   normalizePublicationRouteV1,
   publicationLocaleRouteV1,
+  normalizePublicationLocaleV1,
+  publicationLocaleFallbackChainV1,
   type PublicationI18nOptionsV1,
   type PublicationBreadcrumbV1,
   type PublicationNavigationItemV1,
@@ -68,6 +70,8 @@ export interface CreateStarlightPublicationNavigationOptionsV1 {
   landingLabel: string;
   /** Shared locale route policy; omitted for single-locale publications. */
   i18n?: PublicationI18nOptionsV1;
+  /** Current page locale used to select one translation variant per graph node. */
+  locale?: string;
 }
 
 export class StarlightPublicationNavigationErrorV1 extends Error {
@@ -177,6 +181,41 @@ function labelLanding(
   });
 }
 
+function translationKey(value: { sourceId: string; translationKey?: string }): string {
+  return value.translationKey ?? value.sourceId;
+}
+
+function chooseLocaleVariant<T extends { locale?: string; translationKey?: string; sourceId: string }>(
+  entries: readonly T[],
+  locale: string,
+  i18n: PublicationI18nOptionsV1,
+): T | undefined {
+  const target = normalizePublicationLocaleV1(locale);
+  const fallbackChain = publicationLocaleFallbackChainV1(target, i18n);
+  for (const candidate of fallbackChain) {
+    const exact = entries.find((entry) => normalizePublicationLocaleV1(entry.locale ?? i18n.defaultLocale) === candidate);
+    if (exact !== undefined) return exact;
+  }
+  return entries.find((entry) => entry.locale === undefined);
+}
+
+function selectLocaleTree(
+  entries: readonly PublicationNavigationItemV1[],
+  locale: string,
+  i18n: PublicationI18nOptionsV1,
+): readonly PublicationNavigationItemV1[] {
+  const grouped = new Map<string, PublicationNavigationItemV1[]>();
+  for (const entry of entries) {
+    const key = translationKey(entry);
+    grouped.set(key, [...(grouped.get(key) ?? []), entry]);
+  }
+  return Object.freeze([...grouped.values()].flatMap((variants) => {
+    const selected = chooseLocaleVariant(variants, locale, i18n);
+    if (selected === undefined) return [];
+    return [{ ...selected, children: selectLocaleTree(selected.children, locale, i18n) }];
+  }));
+}
+
 /**
  * Translate trusted neutral navigation data to the documented Starlight sidebar
  * shape. It intentionally receives no source page body and does not inspect
@@ -188,17 +227,36 @@ export function createStarlightPublicationNavigationV1(
   const landingLabel = requireLabel(options.landingLabel);
   const routePrefix = normalizePublicationRoutePrefixV1(options.routePrefix);
   const base = normalizePublicationRoutePrefixV1(options.base ?? "");
-  const pages = Object.freeze(options.navigation.pages.map((page) => pageNavigation(page, routePrefix, base, options.i18n)));
+  const selectedRoots = options.i18n === undefined || options.locale === undefined
+    ? options.navigation.roots
+    : selectLocaleTree(options.navigation.roots, options.locale, options.i18n);
+  const selectedSourceIds = new Set<string>();
+  const collect = (entries: readonly PublicationNavigationItemV1[]): void => {
+    for (const entry of entries) {
+      selectedSourceIds.add(entry.sourceId);
+      collect(entry.children);
+    }
+  };
+  collect(selectedRoots);
+  const pages = Object.freeze(options.navigation.pages
+    .filter((page) => selectedSourceIds.has(page.sourceId))
+    .map((page) => pageNavigation(page, routePrefix, base, options.i18n)));
+  const selectedLabels = options.i18n === undefined || options.locale === undefined
+    ? options.navigation.labels
+    : options.navigation.labels.map((label) => ({
+      ...label,
+      sourceIds: label.sourceIds.filter((sourceId) => selectedSourceIds.has(sourceId)),
+    })).filter((label) => label.sourceIds.length > 0);
   const pagesBySourceId = new Map(pages.map((page) => [page.sourceId, page]));
   return Object.freeze({
     routePrefix,
-    sidebar: Object.freeze(options.navigation.roots.map((root) =>
+    sidebar: Object.freeze(selectedRoots.map((root) =>
       // Starlight's documented sidebar input applies its configured base.
       // Other publication chrome uses fully base-aware href values above.
       sidebarEntry(root, routePrefix, "", landingLabel, true, options.i18n),
     )),
     pages,
-    labels: Object.freeze(options.navigation.labels.map((label) => labelLanding(label, pagesBySourceId, routePrefix, base, options.i18n))),
+    labels: Object.freeze(selectedLabels.map((label) => labelLanding(label, pagesBySourceId, routePrefix, base, options.i18n))),
   });
 }
 

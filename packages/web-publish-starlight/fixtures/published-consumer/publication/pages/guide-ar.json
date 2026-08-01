@@ -5,9 +5,8 @@
   "title": "Leitfaden",
   "locale": "ar",
   "translationKey": "guide",
-  "parentId": "guide",
-  "position": 1,
-  "depth": 1,
+  "position": 0,
+  "depth": 0,
   "route": "/guide/",
   "blocks": [
     { "type": "paragraph", "content": [{ "type": "text", "text": "Eine lokalisierte ExportBlock-Seite mit RTL-Unterstützung." }] },

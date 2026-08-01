@@ -14,6 +14,7 @@ export interface CreateStarlightPublicationNavigationOptionsV1 {
     base?: string;
     landingLabel: string;
     i18n?: PublicationI18nOptionsV1;
+    locale?: string;
 }
 
 // export: createStarlightPublicationNavigationV1

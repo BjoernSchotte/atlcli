@@ -41,6 +41,7 @@ export interface PublicationNavigationItemV1 {
   title: string;
   route: string;
   locale?: string;
+  translationKey?: string;
   children: readonly PublicationNavigationItemV1[];
 }
 
@@ -49,6 +50,7 @@ export interface PublicationBreadcrumbV1 {
   title: string;
   route: string;
   locale?: string;
+  translationKey?: string;
 }
 
 export interface PublicationTocEntryV1 {
@@ -69,6 +71,7 @@ export interface PublicationRelatedPageV1 {
   title: string;
   route: string;
   locale?: string;
+  translationKey?: string;
   score: number;
   reasons: readonly PublicationRelatedReasonV1[];
 }
@@ -121,6 +124,7 @@ function pageSummary(node: Node): PublicationBreadcrumbV1 {
     title: node.page.title,
     route: node.page.route,
     ...(node.page.locale === undefined ? {} : { locale: node.page.locale }),
+    ...(node.page.translationKey === undefined ? {} : { translationKey: node.page.translationKey }),
   };
 }
 

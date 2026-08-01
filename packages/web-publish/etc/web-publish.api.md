@@ -299,6 +299,7 @@ export interface PublicationBreadcrumbV1 {
     title: string;
     route: string;
     locale?: string;
+    translationKey?: string;
 }
 
 // export: PublicationBuilderContractErrorV1
@@ -563,6 +564,7 @@ export interface PublicationNavigationItemV1 {
     title: string;
     route: string;
     locale?: string;
+    translationKey?: string;
     children: readonly PublicationNavigationItemV1[];
 }
 
@@ -740,6 +742,7 @@ export interface PublicationRelatedPageV1 {
     title: string;
     route: string;
     locale?: string;
+    translationKey?: string;
     score: number;
     reasons: readonly PublicationRelatedReasonV1[];
 }

@@ -6,7 +6,7 @@
     "sourceDigest": "source-digest",
     "complete": true,
     "deletionAuthority": "complete-scan",
-    "rootIds": ["guide"],
+    "rootIds": ["guide", "guide-ar"],
     "pages": [{
       "sourceId": "guide",
       "sourceVersion": "1",
@@ -23,9 +23,8 @@
       "sourceId": "guide-ar",
       "sourceVersion": "1",
       "representation": "atlas_doc_format",
-      "parentId": "guide",
-      "position": 1,
-      "depth": 1,
+      "position": 0,
+      "depth": 0,
       "title": "Leitfaden",
       "contentDigest": "content-digest-ar",
       "metadataDigest": "metadata-digest-ar",
@@ -36,7 +35,7 @@
   },
   "sourcePolicyDigest": "policy-digest",
   "complete": true,
-  "rootIds": ["guide"],
+  "rootIds": ["guide", "guide-ar"],
   "pages": [
     { "sourceId": "guide", "path": "pages/guide.json", "pageDigest": "page-digest" },
     { "sourceId": "guide-ar", "path": "pages/guide-ar.json", "pageDigest": "page-digest-ar" }
