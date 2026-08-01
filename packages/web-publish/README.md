@@ -38,6 +38,10 @@ absence with deletion. It emits separate `exclude`, `out-of-scope`, and
 `complete-scan` authority may emit `confirmed-delete`. Content, metadata,
 tree-position, asset metadata, and route changes remain independently visible.
 
-Use `@atlcli/web-publish/node` for bounded filesystem helpers. Astro,
-Starlight, Pagefind execution, Confluence acquisition/authentication, CLI
-orchestration, and deployment belong to separate adapters or hosts.
+Use `@atlcli/web-publish/node` for bounded filesystem helpers and the default
+publication-workspace cache store. The cache is digest-keyed, stores only
+validated `PublicationPageV1` documents and binary asset values, rejects
+symlink/path traversal inputs, and remains derived state rather than source or
+bundle authority. Astro, Starlight, Pagefind execution, Confluence
+acquisition/authentication, CLI orchestration, and deployment belong to
+separate adapters or hosts.

@@ -10,6 +10,9 @@
 // export: assertPublicationBundleReferencesV1
 export declare function assertPublicationBundleReferencesV1(bundle: PublicationBundleV1, pages: readonly PublicationPageV1[]): void;
 
+// export: assertPublicationCacheKeyV1
+export declare function assertPublicationCacheKeyV1(cacheKey: PublicationCacheKeyV1): void;
+
 // export: AstroAtlcliIntegrationOptionsV1
 export interface AstroAtlcliIntegrationOptionsV1 {
     bundlePath: string;
@@ -315,6 +318,25 @@ export interface PublicationBundleV1 {
     routes: readonly PublicationRouteRecordV1[];
     assets: readonly PublicationAssetEntryV1[];
     issues: readonly PublicationIssueV1[];
+}
+
+// export: PublicationCachedAssetV1
+export interface PublicationCachedAssetV1 {
+    cacheKey: PublicationCacheKeyV1;
+    mediaType: string;
+    sha256: string;
+    bytes: Uint8Array;
+}
+
+// export: PublicationCacheKeyV1
+export type PublicationCacheKeyV1 = string;
+
+// export: PublicationCacheStoreV1
+export interface PublicationCacheStoreV1 {
+    readPage(cacheKey: PublicationCacheKeyV1): Promise<PublicationPageV1 | undefined>;
+    writePage(cacheKey: PublicationCacheKeyV1, page: PublicationPageV1): Promise<void>;
+    readAsset(cacheKey: PublicationCacheKeyV1): Promise<PublicationCachedAssetV1 | undefined>;
+    writeAsset(asset: PublicationCachedAssetV1): Promise<void>;
 }
 
 // export: PublicationChangeKindV1
@@ -991,8 +1013,33 @@ export interface BoundedPublicationJsonReadOptionsV1 {
     maxBytes: number;
 }
 
+// export: createNodePublicationCacheStoreV1
+export declare function createNodePublicationCacheStoreV1(options: NodePublicationCacheStoreOptionsV1): PublicationCacheStoreV1;
+
+// export: DEFAULT_PUBLICATION_CACHE_ASSET_BYTES_V1
+export declare const DEFAULT_PUBLICATION_CACHE_ASSET_BYTES_V1: number;
+
+// export: DEFAULT_PUBLICATION_CACHE_PAGE_BYTES_V1
+export declare const DEFAULT_PUBLICATION_CACHE_PAGE_BYTES_V1: number;
+
 // export: DEFAULT_PUBLICATION_JSON_MAX_BYTES_V1
 export declare const DEFAULT_PUBLICATION_JSON_MAX_BYTES_V1: number;
+
+// export: NodePublicationCacheStoreOptionsV1
+export interface NodePublicationCacheStoreOptionsV1 {
+    workspaceDirectory: string;
+    maxPageBytes?: number;
+    maxAssetBytes?: number;
+}
+
+// export: PublicationCacheStoreErrorCodeV1
+export type PublicationCacheStoreErrorCodeV1 = "invalid-options" | "unsafe-path" | "not-regular-file" | "too-large" | "corrupt";
+
+// export: PublicationCacheStoreErrorV1
+export declare class PublicationCacheStoreErrorV1 extends Error {
+    readonly code: PublicationCacheStoreErrorCodeV1;
+    constructor(code: PublicationCacheStoreErrorCodeV1, message: string);
+}
 
 // export: PublicationFileReadErrorV1
 export declare class PublicationFileReadErrorV1 extends Error {

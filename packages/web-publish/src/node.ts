@@ -4,6 +4,8 @@ export interface BoundedPublicationJsonReadOptionsV1 {
   maxBytes: number;
 }
 
+export * from "./node-cache.js";
+
 export const DEFAULT_PUBLICATION_JSON_MAX_BYTES_V1 = 64 * 1024 * 1024;
 
 export class PublicationFileReadErrorV1 extends Error {

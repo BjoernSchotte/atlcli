@@ -1494,7 +1494,7 @@ load a bundle and build all routes with build-time network access disabled.
 
 ### T5 — Implement refresh, cache, assets, and atomic bundle activation
 
-- [ ] Implement bounded mutable page/asset cache ports and the default Node
+- [x] Implement bounded mutable page/asset cache ports and the default Node
       filesystem store under the project workspace.
 - [ ] Compute page reuse from the full cache key, not page version alone.
 - [ ] Refresh live dependencies and attachment metadata independently of page
