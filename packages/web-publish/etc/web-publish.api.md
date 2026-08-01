@@ -1046,11 +1046,52 @@ export declare const DEFAULT_PUBLICATION_CACHE_PAGE_BYTES_V1: number;
 // export: DEFAULT_PUBLICATION_JSON_MAX_BYTES_V1
 export declare const DEFAULT_PUBLICATION_JSON_MAX_BYTES_V1: number;
 
+// export: materializeNodePublicationBundleV1
+export declare function materializeNodePublicationBundleV1(request: NodePublicationBundleMaterializationRequestV1): Promise<NodePublicationBundleMaterializationResultV1>;
+
+// export: NodePublicationBundleErrorCodeV1
+export type NodePublicationBundleErrorCodeV1 = "invalid-request" | "unsafe-path" | "invalid-refresh-plan" | "incomplete-refresh-plan" | "invalid-page-digest" | "invalid-asset" | "asset-budget-exceeded" | "active-bundle-mismatch" | "corrupt-existing-bundle" | "aborted";
+
+// export: NodePublicationBundleErrorV1
+export declare class NodePublicationBundleErrorV1 extends Error {
+    readonly code: NodePublicationBundleErrorCodeV1;
+    constructor(code: NodePublicationBundleErrorCodeV1, message: string);
+}
+
+// export: NodePublicationBundleMaterializationRequestV1
+export interface NodePublicationBundleMaterializationRequestV1 {
+    workspaceDirectory: string;
+    refreshPlan: PublicationRefreshPlanV1;
+    createdBy: PublicationBundleV1["createdBy"];
+    sourcePolicyDigest: string;
+    rootIds: readonly string[];
+    pages: readonly PublicationPageV1[];
+    routes: readonly PublicationRouteRecordV1[];
+    assets: readonly PublicationBundleAssetBytesV1[];
+    issues?: readonly PublicationIssueV1[];
+    assetPolicy: Pick<PublicationAssetPolicyV1, "maxAssetBytes" | "maxTotalBytes">;
+    expectedActiveBundleDigest?: string;
+    signal?: AbortSignal;
+}
+
+// export: NodePublicationBundleMaterializationResultV1
+export interface NodePublicationBundleMaterializationResultV1 {
+    bundle: PublicationBundleV1;
+    bundleDirectory: string;
+    activated: true;
+}
+
 // export: NodePublicationCacheStoreOptionsV1
 export interface NodePublicationCacheStoreOptionsV1 {
     workspaceDirectory: string;
     maxPageBytes?: number;
     maxAssetBytes?: number;
+}
+
+// export: PublicationBundleAssetBytesV1
+export interface PublicationBundleAssetBytesV1 {
+    entry: PublicationAssetEntryV1;
+    bytes: Uint8Array;
 }
 
 // export: PublicationCacheStoreErrorCodeV1

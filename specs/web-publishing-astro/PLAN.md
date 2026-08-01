@@ -1499,15 +1499,15 @@ load a bundle and build all routes with build-time network access disabled.
 - [x] Compute page reuse from the full cache key, not page version alone.
 - [x] Refresh live dependencies and attachment metadata independently of page
       body versions.
-- [ ] Build a complete `PublicationRefreshPlanV1` before mutating active state;
+- [x] Build a complete `PublicationRefreshPlanV1` before mutating active state;
       surface all destructive and partial changes.
 - [x] Reuse existing asset trust routing and SVG validation at the final fetch
       and materialization seam.
-- [ ] Validate MIME/magic bytes, size/pixel/node budgets, redirects/private
+- [x] Validate MIME/magic bytes, size/pixel/node budgets, redirects/private
       networks, digest, safe filenames, root containment, and symlinks.
 - [ ] Deduplicate content-addressed assets and preserve safe download names.
-- [ ] Stage, validate, digest, and atomically activate immutable bundles.
-- [ ] Ensure failed/cancelled refresh preserves the last active bundle.
+- [x] Stage, validate, digest, and atomically activate immutable bundles.
+- [x] Ensure failed/cancelled refresh preserves the last active bundle.
 - [ ] Implement retention/GC by manifest reachability and grace period only.
 - [ ] Test concurrent refresh/fencing, crash points, stale writer, abort, corrupt
       cache recovery, failed asset, confirmed deletion, and ambiguous absence.

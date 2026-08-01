@@ -47,6 +47,16 @@ normalized-page dependency identity, not merely the source page version.
 Refresh planning records asset-metadata and frozen live-macro dependency changes
 as independent changes, so neither can remain stale when a page body is
 unchanged.
+
+`materializeNodePublicationBundleV1()` is the Node-only activation seam. It
+accepts only a complete, digest-valid `PublicationRefreshPlanV1` and already
+normalized pages plus materialized asset bytes. It rechecks page, graph, asset,
+and bundle digests in a private `<workspace>/staging/<run-id>/` root, promotes
+the resulting content-addressed immutable directory below `bundles/`, and only
+then atomically replaces the private `current.json` pointer. A malformed plan,
+asset mismatch, cancellation, or symlinked owned directory therefore leaves the
+last active bundle unchanged. The caller, not this package, owns acquisition,
+macro resolution, MIME/SVG decoding, and retention.
 Astro, Starlight, Pagefind execution, Confluence
 acquisition/authentication, CLI orchestration, and deployment belong to
 separate adapters or hosts.
