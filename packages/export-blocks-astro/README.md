@@ -67,3 +67,11 @@ The included Astro consumer proves a CSP with external scripts and styles,
 only for the component's validated numeric layout and color attributes; an
 experience that needs a stricter `style-src` can extract these bounded values
 into its build-owned stylesheet.
+
+## Deferred ADF facade
+
+This package intentionally accepts `ExportBlock[]`, not raw ADF or Data Center
+Storage XHTML, and it does not export `AdfDocument`. A future additive adapter
+may normalize raw ADF into this same model with explicit media, mention, and
+extension resolvers plus visible unknown fallbacks. It must not create a second
+ADF-specific component tree or add implicit Confluence access here.

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { access, readFile } from "node:fs/promises";
+import { access, readFile, readdir } from "node:fs/promises";
 import { resolve } from "node:path";
 
 test("is a Starlight-free Astro render-kit package with an isolated chart runtime", async () => {
@@ -28,17 +28,50 @@ test("is a Starlight-free Astro render-kit package with an isolated chart runtim
 
 test("render-kit sources expose no implicit acquisition, network, or raw-html sink", async () => {
   const packageRoot = resolve(import.meta.dir, "..");
-  const sources = await Promise.all([
-    "src/index.ts", "src/contracts.ts", "src/components/ExportDocument.astro",
-    "src/components/Block.astro", "src/components/Inline.astro", "src/components/InlineNode.astro",
-    "src/components/InteractiveChart.astro", "src/components/chart-island-client.ts", "src/security.ts",
-  ].map((path) => readFile(resolve(packageRoot, path), "utf8")));
+  const sourceDirectory = resolve(packageRoot, "src");
+  async function sourcesAt(directory: string): Promise<string[]> {
+    const entries = await readdir(directory, { withFileTypes: true });
+    return (await Promise.all(entries.map(async (entry) => entry.isDirectory()
+      ? sourcesAt(resolve(directory, entry.name))
+      : entry.name.endsWith(".test.ts") ? []
+      : [await readFile(resolve(directory, entry.name), "utf8")],
+    ))).flat();
+  }
+  const sources = await sourcesAt(sourceDirectory);
   for (const source of sources) {
     expect(source).not.toContain("fetch(");
     expect(source).not.toContain("set:html");
     expect(source).not.toContain("@atlcli/confluence");
     expect(source).not.toContain("from \"node:");
   }
+});
+
+test("render-kit has no publishing, host, or runtime-service dependency", async () => {
+  const packageRoot = resolve(import.meta.dir, "..");
+  const manifest = JSON.parse(await readFile(resolve(packageRoot, "package.json"), "utf8")) as {
+    dependencies?: Record<string, string>;
+    peerDependencies?: Record<string, string>;
+    exports?: Record<string, unknown>;
+  };
+  const dependencyNames = Object.keys({ ...manifest.dependencies, ...manifest.peerDependencies });
+  for (const forbidden of ["starlight", "confluence", "pagefind", "web-publish", "auth", "analytics", "service-worker", "workbox", "deployment"]) {
+    expect(dependencyNames.some((name) => name.toLowerCase().includes(forbidden))).toBeFalse();
+  }
+  const source = (await (async function readAll(directory: string): Promise<string> {
+    const entries = await readdir(directory, { withFileTypes: true });
+    return (await Promise.all(entries.map((entry) => entry.isDirectory()
+      ? readAll(resolve(directory, entry.name))
+      : entry.name.endsWith(".test.ts") ? ""
+      : readFile(resolve(directory, entry.name), "utf8"),
+    ))).join("\n");
+  })(resolve(packageRoot, "src"))).toLowerCase();
+  for (const forbidden of [
+    "@atlcli/confluence", "@atlcli/web-publish", "@atlcli/web-publish-astro", "starlight",
+    "pagefind", "serviceworker", "service-worker", "caches.", "analytics", "editlink",
+    "from \"node:", "from 'node:",
+  ]) expect(source).not.toContain(forbidden);
+  expect(manifest.exports).not.toHaveProperty("./adf");
+  expect(JSON.stringify(manifest.exports)).not.toContain("AdfDocument");
 });
 
 test("documents versioned theme variables and semantic hooks instead of generated DOM classes", async () => {

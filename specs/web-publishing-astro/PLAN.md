@@ -1551,12 +1551,12 @@ the active bundle is always complete and digest-valid.
 - [x] Build a packed plain-Astro consumer with the all-fields fixture, one
       trusted component override, custom tokens, JS on/off, accessibility, RTL,
       print, hostile data, and deterministic semantic goldens.
-- [ ] Add negative dependency gates for Starlight, Confluence client/auth,
+- [x] Add negative dependency gates for Starlight, Confluence client/auth,
       publication loader/routes, Node filesystem, Pagefind, deployment,
       service-worker/runtime-cache, analytics, and edit-link code.
-- [ ] Document the deferred additive ADF-adapter seam but export no V1
+- [x] Document the deferred additive ADF-adapter seam but export no V1
       `AdfDocument` or raw-ADF capability claim.
-- [ ] STOP if the base renderer requires Starlight/project chrome, source data
+- [x] STOP if the base renderer requires Starlight/project chrome, source data
       can become executable code, disabled JS loses represented information, or
       unsupported blocks disappear silently.
 
