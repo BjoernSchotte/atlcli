@@ -2871,6 +2871,20 @@ and hidden chain-of-thought remain structurally unrepresentable. The focused
 55-test trace suite, typecheck, production build, browser-isomorphism, privacy,
 API/closure, pack, and two-test packed-MV3 gates passed.
 
+T3 scope-resolution checkpoint (2026-08-01): the shared preflight grammar and
+validator now treat the literal `Jira` product qualifier as grammar rather than
+a project name, and accept a same-tenant Jira `/projects/...` reference through
+the same exact-reference validation path used by the catalog provider. A packed
+MV3 regression sends real `research:resolve-scope` messages to the production
+background handler and proves that an exact project key and the equivalent
+same-tenant project link yield a ready, exact binding before an agent worker can
+start. The existing packed ambiguity regression continues to prove that a
+duplicate natural-language name stops before key storage or agent work. This
+advances, but does not close, the full CLI/packed resolution-matrix gate above:
+the remaining name, alias, archive, access, pagination, precedence, context,
+cross-tenant, and prompt-injection parity cases still require their own
+host-boundary fixtures.
+
 ### T4 — Add durable session, workspace, graph, and checkpoint stores
 
 Shared:

@@ -89,6 +89,39 @@ describe("research scope preflight", () => {
     ]);
   });
 
+  test("does not mistake the Jira product qualifier for a project name", () => {
+    const question = "Research Jira project DEMO.";
+    const mentions = proposeResearchScopeMentionsV1({
+      question,
+      expectedTenantOrigin: origin,
+    });
+
+    expect(mentions.map((mention) => [
+      mention.text,
+      mention.productHint,
+      mention.entityKindHint,
+      question.slice(mention.questionTextRange!.start, mention.questionTextRange!.end),
+    ])).toEqual([
+      ["DEMO", "jira", "project", "DEMO"],
+    ]);
+  });
+
+  test("accepts a same-tenant Jira project link as an exact scope mention", () => {
+    const link = `${origin}/projects/DELIVERY/summary`;
+    const mentions = proposeResearchScopeMentionsV1({
+      question: `Research ${link}.`,
+      expectedTenantOrigin: origin,
+    });
+
+    expect(mentions).toMatchObject([{
+      productHint: "jira",
+      entityKindHint: "project",
+      source: "exact_link",
+      text: link,
+      exactReference: link,
+    }]);
+  });
+
   test("resolves natural names and replaces lower-precedence profile defaults", async () => {
     const capabilities: string[] = [];
     const outcome = await prepareResearchScopePreflightV1({

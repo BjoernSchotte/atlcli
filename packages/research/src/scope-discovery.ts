@@ -208,7 +208,11 @@ function isExactCurrentTenantReference(value: string, expectedTenantOrigin: stri
   try {
     const reference = new URL(value);
     return reference.origin === expectedTenantOrigin &&
-      (reference.pathname.startsWith("/browse/") || reference.pathname.startsWith("/wiki/"));
+      (
+        reference.pathname.startsWith("/browse/") ||
+        reference.pathname.startsWith("/wiki/") ||
+        /^\/(?:projects|plugins\/servlet\/project-config)\//.test(reference.pathname)
+      );
   } catch {
     return false;
   }

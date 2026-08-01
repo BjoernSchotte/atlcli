@@ -20,7 +20,13 @@ import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1 } from "@atlcli/research";
+import {
+  DEFAULT_RESEARCH_LIMITS_V1,
+  RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1,
+  RESEARCH_REQUEST_SCHEMA_V1,
+  type ResearchRequestV1,
+  type ResearchScopePreflightOutcomeV1,
+} from "@atlcli/research";
 import {
   RESEARCH_ANALYSIS_PACKET_SCHEMA_V1,
   RESEARCH_CRITIQUE_SCHEMA_V1,
@@ -370,21 +376,38 @@ function backgroundBootstrap(): string {
     const url = new URL(request.url);
     if (
       url.origin === "https://packed-research.atlassian.net" &&
-      url.pathname === "/rest/api/3/project/search" &&
-      url.searchParams.get("query") === "Shared"
+      url.pathname === "/rest/api/3/project/search"
     ) {
+      const query = url.searchParams.get("query");
+      const values = query === "Shared"
+        ? [
+            { id: "101", key: "ALPHA", name: "Shared", archived: false },
+            { id: "102", key: "BETA", name: "Shared", archived: false },
+          ]
+        : query === "DEMO"
+          ? [{ id: "103", key: "DEMO", name: "Demo project", archived: false }]
+          : undefined;
+      if (!values) return nativeFetch(input, init);
       harnessChannel.postMessage({
         kind: "scope-catalog-fetch",
         url: url.href,
         method: request.method,
       });
       return json({
-        values: [
-          { id: "101", key: "ALPHA", name: "Shared", archived: false },
-          { id: "102", key: "BETA", name: "Shared", archived: false },
-        ],
-        total: 2,
+        values,
+        total: values.length,
       });
+    }
+    if (
+      url.origin === "https://packed-research.atlassian.net" &&
+      url.pathname === "/rest/api/3/project/DEMO"
+    ) {
+      harnessChannel.postMessage({
+        kind: "scope-reference-fetch",
+        url: url.href,
+        method: request.method,
+      });
+      return json({ id: "103", key: "DEMO", name: "Demo project", archived: false });
     }
     return nativeFetch(input, init);
   };
@@ -1018,6 +1041,43 @@ async function fillResearchForm(
   await page.getByTestId("research-disclosure").check();
 }
 
+interface PackedScopeResponse {
+  kind: "research:resolve-scope-result";
+  ok: boolean;
+  outcome?: ResearchScopePreflightOutcomeV1;
+  code?: string;
+  error?: string;
+}
+
+function packedScopeRequest(question: string): ResearchRequestV1 {
+  return {
+    schema: RESEARCH_REQUEST_SCHEMA_V1,
+    question,
+    scope: {
+      siteOrigin: SITE_ORIGIN,
+      jiraProjectKeys: [],
+      confluenceSpaceKeys: [],
+    },
+    limits: { ...DEFAULT_RESEARCH_LIMITS_V1 },
+    wikiProvider: "rest",
+  };
+}
+
+async function resolveScopeInPackedBackground(
+  page: Page,
+  request: ResearchRequestV1,
+): Promise<PackedScopeResponse> {
+  return page.evaluate(async (message) => {
+    const window = await chrome.windows.getCurrent();
+    if (window.id === undefined) throw new Error("Packed side-panel window is unavailable.");
+    return chrome.runtime.sendMessage({
+      kind: "research:resolve-scope",
+      windowId: window.id,
+      request: message,
+    });
+  }, request) as Promise<PackedScopeResponse>;
+}
+
 let context: BrowserContext;
 let page: Page;
 let extensionId: string;
@@ -1206,6 +1266,62 @@ test("intercepts declarative dynamic-schema dispatches in a packed MV3 worker", 
   });
   expect(response.result?.messages.some((message) => message.includes("deep-jira"))).toBe(true);
   expect(response.result?.messages.some((message) => message.includes("deep-wiki"))).toBe(true);
+});
+
+test("resolves exact Jira keys and same-tenant project links through the packed background boundary", async () => {
+  await installEventCapture(page);
+  const keyOutcome = await resolveScopeInPackedBackground(
+    page,
+    packedScopeRequest("Research Jira project DEMO."),
+  );
+  const link = `${SITE_ORIGIN}/projects/DEMO/summary`;
+  const linkOutcome = await resolveScopeInPackedBackground(
+    page,
+    packedScopeRequest(`Research ${link}.`),
+  );
+  const events = await harnessEvents(page);
+
+  expect(keyOutcome).toMatchObject({
+    kind: "research:resolve-scope-result",
+    ok: true,
+    outcome: {
+      kind: "ready",
+      request: {
+        scope: { jiraProjectKeys: ["DEMO"], confluenceSpaceKeys: [] },
+      },
+      resolutions: [{
+        state: "resolved",
+        resolvedCandidateId: "research-scope-candidate:jira-project-demo",
+        uniquenessProof: "exact_key_lookup",
+        requiresUserChoice: false,
+      }],
+    },
+  });
+  expect(linkOutcome).toMatchObject({
+    kind: "research:resolve-scope-result",
+    ok: true,
+    outcome: {
+      kind: "ready",
+      request: {
+        scope: { jiraProjectKeys: ["DEMO"], confluenceSpaceKeys: [] },
+      },
+      resolutions: [{
+        state: "resolved",
+        resolvedCandidateId: "research-scope-candidate:jira-project-demo",
+        uniquenessProof: "exact_reference_lookup",
+        requiresUserChoice: false,
+      }],
+    },
+  });
+
+  const catalogFetches = events.filter((event) => event.kind === "scope-catalog-fetch");
+  const referenceFetches = events.filter((event) => event.kind === "scope-reference-fetch");
+  expect(catalogFetches).toHaveLength(1);
+  expect(catalogFetches[0]?.url).toContain("/rest/api/3/project/search");
+  expect(catalogFetches[0]?.url).toContain("query=DEMO");
+  expect(referenceFetches).toHaveLength(1);
+  expect(referenceFetches[0]?.url).toContain("/rest/api/3/project/DEMO");
+  expect(events.some((event) => event.kind === "worker-start")).toBe(false);
 });
 
 test("stops a packed natural-name scope ambiguity before key storage or agent work", async () => {

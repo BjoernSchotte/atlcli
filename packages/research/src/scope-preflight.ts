@@ -70,6 +70,7 @@ function collectNamedMatches(
       const text = match[1];
       if (!text || match.index === undefined) continue;
       if (/\b(?:space|project)\b/i.test(text)) continue;
+      if (new RegExp(`^(?:${productPrefix})$`, "iu").test(text.trim())) continue;
       if (/^(?:and|und|for|für|to|with|mit)$/i.test(text.trim())) continue;
       const relative = match[0].indexOf(text);
       if (relative < 0) continue;
