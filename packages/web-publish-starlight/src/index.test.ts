@@ -45,3 +45,18 @@ test("does not own a build runner or duplicate ExportBlock rendering", async () 
   expect(source).not.toContain("exportBlockKind");
   expect(source).not.toContain("Bun.spawn");
 });
+
+test("maps only public Starlight tokens into the render-kit document-body slot", async () => {
+  const root = resolve(import.meta.dir, "..");
+  const [component, stylesheet] = await Promise.all([
+    readFile(resolve(root, "src/components/StarlightDocumentBody.astro"), "utf8"),
+    readFile(resolve(root, "src/styles.css"), "utf8"),
+  ]);
+  expect(component).toContain('from "@atlcli/export-blocks-astro/components/ExportDocument.astro"');
+  expect(component).toContain('data-atlcli-starlight-slot="document-body"');
+  expect(component).not.toContain("exportBlockKind");
+  for (const token of ["--sl-color-text", "--sl-color-gray-3", "--sl-color-gray-5", "--sl-color-gray-6"]) {
+    expect(stylesheet).toContain(token);
+  }
+  expect(stylesheet).not.toContain(".sl-");
+});

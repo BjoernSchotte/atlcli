@@ -18,15 +18,18 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
-    }
+    },
+    "./components/StarlightDocumentBody.astro": "./dist/components/StarlightDocumentBody.astro",
+    "./styles.css": "./dist/styles.css"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsc -p tsconfig.build.json && bun scripts/copy-assets.ts",
     "clean": "rm -rf dist",
     "prepack": "bun ../../scripts/strip-dev-condition.ts strip",
     "postpack": "bun ../../scripts/strip-dev-condition.ts restore"
   },
   "dependencies": {
+    "@atlcli/export-blocks": "workspace:*",
     "@atlcli/export-blocks-astro": "workspace:*"
   },
   "peerDependencies": {

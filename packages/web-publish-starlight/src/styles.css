@@ -1,0 +1,16 @@
+/* Maps documented Starlight tokens onto the stable render-kit token contract. */
+[data-atlcli-starlight-slot="document-body"] {
+  --atlcli-content-foreground: var(--sl-color-text);
+  --atlcli-content-muted: var(--sl-color-gray-3);
+  --atlcli-content-border: var(--sl-color-gray-5);
+  --atlcli-content-surface: var(--sl-color-gray-6);
+  --atlcli-content-code-background: var(--sl-color-gray-6);
+}
+
+@media print {
+  [data-atlcli-starlight-slot="document-body"] {
+    --atlcli-content-foreground: #000;
+    --atlcli-content-muted: #333;
+    --atlcli-content-border: #666;
+  }
+}

@@ -355,6 +355,18 @@
         "astro": ">=7.1.6 <8",
       },
     },
+    "packages/web-publish-starlight": {
+      "name": "@atlcli/web-publish-starlight",
+      "version": "0.1.0",
+      "dependencies": {
+        "@atlcli/export-blocks": "workspace:*",
+        "@atlcli/export-blocks-astro": "workspace:*",
+      },
+      "peerDependencies": {
+        "@astrojs/starlight": "^0.41.3",
+        "astro": ">=7.1.6 <8",
+      },
+    },
   },
   "patchedDependencies": {
     "@myriaddreamin/typst-ts-web-compiler@0.7.0": "patches/@myriaddreamin%2Ftypst-ts-web-compiler@0.7.0.patch",
@@ -461,6 +473,8 @@
     "@atlcli/web-publish": ["@atlcli/web-publish@workspace:packages/web-publish"],
 
     "@atlcli/web-publish-astro": ["@atlcli/web-publish-astro@workspace:packages/web-publish-astro"],
+
+    "@atlcli/web-publish-starlight": ["@atlcli/web-publish-starlight@workspace:packages/web-publish-starlight"],
 
     "@babel/code-frame": ["@babel/code-frame@7.29.7", "", { "dependencies": { "@babel/helper-validator-identifier": "^7.29.7", "js-tokens": "^4.0.0", "picocolors": "^1.1.1" } }, "sha512-Aup7aUOfpbAUg2ROOJN6Iw5f9DMBlzu0mIkm/malLQFN/YQgO48wCj0Kxa3sEHJvPVFg7siR+qRInwXd2qhQKw=="],
 

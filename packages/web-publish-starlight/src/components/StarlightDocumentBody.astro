@@ -1,0 +1,20 @@
+---
+import ExportDocument from "@atlcli/export-blocks-astro/components/ExportDocument.astro";
+import type {
+  AstroExportBlockOverridesV1,
+  AstroExportBlockRenderContextV1,
+} from "@atlcli/export-blocks-astro";
+import type { ExportBlock } from "@atlcli/export-blocks";
+
+interface Props {
+  blocks: readonly ExportBlock[];
+  context: AstroExportBlockRenderContextV1;
+  overrides?: AstroExportBlockOverridesV1;
+}
+
+const { blocks, context, overrides } = Astro.props;
+---
+
+<section data-atlcli-starlight-slot="document-body">
+  <ExportDocument blocks={blocks} context={context} overrides={overrides} />
+</section>

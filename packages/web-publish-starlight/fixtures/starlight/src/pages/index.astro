@@ -1,0 +1,20 @@
+---
+import StarlightPage from "@astrojs/starlight/components/StarlightPage.astro";
+import StarlightDocumentBody from "@atlcli/web-publish-starlight/components/StarlightDocumentBody.astro";
+import { EXPORT_BLOCKS_ASTRO_MINIMAL_CONTEXT_V1 } from "@atlcli/export-blocks-astro/fixtures";
+import { PUBLISHED_RELEASE_BLOCKS_V1 } from "../published-release";
+---
+
+<StarlightPage
+  frontmatter={{
+    title: "Release notes",
+    description: "ExportBlock content inside a Starlight documentation page.",
+  }}
+  headings={[{ depth: 2, slug: "published-content", text: "Published content" }]}
+  sidebar={[{ label: "Knowledge", items: [{ label: "Release notes", link: "/" }] }]}
+>
+  <StarlightDocumentBody
+    blocks={PUBLISHED_RELEASE_BLOCKS_V1}
+    context={{ ...EXPORT_BLOCKS_ASTRO_MINIMAL_CONTEXT_V1, page: { id: "release-notes", title: "Release notes" } }}
+  />
+</StarlightPage>
