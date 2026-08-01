@@ -15,6 +15,10 @@ import {
   WorkspaceResearchClaimLedgerV1,
   createResearchClaimV1,
 } from "./claim-ledger.js";
+import {
+  WorkspaceResearchOutlineStoreV1,
+  createResearchOutlineV1,
+} from "./outline.js";
 
 function session(): ResearchSessionV1 {
   return createResearchSessionV1({
@@ -253,19 +257,72 @@ describe("SQLite durable research session store", () => {
       });
       const ledger = new WorkspaceResearchClaimLedgerV1(workspace, evidence);
       await ledger.put(claim);
+      const outline = await createResearchOutlineV1({
+        revision: 1,
+        basedOnBriefRevision: 1,
+        createdAt: "2026-08-01T13:00:03.000Z",
+        sections: [{
+          id: "outline-section:sqlite-answer",
+          title: "Evidence-backed answer",
+          question: "What does the retained issue establish?",
+          claimIds: [claim.id],
+          evidenceIds: [retained.record.id],
+          contradictionIds: [],
+          coverageTargetIds: ["coverage:primary"],
+          dependsOnSectionIds: [],
+        }],
+        contradictions: [],
+        coverage: [{
+          schema: "atlcli.research-coverage-assessment/v1",
+          targetId: "coverage:primary",
+          status: "covered",
+          claimIds: [claim.id],
+          evidenceIds: [retained.record.id],
+          distinctSourceCount: 1,
+          assessedAt: "2026-08-01T13:00:03.000Z",
+        }],
+      });
+      await new WorkspaceResearchOutlineStoreV1({
+        workspace,
+        evidenceStore: evidence,
+        claimLedger: ledger,
+        coverageTargets: [{
+          id: "coverage:primary",
+          question: "What does the retained issue establish?",
+          required: true,
+          sourceClasses: ["jira"],
+          minimumDistinctSources: 1,
+        }],
+      }).put(outline);
       first.close();
 
       const reopened = new SqliteResearchSessionStoreV1({ databasePath, root: sessionRoot });
       try {
         const reopenedWorkspace = await reopened.workspace(created.sessionId);
+        const reopenedEvidence = new WorkspaceResearchEvidenceStoreV1(reopenedWorkspace);
         const recovered = new WorkspaceResearchClaimLedgerV1(
           reopenedWorkspace,
-          new WorkspaceResearchEvidenceStoreV1(reopenedWorkspace),
+          reopenedEvidence,
         );
         await expect(recovered.get(claim.id)).resolves.toMatchObject({
           id: claim.id,
           freshness: "current",
           evidenceIds: [retained.record.id],
+        });
+        await expect(new WorkspaceResearchOutlineStoreV1({
+          workspace: reopenedWorkspace,
+          evidenceStore: reopenedEvidence,
+          claimLedger: recovered,
+          coverageTargets: [{
+            id: "coverage:primary",
+            question: "What does the retained issue establish?",
+            required: true,
+            sourceClasses: ["jira"],
+            minimumDistinctSources: 1,
+          }],
+        }).validateCurrent()).resolves.toMatchObject({
+          revision: 1,
+          sections: [{ claimIds: [claim.id], evidenceIds: [retained.record.id] }],
         });
       } finally {
         reopened.close();

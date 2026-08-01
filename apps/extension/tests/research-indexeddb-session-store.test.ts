@@ -7,8 +7,10 @@ import {
   ResearchSessionWorkspaceCheckpointerV1,
   WorkspaceResearchEvidenceStoreV1,
   WorkspaceResearchClaimLedgerV1,
+  WorkspaceResearchOutlineStoreV1,
   createResearchEvidenceRecordV1,
   createResearchClaimV1,
+  createResearchOutlineV1,
   createResearchSessionV1,
   researchCheckpointConfigV1,
   verifyResearchSessionStoreConformanceV1,
@@ -247,20 +249,73 @@ describe("IndexedDB durable research session store", () => {
       createdAt: "2026-08-01T14:00:02.000Z",
     });
     await new WorkspaceResearchClaimLedgerV1(workspace, evidence).put(claim);
+    const outline = await createResearchOutlineV1({
+      revision: 1,
+      basedOnBriefRevision: 1,
+      createdAt: "2026-08-01T14:00:03.000Z",
+      sections: [{
+        id: "outline-section:indexeddb-answer",
+        title: "Evidence-backed answer",
+        question: "What does the retained issue establish?",
+        claimIds: [claim.id],
+        evidenceIds: [retained.record.id],
+        contradictionIds: [],
+        coverageTargetIds: ["coverage:primary"],
+        dependsOnSectionIds: [],
+      }],
+      contradictions: [],
+      coverage: [{
+        schema: "atlcli.research-coverage-assessment/v1",
+        targetId: "coverage:primary",
+        status: "covered",
+        claimIds: [claim.id],
+        evidenceIds: [retained.record.id],
+        distinctSourceCount: 1,
+        assessedAt: "2026-08-01T14:00:03.000Z",
+      }],
+    });
+    await new WorkspaceResearchOutlineStoreV1({
+      workspace,
+      evidenceStore: evidence,
+      claimLedger: new WorkspaceResearchClaimLedgerV1(workspace, evidence),
+      coverageTargets: [{
+        id: "coverage:primary",
+        question: "What does the retained issue establish?",
+        required: true,
+        sourceClasses: ["jira"],
+        minimumDistinctSources: 1,
+      }],
+    }).put(outline);
     first.close();
     stores.splice(stores.indexOf(first), 1);
 
     const reopened = await IndexedDbResearchSessionStoreV1.open({ factory: factory as unknown as IDBFactory, databaseName });
     stores.push(reopened);
     const reopenedWorkspace = await reopened.workspace(created.sessionId);
+    const reopenedEvidence = new WorkspaceResearchEvidenceStoreV1(reopenedWorkspace);
     const recovered = new WorkspaceResearchClaimLedgerV1(
       reopenedWorkspace,
-      new WorkspaceResearchEvidenceStoreV1(reopenedWorkspace),
+      reopenedEvidence,
     );
     await expect(recovered.get(claim.id)).resolves.toMatchObject({
       id: claim.id,
       freshness: "current",
       evidenceIds: [retained.record.id],
+    });
+    await expect(new WorkspaceResearchOutlineStoreV1({
+      workspace: reopenedWorkspace,
+      evidenceStore: reopenedEvidence,
+      claimLedger: recovered,
+      coverageTargets: [{
+        id: "coverage:primary",
+        question: "What does the retained issue establish?",
+        required: true,
+        sourceClasses: ["jira"],
+        minimumDistinctSources: 1,
+      }],
+    }).validateCurrent()).resolves.toMatchObject({
+      revision: 1,
+      sections: [{ claimIds: [claim.id], evidenceIds: [retained.record.id] }],
     });
   });
 });

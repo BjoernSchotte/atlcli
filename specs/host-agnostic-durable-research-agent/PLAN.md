@@ -3275,11 +3275,26 @@ Shared:
       a newly observed version of the same canonical Jira issue or Confluence
       page. An interrupted new-version write may be conservative, but cannot
       leave an older claim current after a changed provider version was seen.
-- [ ] Add evidence, chunk, claim, contradiction, freshness, and coverage
+- [x] Add evidence, chunk, claim, contradiction, freshness, and coverage
       contracts plus evidence-linked `OutlineV1`.
 - [ ] Add bounded evidence, claim, contradiction, coverage, and outline store
       ports plus cross-host conformance, retention, deletion, quota, and
       failure-injection tests before implementing physical adapters.
+
+T5 evidence-linked-outline checkpoint (2026-08-01):
+`WorkspaceResearchOutlineStoreV1` persists immutable, directly superseding
+outline revisions in the private session workspace. Every revision is checked
+against current span-validated claims and their retained evidence before it can
+be published: target coverage is host-derived from non-truncated current
+evidence, open contradictions block every affected section claim, direct
+evidence links must descend from the section's claims, and all linked evidence
+must be from one tenant. A fresh publication check refreshes claims first, so a
+removed source cannot leave a reportable outline current. Outline files retain
+only IDs and bounded structural metadata, never source text. Memory tests prove
+derived coverage, truncation limits, conflict fencing, source-loss fencing, and
+interrupted current-pointer recovery; SQLite/filesystem and IndexedDB reopen
+tests recover the same current outline. The general conformance, quota,
+retention/deletion, V2 packet, and planner activation work remains pending.
 - [ ] Canonicalize entity identity independently of display URLs.
 - [ ] Hash projected content and record exact source version or `updatedAt`.
 - [ ] Store bounded source chunks once and reference them from checkpoints,
