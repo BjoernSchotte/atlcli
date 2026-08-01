@@ -69,8 +69,17 @@ test("Starlight Pagefind search supports mouse opening, keyboard focus/closing, 
   await expect(dialog).toBeVisible();
   const input = dialog.locator("input").first();
   await expect(input).toBeFocused();
+  await input.fill("Publishing guide");
+  const result = dialog.getByRole("link", { name: /Publishing guide/iu }).first();
+  await expect(result).toBeVisible();
+  await result.click();
+  await expect(page).toHaveURL(/\/guide\/$/u);
+  await page.goBack();
+  await expect(page).toHaveURL(/\/starlight\/$/u);
+  await trigger.click();
+  await expect(dialog).toBeVisible();
   await input.fill("ExportBlock");
-  await expect(dialog).toContainText(/Searching|Search/iu);
+  await expect(dialog).toContainText(/result for ExportBlock/iu);
   await input.fill("query-with-no-matching-publication");
   await expect(dialog).toContainText(/Searching|No results|unavailable/iu);
   await input.press("Tab");
@@ -188,6 +197,7 @@ test("static content remains usable without JavaScript and stays inside the CSP/
   const page = await context.newPage();
   const response = await page.goto("/plain/", { waitUntil: "networkidle" });
   expect(response?.headers()["content-security-policy"]).toContain("default-src 'self'");
+  expect(response?.headers()["content-security-policy"]).toContain("'wasm-unsafe-eval'");
   await expect(page.locator('[data-atlcli-document]').first()).toBeVisible();
   await expect(page.locator('[data-atlcli-block="table"]')).toBeVisible();
   await expect(page.locator('[data-atlcli-block="image"]')).toBeVisible();

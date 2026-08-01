@@ -243,13 +243,19 @@ The complete Starlight visual matrix passed on 2026-08-01 with six Playwright
 tests. It covers desktop/mobile responsive navigation, color modes, forced
 colors, reduced motion, print and zoom, RTL plain-Astro keyboard access,
 Expressive Code controls, browser performance budgets, the production
-Starlight search dialog's mouse opening and keyboard focus/closing path,
-JavaScript-off static rendering, CSP, blocked external requests, and privacy
-markers. The deterministic cold/warm manifest proof remains in the package
-consumer and builder tests. Named negative fixtures are covered by the loader
-route/path tests, the browser-core negative import gate, the packed hostile-
-content consumer, SVG/link security tests, and the output verifier's
-digest/private-URL/asset checks.
+Starlight search dialog's mouse opening, result navigation, back/forward, and
+keyboard focus/closing path, JavaScript-off static rendering, CSP, blocked
+external requests, and privacy markers. The visual fixture server explicitly
+allows only `wasm-unsafe-eval` (never broad `unsafe-eval`) because Pagefind's
+WASM index requires that narrowly scoped directive. A direct packed-consumer
+Pagefind matrix additionally passed query/no-result, excerpt, anchor/sub-result,
+label/language facets, English/Arabic partitioning, diacritic normalization,
+and worker-disabled main-thread fallback; the deterministic 3/24/100 corpus
+budget suite covers the large-result-set gate. The deterministic cold/warm
+manifest proof remains in the package consumer and builder tests. Named
+negative fixtures are covered by the loader route/path tests, the browser-core
+negative import gate, the packed hostile-content consumer, SVG/link security
+tests, and the output verifier's digest/private-URL/asset checks.
 
 The T10 recovery matrix is now explicit. `builder.test.ts` proves that a
 corrupt fresh Astro inventory restores the previous output and private

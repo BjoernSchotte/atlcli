@@ -10,7 +10,7 @@ const fixtureRoots = {
 function headers(type?: string): Headers {
   const value = new Headers({
     "Cache-Control": "no-store",
-    "Content-Security-Policy": "default-src 'self'; connect-src 'self'; img-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; worker-src 'self'; object-src 'none'; base-uri 'none'",
+    "Content-Security-Policy": "default-src 'self'; connect-src 'self'; img-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; worker-src 'self'; object-src 'none'; base-uri 'none'",
     "X-Content-Type-Options": "nosniff",
   });
   if (type) value.set("Content-Type", type);

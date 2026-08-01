@@ -222,6 +222,109 @@ test("a trusted Starlight override changes heading presentation without changing
   }
 }, 30_000);
 
+test("the generated Pagefind indexes cover excerpts, anchors, facets, languages, diacritics, and no-result states", async () => {
+  await run(["bun", "run", "build"], publishedConsumerFixture);
+  const outputDirectory = resolve(publishedConsumerFixture, "dist");
+  const pagefindPath = resolve(outputDirectory, "pagefind/pagefind.js");
+  const staticOrigin = "https://atlcli-pagefind.test";
+  const originalFetch = globalThis.fetch;
+  const previousDocument = Object.getOwnPropertyDescriptor(globalThis, "document");
+  const previousLocation = Object.getOwnPropertyDescriptor(globalThis, "location");
+  Object.defineProperty(globalThis, "fetch", {
+    configurable: true,
+    value: async (input: RequestInfo | URL): Promise<Response> => {
+      const url = input instanceof Request ? new URL(input.url) : new URL(input.toString());
+      if (url.origin !== staticOrigin) throw new Error(`unexpected Pagefind network request: ${url.href}`);
+      const file = resolve(outputDirectory, url.pathname.replace(/^\/+/, ""));
+      if (!file.startsWith(`${outputDirectory}/`)) throw new Error(`Pagefind read escaped output: ${file}`);
+      try {
+        return new Response(await readFile(file), { status: 200 });
+      } catch {
+        return new Response("Not found", { status: 404 });
+      }
+    },
+  });
+  Object.defineProperty(globalThis, "location", { configurable: true, value: new URL(`${staticOrigin}/`) });
+
+  type PagefindData = {
+    raw_url: string;
+    url: string;
+    meta: { title?: string; "source-id"?: string };
+    excerpt: string;
+    plain_excerpt: string;
+    filters: Record<string, string[]>;
+    anchors: Array<{ id: string; text: string }>;
+    sub_results: Array<{ url: string; anchor: { id: string } }>;
+  };
+  type PagefindInstance = {
+    init(): Promise<void>;
+    filters(): Promise<Record<string, Record<string, number>>>;
+    search(query: string, options?: { filters?: Record<string, string> }): Promise<{
+      results: Array<{ data(): Promise<PagefindData> }>;
+    }>;
+  };
+
+  const load = async (language: string): Promise<PagefindInstance> => {
+    Object.defineProperty(globalThis, "document", {
+      configurable: true,
+      value: { currentScript: null, querySelector: () => ({ getAttribute: () => language }) },
+    });
+    const pagefind = await import(`${pathToFileURL(pagefindPath).href}?matrix-language=${language}-${Date.now()}`) as {
+      createInstance(options: { basePath: string; noWorker: boolean }): PagefindInstance;
+    };
+    const instance = pagefind.createInstance({ basePath: `${staticOrigin}/pagefind/`, noWorker: true });
+    await instance.init();
+    return instance;
+  };
+
+  try {
+    const english = await load("en");
+    const found = await english.search("Verify", { filters: { label: "guide" } });
+    expect(found.results).toHaveLength(1);
+    const englishData = await found.results[0]!.data();
+    expect(englishData).toMatchObject({
+      raw_url: "/publish/guide/",
+      meta: { title: "Bundle publishing guide", "source-id": "guide" },
+      filters: { label: ["guide"], language: ["en"] },
+    });
+    expect(englishData.excerpt).toContain("<mark>Verify</mark>");
+    expect(englishData.plain_excerpt).toContain("Verify the release");
+    expect(englishData.anchors).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "verify", text: "Verify the release" }),
+    ]));
+    expect(englishData.sub_results).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        url: "https://atlcli-pagefind.test/publish/guide/#verify",
+        anchor: expect.objectContaining({ id: "verify" }),
+      }),
+    ]));
+    expect(await english.filters()).toMatchObject({ label: expect.objectContaining({ guide: expect.any(Number) }) });
+    await expect(english.search("query-with-no-matching-publication", { filters: { label: "guide" } }))
+      .resolves.toMatchObject({ results: [] });
+
+    const arabic = await load("ar");
+    const diacritic = await arabic.search("cafe", { filters: { label: "guide" } });
+    expect(diacritic.results).toHaveLength(1);
+    const arabicData = await diacritic.results[0]!.data();
+    expect(arabicData).toMatchObject({
+      raw_url: "/ar/publish/guide/",
+      meta: { title: "Leitfaden", "source-id": "guide-ar" },
+      filters: { label: ["guide"], language: ["ar"] },
+    });
+    expect(arabicData.plain_excerpt).toContain("café");
+    expect(arabicData.anchors).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "rtl", text: "RTL proof" }),
+    ]));
+    expect(await arabic.search("Guide", { filters: { language: "en" } })).toMatchObject({ results: [] });
+  } finally {
+    Object.defineProperty(globalThis, "fetch", { configurable: true, value: originalFetch });
+    if (previousDocument) Object.defineProperty(globalThis, "document", previousDocument);
+    else Reflect.deleteProperty(globalThis, "document");
+    if (previousLocation) Object.defineProperty(globalThis, "location", previousLocation);
+    else Reflect.deleteProperty(globalThis, "location");
+  }
+}, 30_000);
+
 test("a packed Starlight consumer builds from the published package boundary without network access", async () => {
   const root = await mkdtemp(resolve(tmpdir(), "atlcli-starlight-packed-"));
   const tarballs = resolve(root, "tarballs");

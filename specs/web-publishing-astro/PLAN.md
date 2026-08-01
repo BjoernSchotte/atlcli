@@ -1740,7 +1740,7 @@ orchestrates it without hiding the plan, bundle, build, or verification digest.
       output with a simple file server; crawl every route/link/asset.
 - [x] Run Playwright with JS on/off, CSP, accessibility, blocked external
       network, privacy, and deterministic-manifest gates.
-- [ ] Exercise search by mouse and keyboard in every output/experience fixture:
+- [x] Exercise search by mouse and keyboard in every output/experience fixture:
       query,
       empty/no-result, excerpts, anchors, facets, language, Unicode/diacritics,
       large result sets, back/forward, deleted pages, and worker fallback.
