@@ -134,9 +134,9 @@ function bundle(overrides: Record<string, unknown> = {}): Record<string, unknown
   };
 }
 
-function expectedConfig(root: string): {
+function expectedConfig(root: string, overrides: { base?: string; outputProfile?: "directory" | "portable-file" } = {}): {
   base: string;
-  outputProfile: "directory";
+  outputProfile: "directory" | "portable-file";
   outDir: string;
   publicDir: string;
 } {
@@ -145,6 +145,7 @@ function expectedConfig(root: string): {
     outputProfile: "directory",
     outDir: join(root, "dist"),
     publicDir: join(root, "public"),
+    ...overrides,
   };
 }
 
@@ -375,6 +376,55 @@ test("reuses and verifies a builder-owned sitemap index instead of duplicating d
       "Sitemap: https://publish.example/docs/sitemap-index.xml",
     );
     await expect(readFile(join(output, "sitemap.xml"), "utf8")).rejects.toThrow();
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("accepts the slashless sitemap URLs emitted by Astro portable-file output", async () => {
+  const { root, bundlePath } = await fixture();
+  const output = join(root, "dist");
+  const manifest = join(root, "private", "inventory.json");
+  try {
+    await mkdir(output);
+    await writeBuiltGuide(output);
+    await writeFile(join(output, "publish", "guide.html"), "<!doctype html><html><body><main data-pagefind-body><h1>Guide</h1></main></body></html>\n");
+    await writeFile(join(output, "sitemap-0.xml"),
+      "<urlset><url><loc>https://publish.example/docs/publish/guide</loc></url></urlset>\n");
+    await writeFile(join(output, "sitemap-index.xml"),
+      "<sitemapindex><sitemap><loc>https://publish.example/docs/sitemap-0.xml</loc></sitemap></sitemapindex>\n");
+    const integration = atlcliPublishingIntegration({
+      bundlePath,
+      manifestPath: manifest,
+      routePrefix: "/publish",
+      expectedConfig: {
+        ...expectedConfig(root, { base: "/docs", outputProfile: "portable-file" }),
+        site: "https://publish.example",
+        seo: {
+          sitemap: true,
+          robots: "index",
+          canonical: true,
+          structuredData: ["WebSite"],
+          socialCards: "metadata-only",
+          feed: "disabled",
+        },
+        i18n: {
+          defaultLocale: "en",
+          locales: ["en"],
+          routeMode: "hide-default",
+          fallback: {},
+          uiTranslations: "starlight",
+        },
+      },
+    });
+    await integration.hooks["astro:routes:resolved"]!({ routes: [] });
+    await integration.hooks["astro:build:done"]!({
+      dir: pathToFileURL(`${output}/`),
+      pages: [{ pathname: "/publish/guide" }],
+    });
+    expect(await readFile(join(output, "robots.txt"), "utf8")).toContain(
+      "Sitemap: https://publish.example/docs/sitemap-index.xml",
+    );
   } finally {
     await rm(root, { recursive: true, force: true });
   }

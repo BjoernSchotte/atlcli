@@ -44,7 +44,7 @@ const base = import.meta.env.BASE_URL === "/" ? "/" : import.meta.env.BASE_URL.r
 const navigation = createStarlightPublicationNavigationV1({
   navigation: loaded.navigation,
   routePrefix,
-  base: import.meta.env.BASE_URL === "/" ? "" : import.meta.env.BASE_URL.slice(0, -1),
+  base: import.meta.env.BASE_URL === "/" ? "" : import.meta.env.BASE_URL.replace(/\/$/u, ""),
   landingLabel: "Overview",
   ...(path.locale === undefined ? {} : { locale: path.locale }),
   ...(publicationI18n === undefined ? {} : { i18n: publicationI18n }),

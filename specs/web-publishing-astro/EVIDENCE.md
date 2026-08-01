@@ -434,3 +434,27 @@ Two full-space regressions found during this run are now covered by focused
 tests: page records below non-page Confluence folder containers are promoted to
 explicit publication roots; equal content-addressed assets are copied once;
 and stale page-local anchors resolve to the visible unresolved-link fallback.
+
+## T12 output-profile and artifact-boundary proof (2026-08-01)
+
+The same complete DOCSY bundle was also built and verified with the
+`portable-file` output profile under the `/docs` base path. The portable build
+passed with 256 output files, 13,070 checked internal links, and 905 checked
+fragment anchors (`buildDigest`
+`e8df14de40c2fd53688575729ccd734f8551f54bf162357cccb74ab061b0c1e8`). The
+in-app browser verified the base-aware overview URL
+`http://127.0.0.1:4391/docs/publish/docsync-startseite` and the nested route
+`http://127.0.0.1:4391/docs/publish/copy-of-attachment-test-page`; headings,
+breadcrumbs, related-page links, previous/next navigation, theme controls, and
+the Pagefind search entry point rendered correctly.
+
+The final handoff output was then rebuilt with the root `directory` profile and
+verified again (`buildDigest`
+`a3f4187fbf99f4c8fc2720b219a8afae2120901cf0ee22dbf172f23e33934535`) with the
+same 256 files, 13,070 links, and 905 anchors. The final root URL is
+`http://127.0.0.1:4391/publish/docsync-startseite/`.
+
+All Astro output, local bundles, inventories, and server state remain under the
+untracked `.tmp-web-e2e/` directory (or test temporary directories). Only
+source, tests, and this evidence record are eligible for the Draft PR; no
+generated Astro output is committed.

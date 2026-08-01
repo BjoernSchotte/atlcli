@@ -473,12 +473,19 @@ async function existingRegularOutput(outputRoot: string, path: string): Promise<
 }
 
 /** Verify that a pre-existing Astro/host sitemap contains every planned URL. */
-async function assertSitemapCoverage(outputRoot: string, expectedSitemap: string): Promise<void> {
+async function assertSitemapCoverage(
+  outputRoot: string,
+  expectedSitemap: string,
+  outputProfile: "directory" | "portable-file",
+): Promise<void> {
   const expectedUrls = [...expectedSitemap.matchAll(/<loc>([^<]+)<\/loc>/gu)].map((match) => match[1]!);
   const xmlFiles = (await inventory(outputRoot)).filter((entry) => /(?:^|\/)sitemap[^/]*\.xml$/u.test(entry.path));
   const contents = await Promise.all(xmlFiles.map((entry) => readFile(resolve(outputRoot, entry.path), "utf8")));
   for (const url of expectedUrls) {
-    if (!contents.some((content) => content.includes(url))) {
+    const acceptedUrls = outputProfile === "portable-file" && url.endsWith("/")
+      ? [url, url.slice(0, -1)]
+      : [url];
+    if (!contents.some((content) => acceptedUrls.some((acceptedUrl) => content.includes(acceptedUrl)))) {
       throw new Error(`existing sitemap does not contain planned publication URL: ${url}`);
     }
   }
@@ -656,7 +663,7 @@ export function atlcliPublishingIntegration(
             const existingSitemap = await existingRegularOutput(outputRoot, "sitemap.xml");
             if (existingSitemapIndex || existingSitemap) {
               sitemapPath = existingSitemapIndex ? "sitemap-index.xml" : "sitemap.xml";
-              await assertSitemapCoverage(outputRoot, seoPlan.sitemap);
+              await assertSitemapCoverage(outputRoot, seoPlan.sitemap, options.expectedConfig.outputProfile);
             } else {
               await writeGeneratedOutputText(outputRoot, sitemapPath, seoPlan.sitemap);
             }
