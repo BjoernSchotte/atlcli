@@ -92,6 +92,20 @@ const PACKED_REPORT_INPUT = {
 };
 
 const PACKED_WORKFLOW_CODE = `
+const acceptedGraph = JSON.parse(await tools.researchGraphPropose({
+  basedOnBriefRevision: 1,
+  basedOnGraphRevision: 1,
+  nodes: [
+    { nodeId: "research-node:jira-research", dependencies: [], reasonCodes: ["independent_branch"] },
+    { nodeId: "research-node:wiki-research", dependencies: [], reasonCodes: ["independent_branch"] },
+    { nodeId: "research-node:cross-product-join", dependencies: ["research-node:jira-research", "research-node:wiki-research"], reasonCodes: ["cross_product_join"] },
+    { nodeId: "research-node:reconciler", dependencies: ["research-node:jira-research", "research-node:wiki-research", "research-node:cross-product-join"], reasonCodes: ["coverage_gap"] },
+    { nodeId: "research-node:synthesizer", dependencies: ["research-node:jira-research", "research-node:wiki-research", "research-node:cross-product-join", "research-node:reconciler"], reasonCodes: ["user_requested"] }
+  ]
+}));
+if (acceptedGraph.schema !== "atlcli.accepted-research-graph/v1") {
+  throw new Error("Packed graph proposal was not accepted.");
+}
 const [jira, wiki] = await Promise.all([
   task({
     description: JSON.stringify({ schema: "atlcli.research-task-dispatch/v1", taskId: "research-task:r1:jira-research:a1", objective: "Acquire detail-backed Jira evidence for the accepted objective." }),

@@ -45,6 +45,7 @@ export type ResearchDispatchErrorCodeV1 =
   | "task-already-dispatched"
   | "dependency-not-ready"
   | "dependency-result-mismatch"
+  | "graph-proposal-required"
   | "concurrency-exceeded"
   | "capability-denied"
   | "result-too-large"

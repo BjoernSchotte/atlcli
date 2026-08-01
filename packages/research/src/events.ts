@@ -23,6 +23,13 @@ const optionalNonNegativeInteger = (value: unknown): boolean =>
 const hasOnlyKeys = (value: Record<string, unknown>, allowed: readonly string[]): boolean =>
   Object.keys(value).every((key) => allowed.includes(key));
 
+const RESEARCH_PLAN_EVENT_STATUSES_V1 = [
+  "proposed",
+  "approved",
+  "approved-envelope",
+  "accepted",
+] as const;
+
 const tokenArray = (value: unknown, maximumItems = 32): value is string[] =>
   Array.isArray(value) &&
   value.length <= maximumItems &&
@@ -61,7 +68,9 @@ export function isResearchOneShotEventV1(value: unknown): value is ResearchOneSh
     ]) &&
       positiveInteger(event.briefRevision) &&
       positiveInteger(event.revision) &&
-      ["proposed", "approved"].includes(String(event.status)) &&
+      RESEARCH_PLAN_EVENT_STATUSES_V1.includes(
+        event.status as (typeof RESEARCH_PLAN_EVENT_STATUSES_V1)[number],
+      ) &&
       RESEARCH_REQUESTED_EFFORTS_V1.includes(
         event.resolvedEffort as (typeof RESEARCH_REQUESTED_EFFORTS_V1)[number],
       ) &&

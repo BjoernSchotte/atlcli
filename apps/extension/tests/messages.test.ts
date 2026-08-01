@@ -192,8 +192,24 @@ describe("message guards", () => {
     expect(isResearchEvent({
       ...base,
       event: {
-        kind: "task",
+        kind: "plan",
         seq: 7,
+        at: "2026-07-31T12:00:00.000Z",
+        briefRevision: 1,
+        revision: 1,
+        status: "accepted",
+        resolvedEffort: "analysis",
+        selectedRoleIds: ["focused-researcher", "synthesizer"],
+        nodeCount: 3,
+        waveCount: 2,
+        maxParallelNodes: 3,
+      },
+    })).toBe(true);
+    expect(isResearchEvent({
+      ...base,
+      event: {
+        kind: "task",
+        seq: 8,
         at: "2026-07-31T12:00:00.000Z",
         taskId: "research-task:1",
         roleId: "focused-researcher",

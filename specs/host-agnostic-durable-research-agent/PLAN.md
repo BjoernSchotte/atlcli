@@ -2484,7 +2484,7 @@ Shared:
       general-purpose subagent disabled. Mark `outline-planner` unavailable
       until T5. Register `synthesizer` as the only role permitted to return
       `ResearchAgentDraftV1`.
-- [ ] Make the central supervisor return a structured graph proposal whose
+- [x] Make the central supervisor return a structured graph proposal whose
       role selection, dependencies, fan-out, and reconciliation policy vary by
       brief. For each accepted frontier, let the same supervisor author the
       task-shaped QuickJS program instead of injecting a host-fixed all-role
@@ -2501,9 +2501,25 @@ Shared:
         API-report, closure, pack, and privacy gates passed. A read-only
         DOCSY/ATLCLI E2E then completed in 114,579 ms with seven PTC/HTTP calls
         and wrote the canonical timestamped Markdown artifact.
-  - [ ] Expose that boundary as a supervisor-only QuickJS PTC tool inside the
+  - [x] Expose that boundary as a supervisor-only QuickJS PTC tool inside the
         existing single `createDeepAgent` invocation, then dispatch only the
-        accepted graph in the same eval.
+        accepted graph in the same eval. The accepted projection separates
+        generic research/critique waves from exactly one final
+        `synthesizerTask`; a proposal-only eval, an omitted/unaccepted task, a
+        second eval, and duplicate synthesis all fail closed before duplicate
+        model work. Proven 2026-08-01: a synthetic supervisor pruned a
+        five-node catalog to three executable nodes before dispatch; Node and
+        browser reports remained byte-identical; and a built Sonnet 4.6
+        DOCSY/ATLCLI run completed Proposal -> two parallel research tasks ->
+        one synthesizer in one 7,481-byte QuickJS eval. It finished in 130,019
+        ms with seven PTC/HTTP calls and wrote the canonical timestamped
+        Markdown artifact. The final 125-test research/host suite, workspace
+        typecheck, browser-isomorphism and privacy gates, public API/closure
+        checks, production WXT build, and two-test packed MV3 lifecycle suite
+        passed. The packed test executes one atomic proposal plus five accepted
+        tasks, performs eight PTC/HTTP reads, and renders the report while
+        preserving both approved-envelope and accepted plan events across the
+        worker-to-sidebar boundary.
 - [ ] Before graph proposal, return `ResearchClarificationRequiredV1` and stop
       when the brief contains a required question or user-decision assumption.
       T3 never fabricates an answer or enters an undurable wait.
@@ -2689,6 +2705,9 @@ directory.
 T3 trace checkpoint (2026-08-01): the shared browser-safe event validator now
 admits the complete bounded trace fields emitted by the runtime, fixing a wire
 guard that previously dropped result-byte/truncation and workflow-code metrics.
+It also admits the host-owned `approved-envelope` and `accepted` graph-plan
+transitions; the packed MV3 regression test caught that these milestones were
+otherwise discarded even though execution completed safely.
 CLI and sidebar receive the accepted plan and topological waves, task grants
 and dependencies, subagent lifecycle, redacted tool argument shape, item/page
 completion and truncation metadata, accepted-packet counts and usage,

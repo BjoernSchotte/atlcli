@@ -785,7 +785,7 @@ export declare class ResearchDispatchError extends Error {
 }
 
 // export: ResearchDispatchErrorCodeV1
-export type ResearchDispatchErrorCodeV1 = "invalid-task-description" | "unknown-task" | "subagent-type-mismatch" | "response-schema-mismatch" | "task-budget-exceeded" | "task-already-dispatched" | "dependency-not-ready" | "dependency-result-mismatch" | "concurrency-exceeded" | "capability-denied" | "result-too-large" | "structured-output-invalid" | "subagent-provider-error" | "aborted" | "late-result" | "admissions-locked";
+export type ResearchDispatchErrorCodeV1 = "invalid-task-description" | "unknown-task" | "subagent-type-mismatch" | "response-schema-mismatch" | "task-budget-exceeded" | "task-already-dispatched" | "dependency-not-ready" | "dependency-result-mismatch" | "graph-proposal-required" | "concurrency-exceeded" | "capability-denied" | "result-too-large" | "structured-output-invalid" | "subagent-provider-error" | "aborted" | "late-result" | "admissions-locked";
 
 // export: ResearchDispatchInterceptionAdapter
 export interface ResearchDispatchInterceptionAdapter {
@@ -2769,7 +2769,7 @@ export declare class ResearchDispatchError extends Error {
 }
 
 // export: ResearchDispatchErrorCodeV1
-export type ResearchDispatchErrorCodeV1 = "invalid-task-description" | "unknown-task" | "subagent-type-mismatch" | "response-schema-mismatch" | "task-budget-exceeded" | "task-already-dispatched" | "dependency-not-ready" | "dependency-result-mismatch" | "concurrency-exceeded" | "capability-denied" | "result-too-large" | "structured-output-invalid" | "subagent-provider-error" | "aborted" | "late-result" | "admissions-locked";
+export type ResearchDispatchErrorCodeV1 = "invalid-task-description" | "unknown-task" | "subagent-type-mismatch" | "response-schema-mismatch" | "task-budget-exceeded" | "task-already-dispatched" | "dependency-not-ready" | "dependency-result-mismatch" | "graph-proposal-required" | "concurrency-exceeded" | "capability-denied" | "result-too-large" | "structured-output-invalid" | "subagent-provider-error" | "aborted" | "late-result" | "admissions-locked";
 
 // export: ResearchDispatchInterceptionAdapter
 export interface ResearchDispatchInterceptionAdapter {
@@ -4751,7 +4751,7 @@ export declare class ResearchDispatchError extends Error {
 }
 
 // export: ResearchDispatchErrorCodeV1
-export type ResearchDispatchErrorCodeV1 = "invalid-task-description" | "unknown-task" | "subagent-type-mismatch" | "response-schema-mismatch" | "task-budget-exceeded" | "task-already-dispatched" | "dependency-not-ready" | "dependency-result-mismatch" | "concurrency-exceeded" | "capability-denied" | "result-too-large" | "structured-output-invalid" | "subagent-provider-error" | "aborted" | "late-result" | "admissions-locked";
+export type ResearchDispatchErrorCodeV1 = "invalid-task-description" | "unknown-task" | "subagent-type-mismatch" | "response-schema-mismatch" | "task-budget-exceeded" | "task-already-dispatched" | "dependency-not-ready" | "dependency-result-mismatch" | "graph-proposal-required" | "concurrency-exceeded" | "capability-denied" | "result-too-large" | "structured-output-invalid" | "subagent-provider-error" | "aborted" | "late-result" | "admissions-locked";
 
 // export: ResearchDispatchInterceptionAdapter
 export interface ResearchDispatchInterceptionAdapter {
@@ -6057,6 +6057,7 @@ export declare function createBoundedResearchSubagentMiddleware(model: BaseChatM
         validatorIssue: string;
     }) => void | Promise<void>;
     structuredOutputStrategy?: "tool" | "provider";
+    activeGraph?: () => ResearchGraphV1 | undefined;
 }): {
     name: string;
     tools: DynamicStructuredTool<z.ZodObject<{
@@ -6138,6 +6139,13 @@ export declare function createResearchDispatchInterceptionAdapter(options: {
     acceptResult?: (taskId: string, result: unknown, rawResult: unknown) => void;
     onDiagnostic?: (diagnostic: ResearchDispatchDiagnosticV1) => void;
 }): ResearchDispatchInterceptionAdapter;
+
+// export: createResearchGraphProposalPtcTool
+export declare function createResearchGraphProposalPtcTool(catalogGraph: ResearchGraphV1, options?: {
+    canPropose?: () => boolean;
+    onAccepted?: (graph: ResearchGraphV1) => void;
+    onDiagnostic?: (status: "started" | "completed" | "failed", errorCode?: string) => void;
+}): DynamicStructuredTool;
 
 // export: createResearchKeyScopeSeedV1
 export declare function createResearchKeyScopeSeedV1(input: {
@@ -6865,7 +6873,7 @@ export declare class ResearchDispatchError extends Error {
 }
 
 // export: ResearchDispatchErrorCodeV1
-export type ResearchDispatchErrorCodeV1 = "invalid-task-description" | "unknown-task" | "subagent-type-mismatch" | "response-schema-mismatch" | "task-budget-exceeded" | "task-already-dispatched" | "dependency-not-ready" | "dependency-result-mismatch" | "concurrency-exceeded" | "capability-denied" | "result-too-large" | "structured-output-invalid" | "subagent-provider-error" | "aborted" | "late-result" | "admissions-locked";
+export type ResearchDispatchErrorCodeV1 = "invalid-task-description" | "unknown-task" | "subagent-type-mismatch" | "response-schema-mismatch" | "task-budget-exceeded" | "task-already-dispatched" | "dependency-not-ready" | "dependency-result-mismatch" | "graph-proposal-required" | "concurrency-exceeded" | "capability-denied" | "result-too-large" | "structured-output-invalid" | "subagent-provider-error" | "aborted" | "late-result" | "admissions-locked";
 
 // export: ResearchDispatchInterceptionAdapter
 export interface ResearchDispatchInterceptionAdapter {
@@ -9146,6 +9154,7 @@ export declare function createBoundedResearchSubagentMiddleware(model: BaseChatM
         validatorIssue: string;
     }) => void | Promise<void>;
     structuredOutputStrategy?: "tool" | "provider";
+    activeGraph?: () => ResearchGraphV1 | undefined;
 }): {
     name: string;
     tools: DynamicStructuredTool<z.ZodObject<{
@@ -9227,6 +9236,13 @@ export declare function createResearchDispatchInterceptionAdapter(options: {
     acceptResult?: (taskId: string, result: unknown, rawResult: unknown) => void;
     onDiagnostic?: (diagnostic: ResearchDispatchDiagnosticV1) => void;
 }): ResearchDispatchInterceptionAdapter;
+
+// export: createResearchGraphProposalPtcTool
+export declare function createResearchGraphProposalPtcTool(catalogGraph: ResearchGraphV1, options?: {
+    canPropose?: () => boolean;
+    onAccepted?: (graph: ResearchGraphV1) => void;
+    onDiagnostic?: (status: "started" | "completed" | "failed", errorCode?: string) => void;
+}): DynamicStructuredTool;
 
 // export: createResearchKeyScopeSeedV1
 export declare function createResearchKeyScopeSeedV1(input: {
@@ -9969,7 +9985,7 @@ export declare class ResearchDispatchError extends Error {
 }
 
 // export: ResearchDispatchErrorCodeV1
-export type ResearchDispatchErrorCodeV1 = "invalid-task-description" | "unknown-task" | "subagent-type-mismatch" | "response-schema-mismatch" | "task-budget-exceeded" | "task-already-dispatched" | "dependency-not-ready" | "dependency-result-mismatch" | "concurrency-exceeded" | "capability-denied" | "result-too-large" | "structured-output-invalid" | "subagent-provider-error" | "aborted" | "late-result" | "admissions-locked";
+export type ResearchDispatchErrorCodeV1 = "invalid-task-description" | "unknown-task" | "subagent-type-mismatch" | "response-schema-mismatch" | "task-budget-exceeded" | "task-already-dispatched" | "dependency-not-ready" | "dependency-result-mismatch" | "graph-proposal-required" | "concurrency-exceeded" | "capability-denied" | "result-too-large" | "structured-output-invalid" | "subagent-provider-error" | "aborted" | "late-result" | "admissions-locked";
 
 // export: ResearchDispatchInterceptionAdapter
 export interface ResearchDispatchInterceptionAdapter {

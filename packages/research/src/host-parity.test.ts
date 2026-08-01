@@ -53,11 +53,21 @@ const draft = {
 };
 
 function model() {
+  const proposal = {
+    basedOnBriefRevision: graph.basedOnBriefRevision,
+    basedOnGraphRevision: graph.revision,
+    nodes: graph.nodes.map((node) => ({
+      nodeId: node.id,
+      dependencies: [...node.dependencies],
+      reasonCodes: [node.reasonCodes[0]!],
+    })),
+  };
   const description = encodeResearchTaskDescriptionV1({
     taskId: researchTaskIdForNodeV1(graph, synthesizerNode),
     objective: synthesizerNode.objective,
   });
   const code = `
+    const acceptedGraph = JSON.parse(await tools.researchGraphPropose(${JSON.stringify(proposal)}));
     const finalDraft = await task({
       description: ${JSON.stringify(description)},
       subagentType: ${JSON.stringify(researchSubagentTypeForNodeV1(synthesizerNode))},

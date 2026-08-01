@@ -5,6 +5,7 @@ import { tool } from "@langchain/core/tools";
 import { ReplSession, validateResponseSchema } from "@langchain/quickjs";
 import {
   RESEARCH_GRAPH_SCHEMA_V1,
+  acceptResearchGraphProposalV1,
   composeResearchGraphV1,
   composeStandardResearchGraphV1,
   type ResearchBriefV1,
@@ -21,6 +22,7 @@ import {
 } from "@atlcli/research";
 import {
   buildDynamicSupervisorPrompt,
+  createResearchGraphProposalPtcTool,
   researchRecursionLimitV1,
   runResearchAgent,
 } from "@atlcli/research/browser/agent";
@@ -126,6 +128,33 @@ function taskEnvelope(
     }),
     subagentType: researchSubagentTypeForNodeV1(node),
   };
+}
+
+function graphProposalInput(
+  graph: ResearchGraphV1,
+  selectedNodeIds: readonly string[] = graph.nodes.map((node) => node.id),
+) {
+  const selected = new Set(selectedNodeIds);
+  return {
+    basedOnBriefRevision: graph.basedOnBriefRevision,
+    basedOnGraphRevision: graph.revision,
+    nodes: graph.nodes
+      .filter((node) => selected.has(node.id))
+      .map((node) => ({
+        nodeId: node.id,
+        dependencies: node.dependencies.filter((dependency) => selected.has(dependency)),
+        reasonCodes: [node.reasonCodes[0]!],
+      })),
+  };
+}
+
+function graphProposalPrelude(
+  graph: ResearchGraphV1,
+  selectedNodeIds?: readonly string[],
+): string {
+  return `const acceptedGraph = JSON.parse(await tools.researchGraphPropose(${JSON.stringify(
+    graphProposalInput(graph, selectedNodeIds),
+  )}));`;
 }
 
 test("derives a bounded LangGraph super-step allowance from the admitted workflow", () => {
@@ -553,16 +582,21 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
   test("instructs the supervisor to generate task-shaped parallel waves and delegate final authorship", () => {
     const prompt = buildDynamicSupervisorPrompt(crossProductGraph());
 
-    expect(prompt).toContain("Write the JavaScript yourself for this accepted graph");
-    expect(prompt).toContain("Promise.all may contain only nodes with the same topologicalWave and at most 3 entries");
-    expect(prompt).toContain("Execute topologicalWave values strictly in ascending order");
-    expect(prompt).toContain("never put a node in the same Promise.all as any direct or transitive dependency");
-    expect(prompt).toContain("nodeId=research-node:jira-research; topologicalWave=1");
-    expect(prompt).toContain("nodeId=research-node:cross-product-join; topologicalWave=2");
-    expect(prompt).toContain("nodeId=research-node:reconciler; topologicalWave=4");
-    expect(prompt).toContain("nodeId=research-node:synthesizer; topologicalWave=5");
+    expect(prompt).toContain("first awaited operation must call tools.researchGraphPropose");
+    expect(prompt).toContain("A proposal-only eval is invalid");
+    expect(prompt).toContain("the proposal call, every accepted task call");
+    expect(prompt).toContain("Promise.all may contain only tasks with the same wave and at most 3 entries");
+    expect(prompt).toContain("Execute wave values strictly in ascending order");
+    expect(prompt).toContain("never put a task in the same Promise.all as any direct or transitive dependency");
+    expect(prompt).toContain("candidateNodeId=research-node:jira-research");
+    expect(prompt).toContain("candidateNodeId=research-node:cross-product-join");
+    expect(prompt).toContain("candidateNodeId=research-node:reconciler");
+    expect(prompt).toContain("candidateNodeId=research-node:synthesizer");
+    expect(prompt).toContain("Those returned entries, not the candidate catalog, are the only dispatch authority");
+    expect(prompt).toContain("tasks deliberately excludes the final synthesizer");
+    expect(prompt).toContain("Never include synthesizerTask in a generic wave loop");
     expect(prompt).toContain("The only allowed envelope keys are schema, taskId, objective, and dependencyResults");
-    expect(prompt).toContain("Execute only the host-admitted graph nodes");
+    expect(prompt).toContain("Execute every entry in returned tasks exactly once");
     expect(prompt).toContain("two focused-researcher nodes are never interchangeable");
     expect(prompt).toContain("atlcli.research-task-dispatch/v1");
     expect(prompt).toContain("Every task call must include its appropriate responseSchema");
@@ -570,9 +604,9 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     expect(prompt).toContain("Duplicate task IDs are rejected before model or provider work");
     expect(prompt).toContain("Console APIs are intentionally unavailable");
     expect(prompt).toContain("Never call console.log");
-    expect(prompt).toContain("exactly the listed synthesizer node as the final task");
+    expect(prompt).toContain("dispatch synthesizerTask exactly once as the final task");
     expect(prompt).toContain("copy that object unchanged");
-    expect(prompt).toContain("do not execute a fixed all-roles pipeline");
+    expect(prompt).toContain("Do not execute a fixed all-roles pipeline");
     expect(prompt).not.toContain("paste verbatim");
     expect(prompt).not.toContain("Normative workflow program");
     expect(
@@ -580,6 +614,21 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
         items: { properties: { reasonCode: { enum: string[] } } };
       }).items.properties.reasonCode.enum,
     ).toEqual(["coverage_gap", "contradiction", "negative_claim", "stale_or_truncated"]);
+  });
+
+  test("projects the accepted synthesizer separately from generic research waves", async () => {
+    const graph = crossProductGraph();
+    const proposalTool = createResearchGraphProposalPtcTool(graph);
+    const projection = JSON.parse(await proposalTool.invoke(graphProposalInput(graph))) as {
+      tasks: Array<{ roleId: string }>;
+      synthesizerTask: { roleId: string; dependencyTaskIds: string[] };
+    };
+
+    expect(projection.tasks.some((task) => task.roleId === "synthesizer")).toBe(false);
+    expect(projection.synthesizerTask.roleId).toBe("synthesizer");
+    expect(projection.synthesizerTask.dependencyTaskIds).toHaveLength(
+      graph.nodes.filter((node) => node.executor === "subagent").length - 1,
+    );
   });
 
   test("uses one createDeepAgent invocation and native task dispatch for final synthesis", async () => {
@@ -593,6 +642,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       limitations: ["This characterization run intentionally has no source data."],
     };
     const code = `
+      ${graphProposalPrelude(graph)}
       const finalDraft = await task({
         description: ${JSON.stringify(synthesisTask.description)},
         subagentType: ${JSON.stringify(synthesisTask.subagentType)},
@@ -635,11 +685,12 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       request: { schema: "atlcli.research-request/v1" },
     });
     expect(eventKinds).toEqual([
-      "brief", "plan", "task",
+      "brief", "plan",
       "phase", "progress",
       "phase", "progress",
       "decision",
       "decision",
+      "decision", "plan", "task", "decision",
       "subagent", "task", "budget", "budget", "subagent",
       "decision",
       "decision",
@@ -648,13 +699,21 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       "artifact",
       "phase", "progress",
     ]);
-    expect(traceEvents.find((event) => event.kind === "plan")).toMatchObject({
+    expect(traceEvents.filter((event) => event.kind === "plan")).toEqual([
+      expect.objectContaining({
+        kind: "plan",
+        status: "approved-envelope",
+        selectedRoleIds: ["synthesizer"],
+        nodeCount: 1,
+      }),
+      expect.objectContaining({
       kind: "plan",
-      status: "approved",
+      status: "accepted",
       selectedRoleIds: ["synthesizer"],
       nodeCount: 1,
       waveCount: 1,
-    });
+      }),
+    ]);
     expect(traceEvents.find(
       (event) => event.kind === "task" && event.status === "planned",
     )).toMatchObject({
@@ -680,6 +739,108 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     expect(dynamicModel.calls[1]?.messages.some((message) => message.text.includes("Run this as a workflow"))).toBe(false);
   });
 
+  test("lets one supervisor prune optional roles before any native task dispatch", async () => {
+    const graph = composeResearchGraphV1(graphBrief(
+      request.question,
+      ["jira", "confluence"],
+      "analysis",
+      "auto",
+    ));
+    const selectedNodeIds = [
+      "research-node:jira-research",
+      "research-node:wiki-research",
+      "research-node:synthesizer",
+    ];
+    const jira = graph.nodes.find((node) => node.id === selectedNodeIds[0])!;
+    const wiki = graph.nodes.find((node) => node.id === selectedNodeIds[1])!;
+    const synthesizer = graph.nodes.find((node) => node.id === selectedNodeIds[2])!;
+    const emptyPacket = (answeredQuestion: string) => ({
+      schema: "atlcli.research-packet-body/v1",
+      answeredQuestion,
+      sourceIds: [],
+      findingCandidates: [],
+      relationshipCandidates: [],
+      gaps: [],
+      proposedFollowUps: [],
+      coverageLimits: ["Synthetic selection proof contains no source evidence."],
+    });
+    const draft = {
+      title: "Dynamically pruned workflow",
+      executiveSummary: "The accepted workflow omitted optional analysis roles.",
+      findings: [],
+      relationships: [],
+      limitations: ["Synthetic dynamic-composition proof."],
+    };
+    const taskId = (node: typeof jira) => researchTaskIdForNodeV1(graph, node);
+    const code = `
+      ${graphProposalPrelude(graph, selectedNodeIds)}
+      const packets = await Promise.all([
+        task({
+          description: JSON.stringify({ schema: "atlcli.research-task-dispatch/v1", taskId: ${JSON.stringify(taskId(jira))}, objective: ${JSON.stringify(jira.objective)} }),
+          subagentType: ${JSON.stringify(researchSubagentTypeForNodeV1(jira))},
+          responseSchema: ${JSON.stringify(RESEARCH_WORKER_PACKET_SCHEMA_V1)}
+        }),
+        task({
+          description: JSON.stringify({ schema: "atlcli.research-task-dispatch/v1", taskId: ${JSON.stringify(taskId(wiki))}, objective: ${JSON.stringify(wiki.objective)} }),
+          subagentType: ${JSON.stringify(researchSubagentTypeForNodeV1(wiki))},
+          responseSchema: ${JSON.stringify(RESEARCH_WORKER_PACKET_SCHEMA_V1)}
+        })
+      ]);
+      const finalDraft = await task({
+        description: JSON.stringify({
+          schema: "atlcli.research-task-dispatch/v1",
+          taskId: ${JSON.stringify(taskId(synthesizer))},
+          objective: ${JSON.stringify(synthesizer.objective)},
+          dependencyResults: [
+            { taskId: ${JSON.stringify(taskId(jira))}, result: packets[0] },
+            { taskId: ${JSON.stringify(taskId(wiki))}, result: packets[1] }
+          ]
+        }),
+        subagentType: ${JSON.stringify(researchSubagentTypeForNodeV1(synthesizer))},
+        responseSchema: ${JSON.stringify(RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1)}
+      });
+      finalDraft;
+    `;
+    const dynamicModel = fakeModel()
+      .respondWithTools([{ name: "eval", args: { code } }])
+      .respondWithTools([{ name: "ResearchPacketBodyV1", args: emptyPacket("Jira branch") }])
+      .respondWithTools([{ name: "ResearchPacketBodyV1", args: emptyPacket("Confluence branch") }])
+      .respondWithTools([{ name: "AtlcliResearchAgentDraftV1", args: draft }])
+      .respondWithTools([{ name: "AtlcliResearchAgentDraftV1", args: draft }]);
+    const events: ResearchOneShotEventV1[] = [];
+
+    const report = await runResearchAgent({
+      model: dynamicModel,
+      request,
+      providers: {
+        jira: { async searchPage() { throw new Error("model skipped PTC"); }, async getIssue() { throw new Error("model skipped PTC"); } },
+        wiki: { async searchPage() { throw new Error("model skipped PTC"); }, async getPage() { throw new Error("model skipped PTC"); } },
+      },
+      researchGraph: graph,
+      runId: "dynamic-supervisor-pruning",
+      options: { onEvent: (event) => events.push(event) },
+    });
+
+    expect(report.title).toBe(draft.title);
+    expect(dynamicModel.callCount).toBe(5);
+    expect(events.filter((event) => event.kind === "plan")).toEqual([
+      expect.objectContaining({ status: "approved-envelope", nodeCount: 5 }),
+      expect.objectContaining({
+        status: "accepted",
+        nodeCount: 3,
+        selectedRoleIds: ["focused-researcher", "synthesizer"],
+      }),
+    ]);
+    expect(events.filter((event) => event.kind === "subagent" && event.status === "started"))
+      .toEqual([
+        expect.objectContaining({ roleId: "focused-researcher" }),
+        expect.objectContaining({ roleId: "focused-researcher" }),
+        expect.objectContaining({ roleId: "synthesizer" }),
+      ]);
+    expect(events.some((event) => event.kind === "subagent" &&
+      (event.roleId === "document-distiller" || event.roleId === "reconciler"))).toBe(false);
+  });
+
   test("rejects a second supervisor eval without repeating subagent work", async () => {
     const graph = synthesisOnlyGraph();
     const synthesisTask = taskEnvelope(graph, "research-node:synthesizer");
@@ -691,6 +852,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       limitations: ["Synthetic one-shot eval admission test."],
     };
     const firstWorkflow = `
+      ${graphProposalPrelude(graph)}
       await task({
         description: ${JSON.stringify(synthesisTask.description)},
         subagentType: ${JSON.stringify(synthesisTask.subagentType)},
@@ -736,6 +898,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       limitations: ["Synthetic pre-dispatch repair test."],
     };
     const repairedWorkflow = `
+      ${graphProposalPrelude(graph)}
       const finalDraft = await task({
         description: ${JSON.stringify(synthesisTask.description)},
         subagentType: ${JSON.stringify(synthesisTask.subagentType)},
@@ -815,6 +978,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       limitations: ["Synthetic no-source branch-coverage run."],
     };
     const code = `
+      ${graphProposalPrelude(graph)}
       const packets = await Promise.all([
         task({
           description: JSON.stringify({ schema: "atlcli.research-task-dispatch/v1", taskId: ${JSON.stringify(taskId(jira))}, objective: ${JSON.stringify(jira.objective)} }),
@@ -900,7 +1064,8 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       .toHaveLength(5);
     expect(events.filter((event) => event.kind === "subagent" && event.status === "completed"))
       .toHaveLength(5);
-    expect(events.find((event) => event.kind === "plan")).toMatchObject({
+    expect(events.filter((event) => event.kind === "plan").at(-1)).toMatchObject({
+      status: "accepted",
       nodeCount: 5,
       waveCount: 4,
       maxParallelNodes: 3,
@@ -972,6 +1137,81 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       "focused-researcher:completed",
       "focused-researcher:rejected",
     ]);
+  });
+
+  test("admits only the host-accepted graph and requires its proposal first", async () => {
+    const graph = composeResearchGraphV1(graphBrief(
+      request.question,
+      ["jira", "confluence"],
+      "analysis",
+      "auto",
+    ));
+    const selectedNodeIds = [
+      "research-node:jira-research",
+      "research-node:wiki-research",
+      "research-node:synthesizer",
+    ];
+    let activeGraph: ResearchGraphV1 | undefined;
+    let invokes = 0;
+    const upstreamTask = tool(async () => {
+      invokes += 1;
+      return {
+        schema: "atlcli.research-packet-body/v1",
+        answeredQuestion: "Bounded selected branch.",
+        sourceIds: [],
+        findingCandidates: [],
+        relationshipCandidates: [],
+        gaps: [],
+        proposedFollowUps: [],
+        coverageLimits: ["Synthetic active-graph admission proof."],
+      };
+    }, {
+      name: "task",
+      description: "Synthetic upstream task.",
+      schema: z.object({ description: z.string(), subagent_type: z.string() }),
+    });
+    const middleware = createBoundedResearchSubagentMiddleware(
+      model,
+      graph,
+      compileDynamicResearchSubagents(graph, {
+        model,
+        broker,
+        question: request.question,
+        maxInterpreterMs: 5_000,
+        maxInterpreterMemoryBytes: 8_000_000,
+        maxPtcCalls: 8,
+        maxSearchPagesPerProduct: 2,
+        maxDetailItemsPerProduct: 5,
+        maxPacketChars: 8_000,
+      }),
+      {
+        createSubAgentMiddleware: (() => ({ name: "subAgentMiddleware", tools: [upstreamTask] })) as never,
+      },
+      { activeGraph: () => activeGraph },
+    );
+    const taskTool = middleware.tools![0]!;
+    const jiraTask = taskEnvelope(graph, "research-node:jira-research");
+    const omittedJoin = taskEnvelope(graph, "research-node:cross-product-join");
+
+    await expect(taskTool.invoke({
+      description: jiraTask.description,
+      subagent_type: jiraTask.subagentType,
+    })).rejects.toMatchObject({ code: "graph-proposal-required" });
+    expect(invokes).toBe(0);
+
+    activeGraph = acceptResearchGraphProposalV1(
+      graph,
+      { schema: "atlcli.research-graph-proposal/v1", ...graphProposalInput(graph, selectedNodeIds) },
+    );
+    await expect(taskTool.invoke({
+      description: omittedJoin.description,
+      subagent_type: omittedJoin.subagentType,
+    })).rejects.toMatchObject({ code: "unknown-task" });
+    await expect(taskTool.invoke({
+      description: jiraTask.description,
+      subagent_type: jiraTask.subagentType,
+    })).resolves.toBeDefined();
+    expect(invokes).toBe(1);
   });
 
   test("runs independent native task calls concurrently before critique and synthesis", async () => {

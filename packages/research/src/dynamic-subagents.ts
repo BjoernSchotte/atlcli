@@ -418,6 +418,8 @@ export function createBoundedResearchSubagentMiddleware(
       validatorIssue: string;
     }) => void | Promise<void>;
     structuredOutputStrategy?: "tool" | "provider";
+    /** Accepted supervisor selection. When present, no task is admitted before it resolves. */
+    activeGraph?: () => ResearchGraphV1 | undefined;
   } = {},
 ) {
   validateResearchGraphV1(graph);
@@ -487,18 +489,46 @@ export function createBoundedResearchSubagentMiddleware(
     if (!message || typeof message !== "object" || !("content" in message)) return result;
     return typeof message.content === "string" ? JSON.parse(message.content) : message.content;
   };
-  const admissions: ResearchTaskAdmissionV1[] = executableNodes.map((node) => ({
-    taskId: researchTaskIdForNodeV1(graph, node),
-    subagentType: researchSubagentTypeForNodeV1(node),
-    objective: node.objective,
-    dependsOnTaskIds: node.dependencies
-      .map((dependencyNodeId) => taskIdByNodeId.get(dependencyNodeId))
-      .filter((taskId): taskId is string => Boolean(taskId)),
-    grantedCapabilityIds: [...node.grantedCapabilityIds],
-    responseSchema: responseSchemaForResearchRole(node.roleId),
-    maxResultBytes: node.budget.maxResultBytes,
-    maxDurationMs: node.budget.maxDurationMs,
-  }));
+  const admissionsForGraph = (
+    activeGraph: ResearchGraphV1,
+  ): ResearchTaskAdmissionV1[] => {
+    validateResearchGraphV1(activeGraph);
+    if (activeGraph.sessionId !== graph.sessionId ||
+        activeGraph.turnId !== graph.turnId ||
+        activeGraph.revision !== graph.revision ||
+        activeGraph.basedOnBriefRevision !== graph.basedOnBriefRevision) {
+      throw new ResearchDispatchError(
+        "graph-proposal-required",
+        "The accepted research graph does not match the compiled host envelope.",
+      );
+    }
+    return activeGraph.nodes
+      .filter((node): node is ResearchGraphNodeV1 & { roleId: ResearchGraphRoleV1 } =>
+        node.executor === "subagent" && node.status !== "pruned" && Boolean(node.roleId)
+      )
+      .map((node) => {
+        const subagentType = researchSubagentTypeForNodeV1(node);
+        if (!nodeBySubagentType.has(subagentType)) {
+          throw new ResearchDispatchError(
+            "unknown-task",
+            `Accepted research graph node is outside the compiled catalog: ${node.id}`,
+          );
+        }
+        return {
+          taskId: researchTaskIdForNodeV1(activeGraph, node),
+          subagentType,
+          objective: node.objective,
+          dependsOnTaskIds: node.dependencies
+            .map((dependencyNodeId) => taskIdByNodeId.get(dependencyNodeId))
+            .filter((taskId): taskId is string => Boolean(taskId)),
+          grantedCapabilityIds: [...node.grantedCapabilityIds],
+          responseSchema: responseSchemaForResearchRole(node.roleId),
+          maxResultBytes: node.budget.maxResultBytes,
+          maxDurationMs: node.budget.maxDurationMs,
+        };
+      });
+  };
+  const admissions = admissionsForGraph(graph);
   const roleForDiagnostic = (diagnostic: ResearchDispatchDiagnosticV1): ResearchGraphRoleV1 | undefined =>
     diagnostic.taskId ? nodeByTaskId.get(diagnostic.taskId)?.roleId : undefined;
   const emitDispatchDiagnostic = (diagnostic: ResearchDispatchDiagnosticV1): void => {
@@ -541,7 +571,7 @@ export function createBoundedResearchSubagentMiddleware(
     });
   };
   const adapter = createResearchDispatchInterceptionAdapter({
-    admissions,
+    admissions: options.activeGraph ? [] : admissions,
     maxTasks: executableNodes.length,
     maxConcurrency: Math.min(MAX_CONCURRENT_SUBAGENT_TASKS, graph.maxParallelNodes),
     async invokeUpstream(input, config) {
@@ -629,7 +659,22 @@ export function createBoundedResearchSubagentMiddleware(
     onDiagnostic: emitDispatchDiagnostic,
   });
 
+  let activeAdmissionsConfigured = options.activeGraph === undefined;
+  const ensureActiveAdmissions = (): void => {
+    if (activeAdmissionsConfigured) return;
+    const activeGraph = options.activeGraph?.();
+    if (!activeGraph) {
+      throw new ResearchDispatchError(
+        "graph-proposal-required",
+        "The central supervisor must obtain host acceptance for a graph proposal before task dispatch.",
+      );
+    }
+    adapter.replaceAdmissions(admissionsForGraph(activeGraph));
+    activeAdmissionsConfigured = true;
+  };
+
   const boundedTask = tool(async (input, config) => {
+    ensureActiveAdmissions();
     const node = nodeBySubagentType.get(input.subagent_type);
     if (!node) throw new Error(`Research task subagent is not admitted: ${input.subagent_type}`);
     try {
