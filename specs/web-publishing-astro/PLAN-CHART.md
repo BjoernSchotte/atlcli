@@ -192,8 +192,9 @@ renderable by an interactive library, it still remains statically supported.
 
 - [x] Orientation: `vertical`/`horizontal` where meaningful, with equivalent
       Astro and document geometry.
-- [ ] `threeD`, `stacked`, `showShapes`, and bounded `opacity`; stacked and
-      mixed-sign geometry must be visually proven.
+- [x] `threeD`, `stacked`, `showShapes`, and bounded percentage `opacity`;
+      stacked and mixed-sign geometry is visually proven. `threeD` remains an
+      explicit flattened semantic hint because TanStack has no 3D geometry.
 - [x] Width/height with safe bounds and responsive overflow behavior.
 - [x] `dataDisplay`: hidden, before, or after the chart.
 - [ ] Title, subtitle, x-axis label, y-axis label, and all legend positions.
@@ -205,12 +206,15 @@ renderable by an interactive library, it still remains statically supported.
 - [x] `forgive` behavior as an explicit strict/lenient normalization decision;
       never silently discard malformed rows.
 - [x] Background, border, and series colors after palette validation.
-- [ ] Axis bounds, tick units, label angles, category label position, and date
-      tick position, with finite-value and range validation.
+- [ ] Axis bounds, tick units, label angles, documented category-label rotation
+      (`up45`/`up90`/`down45`/`down90`), and date-period tick placement
+      (`start`/`middle`/`end`), with finite-value and range validation.
 - [ ] Pie section label and section explode values in every static target.
-- [ ] Attachment source, attachment version/comment, and thumbnail intent as
-      provenance/fallback metadata; attachment bytes are resolved through the
-      existing asset pipeline and are never fetched by an Astro island.
+- [x] Preserve generated-chart attachment name, `new`/`replace`/`keep`
+      versioning, comment, thumbnail intent, and requested PNG/JPG format as
+      provenance only. These Chart macro parameters control Confluence's
+      optional cached output image; they are not an input-data source and must
+      never trigger an attachment fetch in an Astro island or document export.
 
 Unsupported or ambiguous parameters must produce a structured diagnostic and a
 deterministic fallback, not an arbitrary `Record<string, unknown>` escape hatch.
@@ -271,7 +275,7 @@ export interface ChartModelV1 {
   display?: { width?: number; height?: number; data?: "hidden" | "before" | "after" };
   palette?: readonly string[];
   axes?: ChartAxesV1;
-  pie?: { sectionLabel?: "name" | "value" | "percent" | "name-value"; explode?: readonly number[] };
+  pie?: { sectionLabel?: "name" | "value" | "percent" | "name-value"; explode?: readonly string[] };
   locale?: { language?: string; country?: string; dateFormat?: string; timePeriod?: string };
   data: ChartDataV1;
   source: ChartSourceProvenanceV1;
@@ -279,10 +283,12 @@ export interface ChartModelV1 {
 ```
 
 `ChartAxesV1` and `ChartSourceProvenanceV1` are also closed, dependency-free
-types. The former contains only finite bounds, tick units, label angles, and
-documented position enums. The latter contains a source kind (`cloud-adf` or
-`dc-storage`), a provider-local macro identity, and safe dependency/model
-digests; it must not contain a clickable tenant URL or authentication data.
+types. The former contains only finite bounds, tick units, label angles,
+documented category-label rotations, and documented date-period positions.
+The latter contains a source kind (`cloud-adf` or `dc-storage`), the normalized
+generated-attachment policy, a provider-local macro identity, and safe
+dependency/model digests; it must not contain a clickable tenant URL or
+authentication data.
 Colors are represented by a validated `style`/palette type (including
 background and border colors), not by unchecked CSS strings. These details are
 part of T0/T1's schema review and must be exported with the chart model.
@@ -315,8 +321,9 @@ only and must be safe to include in a public site manifest.
 - [x] Decode macro parameters into the closed `ChartModelV1` options above.
 - [x] Extract chart data from macro-body tables, including selected
       tables/columns and horizontal/vertical orientations.
-- [ ] Resolve referenced attachments through the existing authenticated asset
-      acquisition layer, then pass only verified bytes/metadata to the model.
+- [x] Treat the Chart macro's `attachment` options as generated-output cache
+      policy rather than an external data reference; preserve their safe typed
+      metadata without fetching bytes.
 - [ ] Preserve source IDs/versions in non-public provenance without leaking
       account, tenant, or credential material.
 
@@ -326,9 +333,9 @@ only and must be safe to include in a public site manifest.
       macro-body tables without rendering arbitrary XHTML.
 - [x] Support the same normalized shape matrix and diagnostics as Cloud; source
       differences belong in the adapter, not in Astro components.
-- [ ] Resolve same-page and attachment-backed data through the DC client
-      contract, with explicit behavior when a provider does not expose a
-      referenced attachment version.
+- [x] Resolve same-page body tables without treating the generated-chart
+      `attachment` setting as input data. The same typed provenance policy is
+      shared with Cloud.
 - [x] Add DC fixtures for legacy parameter spellings and malformed/partial
       macros.
 
@@ -340,8 +347,10 @@ only and must be safe to include in a public site manifest.
       do not depend on the build machine's locale.
 - [x] Implement documented `forgive` semantics as diagnostics plus a visible
       partial-data marker when rows are skipped.
-- [ ] Include table/attachment dependency digests in the page/bundle manifest so
-      a source-data change invalidates the affected page.
+- [ ] Include selected source-table dependency digests in the page/bundle
+      manifest so a source-data change invalidates the affected page. Generated
+      chart-attachment policy remains part of the model digest, not an acquired
+      asset dependency.
 
 ## 6. Macro registry and render-model integration
 
@@ -411,8 +420,8 @@ only and must be safe to include in a public site manifest.
 ## 9. Diagnostics, security, and operations
 
 - [x] Define stable diagnostic codes for unsupported kind, malformed table,
-      missing attachment, locale/date parse, truncation, skipped row, and
-      renderer fallback.
+      locale/date parse, truncation, skipped row, invalid generated-attachment
+      policy, and renderer fallback.
 - [ ] Make strict mode fail the page/build for configured P0 errors; make
       lenient mode publish a visibly marked partial result and report all
       diagnostics.
@@ -438,8 +447,7 @@ only and must be safe to include in a public site manifest.
       malformed rows, duplicate IDs, date parsing, and deterministic digests.
 - [x] Cloud ADF fixtures cover all twelve kinds and every P0 parameter family.
 - [x] DC Storage fixtures cover all twelve kinds, legacy spellings, same-page
-      table data, and malformed/partial input; attachment-backed data remains
-      an explicit follow-up.
+      table data, malformed/partial input, and generated-attachment provenance.
 - [x] Renderer tests assert source order, semantic labels, data-table values,
       escaping, responsive attributes, and JavaScript-off output.
 - [x] DOCX/PDF tests assert no chart block is dropped, the shared SVG visual is
@@ -486,7 +494,7 @@ listed in the capability registry.
       committing page content.
 - [x] If a DC provider is available, run the same matrix against DC; otherwise
       mark the DC live gate explicitly unexecuted and retain fixture evidence.
-- [ ] Verify a refresh with changed table/attachment data invalidates only the
+- [ ] Verify a refresh with changed selected-table data invalidates only the
       affected page and produces a new model/bundle digest.
 
 ## 11. Implementation tasks
@@ -509,21 +517,21 @@ listed in the capability registry.
 ### T2 — Cloud ADF source adapter
 
 - [x] Decode the Chart macro extension and all T0-supported parameters.
-- [x] Extract tables/columns; attachment-backed data remains an explicit
-      follow-up because the provider fixture exposes semantic table data.
+- [x] Extract tables/columns and retain the generated-chart attachment policy
+      without misclassifying it as an input-data dependency.
 - [x] Add Cloud unit and fixture tests for all shapes and failure modes.
 
 ### T3 — DC Storage source adapter
 
 - [x] Decode Storage XHTML macros and legacy parameters safely.
-- [x] Extract same-page table data and add DC fixtures for all shapes;
-      attachment-backed data remains a follow-up.
+- [x] Extract same-page table data, add DC fixtures for all shapes, and retain
+      the generated-chart attachment policy without fetching it as data.
 
 ### T4 — Data, locale, and dependency normalization
 
 - [x] Implement orientation, numeric/date parsing, aggregation metadata,
       `forgive`, and deterministic locale behavior.
-- [x] Emit model digests and bounded diagnostics; source-table/attachment
+- [x] Emit model digests and bounded diagnostics; selected source-table
       dependency digests remain a follow-up.
 
 ### T5 — Macro registry integration
@@ -561,7 +569,7 @@ listed in the capability registry.
 - [x] Add security/property tests, bounded diagnostics, and privacy
       scans.
 - [ ] Add independent acquisition/render resource budgets and cache invalidation
-      for source-table/attachment changes.
+      for selected source-table changes.
 
 ### T10 — End-to-end proof and documentation
 
@@ -601,9 +609,9 @@ The follow-up PR is complete only when all gates are checked:
 - [ ] Which XY/time-series renderer, if any, is promoted to an interactive
       adapter after the bounded TanStack bar proof? (Recommendation: do not
       expand until a11y and bundle budgets are measured.)
-- [ ] Should a missing attachment fail strict builds by default, or only when
-      the chart has no table data? (Recommendation: fail only when no usable
-      semantic data remains.)
+- [x] A missing generated-chart attachment never fails a build: it is an output
+      cache hint, not the source data. Missing/invalid body-table data follows
+      the normal strict/lenient chart diagnostic policy.
 - [ ] Which Gantt dependency semantics can be represented without inventing
       scheduling behavior? (Recommendation: preserve labels/edges and avoid
       recalculation.)

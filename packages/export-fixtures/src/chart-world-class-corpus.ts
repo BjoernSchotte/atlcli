@@ -38,7 +38,7 @@ export const CHART_WORLD_CLASS_BLOCKS_V1: readonly Extract<ExportBlock, { type: 
     subtitle: "Approved investment by workstream",
     legend: "right",
     threeD: true,
-    pie: { sectionLabel: "name-value", explode: [0, 10, 0, 0] },
+    pie: { sectionLabel: "name-value", explode: ["Experience"] },
     style: { colors: ["#0c66e4", "#00875a", "#6554c0", "#974f0c"] },
     display: { width: 720, height: 360, data: "after" },
     data: {
@@ -56,7 +56,7 @@ export const CHART_WORLD_CLASS_BLOCKS_V1: readonly Extract<ExportBlock, { type: 
     orientation: "horizontal",
     stacked: true,
     opacity: 0.92,
-    axes: { x: { min: -20, max: 40, tickUnit: 10 }, y: { categoryLabelPosition: "near" } },
+    axes: { x: { min: -20, max: 40, tickUnit: 10 } },
     data: {
       mode: "categories",
       labels: ["Q1", "Q2", "Q3", "Q4"],
@@ -73,7 +73,7 @@ export const CHART_WORLD_CLASS_BLOCKS_V1: readonly Extract<ExportBlock, { type: 
     yLabel: "Score",
     legend: "top",
     showShapes: true,
-    axes: { y: { min: -10, max: 40, tickUnit: 10 }, x: { labelAngle: -25, categoryLabelPosition: "far" } },
+    axes: { y: { min: -10, max: 40, tickUnit: 10 }, x: { categoryLabelPosition: "up45" } },
     data: {
       mode: "categories",
       labels: ["Jan", "Feb", "Mar", "Apr", "May", "Jun"],
@@ -180,7 +180,7 @@ export const CHART_WORLD_CLASS_BLOCKS_V1: readonly Extract<ExportBlock, { type: 
     xLabel: "Date",
     yLabel: "Published pages",
     locale: { language: "de", country: "DE", dateFormat: "dd.MM.yyyy", timePeriod: "day" },
-    axes: { x: { dateTickPosition: "center", labelAngle: -30 }, y: { min: 0, max: 80, tickUnit: 20 } },
+    axes: { x: { dateTickPosition: "middle", labelAngle: -30 }, y: { min: 0, max: 80, tickUnit: 20 } },
     data: {
       mode: "points",
       series: [{ id: "published", label: "Published", points: [

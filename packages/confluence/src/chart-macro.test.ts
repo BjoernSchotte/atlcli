@@ -54,15 +54,50 @@ describe("Confluence Chart macro normalization", () => {
       '<ac:parameter ac:name="domainAxisLower">0</ac:parameter>',
       '<ac:parameter ac:name="domainAxisUpper">12</ac:parameter>',
       '<ac:parameter ac:name="rangeAxisTickUnit">5</ac:parameter>',
-      '<ac:parameter ac:name="categoryLabelPosition">far</ac:parameter>',
+      '<ac:parameter ac:name="categoryLabelPosition">up45</ac:parameter>',
+      '<ac:parameter ac:name="dateTickMarkPosition">middle</ac:parameter>',
     ].join("")));
     expect(result.blocks[0]).toMatchObject({
       type: "chart",
       chart: {
         subtitle: "Adoption trend",
-        axes: { x: { min: 0, max: 12, categoryLabelPosition: "far" }, y: { tickUnit: 5 } },
+        axes: { x: { min: 0, max: 12, categoryLabelPosition: "up45", dateTickPosition: "middle" }, y: { tickUnit: 5 } },
       },
     });
+  });
+
+  test("normalizes documented display, pie, and generated-attachment semantics", () => {
+    const result = storageToBlocks(storageChart("pie", [
+      '<ac:parameter ac:name="opacity">65</ac:parameter>',
+      '<ac:parameter ac:name="dataDisplay">true</ac:parameter>',
+      '<ac:parameter ac:name="legend">false</ac:parameter>',
+      '<ac:parameter ac:name="pieSectionExplode">Jan</ac:parameter>',
+      '<ac:parameter ac:name="attachment">^chart.png</ac:parameter>',
+      '<ac:parameter ac:name="attachmentVersion">replace</ac:parameter>',
+      '<ac:parameter ac:name="attachmentComment">Publishing proof</ac:parameter>',
+      '<ac:parameter ac:name="thumbnail">true</ac:parameter>',
+      '<ac:parameter ac:name="imageFormat">png</ac:parameter>',
+    ].join("")));
+    expect(result.blocks[0]).toMatchObject({
+      type: "chart",
+      chart: {
+        opacity: 0.65,
+        display: { data: "after" },
+        legend: "none",
+        pie: { explode: ["Jan"] },
+        source: {
+          attachment: { filename: "^chart.png", version: "replace", comment: "Publishing proof", thumbnail: true },
+          renderedImageFormat: "png",
+        },
+      },
+    });
+  });
+
+  test("does not treat a generated chart attachment as an external data source", () => {
+    const result = storageToBlocks('<ac:structured-macro ac:name="chart"><ac:parameter ac:name="attachment">^chart.png</ac:parameter></ac:structured-macro>');
+    expect(result.blocks[0]).toMatchObject({ type: "unknown", macroName: "chart" });
+    expect(result.notes.some((note) => note.message.includes("not a data source"))).toBeTrue();
+    expect(result.notes.some((note) => note.message.includes("was not acquired"))).toBeFalse();
   });
 
   test("normalizes every documented chart kind for the Data Center Storage adapter", () => {

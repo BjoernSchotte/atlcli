@@ -192,8 +192,8 @@ function approximations(chart: ChartModelV1): TanStackChartApproximationV1[] {
   const result: TanStackChartApproximationV1[] = [];
   if (chart.threeD) result.push({ code: "flattened-3d", message: "TanStack static output intentionally flattens Confluence 3D presentation." });
   if (chart.legend && chart.legend !== "none" && chart.legend !== "top") result.push({ code: "legend-position", message: `TanStack 0.3.1 lays out the ${chart.legend} legend in its deterministic top legend region.` });
-  if (chart.pie?.explode?.some((value) => value > 0)) result.push({ code: "pie-explode", message: "TanStack 0.3.1 preserves pie labels and values but does not offset exploded sections." });
-  if (chart.axes?.x?.categoryLabelPosition || chart.axes?.x?.dateTickPosition || chart.axes?.y?.categoryLabelPosition || chart.axes?.y?.dateTickPosition) result.push({ code: "axis-position", message: "TanStack 0.3.1 preserves ticks and rotation but normalizes Confluence near/center/far axis-position hints." });
+  if ((chart.pie?.explode?.length ?? 0) > 0) result.push({ code: "pie-explode", message: "TanStack 0.3.1 preserves pie labels and values but does not offset exploded sections." });
+  if (chart.axes?.x?.categoryLabelPosition || chart.axes?.x?.dateTickPosition || chart.axes?.y?.categoryLabelPosition || chart.axes?.y?.dateTickPosition) result.push({ code: "axis-position", message: "TanStack 0.3.1 preserves ticks but the adapter still normalizes Confluence category rotation/date-period placement hints." });
   return result;
 }
 

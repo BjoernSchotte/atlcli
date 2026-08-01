@@ -88,7 +88,7 @@ describe("ChartModelV1", () => {
     expect(validateChartModelV1({
       ...model("line"),
       legend: "right",
-      axes: { x: { min: 0, max: 10, tickUnit: 5, categoryLabelPosition: "far" } },
+      axes: { x: { min: 0, max: 10, tickUnit: 5, categoryLabelPosition: "up45", dateTickPosition: "middle" } },
       display: { data: "after" },
     }).axes?.x?.tickUnit).toBe(5);
     expect(() => validateChartModelV1({ ...model("line"), axes: { x: { min: 10, max: 1 } } })).toThrow("max");

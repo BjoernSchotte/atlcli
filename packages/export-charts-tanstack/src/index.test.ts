@@ -25,7 +25,7 @@ function model(kind: ChartKindV1): ChartModelV1 {
     kind,
     title: "Allocation",
     legend: "right",
-    pie: { sectionLabel: "name-value", explode: [0, 8, 0] },
+    pie: { sectionLabel: "name-value", explode: ["Run"] },
     source,
     data: { mode: "categories", labels: ["Build", "Run", "Learn"], series: [{ id: "budget", label: "Budget", values: [50, 30, 20] }] },
   };

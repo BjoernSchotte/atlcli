@@ -71,44 +71,91 @@ function enumParameter<T extends string>(
   return value;
 }
 
-function axisPosition(value: string | undefined): ChartAxisV1["categoryLabelPosition"] {
+function categoryLabelPosition(value: string | undefined): ChartAxisV1["categoryLabelPosition"] {
   const normalized = value?.trim().toLowerCase();
-  if (normalized === "near" || normalized === "center" || normalized === "far") return normalized;
+  if (normalized === "up45" || normalized === "up90" || normalized === "down45" || normalized === "down90") return normalized;
+  return undefined;
+}
+
+function dateTickPosition(value: string | undefined): ChartAxisV1["dateTickPosition"] {
+  const normalized = value?.trim().toLowerCase();
+  if (normalized === "start" || normalized === "middle" || normalized === "end") return normalized;
+  return undefined;
+}
+
+function firstParameter(params: readonly MacroParameter[], ...names: readonly string[]): string | undefined {
+  for (const name of names) {
+    const value = parameter(params, name);
+    if (value !== undefined) return value;
+  }
   return undefined;
 }
 
 function parseAxis(params: readonly MacroParameter[], axis: "x" | "y"): ChartAxisV1 | undefined {
   const names = axis === "x"
-    ? { min: "domainaxislower", max: "domainaxisupper", tick: "domainaxistickunit", angle: "domainaxislabelangle" }
-    : { min: "rangeaxislower", max: "rangeaxisupper", tick: "rangeaxistickunit", angle: "rangeaxislabelangle" };
-  const min = numberParameter(params, names.min);
-  const max = numberParameter(params, names.max);
+    ? { min: ["domainaxislowerbound", "domainaxislower"], max: ["domainaxisupperbound", "domainaxisupper"], tick: "domainaxistickunit", angle: "domainaxislabelangle" }
+    : { min: ["rangeaxislowerbound", "rangeaxislower"], max: ["rangeaxisupperbound", "rangeaxisupper"], tick: "rangeaxistickunit", angle: "rangeaxislabelangle" };
+  const minRaw = firstParameter(params, ...names.min);
+  const maxRaw = firstParameter(params, ...names.max);
+  const min = minRaw === undefined ? undefined : (Number.isFinite(Number(minRaw.replace(",", "."))) ? Number(minRaw.replace(",", ".")) : minRaw);
+  const max = maxRaw === undefined ? undefined : (Number.isFinite(Number(maxRaw.replace(",", "."))) ? Number(maxRaw.replace(",", ".")) : maxRaw);
   const tickUnit = numberParameter(params, names.tick);
   const labelAngle = numberParameter(params, names.angle) ?? numberParameter(params, "labelangle");
-  const categoryLabelPosition = axis === "x" ? axisPosition(parameter(params, "categorylabelposition")) : undefined;
-  const dateTickPosition = axis === "x" ? axisPosition(parameter(params, "datetickposition")) : undefined;
-  if (min === undefined && max === undefined && tickUnit === undefined && labelAngle === undefined && categoryLabelPosition === undefined && dateTickPosition === undefined) return undefined;
+  const categoryPosition = axis === "x" ? categoryLabelPosition(parameter(params, "categorylabelposition")) : undefined;
+  const tickPosition = axis === "x" ? dateTickPosition(firstParameter(params, "datetickmarkposition", "datetickposition")) : undefined;
+  if (min === undefined && max === undefined && tickUnit === undefined && labelAngle === undefined && categoryPosition === undefined && tickPosition === undefined) return undefined;
   return {
     ...(min === undefined ? {} : { min }),
     ...(max === undefined ? {} : { max }),
     ...(tickUnit === undefined ? {} : { tickUnit }),
     ...(labelAngle === undefined ? {} : { labelAngle }),
-    ...(categoryLabelPosition === undefined ? {} : { categoryLabelPosition }),
-    ...(dateTickPosition === undefined ? {} : { dateTickPosition }),
+    ...(categoryPosition === undefined ? {} : { categoryLabelPosition: categoryPosition }),
+    ...(tickPosition === undefined ? {} : { dateTickPosition: tickPosition }),
   };
 }
 
 function parseAxisWithDiagnostics(params: readonly MacroParameter[], axis: "x" | "y", diagnostics: ChartDiagnosticV1[]): ChartAxisV1 | undefined {
   const parsed = parseAxis(params, axis);
   const position = parameter(params, "categorylabelposition");
-  if (axis === "x" && position !== undefined && axisPosition(position) === undefined) {
+  if (axis === "x" && position !== undefined && categoryLabelPosition(position) === undefined) {
     diagnostics.push({ code: "invalid-option", message: "Chart category label position is invalid.", parameter: "categoryLabelPosition" });
   }
-  const datePosition = parameter(params, "datetickposition");
-  if (axis === "x" && datePosition !== undefined && axisPosition(datePosition) === undefined) {
+  const datePosition = firstParameter(params, "datetickmarkposition", "datetickposition");
+  if (axis === "x" && datePosition !== undefined && dateTickPosition(datePosition) === undefined) {
     diagnostics.push({ code: "invalid-option", message: "Chart date tick position is invalid.", parameter: "dateTickPosition" });
   }
   return parsed;
+}
+
+function opacityParameter(params: readonly MacroParameter[], diagnostics: ChartDiagnosticV1[]): number | undefined {
+  const raw = parameter(params, "opacity");
+  if (raw === undefined) return undefined;
+  const percentage = Number(raw.trim().replace(/%$/u, "").replace(",", "."));
+  if (!Number.isFinite(percentage) || percentage < 0 || percentage > 100) {
+    diagnostics.push({ code: "invalid-option", message: "Chart opacity must be a percentage from 0 to 100.", parameter: "opacity" });
+    return undefined;
+  }
+  return percentage / 100;
+}
+
+function dataDisplayParameter(params: readonly MacroParameter[], diagnostics: ChartDiagnosticV1[]): NonNullable<ChartModelV1["display"]>["data"] | undefined {
+  const raw = parameter(params, "datadisplay")?.toLowerCase();
+  if (raw === undefined) return undefined;
+  if (raw === "true" || raw === "after") return "after";
+  if (raw === "false" || raw === "hidden") return "hidden";
+  if (raw === "before") return "before";
+  diagnostics.push({ code: "invalid-option", message: "Chart dataDisplay must be true, false, before, or after.", parameter: "dataDisplay" });
+  return undefined;
+}
+
+function legendParameter(params: readonly MacroParameter[], diagnostics: ChartDiagnosticV1[]): ChartModelV1["legend"] | undefined {
+  const raw = parameter(params, "legend")?.toLowerCase();
+  if (raw === undefined) return undefined;
+  if (raw === "true" || raw === "yes" || raw === "1") return "top";
+  if (raw === "false" || raw === "no" || raw === "0") return "none";
+  if (raw === "none" || raw === "top" || raw === "right" || raw === "bottom" || raw === "left") return raw;
+  diagnostics.push({ code: "invalid-option", message: "Chart legend must be boolean or a supported position.", parameter: "legend" });
+  return undefined;
 }
 
 function textOfInline(nodes: readonly import("@atlcli/export-blocks").InlineNode[]): string {
@@ -333,7 +380,7 @@ export function normalizeChartMacro(
   const table = tables[selectedTableIndex(params)] ?? tables[0];
   const attachmentName = parameter(params, "attachment") || params.find((item) => item.refs?.some((ref) => ref.kind === "attachment"))?.refs?.find((ref) => ref.kind === "attachment")?.filename;
   if (!table) {
-    diagnostics.push({ code: attachmentName ? "missing-attachment" : "malformed-data", message: attachmentName ? `Chart attachment ${attachmentName} was not acquired.` : "Chart macro has no table data." });
+    diagnostics.push({ code: "malformed-data", message: "Chart macro has no table data. Its optional attachment parameter names a generated chart image, not a data source." });
     return { diagnostics };
   }
   let data: ChartDataV1 | undefined;
@@ -342,22 +389,30 @@ export function normalizeChartMacro(
   else data = parseCategoryData(table, params, diagnostics);
   if (!data) return { diagnostics };
   for (const name of [
-    "opacity", "width", "height", "domainAxisLower", "domainAxisUpper", "domainAxisTickUnit",
+    "width", "height", "domainAxisLower", "domainAxisUpper", "domainAxisTickUnit",
     "domainAxisLabelAngle", "rangeAxisLower", "rangeAxisUpper", "rangeAxisTickUnit", "rangeAxisLabelAngle",
-    "attachmentVersion",
   ]) readNumberParameter(params, name, diagnostics);
   const stacked = readBooleanParameter(params, "stacked", diagnostics);
   const threeD = readBooleanParameter(params, "3d", diagnostics);
   const showShapes = readBooleanParameter(params, "showshapes", diagnostics);
   const thumbnail = readBooleanParameter(params, "thumbnail", diagnostics);
   const forgive = readBooleanParameter(params, "forgive", diagnostics);
-  const legend = enumParameter(params, "legend", ["none", "top", "right", "bottom", "left"] as const, diagnostics);
+  const legend = legendParameter(params, diagnostics);
   const orientation = enumParameter(params, "orientation", ["vertical", "horizontal"] as const, diagnostics);
-  const dataDisplay = enumParameter(params, "datadisplay", ["hidden", "before", "after"] as const, diagnostics);
+  const dataDisplay = dataDisplayParameter(params, diagnostics);
   const pieSectionLabel = enumParameter(params, "piesectionlabel", ["name", "value", "percent", "name-value"] as const, diagnostics);
+  const pieExplode = parameter(params, "piesectionexplode")?.split(",").map((value) => value.trim()).filter(Boolean);
+  if (kind === "pie" && pieExplode && data.mode === "categories") {
+    for (const key of pieExplode) {
+      if (!data.labels.includes(key)) diagnostics.push({ code: "invalid-option", message: `Pie section ${key} cannot be exploded because it is not present in the chart data.`, parameter: "pieSectionExplode" });
+    }
+  }
   const timePeriod = enumParameter(params, "timeperiod", [
     "millisecond", "second", "minute", "hour", "day", "week", "month", "quarter", "year",
   ] as const, diagnostics);
+  const attachmentVersion = enumParameter(params, "attachmentversion", ["new", "replace", "keep"] as const, diagnostics);
+  const renderedImageFormat = enumParameter(params, "imageformat", ["png", "jpg"] as const, diagnostics);
+  const opacity = opacityParameter(params, diagnostics);
   const xAxis = parseAxisWithDiagnostics(params, "x", diagnostics);
   const yAxis = parseAxisWithDiagnostics(params, "y", diagnostics);
   const model: ChartModelV1 = {
@@ -372,7 +427,7 @@ export function normalizeChartMacro(
     ...(stacked !== undefined ? { stacked } : {}),
     ...(threeD !== undefined ? { threeD } : {}),
     ...(showShapes !== undefined ? { showShapes } : {}),
-    ...(numberParameter(params, "opacity") !== undefined ? { opacity: numberParameter(params, "opacity") } : {}),
+    ...(opacity !== undefined ? { opacity } : {}),
     display: {
       ...(numberParameter(params, "width") !== undefined ? { width: Math.round(numberParameter(params, "width")!) } : {}),
       ...(numberParameter(params, "height") !== undefined ? { height: Math.round(numberParameter(params, "height")!) } : {}),
@@ -393,10 +448,10 @@ export function normalizeChartMacro(
       ...(parameter(params, "dateformat") ? { dateFormat: parameter(params, "dateformat") } : {}),
       ...(timePeriod !== undefined ? { timePeriod } : {}),
     },
-    ...(kind === "pie" && (parameter(params, "piesectionlabel") || parameter(params, "piesectionexplode")) ? {
+    ...(kind === "pie" && (parameter(params, "piesectionlabel") || pieExplode) ? {
       pie: {
         ...(pieSectionLabel !== undefined ? { sectionLabel: pieSectionLabel } : {}),
-        ...(parameter(params, "piesectionexplode") ? { explode: parameter(params, "piesectionexplode")!.split(/[\s,]+/u).map(Number).filter(Number.isFinite) } : {}),
+        ...(pieExplode ? { explode: pieExplode } : {}),
       },
     } : {}),
     data,
@@ -406,11 +461,12 @@ export function normalizeChartMacro(
       ...(attachmentName ? {
         attachment: {
           filename: attachmentName,
-          ...(numberParameter(params, "attachmentversion") !== undefined ? { version: Math.round(numberParameter(params, "attachmentversion")!) } : {}),
+          ...(attachmentVersion !== undefined ? { version: attachmentVersion } : {}),
           ...(parameter(params, "attachmentcomment") ? { comment: parameter(params, "attachmentcomment") } : {}),
           ...(thumbnail !== undefined ? { thumbnail } : {}),
         },
       } : {}),
+      ...(renderedImageFormat !== undefined ? { renderedImageFormat } : {}),
     },
   };
   if (threeD === true) diagnostics.push({ code: "invalid-option", message: "3D chart perspective is flattened in the source-neutral render model.", parameter: "3d" });

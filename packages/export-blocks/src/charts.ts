@@ -65,15 +65,19 @@ export type ChartDataV1 =
       tasks: readonly GanttTaskV1[];
     };
 
-export type ChartAxisPositionV1 = "near" | "center" | "far";
+/** Documented JFreeChart category-label rotations accepted by Confluence. */
+export type ChartCategoryLabelPositionV1 = "up45" | "up90" | "down45" | "down90";
+
+/** Placement of a time-series tick within its configured period. */
+export type ChartDateTickPositionV1 = "start" | "middle" | "end";
 
 export interface ChartAxisV1 {
   min?: number | string;
   max?: number | string;
   tickUnit?: number;
   labelAngle?: number;
-  categoryLabelPosition?: ChartAxisPositionV1;
-  dateTickPosition?: ChartAxisPositionV1;
+  categoryLabelPosition?: ChartCategoryLabelPositionV1;
+  dateTickPosition?: ChartDateTickPositionV1;
 }
 
 export interface ChartAxesV1 {
@@ -92,10 +96,12 @@ export interface ChartSourceProvenanceV1 {
   macroName: "chart";
   attachment?: {
     filename: string;
-    version?: number;
+    version?: "new" | "replace" | "keep";
     comment?: string;
     thumbnail?: boolean;
   };
+  /** Requested format of the optional Confluence-generated attachment. */
+  renderedImageFormat?: "png" | "jpg";
   dependencyDigest?: string;
 }
 
@@ -121,7 +127,8 @@ export interface ChartModelV1 {
   axes?: ChartAxesV1;
   pie?: {
     sectionLabel?: "name" | "value" | "percent" | "name-value";
-    explode?: readonly number[];
+    /** Category keys that Confluence asks to offset from the pie. */
+    explode?: readonly string[];
   };
   locale?: {
     language?: string;
@@ -309,7 +316,8 @@ function validateGanttData(data: Extract<ChartDataV1, { mode: "gantt" }>): void 
 
 function validateAxis(axis: ChartAxisV1 | undefined, label: string): void {
   if (!axis) return;
-  const positions = new Set<ChartAxisPositionV1>(["near", "center", "far"]);
+  const categoryPositions = new Set<ChartCategoryLabelPositionV1>(["up45", "up90", "down45", "down90"]);
+  const datePositions = new Set<ChartDateTickPositionV1>(["start", "middle", "end"]);
   for (const [key, value] of Object.entries(axis)) {
     if (key === "min" || key === "max") {
       if (typeof value === "number") finite(value, `${label}.${key}`);
@@ -323,8 +331,12 @@ function validateAxis(axis: ChartAxisV1 | undefined, label: string): void {
       if (key === "labelAngle" && Math.abs(value as number) > 360) {
         throw new ChartValidationErrorV1(`${label}.labelAngle is out of range`);
       }
-    } else if (key === "categoryLabelPosition" || key === "dateTickPosition") {
-      if (typeof value !== "string" || !positions.has(value as ChartAxisPositionV1)) {
+    } else if (key === "categoryLabelPosition") {
+      if (typeof value !== "string" || !categoryPositions.has(value as ChartCategoryLabelPositionV1)) {
+        throw new ChartValidationErrorV1(`${label}.${key} is invalid`);
+      }
+    } else if (key === "dateTickPosition") {
+      if (typeof value !== "string" || !datePositions.has(value as ChartDateTickPositionV1)) {
         throw new ChartValidationErrorV1(`${label}.${key} is invalid`);
       }
     }
@@ -363,6 +375,15 @@ export function validateChartModelV1(model: ChartModelV1): ChartModelV1 {
   if (model.pie?.sectionLabel !== undefined && !["name", "value", "percent", "name-value"].includes(model.pie.sectionLabel)) {
     throw new ChartValidationErrorV1("pie section label is invalid");
   }
+  if (model.pie?.explode !== undefined) {
+    if (model.pie.explode.length > CHART_LIMITS_V1.maxRows) {
+      throw new ChartValidationErrorV1("pie exploded-section count exceeds limits");
+    }
+    const keys = model.pie.explode.map((value, index) => boundedText(value, `pie exploded section ${index + 1}`));
+    if (keys.some((value) => !value) || new Set(keys).size !== keys.length) {
+      throw new ChartValidationErrorV1("pie exploded-section keys must be unique and non-empty");
+    }
+  }
   if (model.display) {
     for (const [key, value] of Object.entries(model.display)) {
       if (key === "width" || key === "height") {
@@ -389,6 +410,16 @@ export function validateChartModelV1(model: ChartModelV1): ChartModelV1 {
   if (model.kind === "gantt" && model.data.mode !== "gantt") throw new ChartValidationErrorV1("Gantt charts require task data");
   if (model.kind !== "gantt" && model.data.mode === "gantt") throw new ChartValidationErrorV1("non-Gantt charts cannot use task data");
   if (model.source.macroName !== "chart") throw new ChartValidationErrorV1("chart source must be the Chart macro");
+  if (model.source.attachment) {
+    boundedText(model.source.attachment.filename, "chart attachment filename");
+    if (model.source.attachment.version !== undefined && !["new", "replace", "keep"].includes(model.source.attachment.version)) {
+      throw new ChartValidationErrorV1("chart attachment version is invalid");
+    }
+    if (model.source.attachment.comment !== undefined) boundedText(model.source.attachment.comment, "chart attachment comment");
+  }
+  if (model.source.renderedImageFormat !== undefined && !["png", "jpg"].includes(model.source.renderedImageFormat)) {
+    throw new ChartValidationErrorV1("chart rendered image format is invalid");
+  }
   const encoded = new TextEncoder().encode(JSON.stringify(model));
   if (encoded.byteLength > CHART_LIMITS_V1.maxPayloadBytes) throw new ChartValidationErrorV1("chart payload exceeds limits");
   return structuredClone(model);
