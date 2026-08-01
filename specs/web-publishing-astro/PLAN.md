@@ -1455,7 +1455,7 @@ digest; route identity survives rename/move; every internal reference resolves.
 - [ ] Prefer validated SVG/static models for web diagrams/charts.
 - [x] Implement `live`, `no-live`, freshness, dependency, and frozen-provenance
       policies without leaking source data.
-- [ ] Prove raw `export_view` HTML never reaches bundle/output.
+- [x] Prove raw `export_view` HTML never reaches bundle/output.
 - [x] Add Cloud ADF and DC Storage fixture parity for web target behavior.
 - [ ] STOP if one page can read another page's local context, existing target
       behavior changes, or raw/source-provided HTML is emitted.

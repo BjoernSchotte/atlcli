@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { ExportBlock, ExportPageNode } from "@atlcli/confluence";
 import {
   createRegistry,
@@ -6,6 +9,11 @@ import {
   type MacroRenderer,
 } from "@atlcli/export-macros";
 import { exportViewFallbackRenderer } from "@atlcli/export-macros/internal";
+import {
+  digestPublicationPageV1,
+  digestPublicationRefreshPlanV1,
+} from "@atlcli/web-publish";
+import { materializeNodePublicationBundleV1 } from "@atlcli/web-publish/node";
 import { resolveWebPageMacrosV1, type ResolvedWebMacroPageV1 } from "./web-macro-resolution.js";
 
 function page(
@@ -207,6 +215,129 @@ describe("resolveWebPageMacrosV1", () => {
     expect(persistedPage).not.toContain("<script>");
     expect(persistedPage).not.toContain("macro-42");
     expect(persistedPage).not.toContain("rawExportViewHtml");
+  });
+
+  test("never writes raw export_view HTML into an activated publication bundle", async () => {
+    const rawExportViewHtml = '<img src=x onerror="globalThis.pwned=1"><script>globalThis.pwned=1</script>';
+    const resolved = await resolveWebPageMacrosV1([
+      page("macro-page", [{
+        type: "unknown",
+        macroName: "third-party-widget",
+        macroId: "macro-42",
+        plainBody: rawExportViewHtml,
+      }]),
+    ], {
+      macros: {
+        registry: createRegistry([exportViewFallbackRenderer({
+          htmlToExportBlocks() {
+            return {
+              blocks: [{ type: "paragraph", content: [{ type: "text", text: "Safely converted widget" }] }],
+              notes: [],
+            };
+          },
+        })]),
+        contextFor(pageContext) {
+          return {
+            page: pageContext,
+            depth: 0,
+            visited: new Set(),
+            exportView: {
+              async renderMacroHtml() {
+                return rawExportViewHtml;
+              },
+            },
+          };
+        },
+      },
+      policy: { mode: "allow-frozen-live", liveFreshnessSeconds: 60 },
+      now: () => 2_000,
+    });
+    const macroPage = resolved[0];
+    if (macroPage === undefined) throw new Error("expected resolved macro page");
+
+    const pageDraft = {
+      schema: "atlcli.publication-page/1" as const,
+      sourceId: macroPage.sourceId,
+      sourceVersion: String(macroPage.sourceVersion ?? 1),
+      title: "Macro page",
+      position: 0,
+      depth: 0,
+      route: "/macro-page/",
+      blocks: macroPage.blocks,
+      notes: macroPage.notes,
+      labels: [],
+      links: [],
+      assetIds: [],
+      renderDependencies: [],
+      pageDigest: "pending",
+    };
+    const publicationPage = {
+      ...pageDraft,
+      pageDigest: await digestPublicationPageV1(pageDraft),
+    };
+    const sourceSnapshot = {
+      sourceDigest: "macro-source-digest",
+      complete: true,
+      deletionAuthority: "complete-scan" as const,
+      rootIds: [macroPage.sourceId],
+      pages: [{
+        sourceId: macroPage.sourceId,
+        sourceVersion: String(macroPage.sourceVersion ?? 1),
+        representation: "atlas_doc_format" as const,
+        position: 0,
+        depth: 0,
+        title: "Macro page",
+        contentDigest: "macro-content-digest",
+        metadataDigest: "macro-metadata-digest",
+        assetMetadataDigest: "macro-assets-digest",
+        macroDependencyDigest: "macro-dependencies-digest",
+        state: "included" as const,
+      }],
+    };
+    const refreshPlanDraft = {
+      schema: "atlcli.publication-refresh-plan/1" as const,
+      sourceSnapshot,
+      changes: [{ kind: "add" as const, sourceId: macroPage.sourceId, nextDigest: "macro-content-digest" }],
+      complete: true,
+      issues: [],
+      planDigest: "pending",
+    };
+    const refreshPlan = {
+      ...refreshPlanDraft,
+      planDigest: await digestPublicationRefreshPlanV1(refreshPlanDraft),
+    };
+    const workspaceDirectory = await mkdtemp(join(tmpdir(), "atlcli-web-macro-bundle-"));
+    try {
+      const result = await materializeNodePublicationBundleV1({
+        workspaceDirectory,
+        refreshPlan,
+        createdBy: { name: "atlcli", version: "0.1.0-test" },
+        sourcePolicyDigest: "a".repeat(64),
+        rootIds: [macroPage.sourceId],
+        pages: [publicationPage],
+        routes: [{
+          sourceId: macroPage.sourceId,
+          route: "/macro-page/",
+          state: "active",
+          assignedBy: "generated",
+          previousRoutes: [],
+        }],
+        assets: [],
+        assetPolicy: { maxAssetBytes: 1_024, maxTotalBytes: 1_024 },
+      });
+      const bundleJson = await readFile(join(result.bundleDirectory, "publication.json"), "utf8");
+      const pagePath = result.bundle.pages[0]?.path;
+      if (pagePath === undefined) throw new Error("expected bundled page");
+      const bundledPageJson = await readFile(join(result.bundleDirectory, pagePath), "utf8");
+      const persistedBundle = `${bundleJson}\n${bundledPageJson}`;
+      expect(persistedBundle).toContain("Safely converted widget");
+      expect(persistedBundle).not.toContain("onerror");
+      expect(persistedBundle).not.toContain("<script>");
+      expect(persistedBundle).not.toContain("macro-42");
+      expect(persistedBundle).not.toContain(rawExportViewHtml);
+    } finally {
+      await rm(workspaceDirectory, { recursive: true, force: true });
+    }
   });
 
   test("reuses only a version-matching, explicitly fresh frozen live result", async () => {
