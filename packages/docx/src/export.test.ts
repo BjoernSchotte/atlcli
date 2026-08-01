@@ -1303,6 +1303,40 @@ describe("exportDocx — mermaid diagrams (spec 005a)", () => {
     expect(report.notes.some((n) => n.code.startsWith("diagram"))).toBe(false);
   });
 
+  it("embeds a generated chart SVG without requiring a page-asset fetcher", async () => {
+    const { calls, rasterizer } = recordingRasterizer();
+    const { bytes, report } = await exportDocx({
+      templateBytes: diagramTemplate(),
+      details: { ...details, storage: "" },
+      blocks: [{
+        type: "chart",
+        chart: {
+          schema: "atlcli.chart/1",
+          kind: "bar",
+          title: "Generated chart",
+          data: {
+            mode: "categories",
+            labels: ["A", "B"],
+            series: [{ id: "values", label: "Values", values: [1, 2] }],
+          },
+          source: { kind: "cloud-adf", macroName: "chart" },
+        },
+      }],
+      template,
+      deps,
+      rasterizer,
+    });
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.svg).toContain('class="ts-chart"');
+    const zip = new PizZip(bytes);
+    const media = Object.keys(zip.files).filter((path) => path.startsWith("word/media/"));
+    expect(media.filter((path) => path.endsWith(".svg"))).toHaveLength(1);
+    expect(media.filter((path) => path.endsWith(".png"))).toHaveLength(1);
+    expect(readPart(bytes, "word/_rels/document.xml.rels")).toContain("relationships/image");
+    expect(report.notes.some((note) => note.code === "image-svg-no-rasterizer")).toBe(false);
+  });
+
   it("routes an unsupported type (Gantt) to the pinned code block — no drawing, note names the type, rasterizer untouched", async () => {
     const { calls, rasterizer } = recordingRasterizer();
     const { bytes, report } = await exportDocx({

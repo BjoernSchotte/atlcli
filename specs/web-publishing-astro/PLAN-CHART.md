@@ -106,6 +106,13 @@ matrix remain open. The maintained evidence matrix is in
   confirms all shapes, one semantic table per chart, UTF-8 labels, strict CSP,
   focusable contained mobile visuals, hostile-label inertness, no document
   overflow, and no production browser warnings/errors.
+- The production ordinary-browser conformance bundle runs the same twelve
+  models through both public browser document entry points. Its DOCX artifact
+  contains 12 standalone TanStack SVG parts plus 12 PNG compatibility parts;
+  its captured Typst bundle contains 12 accessible TanStack SVG vector assets,
+  and both artifacts retain all 12 chart titles. This proof also caught and
+  fixed the missing-asset-fetcher case: generated DOCX charts now require only
+  the rasterizer, not an unrelated page-attachment fetcher.
 - The normal mayflower DOCX path completed for the persistent provider fixture;
   the generated document contains the shared `chart.svg`, a PNG compatibility
   rendition, the chart title, marker, table headers, and all four values. A
@@ -553,7 +560,9 @@ listed in the capability registry.
 
 - [ ] Run the packed consumers, all-shapes browser checks, Cloud
       DOCX/PDF export, and Cloud Astro publish verification; the broader browser
-      matrix and optional DC E2E remain open.
+      matrix and optional DC E2E remain open. The ordinary-browser production
+      bundle is now proven for all twelve shapes in both document engines; the
+      packed MV3 extension job path remains the host-parity gate.
 - [x] Publish a support matrix that distinguishes source support, static output,
       interactive enhancement, and document projection.
 - [x] Update user-facing docs and keep generated output out of Git.
