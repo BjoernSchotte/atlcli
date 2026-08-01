@@ -1437,7 +1437,7 @@ existing export behavior remains regression-green.
 - [x] Unit-test duplicate titles/IDs, rename/move, non-ASCII, long names,
       reserved names, separators, `..`, backslashes, case folding, base paths,
       and ambiguous/out-of-scope links.
-- [ ] STOP on title-only identity, duplicated link truth tables, path escape,
+- [x] STOP on title-only identity, duplicated link truth tables, path escape,
       or silent collision/overwrite.
 
 Acceptance: an identical graph/policy yields an identical plan and bundle
@@ -1457,7 +1457,7 @@ digest; route identity survives rename/move; every internal reference resolves.
       policies without leaking source data.
 - [x] Prove raw `export_view` HTML never reaches bundle/output.
 - [x] Add Cloud ADF and DC Storage fixture parity for web target behavior.
-- [ ] STOP if one page can read another page's local context, existing target
+- [x] STOP if one page can read another page's local context, existing target
       behavior changes, or raw/source-provided HTML is emitted.
 
 Acceptance: web macro output is per-page, typed, deterministic under frozen
@@ -1513,7 +1513,7 @@ load a bundle and build all routes with build-time network access disabled.
 - [x] Implement retention/GC by manifest reachability and grace period only.
 - [x] Test concurrent refresh/fencing, crash points, stale writer, abort, corrupt
       cache recovery, failed asset, confirmed deletion, and ambiguous absence.
-- [ ] STOP on credentialed external fetch, unsafe original SVG write, glob-based
+- [x] STOP on credentialed external fetch, unsafe original SVG write, glob-based
       delete, cache-as-authority, or mixed/partial activation.
 
 Acceptance: unchanged deterministic pages/assets are reused; changed and live
@@ -1596,7 +1596,7 @@ interaction remains bounded and has a complete static fallback.
 - [x] Prove a Starlight renderer override changes presentation without changing
       normalized content, resolved links/assets, routes, indexed text, or
       security diagnostics.
-- [ ] STOP on Starlight-private content semantics, duplicate render trees,
+- [x] STOP on Starlight-private content semantics, duplicate render trees,
       source-selected imports, undocumented override hooks, or an experience
       becoming the authority for acquisition/build/cache/security.
 
@@ -1650,7 +1650,7 @@ and presentation contracts are not Starlight-private.
 - [x] Prove a build with network disabled and no runtime `/_image` or private
       Confluence dependencies.
 - [x] Prove cold/warm builds of one bundle yield equivalent semantic manifests.
-- [ ] STOP on mixed old/new output, source-derived build modules, ambient repo
+- [x] STOP on mixed old/new output, source-derived build modules, ambient repo
       docs config, unexpected executable JS, or an unbounded output inventory.
 
 Acceptance: a Starlight candidate with complete information architecture,
@@ -1678,9 +1678,9 @@ adapter.
       tenant-disclosure acknowledgement.
 - [x] Exclude edit URLs/actions from Pagefind, related ranking, sitemap, feeds,
       JSON-LD, deployment/runtime-cache metadata, and analytics payloads.
-- [ ] Finalize `StaticPublicationManifestV1` with analytics declaration,
+- [x] Finalize `StaticPublicationManifestV1` with analytics declaration,
       edit-link summary, and exact final output digests.
-- [ ] STOP on persistent analytics queue/replay, source-controlled event data,
+- [x] STOP on persistent analytics queue/replay, source-controlled event data,
       synthesized/cross-origin edit URL, or any private/provider URL leaking to
       unrelated public artifacts.
 
@@ -1708,7 +1708,7 @@ artifact integrity, or origin security.
 - [x] Report `bundle-ready`, `built`, and `verified`; never `deployed`.
 - [x] Test retry/recovery, stale expected digest, corrupt manifest, symlink
       target, cross-device destination, build failure, and verification failure.
-- [ ] STOP if cleanup/delete authority comes from a title/glob or failure leaves
+- [x] STOP if cleanup/delete authority comes from a title/glob or failure leaves
       a mixed visible destination.
 
 Acceptance: the four-stage journey is independently repeatable and `run`
@@ -1723,10 +1723,10 @@ orchestrates it without hiding the plan, bundle, build, or verification digest.
 - [x] Extend pack checks, publishable-dependency checks, Node consumer smoke,
       Vite/browser consumer smoke, and add separate packed plain-Astro render-kit
       and full Starlight publishing consumers.
-- [ ] Pin official Astro `7.1.6` in the minimum fixture and test latest
+- [x] Pin official Astro `7.1.6` in the minimum fixture and test latest
       supported 7.x
       separately.
-- [ ] Test Ubuntu Node 22.12/Astro 7.1.6, Ubuntu Node 24/latest 7.x, and Windows
+- [x] Test Ubuntu Node 22.12/Astro 7.1.6, Ubuntu Node 24/latest 7.x, and Windows
       Node 24/Astro 7.1.6 path portability.
 - [x] Add a production Astro publishing harness with Cloud ADF and DC Storage
       synthetic fixtures, assets, links, macros, Starlight, the non-shipped
@@ -1793,18 +1793,18 @@ Node-only publishing boundary independently.
       visibility/partial warnings, and safe cleanup.
 - [x] Update CLI/package READMEs and docs-site navigation without reusing the
       docs site's Astro theme as customer runtime.
-- [ ] Run focused tests, full `bun run test`, `bun run typecheck`, build,
+- [x] Run focused tests, full `bun run test`, `bun run typecheck`, build,
       API/closure, browser, pack/consumer, docs, Astro production harness,
       Starlight/search performance, SEO/i18n/media, link/a11y/security/privacy,
       analytics/edit-link, and Windows path gates.
-- [ ] Run required real read-only Cloud E2E with profile `mayflower`, space
+- [x] Run required real read-only Cloud E2E with profile `mayflower`, space
       `DOCSY`, on representative page/tree/space content; build/inspect both URL
       profiles and abort/retry; keep private identifiers/artifacts out of Git.
-- [ ] Run a real DC E2E before making the DC-supported claim; if no provider is
+- [x] Run a real DC E2E before making the DC-supported claim; if no provider is
       available, label it `not executed`, not proven.
-- [ ] Remove only created local outputs and any deliberately created remote test
+- [x] Remove only created local outputs and any deliberately created remote test
       resources in `finally`; record proof without tenant/customer data.
-- [ ] Deliver implementation through logical conventional commits and Draft
+- [x] Deliver implementation through logical conventional commits and Draft
       PR checkpoints; do not release automatically.
 
 Acceptance: every shipped claim maps to fixture, packed artifact, browser, and
@@ -1873,51 +1873,51 @@ PRs stay Draft until their own acceptance gates pass; no automatic release.
 
 ## 17. Definition of done
 
-- [ ] T0–T12 are complete with no unresolved STOP condition.
-- [ ] Page/tree/space Cloud acquisition and local Astro static output are
+- [x] T0–T12 are complete with no unresolved STOP condition.
+- [x] Page/tree/space Cloud acquisition and local Astro static output are
       fixture-, packed-artifact-, browser-, and live-E2E proven.
-- [ ] DC Storage behavior is fixture-proven and either live-proven or labelled
+- [x] DC Storage behavior is fixture-proven and either live-proven or labelled
       honestly as not executed.
-- [ ] Immutable bundles build with network access disabled and failed
+- [x] Immutable bundles build with network access disabled and failed
       refresh/build never replaces the last valid state.
-- [ ] Route, deletion, asset, dynamic-dependency, and output ownership semantics
+- [x] Route, deletion, asset, dynamic-dependency, and output ownership semantics
       are deterministic and tested.
-- [ ] Every block has safe static output; the optional chart island works with
+- [x] Every block has safe static output; the optional chart island works with
       bounded frozen data and degrades usefully without JavaScript.
-- [ ] `@atlcli/export-blocks-astro` is independently packable and renders the
+- [x] `@atlcli/export-blocks-astro` is independently packable and renders the
       all-fields fixture in plain Astro with no Starlight, Confluence, auth,
       network, builder, search, deployment, service-worker, or runtime-cache
       dependency.
-- [ ] The ExportBlock model has a dependency-free public boundary with
+- [x] The ExportBlock model has a dependency-free public boundary with
       compatibility re-exports and unchanged DOCX/PDF/browser behavior.
-- [ ] The supported Starlight experience passes the semantic, responsive, mode,
+- [x] The supported Starlight experience passes the semantic, responsive, mode,
       print, accessibility, and search contract; a non-shipped experience
       fixture proves the adapter contract without a second production theme.
-- [ ] Pagefind client search is production-built, fully static with no hosted
+- [x] Pagefind client search is production-built, fully static with no hosted
       backend, keyboard-accessible, multilingual, faceted, base-aware,
       privacy-safe, budgeted, and free of deleted/excluded/private content.
-- [ ] Navigation, breadcrumbs, TOC, previous/next, related/landing/404 pages,
+- [x] Navigation, breadcrumbs, TOC, previous/next, related/landing/404 pages,
       canonical/hreflang/sitemap/robots/social/JSON-LD/feed output, localized
       routes, responsive images, local fonts, Expressive Code, prefetch, and
       performance budgets are artifact- and browser-proven.
-- [ ] V1 makes no installable-PWA or runtime-offline claim and emits no Web App
+- [x] V1 makes no installable-PWA or runtime-offline claim and emits no Web App
       Manifest, service worker, cache policy, or provisional PWA schema; the
       post-build augmentation seam is documented for a separate PR.
-- [ ] Analytics is off by default and the optional Plausible configuration is
+- [x] Analytics is off by default and the optional Plausible configuration is
       redacted, allowlisted, DNT-aware, non-persistent/non-replayed, and harmless
       when blocked.
-- [ ] The optional Confluence edit action uses validated provider-returned
+- [x] The optional Confluence edit action uses validated provider-returned
       Cloud/DC relations, never synthesized URLs, and is excluded from search,
       discovery/deployment/runtime-cache metadata, and analytics.
-- [ ] Strict completeness, XSS, SSRF, path, active-content, secret/private URL,
+- [x] Strict completeness, XSS, SSRF, path, active-content, secret/private URL,
       CSP, accessibility, and privacy gates pass.
-- [ ] Existing export and Markdown sync schemas/fixtures/artifacts are unchanged.
-- [ ] `wiki publish` reports local bundle/build/verification truthfully and does
+- [x] Existing export and Markdown sync schemas/fixtures/artifacts are unchanged.
+- [x] `wiki publish` reports local bundle/build/verification truthfully and does
       not claim remote deployment.
-- [ ] Public APIs, pack/consumer/browser/CI gates and user docs are complete.
-- [ ] No direct raw-ADF Astro API is claimed in V1; the future adapter can be
+- [x] Public APIs, pack/consumer/browser/CI gates and user docs are complete.
+- [x] No direct raw-ADF Astro API is claimed in V1; the future adapter can be
       added without changing the render-kit or Starlight contracts.
-- [ ] No customer/tenant data, raw source, credentials, or private artifacts are
+- [x] No customer/tenant data, raw source, credentials, or private artifacts are
       committed.
 
 ## 18. Risks and STOP/re-plan rules

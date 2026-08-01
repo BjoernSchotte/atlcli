@@ -489,3 +489,55 @@ lines, and still fails closed on mixed or mutated errors. The focused parser
 tests pass, and the full consumer smoke suite passes locally with 9 tests and
 0 failures, including tarball, filesystem-link retry, Node-LTS, and Vite
 consumer exports.
+
+## T2-T10 STOP-condition audit (2026-08-01)
+
+The remaining STOP conditions were audited against the focused contract suites and
+the current production-shaped DOCSY run. Route identity/collision/path rules and
+page-local macro context are covered by the publication graph, digest, and
+web-macro-resolution tests. Asset trust, SVG, external-fetch, cache, and atomic
+activation rules are covered by the export-media, web-publish cache, refresh, and
+builder suites. The standalone render kit and Starlight adapter prove that source
+content cannot select modules, that unsupported content stays visible as a safe
+fallback, and that Starlight does not become an acquisition/build authority.
+The Astro output verifier and builder reject mixed or unowned output, source-derived
+modules, symlink targets, ambient configuration, active content, private URLs, and
+unbounded inventories. Analytics/edit-link tests and the final private manifest
+prove `analytics: none`, an empty edit-link inclusion set for the DOCSY run, and
+digest-bound search/SEO/output inventories. Lifecycle tests cover stale writers,
+failed promotion, cleanup ownership, and recovery without glob/title deletion.
+
+The latest local verification commands were:
+
+```text
+bun run typecheck                  PASS
+bun run build                      PASS
+bun run test --max-concurrency=1  6193 passed, 15 skipped, 1 unrelated timing-flake
+isolated export-job runtime retry  PASS
+```
+
+The one full-suite timing failure was the existing JSONL monitor assertion in
+`export-job-runtime.test.ts`; the same test passed in isolation immediately after
+the full run. The required PR CI matrix is the final gate: all four Linux Bun
+shards, pinned consumer smoke, Astro 7.1.6 on Ubuntu Node 22, latest Astro 7.x on
+Ubuntu Node 24, Windows Node 24, typecheck/browser/build, publishing consumers, and
+the required aggregator passed in run `30705797902`. Non-required timing telemetry
+is intentionally outside that gate.
+
+## T11/T12 final verification and cleanup boundary (2026-08-01)
+
+The minimum fixture pins Astro `7.1.6`; the required CI matrix proves the minimum
+Ubuntu Node 22.12 lane, latest supported 7.x on Ubuntu Node 24, and Windows Node 24
+path portability. The real read-only Cloud E2E used `mayflower` against `DOCSY` and
+the complete 98-page space, with the explicit partial asset policy retaining all
+pages and surfacing three visible blocked-asset fallbacks. No Data Center provider
+was available for a live run; DC behavior is fixture-proven and the live provider
+lane is explicitly `not executed`.
+
+No remote test resource was created. Generated Astro output, bundles, inventories,
+and the local static server remain only in the untracked `.tmp-web-e2e/` handoff
+directory so the verified URLs remain inspectable. The generated output is not part
+of the commit or Draft PR; the separate generated Astro consumer fixture output was
+removed after verification. The only repository changes in the final handoff are
+source/tests and plan/evidence documentation, with the pre-existing user-owned
+`apps/cli/src/index.ts` modification left unstaged.
