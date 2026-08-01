@@ -24,7 +24,7 @@ beforeAll(async () => {
     new Response(child.stderr).text(),
   ]);
   if (exitCode !== 0) throw new Error(`web-publish-astro package build failed: ${stderr}`);
-});
+}, 120_000);
 
 const request = {
   bundle: {
