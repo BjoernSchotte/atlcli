@@ -3374,8 +3374,12 @@ Shared:
       the bounded top candidates to the supervisor/subagent. Expired,
       permission-lost, archived-disallowed, foreign-tenant, and superseded
       candidates fail closed at use time.
-- [ ] Rank search candidates before detail acquisition; remove the fixed
-      `slice(0, 3)` rule.
+- [ ] Rank search candidates before detail acquisition and replace the current
+      first-N fallback with relevance-/coverage-aware selection.
+- [x] Remove the legacy fixed three-item detail cap. Its bounded acquisition
+      prompt now receives the host-approved per-product detail budget; the
+      dynamic path already receives that same host limit. Candidate ranking and
+      iterative retrieval remain the following T6 work.
 - [ ] Implement a bounded plan/retrieve/assess-gaps loop with explicit stop
       reasons.
 - [ ] Let the central supervisor add, prune, reprioritize, or close graph nodes

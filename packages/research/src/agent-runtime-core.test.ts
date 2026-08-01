@@ -3,6 +3,7 @@ import { AIMessage, ToolMessage } from "@langchain/core/messages";
 import { tool } from "@langchain/core/tools";
 import { z } from "zod/v4";
 import {
+  buildLegacyResearchSystemPromptV1,
   createOneShotSupervisorEvalMiddleware,
   createResearchGraphProposalPtcTool,
 } from "./agent-runtime-core.js";
@@ -75,6 +76,15 @@ describe("one-shot supervisor eval capability lifecycle", () => {
       "eval",
       "AtlcliResearchAgentDraftV1",
     ]);
+  });
+});
+
+describe("legacy bounded acquisition prompt", () => {
+  test("uses the host-approved detail budget instead of a hidden three-item cap", () => {
+    const prompt = buildLegacyResearchSystemPromptV1(8);
+    expect(prompt).toContain("jira.items.slice(0, 8)");
+    expect(prompt).toContain("wiki.items.slice(0, 8)");
+    expect(prompt).not.toContain("slice(0, 3)");
   });
 });
 

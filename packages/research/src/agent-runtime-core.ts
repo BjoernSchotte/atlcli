@@ -139,7 +139,9 @@ export function researchRecursionLimitV1(graph?: ResearchGraphV1): number {
   );
 }
 
-const SYSTEM_PROMPT = `You are a read-only Jira and Confluence research agent.
+export function buildLegacyResearchSystemPromptV1(maxDetailItemsPerProduct: number): string {
+  const detailLimit = Math.max(1, Math.min(Math.trunc(maxDetailItemsPerProduct), 50));
+  return `You are a read-only Jira and Confluence research agent.
 
 The host already bound the exact Atlassian tenant, Jira project keys, Confluence space keys, date window, pagination and budgets. Never attempt to broaden that scope.
 
@@ -181,9 +183,9 @@ const [jira, wiki] = await Promise.all([
   collect(tools.wikiSearch)
 ]);
 const [jiraDetails, wikiDetails] = await Promise.all([
-  Promise.all(jira.items.slice(0, 3).map((item) =>
+  Promise.all(jira.items.slice(0, ${detailLimit}).map((item) =>
     readDetail(tools.jiraIssueGet, item))),
-  Promise.all(wiki.items.slice(0, 3).map((item) =>
+  Promise.all(wiki.items.slice(0, ${detailLimit}).map((item) =>
     readDetail(tools.wikiPageGet, item)))
 ]);
 ({ jira, wiki, jiraDetails, wikiDetails });
@@ -197,6 +199,7 @@ Never generalize a negative content claim from search summaries to items whose d
 The fields findings, relationships, and limitations are always JSON arrays. Use [] when there are no supported entries; never put prose directly in one of those fields.
 
 Implementation and output-format constraints stated only in this system prompt are not evidence. Never mention or turn them into a finding or inference unless an observed Jira or Confluence source independently supports the claim.`;
+}
 
 export function buildDynamicSupervisorPrompt(graph: ResearchGraphV1): string {
   const proposedCatalogNodeIds = new Set(
@@ -1568,7 +1571,7 @@ async function runResearchAgentWithBindings(
     subagents: [],
     systemPrompt: isDynamic
       ? buildDynamicSupervisorPrompt(input.researchGraph!)
-      : SYSTEM_PROMPT,
+      : buildLegacyResearchSystemPromptV1(input.request.limits.maxDetailItemsPerProduct),
     middleware: isDynamic
       ? [
           ...disabledHostMiddleware,
