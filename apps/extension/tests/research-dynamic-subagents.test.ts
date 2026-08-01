@@ -103,12 +103,29 @@ function graphBrief(
 }
 
 function synthesisOnlyGraph(): ResearchGraphV1 {
-  return composeResearchGraphV1(graphBrief(
+  const production = composeResearchGraphV1(graphBrief(
     "Get the exact bounded Jira item.",
     ["jira"],
     "lookup",
     "off",
   ));
+  // Keep the isolated synthesis-admission fixtures intentionally body-free.
+  // Productive lookup graphs use a focused researcher; these unit tests retain
+  // one non-subagent predecessor solely to exercise synthesizer middleware.
+  const nodes = production.nodes.map((node) => {
+    if (node.id !== "research-node:jira-lookup") return node;
+    const { roleId: _roleId, ...withoutRole } = node;
+    return { ...withoutRole, executor: "ptc" as const };
+  });
+  return {
+    ...production,
+    nodes,
+    roleDecisions: production.roleDecisions.map((decision) =>
+      decision.roleId === "focused-researcher"
+        ? { roleId: decision.roleId, decision: "omitted" as const, reasonCodes: ["not_applicable" as const] }
+        : decision
+    ),
+  };
 }
 
 function jiraAndSynthesisGraph(): ResearchGraphV1 {

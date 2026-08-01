@@ -10,6 +10,7 @@ import type {
   ResearchScopeCatalogProvidersV1,
 } from "@atlcli/research/scope-catalog-broker";
 import type { ResearchScopeCandidateV1 } from "@atlcli/research/scope-discovery";
+import { RESEARCH_SCOPE_CANDIDATE_SCHEMA_V1 } from "@atlcli/research/scope-discovery";
 import { ResearchContractError } from "@atlcli/research/contracts";
 import { classifyResearchError } from "./redaction.js";
 
@@ -99,6 +100,7 @@ function projectCandidate(
 ): ResearchScopeCandidateV1 {
   const status = project.archived === true ? "archived" : "current";
   return {
+    schema: RESEARCH_SCOPE_CANDIDATE_SCHEMA_V1,
     id: candidateId("jira", "project", project.key),
     tenantOrigin: origin,
     product: "jira",
@@ -120,6 +122,7 @@ function spaceCandidate(
 ): ResearchScopeCandidateV1 | undefined {
   if (space.status === "trashed") return undefined;
   return {
+    schema: RESEARCH_SCOPE_CANDIDATE_SCHEMA_V1,
     id: candidateId("confluence", "space", space.key),
     tenantOrigin: origin,
     product: "confluence",

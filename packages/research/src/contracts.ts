@@ -11,6 +11,8 @@ export const RESEARCH_REPORT_SCHEMA_V1 = "atlcli.research-report/v1" as const;
 export const RESEARCH_REPORT_ARTIFACT_PATH_V1 = "/artifacts/report.md" as const;
 export const RESEARCH_ONE_SHOT_POLICY_SCHEMA_V1 =
   "atlcli.research-one-shot-policy/v1" as const;
+export const RESEARCH_SCOPE_BINDING_SCHEMA_V1 =
+  "atlcli.research-scope-binding/v1" as const;
 
 export const RESEARCH_REQUESTED_EFFORTS_V1 = [
   "auto",
@@ -114,6 +116,7 @@ export type ResearchScopeSourceV1 = (typeof RESEARCH_SCOPE_SOURCES_V1)[number];
 export type ResearchScopeAuthorityV1 = (typeof RESEARCH_SCOPE_AUTHORITIES_V1)[number];
 
 export interface ResearchScopeBindingV1 {
+  schema: typeof RESEARCH_SCOPE_BINDING_SCHEMA_V1;
   id: string;
   tenantOrigin: string;
   product: ResearchProduct;
@@ -730,6 +733,9 @@ export function normalizeResearchScopeSeedsV1(
       throw new ResearchContractError("invalid-request", `Scope seed ${index + 1} has no binding.`);
     }
     const binding = seed.binding as Partial<Record<keyof ResearchScopeBindingV1, unknown>>;
+    if (binding.schema !== RESEARCH_SCOPE_BINDING_SCHEMA_V1) {
+      throw new ResearchContractError("invalid-request", `Scope seed ${index + 1} has an unsupported binding schema.`);
+    }
     const product = binding.product;
     const entityKind = binding.entityKind;
     if (product !== "jira" && product !== "confluence") {
@@ -766,6 +772,7 @@ export function normalizeResearchScopeSeedsV1(
     const key = product === "jira" ? rawKey.toUpperCase() : rawKey;
     return {
       binding: {
+        schema: RESEARCH_SCOPE_BINDING_SCHEMA_V1,
         id: boundedScopeSeedString(binding.id, `Scope seed ${index + 1} id`),
         tenantOrigin: scope.siteOrigin,
         product,

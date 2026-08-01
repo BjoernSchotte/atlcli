@@ -352,8 +352,8 @@ function composeSeeds(brief: ResearchBriefV1): NodeSeed[] {
   const seeds: NodeSeed[] = [];
 
   if (brief.resolvedEffort === "lookup") {
-    if (jira) seeds.push({ id: "research-node:jira-lookup", kind: "search", executor: "ptc", objective: "Read the exact bounded Jira lookup intent.", requestedCapabilityIds: ["jira.issue.search", "jira.issue.get"], dependencies: [], reasonCodes: ["simple_lookup"], priority: 100 });
-    if (wiki) seeds.push({ id: "research-node:wiki-lookup", kind: "search", executor: "ptc", objective: "Read the exact bounded Confluence lookup intent.", requestedCapabilityIds: ["wiki.search", "wiki.page.get"], dependencies: [], reasonCodes: ["simple_lookup"], priority: 100 });
+    if (jira) seeds.push({ id: "research-node:jira-lookup", kind: "search", executor: "subagent", roleId: "focused-researcher", objective: "Acquire detail-backed Jira evidence for the exact bounded lookup intent.", requestedCapabilityIds: ["jira.issue.search", "jira.issue.get"], dependencies: [], reasonCodes: ["simple_lookup"], priority: 100 });
+    if (wiki) seeds.push({ id: "research-node:wiki-lookup", kind: "search", executor: "subagent", roleId: "focused-researcher", objective: "Acquire detail-backed Confluence evidence for the exact bounded lookup intent.", requestedCapabilityIds: ["wiki.search", "wiki.page.get"], dependencies: [], reasonCodes: ["simple_lookup"], priority: 100 });
   } else {
     if (jira) seeds.push({ id: "research-node:jira-research", kind: "search", executor: "subagent", roleId: "focused-researcher", objective: "Acquire detail-backed Jira evidence for the accepted objective.", requestedCapabilityIds: ["jira.issue.search", "jira.issue.get"], dependencies: [], reasonCodes: ["independent_branch"], priority: 100 });
     if (wiki) seeds.push({ id: "research-node:wiki-research", kind: "search", executor: "subagent", roleId: "focused-researcher", objective: "Acquire detail-backed Confluence evidence for the accepted objective.", requestedCapabilityIds: ["wiki.search", "wiki.page.get"], dependencies: [], reasonCodes: ["independent_branch"], priority: 100 });

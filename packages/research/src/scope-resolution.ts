@@ -11,6 +11,7 @@ import type {
 import {
   createResearchScopeBindingV1,
   projectApprovedWholeScopeV1,
+  RESEARCH_SCOPE_RESOLUTION_SCHEMA_V1,
   resolveResearchScopeMentionV1,
   type ResearchScopeCandidateV1,
   type ResearchScopeMentionV1,
@@ -208,6 +209,7 @@ export async function resolveInitialResearchScopeV1(input: {
         const capability = catalogCapability(mention);
         if (!capability) {
           const unavailable: ResearchScopeResolutionV1 = {
+            schema: RESEARCH_SCOPE_RESOLUTION_SCHEMA_V1,
             mentionId: mention.id,
             state: "unavailable",
             candidateIds: [],
@@ -246,6 +248,7 @@ export async function resolveInitialResearchScopeV1(input: {
     } catch (error) {
       if (!(error instanceof ResearchContractError) || error.code === "invalid-request") throw error;
       const unavailable: ResearchScopeResolutionV1 = {
+        schema: RESEARCH_SCOPE_RESOLUTION_SCHEMA_V1,
         mentionId: mention.id,
         state: "unavailable",
         candidateIds: [],

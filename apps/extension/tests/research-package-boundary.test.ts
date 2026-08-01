@@ -41,6 +41,7 @@ describe("@atlcli/research host-neutral boundary", () => {
   test("keeps scope discovery on the same browser-safe package", () => {
     const result = resolveResearchScopeMentionV1({
       mention: {
+        schema: "atlcli.research-scope-mention/v1",
         id: "mention:package",
         source: "natural_language",
         text: "DOCSY",
@@ -49,6 +50,7 @@ describe("@atlcli/research host-neutral boundary", () => {
         entityKindHint: "space",
       },
       candidates: [{
+        schema: "atlcli.research-scope-candidate/v1",
         id: "candidate:package",
         tenantOrigin: "https://tenant-a.atlassian.net",
         product: "confluence",

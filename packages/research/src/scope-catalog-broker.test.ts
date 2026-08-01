@@ -6,6 +6,7 @@ import {
 import { RESEARCH_SCOPE_CATALOG_SCHEMAS } from "./scope-catalog.js";
 
 const baseCandidate = {
+  schema: "atlcli.research-scope-candidate/v1" as const,
   id: "research-scope-candidate:atlcli",
   tenantOrigin: "https://tenant-a.atlassian.net",
   product: "jira" as const,
@@ -85,5 +86,20 @@ describe("scope catalog broker", () => {
       includeArchived: false,
       maxCandidates: 25,
     })).rejects.toThrow("outside the active tenant");
+  });
+
+  test("fails closed when a provider returns an unversioned candidate", async () => {
+    const host = providers();
+    host.jira.listProjects = async () => ({
+      candidates: [{ ...baseCandidate, schema: undefined as never }],
+    });
+    const broker = new ResearchScopeCatalogBroker({ tenantOrigin: "https://tenant-a.atlassian.net", providers: host });
+    await expect(broker.invoke("jira.project.search", {
+      schema: RESEARCH_SCOPE_CATALOG_SCHEMAS["jira.project.search"].input,
+      product: "jira",
+      entityKind: "project",
+      includeArchived: false,
+      maxCandidates: 25,
+    })).rejects.toThrow("schema is unsupported");
   });
 });

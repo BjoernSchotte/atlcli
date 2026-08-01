@@ -9,6 +9,7 @@ import {
   type ResearchScopeCatalogPageV1,
 } from "./scope-catalog.js";
 import type { ResearchScopeCandidateV1 } from "./scope-discovery.js";
+import { RESEARCH_SCOPE_CANDIDATE_SCHEMA_V1 } from "./scope-discovery.js";
 
 export interface ResearchScopeCatalogProviderPageV1 {
   candidates: ResearchScopeCandidateV1[];
@@ -64,6 +65,7 @@ function invalid(message: string): never {
 }
 
 function assertCandidate(candidate: ResearchScopeCandidateV1, tenantOrigin: string, intent: ResearchScopeCatalogIntentV1 | ResearchReferenceResolveIntentV1): void {
+  if (candidate.schema !== RESEARCH_SCOPE_CANDIDATE_SCHEMA_V1) invalid("Scope catalog candidate schema is unsupported.");
   if (candidate.tenantOrigin !== tenantOrigin || candidate.accessible !== true) invalid("Scope catalog candidate is outside the active tenant or inaccessible.");
   if (!/^research-scope-candidate:[A-Za-z0-9-]{1,200}$/.test(candidate.id)) invalid("Scope catalog candidate id is not opaque.");
   if (!/^research-scope-entity:[A-Za-z0-9-]{1,200}$/.test(candidate.entityRef)) invalid("Scope catalog entity reference is not opaque.");

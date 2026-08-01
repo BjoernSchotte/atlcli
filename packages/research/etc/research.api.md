@@ -138,6 +138,9 @@ export declare function createResearchScopeBindingV1(input: {
     bindingId?: string;
 }): ResearchScopeBindingV1;
 
+// export: createResearchScopeExpansionProposalV1
+export declare function createResearchScopeExpansionProposalV1(input: Omit<ResearchScopeExpansionProposalV1, "schema">): ResearchScopeExpansionProposalV1;
+
 // export: createRestResearchBroker
 export declare function createRestResearchBroker(profile: Profile, request: ResearchRequestV1): ResearchCapabilityBroker;
 
@@ -530,6 +533,12 @@ export declare const RESEARCH_SCOPE_AUTHORITIES_V1: readonly [
     "locked"
 ];
 
+// export: RESEARCH_SCOPE_BINDING_SCHEMA_V1
+export declare const RESEARCH_SCOPE_BINDING_SCHEMA_V1: "atlcli.research-scope-binding/v1";
+
+// export: RESEARCH_SCOPE_CANDIDATE_SCHEMA_V1
+export declare const RESEARCH_SCOPE_CANDIDATE_SCHEMA_V1: "atlcli.research-scope-candidate/v1";
+
 // export: RESEARCH_SCOPE_CATALOG_CAPABILITY_IDS
 export declare const RESEARCH_SCOPE_CATALOG_CAPABILITY_IDS: readonly [
     "jira.project.search",
@@ -563,8 +572,17 @@ export declare const RESEARCH_SCOPE_EXPANSION_MODES_V1: readonly [
     "exact-linked"
 ];
 
+// export: RESEARCH_SCOPE_EXPANSION_PROPOSAL_SCHEMA_V1
+export declare const RESEARCH_SCOPE_EXPANSION_PROPOSAL_SCHEMA_V1: "atlcli.research-scope-expansion-proposal/v1";
+
 // export: RESEARCH_SCOPE_MENTION_PROPOSAL_SCHEMA_V1
 export declare const RESEARCH_SCOPE_MENTION_PROPOSAL_SCHEMA_V1: "atlcli.research-scope-mention-proposal/v1";
+
+// export: RESEARCH_SCOPE_MENTION_SCHEMA_V1
+export declare const RESEARCH_SCOPE_MENTION_SCHEMA_V1: "atlcli.research-scope-mention/v1";
+
+// export: RESEARCH_SCOPE_RESOLUTION_SCHEMA_V1
+export declare const RESEARCH_SCOPE_RESOLUTION_SCHEMA_V1: "atlcli.research-scope-resolution/v1";
 
 // export: RESEARCH_SCOPE_SOURCE_PRECEDENCE_V1
 export declare const RESEARCH_SCOPE_SOURCE_PRECEDENCE_V1: {
@@ -1569,6 +1587,7 @@ export type ResearchScopeAuthorityV1 = (typeof RESEARCH_SCOPE_AUTHORITIES_V1)[nu
 
 // export: ResearchScopeBindingV1
 export interface ResearchScopeBindingV1 {
+    schema: typeof RESEARCH_SCOPE_BINDING_SCHEMA_V1;
     id: string;
     tenantOrigin: string;
     product: ResearchProduct;
@@ -1585,6 +1604,7 @@ export interface ResearchScopeBindingV1 {
 
 // export: ResearchScopeCandidateV1
 export interface ResearchScopeCandidateV1 {
+    schema: typeof RESEARCH_SCOPE_CANDIDATE_SCHEMA_V1;
     id: string;
     tenantOrigin: string;
     product: ResearchProduct;
@@ -1703,6 +1723,22 @@ export type ResearchScopeEntityKindV1 = "project" | "space" | "issue" | "page";
 // export: ResearchScopeExpansionModeV1
 export type ResearchScopeExpansionModeV1 = (typeof RESEARCH_SCOPE_EXPANSION_MODES_V1)[number];
 
+// export: ResearchScopeExpansionProposalV1
+export interface ResearchScopeExpansionProposalV1 {
+    schema: typeof RESEARCH_SCOPE_EXPANSION_PROPOSAL_SCHEMA_V1;
+    id: string;
+    sessionId: string;
+    turnId: string;
+    basedOnBriefRevision: number;
+    basedOnGraphRevision: number;
+    candidateId: string;
+    expansionKind: "exact_entity" | "whole_scope";
+    reason: string;
+    provenanceRefs: string[];
+    status: "proposed" | "approved" | "rejected" | "expired";
+    approvedBindingId?: string;
+}
+
 // export: ResearchScopeMentionProposalV1
 export interface ResearchScopeMentionProposalV1 {
     schema: typeof RESEARCH_SCOPE_MENTION_PROPOSAL_SCHEMA_V1;
@@ -1720,6 +1756,7 @@ export interface ResearchScopeMentionProposalV1 {
 
 // export: ResearchScopeMentionV1
 export interface ResearchScopeMentionV1 {
+    schema: typeof RESEARCH_SCOPE_MENTION_SCHEMA_V1;
     id: string;
     productHint?: ResearchProduct;
     entityKindHint?: ResearchScopeEntityKindV1;
@@ -1745,6 +1782,7 @@ export interface ResearchScopeResolutionInputV1 {
 
 // export: ResearchScopeResolutionV1
 export interface ResearchScopeResolutionV1 {
+    schema: typeof RESEARCH_SCOPE_RESOLUTION_SCHEMA_V1;
     mentionId: string;
     state: "resolved" | "ambiguous" | "not_found" | "unavailable" | "incomplete";
     candidateIds: string[];
@@ -2178,6 +2216,9 @@ export declare function createResearchScopeBindingV1(input: {
     bindingId?: string;
 }): ResearchScopeBindingV1;
 
+// export: createResearchScopeExpansionProposalV1
+export declare function createResearchScopeExpansionProposalV1(input: Omit<ResearchScopeExpansionProposalV1, "schema">): ResearchScopeExpansionProposalV1;
+
 // export: decodeResearchGetInputV1
 export declare function decodeResearchGetInputV1(tool: "jira.issue.get" | "wiki.page.get", value: unknown): ResearchGetInputV1;
 
@@ -2561,6 +2602,12 @@ export declare const RESEARCH_SCOPE_AUTHORITIES_V1: readonly [
     "locked"
 ];
 
+// export: RESEARCH_SCOPE_BINDING_SCHEMA_V1
+export declare const RESEARCH_SCOPE_BINDING_SCHEMA_V1: "atlcli.research-scope-binding/v1";
+
+// export: RESEARCH_SCOPE_CANDIDATE_SCHEMA_V1
+export declare const RESEARCH_SCOPE_CANDIDATE_SCHEMA_V1: "atlcli.research-scope-candidate/v1";
+
 // export: RESEARCH_SCOPE_CATALOG_CAPABILITY_IDS
 export declare const RESEARCH_SCOPE_CATALOG_CAPABILITY_IDS: readonly [
     "jira.project.search",
@@ -2594,8 +2641,17 @@ export declare const RESEARCH_SCOPE_EXPANSION_MODES_V1: readonly [
     "exact-linked"
 ];
 
+// export: RESEARCH_SCOPE_EXPANSION_PROPOSAL_SCHEMA_V1
+export declare const RESEARCH_SCOPE_EXPANSION_PROPOSAL_SCHEMA_V1: "atlcli.research-scope-expansion-proposal/v1";
+
 // export: RESEARCH_SCOPE_MENTION_PROPOSAL_SCHEMA_V1
 export declare const RESEARCH_SCOPE_MENTION_PROPOSAL_SCHEMA_V1: "atlcli.research-scope-mention-proposal/v1";
+
+// export: RESEARCH_SCOPE_MENTION_SCHEMA_V1
+export declare const RESEARCH_SCOPE_MENTION_SCHEMA_V1: "atlcli.research-scope-mention/v1";
+
+// export: RESEARCH_SCOPE_RESOLUTION_SCHEMA_V1
+export declare const RESEARCH_SCOPE_RESOLUTION_SCHEMA_V1: "atlcli.research-scope-resolution/v1";
 
 // export: RESEARCH_SCOPE_SOURCE_PRECEDENCE_V1
 export declare const RESEARCH_SCOPE_SOURCE_PRECEDENCE_V1: {
@@ -3600,6 +3656,7 @@ export type ResearchScopeAuthorityV1 = (typeof RESEARCH_SCOPE_AUTHORITIES_V1)[nu
 
 // export: ResearchScopeBindingV1
 export interface ResearchScopeBindingV1 {
+    schema: typeof RESEARCH_SCOPE_BINDING_SCHEMA_V1;
     id: string;
     tenantOrigin: string;
     product: ResearchProduct;
@@ -3616,6 +3673,7 @@ export interface ResearchScopeBindingV1 {
 
 // export: ResearchScopeCandidateV1
 export interface ResearchScopeCandidateV1 {
+    schema: typeof RESEARCH_SCOPE_CANDIDATE_SCHEMA_V1;
     id: string;
     tenantOrigin: string;
     product: ResearchProduct;
@@ -3734,6 +3792,22 @@ export type ResearchScopeEntityKindV1 = "project" | "space" | "issue" | "page";
 // export: ResearchScopeExpansionModeV1
 export type ResearchScopeExpansionModeV1 = (typeof RESEARCH_SCOPE_EXPANSION_MODES_V1)[number];
 
+// export: ResearchScopeExpansionProposalV1
+export interface ResearchScopeExpansionProposalV1 {
+    schema: typeof RESEARCH_SCOPE_EXPANSION_PROPOSAL_SCHEMA_V1;
+    id: string;
+    sessionId: string;
+    turnId: string;
+    basedOnBriefRevision: number;
+    basedOnGraphRevision: number;
+    candidateId: string;
+    expansionKind: "exact_entity" | "whole_scope";
+    reason: string;
+    provenanceRefs: string[];
+    status: "proposed" | "approved" | "rejected" | "expired";
+    approvedBindingId?: string;
+}
+
 // export: ResearchScopeMentionProposalV1
 export interface ResearchScopeMentionProposalV1 {
     schema: typeof RESEARCH_SCOPE_MENTION_PROPOSAL_SCHEMA_V1;
@@ -3751,6 +3825,7 @@ export interface ResearchScopeMentionProposalV1 {
 
 // export: ResearchScopeMentionV1
 export interface ResearchScopeMentionV1 {
+    schema: typeof RESEARCH_SCOPE_MENTION_SCHEMA_V1;
     id: string;
     productHint?: ResearchProduct;
     entityKindHint?: ResearchScopeEntityKindV1;
@@ -3776,6 +3851,7 @@ export interface ResearchScopeResolutionInputV1 {
 
 // export: ResearchScopeResolutionV1
 export interface ResearchScopeResolutionV1 {
+    schema: typeof RESEARCH_SCOPE_RESOLUTION_SCHEMA_V1;
     mentionId: string;
     state: "resolved" | "ambiguous" | "not_found" | "unavailable" | "incomplete";
     candidateIds: string[];
@@ -4198,6 +4274,9 @@ export declare function createResearchScopeBindingV1(input: {
     bindingId?: string;
 }): ResearchScopeBindingV1;
 
+// export: createResearchScopeExpansionProposalV1
+export declare function createResearchScopeExpansionProposalV1(input: Omit<ResearchScopeExpansionProposalV1, "schema">): ResearchScopeExpansionProposalV1;
+
 // export: createRestResearchBroker
 export declare function createRestResearchBroker(profile: Profile, request: ResearchRequestV1): ResearchCapabilityBroker;
 
@@ -4590,6 +4669,12 @@ export declare const RESEARCH_SCOPE_AUTHORITIES_V1: readonly [
     "locked"
 ];
 
+// export: RESEARCH_SCOPE_BINDING_SCHEMA_V1
+export declare const RESEARCH_SCOPE_BINDING_SCHEMA_V1: "atlcli.research-scope-binding/v1";
+
+// export: RESEARCH_SCOPE_CANDIDATE_SCHEMA_V1
+export declare const RESEARCH_SCOPE_CANDIDATE_SCHEMA_V1: "atlcli.research-scope-candidate/v1";
+
 // export: RESEARCH_SCOPE_CATALOG_CAPABILITY_IDS
 export declare const RESEARCH_SCOPE_CATALOG_CAPABILITY_IDS: readonly [
     "jira.project.search",
@@ -4623,8 +4708,17 @@ export declare const RESEARCH_SCOPE_EXPANSION_MODES_V1: readonly [
     "exact-linked"
 ];
 
+// export: RESEARCH_SCOPE_EXPANSION_PROPOSAL_SCHEMA_V1
+export declare const RESEARCH_SCOPE_EXPANSION_PROPOSAL_SCHEMA_V1: "atlcli.research-scope-expansion-proposal/v1";
+
 // export: RESEARCH_SCOPE_MENTION_PROPOSAL_SCHEMA_V1
 export declare const RESEARCH_SCOPE_MENTION_PROPOSAL_SCHEMA_V1: "atlcli.research-scope-mention-proposal/v1";
+
+// export: RESEARCH_SCOPE_MENTION_SCHEMA_V1
+export declare const RESEARCH_SCOPE_MENTION_SCHEMA_V1: "atlcli.research-scope-mention/v1";
+
+// export: RESEARCH_SCOPE_RESOLUTION_SCHEMA_V1
+export declare const RESEARCH_SCOPE_RESOLUTION_SCHEMA_V1: "atlcli.research-scope-resolution/v1";
 
 // export: RESEARCH_SCOPE_SOURCE_PRECEDENCE_V1
 export declare const RESEARCH_SCOPE_SOURCE_PRECEDENCE_V1: {
@@ -5629,6 +5723,7 @@ export type ResearchScopeAuthorityV1 = (typeof RESEARCH_SCOPE_AUTHORITIES_V1)[nu
 
 // export: ResearchScopeBindingV1
 export interface ResearchScopeBindingV1 {
+    schema: typeof RESEARCH_SCOPE_BINDING_SCHEMA_V1;
     id: string;
     tenantOrigin: string;
     product: ResearchProduct;
@@ -5645,6 +5740,7 @@ export interface ResearchScopeBindingV1 {
 
 // export: ResearchScopeCandidateV1
 export interface ResearchScopeCandidateV1 {
+    schema: typeof RESEARCH_SCOPE_CANDIDATE_SCHEMA_V1;
     id: string;
     tenantOrigin: string;
     product: ResearchProduct;
@@ -5763,6 +5859,22 @@ export type ResearchScopeEntityKindV1 = "project" | "space" | "issue" | "page";
 // export: ResearchScopeExpansionModeV1
 export type ResearchScopeExpansionModeV1 = (typeof RESEARCH_SCOPE_EXPANSION_MODES_V1)[number];
 
+// export: ResearchScopeExpansionProposalV1
+export interface ResearchScopeExpansionProposalV1 {
+    schema: typeof RESEARCH_SCOPE_EXPANSION_PROPOSAL_SCHEMA_V1;
+    id: string;
+    sessionId: string;
+    turnId: string;
+    basedOnBriefRevision: number;
+    basedOnGraphRevision: number;
+    candidateId: string;
+    expansionKind: "exact_entity" | "whole_scope";
+    reason: string;
+    provenanceRefs: string[];
+    status: "proposed" | "approved" | "rejected" | "expired";
+    approvedBindingId?: string;
+}
+
 // export: ResearchScopeMentionProposalV1
 export interface ResearchScopeMentionProposalV1 {
     schema: typeof RESEARCH_SCOPE_MENTION_PROPOSAL_SCHEMA_V1;
@@ -5780,6 +5892,7 @@ export interface ResearchScopeMentionProposalV1 {
 
 // export: ResearchScopeMentionV1
 export interface ResearchScopeMentionV1 {
+    schema: typeof RESEARCH_SCOPE_MENTION_SCHEMA_V1;
     id: string;
     productHint?: ResearchProduct;
     entityKindHint?: ResearchScopeEntityKindV1;
@@ -5805,6 +5918,7 @@ export interface ResearchScopeResolutionInputV1 {
 
 // export: ResearchScopeResolutionV1
 export interface ResearchScopeResolutionV1 {
+    schema: typeof RESEARCH_SCOPE_RESOLUTION_SCHEMA_V1;
     mentionId: string;
     state: "resolved" | "ambiguous" | "not_found" | "unavailable" | "incomplete";
     candidateIds: string[];
@@ -6350,6 +6464,9 @@ export declare function createResearchScopeBindingV1(input: {
 // export: createResearchScopeCatalogPtcTools
 export declare function createResearchScopeCatalogPtcTools(broker: ResearchScopeCatalogBroker, options: ResearchScopeCatalogPtcOptions): StructuredToolInterface[];
 
+// export: createResearchScopeExpansionProposalV1
+export declare function createResearchScopeExpansionProposalV1(input: Omit<ResearchScopeExpansionProposalV1, "schema">): ResearchScopeExpansionProposalV1;
+
 // export: createRestResearchBroker
 export declare function createRestResearchBroker(profile: Profile, request: ResearchRequestV1): ResearchCapabilityBroker;
 
@@ -6777,6 +6894,12 @@ export declare const RESEARCH_SCOPE_AUTHORITIES_V1: readonly [
     "locked"
 ];
 
+// export: RESEARCH_SCOPE_BINDING_SCHEMA_V1
+export declare const RESEARCH_SCOPE_BINDING_SCHEMA_V1: "atlcli.research-scope-binding/v1";
+
+// export: RESEARCH_SCOPE_CANDIDATE_SCHEMA_V1
+export declare const RESEARCH_SCOPE_CANDIDATE_SCHEMA_V1: "atlcli.research-scope-candidate/v1";
+
 // export: RESEARCH_SCOPE_CATALOG_CAPABILITY_IDS
 export declare const RESEARCH_SCOPE_CATALOG_CAPABILITY_IDS: readonly [
     "jira.project.search",
@@ -6817,8 +6940,17 @@ export declare const RESEARCH_SCOPE_EXPANSION_MODES_V1: readonly [
     "exact-linked"
 ];
 
+// export: RESEARCH_SCOPE_EXPANSION_PROPOSAL_SCHEMA_V1
+export declare const RESEARCH_SCOPE_EXPANSION_PROPOSAL_SCHEMA_V1: "atlcli.research-scope-expansion-proposal/v1";
+
 // export: RESEARCH_SCOPE_MENTION_PROPOSAL_SCHEMA_V1
 export declare const RESEARCH_SCOPE_MENTION_PROPOSAL_SCHEMA_V1: "atlcli.research-scope-mention-proposal/v1";
+
+// export: RESEARCH_SCOPE_MENTION_SCHEMA_V1
+export declare const RESEARCH_SCOPE_MENTION_SCHEMA_V1: "atlcli.research-scope-mention/v1";
+
+// export: RESEARCH_SCOPE_RESOLUTION_SCHEMA_V1
+export declare const RESEARCH_SCOPE_RESOLUTION_SCHEMA_V1: "atlcli.research-scope-resolution/v1";
 
 // export: RESEARCH_SCOPE_SOURCE_PRECEDENCE_V1
 export declare const RESEARCH_SCOPE_SOURCE_PRECEDENCE_V1: {
@@ -7862,6 +7994,7 @@ export type ResearchScopeAuthorityV1 = (typeof RESEARCH_SCOPE_AUTHORITIES_V1)[nu
 
 // export: ResearchScopeBindingV1
 export interface ResearchScopeBindingV1 {
+    schema: typeof RESEARCH_SCOPE_BINDING_SCHEMA_V1;
     id: string;
     tenantOrigin: string;
     product: ResearchProduct;
@@ -7878,6 +8011,7 @@ export interface ResearchScopeBindingV1 {
 
 // export: ResearchScopeCandidateV1
 export interface ResearchScopeCandidateV1 {
+    schema: typeof RESEARCH_SCOPE_CANDIDATE_SCHEMA_V1;
     id: string;
     tenantOrigin: string;
     product: ResearchProduct;
@@ -8001,6 +8135,22 @@ export type ResearchScopeEntityKindV1 = "project" | "space" | "issue" | "page";
 // export: ResearchScopeExpansionModeV1
 export type ResearchScopeExpansionModeV1 = (typeof RESEARCH_SCOPE_EXPANSION_MODES_V1)[number];
 
+// export: ResearchScopeExpansionProposalV1
+export interface ResearchScopeExpansionProposalV1 {
+    schema: typeof RESEARCH_SCOPE_EXPANSION_PROPOSAL_SCHEMA_V1;
+    id: string;
+    sessionId: string;
+    turnId: string;
+    basedOnBriefRevision: number;
+    basedOnGraphRevision: number;
+    candidateId: string;
+    expansionKind: "exact_entity" | "whole_scope";
+    reason: string;
+    provenanceRefs: string[];
+    status: "proposed" | "approved" | "rejected" | "expired";
+    approvedBindingId?: string;
+}
+
 // export: ResearchScopeMentionProposalV1
 export interface ResearchScopeMentionProposalV1 {
     schema: typeof RESEARCH_SCOPE_MENTION_PROPOSAL_SCHEMA_V1;
@@ -8018,6 +8168,7 @@ export interface ResearchScopeMentionProposalV1 {
 
 // export: ResearchScopeMentionV1
 export interface ResearchScopeMentionV1 {
+    schema: typeof RESEARCH_SCOPE_MENTION_SCHEMA_V1;
     id: string;
     productHint?: ResearchProduct;
     entityKindHint?: ResearchScopeEntityKindV1;
@@ -8043,6 +8194,7 @@ export interface ResearchScopeResolutionInputV1 {
 
 // export: ResearchScopeResolutionV1
 export interface ResearchScopeResolutionV1 {
+    schema: typeof RESEARCH_SCOPE_RESOLUTION_SCHEMA_V1;
     mentionId: string;
     state: "resolved" | "ambiguous" | "not_found" | "unavailable" | "incomplete";
     candidateIds: string[];
@@ -8570,6 +8722,9 @@ export declare const RESEARCH_SCOPE_AUTHORITIES_V1: readonly [
     "locked"
 ];
 
+// export: RESEARCH_SCOPE_BINDING_SCHEMA_V1
+export declare const RESEARCH_SCOPE_BINDING_SCHEMA_V1: "atlcli.research-scope-binding/v1";
+
 // export: RESEARCH_SCOPE_EXPANSION_MODES_V1
 export declare const RESEARCH_SCOPE_EXPANSION_MODES_V1: readonly [
     "strict",
@@ -8948,6 +9103,7 @@ export type ResearchScopeAuthorityV1 = (typeof RESEARCH_SCOPE_AUTHORITIES_V1)[nu
 
 // export: ResearchScopeBindingV1
 export interface ResearchScopeBindingV1 {
+    schema: typeof RESEARCH_SCOPE_BINDING_SCHEMA_V1;
     id: string;
     tenantOrigin: string;
     product: ResearchProduct;
@@ -9542,6 +9698,9 @@ export declare function createResearchScopeBindingV1(input: {
 // export: createResearchScopeCatalogPtcTools
 export declare function createResearchScopeCatalogPtcTools(broker: ResearchScopeCatalogBroker, options: ResearchScopeCatalogPtcOptions): StructuredToolInterface[];
 
+// export: createResearchScopeExpansionProposalV1
+export declare function createResearchScopeExpansionProposalV1(input: Omit<ResearchScopeExpansionProposalV1, "schema">): ResearchScopeExpansionProposalV1;
+
 // export: createRestResearchBroker
 export declare function createRestResearchBroker(profile: Profile, request: ResearchRequestV1): ResearchCapabilityBroker;
 
@@ -9984,6 +10143,12 @@ export declare const RESEARCH_SCOPE_AUTHORITIES_V1: readonly [
     "locked"
 ];
 
+// export: RESEARCH_SCOPE_BINDING_SCHEMA_V1
+export declare const RESEARCH_SCOPE_BINDING_SCHEMA_V1: "atlcli.research-scope-binding/v1";
+
+// export: RESEARCH_SCOPE_CANDIDATE_SCHEMA_V1
+export declare const RESEARCH_SCOPE_CANDIDATE_SCHEMA_V1: "atlcli.research-scope-candidate/v1";
+
 // export: RESEARCH_SCOPE_CATALOG_CAPABILITY_IDS
 export declare const RESEARCH_SCOPE_CATALOG_CAPABILITY_IDS: readonly [
     "jira.project.search",
@@ -10024,8 +10189,17 @@ export declare const RESEARCH_SCOPE_EXPANSION_MODES_V1: readonly [
     "exact-linked"
 ];
 
+// export: RESEARCH_SCOPE_EXPANSION_PROPOSAL_SCHEMA_V1
+export declare const RESEARCH_SCOPE_EXPANSION_PROPOSAL_SCHEMA_V1: "atlcli.research-scope-expansion-proposal/v1";
+
 // export: RESEARCH_SCOPE_MENTION_PROPOSAL_SCHEMA_V1
 export declare const RESEARCH_SCOPE_MENTION_PROPOSAL_SCHEMA_V1: "atlcli.research-scope-mention-proposal/v1";
+
+// export: RESEARCH_SCOPE_MENTION_SCHEMA_V1
+export declare const RESEARCH_SCOPE_MENTION_SCHEMA_V1: "atlcli.research-scope-mention/v1";
+
+// export: RESEARCH_SCOPE_RESOLUTION_SCHEMA_V1
+export declare const RESEARCH_SCOPE_RESOLUTION_SCHEMA_V1: "atlcli.research-scope-resolution/v1";
 
 // export: RESEARCH_SCOPE_SOURCE_PRECEDENCE_V1
 export declare const RESEARCH_SCOPE_SOURCE_PRECEDENCE_V1: {
@@ -11069,6 +11243,7 @@ export type ResearchScopeAuthorityV1 = (typeof RESEARCH_SCOPE_AUTHORITIES_V1)[nu
 
 // export: ResearchScopeBindingV1
 export interface ResearchScopeBindingV1 {
+    schema: typeof RESEARCH_SCOPE_BINDING_SCHEMA_V1;
     id: string;
     tenantOrigin: string;
     product: ResearchProduct;
@@ -11085,6 +11260,7 @@ export interface ResearchScopeBindingV1 {
 
 // export: ResearchScopeCandidateV1
 export interface ResearchScopeCandidateV1 {
+    schema: typeof RESEARCH_SCOPE_CANDIDATE_SCHEMA_V1;
     id: string;
     tenantOrigin: string;
     product: ResearchProduct;
@@ -11208,6 +11384,22 @@ export type ResearchScopeEntityKindV1 = "project" | "space" | "issue" | "page";
 // export: ResearchScopeExpansionModeV1
 export type ResearchScopeExpansionModeV1 = (typeof RESEARCH_SCOPE_EXPANSION_MODES_V1)[number];
 
+// export: ResearchScopeExpansionProposalV1
+export interface ResearchScopeExpansionProposalV1 {
+    schema: typeof RESEARCH_SCOPE_EXPANSION_PROPOSAL_SCHEMA_V1;
+    id: string;
+    sessionId: string;
+    turnId: string;
+    basedOnBriefRevision: number;
+    basedOnGraphRevision: number;
+    candidateId: string;
+    expansionKind: "exact_entity" | "whole_scope";
+    reason: string;
+    provenanceRefs: string[];
+    status: "proposed" | "approved" | "rejected" | "expired";
+    approvedBindingId?: string;
+}
+
 // export: ResearchScopeMentionProposalV1
 export interface ResearchScopeMentionProposalV1 {
     schema: typeof RESEARCH_SCOPE_MENTION_PROPOSAL_SCHEMA_V1;
@@ -11225,6 +11417,7 @@ export interface ResearchScopeMentionProposalV1 {
 
 // export: ResearchScopeMentionV1
 export interface ResearchScopeMentionV1 {
+    schema: typeof RESEARCH_SCOPE_MENTION_SCHEMA_V1;
     id: string;
     productHint?: ResearchProduct;
     entityKindHint?: ResearchScopeEntityKindV1;
@@ -11250,6 +11443,7 @@ export interface ResearchScopeResolutionInputV1 {
 
 // export: ResearchScopeResolutionV1
 export interface ResearchScopeResolutionV1 {
+    schema: typeof RESEARCH_SCOPE_RESOLUTION_SCHEMA_V1;
     mentionId: string;
     state: "resolved" | "ambiguous" | "not_found" | "unavailable" | "incomplete";
     candidateIds: string[];
@@ -11745,20 +11939,36 @@ export declare function createResearchScopeBindingV1(input: {
     bindingId?: string;
 }): ResearchScopeBindingV1;
 
+// export: createResearchScopeExpansionProposalV1
+export declare function createResearchScopeExpansionProposalV1(input: Omit<ResearchScopeExpansionProposalV1, "schema">): ResearchScopeExpansionProposalV1;
+
 // export: normalizeResearchScopeMentionText
 export declare function normalizeResearchScopeMentionText(value: string): string;
 
 // export: projectApprovedWholeScopeV1
 export declare function projectApprovedWholeScopeV1(bindings: readonly ResearchScopeBindingV1[], base: ResearchScopeV1): ResearchScopeV1;
 
+// export: RESEARCH_SCOPE_CANDIDATE_SCHEMA_V1
+export declare const RESEARCH_SCOPE_CANDIDATE_SCHEMA_V1: "atlcli.research-scope-candidate/v1";
+
+// export: RESEARCH_SCOPE_EXPANSION_PROPOSAL_SCHEMA_V1
+export declare const RESEARCH_SCOPE_EXPANSION_PROPOSAL_SCHEMA_V1: "atlcli.research-scope-expansion-proposal/v1";
+
 // export: RESEARCH_SCOPE_MENTION_PROPOSAL_SCHEMA_V1
 export declare const RESEARCH_SCOPE_MENTION_PROPOSAL_SCHEMA_V1: "atlcli.research-scope-mention-proposal/v1";
+
+// export: RESEARCH_SCOPE_MENTION_SCHEMA_V1
+export declare const RESEARCH_SCOPE_MENTION_SCHEMA_V1: "atlcli.research-scope-mention/v1";
+
+// export: RESEARCH_SCOPE_RESOLUTION_SCHEMA_V1
+export declare const RESEARCH_SCOPE_RESOLUTION_SCHEMA_V1: "atlcli.research-scope-resolution/v1";
 
 // export: ResearchScopeAuthorityV1
 export type ResearchScopeAuthorityV1 = (typeof RESEARCH_SCOPE_AUTHORITIES_V1)[number];
 
 // export: ResearchScopeBindingV1
 export interface ResearchScopeBindingV1 {
+    schema: typeof RESEARCH_SCOPE_BINDING_SCHEMA_V1;
     id: string;
     tenantOrigin: string;
     product: ResearchProduct;
@@ -11775,6 +11985,7 @@ export interface ResearchScopeBindingV1 {
 
 // export: ResearchScopeCandidateV1
 export interface ResearchScopeCandidateV1 {
+    schema: typeof RESEARCH_SCOPE_CANDIDATE_SCHEMA_V1;
     id: string;
     tenantOrigin: string;
     product: ResearchProduct;
@@ -11793,6 +12004,22 @@ export interface ResearchScopeCandidateV1 {
 // export: ResearchScopeEntityKindV1
 export type ResearchScopeEntityKindV1 = "project" | "space" | "issue" | "page";
 
+// export: ResearchScopeExpansionProposalV1
+export interface ResearchScopeExpansionProposalV1 {
+    schema: typeof RESEARCH_SCOPE_EXPANSION_PROPOSAL_SCHEMA_V1;
+    id: string;
+    sessionId: string;
+    turnId: string;
+    basedOnBriefRevision: number;
+    basedOnGraphRevision: number;
+    candidateId: string;
+    expansionKind: "exact_entity" | "whole_scope";
+    reason: string;
+    provenanceRefs: string[];
+    status: "proposed" | "approved" | "rejected" | "expired";
+    approvedBindingId?: string;
+}
+
 // export: ResearchScopeMentionProposalV1
 export interface ResearchScopeMentionProposalV1 {
     schema: typeof RESEARCH_SCOPE_MENTION_PROPOSAL_SCHEMA_V1;
@@ -11810,6 +12037,7 @@ export interface ResearchScopeMentionProposalV1 {
 
 // export: ResearchScopeMentionV1
 export interface ResearchScopeMentionV1 {
+    schema: typeof RESEARCH_SCOPE_MENTION_SCHEMA_V1;
     id: string;
     productHint?: ResearchProduct;
     entityKindHint?: ResearchScopeEntityKindV1;
@@ -11835,6 +12063,7 @@ export interface ResearchScopeResolutionInputV1 {
 
 // export: ResearchScopeResolutionV1
 export interface ResearchScopeResolutionV1 {
+    schema: typeof RESEARCH_SCOPE_RESOLUTION_SCHEMA_V1;
     mentionId: string;
     state: "resolved" | "ambiguous" | "not_found" | "unavailable" | "incomplete";
     candidateIds: string[];

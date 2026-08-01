@@ -6,6 +6,7 @@ const tenantOrigin = "https://tenant-a.atlassian.net";
 
 function candidate(key: string, product: "jira" | "confluence", entityKind: "project" | "space") {
   return {
+    schema: "atlcli.research-scope-candidate/v1" as const,
     id: `research-scope-candidate:${product}-${entityKind}-${key.toLowerCase()}`,
     tenantOrigin,
     product,

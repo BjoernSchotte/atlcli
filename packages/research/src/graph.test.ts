@@ -112,8 +112,10 @@ describe("dynamic research graph composition", () => {
     const lookup = composeResearchGraphV1(brief("Get Jira issue DEMO-1", ["jira"], "off", "lookup"));
     const jiraOnly = composeResearchGraphV1(brief("List open Jira tickets", ["jira"], "off"));
     const crossProduct = composeResearchGraphV1(brief("Which Confluence content is related to Jira tickets?", ["jira", "confluence"]));
-    expect(projectSelectedResearchRolesV1(lookup)).toEqual(["synthesizer"]);
-    expect(lookup.nodes.filter((node) => node.executor === "ptc")).toHaveLength(1);
+    expect(projectSelectedResearchRolesV1(lookup)).toEqual(["focused-researcher", "synthesizer"]);
+    expect(lookup.nodes.filter((node) => node.roleId === "focused-researcher")).toHaveLength(1);
+    expect(lookup.nodes.find((node) => node.id === "research-node:jira-lookup")?.grantedCapabilityIds)
+      .toEqual(["jira.issue.search", "jira.issue.get"]);
     expect(projectSelectedResearchRolesV1(jiraOnly)).toEqual(["focused-researcher", "synthesizer"]);
     expect(projectSelectedResearchRolesV1(crossProduct)).toEqual([
       "focused-researcher",

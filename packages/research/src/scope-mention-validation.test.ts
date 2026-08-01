@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  createResearchScopeExpansionProposalV1,
   RESEARCH_SCOPE_MENTION_PROPOSAL_SCHEMA_V1,
   validateResearchScopeMentionProposalsV1,
   type ResearchScopeMentionProposalV1,
@@ -34,6 +35,7 @@ describe("host-verified natural-language scope mentions", () => {
       ],
     })).toEqual([
       {
+        schema: "atlcli.research-scope-mention/v1",
         id: "mention:12",
         productHint: "confluence",
         entityKindHint: "space",
@@ -43,6 +45,7 @@ describe("host-verified natural-language scope mentions", () => {
         questionTextRange: { start: 12, end: 36 },
       },
       {
+        schema: "atlcli.research-scope-mention/v1",
         id: "mention:46",
         productHint: "jira",
         entityKindHint: "project",
@@ -112,5 +115,61 @@ describe("host-verified natural-language scope mentions", () => {
       expectedTenantOrigin: origin,
       proposals: [proposal("Delivery project", { productHint: "jira", entityKindHint: "space" })],
     })).toThrow("conflict");
+  });
+});
+
+describe("scope expansion proposal contract", () => {
+  test("constructs a closed revision-fenced proposal", () => {
+    expect(createResearchScopeExpansionProposalV1({
+      id: "scope-expansion:related-space",
+      sessionId: "research-session:session-1",
+      turnId: "research-turn:turn-1",
+      basedOnBriefRevision: 2,
+      basedOnGraphRevision: 3,
+      candidateId: "research-scope-candidate:confluence-space-related",
+      expansionKind: "whole_scope",
+      reason: "  A cited page links to the related space.  ",
+      provenanceRefs: ["source:wiki-1", "finding:related-space"],
+      status: "proposed",
+    })).toEqual({
+      schema: "atlcli.research-scope-expansion-proposal/v1",
+      id: "scope-expansion:related-space",
+      sessionId: "research-session:session-1",
+      turnId: "research-turn:turn-1",
+      basedOnBriefRevision: 2,
+      basedOnGraphRevision: 3,
+      candidateId: "research-scope-candidate:confluence-space-related",
+      expansionKind: "whole_scope",
+      reason: "A cited page links to the related space.",
+      provenanceRefs: ["source:wiki-1", "finding:related-space"],
+      status: "proposed",
+    });
+  });
+
+  test("rejects unfenced, unsupported, or falsely approved proposals", () => {
+    const base = {
+      id: "scope-expansion:related-space",
+      sessionId: "research-session:session-1",
+      turnId: "research-turn:turn-1",
+      basedOnBriefRevision: 2,
+      basedOnGraphRevision: 3,
+      candidateId: "research-scope-candidate:confluence-space-related",
+      expansionKind: "whole_scope" as const,
+      reason: "A cited page links to the related space.",
+      provenanceRefs: ["source:wiki-1"],
+      status: "proposed" as const,
+    };
+    expect(() => createResearchScopeExpansionProposalV1({
+      ...base,
+      basedOnGraphRevision: 0,
+    })).toThrow("graph revision");
+    expect(() => createResearchScopeExpansionProposalV1({
+      ...base,
+      provenanceRefs: ["source:wiki-1", "source:wiki-1"],
+    })).toThrow("provenance");
+    expect(() => createResearchScopeExpansionProposalV1({
+      ...base,
+      status: "approved",
+    })).toThrow("approved binding");
   });
 });

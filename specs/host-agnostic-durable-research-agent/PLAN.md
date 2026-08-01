@@ -2462,10 +2462,16 @@ Shared:
       `ReconciliationBodyV1`, `ResearchAcceptedPacketV1`,
       `ResearchApprovalEnvelopeV1`, graph validation, and deterministic graph
       projection. Do not activate `ResearchPacketBodyV2` in this phase.
-- [ ] Add scope mention, candidate, resolution, binding, discovery-policy, and
+- [x] Add scope mention, candidate, resolution, binding, discovery-policy, and
       expansion-proposal contracts without changing `ResearchScopeV1`.
       Implement the documented precedence and authority projection as pure,
-      deterministic functions.
+      deterministic functions. Proven 2026-08-01: every portable scope object
+      now carries its closed V1 schema; the catalog and resolver reject
+      unversioned candidates or mentions; expansion proposals are
+      revision-fenced, provenance-bound, and cannot claim approval without an
+      approved binding. The focused scope corridor passed 58 tests, the broad
+      research/host suite passed 208 tests with 787 assertions across 34
+      files, and workspace typecheck passed.
 - [x] Parse natural-language mention proposals into a bounded structured
       schema, require exact question-text ranges, and host-verify every range
       and normalization before catalog lookup. Reject invented or overlapping
@@ -2658,11 +2664,17 @@ Extension/browser:
 
 Gate:
 
-- [x] An exact-lookup report fixture selects no research subagent and exactly
-      one synthesizer; a cross-product fixture selects at least two independent
-      research nodes and exactly one synthesizer; a contradiction fixture
-      selects verification, task-dependent reconciliation, and exactly one
-      synthesizer. Their normalized graphs are structurally different.
+- [x] An exact single-product lookup fixture selects exactly one bounded
+      acquisition worker and one synthesizer; a cross-product fixture selects
+      at least two independent research nodes and exactly one synthesizer; a
+      contradiction fixture selects verification, task-dependent
+      reconciliation, and exactly one synthesizer. Their normalized graphs are
+      structurally different. The acquisition worker is required even for
+      lookup effort: a live T3 gate proved that body-free `ptc` graph nodes
+      were not executable task projections and therefore could not produce
+      evidence. Productive lookup nodes now use capability-scoped
+      `focused-researcher` tasks, while still omitting analysis and critique
+      roles when the objective does not require them.
 - [x] Graph fixtures reject missing, duplicate, or inconsistent role decisions
       and prove that execution, UI projection, and normalized comparisons
       derive the identical selected-role set from executable nodes.
@@ -2671,7 +2683,14 @@ Gate:
 - [x] Invocation-level tests prove native dynamic `responseSchema` hand-off,
       parallel `Promise.all` groups, dependency barriers, one parent eval,
       fresh critic context, exactly one final synthesizer, and zero transcript
-      scraping or out-of-band synthesis agent.
+      scraping or out-of-band synthesis agent. After the successful atomic
+      workflow the host revokes `eval` from subsequent supervisor model turns
+      while preserving the structured publication mechanism; only a failed,
+      still side-effect-free first eval retains the one repair opportunity.
+      Proven by capability-lifecycle tests and a read-only DOCSY/ATLCLI live
+      run that completed two parallel acquisition workers, one join, one
+      synthesizer, 16 bounded PTC/HTTP reads, deterministic finalization, and
+      timestamped Markdown publication in 198,358 ms without a second eval.
 - [x] T3's generated per-role response schemas are byte-identical to the
       exact schema-feasibility fixtures admitted in T0.
 - [x] In a no-fault deterministic branch-coverage fixture, every validated

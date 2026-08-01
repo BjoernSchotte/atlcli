@@ -47,6 +47,7 @@ describe("REST scope catalog providers", () => {
     expect(requests[0]).toContain("orderBy=name");
     expect(page.candidates).toEqual([
       {
+        schema: "atlcli.research-scope-candidate/v1",
         id: "research-scope-candidate:jira-project-atlcli",
         tenantOrigin,
         product: "jira",

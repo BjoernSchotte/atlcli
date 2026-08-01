@@ -25,6 +25,7 @@ function candidate(input: Partial<ResearchScopeCandidateV1> = {}): ResearchScope
     accessible: true,
     providerFreshnessAt: "2026-07-31T00:00:00.000Z",
     ...input,
+    schema: "atlcli.research-scope-candidate/v1",
   };
 }
 
@@ -38,6 +39,7 @@ function mention(input: Partial<ResearchScopeMentionV1> = {}): ResearchScopeMent
     normalizedText: "account management",
     questionTextRange: { start: 0, end: 24 },
     ...input,
+    schema: "atlcli.research-scope-mention/v1",
   };
 }
 

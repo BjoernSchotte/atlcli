@@ -724,8 +724,18 @@ export function createOneShotSupervisorEvalMiddleware(options: {
 } = {}) {
   let evalCalls = 0;
   let previousFailed = false;
+  let successfulEvalCompleted = false;
   return createMiddleware({
     name: "ResearchOneShotSupervisorEvalMiddleware",
+    wrapModelCall: async (request, handler) => handler({
+      ...request,
+      // A completed one-shot workflow permanently revokes eval from later
+      // supervisor model turns. The structured response mechanism remains
+      // available so the parent can publish the synthesizer's typed object.
+      tools: successfulEvalCompleted
+        ? request.tools.filter((candidate) => candidate.name !== "eval")
+        : request.tools,
+    }),
     wrapToolCall: async (request, handler) => {
       if (request.toolCall.name !== "eval") return handler(request);
       evalCalls += 1;
@@ -771,6 +781,7 @@ export function createOneShotSupervisorEvalMiddleware(options: {
         const quickJsErrorCode = quickJsFailureCode(result);
         if (quickJsErrorCode) {
           previousFailed = true;
+          successfulEvalCompleted = false;
           options.onDiagnostic?.({
             attempt: evalCalls,
             status: "failed",
@@ -782,6 +793,7 @@ export function createOneShotSupervisorEvalMiddleware(options: {
           return result;
         }
         previousFailed = false;
+        successfulEvalCompleted = true;
         options.onDiagnostic?.({
           attempt: evalCalls,
           status: "completed",
@@ -792,6 +804,7 @@ export function createOneShotSupervisorEvalMiddleware(options: {
         return result;
       } catch (error) {
         previousFailed = true;
+        successfulEvalCompleted = false;
         options.onDiagnostic?.({
           attempt: evalCalls,
           status: "failed",

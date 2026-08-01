@@ -13,6 +13,7 @@ import {
 const tenantOrigin = "https://example.atlassian.net";
 
 const candidate = (overrides: Partial<ResearchScopeCandidateV1> = {}): ResearchScopeCandidateV1 => ({
+  schema: "atlcli.research-scope-candidate/v1",
   id: "candidate:1",
   tenantOrigin,
   product: "confluence",
@@ -26,6 +27,7 @@ const candidate = (overrides: Partial<ResearchScopeCandidateV1> = {}): ResearchS
 });
 
 const mention = (overrides: Partial<ResearchScopeMentionV1> = {}): ResearchScopeMentionV1 => ({
+  schema: "atlcli.research-scope-mention/v1",
   id: "mention:1",
   productHint: "confluence",
   entityKindHint: "space",
@@ -45,6 +47,7 @@ describe("read-only Atlassian scope discovery", () => {
     });
 
     expect(result).toEqual({
+      schema: "atlcli.research-scope-resolution/v1",
       mentionId: "mention:1",
       state: "resolved",
       candidateIds: ["candidate:1"],
@@ -251,11 +254,27 @@ describe("read-only Atlassian scope discovery", () => {
     });
 
     expect(result).toEqual({
+      schema: "atlcli.research-scope-resolution/v1",
       mentionId: "mention:1",
       state: "not_found",
       candidateIds: [],
       catalogComplete: true,
       requiresUserChoice: false,
     });
+  });
+
+  test("rejects unversioned mention and candidate objects", () => {
+    expect(() => resolveResearchScopeMentionV1({
+      mention: mention({ schema: undefined as never }),
+      candidates: [candidate()],
+      catalogComplete: true,
+      expectedTenantOrigin: tenantOrigin,
+    })).toThrow("mention schema");
+    expect(() => resolveResearchScopeMentionV1({
+      mention: mention(),
+      candidates: [candidate({ schema: undefined as never })],
+      catalogComplete: true,
+      expectedTenantOrigin: tenantOrigin,
+    })).toThrow("candidate schema");
   });
 });

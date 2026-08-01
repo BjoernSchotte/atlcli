@@ -1,4 +1,5 @@
 import {
+  RESEARCH_SCOPE_BINDING_SCHEMA_V1,
   RESEARCH_SCOPE_SOURCE_PRECEDENCE_V1,
   type ResearchProduct,
   type ResearchScopeAuthorityV1,
@@ -9,6 +10,15 @@ import {
   type ResearchScopeV1,
 } from "./contracts.js";
 
+export const RESEARCH_SCOPE_MENTION_SCHEMA_V1 =
+  "atlcli.research-scope-mention/v1" as const;
+export const RESEARCH_SCOPE_CANDIDATE_SCHEMA_V1 =
+  "atlcli.research-scope-candidate/v1" as const;
+export const RESEARCH_SCOPE_RESOLUTION_SCHEMA_V1 =
+  "atlcli.research-scope-resolution/v1" as const;
+export const RESEARCH_SCOPE_EXPANSION_PROPOSAL_SCHEMA_V1 =
+  "atlcli.research-scope-expansion-proposal/v1" as const;
+
 export type {
   ResearchScopeAuthorityV1,
   ResearchScopeBindingV1,
@@ -18,6 +28,7 @@ export type {
 } from "./contracts.js";
 
 export interface ResearchScopeMentionV1 {
+  schema: typeof RESEARCH_SCOPE_MENTION_SCHEMA_V1;
   id: string;
   productHint?: ResearchProduct;
   entityKindHint?: ResearchScopeEntityKindV1;
@@ -47,6 +58,7 @@ export interface ResearchScopeMentionProposalV1 {
 }
 
 export interface ResearchScopeCandidateV1 {
+  schema: typeof RESEARCH_SCOPE_CANDIDATE_SCHEMA_V1;
   id: string;
   tenantOrigin: string;
   product: ResearchProduct;
@@ -63,6 +75,7 @@ export interface ResearchScopeCandidateV1 {
 }
 
 export interface ResearchScopeResolutionV1 {
+  schema: typeof RESEARCH_SCOPE_RESOLUTION_SCHEMA_V1;
   mentionId: string;
   state: "resolved" | "ambiguous" | "not_found" | "unavailable" | "incomplete";
   candidateIds: string[];
@@ -70,6 +83,75 @@ export interface ResearchScopeResolutionV1 {
   uniquenessProof?: "exact_key_lookup" | "exact_reference_lookup" | "provider_exact_query" | "complete_catalog";
   catalogComplete: boolean;
   requiresUserChoice: boolean;
+}
+
+export interface ResearchScopeExpansionProposalV1 {
+  schema: typeof RESEARCH_SCOPE_EXPANSION_PROPOSAL_SCHEMA_V1;
+  id: string;
+  sessionId: string;
+  turnId: string;
+  basedOnBriefRevision: number;
+  basedOnGraphRevision: number;
+  candidateId: string;
+  expansionKind: "exact_entity" | "whole_scope";
+  reason: string;
+  provenanceRefs: string[];
+  status: "proposed" | "approved" | "rejected" | "expired";
+  approvedBindingId?: string;
+}
+
+export function createResearchScopeExpansionProposalV1(
+  input: Omit<ResearchScopeExpansionProposalV1, "schema">,
+): ResearchScopeExpansionProposalV1 {
+  if (!/^scope-expansion:[A-Za-z0-9._-]{1,120}$/.test(input.id)) {
+    invalidMention("Research scope expansion proposal ID is invalid.");
+  }
+  if (!/^research-session:[A-Za-z0-9._-]{1,120}$/.test(input.sessionId)) {
+    invalidMention("Research scope expansion session ID is invalid.");
+  }
+  if (!/^research-turn:[A-Za-z0-9._-]{1,120}$/.test(input.turnId)) {
+    invalidMention("Research scope expansion turn ID is invalid.");
+  }
+  if (!Number.isSafeInteger(input.basedOnBriefRevision) || input.basedOnBriefRevision < 1) {
+    invalidMention("Research scope expansion brief revision is invalid.");
+  }
+  if (!Number.isSafeInteger(input.basedOnGraphRevision) || input.basedOnGraphRevision < 1) {
+    invalidMention("Research scope expansion graph revision is invalid.");
+  }
+  if (!/^research-scope-candidate:[A-Za-z0-9._-]{1,160}$/.test(input.candidateId)) {
+    invalidMention("Research scope expansion candidate ID is invalid.");
+  }
+  if (input.expansionKind !== "exact_entity" && input.expansionKind !== "whole_scope") {
+    invalidMention("Research scope expansion kind is invalid.");
+  }
+  const reason = input.reason.trim();
+  if (!reason || reason.length > 500) {
+    invalidMention("Research scope expansion reason is invalid.");
+  }
+  if (
+    !Array.isArray(input.provenanceRefs) ||
+    input.provenanceRefs.length < 1 ||
+    input.provenanceRefs.length > 16 ||
+    input.provenanceRefs.some((reference) => !/^[A-Za-z][A-Za-z0-9:._-]{1,180}$/.test(reference)) ||
+    new Set(input.provenanceRefs).size !== input.provenanceRefs.length
+  ) {
+    invalidMention("Research scope expansion provenance references are invalid.");
+  }
+  if (!["proposed", "approved", "rejected", "expired"].includes(input.status)) {
+    invalidMention("Research scope expansion status is invalid.");
+  }
+  if (
+    (input.status === "approved") !== Boolean(input.approvedBindingId) ||
+    (input.approvedBindingId !== undefined && !/^scope-binding:[A-Za-z0-9:._%-]{1,180}$/.test(input.approvedBindingId))
+  ) {
+    invalidMention("Research scope expansion approved binding is invalid.");
+  }
+  return {
+    schema: RESEARCH_SCOPE_EXPANSION_PROPOSAL_SCHEMA_V1,
+    ...structuredClone(input),
+    reason,
+    provenanceRefs: [...input.provenanceRefs],
+  };
 }
 
 export interface ResearchScopeResolutionInputV1 {
@@ -195,6 +277,7 @@ export function validateResearchScopeMentionProposalsV1(input: {
       invalidMention("Research scope exact reference is outside the current tenant or unsupported.");
     }
     return {
+      schema: RESEARCH_SCOPE_MENTION_SCHEMA_V1,
       id: proposal.id,
       ...(proposal.productHint ? { productHint: proposal.productHint } : {}),
       ...(proposal.entityKindHint ? { entityKindHint: proposal.entityKindHint } : {}),
@@ -218,6 +301,12 @@ export function validateResearchScopeMentionProposalsV1(input: {
 }
 
 export function resolveResearchScopeMentionV1(input: ResearchScopeResolutionInputV1): ResearchScopeResolutionV1 {
+  if (input.mention.schema !== RESEARCH_SCOPE_MENTION_SCHEMA_V1) {
+    invalidMention("Unsupported research scope mention schema.");
+  }
+  if (input.candidates.some((candidate) => candidate.schema !== RESEARCH_SCOPE_CANDIDATE_SCHEMA_V1)) {
+    invalidMention("Unsupported research scope candidate schema.");
+  }
   const maxCandidates = Math.max(1, Math.min(input.maxCandidates ?? 8, 20));
   const ranked = input.candidates
     .filter((candidate) => candidate.tenantOrigin === input.expectedTenantOrigin && candidate.accessible && (!input.mention.productHint || candidate.product === input.mention.productHint) && (!input.mention.entityKindHint || candidate.entityKind === input.mention.entityKindHint) && (input.allowArchived || candidate.status !== "archived"))
@@ -226,19 +315,22 @@ export function resolveResearchScopeMentionV1(input: ResearchScopeResolutionInpu
     .sort((left, right) => MATCH_RANK[right.match] - MATCH_RANK[left.match] || left.candidate.id.localeCompare(right.candidate.id));
   const candidateIds = ranked.slice(0, maxCandidates).map(({ candidate }) => candidate.id);
   const exactKey = ranked.filter(({ match }) => match === "exact_key");
-  if (exactKey.length === 1) return { mentionId: input.mention.id, state: "resolved", candidateIds, resolvedCandidateId: exactKey[0]!.candidate.id, uniquenessProof: "exact_key_lookup", catalogComplete: input.catalogComplete, requiresUserChoice: false };
+  if (exactKey.length === 1) return { schema: RESEARCH_SCOPE_RESOLUTION_SCHEMA_V1, mentionId: input.mention.id, state: "resolved", candidateIds, resolvedCandidateId: exactKey[0]!.candidate.id, uniquenessProof: "exact_key_lookup", catalogComplete: input.catalogComplete, requiresUserChoice: false };
   const exactReference = ranked.filter(({ match }) => match === "exact_link");
-  if (exactReference.length === 1) return { mentionId: input.mention.id, state: "resolved", candidateIds, resolvedCandidateId: exactReference[0]!.candidate.id, uniquenessProof: "exact_reference_lookup", catalogComplete: input.catalogComplete, requiresUserChoice: false };
+  if (exactReference.length === 1) return { schema: RESEARCH_SCOPE_RESOLUTION_SCHEMA_V1, mentionId: input.mention.id, state: "resolved", candidateIds, resolvedCandidateId: exactReference[0]!.candidate.id, uniquenessProof: "exact_reference_lookup", catalogComplete: input.catalogComplete, requiresUserChoice: false };
   const exactName = ranked.filter(({ match }) => match === "exact_name");
-  if (exactName.length === 1 && input.catalogComplete) return { mentionId: input.mention.id, state: "resolved", candidateIds, resolvedCandidateId: exactName[0]!.candidate.id, uniquenessProof: "complete_catalog", catalogComplete: true, requiresUserChoice: false };
+  if (exactName.length === 1 && input.catalogComplete) return { schema: RESEARCH_SCOPE_RESOLUTION_SCHEMA_V1, mentionId: input.mention.id, state: "resolved", candidateIds, resolvedCandidateId: exactName[0]!.candidate.id, uniquenessProof: "complete_catalog", catalogComplete: true, requiresUserChoice: false };
   const exactAlias = ranked.filter(({ match }) => match === "alias");
-  if (exactAlias.length === 1 && input.catalogComplete) return { mentionId: input.mention.id, state: "resolved", candidateIds, resolvedCandidateId: exactAlias[0]!.candidate.id, uniquenessProof: "complete_catalog", catalogComplete: true, requiresUserChoice: false };
-  if (ranked.length > 0) return { mentionId: input.mention.id, state: input.catalogComplete ? "ambiguous" : "incomplete", candidateIds, catalogComplete: input.catalogComplete, requiresUserChoice: true };
-  return { mentionId: input.mention.id, state: input.catalogComplete ? "not_found" : "incomplete", candidateIds: [], catalogComplete: input.catalogComplete, requiresUserChoice: !input.catalogComplete };
+  if (exactAlias.length === 1 && input.catalogComplete) return { schema: RESEARCH_SCOPE_RESOLUTION_SCHEMA_V1, mentionId: input.mention.id, state: "resolved", candidateIds, resolvedCandidateId: exactAlias[0]!.candidate.id, uniquenessProof: "complete_catalog", catalogComplete: true, requiresUserChoice: false };
+  if (ranked.length > 0) return { schema: RESEARCH_SCOPE_RESOLUTION_SCHEMA_V1, mentionId: input.mention.id, state: input.catalogComplete ? "ambiguous" : "incomplete", candidateIds, catalogComplete: input.catalogComplete, requiresUserChoice: true };
+  return { schema: RESEARCH_SCOPE_RESOLUTION_SCHEMA_V1, mentionId: input.mention.id, state: input.catalogComplete ? "not_found" : "incomplete", candidateIds: [], catalogComplete: input.catalogComplete, requiresUserChoice: !input.catalogComplete };
 }
 
 export function createResearchScopeBindingV1(input: { candidate: ResearchScopeCandidateV1; source: ResearchScopeSourceV1; authority: "resolved" | "approved" | "locked"; mentionId?: string; approvedAt?: string; bindingId?: string }): ResearchScopeBindingV1 {
-  return { id: input.bindingId ?? `scope-binding:${input.candidate.id}`, tenantOrigin: input.candidate.tenantOrigin, product: input.candidate.product, entityKind: input.candidate.entityKind, entityRef: input.candidate.entityRef, ...(input.candidate.key ? { key: input.candidate.key } : {}), name: input.candidate.name, source: input.source, authority: input.authority, ...(input.mentionId ? { mentionId: input.mentionId } : {}), candidateId: input.candidate.id, ...(input.approvedAt ? { approvedAt: input.approvedAt } : {}) };
+  if (input.candidate.schema !== RESEARCH_SCOPE_CANDIDATE_SCHEMA_V1) {
+    invalidMention("Unsupported research scope candidate schema.");
+  }
+  return { schema: RESEARCH_SCOPE_BINDING_SCHEMA_V1, id: input.bindingId ?? `scope-binding:${input.candidate.id}`, tenantOrigin: input.candidate.tenantOrigin, product: input.candidate.product, entityKind: input.candidate.entityKind, entityRef: input.candidate.entityRef, ...(input.candidate.key ? { key: input.candidate.key } : {}), name: input.candidate.name, source: input.source, authority: input.authority, ...(input.mentionId ? { mentionId: input.mentionId } : {}), candidateId: input.candidate.id, ...(input.approvedAt ? { approvedAt: input.approvedAt } : {}) };
 }
 
 /** Build a deterministic whole-scope seed for a CLI/UI/context key. */
@@ -254,6 +346,7 @@ export function createResearchKeyScopeSeedV1(input: {
   const encodedKey = encodeURIComponent(key);
   return {
     binding: {
+      schema: RESEARCH_SCOPE_BINDING_SCHEMA_V1,
       id: `scope-binding:${input.source}:${input.product}:${encodedKey}`,
       tenantOrigin: input.tenantOrigin,
       product: input.product,
