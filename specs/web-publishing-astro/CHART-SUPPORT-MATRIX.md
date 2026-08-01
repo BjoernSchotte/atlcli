@@ -37,7 +37,9 @@ does not become unsupported merely because no client island is selected.
   series, so a missing point in one series never shifts another series' value.
   Both targets call the shared dependency-free SVG renderer; DOCX additionally
   stores a bounded PNG compatibility rendition, while PDF keeps the chart as
-  vector content through Typst. The semantic table is retained in both files.
+  vector content through Typst. Both document targets reserve a separated
+  title/legend header band and plot-edge padding. The semantic table is
+  retained in both files.
 - The interactive adapter is intentionally closed and bounded: it accepts
   only categorical `bar` and provider-valid `xyBar` data, with explicit row,
   series, point, and payload limits. All other shapes remain JavaScript-off

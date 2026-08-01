@@ -7,7 +7,11 @@ import type {
 /** Fixed intrinsic size used by document targets and by the SVG fallback. */
 export const CHART_SVG_SIZE_V1 = Object.freeze({ width: 720, height: 360 });
 
-const PLOT = Object.freeze({ left: 64, top: 42, right: 700, bottom: 286 });
+// Keep an intentional header band for the title and legend, and leave optical
+// breathing room around the first/last marks. The previous endpoint-aligned
+// plot made the legend collide with the title and let the final XY bar touch
+// the SVG edge in both DOCX and PDF.
+const PLOT = Object.freeze({ left: 80, top: 86, right: 672, bottom: 278 });
 const DEFAULT_COLORS = ["#0c66e4", "#36b37e", "#ffab00", "#de350b", "#6554c0", "#00a3bf"] as const;
 
 function escapeXml(value: string): string {
@@ -57,7 +61,7 @@ function y(value: number, bounds: { min: number; max: number }): number {
 }
 
 function x(index: number, count: number): number {
-  return count <= 1 ? (PLOT.left + PLOT.right) / 2 : PLOT.left + (index / (count - 1)) * (PLOT.right - PLOT.left);
+  return PLOT.left + ((index + 0.5) / Math.max(1, count)) * (PLOT.right - PLOT.left);
 }
 
 function pointX(value: number, bounds: { min: number; max: number }): number {
@@ -82,10 +86,15 @@ function axes(chart: ChartModelV1, labels: readonly string[], bounds: { min: num
   return `${grid}${horizontal}${vertical}${xLabels}${xLabel}${yLabel}`;
 }
 
-function legend(series: readonly { label: string }[], colors: readonly string[]): string {
+function legend(chart: ChartModelV1, series: readonly { label: string }[], colors: readonly string[]): string {
+  if (chart.legend === "none") return "";
+  const columns = Math.max(1, Math.min(3, Math.floor((PLOT.right - PLOT.left) / 150)));
   return series.map((entry, index) => {
-    const lx = PLOT.left + index * 150;
-    return `<rect x="${lx}" y="12" width="10" height="10" fill="${colors[index % colors.length]}"/><text x="${lx + 16}" y="21" font-size="11" fill="#172b4d">${escapeXml(entry.label)}</text>`;
+    const column = index % columns;
+    const row = Math.floor(index / columns);
+    const lx = PLOT.left + column * 150;
+    const ly = 44 + row * 16;
+    return `<rect x="${lx}" y="${ly - 9}" width="10" height="10" fill="${colors[index % colors.length]}"/><text x="${lx + 16}" y="${ly}" font-size="11" fill="#172b4d">${escapeXml(entry.label)}</text>`;
   }).join("");
 }
 
@@ -109,7 +118,7 @@ function categoryChart(chart: ChartModelV1, labels: readonly string[], series: r
       const baseline = y(base, bounds);
       return `<rect x="${left.toFixed(2)}" y="${Math.min(top, baseline).toFixed(2)}" width="${Math.max(1, width - 2).toFixed(2)}" height="${Math.max(1, Math.abs(baseline - top)).toFixed(2)}" fill="${colors[seriesIndex % colors.length]}" opacity="${finite(chart.opacity, 1)}"><title>${escapeXml(`${entry.label}, ${labels[index]}: ${value}`)}</title></rect>`;
     }).join(""));
-    return `${body}${grouped.join("")}${legend(series, colors)}`;
+    return `${body}${grouped.join("")}${legend(chart, series, colors)}`;
   }
   const paths = series.map((entry, seriesIndex) => {
     const points = labels.map((_, index) => `${x(index, count).toFixed(2)},${y(finite(entry.values[index], 0), bounds).toFixed(2)}`).join(" ");
@@ -118,7 +127,7 @@ function categoryChart(chart: ChartModelV1, labels: readonly string[], series: r
     const marks = chart.showShapes === false ? "" : labels.map((_, index) => `<circle cx="${x(index, count).toFixed(2)}" cy="${y(finite(entry.values[index], 0), bounds).toFixed(2)}" r="3.5" fill="${colors[seriesIndex % colors.length]}"/>`).join("");
     return `${area}${line}${marks}`;
   }).join("");
-  return `${body}${paths}${legend(series, colors)}`;
+  return `${body}${paths}${legend(chart, series, colors)}`;
 }
 
 function pointChart(chart: ChartModelV1, series: readonly ChartPointSeriesV1[], colors: readonly string[]): string {
@@ -150,7 +159,7 @@ function pointChart(chart: ChartModelV1, series: readonly ChartPointSeriesV1[], 
       : "";
     const marks = chart.showShapes === false ? "" : entry.points.map((point, index) => `<circle cx="${pointX(numberValue(point.x, index), xBounds).toFixed(2)}" cy="${y(point.y, yBounds).toFixed(2)}" r="3.5" fill="${colorValue}"/>`).join("");
     return `${area}${line}${marks}`;
-  }).join("")}${legend(series, colors)}`;
+  }).join("")}${legend(chart, series, colors)}`;
 }
 
 function pieChart(chart: ChartModelV1, labels: readonly string[], series: readonly ChartCategorySeriesV1[], colors: readonly string[]): string {
@@ -174,7 +183,7 @@ function pieChart(chart: ChartModelV1, labels: readonly string[], series: readon
     angle = next;
     return `<path d="M ${cx + offsetX} ${cy + offsetY} L ${x1 + offsetX} ${y1 + offsetY} A ${radius} ${radius} 0 ${large} 1 ${x2 + offsetX} ${y2 + offsetY} Z" fill="${colors[index % colors.length]}" opacity="${finite(chart.opacity, 1)}"><title>${escapeXml(`${labels[index]}: ${value}`)}</title></path>`;
   }).join("");
-  const itemLegend = labels.map((label, index) => `<rect x="430" y="${60 + index * 24}" width="10" height="10" fill="${colors[index % colors.length]}"/><text x="446" y="${69 + index * 24}" font-size="11" fill="#172b4d">${escapeXml(label)}</text>`).join("");
+  const itemLegend = chart.legend === "none" ? "" : labels.map((label, index) => `<rect x="430" y="${60 + index * 24}" width="10" height="10" fill="${colors[index % colors.length]}"/><text x="446" y="${69 + index * 24}" font-size="11" fill="#172b4d">${escapeXml(label)}</text>`).join("");
   return `<circle cx="${cx}" cy="${cy}" r="${radius}" fill="none" stroke="#dfe1e6"/>${paths}${itemLegend}`;
 }
 
@@ -220,6 +229,6 @@ export function renderChartSvgV1(chart: ChartModelV1): string {
     description = `${chart.title ?? "Chart"}: ${chart.data.series.reduce((sum, entry) => sum + entry.points.length, 0)} points`;
     body = pointChart(chart, chart.data.series, colors);
   }
-  const title = chart.title ? `<text x="${PLOT.left}" y="30" font-size="16" font-weight="700" fill="#172b4d">${escapeXml(chart.title)}</text>` : "";
+  const title = chart.title ? `<text x="${PLOT.left}" y="28" font-size="16" font-weight="700" fill="#172b4d">${escapeXml(chart.title)}</text>` : "";
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${CHART_SVG_SIZE_V1.width} ${CHART_SVG_SIZE_V1.height}" role="img" aria-labelledby="chart-title chart-description"><rect x="0" y="0" width="720" height="360" fill="${background}" stroke="${border}"/>${title}${titleBlock(chart, description)}<g font-family="Arial, Helvetica, sans-serif">${body}</g></svg>`;
 }

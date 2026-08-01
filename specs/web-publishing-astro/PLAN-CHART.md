@@ -64,7 +64,9 @@ so it is not used as evidence for the renderer contract.
 - The normal mayflower PDF path completed with the shared SVG asset; Typst
   compiled the vector chart visual plus the semantic table, and extracted text
   contains the same marker, title, and values with no provider error text. A
-  rasterized page inspection visibly shows the bars and the table.
+  rasterized page inspection visibly shows the bars and the table. The chart
+  visual reserves a title/legend header band and plot-edge padding so neither
+  document target clips the last mark or overlays the legend on the title.
 - The Astro publication refresh/build/verification completed for one page;
   the verified output inventory covered 35 files and 26 links. The generated
   page contains `data-atlcli-chart-capability="tanstack-v0.3/bar"` and the
