@@ -7,6 +7,9 @@
 ### Entry point `.`
 
 ```ts
+// export: assertPagefindSearchBudgetV1
+export declare function assertPagefindSearchBudgetV1(measurement: PublicationSearchBudgetMeasurementV1, budget?: PublicationSearchBudgetV1): void;
+
 // export: AstroBuildCommandErrorV1
 export declare class AstroBuildCommandErrorV1 extends Error {
     readonly kind: AstroBuildCommandFailureKindV1;
@@ -157,10 +160,11 @@ export interface AtlcliPublishingIntegrationOptionsV1 extends AtlcliPublicationL
 export interface BuildPagefindIndexOptionsV1 {
     outputDirectory: string;
     pageOutputPaths: readonly string[];
+    budget?: PublicationSearchBudgetV1;
 }
 
 // export: buildPagefindIndexV1
-export declare function buildPagefindIndexV1(options: BuildPagefindIndexOptionsV1): Promise<void>;
+export declare function buildPagefindIndexV1(options: BuildPagefindIndexOptionsV1): Promise<PublicationSearchBudgetMeasurementV1>;
 
 // export: CreateAstroStaticManifestOptionsV1
 export interface CreateAstroStaticManifestOptionsV1 {
@@ -203,6 +207,13 @@ export interface LoadedPublicationNavigationV1 {
     navigation: ReturnType<typeof planPublicationNavigationV1>;
 }
 
+// export: measurePagefindSearchBudgetV1
+export declare function measurePagefindSearchBudgetV1(options: {
+    outputDirectory: string;
+    pageCount: number;
+    query?: string;
+}): Promise<PublicationSearchBudgetMeasurementV1>;
+
 // export: normalizePagefindSearchFiltersV1
 export declare function normalizePagefindSearchFiltersV1(labels: readonly string[], filters: readonly PagefindSearchFilterV1[] | undefined): readonly PagefindSearchFilterV1[];
 
@@ -238,6 +249,9 @@ export interface PagefindSearchMessagesV1 {
 // export: PagefindSearchRuntimeV1
 export type PagefindSearchRuntimeV1 = "auto" | "main-thread";
 
+// export: PUBLICATION_SEARCH_BUDGETS_V1
+export declare const PUBLICATION_SEARCH_BUDGETS_V1: Readonly<Record<PublicationSearchCorpusClassV1, PublicationSearchBudgetV1>>;
+
 // export: PUBLICATION_SEARCH_SEMANTIC_SLOTS_V1
 export declare const PUBLICATION_SEARCH_SEMANTIC_SLOTS_V1: readonly [
     "search-trigger",
@@ -250,6 +264,34 @@ export declare function publicationLocaleRoutePathV1(route: string, routePrefix:
 
 // export: publicationRoutePathV1
 export declare function publicationRoutePathV1(route: string, routePrefix: string): string;
+
+// export: PublicationSearchBudgetMeasurementV1
+export interface PublicationSearchBudgetMeasurementV1 {
+    readonly corpus: PublicationSearchCorpusClassV1;
+    readonly pageCount: number;
+    readonly indexBytes: number;
+    readonly initialJsBytes: number;
+    readonly queryLatencyP95Ms: number;
+    readonly heapDeltaBytes: number;
+    readonly indexFiles: readonly {
+        path: string;
+        byteLength: number;
+    }[];
+}
+
+// export: PublicationSearchBudgetV1
+export interface PublicationSearchBudgetV1 {
+    readonly maxIndexBytes: number;
+    readonly maxInitialJsBytes: number;
+    readonly maxQueryLatencyP95Ms: number;
+    readonly maxHeapDeltaBytes: number;
+}
+
+// export: publicationSearchCorpusClassV1
+export declare function publicationSearchCorpusClassV1(pageCount: number): PublicationSearchCorpusClassV1;
+
+// export: PublicationSearchCorpusClassV1
+export type PublicationSearchCorpusClassV1 = "small" | "representative" | "large";
 
 // export: PublicationSeoAlternateV1
 export interface PublicationSeoAlternateV1 {

@@ -42,6 +42,15 @@ export {
   type BuildPagefindIndexOptionsV1,
 } from "./pagefind.js";
 export {
+  assertPagefindSearchBudgetV1,
+  measurePagefindSearchBudgetV1,
+  PUBLICATION_SEARCH_BUDGETS_V1,
+  publicationSearchCorpusClassV1,
+  type PublicationSearchBudgetMeasurementV1,
+  type PublicationSearchBudgetV1,
+  type PublicationSearchCorpusClassV1,
+} from "./search-budget.js";
+export {
   DEFAULT_PAGEFIND_SEARCH_MESSAGES_V1,
   normalizePagefindSearchFiltersV1,
   type PagefindSearchFilterV1,

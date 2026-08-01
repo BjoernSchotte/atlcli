@@ -111,7 +111,7 @@ test("a bundle-driven Starlight consumer owns source, graph landing, and trusted
   const inventory = JSON.parse(
     await readFile(resolve(publishedConsumerFixture, "../evidence/published-consumer-inventory.json"), "utf8"),
   ) as {
-    pages: Array<{ kind: string; sourceId: string; route: string; pathname: string }>;
+    pages: Array<{ kind: string; sourceId: string; route: string; locale?: string; pathname: string }>;
     labelLandings: Array<{ kind: string; slug: string }>;
     projectPages: Array<{ kind: string; pathname: string }>;
   };

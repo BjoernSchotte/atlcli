@@ -1,6 +1,14 @@
 import { close, createIndex } from "pagefind";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import {
+  assertPagefindSearchBudgetV1,
+  measurePagefindSearchBudgetV1,
+  PUBLICATION_SEARCH_BUDGETS_V1,
+  publicationSearchCorpusClassV1,
+  type PublicationSearchBudgetMeasurementV1,
+  type PublicationSearchBudgetV1,
+} from "./search-budget.js";
 
 export const PAGEFIND_VERSION_V1 = "1.5.2";
 
@@ -9,6 +17,8 @@ export interface BuildPagefindIndexOptionsV1 {
   outputDirectory: string;
   /** Relative HTML files already bound to trusted publication page identities. */
   pageOutputPaths: readonly string[];
+  /** Optional override for tests or an operator's explicitly stricter gate. */
+  budget?: PublicationSearchBudgetV1;
 }
 
 function assertNoErrors(errors: readonly string[], operation: string): void {
@@ -19,7 +29,7 @@ function assertNoErrors(errors: readonly string[], operation: string): void {
  * Build a complete Pagefind index from only the static HTML files that the
  * integration already associated with immutable publication source IDs.
  */
-export async function buildPagefindIndexV1(options: BuildPagefindIndexOptionsV1): Promise<void> {
+export async function buildPagefindIndexV1(options: BuildPagefindIndexOptionsV1): Promise<PublicationSearchBudgetMeasurementV1> {
   const created = await createIndex({ keepIndexUrl: false, writePlayground: false });
   if (created.index === undefined) {
     throw new Error(`Pagefind did not create an index: ${created.errors.join("; ")}`);
@@ -37,6 +47,15 @@ export async function buildPagefindIndexV1(options: BuildPagefindIndexOptionsV1)
     }
     const written = await created.index.writeFiles({ outputPath: `${options.outputDirectory}/pagefind` });
     assertNoErrors(written.errors, "writing output");
+    const measurement = await measurePagefindSearchBudgetV1({
+      outputDirectory: options.outputDirectory,
+      pageCount: options.pageOutputPaths.length,
+    });
+    assertPagefindSearchBudgetV1(
+      measurement,
+      options.budget ?? PUBLICATION_SEARCH_BUDGETS_V1[publicationSearchCorpusClassV1(options.pageOutputPaths.length)],
+    );
+    return measurement;
   } finally {
     await created.index.deleteIndex();
     await close();

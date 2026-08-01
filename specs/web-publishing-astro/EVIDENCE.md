@@ -166,6 +166,16 @@ Proven locally on 2026-07-31:
   endpoint; and
 - no `manifest.webmanifest`, `sw.js`, or `service-worker.js` is emitted.
 
+The production Pagefind hook now measures the generated index through the same
+main-thread runtime used by the search island. The deterministic budget suite
+(`packages/web-publish-astro/src/search-budget.test.ts`) covers 3, 24, and 100
+pages and gates total index bytes, `pagefind.js` initial JavaScript, seven-query
+P95 latency, and post-initialization heap delta. The V1 limits are respectively
+1 MiB / 4 MiB / 16 MiB for the three corpus classes, 256 KiB initial JS, 500 ms
+P95, and 128 MiB heap delta. The suite also proves that an explicitly stricter
+budget fails the build; the normal Astro integration invokes the same gate after
+every Pagefind write.
+
 The unchanged DOCX/PDF/browser source boundary was re-proven with the existing
 `@atlcli/confluence` imports: 450 tests across ExportBlock conversion,
 composition, source resolution, DOCX browser runtime/serialization, and Typst

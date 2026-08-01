@@ -1617,7 +1617,7 @@ and presentation contracts are not Starlight-private.
       redirects, and deleted pages; never index raw bundle/source data.
 - [x] Treat result excerpts safely and prove that indexed hostile text cannot
       become executable markup in Starlight or the conformance experience.
-- [ ] Enforce measured search-index, initial-JS, query-latency, and memory
+- [x] Enforce measured search-index, initial-JS, query-latency, and memory
       budgets on small, representative, and large deterministic corpora.
 - [ ] Generate the complete navigation model, deterministic related-page
       ranking, root/space/label landing pages, breadcrumbs, page TOC,
