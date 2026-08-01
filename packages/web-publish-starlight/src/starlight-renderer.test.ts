@@ -74,7 +74,8 @@ test("a deliberately small plain-Astro experience uses the same contract without
   const html = await readFile(resolve(plainExperienceFixture, "dist/index.html"), "utf8");
   expect(html).toContain('data-atlcli-experience="fixture.plain-astro"');
   expect(html).toContain('data-atlcli-document');
-  expect(html).toContain("Structured ExportBlock fixture.");
+  expect(html).toContain("All fields");
+  expect(html).toContain('lang="ar" dir="rtl"');
   const source = await readFile(resolve(plainExperienceFixture, "src/pages/index.astro"), "utf8");
   expect(source).toContain("ExportDocument");
   expect(source).not.toContain("exportBlockKind");

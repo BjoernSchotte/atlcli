@@ -26,7 +26,8 @@
     "build": "tsc -p tsconfig.build.json && bun scripts/copy-assets.ts",
     "clean": "rm -rf dist",
     "prepack": "bun ../../scripts/strip-dev-condition.ts strip",
-    "postpack": "bun ../../scripts/strip-dev-condition.ts restore"
+    "postpack": "bun ../../scripts/strip-dev-condition.ts restore",
+    "test:visual": "bun scripts/prepare-visual-fixtures.ts && playwright test -c playwright.config.ts"
   },
   "dependencies": {
     "@atlcli/export-blocks": "workspace:*",
@@ -36,5 +37,8 @@
   "peerDependencies": {
     "@astrojs/starlight": "^0.41.3",
     "astro": ">=7.1.6 <8"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.55.0"
   }
 }

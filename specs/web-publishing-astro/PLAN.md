@@ -1585,7 +1585,7 @@ interaction remains bounded and has a complete static fallback.
       token defaults.
 - [x] Implement a deliberately small non-shipped plain-Astro experience fixture
       over the same contracts; it must not reimplement ExportBlock dispatch.
-- [ ] Prove Starlight plus the experience fixture at mobile/desktop widths, high
+- [x] Prove Starlight plus the experience fixture at mobile/desktop widths, high
       zoom, forced colors, reduced motion, light/dark/system modes, print, long
       titles, deep trees, RTL-safe layout, and custom tokens.
 - [x] Prove a Starlight renderer override changes presentation without changing

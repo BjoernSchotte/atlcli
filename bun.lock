@@ -369,6 +369,9 @@
         "@atlcli/export-blocks-astro": "workspace:*",
         "@atlcli/web-publish": "workspace:*",
       },
+      "devDependencies": {
+        "@playwright/test": "1.55.0",
+      },
       "peerDependencies": {
         "@astrojs/starlight": "^0.41.3",
         "astro": ">=7.1.6 <8",

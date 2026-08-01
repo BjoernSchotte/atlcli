@@ -24,7 +24,7 @@ const starlightOverrides: AstroExportBlockOverridesV1 = { code: StarlightCodeBlo
 ---
 
 <section data-atlcli-starlight-slot="main-content" data-pagefind-body>
-  {search !== undefined && <div data-atlcli-search-metadata aria-hidden="true">
+  {search !== undefined && <div data-atlcli-search-metadata aria-hidden="true" hidden>
     <span data-pagefind-meta="title">{search.title}</span>
     <span data-pagefind-meta="source-id">{search.sourceId}</span>
     {search.labels.map((label) => <span data-pagefind-filter="label">{label}</span>)}
