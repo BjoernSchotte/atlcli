@@ -377,6 +377,82 @@ function expectedCoverageStatus(target: ResearchCoverageTargetV1, records: reado
 }
 
 /**
+ * Produces the initial authoritative outline for a V2 run from current host
+ * claims. It deliberately accepts no model prose or model-derived coverage:
+ * section membership, evidence links, and coverage status all come from the
+ * private claim and evidence ledgers. A later outline-planner may propose a
+ * different arrangement, but it must still pass the same store validation.
+ */
+export async function createResearchOutlineFromClaimsV1(input: {
+  claimIds: readonly string[];
+  claimLedger: ResearchClaimLedgerV1;
+  evidenceStore: ResearchEvidenceStoreV1;
+  coverageTargets: readonly ResearchCoverageTargetV1[];
+  basedOnBriefRevision: number;
+  createdAt: string;
+  previousOutline?: ResearchOutlineV1;
+}): Promise<ResearchOutlineV1> {
+  const targets = coverageTargetMap(input.coverageTargets);
+  const uniqueClaimIds = [...new Set(input.claimIds)];
+  const selectedClaims: ResearchClaimV1[] = [];
+  const selectedEvidenceIds = new Set<string>();
+  for (const id of uniqueClaimIds) {
+    if (selectedClaims.length >= MAXIMUM_CLAIMS_PER_REFERENCE) break;
+    const claim = await input.claimLedger.refresh(id, input.createdAt);
+    if (!claim || claim.freshness !== "current") continue;
+    const additions = claim.evidenceIds.filter((evidenceId) => !selectedEvidenceIds.has(evidenceId));
+    if (selectedEvidenceIds.size + additions.length > MAXIMUM_EVIDENCE_PER_REFERENCE) continue;
+    selectedClaims.push(claim);
+    additions.forEach((evidenceId) => selectedEvidenceIds.add(evidenceId));
+  }
+  const records = new Map<string, ResearchEvidenceRecordV1>();
+  for (const evidenceId of selectedEvidenceIds) {
+    const record = await input.evidenceStore.get(evidenceId);
+    if (!record) invalid("A selected claim has no retained evidence.");
+    records.set(evidenceId, record);
+  }
+  const claimIds = selectedClaims.map((claim) => claim.id);
+  const evidenceIds = [...selectedEvidenceIds].sort();
+  const coverage = [...targets.values()].map((target): ResearchCoverageAssessmentV1 => {
+    const matchingEvidenceIds = evidenceIds.filter((evidenceId) =>
+      target.sourceClasses.includes(records.get(evidenceId)!.identity.product),
+    );
+    const matchingEvidence = matchingEvidenceIds.map((evidenceId) => records.get(evidenceId)!);
+    const matchingClaimIds = selectedClaims
+      .filter((claim) => claim.evidenceIds.some((evidenceId) => matchingEvidenceIds.includes(evidenceId)))
+      .map((claim) => claim.id);
+    return {
+      schema: RESEARCH_COVERAGE_ASSESSMENT_SCHEMA_V1,
+      targetId: target.id,
+      status: expectedCoverageStatus(target, matchingEvidence),
+      claimIds: matchingClaimIds,
+      evidenceIds: matchingEvidenceIds,
+      distinctSourceCount: new Set(matchingEvidence.map((record) => record.identity.canonicalId)).size,
+      assessedAt: input.createdAt,
+    };
+  });
+  const previous = input.previousOutline;
+  return createResearchOutlineV1({
+    revision: previous ? previous.revision + 1 : 1,
+    basedOnBriefRevision: input.basedOnBriefRevision,
+    ...(previous ? { supersedesOutlineId: previous.id } : {}),
+    createdAt: input.createdAt,
+    sections: [{
+      id: "outline-section:validated-findings",
+      title: "Evidence-backed findings",
+      question: "What do the currently validated claims establish?",
+      claimIds,
+      evidenceIds,
+      contradictionIds: [],
+      coverageTargetIds: [...targets.keys()].sort(),
+      dependsOnSectionIds: [],
+    }],
+    contradictions: [],
+    coverage,
+  });
+}
+
+/**
  * Private immutable outline store. It writes a complete revision before the
  * compact current-pointer index, so a new instance recovers the previous
  * published outline if a pointer publication is interrupted.

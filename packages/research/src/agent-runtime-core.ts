@@ -43,6 +43,11 @@ import { ResearchSessionWorkspaceCheckpointerV1 } from "./workspace-checkpointer
 import { WorkspaceResearchEvidenceStoreV1 } from "./evidence-store.js";
 import { WorkspaceResearchClaimLedgerV1 } from "./claim-ledger.js";
 import {
+  WorkspaceResearchOutlineStoreV1,
+  createResearchOutlineFromClaimsV1,
+  type ResearchOutlineV1,
+} from "./outline.js";
+import {
   normalizeResearchPacketModelBodyV2,
   normalizeResearchPacketReferenceModelBodyV2,
 } from "./packet-v2-normalizer.js";
@@ -1160,6 +1165,14 @@ async function runResearchAgentWithBindings(
   const durableClaims = durableEvidence
     ? new WorkspaceResearchClaimLedgerV1(workspace, durableEvidence)
     : undefined;
+  const durableOutline = durableEvidence && durableClaims && input.brief
+    ? new WorkspaceResearchOutlineStoreV1({
+        workspace,
+        evidenceStore: durableEvidence,
+        claimLedger: durableClaims,
+        coverageTargets: input.brief.coverageTargets,
+      })
+    : undefined;
   const broker = new ResearchCapabilityBroker(input.request, input.providers, {
     ...(input.budget ? { budget: input.budget } : {}),
     ...(durableEvidence && input.brief ? {
@@ -1908,12 +1921,32 @@ async function runResearchAgentWithBindings(
       ...body.claims.map((claim) => claim.claimId),
       ...body.referencedClaimIds,
     ]))];
+    let outline: ResearchOutlineV1 | undefined;
+    if (durableOutline && durableEvidence && durableClaims && input.brief && acceptedV2Bodies.length > 0) {
+      const brief = input.brief;
+      const previousOutline = await durableOutline.current();
+      const proposed = await createResearchOutlineFromClaimsV1({
+        claimIds: v2ClaimIds,
+        claimLedger: durableClaims,
+        evidenceStore: durableEvidence,
+        coverageTargets: brief.coverageTargets,
+        basedOnBriefRevision: brief.revision,
+        createdAt: new Date(completedAtMs).toISOString(),
+        ...(previousOutline ? { previousOutline } : {}),
+      });
+      await durableOutline.put(proposed);
+      outline = await durableOutline.validateCurrent();
+      if (!outline) {
+        throw new ResearchContractError("invalid-report", "A V2 report requires one validated evidence-linked outline.");
+      }
+    }
     const report = durableEvidence && durableClaims && acceptedV2Bodies.length > 0
       ? await finalizeResearchReportV2({
           request: input.request,
           evidenceStore: durableEvidence,
           claimLedger: durableClaims,
           claimIds: v2ClaimIds,
+          ...(outline ? { outline } : {}),
           title: parseResearchAgentDraftV1(result.structuredResponse).title,
           limitations: [
             ...(input.brief ? projectResearchProposedAssumptionLimitationsV1(input.brief) : []),

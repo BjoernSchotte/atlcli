@@ -2422,8 +2422,22 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
         freshness: "current",
       }],
     });
+    expect(report.sections).toEqual([expect.objectContaining({
+      id: "outline-section:validated-findings",
+      claimIds: [report.claims[0]!.id],
+      coverageTargetIds: ["coverage:primary-question"],
+    })]);
+    expect(report.coverage).toEqual([expect.objectContaining({
+      targetId: "coverage:primary-question",
+      status: "covered",
+      distinctSourceCount: 1,
+      claimIds: [report.claims[0]!.id],
+    })]);
     expect(report.markdown).toContain("[Validated implementation](https://example.atlassian.net/browse/DEMO-1)");
     expect(report.markdown).not.toContain(rawQuote);
+    const workspace = await durableStore.workspace(graph.sessionId);
+    const persistedOutlineIndex = await workspace.readFile("/.atlcli/outlines/v1/index.json");
+    expect(persistedOutlineIndex).toContain('"currentOutlineId"');
     expect((await durableStore.artifact(graph.sessionId, `artifact:report:${graph.turnId}`))?.contents).toBe(report.markdown);
   });
 

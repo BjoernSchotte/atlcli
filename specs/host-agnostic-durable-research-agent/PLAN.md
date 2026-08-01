@@ -3306,7 +3306,7 @@ retention/deletion, V2 packet, and planner activation work remains pending.
       binding that authorized retrieval. Reject missing, stale, wrong-tenant,
       superseded, or entity-mismatched binding references and expose the
       authority class in sanitized source metadata.
-- [ ] Activate `ResearchPacketBodyV2`, its V2 claim/contradiction candidates,
+- [x] Activate `ResearchPacketBodyV2`, its V2 claim/contradiction candidates,
       and the `v2-outline` reconciliation projection for new turns. Require
       exact chunk spans for factual packet/claim support; retain completed T3
       V1 accepted packets for inspection but require host retrieval and
@@ -3334,8 +3334,18 @@ to durable, detail-reading `lookup` nodes. Multi-wave analysis and
 reconciliation continue to use V1 until their explicit V2 claim-reference and
 `v2-outline` reconciliation projections are implemented; this avoids treating
 a compact dependency summary as quote-bearing source evidence. The planner and
-full V2 report remain pending.
-- [ ] Build and revise `OutlineV1` from brief coverage targets, claim IDs,
+its proposal-acceptance path remain pending.
+
+T5 V2 report-outline checkpoint (2026-08-01): after one durable V2 run accepts
+claim packets, the host builds and persists an immutable evidence-linked
+`OutlineV1` before finalization. Its initial section and every coverage status
+are derived only from current claim/evidence ledger entries and brief targets;
+it contains no source text or model-authored factual prose. The report
+revalidates that persisted outline, renders canonical Markdown solely from
+current host claims and retained sources, and still accepts legacy V1 reports.
+The dynamic `outline-planner` remains pending: it may propose a different
+structure only after the same store validation and explicit host acceptance.
+- [x] Build and revise `OutlineV1` from brief coverage targets, claim IDs,
       contradiction IDs, and evidence IDs. A section draft receives only its
       linked accepted evidence.
 - [ ] Activate the `outline-planner` role only now. Validate its
@@ -3345,9 +3355,9 @@ full V2 report remain pending.
 - [ ] Validate every reconciliation defect and follow-up proposal against
       existing claim, section, node, and evidence IDs before the supervisor may
       act on it.
-- [ ] Introduce `atlcli.research-report/v2` while retaining a V1 reader for
+- [x] Introduce `atlcli.research-report/v2` while retaining a V1 reader for
       completed issue-138 reports.
-- [ ] Generate Markdown solely from validated V2 claims, coverage, limitations,
+- [x] Generate Markdown solely from validated V2 claims, coverage, limitations,
       and source references.
 - [ ] Revalidate evidence before reuse after the configured freshness interval.
 - [ ] Invalidate claims transitively when evidence changes, disappears, or is

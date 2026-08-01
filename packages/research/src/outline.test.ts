@@ -9,6 +9,7 @@ import {
 } from "./claim-ledger.js";
 import {
   WorkspaceResearchOutlineStoreV1,
+  createResearchOutlineFromClaimsV1,
   createResearchOutlineV1,
   type ResearchOutlineV1,
 } from "./outline.js";
@@ -199,6 +200,42 @@ async function outline(input: {
 }
 
 describe("research outline store", () => {
+  test("derives coverage and section links only from current retained claims", async () => {
+    const workspace = createMemoryResearchWorkspace();
+    const support = await retainedSupport(workspace);
+    const derived = await createResearchOutlineFromClaimsV1({
+      claimIds: [support.jiraClaim.id, support.wikiClaim.id],
+      claimLedger: support.claims,
+      evidenceStore: support.evidence,
+      coverageTargets,
+      basedOnBriefRevision: 1,
+      createdAt: "2026-08-01T13:00:03.000Z",
+    });
+    const store = new WorkspaceResearchOutlineStoreV1({
+      workspace,
+      evidenceStore: support.evidence,
+      claimLedger: support.claims,
+      coverageTargets,
+    });
+
+    const persisted = await store.put(derived);
+    expect(persisted).toMatchObject({
+      revision: 1,
+      sections: [{
+        id: "outline-section:validated-findings",
+      }],
+      coverage: [{
+        targetId: "coverage:primary",
+        status: "covered",
+        distinctSourceCount: 2,
+      }],
+    });
+    expect(persisted.sections[0]!.claimIds).toEqual(expect.arrayContaining([
+      support.jiraClaim.id,
+      support.wikiClaim.id,
+    ]));
+  });
+
   test("persists a current evidence-linked outline without copying source text into the outline", async () => {
     const workspace = createMemoryResearchWorkspace();
     const support = await retainedSupport(workspace);
