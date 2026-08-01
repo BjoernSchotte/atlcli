@@ -1,0 +1,45 @@
+---
+import { EXPORT_BLOCKS_ASTRO_MINIMAL_CONTEXT_V1 } from "@atlcli/export-blocks-astro/fixtures";
+import {
+  publicationStaticPathsV1,
+  readPublicationNavigationV1,
+} from "@atlcli/web-publish-astro";
+import {
+  createStarlightPublicationNavigationV1,
+  starlightPublicationLabelLandingV1,
+  starlightPublicationPageNavigationV1,
+} from "@atlcli/web-publish-starlight";
+import StarlightPublicationLabelLanding from "@atlcli/web-publish-starlight/components/StarlightPublicationLabelLanding.astro";
+import StarlightPublicationPage from "@atlcli/web-publish-starlight/components/StarlightPublicationPage.astro";
+import { bundlePath, labelRoutePrefix } from "virtual:atlcli-publication";
+
+export async function getStaticPaths() {
+  return publicationStaticPathsV1({
+    bundlePath,
+    ...(labelRoutePrefix === undefined ? {} : { labelRoutePrefix }),
+  });
+}
+
+const path = Astro.props;
+const loaded = await readPublicationNavigationV1({
+  bundlePath,
+  ...(labelRoutePrefix === undefined ? {} : { labelRoutePrefix }),
+});
+const navigation = createStarlightPublicationNavigationV1({
+  navigation: loaded.navigation,
+  routePrefix: "/publish",
+  base: import.meta.env.BASE_URL === "/" ? "" : import.meta.env.BASE_URL.slice(0, -1),
+  landingLabel: "Overview",
+});
+const page = path.kind === "page" ? loaded.pages.find((entry) => entry.sourceId === path.sourceId) : undefined;
+const landing = path.kind === "label" ? starlightPublicationLabelLandingV1(navigation, path.slug) : undefined;
+if (path.kind === "page" && page === undefined) throw new Error(`Missing publication page ${path.sourceId}`);
+if (path.kind === "label" && landing === undefined) throw new Error(`Missing publication label landing ${path.slug}`);
+---
+
+{path.kind === "page" ? <StarlightPublicationPage
+  page={page!}
+  navigation={starlightPublicationPageNavigationV1(navigation, page!.sourceId)}
+  sidebar={navigation.sidebar}
+  context={{ ...EXPORT_BLOCKS_ASTRO_MINIMAL_CONTEXT_V1 }}
+/> : <StarlightPublicationLabelLanding landing={landing!} sidebar={navigation.sidebar} />}

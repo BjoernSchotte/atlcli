@@ -51,7 +51,11 @@ function isInventory(value: unknown): value is AstroBuildInventoryV1 {
     candidate.output.every((output) => output !== null && typeof output === "object" &&
       typeof (output as Record<string, unknown>).path === "string" &&
       typeof (output as Record<string, unknown>).sha256 === "string" &&
-      typeof (output as Record<string, unknown>).byteLength === "number");
+      typeof (output as Record<string, unknown>).byteLength === "number") &&
+    (candidate.projectPages === undefined || Array.isArray(candidate.projectPages) && candidate.projectPages.every((page) =>
+      page !== null && typeof page === "object" &&
+      (page as Record<string, unknown>).kind === "project" &&
+      typeof (page as Record<string, unknown>).pathname === "string"));
 }
 
 /**

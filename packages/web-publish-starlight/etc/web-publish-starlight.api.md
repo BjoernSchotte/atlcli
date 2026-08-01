@@ -11,6 +11,7 @@
 export interface CreateStarlightPublicationNavigationOptionsV1 {
     navigation: PublicationNavigationPlanV1;
     routePrefix: string;
+    base?: string;
     landingLabel: string;
 }
 
@@ -45,7 +46,7 @@ export declare const STARLIGHT_PUBLISHING_SEMANTIC_SLOTS_V1: readonly [
 ];
 
 // export: starlightPublicationHrefV1
-export declare function starlightPublicationHrefV1(route: string, routePrefix: string): string;
+export declare function starlightPublicationHrefV1(route: string, routePrefix: string, base?: string): string;
 
 // export: starlightPublicationLabelLandingV1
 export declare function starlightPublicationLabelLandingV1(model: StarlightPublicationNavigationModelV1, slug: string): StarlightPublicationLabelLandingV1;

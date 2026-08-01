@@ -9,6 +9,7 @@ const packageRoot = resolve(import.meta.dir, "..");
 const workspaceRoot = resolve(packageRoot, "../..");
 const fixture = resolve(packageRoot, "fixtures/starlight");
 const plainExperienceFixture = resolve(packageRoot, "fixtures/plain-experience");
+const publishedConsumerFixture = resolve(packageRoot, "fixtures/published-consumer");
 
 async function run(command: string[], cwd: string): Promise<string> {
   const process = Bun.spawn(command, { cwd, stdout: "pipe", stderr: "pipe" });
@@ -48,6 +49,7 @@ test("a Starlight consumer presents ExportBlock document bodies with static sear
   expect(html).toContain('data-atlcli-related-reasons="outbound-link inbound-link shared-label same-root"');
   expect(html).toContain('rel="next" href="/guide/"');
   expect(html).toContain("pagefind");
+  expect(html.match(/\bdata-pagefind-body\b/gu)).toHaveLength(1);
   expect(html).not.toContain("exportBlockKind");
   expect(await stat(resolve(fixture, "dist/pagefind/pagefind.js"))).toBeDefined();
   const guide = await readFile(resolve(fixture, "dist/guide/index.html"), "utf8");
@@ -66,6 +68,38 @@ test("a Starlight consumer presents ExportBlock document bodies with static sear
   expect(topic).toContain('href="/guide/"');
   expect(topic).toContain('href="/"');
   expect(await stat(resolve(fixture, "dist/404.html"))).toBeDefined();
+}, 30_000);
+
+test("a bundle-driven Starlight consumer owns source, graph landing, and trusted 404 output", async () => {
+  await run(["bun", "run", "build", "--filter=@atlcli/web-publish-astro"], workspaceRoot);
+  await rm(resolve(publishedConsumerFixture, ".astro"), { recursive: true, force: true });
+  const output = await run(["bun", "run", "build"], publishedConsumerFixture);
+  expect(output).toContain("3 page(s) built");
+
+  const page = await readFile(resolve(publishedConsumerFixture, "dist/publish/guide/index.html"), "utf8");
+  expect(page).toContain('data-atlcli-starlight-slot="main-content"');
+  expect(page).toContain("Bundle publishing guide");
+  expect(page).toContain("immutable bundle rendered through the supported Starlight publishing adapter");
+  expect(page.match(/\bdata-pagefind-body\b/gu)).toHaveLength(1);
+
+  const label = await readFile(resolve(publishedConsumerFixture, "dist/publish/topics/guide/index.html"), "utf8");
+  expect(label).toContain('data-atlcli-publication-slot="label-landing"');
+  expect(label).toContain("Topic: guide");
+  expect(label).toContain('href="/docs/publish/guide/"');
+  expect(label.match(/\bdata-pagefind-body\b/gu)).toHaveLength(1);
+  expect(await stat(resolve(publishedConsumerFixture, "dist/404.html"))).toBeDefined();
+  expect(await stat(resolve(publishedConsumerFixture, "dist/pagefind/pagefind.js"))).toBeDefined();
+
+  const inventory = JSON.parse(
+    await readFile(resolve(publishedConsumerFixture, "../evidence/published-consumer-inventory.json"), "utf8"),
+  ) as {
+    pages: Array<{ kind: string; sourceId: string; route: string; pathname: string }>;
+    labelLandings: Array<{ kind: string; slug: string }>;
+    projectPages: Array<{ kind: string; pathname: string }>;
+  };
+  expect(inventory.pages).toEqual([{ kind: "page", sourceId: "guide", route: "/guide/", pathname: "publish/guide/" }]);
+  expect(inventory.labelLandings).toEqual([expect.objectContaining({ kind: "label", slug: "guide", pathname: "publish/topics/guide/" })]);
+  expect(inventory.projectPages).toEqual([{ kind: "project", pathname: "404/" }]);
 }, 30_000);
 
 test("a deliberately small plain-Astro experience uses the same contract without a second dispatcher", async () => {

@@ -23,7 +23,8 @@ const { blocks, context, search, overrides } = Astro.props;
 const starlightOverrides: AstroExportBlockOverridesV1 = { code: StarlightCodeBlock, ...overrides };
 ---
 
-<section data-atlcli-starlight-slot="main-content" data-pagefind-body>
+<!-- StarlightPage owns the single canonical Pagefind body region. -->
+<section data-atlcli-starlight-slot="main-content">
   {search !== undefined && <div data-atlcli-search-metadata aria-hidden="true" hidden>
     <span data-pagefind-meta="title">{search.title}</span>
     <span data-pagefind-meta="source-id">{search.sourceId}</span>

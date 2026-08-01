@@ -42,6 +42,10 @@ export interface AstroBuildInventoryV1 {
         sourceIds: readonly string[];
         pathname: string;
     }[];
+    projectPages?: readonly {
+        kind: "project";
+        pathname: string;
+    }[];
     output: readonly {
         path: string;
         sha256: string;

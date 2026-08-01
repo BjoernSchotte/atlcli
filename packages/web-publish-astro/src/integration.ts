@@ -492,23 +492,33 @@ export function atlcliPublishingIntegration(
           routeKey(publicationRoutePathV1(label.route, routePrefix)),
           { kind: "label" as const, label: label.label, slug: label.slug, route: label.route, sourceIds: label.sourceIds },
         ]));
+        const trustedProjectRoutes = new Set(routeInventory.flatMap((route) => route.pathname === undefined
+          ? []
+          : [routeKey(route.pathname)]));
         const builtRoutes = pages.map((page) => {
           const normalizedPathname = routeKey(page.pathname);
           const source = sourceByRoute.get(normalizedPathname) ?? labelByRoute.get(normalizedPathname);
-          if (source === undefined) {
+          if (source !== undefined) return { ...source, pathname: page.pathname };
+          if (trustedProjectRoutes.has(normalizedPathname)) {
+            return { kind: "project" as const, pathname: page.pathname };
+          }
+          {
             throw new Error(`Astro built an unexplained publication page: ${page.pathname}`);
           }
-          return { ...source, pathname: page.pathname };
-        }).sort((left, right) => left.route.localeCompare(right.route));
+        }).sort((left, right) => left.pathname.localeCompare(right.pathname));
         const builtSourcePages = builtRoutes.filter((page) => page.kind === "page");
         const builtLabelLandings = builtRoutes.filter((page) => page.kind === "label");
+        const builtProjectPages = builtRoutes.filter((page) => page.kind === "project");
         if (builtSourcePages.length !== loaded.pages.length || builtLabelLandings.length !== loaded.navigation.labels.length) {
           throw new Error("Astro did not build exactly one route for every publication page and label landing");
         }
         await materializePublicationAssets(options.bundlePath, outputRoot, loaded.bundle.assets);
         await buildPagefindIndexV1({
           outputDirectory: outputRoot,
-          pageOutputPaths: builtRoutes.map((page) => {
+          // Trusted project pages (notably a 404 shell) are navigational
+          // recovery surfaces, not canonical source documents. Index only
+          // source and generated graph landing pages.
+          pageOutputPaths: builtRoutes.filter((page) => page.kind !== "project").map((page) => {
             const stem = page.pathname.replace(/^\/+|\/+$/gu, "");
             return options.expectedConfig.outputProfile === "directory"
               ? `${stem}/index.html`
@@ -529,6 +539,7 @@ export function atlcliPublishingIntegration(
           }),
           pages: builtSourcePages,
           labelLandings: builtLabelLandings,
+          projectPages: builtProjectPages,
           routes: routeInventory,
           output: await inventory(outputRoot),
         });

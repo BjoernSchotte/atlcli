@@ -20,6 +20,11 @@ export interface AstroBuildInventoryV1 {
     sourceIds: readonly string[];
     pathname: string;
   }[];
+  /** Trusted project-owned static pages such as the useful 404 experience. */
+  projectPages?: readonly {
+    kind: "project";
+    pathname: string;
+  }[];
   output: readonly { path: string; sha256: string; byteLength: number }[];
 }
 
@@ -97,6 +102,19 @@ function assertInventoryLabelLandings(
   return outputPaths;
 }
 
+function assertInventoryProjectPages(inventory: AstroBuildInventoryV1, profile: "directory" | "portable-file"): Set<string> {
+  const paths = new Set<string>();
+  for (const page of inventory.projectPages ?? []) {
+    if (page.kind !== "project" || typeof page.pathname !== "string" || page.pathname.length === 0) {
+      throw new TypeError("Astro build inventory has an invalid trusted project page");
+    }
+    const path = outputPathForPage(page.pathname, profile);
+    if (paths.has(path)) throw new TypeError(`Astro build inventory has duplicate trusted project output '${path}'`);
+    paths.add(path);
+  }
+  return paths;
+}
+
 function isTrustedGeneratedOutput(path: string): boolean {
   return path.startsWith("_astro/") ||
     path.startsWith("pagefind/") ||
@@ -129,6 +147,7 @@ export async function createAstroStaticPublicationManifestV1(
   const outputs = assertInventoryOutput(inventory);
   const bySourceId = assertInventoryPages(request, inventory);
   const labelLandingPaths = assertInventoryLabelLandings(request, inventory);
+  const projectPagePaths = assertInventoryProjectPages(inventory, request.project.builder.outputProfile);
   const pages = request.bundle.pages.map((entry) => {
     const inventoryPage = bySourceId.get(entry.sourceId);
     if (inventoryPage === undefined) throw new TypeError(`Astro build inventory omitted publication page '${entry.sourceId}'`);
@@ -144,7 +163,7 @@ export async function createAstroStaticPublicationManifestV1(
   });
   assertNoUnexplainedOutput(
     outputs,
-    new Set([...pages.map((page) => page.outputPath), ...labelLandingPaths]),
+    new Set([...pages.map((page) => page.outputPath), ...labelLandingPaths, ...projectPagePaths]),
     new Set(assets.map((asset) => asset.outputPath)),
   );
   const searchFiles = inventory.output.filter((entry) => entry.path.startsWith("pagefind/")).sort((a, b) => a.path.localeCompare(b.path));

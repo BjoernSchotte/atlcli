@@ -80,3 +80,29 @@ test("accepts planned label landing output but rejects an unexplained landing so
     },
   })).rejects.toThrow("references unknown page");
 });
+
+test("accepts only explicitly inventoried trusted project pages", async () => {
+  const options = {
+    request,
+    inventory: {
+      schema: "atlcli.astro-build-inventory/1" as const,
+      bundleDigest: "bundle",
+      pages: [{ kind: "page" as const, sourceId: "guide", route: "/guide/", pathname: "publish/guide/" }],
+      projectPages: [{ kind: "project" as const, pathname: "404/" }],
+      output: [
+        { path: "publish/guide/index.html", sha256: "a".repeat(64), byteLength: 7 },
+        { path: "404/index.html", sha256: "b".repeat(64), byteLength: 9 },
+      ],
+    },
+    builderVersion: "1.0.0",
+    astroVersion: "7.1.6",
+    experience: { id: "test", version: "1", digest: "x" },
+  };
+  await expect(createAstroStaticPublicationManifestV1(options)).resolves.toMatchObject({
+    pages: [{ sourceId: "guide" }],
+  });
+  await expect(createAstroStaticPublicationManifestV1({
+    ...options,
+    inventory: { ...options.inventory, projectPages: [{ kind: "project" as const, pathname: "404/" }, { kind: "project" as const, pathname: "404/" }] },
+  })).rejects.toThrow("duplicate trusted project output");
+});

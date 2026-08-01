@@ -79,8 +79,27 @@ test("maps the neutral plan to documented Starlight sidebar data and route-prefi
 test("keeps route identity closed and rejects missing page lookups or untrusted labels", () => {
   expect(starlightPublicationHrefV1("/", "/publish")).toBe("/publish/");
   expect(starlightPublicationHrefV1("/guide/", "")).toBe("/guide/");
+  expect(starlightPublicationHrefV1("/guide/", "/publish", "/docs")).toBe("/docs/publish/guide/");
   expect(() => createStarlightPublicationNavigationV1({ navigation, routePrefix: "/publish", landingLabel: " " })).toThrow("landingLabel");
   const result = createStarlightPublicationNavigationV1({ navigation, routePrefix: "/publish", landingLabel: "Overview" });
   expect(() => starlightPublicationPageNavigationV1(result, "unknown")).toThrow("no page");
   expect(() => starlightPublicationLabelLandingV1(result, "unknown")).toThrow("no label landing");
+});
+
+test("maps every Starlight chrome link through the configured Astro base", () => {
+  const result = createStarlightPublicationNavigationV1({
+    navigation,
+    routePrefix: "/publish",
+    base: "/docs",
+    landingLabel: "Overview",
+  });
+  expect(result.sidebar).toEqual([{
+    label: "Knowledge", collapsed: false,
+    items: [
+      { label: "Overview", link: "/publish/knowledge/" },
+      { label: "Guide", link: "/publish/guide/" },
+    ],
+  }]);
+  expect(starlightPublicationPageNavigationV1(result, "guide").previous?.href).toBe("/docs/publish/knowledge/");
+  expect(starlightPublicationLabelLandingV1(result, "docs").pages[0]?.href).toBe("/docs/publish/guide/");
 });

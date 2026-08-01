@@ -18,7 +18,8 @@ const pagesLabel = copy.pages ?? "Pages";
 ---
 
 <StarlightPage frontmatter={{ title, prev: false, next: false }} headings={[]} sidebar={sidebar}>
-  <article data-atlcli-publication-slot="label-landing" data-pagefind-body>
+  <!-- StarlightPage owns the single canonical Pagefind body region. -->
+  <article data-atlcli-publication-slot="label-landing">
     <p data-pagefind-filter="label">{landing.label}</p>
     <section aria-labelledby={`atlcli-label-pages-${landing.slug}`}>
       <h2 id={`atlcli-label-pages-${landing.slug}`}>{pagesLabel}</h2>

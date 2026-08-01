@@ -58,8 +58,10 @@ export interface StarlightPublicationNavigationModelV1 {
 export interface CreateStarlightPublicationNavigationOptionsV1 {
   /** A complete, already validated neutral graph plan. */
   navigation: PublicationNavigationPlanV1;
-  /** Namespace owned by the publication route, e.g. `/publish`. */
+  /** Namespace owned by the publication route, e.g. `/publish`, without Astro's base. */
   routePrefix: string;
+  /** Optional canonical Astro base prefix, e.g. `/docs`, without a trailing slash. */
+  base?: string;
   /** Trusted, localized label for a group landing link. */
   landingLabel: string;
 }
@@ -78,20 +80,20 @@ function requireLabel(value: string): string {
   return value;
 }
 
-/** Convert a neutral publication route to the selected Starlight route namespace. */
-export function starlightPublicationHrefV1(route: string, routePrefix: string): string {
+/** Convert a neutral route to its static Starlight URL, including an optional Astro base. */
+export function starlightPublicationHrefV1(route: string, routePrefix: string, base = ""): string {
   const normalizedRoute = normalizePublicationRouteV1(route);
-  const prefix = normalizePublicationRoutePrefixV1(routePrefix);
+  const prefix = `${normalizePublicationRoutePrefixV1(base)}${normalizePublicationRoutePrefixV1(routePrefix)}`;
   return normalizedRoute === "/" ? `${prefix}/` || "/" : `${prefix}${normalizedRoute}`;
 }
 
-function link(value: PublicationBreadcrumbV1, routePrefix: string): StarlightPublicationLinkV1 {
-  return { sourceId: value.sourceId, title: value.title, href: starlightPublicationHrefV1(value.route, routePrefix) };
+function link(value: PublicationBreadcrumbV1, routePrefix: string, base: string): StarlightPublicationLinkV1 {
+  return { sourceId: value.sourceId, title: value.title, href: starlightPublicationHrefV1(value.route, routePrefix, base) };
 }
 
-function relatedLink(value: PublicationRelatedPageV1, routePrefix: string): StarlightPublicationRelatedLinkV1 {
+function relatedLink(value: PublicationRelatedPageV1, routePrefix: string, base: string): StarlightPublicationRelatedLinkV1 {
   return {
-    ...link(value, routePrefix),
+    ...link(value, routePrefix, base),
     score: value.score,
     reasons: value.reasons,
   };
@@ -100,17 +102,18 @@ function relatedLink(value: PublicationRelatedPageV1, routePrefix: string): Star
 function sidebarEntry(
   item: PublicationNavigationItemV1,
   routePrefix: string,
+  base: string,
   landingLabel: string,
   expanded: boolean,
 ): StarlightPublicationSidebarEntryV1 {
-  const href = starlightPublicationHrefV1(item.route, routePrefix);
+  const href = starlightPublicationHrefV1(item.route, routePrefix, base);
   if (item.children.length === 0) return { label: item.title, link: href };
   return {
     label: item.title,
     collapsed: !expanded,
     items: [
       { label: landingLabel, link: href },
-      ...item.children.map((child) => sidebarEntry(child, routePrefix, landingLabel, false)),
+      ...item.children.map((child) => sidebarEntry(child, routePrefix, base, landingLabel, false)),
     ],
   };
 }
@@ -118,14 +121,15 @@ function sidebarEntry(
 function pageNavigation(
   page: PublicationPageNavigationV1,
   routePrefix: string,
+  base: string,
 ): StarlightPublicationPageNavigationV1 {
   return Object.freeze({
     sourceId: page.sourceId,
-    breadcrumbs: Object.freeze(page.breadcrumbs.map((entry) => link(entry, routePrefix))),
+    breadcrumbs: Object.freeze(page.breadcrumbs.map((entry) => link(entry, routePrefix, base))),
     toc: page.toc,
-    ...(page.previous === undefined ? {} : { previous: link(page.previous, routePrefix) }),
-    ...(page.next === undefined ? {} : { next: link(page.next, routePrefix) }),
-    related: Object.freeze(page.related.map((entry) => relatedLink(entry, routePrefix))),
+    ...(page.previous === undefined ? {} : { previous: link(page.previous, routePrefix, base) }),
+    ...(page.next === undefined ? {} : { next: link(page.next, routePrefix, base) }),
+    related: Object.freeze(page.related.map((entry) => relatedLink(entry, routePrefix, base))),
   });
 }
 
@@ -133,6 +137,7 @@ function labelLanding(
   label: PublicationLabelLandingV1,
   pages: ReadonlyMap<string, StarlightPublicationPageNavigationV1>,
   routePrefix: string,
+  base: string,
 ): StarlightPublicationLabelLandingV1 {
   const members = label.sourceIds.map((sourceId) => {
     const page = pages.get(sourceId);
@@ -145,7 +150,7 @@ function labelLanding(
   return Object.freeze({
     label: label.label,
     slug: label.slug,
-    href: starlightPublicationHrefV1(label.route, routePrefix),
+    href: starlightPublicationHrefV1(label.route, routePrefix, base),
     pages: Object.freeze(members),
   });
 }
@@ -160,15 +165,18 @@ export function createStarlightPublicationNavigationV1(
 ): StarlightPublicationNavigationModelV1 {
   const landingLabel = requireLabel(options.landingLabel);
   const routePrefix = normalizePublicationRoutePrefixV1(options.routePrefix);
-  const pages = Object.freeze(options.navigation.pages.map((page) => pageNavigation(page, routePrefix)));
+  const base = normalizePublicationRoutePrefixV1(options.base ?? "");
+  const pages = Object.freeze(options.navigation.pages.map((page) => pageNavigation(page, routePrefix, base)));
   const pagesBySourceId = new Map(pages.map((page) => [page.sourceId, page]));
   return Object.freeze({
     routePrefix,
     sidebar: Object.freeze(options.navigation.roots.map((root) =>
-      sidebarEntry(root, routePrefix, landingLabel, true),
+      // Starlight's documented sidebar input applies its configured base.
+      // Other publication chrome uses fully base-aware href values above.
+      sidebarEntry(root, routePrefix, "", landingLabel, true),
     )),
     pages,
-    labels: Object.freeze(options.navigation.labels.map((label) => labelLanding(label, pagesBySourceId, routePrefix))),
+    labels: Object.freeze(options.navigation.labels.map((label) => labelLanding(label, pagesBySourceId, routePrefix, base))),
   });
 }
 

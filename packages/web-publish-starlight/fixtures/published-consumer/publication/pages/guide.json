@@ -1,0 +1,20 @@
+{
+  "schema": "atlcli.publication-page/1",
+  "sourceId": "guide",
+  "sourceVersion": "1",
+  "title": "Bundle publishing guide",
+  "position": 0,
+  "depth": 0,
+  "route": "/guide/",
+  "blocks": [
+    { "type": "paragraph", "content": [{ "type": "text", "text": "This is an immutable bundle rendered through the supported Starlight publishing adapter." }] },
+    { "type": "heading", "level": 2, "explicitAnchor": "verify", "content": [{ "type": "text", "text": "Verify the release" }] },
+    { "type": "callout", "kind": "note", "title": "No Markdown content path", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "The page body remains trusted ExportBlock data." }] }] }
+  ],
+  "notes": [],
+  "labels": ["guide"],
+  "links": [],
+  "assetIds": ["fixture-asset"],
+  "renderDependencies": [],
+  "pageDigest": "page-digest"
+}
