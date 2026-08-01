@@ -330,10 +330,29 @@ export function atlcliPublishingIntegration(
         if (outputRelative === "" || (!outputRelative.startsWith("..") && !outputRelative.startsWith("/"))) {
           throw new Error("atlcli publishing manifestPath must be outside Astro's public output directory");
         }
+        const loaded = await readPublicationBundlePagesV1(options);
+        const pageByRoute = new Map(
+          loaded.pages.map((page) => [
+            publicationRoutePathV1(page.route, routePrefix).replace(/^\//u, "").replace(/\/$/u, ""),
+            { sourceId: page.sourceId, route: page.route },
+          ]),
+        );
+        const builtPages = pages.map((page) => {
+          const normalizedPathname = page.pathname.replace(/^\//u, "").replace(/\/$/u, "");
+          const source = pageByRoute.get(normalizedPathname);
+          if (source === undefined) {
+            throw new Error(`Astro built an unexplained publication page: ${page.pathname}`);
+          }
+          return { ...source, pathname: page.pathname };
+        }).sort((left, right) => left.sourceId.localeCompare(right.sourceId));
+        if (builtPages.length !== loaded.pages.length) {
+          throw new Error("Astro did not build exactly one route for every publication page");
+        }
         await writePrivateJson(manifestPath, {
           schema: "atlcli.astro-build-inventory/1",
           bundlePath: "<private>",
           outputRoot: "<private>",
+          bundleDigest: loaded.bundle.bundleDigest,
           ...(installedExperience === undefined ? {} : {
             experience: {
               id: installedExperience.id,
@@ -341,7 +360,7 @@ export function atlcliPublishingIntegration(
               digest: installedExperience.digest,
             },
           }),
-          pages: pages.map((page) => page.pathname).sort(),
+          pages: builtPages,
           routes: routeInventory,
           output: await inventory(outputRoot),
         });

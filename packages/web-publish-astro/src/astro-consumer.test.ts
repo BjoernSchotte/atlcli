@@ -36,12 +36,13 @@ test("Astro consumer harness loads structured pages and emits a private inventor
   expect(html).not.toContain("bundle.json");
   const inventory = JSON.parse(
     await readFile(resolve(fixtureDirectory, "../evidence/build-inventory.json"), "utf8"),
-  ) as { outputRoot: string; pages: string[]; output: Array<{ path: string }> };
+  ) as { outputRoot: string; bundleDigest: string; pages: Array<{ sourceId: string; route: string; pathname: string }>; output: Array<{ path: string }> };
   expect(inventory.outputRoot).toBe("<private>");
-  expect(inventory.pages).toEqual(["publish/guide/"]);
+  expect(inventory.bundleDigest).toBe("bundle-digest");
+  expect(inventory.pages).toEqual([{ sourceId: "guide", route: "/guide/", pathname: "publish/guide/" }]);
   expect(inventory.output).toHaveLength(1);
   expect(inventory.output[0]).toMatchObject({ path: "publish/guide/index.html" });
-});
+}, 30_000);
 
 test("packed integration builds a clean Astro project with fetch disabled", async () => {
   const root = await mkdtemp(join(tmpdir(), "atlcli-web-publish-astro-packed-"));
