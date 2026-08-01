@@ -1732,11 +1732,11 @@ orchestrates it without hiding the plan, bundle, build, or verification digest.
       synthetic fixtures, assets, links, macros, Starlight, the non-shipped
       experience conformance fixture, Pagefind search/facets, chart
       static/island, and strict/partial failures.
-- [ ] Assert the packed plain-Astro render-kit consumer has no Starlight,
+- [x] Assert the packed plain-Astro render-kit consumer has no Starlight,
       Confluence client/auth, web-publish builder, Pagefind, deployment,
       service-worker/runtime-cache, analytics, or edit-link transitive/runtime
       dependency and performs no network request.
-- [ ] Serve directory output with a directory-index server and portable-file
+- [x] Serve directory output with a directory-index server and portable-file
       output with a simple file server; crawl every route/link/asset.
 - [ ] Run Playwright with JS on/off, CSP, accessibility, blocked external
       network, privacy, and deterministic-manifest gates.
@@ -1753,7 +1753,7 @@ orchestrates it without hiding the plan, bundle, build, or verification digest.
 - [ ] Seed negative fixtures for route collision, path traversal, Node import in
       browser core, XSS, unsafe SVG, private URL, digest mismatch, and missing
       asset; prove each named gate fails.
-- [ ] Wire all publishing checks into the required CI aggregator so path routing
+- [x] Wire all publishing checks into the required CI aggregator so path routing
       cannot report green after skipping them.
 
 Acceptance: packed real consumers, not source-only tests, prove the

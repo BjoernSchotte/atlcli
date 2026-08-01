@@ -231,6 +231,7 @@ describe("CI workflow policy", () => {
     const reusable = await workflow("reusable-quality.yml");
     const staticQuality = block(reusable, /^ {2}static-quality:\s*$/, 2);
     const tests = block(reusable, /^ {2}tests:\s*$/, 2);
+    const publishing = block(reusable, /^ {2}publishing:\s*$/, 2);
     const attestation = block(reusable, /^ {2}security-attestation:\s*$/, 2);
     const complete = block(reusable, /^ {2}quality-complete:\s*$/, 2);
 
@@ -256,8 +257,15 @@ describe("CI workflow policy", () => {
     expect(tests).toContain("bun-test-shard-${{ matrix.shard }}.log");
     expect(tests).not.toContain("continue-on-error:");
 
+    expect(publishing).not.toBeNull();
+    expect(publishing).toContain("Astro publishing package and consumer gates");
+    expect(publishing).toContain("packages/web-publish-astro/src/astro-consumer.test.ts");
+    expect(publishing).toContain("packages/web-publish-starlight/src/starlight-renderer.test.ts");
+    expect(publishing).toContain("scripts/consumer-smoke.test.ts");
+    expect(publishing).toContain('ATLCLI_CONSUMER_SMOKE: "1"');
+
     expect(attestation).not.toBeNull();
-    expect(attestation).toContain("needs: [static-quality, tests]");
+    expect(attestation).toContain("needs: [static-quality, tests, publishing]");
     expect(attestation).toContain("if: inputs.emit_security_attestation");
     expect(attestation).toContain("fetch-depth: 2");
     expect(attestation).toContain("attestation.commit !== process.env.GITHUB_SHA");
@@ -265,9 +273,10 @@ describe("CI workflow policy", () => {
 
     expect(complete).not.toBeNull();
     expect(complete).toContain("if: always()");
-    expect(complete).toContain("needs: [static-quality, tests, security-attestation]");
+    expect(complete).toContain("needs: [static-quality, tests, publishing, security-attestation]");
     expect(complete).toContain('[[ "$STATIC_QUALITY" != "success" ]]');
     expect(complete).toContain('[[ "$TESTS" != "success" ]]');
+    expect(complete).toContain('[[ "$PUBLISHING" != "success" ]]');
     expect(complete).toContain(
       '[[ "$ATTESTATION_REQUIRED" == "true" && "$ATTESTATION" != "success" ]]',
     );

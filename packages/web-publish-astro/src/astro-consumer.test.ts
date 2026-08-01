@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { cp, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
@@ -103,6 +104,79 @@ test("Astro builds root, nested-directory, and nested-portable URL profiles", as
     }));
   }
 }, 30_000);
+
+test("directory-index and portable-file servers crawl every generated route, link, and asset", async () => {
+  const cases = [
+    { profile: "nested-directory", outputDirectory: "dist", base: "/docs", outputPath: "publish/guide/index.html" },
+    { profile: "nested-portable", outputDirectory: "dist-file", base: "/docs", outputPath: "publish/guide.html" },
+  ] as const;
+  for (const fixture of cases) {
+    await run(["bun", "run", "build"], fixtureDirectory, { ATLCLI_ASTRO_FIXTURE_PROFILE: fixture.profile });
+    const outputRoot = resolve(fixtureDirectory, fixture.outputDirectory);
+    const inventoryFile = fixture.profile === "nested-directory" ? "build-inventory.json" : "build-inventory-nested-portable.json";
+    const inventory = JSON.parse(await readFile(resolve(fixtureDirectory, "../evidence", inventoryFile), "utf8")) as {
+      output: Array<{ path: string }>;
+    };
+    const handleRequest = async (request: IncomingMessage, response: ServerResponse) => {
+      const pathname = new URL(request.url ?? "/", "http://127.0.0.1").pathname;
+      const prefix = `${fixture.base}/`;
+      if (!pathname.startsWith(prefix)) {
+        response.writeHead(404).end();
+        return;
+      }
+      const relativePath = pathname.slice(prefix.length);
+      const candidates = relativePath.endsWith("/")
+        ? [`${relativePath}index.html`, `${relativePath.slice(0, -1)}.html`]
+        : [relativePath, `${relativePath}.html`, `${relativePath}/index.html`];
+      for (const candidate of candidates) {
+        try {
+          const bytes = await readFile(resolve(outputRoot, candidate));
+          response.writeHead(200).end(bytes);
+          return;
+        } catch {
+          // Try the next safe output candidate.
+        }
+      }
+      response.writeHead(404).end();
+    };
+    let server: ReturnType<typeof createServer> | undefined;
+    let port: number | undefined;
+    for (let attempt = 0; attempt < 32; attempt += 1) {
+      const candidatePort = 45_000 + ((process.pid + attempt) % 1_000);
+      const candidate = createServer(handleRequest);
+      try {
+        await new Promise<void>((resolvePromise, reject) => {
+          candidate.once("error", reject);
+          candidate.listen(candidatePort, "127.0.0.1", resolvePromise);
+        });
+        server = candidate;
+        port = candidatePort;
+        break;
+      } catch (error) {
+        candidate.close();
+        if ((error as NodeJS.ErrnoException).code !== "EADDRINUSE") throw error;
+      }
+    }
+    if (server === undefined || port === undefined) throw new Error("could not allocate a loopback fixture port");
+    const origin = `http://127.0.0.1:${port}`;
+    try {
+      const urls = inventory.output.map((entry) => {
+        if (entry.path.endsWith("/index.html")) return `${origin}${fixture.base}/${entry.path.slice(0, -"index.html".length)}`;
+        if (entry.path.endsWith(".html") && fixture.profile === "nested-portable") return `${origin}${fixture.base}/${entry.path.slice(0, -".html".length)}/`;
+        return `${origin}${fixture.base}/${entry.path}`;
+      });
+      for (const url of urls) expect((await fetch(url)).status).toBe(200);
+      const page = await readFile(resolve(outputRoot, fixture.outputPath), "utf8");
+      for (const match of page.matchAll(/\b(?:href|src)=["']([^"'#?]+)["']/giu)) {
+        const target = new URL(match[1]!, `${origin}${fixture.base}/`);
+        if (target.origin !== origin || !target.pathname.startsWith(`${fixture.base}/`)) continue;
+        expect((await fetch(target)).status, target.href).toBe(200);
+      }
+    } finally {
+      await new Promise<void>((resolvePromise, reject) => server.close((error) => error ? reject(error) : resolvePromise()));
+    }
+  }
+}, 60_000);
 
 test("the built Pagefind client searches the static index through its main-thread fallback", async () => {
   await run(["bun", "run", "build"], fixtureDirectory);

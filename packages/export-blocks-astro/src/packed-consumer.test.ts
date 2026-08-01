@@ -51,7 +51,14 @@ test("a network-disabled, packed plain-Astro consumer keeps overrides and static
       overrides: { "@atlcli/export-blocks": `file:${exportBlocks}` },
     }, null, 2));
     await writeFile(join(consumer, "block-network.mjs"), "globalThis.fetch = async () => { throw new Error('network access is forbidden'); };\n");
-    await writeFile(join(consumer, "assert-packed.mjs"), "const value = import.meta.resolve('@atlcli/export-blocks-astro'); if (!value.includes('/node_modules/')) throw new Error('expected a packed install');\n");
+    await writeFile(join(consumer, "assert-packed.mjs"), [
+      "import { existsSync } from 'node:fs';",
+      "const value = import.meta.resolve('@atlcli/export-blocks-astro');",
+      "if (!value.includes('/node_modules/')) throw new Error('expected a packed install');",
+      "for (const name of ['@atlcli/web-publish', '@atlcli/web-publish-astro', '@atlcli/web-publish-starlight', '@atlcli/confluence', 'pagefind']) {",
+      "  if (existsSync(new URL(`node_modules/${name}/`, import.meta.url))) throw new Error(`forbidden render-kit dependency: ${name}`);",
+      "}",
+    ].join("\n"));
     await run(["bun", "install", "--offline"], consumer);
     await run(["bun", "assert-packed.mjs"], consumer);
     const output = await run(["bun", "run", "--preload", "./block-network.mjs", "build"], consumer);

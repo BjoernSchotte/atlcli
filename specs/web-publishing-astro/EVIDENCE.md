@@ -223,6 +223,22 @@ local tarballs with network disabled and build from `dist` only. Workspace
 Astro packages now expose the development condition for in-repo consumers;
 pack stripping removes it and restores the manifest byte-for-byte.
 
+The required reusable CI quality workflow now has a blocking `publishing` job
+that runs the packed plain-Astro and Starlight consumers, package/pack gates,
+and the opt-in Node/Vite consumer smoke. Its result is part of both the
+security-attestation dependency and the fail-closed `quality-complete`
+aggregator; the workflow policy tests assert that this lane cannot be skipped
+while reporting the product gate green.
+
+The packed plain-Astro consumer now asserts that its installed runtime has no
+Starlight, Confluence, web-publish, Pagefind, deployment, service-worker,
+analytics, or edit-link dependency and builds with all network requests
+blocked. The Astro consumer harness also serves both the nested-directory and
+nested-portable artifacts through their respective URL rules, then fetches
+every inventory output and every same-origin `href`/`src` discovered in the
+representative page. The focused consumer run passed 5 tests and 139
+expectations.
+
 The unchanged DOCX/PDF/browser source boundary was re-proven with the existing
 `@atlcli/confluence` imports: 450 tests across ExportBlock conversion,
 composition, source resolution, DOCX browser runtime/serialization, and Typst
