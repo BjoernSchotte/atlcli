@@ -1215,6 +1215,7 @@ export const EXPORT_NOTE_CODES = [
   "usage-error",
   "cancelled",
   "asset-budget-exceeded",
+  "blocked-asset",
   "space-homepage-missing",
   "auth-error",
   "remote-error",
