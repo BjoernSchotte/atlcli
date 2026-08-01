@@ -20,6 +20,19 @@ const barBlock: Extract<ExportBlock, { type: "chart" }> = {
   },
 };
 
+const xyBarBlock: Extract<ExportBlock, { type: "chart" }> = {
+  type: "chart",
+  chart: {
+    schema: "atlcli.chart/1",
+    kind: "xyBar",
+    title: "Published pages",
+    data: { mode: "points", series: [{ id: "pages", label: "Published pages", points: [
+      { x: 1, y: 12 }, { x: 2, y: 25 }, { x: 3, y: 41 }, { x: 4, y: 58 },
+    ] }] },
+    source: { kind: "cloud-adf", macroName: "chart" },
+  },
+};
+
 test("normalizes bounded static chart data without executable values", () => {
   expect(normalizeStaticChartV1({ title: "Pages", labels: ["Jan"], series: [{ name: "Count", values: [4] }] })).toMatchObject({ maximum: 4 });
   expect(() => normalizeStaticChartV1({ title: "", labels: ["Jan"], series: [{ name: "Count", values: [4] }] })).toThrow(StaticChartValidationErrorV1);
@@ -41,10 +54,23 @@ test("the renderer adapter is closed and delegates to the bounded interactive sc
 
 test("the new TanStack adapter validates a chart ExportBlock and emits only bounded rows", () => {
   const adapter = resolveChartExportBlockRendererAdapterV1();
-  expect(adapter).toMatchObject({ id: "tanstack-v0.3/bar", capability: "bounded-interactive-bar", handles: ["bar"] });
+  expect(adapter).toMatchObject({ id: "tanstack-v0.3/bar", capability: "bounded-interactive-bar", handles: ["bar", "xyBar"] });
   expect(adapter.validate(barBlock)).toMatchObject({ maximum: 7, rows: [
     { label: "Jan", series: "Pages", value: 4 },
     { label: "Feb", series: "Pages", value: 7 },
   ] });
-  expect(() => validateInteractiveChartExportBlockV1({ ...barBlock, chart: { ...barBlock.chart, kind: "line" } })).toThrow("categorical bar");
+  expect(() => validateInteractiveChartExportBlockV1({ ...barBlock, chart: { ...barBlock.chart, kind: "line" } })).toThrow("categorical and XY");
+});
+
+test("the provider-valid XY bar shape is normalized for the same bounded adapter", () => {
+  expect(validateInteractiveChartExportBlockV1(xyBarBlock)).toMatchObject({ maximum: 58, rows: [
+    { label: "1", series: "Published pages", value: 12 },
+    { label: "2", series: "Published pages", value: 25 },
+    { label: "3", series: "Published pages", value: 41 },
+    { label: "4", series: "Published pages", value: 58 },
+  ] });
+  expect(() => validateInteractiveChartExportBlockV1({
+    ...xyBarBlock,
+    chart: { ...xyBarBlock.chart, data: { mode: "points", series: [{ id: "pages", label: "Published pages", points: [{ x: 1, y: -1 }] }] } },
+  })).toThrow("non-negative");
 });

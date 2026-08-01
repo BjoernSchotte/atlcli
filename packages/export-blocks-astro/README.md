@@ -42,12 +42,15 @@ or component.
 
 ## Charts
 
-`StaticChart.astro` always produces an accessible SVG fallback. A trusted
-Astro project can opt into `InteractiveChart.astro`; it selects the closed
-`tanstack-v0.3` adapter and reconstructs bounded, validated chart rows from
-that SVG at runtime. No chart definition, callback, URL, credential, or raw
+`StaticChart.astro` always produces an accessible SVG and data-table fallback.
+A trusted Astro project can opt into `InteractiveChart.astro`; for a real
+`ExportBlock` it selects the closed `tanstack-v0.3/bar` adapter and reconstructs
+bounded, validated rows from the semantic table at runtime. The first proven
+profile covers categorical `bar` and provider-valid `xyBar` blocks. The legacy
+standalone chart-model API remains available for compatibility and reads its
+validated SVG data. No chart definition, callback, URL, credential, or raw
 macro parameter is serialized to the page. JavaScript failure or disablement
-leaves the SVG visible.
+leaves the static representation visible.
 
 TanStack Charts `0.3.1` is an explicit, pinned pre-alpha dependency. The
 adapter is replaceable behind `ChartRendererAdapterV1`; its production use is

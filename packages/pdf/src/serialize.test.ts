@@ -36,6 +36,8 @@ it("serializes a chart ExportBlock as a deterministic Typst data table", async (
   expect(bundle.main).toContain('#text("Jan")');
   expect(bundle.main).toContain('#text("20")');
   expect(bundle.main).toContain("#table(columns: 2");
+  expect(bundle.main).toContain('[#text("Revenue")]');
+  expect(bundle.main).not.toContain(', #text("Revenue")');
 });
 
 function pngBytes(): Uint8Array {

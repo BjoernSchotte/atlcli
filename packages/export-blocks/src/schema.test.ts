@@ -47,6 +47,31 @@ describe("ExportBlock runtime schema v1", () => {
     }])).not.toThrow();
   });
 
+  test("accepts a real chart ExportBlock and validates its model", () => {
+    const chart = {
+      type: "chart",
+      chart: {
+        schema: "atlcli.chart/1",
+        kind: "xyBar",
+        title: "Published pages",
+        data: {
+          mode: "points",
+          series: [{
+            id: "series-1",
+            label: "Pages",
+            points: [{ x: 1, y: 12 }, { x: 2, y: 25 }],
+          }],
+        },
+        source: { kind: "cloud-adf", macroName: "chart" },
+      },
+    } as const;
+    expect(parseExportBlocksV1([chart])).toEqual([chart]);
+    expect(() => parseExportBlocksV1([{
+      ...chart,
+      chart: { ...chart.chart, kind: "not-a-chart" },
+    }])).toThrow("invalid ChartModel");
+  });
+
   test("rejects unknown variants, fields, non-finite values, and cycles", () => {
     expect(() => parseExportBlocksV1([{ type: "rawHtml", html: "<script>" }]))
       .toThrow(ExportBlockValidationErrorV1);

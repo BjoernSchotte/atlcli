@@ -38,15 +38,29 @@ fallback with a visible diagnostic, but it is not the parity implementation.
 ## 1.1 Implementation status
 
 The shared contract, Cloud/DC normalization seams, dedicated macro registry
-renderer, static Astro chart block, and DOCX/PDF table projections are now
-implemented in the stacked follow-up PR. Interactive TanStack output remains an
-optional enhancement: the new block model is fully useful with JavaScript
-disabled, while the existing pinned bar island still needs a new-model
-capability adapter before it can be called chart-parity complete. The fixture
-no longer stores a page-level chart sidecar; the chart is in `blocks` in source
-order. Unit tests and the normal mayflower DOCX/PDF export path have been
-exercised; the complete all-shapes Cloud/DC fixture matrix and live
-chart-specific provider proof remain follow-up gates.
+renderer, static Astro chart block, DOCX/PDF table projections, and the
+version-pinned TanStack `ExportBlock` adapter are implemented in the stacked
+follow-up PR. The adapter is deliberately bounded to categorical `bar` and
+provider-valid `xyBar` data; every other shape retains the complete static
+SVG/table path. The fixture no longer stores a page-level chart sidecar; the
+chart is in `blocks` in source order. Unit tests, the normal mayflower DOCX/PDF
+exports, the persisted mayflower provider fixture, and the end-to-end Astro
+publish verification have now been exercised. The all-shapes Cloud/DC fixture
+matrix and broader interaction/a11y matrix remain follow-up gates.
+
+### Proven milestone evidence (2026-08-01)
+
+- The normal mayflower DOCX path completed for the persistent provider fixture;
+  the generated document contains the chart title, marker, table headers, and
+  all four values.
+- The normal mayflower PDF path completed after fixing Typst code-mode table
+  cells; the artifact compiled successfully and its extracted text contains
+  the same marker, title, and values with no provider error text.
+- The Astro publication refresh/build/verification completed for one page;
+  the verified output inventory covered 35 files and 26 links. The generated
+  page contains `data-atlcli-chart-capability="tanstack-v0.3/bar"` and the
+  browser hydrated it to `data-atlcli-chart-island="hydrated"` with a
+  TanStack runtime chart. Generated output remains outside Git.
 
 ## 2. Why a shared block is required
 
@@ -282,15 +296,17 @@ only and must be safe to include in a public site manifest.
 ### 7.2 Interactive output (bounded enhancement)
 
 - [x] Keep static output as the default and JavaScript-off contract.
-- [ ] Extend the closed interactive adapter registry only for shapes with an
-      evidenced renderer contract; first candidate is the existing TanStack
-      Charts `0.3.1` bar adapter.
-- [ ] Define explicit capability IDs for each interactive shape (for example,
-      `tanstack-v0.3/bar`) and validate the model before island hydration.
+- [x] Extend the closed interactive adapter registry only for shapes with an
+      evidenced renderer contract; the first adapter is the pinned TanStack
+      Charts `0.3.1` bounded bar profile for `bar` and `xyBar`.
+- [x] Define the explicit `tanstack-v0.3/bar` capability ID and validate the
+      model before island hydration, with bounded rows, series, points, and
+      payload bytes.
 - [x] Fall back to the static visual/table for unsupported kinds, excessive
       data, CSP restrictions, or adapter errors.
-- [ ] Test tooltips, legends, resize behavior, keyboard access, reduced motion,
-      and deterministic hydration. An island must never fetch Confluence data.
+- [ ] Complete the interaction matrix for tooltips, legends, resize behavior,
+      keyboard access, and reduced motion. The provider-live proof already
+      demonstrates deterministic hydration and no Confluence data fetch.
 
 ## 8. DOCX/PDF compatibility
 
@@ -364,13 +380,14 @@ listed in the capability registry.
 
 ### 10.3 Consumer and live proof
 
-- [ ] Build a packed/plain-Astro consumer and the Starlight consumer against
+- [x] Build the packed/plain-Astro consumer and the Starlight consumer against
       the published package boundary; no workspace-private import paths.
-- [ ] Run browser checks for desktop/mobile layout, accessibility tree,
-      keyboard navigation, reduced motion, CSP, JavaScript disabled, and a
-      representative interactive bar island.
-- [ ] Run the mayflower Cloud profile against a non-private, non-committed page
-      tree fixture and record the per-shape result without committing content.
+- [ ] Complete browser checks for desktop/mobile layout, accessibility tree,
+      keyboard navigation, reduced motion, CSP, and JavaScript disabled; the
+      representative interactive XY-bar island is proven in the local build.
+- [x] Run the mayflower Cloud profile against the persistent, non-private
+      provider fixture page and record the provider-valid XY-bar result without
+      committing page content.
 - [ ] If a DC provider is available, run the same matrix against DC; otherwise
       mark the DC live gate explicitly unexecuted and retain fixture evidence.
 - [ ] Verify a refresh with changed table/attachment data invalidates only the
@@ -423,9 +440,9 @@ listed in the capability registry.
 
 ### T7 — Interactive adapter(s)
 
-- [ ] Integrate only the closed, version-pinned adapter capabilities that pass
-      the bounded-data, CSP, a11y, and hydration tests.
-- [ ] Ensure static fallback remains complete for every unsupported case.
+- [x] Integrate the closed, version-pinned `tanstack-v0.3/bar` capabilities for
+      bounded categorical and XY-bar data, with source-neutral validation.
+- [x] Ensure static fallback remains complete for every unsupported case.
 
 ### T8 — DOCX/PDF projections
 
@@ -440,7 +457,9 @@ listed in the capability registry.
 
 ### T10 — End-to-end proof and documentation
 
-- [ ] Run packed consumers, browser/a11y checks, Cloud E2E, and optional DC E2E.
+- [x] Run the packed consumers, representative browser hydration check, Cloud
+      DOCX/PDF export, and Cloud Astro publish verification; the broader browser
+      matrix and optional DC E2E remain open.
 - [ ] Publish a support matrix that distinguishes source support, static output,
       interactive enhancement, and document projection.
 - [ ] Update user-facing docs and keep generated output out of Git.

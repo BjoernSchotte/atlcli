@@ -36,7 +36,7 @@ export interface ChartExportBlockRendererAdapterV1 {
   readonly id: ChartExportBlockRendererAdapterIdV1;
   readonly capability: "bounded-interactive-bar";
   readonly runtime: "client-only";
-  readonly handles: readonly ["bar"];
+  readonly handles: readonly ["bar", "xyBar"];
   validate(block: Extract<ExportBlock, { type: "chart" }>): NormalizedChartExportBlockV1;
 }
 
@@ -61,29 +61,49 @@ const MAX_INTERACTIVE_PAYLOAD_BYTES = 64 * 1024;
 
 /**
  * Validate the new source-neutral chart block before it crosses into a client
- * island. Only the bounded categorical bar capability is promoted to TanStack
- * in V1; every other shape keeps its static ChartBlock/table representation.
+ * island. V1 promotes categorical bars and the provider's XY-bar shape to the
+ * same bounded TanStack bar capability; every other shape keeps its static
+ * ChartBlock/table representation.
  */
 export function validateInteractiveChartExportBlockV1(
   block: Extract<ExportBlock, { type: "chart" }>,
 ): NormalizedChartExportBlockV1 {
   const model = validateChartModelV1(block.chart);
-  if (model.kind !== "bar" || model.data.mode !== "categories") {
-    throw new StaticChartValidationErrorV1("TanStack V1 only supports categorical bar chart ExportBlocks");
+  if (
+    (model.kind !== "bar" && model.kind !== "xyBar") ||
+    (model.kind === "bar" && model.data.mode !== "categories") ||
+    (model.kind === "xyBar" && model.data.mode !== "points")
+  ) {
+    throw new StaticChartValidationErrorV1("TanStack V1 only supports categorical and XY bar chart ExportBlocks");
   }
   const data = model.data;
-  if (data.labels.length > MAX_INTERACTIVE_ROWS || data.series.length > MAX_INTERACTIVE_SERIES) {
+  if (data.mode !== "categories" && data.mode !== "points") {
+    throw new StaticChartValidationErrorV1("TanStack V1 only supports categorical and XY bar chart ExportBlocks");
+  }
+  const rowCount = data.mode === "categories"
+    ? data.labels.length
+    : Math.max(...data.series.map((entry) => entry.points.length));
+  if (rowCount > MAX_INTERACTIVE_ROWS || data.series.length > MAX_INTERACTIVE_SERIES) {
     throw new StaticChartValidationErrorV1("interactive chart exceeds row, series, or point limits");
   }
-  const rows = data.labels.flatMap((label, labelIndex) => data.series.map((series) => ({
-    label,
-    series: series.label,
-    value: series.values[labelIndex]!,
-  })));
+  const rows: ChartExportBlockRowV1[] = data.mode === "categories"
+    ? data.labels.flatMap((label, labelIndex) => data.series.map((entry) => ({
+      label,
+      series: entry.label,
+      value: entry.values[labelIndex]!,
+    })))
+    : data.series.flatMap((entry) => entry.points.map((point) => ({
+      label: point.label ?? String(point.x),
+      series: entry.label,
+      value: point.y,
+    })));
+  if (rows.some((row) => row.value < 0)) {
+    throw new StaticChartValidationErrorV1("interactive bar charts require non-negative values");
+  }
   if (rows.length > MAX_INTERACTIVE_POINTS) {
     throw new StaticChartValidationErrorV1("interactive chart exceeds row, series, or point limits");
   }
-  if (new TextEncoder().encode(JSON.stringify({ kind: model.kind, title: model.title, labels: data.labels, series: data.series })).byteLength > MAX_INTERACTIVE_PAYLOAD_BYTES) {
+  if (new TextEncoder().encode(JSON.stringify({ kind: model.kind, title: model.title, data })).byteLength > MAX_INTERACTIVE_PAYLOAD_BYTES) {
     throw new StaticChartValidationErrorV1("interactive chart exceeds payload byte limit");
   }
   return Object.freeze({
@@ -98,7 +118,7 @@ export const TANSTACK_CHART_EXPORT_BLOCK_RENDERER_ADAPTER_V1: ChartExportBlockRe
   id: "tanstack-v0.3/bar",
   capability: "bounded-interactive-bar",
   runtime: "client-only",
-  handles: ["bar"] as const,
+  handles: ["bar", "xyBar"] as const,
   validate: validateInteractiveChartExportBlockV1,
 });
 

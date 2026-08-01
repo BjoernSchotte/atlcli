@@ -1733,7 +1733,13 @@ function serializeBlock(
       // provider-specific DrawingML or a live renderer.
       const rows = chartRows(block.chart);
       const columns = Math.max(1, rows.reduce((max, row) => Math.max(max, row.length), 0));
-      const cells = rows.flatMap((row) => Array.from({ length: columns }, (_, index) => literalText(row[index] ?? "")));
+      // `table(...)` arguments are Typst code mode. Each cell therefore needs
+      // a content block around its markup expression; emitting a bare
+      // `#text(...)` here makes Typst reject the `#` as invalid code.
+      const cells = rows.flatMap((row) => Array.from(
+        { length: columns },
+        (_, index) => `[${literalText(row[index] ?? "")}]`,
+      ));
       const table = `#table(columns: ${columns}, stroke: rgb(${typstString(writer.catalogDesign.tokens.colors.tableStroke)}), ${cells.join(", ")})`;
       const title = block.chart.title ? `#par[${literalText(block.chart.title)}]\n` : "";
       const caption = block.caption
