@@ -69,6 +69,37 @@ test("verifies every inventoried output, ownership, internal URL, and anchor", a
   }
 });
 
+test("verifies the root-base URL profile without double-normalizing '/'", async () => {
+  const fixtureValue = await fixture();
+  const htmlPath = join(fixtureValue.root, "publish", "guide", "index.html");
+  const html = Buffer.from((await readFile(htmlPath, "utf8")).replaceAll("/docs/", "/"));
+  await writeFile(htmlPath, html);
+  const inventory = {
+    ...fixtureValue.inventory,
+    output: fixtureValue.inventory.output.map((entry) => entry.path === "publish/guide/index.html" ? record(entry.path, html) : entry),
+  };
+  const request = {
+    ...fixtureValue.request,
+    project: { ...fixtureValue.request.project, builder: { base: "/", outputProfile: "directory" } },
+  } as PublicationBuildRequestV1;
+  try {
+    const manifest = await createAstroStaticPublicationManifestV1({
+      request,
+      inventory,
+      builderVersion: "0.1.0",
+      astroVersion: "7.1.6",
+      experience: { id: "test", version: "1", digest: "experience" },
+    });
+    await expect(verifyAstroStaticPublicationOutputV1({ manifest, inventory, outputDirectory: fixtureValue.root })).resolves.toMatchObject({
+      checkedFiles: 2,
+      checkedLinks: 2,
+      checkedAnchors: 1,
+    });
+  } finally {
+    await rm(fixtureValue.root, { recursive: true, force: true });
+  }
+});
+
 test("rejects unowned and symlinked output entries", async () => {
   const fixtureValue = await fixture();
   try {

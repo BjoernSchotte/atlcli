@@ -384,3 +384,22 @@ activation remains blocked by one stale reference to a missing attachment. A
 read-only attachment check confirmed that the referenced file is absent; no
 remote mutation was attempted. Therefore this evidence claims the authorized
 tree build only, not a successful full-space activation.
+
+## T12 local URL proof (2026-08-01, root directory profile)
+
+After the provider run, the activated Content Drafts bundle was rebuilt with
+the root-base Astro directory profile and passed the CLI output verifier:
+127 owned output files, 2,572 internal links, and 515 fragment anchors. The
+local static server is serving that verified output at
+`http://127.0.0.1:4391/publish/content-drafts/`.
+
+The in-app browser inspection confirmed the Starlight experience on the
+overview and on a content-rich child page: responsive navigation, breadcrumbs,
+related pages, previous/next navigation, heading anchors, theme selection, and
+the Pagefind search dialog rendered. Searching for `Scrum Master` returned five
+results. The browser console had no warning/error entries during the check.
+
+The full `DOCSY` space remains intentionally unactivated for this proof because
+strict acquisition rejects the stale missing attachment described above. This
+URL is therefore a verified, complete subtree publication, not a claim that
+the entire space has been published.

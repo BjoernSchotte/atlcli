@@ -159,7 +159,10 @@ async function assertHtmlReferences(
       if (kind === "src" || kind === "srcset" || kind === "action") fail(`external resource/action '${value}' in '${htmlPath}'`);
       continue;
     }
-    const prefix = basePrefix(base);
+    // The caller validates and normalizes the manifest base once. Re-validating
+    // the normalized root base would turn `"/"` into `""` and reject the
+    // legitimate root URL profile.
+    const prefix = base;
     if (prefix !== "" && target.pathname !== prefix && !target.pathname.startsWith(`${prefix}/`)) {
       fail(`internal URL escapes base '${value}' in '${htmlPath}'`);
     }

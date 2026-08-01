@@ -247,11 +247,15 @@ jobs:
         run: |
           node <<'NODE'
           const fs = require('node:fs');
+          const path = require('node:path');
           const paths = [
-            'packages/web-publish-astro/fixtures/astro-consumer/node_modules/astro/package.json',
-            'packages/web-publish-starlight/fixtures/published-consumer/node_modules/astro/package.json',
+            'packages/web-publish-astro/fixtures/astro-consumer',
+            'packages/web-publish-starlight/fixtures/published-consumer',
           ];
-          const versions = paths.map((path) => JSON.parse(fs.readFileSync(path, 'utf8')).version);
+          const versions = paths.map((fixture) => {
+            const packagePath = require.resolve('astro/package.json', { paths: [path.resolve(fixture)] });
+            return JSON.parse(fs.readFileSync(packagePath, 'utf8')).version;
+          });
           if (new Set(versions).size !== 1) throw new Error(`Astro fixture versions diverged: ${versions.join(', ')}`);
           const actual = versions[0];
           if (process.env.EXPECTED_ASTRO === 'latest-7') {
