@@ -37,6 +37,8 @@ import {
   RESEARCH_SESSION_ARTIFACT_SCHEMA_V1,
   type ResearchSessionStoreV1,
 } from "./session-store.js";
+import { ResearchSessionMemoryCheckpointerV1 } from "./langgraph-checkpointer.js";
+import { researchThreadIdForSessionV1 } from "./checkpoint-identity.js";
 /*
  * Keep graph execution admission here, before workspace/provider/model setup.
  * Productive hosts also preflight for UX, but this boundary is authoritative.
@@ -964,6 +966,16 @@ async function runResearchAgentWithBindings(
       })
     : undefined;
   const workspace = input.workspace ?? createMemoryResearchWorkspace();
+  // DeepAgentsJS persists LangGraph state by configurable thread ID. A retry
+  // attempt has a new run ID, but it must remain in the durable conversation's
+  // session thread. The physical store-backed saver is added separately; this
+  // session-scoped saver establishes the identical DeepAgentsJS contract now.
+  const checkpointThreadId = input.durableSession
+    ? researchThreadIdForSessionV1(input.durableSession.sessionId)
+    : runId;
+  const checkpointer = input.durableSession
+    ? new ResearchSessionMemoryCheckpointerV1(input.durableSession.sessionId)
+    : undefined;
   let eventSequence = 0;
   let subagentTaskStarted = false;
   let synthesizerTaskStarted = false;
@@ -1534,6 +1546,7 @@ async function runResearchAgentWithBindings(
       : "atlcli-read-only-research",
     model,
     backend: new runtime.StateBackend(),
+    ...(checkpointer ? { checkpointer } : {}),
     tools: [],
     subagents: [],
     systemPrompt: isDynamic
@@ -1632,7 +1645,7 @@ async function runResearchAgentWithBindings(
         ],
       },
       {
-        configurable: { thread_id: runId },
+        configurable: { thread_id: checkpointThreadId },
         recursionLimit: researchRecursionLimitV1(input.researchGraph),
         signal: broker.signal,
       }
