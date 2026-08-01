@@ -65,6 +65,7 @@ test("plain Astro consumer renders every normalized discriminator without raw HT
   expect(html).toContain('role="img"');
   expect(html).toContain('data-atlcli-chart-island="enabled"');
   expect(html).toContain('data-atlcli-chart-renderer="tanstack-v0.3"');
+  expect(html).toContain('data-atlcli-chart-capability="tanstack-v0.3/bar"');
   const asset = html.match(/src="\/_astro\/([^\"]+)"/)?.[1];
   expect(asset).toBeDefined();
   expect((await stat(resolve(fixture, "dist/_astro", asset!))).size).toBeLessThanOrEqual(100 * 1024);

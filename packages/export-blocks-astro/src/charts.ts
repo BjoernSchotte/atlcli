@@ -1,3 +1,5 @@
+import { validateChartModelV1, type ChartModelV1, type ExportBlock } from "@atlcli/export-blocks";
+
 export interface StaticChartSeriesV1 {
   name: string;
   values: readonly number[];
@@ -11,6 +13,31 @@ export interface StaticChartModelV1 {
 
 export interface NormalizedStaticChartV1 extends StaticChartModelV1 {
   maximum: number;
+}
+
+/** A browser-safe row derived from a validated chart ExportBlock. */
+export interface ChartExportBlockRowV1 {
+  label: string;
+  series: string;
+  value: number;
+}
+
+export interface NormalizedChartExportBlockV1 {
+  block: Extract<ExportBlock, { type: "chart" }>;
+  model: ChartModelV1;
+  rows: readonly ChartExportBlockRowV1[];
+  maximum: number;
+}
+
+/** Explicit capability identity for the first new-model TanStack adapter. */
+export type ChartExportBlockRendererAdapterIdV1 = "tanstack-v0.3/bar";
+
+export interface ChartExportBlockRendererAdapterV1 {
+  readonly id: ChartExportBlockRendererAdapterIdV1;
+  readonly capability: "bounded-interactive-bar";
+  readonly runtime: "client-only";
+  readonly handles: readonly ["bar"];
+  validate(block: Extract<ExportBlock, { type: "chart" }>): NormalizedChartExportBlockV1;
 }
 
 /** Closed set of build-selected renderer implementations. */
@@ -31,6 +58,58 @@ const MAX_INTERACTIVE_ROWS = 80;
 const MAX_INTERACTIVE_SERIES = 12;
 const MAX_INTERACTIVE_POINTS = 800;
 const MAX_INTERACTIVE_PAYLOAD_BYTES = 64 * 1024;
+
+/**
+ * Validate the new source-neutral chart block before it crosses into a client
+ * island. Only the bounded categorical bar capability is promoted to TanStack
+ * in V1; every other shape keeps its static ChartBlock/table representation.
+ */
+export function validateInteractiveChartExportBlockV1(
+  block: Extract<ExportBlock, { type: "chart" }>,
+): NormalizedChartExportBlockV1 {
+  const model = validateChartModelV1(block.chart);
+  if (model.kind !== "bar" || model.data.mode !== "categories") {
+    throw new StaticChartValidationErrorV1("TanStack V1 only supports categorical bar chart ExportBlocks");
+  }
+  const data = model.data;
+  if (data.labels.length > MAX_INTERACTIVE_ROWS || data.series.length > MAX_INTERACTIVE_SERIES) {
+    throw new StaticChartValidationErrorV1("interactive chart exceeds row, series, or point limits");
+  }
+  const rows = data.labels.flatMap((label, labelIndex) => data.series.map((series) => ({
+    label,
+    series: series.label,
+    value: series.values[labelIndex]!,
+  })));
+  if (rows.length > MAX_INTERACTIVE_POINTS) {
+    throw new StaticChartValidationErrorV1("interactive chart exceeds row, series, or point limits");
+  }
+  if (new TextEncoder().encode(JSON.stringify({ kind: model.kind, title: model.title, labels: data.labels, series: data.series })).byteLength > MAX_INTERACTIVE_PAYLOAD_BYTES) {
+    throw new StaticChartValidationErrorV1("interactive chart exceeds payload byte limit");
+  }
+  return Object.freeze({
+    block,
+    model,
+    rows: Object.freeze(rows),
+    maximum: Math.max(1, ...rows.map((row) => row.value)),
+  });
+}
+
+export const TANSTACK_CHART_EXPORT_BLOCK_RENDERER_ADAPTER_V1: ChartExportBlockRendererAdapterV1 = Object.freeze({
+  id: "tanstack-v0.3/bar",
+  capability: "bounded-interactive-bar",
+  runtime: "client-only",
+  handles: ["bar"] as const,
+  validate: validateInteractiveChartExportBlockV1,
+});
+
+export function resolveChartExportBlockRendererAdapterV1(
+  id: ChartExportBlockRendererAdapterIdV1 = "tanstack-v0.3/bar",
+): ChartExportBlockRendererAdapterV1 {
+  switch (id) {
+    case "tanstack-v0.3/bar": return TANSTACK_CHART_EXPORT_BLOCK_RENDERER_ADAPTER_V1;
+    default: return assertNeverChartExportBlockRendererAdapterV1(id);
+  }
+}
 
 export function normalizeStaticChartV1(model: StaticChartModelV1): NormalizedStaticChartV1 {
   if (!model || typeof model !== "object" || typeof model.title !== "string" || !model.title.trim()) throw new StaticChartValidationErrorV1("chart title must be non-empty");
@@ -85,4 +164,8 @@ export function resolveChartRendererAdapterV1(id: ChartRendererAdapterIdV1 = "ta
 
 function assertNeverChartRendererAdapterV1(value: never): never {
   throw new StaticChartValidationErrorV1(`unsupported chart renderer adapter: ${String(value)}`);
+}
+
+function assertNeverChartExportBlockRendererAdapterV1(value: never): never {
+  throw new StaticChartValidationErrorV1(`unsupported chart ExportBlock renderer adapter: ${String(value)}`);
 }

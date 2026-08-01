@@ -52,6 +52,8 @@ test("maps only public Starlight tokens into the render-kit document-body slot",
     readFile(resolve(root, "src/styles.css"), "utf8"),
   ]);
   expect(component).toContain('from "@atlcli/export-blocks-astro/components/ExportDocument.astro"');
+  expect(component).toContain('from "@atlcli/export-blocks-astro/components/InteractiveChart.astro"');
+  expect(component).toContain("chart: InteractiveChart");
   expect(component).toContain('data-atlcli-starlight-slot="main-content"');
   expect(component).not.toContain("exportBlockKind");
   for (const token of ["--sl-color-text", "--sl-color-gray-3", "--sl-color-gray-5", "--sl-color-gray-6"]) {

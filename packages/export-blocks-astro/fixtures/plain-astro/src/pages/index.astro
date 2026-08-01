@@ -11,6 +11,9 @@ import {
   EXPORT_BLOCKS_ASTRO_ALL_FIELDS_FIXTURE_V1,
 } from "@atlcli/export-blocks-astro/fixtures";
 
+const normalizedChartBlock = EXPORT_BLOCKS_ASTRO_ALL_FIELDS_FIXTURE_V1.find((block) => block.type === "chart");
+if (!normalizedChartBlock || normalizedChartBlock.type !== "chart") throw new TypeError("chart fixture missing");
+
 const HOSTILE_RENDERER_CONTEXT_V1 = {
   ...EXPORT_BLOCKS_ASTRO_MINIMAL_CONTEXT_V1,
   assets: {
@@ -59,6 +62,7 @@ const HOSTILE_RENDERER_BLOCKS_V1 = [{
       labels: ["January", "February", "March"],
       series: [{ name: "Pages", values: [12, 18, 21] }],
     }} />
+    <InteractiveChart enabled block={normalizedChartBlock} context={EXPORT_BLOCKS_ASTRO_MINIMAL_CONTEXT_V1} />
     <ExportDocument blocks={HOSTILE_RENDERER_BLOCKS_V1} context={HOSTILE_RENDERER_CONTEXT_V1} />
     <ExportDocument
       blocks={EXPORT_BLOCKS_ASTRO_MINIMAL_FIXTURE_V1}

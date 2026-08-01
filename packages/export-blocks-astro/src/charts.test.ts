@@ -1,5 +1,24 @@
 import { expect, test } from "bun:test";
-import { StaticChartValidationErrorV1, normalizeStaticChartV1, resolveChartRendererAdapterV1, validateInteractiveChartV1 } from "./charts.js";
+import {
+  StaticChartValidationErrorV1,
+  normalizeStaticChartV1,
+  resolveChartExportBlockRendererAdapterV1,
+  resolveChartRendererAdapterV1,
+  validateInteractiveChartExportBlockV1,
+  validateInteractiveChartV1,
+} from "./charts.js";
+import type { ExportBlock } from "@atlcli/export-blocks";
+
+const barBlock: Extract<ExportBlock, { type: "chart" }> = {
+  type: "chart",
+  chart: {
+    schema: "atlcli.chart/1",
+    kind: "bar",
+    title: "Pages",
+    data: { mode: "categories", labels: ["Jan", "Feb"], series: [{ id: "pages", label: "Pages", values: [4, 7] }] },
+    source: { kind: "cloud-adf", macroName: "chart" },
+  },
+};
 
 test("normalizes bounded static chart data without executable values", () => {
   expect(normalizeStaticChartV1({ title: "Pages", labels: ["Jan"], series: [{ name: "Count", values: [4] }] })).toMatchObject({ maximum: 4 });
@@ -18,4 +37,14 @@ test("the renderer adapter is closed and delegates to the bounded interactive sc
   expect(adapter).toMatchObject({ id: "tanstack-v0.3", capability: "bounded-interactive-bar", runtime: "client-only" });
   expect(adapter.validate({ title: "Pages", labels: ["Jan"], series: [{ name: "Count", values: [4] }] })).toMatchObject({ maximum: 4 });
   expect(() => resolveChartRendererAdapterV1("untrusted" as never)).toThrow("unsupported chart renderer adapter");
+});
+
+test("the new TanStack adapter validates a chart ExportBlock and emits only bounded rows", () => {
+  const adapter = resolveChartExportBlockRendererAdapterV1();
+  expect(adapter).toMatchObject({ id: "tanstack-v0.3/bar", capability: "bounded-interactive-bar", handles: ["bar"] });
+  expect(adapter.validate(barBlock)).toMatchObject({ maximum: 7, rows: [
+    { label: "Jan", series: "Pages", value: 4 },
+    { label: "Feb", series: "Pages", value: 7 },
+  ] });
+  expect(() => validateInteractiveChartExportBlockV1({ ...barBlock, chart: { ...barBlock.chart, kind: "line" } })).toThrow("categorical bar");
 });

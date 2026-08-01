@@ -94,10 +94,17 @@ export {
 
 export {
   StaticChartValidationErrorV1,
+  TANSTACK_CHART_EXPORT_BLOCK_RENDERER_ADAPTER_V1,
   TANSTACK_CHART_RENDERER_ADAPTER_V1,
+  resolveChartExportBlockRendererAdapterV1,
   normalizeStaticChartV1,
   resolveChartRendererAdapterV1,
+  validateInteractiveChartExportBlockV1,
   validateInteractiveChartV1,
+  type ChartExportBlockRendererAdapterIdV1,
+  type ChartExportBlockRendererAdapterV1,
+  type ChartExportBlockRowV1,
+  type NormalizedChartExportBlockV1,
   type ChartRendererAdapterIdV1,
   type ChartRendererAdapterV1,
   type NormalizedStaticChartV1,
