@@ -2968,11 +2968,22 @@ accepted-turn/plan durability before dispatch, the task/packet/node triple,
 stale-writer immutability, recovery fencing, heartbeat, and durable pause.
 Physical store adapters and their aggregate CAS/journal transaction remain
 the next T4 unit.
-- [ ] Add bounded session/event/checkpoint/workspace/graph/task/packet and
+
+T4 store-port checkpoint (2026-08-01): `ResearchSessionStoreV1` now defines
+bounded metadata access for the session snapshot, journal, checkpoints,
+graph, tasks, accepted packets, per-session virtual workspace, artifacts, and
+opaque V1 source references. The test-only in-memory adapter applies the
+session reducer through a revision/epoch CAS, constructs a body-free journal
+event, and stages both before publication; injected state or journal failure
+leaves the prior snapshot and event list untouched. Its physical SQLite/filesystem
+and IndexedDB counterparts, shared adapter conformance suite, and restart
+tests remain pending.
+
+- [x] Add bounded session/event/checkpoint/workspace/graph/task/packet and
       artifact store ports plus scope-candidate, binding, resolution, and
       expansion-proposal records. T4 retains opaque V1 source references; it
       does not invent the T5 evidence/claim storage model.
-- [ ] Add an in-memory conformance implementation used only by tests.
+- [x] Add an in-memory conformance implementation used only by tests.
 - [ ] Create a reusable store conformance suite and failure-injection suite.
 - [ ] Add a LangGraph checkpointer adapter implementing required checkpoint,
       pending-write, lookup, and history operations.
