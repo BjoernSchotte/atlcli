@@ -13,38 +13,29 @@ export declare function createStarlightPublishingExperienceRuntimeV1(input?: {
 }): Readonly<StarlightPublishingExperienceRuntimeV1>;
 
 // export: STARLIGHT_PUBLISHING_EXPERIENCE_ID_V1
-export declare const STARLIGHT_PUBLISHING_EXPERIENCE_ID_V1 = "atlcli.starlight/1";
+export declare const STARLIGHT_PUBLISHING_EXPERIENCE_ID_V1 = "atlcli.starlight";
 
 // export: STARLIGHT_PUBLISHING_EXPERIENCE_V1
-export declare const STARLIGHT_PUBLISHING_EXPERIENCE_V1: Readonly<StarlightPublishingExperienceDescriptorV1>;
+export declare const STARLIGHT_PUBLISHING_EXPERIENCE_V1: Readonly<PublicationExperienceDescriptorV1>;
 
 // export: STARLIGHT_PUBLISHING_SEMANTIC_SLOTS_V1
 export declare const STARLIGHT_PUBLISHING_SEMANTIC_SLOTS_V1: readonly [
-    "site-header",
+    "document-head",
+    "header",
     "primary-navigation",
-    "breadcrumb",
-    "page-actions",
-    "page-toc",
-    "document-body",
-    "related-pages",
-    "previous-next",
+    "left-navigation",
+    "breadcrumbs",
     "search-trigger",
+    "search-modal",
+    "main-content",
+    "page-toc",
+    "previous-next",
     "footer",
-    "landing-hero",
-    "not-found",
-    "analytics",
-    "edit-link"
+    "renderer-styles"
 ];
 
 // export: StarlightPublishingExperienceDescriptorV1
-export interface StarlightPublishingExperienceDescriptorV1 {
-    id: typeof STARLIGHT_PUBLISHING_EXPERIENCE_ID_V1;
-    version: "1";
-    owner: "astro-project";
-    bodies: "@atlcli/export-blocks-astro";
-    rendering: "astro-static";
-    starlight: "^0.41.3";
-}
+export type StarlightPublishingExperienceDescriptorV1 = PublicationExperienceDescriptorV1;
 
 // export: StarlightPublishingExperienceErrorV1
 export declare class StarlightPublishingExperienceErrorV1 extends Error {
@@ -53,7 +44,7 @@ export declare class StarlightPublishingExperienceErrorV1 extends Error {
 // export: StarlightPublishingExperienceRuntimeV1
 export interface StarlightPublishingExperienceRuntimeV1 {
     schema: "atlcli.web-publish-starlight-runtime/1";
-    descriptor: StarlightPublishingExperienceDescriptorV1;
+    descriptor: PublicationExperienceDescriptorV1;
     slots: readonly StarlightPublishingSemanticSlotV1[];
     tokens: readonly string[];
     features: Readonly<{

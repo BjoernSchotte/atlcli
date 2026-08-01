@@ -17,6 +17,6 @@ const { blocks, context, overrides } = Astro.props;
 const starlightOverrides: AstroExportBlockOverridesV1 = { code: StarlightCodeBlock, ...overrides };
 ---
 
-<section data-atlcli-starlight-slot="document-body">
+<section data-atlcli-starlight-slot="main-content">
   <ExportDocument blocks={blocks} context={context} overrides={starlightOverrides} />
 </section>

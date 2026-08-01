@@ -25,7 +25,7 @@ test("a Starlight consumer presents ExportBlock document bodies with static sear
   expect(output).toContain("1 page(s) built");
 
   const html = await readFile(resolve(fixture, "dist/index.html"), "utf8");
-  expect(html).toContain('data-atlcli-starlight-slot="document-body"');
+  expect(html).toContain('data-atlcli-starlight-slot="main-content"');
   expect(html).toContain('data-atlcli-block="callout"');
   expect(html).toContain('data-atlcli-code-renderer="starlight-expressive-code"');
   expect(html).toContain("data-code=\"const source = &#x27;ExportBlock[]&#x27;;\"");

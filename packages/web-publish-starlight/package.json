@@ -30,7 +30,8 @@
   },
   "dependencies": {
     "@atlcli/export-blocks": "workspace:*",
-    "@atlcli/export-blocks-astro": "workspace:*"
+    "@atlcli/export-blocks-astro": "workspace:*",
+    "@atlcli/web-publish": "workspace:*"
   },
   "peerDependencies": {
     "@astrojs/starlight": "^0.41.3",

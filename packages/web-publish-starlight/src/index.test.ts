@@ -9,14 +9,13 @@ import {
 } from "./index.js";
 
 test("exposes a presentation-only Starlight experience descriptor", () => {
-  expect(STARLIGHT_PUBLISHING_EXPERIENCE_V1).toEqual({
+  expect(STARLIGHT_PUBLISHING_EXPERIENCE_V1).toMatchObject({
+    schema: "atlcli.publication-experience/1",
     id: STARLIGHT_PUBLISHING_EXPERIENCE_ID_V1,
-    version: "1",
-    owner: "astro-project",
-    bodies: "@atlcli/export-blocks-astro",
-    rendering: "astro-static",
-    starlight: "^0.41.3",
+    version: "1.0.0", engine: "astro", designTokensSchema: "atlcli.starlight.tokens/1",
   });
+  expect(STARLIGHT_PUBLISHING_EXPERIENCE_V1.capabilities).toContain("search-modal");
+  expect(STARLIGHT_PUBLISHING_EXPERIENCE_V1.components.slots["main-content"]).toBe("StarlightDocumentBody");
 });
 
 test("exposes versioned semantic slots without Starlight DOM selectors", () => {
@@ -25,10 +24,10 @@ test("exposes versioned semantic slots without Starlight DOM selectors", () => {
     schema: "atlcli.web-publish-starlight-runtime/1",
     features: { navigation: true, search: true, toc: true, colorModes: true, print: true },
   });
-  expect(runtime.slots).toContain("document-body");
+  expect(runtime.slots).toContain("main-content");
   expect(runtime.tokens).toContain("--atlcli-content-foreground");
-  expect(() => createStarlightPublishingExperienceRuntimeV1({ slots: ["site-header"] })).toThrow("document-body slot is required");
-  expect(() => createStarlightPublishingExperienceRuntimeV1({ slots: ["document-body", "document-body"] })).toThrow(StarlightPublishingExperienceErrorV1);
+  expect(() => createStarlightPublishingExperienceRuntimeV1({ slots: ["header"] })).toThrow("main-content slot is required");
+  expect(() => createStarlightPublishingExperienceRuntimeV1({ slots: ["main-content", "main-content"] })).toThrow(StarlightPublishingExperienceErrorV1);
   expect(JSON.stringify(runtime)).not.toContain("sl-");
 });
 
@@ -53,7 +52,7 @@ test("maps only public Starlight tokens into the render-kit document-body slot",
     readFile(resolve(root, "src/styles.css"), "utf8"),
   ]);
   expect(component).toContain('from "@atlcli/export-blocks-astro/components/ExportDocument.astro"');
-  expect(component).toContain('data-atlcli-starlight-slot="document-body"');
+  expect(component).toContain('data-atlcli-starlight-slot="main-content"');
   expect(component).not.toContain("exportBlockKind");
   for (const token of ["--sl-color-text", "--sl-color-gray-3", "--sl-color-gray-5", "--sl-color-gray-6"]) {
     expect(stylesheet).toContain(token);
