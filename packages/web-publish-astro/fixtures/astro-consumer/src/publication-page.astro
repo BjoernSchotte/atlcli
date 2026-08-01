@@ -1,6 +1,7 @@
 ---
 import { getEntry } from "astro:content";
 import { publicationStaticPathsV1 } from "@atlcli/web-publish-astro";
+import PagefindSearch from "@atlcli/web-publish-astro/components/PagefindSearch.astro";
 import { bundlePath } from "virtual:atlcli-publication";
 
 export async function getStaticPaths() {
@@ -18,6 +19,7 @@ if (!entry) throw new Error(`Missing publication entry ${sourceId}`);
 <html lang="en">
   <head><title>{entry.data.title}</title></head>
   <body>
+    <PagefindSearch base="/docs/" labels={["guide"]} />
     <article data-atlcli-source-id={entry.data.sourceId} data-atlcli-bundle={entry.data.bundleDigest} data-pagefind-body>
       <h1>{entry.data.title}</h1>
       <p>Structured blocks: {entry.data.blocks.length}</p>

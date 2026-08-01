@@ -18,10 +18,11 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
-    }
+    },
+    "./components/PagefindSearch.astro": "./dist/components/PagefindSearch.astro"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsc -p tsconfig.build.json && bun scripts/copy-assets.ts",
     "clean": "rm -rf dist",
     "prepack": "bun ../../scripts/strip-dev-condition.ts strip",
     "postpack": "bun ../../scripts/strip-dev-condition.ts restore"

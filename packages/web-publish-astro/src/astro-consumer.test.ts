@@ -37,6 +37,8 @@ test("Astro consumer harness loads structured pages and emits a private inventor
   const html = await readFile(resolve(fixtureDirectory, "dist/publish/guide/index.html"), "utf8");
   expect(html).toContain('data-atlcli-source-id="guide"');
   expect(html).toContain("data-pagefind-body");
+  expect(html).toContain("data-atlcli-search");
+  expect(html).toContain("pagefind/pagefind.js");
   expect(html).toContain("Structured blocks: 1");
   expect(html).not.toContain("bundle.json");
   expect(await readFile(resolve(fixtureDirectory, "dist/assets/f0dad327e22e8cddc2e8057cf16d9b16ea6e36e87d31f46ee4d5943c69609c4f/fixture.txt"), "utf8"))
