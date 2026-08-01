@@ -103,11 +103,23 @@ export function createResearchPtcTools(
     const kind = inputKind(input);
     const callId = `${id}:${++callSequence}`;
     const startedAt = now();
+    const inputKeys = typeof input === "object" && input !== null
+      ? Object.keys(input).sort()
+      : [];
+    const queryKeys = typeof input === "object" &&
+      input !== null &&
+      "query" in input &&
+      typeof input.query === "object" &&
+      input.query !== null
+      ? Object.keys(input.query).sort()
+      : [];
     options.onDiagnostic?.({
       callId,
       tool: id,
       inputKind: kind,
       outcome: "started",
+      inputKeys,
+      queryKeys,
     });
     try {
       const record =
@@ -173,18 +185,8 @@ export function createResearchPtcTools(
         inputKind: kind,
         outcome: "error",
         durationMs: Math.max(0, now() - startedAt),
-        inputKeys:
-          typeof input === "object" && input !== null
-            ? Object.keys(input).sort()
-            : [],
-        queryKeys:
-          typeof input === "object" &&
-          input !== null &&
-          "query" in input &&
-          typeof input.query === "object" &&
-          input.query !== null
-            ? Object.keys(input.query).sort()
-            : [],
+        inputKeys,
+        queryKeys,
         errorCode:
           typeof error === "object" &&
           error !== null &&

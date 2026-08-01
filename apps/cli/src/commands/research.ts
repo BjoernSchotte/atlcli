@@ -28,6 +28,7 @@ import {
   ResearchRunBudget,
   createResearchKeyScopeSeedV1,
   createRestResearchProviders,
+  formatResearchOneShotEventV1,
   normalizeResearchOneShotPolicyV1,
   normalizeResearchRequestV1,
   runResearchAgent,
@@ -481,22 +482,40 @@ export async function handleResearch(
           dependencies.writeStderr(`[research] phase=${event.phase}\n`);
         } else if (event.kind === "progress") {
           dependencies.writeStderr(`[research] calls=${event.completed}/${event.maximum}\n`);
+        } else if (event.kind === "brief") {
+          dependencies.writeStderr(`[research] brief_revision=${event.revision}\n`);
+        } else if (event.kind === "plan") {
+          dependencies.writeStderr(
+            `[research] graph_revision=${event.revision} graph_status=${event.status} effort=${event.resolvedEffort} nodes=${event.nodeCount} waves=${event.waveCount} max_parallel=${event.maxParallelNodes} roles=${event.selectedRoleIds.join(",") || "none"}\n`,
+          );
         } else if (event.kind === "capability") {
           dependencies.writeStderr(
-            `[research] tool=${event.toolId} call=${event.callId} kind=${event.inputKind} status=${event.status}${event.itemCount === undefined ? "" : ` items=${event.itemCount}`}${event.termination === undefined ? "" : ` termination=${event.termination}`}${event.resultBytes === undefined ? "" : ` result_bytes=${event.resultBytes}`}${event.truncated === undefined ? "" : ` truncated=${event.truncated}`}${event.durationMs === undefined ? "" : ` duration_ms=${event.durationMs}`}${event.errorCode === undefined ? "" : ` error=${event.errorCode}`}\n`,
+            `[research] tool=${event.toolId} call=${event.callId} kind=${event.inputKind} status=${event.status}${event.inputKeys === undefined ? "" : ` input_keys=${event.inputKeys.join(",") || "none"}`}${event.queryKeys === undefined ? "" : ` query_keys=${event.queryKeys.join(",") || "none"}`}${event.itemCount === undefined ? "" : ` items=${event.itemCount}`}${event.complete === undefined ? "" : ` complete=${event.complete}`}${event.termination === undefined ? "" : ` termination=${event.termination}`}${event.resultBytes === undefined ? "" : ` result_bytes=${event.resultBytes}`}${event.truncated === undefined ? "" : ` truncated=${event.truncated}`}${event.durationMs === undefined ? "" : ` duration_ms=${event.durationMs}`}${event.errorCode === undefined ? "" : ` error=${event.errorCode}`}\n`,
           );
         } else if (event.kind === "subagent") {
           dependencies.writeStderr(
             `[research] subagent=${event.roleId} task=${event.taskId} status=${event.status}${event.attempt === undefined ? "" : ` attempt=${event.attempt}`}${event.durationMs === undefined ? "" : ` duration_ms=${event.durationMs}`}${event.errorCode === undefined ? "" : ` error=${event.errorCode}`}\n`,
           );
         } else if (event.kind === "task") {
-          dependencies.writeStderr(`[research] task=${event.taskId} status=${event.status}\n`);
+          dependencies.writeStderr(
+            `[research] task=${event.taskId} status=${event.status}${event.roleId === undefined ? "" : ` role=${event.roleId}`}${event.wave === undefined ? "" : ` wave=${event.wave}`}${event.dependencyTaskIds === undefined ? "" : ` dependencies=${event.dependencyTaskIds.length}`}${event.grantedCapabilityIds === undefined ? "" : ` grants=${event.grantedCapabilityIds.join(",") || "none"}`}${event.sourceCount === undefined ? "" : ` sources=${event.sourceCount}`}${event.findingCount === undefined ? "" : ` findings=${event.findingCount}`}${event.relationshipCount === undefined ? "" : ` relationships=${event.relationshipCount}`}${event.gapCount === undefined ? "" : ` gaps=${event.gapCount}`}${event.defectCount === undefined ? "" : ` defects=${event.defectCount}`}${event.inputTokens === undefined ? "" : ` input_tokens=${event.inputTokens}`}${event.outputTokens === undefined ? "" : ` output_tokens=${event.outputTokens}`}${event.resultBytes === undefined ? "" : ` result_bytes=${event.resultBytes}`}\n`,
+          );
         } else if (event.kind === "decision") {
           dependencies.writeStderr(
             `[research] decision=${event.decisionId} status=${event.status} reason=${event.reasonCode}${event.taskId === undefined ? "" : ` task=${event.taskId}`}${event.codeBytes === undefined ? "" : ` code_bytes=${event.codeBytes}`}${event.codeHash === undefined ? "" : ` code_hash=${event.codeHash}`}${event.errorCode === undefined ? "" : ` error=${event.errorCode}`}\n`,
           );
+        } else if (event.kind === "reconciliation") {
+          dependencies.writeStderr(
+            `[research] reconciliation=${event.taskId} status=${event.status}${event.defectCount === undefined ? "" : ` defects=${event.defectCount}`}${event.proposedFollowUpCount === undefined ? "" : ` follow_ups=${event.proposedFollowUpCount}`}\n`,
+          );
+        } else if (event.kind === "budget") {
+          dependencies.writeStderr(
+            `[research] budget=${event.metric} consumed=${event.consumed} maximum=${event.maximum}\n`,
+          );
         } else if (event.kind === "artifact") {
           dependencies.writeStderr(`[research] workspace_artifact=${event.path}\n`);
+        } else {
+          dependencies.writeStderr(`[research] trace=${formatResearchOneShotEventV1(event)}\n`);
         }
       },
     });

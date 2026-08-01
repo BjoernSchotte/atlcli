@@ -64,6 +64,27 @@ export interface ResearchAgentRuntimeBindings {
   registerHarnessProfile: typeof import("deepagents/browser").registerHarnessProfile;
 }
 
+function topologicalResearchWavesV1(graph: ResearchGraphV1): Map<string, number> {
+  const nodesById = new Map(graph.nodes
+    .filter((node) => node.executor === "subagent" && node.roleId && node.status !== "pruned")
+    .map((node) => [node.id, node]));
+  const waves = new Map<string, number>();
+  const visit = (nodeId: string): number => {
+    const existing = waves.get(nodeId);
+    if (existing !== undefined) return existing;
+    const node = nodesById.get(nodeId);
+    if (!node) return 0;
+    const dependencyWaves = node.dependencies
+      .filter((dependency) => nodesById.has(dependency))
+      .map(visit);
+    const wave = dependencyWaves.length === 0 ? 1 : Math.max(...dependencyWaves) + 1;
+    waves.set(nodeId, wave);
+    return wave;
+  };
+  nodesById.forEach((_, nodeId) => visit(nodeId));
+  return waves;
+}
+
 /**
  * Bound LangGraph super-steps to the validated workflow envelope.
  *
@@ -151,27 +172,12 @@ export function buildDynamicSupervisorPrompt(graph: ResearchGraphV1): string {
   const taskIdByNodeId = new Map(graph.nodes
     .filter((node) => node.executor === "subagent" && node.roleId)
     .map((node) => [node.id, researchTaskIdForNodeV1(graph, node)]));
-  const subagentNodesById = new Map(graph.nodes
-    .filter((node) => node.executor === "subagent" && node.roleId)
-    .map((node) => [node.id, node]));
-  const topologicalWaveByNodeId = new Map<string, number>();
-  const topologicalWave = (nodeId: string): number => {
-    const existing = topologicalWaveByNodeId.get(nodeId);
-    if (existing !== undefined) return existing;
-    const node = subagentNodesById.get(nodeId);
-    if (!node) return 0;
-    const dependencyWaves = node.dependencies
-      .filter((dependency) => subagentNodesById.has(dependency))
-      .map(topologicalWave);
-    const wave = dependencyWaves.length === 0 ? 1 : Math.max(...dependencyWaves) + 1;
-    topologicalWaveByNodeId.set(nodeId, wave);
-    return wave;
-  };
+  const topologicalWaveByNodeId = topologicalResearchWavesV1(graph);
   const roles = graph.nodes
     .filter((node) => node.executor === "subagent" && node.roleId)
     .map((node) => [
       `- nodeId=${node.id}`,
-      `topologicalWave=${topologicalWave(node.id)}`,
+      `topologicalWave=${topologicalWaveByNodeId.get(node.id) ?? 0}`,
       `roleId=${node.roleId}`,
       `subagentType=${researchSubagentTypeForNodeV1(node)}`,
       `taskId=${researchTaskIdForNodeV1(graph, node)}`,
@@ -467,6 +473,10 @@ async function runResearchAgentWithBindings(
   const workspace = input.workspace ?? createMemoryResearchWorkspace();
   let eventSequence = 0;
   let subagentTaskStarted = false;
+  let observedCapabilityCalls = 0;
+  let acceptedInputTokens = 0;
+  let acceptedOutputTokens = 0;
+  let acceptedResultBytes = 0;
   const emitEvent = (event: ResearchOneShotEventInputV1): void => {
     input.options?.onEvent?.({
       ...event,
@@ -503,7 +513,18 @@ async function runResearchAgentWithBindings(
       ...(diagnostic.truncated === undefined ? {} : { truncated: diagnostic.truncated }),
       ...(diagnostic.durationMs === undefined ? {} : { durationMs: diagnostic.durationMs }),
       ...(diagnostic.errorCode === undefined ? {} : { errorCode: diagnostic.errorCode }),
+      ...(diagnostic.inputKeys === undefined ? {} : { inputKeys: diagnostic.inputKeys }),
+      ...(diagnostic.queryKeys === undefined ? {} : { queryKeys: diagnostic.queryKeys }),
     });
+    if (diagnostic.outcome === "started") {
+      observedCapabilityCalls += 1;
+      emitEvent({
+        kind: "budget",
+        metric: "capability_calls",
+        consumed: observedCapabilityCalls,
+        maximum: input.request.limits.maxPtcCalls,
+      });
+    }
   };
   const emitSubagentDiagnostic = (diagnostic: ResearchSubagentDiagnosticV1): void => {
     if (diagnostic.status === "started") subagentTaskStarted = true;
@@ -526,7 +547,51 @@ async function runResearchAgentWithBindings(
         taskId: diagnostic.taskId,
       });
     }
+    if (diagnostic.role === "reconciler" &&
+      diagnostic.status !== "repairing" &&
+      diagnostic.status !== "completed") {
+      emitEvent({
+        kind: "reconciliation",
+        taskId: diagnostic.taskId,
+        status: diagnostic.status === "started"
+          ? "started"
+          : "failed",
+      });
+    }
   };
+  if (input.researchGraph) {
+    const graph = input.researchGraph;
+    const executableNodes = graph.nodes.filter(
+      (node) => node.executor === "subagent" && node.roleId && node.status !== "pruned",
+    );
+    const taskIdByNodeId = new Map(
+      executableNodes.map((node) => [node.id, researchTaskIdForNodeV1(graph, node)]),
+    );
+    const waves = topologicalResearchWavesV1(graph);
+    emitEvent({ kind: "brief", revision: graph.basedOnBriefRevision });
+    emitEvent({
+      kind: "plan",
+      briefRevision: graph.basedOnBriefRevision,
+      revision: graph.revision,
+      status: graph.approvalEnvelope.status,
+      resolvedEffort: graph.resolvedEffort,
+      selectedRoleIds: [...new Set(executableNodes.map((node) => node.roleId!))],
+      nodeCount: executableNodes.length,
+      waveCount: Math.max(0, ...waves.values()),
+      maxParallelNodes: graph.maxParallelNodes,
+    });
+    executableNodes.forEach((node) => emitEvent({
+      kind: "task",
+      taskId: researchTaskIdForNodeV1(graph, node),
+      status: "planned",
+      roleId: node.roleId,
+      wave: waves.get(node.id) ?? 1,
+      dependencyTaskIds: node.dependencies
+        .map((dependency) => taskIdByNodeId.get(dependency))
+        .filter((taskId): taskId is string => taskId !== undefined),
+      grantedCapabilityIds: [...node.grantedCapabilityIds],
+    }));
+  }
   await workspace.writeFile(
     RESEARCH_ONE_SHOT_REQUEST_PATH_V1,
     JSON.stringify({ runId, request: input.request }, null, 2),
@@ -611,11 +676,64 @@ async function runResearchAgentWithBindings(
         onDiagnostic: emitSubagentDiagnostic,
         availableSourceIdsForNode,
         capabilityCallsForNode: (nodeId) => capabilityCallsByNode.get(nodeId) ?? 0,
-        onAcceptedPacket: (packet) => emitEvent({
-          kind: "task",
-          taskId: packet.taskId,
-          status: "packet-accepted",
-        }),
+        onAcceptedPacket: (packet) => {
+          const body = packet.body;
+          const sourceCount = "sourceIds" in body && Array.isArray(body.sourceIds)
+            ? body.sourceIds.length
+            : undefined;
+          const findingCount = "findingCandidates" in body
+            ? body.findingCandidates.length
+            : "findings" in body
+              ? body.findings.length
+              : undefined;
+          const relationshipCount = "relationshipCandidates" in body
+            ? body.relationshipCandidates.length
+            : "relationships" in body
+              ? body.relationships.length
+              : undefined;
+          const gapCount = "gaps" in body ? body.gaps.length : undefined;
+          const defectCount = "defects" in body ? body.defects.length : undefined;
+          emitEvent({
+            kind: "task",
+            taskId: packet.taskId,
+            status: "packet-accepted",
+            ...(packet.roleId ? { roleId: packet.roleId } : {}),
+            resultBytes: packet.hostObservedUsage.resultBytes,
+            capabilityCalls: packet.hostObservedUsage.capabilityCalls,
+            inputTokens: packet.hostObservedUsage.inputTokens,
+            outputTokens: packet.hostObservedUsage.outputTokens,
+            ...(sourceCount === undefined ? {} : { sourceCount }),
+            ...(findingCount === undefined ? {} : { findingCount }),
+            ...(relationshipCount === undefined ? {} : { relationshipCount }),
+            ...(gapCount === undefined ? {} : { gapCount }),
+            ...(defectCount === undefined ? {} : { defectCount }),
+          });
+          acceptedInputTokens += packet.hostObservedUsage.inputTokens;
+          acceptedOutputTokens += packet.hostObservedUsage.outputTokens;
+          acceptedResultBytes += packet.hostObservedUsage.resultBytes;
+          emitEvent({
+            kind: "budget",
+            metric: "tokens",
+            consumed: acceptedInputTokens + acceptedOutputTokens,
+            maximum: input.researchGraph!.totalBudget.maxInputTokens +
+              input.researchGraph!.totalBudget.maxOutputTokens,
+          });
+          emitEvent({
+            kind: "budget",
+            metric: "bytes",
+            consumed: acceptedResultBytes,
+            maximum: input.researchGraph!.totalBudget.maxResultBytes,
+          });
+          if (packet.roleId === "reconciler" && "defects" in body) {
+            emitEvent({
+              kind: "reconciliation",
+              taskId: packet.taskId,
+              status: "completed",
+              defectCount: body.defects.length,
+              proposedFollowUpCount: body.proposedFollowUps.length,
+            });
+          }
+        },
         onRejectedStructuredResult: ({ taskId, role, candidate, validatorIssue }) =>
           workspace.writeFile(
             `/scratch/rejected-${taskId.replaceAll(":", "-")}.json`,
@@ -783,6 +901,12 @@ async function runResearchAgentWithBindings(
       decisionId: "deterministic-evidence-validation",
       status: "completed",
       reasonCode: "validated-before-render",
+    });
+    emitEvent({
+      kind: "budget",
+      metric: "duration_ms",
+      consumed: Math.max(0, completedAtMs - startedAtMs),
+      maximum: input.request.limits.maxRunMs,
     });
     if (report.markdown.length > input.request.limits.maxReportChars) {
       throw new ResearchContractError(

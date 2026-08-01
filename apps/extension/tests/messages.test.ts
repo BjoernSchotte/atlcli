@@ -139,7 +139,13 @@ describe("message guards", () => {
         inputKind: "search",
         status: "completed",
         itemCount: 10,
+        complete: false,
+        termination: "item-limit",
+        resultBytes: 2048,
+        truncated: false,
         durationMs: 42,
+        inputKeys: ["query"],
+        queryKeys: ["text"],
       },
     })).toBe(true);
     expect(isResearchEvent({
@@ -163,13 +169,70 @@ describe("message guards", () => {
         decisionId: "deterministic-evidence-validation",
         status: "started",
         reasonCode: "validate-before-render",
+        codeBytes: 400,
+        codeHash: "sha256:deadbeef",
+      },
+    })).toBe(true);
+    expect(isResearchEvent({
+      ...base,
+      event: {
+        kind: "plan",
+        seq: 6,
+        at: "2026-07-31T12:00:00.000Z",
+        briefRevision: 1,
+        revision: 1,
+        status: "approved",
+        resolvedEffort: "analysis",
+        selectedRoleIds: ["focused-researcher", "synthesizer"],
+        nodeCount: 3,
+        waveCount: 2,
+        maxParallelNodes: 3,
+      },
+    })).toBe(true);
+    expect(isResearchEvent({
+      ...base,
+      event: {
+        kind: "task",
+        seq: 7,
+        at: "2026-07-31T12:00:00.000Z",
+        taskId: "research-task:1",
+        roleId: "focused-researcher",
+        status: "packet-accepted",
+        sourceCount: 4,
+        findingCount: 2,
+        inputTokens: 100,
+        outputTokens: 20,
+        resultBytes: 2048,
+      },
+    })).toBe(true);
+    expect(isResearchEvent({
+      ...base,
+      event: {
+        kind: "reconciliation",
+        seq: 8,
+        at: "2026-07-31T12:00:00.000Z",
+        taskId: "research-task:reconciler",
+        status: "completed",
+        defectCount: 2,
+        proposedFollowUpCount: 1,
+      },
+    })).toBe(true);
+    expect(isResearchEvent({
+      ...base,
+      event: {
+        kind: "budget",
+        seq: 9,
+        at: "2026-07-31T12:00:00.000Z",
+        metric: "tokens",
+        consumed: 120,
+        maximum: 1000,
       },
     })).toBe(true);
     expect(isResearchEvent({
       ...base,
       event: {
         kind: "artifact",
-        seq: 6,
+        seq: 10,
         at: "2026-07-31T12:00:00.000Z",
         path: "/artifacts/report.md",
       },
@@ -182,6 +245,42 @@ describe("message guards", () => {
         at: "2026-07-31T12:00:00.000Z",
         phase: "researching",
         sourceBody: "must not cross the event bus",
+      },
+    })).toBe(false);
+    expect(isResearchEvent({
+      ...base,
+      event: {
+        kind: "task",
+        seq: 11,
+        at: "2026-07-31T12:00:00.000Z",
+        taskId: "research-task:1",
+        status: "planned",
+        prompt: "must not cross the event bus",
+      },
+    })).toBe(false);
+    expect(isResearchEvent({
+      ...base,
+      event: {
+        kind: "capability",
+        seq: 12,
+        at: "2026-07-31T12:00:00.000Z",
+        callId: "wiki.search:1",
+        toolId: "wiki.search",
+        inputKind: "search",
+        status: "completed",
+        result: { sourceBody: "must not cross the event bus" },
+      },
+    })).toBe(false);
+    expect(isResearchEvent({
+      ...base,
+      event: {
+        kind: "decision",
+        seq: 13,
+        at: "2026-07-31T12:00:00.000Z",
+        decisionId: "central-supervisor-run",
+        status: "completed",
+        reasonCode: "workflow-returned-for-validation",
+        chainOfThought: "must not cross the event bus",
       },
     })).toBe(false);
     expect(isResearchEvent({

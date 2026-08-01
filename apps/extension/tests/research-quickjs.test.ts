@@ -112,6 +112,10 @@ describe("QuickJS research sandbox", () => {
         expect.objectContaining({ inputKind: "search", itemCount: 1, resultBytes: expect.any(Number) }),
         expect.objectContaining({ inputKind: "continuation", itemCount: 1, resultBytes: expect.any(Number) }),
       ]);
+      expect(diagnostics.filter((diagnostic) => diagnostic.outcome === "started")).toEqual([
+        expect.objectContaining({ inputKind: "search", inputKeys: ["query"], queryKeys: [] }),
+        expect.objectContaining({ inputKind: "continuation", inputKeys: ["query"], queryKeys: ["cursor"] }),
+      ]);
       expect(diagnostics.every((diagnostic) => !("result" in diagnostic))).toBe(true);
     } finally {
       broker.cancel();

@@ -288,10 +288,41 @@ export type ResearchEventV1 =
   | { kind: "brief"; seq: number; at: string; revision: number }
   | { kind: "clarification"; seq: number; at: string; briefRevision: number; status: string }
   | { kind: "scope"; seq: number; at: string; briefRevision: number; proposalId?: string; status: string }
-  | { kind: "plan"; seq: number; at: string; revision: number; status: string }
+  | {
+      kind: "plan";
+      seq: number;
+      at: string;
+      briefRevision: number;
+      revision: number;
+      status: string;
+      resolvedEffort: ResearchResolvedEffortV1;
+      selectedRoleIds: string[];
+      nodeCount: number;
+      waveCount: number;
+      maxParallelNodes: number;
+    }
   | { kind: "plan_diff"; seq: number; at: string; from: number; to: number }
   | { kind: "control"; seq: number; at: string; action: string; status: string; revision: number }
-  | { kind: "task"; seq: number; at: string; taskId: string; status: string }
+  | {
+      kind: "task";
+      seq: number;
+      at: string;
+      taskId: string;
+      status: string;
+      roleId?: string;
+      wave?: number;
+      dependencyTaskIds?: string[];
+      grantedCapabilityIds?: string[];
+      resultBytes?: number;
+      capabilityCalls?: number;
+      inputTokens?: number;
+      outputTokens?: number;
+      sourceCount?: number;
+      findingCount?: number;
+      relationshipCount?: number;
+      gapCount?: number;
+      defectCount?: number;
+    }
   | {
       kind: "subagent";
       seq: number;
@@ -310,7 +341,7 @@ export type ResearchEventV1 =
       callId: string;
       toolId: ResearchToolId;
       inputKind: "search" | "continuation" | "detail";
-      status: "started" | "completed" | "failed";
+      status: string;
       itemCount?: number;
       complete?: boolean;
       termination?: string;
@@ -318,6 +349,8 @@ export type ResearchEventV1 =
       truncated?: boolean;
       durationMs?: number;
       errorCode?: string;
+      inputKeys?: string[];
+      queryKeys?: string[];
     }
   | {
       kind: "decision";
@@ -331,7 +364,15 @@ export type ResearchEventV1 =
       codeBytes?: number;
       codeHash?: string;
     }
-  | { kind: "reconciliation"; seq: number; at: string; taskId: string; status: string }
+  | {
+      kind: "reconciliation";
+      seq: number;
+      at: string;
+      taskId: string;
+      status: "started" | "completed" | "failed";
+      defectCount?: number;
+      proposedFollowUpCount?: number;
+    }
   | { kind: "reconciliation_disposition"; seq: number; at: string; dispositionId: string; status: string }
   | { kind: "steering"; seq: number; at: string; revision: number; status: string }
   | {
@@ -349,7 +390,20 @@ export type ResearchEventV1 =
 
 export type ResearchOneShotEventV1 = Extract<
   ResearchEventV1,
-  { kind: "phase" | "progress" | "task" | "subagent" | "capability" | "decision" | "artifact" }
+  {
+    kind:
+      | "phase"
+      | "progress"
+      | "brief"
+      | "plan"
+      | "task"
+      | "subagent"
+      | "capability"
+      | "decision"
+      | "reconciliation"
+      | "budget"
+      | "artifact";
+  }
 >;
 
 export type ResearchErrorCode =

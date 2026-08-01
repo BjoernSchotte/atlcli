@@ -5,6 +5,7 @@
  * Runtime construction lives behind the explicit browser and node entrypoints.
  */
 export * from "./contracts.js";
+export * from "./events.js";
 export * from "./capability-contracts.js";
 export * from "./scope-discovery.js";
 export * from "./scope-resolution.js";

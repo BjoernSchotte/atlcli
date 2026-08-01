@@ -191,6 +191,9 @@ export declare function finalizeResearchReportV1(report: Omit<ResearchReportV1, 
     markdown?: string;
 }): ResearchReportV1;
 
+// export: formatResearchOneShotEventV1
+export declare function formatResearchOneShotEventV1(event: ResearchOneShotEventV1): string;
+
 // export: InMemoryResearchSubagentDispatchPort
 export declare class InMemoryResearchSubagentDispatchPort implements ResearchSubagentDispatchPort {
     #private;
@@ -213,6 +216,9 @@ export declare class InMemoryResearchSubagentDispatchPort implements ResearchSub
     attempt(taskId: string): ResearchTaskAttemptV1 | undefined;
     packet(packetRef: string): ResearchAcceptedPacketV1 | undefined;
 }
+
+// export: isResearchOneShotEventV1
+export declare function isResearchOneShotEventV1(value: unknown): value is ResearchOneShotEventV1;
 
 // export: JiraResearchDetail
 export interface JiraResearchDetail extends JiraResearchSummary {
@@ -859,8 +865,14 @@ export type ResearchEventV1 = {
     kind: "plan";
     seq: number;
     at: string;
+    briefRevision: number;
     revision: number;
     status: string;
+    resolvedEffort: ResearchResolvedEffortV1;
+    selectedRoleIds: string[];
+    nodeCount: number;
+    waveCount: number;
+    maxParallelNodes: number;
 } | {
     kind: "plan_diff";
     seq: number;
@@ -880,6 +892,19 @@ export type ResearchEventV1 = {
     at: string;
     taskId: string;
     status: string;
+    roleId?: string;
+    wave?: number;
+    dependencyTaskIds?: string[];
+    grantedCapabilityIds?: string[];
+    resultBytes?: number;
+    capabilityCalls?: number;
+    inputTokens?: number;
+    outputTokens?: number;
+    sourceCount?: number;
+    findingCount?: number;
+    relationshipCount?: number;
+    gapCount?: number;
+    defectCount?: number;
 } | {
     kind: "subagent";
     seq: number;
@@ -897,7 +922,7 @@ export type ResearchEventV1 = {
     callId: string;
     toolId: ResearchToolId;
     inputKind: "search" | "continuation" | "detail";
-    status: "started" | "completed" | "failed";
+    status: string;
     itemCount?: number;
     complete?: boolean;
     termination?: string;
@@ -905,6 +930,8 @@ export type ResearchEventV1 = {
     truncated?: boolean;
     durationMs?: number;
     errorCode?: string;
+    inputKeys?: string[];
+    queryKeys?: string[];
 } | {
     kind: "decision";
     seq: number;
@@ -921,7 +948,9 @@ export type ResearchEventV1 = {
     seq: number;
     at: string;
     taskId: string;
-    status: string;
+    status: "started" | "completed" | "failed";
+    defectCount?: number;
+    proposedFollowUpCount?: number;
 } | {
     kind: "reconciliation_disposition";
     seq: number;
@@ -1172,7 +1201,7 @@ export type ResearchNodeStatusV1 = "proposed" | "ready" | "running" | "complete"
 
 // export: ResearchOneShotEventV1
 export type ResearchOneShotEventV1 = Extract<ResearchEventV1, {
-    kind: "phase" | "progress" | "task" | "subagent" | "capability" | "decision" | "artifact";
+    kind: "phase" | "progress" | "brief" | "plan" | "task" | "subagent" | "capability" | "decision" | "reconciliation" | "budget" | "artifact";
 }>;
 
 // export: ResearchOneShotPolicyV1
@@ -2102,6 +2131,9 @@ export declare function finalizeResearchReportV1(report: Omit<ResearchReportV1, 
     markdown?: string;
 }): ResearchReportV1;
 
+// export: formatResearchOneShotEventV1
+export declare function formatResearchOneShotEventV1(event: ResearchOneShotEventV1): string;
+
 // export: InMemoryResearchSubagentDispatchPort
 export declare class InMemoryResearchSubagentDispatchPort implements ResearchSubagentDispatchPort {
     #private;
@@ -2124,6 +2156,9 @@ export declare class InMemoryResearchSubagentDispatchPort implements ResearchSub
     attempt(taskId: string): ResearchTaskAttemptV1 | undefined;
     packet(packetRef: string): ResearchAcceptedPacketV1 | undefined;
 }
+
+// export: isResearchOneShotEventV1
+export declare function isResearchOneShotEventV1(value: unknown): value is ResearchOneShotEventV1;
 
 // export: JiraResearchDetail
 export interface JiraResearchDetail extends JiraResearchSummary {
@@ -2770,8 +2805,14 @@ export type ResearchEventV1 = {
     kind: "plan";
     seq: number;
     at: string;
+    briefRevision: number;
     revision: number;
     status: string;
+    resolvedEffort: ResearchResolvedEffortV1;
+    selectedRoleIds: string[];
+    nodeCount: number;
+    waveCount: number;
+    maxParallelNodes: number;
 } | {
     kind: "plan_diff";
     seq: number;
@@ -2791,6 +2832,19 @@ export type ResearchEventV1 = {
     at: string;
     taskId: string;
     status: string;
+    roleId?: string;
+    wave?: number;
+    dependencyTaskIds?: string[];
+    grantedCapabilityIds?: string[];
+    resultBytes?: number;
+    capabilityCalls?: number;
+    inputTokens?: number;
+    outputTokens?: number;
+    sourceCount?: number;
+    findingCount?: number;
+    relationshipCount?: number;
+    gapCount?: number;
+    defectCount?: number;
 } | {
     kind: "subagent";
     seq: number;
@@ -2808,7 +2862,7 @@ export type ResearchEventV1 = {
     callId: string;
     toolId: ResearchToolId;
     inputKind: "search" | "continuation" | "detail";
-    status: "started" | "completed" | "failed";
+    status: string;
     itemCount?: number;
     complete?: boolean;
     termination?: string;
@@ -2816,6 +2870,8 @@ export type ResearchEventV1 = {
     truncated?: boolean;
     durationMs?: number;
     errorCode?: string;
+    inputKeys?: string[];
+    queryKeys?: string[];
 } | {
     kind: "decision";
     seq: number;
@@ -2832,7 +2888,9 @@ export type ResearchEventV1 = {
     seq: number;
     at: string;
     taskId: string;
-    status: string;
+    status: "started" | "completed" | "failed";
+    defectCount?: number;
+    proposedFollowUpCount?: number;
 } | {
     kind: "reconciliation_disposition";
     seq: number;
@@ -3083,7 +3141,7 @@ export type ResearchNodeStatusV1 = "proposed" | "ready" | "running" | "complete"
 
 // export: ResearchOneShotEventV1
 export type ResearchOneShotEventV1 = Extract<ResearchEventV1, {
-    kind: "phase" | "progress" | "task" | "subagent" | "capability" | "decision" | "artifact";
+    kind: "phase" | "progress" | "brief" | "plan" | "task" | "subagent" | "capability" | "decision" | "reconciliation" | "budget" | "artifact";
 }>;
 
 // export: ResearchOneShotPolicyV1
@@ -4011,6 +4069,9 @@ export declare function finalizeResearchReportV1(report: Omit<ResearchReportV1, 
     markdown?: string;
 }): ResearchReportV1;
 
+// export: formatResearchOneShotEventV1
+export declare function formatResearchOneShotEventV1(event: ResearchOneShotEventV1): string;
+
 // export: InMemoryResearchSubagentDispatchPort
 export declare class InMemoryResearchSubagentDispatchPort implements ResearchSubagentDispatchPort {
     #private;
@@ -4033,6 +4094,9 @@ export declare class InMemoryResearchSubagentDispatchPort implements ResearchSub
     attempt(taskId: string): ResearchTaskAttemptV1 | undefined;
     packet(packetRef: string): ResearchAcceptedPacketV1 | undefined;
 }
+
+// export: isResearchOneShotEventV1
+export declare function isResearchOneShotEventV1(value: unknown): value is ResearchOneShotEventV1;
 
 // export: JiraResearchDetail
 export interface JiraResearchDetail extends JiraResearchSummary {
@@ -4679,8 +4743,14 @@ export type ResearchEventV1 = {
     kind: "plan";
     seq: number;
     at: string;
+    briefRevision: number;
     revision: number;
     status: string;
+    resolvedEffort: ResearchResolvedEffortV1;
+    selectedRoleIds: string[];
+    nodeCount: number;
+    waveCount: number;
+    maxParallelNodes: number;
 } | {
     kind: "plan_diff";
     seq: number;
@@ -4700,6 +4770,19 @@ export type ResearchEventV1 = {
     at: string;
     taskId: string;
     status: string;
+    roleId?: string;
+    wave?: number;
+    dependencyTaskIds?: string[];
+    grantedCapabilityIds?: string[];
+    resultBytes?: number;
+    capabilityCalls?: number;
+    inputTokens?: number;
+    outputTokens?: number;
+    sourceCount?: number;
+    findingCount?: number;
+    relationshipCount?: number;
+    gapCount?: number;
+    defectCount?: number;
 } | {
     kind: "subagent";
     seq: number;
@@ -4717,7 +4800,7 @@ export type ResearchEventV1 = {
     callId: string;
     toolId: ResearchToolId;
     inputKind: "search" | "continuation" | "detail";
-    status: "started" | "completed" | "failed";
+    status: string;
     itemCount?: number;
     complete?: boolean;
     termination?: string;
@@ -4725,6 +4808,8 @@ export type ResearchEventV1 = {
     truncated?: boolean;
     durationMs?: number;
     errorCode?: string;
+    inputKeys?: string[];
+    queryKeys?: string[];
 } | {
     kind: "decision";
     seq: number;
@@ -4741,7 +4826,9 @@ export type ResearchEventV1 = {
     seq: number;
     at: string;
     taskId: string;
-    status: string;
+    status: "started" | "completed" | "failed";
+    defectCount?: number;
+    proposedFollowUpCount?: number;
 } | {
     kind: "reconciliation_disposition";
     seq: number;
@@ -4992,7 +5079,7 @@ export type ResearchNodeStatusV1 = "proposed" | "ready" | "running" | "complete"
 
 // export: ResearchOneShotEventV1
 export type ResearchOneShotEventV1 = Extract<ResearchEventV1, {
-    kind: "phase" | "progress" | "task" | "subagent" | "capability" | "decision" | "artifact";
+    kind: "phase" | "progress" | "brief" | "plan" | "task" | "subagent" | "capability" | "decision" | "reconciliation" | "budget" | "artifact";
 }>;
 
 // export: ResearchOneShotPolicyV1
@@ -6016,6 +6103,9 @@ export declare function finalizeResearchReportV1(report: Omit<ResearchReportV1, 
     markdown?: string;
 }): ResearchReportV1;
 
+// export: formatResearchOneShotEventV1
+export declare function formatResearchOneShotEventV1(event: ResearchOneShotEventV1): string;
+
 // export: InMemoryResearchSubagentDispatchPort
 export declare class InMemoryResearchSubagentDispatchPort implements ResearchSubagentDispatchPort {
     #private;
@@ -6038,6 +6128,9 @@ export declare class InMemoryResearchSubagentDispatchPort implements ResearchSub
     attempt(taskId: string): ResearchTaskAttemptV1 | undefined;
     packet(packetRef: string): ResearchAcceptedPacketV1 | undefined;
 }
+
+// export: isResearchOneShotEventV1
+export declare function isResearchOneShotEventV1(value: unknown): value is ResearchOneShotEventV1;
 
 // export: JiraResearchDetail
 export interface JiraResearchDetail extends JiraResearchSummary {
@@ -6720,8 +6813,14 @@ export type ResearchEventV1 = {
     kind: "plan";
     seq: number;
     at: string;
+    briefRevision: number;
     revision: number;
     status: string;
+    resolvedEffort: ResearchResolvedEffortV1;
+    selectedRoleIds: string[];
+    nodeCount: number;
+    waveCount: number;
+    maxParallelNodes: number;
 } | {
     kind: "plan_diff";
     seq: number;
@@ -6741,6 +6840,19 @@ export type ResearchEventV1 = {
     at: string;
     taskId: string;
     status: string;
+    roleId?: string;
+    wave?: number;
+    dependencyTaskIds?: string[];
+    grantedCapabilityIds?: string[];
+    resultBytes?: number;
+    capabilityCalls?: number;
+    inputTokens?: number;
+    outputTokens?: number;
+    sourceCount?: number;
+    findingCount?: number;
+    relationshipCount?: number;
+    gapCount?: number;
+    defectCount?: number;
 } | {
     kind: "subagent";
     seq: number;
@@ -6758,7 +6870,7 @@ export type ResearchEventV1 = {
     callId: string;
     toolId: ResearchToolId;
     inputKind: "search" | "continuation" | "detail";
-    status: "started" | "completed" | "failed";
+    status: string;
     itemCount?: number;
     complete?: boolean;
     termination?: string;
@@ -6766,6 +6878,8 @@ export type ResearchEventV1 = {
     truncated?: boolean;
     durationMs?: number;
     errorCode?: string;
+    inputKeys?: string[];
+    queryKeys?: string[];
 } | {
     kind: "decision";
     seq: number;
@@ -6782,7 +6896,9 @@ export type ResearchEventV1 = {
     seq: number;
     at: string;
     taskId: string;
-    status: string;
+    status: "started" | "completed" | "failed";
+    defectCount?: number;
+    proposedFollowUpCount?: number;
 } | {
     kind: "reconciliation_disposition";
     seq: number;
@@ -7033,7 +7149,7 @@ export type ResearchNodeStatusV1 = "proposed" | "ready" | "running" | "complete"
 
 // export: ResearchOneShotEventV1
 export type ResearchOneShotEventV1 = Extract<ResearchEventV1, {
-    kind: "phase" | "progress" | "task" | "subagent" | "capability" | "decision" | "artifact";
+    kind: "phase" | "progress" | "brief" | "plan" | "task" | "subagent" | "capability" | "decision" | "reconciliation" | "budget" | "artifact";
 }>;
 
 // export: ResearchOneShotPolicyV1
@@ -8134,8 +8250,14 @@ export type ResearchEventV1 = {
     kind: "plan";
     seq: number;
     at: string;
+    briefRevision: number;
     revision: number;
     status: string;
+    resolvedEffort: ResearchResolvedEffortV1;
+    selectedRoleIds: string[];
+    nodeCount: number;
+    waveCount: number;
+    maxParallelNodes: number;
 } | {
     kind: "plan_diff";
     seq: number;
@@ -8155,6 +8277,19 @@ export type ResearchEventV1 = {
     at: string;
     taskId: string;
     status: string;
+    roleId?: string;
+    wave?: number;
+    dependencyTaskIds?: string[];
+    grantedCapabilityIds?: string[];
+    resultBytes?: number;
+    capabilityCalls?: number;
+    inputTokens?: number;
+    outputTokens?: number;
+    sourceCount?: number;
+    findingCount?: number;
+    relationshipCount?: number;
+    gapCount?: number;
+    defectCount?: number;
 } | {
     kind: "subagent";
     seq: number;
@@ -8172,7 +8307,7 @@ export type ResearchEventV1 = {
     callId: string;
     toolId: ResearchToolId;
     inputKind: "search" | "continuation" | "detail";
-    status: "started" | "completed" | "failed";
+    status: string;
     itemCount?: number;
     complete?: boolean;
     termination?: string;
@@ -8180,6 +8315,8 @@ export type ResearchEventV1 = {
     truncated?: boolean;
     durationMs?: number;
     errorCode?: string;
+    inputKeys?: string[];
+    queryKeys?: string[];
 } | {
     kind: "decision";
     seq: number;
@@ -8196,7 +8333,9 @@ export type ResearchEventV1 = {
     seq: number;
     at: string;
     taskId: string;
-    status: string;
+    status: "started" | "completed" | "failed";
+    defectCount?: number;
+    proposedFollowUpCount?: number;
 } | {
     kind: "reconciliation_disposition";
     seq: number;
@@ -8270,7 +8409,7 @@ export interface ResearchLimitsV1 {
 
 // export: ResearchOneShotEventV1
 export type ResearchOneShotEventV1 = Extract<ResearchEventV1, {
-    kind: "phase" | "progress" | "task" | "subagent" | "capability" | "decision" | "artifact";
+    kind: "phase" | "progress" | "brief" | "plan" | "task" | "subagent" | "capability" | "decision" | "reconciliation" | "budget" | "artifact";
 }>;
 
 // export: ResearchOneShotPolicyV1
@@ -8448,6 +8587,16 @@ export interface ResearchTimeWindowV1 {
 
 // export: ResearchToolId
 export type ResearchToolId = (typeof RESEARCH_TOOL_IDS)[number];
+```
+
+### Entry point `./events`
+
+```ts
+// export: formatResearchOneShotEventV1
+export declare function formatResearchOneShotEventV1(event: ResearchOneShotEventV1): string;
+
+// export: isResearchOneShotEventV1
+export declare function isResearchOneShotEventV1(value: unknown): value is ResearchOneShotEventV1;
 ```
 
 ### Entry point `./graph`
@@ -8971,6 +9120,9 @@ export declare function finalizeResearchReportV1(report: Omit<ResearchReportV1, 
     markdown?: string;
 }): ResearchReportV1;
 
+// export: formatResearchOneShotEventV1
+export declare function formatResearchOneShotEventV1(event: ResearchOneShotEventV1): string;
+
 // export: InMemoryResearchSubagentDispatchPort
 export declare class InMemoryResearchSubagentDispatchPort implements ResearchSubagentDispatchPort {
     #private;
@@ -8993,6 +9145,9 @@ export declare class InMemoryResearchSubagentDispatchPort implements ResearchSub
     attempt(taskId: string): ResearchTaskAttemptV1 | undefined;
     packet(packetRef: string): ResearchAcceptedPacketV1 | undefined;
 }
+
+// export: isResearchOneShotEventV1
+export declare function isResearchOneShotEventV1(value: unknown): value is ResearchOneShotEventV1;
 
 // export: JiraResearchDetail
 export interface JiraResearchDetail extends JiraResearchSummary {
@@ -9675,8 +9830,14 @@ export type ResearchEventV1 = {
     kind: "plan";
     seq: number;
     at: string;
+    briefRevision: number;
     revision: number;
     status: string;
+    resolvedEffort: ResearchResolvedEffortV1;
+    selectedRoleIds: string[];
+    nodeCount: number;
+    waveCount: number;
+    maxParallelNodes: number;
 } | {
     kind: "plan_diff";
     seq: number;
@@ -9696,6 +9857,19 @@ export type ResearchEventV1 = {
     at: string;
     taskId: string;
     status: string;
+    roleId?: string;
+    wave?: number;
+    dependencyTaskIds?: string[];
+    grantedCapabilityIds?: string[];
+    resultBytes?: number;
+    capabilityCalls?: number;
+    inputTokens?: number;
+    outputTokens?: number;
+    sourceCount?: number;
+    findingCount?: number;
+    relationshipCount?: number;
+    gapCount?: number;
+    defectCount?: number;
 } | {
     kind: "subagent";
     seq: number;
@@ -9713,7 +9887,7 @@ export type ResearchEventV1 = {
     callId: string;
     toolId: ResearchToolId;
     inputKind: "search" | "continuation" | "detail";
-    status: "started" | "completed" | "failed";
+    status: string;
     itemCount?: number;
     complete?: boolean;
     termination?: string;
@@ -9721,6 +9895,8 @@ export type ResearchEventV1 = {
     truncated?: boolean;
     durationMs?: number;
     errorCode?: string;
+    inputKeys?: string[];
+    queryKeys?: string[];
 } | {
     kind: "decision";
     seq: number;
@@ -9737,7 +9913,9 @@ export type ResearchEventV1 = {
     seq: number;
     at: string;
     taskId: string;
-    status: string;
+    status: "started" | "completed" | "failed";
+    defectCount?: number;
+    proposedFollowUpCount?: number;
 } | {
     kind: "reconciliation_disposition";
     seq: number;
@@ -9988,7 +10166,7 @@ export type ResearchNodeStatusV1 = "proposed" | "ready" | "running" | "complete"
 
 // export: ResearchOneShotEventV1
 export type ResearchOneShotEventV1 = Extract<ResearchEventV1, {
-    kind: "phase" | "progress" | "task" | "subagent" | "capability" | "decision" | "artifact";
+    kind: "phase" | "progress" | "brief" | "plan" | "task" | "subagent" | "capability" | "decision" | "reconciliation" | "budget" | "artifact";
 }>;
 
 // export: ResearchOneShotPolicyV1

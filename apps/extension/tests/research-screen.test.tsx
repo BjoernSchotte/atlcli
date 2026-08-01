@@ -200,8 +200,32 @@ describe("portable Research screen", () => {
           maxCalls: 32,
         });
         options?.onEvent?.({
-          kind: "subagent",
+          kind: "plan",
           seq: 1,
+          at: "2026-07-31T12:00:00.000Z",
+          briefRevision: 1,
+          revision: 1,
+          status: "approved",
+          resolvedEffort: "analysis",
+          selectedRoleIds: ["wiki-retrieval", "synthesizer"],
+          nodeCount: 2,
+          waveCount: 2,
+          maxParallelNodes: 3,
+        });
+        options?.onEvent?.({
+          kind: "task",
+          seq: 2,
+          at: "2026-07-31T12:00:00.000Z",
+          taskId: "research-task:1",
+          roleId: "wiki-retrieval",
+          status: "planned",
+          wave: 1,
+          dependencyTaskIds: [],
+          grantedCapabilityIds: ["wiki.search", "wiki.page.get"],
+        });
+        options?.onEvent?.({
+          kind: "subagent",
+          seq: 3,
           at: "2026-07-31T12:00:00.000Z",
           taskId: "research-task:1",
           roleId: "wiki-retrieval",
@@ -209,15 +233,28 @@ describe("portable Research screen", () => {
         });
         options?.onEvent?.({
           kind: "capability",
-          seq: 2,
+          seq: 4,
           at: "2026-07-31T12:00:00.000Z",
           callId: "wiki.search:1",
           toolId: "wiki.search",
           inputKind: "search",
           status: "completed",
+          inputKeys: ["query"],
+          queryKeys: ["text"],
           itemCount: 10,
+          complete: false,
           termination: "item-limit",
+          resultBytes: 2048,
+          truncated: false,
           durationMs: 42,
+        });
+        options?.onEvent?.({
+          kind: "budget",
+          seq: 5,
+          at: "2026-07-31T12:00:00.000Z",
+          metric: "capability_calls",
+          consumed: 1,
+          maximum: 32,
         });
         return report;
       },
@@ -263,10 +300,19 @@ describe("portable Research screen", () => {
       "The page explicitly links the issue."
     );
     expect(dom.find("research-activity").textContent).toContain(
-      "agent · wiki-retrieval · started"
+      "agent · wiki-retrieval · research-task:1 · started"
     );
     expect(dom.find("research-activity").textContent).toContain(
-      "tool · wiki.search · search · completed · 10 items · item-limit · 42 ms"
+      "plan · graph 1 · approved · effort analysis · 2 nodes in 2 waves"
+    );
+    expect(dom.find("research-activity").textContent).toContain(
+      "task · research-task:1 · wiki-retrieval · planned · wave 1"
+    );
+    expect(dom.find("research-activity").textContent).toContain(
+      "tool · wiki.search · wiki.search:1 · search · completed · input {query} · query {text} · 10 items · complete false · item-limit · 2048 bytes · truncated false · 42 ms"
+    );
+    expect(dom.find("research-activity").textContent).toContain(
+      "budget · capability_calls · 1/32"
     );
     await dom.toggle("research-current-context");
     await dom.click("research-run");

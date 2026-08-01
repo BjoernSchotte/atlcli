@@ -44,6 +44,11 @@
       "types": "./dist/contracts.d.ts",
       "default": "./dist/contracts.js"
     },
+    "./events": {
+      "development": "./src/events.ts",
+      "types": "./dist/events.d.ts",
+      "default": "./dist/events.js"
+    },
     "./capability-contracts": {
       "development": "./src/capability-contracts.ts",
       "types": "./dist/capability-contracts.d.ts",

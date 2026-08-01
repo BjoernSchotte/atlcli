@@ -1611,14 +1611,14 @@ type ResearchEventV1 =
   | { kind: "brief"; seq: number; at: string; revision: number }
   | { kind: "clarification"; seq: number; at: string; briefRevision: number; status: string }
   | { kind: "scope"; seq: number; at: string; briefRevision: number; proposalId?: string; status: string }
-  | { kind: "plan"; seq: number; at: string; revision: number; status: string }
+  | { kind: "plan"; seq: number; at: string; briefRevision: number; revision: number; status: string; resolvedEffort: ResearchResolvedEffortV1; selectedRoleIds: string[]; nodeCount: number; waveCount: number; maxParallelNodes: number }
   | { kind: "plan_diff"; seq: number; at: string; from: number; to: number }
   | { kind: "control"; seq: number; at: string; action: string; status: string; revision: number }
-  | { kind: "task"; seq: number; at: string; taskId: string; status: string }
+  | { kind: "task"; seq: number; at: string; taskId: string; status: string; roleId?: string; wave?: number; dependencyTaskIds?: string[]; grantedCapabilityIds?: string[]; resultBytes?: number; capabilityCalls?: number; inputTokens?: number; outputTokens?: number; sourceCount?: number; findingCount?: number; relationshipCount?: number; gapCount?: number; defectCount?: number }
   | { kind: "subagent"; seq: number; at: string; taskId: string; roleId: string; status: string; attempt?: number; durationMs?: number; errorCode?: string }
-  | { kind: "capability"; seq: number; at: string; callId: string; toolId: ResearchToolId; inputKind: "search" | "continuation" | "detail"; status: "started" | "completed" | "failed"; itemCount?: number; complete?: boolean; termination?: string; durationMs?: number; errorCode?: string }
-  | { kind: "decision"; seq: number; at: string; decisionId: string; status: "started" | "completed" | "failed"; reasonCode: string; taskId?: string }
-  | { kind: "reconciliation"; seq: number; at: string; taskId: string; status: string }
+  | { kind: "capability"; seq: number; at: string; callId: string; toolId: ResearchToolId; inputKind: "search" | "continuation" | "detail"; status: "started" | "completed" | "failed"; itemCount?: number; complete?: boolean; termination?: string; resultBytes?: number; truncated?: boolean; durationMs?: number; errorCode?: string; inputKeys?: string[]; queryKeys?: string[] }
+  | { kind: "decision"; seq: number; at: string; decisionId: string; status: "started" | "completed" | "failed"; reasonCode: string; taskId?: string; errorCode?: string; codeBytes?: number; codeHash?: string }
+  | { kind: "reconciliation"; seq: number; at: string; taskId: string; status: string; defectCount?: number; proposedFollowUpCount?: number }
   | { kind: "reconciliation_disposition"; seq: number; at: string; dispositionId: string; status: string }
   | { kind: "steering"; seq: number; at: string; revision: number; status: string }
   | {
@@ -2557,10 +2557,16 @@ CLI:
       the resolved key/name/source in sanitized stderr plan output, and keep
       explicit flags locked even when the question or profile names another
       scope.
-- [ ] Emit sanitized brief revision, graph revision, selected role IDs, node
-      statuses, stop reason, reconciliation decision, and budget usage to
-      stderr or an operator-selected metrics file; never emit task prose or
-      source content into tracked artifacts.
+- [x] Emit sanitized brief revision, graph revision, selected role IDs,
+      planned waves/dependencies/grants, node and packet status, stop reason,
+      bounded tool input/result metadata, reconciliation lifecycle, and budget
+      usage to stderr or the shared browser event consumer. Never emit task
+      prose, source content, workflow code, prompts, provider payloads, or
+      hidden model reasoning into the event stream or tracked artifacts.
+- [ ] Add the supervisor's validated reconciliation disposition for every
+      defect to the same stream after the disposition contract is executable;
+      lifecycle and defect/follow-up counts are not a substitute for that
+      decision.
 - [ ] Run a small private Mayflower MVP set containing exact lookup,
       cross-product temporal join, a naturally named project/space without
       explicit keys, hierarchy, ambiguity, contradiction, and no-answer
@@ -2664,6 +2670,19 @@ CLI run against the approved DOCSY/ATLCLI test scopes completed in 327,702 ms,
 performed 18 bounded PTC/HTTP reads, rendered canonical Markdown, and copied
 byte-identical mode-0600 artifacts to the requested timestamped local artifact
 directory.
+
+T3 trace checkpoint (2026-08-01): the shared browser-safe event validator now
+admits the complete bounded trace fields emitted by the runtime, fixing a wire
+guard that previously dropped result-byte/truncation and workflow-code metrics.
+CLI and sidebar receive the accepted plan and topological waves, task grants
+and dependencies, subagent lifecycle, redacted tool argument shape, item/page
+completion and truncation metadata, accepted-packet counts and usage,
+reconciliation defect/follow-up counts, cumulative budgets, and artifacts.
+The packed MV3 suite proves those fields reach the collapsible sidebar while
+API keys, source bodies, prompts, provider payloads, generated workflow code,
+and hidden chain-of-thought remain structurally unrepresentable. The focused
+55-test trace suite, typecheck, production build, browser-isomorphism, privacy,
+API/closure, pack, and two-test packed-MV3 gates passed.
 
 ### T4 — Add durable session, workspace, graph, and checkpoint stores
 

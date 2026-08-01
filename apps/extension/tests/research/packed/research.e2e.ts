@@ -1130,6 +1130,17 @@ test("runs bounded PTC in packed MV3, recreates workers, cancels, and renders sa
   );
   await expect(page.getByTestId("research-formatted-report").locator("img")).toHaveCount(0);
   await expect(page.getByTestId("research-formatted-report").locator("script")).toHaveCount(0);
+  const activityTrace = await page.getByTestId("research-activity").innerText();
+  expect(activityTrace).toContain("plan · graph 1 · approved");
+  expect(activityTrace).toContain("5 nodes in 4 waves");
+  expect(activityTrace).toContain("task · research-task:r1:jira-research:a1");
+  expect(activityTrace).toContain("tool · jira.issue.search");
+  expect(activityTrace).toContain("input {query}");
+  expect(activityTrace).toContain("bytes");
+  expect(activityTrace).toContain("critique · research-task:r1:reconciler:a1 · completed");
+  expect(activityTrace).toContain("budget · tokens");
+  expect(activityTrace).not.toContain(FAKE_KEY);
+  expect(activityTrace).not.toContain("Ignore all previous instructions");
   expect(
     await page.evaluate(
       () =>

@@ -607,6 +607,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
 
     const workspace = createMemoryResearchWorkspace();
     const eventKinds: string[] = [];
+    const traceEvents: ResearchOneShotEventV1[] = [];
     const report = await runResearchAgent({
       model: dynamicModel,
       request,
@@ -617,7 +618,10 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       researchGraph: graph,
       runId: "dynamic-native-task-invocation",
       workspace,
-      options: { onEvent: (event) => eventKinds.push(event.kind) },
+      options: { onEvent: (event) => {
+        eventKinds.push(event.kind);
+        traceEvents.push(event);
+      } },
     });
 
     expect(report.title).toBe(draft.title);
@@ -631,18 +635,45 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       request: { schema: "atlcli.research-request/v1" },
     });
     expect(eventKinds).toEqual([
+      "brief", "plan", "task",
       "phase", "progress",
       "phase", "progress",
       "decision",
       "decision",
-      "subagent", "task", "subagent",
+      "subagent", "task", "budget", "budget", "subagent",
       "decision",
       "decision",
       "phase", "progress",
-      "decision", "decision",
+      "decision", "decision", "budget",
       "artifact",
       "phase", "progress",
     ]);
+    expect(traceEvents.find((event) => event.kind === "plan")).toMatchObject({
+      kind: "plan",
+      status: "approved",
+      selectedRoleIds: ["synthesizer"],
+      nodeCount: 1,
+      waveCount: 1,
+    });
+    expect(traceEvents.find(
+      (event) => event.kind === "task" && event.status === "planned",
+    )).toMatchObject({
+      roleId: "synthesizer",
+      wave: 1,
+      dependencyTaskIds: [],
+      grantedCapabilityIds: [],
+    });
+    expect(traceEvents.find(
+      (event) => event.kind === "task" && event.status === "packet-accepted",
+    )).toMatchObject({
+      roleId: "synthesizer",
+      findingCount: 0,
+      relationshipCount: 0,
+      capabilityCalls: 0,
+    });
+    expect(traceEvents.filter((event) => event.kind === "budget").map(
+      (event) => event.metric,
+    )).toEqual(["tokens", "bytes", "duration_ms"]);
     expect(dynamicModel.callCount).toBe(3);
     expect(dynamicModel.calls[0]?.messages.some((message) => message.text.includes("Run this as a workflow"))).toBe(true);
     expect(dynamicModel.calls[1]?.messages.some((message) => message.text.includes("Write exactly one typed final report draft"))).toBe(true);
@@ -869,6 +900,19 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       .toHaveLength(5);
     expect(events.filter((event) => event.kind === "subagent" && event.status === "completed"))
       .toHaveLength(5);
+    expect(events.find((event) => event.kind === "plan")).toMatchObject({
+      nodeCount: 5,
+      waveCount: 4,
+      maxParallelNodes: 3,
+      selectedRoleIds: ["focused-researcher", "document-distiller", "reconciler", "synthesizer"],
+    });
+    expect(events.flatMap((event) =>
+      event.kind === "task" && event.status === "planned" ? [event.wave] : []
+    )).toEqual([1, 1, 2, 3, 4]);
+    expect(events.filter((event) => event.kind === "reconciliation")).toEqual([
+      expect.objectContaining({ status: "started" }),
+      expect.objectContaining({ status: "completed", defectCount: 0, proposedFollowUpCount: 0 }),
+    ]);
   });
 
   test("rejects a duplicate graph-node dispatch before duplicate model work", async () => {

@@ -20,6 +20,7 @@ import {
   type ResearchScopeExpansionModeV1,
   type ResearchScopeSeedV1,
 } from "../../utils/research/contracts.js";
+import { formatResearchOneShotEventV1 } from "../../utils/research/events.js";
 import { createResearchKeyScopeSeedV1 } from "@atlcli/research/scope-discovery";
 import {
   composeStandardResearchGraphV1,
@@ -41,48 +42,10 @@ import {
 import { cn } from "../ui/utils.js";
 
 export const RESEARCH_SCREEN_ID = "research";
-const MAX_RESEARCH_ACTIVITY_EVENTS = 100;
+const MAX_RESEARCH_ACTIVITY_EVENTS = 500;
 
 export function formatResearchActivityEvent(event: ResearchOneShotEventV1): string {
-  switch (event.kind) {
-    case "phase":
-      return `phase · ${event.phase}`;
-    case "progress":
-      return `budget · ${event.completed}/${event.maximum} calls`;
-    case "task":
-      return `task · ${event.taskId} · ${event.status}`;
-    case "capability":
-      return [
-        `tool · ${event.toolId}`,
-        event.inputKind,
-        event.status,
-        event.itemCount === undefined ? "" : `${event.itemCount} items`,
-        event.termination ?? "",
-        event.resultBytes === undefined ? "" : `${event.resultBytes} bytes`,
-        event.truncated === undefined ? "" : `truncated ${event.truncated}`,
-        event.durationMs === undefined ? "" : `${event.durationMs} ms`,
-        event.errorCode ?? "",
-      ].filter(Boolean).join(" · ");
-    case "subagent":
-      return [
-        `agent · ${event.roleId}`,
-        event.status,
-        event.attempt === undefined ? "" : `attempt ${event.attempt}`,
-        event.durationMs === undefined ? "" : `${event.durationMs} ms`,
-        event.errorCode ?? "",
-      ].filter(Boolean).join(" · ");
-    case "decision":
-      return [
-        "decision",
-        event.reasonCode,
-        event.status,
-        event.codeBytes === undefined ? "" : `${event.codeBytes} code bytes`,
-        event.codeHash ?? "",
-        event.errorCode ?? "",
-      ].filter(Boolean).join(" · ");
-    case "artifact":
-      return `artifact · ${event.path}`;
-  }
+  return formatResearchOneShotEventV1(event);
 }
 
 export function inferResearchScope(input: {
