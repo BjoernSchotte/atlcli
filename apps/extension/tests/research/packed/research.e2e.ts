@@ -436,6 +436,17 @@ function backgroundBootstrap(): string {
       });
       return json({ results: values });
     }
+    if (
+      url.origin === "https://packed-research.atlassian.net" &&
+      url.pathname === "/wiki/rest/api/space/PRIVATE"
+    ) {
+      harnessChannel.postMessage({
+        kind: "scope-reference-fetch",
+        url: url.href,
+        method: request.method,
+      });
+      return new Response("Forbidden", { status: 403 });
+    }
     return nativeFetch(input, init);
   };
 })();
@@ -1432,6 +1443,37 @@ test("stops an archived Confluence key before key storage or agent work", async 
   expect(spaceCatalogFetches).toHaveLength(4);
   expect(spaceCatalogFetches.filter((event) => event.url?.includes("keys=LEGACY"))).toHaveLength(2);
   expect(spaceCatalogFetches.some((event) => event.url?.includes("status=archived"))).toBe(true);
+
+  const stored = await page.evaluate(async (key) => chrome.storage.session.get(key), RESEARCH_ANTHROPIC_SESSION_KEY);
+  expect(stored[RESEARCH_ANTHROPIC_SESSION_KEY]).toBeUndefined();
+  const root = await context.newCDPSession(page);
+  try {
+    await expect.poll(async () => (await researchWorkerTargets(root)).length).toBe(0);
+  } finally {
+    await root.detach();
+  }
+  expect(events.some((event) => event.kind === "worker-start")).toBe(false);
+  expect(events.some((event) => event.url?.includes("api.anthropic.com"))).toBe(false);
+});
+
+test("stops an inaccessible same-tenant Confluence link before key storage or agent work", async () => {
+  await openResearchScreen(page);
+  await installEventCapture(page);
+  await page.getByTestId("research-current-context").uncheck();
+  await fillResearchForm(
+    page,
+    `Research ${SITE_ORIGIN}/wiki/spaces/PRIVATE/overview.`,
+    { includeKey: false, includeScope: false },
+  );
+  await page.getByTestId("research-run").click();
+
+  const clarification = page.getByTestId("research-scope-clarification-required");
+  await expect(clarification).toBeVisible();
+  await expect(clarification).toContainText("incomplete");
+  const events = await harnessEvents(page);
+  const referenceFetches = events.filter((event) => event.kind === "scope-reference-fetch");
+  expect(referenceFetches).toHaveLength(1);
+  expect(referenceFetches[0]?.url).toContain("/wiki/rest/api/space/PRIVATE");
 
   const stored = await page.evaluate(async (key) => chrome.storage.session.get(key), RESEARCH_ANTHROPIC_SESSION_KEY);
   expect(stored[RESEARCH_ANTHROPIC_SESSION_KEY]).toBeUndefined();
