@@ -34,3 +34,13 @@
   border-inline-start: 0.25rem solid var(--atlcli-content-border);
   padding-inline-start: 1rem;
 }
+
+[data-atlcli-block="chart"] { overflow-x: auto; }
+[data-atlcli-block="chart"] svg { display: block; width: 100%; min-height: 12rem; overflow: visible; }
+[data-atlcli-block="chart"] [data-atlcli-chart-data] { width: 100%; margin-block: 0.75rem; }
+[data-atlcli-block="chart"] [data-atlcli-chart-heading] { margin-block-end: 0.5rem; }
+[data-atlcli-block="chart"] [data-atlcli-chart-heading] :where(h3, p) { margin-block: 0.2rem; }
+.atlcli-gantt { display: grid; gap: 0.5rem; min-width: 32rem; }
+.atlcli-gantt-row { display: grid; grid-template-columns: minmax(8rem, 18rem) minmax(10rem, 1fr) auto auto; gap: 0.5rem; align-items: center; }
+.atlcli-gantt-track { display: block; min-height: 0.8rem; border-radius: 999px; background: var(--atlcli-content-surface); overflow: hidden; }
+.atlcli-gantt-bar { display: block; min-height: 0.8rem; border-radius: inherit; }

@@ -69,6 +69,7 @@ export const EXPORT_BLOCKS_ASTRO_ALL_FIELDS_FIXTURE_V1: readonly ExportBlock[] =
   { type: "list", ordered: true, start: 3, listKind: "task", items: [{ kind: "task", checked: true, content: [{ type: "paragraph", content: [{ type: "text", text: "Task" }] }] }] },
   { type: "layout", columns: [{ width: 50, content: [{ type: "paragraph", content: [{ type: "text", text: "Column" }] }] }, { width: 50, content: [] }] },
   { type: "table", caption: { kind: "table", content: [{ type: "text", text: "Example table" }] }, rows: [{ cells: [{ header: true, colspan: 1, rowspan: 1, content: [{ type: "paragraph", content: [{ type: "text", text: "Header" }] }] }, { header: false, colspan: 1, rowspan: 1, content: [{ type: "paragraph", content: [{ type: "text", text: "Cell" }] }] }] }] },
+  { type: "chart", chart: { schema: "atlcli.chart/1", kind: "bar", title: "Normalized chart", data: { mode: "categories", labels: ["Jan", "Feb"], series: [{ id: "pages", label: "Pages", values: [12, 18] }] }, source: { kind: "cloud-adf", macroName: "chart" } } },
   { type: "image", source: { kind: "attachment", filename: "diagram.svg" }, alt: "Diagram", caption: { kind: "figure", content: [{ type: "text", text: "Architecture diagram" }] } },
   { type: "mediaFallback", label: "Movie", media: { mediaType: "video", filename: "movie.mp4" } },
   { type: "blockquote", content: [{ type: "paragraph", content: [{ type: "text", text: "Quote" }] }] },

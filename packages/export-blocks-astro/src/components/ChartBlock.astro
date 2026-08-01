@@ -1,0 +1,82 @@
+---
+import { validateChartModelV1, type ExportBlock } from "@atlcli/export-blocks";
+import type { AstroExportBlockRenderContextV1 } from "../index.js";
+import Caption from "./Caption.astro";
+import ChartTable from "./ChartTable.astro";
+
+interface Props {
+  block: Extract<ExportBlock, { type: "chart" }>;
+  context: AstroExportBlockRenderContextV1;
+}
+
+const { block, context } = Astro.props;
+const chart = validateChartModelV1(block.chart);
+const title = chart.title || `${chart.kind} chart`;
+const chartId = `atlcli-chart-${Math.abs(hash(JSON.stringify(chart)))}`;
+const colors = chart.style?.colors?.length ? chart.style.colors : ["#0c66e4", "#00875a", "#6554c0", "#de350b", "#974f0c"];
+const displayData = chart.display?.data ?? "after";
+const categoryData = chart.data.mode === "categories" ? chart.data : undefined;
+const pointData = chart.data.mode === "points" ? chart.data : undefined;
+const ganttData = chart.data.mode === "gantt" ? chart.data : undefined;
+const maximum = categoryData ? Math.max(1, ...categoryData.series.flatMap((series) => series.values)) : 1;
+const width = chart.display?.width ?? 720;
+const height = chart.display?.height ?? 320;
+
+function hash(value: string): number {
+  let result = 0;
+  for (let index = 0; index < value.length; index += 1) result = (Math.imul(31, result) + value.charCodeAt(index)) | 0;
+  return result;
+}
+
+function percent(value: number, min: number, max: number): number {
+  return max === min ? 50 : ((value - min) / (max - min)) * 100;
+}
+
+const pointValues = pointData?.series.flatMap((series) => series.points.map((point) => point.y)) ?? [];
+const minY = Math.min(0, ...pointValues);
+const maxY = Math.max(1, ...pointValues);
+const pointX = pointData?.series.flatMap((series) => series.points.map((point) => typeof point.x === "number" ? point.x : Number.isFinite(Date.parse(point.x)) ? Date.parse(point.x) : 0)) ?? [];
+const minX = Math.min(...pointX, 0);
+const maxX = Math.max(...pointX, 1);
+---
+
+<figure
+  id={chartId}
+  data-atlcli-block="chart"
+  data-atlcli-chart-kind={chart.kind}
+  aria-describedby={`${chartId}-description`}
+>
+  <header data-atlcli-chart-heading>
+    <h3>{title}</h3>
+    {chart.subtitle && <p>{chart.subtitle}</p>}
+  </header>
+  {displayData === "before" && <ChartTable data={chart.data} title={title} />}
+  {ganttData ? <div class="atlcli-gantt" role="img" aria-label={title}>
+    {ganttData.tasks.map((task) => <div class="atlcli-gantt-row">
+      <span class="atlcli-gantt-label">{task.label}</span>
+      <span class="atlcli-gantt-track"><span class="atlcli-gantt-bar" style={`width:${Math.max(1, (task.progress ?? 1) * 100)}%;background:${colors[0]}`}></span></span>
+      <time datetime={task.start}>{task.start}</time><time datetime={task.end}>{task.end}</time>
+    </div>)}
+  </div> : <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-labelledby={`${chartId}-title`}>
+    <title id={`${chartId}-title`}>{title}</title>
+    <desc id={`${chartId}-description`}>{chart.data.mode === "categories"
+      ? chart.data.series.map((series) => `${series.label}: ${series.values.join(", ")}`).join("; ")
+      : chart.data.series.map((series) => `${series.label}: ${series.points.map((point) => `${point.x}=${point.y}`).join(", ")}`).join("; ")}</desc>
+    {categoryData?.labels.map((label, labelIndex) => <text x={(labelIndex + 0.5) * (width / categoryData.labels.length)} y={height - 10} text-anchor="middle" font-size="12">{label}</text>)}
+    {categoryData?.series.map((series, seriesIndex) => series.values.map((value, labelIndex) => {
+      const groupWidth = width / categoryData.labels.length;
+      const barWidth = Math.max(2, (groupWidth - 12) / Math.max(1, categoryData.series.length));
+      const barHeight = (value / maximum) * (height - 55);
+      return <rect data-atlcli-chart-series={series.label} data-atlcli-chart-label={categoryData.labels[labelIndex]} data-atlcli-chart-value={String(value)} x={labelIndex * groupWidth + 6 + seriesIndex * barWidth} y={height - 35 - barHeight} width={Math.max(1, barWidth - 2)} height={Math.max(0, barHeight)} fill={colors[seriesIndex % colors.length]} opacity={chart.opacity ?? 1}><title>{`${series.label}, ${categoryData.labels[labelIndex]}: ${value}`}</title></rect>;
+    }))}
+    {pointData?.series.map((series, seriesIndex) => <g data-atlcli-chart-series={series.label}>
+      {series.points.map((point) => {
+        const x = percent(typeof point.x === "number" ? point.x : Number.isFinite(Date.parse(point.x)) ? Date.parse(point.x) : 0, minX, maxX) * width / 100;
+        const y = height - 35 - (percent(point.y, minY, maxY) * (height - 55) / 100);
+        return <circle data-atlcli-chart-value={String(point.y)} cx={x} cy={y} r="4" fill={colors[seriesIndex % colors.length]}><title>{`${series.label}: ${point.x} = ${point.y}`}</title></circle>;
+      })}
+    </g>)}
+  </svg>}
+  {displayData === "after" && <ChartTable data={chart.data} title={title} />}
+  {block.caption && <Caption caption={block.caption} locale={context.locale} context={context} />}
+</figure>

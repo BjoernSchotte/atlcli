@@ -1,0 +1,27 @@
+---
+import type { ChartDataV1 } from "@atlcli/export-blocks";
+
+interface Props {
+  data: ChartDataV1;
+  title: string;
+}
+
+const { data, title } = Astro.props;
+const pointRows = data.mode === "points" ? Math.max(0, ...data.series.map((series) => series.points.length)) : 0;
+---
+
+<table data-atlcli-chart-data aria-label={`${title} data`}>
+  <caption>{title} data</caption>
+  {data.mode === "categories" && <>
+    <thead><tr><th scope="col">Label</th>{data.series.map((series) => <th scope="col">{series.label}</th>)}</tr></thead>
+    <tbody>{data.labels.map((label, index) => <tr><th scope="row">{label}</th>{data.series.map((series) => <td>{series.values[index]}</td>)}</tr>)}</tbody>
+  </>}
+  {data.mode === "points" && <>
+    <thead><tr><th scope="col">X</th>{data.series.map((series) => <th scope="col">{series.label}</th>)}</tr></thead>
+    <tbody>{Array.from({ length: pointRows }, (_, index) => <tr><th scope="row">{data.series[0]?.points[index]?.x ?? index + 1}</th>{data.series.map((series) => <td>{series.points[index]?.y ?? ""}</td>)}</tr>)}</tbody>
+  </>}
+  {data.mode === "gantt" && <>
+    <thead><tr><th scope="col">Task</th><th scope="col">Start</th><th scope="col">End</th><th scope="col">Progress</th></tr></thead>
+    <tbody>{data.tasks.map((task) => <tr><th scope="row">{task.label}</th><td>{task.start}</td><td>{task.end}</td><td>{task.progress === undefined ? "" : `${Math.round(task.progress * 100)}%`}</td></tr>)}</tbody>
+  </>}
+</table>

@@ -30,6 +30,8 @@
     "./components/Caption.astro": "./dist/components/Caption.astro",
     "./components/StaticChart.astro": "./dist/components/StaticChart.astro",
     "./components/InteractiveChart.astro": "./dist/components/InteractiveChart.astro",
+    "./components/ChartBlock.astro": "./dist/components/ChartBlock.astro",
+    "./components/ChartTable.astro": "./dist/components/ChartTable.astro",
     "./styles.css": "./dist/styles.css"
   },
   "scripts": {
