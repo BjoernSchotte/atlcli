@@ -3,6 +3,7 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
+import { STARLIGHT_PUBLISHING_EXPERIENCE_V1 } from "@atlcli/web-publish-starlight";
 import {
   atlcliPublishingIntegration,
   publicationRoutePathV1,
@@ -52,6 +53,20 @@ const page = {
   renderDependencies: [],
   pageDigest: "page-digest",
 };
+
+const installedExperience = {
+  selection: {
+    id: "fixture.experience", expectedVersion: "1", requiredCapabilities: ["search-modal"],
+    designTokens: { accent: "#0052cc" }, componentOverrides: { search: "Search" },
+  },
+  descriptor: {
+    schema: "atlcli.publication-experience/1", id: "fixture.experience", version: "1", engine: "astro",
+    capabilities: ["search-modal"], slots: ["search-trigger", "search-modal"],
+    designTokensSchema: "fixture.tokens/1",
+    components: { slots: { "search-trigger": "Search", "search-modal": "Search" }, overrides: { search: "Search" }, blockOverrides: {} },
+  },
+  tokenValidator: { schema: "fixture.tokens/1", validate: () => [] },
+} as const;
 
 function bundle(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
@@ -171,6 +186,7 @@ test("uses only static Astro hooks, detects collisions, and writes private inven
     manifestPath: manifest,
     routePrefix: "/publish",
     expectedConfig: expectedConfig(root),
+    experience: installedExperience,
   });
   try {
     expect(publicationRoutePathV1("/", "/publish")).toBe("/publish");
@@ -194,10 +210,52 @@ test("uses only static Astro hooks, detects collisions, and writes private inven
       outputRoot: string;
       pages: string[];
       output: Array<{ path: string; byteLength: number; sha256: string }>;
+      experience?: { id: string; version: string; digest: string };
     };
     expect(value.outputRoot).toBe("<private>");
+    expect(value.experience).toEqual({ id: "fixture.experience", version: "1", digest: expect.stringMatching(/^[a-f0-9]{64}$/) });
     expect(value.pages).toEqual(["/publish/guide"]);
     expect(value.output).toEqual([{ path: "index.html", byteLength: 18, sha256: expect.any(String) }]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("accepts only a caller-imported compatible experience descriptor", async () => {
+  const { root, bundlePath } = await fixture();
+  try {
+    expect(() => atlcliPublishingIntegration({
+      bundlePath, manifestPath: join(root, "private", "inventory.json"), routePrefix: "/publish",
+      expectedConfig: expectedConfig(root), experience: installedExperience,
+    })).not.toThrow();
+    expect(() => atlcliPublishingIntegration({
+      bundlePath, manifestPath: join(root, "private", "inventory.json"), routePrefix: "/publish",
+      expectedConfig: expectedConfig(root),
+      experience: { ...installedExperience, selection: { ...installedExperience.selection, id: "other" } },
+    })).toThrow("does not match installed experience");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("accepts the installed Starlight descriptor without dynamic package resolution", async () => {
+  const { root, bundlePath } = await fixture();
+  try {
+    const selected = atlcliPublishingIntegration({
+      bundlePath, manifestPath: join(root, "private", "inventory.json"), routePrefix: "/publish",
+      expectedConfig: expectedConfig(root),
+      experience: {
+        selection: {
+          id: STARLIGHT_PUBLISHING_EXPERIENCE_V1.id,
+          expectedVersion: STARLIGHT_PUBLISHING_EXPERIENCE_V1.version,
+          requiredCapabilities: ["search-modal", "table-of-contents", "print-styles"],
+          designTokens: { accent: "#0052cc" }, componentOverrides: { search: "Search" },
+        },
+        descriptor: STARLIGHT_PUBLISHING_EXPERIENCE_V1,
+        tokenValidator: { schema: "atlcli.starlight.tokens/1", validate: () => [] },
+      },
+    });
+    expect(selected.name).toBe("atlcli-publishing");
   } finally {
     await rm(root, { recursive: true, force: true });
   }

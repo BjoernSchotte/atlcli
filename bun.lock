@@ -351,6 +351,9 @@
       "dependencies": {
         "@atlcli/web-publish": "workspace:*",
       },
+      "devDependencies": {
+        "@atlcli/web-publish-starlight": "workspace:*",
+      },
       "peerDependencies": {
         "astro": ">=7.1.6 <8",
       },

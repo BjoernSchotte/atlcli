@@ -83,6 +83,11 @@ export interface AtlcliPublishingIntegrationOptionsV1 extends AtlcliPublicationL
     routePrefix: string;
     expectedConfig: AstroPublicationConfigExpectationV1;
     trustedLayoutEntrypoint?: string;
+    experience?: {
+        selection: PublicationExperienceSelectionV1;
+        descriptor: unknown;
+        tokenValidator: PublicationDesignTokenValidatorV1;
+    };
 }
 
 // export: LoadedPublicationBundleV1

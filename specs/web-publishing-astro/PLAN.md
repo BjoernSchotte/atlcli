@@ -1474,7 +1474,7 @@ inputs, and does not alter existing export targets.
       prerendering/collision behavior in documented integration hooks.
 - [x] Define an optional trusted user layout entrypoint and ensure content
       cannot influence module resolution.
-- [ ] Load only installed operator-selected experience descriptors; validate
+- [x] Load only installed operator-selected experience descriptors; validate
       required capabilities/slots and include experience/version/config in the
       build key.
 - [ ] Reserve collision-safe owned paths for Pagefind output and expose the

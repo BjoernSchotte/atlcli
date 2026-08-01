@@ -3,7 +3,12 @@ import { mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
 import { dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  canonicalPublicationJsonV1,
+  negotiatePublicationExperienceV1,
   normalizePublicationRoutePrefixV1,
+  type PublicationDesignTokenValidatorV1,
+  type PublicationExperienceDescriptorV1,
+  type PublicationExperienceSelectionV1,
   type PublicationOutputProfileV1,
 } from "@atlcli/web-publish";
 import { readPublicationBundlePagesV1, type AtlcliPublicationLoaderOptionsV1 } from "./loader.js";
@@ -33,6 +38,15 @@ export interface AtlcliPublishingIntegrationOptionsV1 extends AtlcliPublicationL
    * project may declare its route manually, and never comes from page content.
    */
   trustedLayoutEntrypoint?: string;
+  /**
+   * An already imported, operator-selected experience. The integration never
+   * resolves a package name, path, or content-supplied module on its own.
+   */
+  experience?: {
+    selection: PublicationExperienceSelectionV1;
+    descriptor: unknown;
+    tokenValidator: PublicationDesignTokenValidatorV1;
+  };
 }
 
 /**
@@ -105,6 +119,37 @@ function assertExpectedConfig(value: AstroPublicationConfigExpectationV1): void 
       throw new TypeError("expectedConfig.site must be an absolute http(s) URL");
     }
   }
+}
+
+interface ValidatedExperienceV1 {
+  id: string;
+  version: string;
+  digest: string;
+  descriptor: PublicationExperienceDescriptorV1;
+}
+
+function validateInstalledExperience(
+  value: AtlcliPublishingIntegrationOptionsV1["experience"],
+): ValidatedExperienceV1 | undefined {
+  if (value === undefined) return undefined;
+  const negotiation = negotiatePublicationExperienceV1(
+    value.selection,
+    value.descriptor,
+    value.tokenValidator,
+  );
+  if (!negotiation.compatible) {
+    throw new Error(`atlcli publishing experience is incompatible: ${negotiation.issues.map((issue) => issue.message).join(" ")}`);
+  }
+  const descriptor = negotiation.descriptor;
+  return {
+    id: descriptor.id,
+    version: descriptor.version,
+    digest: createHash("sha256").update(canonicalPublicationJsonV1({
+      descriptor,
+      selection: value.selection,
+    })).digest("hex"),
+    descriptor,
+  };
 }
 
 function assertResolvedAstroConfig(
@@ -213,6 +258,7 @@ export function atlcliPublishingIntegration(
   assertNonEmptyPath(options.bundlePath, "bundlePath");
   assertNonEmptyPath(options.manifestPath, "manifestPath");
   assertExpectedConfig(options.expectedConfig);
+  const installedExperience = validateInstalledExperience(options.experience);
   const routePrefix = normalizePublicationRoutePrefixV1(options.routePrefix);
   if (
     options.trustedLayoutEntrypoint !== undefined &&
@@ -283,6 +329,13 @@ export function atlcliPublishingIntegration(
           schema: "atlcli.astro-build-inventory/1",
           bundlePath: "<private>",
           outputRoot: "<private>",
+          ...(installedExperience === undefined ? {} : {
+            experience: {
+              id: installedExperience.id,
+              version: installedExperience.version,
+              digest: installedExperience.digest,
+            },
+          }),
           pages: pages.map((page) => page.pathname).sort(),
           routes: routeInventory,
           output: await inventory(outputRoot),
