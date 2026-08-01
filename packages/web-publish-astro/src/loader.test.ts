@@ -45,6 +45,14 @@ test("keeps programmatic Astro runners and experimental collection storage out o
   expect(apiReport).not.toContain("ContentLayer");
 });
 
+test("documents a verified-manifest-only future augmenter boundary without PWA paths", async () => {
+  const readme = await readFile(new URL("../README.md", import.meta.url), "utf8");
+  expect(readme).toContain("completed manifest");
+  expect(readme).toContain("route/output registry");
+  expect(readme).toContain("no service");
+  expect(readme).toContain("PWA output path");
+});
+
 const page = {
   schema: "atlcli.publication-page/1",
   sourceId: "guide",

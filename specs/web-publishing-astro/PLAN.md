@@ -1480,7 +1480,7 @@ inputs, and does not alter existing export targets.
 - [x] Reserve collision-safe owned paths for Pagefind output and expose the
       standard experience search slots without coupling the loader to
       Starlight-private DOM.
-- [ ] Document that a future post-build augmenter must consume the completed
+- [x] Document that a future post-build augmenter must consume the completed
       verified manifest and reserve owned paths through the route/output
       registry; add no V1 service-worker paths or PWA schema.
 - [x] Write the private output manifest outside the public output root.
