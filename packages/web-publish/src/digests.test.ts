@@ -49,6 +49,7 @@ const bundle = {
       contentDigest: "content-digest",
       metadataDigest: "metadata-digest",
       assetMetadataDigest: "asset-metadata-digest",
+      macroDependencyDigest: "no-live-dependencies",
       state: "included",
     }],
   },

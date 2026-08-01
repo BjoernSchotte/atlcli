@@ -209,6 +209,7 @@ const sourceSnapshot = {
     contentDigest: "content-sha256",
     metadataDigest: "metadata-sha256",
     assetMetadataDigest: "assets-sha256",
+    macroDependencyDigest: "no-live-dependencies",
     state: "included",
   }],
 } as const;

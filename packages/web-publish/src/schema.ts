@@ -694,7 +694,7 @@ function sourcePageSnapshot(value: unknown, path: string): void {
   const candidate = object(value, path);
   keys(candidate, path, [
     "sourceId", "sourceVersion", "representation", "parentId", "position", "depth",
-    "title", "contentDigest", "metadataDigest", "assetMetadataDigest", "state",
+    "title", "contentDigest", "metadataDigest", "assetMetadataDigest", "macroDependencyDigest", "state",
   ]);
   nonEmptyString(candidate.sourceId, `${path}.sourceId`);
   nonEmptyString(candidate.sourceVersion, `${path}.sourceVersion`);
@@ -706,6 +706,7 @@ function sourcePageSnapshot(value: unknown, path: string): void {
   nonEmptyString(candidate.contentDigest, `${path}.contentDigest`);
   nonEmptyString(candidate.metadataDigest, `${path}.metadataDigest`);
   nonEmptyString(candidate.assetMetadataDigest, `${path}.assetMetadataDigest`);
+  nonEmptyString(candidate.macroDependencyDigest, `${path}.macroDependencyDigest`);
   oneOf(candidate.state, `${path}.state`, [
     "included", "excluded", "inaccessible", "out-of-scope", "deleted",
   ]);
@@ -727,7 +728,7 @@ function publicationChange(value: unknown, path: string): void {
     "kind", "sourceId", "previousDigest", "nextDigest", "previousRoute", "nextRoute",
   ]);
   oneOf(candidate.kind, `${path}.kind`, [
-    "add", "content-change", "metadata-change", "move", "route-change", "asset-change",
+    "add", "content-change", "metadata-change", "move", "route-change", "asset-change", "live-dependency-change",
     "exclude", "out-of-scope", "inaccessible", "confirmed-delete",
   ]);
   nonEmptyString(candidate.sourceId, `${path}.sourceId`);

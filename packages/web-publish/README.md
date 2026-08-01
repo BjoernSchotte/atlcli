@@ -44,6 +44,9 @@ validated `PublicationPageV1` documents and binary asset values, rejects
 symlink/path traversal inputs, and remains derived state rather than source or
 bundle authority. `digestPublicationPageCacheKeyV1()` includes the entire
 normalized-page dependency identity, not merely the source page version.
+Refresh planning records asset-metadata and frozen live-macro dependency changes
+as independent changes, so neither can remain stale when a page body is
+unchanged.
 Astro, Starlight, Pagefind execution, Confluence
 acquisition/authentication, CLI orchestration, and deployment belong to
 separate adapters or hosts.

@@ -20,6 +20,7 @@ function page(
     contentDigest: `content-${sourceId}`,
     metadataDigest: `metadata-${sourceId}`,
     assetMetadataDigest: `assets-${sourceId}`,
+    macroDependencyDigest: `live-macros-${sourceId}`,
     state: "included",
     ...overrides,
   };
@@ -109,12 +110,13 @@ describe("publication refresh planning", () => {
     }), "unconfirmed-delete");
   });
 
-  test("reports independent content, metadata, move, asset, and route changes deterministically", async () => {
+  test("reports independent content, metadata, move, asset, live dependency, and route changes deterministically", async () => {
     const previous = snapshot([page("guide", {
       title: "Old title",
       contentDigest: "content-old",
       metadataDigest: "metadata-old",
       assetMetadataDigest: "assets-old",
+      macroDependencyDigest: "live-macros-old",
       parentId: "old-parent",
       position: 1,
       depth: 1,
@@ -124,6 +126,7 @@ describe("publication refresh planning", () => {
       contentDigest: "content-new",
       metadataDigest: "metadata-new",
       assetMetadataDigest: "assets-new",
+      macroDependencyDigest: "live-macros-new",
       parentId: "new-parent",
       position: 2,
       depth: 2,
@@ -142,7 +145,7 @@ describe("publication refresh planning", () => {
     });
     expect(forward).toEqual(reverse);
     expect(forward.changes.map((change) => change.kind)).toEqual([
-      "asset-change", "content-change", "metadata-change", "move", "route-change",
+      "asset-change", "content-change", "live-dependency-change", "metadata-change", "move", "route-change",
     ]);
     expect(forward.planDigest).toMatch(/^[a-f0-9]{64}$/);
   });

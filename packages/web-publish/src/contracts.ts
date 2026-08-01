@@ -168,6 +168,8 @@ export interface PublicationSourcePageSnapshotV1 {
   contentDigest: string;
   metadataDigest: string;
   assetMetadataDigest: string;
+  /** Digest of current frozen live-macro dependency metadata, or no-live sentinel. */
+  macroDependencyDigest: string;
   state: "included" | "excluded" | "inaccessible" | "out-of-scope" | "deleted";
 }
 
@@ -186,6 +188,7 @@ export type PublicationChangeKindV1 =
   | "move"
   | "route-change"
   | "asset-change"
+  | "live-dependency-change"
   | "exclude"
   | "out-of-scope"
   | "inaccessible"

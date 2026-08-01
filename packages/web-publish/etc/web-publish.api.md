@@ -343,7 +343,7 @@ export interface PublicationCacheStoreV1 {
 }
 
 // export: PublicationChangeKindV1
-export type PublicationChangeKindV1 = "add" | "content-change" | "metadata-change" | "move" | "route-change" | "asset-change" | "exclude" | "out-of-scope" | "inaccessible" | "confirmed-delete";
+export type PublicationChangeKindV1 = "add" | "content-change" | "metadata-change" | "move" | "route-change" | "asset-change" | "live-dependency-change" | "exclude" | "out-of-scope" | "inaccessible" | "confirmed-delete";
 
 // export: PublicationChangeV1
 export interface PublicationChangeV1 {
@@ -866,6 +866,7 @@ export interface PublicationSourcePageSnapshotV1 {
     contentDigest: string;
     metadataDigest: string;
     assetMetadataDigest: string;
+    macroDependencyDigest: string;
     state: "included" | "excluded" | "inaccessible" | "out-of-scope" | "deleted";
 }
 

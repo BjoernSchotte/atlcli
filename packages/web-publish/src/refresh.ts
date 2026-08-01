@@ -209,6 +209,9 @@ export async function planPublicationRefreshV1(
     if (previous.assetMetadataDigest !== current.assetMetadataDigest) {
       addChange(changes, "asset-change", sourceId, previous, current, previousRoute, nextRoute);
     }
+    if (previous.macroDependencyDigest !== current.macroDependencyDigest) {
+      addChange(changes, "live-dependency-change", sourceId, previous, current, previousRoute, nextRoute);
+    }
     if (previousRoute !== nextRoute && (previousRoute !== undefined || nextRoute !== undefined)) {
       addChange(changes, "route-change", sourceId, previous, current, previousRoute, nextRoute);
     }
