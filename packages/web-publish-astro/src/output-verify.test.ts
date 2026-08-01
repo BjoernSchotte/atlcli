@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import type { PublicationBuildRequestV1 } from "@atlcli/web-publish";
 import { createAstroStaticPublicationManifestV1 } from "./manifest.js";
+import { digestPublicationJsonV1 } from "@atlcli/web-publish";
 import { verifyAstroStaticPublicationOutputV1 } from "./output-verify.js";
 
 function record(path: string, bytes: Uint8Array): { path: string; sha256: string; byteLength: number } {
@@ -116,6 +117,45 @@ test("rejects active content, private Confluence URLs, bundle references, and di
     }
   } finally {
     await writeFile(htmlPath, original);
+    await rm(fixtureValue.root, { recursive: true, force: true });
+  }
+});
+
+test("accepts enabled analytics and a provider-returned edit action without indexing private source data", async () => {
+  const fixtureValue = await fixture();
+  const htmlPath = join(fixtureValue.root, "publish", "guide", "index.html");
+  const html = Buffer.from([
+    `<meta name="atlcli:analytics-csp" content="default-src 'self'; script-src 'self'; connect-src 'self' https://stats.example.test; object-src 'none'; base-uri 'none'">`,
+    `<meta name="atlcli:analytics-privacy" content='{"excluded":["query","fragment","search-terms"]}'>`,
+    `<script data-atlcli-analytics="plausible">location.origin+location.pathname;credentials:"omit"</script>`,
+    `<main data-atlcli-edit-link><a href="https://tenant.atlassian.net/wiki/spaces/DOCSY/pages/editpage.action?pageId=1">Edit in Confluence</a></main>`,
+  ].join(""));
+  await writeFile(htmlPath, html);
+  const inventory = {
+    ...fixtureValue.inventory,
+    output: fixtureValue.inventory.output.map((entry) => entry.path === "publish/guide/index.html" ? record(entry.path, html) : entry),
+  };
+  try {
+    const request = {
+      ...fixtureValue.request,
+      project: {
+        ...fixtureValue.request.project,
+        analytics: { provider: "plausible", endpoint: "https://stats.example.test/api/event", siteDomain: "docs.example.test", pageviews: true, events: [], respectDoNotTrack: true, searchTerms: false },
+        editLink: { provider: "confluence", label: "Edit in Confluence", placement: "page-actions", visibility: "all", fallback: "open-page", publicTenantDisclosureAcknowledged: true },
+      },
+    } as PublicationBuildRequestV1;
+    const baseManifest = await createAstroStaticPublicationManifestV1({
+      request,
+      inventory,
+      builderVersion: "0.1.0",
+      astroVersion: "7.1.6",
+      experience: { id: "test", version: "1", digest: "experience" },
+    });
+    const editLinks = { provider: "confluence" as const, includedSourceIds: ["guide"], omittedSourceIds: [] };
+    const { buildDigest: _ignored, ...identity } = baseManifest;
+    const manifest = { ...baseManifest, editLinks, buildDigest: await digestPublicationJsonV1({ ...identity, editLinks }) };
+    await expect(verifyAstroStaticPublicationOutputV1({ manifest, inventory, outputDirectory: fixtureValue.root })).resolves.toMatchObject({ checkedFiles: 2 });
+  } finally {
     await rm(fixtureValue.root, { recursive: true, force: true });
   }
 });

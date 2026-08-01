@@ -1744,7 +1744,7 @@ orchestrates it without hiding the plan, bundle, build, or verification digest.
       query,
       empty/no-result, excerpts, anchors, facets, language, Unicode/diacritics,
       large result sets, back/forward, deleted pages, and worker fallback.
-- [ ] Exercise Cloud/DC edit relation present/missing/unsafe cases and analytics
+- [x] Exercise Cloud/DC edit relation present/missing/unsafe cases and analytics
       disabled/enabled/blocked/redacted cases; assert no indexing/caching/event
       leakage.
 - [ ] Measure experience CSS/JS, island JS, search bootstrap/index shards,

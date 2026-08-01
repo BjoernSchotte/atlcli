@@ -257,6 +257,16 @@ negative fixtures are covered by the loader route/path tests, the browser-core
 negative import gate, the packed hostile-content consumer, SVG/link security
 tests, and the output verifier's digest/private-URL/asset checks.
 
+The analytics/edit-link matrix also passed on 2026-08-01. The runtime test
+executes the generated Plausible snippet with hostile query/fragment/path data,
+asserts a pathname-only `credentials: omit` request, proves a CSP-blocked
+endpoint is non-fatal, and proves DNT suppresses the request. The output
+verifier test accepts the enabled marker/CSP/privacy declaration plus a
+provider-returned same-origin Confluence edit action, while the existing
+Cloud-`editui`/Data-Center-`webui` tests cover present, missing, unsafe-origin,
+public-disclosure, and internal-visibility cases. No source ID, tenant URL,
+search term, query, fragment, cache, or replay payload is indexed or emitted.
+
 The T10 recovery matrix is now explicit. `builder.test.ts` proves that a
 corrupt fresh Astro inventory restores the previous output and private
 inventory byte-for-byte, and that a symlinked output target is rejected without
