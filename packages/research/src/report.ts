@@ -353,6 +353,111 @@ function renderFindings(
   return lines;
 }
 
+/**
+ * Render host-selected finding groups through the same escaping, source-link,
+ * and tenant-origin checks used by the legacy V1 report projection.  This is
+ * deliberately structured input rather than a model-authored Markdown hook.
+ */
+export function renderResearchFindingSectionsMarkdown(
+  sections: readonly {
+    title: string;
+    question?: string;
+    findings: readonly ResearchFindingV1[];
+  }[],
+  sources: readonly ResearchSourceReferenceV1[],
+  siteOrigin: string,
+): string[] {
+  const sourcesById = new Map(sources.map((source) => [source.id, source]));
+  return sections.flatMap((section) => {
+    const lines = renderFindings(section.title, section.findings, sourcesById, siteOrigin);
+    if (!section.question) return lines;
+    return [
+      `## ${markdownText(section.title)}`,
+      "",
+      `> Focus: ${markdownText(section.question)}`,
+      "",
+      ...lines.slice(2),
+    ];
+  });
+}
+
+function renderResearchReportTail(
+  input: Pick<ResearchReportV1, "limitations" | "sources" | "run">,
+  sources: Map<string, ResearchSourceReferenceV1>,
+  siteOrigin: string,
+): string[] {
+  return [
+    "## Limitations",
+    "",
+    ...(input.limitations.length > 0
+      ? input.limitations.map(
+          (limitation) => `- ${linkedMarkdownText(limitation, sources, siteOrigin)}`
+        )
+      : ["_None reported._"]),
+    "",
+    "## Sources",
+    "",
+    ...input.sources.map((source, index) => {
+      const identifier = source.issueKey ?? source.contentId ?? source.id;
+      return `${index + 1}. [${markdownText(source.title)}](${safeSourceHref(
+        source,
+        siteOrigin
+      )}) — ${markdownText(source.product)} \`${markdownText(identifier)}\``;
+    }),
+    "",
+    "## Run",
+    "",
+    `- Model: \`${markdownText(input.run.model)}\``,
+    `- Confluence provider: \`${input.run.wikiProvider}\``,
+    `- Complete: ${input.run.complete ? "yes" : "no"}`,
+    `- Duration: ${input.run.durationMs} ms`,
+    `- Calls: ${input.run.counts.ptcCalls} PTC / ${input.run.counts.httpCalls} HTTP`,
+    `- Items: ${input.run.counts.jiraItems} Jira / ${input.run.counts.confluenceItems} Confluence`,
+    ...(input.run.usage?.inputTokens !== undefined
+      ? [`- Input tokens: ${input.run.usage.inputTokens}`]
+      : []),
+    ...(input.run.usage?.outputTokens !== undefined
+      ? [`- Output tokens: ${input.run.usage.outputTokens}`]
+      : []),
+    ...(input.run.warnings.length > 0
+      ? ["", "### Warnings", "", ...input.run.warnings.map((warning) => `- ${markdownText(warning)}`)]
+      : []),
+    "",
+  ];
+}
+
+/**
+ * Structured Markdown projection for reports whose findings are arranged by
+ * a host-approved outline.  It shares the legacy renderer's escaping and
+ * source-origin checks, but does not accept arbitrary Markdown.
+ */
+export function renderResearchReportWithFindingSectionsMarkdown(
+  input: Pick<
+    ResearchReportV1,
+    "title" | "question" | "scope" | "executiveSummary" | "limitations" | "sources" | "run"
+  > & {
+    sections: readonly {
+      title: string;
+      question?: string;
+      findings: readonly ResearchFindingV1[];
+    }[];
+  },
+): string {
+  const sources = new Map(input.sources.map((source) => [source.id, source]));
+  return [
+    `# ${markdownText(input.title)}`,
+    "",
+    `> Question: ${markdownText(input.question)}`,
+    "",
+    "## Executive summary",
+    "",
+    linkedMarkdownParagraph(input.executiveSummary, sources, input.scope.siteOrigin),
+    "",
+    ...renderResearchFindingSectionsMarkdown(input.sections, input.sources, input.scope.siteOrigin),
+    ...renderResearchReportTail(input, sources, input.scope.siteOrigin),
+  ].join("\n");
+}
+
 function renderRelationships(
   title: string,
   relationships: readonly AtlassianRelationshipV1[],
@@ -436,43 +541,7 @@ export function renderResearchReportMarkdown(
       sources,
       report.scope.siteOrigin
     ),
-    "## Limitations",
-    "",
-    ...(report.limitations.length > 0
-      ? report.limitations.map(
-          (limitation) =>
-            `- ${linkedMarkdownText(limitation, sources, report.scope.siteOrigin)}`
-        )
-      : ["_None reported._"]),
-    "",
-    "## Sources",
-    "",
-    ...report.sources.map((source, index) => {
-      const identifier = source.issueKey ?? source.contentId ?? source.id;
-      return `${index + 1}. [${markdownText(source.title)}](${safeSourceHref(
-        source,
-        report.scope.siteOrigin
-      )}) — ${markdownText(source.product)} \`${markdownText(identifier)}\``;
-    }),
-    "",
-    "## Run",
-    "",
-    `- Model: \`${markdownText(report.run.model)}\``,
-    `- Confluence provider: \`${report.run.wikiProvider}\``,
-    `- Complete: ${report.run.complete ? "yes" : "no"}`,
-    `- Duration: ${report.run.durationMs} ms`,
-    `- Calls: ${report.run.counts.ptcCalls} PTC / ${report.run.counts.httpCalls} HTTP`,
-    `- Items: ${report.run.counts.jiraItems} Jira / ${report.run.counts.confluenceItems} Confluence`,
-    ...(report.run.usage?.inputTokens !== undefined
-      ? [`- Input tokens: ${report.run.usage.inputTokens}`]
-      : []),
-    ...(report.run.usage?.outputTokens !== undefined
-      ? [`- Output tokens: ${report.run.usage.outputTokens}`]
-      : []),
-    ...(report.run.warnings.length > 0
-      ? ["", "### Warnings", "", ...report.run.warnings.map((warning) => `- ${markdownText(warning)}`)]
-      : []),
-    "",
+    ...renderResearchReportTail(report, sources, report.scope.siteOrigin),
   ];
   return lines.join("\n");
 }

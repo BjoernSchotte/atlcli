@@ -152,8 +152,8 @@ describe("V2 research report finalization", () => {
       createdAt: "2026-08-01T12:00:00.000Z",
       sections: [{
         id: "outline-section:delivery",
-        title: "Delivery evidence",
-        question: "What is currently established?",
+        title: "Delivery *evidence*",
+        question: "What <is> currently established?",
         claimIds: [CURRENT_CLAIM, STALE_CLAIM],
         evidenceIds: [EVIDENCE, STALE_EVIDENCE],
         contradictionIds: [],
@@ -183,8 +183,8 @@ describe("V2 research report finalization", () => {
     expect(report.claims.map((entry) => entry.id)).toEqual([CURRENT_CLAIM]);
     expect(report.sections).toEqual([{
       id: "outline-section:delivery",
-      title: "Delivery evidence",
-      question: "What is currently established?",
+      title: "Delivery *evidence*",
+      question: "What <is> currently established?",
       claimIds: [CURRENT_CLAIM],
       coverageTargetIds: ["coverage:delivery"],
     }]);
@@ -198,6 +198,9 @@ describe("V2 research report finalization", () => {
     expect(report.limitations).toEqual([
       "A selected claim was excluded because its evidence is no longer current.",
     ]);
+    expect(report.markdown).toContain("## Delivery \\*evidence\\*");
+    expect(report.markdown).toContain("> Focus: What \\<is\\> currently established?");
+    expect(report.markdown).not.toContain("## Findings");
   });
 
   test("fails closed when selected support is unknown or forged", async () => {

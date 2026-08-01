@@ -13,7 +13,7 @@ import {
 import type { ResearchClaimLedgerV1, ResearchClaimV1 } from "./claim-ledger.js";
 import type { ResearchEvidenceRecordV1, ResearchEvidenceStoreV1 } from "./evidence-store.js";
 import type { ResearchOutlineV1 } from "./outline.js";
-import { finalizeResearchReportV1 } from "./report.js";
+import { finalizeResearchReportV1, renderResearchReportWithFindingSectionsMarkdown } from "./report.js";
 
 const CLAIM_ID = /^claim:[a-f0-9]{48}$/;
 const MAXIMUM_REPORT_CLAIMS = 96;
@@ -103,29 +103,49 @@ function coverageMarkdown(report: ResearchReportV2): string[] {
 }
 
 function renderMarkdown(report: Omit<ResearchReportV2, "markdown">): string {
-  const v1 = finalizeResearchReportV1({
+  const claimsById = new Map(report.claims.map((claim) => [claim.id, claim]));
+  const sections = report.sections.map((section) => ({
+    title: section.title,
+    question: section.question,
+    findings: section.claimIds.map((id, index) => {
+      const claim = claimsById.get(id);
+      if (!claim) invalid("V2 report section references an unavailable claim.");
+      return {
+        id: `${section.id}:finding:${index + 1}`,
+        classification: claim.classification,
+        summary: claim.statement,
+        sourceIds: claim.sourceIds,
+      };
+    }),
+  }));
+  const executiveSummary = report.executiveSummaryClaimIds.length === 0
+    ? "No current, evidence-backed claim was available for publication."
+    : report.executiveSummaryClaimIds
+      .map((id) => claimsById.get(id)?.statement)
+      .filter((statement): statement is string => statement !== undefined)
+      .join(" ");
+  const legacy: Omit<ResearchReportV1, "markdown"> = {
     schema: RESEARCH_REPORT_SCHEMA_V1,
     title: report.title,
     question: report.question,
     scope: report.scope,
-    executiveSummary: report.executiveSummaryClaimIds.length === 0
-      ? "No current, evidence-backed claim was available for publication."
-      : report.executiveSummaryClaimIds
-        .map((id) => report.claims.find((claim) => claim.id === id)?.statement)
-        .filter((statement): statement is string => statement !== undefined)
-        .join(" "),
-    findings: report.claims.map((claim, index) => ({
-      id: `claim-finding-${index + 1}`,
-      classification: claim.classification,
-      summary: claim.statement,
-      sourceIds: claim.sourceIds,
-    })),
+    executiveSummary,
+    findings: [],
     relationships: [],
     limitations: report.limitations,
     sources: report.sources,
     run: report.run,
-  });
-  return [...v1.markdown.trimEnd().split("\n"), ...coverageMarkdown({ ...report, markdown: "" })].join("\n");
+  };
+  // Reuse the legacy contract validator for source URLs and run metadata, then
+  // project the host-approved outline through the same safe Markdown helpers.
+  finalizeResearchReportV1(legacy);
+  return [
+    ...renderResearchReportWithFindingSectionsMarkdown({
+      ...legacy,
+      sections,
+    }).trimEnd().split("\n"),
+    ...coverageMarkdown({ ...report, markdown: "" }),
+  ].join("\n");
 }
 
 /**
