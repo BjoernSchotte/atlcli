@@ -76,13 +76,14 @@ const SUBCOMMANDS: Record<string, string[]> = {
     "undo",
     "validate",
   ],
-  wiki: ["docs", "my", "page", "recent", "search", "space", "template"],
+  wiki: ["docs", "my", "page", "publish", "recent", "search", "space", "template"],
 };
 
 // Nested subcommands (command -> subcommand -> sub-subcommands)
 const NESTED_SUBCOMMANDS: Record<string, Record<string, string[]>> = {
   wiki: {
     docs: ["add", "check", "diff", "init", "pull", "push", "resolve", "status", "sync", "watch"],
+    publish: ["plan", "refresh", "build", "verify", "run", "status", "prune"],
     page: [
       "archive",
       "children",
@@ -236,6 +237,15 @@ const COMMAND_FLAGS: Record<string, string[]> = {
   "wiki docs sync": ["--dry-run", "--label"],
   "wiki docs watch": ["--interval"],
   "wiki docs check": ["--fix"],
+
+  // wiki publish lifecycle
+  "wiki publish plan": ["--allow-partial", "--confirm-public", "--json", "--profile", "--project", "--workspace"],
+  "wiki publish refresh": ["--allow-partial", "--confirm-public", "--dry-run", "--json", "--profile", "--project", "--workspace"],
+  "wiki publish build": ["--json", "--project", "--workspace"],
+  "wiki publish verify": ["--build", "--json", "--project", "--workspace"],
+  "wiki publish run": ["--allow-partial", "--confirm-public", "--dry-run", "--json", "--profile", "--project", "--workspace"],
+  "wiki publish status": ["--json", "--project", "--workspace"],
+  "wiki publish prune": ["--confirm", "--json", "--project", "--workspace"],
 
   // wiki page flags
   "wiki page list": ["--ancestor", "--limit", "--space"],

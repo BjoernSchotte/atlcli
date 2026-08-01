@@ -84,6 +84,7 @@ test("builder runs the trusted Astro project and consumes only its fresh private
       .toBe("fixture asset\n");
 
     await expect(builder([process.execPath, "-e", "process.exit(0)"])).rejects.toThrow("ENOENT");
+    expect(await readFile(resolve(outputDirectory, "publish/guide/index.html"), "utf8")).toContain("data-atlcli-source-id=\"guide\"");
   } finally {
     await rm(inventoryPath, { force: true });
   }

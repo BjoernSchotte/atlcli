@@ -195,6 +195,22 @@ JSON. Focused adapter, renderer, Starlight consumer, typecheck, API-report,
 and closure gates pass; packed consumer tests that require the sandbox temp
 directory remain separately marked for the escalated CI lane.
 
+The CLI publishing lifecycle now has explicit `plan`, `refresh`, `build`,
+`verify`, `run`, `status`, and `prune` routing plus shell completion. `verify`
+binds the selected manifest to the active bundle, project/config/lockfile
+digests, Astro 7.1.6 and Starlight capability declaration, then invokes
+`verifyAstroStaticPublicationOutputV1`. That verifier crawls the private
+inventory and public output, rejects extra/missing/symlinked files, checks all
+bytes and manifest/search/SEO digests, checks edit-link source partitions,
+crawls base-aware internal links and fragments, and rejects active-content URL
+sinks, private Confluence/API URLs, bundle-internal references, and disabled
+analytics. The Astro builder stages an existing output and inventory sidecar
+under explicit temporary sibling names and restores both on build/inventory
+failure; the rollback is covered by the builder test. Focused CLI, builder,
+command, manifest, and output-verifier tests pass, including explicit public /
+partial acknowledgement, field-path validation without private-value echo,
+symlink/extra-output rejection, and hostile-content/URL-marker rejection.
+
 The unchanged DOCX/PDF/browser source boundary was re-proven with the existing
 `@atlcli/confluence` imports: 450 tests across ExportBlock conversion,
 composition, source resolution, DOCX browser runtime/serialization, and Typst

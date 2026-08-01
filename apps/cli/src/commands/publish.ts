@@ -48,6 +48,8 @@ import {
 } from "@atlcli/web-publish/node";
 import {
   createAstroStaticPublicationBuilderV1,
+  verifyAstroStaticPublicationOutputV1,
+  type AstroBuildInventoryV1,
 } from "@atlcli/web-publish-astro";
 import {
   STARLIGHT_PUBLISHING_EXPERIENCE_V1,
@@ -378,30 +380,36 @@ async function executeRefresh(state: PublishProjectStateV1, flags: Flags): Promi
 async function executeBuild(state: PublishProjectStateV1): Promise<Record<string, unknown>> {
   const active = await readActiveBundle(state.workspaceDirectory);
   if (active === undefined) throw new Error("No active publication bundle; run `wiki publish refresh` first.");
-  const bundlePath = active.bundlePath;
-  const pages = await (await import("@atlcli/web-publish-astro")).readPublicationBundlePagesV1({ bundlePath });
   const projectDigest = await digestPublicationJsonV1(state.project);
   const lockfile = await readFile(resolve(state.project.builder.projectDir, "bun.lock"), "utf8").catch(() => "");
   const lockfileDigest = createHash("sha256").update(lockfile).digest("hex");
   const experienceDigest = await digestPublicationJsonV1({ descriptor: STARLIGHT_PUBLISHING_EXPERIENCE_V1, selection: state.project.experience });
-  const builder = createAstroStaticPublicationBuilderV1({
-    version: "0.1.0",
-    astroVersion: "7.1.6",
-    inventoryPath: join(state.workspaceDirectory, "build-inventory.json"),
-    outputDirectory: resolve(state.project.builder.projectDir, "dist"),
-    experience: { id: STARLIGHT_PUBLISHING_EXPERIENCE_V1.id, version: STARLIGHT_PUBLISHING_EXPERIENCE_V1.version, digest: experienceDigest },
-  });
-  const result = await builder.build({
-    project: state.project,
-    bundle: active.bundle,
-    projectDigest,
-    configDigest: projectDigest,
-    lockfileDigest,
-  });
-  const buildDirectory = join(state.workspaceDirectory, "builds", result.manifest.buildDigest);
-  await mkdir(buildDirectory, { recursive: true });
-  await writeFile(join(buildDirectory, "manifest.json"), `${JSON.stringify(result.manifest, null, 2)}\n`, "utf8");
-  return { stage: "built", bundleDigest: active.bundle.bundleDigest, buildDigest: result.manifest.buildDigest, outputDirectory: result.outputDirectory };
+  const controller = new AbortController();
+  const onSigint = (): void => controller.abort();
+  process.once("SIGINT", onSigint);
+  try {
+    const builder = createAstroStaticPublicationBuilderV1({
+      version: "0.1.0",
+      astroVersion: "7.1.6",
+      inventoryPath: join(state.workspaceDirectory, "build-inventory.json"),
+      outputDirectory: resolve(state.project.builder.projectDir, "dist"),
+      signal: controller.signal,
+      experience: { id: STARLIGHT_PUBLISHING_EXPERIENCE_V1.id, version: STARLIGHT_PUBLISHING_EXPERIENCE_V1.version, digest: experienceDigest },
+    });
+    const result = await builder.build({
+      project: state.project,
+      bundle: active.bundle,
+      projectDigest,
+      configDigest: projectDigest,
+      lockfileDigest,
+    });
+    const buildDirectory = join(state.workspaceDirectory, "builds", result.manifest.buildDigest);
+    await mkdir(buildDirectory, { recursive: true });
+    await writeFile(join(buildDirectory, "manifest.json"), `${JSON.stringify(result.manifest, null, 2)}\n`, "utf8");
+    return { stage: "built", bundleDigest: active.bundle.bundleDigest, buildDigest: result.manifest.buildDigest, outputDirectory: result.outputDirectory };
+  } finally {
+    process.removeListener("SIGINT", onSigint);
+  }
 }
 
 async function executeVerify(state: PublishProjectStateV1, flags: Flags = {}): Promise<Record<string, unknown>> {
@@ -410,20 +418,47 @@ async function executeVerify(state: PublishProjectStateV1, flags: Flags = {}): P
   const selected = nonEmptyFlag(flags, "build") ?? candidates.at(-1)?.name;
   if (!selected) throw new Error("No publication build manifest is available.");
   const manifest = parseStaticPublicationManifestV1(await readBoundedPublicationJsonV1(join(state.workspaceDirectory, "builds", selected, "manifest.json")));
-  const outputDirectory = resolve(state.project.builder.projectDir, "dist");
-  let checked = 0;
-  const files: { path: string; sha256: string }[] = [
-    ...manifest.pages.map((file) => ({ path: file.outputPath, sha256: file.sha256 })),
-    ...manifest.assets.map((file) => ({ path: file.outputPath, sha256: file.sha256 })),
-    ...manifest.search.files.map((file) => ({ path: file.path, sha256: file.sha256 })),
-  ];
-  for (const file of files) {
-    const bytes = await readFile(join(outputDirectory, file.path));
-    const digest = createHash("sha256").update(bytes).digest("hex");
-    if (digest !== file.sha256) throw new Error(`Publication verification failed for ${file.path}`);
-    checked += 1;
+  if (manifest.buildDigest !== selected) throw new Error(`Publication build directory '${selected}' does not match its manifest digest.`);
+  const active = await readActiveBundle(state.workspaceDirectory);
+  if (active === undefined || active.bundle.bundleDigest !== manifest.bundleDigest) {
+    throw new Error("Publication build does not belong to the active immutable bundle.");
   }
-  return { stage: "verified", buildDigest: manifest.buildDigest, bundleDigest: manifest.bundleDigest, checkedFiles: checked };
+  const projectDigest = await digestPublicationJsonV1(state.project);
+  const lockfile = await readFile(resolve(state.project.builder.projectDir, "bun.lock"), "utf8").catch(() => "");
+  const lockfileDigest = createHash("sha256").update(lockfile).digest("hex");
+  if (manifest.projectDigest !== projectDigest || manifest.configDigest !== projectDigest || manifest.lockfileDigest !== lockfileDigest) {
+    throw new Error("Publication build was produced from a different project or lockfile state.");
+  }
+  if (manifest.base !== state.project.builder.base || manifest.outputProfile !== state.project.builder.outputProfile) {
+    throw new Error("Publication build URL/output profile differs from the current project configuration.");
+  }
+  if (manifest.builder.id !== "astro-static" || manifest.builder.astroVersion !== "7.1.6") {
+    throw new Error("Publication build uses an unsupported Astro builder/version.");
+  }
+  const expectedExperienceDigest = await digestPublicationJsonV1({ descriptor: STARLIGHT_PUBLISHING_EXPERIENCE_V1, selection: state.project.experience });
+  if (
+    manifest.experience.id !== STARLIGHT_PUBLISHING_EXPERIENCE_V1.id ||
+    manifest.experience.version !== STARLIGHT_PUBLISHING_EXPERIENCE_V1.version ||
+    manifest.experience.digest !== expectedExperienceDigest
+  ) {
+    throw new Error("Publication build Starlight capability declaration differs from project configuration.");
+  }
+  const expectedAnalytics = state.project.analytics.provider === "none" ? "none" : "plausible";
+  if (manifest.analytics.provider !== expectedAnalytics) throw new Error("Publication analytics declaration differs from project configuration.");
+  if (state.project.analytics.provider === "plausible") {
+    if (manifest.analytics.provider !== "plausible" || manifest.analytics.endpointOrigin !== new URL(state.project.analytics.endpoint).origin) {
+      throw new Error("Publication analytics endpoint origin differs from project configuration.");
+    }
+  }
+  const expectedEditLinks = state.project.editLink.provider === "none" ? "none" : "confluence";
+  if (manifest.editLinks.provider !== expectedEditLinks) throw new Error("Publication edit-link declaration differs from project configuration.");
+  if (JSON.stringify(manifest.search.languages) !== JSON.stringify(state.project.search.languages)) {
+    throw new Error("Publication search language declaration differs from project configuration.");
+  }
+  const inventory = await readBoundedPublicationJsonV1(join(state.workspaceDirectory, "build-inventory.json")) as unknown as AstroBuildInventoryV1;
+  const outputDirectory = resolve(state.project.builder.projectDir, "dist");
+  const verified = await verifyAstroStaticPublicationOutputV1({ manifest, inventory, outputDirectory });
+  return { stage: "verified", buildDigest: manifest.buildDigest, bundleDigest: manifest.bundleDigest, ...verified };
 }
 
 async function executeStatus(state: PublishProjectStateV1): Promise<Record<string, unknown>> {
@@ -454,9 +489,15 @@ export async function handlePublish(args: string[], flags: Flags, opts: OutputOp
     case "plan": {
       const profile = await resolveProfile(flags);
       const controller = new AbortController();
-      const planned = await graphAndPlan(state, profile, controller.signal);
-      await writePlan(state, planned.report);
-      result = { stage: "planned", ...planned.report };
+      const onSigint = (): void => controller.abort();
+      process.once("SIGINT", onSigint);
+      try {
+        const planned = await graphAndPlan(state, profile, controller.signal);
+        await writePlan(state, planned.report);
+        result = { stage: "planned", ...planned.report };
+      } finally {
+        process.removeListener("SIGINT", onSigint);
+      }
       break;
     }
     case "refresh": result = { stage: "bundle-ready", ...(await executeRefresh(state, flags)) }; break;
@@ -464,6 +505,10 @@ export async function handlePublish(args: string[], flags: Flags, opts: OutputOp
     case "verify": result = await executeVerify(state, flags); break;
     case "run": {
       const refreshed = await executeRefresh(state, flags);
+      if (hasFlag(flags, "dry-run")) {
+        result = { stage: "planned", refresh: refreshed };
+        break;
+      }
       const built = await executeBuild(state);
       const verified = await executeVerify(state, flags);
       result = { stage: "verified", refresh: refreshed, build: built, verify: verified };

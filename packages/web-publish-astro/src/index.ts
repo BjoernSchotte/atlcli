@@ -96,3 +96,8 @@ export {
   createPublicationRenderContextV1,
   type CreatePublicationRenderContextOptionsV1,
 } from "./render-context.js";
+export {
+  verifyAstroStaticPublicationOutputV1,
+  type VerifyAstroStaticPublicationOutputOptionsV1,
+  type VerifiedAstroStaticPublicationOutputV1,
+} from "./output-verify.js";

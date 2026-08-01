@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { handlePublish, publishHelp } from "./publish.js";
+import { getCompletions } from "../completions.js";
 
 const project = {
   schema: "atlcli.publication-project/1",
@@ -60,6 +61,11 @@ test("publishing help documents the four-stage lifecycle and explicit safety fla
   expect(publishHelp()).toContain("--confirm-public");
 });
 
+test("publishing lifecycle is discoverable through shell completion", () => {
+  expect(getCompletions(["wiki", "publish", ""])).toEqual(["plan", "refresh", "build", "verify", "run", "status", "prune"]);
+  expect(getCompletions(["wiki", "publish", "verify", "--"])).toContain("--build");
+});
+
 test("public and partial projects fail closed before profile/network access", async () => {
   const root = await mkdtemp("/tmp/atlcli-publish-cli-");
   const path = join(root, "publish.json");
@@ -78,6 +84,29 @@ test("unknown lifecycle operations are rejected after project schema validation"
   try {
     await writeFile(path, JSON.stringify(project));
     await expect(handlePublish(["nope"], { project: path }, { json: true })).rejects.toThrow('Unknown wiki publish operation "nope"');
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("configuration errors identify the field without echoing private values", async () => {
+  const root = await mkdtemp("/tmp/atlcli-publish-cli-");
+  const path = join(root, "publish.json");
+  const secret = "publish-secret-must-not-appear";
+  try {
+    await writeFile(path, JSON.stringify({
+      ...project,
+      privateValue: secret,
+    }));
+    let caught: unknown;
+    try {
+      await handlePublish(["status"], { project: path }, { json: true });
+    } catch (error) {
+      caught = error;
+    }
+    const message = caught instanceof Error ? caught.message : String(caught);
+    expect(message).toContain("privateValue");
+    expect(message).not.toContain(secret);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

@@ -77,6 +77,7 @@ export interface AstroStaticPublicationBuilderOptionsV1 {
     astroVersion: string;
     inventoryPath: string;
     outputDirectory: string;
+    signal?: AbortSignal;
     experience: {
         id: string;
         version: string;
@@ -549,4 +550,22 @@ export interface RunAstroBuildCommandOptionsV1 {
 
 // export: runAstroBuildCommandV1
 export declare function runAstroBuildCommandV1(options: RunAstroBuildCommandOptionsV1): Promise<AstroBuildCommandResultV1>;
+
+// export: VerifiedAstroStaticPublicationOutputV1
+export interface VerifiedAstroStaticPublicationOutputV1 {
+    checkedFiles: number;
+    checkedLinks: number;
+    checkedAnchors: number;
+    outputFiles: number;
+}
+
+// export: VerifyAstroStaticPublicationOutputOptionsV1
+export interface VerifyAstroStaticPublicationOutputOptionsV1 {
+    manifest: StaticPublicationManifestV1;
+    inventory: AstroBuildInventoryV1;
+    outputDirectory: string;
+}
+
+// export: verifyAstroStaticPublicationOutputV1
+export declare function verifyAstroStaticPublicationOutputV1(options: VerifyAstroStaticPublicationOutputOptionsV1): Promise<VerifiedAstroStaticPublicationOutputV1>;
 ```

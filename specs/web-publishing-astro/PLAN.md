@@ -1690,22 +1690,22 @@ artifact integrity, or origin security.
 
 ### T10 — Add CLI lifecycle, reports, and artifact verification
 
-- [ ] Add `wiki publish plan|refresh|build|verify|run|status|prune` command
+- [x] Add `wiki publish plan|refresh|build|verify|run|status|prune` command
       routing, help, JSON output, and shell completion.
-- [ ] Validate configuration with actionable field-level errors and redact all
+- [x] Validate configuration with actionable field-level errors and redact all
       profile/auth/private values.
-- [ ] Require explicit public visibility and partial-output choices.
-- [ ] Make plan/diff visible before confirmed deletions or route changes become
+- [x] Require explicit public visibility and partial-output choices.
+- [x] Make plan/diff visible before confirmed deletions or route changes become
       active; non-interactive CI requires explicit flags/config authority.
-- [ ] Propagate Ctrl-C/abort through every port and child process.
-- [ ] Verify manifest ownership, expected route/file set, internal links,
+- [x] Propagate Ctrl-C/abort through every port and child process.
+- [x] Verify manifest ownership, expected route/file set, internal links,
       anchors, images/downloads, base mapping, hashes, CSP/active content,
       secret/private URLs, and absence of bundle-internal references.
 - [ ] Verify Starlight capability declarations, Pagefind/SEO/i18n/media output,
       analytics declarations, and edit-link origins/exclusions.
-- [ ] Fail on non-empty/unowned output targets; use sibling staging plus
+- [x] Fail on non-empty/unowned output targets; use sibling staging plus
       recoverable promotion for replacement.
-- [ ] Report `bundle-ready`, `built`, and `verified`; never `deployed`.
+- [x] Report `bundle-ready`, `built`, and `verified`; never `deployed`.
 - [ ] Test retry/recovery, stale expected digest, corrupt manifest, symlink
       target, cross-device destination, build failure, and verification failure.
 - [ ] STOP if cleanup/delete authority comes from a title/glob or failure leaves

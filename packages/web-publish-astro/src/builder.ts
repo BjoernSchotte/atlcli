@@ -1,4 +1,4 @@
-import { lstat, mkdir, unlink } from "node:fs/promises";
+import { lstat, mkdir, rename, rm } from "node:fs/promises";
 import { dirname, relative, resolve } from "node:path";
 import {
   readBoundedPublicationJsonV1,
@@ -23,6 +23,8 @@ export interface AstroStaticPublicationBuilderOptionsV1 {
   inventoryPath: string;
   /** Operator-owned Astro static output directory, never rewritten by atlcli. */
   outputDirectory: string;
+  /** Optional cancellation propagated to the project-owned build child. */
+  signal?: AbortSignal;
   /** Negotiated trusted experience recorded in the final publication manifest. */
   experience: { id: string; version: string; digest: string };
 }
@@ -58,26 +60,19 @@ function isInventory(value: unknown): value is AstroBuildInventoryV1 {
       typeof (page as Record<string, unknown>).pathname === "string"));
 }
 
-/**
- * Remove only a preceding, known private sidecar. This prevents a successful
- * child command that forgot the integration from accidentally reusing a stale
- * inventory, while never deleting an unrelated operator file.
- */
-async function removePrecedingInventory(path: string): Promise<void> {
+async function stageExistingPath(path: string, kind: "directory" | "file", token: string): Promise<string | undefined> {
   try {
     const state = await lstat(path);
-    if (state.isSymbolicLink() || !state.isFile()) {
-      throw new TypeError("inventoryPath must be a regular private inventory file");
+    if (state.isSymbolicLink() || (kind === "directory" ? !state.isDirectory() : !state.isFile())) {
+      throw new TypeError(`${kind === "directory" ? "outputDirectory" : "inventoryPath"} must be a real ${kind}`);
     }
+    const backup = `${path}.atlcli-previous-${token}`;
+    await rename(path, backup);
+    return backup;
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
     throw error;
   }
-  const previous = await readBoundedPublicationJsonV1(path);
-  if (!isInventory(previous)) {
-    throw new TypeError("refusing to remove a non-atlcli private inventory file");
-  }
-  await unlink(path);
 }
 
 async function readFreshInventory(path: string): Promise<AstroBuildInventoryV1> {
@@ -116,20 +111,47 @@ export function createAstroStaticPublicationBuilderV1(
         throw new TypeError("Astro static builder requires a complete activated publication bundle");
       }
       await mkdir(dirname(inventoryPath), { recursive: true });
-      await removePrecedingInventory(inventoryPath);
-      await runAstroBuildCommandV1({
-        projectDirectory: request.project.builder.projectDir,
-        command: request.project.builder.buildCommand,
-      });
-      const inventory = await readFreshInventory(inventoryPath);
-      const manifest = await createAstroStaticPublicationManifestV1({
-        request,
-        inventory,
-        builderVersion: options.version,
-        astroVersion: options.astroVersion,
-        experience: options.experience,
-      });
-      return { manifest, outputDirectory };
+      const token = `${process.pid}-${Date.now()}`;
+      let previousOutput: string | undefined;
+      let previousInventory: string | undefined;
+      try {
+        previousOutput = await stageExistingPath(outputDirectory, "directory", token);
+        previousInventory = await stageExistingPath(inventoryPath, "file", token);
+      } catch (error) {
+        if (previousOutput !== undefined) await rename(previousOutput, outputDirectory).catch(() => undefined);
+        throw error;
+      }
+      let committed = false;
+      try {
+        await runAstroBuildCommandV1({
+          projectDirectory: request.project.builder.projectDir,
+          command: request.project.builder.buildCommand,
+          signal: options.signal,
+        });
+        const inventory = await readFreshInventory(inventoryPath);
+        const manifest = await createAstroStaticPublicationManifestV1({
+          request,
+          inventory,
+          builderVersion: options.version,
+          astroVersion: options.astroVersion,
+          experience: options.experience,
+        });
+        committed = true;
+        if (previousOutput !== undefined) await rm(previousOutput, { recursive: true, force: true });
+        if (previousInventory !== undefined) await rm(previousInventory, { force: true });
+        return { manifest, outputDirectory };
+      } catch (error) {
+        await rm(outputDirectory, { recursive: true, force: true });
+        if (previousOutput !== undefined) await rename(previousOutput, outputDirectory);
+        await rm(inventoryPath, { force: true });
+        if (previousInventory !== undefined) await rename(previousInventory, inventoryPath);
+        throw error;
+      } finally {
+        if (!committed) {
+          if (previousOutput !== undefined) await rm(previousOutput, { recursive: true, force: true }).catch(() => undefined);
+          if (previousInventory !== undefined) await rm(previousInventory, { force: true }).catch(() => undefined);
+        }
+      }
     },
   };
 }

@@ -18,6 +18,13 @@ assets, and external schemes. It performs no source fetch and never derives a
 Confluence URL. `pages` should contain the loaded page set when cross-page
 anchor links are present.
 
+`verifyAstroStaticPublicationOutputV1()` then checks the private build
+inventory against the public manifest and output directory: it rejects extra
+or missing files, symlinks, digest/byte-length drift, base-escaping internal
+links, missing fragments, external resource sinks, active-content URL schemes,
+and disabled-analytics markers. The CLI uses this verifier for the `verify`
+stage; a successful build is never reported as deployed.
+
 ## Static search components
 
 The optional theme-neutral components
