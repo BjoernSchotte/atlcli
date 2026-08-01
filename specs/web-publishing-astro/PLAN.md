@@ -1452,7 +1452,7 @@ digest; route identity survives rename/move; every internal reference resolves.
       page-local TOC/document context.
 - [x] Define closed macro-to-render-model mappings, starting with TOC, Jira
       data, diagram/Mermaid, chart, status, Smart Card, and unknown fallback.
-- [ ] Prefer validated SVG/static models for web diagrams/charts.
+- [x] Prefer validated SVG/static models for web diagrams/charts.
 - [x] Implement `live`, `no-live`, freshness, dependency, and frozen-provenance
       policies without leaking source data.
 - [x] Prove raw `export_view` HTML never reaches bundle/output.
