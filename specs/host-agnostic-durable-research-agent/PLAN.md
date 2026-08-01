@@ -2949,12 +2949,25 @@ passed, and the Node 22.18.0 packed MV3 suite passed 16/16.
 
 Shared:
 
-- [ ] Implement pure session reducers and closed update unions with revision,
+- [x] Implement pure session reducers and closed update unions with revision,
       lease epoch, heartbeat, brief, graph proposal/approval/revision,
       clarification response, plan rejection, scope-expansion
       proposal/approval/rejection, steering, pause request and acknowledgement,
       task dispatch, packet acceptance/quarantine, reconciliation, checkpoint,
       resume, recovery, cancellation, completion, retention, and deletion.
+
+T4 session-reducer checkpoint (2026-08-01): `ResearchSessionV1` is now a
+host-neutral, closed command reducer. It revision- and lease-epoch-fences all
+turn, brief, graph, clarification/assumption, scope-expansion, steering,
+pause, task, packet, reconciliation, checkpoint, recovery, retention, and
+deletion transitions; `heartbeat` retains the owner and epoch, while recovery
+can only claim an expired lease at a new epoch. Packet acceptance reduces the
+host-validated task envelope and corresponding graph node together before the
+caller persists the returned state. The deterministic reducer corridor proves
+accepted-turn/plan durability before dispatch, the task/packet/node triple,
+stale-writer immutability, recovery fencing, heartbeat, and durable pause.
+Physical store adapters and their aggregate CAS/journal transaction remain
+the next T4 unit.
 - [ ] Add bounded session/event/checkpoint/workspace/graph/task/packet and
       artifact store ports plus scope-candidate, binding, resolution, and
       expansion-proposal records. T4 retains opaque V1 source references; it
