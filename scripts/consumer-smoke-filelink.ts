@@ -67,8 +67,11 @@ export const FILELINK_SMOKE_ENV: Record<string, string> = {
 };
 
 const ANSI_ESCAPE = /\u001b\[[0-?]*[ -/]*[@-~]/g;
-const KNOWN_FILELINK_EEXIST =
-  /^error: File exists: failed to link package (@atlcli\/[a-z0-9][a-z0-9._-]*)$/;
+const KNOWN_FILELINK_EEXIST = [
+  /^error: File exists: failed to link package (@atlcli\/[a-z0-9][a-z0-9._-]*)$/,
+  /^EEXIST: File(?: or folder)? exists: failed to link package:\s*(@atlcli\/[a-z0-9][a-z0-9._-]*)(?:@.+)?\s+\(link\)$/,
+];
+const KNOWN_FILELINK_INSTALL_SUMMARY = /^(?:Failed to install \d+ packages?|Saved lockfile)$/;
 const SECOND_FATAL_MARKER =
   /\b(?:error|failed|panic|fatal|ENOENT|integrity|checksum|signal)\b/i;
 
@@ -90,15 +93,20 @@ export function knownFilelinkEexistPackage(
 
   const lines = normalizedInstallLines(result);
   const matches = lines.flatMap((line) => {
-    const match = KNOWN_FILELINK_EEXIST.exec(line);
-    return match?.[1] ? [match[1]] : [];
+    for (const pattern of KNOWN_FILELINK_EEXIST) {
+      const match = pattern.exec(line);
+      if (match?.[1]) return [match[1]];
+    }
+    return [];
   });
   if (matches.length !== 1) return null;
 
   const packageName = matches[0]!;
   if (!allowedPackages.has(packageName)) return null;
 
-  const remaining = lines.filter((line) => !KNOWN_FILELINK_EEXIST.test(line));
+  const remaining = lines.filter((line) =>
+    !KNOWN_FILELINK_EEXIST.some((pattern) => pattern.test(line))
+    && !KNOWN_FILELINK_INSTALL_SUMMARY.test(line));
   if (remaining.some((line) => SECOND_FATAL_MARKER.test(line))) return null;
   return packageName;
 }

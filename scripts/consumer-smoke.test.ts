@@ -22,7 +22,7 @@ import { runViteSmoke } from "./consumer-smoke-vite.js";
  */
 
 const enabled = process.env.ATLCLI_CONSUMER_SMOKE === "1";
-const allowedPackages = new Set(["@atlcli/confluence", "@atlcli/pdf"]);
+const allowedPackages = new Set(["@atlcli/confluence", "@atlcli/pdf", "@atlcli/template-pack"]);
 const success: InstallResult = { exitCode: 0, stdout: "", stderr: "" };
 const knownFailure = (
   line = "error: File exists: failed to link package @atlcli/confluence",
@@ -31,6 +31,14 @@ const knownFailure = (
   stdout: "bun install v1.3.14\nResolving dependencies\n",
   stderr: `${line}\n`,
 });
+const currentKnownFailure: InstallResult = {
+  exitCode: 1,
+  stdout: "bun install v1.3.14 (0d9b296a)\n",
+  stderr:
+    "EEXIST: File or folder exists: failed to link package: @atlcli/template-pack@/home/runner/work/atlcli/atlcli/packages/template-pack (link)\n" +
+    "Failed to install 1 package\n" +
+    "Saved lockfile\n",
+};
 
 describe("filesystem-link package identity", () => {
   it("does not compare state across Bun's distinct direct and transitive file: copies", () => {
@@ -50,6 +58,13 @@ describe("known Bun file-link EEXIST retry", () => {
         allowedPackages,
       ),
     ).toBe("@atlcli/confluence");
+    expect(
+      knownFilelinkEexistPackage(
+        currentKnownFailure,
+        KNOWN_FILELINK_EEXIST_BUN_VERSION,
+        allowedPackages,
+      ),
+    ).toBe("@atlcli/template-pack");
     expect(knownFilelinkEexistPackage(knownFailure(), "1.3.15", allowedPackages)).toBeNull();
     expect(
       knownFilelinkEexistPackage(

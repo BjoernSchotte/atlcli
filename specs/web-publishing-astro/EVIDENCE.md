@@ -458,3 +458,34 @@ All Astro output, local bundles, inventories, and server state remain under the
 untracked `.tmp-web-e2e/` directory (or test temporary directories). Only
 source, tests, and this evidence record are eligible for the Draft PR; no
 generated Astro output is committed.
+
+## T12 current mayflower re-run (2026-08-01)
+
+The live read-only `mayflower` run was repeated from the current branch against
+the `DOCSY` space and completed successfully in the private `.tmp-web-e2e/`
+workspace. The traversal remained complete at 98 pages; the explicit partial
+asset policy produced three visible `blocked-asset` warnings without dropping
+pages. The run built and verified the same 256 output files, 13,070 internal
+links, and 905 fragment anchors. The current verified build digest is
+`d238e0fdb07abdac0fc3e1dde9330b415c2fb15816553a452d75d820e3c01cb6`, bound to
+bundle digest
+`356bc0ff9921df83111f41a2e9ed2a9b60db908c808f8d498db7cbd03f36b497`.
+
+The in-app browser then inspected the root URL
+`http://127.0.0.1:4391/publish/docsync-startseite/` and the nested attachment
+route `http://127.0.0.1:4391/publish/copy-of-attachment-test-page/`. The root
+heading, Starlight navigation, theme controls, Pagefind dialog, and a
+`Scrum Master` query (one result in this current corpus) rendered correctly;
+the nested page rendered its heading, breadcrumbs, related pages, and
+previous/next links. No warning or error console entries were observed.
+
+## T11 consumer-smoke portability proof (2026-08-01)
+
+The pinned Bun 1.3.14 consumer lane exposed a current EEXIST spelling emitted
+by filesystem-link installs (`EEXIST: File or folder exists: failed to link
+package: ... (link)`). The retry classifier now accepts only that exact
+version/package/signature family, ignores only Bun's matching install-summary
+lines, and still fails closed on mixed or mutated errors. The focused parser
+tests pass, and the full consumer smoke suite passes locally with 9 tests and
+0 failures, including tarball, filesystem-link retry, Node-LTS, and Vite
+consumer exports.
