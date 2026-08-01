@@ -30,7 +30,7 @@ function hrefFor(node: Extract<InlineNode, { type: "link" }>): string | undefine
   if (resolved !== undefined && resolved.kind !== "unresolved") return safeExportBlockHrefV1(resolved.href);
   switch (node.target.kind) {
     case "external": return safeExportBlockHrefV1(node.target.href);
-    case "anchor": return safeExportBlockHrefV1(`#${node.target.anchor}`);
+    case "anchor": return resolved === undefined ? safeExportBlockHrefV1(`#${node.target.anchor}`) : undefined;
     case "page": case "attachment": return undefined;
   }
 }

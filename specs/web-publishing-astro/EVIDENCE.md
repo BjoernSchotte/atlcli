@@ -403,3 +403,34 @@ The full `DOCSY` space remains intentionally unactivated for this proof because
 strict acquisition rejects the stale missing attachment described above. This
 URL is therefore a verified, complete subtree publication, not a claim that
 the entire space has been published.
+
+## T12 full DOCSY-space proof (2026-08-01)
+
+The previous subtree-only caveat is superseded by the explicit full-space
+acceptance run below. A read-only Cloud plan against the `DOCSY` space found 98
+pages and a complete authoritative traversal. Refresh and activation used the
+operator-approved `allow-partial` asset policy solely for source-reported asset
+acquisition failures: three references were rendered as visible unresolved
+fallbacks and recorded as `blocked-asset` warnings. No page was omitted and no
+remote Confluence content was changed.
+
+The full bundle was built with Astro `7.1.6` and passed the CLI verifier:
+
+- 98 published page routes;
+- 256 owned output files;
+- 13,070 checked internal links;
+- 905 checked fragment anchors;
+- Pagefind search index and SEO discovery artifacts present.
+
+The in-app browser inspected the full-space root at
+`http://127.0.0.1:4391/publish/docsync-startseite/`, the nested attachment
+page, Starlight navigation/breadcrumbs/related/previous-next links, theme
+selection, and the Pagefind dialog. Searching for `Scrum Master` returned the
+expected full-space result. The nested attachment page visibly retained the
+unavailable media and file references as safe fallbacks rather than emitting a
+dangling asset URL.
+
+Two full-space regressions found during this run are now covered by focused
+tests: page records below non-page Confluence folder containers are promoted to
+explicit publication roots; equal content-addressed assets are copied once;
+and stale page-local anchors resolve to the visible unresolved-link fallback.

@@ -409,6 +409,38 @@ test("materializes verified bundle assets but never overwrites an Astro output c
   }
 });
 
+test("materializes one content-addressed output for duplicate logical assets", async () => {
+  const digest = "f0dad327e22e8cddc2e8057cf16d9b16ea6e36e87d31f46ee4d5943c69609c4f";
+  const relativeAssetPath = `assets/${digest}/fixture.txt`;
+  const asset = {
+    path: relativeAssetPath, sha256: digest, byteLength: 14,
+    mediaType: "text/plain" as const, disposition: "inline" as const, downloadName: "fixture.txt",
+  };
+  const { root, bundlePath } = await fixture(bundle({
+    assets: [
+      { ...asset, assetId: "fixture-asset-a" },
+      { ...asset, assetId: "fixture-asset-b" },
+    ],
+  }));
+  const output = join(root, "dist");
+  try {
+    await mkdir(join(root, "assets", digest), { recursive: true });
+    await writeFile(join(root, relativeAssetPath), "fixture asset\n");
+    await mkdir(output);
+    await writeBuiltGuide(output);
+    const integration = atlcliPublishingIntegration({
+      bundlePath, manifestPath: join(root, "private", "inventory.json"), routePrefix: "/publish",
+      expectedConfig: expectedConfig(root),
+    });
+    await integration.hooks["astro:build:done"]!({
+      dir: pathToFileURL(`${output}/`), pages: [{ pathname: "/publish/guide" }],
+    });
+    expect(await readFile(join(output, relativeAssetPath), "utf8")).toBe("fixture asset\n");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("rejects output symlinks before writing the private inventory", async () => {
   const { root, bundlePath } = await fixture();
   const output = join(root, "dist");

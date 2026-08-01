@@ -399,15 +399,23 @@ async function materializePublicationAssets(
   assets: readonly { path: string; sha256: string; byteLength: number }[],
 ): Promise<void> {
   const written: string[] = [];
-  const seen = new Set<string>();
+  const seen = new Map<string, { sha256: string; byteLength: number }>();
   try {
     for (const asset of assets) {
       const relativeAssetPath = validatePublicationOutputPathV1(asset.path);
-      if (!seen.add(relativeAssetPath)) throw new TypeError(`duplicate publication asset output path: ${relativeAssetPath}`);
+      const previous = seen.get(relativeAssetPath);
+      if (previous !== undefined && (previous.sha256 !== asset.sha256 || previous.byteLength !== asset.byteLength)) {
+        throw new TypeError(`conflicting publication asset output path: ${relativeAssetPath}`);
+      }
       const source = assetPath(bundlePath, relativeAssetPath);
       if (await digestRegularFile(source, asset.byteLength) !== asset.sha256) {
         throw new TypeError(`publication asset digest does not match bundle entry: ${relativeAssetPath}`);
       }
+      // Content-addressed deduplication intentionally gives equal logical
+      // assets the same output path. Verify each entry, then copy the bytes
+      // only once; a genuinely existing project file remains a collision.
+      if (previous !== undefined) continue;
+      seen.set(relativeAssetPath, { sha256: asset.sha256, byteLength: asset.byteLength });
       await ensureOutputParents(outputRoot, relativeAssetPath);
       const destination = resolve(outputRoot, relativeAssetPath);
       try {

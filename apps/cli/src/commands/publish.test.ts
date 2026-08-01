@@ -1,7 +1,15 @@
 import { expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { handlePublish, latestPublicationBuildNameV1, normalizePublicationLinksV1, normalizePublicationPositionV1, publishHelp } from "./publish.js";
+import {
+  handlePublish,
+  isMissingPublicationAttachmentErrorV1,
+  latestPublicationBuildNameV1,
+  normalizePublicationLinksV1,
+  normalizePublicationPositionV1,
+  publishHelp,
+  replaceMissingPublicationAssetsV1,
+} from "./publish.js";
 import { getCompletions } from "../completions.js";
 
 const project = {
@@ -76,6 +84,32 @@ test("publication links outside the selected scope remain visible as unresolved 
     { referenceId: "inside", kind: "page", sourceId: "page-1" },
     { referenceId: "outside", kind: "unresolved", reason: "outside-scope", label: "Out-of-scope Confluence link" },
   ]);
+});
+
+test("explicit missing-attachment fallback keeps the page and removes dangling asset references", async () => {
+  const page = {
+    schema: "atlcli.publication-page/1" as const,
+    sourceId: "page-1",
+    sourceVersion: "1",
+    title: "Guide",
+    position: 0,
+    depth: 0,
+    route: "/guide/",
+    blocks: [],
+    notes: [],
+    labels: [],
+    links: [{ referenceId: "attachment", kind: "asset" as const, assetId: "asset-missing" }],
+    assetIds: ["asset-missing"],
+    renderDependencies: [],
+    pageDigest: "pending",
+  };
+  const [result] = await replaceMissingPublicationAssetsV1([page], [{ assetId: "asset-missing", pageId: "page-1", filename: "missing.png" }]);
+  expect(result).toMatchObject({
+    assetIds: [],
+    links: [{ referenceId: "attachment", kind: "unresolved", reason: "missing" }],
+  });
+  expect(isMissingPublicationAttachmentErrorV1(new Error("Publication attachment is missing on page page-1: missing.png"))).toBe(true);
+  expect(isMissingPublicationAttachmentErrorV1(new Error("unsafe SVG"))).toBe(false);
 });
 
 test("publication verification selects the newest build and uses the digest only as a tie-breaker", () => {

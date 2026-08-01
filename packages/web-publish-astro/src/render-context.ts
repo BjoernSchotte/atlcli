@@ -209,6 +209,29 @@ export function createPublicationRenderContextV1(
       links[reference.referenceId] = { kind: "unresolved", href: "#" };
     }
   }
+  // Anchor links are embedded in the block tree rather than in the page
+  // reference manifest. Resolve them against the page-local anchor plan so a
+  // stale Confluence anchor becomes the render kit's visible unresolved
+  // fallback instead of a dead `#fragment` that fails output verification.
+  const pageAnchors = planPublicationAnchorsV1(options.page.blocks);
+  visitExportBlocksV1(options.page.blocks, {
+    inline(node) {
+      if (node.type !== "link" || node.target.kind !== "anchor") return;
+      let normalized: string;
+      try {
+        normalized = normalizePublicationAnchorReferenceV1(node.target.anchor);
+      } catch {
+        links[astroExportLinkKeyV1(node.target)] = { kind: "unresolved", href: "#" };
+        return;
+      }
+      const anchor = pageAnchors.find((candidate) =>
+        candidate.anchorId === normalized || candidate.sourceAnchor === normalized,
+      );
+      links[astroExportLinkKeyV1(node.target)] = anchor === undefined
+        ? { kind: "unresolved", href: "#" }
+        : { kind: "page", href: `#${encodeURIComponent(anchor.anchorId)}` };
+    },
+  });
   const resolvedAssets = assetContext(options.page, options.bundle, base);
   for (const source of collectAssetSources(options.page.sourceId, options.page.blocks)) {
     if (source.kind !== "attachment") continue;

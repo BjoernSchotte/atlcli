@@ -19,6 +19,8 @@ import {
 } from "@atlcli/confluence";
 import {
   confluenceSourceResolverPortFromClientV1,
+  createExternalAssetPolicy,
+  defaultExternalAssetFetcher,
   fetchAndMaterializePublicationAssetV1,
   type MaterializedPublicationAssetV1,
   type PublicationAssetRequestV1,
@@ -28,6 +30,7 @@ import type { ExportSourceV1 } from "@atlcli/export-jobs";
 import {
   canonicalPublicationJsonV1,
   digestPublicationJsonV1,
+  digestPublicationRefreshPlanV1,
   digestPublicationPageV1,
   planPublicationRefreshV1,
   planPublicationRoutesV1,
@@ -37,6 +40,8 @@ import {
   type PublicationBundleV1,
   type PublicationLinkReferenceV1,
   type PublicationPageV1,
+  type PublicationRefreshPlanV1,
+  type PublicationIssueV1,
   type PublicationProjectV1,
   type PublicationRouteRecordV1,
   type PublicationSourcePageSnapshotV1,
@@ -178,6 +183,48 @@ function safeAssetId(pageId: string, source: ImageSource): string {
   return `asset-${createHash("sha256").update(canonicalPublicationJsonV1({ pageId, source })).digest("hex").slice(0, 32)}`;
 }
 
+/**
+ * A source traversal can be complete while one authored attachment reference
+ * is stale. Strict publication still fails closed; the explicit partial asset
+ * policy turns only that missing byte acquisition into a visible unresolved
+ * link/asset fallback instead of dropping the page.
+ */
+export function isMissingPublicationAttachmentErrorV1(error: unknown): boolean {
+  return error instanceof Error && error.message.startsWith("Publication attachment is missing on page ");
+}
+
+export interface MissingPublicationAssetV1 {
+  assetId: string;
+  pageId: string;
+  filename: string;
+}
+
+export async function replaceMissingPublicationAssetsV1(
+  pages: readonly PublicationPageV1[],
+  missing: readonly MissingPublicationAssetV1[],
+): Promise<readonly PublicationPageV1[]> {
+  const missingById = new Map(missing.map((entry) => [entry.assetId, entry]));
+  return Promise.all(pages.map(async (page) => {
+    const missingLinks = new Map<string, MissingPublicationAssetV1>();
+    const links = page.links.map((link) => {
+      if (link.kind !== "asset") return link;
+      const entry = missingById.get(link.assetId);
+      if (entry === undefined) return link;
+      missingLinks.set(link.referenceId, entry);
+      return {
+        referenceId: link.referenceId,
+        kind: "unresolved" as const,
+        reason: "missing" as const,
+        label: `Missing asset: ${entry.filename}`,
+      };
+    });
+    const assetIds = page.assetIds.filter((assetId) => !missingById.has(assetId));
+    if (missingLinks.size === 0 && assetIds.length === page.assetIds.length) return page;
+    const draft = { ...page, links, assetIds, pageDigest: "pending" };
+    return { ...draft, pageDigest: await digestPublicationPageV1(draft) };
+  }));
+}
+
 function collectPageReferences(pageId: string, blocks: readonly ExportBlock[]): {
   links: PublicationPageV1["links"];
   assetIds: readonly string[];
@@ -226,6 +273,14 @@ async function snapshotAndPages(
   assetRequests: readonly PublicationAssetRequestV1[];
 }> {
   const nodes = pageNodes(graph.nodes);
+  const inScopeSourceIds = new Set(nodes.map((node) => node.pageId));
+  // A space traversal can expose pages below Confluence folder containers
+  // that are not themselves page records. The page-only publication contract
+  // cannot encode those folders, so promote the affected included pages to
+  // explicit roots instead of producing a disconnected navigation graph.
+  const rootIds = nodes
+    .filter((node) => node.parentId === null || !inScopeSourceIds.has(node.parentId))
+    .map((node) => node.pageId);
   const routePlan = planPublicationRoutesV1({
     pages: nodes.map((node) => ({ sourceId: node.pageId, title: node.title })),
     previousRoutes: [],
@@ -234,7 +289,6 @@ async function snapshotAndPages(
     outputProfile: project.builder.outputProfile,
   });
   const routeById = new Map(routePlan.routes.filter((route) => route.state === "active").map((route) => [route.sourceId, route.route]));
-  const inScopeSourceIds = new Set(nodes.map((node) => node.pageId));
   const snapshots: PublicationSourcePageSnapshotV1[] = [];
   const pages: PublicationPageV1[] = [];
   const requestMap = new Map<string, PublicationAssetRequestV1>();
@@ -283,10 +337,10 @@ async function snapshotAndPages(
   return {
     pages,
     snapshot: {
-      sourceDigest: await digestPublicationJsonV1({ rootIds: [graph.root.id], pages: snapshots }),
+      sourceDigest: await digestPublicationJsonV1({ rootIds, pages: snapshots }),
       complete: graph.complete,
       deletionAuthority: graph.complete ? "complete-scan" : "none",
-      rootIds: [graph.root.id],
+      rootIds,
       pages: snapshots,
     },
     assetRequests: [...requestMap.values()],
@@ -371,34 +425,68 @@ async function executeRefresh(state: PublishProjectStateV1, flags: Flags): Promi
     const client = new ConfluenceClient(profile);
     const policy = state.project.assets;
     const materialized: MaterializedPublicationAssetV1[] = [];
+    const missingAssets: MissingPublicationAssetV1[] = [];
+    const allowMissingAssetFallback = state.project.completeness === "allow-partial" && hasFlag(flags, "allow-partial");
+    const externalAssetFetcher = defaultExternalAssetFetcher(createExternalAssetPolicy({
+      siteOrigin: profile.baseUrl,
+      allowedOrigins: state.project.assets.external === "allowlist" ? state.project.assets.allowedOrigins : [],
+    }));
     for (const request of planned.assetRequests) {
-      const asset = await fetchAndMaterializePublicationAssetV1(request, policy, {
-        attachmentPort: {
-          async fetchAttachment(input) {
-            const attachments = await client.listAttachments(input.pageId, { limit: 500, signal: input.signal });
-            const attachment = attachments.find((candidate) => candidate.filename === input.filename);
-            if (!attachment) throw new Error(`Publication attachment is missing on page ${input.pageId}: ${input.filename}`);
-            return { bytes: await client.downloadAttachment(attachment, { signal: input.signal }), mediaType: attachment.mediaType };
+      try {
+        const asset = await fetchAndMaterializePublicationAssetV1(request, policy, {
+          attachmentPort: {
+            async fetchAttachment(input) {
+              const attachments = await client.listAttachments(input.pageId, { limit: 500, signal: input.signal });
+              const attachment = attachments.find((candidate) => candidate.filename === input.filename);
+              if (!attachment) throw new Error(`Publication attachment is missing on page ${input.pageId}: ${input.filename}`);
+              return { bytes: await client.downloadAttachment(attachment, { signal: input.signal }), mediaType: attachment.mediaType };
+            },
           },
-        },
-      });
-      materialized.push(asset);
+          externalFetcher: externalAssetFetcher,
+        });
+        materialized.push(asset);
+      } catch (error) {
+        const isMissingAttachment = request.source.kind === "attachment" && isMissingPublicationAttachmentErrorV1(error);
+        const isBlockedExternal = request.source.kind === "external";
+        if (!allowMissingAssetFallback || (!isMissingAttachment && !isBlockedExternal)) throw error;
+        missingAssets.push({
+          assetId: request.assetId,
+          pageId: request.source.kind === "attachment" ? request.source.pageId : "external",
+          filename: request.source.filename,
+        });
+      }
+    }
+    let pages = planned.pages;
+    let refreshPlan: PublicationRefreshPlanV1 = planned.refreshPlan;
+    if (missingAssets.length > 0) {
+      pages = await replaceMissingPublicationAssetsV1(pages, missingAssets);
+      const issues: PublicationIssueV1[] = [
+        ...refreshPlan.issues,
+        ...missingAssets.map((asset): PublicationIssueV1 => ({
+          level: "warning",
+          code: "blocked-asset",
+          message: "A referenced asset could not be fetched and was rendered as a visible unresolved fallback.",
+          source: { sourceId: asset.pageId, assetId: asset.assetId },
+        })),
+      ];
+      const pendingPlan = { ...refreshPlan, issues, planDigest: "pending" };
+      refreshPlan = { ...pendingPlan, planDigest: await digestPublicationRefreshPlanV1(pendingPlan) };
     }
     const result = await materializeNodePublicationBundleV1({
       workspaceDirectory: state.workspaceDirectory,
-      refreshPlan: planned.refreshPlan,
+      refreshPlan,
       createdBy: { name: "atlcli", version: "0.17.2" },
       sourcePolicyDigest: await digestPublicationJsonV1(state.project.sourcePolicy),
       rootIds: planned.snapshot.rootIds,
-      pages: planned.pages,
+      pages,
       routes: planned.routes,
       assets: materialized,
-      issues: planned.refreshPlan.issues,
+      issues: refreshPlan.issues,
       assetPolicy: state.project.assets,
       expectedActiveBundleDigest: planned.refreshPlan.previousBundleDigest,
       signal: controller.signal,
     });
-    return { ...planned.report, pageCount: result.bundle.pages.length };
+    return { ...planned.report, pageCount: result.bundle.pages.length, issues: refreshPlan.issues, planDigest: refreshPlan.planDigest };
   } finally {
     process.removeListener("SIGINT", onSigint);
   }

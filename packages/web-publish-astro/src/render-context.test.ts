@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import type { PublicationBundleV1, PublicationPageV1 } from "@atlcli/web-publish";
 import { createPublicationRenderContextV1 } from "./render-context.js";
+import { astroExportLinkKeyV1 } from "@atlcli/export-blocks-astro";
 
 const targetPage: PublicationPageV1 = {
   schema: "atlcli.publication-page/1",
@@ -105,4 +106,16 @@ test("does not turn unsafe external references into clickable links", () => {
   const unsafePage = { ...page, links: [{ referenceId: "bad", kind: "external" as const, href: "javascript:alert(1)" }] };
   const context = createPublicationRenderContextV1({ page: unsafePage, bundle });
   expect(context.links.bad).toEqual({ kind: "unresolved", href: "#" });
+});
+
+test("marks stale page-local anchor links unresolved", () => {
+  const anchor = { kind: "anchor" as const, anchor: "missing-top" };
+  const context = createPublicationRenderContextV1({
+    page: {
+      ...page,
+      blocks: [{ type: "paragraph", content: [{ type: "link", target: anchor, content: [{ type: "text", text: "Back" }] }] }],
+    },
+    bundle,
+  });
+  expect(context.links[astroExportLinkKeyV1(anchor)]).toEqual({ kind: "unresolved", href: "#" });
 });
