@@ -8,6 +8,7 @@
 
 export const RESEARCH_REQUEST_SCHEMA_V1 = "atlcli.research-request/v1" as const;
 export const RESEARCH_REPORT_SCHEMA_V1 = "atlcli.research-report/v1" as const;
+export const RESEARCH_REPORT_SCHEMA_V2 = "atlcli.research-report/v2" as const;
 export const RESEARCH_REPORT_ARTIFACT_PATH_V1 = "/artifacts/report.md" as const;
 export const RESEARCH_ONE_SHOT_POLICY_SCHEMA_V1 =
   "atlcli.research-one-shot-policy/v1" as const;
@@ -275,6 +276,57 @@ export interface ResearchReportV1 {
   run: ResearchRunSummaryV1;
   markdown: string;
 }
+
+/**
+ * A host-validated claim projection in a V2 report. The model may arrange
+ * accepted claim IDs, but only the host copies their statement and provenance
+ * from the private claim/evidence ledgers into this public artifact.
+ */
+export interface ResearchReportClaimV2 {
+  id: string;
+  classification: "fact" | "inference";
+  statement: string;
+  freshness: "current";
+  evidenceIds: string[];
+  sourceIds: string[];
+}
+
+/** A stable, outline-derived grouping of host-validated report claims. */
+export interface ResearchReportSectionV2 {
+  id: string;
+  title: string;
+  question: string;
+  claimIds: string[];
+  coverageTargetIds: string[];
+}
+
+/**
+ * New evidence-first report contract. `markdown` remains an exact
+ * deterministic projection so CLI, browser, copy, download, and future
+ * exporters consume identical bytes.
+ */
+export interface ResearchReportV2 {
+  schema: typeof RESEARCH_REPORT_SCHEMA_V2;
+  title: string;
+  question: string;
+  scope: ResearchScopeV1;
+  executiveSummaryClaimIds: string[];
+  claims: ResearchReportClaimV2[];
+  sections: ResearchReportSectionV2[];
+  coverage: Array<{
+    targetId: string;
+    status: "covered" | "partial" | "uncovered";
+    claimIds: string[];
+    evidenceIds: string[];
+    distinctSourceCount: number;
+  }>;
+  limitations: string[];
+  sources: ResearchSourceReferenceV1[];
+  run: ResearchRunSummaryV1;
+  markdown: string;
+}
+
+export type ResearchReport = ResearchReportV1 | ResearchReportV2;
 
 export type ResearchProgressPhase =
   | "preparing"
