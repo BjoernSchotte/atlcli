@@ -4,6 +4,7 @@ import {
   acceptResearchGraphProposalV1,
   reduceResearchGraphV1,
   validateResearchGraphV1,
+  type ResearchGraphNodeV1,
   type ResearchGraphProposalV1,
   type ResearchGraphV1,
 } from "./graph.js";
@@ -19,6 +20,7 @@ import {
 import {
   parseResearchReconciliationDispositionV1,
   type ResearchAcceptedPacketV1,
+  type ResearchFollowUpProposalV1,
   type ResearchReconciliationDispositionV1,
   type ResearchTaskAttemptV1,
   type ResearchTaskUsageV1,
@@ -98,6 +100,19 @@ export interface ResearchSessionCheckpointV1 {
   artifactRefs: string[];
 }
 
+/**
+ * Host-recorded context for the one optional repair node. Its follow-up is
+ * copied from an already accepted reconciliation packet; it is never a model
+ * authored durable command.
+ */
+export interface ResearchSessionRepairAuthorizationV1 {
+  schema: "atlcli.research-session-repair-authorization/v1";
+  nodeId: string;
+  reconciliationTaskId: string;
+  followUp: ResearchFollowUpProposalV1;
+  authorizedAt: string;
+}
+
 export interface ResearchSessionTurnV1 {
   id: string;
   revision: number;
@@ -110,6 +125,10 @@ export interface ResearchSessionTurnV1 {
    * envelope's graph revision, fences this one pre-dispatch selection.
    */
   graphSelectionCommittedAt?: string;
+  /** The approved catalog's repair node, retained until a disposition activates it. */
+  latentRepairNode?: ResearchGraphNodeV1;
+  /** Present only after the latent node has entered the execution graph. */
+  repairAuthorization?: ResearchSessionRepairAuthorizationV1;
   scopeCandidates: ResearchScopeCandidateV1[];
   scopeBindings: ResearchScopeBindingV1[];
   scopeResolutions: ResearchScopeResolutionV1[];
@@ -120,6 +139,7 @@ export interface ResearchSessionTurnV1 {
   tasks: ResearchTaskAttemptV1[];
   acceptedPackets: ResearchAcceptedPacketV1[];
   reconciliationDispositions: ResearchReconciliationDispositionV1[];
+  reconciliationCommittedAt?: string;
   checkpoints: ResearchSessionCheckpointV1[];
   pauseRequestedAt?: string;
   pausedAt?: string;
@@ -199,7 +219,16 @@ export type ResearchSessionUpdateV1 =
       maximumResultBytes: number;
     })
   | (ResearchSessionFencedUpdateV1 & { kind: "quarantine_packet"; taskId: string; graphRevision: number; reason: string })
-  | (ResearchSessionFencedUpdateV1 & { kind: "record_reconciliation"; disposition: unknown })
+  | (ResearchSessionFencedUpdateV1 & {
+      /** One supervisor decision set, atomically coupled to optional repair activation. */
+      kind: "record_reconciliation";
+      dispositions: unknown[];
+      repair?: {
+        nodeId: string;
+        reconciliationTaskId: string;
+        followUpId: string;
+      };
+    })
   | (ResearchSessionFencedUpdateV1 & { kind: "record_checkpoint"; checkpoint: Omit<ResearchSessionCheckpointV1, "schema" | "sessionRevision"> })
   | (ResearchSessionFencedUpdateV1 & { kind: "resume" })
   | (ResearchSessionFencedUpdateV1 & { kind: "wait_authentication" })
@@ -281,6 +310,22 @@ function hasUnansweredBriefRequirements(current: ResearchSessionTurnV1): boolean
       !current.assumptionDecisions.some((decision) => decision.assumptionId === assumption.id),
   );
   return unansweredQuestion || undecidedAssumption;
+}
+
+function repairFollowUpMatchesDefect(
+  code: "unsupported" | "contradicted" | "missing_coverage" | "overstated" |
+    "instruction_mismatch" | "duplicate" | "stale",
+  reasonCode: ResearchFollowUpProposalV1["reasonCode"],
+): boolean {
+  switch (code) {
+    case "missing_coverage": return reasonCode === "coverage_gap";
+    case "contradicted": return reasonCode === "contradiction";
+    case "stale": return reasonCode === "stale_or_truncated";
+    case "unsupported":
+    case "overstated": return reasonCode === "negative_claim";
+    case "instruction_mismatch":
+    case "duplicate": return false;
+  }
 }
 
 function validateSession(session: ResearchSessionV1): void {
@@ -415,10 +460,15 @@ export function reduceResearchSessionV1(
       invalid("Research graph selection is immutable after it is committed or dispatch begins.");
     }
     const selected = acceptResearchGraphProposalV1(graph, update.proposal);
+    const selectedReconciler = selected.nodes.find((node) => node.roleId === "reconciler");
+    const latentRepairNode = selectedReconciler
+      ? graph.nodes.find((node) => node.kind === "repair")
+      : undefined;
     const nextTurn = {
       ...current,
       graph: selected,
       graphSelectionCommittedAt: update.at,
+      ...(latentRepairNode ? { latentRepairNode: clone(latentRepairNode) } : {}),
       revision: current.revision + 1,
     };
     return withNext(session, update, { status: "running", turns: replaceTurn(session, nextTurn) });
@@ -530,9 +580,94 @@ export function reduceResearchSessionV1(
   if (update.kind === "record_reconciliation") {
     const current = ensureActive(session, ["running"]);
     const graph = requireGraph(current);
-    const disposition = parseResearchReconciliationDispositionV1(update.disposition);
-    if (disposition.basedOnGraphRevision !== graph.revision || !current.acceptedPackets.some((packet) => packet.packetRef === disposition.reconciliationPacketRef) || current.reconciliationDispositions.some((candidate) => candidate.id === disposition.id || candidate.defectId === disposition.defectId)) invalid("Research reconciliation disposition is stale, dangling, or duplicated.");
-    const nextTurn = { ...current, reconciliationDispositions: [...current.reconciliationDispositions, disposition] };
+    if (current.reconciliationCommittedAt || !Array.isArray(update.dispositions) ||
+        update.dispositions.length > 16) {
+      invalid("Research reconciliation dispositions are immutable or invalid.");
+    }
+    const dispositions = update.dispositions.map(parseResearchReconciliationDispositionV1);
+    const reconciliationPacketRefs = new Set(dispositions.map((disposition) =>
+      disposition.reconciliationPacketRef
+    ));
+    const defectIds = new Set(dispositions.map((disposition) => disposition.defectId));
+    const dispositionIds = new Set(dispositions.map((disposition) => disposition.id));
+    if (reconciliationPacketRefs.size > 1 || defectIds.size !== dispositions.length ||
+        dispositionIds.size !== dispositions.length ||
+        dispositions.some((disposition) =>
+          disposition.basedOnGraphRevision !== graph.revision ||
+          current.reconciliationDispositions.some((candidate) =>
+            candidate.id === disposition.id || candidate.defectId === disposition.defectId
+          )
+        )) {
+      invalid("Research reconciliation dispositions are stale, dangling, or duplicated.");
+    }
+    const reconciliationPacket = reconciliationPacketRefs.size === 0
+      ? current.acceptedPackets.find((packet) =>
+          packet.graphRevision === graph.revision && packet.roleId === "reconciler"
+        )
+      : current.acceptedPackets.find((packet) => packet.packetRef === [...reconciliationPacketRefs][0]);
+    if (!reconciliationPacket || reconciliationPacket.graphRevision !== graph.revision ||
+        reconciliationPacket.roleId !== "reconciler" ||
+        !("schema" in reconciliationPacket.body) ||
+        reconciliationPacket.body.schema !== "atlcli.reconciliation-body/v1") {
+      invalid("Research reconciliation dispositions require one accepted reconciliation packet.");
+    }
+    const reconciliationBody = reconciliationPacket.body;
+    if (reconciliationBody.defects.length !== dispositions.length ||
+        reconciliationBody.defects.some((defect) => !defectIds.has(defect.id))) {
+      invalid("Research reconciliation dispositions must cover every accepted defect exactly once.");
+    }
+    let nextGraph = graph;
+    let repairAuthorization: ResearchSessionRepairAuthorizationV1 | undefined;
+    if (update.repair) {
+      const latentRepairNode = current.latentRepairNode;
+      if (!latentRepairNode || current.repairAuthorization ||
+          update.repair.nodeId !== latentRepairNode.id ||
+          update.repair.reconciliationTaskId !== reconciliationPacket.taskId) {
+        invalid("Research reconciliation repair authorization is invalid or already consumed.");
+      }
+      const authorizingDisposition = dispositions.filter((disposition) =>
+        disposition.decision === "add_follow_up" &&
+        disposition.resultingGraphRevision === graph.revision &&
+        disposition.resultingNodeId === latentRepairNode.id
+      );
+      const followUp = reconciliationBody.proposedFollowUps.find((candidate) =>
+        candidate.id === update.repair!.followUpId
+      );
+      const authorizingDefect = authorizingDisposition[0]
+        ? reconciliationBody.defects.find((defect) =>
+            defect.id === authorizingDisposition[0]!.defectId
+          )
+        : undefined;
+      if (authorizingDisposition.length !== 1 || !followUp || !authorizingDefect ||
+          !repairFollowUpMatchesDefect(authorizingDefect.code, followUp.reasonCode)) {
+        invalid("Research reconciliation repair must reference one accepted add-follow-up disposition.");
+      }
+      nextGraph = reduceResearchGraphV1(graph, {
+        kind: "activate_repair",
+        expectedRevision: graph.revision,
+        repairNode: latentRepairNode,
+      });
+      repairAuthorization = {
+        schema: "atlcli.research-session-repair-authorization/v1",
+        nodeId: latentRepairNode.id,
+        reconciliationTaskId: reconciliationPacket.taskId,
+        followUp: clone(followUp),
+        authorizedAt: update.at,
+      };
+    } else if (dispositions.some((disposition) => disposition.resultingNodeId !== undefined ||
+        disposition.resultingGraphRevision !== undefined)) {
+      invalid("Research reconciliation cannot record a graph mutation without repair authorization.");
+    }
+    const nextTurn = {
+      ...current,
+      graph: nextGraph,
+      reconciliationDispositions: [...current.reconciliationDispositions, ...dispositions],
+      reconciliationCommittedAt: update.at,
+      ...(repairAuthorization ? {
+        repairAuthorization,
+        latentRepairNode: undefined,
+      } : {}),
+    };
     return withNext(session, update, { status: "running", turns: replaceTurn(session, nextTurn) });
   }
 
@@ -584,7 +719,8 @@ export function reduceResearchSessionV1(
   if (update.kind === "complete") {
     const current = ensureActive(session, ["running"]);
     const graph = requireGraph(current);
-    if (graph.status !== "complete" || current.tasks.some((task) => task.status === "running" || task.status === "outcome_unknown") || new Set(current.reconciliationDispositions.map((candidate) => candidate.defectId)).size !== current.reconciliationDispositions.length) invalid("Research session cannot complete with unresolved work.");
+    const reconciliationSelected = graph.nodes.some((node) => node.roleId === "reconciler");
+    if (graph.status !== "complete" || current.tasks.some((task) => task.status === "running" || task.status === "outcome_unknown") || new Set(current.reconciliationDispositions.map((candidate) => candidate.defectId)).size !== current.reconciliationDispositions.length || (reconciliationSelected && !current.reconciliationCommittedAt)) invalid("Research session cannot complete with unresolved work.");
     return withNext(session, update, { status: "complete", activeTurnId: undefined, turns: replaceTurn(session, { ...current, completedAt: update.at }) });
   }
 

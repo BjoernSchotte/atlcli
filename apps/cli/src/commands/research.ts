@@ -27,7 +27,6 @@ import {
   RESEARCH_SCOPE_EXPANSION_MODES_V1,
   ResearchScopeCatalogBroker,
   ResearchRunBudget,
-  SqliteResearchSessionStoreV1,
   createResearchSessionV1,
   createResearchKeyScopeSeedV1,
   createRestResearchProviders,
@@ -52,6 +51,7 @@ import {
   type ResearchWorkspace,
   initializeResearchSessionTurnV1,
 } from "@atlcli/research/node";
+import { SqliteResearchSessionStoreV1 } from "@atlcli/research/bun";
 import {
   composeResearchGraphV1,
   createStandardResearchBriefV1,

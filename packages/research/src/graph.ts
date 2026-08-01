@@ -909,6 +909,17 @@ export function acceptResearchGraphProposalV1(
 
 export type ResearchGraphUpdateV1 =
   | { kind: "approve"; expectedRevision: number; approvedAt: string }
+  | {
+      /**
+       * Reintroduce the one host-retained repair node after a reconciler packet
+       * and its host-recorded dispositions authorize it. This does not revise
+       * the approved envelope: the repair node was part of that envelope and
+       * keeps the same graph revision as the packet/disposition it repairs.
+       */
+      kind: "activate_repair";
+      expectedRevision: number;
+      repairNode: ResearchGraphNodeV1;
+    }
   | { kind: "start_node"; expectedRevision: number; nodeId: string }
   | { kind: "complete_node"; expectedRevision: number; nodeId: string; packetRef: string }
   | { kind: "fail_node"; expectedRevision: number; nodeId: string; stopReason: string }
@@ -937,6 +948,50 @@ export function reduceResearchGraphV1(graph: ResearchGraphV1, update: ResearchGr
     };
     validateResearchGraphV1(approved);
     return approved;
+  }
+  if (update.kind === "activate_repair") {
+    if (graph.status === "complete" || graph.nodes.some((node) => node.kind === "repair")) {
+      invalid("Research repair activation is unavailable for this graph state.");
+    }
+    const reconciler = graph.nodes.find((node) => node.roleId === "reconciler");
+    const synthesizer = graph.nodes.find((node) => node.roleId === "synthesizer");
+    if (!reconciler || reconciler.status !== "complete" || !synthesizer ||
+        (synthesizer.status !== "ready" && synthesizer.status !== "blocked")) {
+      invalid("Research repair activation requires a completed reconciler before synthesis.");
+    }
+    const retained = structuredClone(update.repairNode);
+    if (retained.kind !== "repair" || retained.executor !== "subagent" ||
+        retained.roleId !== "contradiction-verifier" ||
+        retained.dependencies.length !== 1 || retained.dependencies[0] !== reconciler.id ||
+        retained.status === "complete" || retained.status === "running" ||
+        retained.status === "failed" || retained.status === "quarantined") {
+      invalid("Research repair activation does not match the host-retained repair node.");
+    }
+    const { packetRef: _packetRef, stopReason: _stopReason, ...repairDescriptor } = retained;
+    const repairNode: ResearchGraphNodeV1 = {
+      ...repairDescriptor,
+      dependencies: [reconciler.id],
+      status: "ready",
+      attempt: 0,
+    };
+    const nodes = graph.nodes.map((node) => node.id === synthesizer.id
+      ? {
+          ...node,
+          dependencies: [...node.dependencies, repairNode.id],
+          status: "blocked" as const,
+        }
+      : node,
+    );
+    nodes.push(repairNode);
+    const activated: ResearchGraphV1 = {
+      ...graph,
+      status: "running",
+      nodes,
+      roleDecisions: roleDecisions(nodes),
+      totalBudget: aggregateBudget(nodes),
+    };
+    validateResearchGraphV1(activated);
+    return activated;
   }
   const index = graph.nodes.findIndex((node) => node.id === update.nodeId);
   if (index < 0) invalid("Research graph update references an unknown node.");

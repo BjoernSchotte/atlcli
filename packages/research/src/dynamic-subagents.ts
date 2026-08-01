@@ -32,10 +32,15 @@ import {
   type ResearchAcceptedPacketV1,
   type ResearchReconciliationInputV1,
   type ResearchReconciliationDispositionV1,
+  type ResearchTaskAttemptV1,
   type ResearchTaskOutputSchemaV1,
   type ResearchTaskUsageV1,
 } from "./workflow-contracts.js";
-import { InMemoryResearchSubagentDispatchPort } from "./task-ledger.js";
+import {
+  InMemoryResearchSubagentDispatchPort,
+  reduceResearchAcceptedPacketV1,
+} from "./task-ledger.js";
+import type { ResearchSessionDispatchJournalV1 } from "./session-dispatch-journal.js";
 import {
   DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY,
   ResearchDispatchError,
@@ -472,7 +477,7 @@ export function createBoundedResearchSubagentMiddleware(
     onFatal?: (error: unknown) => void;
     availableSourceIdsForNode?: (nodeId: string) => readonly string[];
     capabilityCallsForNode?: (nodeId: string) => number;
-    onAcceptedPacket?: (packet: ResearchAcceptedPacketV1) => void;
+    onAcceptedPacket?: (packet: ResearchAcceptedPacketV1) => void | Promise<void>;
     onRejectedStructuredResult?: (input: {
       taskId: string;
       role: ResearchGraphRoleV1;
@@ -482,6 +487,8 @@ export function createBoundedResearchSubagentMiddleware(
     structuredOutputStrategy?: "tool" | "provider";
     /** Accepted supervisor selection. When present, no task is admitted before it resolves. */
     activeGraph?: () => ResearchGraphV1 | undefined;
+    /** Optional durable owner. It commits lifecycle transitions before publication. */
+    durableDispatchJournal?: ResearchSessionDispatchJournalV1;
     /** Body-free host index injected only into an admitted T3 reconciler task. */
     reconciliationInputContext?: () => ResearchReconciliationInputV1;
     /** Host-recorded dispositions injected only after the task envelope passes admission. */
@@ -544,23 +551,28 @@ export function createBoundedResearchSubagentMiddleware(
         ? RESEARCH_RECONCILIATION_BODY_SCHEMA_V1
         : RESEARCH_PACKET_BODY_SCHEMA_V1;
 
+  const taskAttemptForNode = (
+    node: ResearchGraphNodeV1 & { roleId: ResearchGraphRoleV1 },
+    executionGraph: ResearchGraphV1,
+  ): ResearchTaskAttemptV1 => ({
+    schema: RESEARCH_TASK_ATTEMPT_SCHEMA_V1,
+    taskId: researchTaskIdForNodeV1(executionGraph, node),
+    nodeId: node.id,
+    graphRevision: executionGraph.revision,
+    attempt: 1,
+    executor: "subagent",
+    roleId: node.roleId,
+    grantedCapabilityIds: [...node.grantedCapabilityIds],
+    typedIntentRefs: [...node.typedIntentRefs],
+    expectedOutputSchema: expectedOutputSchema(node.roleId),
+    budget: structuredClone(node.budget),
+    status: "ready",
+    dispatchState: "not_started",
+    createdAt: executionGraph.createdAt,
+  });
+
   for (const node of executableNodes) {
-    dispatchPort.admit({
-      schema: RESEARCH_TASK_ATTEMPT_SCHEMA_V1,
-      taskId: researchTaskIdForNodeV1(graph, node),
-      nodeId: node.id,
-      graphRevision: graph.revision,
-      attempt: 1,
-      executor: "subagent",
-      roleId: node.roleId,
-      grantedCapabilityIds: [...node.grantedCapabilityIds],
-      typedIntentRefs: [...node.typedIntentRefs],
-      expectedOutputSchema: expectedOutputSchema(node.roleId),
-      budget: structuredClone(node.budget),
-      status: "ready",
-      dispatchState: "not_started",
-      createdAt: graph.createdAt,
-    });
+    dispatchPort.admit(taskAttemptForNode(node, graph));
   }
 
   const structuredCandidate = (result: unknown): unknown => {
@@ -690,6 +702,7 @@ export function createBoundedResearchSubagentMiddleware(
       ...(diagnostic.code ? { errorCode: diagnostic.code } : {}),
     });
   };
+  const durableDispatchJournal = options.durableDispatchJournal;
   const adapter = createResearchDispatchInterceptionAdapter({
     admissions: options.activeGraph ? [] : admissions,
     maxTasks: executableNodes.length,
@@ -765,6 +778,25 @@ export function createBoundedResearchSubagentMiddleware(
       }
     },
     projectResult: structuredCandidate,
+    ...(durableDispatchJournal ? {
+      beforeInvoke: ({ taskId }: { taskId: string }) => {
+        const catalogNode = nodeByTaskId.get(taskId);
+        const executionGraph = options.activeGraph?.() ?? graph;
+        const activeNode = catalogNode && executionGraph.nodes.find((node) => node.id === catalogNode.id);
+        if (!activeNode || !activeNode.roleId || activeNode.executor !== "subagent") {
+          throw new ResearchDispatchError(
+            "graph-proposal-required",
+            "The durable research graph does not admit this task node.",
+          );
+        }
+        return durableDispatchJournal
+          .admitAndStart(taskAttemptForNode({
+            ...activeNode,
+            roleId: activeNode.roleId,
+          }, executionGraph))
+          .then(() => undefined);
+      },
+    } : {}),
     acceptResult(taskId, result, rawResult) {
       const node = nodeByTaskId.get(taskId);
       if (!node) throw new Error(`Research task result has no graph node: ${taskId}`);
@@ -793,15 +825,66 @@ export function createBoundedResearchSubagentMiddleware(
         durationMs: Math.max(0, now() - (startedAtByTaskId.get(taskId) ?? now())),
         costMicros: 0,
       };
-      const packet = dispatchPort.accept({
+      const packetInput = {
         taskId,
         graphRevision: graph.revision,
         body: result,
         usage: observed,
         acceptedAt: new Date(now()).toISOString(),
         availableSourceIds: options.availableSourceIdsForNode?.(node.id) ?? [],
+      };
+      if (!durableDispatchJournal) {
+        const packet = dispatchPort.accept(packetInput);
+        options.onAcceptedPacket?.(packet);
+        return;
+      }
+      const localAttempt = dispatchPort.attempt(taskId);
+      if (!localAttempt) throw new Error(`Research task result has no local attempt: ${taskId}`);
+      const preview = reduceResearchAcceptedPacketV1({
+        current: localAttempt,
+        ...packetInput,
+        maximumResultBytes: node.budget.maxResultBytes,
       });
-      options.onAcceptedPacket?.(packet);
+      const acceptLocally = (): void | Promise<void> => {
+        const packet = dispatchPort.accept(packetInput);
+        return options.onAcceptedPacket?.(packet);
+      };
+      return durableDispatchJournal
+        .acceptPacket({
+          taskId,
+          graphRevision: graph.revision,
+          body: result,
+          usage: observed,
+          availableSourceIds: [...packetInput.availableSourceIds],
+          maximumResultBytes: node.budget.maxResultBytes,
+        })
+        .then((durable) => {
+          if (durable.packetRef !== preview.packet.packetRef ||
+              durable.graphRevision !== preview.packet.graphRevision) {
+            throw new Error("Durable research packet diverged from the local validated envelope.");
+          }
+          return acceptLocally();
+        });
+    },
+    onUncommittedOutcome: async ({ taskId, reason, error }) => {
+      if (!durableDispatchJournal) return;
+      const executionGraph = options.activeGraph?.() ?? graph;
+      const structuredOutputRejected = error instanceof ResearchDispatchError &&
+        error.code === "structured-output-invalid";
+      if (reason === "result-too-large" || structuredOutputRejected) {
+        await durableDispatchJournal.quarantine(
+          taskId,
+          executionGraph.revision,
+          reason === "result-too-large" ? "result-too-large" : "structured-output-invalid",
+        );
+        return;
+      }
+      await durableDispatchJournal.markOutcomeUnknown(taskId, executionGraph.revision);
+    },
+    onLateResult: async ({ taskId }) => {
+      if (!durableDispatchJournal) return;
+      const executionGraph = options.activeGraph?.() ?? graph;
+      await durableDispatchJournal.quarantine(taskId, executionGraph.revision, "late-result");
     },
     onDiagnostic: emitDispatchDiagnostic,
   });

@@ -118,7 +118,17 @@ export declare function createResearchDispatchInterceptionAdapter(options: {
     invokeUpstream(input: ResearchTaskToolInputV1, config: RunnableConfig): Promise<unknown>;
     projectResult?: (value: unknown) => unknown;
     projectDependencyResult?: (taskId: string, acceptedResult: unknown) => unknown | undefined;
-    acceptResult?: (taskId: string, result: unknown, rawResult: unknown) => void;
+    beforeInvoke?: (input: {
+        taskId: string;
+        admission: ResearchTaskAdmissionV1;
+    }) => void | Promise<void>;
+    acceptResult?: (taskId: string, result: unknown, rawResult: unknown) => void | Promise<void>;
+    onUncommittedOutcome?: (outcome: ResearchUncommittedDispatchOutcomeV1) => void | Promise<void>;
+    onLateResult?: (input: {
+        taskId: string;
+        admission: ResearchTaskAdmissionV1;
+        resultBytes?: number;
+    }) => void | Promise<void>;
     onDiagnostic?: (diagnostic: ResearchDispatchDiagnosticV1) => void;
 }): ResearchDispatchInterceptionAdapter;
 
@@ -1069,7 +1079,7 @@ export declare class ResearchDispatchError extends Error {
 }
 
 // export: ResearchDispatchErrorCodeV1
-export type ResearchDispatchErrorCodeV1 = "invalid-task-description" | "unknown-task" | "subagent-type-mismatch" | "response-schema-mismatch" | "task-budget-exceeded" | "task-already-dispatched" | "dependency-not-ready" | "dependency-result-mismatch" | "graph-proposal-required" | "repair-not-authorized" | "concurrency-exceeded" | "capability-denied" | "result-too-large" | "structured-output-invalid" | "subagent-provider-error" | "aborted" | "timeout" | "late-result" | "admissions-locked";
+export type ResearchDispatchErrorCodeV1 = "invalid-task-description" | "unknown-task" | "subagent-type-mismatch" | "response-schema-mismatch" | "task-budget-exceeded" | "task-already-dispatched" | "dependency-not-ready" | "dependency-result-mismatch" | "graph-proposal-required" | "repair-not-authorized" | "concurrency-exceeded" | "capability-denied" | "result-too-large" | "structured-output-invalid" | "subagent-provider-error" | "durable-journal-failed" | "aborted" | "timeout" | "late-result" | "admissions-locked";
 
 // export: ResearchDispatchInterceptionAdapter
 export interface ResearchDispatchInterceptionAdapter {
@@ -1436,6 +1446,10 @@ export type ResearchGraphUpdateV1 = {
     kind: "approve";
     expectedRevision: number;
     approvedAt: string;
+} | {
+    kind: "activate_repair";
+    expectedRevision: number;
+    repairNode: ResearchGraphNodeV1;
 } | {
     kind: "start_node";
     expectedRevision: number;
@@ -2165,6 +2179,45 @@ export interface ResearchSessionCommitV1 {
     event: ResearchSessionEventV1;
 }
 
+// export: ResearchSessionDispatchJournalV1
+export declare class ResearchSessionDispatchJournalV1 {
+    #private;
+    constructor(options: ResearchSessionDispatchJournalV1Options);
+    commitGraphSelection(proposal: ResearchGraphProposalV1): Promise<ResearchGraphV1>;
+    admitAndStart(input: ResearchTaskAttemptV1 & {
+        providerRequestId?: string;
+    }): Promise<ResearchTaskAttemptV1>;
+    acceptPacket(input: {
+        taskId: string;
+        graphRevision: number;
+        body: unknown;
+        usage: ResearchTaskUsageV1;
+        availableSourceIds: string[];
+        maximumResultBytes: number;
+    }): Promise<ResearchAcceptedPacketV1>;
+    markOutcomeUnknown(taskId: string, graphRevision: number): Promise<ResearchTaskAttemptV1>;
+    quarantine(taskId: string, graphRevision: number, reason: string): Promise<ResearchTaskAttemptV1>;
+    recordReconciliation(input: {
+        dispositions: readonly ResearchReconciliationDispositionV1[];
+        repair?: Pick<ResearchSessionRepairAuthorizationV1, "nodeId" | "reconciliationTaskId"> & {
+            followUpId: string;
+        };
+    }): Promise<{
+        dispositions: ResearchReconciliationDispositionV1[];
+        graph: ResearchGraphV1;
+        repairAuthorization?: ResearchSessionRepairAuthorizationV1;
+    }>;
+    complete(): Promise<ResearchSessionV1>;
+}
+
+// export: ResearchSessionDispatchJournalV1Options
+export interface ResearchSessionDispatchJournalV1Options {
+    store: ResearchSessionStoreV1;
+    sessionId: string;
+    turnId: string;
+    now?: () => string;
+}
+
 // export: ResearchSessionEventV1
 export interface ResearchSessionEventV1 {
     schema: typeof RESEARCH_SESSION_EVENT_SCHEMA_V1;
@@ -2183,6 +2236,15 @@ export interface ResearchSessionLeaseV1 {
     ownerId: string;
     heartbeatAt: string;
     expiresAt: string;
+}
+
+// export: ResearchSessionRepairAuthorizationV1
+export interface ResearchSessionRepairAuthorizationV1 {
+    schema: "atlcli.research-session-repair-authorization/v1";
+    nodeId: string;
+    reconciliationTaskId: string;
+    followUp: ResearchFollowUpProposalV1;
+    authorizedAt: string;
 }
 
 // export: ResearchSessionRetentionV1
@@ -2263,6 +2325,9 @@ export interface ResearchSessionTurnV1 {
     createdAt: string;
     brief?: ResearchBriefV1;
     graph?: ResearchGraphV1;
+    graphSelectionCommittedAt?: string;
+    latentRepairNode?: ResearchGraphNodeV1;
+    repairAuthorization?: ResearchSessionRepairAuthorizationV1;
     scopeCandidates: ResearchScopeCandidateV1[];
     scopeBindings: ResearchScopeBindingV1[];
     scopeResolutions: ResearchScopeResolutionV1[];
@@ -2273,6 +2338,7 @@ export interface ResearchSessionTurnV1 {
     tasks: ResearchTaskAttemptV1[];
     acceptedPackets: ResearchAcceptedPacketV1[];
     reconciliationDispositions: ResearchReconciliationDispositionV1[];
+    reconciliationCommittedAt?: string;
     checkpoints: ResearchSessionCheckpointV1[];
     pauseRequestedAt?: string;
     pausedAt?: string;
@@ -2297,6 +2363,9 @@ export type ResearchSessionUpdateV1 = (ResearchSessionFencedUpdateV1 & {
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "approve_graph";
     graphRevision: number;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "commit_graph_selection";
+    proposal: ResearchGraphProposalV1;
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "revise_graph";
     graph: ResearchGraphV1;
@@ -2365,7 +2434,12 @@ export type ResearchSessionUpdateV1 = (ResearchSessionFencedUpdateV1 & {
     reason: string;
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "record_reconciliation";
-    disposition: unknown;
+    dispositions: unknown[];
+    repair?: {
+        nodeId: string;
+        reconciliationTaskId: string;
+        followUpId: string;
+    };
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "record_checkpoint";
     checkpoint: Omit<ResearchSessionCheckpointV1, "schema" | "sessionRevision">;
@@ -2575,6 +2649,18 @@ export interface ResearchTimeWindowV1 {
 
 // export: ResearchToolId
 export type ResearchToolId = (typeof RESEARCH_TOOL_IDS)[number];
+
+// export: ResearchUncommittedDispatchOutcomeV1
+export interface ResearchUncommittedDispatchOutcomeV1 {
+    taskId: string;
+    admission: ResearchTaskAdmissionV1;
+    reason: ResearchUncommittedOutcomeReasonV1;
+    error?: unknown;
+    resultBytes?: number;
+}
+
+// export: ResearchUncommittedOutcomeReasonV1
+export type ResearchUncommittedOutcomeReasonV1 = "aborted" | "upstream-error" | "result-too-large" | "result-commit-failed";
 
 // export: ResearchWorkspace
 export interface ResearchWorkspace {
@@ -2790,7 +2876,17 @@ export declare function createResearchDispatchInterceptionAdapter(options: {
     invokeUpstream(input: ResearchTaskToolInputV1, config: RunnableConfig): Promise<unknown>;
     projectResult?: (value: unknown) => unknown;
     projectDependencyResult?: (taskId: string, acceptedResult: unknown) => unknown | undefined;
-    acceptResult?: (taskId: string, result: unknown, rawResult: unknown) => void;
+    beforeInvoke?: (input: {
+        taskId: string;
+        admission: ResearchTaskAdmissionV1;
+    }) => void | Promise<void>;
+    acceptResult?: (taskId: string, result: unknown, rawResult: unknown) => void | Promise<void>;
+    onUncommittedOutcome?: (outcome: ResearchUncommittedDispatchOutcomeV1) => void | Promise<void>;
+    onLateResult?: (input: {
+        taskId: string;
+        admission: ResearchTaskAdmissionV1;
+        resultBytes?: number;
+    }) => void | Promise<void>;
     onDiagnostic?: (diagnostic: ResearchDispatchDiagnosticV1) => void;
 }): ResearchDispatchInterceptionAdapter;
 
@@ -3732,7 +3828,7 @@ export declare class ResearchDispatchError extends Error {
 }
 
 // export: ResearchDispatchErrorCodeV1
-export type ResearchDispatchErrorCodeV1 = "invalid-task-description" | "unknown-task" | "subagent-type-mismatch" | "response-schema-mismatch" | "task-budget-exceeded" | "task-already-dispatched" | "dependency-not-ready" | "dependency-result-mismatch" | "graph-proposal-required" | "repair-not-authorized" | "concurrency-exceeded" | "capability-denied" | "result-too-large" | "structured-output-invalid" | "subagent-provider-error" | "aborted" | "timeout" | "late-result" | "admissions-locked";
+export type ResearchDispatchErrorCodeV1 = "invalid-task-description" | "unknown-task" | "subagent-type-mismatch" | "response-schema-mismatch" | "task-budget-exceeded" | "task-already-dispatched" | "dependency-not-ready" | "dependency-result-mismatch" | "graph-proposal-required" | "repair-not-authorized" | "concurrency-exceeded" | "capability-denied" | "result-too-large" | "structured-output-invalid" | "subagent-provider-error" | "durable-journal-failed" | "aborted" | "timeout" | "late-result" | "admissions-locked";
 
 // export: ResearchDispatchInterceptionAdapter
 export interface ResearchDispatchInterceptionAdapter {
@@ -4099,6 +4195,10 @@ export type ResearchGraphUpdateV1 = {
     kind: "approve";
     expectedRevision: number;
     approvedAt: string;
+} | {
+    kind: "activate_repair";
+    expectedRevision: number;
+    repairNode: ResearchGraphNodeV1;
 } | {
     kind: "start_node";
     expectedRevision: number;
@@ -4828,6 +4928,45 @@ export interface ResearchSessionCommitV1 {
     event: ResearchSessionEventV1;
 }
 
+// export: ResearchSessionDispatchJournalV1
+export declare class ResearchSessionDispatchJournalV1 {
+    #private;
+    constructor(options: ResearchSessionDispatchJournalV1Options);
+    commitGraphSelection(proposal: ResearchGraphProposalV1): Promise<ResearchGraphV1>;
+    admitAndStart(input: ResearchTaskAttemptV1 & {
+        providerRequestId?: string;
+    }): Promise<ResearchTaskAttemptV1>;
+    acceptPacket(input: {
+        taskId: string;
+        graphRevision: number;
+        body: unknown;
+        usage: ResearchTaskUsageV1;
+        availableSourceIds: string[];
+        maximumResultBytes: number;
+    }): Promise<ResearchAcceptedPacketV1>;
+    markOutcomeUnknown(taskId: string, graphRevision: number): Promise<ResearchTaskAttemptV1>;
+    quarantine(taskId: string, graphRevision: number, reason: string): Promise<ResearchTaskAttemptV1>;
+    recordReconciliation(input: {
+        dispositions: readonly ResearchReconciliationDispositionV1[];
+        repair?: Pick<ResearchSessionRepairAuthorizationV1, "nodeId" | "reconciliationTaskId"> & {
+            followUpId: string;
+        };
+    }): Promise<{
+        dispositions: ResearchReconciliationDispositionV1[];
+        graph: ResearchGraphV1;
+        repairAuthorization?: ResearchSessionRepairAuthorizationV1;
+    }>;
+    complete(): Promise<ResearchSessionV1>;
+}
+
+// export: ResearchSessionDispatchJournalV1Options
+export interface ResearchSessionDispatchJournalV1Options {
+    store: ResearchSessionStoreV1;
+    sessionId: string;
+    turnId: string;
+    now?: () => string;
+}
+
 // export: ResearchSessionEventV1
 export interface ResearchSessionEventV1 {
     schema: typeof RESEARCH_SESSION_EVENT_SCHEMA_V1;
@@ -4846,6 +4985,15 @@ export interface ResearchSessionLeaseV1 {
     ownerId: string;
     heartbeatAt: string;
     expiresAt: string;
+}
+
+// export: ResearchSessionRepairAuthorizationV1
+export interface ResearchSessionRepairAuthorizationV1 {
+    schema: "atlcli.research-session-repair-authorization/v1";
+    nodeId: string;
+    reconciliationTaskId: string;
+    followUp: ResearchFollowUpProposalV1;
+    authorizedAt: string;
 }
 
 // export: ResearchSessionRetentionV1
@@ -4926,6 +5074,9 @@ export interface ResearchSessionTurnV1 {
     createdAt: string;
     brief?: ResearchBriefV1;
     graph?: ResearchGraphV1;
+    graphSelectionCommittedAt?: string;
+    latentRepairNode?: ResearchGraphNodeV1;
+    repairAuthorization?: ResearchSessionRepairAuthorizationV1;
     scopeCandidates: ResearchScopeCandidateV1[];
     scopeBindings: ResearchScopeBindingV1[];
     scopeResolutions: ResearchScopeResolutionV1[];
@@ -4936,6 +5087,7 @@ export interface ResearchSessionTurnV1 {
     tasks: ResearchTaskAttemptV1[];
     acceptedPackets: ResearchAcceptedPacketV1[];
     reconciliationDispositions: ResearchReconciliationDispositionV1[];
+    reconciliationCommittedAt?: string;
     checkpoints: ResearchSessionCheckpointV1[];
     pauseRequestedAt?: string;
     pausedAt?: string;
@@ -4960,6 +5112,9 @@ export type ResearchSessionUpdateV1 = (ResearchSessionFencedUpdateV1 & {
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "approve_graph";
     graphRevision: number;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "commit_graph_selection";
+    proposal: ResearchGraphProposalV1;
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "revise_graph";
     graph: ResearchGraphV1;
@@ -5028,7 +5183,12 @@ export type ResearchSessionUpdateV1 = (ResearchSessionFencedUpdateV1 & {
     reason: string;
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "record_reconciliation";
-    disposition: unknown;
+    dispositions: unknown[];
+    repair?: {
+        nodeId: string;
+        reconciliationTaskId: string;
+        followUpId: string;
+    };
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "record_checkpoint";
     checkpoint: Omit<ResearchSessionCheckpointV1, "schema" | "sessionRevision">;
@@ -5239,6 +5399,18 @@ export interface ResearchTimeWindowV1 {
 // export: ResearchToolId
 export type ResearchToolId = (typeof RESEARCH_TOOL_IDS)[number];
 
+// export: ResearchUncommittedDispatchOutcomeV1
+export interface ResearchUncommittedDispatchOutcomeV1 {
+    taskId: string;
+    admission: ResearchTaskAdmissionV1;
+    reason: ResearchUncommittedOutcomeReasonV1;
+    error?: unknown;
+    resultBytes?: number;
+}
+
+// export: ResearchUncommittedOutcomeReasonV1
+export type ResearchUncommittedOutcomeReasonV1 = "aborted" | "upstream-error" | "result-too-large" | "result-commit-failed";
+
 // export: ResearchWorkspace
 export interface ResearchWorkspace {
     readFile(path: string): Promise<string | undefined>;
@@ -5442,7 +5614,17 @@ export declare function createResearchDispatchInterceptionAdapter(options: {
     invokeUpstream(input: ResearchTaskToolInputV1, config: RunnableConfig): Promise<unknown>;
     projectResult?: (value: unknown) => unknown;
     projectDependencyResult?: (taskId: string, acceptedResult: unknown) => unknown | undefined;
-    acceptResult?: (taskId: string, result: unknown, rawResult: unknown) => void;
+    beforeInvoke?: (input: {
+        taskId: string;
+        admission: ResearchTaskAdmissionV1;
+    }) => void | Promise<void>;
+    acceptResult?: (taskId: string, result: unknown, rawResult: unknown) => void | Promise<void>;
+    onUncommittedOutcome?: (outcome: ResearchUncommittedDispatchOutcomeV1) => void | Promise<void>;
+    onLateResult?: (input: {
+        taskId: string;
+        admission: ResearchTaskAdmissionV1;
+        resultBytes?: number;
+    }) => void | Promise<void>;
     onDiagnostic?: (diagnostic: ResearchDispatchDiagnosticV1) => void;
 }): ResearchDispatchInterceptionAdapter;
 
@@ -6393,7 +6575,7 @@ export declare class ResearchDispatchError extends Error {
 }
 
 // export: ResearchDispatchErrorCodeV1
-export type ResearchDispatchErrorCodeV1 = "invalid-task-description" | "unknown-task" | "subagent-type-mismatch" | "response-schema-mismatch" | "task-budget-exceeded" | "task-already-dispatched" | "dependency-not-ready" | "dependency-result-mismatch" | "graph-proposal-required" | "repair-not-authorized" | "concurrency-exceeded" | "capability-denied" | "result-too-large" | "structured-output-invalid" | "subagent-provider-error" | "aborted" | "timeout" | "late-result" | "admissions-locked";
+export type ResearchDispatchErrorCodeV1 = "invalid-task-description" | "unknown-task" | "subagent-type-mismatch" | "response-schema-mismatch" | "task-budget-exceeded" | "task-already-dispatched" | "dependency-not-ready" | "dependency-result-mismatch" | "graph-proposal-required" | "repair-not-authorized" | "concurrency-exceeded" | "capability-denied" | "result-too-large" | "structured-output-invalid" | "subagent-provider-error" | "durable-journal-failed" | "aborted" | "timeout" | "late-result" | "admissions-locked";
 
 // export: ResearchDispatchInterceptionAdapter
 export interface ResearchDispatchInterceptionAdapter {
@@ -6760,6 +6942,10 @@ export type ResearchGraphUpdateV1 = {
     kind: "approve";
     expectedRevision: number;
     approvedAt: string;
+} | {
+    kind: "activate_repair";
+    expectedRevision: number;
+    repairNode: ResearchGraphNodeV1;
 } | {
     kind: "start_node";
     expectedRevision: number;
@@ -7489,6 +7675,45 @@ export interface ResearchSessionCommitV1 {
     event: ResearchSessionEventV1;
 }
 
+// export: ResearchSessionDispatchJournalV1
+export declare class ResearchSessionDispatchJournalV1 {
+    #private;
+    constructor(options: ResearchSessionDispatchJournalV1Options);
+    commitGraphSelection(proposal: ResearchGraphProposalV1): Promise<ResearchGraphV1>;
+    admitAndStart(input: ResearchTaskAttemptV1 & {
+        providerRequestId?: string;
+    }): Promise<ResearchTaskAttemptV1>;
+    acceptPacket(input: {
+        taskId: string;
+        graphRevision: number;
+        body: unknown;
+        usage: ResearchTaskUsageV1;
+        availableSourceIds: string[];
+        maximumResultBytes: number;
+    }): Promise<ResearchAcceptedPacketV1>;
+    markOutcomeUnknown(taskId: string, graphRevision: number): Promise<ResearchTaskAttemptV1>;
+    quarantine(taskId: string, graphRevision: number, reason: string): Promise<ResearchTaskAttemptV1>;
+    recordReconciliation(input: {
+        dispositions: readonly ResearchReconciliationDispositionV1[];
+        repair?: Pick<ResearchSessionRepairAuthorizationV1, "nodeId" | "reconciliationTaskId"> & {
+            followUpId: string;
+        };
+    }): Promise<{
+        dispositions: ResearchReconciliationDispositionV1[];
+        graph: ResearchGraphV1;
+        repairAuthorization?: ResearchSessionRepairAuthorizationV1;
+    }>;
+    complete(): Promise<ResearchSessionV1>;
+}
+
+// export: ResearchSessionDispatchJournalV1Options
+export interface ResearchSessionDispatchJournalV1Options {
+    store: ResearchSessionStoreV1;
+    sessionId: string;
+    turnId: string;
+    now?: () => string;
+}
+
 // export: ResearchSessionEventV1
 export interface ResearchSessionEventV1 {
     schema: typeof RESEARCH_SESSION_EVENT_SCHEMA_V1;
@@ -7507,6 +7732,15 @@ export interface ResearchSessionLeaseV1 {
     ownerId: string;
     heartbeatAt: string;
     expiresAt: string;
+}
+
+// export: ResearchSessionRepairAuthorizationV1
+export interface ResearchSessionRepairAuthorizationV1 {
+    schema: "atlcli.research-session-repair-authorization/v1";
+    nodeId: string;
+    reconciliationTaskId: string;
+    followUp: ResearchFollowUpProposalV1;
+    authorizedAt: string;
 }
 
 // export: ResearchSessionRetentionV1
@@ -7587,6 +7821,9 @@ export interface ResearchSessionTurnV1 {
     createdAt: string;
     brief?: ResearchBriefV1;
     graph?: ResearchGraphV1;
+    graphSelectionCommittedAt?: string;
+    latentRepairNode?: ResearchGraphNodeV1;
+    repairAuthorization?: ResearchSessionRepairAuthorizationV1;
     scopeCandidates: ResearchScopeCandidateV1[];
     scopeBindings: ResearchScopeBindingV1[];
     scopeResolutions: ResearchScopeResolutionV1[];
@@ -7597,6 +7834,7 @@ export interface ResearchSessionTurnV1 {
     tasks: ResearchTaskAttemptV1[];
     acceptedPackets: ResearchAcceptedPacketV1[];
     reconciliationDispositions: ResearchReconciliationDispositionV1[];
+    reconciliationCommittedAt?: string;
     checkpoints: ResearchSessionCheckpointV1[];
     pauseRequestedAt?: string;
     pausedAt?: string;
@@ -7621,6 +7859,9 @@ export type ResearchSessionUpdateV1 = (ResearchSessionFencedUpdateV1 & {
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "approve_graph";
     graphRevision: number;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "commit_graph_selection";
+    proposal: ResearchGraphProposalV1;
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "revise_graph";
     graph: ResearchGraphV1;
@@ -7689,7 +7930,12 @@ export type ResearchSessionUpdateV1 = (ResearchSessionFencedUpdateV1 & {
     reason: string;
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "record_reconciliation";
-    disposition: unknown;
+    dispositions: unknown[];
+    repair?: {
+        nodeId: string;
+        reconciliationTaskId: string;
+        followUpId: string;
+    };
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "record_checkpoint";
     checkpoint: Omit<ResearchSessionCheckpointV1, "schema" | "sessionRevision">;
@@ -7900,6 +8146,18 @@ export interface ResearchTimeWindowV1 {
 // export: ResearchToolId
 export type ResearchToolId = (typeof RESEARCH_TOOL_IDS)[number];
 
+// export: ResearchUncommittedDispatchOutcomeV1
+export interface ResearchUncommittedDispatchOutcomeV1 {
+    taskId: string;
+    admission: ResearchTaskAdmissionV1;
+    reason: ResearchUncommittedOutcomeReasonV1;
+    error?: unknown;
+    resultBytes?: number;
+}
+
+// export: ResearchUncommittedOutcomeReasonV1
+export type ResearchUncommittedOutcomeReasonV1 = "aborted" | "upstream-error" | "result-too-large" | "result-commit-failed";
+
 // export: ResearchWorkspace
 export interface ResearchWorkspace {
     readFile(path: string): Promise<string | undefined>;
@@ -8088,7 +8346,7 @@ export declare function createBoundedResearchSubagentMiddleware(model: BaseChatM
     onFatal?: (error: unknown) => void;
     availableSourceIdsForNode?: (nodeId: string) => readonly string[];
     capabilityCallsForNode?: (nodeId: string) => number;
-    onAcceptedPacket?: (packet: ResearchAcceptedPacketV1) => void;
+    onAcceptedPacket?: (packet: ResearchAcceptedPacketV1) => void | Promise<void>;
     onRejectedStructuredResult?: (input: {
         taskId: string;
         role: ResearchGraphRoleV1;
@@ -8097,6 +8355,7 @@ export declare function createBoundedResearchSubagentMiddleware(model: BaseChatM
     }) => void | Promise<void>;
     structuredOutputStrategy?: "tool" | "provider";
     activeGraph?: () => ResearchGraphV1 | undefined;
+    durableDispatchJournal?: ResearchSessionDispatchJournalV1;
     reconciliationInputContext?: () => ResearchReconciliationInputV1;
     synthesisReconciliationContext?: () => {
         reconciliationPacketRef?: string;
@@ -8193,7 +8452,17 @@ export declare function createResearchDispatchInterceptionAdapter(options: {
     invokeUpstream(input: ResearchTaskToolInputV1, config: RunnableConfig): Promise<unknown>;
     projectResult?: (value: unknown) => unknown;
     projectDependencyResult?: (taskId: string, acceptedResult: unknown) => unknown | undefined;
-    acceptResult?: (taskId: string, result: unknown, rawResult: unknown) => void;
+    beforeInvoke?: (input: {
+        taskId: string;
+        admission: ResearchTaskAdmissionV1;
+    }) => void | Promise<void>;
+    acceptResult?: (taskId: string, result: unknown, rawResult: unknown) => void | Promise<void>;
+    onUncommittedOutcome?: (outcome: ResearchUncommittedDispatchOutcomeV1) => void | Promise<void>;
+    onLateResult?: (input: {
+        taskId: string;
+        admission: ResearchTaskAdmissionV1;
+        resultBytes?: number;
+    }) => void | Promise<void>;
     onDiagnostic?: (diagnostic: ResearchDispatchDiagnosticV1) => void;
 }): ResearchDispatchInterceptionAdapter;
 
@@ -8201,6 +8470,7 @@ export declare function createResearchDispatchInterceptionAdapter(options: {
 export declare function createResearchGraphProposalPtcTool(catalogGraph: ResearchGraphV1, options?: {
     canPropose?: () => boolean;
     onAccepted?: (graph: ResearchGraphV1) => void;
+    onAcceptedProposal?: (proposal: import("./graph.js").ResearchGraphProposalV1, graph: ResearchGraphV1) => void | Promise<void>;
     onDiagnostic?: (status: "started" | "completed" | "failed", errorCode?: string) => void;
 }): DynamicStructuredTool;
 
@@ -8235,7 +8505,7 @@ export declare function createResearchReconciliationDispositionPtcTool(catalogGr
     onAccepted?: (dispositions: ResearchReconciliationDispositionV1[], repairAuthorization?: ResearchRepairAuthorizationV1, repairOutcome?: {
         followUpId: string;
         status: "authorized" | "retained_without_execution";
-    }) => void;
+    }) => void | Promise<void>;
     onDiagnostic?: (status: "started" | "completed" | "failed", errorCode?: string) => void;
 }): DynamicStructuredTool;
 
@@ -9239,7 +9509,7 @@ export declare class ResearchDispatchError extends Error {
 }
 
 // export: ResearchDispatchErrorCodeV1
-export type ResearchDispatchErrorCodeV1 = "invalid-task-description" | "unknown-task" | "subagent-type-mismatch" | "response-schema-mismatch" | "task-budget-exceeded" | "task-already-dispatched" | "dependency-not-ready" | "dependency-result-mismatch" | "graph-proposal-required" | "repair-not-authorized" | "concurrency-exceeded" | "capability-denied" | "result-too-large" | "structured-output-invalid" | "subagent-provider-error" | "aborted" | "timeout" | "late-result" | "admissions-locked";
+export type ResearchDispatchErrorCodeV1 = "invalid-task-description" | "unknown-task" | "subagent-type-mismatch" | "response-schema-mismatch" | "task-budget-exceeded" | "task-already-dispatched" | "dependency-not-ready" | "dependency-result-mismatch" | "graph-proposal-required" | "repair-not-authorized" | "concurrency-exceeded" | "capability-denied" | "result-too-large" | "structured-output-invalid" | "subagent-provider-error" | "durable-journal-failed" | "aborted" | "timeout" | "late-result" | "admissions-locked";
 
 // export: ResearchDispatchInterceptionAdapter
 export interface ResearchDispatchInterceptionAdapter {
@@ -9606,6 +9876,10 @@ export type ResearchGraphUpdateV1 = {
     kind: "approve";
     expectedRevision: number;
     approvedAt: string;
+} | {
+    kind: "activate_repair";
+    expectedRevision: number;
+    repairNode: ResearchGraphNodeV1;
 } | {
     kind: "start_node";
     expectedRevision: number;
@@ -10373,6 +10647,45 @@ export interface ResearchSessionCommitV1 {
     event: ResearchSessionEventV1;
 }
 
+// export: ResearchSessionDispatchJournalV1
+export declare class ResearchSessionDispatchJournalV1 {
+    #private;
+    constructor(options: ResearchSessionDispatchJournalV1Options);
+    commitGraphSelection(proposal: ResearchGraphProposalV1): Promise<ResearchGraphV1>;
+    admitAndStart(input: ResearchTaskAttemptV1 & {
+        providerRequestId?: string;
+    }): Promise<ResearchTaskAttemptV1>;
+    acceptPacket(input: {
+        taskId: string;
+        graphRevision: number;
+        body: unknown;
+        usage: ResearchTaskUsageV1;
+        availableSourceIds: string[];
+        maximumResultBytes: number;
+    }): Promise<ResearchAcceptedPacketV1>;
+    markOutcomeUnknown(taskId: string, graphRevision: number): Promise<ResearchTaskAttemptV1>;
+    quarantine(taskId: string, graphRevision: number, reason: string): Promise<ResearchTaskAttemptV1>;
+    recordReconciliation(input: {
+        dispositions: readonly ResearchReconciliationDispositionV1[];
+        repair?: Pick<ResearchSessionRepairAuthorizationV1, "nodeId" | "reconciliationTaskId"> & {
+            followUpId: string;
+        };
+    }): Promise<{
+        dispositions: ResearchReconciliationDispositionV1[];
+        graph: ResearchGraphV1;
+        repairAuthorization?: ResearchSessionRepairAuthorizationV1;
+    }>;
+    complete(): Promise<ResearchSessionV1>;
+}
+
+// export: ResearchSessionDispatchJournalV1Options
+export interface ResearchSessionDispatchJournalV1Options {
+    store: ResearchSessionStoreV1;
+    sessionId: string;
+    turnId: string;
+    now?: () => string;
+}
+
 // export: ResearchSessionEventV1
 export interface ResearchSessionEventV1 {
     schema: typeof RESEARCH_SESSION_EVENT_SCHEMA_V1;
@@ -10391,6 +10704,15 @@ export interface ResearchSessionLeaseV1 {
     ownerId: string;
     heartbeatAt: string;
     expiresAt: string;
+}
+
+// export: ResearchSessionRepairAuthorizationV1
+export interface ResearchSessionRepairAuthorizationV1 {
+    schema: "atlcli.research-session-repair-authorization/v1";
+    nodeId: string;
+    reconciliationTaskId: string;
+    followUp: ResearchFollowUpProposalV1;
+    authorizedAt: string;
 }
 
 // export: ResearchSessionRetentionV1
@@ -10471,6 +10793,9 @@ export interface ResearchSessionTurnV1 {
     createdAt: string;
     brief?: ResearchBriefV1;
     graph?: ResearchGraphV1;
+    graphSelectionCommittedAt?: string;
+    latentRepairNode?: ResearchGraphNodeV1;
+    repairAuthorization?: ResearchSessionRepairAuthorizationV1;
     scopeCandidates: ResearchScopeCandidateV1[];
     scopeBindings: ResearchScopeBindingV1[];
     scopeResolutions: ResearchScopeResolutionV1[];
@@ -10481,6 +10806,7 @@ export interface ResearchSessionTurnV1 {
     tasks: ResearchTaskAttemptV1[];
     acceptedPackets: ResearchAcceptedPacketV1[];
     reconciliationDispositions: ResearchReconciliationDispositionV1[];
+    reconciliationCommittedAt?: string;
     checkpoints: ResearchSessionCheckpointV1[];
     pauseRequestedAt?: string;
     pausedAt?: string;
@@ -10505,6 +10831,9 @@ export type ResearchSessionUpdateV1 = (ResearchSessionFencedUpdateV1 & {
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "approve_graph";
     graphRevision: number;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "commit_graph_selection";
+    proposal: ResearchGraphProposalV1;
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "revise_graph";
     graph: ResearchGraphV1;
@@ -10573,7 +10902,12 @@ export type ResearchSessionUpdateV1 = (ResearchSessionFencedUpdateV1 & {
     reason: string;
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "record_reconciliation";
-    disposition: unknown;
+    dispositions: unknown[];
+    repair?: {
+        nodeId: string;
+        reconciliationTaskId: string;
+        followUpId: string;
+    };
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "record_checkpoint";
     checkpoint: Omit<ResearchSessionCheckpointV1, "schema" | "sessionRevision">;
@@ -10807,6 +11141,18 @@ export interface ResearchTimeWindowV1 {
 // export: ResearchToolId
 export type ResearchToolId = (typeof RESEARCH_TOOL_IDS)[number];
 
+// export: ResearchUncommittedDispatchOutcomeV1
+export interface ResearchUncommittedDispatchOutcomeV1 {
+    taskId: string;
+    admission: ResearchTaskAdmissionV1;
+    reason: ResearchUncommittedOutcomeReasonV1;
+    error?: unknown;
+    resultBytes?: number;
+}
+
+// export: ResearchUncommittedOutcomeReasonV1
+export type ResearchUncommittedOutcomeReasonV1 = "aborted" | "upstream-error" | "result-too-large" | "result-commit-failed";
+
 // export: ResearchWorkspace
 export interface ResearchWorkspace {
     readFile(path: string): Promise<string | undefined>;
@@ -10871,6 +11217,11 @@ export interface RunResearchAgentInput {
     options?: ResearchRunOptions;
     workspace?: ResearchWorkspace;
     researchGraph?: ResearchGraphV1;
+    durableSession?: {
+        store: ResearchSessionStoreV1;
+        sessionId: string;
+        turnId: string;
+    };
     subagentModelsByNode?: Partial<Record<string, BaseChatModel>>;
     brief?: ResearchBriefV1;
     scopeCatalog?: {
@@ -10935,943 +11286,7 @@ export interface WikiResearchSummary {
 }
 ```
 
-### Entry point `./capability-contracts`
-
-```ts
-// export: BoundedContentProjectionV1
-export interface BoundedContentProjectionV1 {
-    text: string;
-    linkTargets: string[];
-    truncated: boolean;
-    inputBytes: number;
-}
-
-// export: decodeResearchGetInputV1
-export declare function decodeResearchGetInputV1(tool: "jira.issue.get" | "wiki.page.get", value: unknown): ResearchGetInputV1;
-
-// export: decodeResearchSearchInputV1
-export declare function decodeResearchSearchInputV1(tool: "jira.issue.search" | "wiki.search", value: unknown, maximumPageSize: number): ResearchSearchInputV1;
-
-// export: RESEARCH_CAPABILITY_SCHEMAS
-export declare const RESEARCH_CAPABILITY_SCHEMAS: {
-    readonly "jira.issue.search": {
-        readonly input: "atlcli.ptc/jira.issue.search.input/v1";
-        readonly output: "atlcli.ptc/jira.issue.search.output/v1";
-    };
-    readonly "jira.issue.get": {
-        readonly input: "atlcli.ptc/jira.issue.get.input/v1";
-        readonly output: "atlcli.ptc/jira.issue.get.output/v1";
-    };
-    readonly "wiki.search": {
-        readonly input: "atlcli.ptc/wiki.search.input/v1";
-        readonly output: "atlcli.ptc/wiki.search.output/v1";
-    };
-    readonly "wiki.page.get": {
-        readonly input: "atlcli.ptc/wiki.page.get.input/v1";
-        readonly output: "atlcli.ptc/wiki.page.get.output/v1";
-    };
-};
-
-// export: RESEARCH_LANGCHAIN_TOOL_NAMES
-export declare const RESEARCH_LANGCHAIN_TOOL_NAMES: Record<ResearchToolId, string>;
-
-// export: ResearchBudgetSnapshotV1
-export interface ResearchBudgetSnapshotV1 {
-    ptcRemaining: number;
-    httpAttemptsRemaining: number;
-    responseBytesRemaining: number;
-}
-
-// export: ResearchEntitySummaryV1
-export interface ResearchEntitySummaryV1 {
-    sourceId: string;
-    entityRef: string;
-    product: "jira" | "confluence";
-    title: string;
-    url: string;
-    issueKey?: string;
-    contentId?: string;
-    projectKey?: string;
-    spaceKey?: string;
-    updatedAt?: string;
-    excerpt?: string;
-}
-
-// export: ResearchGetInputV1
-export interface ResearchGetInputV1 {
-    schema: string;
-    entityRef: string;
-}
-
-// export: ResearchGetOutputV1
-export interface ResearchGetOutputV1 {
-    schema: string;
-    source: Omit<ResearchEntitySummaryV1, "entityRef" | "excerpt">;
-    content: BoundedContentProjectionV1;
-    budget: ResearchBudgetSnapshotV1;
-}
-
-// export: ResearchSearchInputV1
-export type ResearchSearchInputV1 = {
-    schema: string;
-    query: ResearchSearchQueryV1;
-    pageSize?: number;
-} | {
-    schema: string;
-    cursor: string;
-};
-
-// export: ResearchSearchOutputV1
-export interface ResearchSearchOutputV1 {
-    schema: string;
-    items: ResearchEntitySummaryV1[];
-    page: {
-        nextCursor?: string;
-        complete: boolean;
-        termination?: ResearchTerminationCode;
-    };
-    budget: ResearchBudgetSnapshotV1;
-}
-
-// export: ResearchSearchQueryV1
-export interface ResearchSearchQueryV1 {
-    text?: string;
-}
-
-// export: ResearchTerminationCode
-export type ResearchTerminationCode = "index-exhausted" | "item-limit" | "page-limit" | "http-limit" | "response-byte-limit";
-```
-
-### Entry point `./contracts`
-
-```ts
-// export: AtlassianRelationshipV1
-export interface AtlassianRelationshipV1 {
-    id: string;
-    classification: "verified" | "hypothesis";
-    jiraIssueKey: string;
-    confluenceContentId: string;
-    summary: string;
-    sourceIds: string[];
-}
-
-// export: DEFAULT_RESEARCH_LIMITS_V1
-export declare const DEFAULT_RESEARCH_LIMITS_V1: Readonly<ResearchLimitsV1>;
-
-// export: DEFAULT_RESEARCH_ONE_SHOT_POLICY_V1
-export declare const DEFAULT_RESEARCH_ONE_SHOT_POLICY_V1: Readonly<ResearchOneShotPolicyV1>;
-
-// export: normalizeResearchLimitsV1
-export declare function normalizeResearchLimitsV1(value: unknown): ResearchLimitsV1;
-
-// export: normalizeResearchOneShotPolicyV1
-export declare function normalizeResearchOneShotPolicyV1(value: unknown): ResearchOneShotPolicyV1;
-
-// export: normalizeResearchRequestV1
-export declare function normalizeResearchRequestV1(value: unknown): ResearchRequestV1;
-
-// export: normalizeResearchScopeSeedsV1
-export declare function normalizeResearchScopeSeedsV1(value: unknown, scope: ResearchScopeV1): ResearchScopeSeedV1[] | undefined;
-
-// export: normalizeResearchScopeV1
-export declare function normalizeResearchScopeV1(value: unknown): ResearchScopeV1;
-
-// export: RESEARCH_CAPABILITY_EVENT_TOOL_IDS_V1
-export declare const RESEARCH_CAPABILITY_EVENT_TOOL_IDS_V1: readonly [
-    "jira.issue.search",
-    "jira.issue.get",
-    "wiki.search",
-    "wiki.page.get",
-    "jira.project.search",
-    "wiki.space.search",
-    "atlassian.reference.resolve"
-];
-
-// export: RESEARCH_ONE_SHOT_POLICY_SCHEMA_V1
-export declare const RESEARCH_ONE_SHOT_POLICY_SCHEMA_V1: "atlcli.research-one-shot-policy/v1";
-
-// export: RESEARCH_REPORT_ARTIFACT_PATH_V1
-export declare const RESEARCH_REPORT_ARTIFACT_PATH_V1: "/artifacts/report.md";
-
-// export: RESEARCH_REPORT_SCHEMA_V1
-export declare const RESEARCH_REPORT_SCHEMA_V1: "atlcli.research-report/v1";
-
-// export: RESEARCH_REQUEST_SCHEMA_V1
-export declare const RESEARCH_REQUEST_SCHEMA_V1: "atlcli.research-request/v1";
-
-// export: RESEARCH_REQUESTED_EFFORTS_V1
-export declare const RESEARCH_REQUESTED_EFFORTS_V1: readonly [
-    "auto",
-    "lookup",
-    "analysis",
-    "deep"
-];
-
-// export: RESEARCH_REQUESTED_PLAN_APPROVALS_V1
-export declare const RESEARCH_REQUESTED_PLAN_APPROVALS_V1: readonly [
-    "default",
-    "automatic",
-    "required"
-];
-
-// export: RESEARCH_REQUESTED_RECONCILIATIONS_V1
-export declare const RESEARCH_REQUESTED_RECONCILIATIONS_V1: readonly [
-    "off",
-    "auto",
-    "required"
-];
-
-// export: RESEARCH_SCOPE_AUTHORITIES_V1
-export declare const RESEARCH_SCOPE_AUTHORITIES_V1: readonly [
-    "candidate",
-    "resolved",
-    "approved",
-    "locked"
-];
-
-// export: RESEARCH_SCOPE_BINDING_SCHEMA_V1
-export declare const RESEARCH_SCOPE_BINDING_SCHEMA_V1: "atlcli.research-scope-binding/v1";
-
-// export: RESEARCH_SCOPE_EXPANSION_MODES_V1
-export declare const RESEARCH_SCOPE_EXPANSION_MODES_V1: readonly [
-    "strict",
-    "ask",
-    "exact-linked"
-];
-
-// export: RESEARCH_SCOPE_SOURCE_PRECEDENCE_V1
-export declare const RESEARCH_SCOPE_SOURCE_PRECEDENCE_V1: {
-    readonly cli_flag: 500;
-    readonly ui_added: 500;
-    readonly natural_language: 400;
-    readonly exact_link: 400;
-    readonly current_context: 300;
-    readonly profile_default: 200;
-    readonly global_default: 100;
-    readonly research_discovery: 0;
-};
-
-// export: RESEARCH_SCOPE_SOURCES_V1
-export declare const RESEARCH_SCOPE_SOURCES_V1: readonly [
-    "cli_flag",
-    "ui_added",
-    "natural_language",
-    "current_context",
-    "profile_default",
-    "global_default",
-    "exact_link",
-    "research_discovery"
-];
-
-// export: RESEARCH_TOOL_IDS
-export declare const RESEARCH_TOOL_IDS: readonly [
-    "jira.issue.search",
-    "jira.issue.get",
-    "wiki.search",
-    "wiki.page.get"
-];
-
-// export: ResearchCapabilityEventToolIdV1
-export type ResearchCapabilityEventToolIdV1 = (typeof RESEARCH_CAPABILITY_EVENT_TOOL_IDS_V1)[number];
-
-// export: ResearchContractError
-export declare class ResearchContractError extends Error {
-    readonly code: ResearchErrorCode;
-    constructor(code: ResearchErrorCode, message: string);
-}
-
-// export: ResearchErrorCode
-export type ResearchErrorCode = "invalid-request" | "plan-approval-required" | "clarification-required" | "missing-key" | "invalid-key" | "not-atlassian" | "not-authenticated" | "access-denied" | "rate-limited" | "provider-error" | "limit-exceeded" | "cancelled" | "invalid-report" | "unknown";
-
-// export: ResearchEventV1
-export type ResearchEventV1 = {
-    kind: "state";
-    seq: number;
-    at: string;
-    from: string;
-    to: string;
-} | {
-    kind: "phase";
-    seq: number;
-    at: string;
-    phase: string;
-} | {
-    kind: "progress";
-    seq: number;
-    at: string;
-    graphRevision: number;
-    completed: number;
-    maximum: number;
-} | {
-    kind: "brief";
-    seq: number;
-    at: string;
-    revision: number;
-} | {
-    kind: "clarification";
-    seq: number;
-    at: string;
-    briefRevision: number;
-    status: string;
-} | {
-    kind: "scope";
-    seq: number;
-    at: string;
-    briefRevision: number;
-    proposalId?: string;
-    status: string;
-} | {
-    kind: "plan";
-    seq: number;
-    at: string;
-    briefRevision: number;
-    revision: number;
-    status: string;
-    resolvedEffort: ResearchResolvedEffortV1;
-    selectedRoleIds: string[];
-    nodeCount: number;
-    waveCount: number;
-    maxParallelNodes: number;
-} | {
-    kind: "plan_diff";
-    seq: number;
-    at: string;
-    from: number;
-    to: number;
-} | {
-    kind: "control";
-    seq: number;
-    at: string;
-    action: string;
-    status: string;
-    revision: number;
-} | {
-    kind: "task";
-    seq: number;
-    at: string;
-    taskId: string;
-    status: string;
-    roleId?: string;
-    wave?: number;
-    dependencyTaskIds?: string[];
-    grantedCapabilityIds?: string[];
-    resultBytes?: number;
-    capabilityCalls?: number;
-    inputTokens?: number;
-    outputTokens?: number;
-    sourceCount?: number;
-    findingCount?: number;
-    relationshipCount?: number;
-    gapCount?: number;
-    defectCount?: number;
-} | {
-    kind: "subagent";
-    seq: number;
-    at: string;
-    taskId: string;
-    roleId: string;
-    status: string;
-    attempt?: number;
-    durationMs?: number;
-    errorCode?: string;
-} | {
-    kind: "capability";
-    seq: number;
-    at: string;
-    callId: string;
-    toolId: ResearchCapabilityEventToolIdV1;
-    inputKind: "search" | "continuation" | "detail" | "reference";
-    status: string;
-    itemCount?: number;
-    complete?: boolean;
-    termination?: string;
-    resultBytes?: number;
-    truncated?: boolean;
-    durationMs?: number;
-    errorCode?: string;
-    inputKeys?: string[];
-    queryKeys?: string[];
-} | {
-    kind: "decision";
-    seq: number;
-    at: string;
-    decisionId: string;
-    status: "started" | "completed" | "failed";
-    reasonCode: string;
-    taskId?: string;
-    errorCode?: string;
-    codeBytes?: number;
-    codeHash?: string;
-} | {
-    kind: "reconciliation";
-    seq: number;
-    at: string;
-    taskId: string;
-    status: "started" | "completed" | "failed";
-    defectCount?: number;
-    proposedFollowUpCount?: number;
-} | {
-    kind: "reconciliation_disposition";
-    seq: number;
-    at: string;
-    dispositionId: string;
-    defectId: string;
-    decision: "reject_defect" | "revise" | "downgrade" | "add_follow_up" | "abstain" | "no_change";
-    reasonCode: "invalid_reference" | "already_resolved" | "supported_by_evidence" | "material_defect" | "insufficient_budget" | "outside_approval_envelope";
-    status: "recorded";
-} | {
-    kind: "repair_group";
-    seq: number;
-    at: string;
-    followUpId: string;
-    taskId?: string;
-    status: "authorized" | "retained_without_execution" | "completed";
-    reasonCode: "accepted_follow_up" | "wave_or_budget_exhausted" | "packet_accepted";
-} | {
-    kind: "steering";
-    seq: number;
-    at: string;
-    revision: number;
-    status: string;
-} | {
-    kind: "budget";
-    seq: number;
-    at: string;
-    metric: "capability_calls" | "tokens" | "bytes" | "duration_ms" | "cost_micros";
-    consumed: number;
-    maximum: number;
-} | {
-    kind: "evidence";
-    seq: number;
-    at: string;
-    evidenceId: string;
-} | {
-    kind: "warning";
-    seq: number;
-    at: string;
-    code: string;
-} | {
-    kind: "recovery";
-    seq: number;
-    at: string;
-    checkpointRef: string;
-} | {
-    kind: "artifact";
-    seq: number;
-    at: string;
-    path: typeof RESEARCH_REPORT_ARTIFACT_PATH_V1;
-};
-
-// export: ResearchFindingV1
-export interface ResearchFindingV1 {
-    id: string;
-    classification: "fact" | "inference";
-    summary: string;
-    detail?: string;
-    sourceIds: string[];
-}
-
-// export: ResearchLimitsV1
-export interface ResearchLimitsV1 {
-    pageSize: number;
-    maxSearchPagesPerProduct: number;
-    maxItemsPerProduct: number;
-    maxDetailItemsPerProduct: number;
-    maxBodyCharsPerItem: number;
-    maxPtcCalls: number;
-    maxHttpCalls: number;
-    maxConcurrentCalls: number;
-    maxPtcInputBytes: number;
-    maxPtcOutputBytes: number;
-    maxTotalResponseBytes: number;
-    maxInterpreterMemoryBytes: number;
-    maxInterpreterMs: number;
-    maxModelInputTokens: number;
-    maxModelOutputTokens: number;
-    maxReportChars: number;
-    maxRunMs: number;
-}
-
-// export: ResearchOneShotEventV1
-export type ResearchOneShotEventV1 = Extract<ResearchEventV1, {
-    kind: "phase" | "progress" | "brief" | "plan" | "task" | "subagent" | "capability" | "decision" | "reconciliation" | "reconciliation_disposition" | "repair_group" | "budget" | "artifact";
-}>;
-
-// export: ResearchOneShotPolicyV1
-export interface ResearchOneShotPolicyV1 {
-    schema: typeof RESEARCH_ONE_SHOT_POLICY_SCHEMA_V1;
-    requestedEffort: ResearchRequestedEffortV1;
-    requestedPlanApproval: ResearchRequestedPlanApprovalV1;
-    scopeExpansionMode: ResearchScopeExpansionModeV1;
-    requestedReconciliation: ResearchRequestedReconciliationV1;
-}
-
-// export: ResearchPort
-export interface ResearchPort {
-    hasApiKey(): Promise<boolean>;
-    setApiKey(apiKey: string): Promise<void>;
-    clearApiKey(): Promise<void>;
-    resolveScope(request: ResearchRequestV1, options?: import("./scope-preflight.js").ResearchScopePreflightOptionsV1): Promise<import("./scope-preflight.js").ResearchScopePreflightOutcomeV1>;
-    run(request: ResearchRequestV1, options?: ResearchRunOptions): Promise<ResearchReportV1>;
-    copyMarkdown(markdown: string): Promise<void>;
-    downloadMarkdown(markdown: string, filename: string): Promise<void>;
-}
-
-// export: ResearchProduct
-export type ResearchProduct = "jira" | "confluence";
-
-// export: ResearchProgressPhase
-export type ResearchProgressPhase = "preparing" | "researching" | "rendering" | "complete";
-
-// export: ResearchProgressV1
-export interface ResearchProgressV1 {
-    phase: ResearchProgressPhase;
-    message: string;
-    completedCalls: number;
-    maxCalls: number;
-}
-
-// export: ResearchProvider
-export type ResearchProvider = "rest" | "agg";
-
-// export: ResearchReportV1
-export interface ResearchReportV1 {
-    schema: typeof RESEARCH_REPORT_SCHEMA_V1;
-    title: string;
-    question: string;
-    scope: ResearchScopeV1;
-    executiveSummary: string;
-    findings: ResearchFindingV1[];
-    relationships: AtlassianRelationshipV1[];
-    limitations: string[];
-    sources: ResearchSourceReferenceV1[];
-    run: ResearchRunSummaryV1;
-    markdown: string;
-}
-
-// export: ResearchRequestedEffortV1
-export type ResearchRequestedEffortV1 = (typeof RESEARCH_REQUESTED_EFFORTS_V1)[number];
-
-// export: ResearchRequestedPlanApprovalV1
-export type ResearchRequestedPlanApprovalV1 = (typeof RESEARCH_REQUESTED_PLAN_APPROVALS_V1)[number];
-
-// export: ResearchRequestedReconciliationV1
-export type ResearchRequestedReconciliationV1 = (typeof RESEARCH_REQUESTED_RECONCILIATIONS_V1)[number];
-
-// export: ResearchRequestV1
-export interface ResearchRequestV1 {
-    schema: typeof RESEARCH_REQUEST_SCHEMA_V1;
-    question: string;
-    scope: ResearchScopeV1;
-    limits: ResearchLimitsV1;
-    wikiProvider: ResearchProvider;
-    scopeSeeds?: ResearchScopeSeedV1[];
-}
-
-// export: ResearchResolvedEffortV1
-export type ResearchResolvedEffortV1 = Exclude<ResearchRequestedEffortV1, "auto">;
-
-// export: ResearchResolvedPlanApprovalV1
-export type ResearchResolvedPlanApprovalV1 = Exclude<ResearchRequestedPlanApprovalV1, "default">;
-
-// export: ResearchRunCountsV1
-export interface ResearchRunCountsV1 {
-    ptcCalls: number;
-    httpCalls: number;
-    jiraItems: number;
-    confluenceItems: number;
-}
-
-// export: ResearchRunOptions
-export interface ResearchRunOptions {
-    signal?: AbortSignal;
-    policy?: ResearchOneShotPolicyV1;
-    onProgress?: (progress: ResearchProgressV1) => void;
-    onEvent?: (event: ResearchOneShotEventV1) => void;
-}
-
-// export: ResearchRunSummaryV1
-export interface ResearchRunSummaryV1 {
-    model: string;
-    wikiProvider: ResearchProvider;
-    startedAt: string;
-    completedAt: string;
-    durationMs: number;
-    complete: boolean;
-    counts: ResearchRunCountsV1;
-    usage?: ResearchRunUsageV1;
-    warnings: string[];
-}
-
-// export: ResearchRunUsageV1
-export interface ResearchRunUsageV1 {
-    inputTokens?: number;
-    outputTokens?: number;
-}
-
-// export: ResearchScopeAuthorityV1
-export type ResearchScopeAuthorityV1 = (typeof RESEARCH_SCOPE_AUTHORITIES_V1)[number];
-
-// export: ResearchScopeBindingV1
-export interface ResearchScopeBindingV1 {
-    schema: typeof RESEARCH_SCOPE_BINDING_SCHEMA_V1;
-    id: string;
-    tenantOrigin: string;
-    product: ResearchProduct;
-    entityKind: ResearchScopeEntityKindV1;
-    entityRef: string;
-    key?: string;
-    name: string;
-    source: ResearchScopeSourceV1;
-    authority: ResearchScopeAuthorityV1;
-    mentionId?: string;
-    candidateId?: string;
-    approvedAt?: string;
-}
-
-// export: ResearchScopeEntityKindV1
-export type ResearchScopeEntityKindV1 = "project" | "space" | "issue" | "page";
-
-// export: ResearchScopeExpansionModeV1
-export type ResearchScopeExpansionModeV1 = (typeof RESEARCH_SCOPE_EXPANSION_MODES_V1)[number];
-
-// export: ResearchScopeSeedV1
-export interface ResearchScopeSeedV1 {
-    binding: ResearchScopeBindingV1;
-    precedence: number;
-}
-
-// export: ResearchScopeSourceV1
-export type ResearchScopeSourceV1 = (typeof RESEARCH_SCOPE_SOURCES_V1)[number];
-
-// export: ResearchScopeV1
-export interface ResearchScopeV1 {
-    siteOrigin: string;
-    jiraProjectKeys: string[];
-    confluenceSpaceKeys: string[];
-    timeWindow?: ResearchTimeWindowV1;
-}
-
-// export: ResearchSourceReferenceV1
-export interface ResearchSourceReferenceV1 {
-    id: string;
-    product: ResearchProduct;
-    title: string;
-    url: string;
-    issueKey?: string;
-    contentId?: string;
-    projectKey?: string;
-    spaceKey?: string;
-    excerpt?: string;
-    updatedAt?: string;
-}
-
-// export: ResearchTimeWindowV1
-export interface ResearchTimeWindowV1 {
-    from?: string;
-    to?: string;
-}
-
-// export: ResearchToolId
-export type ResearchToolId = (typeof RESEARCH_TOOL_IDS)[number];
-```
-
-### Entry point `./events`
-
-```ts
-// export: formatResearchOneShotEventV1
-export declare function formatResearchOneShotEventV1(event: ResearchOneShotEventV1): string;
-
-// export: isResearchOneShotEventV1
-export declare function isResearchOneShotEventV1(value: unknown): value is ResearchOneShotEventV1;
-```
-
-### Entry point `./graph`
-
-```ts
-// export: acceptResearchGraphProposalV1
-export declare function acceptResearchGraphProposalV1(catalogGraph: ResearchGraphV1, value: unknown): ResearchGraphV1;
-
-// export: assertResearchGraphExecutableV1
-export declare function assertResearchGraphExecutableV1(graph: ResearchGraphV1): void;
-
-// export: composeResearchGraphV1
-export declare function composeResearchGraphV1(brief: ResearchBriefV1, options?: ResearchGraphCompositionOptionsV1): ResearchGraphV1;
-
-// export: ComposeStandardResearchGraphOptionsV1
-export interface ComposeStandardResearchGraphOptionsV1 {
-    sessionId?: string;
-    turnId?: string;
-    scope?: ResearchScopeV1;
-    scopeBindings?: readonly ResearchScopeBindingV1[];
-    limits?: ResearchLimitsV1;
-    asOf?: string;
-    timezone?: string;
-    policy?: ResearchOneShotPolicyV1;
-}
-
-// export: composeStandardResearchGraphV1
-export declare function composeStandardResearchGraphV1(question: string, options?: ComposeStandardResearchGraphOptionsV1): ResearchGraphV1;
-
-// export: createStandardResearchBriefV1
-export declare function createStandardResearchBriefV1(question: string, options?: ComposeStandardResearchGraphOptionsV1): ResearchBriefV1;
-
-// export: parseResearchGraphProposalV1
-export declare function parseResearchGraphProposalV1(value: unknown): ResearchGraphProposalV1;
-
-// export: projectSelectedResearchRolesV1
-export declare function projectSelectedResearchRolesV1(graph: Pick<ResearchGraphV1, "nodes">): ResearchSubagentRoleIdV1[];
-
-// export: reduceResearchGraphV1
-export declare function reduceResearchGraphV1(graph: ResearchGraphV1, update: ResearchGraphUpdateV1): ResearchGraphV1;
-
-// export: RESEARCH_BRIEF_SCHEMA_V1
-export declare const RESEARCH_BRIEF_SCHEMA_V1: "atlcli.research-brief/v1";
-
-// export: RESEARCH_COMPOSITION_REASONS_V1
-export declare const RESEARCH_COMPOSITION_REASONS_V1: readonly [
-    "simple_lookup",
-    "independent_branch",
-    "cross_product_join",
-    "scope_resolution",
-    "related_scope_discovery",
-    "exact_reference_follow",
-    "large_document_set",
-    "hierarchy_traversal",
-    "coverage_gap",
-    "contradiction",
-    "negative_claim",
-    "high_impact_claim",
-    "user_requested",
-    "budget_pruned",
-    "not_applicable"
-];
-
-// export: RESEARCH_GRAPH_CAPABILITIES
-export declare const RESEARCH_GRAPH_CAPABILITIES: readonly [
-    "jira.issue.search",
-    "jira.issue.get",
-    "wiki.search",
-    "wiki.page.get",
-    "jira.project.search",
-    "wiki.space.search",
-    "atlassian.reference.resolve"
-];
-
-// export: RESEARCH_GRAPH_PROPOSAL_SCHEMA_V1
-export declare const RESEARCH_GRAPH_PROPOSAL_SCHEMA_V1: "atlcli.research-graph-proposal/v1";
-
-// export: RESEARCH_GRAPH_ROLES
-export declare const RESEARCH_GRAPH_ROLES: readonly [
-    "focused-researcher",
-    "document-distiller",
-    "contradiction-verifier",
-    "coverage-moderator",
-    "outline-planner",
-    "reconciler",
-    "synthesizer"
-];
-
-// export: RESEARCH_GRAPH_SCHEMA_V1
-export declare const RESEARCH_GRAPH_SCHEMA_V1: "atlcli.research-graph/v1";
-
-// export: RESEARCH_PLAN_APPROVAL_REQUIRED_SCHEMA_V1
-export declare const RESEARCH_PLAN_APPROVAL_REQUIRED_SCHEMA_V1: "atlcli.research-plan-approval-required/v1";
-
-// export: RESEARCH_T3_GRAPH_ROLES
-export declare const RESEARCH_T3_GRAPH_ROLES: ("focused-researcher" | "document-distiller" | "contradiction-verifier" | "coverage-moderator" | "outline-planner" | "reconciler" | "synthesizer")[];
-
-// export: ResearchBriefV1
-export interface ResearchBriefV1 {
-    schema: typeof RESEARCH_BRIEF_SCHEMA_V1;
-    sessionId: string;
-    turnId: string;
-    revision: number;
-    objective: string;
-    audience?: string;
-    decisionToSupport?: string;
-    scope: ResearchScopeV1;
-    scopeMentions: ResearchScopeMentionV1[];
-    scopeCandidates: ResearchScopeCandidateV1[];
-    scopeBindings: ResearchScopeBindingV1[];
-    scopeResolutions: ResearchScopeResolutionV1[];
-    scopeDiscoveryPolicy: ResearchScopeDiscoveryPolicyV1;
-    asOf: string;
-    timezone: string;
-    resolvedTimeWindow?: ResearchTimeWindowV1;
-    requestedEffort: ResearchRequestedEffortV1;
-    resolvedEffort: ResearchResolvedEffortV1;
-    requestedPlanApproval: ResearchRequestedPlanApprovalV1;
-    resolvedPlanApproval: ResearchResolvedPlanApprovalV1;
-    requestedReconciliation: ResearchRequestedReconciliationV1;
-    expectedSections: string[];
-    coverageTargets: ResearchCoverageTargetV1[];
-    sourceClasses: ResearchProduct[];
-    limits: ResearchLimitsV1;
-    clarificationQuestions: ResearchClarificationQuestionV1[];
-    assumptions: ResearchBriefAssumptionV1[];
-}
-
-// export: ResearchCompositionReasonV1
-export type ResearchCompositionReasonV1 = (typeof RESEARCH_COMPOSITION_REASONS_V1)[number];
-
-// export: ResearchEffortV1
-// @deprecated ResearchEffortV1 — Use ResearchResolvedEffortV1 from the brief contract.
-export type ResearchEffortV1 = ResearchResolvedEffortV1;
-
-// export: ResearchGraphCapabilityV1
-export type ResearchGraphCapabilityV1 = (typeof RESEARCH_GRAPH_CAPABILITIES)[number];
-
-// export: ResearchGraphCompositionOptionsV1
-export interface ResearchGraphCompositionOptionsV1 {
-    graphRevision?: number;
-    grants?: Partial<Record<string, readonly ResearchGraphCapabilityV1[]>>;
-    createdAt?: string;
-}
-
-// export: ResearchGraphNodeV1
-export interface ResearchGraphNodeV1 {
-    id: string;
-    kind: "resolve_scope" | "search" | "expand" | "distill" | "verify" | "moderate" | "outline" | "reconcile" | "repair";
-    executor: "ptc" | "subagent";
-    roleId?: ResearchSubagentRoleIdV1;
-    objective: string;
-    requestedCapabilityIds: ResearchGraphCapabilityV1[];
-    grantedCapabilityIds: ResearchGraphCapabilityV1[];
-    typedIntentRefs: string[];
-    dependencies: string[];
-    parentNodeId?: string;
-    createdFromEvidenceIds: string[];
-    reasonCodes: ResearchCompositionReasonV1[];
-    status: ResearchNodeStatusV1;
-    depth: 0 | 1;
-    priority: number;
-    attempt: number;
-    maxAttempts: number;
-    budget: ResearchNodeBudgetV1;
-    completion: ResearchNodeCompletionPolicyV1;
-    packetRef?: string;
-    stopReason?: string;
-}
-
-// export: ResearchGraphProposalNodeV1
-export interface ResearchGraphProposalNodeV1 {
-    nodeId: string;
-    dependencies: string[];
-    reasonCodes: ResearchCompositionReasonV1[];
-}
-
-// export: ResearchGraphProposalV1
-export interface ResearchGraphProposalV1 {
-    schema: typeof RESEARCH_GRAPH_PROPOSAL_SCHEMA_V1;
-    basedOnBriefRevision: number;
-    basedOnGraphRevision: number;
-    nodes: ResearchGraphProposalNodeV1[];
-}
-
-// export: ResearchGraphRoleDecisionV1
-export interface ResearchGraphRoleDecisionV1 {
-    roleId: ResearchSubagentRoleIdV1;
-    decision: "selected" | "omitted";
-    reasonCodes: ResearchCompositionReasonV1[];
-}
-
-// export: ResearchGraphRoleV1
-export type ResearchGraphRoleV1 = ResearchSubagentRoleIdV1;
-
-// export: ResearchGraphUpdateV1
-export type ResearchGraphUpdateV1 = {
-    kind: "approve";
-    expectedRevision: number;
-    approvedAt: string;
-} | {
-    kind: "start_node";
-    expectedRevision: number;
-    nodeId: string;
-} | {
-    kind: "complete_node";
-    expectedRevision: number;
-    nodeId: string;
-    packetRef: string;
-} | {
-    kind: "fail_node";
-    expectedRevision: number;
-    nodeId: string;
-    stopReason: string;
-} | {
-    kind: "quarantine_node";
-    expectedRevision: number;
-    nodeId: string;
-    stopReason: string;
-} | {
-    kind: "prune_node";
-    expectedRevision: number;
-    nodeId: string;
-    stopReason: string;
-};
-
-// export: ResearchGraphV1
-export interface ResearchGraphV1 {
-    schema: typeof RESEARCH_GRAPH_SCHEMA_V1;
-    sessionId: string;
-    turnId: string;
-    revision: number;
-    basedOnBriefRevision: number;
-    status: "proposed" | "approved" | "running" | "revising" | "complete";
-    resolvedEffort: ResearchResolvedEffortV1;
-    nodes: ResearchGraphNodeV1[];
-    roleDecisions: ResearchGraphRoleDecisionV1[];
-    maxParallelNodes: number;
-    maxResearchWaves: number;
-    maxReconciliationWaves: number;
-    researchWavesCompleted: number;
-    reconciliationWavesCompleted: number;
-    reconciliationPolicy: ResearchGraphReconciliationPolicyV1;
-    totalBudget: ResearchNodeBudgetV1;
-    approvalEnvelope: ResearchApprovalEnvelopeV1;
-    createdAt: string;
-    approvedAt?: string;
-}
-
-// export: ResearchNodeCompletionPolicyV1
-export interface ResearchNodeCompletionPolicyV1 {
-    requiredCoverageTargetIds: string[];
-    allowAbstention: boolean;
-    stopOnFirstSupportedAnswer: boolean;
-}
-
-// export: ResearchNodeStatusV1
-export type ResearchNodeStatusV1 = "proposed" | "ready" | "running" | "complete" | "failed" | "blocked" | "pruned" | "quarantined";
-
-// export: researchPlanApprovalRequiredV1
-export declare function researchPlanApprovalRequiredV1(graph: ResearchGraphV1): ResearchPlanApprovalRequiredV1 | undefined;
-
-// export: ResearchPlanApprovalRequiredV1
-export interface ResearchPlanApprovalRequiredV1 {
-    schema: typeof RESEARCH_PLAN_APPROVAL_REQUIRED_SCHEMA_V1;
-    kind: "plan_approval_required";
-    briefRevision: number;
-    graphRevision: number;
-    resolvedEffort: ResearchResolvedEffortV1;
-    resolvedPlanApproval: "required";
-    selectedRoleIds: ResearchSubagentRoleIdV1[];
-    scopeExpansionMode: ResearchOneShotPolicyV1["scopeExpansionMode"];
-    reconciliationMode: ResearchRequestedReconciliationV1;
-    rerunGuidance: string[];
-}
-
-// export: ResearchReconciliationModeV1
-// @deprecated ResearchReconciliationModeV1 — Use ResearchRequestedReconciliationV1 from the brief contract.
-export type ResearchReconciliationModeV1 = ResearchRequestedReconciliationV1;
-
-// export: stageResearchGraphForDurableSessionV1
-export declare function stageResearchGraphForDurableSessionV1(graph: ResearchGraphV1): ResearchGraphV1;
-
-// export: validateResearchGraphV1
-export declare function validateResearchGraphV1(graph: ResearchGraphV1): void;
-```
-
-### Entry point `./node`
+### Entry point `./bun`
 
 ```ts
 // export: acceptResearchGraphProposalV1
@@ -11959,7 +11374,7 @@ export declare function createBoundedResearchSubagentMiddleware(model: BaseChatM
     onFatal?: (error: unknown) => void;
     availableSourceIdsForNode?: (nodeId: string) => readonly string[];
     capabilityCallsForNode?: (nodeId: string) => number;
-    onAcceptedPacket?: (packet: ResearchAcceptedPacketV1) => void;
+    onAcceptedPacket?: (packet: ResearchAcceptedPacketV1) => void | Promise<void>;
     onRejectedStructuredResult?: (input: {
         taskId: string;
         role: ResearchGraphRoleV1;
@@ -11968,6 +11383,7 @@ export declare function createBoundedResearchSubagentMiddleware(model: BaseChatM
     }) => void | Promise<void>;
     structuredOutputStrategy?: "tool" | "provider";
     activeGraph?: () => ResearchGraphV1 | undefined;
+    durableDispatchJournal?: ResearchSessionDispatchJournalV1;
     reconciliationInputContext?: () => ResearchReconciliationInputV1;
     synthesisReconciliationContext?: () => {
         reconciliationPacketRef?: string;
@@ -12064,7 +11480,17 @@ export declare function createResearchDispatchInterceptionAdapter(options: {
     invokeUpstream(input: ResearchTaskToolInputV1, config: RunnableConfig): Promise<unknown>;
     projectResult?: (value: unknown) => unknown;
     projectDependencyResult?: (taskId: string, acceptedResult: unknown) => unknown | undefined;
-    acceptResult?: (taskId: string, result: unknown, rawResult: unknown) => void;
+    beforeInvoke?: (input: {
+        taskId: string;
+        admission: ResearchTaskAdmissionV1;
+    }) => void | Promise<void>;
+    acceptResult?: (taskId: string, result: unknown, rawResult: unknown) => void | Promise<void>;
+    onUncommittedOutcome?: (outcome: ResearchUncommittedDispatchOutcomeV1) => void | Promise<void>;
+    onLateResult?: (input: {
+        taskId: string;
+        admission: ResearchTaskAdmissionV1;
+        resultBytes?: number;
+    }) => void | Promise<void>;
     onDiagnostic?: (diagnostic: ResearchDispatchDiagnosticV1) => void;
 }): ResearchDispatchInterceptionAdapter;
 
@@ -12072,6 +11498,7 @@ export declare function createResearchDispatchInterceptionAdapter(options: {
 export declare function createResearchGraphProposalPtcTool(catalogGraph: ResearchGraphV1, options?: {
     canPropose?: () => boolean;
     onAccepted?: (graph: ResearchGraphV1) => void;
+    onAcceptedProposal?: (proposal: import("./graph.js").ResearchGraphProposalV1, graph: ResearchGraphV1) => void | Promise<void>;
     onDiagnostic?: (status: "started" | "completed" | "failed", errorCode?: string) => void;
 }): DynamicStructuredTool;
 
@@ -12106,7 +11533,7 @@ export declare function createResearchReconciliationDispositionPtcTool(catalogGr
     onAccepted?: (dispositions: ResearchReconciliationDispositionV1[], repairAuthorization?: ResearchRepairAuthorizationV1, repairOutcome?: {
         followUpId: string;
         status: "authorized" | "retained_without_execution";
-    }) => void;
+    }) => void | Promise<void>;
     onDiagnostic?: (status: "started" | "completed" | "failed", errorCode?: string) => void;
 }): DynamicStructuredTool;
 
@@ -13125,7 +12552,7 @@ export declare class ResearchDispatchError extends Error {
 }
 
 // export: ResearchDispatchErrorCodeV1
-export type ResearchDispatchErrorCodeV1 = "invalid-task-description" | "unknown-task" | "subagent-type-mismatch" | "response-schema-mismatch" | "task-budget-exceeded" | "task-already-dispatched" | "dependency-not-ready" | "dependency-result-mismatch" | "graph-proposal-required" | "repair-not-authorized" | "concurrency-exceeded" | "capability-denied" | "result-too-large" | "structured-output-invalid" | "subagent-provider-error" | "aborted" | "timeout" | "late-result" | "admissions-locked";
+export type ResearchDispatchErrorCodeV1 = "invalid-task-description" | "unknown-task" | "subagent-type-mismatch" | "response-schema-mismatch" | "task-budget-exceeded" | "task-already-dispatched" | "dependency-not-ready" | "dependency-result-mismatch" | "graph-proposal-required" | "repair-not-authorized" | "concurrency-exceeded" | "capability-denied" | "result-too-large" | "structured-output-invalid" | "subagent-provider-error" | "durable-journal-failed" | "aborted" | "timeout" | "late-result" | "admissions-locked";
 
 // export: ResearchDispatchInterceptionAdapter
 export interface ResearchDispatchInterceptionAdapter {
@@ -13492,6 +12919,10 @@ export type ResearchGraphUpdateV1 = {
     kind: "approve";
     expectedRevision: number;
     approvedAt: string;
+} | {
+    kind: "activate_repair";
+    expectedRevision: number;
+    repairNode: ResearchGraphNodeV1;
 } | {
     kind: "start_node";
     expectedRevision: number;
@@ -14259,6 +13690,45 @@ export interface ResearchSessionCommitV1 {
     event: ResearchSessionEventV1;
 }
 
+// export: ResearchSessionDispatchJournalV1
+export declare class ResearchSessionDispatchJournalV1 {
+    #private;
+    constructor(options: ResearchSessionDispatchJournalV1Options);
+    commitGraphSelection(proposal: ResearchGraphProposalV1): Promise<ResearchGraphV1>;
+    admitAndStart(input: ResearchTaskAttemptV1 & {
+        providerRequestId?: string;
+    }): Promise<ResearchTaskAttemptV1>;
+    acceptPacket(input: {
+        taskId: string;
+        graphRevision: number;
+        body: unknown;
+        usage: ResearchTaskUsageV1;
+        availableSourceIds: string[];
+        maximumResultBytes: number;
+    }): Promise<ResearchAcceptedPacketV1>;
+    markOutcomeUnknown(taskId: string, graphRevision: number): Promise<ResearchTaskAttemptV1>;
+    quarantine(taskId: string, graphRevision: number, reason: string): Promise<ResearchTaskAttemptV1>;
+    recordReconciliation(input: {
+        dispositions: readonly ResearchReconciliationDispositionV1[];
+        repair?: Pick<ResearchSessionRepairAuthorizationV1, "nodeId" | "reconciliationTaskId"> & {
+            followUpId: string;
+        };
+    }): Promise<{
+        dispositions: ResearchReconciliationDispositionV1[];
+        graph: ResearchGraphV1;
+        repairAuthorization?: ResearchSessionRepairAuthorizationV1;
+    }>;
+    complete(): Promise<ResearchSessionV1>;
+}
+
+// export: ResearchSessionDispatchJournalV1Options
+export interface ResearchSessionDispatchJournalV1Options {
+    store: ResearchSessionStoreV1;
+    sessionId: string;
+    turnId: string;
+    now?: () => string;
+}
+
 // export: ResearchSessionEventV1
 export interface ResearchSessionEventV1 {
     schema: typeof RESEARCH_SESSION_EVENT_SCHEMA_V1;
@@ -14288,6 +13758,15 @@ export declare class ResearchSessionMemoryCheckpointerV1 extends MemorySaver {
     put(config: RunnableConfig, checkpoint: Checkpoint, metadata: CheckpointMetadata, _newVersions?: ChannelVersions): Promise<RunnableConfig>;
     putWrites(config: RunnableConfig, writes: PendingWrite[], taskId: string): Promise<void>;
     deleteThread(threadId: string): Promise<void>;
+}
+
+// export: ResearchSessionRepairAuthorizationV1
+export interface ResearchSessionRepairAuthorizationV1 {
+    schema: "atlcli.research-session-repair-authorization/v1";
+    nodeId: string;
+    reconciliationTaskId: string;
+    followUp: ResearchFollowUpProposalV1;
+    authorizedAt: string;
 }
 
 // export: ResearchSessionRetentionV1
@@ -14368,6 +13847,9 @@ export interface ResearchSessionTurnV1 {
     createdAt: string;
     brief?: ResearchBriefV1;
     graph?: ResearchGraphV1;
+    graphSelectionCommittedAt?: string;
+    latentRepairNode?: ResearchGraphNodeV1;
+    repairAuthorization?: ResearchSessionRepairAuthorizationV1;
     scopeCandidates: ResearchScopeCandidateV1[];
     scopeBindings: ResearchScopeBindingV1[];
     scopeResolutions: ResearchScopeResolutionV1[];
@@ -14378,6 +13860,7 @@ export interface ResearchSessionTurnV1 {
     tasks: ResearchTaskAttemptV1[];
     acceptedPackets: ResearchAcceptedPacketV1[];
     reconciliationDispositions: ResearchReconciliationDispositionV1[];
+    reconciliationCommittedAt?: string;
     checkpoints: ResearchSessionCheckpointV1[];
     pauseRequestedAt?: string;
     pausedAt?: string;
@@ -14402,6 +13885,9 @@ export type ResearchSessionUpdateV1 = (ResearchSessionFencedUpdateV1 & {
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "approve_graph";
     graphRevision: number;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "commit_graph_selection";
+    proposal: ResearchGraphProposalV1;
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "revise_graph";
     graph: ResearchGraphV1;
@@ -14470,7 +13956,12 @@ export type ResearchSessionUpdateV1 = (ResearchSessionFencedUpdateV1 & {
     reason: string;
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "record_reconciliation";
-    disposition: unknown;
+    dispositions: unknown[];
+    repair?: {
+        nodeId: string;
+        reconciliationTaskId: string;
+        followUpId: string;
+    };
 }) | (ResearchSessionFencedUpdateV1 & {
     kind: "record_checkpoint";
     checkpoint: Omit<ResearchSessionCheckpointV1, "schema" | "sessionRevision">;
@@ -14704,6 +14195,18 @@ export interface ResearchTimeWindowV1 {
 // export: ResearchToolId
 export type ResearchToolId = (typeof RESEARCH_TOOL_IDS)[number];
 
+// export: ResearchUncommittedDispatchOutcomeV1
+export interface ResearchUncommittedDispatchOutcomeV1 {
+    taskId: string;
+    admission: ResearchTaskAdmissionV1;
+    reason: ResearchUncommittedOutcomeReasonV1;
+    error?: unknown;
+    resultBytes?: number;
+}
+
+// export: ResearchUncommittedOutcomeReasonV1
+export type ResearchUncommittedOutcomeReasonV1 = "aborted" | "upstream-error" | "result-too-large" | "result-commit-failed";
+
 // export: ResearchWorkspace
 export interface ResearchWorkspace {
     readFile(path: string): Promise<string | undefined>;
@@ -14768,6 +14271,11 @@ export interface RunResearchAgentInput {
     options?: ResearchRunOptions;
     workspace?: ResearchWorkspace;
     researchGraph?: ResearchGraphV1;
+    durableSession?: {
+        store: ResearchSessionStoreV1;
+        sessionId: string;
+        turnId: string;
+    };
     subagentModelsByNode?: Partial<Record<string, BaseChatModel>>;
     brief?: ResearchBriefV1;
     scopeCatalog?: {
@@ -14822,6 +14330,4000 @@ export declare class SqliteResearchSessionStoreV1 implements ResearchSessionStor
     listArtifacts(sessionId: string): Promise<ResearchSessionArtifactV1[]>;
     eraseDeleted(sessionId: string): Promise<boolean>;
 }
+
+// export: stageResearchGraphForDurableSessionV1
+export declare function stageResearchGraphForDurableSessionV1(graph: ResearchGraphV1): ResearchGraphV1;
+
+// export: validateResearchGraphV1
+export declare function validateResearchGraphV1(graph: ResearchGraphV1): void;
+
+// export: validateResearchNodeBudgetV1
+export declare function validateResearchNodeBudgetV1(budget: ResearchNodeBudgetV1, label?: string): void;
+
+// export: validateResearchScopeMentionProposalsV1
+export declare function validateResearchScopeMentionProposalsV1(input: {
+    question: string;
+    proposals: readonly ResearchScopeMentionProposalV1[];
+    expectedTenantOrigin: string;
+    maxMentions?: number;
+}): ResearchScopeMentionV1[];
+
+// export: validateResearchTaskAdmissionV1
+export declare function validateResearchTaskAdmissionV1(input: {
+    executor: "ptc" | "subagent";
+    roleId?: ResearchSubagentRoleIdV1;
+    expectedOutputSchema: ResearchTaskOutputSchemaV1;
+    grantedCapabilityIds: readonly ResearchGraphCapabilityV1[];
+    budget: ResearchNodeBudgetV1;
+    phase?: "T3" | "T5";
+}): void;
+
+// export: validateResearchTaskUsageV1
+export declare function validateResearchTaskUsageV1(usage: ResearchTaskUsageV1, budget: ResearchNodeBudgetV1): void;
+
+// export: verifyResearchSessionStoreConformanceV1
+export declare function verifyResearchSessionStoreConformanceV1(factory: ResearchSessionStoreConformanceFactoryV1, prefix?: string): Promise<ResearchSessionStoreConformanceResultV1>;
+
+// export: WikiResearchDetail
+export interface WikiResearchDetail extends WikiResearchSummary {
+    content: BoundedContentProjectionV1;
+}
+
+// export: WikiResearchSummary
+export interface WikiResearchSummary {
+    contentId: string;
+    spaceKey: string;
+    title: string;
+    updatedAt?: string;
+    excerpt?: string;
+}
+```
+
+### Entry point `./capability-contracts`
+
+```ts
+// export: BoundedContentProjectionV1
+export interface BoundedContentProjectionV1 {
+    text: string;
+    linkTargets: string[];
+    truncated: boolean;
+    inputBytes: number;
+}
+
+// export: decodeResearchGetInputV1
+export declare function decodeResearchGetInputV1(tool: "jira.issue.get" | "wiki.page.get", value: unknown): ResearchGetInputV1;
+
+// export: decodeResearchSearchInputV1
+export declare function decodeResearchSearchInputV1(tool: "jira.issue.search" | "wiki.search", value: unknown, maximumPageSize: number): ResearchSearchInputV1;
+
+// export: RESEARCH_CAPABILITY_SCHEMAS
+export declare const RESEARCH_CAPABILITY_SCHEMAS: {
+    readonly "jira.issue.search": {
+        readonly input: "atlcli.ptc/jira.issue.search.input/v1";
+        readonly output: "atlcli.ptc/jira.issue.search.output/v1";
+    };
+    readonly "jira.issue.get": {
+        readonly input: "atlcli.ptc/jira.issue.get.input/v1";
+        readonly output: "atlcli.ptc/jira.issue.get.output/v1";
+    };
+    readonly "wiki.search": {
+        readonly input: "atlcli.ptc/wiki.search.input/v1";
+        readonly output: "atlcli.ptc/wiki.search.output/v1";
+    };
+    readonly "wiki.page.get": {
+        readonly input: "atlcli.ptc/wiki.page.get.input/v1";
+        readonly output: "atlcli.ptc/wiki.page.get.output/v1";
+    };
+};
+
+// export: RESEARCH_LANGCHAIN_TOOL_NAMES
+export declare const RESEARCH_LANGCHAIN_TOOL_NAMES: Record<ResearchToolId, string>;
+
+// export: ResearchBudgetSnapshotV1
+export interface ResearchBudgetSnapshotV1 {
+    ptcRemaining: number;
+    httpAttemptsRemaining: number;
+    responseBytesRemaining: number;
+}
+
+// export: ResearchEntitySummaryV1
+export interface ResearchEntitySummaryV1 {
+    sourceId: string;
+    entityRef: string;
+    product: "jira" | "confluence";
+    title: string;
+    url: string;
+    issueKey?: string;
+    contentId?: string;
+    projectKey?: string;
+    spaceKey?: string;
+    updatedAt?: string;
+    excerpt?: string;
+}
+
+// export: ResearchGetInputV1
+export interface ResearchGetInputV1 {
+    schema: string;
+    entityRef: string;
+}
+
+// export: ResearchGetOutputV1
+export interface ResearchGetOutputV1 {
+    schema: string;
+    source: Omit<ResearchEntitySummaryV1, "entityRef" | "excerpt">;
+    content: BoundedContentProjectionV1;
+    budget: ResearchBudgetSnapshotV1;
+}
+
+// export: ResearchSearchInputV1
+export type ResearchSearchInputV1 = {
+    schema: string;
+    query: ResearchSearchQueryV1;
+    pageSize?: number;
+} | {
+    schema: string;
+    cursor: string;
+};
+
+// export: ResearchSearchOutputV1
+export interface ResearchSearchOutputV1 {
+    schema: string;
+    items: ResearchEntitySummaryV1[];
+    page: {
+        nextCursor?: string;
+        complete: boolean;
+        termination?: ResearchTerminationCode;
+    };
+    budget: ResearchBudgetSnapshotV1;
+}
+
+// export: ResearchSearchQueryV1
+export interface ResearchSearchQueryV1 {
+    text?: string;
+}
+
+// export: ResearchTerminationCode
+export type ResearchTerminationCode = "index-exhausted" | "item-limit" | "page-limit" | "http-limit" | "response-byte-limit";
+```
+
+### Entry point `./contracts`
+
+```ts
+// export: AtlassianRelationshipV1
+export interface AtlassianRelationshipV1 {
+    id: string;
+    classification: "verified" | "hypothesis";
+    jiraIssueKey: string;
+    confluenceContentId: string;
+    summary: string;
+    sourceIds: string[];
+}
+
+// export: DEFAULT_RESEARCH_LIMITS_V1
+export declare const DEFAULT_RESEARCH_LIMITS_V1: Readonly<ResearchLimitsV1>;
+
+// export: DEFAULT_RESEARCH_ONE_SHOT_POLICY_V1
+export declare const DEFAULT_RESEARCH_ONE_SHOT_POLICY_V1: Readonly<ResearchOneShotPolicyV1>;
+
+// export: normalizeResearchLimitsV1
+export declare function normalizeResearchLimitsV1(value: unknown): ResearchLimitsV1;
+
+// export: normalizeResearchOneShotPolicyV1
+export declare function normalizeResearchOneShotPolicyV1(value: unknown): ResearchOneShotPolicyV1;
+
+// export: normalizeResearchRequestV1
+export declare function normalizeResearchRequestV1(value: unknown): ResearchRequestV1;
+
+// export: normalizeResearchScopeSeedsV1
+export declare function normalizeResearchScopeSeedsV1(value: unknown, scope: ResearchScopeV1): ResearchScopeSeedV1[] | undefined;
+
+// export: normalizeResearchScopeV1
+export declare function normalizeResearchScopeV1(value: unknown): ResearchScopeV1;
+
+// export: RESEARCH_CAPABILITY_EVENT_TOOL_IDS_V1
+export declare const RESEARCH_CAPABILITY_EVENT_TOOL_IDS_V1: readonly [
+    "jira.issue.search",
+    "jira.issue.get",
+    "wiki.search",
+    "wiki.page.get",
+    "jira.project.search",
+    "wiki.space.search",
+    "atlassian.reference.resolve"
+];
+
+// export: RESEARCH_ONE_SHOT_POLICY_SCHEMA_V1
+export declare const RESEARCH_ONE_SHOT_POLICY_SCHEMA_V1: "atlcli.research-one-shot-policy/v1";
+
+// export: RESEARCH_REPORT_ARTIFACT_PATH_V1
+export declare const RESEARCH_REPORT_ARTIFACT_PATH_V1: "/artifacts/report.md";
+
+// export: RESEARCH_REPORT_SCHEMA_V1
+export declare const RESEARCH_REPORT_SCHEMA_V1: "atlcli.research-report/v1";
+
+// export: RESEARCH_REQUEST_SCHEMA_V1
+export declare const RESEARCH_REQUEST_SCHEMA_V1: "atlcli.research-request/v1";
+
+// export: RESEARCH_REQUESTED_EFFORTS_V1
+export declare const RESEARCH_REQUESTED_EFFORTS_V1: readonly [
+    "auto",
+    "lookup",
+    "analysis",
+    "deep"
+];
+
+// export: RESEARCH_REQUESTED_PLAN_APPROVALS_V1
+export declare const RESEARCH_REQUESTED_PLAN_APPROVALS_V1: readonly [
+    "default",
+    "automatic",
+    "required"
+];
+
+// export: RESEARCH_REQUESTED_RECONCILIATIONS_V1
+export declare const RESEARCH_REQUESTED_RECONCILIATIONS_V1: readonly [
+    "off",
+    "auto",
+    "required"
+];
+
+// export: RESEARCH_SCOPE_AUTHORITIES_V1
+export declare const RESEARCH_SCOPE_AUTHORITIES_V1: readonly [
+    "candidate",
+    "resolved",
+    "approved",
+    "locked"
+];
+
+// export: RESEARCH_SCOPE_BINDING_SCHEMA_V1
+export declare const RESEARCH_SCOPE_BINDING_SCHEMA_V1: "atlcli.research-scope-binding/v1";
+
+// export: RESEARCH_SCOPE_EXPANSION_MODES_V1
+export declare const RESEARCH_SCOPE_EXPANSION_MODES_V1: readonly [
+    "strict",
+    "ask",
+    "exact-linked"
+];
+
+// export: RESEARCH_SCOPE_SOURCE_PRECEDENCE_V1
+export declare const RESEARCH_SCOPE_SOURCE_PRECEDENCE_V1: {
+    readonly cli_flag: 500;
+    readonly ui_added: 500;
+    readonly natural_language: 400;
+    readonly exact_link: 400;
+    readonly current_context: 300;
+    readonly profile_default: 200;
+    readonly global_default: 100;
+    readonly research_discovery: 0;
+};
+
+// export: RESEARCH_SCOPE_SOURCES_V1
+export declare const RESEARCH_SCOPE_SOURCES_V1: readonly [
+    "cli_flag",
+    "ui_added",
+    "natural_language",
+    "current_context",
+    "profile_default",
+    "global_default",
+    "exact_link",
+    "research_discovery"
+];
+
+// export: RESEARCH_TOOL_IDS
+export declare const RESEARCH_TOOL_IDS: readonly [
+    "jira.issue.search",
+    "jira.issue.get",
+    "wiki.search",
+    "wiki.page.get"
+];
+
+// export: ResearchCapabilityEventToolIdV1
+export type ResearchCapabilityEventToolIdV1 = (typeof RESEARCH_CAPABILITY_EVENT_TOOL_IDS_V1)[number];
+
+// export: ResearchContractError
+export declare class ResearchContractError extends Error {
+    readonly code: ResearchErrorCode;
+    constructor(code: ResearchErrorCode, message: string);
+}
+
+// export: ResearchErrorCode
+export type ResearchErrorCode = "invalid-request" | "plan-approval-required" | "clarification-required" | "missing-key" | "invalid-key" | "not-atlassian" | "not-authenticated" | "access-denied" | "rate-limited" | "provider-error" | "limit-exceeded" | "cancelled" | "invalid-report" | "unknown";
+
+// export: ResearchEventV1
+export type ResearchEventV1 = {
+    kind: "state";
+    seq: number;
+    at: string;
+    from: string;
+    to: string;
+} | {
+    kind: "phase";
+    seq: number;
+    at: string;
+    phase: string;
+} | {
+    kind: "progress";
+    seq: number;
+    at: string;
+    graphRevision: number;
+    completed: number;
+    maximum: number;
+} | {
+    kind: "brief";
+    seq: number;
+    at: string;
+    revision: number;
+} | {
+    kind: "clarification";
+    seq: number;
+    at: string;
+    briefRevision: number;
+    status: string;
+} | {
+    kind: "scope";
+    seq: number;
+    at: string;
+    briefRevision: number;
+    proposalId?: string;
+    status: string;
+} | {
+    kind: "plan";
+    seq: number;
+    at: string;
+    briefRevision: number;
+    revision: number;
+    status: string;
+    resolvedEffort: ResearchResolvedEffortV1;
+    selectedRoleIds: string[];
+    nodeCount: number;
+    waveCount: number;
+    maxParallelNodes: number;
+} | {
+    kind: "plan_diff";
+    seq: number;
+    at: string;
+    from: number;
+    to: number;
+} | {
+    kind: "control";
+    seq: number;
+    at: string;
+    action: string;
+    status: string;
+    revision: number;
+} | {
+    kind: "task";
+    seq: number;
+    at: string;
+    taskId: string;
+    status: string;
+    roleId?: string;
+    wave?: number;
+    dependencyTaskIds?: string[];
+    grantedCapabilityIds?: string[];
+    resultBytes?: number;
+    capabilityCalls?: number;
+    inputTokens?: number;
+    outputTokens?: number;
+    sourceCount?: number;
+    findingCount?: number;
+    relationshipCount?: number;
+    gapCount?: number;
+    defectCount?: number;
+} | {
+    kind: "subagent";
+    seq: number;
+    at: string;
+    taskId: string;
+    roleId: string;
+    status: string;
+    attempt?: number;
+    durationMs?: number;
+    errorCode?: string;
+} | {
+    kind: "capability";
+    seq: number;
+    at: string;
+    callId: string;
+    toolId: ResearchCapabilityEventToolIdV1;
+    inputKind: "search" | "continuation" | "detail" | "reference";
+    status: string;
+    itemCount?: number;
+    complete?: boolean;
+    termination?: string;
+    resultBytes?: number;
+    truncated?: boolean;
+    durationMs?: number;
+    errorCode?: string;
+    inputKeys?: string[];
+    queryKeys?: string[];
+} | {
+    kind: "decision";
+    seq: number;
+    at: string;
+    decisionId: string;
+    status: "started" | "completed" | "failed";
+    reasonCode: string;
+    taskId?: string;
+    errorCode?: string;
+    codeBytes?: number;
+    codeHash?: string;
+} | {
+    kind: "reconciliation";
+    seq: number;
+    at: string;
+    taskId: string;
+    status: "started" | "completed" | "failed";
+    defectCount?: number;
+    proposedFollowUpCount?: number;
+} | {
+    kind: "reconciliation_disposition";
+    seq: number;
+    at: string;
+    dispositionId: string;
+    defectId: string;
+    decision: "reject_defect" | "revise" | "downgrade" | "add_follow_up" | "abstain" | "no_change";
+    reasonCode: "invalid_reference" | "already_resolved" | "supported_by_evidence" | "material_defect" | "insufficient_budget" | "outside_approval_envelope";
+    status: "recorded";
+} | {
+    kind: "repair_group";
+    seq: number;
+    at: string;
+    followUpId: string;
+    taskId?: string;
+    status: "authorized" | "retained_without_execution" | "completed";
+    reasonCode: "accepted_follow_up" | "wave_or_budget_exhausted" | "packet_accepted";
+} | {
+    kind: "steering";
+    seq: number;
+    at: string;
+    revision: number;
+    status: string;
+} | {
+    kind: "budget";
+    seq: number;
+    at: string;
+    metric: "capability_calls" | "tokens" | "bytes" | "duration_ms" | "cost_micros";
+    consumed: number;
+    maximum: number;
+} | {
+    kind: "evidence";
+    seq: number;
+    at: string;
+    evidenceId: string;
+} | {
+    kind: "warning";
+    seq: number;
+    at: string;
+    code: string;
+} | {
+    kind: "recovery";
+    seq: number;
+    at: string;
+    checkpointRef: string;
+} | {
+    kind: "artifact";
+    seq: number;
+    at: string;
+    path: typeof RESEARCH_REPORT_ARTIFACT_PATH_V1;
+};
+
+// export: ResearchFindingV1
+export interface ResearchFindingV1 {
+    id: string;
+    classification: "fact" | "inference";
+    summary: string;
+    detail?: string;
+    sourceIds: string[];
+}
+
+// export: ResearchLimitsV1
+export interface ResearchLimitsV1 {
+    pageSize: number;
+    maxSearchPagesPerProduct: number;
+    maxItemsPerProduct: number;
+    maxDetailItemsPerProduct: number;
+    maxBodyCharsPerItem: number;
+    maxPtcCalls: number;
+    maxHttpCalls: number;
+    maxConcurrentCalls: number;
+    maxPtcInputBytes: number;
+    maxPtcOutputBytes: number;
+    maxTotalResponseBytes: number;
+    maxInterpreterMemoryBytes: number;
+    maxInterpreterMs: number;
+    maxModelInputTokens: number;
+    maxModelOutputTokens: number;
+    maxReportChars: number;
+    maxRunMs: number;
+}
+
+// export: ResearchOneShotEventV1
+export type ResearchOneShotEventV1 = Extract<ResearchEventV1, {
+    kind: "phase" | "progress" | "brief" | "plan" | "task" | "subagent" | "capability" | "decision" | "reconciliation" | "reconciliation_disposition" | "repair_group" | "budget" | "artifact";
+}>;
+
+// export: ResearchOneShotPolicyV1
+export interface ResearchOneShotPolicyV1 {
+    schema: typeof RESEARCH_ONE_SHOT_POLICY_SCHEMA_V1;
+    requestedEffort: ResearchRequestedEffortV1;
+    requestedPlanApproval: ResearchRequestedPlanApprovalV1;
+    scopeExpansionMode: ResearchScopeExpansionModeV1;
+    requestedReconciliation: ResearchRequestedReconciliationV1;
+}
+
+// export: ResearchPort
+export interface ResearchPort {
+    hasApiKey(): Promise<boolean>;
+    setApiKey(apiKey: string): Promise<void>;
+    clearApiKey(): Promise<void>;
+    resolveScope(request: ResearchRequestV1, options?: import("./scope-preflight.js").ResearchScopePreflightOptionsV1): Promise<import("./scope-preflight.js").ResearchScopePreflightOutcomeV1>;
+    run(request: ResearchRequestV1, options?: ResearchRunOptions): Promise<ResearchReportV1>;
+    copyMarkdown(markdown: string): Promise<void>;
+    downloadMarkdown(markdown: string, filename: string): Promise<void>;
+}
+
+// export: ResearchProduct
+export type ResearchProduct = "jira" | "confluence";
+
+// export: ResearchProgressPhase
+export type ResearchProgressPhase = "preparing" | "researching" | "rendering" | "complete";
+
+// export: ResearchProgressV1
+export interface ResearchProgressV1 {
+    phase: ResearchProgressPhase;
+    message: string;
+    completedCalls: number;
+    maxCalls: number;
+}
+
+// export: ResearchProvider
+export type ResearchProvider = "rest" | "agg";
+
+// export: ResearchReportV1
+export interface ResearchReportV1 {
+    schema: typeof RESEARCH_REPORT_SCHEMA_V1;
+    title: string;
+    question: string;
+    scope: ResearchScopeV1;
+    executiveSummary: string;
+    findings: ResearchFindingV1[];
+    relationships: AtlassianRelationshipV1[];
+    limitations: string[];
+    sources: ResearchSourceReferenceV1[];
+    run: ResearchRunSummaryV1;
+    markdown: string;
+}
+
+// export: ResearchRequestedEffortV1
+export type ResearchRequestedEffortV1 = (typeof RESEARCH_REQUESTED_EFFORTS_V1)[number];
+
+// export: ResearchRequestedPlanApprovalV1
+export type ResearchRequestedPlanApprovalV1 = (typeof RESEARCH_REQUESTED_PLAN_APPROVALS_V1)[number];
+
+// export: ResearchRequestedReconciliationV1
+export type ResearchRequestedReconciliationV1 = (typeof RESEARCH_REQUESTED_RECONCILIATIONS_V1)[number];
+
+// export: ResearchRequestV1
+export interface ResearchRequestV1 {
+    schema: typeof RESEARCH_REQUEST_SCHEMA_V1;
+    question: string;
+    scope: ResearchScopeV1;
+    limits: ResearchLimitsV1;
+    wikiProvider: ResearchProvider;
+    scopeSeeds?: ResearchScopeSeedV1[];
+}
+
+// export: ResearchResolvedEffortV1
+export type ResearchResolvedEffortV1 = Exclude<ResearchRequestedEffortV1, "auto">;
+
+// export: ResearchResolvedPlanApprovalV1
+export type ResearchResolvedPlanApprovalV1 = Exclude<ResearchRequestedPlanApprovalV1, "default">;
+
+// export: ResearchRunCountsV1
+export interface ResearchRunCountsV1 {
+    ptcCalls: number;
+    httpCalls: number;
+    jiraItems: number;
+    confluenceItems: number;
+}
+
+// export: ResearchRunOptions
+export interface ResearchRunOptions {
+    signal?: AbortSignal;
+    policy?: ResearchOneShotPolicyV1;
+    onProgress?: (progress: ResearchProgressV1) => void;
+    onEvent?: (event: ResearchOneShotEventV1) => void;
+}
+
+// export: ResearchRunSummaryV1
+export interface ResearchRunSummaryV1 {
+    model: string;
+    wikiProvider: ResearchProvider;
+    startedAt: string;
+    completedAt: string;
+    durationMs: number;
+    complete: boolean;
+    counts: ResearchRunCountsV1;
+    usage?: ResearchRunUsageV1;
+    warnings: string[];
+}
+
+// export: ResearchRunUsageV1
+export interface ResearchRunUsageV1 {
+    inputTokens?: number;
+    outputTokens?: number;
+}
+
+// export: ResearchScopeAuthorityV1
+export type ResearchScopeAuthorityV1 = (typeof RESEARCH_SCOPE_AUTHORITIES_V1)[number];
+
+// export: ResearchScopeBindingV1
+export interface ResearchScopeBindingV1 {
+    schema: typeof RESEARCH_SCOPE_BINDING_SCHEMA_V1;
+    id: string;
+    tenantOrigin: string;
+    product: ResearchProduct;
+    entityKind: ResearchScopeEntityKindV1;
+    entityRef: string;
+    key?: string;
+    name: string;
+    source: ResearchScopeSourceV1;
+    authority: ResearchScopeAuthorityV1;
+    mentionId?: string;
+    candidateId?: string;
+    approvedAt?: string;
+}
+
+// export: ResearchScopeEntityKindV1
+export type ResearchScopeEntityKindV1 = "project" | "space" | "issue" | "page";
+
+// export: ResearchScopeExpansionModeV1
+export type ResearchScopeExpansionModeV1 = (typeof RESEARCH_SCOPE_EXPANSION_MODES_V1)[number];
+
+// export: ResearchScopeSeedV1
+export interface ResearchScopeSeedV1 {
+    binding: ResearchScopeBindingV1;
+    precedence: number;
+}
+
+// export: ResearchScopeSourceV1
+export type ResearchScopeSourceV1 = (typeof RESEARCH_SCOPE_SOURCES_V1)[number];
+
+// export: ResearchScopeV1
+export interface ResearchScopeV1 {
+    siteOrigin: string;
+    jiraProjectKeys: string[];
+    confluenceSpaceKeys: string[];
+    timeWindow?: ResearchTimeWindowV1;
+}
+
+// export: ResearchSourceReferenceV1
+export interface ResearchSourceReferenceV1 {
+    id: string;
+    product: ResearchProduct;
+    title: string;
+    url: string;
+    issueKey?: string;
+    contentId?: string;
+    projectKey?: string;
+    spaceKey?: string;
+    excerpt?: string;
+    updatedAt?: string;
+}
+
+// export: ResearchTimeWindowV1
+export interface ResearchTimeWindowV1 {
+    from?: string;
+    to?: string;
+}
+
+// export: ResearchToolId
+export type ResearchToolId = (typeof RESEARCH_TOOL_IDS)[number];
+```
+
+### Entry point `./events`
+
+```ts
+// export: formatResearchOneShotEventV1
+export declare function formatResearchOneShotEventV1(event: ResearchOneShotEventV1): string;
+
+// export: isResearchOneShotEventV1
+export declare function isResearchOneShotEventV1(value: unknown): value is ResearchOneShotEventV1;
+```
+
+### Entry point `./graph`
+
+```ts
+// export: acceptResearchGraphProposalV1
+export declare function acceptResearchGraphProposalV1(catalogGraph: ResearchGraphV1, value: unknown): ResearchGraphV1;
+
+// export: assertResearchGraphExecutableV1
+export declare function assertResearchGraphExecutableV1(graph: ResearchGraphV1): void;
+
+// export: composeResearchGraphV1
+export declare function composeResearchGraphV1(brief: ResearchBriefV1, options?: ResearchGraphCompositionOptionsV1): ResearchGraphV1;
+
+// export: ComposeStandardResearchGraphOptionsV1
+export interface ComposeStandardResearchGraphOptionsV1 {
+    sessionId?: string;
+    turnId?: string;
+    scope?: ResearchScopeV1;
+    scopeBindings?: readonly ResearchScopeBindingV1[];
+    limits?: ResearchLimitsV1;
+    asOf?: string;
+    timezone?: string;
+    policy?: ResearchOneShotPolicyV1;
+}
+
+// export: composeStandardResearchGraphV1
+export declare function composeStandardResearchGraphV1(question: string, options?: ComposeStandardResearchGraphOptionsV1): ResearchGraphV1;
+
+// export: createStandardResearchBriefV1
+export declare function createStandardResearchBriefV1(question: string, options?: ComposeStandardResearchGraphOptionsV1): ResearchBriefV1;
+
+// export: parseResearchGraphProposalV1
+export declare function parseResearchGraphProposalV1(value: unknown): ResearchGraphProposalV1;
+
+// export: projectSelectedResearchRolesV1
+export declare function projectSelectedResearchRolesV1(graph: Pick<ResearchGraphV1, "nodes">): ResearchSubagentRoleIdV1[];
+
+// export: reduceResearchGraphV1
+export declare function reduceResearchGraphV1(graph: ResearchGraphV1, update: ResearchGraphUpdateV1): ResearchGraphV1;
+
+// export: RESEARCH_BRIEF_SCHEMA_V1
+export declare const RESEARCH_BRIEF_SCHEMA_V1: "atlcli.research-brief/v1";
+
+// export: RESEARCH_COMPOSITION_REASONS_V1
+export declare const RESEARCH_COMPOSITION_REASONS_V1: readonly [
+    "simple_lookup",
+    "independent_branch",
+    "cross_product_join",
+    "scope_resolution",
+    "related_scope_discovery",
+    "exact_reference_follow",
+    "large_document_set",
+    "hierarchy_traversal",
+    "coverage_gap",
+    "contradiction",
+    "negative_claim",
+    "high_impact_claim",
+    "user_requested",
+    "budget_pruned",
+    "not_applicable"
+];
+
+// export: RESEARCH_GRAPH_CAPABILITIES
+export declare const RESEARCH_GRAPH_CAPABILITIES: readonly [
+    "jira.issue.search",
+    "jira.issue.get",
+    "wiki.search",
+    "wiki.page.get",
+    "jira.project.search",
+    "wiki.space.search",
+    "atlassian.reference.resolve"
+];
+
+// export: RESEARCH_GRAPH_PROPOSAL_SCHEMA_V1
+export declare const RESEARCH_GRAPH_PROPOSAL_SCHEMA_V1: "atlcli.research-graph-proposal/v1";
+
+// export: RESEARCH_GRAPH_ROLES
+export declare const RESEARCH_GRAPH_ROLES: readonly [
+    "focused-researcher",
+    "document-distiller",
+    "contradiction-verifier",
+    "coverage-moderator",
+    "outline-planner",
+    "reconciler",
+    "synthesizer"
+];
+
+// export: RESEARCH_GRAPH_SCHEMA_V1
+export declare const RESEARCH_GRAPH_SCHEMA_V1: "atlcli.research-graph/v1";
+
+// export: RESEARCH_PLAN_APPROVAL_REQUIRED_SCHEMA_V1
+export declare const RESEARCH_PLAN_APPROVAL_REQUIRED_SCHEMA_V1: "atlcli.research-plan-approval-required/v1";
+
+// export: RESEARCH_T3_GRAPH_ROLES
+export declare const RESEARCH_T3_GRAPH_ROLES: ("focused-researcher" | "document-distiller" | "contradiction-verifier" | "coverage-moderator" | "outline-planner" | "reconciler" | "synthesizer")[];
+
+// export: ResearchBriefV1
+export interface ResearchBriefV1 {
+    schema: typeof RESEARCH_BRIEF_SCHEMA_V1;
+    sessionId: string;
+    turnId: string;
+    revision: number;
+    objective: string;
+    audience?: string;
+    decisionToSupport?: string;
+    scope: ResearchScopeV1;
+    scopeMentions: ResearchScopeMentionV1[];
+    scopeCandidates: ResearchScopeCandidateV1[];
+    scopeBindings: ResearchScopeBindingV1[];
+    scopeResolutions: ResearchScopeResolutionV1[];
+    scopeDiscoveryPolicy: ResearchScopeDiscoveryPolicyV1;
+    asOf: string;
+    timezone: string;
+    resolvedTimeWindow?: ResearchTimeWindowV1;
+    requestedEffort: ResearchRequestedEffortV1;
+    resolvedEffort: ResearchResolvedEffortV1;
+    requestedPlanApproval: ResearchRequestedPlanApprovalV1;
+    resolvedPlanApproval: ResearchResolvedPlanApprovalV1;
+    requestedReconciliation: ResearchRequestedReconciliationV1;
+    expectedSections: string[];
+    coverageTargets: ResearchCoverageTargetV1[];
+    sourceClasses: ResearchProduct[];
+    limits: ResearchLimitsV1;
+    clarificationQuestions: ResearchClarificationQuestionV1[];
+    assumptions: ResearchBriefAssumptionV1[];
+}
+
+// export: ResearchCompositionReasonV1
+export type ResearchCompositionReasonV1 = (typeof RESEARCH_COMPOSITION_REASONS_V1)[number];
+
+// export: ResearchEffortV1
+// @deprecated ResearchEffortV1 — Use ResearchResolvedEffortV1 from the brief contract.
+export type ResearchEffortV1 = ResearchResolvedEffortV1;
+
+// export: ResearchGraphCapabilityV1
+export type ResearchGraphCapabilityV1 = (typeof RESEARCH_GRAPH_CAPABILITIES)[number];
+
+// export: ResearchGraphCompositionOptionsV1
+export interface ResearchGraphCompositionOptionsV1 {
+    graphRevision?: number;
+    grants?: Partial<Record<string, readonly ResearchGraphCapabilityV1[]>>;
+    createdAt?: string;
+}
+
+// export: ResearchGraphNodeV1
+export interface ResearchGraphNodeV1 {
+    id: string;
+    kind: "resolve_scope" | "search" | "expand" | "distill" | "verify" | "moderate" | "outline" | "reconcile" | "repair";
+    executor: "ptc" | "subagent";
+    roleId?: ResearchSubagentRoleIdV1;
+    objective: string;
+    requestedCapabilityIds: ResearchGraphCapabilityV1[];
+    grantedCapabilityIds: ResearchGraphCapabilityV1[];
+    typedIntentRefs: string[];
+    dependencies: string[];
+    parentNodeId?: string;
+    createdFromEvidenceIds: string[];
+    reasonCodes: ResearchCompositionReasonV1[];
+    status: ResearchNodeStatusV1;
+    depth: 0 | 1;
+    priority: number;
+    attempt: number;
+    maxAttempts: number;
+    budget: ResearchNodeBudgetV1;
+    completion: ResearchNodeCompletionPolicyV1;
+    packetRef?: string;
+    stopReason?: string;
+}
+
+// export: ResearchGraphProposalNodeV1
+export interface ResearchGraphProposalNodeV1 {
+    nodeId: string;
+    dependencies: string[];
+    reasonCodes: ResearchCompositionReasonV1[];
+}
+
+// export: ResearchGraphProposalV1
+export interface ResearchGraphProposalV1 {
+    schema: typeof RESEARCH_GRAPH_PROPOSAL_SCHEMA_V1;
+    basedOnBriefRevision: number;
+    basedOnGraphRevision: number;
+    nodes: ResearchGraphProposalNodeV1[];
+}
+
+// export: ResearchGraphRoleDecisionV1
+export interface ResearchGraphRoleDecisionV1 {
+    roleId: ResearchSubagentRoleIdV1;
+    decision: "selected" | "omitted";
+    reasonCodes: ResearchCompositionReasonV1[];
+}
+
+// export: ResearchGraphRoleV1
+export type ResearchGraphRoleV1 = ResearchSubagentRoleIdV1;
+
+// export: ResearchGraphUpdateV1
+export type ResearchGraphUpdateV1 = {
+    kind: "approve";
+    expectedRevision: number;
+    approvedAt: string;
+} | {
+    kind: "activate_repair";
+    expectedRevision: number;
+    repairNode: ResearchGraphNodeV1;
+} | {
+    kind: "start_node";
+    expectedRevision: number;
+    nodeId: string;
+} | {
+    kind: "complete_node";
+    expectedRevision: number;
+    nodeId: string;
+    packetRef: string;
+} | {
+    kind: "fail_node";
+    expectedRevision: number;
+    nodeId: string;
+    stopReason: string;
+} | {
+    kind: "quarantine_node";
+    expectedRevision: number;
+    nodeId: string;
+    stopReason: string;
+} | {
+    kind: "prune_node";
+    expectedRevision: number;
+    nodeId: string;
+    stopReason: string;
+};
+
+// export: ResearchGraphV1
+export interface ResearchGraphV1 {
+    schema: typeof RESEARCH_GRAPH_SCHEMA_V1;
+    sessionId: string;
+    turnId: string;
+    revision: number;
+    basedOnBriefRevision: number;
+    status: "proposed" | "approved" | "running" | "revising" | "complete";
+    resolvedEffort: ResearchResolvedEffortV1;
+    nodes: ResearchGraphNodeV1[];
+    roleDecisions: ResearchGraphRoleDecisionV1[];
+    maxParallelNodes: number;
+    maxResearchWaves: number;
+    maxReconciliationWaves: number;
+    researchWavesCompleted: number;
+    reconciliationWavesCompleted: number;
+    reconciliationPolicy: ResearchGraphReconciliationPolicyV1;
+    totalBudget: ResearchNodeBudgetV1;
+    approvalEnvelope: ResearchApprovalEnvelopeV1;
+    createdAt: string;
+    approvedAt?: string;
+}
+
+// export: ResearchNodeCompletionPolicyV1
+export interface ResearchNodeCompletionPolicyV1 {
+    requiredCoverageTargetIds: string[];
+    allowAbstention: boolean;
+    stopOnFirstSupportedAnswer: boolean;
+}
+
+// export: ResearchNodeStatusV1
+export type ResearchNodeStatusV1 = "proposed" | "ready" | "running" | "complete" | "failed" | "blocked" | "pruned" | "quarantined";
+
+// export: researchPlanApprovalRequiredV1
+export declare function researchPlanApprovalRequiredV1(graph: ResearchGraphV1): ResearchPlanApprovalRequiredV1 | undefined;
+
+// export: ResearchPlanApprovalRequiredV1
+export interface ResearchPlanApprovalRequiredV1 {
+    schema: typeof RESEARCH_PLAN_APPROVAL_REQUIRED_SCHEMA_V1;
+    kind: "plan_approval_required";
+    briefRevision: number;
+    graphRevision: number;
+    resolvedEffort: ResearchResolvedEffortV1;
+    resolvedPlanApproval: "required";
+    selectedRoleIds: ResearchSubagentRoleIdV1[];
+    scopeExpansionMode: ResearchOneShotPolicyV1["scopeExpansionMode"];
+    reconciliationMode: ResearchRequestedReconciliationV1;
+    rerunGuidance: string[];
+}
+
+// export: ResearchReconciliationModeV1
+// @deprecated ResearchReconciliationModeV1 — Use ResearchRequestedReconciliationV1 from the brief contract.
+export type ResearchReconciliationModeV1 = ResearchRequestedReconciliationV1;
+
+// export: stageResearchGraphForDurableSessionV1
+export declare function stageResearchGraphForDurableSessionV1(graph: ResearchGraphV1): ResearchGraphV1;
+
+// export: validateResearchGraphV1
+export declare function validateResearchGraphV1(graph: ResearchGraphV1): void;
+```
+
+### Entry point `./node`
+
+```ts
+// export: acceptResearchGraphProposalV1
+export declare function acceptResearchGraphProposalV1(catalogGraph: ResearchGraphV1, value: unknown): ResearchGraphV1;
+
+// export: assertResearchGraphExecutableV1
+export declare function assertResearchGraphExecutableV1(graph: ResearchGraphV1): void;
+
+// export: assertResearchReportV1
+export declare function assertResearchReportV1(value: unknown): asserts value is ResearchReportV1;
+
+// export: AtlassianRelationshipV1
+export interface AtlassianRelationshipV1 {
+    id: string;
+    classification: "verified" | "hypothesis";
+    jiraIssueKey: string;
+    confluenceContentId: string;
+    summary: string;
+    sourceIds: string[];
+}
+
+// export: BoundedContentProjectionV1
+export interface BoundedContentProjectionV1 {
+    text: string;
+    linkTargets: string[];
+    truncated: boolean;
+    inputBytes: number;
+}
+
+// export: briefRequiresClarificationV1
+export declare function briefRequiresClarificationV1(brief: ResearchBriefV1): boolean;
+
+// export: buildDynamicSupervisorPrompt
+export declare function buildDynamicSupervisorPrompt(graph: ResearchGraphV1): string;
+
+// export: buildResearchAcquisitionProgram
+export declare function buildResearchAcquisitionProgram(node: ResearchGraphNodeV1, question: string, maxDetailItems: number): string;
+
+// export: buildResearchCql
+export declare function buildResearchCql(scope: ResearchScopeV1, query: ResearchSearchQueryV1): string;
+
+// export: buildResearchJql
+export declare function buildResearchJql(scope: ResearchScopeV1, query: ResearchSearchQueryV1): string;
+
+// export: classifyResearchError
+export declare function classifyResearchError(value: unknown): {
+    code: ResearchErrorCode;
+    message: string;
+};
+
+// export: compileDynamicResearchSubagents
+export declare function compileDynamicResearchSubagents(graph: ResearchGraphV1, options: DynamicResearchSubagentOptions): SubAgent[];
+
+// export: composeResearchGraphV1
+export declare function composeResearchGraphV1(brief: ResearchBriefV1, options?: ResearchGraphCompositionOptionsV1): ResearchGraphV1;
+
+// export: ComposeStandardResearchGraphOptionsV1
+export interface ComposeStandardResearchGraphOptionsV1 {
+    sessionId?: string;
+    turnId?: string;
+    scope?: ResearchScopeV1;
+    scopeBindings?: readonly ResearchScopeBindingV1[];
+    limits?: ResearchLimitsV1;
+    asOf?: string;
+    timezone?: string;
+    policy?: ResearchOneShotPolicyV1;
+}
+
+// export: composeStandardResearchGraphV1
+export declare function composeStandardResearchGraphV1(question: string, options?: ComposeStandardResearchGraphOptionsV1): ResearchGraphV1;
+
+// export: ContentProjectionLimits
+export interface ContentProjectionLimits {
+    maxTextChars: number;
+    maxTextBytes: number;
+    maxLinks: number;
+    maxNodes: number;
+    maxDepth: number;
+}
+
+// export: createBoundedResearchSubagentMiddleware
+export declare function createBoundedResearchSubagentMiddleware(model: BaseChatModel, graph: ResearchGraphV1, subagents: SubAgent[], runtime: ResearchSubagentRuntimeBindings, options?: {
+    now?: () => number;
+    onDiagnostic?: (diagnostic: ResearchSubagentDiagnosticV1) => void;
+    onFatal?: (error: unknown) => void;
+    availableSourceIdsForNode?: (nodeId: string) => readonly string[];
+    capabilityCallsForNode?: (nodeId: string) => number;
+    onAcceptedPacket?: (packet: ResearchAcceptedPacketV1) => void | Promise<void>;
+    onRejectedStructuredResult?: (input: {
+        taskId: string;
+        role: ResearchGraphRoleV1;
+        candidate: unknown;
+        validatorIssue: string;
+    }) => void | Promise<void>;
+    structuredOutputStrategy?: "tool" | "provider";
+    activeGraph?: () => ResearchGraphV1 | undefined;
+    durableDispatchJournal?: ResearchSessionDispatchJournalV1;
+    reconciliationInputContext?: () => ResearchReconciliationInputV1;
+    synthesisReconciliationContext?: () => {
+        reconciliationPacketRef?: string;
+        dispositions: readonly ResearchReconciliationDispositionV1[];
+        repairPackets?: readonly ResearchAcceptedPacketV1[];
+    };
+    repairAuthorization?: () => {
+        taskId: string;
+        nodeId: string;
+        reconciliationTaskId: string;
+        followUp: {
+            id: string;
+            objective: string;
+            reasonCode: string;
+            sourceIds: string[];
+        };
+    } | undefined;
+}): {
+    name: string;
+    tools: DynamicStructuredTool<z.ZodObject<{
+        description: z.ZodString;
+        subagent_type: z.ZodString;
+    }, z.core.$strip>, {
+        description: string;
+        subagent_type: string;
+    }, {
+        description: string;
+        subagent_type: string;
+    }, unknown, unknown, "task">[];
+    "~middlewareTypes"?: import("langchain").MiddlewareTypeConfig<undefined, undefined, unknown, readonly [
+        DynamicStructuredTool<z.ZodObject<{
+            description: z.ZodString;
+            subagent_type: z.ZodString;
+        }, z.core.$strip>, {
+            description: string;
+            subagent_type: string;
+        }, {
+            description: string;
+            subagent_type: string;
+        }, string | import("@langchain/langgraph").Command<unknown, Record<string, unknown>, string>, unknown, "task">
+    ], readonly [
+    ]> | undefined;
+    stateSchema?: undefined;
+    contextSchema?: undefined;
+    streamTransformers?: readonly [
+    ] | undefined;
+    wrapToolCall?: import("langchain").WrapToolCallHook<undefined, unknown> | undefined;
+    wrapModelCall?: import("langchain").WrapModelCallHook<undefined, unknown> | undefined;
+    beforeAgent?: import("langchain").BeforeAgentHook<undefined, unknown> | undefined;
+    beforeModel?: import("langchain").BeforeModelHook<undefined, unknown> | undefined;
+    afterModel?: import("langchain").AfterModelHook<undefined, unknown> | undefined;
+    afterAgent?: import("langchain").AfterAgentHook<undefined, unknown> | undefined;
+};
+
+// export: createMemoryResearchWorkspace
+export declare function createMemoryResearchWorkspace(): ResearchWorkspace;
+
+// export: CreateResearchBriefInputV1
+export interface CreateResearchBriefInputV1 {
+    sessionId: string;
+    turnId: string;
+    revision?: number;
+    objective: string;
+    scope: ResearchScopeV1;
+    scopeMentions?: readonly ResearchScopeMentionV1[];
+    scopeCandidates?: readonly ResearchScopeCandidateV1[];
+    scopeBindings?: readonly ResearchScopeBindingV1[];
+    scopeResolutions?: readonly ResearchScopeResolutionV1[];
+    scopeDiscoveryPolicy?: ResearchScopeDiscoveryPolicyV1;
+    asOf: string;
+    timezone: string;
+    requestedEffort?: ResearchRequestedEffortV1;
+    requestedPlanApproval?: ResearchRequestedPlanApprovalV1;
+    requestedReconciliation?: ResearchRequestedReconciliationV1;
+    sourceClasses?: readonly ResearchProduct[];
+    limits?: ResearchLimitsV1;
+    audience?: string;
+    decisionToSupport?: string;
+    expectedSections?: readonly string[];
+    coverageTargets?: readonly ResearchCoverageTargetV1[];
+    clarificationQuestions?: readonly ResearchClarificationQuestionV1[];
+    assumptions?: readonly ResearchBriefAssumptionV1[];
+}
+
+// export: createResearchBriefV1
+export declare function createResearchBriefV1(input: CreateResearchBriefInputV1): ResearchBriefV1;
+
+// export: createResearchDispatchInterceptionAdapter
+export declare function createResearchDispatchInterceptionAdapter(options: {
+    admissions: readonly ResearchTaskAdmissionV1[];
+    maxTasks: number;
+    maxConcurrency: number;
+    signal?: AbortSignal;
+    invokeUpstream(input: ResearchTaskToolInputV1, config: RunnableConfig): Promise<unknown>;
+    projectResult?: (value: unknown) => unknown;
+    projectDependencyResult?: (taskId: string, acceptedResult: unknown) => unknown | undefined;
+    beforeInvoke?: (input: {
+        taskId: string;
+        admission: ResearchTaskAdmissionV1;
+    }) => void | Promise<void>;
+    acceptResult?: (taskId: string, result: unknown, rawResult: unknown) => void | Promise<void>;
+    onUncommittedOutcome?: (outcome: ResearchUncommittedDispatchOutcomeV1) => void | Promise<void>;
+    onLateResult?: (input: {
+        taskId: string;
+        admission: ResearchTaskAdmissionV1;
+        resultBytes?: number;
+    }) => void | Promise<void>;
+    onDiagnostic?: (diagnostic: ResearchDispatchDiagnosticV1) => void;
+}): ResearchDispatchInterceptionAdapter;
+
+// export: createResearchGraphProposalPtcTool
+export declare function createResearchGraphProposalPtcTool(catalogGraph: ResearchGraphV1, options?: {
+    canPropose?: () => boolean;
+    onAccepted?: (graph: ResearchGraphV1) => void;
+    onAcceptedProposal?: (proposal: import("./graph.js").ResearchGraphProposalV1, graph: ResearchGraphV1) => void | Promise<void>;
+    onDiagnostic?: (status: "started" | "completed" | "failed", errorCode?: string) => void;
+}): DynamicStructuredTool;
+
+// export: createResearchKeyScopeSeedV1
+export declare function createResearchKeyScopeSeedV1(input: {
+    tenantOrigin: string;
+    product: "jira" | "confluence";
+    key: string;
+    source: ResearchScopeSourceV1;
+    authority: "approved" | "locked";
+}): ResearchScopeSeedV1;
+
+// export: createResearchNodePtcToolsV1
+export declare function createResearchNodePtcToolsV1(node: ResearchGraphNodeV1, broker: ResearchCapabilityBroker, scopeCatalog: DynamicResearchSubagentOptions["scopeCatalog"], onDiagnostic?: (diagnostic: ResearchPtcDiagnosticV1) => void, onResult?: (tool: ResearchGraphCapabilityV1, result: unknown) => void, now?: () => number): DynamicStructuredTool[];
+
+// export: createResearchPtcTools
+export declare function createResearchPtcTools(broker: ResearchCapabilityBroker, options?: ResearchPtcToolOptions): DynamicStructuredTool[];
+
+// export: createResearchReconciliationDispositionPtcTool
+export declare function createResearchReconciliationDispositionPtcTool(catalogGraph: ResearchGraphV1, options: {
+    activeGraph: () => ResearchGraphV1 | undefined;
+    reconciliationPacket: (taskId: string) => ResearchAcceptedPacketV1 | undefined;
+    isKnownTarget?: (defect: ResearchReconciliationDefectV1, packet: ResearchAcceptedPacketV1) => boolean;
+    canRecord?: () => boolean;
+    authorizeRepair?: (input: {
+        graph: ResearchGraphV1;
+        reconciliationTaskId: string;
+        defect: ResearchReconciliationDefectV1;
+        followUp: ResearchFollowUpProposalV1;
+    }) => ResearchRepairAuthorizationV1 | undefined;
+    now?: () => number;
+    onAccepted?: (dispositions: ResearchReconciliationDispositionV1[], repairAuthorization?: ResearchRepairAuthorizationV1, repairOutcome?: {
+        followUpId: string;
+        status: "authorized" | "retained_without_execution";
+    }) => void | Promise<void>;
+    onDiagnostic?: (status: "started" | "completed" | "failed", errorCode?: string) => void;
+}): DynamicStructuredTool;
+
+// export: createResearchScopeBindingV1
+export declare function createResearchScopeBindingV1(input: {
+    candidate: ResearchScopeCandidateV1;
+    source: ResearchScopeSourceV1;
+    authority: "resolved" | "approved" | "locked";
+    mentionId?: string;
+    approvedAt?: string;
+    bindingId?: string;
+}): ResearchScopeBindingV1;
+
+// export: createResearchScopeCatalogPtcTools
+export declare function createResearchScopeCatalogPtcTools(broker: ResearchScopeCatalogBroker, options: ResearchScopeCatalogPtcOptions): StructuredToolInterface[];
+
+// export: createResearchScopeExpansionProposalV1
+export declare function createResearchScopeExpansionProposalV1(input: Omit<ResearchScopeExpansionProposalV1, "schema">): ResearchScopeExpansionProposalV1;
+
+// export: createResearchSessionV1
+export declare function createResearchSessionV1(input: {
+    sessionId: string;
+    ownerId: string;
+    createdAt: string;
+    leaseExpiresAt: string;
+}): ResearchSessionV1;
+
+// export: createRestResearchBroker
+export declare function createRestResearchBroker(profile: Profile, request: ResearchRequestV1): ResearchCapabilityBroker;
+
+// export: createRestResearchProviders
+export declare function createRestResearchProviders(profile: Profile, request: ResearchRequestV1, budget: ResearchRunBudget, options?: RestResearchProviderOptions): ResearchReadProviders;
+
+// export: createRestScopeCatalogProviders
+export declare function createRestScopeCatalogProviders(profile: Profile, expectedTenantOrigin: string, options?: RestScopeCatalogProviderOptions): ResearchScopeCatalogProvidersV1;
+
+// export: createStandardResearchBriefV1
+export declare function createStandardResearchBriefV1(question: string, options?: ComposeStandardResearchGraphOptionsV1): ResearchBriefV1;
+
+// export: decodeResearchGetInputV1
+export declare function decodeResearchGetInputV1(tool: "jira.issue.get" | "wiki.page.get", value: unknown): ResearchGetInputV1;
+
+// export: decodeResearchReferenceResolveIntentV1
+export declare function decodeResearchReferenceResolveIntentV1(value: unknown): ResearchReferenceResolveIntentV1;
+
+// export: decodeResearchScopeCatalogIntentV1
+export declare function decodeResearchScopeCatalogIntentV1(capability: "jira.project.search" | "wiki.space.search", value: unknown, maximumPageSize: number): ResearchScopeCatalogIntentV1;
+
+// export: decodeResearchSearchInputV1
+export declare function decodeResearchSearchInputV1(tool: "jira.issue.search" | "wiki.search", value: unknown, maximumPageSize: number): ResearchSearchInputV1;
+
+// export: DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY
+export declare const DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY = "__deepagents_subagent_response_format";
+
+// export: DEFAULT_RESEARCH_LIMITS_V1
+export declare const DEFAULT_RESEARCH_LIMITS_V1: Readonly<ResearchLimitsV1>;
+
+// export: DEFAULT_RESEARCH_ONE_SHOT_POLICY_V1
+export declare const DEFAULT_RESEARCH_ONE_SHOT_POLICY_V1: Readonly<ResearchOneShotPolicyV1>;
+
+// export: DEFAULT_RESEARCH_SCOPE_DISCOVERY_POLICY_V1
+export declare const DEFAULT_RESEARCH_SCOPE_DISCOVERY_POLICY_V1: Readonly<ResearchScopeDiscoveryPolicyV1>;
+
+// export: DynamicResearchSubagentOptions
+export interface DynamicResearchSubagentOptions {
+    model: BaseChatModel;
+    modelsByRole?: Partial<Record<ResearchGraphRoleV1, BaseChatModel>>;
+    modelsByNode?: Partial<Record<string, BaseChatModel>>;
+    broker: ResearchCapabilityBroker;
+    scopeCatalog?: {
+        broker: ResearchScopeCatalogBroker;
+        tenantOrigin: string;
+    };
+    question: string;
+    maxInterpreterMs: number;
+    maxInterpreterMemoryBytes: number;
+    maxPtcCalls: number;
+    maxSearchPagesPerProduct: number;
+    maxDetailItemsPerProduct: number;
+    maxPacketChars: number;
+    onPtcDiagnostic?: (diagnostic: ResearchPtcDiagnosticV1) => void;
+    onNodePtcDiagnostic?: (nodeId: string, diagnostic: ResearchPtcDiagnosticV1) => void;
+    onNodePtcResult?: (nodeId: string, tool: ResearchGraphCapabilityV1, result: unknown) => void;
+    now?: () => number;
+}
+
+// export: encodeResearchTaskDescriptionV1
+export declare function encodeResearchTaskDescriptionV1(value: Omit<ResearchTaskDescriptionV1, "schema">): string;
+
+// export: escapeResearchCqlLiteral
+export declare function escapeResearchCqlLiteral(value: string): string;
+
+// export: escapeResearchJqlLiteral
+export declare function escapeResearchJqlLiteral(value: string): string;
+
+// export: FileSystemResearchWorkspace
+export declare class FileSystemResearchWorkspace implements ResearchWorkspace {
+    readonly root: string;
+    constructor(root: string);
+    static createTemporary(prefix?: string): Promise<FileSystemResearchWorkspace>;
+    private resolveVirtual;
+    private assertNoSymlink;
+    private ensureDirectory;
+    readFile(path: string): Promise<string | undefined>;
+    writeFile(path: string, contents: string): Promise<void>;
+    remove(path: string): Promise<void>;
+    list(prefix?: string): Promise<string[]>;
+    dispose(): Promise<void>;
+}
+
+// export: finalizeResearchAgentDraftV1
+export declare function finalizeResearchAgentDraftV1(input: {
+    draft: unknown;
+    request: ResearchRequestV1;
+    sources: readonly ResearchSourceReferenceV1[];
+    detailEvidence: readonly ResearchDetailEvidenceV1[];
+    run: ResearchRunSummaryV1;
+    additionalLimitations?: readonly string[];
+}): ResearchReportV1;
+
+// export: finalizeResearchReportV1
+export declare function finalizeResearchReportV1(report: Omit<ResearchReportV1, "markdown"> & {
+    markdown?: string;
+}): ResearchReportV1;
+
+// export: formatResearchOneShotEventV1
+export declare function formatResearchOneShotEventV1(event: ResearchOneShotEventV1): string;
+
+// export: IndexedDbResearchSessionStoreV1
+export declare class IndexedDbResearchSessionStoreV1 implements ResearchSessionStoreV1 {
+    #private;
+    private constructor();
+    static open(options?: {
+        databaseName?: string;
+        factory?: IDBFactory;
+        blockedUpgradeTimeoutMs?: number;
+        failureInjection?: ResearchSessionStoreFailureInjectionV1;
+    }): Promise<IndexedDbResearchSessionStoreV1>;
+    close(): void;
+    create(session: ResearchSessionV1): Promise<ResearchSessionV1>;
+    read(sessionId: string): Promise<ResearchSessionV1 | undefined>;
+    list(input?: {
+        limit?: number;
+        cursor?: string;
+    }): Promise<{
+        sessions: ResearchSessionV1[];
+        nextCursor?: string;
+    }>;
+    commit(sessionId: string, update: ResearchSessionUpdateV1): Promise<ResearchSessionCommitV1>;
+    events(sessionId: string, input?: {
+        afterRevision?: number;
+        limit?: number;
+    }): Promise<ResearchSessionEventV1[]>;
+    checkpoints(sessionId: string, turnId: string): Promise<ResearchSessionCheckpointV1[]>;
+    graph(sessionId: string, turnId: string): Promise<ResearchGraphV1 | undefined>;
+    tasks(sessionId: string, turnId: string): Promise<ResearchTaskAttemptV1[]>;
+    packet(sessionId: string, packetRef: string): Promise<ResearchAcceptedPacketV1 | undefined>;
+    workspace(sessionId: string): Promise<ResearchWorkspace>;
+    replaceOpaqueSourceRefs(sessionId: string, refs: ResearchOpaqueSourceRefV1[]): Promise<void>;
+    opaqueSourceRefs(sessionId: string): Promise<ResearchOpaqueSourceRefV1[]>;
+    writeArtifact(sessionId: string, artifact: ResearchSessionArtifactV1, contents: string): Promise<void>;
+    artifact(sessionId: string, artifactId: string): Promise<{
+        metadata: ResearchSessionArtifactV1;
+        contents: string;
+    } | undefined>;
+    listArtifacts(sessionId: string): Promise<ResearchSessionArtifactV1[]>;
+    eraseDeleted(sessionId: string): Promise<boolean>;
+}
+
+// export: InitializeResearchSessionTurnInputV1
+export interface InitializeResearchSessionTurnInputV1 {
+    store: ResearchSessionStoreV1;
+    session: ResearchSessionV1;
+    brief: ResearchBriefV1;
+    graph: ResearchGraphV1;
+    approveAutomatically: boolean;
+    at: string;
+}
+
+// export: initializeResearchSessionTurnV1
+export declare function initializeResearchSessionTurnV1(input: InitializeResearchSessionTurnInputV1): Promise<ResearchSessionV1>;
+
+// export: InMemoryResearchSessionStoreV1
+export declare class InMemoryResearchSessionStoreV1 implements ResearchSessionStoreV1 {
+    #private;
+    constructor(options?: {
+        failureInjection?: ResearchSessionStoreFailureInjectionV1;
+    });
+    create(session: ResearchSessionV1): Promise<ResearchSessionV1>;
+    read(sessionId: string): Promise<ResearchSessionV1 | undefined>;
+    list(input?: {
+        limit?: number;
+        cursor?: string;
+    }): Promise<{
+        sessions: ResearchSessionV1[];
+        nextCursor?: string;
+    }>;
+    commit(sessionId: string, update: ResearchSessionUpdateV1): Promise<ResearchSessionCommitV1>;
+    events(sessionId: string, input?: {
+        afterRevision?: number;
+        limit?: number;
+    }): Promise<ResearchSessionEventV1[]>;
+    checkpoints(sessionId: string, turnId: string): Promise<ResearchSessionCheckpointV1[]>;
+    graph(sessionId: string, turnId: string): Promise<ResearchGraphV1 | undefined>;
+    tasks(sessionId: string, turnId: string): Promise<ResearchTaskAttemptV1[]>;
+    packet(sessionId: string, packetRef: string): Promise<ResearchAcceptedPacketV1 | undefined>;
+    workspace(sessionId: string): Promise<ResearchWorkspace>;
+    replaceOpaqueSourceRefs(sessionId: string, refs: ResearchOpaqueSourceRefV1[]): Promise<void>;
+    opaqueSourceRefs(sessionId: string): Promise<ResearchOpaqueSourceRefV1[]>;
+    writeArtifact(sessionId: string, artifact: ResearchSessionArtifactV1, contents: string): Promise<void>;
+    artifact(sessionId: string, artifactId: string): Promise<{
+        metadata: ResearchSessionArtifactV1;
+        contents: string;
+    } | undefined>;
+    listArtifacts(sessionId: string): Promise<ResearchSessionArtifactV1[]>;
+    eraseDeleted(sessionId: string): Promise<boolean>;
+}
+
+// export: InMemoryResearchSubagentDispatchPort
+export declare class InMemoryResearchSubagentDispatchPort implements ResearchSubagentDispatchPort {
+    #private;
+    constructor(options: {
+        maxResultBytes: number;
+    });
+    admit(attempt: ResearchTaskAttemptV1): void;
+    start(taskId: string, graphRevision: number, at: string): ResearchTaskAttemptV1;
+    accept(input: {
+        taskId: string;
+        graphRevision: number;
+        body: unknown;
+        usage: ResearchTaskUsageV1;
+        acceptedAt: string;
+        availableSourceIds: readonly string[];
+    }): ResearchAcceptedPacketV1;
+    fail(taskId: string, graphRevision: number, at: string): ResearchTaskAttemptV1;
+    cancel(taskId: string, graphRevision: number, at: string): ResearchTaskAttemptV1;
+    quarantine(taskId: string, graphRevision: number, at: string): ResearchTaskAttemptV1;
+    attempt(taskId: string): ResearchTaskAttemptV1 | undefined;
+    packet(packetRef: string): ResearchAcceptedPacketV1 | undefined;
+}
+
+// export: isResearchBriefClarificationRequiredV1
+export declare function isResearchBriefClarificationRequiredV1(value: ResearchClarificationRequiredV1): value is ResearchBriefClarificationRequiredV1;
+
+// export: isResearchOneShotEventV1
+export declare function isResearchOneShotEventV1(value: unknown): value is ResearchOneShotEventV1;
+
+// export: isResearchScopeClarificationRequiredV1
+export declare function isResearchScopeClarificationRequiredV1(value: ResearchClarificationRequiredV1): value is ResearchScopeClarificationRequiredV1;
+
+// export: JiraResearchDetail
+export interface JiraResearchDetail extends JiraResearchSummary {
+    content: BoundedContentProjectionV1;
+}
+
+// export: JiraResearchSummary
+export interface JiraResearchSummary {
+    issueKey: string;
+    projectKey: string;
+    title: string;
+    updatedAt?: string;
+    excerpt?: string;
+}
+
+// export: jiraResearchTextTerms
+export declare function jiraResearchTextTerms(value: string): string[];
+
+// export: normalizeResearchLimitsV1
+export declare function normalizeResearchLimitsV1(value: unknown): ResearchLimitsV1;
+
+// export: normalizeResearchOneShotPolicyV1
+export declare function normalizeResearchOneShotPolicyV1(value: unknown): ResearchOneShotPolicyV1;
+
+// export: normalizeResearchRequestV1
+export declare function normalizeResearchRequestV1(value: unknown): ResearchRequestV1;
+
+// export: normalizeResearchScopeCandidateSelectionsV1
+export declare function normalizeResearchScopeCandidateSelectionsV1(value: readonly ResearchScopeCandidateSelectionV1[] | undefined): ResearchScopeCandidateSelectionV1[];
+
+// export: normalizeResearchScopeMentionText
+export declare function normalizeResearchScopeMentionText(value: string): string;
+
+// export: normalizeResearchScopeSeedsV1
+export declare function normalizeResearchScopeSeedsV1(value: unknown, scope: ResearchScopeV1): ResearchScopeSeedV1[] | undefined;
+
+// export: normalizeResearchScopeV1
+export declare function normalizeResearchScopeV1(value: unknown): ResearchScopeV1;
+
+// export: normalizeResearchWorkspacePath
+export declare function normalizeResearchWorkspacePath(value: string): string;
+
+// export: parseReconciliationBodyV1
+export declare function parseReconciliationBodyV1(value: unknown): ReconciliationBodyV1;
+
+// export: parseResearchAgentDraftV1
+export declare function parseResearchAgentDraftV1(input: unknown): ResearchAgentDraftV1;
+
+// export: parseResearchGraphProposalV1
+export declare function parseResearchGraphProposalV1(value: unknown): ResearchGraphProposalV1;
+
+// export: parseResearchPacketBodyV1
+export declare function parseResearchPacketBodyV1(value: unknown): ResearchPacketBodyV1;
+
+// export: parseResearchQueryFingerprint
+export declare function parseResearchQueryFingerprint(value: string): {
+    tool: "jira.issue.search" | "wiki.search";
+    query: ResearchSearchQueryV1;
+    pageSize: number;
+};
+
+// export: parseResearchReconciliationDispositionV1
+export declare function parseResearchReconciliationDispositionV1(value: unknown): ResearchReconciliationDispositionV1;
+
+// export: parseResearchReconciliationInputV1
+export declare function parseResearchReconciliationInputV1(value: unknown): ResearchReconciliationInputV1;
+
+// export: parseResearchTaskBodyV1
+export declare function parseResearchTaskBodyV1(schema: ResearchTaskOutputSchemaV1, value: unknown): ResearchPacketBodyV1 | ReconciliationBodyV1 | ResearchAgentDraftV1;
+
+// export: prepareResearchBriefPreflightV1
+export declare function prepareResearchBriefPreflightV1(brief: ResearchBriefV1): ResearchBriefPreflightOutcomeV1;
+
+// export: prepareResearchScopePreflightV1
+export declare function prepareResearchScopePreflightV1(input: {
+    request: ResearchRequestV1;
+    catalog: ResearchScopeCatalogInvokePortV1;
+    automaticApproval?: boolean;
+    maximumCatalogPages?: number;
+    candidateSelections?: readonly ResearchScopeCandidateSelectionV1[];
+}): Promise<ResearchScopePreflightOutcomeV1>;
+
+// export: prependBoundedDetailText
+export declare function prependBoundedDetailText(projection: BoundedContentProjectionV1, prefix: string, limits: ContentProjectionLimits): BoundedContentProjectionV1;
+
+// export: projectApprovedWholeScopeV1
+export declare function projectApprovedWholeScopeV1(bindings: readonly ResearchScopeBindingV1[], base: ResearchScopeV1): ResearchScopeV1;
+
+// export: projectConfluenceStorage
+export declare function projectConfluenceStorage(storage: string, siteOrigin: string, limits: ContentProjectionLimits): BoundedContentProjectionV1;
+
+// export: projectJiraDescription
+export declare function projectJiraDescription(description: AdfDocument | string | null | undefined, siteOrigin: string, limits: ContentProjectionLimits): BoundedContentProjectionV1;
+
+// export: projectResearchProposedAssumptionLimitationsV1
+export declare function projectResearchProposedAssumptionLimitationsV1(brief: ResearchBriefV1): string[];
+
+// export: projectResearchReconciliationInputV1
+export declare function projectResearchReconciliationInputV1(input: {
+    briefRevision: number;
+    graphRevision: number;
+    coverageTargetIds: readonly string[];
+    acceptedPackets: readonly ResearchAcceptedPacketV1[];
+}): ResearchReconciliationInputV1;
+
+// export: projectSelectedResearchRolesV1
+export declare function projectSelectedResearchRolesV1(graph: Pick<ResearchGraphV1, "nodes">): ResearchSubagentRoleIdV1[];
+
+// export: proposeResearchScopeMentionsV1
+export declare function proposeResearchScopeMentionsV1(input: {
+    question: string;
+    expectedTenantOrigin: string;
+    existingBindings?: readonly ResearchScopeBindingV1[];
+    maxMentions?: number;
+}): ResearchScopeMentionV1[];
+
+// export: providerCompatibleResearchSchema
+export declare function providerCompatibleResearchSchema(value: Record<string, unknown>): {
+    type: "object";
+    [key: string]: unknown;
+};
+
+// export: ReconciliationBodyV1
+export interface ReconciliationBodyV1 {
+    schema: typeof RESEARCH_RECONCILIATION_BODY_SCHEMA_V1;
+    defects: ResearchReconciliationDefectV1[];
+    proposedFollowUps: ResearchFollowUpProposalV1[];
+}
+
+// export: redactResearchSecrets
+export declare function redactResearchSecrets(value: unknown): string;
+
+// export: reduceResearchAcceptedPacketV1
+export declare function reduceResearchAcceptedPacketV1(input: {
+    current: ResearchTaskAttemptV1;
+    body: unknown;
+    usage: ResearchTaskUsageV1;
+    acceptedAt: string;
+    availableSourceIds: readonly string[];
+    maximumResultBytes: number;
+}): ResearchAcceptedPacketReductionV1;
+
+// export: reduceResearchGraphV1
+export declare function reduceResearchGraphV1(graph: ResearchGraphV1, update: ResearchGraphUpdateV1): ResearchGraphV1;
+
+// export: reduceResearchSessionV1
+export declare function reduceResearchSessionV1(value: ResearchSessionV1, update: ResearchSessionUpdateV1): ResearchSessionV1;
+
+// export: reduceResearchTaskAttemptV1
+export declare function reduceResearchTaskAttemptV1(current: ResearchTaskAttemptV1, event: ResearchTaskAttemptEventV1): ResearchTaskAttemptV1;
+
+// export: renderResearchReportMarkdown
+export declare function renderResearchReportMarkdown(report: Omit<ResearchReportV1, "markdown"> & {
+    markdown?: string;
+}): string;
+
+// export: RESEARCH_ACCEPTED_PACKET_SCHEMA_V1
+export declare const RESEARCH_ACCEPTED_PACKET_SCHEMA_V1: "atlcli.accepted-research-packet/v1";
+
+// export: RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1
+export declare const RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1: Record<string, unknown>;
+
+// export: RESEARCH_AGENT_DRAFT_SCHEMA_V1
+export declare const RESEARCH_AGENT_DRAFT_SCHEMA_V1: z.ZodObject<{
+    title: z.ZodString;
+    executiveSummary: z.ZodString;
+    findings: z.ZodArray<z.ZodObject<{
+        classification: z.ZodEnum<{
+            fact: "fact";
+            inference: "inference";
+        }>;
+        summary: z.ZodString;
+        detail: z.ZodOptional<z.ZodString>;
+        sourceIds: z.ZodArray<z.ZodString>;
+    }, z.core.$strict>>;
+    relationships: z.ZodArray<z.ZodObject<{
+        classification: z.ZodEnum<{
+            verified: "verified";
+            hypothesis: "hypothesis";
+        }>;
+        jiraIssueKey: z.ZodString;
+        confluenceContentId: z.ZodString;
+        summary: z.ZodString;
+        sourceIds: z.ZodArray<z.ZodString>;
+    }, z.core.$strict>>;
+    limitations: z.ZodArray<z.ZodString>;
+}, z.core.$strict>;
+
+// export: RESEARCH_ANALYSIS_PACKET_SCHEMA_V1
+// @deprecated RESEARCH_ANALYSIS_PACKET_SCHEMA_V1 — Use RESEARCH_PACKET_BODY_JSON_SCHEMA_V1.
+export declare const RESEARCH_ANALYSIS_PACKET_SCHEMA_V1: Record<string, unknown>;
+
+// export: RESEARCH_APPROVAL_ENVELOPE_SCHEMA_V1
+export declare const RESEARCH_APPROVAL_ENVELOPE_SCHEMA_V1: "atlcli.research-approval-envelope/v1";
+
+// export: RESEARCH_BRIEF_PREFLIGHT_OUTCOME_SCHEMA_V1
+export declare const RESEARCH_BRIEF_PREFLIGHT_OUTCOME_SCHEMA_V1: "atlcli.research-brief-preflight-outcome/v1";
+
+// export: RESEARCH_BRIEF_SCHEMA_V1
+export declare const RESEARCH_BRIEF_SCHEMA_V1: "atlcli.research-brief/v1";
+
+// export: RESEARCH_CAPABILITY_EVENT_TOOL_IDS_V1
+export declare const RESEARCH_CAPABILITY_EVENT_TOOL_IDS_V1: readonly [
+    "jira.issue.search",
+    "jira.issue.get",
+    "wiki.search",
+    "wiki.page.get",
+    "jira.project.search",
+    "wiki.space.search",
+    "atlassian.reference.resolve"
+];
+
+// export: RESEARCH_CAPABILITY_SCHEMAS
+export declare const RESEARCH_CAPABILITY_SCHEMAS: {
+    readonly "jira.issue.search": {
+        readonly input: "atlcli.ptc/jira.issue.search.input/v1";
+        readonly output: "atlcli.ptc/jira.issue.search.output/v1";
+    };
+    readonly "jira.issue.get": {
+        readonly input: "atlcli.ptc/jira.issue.get.input/v1";
+        readonly output: "atlcli.ptc/jira.issue.get.output/v1";
+    };
+    readonly "wiki.search": {
+        readonly input: "atlcli.ptc/wiki.search.input/v1";
+        readonly output: "atlcli.ptc/wiki.search.output/v1";
+    };
+    readonly "wiki.page.get": {
+        readonly input: "atlcli.ptc/wiki.page.get.input/v1";
+        readonly output: "atlcli.ptc/wiki.page.get.output/v1";
+    };
+};
+
+// export: RESEARCH_CLARIFICATION_REQUIRED_SCHEMA_V1
+export declare const RESEARCH_CLARIFICATION_REQUIRED_SCHEMA_V1: "atlcli.research-clarification-required/v1";
+
+// export: RESEARCH_COMPOSITION_REASONS_V1
+export declare const RESEARCH_COMPOSITION_REASONS_V1: readonly [
+    "simple_lookup",
+    "independent_branch",
+    "cross_product_join",
+    "scope_resolution",
+    "related_scope_discovery",
+    "exact_reference_follow",
+    "large_document_set",
+    "hierarchy_traversal",
+    "coverage_gap",
+    "contradiction",
+    "negative_claim",
+    "high_impact_claim",
+    "user_requested",
+    "budget_pruned",
+    "not_applicable"
+];
+
+// export: RESEARCH_CRITIQUE_SCHEMA_V1
+// @deprecated RESEARCH_CRITIQUE_SCHEMA_V1 — Use RESEARCH_RECONCILIATION_BODY_JSON_SCHEMA_V1.
+export declare const RESEARCH_CRITIQUE_SCHEMA_V1: Record<string, unknown>;
+
+// export: RESEARCH_GRAPH_CAPABILITIES
+export declare const RESEARCH_GRAPH_CAPABILITIES: readonly [
+    "jira.issue.search",
+    "jira.issue.get",
+    "wiki.search",
+    "wiki.page.get",
+    "jira.project.search",
+    "wiki.space.search",
+    "atlassian.reference.resolve"
+];
+
+// export: RESEARCH_GRAPH_PROPOSAL_SCHEMA_V1
+export declare const RESEARCH_GRAPH_PROPOSAL_SCHEMA_V1: "atlcli.research-graph-proposal/v1";
+
+// export: RESEARCH_GRAPH_ROLES
+export declare const RESEARCH_GRAPH_ROLES: readonly [
+    "focused-researcher",
+    "document-distiller",
+    "contradiction-verifier",
+    "coverage-moderator",
+    "outline-planner",
+    "reconciler",
+    "synthesizer"
+];
+
+// export: RESEARCH_GRAPH_SCHEMA_V1
+export declare const RESEARCH_GRAPH_SCHEMA_V1: "atlcli.research-graph/v1";
+
+// export: RESEARCH_LANGCHAIN_TOOL_NAMES
+export declare const RESEARCH_LANGCHAIN_TOOL_NAMES: Record<ResearchToolId, string>;
+
+// export: RESEARCH_MODEL_ID
+export declare const RESEARCH_MODEL_ID: "claude-sonnet-4-6";
+
+// export: RESEARCH_ONE_SHOT_POLICY_SCHEMA_V1
+export declare const RESEARCH_ONE_SHOT_POLICY_SCHEMA_V1: "atlcli.research-one-shot-policy/v1";
+
+// export: RESEARCH_ONE_SHOT_REQUEST_PATH_V1
+export declare const RESEARCH_ONE_SHOT_REQUEST_PATH_V1: "/session/request.json";
+
+// export: RESEARCH_OPAQUE_SOURCE_REF_SCHEMA_V1
+export declare const RESEARCH_OPAQUE_SOURCE_REF_SCHEMA_V1: "atlcli.research-opaque-source-ref/v1";
+
+// export: RESEARCH_PACKET_BODY_JSON_SCHEMA_V1
+export declare const RESEARCH_PACKET_BODY_JSON_SCHEMA_V1: Record<string, unknown>;
+
+// export: RESEARCH_PACKET_BODY_SCHEMA_V1
+export declare const RESEARCH_PACKET_BODY_SCHEMA_V1: "atlcli.research-packet-body/v1";
+
+// export: RESEARCH_PLAN_APPROVAL_REQUIRED_SCHEMA_V1
+export declare const RESEARCH_PLAN_APPROVAL_REQUIRED_SCHEMA_V1: "atlcli.research-plan-approval-required/v1";
+
+// export: RESEARCH_RECONCILIATION_BODY_JSON_SCHEMA_V1
+export declare const RESEARCH_RECONCILIATION_BODY_JSON_SCHEMA_V1: Record<string, unknown>;
+
+// export: RESEARCH_RECONCILIATION_BODY_SCHEMA_V1
+export declare const RESEARCH_RECONCILIATION_BODY_SCHEMA_V1: "atlcli.reconciliation-body/v1";
+
+// export: RESEARCH_RECONCILIATION_DECISIONS_V1
+export declare const RESEARCH_RECONCILIATION_DECISIONS_V1: readonly [
+    "reject_defect",
+    "revise",
+    "downgrade",
+    "add_follow_up",
+    "abstain",
+    "no_change"
+];
+
+// export: RESEARCH_RECONCILIATION_DISPOSITION_SCHEMA_V1
+export declare const RESEARCH_RECONCILIATION_DISPOSITION_SCHEMA_V1: "atlcli.reconciliation-disposition/v1";
+
+// export: RESEARCH_RECONCILIATION_INPUT_SCHEMA_V1
+export declare const RESEARCH_RECONCILIATION_INPUT_SCHEMA_V1: "atlcli.reconciliation-input/v1";
+
+// export: RESEARCH_RECONCILIATION_REASON_CODES_V1
+export declare const RESEARCH_RECONCILIATION_REASON_CODES_V1: readonly [
+    "invalid_reference",
+    "already_resolved",
+    "supported_by_evidence",
+    "material_defect",
+    "insufficient_budget",
+    "outside_approval_envelope"
+];
+
+// export: RESEARCH_REPORT_ARTIFACT_PATH_V1
+export declare const RESEARCH_REPORT_ARTIFACT_PATH_V1: "/artifacts/report.md";
+
+// export: RESEARCH_REPORT_SCHEMA_V1
+export declare const RESEARCH_REPORT_SCHEMA_V1: "atlcli.research-report/v1";
+
+// export: RESEARCH_REQUEST_SCHEMA_V1
+export declare const RESEARCH_REQUEST_SCHEMA_V1: "atlcli.research-request/v1";
+
+// export: RESEARCH_REQUESTED_EFFORTS_V1
+export declare const RESEARCH_REQUESTED_EFFORTS_V1: readonly [
+    "auto",
+    "lookup",
+    "analysis",
+    "deep"
+];
+
+// export: RESEARCH_REQUESTED_PLAN_APPROVALS_V1
+export declare const RESEARCH_REQUESTED_PLAN_APPROVALS_V1: readonly [
+    "default",
+    "automatic",
+    "required"
+];
+
+// export: RESEARCH_REQUESTED_RECONCILIATIONS_V1
+export declare const RESEARCH_REQUESTED_RECONCILIATIONS_V1: readonly [
+    "off",
+    "auto",
+    "required"
+];
+
+// export: RESEARCH_SCOPE_AUTHORITIES_V1
+export declare const RESEARCH_SCOPE_AUTHORITIES_V1: readonly [
+    "candidate",
+    "resolved",
+    "approved",
+    "locked"
+];
+
+// export: RESEARCH_SCOPE_BINDING_SCHEMA_V1
+export declare const RESEARCH_SCOPE_BINDING_SCHEMA_V1: "atlcli.research-scope-binding/v1";
+
+// export: RESEARCH_SCOPE_CANDIDATE_SCHEMA_V1
+export declare const RESEARCH_SCOPE_CANDIDATE_SCHEMA_V1: "atlcli.research-scope-candidate/v1";
+
+// export: RESEARCH_SCOPE_CANDIDATE_SELECTION_SCHEMA_V1
+export declare const RESEARCH_SCOPE_CANDIDATE_SELECTION_SCHEMA_V1: "atlcli.research-scope-candidate-selection/v1";
+
+// export: RESEARCH_SCOPE_CATALOG_CAPABILITY_IDS
+export declare const RESEARCH_SCOPE_CATALOG_CAPABILITY_IDS: readonly [
+    "jira.project.search",
+    "wiki.space.search",
+    "atlassian.reference.resolve"
+];
+
+// export: RESEARCH_SCOPE_CATALOG_SCHEMAS
+export declare const RESEARCH_SCOPE_CATALOG_SCHEMAS: {
+    readonly "jira.project.search": {
+        readonly input: "atlcli.ptc/jira.project.search.input/v1";
+        readonly output: "atlcli.ptc/jira.project.search.output/v1";
+    };
+    readonly "wiki.space.search": {
+        readonly input: "atlcli.ptc/wiki.space.search.input/v1";
+        readonly output: "atlcli.ptc/wiki.space.search.output/v1";
+    };
+    readonly "atlassian.reference.resolve": {
+        readonly input: "atlcli.ptc/atlassian.reference.resolve.input/v1";
+        readonly output: "atlcli.ptc/atlassian.reference.resolve.output/v1";
+    };
+};
+
+// export: RESEARCH_SCOPE_CATALOG_TOOL_NAMES
+export declare const RESEARCH_SCOPE_CATALOG_TOOL_NAMES: {
+    readonly "jira.project.search": "jira_project_search";
+    readonly "wiki.space.search": "wiki_space_search";
+    readonly "atlassian.reference.resolve": "atlassian_reference_resolve";
+};
+
+// export: RESEARCH_SCOPE_DISCOVERY_POLICY_SCHEMA_V1
+export declare const RESEARCH_SCOPE_DISCOVERY_POLICY_SCHEMA_V1: "atlcli.research-scope-discovery-policy/v1";
+
+// export: RESEARCH_SCOPE_EXPANSION_MODES_V1
+export declare const RESEARCH_SCOPE_EXPANSION_MODES_V1: readonly [
+    "strict",
+    "ask",
+    "exact-linked"
+];
+
+// export: RESEARCH_SCOPE_EXPANSION_PROPOSAL_SCHEMA_V1
+export declare const RESEARCH_SCOPE_EXPANSION_PROPOSAL_SCHEMA_V1: "atlcli.research-scope-expansion-proposal/v1";
+
+// export: RESEARCH_SCOPE_MENTION_PROPOSAL_SCHEMA_V1
+export declare const RESEARCH_SCOPE_MENTION_PROPOSAL_SCHEMA_V1: "atlcli.research-scope-mention-proposal/v1";
+
+// export: RESEARCH_SCOPE_MENTION_SCHEMA_V1
+export declare const RESEARCH_SCOPE_MENTION_SCHEMA_V1: "atlcli.research-scope-mention/v1";
+
+// export: RESEARCH_SCOPE_PREFLIGHT_OUTCOME_SCHEMA_V1
+export declare const RESEARCH_SCOPE_PREFLIGHT_OUTCOME_SCHEMA_V1: "atlcli.research-scope-preflight-outcome/v1";
+
+// export: RESEARCH_SCOPE_RESOLUTION_SCHEMA_V1
+export declare const RESEARCH_SCOPE_RESOLUTION_SCHEMA_V1: "atlcli.research-scope-resolution/v1";
+
+// export: RESEARCH_SCOPE_SOURCE_PRECEDENCE_V1
+export declare const RESEARCH_SCOPE_SOURCE_PRECEDENCE_V1: {
+    readonly cli_flag: 500;
+    readonly ui_added: 500;
+    readonly natural_language: 400;
+    readonly exact_link: 400;
+    readonly current_context: 300;
+    readonly profile_default: 200;
+    readonly global_default: 100;
+    readonly research_discovery: 0;
+};
+
+// export: RESEARCH_SCOPE_SOURCES_V1
+export declare const RESEARCH_SCOPE_SOURCES_V1: readonly [
+    "cli_flag",
+    "ui_added",
+    "natural_language",
+    "current_context",
+    "profile_default",
+    "global_default",
+    "exact_link",
+    "research_discovery"
+];
+
+// export: RESEARCH_SESSION_ARTIFACT_SCHEMA_V1
+export declare const RESEARCH_SESSION_ARTIFACT_SCHEMA_V1: "atlcli.research-session-artifact/v1";
+
+// export: RESEARCH_SESSION_CHECKPOINT_SCHEMA_V1
+export declare const RESEARCH_SESSION_CHECKPOINT_SCHEMA_V1: "atlcli.research-session-checkpoint/v1";
+
+// export: RESEARCH_SESSION_EVENT_SCHEMA_V1
+export declare const RESEARCH_SESSION_EVENT_SCHEMA_V1: "atlcli.research-session-event/v1";
+
+// export: RESEARCH_SESSION_INDEXED_DB_BLOCKED_TIMEOUT_MS
+export declare const RESEARCH_SESSION_INDEXED_DB_BLOCKED_TIMEOUT_MS = 10000;
+
+// export: RESEARCH_SESSION_INDEXED_DB_NAME_V1
+export declare const RESEARCH_SESSION_INDEXED_DB_NAME_V1 = "atlcli-research-sessions";
+
+// export: RESEARCH_SESSION_INDEXED_DB_VERSION_V1
+export declare const RESEARCH_SESSION_INDEXED_DB_VERSION_V1 = 1;
+
+// export: RESEARCH_SESSION_SCHEMA_V1
+export declare const RESEARCH_SESSION_SCHEMA_V1: "atlcli.research-session/v1";
+
+// export: RESEARCH_SUBAGENT_ROLE_IDS_V1
+export declare const RESEARCH_SUBAGENT_ROLE_IDS_V1: readonly [
+    "focused-researcher",
+    "document-distiller",
+    "contradiction-verifier",
+    "coverage-moderator",
+    "outline-planner",
+    "reconciler",
+    "synthesizer"
+];
+
+// export: RESEARCH_SUBAGENT_ROLE_REGISTRY_V1
+export declare const RESEARCH_SUBAGENT_ROLE_REGISTRY_V1: Readonly<Record<ResearchSubagentRoleIdV1, ResearchSubagentRoleV1>>;
+
+// export: RESEARCH_T3_GRAPH_ROLES
+export declare const RESEARCH_T3_GRAPH_ROLES: ("focused-researcher" | "document-distiller" | "contradiction-verifier" | "coverage-moderator" | "outline-planner" | "reconciler" | "synthesizer")[];
+
+// export: RESEARCH_TASK_ATTEMPT_SCHEMA_V1
+export declare const RESEARCH_TASK_ATTEMPT_SCHEMA_V1: "atlcli.research-task-attempt/v1";
+
+// export: RESEARCH_TASK_DISPATCH_SCHEMA_V1
+export declare const RESEARCH_TASK_DISPATCH_SCHEMA_V1: "atlcli.research-task-dispatch/v1";
+
+// export: RESEARCH_TASK_GRANTS_CONFIG_KEY
+export declare const RESEARCH_TASK_GRANTS_CONFIG_KEY = "__atlcli_research_task_granted_capability_ids";
+
+// export: RESEARCH_TASK_ID_CONFIG_KEY
+export declare const RESEARCH_TASK_ID_CONFIG_KEY = "__atlcli_research_task_id";
+
+// export: RESEARCH_TOOL_IDS
+export declare const RESEARCH_TOOL_IDS: readonly [
+    "jira.issue.search",
+    "jira.issue.get",
+    "wiki.search",
+    "wiki.page.get"
+];
+
+// export: RESEARCH_WORKER_PACKET_SCHEMA_V1
+// @deprecated RESEARCH_WORKER_PACKET_SCHEMA_V1 — Use RESEARCH_PACKET_BODY_JSON_SCHEMA_V1.
+export declare const RESEARCH_WORKER_PACKET_SCHEMA_V1: Record<string, unknown>;
+
+// export: RESEARCH_WORKSPACE_SCHEMA_V1
+export declare const RESEARCH_WORKSPACE_SCHEMA_V1: "atlcli.research-workspace/v1";
+
+// export: ResearchAcceptedPacketReductionV1
+export interface ResearchAcceptedPacketReductionV1 {
+    attempt: ResearchTaskAttemptV1;
+    packet: ResearchAcceptedPacketV1;
+}
+
+// export: ResearchAcceptedPacketV1
+export interface ResearchAcceptedPacketV1 {
+    schema: typeof RESEARCH_ACCEPTED_PACKET_SCHEMA_V1;
+    packetRef: string;
+    taskId: string;
+    graphRevision: number;
+    attempt: number;
+    executor: "ptc" | "subagent";
+    roleId?: ResearchSubagentRoleIdV1;
+    grantedCapabilityIds: ResearchGraphCapabilityV1[];
+    typedIntentRefs: string[];
+    expectedOutputSchema: ResearchTaskOutputSchemaV1;
+    body: ResearchPacketBodyV1 | ReconciliationBodyV1 | ResearchAgentDraftV1;
+    hostObservedUsage: ResearchTaskUsageV1;
+    acceptedAt: string;
+}
+
+// export: ResearchAgentDraftV1
+export type ResearchAgentDraftV1 = z.infer<typeof RESEARCH_AGENT_DRAFT_SCHEMA_V1>;
+
+// export: ResearchAgentRuntimeBindings
+export interface ResearchAgentRuntimeBindings {
+    StateBackend: typeof import("deepagents/browser").StateBackend;
+    createDeepAgent: typeof import("deepagents/browser").createDeepAgent;
+    createSubAgentMiddleware: typeof import("deepagents/browser").createSubAgentMiddleware;
+    registerHarnessProfile: typeof import("deepagents/browser").registerHarnessProfile;
+}
+
+// export: ResearchApprovalEnvelopeV1
+export interface ResearchApprovalEnvelopeV1 {
+    schema: typeof RESEARCH_APPROVAL_ENVELOPE_SCHEMA_V1;
+    id: string;
+    status: "proposed" | "approved";
+    basedOnGraphRevision: number;
+    basedOnBriefRevision: number;
+    scopeFingerprint: string;
+    scopeBindingFingerprint: string;
+    allowedScopeBindingIds: string[];
+    scopeDiscoveryPolicy: ResearchScopeDiscoveryPolicyV1;
+    coverageTargetFingerprint: string;
+    allowedCoverageTargetIds: string[];
+    resolvedEffort: ResearchResolvedEffortV1;
+    allowedRoleIds: ResearchSubagentRoleIdV1[];
+    allowedCapabilityIds: ResearchGraphCapabilityV1[];
+    totalBudgetCeiling: ResearchNodeBudgetV1;
+    maxParallelNodes: number;
+    maxResearchWaves: number;
+    maxReconciliationWaves: number;
+    maxDepth: 0 | 1;
+    reconciliationPolicy: ResearchGraphReconciliationPolicyV1;
+    approvedAt?: string;
+}
+
+// export: ResearchBriefAssumptionV1
+export interface ResearchBriefAssumptionV1 {
+    id: string;
+    text: string;
+    requiresUserDecision: boolean;
+    status: "proposed" | "accepted" | "rejected";
+}
+
+// export: ResearchBriefClarificationRequiredV1
+export interface ResearchBriefClarificationRequiredV1 {
+    schema: typeof RESEARCH_CLARIFICATION_REQUIRED_SCHEMA_V1;
+    sessionId: string;
+    turnId: string;
+    briefRevision: number;
+    questions: ResearchClarificationQuestionV1[];
+    assumptionsRequiringDecision: ResearchBriefAssumptionV1[];
+}
+
+// export: ResearchBriefPreflightOutcomeV1
+export type ResearchBriefPreflightOutcomeV1 = {
+    schema: typeof RESEARCH_BRIEF_PREFLIGHT_OUTCOME_SCHEMA_V1;
+    kind: "ready";
+    brief: ResearchBriefV1;
+} | {
+    schema: typeof RESEARCH_BRIEF_PREFLIGHT_OUTCOME_SCHEMA_V1;
+    kind: "clarification_required";
+    clarification: ResearchBriefClarificationRequiredV1;
+};
+
+// export: ResearchBriefV1
+export interface ResearchBriefV1 {
+    schema: typeof RESEARCH_BRIEF_SCHEMA_V1;
+    sessionId: string;
+    turnId: string;
+    revision: number;
+    objective: string;
+    audience?: string;
+    decisionToSupport?: string;
+    scope: ResearchScopeV1;
+    scopeMentions: ResearchScopeMentionV1[];
+    scopeCandidates: ResearchScopeCandidateV1[];
+    scopeBindings: ResearchScopeBindingV1[];
+    scopeResolutions: ResearchScopeResolutionV1[];
+    scopeDiscoveryPolicy: ResearchScopeDiscoveryPolicyV1;
+    asOf: string;
+    timezone: string;
+    resolvedTimeWindow?: ResearchTimeWindowV1;
+    requestedEffort: ResearchRequestedEffortV1;
+    resolvedEffort: ResearchResolvedEffortV1;
+    requestedPlanApproval: ResearchRequestedPlanApprovalV1;
+    resolvedPlanApproval: ResearchResolvedPlanApprovalV1;
+    requestedReconciliation: ResearchRequestedReconciliationV1;
+    expectedSections: string[];
+    coverageTargets: ResearchCoverageTargetV1[];
+    sourceClasses: ResearchProduct[];
+    limits: ResearchLimitsV1;
+    clarificationQuestions: ResearchClarificationQuestionV1[];
+    assumptions: ResearchBriefAssumptionV1[];
+}
+
+// export: ResearchBudgetSnapshotV1
+export interface ResearchBudgetSnapshotV1 {
+    ptcRemaining: number;
+    httpAttemptsRemaining: number;
+    responseBytesRemaining: number;
+}
+
+// export: ResearchCapabilityBroker
+export declare class ResearchCapabilityBroker {
+    #private;
+    readonly budget: ResearchRunBudget;
+    constructor(request: ResearchRequestV1, providers: ResearchReadProviders, options?: BrokerOptions);
+    get signal(): AbortSignal;
+    cancel(reason?: unknown): void;
+    sourceLedger(): ResearchSourceReferenceV1[];
+    detailEvidenceLedger(): ResearchDetailEvidenceV1[];
+    completionStatus(): {
+        complete: boolean;
+        warnings: string[];
+    };
+    invoke(tool: ResearchToolId, input: unknown): Promise<unknown>;
+}
+
+// export: ResearchCapabilityEventToolIdV1
+export type ResearchCapabilityEventToolIdV1 = (typeof RESEARCH_CAPABILITY_EVENT_TOOL_IDS_V1)[number];
+
+// export: researchCheckpointConfigV1
+export declare function researchCheckpointConfigV1(input: {
+    sessionId: string;
+    checkpointNamespace?: string;
+    checkpointId?: string;
+}): ResearchCheckpointConfigV1;
+
+// export: ResearchCheckpointConfigV1
+export interface ResearchCheckpointConfigV1 {
+    readonly configurable: {
+        readonly thread_id: string;
+        readonly checkpoint_ns: string;
+        readonly checkpoint_id?: string;
+    };
+}
+
+// export: ResearchClarificationQuestionV1
+export interface ResearchClarificationQuestionV1 {
+    id: string;
+    prompt: string;
+    required: boolean;
+    scopeMentionId?: string;
+    candidateIds?: string[];
+}
+
+// export: ResearchClarificationRequiredV1
+export type ResearchClarificationRequiredV1 = ResearchScopeClarificationRequiredV1 | ResearchBriefClarificationRequiredV1;
+
+// export: ResearchCompositionReasonV1
+export type ResearchCompositionReasonV1 = (typeof RESEARCH_COMPOSITION_REASONS_V1)[number];
+
+// export: ResearchContractError
+export declare class ResearchContractError extends Error {
+    readonly code: ResearchErrorCode;
+    constructor(code: ResearchErrorCode, message: string);
+}
+
+// export: ResearchCoverageTargetV1
+export interface ResearchCoverageTargetV1 {
+    id: string;
+    question: string;
+    required: boolean;
+    sourceClasses: ResearchProduct[];
+    minimumDistinctSources: number;
+}
+
+// export: ResearchCursorResolution
+export interface ResearchCursorResolution {
+    queryFingerprint: string;
+    providerCursor: string;
+}
+
+// export: ResearchCursorVault
+export declare class ResearchCursorVault {
+    #private;
+    constructor(options?: ResearchCursorVaultOptions);
+    issue(tool: ResearchToolId, queryFingerprint: string, providerCursor: string | undefined): string | undefined;
+    resolve(tool: ResearchToolId, token: string | undefined): ResearchCursorResolution | undefined;
+    clear(): void;
+}
+
+// export: ResearchCursorVaultOptions
+export interface ResearchCursorVaultOptions {
+    maxEntries?: number;
+    createId?: () => string;
+    now?: () => number;
+    ttlMs?: number;
+}
+
+// export: ResearchDetailEvidenceV1
+export interface ResearchDetailEvidenceV1 {
+    source: ResearchSourceReferenceV1;
+    content: BoundedContentProjectionV1;
+}
+
+// export: ResearchDispatchDiagnosticV1
+export interface ResearchDispatchDiagnosticV1 {
+    taskId?: string;
+    status: ResearchDispatchStatusV1;
+    code?: ResearchDispatchErrorCodeV1;
+    resultBytes?: number;
+}
+
+// export: ResearchDispatchError
+export declare class ResearchDispatchError extends Error {
+    readonly code: ResearchDispatchErrorCodeV1;
+    constructor(code: ResearchDispatchErrorCodeV1, message: string);
+}
+
+// export: ResearchDispatchErrorCodeV1
+export type ResearchDispatchErrorCodeV1 = "invalid-task-description" | "unknown-task" | "subagent-type-mismatch" | "response-schema-mismatch" | "task-budget-exceeded" | "task-already-dispatched" | "dependency-not-ready" | "dependency-result-mismatch" | "graph-proposal-required" | "repair-not-authorized" | "concurrency-exceeded" | "capability-denied" | "result-too-large" | "structured-output-invalid" | "subagent-provider-error" | "durable-journal-failed" | "aborted" | "timeout" | "late-result" | "admissions-locked";
+
+// export: ResearchDispatchInterceptionAdapter
+export interface ResearchDispatchInterceptionAdapter {
+    invoke(input: ResearchTaskToolInputV1, config?: RunnableConfig): Promise<unknown>;
+    assertCapability(taskId: string, capabilityId: string): void;
+    replaceAdmissions(admissions: readonly ResearchTaskAdmissionV1[]): void;
+    snapshot(): ResearchDispatchSnapshotV1;
+}
+
+// export: ResearchDispatchSnapshotV1
+export interface ResearchDispatchSnapshotV1 {
+    dispatchedTasks: number;
+    activeInvocations: number;
+    taskStatuses: Readonly<Record<string, ResearchDispatchStatusV1>>;
+}
+
+// export: ResearchDispatchStatusV1
+export type ResearchDispatchStatusV1 = "started" | "completed" | "failed" | "cancelled" | "quarantined" | "rejected";
+
+// export: ResearchEffortV1
+// @deprecated ResearchEffortV1 — Use ResearchResolvedEffortV1 from the brief contract.
+export type ResearchEffortV1 = ResearchResolvedEffortV1;
+
+// export: ResearchEntityKind
+export type ResearchEntityKind = "jira" | "wiki";
+
+// export: ResearchEntityRecord
+export interface ResearchEntityRecord {
+    kind: ResearchEntityKind;
+    entityId: string;
+    projectKey?: string;
+    spaceKey?: string;
+}
+
+// export: ResearchEntitySummaryV1
+export interface ResearchEntitySummaryV1 {
+    sourceId: string;
+    entityRef: string;
+    product: "jira" | "confluence";
+    title: string;
+    url: string;
+    issueKey?: string;
+    contentId?: string;
+    projectKey?: string;
+    spaceKey?: string;
+    updatedAt?: string;
+    excerpt?: string;
+}
+
+// export: ResearchEntityVault
+export declare class ResearchEntityVault {
+    #private;
+    constructor(options: ResearchEntityVaultOptions);
+    issue(record: ResearchEntityRecord): string;
+    resolve(kind: ResearchEntityKind, ref: string): ResearchEntityRecord;
+    clear(): void;
+}
+
+// export: ResearchEntityVaultOptions
+export interface ResearchEntityVaultOptions {
+    maxEntries: number;
+    createId?: () => string;
+}
+
+// export: ResearchErrorCode
+export type ResearchErrorCode = "invalid-request" | "plan-approval-required" | "clarification-required" | "missing-key" | "invalid-key" | "not-atlassian" | "not-authenticated" | "access-denied" | "rate-limited" | "provider-error" | "limit-exceeded" | "cancelled" | "invalid-report" | "unknown";
+
+// export: ResearchEventV1
+export type ResearchEventV1 = {
+    kind: "state";
+    seq: number;
+    at: string;
+    from: string;
+    to: string;
+} | {
+    kind: "phase";
+    seq: number;
+    at: string;
+    phase: string;
+} | {
+    kind: "progress";
+    seq: number;
+    at: string;
+    graphRevision: number;
+    completed: number;
+    maximum: number;
+} | {
+    kind: "brief";
+    seq: number;
+    at: string;
+    revision: number;
+} | {
+    kind: "clarification";
+    seq: number;
+    at: string;
+    briefRevision: number;
+    status: string;
+} | {
+    kind: "scope";
+    seq: number;
+    at: string;
+    briefRevision: number;
+    proposalId?: string;
+    status: string;
+} | {
+    kind: "plan";
+    seq: number;
+    at: string;
+    briefRevision: number;
+    revision: number;
+    status: string;
+    resolvedEffort: ResearchResolvedEffortV1;
+    selectedRoleIds: string[];
+    nodeCount: number;
+    waveCount: number;
+    maxParallelNodes: number;
+} | {
+    kind: "plan_diff";
+    seq: number;
+    at: string;
+    from: number;
+    to: number;
+} | {
+    kind: "control";
+    seq: number;
+    at: string;
+    action: string;
+    status: string;
+    revision: number;
+} | {
+    kind: "task";
+    seq: number;
+    at: string;
+    taskId: string;
+    status: string;
+    roleId?: string;
+    wave?: number;
+    dependencyTaskIds?: string[];
+    grantedCapabilityIds?: string[];
+    resultBytes?: number;
+    capabilityCalls?: number;
+    inputTokens?: number;
+    outputTokens?: number;
+    sourceCount?: number;
+    findingCount?: number;
+    relationshipCount?: number;
+    gapCount?: number;
+    defectCount?: number;
+} | {
+    kind: "subagent";
+    seq: number;
+    at: string;
+    taskId: string;
+    roleId: string;
+    status: string;
+    attempt?: number;
+    durationMs?: number;
+    errorCode?: string;
+} | {
+    kind: "capability";
+    seq: number;
+    at: string;
+    callId: string;
+    toolId: ResearchCapabilityEventToolIdV1;
+    inputKind: "search" | "continuation" | "detail" | "reference";
+    status: string;
+    itemCount?: number;
+    complete?: boolean;
+    termination?: string;
+    resultBytes?: number;
+    truncated?: boolean;
+    durationMs?: number;
+    errorCode?: string;
+    inputKeys?: string[];
+    queryKeys?: string[];
+} | {
+    kind: "decision";
+    seq: number;
+    at: string;
+    decisionId: string;
+    status: "started" | "completed" | "failed";
+    reasonCode: string;
+    taskId?: string;
+    errorCode?: string;
+    codeBytes?: number;
+    codeHash?: string;
+} | {
+    kind: "reconciliation";
+    seq: number;
+    at: string;
+    taskId: string;
+    status: "started" | "completed" | "failed";
+    defectCount?: number;
+    proposedFollowUpCount?: number;
+} | {
+    kind: "reconciliation_disposition";
+    seq: number;
+    at: string;
+    dispositionId: string;
+    defectId: string;
+    decision: "reject_defect" | "revise" | "downgrade" | "add_follow_up" | "abstain" | "no_change";
+    reasonCode: "invalid_reference" | "already_resolved" | "supported_by_evidence" | "material_defect" | "insufficient_budget" | "outside_approval_envelope";
+    status: "recorded";
+} | {
+    kind: "repair_group";
+    seq: number;
+    at: string;
+    followUpId: string;
+    taskId?: string;
+    status: "authorized" | "retained_without_execution" | "completed";
+    reasonCode: "accepted_follow_up" | "wave_or_budget_exhausted" | "packet_accepted";
+} | {
+    kind: "steering";
+    seq: number;
+    at: string;
+    revision: number;
+    status: string;
+} | {
+    kind: "budget";
+    seq: number;
+    at: string;
+    metric: "capability_calls" | "tokens" | "bytes" | "duration_ms" | "cost_micros";
+    consumed: number;
+    maximum: number;
+} | {
+    kind: "evidence";
+    seq: number;
+    at: string;
+    evidenceId: string;
+} | {
+    kind: "warning";
+    seq: number;
+    at: string;
+    code: string;
+} | {
+    kind: "recovery";
+    seq: number;
+    at: string;
+    checkpointRef: string;
+} | {
+    kind: "artifact";
+    seq: number;
+    at: string;
+    path: typeof RESEARCH_REPORT_ARTIFACT_PATH_V1;
+};
+
+// export: ResearchFindingCandidateV1
+export interface ResearchFindingCandidateV1 {
+    id: string;
+    classification: "fact" | "inference";
+    summary: string;
+    sourceIds: string[];
+}
+
+// export: ResearchFindingV1
+export interface ResearchFindingV1 {
+    id: string;
+    classification: "fact" | "inference";
+    summary: string;
+    detail?: string;
+    sourceIds: string[];
+}
+
+// export: ResearchFollowUpProposalV1
+export interface ResearchFollowUpProposalV1 {
+    id: string;
+    objective: string;
+    reasonCode: "coverage_gap" | "contradiction" | "negative_claim" | "stale_or_truncated";
+    sourceIds: string[];
+}
+
+// export: ResearchGapV1
+export interface ResearchGapV1 {
+    id: string;
+    summary: string;
+    targetId?: string;
+    sourceIds: string[];
+}
+
+// export: ResearchGetInputV1
+export interface ResearchGetInputV1 {
+    schema: string;
+    entityRef: string;
+}
+
+// export: ResearchGetOutputV1
+export interface ResearchGetOutputV1 {
+    schema: string;
+    source: Omit<ResearchEntitySummaryV1, "entityRef" | "excerpt">;
+    content: BoundedContentProjectionV1;
+    budget: ResearchBudgetSnapshotV1;
+}
+
+// export: ResearchGraphCapabilityV1
+export type ResearchGraphCapabilityV1 = (typeof RESEARCH_GRAPH_CAPABILITIES)[number];
+
+// export: ResearchGraphCompositionOptionsV1
+export interface ResearchGraphCompositionOptionsV1 {
+    graphRevision?: number;
+    grants?: Partial<Record<string, readonly ResearchGraphCapabilityV1[]>>;
+    createdAt?: string;
+}
+
+// export: ResearchGraphNodeV1
+export interface ResearchGraphNodeV1 {
+    id: string;
+    kind: "resolve_scope" | "search" | "expand" | "distill" | "verify" | "moderate" | "outline" | "reconcile" | "repair";
+    executor: "ptc" | "subagent";
+    roleId?: ResearchSubagentRoleIdV1;
+    objective: string;
+    requestedCapabilityIds: ResearchGraphCapabilityV1[];
+    grantedCapabilityIds: ResearchGraphCapabilityV1[];
+    typedIntentRefs: string[];
+    dependencies: string[];
+    parentNodeId?: string;
+    createdFromEvidenceIds: string[];
+    reasonCodes: ResearchCompositionReasonV1[];
+    status: ResearchNodeStatusV1;
+    depth: 0 | 1;
+    priority: number;
+    attempt: number;
+    maxAttempts: number;
+    budget: ResearchNodeBudgetV1;
+    completion: ResearchNodeCompletionPolicyV1;
+    packetRef?: string;
+    stopReason?: string;
+}
+
+// export: ResearchGraphProposalNodeV1
+export interface ResearchGraphProposalNodeV1 {
+    nodeId: string;
+    dependencies: string[];
+    reasonCodes: ResearchCompositionReasonV1[];
+}
+
+// export: ResearchGraphProposalV1
+export interface ResearchGraphProposalV1 {
+    schema: typeof RESEARCH_GRAPH_PROPOSAL_SCHEMA_V1;
+    basedOnBriefRevision: number;
+    basedOnGraphRevision: number;
+    nodes: ResearchGraphProposalNodeV1[];
+}
+
+// export: ResearchGraphReconciliationPolicyV1
+export interface ResearchGraphReconciliationPolicyV1 {
+    mode: "off" | "auto" | "required";
+    triggers: ResearchReconciliationTriggerV1[];
+    maxPasses: 0 | 1;
+    minimumRemainingBudget: ResearchNodeBudgetV1;
+}
+
+// export: ResearchGraphRoleDecisionV1
+export interface ResearchGraphRoleDecisionV1 {
+    roleId: ResearchSubagentRoleIdV1;
+    decision: "selected" | "omitted";
+    reasonCodes: ResearchCompositionReasonV1[];
+}
+
+// export: ResearchGraphRoleV1
+export type ResearchGraphRoleV1 = ResearchSubagentRoleIdV1;
+
+// export: ResearchGraphUpdateV1
+export type ResearchGraphUpdateV1 = {
+    kind: "approve";
+    expectedRevision: number;
+    approvedAt: string;
+} | {
+    kind: "activate_repair";
+    expectedRevision: number;
+    repairNode: ResearchGraphNodeV1;
+} | {
+    kind: "start_node";
+    expectedRevision: number;
+    nodeId: string;
+} | {
+    kind: "complete_node";
+    expectedRevision: number;
+    nodeId: string;
+    packetRef: string;
+} | {
+    kind: "fail_node";
+    expectedRevision: number;
+    nodeId: string;
+    stopReason: string;
+} | {
+    kind: "quarantine_node";
+    expectedRevision: number;
+    nodeId: string;
+    stopReason: string;
+} | {
+    kind: "prune_node";
+    expectedRevision: number;
+    nodeId: string;
+    stopReason: string;
+};
+
+// export: ResearchGraphV1
+export interface ResearchGraphV1 {
+    schema: typeof RESEARCH_GRAPH_SCHEMA_V1;
+    sessionId: string;
+    turnId: string;
+    revision: number;
+    basedOnBriefRevision: number;
+    status: "proposed" | "approved" | "running" | "revising" | "complete";
+    resolvedEffort: ResearchResolvedEffortV1;
+    nodes: ResearchGraphNodeV1[];
+    roleDecisions: ResearchGraphRoleDecisionV1[];
+    maxParallelNodes: number;
+    maxResearchWaves: number;
+    maxReconciliationWaves: number;
+    researchWavesCompleted: number;
+    reconciliationWavesCompleted: number;
+    reconciliationPolicy: ResearchGraphReconciliationPolicyV1;
+    totalBudget: ResearchNodeBudgetV1;
+    approvalEnvelope: ResearchApprovalEnvelopeV1;
+    createdAt: string;
+    approvedAt?: string;
+}
+
+// export: ResearchInitialScopeResolutionOutcomeV1
+export type ResearchInitialScopeResolutionOutcomeV1 = {
+    kind: "ready";
+    scope: ResearchScopeV1;
+    bindings: ResearchScopeBindingV1[];
+    resolutions: ResearchScopeResolutionV1[];
+} | {
+    kind: "clarification_required";
+    clarification: ResearchScopeClarificationRequiredV1;
+    candidateChoices: ResearchScopeCandidateV1[];
+    resolutions: ResearchScopeResolutionV1[];
+};
+
+// export: ResearchLimitsV1
+export interface ResearchLimitsV1 {
+    pageSize: number;
+    maxSearchPagesPerProduct: number;
+    maxItemsPerProduct: number;
+    maxDetailItemsPerProduct: number;
+    maxBodyCharsPerItem: number;
+    maxPtcCalls: number;
+    maxHttpCalls: number;
+    maxConcurrentCalls: number;
+    maxPtcInputBytes: number;
+    maxPtcOutputBytes: number;
+    maxTotalResponseBytes: number;
+    maxInterpreterMemoryBytes: number;
+    maxInterpreterMs: number;
+    maxModelInputTokens: number;
+    maxModelOutputTokens: number;
+    maxReportChars: number;
+    maxRunMs: number;
+}
+
+// export: ResearchNodeBudgetV1
+export interface ResearchNodeBudgetV1 {
+    maxCapabilityCalls: number;
+    maxInputTokens: number;
+    maxOutputTokens: number;
+    maxResultBytes: number;
+    maxDurationMs: number;
+    maxCostMicros: number;
+}
+
+// export: ResearchNodeCompletionPolicyV1
+export interface ResearchNodeCompletionPolicyV1 {
+    requiredCoverageTargetIds: string[];
+    allowAbstention: boolean;
+    stopOnFirstSupportedAnswer: boolean;
+}
+
+// export: ResearchNodeStatusV1
+export type ResearchNodeStatusV1 = "proposed" | "ready" | "running" | "complete" | "failed" | "blocked" | "pruned" | "quarantined";
+
+// export: ResearchOneShotEventV1
+export type ResearchOneShotEventV1 = Extract<ResearchEventV1, {
+    kind: "phase" | "progress" | "brief" | "plan" | "task" | "subagent" | "capability" | "decision" | "reconciliation" | "reconciliation_disposition" | "repair_group" | "budget" | "artifact";
+}>;
+
+// export: ResearchOneShotPolicyV1
+export interface ResearchOneShotPolicyV1 {
+    schema: typeof RESEARCH_ONE_SHOT_POLICY_SCHEMA_V1;
+    requestedEffort: ResearchRequestedEffortV1;
+    requestedPlanApproval: ResearchRequestedPlanApprovalV1;
+    scopeExpansionMode: ResearchScopeExpansionModeV1;
+    requestedReconciliation: ResearchRequestedReconciliationV1;
+}
+
+// export: ResearchOpaqueSourceRefV1
+export interface ResearchOpaqueSourceRefV1 {
+    schema: typeof RESEARCH_OPAQUE_SOURCE_REF_SCHEMA_V1;
+    id: string;
+    product: "jira" | "confluence";
+    sourceRef: string;
+    capturedAt: string;
+}
+
+// export: ResearchPacketBodyV1
+export interface ResearchPacketBodyV1 {
+    schema: typeof RESEARCH_PACKET_BODY_SCHEMA_V1;
+    answeredQuestion: string;
+    sourceIds: string[];
+    findingCandidates: ResearchFindingCandidateV1[];
+    relationshipCandidates: ResearchRelationshipCandidateV1[];
+    gaps: ResearchGapV1[];
+    proposedFollowUps: ResearchFollowUpProposalV1[];
+    coverageLimits: string[];
+    abstentionReason?: string;
+}
+
+// export: researchPlanApprovalRequiredV1
+export declare function researchPlanApprovalRequiredV1(graph: ResearchGraphV1): ResearchPlanApprovalRequiredV1 | undefined;
+
+// export: ResearchPlanApprovalRequiredV1
+export interface ResearchPlanApprovalRequiredV1 {
+    schema: typeof RESEARCH_PLAN_APPROVAL_REQUIRED_SCHEMA_V1;
+    kind: "plan_approval_required";
+    briefRevision: number;
+    graphRevision: number;
+    resolvedEffort: ResearchResolvedEffortV1;
+    resolvedPlanApproval: "required";
+    selectedRoleIds: ResearchSubagentRoleIdV1[];
+    scopeExpansionMode: ResearchOneShotPolicyV1["scopeExpansionMode"];
+    reconciliationMode: ResearchRequestedReconciliationV1;
+    rerunGuidance: string[];
+}
+
+// export: ResearchPort
+export interface ResearchPort {
+    hasApiKey(): Promise<boolean>;
+    setApiKey(apiKey: string): Promise<void>;
+    clearApiKey(): Promise<void>;
+    resolveScope(request: ResearchRequestV1, options?: import("./scope-preflight.js").ResearchScopePreflightOptionsV1): Promise<import("./scope-preflight.js").ResearchScopePreflightOutcomeV1>;
+    run(request: ResearchRequestV1, options?: ResearchRunOptions): Promise<ResearchReportV1>;
+    copyMarkdown(markdown: string): Promise<void>;
+    downloadMarkdown(markdown: string, filename: string): Promise<void>;
+}
+
+// export: ResearchProduct
+export type ResearchProduct = "jira" | "confluence";
+
+// export: ResearchProgressPhase
+export type ResearchProgressPhase = "preparing" | "researching" | "rendering" | "complete";
+
+// export: ResearchProgressV1
+export interface ResearchProgressV1 {
+    phase: ResearchProgressPhase;
+    message: string;
+    completedCalls: number;
+    maxCalls: number;
+}
+
+// export: ResearchProvider
+export type ResearchProvider = "rest" | "agg";
+
+// export: ResearchProviderPage
+export interface ResearchProviderPage<T> {
+    items: T[];
+    nextProviderCursor?: string;
+}
+
+// export: ResearchPtcDiagnosticV1
+export interface ResearchPtcDiagnosticV1 {
+    callId: string;
+    tool: ResearchGraphCapabilityV1;
+    inputKind: "search" | "continuation" | "detail" | "reference";
+    outcome: "started" | "success" | "error";
+    durationMs?: number;
+    itemCount?: number;
+    complete?: boolean;
+    termination?: string;
+    resultBytes?: number;
+    truncated?: boolean;
+    errorCode?: string;
+    inputKeys?: string[];
+    queryKeys?: string[];
+}
+
+// export: researchPtcToolNamesForNodeV1
+export declare function researchPtcToolNamesForNodeV1(node: Pick<ResearchGraphNodeV1, "grantedCapabilityIds">): string[];
+
+// export: ResearchPtcToolOptions
+export interface ResearchPtcToolOptions {
+    onDiagnostic?: (diagnostic: ResearchPtcDiagnosticV1) => void;
+    onResult?: (tool: ResearchGraphCapabilityV1, result: unknown) => void;
+    now?: () => number;
+}
+
+// export: researchQueryFingerprint
+export declare function researchQueryFingerprint(tool: "jira.issue.search" | "wiki.search", query: ResearchSearchQueryV1, pageSize: number): string;
+
+// export: ResearchReadProviders
+export interface ResearchReadProviders {
+    jira: {
+        searchPage(input: {
+            jql: string;
+            pageSize: number;
+            providerCursor?: string;
+            signal: AbortSignal;
+        }): Promise<ResearchProviderPage<JiraResearchSummary>>;
+        getIssue(input: {
+            issueKey: string;
+            signal: AbortSignal;
+        }): Promise<JiraResearchDetail>;
+    };
+    wiki: {
+        searchPage(input: {
+            cql: string;
+            pageSize: number;
+            providerCursor?: string;
+            signal: AbortSignal;
+        }): Promise<ResearchProviderPage<WikiResearchSummary>>;
+        getPage(input: {
+            contentId: string;
+            signal: AbortSignal;
+        }): Promise<WikiResearchDetail>;
+    };
+}
+
+// export: ResearchReconciliationDefectV1
+export interface ResearchReconciliationDefectV1 {
+    id: string;
+    severity: "blocking" | "important" | "minor";
+    target: {
+        kind: "finding" | "relationship" | "claim" | "section" | "node" | "coverage";
+        id: string;
+    };
+    code: "unsupported" | "contradicted" | "missing_coverage" | "overstated" | "instruction_mismatch" | "duplicate" | "stale";
+    references: ResearchSupportRefV1[];
+    explanation: string;
+    suggestedAction: "accept" | "revise" | "downgrade" | "add_follow_up" | "abstain";
+}
+
+// export: ResearchReconciliationDispositionV1
+export interface ResearchReconciliationDispositionV1 {
+    schema: typeof RESEARCH_RECONCILIATION_DISPOSITION_SCHEMA_V1;
+    id: string;
+    reconciliationPacketRef: string;
+    defectId: string;
+    basedOnGraphRevision: number;
+    decision: (typeof RESEARCH_RECONCILIATION_DECISIONS_V1)[number];
+    reasonCode: (typeof RESEARCH_RECONCILIATION_REASON_CODES_V1)[number];
+    resultingGraphRevision?: number;
+    resultingNodeId?: string;
+    resultingClaimIds: string[];
+    recordedAt: string;
+}
+
+// export: ResearchReconciliationInputV1
+export interface ResearchReconciliationInputV1 {
+    schema: typeof RESEARCH_RECONCILIATION_INPUT_SCHEMA_V1;
+    briefRevision: number;
+    graphRevision: number;
+    acceptedPacketRefs: string[];
+    coverageTargetIds: string[];
+    projection: {
+        kind: "v1-packet-set";
+        findingCandidateIds: string[];
+        relationshipCandidateIds: string[];
+        gapIds: string[];
+        sourceIds: string[];
+    };
+}
+
+// export: ResearchReconciliationModeV1
+// @deprecated ResearchReconciliationModeV1 — Use ResearchRequestedReconciliationV1 from the brief contract.
+export type ResearchReconciliationModeV1 = ResearchRequestedReconciliationV1;
+
+// export: ResearchReconciliationTriggerV1
+export type ResearchReconciliationTriggerV1 = "multi_branch" | "low_coverage" | "contradiction" | "negative_claim" | "high_impact_claim" | "stale_or_truncated" | "user_requested";
+
+// export: researchRecursionLimitV1
+export declare function researchRecursionLimitV1(graph?: ResearchGraphV1): number;
+
+// export: ResearchReferenceResolveIntentV1
+export interface ResearchReferenceResolveIntentV1 {
+    schema: string;
+    reference: string;
+    expectedTenantOrigin: string;
+    expectedKinds: ResearchScopeEntityKindV1[];
+}
+
+// export: ResearchReferenceResolveOutputV1
+export interface ResearchReferenceResolveOutputV1 {
+    schema: string;
+    candidate?: ResearchScopeCandidateV1;
+    unavailable: boolean;
+}
+
+// export: ResearchRelationshipCandidateV1
+export interface ResearchRelationshipCandidateV1 {
+    id: string;
+    classification: "verified" | "hypothesis";
+    jiraIssueKey: string;
+    confluenceContentId: string;
+    summary: string;
+    sourceIds: string[];
+}
+
+// export: ResearchReportV1
+export interface ResearchReportV1 {
+    schema: typeof RESEARCH_REPORT_SCHEMA_V1;
+    title: string;
+    question: string;
+    scope: ResearchScopeV1;
+    executiveSummary: string;
+    findings: ResearchFindingV1[];
+    relationships: AtlassianRelationshipV1[];
+    limitations: string[];
+    sources: ResearchSourceReferenceV1[];
+    run: ResearchRunSummaryV1;
+    markdown: string;
+}
+
+// export: ResearchRequestedEffortV1
+export type ResearchRequestedEffortV1 = (typeof RESEARCH_REQUESTED_EFFORTS_V1)[number];
+
+// export: ResearchRequestedPlanApprovalV1
+export type ResearchRequestedPlanApprovalV1 = (typeof RESEARCH_REQUESTED_PLAN_APPROVALS_V1)[number];
+
+// export: ResearchRequestedReconciliationV1
+export type ResearchRequestedReconciliationV1 = (typeof RESEARCH_REQUESTED_RECONCILIATIONS_V1)[number];
+
+// export: ResearchRequestV1
+export interface ResearchRequestV1 {
+    schema: typeof RESEARCH_REQUEST_SCHEMA_V1;
+    question: string;
+    scope: ResearchScopeV1;
+    limits: ResearchLimitsV1;
+    wikiProvider: ResearchProvider;
+    scopeSeeds?: ResearchScopeSeedV1[];
+}
+
+// export: ResearchResolvedEffortV1
+export type ResearchResolvedEffortV1 = Exclude<ResearchRequestedEffortV1, "auto">;
+
+// export: ResearchResolvedPlanApprovalV1
+export type ResearchResolvedPlanApprovalV1 = Exclude<ResearchRequestedPlanApprovalV1, "default">;
+
+// export: ResearchRunBudget
+export declare class ResearchRunBudget {
+    #private;
+    constructor(limits: ResearchLimitsV1);
+    beginPtc(input: unknown): void;
+    completePtc(output: unknown): void;
+    guardTransport(event: TransportBudgetEvent): void;
+    beginSearchPage(product: ResearchProduct): void;
+    canSearchAnotherPage(product: ResearchProduct): boolean;
+    canReadAnotherDetail(product: ResearchProduct): boolean;
+    remainingItems(product: ResearchProduct): number;
+    addItems(product: ResearchProduct, count: number): void;
+    beginDetail(product: ResearchProduct): void;
+    snapshot(): ResearchBudgetSnapshotV1;
+    counts(): ResearchRunCountsV1;
+}
+
+// export: ResearchRunCountsV1
+export interface ResearchRunCountsV1 {
+    ptcCalls: number;
+    httpCalls: number;
+    jiraItems: number;
+    confluenceItems: number;
+}
+
+// export: ResearchRunOptions
+export interface ResearchRunOptions {
+    signal?: AbortSignal;
+    policy?: ResearchOneShotPolicyV1;
+    onProgress?: (progress: ResearchProgressV1) => void;
+    onEvent?: (event: ResearchOneShotEventV1) => void;
+}
+
+// export: ResearchRunSummaryV1
+export interface ResearchRunSummaryV1 {
+    model: string;
+    wikiProvider: ResearchProvider;
+    startedAt: string;
+    completedAt: string;
+    durationMs: number;
+    complete: boolean;
+    counts: ResearchRunCountsV1;
+    usage?: ResearchRunUsageV1;
+    warnings: string[];
+}
+
+// export: ResearchRunUsageV1
+export interface ResearchRunUsageV1 {
+    inputTokens?: number;
+    outputTokens?: number;
+}
+
+// export: ResearchScopeAuthorityV1
+export type ResearchScopeAuthorityV1 = (typeof RESEARCH_SCOPE_AUTHORITIES_V1)[number];
+
+// export: ResearchScopeBindingV1
+export interface ResearchScopeBindingV1 {
+    schema: typeof RESEARCH_SCOPE_BINDING_SCHEMA_V1;
+    id: string;
+    tenantOrigin: string;
+    product: ResearchProduct;
+    entityKind: ResearchScopeEntityKindV1;
+    entityRef: string;
+    key?: string;
+    name: string;
+    source: ResearchScopeSourceV1;
+    authority: ResearchScopeAuthorityV1;
+    mentionId?: string;
+    candidateId?: string;
+    approvedAt?: string;
+}
+
+// export: ResearchScopeCandidateSelectionV1
+export interface ResearchScopeCandidateSelectionV1 {
+    schema: typeof RESEARCH_SCOPE_CANDIDATE_SELECTION_SCHEMA_V1;
+    mentionId: string;
+    candidateId: string;
+}
+
+// export: ResearchScopeCandidateV1
+export interface ResearchScopeCandidateV1 {
+    schema: typeof RESEARCH_SCOPE_CANDIDATE_SCHEMA_V1;
+    id: string;
+    tenantOrigin: string;
+    product: ResearchProduct;
+    entityKind: ResearchScopeEntityKindV1;
+    entityRef: string;
+    key?: string;
+    name: string;
+    aliases?: string[];
+    canonicalUrl?: string;
+    status?: "current" | "archived";
+    match?: "exact_key" | "exact_name" | "alias" | "current_context" | "exact_link" | "prefix" | "fuzzy";
+    accessible: true;
+    providerFreshnessAt: string;
+}
+
+// export: ResearchScopeCatalogBroker
+export declare class ResearchScopeCatalogBroker {
+    #private;
+    constructor(input: {
+        tenantOrigin: string;
+        providers: ResearchScopeCatalogProvidersV1;
+        limits?: Partial<ResearchScopeCatalogBrokerLimitsV1>;
+    });
+    cancel(reason?: DOMException): void;
+    get signal(): AbortSignal;
+    invoke(capability: ResearchScopeCatalogCapabilityId, value: unknown): Promise<ResearchScopeCatalogPageV1 | ResearchReferenceResolveOutputV1>;
+    private putCursor;
+    private takeCursor;
+}
+
+// export: ResearchScopeCatalogBrokerLimitsV1
+export interface ResearchScopeCatalogBrokerLimitsV1 {
+    maxPages: number;
+    maxCandidates: number;
+    maxResultBytes: number;
+    maxCursorEntries: number;
+    cursorTtlMs: number;
+}
+
+// export: ResearchScopeCatalogCapabilityId
+export type ResearchScopeCatalogCapabilityId = (typeof RESEARCH_SCOPE_CATALOG_CAPABILITY_IDS)[number];
+
+// export: ResearchScopeCatalogIntentV1
+export interface ResearchScopeCatalogIntentV1 {
+    schema: string;
+    product: ResearchProduct;
+    entityKind: "project" | "space";
+    normalizedQuery?: string;
+    includeArchived: boolean;
+    cursorRef?: string;
+    maxCandidates: number;
+}
+
+// export: ResearchScopeCatalogInvokePortV1
+export interface ResearchScopeCatalogInvokePortV1 {
+    invoke(capability: ResearchScopeCatalogCapabilityId, value: unknown): Promise<ResearchScopeCatalogPageV1 | ResearchReferenceResolveOutputV1>;
+}
+
+// export: ResearchScopeCatalogPageV1
+export interface ResearchScopeCatalogPageV1 {
+    schema: string;
+    candidates: ResearchScopeCandidateV1[];
+    nextCursorRef?: string;
+    truncated: boolean;
+}
+
+// export: ResearchScopeCatalogProviderPageV1
+export interface ResearchScopeCatalogProviderPageV1 {
+    candidates: ResearchScopeCandidateV1[];
+    nextProviderCursor?: string;
+}
+
+// export: ResearchScopeCatalogProvidersV1
+export interface ResearchScopeCatalogProvidersV1 {
+    jira: {
+        listProjects(input: {
+            query?: string;
+            includeArchived: boolean;
+            providerCursor?: string;
+            maxCandidates: number;
+            signal: AbortSignal;
+        }): Promise<ResearchScopeCatalogProviderPageV1>;
+    };
+    confluence: {
+        listSpaces(input: {
+            query?: string;
+            includeArchived: boolean;
+            providerCursor?: string;
+            maxCandidates: number;
+            signal: AbortSignal;
+        }): Promise<ResearchScopeCatalogProviderPageV1>;
+    };
+    resolveReference(input: ResearchReferenceResolveIntentV1 & {
+        signal: AbortSignal;
+    }): Promise<ResearchScopeCandidateV1 | undefined>;
+}
+
+// export: ResearchScopeCatalogPtcOptions
+export interface ResearchScopeCatalogPtcOptions {
+    tenantOrigin: string;
+    onDiagnostic?: (diagnostic: ResearchPtcDiagnosticV1) => void;
+    onResult?: (tool: ResearchScopeCatalogCapabilityId, result: unknown) => void;
+    now?: () => number;
+}
+
+// export: ResearchScopeClarificationReasonV1
+export type ResearchScopeClarificationReasonV1 = "ambiguous" | "weak_match" | "archived_only" | "unavailable" | "incomplete" | "not_found";
+
+// export: ResearchScopeClarificationRequiredV1
+export interface ResearchScopeClarificationRequiredV1 {
+    schema: typeof RESEARCH_CLARIFICATION_REQUIRED_SCHEMA_V1;
+    reason: ResearchScopeClarificationReasonV1;
+    mentionId: string;
+    candidateIds: string[];
+    productHint?: "jira" | "confluence";
+    entityKindHint?: "project" | "space" | "issue" | "page";
+    rerunGuidance: string[];
+}
+
+// export: ResearchScopeDiscoveryPolicyV1
+export interface ResearchScopeDiscoveryPolicyV1 {
+    schema: typeof RESEARCH_SCOPE_DISCOVERY_POLICY_SCHEMA_V1;
+    catalogDiscovery: "on";
+    expansionMode: ResearchScopeExpansionModeV1;
+    maxCatalogPagesPerCapability: number;
+    maxCandidatesPerMention: number;
+    maxCatalogResultBytes: number;
+    maxExactLinkedEntities: number;
+    maxScopeExpansionProposals: number;
+}
+
+// export: ResearchScopeEntityKindV1
+export type ResearchScopeEntityKindV1 = "project" | "space" | "issue" | "page";
+
+// export: ResearchScopeExpansionModeV1
+export type ResearchScopeExpansionModeV1 = (typeof RESEARCH_SCOPE_EXPANSION_MODES_V1)[number];
+
+// export: ResearchScopeExpansionProposalV1
+export interface ResearchScopeExpansionProposalV1 {
+    schema: typeof RESEARCH_SCOPE_EXPANSION_PROPOSAL_SCHEMA_V1;
+    id: string;
+    sessionId: string;
+    turnId: string;
+    basedOnBriefRevision: number;
+    basedOnGraphRevision: number;
+    candidateId: string;
+    expansionKind: "exact_entity" | "whole_scope";
+    reason: string;
+    provenanceRefs: string[];
+    status: "proposed" | "approved" | "rejected" | "expired";
+    approvedBindingId?: string;
+}
+
+// export: ResearchScopeMentionProposalV1
+export interface ResearchScopeMentionProposalV1 {
+    schema: typeof RESEARCH_SCOPE_MENTION_PROPOSAL_SCHEMA_V1;
+    id: string;
+    productHint?: ResearchProduct;
+    entityKindHint?: ResearchScopeEntityKindV1;
+    text: string;
+    normalizedText: string;
+    questionTextRange: {
+        start: number;
+        end: number;
+    };
+    exactReference?: string;
+}
+
+// export: ResearchScopeMentionV1
+export interface ResearchScopeMentionV1 {
+    schema: typeof RESEARCH_SCOPE_MENTION_SCHEMA_V1;
+    id: string;
+    productHint?: ResearchProduct;
+    entityKindHint?: ResearchScopeEntityKindV1;
+    source: ResearchScopeSourceV1;
+    text: string;
+    normalizedText: string;
+    questionTextRange?: {
+        start: number;
+        end: number;
+    };
+    exactReference?: string;
+}
+
+// export: ResearchScopePreflightOptionsV1
+export interface ResearchScopePreflightOptionsV1 {
+    candidateSelections?: ResearchScopeCandidateSelectionV1[];
+}
+
+// export: ResearchScopePreflightOutcomeV1
+export type ResearchScopePreflightOutcomeV1 = {
+    schema: typeof RESEARCH_SCOPE_PREFLIGHT_OUTCOME_SCHEMA_V1;
+    kind: "ready";
+    request: ResearchRequestV1;
+    mentions: ResearchScopeMentionV1[];
+    resolutions: ResearchScopeResolutionV1[];
+} | {
+    schema: typeof RESEARCH_SCOPE_PREFLIGHT_OUTCOME_SCHEMA_V1;
+    kind: "clarification_required";
+    clarification: ResearchScopeClarificationRequiredV1;
+    candidateChoices: ResearchScopeCandidateV1[];
+    mentions: ResearchScopeMentionV1[];
+    resolutions: ResearchScopeResolutionV1[];
+};
+
+// export: ResearchScopeResolutionInputV1
+export interface ResearchScopeResolutionInputV1 {
+    mention: ResearchScopeMentionV1;
+    candidates: readonly ResearchScopeCandidateV1[];
+    catalogComplete: boolean;
+    expectedTenantOrigin: string;
+    maxCandidates?: number;
+    allowArchived?: boolean;
+}
+
+// export: ResearchScopeResolutionV1
+export interface ResearchScopeResolutionV1 {
+    schema: typeof RESEARCH_SCOPE_RESOLUTION_SCHEMA_V1;
+    mentionId: string;
+    state: "resolved" | "ambiguous" | "not_found" | "unavailable" | "incomplete";
+    candidateIds: string[];
+    resolvedCandidateId?: string;
+    uniquenessProof?: "exact_key_lookup" | "exact_reference_lookup" | "provider_exact_query" | "complete_catalog" | "user_choice";
+    catalogComplete: boolean;
+    requiresUserChoice: boolean;
+}
+
+// export: ResearchScopeSeedV1
+export interface ResearchScopeSeedV1 {
+    binding: ResearchScopeBindingV1;
+    precedence: number;
+}
+
+// export: ResearchScopeSourceV1
+export type ResearchScopeSourceV1 = (typeof RESEARCH_SCOPE_SOURCES_V1)[number];
+
+// export: ResearchScopeV1
+export interface ResearchScopeV1 {
+    siteOrigin: string;
+    jiraProjectKeys: string[];
+    confluenceSpaceKeys: string[];
+    timeWindow?: ResearchTimeWindowV1;
+}
+
+// export: ResearchSearchInputV1
+export type ResearchSearchInputV1 = {
+    schema: string;
+    query: ResearchSearchQueryV1;
+    pageSize?: number;
+} | {
+    schema: string;
+    cursor: string;
+};
+
+// export: ResearchSearchOutputV1
+export interface ResearchSearchOutputV1 {
+    schema: string;
+    items: ResearchEntitySummaryV1[];
+    page: {
+        nextCursor?: string;
+        complete: boolean;
+        termination?: ResearchTerminationCode;
+    };
+    budget: ResearchBudgetSnapshotV1;
+}
+
+// export: ResearchSearchQueryV1
+export interface ResearchSearchQueryV1 {
+    text?: string;
+}
+
+// export: ResearchSessionArtifactV1
+export interface ResearchSessionArtifactV1 {
+    schema: typeof RESEARCH_SESSION_ARTIFACT_SCHEMA_V1;
+    id: string;
+    path: string;
+    contentType: "text/markdown" | "application/json";
+    bytes: number;
+    createdAt: string;
+}
+
+// export: ResearchSessionAssumptionDecisionV1
+export interface ResearchSessionAssumptionDecisionV1 {
+    briefRevision: number;
+    assumptionId: string;
+    decision: "accepted" | "rejected";
+    decidedAt: string;
+}
+
+// export: ResearchSessionCheckpointV1
+export interface ResearchSessionCheckpointV1 {
+    schema: typeof RESEARCH_SESSION_CHECKPOINT_SCHEMA_V1;
+    id: string;
+    sessionRevision: number;
+    turnId: string;
+    graphRevision?: number;
+    kind: "turn_accepted" | "brief" | "plan" | "dispatch" | "packet" | "reconciliation" | "pause" | "terminal";
+    recordedAt: string;
+    artifactRefs: string[];
+}
+
+// export: ResearchSessionClarificationV1
+export interface ResearchSessionClarificationV1 {
+    briefRevision: number;
+    questionId: string;
+    response: string;
+    assumptionId?: string;
+    assumptionDecision?: "accepted" | "rejected";
+    answeredAt: string;
+}
+
+// export: ResearchSessionCommitV1
+export interface ResearchSessionCommitV1 {
+    session: ResearchSessionV1;
+    event: ResearchSessionEventV1;
+}
+
+// export: ResearchSessionDispatchJournalV1
+export declare class ResearchSessionDispatchJournalV1 {
+    #private;
+    constructor(options: ResearchSessionDispatchJournalV1Options);
+    commitGraphSelection(proposal: ResearchGraphProposalV1): Promise<ResearchGraphV1>;
+    admitAndStart(input: ResearchTaskAttemptV1 & {
+        providerRequestId?: string;
+    }): Promise<ResearchTaskAttemptV1>;
+    acceptPacket(input: {
+        taskId: string;
+        graphRevision: number;
+        body: unknown;
+        usage: ResearchTaskUsageV1;
+        availableSourceIds: string[];
+        maximumResultBytes: number;
+    }): Promise<ResearchAcceptedPacketV1>;
+    markOutcomeUnknown(taskId: string, graphRevision: number): Promise<ResearchTaskAttemptV1>;
+    quarantine(taskId: string, graphRevision: number, reason: string): Promise<ResearchTaskAttemptV1>;
+    recordReconciliation(input: {
+        dispositions: readonly ResearchReconciliationDispositionV1[];
+        repair?: Pick<ResearchSessionRepairAuthorizationV1, "nodeId" | "reconciliationTaskId"> & {
+            followUpId: string;
+        };
+    }): Promise<{
+        dispositions: ResearchReconciliationDispositionV1[];
+        graph: ResearchGraphV1;
+        repairAuthorization?: ResearchSessionRepairAuthorizationV1;
+    }>;
+    complete(): Promise<ResearchSessionV1>;
+}
+
+// export: ResearchSessionDispatchJournalV1Options
+export interface ResearchSessionDispatchJournalV1Options {
+    store: ResearchSessionStoreV1;
+    sessionId: string;
+    turnId: string;
+    now?: () => string;
+}
+
+// export: ResearchSessionEventV1
+export interface ResearchSessionEventV1 {
+    schema: typeof RESEARCH_SESSION_EVENT_SCHEMA_V1;
+    sessionId: string;
+    sessionRevision: number;
+    leaseEpoch: number;
+    kind: ResearchSessionUpdateV1["kind"];
+    status: ResearchSessionV1["status"];
+    turnId?: string;
+    at: string;
+}
+
+// export: ResearchSessionLeaseV1
+export interface ResearchSessionLeaseV1 {
+    epoch: number;
+    ownerId: string;
+    heartbeatAt: string;
+    expiresAt: string;
+}
+
+// export: ResearchSessionMemoryCheckpointerV1
+export declare class ResearchSessionMemoryCheckpointerV1 extends MemorySaver {
+    #private;
+    constructor(sessionId: string);
+    getTuple(config: RunnableConfig): Promise<CheckpointTuple | undefined>;
+    list(config: RunnableConfig, options?: CheckpointListOptions): AsyncGenerator<CheckpointTuple>;
+    put(config: RunnableConfig, checkpoint: Checkpoint, metadata: CheckpointMetadata, _newVersions?: ChannelVersions): Promise<RunnableConfig>;
+    putWrites(config: RunnableConfig, writes: PendingWrite[], taskId: string): Promise<void>;
+    deleteThread(threadId: string): Promise<void>;
+}
+
+// export: ResearchSessionRepairAuthorizationV1
+export interface ResearchSessionRepairAuthorizationV1 {
+    schema: "atlcli.research-session-repair-authorization/v1";
+    nodeId: string;
+    reconciliationTaskId: string;
+    followUp: ResearchFollowUpProposalV1;
+    authorizedAt: string;
+}
+
+// export: ResearchSessionRetentionV1
+export interface ResearchSessionRetentionV1 {
+    state: "active" | "retained" | "deletion_requested" | "deleted";
+    retainedUntil?: string;
+}
+
+// export: ResearchSessionStatusV1
+export type ResearchSessionStatusV1 = "idle" | "planning" | "waiting_clarification" | "waiting_plan_approval" | "waiting_plan_revision" | "waiting_scope_approval" | "waiting_steering" | "pause_requested" | "paused" | "running" | "waiting_authentication" | "waiting_quota" | "cancelling" | "cancelled" | "complete" | "failed" | "deleted";
+
+// export: ResearchSessionSteeringV1
+export interface ResearchSessionSteeringV1 {
+    id: string;
+    request: string;
+    requestedAt: string;
+    acknowledgedAt?: string;
+}
+
+// export: ResearchSessionStoreConformanceFactoryV1
+export interface ResearchSessionStoreConformanceFactoryV1 {
+    create(options?: {
+        failureInjection?: ResearchSessionStoreFailureInjectionV1;
+    }): ResearchSessionStoreV1 | Promise<ResearchSessionStoreV1>;
+}
+
+// export: ResearchSessionStoreConformanceResultV1
+export interface ResearchSessionStoreConformanceResultV1 {
+    aggregateCommit: "passed";
+    staleCas: "passed";
+    failureAtomicity: "passed";
+}
+
+// export: ResearchSessionStoreFailureInjectionV1
+export interface ResearchSessionStoreFailureInjectionV1 {
+    onStage?(stage: ResearchSessionStoreFailureStageV1, sessionId: string): void;
+}
+
+// export: ResearchSessionStoreFailureStageV1
+export type ResearchSessionStoreFailureStageV1 = "before_create" | "before_state_commit" | "before_event_append" | "before_artifact_write" | "before_source_ref_write" | "before_delete";
+
+// export: ResearchSessionStoreV1
+export interface ResearchSessionStoreV1 {
+    create(session: ResearchSessionV1): Promise<ResearchSessionV1>;
+    read(sessionId: string): Promise<ResearchSessionV1 | undefined>;
+    list(input?: {
+        limit?: number;
+        cursor?: string;
+    }): Promise<{
+        sessions: ResearchSessionV1[];
+        nextCursor?: string;
+    }>;
+    commit(sessionId: string, update: ResearchSessionUpdateV1): Promise<ResearchSessionCommitV1>;
+    events(sessionId: string, input?: {
+        afterRevision?: number;
+        limit?: number;
+    }): Promise<ResearchSessionEventV1[]>;
+    checkpoints(sessionId: string, turnId: string): Promise<ResearchSessionCheckpointV1[]>;
+    graph(sessionId: string, turnId: string): Promise<ResearchGraphV1 | undefined>;
+    tasks(sessionId: string, turnId: string): Promise<ResearchTaskAttemptV1[]>;
+    packet(sessionId: string, packetRef: string): Promise<ResearchAcceptedPacketV1 | undefined>;
+    workspace(sessionId: string): Promise<ResearchWorkspace>;
+    replaceOpaqueSourceRefs(sessionId: string, refs: ResearchOpaqueSourceRefV1[]): Promise<void>;
+    opaqueSourceRefs(sessionId: string): Promise<ResearchOpaqueSourceRefV1[]>;
+    writeArtifact(sessionId: string, artifact: ResearchSessionArtifactV1, contents: string): Promise<void>;
+    artifact(sessionId: string, artifactId: string): Promise<{
+        metadata: ResearchSessionArtifactV1;
+        contents: string;
+    } | undefined>;
+    listArtifacts(sessionId: string): Promise<ResearchSessionArtifactV1[]>;
+    eraseDeleted(sessionId: string): Promise<boolean>;
+}
+
+// export: ResearchSessionTurnV1
+export interface ResearchSessionTurnV1 {
+    id: string;
+    revision: number;
+    createdAt: string;
+    brief?: ResearchBriefV1;
+    graph?: ResearchGraphV1;
+    graphSelectionCommittedAt?: string;
+    latentRepairNode?: ResearchGraphNodeV1;
+    repairAuthorization?: ResearchSessionRepairAuthorizationV1;
+    scopeCandidates: ResearchScopeCandidateV1[];
+    scopeBindings: ResearchScopeBindingV1[];
+    scopeResolutions: ResearchScopeResolutionV1[];
+    scopeExpansionProposals: ResearchScopeExpansionProposalV1[];
+    clarifications: ResearchSessionClarificationV1[];
+    assumptionDecisions: ResearchSessionAssumptionDecisionV1[];
+    steering: ResearchSessionSteeringV1[];
+    tasks: ResearchTaskAttemptV1[];
+    acceptedPackets: ResearchAcceptedPacketV1[];
+    reconciliationDispositions: ResearchReconciliationDispositionV1[];
+    reconciliationCommittedAt?: string;
+    checkpoints: ResearchSessionCheckpointV1[];
+    pauseRequestedAt?: string;
+    pausedAt?: string;
+    completedAt?: string;
+    cancelledAt?: string;
+    failureReason?: string;
+}
+
+// export: ResearchSessionUpdateV1
+export type ResearchSessionUpdateV1 = (ResearchSessionFencedUpdateV1 & {
+    kind: "create_turn";
+    turnId: string;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "record_brief";
+    brief: ResearchBriefV1;
+    scopeCandidates?: ResearchScopeCandidateV1[];
+    scopeBindings?: ResearchScopeBindingV1[];
+    scopeResolutions?: ResearchScopeResolutionV1[];
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "propose_graph";
+    graph: ResearchGraphV1;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "approve_graph";
+    graphRevision: number;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "commit_graph_selection";
+    proposal: ResearchGraphProposalV1;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "revise_graph";
+    graph: ResearchGraphV1;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "record_clarification";
+    briefRevision: number;
+    questionId: string;
+    response: string;
+    assumptionId?: string;
+    assumptionDecision?: "accepted" | "rejected";
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "record_assumption_decision";
+    briefRevision: number;
+    assumptionId: string;
+    decision: "accepted" | "rejected";
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "reject_plan";
+    graphRevision: number;
+    reason: string;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "propose_scope_expansion";
+    proposal: ResearchScopeExpansionProposalV1;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "approve_scope_expansion";
+    proposalId: string;
+    binding: ResearchScopeBindingV1;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "reject_scope_expansion";
+    proposalId: string;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "request_steering";
+    steeringId: string;
+    request: string;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "acknowledge_steering";
+    steeringId: string;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "request_pause";
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "acknowledge_pause";
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "admit_tasks";
+    graphRevision: number;
+    tasks: ResearchTaskAttemptV1[];
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "dispatch_started";
+    taskId: string;
+    graphRevision: number;
+    providerRequestId?: string;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "outcome_unknown";
+    taskId: string;
+    graphRevision: number;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "accept_packet";
+    taskId: string;
+    graphRevision: number;
+    body: unknown;
+    usage: ResearchTaskUsageV1;
+    availableSourceIds: string[];
+    maximumResultBytes: number;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "quarantine_packet";
+    taskId: string;
+    graphRevision: number;
+    reason: string;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "record_reconciliation";
+    dispositions: unknown[];
+    repair?: {
+        nodeId: string;
+        reconciliationTaskId: string;
+        followUpId: string;
+    };
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "record_checkpoint";
+    checkpoint: Omit<ResearchSessionCheckpointV1, "schema" | "sessionRevision">;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "resume";
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "wait_authentication";
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "wait_quota";
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "heartbeat";
+    leaseExpiresAt: string;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "recover";
+    ownerId: string;
+    expiresAt: string;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "cancel";
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "complete";
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "fail";
+    reason: string;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "retain";
+    retainedUntil?: string;
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "request_deletion";
+}) | (ResearchSessionFencedUpdateV1 & {
+    kind: "delete";
+});
+
+// export: ResearchSessionV1
+export interface ResearchSessionV1 {
+    schema: typeof RESEARCH_SESSION_SCHEMA_V1;
+    sessionId: string;
+    revision: number;
+    status: ResearchSessionStatusV1;
+    lease: ResearchSessionLeaseV1;
+    retention: ResearchSessionRetentionV1;
+    activeTurnId?: string;
+    turns: ResearchSessionTurnV1[];
+    createdAt: string;
+    updatedAt: string;
+}
+
+// export: ResearchSourceReferenceV1
+export interface ResearchSourceReferenceV1 {
+    id: string;
+    product: ResearchProduct;
+    title: string;
+    url: string;
+    issueKey?: string;
+    contentId?: string;
+    projectKey?: string;
+    spaceKey?: string;
+    excerpt?: string;
+    updatedAt?: string;
+}
+
+// export: ResearchSubagentDiagnosticV1
+export interface ResearchSubagentDiagnosticV1 {
+    taskId: string;
+    role: ResearchGraphRoleV1;
+    status: "started" | "repairing" | "completed" | "failed" | "cancelled" | "quarantined" | "rejected";
+    uniqueTask: boolean;
+    attempt?: number;
+    durationMs?: number;
+    errorCode?: string;
+    errorMessage?: string;
+}
+
+// export: ResearchSubagentDispatchPort
+export interface ResearchSubagentDispatchPort {
+    admit(attempt: ResearchTaskAttemptV1): void;
+    start(taskId: string, graphRevision: number, at: string): ResearchTaskAttemptV1;
+    accept(input: {
+        taskId: string;
+        graphRevision: number;
+        body: unknown;
+        usage: ResearchTaskUsageV1;
+        acceptedAt: string;
+        availableSourceIds: readonly string[];
+    }): ResearchAcceptedPacketV1;
+    fail(taskId: string, graphRevision: number, at: string): ResearchTaskAttemptV1;
+    cancel(taskId: string, graphRevision: number, at: string): ResearchTaskAttemptV1;
+    quarantine(taskId: string, graphRevision: number, at: string): ResearchTaskAttemptV1;
+    attempt(taskId: string): ResearchTaskAttemptV1 | undefined;
+    packet(packetRef: string): ResearchAcceptedPacketV1 | undefined;
+}
+
+// export: ResearchSubagentRoleIdV1
+export type ResearchSubagentRoleIdV1 = (typeof RESEARCH_SUBAGENT_ROLE_IDS_V1)[number];
+
+// export: ResearchSubagentRoleV1
+export interface ResearchSubagentRoleV1 {
+    id: ResearchSubagentRoleIdV1;
+    description: string;
+    phase: "acquisition" | "analysis" | "verification" | "reconciliation" | "synthesis";
+    availableFromPhase: "T3" | "T5";
+    allowedCapabilityIds: ResearchGraphCapabilityV1[];
+    supportedOutputSchemas: ResearchTaskOutputSchemaV1[];
+    maxBudget: ResearchNodeBudgetV1;
+    mayProposeFollowUps: boolean;
+}
+
+// export: ResearchSubagentRuntimeBindings
+export interface ResearchSubagentRuntimeBindings {
+    createSubAgentMiddleware: typeof import("deepagents/browser").createSubAgentMiddleware;
+}
+
+// export: researchSubagentTypeForNodeV1
+export declare function researchSubagentTypeForNodeV1(node: Pick<ResearchGraphNodeV1, "id" | "roleId">): string;
+
+// export: ResearchSupportRefV1
+export type ResearchSupportRefV1 = {
+    kind: "source";
+    id: string;
+} | {
+    kind: "evidence";
+    id: string;
+};
+
+// export: ResearchTaskAdmissionV1
+export interface ResearchTaskAdmissionV1 {
+    taskId: string;
+    subagentType: string;
+    objective?: string;
+    dependsOnTaskIds?: readonly string[];
+    grantedCapabilityIds: readonly string[];
+    responseSchema: Record<string, unknown>;
+    maxResultBytes: number;
+    maxDurationMs: number;
+}
+
+// export: ResearchTaskAttemptEventV1
+export type ResearchTaskAttemptEventV1 = {
+    kind: "dispatch_started";
+    at: string;
+    providerRequestId?: string;
+} | {
+    kind: "outcome_unknown";
+    at: string;
+} | {
+    kind: "failed";
+    at: string;
+} | {
+    kind: "cancelled";
+    at: string;
+} | {
+    kind: "quarantined";
+    at: string;
+} | {
+    kind: "result_committed";
+    at: string;
+    packetRef: string;
+    usage: ResearchTaskUsageV1;
+};
+
+// export: ResearchTaskAttemptV1
+export interface ResearchTaskAttemptV1 {
+    schema: typeof RESEARCH_TASK_ATTEMPT_SCHEMA_V1;
+    taskId: string;
+    nodeId: string;
+    graphRevision: number;
+    attempt: number;
+    executor: "ptc" | "subagent";
+    roleId?: ResearchSubagentRoleIdV1;
+    grantedCapabilityIds: ResearchGraphCapabilityV1[];
+    typedIntentRefs: string[];
+    expectedOutputSchema: ResearchTaskOutputSchemaV1;
+    budget: ResearchNodeBudgetV1;
+    status: "ready" | "running" | "outcome_unknown" | "complete" | "failed" | "cancelled" | "quarantined";
+    dispatchState: "not_started" | "dispatch_started" | "result_committed" | "outcome_unknown";
+    providerRequestId?: string;
+    createdAt: string;
+    startedAt?: string;
+    finishedAt?: string;
+    acceptedPacketRef?: string;
+    hostObservedUsage?: ResearchTaskUsageV1;
+}
+
+// export: ResearchTaskDependencyResultV1
+export interface ResearchTaskDependencyResultV1 {
+    taskId: string;
+    result: unknown;
+}
+
+// export: ResearchTaskDescriptionV1
+export interface ResearchTaskDescriptionV1 {
+    schema: typeof RESEARCH_TASK_DISPATCH_SCHEMA_V1;
+    taskId: string;
+    objective: string;
+    dependencyResults?: ResearchTaskDependencyResultV1[];
+}
+
+// export: researchTaskIdForNodeV1
+export declare function researchTaskIdForNodeV1(graph: Pick<ResearchGraphV1, "revision">, node: Pick<ResearchGraphNodeV1, "id">): string;
+
+// export: ResearchTaskOutputSchemaV1
+export type ResearchTaskOutputSchemaV1 = typeof RESEARCH_PACKET_BODY_SCHEMA_V1 | "atlcli.research-packet-body/v2" | typeof RESEARCH_RECONCILIATION_BODY_SCHEMA_V1 | "atlcli.research-agent-draft/v1";
+
+// export: ResearchTaskToolInputV1
+export interface ResearchTaskToolInputV1 {
+    description: string;
+    subagent_type: string;
+}
+
+// export: ResearchTaskUsageV1
+export interface ResearchTaskUsageV1 {
+    capabilityCalls: number;
+    inputTokens: number;
+    outputTokens: number;
+    resultBytes: number;
+    durationMs: number;
+    costMicros: number;
+}
+
+// export: ResearchTerminationCode
+export type ResearchTerminationCode = "index-exhausted" | "item-limit" | "page-limit" | "http-limit" | "response-byte-limit";
+
+// export: researchThreadIdForSessionV1
+export declare function researchThreadIdForSessionV1(sessionId: string): string;
+
+// export: ResearchTimeWindowV1
+export interface ResearchTimeWindowV1 {
+    from?: string;
+    to?: string;
+}
+
+// export: ResearchToolId
+export type ResearchToolId = (typeof RESEARCH_TOOL_IDS)[number];
+
+// export: ResearchUncommittedDispatchOutcomeV1
+export interface ResearchUncommittedDispatchOutcomeV1 {
+    taskId: string;
+    admission: ResearchTaskAdmissionV1;
+    reason: ResearchUncommittedOutcomeReasonV1;
+    error?: unknown;
+    resultBytes?: number;
+}
+
+// export: ResearchUncommittedOutcomeReasonV1
+export type ResearchUncommittedOutcomeReasonV1 = "aborted" | "upstream-error" | "result-too-large" | "result-commit-failed";
+
+// export: ResearchWorkspace
+export interface ResearchWorkspace {
+    readFile(path: string): Promise<string | undefined>;
+    writeFile(path: string, contents: string): Promise<void>;
+    remove(path: string): Promise<void>;
+    list(prefix?: string): Promise<string[]>;
+}
+
+// export: resolveInitialResearchScopeV1
+export declare function resolveInitialResearchScopeV1(input: {
+    baseScope: ResearchScopeV1;
+    existingBindings: readonly ResearchScopeBindingV1[];
+    mentions: readonly ResearchScopeMentionV1[];
+    catalog: ResearchScopeCatalogInvokePortV1;
+    automaticApproval: boolean;
+    maximumCatalogPages?: number;
+    candidateSelections?: readonly ResearchScopeCandidateSelectionV1[];
+}): Promise<ResearchInitialScopeResolutionOutcomeV1>;
+
+// export: resolveResearchEffortV1
+export declare function resolveResearchEffortV1(input: {
+    requested: ResearchRequestedEffortV1;
+    objective: string;
+    sourceClasses: readonly ResearchProduct[];
+}): ResearchResolvedEffortV1;
+
+// export: resolveResearchPlanApprovalV1
+export declare function resolveResearchPlanApprovalV1(input: {
+    requested: ResearchRequestedPlanApprovalV1;
+    resolvedEffort: ResearchResolvedEffortV1;
+}): ResearchResolvedPlanApprovalV1;
+
+// export: resolveResearchScopeMentionV1
+export declare function resolveResearchScopeMentionV1(input: ResearchScopeResolutionInputV1): ResearchScopeResolutionV1;
+
+// export: responseSchemaForResearchRole
+export declare function responseSchemaForResearchRole(role: ResearchGraphRoleV1): Record<string, unknown>;
+
+// export: RestResearchProviderOptions
+export interface RestResearchProviderOptions {
+    allowProfileAuth?: boolean;
+}
+
+// export: RestScopeCatalogProviderOptions
+export interface RestScopeCatalogProviderOptions {
+    allowProfileAuth?: boolean;
+    now?: () => string;
+}
+
+// export: runResearchAgent
+export declare const runResearchAgent: (input: import("./agent-runtime-core.js").RunResearchAgentInput) => Promise<import("./contracts.js").ResearchReportV1>;
+
+// export: RunResearchAgentInput
+export interface RunResearchAgentInput {
+    apiKey?: string;
+    model?: BaseChatModel;
+    request: ResearchRequestV1;
+    providers: ResearchReadProviders;
+    budget?: ResearchRunBudget;
+    runId?: string;
+    now?: () => number;
+    options?: ResearchRunOptions;
+    workspace?: ResearchWorkspace;
+    researchGraph?: ResearchGraphV1;
+    durableSession?: {
+        store: ResearchSessionStoreV1;
+        sessionId: string;
+        turnId: string;
+    };
+    subagentModelsByNode?: Partial<Record<string, BaseChatModel>>;
+    brief?: ResearchBriefV1;
+    scopeCatalog?: {
+        broker: ResearchScopeCatalogBroker;
+        tenantOrigin: string;
+    };
+    onPtcDiagnostic?: (diagnostic: ResearchPtcDiagnosticV1) => void;
+    onSubagentDiagnostic?: (diagnostic: ResearchSubagentDiagnosticV1) => void;
+}
+
+// export: scopeSourcePrecedence
+export declare function scopeSourcePrecedence(source: ResearchScopeSourceV1): number;
+
+// export: selectResearchScopeSeedsV1
+export declare function selectResearchScopeSeedsV1(seeds: readonly ResearchScopeSeedV1[]): ResearchScopeBindingV1[];
 
 // export: stageResearchGraphForDurableSessionV1
 export declare function stageResearchGraphForDurableSessionV1(graph: ResearchGraphV1): ResearchGraphV1;

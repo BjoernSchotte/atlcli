@@ -32,6 +32,8 @@ import {
 } from "./brief.js";
 import { createResearchPtcTools } from "./agent-tools.js";
 import type { ResearchPtcDiagnosticV1 } from "./agent-tools.js";
+import { ResearchSessionDispatchJournalV1 } from "./session-dispatch-journal.js";
+import type { ResearchSessionStoreV1 } from "./session-store.js";
 /*
  * Keep graph execution admission here, before workspace/provider/model setup.
  * Productive hosts also preflight for UX, but this boundary is authoritative.
@@ -449,7 +451,7 @@ export function createResearchReconciliationDispositionPtcTool(
         followUpId: string;
         status: "authorized" | "retained_without_execution";
       },
-    ) => void;
+    ) => void | Promise<void>;
     onDiagnostic?: (status: "started" | "completed" | "failed", errorCode?: string) => void;
   },
 ): DynamicStructuredTool {
@@ -606,7 +608,7 @@ export function createResearchReconciliationDispositionPtcTool(
               })
             : disposition)
         : baseDispositions;
-      options.onAccepted?.(
+      await options.onAccepted?.(
         dispositions,
         repairAuthorization,
         input.repairFollowUpId === undefined ? undefined : {
@@ -896,6 +898,16 @@ export interface RunResearchAgentInput {
   /** Optional per-run graph. When present, createDeepAgent receives dynamic SubAgent specs. */
   researchGraph?: ResearchGraphV1;
   /**
+   * Optional durable owner for this execution attempt. It owns graph selection,
+   * task lifecycle, accepted packets, and reconciliation before local state is
+   * published to QuickJS or dependent subagents.
+   */
+  durableSession?: {
+    store: ResearchSessionStoreV1;
+    sessionId: string;
+    turnId: string;
+  };
+  /**
    * Deterministic characterization seam for separately queued concurrent
    * subagent models. Production callers leave this unset and receive the
    * standard per-role Anthropic models.
@@ -929,9 +941,25 @@ async function runResearchAgentWithBindings(
     );
   }
   if (input.researchGraph) assertResearchGraphExecutableV1(input.researchGraph);
+  if (input.durableSession && (!input.researchGraph ||
+      input.durableSession.sessionId !== input.researchGraph.sessionId ||
+      input.durableSession.turnId !== input.researchGraph.turnId)) {
+    throw new ResearchContractError(
+      "invalid-request",
+      "Durable research execution must use the matching approved graph envelope.",
+    );
+  }
   const now = input.now ?? Date.now;
   const startedAtMs = now();
   const runId = input.runId ?? crypto.randomUUID();
+  const durableDispatchJournal = input.durableSession
+    ? new ResearchSessionDispatchJournalV1({
+        store: input.durableSession.store,
+        sessionId: input.durableSession.sessionId,
+        turnId: input.durableSession.turnId,
+        now: () => new Date(now()).toISOString(),
+      })
+    : undefined;
   const workspace = input.workspace ?? createMemoryResearchWorkspace();
   let eventSequence = 0;
   let subagentTaskStarted = false;
@@ -1166,6 +1194,7 @@ async function runResearchAgentWithBindings(
         availableSourceIdsForNode,
         capabilityCallsForNode: (nodeId) => capabilityCallsByNode.get(nodeId) ?? 0,
         activeGraph: () => acceptedGraph,
+        ...(durableDispatchJournal ? { durableDispatchJournal } : {}),
         reconciliationInputContext: () => {
           const graph = acceptedGraph;
           if (!graph) {
@@ -1334,9 +1363,13 @@ async function runResearchAgentWithBindings(
   const graphProposalTool = isDynamic
     ? createResearchGraphProposalPtcTool(input.researchGraph!, {
         canPropose: () => !subagentTaskStarted,
+        onAcceptedProposal: async (proposal) => {
+          if (!durableDispatchJournal) return;
+          acceptedGraph = await durableDispatchJournal.commitGraphSelection(proposal);
+        },
         onAccepted: (graph) => {
-          acceptedGraph = graph;
-          emitGraphPlan(graph, "accepted", true);
+          acceptedGraph ??= graph;
+          emitGraphPlan(acceptedGraph, "accepted", true);
         },
         onDiagnostic: (status, errorCode) => emitEvent({
           kind: "decision",
@@ -1440,8 +1473,23 @@ async function runResearchAgentWithBindings(
           };
         },
         now,
-        onAccepted: (dispositions, authorizedRepair, repairOutcome) => {
-          reconciliationDispositions = dispositions;
+        onAccepted: async (dispositions, authorizedRepair, repairOutcome) => {
+          if (durableDispatchJournal) {
+            const recorded = await durableDispatchJournal.recordReconciliation({
+              dispositions,
+              ...(authorizedRepair ? {
+                repair: {
+                  nodeId: authorizedRepair.nodeId,
+                  reconciliationTaskId: authorizedRepair.dependencyTaskIds[0]!,
+                  followUpId: authorizedRepair.followUp.id,
+                },
+              } : {}),
+            });
+            acceptedGraph = recorded.graph;
+            reconciliationDispositions = recorded.dispositions;
+          } else {
+            reconciliationDispositions = dispositions;
+          }
           repairAuthorization = authorizedRepair;
           if (repairOutcome) {
             emitEvent({
@@ -1654,6 +1702,7 @@ async function runResearchAgentWithBindings(
       );
     }
     await workspace.writeFile(RESEARCH_REPORT_ARTIFACT_PATH_V1, report.markdown);
+    await durableDispatchJournal?.complete();
     emitEvent({ kind: "artifact", path: RESEARCH_REPORT_ARTIFACT_PATH_V1 });
     emitProgress({
       phase: "complete",

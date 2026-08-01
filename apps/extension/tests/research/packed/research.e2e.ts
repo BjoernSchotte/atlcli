@@ -1452,6 +1452,24 @@ type PackedRunResponse =
   | { kind: "research:run-result"; runId: string; ok: true; report: ResearchReportV1 }
   | { kind: "research:run-result"; runId: string; ok: false; code: string; error: string };
 
+function withoutEventSequence(event: ResearchOneShotEventV1): Omit<ResearchOneShotEventV1, "seq"> {
+  const { seq: _sequence, ...withoutSequence } = event;
+  return withoutSequence;
+}
+
+function isConcurrentCompletion(event: ResearchOneShotEventV1): boolean {
+  return event.kind === "subagent" && event.status === "completed";
+}
+
+function canonicalConcurrentCompletions(
+  events: readonly ResearchOneShotEventV1[],
+): Array<Omit<ResearchOneShotEventV1, "seq">> {
+  return events
+    .filter(isConcurrentCompletion)
+    .map(withoutEventSequence)
+    .sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)));
+}
+
 async function runPackedResearchInBackground(
   page: Page,
   request: ResearchRequestV1,
@@ -1660,7 +1678,7 @@ test("intercepts declarative dynamic-schema dispatches in a packed MV3 worker", 
   expect(response.result?.messages.some((message) => message.includes("deep-wiki"))).toBe(true);
 });
 
-test("keeps the Node and packed MV3 graph, packets, reconciliation, report, and Markdown byte-identical", async () => {
+test("keeps Node and packed MV3 artifacts byte-identical and concurrent progress semantically equivalent", async () => {
   await installEventCapture(page);
   await page.evaluate(async ({ key, value }) => {
     await chrome.storage.session.set({ [key]: value });
@@ -1683,7 +1701,23 @@ test("keeps the Node and packed MV3 graph, packets, reconciliation, report, and 
 
   const events = await harnessEvents(page);
   const packedEvents = events.flatMap((event) => event.researchEvent ? [event.researchEvent] : []);
-  expect(packedEvents).toEqual(node.events);
+  expect(packedEvents.map((event) => event.seq)).toEqual(
+    packedEvents.map((_, index) => index + 1),
+  );
+  expect(node.events.map((event) => event.seq)).toEqual(
+    node.events.map((_, index) => index + 1),
+  );
+  /*
+   * Parallel task completions are streamed as they arrive. Node and MV3 may
+   * observe those independent terminal callbacks in a different order; do not
+   * serialize the live stream merely to make the two hosts look synchronous.
+   * Every other event remains ordered, and the complete terminal vocabulary
+   * stays identical.
+   */
+  expect(packedEvents.filter((event) => !isConcurrentCompletion(event)).map(withoutEventSequence))
+    .toEqual(node.events.filter((event) => !isConcurrentCompletion(event)).map(withoutEventSequence));
+  expect(canonicalConcurrentCompletions(packedEvents))
+    .toEqual(canonicalConcurrentCompletions(node.events));
   expect(events.find((event) => event.messageKind === "research-worker:complete")?.report)
     .toEqual(node.report);
 

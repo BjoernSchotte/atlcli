@@ -14,12 +14,15 @@ import {
 } from "@atlcli/research/graph";
 import {
   ResearchCapabilityBroker,
+  InMemoryResearchSessionStoreV1,
   RESEARCH_ACCEPTED_PACKET_SCHEMA_V1,
   RESEARCH_PACKET_BODY_SCHEMA_V1,
   RESEARCH_RECONCILIATION_BODY_SCHEMA_V1,
   RESEARCH_RECONCILIATION_INPUT_SCHEMA_V1,
   createResearchBriefV1,
+  createResearchSessionV1,
   encodeResearchTaskDescriptionV1,
+  initializeResearchSessionTurnV1,
   projectResearchReconciliationInputV1,
   type ResearchAcceptedPacketV1,
   type ResearchOneShotEventV1,
@@ -1740,6 +1743,20 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       .respondWithTools([{ name: "AtlcliResearchAgentDraftV1", args: draft }])
       .respondWithTools([{ name: "AtlcliResearchAgentDraftV1", args: draft }]);
     const events: ResearchOneShotEventV1[] = [];
+    const durableStore = new InMemoryResearchSessionStoreV1();
+    await initializeResearchSessionTurnV1({
+      store: durableStore,
+      session: createResearchSessionV1({
+        sessionId: graph.sessionId,
+        ownerId: "owner:extension-test",
+        createdAt: "2026-08-01T17:00:00.000Z",
+        leaseExpiresAt: "2026-08-01T17:10:00.000Z",
+      }),
+      brief: graphBrief(request.question, ["jira", "confluence"], "analysis", "auto"),
+      graph,
+      approveAutomatically: true,
+      at: "2026-08-01T17:00:00.000Z",
+    });
     const report = await runResearchAgent({
       model: dynamicModel,
       request,
@@ -1748,6 +1765,11 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
         wiki: { async searchPage() { throw new Error("model skipped PTC"); }, async getPage() { throw new Error("model skipped PTC"); } },
       },
       researchGraph: graph,
+      durableSession: {
+        store: durableStore,
+        sessionId: graph.sessionId,
+        turnId: graph.turnId,
+      },
       runId: "dynamic-validated-frontier",
       options: { onEvent: (event) => events.push(event) },
     });
@@ -1805,6 +1827,22 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
         reasonCode: "packet_accepted",
       }),
     ]);
+    const durableSession = await durableStore.read(graph.sessionId);
+    const durableTurn = durableSession!.turns.find((turn) => turn.id === graph.turnId)!;
+    expect(durableSession?.status).toBe("complete");
+    expect(durableTurn.graphSelectionCommittedAt).toBeDefined();
+    expect(durableTurn.tasks).toHaveLength(6);
+    expect(durableTurn.tasks.every((task) => task.dispatchState === "result_committed")).toBe(true);
+    expect(durableTurn.acceptedPackets).toHaveLength(6);
+    expect(durableTurn.reconciliationDispositions).toHaveLength(1);
+    expect(durableTurn.repairAuthorization).toMatchObject({
+      nodeId: repair.id,
+      followUp: { id: "follow-up:synthetic-coverage" },
+    });
+    expect(durableTurn.graph?.status).toBe("complete");
+    expect((await durableStore.events(graph.sessionId)).map((event) => event.kind)).toContain(
+      "record_reconciliation",
+    );
   });
 
   test("rejects a duplicate graph-node dispatch before duplicate model work", async () => {

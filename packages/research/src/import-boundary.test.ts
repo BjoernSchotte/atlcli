@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import {
   RESEARCH_REQUEST_SCHEMA_V1 as browserRequestSchema,
   ResearchContractError as BrowserResearchContractError,
@@ -85,5 +86,14 @@ describe("@atlcli/research import boundaries", () => {
         },
       },
     })).rejects.toThrow("validated research graph");
+  });
+
+  it("keeps the Node entrypoint free of Bun-only session storage", () => {
+    const nodeEntrypoint = readFileSync(
+      new URL("./index.node.ts", import.meta.url),
+      "utf8",
+    );
+
+    expect(nodeEntrypoint).not.toContain("./sqlite-session-store.js");
   });
 });

@@ -3056,7 +3056,7 @@ through the existing revision/lease-epoch CAS. Approval changes the graph state
 but exposes a `not_started` dispatch state and starts no model research until
 the durable dispatch lifecycle is wired.
 
-- [ ] Persist ready nodes before dispatch. Accept or quarantine a result with
+- [x] Persist ready nodes before dispatch. Accept or quarantine a result with
       one aggregate revision-fenced journal/CAS operation covering graph
       revision, graph-node status and packet reference, task-attempt terminal
       status, accepted packet metadata, and event/outbox record. Large
@@ -3066,17 +3066,46 @@ the durable dispatch lifecycle is wired.
       subset under the already-approved envelope and fence that one
       pre-dispatch selection with the session revision. The envelope graph
       revision continues to fence node/task identity.
-- [ ] Commit every reconciliation disposition atomically with the graph,
+
+T4 durable-dispatch checkpoint (2026-08-01):
+`ResearchSessionDispatchJournalV1` now serializes concurrent task lifecycle
+commits through the existing revision/lease CAS. The native DeepAgentsJS
+`task()` interception reserves and records a ready attempt plus
+`dispatch_started` before provider work, atomically accepts the packet/task/node
+triple before publishing dependency data, and records `outcome_unknown` or a
+bounded quarantine on uncommitted outcomes. The production runtime accepts an
+optional durable owner and proves the selected graph, six typed task packets,
+and terminal completion through the same central `createDeepAgent` workflow;
+the CLI/browser session callers remain separate host-integration work.
+
+- [x] Commit every reconciliation disposition atomically with the graph,
       node, or claim mutation it authorizes; finalization rejects missing,
       duplicate, stale, or dangling defect dispositions.
+
+T4 durable-reconciliation checkpoint (2026-08-01): the selected session graph
+retains one host-owned latent repair descriptor only when reconciliation is
+selected. `record_reconciliation` records the complete validated disposition
+set, and—when authorized—activates that exact repair node, blocks synthesis,
+and persists the bounded follow-up authorization in one aggregate CAS/event.
+The repair therefore survives restart without exposing a free-form graph or
+provider capability to QuickJS.
 - [ ] Add durable wait states for clarification, plan approval, steering,
       rejected-plan revision, scope-expansion approval, pause, authentication,
       and quota; no wait state may require a living process.
-- [ ] Persist `dispatch_started`, `result_committed`, and `outcome_unknown`.
+- [x] Persist `dispatch_started`, `result_committed`, and `outcome_unknown`.
       Reuse committed results; after an unknown outcome, apply an explicit
       bounded retry/abstain policy and record any possible duplicate external
       invocation. Guarantee exactly one accepted packet and authoritative
       state transition, not exactly-once provider execution.
+
+T4 durable-lifecycle checkpoint (2026-08-01): the shared runtime now binds the
+existing journal to the one central DeepAgentsJS execution path. It persists
+the selected graph before admission, `dispatch_started` before every native
+`task()` provider call, and the packet/task/node result triple before the local
+dependency projection or progress event. It records `outcome_unknown` for
+abort, upstream, or persistence failures and quarantines invalid/late results.
+The transient local adapter remains disposable; recovery and the bounded
+retry/abstain policy still belong to the pending CLI/browser session runner.
 
 CLI:
 

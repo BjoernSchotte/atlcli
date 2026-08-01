@@ -527,11 +527,18 @@ export function createResearchDispatchInterceptionAdapter(options: {
       await observeUncommitted("aborted");
       emit({ taskId, status: "cancelled", code });
       void upstreamOutcome.then(async (late) => {
-        await options.onLateResult?.({
-          taskId,
-          admission,
-          ...(late.kind === "result" ? { resultBytes: serializedBytes(late.value) } : {}),
-        });
+        try {
+          await options.onLateResult?.({
+            taskId,
+            admission,
+            ...(late.kind === "result" ? { resultBytes: serializedBytes(late.value) } : {}),
+          });
+        } catch {
+          // The authoritative task remains outcome_unknown if the later
+          // quarantine cannot be recorded. Never surface this detached
+          // callback as an unhandled rejection or publish the late result.
+          return;
+        }
         emit({
           taskId,
           status: "quarantined",

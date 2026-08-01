@@ -2,6 +2,7 @@ import { ResearchContractError } from "./contracts.js";
 import type { ResearchGraphProposalV1, ResearchGraphV1 } from "./graph.js";
 import type { ResearchSessionStoreV1 } from "./session-store.js";
 import type {
+  ResearchSessionRepairAuthorizationV1,
   ResearchSessionTurnV1,
   ResearchSessionUpdateV1,
   ResearchSessionV1,
@@ -218,25 +219,46 @@ export class ResearchSessionDispatchJournalV1 {
     });
   }
 
-  recordReconciliation(
-    dispositions: readonly ResearchReconciliationDispositionV1[],
-  ): Promise<ResearchReconciliationDispositionV1[]> {
+  recordReconciliation(input: {
+    dispositions: readonly ResearchReconciliationDispositionV1[];
+    repair?: Pick<ResearchSessionRepairAuthorizationV1, "nodeId" | "reconciliationTaskId"> & {
+      followUpId: string;
+    };
+  }): Promise<{
+    dispositions: ResearchReconciliationDispositionV1[];
+    graph: ResearchGraphV1;
+    repairAuthorization?: ResearchSessionRepairAuthorizationV1;
+  }> {
     return this.#enqueue(async () => {
-      let session = await this.#read();
-      const recorded: ResearchReconciliationDispositionV1[] = [];
-      for (const disposition of dispositions) {
-        const next = await this.#commit(session, {
-          kind: "record_reconciliation",
-          disposition,
-        }, (value) => value);
-        const stored = activeTurn(next, this.#turnId).reconciliationDispositions.find((candidate) =>
-          candidate.id === disposition.id,
-        );
-        if (!stored) invalid("Research durable dispatch did not retain its reconciliation disposition.");
-        recorded.push(stored);
-        session = next;
-      }
-      return recorded;
+      const session = await this.#read();
+      return this.#commit(session, {
+        kind: "record_reconciliation",
+        dispositions: [...input.dispositions],
+        ...(input.repair ? { repair: { ...input.repair } } : {}),
+      }, (next) => {
+        const turn = activeTurn(next, this.#turnId);
+        const recorded = input.dispositions.map((disposition) => {
+          const stored = turn.reconciliationDispositions.find((candidate) =>
+            candidate.id === disposition.id,
+          );
+          if (!stored) invalid("Research durable dispatch did not retain its reconciliation disposition.");
+          return stored;
+        });
+        if (!turn.graph) invalid("Research durable dispatch lost its execution graph.");
+        return {
+          dispositions: recorded,
+          graph: turn.graph,
+          ...(turn.repairAuthorization ? { repairAuthorization: turn.repairAuthorization } : {}),
+        };
+      });
+    });
+  }
+
+  /** Mark the durable turn complete only after its final report artifact exists. */
+  complete(): Promise<ResearchSessionV1> {
+    return this.#enqueue(async () => {
+      const session = await this.#read();
+      return this.#commit(session, { kind: "complete" }, (next) => next);
     });
   }
 

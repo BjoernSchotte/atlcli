@@ -2,7 +2,7 @@
 
 Shared, read-only Atlassian research runtime for CLI and browser hosts.
 
-Use the package through one of four explicit surfaces:
+Use the package through one of five explicit surfaces:
 
 - `@atlcli/research` contains versioned contracts, validation, budgets,
   capability brokering, query compilation, evidence validation, and canonical
@@ -13,7 +13,11 @@ Use the package through one of four explicit surfaces:
   `deepagents/browser` with an in-memory `StateBackend` and exposes the
   LangChain/QuickJS tool adapters.
 - `@atlcli/research/node` adds the filesystem workspace, the same REST
-  provider, and constructs DeepAgentsJS through `deepagents/node`.
+  provider, and constructs DeepAgentsJS through `deepagents/node`. It remains
+  consumable by ordinary Node processes, including the packed-browser E2E.
+- `@atlcli/research/bun` adds Bun-only host storage, currently
+  `SqliteResearchSessionStoreV1`, on top of the Node runtime. The CLI selects
+  this surface explicitly; browser and Node consumers never load `bun:sqlite`.
 
 Both runtime entries use the same request/report schemas, read capabilities,
 dynamic subagent composition, QuickJS limits, report finalizer, and Markdown

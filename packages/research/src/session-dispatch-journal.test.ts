@@ -7,6 +7,7 @@ import { InMemoryResearchSessionStoreV1 } from "./session-store.js";
 import { createResearchSessionV1 } from "./session.js";
 import {
   RESEARCH_PACKET_BODY_SCHEMA_V1,
+  RESEARCH_RECONCILIATION_BODY_SCHEMA_V1,
   type ResearchTaskAttemptV1,
 } from "./workflow-contracts.js";
 
@@ -29,7 +30,7 @@ async function initializedJournal() {
     asOf: createdAt,
     timezone: "UTC",
     requestedPlanApproval: "automatic",
-    requestedReconciliation: "off",
+    requestedReconciliation: "required",
   });
   const store = new InMemoryResearchSessionStoreV1();
   const session = await initializeResearchSessionTurnV1({
@@ -69,7 +70,14 @@ async function initializedJournal() {
     })),
   };
   const graph = await journal.commitGraphSelection(proposal);
-  return { store, sessionId: session.sessionId, turnId: brief.turnId, journal, graph };
+  return {
+    store,
+    sessionId: session.sessionId,
+    turnId: brief.turnId,
+    journal,
+    catalog,
+    graph,
+  };
 }
 
 function attemptFor(
@@ -87,7 +95,9 @@ function attemptFor(
     ...(node.roleId ? { roleId: node.roleId } : {}),
     grantedCapabilityIds: [...node.grantedCapabilityIds],
     typedIntentRefs: [...node.typedIntentRefs],
-    expectedOutputSchema: RESEARCH_PACKET_BODY_SCHEMA_V1,
+    expectedOutputSchema: node.roleId === "reconciler"
+      ? RESEARCH_RECONCILIATION_BODY_SCHEMA_V1
+      : RESEARCH_PACKET_BODY_SCHEMA_V1,
     budget: { ...node.budget },
     status: "ready",
     dispatchState: "not_started",
@@ -180,5 +190,107 @@ describe("durable research task dispatch journal", () => {
       status: "quarantined",
       stopReason: "late-result",
     });
+  });
+
+  test("commits every reconciliation disposition and the optional repair activation in one CAS event", async () => {
+    const { store, sessionId, turnId, journal, catalog, graph } = await initializedJournal();
+    const reconciliationNode = graph.nodes.find((node) => node.roleId === "reconciler")!;
+    const repairNode = catalog.nodes.find((node) => node.kind === "repair")!;
+    let reconciliationPacketRef = "";
+
+    for (const node of graph.nodes.filter((candidate) => candidate.roleId !== "synthesizer")) {
+      const attempt = attemptFor(graph, node.id);
+      await journal.admitAndStart(attempt);
+      const body = node.roleId === "reconciler"
+        ? {
+            schema: RESEARCH_RECONCILIATION_BODY_SCHEMA_V1,
+            defects: [{
+              id: "defect:coverage-gap",
+              severity: "important",
+              target: { kind: "coverage", id: "coverage:question" },
+              code: "missing_coverage",
+              references: [],
+              explanation: "One bounded coverage check remains.",
+              suggestedAction: "add_follow_up",
+            }],
+            proposedFollowUps: [{
+              id: "follow-up:coverage-gap",
+              objective: "Perform one bounded coverage check.",
+              reasonCode: "coverage_gap",
+              sourceIds: [],
+            }],
+          }
+        : {
+            schema: RESEARCH_PACKET_BODY_SCHEMA_V1,
+            answeredQuestion: "No further detail was available.",
+            sourceIds: [],
+            findingCandidates: [],
+            relationshipCandidates: [],
+            gaps: [],
+            proposedFollowUps: [],
+            coverageLimits: [],
+          };
+      const packet = await journal.acceptPacket({
+        taskId: attempt.taskId,
+        graphRevision: graph.revision,
+        body,
+        usage: {
+          capabilityCalls: 0,
+          inputTokens: 1,
+          outputTokens: 1,
+          resultBytes: bytes(body),
+          durationMs: 1,
+          costMicros: 0,
+        },
+        availableSourceIds: [],
+        maximumResultBytes: attempt.budget.maxResultBytes,
+      });
+      if (node.id === reconciliationNode.id) reconciliationPacketRef = packet.packetRef;
+    }
+
+    const recorded = await journal.recordReconciliation({
+      dispositions: [{
+        schema: "atlcli.reconciliation-disposition/v1",
+        id: "reconciliation-disposition:r1:1",
+        reconciliationPacketRef,
+        defectId: "defect:coverage-gap",
+        basedOnGraphRevision: graph.revision,
+        decision: "add_follow_up",
+        reasonCode: "material_defect",
+        resultingGraphRevision: graph.revision,
+        resultingNodeId: repairNode.id,
+        resultingClaimIds: [],
+        recordedAt: "2026-08-01T16:02:00.000Z",
+      }],
+      repair: {
+        nodeId: repairNode.id,
+        reconciliationTaskId: `task:dispatch-${reconciliationNode.id.replace("research-node:", "")}`,
+        followUpId: "follow-up:coverage-gap",
+      },
+    });
+
+    expect(recorded.dispositions).toHaveLength(1);
+    expect(recorded.repairAuthorization).toMatchObject({
+      nodeId: repairNode.id,
+      reconciliationTaskId: `task:dispatch-${reconciliationNode.id.replace("research-node:", "")}`,
+      followUp: { id: "follow-up:coverage-gap" },
+    });
+    expect(recorded.graph.nodes.find((node) => node.id === repairNode.id)).toMatchObject({
+      status: "ready",
+      dependencies: [reconciliationNode.id],
+    });
+    expect(recorded.graph.nodes.find((node) => node.roleId === "synthesizer")).toMatchObject({
+      status: "blocked",
+      dependencies: expect.arrayContaining([repairNode.id]),
+    });
+
+    const stored = await store.read(sessionId);
+    const turn = stored!.turns.find((candidate) => candidate.id === turnId)!;
+    expect(turn).toMatchObject({
+      reconciliationCommittedAt: expect.any(String),
+      repairAuthorization: { nodeId: repairNode.id },
+    });
+    expect(turn.latentRepairNode).toBeUndefined();
+    expect((await store.events(sessionId)).at(-1)?.kind).toBe("record_reconciliation");
   });
 });
