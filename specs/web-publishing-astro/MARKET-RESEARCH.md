@@ -1,6 +1,6 @@
 # Confluence-to-public-site market and JTBD research
 
-**As of:** 2026-08-01  
+**As of:** 2026-08-01
 **Scope:** Publishing a Confluence page tree or space as an external public
 HTML/static documentation or knowledge site. This is product research, not a
 claim that every referenced vendor capability is implemented by atlcli.
@@ -203,7 +203,7 @@ turn the local build into an unannounced hosted content mirror.
 - multi-space documentation centres with namespaces and cross-space links;
 - audience/conditional-content variants, product versions and locales;
 - access-controlled deployment/SSO integration (not cosmetic client-side
-  gating); 
+  gating);
 - feedback, JSM/issue loop and content-freshness/broken-link reporting;
 - a hosted deployment adapter, only if its privacy, retention and pricing
   model is separately designed;
