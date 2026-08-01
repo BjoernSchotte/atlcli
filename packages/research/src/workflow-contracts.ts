@@ -262,6 +262,8 @@ export interface ResearchReconciliationInputV1 {
     kind: "v1-packet-set";
     findingCandidateIds: string[];
     relationshipCandidateIds: string[];
+    gapIds: string[];
+    sourceIds: string[];
   };
 }
 
@@ -475,6 +477,149 @@ export function parseResearchPacketBodyV1(value: unknown): ResearchPacketBodyV1 
   ]);
   for (const sourceId of referenced) if (!result.sourceIds.includes(sourceId)) invalid("Research packet references an undeclared sourceId.");
   return result;
+}
+
+/** Parse the compact, host-authored packet-set projection supplied to T3 critique. */
+export function parseResearchReconciliationInputV1(
+  value: unknown,
+): ResearchReconciliationInputV1 {
+  const input = object(value, "Research reconciliation input");
+  assertKeys(input, [
+    "schema", "briefRevision", "graphRevision", "acceptedPacketRefs",
+    "coverageTargetIds", "projection",
+  ], "Research reconciliation input");
+  if (input.schema !== RESEARCH_RECONCILIATION_INPUT_SCHEMA_V1 ||
+      !Number.isSafeInteger(input.briefRevision) || Number(input.briefRevision) < 1 ||
+      !Number.isSafeInteger(input.graphRevision) || Number(input.graphRevision) < 1) {
+    invalid("Research reconciliation input envelope is invalid.");
+  }
+  const acceptedPacketRefs = stringArray(
+    input.acceptedPacketRefs,
+    "Research reconciliation accepted packet refs",
+    8,
+  );
+  if (acceptedPacketRefs.length === 0) {
+    invalid("Research reconciliation input requires accepted packets.");
+  }
+  const projection = object(input.projection, "Research reconciliation projection");
+  assertKeys(projection, [
+    "kind", "findingCandidateIds", "relationshipCandidateIds", "gapIds", "sourceIds",
+  ], "Research reconciliation projection");
+  if (projection.kind !== "v1-packet-set") {
+    invalid("Research reconciliation projection kind is invalid.");
+  }
+  return {
+    schema: RESEARCH_RECONCILIATION_INPUT_SCHEMA_V1,
+    briefRevision: Number(input.briefRevision),
+    graphRevision: Number(input.graphRevision),
+    acceptedPacketRefs,
+    coverageTargetIds: stringArray(
+      input.coverageTargetIds,
+      "Research reconciliation coverage target ids",
+      32,
+    ),
+    projection: {
+      kind: "v1-packet-set",
+      findingCandidateIds: stringArray(
+        projection.findingCandidateIds,
+        "Research reconciliation finding candidate ids",
+        128,
+      ),
+      relationshipCandidateIds: stringArray(
+        projection.relationshipCandidateIds,
+        "Research reconciliation relationship candidate ids",
+        128,
+      ),
+      gapIds: stringArray(projection.gapIds, "Research reconciliation gap ids", 128),
+      sourceIds: stringArray(projection.sourceIds, "Research reconciliation source ids", 256),
+    },
+  };
+}
+
+/**
+ * Build the deterministic, body-free index that tells the T3 reconciler which
+ * accepted packet references and candidate IDs it may critique. Packet bodies
+ * remain in the admitted dependency envelope; this projection never copies
+ * source content or child-agent trajectories.
+ */
+export function projectResearchReconciliationInputV1(input: {
+  briefRevision: number;
+  graphRevision: number;
+  coverageTargetIds: readonly string[];
+  acceptedPackets: readonly ResearchAcceptedPacketV1[];
+}): ResearchReconciliationInputV1 {
+  const findingCandidateIds: string[] = [];
+  const relationshipCandidateIds: string[] = [];
+  const gapIds: string[] = [];
+  const sourceIds: string[] = [];
+  const seenFindingIds = new Set<string>();
+  const seenRelationshipIds = new Set<string>();
+  const seenGapIds = new Set<string>();
+  const seenSourceIds = new Set<string>();
+  const seenTaskIds = new Set<string>();
+
+  const appendUniqueCandidateIds = (
+    ids: readonly string[],
+    seen: Set<string>,
+    output: string[],
+    label: string,
+  ): void => {
+    for (const id of ids) {
+      if (seen.has(id)) invalid(`Research reconciliation ${label} is duplicated across accepted packets: ${id}.`);
+      seen.add(id);
+      output.push(id);
+    }
+  };
+
+  for (const packet of input.acceptedPackets) {
+    if (packet.schema !== RESEARCH_ACCEPTED_PACKET_SCHEMA_V1 ||
+        packet.graphRevision !== input.graphRevision) {
+      invalid("Research reconciliation input contains a stale or invalid accepted packet.");
+    }
+    if (seenTaskIds.has(packet.taskId)) {
+      invalid(`Research reconciliation task is duplicated across accepted packets: ${packet.taskId}.`);
+    }
+    seenTaskIds.add(packet.taskId);
+    const body = parseResearchPacketBodyV1(packet.body);
+    appendUniqueCandidateIds(
+      body.findingCandidates.map((candidate) => candidate.id),
+      seenFindingIds,
+      findingCandidateIds,
+      "finding candidate id",
+    );
+    appendUniqueCandidateIds(
+      body.relationshipCandidates.map((candidate) => candidate.id),
+      seenRelationshipIds,
+      relationshipCandidateIds,
+      "relationship candidate id",
+    );
+    appendUniqueCandidateIds(
+      body.gaps.map((gap) => gap.id),
+      seenGapIds,
+      gapIds,
+      "gap id",
+    );
+    for (const sourceId of body.sourceIds) {
+      if (seenSourceIds.has(sourceId)) continue;
+      seenSourceIds.add(sourceId);
+      sourceIds.push(sourceId);
+    }
+  }
+
+  return parseResearchReconciliationInputV1({
+    schema: RESEARCH_RECONCILIATION_INPUT_SCHEMA_V1,
+    briefRevision: input.briefRevision,
+    graphRevision: input.graphRevision,
+    acceptedPacketRefs: input.acceptedPackets.map((packet) => packet.packetRef),
+    coverageTargetIds: [...input.coverageTargetIds],
+    projection: {
+      kind: "v1-packet-set",
+      findingCandidateIds,
+      relationshipCandidateIds,
+      gapIds,
+      sourceIds,
+    },
+  });
 }
 
 function parseReconciliationDefect(value: unknown): ResearchReconciliationDefectV1 {

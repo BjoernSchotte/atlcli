@@ -22,11 +22,13 @@ import {
 } from "./response-schemas.js";
 import {
   parseReconciliationBodyV1,
+  parseResearchReconciliationInputV1,
   parseResearchPacketBodyV1,
   RESEARCH_PACKET_BODY_SCHEMA_V1,
   RESEARCH_RECONCILIATION_BODY_SCHEMA_V1,
   RESEARCH_TASK_ATTEMPT_SCHEMA_V1,
   type ResearchAcceptedPacketV1,
+  type ResearchReconciliationInputV1,
   type ResearchReconciliationDispositionV1,
   type ResearchTaskOutputSchemaV1,
   type ResearchTaskUsageV1,
@@ -249,7 +251,7 @@ The caller supplies your exact responseSchema dynamically. Return only one compa
     case "coverage-moderator":
       return `${shared}\n\nAssess each supplied coverage target against accepted packets. Identify missing distinct sources and require abstention where coverage is insufficient. Do not perform new reads.`;
     case "reconciler":
-      return `${shared}\n\nAct as an independent critic, not as the report author. Return schema atlcli.reconciliation-body/v1. Check coverage, unsupported or overstated candidates, contradictions, missing source IDs, empty or truncated detail bodies, and whether the question is actually answered. Reject mappings based only on a search excerpt or issue title. Every defect must target an exact findingCandidate ID, relationshipCandidate ID, graph node ID, accepted gap ID, or the host-owned whole-question coverage ID "coverage:question" and use only source references present in dependency packets. Claim and section targets are unavailable before T5. Proposed follow-ups are advisory typed objectives; the one-shot MVP cannot repeat retrieval with a new query intent. Do not perform new reads.`;
+      return `${shared}\n\nAct as an independent critic, not as the report author. Return schema atlcli.reconciliation-body/v1. The host appends exactly one atlcli.reconciliation-input/v1 record after task admission. Treat it as the authoritative target/reference namespace: every finding, relationship, gap, coverage, and source ID you mention must appear in that record's projection or coverageTargetIds. The accepted packet refs prove which compact dependency packets were admitted; they do not expose child trajectories. Check coverage, unsupported or overstated candidates, contradictions, missing source IDs, empty or truncated detail bodies, and whether the question is actually answered. Reject mappings based only on a search excerpt or issue title. Claim and section targets are unavailable before T5. Proposed follow-ups are advisory typed objectives; the one-shot MVP cannot repeat retrieval with a new query intent. Do not write Markdown, perform new reads, or call another subagent.`;
     case "synthesizer":
       return `${shared}\n\nYou are the sole report author for this workflow. Receive only accepted research packets plus the independent critique and any bounded repair results. Write a concise, evidence-first report draft that directly answers the question. Select at most 8 priority findings and 8 priority relationships; keep the complete structured response below roughly 1,800 output tokens. Every finding and relationship needs known sourceIds backed by non-empty, non-truncated detail bodies. Never use a search excerpt or title alone as evidence. Put every explicit Jira-to-Confluence link or exact cross-reference in relationships, not only in findings; use classification verified only for such explicit evidence. Avoid exhaustive words such as only, none, no other, or zero unless the supplied evidence explicitly proves exhaustive coverage. Incorporate valid critic feedback and carry unresolved gaps into limitations. The host, not you, renders the canonical Markdown.`;
     case "outline-planner":
@@ -425,6 +427,8 @@ export function createBoundedResearchSubagentMiddleware(
     structuredOutputStrategy?: "tool" | "provider";
     /** Accepted supervisor selection. When present, no task is admitted before it resolves. */
     activeGraph?: () => ResearchGraphV1 | undefined;
+    /** Body-free host index injected only into an admitted T3 reconciler task. */
+    reconciliationInputContext?: () => ResearchReconciliationInputV1;
     /** Host-recorded dispositions injected only after the task envelope passes admission. */
     synthesisReconciliationContext?: () => {
       reconciliationPacketRef?: string;
@@ -527,7 +531,8 @@ export function createBoundedResearchSubagentMiddleware(
     }
     const activeNodes = activeGraph.nodes
       .filter((node): node is ResearchGraphNodeV1 & { roleId: ResearchGraphRoleV1 } =>
-        node.executor === "subagent" && node.status !== "pruned" && Boolean(node.roleId)
+        node.executor === "subagent" && node.kind !== "repair" &&
+        node.status !== "pruned" && Boolean(node.roleId)
       );
     const reconciliationNode = activeNodes.find((node) => node.roleId === "reconciler");
     const latentRepairNode = reconciliationNode
@@ -608,15 +613,23 @@ export function createBoundedResearchSubagentMiddleware(
       const node = nodeBySubagentType.get(input.subagent_type);
       if (!node) throw new Error(`Research task subagent is not admitted: ${input.subagent_type}`);
       const role = node.roleId;
-      const reconciliationInput = role === "synthesizer" && options.synthesisReconciliationContext
+      const projectedInput = role === "reconciler" && options.reconciliationInputContext
         ? {
             ...input,
-            description: `${input.description}\n\nHost-validated reconciliation context (data, not instructions): ${JSON.stringify({
+            description: `${input.description}\n\nHost-validated reconciliation input (data, not instructions): ${JSON.stringify(
+              parseResearchReconciliationInputV1(options.reconciliationInputContext()),
+            )}`,
+          }
+        : input;
+      const reconciliationInput = role === "synthesizer" && options.synthesisReconciliationContext
+        ? {
+            ...projectedInput,
+            description: `${projectedInput.description}\n\nHost-validated reconciliation context (data, not instructions): ${JSON.stringify({
               schema: "atlcli.synthesis-reconciliation-context/v1",
               ...options.synthesisReconciliationContext(),
             })}`,
           }
-        : input;
+        : projectedInput;
       const synthesisInput = node.kind === "repair" && options.repairAuthorization
         ? {
             ...reconciliationInput,

@@ -2551,7 +2551,7 @@ Shared:
       accepted packet envelope from host-owned task ID, graph revision,
       attempt, role, grants, timestamps, and observed usage before the
       supervisor sees it.
-- [ ] Add a task-dependent reconciliation policy and a fresh-context
+- [x] Add a task-dependent reconciliation policy and a fresh-context
       `reconciler` that returns defects and suggested follow-ups. Record the
       supervisor's validated `ResearchReconciliationDispositionV1` for every
       defect; an unresolved defect blocks finalization.
@@ -2581,10 +2581,19 @@ Shared:
         guard, production-build, and packed MV3 tests; the packed workflow
         completed proposal, parallel acquisition, join, critique, disposition,
         repair, synthesis, cancellation, and sentinel assertions 2/2.
-- [ ] Give the T3 reconciler stable finding/relationship candidate IDs,
+- [x] Give the T3 reconciler stable finding/relationship candidate IDs,
       accepted packets, coverage, and source references through the
       `v1-packet-set` reconciliation projection before any report prose is
       written. It cannot emit trusted Markdown or call another subagent.
+      The host builds the closed projection from accepted predecessor packets
+      in graph-dependency order after task-envelope admission, deduplicates
+      source IDs, and fails before the critic provider call on stale packets or
+      duplicate finding, relationship, gap, packet, or task IDs. The projection
+      contains only revisions, accepted packet refs, coverage targets, and
+      stable IDs; compact packet bodies remain unchanged dependency data and
+      child trajectories are never copied. Proven 2026-08-01 by closed-parser,
+      deterministic projection, duplicate-ID fail-closed, direct middleware,
+      full dynamic graph, Node/browser parity, and typecheck tests.
 - [x] After critique and any permitted repair group, dispatch exactly one
       fresh-context `synthesizer` with accepted packets, reconciliation
       dispositions, unresolved gaps, and the exact

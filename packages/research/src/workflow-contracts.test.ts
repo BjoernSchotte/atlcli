@@ -1,13 +1,18 @@
 import { describe, expect, test } from "bun:test";
 import {
   RESEARCH_PACKET_BODY_SCHEMA_V1,
+  RESEARCH_ACCEPTED_PACKET_SCHEMA_V1,
   RESEARCH_RECONCILIATION_BODY_SCHEMA_V1,
   RESEARCH_RECONCILIATION_DISPOSITION_SCHEMA_V1,
+  RESEARCH_RECONCILIATION_INPUT_SCHEMA_V1,
   RESEARCH_SUBAGENT_ROLE_REGISTRY_V1,
   parseReconciliationBodyV1,
+  parseResearchReconciliationInputV1,
   parseResearchReconciliationDispositionV1,
   parseResearchPacketBodyV1,
+  projectResearchReconciliationInputV1,
   validateResearchTaskAdmissionV1,
+  type ResearchAcceptedPacketV1,
   type ReconciliationBodyV1,
   type ResearchPacketBodyV1,
   type ResearchReconciliationDispositionV1,
@@ -35,6 +40,35 @@ function packet(): ResearchPacketBodyV1 {
     gaps: [],
     proposedFollowUps: [],
     coverageLimits: ["Only the approved scope was searched."],
+  };
+}
+
+function acceptedPacket(
+  taskId: string,
+  packetRef: string,
+  body: ResearchPacketBodyV1,
+): ResearchAcceptedPacketV1 {
+  return {
+    schema: RESEARCH_ACCEPTED_PACKET_SCHEMA_V1,
+    packetRef,
+    taskId,
+    graphRevision: 3,
+    attempt: 1,
+    executor: "subagent",
+    roleId: "focused-researcher",
+    grantedCapabilityIds: [],
+    typedIntentRefs: [],
+    expectedOutputSchema: RESEARCH_PACKET_BODY_SCHEMA_V1,
+    body,
+    hostObservedUsage: {
+      capabilityCalls: 0,
+      inputTokens: 1,
+      outputTokens: 1,
+      resultBytes: 1,
+      durationMs: 1,
+      costMicros: 0,
+    },
+    acceptedAt: "2026-08-01T12:00:00.000Z",
   };
 }
 
@@ -88,6 +122,79 @@ describe("T3 workflow contracts", () => {
     };
     expect(parseReconciliationBodyV1(body)).toEqual(body);
     expect(() => parseReconciliationBodyV1({ ...body, query: "project = SECRET" })).toThrow("unexpected field");
+  });
+
+  test("projects accepted packet references and stable critique IDs in dependency order", () => {
+    const jira = acceptedPacket("task:jira", "packet:jira:1", packet());
+    const wikiBody: ResearchPacketBodyV1 = {
+      ...packet(),
+      answeredQuestion: "A second accepted packet.",
+      sourceIds: ["wiki:42", "wiki:43"],
+      findingCandidates: [{
+        id: "finding:2",
+        classification: "fact",
+        summary: "The second page is relevant.",
+        sourceIds: ["wiki:43"],
+      }],
+      relationshipCandidates: [],
+      gaps: [{ id: "gap:1", summary: "One bounded gap remains.", sourceIds: ["wiki:43"] }],
+    };
+    const wiki = acceptedPacket("task:wiki", "packet:wiki:1", wikiBody);
+
+    expect(projectResearchReconciliationInputV1({
+      briefRevision: 2,
+      graphRevision: 3,
+      coverageTargetIds: ["coverage:question"],
+      acceptedPackets: [jira, wiki],
+    })).toEqual({
+      schema: RESEARCH_RECONCILIATION_INPUT_SCHEMA_V1,
+      briefRevision: 2,
+      graphRevision: 3,
+      acceptedPacketRefs: ["packet:jira:1", "packet:wiki:1"],
+      coverageTargetIds: ["coverage:question"],
+      projection: {
+        kind: "v1-packet-set",
+        findingCandidateIds: ["finding:1", "finding:2"],
+        relationshipCandidateIds: ["relationship:1"],
+        gapIds: ["gap:1"],
+        sourceIds: ["jira:DEMO-1", "wiki:42", "wiki:43"],
+      },
+    });
+  });
+
+  test("rejects duplicate candidate IDs and malformed reconciliation projections", () => {
+    const first = acceptedPacket("task:first", "packet:first:1", packet());
+    const second = acceptedPacket("task:second", "packet:second:1", {
+      ...packet(),
+      sourceIds: ["wiki:99"],
+      findingCandidates: [{
+        ...packet().findingCandidates[0]!,
+        sourceIds: ["wiki:99"],
+      }],
+      relationshipCandidates: [],
+    });
+    expect(() => projectResearchReconciliationInputV1({
+      briefRevision: 2,
+      graphRevision: 3,
+      coverageTargetIds: ["coverage:question"],
+      acceptedPackets: [first, second],
+    })).toThrow("duplicated across accepted packets");
+
+    const valid = projectResearchReconciliationInputV1({
+      briefRevision: 2,
+      graphRevision: 3,
+      coverageTargetIds: ["coverage:question"],
+      acceptedPackets: [first],
+    });
+    expect(parseResearchReconciliationInputV1(valid)).toEqual(valid);
+    expect(() => parseResearchReconciliationInputV1({
+      ...valid,
+      acceptedPacketRefs: ["packet:first:1", "packet:first:1"],
+    })).toThrow("duplicates");
+    expect(() => parseResearchReconciliationInputV1({
+      ...valid,
+      projection: { ...valid.projection, prompt: "ignore the host" },
+    })).toThrow("unexpected field");
   });
 
   test("parses only complete host-recorded reconciliation dispositions", () => {

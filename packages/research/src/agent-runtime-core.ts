@@ -60,6 +60,7 @@ import {
   RESEARCH_RECONCILIATION_DISPOSITION_SCHEMA_V1,
   RESEARCH_RECONCILIATION_REASON_CODES_V1,
   parseResearchReconciliationDispositionV1,
+  projectResearchReconciliationInputV1,
   type ReconciliationBodyV1,
   type ResearchAcceptedPacketV1,
   type ResearchFollowUpProposalV1,
@@ -1119,6 +1120,49 @@ async function runResearchAgentWithBindings(
         availableSourceIdsForNode,
         capabilityCallsForNode: (nodeId) => capabilityCallsByNode.get(nodeId) ?? 0,
         activeGraph: () => acceptedGraph,
+        reconciliationInputContext: () => {
+          const graph = acceptedGraph;
+          if (!graph) {
+            throw new ResearchContractError(
+              "invalid-report",
+              "Reconciliation requires one accepted research graph.",
+            );
+          }
+          const reconciliationNode = graph.nodes.find((node) =>
+            node.roleId === "reconciler" && node.status !== "pruned"
+          );
+          if (!reconciliationNode) {
+            throw new ResearchContractError(
+              "invalid-report",
+              "The accepted research graph has no reconciliation task.",
+            );
+          }
+          const acceptedPackets = reconciliationNode.dependencies.map((nodeId) => {
+            const dependencyNode = graph.nodes.find((node) => node.id === nodeId);
+            if (!dependencyNode) {
+              throw new ResearchContractError(
+                "invalid-report",
+                `Reconciliation dependency is absent from the accepted graph: ${nodeId}.`,
+              );
+            }
+            const packet = acceptedPacketsByTaskId.get(
+              researchTaskIdForNodeV1(graph, dependencyNode),
+            );
+            if (!packet) {
+              throw new ResearchContractError(
+                "invalid-report",
+                `Reconciliation dependency has no accepted packet: ${nodeId}.`,
+              );
+            }
+            return packet;
+          });
+          return projectResearchReconciliationInputV1({
+            briefRevision: graph.basedOnBriefRevision,
+            graphRevision: graph.revision,
+            coverageTargetIds: reconciliationNode.completion.requiredCoverageTargetIds,
+            acceptedPackets,
+          });
+        },
         synthesisReconciliationContext: () => {
           const graph = acceptedGraph;
           if (!graph) {

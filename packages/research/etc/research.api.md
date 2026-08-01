@@ -283,6 +283,9 @@ export declare function parseResearchQueryFingerprint(value: string): {
 // export: parseResearchReconciliationDispositionV1
 export declare function parseResearchReconciliationDispositionV1(value: unknown): ResearchReconciliationDispositionV1;
 
+// export: parseResearchReconciliationInputV1
+export declare function parseResearchReconciliationInputV1(value: unknown): ResearchReconciliationInputV1;
+
 // export: parseResearchTaskBodyV1
 export declare function parseResearchTaskBodyV1(schema: ResearchTaskOutputSchemaV1, value: unknown): ResearchPacketBodyV1 | ReconciliationBodyV1 | ResearchAgentDraftV1;
 
@@ -297,6 +300,14 @@ export declare function projectConfluenceStorage(storage: string, siteOrigin: st
 
 // export: projectJiraDescription
 export declare function projectJiraDescription(description: AdfDocument | string | null | undefined, siteOrigin: string, limits: ContentProjectionLimits): BoundedContentProjectionV1;
+
+// export: projectResearchReconciliationInputV1
+export declare function projectResearchReconciliationInputV1(input: {
+    briefRevision: number;
+    graphRevision: number;
+    coverageTargetIds: readonly string[];
+    acceptedPackets: readonly ResearchAcceptedPacketV1[];
+}): ResearchReconciliationInputV1;
 
 // export: projectSelectedResearchRolesV1
 export declare function projectSelectedResearchRolesV1(graph: Pick<ResearchGraphV1, "nodes">): ResearchSubagentRoleIdV1[];
@@ -1425,6 +1436,8 @@ export interface ResearchReconciliationInputV1 {
         kind: "v1-packet-set";
         findingCandidateIds: string[];
         relationshipCandidateIds: string[];
+        gapIds: string[];
+        sourceIds: string[];
     };
 }
 
@@ -2301,6 +2314,9 @@ export declare function parseResearchQueryFingerprint(value: string): {
 // export: parseResearchReconciliationDispositionV1
 export declare function parseResearchReconciliationDispositionV1(value: unknown): ResearchReconciliationDispositionV1;
 
+// export: parseResearchReconciliationInputV1
+export declare function parseResearchReconciliationInputV1(value: unknown): ResearchReconciliationInputV1;
+
 // export: parseResearchTaskBodyV1
 export declare function parseResearchTaskBodyV1(schema: ResearchTaskOutputSchemaV1, value: unknown): ResearchPacketBodyV1 | ReconciliationBodyV1 | ResearchAgentDraftV1;
 
@@ -2315,6 +2331,14 @@ export declare function projectConfluenceStorage(storage: string, siteOrigin: st
 
 // export: projectJiraDescription
 export declare function projectJiraDescription(description: AdfDocument | string | null | undefined, siteOrigin: string, limits: ContentProjectionLimits): BoundedContentProjectionV1;
+
+// export: projectResearchReconciliationInputV1
+export declare function projectResearchReconciliationInputV1(input: {
+    briefRevision: number;
+    graphRevision: number;
+    coverageTargetIds: readonly string[];
+    acceptedPackets: readonly ResearchAcceptedPacketV1[];
+}): ResearchReconciliationInputV1;
 
 // export: projectSelectedResearchRolesV1
 export declare function projectSelectedResearchRolesV1(graph: Pick<ResearchGraphV1, "nodes">): ResearchSubagentRoleIdV1[];
@@ -3443,6 +3467,8 @@ export interface ResearchReconciliationInputV1 {
         kind: "v1-packet-set";
         findingCandidateIds: string[];
         relationshipCandidateIds: string[];
+        gapIds: string[];
+        sourceIds: string[];
     };
 }
 
@@ -4317,6 +4343,9 @@ export declare function parseResearchQueryFingerprint(value: string): {
 // export: parseResearchReconciliationDispositionV1
 export declare function parseResearchReconciliationDispositionV1(value: unknown): ResearchReconciliationDispositionV1;
 
+// export: parseResearchReconciliationInputV1
+export declare function parseResearchReconciliationInputV1(value: unknown): ResearchReconciliationInputV1;
+
 // export: parseResearchTaskBodyV1
 export declare function parseResearchTaskBodyV1(schema: ResearchTaskOutputSchemaV1, value: unknown): ResearchPacketBodyV1 | ReconciliationBodyV1 | ResearchAgentDraftV1;
 
@@ -4331,6 +4360,14 @@ export declare function projectConfluenceStorage(storage: string, siteOrigin: st
 
 // export: projectJiraDescription
 export declare function projectJiraDescription(description: AdfDocument | string | null | undefined, siteOrigin: string, limits: ContentProjectionLimits): BoundedContentProjectionV1;
+
+// export: projectResearchReconciliationInputV1
+export declare function projectResearchReconciliationInputV1(input: {
+    briefRevision: number;
+    graphRevision: number;
+    coverageTargetIds: readonly string[];
+    acceptedPackets: readonly ResearchAcceptedPacketV1[];
+}): ResearchReconciliationInputV1;
 
 // export: projectSelectedResearchRolesV1
 export declare function projectSelectedResearchRolesV1(graph: Pick<ResearchGraphV1, "nodes">): ResearchSubagentRoleIdV1[];
@@ -5459,6 +5496,8 @@ export interface ResearchReconciliationInputV1 {
         kind: "v1-packet-set";
         findingCandidateIds: string[];
         relationshipCandidateIds: string[];
+        gapIds: string[];
+        sourceIds: string[];
     };
 }
 
@@ -6160,6 +6199,7 @@ export declare function createBoundedResearchSubagentMiddleware(model: BaseChatM
     }) => void | Promise<void>;
     structuredOutputStrategy?: "tool" | "provider";
     activeGraph?: () => ResearchGraphV1 | undefined;
+    reconciliationInputContext?: () => ResearchReconciliationInputV1;
     synthesisReconciliationContext?: () => {
         reconciliationPacketRef?: string;
         dispositions: readonly ResearchReconciliationDispositionV1[];
@@ -6473,6 +6513,9 @@ export declare function parseResearchQueryFingerprint(value: string): {
 // export: parseResearchReconciliationDispositionV1
 export declare function parseResearchReconciliationDispositionV1(value: unknown): ResearchReconciliationDispositionV1;
 
+// export: parseResearchReconciliationInputV1
+export declare function parseResearchReconciliationInputV1(value: unknown): ResearchReconciliationInputV1;
+
 // export: parseResearchTaskBodyV1
 export declare function parseResearchTaskBodyV1(schema: ResearchTaskOutputSchemaV1, value: unknown): ResearchPacketBodyV1 | ReconciliationBodyV1 | ResearchAgentDraftV1;
 
@@ -6487,6 +6530,14 @@ export declare function projectConfluenceStorage(storage: string, siteOrigin: st
 
 // export: projectJiraDescription
 export declare function projectJiraDescription(description: AdfDocument | string | null | undefined, siteOrigin: string, limits: ContentProjectionLimits): BoundedContentProjectionV1;
+
+// export: projectResearchReconciliationInputV1
+export declare function projectResearchReconciliationInputV1(input: {
+    briefRevision: number;
+    graphRevision: number;
+    coverageTargetIds: readonly string[];
+    acceptedPackets: readonly ResearchAcceptedPacketV1[];
+}): ResearchReconciliationInputV1;
 
 // export: projectSelectedResearchRolesV1
 export declare function projectSelectedResearchRolesV1(graph: Pick<ResearchGraphV1, "nodes">): ResearchSubagentRoleIdV1[];
@@ -7675,6 +7726,8 @@ export interface ResearchReconciliationInputV1 {
         kind: "v1-packet-set";
         findingCandidateIds: string[];
         relationshipCandidateIds: string[];
+        gapIds: string[];
+        sourceIds: string[];
     };
 }
 
@@ -9338,6 +9391,7 @@ export declare function createBoundedResearchSubagentMiddleware(model: BaseChatM
     }) => void | Promise<void>;
     structuredOutputStrategy?: "tool" | "provider";
     activeGraph?: () => ResearchGraphV1 | undefined;
+    reconciliationInputContext?: () => ResearchReconciliationInputV1;
     synthesisReconciliationContext?: () => {
         reconciliationPacketRef?: string;
         dispositions: readonly ResearchReconciliationDispositionV1[];
@@ -9666,6 +9720,9 @@ export declare function parseResearchQueryFingerprint(value: string): {
 // export: parseResearchReconciliationDispositionV1
 export declare function parseResearchReconciliationDispositionV1(value: unknown): ResearchReconciliationDispositionV1;
 
+// export: parseResearchReconciliationInputV1
+export declare function parseResearchReconciliationInputV1(value: unknown): ResearchReconciliationInputV1;
+
 // export: parseResearchTaskBodyV1
 export declare function parseResearchTaskBodyV1(schema: ResearchTaskOutputSchemaV1, value: unknown): ResearchPacketBodyV1 | ReconciliationBodyV1 | ResearchAgentDraftV1;
 
@@ -9680,6 +9737,14 @@ export declare function projectConfluenceStorage(storage: string, siteOrigin: st
 
 // export: projectJiraDescription
 export declare function projectJiraDescription(description: AdfDocument | string | null | undefined, siteOrigin: string, limits: ContentProjectionLimits): BoundedContentProjectionV1;
+
+// export: projectResearchReconciliationInputV1
+export declare function projectResearchReconciliationInputV1(input: {
+    briefRevision: number;
+    graphRevision: number;
+    coverageTargetIds: readonly string[];
+    acceptedPackets: readonly ResearchAcceptedPacketV1[];
+}): ResearchReconciliationInputV1;
 
 // export: projectSelectedResearchRolesV1
 export declare function projectSelectedResearchRolesV1(graph: Pick<ResearchGraphV1, "nodes">): ResearchSubagentRoleIdV1[];
@@ -10868,6 +10933,8 @@ export interface ResearchReconciliationInputV1 {
         kind: "v1-packet-set";
         findingCandidateIds: string[];
         relationshipCandidateIds: string[];
+        gapIds: string[];
+        sourceIds: string[];
     };
 }
 

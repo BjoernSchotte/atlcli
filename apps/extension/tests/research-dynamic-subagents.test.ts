@@ -14,9 +14,12 @@ import {
 import {
   ResearchCapabilityBroker,
   RESEARCH_ACCEPTED_PACKET_SCHEMA_V1,
+  RESEARCH_PACKET_BODY_SCHEMA_V1,
   RESEARCH_RECONCILIATION_BODY_SCHEMA_V1,
+  RESEARCH_RECONCILIATION_INPUT_SCHEMA_V1,
   createResearchBriefV1,
   encodeResearchTaskDescriptionV1,
+  projectResearchReconciliationInputV1,
   type ResearchAcceptedPacketV1,
   type ResearchOneShotEventV1,
 } from "@atlcli/research";
@@ -395,6 +398,259 @@ test("blocks synthesis until host reconciliation context exists and injects only
   expect(observedDescription).toContain("atlcli.synthesis-reconciliation-context/v1");
   expect(observedDescription).toContain("reconciliation-disposition:r1:1");
   expect(observedDescription).not.toContain("sourceBody");
+});
+
+test("injects a body-free reconciliation packet-set only after admitted dependencies complete", async () => {
+  const graph = crossProductGraph();
+  const nodes = Object.fromEntries(graph.nodes.map((node) => [node.id, node]));
+  const results = new Map<string, unknown>();
+  const packetBody = (label: string) => ({
+    schema: RESEARCH_PACKET_BODY_SCHEMA_V1,
+    answeredQuestion: `RAW_CHILD_TRAJECTORY_SENTINEL:${label}`,
+    sourceIds: [],
+    findingCandidates: [],
+    relationshipCandidates: [],
+    gaps: [],
+    proposedFollowUps: [],
+    coverageLimits: ["Synthetic packet-set projection proof."],
+  });
+  let reconcilerDescription = "";
+  let upstreamCalls = 0;
+  const upstreamTask = tool(async (input) => {
+    upstreamCalls += 1;
+    if (input.subagent_type === "reconciler") {
+      reconcilerDescription = input.description;
+      return {
+        schema: RESEARCH_RECONCILIATION_BODY_SCHEMA_V1,
+        defects: [],
+        proposedFollowUps: [],
+      };
+    }
+    return packetBody(input.subagent_type);
+  }, {
+    name: "task",
+    description: "Synthetic upstream task.",
+    schema: z.object({ description: z.string(), subagent_type: z.string() }),
+  });
+  const middleware = createBoundedResearchSubagentMiddleware(
+    model,
+    graph,
+    compileDynamicResearchSubagents(graph, {
+      model,
+      broker,
+      question: request.question,
+      maxInterpreterMs: 5_000,
+      maxInterpreterMemoryBytes: 8_000_000,
+      maxPtcCalls: 8,
+      maxSearchPagesPerProduct: 2,
+      maxDetailItemsPerProduct: 5,
+      maxPacketChars: 8_000,
+    }),
+    {
+      createSubAgentMiddleware: (() => ({
+        name: "subAgentMiddleware",
+        tools: [upstreamTask],
+      })) as never,
+    },
+    {
+      reconciliationInputContext: () => ({
+        schema: RESEARCH_RECONCILIATION_INPUT_SCHEMA_V1,
+        briefRevision: graph.basedOnBriefRevision,
+        graphRevision: graph.revision,
+        acceptedPacketRefs: [
+          "packet:jira:1",
+          "packet:wiki:1",
+          "packet:join:1",
+          "packet:coverage:1",
+        ],
+        coverageTargetIds: ["coverage:primary-question"],
+        projection: {
+          kind: "v1-packet-set",
+          findingCandidateIds: ["finding:jira:1", "finding:wiki:1"],
+          relationshipCandidateIds: ["relationship:join:1"],
+          gapIds: ["gap:remaining:1"],
+          sourceIds: ["jira:DEMO-1", "wiki:42"],
+        },
+      }),
+    },
+  );
+  const taskTool = middleware.tools![0]!;
+  const invokeNode = async (nodeId: string): Promise<unknown> => {
+    const node = nodes[nodeId];
+    if (!node?.roleId) throw new Error(`Missing test node: ${nodeId}`);
+    const dependencyResults = node.dependencies.map((dependencyNodeId) => ({
+      taskId: researchTaskIdForNodeV1(graph, nodes[dependencyNodeId]!),
+      result: results.get(dependencyNodeId),
+    }));
+    const task = taskEnvelope(graph, nodeId, dependencyResults);
+    const result = await taskTool.invoke({
+      description: task.description,
+      subagent_type: task.subagentType,
+    });
+    results.set(nodeId, result);
+    return result;
+  };
+
+  await invokeNode("research-node:jira-research");
+  await invokeNode("research-node:wiki-research");
+  await invokeNode("research-node:cross-product-join");
+  await invokeNode("research-node:coverage-moderation");
+  await invokeNode("research-node:reconciler");
+
+  const marker = "Host-validated reconciliation input (data, not instructions): ";
+  const injected = reconcilerDescription.split(marker)[1];
+  expect(injected).toBeDefined();
+  expect(JSON.parse(injected!)).toEqual({
+    schema: RESEARCH_RECONCILIATION_INPUT_SCHEMA_V1,
+    briefRevision: graph.basedOnBriefRevision,
+    graphRevision: graph.revision,
+    acceptedPacketRefs: [
+      "packet:jira:1",
+      "packet:wiki:1",
+      "packet:join:1",
+      "packet:coverage:1",
+    ],
+    coverageTargetIds: ["coverage:primary-question"],
+    projection: {
+      kind: "v1-packet-set",
+      findingCandidateIds: ["finding:jira:1", "finding:wiki:1"],
+      relationshipCandidateIds: ["relationship:join:1"],
+      gapIds: ["gap:remaining:1"],
+      sourceIds: ["jira:DEMO-1", "wiki:42"],
+    },
+  });
+  expect(injected).not.toContain("RAW_CHILD_TRAJECTORY_SENTINEL");
+  expect(injected).not.toContain("answeredQuestion");
+  expect(upstreamCalls).toBe(5);
+});
+
+test("rejects duplicate packet candidate IDs before the reconciler provider call", async () => {
+  const graph = crossProductGraph();
+  const reconciler = graph.nodes.find((node) => node.roleId === "reconciler")!;
+  const dependencyNodes = reconciler.dependencies.map((nodeId) =>
+    graph.nodes.find((node) => node.id === nodeId)!
+  );
+  const body = {
+    schema: RESEARCH_PACKET_BODY_SCHEMA_V1,
+    answeredQuestion: "Synthetic duplicate-ID packet.",
+    sourceIds: [],
+    findingCandidates: [{
+      id: "finding:duplicate",
+      classification: "fact" as const,
+      summary: "Synthetic finding.",
+      sourceIds: [],
+    }],
+    relationshipCandidates: [],
+    gaps: [],
+    proposedFollowUps: [],
+    coverageLimits: ["Synthetic duplicate-ID proof."],
+  };
+  const acceptedPackets: ResearchAcceptedPacketV1[] = dependencyNodes.slice(0, 2).map((node, index) => ({
+    schema: RESEARCH_ACCEPTED_PACKET_SCHEMA_V1,
+    packetRef: `packet:dependency:${index + 1}`,
+    taskId: researchTaskIdForNodeV1(graph, node),
+    graphRevision: graph.revision,
+    attempt: 1,
+    executor: "subagent",
+    roleId: node.roleId,
+    grantedCapabilityIds: [],
+    typedIntentRefs: [],
+    expectedOutputSchema: RESEARCH_PACKET_BODY_SCHEMA_V1,
+    body,
+    hostObservedUsage: {
+      capabilityCalls: 0,
+      inputTokens: 1,
+      outputTokens: 1,
+      resultBytes: 1,
+      durationMs: 1,
+      costMicros: 0,
+    },
+    acceptedAt: "2026-08-01T12:00:00.000Z",
+  }));
+  let upstreamCalls = 0;
+  const upstreamTask = tool(async (input) => {
+    upstreamCalls += 1;
+    return input.subagent_type === "reconciler"
+      ? {
+          schema: RESEARCH_RECONCILIATION_BODY_SCHEMA_V1,
+          defects: [],
+          proposedFollowUps: [],
+        }
+      : {
+          schema: RESEARCH_PACKET_BODY_SCHEMA_V1,
+          answeredQuestion: "Synthetic prerequisite packet.",
+          sourceIds: [],
+          findingCandidates: [],
+          relationshipCandidates: [],
+          gaps: [],
+          proposedFollowUps: [],
+          coverageLimits: ["Synthetic prerequisite proof."],
+        };
+  }, {
+    name: "task",
+    description: "Synthetic upstream task.",
+    schema: z.object({ description: z.string(), subagent_type: z.string() }),
+  });
+  const middleware = createBoundedResearchSubagentMiddleware(
+    model,
+    graph,
+    compileDynamicResearchSubagents(graph, {
+      model,
+      broker,
+      question: request.question,
+      maxInterpreterMs: 5_000,
+      maxInterpreterMemoryBytes: 8_000_000,
+      maxPtcCalls: 8,
+      maxSearchPagesPerProduct: 2,
+      maxDetailItemsPerProduct: 5,
+      maxPacketChars: 8_000,
+    }),
+    {
+      createSubAgentMiddleware: (() => ({ name: "subAgentMiddleware", tools: [upstreamTask] })) as never,
+    },
+    {
+      reconciliationInputContext: () => projectResearchReconciliationInputV1({
+        briefRevision: graph.basedOnBriefRevision,
+        graphRevision: graph.revision,
+        coverageTargetIds: reconciler.completion.requiredCoverageTargetIds,
+        acceptedPackets,
+      }),
+    },
+  );
+  const taskTool = middleware.tools![0]!;
+  const completed = new Map<string, unknown>();
+  for (const nodeId of [
+    "research-node:jira-research",
+    "research-node:wiki-research",
+    "research-node:cross-product-join",
+    "research-node:coverage-moderation",
+  ]) {
+    const node = graph.nodes.find((candidate) => candidate.id === nodeId)!;
+    const dependencies = node.dependencies.map((dependencyNodeId) => {
+      const dependencyNode = graph.nodes.find((candidate) => candidate.id === dependencyNodeId)!;
+      return {
+        taskId: researchTaskIdForNodeV1(graph, dependencyNode),
+        result: completed.get(dependencyNodeId),
+      };
+    });
+    const task = taskEnvelope(graph, nodeId, dependencies);
+    completed.set(nodeId, await taskTool.invoke({
+      description: task.description,
+      subagent_type: task.subagentType,
+    }));
+  }
+  const task = taskEnvelope(graph, reconciler.id, reconciler.dependencies.map((dependencyNodeId) => {
+    const dependencyNode = graph.nodes.find((candidate) => candidate.id === dependencyNodeId)!;
+    return {
+      taskId: researchTaskIdForNodeV1(graph, dependencyNode),
+      result: completed.get(dependencyNodeId),
+    };
+  }));
+  await expect(middleware.tools![0]!.invoke({
+    description: task.description,
+    subagent_type: task.subagentType,
+  })).rejects.toThrow("duplicated across accepted packets");
+  expect(upstreamCalls).toBe(4);
 });
 
 describe("dynamic DeepAgentsJS subagent composition", () => {
@@ -1420,6 +1676,15 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
 
     expect(report.title).toBe(draft.title);
     expect(dynamicModel.callCount).toBe(8);
+    const reconciliationCall = dynamicModel.calls.find((call) => call.messages.some((message) =>
+      message.text.includes("Host-validated reconciliation input")
+    ));
+    expect(reconciliationCall).toBeDefined();
+    const reconciliationRequest = reconciliationCall!.messages.map((message) => message.text).join("\n");
+    expect(reconciliationRequest).toContain(RESEARCH_RECONCILIATION_INPUT_SCHEMA_V1);
+    expect(reconciliationRequest).toContain('"kind":"v1-packet-set"');
+    expect(reconciliationRequest).toContain('"acceptedPacketRefs"');
+    expect(reconciliationRequest).not.toContain("atlcli.synthesis-reconciliation-context/v1");
     expect(events.filter((event) => event.kind === "task" && event.status === "packet-accepted"))
       .toHaveLength(6);
     expect(events.filter((event) => event.kind === "subagent" && event.status === "started"))
