@@ -29,8 +29,17 @@ export interface AstroBuildInventoryV1 {
     schema: "atlcli.astro-build-inventory/1";
     bundleDigest: string;
     pages: readonly {
+        kind: "page";
         sourceId: string;
         route: string;
+        pathname: string;
+    }[];
+    labelLandings?: readonly {
+        kind: "label";
+        label: string;
+        slug: string;
+        route: string;
+        sourceIds: readonly string[];
         pathname: string;
     }[];
     output: readonly {
@@ -129,6 +138,7 @@ export interface AtlcliPublishingIntegrationOptionsV1 extends AtlcliPublicationL
     routePrefix: string;
     expectedConfig: AstroPublicationConfigExpectationV1;
     trustedLayoutEntrypoint?: string;
+    labelRoutePrefix?: string;
     experience?: {
         selection: PublicationExperienceSelectionV1;
         descriptor: unknown;
@@ -171,6 +181,13 @@ export declare const DEFAULT_PAGEFIND_SEARCH_MESSAGES_V1: PagefindSearchMessages
 export interface LoadedPublicationBundleV1 {
     bundle: PublicationBundleV1;
     pages: readonly PublicationPageV1[];
+}
+
+// export: LoadedPublicationNavigationV1
+export interface LoadedPublicationNavigationV1 {
+    bundle: PublicationBundleV1;
+    pages: readonly PublicationPageV1[];
+    navigation: ReturnType<typeof planPublicationNavigationV1>;
 }
 
 // export: normalizePagefindSearchFiltersV1
@@ -219,17 +236,36 @@ export declare const PUBLICATION_SEARCH_SEMANTIC_SLOTS_V1: readonly [
 export declare function publicationRoutePathV1(route: string, routePrefix: string): string;
 
 // export: publicationStaticPathsV1
-export declare function publicationStaticPathsV1(options: AtlcliPublicationLoaderOptionsV1): Promise<readonly {
+export declare function publicationStaticPathsV1(options: AtlcliPublicationLoaderOptionsV1 & {
+    labelRoutePrefix?: string;
+}): Promise<readonly PublicationStaticPathV1[]>;
+
+// export: PublicationStaticPathV1
+export type PublicationStaticPathV1 = {
     params: {
         slug?: string;
     };
     props: {
+        kind: "page";
         sourceId: string;
     };
-}[]>;
+} | {
+    params: {
+        slug: string;
+    };
+    props: {
+        kind: "label";
+        slug: string;
+    };
+};
 
 // export: readPublicationBundlePagesV1
 export declare function readPublicationBundlePagesV1(options: AtlcliPublicationLoaderOptionsV1): Promise<LoadedPublicationBundleV1>;
+
+// export: readPublicationNavigationV1
+export declare function readPublicationNavigationV1(options: AtlcliPublicationLoaderOptionsV1 & {
+    labelRoutePrefix?: string;
+}): Promise<LoadedPublicationNavigationV1>;
 
 // export: ResolvedAstroPublishingConfigV1
 export interface ResolvedAstroPublishingConfigV1 {

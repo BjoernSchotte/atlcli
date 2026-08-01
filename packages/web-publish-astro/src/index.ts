@@ -11,10 +11,13 @@ export {
   PUBLICATION_SEARCH_SEMANTIC_SLOTS_V1,
   publicationRoutePathV1,
   publicationStaticPathsV1,
+  readPublicationNavigationV1,
   type AstroPublicationConfigExpectationV1,
   type AtlcliPublishingIntegrationOptionsV1,
   type AtlcliAstroPublishingIntegrationV1,
   type ResolvedAstroPublishingConfigV1,
+  type LoadedPublicationNavigationV1,
+  type PublicationStaticPathV1,
 } from "./integration.js";
 export {
   AstroBuildCommandErrorV1,

@@ -185,6 +185,14 @@ async function writeBuiltGuide(output: string, body = "Guide"): Promise<void> {
   );
 }
 
+async function writeBuiltLabelLanding(output: string, slug: string): Promise<void> {
+  await mkdir(join(output, "publish", "topics", slug), { recursive: true });
+  await writeFile(
+    join(output, "publish", "topics", slug, "index.html"),
+    `<main><article data-pagefind-body>Topic: ${slug}</article></main>`,
+  );
+}
+
 test("reads only complete, referenced structured page documents", async () => {
   const { root, bundlePath } = await fixture();
   try {
@@ -233,7 +241,7 @@ test("uses only static Astro hooks, detects collisions, and writes private inven
     expect(publicationRoutePathV1("/guide/", "/publish")).toBe("/publish/guide");
     await expect(publicationStaticPathsV1({ bundlePath })).resolves.toEqual([{
       params: { slug: "guide" },
-      props: { sourceId: "guide" },
+      props: { kind: "page", sourceId: "guide" },
     }]);
     expect(() => integration.hooks["astro:config:done"]({
       config: resolvedConfig(root, { output: "server" }),
@@ -248,17 +256,54 @@ test("uses only static Astro hooks, detects collisions, and writes private inven
     });
     const value = JSON.parse(await readFile(manifest, "utf8")) as {
       outputRoot: string;
-      pages: Array<{ sourceId: string; route: string; pathname: string }>;
+      pages: Array<{ kind: "page"; sourceId: string; route: string; pathname: string }>;
       output: Array<{ path: string; byteLength: number; sha256: string }>;
       experience?: { id: string; version: string; digest: string };
     };
     expect(value.outputRoot).toBe("<private>");
     expect(value.experience).toEqual({ id: "fixture.experience", version: "1", digest: expect.stringMatching(/^[a-f0-9]{64}$/) });
-    expect(value.pages).toEqual([{ sourceId: "guide", route: "/guide/", pathname: "/publish/guide" }]);
+    expect(value.pages).toEqual([{ kind: "page", sourceId: "guide", route: "/guide/", pathname: "/publish/guide" }]);
     expect(value.output).toEqual(expect.arrayContaining([
       { path: "publish/guide/index.html", byteLength: expect.any(Number), sha256: expect.any(String) },
     ]));
     expect(value.output.some((entry) => entry.path.startsWith("pagefind/"))).toBe(true);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("plans, reserves, and inventories collision-checked label landing routes from the complete bundle graph", async () => {
+  const { root, bundlePath } = await fixture();
+  const output = join(root, "dist");
+  const manifest = join(root, "private", "inventory.json");
+  try {
+    await writeFile(join(root, "pages", "guide.json"), JSON.stringify({ ...page, labels: ["Docs"] }));
+    await mkdir(output);
+    await writeBuiltGuide(output);
+    await writeBuiltLabelLanding(output, "docs");
+    await expect(publicationStaticPathsV1({ bundlePath })).resolves.toEqual([
+      { params: { slug: "guide" }, props: { kind: "page", sourceId: "guide" } },
+      { params: { slug: "topics/docs" }, props: { kind: "label", slug: "docs" } },
+    ]);
+    const integration = atlcliPublishingIntegration({
+      bundlePath, manifestPath: manifest, routePrefix: "/publish", expectedConfig: expectedConfig(root),
+    });
+    await expect(integration.hooks["astro:routes:resolved"]!({
+      routes: [{ pathname: "/publish/topics/docs" }],
+    })).rejects.toThrow("publication route collision");
+    await integration.hooks["astro:routes:resolved"]!({ routes: [] });
+    await integration.hooks["astro:build:done"]!({
+      dir: pathToFileURL(`${output}/`),
+      pages: [{ pathname: "/publish/guide" }, { pathname: "/publish/topics/docs" }],
+    });
+    const inventory = JSON.parse(await readFile(manifest, "utf8")) as {
+      pages: Array<{ kind: string; sourceId: string; route: string; pathname: string }>;
+      labelLandings: Array<{ kind: string; label: string; slug: string; route: string; pathname: string; sourceIds: string[] }>;
+    };
+    expect(inventory.pages).toEqual([{ kind: "page", sourceId: "guide", route: "/guide/", pathname: "/publish/guide" }]);
+    expect(inventory.labelLandings).toEqual([{
+      kind: "label", label: "Docs", slug: "docs", route: "/topics/docs/", sourceIds: ["guide"], pathname: "/publish/topics/docs",
+    }]);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -353,7 +398,7 @@ test("does not route or index deleted, excluded, or non-canonical source entries
       '<article data-pagefind-body>private-diagnostic-token deleted-token excluded-token</article>',
     );
     await expect(publicationStaticPathsV1({ bundlePath })).resolves.toEqual([{
-      params: { slug: "guide" }, props: { sourceId: "guide" },
+      params: { slug: "guide" }, props: { kind: "page", sourceId: "guide" },
     }]);
     const integration = atlcliPublishingIntegration({
       bundlePath, manifestPath: manifest, routePrefix: "/publish", expectedConfig: expectedConfig(root),
@@ -362,9 +407,9 @@ test("does not route or index deleted, excluded, or non-canonical source entries
       dir: pathToFileURL(`${output}/`), pages: [{ pathname: "/publish/guide" }],
     });
     const inventory = JSON.parse(await readFile(manifest, "utf8")) as {
-      pages: Array<{ sourceId: string; route: string; pathname: string }>;
+      pages: Array<{ kind: "page"; sourceId: string; route: string; pathname: string }>;
     };
-    expect(inventory.pages).toEqual([{ sourceId: "guide", route: "/guide/", pathname: "/publish/guide" }]);
+    expect(inventory.pages).toEqual([{ kind: "page", sourceId: "guide", route: "/guide/", pathname: "/publish/guide" }]);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -487,7 +532,7 @@ test("injects a static catch-all only for an operator-owned layout entrypoint", 
   expect(plugin.resolveId("virtual:atlcli-publication")).toBe("\0virtual:atlcli-publication");
   expect(plugin.resolveId("unrelated-module")).toBeUndefined();
   expect(plugin.load("\0virtual:atlcli-publication")).toBe(
-    'export const bundlePath = "/bundle.json";',
+    'export const bundlePath = "/bundle.json";\nexport const labelRoutePrefix = undefined;',
   );
   expect(plugin.load("unrelated-module")).toBeUndefined();
 

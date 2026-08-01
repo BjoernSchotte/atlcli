@@ -8,7 +8,7 @@
   "route": "/guide/",
   "blocks": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Guide" }] }],
   "notes": [],
-  "labels": [],
+  "labels": ["guide"],
   "links": [],
   "assetIds": ["fixture-asset"],
   "renderDependencies": [],

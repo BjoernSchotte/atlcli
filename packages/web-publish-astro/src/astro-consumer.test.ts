@@ -53,14 +53,21 @@ test("Astro consumer harness loads structured pages and emits a private inventor
     .toBe("fixture asset\n");
   const inventory = JSON.parse(
     await readFile(resolve(fixtureDirectory, "../evidence/build-inventory.json"), "utf8"),
-  ) as { outputRoot: string; bundleDigest: string; pages: Array<{ sourceId: string; route: string; pathname: string }>; output: Array<{ path: string }> };
+  ) as { outputRoot: string; bundleDigest: string; pages: Array<{ kind: string; sourceId: string; route: string; pathname: string }>; output: Array<{ path: string }> };
   expect(inventory.outputRoot).toBe("<private>");
   expect(inventory.bundleDigest).toBe("bundle-digest");
-  expect(inventory.pages).toEqual([{ sourceId: "guide", route: "/guide/", pathname: "publish/guide/" }]);
+  expect(inventory.pages).toEqual([{ kind: "page", sourceId: "guide", route: "/guide/", pathname: "publish/guide/" }]);
+  expect(inventory).toMatchObject({
+    labelLandings: [{ kind: "label", label: "guide", slug: "guide", route: "/topics/guide/", pathname: "publish/topics/guide/" }],
+  });
   expect(inventory.output.length).toBeGreaterThanOrEqual(2);
   expect(inventory.output).toContainEqual(expect.objectContaining({ path: "publish/guide/index.html" }));
+  expect(inventory.output).toContainEqual(expect.objectContaining({ path: "publish/topics/guide/index.html" }));
   expect(inventory.output).toContainEqual(expect.objectContaining({ path: "assets/f0dad327e22e8cddc2e8057cf16d9b16ea6e36e87d31f46ee4d5943c69609c4f/fixture.txt" }));
   expect(inventory.output).toContainEqual(expect.objectContaining({ path: "pagefind/pagefind.js" }));
+  const labelLanding = await readFile(resolve(fixtureDirectory, "dist/publish/topics/guide/index.html"), "utf8");
+  expect(labelLanding).toContain('data-atlcli-label-slug="guide"');
+  expect(labelLanding).toContain("Topic: guide");
   const runtimeText = await Promise.all(inventory.output
     .filter((entry) => /\.(?:html|js|css)$/u.test(entry.path))
     .map((entry) => readFile(resolve(fixtureDirectory, "dist", entry.path), "utf8")));
@@ -131,7 +138,7 @@ test("the built Pagefind client searches the static index through its main-threa
       noWorker: true,
     });
     await instance.init();
-    const found = await instance.search("Guide", { filters: { label: "guide" } });
+    const found = await instance.search("Structured blocks", { filters: { label: "guide" } });
     expect(found.results).toHaveLength(1);
     await expect(found.results[0]!.data()).resolves.toMatchObject({
       raw_url: "/publish/guide/",
@@ -184,7 +191,7 @@ test("packed integration builds a clean Astro project with fetch disabled", asyn
       ["bun", "run", "--preload", "./block-network.mjs", "build"],
       consumerDirectory,
     );
-    expect(result.stdout).toContain("1 page(s) built");
+    expect(result.stdout).toContain("2 page(s) built");
     const html = await readFile(join(consumerDirectory, "dist/publish/guide/index.html"), "utf8");
     expect(html).toContain("Structured blocks: 1");
     expect(html).not.toContain("bundle.json");

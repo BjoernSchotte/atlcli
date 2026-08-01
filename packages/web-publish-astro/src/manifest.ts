@@ -10,7 +10,16 @@ import {
 export interface AstroBuildInventoryV1 {
   schema: "atlcli.astro-build-inventory/1";
   bundleDigest: string;
-  pages: readonly { sourceId: string; route: string; pathname: string }[];
+  pages: readonly { kind: "page"; sourceId: string; route: string; pathname: string }[];
+  /** Generated graph landings are output-verified but are not source pages. */
+  labelLandings?: readonly {
+    kind: "label";
+    label: string;
+    slug: string;
+    route: string;
+    sourceIds: readonly string[];
+    pathname: string;
+  }[];
   output: readonly { path: string; sha256: string; byteLength: number }[];
 }
 
@@ -46,6 +55,7 @@ function assertInventoryPages(request: PublicationBuildRequestV1, inventory: Ast
   const bundlePageIds = new Set(request.bundle.pages.map((page) => page.sourceId));
   const pages = new Map<string, AstroBuildInventoryV1["pages"][number]>();
   for (const page of inventory.pages) {
+    if (page.kind !== "page") throw new TypeError("Astro build inventory has an invalid source page kind");
     if (!bundlePageIds.has(page.sourceId)) throw new TypeError(`Astro build inventory has unexplained publication page '${page.sourceId}'`);
     if (pages.has(page.sourceId)) throw new TypeError(`Astro build inventory has duplicate publication page '${page.sourceId}'`);
     const expectedRoute = request.bundle.routes.find((route) => route.sourceId === page.sourceId && route.state === "active")?.route;
@@ -57,6 +67,34 @@ function assertInventoryPages(request: PublicationBuildRequestV1, inventory: Ast
     pages.set(page.sourceId, page);
   }
   return pages;
+}
+
+function assertInventoryLabelLandings(
+  request: PublicationBuildRequestV1,
+  inventory: AstroBuildInventoryV1,
+): Set<string> {
+  const knownSourceIds = new Set(request.bundle.pages.map((page) => page.sourceId));
+  const outputPaths = new Set<string>();
+  const slugs = new Set<string>();
+  for (const landing of inventory.labelLandings ?? []) {
+    if (
+      landing.kind !== "label" ||
+      typeof landing.label !== "string" || landing.label.length === 0 ||
+      typeof landing.slug !== "string" || landing.slug.length === 0 ||
+      !Array.isArray(landing.sourceIds) || landing.sourceIds.length === 0
+    ) {
+      throw new TypeError("Astro build inventory has an invalid label landing");
+    }
+    if (slugs.has(landing.slug)) throw new TypeError(`Astro build inventory has duplicate label landing '${landing.slug}'`);
+    slugs.add(landing.slug);
+    for (const sourceId of landing.sourceIds) {
+      if (!knownSourceIds.has(sourceId)) throw new TypeError(`Astro build inventory label landing references unknown page '${sourceId}'`);
+    }
+    const path = outputPathForPage(landing.pathname, request.project.builder.outputProfile);
+    if (outputPaths.has(path)) throw new TypeError(`Astro build inventory has duplicate label landing output '${path}'`);
+    outputPaths.add(path);
+  }
+  return outputPaths;
 }
 
 function isTrustedGeneratedOutput(path: string): boolean {
@@ -90,6 +128,7 @@ export async function createAstroStaticPublicationManifestV1(
   }
   const outputs = assertInventoryOutput(inventory);
   const bySourceId = assertInventoryPages(request, inventory);
+  const labelLandingPaths = assertInventoryLabelLandings(request, inventory);
   const pages = request.bundle.pages.map((entry) => {
     const inventoryPage = bySourceId.get(entry.sourceId);
     if (inventoryPage === undefined) throw new TypeError(`Astro build inventory omitted publication page '${entry.sourceId}'`);
@@ -105,7 +144,7 @@ export async function createAstroStaticPublicationManifestV1(
   });
   assertNoUnexplainedOutput(
     outputs,
-    new Set(pages.map((page) => page.outputPath)),
+    new Set([...pages.map((page) => page.outputPath), ...labelLandingPaths]),
     new Set(assets.map((asset) => asset.outputPath)),
   );
   const searchFiles = inventory.output.filter((entry) => entry.path.startsWith("pagefind/")).sort((a, b) => a.path.localeCompare(b.path));

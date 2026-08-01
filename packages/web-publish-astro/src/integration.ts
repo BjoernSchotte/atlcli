@@ -7,10 +7,13 @@ import {
   canonicalPublicationJsonV1,
   negotiatePublicationExperienceV1,
   normalizePublicationRoutePrefixV1,
+  planPublicationNavigationV1,
   type PublicationDesignTokenValidatorV1,
   type PublicationExperienceDescriptorV1,
   type PublicationExperienceSelectionV1,
   type PublicationOutputProfileV1,
+  type PublicationBundleV1,
+  type PublicationPageV1,
   validatePublicationOutputPathV1,
 } from "@atlcli/web-publish";
 import { readPublicationBundlePagesV1, type AtlcliPublicationLoaderOptionsV1 } from "./loader.js";
@@ -46,6 +49,8 @@ export interface AtlcliPublishingIntegrationOptionsV1 extends AtlcliPublicationL
    * project may declare its route manually, and never comes from page content.
    */
   trustedLayoutEntrypoint?: string;
+  /** Namespace for generated label landing routes. Defaults to `/topics`. */
+  labelRoutePrefix?: string;
   /**
    * An already imported, operator-selected experience. The integration never
    * resolves a package name, path, or content-supplied module on its own.
@@ -95,6 +100,16 @@ export interface AtlcliAstroPublishingIntegrationV1 {
       pages: readonly { pathname: string }[];
     }): Promise<void>;
   };
+}
+
+export type PublicationStaticPathV1 =
+  | { params: { slug?: string }; props: { kind: "page"; sourceId: string } }
+  | { params: { slug: string }; props: { kind: "label"; slug: string } };
+
+export interface LoadedPublicationNavigationV1 {
+  bundle: PublicationBundleV1;
+  pages: readonly PublicationPageV1[];
+  navigation: ReturnType<typeof planPublicationNavigationV1>;
 }
 
 interface OutputFileV1 {
@@ -216,17 +231,50 @@ export function publicationRoutePathV1(route: string, routePrefix: string): stri
  * immutable source ID is the sole prop; the component loads its structured
  * collection entry by this ID rather than trusting a URL as page identity.
  */
+export async function readPublicationNavigationV1(
+  options: AtlcliPublicationLoaderOptionsV1 & { labelRoutePrefix?: string },
+): Promise<LoadedPublicationNavigationV1> {
+  const loaded = await readPublicationBundlePagesV1(options);
+  return {
+    ...loaded,
+    navigation: planPublicationNavigationV1({
+      pages: loaded.pages,
+      rootIds: loaded.bundle.rootIds,
+      ...(options.labelRoutePrefix === undefined ? {} : { labelRoutePrefix: options.labelRoutePrefix }),
+    }),
+  };
+}
+
+function staticSlug(route: string): string | undefined {
+  return route === "/" ? undefined : route.slice(1).replace(/\/$/u, "");
+}
+
+function routeKey(pathname: string): string {
+  return pathname.replace(/^\/+|\/+$/gu, "");
+}
+
+/**
+ * Static path records for the operator-owned catch-all route. Every record is
+ * identity-first: a page uses its immutable source ID and a label uses its
+ * collision-checked planner slug, never a source-derived route lookup.
+ */
 export async function publicationStaticPathsV1(
-  options: AtlcliPublicationLoaderOptionsV1,
-): Promise<readonly { params: { slug?: string }; props: { sourceId: string } }[]> {
-  const { pages } = await readPublicationBundlePagesV1(options);
-  return pages.map((page) => {
-    const slug = page.route === "/" ? undefined : page.route.slice(1).replace(/\/$/u, "");
-    return {
-      params: slug === undefined ? {} : { slug },
-      props: { sourceId: page.sourceId },
-    };
-  });
+  options: AtlcliPublicationLoaderOptionsV1 & { labelRoutePrefix?: string },
+): Promise<readonly PublicationStaticPathV1[]> {
+  const { pages, navigation } = await readPublicationNavigationV1(options);
+  return [
+    ...pages.map((page): PublicationStaticPathV1 => {
+      const slug = staticSlug(page.route);
+      return {
+        params: slug === undefined ? {} : { slug },
+        props: { kind: "page", sourceId: page.sourceId },
+      };
+    }),
+    ...navigation.labels.map((label): PublicationStaticPathV1 => ({
+      params: { slug: staticSlug(label.route)! },
+      props: { kind: "label", slug: label.slug },
+    })),
+  ];
 }
 
 async function inventory(root: string): Promise<readonly OutputFileV1[]> {
@@ -393,7 +441,10 @@ export function atlcliPublishingIntegration(
               },
               load(id: string) {
                 return id === "\0virtual:atlcli-publication"
-                  ? `export const bundlePath = ${JSON.stringify(resolve(options.bundlePath))};`
+                  ? [
+                    `export const bundlePath = ${JSON.stringify(resolve(options.bundlePath))};`,
+                    `export const labelRoutePrefix = ${JSON.stringify(options.labelRoutePrefix)};`,
+                  ].join("\n")
                   : undefined;
               },
             }],
@@ -409,8 +460,11 @@ export function atlcliPublishingIntegration(
       },
       "astro:config:done": ({ config }) => assertResolvedAstroConfig(config, options.expectedConfig),
       "astro:routes:resolved": async ({ routes }) => {
-        const { pages } = await readPublicationBundlePagesV1(options);
-        const publicationRoutes = new Set(pages.map((page) => publicationRoutePathV1(page.route, routePrefix)));
+        const { pages, navigation } = await readPublicationNavigationV1(options);
+        const publicationRoutes = new Set([
+          ...pages.map((page) => publicationRoutePathV1(page.route, routePrefix)),
+          ...navigation.labels.map((label) => publicationRoutePathV1(label.route, routePrefix)),
+        ]);
         const collisions = routes
           .filter((route) => route.pathname !== undefined && publicationRoutes.has(route.pathname))
           .map((route) => route.pathname!)
@@ -429,28 +483,32 @@ export function atlcliPublishingIntegration(
         if (outputRelative === "" || (!outputRelative.startsWith("..") && !outputRelative.startsWith("/"))) {
           throw new Error("atlcli publishing manifestPath must be outside Astro's public output directory");
         }
-        const loaded = await readPublicationBundlePagesV1(options);
-        const pageByRoute = new Map(
-          loaded.pages.map((page) => [
-            publicationRoutePathV1(page.route, routePrefix).replace(/^\//u, "").replace(/\/$/u, ""),
-            { sourceId: page.sourceId, route: page.route },
-          ]),
-        );
-        const builtPages = pages.map((page) => {
-          const normalizedPathname = page.pathname.replace(/^\//u, "").replace(/\/$/u, "");
-          const source = pageByRoute.get(normalizedPathname);
+        const loaded = await readPublicationNavigationV1(options);
+        const sourceByRoute = new Map(loaded.pages.map((page) => [
+          routeKey(publicationRoutePathV1(page.route, routePrefix)),
+          { kind: "page" as const, sourceId: page.sourceId, route: page.route },
+        ]));
+        const labelByRoute = new Map(loaded.navigation.labels.map((label) => [
+          routeKey(publicationRoutePathV1(label.route, routePrefix)),
+          { kind: "label" as const, label: label.label, slug: label.slug, route: label.route, sourceIds: label.sourceIds },
+        ]));
+        const builtRoutes = pages.map((page) => {
+          const normalizedPathname = routeKey(page.pathname);
+          const source = sourceByRoute.get(normalizedPathname) ?? labelByRoute.get(normalizedPathname);
           if (source === undefined) {
             throw new Error(`Astro built an unexplained publication page: ${page.pathname}`);
           }
           return { ...source, pathname: page.pathname };
-        }).sort((left, right) => left.sourceId.localeCompare(right.sourceId));
-        if (builtPages.length !== loaded.pages.length) {
-          throw new Error("Astro did not build exactly one route for every publication page");
+        }).sort((left, right) => left.route.localeCompare(right.route));
+        const builtSourcePages = builtRoutes.filter((page) => page.kind === "page");
+        const builtLabelLandings = builtRoutes.filter((page) => page.kind === "label");
+        if (builtSourcePages.length !== loaded.pages.length || builtLabelLandings.length !== loaded.navigation.labels.length) {
+          throw new Error("Astro did not build exactly one route for every publication page and label landing");
         }
         await materializePublicationAssets(options.bundlePath, outputRoot, loaded.bundle.assets);
         await buildPagefindIndexV1({
           outputDirectory: outputRoot,
-          pageOutputPaths: builtPages.map((page) => {
+          pageOutputPaths: builtRoutes.map((page) => {
             const stem = page.pathname.replace(/^\/+|\/+$/gu, "");
             return options.expectedConfig.outputProfile === "directory"
               ? `${stem}/index.html`
@@ -469,7 +527,8 @@ export function atlcliPublishingIntegration(
               digest: installedExperience.digest,
             },
           }),
-          pages: builtPages,
+          pages: builtSourcePages,
+          labelLandings: builtLabelLandings,
           routes: routeInventory,
           output: await inventory(outputRoot),
         });

@@ -44,6 +44,7 @@ function isInventory(value: unknown): value is AstroBuildInventoryV1 {
   if (candidate.schema !== "atlcli.astro-build-inventory/1" || typeof candidate.bundleDigest !== "string") return false;
   if (!Array.isArray(candidate.pages) || !Array.isArray(candidate.output)) return false;
   return candidate.pages.every((page) => page !== null && typeof page === "object" &&
+    (page as Record<string, unknown>).kind === "page" &&
     typeof (page as Record<string, unknown>).sourceId === "string" &&
     typeof (page as Record<string, unknown>).route === "string" &&
     typeof (page as Record<string, unknown>).pathname === "string") &&
