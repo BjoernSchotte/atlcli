@@ -273,7 +273,7 @@ describe("CI workflow policy", () => {
 
     expect(complete).not.toBeNull();
     expect(complete).toContain("if: always()");
-    expect(complete).toContain("needs: [static-quality, tests, publishing, security-attestation]");
+    expect(complete).toContain("needs: [static-quality, tests, publishing, publishing-platform, security-attestation]");
     expect(complete).toContain('[[ "$STATIC_QUALITY" != "success" ]]');
     expect(complete).toContain('[[ "$TESTS" != "success" ]]');
     expect(complete).toContain('[[ "$PUBLISHING" != "success" ]]');
