@@ -1613,7 +1613,7 @@ and presentation contracts are not Starlight-private.
 - [ ] Provide theme-neutral accessible modal and full-page search components
       with keyboard shortcut, worker/main-thread fallback, translated UI,
       filters, result excerpts, and nested-base URL handling.
-- [ ] Exclude navigation chrome, private diagnostics, partial/hidden pages,
+- [x] Exclude navigation chrome, private diagnostics, partial/hidden pages,
       redirects, and deleted pages; never index raw bundle/source data.
 - [x] Treat result excerpts safely and prove that indexed hostile text cannot
       become executable markup in Starlight or the conformance experience.

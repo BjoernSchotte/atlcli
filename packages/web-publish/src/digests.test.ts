@@ -139,6 +139,24 @@ describe("canonical publication digests", () => {
       ...bundle,
       pages: [{ ...bundle.pages[0]!, pageDigest: "wrong" }],
     }, [page]), "bundle-page-mismatch");
+    expectDigestError(() => assertPublicationBundleReferencesV1({
+      ...bundle,
+      sourceSnapshot: {
+        ...bundle.sourceSnapshot,
+        pages: [{ ...bundle.sourceSnapshot.pages[0]!, state: "deleted" }],
+      },
+    }, [page]), "non-included-source");
+    expectDigestError(() => assertPublicationBundleReferencesV1({
+      ...bundle,
+      sourceSnapshot: { ...bundle.sourceSnapshot, complete: false },
+    }, [page]), "incomplete-source-snapshot");
+    expectDigestError(() => assertPublicationBundleReferencesV1({
+      ...bundle,
+      routes: [
+        ...bundle.routes,
+        { sourceId: "retired", route: "/retired/", state: "active", assignedBy: "generated", previousRoutes: [] },
+      ],
+    }, [page]), "active-route-without-page");
     expect(() => assertPublicationBundleReferencesV1({
       ...bundle,
       assets: [],

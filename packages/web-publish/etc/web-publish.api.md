@@ -384,7 +384,7 @@ export interface PublicationDesignTokenValidatorV1 {
 export type PublicationDesignTokenValueV1 = string | number | boolean;
 
 // export: PublicationDigestErrorCodeV1
-export type PublicationDigestErrorCodeV1 = "unsupported-value" | "cyclic-value" | "missing-web-crypto" | "duplicate-page" | "duplicate-bundle-page" | "bundle-page-mismatch" | "missing-active-route" | "route-mismatch" | "duplicate-route-record";
+export type PublicationDigestErrorCodeV1 = "unsupported-value" | "cyclic-value" | "missing-web-crypto" | "duplicate-page" | "duplicate-bundle-page" | "bundle-page-mismatch" | "incomplete-source-snapshot" | "duplicate-source-snapshot" | "missing-source-snapshot" | "non-included-source" | "missing-active-route" | "route-mismatch" | "duplicate-route-record" | "active-route-without-page";
 
 // export: PublicationDigestErrorV1
 export declare class PublicationDigestErrorV1 extends Error {

@@ -177,6 +177,14 @@ async function fixture(bundleValue = bundle()): Promise<{ root: string; bundlePa
   return { root, bundlePath };
 }
 
+async function writeBuiltGuide(output: string, body = "Guide"): Promise<void> {
+  await mkdir(join(output, "publish", "guide"), { recursive: true });
+  await writeFile(
+    join(output, "publish", "guide", "index.html"),
+    `<main><article data-pagefind-body>${body}</article></main>`,
+  );
+}
+
 test("reads only complete, referenced structured page documents", async () => {
   const { root, bundlePath } = await fixture();
   try {
@@ -212,7 +220,7 @@ test("uses only static Astro hooks, detects collisions, and writes private inven
   const output = join(root, "dist");
   const manifest = join(root, "private", "inventory.json");
   await mkdir(output);
-  await writeFile(join(output, "index.html"), "<main>Guide</main>");
+  await writeBuiltGuide(output);
   const integration = atlcliPublishingIntegration({
     bundlePath,
     manifestPath: manifest,
@@ -247,7 +255,10 @@ test("uses only static Astro hooks, detects collisions, and writes private inven
     expect(value.outputRoot).toBe("<private>");
     expect(value.experience).toEqual({ id: "fixture.experience", version: "1", digest: expect.stringMatching(/^[a-f0-9]{64}$/) });
     expect(value.pages).toEqual([{ sourceId: "guide", route: "/guide/", pathname: "/publish/guide" }]);
-    expect(value.output).toEqual([{ path: "index.html", byteLength: 18, sha256: expect.any(String) }]);
+    expect(value.output).toEqual(expect.arrayContaining([
+      { path: "publish/guide/index.html", byteLength: expect.any(Number), sha256: expect.any(String) },
+    ]));
+    expect(value.output.some((entry) => entry.path.startsWith("pagefind/"))).toBe(true);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -287,6 +298,7 @@ test("rejects output symlinks before writing the private inventory", async () =>
   const output = join(root, "dist");
   try {
     await mkdir(output);
+    await writeBuiltGuide(output);
     await writeFile(join(root, "outside.html"), "outside");
     await symlink(join(root, "outside.html"), join(output, "escape.html"));
     const integration = atlcliPublishingIntegration({
@@ -296,6 +308,63 @@ test("rejects output symlinks before writing the private inventory", async () =>
     await expect(integration.hooks["astro:build:done"]!({
       dir: pathToFileURL(`${output}/`), pages: [{ pathname: "/publish/guide" }],
     })).rejects.toThrow("non-regular entry");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("does not route or index deleted, excluded, or non-canonical source entries", async () => {
+  const baseBundle = bundle();
+  const baseSnapshot = baseBundle.sourceSnapshot as {
+    pages: readonly Record<string, unknown>[];
+  };
+  const baseRoutes = baseBundle.routes as readonly Record<string, unknown>[];
+  const { root, bundlePath } = await fixture(bundle({
+    sourceSnapshot: {
+      ...baseSnapshot,
+      pages: [
+        ...baseSnapshot.pages,
+        {
+          sourceId: "deleted", sourceVersion: "2", representation: "atlas_doc_format", position: 1, depth: 0,
+          title: "Deleted", contentDigest: "deleted-content", metadataDigest: "deleted-metadata",
+          assetMetadataDigest: "deleted-assets", macroDependencyDigest: "no-live-dependencies", state: "deleted",
+        },
+        {
+          sourceId: "excluded", sourceVersion: "3", representation: "atlas_doc_format", position: 2, depth: 0,
+          title: "Excluded", contentDigest: "excluded-content", metadataDigest: "excluded-metadata",
+          assetMetadataDigest: "excluded-assets", macroDependencyDigest: "no-live-dependencies", state: "excluded",
+        },
+      ],
+    },
+    routes: [
+      ...baseRoutes,
+      { sourceId: "deleted", route: "/deleted/", state: "tombstone", assignedBy: "generated", previousRoutes: [] },
+      { sourceId: "excluded", route: "/excluded/", state: "tombstone", assignedBy: "generated", previousRoutes: [] },
+    ],
+  }));
+  const output = join(root, "dist");
+  const manifest = join(root, "private", "inventory.json");
+  try {
+    await mkdir(output);
+    await writeBuiltGuide(output, "canonical-index-token");
+    await mkdir(join(output, "private"), { recursive: true });
+    await writeFile(
+      join(output, "private", "diagnostic.html"),
+      '<article data-pagefind-body>private-diagnostic-token deleted-token excluded-token</article>',
+    );
+    await expect(publicationStaticPathsV1({ bundlePath })).resolves.toEqual([{
+      params: { slug: "guide" }, props: { sourceId: "guide" },
+    }]);
+    const integration = atlcliPublishingIntegration({
+      bundlePath, manifestPath: manifest, routePrefix: "/publish", expectedConfig: expectedConfig(root),
+    });
+    await integration.hooks["astro:build:done"]!({
+      dir: pathToFileURL(`${output}/`), pages: [{ pathname: "/publish/guide" }],
+    });
+    const inventory = JSON.parse(await readFile(manifest, "utf8")) as {
+      pages: Array<{ sourceId: string; route: string; pathname: string }>;
+    };
+    expect(inventory.pages).toEqual([{ sourceId: "guide", route: "/guide/", pathname: "/publish/guide" }]);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

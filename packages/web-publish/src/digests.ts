@@ -15,9 +15,14 @@ export type PublicationDigestErrorCodeV1 =
   | "duplicate-page"
   | "duplicate-bundle-page"
   | "bundle-page-mismatch"
+  | "incomplete-source-snapshot"
+  | "duplicate-source-snapshot"
+  | "missing-source-snapshot"
+  | "non-included-source"
   | "missing-active-route"
   | "route-mismatch"
-  | "duplicate-route-record";
+  | "duplicate-route-record"
+  | "active-route-without-page";
 
 export class PublicationDigestErrorV1 extends Error {
   constructor(
@@ -141,6 +146,16 @@ export function assertPublicationBundleReferencesV1(
   bundle: PublicationBundleV1,
   pages: readonly PublicationPageV1[],
 ): void {
+  if (!bundle.sourceSnapshot.complete) {
+    fail("incomplete-source-snapshot", "Bundle source snapshot must be complete before publication");
+  }
+  const sourceStateById = new Map<string, PublicationBundleV1["sourceSnapshot"]["pages"][number]["state"]>();
+  for (const source of bundle.sourceSnapshot.pages) {
+    if (sourceStateById.has(source.sourceId)) {
+      fail("duplicate-source-snapshot", `Source snapshot lists page '${source.sourceId}' more than once`);
+    }
+    sourceStateById.set(source.sourceId, source.state);
+  }
   const pageById = new Map<string, PublicationPageV1>();
   for (const page of pages) {
     if (pageById.has(page.sourceId)) fail("duplicate-page", `Duplicate page '${page.sourceId}'`);
@@ -166,10 +181,23 @@ export function assertPublicationBundleReferencesV1(
     if (page === undefined || page.pageDigest !== entry.pageDigest) {
       fail("bundle-page-mismatch", `Bundle page '${entry.sourceId}' has no matching typed page document`);
     }
+    const sourceState = sourceStateById.get(page.sourceId);
+    if (sourceState === undefined) {
+      fail("missing-source-snapshot", `Bundle page '${page.sourceId}' has no source snapshot entry`);
+    }
+    if (sourceState !== "included") {
+      fail("non-included-source", `Bundle page '${page.sourceId}' has source state '${sourceState}' instead of included`);
+    }
     const route = activeRouteById.get(page.sourceId);
     if (route === undefined) fail("missing-active-route", `Bundle page '${page.sourceId}' has no active route`);
     if (route !== normalizePublicationRouteV1(page.route)) {
       fail("route-mismatch", `Bundle route for '${page.sourceId}' differs from the page route`);
+    }
+  }
+
+  for (const [sourceId] of activeRouteById) {
+    if (!bundlePageIds.has(sourceId)) {
+      fail("active-route-without-page", `Active publication route '${sourceId}' has no bundle page`);
     }
   }
 
