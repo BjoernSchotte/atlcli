@@ -711,6 +711,7 @@ export declare class ConfluenceClient {
         limit?: number;
         cursor?: string;
         status?: "current" | "archived";
+        keys?: readonly string[];
         signal?: AbortSignal;
     }): Promise<ConfluenceSpacePageV2>;
     getSpace(key: string, options?: {
@@ -3523,6 +3524,7 @@ export declare class ConfluenceClient {
         limit?: number;
         cursor?: string;
         status?: "current" | "archived";
+        keys?: readonly string[];
         signal?: AbortSignal;
     }): Promise<ConfluenceSpacePageV2>;
     getSpace(key: string, options?: {
@@ -6335,6 +6337,7 @@ export declare class ConfluenceClient {
         limit?: number;
         cursor?: string;
         status?: "current" | "archived";
+        keys?: readonly string[];
         signal?: AbortSignal;
     }): Promise<ConfluenceSpacePageV2>;
     getSpace(key: string, options?: {
@@ -8901,6 +8904,7 @@ export declare class ConfluenceClient {
         limit?: number;
         cursor?: string;
         status?: "current" | "archived";
+        keys?: readonly string[];
         signal?: AbortSignal;
     }): Promise<ConfluenceSpacePageV2>;
     getSpace(key: string, options?: {
@@ -12168,6 +12172,7 @@ export declare class ConfluenceClient {
         limit?: number;
         cursor?: string;
         status?: "current" | "archived";
+        keys?: readonly string[];
         signal?: AbortSignal;
     }): Promise<ConfluenceSpacePageV2>;
     getSpace(key: string, options?: {
@@ -14419,6 +14424,7 @@ export declare class ConfluenceClient {
         limit?: number;
         cursor?: string;
         status?: "current" | "archived";
+        keys?: readonly string[];
         signal?: AbortSignal;
     }): Promise<ConfluenceSpacePageV2>;
     getSpace(key: string, options?: {

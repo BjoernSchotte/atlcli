@@ -83,7 +83,7 @@ function pageInput(
       : "atlcli.ptc/wiki.space.search.input/v1",
     product: capability === "jira.project.search" ? "jira" : "confluence",
     entityKind: capability === "jira.project.search" ? "project" : "space",
-    normalizedQuery: mention.normalizedText,
+    normalizedQuery: mention.text.trim(),
     includeArchived: true,
     ...(cursorRef ? { cursorRef } : {}),
     maxCandidates: 20,

@@ -20,6 +20,7 @@ import type {
   ResearchRequestV1,
   ResearchOneShotPolicyV1,
 } from "./research/contracts.js";
+import type { ResearchScopePreflightOutcomeV1 } from "@atlcli/research";
 import { classifyResearchError } from "@atlcli/research";
 
 /** Injected side effects the router needs to fulfil requests. */
@@ -54,6 +55,10 @@ export interface RouterDeps {
     request: ResearchRequestV1,
     policy?: ResearchOneShotPolicyV1,
   ) => Promise<ResearchReportV1>;
+  resolveResearchScope?: (
+    windowId: number,
+    request: ResearchRequestV1,
+  ) => Promise<ResearchScopePreflightOutcomeV1>;
   cancelResearch?: (runId: string) => Promise<boolean>;
 }
 
@@ -157,6 +162,28 @@ export async function routeMessage(
         return {
           kind: "research:run-result",
           runId: msg.runId,
+          ok: false,
+          code: classified.code,
+          error: classified.message,
+        };
+      }
+    }
+    case "research:resolve-scope": {
+      if (!deps.resolveResearchScope) {
+        return {
+          kind: "research:resolve-scope-result",
+          ok: false,
+          code: "provider-error",
+          error: "Research scope resolution is not configured.",
+        };
+      }
+      try {
+        const outcome = await deps.resolveResearchScope(msg.windowId, msg.request);
+        return { kind: "research:resolve-scope-result", ok: true, outcome };
+      } catch (error) {
+        const classified = classifyResearchError(error);
+        return {
+          kind: "research:resolve-scope-result",
           ok: false,
           code: classified.code,
           error: classified.message,

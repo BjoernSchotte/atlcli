@@ -22,6 +22,7 @@ import {
 } from "../../utils/research/contracts.js";
 import { formatResearchOneShotEventV1 } from "../../utils/research/events.js";
 import { createResearchKeyScopeSeedV1 } from "@atlcli/research/scope-discovery";
+import type { ResearchClarificationRequiredV1 } from "@atlcli/research";
 import {
   composeStandardResearchGraphV1,
   researchPlanApprovalRequiredV1,
@@ -292,6 +293,8 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
   const [error, setError] = useState<string | null>(null);
   const [planApprovalRequired, setPlanApprovalRequired] =
     useState<ResearchPlanApprovalRequiredV1 | null>(null);
+  const [scopeClarification, setScopeClarification] =
+    useState<ResearchClarificationRequiredV1 | null>(null);
   const [actionStatus, setActionStatus] = useState("");
   const abortRef = useRef<AbortController | null>(null);
 
@@ -311,6 +314,7 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
   async function run(): Promise<void> {
     setError(null);
     setPlanApprovalRequired(null);
+    setScopeClarification(null);
     setActionStatus("");
     try {
       if (!site) throw new ResearchContractError("not-atlassian", t("research.siteMissing"));
@@ -325,7 +329,7 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
         activeSpaceKey: includeCurrentContext ? site.activeSpaceKey : undefined,
         activeProjectKey: includeCurrentContext ? site.activeProjectKey : undefined,
       });
-      const request = normalizeResearchRequestV1({
+      const initialRequest = normalizeResearchRequestV1({
         schema: RESEARCH_REQUEST_SCHEMA_V1,
         question,
         scope: {
@@ -341,6 +345,15 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
         limits: DEFAULT_RESEARCH_LIMITS_V1,
         wikiProvider: "rest",
       });
+      const scopeOutcome = await port!.resolveScope(initialRequest);
+      if (scopeOutcome.kind === "clarification_required") {
+        setScopeClarification(scopeOutcome.clarification);
+        setActivity([]);
+        setReport(null);
+        setProgress("");
+        return;
+      }
+      const request = scopeOutcome.request;
       const policy = normalizeResearchOneShotPolicyV1({
         schema: RESEARCH_ONE_SHOT_POLICY_SCHEMA_V1,
         requestedEffort: effort,
@@ -606,6 +619,27 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
           </p>
           <ul className="mb-0 mt-1 pl-5 text-xs">
             {planApprovalRequired.rerunGuidance.map((guidance) => (
+              <li key={guidance}>{guidance}</li>
+            ))}
+          </ul>
+        </Alert>
+      )}
+
+      {scopeClarification && (
+        <Alert tone="muted" role="status" data-testid="research-scope-clarification-required">
+          <AlertTitle>{t("research.scopeClarification")}</AlertTitle>
+          <p className="m-0 mt-1">
+            {t("research.scopeClarification.value", {
+              reason: scopeClarification.reason,
+            })}
+          </p>
+          {scopeClarification.candidateIds.length > 0 && (
+            <p className="m-0 mt-1 text-xs">
+              {scopeClarification.candidateIds.join(", ")}
+            </p>
+          )}
+          <ul className="mb-0 mt-1 pl-5 text-xs">
+            {scopeClarification.rerunGuidance.map((guidance) => (
               <li key={guidance}>{guidance}</li>
             ))}
           </ul>

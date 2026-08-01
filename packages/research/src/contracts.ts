@@ -472,6 +472,7 @@ export interface ResearchPort {
   hasApiKey(): Promise<boolean>;
   setApiKey(apiKey: string): Promise<void>;
   clearApiKey(): Promise<void>;
+  resolveScope(request: ResearchRequestV1): Promise<import("./scope-preflight.js").ResearchScopePreflightOutcomeV1>;
   run(request: ResearchRequestV1, options?: ResearchRunOptions): Promise<ResearchReportV1>;
   copyMarkdown(markdown: string): Promise<void>;
   downloadMarkdown(markdown: string, filename: string): Promise<void>;
@@ -605,9 +606,6 @@ function normalizeKeyList(
     throw new ResearchContractError("invalid-request", `${label} scope must be a list.`);
   }
   const normalized = [...new Set(values.map((value) => String(value).trim()).filter(Boolean))];
-  if (normalized.length === 0) {
-    throw new ResearchContractError("invalid-request", `Select at least one ${label}.`);
-  }
   if (normalized.length > 20) {
     throw new ResearchContractError("invalid-request", `Select no more than 20 ${label}s.`);
   }
@@ -717,12 +715,13 @@ export function normalizeResearchScopeSeedsV1(
   scope: ResearchScopeV1,
 ): ResearchScopeSeedV1[] | undefined {
   if (value === undefined) return undefined;
-  if (!Array.isArray(value) || value.length === 0 || value.length > 40) {
+  if (!Array.isArray(value) || value.length > 40) {
     throw new ResearchContractError(
       "invalid-request",
-      "Research scope provenance must contain between 1 and 40 seeds.",
+      "Research scope provenance must contain no more than 40 seeds.",
     );
   }
+  if (value.length === 0) return undefined;
   const sources = new Set<string>(RESEARCH_SCOPE_SOURCES_V1);
   const normalized = value.map((candidate, index): ResearchScopeSeedV1 => {
     if (!candidate || typeof candidate !== "object") {

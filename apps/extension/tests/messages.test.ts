@@ -41,6 +41,17 @@ describe("message guards", () => {
     expect(isExtRequest({ kind: "jobs:wake", jobIds: ["   "] })).toBe(false);
     expect(isExtRequest({ kind: "jobs:wake", jobIds: ["x".repeat(4_097)] })).toBe(false);
     expect(isExtRequest({ kind: "jobs:wake", jobIds: [jobId], bytes: new Uint8Array([1]) })).toBe(false);
+    expect(isExtRequest({
+      kind: "research:resolve-scope",
+      windowId: 7,
+      request: { schema: "atlcli.research-request/v1" },
+    })).toBe(true);
+    expect(isExtRequest({
+      kind: "research:resolve-scope",
+      windowId: 7,
+      request: { schema: "atlcli.research-request/v1" },
+      apiKey: "must-not-cross",
+    })).toBe(false);
     expect(isExtRequest({ kind: "pdf:compile", jobId: "bad" })).toBe(false);
     expect(isExtRequest({ kind: "offscreen:wasm-add", a: 1, b: 2 })).toBe(false);
     expect(isExtRequest({ kind: "pong" })).toBe(false);

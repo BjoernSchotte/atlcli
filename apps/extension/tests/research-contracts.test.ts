@@ -72,7 +72,7 @@ describe("issue-138 research request contract", () => {
     });
   });
 
-  it("rejects foreign origins, scope-free requests and invalid dates", () => {
+  it("rejects foreign origins and invalid dates while admitting a provisional scope", () => {
     const base = {
       question: "Find the relevant work",
       limits: {},
@@ -88,16 +88,14 @@ describe("issue-138 research request contract", () => {
         },
       })
     ).toThrow(ResearchContractError);
-    expect(() =>
-      normalizeResearchRequestV1({
-        ...base,
-        scope: {
-          siteOrigin: "https://example.atlassian.net",
-          jiraProjectKeys: [],
-          confluenceSpaceKeys: ["KB"],
-        },
-      })
-    ).toThrow("Select at least one Jira project");
+    expect(normalizeResearchRequestV1({
+      ...base,
+      scope: {
+        siteOrigin: "https://example.atlassian.net",
+        jiraProjectKeys: [],
+        confluenceSpaceKeys: ["KB"],
+      },
+    }).scope).toMatchObject({ jiraProjectKeys: [], confluenceSpaceKeys: ["KB"] });
     expect(() =>
       normalizeResearchRequestV1({
         ...base,

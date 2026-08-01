@@ -4,6 +4,7 @@ import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
+  RESEARCH_SCOPE_PREFLIGHT_OUTCOME_SCHEMA_V1,
   ResearchContractError,
   createMemoryResearchWorkspace,
   type ResearchReportV1,
@@ -78,6 +79,13 @@ function cliHarness(options: {
   let interrupt: (() => void) | undefined;
   const dependencies: ResearchCliDependencies = {
     resolveProfile: async () => options.profile ?? profile,
+    resolveScope: async ({ request }) => ({
+      schema: RESEARCH_SCOPE_PREFLIGHT_OUTCOME_SCHEMA_V1,
+      kind: "ready",
+      request,
+      mentions: [],
+      resolutions: [],
+    }),
     readApiKey: () => options.apiKey ?? "sk-ant-test-command-only",
     async createWorkspace() {
       const memory = createMemoryResearchWorkspace();
@@ -306,6 +314,85 @@ describe("research CLI one-shot contract", () => {
     await expect(handleResearch(["question"], {}, { json: false }, missingKey.dependencies))
       .rejects.toThrow("ANTHROPIC_API_KEY is missing");
     expect(missingKey.workspaces).toHaveLength(0);
+  });
+
+  test("stops on typed scope clarification before reading the key or creating a workspace", async () => {
+    const harness = cliHarness();
+    let keyReads = 0;
+    harness.dependencies.readApiKey = () => {
+      keyReads += 1;
+      return "sk-ant-must-not-be-read";
+    };
+    harness.dependencies.resolveScope = async () => ({
+      schema: RESEARCH_SCOPE_PREFLIGHT_OUTCOME_SCHEMA_V1,
+      kind: "clarification_required",
+      clarification: {
+        schema: "atlcli.research-clarification-required/v1",
+        reason: "ambiguous",
+        mentionId: "mention:scope-1",
+        candidateIds: [
+          "research-scope-candidate:confluence-space-account-1",
+          "research-scope-candidate:confluence-space-account-2",
+        ],
+        productHint: "confluence",
+        entityKindHint: "space",
+        rerunGuidance: ["Pass an exact Confluence space with --space <KEY>."],
+      },
+      mentions: [],
+      resolutions: [],
+    });
+    await expect(handleResearch(
+      ["Research the Account Management space."],
+      { json: true },
+      { json: true },
+      harness.dependencies,
+    )).rejects.toThrow("Research scope requires clarification");
+    expect(keyReads).toBe(0);
+    expect(harness.workspaces).toHaveLength(0);
+    expect(harness.runInputs).toHaveLength(0);
+    expect(harness.stderr.join("")).toContain(
+      "stop_reason=clarification-required reason=ambiguous mention=mention:scope-1 candidates=2",
+    );
+    expect(JSON.parse(harness.stdout.join(""))).toMatchObject({
+      error: {
+        details: {
+          outcome: {
+            schema: "atlcli.research-scope-preflight-outcome/v1",
+            kind: "clarification_required",
+            clarification: { reason: "ambiguous" },
+          },
+        },
+      },
+    });
+  });
+
+  test("uses the host-resolved natural scope in the graph and agent request", async () => {
+    const harness = cliHarness();
+    harness.dependencies.resolveScope = async ({ request }) => {
+      const resolved = buildResearchRequest(
+        parseResearchCliInput(["question"], { project: "ATLCLI", space: "ACCOUNT" }),
+        profile,
+      );
+      return {
+        schema: RESEARCH_SCOPE_PREFLIGHT_OUTCOME_SCHEMA_V1,
+        kind: "ready",
+        request: { ...resolved, question: request.question },
+        mentions: [],
+        resolutions: [],
+      };
+    };
+    await handleResearch(
+      ["Research the Account Management space."],
+      {},
+      { json: false },
+      harness.dependencies,
+    );
+    expect(harness.runInputs[0]?.request.scope.confluenceSpaceKeys).toEqual(["ACCOUNT"]);
+    expect(harness.runInputs[0]?.researchGraph.approvalEnvelope.allowedScopeBindingIds)
+      .toEqual(expect.arrayContaining([
+        "scope-binding:cli_flag:confluence:ACCOUNT",
+      ]));
+    expect(harness.stderr.join("")).toContain("confluence:ACCOUNT:cli_flag:locked");
   });
 
   test("stops a default deep plan before reading the key, workspace, or agent", async () => {

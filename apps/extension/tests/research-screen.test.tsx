@@ -190,6 +190,13 @@ describe("portable Research screen", () => {
       clearApiKey: async () => {
         stored = false;
       },
+      resolveScope: async (request) => ({
+        schema: "atlcli.research-scope-preflight-outcome/v1",
+        kind: "ready",
+        request,
+        mentions: [],
+        resolutions: [],
+      }),
       run: async (request, options) => {
         observed.push(request);
         observedPolicies.push(options?.policy);
@@ -332,6 +339,13 @@ describe("portable Research screen", () => {
       hasApiKey: async () => false,
       setApiKey: async () => { keyWrites += 1; },
       clearApiKey: async () => undefined,
+      resolveScope: async (request) => ({
+        schema: "atlcli.research-scope-preflight-outcome/v1",
+        kind: "ready",
+        request,
+        mentions: [],
+        resolutions: [],
+      }),
       run: async (_request, options) => {
         runs += 1;
         policies.push(options?.policy);
@@ -374,5 +388,58 @@ describe("portable Research screen", () => {
     expect(dom.find("research-formatted-report").textContent).toContain(
       "The page explicitly links the issue.",
     );
+  });
+
+  it("shows typed scope clarification before storing the key or starting research", async () => {
+    let keyWrites = 0;
+    let runs = 0;
+    const port: ResearchPort = {
+      hasApiKey: async () => false,
+      setApiKey: async () => { keyWrites += 1; },
+      clearApiKey: async () => undefined,
+      resolveScope: async () => ({
+        schema: "atlcli.research-scope-preflight-outcome/v1",
+        kind: "clarification_required",
+        clarification: {
+          schema: "atlcli.research-clarification-required/v1",
+          reason: "ambiguous",
+          mentionId: "mention:scope-1",
+          candidateIds: [
+            "research-scope-candidate:confluence-space-account-1",
+            "research-scope-candidate:confluence-space-account-2",
+          ],
+          productHint: "confluence",
+          entityKindHint: "space",
+          rerunGuidance: ["Pass an exact Confluence space key."],
+        },
+        mentions: [],
+        resolutions: [],
+      }),
+      run: async () => {
+        runs += 1;
+        return report;
+      },
+      copyMarkdown: async () => undefined,
+      downloadMarkdown: async () => undefined,
+    };
+    await dom.render(
+      <I18nProvider locale="en">
+        <ResearchScreen {...screenProps(port)} />
+      </I18nProvider>,
+    );
+    await dom.setValue("research-key", "synthetic-key");
+    await dom.setValue(
+      "research-question",
+      "Research Jira projectkey DEMO and the Account Management space.",
+    );
+    await dom.toggle("research-disclosure");
+    await dom.click("research-run");
+    await dom.flush();
+
+    expect(dom.find("research-scope-clarification-required").textContent)
+      .toContain("Scope clarification required");
+    expect(dom.find("research-scope-clarification-required").textContent)
+      .toContain("confluence-space-account-1");
+    expect({ keyWrites, runs }).toEqual({ keyWrites: 0, runs: 0 });
   });
 });

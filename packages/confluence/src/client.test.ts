@@ -103,6 +103,27 @@ describe("Confluence v2 space pagination", () => {
 
     expect(requested).toContain("limit=250");
   });
+
+  test("passes bounded exact space keys through the documented v2 filter", async () => {
+    let requested = "";
+    globalThis.fetch = mock((url: string) => {
+      requested = url;
+      return Promise.resolve(
+        new Response(JSON.stringify({ results: [] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+    }) as unknown as typeof fetch;
+
+    await new ConfluenceClient(mockProfile).listSpacesV2({
+      limit: 2,
+      keys: ["DOCSY", "TEAM"],
+    });
+
+    expect(requested).toContain("keys=DOCSY");
+    expect(requested).toContain("keys=TEAM");
+  });
 });
 
 // Mock profile for testing

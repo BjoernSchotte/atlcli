@@ -5,6 +5,7 @@ import type {
   ResearchReportV1,
   ResearchRequestV1,
 } from "../utils/research/contracts.js";
+import type { ResearchScopePreflightOutcomeV1 } from "@atlcli/research";
 
 const noEntity: EntityDetection = { windowId: 7, url: null, entity: null, seq: 0 };
 const preparation = {
@@ -242,5 +243,41 @@ describe("routeMessage (pure router)", () => {
       policy,
     })).not.toContain("apiKey");
     expect(observed).toEqual([policy]);
+  });
+
+  it("routes catalog-only research scope preflight without an Anthropic key", async () => {
+    const request = {
+      schema: "atlcli.research-request/v1",
+    } as ResearchRequestV1;
+    const outcome: ResearchScopePreflightOutcomeV1 = {
+      schema: "atlcli.research-scope-preflight-outcome/v1",
+      kind: "clarification_required",
+      clarification: {
+        schema: "atlcli.research-clarification-required/v1",
+        reason: "ambiguous",
+        mentionId: "mention:scope-1",
+        candidateIds: ["research-scope-candidate:confluence-space-a"],
+        rerunGuidance: ["Pass --space <KEY>."],
+      },
+      mentions: [],
+      resolutions: [],
+    };
+    expect(await routeMessage({
+      kind: "research:resolve-scope",
+      windowId: 7,
+      request,
+    }, {
+      ...okDeps,
+      resolveResearchScope: async () => outcome,
+    })).toEqual({
+      kind: "research:resolve-scope-result",
+      ok: true,
+      outcome,
+    });
+    expect(JSON.stringify({
+      kind: "research:resolve-scope",
+      windowId: 7,
+      request,
+    })).not.toContain("apiKey");
   });
 });

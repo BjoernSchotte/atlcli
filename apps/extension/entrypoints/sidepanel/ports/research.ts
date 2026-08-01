@@ -46,6 +46,41 @@ export function chromeResearchPort(): ResearchPort {
       await chrome.storage.session.remove(RESEARCH_ANTHROPIC_SESSION_KEY);
     },
 
+    async resolveScope(request) {
+      const window = await chrome.windows.getCurrent();
+      if (window.id === undefined) {
+        throw new ResearchContractError(
+          "provider-error",
+          "The side panel window is unavailable.",
+        );
+      }
+      const response = (await chrome.runtime.sendMessage({
+        kind: "research:resolve-scope",
+        windowId: window.id,
+        request,
+      })) as
+        | {
+            kind: "research:resolve-scope-result";
+            ok: true;
+            outcome: Awaited<ReturnType<ResearchPort["resolveScope"]>>;
+          }
+        | {
+            kind: "research:resolve-scope-result";
+            ok: false;
+            code: ConstructorParameters<typeof ResearchContractError>[0];
+            error: string;
+          }
+        | undefined;
+      if (!response || response.kind !== "research:resolve-scope-result") {
+        throw new ResearchContractError(
+          "provider-error",
+          "The research scope host returned no result.",
+        );
+      }
+      if (!response.ok) throw new ResearchContractError(response.code, response.error);
+      return response.outcome;
+    },
+
     async run(request, options) {
       if (activeRunId) {
         throw new ResearchContractError(

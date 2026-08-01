@@ -71,6 +71,15 @@ function proposalFor(
 }
 
 describe("dynamic research graph composition", () => {
+  test("rejects an unresolved empty scope before graph composition", () => {
+    expect(() => composeStandardResearchGraphV1("Research the relevant work.", {
+      scope: {
+        siteOrigin: "https://example.atlassian.net",
+        jiraProjectKeys: [],
+        confluenceSpaceKeys: [],
+      },
+    })).toThrow("scope must be resolved");
+  });
   test("gives every productive host the same standard cross-product graph", () => {
     const graph = composeStandardResearchGraphV1(
       "Which Confluence pages correspond to Jira work items?",

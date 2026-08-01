@@ -24,6 +24,7 @@ import type {
   ResearchReportV1,
   ResearchRequestV1,
 } from "./research/contracts.js";
+import type { ResearchScopePreflightOutcomeV1 } from "@atlcli/research";
 import { isResearchOneShotEventV1 } from "./research/events.js";
 
 /**
@@ -91,6 +92,11 @@ export type ExtRequest =
   | { kind: "docx:prepare-runtime"; codeTheme?: CodeThemeId }
   | { kind: "jobs:wake"; jobIds?: string[]; resumeWaiting?: boolean }
   | {
+      kind: "research:resolve-scope";
+      windowId: number;
+      request: ResearchRequestV1;
+    }
+  | {
       kind: "research:run";
       runId: string;
       windowId: number;
@@ -112,6 +118,13 @@ export type ExtResponse =
   | { kind: "docx:prepare-runtime-result"; ok: false; error: string }
   | { kind: "jobs:wake-result"; claimedJobId?: string; error?: never }
   | { kind: "jobs:wake-result"; error: string; claimedJobId?: never }
+  | { kind: "research:resolve-scope-result"; ok: true; outcome: ResearchScopePreflightOutcomeV1 }
+  | {
+      kind: "research:resolve-scope-result";
+      ok: false;
+      code: ResearchErrorCode;
+      error: string;
+    }
   | { kind: "research:run-result"; runId: string; ok: true; report: ResearchReportV1 }
   | {
       kind: "research:run-result";
@@ -212,6 +225,7 @@ export interface ResponseMap {
   "pdf:cancel": Extract<ExtResponse, { kind: "pdf:cancel-result" }>;
   "docx:prepare-runtime": Extract<ExtResponse, { kind: "docx:prepare-runtime-result" }>;
   "jobs:wake": Extract<ExtResponse, { kind: "jobs:wake-result" }>;
+  "research:resolve-scope": Extract<ExtResponse, { kind: "research:resolve-scope-result" }>;
   "research:run": Extract<ExtResponse, { kind: "research:run-result" }>;
   "research:cancel": Extract<ExtResponse, { kind: "research:cancel-result" }>;
 }
@@ -245,6 +259,13 @@ export function isExtRequest(value: unknown): value is ExtRequest {
       typeof run.request === "object" &&
       run.request !== null &&
       (run.policy === undefined || (typeof run.policy === "object" && run.policy !== null));
+  }
+  if (kind === "research:resolve-scope") {
+    const preflight = value as { windowId?: unknown; request?: unknown };
+    return hasOnlyKeys(value, ["kind", "windowId", "request"]) &&
+      isWindowId(preflight.windowId) &&
+      typeof preflight.request === "object" &&
+      preflight.request !== null;
   }
   if (kind === "research:cancel") {
     const cancel = value as { runId?: unknown };

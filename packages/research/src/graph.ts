@@ -485,6 +485,16 @@ export function composeStandardResearchGraphV1(
   question: string,
   options: ComposeStandardResearchGraphOptionsV1 = {},
 ): ResearchGraphV1 {
+  if (
+    options.scope &&
+    options.scope.jiraProjectKeys.length === 0 &&
+    options.scope.confluenceSpaceKeys.length === 0
+  ) {
+    throw new ResearchContractError(
+      "clarification-required",
+      "Research scope must be resolved before graph composition.",
+    );
+  }
   const policy = normalizeResearchOneShotPolicyV1(
     options.policy ?? DEFAULT_RESEARCH_ONE_SHOT_POLICY_V1,
   );

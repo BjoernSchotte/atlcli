@@ -2171,13 +2171,14 @@ export class ConfluenceClient {
       limit?: number;
       cursor?: string;
       status?: "current" | "archived";
+      keys?: readonly string[];
       signal?: AbortSignal;
     } = {},
   ): Promise<ConfluenceSpacePageV2> {
     const requestedLimit = options.limit ?? 25;
     const limit = Math.min(Math.max(Math.trunc(requestedLimit), 1), 250);
     const data = (await this.requestV2("/spaces", {
-      query: { limit, cursor: options.cursor, status: options.status },
+      query: { limit, cursor: options.cursor, status: options.status, keys: options.keys },
       signal: options.signal,
       logBody: "meta-only",
     })) as any;

@@ -292,6 +292,14 @@ export declare function parseResearchReconciliationInputV1(value: unknown): Rese
 // export: parseResearchTaskBodyV1
 export declare function parseResearchTaskBodyV1(schema: ResearchTaskOutputSchemaV1, value: unknown): ResearchPacketBodyV1 | ReconciliationBodyV1 | ResearchAgentDraftV1;
 
+// export: prepareResearchScopePreflightV1
+export declare function prepareResearchScopePreflightV1(input: {
+    request: ResearchRequestV1;
+    catalog: ResearchScopeCatalogInvokePortV1;
+    automaticApproval?: boolean;
+    maximumCatalogPages?: number;
+}): Promise<ResearchScopePreflightOutcomeV1>;
+
 // export: prependBoundedDetailText
 export declare function prependBoundedDetailText(projection: BoundedContentProjectionV1, prefix: string, limits: ContentProjectionLimits): BoundedContentProjectionV1;
 
@@ -314,6 +322,14 @@ export declare function projectResearchReconciliationInputV1(input: {
 
 // export: projectSelectedResearchRolesV1
 export declare function projectSelectedResearchRolesV1(graph: Pick<ResearchGraphV1, "nodes">): ResearchSubagentRoleIdV1[];
+
+// export: proposeResearchScopeMentionsV1
+export declare function proposeResearchScopeMentionsV1(input: {
+    question: string;
+    expectedTenantOrigin: string;
+    existingBindings?: readonly ResearchScopeBindingV1[];
+    maxMentions?: number;
+}): ResearchScopeMentionV1[];
 
 // export: ReconciliationBodyV1
 export interface ReconciliationBodyV1 {
@@ -580,6 +596,9 @@ export declare const RESEARCH_SCOPE_MENTION_PROPOSAL_SCHEMA_V1: "atlcli.research
 
 // export: RESEARCH_SCOPE_MENTION_SCHEMA_V1
 export declare const RESEARCH_SCOPE_MENTION_SCHEMA_V1: "atlcli.research-scope-mention/v1";
+
+// export: RESEARCH_SCOPE_PREFLIGHT_OUTCOME_SCHEMA_V1
+export declare const RESEARCH_SCOPE_PREFLIGHT_OUTCOME_SCHEMA_V1: "atlcli.research-scope-preflight-outcome/v1";
 
 // export: RESEARCH_SCOPE_RESOLUTION_SCHEMA_V1
 export declare const RESEARCH_SCOPE_RESOLUTION_SCHEMA_V1: "atlcli.research-scope-resolution/v1";
@@ -1355,6 +1374,7 @@ export interface ResearchPort {
     hasApiKey(): Promise<boolean>;
     setApiKey(apiKey: string): Promise<void>;
     clearApiKey(): Promise<void>;
+    resolveScope(request: ResearchRequestV1): Promise<import("./scope-preflight.js").ResearchScopePreflightOutcomeV1>;
     run(request: ResearchRequestV1, options?: ResearchRunOptions): Promise<ResearchReportV1>;
     copyMarkdown(markdown: string): Promise<void>;
     downloadMarkdown(markdown: string, filename: string): Promise<void>;
@@ -1769,6 +1789,21 @@ export interface ResearchScopeMentionV1 {
     };
     exactReference?: string;
 }
+
+// export: ResearchScopePreflightOutcomeV1
+export type ResearchScopePreflightOutcomeV1 = {
+    schema: typeof RESEARCH_SCOPE_PREFLIGHT_OUTCOME_SCHEMA_V1;
+    kind: "ready";
+    request: ResearchRequestV1;
+    mentions: ResearchScopeMentionV1[];
+    resolutions: ResearchScopeResolutionV1[];
+} | {
+    schema: typeof RESEARCH_SCOPE_PREFLIGHT_OUTCOME_SCHEMA_V1;
+    kind: "clarification_required";
+    clarification: ResearchClarificationRequiredV1;
+    mentions: ResearchScopeMentionV1[];
+    resolutions: ResearchScopeResolutionV1[];
+};
 
 // export: ResearchScopeResolutionInputV1
 export interface ResearchScopeResolutionInputV1 {
@@ -2361,6 +2396,14 @@ export declare function parseResearchReconciliationInputV1(value: unknown): Rese
 // export: parseResearchTaskBodyV1
 export declare function parseResearchTaskBodyV1(schema: ResearchTaskOutputSchemaV1, value: unknown): ResearchPacketBodyV1 | ReconciliationBodyV1 | ResearchAgentDraftV1;
 
+// export: prepareResearchScopePreflightV1
+export declare function prepareResearchScopePreflightV1(input: {
+    request: ResearchRequestV1;
+    catalog: ResearchScopeCatalogInvokePortV1;
+    automaticApproval?: boolean;
+    maximumCatalogPages?: number;
+}): Promise<ResearchScopePreflightOutcomeV1>;
+
 // export: prependBoundedDetailText
 export declare function prependBoundedDetailText(projection: BoundedContentProjectionV1, prefix: string, limits: ContentProjectionLimits): BoundedContentProjectionV1;
 
@@ -2383,6 +2426,14 @@ export declare function projectResearchReconciliationInputV1(input: {
 
 // export: projectSelectedResearchRolesV1
 export declare function projectSelectedResearchRolesV1(graph: Pick<ResearchGraphV1, "nodes">): ResearchSubagentRoleIdV1[];
+
+// export: proposeResearchScopeMentionsV1
+export declare function proposeResearchScopeMentionsV1(input: {
+    question: string;
+    expectedTenantOrigin: string;
+    existingBindings?: readonly ResearchScopeBindingV1[];
+    maxMentions?: number;
+}): ResearchScopeMentionV1[];
 
 // export: ReconciliationBodyV1
 export interface ReconciliationBodyV1 {
@@ -2649,6 +2700,9 @@ export declare const RESEARCH_SCOPE_MENTION_PROPOSAL_SCHEMA_V1: "atlcli.research
 
 // export: RESEARCH_SCOPE_MENTION_SCHEMA_V1
 export declare const RESEARCH_SCOPE_MENTION_SCHEMA_V1: "atlcli.research-scope-mention/v1";
+
+// export: RESEARCH_SCOPE_PREFLIGHT_OUTCOME_SCHEMA_V1
+export declare const RESEARCH_SCOPE_PREFLIGHT_OUTCOME_SCHEMA_V1: "atlcli.research-scope-preflight-outcome/v1";
 
 // export: RESEARCH_SCOPE_RESOLUTION_SCHEMA_V1
 export declare const RESEARCH_SCOPE_RESOLUTION_SCHEMA_V1: "atlcli.research-scope-resolution/v1";
@@ -3424,6 +3478,7 @@ export interface ResearchPort {
     hasApiKey(): Promise<boolean>;
     setApiKey(apiKey: string): Promise<void>;
     clearApiKey(): Promise<void>;
+    resolveScope(request: ResearchRequestV1): Promise<import("./scope-preflight.js").ResearchScopePreflightOutcomeV1>;
     run(request: ResearchRequestV1, options?: ResearchRunOptions): Promise<ResearchReportV1>;
     copyMarkdown(markdown: string): Promise<void>;
     downloadMarkdown(markdown: string, filename: string): Promise<void>;
@@ -3838,6 +3893,21 @@ export interface ResearchScopeMentionV1 {
     };
     exactReference?: string;
 }
+
+// export: ResearchScopePreflightOutcomeV1
+export type ResearchScopePreflightOutcomeV1 = {
+    schema: typeof RESEARCH_SCOPE_PREFLIGHT_OUTCOME_SCHEMA_V1;
+    kind: "ready";
+    request: ResearchRequestV1;
+    mentions: ResearchScopeMentionV1[];
+    resolutions: ResearchScopeResolutionV1[];
+} | {
+    schema: typeof RESEARCH_SCOPE_PREFLIGHT_OUTCOME_SCHEMA_V1;
+    kind: "clarification_required";
+    clarification: ResearchClarificationRequiredV1;
+    mentions: ResearchScopeMentionV1[];
+    resolutions: ResearchScopeResolutionV1[];
+};
 
 // export: ResearchScopeResolutionInputV1
 export interface ResearchScopeResolutionInputV1 {
@@ -4428,6 +4498,14 @@ export declare function parseResearchReconciliationInputV1(value: unknown): Rese
 // export: parseResearchTaskBodyV1
 export declare function parseResearchTaskBodyV1(schema: ResearchTaskOutputSchemaV1, value: unknown): ResearchPacketBodyV1 | ReconciliationBodyV1 | ResearchAgentDraftV1;
 
+// export: prepareResearchScopePreflightV1
+export declare function prepareResearchScopePreflightV1(input: {
+    request: ResearchRequestV1;
+    catalog: ResearchScopeCatalogInvokePortV1;
+    automaticApproval?: boolean;
+    maximumCatalogPages?: number;
+}): Promise<ResearchScopePreflightOutcomeV1>;
+
 // export: prependBoundedDetailText
 export declare function prependBoundedDetailText(projection: BoundedContentProjectionV1, prefix: string, limits: ContentProjectionLimits): BoundedContentProjectionV1;
 
@@ -4450,6 +4528,14 @@ export declare function projectResearchReconciliationInputV1(input: {
 
 // export: projectSelectedResearchRolesV1
 export declare function projectSelectedResearchRolesV1(graph: Pick<ResearchGraphV1, "nodes">): ResearchSubagentRoleIdV1[];
+
+// export: proposeResearchScopeMentionsV1
+export declare function proposeResearchScopeMentionsV1(input: {
+    question: string;
+    expectedTenantOrigin: string;
+    existingBindings?: readonly ResearchScopeBindingV1[];
+    maxMentions?: number;
+}): ResearchScopeMentionV1[];
 
 // export: ReconciliationBodyV1
 export interface ReconciliationBodyV1 {
@@ -4716,6 +4802,9 @@ export declare const RESEARCH_SCOPE_MENTION_PROPOSAL_SCHEMA_V1: "atlcli.research
 
 // export: RESEARCH_SCOPE_MENTION_SCHEMA_V1
 export declare const RESEARCH_SCOPE_MENTION_SCHEMA_V1: "atlcli.research-scope-mention/v1";
+
+// export: RESEARCH_SCOPE_PREFLIGHT_OUTCOME_SCHEMA_V1
+export declare const RESEARCH_SCOPE_PREFLIGHT_OUTCOME_SCHEMA_V1: "atlcli.research-scope-preflight-outcome/v1";
 
 // export: RESEARCH_SCOPE_RESOLUTION_SCHEMA_V1
 export declare const RESEARCH_SCOPE_RESOLUTION_SCHEMA_V1: "atlcli.research-scope-resolution/v1";
@@ -5491,6 +5580,7 @@ export interface ResearchPort {
     hasApiKey(): Promise<boolean>;
     setApiKey(apiKey: string): Promise<void>;
     clearApiKey(): Promise<void>;
+    resolveScope(request: ResearchRequestV1): Promise<import("./scope-preflight.js").ResearchScopePreflightOutcomeV1>;
     run(request: ResearchRequestV1, options?: ResearchRunOptions): Promise<ResearchReportV1>;
     copyMarkdown(markdown: string): Promise<void>;
     downloadMarkdown(markdown: string, filename: string): Promise<void>;
@@ -5905,6 +5995,21 @@ export interface ResearchScopeMentionV1 {
     };
     exactReference?: string;
 }
+
+// export: ResearchScopePreflightOutcomeV1
+export type ResearchScopePreflightOutcomeV1 = {
+    schema: typeof RESEARCH_SCOPE_PREFLIGHT_OUTCOME_SCHEMA_V1;
+    kind: "ready";
+    request: ResearchRequestV1;
+    mentions: ResearchScopeMentionV1[];
+    resolutions: ResearchScopeResolutionV1[];
+} | {
+    schema: typeof RESEARCH_SCOPE_PREFLIGHT_OUTCOME_SCHEMA_V1;
+    kind: "clarification_required";
+    clarification: ResearchClarificationRequiredV1;
+    mentions: ResearchScopeMentionV1[];
+    resolutions: ResearchScopeResolutionV1[];
+};
 
 // export: ResearchScopeResolutionInputV1
 export interface ResearchScopeResolutionInputV1 {
@@ -6636,6 +6741,14 @@ export declare function parseResearchReconciliationInputV1(value: unknown): Rese
 // export: parseResearchTaskBodyV1
 export declare function parseResearchTaskBodyV1(schema: ResearchTaskOutputSchemaV1, value: unknown): ResearchPacketBodyV1 | ReconciliationBodyV1 | ResearchAgentDraftV1;
 
+// export: prepareResearchScopePreflightV1
+export declare function prepareResearchScopePreflightV1(input: {
+    request: ResearchRequestV1;
+    catalog: ResearchScopeCatalogInvokePortV1;
+    automaticApproval?: boolean;
+    maximumCatalogPages?: number;
+}): Promise<ResearchScopePreflightOutcomeV1>;
+
 // export: prependBoundedDetailText
 export declare function prependBoundedDetailText(projection: BoundedContentProjectionV1, prefix: string, limits: ContentProjectionLimits): BoundedContentProjectionV1;
 
@@ -6658,6 +6771,14 @@ export declare function projectResearchReconciliationInputV1(input: {
 
 // export: projectSelectedResearchRolesV1
 export declare function projectSelectedResearchRolesV1(graph: Pick<ResearchGraphV1, "nodes">): ResearchSubagentRoleIdV1[];
+
+// export: proposeResearchScopeMentionsV1
+export declare function proposeResearchScopeMentionsV1(input: {
+    question: string;
+    expectedTenantOrigin: string;
+    existingBindings?: readonly ResearchScopeBindingV1[];
+    maxMentions?: number;
+}): ResearchScopeMentionV1[];
 
 // export: providerCompatibleResearchSchema
 export declare function providerCompatibleResearchSchema(value: Record<string, unknown>): {
@@ -6948,6 +7069,9 @@ export declare const RESEARCH_SCOPE_MENTION_PROPOSAL_SCHEMA_V1: "atlcli.research
 
 // export: RESEARCH_SCOPE_MENTION_SCHEMA_V1
 export declare const RESEARCH_SCOPE_MENTION_SCHEMA_V1: "atlcli.research-scope-mention/v1";
+
+// export: RESEARCH_SCOPE_PREFLIGHT_OUTCOME_SCHEMA_V1
+export declare const RESEARCH_SCOPE_PREFLIGHT_OUTCOME_SCHEMA_V1: "atlcli.research-scope-preflight-outcome/v1";
 
 // export: RESEARCH_SCOPE_RESOLUTION_SCHEMA_V1
 export declare const RESEARCH_SCOPE_RESOLUTION_SCHEMA_V1: "atlcli.research-scope-resolution/v1";
@@ -7735,6 +7859,7 @@ export interface ResearchPort {
     hasApiKey(): Promise<boolean>;
     setApiKey(apiKey: string): Promise<void>;
     clearApiKey(): Promise<void>;
+    resolveScope(request: ResearchRequestV1): Promise<import("./scope-preflight.js").ResearchScopePreflightOutcomeV1>;
     run(request: ResearchRequestV1, options?: ResearchRunOptions): Promise<ResearchReportV1>;
     copyMarkdown(markdown: string): Promise<void>;
     downloadMarkdown(markdown: string, filename: string): Promise<void>;
@@ -8181,6 +8306,21 @@ export interface ResearchScopeMentionV1 {
     };
     exactReference?: string;
 }
+
+// export: ResearchScopePreflightOutcomeV1
+export type ResearchScopePreflightOutcomeV1 = {
+    schema: typeof RESEARCH_SCOPE_PREFLIGHT_OUTCOME_SCHEMA_V1;
+    kind: "ready";
+    request: ResearchRequestV1;
+    mentions: ResearchScopeMentionV1[];
+    resolutions: ResearchScopeResolutionV1[];
+} | {
+    schema: typeof RESEARCH_SCOPE_PREFLIGHT_OUTCOME_SCHEMA_V1;
+    kind: "clarification_required";
+    clarification: ResearchClarificationRequiredV1;
+    mentions: ResearchScopeMentionV1[];
+    resolutions: ResearchScopeResolutionV1[];
+};
 
 // export: ResearchScopeResolutionInputV1
 export interface ResearchScopeResolutionInputV1 {
@@ -9001,6 +9141,7 @@ export interface ResearchPort {
     hasApiKey(): Promise<boolean>;
     setApiKey(apiKey: string): Promise<void>;
     clearApiKey(): Promise<void>;
+    resolveScope(request: ResearchRequestV1): Promise<import("./scope-preflight.js").ResearchScopePreflightOutcomeV1>;
     run(request: ResearchRequestV1, options?: ResearchRunOptions): Promise<ResearchReportV1>;
     copyMarkdown(markdown: string): Promise<void>;
     downloadMarkdown(markdown: string, filename: string): Promise<void>;
@@ -9885,6 +10026,14 @@ export declare function parseResearchReconciliationInputV1(value: unknown): Rese
 // export: parseResearchTaskBodyV1
 export declare function parseResearchTaskBodyV1(schema: ResearchTaskOutputSchemaV1, value: unknown): ResearchPacketBodyV1 | ReconciliationBodyV1 | ResearchAgentDraftV1;
 
+// export: prepareResearchScopePreflightV1
+export declare function prepareResearchScopePreflightV1(input: {
+    request: ResearchRequestV1;
+    catalog: ResearchScopeCatalogInvokePortV1;
+    automaticApproval?: boolean;
+    maximumCatalogPages?: number;
+}): Promise<ResearchScopePreflightOutcomeV1>;
+
 // export: prependBoundedDetailText
 export declare function prependBoundedDetailText(projection: BoundedContentProjectionV1, prefix: string, limits: ContentProjectionLimits): BoundedContentProjectionV1;
 
@@ -9907,6 +10056,14 @@ export declare function projectResearchReconciliationInputV1(input: {
 
 // export: projectSelectedResearchRolesV1
 export declare function projectSelectedResearchRolesV1(graph: Pick<ResearchGraphV1, "nodes">): ResearchSubagentRoleIdV1[];
+
+// export: proposeResearchScopeMentionsV1
+export declare function proposeResearchScopeMentionsV1(input: {
+    question: string;
+    expectedTenantOrigin: string;
+    existingBindings?: readonly ResearchScopeBindingV1[];
+    maxMentions?: number;
+}): ResearchScopeMentionV1[];
 
 // export: providerCompatibleResearchSchema
 export declare function providerCompatibleResearchSchema(value: Record<string, unknown>): {
@@ -10197,6 +10354,9 @@ export declare const RESEARCH_SCOPE_MENTION_PROPOSAL_SCHEMA_V1: "atlcli.research
 
 // export: RESEARCH_SCOPE_MENTION_SCHEMA_V1
 export declare const RESEARCH_SCOPE_MENTION_SCHEMA_V1: "atlcli.research-scope-mention/v1";
+
+// export: RESEARCH_SCOPE_PREFLIGHT_OUTCOME_SCHEMA_V1
+export declare const RESEARCH_SCOPE_PREFLIGHT_OUTCOME_SCHEMA_V1: "atlcli.research-scope-preflight-outcome/v1";
 
 // export: RESEARCH_SCOPE_RESOLUTION_SCHEMA_V1
 export declare const RESEARCH_SCOPE_RESOLUTION_SCHEMA_V1: "atlcli.research-scope-resolution/v1";
@@ -10984,6 +11144,7 @@ export interface ResearchPort {
     hasApiKey(): Promise<boolean>;
     setApiKey(apiKey: string): Promise<void>;
     clearApiKey(): Promise<void>;
+    resolveScope(request: ResearchRequestV1): Promise<import("./scope-preflight.js").ResearchScopePreflightOutcomeV1>;
     run(request: ResearchRequestV1, options?: ResearchRunOptions): Promise<ResearchReportV1>;
     copyMarkdown(markdown: string): Promise<void>;
     downloadMarkdown(markdown: string, filename: string): Promise<void>;
@@ -11430,6 +11591,21 @@ export interface ResearchScopeMentionV1 {
     };
     exactReference?: string;
 }
+
+// export: ResearchScopePreflightOutcomeV1
+export type ResearchScopePreflightOutcomeV1 = {
+    schema: typeof RESEARCH_SCOPE_PREFLIGHT_OUTCOME_SCHEMA_V1;
+    kind: "ready";
+    request: ResearchRequestV1;
+    mentions: ResearchScopeMentionV1[];
+    resolutions: ResearchScopeResolutionV1[];
+} | {
+    schema: typeof RESEARCH_SCOPE_PREFLIGHT_OUTCOME_SCHEMA_V1;
+    kind: "clarification_required";
+    clarification: ResearchClarificationRequiredV1;
+    mentions: ResearchScopeMentionV1[];
+    resolutions: ResearchScopeResolutionV1[];
+};
 
 // export: ResearchScopeResolutionInputV1
 export interface ResearchScopeResolutionInputV1 {

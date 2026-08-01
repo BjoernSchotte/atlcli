@@ -2624,12 +2624,23 @@ CLI:
       If an omitted approval choice resolves to `required` in T3, fail before
       detail/model research and ask for explicit `automatic`; never silently
       downgrade the resolved approval policy.
-- [ ] Render the one-shot clarification-required outcome as specified in the
+- [x] Render the one-shot clarification-required outcome as specified in the
       CLI contract, including rerun guidance and typed `--json` output.
-- [ ] Accept questions that naturally name a missing project or space, show
+      Proven 2026-08-01: the shared scope preflight returns the closed typed
+      outcome before API-key reads, workspace creation, graph composition,
+      detail reads, or subagent dispatch; CLI text and JSON paths preserve the
+      reason, bounded candidate IDs, and exact rerun guidance.
+- [x] Accept questions that naturally name a missing project or space, show
       the resolved key/name/source in sanitized stderr plan output, and keep
       explicit flags locked even when the question or profile names another
       scope.
+      The host recognizes only grammar-anchored exact question ranges, then
+      verifies them through the tenant-bound REST catalog. Lower-precedence
+      profile defaults are replaced by a unique resolved name/key while CLI
+      flags suppress conflicting catalog lookup. A real read-only Mayflower
+      preflight resolved DOCSY and ATLCLI from the question, printed both as
+      `natural_language:approved`, and reached the intentionally absent
+      Anthropic-key gate without model, workspace, or content work.
 - [x] Emit sanitized brief revision, graph revision, selected role IDs,
       planned waves/dependencies/grants, node and packet status, stop reason,
       bounded tool input/result metadata, reconciliation lifecycle, and budget

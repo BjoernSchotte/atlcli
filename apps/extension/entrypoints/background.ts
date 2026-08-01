@@ -34,6 +34,11 @@ import {
   normalizeAnthropicApiKey,
 } from "../utils/research/credential.js";
 import { profileFromTabUrl } from "../utils/profile.js";
+import {
+  ResearchScopeCatalogBroker,
+  createRestScopeCatalogProviders,
+  prepareResearchScopePreflightV1,
+} from "@atlcli/research/browser";
 import { handleExtMessage } from "../utils/listeners.js";
 import { closeOffscreen, ensureOffscreen } from "../utils/offscreen.js";
 import { createIdleTimer } from "../utils/idle-timer.js";
@@ -476,6 +481,30 @@ export default defineBackground({
     }
   };
 
+  const resolveResearchScope = async (
+    windowId: number,
+    value: ResearchRequestV1,
+  ) => {
+    const request = normalizeResearchRequestV1(value);
+    const detection = await getCurrentEntity(windowId);
+    const profile = detection.url ? profileFromTabUrl(detection.url) : null;
+    if (!profile || new URL(profile.baseUrl).origin !== request.scope.siteOrigin) {
+      throw new ResearchContractError(
+        "access-denied",
+        "The active Atlassian tab no longer matches the research site.",
+      );
+    }
+    const broker = new ResearchScopeCatalogBroker({
+      tenantOrigin: request.scope.siteOrigin,
+      providers: createRestScopeCatalogProviders(profile, request.scope.siteOrigin),
+    });
+    return prepareResearchScopePreflightV1({
+      request,
+      catalog: broker,
+      automaticApproval: true,
+    });
+  };
+
   const cancelResearch = async (runId: string): Promise<boolean> => {
     await ensureOffscreen();
     const response = (await chrome.runtime.sendMessage({
@@ -513,6 +542,7 @@ export default defineBackground({
       prepareDocxRuntime,
       runJobsWake,
       runResearch,
+      resolveResearchScope,
       cancelResearch,
     });
     if (handled) {
@@ -548,5 +578,25 @@ export default defineBackground({
       console.error("tab observer persistence failed", err)
     );
   });
+
+  // A freshly-started MV3 worker can become visible to Chrome before its
+  // module has finished evaluating and the listeners above are registered.
+  // Reconcile every window's active tab after registration so a navigation
+  // that raced worker start (or happened while the worker was asleep) is not
+  // lost. The serialized observer session deduplicates a later listener event.
+  void chrome.tabs
+    .query({ active: true })
+    .then((tabs) =>
+      Promise.all(
+        tabs.map((tab) =>
+          feed(tab.windowId, tab.url).catch((err) =>
+            console.error("tab observer start-up reconciliation failed", err)
+          )
+        )
+      )
+    )
+    .catch((err) =>
+      console.error("active tab start-up reconciliation failed", err)
+    );
   },
 });

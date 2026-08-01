@@ -111,6 +111,38 @@ describe("REST scope catalog providers", () => {
     expect(second.candidates[0]?.status).toBe("archived");
   });
 
+  test("combines an exact Confluence key filter with the bounded name-search page", async () => {
+    const requests: string[] = [];
+    globalThis.fetch = mock((url: string) => {
+      requests.push(url);
+      const exact = url.includes("keys=DOCSY");
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            results: exact
+              ? [{ id: "1", key: "DOCSY", name: "Documentation", status: "current" }]
+              : [{ id: "2", key: "OTHER", name: "Other", status: "current" }],
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      );
+    }) as unknown as typeof fetch;
+
+    const providers = createRestScopeCatalogProviders(profile, tenantOrigin, {
+      now: () => "2026-07-31T12:00:00.000Z",
+    });
+    const page = await providers.confluence.listSpaces({
+      query: "DOCSY",
+      includeArchived: false,
+      maxCandidates: 20,
+      signal: new AbortController().signal,
+    });
+
+    expect(requests).toHaveLength(2);
+    expect(requests.some((request) => request.includes("keys=DOCSY"))).toBe(true);
+    expect(page.candidates.map((candidate) => candidate.key)).toEqual(["DOCSY"]);
+  });
+
   test("rejects references outside the bound tenant", async () => {
     const providers = createRestScopeCatalogProviders(profile, tenantOrigin);
     const resolved = await providers.resolveReference({
@@ -232,7 +264,7 @@ describe("REST scope catalog providers", () => {
 
     expect(first.candidates.map((item) => item.key)).toEqual(["ALPHA", "BETA"]);
     expect(first.nextProviderCursor).toBe("confluence-spaces:current:opaque%2Bcursor");
-    expect(requests[1]).toContain("cursor=opaque%2Bcursor");
+    expect(requests.some((request) => request.includes("cursor=opaque%2Bcursor"))).toBe(true);
     expect(second.nextProviderCursor).toBe("confluence-spaces:archived:");
     expect(third.candidates.map((item) => [item.key, item.status])).toEqual([
       ["ARCH", "archived"],

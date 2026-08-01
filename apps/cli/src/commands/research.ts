@@ -25,17 +25,21 @@ import {
   RESEARCH_REQUESTED_RECONCILIATIONS_V1,
   RESEARCH_REQUEST_SCHEMA_V1,
   RESEARCH_SCOPE_EXPANSION_MODES_V1,
+  ResearchScopeCatalogBroker,
   ResearchRunBudget,
   createResearchKeyScopeSeedV1,
   createRestResearchProviders,
+  createRestScopeCatalogProviders,
   formatResearchOneShotEventV1,
   normalizeResearchOneShotPolicyV1,
   normalizeResearchRequestV1,
+  prepareResearchScopePreflightV1,
   runResearchAgent,
   type ResearchOneShotPolicyV1,
   type ResearchRequestV1,
   type ResearchOneShotEventV1,
   type ResearchReportV1,
+  type ResearchScopePreflightOutcomeV1,
   type ResearchScopeSeedV1,
   type ResearchWorkspace,
 } from "@atlcli/research/node";
@@ -122,6 +126,10 @@ export interface ResearchCliAgentInput {
 
 export interface ResearchCliDependencies {
   resolveProfile(name?: string): Promise<Profile | undefined>;
+  resolveScope(input: {
+    profile: Profile;
+    request: ResearchRequestV1;
+  }): Promise<ResearchScopePreflightOutcomeV1>;
   readApiKey(): string | undefined;
   createWorkspace(): Promise<ResearchCliWorkspace>;
   runAgent(input: ResearchCliAgentInput): Promise<ResearchReportV1>;
@@ -369,6 +377,21 @@ export const defaultResearchCliDependencies: ResearchCliDependencies = {
   async resolveProfile(name) {
     return getActiveProfile(await loadConfig(), name);
   },
+  async resolveScope(input) {
+    const broker = new ResearchScopeCatalogBroker({
+      tenantOrigin: input.request.scope.siteOrigin,
+      providers: createRestScopeCatalogProviders(
+        input.profile,
+        input.request.scope.siteOrigin,
+        { allowProfileAuth: true },
+      ),
+    });
+    return prepareResearchScopePreflightV1({
+      request: input.request,
+      catalog: broker,
+      automaticApproval: true,
+    });
+  },
   readApiKey: () => process.env.ANTHROPIC_API_KEY,
   createWorkspace: () => FileSystemResearchWorkspace.createTemporary(),
   async runAgent(input) {
@@ -423,7 +446,25 @@ export async function handleResearch(
   if (!profile) {
     dependencies.fail(opts, 1, ERROR_CODES.AUTH, "No active profile found. Run `atlcli auth login` or select --profile.", { profile: input.profile });
   }
-  const request = buildResearchRequest(input, profile);
+  const initialRequest = buildResearchRequest(input, profile);
+  const scopeOutcome = await dependencies.resolveScope({
+    profile,
+    request: initialRequest,
+  });
+  if (scopeOutcome.kind === "clarification_required") {
+    const clarification = scopeOutcome.clarification;
+    dependencies.writeStderr(
+      `[research] stop_reason=clarification-required reason=${clarification.reason} mention=${clarification.mentionId} candidates=${clarification.candidateIds.length}\n`,
+    );
+    dependencies.fail(
+      opts,
+      2,
+      ERROR_CODES.VALIDATION,
+      `Research scope requires clarification. ${clarification.rerunGuidance.join(" ")}`,
+      { outcome: scopeOutcome },
+    );
+  }
+  const request = scopeOutcome.request;
   const researchGraph = composeStandardResearchGraphV1(request.question, {
     scope: request.scope,
     scopeBindings: request.scopeSeeds?.map((seed) => seed.binding),

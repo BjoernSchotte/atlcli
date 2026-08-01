@@ -147,6 +147,23 @@ function matchesQuery(candidate: ResearchScopeCandidateV1, query: string | undef
     .includes(normalized);
 }
 
+function exactSpaceKeyQuery(value: string | undefined): string | undefined {
+  const query = value?.trim();
+  return query && /^[A-Za-z0-9~][A-Za-z0-9._~-]{0,254}$/.test(query)
+    ? query
+    : undefined;
+}
+
+function uniqueSpaces(spaces: readonly ConfluenceSpace[]): ConfluenceSpace[] {
+  const seen = new Set<string>();
+  return spaces.filter((space) => {
+    const id = `${space.id}:${space.key}`;
+    if (seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
+}
+
 function projectOffset(cursor: string | undefined): number {
   if (!cursor) return 0;
   const match = /^jira-projects:(\d+)$/.exec(cursor);
@@ -242,14 +259,25 @@ export function createRestScopeCatalogProviders(
       async listSpaces(input): Promise<ResearchScopeCatalogProviderPageV1> {
         input.signal.throwIfAborted();
         const decoded = decodeSpaceCursor(input.providerCursor);
-        const page = await safeProviderRead(() => confluence.listSpacesV2({
-          limit: input.maxCandidates,
-          cursor: decoded.cursor,
-          status: decoded.phase,
-          signal: input.signal,
-        }));
+        const exactKey = !decoded.cursor ? exactSpaceKeyQuery(input.query) : undefined;
+        const [page, exactPage] = await Promise.all([
+          safeProviderRead(() => confluence.listSpacesV2({
+            limit: input.maxCandidates,
+            cursor: decoded.cursor,
+            status: decoded.phase,
+            signal: input.signal,
+          })),
+          exactKey
+            ? safeProviderRead(() => confluence.listSpacesV2({
+                limit: 1,
+                status: decoded.phase,
+                keys: [exactKey],
+                signal: input.signal,
+              }))
+            : Promise.resolve(undefined),
+        ]);
         const freshnessAt = currentTimestamp(options);
-        const candidates = page.spaces
+        const candidates = uniqueSpaces([...(exactPage?.spaces ?? []), ...page.spaces])
           .map((space) => spaceCandidate(space, origin, freshnessAt))
           .filter((candidate): candidate is ResearchScopeCandidateV1 => Boolean(candidate))
           .filter((candidate) => input.includeArchived || candidate.status !== "archived")
