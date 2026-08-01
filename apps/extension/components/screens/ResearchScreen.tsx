@@ -23,13 +23,16 @@ import {
 } from "../../utils/research/contracts.js";
 import { formatResearchOneShotEventV1 } from "../../utils/research/events.js";
 import { createResearchKeyScopeSeedV1 } from "@atlcli/research/scope-discovery";
+import { prepareResearchBriefPreflightV1 } from "@atlcli/research";
 import type {
-  ResearchClarificationRequiredV1,
+  ResearchBriefClarificationRequiredV1,
   ResearchScopeCandidateSelectionV1,
   ResearchScopeCandidateV1,
+  ResearchScopeClarificationRequiredV1,
 } from "@atlcli/research";
 import {
-  composeStandardResearchGraphV1,
+  composeResearchGraphV1,
+  createStandardResearchBriefV1,
   researchPlanApprovalRequiredV1,
   type ResearchPlanApprovalRequiredV1,
 } from "@atlcli/research/graph";
@@ -149,7 +152,7 @@ export function inferResearchScope(input: {
 
 interface PendingScopeClarification {
   request: ResearchRequestV1;
-  clarification: ResearchClarificationRequiredV1;
+  clarification: ResearchScopeClarificationRequiredV1;
   candidateChoices: ResearchScopeCandidateV1[];
   selectedCandidateId: string;
 }
@@ -157,6 +160,44 @@ interface PendingScopeClarification {
 interface ScopePreflightRetry {
   request: ResearchRequestV1;
   selection: ResearchScopeCandidateSelectionV1;
+}
+
+export function ResearchBriefClarificationNotice({
+  clarification,
+}: {
+  clarification: ResearchBriefClarificationRequiredV1;
+}): React.JSX.Element {
+  const t = useT();
+  return (
+    <Alert tone="muted" role="status" data-testid="research-brief-clarification-required">
+      <AlertTitle>{t("research.briefClarification")}</AlertTitle>
+      <p className="m-0 mt-1">
+        {t("research.briefClarification.value", {
+          revision: String(clarification.briefRevision),
+        })}
+      </p>
+      {clarification.questions.length > 0 && (
+        <div className="mt-2">
+          <strong className="text-xs">{t("research.briefClarification.questions")}</strong>
+          <ul className="mb-0 mt-1 pl-5 text-xs">
+            {clarification.questions.map((question) => (
+              <li key={question.id}>{question.prompt}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {clarification.assumptionsRequiringDecision.length > 0 && (
+        <div className="mt-2">
+          <strong className="text-xs">{t("research.briefClarification.assumptions")}</strong>
+          <ul className="mb-0 mt-1 pl-5 text-xs">
+            {clarification.assumptionsRequiringDecision.map((assumption) => (
+              <li key={assumption.id}>{assumption.text}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </Alert>
+  );
 }
 
 function currentSite(page: ScreenProps["page"]): {
@@ -316,6 +357,8 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
     useState<ResearchPlanApprovalRequiredV1 | null>(null);
   const [scopeClarification, setScopeClarification] =
     useState<PendingScopeClarification | null>(null);
+  const [briefClarification, setBriefClarification] =
+    useState<ResearchBriefClarificationRequiredV1 | null>(null);
   const [submittedRequest, setSubmittedRequest] =
     useState<ResearchRequestV1 | null>(null);
   const [actionStatus, setActionStatus] = useState("");
@@ -338,6 +381,7 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
     setError(null);
     setPlanApprovalRequired(null);
     setScopeClarification(null);
+    setBriefClarification(null);
     setActionStatus("");
     if (!retry) setSubmittedRequest(null);
     try {
@@ -396,13 +440,21 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
         scopeExpansionMode: scopeExpansion,
         requestedReconciliation: reconciliation,
       });
-      const graph = composeStandardResearchGraphV1(request.question, {
+      const briefOutcome = prepareResearchBriefPreflightV1(createStandardResearchBriefV1(request.question, {
         scope: request.scope,
         scopeBindings: request.scopeSeeds?.map((seed) => seed.binding),
         limits: request.limits,
         asOf: new Date().toISOString(),
         policy,
-      });
+      }));
+      if (briefOutcome.kind === "clarification_required") {
+        setBriefClarification(briefOutcome.clarification);
+        setActivity([]);
+        setReport(null);
+        setProgress("");
+        return;
+      }
+      const graph = composeResearchGraphV1(briefOutcome.brief);
       const approvalRequired = researchPlanApprovalRequiredV1(graph);
       if (approvalRequired) {
         setPlanApprovalRequired(approvalRequired);
@@ -774,6 +826,10 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
             ))}
           </ul>
         </Alert>
+      )}
+
+      {briefClarification && (
+        <ResearchBriefClarificationNotice clarification={briefClarification} />
       )}
 
       {report && (

@@ -477,28 +477,18 @@ export interface ComposeStandardResearchGraphOptionsV1 {
 }
 
 /**
- * Compose the one-shot graph used by both productive hosts. Callers must pass
- * their normalized request scope and limits; the defaults remain only for
- * deterministic characterization tests and backwards-compatible fixtures.
+ * Construct the common host-owned one-shot brief before any graph/model work.
+ * Callers that need to surface clarification must run the brief preflight
+ * before passing this value to `composeResearchGraphV1`.
  */
-export function composeStandardResearchGraphV1(
+export function createStandardResearchBriefV1(
   question: string,
   options: ComposeStandardResearchGraphOptionsV1 = {},
-): ResearchGraphV1 {
-  if (
-    options.scope &&
-    options.scope.jiraProjectKeys.length === 0 &&
-    options.scope.confluenceSpaceKeys.length === 0
-  ) {
-    throw new ResearchContractError(
-      "clarification-required",
-      "Research scope must be resolved before graph composition.",
-    );
-  }
+): ResearchBriefV1 {
   const policy = normalizeResearchOneShotPolicyV1(
     options.policy ?? DEFAULT_RESEARCH_ONE_SHOT_POLICY_V1,
   );
-  return composeResearchGraphV1(createResearchBriefV1({
+  return createResearchBriefV1({
     sessionId: "research-session:standard",
     turnId: "research-turn:standard",
     objective: question,
@@ -518,7 +508,29 @@ export function composeStandardResearchGraphV1(
     requestedPlanApproval: policy.requestedPlanApproval,
     requestedReconciliation: policy.requestedReconciliation,
     ...(options.limits ? { limits: options.limits } : {}),
-  }));
+  });
+}
+
+/**
+ * Compose the one-shot graph used by both productive hosts. Callers must pass
+ * their normalized request scope and limits; the defaults remain only for
+ * deterministic characterization tests and backwards-compatible fixtures.
+ */
+export function composeStandardResearchGraphV1(
+  question: string,
+  options: ComposeStandardResearchGraphOptionsV1 = {},
+): ResearchGraphV1 {
+  if (
+    options.scope &&
+    options.scope.jiraProjectKeys.length === 0 &&
+    options.scope.confluenceSpaceKeys.length === 0
+  ) {
+    throw new ResearchContractError(
+      "clarification-required",
+      "Research scope must be resolved before graph composition.",
+    );
+  }
+  return composeResearchGraphV1(createStandardResearchBriefV1(question, options));
 }
 
 export function composeResearchGraphV1(

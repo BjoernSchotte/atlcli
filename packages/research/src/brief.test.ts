@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   briefRequiresClarificationV1,
   createResearchBriefV1,
+  prepareResearchBriefPreflightV1,
   resolveResearchEffortV1,
   resolveResearchPlanApprovalV1,
 } from "./brief.js";
@@ -81,6 +82,59 @@ describe("host-owned research brief", () => {
         status: "proposed",
       }],
     }))).toBe(false);
+  });
+
+  test("returns a typed one-shot clarification before graph composition", () => {
+    const brief = create({
+      revision: 4,
+      clarificationQuestions: [{
+        id: "clarification:scope",
+        prompt: "Which project should be used?",
+        required: true,
+      }, {
+        id: "clarification:optional",
+        prompt: "Which audience should receive the report?",
+        required: false,
+      }],
+      assumptions: [{
+        id: "assumption:time-window",
+        text: "Use the last seven days.",
+        requiresUserDecision: true,
+        status: "proposed",
+      }, {
+        id: "assumption:format",
+        text: "Use Markdown.",
+        requiresUserDecision: false,
+        status: "proposed",
+      }],
+    });
+    expect(prepareResearchBriefPreflightV1(brief)).toEqual({
+      schema: "atlcli.research-brief-preflight-outcome/v1",
+      kind: "clarification_required",
+      clarification: {
+        schema: "atlcli.research-clarification-required/v1",
+        sessionId: "research-session:test",
+        turnId: "research-turn:test",
+        briefRevision: 4,
+        questions: [{
+          id: "clarification:scope",
+          prompt: "Which project should be used?",
+          required: true,
+        }],
+        assumptionsRequiringDecision: [{
+          id: "assumption:time-window",
+          text: "Use the last seven days.",
+          requiresUserDecision: true,
+          status: "proposed",
+        }],
+      },
+    });
+    const ready = prepareResearchBriefPreflightV1(create());
+    expect(ready).toMatchObject({
+      schema: "atlcli.research-brief-preflight-outcome/v1",
+      kind: "ready",
+      brief: { schema: "atlcli.research-brief/v1" },
+    });
   });
 
   test("rejects silently accepted new assumptions and invalid time context", () => {

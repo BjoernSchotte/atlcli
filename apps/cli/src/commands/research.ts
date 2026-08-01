@@ -33,8 +33,10 @@ import {
   formatResearchOneShotEventV1,
   normalizeResearchOneShotPolicyV1,
   normalizeResearchRequestV1,
+  prepareResearchBriefPreflightV1,
   prepareResearchScopePreflightV1,
   runResearchAgent,
+  type ResearchBriefPreflightOutcomeV1,
   type ResearchOneShotPolicyV1,
   type ResearchRequestV1,
   type ResearchOneShotEventV1,
@@ -44,7 +46,8 @@ import {
   type ResearchWorkspace,
 } from "@atlcli/research/node";
 import {
-  composeStandardResearchGraphV1,
+  composeResearchGraphV1,
+  createStandardResearchBriefV1,
   projectSelectedResearchRolesV1,
   researchPlanApprovalRequiredV1,
   type ResearchGraphV1,
@@ -130,6 +133,12 @@ export interface ResearchCliDependencies {
     profile: Profile;
     request: ResearchRequestV1;
   }): Promise<ResearchScopePreflightOutcomeV1>;
+  prepareBrief(input: {
+    request: ResearchRequestV1;
+    policy: ResearchOneShotPolicyV1;
+    asOf: string;
+    timezone?: string;
+  }): ResearchBriefPreflightOutcomeV1;
   readApiKey(): string | undefined;
   createWorkspace(): Promise<ResearchCliWorkspace>;
   runAgent(input: ResearchCliAgentInput): Promise<ResearchReportV1>;
@@ -395,6 +404,16 @@ export const defaultResearchCliDependencies: ResearchCliDependencies = {
       automaticApproval: true,
     });
   },
+  prepareBrief(input) {
+    return prepareResearchBriefPreflightV1(createStandardResearchBriefV1(input.request.question, {
+      scope: input.request.scope,
+      scopeBindings: input.request.scopeSeeds?.map((seed) => seed.binding),
+      limits: input.request.limits,
+      asOf: input.asOf,
+      timezone: input.timezone,
+      policy: input.policy,
+    }));
+  },
   readApiKey: () => process.env.ANTHROPIC_API_KEY,
   createWorkspace: () => FileSystemResearchWorkspace.createTemporary(),
   async runAgent(input) {
@@ -479,14 +498,26 @@ export async function handleResearch(
     );
   }
   const request = scopeOutcome.request;
-  const researchGraph = composeStandardResearchGraphV1(request.question, {
-    scope: request.scope,
-    scopeBindings: request.scopeSeeds?.map((seed) => seed.binding),
-    limits: request.limits,
+  const briefOutcome = dependencies.prepareBrief({
+    request,
+    policy: input.policy,
     asOf: new Date().toISOString(),
     timezone: input.timezone,
-    policy: input.policy,
   });
+  if (briefOutcome.kind === "clarification_required") {
+    const clarification = briefOutcome.clarification;
+    dependencies.writeStderr(
+      `[research] stop_reason=clarification-required brief_revision=${clarification.briefRevision} questions=${clarification.questions.length} assumptions=${clarification.assumptionsRequiringDecision.length}\n`,
+    );
+    dependencies.fail(
+      opts,
+      2,
+      ERROR_CODES.VALIDATION,
+      "Research brief requires clarification. Clarify the required question or decision assumption and rerun the one-shot command.",
+      { outcome: briefOutcome },
+    );
+  }
+  const researchGraph = composeResearchGraphV1(briefOutcome.brief);
   const selectedRoles = projectSelectedResearchRolesV1(researchGraph);
   dependencies.writeStderr(
     `[research] brief_revision=${researchGraph.basedOnBriefRevision} graph_revision=${researchGraph.revision} graph_status=${researchGraph.status} effort=${researchGraph.resolvedEffort} plan_approval=${researchGraph.approvalEnvelope.status} scope_expansion=${researchGraph.approvalEnvelope.scopeDiscoveryPolicy.expansionMode} reconciliation=${researchGraph.reconciliationPolicy.mode}\n`,

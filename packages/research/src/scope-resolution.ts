@@ -4,6 +4,10 @@ import {
   type ResearchScopeV1,
 } from "./contracts.js";
 import type {
+  ResearchBriefAssumptionV1,
+  ResearchClarificationQuestionV1,
+} from "./brief.js";
+import type {
   ResearchReferenceResolveOutputV1,
   ResearchScopeCatalogCapabilityId,
   ResearchScopeCatalogPageV1,
@@ -31,7 +35,8 @@ export type ResearchScopeClarificationReasonV1 =
   | "incomplete"
   | "not_found";
 
-export interface ResearchClarificationRequiredV1 {
+/** A bounded clarification caused by unresolved whole-scope selection. */
+export interface ResearchScopeClarificationRequiredV1 {
   schema: typeof RESEARCH_CLARIFICATION_REQUIRED_SCHEMA_V1;
   reason: ResearchScopeClarificationReasonV1;
   mentionId: string;
@@ -39,6 +44,37 @@ export interface ResearchClarificationRequiredV1 {
   productHint?: "jira" | "confluence";
   entityKindHint?: "project" | "space" | "issue" | "page";
   rerunGuidance: string[];
+}
+
+/**
+ * A bounded one-shot stop caused by the host-owned research brief itself.
+ * T3 returns this value to the presenter instead of creating a graph or
+ * attempting an undurable clarification wait. T4 persists the same data as a
+ * revision-fenced session transition.
+ */
+export interface ResearchBriefClarificationRequiredV1 {
+  schema: typeof RESEARCH_CLARIFICATION_REQUIRED_SCHEMA_V1;
+  sessionId: string;
+  turnId: string;
+  briefRevision: number;
+  questions: ResearchClarificationQuestionV1[];
+  assumptionsRequiringDecision: ResearchBriefAssumptionV1[];
+}
+
+export type ResearchClarificationRequiredV1 =
+  | ResearchScopeClarificationRequiredV1
+  | ResearchBriefClarificationRequiredV1;
+
+export function isResearchScopeClarificationRequiredV1(
+  value: ResearchClarificationRequiredV1,
+): value is ResearchScopeClarificationRequiredV1 {
+  return "mentionId" in value;
+}
+
+export function isResearchBriefClarificationRequiredV1(
+  value: ResearchClarificationRequiredV1,
+): value is ResearchBriefClarificationRequiredV1 {
+  return "briefRevision" in value;
 }
 
 export interface ResearchScopeCandidateSelectionV1 {
@@ -92,7 +128,7 @@ export type ResearchInitialScopeResolutionOutcomeV1 =
     }
   | {
       kind: "clarification_required";
-      clarification: ResearchClarificationRequiredV1;
+      clarification: ResearchScopeClarificationRequiredV1;
       candidateChoices: ResearchScopeCandidateV1[];
       resolutions: ResearchScopeResolutionV1[];
     };
@@ -179,7 +215,7 @@ function clarification(
   mention: ResearchScopeMentionV1,
   reason: ResearchScopeClarificationReasonV1,
   candidateIds: readonly string[],
-): ResearchClarificationRequiredV1 {
+): ResearchScopeClarificationRequiredV1 {
   const rerunGuidance = mention.entityKindHint === "project" || mention.productHint === "jira"
     ? ["Pass an exact Jira project with --project <KEY>."]
     : mention.entityKindHint === "space" || mention.productHint === "confluence"

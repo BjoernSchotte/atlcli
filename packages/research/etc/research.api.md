@@ -150,6 +150,9 @@ export declare function createRestResearchProviders(profile: Profile, request: R
 // export: createRestScopeCatalogProviders
 export declare function createRestScopeCatalogProviders(profile: Profile, expectedTenantOrigin: string, options?: RestScopeCatalogProviderOptions): ResearchScopeCatalogProvidersV1;
 
+// export: createStandardResearchBriefV1
+export declare function createStandardResearchBriefV1(question: string, options?: ComposeStandardResearchGraphOptionsV1): ResearchBriefV1;
+
 // export: decodeResearchGetInputV1
 export declare function decodeResearchGetInputV1(tool: "jira.issue.get" | "wiki.page.get", value: unknown): ResearchGetInputV1;
 
@@ -223,8 +226,14 @@ export declare class InMemoryResearchSubagentDispatchPort implements ResearchSub
     packet(packetRef: string): ResearchAcceptedPacketV1 | undefined;
 }
 
+// export: isResearchBriefClarificationRequiredV1
+export declare function isResearchBriefClarificationRequiredV1(value: ResearchClarificationRequiredV1): value is ResearchBriefClarificationRequiredV1;
+
 // export: isResearchOneShotEventV1
 export declare function isResearchOneShotEventV1(value: unknown): value is ResearchOneShotEventV1;
+
+// export: isResearchScopeClarificationRequiredV1
+export declare function isResearchScopeClarificationRequiredV1(value: ResearchClarificationRequiredV1): value is ResearchScopeClarificationRequiredV1;
 
 // export: JiraResearchDetail
 export interface JiraResearchDetail extends JiraResearchSummary {
@@ -294,6 +303,9 @@ export declare function parseResearchReconciliationInputV1(value: unknown): Rese
 
 // export: parseResearchTaskBodyV1
 export declare function parseResearchTaskBodyV1(schema: ResearchTaskOutputSchemaV1, value: unknown): ResearchPacketBodyV1 | ReconciliationBodyV1 | ResearchAgentDraftV1;
+
+// export: prepareResearchBriefPreflightV1
+export declare function prepareResearchBriefPreflightV1(brief: ResearchBriefV1): ResearchBriefPreflightOutcomeV1;
 
 // export: prepareResearchScopePreflightV1
 export declare function prepareResearchScopePreflightV1(input: {
@@ -400,6 +412,9 @@ export declare const RESEARCH_AGENT_DRAFT_SCHEMA_V1: z.ZodObject<{
 
 // export: RESEARCH_APPROVAL_ENVELOPE_SCHEMA_V1
 export declare const RESEARCH_APPROVAL_ENVELOPE_SCHEMA_V1: "atlcli.research-approval-envelope/v1";
+
+// export: RESEARCH_BRIEF_PREFLIGHT_OUTCOME_SCHEMA_V1
+export declare const RESEARCH_BRIEF_PREFLIGHT_OUTCOME_SCHEMA_V1: "atlcli.research-brief-preflight-outcome/v1";
 
 // export: RESEARCH_BRIEF_SCHEMA_V1
 export declare const RESEARCH_BRIEF_SCHEMA_V1: "atlcli.research-brief/v1";
@@ -754,6 +769,27 @@ export interface ResearchBriefAssumptionV1 {
     status: "proposed" | "accepted" | "rejected";
 }
 
+// export: ResearchBriefClarificationRequiredV1
+export interface ResearchBriefClarificationRequiredV1 {
+    schema: typeof RESEARCH_CLARIFICATION_REQUIRED_SCHEMA_V1;
+    sessionId: string;
+    turnId: string;
+    briefRevision: number;
+    questions: ResearchClarificationQuestionV1[];
+    assumptionsRequiringDecision: ResearchBriefAssumptionV1[];
+}
+
+// export: ResearchBriefPreflightOutcomeV1
+export type ResearchBriefPreflightOutcomeV1 = {
+    schema: typeof RESEARCH_BRIEF_PREFLIGHT_OUTCOME_SCHEMA_V1;
+    kind: "ready";
+    brief: ResearchBriefV1;
+} | {
+    schema: typeof RESEARCH_BRIEF_PREFLIGHT_OUTCOME_SCHEMA_V1;
+    kind: "clarification_required";
+    clarification: ResearchBriefClarificationRequiredV1;
+};
+
 // export: ResearchBriefV1
 export interface ResearchBriefV1 {
     schema: typeof RESEARCH_BRIEF_SCHEMA_V1;
@@ -821,15 +857,7 @@ export interface ResearchClarificationQuestionV1 {
 }
 
 // export: ResearchClarificationRequiredV1
-export interface ResearchClarificationRequiredV1 {
-    schema: typeof RESEARCH_CLARIFICATION_REQUIRED_SCHEMA_V1;
-    reason: ResearchScopeClarificationReasonV1;
-    mentionId: string;
-    candidateIds: string[];
-    productHint?: "jira" | "confluence";
-    entityKindHint?: "project" | "space" | "issue" | "page";
-    rerunGuidance: string[];
-}
+export type ResearchClarificationRequiredV1 = ResearchScopeClarificationRequiredV1 | ResearchBriefClarificationRequiredV1;
 
 // export: ResearchCompositionReasonV1
 export type ResearchCompositionReasonV1 = (typeof RESEARCH_COMPOSITION_REASONS_V1)[number];
@@ -1317,7 +1345,7 @@ export type ResearchInitialScopeResolutionOutcomeV1 = {
     resolutions: ResearchScopeResolutionV1[];
 } | {
     kind: "clarification_required";
-    clarification: ResearchClarificationRequiredV1;
+    clarification: ResearchScopeClarificationRequiredV1;
     candidateChoices: ResearchScopeCandidateV1[];
     resolutions: ResearchScopeResolutionV1[];
 };
@@ -1771,6 +1799,17 @@ export interface ResearchScopeCatalogProvidersV1 {
 // export: ResearchScopeClarificationReasonV1
 export type ResearchScopeClarificationReasonV1 = "ambiguous" | "weak_match" | "archived_only" | "unavailable" | "incomplete" | "not_found";
 
+// export: ResearchScopeClarificationRequiredV1
+export interface ResearchScopeClarificationRequiredV1 {
+    schema: typeof RESEARCH_CLARIFICATION_REQUIRED_SCHEMA_V1;
+    reason: ResearchScopeClarificationReasonV1;
+    mentionId: string;
+    candidateIds: string[];
+    productHint?: "jira" | "confluence";
+    entityKindHint?: "project" | "space" | "issue" | "page";
+    rerunGuidance: string[];
+}
+
 // export: ResearchScopeDiscoveryPolicyV1
 export interface ResearchScopeDiscoveryPolicyV1 {
     schema: typeof RESEARCH_SCOPE_DISCOVERY_POLICY_SCHEMA_V1;
@@ -1851,7 +1890,7 @@ export type ResearchScopePreflightOutcomeV1 = {
 } | {
     schema: typeof RESEARCH_SCOPE_PREFLIGHT_OUTCOME_SCHEMA_V1;
     kind: "clarification_required";
-    clarification: ResearchClarificationRequiredV1;
+    clarification: ResearchScopeClarificationRequiredV1;
     candidateChoices: ResearchScopeCandidateV1[];
     mentions: ResearchScopeMentionV1[];
     resolutions: ResearchScopeResolutionV1[];
@@ -2315,6 +2354,9 @@ export declare function createResearchScopeBindingV1(input: {
 // export: createResearchScopeExpansionProposalV1
 export declare function createResearchScopeExpansionProposalV1(input: Omit<ResearchScopeExpansionProposalV1, "schema">): ResearchScopeExpansionProposalV1;
 
+// export: createStandardResearchBriefV1
+export declare function createStandardResearchBriefV1(question: string, options?: ComposeStandardResearchGraphOptionsV1): ResearchBriefV1;
+
 // export: decodeResearchGetInputV1
 export declare function decodeResearchGetInputV1(tool: "jira.issue.get" | "wiki.page.get", value: unknown): ResearchGetInputV1;
 
@@ -2388,8 +2430,14 @@ export declare class InMemoryResearchSubagentDispatchPort implements ResearchSub
     packet(packetRef: string): ResearchAcceptedPacketV1 | undefined;
 }
 
+// export: isResearchBriefClarificationRequiredV1
+export declare function isResearchBriefClarificationRequiredV1(value: ResearchClarificationRequiredV1): value is ResearchBriefClarificationRequiredV1;
+
 // export: isResearchOneShotEventV1
 export declare function isResearchOneShotEventV1(value: unknown): value is ResearchOneShotEventV1;
+
+// export: isResearchScopeClarificationRequiredV1
+export declare function isResearchScopeClarificationRequiredV1(value: ResearchClarificationRequiredV1): value is ResearchScopeClarificationRequiredV1;
 
 // export: JiraResearchDetail
 export interface JiraResearchDetail extends JiraResearchSummary {
@@ -2459,6 +2507,9 @@ export declare function parseResearchReconciliationInputV1(value: unknown): Rese
 
 // export: parseResearchTaskBodyV1
 export declare function parseResearchTaskBodyV1(schema: ResearchTaskOutputSchemaV1, value: unknown): ResearchPacketBodyV1 | ReconciliationBodyV1 | ResearchAgentDraftV1;
+
+// export: prepareResearchBriefPreflightV1
+export declare function prepareResearchBriefPreflightV1(brief: ResearchBriefV1): ResearchBriefPreflightOutcomeV1;
 
 // export: prepareResearchScopePreflightV1
 export declare function prepareResearchScopePreflightV1(input: {
@@ -2565,6 +2616,9 @@ export declare const RESEARCH_AGENT_DRAFT_SCHEMA_V1: z.ZodObject<{
 
 // export: RESEARCH_APPROVAL_ENVELOPE_SCHEMA_V1
 export declare const RESEARCH_APPROVAL_ENVELOPE_SCHEMA_V1: "atlcli.research-approval-envelope/v1";
+
+// export: RESEARCH_BRIEF_PREFLIGHT_OUTCOME_SCHEMA_V1
+export declare const RESEARCH_BRIEF_PREFLIGHT_OUTCOME_SCHEMA_V1: "atlcli.research-brief-preflight-outcome/v1";
 
 // export: RESEARCH_BRIEF_SCHEMA_V1
 export declare const RESEARCH_BRIEF_SCHEMA_V1: "atlcli.research-brief/v1";
@@ -2919,6 +2973,27 @@ export interface ResearchBriefAssumptionV1 {
     status: "proposed" | "accepted" | "rejected";
 }
 
+// export: ResearchBriefClarificationRequiredV1
+export interface ResearchBriefClarificationRequiredV1 {
+    schema: typeof RESEARCH_CLARIFICATION_REQUIRED_SCHEMA_V1;
+    sessionId: string;
+    turnId: string;
+    briefRevision: number;
+    questions: ResearchClarificationQuestionV1[];
+    assumptionsRequiringDecision: ResearchBriefAssumptionV1[];
+}
+
+// export: ResearchBriefPreflightOutcomeV1
+export type ResearchBriefPreflightOutcomeV1 = {
+    schema: typeof RESEARCH_BRIEF_PREFLIGHT_OUTCOME_SCHEMA_V1;
+    kind: "ready";
+    brief: ResearchBriefV1;
+} | {
+    schema: typeof RESEARCH_BRIEF_PREFLIGHT_OUTCOME_SCHEMA_V1;
+    kind: "clarification_required";
+    clarification: ResearchBriefClarificationRequiredV1;
+};
+
 // export: ResearchBriefV1
 export interface ResearchBriefV1 {
     schema: typeof RESEARCH_BRIEF_SCHEMA_V1;
@@ -2986,15 +3061,7 @@ export interface ResearchClarificationQuestionV1 {
 }
 
 // export: ResearchClarificationRequiredV1
-export interface ResearchClarificationRequiredV1 {
-    schema: typeof RESEARCH_CLARIFICATION_REQUIRED_SCHEMA_V1;
-    reason: ResearchScopeClarificationReasonV1;
-    mentionId: string;
-    candidateIds: string[];
-    productHint?: "jira" | "confluence";
-    entityKindHint?: "project" | "space" | "issue" | "page";
-    rerunGuidance: string[];
-}
+export type ResearchClarificationRequiredV1 = ResearchScopeClarificationRequiredV1 | ResearchBriefClarificationRequiredV1;
 
 // export: ResearchCompositionReasonV1
 export type ResearchCompositionReasonV1 = (typeof RESEARCH_COMPOSITION_REASONS_V1)[number];
@@ -3482,7 +3549,7 @@ export type ResearchInitialScopeResolutionOutcomeV1 = {
     resolutions: ResearchScopeResolutionV1[];
 } | {
     kind: "clarification_required";
-    clarification: ResearchClarificationRequiredV1;
+    clarification: ResearchScopeClarificationRequiredV1;
     candidateChoices: ResearchScopeCandidateV1[];
     resolutions: ResearchScopeResolutionV1[];
 };
@@ -3936,6 +4003,17 @@ export interface ResearchScopeCatalogProvidersV1 {
 // export: ResearchScopeClarificationReasonV1
 export type ResearchScopeClarificationReasonV1 = "ambiguous" | "weak_match" | "archived_only" | "unavailable" | "incomplete" | "not_found";
 
+// export: ResearchScopeClarificationRequiredV1
+export interface ResearchScopeClarificationRequiredV1 {
+    schema: typeof RESEARCH_CLARIFICATION_REQUIRED_SCHEMA_V1;
+    reason: ResearchScopeClarificationReasonV1;
+    mentionId: string;
+    candidateIds: string[];
+    productHint?: "jira" | "confluence";
+    entityKindHint?: "project" | "space" | "issue" | "page";
+    rerunGuidance: string[];
+}
+
 // export: ResearchScopeDiscoveryPolicyV1
 export interface ResearchScopeDiscoveryPolicyV1 {
     schema: typeof RESEARCH_SCOPE_DISCOVERY_POLICY_SCHEMA_V1;
@@ -4016,7 +4094,7 @@ export type ResearchScopePreflightOutcomeV1 = {
 } | {
     schema: typeof RESEARCH_SCOPE_PREFLIGHT_OUTCOME_SCHEMA_V1;
     kind: "clarification_required";
-    clarification: ResearchClarificationRequiredV1;
+    clarification: ResearchScopeClarificationRequiredV1;
     candidateChoices: ResearchScopeCandidateV1[];
     mentions: ResearchScopeMentionV1[];
     resolutions: ResearchScopeResolutionV1[];
@@ -4478,6 +4556,9 @@ export declare function createRestResearchProviders(profile: Profile, request: R
 // export: createRestScopeCatalogProviders
 export declare function createRestScopeCatalogProviders(profile: Profile, expectedTenantOrigin: string, options?: RestScopeCatalogProviderOptions): ResearchScopeCatalogProvidersV1;
 
+// export: createStandardResearchBriefV1
+export declare function createStandardResearchBriefV1(question: string, options?: ComposeStandardResearchGraphOptionsV1): ResearchBriefV1;
+
 // export: decodeResearchGetInputV1
 export declare function decodeResearchGetInputV1(tool: "jira.issue.get" | "wiki.page.get", value: unknown): ResearchGetInputV1;
 
@@ -4551,8 +4632,14 @@ export declare class InMemoryResearchSubagentDispatchPort implements ResearchSub
     packet(packetRef: string): ResearchAcceptedPacketV1 | undefined;
 }
 
+// export: isResearchBriefClarificationRequiredV1
+export declare function isResearchBriefClarificationRequiredV1(value: ResearchClarificationRequiredV1): value is ResearchBriefClarificationRequiredV1;
+
 // export: isResearchOneShotEventV1
 export declare function isResearchOneShotEventV1(value: unknown): value is ResearchOneShotEventV1;
+
+// export: isResearchScopeClarificationRequiredV1
+export declare function isResearchScopeClarificationRequiredV1(value: ResearchClarificationRequiredV1): value is ResearchScopeClarificationRequiredV1;
 
 // export: JiraResearchDetail
 export interface JiraResearchDetail extends JiraResearchSummary {
@@ -4622,6 +4709,9 @@ export declare function parseResearchReconciliationInputV1(value: unknown): Rese
 
 // export: parseResearchTaskBodyV1
 export declare function parseResearchTaskBodyV1(schema: ResearchTaskOutputSchemaV1, value: unknown): ResearchPacketBodyV1 | ReconciliationBodyV1 | ResearchAgentDraftV1;
+
+// export: prepareResearchBriefPreflightV1
+export declare function prepareResearchBriefPreflightV1(brief: ResearchBriefV1): ResearchBriefPreflightOutcomeV1;
 
 // export: prepareResearchScopePreflightV1
 export declare function prepareResearchScopePreflightV1(input: {
@@ -4728,6 +4818,9 @@ export declare const RESEARCH_AGENT_DRAFT_SCHEMA_V1: z.ZodObject<{
 
 // export: RESEARCH_APPROVAL_ENVELOPE_SCHEMA_V1
 export declare const RESEARCH_APPROVAL_ENVELOPE_SCHEMA_V1: "atlcli.research-approval-envelope/v1";
+
+// export: RESEARCH_BRIEF_PREFLIGHT_OUTCOME_SCHEMA_V1
+export declare const RESEARCH_BRIEF_PREFLIGHT_OUTCOME_SCHEMA_V1: "atlcli.research-brief-preflight-outcome/v1";
 
 // export: RESEARCH_BRIEF_SCHEMA_V1
 export declare const RESEARCH_BRIEF_SCHEMA_V1: "atlcli.research-brief/v1";
@@ -5082,6 +5175,27 @@ export interface ResearchBriefAssumptionV1 {
     status: "proposed" | "accepted" | "rejected";
 }
 
+// export: ResearchBriefClarificationRequiredV1
+export interface ResearchBriefClarificationRequiredV1 {
+    schema: typeof RESEARCH_CLARIFICATION_REQUIRED_SCHEMA_V1;
+    sessionId: string;
+    turnId: string;
+    briefRevision: number;
+    questions: ResearchClarificationQuestionV1[];
+    assumptionsRequiringDecision: ResearchBriefAssumptionV1[];
+}
+
+// export: ResearchBriefPreflightOutcomeV1
+export type ResearchBriefPreflightOutcomeV1 = {
+    schema: typeof RESEARCH_BRIEF_PREFLIGHT_OUTCOME_SCHEMA_V1;
+    kind: "ready";
+    brief: ResearchBriefV1;
+} | {
+    schema: typeof RESEARCH_BRIEF_PREFLIGHT_OUTCOME_SCHEMA_V1;
+    kind: "clarification_required";
+    clarification: ResearchBriefClarificationRequiredV1;
+};
+
 // export: ResearchBriefV1
 export interface ResearchBriefV1 {
     schema: typeof RESEARCH_BRIEF_SCHEMA_V1;
@@ -5149,15 +5263,7 @@ export interface ResearchClarificationQuestionV1 {
 }
 
 // export: ResearchClarificationRequiredV1
-export interface ResearchClarificationRequiredV1 {
-    schema: typeof RESEARCH_CLARIFICATION_REQUIRED_SCHEMA_V1;
-    reason: ResearchScopeClarificationReasonV1;
-    mentionId: string;
-    candidateIds: string[];
-    productHint?: "jira" | "confluence";
-    entityKindHint?: "project" | "space" | "issue" | "page";
-    rerunGuidance: string[];
-}
+export type ResearchClarificationRequiredV1 = ResearchScopeClarificationRequiredV1 | ResearchBriefClarificationRequiredV1;
 
 // export: ResearchCompositionReasonV1
 export type ResearchCompositionReasonV1 = (typeof RESEARCH_COMPOSITION_REASONS_V1)[number];
@@ -5645,7 +5751,7 @@ export type ResearchInitialScopeResolutionOutcomeV1 = {
     resolutions: ResearchScopeResolutionV1[];
 } | {
     kind: "clarification_required";
-    clarification: ResearchClarificationRequiredV1;
+    clarification: ResearchScopeClarificationRequiredV1;
     candidateChoices: ResearchScopeCandidateV1[];
     resolutions: ResearchScopeResolutionV1[];
 };
@@ -6099,6 +6205,17 @@ export interface ResearchScopeCatalogProvidersV1 {
 // export: ResearchScopeClarificationReasonV1
 export type ResearchScopeClarificationReasonV1 = "ambiguous" | "weak_match" | "archived_only" | "unavailable" | "incomplete" | "not_found";
 
+// export: ResearchScopeClarificationRequiredV1
+export interface ResearchScopeClarificationRequiredV1 {
+    schema: typeof RESEARCH_CLARIFICATION_REQUIRED_SCHEMA_V1;
+    reason: ResearchScopeClarificationReasonV1;
+    mentionId: string;
+    candidateIds: string[];
+    productHint?: "jira" | "confluence";
+    entityKindHint?: "project" | "space" | "issue" | "page";
+    rerunGuidance: string[];
+}
+
 // export: ResearchScopeDiscoveryPolicyV1
 export interface ResearchScopeDiscoveryPolicyV1 {
     schema: typeof RESEARCH_SCOPE_DISCOVERY_POLICY_SCHEMA_V1;
@@ -6179,7 +6296,7 @@ export type ResearchScopePreflightOutcomeV1 = {
 } | {
     schema: typeof RESEARCH_SCOPE_PREFLIGHT_OUTCOME_SCHEMA_V1;
     kind: "clarification_required";
-    clarification: ResearchClarificationRequiredV1;
+    clarification: ResearchScopeClarificationRequiredV1;
     candidateChoices: ResearchScopeCandidateV1[];
     mentions: ResearchScopeMentionV1[];
     resolutions: ResearchScopeResolutionV1[];
@@ -6767,6 +6884,9 @@ export declare function createRestResearchProviders(profile: Profile, request: R
 // export: createRestScopeCatalogProviders
 export declare function createRestScopeCatalogProviders(profile: Profile, expectedTenantOrigin: string, options?: RestScopeCatalogProviderOptions): ResearchScopeCatalogProvidersV1;
 
+// export: createStandardResearchBriefV1
+export declare function createStandardResearchBriefV1(question: string, options?: ComposeStandardResearchGraphOptionsV1): ResearchBriefV1;
+
 // export: decodeResearchGetInputV1
 export declare function decodeResearchGetInputV1(tool: "jira.issue.get" | "wiki.page.get", value: unknown): ResearchGetInputV1;
 
@@ -6862,8 +6982,14 @@ export declare class InMemoryResearchSubagentDispatchPort implements ResearchSub
     packet(packetRef: string): ResearchAcceptedPacketV1 | undefined;
 }
 
+// export: isResearchBriefClarificationRequiredV1
+export declare function isResearchBriefClarificationRequiredV1(value: ResearchClarificationRequiredV1): value is ResearchBriefClarificationRequiredV1;
+
 // export: isResearchOneShotEventV1
 export declare function isResearchOneShotEventV1(value: unknown): value is ResearchOneShotEventV1;
+
+// export: isResearchScopeClarificationRequiredV1
+export declare function isResearchScopeClarificationRequiredV1(value: ResearchClarificationRequiredV1): value is ResearchScopeClarificationRequiredV1;
 
 // export: JiraResearchDetail
 export interface JiraResearchDetail extends JiraResearchSummary {
@@ -6933,6 +7059,9 @@ export declare function parseResearchReconciliationInputV1(value: unknown): Rese
 
 // export: parseResearchTaskBodyV1
 export declare function parseResearchTaskBodyV1(schema: ResearchTaskOutputSchemaV1, value: unknown): ResearchPacketBodyV1 | ReconciliationBodyV1 | ResearchAgentDraftV1;
+
+// export: prepareResearchBriefPreflightV1
+export declare function prepareResearchBriefPreflightV1(brief: ResearchBriefV1): ResearchBriefPreflightOutcomeV1;
 
 // export: prepareResearchScopePreflightV1
 export declare function prepareResearchScopePreflightV1(input: {
@@ -7049,6 +7178,9 @@ export declare const RESEARCH_ANALYSIS_PACKET_SCHEMA_V1: Record<string, unknown>
 
 // export: RESEARCH_APPROVAL_ENVELOPE_SCHEMA_V1
 export declare const RESEARCH_APPROVAL_ENVELOPE_SCHEMA_V1: "atlcli.research-approval-envelope/v1";
+
+// export: RESEARCH_BRIEF_PREFLIGHT_OUTCOME_SCHEMA_V1
+export declare const RESEARCH_BRIEF_PREFLIGHT_OUTCOME_SCHEMA_V1: "atlcli.research-brief-preflight-outcome/v1";
 
 // export: RESEARCH_BRIEF_SCHEMA_V1
 export declare const RESEARCH_BRIEF_SCHEMA_V1: "atlcli.research-brief/v1";
@@ -7429,6 +7561,27 @@ export interface ResearchBriefAssumptionV1 {
     status: "proposed" | "accepted" | "rejected";
 }
 
+// export: ResearchBriefClarificationRequiredV1
+export interface ResearchBriefClarificationRequiredV1 {
+    schema: typeof RESEARCH_CLARIFICATION_REQUIRED_SCHEMA_V1;
+    sessionId: string;
+    turnId: string;
+    briefRevision: number;
+    questions: ResearchClarificationQuestionV1[];
+    assumptionsRequiringDecision: ResearchBriefAssumptionV1[];
+}
+
+// export: ResearchBriefPreflightOutcomeV1
+export type ResearchBriefPreflightOutcomeV1 = {
+    schema: typeof RESEARCH_BRIEF_PREFLIGHT_OUTCOME_SCHEMA_V1;
+    kind: "ready";
+    brief: ResearchBriefV1;
+} | {
+    schema: typeof RESEARCH_BRIEF_PREFLIGHT_OUTCOME_SCHEMA_V1;
+    kind: "clarification_required";
+    clarification: ResearchBriefClarificationRequiredV1;
+};
+
 // export: ResearchBriefV1
 export interface ResearchBriefV1 {
     schema: typeof RESEARCH_BRIEF_SCHEMA_V1;
@@ -7496,15 +7649,7 @@ export interface ResearchClarificationQuestionV1 {
 }
 
 // export: ResearchClarificationRequiredV1
-export interface ResearchClarificationRequiredV1 {
-    schema: typeof RESEARCH_CLARIFICATION_REQUIRED_SCHEMA_V1;
-    reason: ResearchScopeClarificationReasonV1;
-    mentionId: string;
-    candidateIds: string[];
-    productHint?: "jira" | "confluence";
-    entityKindHint?: "project" | "space" | "issue" | "page";
-    rerunGuidance: string[];
-}
+export type ResearchClarificationRequiredV1 = ResearchScopeClarificationRequiredV1 | ResearchBriefClarificationRequiredV1;
 
 // export: ResearchCompositionReasonV1
 export type ResearchCompositionReasonV1 = (typeof RESEARCH_COMPOSITION_REASONS_V1)[number];
@@ -7992,7 +8137,7 @@ export type ResearchInitialScopeResolutionOutcomeV1 = {
     resolutions: ResearchScopeResolutionV1[];
 } | {
     kind: "clarification_required";
-    clarification: ResearchClarificationRequiredV1;
+    clarification: ResearchScopeClarificationRequiredV1;
     candidateChoices: ResearchScopeCandidateV1[];
     resolutions: ResearchScopeResolutionV1[];
 };
@@ -8484,6 +8629,17 @@ export interface ResearchScopeCatalogPtcOptions {
 // export: ResearchScopeClarificationReasonV1
 export type ResearchScopeClarificationReasonV1 = "ambiguous" | "weak_match" | "archived_only" | "unavailable" | "incomplete" | "not_found";
 
+// export: ResearchScopeClarificationRequiredV1
+export interface ResearchScopeClarificationRequiredV1 {
+    schema: typeof RESEARCH_CLARIFICATION_REQUIRED_SCHEMA_V1;
+    reason: ResearchScopeClarificationReasonV1;
+    mentionId: string;
+    candidateIds: string[];
+    productHint?: "jira" | "confluence";
+    entityKindHint?: "project" | "space" | "issue" | "page";
+    rerunGuidance: string[];
+}
+
 // export: ResearchScopeDiscoveryPolicyV1
 export interface ResearchScopeDiscoveryPolicyV1 {
     schema: typeof RESEARCH_SCOPE_DISCOVERY_POLICY_SCHEMA_V1;
@@ -8564,7 +8720,7 @@ export type ResearchScopePreflightOutcomeV1 = {
 } | {
     schema: typeof RESEARCH_SCOPE_PREFLIGHT_OUTCOME_SCHEMA_V1;
     kind: "clarification_required";
-    clarification: ResearchClarificationRequiredV1;
+    clarification: ResearchScopeClarificationRequiredV1;
     candidateChoices: ResearchScopeCandidateV1[];
     mentions: ResearchScopeMentionV1[];
     resolutions: ResearchScopeResolutionV1[];
@@ -9616,6 +9772,9 @@ export interface ComposeStandardResearchGraphOptionsV1 {
 // export: composeStandardResearchGraphV1
 export declare function composeStandardResearchGraphV1(question: string, options?: ComposeStandardResearchGraphOptionsV1): ResearchGraphV1;
 
+// export: createStandardResearchBriefV1
+export declare function createStandardResearchBriefV1(question: string, options?: ComposeStandardResearchGraphOptionsV1): ResearchBriefV1;
+
 // export: parseResearchGraphProposalV1
 export declare function parseResearchGraphProposalV1(value: unknown): ResearchGraphProposalV1;
 
@@ -10129,6 +10288,9 @@ export declare function createRestResearchProviders(profile: Profile, request: R
 // export: createRestScopeCatalogProviders
 export declare function createRestScopeCatalogProviders(profile: Profile, expectedTenantOrigin: string, options?: RestScopeCatalogProviderOptions): ResearchScopeCatalogProvidersV1;
 
+// export: createStandardResearchBriefV1
+export declare function createStandardResearchBriefV1(question: string, options?: ComposeStandardResearchGraphOptionsV1): ResearchBriefV1;
+
 // export: decodeResearchGetInputV1
 export declare function decodeResearchGetInputV1(tool: "jira.issue.get" | "wiki.page.get", value: unknown): ResearchGetInputV1;
 
@@ -10239,8 +10401,14 @@ export declare class InMemoryResearchSubagentDispatchPort implements ResearchSub
     packet(packetRef: string): ResearchAcceptedPacketV1 | undefined;
 }
 
+// export: isResearchBriefClarificationRequiredV1
+export declare function isResearchBriefClarificationRequiredV1(value: ResearchClarificationRequiredV1): value is ResearchBriefClarificationRequiredV1;
+
 // export: isResearchOneShotEventV1
 export declare function isResearchOneShotEventV1(value: unknown): value is ResearchOneShotEventV1;
+
+// export: isResearchScopeClarificationRequiredV1
+export declare function isResearchScopeClarificationRequiredV1(value: ResearchClarificationRequiredV1): value is ResearchScopeClarificationRequiredV1;
 
 // export: JiraResearchDetail
 export interface JiraResearchDetail extends JiraResearchSummary {
@@ -10310,6 +10478,9 @@ export declare function parseResearchReconciliationInputV1(value: unknown): Rese
 
 // export: parseResearchTaskBodyV1
 export declare function parseResearchTaskBodyV1(schema: ResearchTaskOutputSchemaV1, value: unknown): ResearchPacketBodyV1 | ReconciliationBodyV1 | ResearchAgentDraftV1;
+
+// export: prepareResearchBriefPreflightV1
+export declare function prepareResearchBriefPreflightV1(brief: ResearchBriefV1): ResearchBriefPreflightOutcomeV1;
 
 // export: prepareResearchScopePreflightV1
 export declare function prepareResearchScopePreflightV1(input: {
@@ -10426,6 +10597,9 @@ export declare const RESEARCH_ANALYSIS_PACKET_SCHEMA_V1: Record<string, unknown>
 
 // export: RESEARCH_APPROVAL_ENVELOPE_SCHEMA_V1
 export declare const RESEARCH_APPROVAL_ENVELOPE_SCHEMA_V1: "atlcli.research-approval-envelope/v1";
+
+// export: RESEARCH_BRIEF_PREFLIGHT_OUTCOME_SCHEMA_V1
+export declare const RESEARCH_BRIEF_PREFLIGHT_OUTCOME_SCHEMA_V1: "atlcli.research-brief-preflight-outcome/v1";
 
 // export: RESEARCH_BRIEF_SCHEMA_V1
 export declare const RESEARCH_BRIEF_SCHEMA_V1: "atlcli.research-brief/v1";
@@ -10806,6 +10980,27 @@ export interface ResearchBriefAssumptionV1 {
     status: "proposed" | "accepted" | "rejected";
 }
 
+// export: ResearchBriefClarificationRequiredV1
+export interface ResearchBriefClarificationRequiredV1 {
+    schema: typeof RESEARCH_CLARIFICATION_REQUIRED_SCHEMA_V1;
+    sessionId: string;
+    turnId: string;
+    briefRevision: number;
+    questions: ResearchClarificationQuestionV1[];
+    assumptionsRequiringDecision: ResearchBriefAssumptionV1[];
+}
+
+// export: ResearchBriefPreflightOutcomeV1
+export type ResearchBriefPreflightOutcomeV1 = {
+    schema: typeof RESEARCH_BRIEF_PREFLIGHT_OUTCOME_SCHEMA_V1;
+    kind: "ready";
+    brief: ResearchBriefV1;
+} | {
+    schema: typeof RESEARCH_BRIEF_PREFLIGHT_OUTCOME_SCHEMA_V1;
+    kind: "clarification_required";
+    clarification: ResearchBriefClarificationRequiredV1;
+};
+
 // export: ResearchBriefV1
 export interface ResearchBriefV1 {
     schema: typeof RESEARCH_BRIEF_SCHEMA_V1;
@@ -10873,15 +11068,7 @@ export interface ResearchClarificationQuestionV1 {
 }
 
 // export: ResearchClarificationRequiredV1
-export interface ResearchClarificationRequiredV1 {
-    schema: typeof RESEARCH_CLARIFICATION_REQUIRED_SCHEMA_V1;
-    reason: ResearchScopeClarificationReasonV1;
-    mentionId: string;
-    candidateIds: string[];
-    productHint?: "jira" | "confluence";
-    entityKindHint?: "project" | "space" | "issue" | "page";
-    rerunGuidance: string[];
-}
+export type ResearchClarificationRequiredV1 = ResearchScopeClarificationRequiredV1 | ResearchBriefClarificationRequiredV1;
 
 // export: ResearchCompositionReasonV1
 export type ResearchCompositionReasonV1 = (typeof RESEARCH_COMPOSITION_REASONS_V1)[number];
@@ -11369,7 +11556,7 @@ export type ResearchInitialScopeResolutionOutcomeV1 = {
     resolutions: ResearchScopeResolutionV1[];
 } | {
     kind: "clarification_required";
-    clarification: ResearchClarificationRequiredV1;
+    clarification: ResearchScopeClarificationRequiredV1;
     candidateChoices: ResearchScopeCandidateV1[];
     resolutions: ResearchScopeResolutionV1[];
 };
@@ -11861,6 +12048,17 @@ export interface ResearchScopeCatalogPtcOptions {
 // export: ResearchScopeClarificationReasonV1
 export type ResearchScopeClarificationReasonV1 = "ambiguous" | "weak_match" | "archived_only" | "unavailable" | "incomplete" | "not_found";
 
+// export: ResearchScopeClarificationRequiredV1
+export interface ResearchScopeClarificationRequiredV1 {
+    schema: typeof RESEARCH_CLARIFICATION_REQUIRED_SCHEMA_V1;
+    reason: ResearchScopeClarificationReasonV1;
+    mentionId: string;
+    candidateIds: string[];
+    productHint?: "jira" | "confluence";
+    entityKindHint?: "project" | "space" | "issue" | "page";
+    rerunGuidance: string[];
+}
+
 // export: ResearchScopeDiscoveryPolicyV1
 export interface ResearchScopeDiscoveryPolicyV1 {
     schema: typeof RESEARCH_SCOPE_DISCOVERY_POLICY_SCHEMA_V1;
@@ -11941,7 +12139,7 @@ export type ResearchScopePreflightOutcomeV1 = {
 } | {
     schema: typeof RESEARCH_SCOPE_PREFLIGHT_OUTCOME_SCHEMA_V1;
     kind: "clarification_required";
-    clarification: ResearchClarificationRequiredV1;
+    clarification: ResearchScopeClarificationRequiredV1;
     candidateChoices: ResearchScopeCandidateV1[];
     mentions: ResearchScopeMentionV1[];
     resolutions: ResearchScopeResolutionV1[];

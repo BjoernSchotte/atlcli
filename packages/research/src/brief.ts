@@ -25,6 +25,10 @@ import type {
   ResearchScopeMentionV1,
   ResearchScopeResolutionV1,
 } from "./scope-discovery.js";
+import {
+  RESEARCH_CLARIFICATION_REQUIRED_SCHEMA_V1,
+  type ResearchBriefClarificationRequiredV1,
+} from "./scope-resolution.js";
 
 export const RESEARCH_BRIEF_SCHEMA_V1 = "atlcli.research-brief/v1" as const;
 export const RESEARCH_SCOPE_DISCOVERY_POLICY_SCHEMA_V1 =
@@ -93,6 +97,21 @@ export interface ResearchBriefV1 {
   clarificationQuestions: ResearchClarificationQuestionV1[];
   assumptions: ResearchBriefAssumptionV1[];
 }
+
+export const RESEARCH_BRIEF_PREFLIGHT_OUTCOME_SCHEMA_V1 =
+  "atlcli.research-brief-preflight-outcome/v1" as const;
+
+export type ResearchBriefPreflightOutcomeV1 =
+  | {
+      schema: typeof RESEARCH_BRIEF_PREFLIGHT_OUTCOME_SCHEMA_V1;
+      kind: "ready";
+      brief: ResearchBriefV1;
+    }
+  | {
+      schema: typeof RESEARCH_BRIEF_PREFLIGHT_OUTCOME_SCHEMA_V1;
+      kind: "clarification_required";
+      clarification: ResearchBriefClarificationRequiredV1;
+    };
 
 export const DEFAULT_RESEARCH_SCOPE_DISCOVERY_POLICY_V1: Readonly<ResearchScopeDiscoveryPolicyV1> = {
   schema: RESEARCH_SCOPE_DISCOVERY_POLICY_SCHEMA_V1,
@@ -270,4 +289,38 @@ export function createResearchBriefV1(input: CreateResearchBriefInputV1): Resear
 export function briefRequiresClarificationV1(brief: ResearchBriefV1): boolean {
   return brief.clarificationQuestions.some((question) => question.required) ||
     brief.assumptions.some((assumption) => assumption.requiresUserDecision && assumption.status === "proposed");
+}
+
+/**
+ * Stop a T3 one-shot before graph composition when the host-owned brief needs
+ * a user answer. This operation is pure: it cannot create a workspace, invoke
+ * a provider, or start a model/subagent. T4 later persists the same typed
+ * value as a durable clarification wait.
+ */
+export function prepareResearchBriefPreflightV1(
+  brief: ResearchBriefV1,
+): ResearchBriefPreflightOutcomeV1 {
+  const questions = brief.clarificationQuestions.filter((question) => question.required);
+  const assumptionsRequiringDecision = brief.assumptions.filter((assumption) =>
+    assumption.requiresUserDecision && assumption.status === "proposed"
+  );
+  if (questions.length === 0 && assumptionsRequiringDecision.length === 0) {
+    return {
+      schema: RESEARCH_BRIEF_PREFLIGHT_OUTCOME_SCHEMA_V1,
+      kind: "ready",
+      brief: structuredClone(brief),
+    };
+  }
+  return {
+    schema: RESEARCH_BRIEF_PREFLIGHT_OUTCOME_SCHEMA_V1,
+    kind: "clarification_required",
+    clarification: {
+      schema: RESEARCH_CLARIFICATION_REQUIRED_SCHEMA_V1,
+      sessionId: brief.sessionId,
+      turnId: brief.turnId,
+      briefRevision: brief.revision,
+      questions: structuredClone(questions),
+      assumptionsRequiringDecision: structuredClone(assumptionsRequiringDecision),
+    },
+  };
 }

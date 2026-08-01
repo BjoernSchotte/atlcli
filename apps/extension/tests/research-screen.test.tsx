@@ -8,10 +8,12 @@ import {
 } from "bun:test";
 import React from "react";
 import {
+  ResearchBriefClarificationNotice,
   ResearchScreen,
   inferResearchScope,
 } from "../components/screens/ResearchScreen.js";
 import { I18nProvider } from "../utils/i18n/context.js";
+import type { ResearchBriefClarificationRequiredV1 } from "@atlcli/research";
 import type {
   ResearchPort,
   ResearchReportV1,
@@ -174,6 +176,38 @@ describe("research scope inference", () => {
         { binding: { key: "CURRENTSPACE", source: "current_context", authority: "approved" }, precedence: 300 },
       ],
     });
+  });
+});
+
+describe("research brief clarification presentation", () => {
+  it("renders the shared typed stop without starting a worker", async () => {
+    const clarification: ResearchBriefClarificationRequiredV1 = {
+      schema: "atlcli.research-clarification-required/v1",
+      sessionId: "research-session:screen",
+      turnId: "research-turn:screen",
+      briefRevision: 2,
+      questions: [{
+        id: "clarification:window",
+        prompt: "Which time window should be used?",
+        required: true,
+      }],
+      assumptionsRequiringDecision: [{
+        id: "assumption:archived",
+        text: "Archived items would be included.",
+        requiresUserDecision: true,
+        status: "proposed",
+      }],
+    };
+    await dom.render(
+      <I18nProvider locale="en">
+        <ResearchBriefClarificationNotice clarification={clarification} />
+      </I18nProvider>,
+    );
+    const alert = dom.find("research-brief-clarification-required");
+    expect(alert.textContent).toContain("Research clarification required");
+    expect(alert.textContent).toContain("Brief revision 2");
+    expect(alert.textContent).toContain("Which time window should be used?");
+    expect(alert.textContent).toContain("Archived items would be included.");
   });
 });
 

@@ -20,7 +20,7 @@ import {
 import {
   normalizeResearchScopeCandidateSelectionsV1,
   resolveInitialResearchScopeV1,
-  type ResearchClarificationRequiredV1,
+  type ResearchScopeClarificationRequiredV1,
   type ResearchScopeCatalogInvokePortV1,
   type ResearchScopeCandidateSelectionV1,
 } from "./scope-resolution.js";
@@ -39,7 +39,7 @@ export type ResearchScopePreflightOutcomeV1 =
   | {
       schema: typeof RESEARCH_SCOPE_PREFLIGHT_OUTCOME_SCHEMA_V1;
       kind: "clarification_required";
-      clarification: ResearchClarificationRequiredV1;
+      clarification: ResearchScopeClarificationRequiredV1;
       candidateChoices: ResearchScopeCandidateV1[];
       mentions: ResearchScopeMentionV1[];
       resolutions: ResearchScopeResolutionV1[];

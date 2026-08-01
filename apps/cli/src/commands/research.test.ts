@@ -4,11 +4,14 @@ import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
+  RESEARCH_BRIEF_PREFLIGHT_OUTCOME_SCHEMA_V1,
   RESEARCH_SCOPE_PREFLIGHT_OUTCOME_SCHEMA_V1,
   ResearchContractError,
   createMemoryResearchWorkspace,
+  prepareResearchBriefPreflightV1,
   type ResearchReportV1,
 } from "@atlcli/research";
+import { createStandardResearchBriefV1 } from "@atlcli/research/graph";
 import {
   buildResearchRequest,
   handleResearch,
@@ -86,6 +89,15 @@ function cliHarness(options: {
       mentions: [],
       resolutions: [],
     }),
+    prepareBrief: ({ request, policy, asOf, timezone }) =>
+      prepareResearchBriefPreflightV1(createStandardResearchBriefV1(request.question, {
+        scope: request.scope,
+        scopeBindings: request.scopeSeeds?.map((seed) => seed.binding),
+        limits: request.limits,
+        asOf,
+        timezone,
+        policy,
+      })),
     readApiKey: () => options.apiKey ?? "sk-ant-test-command-only",
     async createWorkspace() {
       const memory = createMemoryResearchWorkspace();
@@ -361,6 +373,63 @@ describe("research CLI one-shot contract", () => {
             schema: "atlcli.research-scope-preflight-outcome/v1",
             kind: "clarification_required",
             clarification: { reason: "ambiguous" },
+          },
+        },
+      },
+    });
+  });
+
+  test("stops on required brief clarification before graph, key, workspace, or agent work", async () => {
+    const harness = cliHarness();
+    let keyReads = 0;
+    harness.dependencies.readApiKey = () => {
+      keyReads += 1;
+      return "sk-ant-must-not-be-read";
+    };
+    harness.dependencies.prepareBrief = () => ({
+      schema: RESEARCH_BRIEF_PREFLIGHT_OUTCOME_SCHEMA_V1,
+      kind: "clarification_required",
+      clarification: {
+        schema: "atlcli.research-clarification-required/v1",
+        sessionId: "research-session:cli-brief",
+        turnId: "research-turn:cli-brief",
+        briefRevision: 3,
+        questions: [{
+          id: "clarification:time-window",
+          prompt: "Which reporting window should be used?",
+          required: true,
+        }],
+        assumptionsRequiringDecision: [{
+          id: "assumption:include-archived",
+          text: "Archived content would be included.",
+          requiresUserDecision: true,
+          status: "proposed",
+        }],
+      },
+    });
+    await expect(handleResearch(
+      ["Research the approved scopes."],
+      { json: true },
+      { json: true },
+      harness.dependencies,
+    )).rejects.toThrow("Research brief requires clarification");
+    expect(keyReads).toBe(0);
+    expect(harness.workspaces).toHaveLength(0);
+    expect(harness.runInputs).toHaveLength(0);
+    expect(harness.stderr.join("")).toContain(
+      "stop_reason=clarification-required brief_revision=3 questions=1 assumptions=1",
+    );
+    expect(JSON.parse(harness.stdout.join(""))).toMatchObject({
+      error: {
+        details: {
+          outcome: {
+            schema: "atlcli.research-brief-preflight-outcome/v1",
+            kind: "clarification_required",
+            clarification: {
+              briefRevision: 3,
+              questions: [{ id: "clarification:time-window" }],
+              assumptionsRequiringDecision: [{ id: "assumption:include-archived" }],
+            },
           },
         },
       },

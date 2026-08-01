@@ -2538,9 +2538,17 @@ Shared:
         tasks, performs eight PTC/HTTP reads, and renders the report while
         preserving both approved-envelope and accepted plan events across the
         worker-to-sidebar boundary.
-- [ ] Before graph proposal, return `ResearchClarificationRequiredV1` and stop
+- [x] Before graph proposal, return `ResearchClarificationRequiredV1` and stop
       when the brief contains a required question or user-decision assumption.
-      T3 never fabricates an answer or enters an undurable wait.
+      T3 never fabricates an answer or enters an undurable wait. Proven
+      2026-08-01: the shared pure brief preflight returns the exact session,
+      turn, brief revision, required-question, and proposed-decision-assumption
+      projection before graph construction. The CLI emits this closed outcome
+      on stderr/`--json` and performs zero key, workspace, graph, provider,
+      model, or subagent work; the browser renders the same typed questions and
+      assumptions before it stores a key or starts the worker. The focused
+      shared/CLI corridor passed 51 tests / 187 assertions, the browser screen
+      corridor passed 13 / 56, and workspace typecheck passed.
 - [x] Reject cycles, unknown roles/capabilities, Depth greater than 1,
       incompatible dependencies, unapproved content-scope expansion, duplicate
       node IDs, excessive node/wave counts, unavailable roles, and over-budget

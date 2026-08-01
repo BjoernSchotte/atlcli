@@ -2,11 +2,13 @@ import type { Profile } from "@atlcli/core";
 import {
   ResearchRunBudget,
   ResearchScopeCatalogBroker,
+  ResearchContractError,
   classifyResearchError,
   createRestResearchProviders,
   createRestScopeCatalogProviders,
   normalizeResearchOneShotPolicyV1,
   normalizeResearchRequestV1,
+  prepareResearchBriefPreflightV1,
   createMemoryResearchWorkspace,
   type ResearchOneShotEventV1,
   type ResearchProgressV1,
@@ -14,7 +16,8 @@ import {
 import { runResearchAgent } from "@atlcli/research/browser/agent";
 import {
   assertResearchGraphExecutableV1,
-  composeStandardResearchGraphV1,
+  composeResearchGraphV1,
+  createStandardResearchBriefV1,
 } from "@atlcli/research/graph";
 import type {
   ResearchWorkerRequestV1,
@@ -40,13 +43,20 @@ globalThis.addEventListener("message", (event: MessageEvent<unknown>) => {
     try {
       const request = normalizeResearchRequestV1(message.request);
       const policy = normalizeResearchOneShotPolicyV1(message.policy);
-      const researchGraph = composeStandardResearchGraphV1(request.question, {
+      const briefOutcome = prepareResearchBriefPreflightV1(createStandardResearchBriefV1(request.question, {
         scope: request.scope,
         scopeBindings: request.scopeSeeds?.map((seed) => seed.binding),
         limits: request.limits,
         asOf: new Date().toISOString(),
         policy,
-      });
+      }));
+      if (briefOutcome.kind === "clarification_required") {
+        throw new ResearchContractError(
+          "clarification-required",
+          "Research brief requires clarification before graph composition.",
+        );
+      }
+      const researchGraph = composeResearchGraphV1(briefOutcome.brief);
       assertResearchGraphExecutableV1(researchGraph);
       const profile: Profile = {
         name: "research-session",
