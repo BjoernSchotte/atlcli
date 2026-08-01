@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { beforeAll, expect, test } from "bun:test";
 import { lstat, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { PublicationBuildRequestV1 } from "@atlcli/web-publish";
@@ -7,6 +7,24 @@ import { createAstroStaticPublicationBuilderV1 } from "./builder.js";
 const fixtureDirectory = resolve(import.meta.dir, "../fixtures/astro-consumer");
 const inventoryPath = resolve(fixtureDirectory, "../evidence/build-inventory.json");
 const outputDirectory = resolve(fixtureDirectory, "dist");
+const workspaceRoot = resolve(import.meta.dir, "../../..");
+
+beforeAll(async () => {
+  // The builder intentionally invokes the fixture's normal Astro process,
+  // which resolves the package's production export. Build that package here so
+  // this unit lane remains self-contained when CI starts from a clean checkout
+  // instead of relying on another job's ignored dist/ output.
+  const child = Bun.spawn(["bun", "run", "build", "--filter=@atlcli/web-publish-astro"], {
+    cwd: workspaceRoot,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [exitCode, stderr] = await Promise.all([
+    child.exited,
+    new Response(child.stderr).text(),
+  ]);
+  if (exitCode !== 0) throw new Error(`web-publish-astro package build failed: ${stderr}`);
+});
 
 const request = {
   bundle: {

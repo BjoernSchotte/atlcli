@@ -431,7 +431,7 @@ test("a production harness converts Cloud ADF and DC Storage before a packed Ast
     ].join(""), { pageContext: { id: "guide-ar", version: 11 } });
     const registry = defaultRegistry({
       storageToBlocks: (storage, options) => storageToBlocks(storage, options),
-      htmlToExportBlocks: (html, options) => storageToBlocks(html, options),
+      htmlToExportBlocks: (html) => storageToBlocks(html),
       parsePageProperties: () => [],
       extractMacroBody: () => undefined,
     });

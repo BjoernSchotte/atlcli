@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "bun:test";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { Window } from "happy-dom";
 import { pdfBytesFromUint8Array } from "@atlcli/pdf/browser";
@@ -622,7 +622,12 @@ describe("openPdfViewer", () => {
  * instead of inheriting a pre-granted allowance.
  */
 describe("vendored PDF.js — no dynamic-code exemption needed", () => {
-  const base = join(EXTENSION_ROOT, "node_modules", "pdfjs-dist", "build");
+  // Bun may hoist a workspace dependency to the repository root without
+  // leaving a package-local symlink on a clean CI install. Resolve both legal
+  // workspace layouts before inspecting the pinned runtime.
+  const extensionBase = join(EXTENSION_ROOT, "node_modules", "pdfjs-dist", "build");
+  const workspaceBase = join(EXTENSION_ROOT, "..", "..", "node_modules", "pdfjs-dist", "build");
+  const base = existsSync(extensionBase) ? extensionBase : workspaceBase;
 
   it.each(["pdf.min.mjs", "pdf.worker.min.mjs"])("%s is clean under the unchanged gate", (file) => {
     expect(scanText(readFileSync(join(base, file), "utf8"))).toEqual([]);
