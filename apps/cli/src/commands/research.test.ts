@@ -225,7 +225,7 @@ describe("research CLI one-shot contract", () => {
       confluenceSpaceKeys: ["DOCSY"],
     });
     expect(request.limits).toMatchObject({
-      maxSearchPagesPerProduct: 4,
+      maxSearchPagesPerProduct: 5,
       maxBodyCharsPerItem: 50_000,
       maxRunMs: 600_000,
     });

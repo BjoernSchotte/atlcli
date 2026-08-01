@@ -457,7 +457,7 @@ const critique = {
   defects: [{
     id: "defect:packed-relationship-review",
     severity: "minor",
-    target: { kind: "coverage", id: "coverage:question" },
+    target: { kind: "coverage", id: "coverage:primary-question" },
     code: "missing_coverage",
     references: [
       { kind: "source", id: "jira:DEMO-1" },

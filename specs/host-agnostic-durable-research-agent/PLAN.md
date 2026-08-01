@@ -2476,11 +2476,22 @@ Shared:
       schema, require exact question-text ranges, and host-verify every range
       and normalization before catalog lookup. Reject invented or overlapping
       mentions and keep their text out of the event stream.
-- [ ] Expose `jira.project.search`, `wiki.space.search`, and
+- [x] Expose `jira.project.search`, `wiki.space.search`, and
       `atlassian.reference.resolve` through the same typed broker and dynamic
       per-node grant mechanism as other capabilities. An omitted catalog query
       performs only a capped paginated list; QuickJS receives opaque cursor
-      references and a bounded candidate projection.
+      references and a bounded candidate projection. Proven 2026-08-01: the
+      shared compiler constructs the exact union of content and catalog PTC
+      tools, then projects only each node's host-granted allowlist. Real
+      QuickJS tests cover omitted-query capped lists, opaque continuations,
+      exact tenant-bound reference resolution, and the absence of `fetch`.
+      CLI profile-auth and browser session adapters bind the tenant/auth in the
+      host; body-free started/success/error diagnostics expose only tool,
+      input kind, counts, bytes, and sanitized errors. The shared corridor
+      passed 130 tests / 410 assertions, the extension corridor passed 161 /
+      576, the production build, browser-isomorphism, pack, output, privacy,
+      and API gates passed, and the Node 22.18.0 packed MV3 suite passed 2/2
+      with dynamic grants and the full cancellation/recreation report flow.
 - [x] Resolve one unique exact accessible key/name match during briefing,
       record the binding provenance, and project only approved/locked
       whole-scope bindings into `ResearchScopeV1`. Return a typed clarification

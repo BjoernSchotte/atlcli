@@ -338,7 +338,10 @@ export function buildResearchRequest(input: ResearchCliInput, profile: Profile):
     limits: {
       ...DEFAULT_RESEARCH_LIMITS_V1,
       pageSize: 10,
-      maxSearchPagesPerProduct: 4,
+      // Acquisition uses at most four Jira searches. Keep one page per
+      // product available for a host-authorized reconciliation repair, in
+      // parity with the browser/default V1 budget.
+      maxSearchPagesPerProduct: 5,
       maxItemsPerProduct: 30,
       maxDetailItemsPerProduct: 8,
       // Research claims may only cite complete detail projections. Keep the
@@ -407,6 +410,17 @@ export const defaultResearchCliDependencies: ResearchCliDependencies = {
       request: input.request,
       providers,
       budget,
+      scopeCatalog: {
+        tenantOrigin: input.request.scope.siteOrigin,
+        broker: new ResearchScopeCatalogBroker({
+          tenantOrigin: input.request.scope.siteOrigin,
+          providers: createRestScopeCatalogProviders(
+            input.profile,
+            input.request.scope.siteOrigin,
+            { allowProfileAuth: true },
+          ),
+        }),
+      },
       runId: input.sessionId,
       researchGraph: input.researchGraph,
       workspace: input.workspace,

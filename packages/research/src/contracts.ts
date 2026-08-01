@@ -81,6 +81,14 @@ export const RESEARCH_TOOL_IDS = [
 ] as const;
 
 export type ResearchToolId = (typeof RESEARCH_TOOL_IDS)[number];
+export const RESEARCH_CAPABILITY_EVENT_TOOL_IDS_V1 = [
+  ...RESEARCH_TOOL_IDS,
+  "jira.project.search",
+  "wiki.space.search",
+  "atlassian.reference.resolve",
+] as const;
+export type ResearchCapabilityEventToolIdV1 =
+  (typeof RESEARCH_CAPABILITY_EVENT_TOOL_IDS_V1)[number];
 export type ResearchProvider = "rest" | "agg";
 export type ResearchProduct = "jira" | "confluence";
 
@@ -342,8 +350,8 @@ export type ResearchEventV1 =
       seq: number;
       at: string;
       callId: string;
-      toolId: ResearchToolId;
-      inputKind: "search" | "continuation" | "detail";
+      toolId: ResearchCapabilityEventToolIdV1;
+      inputKind: "search" | "continuation" | "detail" | "reference";
       status: string;
       itemCount?: number;
       complete?: boolean;

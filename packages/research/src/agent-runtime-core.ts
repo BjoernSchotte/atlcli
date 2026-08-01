@@ -20,6 +20,7 @@ import {
   type ResearchReadProviders,
 } from "./broker.js";
 import type { ResearchRunBudget } from "./budget.js";
+import type { ResearchScopeCatalogBroker } from "./scope-catalog-broker.js";
 import {
   RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1,
   RESEARCH_AGENT_DRAFT_SCHEMA_V1,
@@ -236,7 +237,7 @@ export function buildDynamicSupervisorPrompt(graph: ResearchGraphV1): string {
     `1. Execute every entry in returned tasks exactly once. Execute wave values strictly in ascending order. Await an entire wave before starting the next wave. Promise.all may contain only tasks with the same wave and at most ${graph.maxParallelNodes} entries; never put a task in the same Promise.all as any direct or transitive dependency. tasks never contains the synthesizer. Each returned task has its own subagentType; two focused-researcher nodes are never interchangeable. Never retry, redispatch, or start a second instance of a returned task ID. Duplicate task IDs are rejected before model or provider work.`,
     `2. For each task, description must be JSON.stringify({ schema: "atlcli.research-task-dispatch/v1", taskId: <the exact returned taskId>, objective: <the exact returned objective>, dependencyResults: [{ taskId: <exact dependency taskId>, result: <the unchanged typed result returned by that task> }] }). Copy dependencyTaskIds exactly: do not omit one merely because you think tasks can run in parallel. Omit dependencyResults only when dependencyTaskIds is empty. The only allowed envelope keys are schema, taskId, objective, and dependencyResults; never add question, context, instructions, or prose. Added fields, omitted dependencies, changed results, and unreturned task IDs are rejected.`,
     "3. The accepted topology is complete for this one-shot run: do not add a follow-up retrieval wave. Later tasks receive only the compact typed predecessor results named in dependencyTaskIds. Use document-distiller, contradiction-verifier, or coverage-moderator only when represented by an accepted task.",
-    `4. When reconciler is admitted, dispatch exactly one fresh-context independent critic after its dependencies complete. It receives compact packets, never child trajectories. Do not exceed ${graph.maxReconciliationWaves} critique pass. Then call tools.researchReconciliationDispositions({ basedOnGraphRevision: accepted.graphRevision, reconciliationTaskId: accepted.reconciliationTaskId, decisions: [...], repairFollowUpId?: <one exact proposed follow-up ID> }) exactly once. Do not pass schema. decisions must contain every returned defect ID exactly once and no others. Allowed decisions are ${RESEARCH_RECONCILIATION_DECISIONS_V1.join(",")}; allowed reasonCodes are ${RESEARCH_RECONCILIATION_REASON_CODES_V1.join(",")}. An empty critic defect list requires decisions: []. repairFollowUpId is optional, may select only one proposal whose defect decision is add_follow_up, and requests execution rather than guaranteeing budget. The host records packet reference, revision, IDs, and timestamp; do not alter the critic result.`,
+    `4. When reconciler is admitted, dispatch exactly one fresh-context independent critic after its dependencies complete. It receives compact packets, never child trajectories. Do not exceed ${graph.maxReconciliationWaves} critique pass. Then call tools.researchReconciliationDispositions({ basedOnGraphRevision: accepted.graphRevision, reconciliationTaskId: accepted.reconciliationTaskId, decisions: [...], repairFollowUpId?: <one exact proposed follow-up ID> }) exactly once. Do not pass schema. decisions must contain every returned defect ID exactly once and no others. Allowed decisions are ${RESEARCH_RECONCILIATION_DECISIONS_V1.join(",")}; allowed reasonCodes are ${RESEARCH_RECONCILIATION_REASON_CODES_V1.join(",")}. The decision/reason compatibility matrix is strict: reject_defect permits invalid_reference, already_resolved, or supported_by_evidence; no_change permits already_resolved, supported_by_evidence, insufficient_budget, or outside_approval_envelope; revise, downgrade, add_follow_up, and abstain permit material_defect, insufficient_budget, or outside_approval_envelope. An empty critic defect list requires decisions: []. repairFollowUpId is optional, may select only one proposal whose defect decision is add_follow_up, and requests execution rather than guaranteeing budget. Match follow-up reason to defect code exactly: coverage_gap to missing_coverage, contradiction to contradicted, stale_or_truncated to stale, and negative_claim to unsupported or overstated. If there is no compatible proposal, omit repairFollowUpId. The host records packet reference, revision, IDs, and timestamp; do not alter the critic result.`,
     "5. Parse the disposition result. If and only if it contains repairTask, dispatch that exact task once after reconciliation and before synthesis, using its returned objective, subagentType, dependencyTaskIds, and the analysis responseSchema. Never guess a repair task or dispatch a retained_without_execution follow-up. The host injects the authorized follow-up into that worker and injects only accepted disposition/repair packets into synthesis.",
     "6. After every entry in tasks and any returned repairTask complete, dispatch synthesizerTask exactly once as the final task. Never include synthesizerTask in a generic wave loop and never call it again after that one explicit final dispatch. It must use the final synthesizer responseSchema and author the complete structured report draft. A synthesizer call before disposition acceptance is rejected. An authorized repair also blocks synthesis until its packet is accepted.",
     "7. Return the synthesizer's typed object as the eval result. After eval, copy that object unchanged into the required parent structured response. Do not re-research or rewrite its prose in the supervisor.",
@@ -880,6 +881,11 @@ export interface RunResearchAgentInput {
   workspace?: ResearchWorkspace;
   /** Optional per-run graph. When present, createDeepAgent receives dynamic SubAgent specs. */
   researchGraph?: ResearchGraphV1;
+  /** Optional tenant-bound metadata catalog made available only to granted nodes. */
+  scopeCatalog?: {
+    broker: ResearchScopeCatalogBroker;
+    tenantOrigin: string;
+  };
   onPtcDiagnostic?: (diagnostic: ResearchPtcDiagnosticV1) => void;
   onSubagentDiagnostic?: (diagnostic: ResearchSubagentDiagnosticV1) => void;
 }
@@ -1056,7 +1062,10 @@ async function runResearchAgentWithBindings(
     onDiagnostic: emitPtcDiagnostic,
     now,
   });
-  const onAbort = (): void => broker.cancel(input.options?.signal?.reason);
+  const onAbort = (): void => {
+    broker.cancel(input.options?.signal?.reason);
+    input.scopeCatalog?.broker.cancel(input.options?.signal?.reason);
+  };
   input.options?.signal?.addEventListener("abort", onAbort, { once: true });
   emitProgress({
     phase: "preparing",
@@ -1094,6 +1103,7 @@ async function runResearchAgentWithBindings(
         model,
         ...(modelsByRole ? { modelsByRole } : {}),
         broker,
+        ...(input.scopeCatalog ? { scopeCatalog: input.scopeCatalog } : {}),
         question: input.request.question,
         maxInterpreterMs: input.request.limits.maxInterpreterMs,
         maxInterpreterMemoryBytes: input.request.limits.maxInterpreterMemoryBytes,
@@ -1327,7 +1337,11 @@ async function runResearchAgentWithBindings(
             return Boolean(acceptedGraph?.nodes.some((node) => node.id === defect.target.id));
           }
           if (defect.target.kind === "coverage") {
-            if (defect.target.id === "coverage:question") return true;
+            if (acceptedGraph?.nodes.some((node) =>
+              node.roleId === "reconciler" &&
+              node.status !== "pruned" &&
+              node.completion.requiredCoverageTargetIds.includes(defect.target.id)
+            )) return true;
             return [...acceptedPacketsByTaskId.values()].some((packet) =>
               "gaps" in packet.body && packet.body.gaps.some((gap) =>
                 gap.id === defect.target.id || gap.targetId === defect.target.id
@@ -1367,12 +1381,23 @@ async function runResearchAgentWithBindings(
           const policyMinimum = graph.reconciliationPolicy.minimumRemainingBudget;
           const ceiling = input.researchGraph!.approvalEnvelope.totalBudgetCeiling;
           const elapsedMs = Math.max(0, now() - startedAtMs);
-          const remainingCapabilityCalls = Math.max(0, input.request.limits.maxPtcCalls - observedCapabilityCalls);
+          const brokerBudget = broker.budget.snapshot();
+          const repairProducts = [
+            repairNode.grantedCapabilityIds.includes("jira.issue.search") ? "jira" as const : undefined,
+            repairNode.grantedCapabilityIds.includes("wiki.search") ? "confluence" as const : undefined,
+          ].filter((product): product is "jira" | "confluence" => product !== undefined);
+          const minimumRepairCalls = repairProducts.length * 2;
+          const hasProductReadBudget = repairProducts.length > 0 && repairProducts.every((product) =>
+            broker.budget.canSearchAnotherPage(product) &&
+            broker.budget.canReadAnotherDetail(product)
+          );
           const hasRemainingBudget =
-            remainingCapabilityCalls >= Math.max(
+            hasProductReadBudget &&
+            brokerBudget.ptcRemaining >= Math.max(
               policyMinimum.maxCapabilityCalls,
-              repairNode.grantedCapabilityIds.length > 0 ? 1 : 0,
+              minimumRepairCalls,
             ) &&
+            brokerBudget.httpAttemptsRemaining >= minimumRepairCalls &&
             ceiling.maxInputTokens - acceptedInputTokens >= policyMinimum.maxInputTokens &&
             ceiling.maxOutputTokens - acceptedOutputTokens >= policyMinimum.maxOutputTokens &&
             ceiling.maxResultBytes - acceptedResultBytes >= policyMinimum.maxResultBytes &&
@@ -1636,6 +1661,7 @@ async function runResearchAgentWithBindings(
   } finally {
     input.options?.signal?.removeEventListener("abort", onAbort);
     broker.cancel();
+    input.scopeCatalog?.broker.cancel();
   }
 }
 

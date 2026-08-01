@@ -404,6 +404,17 @@ export declare const RESEARCH_APPROVAL_ENVELOPE_SCHEMA_V1: "atlcli.research-appr
 // export: RESEARCH_BRIEF_SCHEMA_V1
 export declare const RESEARCH_BRIEF_SCHEMA_V1: "atlcli.research-brief/v1";
 
+// export: RESEARCH_CAPABILITY_EVENT_TOOL_IDS_V1
+export declare const RESEARCH_CAPABILITY_EVENT_TOOL_IDS_V1: readonly [
+    "jira.issue.search",
+    "jira.issue.get",
+    "wiki.search",
+    "wiki.page.get",
+    "jira.project.search",
+    "wiki.space.search",
+    "atlassian.reference.resolve"
+];
+
 // export: RESEARCH_CAPABILITY_SCHEMAS
 export declare const RESEARCH_CAPABILITY_SCHEMAS: {
     readonly "jira.issue.search": {
@@ -797,6 +808,9 @@ export declare class ResearchCapabilityBroker {
     invoke(tool: ResearchToolId, input: unknown): Promise<unknown>;
 }
 
+// export: ResearchCapabilityEventToolIdV1
+export type ResearchCapabilityEventToolIdV1 = (typeof RESEARCH_CAPABILITY_EVENT_TOOL_IDS_V1)[number];
+
 // export: ResearchClarificationQuestionV1
 export interface ResearchClarificationQuestionV1 {
     id: string;
@@ -1043,8 +1057,8 @@ export type ResearchEventV1 = {
     seq: number;
     at: string;
     callId: string;
-    toolId: ResearchToolId;
-    inputKind: "search" | "continuation" | "detail";
+    toolId: ResearchCapabilityEventToolIdV1;
+    inputKind: "search" | "continuation" | "detail" | "reference";
     status: string;
     itemCount?: number;
     complete?: boolean;
@@ -1584,6 +1598,7 @@ export declare class ResearchRunBudget {
     guardTransport(event: TransportBudgetEvent): void;
     beginSearchPage(product: ResearchProduct): void;
     canSearchAnotherPage(product: ResearchProduct): boolean;
+    canReadAnotherDetail(product: ResearchProduct): boolean;
     remainingItems(product: ResearchProduct): number;
     addItems(product: ResearchProduct, count: number): void;
     beginDetail(product: ResearchProduct): void;
@@ -2554,6 +2569,17 @@ export declare const RESEARCH_APPROVAL_ENVELOPE_SCHEMA_V1: "atlcli.research-appr
 // export: RESEARCH_BRIEF_SCHEMA_V1
 export declare const RESEARCH_BRIEF_SCHEMA_V1: "atlcli.research-brief/v1";
 
+// export: RESEARCH_CAPABILITY_EVENT_TOOL_IDS_V1
+export declare const RESEARCH_CAPABILITY_EVENT_TOOL_IDS_V1: readonly [
+    "jira.issue.search",
+    "jira.issue.get",
+    "wiki.search",
+    "wiki.page.get",
+    "jira.project.search",
+    "wiki.space.search",
+    "atlassian.reference.resolve"
+];
+
 // export: RESEARCH_CAPABILITY_SCHEMAS
 export declare const RESEARCH_CAPABILITY_SCHEMAS: {
     readonly "jira.issue.search": {
@@ -2947,6 +2973,9 @@ export declare class ResearchCapabilityBroker {
     invoke(tool: ResearchToolId, input: unknown): Promise<unknown>;
 }
 
+// export: ResearchCapabilityEventToolIdV1
+export type ResearchCapabilityEventToolIdV1 = (typeof RESEARCH_CAPABILITY_EVENT_TOOL_IDS_V1)[number];
+
 // export: ResearchClarificationQuestionV1
 export interface ResearchClarificationQuestionV1 {
     id: string;
@@ -3193,8 +3222,8 @@ export type ResearchEventV1 = {
     seq: number;
     at: string;
     callId: string;
-    toolId: ResearchToolId;
-    inputKind: "search" | "continuation" | "detail";
+    toolId: ResearchCapabilityEventToolIdV1;
+    inputKind: "search" | "continuation" | "detail" | "reference";
     status: string;
     itemCount?: number;
     complete?: boolean;
@@ -3734,6 +3763,7 @@ export declare class ResearchRunBudget {
     guardTransport(event: TransportBudgetEvent): void;
     beginSearchPage(product: ResearchProduct): void;
     canSearchAnotherPage(product: ResearchProduct): boolean;
+    canReadAnotherDetail(product: ResearchProduct): boolean;
     remainingItems(product: ResearchProduct): number;
     addItems(product: ResearchProduct, count: number): void;
     beginDetail(product: ResearchProduct): void;
@@ -4702,6 +4732,17 @@ export declare const RESEARCH_APPROVAL_ENVELOPE_SCHEMA_V1: "atlcli.research-appr
 // export: RESEARCH_BRIEF_SCHEMA_V1
 export declare const RESEARCH_BRIEF_SCHEMA_V1: "atlcli.research-brief/v1";
 
+// export: RESEARCH_CAPABILITY_EVENT_TOOL_IDS_V1
+export declare const RESEARCH_CAPABILITY_EVENT_TOOL_IDS_V1: readonly [
+    "jira.issue.search",
+    "jira.issue.get",
+    "wiki.search",
+    "wiki.page.get",
+    "jira.project.search",
+    "wiki.space.search",
+    "atlassian.reference.resolve"
+];
+
 // export: RESEARCH_CAPABILITY_SCHEMAS
 export declare const RESEARCH_CAPABILITY_SCHEMAS: {
     readonly "jira.issue.search": {
@@ -5095,6 +5136,9 @@ export declare class ResearchCapabilityBroker {
     invoke(tool: ResearchToolId, input: unknown): Promise<unknown>;
 }
 
+// export: ResearchCapabilityEventToolIdV1
+export type ResearchCapabilityEventToolIdV1 = (typeof RESEARCH_CAPABILITY_EVENT_TOOL_IDS_V1)[number];
+
 // export: ResearchClarificationQuestionV1
 export interface ResearchClarificationQuestionV1 {
     id: string;
@@ -5341,8 +5385,8 @@ export type ResearchEventV1 = {
     seq: number;
     at: string;
     callId: string;
-    toolId: ResearchToolId;
-    inputKind: "search" | "continuation" | "detail";
+    toolId: ResearchCapabilityEventToolIdV1;
+    inputKind: "search" | "continuation" | "detail" | "reference";
     status: string;
     itemCount?: number;
     complete?: boolean;
@@ -5882,6 +5926,7 @@ export declare class ResearchRunBudget {
     guardTransport(event: TransportBudgetEvent): void;
     beginSearchPage(product: ResearchProduct): void;
     canSearchAnotherPage(product: ResearchProduct): boolean;
+    canReadAnotherDetail(product: ResearchProduct): boolean;
     remainingItems(product: ResearchProduct): number;
     addItems(product: ResearchProduct, count: number): void;
     beginDetail(product: ResearchProduct): void;
@@ -6671,6 +6716,9 @@ export declare function createResearchKeyScopeSeedV1(input: {
     authority: "approved" | "locked";
 }): ResearchScopeSeedV1;
 
+// export: createResearchNodePtcToolsV1
+export declare function createResearchNodePtcToolsV1(node: ResearchGraphNodeV1, broker: ResearchCapabilityBroker, scopeCatalog: DynamicResearchSubagentOptions["scopeCatalog"], onDiagnostic?: (diagnostic: ResearchPtcDiagnosticV1) => void, onResult?: (tool: ResearchGraphCapabilityV1, result: unknown) => void, now?: () => number): DynamicStructuredTool[];
+
 // export: createResearchPtcTools
 export declare function createResearchPtcTools(broker: ResearchCapabilityBroker, options?: ResearchPtcToolOptions): DynamicStructuredTool[];
 
@@ -6748,6 +6796,10 @@ export interface DynamicResearchSubagentOptions {
     model: BaseChatModel;
     modelsByRole?: Partial<Record<ResearchGraphRoleV1, BaseChatModel>>;
     broker: ResearchCapabilityBroker;
+    scopeCatalog?: {
+        broker: ResearchScopeCatalogBroker;
+        tenantOrigin: string;
+    };
     question: string;
     maxInterpreterMs: number;
     maxInterpreterMemoryBytes: number;
@@ -7000,6 +7052,17 @@ export declare const RESEARCH_APPROVAL_ENVELOPE_SCHEMA_V1: "atlcli.research-appr
 
 // export: RESEARCH_BRIEF_SCHEMA_V1
 export declare const RESEARCH_BRIEF_SCHEMA_V1: "atlcli.research-brief/v1";
+
+// export: RESEARCH_CAPABILITY_EVENT_TOOL_IDS_V1
+export declare const RESEARCH_CAPABILITY_EVENT_TOOL_IDS_V1: readonly [
+    "jira.issue.search",
+    "jira.issue.get",
+    "wiki.search",
+    "wiki.page.get",
+    "jira.project.search",
+    "wiki.space.search",
+    "atlassian.reference.resolve"
+];
 
 // export: RESEARCH_CAPABILITY_SCHEMAS
 export declare const RESEARCH_CAPABILITY_SCHEMAS: {
@@ -7420,6 +7483,9 @@ export declare class ResearchCapabilityBroker {
     invoke(tool: ResearchToolId, input: unknown): Promise<unknown>;
 }
 
+// export: ResearchCapabilityEventToolIdV1
+export type ResearchCapabilityEventToolIdV1 = (typeof RESEARCH_CAPABILITY_EVENT_TOOL_IDS_V1)[number];
+
 // export: ResearchClarificationQuestionV1
 export interface ResearchClarificationQuestionV1 {
     id: string;
@@ -7666,8 +7732,8 @@ export type ResearchEventV1 = {
     seq: number;
     at: string;
     callId: string;
-    toolId: ResearchToolId;
-    inputKind: "search" | "continuation" | "detail";
+    toolId: ResearchCapabilityEventToolIdV1;
+    inputKind: "search" | "continuation" | "detail" | "reference";
     status: string;
     itemCount?: number;
     complete?: boolean;
@@ -8053,8 +8119,8 @@ export interface ResearchProviderPage<T> {
 // export: ResearchPtcDiagnosticV1
 export interface ResearchPtcDiagnosticV1 {
     callId: string;
-    tool: ResearchToolId;
-    inputKind: "search" | "continuation" | "detail";
+    tool: ResearchGraphCapabilityV1;
+    inputKind: "search" | "continuation" | "detail" | "reference";
     outcome: "started" | "success" | "error";
     durationMs?: number;
     itemCount?: number;
@@ -8067,10 +8133,13 @@ export interface ResearchPtcDiagnosticV1 {
     queryKeys?: string[];
 }
 
+// export: researchPtcToolNamesForNodeV1
+export declare function researchPtcToolNamesForNodeV1(node: Pick<ResearchGraphNodeV1, "grantedCapabilityIds">): string[];
+
 // export: ResearchPtcToolOptions
 export interface ResearchPtcToolOptions {
     onDiagnostic?: (diagnostic: ResearchPtcDiagnosticV1) => void;
-    onResult?: (tool: ResearchToolId, result: unknown) => void;
+    onResult?: (tool: ResearchGraphCapabilityV1, result: unknown) => void;
     now?: () => number;
 }
 
@@ -8234,6 +8303,7 @@ export declare class ResearchRunBudget {
     guardTransport(event: TransportBudgetEvent): void;
     beginSearchPage(product: ResearchProduct): void;
     canSearchAnotherPage(product: ResearchProduct): boolean;
+    canReadAnotherDetail(product: ResearchProduct): boolean;
     remainingItems(product: ResearchProduct): number;
     addItems(product: ResearchProduct, count: number): void;
     beginDetail(product: ResearchProduct): void;
@@ -8406,6 +8476,9 @@ export interface ResearchScopeCatalogProvidersV1 {
 // export: ResearchScopeCatalogPtcOptions
 export interface ResearchScopeCatalogPtcOptions {
     tenantOrigin: string;
+    onDiagnostic?: (diagnostic: ResearchPtcDiagnosticV1) => void;
+    onResult?: (tool: ResearchScopeCatalogCapabilityId, result: unknown) => void;
+    now?: () => number;
 }
 
 // export: ResearchScopeClarificationReasonV1
@@ -8811,6 +8884,10 @@ export interface RunResearchAgentInput {
     options?: ResearchRunOptions;
     workspace?: ResearchWorkspace;
     researchGraph?: ResearchGraphV1;
+    scopeCatalog?: {
+        broker: ResearchScopeCatalogBroker;
+        tenantOrigin: string;
+    };
     onPtcDiagnostic?: (diagnostic: ResearchPtcDiagnosticV1) => void;
     onSubagentDiagnostic?: (diagnostic: ResearchSubagentDiagnosticV1) => void;
 }
@@ -9004,6 +9081,17 @@ export declare function normalizeResearchScopeSeedsV1(value: unknown, scope: Res
 // export: normalizeResearchScopeV1
 export declare function normalizeResearchScopeV1(value: unknown): ResearchScopeV1;
 
+// export: RESEARCH_CAPABILITY_EVENT_TOOL_IDS_V1
+export declare const RESEARCH_CAPABILITY_EVENT_TOOL_IDS_V1: readonly [
+    "jira.issue.search",
+    "jira.issue.get",
+    "wiki.search",
+    "wiki.page.get",
+    "jira.project.search",
+    "wiki.space.search",
+    "atlassian.reference.resolve"
+];
+
 // export: RESEARCH_ONE_SHOT_POLICY_SCHEMA_V1
 export declare const RESEARCH_ONE_SHOT_POLICY_SCHEMA_V1: "atlcli.research-one-shot-policy/v1";
 
@@ -9087,6 +9175,9 @@ export declare const RESEARCH_TOOL_IDS: readonly [
     "wiki.search",
     "wiki.page.get"
 ];
+
+// export: ResearchCapabilityEventToolIdV1
+export type ResearchCapabilityEventToolIdV1 = (typeof RESEARCH_CAPABILITY_EVENT_TOOL_IDS_V1)[number];
 
 // export: ResearchContractError
 export declare class ResearchContractError extends Error {
@@ -9193,8 +9284,8 @@ export type ResearchEventV1 = {
     seq: number;
     at: string;
     callId: string;
-    toolId: ResearchToolId;
-    inputKind: "search" | "continuation" | "detail";
+    toolId: ResearchCapabilityEventToolIdV1;
+    inputKind: "search" | "continuation" | "detail" | "reference";
     status: string;
     itemCount?: number;
     complete?: boolean;
@@ -9987,6 +10078,9 @@ export declare function createResearchKeyScopeSeedV1(input: {
     authority: "approved" | "locked";
 }): ResearchScopeSeedV1;
 
+// export: createResearchNodePtcToolsV1
+export declare function createResearchNodePtcToolsV1(node: ResearchGraphNodeV1, broker: ResearchCapabilityBroker, scopeCatalog: DynamicResearchSubagentOptions["scopeCatalog"], onDiagnostic?: (diagnostic: ResearchPtcDiagnosticV1) => void, onResult?: (tool: ResearchGraphCapabilityV1, result: unknown) => void, now?: () => number): DynamicStructuredTool[];
+
 // export: createResearchPtcTools
 export declare function createResearchPtcTools(broker: ResearchCapabilityBroker, options?: ResearchPtcToolOptions): DynamicStructuredTool[];
 
@@ -10064,6 +10158,10 @@ export interface DynamicResearchSubagentOptions {
     model: BaseChatModel;
     modelsByRole?: Partial<Record<ResearchGraphRoleV1, BaseChatModel>>;
     broker: ResearchCapabilityBroker;
+    scopeCatalog?: {
+        broker: ResearchScopeCatalogBroker;
+        tenantOrigin: string;
+    };
     question: string;
     maxInterpreterMs: number;
     maxInterpreterMemoryBytes: number;
@@ -10331,6 +10429,17 @@ export declare const RESEARCH_APPROVAL_ENVELOPE_SCHEMA_V1: "atlcli.research-appr
 
 // export: RESEARCH_BRIEF_SCHEMA_V1
 export declare const RESEARCH_BRIEF_SCHEMA_V1: "atlcli.research-brief/v1";
+
+// export: RESEARCH_CAPABILITY_EVENT_TOOL_IDS_V1
+export declare const RESEARCH_CAPABILITY_EVENT_TOOL_IDS_V1: readonly [
+    "jira.issue.search",
+    "jira.issue.get",
+    "wiki.search",
+    "wiki.page.get",
+    "jira.project.search",
+    "wiki.space.search",
+    "atlassian.reference.resolve"
+];
 
 // export: RESEARCH_CAPABILITY_SCHEMAS
 export declare const RESEARCH_CAPABILITY_SCHEMAS: {
@@ -10751,6 +10860,9 @@ export declare class ResearchCapabilityBroker {
     invoke(tool: ResearchToolId, input: unknown): Promise<unknown>;
 }
 
+// export: ResearchCapabilityEventToolIdV1
+export type ResearchCapabilityEventToolIdV1 = (typeof RESEARCH_CAPABILITY_EVENT_TOOL_IDS_V1)[number];
+
 // export: ResearchClarificationQuestionV1
 export interface ResearchClarificationQuestionV1 {
     id: string;
@@ -10997,8 +11109,8 @@ export type ResearchEventV1 = {
     seq: number;
     at: string;
     callId: string;
-    toolId: ResearchToolId;
-    inputKind: "search" | "continuation" | "detail";
+    toolId: ResearchCapabilityEventToolIdV1;
+    inputKind: "search" | "continuation" | "detail" | "reference";
     status: string;
     itemCount?: number;
     complete?: boolean;
@@ -11384,8 +11496,8 @@ export interface ResearchProviderPage<T> {
 // export: ResearchPtcDiagnosticV1
 export interface ResearchPtcDiagnosticV1 {
     callId: string;
-    tool: ResearchToolId;
-    inputKind: "search" | "continuation" | "detail";
+    tool: ResearchGraphCapabilityV1;
+    inputKind: "search" | "continuation" | "detail" | "reference";
     outcome: "started" | "success" | "error";
     durationMs?: number;
     itemCount?: number;
@@ -11398,10 +11510,13 @@ export interface ResearchPtcDiagnosticV1 {
     queryKeys?: string[];
 }
 
+// export: researchPtcToolNamesForNodeV1
+export declare function researchPtcToolNamesForNodeV1(node: Pick<ResearchGraphNodeV1, "grantedCapabilityIds">): string[];
+
 // export: ResearchPtcToolOptions
 export interface ResearchPtcToolOptions {
     onDiagnostic?: (diagnostic: ResearchPtcDiagnosticV1) => void;
-    onResult?: (tool: ResearchToolId, result: unknown) => void;
+    onResult?: (tool: ResearchGraphCapabilityV1, result: unknown) => void;
     now?: () => number;
 }
 
@@ -11565,6 +11680,7 @@ export declare class ResearchRunBudget {
     guardTransport(event: TransportBudgetEvent): void;
     beginSearchPage(product: ResearchProduct): void;
     canSearchAnotherPage(product: ResearchProduct): boolean;
+    canReadAnotherDetail(product: ResearchProduct): boolean;
     remainingItems(product: ResearchProduct): number;
     addItems(product: ResearchProduct, count: number): void;
     beginDetail(product: ResearchProduct): void;
@@ -11737,6 +11853,9 @@ export interface ResearchScopeCatalogProvidersV1 {
 // export: ResearchScopeCatalogPtcOptions
 export interface ResearchScopeCatalogPtcOptions {
     tenantOrigin: string;
+    onDiagnostic?: (diagnostic: ResearchPtcDiagnosticV1) => void;
+    onResult?: (tool: ResearchScopeCatalogCapabilityId, result: unknown) => void;
+    now?: () => number;
 }
 
 // export: ResearchScopeClarificationReasonV1
@@ -12142,6 +12261,10 @@ export interface RunResearchAgentInput {
     options?: ResearchRunOptions;
     workspace?: ResearchWorkspace;
     researchGraph?: ResearchGraphV1;
+    scopeCatalog?: {
+        broker: ResearchScopeCatalogBroker;
+        tenantOrigin: string;
+    };
     onPtcDiagnostic?: (diagnostic: ResearchPtcDiagnosticV1) => void;
     onSubagentDiagnostic?: (diagnostic: ResearchSubagentDiagnosticV1) => void;
 }

@@ -9,6 +9,7 @@ import {
   composeResearchGraphV1,
   composeStandardResearchGraphV1,
   type ResearchBriefV1,
+  type ResearchGraphNodeV1,
   type ResearchGraphV1,
 } from "@atlcli/research/graph";
 import {
@@ -40,7 +41,9 @@ import {
   buildResearchAcquisitionProgram,
   compileDynamicResearchSubagents,
   createBoundedResearchSubagentMiddleware,
+  createResearchNodePtcToolsV1,
   providerCompatibleResearchSchema,
+  researchPtcToolNamesForNodeV1,
   researchSubagentTypeForNodeV1,
   researchTaskIdForNodeV1,
   responseSchemaForResearchRole,
@@ -51,6 +54,7 @@ import {
   normalizeResearchRequestV1,
 } from "../utils/research/contracts.js";
 import { createMemoryResearchWorkspace } from "@atlcli/research";
+import { ResearchScopeCatalogBroker } from "@atlcli/research/scope-catalog-broker";
 import { z } from "zod/v4";
 
 const request = normalizeResearchRequestV1({
@@ -966,6 +970,9 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     expect(prompt).toContain("exactly one fresh-context independent critic");
     expect(prompt).toContain("tools.researchReconciliationDispositions");
     expect(prompt).toContain("decisions must contain every returned defect ID exactly once");
+    expect(prompt).toContain("reject_defect permits invalid_reference, already_resolved, or supported_by_evidence");
+    expect(prompt).toContain("coverage_gap to missing_coverage");
+    expect(prompt).toContain("If there is no compatible proposal, omit repairFollowUpId");
     expect(prompt).toContain("A synthesizer call before disposition acceptance is rejected");
     expect(prompt).toContain("Duplicate task IDs are rejected before model or provider work");
     expect(prompt).toContain("Console APIs are intentionally unavailable");
@@ -980,6 +987,22 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
         items: { properties: { reasonCode: { enum: string[] } } };
       }).items.properties.reasonCode.enum,
     ).toEqual(["coverage_gap", "contradiction", "negative_claim", "stale_or_truncated"]);
+
+    const repair = crossProductGraph().nodes.find((node) => node.kind === "repair")!;
+    const repairSpec = compileDynamicResearchSubagents(crossProductGraph(), {
+      model,
+      broker,
+      question: request.question,
+      maxInterpreterMs: 5_000,
+      maxInterpreterMemoryBytes: 8_000_000,
+      maxPtcCalls: 8,
+      maxSearchPagesPerProduct: 2,
+      maxDetailItemsPerProduct: 5,
+      maxPacketChars: 8_000,
+    }).find((spec) => spec.name === researchSubagentTypeForNodeV1(repair));
+    expect(repairSpec?.systemPrompt).toContain("acquisition order is mandatory");
+    expect(repairSpec?.systemPrompt).toContain("A sourceId is citation metadata, not a detail capability");
+    expect(repairSpec?.systemPrompt).toContain("item.entityRef copied unchanged from those same repair-search results");
   });
 
   test("projects the accepted synthesizer separately from generic research waves", async () => {
@@ -1563,7 +1586,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       defects: [{
         id: "defect:synthetic-coverage",
         severity: "important",
-        target: { kind: "node", id: join.id },
+        target: { kind: "coverage", id: "coverage:primary-question" },
         code: "missing_coverage",
         references: [],
         explanation: "The synthetic branch intentionally contains no source evidence.",
@@ -1958,19 +1981,96 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       "analysis",
       "off",
     ));
-    const specs = compileDynamicResearchSubagents(graph, {
-      model,
-      broker,
-      question: request.question,
-      maxInterpreterMs: 5_000,
-      maxInterpreterMemoryBytes: 8_000_000,
-      maxPtcCalls: 8,
-      maxSearchPagesPerProduct: 2,
-      maxDetailItemsPerProduct: 5,
-      maxPacketChars: 8_000,
+    const names = graph.nodes.flatMap(researchPtcToolNamesForNodeV1);
+    expect(names).not.toContain("jira_project_search");
+    expect(names).not.toContain("wiki_space_search");
+    expect(names).not.toContain("atlassian_reference_resolve");
+  });
+
+  test("projects only explicitly granted catalog tools into a dynamic node allowlist", async () => {
+    expect(researchPtcToolNamesForNodeV1({
+      grantedCapabilityIds: [
+        "jira.issue.search",
+        "jira.project.search",
+        "atlassian.reference.resolve",
+      ],
+    })).toEqual([
+      "jira_issue_search",
+      "jira_project_search",
+      "atlassian_reference_resolve",
+    ]);
+
+    const graph = composeResearchGraphV1(graphBrief(
+      "Resolve one related Jira project without widening content scope.",
+      ["jira"],
+      "analysis",
+      "off",
+    ));
+    const node: ResearchGraphNodeV1 = {
+      ...graph.nodes.find((candidate) => candidate.roleId === "focused-researcher")!,
+      grantedCapabilityIds: [
+        "jira.project.search",
+        "atlassian.reference.resolve",
+      ],
+    };
+    const scopeCatalog = new ResearchScopeCatalogBroker({
+      tenantOrigin: request.scope.siteOrigin,
+      providers: {
+        jira: {
+          async listProjects() {
+            return {
+              candidates: [{
+                schema: "atlcli.research-scope-candidate/v1",
+                id: "research-scope-candidate:jira-project-related",
+                tenantOrigin: request.scope.siteOrigin,
+                product: "jira",
+                entityKind: "project",
+                entityRef: "research-scope-entity:jira-project-related",
+                key: "RELATED",
+                name: "Related project",
+                status: "current",
+                accessible: true,
+                providerFreshnessAt: "2026-08-01T12:00:00.000Z",
+              }],
+            };
+          },
+        },
+        confluence: { async listSpaces() { return { candidates: [] }; } },
+        async resolveReference() { return undefined; },
+      },
     });
-    expect(specs.flatMap((spec) => spec.tools?.map((candidate) => candidate.name) ?? [])).not.toContain("jira_project_search");
-    expect(specs.flatMap((spec) => spec.tools?.map((candidate) => candidate.name) ?? [])).not.toContain("wiki_space_search");
+    const session = new ReplSession("dynamic-node-catalog-grant", {
+      tools: createResearchNodePtcToolsV1(
+        node,
+        broker,
+        { broker: scopeCatalog, tenantOrigin: request.scope.siteOrigin },
+      ),
+      maxPtcCalls: 2,
+      captureConsole: false,
+    });
+    try {
+      const result = await session.eval(`
+        const page = JSON.parse(await tools.jiraProjectSearch({}));
+        ({
+          names: Object.keys(tools).sort(),
+          key: page.candidates[0].key,
+          wikiToolType: typeof tools.wikiSpaceSearch,
+          issueToolType: typeof tools.jiraIssueSearch
+        });
+      `, 5_000);
+      expect(result).toMatchObject({
+        ok: true,
+        value: {
+          names: ["atlassianReferenceResolve", "jiraProjectSearch"],
+          key: "RELATED",
+          wikiToolType: "undefined",
+          issueToolType: "undefined",
+        },
+      });
+    } finally {
+      session.dispose();
+      scopeCatalog.cancel();
+    }
   });
 
   test("does not reference a detail capability removed by the host grant intersection", () => {

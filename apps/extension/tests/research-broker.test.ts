@@ -195,6 +195,30 @@ describe("research query builders", () => {
 });
 
 describe("bounded research capability broker", () => {
+  it("reports product-specific search and detail capacity for repair admission", async () => {
+    const broker = new ResearchCapabilityBroker(
+      request({ maxSearchPagesPerProduct: 1, maxDetailItemsPerProduct: 1 }),
+      fakeProviders(),
+      { createEntityId: () => "repair-budget-entity" },
+    );
+    expect(broker.budget.canSearchAnotherPage("jira")).toBe(true);
+    expect(broker.budget.canReadAnotherDetail("jira")).toBe(true);
+
+    const page = await broker.invoke("jira.issue.search", {
+      schema: RESEARCH_CAPABILITY_SCHEMAS["jira.issue.search"].input,
+      query: {},
+    }) as ResearchSearchOutputV1;
+    await broker.invoke("jira.issue.get", {
+      schema: RESEARCH_CAPABILITY_SCHEMAS["jira.issue.get"].input,
+      entityRef: page.items[0]!.entityRef,
+    });
+
+    expect(broker.budget.canSearchAnotherPage("jira")).toBe(false);
+    expect(broker.budget.canReadAnotherDetail("jira")).toBe(false);
+    expect(broker.budget.canSearchAnotherPage("confluence")).toBe(true);
+    expect(broker.budget.canReadAnotherDetail("confluence")).toBe(true);
+  });
+
   it("paginates both products without exposing provider cursors or out-of-scope hits", async () => {
     const providers = fakeProviders();
     let cursorId = 0;

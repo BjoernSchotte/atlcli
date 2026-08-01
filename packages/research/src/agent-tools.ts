@@ -6,6 +6,7 @@ import {
   RESEARCH_LANGCHAIN_TOOL_NAMES,
 } from "./capability-contracts.js";
 import type { ResearchToolId } from "./contracts.js";
+import type { ResearchGraphCapabilityV1 } from "./graph.js";
 
 const searchInputSchema = () =>
   z.union([
@@ -52,8 +53,8 @@ function jsonResult(value: unknown): string {
 
 export interface ResearchPtcDiagnosticV1 {
   callId: string;
-  tool: ResearchToolId;
-  inputKind: "search" | "continuation" | "detail";
+  tool: ResearchGraphCapabilityV1;
+  inputKind: "search" | "continuation" | "detail" | "reference";
   outcome: "started" | "success" | "error";
   durationMs?: number;
   itemCount?: number;
@@ -68,7 +69,7 @@ export interface ResearchPtcDiagnosticV1 {
 
 export interface ResearchPtcToolOptions {
   onDiagnostic?: (diagnostic: ResearchPtcDiagnosticV1) => void;
-  onResult?: (tool: ResearchToolId, result: unknown) => void;
+  onResult?: (tool: ResearchGraphCapabilityV1, result: unknown) => void;
   now?: () => number;
 }
 

@@ -5,6 +5,7 @@ import {
   type ResearchScopeCatalogCapabilityId,
 } from "@atlcli/research/scope-catalog";
 import { ResearchScopeCatalogBroker } from "@atlcli/research/scope-catalog-broker";
+import type { ResearchPtcDiagnosticV1 } from "./agent-tools.js";
 
 export const RESEARCH_SCOPE_CATALOG_TOOL_NAMES = {
   "jira.project.search": "jira_project_search",
@@ -14,6 +15,9 @@ export const RESEARCH_SCOPE_CATALOG_TOOL_NAMES = {
 
 export interface ResearchScopeCatalogPtcOptions {
   tenantOrigin: string;
+  onDiagnostic?: (diagnostic: ResearchPtcDiagnosticV1) => void;
+  onResult?: (tool: ResearchScopeCatalogCapabilityId, result: unknown) => void;
+  now?: () => number;
 }
 
 const searchSchema = z
@@ -77,12 +81,83 @@ export function createResearchScopeCatalogPtcTools(
   broker: ResearchScopeCatalogBroker,
   options: ResearchScopeCatalogPtcOptions,
 ): StructuredToolInterface[] {
+  let callSequence = 0;
+  const now = options.now ?? Date.now;
+  const invoke = async (
+    capability: ResearchScopeCatalogCapabilityId,
+    input: Record<string, unknown>,
+  ): Promise<string> => {
+    const startedAt = now();
+    const callId = `${capability}:${++callSequence}`;
+    const inputKind = capability === "atlassian.reference.resolve"
+      ? "reference" as const
+      : typeof input.cursor === "string"
+        ? "continuation" as const
+        : "search" as const;
+    const inputKeys = Object.keys(input).sort();
+    options.onDiagnostic?.({
+      callId,
+      tool: capability,
+      inputKind,
+      outcome: "started",
+      inputKeys,
+      queryKeys: [],
+    });
+    try {
+      const result = await invokeCatalog(
+        broker,
+        capability,
+        input,
+        options.tenantOrigin,
+      );
+      const serialized = JSON.stringify(result);
+      options.onResult?.(capability, result);
+      const candidates = result && typeof result === "object" &&
+        "candidates" in result && Array.isArray(result.candidates)
+        ? result.candidates
+        : [];
+      const truncated = result && typeof result === "object" &&
+        "truncated" in result && result.truncated === true;
+      const pageMetadata = capability === "atlassian.reference.resolve"
+        ? {}
+        : { itemCount: candidates.length, complete: !truncated };
+      options.onDiagnostic?.({
+        callId,
+        tool: capability,
+        inputKind,
+        outcome: "success",
+        durationMs: Math.max(0, now() - startedAt),
+        ...pageMetadata,
+        resultBytes: new TextEncoder().encode(serialized).byteLength,
+        inputKeys,
+        queryKeys: [],
+      });
+      return serialized;
+    } catch (error) {
+      options.onDiagnostic?.({
+        callId,
+        tool: capability,
+        inputKind,
+        outcome: "error",
+        durationMs: Math.max(0, now() - startedAt),
+        inputKeys,
+        queryKeys: [],
+        errorCode: typeof error === "object" && error !== null &&
+          "code" in error && typeof error.code === "string"
+          ? error.code
+          : error instanceof Error
+            ? error.name
+            : "unknown",
+      });
+      throw error;
+    }
+  };
   const searchTool = (
     capability: "jira.project.search" | "wiki.space.search",
     description: string,
   ) =>
     tool(
-      async (input) => JSON.stringify(await invokeCatalog(broker, capability, input, options.tenantOrigin)),
+      async (input) => invoke(capability, input),
       {
         name: RESEARCH_SCOPE_CATALOG_TOOL_NAMES[capability],
         description,
@@ -100,8 +175,7 @@ export function createResearchScopeCatalogPtcTools(
       "Read-only search of Confluence spaces visible in the active tenant. Continue only with the returned opaque cursor.",
     ),
     tool(
-      async (input) =>
-        JSON.stringify(await invokeCatalog(broker, "atlassian.reference.resolve", input, options.tenantOrigin)),
+      async (input) => invoke("atlassian.reference.resolve", input),
       {
         name: RESEARCH_SCOPE_CATALOG_TOOL_NAMES["atlassian.reference.resolve"],
         description:

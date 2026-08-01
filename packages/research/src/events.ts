@@ -1,7 +1,7 @@
 import {
   RESEARCH_REPORT_ARTIFACT_PATH_V1,
+  RESEARCH_CAPABILITY_EVENT_TOOL_IDS_V1,
   RESEARCH_REQUESTED_EFFORTS_V1,
-  RESEARCH_TOOL_IDS,
   type ResearchOneShotEventV1,
 } from "./contracts.js";
 
@@ -123,8 +123,10 @@ export function isResearchOneShotEventV1(value: unknown): value is ResearchOneSh
       "durationMs", "errorCode", "inputKeys", "queryKeys",
     ]) &&
       boundedToken(event.callId) &&
-      RESEARCH_TOOL_IDS.includes(event.toolId as (typeof RESEARCH_TOOL_IDS)[number]) &&
-      ["search", "continuation", "detail"].includes(String(event.inputKind)) &&
+      RESEARCH_CAPABILITY_EVENT_TOOL_IDS_V1.includes(
+        event.toolId as (typeof RESEARCH_CAPABILITY_EVENT_TOOL_IDS_V1)[number],
+      ) &&
+      ["search", "continuation", "detail", "reference"].includes(String(event.inputKind)) &&
       ["started", "completed", "failed"].includes(String(event.status)) &&
       optionalNonNegativeInteger(event.itemCount) &&
       (event.complete === undefined || typeof event.complete === "boolean") &&

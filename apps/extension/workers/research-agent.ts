@@ -1,8 +1,10 @@
 import type { Profile } from "@atlcli/core";
 import {
   ResearchRunBudget,
+  ResearchScopeCatalogBroker,
   classifyResearchError,
   createRestResearchProviders,
+  createRestScopeCatalogProviders,
   normalizeResearchOneShotPolicyV1,
   normalizeResearchRequestV1,
   createMemoryResearchWorkspace,
@@ -54,6 +56,13 @@ globalThis.addEventListener("message", (event: MessageEvent<unknown>) => {
       };
       const budget = new ResearchRunBudget(request.limits);
       const providers = createRestResearchProviders(profile, request, budget);
+      const scopeCatalog = {
+        tenantOrigin: request.scope.siteOrigin,
+        broker: new ResearchScopeCatalogBroker({
+          tenantOrigin: request.scope.siteOrigin,
+          providers: createRestScopeCatalogProviders(profile, request.scope.siteOrigin),
+        }),
+      };
       const workspace = createMemoryResearchWorkspace();
       const onProgress = (progress: ResearchProgressV1): void =>
         post({ kind: "research-worker:progress", runId, progress });
@@ -64,6 +73,7 @@ globalThis.addEventListener("message", (event: MessageEvent<unknown>) => {
         request,
         providers,
         budget,
+        scopeCatalog,
         runId,
         researchGraph,
         workspace,

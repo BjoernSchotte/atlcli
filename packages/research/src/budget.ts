@@ -96,6 +96,10 @@ export class ResearchRunBudget {
     return this.#pages[product] < this.#limits.maxSearchPagesPerProduct;
   }
 
+  canReadAnotherDetail(product: ResearchProduct): boolean {
+    return this.#details[product] < this.#limits.maxDetailItemsPerProduct;
+  }
+
   remainingItems(product: ResearchProduct): number {
     return Math.max(0, this.#limits.maxItemsPerProduct - this.#items[product]);
   }
