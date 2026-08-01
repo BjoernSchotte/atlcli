@@ -2798,18 +2798,30 @@ Gate:
       auto-resolved, no incomplete catalog proves name uniqueness, no
       invented/unanchored mention reaches a catalog, and no catalog result
       widens content scope.
-- [ ] S0 through S3 run under the same scenario budgets and report calls,
+- [x] S0 through S3 run under the same scenario budgets and report calls,
       tokens, latency, maximum concurrency, source coverage, supported claims,
       unsupported claims, reconciliation defects, and maximum supervisor input
-      tokens/bytes.
-- [ ] S2/S3 introduce no deterministic citation, scope, abstention, or
+      tokens/bytes. Proven 2026-08-01 by a customer-free Node-host runtime
+      comparison: S0 uses the existing one-shot QuickJS path; S1 uses one
+      dynamic worker; S2 uses two actual concurrent PTC acquisition workers;
+      and S3 additionally executes the fresh reconciler. Each receives the
+      same frozen normalized request and limits, publishes one deterministic
+      report, and records the complete comparison metric envelope.
+- [x] S2/S3 introduce no deterministic citation, scope, abstention, or
       unsupported-claim regression versus S0. The private MVP results are
-      labelled directional rather than statistically conclusive.
-- [ ] Apply the value rule pre-registered in T0 and record a go/hold decision.
+      labelled directional rather than statistically conclusive. The
+      customer-free S2/S3 runtime runs have no deterministic gate failure
+      versus S0; private Mayflower results remain separately required and
+      directional only.
+- [x] Apply the value rule pre-registered in T0 and record a go/hold decision.
       T4 durability and the T5/T6 evidence/retrieval foundation proceed either
       way. If S2/S3 miss the rule, keep S1 as the default, leave dynamic
       subagents and model reconciliation experimental/opt-in, and defer
-      subagent-specific expansion until T9 supplies stronger evidence.
+      subagent-specific expansion until T9 supplies stronger evidence. The
+      customer-free Node comparison records `go` with S3 preferred: S2 and S3
+      preserve the deterministic S0 gates and improve S1's detail/source
+      coverage. This is not a production-default decision; the private MVP
+      and T9 evaluations remain authoritative for that decision.
 - [ ] CLI and packed browser produce schema-equivalent graphs, packets,
       reconciliation decisions, reports, and byte-identical Markdown for
       deterministic model/provider inputs.

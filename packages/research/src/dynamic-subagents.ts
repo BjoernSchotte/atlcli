@@ -314,6 +314,13 @@ export function createResearchNodePtcToolsV1(
 export interface DynamicResearchSubagentOptions {
   model: BaseChatModel;
   modelsByRole?: Partial<Record<ResearchGraphRoleV1, BaseChatModel>>;
+  /**
+   * Host-owned per-node override used by deterministic runtime characterization.
+   * Normal production runs use the role-level Anthropic models above; keeping
+   * this explicit prevents concurrent fake providers from sharing a response
+   * queue and makes the test execute each node's real PTC program.
+   */
+  modelsByNode?: Partial<Record<string, BaseChatModel>>;
   broker: ResearchCapabilityBroker;
   scopeCatalog?: {
     broker: ResearchScopeCatalogBroker;
@@ -411,7 +418,7 @@ export function compileDynamicResearchSubagents(
     return {
       name: researchSubagentTypeForNodeV1(node),
       description: `${descriptionForRole(role)} Host-admitted node: ${node.id}.`,
-      model: options.modelsByRole?.[role] ?? options.model,
+      model: options.modelsByNode?.[node.id] ?? options.modelsByRole?.[role] ?? options.model,
       systemPrompt: [
         `Host-admitted specialization ${node.id}:`,
         rolePrompt(node, options.question, options.maxDetailItemsPerProduct),

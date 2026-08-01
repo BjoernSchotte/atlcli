@@ -885,6 +885,12 @@ export interface RunResearchAgentInput {
   workspace?: ResearchWorkspace;
   /** Optional per-run graph. When present, createDeepAgent receives dynamic SubAgent specs. */
   researchGraph?: ResearchGraphV1;
+  /**
+   * Deterministic characterization seam for separately queued concurrent
+   * subagent models. Production callers leave this unset and receive the
+   * standard per-role Anthropic models.
+   */
+  subagentModelsByNode?: Partial<Record<string, BaseChatModel>>;
   /** Host-owned brief metadata retained across deterministic finalization. */
   brief?: ResearchBriefV1;
   /** Optional tenant-bound metadata catalog made available only to granted nodes. */
@@ -1108,6 +1114,7 @@ async function runResearchAgentWithBindings(
     ? compileDynamicResearchSubagents(input.researchGraph, {
         model,
         ...(modelsByRole ? { modelsByRole } : {}),
+        ...(input.subagentModelsByNode ? { modelsByNode: input.subagentModelsByNode } : {}),
         broker,
         ...(input.scopeCatalog ? { scopeCatalog: input.scopeCatalog } : {}),
         question: input.request.question,
