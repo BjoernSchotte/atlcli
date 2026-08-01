@@ -239,6 +239,18 @@ every inventory output and every same-origin `href`/`src` discovered in the
 representative page. The focused consumer run passed 5 tests and 139
 expectations.
 
+The complete Starlight visual matrix passed on 2026-08-01 with six Playwright
+tests. It covers desktop/mobile responsive navigation, color modes, forced
+colors, reduced motion, print and zoom, RTL plain-Astro keyboard access,
+Expressive Code controls, browser performance budgets, the production
+Starlight search dialog's mouse opening and keyboard focus/closing path,
+JavaScript-off static rendering, CSP, blocked external requests, and privacy
+markers. The deterministic cold/warm manifest proof remains in the package
+consumer and builder tests. Named negative fixtures are covered by the loader
+route/path tests, the browser-core negative import gate, the packed hostile-
+content consumer, SVG/link security tests, and the output verifier's
+digest/private-URL/asset checks.
+
 The unchanged DOCX/PDF/browser source boundary was re-proven with the existing
 `@atlcli/confluence` imports: 450 tests across ExportBlock conversion,
 composition, source resolution, DOCX browser runtime/serialization, and Typst

@@ -1701,7 +1701,7 @@ artifact integrity, or origin security.
 - [x] Verify manifest ownership, expected route/file set, internal links,
       anchors, images/downloads, base mapping, hashes, CSP/active content,
       secret/private URLs, and absence of bundle-internal references.
-- [ ] Verify Starlight capability declarations, Pagefind/SEO/i18n/media output,
+- [x] Verify Starlight capability declarations, Pagefind/SEO/i18n/media output,
       analytics declarations, and edit-link origins/exclusions.
 - [x] Fail on non-empty/unowned output targets; use sibling staging plus
       recoverable promotion for replacement.
@@ -1738,7 +1738,7 @@ orchestrates it without hiding the plan, bundle, build, or verification digest.
       dependency and performs no network request.
 - [x] Serve directory output with a directory-index server and portable-file
       output with a simple file server; crawl every route/link/asset.
-- [ ] Run Playwright with JS on/off, CSP, accessibility, blocked external
+- [x] Run Playwright with JS on/off, CSP, accessibility, blocked external
       network, privacy, and deterministic-manifest gates.
 - [ ] Exercise search by mouse and keyboard in every output/experience fixture:
       query,
@@ -1750,7 +1750,7 @@ orchestrates it without hiding the plan, bundle, build, or verification digest.
 - [ ] Measure experience CSS/JS, island JS, search bootstrap/index shards,
       responsive images/fonts, LCP/CLS, navigation and search latency, and
       accessibility budgets; gate regressions.
-- [ ] Seed negative fixtures for route collision, path traversal, Node import in
+- [x] Seed negative fixtures for route collision, path traversal, Node import in
       browser core, XSS, unsafe SVG, private URL, digest mismatch, and missing
       asset; prove each named gate fails.
 - [x] Wire all publishing checks into the required CI aggregator so path routing

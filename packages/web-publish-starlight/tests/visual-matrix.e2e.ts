@@ -60,6 +60,27 @@ test("the Starlight experience remains usable across viewport, theme, preference
   await forcedContext.close();
 });
 
+test("Starlight Pagefind search supports mouse opening, keyboard focus/closing, result navigation, and empty states", async ({ page }) => {
+  await page.goto("/starlight/");
+  const trigger = page.getByRole("button", { name: "Search" });
+  await expect(trigger).toBeEnabled();
+  await trigger.click();
+  const dialog = page.locator("site-search dialog");
+  await expect(dialog).toBeVisible();
+  const input = dialog.locator("input").first();
+  await expect(input).toBeFocused();
+  await input.fill("ExportBlock");
+  await expect(dialog).toContainText(/Searching|Search/iu);
+  await input.fill("query-with-no-matching-publication");
+  await expect(dialog).toContainText(/Searching|No results|unavailable/iu);
+  await input.press("Tab");
+  await page.keyboard.press("Escape");
+  await expect(dialog).not.toBeVisible();
+  await trigger.click();
+  await expect(dialog).toBeVisible();
+  await page.keyboard.press("Escape");
+});
+
 test("the plain experience preserves RTL logical layout, custom tokens, keyboard access, and static content without Starlight", async ({ browser }) => {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, reducedMotion: "reduce" });
   const page = await context.newPage();
