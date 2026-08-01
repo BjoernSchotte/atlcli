@@ -3109,11 +3109,11 @@ The transient local adapter remains disposable; recovery and the bounded
 retry/abstain policy still belong to the pending CLI/browser session runner.
 
 T4 durable one-shot host checkpoint (2026-08-01): ordinary CLI runs now create
-the SQLite-backed turn and pass its exact owner to the shared runtime before
-creating the workspace, provider, or agent. The runtime writes the canonical
-Markdown to the durable artifact store before it records terminal completion;
-the CLI still mirrors the completed report to its operator-selected external
-artifact path. The MV3 side panel now creates explicit session/turn/run IDs and
+the SQLite-backed turn, open its retained virtual workspace, and pass its exact
+owner to the shared runtime before creating the provider or agent. The runtime
+writes the canonical Markdown to the durable artifact store before it records
+terminal completion; the CLI still mirrors the completed report to its
+operator-selected external artifact path. The MV3 side panel now creates explicit session/turn/run IDs and
 the service-worker, offscreen, and dedicated-worker protocols preserve them.
 The dedicated worker initializes the IndexedDB turn, uses its virtual workspace,
 and passes the same durable owner to the shared runtime. A fresh production
@@ -3121,14 +3121,24 @@ bundle E2E proves the terminal IndexedDB session and Markdown bytes, in addition
 to cross-host report equivalence. Resume/retry, expiry recovery, and session UI
 remain pending.
 
+T4 CLI authentication-wait checkpoint (2026-08-01): a normal CLI run now
+persists its accepted turn, brief, and approved graph before it reads the
+non-durable `ANTHROPIC_API_KEY`. If the key is unavailable, it commits the
+revision-fenced `waiting_authentication` transition and prints the safe session
+reference; it does not create a workspace, provider, agent, task attempt, or
+content request. The real Mayflower `DOCSY`/`ATLCLI` preflight proved this
+persisted no-dispatch boundary. Resume is intentionally still unavailable until
+the lease-recovery and retry policy are implemented.
+
 CLI:
 
 - [x] Implement a Bun SQLite session catalog. The physical checkpointer remains
       pending.
 - [x] Use one real directory per retained session, with atomic manifest and
       artifact writes.
-- [x] Create and hand off an accepted durable one-shot turn to the shared CLI
-      runtime, and persist the canonical Markdown artifact before completion.
+- [x] Create and hand off an accepted durable one-shot turn plus its retained
+      virtual workspace to the shared CLI runtime, and persist the canonical
+      Markdown artifact before completion.
 - [ ] Add `--session <id>` for a new turn and `--resume <id>` for interrupted
       execution.
 - [x] Add non-interactive `research sessions list` and `show` operations with

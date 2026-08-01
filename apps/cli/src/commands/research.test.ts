@@ -61,6 +61,7 @@ const report: ResearchReportV1 = {
 
 interface CliHarness {
   dependencies: ResearchCliDependencies;
+  durableStore: InMemoryResearchSessionStoreV1;
   stdout: string[];
   stderr: string[];
   writes: Map<string, string>;
@@ -185,6 +186,7 @@ function cliHarness(options: {
   };
   return {
     dependencies,
+    durableStore,
     stdout,
     stderr,
     writes,
@@ -428,7 +430,7 @@ describe("research CLI one-shot contract", () => {
     expect(harness.stdout.join("")).toContain("atlcli research <question>");
   });
 
-  test("fails before workspace creation for a missing profile or key", async () => {
+  test("fails before workspace creation for a missing profile and durably waits for a missing key", async () => {
     const missingProfile = cliHarness();
     missingProfile.dependencies.resolveProfile = async () => undefined;
     await expect(handleResearch(["question"], {}, { json: false }, missingProfile.dependencies))
@@ -440,6 +442,14 @@ describe("research CLI one-shot contract", () => {
     await expect(handleResearch(["question"], {}, { json: false }, missingKey.dependencies))
       .rejects.toThrow("ANTHROPIC_API_KEY is missing");
     expect(missingKey.workspaces).toHaveLength(0);
+    await expect(missingKey.durableStore.read("research-session:cli-plan"))
+      .resolves.toMatchObject({
+        status: "waiting_authentication",
+        activeTurnId: "research-turn:cli-plan",
+      });
+    expect(missingKey.stderr.join("")).toContain(
+      "session=research-session:cli-plan status=waiting_authentication stop_reason=authentication-required",
+    );
   });
 
   test("stops on typed scope clarification before reading the key or creating a workspace", async () => {
@@ -1045,12 +1055,34 @@ describe("research CLI one-shot contract", () => {
     expect(failed.workspaces[0]?.disposed).toBe(true);
   });
 
-  test("retains the mode-restricted session workspace when requested", async () => {
+  test("prints the retained fallback workspace when requested", async () => {
     const harness = cliHarness();
     await handleResearch(["question"], { "keep-session": true }, { json: false }, harness.dependencies);
     expect(harness.workspaces[0]?.disposed).toBe(false);
     expect(harness.stderr.join("")).toContain("session=research-session:cli-plan");
     expect(harness.stderr.join("")).toContain("workspace=/tmp/research-workspace-1");
+  });
+
+  test("uses the retained durable session workspace when the host provides one", async () => {
+    const harness = cliHarness();
+    const workspace = createMemoryResearchWorkspace();
+    const suppliedSessionIds: string[] = [];
+    const originalOpenSessionStore = harness.dependencies.openSessionStore;
+    harness.dependencies.createWorkspace = async () => {
+      throw new Error("A durable workspace should replace the temporary fallback.");
+    };
+    harness.dependencies.openSessionStore = async () => ({
+      store: (await originalOpenSessionStore()).store,
+      workspace: async (sessionId) => {
+        suppliedSessionIds.push(sessionId);
+        return workspace;
+      },
+      close: () => undefined,
+    });
+    await handleResearch(["question"], {}, { json: false }, harness.dependencies);
+    expect(suppliedSessionIds).toEqual(["research-session:cli-plan"]);
+    expect(harness.runInputs[0]?.workspace).toBe(workspace);
+    expect(await workspace.readFile("/artifacts/report.md")).toBe(report.markdown);
   });
 
   test("atomically writes a mode-restricted Markdown file", async () => {

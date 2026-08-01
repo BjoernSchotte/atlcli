@@ -129,7 +129,7 @@ export interface ResearchCliAgentInput {
   apiKey: string;
   profile: Profile;
   request: ResearchRequestV1;
-  workspace: ResearchCliWorkspace;
+  workspace: ResearchWorkspace;
   sessionId: string;
   durableSession: {
     store: ResearchSessionStoreV1;
@@ -164,7 +164,12 @@ export interface ResearchCliDependencies {
   artifactPath(): string;
   createDurableSessionId(): string;
   createDurableTurnId(): string;
-  openSessionStore(): Promise<{ store: ResearchSessionStoreV1; close(): void }>;
+  openSessionStore(): Promise<{
+    store: ResearchSessionStoreV1;
+    /** Production hosts supply the retained session workspace; test hosts may use the temporary fallback. */
+    workspace?(sessionId: string): Promise<ResearchWorkspace>;
+    close(): void;
+  }>;
   writeStdout(contents: string): void;
   writeStderr(contents: string): void;
   emitOutput(data: unknown, opts: OutputOptions): void;
@@ -628,10 +633,9 @@ export async function writeResearchMarkdownAtomic(path: string, contents: string
   }
 }
 
-function assertApiKey(dependencies: ResearchCliDependencies): string {
+function readApiKey(dependencies: ResearchCliDependencies): string | undefined {
   const key = dependencies.readApiKey()?.trim();
-  if (!key) throw new Error("ANTHROPIC_API_KEY is missing. Set it in the process environment; it is never read from a CLI flag.");
-  return key;
+  return key || undefined;
 }
 
 export const defaultResearchCliDependencies: ResearchCliDependencies = {
@@ -713,7 +717,11 @@ export const defaultResearchCliDependencies: ResearchCliDependencies = {
       databasePath: join(root, "catalog.sqlite"),
       root,
     });
-    return { store, close: () => store.close() };
+    return {
+      store,
+      workspace: (sessionId) => store.workspace(sessionId),
+      close: () => store.close(),
+    };
   },
   writeStdout: (contents) => process.stdout.write(contents),
   writeStderr: (contents) => process.stderr.write(contents),
@@ -860,9 +868,9 @@ export async function handleResearch(
       { outcome: approvalRequired },
     );
   }
-  const apiKey = assertApiKey(dependencies);
   const opened = await dependencies.openSessionStore();
-  let workspace: ResearchCliWorkspace | undefined;
+  let workspace: ResearchWorkspace | undefined;
+  let disposeWorkspace: (() => Promise<void>) | undefined;
   let timeout: unknown;
   let removeInterruptListener: (() => void) | undefined;
   try {
@@ -880,7 +888,27 @@ export async function handleResearch(
       approveAutomatically: true,
       at: now,
     });
-    workspace = await dependencies.createWorkspace();
+    const apiKey = readApiKey(dependencies);
+    if (!apiKey) {
+      const waitingAt = new Date().toISOString();
+      const waiting = await opened.store.commit(durableSession.sessionId, {
+        kind: "wait_authentication",
+        expectedRevision: durableSession.revision,
+        expectedLeaseEpoch: durableSession.lease.epoch,
+        at: waitingAt,
+      });
+      dependencies.writeStderr(
+        `[research] session=${waiting.session.sessionId} status=${waiting.session.status} stop_reason=authentication-required\n`,
+      );
+      throw new Error("ANTHROPIC_API_KEY is missing. Set it in the process environment; it is never read from a CLI flag.");
+    }
+    if (opened.workspace) {
+      workspace = await opened.workspace(durableSession.sessionId);
+    } else {
+      const temporaryWorkspace = await dependencies.createWorkspace();
+      workspace = temporaryWorkspace;
+      disposeWorkspace = () => temporaryWorkspace.dispose();
+    }
     const sessionId = durableSession.sessionId;
     const controller = new AbortController();
     timeout = dependencies.scheduleAbort(
@@ -891,7 +919,10 @@ export async function handleResearch(
     removeInterruptListener = dependencies.listenForInterrupt(onInterrupt);
     dependencies.writeStderr(`[research] model=${RESEARCH_MODEL_ID} profile=${profile.name} project=${request.scope.jiraProjectKeys.join(",")} space=${request.scope.confluenceSpaceKeys.join(",")}\n`);
     if (input.keepSession) {
-      dependencies.writeStderr(`[research] session=${sessionId} workspace=${workspace.root}\n`);
+      const root = "root" in workspace && typeof workspace.root === "string"
+        ? workspace.root
+        : "host-owned";
+      dependencies.writeStderr(`[research] session=${sessionId} workspace=${root}\n`);
     }
     const report = await dependencies.runAgent({
       apiKey,
@@ -963,7 +994,7 @@ export async function handleResearch(
   } finally {
     if (timeout !== undefined) dependencies.cancelScheduledAbort(timeout);
     removeInterruptListener?.();
-    if (workspace && !input.keepSession) await workspace.dispose();
+    if (!input.keepSession) await disposeWorkspace?.();
     opened.close();
   }
 }
@@ -989,7 +1020,7 @@ Options:
   --reconciliation <m>    off|auto|required (default: auto)
   --plan-only             Persist and print the sanitized durable research plan; do not run research
   --output <path>        Atomically write the generated Markdown
-  --keep-session         Retain the temporary session workspace
+  --keep-session         Print the retained session workspace path
   --json                 Emit the structured report as JSON
   --help                 Show this help
 
