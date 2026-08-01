@@ -410,6 +410,22 @@ function backgroundBootstrap(): string {
       });
       return json({ id: "103", key: "DEMO", name: "Demo project", archived: false });
     }
+    if (
+      url.origin === "https://packed-research.atlassian.net" &&
+      url.pathname === "/wiki/api/v2/spaces"
+    ) {
+      const status = url.searchParams.get("status");
+      const exactKey = url.searchParams.get("keys");
+      const values = status === "current" && exactKey === "KB"
+        ? [{ id: "201", key: "KB", name: "Knowledge Base", status: "current" }]
+        : [];
+      harnessChannel.postMessage({
+        kind: "scope-catalog-fetch",
+        url: url.href,
+        method: request.method,
+      });
+      return json({ results: values });
+    }
     return nativeFetch(input, init);
   };
 })();
@@ -1433,6 +1449,7 @@ test("runs bounded PTC in packed MV3, recreates workers, cancels, and renders sa
 }, testInfo) => {
   await openResearchScreen(page);
   await installEventCapture(page);
+  await page.getByTestId("research-current-context").uncheck();
   await expect(page.getByTestId("research-key")).toHaveAttribute(
     "type",
     "password"
@@ -1444,7 +1461,8 @@ test("runs bounded PTC in packed MV3, recreates workers, cancels, and renders sa
 
   await fillResearchForm(
     page,
-    "hold-after-ptc: How does Jira project DEMO relate to Confluence space KB?"
+    "hold-after-ptc: How does Jira project DEMO relate to Confluence space KB?",
+    { includeScope: false },
   );
   await page.getByTestId("research-run").click();
 
@@ -1604,6 +1622,14 @@ test("runs bounded PTC in packed MV3, recreates workers, cancels, and renders sa
   expect(diagnosticText).toContain("rest");
 
   const successEvents = await harnessEvents(page);
+  const catalogFetches = successEvents.filter((event) => event.kind === "scope-catalog-fetch");
+  expect(catalogFetches.filter((event) => event.url?.includes("/rest/api/3/project/search"))).toHaveLength(1);
+  expect(catalogFetches.some((event) => event.url?.includes("query=DEMO"))).toBe(true);
+  const spaceCatalogFetches = catalogFetches.filter((event) => event.url?.includes("/wiki/api/v2/spaces"));
+  expect(spaceCatalogFetches).toHaveLength(4);
+  expect(spaceCatalogFetches.filter((event) => event.url?.includes("keys=KB"))).toHaveLength(2);
+  expect(spaceCatalogFetches.filter((event) => event.url?.includes("status=current"))).toHaveLength(2);
+  expect(spaceCatalogFetches.filter((event) => event.url?.includes("status=archived"))).toHaveLength(2);
   const fetches = successEvents.filter((event) => event.kind === "fetch");
   const jiraSearches = fetches.filter((event) =>
     event.url?.includes("/rest/api/3/search/jql")

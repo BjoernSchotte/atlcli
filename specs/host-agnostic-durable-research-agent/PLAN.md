@@ -2886,12 +2886,16 @@ default. The sidebar contributes only manual or detected-current scope seeds:
 it must not pre-authorize formal-looking keys extracted from free text. A
 productive packed-MV3 regression enters no manual project, asks for `Jira
 project DEMO`, proves the background catalog fetch occurs, and only then runs
-the Jira-only graph. The existing packed ambiguity regression continues to
-prove that a duplicate natural-language name stops before key storage or agent
-work. This advances, but does not close, the full CLI/packed resolution-matrix
-gate above: the remaining name, alias, archive, access, pagination,
-precedence, context, cross-tenant, and prompt-injection parity cases still
-require their own host-boundary fixtures.
+the Jira-only graph. The full packed cross-product path likewise begins with
+neither a manual nor current-context scope, resolves both `Jira project DEMO`
+and `Confluence space KB` through the bound background catalog, walks the
+current and archived Confluence phases with its exact-key filter, and then
+starts the worker. The existing packed ambiguity regression continues to prove
+that a duplicate natural-language name stops before key storage or agent work.
+This advances, but does not close, the full CLI/packed resolution-matrix gate
+above: the remaining name, alias, archive, access, pagination, precedence,
+context, cross-tenant, and prompt-injection parity cases still require their
+own host-boundary fixtures.
 
 ### T4 — Add durable session, workspace, graph, and checkpoint stores
 
