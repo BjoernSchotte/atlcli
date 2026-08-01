@@ -16,3 +16,10 @@ export {
   type AtlcliAstroPublishingIntegrationV1,
   type ResolvedAstroPublishingConfigV1,
 } from "./integration.js";
+export {
+  AstroBuildCommandErrorV1,
+  runAstroBuildCommandV1,
+  type AstroBuildCommandFailureKindV1,
+  type AstroBuildCommandResultV1,
+  type RunAstroBuildCommandOptionsV1,
+} from "./build-command.js";

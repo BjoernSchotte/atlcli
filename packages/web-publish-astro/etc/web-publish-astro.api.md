@@ -7,6 +7,23 @@
 ### Entry point `.`
 
 ```ts
+// export: AstroBuildCommandErrorV1
+export declare class AstroBuildCommandErrorV1 extends Error {
+    readonly kind: AstroBuildCommandFailureKindV1;
+    readonly stdout: string;
+    readonly stderr: string;
+    constructor(kind: AstroBuildCommandFailureKindV1, message: string, stdout: string, stderr: string);
+}
+
+// export: AstroBuildCommandFailureKindV1
+export type AstroBuildCommandFailureKindV1 = "spawn" | "exit" | "timeout" | "aborted" | "output-limit";
+
+// export: AstroBuildCommandResultV1
+export interface AstroBuildCommandResultV1 {
+    stdout: string;
+    stderr: string;
+}
+
 // export: AstroPublicationConfigExpectationV1
 export interface AstroPublicationConfigExpectationV1 {
     base: string;
@@ -134,4 +151,20 @@ export interface ResolvedAstroPublishingConfigV1 {
     };
     trailingSlash: string;
 }
+
+// export: RunAstroBuildCommandOptionsV1
+export interface RunAstroBuildCommandOptionsV1 {
+    projectDirectory: string;
+    command: readonly [
+        string,
+        ...string[]
+    ];
+    environment?: Readonly<Record<string, string>>;
+    signal?: AbortSignal;
+    timeoutMs?: number;
+    maxOutputBytes?: number;
+}
+
+// export: runAstroBuildCommandV1
+export declare function runAstroBuildCommandV1(options: RunAstroBuildCommandOptionsV1): Promise<AstroBuildCommandResultV1>;
 ```
