@@ -3267,6 +3267,10 @@ Shared:
       a detail body enters the broker ledger only after its approved,
       tenant-bound evidence record is durable. Persistence errors fail closed
       before a report can treat that detail as support.
+- [x] Establish a private, immutable claim ledger with exact evidence-span
+      validation, source-binding inheritance, deterministic claim identity,
+      truncated-source fencing, freshness refresh, transitive evidence
+      invalidation, and interrupted-index recovery.
 - [ ] Add evidence, chunk, claim, contradiction, freshness, and coverage
       contracts plus evidence-linked `OutlineV1`.
 - [ ] Add bounded evidence, claim, contradiction, coverage, and outline store

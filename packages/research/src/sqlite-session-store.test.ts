@@ -11,6 +11,10 @@ import {
   WorkspaceResearchEvidenceStoreV1,
   createResearchEvidenceRecordV1,
 } from "./evidence-store.js";
+import {
+  WorkspaceResearchClaimLedgerV1,
+  createResearchClaimV1,
+} from "./claim-ledger.js";
 
 function session(): ResearchSessionV1 {
   return createResearchSessionV1({
@@ -182,6 +186,87 @@ describe("SQLite durable research session store", () => {
         await expect(recovered.chunks(evidence.record.id)).resolves.toMatchObject([
           { text: "Private durable evidence." },
         ]);
+      } finally {
+        reopened.close();
+      }
+    } finally {
+      try { first.close(); } catch { /* already closed */ }
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("replays span-verified claims from the per-session filesystem workspace after reopening SQLite", async () => {
+    const root = await mkdtemp(join(tmpdir(), "atlcli-research-sqlite-claims-"));
+    const databasePath = join(root, "catalog.sqlite");
+    const sessionRoot = join(root, "session-data");
+    const first = new SqliteResearchSessionStoreV1({ databasePath, root: sessionRoot });
+    try {
+      const created = await first.create(session());
+      const workspace = await first.workspace(created.sessionId);
+      const evidence = new WorkspaceResearchEvidenceStoreV1(workspace);
+      const retained = await createResearchEvidenceRecordV1({
+        source: {
+          id: "jira:ATLCLI-42",
+          product: "jira",
+          title: "Claim fixture",
+          url: "https://example.atlassian.net/browse/ATLCLI-42",
+          issueKey: "ATLCLI-42",
+          projectKey: "ATLCLI",
+          updatedAt: "2026-08-01T13:00:00.000Z",
+        },
+        content: { text: "A private span supports this factual claim.", linkTargets: [], truncated: false, inputBytes: 45 },
+        scope: {
+          siteOrigin: "https://example.atlassian.net",
+          jiraProjectKeys: ["ATLCLI"],
+          confluenceSpaceKeys: ["DOCSY"],
+        },
+        scopeBindings: [{
+          schema: "atlcli.research-scope-binding/v1",
+          id: "scope-binding:sqlite:jira:ATLCLI",
+          tenantOrigin: "https://example.atlassian.net",
+          product: "jira",
+          entityKind: "project",
+          entityRef: "scope-key:jira:ATLCLI",
+          key: "ATLCLI",
+          name: "ATLCLI",
+          source: "cli_flag",
+          authority: "locked",
+        }],
+        capturedAt: "2026-08-01T13:00:01.000Z",
+      });
+      await evidence.put(retained.record, retained.chunks);
+      const chunk = retained.chunks[0]!;
+      const text = chunk.text.slice(0, 8);
+      const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+      const claim = await createResearchClaimV1({
+        evidenceStore: evidence,
+        classification: "fact",
+        statement: "A private span supports this factual claim.",
+        evidenceSpans: [{
+          evidenceId: retained.record.id,
+          chunkId: chunk.id,
+          start: chunk.start,
+          end: chunk.start + text.length,
+          textHash: Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join(""),
+        }],
+        createdAt: "2026-08-01T13:00:02.000Z",
+      });
+      const ledger = new WorkspaceResearchClaimLedgerV1(workspace, evidence);
+      await ledger.put(claim);
+      first.close();
+
+      const reopened = new SqliteResearchSessionStoreV1({ databasePath, root: sessionRoot });
+      try {
+        const reopenedWorkspace = await reopened.workspace(created.sessionId);
+        const recovered = new WorkspaceResearchClaimLedgerV1(
+          reopenedWorkspace,
+          new WorkspaceResearchEvidenceStoreV1(reopenedWorkspace),
+        );
+        await expect(recovered.get(claim.id)).resolves.toMatchObject({
+          id: claim.id,
+          freshness: "current",
+          evidenceIds: [retained.record.id],
+        });
       } finally {
         reopened.close();
       }

@@ -6,7 +6,9 @@ import {
   RESEARCH_SESSION_ARTIFACT_SCHEMA_V1,
   ResearchSessionWorkspaceCheckpointerV1,
   WorkspaceResearchEvidenceStoreV1,
+  WorkspaceResearchClaimLedgerV1,
   createResearchEvidenceRecordV1,
+  createResearchClaimV1,
   createResearchSessionV1,
   researchCheckpointConfigV1,
   verifyResearchSessionStoreConformanceV1,
@@ -182,5 +184,83 @@ describe("IndexedDB durable research session store", () => {
     await expect(recovered.chunks(evidence.record.id)).resolves.toMatchObject([
       { text: "Private browser evidence." },
     ]);
+  });
+
+  test("replays span-verified claims from IndexedDB after the worker reconnects", async () => {
+    const factory = new IDBFactory();
+    const databaseName = "research-session-claim-reopen";
+    const first = await IndexedDbResearchSessionStoreV1.open({ factory: factory as unknown as IDBFactory, databaseName });
+    stores.push(first);
+    const created = await first.create(createResearchSessionV1({
+      sessionId: "research-session:indexeddb-claim-test",
+      ownerId: "owner:indexeddb-claim",
+      createdAt: "2026-08-01T14:00:00.000Z",
+      leaseExpiresAt: "2026-08-01T14:10:00.000Z",
+    }));
+    const workspace = await first.workspace(created.sessionId);
+    const evidence = new WorkspaceResearchEvidenceStoreV1(workspace);
+    const retained = await createResearchEvidenceRecordV1({
+      source: {
+        id: "jira:ATLCLI-42",
+        product: "jira",
+        title: "Claim fixture",
+        url: "https://example.atlassian.net/browse/ATLCLI-42",
+        issueKey: "ATLCLI-42",
+        projectKey: "ATLCLI",
+        updatedAt: "2026-08-01T14:00:00.000Z",
+      },
+      content: { text: "A private browser span supports this fact.", linkTargets: [], truncated: false, inputBytes: 43 },
+      scope: {
+        siteOrigin: "https://example.atlassian.net",
+        jiraProjectKeys: ["ATLCLI"],
+        confluenceSpaceKeys: ["DOCSY"],
+      },
+      scopeBindings: [{
+        schema: "atlcli.research-scope-binding/v1",
+        id: "scope-binding:indexeddb:jira:ATLCLI",
+        tenantOrigin: "https://example.atlassian.net",
+        product: "jira",
+        entityKind: "project",
+        entityRef: "scope-key:jira:ATLCLI",
+        key: "ATLCLI",
+        name: "ATLCLI",
+        source: "cli_flag",
+        authority: "locked",
+      }],
+      capturedAt: "2026-08-01T14:00:01.000Z",
+    });
+    await evidence.put(retained.record, retained.chunks);
+    const chunk = retained.chunks[0]!;
+    const text = chunk.text.slice(0, 8);
+    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+    const claim = await createResearchClaimV1({
+      evidenceStore: evidence,
+      classification: "fact",
+      statement: "A private browser span supports this fact.",
+      evidenceSpans: [{
+        evidenceId: retained.record.id,
+        chunkId: chunk.id,
+        start: chunk.start,
+        end: chunk.start + text.length,
+        textHash: Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join(""),
+      }],
+      createdAt: "2026-08-01T14:00:02.000Z",
+    });
+    await new WorkspaceResearchClaimLedgerV1(workspace, evidence).put(claim);
+    first.close();
+    stores.splice(stores.indexOf(first), 1);
+
+    const reopened = await IndexedDbResearchSessionStoreV1.open({ factory: factory as unknown as IDBFactory, databaseName });
+    stores.push(reopened);
+    const reopenedWorkspace = await reopened.workspace(created.sessionId);
+    const recovered = new WorkspaceResearchClaimLedgerV1(
+      reopenedWorkspace,
+      new WorkspaceResearchEvidenceStoreV1(reopenedWorkspace),
+    );
+    await expect(recovered.get(claim.id)).resolves.toMatchObject({
+      id: claim.id,
+      freshness: "current",
+      evidenceIds: [retained.record.id],
+    });
   });
 });

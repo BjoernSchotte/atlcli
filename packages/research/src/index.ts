@@ -34,6 +34,7 @@ export * from "./session-store-conformance.js";
 export * from "./checkpoint-identity.js";
 export * from "./workspace-checkpointer.js";
 export * from "./evidence-store.js";
+export * from "./claim-ledger.js";
 export * from "./indexeddb-session-store.js";
 export * from "./session-runtime.js";
 export * from "./session-dispatch-journal.js";
