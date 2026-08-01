@@ -335,6 +335,9 @@ export interface PublicationPageV1 {
   notes: readonly ExportNote[];
   labels: readonly string[];
   links: readonly PublicationLinkReferenceV1[];
+  /** Content asset IDs in first-use order while walking `blocks`; this lets
+   * renderers pair source-bearing image nodes with verified bundle entries
+   * without persisting source URLs or credentials in the public page file. */
   assetIds: readonly string[];
   renderDependencies: readonly PublicationDependencyV1[];
   pageDigest: string;

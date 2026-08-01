@@ -182,6 +182,19 @@ P95, and 128 MiB heap delta. The suite also proves that an explicitly stricter
 budget fails the build; the normal Astro integration invokes the same gate after
 every Pagefind write.
 
+On 2026-08-01 the standard bundle-to-render bridge was added and proved with
+the Starlight publication consumer. `createPublicationRenderContextV1` maps
+`PublicationPageV1`/`PublicationBundleV1` to the render kit without source
+fetches, resolves base-aware page/anchor/attachment links, maps verified
+content-addressed assets and download names, and rejects unsafe routes,
+asset paths, and external schemes. The consumer build asserts that an
+attachment link becomes a local `/docs/assets/...` URL; no Confluence source
+URL is synthesized or emitted. Asset IDs are retained in first-use order in
+the page contract so this mapping does not persist source URLs in public page
+JSON. Focused adapter, renderer, Starlight consumer, typecheck, API-report,
+and closure gates pass; packed consumer tests that require the sandbox temp
+directory remain separately marked for the escalated CI lane.
+
 The unchanged DOCX/PDF/browser source boundary was re-proven with the existing
 `@atlcli/confluence` imports: 450 tests across ExportBlock conversion,
 composition, source resolution, DOCX browser runtime/serialization, and Typst

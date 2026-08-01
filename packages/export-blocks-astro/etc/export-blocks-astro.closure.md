@@ -10,7 +10,7 @@
 
 ### Entry point `.` — experimental
 
-- exported symbols (25): ASTRO_EXPORT_BLOCKS_DATA_PREFIX_V1, ASTRO_EXPORT_BLOCK_OVERRIDE_SLOTS_V1, AstroExportBlockOverrideComponentV1, AstroExportBlockOverrideDescriptorV1, AstroExportBlockOverrideErrorV1, AstroExportBlockOverrideSelectionV1, AstroExportBlockOverrideSlotV1, AstroExportBlockOverridesV1, AstroExportBlockRenderContextV1, AstroExportDocumentPropsV1, AstroResolvedAssetV1, AstroResolvedHeadingV1, AstroResolvedLinkV1, ChartRendererAdapterIdV1, ChartRendererAdapterV1, NormalizedStaticChartV1, StaticChartModelV1, StaticChartSeriesV1, StaticChartValidationErrorV1, TANSTACK_CHART_RENDERER_ADAPTER_V1, astroExportAssetKeyV1, createAstroExportBlockOverrideRegistryV1, normalizeStaticChartV1, resolveChartRendererAdapterV1, validateInteractiveChartV1
+- exported symbols (26): ASTRO_EXPORT_BLOCKS_DATA_PREFIX_V1, ASTRO_EXPORT_BLOCK_OVERRIDE_SLOTS_V1, AstroExportBlockOverrideComponentV1, AstroExportBlockOverrideDescriptorV1, AstroExportBlockOverrideErrorV1, AstroExportBlockOverrideSelectionV1, AstroExportBlockOverrideSlotV1, AstroExportBlockOverridesV1, AstroExportBlockRenderContextV1, AstroExportDocumentPropsV1, AstroResolvedAssetV1, AstroResolvedHeadingV1, AstroResolvedLinkV1, ChartRendererAdapterIdV1, ChartRendererAdapterV1, NormalizedStaticChartV1, StaticChartModelV1, StaticChartSeriesV1, StaticChartValidationErrorV1, TANSTACK_CHART_RENDERER_ADAPTER_V1, astroExportAssetKeyV1, astroExportLinkKeyV1, createAstroExportBlockOverrideRegistryV1, normalizeStaticChartV1, resolveChartRendererAdapterV1, validateInteractiveChartV1
 
 ### Entry point `./fixtures` — internal
 

@@ -7,6 +7,17 @@ it never acquires Confluence content, credentials, or network data.
 Semantic document components are intentionally supplied by
 `@atlcli/export-blocks-astro`, not by this integration package.
 
+## Bundle-to-render context
+
+`createPublicationRenderContextV1()` is the standard bridge from one loaded
+`PublicationPageV1` plus its immutable `PublicationBundleV1` to the render kit's
+`AstroExportBlockRenderContextV1`. It applies the trusted Astro `base` and route
+namespace, resolves page links and page-local anchors, maps verified bundle
+assets (including original-download metadata), and rejects unsafe routes,
+assets, and external schemes. It performs no source fetch and never derives a
+Confluence URL. `pages` should contain the loaded page set when cross-page
+anchor links are present.
+
 ## Static search components
 
 The optional theme-neutral components

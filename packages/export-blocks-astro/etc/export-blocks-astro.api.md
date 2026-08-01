@@ -74,6 +74,9 @@ export interface AstroExportDocumentPropsV1 {
     overrides?: AstroExportBlockOverridesV1;
 }
 
+// export: astroExportLinkKeyV1
+export declare function astroExportLinkKeyV1(target: LinkTarget): string;
+
 // export: AstroResolvedAssetV1
 export interface AstroResolvedAssetV1 {
     src: string;

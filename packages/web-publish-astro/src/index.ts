@@ -92,3 +92,7 @@ export {
   type PublicationPerformanceBudgetV1,
   type PublicationPerformanceMeasurementV1,
 } from "./performance-budget.js";
+export {
+  createPublicationRenderContextV1,
+  type CreatePublicationRenderContextOptionsV1,
+} from "./render-context.js";

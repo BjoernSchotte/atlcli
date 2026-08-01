@@ -355,6 +355,8 @@
       "name": "@atlcli/web-publish-astro",
       "version": "0.1.0",
       "dependencies": {
+        "@atlcli/export-blocks": "workspace:*",
+        "@atlcli/export-blocks-astro": "workspace:*",
         "@atlcli/web-publish": "workspace:*",
         "pagefind": "1.5.2",
       },

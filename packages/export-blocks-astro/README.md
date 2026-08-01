@@ -62,6 +62,12 @@ user-derived CSS is restricted to canonical colors and numeric layout shares.
 The project that builds pages validates original SVG bytes and all asset
 provenance before this package receives a render context.
 
+Page and attachment links are looked up through the context's stable semantic
+keys (`astroExportLinkKeyV1`). Page/attachment targets without a trusted
+resolved entry render as non-clickable text; they never fall back to a source
+or Confluence URL. Standalone consumers may still use safe external and
+page-local anchor targets directly.
+
 The included Astro consumer proves a CSP with external scripts and styles,
 `connect-src 'none'`, and no inline module scripts. It permits inline styles
 only for the component's validated numeric layout and color attributes; an

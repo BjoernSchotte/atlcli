@@ -1,4 +1,4 @@
-import type { ExportBlock, ImageSource } from "@atlcli/export-blocks";
+import type { ExportBlock, ImageSource, LinkTarget } from "@atlcli/export-blocks";
 import type { AstroExportBlockOverrideSlotV1 } from "./overrides.js";
 
 export interface AstroResolvedHeadingV1 {
@@ -66,6 +66,16 @@ export function astroExportAssetKeyV1(source: ImageSource): string {
   return source.kind === "attachment"
     ? `attachment:${source.pageId ?? ""}:${source.filename}`
     : `external:${source.url}`;
+}
+
+/** Stable semantic lookup key for a trusted link resolver. */
+export function astroExportLinkKeyV1(target: LinkTarget): string {
+  switch (target.kind) {
+    case "external": return JSON.stringify(["external", target.href]);
+    case "page": return JSON.stringify(["page", target.contentId ?? target.contentTitle, target.anchor ?? ""]);
+    case "attachment": return JSON.stringify(["attachment", target.filename]);
+    case "anchor": return JSON.stringify(["anchor", target.anchor]);
+  }
 }
 
 /** The stable semantic marker prefix used by the render kit's stylesheet. */

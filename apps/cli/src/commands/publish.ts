@@ -187,7 +187,7 @@ function collectPageReferences(pageId: string, blocks: readonly ExportBlock[]): 
       }
     },
   });
-  return { links, assetIds: [...assets.keys()].sort(), assets: [...assets.values()].sort((left, right) => left.assetId.localeCompare(right.assetId)) };
+  return { links, assetIds: [...assets.keys()], assets: [...assets.values()].sort((left, right) => left.assetId.localeCompare(right.assetId)) };
 }
 
 async function snapshotAndPages(

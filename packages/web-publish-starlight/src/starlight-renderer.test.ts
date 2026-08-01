@@ -80,6 +80,7 @@ test("a bundle-driven Starlight consumer owns source, graph landing, and trusted
   expect(page).toContain('data-atlcli-starlight-slot="main-content"');
   expect(page).toContain("Bundle publishing guide");
   expect(page).toContain("immutable bundle rendered through the supported Starlight publishing adapter");
+  expect(page).toContain('href="/docs/assets/f0dad327e22e8cddc2e8057cf16d9b16ea6e36e87d31f46ee4d5943c69609c4f/fixture.txt"');
   expect(page.match(/\bdata-pagefind-body\b/gu)).toHaveLength(1);
 
   const label = await readFile(resolve(publishedConsumerFixture, "dist/publish/topics/guide/index.html"), "utf8");

@@ -204,6 +204,20 @@ export declare function createPublicationAnalyticsCspV1(config: PlausibleAnalyti
 // export: createPublicationAnalyticsPrivacyDeclarationV1
 export declare function createPublicationAnalyticsPrivacyDeclarationV1(): PublicationAnalyticsPrivacyDeclarationV1;
 
+// export: CreatePublicationRenderContextOptionsV1
+export interface CreatePublicationRenderContextOptionsV1 {
+    page: PublicationPageV1;
+    bundle: PublicationBundleV1;
+    base?: string;
+    routePrefix?: string;
+    pages?: readonly PublicationPageV1[];
+    locale?: string;
+    direction?: "ltr" | "rtl";
+}
+
+// export: createPublicationRenderContextV1
+export declare function createPublicationRenderContextV1(options: CreatePublicationRenderContextOptionsV1): AstroExportBlockRenderContextV1;
+
 // export: createPublicationSeoHeadTagsV1
 export declare function createPublicationSeoHeadTagsV1(metadata: PublicationSeoPageMetadataV1, siteName?: string): readonly PublicationSeoHeadTagV1[];
 

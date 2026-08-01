@@ -1556,6 +1556,11 @@ the active bundle is always complete and digest-valid.
 - [x] Add negative dependency gates for Starlight, Confluence client/auth,
       publication loader/routes, Node filesystem, Pagefind, deployment,
       service-worker/runtime-cache, analytics, and edit-link code.
+- [x] Add the standard `PublicationBundleV1`/`PublicationPageV1` to
+      `AstroExportBlockRenderContextV1` adapter in the Node publishing layer;
+      resolve base-aware page/anchor/asset links and verified attachment
+      metadata without persisting source URLs, and prove the Starlight
+      consumer renders those resolved links.
 - [x] Document the deferred additive ADF-adapter seam but export no V1
       `AdfDocument` or raw-ADF capability claim.
 - [x] STOP if the base renderer requires Starlight/project chrome, source data

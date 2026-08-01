@@ -1,8 +1,8 @@
 ---
-import { EXPORT_BLOCKS_ASTRO_MINIMAL_CONTEXT_V1 } from "@atlcli/export-blocks-astro/fixtures";
 import {
   createPublicationSeoHeadTagsV1,
   createPublicationSeoPlanV1,
+  createPublicationRenderContextV1,
   publicationLocaleRoutePathV1,
   publicationStaticPathsV1,
   readPublicationNavigationV1,
@@ -87,13 +87,23 @@ if (path.kind === "label" && landing === undefined) throw new Error(`Missing pub
 const seoMetadata = seoPlan?.pages.find((entry) => entry.sourceId === (path.kind === "page" ? path.sourceId : `label:${path.slug}`));
 const seoHead = seoMetadata === undefined ? undefined : createPublicationSeoHeadTagsV1(seoMetadata, seoPlan?.siteName);
 const pageLocale = path.locale ?? page?.locale ?? publicationI18n?.defaultLocale ?? "en";
-const pageContext = { ...EXPORT_BLOCKS_ASTRO_MINIMAL_CONTEXT_V1, locale: pageLocale, direction: publicationLocaleDirectionV1(pageLocale) };
+const pageContext = page === undefined
+  ? undefined
+  : createPublicationRenderContextV1({
+    page,
+    bundle: loaded.bundle,
+    pages: loaded.pages,
+    base: import.meta.env.BASE_URL === "/" ? "" : import.meta.env.BASE_URL.replace(/\/$/u, ""),
+    routePrefix,
+    locale: pageLocale,
+    direction: publicationLocaleDirectionV1(pageLocale),
+  });
 ---
 
 {path.kind === "page" ? <StarlightPublicationPage
   page={page!}
   navigation={starlightPublicationPageNavigationV1(navigation, page!.sourceId)}
   sidebar={navigation.sidebar}
-  context={pageContext}
+  context={pageContext!}
   seoHead={seoHead}
 /> : <StarlightPublicationLabelLanding landing={landing!} sidebar={navigation.sidebar} seoHead={seoHead} />}

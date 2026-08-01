@@ -9,12 +9,13 @@
   "route": "/guide/",
   "blocks": [
     { "type": "paragraph", "content": [{ "type": "text", "text": "This is an immutable bundle rendered through the supported Starlight publishing adapter." }] },
+    { "type": "paragraph", "content": [{ "type": "link", "target": { "kind": "attachment", "filename": "fixture.txt" }, "content": [{ "type": "text", "text": "Download fixture" }] }] },
     { "type": "heading", "level": 2, "explicitAnchor": "verify", "content": [{ "type": "text", "text": "Verify the release" }] },
     { "type": "callout", "kind": "note", "title": "No Markdown content path", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "The page body remains trusted ExportBlock data." }] }] }
   ],
   "notes": [],
   "labels": ["guide"],
-  "links": [],
+  "links": [{ "referenceId": "fixture-download", "kind": "asset", "assetId": "fixture-asset" }],
   "assetIds": ["fixture-asset"],
   "renderDependencies": [],
   "pageDigest": "page-digest"
