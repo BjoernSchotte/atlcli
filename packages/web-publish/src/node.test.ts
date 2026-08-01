@@ -284,6 +284,30 @@ describe("@atlcli/web-publish/node cache store", () => {
     await symlink(replacement, pagePath);
     await expect(regularStore.readPage(PAGE_KEY)).rejects.toBeInstanceOf(PublicationCacheStoreErrorV1);
   });
+
+  test("allows authoritative rewrites to recover corrupt derived cache entries", async () => {
+    const { root } = await fixture();
+    const workspaceDirectory = join(root, "workspace");
+    const store = createNodePublicationCacheStoreV1({ workspaceDirectory });
+    await store.writePage(PAGE_KEY, cachedPage);
+    const pagePath = join(workspaceDirectory, "cache", "pages", `${PAGE_KEY}.json`);
+    await writeFile(pagePath, "not-json");
+    await expect(store.readPage(PAGE_KEY)).rejects.toMatchObject({ code: "corrupt" });
+    await store.writePage(PAGE_KEY, cachedPage);
+    expect(await store.readPage(PAGE_KEY)).toEqual(cachedPage);
+
+    const asset = {
+      cacheKey: ASSET_KEY,
+      mediaType: "image/png",
+      sha256: "c".repeat(64),
+      bytes: new Uint8Array([137, 80, 78, 71]),
+    };
+    await store.writeAsset(asset);
+    await writeFile(join(workspaceDirectory, "cache", "assets", ASSET_KEY, "metadata.json"), "not-json");
+    await expect(store.readAsset(ASSET_KEY)).rejects.toMatchObject({ code: "corrupt" });
+    await store.writeAsset(asset);
+    expect(await store.readAsset(ASSET_KEY)).toEqual(asset);
+  });
 });
 
 describe("@atlcli/web-publish/node immutable bundle activation", () => {
@@ -346,6 +370,74 @@ describe("@atlcli/web-publish/node immutable bundle activation", () => {
       signal: controller.signal,
     })).rejects.toMatchObject({ code: "aborted" });
     expect(await readFile(currentPath, "utf8")).toBe(before);
+  });
+
+  test("serializes concurrent activation and fences the stale writer at the active pointer", async () => {
+    const { root } = await fixture();
+    const request = await publicationFixture(root);
+    const active = await materializeNodePublicationBundleV1(request);
+    const [secondRequest, thirdRequest] = await Promise.all([
+      revisedPublicationRequest(request, "2", active.bundle.bundleDigest),
+      revisedPublicationRequest(request, "3", active.bundle.bundleDigest),
+    ]);
+    const results = await Promise.allSettled([
+      materializeNodePublicationBundleV1(secondRequest),
+      materializeNodePublicationBundleV1(thirdRequest),
+    ]);
+    const successes = results.filter((result): result is PromiseFulfilledResult<Awaited<ReturnType<typeof materializeNodePublicationBundleV1>>> =>
+      result.status === "fulfilled",
+    );
+    const failures = results.filter((result): result is PromiseRejectedResult => result.status === "rejected");
+    expect(successes).toHaveLength(1);
+    expect(failures).toHaveLength(1);
+    expect(failures[0]!.reason).toMatchObject({ code: "active-bundle-mismatch" });
+    expect(JSON.parse(await readFile(join(request.workspaceDirectory, "current.json"), "utf8"))).toMatchObject({
+      bundleDigest: successes[0]!.value.bundle.bundleDigest,
+    });
+    await expect(materializeNodePublicationBundleV1({ ...request, activationLockTimeoutMs: 1 }))
+      .rejects.toMatchObject({ code: "active-bundle-mismatch" });
+  });
+
+  test("reclaims an expired activation lease before mutating the active pointer", async () => {
+    const { root } = await fixture();
+    const request = await publicationFixture(root);
+    const lockDirectory = join(request.workspaceDirectory, "locks", "activation.lock");
+    await mkdir(lockDirectory, { recursive: true });
+    await writeFile(join(lockDirectory, "owner.json"), JSON.stringify({
+      schema: "atlcli.publication-activation-lock/1",
+      nonce: "00000000-0000-4000-8000-000000000000",
+      acquiredAt: 0,
+      expiresAt: 1,
+    }));
+    const result = await materializeNodePublicationBundleV1(request);
+    expect(result.activated).toBe(true);
+    await expect(lstat(lockDirectory)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  test("times out behind a fresh activation lease without activating a candidate", async () => {
+    const { root } = await fixture();
+    const request = await publicationFixture(root);
+    const lockDirectory = join(request.workspaceDirectory, "locks", "activation.lock");
+    await mkdir(lockDirectory, { recursive: true });
+    const now = Date.now();
+    await writeFile(join(lockDirectory, "owner.json"), JSON.stringify({
+      schema: "atlcli.publication-activation-lock/1",
+      nonce: "00000000-0000-4000-8000-000000000000",
+      acquiredAt: now,
+      expiresAt: now + 60_000,
+    }));
+    await expect(materializeNodePublicationBundleV1({ ...request, activationLockTimeoutMs: 1 }))
+      .rejects.toMatchObject({ code: "activation-lock-timeout" });
+    await expect(lstat(join(request.workspaceDirectory, "current.json"))).rejects.toMatchObject({ code: "ENOENT" });
+    await writeFile(join(lockDirectory, "owner.json"), JSON.stringify({
+      schema: "atlcli.publication-activation-lock/1",
+      nonce: "00000000-0000-4000-8000-000000000000",
+      acquiredAt: 0,
+      expiresAt: 1,
+    }));
+    const recovered = await materializeNodePublicationBundleV1(request);
+    expect(JSON.parse(await readFile(join(request.workspaceDirectory, "current.json"), "utf8")))
+      .toMatchObject({ bundleDigest: recovered.bundle.bundleDigest });
   });
 
   test("writes identical content-addressed asset bytes once while retaining per-asset download names", async () => {

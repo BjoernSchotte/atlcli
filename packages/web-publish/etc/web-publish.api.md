@@ -1052,7 +1052,7 @@ export declare const DEFAULT_PUBLICATION_JSON_MAX_BYTES_V1: number;
 export declare function materializeNodePublicationBundleV1(request: NodePublicationBundleMaterializationRequestV1): Promise<NodePublicationBundleMaterializationResultV1>;
 
 // export: NodePublicationBundleErrorCodeV1
-export type NodePublicationBundleErrorCodeV1 = "invalid-request" | "unsafe-path" | "invalid-refresh-plan" | "incomplete-refresh-plan" | "invalid-page-digest" | "invalid-asset" | "asset-budget-exceeded" | "active-bundle-mismatch" | "corrupt-existing-bundle" | "aborted";
+export type NodePublicationBundleErrorCodeV1 = "invalid-request" | "unsafe-path" | "invalid-refresh-plan" | "incomplete-refresh-plan" | "invalid-page-digest" | "invalid-asset" | "asset-budget-exceeded" | "active-bundle-mismatch" | "activation-lock-timeout" | "activation-lock-lost" | "corrupt-existing-bundle" | "aborted";
 
 // export: NodePublicationBundleErrorV1
 export declare class NodePublicationBundleErrorV1 extends Error {
@@ -1073,6 +1073,7 @@ export interface NodePublicationBundleMaterializationRequestV1 {
     issues?: readonly PublicationIssueV1[];
     assetPolicy: Pick<PublicationAssetPolicyV1, "maxAssetBytes" | "maxTotalBytes">;
     expectedActiveBundleDigest?: string;
+    activationLockTimeoutMs?: number;
     signal?: AbortSignal;
 }
 

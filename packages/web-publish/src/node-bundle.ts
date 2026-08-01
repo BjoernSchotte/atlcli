@@ -43,6 +43,10 @@ import {
 
 const CURRENT_SCHEMA_V1 = "atlcli.publication-current/1" as const;
 const SHA256_HEX = /^[a-f0-9]{64}$/u;
+const ACTIVATION_LOCK_SCHEMA_V1 = "atlcli.publication-activation-lock/1" as const;
+const DEFAULT_ACTIVATION_LOCK_TTL_MS_V1 = 30_000;
+const DEFAULT_ACTIVATION_LOCK_POLL_MS_V1 = 10;
+const DEFAULT_ACTIVATION_LOCK_TIMEOUT_MS_V1 = 30_000;
 
 export interface PublicationBundleAssetBytesV1 {
   entry: PublicationAssetEntryV1;
@@ -69,6 +73,8 @@ export interface NodePublicationBundleMaterializationRequestV1 {
   assetPolicy: Pick<PublicationAssetPolicyV1, "maxAssetBytes" | "maxTotalBytes">;
   /** Optimistic active-pointer precondition, checked before and at promotion. */
   expectedActiveBundleDigest?: string;
+  /** Bounded local lease wait for the final active-pointer transition. */
+  activationLockTimeoutMs?: number;
   signal?: AbortSignal;
 }
 
@@ -87,6 +93,8 @@ export type NodePublicationBundleErrorCodeV1 =
   | "invalid-asset"
   | "asset-budget-exceeded"
   | "active-bundle-mismatch"
+  | "activation-lock-timeout"
+  | "activation-lock-lost"
   | "corrupt-existing-bundle"
   | "aborted";
 
@@ -120,6 +128,18 @@ export interface NodePublicationRetentionResultV1 {
 interface CurrentPublicationPointerV1 {
   schema: typeof CURRENT_SCHEMA_V1;
   bundleDigest: string;
+}
+
+interface ActivationLockOwnerV1 {
+  schema: typeof ACTIVATION_LOCK_SCHEMA_V1;
+  nonce: string;
+  acquiredAt: number;
+  expiresAt: number;
+}
+
+interface ActivationLockLeaseV1 {
+  assertOwned(): Promise<void>;
+  release(): Promise<void>;
 }
 
 function fail(code: NodePublicationBundleErrorCodeV1, message: string): never {
@@ -225,6 +245,17 @@ function abortIfNeeded(signal: AbortSignal | undefined): void {
   if (signal?.aborted) fail("aborted", "publication bundle materialization was cancelled");
 }
 
+async function delay(milliseconds: number, signal: AbortSignal | undefined): Promise<void> {
+  abortIfNeeded(signal);
+  await new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(resolve, milliseconds);
+    signal?.addEventListener("abort", () => {
+      clearTimeout(timer);
+      reject(new NodePublicationBundleErrorV1("aborted", "publication bundle materialization was cancelled"));
+    }, { once: true });
+  });
+}
+
 function pagePath(page: PublicationPageV1): string {
   requireDigest(page.pageDigest, "page.pageDigest");
   return validatePublicationOutputPathV1(`pages/${page.pageDigest}.json`);
@@ -255,6 +286,122 @@ function parseCurrentPointer(value: unknown): CurrentPublicationPointerV1 {
   return { schema: CURRENT_SCHEMA_V1, bundleDigest: candidate.bundleDigest };
 }
 
+function parseActivationLockOwner(value: unknown): ActivationLockOwnerV1 | undefined {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const candidate = value as Record<string, unknown>;
+  const acquiredAt = candidate.acquiredAt;
+  const expiresAt = candidate.expiresAt;
+  if (
+    candidate.schema !== ACTIVATION_LOCK_SCHEMA_V1 ||
+    typeof candidate.nonce !== "string" || !/^[a-f0-9-]{36}$/u.test(candidate.nonce) ||
+    typeof acquiredAt !== "number" || !Number.isSafeInteger(acquiredAt) ||
+    typeof expiresAt !== "number" || !Number.isSafeInteger(expiresAt) ||
+    expiresAt <= acquiredAt ||
+    Object.keys(candidate).some((key) => !["schema", "nonce", "acquiredAt", "expiresAt"].includes(key))
+  ) return undefined;
+  return {
+    schema: ACTIVATION_LOCK_SCHEMA_V1,
+    nonce: candidate.nonce,
+    acquiredAt,
+    expiresAt,
+  };
+}
+
+async function readActivationLockOwner(lockDirectory: string): Promise<ActivationLockOwnerV1 | undefined> {
+  const ownerPath = assertInside(lockDirectory, join(lockDirectory, "owner.json"));
+  const bytes = await readRegularFile(ownerPath, 4_096);
+  if (bytes === undefined) return undefined;
+  try {
+    return parseActivationLockOwner(JSON.parse(new TextDecoder().decode(bytes)));
+  } catch {
+    return undefined;
+  }
+}
+
+async function acquireActivationLock(
+  workspaceDirectory: string,
+  signal: AbortSignal | undefined,
+  timeoutMilliseconds: number | undefined,
+): Promise<ActivationLockLeaseV1> {
+  const timeout = timeoutMilliseconds ?? DEFAULT_ACTIVATION_LOCK_TIMEOUT_MS_V1;
+  requirePositiveSafeInteger(timeout, "activationLockTimeoutMs");
+  const locksDirectory = assertInside(workspaceDirectory, join(workspaceDirectory, "locks"));
+  await ensureChildDirectory(workspaceDirectory, locksDirectory);
+  const lockDirectory = assertInside(locksDirectory, join(locksDirectory, "activation.lock"));
+  const deadline = Date.now() + timeout;
+  for (;;) {
+    abortIfNeeded(signal);
+    const acquiredAt = Date.now();
+    const owner: ActivationLockOwnerV1 = {
+      schema: ACTIVATION_LOCK_SCHEMA_V1,
+      nonce: randomUUID(),
+      acquiredAt,
+      expiresAt: acquiredAt + DEFAULT_ACTIVATION_LOCK_TTL_MS_V1,
+    };
+    let createdLockDirectory = false;
+    try {
+      await mkdir(lockDirectory, { mode: 0o700 });
+      createdLockDirectory = true;
+      await writeNewFile(
+        assertInside(lockDirectory, join(lockDirectory, "owner.json")),
+        new TextEncoder().encode(JSON.stringify(owner)),
+      );
+      let released = false;
+      const assertOwned = async (): Promise<void> => {
+        if (released || (await readActivationLockOwner(lockDirectory))?.nonce !== owner.nonce) {
+          fail("activation-lock-lost", "publication activation lock is no longer owned by this writer");
+        }
+      };
+      return {
+        assertOwned,
+        async release(): Promise<void> {
+          if (released) return;
+          await assertOwned();
+          const quarantine = assertInside(locksDirectory, join(locksDirectory, `activation.release-${owner.nonce}`));
+          await rename(lockDirectory, quarantine);
+          released = true;
+          await rm(quarantine, { recursive: true, force: false, maxRetries: 1 });
+        },
+      };
+    } catch (error) {
+      if (createdLockDirectory) await rm(lockDirectory, { recursive: true, force: true, maxRetries: 1 }).catch(() => undefined);
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+    }
+    const details = await lstat(lockDirectory);
+    if (details.isSymbolicLink() || !details.isDirectory()) {
+      fail("unsafe-path", "publication activation lock must be a real directory");
+    }
+    const current = await readActivationLockOwner(lockDirectory);
+    const stale = current === undefined
+      ? Date.now() - Math.floor(details.mtimeMs) >= DEFAULT_ACTIVATION_LOCK_TTL_MS_V1
+      : current.expiresAt <= Date.now();
+    if (stale) {
+      const guard = assertInside(lockDirectory, join(lockDirectory, ".reclaim.guard"));
+      let ownsGuard = false;
+      try {
+        await writeNewFile(guard, new Uint8Array());
+        ownsGuard = true;
+        const guardedOwner = await readActivationLockOwner(lockDirectory);
+        if (guardedOwner === undefined || guardedOwner.expiresAt <= Date.now()) {
+          const quarantine = assertInside(locksDirectory, join(locksDirectory, `activation.stale-${randomUUID()}`));
+          await rename(lockDirectory, quarantine);
+          await rm(quarantine, { recursive: true, force: false, maxRetries: 1 });
+          continue;
+        }
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException).code;
+        if (code !== "EEXIST" && code !== "ENOENT") throw error;
+      } finally {
+        if (ownsGuard) await unlink(guard).catch(() => undefined);
+      }
+    }
+    if (Date.now() >= deadline) {
+      fail("activation-lock-timeout", "timed out waiting to activate the publication bundle");
+    }
+    await delay(DEFAULT_ACTIVATION_LOCK_POLL_MS_V1, signal);
+  }
+}
+
 async function readCurrentPointer(workspaceDirectory: string): Promise<CurrentPublicationPointerV1 | undefined> {
   const path = assertInside(workspaceDirectory, join(workspaceDirectory, "current.json"));
   const bytes = await readRegularFile(path, 1_024);
@@ -272,6 +419,9 @@ function assertExpectedPointer(
   expected: string | undefined,
 ): void {
   if (expected !== undefined) requireDigest(expected, "expectedActiveBundleDigest");
+  if (actual !== undefined && expected === undefined) {
+    fail("active-bundle-mismatch", "activating over an existing bundle requires expectedActiveBundleDigest");
+  }
   if (expected !== undefined && actual?.bundleDigest !== expected) {
     fail("active-bundle-mismatch", "active publication bundle does not match the expected digest");
   }
@@ -572,12 +722,24 @@ export async function materializeNodePublicationBundleV1(
       }
     }
     abortIfNeeded(request.signal);
-    assertExpectedPointer(await readCurrentPointer(workspaceDirectory), request.expectedActiveBundleDigest);
-    const currentPath = assertInside(workspaceDirectory, join(workspaceDirectory, "current.json"));
-    await writeAtomic(currentPath, new TextEncoder().encode(JSON.stringify({
-      schema: CURRENT_SCHEMA_V1,
-      bundleDigest: bundle.bundleDigest,
-    } satisfies CurrentPublicationPointerV1)));
+    const activationLock = await acquireActivationLock(
+      workspaceDirectory,
+      request.signal,
+      request.activationLockTimeoutMs,
+    );
+    try {
+      await activationLock.assertOwned();
+      assertExpectedPointer(await readCurrentPointer(workspaceDirectory), request.expectedActiveBundleDigest);
+      await activationLock.assertOwned();
+      const currentPath = assertInside(workspaceDirectory, join(workspaceDirectory, "current.json"));
+      await writeAtomic(currentPath, new TextEncoder().encode(JSON.stringify({
+        schema: CURRENT_SCHEMA_V1,
+        bundleDigest: bundle.bundleDigest,
+      } satisfies CurrentPublicationPointerV1)));
+      await activationLock.assertOwned();
+    } finally {
+      await activationLock.release();
+    }
     return { bundle, bundleDirectory: finalDirectory, activated: true };
   } finally {
     await rm(stageRoot, { recursive: true, force: true, maxRetries: 1 }).catch(() => undefined);

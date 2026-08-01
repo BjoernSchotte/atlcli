@@ -58,6 +58,12 @@ asset mismatch, cancellation, or symlinked owned directory therefore leaves the
 last active bundle unchanged. The caller, not this package, owns acquisition,
 macro resolution, MIME/SVG decoding, and retention.
 
+Activation uses a workspace-local nonce-fenced lease. Parallel writers may
+stage their own candidate bundles, but only one may compare and replace the
+active pointer; the other must fail its expected-digest precondition. An expired
+lease is reclaimed conservatively, while a fresh lease produces a bounded
+timeout without activating a candidate.
+
 `sweepNodePublicationRetentionV1()` applies the configured bundle/build count
 and grace period only after preflighting every digest-named candidate against
 its manifest. The active pointer, the newest retained bundles, and bundles
