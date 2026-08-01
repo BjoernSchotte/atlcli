@@ -466,7 +466,7 @@ describe("research CLI one-shot contract", () => {
     expect(harness.stderr.join("")).toContain("confluence:ACCOUNT:cli_flag:locked");
   });
 
-  test("resolves exact keys and aliases while stopping ambiguous, archived, and inaccessible scope through the production CLI catalog boundary", async () => {
+  test("resolves exact keys and aliases while stopping ambiguous, archived, inaccessible, and foreign scope through the production CLI catalog boundary", async () => {
     const originalFetch = globalThis.fetch;
     const requests: string[] = [];
     globalThis.fetch = (async (input: RequestInfo | URL) => {
@@ -567,6 +567,16 @@ describe("research CLI one-shot contract", () => {
           profile,
         ),
       });
+      const foreignProfile: Profile = { ...profile, project: "FALLBACK", space: undefined };
+      const foreignLink = "https://foreign.atlassian.net/projects/FOREIGN/summary";
+      const requestsBeforeForeignLink = requests.length;
+      const foreignLinkOutcome = await defaultResearchCliDependencies.resolveScope({
+        profile: foreignProfile,
+        request: buildResearchRequest(
+          parseResearchCliInput(["Research", `${foreignLink}.`], {}),
+          foreignProfile,
+        ),
+      });
 
       expect(keyOutcome).toMatchObject({
         kind: "ready",
@@ -635,12 +645,21 @@ describe("research CLI one-shot contract", () => {
           { key: "BETA", name: "Shared" },
         ],
       });
+      expect(foreignLinkOutcome).toMatchObject({
+        kind: "ready",
+        request: {
+          scope: { jiraProjectKeys: ["FALLBACK"], confluenceSpaceKeys: [] },
+        },
+        mentions: [],
+        resolutions: [],
+      });
       expect(requests.filter((url) => url.includes("/rest/api/3/project/search"))).toHaveLength(2);
       expect(requests.filter((url) => url.includes("/rest/api/3/project/DEMO"))).toHaveLength(1);
       expect(requests.filter((url) => url.includes("/wiki/api/v2/spaces"))).toHaveLength(10);
       expect(requests.filter((url) => url.includes("keys=KB"))).toHaveLength(2);
       expect(requests.filter((url) => url.includes("keys=LEGACY"))).toHaveLength(2);
       expect(requests.filter((url) => url.includes("/wiki/rest/api/space/PRIVATE"))).toHaveLength(1);
+      expect(requests).toHaveLength(requestsBeforeForeignLink);
     } finally {
       globalThis.fetch = originalFetch;
     }

@@ -1422,6 +1422,32 @@ test("resolves exact keys and a unique Confluence alias through the packed backg
   expect(events.some((event) => event.kind === "worker-start")).toBe(false);
 });
 
+test("keeps a foreign-tenant link out of the packed background scope", async () => {
+  await installEventCapture(page);
+  const outcome = await resolveScopeInPackedBackground(
+    page,
+    packedScopeRequest(
+      "Research https://foreign.atlassian.net/projects/FOREIGN/summary.",
+      { currentProjectKey: "FALLBACK" },
+    ),
+  );
+  const events = await harnessEvents(page);
+
+  expect(outcome).toMatchObject({
+    kind: "research:resolve-scope-result",
+    ok: true,
+    outcome: {
+      kind: "ready",
+      request: { scope: { jiraProjectKeys: ["FALLBACK"], confluenceSpaceKeys: [] } },
+      mentions: [],
+      resolutions: [],
+    },
+  });
+  expect(events.some((event) => event.kind === "scope-catalog-fetch")).toBe(false);
+  expect(events.some((event) => event.kind === "scope-reference-fetch")).toBe(false);
+  expect(events.some((event) => event.kind === "worker-start")).toBe(false);
+});
+
 test("stops an archived Confluence key before key storage or agent work", async () => {
   await openResearchScreen(page);
   await installEventCapture(page);

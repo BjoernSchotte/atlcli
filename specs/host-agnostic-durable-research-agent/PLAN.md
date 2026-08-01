@@ -2900,10 +2900,12 @@ An inaccessible same-tenant Confluence reference yields the deliberately
 non-disclosing `incomplete` stop in both hosts; the packed UI persists no key
 and starts no worker. Duplicate Jira natural-language names return the same
 typed ambiguity in the production CLI and packed sidebar before key storage or
-agent work. This advances, but does not close, the full CLI/packed
+agent work. A foreign-tenant Jira link is not promoted to a mention in either
+host: it retains the already bound scope and triggers neither catalog/reference
+nor worker work. This advances, but does not close, the full CLI/packed
 resolution-matrix gate above: the remaining duplicate alias, pagination,
-precedence, context, cross-tenant, and prompt-injection parity cases still
-require their own host-boundary fixtures.
+precedence, context, and prompt-injection parity cases still require their own
+host-boundary fixtures.
 
 ### T4 — Add durable session, workspace, graph, and checkpoint stores
 
