@@ -178,6 +178,7 @@ function resolvedAsset(asset: PublicationAssetEntryV1): ResolvedPublicationAsset
     byteLength: asset.byteLength,
     sha256: asset.sha256,
     disposition: asset.disposition,
+    ...(asset.downloadName === undefined ? {} : { downloadName: asset.downloadName }),
   };
 }
 

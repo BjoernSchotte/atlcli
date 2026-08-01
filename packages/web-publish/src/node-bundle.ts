@@ -369,9 +369,9 @@ async function buildBundle(
   }
 
   let totalAssetBytes = 0;
-  const assets: PublicationBundleAssetBytesV1[] = [];
+  const logicalAssets: { entry: PublicationAssetEntryV1; bytes: Uint8Array }[] = [];
   const seenAssetIds = new Set<string>();
-  const seenAssetPaths = new Set<string>();
+  const contentByDigest = new Map<string, { canonicalPath: string; bytes: Uint8Array; mediaType: string }>();
   for (const input of request.assets) {
     const { entry, bytes } = input;
     if (!(bytes instanceof Uint8Array)) fail("invalid-asset", "asset bytes must be Uint8Array");
@@ -379,29 +379,65 @@ async function buildBundle(
       fail("invalid-asset", "bundle asset identifiers must be non-empty and unique");
     }
     const path = validatePublicationOutputPathV1(entry.path);
-    if (!path.startsWith("assets/")) fail("invalid-asset", "bundle asset paths must be inside assets/");
-    if (seenAssetPaths.has(path)) fail("invalid-asset", "bundle asset paths must be unique");
     requireDigest(entry.sha256, "asset.sha256");
+    if (!path.startsWith(`assets/${entry.sha256}/`)) {
+      fail("invalid-asset", "bundle asset paths must be content-addressed by their byte digest");
+    }
     if (!Number.isSafeInteger(entry.byteLength) || entry.byteLength < 0 || entry.byteLength !== bytes.byteLength) {
       fail("invalid-asset", "asset byteLength must exactly match its materialized bytes");
     }
     if (!entry.mediaType || entry.disposition === "blocked-active-content") {
       fail("invalid-asset", "bundles must not materialize blocked or untyped assets");
     }
+    if (entry.downloadName !== undefined) {
+      let downloadPath: string;
+      try {
+        downloadPath = validatePublicationOutputPathV1(`assets/download/${entry.downloadName}`);
+      } catch {
+        fail("invalid-asset", "asset downloadName must be one safe filename");
+      }
+      if (downloadPath.split("/").length !== 3) {
+        fail("invalid-asset", "asset downloadName must be one safe filename");
+      }
+    }
     if (bytes.byteLength > request.assetPolicy.maxAssetBytes) {
       fail("asset-budget-exceeded", "asset exceeds publication maxAssetBytes");
-    }
-    totalAssetBytes += bytes.byteLength;
-    if (!Number.isSafeInteger(totalAssetBytes) || totalAssetBytes > request.assetPolicy.maxTotalBytes) {
-      fail("asset-budget-exceeded", "assets exceed publication maxTotalBytes");
     }
     if (await digestBytes(bytes) !== entry.sha256) {
       fail("invalid-asset", "asset sha256 does not match materialized bytes");
     }
+    const existingContent = contentByDigest.get(entry.sha256);
+    if (existingContent === undefined) {
+      totalAssetBytes += bytes.byteLength;
+      if (!Number.isSafeInteger(totalAssetBytes) || totalAssetBytes > request.assetPolicy.maxTotalBytes) {
+        fail("asset-budget-exceeded", "deduplicated assets exceed publication maxTotalBytes");
+      }
+      contentByDigest.set(entry.sha256, {
+        canonicalPath: path,
+        bytes: new Uint8Array(bytes),
+        mediaType: entry.mediaType,
+      });
+    } else {
+      if (existingContent.mediaType !== entry.mediaType || existingContent.bytes.byteLength !== bytes.byteLength) {
+        fail("invalid-asset", "same asset digest must identify the same bytes and media type");
+      }
+      for (let index = 0; index < bytes.byteLength; index += 1) {
+        if (existingContent.bytes[index] !== bytes[index]) {
+          fail("invalid-asset", "same asset digest must identify the same bytes and media type");
+        }
+      }
+      if (path.localeCompare(existingContent.canonicalPath) < 0) {
+        existingContent.canonicalPath = path;
+      }
+    }
     seenAssetIds.add(entry.assetId);
-    seenAssetPaths.add(path);
-    assets.push({ entry: { ...entry, path }, bytes: new Uint8Array(bytes) });
+    logicalAssets.push({ entry, bytes: new Uint8Array(bytes) });
   }
+  const assets: PublicationBundleAssetBytesV1[] = logicalAssets.map(({ entry, bytes }) => {
+    const content = contentByDigest.get(entry.sha256);
+    if (content === undefined) throw new Error("unreachable asset content group");
+    return { entry: { ...entry, path: content.canonicalPath }, bytes };
+  });
 
   const provisional: PublicationBundleV1 = {
     schema: "atlcli.publication-bundle/1",
@@ -463,10 +499,13 @@ export async function materializeNodePublicationBundleV1(
       await writeNewFile(path, new TextEncoder().encode(JSON.stringify(page)));
       abortIfNeeded(request.signal);
     }
+    const writtenAssetPaths = new Set<string>();
     for (const asset of assets) {
+      if (writtenAssetPaths.has(asset.entry.path)) continue;
       const path = assertInside(stageBundleDirectory, join(stageBundleDirectory, asset.entry.path));
       await ensureChildDirectory(stageBundleDirectory, join(path, ".."));
       await writeNewFile(path, asset.bytes);
+      writtenAssetPaths.add(asset.entry.path);
       abortIfNeeded(request.signal);
     }
     const manifestPath = assertInside(stageBundleDirectory, join(stageBundleDirectory, "publication.json"));

@@ -67,10 +67,13 @@ export type {
 
 // --- Static-publication asset materialization ---
 export {
+  deduplicateMaterializedPublicationAssetsV1,
   fetchAndMaterializePublicationAssetV1,
+  PublicationAssetDeduplicationErrorV1,
   PublicationAssetMaterializationErrorV1,
 } from "./publication-assets.js";
 export type {
+  PublicationAssetDeduplicationErrorCodeV1,
   MaterializedPublicationAssetV1,
   PublicationAssetMaterializationDepsV1,
   PublicationAssetMaterializationErrorCodeV1,

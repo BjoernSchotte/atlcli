@@ -713,6 +713,7 @@ interface PublicationAssetEntryV1 {
   byteLength: number;
   mediaType: string;
   disposition: "inline" | "download" | "blocked-active-content";
+  downloadName?: string; // safe logical download filename, independent of path
 }
 ```
 
@@ -1186,7 +1187,8 @@ untrusted input conversion path; its raw HTML is never emitted.
 Default output is self-contained. Acquisition resolves attachment/external
 references through current trust routing, validates content, and writes
 content-addressed bytes. Duplicate bytes are stored once even when filenames
-differ.
+differ; each logical asset retains its own safe `downloadName` for generated
+download links.
 
 The Astro integration emits or stages assets without mutating the user's
 handwritten `public/` tree. Arbitrary downloads preserve bytes. V1 defaults to
@@ -1505,7 +1507,7 @@ load a bundle and build all routes with build-time network access disabled.
       and materialization seam.
 - [x] Validate MIME/magic bytes, size/pixel/node budgets, redirects/private
       networks, digest, safe filenames, root containment, and symlinks.
-- [ ] Deduplicate content-addressed assets and preserve safe download names.
+- [x] Deduplicate content-addressed assets and preserve safe download names.
 - [x] Stage, validate, digest, and atomically activate immutable bundles.
 - [x] Ensure failed/cancelled refresh preserves the last active bundle.
 - [ ] Implement retention/GC by manifest reachability and grace period only.

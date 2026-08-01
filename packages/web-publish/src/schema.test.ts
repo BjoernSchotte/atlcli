@@ -366,6 +366,10 @@ describe("web publication runtime schemas v1", () => {
       ...bundle,
       routes: [{ ...bundle.routes[0], route: "/../escape/" }],
     })).toThrow("$.routes[0].route");
+    expect(() => parsePublicationBundleV1({
+      ...bundle,
+      assets: [{ ...bundle.assets[0], downloadName: "../escape.png" }],
+    })).toThrow("$.assets[0].downloadName");
     expect(() => parsePublicationPageV1({ ...page, route: "/guide\\escape/" }))
       .toThrow("$.route");
   });

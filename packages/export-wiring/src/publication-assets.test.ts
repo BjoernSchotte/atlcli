@@ -2,7 +2,9 @@ import { describe, expect, test } from "bun:test";
 import type { ExternalAssetFetcher } from "@atlcli/export-macros";
 import type { PublicationAssetPolicyV1 } from "@atlcli/web-publish";
 import {
+  deduplicateMaterializedPublicationAssetsV1,
   fetchAndMaterializePublicationAssetV1,
+  PublicationAssetDeduplicationErrorV1,
   PublicationAssetMaterializationErrorV1,
 } from "./publication-assets.js";
 
@@ -104,5 +106,39 @@ describe("publication asset materialization", () => {
       policy,
       attach(png(101, 100), "image/png"),
     )).rejects.toBeInstanceOf(PublicationAssetMaterializationErrorV1);
+  });
+
+  test("deduplicates equal validated bytes while preserving each safe download name", async () => {
+    const attachmentPort = {
+      async fetchAttachment() {
+        return { bytes: png(20, 10), mediaType: "image/png" };
+      },
+    };
+    const [first, second] = await Promise.all([
+      fetchAndMaterializePublicationAssetV1({
+        assetId: "first",
+        source: { kind: "attachment", pageId: "page-1", filename: "Architecture diagram.png" },
+      }, policy, { attachmentPort }),
+      fetchAndMaterializePublicationAssetV1({
+        assetId: "second",
+        source: { kind: "attachment", pageId: "page-2", filename: "Download copy.png" },
+      }, policy, { attachmentPort }),
+    ]);
+
+    const deduplicated = deduplicateMaterializedPublicationAssetsV1([second, first]);
+    expect(deduplicated.map((asset) => asset.entry.path)).toEqual([
+      first.entry.path,
+      first.entry.path,
+    ]);
+    expect(deduplicated.map((asset) => asset.entry.downloadName)).toEqual([
+      "Download-copy.png",
+      "Architecture-diagram.png",
+    ]);
+    expect(deduplicated[0]!.bytes).not.toBe(deduplicated[1]!.bytes);
+
+    expect(() => deduplicateMaterializedPublicationAssetsV1([{
+      ...first,
+      entry: { ...first.entry, downloadName: "../unsafe.png" },
+    }])).toThrow(PublicationAssetDeduplicationErrorV1);
   });
 });

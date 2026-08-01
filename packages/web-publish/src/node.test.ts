@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { lstat, mkdtemp, readFile, symlink, writeFile } from "node:fs/promises";
+import { lstat, mkdtemp, readFile, readdir, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type {
@@ -132,6 +132,7 @@ async function publicationFixture(root: string) {
         byteLength: assetBytes.byteLength,
         mediaType: "image/png",
         disposition: "inline" as const,
+        downloadName: "logo.png",
       },
       bytes: assetBytes,
     }],
@@ -279,6 +280,44 @@ describe("@atlcli/web-publish/node immutable bundle activation", () => {
       signal: controller.signal,
     })).rejects.toMatchObject({ code: "aborted" });
     expect(await readFile(currentPath, "utf8")).toBe(before);
+  });
+
+  test("writes identical content-addressed asset bytes once while retaining per-asset download names", async () => {
+    const { root } = await fixture();
+    const request = await publicationFixture(root);
+    const originalPage = request.pages[0]!;
+    const pageDraft: PublicationPageV1 = {
+      ...originalPage,
+      links: [
+        { referenceId: "logo", kind: "asset", assetId: "logo" },
+        { referenceId: "logo-copy", kind: "asset", assetId: "logo-copy" },
+      ],
+      assetIds: ["logo", "logo-copy"],
+      pageDigest: "pending",
+    };
+    const page = { ...pageDraft, pageDigest: await digestPublicationPageV1(pageDraft) };
+    const duplicate = {
+      entry: {
+        ...request.assets[0]!.entry,
+        assetId: "logo-copy",
+        path: `assets/${request.assets[0]!.entry.sha256}/download-copy.png`,
+        downloadName: "download-copy.png",
+      },
+      bytes: new Uint8Array(request.assets[0]!.bytes),
+    };
+    const result = await materializeNodePublicationBundleV1({
+      ...request,
+      pages: [page],
+      assets: [request.assets[0]!, duplicate],
+    });
+
+    expect(result.bundle.assets.map((asset) => [asset.assetId, asset.path, asset.downloadName])).toEqual([
+      ["logo", `assets/${request.assets[0]!.entry.sha256}/download-copy.png`, "logo.png"],
+      ["logo-copy", `assets/${request.assets[0]!.entry.sha256}/download-copy.png`, "download-copy.png"],
+    ]);
+    expect(await readdir(join(result.bundleDirectory, "assets", request.assets[0]!.entry.sha256))).toEqual([
+      "download-copy.png",
+    ]);
   });
 
   test("fails closed on a symlinked project-owned bundle directory", async () => {

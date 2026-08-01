@@ -282,6 +282,8 @@ export interface ResolvedPublicationAssetV1 {
   byteLength: number;
   sha256: string;
   disposition: PublicationAssetEntryV1["disposition"];
+  /** Safe source-facing name used when this logical asset is downloaded. */
+  downloadName?: string;
 }
 
 export interface ResolvedHeadingV1 {
@@ -346,6 +348,8 @@ export interface PublicationAssetEntryV1 {
   byteLength: number;
   mediaType: string;
   disposition: "inline" | "download" | "blocked-active-content";
+  /** Safe filename retained independently from the content-addressed path. */
+  downloadName?: string;
 }
 
 export interface PublicationBundleV1 {

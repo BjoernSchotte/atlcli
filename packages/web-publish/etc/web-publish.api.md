@@ -255,6 +255,7 @@ export interface PublicationAssetEntryV1 {
     byteLength: number;
     mediaType: string;
     disposition: "inline" | "download" | "blocked-active-content";
+    downloadName?: string;
 }
 
 // export: PublicationAssetPolicyV1
@@ -960,6 +961,7 @@ export interface ResolvedPublicationAssetV1 {
     byteLength: number;
     sha256: string;
     disposition: PublicationAssetEntryV1["disposition"];
+    downloadName?: string;
 }
 
 // export: ResolvedPublicationLinkReferenceV1

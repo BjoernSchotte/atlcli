@@ -14,7 +14,7 @@ each.
 |---|---|
 | Macro ports | `confluenceContentPortFromClient`, `exportViewPortFromClient`, `attachmentLookupFromClient`, `jiraIssuePortFromClient`, `classifyClientError` |
 | Asset security boundary | `createExternalAssetPolicy`, `createExternalAssetFetcher`, `defaultExternalAssetPolicy`, `defaultExternalAssetFetcher`, `isPrivateHost`, `parseIpv6` |
-| Publication assets | `fetchAndMaterializePublicationAssetV1`: policy-routed fetch, magic/MIME validation, SVG safety, dimensions/budgets, and content-addressed output metadata |
+| Publication assets | `fetchAndMaterializePublicationAssetV1` and `deduplicateMaterializedPublicationAssetsV1`: policy-routed fetch, magic/MIME validation, SVG safety, dimensions/budgets, and content-addressed output metadata |
 | Sink-side trust routing | `trustRoutingAssetFetcher`, `trustRoutingPdfAssetResolver` |
 | Resolution options | `buildMacroResolutionOptions`, `createMacroRegistry` |
 | Confluence source graph | `resolveConfluencePageGraphV1` exposes ordered normalized page/folder nodes before document composition; `resolveConfluenceSourceV1` remains the DOCX/PDF compatibility wrapper |
@@ -92,6 +92,12 @@ redirect. The function accepts PNG, JPEG, GIF, and self-contained SVG only;
 it rejects MIME/magic mismatches, unsafe SVG content, excessive SVG nodes, and
 pixel/byte budget violations. Its result contains digest-addressed local asset
 metadata and bytes, never a Confluence page ID or source URL.
+
+`deduplicateMaterializedPublicationAssetsV1()` coalesces multiple already
+validated materializations with identical bytes into one deterministic physical
+bundle path. Each logical asset ID retains its own safe `downloadName`, so later
+static download links can use the authored filename without duplicating bytes
+or trusting a source path.
 
 ## The rule that is easy to forget
 

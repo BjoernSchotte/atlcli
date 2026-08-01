@@ -152,6 +152,9 @@ export declare function createExternalAssetPolicy(options: ExternalAssetPolicyOp
 // export: createMacroRegistry
 export declare function createMacroRegistry(): MacroRendererRegistry;
 
+// export: deduplicateMaterializedPublicationAssetsV1
+export declare function deduplicateMaterializedPublicationAssetsV1(assets: readonly MaterializedPublicationAssetV1[]): readonly MaterializedPublicationAssetV1[];
+
 // export: defaultExternalAssetFetcher
 export declare function defaultExternalAssetFetcher(policy: ExternalAssetPolicy, deps?: ExternalAssetFetcherDeps): ExternalAssetFetcher;
 
@@ -355,6 +358,15 @@ export type PdfConfluenceResolvedInputExtrasV1 = Omit<PdfExportJobEngineInputV1,
 export interface PersistedOrderedSourceCheckpointV1<Cursor> {
     checkpoint: OrderedSourceCheckpointV1<Cursor>;
     ref: string;
+}
+
+// export: PublicationAssetDeduplicationErrorCodeV1
+export type PublicationAssetDeduplicationErrorCodeV1 = "duplicate-asset-id" | "invalid-materialized-asset" | "digest-conflict";
+
+// export: PublicationAssetDeduplicationErrorV1
+export declare class PublicationAssetDeduplicationErrorV1 extends Error {
+    readonly code: PublicationAssetDeduplicationErrorCodeV1;
+    constructor(code: PublicationAssetDeduplicationErrorCodeV1, message: string);
 }
 
 // export: PublicationAssetMaterializationDepsV1

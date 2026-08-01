@@ -6,7 +6,11 @@ import {
   sha256Hex,
 } from "@atlcli/export-media";
 import type { ExternalAssetFetcher } from "@atlcli/export-macros";
-import type { PublicationAssetEntryV1, PublicationAssetPolicyV1 } from "@atlcli/web-publish";
+import {
+  validatePublicationOutputPathV1,
+  type PublicationAssetEntryV1,
+  type PublicationAssetPolicyV1,
+} from "@atlcli/web-publish";
 
 export type PublicationAssetSourceV1 =
   | { kind: "attachment"; pageId: string; filename: string }
@@ -45,6 +49,21 @@ export type PublicationAssetMaterializationErrorCodeV1 =
   | "svg-node-budget"
   | "image-pixel-budget";
 
+export type PublicationAssetDeduplicationErrorCodeV1 =
+  | "duplicate-asset-id"
+  | "invalid-materialized-asset"
+  | "digest-conflict";
+
+export class PublicationAssetDeduplicationErrorV1 extends Error {
+  constructor(
+    public readonly code: PublicationAssetDeduplicationErrorCodeV1,
+    message: string,
+  ) {
+    super(message);
+    this.name = "PublicationAssetDeduplicationErrorV1";
+  }
+}
+
 export class PublicationAssetMaterializationErrorV1 extends Error {
   constructor(
     public readonly code: PublicationAssetMaterializationErrorCodeV1,
@@ -57,6 +76,10 @@ export class PublicationAssetMaterializationErrorV1 extends Error {
 
 function fail(code: PublicationAssetMaterializationErrorCodeV1, message: string): never {
   throw new PublicationAssetMaterializationErrorV1(code, message);
+}
+
+function dedupFail(code: PublicationAssetDeduplicationErrorCodeV1, message: string): never {
+  throw new PublicationAssetDeduplicationErrorV1(code, message);
 }
 
 function normalizeDeclaredMediaType(value: string | undefined): string | undefined {
@@ -87,7 +110,11 @@ function safeFilename(filename: string, extension: string): string {
   const fallback = "asset";
   const base = stem || fallback;
   const suffix = `.${extension}`;
-  return base.toLowerCase().endsWith(suffix) ? base : `${base}${suffix}`;
+  const normalized = base.toLowerCase();
+  if (normalized.endsWith(suffix) || (extension === "jpeg" && normalized.endsWith(".jpg"))) {
+    return base;
+  }
+  return `${base}${suffix}`;
 }
 
 function svgNodeCount(source: string): number {
@@ -164,9 +191,93 @@ function materializeFetchedPublicationAssetV1(
       byteLength: bytes.byteLength,
       mediaType,
       disposition: "inline",
+      downloadName: filename,
     },
     bytes,
   };
+}
+
+function materializedFilename(asset: MaterializedPublicationAssetV1): string {
+  let path: string;
+  try {
+    path = validatePublicationOutputPathV1(asset.entry.path);
+  } catch {
+    return dedupFail("invalid-materialized-asset", "materialized publication asset has an unsafe path");
+  }
+  const segments = path.split("/");
+  const filename = segments.at(-1);
+  if (
+    segments.length !== 3 ||
+    segments[0] !== "assets" ||
+    segments[1] !== asset.entry.sha256 ||
+    filename === undefined ||
+    filename.length === 0
+  ) {
+    return dedupFail("invalid-materialized-asset", "materialized publication asset is not content-addressed");
+  }
+  const downloadName = asset.entry.downloadName ?? filename;
+  try {
+    validatePublicationOutputPathV1(`assets/${asset.entry.sha256}/${downloadName}`);
+  } catch {
+    return dedupFail("invalid-materialized-asset", "materialized publication asset has an unsafe download name");
+  }
+  return downloadName;
+}
+
+function sameBytes(left: Uint8Array, right: Uint8Array): boolean {
+  if (left.byteLength !== right.byteLength) return false;
+  for (let index = 0; index < left.byteLength; index += 1) {
+    if (left[index] !== right[index]) return false;
+  }
+  return true;
+}
+
+/**
+ * Coalesce validated individual materializations into content-addressed bundle
+ * entries. Equal bytes are written once at a deterministic path while every
+ * logical asset keeps a separately safe `downloadName` for future download
+ * links. Acquisition itself remains intentionally outside this pure batch step.
+ */
+export function deduplicateMaterializedPublicationAssetsV1(
+  assets: readonly MaterializedPublicationAssetV1[],
+): readonly MaterializedPublicationAssetV1[] {
+  const byAssetId = new Set<string>();
+  const groups = new Map<string, { canonicalFilename: string; bytes: Uint8Array; mediaType: string }>();
+  for (const asset of assets) {
+    if (byAssetId.has(asset.entry.assetId)) {
+      dedupFail("duplicate-asset-id", `duplicate materialized publication asset '${asset.entry.assetId}'`);
+    }
+    byAssetId.add(asset.entry.assetId);
+    const filename = materializedFilename(asset);
+    const existing = groups.get(asset.entry.sha256);
+    if (existing === undefined) {
+      groups.set(asset.entry.sha256, {
+        canonicalFilename: filename,
+        bytes: asset.bytes,
+        mediaType: asset.entry.mediaType,
+      });
+      continue;
+    }
+    if (existing.mediaType !== asset.entry.mediaType || !sameBytes(existing.bytes, asset.bytes)) {
+      dedupFail("digest-conflict", "same publication asset digest must identify equal bytes and media type");
+    }
+    if (filename.localeCompare(existing.canonicalFilename) < 0) {
+      existing.canonicalFilename = filename;
+    }
+  }
+  return assets.map((asset) => {
+    const group = groups.get(asset.entry.sha256);
+    if (group === undefined) throw new Error("unreachable publication asset deduplication group");
+    const downloadName = materializedFilename(asset);
+    return {
+      entry: {
+        ...asset.entry,
+        path: `assets/${asset.entry.sha256}/${group.canonicalFilename}`,
+        downloadName,
+      },
+      bytes: new Uint8Array(asset.bytes),
+    };
+  });
 }
 
 /**

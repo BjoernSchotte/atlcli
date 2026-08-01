@@ -32,6 +32,7 @@ import {
   PublicationRoutePlanningErrorV1,
   normalizePublicationRouteForPrefixV1,
   normalizePublicationRoutePrefixV1,
+  validatePublicationOutputPathV1,
 } from "./routes.js";
 
 export interface PublicationValidationBudgetV1 {
@@ -842,7 +843,7 @@ function pageEntry(value: unknown, path: string): void {
 
 function assetEntry(value: unknown, path: string): void {
   const candidate = object(value, path);
-  keys(candidate, path, ["assetId", "path", "sha256", "byteLength", "mediaType", "disposition"]);
+  keys(candidate, path, ["assetId", "path", "sha256", "byteLength", "mediaType", "disposition", "downloadName"]);
   nonEmptyString(candidate.assetId, `${path}.assetId`);
   nonEmptyString(candidate.path, `${path}.path`);
   nonEmptyString(candidate.sha256, `${path}.sha256`);
@@ -851,6 +852,17 @@ function assetEntry(value: unknown, path: string): void {
   oneOf(candidate.disposition, `${path}.disposition`, [
     "inline", "download", "blocked-active-content",
   ]);
+  if (candidate.downloadName !== undefined) {
+    const downloadName = nonEmptyString(candidate.downloadName, `${path}.downloadName`);
+    try {
+      const candidatePath = validatePublicationOutputPathV1(`assets/download/${downloadName}`);
+      if (candidatePath.split("/").length !== 3) {
+        fail(`${path}.downloadName`, "expected one safe filename, not a path");
+      }
+    } catch {
+      fail(`${path}.downloadName`, "expected one safe filename, not a path");
+    }
+  }
 }
 
 function publicationBundle(value: unknown, path: string): void {
