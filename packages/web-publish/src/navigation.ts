@@ -1,6 +1,6 @@
 import type { PublicationAnchorV1, PublicationPageV1 } from "./contracts.js";
 import { planPublicationAnchorsV1 } from "./references.js";
-import { normalizePublicationRouteV1, publicationSlugV1 } from "./routes.js";
+import { normalizePublicationRoutePrefixV1, normalizePublicationRouteV1, publicationSlugV1 } from "./routes.js";
 
 export type PublicationNavigationPlanningErrorCodeV1 =
   | "duplicate-page"
@@ -11,7 +11,9 @@ export type PublicationNavigationPlanningErrorCodeV1 =
   | "root-has-in-scope-parent"
   | "parent-cycle"
   | "depth-mismatch"
-  | "invalid-related-limit";
+  | "invalid-related-limit"
+  | "invalid-label-route-prefix"
+  | "label-route-collision";
 
 export class PublicationNavigationPlanningErrorV1 extends Error {
   constructor(
@@ -30,6 +32,8 @@ export interface PlanPublicationNavigationRequestV1 {
   rootIds: readonly string[];
   /** Bounded deterministic related-page result count. Defaults to six. */
   maxRelatedPages?: number;
+  /** Namespace owned by generated label landing pages. Defaults to `/topics`. */
+  labelRoutePrefix?: string;
 }
 
 export interface PublicationNavigationItemV1 {
@@ -78,6 +82,7 @@ export interface PublicationPageNavigationV1 {
 export interface PublicationLabelLandingV1 {
   label: string;
   slug: string;
+  route: string;
   sourceIds: readonly string[];
 }
 
@@ -95,6 +100,7 @@ interface Node {
 }
 
 const DEFAULT_MAX_RELATED_PAGES = 6;
+const DEFAULT_LABEL_ROUTE_PREFIX = "/topics";
 
 function fail(code: PublicationNavigationPlanningErrorCodeV1, message: string): never {
   throw new PublicationNavigationPlanningErrorV1(code, message);
@@ -128,6 +134,14 @@ function pageLinksTo(page: PublicationPageV1, sourceId: string): boolean {
 function sharedLabelCount(left: PublicationPageV1, right: PublicationPageV1): number {
   const labels = new Set(left.labels.map((label) => label.normalize("NFKC").toLowerCase()));
   return right.labels.reduce((count, label) => count + (labels.has(label.normalize("NFKC").toLowerCase()) ? 1 : 0), 0);
+}
+
+function routeFold(route: string): string {
+  return route.normalize("NFKC").toLowerCase();
+}
+
+function labelRoute(prefix: string, label: string): string {
+  return normalizePublicationRouteV1(`${prefix}/${publicationSlugV1(label)}/`);
 }
 
 function relatedPages(
@@ -179,6 +193,15 @@ export function planPublicationNavigationV1(
   const maxRelatedPages = request.maxRelatedPages ?? DEFAULT_MAX_RELATED_PAGES;
   if (!Number.isSafeInteger(maxRelatedPages) || maxRelatedPages < 1 || maxRelatedPages > 100) {
     fail("invalid-related-limit", "maxRelatedPages must be a safe integer from 1 through 100");
+  }
+  let labelRoutePrefix: string;
+  try {
+    labelRoutePrefix = normalizePublicationRoutePrefixV1(request.labelRoutePrefix ?? DEFAULT_LABEL_ROUTE_PREFIX);
+  } catch {
+    fail("invalid-label-route-prefix", "labelRoutePrefix must be a safe non-root publication route prefix");
+  }
+  if (labelRoutePrefix === "") {
+    fail("invalid-label-route-prefix", "labelRoutePrefix must not be the publication root");
   }
   const byId = new Map<string, Node>();
   const byRoute = new Map<string, Node>();
@@ -279,11 +302,23 @@ export function planPublicationNavigationV1(
       labelGroups.set(key, group);
     }
   }
-  const labels = Object.freeze([...labelGroups.values()].map((group): PublicationLabelLandingV1 => Object.freeze({
-    label: group.label,
-    slug: publicationSlugV1(group.label),
-    sourceIds: Object.freeze(group.sourceIds.sort()),
-  })).sort((left, right) => left.label.localeCompare(right.label) || left.slug.localeCompare(right.slug)));
+  const labelRoutes = new Map<string, string>();
+  for (const route of byRoute.keys()) labelRoutes.set(routeFold(route), "page");
+  const labels = Object.freeze([...labelGroups.values()].map((group): PublicationLabelLandingV1 => {
+    const slug = publicationSlugV1(group.label);
+    const route = labelRoute(labelRoutePrefix, group.label);
+    const collision = labelRoutes.get(routeFold(route));
+    if (collision !== undefined) {
+      fail("label-route-collision", `Label '${group.label}' collides with ${collision} route '${route}'`);
+    }
+    labelRoutes.set(routeFold(route), "another label");
+    return Object.freeze({
+      label: group.label,
+      slug,
+      route,
+      sourceIds: Object.freeze(group.sourceIds.sort()),
+    });
+  }).sort((left, right) => left.label.localeCompare(right.label) || left.slug.localeCompare(right.slug)));
 
   return Object.freeze({ roots: Object.freeze(roots.map(toItem)), pages, labels });
 }

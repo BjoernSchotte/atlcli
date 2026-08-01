@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import {
   createStarlightPublicationNavigationV1,
   starlightPublicationHrefV1,
+  starlightPublicationLabelLandingV1,
   starlightPublicationPageNavigationV1,
 } from "./navigation.js";
 
@@ -33,7 +34,7 @@ const navigation = {
       }],
     },
   ],
-  labels: [],
+  labels: [{ label: "Docs", slug: "docs", route: "/topics/docs/", sourceIds: ["guide", "root"] }],
 } as const;
 
 test("maps the neutral plan to documented Starlight sidebar data and route-prefixed chrome links", () => {
@@ -51,7 +52,7 @@ test("maps the neutral plan to documented Starlight sidebar data and route-prefi
         { label: "Guide", link: "/publish/guide/" },
       ],
     }],
-    pages: expect.any(Array),
+    pages: expect.any(Array), labels: expect.any(Array),
   });
   expect(starlightPublicationPageNavigationV1(result, "guide")).toEqual({
     sourceId: "guide",
@@ -66,6 +67,13 @@ test("maps the neutral plan to documented Starlight sidebar data and route-prefi
       reasons: ["same-root"],
     }],
   });
+  expect(starlightPublicationLabelLandingV1(result, "docs")).toEqual({
+    label: "Docs", slug: "docs", href: "/publish/topics/docs/",
+    pages: [
+      { sourceId: "guide", title: "Guide", href: "/publish/guide/" },
+      { sourceId: "root", title: "Knowledge", href: "/publish/knowledge/" },
+    ],
+  });
 });
 
 test("keeps route identity closed and rejects missing page lookups or untrusted labels", () => {
@@ -74,4 +82,5 @@ test("keeps route identity closed and rejects missing page lookups or untrusted 
   expect(() => createStarlightPublicationNavigationV1({ navigation, routePrefix: "/publish", landingLabel: " " })).toThrow("landingLabel");
   const result = createStarlightPublicationNavigationV1({ navigation, routePrefix: "/publish", landingLabel: "Overview" });
   expect(() => starlightPublicationPageNavigationV1(result, "unknown")).toThrow("no page");
+  expect(() => starlightPublicationLabelLandingV1(result, "unknown")).toThrow("no label landing");
 });

@@ -59,6 +59,12 @@ test("a Starlight consumer presents ExportBlock document bodies with static sear
   expect(guide).toContain("data-pagefind-body");
   expect(guide).toContain('data-pagefind-meta="source-id"');
   expect(guide).toContain('data-pagefind-filter="label"');
+  const topic = await readFile(resolve(fixture, "dist/topics/publishing/index.html"), "utf8");
+  expect(topic).toContain('data-atlcli-publication-slot="label-landing"');
+  expect(topic).toContain("Topic: publishing");
+  expect(topic.match(/<h1\b/gu)).toHaveLength(1);
+  expect(topic).toContain('href="/guide/"');
+  expect(topic).toContain('href="/"');
   expect(await stat(resolve(fixture, "dist/404.html"))).toBeDefined();
 }, 30_000);
 

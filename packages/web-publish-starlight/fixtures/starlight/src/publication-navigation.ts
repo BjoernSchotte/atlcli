@@ -3,6 +3,7 @@ import type { ExportBlock } from "@atlcli/export-blocks";
 import { planPublicationNavigationV1 } from "@atlcli/web-publish";
 import {
   createStarlightPublicationNavigationV1,
+  starlightPublicationLabelLandingV1,
   starlightPublicationPageNavigationV1,
 } from "@atlcli/web-publish-starlight";
 import { PUBLISHED_RELEASE_BLOCKS_V1 } from "./published-release";
@@ -39,3 +40,4 @@ export const PUBLISHED_RELEASE_PAGE_V1 = pages[0]!;
 export const PUBLISHED_GUIDE_PAGE_V1 = pages[1]!;
 export const PUBLISHED_RELEASE_NAVIGATION_V1 = starlightPublicationPageNavigationV1(PUBLISHED_STARLIGHT_NAVIGATION_V1, "release-notes");
 export const PUBLISHED_GUIDE_NAVIGATION_V1 = starlightPublicationPageNavigationV1(PUBLISHED_STARLIGHT_NAVIGATION_V1, "publishing-guide");
+export const PUBLISHED_PUBLISHING_LABEL_LANDING_V1 = starlightPublicationLabelLandingV1(PUBLISHED_STARLIGHT_NAVIGATION_V1, "publishing");

@@ -63,6 +63,21 @@
   margin-inline-start: auto;
 }
 
+[data-atlcli-publication-slot="label-landing"] {
+  max-inline-size: 48rem;
+}
+
+[data-atlcli-publication-slot="label-landing"] > p {
+  color: var(--sl-color-gray-3);
+  font-size: var(--sl-text-lg);
+}
+
+[data-atlcli-publication-slot="label-landing"] section {
+  border-top: 1px solid var(--sl-color-gray-5);
+  margin-block-start: 2rem;
+  padding-block-start: 1.25rem;
+}
+
 @media print {
   [data-atlcli-starlight-slot="main-content"] {
     --atlcli-content-foreground: #000;

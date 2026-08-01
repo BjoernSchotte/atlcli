@@ -22,6 +22,7 @@
     "./components/StarlightDocumentBody.astro": "./dist/components/StarlightDocumentBody.astro",
     "./components/StarlightPublicationNavigation.astro": "./dist/components/StarlightPublicationNavigation.astro",
     "./components/StarlightPublicationPage.astro": "./dist/components/StarlightPublicationPage.astro",
+    "./components/StarlightPublicationLabelLanding.astro": "./dist/components/StarlightPublicationLabelLanding.astro",
     "./styles.css": "./dist/styles.css"
   },
   "scripts": {

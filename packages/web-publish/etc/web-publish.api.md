@@ -176,6 +176,7 @@ export interface PlanPublicationNavigationRequestV1 {
     pages: readonly PublicationPageV1[];
     rootIds: readonly string[];
     maxRelatedPages?: number;
+    labelRoutePrefix?: string;
 }
 
 // export: planPublicationNavigationV1
@@ -499,6 +500,7 @@ export interface PublicationIssueV1 {
 export interface PublicationLabelLandingV1 {
     label: string;
     slug: string;
+    route: string;
     sourceIds: readonly string[];
 }
 
@@ -551,7 +553,7 @@ export interface PublicationNavigationItemV1 {
 }
 
 // export: PublicationNavigationPlanningErrorCodeV1
-export type PublicationNavigationPlanningErrorCodeV1 = "duplicate-page" | "duplicate-route" | "duplicate-root" | "unknown-root" | "unknown-parent" | "root-has-in-scope-parent" | "parent-cycle" | "depth-mismatch" | "invalid-related-limit";
+export type PublicationNavigationPlanningErrorCodeV1 = "duplicate-page" | "duplicate-route" | "duplicate-root" | "unknown-root" | "unknown-parent" | "root-has-in-scope-parent" | "parent-cycle" | "depth-mismatch" | "invalid-related-limit" | "invalid-label-route-prefix" | "label-route-collision";
 
 // export: PublicationNavigationPlanningErrorV1
 export declare class PublicationNavigationPlanningErrorV1 extends Error {

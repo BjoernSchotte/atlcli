@@ -70,8 +70,8 @@ test("plans ordered tree navigation, breadcrumbs, TOC, previous/next, labels, an
     reasons: ["outbound-link", "inbound-link", "shared-label", "same-parent", "same-root"],
   });
   expect(result.labels).toEqual([
-    { label: "Docs", slug: "docs", sourceIds: ["guide", "reference", "root"] },
-    { label: "Getting Started", slug: "getting-started", sourceIds: ["guide"] },
+    { label: "Docs", slug: "docs", route: "/topics/docs/", sourceIds: ["guide", "reference", "root"] },
+    { label: "Getting Started", slug: "getting-started", route: "/topics/getting-started/", sourceIds: ["guide"] },
   ]);
 });
 
@@ -107,4 +107,12 @@ test("fails closed for unsafe graph ownership, depth, and route ambiguity", () =
       page({ sourceId: "orphan", title: "Orphan", route: "/orphan/", parentId: "unknown", depth: 1 }),
     ],
   }), "unknown-parent");
+  expectError(() => planPublicationNavigationV1({
+    rootIds: ["root"], labelRoutePrefix: "/", pages: [page({ sourceId: "root", title: "Root", route: "/root/" })],
+  }), "invalid-label-route-prefix");
+  expectError(() => planPublicationNavigationV1({
+    rootIds: ["root"], pages: [
+      page({ sourceId: "root", title: "Root", route: "/topics/docs/", labels: ["Docs"] }),
+    ],
+  }), "label-route-collision");
 });
