@@ -72,6 +72,60 @@ afterEach(() => {
 });
 
 describe("research-owned native task dispatch interception", () => {
+  test("replaces candidate admissions exactly once before dispatch observation", async () => {
+    const calls: string[] = [];
+    const adapter = createResearchDispatchInterceptionAdapter({
+      admissions: [admission("candidate")],
+      maxTasks: 2,
+      maxConcurrency: 1,
+      async invokeUpstream(_input, config) {
+        const taskId = String(config.configurable?.[RESEARCH_TASK_ID_CONFIG_KEY]);
+        calls.push(taskId);
+        return { taskId, answer: "accepted" };
+      },
+    });
+    adapter.replaceAdmissions([admission("selected", [], {
+      objective: "Research selected",
+    })]);
+    await expect(adapter.invoke({
+      description: encodeResearchTaskDescriptionV1({
+        taskId: "selected",
+        objective: "Research selected",
+      }),
+      subagent_type: "focused-researcher",
+    }, {
+      configurable: { [DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY]: PACKET_SCHEMA },
+    })).resolves.toEqual({ taskId: "selected", answer: "accepted" });
+    expect(calls).toEqual(["selected"]);
+    expect(() => adapter.replaceAdmissions([admission("late")]))
+      .toThrow("immutable after dispatch observation");
+  });
+
+  test("validates replacement dependencies and locks after a rejected observation", async () => {
+    const adapter = createResearchDispatchInterceptionAdapter({
+      admissions: [admission("candidate")],
+      maxTasks: 2,
+      maxConcurrency: 1,
+      async invokeUpstream() {
+        return { taskId: "candidate", answer: "unused" };
+      },
+    });
+    expect(() => adapter.replaceAdmissions([
+      admission("dependent", [], { dependsOnTaskIds: ["missing"] }),
+    ])).toThrow("Invalid research task dependencies");
+    await expect(adapter.invoke({
+      description: encodeResearchTaskDescriptionV1({
+        taskId: "unknown",
+        objective: "Research unknown",
+      }),
+      subagent_type: "focused-researcher",
+    }, {
+      configurable: { [DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY]: PACKET_SCHEMA },
+    })).rejects.toMatchObject({ code: "unknown-task" });
+    expect(() => adapter.replaceAdmissions([admission("replacement")]))
+      .toThrow("immutable after dispatch observation");
+  });
+
   test("validates host task IDs and counts task dispatches outside maxPtcCalls", async () => {
     const calls: string[] = [];
     const adapter = createResearchDispatchInterceptionAdapter({

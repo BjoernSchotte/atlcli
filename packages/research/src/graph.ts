@@ -30,6 +30,8 @@ export { RESEARCH_BRIEF_SCHEMA_V1 } from "./brief.js";
 export type { ResearchBriefV1 } from "./brief.js";
 
 export const RESEARCH_GRAPH_SCHEMA_V1 = "atlcli.research-graph/v1" as const;
+export const RESEARCH_GRAPH_PROPOSAL_SCHEMA_V1 =
+  "atlcli.research-graph-proposal/v1" as const;
 export const RESEARCH_PLAN_APPROVAL_REQUIRED_SCHEMA_V1 =
   "atlcli.research-plan-approval-required/v1" as const;
 
@@ -79,22 +81,39 @@ export type ResearchNodeStatusV1 =
   | "pruned"
   | "quarantined";
 
+export const RESEARCH_COMPOSITION_REASONS_V1 = [
+  "simple_lookup",
+  "independent_branch",
+  "cross_product_join",
+  "scope_resolution",
+  "related_scope_discovery",
+  "exact_reference_follow",
+  "large_document_set",
+  "hierarchy_traversal",
+  "coverage_gap",
+  "contradiction",
+  "negative_claim",
+  "high_impact_claim",
+  "user_requested",
+  "budget_pruned",
+  "not_applicable",
+] as const;
 export type ResearchCompositionReasonV1 =
-  | "simple_lookup"
-  | "independent_branch"
-  | "cross_product_join"
-  | "scope_resolution"
-  | "related_scope_discovery"
-  | "exact_reference_follow"
-  | "large_document_set"
-  | "hierarchy_traversal"
-  | "coverage_gap"
-  | "contradiction"
-  | "negative_claim"
-  | "high_impact_claim"
-  | "user_requested"
-  | "budget_pruned"
-  | "not_applicable";
+  (typeof RESEARCH_COMPOSITION_REASONS_V1)[number];
+
+/** Body-free supervisor proposal. Objectives, grants, and budgets remain host-owned. */
+export interface ResearchGraphProposalNodeV1 {
+  nodeId: string;
+  dependencies: string[];
+  reasonCodes: ResearchCompositionReasonV1[];
+}
+
+export interface ResearchGraphProposalV1 {
+  schema: typeof RESEARCH_GRAPH_PROPOSAL_SCHEMA_V1;
+  basedOnBriefRevision: number;
+  basedOnGraphRevision: number;
+  nodes: ResearchGraphProposalNodeV1[];
+}
 
 export interface ResearchNodeCompletionPolicyV1 {
   requiredCoverageTargetIds: string[];
@@ -576,6 +595,16 @@ function equalBudget(left: ResearchNodeBudgetV1, right: ResearchNodeBudgetV1): b
   );
 }
 
+function budgetWithinCeiling(
+  budget: ResearchNodeBudgetV1,
+  ceiling: ResearchNodeBudgetV1,
+): boolean {
+  return Object.keys(budget).every((key) =>
+    budget[key as keyof ResearchNodeBudgetV1] <=
+      ceiling[key as keyof ResearchNodeBudgetV1]
+  );
+}
+
 function executionRank(node: ResearchGraphNodeV1): number {
   if (node.executor === "ptc") return 0;
   switch (node.roleId) {
@@ -645,14 +674,171 @@ export function validateResearchGraphV1(graph: ResearchGraphV1): void {
     if ((decision.decision === "selected") !== projected.has(roleId)) invalid("Research graph role decisions must derive from executable nodes.");
   }
   if (graph.approvalEnvelope.schema !== RESEARCH_APPROVAL_ENVELOPE_SCHEMA_V1 || graph.approvalEnvelope.basedOnGraphRevision !== graph.revision || graph.approvalEnvelope.basedOnBriefRevision !== graph.basedOnBriefRevision) invalid("Research graph approval envelope revision is invalid.");
-  if (!equalSet(graph.approvalEnvelope.allowedRoleIds, [...projected])) invalid("Research graph approval roles do not match executable nodes.");
+  if ([...projected].some((roleId) => !graph.approvalEnvelope.allowedRoleIds.includes(roleId))) invalid("Research graph executable roles exceed the approval envelope.");
   const granted = [...new Set(graph.nodes.flatMap((node) => node.grantedCapabilityIds))];
-  if (!equalSet(graph.approvalEnvelope.allowedCapabilityIds, granted)) invalid("Research graph approval capabilities do not match executable nodes.");
+  if (granted.some((capabilityId) => !graph.approvalEnvelope.allowedCapabilityIds.includes(capabilityId))) invalid("Research graph executable capabilities exceed the approval envelope.");
   if (graph.approvalEnvelope.maxParallelNodes !== graph.maxParallelNodes || graph.approvalEnvelope.maxResearchWaves !== graph.maxResearchWaves || graph.approvalEnvelope.maxReconciliationWaves !== graph.maxReconciliationWaves || graph.approvalEnvelope.maxDepth !== 0) invalid("Research graph approval execution limits are inconsistent.");
   validateBudget(graph.totalBudget, "Research graph total budget");
   const derivedBudget = aggregateBudget(graph.nodes);
-  if (!equalBudget(graph.totalBudget, derivedBudget) || !equalBudget(graph.approvalEnvelope.totalBudgetCeiling, derivedBudget)) invalid("Research graph total budget must derive from executable nodes.");
+  if (!equalBudget(graph.totalBudget, derivedBudget)) invalid("Research graph total budget must derive from executable nodes.");
+  if (!budgetWithinCeiling(derivedBudget, graph.approvalEnvelope.totalBudgetCeiling)) invalid("Research graph total budget exceeds the approval envelope.");
   if ((graph.status === "proposed") !== (graph.approvalEnvelope.status === "proposed")) invalid("Research graph approval status is inconsistent.");
+}
+
+function parseResearchGraphProposalNodeV1(
+  value: unknown,
+): ResearchGraphProposalNodeV1 {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    invalid("Research graph proposal node is invalid.");
+  }
+  const record = value as Record<string, unknown>;
+  if (!equalSet(Object.keys(record), ["nodeId", "dependencies", "reasonCodes"])) {
+    invalid("Research graph proposal node contains unsupported fields.");
+  }
+  if (typeof record.nodeId !== "string" || !/^research-node:[A-Za-z0-9._-]{1,120}$/.test(record.nodeId)) {
+    invalid("Research graph proposal node ID is invalid.");
+  }
+  if (!Array.isArray(record.dependencies) || record.dependencies.length > 8 ||
+      record.dependencies.some((dependency) => typeof dependency !== "string") ||
+      new Set(record.dependencies).size !== record.dependencies.length) {
+    invalid("Research graph proposal dependencies are invalid.");
+  }
+  if (!Array.isArray(record.reasonCodes) || record.reasonCodes.length < 1 ||
+      record.reasonCodes.length > 4 ||
+      record.reasonCodes.some((reason) =>
+        typeof reason !== "string" ||
+        !RESEARCH_COMPOSITION_REASONS_V1.includes(reason as ResearchCompositionReasonV1)
+      ) || new Set(record.reasonCodes).size !== record.reasonCodes.length) {
+    invalid("Research graph proposal reason codes are invalid.");
+  }
+  return {
+    nodeId: record.nodeId,
+    dependencies: [...record.dependencies] as string[],
+    reasonCodes: [...record.reasonCodes] as ResearchCompositionReasonV1[],
+  };
+}
+
+/** Parse the only model-authored graph shape accepted by the T3 host. */
+export function parseResearchGraphProposalV1(
+  value: unknown,
+): ResearchGraphProposalV1 {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    invalid("Research graph proposal is invalid.");
+  }
+  const record = value as Record<string, unknown>;
+  if (!equalSet(Object.keys(record), [
+    "schema",
+    "basedOnBriefRevision",
+    "basedOnGraphRevision",
+    "nodes",
+  ])) {
+    invalid("Research graph proposal contains unsupported fields.");
+  }
+  if (record.schema !== RESEARCH_GRAPH_PROPOSAL_SCHEMA_V1 ||
+      !Number.isSafeInteger(record.basedOnBriefRevision) ||
+      !Number.isSafeInteger(record.basedOnGraphRevision) ||
+      !Array.isArray(record.nodes) || record.nodes.length < 2 || record.nodes.length > 8) {
+    invalid("Research graph proposal envelope is invalid.");
+  }
+  const nodes = record.nodes.map(parseResearchGraphProposalNodeV1);
+  if (new Set(nodes.map((node) => node.nodeId)).size !== nodes.length) {
+    invalid("Research graph proposal node IDs must be unique.");
+  }
+  return {
+    schema: RESEARCH_GRAPH_PROPOSAL_SCHEMA_V1,
+    basedOnBriefRevision: record.basedOnBriefRevision as number,
+    basedOnGraphRevision: record.basedOnGraphRevision as number,
+    nodes,
+  };
+}
+
+/**
+ * Accept a supervisor selection only inside a previously validated host graph.
+ * The proposal controls composition and dependencies, never scope, objectives,
+ * capability grants, schemas, or budgets.
+ */
+export function acceptResearchGraphProposalV1(
+  catalogGraph: ResearchGraphV1,
+  value: unknown,
+): ResearchGraphV1 {
+  validateResearchGraphV1(catalogGraph);
+  const proposal = parseResearchGraphProposalV1(value);
+  if (proposal.basedOnBriefRevision !== catalogGraph.basedOnBriefRevision ||
+      proposal.basedOnGraphRevision !== catalogGraph.revision) {
+    invalid("Research graph proposal revision is stale.");
+  }
+  if (catalogGraph.status !== "approved" || catalogGraph.approvalEnvelope.status !== "approved") {
+    invalid("Research graph proposal requires an approved host envelope.");
+  }
+
+  const catalogById = new Map(catalogGraph.nodes.map((node) => [node.id, node]));
+  const selectedIds = new Set(proposal.nodes.map((node) => node.nodeId));
+  if ([...selectedIds].some((nodeId) => !catalogById.has(nodeId))) {
+    invalid("Research graph proposal references a node outside the host catalog.");
+  }
+  const requiredAcquisitionIds = catalogGraph.nodes
+    .filter((node) => node.kind === "search" || node.kind === "resolve_scope")
+    .map((node) => node.id);
+  if (requiredAcquisitionIds.some((nodeId) => !selectedIds.has(nodeId))) {
+    invalid("Research graph proposal must retain every host-required acquisition node.");
+  }
+  const selectedSynthesizers = catalogGraph.nodes.filter((node) =>
+    selectedIds.has(node.id) && node.roleId === "synthesizer"
+  );
+  if (selectedSynthesizers.length !== 1) {
+    invalid("Research graph proposal requires exactly one final synthesizer.");
+  }
+  const reconciler = catalogGraph.nodes.find((node) => node.roleId === "reconciler");
+  if (catalogGraph.reconciliationPolicy.mode === "required" &&
+      (!reconciler || !selectedIds.has(reconciler.id))) {
+    invalid("Research graph proposal must retain required reconciliation.");
+  }
+
+  const selectedCatalogNodes = catalogGraph.nodes.filter((node) => selectedIds.has(node.id));
+  const proposalById = new Map(proposal.nodes.map((node) => [node.nodeId, node]));
+  for (const node of selectedCatalogNodes) {
+    const proposed = proposalById.get(node.id)!;
+    if (proposed.dependencies.includes(node.id) ||
+        proposed.dependencies.some((dependency) => !selectedIds.has(dependency))) {
+      invalid("Research graph proposal dependencies leave the selected graph.");
+    }
+    const acquisitions = requiredAcquisitionIds.filter((id) => id !== node.id);
+    const mustDependOn = node.roleId === "synthesizer"
+      ? selectedCatalogNodes.filter((candidate) => candidate.id !== node.id).map((candidate) => candidate.id)
+      : node.roleId === "reconciler"
+        ? selectedCatalogNodes.filter((candidate) =>
+            candidate.id !== node.id && candidate.roleId !== "synthesizer"
+          ).map((candidate) => candidate.id)
+        : node.roleId === "document-distiller" ||
+            node.roleId === "contradiction-verifier" ||
+            node.roleId === "coverage-moderator"
+          ? acquisitions
+          : [];
+    if (mustDependOn.some((dependency) => !proposed.dependencies.includes(dependency))) {
+      invalid(`Research graph proposal omits a required dependency for ${node.id}.`);
+    }
+    if ((node.kind === "search" || node.kind === "resolve_scope") && proposed.dependencies.length > 0) {
+      invalid("Research acquisition nodes cannot depend on later research work.");
+    }
+  }
+
+  const nodes = selectedCatalogNodes.map((node) => {
+    const proposed = proposalById.get(node.id)!;
+    return {
+      ...node,
+      dependencies: [...proposed.dependencies],
+      reasonCodes: [...proposed.reasonCodes],
+      status: proposed.dependencies.length === 0 ? "ready" as const : "blocked" as const,
+    };
+  });
+  const accepted: ResearchGraphV1 = {
+    ...catalogGraph,
+    nodes,
+    roleDecisions: roleDecisions(nodes),
+    totalBudget: aggregateBudget(nodes),
+  };
+  validateResearchGraphV1(accepted);
+  return accepted;
 }
 
 export type ResearchGraphUpdateV1 =

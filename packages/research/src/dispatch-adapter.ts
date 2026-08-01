@@ -51,7 +51,8 @@ export type ResearchDispatchErrorCodeV1 =
   | "structured-output-invalid"
   | "subagent-provider-error"
   | "aborted"
-  | "late-result";
+  | "late-result"
+  | "admissions-locked";
 
 export type ResearchDispatchStatusV1 =
   | "started"
@@ -191,6 +192,7 @@ type InvocationOutcome =
 export interface ResearchDispatchInterceptionAdapter {
   invoke(input: ResearchTaskToolInputV1, config?: RunnableConfig): Promise<unknown>;
   assertCapability(taskId: string, capabilityId: string): void;
+  replaceAdmissions(admissions: readonly ResearchTaskAdmissionV1[]): void;
   snapshot(): ResearchDispatchSnapshotV1;
 }
 
@@ -218,31 +220,39 @@ export function createResearchDispatchInterceptionAdapter(options: {
     throw new Error("maxConcurrency must be at least 1.");
   }
 
-  const admissions = new Map<string, ResearchTaskAdmissionV1>();
-  for (const admission of options.admissions) {
-    if (admissions.has(admission.taskId)) {
-      throw new Error(`Duplicate research task admission: ${admission.taskId}`);
+  const validatedAdmissions = (
+    values: readonly ResearchTaskAdmissionV1[],
+  ): Map<string, ResearchTaskAdmissionV1> => {
+    const next = new Map<string, ResearchTaskAdmissionV1>();
+    for (const admission of values) {
+      if (next.has(admission.taskId)) {
+        throw new Error(`Duplicate research task admission: ${admission.taskId}`);
+      }
+      next.set(admission.taskId, admission);
     }
-    admissions.set(admission.taskId, admission);
-  }
-  for (const admission of options.admissions) {
-    if (admission.objective !== undefined && (!admission.objective.trim() || admission.objective.length > 4_000)) {
-      throw new Error(`Invalid research task objective: ${admission.taskId}`);
+    for (const admission of values) {
+      if (admission.objective !== undefined && (!admission.objective.trim() || admission.objective.length > 4_000)) {
+        throw new Error(`Invalid research task objective: ${admission.taskId}`);
+      }
+      const dependencies = admission.dependsOnTaskIds ?? [];
+      if (new Set(dependencies).size !== dependencies.length ||
+        dependencies.includes(admission.taskId) ||
+        dependencies.some((taskId) => !next.has(taskId))) {
+        throw new Error(`Invalid research task dependencies: ${admission.taskId}`);
+      }
     }
-    const dependencies = admission.dependsOnTaskIds ?? [];
-    if (new Set(dependencies).size !== dependencies.length ||
-      dependencies.includes(admission.taskId) ||
-      dependencies.some((taskId) => !admissions.has(taskId))) {
-      throw new Error(`Invalid research task dependencies: ${admission.taskId}`);
-    }
-  }
+    return next;
+  };
+  let admissions = validatedAdmissions(options.admissions);
 
   const taskStatuses = new Map<string, ResearchDispatchStatusV1>();
   const completedResults = new Map<string, unknown>();
   let dispatchedTasks = 0;
   let activeInvocations = 0;
+  let observedStatus = false;
 
   const emit = (diagnostic: ResearchDispatchDiagnosticV1): void => {
+    observedStatus = true;
     if (diagnostic.taskId) {
       const current = taskStatuses.get(diagnostic.taskId);
       // A rejected duplicate or invalid transition is an observation, not a
@@ -253,6 +263,18 @@ export function createResearchDispatchInterceptionAdapter(options: {
       }
     }
     options.onDiagnostic?.(diagnostic);
+  };
+
+  const replaceAdmissions = (
+    nextAdmissions: readonly ResearchTaskAdmissionV1[],
+  ): void => {
+    if (observedStatus || dispatchedTasks > 0 || activeInvocations > 0) {
+      throw new ResearchDispatchError(
+        "admissions-locked",
+        "Research task admissions are immutable after dispatch observation begins.",
+      );
+    }
+    admissions = validatedAdmissions(nextAdmissions);
   };
 
   const reject = (
@@ -469,6 +491,7 @@ export function createResearchDispatchInterceptionAdapter(options: {
   return {
     invoke,
     assertCapability,
+    replaceAdmissions,
     snapshot: () => ({
       dispatchedTasks,
       activeInvocations,

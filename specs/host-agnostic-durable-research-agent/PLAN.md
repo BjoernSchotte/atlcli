@@ -2489,6 +2489,21 @@ Shared:
       brief. For each accepted frontier, let the same supervisor author the
       task-shaped QuickJS program instead of injecting a host-fixed all-role
       program.
+  - [x] Add the body-free `ResearchGraphProposalV1` and host acceptance
+        boundary. A proposal may select only catalogued nodes and valid
+        dependencies inside the approved role, capability, scope, and budget
+        envelope. The dispatch adapter accepts the resulting exact admissions
+        only before its first observation and locks them afterwards.
+        Proven 2026-08-01: two proposals over one envelope produced different
+        executable role graphs; focused graph/dispatch tests passed 22 tests
+        with 102 assertions, the broader research suite passed 122 tests with
+        529 assertions, root typecheck and the 21-package build passed, and
+        API-report, closure, pack, and privacy gates passed. A read-only
+        DOCSY/ATLCLI E2E then completed in 114,579 ms with seven PTC/HTTP calls
+        and wrote the canonical timestamped Markdown artifact.
+  - [ ] Expose that boundary as a supervisor-only QuickJS PTC tool inside the
+        existing single `createDeepAgent` invocation, then dispatch only the
+        accepted graph in the same eval.
 - [ ] Before graph proposal, return `ResearchClarificationRequiredV1` and stop
       when the brief contains a required question or user-decision assumption.
       T3 never fabricates an answer or enters an undurable wait.

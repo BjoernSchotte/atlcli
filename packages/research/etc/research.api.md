@@ -7,6 +7,9 @@
 ### Entry point `. (browser)`
 
 ```ts
+// export: acceptResearchGraphProposalV1
+export declare function acceptResearchGraphProposalV1(catalogGraph: ResearchGraphV1, value: unknown): ResearchGraphV1;
+
 // export: assertResearchGraphExecutableV1
 export declare function assertResearchGraphExecutableV1(graph: ResearchGraphV1): void;
 
@@ -264,6 +267,9 @@ export declare function parseReconciliationBodyV1(value: unknown): Reconciliatio
 // export: parseResearchAgentDraftV1
 export declare function parseResearchAgentDraftV1(input: unknown): ResearchAgentDraftV1;
 
+// export: parseResearchGraphProposalV1
+export declare function parseResearchGraphProposalV1(value: unknown): ResearchGraphProposalV1;
+
 // export: parseResearchPacketBodyV1
 export declare function parseResearchPacketBodyV1(value: unknown): ResearchPacketBodyV1;
 
@@ -374,6 +380,25 @@ export declare const RESEARCH_CAPABILITY_SCHEMAS: {
 // export: RESEARCH_CLARIFICATION_REQUIRED_SCHEMA_V1
 export declare const RESEARCH_CLARIFICATION_REQUIRED_SCHEMA_V1: "atlcli.research-clarification-required/v1";
 
+// export: RESEARCH_COMPOSITION_REASONS_V1
+export declare const RESEARCH_COMPOSITION_REASONS_V1: readonly [
+    "simple_lookup",
+    "independent_branch",
+    "cross_product_join",
+    "scope_resolution",
+    "related_scope_discovery",
+    "exact_reference_follow",
+    "large_document_set",
+    "hierarchy_traversal",
+    "coverage_gap",
+    "contradiction",
+    "negative_claim",
+    "high_impact_claim",
+    "user_requested",
+    "budget_pruned",
+    "not_applicable"
+];
+
 // export: RESEARCH_GRAPH_CAPABILITIES
 export declare const RESEARCH_GRAPH_CAPABILITIES: readonly [
     "jira.issue.search",
@@ -384,6 +409,9 @@ export declare const RESEARCH_GRAPH_CAPABILITIES: readonly [
     "wiki.space.search",
     "atlassian.reference.resolve"
 ];
+
+// export: RESEARCH_GRAPH_PROPOSAL_SCHEMA_V1
+export declare const RESEARCH_GRAPH_PROPOSAL_SCHEMA_V1: "atlcli.research-graph-proposal/v1";
 
 // export: RESEARCH_GRAPH_ROLES
 export declare const RESEARCH_GRAPH_ROLES: readonly [
@@ -696,7 +724,7 @@ export interface ResearchClarificationRequiredV1 {
 }
 
 // export: ResearchCompositionReasonV1
-export type ResearchCompositionReasonV1 = "simple_lookup" | "independent_branch" | "cross_product_join" | "scope_resolution" | "related_scope_discovery" | "exact_reference_follow" | "large_document_set" | "hierarchy_traversal" | "coverage_gap" | "contradiction" | "negative_claim" | "high_impact_claim" | "user_requested" | "budget_pruned" | "not_applicable";
+export type ResearchCompositionReasonV1 = (typeof RESEARCH_COMPOSITION_REASONS_V1)[number];
 
 // export: ResearchContractError
 export declare class ResearchContractError extends Error {
@@ -757,12 +785,13 @@ export declare class ResearchDispatchError extends Error {
 }
 
 // export: ResearchDispatchErrorCodeV1
-export type ResearchDispatchErrorCodeV1 = "invalid-task-description" | "unknown-task" | "subagent-type-mismatch" | "response-schema-mismatch" | "task-budget-exceeded" | "task-already-dispatched" | "dependency-not-ready" | "dependency-result-mismatch" | "concurrency-exceeded" | "capability-denied" | "result-too-large" | "structured-output-invalid" | "subagent-provider-error" | "aborted" | "late-result";
+export type ResearchDispatchErrorCodeV1 = "invalid-task-description" | "unknown-task" | "subagent-type-mismatch" | "response-schema-mismatch" | "task-budget-exceeded" | "task-already-dispatched" | "dependency-not-ready" | "dependency-result-mismatch" | "concurrency-exceeded" | "capability-denied" | "result-too-large" | "structured-output-invalid" | "subagent-provider-error" | "aborted" | "late-result" | "admissions-locked";
 
 // export: ResearchDispatchInterceptionAdapter
 export interface ResearchDispatchInterceptionAdapter {
     invoke(input: ResearchTaskToolInputV1, config?: RunnableConfig): Promise<unknown>;
     assertCapability(taskId: string, capabilityId: string): void;
+    replaceAdmissions(admissions: readonly ResearchTaskAdmissionV1[]): void;
     snapshot(): ResearchDispatchSnapshotV1;
 }
 
@@ -1072,6 +1101,21 @@ export interface ResearchGraphNodeV1 {
     completion: ResearchNodeCompletionPolicyV1;
     packetRef?: string;
     stopReason?: string;
+}
+
+// export: ResearchGraphProposalNodeV1
+export interface ResearchGraphProposalNodeV1 {
+    nodeId: string;
+    dependencies: string[];
+    reasonCodes: ResearchCompositionReasonV1[];
+}
+
+// export: ResearchGraphProposalV1
+export interface ResearchGraphProposalV1 {
+    schema: typeof RESEARCH_GRAPH_PROPOSAL_SCHEMA_V1;
+    basedOnBriefRevision: number;
+    basedOnGraphRevision: number;
+    nodes: ResearchGraphProposalNodeV1[];
 }
 
 // export: ResearchGraphReconciliationPolicyV1
@@ -1956,6 +2000,9 @@ export interface WikiResearchSummary {
 ### Entry point `. (default)`
 
 ```ts
+// export: acceptResearchGraphProposalV1
+export declare function acceptResearchGraphProposalV1(catalogGraph: ResearchGraphV1, value: unknown): ResearchGraphV1;
+
 // export: assertResearchGraphExecutableV1
 export declare function assertResearchGraphExecutableV1(graph: ResearchGraphV1): void;
 
@@ -2204,6 +2251,9 @@ export declare function parseReconciliationBodyV1(value: unknown): Reconciliatio
 // export: parseResearchAgentDraftV1
 export declare function parseResearchAgentDraftV1(input: unknown): ResearchAgentDraftV1;
 
+// export: parseResearchGraphProposalV1
+export declare function parseResearchGraphProposalV1(value: unknown): ResearchGraphProposalV1;
+
 // export: parseResearchPacketBodyV1
 export declare function parseResearchPacketBodyV1(value: unknown): ResearchPacketBodyV1;
 
@@ -2314,6 +2364,25 @@ export declare const RESEARCH_CAPABILITY_SCHEMAS: {
 // export: RESEARCH_CLARIFICATION_REQUIRED_SCHEMA_V1
 export declare const RESEARCH_CLARIFICATION_REQUIRED_SCHEMA_V1: "atlcli.research-clarification-required/v1";
 
+// export: RESEARCH_COMPOSITION_REASONS_V1
+export declare const RESEARCH_COMPOSITION_REASONS_V1: readonly [
+    "simple_lookup",
+    "independent_branch",
+    "cross_product_join",
+    "scope_resolution",
+    "related_scope_discovery",
+    "exact_reference_follow",
+    "large_document_set",
+    "hierarchy_traversal",
+    "coverage_gap",
+    "contradiction",
+    "negative_claim",
+    "high_impact_claim",
+    "user_requested",
+    "budget_pruned",
+    "not_applicable"
+];
+
 // export: RESEARCH_GRAPH_CAPABILITIES
 export declare const RESEARCH_GRAPH_CAPABILITIES: readonly [
     "jira.issue.search",
@@ -2324,6 +2393,9 @@ export declare const RESEARCH_GRAPH_CAPABILITIES: readonly [
     "wiki.space.search",
     "atlassian.reference.resolve"
 ];
+
+// export: RESEARCH_GRAPH_PROPOSAL_SCHEMA_V1
+export declare const RESEARCH_GRAPH_PROPOSAL_SCHEMA_V1: "atlcli.research-graph-proposal/v1";
 
 // export: RESEARCH_GRAPH_ROLES
 export declare const RESEARCH_GRAPH_ROLES: readonly [
@@ -2636,7 +2708,7 @@ export interface ResearchClarificationRequiredV1 {
 }
 
 // export: ResearchCompositionReasonV1
-export type ResearchCompositionReasonV1 = "simple_lookup" | "independent_branch" | "cross_product_join" | "scope_resolution" | "related_scope_discovery" | "exact_reference_follow" | "large_document_set" | "hierarchy_traversal" | "coverage_gap" | "contradiction" | "negative_claim" | "high_impact_claim" | "user_requested" | "budget_pruned" | "not_applicable";
+export type ResearchCompositionReasonV1 = (typeof RESEARCH_COMPOSITION_REASONS_V1)[number];
 
 // export: ResearchContractError
 export declare class ResearchContractError extends Error {
@@ -2697,12 +2769,13 @@ export declare class ResearchDispatchError extends Error {
 }
 
 // export: ResearchDispatchErrorCodeV1
-export type ResearchDispatchErrorCodeV1 = "invalid-task-description" | "unknown-task" | "subagent-type-mismatch" | "response-schema-mismatch" | "task-budget-exceeded" | "task-already-dispatched" | "dependency-not-ready" | "dependency-result-mismatch" | "concurrency-exceeded" | "capability-denied" | "result-too-large" | "structured-output-invalid" | "subagent-provider-error" | "aborted" | "late-result";
+export type ResearchDispatchErrorCodeV1 = "invalid-task-description" | "unknown-task" | "subagent-type-mismatch" | "response-schema-mismatch" | "task-budget-exceeded" | "task-already-dispatched" | "dependency-not-ready" | "dependency-result-mismatch" | "concurrency-exceeded" | "capability-denied" | "result-too-large" | "structured-output-invalid" | "subagent-provider-error" | "aborted" | "late-result" | "admissions-locked";
 
 // export: ResearchDispatchInterceptionAdapter
 export interface ResearchDispatchInterceptionAdapter {
     invoke(input: ResearchTaskToolInputV1, config?: RunnableConfig): Promise<unknown>;
     assertCapability(taskId: string, capabilityId: string): void;
+    replaceAdmissions(admissions: readonly ResearchTaskAdmissionV1[]): void;
     snapshot(): ResearchDispatchSnapshotV1;
 }
 
@@ -3012,6 +3085,21 @@ export interface ResearchGraphNodeV1 {
     completion: ResearchNodeCompletionPolicyV1;
     packetRef?: string;
     stopReason?: string;
+}
+
+// export: ResearchGraphProposalNodeV1
+export interface ResearchGraphProposalNodeV1 {
+    nodeId: string;
+    dependencies: string[];
+    reasonCodes: ResearchCompositionReasonV1[];
+}
+
+// export: ResearchGraphProposalV1
+export interface ResearchGraphProposalV1 {
+    schema: typeof RESEARCH_GRAPH_PROPOSAL_SCHEMA_V1;
+    basedOnBriefRevision: number;
+    basedOnGraphRevision: number;
+    nodes: ResearchGraphProposalNodeV1[];
 }
 
 // export: ResearchGraphReconciliationPolicyV1
@@ -3885,6 +3973,9 @@ export interface WikiResearchSummary {
 ### Entry point `./browser`
 
 ```ts
+// export: acceptResearchGraphProposalV1
+export declare function acceptResearchGraphProposalV1(catalogGraph: ResearchGraphV1, value: unknown): ResearchGraphV1;
+
 // export: assertResearchGraphExecutableV1
 export declare function assertResearchGraphExecutableV1(graph: ResearchGraphV1): void;
 
@@ -4142,6 +4233,9 @@ export declare function parseReconciliationBodyV1(value: unknown): Reconciliatio
 // export: parseResearchAgentDraftV1
 export declare function parseResearchAgentDraftV1(input: unknown): ResearchAgentDraftV1;
 
+// export: parseResearchGraphProposalV1
+export declare function parseResearchGraphProposalV1(value: unknown): ResearchGraphProposalV1;
+
 // export: parseResearchPacketBodyV1
 export declare function parseResearchPacketBodyV1(value: unknown): ResearchPacketBodyV1;
 
@@ -4252,6 +4346,25 @@ export declare const RESEARCH_CAPABILITY_SCHEMAS: {
 // export: RESEARCH_CLARIFICATION_REQUIRED_SCHEMA_V1
 export declare const RESEARCH_CLARIFICATION_REQUIRED_SCHEMA_V1: "atlcli.research-clarification-required/v1";
 
+// export: RESEARCH_COMPOSITION_REASONS_V1
+export declare const RESEARCH_COMPOSITION_REASONS_V1: readonly [
+    "simple_lookup",
+    "independent_branch",
+    "cross_product_join",
+    "scope_resolution",
+    "related_scope_discovery",
+    "exact_reference_follow",
+    "large_document_set",
+    "hierarchy_traversal",
+    "coverage_gap",
+    "contradiction",
+    "negative_claim",
+    "high_impact_claim",
+    "user_requested",
+    "budget_pruned",
+    "not_applicable"
+];
+
 // export: RESEARCH_GRAPH_CAPABILITIES
 export declare const RESEARCH_GRAPH_CAPABILITIES: readonly [
     "jira.issue.search",
@@ -4262,6 +4375,9 @@ export declare const RESEARCH_GRAPH_CAPABILITIES: readonly [
     "wiki.space.search",
     "atlassian.reference.resolve"
 ];
+
+// export: RESEARCH_GRAPH_PROPOSAL_SCHEMA_V1
+export declare const RESEARCH_GRAPH_PROPOSAL_SCHEMA_V1: "atlcli.research-graph-proposal/v1";
 
 // export: RESEARCH_GRAPH_ROLES
 export declare const RESEARCH_GRAPH_ROLES: readonly [
@@ -4574,7 +4690,7 @@ export interface ResearchClarificationRequiredV1 {
 }
 
 // export: ResearchCompositionReasonV1
-export type ResearchCompositionReasonV1 = "simple_lookup" | "independent_branch" | "cross_product_join" | "scope_resolution" | "related_scope_discovery" | "exact_reference_follow" | "large_document_set" | "hierarchy_traversal" | "coverage_gap" | "contradiction" | "negative_claim" | "high_impact_claim" | "user_requested" | "budget_pruned" | "not_applicable";
+export type ResearchCompositionReasonV1 = (typeof RESEARCH_COMPOSITION_REASONS_V1)[number];
 
 // export: ResearchContractError
 export declare class ResearchContractError extends Error {
@@ -4635,12 +4751,13 @@ export declare class ResearchDispatchError extends Error {
 }
 
 // export: ResearchDispatchErrorCodeV1
-export type ResearchDispatchErrorCodeV1 = "invalid-task-description" | "unknown-task" | "subagent-type-mismatch" | "response-schema-mismatch" | "task-budget-exceeded" | "task-already-dispatched" | "dependency-not-ready" | "dependency-result-mismatch" | "concurrency-exceeded" | "capability-denied" | "result-too-large" | "structured-output-invalid" | "subagent-provider-error" | "aborted" | "late-result";
+export type ResearchDispatchErrorCodeV1 = "invalid-task-description" | "unknown-task" | "subagent-type-mismatch" | "response-schema-mismatch" | "task-budget-exceeded" | "task-already-dispatched" | "dependency-not-ready" | "dependency-result-mismatch" | "concurrency-exceeded" | "capability-denied" | "result-too-large" | "structured-output-invalid" | "subagent-provider-error" | "aborted" | "late-result" | "admissions-locked";
 
 // export: ResearchDispatchInterceptionAdapter
 export interface ResearchDispatchInterceptionAdapter {
     invoke(input: ResearchTaskToolInputV1, config?: RunnableConfig): Promise<unknown>;
     assertCapability(taskId: string, capabilityId: string): void;
+    replaceAdmissions(admissions: readonly ResearchTaskAdmissionV1[]): void;
     snapshot(): ResearchDispatchSnapshotV1;
 }
 
@@ -4950,6 +5067,21 @@ export interface ResearchGraphNodeV1 {
     completion: ResearchNodeCompletionPolicyV1;
     packetRef?: string;
     stopReason?: string;
+}
+
+// export: ResearchGraphProposalNodeV1
+export interface ResearchGraphProposalNodeV1 {
+    nodeId: string;
+    dependencies: string[];
+    reasonCodes: ResearchCompositionReasonV1[];
+}
+
+// export: ResearchGraphProposalV1
+export interface ResearchGraphProposalV1 {
+    schema: typeof RESEARCH_GRAPH_PROPOSAL_SCHEMA_V1;
+    basedOnBriefRevision: number;
+    basedOnGraphRevision: number;
+    nodes: ResearchGraphProposalNodeV1[];
 }
 
 // export: ResearchGraphReconciliationPolicyV1
@@ -5834,6 +5966,9 @@ export interface WikiResearchSummary {
 ### Entry point `./browser/agent`
 
 ```ts
+// export: acceptResearchGraphProposalV1
+export declare function acceptResearchGraphProposalV1(catalogGraph: ResearchGraphV1, value: unknown): ResearchGraphV1;
+
 // export: assertResearchGraphExecutableV1
 export declare function assertResearchGraphExecutableV1(graph: ResearchGraphV1): void;
 
@@ -6176,6 +6311,9 @@ export declare function parseReconciliationBodyV1(value: unknown): Reconciliatio
 // export: parseResearchAgentDraftV1
 export declare function parseResearchAgentDraftV1(input: unknown): ResearchAgentDraftV1;
 
+// export: parseResearchGraphProposalV1
+export declare function parseResearchGraphProposalV1(value: unknown): ResearchGraphProposalV1;
+
 // export: parseResearchPacketBodyV1
 export declare function parseResearchPacketBodyV1(value: unknown): ResearchPacketBodyV1;
 
@@ -6296,6 +6434,25 @@ export declare const RESEARCH_CAPABILITY_SCHEMAS: {
 // export: RESEARCH_CLARIFICATION_REQUIRED_SCHEMA_V1
 export declare const RESEARCH_CLARIFICATION_REQUIRED_SCHEMA_V1: "atlcli.research-clarification-required/v1";
 
+// export: RESEARCH_COMPOSITION_REASONS_V1
+export declare const RESEARCH_COMPOSITION_REASONS_V1: readonly [
+    "simple_lookup",
+    "independent_branch",
+    "cross_product_join",
+    "scope_resolution",
+    "related_scope_discovery",
+    "exact_reference_follow",
+    "large_document_set",
+    "hierarchy_traversal",
+    "coverage_gap",
+    "contradiction",
+    "negative_claim",
+    "high_impact_claim",
+    "user_requested",
+    "budget_pruned",
+    "not_applicable"
+];
+
 // export: RESEARCH_CRITIQUE_SCHEMA_V1
 // @deprecated RESEARCH_CRITIQUE_SCHEMA_V1 — Use RESEARCH_RECONCILIATION_BODY_JSON_SCHEMA_V1.
 export declare const RESEARCH_CRITIQUE_SCHEMA_V1: Record<string, unknown>;
@@ -6310,6 +6467,9 @@ export declare const RESEARCH_GRAPH_CAPABILITIES: readonly [
     "wiki.space.search",
     "atlassian.reference.resolve"
 ];
+
+// export: RESEARCH_GRAPH_PROPOSAL_SCHEMA_V1
+export declare const RESEARCH_GRAPH_PROPOSAL_SCHEMA_V1: "atlcli.research-graph-proposal/v1";
 
 // export: RESEARCH_GRAPH_ROLES
 export declare const RESEARCH_GRAPH_ROLES: readonly [
@@ -6644,7 +6804,7 @@ export interface ResearchClarificationRequiredV1 {
 }
 
 // export: ResearchCompositionReasonV1
-export type ResearchCompositionReasonV1 = "simple_lookup" | "independent_branch" | "cross_product_join" | "scope_resolution" | "related_scope_discovery" | "exact_reference_follow" | "large_document_set" | "hierarchy_traversal" | "coverage_gap" | "contradiction" | "negative_claim" | "high_impact_claim" | "user_requested" | "budget_pruned" | "not_applicable";
+export type ResearchCompositionReasonV1 = (typeof RESEARCH_COMPOSITION_REASONS_V1)[number];
 
 // export: ResearchContractError
 export declare class ResearchContractError extends Error {
@@ -6705,12 +6865,13 @@ export declare class ResearchDispatchError extends Error {
 }
 
 // export: ResearchDispatchErrorCodeV1
-export type ResearchDispatchErrorCodeV1 = "invalid-task-description" | "unknown-task" | "subagent-type-mismatch" | "response-schema-mismatch" | "task-budget-exceeded" | "task-already-dispatched" | "dependency-not-ready" | "dependency-result-mismatch" | "concurrency-exceeded" | "capability-denied" | "result-too-large" | "structured-output-invalid" | "subagent-provider-error" | "aborted" | "late-result";
+export type ResearchDispatchErrorCodeV1 = "invalid-task-description" | "unknown-task" | "subagent-type-mismatch" | "response-schema-mismatch" | "task-budget-exceeded" | "task-already-dispatched" | "dependency-not-ready" | "dependency-result-mismatch" | "concurrency-exceeded" | "capability-denied" | "result-too-large" | "structured-output-invalid" | "subagent-provider-error" | "aborted" | "late-result" | "admissions-locked";
 
 // export: ResearchDispatchInterceptionAdapter
 export interface ResearchDispatchInterceptionAdapter {
     invoke(input: ResearchTaskToolInputV1, config?: RunnableConfig): Promise<unknown>;
     assertCapability(taskId: string, capabilityId: string): void;
+    replaceAdmissions(admissions: readonly ResearchTaskAdmissionV1[]): void;
     snapshot(): ResearchDispatchSnapshotV1;
 }
 
@@ -7020,6 +7181,21 @@ export interface ResearchGraphNodeV1 {
     completion: ResearchNodeCompletionPolicyV1;
     packetRef?: string;
     stopReason?: string;
+}
+
+// export: ResearchGraphProposalNodeV1
+export interface ResearchGraphProposalNodeV1 {
+    nodeId: string;
+    dependencies: string[];
+    reasonCodes: ResearchCompositionReasonV1[];
+}
+
+// export: ResearchGraphProposalV1
+export interface ResearchGraphProposalV1 {
+    schema: typeof RESEARCH_GRAPH_PROPOSAL_SCHEMA_V1;
+    basedOnBriefRevision: number;
+    basedOnGraphRevision: number;
+    nodes: ResearchGraphProposalNodeV1[];
 }
 
 // export: ResearchGraphReconciliationPolicyV1
@@ -8602,6 +8778,9 @@ export declare function isResearchOneShotEventV1(value: unknown): value is Resea
 ### Entry point `./graph`
 
 ```ts
+// export: acceptResearchGraphProposalV1
+export declare function acceptResearchGraphProposalV1(catalogGraph: ResearchGraphV1, value: unknown): ResearchGraphV1;
+
 // export: assertResearchGraphExecutableV1
 export declare function assertResearchGraphExecutableV1(graph: ResearchGraphV1): void;
 
@@ -8621,6 +8800,9 @@ export interface ComposeStandardResearchGraphOptionsV1 {
 // export: composeStandardResearchGraphV1
 export declare function composeStandardResearchGraphV1(question: string, options?: ComposeStandardResearchGraphOptionsV1): ResearchGraphV1;
 
+// export: parseResearchGraphProposalV1
+export declare function parseResearchGraphProposalV1(value: unknown): ResearchGraphProposalV1;
+
 // export: projectSelectedResearchRolesV1
 export declare function projectSelectedResearchRolesV1(graph: Pick<ResearchGraphV1, "nodes">): ResearchSubagentRoleIdV1[];
 
@@ -8629,6 +8811,25 @@ export declare function reduceResearchGraphV1(graph: ResearchGraphV1, update: Re
 
 // export: RESEARCH_BRIEF_SCHEMA_V1
 export declare const RESEARCH_BRIEF_SCHEMA_V1: "atlcli.research-brief/v1";
+
+// export: RESEARCH_COMPOSITION_REASONS_V1
+export declare const RESEARCH_COMPOSITION_REASONS_V1: readonly [
+    "simple_lookup",
+    "independent_branch",
+    "cross_product_join",
+    "scope_resolution",
+    "related_scope_discovery",
+    "exact_reference_follow",
+    "large_document_set",
+    "hierarchy_traversal",
+    "coverage_gap",
+    "contradiction",
+    "negative_claim",
+    "high_impact_claim",
+    "user_requested",
+    "budget_pruned",
+    "not_applicable"
+];
 
 // export: RESEARCH_GRAPH_CAPABILITIES
 export declare const RESEARCH_GRAPH_CAPABILITIES: readonly [
@@ -8640,6 +8841,9 @@ export declare const RESEARCH_GRAPH_CAPABILITIES: readonly [
     "wiki.space.search",
     "atlassian.reference.resolve"
 ];
+
+// export: RESEARCH_GRAPH_PROPOSAL_SCHEMA_V1
+export declare const RESEARCH_GRAPH_PROPOSAL_SCHEMA_V1: "atlcli.research-graph-proposal/v1";
 
 // export: RESEARCH_GRAPH_ROLES
 export declare const RESEARCH_GRAPH_ROLES: readonly [
@@ -8693,7 +8897,7 @@ export interface ResearchBriefV1 {
 }
 
 // export: ResearchCompositionReasonV1
-export type ResearchCompositionReasonV1 = "simple_lookup" | "independent_branch" | "cross_product_join" | "scope_resolution" | "related_scope_discovery" | "exact_reference_follow" | "large_document_set" | "hierarchy_traversal" | "coverage_gap" | "contradiction" | "negative_claim" | "high_impact_claim" | "user_requested" | "budget_pruned" | "not_applicable";
+export type ResearchCompositionReasonV1 = (typeof RESEARCH_COMPOSITION_REASONS_V1)[number];
 
 // export: ResearchEffortV1
 // @deprecated ResearchEffortV1 — Use ResearchResolvedEffortV1 from the brief contract.
@@ -8732,6 +8936,21 @@ export interface ResearchGraphNodeV1 {
     completion: ResearchNodeCompletionPolicyV1;
     packetRef?: string;
     stopReason?: string;
+}
+
+// export: ResearchGraphProposalNodeV1
+export interface ResearchGraphProposalNodeV1 {
+    nodeId: string;
+    dependencies: string[];
+    reasonCodes: ResearchCompositionReasonV1[];
+}
+
+// export: ResearchGraphProposalV1
+export interface ResearchGraphProposalV1 {
+    schema: typeof RESEARCH_GRAPH_PROPOSAL_SCHEMA_V1;
+    basedOnBriefRevision: number;
+    basedOnGraphRevision: number;
+    nodes: ResearchGraphProposalNodeV1[];
 }
 
 // export: ResearchGraphRoleDecisionV1
@@ -8836,6 +9055,9 @@ export declare function validateResearchGraphV1(graph: ResearchGraphV1): void;
 ### Entry point `./node`
 
 ```ts
+// export: acceptResearchGraphProposalV1
+export declare function acceptResearchGraphProposalV1(catalogGraph: ResearchGraphV1, value: unknown): ResearchGraphV1;
+
 // export: assertResearchGraphExecutableV1
 export declare function assertResearchGraphExecutableV1(graph: ResearchGraphV1): void;
 
@@ -9193,6 +9415,9 @@ export declare function parseReconciliationBodyV1(value: unknown): Reconciliatio
 // export: parseResearchAgentDraftV1
 export declare function parseResearchAgentDraftV1(input: unknown): ResearchAgentDraftV1;
 
+// export: parseResearchGraphProposalV1
+export declare function parseResearchGraphProposalV1(value: unknown): ResearchGraphProposalV1;
+
 // export: parseResearchPacketBodyV1
 export declare function parseResearchPacketBodyV1(value: unknown): ResearchPacketBodyV1;
 
@@ -9313,6 +9538,25 @@ export declare const RESEARCH_CAPABILITY_SCHEMAS: {
 // export: RESEARCH_CLARIFICATION_REQUIRED_SCHEMA_V1
 export declare const RESEARCH_CLARIFICATION_REQUIRED_SCHEMA_V1: "atlcli.research-clarification-required/v1";
 
+// export: RESEARCH_COMPOSITION_REASONS_V1
+export declare const RESEARCH_COMPOSITION_REASONS_V1: readonly [
+    "simple_lookup",
+    "independent_branch",
+    "cross_product_join",
+    "scope_resolution",
+    "related_scope_discovery",
+    "exact_reference_follow",
+    "large_document_set",
+    "hierarchy_traversal",
+    "coverage_gap",
+    "contradiction",
+    "negative_claim",
+    "high_impact_claim",
+    "user_requested",
+    "budget_pruned",
+    "not_applicable"
+];
+
 // export: RESEARCH_CRITIQUE_SCHEMA_V1
 // @deprecated RESEARCH_CRITIQUE_SCHEMA_V1 — Use RESEARCH_RECONCILIATION_BODY_JSON_SCHEMA_V1.
 export declare const RESEARCH_CRITIQUE_SCHEMA_V1: Record<string, unknown>;
@@ -9327,6 +9571,9 @@ export declare const RESEARCH_GRAPH_CAPABILITIES: readonly [
     "wiki.space.search",
     "atlassian.reference.resolve"
 ];
+
+// export: RESEARCH_GRAPH_PROPOSAL_SCHEMA_V1
+export declare const RESEARCH_GRAPH_PROPOSAL_SCHEMA_V1: "atlcli.research-graph-proposal/v1";
 
 // export: RESEARCH_GRAPH_ROLES
 export declare const RESEARCH_GRAPH_ROLES: readonly [
@@ -9661,7 +9908,7 @@ export interface ResearchClarificationRequiredV1 {
 }
 
 // export: ResearchCompositionReasonV1
-export type ResearchCompositionReasonV1 = "simple_lookup" | "independent_branch" | "cross_product_join" | "scope_resolution" | "related_scope_discovery" | "exact_reference_follow" | "large_document_set" | "hierarchy_traversal" | "coverage_gap" | "contradiction" | "negative_claim" | "high_impact_claim" | "user_requested" | "budget_pruned" | "not_applicable";
+export type ResearchCompositionReasonV1 = (typeof RESEARCH_COMPOSITION_REASONS_V1)[number];
 
 // export: ResearchContractError
 export declare class ResearchContractError extends Error {
@@ -9722,12 +9969,13 @@ export declare class ResearchDispatchError extends Error {
 }
 
 // export: ResearchDispatchErrorCodeV1
-export type ResearchDispatchErrorCodeV1 = "invalid-task-description" | "unknown-task" | "subagent-type-mismatch" | "response-schema-mismatch" | "task-budget-exceeded" | "task-already-dispatched" | "dependency-not-ready" | "dependency-result-mismatch" | "concurrency-exceeded" | "capability-denied" | "result-too-large" | "structured-output-invalid" | "subagent-provider-error" | "aborted" | "late-result";
+export type ResearchDispatchErrorCodeV1 = "invalid-task-description" | "unknown-task" | "subagent-type-mismatch" | "response-schema-mismatch" | "task-budget-exceeded" | "task-already-dispatched" | "dependency-not-ready" | "dependency-result-mismatch" | "concurrency-exceeded" | "capability-denied" | "result-too-large" | "structured-output-invalid" | "subagent-provider-error" | "aborted" | "late-result" | "admissions-locked";
 
 // export: ResearchDispatchInterceptionAdapter
 export interface ResearchDispatchInterceptionAdapter {
     invoke(input: ResearchTaskToolInputV1, config?: RunnableConfig): Promise<unknown>;
     assertCapability(taskId: string, capabilityId: string): void;
+    replaceAdmissions(admissions: readonly ResearchTaskAdmissionV1[]): void;
     snapshot(): ResearchDispatchSnapshotV1;
 }
 
@@ -10037,6 +10285,21 @@ export interface ResearchGraphNodeV1 {
     completion: ResearchNodeCompletionPolicyV1;
     packetRef?: string;
     stopReason?: string;
+}
+
+// export: ResearchGraphProposalNodeV1
+export interface ResearchGraphProposalNodeV1 {
+    nodeId: string;
+    dependencies: string[];
+    reasonCodes: ResearchCompositionReasonV1[];
+}
+
+// export: ResearchGraphProposalV1
+export interface ResearchGraphProposalV1 {
+    schema: typeof RESEARCH_GRAPH_PROPOSAL_SCHEMA_V1;
+    basedOnBriefRevision: number;
+    basedOnGraphRevision: number;
+    nodes: ResearchGraphProposalNodeV1[];
 }
 
 // export: ResearchGraphReconciliationPolicyV1

@@ -1,11 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import {
+  RESEARCH_GRAPH_PROPOSAL_SCHEMA_V1,
+  acceptResearchGraphProposalV1,
   composeResearchGraphV1,
   composeStandardResearchGraphV1,
   projectSelectedResearchRolesV1,
   researchPlanApprovalRequiredV1,
   reduceResearchGraphV1,
   validateResearchGraphV1,
+  type ResearchGraphProposalV1,
   type ResearchGraphV1,
 } from "./graph.js";
 import { createResearchBriefV1 } from "./brief.js";
@@ -36,6 +39,36 @@ const brief = (
   requestedPlanApproval: planApproval,
   requestedReconciliation: reconciliation,
 });
+
+function proposalFor(
+  graph: ResearchGraphV1,
+  selectedIds: readonly string[],
+): ResearchGraphProposalV1 {
+  const selected = graph.nodes.filter((node) => selectedIds.includes(node.id));
+  const acquisitions = selected
+    .filter((node) => node.kind === "search" || node.kind === "resolve_scope")
+    .map((node) => node.id);
+  return {
+    schema: RESEARCH_GRAPH_PROPOSAL_SCHEMA_V1,
+    basedOnBriefRevision: graph.basedOnBriefRevision,
+    basedOnGraphRevision: graph.revision,
+    nodes: selected.map((node) => ({
+      nodeId: node.id,
+      dependencies: node.roleId === "synthesizer"
+        ? selected.filter((candidate) => candidate.id !== node.id).map((candidate) => candidate.id)
+        : node.roleId === "reconciler"
+          ? selected.filter((candidate) =>
+              candidate.id !== node.id && candidate.roleId !== "synthesizer"
+            ).map((candidate) => candidate.id)
+          : node.roleId === "document-distiller" ||
+              node.roleId === "contradiction-verifier" ||
+              node.roleId === "coverage-moderator"
+            ? acquisitions
+            : [],
+      reasonCodes: [node.reasonCodes[0]!],
+    })),
+  };
+}
 
 describe("dynamic research graph composition", () => {
   test("gives every productive host the same standard cross-product graph", () => {
@@ -161,6 +194,100 @@ describe("dynamic research graph composition", () => {
       ...graph,
       roleDecisions: [...graph.roleDecisions, graph.roleDecisions[0]!],
     })).toThrow("duplicated");
+  });
+
+  test("accepts structurally different supervisor compositions inside one host envelope", () => {
+    const catalog = composeResearchGraphV1(brief(
+      "How do Jira and Confluence describe the pipeline, including coverage gaps?",
+      ["jira", "confluence"],
+      "auto",
+      "deep",
+    ));
+    const requiredIds = [
+      "research-node:jira-research",
+      "research-node:wiki-research",
+      "research-node:synthesizer",
+    ];
+    const concise = acceptResearchGraphProposalV1(catalog, proposalFor(catalog, requiredIds));
+    const critical = acceptResearchGraphProposalV1(catalog, proposalFor(catalog, [
+      ...requiredIds.slice(0, 2),
+      "research-node:cross-product-join",
+      "research-node:coverage-moderation",
+      "research-node:reconciler",
+      requiredIds[2]!,
+    ]));
+
+    expect(projectSelectedResearchRolesV1(concise)).toEqual([
+      "focused-researcher",
+      "synthesizer",
+    ]);
+    expect(projectSelectedResearchRolesV1(critical)).toEqual([
+      "focused-researcher",
+      "document-distiller",
+      "coverage-moderator",
+      "reconciler",
+      "synthesizer",
+    ]);
+    expect(concise.nodes.find((node) => node.roleId === "synthesizer")?.dependencies)
+      .toEqual(requiredIds.slice(0, 2));
+    expect(critical.nodes.find((node) => node.roleId === "reconciler")?.dependencies)
+      .toEqual([
+        "research-node:jira-research",
+        "research-node:wiki-research",
+        "research-node:cross-product-join",
+        "research-node:coverage-moderation",
+      ]);
+    expect(concise.approvalEnvelope).toEqual(catalog.approvalEnvelope);
+    expect(concise.totalBudget.maxInputTokens).toBeLessThan(
+      concise.approvalEnvelope.totalBudgetCeiling.maxInputTokens,
+    );
+  });
+
+  test("rejects supervisor graph widening and invalid critical topology", () => {
+    const catalog = composeResearchGraphV1(brief(
+      "Which Jira and Confluence items correspond?",
+      ["jira", "confluence"],
+    ));
+    const valid = proposalFor(catalog, [
+      "research-node:jira-research",
+      "research-node:wiki-research",
+      "research-node:cross-product-join",
+      "research-node:reconciler",
+      "research-node:synthesizer",
+    ]);
+
+    expect(() => acceptResearchGraphProposalV1(catalog, {
+      ...valid,
+      nodes: valid.nodes.map((node) => node.nodeId === "research-node:jira-research"
+        ? { ...node, nodeId: "research-node:invented" }
+        : node),
+    })).toThrow("outside the host catalog");
+    expect(() => acceptResearchGraphProposalV1(catalog, {
+      ...valid,
+      nodes: valid.nodes.filter((node) => node.nodeId !== "research-node:wiki-research"),
+    })).toThrow("retain every host-required acquisition");
+    expect(() => acceptResearchGraphProposalV1(catalog, {
+      ...valid,
+      nodes: valid.nodes.map((node) => node.nodeId === "research-node:cross-product-join"
+        ? { ...node, dependencies: ["research-node:jira-research"] }
+        : node),
+    })).toThrow("omits a required dependency");
+    expect(() => acceptResearchGraphProposalV1(catalog, {
+      ...valid,
+      nodes: valid.nodes.map((node) => node.nodeId === "research-node:jira-research"
+        ? { ...node, dependencies: ["research-node:synthesizer"] }
+        : node),
+    })).toThrow("cannot depend");
+    expect(() => acceptResearchGraphProposalV1(catalog, {
+      ...valid,
+      nodes: valid.nodes.map((node) => node.nodeId === "research-node:jira-research"
+        ? { ...node, grantedCapabilityIds: ["wiki.page.get"] }
+        : node),
+    })).toThrow("unsupported fields");
+    expect(() => acceptResearchGraphProposalV1(catalog, {
+      ...valid,
+      basedOnGraphRevision: valid.basedOnGraphRevision + 1,
+    })).toThrow("stale");
   });
 
   test("rejects cycles, unknown dependencies, depth, and capability widening", () => {
