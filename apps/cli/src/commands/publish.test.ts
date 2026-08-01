@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { handlePublish, normalizePublicationLinksV1, normalizePublicationPositionV1, publishHelp } from "./publish.js";
+import { handlePublish, latestPublicationBuildNameV1, normalizePublicationLinksV1, normalizePublicationPositionV1, publishHelp } from "./publish.js";
 import { getCompletions } from "../completions.js";
 
 const project = {
@@ -76,6 +76,15 @@ test("publication links outside the selected scope remain visible as unresolved 
     { referenceId: "inside", kind: "page", sourceId: "page-1" },
     { referenceId: "outside", kind: "unresolved", reason: "outside-scope", label: "Out-of-scope Confluence link" },
   ]);
+});
+
+test("publication verification selects the newest build and uses the digest only as a tie-breaker", () => {
+  expect(latestPublicationBuildNameV1([
+    { name: "older", mtimeMs: 10 },
+    { name: "newer", mtimeMs: 20 },
+    { name: "tie-b", mtimeMs: 20 },
+    { name: "tie-a", mtimeMs: 20 },
+  ])).toBe("tie-b");
 });
 
 test("publishing lifecycle is discoverable through shell completion", () => {

@@ -88,10 +88,11 @@ test("accepts only explicitly inventoried trusted project pages", async () => {
       schema: "atlcli.astro-build-inventory/1" as const,
       bundleDigest: "bundle",
       pages: [{ kind: "page" as const, sourceId: "guide", route: "/guide/", pathname: "publish/guide/" }],
-      projectPages: [{ kind: "project" as const, pathname: "404/" }],
+      projectPages: [{ kind: "project" as const, pathname: "404/" }, { kind: "project" as const, pathname: "" }],
       output: [
         { path: "publish/guide/index.html", sha256: "a".repeat(64), byteLength: 7 },
         { path: "404/index.html", sha256: "b".repeat(64), byteLength: 9 },
+        { path: "index.html", sha256: "e".repeat(64), byteLength: 9 },
       ],
     },
     builderVersion: "1.0.0",
@@ -105,4 +106,8 @@ test("accepts only explicitly inventoried trusted project pages", async () => {
     ...options,
     inventory: { ...options.inventory, projectPages: [{ kind: "project" as const, pathname: "404/" }, { kind: "project" as const, pathname: "404/" }] },
   })).rejects.toThrow("duplicate trusted project output");
+  await expect(createAstroStaticPublicationManifestV1({
+    ...options,
+    inventory: { ...options.inventory, output: [options.inventory.output[0]!, { path: "404.html", sha256: "c".repeat(64), byteLength: 9 }, { path: "favicon.svg", sha256: "d".repeat(64), byteLength: 9 }] },
+  })).resolves.toMatchObject({ pages: [{ sourceId: "guide" }] });
 });

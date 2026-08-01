@@ -18,7 +18,7 @@ async function fixture(): Promise<{
   request: PublicationBuildRequestV1;
 }> {
   const root = await mkdtemp(join(tmpdir(), "atlcli-astro-verify-"));
-  const html = Buffer.from('<main><h1 id="intro">Guide</h1><a href="/docs/publish/guide/#intro">Self</a><img src="/docs/assets/hash/image.png" /></main>');
+  const html = Buffer.from('<main><h1 id="intro">Guide</h1><a href="#intro">Self</a><a href="https://example.test/download?name=foo,bar">CSV</a><img src="/docs/assets/hash/image.png" /></main>');
   const image = Buffer.from("image");
   await mkdir(join(root, "publish", "guide"), { recursive: true });
   await mkdir(join(root, "assets", "hash"), { recursive: true });

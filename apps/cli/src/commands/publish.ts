@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import {
   ERROR_CODES,
@@ -163,6 +163,15 @@ export function normalizePublicationLinksV1(
   return links.map((link) => link.kind === "page" && !inScopeSourceIds.has(link.sourceId)
     ? { referenceId: link.referenceId, kind: "unresolved" as const, reason: "outside-scope" as const, label: "Out-of-scope Confluence link" }
     : link);
+}
+
+/** Select the most recently written build while keeping digest ordering deterministic on ties. */
+export function latestPublicationBuildNameV1(
+  candidates: readonly { name: string; mtimeMs: number }[],
+): string | undefined {
+  return [...candidates]
+    .sort((left, right) => left.mtimeMs - right.mtimeMs || left.name.localeCompare(right.name))
+    .at(-1)?.name;
 }
 
 function safeAssetId(pageId: string, source: ImageSource): string {
@@ -432,8 +441,11 @@ async function executeBuild(state: PublishProjectStateV1): Promise<Record<string
 
 async function executeVerify(state: PublishProjectStateV1, flags: Flags = {}): Promise<Record<string, unknown>> {
   const builds = await readdir(join(state.workspaceDirectory, "builds"), { withFileTypes: true }).catch(() => []);
-  const candidates = builds.filter((entry) => entry.isDirectory()).sort((left, right) => left.name.localeCompare(right.name));
-  const selected = nonEmptyFlag(flags, "build") ?? candidates.at(-1)?.name;
+  const candidates = await Promise.all(builds.filter((entry) => entry.isDirectory()).map(async (entry) => ({
+    name: entry.name,
+    mtimeMs: await stat(join(state.workspaceDirectory, "builds", entry.name, "manifest.json")).then((file) => file.mtimeMs).catch(() => 0),
+  })));
+  const selected = nonEmptyFlag(flags, "build") ?? latestPublicationBuildNameV1(candidates);
   if (!selected) throw new Error("No publication build manifest is available.");
   const manifest = parseStaticPublicationManifestV1(await readBoundedPublicationJsonV1(join(state.workspaceDirectory, "builds", selected, "manifest.json")));
   if (manifest.buildDigest !== selected) throw new Error(`Publication build directory '${selected}' does not match its manifest digest.`);
@@ -470,7 +482,10 @@ async function executeVerify(state: PublishProjectStateV1, flags: Flags = {}): P
   }
   const expectedEditLinks = state.project.editLink.provider === "none" ? "none" : "confluence";
   if (manifest.editLinks.provider !== expectedEditLinks) throw new Error("Publication edit-link declaration differs from project configuration.");
-  if (JSON.stringify(manifest.search.languages) !== JSON.stringify(state.project.search.languages)) {
+  const expectedSearchLanguages = state.project.search.languages === "from-pages"
+    ? state.project.i18n.locales
+    : state.project.search.languages;
+  if (JSON.stringify(manifest.search.languages) !== JSON.stringify(expectedSearchLanguages)) {
     throw new Error("Publication search language declaration differs from project configuration.");
   }
   const inventory = await readBoundedPublicationJsonV1(join(state.workspaceDirectory, "build-inventory.json")) as unknown as AstroBuildInventoryV1;

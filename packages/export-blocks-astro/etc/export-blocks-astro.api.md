@@ -62,6 +62,7 @@ export interface AstroExportBlockRenderContextV1 {
     locale: string;
     direction: "ltr" | "rtl";
     headings: Readonly<Record<string, AstroResolvedHeadingV1>>;
+    headingAnchors?: Readonly<Record<string, string>>;
     links: Readonly<Record<string, AstroResolvedLinkV1>>;
     assets: Readonly<Record<string, AstroResolvedAssetV1>>;
     notes: "inline" | "collect" | "omit-noncritical";

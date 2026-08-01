@@ -82,6 +82,7 @@ test("resolves bundle page links, anchors, assets, and headings into the Astro c
   });
 
   expect(context.headings.intro).toEqual({ id: "intro", level: 2, text: "Intro" });
+  expect(context.headingAnchors?.["$blocks[0]"]).toBe("intro");
   expect(context.links["page-link"]).toEqual({ kind: "page", href: "/docs/publish/target/#details" });
   expect(context.links["asset-link"]).toEqual({ kind: "asset", href: "/docs/assets/hero/hash/hero.png" });
   expect(context.links["external-link"]).toEqual({ kind: "external", href: "https://example.test/docs" });

@@ -14,8 +14,8 @@ import Inline from "./Inline.astro";
 import ExportDocument from "./ExportDocument.astro";
 import Caption from "./Caption.astro";
 
-interface Props { block: ExportBlock; context: AstroExportBlockRenderContextV1; overrides?: AstroExportBlockOverridesV1; }
-const { block, context, overrides } = Astro.props;
+interface Props { block: ExportBlock; blockPath?: string; context: AstroExportBlockRenderContextV1; overrides?: AstroExportBlockOverridesV1; }
+const { block, blockPath, context, overrides } = Astro.props;
 const kind = exportBlockKindV1(block);
 const table = kind === "table" ? materializeTable(block) : undefined;
 const HeadingTag = kind === "heading" ? `h${block.level}` : "div";
@@ -40,20 +40,21 @@ function overrideSlotForKind(value: ExportBlock["type"]): AstroExportBlockOverri
 }
 const overrideSlot = overrideSlotForKind(kind);
 const BlockOverride = overrideSlot ? overrides?.[overrideSlot] : undefined;
+const headingId = kind === "heading" ? (blockPath === undefined ? block.explicitAnchor : context.headingAnchors?.[blockPath] ?? block.explicitAnchor) : undefined;
 ---
 
 {BlockOverride ? <BlockOverride block={block} context={context} /> : <>
-{kind === "heading" && <HeadingTag id={block.explicitAnchor} data-atlcli-block="heading"><Inline nodes={block.content} locale={context.locale} context={context} /></HeadingTag>}
+{kind === "heading" && <HeadingTag id={headingId} data-atlcli-block="heading"><Inline nodes={block.content} locale={context.locale} context={context} /></HeadingTag>}
 {kind === "paragraph" && <p data-atlcli-block="paragraph"><Inline nodes={block.content} locale={context.locale} context={context} /></p>}
 {kind === "smartCard" && <aside data-atlcli-block="smart-card">{smartCardDisplayText(block.card)}</aside>}
 {kind === "codeBlock" && <figure data-atlcli-block="code">{block.title && <header>{block.title}</header>}<pre><code class:list={{ [`language-${block.language ?? "plain"}`]: true }}>{block.code}</code></pre>{block.caption && <Caption caption={block.caption} locale={context.locale} context={context} />}</figure>}
-{kind === "callout" && <aside data-atlcli-block="callout" data-kind={block.kind}>{calloutIcon && <span aria-hidden="true">{calloutIcon.source === "explicit" ? calloutIcon.text : calloutIcon.icon.symbol}</span>}<strong>{block.title ?? block.kind}</strong><ExportDocument blocks={block.content} context={context} overrides={overrides} /></aside>}
-{kind === "expand" && <details data-atlcli-block="expand" open><summary>{block.title ?? "Details"}</summary><ExportDocument blocks={block.content} context={context} overrides={overrides} /></details>}
+{kind === "callout" && <aside data-atlcli-block="callout" data-kind={block.kind}>{calloutIcon && <span aria-hidden="true">{calloutIcon.source === "explicit" ? calloutIcon.text : calloutIcon.icon.symbol}</span>}<strong>{block.title ?? block.kind}</strong><ExportDocument blocks={block.content} path={blockPath === undefined ? undefined : `${blockPath}.content`} context={context} overrides={overrides} /></aside>}
+{kind === "expand" && <details data-atlcli-block="expand" open><summary>{block.title ?? "Details"}</summary><ExportDocument blocks={block.content} path={blockPath === undefined ? undefined : `${blockPath}.content`} context={context} overrides={overrides} /></details>}
 {kind === "list" && (block.ordered
-  ? <ol data-atlcli-block="list" start={block.start}>{block.items.map((item) => <li data-atlcli-task={item.kind === "task" ? String(item.checked === true) : undefined}>{item.kind === "task" && <input type="checkbox" checked={item.checked === true} disabled aria-label="Task status" />}<ExportDocument blocks={item.content} context={context} overrides={overrides} /></li>)}</ol>
-  : <ul data-atlcli-block="list">{block.items.map((item) => <li data-atlcli-task={item.kind === "task" ? String(item.checked === true) : undefined}>{item.kind === "task" && <input type="checkbox" checked={item.checked === true} disabled aria-label="Task status" />}<ExportDocument blocks={item.content} context={context} overrides={overrides} /></li>)}</ul>)}
-{kind === "layout" && <section data-atlcli-block="layout" style={`--atlcli-layout-columns:${block.columns.length}`}>{block.columns.map((column) => <div style={safeExportBlockPercentageV1(column.width) ? `--atlcli-layout-width:${safeExportBlockPercentageV1(column.width)}` : undefined}><ExportDocument blocks={column.content} context={context} overrides={overrides} /></div>)}</section>}
-{kind === "table" && <table data-atlcli-block="table">{block.caption && <caption><Inline nodes={block.caption.content} locale={context.locale} context={context} /></caption>}<tbody>{table?.rows.map((row) => <tr>{row.cells.map((cell) => cell.header ? <th scope="col" colspan={cell.colspan} rowspan={cell.rowspan}><ExportDocument blocks={cell.content} context={context} overrides={overrides} /></th> : <td colspan={cell.colspan} rowspan={cell.rowspan}><ExportDocument blocks={cell.content} context={context} overrides={overrides} /></td>)}</tr>)}</tbody></table>}
+  ? <ol data-atlcli-block="list" start={block.start}>{block.items.map((item, index) => <li data-atlcli-task={item.kind === "task" ? String(item.checked === true) : undefined}>{item.kind === "task" && <input type="checkbox" checked={item.checked === true} disabled aria-label="Task status" />}<ExportDocument blocks={item.content} path={blockPath === undefined ? undefined : `${blockPath}.items[${index}].content`} context={context} overrides={overrides} /></li>)}</ol>
+  : <ul data-atlcli-block="list">{block.items.map((item, index) => <li data-atlcli-task={item.kind === "task" ? String(item.checked === true) : undefined}>{item.kind === "task" && <input type="checkbox" checked={item.checked === true} disabled aria-label="Task status" />}<ExportDocument blocks={item.content} path={blockPath === undefined ? undefined : `${blockPath}.items[${index}].content`} context={context} overrides={overrides} /></li>)}</ul>)}
+{kind === "layout" && <section data-atlcli-block="layout" style={`--atlcli-layout-columns:${block.columns.length}`}>{block.columns.map((column, index) => <div style={safeExportBlockPercentageV1(column.width) ? `--atlcli-layout-width:${safeExportBlockPercentageV1(column.width)}` : undefined}><ExportDocument blocks={column.content} path={blockPath === undefined ? undefined : `${blockPath}.columns[${index}].content`} context={context} overrides={overrides} /></div>)}</section>}
+{kind === "table" && <table data-atlcli-block="table">{block.caption && <caption><Inline nodes={block.caption.content} locale={context.locale} context={context} /></caption>}<tbody>{table?.rows.map((row, rowIndex) => <tr>{row.cells.map((cell, cellIndex) => cell.header ? <th scope="col" colspan={cell.colspan} rowspan={cell.rowspan}><ExportDocument blocks={cell.content} path={blockPath === undefined ? undefined : `${blockPath}.rows[${rowIndex}].cells[${cellIndex}].content`} context={context} overrides={overrides} /></th> : <td colspan={cell.colspan} rowspan={cell.rowspan}><ExportDocument blocks={cell.content} path={blockPath === undefined ? undefined : `${blockPath}.rows[${rowIndex}].cells[${cellIndex}].content`} context={context} overrides={overrides} /></td>)}</tr>)}</tbody></table>}
 {kind === "image" && <figure data-atlcli-block="image">{assetSrc ? <>
   <picture data-atlcli-image-mode={asset?.mode ?? "verified-original"}>
     {assetVariants.map((variant) => <source srcset={`${variant.src} ${variant.width}w`} type={variant.mediaType} />)}
@@ -62,10 +63,10 @@ const BlockOverride = overrideSlot ? overrides?.[overrideSlot] : undefined;
   {assetDownload && <a href={assetDownload} download={asset?.downloadName} data-atlcli-original-download>Download original</a>}
 </> : <span data-atlcli-asset-unresolved>{block.alt ?? (block.source.kind === "attachment" ? block.source.filename : "Image")}</span>}{block.caption && <Caption caption={block.caption} locale={context.locale} context={context} />}</figure>}
 {kind === "mediaFallback" && <aside data-atlcli-block="media-fallback">{mediaFallbackDisplayText(block)}</aside>}
-{kind === "blockquote" && <blockquote data-atlcli-block="blockquote"><ExportDocument blocks={block.content} context={context} overrides={overrides} /></blockquote>}
+{kind === "blockquote" && <blockquote data-atlcli-block="blockquote"><ExportDocument blocks={block.content} path={blockPath === undefined ? undefined : `${blockPath}.content`} context={context} overrides={overrides} /></blockquote>}
 {kind === "divider" && <hr data-atlcli-block="divider" />}
 {kind === "pageBreak" && <hr data-atlcli-block="page-break" />}
-{kind === "orientation" && <section data-atlcli-block="orientation" data-landscape={String(block.landscape)}><ExportDocument blocks={block.content} context={context} overrides={overrides} /></section>}
+{kind === "orientation" && <section data-atlcli-block="orientation" data-landscape={String(block.landscape)}><ExportDocument blocks={block.content} path={blockPath === undefined ? undefined : `${blockPath}.content`} context={context} overrides={overrides} /></section>}
 {kind === "anchor" && <span id={block.name} data-atlcli-block="anchor"></span>}
-{kind === "unknown" && <aside data-atlcli-block="unknown" data-macro-name={block.macroName}><strong>Unsupported macro: {block.macroName}</strong>{block.body && <ExportDocument blocks={block.body} context={context} overrides={overrides} />}{block.plainBody && <pre>{block.plainBody}</pre>}</aside>}
+{kind === "unknown" && <aside data-atlcli-block="unknown" data-macro-name={block.macroName}><strong>Unsupported macro: {block.macroName}</strong>{block.body && <ExportDocument blocks={block.body} path={blockPath === undefined ? undefined : `${blockPath}.body`} context={context} overrides={overrides} />}{block.plainBody && <pre>{block.plainBody}</pre>}</aside>}
 </>}

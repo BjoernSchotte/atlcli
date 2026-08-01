@@ -105,7 +105,7 @@ function assertInventoryLabelLandings(
 function assertInventoryProjectPages(inventory: AstroBuildInventoryV1, profile: "directory" | "portable-file"): Set<string> {
   const paths = new Set<string>();
   for (const page of inventory.projectPages ?? []) {
-    if (page.kind !== "project" || typeof page.pathname !== "string" || page.pathname.length === 0) {
+    if (page.kind !== "project" || typeof page.pathname !== "string") {
       throw new TypeError("Astro build inventory has an invalid trusted project page");
     }
     const path = outputPathForPage(page.pathname, profile);
@@ -118,6 +118,8 @@ function assertInventoryProjectPages(inventory: AstroBuildInventoryV1, profile: 
 function isTrustedGeneratedOutput(path: string): boolean {
   return path.startsWith("_astro/") ||
     path.startsWith("pagefind/") ||
+    path === "404.html" ||
+    path === "favicon.svg" ||
     /(?:^|\/)(?:sitemap[^/]*\.xml|robots\.txt|[^/]+\.xml)$/u.test(path);
 }
 
@@ -170,6 +172,9 @@ export async function createAstroStaticPublicationManifestV1(
   const seoFiles = inventory.output.filter((entry) => /(?:^|\/)(?:sitemap[^/]*\.xml|robots\.txt|[^/]+\.xml)$/u.test(entry.path));
   const seoDigest = await digestPublicationJsonV1(seoFiles);
   const searchDigest = await digestPublicationJsonV1(searchFiles);
+  const searchLanguages = request.project.search.languages === "from-pages"
+    ? [...request.project.i18n.locales]
+    : [...request.project.search.languages];
   const analytics = request.project.analytics.provider === "none"
     ? { provider: "none" as const }
     : { provider: "plausible" as const, endpointOrigin: new URL(request.project.analytics.endpoint).origin, events: ["pageview"] };
@@ -185,7 +190,7 @@ export async function createAstroStaticPublicationManifestV1(
     pages,
     assets,
     experience: options.experience,
-    search: { provider: "pagefind" as const, digest: searchDigest, files: searchFiles, languages: [...request.project.search.languages], indexedSourceIds: pages.map((page) => page.sourceId) },
+    search: { provider: "pagefind" as const, digest: searchDigest, files: searchFiles, languages: searchLanguages, indexedSourceIds: pages.map((page) => page.sourceId) },
     seo: { digest: seoDigest },
     analytics,
     editLinks: { provider: request.project.editLink.provider === "none" ? "none" as const : "confluence" as const, includedSourceIds: [], omittedSourceIds: pages.map((page) => page.sourceId) },

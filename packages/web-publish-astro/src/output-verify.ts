@@ -98,9 +98,12 @@ function basePrefix(base: string): string {
 }
 
 function outputUrl(path: string, profile: PublicationOutputProfileV1, base: string): string {
-  const stem = path.replace(/\/index\.html$/u, "").replace(/\.html$/u, "");
-  const suffix = profile === "directory" && path.endsWith("/index.html") ? `${stem}/` : `/${stem}`;
-  return `${base}${suffix || "/"}`;
+  const isRoot = path === "index.html";
+  const stem = isRoot ? "" : path.replace(/\/index\.html$/u, "").replace(/\.html$/u, "");
+  const suffix = profile === "directory" && (isRoot || path.endsWith("/index.html"))
+    ? (stem === "" ? "/" : `/${stem}/`)
+    : `/${stem}`;
+  return `${base === "/" ? "" : base}${suffix}`;
 }
 
 function escapeRegExp(value: string): string {
@@ -133,10 +136,11 @@ async function assertHtmlReferences(
   const references = [
     ...html.matchAll(/\b(href|src|action)=["']([^"']+)["']/giu),
     ...html.matchAll(/\b(srcset)=["']([^"']+)["']/giu),
-  ].flatMap((match) => match[2]!.split(",").map((value) => ({
-    kind: match[1]!.toLowerCase(),
-    value: value.trim().split(/\s+/u)[0]!,
-  })));
+  ].flatMap((match) => {
+    const kind = match[1]!.toLowerCase();
+    const values = kind === "srcset" ? match[2]!.split(",") : [match[2]!];
+    return values.map((value) => ({ kind, value: value.trim().split(/\s+/u)[0]! }));
+  });
   let links = 0;
   let anchors = 0;
   const cache = new Map<string, string>();

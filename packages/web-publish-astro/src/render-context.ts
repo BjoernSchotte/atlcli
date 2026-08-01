@@ -65,6 +65,21 @@ function collectHeadings(blocks: readonly ExportBlock[]): readonly AstroResolved
     }));
 }
 
+function collectHeadingAnchors(blocks: readonly ExportBlock[]): Readonly<Record<string, string>> {
+  const planned = planPublicationAnchorsV1(blocks);
+  const headingAnchors: Record<string, string> = {};
+  let anchorIndex = 0;
+  visitExportBlocksV1(blocks, {
+    block(block, visitContext) {
+      if (block.type !== "anchor" && block.type !== "heading") return;
+      const anchor = planned[anchorIndex++];
+      if (anchor === undefined) throw new Error("publication anchor plan is out of sync with export blocks");
+      if (block.type === "heading") headingAnchors[visitContext.path] = anchor.anchorId;
+    },
+  });
+  return headingAnchors;
+}
+
 function collectAssetSources(pageId: string, blocks: readonly ExportBlock[]): readonly ImageSource[] {
   const sources: ImageSource[] = [];
   const seen = new Set<string>();
@@ -208,6 +223,7 @@ export function createPublicationRenderContextV1(
     locale: options.locale ?? "en",
     direction: options.direction ?? "ltr",
     headings: Object.fromEntries(collectHeadings(options.page.blocks).map((heading) => [heading.id, heading])),
+    headingAnchors: collectHeadingAnchors(options.page.blocks),
     links,
     assets: resolvedAssets.assets,
     notes: "inline",

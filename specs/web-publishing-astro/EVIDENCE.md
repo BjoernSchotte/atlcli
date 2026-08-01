@@ -365,3 +365,22 @@ opt-in interactive chart island, and proves that a `complete: false` bundle is
 rejected before Astro loading. The focused test passed on 2026-08-01 with 27
 expectations; the required CI publishing job already runs the containing
 `starlight-renderer.test.ts` file.
+
+## T12 live Cloud evidence (2026-08-01)
+
+The required read-only Mayflower Cloud run was exercised against the authorized
+Content Drafts tree and kept strictly local. The tree refresh produced a
+complete 34-page bundle; the Astro directory build then passed output
+verification with 127 owned files, 2,572 internal links, and 515 fragment
+anchors. The browser check used the public route
+`http://127.0.0.1:4391/docs/publish/content-drafts/` and a content-rich child
+route. Starlight navigation, breadcrumbs, related pages, previous/next links,
+heading anchors, and the Pagefind modal were inspected; a `Scrum Master` query
+returned five results. No source identifiers, titles, bundle files, or assets
+are retained in the repository.
+
+The complete DOCSY-space plan also completed at 98 pages, but strict refresh
+activation remains blocked by one stale reference to a missing attachment. A
+read-only attachment check confirmed that the referenced file is absent; no
+remote mutation was attempted. Therefore this evidence claims the authorized
+tree build only, not a successful full-space activation.
