@@ -2005,6 +2005,50 @@ function imageSeam(
     embedInline(block: InlineImageNode) {
       return embed(block, true);
     },
+    async embedGeneratedSvg(svg: string, options: {
+      name: string;
+      alt: string;
+      widthPx: number;
+      heightPx: number;
+    }): Promise<ImageEmbedOutcome> {
+      if (!rasterizer) {
+        return {
+          ok: false,
+          code: "image-svg-no-rasterizer",
+          level: "warning",
+          reason: "no SVG rasterizer is available for the chart visual",
+        };
+      }
+      try {
+        assertSafeSvg(svg);
+        const target = boundRasterTarget({ widthPx: options.widthPx * 2, heightPx: options.heightPx * 2 });
+        if (!target) {
+          return {
+            ok: false,
+            code: "image-svg-oversized",
+            level: "warning",
+            reason: "the chart SVG rasterization target exceeds the size budget",
+          };
+        }
+        throwIfAborted(signal);
+        const png = await rasterizer.rasterize(svg, target, signal ? { signal } : {});
+        throwIfAborted(signal);
+        budget.account(new TextEncoder().encode(svg), { filename: `${options.name}.svg`, ...(pageId ? { pageId } : {}) });
+        budget.account(png, { filename: `${options.name}.png`, ...(pageId ? { pageId } : {}) });
+        const xml = embedder.embedSvg(svg, png, {
+          name: options.name,
+          alt: options.alt,
+          widthPx: options.widthPx,
+          heightPx: options.heightPx,
+          origin: "image",
+          ...(partPath ? { partPath } : {}),
+        });
+        return { ok: true, xml };
+      } catch (error) {
+        rethrowCancellation(error, signal);
+        return { ok: false, reason: error instanceof Error ? error.message : String(error) };
+      }
+    },
   };
 
   /**

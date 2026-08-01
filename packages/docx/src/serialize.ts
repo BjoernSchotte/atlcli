@@ -45,6 +45,7 @@ import {
   DEFAULT_CODE_THEME,
   type CodeThemeId,
 } from "@atlcli/code-highlight/registry";
+import { CHART_SVG_SIZE_V1, renderChartSvgV1 } from "@atlcli/export-blocks";
 import {
   highlightCodeWithRuntime,
   type CodeHighlightRuntime,
@@ -118,6 +119,13 @@ export type ImageEmbedOutcome =
  */
 export interface ImageEmbedSeam {
   embed(block: ImageBlock): Promise<ImageEmbedOutcome>;
+  /** Embed a renderer-generated chart SVG plus its mandatory raster fallback. */
+  embedGeneratedSvg?(svg: string, options: {
+    name: string;
+    alt: string;
+    widthPx: number;
+    heightPx: number;
+  }): Promise<ImageEmbedOutcome>;
   /** Embed a correlated image as a drawing run inside its existing paragraph. */
   embedInline?(node: InlineImageNode): Promise<ImageEmbedOutcome>;
   /**
@@ -1025,10 +1033,28 @@ async function serializeBlock(
     }
 
     case "chart": {
-      // Word's native chart DrawingML is template-owned and cannot safely be
-      // synthesized from an arbitrary Confluence macro. Preserve every value
-      // and label as a deterministic, accessible table instead of dropping the
-      // block or relying on the former page-level chart sidecar.
+      // Word's native chart DrawingML is template-owned. Embed the shared
+      // deterministic SVG projection through the existing svgBlip + PNG
+      // fallback seam, then retain the table as the accessible data surface.
+      const visual = ctx.images?.embedGeneratedSvg
+        ? await ctx.images.embedGeneratedSvg(renderChartSvgV1(block.chart), {
+            name: block.chart.title ?? "Chart",
+            alt: block.chart.title ?? "Chart",
+            widthPx: CHART_SVG_SIZE_V1.width,
+            heightPx: CHART_SVG_SIZE_V1.height,
+          })
+        : undefined;
+      let visualXml = "";
+      if (visual?.ok) {
+        if (visual.notes) notes.push(...visual.notes);
+        visualXml = visual.xml;
+      } else if (visual && !visual.ok) {
+        notes.push({
+          level: visual.level ?? "warning",
+          code: visual.code ?? "image-embed-failed",
+          message: `Chart ${block.chart.title ?? "visual"} could not be embedded (${visual.reason}).`,
+        });
+      }
       const tableXml = await serializeTable(
         chartTableRows(block.chart),
         undefined,
@@ -1038,7 +1064,7 @@ async function serializeBlock(
       );
       const title = block.chart.title ? paragraph(run(block.chart.title, { bold: true })) : "";
       const caption = block.caption ? await captionXml(block.caption, ctx, notes) : "";
-      return title + tableXml + caption;
+      return title + visualXml + tableXml + caption;
     }
 
     case "blockquote": {

@@ -126,6 +126,8 @@ export type PreparedPdfBlock =
     }
   | (Omit<Extract<ExportBlock, { type: "chart" }>, "caption"> & {
       caption?: PreparedPdfCaption;
+      /** Deterministic SVG visual embedded before the accessible data table. */
+      visualAssetPath?: string;
     })
   | {
       type: "image";

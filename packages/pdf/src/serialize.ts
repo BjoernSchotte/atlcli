@@ -1728,9 +1728,8 @@ function serializeBlock(
       break;
     }
     case "chart": {
-      // Typst receives a deterministic semantic table. This keeps every chart
-      // value available in tagged PDF output without synthesizing unsafe
-      // provider-specific DrawingML or a live renderer.
+      // Embed the shared deterministic SVG visual and retain the semantic table
+      // immediately below it for tagged-PDF consumers and copy/paste fallback.
       const rows = chartRows(block.chart);
       const columns = Math.max(1, rows.reduce((max, row) => Math.max(max, row.length), 0));
       // `table(...)` arguments are Typst code mode. Each cell therefore needs
@@ -1742,10 +1741,13 @@ function serializeBlock(
       ));
       const table = `#table(columns: ${columns}, stroke: rgb(${typstString(writer.catalogDesign.tokens.colors.tableStroke)}), ${cells.join(", ")})`;
       const title = block.chart.title ? `#par[${literalText(block.chart.title)}]\n` : "";
+      const visual = block.visualAssetPath
+        ? `#figure(image(${typstString(block.visualAssetPath)}, width: 100%, alt: ${typstString(block.chart.title ?? "Chart") }))\n`
+        : "";
       const caption = block.caption
         ? `\n#figure(block(width: 100%)[${table}], ${captionFigureArgs(block.caption, writer)})`
         : "";
-      value = title + table + caption;
+      value = title + visual + table + caption;
       break;
     }
     case "divider":

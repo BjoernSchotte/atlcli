@@ -7,18 +7,18 @@ does not become unsupported merely because no client island is selected.
 
 | Shape | Cloud ADF | DC Storage | Astro static SVG/list | Accessible data table | DOCX/PDF | Client interaction |
 | --- | --- | --- | --- | --- | --- | --- |
-| `pie` | ✅ | ✅ | ✅ SVG paths + legend | ✅ | ✅ | Static fallback |
-| `bar` | ✅ | ✅ | ✅ vertical/horizontal/stacked bars | ✅ | ✅ | ✅ TanStack `tanstack-v0.3/bar` when bounded |
-| `line` | ✅ | ✅ | ✅ polylines + point labels | ✅ | ✅ | Static fallback |
-| `area` | ✅ | ✅ | ✅ line + filled area | ✅ | ✅ | Static fallback |
-| `xyArea` | ✅ | ✅ | ✅ numeric/date x + filled area | ✅ | ✅ | Static fallback |
-| `xyBar` | ✅ | ✅ | ✅ x/y bars | ✅ | ✅ | ✅ TanStack `tanstack-v0.3/bar` when bounded |
-| `xyLine` | ✅ | ✅ | ✅ numeric/date x + lines | ✅ | ✅ | Static fallback |
-| `xyStep` | ✅ | ✅ | ✅ stepped lines | ✅ | ✅ | Static fallback |
-| `xyStepArea` | ✅ | ✅ | ✅ stepped filled area | ✅ | ✅ | Static fallback |
-| `scatter` | ✅ | ✅ | ✅ point marks | ✅ | ✅ | Static fallback |
-| `timeSeries` | ✅ | ✅ | ✅ ISO timestamp x + labels | ✅ | ✅ | Static fallback |
-| `gantt` | ✅ | ✅ | ✅ semantic timeline/list | ✅ | ✅ | Static fallback |
+| `pie` | ✅ | ✅ | ✅ SVG paths + legend | ✅ | ✅ SVG + table | Static fallback |
+| `bar` | ✅ | ✅ | ✅ vertical/horizontal/stacked bars | ✅ | ✅ SVG + table | ✅ TanStack `tanstack-v0.3/bar` when bounded |
+| `line` | ✅ | ✅ | ✅ polylines + point labels | ✅ | ✅ SVG + table | Static fallback |
+| `area` | ✅ | ✅ | ✅ line + filled area | ✅ | ✅ SVG + table | Static fallback |
+| `xyArea` | ✅ | ✅ | ✅ numeric/date x + filled area | ✅ | ✅ SVG + table | Static fallback |
+| `xyBar` | ✅ | ✅ | ✅ x/y bars | ✅ | ✅ SVG + table | ✅ TanStack `tanstack-v0.3/bar` when bounded |
+| `xyLine` | ✅ | ✅ | ✅ numeric/date x + lines | ✅ | ✅ SVG + table | Static fallback |
+| `xyStep` | ✅ | ✅ | ✅ stepped lines | ✅ | ✅ SVG + table | Static fallback |
+| `xyStepArea` | ✅ | ✅ | ✅ stepped filled area | ✅ | ✅ SVG + table | Static fallback |
+| `scatter` | ✅ | ✅ | ✅ point marks | ✅ | ✅ SVG + table | Static fallback |
+| `timeSeries` | ✅ | ✅ | ✅ ISO timestamp x + labels | ✅ | ✅ SVG + table | Static fallback |
+| `gantt` | ✅ | ✅ | ✅ semantic timeline/list | ✅ | ✅ SVG + table | Static fallback |
 
 ## Shared guarantees
 
@@ -35,6 +35,9 @@ does not become unsupported merely because no client island is selected.
   updates, and the static table remains available after hydration.
 - DOCX and PDF use the same source order and union X keys for sparse point
   series, so a missing point in one series never shifts another series' value.
+  Both targets call the shared dependency-free SVG renderer; DOCX additionally
+  stores a bounded PNG compatibility rendition, while PDF keeps the chart as
+  vector content through Typst. The semantic table is retained in both files.
 - The interactive adapter is intentionally closed and bounded: it accepts
   only categorical `bar` and provider-valid `xyBar` data, with explicit row,
   series, point, and payload limits. All other shapes remain JavaScript-off

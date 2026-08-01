@@ -15,6 +15,7 @@ import {
   type CodeBlock,
   type DiagramEmbedOutcome,
   type DiagramEmbedSeam,
+  type ImageEmbedSeam,
 } from "./serialize.js";
 import { renderDiagram } from "@atlcli/diagram";
 import {
@@ -42,6 +43,31 @@ it("serializes a chart ExportBlock as a deterministic accessible data table", as
   expect(result.xml).toContain("Jan");
   expect(result.xml).toContain("20");
   expect(result.xml).toContain("<w:tbl");
+});
+
+it("embeds the shared chart SVG visual before the accessible table when the host provides the SVG seam", async () => {
+  const svgs: string[] = [];
+  const images: ImageEmbedSeam = {
+    embed: async () => ({ ok: false, reason: "not used" }),
+    embedGeneratedSvg: async (svg) => {
+      svgs.push(svg);
+      return { ok: true, xml: "<w:p><w:drawing data-chart-svg=\"true\"/></w:p>" };
+    },
+  };
+  const result = await serializeBlocks([{
+    type: "chart",
+    chart: {
+      schema: "atlcli.chart/1",
+      kind: "bar",
+      title: "Revenue",
+      data: { mode: "categories", labels: ["Jan", "Feb"], series: [{ id: "revenue", label: "Value", values: [10, 20] }] },
+      source: { kind: "cloud-adf", macroName: "chart" },
+    },
+  }], { styleNames: noStyles, images });
+  expect(svgs).toHaveLength(1);
+  expect(svgs[0]).toContain("<rect");
+  expect(result.xml).toContain("data-chart-svg=\"true\"");
+  expect(result.xml.indexOf("data-chart-svg")).toBeLessThan(result.xml.indexOf("<w:tbl"));
 });
 
 it("keeps sparse XY series aligned by their own x keys", async () => {

@@ -7,6 +7,7 @@ import {
   type ChartKindV1,
   type ChartModelV1,
 } from "./charts.js";
+import { renderChartSvgV1 } from "./chart-svg.js";
 
 const source = { kind: "cloud-adf" as const, macroName: "chart" as const };
 
@@ -30,6 +31,17 @@ function model(kind: ChartKindV1): ChartModelV1 {
 }
 
 describe("ChartModelV1", () => {
+  test("renders every chart kind to a safe deterministic SVG visual", () => {
+    for (const kind of CHART_KINDS_V1) {
+      const svg = renderChartSvgV1(model(kind));
+      expect(svg).toStartWith("<svg ");
+      expect(svg).toContain('role="img"');
+      expect(svg).toContain("chart-title");
+      expect(svg).toContain(kind === "gantt" ? "Build" : ["xyArea", "xyBar", "xyLine", "xyStep", "xyStepArea", "scatter", "timeSeries"].includes(kind) ? "Points" : "Categories");
+      expect(svg).not.toContain("<script");
+    }
+  });
+
   test("validates every documented Confluence chart kind", () => {
     for (const kind of CHART_KINDS_V1) {
       expect(validateChartModelV1(model(kind)).kind).toBe(kind);

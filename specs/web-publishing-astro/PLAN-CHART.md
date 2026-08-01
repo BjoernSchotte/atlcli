@@ -29,8 +29,9 @@ type ExportBlock =
 The node is produced by the normal Cloud/DC normalization pipeline and is
 consumed by every export surface. Astro renders accessible static output for
 every supported chart shape and may add a bounded, allowlisted island for
-selected shapes. DOCX/PDF render a deterministic static projection and an
-accessible data table when a visual chart cannot be represented faithfully.
+selected shapes. DOCX/PDF render the same deterministic chart model as a safe
+SVG visual plus an accessible data table; the table remains the explicit
+fallback if a host cannot rasterize/embed the visual.
 
 This is semantic/data parity, not a promise to reproduce Confluence's PNG
 renderer pixel-for-pixel. An original chart image may remain a last-resort
@@ -39,7 +40,7 @@ fallback with a visible diagnostic, but it is not the parity implementation.
 ## 1.1 Implementation status
 
 The shared contract, Cloud/DC normalization seams, dedicated macro registry
-renderer, static Astro chart block, DOCX/PDF table projections, and the
+renderer, static Astro chart block, DOCX/PDF SVG-plus-table projections, and the
 version-pinned TanStack `ExportBlock` adapter are implemented in the stacked
 follow-up PR. The adapter is deliberately bounded to categorical `bar` and
 provider-valid `xyBar` data; every other shape retains the complete static
@@ -57,11 +58,13 @@ so it is not used as evidence for the renderer contract.
 ### Proven milestone evidence (2026-08-01)
 
 - The normal mayflower DOCX path completed for the persistent provider fixture;
-  the generated document contains the chart title, marker, table headers, and
-  all four values.
-- The normal mayflower PDF path completed after fixing Typst code-mode table
-  cells; the artifact compiled successfully and its extracted text contains
-  the same marker, title, and values with no provider error text.
+  the generated document contains the shared `chart.svg`, a PNG compatibility
+  rendition, the chart title, marker, table headers, and all four values. A
+  LibreOffice render visibly shows the bars and the table.
+- The normal mayflower PDF path completed with the shared SVG asset; Typst
+  compiled the vector chart visual plus the semantic table, and extracted text
+  contains the same marker, title, and values with no provider error text. A
+  rasterized page inspection visibly shows the bars and the table.
 - The Astro publication refresh/build/verification completed for one page;
   the verified output inventory covered 35 files and 26 links. The generated
   page contains `data-atlcli-chart-capability="tanstack-v0.3/bar"` and the
@@ -69,8 +72,8 @@ so it is not used as evidence for the renderer contract.
   TanStack runtime chart. Generated output remains outside Git.
 - The all-shapes contract pass covers twelve Cloud ADF and twelve DC Storage
   inputs, twelve static Astro discriminators, aligned tables, and twelve DOCX
-  plus twelve PDF projections. Sparse point series are keyed by their own X
-  values in every table projection.
+  plus twelve PDF SVG/table projections. Sparse point series are keyed by
+  their own X values in every table projection.
 - Browser checks cover the local island's keyboard-focusable SVG and runtime
   chart, the persistent static table after hydration, a 390px mobile
   viewport without horizontal page overflow, CSP-safe bundled output, and the
@@ -327,11 +330,12 @@ only and must be safe to include in a public site manifest.
 
 ## 8. DOCX/PDF compatibility
 
-- [x] Add chart handling to the DOCX export-block renderer: deterministic
-      static image/SVG projection where supported and an accessible tabular
-      projection otherwise.
-- [x] Add chart handling to the PDF/Typst renderer with the same fallback and
-      no unhandled `type:"chart"` branch.
+- [x] Add chart handling to the DOCX export-block renderer: embed the shared
+      deterministic SVG visual (with a bounded PNG compatibility rendition)
+      and retain an accessible tabular projection alongside it.
+- [x] Add chart handling to the PDF/Typst renderer: embed the shared SVG
+      visual and retain the same accessible table fallback, with no unhandled
+      `type:"chart"` branch.
 - [x] Preserve captions, source order, labels, and data values in both document
       projections.
 - [ ] Add regression fixtures proving existing DOCX/PDF exports remain byte- or
@@ -369,8 +373,8 @@ only and must be safe to include in a public site manifest.
       an explicit follow-up.
 - [x] Renderer tests assert source order, semantic labels, data-table values,
       escaping, responsive attributes, and JavaScript-off output.
-- [x] DOCX/PDF tests assert no chart block is dropped and that fallback data is
-      present.
+- [x] DOCX/PDF tests assert no chart block is dropped, the shared SVG visual is
+      requested/embedded, and the aligned fallback data table is present.
 - [x] Security/property tests cover hostile labels, URLs, CSS colors, huge
       dimensions, NaN/Infinity, prototype keys, and oversized payloads.
 

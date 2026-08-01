@@ -21,7 +21,7 @@ const metadata = {
   exportedAt: new Date("2026-07-16T12:00:00Z"),
 };
 
-it("serializes a chart ExportBlock as a deterministic Typst data table", async () => {
+it("serializes a chart ExportBlock as an SVG visual plus deterministic data table", async () => {
   const prepared = await preparePdfDocument([{
     type: "chart",
     chart: {
@@ -37,6 +37,8 @@ it("serializes a chart ExportBlock as a deterministic Typst data table", async (
   expect(bundle.main).toContain('#text("Jan")');
   expect(bundle.main).toContain('#text("20")');
   expect(bundle.main).toContain("#table(columns: 2");
+  expect(bundle.main).toContain('image("assets/chart-1-');
+  expect(bundle.assets.some((asset) => asset.mediaType === "image/svg+xml" && asset.path.startsWith("assets/chart-"))).toBe(true);
   expect(bundle.main).toContain('[#text("Revenue")]');
   expect(bundle.main).not.toContain(', #text("Revenue")');
 });

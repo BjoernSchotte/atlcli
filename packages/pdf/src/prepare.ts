@@ -11,6 +11,7 @@ import {
   type ExportProgressCallback,
 } from "@atlcli/confluence";
 import type { Caption, ExportBlock, ExportNote, InlineNode } from "@atlcli/confluence";
+import { renderChartSvgV1 } from "@atlcli/export-blocks";
 import { assertSafeSvg } from "./svg-safety.js";
 import { decodeSvgSource } from "@atlcli/confluence";
 import {
@@ -778,7 +779,13 @@ export async function preparePdfDocument(
           case "chart": {
             const caption = await prepareCaption(block.caption, `${path}.caption`);
             const { caption: _sourceCaption, ...chart } = block;
-            return { ...chart, ...(caption ? { caption } : {}) };
+            const svg = renderChartSvgV1(block.chart);
+            const visualAssetPath = addAsset(
+              { bytes: new TextEncoder().encode(svg), mediaType: "image/svg+xml", filename: "chart.svg" },
+              "chart",
+              { filename: "chart.svg" },
+            );
+            return { ...chart, visualAssetPath, ...(caption ? { caption } : {}) };
           }
           case "smartCard":
           case "divider":

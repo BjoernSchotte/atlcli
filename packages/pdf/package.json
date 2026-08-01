@@ -59,6 +59,7 @@
   "dependencies": {
     "@atlcli/code-highlight": "workspace:*",
     "@atlcli/export-macros": "workspace:*",
+    "@atlcli/export-blocks": "workspace:*",
     "@atlcli/confluence": "workspace:*",
     "@atlcli/export-media": "workspace:*",
     "@atlcli/diagram": "workspace:*",
