@@ -105,6 +105,9 @@ export declare function digestPublicationBundleV1(bundle: PublicationBundleV1, p
 // export: digestPublicationJsonV1
 export declare function digestPublicationJsonV1(value: unknown): Promise<string>;
 
+// export: digestPublicationPageCacheKeyV1
+export declare function digestPublicationPageCacheKeyV1(input: PublicationPageCacheKeyInputV1): Promise<PublicationCacheKeyV1>;
+
 // export: digestPublicationPageV1
 export declare function digestPublicationPageV1(page: PublicationPageV1): Promise<string>;
 
@@ -523,6 +526,23 @@ export interface PublicationNegotiationIssueV1 {
 
 // export: PublicationOutputProfileV1
 export type PublicationOutputProfileV1 = "directory" | "portable-file";
+
+// export: PublicationPageCacheKeyInputV1
+export interface PublicationPageCacheKeyInputV1 {
+    sourceId: string;
+    sourceVersion: string;
+    sourceRepresentation: "atlas_doc_format" | "storage";
+    sourcePolicyDigest: string;
+    decoderSchemaVersion: string;
+    exportBlockSchemaVersion: string;
+    macroCatalogVersion: string;
+    webTargetVersion: string;
+    macroPolicyDigest: string;
+    macroDependencyDigest: string;
+    assetMetadataDigest: string;
+    routeLinkPolicyDigest: string;
+    navigationDependencyDigest: string;
+}
 
 // export: publicationPageDigestInputV1
 export declare function publicationPageDigestInputV1(page: PublicationPageV1): Omit<PublicationPageV1, "pageDigest">;

@@ -1496,7 +1496,7 @@ load a bundle and build all routes with build-time network access disabled.
 
 - [x] Implement bounded mutable page/asset cache ports and the default Node
       filesystem store under the project workspace.
-- [ ] Compute page reuse from the full cache key, not page version alone.
+- [x] Compute page reuse from the full cache key, not page version alone.
 - [ ] Refresh live dependencies and attachment metadata independently of page
       body versions.
 - [ ] Build a complete `PublicationRefreshPlanV1` before mutating active state;
