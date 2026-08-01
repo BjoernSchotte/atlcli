@@ -1510,7 +1510,7 @@ load a bundle and build all routes with build-time network access disabled.
 - [x] Deduplicate content-addressed assets and preserve safe download names.
 - [x] Stage, validate, digest, and atomically activate immutable bundles.
 - [x] Ensure failed/cancelled refresh preserves the last active bundle.
-- [ ] Implement retention/GC by manifest reachability and grace period only.
+- [x] Implement retention/GC by manifest reachability and grace period only.
 - [ ] Test concurrent refresh/fencing, crash points, stale writer, abort, corrupt
       cache recovery, failed asset, confirmed deletion, and ambiguous absence.
 - [ ] STOP on credentialed external fetch, unsafe original SVG write, glob-based

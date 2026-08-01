@@ -57,6 +57,13 @@ then atomically replaces the private `current.json` pointer. A malformed plan,
 asset mismatch, cancellation, or symlinked owned directory therefore leaves the
 last active bundle unchanged. The caller, not this package, owns acquisition,
 macro resolution, MIME/SVG decoding, and retention.
+
+`sweepNodePublicationRetentionV1()` applies the configured bundle/build count
+and grace period only after preflighting every digest-named candidate against
+its manifest. The active pointer, the newest retained bundles, and bundles
+referenced by retained build manifests remain reachable. A missing, symlinked,
+or corrupt owned manifest stops the entire sweep before any deletion; unrelated
+or non-digest workspace entries are never inferred to be owned.
 Astro, Starlight, Pagefind execution, Confluence
 acquisition/authentication, CLI orchestration, and deployment belong to
 separate adapters or hosts.

@@ -1,10 +1,11 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { lstat, mkdtemp, readFile, readdir, symlink, writeFile } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, readFile, readdir, symlink, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type {
   PublicationPageV1,
   PublicationRefreshPlanV1,
+  PublicationSourceSnapshotV1,
 } from "./contracts.js";
 import {
   digestPublicationPageV1,
@@ -17,6 +18,7 @@ import {
   PublicationCacheStoreErrorV1,
   PublicationFileReadErrorV1,
   readBoundedPublicationJsonV1,
+  sweepNodePublicationRetentionV1,
 } from "./node.js";
 
 const roots: string[] = [];
@@ -137,6 +139,70 @@ async function publicationFixture(root: string) {
       bytes: assetBytes,
     }],
     assetPolicy: { maxAssetBytes: 1_024, maxTotalBytes: 2_048 },
+  };
+}
+
+async function revisedPublicationRequest(
+  request: Awaited<ReturnType<typeof publicationFixture>>,
+  revision: string,
+  previousBundleDigest: string,
+) {
+  const previousPage = request.pages[0]!;
+  const pageDraft: PublicationPageV1 = {
+    ...previousPage,
+    sourceVersion: revision,
+    title: `Guide ${revision}`,
+    blocks: [{ type: "paragraph", content: [{ type: "text", text: `Normalized revision ${revision}` }] }],
+    pageDigest: "pending",
+  };
+  const page = { ...pageDraft, pageDigest: await digestPublicationPageV1(pageDraft) };
+  const sourceSnapshot: PublicationSourceSnapshotV1 = {
+    ...request.refreshPlan.sourceSnapshot,
+    sourceDigest: `source-digest-${revision}`,
+    pages: request.refreshPlan.sourceSnapshot.pages.map((source) => ({
+      ...source,
+      sourceVersion: revision,
+      title: `Guide ${revision}`,
+      contentDigest: `content-digest-${revision}`,
+    })),
+  };
+  const planDraft: PublicationRefreshPlanV1 = {
+    schema: "atlcli.publication-refresh-plan/1",
+    previousBundleDigest,
+    sourceSnapshot,
+    changes: [{ kind: "content-change", sourceId: "guide", previousDigest: "content-digest", nextDigest: `content-digest-${revision}` }],
+    complete: true,
+    issues: [],
+    planDigest: "pending",
+  };
+  return {
+    ...request,
+    refreshPlan: { ...planDraft, planDigest: await digestPublicationRefreshPlanV1(planDraft) },
+    pages: [page],
+    expectedActiveBundleDigest: previousBundleDigest,
+  };
+}
+
+function buildManifest(buildDigest: string, bundleDigest: string): object {
+  return {
+    schema: "atlcli.static-publication-manifest/1",
+    bundleDigest,
+    builder: { id: "astro-static", version: "1.0.0", astroVersion: "7.1.6" },
+    projectDigest: "project-digest",
+    configDigest: "config-digest",
+    lockfileDigest: "lockfile-digest",
+    base: "/",
+    outputProfile: "directory",
+    pages: [],
+    assets: [],
+    experience: { id: "test", version: "1.0.0", digest: "experience-digest" },
+    search: { provider: "pagefind", digest: "search-digest", files: [], languages: [], indexedSourceIds: [] },
+    seo: { digest: "seo-digest" },
+    analytics: { provider: "none" },
+    editLinks: { provider: "none", includedSourceIds: [], omittedSourceIds: [] },
+    removedOwnedPaths: [],
+    verification: { valid: true, checkedPages: 0, checkedAssets: 0, issues: [] },
+    buildDigest,
   };
 }
 
@@ -328,5 +394,88 @@ describe("@atlcli/web-publish/node immutable bundle activation", () => {
     await symlink(join(root, "outside"), join(request.workspaceDirectory, "bundles"));
     await expect(materializeNodePublicationBundleV1(request)).rejects.toBeInstanceOf(NodePublicationBundleErrorV1);
     await expect(materializeNodePublicationBundleV1(request)).rejects.toMatchObject({ code: "unsafe-path" });
+  });
+
+  test("collects only manifest-verified unreachable bundles while retained builds keep their bundle reachable", async () => {
+    const { root } = await fixture();
+    const request = await publicationFixture(root);
+    const first = await materializeNodePublicationBundleV1(request);
+    const second = await materializeNodePublicationBundleV1(await revisedPublicationRequest(
+      request,
+      "2",
+      first.bundle.bundleDigest,
+    ));
+    const third = await materializeNodePublicationBundleV1(await revisedPublicationRequest(
+      request,
+      "3",
+      second.bundle.bundleDigest,
+    ));
+    await utimes(first.bundleDirectory, 1, 1);
+    await utimes(second.bundleDirectory, 2, 2);
+    await utimes(third.bundleDirectory, 3, 3);
+    const unownedDirectory = join(request.workspaceDirectory, "bundles", "operator-notes");
+    await mkdir(unownedDirectory);
+    await writeFile(join(unownedDirectory, "README.txt"), "not an atlcli bundle");
+
+    const buildDigest = "f".repeat(64);
+    const buildDirectory = join(request.workspaceDirectory, "builds", buildDigest);
+    await mkdir(buildDirectory, { recursive: true });
+    await writeFile(join(buildDirectory, "manifest.json"), JSON.stringify(buildManifest(buildDigest, first.bundle.bundleDigest)));
+    await utimes(buildDirectory, 4, 4);
+    const obsoleteBuildDigest = "e".repeat(64);
+    const obsoleteBuildDirectory = join(request.workspaceDirectory, "builds", obsoleteBuildDigest);
+    await mkdir(obsoleteBuildDirectory, { recursive: true });
+    await writeFile(
+      join(obsoleteBuildDirectory, "manifest.json"),
+      JSON.stringify(buildManifest(obsoleteBuildDigest, second.bundle.bundleDigest)),
+    );
+    await utimes(obsoleteBuildDirectory, 2.5, 2.5);
+
+    const result = await sweepNodePublicationRetentionV1({
+      workspaceDirectory: request.workspaceDirectory,
+      retention: { bundles: 1, builds: 1, graceSeconds: 0 },
+      now: 10_000,
+    });
+    expect(result).toEqual({
+      retainedBundleDigests: [first.bundle.bundleDigest, third.bundle.bundleDigest].sort(),
+      retainedBuildDigests: [buildDigest],
+      removedBundleDigests: [second.bundle.bundleDigest],
+      removedBuildDigests: [obsoleteBuildDigest],
+    });
+    expect((await readdir(join(request.workspaceDirectory, "bundles"))).sort()).toEqual([
+      first.bundle.bundleDigest,
+      "operator-notes",
+      third.bundle.bundleDigest,
+    ].sort());
+    expect(JSON.parse(await readFile(join(request.workspaceDirectory, "current.json"), "utf8"))).toMatchObject({
+      bundleDigest: third.bundle.bundleDigest,
+    });
+  });
+
+  test("does not remove anything when a digest-named manifest is corrupt or grace has not elapsed", async () => {
+    const { root } = await fixture();
+    const request = await publicationFixture(root);
+    const first = await materializeNodePublicationBundleV1(request);
+    const second = await materializeNodePublicationBundleV1(await revisedPublicationRequest(
+      request,
+      "2",
+      first.bundle.bundleDigest,
+    ));
+    await utimes(first.bundleDirectory, 1, 1);
+    await utimes(second.bundleDirectory, 2, 2);
+    const noGraceExpiry = await sweepNodePublicationRetentionV1({
+      workspaceDirectory: request.workspaceDirectory,
+      retention: { bundles: 1, builds: 1, graceSeconds: 100 },
+      now: 10_000,
+    });
+    expect(noGraceExpiry.removedBundleDigests).toEqual([]);
+
+    await writeFile(join(second.bundleDirectory, "publication.json"), "not-json");
+    await expect(sweepNodePublicationRetentionV1({
+      workspaceDirectory: request.workspaceDirectory,
+      retention: { bundles: 1, builds: 1, graceSeconds: 0 },
+      now: 10_000,
+    })).rejects.toMatchObject({ code: "corrupt-existing-bundle" });
+    expect((await lstat(first.bundleDirectory)).isDirectory()).toBe(true);
   });
 });

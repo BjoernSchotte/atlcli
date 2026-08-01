@@ -2,6 +2,7 @@ import {
   lstat,
   mkdir,
   readFile,
+  readdir,
   rename,
   rm,
   stat,
@@ -18,7 +19,9 @@ import type {
   PublicationPageV1,
   PublicationPageEntryV1,
   PublicationRefreshPlanV1,
+  PublicationRetentionPolicyV1,
   PublicationRouteRecordV1,
+  StaticPublicationManifestV1,
 } from "./contracts.js";
 import {
   assertPublicationBundleReferencesV1,
@@ -26,8 +29,17 @@ import {
   digestPublicationPageV1,
   digestPublicationRefreshPlanV1,
 } from "./digests.js";
+import {
+  DEFAULT_PUBLICATION_CACHE_ASSET_BYTES_V1,
+  DEFAULT_PUBLICATION_CACHE_PAGE_BYTES_V1,
+} from "./node-cache.js";
 import { validatePublicationOutputPathV1 } from "./routes.js";
-import { parsePublicationBundleV1, parsePublicationPageV1, parsePublicationRefreshPlanV1 } from "./schema.js";
+import {
+  parsePublicationBundleV1,
+  parsePublicationPageV1,
+  parsePublicationRefreshPlanV1,
+  parseStaticPublicationManifestV1,
+} from "./schema.js";
 
 const CURRENT_SCHEMA_V1 = "atlcli.publication-current/1" as const;
 const SHA256_HEX = /^[a-f0-9]{64}$/u;
@@ -88,6 +100,23 @@ export class NodePublicationBundleErrorV1 extends Error {
   }
 }
 
+export interface NodePublicationRetentionRequestV1 {
+  /** Absolute project-owned publication workspace. */
+  workspaceDirectory: string;
+  retention: PublicationRetentionPolicyV1;
+  /** Injectable clock (milliseconds since epoch) for deterministic sweeps. */
+  now: number;
+  maxPageBytes?: number;
+  maxAssetBytes?: number;
+}
+
+export interface NodePublicationRetentionResultV1 {
+  retainedBundleDigests: readonly string[];
+  retainedBuildDigests: readonly string[];
+  removedBundleDigests: readonly string[];
+  removedBuildDigests: readonly string[];
+}
+
 interface CurrentPublicationPointerV1 {
   schema: typeof CURRENT_SCHEMA_V1;
   bundleDigest: string;
@@ -129,6 +158,13 @@ async function ensureRealDirectory(path: string): Promise<void> {
   const details = await lstat(path);
   if (details.isSymbolicLink() || !details.isDirectory()) {
     fail("unsafe-path", "publication bundle directories must be real directories, not symlinks");
+  }
+}
+
+async function assertRealDirectory(path: string): Promise<void> {
+  const details = await lstat(path);
+  if (details.isSymbolicLink() || !details.isDirectory()) {
+    fail("unsafe-path", "publication workspace directories must be real directories, not symlinks");
   }
 }
 
@@ -546,4 +582,183 @@ export async function materializeNodePublicationBundleV1(
   } finally {
     await rm(stageRoot, { recursive: true, force: true, maxRetries: 1 }).catch(() => undefined);
   }
+}
+
+interface RetainedBundleRecordV1 {
+  digest: string;
+  directory: string;
+  modifiedAt: number;
+}
+
+interface RetainedBuildRecordV1 {
+  digest: string;
+  bundleDigest: string;
+  directory: string;
+  modifiedAt: number;
+}
+
+function compareNewestFirst<T extends { digest: string; modifiedAt: number }>(left: T, right: T): number {
+  return right.modifiedAt - left.modifiedAt || left.digest.localeCompare(right.digest);
+}
+
+function validateRetentionRequest(request: NodePublicationRetentionRequestV1): {
+  workspaceDirectory: string;
+  maxPageBytes: number;
+  maxAssetBytes: number;
+  graceMilliseconds: number;
+  now: number;
+} {
+  if (!isAbsolute(request.workspaceDirectory)) {
+    fail("invalid-request", "workspaceDirectory must be absolute");
+  }
+  requirePositiveSafeInteger(request.retention.bundles, "retention.bundles");
+  requirePositiveSafeInteger(request.retention.builds, "retention.builds");
+  if (!Number.isSafeInteger(request.retention.graceSeconds) || request.retention.graceSeconds < 0) {
+    fail("invalid-request", "retention.graceSeconds must be a non-negative safe integer");
+  }
+  if (!Number.isSafeInteger(request.now) || request.now < 0) {
+    fail("invalid-request", "now must be a non-negative safe integer");
+  }
+  const graceMilliseconds = request.retention.graceSeconds * 1_000;
+  if (!Number.isSafeInteger(graceMilliseconds)) {
+    fail("invalid-request", "retention grace period is too large");
+  }
+  return {
+    workspaceDirectory: resolve(request.workspaceDirectory),
+    maxPageBytes: requirePositiveSafeInteger(request.maxPageBytes ?? DEFAULT_PUBLICATION_CACHE_PAGE_BYTES_V1, "maxPageBytes"),
+    maxAssetBytes: requirePositiveSafeInteger(request.maxAssetBytes ?? DEFAULT_PUBLICATION_CACHE_ASSET_BYTES_V1, "maxAssetBytes"),
+    graceMilliseconds,
+    now: request.now,
+  };
+}
+
+async function ownedDigestDirectories(
+  workspaceDirectory: string,
+  root: string,
+): Promise<readonly { digest: string; directory: string; modifiedAt: number }[]> {
+  try {
+    await assertRealDirectory(root);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw error;
+  }
+  const entries = await readdir(root, { withFileTypes: true });
+  const result: { digest: string; directory: string; modifiedAt: number }[] = [];
+  for (const entry of entries) {
+    if (!SHA256_HEX.test(entry.name)) continue;
+    const directory = assertInside(root, join(root, entry.name));
+    const details = await lstat(directory);
+    if (details.isSymbolicLink() || !details.isDirectory()) {
+      fail("unsafe-path", "digest-named publication entries must be real directories, not symlinks");
+    }
+    result.push({ digest: entry.name, directory, modifiedAt: Math.floor(details.mtimeMs) });
+  }
+  return result;
+}
+
+async function inspectBundlesForRetention(
+  workspaceDirectory: string,
+  bundlesDirectory: string,
+  maxPageBytes: number,
+  maxAssetBytes: number,
+): Promise<readonly RetainedBundleRecordV1[]> {
+  const entries = await ownedDigestDirectories(workspaceDirectory, bundlesDirectory);
+  for (const entry of entries) {
+    try {
+      await verifyExistingBundle(entry.directory, entry.digest, maxPageBytes, maxAssetBytes);
+    } catch (error) {
+      if (error instanceof NodePublicationBundleErrorV1) throw error;
+      fail("corrupt-existing-bundle", "a digest-named publication bundle is invalid; retention is unsafe");
+    }
+  }
+  return entries;
+}
+
+async function inspectBuildsForRetention(
+  workspaceDirectory: string,
+  buildsDirectory: string,
+  maxPageBytes: number,
+): Promise<readonly RetainedBuildRecordV1[]> {
+  const entries = await ownedDigestDirectories(workspaceDirectory, buildsDirectory);
+  const builds: RetainedBuildRecordV1[] = [];
+  for (const entry of entries) {
+    const manifestPath = assertInside(entry.directory, join(entry.directory, "manifest.json"));
+    const bytes = await readRegularFile(manifestPath, maxPageBytes);
+    if (bytes === undefined) {
+      fail("corrupt-existing-bundle", "a digest-named publication build has no manifest; retention is unsafe");
+    }
+    let manifest: StaticPublicationManifestV1;
+    try {
+      manifest = parseStaticPublicationManifestV1(JSON.parse(new TextDecoder().decode(bytes)));
+    } catch {
+      fail("corrupt-existing-bundle", "a digest-named publication build manifest is invalid; retention is unsafe");
+    }
+    if (!SHA256_HEX.test(manifest.buildDigest) || manifest.buildDigest !== entry.digest || !SHA256_HEX.test(manifest.bundleDigest)) {
+      fail("corrupt-existing-bundle", "a publication build manifest does not match its digest-named directory");
+    }
+    builds.push({ digest: entry.digest, bundleDigest: manifest.bundleDigest, directory: entry.directory, modifiedAt: entry.modifiedAt });
+  }
+  return builds;
+}
+
+async function removeRecordedDirectory(directory: string): Promise<void> {
+  await assertRealDirectory(directory);
+  await rm(directory, { recursive: true, force: false, maxRetries: 1 });
+}
+
+/**
+ * Remove only digest-named, manifest-verified bundle/build directories that are
+ * no longer reachable from the active pointer or retained manifests and have
+ * exceeded the configured grace period. It never infers ownership from a glob
+ * and fails closed before removing anything if a manifest is corrupt.
+ */
+export async function sweepNodePublicationRetentionV1(
+  request: NodePublicationRetentionRequestV1,
+): Promise<NodePublicationRetentionResultV1> {
+  const options = validateRetentionRequest(request);
+  await assertRealDirectory(options.workspaceDirectory);
+  const bundlesDirectory = assertInside(options.workspaceDirectory, join(options.workspaceDirectory, "bundles"));
+  const buildsDirectory = assertInside(options.workspaceDirectory, join(options.workspaceDirectory, "builds"));
+  const bundles = await inspectBundlesForRetention(
+    options.workspaceDirectory,
+    bundlesDirectory,
+    options.maxPageBytes,
+    options.maxAssetBytes,
+  );
+  const builds = await inspectBuildsForRetention(options.workspaceDirectory, buildsDirectory, options.maxPageBytes);
+  const active = await readCurrentPointer(options.workspaceDirectory);
+  const bundleByDigest = new Map(bundles.map((bundle) => [bundle.digest, bundle]));
+  if (active !== undefined && !bundleByDigest.has(active.bundleDigest)) {
+    fail("corrupt-existing-bundle", "active publication pointer does not reference a verified immutable bundle");
+  }
+
+  const retainedBuilds = [...builds].sort(compareNewestFirst).slice(0, request.retention.builds);
+  const retainedBundleDigests = new Set(
+    [...bundles].sort(compareNewestFirst).slice(0, request.retention.bundles).map((bundle) => bundle.digest),
+  );
+  if (active !== undefined) retainedBundleDigests.add(active.bundleDigest);
+  for (const build of retainedBuilds) {
+    if (!bundleByDigest.has(build.bundleDigest)) {
+      fail("corrupt-existing-bundle", "a retained build manifest references a missing immutable bundle");
+    }
+    retainedBundleDigests.add(build.bundleDigest);
+  }
+
+  const isPastGrace = (modifiedAt: number): boolean =>
+    options.now >= modifiedAt && options.now - modifiedAt >= options.graceMilliseconds;
+  const buildsToRemove = builds.filter((build) =>
+    !retainedBuilds.some((retained) => retained.digest === build.digest) && isPastGrace(build.modifiedAt),
+  ).sort((left, right) => left.digest.localeCompare(right.digest));
+  const bundlesToRemove = bundles.filter((bundle) =>
+    !retainedBundleDigests.has(bundle.digest) && isPastGrace(bundle.modifiedAt),
+  ).sort((left, right) => left.digest.localeCompare(right.digest));
+
+  for (const build of buildsToRemove) await removeRecordedDirectory(build.directory);
+  for (const bundle of bundlesToRemove) await removeRecordedDirectory(bundle.directory);
+  return {
+    retainedBundleDigests: [...retainedBundleDigests].sort(),
+    retainedBuildDigests: retainedBuilds.map((build) => build.digest).sort(),
+    removedBundleDigests: bundlesToRemove.map((bundle) => bundle.digest),
+    removedBuildDigests: buildsToRemove.map((build) => build.digest),
+  };
 }

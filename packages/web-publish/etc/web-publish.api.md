@@ -1090,6 +1090,23 @@ export interface NodePublicationCacheStoreOptionsV1 {
     maxAssetBytes?: number;
 }
 
+// export: NodePublicationRetentionRequestV1
+export interface NodePublicationRetentionRequestV1 {
+    workspaceDirectory: string;
+    retention: PublicationRetentionPolicyV1;
+    now: number;
+    maxPageBytes?: number;
+    maxAssetBytes?: number;
+}
+
+// export: NodePublicationRetentionResultV1
+export interface NodePublicationRetentionResultV1 {
+    retainedBundleDigests: readonly string[];
+    retainedBuildDigests: readonly string[];
+    removedBundleDigests: readonly string[];
+    removedBuildDigests: readonly string[];
+}
+
 // export: PublicationBundleAssetBytesV1
 export interface PublicationBundleAssetBytesV1 {
     entry: PublicationAssetEntryV1;
@@ -1113,4 +1130,7 @@ export declare class PublicationFileReadErrorV1 extends Error {
 
 // export: readBoundedPublicationJsonV1
 export declare function readBoundedPublicationJsonV1(path: string, options?: BoundedPublicationJsonReadOptionsV1): Promise<unknown>;
+
+// export: sweepNodePublicationRetentionV1
+export declare function sweepNodePublicationRetentionV1(request: NodePublicationRetentionRequestV1): Promise<NodePublicationRetentionResultV1>;
 ```
