@@ -8,7 +8,6 @@ export default defineConfig({
     title: "Published knowledge",
     description: "A Starlight presentation of normalized ExportBlock content.",
     pagefind: true,
-    expressiveCode: false,
     disable404Route: true,
     customCss: [
       "@atlcli/export-blocks-astro/styles.css",

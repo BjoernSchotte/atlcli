@@ -1575,7 +1575,7 @@ interaction remains bounded and has a complete static fallback.
       without exposing Starlight-generated DOM selectors as compatibility.
 - [x] Consume `@atlcli/export-blocks-astro` for all document bodies and map
       Starlight tokens to its public custom-property/slot contract.
-- [ ] Implement supported Starlight configuration, plugins, component
+- [x] Implement supported Starlight configuration, plugins, component
       overrides, and Expressive Code integration without forking Starlight.
 - [ ] Ship responsive hierarchical navigation, breadcrumbs, page TOC,
       previous/next, search slots, related pages, landing pages, deep-link

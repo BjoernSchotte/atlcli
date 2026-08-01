@@ -17,7 +17,10 @@ test("is a Starlight-free Astro render-kit package with an isolated chart runtim
     "@tanstack/charts": "0.3.1",
     "d3-scale": "4.0.2",
   });
-  expect(manifest.exports).toMatchObject({ "./fixtures": { default: "./dist/fixtures.js" } });
+  expect(manifest.exports).toMatchObject({
+    "./fixtures": { default: "./dist/fixtures.js" },
+    "./components/Caption.astro": "./dist/components/Caption.astro",
+  });
   const source = await readFile(resolve(packageRoot, "src/index.ts"), "utf8");
   expect(source).not.toContain("starlight");
   expect(source).not.toContain("@atlcli/confluence");

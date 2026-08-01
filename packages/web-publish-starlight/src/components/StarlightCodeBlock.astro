@@ -1,0 +1,21 @@
+---
+import { Code } from "@astrojs/starlight/components";
+import Caption from "@atlcli/export-blocks-astro/components/Caption.astro";
+import type { ExportBlock } from "@atlcli/export-blocks";
+import type { AstroExportBlockRenderContextV1 } from "@atlcli/export-blocks-astro";
+
+interface Props {
+  block: Extract<ExportBlock, { type: "codeBlock" }>;
+  context: AstroExportBlockRenderContextV1;
+}
+
+const { block, context } = Astro.props;
+---
+
+<figure data-atlcli-block="code" data-atlcli-code-renderer="starlight-expressive-code">
+  {block.title && <header>{block.title}</header>}
+  {block.code.length > 0
+    ? <Code code={block.code} lang={block.language ?? "text"} locale={context.locale} />
+    : <pre><code class:list={{ [`language-${block.language ?? "text"}`]: true }} /></pre>}
+  {block.caption && <Caption caption={block.caption} locale={context.locale} />}
+</figure>

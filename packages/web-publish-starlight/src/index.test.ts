@@ -60,3 +60,15 @@ test("maps only public Starlight tokens into the render-kit document-body slot",
   }
   expect(stylesheet).not.toContain(".sl-");
 });
+
+test("uses Starlight's public Expressive Code component as a closed code-block override", async () => {
+  const root = resolve(import.meta.dir, "..");
+  const [documentBody, codeBlock] = await Promise.all([
+    readFile(resolve(root, "src/components/StarlightDocumentBody.astro"), "utf8"),
+    readFile(resolve(root, "src/components/StarlightCodeBlock.astro"), "utf8"),
+  ]);
+  expect(documentBody).toContain("code: StarlightCodeBlock");
+  expect(codeBlock).toContain('from "@astrojs/starlight/components"');
+  expect(codeBlock).toContain('data-atlcli-code-renderer="starlight-expressive-code"');
+  expect(codeBlock).not.toContain("set:html");
+});

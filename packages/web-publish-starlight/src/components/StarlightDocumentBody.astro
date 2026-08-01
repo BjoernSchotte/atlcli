@@ -5,6 +5,7 @@ import type {
   AstroExportBlockRenderContextV1,
 } from "@atlcli/export-blocks-astro";
 import type { ExportBlock } from "@atlcli/export-blocks";
+import StarlightCodeBlock from "./StarlightCodeBlock.astro";
 
 interface Props {
   blocks: readonly ExportBlock[];
@@ -13,8 +14,9 @@ interface Props {
 }
 
 const { blocks, context, overrides } = Astro.props;
+const starlightOverrides: AstroExportBlockOverridesV1 = { code: StarlightCodeBlock, ...overrides };
 ---
 
 <section data-atlcli-starlight-slot="document-body">
-  <ExportDocument blocks={blocks} context={context} overrides={overrides} />
+  <ExportDocument blocks={blocks} context={context} overrides={starlightOverrides} />
 </section>
