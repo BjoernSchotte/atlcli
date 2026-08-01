@@ -2898,11 +2898,12 @@ archived catalog phases complete, and return `archived_only` for a matching
 archived `LEGACY` space; the packed UI stops before key storage or agent work.
 An inaccessible same-tenant Confluence reference yields the deliberately
 non-disclosing `incomplete` stop in both hosts; the packed UI persists no key
-and starts no worker. Duplicate natural-language names remain a typed stop
-before key storage or agent work. This advances, but does not close, the full
-CLI/packed resolution-matrix gate above: the remaining duplicate alias,
-pagination, precedence, context, cross-tenant, and prompt-injection parity
-cases still require their own host-boundary fixtures.
+and starts no worker. Duplicate Jira natural-language names return the same
+typed ambiguity in the production CLI and packed sidebar before key storage or
+agent work. This advances, but does not close, the full CLI/packed
+resolution-matrix gate above: the remaining duplicate alias, pagination,
+precedence, context, cross-tenant, and prompt-injection parity cases still
+require their own host-boundary fixtures.
 
 ### T4 — Add durable session, workspace, graph, and checkpoint stores
 

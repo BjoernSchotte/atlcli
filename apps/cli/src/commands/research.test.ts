@@ -466,7 +466,7 @@ describe("research CLI one-shot contract", () => {
     expect(harness.stderr.join("")).toContain("confluence:ACCOUNT:cli_flag:locked");
   });
 
-  test("resolves exact keys and aliases while stopping archived and inaccessible Confluence scope through the production CLI catalog boundary", async () => {
+  test("resolves exact keys and aliases while stopping ambiguous, archived, and inaccessible scope through the production CLI catalog boundary", async () => {
     const originalFetch = globalThis.fetch;
     const requests: string[] = [];
     globalThis.fetch = (async (input: RequestInfo | URL) => {
@@ -476,6 +476,15 @@ describe("research CLI one-shot contract", () => {
         return Response.json({
           values: [{ id: "103", key: "DEMO", name: "Demo project", archived: false }],
           total: 1,
+        });
+      }
+      if (url.pathname === "/rest/api/3/project/search" && url.searchParams.get("query") === "Shared") {
+        return Response.json({
+          values: [
+            { id: "101", key: "ALPHA", name: "Shared", archived: false },
+            { id: "102", key: "BETA", name: "Shared", archived: false },
+          ],
+          total: 2,
         });
       }
       if (url.pathname === "/rest/api/3/project/DEMO") {
@@ -551,6 +560,13 @@ describe("research CLI one-shot contract", () => {
           profile,
         ),
       });
+      const duplicateNameOutcome = await defaultResearchCliDependencies.resolveScope({
+        profile,
+        request: buildResearchRequest(
+          parseResearchCliInput(["Research", "the", "Shared", "Jira", "project."], {}),
+          profile,
+        ),
+      });
 
       expect(keyOutcome).toMatchObject({
         kind: "ready",
@@ -605,7 +621,21 @@ describe("research CLI one-shot contract", () => {
         clarification: { reason: "incomplete", candidateIds: [] },
         candidateChoices: [],
       });
-      expect(requests.filter((url) => url.includes("/rest/api/3/project/search"))).toHaveLength(1);
+      expect(duplicateNameOutcome).toMatchObject({
+        kind: "clarification_required",
+        clarification: {
+          reason: "ambiguous",
+          candidateIds: [
+            "research-scope-candidate:jira-project-alpha",
+            "research-scope-candidate:jira-project-beta",
+          ],
+        },
+        candidateChoices: [
+          { key: "ALPHA", name: "Shared" },
+          { key: "BETA", name: "Shared" },
+        ],
+      });
+      expect(requests.filter((url) => url.includes("/rest/api/3/project/search"))).toHaveLength(2);
       expect(requests.filter((url) => url.includes("/rest/api/3/project/DEMO"))).toHaveLength(1);
       expect(requests.filter((url) => url.includes("/wiki/api/v2/spaces"))).toHaveLength(10);
       expect(requests.filter((url) => url.includes("keys=KB"))).toHaveLength(2);
