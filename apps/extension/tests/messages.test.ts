@@ -236,6 +236,19 @@ describe("message guards", () => {
     expect(isResearchEvent({
       ...base,
       event: {
+        kind: "reconciliation_disposition",
+        seq: 9,
+        at: "2026-07-31T12:00:00.000Z",
+        dispositionId: "reconciliation-disposition:r1:1",
+        defectId: "defect:unsupported-finding",
+        decision: "abstain",
+        reasonCode: "material_defect",
+        status: "recorded",
+      },
+    })).toBe(true);
+    expect(isResearchEvent({
+      ...base,
+      event: {
         kind: "budget",
         seq: 9,
         at: "2026-07-31T12:00:00.000Z",

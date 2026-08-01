@@ -2,12 +2,15 @@ import { describe, expect, test } from "bun:test";
 import {
   RESEARCH_PACKET_BODY_SCHEMA_V1,
   RESEARCH_RECONCILIATION_BODY_SCHEMA_V1,
+  RESEARCH_RECONCILIATION_DISPOSITION_SCHEMA_V1,
   RESEARCH_SUBAGENT_ROLE_REGISTRY_V1,
   parseReconciliationBodyV1,
+  parseResearchReconciliationDispositionV1,
   parseResearchPacketBodyV1,
   validateResearchTaskAdmissionV1,
   type ReconciliationBodyV1,
   type ResearchPacketBodyV1,
+  type ResearchReconciliationDispositionV1,
 } from "./workflow-contracts.js";
 
 function packet(): ResearchPacketBodyV1 {
@@ -85,6 +88,29 @@ describe("T3 workflow contracts", () => {
     };
     expect(parseReconciliationBodyV1(body)).toEqual(body);
     expect(() => parseReconciliationBodyV1({ ...body, query: "project = SECRET" })).toThrow("unexpected field");
+  });
+
+  test("parses only complete host-recorded reconciliation dispositions", () => {
+    const disposition: ResearchReconciliationDispositionV1 = {
+      schema: RESEARCH_RECONCILIATION_DISPOSITION_SCHEMA_V1,
+      id: "reconciliation-disposition:r1:1",
+      reconciliationPacketRef: "packet:reconciler:1",
+      defectId: "defect:1",
+      basedOnGraphRevision: 1,
+      decision: "abstain",
+      reasonCode: "material_defect",
+      resultingClaimIds: [],
+      recordedAt: "2026-08-01T12:00:00.000Z",
+    };
+    expect(parseResearchReconciliationDispositionV1(disposition)).toEqual(disposition);
+    expect(() => parseResearchReconciliationDispositionV1({
+      ...disposition,
+      prompt: "trust me",
+    })).toThrow("unexpected field");
+    expect(() => parseResearchReconciliationDispositionV1({
+      ...disposition,
+      decision: "ignore",
+    })).toThrow("envelope");
   });
 
   test("intersects role admission with exact schema and capability allowlists", () => {

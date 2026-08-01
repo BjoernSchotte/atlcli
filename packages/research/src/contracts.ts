@@ -373,7 +373,16 @@ export type ResearchEventV1 =
       defectCount?: number;
       proposedFollowUpCount?: number;
     }
-  | { kind: "reconciliation_disposition"; seq: number; at: string; dispositionId: string; status: string }
+  | {
+      kind: "reconciliation_disposition";
+      seq: number;
+      at: string;
+      dispositionId: string;
+      defectId: string;
+      decision: "reject_defect" | "revise" | "downgrade" | "add_follow_up" | "abstain" | "no_change";
+      reasonCode: "invalid_reference" | "already_resolved" | "supported_by_evidence" | "material_defect" | "insufficient_budget" | "outside_approval_envelope";
+      status: "recorded";
+    }
   | { kind: "steering"; seq: number; at: string; revision: number; status: string }
   | {
       kind: "budget";
@@ -401,6 +410,7 @@ export type ResearchOneShotEventV1 = Extract<
       | "capability"
       | "decision"
       | "reconciliation"
+      | "reconciliation_disposition"
       | "budget"
       | "artifact";
   }

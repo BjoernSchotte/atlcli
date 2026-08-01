@@ -280,6 +280,9 @@ export declare function parseResearchQueryFingerprint(value: string): {
     pageSize: number;
 };
 
+// export: parseResearchReconciliationDispositionV1
+export declare function parseResearchReconciliationDispositionV1(value: unknown): ResearchReconciliationDispositionV1;
+
 // export: parseResearchTaskBodyV1
 export declare function parseResearchTaskBodyV1(schema: ResearchTaskOutputSchemaV1, value: unknown): ResearchPacketBodyV1 | ReconciliationBodyV1 | ResearchAgentDraftV1;
 
@@ -451,11 +454,31 @@ export declare const RESEARCH_RECONCILIATION_BODY_JSON_SCHEMA_V1: Record<string,
 // export: RESEARCH_RECONCILIATION_BODY_SCHEMA_V1
 export declare const RESEARCH_RECONCILIATION_BODY_SCHEMA_V1: "atlcli.reconciliation-body/v1";
 
+// export: RESEARCH_RECONCILIATION_DECISIONS_V1
+export declare const RESEARCH_RECONCILIATION_DECISIONS_V1: readonly [
+    "reject_defect",
+    "revise",
+    "downgrade",
+    "add_follow_up",
+    "abstain",
+    "no_change"
+];
+
 // export: RESEARCH_RECONCILIATION_DISPOSITION_SCHEMA_V1
 export declare const RESEARCH_RECONCILIATION_DISPOSITION_SCHEMA_V1: "atlcli.reconciliation-disposition/v1";
 
 // export: RESEARCH_RECONCILIATION_INPUT_SCHEMA_V1
 export declare const RESEARCH_RECONCILIATION_INPUT_SCHEMA_V1: "atlcli.reconciliation-input/v1";
+
+// export: RESEARCH_RECONCILIATION_REASON_CODES_V1
+export declare const RESEARCH_RECONCILIATION_REASON_CODES_V1: readonly [
+    "invalid_reference",
+    "already_resolved",
+    "supported_by_evidence",
+    "material_defect",
+    "insufficient_budget",
+    "outside_approval_envelope"
+];
 
 // export: RESEARCH_REPORT_ARTIFACT_PATH_V1
 export declare const RESEARCH_REPORT_ARTIFACT_PATH_V1: "/artifacts/report.md";
@@ -985,7 +1008,10 @@ export type ResearchEventV1 = {
     seq: number;
     at: string;
     dispositionId: string;
-    status: string;
+    defectId: string;
+    decision: "reject_defect" | "revise" | "downgrade" | "add_follow_up" | "abstain" | "no_change";
+    reasonCode: "invalid_reference" | "already_resolved" | "supported_by_evidence" | "material_defect" | "insufficient_budget" | "outside_approval_envelope";
+    status: "recorded";
 } | {
     kind: "steering";
     seq: number;
@@ -1245,7 +1271,7 @@ export type ResearchNodeStatusV1 = "proposed" | "ready" | "running" | "complete"
 
 // export: ResearchOneShotEventV1
 export type ResearchOneShotEventV1 = Extract<ResearchEventV1, {
-    kind: "phase" | "progress" | "brief" | "plan" | "task" | "subagent" | "capability" | "decision" | "reconciliation" | "budget" | "artifact";
+    kind: "phase" | "progress" | "brief" | "plan" | "task" | "subagent" | "capability" | "decision" | "reconciliation" | "reconciliation_disposition" | "budget" | "artifact";
 }>;
 
 // export: ResearchOneShotPolicyV1
@@ -1372,8 +1398,8 @@ export interface ResearchReconciliationDispositionV1 {
     reconciliationPacketRef: string;
     defectId: string;
     basedOnGraphRevision: number;
-    decision: "reject_defect" | "revise" | "downgrade" | "add_follow_up" | "abstain" | "no_change";
-    reasonCode: "invalid_reference" | "already_resolved" | "supported_by_evidence" | "material_defect" | "insufficient_budget" | "outside_approval_envelope";
+    decision: (typeof RESEARCH_RECONCILIATION_DECISIONS_V1)[number];
+    reasonCode: (typeof RESEARCH_RECONCILIATION_REASON_CODES_V1)[number];
     resultingGraphRevision?: number;
     resultingNodeId?: string;
     resultingClaimIds: string[];
@@ -2264,6 +2290,9 @@ export declare function parseResearchQueryFingerprint(value: string): {
     pageSize: number;
 };
 
+// export: parseResearchReconciliationDispositionV1
+export declare function parseResearchReconciliationDispositionV1(value: unknown): ResearchReconciliationDispositionV1;
+
 // export: parseResearchTaskBodyV1
 export declare function parseResearchTaskBodyV1(schema: ResearchTaskOutputSchemaV1, value: unknown): ResearchPacketBodyV1 | ReconciliationBodyV1 | ResearchAgentDraftV1;
 
@@ -2435,11 +2464,31 @@ export declare const RESEARCH_RECONCILIATION_BODY_JSON_SCHEMA_V1: Record<string,
 // export: RESEARCH_RECONCILIATION_BODY_SCHEMA_V1
 export declare const RESEARCH_RECONCILIATION_BODY_SCHEMA_V1: "atlcli.reconciliation-body/v1";
 
+// export: RESEARCH_RECONCILIATION_DECISIONS_V1
+export declare const RESEARCH_RECONCILIATION_DECISIONS_V1: readonly [
+    "reject_defect",
+    "revise",
+    "downgrade",
+    "add_follow_up",
+    "abstain",
+    "no_change"
+];
+
 // export: RESEARCH_RECONCILIATION_DISPOSITION_SCHEMA_V1
 export declare const RESEARCH_RECONCILIATION_DISPOSITION_SCHEMA_V1: "atlcli.reconciliation-disposition/v1";
 
 // export: RESEARCH_RECONCILIATION_INPUT_SCHEMA_V1
 export declare const RESEARCH_RECONCILIATION_INPUT_SCHEMA_V1: "atlcli.reconciliation-input/v1";
+
+// export: RESEARCH_RECONCILIATION_REASON_CODES_V1
+export declare const RESEARCH_RECONCILIATION_REASON_CODES_V1: readonly [
+    "invalid_reference",
+    "already_resolved",
+    "supported_by_evidence",
+    "material_defect",
+    "insufficient_budget",
+    "outside_approval_envelope"
+];
 
 // export: RESEARCH_REPORT_ARTIFACT_PATH_V1
 export declare const RESEARCH_REPORT_ARTIFACT_PATH_V1: "/artifacts/report.md";
@@ -2969,7 +3018,10 @@ export type ResearchEventV1 = {
     seq: number;
     at: string;
     dispositionId: string;
-    status: string;
+    defectId: string;
+    decision: "reject_defect" | "revise" | "downgrade" | "add_follow_up" | "abstain" | "no_change";
+    reasonCode: "invalid_reference" | "already_resolved" | "supported_by_evidence" | "material_defect" | "insufficient_budget" | "outside_approval_envelope";
+    status: "recorded";
 } | {
     kind: "steering";
     seq: number;
@@ -3229,7 +3281,7 @@ export type ResearchNodeStatusV1 = "proposed" | "ready" | "running" | "complete"
 
 // export: ResearchOneShotEventV1
 export type ResearchOneShotEventV1 = Extract<ResearchEventV1, {
-    kind: "phase" | "progress" | "brief" | "plan" | "task" | "subagent" | "capability" | "decision" | "reconciliation" | "budget" | "artifact";
+    kind: "phase" | "progress" | "brief" | "plan" | "task" | "subagent" | "capability" | "decision" | "reconciliation" | "reconciliation_disposition" | "budget" | "artifact";
 }>;
 
 // export: ResearchOneShotPolicyV1
@@ -3356,8 +3408,8 @@ export interface ResearchReconciliationDispositionV1 {
     reconciliationPacketRef: string;
     defectId: string;
     basedOnGraphRevision: number;
-    decision: "reject_defect" | "revise" | "downgrade" | "add_follow_up" | "abstain" | "no_change";
-    reasonCode: "invalid_reference" | "already_resolved" | "supported_by_evidence" | "material_defect" | "insufficient_budget" | "outside_approval_envelope";
+    decision: (typeof RESEARCH_RECONCILIATION_DECISIONS_V1)[number];
+    reasonCode: (typeof RESEARCH_RECONCILIATION_REASON_CODES_V1)[number];
     resultingGraphRevision?: number;
     resultingNodeId?: string;
     resultingClaimIds: string[];
@@ -4246,6 +4298,9 @@ export declare function parseResearchQueryFingerprint(value: string): {
     pageSize: number;
 };
 
+// export: parseResearchReconciliationDispositionV1
+export declare function parseResearchReconciliationDispositionV1(value: unknown): ResearchReconciliationDispositionV1;
+
 // export: parseResearchTaskBodyV1
 export declare function parseResearchTaskBodyV1(schema: ResearchTaskOutputSchemaV1, value: unknown): ResearchPacketBodyV1 | ReconciliationBodyV1 | ResearchAgentDraftV1;
 
@@ -4417,11 +4472,31 @@ export declare const RESEARCH_RECONCILIATION_BODY_JSON_SCHEMA_V1: Record<string,
 // export: RESEARCH_RECONCILIATION_BODY_SCHEMA_V1
 export declare const RESEARCH_RECONCILIATION_BODY_SCHEMA_V1: "atlcli.reconciliation-body/v1";
 
+// export: RESEARCH_RECONCILIATION_DECISIONS_V1
+export declare const RESEARCH_RECONCILIATION_DECISIONS_V1: readonly [
+    "reject_defect",
+    "revise",
+    "downgrade",
+    "add_follow_up",
+    "abstain",
+    "no_change"
+];
+
 // export: RESEARCH_RECONCILIATION_DISPOSITION_SCHEMA_V1
 export declare const RESEARCH_RECONCILIATION_DISPOSITION_SCHEMA_V1: "atlcli.reconciliation-disposition/v1";
 
 // export: RESEARCH_RECONCILIATION_INPUT_SCHEMA_V1
 export declare const RESEARCH_RECONCILIATION_INPUT_SCHEMA_V1: "atlcli.reconciliation-input/v1";
+
+// export: RESEARCH_RECONCILIATION_REASON_CODES_V1
+export declare const RESEARCH_RECONCILIATION_REASON_CODES_V1: readonly [
+    "invalid_reference",
+    "already_resolved",
+    "supported_by_evidence",
+    "material_defect",
+    "insufficient_budget",
+    "outside_approval_envelope"
+];
 
 // export: RESEARCH_REPORT_ARTIFACT_PATH_V1
 export declare const RESEARCH_REPORT_ARTIFACT_PATH_V1: "/artifacts/report.md";
@@ -4951,7 +5026,10 @@ export type ResearchEventV1 = {
     seq: number;
     at: string;
     dispositionId: string;
-    status: string;
+    defectId: string;
+    decision: "reject_defect" | "revise" | "downgrade" | "add_follow_up" | "abstain" | "no_change";
+    reasonCode: "invalid_reference" | "already_resolved" | "supported_by_evidence" | "material_defect" | "insufficient_budget" | "outside_approval_envelope";
+    status: "recorded";
 } | {
     kind: "steering";
     seq: number;
@@ -5211,7 +5289,7 @@ export type ResearchNodeStatusV1 = "proposed" | "ready" | "running" | "complete"
 
 // export: ResearchOneShotEventV1
 export type ResearchOneShotEventV1 = Extract<ResearchEventV1, {
-    kind: "phase" | "progress" | "brief" | "plan" | "task" | "subagent" | "capability" | "decision" | "reconciliation" | "budget" | "artifact";
+    kind: "phase" | "progress" | "brief" | "plan" | "task" | "subagent" | "capability" | "decision" | "reconciliation" | "reconciliation_disposition" | "budget" | "artifact";
 }>;
 
 // export: ResearchOneShotPolicyV1
@@ -5338,8 +5416,8 @@ export interface ResearchReconciliationDispositionV1 {
     reconciliationPacketRef: string;
     defectId: string;
     basedOnGraphRevision: number;
-    decision: "reject_defect" | "revise" | "downgrade" | "add_follow_up" | "abstain" | "no_change";
-    reasonCode: "invalid_reference" | "already_resolved" | "supported_by_evidence" | "material_defect" | "insufficient_budget" | "outside_approval_envelope";
+    decision: (typeof RESEARCH_RECONCILIATION_DECISIONS_V1)[number];
+    reasonCode: (typeof RESEARCH_RECONCILIATION_REASON_CODES_V1)[number];
     resultingGraphRevision?: number;
     resultingNodeId?: string;
     resultingClaimIds: string[];
@@ -6058,6 +6136,10 @@ export declare function createBoundedResearchSubagentMiddleware(model: BaseChatM
     }) => void | Promise<void>;
     structuredOutputStrategy?: "tool" | "provider";
     activeGraph?: () => ResearchGraphV1 | undefined;
+    synthesisReconciliationContext?: () => {
+        reconciliationPacketRef?: string;
+        dispositions: readonly ResearchReconciliationDispositionV1[];
+    };
 }): {
     name: string;
     tools: DynamicStructuredTool<z.ZodObject<{
@@ -6158,6 +6240,17 @@ export declare function createResearchKeyScopeSeedV1(input: {
 
 // export: createResearchPtcTools
 export declare function createResearchPtcTools(broker: ResearchCapabilityBroker, options?: ResearchPtcToolOptions): DynamicStructuredTool[];
+
+// export: createResearchReconciliationDispositionPtcTool
+export declare function createResearchReconciliationDispositionPtcTool(catalogGraph: ResearchGraphV1, options: {
+    activeGraph: () => ResearchGraphV1 | undefined;
+    reconciliationPacket: (taskId: string) => ResearchAcceptedPacketV1 | undefined;
+    isKnownTarget?: (defect: ResearchReconciliationDefectV1, packet: ResearchAcceptedPacketV1) => boolean;
+    canRecord?: () => boolean;
+    now?: () => number;
+    onAccepted?: (dispositions: ResearchReconciliationDispositionV1[]) => void;
+    onDiagnostic?: (status: "started" | "completed" | "failed", errorCode?: string) => void;
+}): DynamicStructuredTool;
 
 // export: createResearchScopeBindingV1
 export declare function createResearchScopeBindingV1(input: {
@@ -6331,6 +6424,9 @@ export declare function parseResearchQueryFingerprint(value: string): {
     query: ResearchSearchQueryV1;
     pageSize: number;
 };
+
+// export: parseResearchReconciliationDispositionV1
+export declare function parseResearchReconciliationDispositionV1(value: unknown): ResearchReconciliationDispositionV1;
 
 // export: parseResearchTaskBodyV1
 export declare function parseResearchTaskBodyV1(schema: ResearchTaskOutputSchemaV1, value: unknown): ResearchPacketBodyV1 | ReconciliationBodyV1 | ResearchAgentDraftV1;
@@ -6520,11 +6616,31 @@ export declare const RESEARCH_RECONCILIATION_BODY_JSON_SCHEMA_V1: Record<string,
 // export: RESEARCH_RECONCILIATION_BODY_SCHEMA_V1
 export declare const RESEARCH_RECONCILIATION_BODY_SCHEMA_V1: "atlcli.reconciliation-body/v1";
 
+// export: RESEARCH_RECONCILIATION_DECISIONS_V1
+export declare const RESEARCH_RECONCILIATION_DECISIONS_V1: readonly [
+    "reject_defect",
+    "revise",
+    "downgrade",
+    "add_follow_up",
+    "abstain",
+    "no_change"
+];
+
 // export: RESEARCH_RECONCILIATION_DISPOSITION_SCHEMA_V1
 export declare const RESEARCH_RECONCILIATION_DISPOSITION_SCHEMA_V1: "atlcli.reconciliation-disposition/v1";
 
 // export: RESEARCH_RECONCILIATION_INPUT_SCHEMA_V1
 export declare const RESEARCH_RECONCILIATION_INPUT_SCHEMA_V1: "atlcli.reconciliation-input/v1";
+
+// export: RESEARCH_RECONCILIATION_REASON_CODES_V1
+export declare const RESEARCH_RECONCILIATION_REASON_CODES_V1: readonly [
+    "invalid_reference",
+    "already_resolved",
+    "supported_by_evidence",
+    "material_defect",
+    "insufficient_budget",
+    "outside_approval_envelope"
+];
 
 // export: RESEARCH_REPORT_ARTIFACT_PATH_V1
 export declare const RESEARCH_REPORT_ARTIFACT_PATH_V1: "/artifacts/report.md";
@@ -7073,7 +7189,10 @@ export type ResearchEventV1 = {
     seq: number;
     at: string;
     dispositionId: string;
-    status: string;
+    defectId: string;
+    decision: "reject_defect" | "revise" | "downgrade" | "add_follow_up" | "abstain" | "no_change";
+    reasonCode: "invalid_reference" | "already_resolved" | "supported_by_evidence" | "material_defect" | "insufficient_budget" | "outside_approval_envelope";
+    status: "recorded";
 } | {
     kind: "steering";
     seq: number;
@@ -7333,7 +7452,7 @@ export type ResearchNodeStatusV1 = "proposed" | "ready" | "running" | "complete"
 
 // export: ResearchOneShotEventV1
 export type ResearchOneShotEventV1 = Extract<ResearchEventV1, {
-    kind: "phase" | "progress" | "brief" | "plan" | "task" | "subagent" | "capability" | "decision" | "reconciliation" | "budget" | "artifact";
+    kind: "phase" | "progress" | "brief" | "plan" | "task" | "subagent" | "capability" | "decision" | "reconciliation" | "reconciliation_disposition" | "budget" | "artifact";
 }>;
 
 // export: ResearchOneShotPolicyV1
@@ -7484,8 +7603,8 @@ export interface ResearchReconciliationDispositionV1 {
     reconciliationPacketRef: string;
     defectId: string;
     basedOnGraphRevision: number;
-    decision: "reject_defect" | "revise" | "downgrade" | "add_follow_up" | "abstain" | "no_change";
-    reasonCode: "invalid_reference" | "already_resolved" | "supported_by_evidence" | "material_defect" | "insufficient_budget" | "outside_approval_envelope";
+    decision: (typeof RESEARCH_RECONCILIATION_DECISIONS_V1)[number];
+    reasonCode: (typeof RESEARCH_RECONCILIATION_REASON_CODES_V1)[number];
     resultingGraphRevision?: number;
     resultingNodeId?: string;
     resultingClaimIds: string[];
@@ -8525,7 +8644,10 @@ export type ResearchEventV1 = {
     seq: number;
     at: string;
     dispositionId: string;
-    status: string;
+    defectId: string;
+    decision: "reject_defect" | "revise" | "downgrade" | "add_follow_up" | "abstain" | "no_change";
+    reasonCode: "invalid_reference" | "already_resolved" | "supported_by_evidence" | "material_defect" | "insufficient_budget" | "outside_approval_envelope";
+    status: "recorded";
 } | {
     kind: "steering";
     seq: number;
@@ -8593,7 +8715,7 @@ export interface ResearchLimitsV1 {
 
 // export: ResearchOneShotEventV1
 export type ResearchOneShotEventV1 = Extract<ResearchEventV1, {
-    kind: "phase" | "progress" | "brief" | "plan" | "task" | "subagent" | "capability" | "decision" | "reconciliation" | "budget" | "artifact";
+    kind: "phase" | "progress" | "brief" | "plan" | "task" | "subagent" | "capability" | "decision" | "reconciliation" | "reconciliation_disposition" | "budget" | "artifact";
 }>;
 
 // export: ResearchOneShotPolicyV1
@@ -9155,6 +9277,10 @@ export declare function createBoundedResearchSubagentMiddleware(model: BaseChatM
     }) => void | Promise<void>;
     structuredOutputStrategy?: "tool" | "provider";
     activeGraph?: () => ResearchGraphV1 | undefined;
+    synthesisReconciliationContext?: () => {
+        reconciliationPacketRef?: string;
+        dispositions: readonly ResearchReconciliationDispositionV1[];
+    };
 }): {
     name: string;
     tools: DynamicStructuredTool<z.ZodObject<{
@@ -9255,6 +9381,17 @@ export declare function createResearchKeyScopeSeedV1(input: {
 
 // export: createResearchPtcTools
 export declare function createResearchPtcTools(broker: ResearchCapabilityBroker, options?: ResearchPtcToolOptions): DynamicStructuredTool[];
+
+// export: createResearchReconciliationDispositionPtcTool
+export declare function createResearchReconciliationDispositionPtcTool(catalogGraph: ResearchGraphV1, options: {
+    activeGraph: () => ResearchGraphV1 | undefined;
+    reconciliationPacket: (taskId: string) => ResearchAcceptedPacketV1 | undefined;
+    isKnownTarget?: (defect: ResearchReconciliationDefectV1, packet: ResearchAcceptedPacketV1) => boolean;
+    canRecord?: () => boolean;
+    now?: () => number;
+    onAccepted?: (dispositions: ResearchReconciliationDispositionV1[]) => void;
+    onDiagnostic?: (status: "started" | "completed" | "failed", errorCode?: string) => void;
+}): DynamicStructuredTool;
 
 // export: createResearchScopeBindingV1
 export declare function createResearchScopeBindingV1(input: {
@@ -9444,6 +9581,9 @@ export declare function parseResearchQueryFingerprint(value: string): {
     pageSize: number;
 };
 
+// export: parseResearchReconciliationDispositionV1
+export declare function parseResearchReconciliationDispositionV1(value: unknown): ResearchReconciliationDispositionV1;
+
 // export: parseResearchTaskBodyV1
 export declare function parseResearchTaskBodyV1(schema: ResearchTaskOutputSchemaV1, value: unknown): ResearchPacketBodyV1 | ReconciliationBodyV1 | ResearchAgentDraftV1;
 
@@ -9632,11 +9772,31 @@ export declare const RESEARCH_RECONCILIATION_BODY_JSON_SCHEMA_V1: Record<string,
 // export: RESEARCH_RECONCILIATION_BODY_SCHEMA_V1
 export declare const RESEARCH_RECONCILIATION_BODY_SCHEMA_V1: "atlcli.reconciliation-body/v1";
 
+// export: RESEARCH_RECONCILIATION_DECISIONS_V1
+export declare const RESEARCH_RECONCILIATION_DECISIONS_V1: readonly [
+    "reject_defect",
+    "revise",
+    "downgrade",
+    "add_follow_up",
+    "abstain",
+    "no_change"
+];
+
 // export: RESEARCH_RECONCILIATION_DISPOSITION_SCHEMA_V1
 export declare const RESEARCH_RECONCILIATION_DISPOSITION_SCHEMA_V1: "atlcli.reconciliation-disposition/v1";
 
 // export: RESEARCH_RECONCILIATION_INPUT_SCHEMA_V1
 export declare const RESEARCH_RECONCILIATION_INPUT_SCHEMA_V1: "atlcli.reconciliation-input/v1";
+
+// export: RESEARCH_RECONCILIATION_REASON_CODES_V1
+export declare const RESEARCH_RECONCILIATION_REASON_CODES_V1: readonly [
+    "invalid_reference",
+    "already_resolved",
+    "supported_by_evidence",
+    "material_defect",
+    "insufficient_budget",
+    "outside_approval_envelope"
+];
 
 // export: RESEARCH_REPORT_ARTIFACT_PATH_V1
 export declare const RESEARCH_REPORT_ARTIFACT_PATH_V1: "/artifacts/report.md";
@@ -10185,7 +10345,10 @@ export type ResearchEventV1 = {
     seq: number;
     at: string;
     dispositionId: string;
-    status: string;
+    defectId: string;
+    decision: "reject_defect" | "revise" | "downgrade" | "add_follow_up" | "abstain" | "no_change";
+    reasonCode: "invalid_reference" | "already_resolved" | "supported_by_evidence" | "material_defect" | "insufficient_budget" | "outside_approval_envelope";
+    status: "recorded";
 } | {
     kind: "steering";
     seq: number;
@@ -10445,7 +10608,7 @@ export type ResearchNodeStatusV1 = "proposed" | "ready" | "running" | "complete"
 
 // export: ResearchOneShotEventV1
 export type ResearchOneShotEventV1 = Extract<ResearchEventV1, {
-    kind: "phase" | "progress" | "brief" | "plan" | "task" | "subagent" | "capability" | "decision" | "reconciliation" | "budget" | "artifact";
+    kind: "phase" | "progress" | "brief" | "plan" | "task" | "subagent" | "capability" | "decision" | "reconciliation" | "reconciliation_disposition" | "budget" | "artifact";
 }>;
 
 // export: ResearchOneShotPolicyV1
@@ -10596,8 +10759,8 @@ export interface ResearchReconciliationDispositionV1 {
     reconciliationPacketRef: string;
     defectId: string;
     basedOnGraphRevision: number;
-    decision: "reject_defect" | "revise" | "downgrade" | "add_follow_up" | "abstain" | "no_change";
-    reasonCode: "invalid_reference" | "already_resolved" | "supported_by_evidence" | "material_defect" | "insufficient_budget" | "outside_approval_envelope";
+    decision: (typeof RESEARCH_RECONCILIATION_DECISIONS_V1)[number];
+    reasonCode: (typeof RESEARCH_RECONCILIATION_REASON_CODES_V1)[number];
     resultingGraphRevision?: number;
     resultingNodeId?: string;
     resultingClaimIds: string[];

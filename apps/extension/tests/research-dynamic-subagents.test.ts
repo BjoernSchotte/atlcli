@@ -13,8 +13,11 @@ import {
 } from "@atlcli/research/graph";
 import {
   ResearchCapabilityBroker,
+  RESEARCH_ACCEPTED_PACKET_SCHEMA_V1,
+  RESEARCH_RECONCILIATION_BODY_SCHEMA_V1,
   createResearchBriefV1,
   encodeResearchTaskDescriptionV1,
+  type ResearchAcceptedPacketV1,
   type ResearchOneShotEventV1,
 } from "@atlcli/research";
 import {
@@ -23,6 +26,7 @@ import {
 import {
   buildDynamicSupervisorPrompt,
   createResearchGraphProposalPtcTool,
+  createResearchReconciliationDispositionPtcTool,
   researchRecursionLimitV1,
   runResearchAgent,
 } from "@atlcli/research/browser/agent";
@@ -307,6 +311,88 @@ test("repairs a provider-shaped synthesizer result rejected by the authoritative
   })).resolves.toBe(validDraft);
   expect(invokes).toBe(2);
   expect(diagnostics).toEqual(["started", "repairing", "completed"]);
+});
+
+test("blocks synthesis until host reconciliation context exists and injects only accepted dispositions", async () => {
+  const graph = synthesisOnlyGraph();
+  const synthesisTask = taskEnvelope(graph, "research-node:synthesizer");
+  const validDraft = JSON.stringify({
+    title: "Disposition-gated",
+    executiveSummary: "The host-owned disposition reached synthesis.",
+    findings: [],
+    relationships: [],
+    limitations: [],
+  });
+  let upstreamCalls = 0;
+  let observedDescription = "";
+  const upstreamTask = tool(async (input) => {
+    upstreamCalls += 1;
+    observedDescription = input.description;
+    return validDraft;
+  }, {
+    name: "task",
+    description: "Synthetic upstream task.",
+    schema: z.object({ description: z.string(), subagent_type: z.string() }),
+  });
+  const runtime = {
+    createSubAgentMiddleware: (() => ({
+      name: "subAgentMiddleware",
+      tools: [upstreamTask],
+    })) as never,
+  };
+  const subagents = [{
+    name: "synthesizer",
+    description: "Synthetic synthesizer.",
+    systemPrompt: "Return a draft.",
+    tools: [],
+  }];
+  const blocked = createBoundedResearchSubagentMiddleware(
+    model,
+    graph,
+    subagents,
+    runtime,
+    {
+      synthesisReconciliationContext: () => {
+        throw new Error("reconciliation dispositions unresolved");
+      },
+    },
+  );
+  await expect(blocked.tools![0]!.invoke({
+    description: synthesisTask.description,
+    subagent_type: synthesisTask.subagentType,
+  })).rejects.toThrow("unresolved");
+  expect(upstreamCalls).toBe(0);
+
+  const admitted = createBoundedResearchSubagentMiddleware(
+    model,
+    graph,
+    subagents,
+    runtime,
+    {
+      synthesisReconciliationContext: () => ({
+        reconciliationPacketRef: "packet:reconciler:1",
+        dispositions: [{
+          schema: "atlcli.reconciliation-disposition/v1",
+          id: "reconciliation-disposition:r1:1",
+          reconciliationPacketRef: "packet:reconciler:1",
+          defectId: "defect:1",
+          basedOnGraphRevision: 1,
+          decision: "abstain",
+          reasonCode: "material_defect",
+          resultingClaimIds: [],
+          recordedAt: "2026-08-01T12:00:00.000Z",
+        }],
+      }),
+    },
+  );
+  await expect(admitted.tools![0]!.invoke({
+    description: synthesisTask.description,
+    subagent_type: synthesisTask.subagentType,
+  })).resolves.toBe(validDraft);
+  expect(upstreamCalls).toBe(1);
+  expect(observedDescription).toContain("atlcli.synthesis-reconciliation-context/v1");
+  expect(observedDescription).toContain("reconciliation-disposition:r1:1");
+  expect(observedDescription).not.toContain("sourceBody");
 });
 
 describe("dynamic DeepAgentsJS subagent composition", () => {
@@ -601,6 +687,9 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     expect(prompt).toContain("atlcli.research-task-dispatch/v1");
     expect(prompt).toContain("Every task call must include its appropriate responseSchema");
     expect(prompt).toContain("exactly one fresh-context independent critic");
+    expect(prompt).toContain("tools.researchReconciliationDispositions");
+    expect(prompt).toContain("decisions must contain every returned defect ID exactly once");
+    expect(prompt).toContain("A synthesizer call before disposition acceptance is rejected");
     expect(prompt).toContain("Duplicate task IDs are rejected before model or provider work");
     expect(prompt).toContain("Console APIs are intentionally unavailable");
     expect(prompt).toContain("Never call console.log");
@@ -625,10 +714,99 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     };
 
     expect(projection.tasks.some((task) => task.roleId === "synthesizer")).toBe(false);
+    expect(projection).toMatchObject({
+      reconciliationTaskId: expect.stringContaining(":reconciler:"),
+    });
     expect(projection.synthesizerTask.roleId).toBe("synthesizer");
     expect(projection.synthesizerTask.dependencyTaskIds).toHaveLength(
       graph.nodes.filter((node) => node.executor === "subagent").length - 1,
     );
+  });
+
+  test("records one host-owned supervisor disposition for every accepted critic defect", async () => {
+    const catalog = crossProductGraph();
+    const graph = acceptResearchGraphProposalV1(catalog, {
+      schema: "atlcli.research-graph-proposal/v1",
+      ...graphProposalInput(catalog),
+    });
+    const reconciler = graph.nodes.find((node) => node.roleId === "reconciler")!;
+    const reconciliationTaskId = researchTaskIdForNodeV1(graph, reconciler);
+    const packet: ResearchAcceptedPacketV1 = {
+      schema: RESEARCH_ACCEPTED_PACKET_SCHEMA_V1,
+      packetRef: "packet:reconciler:1",
+      taskId: reconciliationTaskId,
+      graphRevision: graph.revision,
+      attempt: 1,
+      executor: "subagent",
+      roleId: "reconciler",
+      grantedCapabilityIds: [],
+      typedIntentRefs: [],
+      expectedOutputSchema: RESEARCH_RECONCILIATION_BODY_SCHEMA_V1,
+      body: {
+        schema: RESEARCH_RECONCILIATION_BODY_SCHEMA_V1,
+        defects: [{
+          id: "defect:unsupported-finding",
+          severity: "blocking",
+          target: { kind: "finding", id: "finding:unsupported" },
+          code: "unsupported",
+          references: [],
+          explanation: "The candidate has no accepted detail support.",
+          suggestedAction: "abstain",
+        }],
+        proposedFollowUps: [],
+      },
+      hostObservedUsage: {
+        capabilityCalls: 0,
+        inputTokens: 10,
+        outputTokens: 5,
+        resultBytes: 200,
+        durationMs: 20,
+        costMicros: 0,
+      },
+      acceptedAt: "2026-08-01T12:00:00.000Z",
+    };
+    let accepted = false;
+    const tool = createResearchReconciliationDispositionPtcTool(catalog, {
+      activeGraph: () => graph,
+      reconciliationPacket: () => packet,
+      isKnownTarget: (defect) => defect.target.id === "finding:unsupported",
+      canRecord: () => !accepted,
+      now: () => Date.parse("2026-08-01T12:01:00.000Z"),
+      onAccepted: () => { accepted = true; },
+    });
+    const input = {
+      basedOnGraphRevision: graph.revision,
+      reconciliationTaskId,
+      decisions: [{
+        defectId: "defect:unsupported-finding",
+        decision: "abstain",
+        reasonCode: "material_defect",
+      }],
+    } as const;
+    const result = JSON.parse(await tool.invoke(input)) as {
+      schema: string;
+      graphRevision: number;
+      reconciliationTaskId: string;
+      dispositions: Array<Record<string, unknown>>;
+    };
+
+    expect(result).toEqual({
+      schema: "atlcli.accepted-reconciliation/v1",
+      graphRevision: graph.revision,
+      reconciliationTaskId,
+      dispositions: [{
+        schema: "atlcli.reconciliation-disposition/v1",
+        id: "reconciliation-disposition:r1:1",
+        reconciliationPacketRef: packet.packetRef,
+        defectId: "defect:unsupported-finding",
+        basedOnGraphRevision: graph.revision,
+        decision: "abstain",
+        reasonCode: "material_defect",
+        resultingClaimIds: [],
+        recordedAt: "2026-08-01T12:01:00.000Z",
+      }],
+    });
+    await expect(tool.invoke(input)).rejects.toThrow("immutable");
   });
 
   test("uses one createDeepAgent invocation and native task dispatch for final synthesis", async () => {
@@ -967,7 +1145,15 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     });
     const critique = {
       schema: "atlcli.reconciliation-body/v1",
-      defects: [],
+      defects: [{
+        id: "defect:synthetic-coverage",
+        severity: "important",
+        target: { kind: "node", id: join.id },
+        code: "missing_coverage",
+        references: [],
+        explanation: "The synthetic branch intentionally contains no source evidence.",
+        suggestedAction: "abstain",
+      }],
       proposedFollowUps: [],
     };
     const draft = {
@@ -1018,6 +1204,18 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
         subagentType: ${JSON.stringify(subagentType(reconciler))},
         responseSchema: ${JSON.stringify(RESEARCH_CRITIQUE_SCHEMA_V1)}
       });
+      const acceptedDispositions = JSON.parse(await tools.researchReconciliationDispositions({
+        basedOnGraphRevision: ${graph.revision},
+        reconciliationTaskId: ${JSON.stringify(taskId(reconciler))},
+        decisions: [{
+          defectId: "defect:synthetic-coverage",
+          decision: "abstain",
+          reasonCode: "material_defect"
+        }]
+      }));
+      if (acceptedDispositions.schema !== "atlcli.accepted-reconciliation/v1") {
+        throw new Error("Synthetic reconciliation dispositions were not accepted.");
+      }
       const finalDraft = await task({
         description: JSON.stringify({
           schema: "atlcli.research-task-dispatch/v1",
@@ -1076,7 +1274,15 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     )).toEqual([1, 1, 2, 3, 4]);
     expect(events.filter((event) => event.kind === "reconciliation")).toEqual([
       expect.objectContaining({ status: "started" }),
-      expect.objectContaining({ status: "completed", defectCount: 0, proposedFollowUpCount: 0 }),
+      expect.objectContaining({ status: "completed", defectCount: 1, proposedFollowUpCount: 0 }),
+    ]);
+    expect(events.filter((event) => event.kind === "reconciliation_disposition")).toEqual([
+      expect.objectContaining({
+        defectId: "defect:synthetic-coverage",
+        decision: "abstain",
+        reasonCode: "material_defect",
+        status: "recorded",
+      }),
     ]);
   });
 

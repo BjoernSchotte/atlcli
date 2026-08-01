@@ -2554,6 +2554,21 @@ Shared:
       `reconciler` that returns defects and suggested follow-ups. Record the
       supervisor's validated `ResearchReconciliationDispositionV1` for every
       defect; an unresolved defect blocks finalization.
+  - [x] Add the supervisor-only, body-free disposition PTC boundary. It accepts
+        exactly one enum decision/reason pair for every defect in the accepted
+        reconciliation packet, while the host supplies packet reference,
+        graph revision, record ID, timestamp, and target validation. Missing,
+        duplicate, stale, unknown-target, repeated, or decision-incompatible
+        sets fail closed; synthesis is blocked until the complete set exists.
+        The host injects only accepted records into the sole synthesizer after
+        task-envelope admission. Proven 2026-08-01 by direct contract/tool and
+        synthesis-gate tests, a full-graph Node/browser parity fixture with one
+        material defect, and the packed MV3 sidebar lifecycle with one visible
+        `reject_defect/supported_by_evidence` disposition.
+  - [ ] Add the optional at-most-one repair group. It may execute only from an
+        accepted follow-up proposal while a research-wave slot and total budget
+        remain; otherwise the disposition must revise from existing support,
+        downgrade, abstain, or retain a bounded follow-up without new reads.
 - [ ] Give the T3 reconciler stable finding/relationship candidate IDs,
       accepted packets, coverage, and source references through the
       `v1-packet-set` reconciliation projection before any report prose is
@@ -2594,10 +2609,13 @@ CLI:
       usage to stderr or the shared browser event consumer. Never emit task
       prose, source content, workflow code, prompts, provider payloads, or
       hidden model reasoning into the event stream or tracked artifacts.
-- [ ] Add the supervisor's validated reconciliation disposition for every
+- [x] Add the supervisor's validated reconciliation disposition for every
       defect to the same stream after the disposition contract is executable;
       lifecycle and defect/follow-up counts are not a substitute for that
-      decision.
+      decision. The shared body-free event carries disposition ID, defect ID,
+      decision, reason code, and `recorded` status. Node/browser parity and the
+      packed sidebar both preserve it; source bodies, prompts, critic
+      trajectories, and hidden reasoning are not representable.
 - [ ] Run a small private Mayflower MVP set containing exact lookup,
       cross-product temporal join, a naturally named project/space without
       explicit keys, hierarchy, ambiguity, contradiction, and no-answer

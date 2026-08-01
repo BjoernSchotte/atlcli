@@ -158,6 +158,20 @@ export function isResearchOneShotEventV1(value: unknown): value is ResearchOneSh
       optionalNonNegativeInteger(event.defectCount) &&
       optionalNonNegativeInteger(event.proposedFollowUpCount);
   }
+  if (event.kind === "reconciliation_disposition") {
+    return hasOnlyKeys(event, [
+      "kind", "seq", "at", "dispositionId", "defectId", "decision", "reasonCode", "status",
+    ]) &&
+      boundedToken(event.dispositionId) &&
+      boundedToken(event.defectId) &&
+      ["reject_defect", "revise", "downgrade", "add_follow_up", "abstain", "no_change"]
+        .includes(String(event.decision)) &&
+      [
+        "invalid_reference", "already_resolved", "supported_by_evidence",
+        "material_defect", "insufficient_budget", "outside_approval_envelope",
+      ].includes(String(event.reasonCode)) &&
+      event.status === "recorded";
+  }
   if (event.kind === "budget") {
     return hasOnlyKeys(event, ["kind", "seq", "at", "metric", "consumed", "maximum"]) &&
       ["capability_calls", "tokens", "bytes", "duration_ms", "cost_micros"]
@@ -252,6 +266,12 @@ export function formatResearchOneShotEventV1(event: ResearchOneShotEventV1): str
       event.defectCount === undefined ? "" : `${event.defectCount} defects`,
       event.proposedFollowUpCount === undefined ? "" : `${event.proposedFollowUpCount} follow-ups`,
     ].filter(Boolean).join(" · ");
+    case "reconciliation_disposition": return [
+      `disposition · ${event.defectId}`,
+      event.decision,
+      event.reasonCode,
+      event.status,
+    ].join(" · ");
     case "budget": return `budget · ${event.metric} · ${event.consumed}/${event.maximum}`;
     case "artifact": return `artifact · ${event.path}`;
   }

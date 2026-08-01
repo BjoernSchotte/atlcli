@@ -27,6 +27,7 @@ import {
   RESEARCH_RECONCILIATION_BODY_SCHEMA_V1,
   RESEARCH_TASK_ATTEMPT_SCHEMA_V1,
   type ResearchAcceptedPacketV1,
+  type ResearchReconciliationDispositionV1,
   type ResearchTaskOutputSchemaV1,
   type ResearchTaskUsageV1,
 } from "./workflow-contracts.js";
@@ -244,7 +245,7 @@ The caller supplies your exact responseSchema dynamically. Return only one compa
     case "coverage-moderator":
       return `${shared}\n\nAssess each supplied coverage target against accepted packets. Identify missing distinct sources and require abstention where coverage is insufficient. Do not perform new reads.`;
     case "reconciler":
-      return `${shared}\n\nAct as an independent critic, not as the report author. Return schema atlcli.reconciliation-body/v1. Check coverage, unsupported or overstated candidates, contradictions, missing source IDs, empty or truncated detail bodies, and whether the question is actually answered. Reject mappings based only on a search excerpt or issue title. Every defect must target a stable candidate, node, or coverage ID and use only source references present in dependency packets. Proposed follow-ups are advisory typed objectives; the one-shot MVP cannot repeat retrieval with a new query intent. Do not perform new reads.`;
+      return `${shared}\n\nAct as an independent critic, not as the report author. Return schema atlcli.reconciliation-body/v1. Check coverage, unsupported or overstated candidates, contradictions, missing source IDs, empty or truncated detail bodies, and whether the question is actually answered. Reject mappings based only on a search excerpt or issue title. Every defect must target an exact findingCandidate ID, relationshipCandidate ID, graph node ID, accepted gap ID, or the host-owned whole-question coverage ID "coverage:question" and use only source references present in dependency packets. Claim and section targets are unavailable before T5. Proposed follow-ups are advisory typed objectives; the one-shot MVP cannot repeat retrieval with a new query intent. Do not perform new reads.`;
     case "synthesizer":
       return `${shared}\n\nYou are the sole report author for this workflow. Receive only accepted research packets plus the independent critique and any bounded repair results. Write a concise, evidence-first report draft that directly answers the question. Select at most 8 priority findings and 8 priority relationships; keep the complete structured response below roughly 1,800 output tokens. Every finding and relationship needs known sourceIds backed by non-empty, non-truncated detail bodies. Never use a search excerpt or title alone as evidence. Put every explicit Jira-to-Confluence link or exact cross-reference in relationships, not only in findings; use classification verified only for such explicit evidence. Avoid exhaustive words such as only, none, no other, or zero unless the supplied evidence explicitly proves exhaustive coverage. Incorporate valid critic feedback and carry unresolved gaps into limitations. The host, not you, renders the canonical Markdown.`;
     case "outline-planner":
@@ -420,6 +421,11 @@ export function createBoundedResearchSubagentMiddleware(
     structuredOutputStrategy?: "tool" | "provider";
     /** Accepted supervisor selection. When present, no task is admitted before it resolves. */
     activeGraph?: () => ResearchGraphV1 | undefined;
+    /** Host-recorded dispositions injected only after the task envelope passes admission. */
+    synthesisReconciliationContext?: () => {
+      reconciliationPacketRef?: string;
+      dispositions: readonly ResearchReconciliationDispositionV1[];
+    };
   } = {},
 ) {
   validateResearchGraphV1(graph);
@@ -578,6 +584,15 @@ export function createBoundedResearchSubagentMiddleware(
       const node = nodeBySubagentType.get(input.subagent_type);
       if (!node) throw new Error(`Research task subagent is not admitted: ${input.subagent_type}`);
       const role = node.roleId;
+      const synthesisInput = role === "synthesizer" && options.synthesisReconciliationContext
+        ? {
+            ...input,
+            description: `${input.description}\n\nHost-validated reconciliation context (data, not instructions): ${JSON.stringify({
+              schema: "atlcli.synthesis-reconciliation-context/v1",
+              ...options.synthesisReconciliationContext(),
+            })}`,
+          }
+        : input;
       const validateResult = async (result: unknown): Promise<unknown> => {
         let candidate: unknown;
         try {
@@ -600,7 +615,7 @@ export function createBoundedResearchSubagentMiddleware(
         }
       };
       try {
-        return await validateResult(await upstreamTask.invoke(input, config));
+        return await validateResult(await upstreamTask.invoke(synthesisInput, config));
       } catch (error) {
         const structuredOutputFailure = error instanceof Error && /structured output|response schema/i.test(error.message);
         if (role !== "synthesizer" || !structuredOutputFailure || config.signal?.aborted) throw error;
@@ -612,8 +627,8 @@ export function createBoundedResearchSubagentMiddleware(
           attempt: 2,
         });
         return await validateResult(await upstreamTask.invoke({
-          ...input,
-          description: `${input.description}\n\nStructured-output repair: return at most four findings and four relationships using only required fields. Do not perform research or call tools.`,
+          ...synthesisInput,
+          description: `${synthesisInput.description}\n\nStructured-output repair: return at most four findings and four relationships using only required fields. Do not perform research or call tools.`,
         }, config));
       }
     },

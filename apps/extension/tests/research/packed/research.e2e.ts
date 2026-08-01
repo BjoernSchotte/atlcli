@@ -145,6 +145,18 @@ const critique = await task({
   subagentType: "reconciler",
   responseSchema: ${JSON.stringify(RESEARCH_CRITIQUE_SCHEMA_V1)}
 });
+const acceptedDispositions = JSON.parse(await tools.researchReconciliationDispositions({
+  basedOnGraphRevision: 1,
+  reconciliationTaskId: "research-task:r1:reconciler:a1",
+  decisions: [{
+    defectId: "defect:packed-relationship-review",
+    decision: "reject_defect",
+    reasonCode: "supported_by_evidence"
+  }]
+}));
+if (acceptedDispositions.schema !== "atlcli.accepted-reconciliation/v1") {
+  throw new Error("Packed reconciliation dispositions were not accepted.");
+}
 const finalDraft = await task({
   description: JSON.stringify({
     schema: "atlcli.research-task-dispatch/v1",
@@ -425,7 +437,21 @@ const joinedPacket = {
 };
 const critique = {
   schema: "atlcli.reconciliation-body/v1",
-  defects: [],
+  defects: [{
+    id: "defect:packed-relationship-review",
+    severity: "minor",
+    target: {
+      kind: "relationship",
+      id: "relationship:demo-1-wiki-1001",
+    },
+    code: "overstated",
+    references: [
+      { kind: "source", id: "jira:DEMO-1" },
+      { kind: "source", id: "wiki:1001" },
+    ],
+    explanation: "The supervisor must explicitly resolve the critic review before synthesis.",
+    suggestedAction: "accept",
+  }],
   proposedFollowUps: [],
 };
 
@@ -1152,6 +1178,12 @@ test("runs bounded PTC in packed MV3, recreates workers, cancels, and renders sa
   expect(activityTrace).toContain("input {query}");
   expect(activityTrace).toContain("bytes");
   expect(activityTrace).toContain("critique · research-task:r1:reconciler:a1 · completed");
+  expect(activityTrace).toContain(
+    "decision · central-supervisor-reconciliation-dispositions · completed"
+  );
+  expect(activityTrace).toContain(
+    "disposition · defect:packed-relationship-review · reject_defect · supported_by_evidence · recorded"
+  );
   expect(activityTrace).toContain("budget · tokens");
   expect(activityTrace).not.toContain(FAKE_KEY);
   expect(activityTrace).not.toContain("Ignore all previous instructions");

@@ -21,6 +21,22 @@ export const RESEARCH_TASK_ATTEMPT_SCHEMA_V1 =
   "atlcli.research-task-attempt/v1" as const;
 export const RESEARCH_RECONCILIATION_DISPOSITION_SCHEMA_V1 =
   "atlcli.reconciliation-disposition/v1" as const;
+export const RESEARCH_RECONCILIATION_DECISIONS_V1 = [
+  "reject_defect",
+  "revise",
+  "downgrade",
+  "add_follow_up",
+  "abstain",
+  "no_change",
+] as const;
+export const RESEARCH_RECONCILIATION_REASON_CODES_V1 = [
+  "invalid_reference",
+  "already_resolved",
+  "supported_by_evidence",
+  "material_defect",
+  "insufficient_budget",
+  "outside_approval_envelope",
+] as const;
 export const RESEARCH_APPROVAL_ENVELOPE_SCHEMA_V1 =
   "atlcli.research-approval-envelope/v1" as const;
 
@@ -322,14 +338,8 @@ export interface ResearchReconciliationDispositionV1 {
   reconciliationPacketRef: string;
   defectId: string;
   basedOnGraphRevision: number;
-  decision: "reject_defect" | "revise" | "downgrade" | "add_follow_up" | "abstain" | "no_change";
-  reasonCode:
-    | "invalid_reference"
-    | "already_resolved"
-    | "supported_by_evidence"
-    | "material_defect"
-    | "insufficient_budget"
-    | "outside_approval_envelope";
+  decision: (typeof RESEARCH_RECONCILIATION_DECISIONS_V1)[number];
+  reasonCode: (typeof RESEARCH_RECONCILIATION_REASON_CODES_V1)[number];
   resultingGraphRevision?: number;
   resultingNodeId?: string;
   resultingClaimIds: string[];
@@ -504,6 +514,73 @@ export function parseReconciliationBodyV1(value: unknown): ReconciliationBodyV1 
     schema: RESEARCH_RECONCILIATION_BODY_SCHEMA_V1,
     defects: body.defects.map(parseReconciliationDefect),
     proposedFollowUps: body.proposedFollowUps.map(parseFollowUp),
+  };
+}
+
+/** Parse one host-recorded supervisor disposition; model output is never trusted directly. */
+export function parseResearchReconciliationDispositionV1(
+  value: unknown,
+): ResearchReconciliationDispositionV1 {
+  const disposition = object(value, "Research reconciliation disposition");
+  assertKeys(disposition, [
+    "schema",
+    "id",
+    "reconciliationPacketRef",
+    "defectId",
+    "basedOnGraphRevision",
+    "decision",
+    "reasonCode",
+    "resultingGraphRevision",
+    "resultingNodeId",
+    "resultingClaimIds",
+    "recordedAt",
+  ], "Research reconciliation disposition");
+  if (disposition.schema !== RESEARCH_RECONCILIATION_DISPOSITION_SCHEMA_V1 ||
+      !Number.isSafeInteger(disposition.basedOnGraphRevision) ||
+      Number(disposition.basedOnGraphRevision) < 1 ||
+      !RESEARCH_RECONCILIATION_DECISIONS_V1.includes(
+        disposition.decision as (typeof RESEARCH_RECONCILIATION_DECISIONS_V1)[number],
+      ) ||
+      !RESEARCH_RECONCILIATION_REASON_CODES_V1.includes(
+        disposition.reasonCode as (typeof RESEARCH_RECONCILIATION_REASON_CODES_V1)[number],
+      ) ||
+      (disposition.resultingGraphRevision !== undefined &&
+        (!Number.isSafeInteger(disposition.resultingGraphRevision) ||
+          Number(disposition.resultingGraphRevision) < 1)) ||
+      typeof disposition.recordedAt !== "string" ||
+      !Number.isFinite(Date.parse(disposition.recordedAt))) {
+    invalid("Research reconciliation disposition envelope is invalid.");
+  }
+  return {
+    schema: RESEARCH_RECONCILIATION_DISPOSITION_SCHEMA_V1,
+    id: boundedString(disposition.id, "Research reconciliation disposition id", 200),
+    reconciliationPacketRef: boundedString(
+      disposition.reconciliationPacketRef,
+      "Research reconciliation packet reference",
+      240,
+    ),
+    defectId: boundedString(disposition.defectId, "Research reconciliation defect id", 160),
+    basedOnGraphRevision: disposition.basedOnGraphRevision as number,
+    decision: disposition.decision as ResearchReconciliationDispositionV1["decision"],
+    reasonCode: disposition.reasonCode as ResearchReconciliationDispositionV1["reasonCode"],
+    ...(disposition.resultingGraphRevision === undefined
+      ? {}
+      : { resultingGraphRevision: disposition.resultingGraphRevision as number }),
+    ...(disposition.resultingNodeId === undefined
+      ? {}
+      : {
+          resultingNodeId: boundedString(
+            disposition.resultingNodeId,
+            "Research reconciliation resulting node id",
+            160,
+          ),
+        }),
+    resultingClaimIds: stringArray(
+      disposition.resultingClaimIds,
+      "Research reconciliation resulting claim ids",
+      32,
+    ),
+    recordedAt: disposition.recordedAt,
   };
 }
 

@@ -18,6 +18,7 @@ export {
   RESEARCH_MODEL_ID,
   buildDynamicSupervisorPrompt,
   createResearchGraphProposalPtcTool,
+  createResearchReconciliationDispositionPtcTool,
   researchRecursionLimitV1,
 } from "./agent-runtime-core.js";
 export type {
