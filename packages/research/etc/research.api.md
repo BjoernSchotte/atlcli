@@ -808,7 +808,7 @@ export declare class ResearchDispatchError extends Error {
 }
 
 // export: ResearchDispatchErrorCodeV1
-export type ResearchDispatchErrorCodeV1 = "invalid-task-description" | "unknown-task" | "subagent-type-mismatch" | "response-schema-mismatch" | "task-budget-exceeded" | "task-already-dispatched" | "dependency-not-ready" | "dependency-result-mismatch" | "graph-proposal-required" | "concurrency-exceeded" | "capability-denied" | "result-too-large" | "structured-output-invalid" | "subagent-provider-error" | "aborted" | "late-result" | "admissions-locked";
+export type ResearchDispatchErrorCodeV1 = "invalid-task-description" | "unknown-task" | "subagent-type-mismatch" | "response-schema-mismatch" | "task-budget-exceeded" | "task-already-dispatched" | "dependency-not-ready" | "dependency-result-mismatch" | "graph-proposal-required" | "repair-not-authorized" | "concurrency-exceeded" | "capability-denied" | "result-too-large" | "structured-output-invalid" | "subagent-provider-error" | "aborted" | "late-result" | "admissions-locked";
 
 // export: ResearchDispatchInterceptionAdapter
 export interface ResearchDispatchInterceptionAdapter {
@@ -1013,6 +1013,14 @@ export type ResearchEventV1 = {
     reasonCode: "invalid_reference" | "already_resolved" | "supported_by_evidence" | "material_defect" | "insufficient_budget" | "outside_approval_envelope";
     status: "recorded";
 } | {
+    kind: "repair_group";
+    seq: number;
+    at: string;
+    followUpId: string;
+    taskId?: string;
+    status: "authorized" | "retained_without_execution" | "completed";
+    reasonCode: "accepted_follow_up" | "wave_or_budget_exhausted" | "packet_accepted";
+} | {
     kind: "steering";
     seq: number;
     at: string;
@@ -1107,7 +1115,7 @@ export interface ResearchGraphCompositionOptionsV1 {
 // export: ResearchGraphNodeV1
 export interface ResearchGraphNodeV1 {
     id: string;
-    kind: "resolve_scope" | "search" | "expand" | "distill" | "verify" | "moderate" | "outline" | "reconcile";
+    kind: "resolve_scope" | "search" | "expand" | "distill" | "verify" | "moderate" | "outline" | "reconcile" | "repair";
     executor: "ptc" | "subagent";
     roleId?: ResearchSubagentRoleIdV1;
     objective: string;
@@ -1271,7 +1279,7 @@ export type ResearchNodeStatusV1 = "proposed" | "ready" | "running" | "complete"
 
 // export: ResearchOneShotEventV1
 export type ResearchOneShotEventV1 = Extract<ResearchEventV1, {
-    kind: "phase" | "progress" | "brief" | "plan" | "task" | "subagent" | "capability" | "decision" | "reconciliation" | "reconciliation_disposition" | "budget" | "artifact";
+    kind: "phase" | "progress" | "brief" | "plan" | "task" | "subagent" | "capability" | "decision" | "reconciliation" | "reconciliation_disposition" | "repair_group" | "budget" | "artifact";
 }>;
 
 // export: ResearchOneShotPolicyV1
@@ -2818,7 +2826,7 @@ export declare class ResearchDispatchError extends Error {
 }
 
 // export: ResearchDispatchErrorCodeV1
-export type ResearchDispatchErrorCodeV1 = "invalid-task-description" | "unknown-task" | "subagent-type-mismatch" | "response-schema-mismatch" | "task-budget-exceeded" | "task-already-dispatched" | "dependency-not-ready" | "dependency-result-mismatch" | "graph-proposal-required" | "concurrency-exceeded" | "capability-denied" | "result-too-large" | "structured-output-invalid" | "subagent-provider-error" | "aborted" | "late-result" | "admissions-locked";
+export type ResearchDispatchErrorCodeV1 = "invalid-task-description" | "unknown-task" | "subagent-type-mismatch" | "response-schema-mismatch" | "task-budget-exceeded" | "task-already-dispatched" | "dependency-not-ready" | "dependency-result-mismatch" | "graph-proposal-required" | "repair-not-authorized" | "concurrency-exceeded" | "capability-denied" | "result-too-large" | "structured-output-invalid" | "subagent-provider-error" | "aborted" | "late-result" | "admissions-locked";
 
 // export: ResearchDispatchInterceptionAdapter
 export interface ResearchDispatchInterceptionAdapter {
@@ -3023,6 +3031,14 @@ export type ResearchEventV1 = {
     reasonCode: "invalid_reference" | "already_resolved" | "supported_by_evidence" | "material_defect" | "insufficient_budget" | "outside_approval_envelope";
     status: "recorded";
 } | {
+    kind: "repair_group";
+    seq: number;
+    at: string;
+    followUpId: string;
+    taskId?: string;
+    status: "authorized" | "retained_without_execution" | "completed";
+    reasonCode: "accepted_follow_up" | "wave_or_budget_exhausted" | "packet_accepted";
+} | {
     kind: "steering";
     seq: number;
     at: string;
@@ -3117,7 +3133,7 @@ export interface ResearchGraphCompositionOptionsV1 {
 // export: ResearchGraphNodeV1
 export interface ResearchGraphNodeV1 {
     id: string;
-    kind: "resolve_scope" | "search" | "expand" | "distill" | "verify" | "moderate" | "outline" | "reconcile";
+    kind: "resolve_scope" | "search" | "expand" | "distill" | "verify" | "moderate" | "outline" | "reconcile" | "repair";
     executor: "ptc" | "subagent";
     roleId?: ResearchSubagentRoleIdV1;
     objective: string;
@@ -3281,7 +3297,7 @@ export type ResearchNodeStatusV1 = "proposed" | "ready" | "running" | "complete"
 
 // export: ResearchOneShotEventV1
 export type ResearchOneShotEventV1 = Extract<ResearchEventV1, {
-    kind: "phase" | "progress" | "brief" | "plan" | "task" | "subagent" | "capability" | "decision" | "reconciliation" | "reconciliation_disposition" | "budget" | "artifact";
+    kind: "phase" | "progress" | "brief" | "plan" | "task" | "subagent" | "capability" | "decision" | "reconciliation" | "reconciliation_disposition" | "repair_group" | "budget" | "artifact";
 }>;
 
 // export: ResearchOneShotPolicyV1
@@ -4826,7 +4842,7 @@ export declare class ResearchDispatchError extends Error {
 }
 
 // export: ResearchDispatchErrorCodeV1
-export type ResearchDispatchErrorCodeV1 = "invalid-task-description" | "unknown-task" | "subagent-type-mismatch" | "response-schema-mismatch" | "task-budget-exceeded" | "task-already-dispatched" | "dependency-not-ready" | "dependency-result-mismatch" | "graph-proposal-required" | "concurrency-exceeded" | "capability-denied" | "result-too-large" | "structured-output-invalid" | "subagent-provider-error" | "aborted" | "late-result" | "admissions-locked";
+export type ResearchDispatchErrorCodeV1 = "invalid-task-description" | "unknown-task" | "subagent-type-mismatch" | "response-schema-mismatch" | "task-budget-exceeded" | "task-already-dispatched" | "dependency-not-ready" | "dependency-result-mismatch" | "graph-proposal-required" | "repair-not-authorized" | "concurrency-exceeded" | "capability-denied" | "result-too-large" | "structured-output-invalid" | "subagent-provider-error" | "aborted" | "late-result" | "admissions-locked";
 
 // export: ResearchDispatchInterceptionAdapter
 export interface ResearchDispatchInterceptionAdapter {
@@ -5031,6 +5047,14 @@ export type ResearchEventV1 = {
     reasonCode: "invalid_reference" | "already_resolved" | "supported_by_evidence" | "material_defect" | "insufficient_budget" | "outside_approval_envelope";
     status: "recorded";
 } | {
+    kind: "repair_group";
+    seq: number;
+    at: string;
+    followUpId: string;
+    taskId?: string;
+    status: "authorized" | "retained_without_execution" | "completed";
+    reasonCode: "accepted_follow_up" | "wave_or_budget_exhausted" | "packet_accepted";
+} | {
     kind: "steering";
     seq: number;
     at: string;
@@ -5125,7 +5149,7 @@ export interface ResearchGraphCompositionOptionsV1 {
 // export: ResearchGraphNodeV1
 export interface ResearchGraphNodeV1 {
     id: string;
-    kind: "resolve_scope" | "search" | "expand" | "distill" | "verify" | "moderate" | "outline" | "reconcile";
+    kind: "resolve_scope" | "search" | "expand" | "distill" | "verify" | "moderate" | "outline" | "reconcile" | "repair";
     executor: "ptc" | "subagent";
     roleId?: ResearchSubagentRoleIdV1;
     objective: string;
@@ -5289,7 +5313,7 @@ export type ResearchNodeStatusV1 = "proposed" | "ready" | "running" | "complete"
 
 // export: ResearchOneShotEventV1
 export type ResearchOneShotEventV1 = Extract<ResearchEventV1, {
-    kind: "phase" | "progress" | "brief" | "plan" | "task" | "subagent" | "capability" | "decision" | "reconciliation" | "reconciliation_disposition" | "budget" | "artifact";
+    kind: "phase" | "progress" | "brief" | "plan" | "task" | "subagent" | "capability" | "decision" | "reconciliation" | "reconciliation_disposition" | "repair_group" | "budget" | "artifact";
 }>;
 
 // export: ResearchOneShotPolicyV1
@@ -6139,7 +6163,19 @@ export declare function createBoundedResearchSubagentMiddleware(model: BaseChatM
     synthesisReconciliationContext?: () => {
         reconciliationPacketRef?: string;
         dispositions: readonly ResearchReconciliationDispositionV1[];
+        repairPackets?: readonly ResearchAcceptedPacketV1[];
     };
+    repairAuthorization?: () => {
+        taskId: string;
+        nodeId: string;
+        reconciliationTaskId: string;
+        followUp: {
+            id: string;
+            objective: string;
+            reasonCode: string;
+            sourceIds: string[];
+        };
+    } | undefined;
 }): {
     name: string;
     tools: DynamicStructuredTool<z.ZodObject<{
@@ -6247,8 +6283,17 @@ export declare function createResearchReconciliationDispositionPtcTool(catalogGr
     reconciliationPacket: (taskId: string) => ResearchAcceptedPacketV1 | undefined;
     isKnownTarget?: (defect: ResearchReconciliationDefectV1, packet: ResearchAcceptedPacketV1) => boolean;
     canRecord?: () => boolean;
+    authorizeRepair?: (input: {
+        graph: ResearchGraphV1;
+        reconciliationTaskId: string;
+        defect: ResearchReconciliationDefectV1;
+        followUp: ResearchFollowUpProposalV1;
+    }) => ResearchRepairAuthorizationV1 | undefined;
     now?: () => number;
-    onAccepted?: (dispositions: ResearchReconciliationDispositionV1[]) => void;
+    onAccepted?: (dispositions: ResearchReconciliationDispositionV1[], repairAuthorization?: ResearchRepairAuthorizationV1, repairOutcome?: {
+        followUpId: string;
+        status: "authorized" | "retained_without_execution";
+    }) => void;
     onDiagnostic?: (status: "started" | "completed" | "failed", errorCode?: string) => void;
 }): DynamicStructuredTool;
 
@@ -6989,7 +7034,7 @@ export declare class ResearchDispatchError extends Error {
 }
 
 // export: ResearchDispatchErrorCodeV1
-export type ResearchDispatchErrorCodeV1 = "invalid-task-description" | "unknown-task" | "subagent-type-mismatch" | "response-schema-mismatch" | "task-budget-exceeded" | "task-already-dispatched" | "dependency-not-ready" | "dependency-result-mismatch" | "graph-proposal-required" | "concurrency-exceeded" | "capability-denied" | "result-too-large" | "structured-output-invalid" | "subagent-provider-error" | "aborted" | "late-result" | "admissions-locked";
+export type ResearchDispatchErrorCodeV1 = "invalid-task-description" | "unknown-task" | "subagent-type-mismatch" | "response-schema-mismatch" | "task-budget-exceeded" | "task-already-dispatched" | "dependency-not-ready" | "dependency-result-mismatch" | "graph-proposal-required" | "repair-not-authorized" | "concurrency-exceeded" | "capability-denied" | "result-too-large" | "structured-output-invalid" | "subagent-provider-error" | "aborted" | "late-result" | "admissions-locked";
 
 // export: ResearchDispatchInterceptionAdapter
 export interface ResearchDispatchInterceptionAdapter {
@@ -7194,6 +7239,14 @@ export type ResearchEventV1 = {
     reasonCode: "invalid_reference" | "already_resolved" | "supported_by_evidence" | "material_defect" | "insufficient_budget" | "outside_approval_envelope";
     status: "recorded";
 } | {
+    kind: "repair_group";
+    seq: number;
+    at: string;
+    followUpId: string;
+    taskId?: string;
+    status: "authorized" | "retained_without_execution" | "completed";
+    reasonCode: "accepted_follow_up" | "wave_or_budget_exhausted" | "packet_accepted";
+} | {
     kind: "steering";
     seq: number;
     at: string;
@@ -7288,7 +7341,7 @@ export interface ResearchGraphCompositionOptionsV1 {
 // export: ResearchGraphNodeV1
 export interface ResearchGraphNodeV1 {
     id: string;
-    kind: "resolve_scope" | "search" | "expand" | "distill" | "verify" | "moderate" | "outline" | "reconcile";
+    kind: "resolve_scope" | "search" | "expand" | "distill" | "verify" | "moderate" | "outline" | "reconcile" | "repair";
     executor: "ptc" | "subagent";
     roleId?: ResearchSubagentRoleIdV1;
     objective: string;
@@ -7452,7 +7505,7 @@ export type ResearchNodeStatusV1 = "proposed" | "ready" | "running" | "complete"
 
 // export: ResearchOneShotEventV1
 export type ResearchOneShotEventV1 = Extract<ResearchEventV1, {
-    kind: "phase" | "progress" | "brief" | "plan" | "task" | "subagent" | "capability" | "decision" | "reconciliation" | "reconciliation_disposition" | "budget" | "artifact";
+    kind: "phase" | "progress" | "brief" | "plan" | "task" | "subagent" | "capability" | "decision" | "reconciliation" | "reconciliation_disposition" | "repair_group" | "budget" | "artifact";
 }>;
 
 // export: ResearchOneShotPolicyV1
@@ -8649,6 +8702,14 @@ export type ResearchEventV1 = {
     reasonCode: "invalid_reference" | "already_resolved" | "supported_by_evidence" | "material_defect" | "insufficient_budget" | "outside_approval_envelope";
     status: "recorded";
 } | {
+    kind: "repair_group";
+    seq: number;
+    at: string;
+    followUpId: string;
+    taskId?: string;
+    status: "authorized" | "retained_without_execution" | "completed";
+    reasonCode: "accepted_follow_up" | "wave_or_budget_exhausted" | "packet_accepted";
+} | {
     kind: "steering";
     seq: number;
     at: string;
@@ -8715,7 +8776,7 @@ export interface ResearchLimitsV1 {
 
 // export: ResearchOneShotEventV1
 export type ResearchOneShotEventV1 = Extract<ResearchEventV1, {
-    kind: "phase" | "progress" | "brief" | "plan" | "task" | "subagent" | "capability" | "decision" | "reconciliation" | "reconciliation_disposition" | "budget" | "artifact";
+    kind: "phase" | "progress" | "brief" | "plan" | "task" | "subagent" | "capability" | "decision" | "reconciliation" | "reconciliation_disposition" | "repair_group" | "budget" | "artifact";
 }>;
 
 // export: ResearchOneShotPolicyV1
@@ -9046,7 +9107,7 @@ export interface ResearchGraphCompositionOptionsV1 {
 // export: ResearchGraphNodeV1
 export interface ResearchGraphNodeV1 {
     id: string;
-    kind: "resolve_scope" | "search" | "expand" | "distill" | "verify" | "moderate" | "outline" | "reconcile";
+    kind: "resolve_scope" | "search" | "expand" | "distill" | "verify" | "moderate" | "outline" | "reconcile" | "repair";
     executor: "ptc" | "subagent";
     roleId?: ResearchSubagentRoleIdV1;
     objective: string;
@@ -9280,7 +9341,19 @@ export declare function createBoundedResearchSubagentMiddleware(model: BaseChatM
     synthesisReconciliationContext?: () => {
         reconciliationPacketRef?: string;
         dispositions: readonly ResearchReconciliationDispositionV1[];
+        repairPackets?: readonly ResearchAcceptedPacketV1[];
     };
+    repairAuthorization?: () => {
+        taskId: string;
+        nodeId: string;
+        reconciliationTaskId: string;
+        followUp: {
+            id: string;
+            objective: string;
+            reasonCode: string;
+            sourceIds: string[];
+        };
+    } | undefined;
 }): {
     name: string;
     tools: DynamicStructuredTool<z.ZodObject<{
@@ -9388,8 +9461,17 @@ export declare function createResearchReconciliationDispositionPtcTool(catalogGr
     reconciliationPacket: (taskId: string) => ResearchAcceptedPacketV1 | undefined;
     isKnownTarget?: (defect: ResearchReconciliationDefectV1, packet: ResearchAcceptedPacketV1) => boolean;
     canRecord?: () => boolean;
+    authorizeRepair?: (input: {
+        graph: ResearchGraphV1;
+        reconciliationTaskId: string;
+        defect: ResearchReconciliationDefectV1;
+        followUp: ResearchFollowUpProposalV1;
+    }) => ResearchRepairAuthorizationV1 | undefined;
     now?: () => number;
-    onAccepted?: (dispositions: ResearchReconciliationDispositionV1[]) => void;
+    onAccepted?: (dispositions: ResearchReconciliationDispositionV1[], repairAuthorization?: ResearchRepairAuthorizationV1, repairOutcome?: {
+        followUpId: string;
+        status: "authorized" | "retained_without_execution";
+    }) => void;
     onDiagnostic?: (status: "started" | "completed" | "failed", errorCode?: string) => void;
 }): DynamicStructuredTool;
 
@@ -10145,7 +10227,7 @@ export declare class ResearchDispatchError extends Error {
 }
 
 // export: ResearchDispatchErrorCodeV1
-export type ResearchDispatchErrorCodeV1 = "invalid-task-description" | "unknown-task" | "subagent-type-mismatch" | "response-schema-mismatch" | "task-budget-exceeded" | "task-already-dispatched" | "dependency-not-ready" | "dependency-result-mismatch" | "graph-proposal-required" | "concurrency-exceeded" | "capability-denied" | "result-too-large" | "structured-output-invalid" | "subagent-provider-error" | "aborted" | "late-result" | "admissions-locked";
+export type ResearchDispatchErrorCodeV1 = "invalid-task-description" | "unknown-task" | "subagent-type-mismatch" | "response-schema-mismatch" | "task-budget-exceeded" | "task-already-dispatched" | "dependency-not-ready" | "dependency-result-mismatch" | "graph-proposal-required" | "repair-not-authorized" | "concurrency-exceeded" | "capability-denied" | "result-too-large" | "structured-output-invalid" | "subagent-provider-error" | "aborted" | "late-result" | "admissions-locked";
 
 // export: ResearchDispatchInterceptionAdapter
 export interface ResearchDispatchInterceptionAdapter {
@@ -10350,6 +10432,14 @@ export type ResearchEventV1 = {
     reasonCode: "invalid_reference" | "already_resolved" | "supported_by_evidence" | "material_defect" | "insufficient_budget" | "outside_approval_envelope";
     status: "recorded";
 } | {
+    kind: "repair_group";
+    seq: number;
+    at: string;
+    followUpId: string;
+    taskId?: string;
+    status: "authorized" | "retained_without_execution" | "completed";
+    reasonCode: "accepted_follow_up" | "wave_or_budget_exhausted" | "packet_accepted";
+} | {
     kind: "steering";
     seq: number;
     at: string;
@@ -10444,7 +10534,7 @@ export interface ResearchGraphCompositionOptionsV1 {
 // export: ResearchGraphNodeV1
 export interface ResearchGraphNodeV1 {
     id: string;
-    kind: "resolve_scope" | "search" | "expand" | "distill" | "verify" | "moderate" | "outline" | "reconcile";
+    kind: "resolve_scope" | "search" | "expand" | "distill" | "verify" | "moderate" | "outline" | "reconcile" | "repair";
     executor: "ptc" | "subagent";
     roleId?: ResearchSubagentRoleIdV1;
     objective: string;
@@ -10608,7 +10698,7 @@ export type ResearchNodeStatusV1 = "proposed" | "ready" | "running" | "complete"
 
 // export: ResearchOneShotEventV1
 export type ResearchOneShotEventV1 = Extract<ResearchEventV1, {
-    kind: "phase" | "progress" | "brief" | "plan" | "task" | "subagent" | "capability" | "decision" | "reconciliation" | "reconciliation_disposition" | "budget" | "artifact";
+    kind: "phase" | "progress" | "brief" | "plan" | "task" | "subagent" | "capability" | "decision" | "reconciliation" | "reconciliation_disposition" | "repair_group" | "budget" | "artifact";
 }>;
 
 // export: ResearchOneShotPolicyV1

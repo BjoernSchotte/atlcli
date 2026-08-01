@@ -172,6 +172,16 @@ export function isResearchOneShotEventV1(value: unknown): value is ResearchOneSh
       ].includes(String(event.reasonCode)) &&
       event.status === "recorded";
   }
+  if (event.kind === "repair_group") {
+    return hasOnlyKeys(event, [
+      "kind", "seq", "at", "followUpId", "taskId", "status", "reasonCode",
+    ]) &&
+      boundedToken(event.followUpId) &&
+      (event.taskId === undefined || boundedToken(event.taskId)) &&
+      ["authorized", "retained_without_execution", "completed"].includes(String(event.status)) &&
+      ["accepted_follow_up", "wave_or_budget_exhausted", "packet_accepted"]
+        .includes(String(event.reasonCode));
+  }
   if (event.kind === "budget") {
     return hasOnlyKeys(event, ["kind", "seq", "at", "metric", "consumed", "maximum"]) &&
       ["capability_calls", "tokens", "bytes", "duration_ms", "cost_micros"]
@@ -272,6 +282,12 @@ export function formatResearchOneShotEventV1(event: ResearchOneShotEventV1): str
       event.reasonCode,
       event.status,
     ].join(" · ");
+    case "repair_group": return [
+      `repair · ${event.followUpId}`,
+      event.status,
+      event.reasonCode,
+      event.taskId ?? "",
+    ].filter(Boolean).join(" · ");
     case "budget": return `budget · ${event.metric} · ${event.consumed}/${event.maximum}`;
     case "artifact": return `artifact · ${event.path}`;
   }

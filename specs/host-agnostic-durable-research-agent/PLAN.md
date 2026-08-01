@@ -1620,6 +1620,7 @@ type ResearchEventV1 =
   | { kind: "decision"; seq: number; at: string; decisionId: string; status: "started" | "completed" | "failed"; reasonCode: string; taskId?: string; errorCode?: string; codeBytes?: number; codeHash?: string }
   | { kind: "reconciliation"; seq: number; at: string; taskId: string; status: string; defectCount?: number; proposedFollowUpCount?: number }
   | { kind: "reconciliation_disposition"; seq: number; at: string; dispositionId: string; status: string }
+  | { kind: "repair_group"; seq: number; at: string; followUpId: string; taskId?: string; status: string; reasonCode: string }
   | { kind: "steering"; seq: number; at: string; revision: number; status: string }
   | {
       kind: "budget";
@@ -2564,11 +2565,22 @@ Shared:
         task-envelope admission. Proven 2026-08-01 by direct contract/tool and
         synthesis-gate tests, a full-graph Node/browser parity fixture with one
         material defect, and the packed MV3 sidebar lifecycle with one visible
-        `reject_defect/supported_by_evidence` disposition.
-  - [ ] Add the optional at-most-one repair group. It may execute only from an
+        `add_follow_up/material_defect` disposition.
+  - [x] Add the optional at-most-one repair group. It may execute only from an
         accepted follow-up proposal while a research-wave slot and total budget
         remain; otherwise the disposition must revise from existing support,
         downgrade, abstain, or retain a bounded follow-up without new reads.
+        The host precompiles one latent slot inside the approval envelope but
+        excludes it from the supervisor's initial graph-proposal catalog and
+        keeps dispatch locked until one exact critic follow-up ID is accepted.
+        The slot receives only host-validated follow-up data and may cite only
+        its approved predecessor source IDs or newly observed detail evidence.
+        Its accepted packet gates synthesis and is injected by the host; a
+        second repair cannot be authorized. Proven 2026-08-01 by authorized,
+        retained-without-execution, single-dispatch, synthesis-order, event
+        guard, production-build, and packed MV3 tests; the packed workflow
+        completed proposal, parallel acquisition, join, critique, disposition,
+        repair, synthesis, cancellation, and sentinel assertions 2/2.
 - [ ] Give the T3 reconciler stable finding/relationship candidate IDs,
       accepted packets, coverage, and source references through the
       `v1-packet-set` reconciliation projection before any report prose is

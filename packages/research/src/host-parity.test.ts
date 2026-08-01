@@ -85,12 +85,15 @@ const critique = {
 };
 
 function model() {
+  const selectedNodeIds = new Set(graph.nodes
+    .filter((node) => node.kind !== "repair")
+    .map((node) => node.id));
   const proposal = {
     basedOnBriefRevision: graph.basedOnBriefRevision,
     basedOnGraphRevision: graph.revision,
-    nodes: graph.nodes.map((node) => ({
+    nodes: graph.nodes.filter((node) => selectedNodeIds.has(node.id)).map((node) => ({
       nodeId: node.id,
-      dependencies: [...node.dependencies],
+      dependencies: node.dependencies.filter((dependency) => selectedNodeIds.has(dependency)),
       reasonCodes: [node.reasonCodes[0]!],
     })),
   };

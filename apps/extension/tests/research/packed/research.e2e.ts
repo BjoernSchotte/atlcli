@@ -22,6 +22,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1 } from "@atlcli/research";
 import {
+  RESEARCH_ANALYSIS_PACKET_SCHEMA_V1,
   RESEARCH_CRITIQUE_SCHEMA_V1,
   RESEARCH_WORKER_PACKET_SCHEMA_V1,
 } from "@atlcli/research/browser/agent";
@@ -129,7 +130,7 @@ const joined = await task({
     ]
   }),
   subagentType: "document-distiller-cross-product-join",
-  responseSchema: ${JSON.stringify(RESEARCH_WORKER_PACKET_SCHEMA_V1)}
+  responseSchema: ${JSON.stringify(RESEARCH_ANALYSIS_PACKET_SCHEMA_V1)}
 });
 const critique = await task({
   description: JSON.stringify({
@@ -150,13 +151,29 @@ const acceptedDispositions = JSON.parse(await tools.researchReconciliationDispos
   reconciliationTaskId: "research-task:r1:reconciler:a1",
   decisions: [{
     defectId: "defect:packed-relationship-review",
-    decision: "reject_defect",
-    reasonCode: "supported_by_evidence"
-  }]
+    decision: "add_follow_up",
+    reasonCode: "material_defect"
+  }],
+  repairFollowUpId: "follow-up:packed-relationship-review"
 }));
 if (acceptedDispositions.schema !== "atlcli.accepted-reconciliation/v1") {
   throw new Error("Packed reconciliation dispositions were not accepted.");
 }
+if (!acceptedDispositions.repairTask) {
+  throw new Error("Packed reconciliation repair was not authorized.");
+}
+const repaired = await task({
+  description: JSON.stringify({
+    schema: "atlcli.research-task-dispatch/v1",
+    taskId: acceptedDispositions.repairTask.taskId,
+    objective: acceptedDispositions.repairTask.objective,
+    dependencyResults: [
+      { taskId: "research-task:r1:reconciler:a1", result: critique }
+    ]
+  }),
+  subagentType: acceptedDispositions.repairTask.subagentType,
+  responseSchema: ${JSON.stringify(RESEARCH_ANALYSIS_PACKET_SCHEMA_V1)}
+});
 const finalDraft = await task({
   description: JSON.stringify({
     schema: "atlcli.research-task-dispatch/v1",
@@ -440,19 +457,38 @@ const critique = {
   defects: [{
     id: "defect:packed-relationship-review",
     severity: "minor",
-    target: {
-      kind: "relationship",
-      id: "relationship:demo-1-wiki-1001",
-    },
-    code: "overstated",
+    target: { kind: "coverage", id: "coverage:question" },
+    code: "missing_coverage",
     references: [
       { kind: "source", id: "jira:DEMO-1" },
       { kind: "source", id: "wiki:1001" },
     ],
     explanation: "The supervisor must explicitly resolve the critic review before synthesis.",
-    suggestedAction: "accept",
+    suggestedAction: "add_follow_up",
   }],
+  proposedFollowUps: [{
+    id: "follow-up:packed-relationship-review",
+    objective: "Recheck the bounded Jira and Confluence evidence for the relationship coverage gap.",
+    reasonCode: "coverage_gap",
+    sourceIds: ["jira:DEMO-1", "wiki:1001"],
+  }],
+};
+const repairPacket = {
+  schema: "atlcli.research-packet-body/v1",
+  answeredQuestion: "The bounded repair retained the explicit DEMO-1 relationship evidence.",
+  sourceIds: ["jira:DEMO-1", "wiki:1001"],
+  findingCandidates: [],
+  relationshipCandidates: [{
+    id: "relationship:demo-1-wiki-1001-repaired",
+    classification: "verified",
+    jiraIssueKey: "DEMO-1",
+    confluenceContentId: "1001",
+    summary: "The bounded repair confirmed the explicit cross-reference.",
+    sourceIds: ["jira:DEMO-1", "wiki:1001"],
+  }],
+  gaps: [],
   proposedFollowUps: [],
+  coverageLimits: [],
 };
 
 const nativeFetch = globalThis.fetch.bind(globalThis);
@@ -556,6 +592,10 @@ globalThis.fetch = async (input, init) => {
 
     if (serializedRequest.includes("You are the reconciler specialist")) {
       return structured(critique);
+    }
+
+    if (serializedRequest.includes("Host-admitted specialization research-node:reconciliation-repair:")) {
+      return structured(repairPacket);
     }
 
     if (serializedRequest.includes("You are the document-distiller specialist")) {
@@ -1182,7 +1222,13 @@ test("runs bounded PTC in packed MV3, recreates workers, cancels, and renders sa
     "decision · central-supervisor-reconciliation-dispositions · completed"
   );
   expect(activityTrace).toContain(
-    "disposition · defect:packed-relationship-review · reject_defect · supported_by_evidence · recorded"
+    "disposition · defect:packed-relationship-review · add_follow_up · material_defect · recorded"
+  );
+  expect(activityTrace).toContain(
+    "repair · follow-up:packed-relationship-review · authorized · accepted_follow_up"
+  );
+  expect(activityTrace).toContain(
+    "repair · follow-up:packed-relationship-review · completed · packet_accepted"
   );
   expect(activityTrace).toContain("budget · tokens");
   expect(activityTrace).not.toContain(FAKE_KEY);
@@ -1222,7 +1268,7 @@ test("runs bounded PTC in packed MV3, recreates workers, cancels, and renders sa
   expect(jiraSearches[0]?.jql).toContain('updated >= "2026-07-23"');
   expect(wikiSearches[0]?.cql).toContain('space in ("KB")');
   expect(wikiSearches[0]?.cql).toContain('lastmodified >= "2026-07-23"');
-  expect(fetches.filter((event) => event.apiKeyPresent)).toHaveLength(9);
+  expect(fetches.filter((event) => event.apiKeyPresent)).toHaveLength(10);
   expect(JSON.stringify(successEvents)).not.toContain(FAKE_KEY);
   expect(
     fetches.some((event) =>

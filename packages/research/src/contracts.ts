@@ -383,6 +383,15 @@ export type ResearchEventV1 =
       reasonCode: "invalid_reference" | "already_resolved" | "supported_by_evidence" | "material_defect" | "insufficient_budget" | "outside_approval_envelope";
       status: "recorded";
     }
+  | {
+      kind: "repair_group";
+      seq: number;
+      at: string;
+      followUpId: string;
+      taskId?: string;
+      status: "authorized" | "retained_without_execution" | "completed";
+      reasonCode: "accepted_follow_up" | "wave_or_budget_exhausted" | "packet_accepted";
+    }
   | { kind: "steering"; seq: number; at: string; revision: number; status: string }
   | {
       kind: "budget";
@@ -411,6 +420,7 @@ export type ResearchOneShotEventV1 = Extract<
       | "decision"
       | "reconciliation"
       | "reconciliation_disposition"
+      | "repair_group"
       | "budget"
       | "artifact";
   }

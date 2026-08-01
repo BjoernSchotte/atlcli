@@ -123,7 +123,7 @@ export interface ResearchNodeCompletionPolicyV1 {
 
 export interface ResearchGraphNodeV1 {
   id: string;
-  kind: "resolve_scope" | "search" | "expand" | "distill" | "verify" | "moderate" | "outline" | "reconcile";
+  kind: "resolve_scope" | "search" | "expand" | "distill" | "verify" | "moderate" | "outline" | "reconcile" | "repair";
   executor: "ptc" | "subagent";
   roleId?: ResearchSubagentRoleIdV1;
   objective: string;
@@ -377,6 +377,20 @@ function composeSeeds(brief: ResearchBriefV1): NodeSeed[] {
     (brief.requestedReconciliation === "auto" && (relation || deep || contradiction));
   if (shouldReconcile) {
     seeds.push({ id: "research-node:reconciler", kind: "reconcile", executor: "subagent", roleId: "reconciler", objective: "Critique accepted packets in fresh context and return typed defects.", requestedCapabilityIds: [], dependencies: beforeReconciliation, reasonCodes: contradiction ? ["contradiction"] : ["coverage_gap"], priority: 40 });
+    seeds.push({
+      id: "research-node:reconciliation-repair",
+      kind: "repair",
+      executor: "subagent",
+      roleId: "contradiction-verifier",
+      objective: "Execute at most one host-authorized reconciliation follow-up inside the approved Jira and Confluence scope.",
+      requestedCapabilityIds: [
+        ...(jira ? ["jira.issue.search", "jira.issue.get"] as const : []),
+        ...(wiki ? ["wiki.search", "wiki.page.get"] as const : []),
+      ],
+      dependencies: ["research-node:reconciler"],
+      reasonCodes: ["coverage_gap"],
+      priority: 30,
+    });
   }
   seeds.push({
     id: "research-node:synthesizer",
@@ -395,7 +409,10 @@ function composeSeeds(brief: ResearchBriefV1): NodeSeed[] {
 export function projectSelectedResearchRolesV1(graph: Pick<ResearchGraphV1, "nodes">): ResearchSubagentRoleIdV1[] {
   const selected = new Set(
     graph.nodes
-      .filter((node) => node.executor === "subagent" && node.status !== "pruned" && node.roleId)
+      .filter((node) =>
+        node.executor === "subagent" && node.kind !== "repair" &&
+        node.status !== "pruned" && node.roleId
+      )
       .map((node) => node.roleId!),
   );
   return RESEARCH_T3_GRAPH_ROLES.filter((roleId) => selected.has(roleId));
@@ -435,7 +452,10 @@ function approvalEnvelope(
     coverageTargetFingerprint: fingerprint(brief.coverageTargets.map((target) => ({ id: target.id, question: target.question }))),
     allowedCoverageTargetIds: brief.coverageTargets.map((target) => target.id),
     resolvedEffort: brief.resolvedEffort,
-    allowedRoleIds: projectSelectedResearchRolesV1({ nodes }),
+    allowedRoleIds: [...new Set([
+      ...projectSelectedResearchRolesV1({ nodes }),
+      ...nodes.filter((node) => node.kind === "repair" && node.roleId).map((node) => node.roleId!),
+    ])],
     allowedCapabilityIds: [...new Set(nodes.flatMap((node) => node.grantedCapabilityIds))],
     totalBudgetCeiling: budget,
     maxParallelNodes: 3,
@@ -607,15 +627,16 @@ function budgetWithinCeiling(
 
 function executionRank(node: ResearchGraphNodeV1): number {
   if (node.executor === "ptc") return 0;
+  if (node.kind === "repair") return 5;
   switch (node.roleId) {
     case "focused-researcher": return 0;
     case "document-distiller": return 1;
     case "contradiction-verifier": return 2;
     case "coverage-moderator": return 3;
     case "reconciler": return 4;
-    case "synthesizer": return 5;
-    case "outline-planner": return 6;
-    case undefined: return 6;
+    case "synthesizer": return 6;
+    case "outline-planner": return 7;
+    case undefined: return 7;
   }
 }
 
@@ -775,6 +796,9 @@ export function acceptResearchGraphProposalV1(
   const selectedIds = new Set(proposal.nodes.map((node) => node.nodeId));
   if ([...selectedIds].some((nodeId) => !catalogById.has(nodeId))) {
     invalid("Research graph proposal references a node outside the host catalog.");
+  }
+  if (catalogGraph.nodes.some((node) => node.kind === "repair" && selectedIds.has(node.id))) {
+    invalid("Conditional reconciliation repair cannot be selected before critique.");
   }
   const requiredAcquisitionIds = catalogGraph.nodes
     .filter((node) => node.kind === "search" || node.kind === "resolve_scope")

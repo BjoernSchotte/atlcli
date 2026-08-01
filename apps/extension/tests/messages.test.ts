@@ -249,8 +249,20 @@ describe("message guards", () => {
     expect(isResearchEvent({
       ...base,
       event: {
+        kind: "repair_group",
+        seq: 10,
+        at: "2026-07-31T12:00:00.000Z",
+        followUpId: "follow-up:coverage",
+        taskId: "research-task:r1:reconciliation-repair:a1",
+        status: "authorized",
+        reasonCode: "accepted_follow_up",
+      },
+    })).toBe(true);
+    expect(isResearchEvent({
+      ...base,
+      event: {
         kind: "budget",
-        seq: 9,
+        seq: 11,
         at: "2026-07-31T12:00:00.000Z",
         metric: "tokens",
         consumed: 120,
@@ -261,7 +273,7 @@ describe("message guards", () => {
       ...base,
       event: {
         kind: "artifact",
-        seq: 10,
+        seq: 12,
         at: "2026-07-31T12:00:00.000Z",
         path: "/artifacts/report.md",
       },

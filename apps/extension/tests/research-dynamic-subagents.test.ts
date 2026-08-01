@@ -136,7 +136,9 @@ function taskEnvelope(
 
 function graphProposalInput(
   graph: ResearchGraphV1,
-  selectedNodeIds: readonly string[] = graph.nodes.map((node) => node.id),
+  selectedNodeIds: readonly string[] = graph.nodes
+    .filter((node) => node.kind !== "repair")
+    .map((node) => node.id),
 ) {
   const selected = new Set(selectedNodeIds);
   return {
@@ -164,7 +166,7 @@ function graphProposalPrelude(
 test("derives a bounded LangGraph super-step allowance from the admitted workflow", () => {
   expect(researchRecursionLimitV1()).toBe(24);
   expect(researchRecursionLimitV1(synthesisOnlyGraph())).toBe(40);
-  expect(researchRecursionLimitV1(crossProductGraph())).toBe(64);
+  expect(researchRecursionLimitV1(crossProductGraph())).toBe(70);
 });
 
 test("repairs one synthesizer schema failure and fails fast after the bounded retry", async () => {
@@ -502,6 +504,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       "document-distiller-cross-product-join",
       "coverage-moderator-coverage-moderation",
       "reconciler",
+      "contradiction-verifier-reconciliation-repair",
       "synthesizer",
     ]);
     expect(specs.every((spec) => spec.tools?.length === 0)).toBe(true);
@@ -510,7 +513,8 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     expect(specs[2]?.middleware).toHaveLength(0);
     expect(specs[3]?.middleware).toHaveLength(0);
     expect(specs[4]?.middleware).toHaveLength(0);
-    expect(specs[5]?.middleware).toHaveLength(0);
+    expect(specs[5]?.middleware).toHaveLength(1);
+    expect(specs[6]?.middleware).toHaveLength(0);
     expect(specs.every((spec) => !("responseFormat" in spec))).toBe(true);
     expect(specs[0]?.systemPrompt).toContain("exactly two bounded stages");
     expect(specs[0]?.systemPrompt).toContain("Inspect every returned candidate summary");
@@ -527,7 +531,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     );
     expect(specs[1]?.systemPrompt).toContain("Make exactly one eval call");
     expect(specs[1]?.systemPrompt).toContain("tools.wikiSearch");
-    expect(specs[5]?.systemPrompt).toContain("sole report author");
+    expect(specs[6]?.systemPrompt).toContain("sole report author");
   });
 
   test("preserves successful named-page searches when a later bounded query fails", () => {
@@ -719,7 +723,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     });
     expect(projection.synthesizerTask.roleId).toBe("synthesizer");
     expect(projection.synthesizerTask.dependencyTaskIds).toHaveLength(
-      graph.nodes.filter((node) => node.executor === "subagent").length - 1,
+      graph.nodes.filter((node) => node.executor === "subagent" && node.kind !== "repair").length - 1,
     );
   });
 
@@ -787,6 +791,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       schema: string;
       graphRevision: number;
       reconciliationTaskId: string;
+      repairStatus: string;
       dispositions: Array<Record<string, unknown>>;
     };
 
@@ -794,6 +799,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       schema: "atlcli.accepted-reconciliation/v1",
       graphRevision: graph.revision,
       reconciliationTaskId,
+      repairStatus: "not_requested",
       dispositions: [{
         schema: "atlcli.reconciliation-disposition/v1",
         id: "reconciliation-disposition:r1:1",
@@ -807,6 +813,141 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       }],
     });
     await expect(tool.invoke(input)).rejects.toThrow("immutable");
+  });
+
+  test("retains a bounded follow-up without dispatch when no repair budget is available", async () => {
+    const catalog = crossProductGraph();
+    const graph = acceptResearchGraphProposalV1(catalog, {
+      schema: "atlcli.research-graph-proposal/v1",
+      ...graphProposalInput(catalog),
+    });
+    const reconciler = graph.nodes.find((node) => node.roleId === "reconciler")!;
+    const reconciliationTaskId = researchTaskIdForNodeV1(graph, reconciler);
+    const packet = {
+      schema: RESEARCH_ACCEPTED_PACKET_SCHEMA_V1,
+      packetRef: "packet:reconciler:no-budget",
+      taskId: reconciliationTaskId,
+      graphRevision: graph.revision,
+      attempt: 1,
+      executor: "subagent",
+      roleId: "reconciler",
+      grantedCapabilityIds: [],
+      typedIntentRefs: [],
+      expectedOutputSchema: RESEARCH_RECONCILIATION_BODY_SCHEMA_V1,
+      body: {
+        schema: RESEARCH_RECONCILIATION_BODY_SCHEMA_V1,
+        defects: [{
+          id: "defect:coverage-no-budget",
+          severity: "important",
+          target: { kind: "coverage", id: "coverage:question" },
+          code: "missing_coverage",
+          references: [],
+          explanation: "One bounded coverage check remains.",
+          suggestedAction: "add_follow_up",
+        }],
+        proposedFollowUps: [{
+          id: "follow-up:coverage-no-budget",
+          objective: "Perform one bounded coverage check.",
+          reasonCode: "coverage_gap",
+          sourceIds: [],
+        }],
+      },
+      hostObservedUsage: {
+        capabilityCalls: 0,
+        inputTokens: 10,
+        outputTokens: 5,
+        resultBytes: 200,
+        durationMs: 20,
+        costMicros: 0,
+      },
+      acceptedAt: "2026-08-01T12:00:00.000Z",
+    } satisfies ResearchAcceptedPacketV1;
+    const tool = createResearchReconciliationDispositionPtcTool(catalog, {
+      activeGraph: () => graph,
+      reconciliationPacket: () => packet,
+      isKnownTarget: () => true,
+      authorizeRepair: () => undefined,
+    });
+    const result = JSON.parse(await tool.invoke({
+      basedOnGraphRevision: graph.revision,
+      reconciliationTaskId,
+      repairFollowUpId: "follow-up:coverage-no-budget",
+      decisions: [{
+        defectId: "defect:coverage-no-budget",
+        decision: "add_follow_up",
+        reasonCode: "insufficient_budget",
+      }],
+    })) as Record<string, unknown>;
+
+    expect(result.repairStatus).toBe("retained_without_execution");
+    expect(result).not.toHaveProperty("repairTask");
+    expect(result.dispositions).toEqual([
+      expect.objectContaining({
+        decision: "add_follow_up",
+        reasonCode: "insufficient_budget",
+      }),
+    ]);
+  });
+
+  test("rejects the latent repair slot before host authorization and before provider work", async () => {
+    const catalog = crossProductGraph();
+    const graph = acceptResearchGraphProposalV1(catalog, {
+      schema: "atlcli.research-graph-proposal/v1",
+      ...graphProposalInput(catalog),
+    });
+    const repair = catalog.nodes.find((node) => node.kind === "repair")!;
+    const specs = compileDynamicResearchSubagents(catalog, {
+      model,
+      broker,
+      question: request.question,
+      maxInterpreterMs: 5_000,
+      maxInterpreterMemoryBytes: 8_000_000,
+      maxPtcCalls: 8,
+      maxSearchPagesPerProduct: 2,
+      maxDetailItemsPerProduct: 5,
+      maxPacketChars: 8_000,
+    });
+    let upstreamCalls = 0;
+    const middleware = createBoundedResearchSubagentMiddleware(
+      model,
+      catalog,
+      specs,
+      {
+        createSubAgentMiddleware: (() => ({
+          name: "subAgentMiddleware",
+          tools: [tool(async () => {
+            upstreamCalls += 1;
+            return {
+              schema: "atlcli.research-packet-body/v1",
+              answeredQuestion: "Unauthorized repair must never run.",
+              sourceIds: [],
+              findingCandidates: [],
+              relationshipCandidates: [],
+              gaps: [],
+              proposedFollowUps: [],
+              coverageLimits: [],
+            };
+          }, {
+            name: "task",
+            description: "Synthetic upstream task.",
+            schema: z.object({ description: z.string(), subagent_type: z.string() }),
+          })],
+        })) as never,
+      },
+      {
+        activeGraph: () => graph,
+        repairAuthorization: () => undefined,
+      },
+    );
+
+    await expect(middleware.tools![0]!.invoke({
+      description: encodeResearchTaskDescriptionV1({
+        taskId: researchTaskIdForNodeV1(catalog, repair),
+        objective: repair.objective,
+      }),
+      subagent_type: researchSubagentTypeForNodeV1(repair),
+    })).rejects.toThrow("not been host-authorized");
+    expect(upstreamCalls).toBe(0);
   });
 
   test("uses one createDeepAgent invocation and native task dispatch for final synthesis", async () => {
@@ -1119,7 +1260,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     expect(dynamicModel.callCount).toBe(4);
   });
 
-  test("admits every no-fault graph node once across parallel and dependent native task groups", async () => {
+  test("authorizes at most one post-critique repair before the sole synthesizer", async () => {
     const graph = composeResearchGraphV1(graphBrief(
       request.question,
       ["jira", "confluence"],
@@ -1130,6 +1271,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     const wiki = graph.nodes.find((node) => node.id === "research-node:wiki-research")!;
     const join = graph.nodes.find((node) => node.id === "research-node:cross-product-join")!;
     const reconciler = graph.nodes.find((node) => node.id === "research-node:reconciler")!;
+    const repair = graph.nodes.find((node) => node.id === "research-node:reconciliation-repair")!;
     const synthesizer = graph.nodes.find((node) => node.id === "research-node:synthesizer")!;
     const taskId = (node: typeof jira) => researchTaskIdForNodeV1(graph, node);
     const subagentType = (node: typeof jira) => researchSubagentTypeForNodeV1(node);
@@ -1152,9 +1294,14 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
         code: "missing_coverage",
         references: [],
         explanation: "The synthetic branch intentionally contains no source evidence.",
-        suggestedAction: "abstain",
+        suggestedAction: "add_follow_up",
       }],
-      proposedFollowUps: [],
+      proposedFollowUps: [{
+        id: "follow-up:synthetic-coverage",
+        objective: "Check the bounded sources once for the missing synthetic coverage target.",
+        reasonCode: "coverage_gap",
+        sourceIds: [],
+      }],
     };
     const draft = {
       title: "Validated dynamic graph",
@@ -1209,13 +1356,29 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
         reconciliationTaskId: ${JSON.stringify(taskId(reconciler))},
         decisions: [{
           defectId: "defect:synthetic-coverage",
-          decision: "abstain",
+          decision: "add_follow_up",
           reasonCode: "material_defect"
-        }]
+        }],
+        repairFollowUpId: "follow-up:synthetic-coverage"
       }));
       if (acceptedDispositions.schema !== "atlcli.accepted-reconciliation/v1") {
         throw new Error("Synthetic reconciliation dispositions were not accepted.");
       }
+      if (!acceptedDispositions.repairTask || acceptedDispositions.repairTask.taskId !== ${JSON.stringify(taskId(repair))}) {
+        throw new Error("Synthetic repair task was not authorized.");
+      }
+      const repaired = await task({
+        description: JSON.stringify({
+          schema: "atlcli.research-task-dispatch/v1",
+          taskId: acceptedDispositions.repairTask.taskId,
+          objective: acceptedDispositions.repairTask.objective,
+          dependencyResults: [
+            { taskId: ${JSON.stringify(taskId(reconciler))}, result: critique }
+          ]
+        }),
+        subagentType: acceptedDispositions.repairTask.subagentType,
+        responseSchema: ${JSON.stringify(RESEARCH_ANALYSIS_PACKET_SCHEMA_V1)}
+      });
       const finalDraft = await task({
         description: JSON.stringify({
           schema: "atlcli.research-task-dispatch/v1",
@@ -1239,6 +1402,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       .respondWithTools([{ name: "ResearchPacketBodyV1", args: emptyPacket("Confluence branch") }])
       .respondWithTools([{ name: "ResearchPacketBodyV1", args: emptyPacket("Joined branch") }])
       .respondWithTools([{ name: "ReconciliationBodyV1", args: critique }])
+      .respondWithTools([{ name: "ResearchPacketBodyV1", args: emptyPacket("Bounded repair branch") }])
       .respondWithTools([{ name: "AtlcliResearchAgentDraftV1", args: draft }])
       .respondWithTools([{ name: "AtlcliResearchAgentDraftV1", args: draft }]);
     const events: ResearchOneShotEventV1[] = [];
@@ -1255,13 +1419,13 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     });
 
     expect(report.title).toBe(draft.title);
-    expect(dynamicModel.callCount).toBe(7);
+    expect(dynamicModel.callCount).toBe(8);
     expect(events.filter((event) => event.kind === "task" && event.status === "packet-accepted"))
-      .toHaveLength(5);
+      .toHaveLength(6);
     expect(events.filter((event) => event.kind === "subagent" && event.status === "started"))
-      .toHaveLength(5);
+      .toHaveLength(6);
     expect(events.filter((event) => event.kind === "subagent" && event.status === "completed"))
-      .toHaveLength(5);
+      .toHaveLength(6);
     expect(events.filter((event) => event.kind === "plan").at(-1)).toMatchObject({
       status: "accepted",
       nodeCount: 5,
@@ -1274,14 +1438,28 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     )).toEqual([1, 1, 2, 3, 4]);
     expect(events.filter((event) => event.kind === "reconciliation")).toEqual([
       expect.objectContaining({ status: "started" }),
-      expect.objectContaining({ status: "completed", defectCount: 1, proposedFollowUpCount: 0 }),
+      expect.objectContaining({ status: "completed", defectCount: 1, proposedFollowUpCount: 1 }),
     ]);
     expect(events.filter((event) => event.kind === "reconciliation_disposition")).toEqual([
       expect.objectContaining({
         defectId: "defect:synthetic-coverage",
-        decision: "abstain",
+        decision: "add_follow_up",
         reasonCode: "material_defect",
         status: "recorded",
+      }),
+    ]);
+    expect(events.filter((event) => event.kind === "repair_group")).toEqual([
+      expect.objectContaining({
+        followUpId: "follow-up:synthetic-coverage",
+        taskId: taskId(repair),
+        status: "authorized",
+        reasonCode: "accepted_follow_up",
+      }),
+      expect.objectContaining({
+        followUpId: "follow-up:synthetic-coverage",
+        taskId: taskId(repair),
+        status: "completed",
+        reasonCode: "packet_accepted",
       }),
     ]);
   });

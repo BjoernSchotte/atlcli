@@ -126,6 +126,7 @@ describe("dynamic research graph composition", () => {
       "research-node:wiki-research",
       "research-node:cross-product-join",
       "research-node:reconciler",
+      "research-node:reconciliation-repair",
     ]);
   });
 
@@ -288,6 +289,14 @@ describe("dynamic research graph composition", () => {
       ...valid,
       basedOnGraphRevision: valid.basedOnGraphRevision + 1,
     })).toThrow("stale");
+    expect(() => acceptResearchGraphProposalV1(catalog, proposalFor(catalog, [
+      "research-node:jira-research",
+      "research-node:wiki-research",
+      "research-node:cross-product-join",
+      "research-node:reconciler",
+      "research-node:reconciliation-repair",
+      "research-node:synthesizer",
+    ]))).toThrow("cannot be selected before critique");
   });
 
   test("rejects cycles, unknown dependencies, depth, and capability widening", () => {
