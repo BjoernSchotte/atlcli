@@ -1,24 +1,26 @@
 import {
   normalizePublicationRoutePrefixV1,
   normalizePublicationRouteV1,
+  normalizePublicationLocaleV1,
+  publicationLocaleDirectionV1,
+  publicationLocaleRouteV1,
   type PublicationI18nOptionsV1,
   type PublicationSeoOptionsV1,
 } from "@atlcli/web-publish";
-
-const LOCALE_PATTERN = /^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*$/u;
-const RTL_LANGUAGES = new Set(["ar", "dv", "fa", "he", "ku", "ps", "ur", "yi"]);
 
 export interface PublicationSeoPageInputV1 {
   sourceId: string;
   title: string;
   route: string;
+  /** Optional already namespace-localized route, before Astro `base`. */
+  localizedRoute?: string;
   /** Explicit page locale; omitted pages use the configured default locale. */
   locale?: string;
   /** Pages with the same key receive alternate-language links. */
   translationKey?: string;
   description?: string;
   imageUrl?: string;
-  breadcrumbs?: readonly { title: string; route: string }[];
+  breadcrumbs?: readonly { title: string; route: string; localizedRoute?: string }[];
 }
 
 export interface PublicationSeoAlternateV1 {
@@ -110,17 +112,7 @@ function nonEmpty(value: string, name: string): string {
 }
 
 function locale(value: string, name: string): string {
-  const normalized = nonEmpty(value, name).replaceAll("_", "-");
-  if (!LOCALE_PATTERN.test(normalized)) throw new TypeError(`${name} is not a valid BCP-47-like locale`);
-  return normalized;
-}
-
-function primaryLanguage(value: string): string {
-  return value.split("-")[0]!.toLowerCase();
-}
-
-function directionForLocale(value: string): "ltr" | "rtl" {
-  return RTL_LANGUAGES.has(primaryLanguage(value)) ? "rtl" : "ltr";
+  return normalizePublicationLocaleV1(nonEmpty(value, name), name);
 }
 
 function compactDescription(value: string | undefined, fallback: string): string {
@@ -157,10 +149,7 @@ function safeImage(value: string | undefined): string | undefined {
 }
 
 function pagePath(base: string, localeValue: string, route: string, options: PublicationI18nOptionsV1): string {
-  const localePrefix = options.routeMode === "prefix-all" || localeValue !== options.defaultLocale
-    ? `/${localeValue}`
-    : "";
-  const path = normalizePublicationRouteV1(`${localePrefix}${route}`);
+  const path = publicationLocaleRouteV1(route, localeValue, options);
   return `${base}${path}` || "/";
 }
 
@@ -202,7 +191,9 @@ export function createPublicationSeoPlanV1(options: PublicationSeoPlanOptionsV1)
     const route = normalizePublicationRouteV1(input.route);
     const pageLocale = locale(input.locale ?? defaultLocale, `page[${sourceId}].locale`);
     if (!locales.includes(pageLocale)) throw new TypeError(`page[${sourceId}].locale is not configured`);
-    const path = pagePath(base, pageLocale, route, { ...options.i18n, defaultLocale });
+    const path = input.localizedRoute === undefined
+      ? pagePath(base, pageLocale, route, { ...options.i18n, defaultLocale })
+      : `${base}${normalizePublicationRouteV1(input.localizedRoute)}` || "/";
     if (seenRoutes.has(path)) throw new TypeError(`duplicate SEO route '${path}'`);
     seenRoutes.add(path);
     return { ...input, sourceId, title, route, locale: pageLocale, path, translationKey: input.translationKey ?? sourceId };
@@ -228,14 +219,14 @@ export function createPublicationSeoPlanV1(options: PublicationSeoPlanOptionsV1)
       const breadcrumbs = input.breadcrumbs === undefined || input.breadcrumbs.length === 0
         ? [{ title: input.title, route: input.route }]
         : input.breadcrumbs;
-      structuredData.push({ "@context": "https://schema.org", "@type": "BreadcrumbList", itemListElement: breadcrumbs.map((breadcrumb, index) => ({ "@type": "ListItem", position: index + 1, name: nonEmpty(breadcrumb.title, "breadcrumb.title"), item: absolute(site, `${base}${normalizePublicationRouteV1(breadcrumb.route)}`) })) });
+      structuredData.push({ "@context": "https://schema.org", "@type": "BreadcrumbList", itemListElement: breadcrumbs.map((breadcrumb, index) => ({ "@type": "ListItem", position: index + 1, name: nonEmpty(breadcrumb.title, "breadcrumb.title"), item: absolute(site, `${base}${normalizePublicationRouteV1(breadcrumb.localizedRoute ?? breadcrumb.route)}`) })) });
     }
     return Object.freeze({
       sourceId: input.sourceId,
       title: input.title,
       description,
       locale: input.locale,
-      direction: directionForLocale(input.locale),
+      direction: publicationLocaleDirectionV1(input.locale),
       canonicalUrl,
       alternates,
       ...(imageUrl === undefined ? {} : { imageUrl }),

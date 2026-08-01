@@ -168,10 +168,10 @@ function resolvedConfig(root: string, overrides: Record<string, unknown> = {}): 
   };
 }
 
-async function fixture(bundleValue = bundle()): Promise<{ root: string; bundlePath: string }> {
+async function fixture(bundleValue = bundle(), pageValue = page): Promise<{ root: string; bundlePath: string }> {
   const root = await mkdtemp(join(tmpdir(), "atlcli-web-publish-astro-"));
   await mkdir(join(root, "pages"));
-  await writeFile(join(root, "pages", "guide.json"), JSON.stringify(page));
+  await writeFile(join(root, "pages", "guide.json"), JSON.stringify(pageValue));
   const bundlePath = join(root, "bundle.json");
   await writeFile(bundlePath, JSON.stringify(bundleValue));
   return { root, bundlePath };
@@ -200,6 +200,28 @@ test("reads only complete, referenced structured page documents", async () => {
       bundle: { bundleDigest: "bundle-digest" },
       pages: [{ sourceId: "guide", blocks: page.blocks }],
     });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("plans locale-prefixed static paths from page metadata without trusting URL identity", async () => {
+  const localizedPage = { ...page, locale: "ar", translationKey: "guide" };
+  const { root, bundlePath } = await fixture(bundle(), localizedPage);
+  try {
+    await expect(publicationStaticPathsV1({
+      bundlePath,
+      i18n: {
+        defaultLocale: "en",
+        locales: ["en", "ar"],
+        routeMode: "hide-default",
+        fallback: { ar: "en" },
+        uiTranslations: "starlight",
+      },
+    })).resolves.toEqual([{
+      params: { slug: "ar/guide" },
+      props: { kind: "page", sourceId: "guide", locale: "ar" },
+    }]);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

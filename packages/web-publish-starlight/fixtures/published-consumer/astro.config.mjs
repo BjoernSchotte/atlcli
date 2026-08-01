@@ -21,6 +21,11 @@ export default defineConfig({
       title: "Published knowledge",
       description: "A bundle-driven Starlight publishing fixture.",
       pagefind: true,
+      defaultLocale: "root",
+      locales: {
+        root: { label: "English", lang: "en" },
+        ar: { label: "Arabic", lang: "ar", dir: "rtl" },
+      },
       customCss: [
         "@atlcli/export-blocks-astro/styles.css",
         "@atlcli/web-publish-starlight/styles.css",
@@ -45,9 +50,9 @@ export default defineConfig({
         },
         i18n: {
           defaultLocale: "en",
-          locales: ["en"],
+          locales: ["en", "ar"],
           routeMode: "hide-default",
-          fallback: {},
+          fallback: { ar: "en" },
           uiTranslations: "starlight",
         },
         outDir,

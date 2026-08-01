@@ -74,7 +74,7 @@ test("a bundle-driven Starlight consumer owns source, graph landing, and trusted
   await run(["bun", "run", "build", "--filter=@atlcli/web-publish-astro"], workspaceRoot);
   await rm(resolve(publishedConsumerFixture, ".astro"), { recursive: true, force: true });
   const output = await run(["bun", "run", "build"], publishedConsumerFixture);
-  expect(output).toContain("3 page(s) built");
+  expect(output).toContain("4 page(s) built");
 
   const page = await readFile(resolve(publishedConsumerFixture, "dist/publish/guide/index.html"), "utf8");
   expect(page).toContain('data-atlcli-starlight-slot="main-content"');
@@ -98,6 +98,13 @@ test("a bundle-driven Starlight consumer owns source, graph landing, and trusted
   expect(await readFile(resolve(publishedConsumerFixture, "dist/feed.xml"), "utf8")).toContain("Bundle publishing guide");
   expect(page).toContain('rel="canonical" href="https://publish.example/docs/publish/guide/"');
   expect(page).toContain('rel="alternate" hreflang="en" href="https://publish.example/docs/publish/guide/"');
+  const arabic = await readFile(resolve(publishedConsumerFixture, "dist/ar/publish/guide/index.html"), "utf8");
+  expect(arabic).toContain('lang="ar"');
+  expect(arabic).toContain('dir="rtl"');
+  expect(arabic).toContain('data-pagefind-filter="language"');
+  expect(arabic).toContain('rel="canonical" href="https://publish.example/docs/ar/publish/guide/"');
+  expect(arabic).toContain('rel="alternate" hreflang="en" href="https://publish.example/docs/publish/guide/"');
+  expect(arabic).toContain('"item":"https://publish.example/docs/ar/publish/guide/"');
   expect(page).toContain('property="og:title" content="Bundle publishing guide"');
   expect(page).toContain('type="application/ld+json"');
 
@@ -108,7 +115,10 @@ test("a bundle-driven Starlight consumer owns source, graph landing, and trusted
     labelLandings: Array<{ kind: string; slug: string }>;
     projectPages: Array<{ kind: string; pathname: string }>;
   };
-  expect(inventory.pages).toEqual([{ kind: "page", sourceId: "guide", route: "/guide/", pathname: "publish/guide/" }]);
+  expect(inventory.pages).toEqual([
+    { kind: "page", sourceId: "guide-ar", route: "/guide/", locale: "ar", pathname: "ar/publish/guide/" },
+    { kind: "page", sourceId: "guide", route: "/guide/", pathname: "publish/guide/" },
+  ]);
   expect(inventory.labelLandings).toEqual([expect.objectContaining({ kind: "label", slug: "guide", pathname: "publish/topics/guide/" })]);
   expect(inventory.projectPages).toEqual([{ kind: "project", pathname: "404/" }]);
 }, 30_000);

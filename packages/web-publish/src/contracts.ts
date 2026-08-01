@@ -300,6 +300,7 @@ export interface ResolvedHeadingV1 {
 export interface PublicationPageReferencesV1 {
   sourceId: string;
   route: string;
+  locale?: string;
   anchors: readonly PublicationAnchorV1[];
   links: readonly ResolvedPublicationLinkReferenceV1[];
   assets: readonly ResolvedPublicationAssetV1[];
@@ -322,6 +323,10 @@ export interface PublicationPageV1 {
   sourceId: string;
   sourceVersion: string;
   title: string;
+  /** Explicit page locale; omitted pages use the publication default locale. */
+  locale?: string;
+  /** Stable key grouping translated pages for alternate-language metadata. */
+  translationKey?: string;
   parentId?: string;
   position: number;
   depth: number;

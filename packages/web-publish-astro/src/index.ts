@@ -10,6 +10,7 @@ export {
   PAGEFIND_OWNED_OUTPUT_PATH_PREFIX_V1,
   PUBLICATION_SEARCH_SEMANTIC_SLOTS_V1,
   publicationRoutePathV1,
+  publicationLocaleRoutePathV1,
   publicationStaticPathsV1,
   readPublicationNavigationV1,
   type AstroPublicationConfigExpectationV1,

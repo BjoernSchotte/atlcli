@@ -19,13 +19,32 @@
       "assetMetadataDigest": "asset-metadata-digest",
       "macroDependencyDigest": "no-live-dependencies",
       "state": "included"
+    }, {
+      "sourceId": "guide-ar",
+      "sourceVersion": "1",
+      "representation": "atlas_doc_format",
+      "parentId": "guide",
+      "position": 1,
+      "depth": 1,
+      "title": "Leitfaden",
+      "contentDigest": "content-digest-ar",
+      "metadataDigest": "metadata-digest-ar",
+      "assetMetadataDigest": "asset-metadata-digest-ar",
+      "macroDependencyDigest": "no-live-dependencies",
+      "state": "included"
     }]
   },
   "sourcePolicyDigest": "policy-digest",
   "complete": true,
   "rootIds": ["guide"],
-  "pages": [{ "sourceId": "guide", "path": "pages/guide.json", "pageDigest": "page-digest" }],
-  "routes": [{ "sourceId": "guide", "route": "/guide/", "state": "active", "assignedBy": "generated", "previousRoutes": [] }],
+  "pages": [
+    { "sourceId": "guide", "path": "pages/guide.json", "pageDigest": "page-digest" },
+    { "sourceId": "guide-ar", "path": "pages/guide-ar.json", "pageDigest": "page-digest-ar" }
+  ],
+  "routes": [
+    { "sourceId": "guide", "route": "/guide/", "state": "active", "assignedBy": "generated", "previousRoutes": [] },
+    { "sourceId": "guide-ar", "route": "/guide/", "state": "active", "assignedBy": "generated", "previousRoutes": [] }
+  ],
   "assets": [{
     "assetId": "fixture-asset",
     "path": "assets/f0dad327e22e8cddc2e8057cf16d9b16ea6e36e87d31f46ee4d5943c69609c4f/fixture.txt",

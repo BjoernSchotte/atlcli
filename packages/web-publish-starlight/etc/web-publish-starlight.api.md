@@ -13,6 +13,7 @@ export interface CreateStarlightPublicationNavigationOptionsV1 {
     routePrefix: string;
     base?: string;
     landingLabel: string;
+    i18n?: PublicationI18nOptionsV1;
 }
 
 // export: createStarlightPublicationNavigationV1
@@ -46,7 +47,7 @@ export declare const STARLIGHT_PUBLISHING_SEMANTIC_SLOTS_V1: readonly [
 ];
 
 // export: starlightPublicationHrefV1
-export declare function starlightPublicationHrefV1(route: string, routePrefix: string, base?: string): string;
+export declare function starlightPublicationHrefV1(route: string, routePrefix: string, base?: string, locale?: string | undefined, i18n?: PublicationI18nOptionsV1 | undefined): string;
 
 // export: starlightPublicationLabelLandingV1
 export declare function starlightPublicationLabelLandingV1(model: StarlightPublicationNavigationModelV1, slug: string): StarlightPublicationLabelLandingV1;

@@ -3,9 +3,11 @@ import { EXPORT_BLOCKS_ASTRO_MINIMAL_CONTEXT_V1 } from "@atlcli/export-blocks-as
 import {
   createPublicationSeoHeadTagsV1,
   createPublicationSeoPlanV1,
+  publicationLocaleRoutePathV1,
   publicationStaticPathsV1,
   readPublicationNavigationV1,
 } from "@atlcli/web-publish-astro";
+import { publicationLocaleDirectionV1 } from "@atlcli/web-publish";
 import {
   createStarlightPublicationNavigationV1,
   starlightPublicationLabelLandingV1,
@@ -22,10 +24,14 @@ import {
   publicationSiteName,
 } from "virtual:atlcli-publication";
 
+const routePrefix = "/publish";
+
 export async function getStaticPaths() {
   return publicationStaticPathsV1({
     bundlePath,
+    routePrefix: "/publish",
     ...(labelRoutePrefix === undefined ? {} : { labelRoutePrefix }),
+    ...(publicationI18n === undefined ? {} : { i18n: publicationI18n }),
   });
 }
 
@@ -37,9 +43,10 @@ const loaded = await readPublicationNavigationV1({
 const base = import.meta.env.BASE_URL === "/" ? "/" : import.meta.env.BASE_URL.replace(/\/$/u, "");
 const navigation = createStarlightPublicationNavigationV1({
   navigation: loaded.navigation,
-  routePrefix: "/publish",
+  routePrefix,
   base: import.meta.env.BASE_URL === "/" ? "" : import.meta.env.BASE_URL.slice(0, -1),
   landingLabel: "Overview",
+  ...(publicationI18n === undefined ? {} : { i18n: publicationI18n }),
 });
 const seoPlan = publicationSite !== undefined && publicationSeo !== undefined && publicationI18n !== undefined
   ? createPublicationSeoPlanV1({
@@ -52,14 +59,22 @@ const seoPlan = publicationSite !== undefined && publicationSeo !== undefined &&
       ...loaded.pages.map((entry) => ({
         sourceId: entry.sourceId,
         title: entry.title,
-        route: `/publish${entry.route}`,
+        route: `${routePrefix}${entry.route}`,
+        localizedRoute: publicationLocaleRoutePathV1(entry.route, routePrefix, entry.locale ?? publicationI18n.defaultLocale, publicationI18n),
+        ...(entry.locale === undefined ? {} : { locale: entry.locale }),
+        ...(entry.translationKey === undefined ? {} : { translationKey: entry.translationKey }),
         breadcrumbs: loaded.navigation.pages.find((candidate) => candidate.sourceId === entry.sourceId)?.breadcrumbs
-          .map((breadcrumb) => ({ title: breadcrumb.title, route: `/publish${breadcrumb.route}` })),
+          .map((breadcrumb) => ({
+            title: breadcrumb.title,
+            route: `${routePrefix}${breadcrumb.route}`,
+            localizedRoute: publicationLocaleRoutePathV1(breadcrumb.route, routePrefix, breadcrumb.locale ?? publicationI18n.defaultLocale, publicationI18n),
+          })),
       })),
       ...loaded.navigation.labels.map((label) => ({
         sourceId: `label:${label.slug}`,
         title: `Topic: ${label.label}`,
-        route: `/publish${label.route}`,
+        route: `${routePrefix}${label.route}`,
+        localizedRoute: publicationLocaleRoutePathV1(label.route, routePrefix, publicationI18n.defaultLocale, publicationI18n),
       })),
     ],
   })
@@ -70,12 +85,14 @@ if (path.kind === "page" && page === undefined) throw new Error(`Missing publica
 if (path.kind === "label" && landing === undefined) throw new Error(`Missing publication label landing ${path.slug}`);
 const seoMetadata = seoPlan?.pages.find((entry) => entry.sourceId === (path.kind === "page" ? path.sourceId : `label:${path.slug}`));
 const seoHead = seoMetadata === undefined ? undefined : createPublicationSeoHeadTagsV1(seoMetadata, seoPlan?.siteName);
+const pageLocale = page?.locale ?? publicationI18n?.defaultLocale ?? "en";
+const pageContext = { ...EXPORT_BLOCKS_ASTRO_MINIMAL_CONTEXT_V1, locale: pageLocale, direction: publicationLocaleDirectionV1(pageLocale) };
 ---
 
 {path.kind === "page" ? <StarlightPublicationPage
   page={page!}
   navigation={starlightPublicationPageNavigationV1(navigation, page!.sourceId)}
   sidebar={navigation.sidebar}
-  context={{ ...EXPORT_BLOCKS_ASTRO_MINIMAL_CONTEXT_V1 }}
+  context={pageContext}
   seoHead={seoHead}
 /> : <StarlightPublicationLabelLanding landing={landing!} sidebar={navigation.sidebar} seoHead={seoHead} />}

@@ -245,6 +245,9 @@ export declare const PUBLICATION_SEARCH_SEMANTIC_SLOTS_V1: readonly [
     "main-content"
 ];
 
+// export: publicationLocaleRoutePathV1
+export declare function publicationLocaleRoutePathV1(route: string, routePrefix: string, locale: string | undefined, i18n: PublicationI18nOptionsV1 | undefined): string;
+
 // export: publicationRoutePathV1
 export declare function publicationRoutePathV1(route: string, routePrefix: string): string;
 
@@ -277,6 +280,7 @@ export interface PublicationSeoPageInputV1 {
     sourceId: string;
     title: string;
     route: string;
+    localizedRoute?: string;
     locale?: string;
     translationKey?: string;
     description?: string;
@@ -284,6 +288,7 @@ export interface PublicationSeoPageInputV1 {
     breadcrumbs?: readonly {
         title: string;
         route: string;
+        localizedRoute?: string;
     }[];
 }
 
@@ -314,6 +319,8 @@ export interface PublicationSeoPlanOptionsV1 {
 // export: publicationStaticPathsV1
 export declare function publicationStaticPathsV1(options: AtlcliPublicationLoaderOptionsV1 & {
     labelRoutePrefix?: string;
+    i18n?: PublicationI18nOptionsV1;
+    routePrefix?: string;
 }): Promise<readonly PublicationStaticPathV1[]>;
 
 // export: PublicationStaticPathV1
@@ -324,6 +331,7 @@ export type PublicationStaticPathV1 = {
     props: {
         kind: "page";
         sourceId: string;
+        locale?: string;
     };
 } | {
     params: {

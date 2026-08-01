@@ -43,6 +43,7 @@ export class PublicationReferencePlanningErrorV1 extends Error {
 export interface PublicationReferencePageInputV1 {
   sourceId: string;
   route: string;
+  locale?: string;
   blocks: readonly ExportBlock[];
   links: readonly PublicationLinkReferenceV1[];
   assetIds: readonly string[];
@@ -216,10 +217,11 @@ export function planPublicationReferencesV1(
   for (const page of pages) {
     if (pageById.has(page.sourceId)) fail("duplicate-page", `Duplicate page '${page.sourceId}'`);
     const route = normalizePublicationRouteV1(page.route);
-    const existing = pageByRoute.get(route);
-    if (existing !== undefined) fail("duplicate-route", `Route '${route}' belongs to both '${existing}' and '${page.sourceId}'`);
+    const routeIdentity = `${page.locale ?? ""}\u0000${route}`;
+    const existing = pageByRoute.get(routeIdentity);
+    if (existing !== undefined) fail("duplicate-route", `Route '${route}' in locale '${page.locale ?? "default"}' belongs to both '${existing}' and '${page.sourceId}'`);
     pageById.set(page.sourceId, page);
-    pageByRoute.set(route, page.sourceId);
+    pageByRoute.set(routeIdentity, page.sourceId);
     anchorsByPage.set(page.sourceId, planPublicationAnchorsV1(page.blocks));
   }
 
@@ -280,6 +282,7 @@ export function planPublicationReferencesV1(
       return {
         sourceId: page.sourceId,
         route,
+        ...(page.locale === undefined ? {} : { locale: page.locale }),
         anchors: anchorsByPage.get(page.sourceId) ?? [],
         links,
         assets,

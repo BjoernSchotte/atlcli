@@ -40,6 +40,7 @@ export interface PublicationNavigationItemV1 {
   sourceId: string;
   title: string;
   route: string;
+  locale?: string;
   children: readonly PublicationNavigationItemV1[];
 }
 
@@ -47,6 +48,7 @@ export interface PublicationBreadcrumbV1 {
   sourceId: string;
   title: string;
   route: string;
+  locale?: string;
 }
 
 export interface PublicationTocEntryV1 {
@@ -66,6 +68,7 @@ export interface PublicationRelatedPageV1 {
   sourceId: string;
   title: string;
   route: string;
+  locale?: string;
   score: number;
   reasons: readonly PublicationRelatedReasonV1[];
 }
@@ -113,7 +116,12 @@ function compareNodes(left: Node, right: Node): number {
 }
 
 function pageSummary(node: Node): PublicationBreadcrumbV1 {
-  return { sourceId: node.page.sourceId, title: node.page.title, route: node.page.route };
+  return {
+    sourceId: node.page.sourceId,
+    title: node.page.title,
+    route: node.page.route,
+    ...(node.page.locale === undefined ? {} : { locale: node.page.locale }),
+  };
 }
 
 function headingToc(anchors: readonly PublicationAnchorV1[]): readonly PublicationTocEntryV1[] {
@@ -138,6 +146,10 @@ function sharedLabelCount(left: PublicationPageV1, right: PublicationPageV1): nu
 
 function routeFold(route: string): string {
   return route.normalize("NFKC").toLowerCase();
+}
+
+function routeIdentity(route: string, locale: string | undefined): string {
+  return `${locale ?? ""}\u0000${route}`;
 }
 
 function labelRoute(prefix: string, label: string): string {
@@ -208,12 +220,13 @@ export function planPublicationNavigationV1(
   for (const page of request.pages) {
     if (byId.has(page.sourceId)) fail("duplicate-page", `Duplicate navigation page '${page.sourceId}'`);
     const route = normalizePublicationRouteV1(page.route);
-    if (route !== page.route || byRoute.has(route)) {
-      fail("duplicate-route", `Duplicate or non-canonical navigation route '${page.route}'`);
+    const identity = routeIdentity(route, page.locale);
+    if (route !== page.route || byRoute.has(identity)) {
+      fail("duplicate-route", `Duplicate or non-canonical navigation route '${page.route}' in locale '${page.locale ?? "default"}'`);
     }
     const node: Node = { page, children: [] };
     byId.set(page.sourceId, node);
-    byRoute.set(route, node);
+    byRoute.set(identity, node);
   }
 
   const roots: Node[] = [];
@@ -303,15 +316,17 @@ export function planPublicationNavigationV1(
     }
   }
   const labelRoutes = new Map<string, string>();
-  for (const route of byRoute.keys()) labelRoutes.set(routeFold(route), "page");
+  for (const node of byId.values()) {
+    labelRoutes.set(routeFold(routeIdentity(node.page.route, node.page.locale)), "page");
+  }
   const labels = Object.freeze([...labelGroups.values()].map((group): PublicationLabelLandingV1 => {
     const slug = publicationSlugV1(group.label);
     const route = labelRoute(labelRoutePrefix, group.label);
-    const collision = labelRoutes.get(routeFold(route));
+    const collision = labelRoutes.get(routeFold(routeIdentity(route, undefined)));
     if (collision !== undefined) {
       fail("label-route-collision", `Label '${group.label}' collides with ${collision} route '${route}'`);
     }
-    labelRoutes.set(routeFold(route), "another label");
+    labelRoutes.set(routeFold(routeIdentity(route, undefined)), "another label");
     return Object.freeze({
       label: group.label,
       slug,

@@ -7,6 +7,7 @@ import {
   canonicalPublicationJsonV1,
   negotiatePublicationExperienceV1,
   normalizePublicationRoutePrefixV1,
+  publicationLocaleRouteV1,
   planPublicationNavigationV1,
   type PublicationDesignTokenValidatorV1,
   type PublicationExperienceDescriptorV1,
@@ -113,7 +114,7 @@ export interface AtlcliAstroPublishingIntegrationV1 {
 }
 
 export type PublicationStaticPathV1 =
-  | { params: { slug?: string }; props: { kind: "page"; sourceId: string } }
+  | { params: { slug?: string }; props: { kind: "page"; sourceId: string; locale?: string } }
   | { params: { slug: string }; props: { kind: "label"; slug: string } };
 
 export interface LoadedPublicationNavigationV1 {
@@ -243,6 +244,19 @@ export function publicationRoutePathV1(route: string, routePrefix: string): stri
   return `${prefix}${route}`.replace(/\/$/u, "");
 }
 
+/** Convert a logical route to its namespace-owned, locale-aware Astro route. */
+export function publicationLocaleRoutePathV1(
+  route: string,
+  routePrefix: string,
+  locale: string | undefined,
+  i18n: PublicationI18nOptionsV1 | undefined,
+): string {
+  const namespacedRoute = publicationRoutePathV1(route, routePrefix);
+  return locale === undefined || i18n === undefined
+    ? namespacedRoute
+    : publicationLocaleRouteV1(namespacedRoute, locale, i18n);
+}
+
 /**
  * Static path records for an operator-owned `[...slug].astro` route. The
  * immutable source ID is the sole prop; the component loads its structured
@@ -276,19 +290,25 @@ function routeKey(pathname: string): string {
  * collision-checked planner slug, never a source-derived route lookup.
  */
 export async function publicationStaticPathsV1(
-  options: AtlcliPublicationLoaderOptionsV1 & { labelRoutePrefix?: string },
+  options: AtlcliPublicationLoaderOptionsV1 & { labelRoutePrefix?: string; i18n?: PublicationI18nOptionsV1; routePrefix?: string },
 ): Promise<readonly PublicationStaticPathV1[]> {
   const { pages, navigation } = await readPublicationNavigationV1(options);
   return [
     ...pages.map((page): PublicationStaticPathV1 => {
-      const slug = staticSlug(page.route);
+      const pageLocale = page.locale ?? options.i18n?.defaultLocale;
+      const localizedRoute = publicationLocaleRoutePathV1(page.route, options.routePrefix ?? "", pageLocale, options.i18n);
+      const slug = staticSlug(localizedRoute);
       return {
         params: slug === undefined ? {} : { slug },
-        props: { kind: "page", sourceId: page.sourceId },
+        props: {
+          kind: "page",
+          sourceId: page.sourceId,
+          ...(pageLocale === undefined ? {} : { locale: pageLocale }),
+        },
       };
     }),
     ...navigation.labels.map((label): PublicationStaticPathV1 => ({
-      params: { slug: staticSlug(label.route)! },
+      params: { slug: staticSlug(publicationLocaleRoutePathV1(label.route, options.routePrefix ?? "", options.i18n?.defaultLocale, options.i18n))! },
       props: { kind: "label", slug: label.slug },
     })),
   ];
@@ -521,9 +541,11 @@ export function atlcliPublishingIntegration(
       "astro:config:done": ({ config }) => assertResolvedAstroConfig(config, options.expectedConfig),
       "astro:routes:resolved": async ({ routes }) => {
         const { pages, navigation } = await readPublicationNavigationV1(options);
+        const i18n = options.expectedConfig.i18n;
+        const defaultLocale = i18n?.defaultLocale;
         const publicationRoutes = new Set([
-          ...pages.map((page) => publicationRoutePathV1(page.route, routePrefix)),
-          ...navigation.labels.map((label) => publicationRoutePathV1(label.route, routePrefix)),
+          ...pages.map((page) => publicationLocaleRoutePathV1(page.route, routePrefix, page.locale ?? defaultLocale, i18n)),
+          ...navigation.labels.map((label) => publicationLocaleRoutePathV1(label.route, routePrefix, defaultLocale, i18n)),
         ]);
         const collisions = routes
           .filter((route) => route.pathname !== undefined && publicationRoutes.has(route.pathname))
@@ -544,12 +566,14 @@ export function atlcliPublishingIntegration(
           throw new Error("atlcli publishing manifestPath must be outside Astro's public output directory");
         }
         const loaded = await readPublicationNavigationV1(options);
+        const i18n = options.expectedConfig.i18n;
+        const defaultLocale = i18n?.defaultLocale;
         const sourceByRoute = new Map(loaded.pages.map((page) => [
-          routeKey(publicationRoutePathV1(page.route, routePrefix)),
-          { kind: "page" as const, sourceId: page.sourceId, route: page.route },
+          routeKey(publicationLocaleRoutePathV1(page.route, routePrefix, page.locale ?? defaultLocale, i18n)),
+          { kind: "page" as const, sourceId: page.sourceId, route: page.route, ...(page.locale === undefined ? {} : { locale: page.locale }) },
         ]));
         const labelByRoute = new Map(loaded.navigation.labels.map((label) => [
-          routeKey(publicationRoutePathV1(label.route, routePrefix)),
+          routeKey(publicationLocaleRoutePathV1(label.route, routePrefix, defaultLocale, i18n)),
           { kind: "label" as const, label: label.label, slug: label.slug, route: label.route, sourceIds: label.sourceIds },
         ]));
         const trustedProjectRoutes = new Set(routeInventory.flatMap((route) => route.pathname === undefined
@@ -586,7 +610,6 @@ export function atlcliPublishingIntegration(
           }),
         });
         const seo = options.expectedConfig.seo;
-        const i18n = options.expectedConfig.i18n;
         const site = options.expectedConfig.site;
         if (seo !== undefined && i18n !== undefined && site !== undefined) {
           const seoPlan = createPublicationSeoPlanV1({
@@ -600,13 +623,21 @@ export function atlcliPublishingIntegration(
                 sourceId: page.sourceId,
                 title: page.title,
                 route: publicationRoutePathV1(page.route, routePrefix),
+                localizedRoute: publicationLocaleRoutePathV1(page.route, routePrefix, page.locale ?? defaultLocale, i18n),
+                ...(page.locale === undefined ? {} : { locale: page.locale }),
+                ...(page.translationKey === undefined ? {} : { translationKey: page.translationKey }),
                 breadcrumbs: loaded.navigation.pages.find((entry) => entry.sourceId === page.sourceId)?.breadcrumbs
-                  .map((breadcrumb) => ({ title: breadcrumb.title, route: publicationRoutePathV1(breadcrumb.route, routePrefix) })),
+                  .map((breadcrumb) => ({
+                    title: breadcrumb.title,
+                    route: publicationRoutePathV1(breadcrumb.route, routePrefix),
+                    localizedRoute: publicationLocaleRoutePathV1(breadcrumb.route, routePrefix, breadcrumb.locale ?? defaultLocale, i18n),
+                  })),
               })),
               ...loaded.navigation.labels.map((label) => ({
                 sourceId: `label:${label.slug}`,
                 title: `Topic: ${label.label}`,
                 route: publicationRoutePathV1(label.route, routePrefix),
+                localizedRoute: publicationLocaleRoutePathV1(label.route, routePrefix, defaultLocale, i18n),
               })),
             ],
           });

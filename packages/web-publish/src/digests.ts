@@ -205,6 +205,7 @@ export function assertPublicationBundleReferencesV1(
     pages: pages.map((page) => ({
       sourceId: page.sourceId,
       route: page.route,
+      ...(page.locale === undefined ? {} : { locale: page.locale }),
       blocks: page.blocks,
       links: page.links,
       assetIds: page.assetIds,

@@ -2,6 +2,7 @@ export * from "./cache.js";
 export * from "./contracts.js";
 export * from "./digests.js";
 export * from "./experience.js";
+export * from "./i18n.js";
 export * from "./navigation.js";
 export * from "./references.js";
 export * from "./refresh.js";

@@ -126,6 +126,9 @@ export declare function negotiatePublicationSearchV1(options: PublicationSearchO
 // export: normalizePublicationAnchorReferenceV1
 export declare function normalizePublicationAnchorReferenceV1(value: string): string;
 
+// export: normalizePublicationLocaleV1
+export declare function normalizePublicationLocaleV1(value: string, name?: string): string;
+
 // export: normalizePublicationRouteForPrefixV1
 export declare function normalizePublicationRouteForPrefixV1(route: string, prefix: string): string;
 
@@ -295,6 +298,7 @@ export interface PublicationBreadcrumbV1 {
     sourceId: string;
     title: string;
     route: string;
+    locale?: string;
 }
 
 // export: PublicationBuilderContractErrorV1
@@ -525,6 +529,15 @@ export type PublicationLinkReferenceV1 = {
     label: string;
 };
 
+// export: publicationLocaleDirectionV1
+export declare function publicationLocaleDirectionV1(locale: string): "ltr" | "rtl";
+
+// export: publicationLocaleFallbackChainV1
+export declare function publicationLocaleFallbackChainV1(locale: string, options: PublicationI18nOptionsV1): readonly string[];
+
+// export: publicationLocaleRouteV1
+export declare function publicationLocaleRouteV1(route: string, locale: string, options: PublicationI18nOptionsV1): string;
+
 // export: PublicationMacroPolicyV1
 export interface PublicationMacroPolicyV1 {
     mode: "static-only" | "allow-frozen-live";
@@ -549,6 +562,7 @@ export interface PublicationNavigationItemV1 {
     sourceId: string;
     title: string;
     route: string;
+    locale?: string;
     children: readonly PublicationNavigationItemV1[];
 }
 
@@ -622,6 +636,7 @@ export interface PublicationPageNavigationV1 {
 export interface PublicationPageReferencesV1 {
     sourceId: string;
     route: string;
+    locale?: string;
     anchors: readonly PublicationAnchorV1[];
     links: readonly ResolvedPublicationLinkReferenceV1[];
     assets: readonly ResolvedPublicationAssetV1[];
@@ -633,6 +648,8 @@ export interface PublicationPageV1 {
     sourceId: string;
     sourceVersion: string;
     title: string;
+    locale?: string;
+    translationKey?: string;
     parentId?: string;
     position: number;
     depth: number;
@@ -674,6 +691,7 @@ export interface PublicationProjectV1 {
 export interface PublicationReferencePageInputV1 {
     sourceId: string;
     route: string;
+    locale?: string;
     blocks: readonly ExportBlock[];
     links: readonly PublicationLinkReferenceV1[];
     assetIds: readonly string[];
@@ -721,6 +739,7 @@ export interface PublicationRelatedPageV1 {
     sourceId: string;
     title: string;
     route: string;
+    locale?: string;
     score: number;
     reasons: readonly PublicationRelatedReasonV1[];
 }

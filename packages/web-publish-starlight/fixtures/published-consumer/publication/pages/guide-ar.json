@@ -1,0 +1,22 @@
+{
+  "schema": "atlcli.publication-page/1",
+  "sourceId": "guide-ar",
+  "sourceVersion": "1",
+  "title": "Leitfaden",
+  "locale": "ar",
+  "translationKey": "guide",
+  "parentId": "guide",
+  "position": 1,
+  "depth": 1,
+  "route": "/guide/",
+  "blocks": [
+    { "type": "paragraph", "content": [{ "type": "text", "text": "Eine lokalisierte ExportBlock-Seite mit RTL-Unterstützung." }] },
+    { "type": "heading", "level": 2, "explicitAnchor": "rtl", "content": [{ "type": "text", "text": "RTL proof" }] }
+  ],
+  "notes": [],
+  "labels": ["guide"],
+  "links": [],
+  "assetIds": [],
+  "renderDependencies": [],
+  "pageDigest": "page-digest-ar"
+}

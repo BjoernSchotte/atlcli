@@ -38,6 +38,8 @@ const { page, navigation, sidebar, context, copy, seoHead } = Astro.props;
 ---
 
 <StarlightPage
+  lang={context.locale}
+  dir={context.direction}
   frontmatter={{
     title: page.title,
     // The publication planner, rather than Starlight's file/MDX traversal,
@@ -54,6 +56,6 @@ const { page, navigation, sidebar, context, copy, seoHead } = Astro.props;
   <StarlightDocumentBody
     blocks={page.blocks}
     context={context}
-    search={{ sourceId: page.sourceId, title: page.title, labels: page.labels }}
+    search={{ sourceId: page.sourceId, title: page.title, labels: page.labels, locale: context.locale }}
   />
 </StarlightPage>

@@ -1,6 +1,8 @@
 import {
   normalizePublicationRoutePrefixV1,
   normalizePublicationRouteV1,
+  publicationLocaleRouteV1,
+  type PublicationI18nOptionsV1,
   type PublicationBreadcrumbV1,
   type PublicationNavigationItemV1,
   type PublicationNavigationPlanV1,
@@ -64,6 +66,8 @@ export interface CreateStarlightPublicationNavigationOptionsV1 {
   base?: string;
   /** Trusted, localized label for a group landing link. */
   landingLabel: string;
+  /** Shared locale route policy; omitted for single-locale publications. */
+  i18n?: PublicationI18nOptionsV1;
 }
 
 export class StarlightPublicationNavigationErrorV1 extends Error {
@@ -81,19 +85,30 @@ function requireLabel(value: string): string {
 }
 
 /** Convert a neutral route to its static Starlight URL, including an optional Astro base. */
-export function starlightPublicationHrefV1(route: string, routePrefix: string, base = ""): string {
-  const normalizedRoute = normalizePublicationRouteV1(route);
-  const prefix = `${normalizePublicationRoutePrefixV1(base)}${normalizePublicationRoutePrefixV1(routePrefix)}`;
+export function starlightPublicationHrefV1(
+  route: string,
+  routePrefix: string,
+  base = "",
+  locale: string | undefined = undefined,
+  i18n: PublicationI18nOptionsV1 | undefined = undefined,
+): string {
+  const namespacedRoute = normalizePublicationRouteV1(
+    `${normalizePublicationRoutePrefixV1(routePrefix)}${normalizePublicationRouteV1(route)}`,
+  );
+  const normalizedRoute = i18n === undefined
+    ? namespacedRoute
+    : publicationLocaleRouteV1(namespacedRoute, locale ?? i18n.defaultLocale, i18n);
+  const prefix = normalizePublicationRoutePrefixV1(base);
   return normalizedRoute === "/" ? `${prefix}/` || "/" : `${prefix}${normalizedRoute}`;
 }
 
-function link(value: PublicationBreadcrumbV1, routePrefix: string, base: string): StarlightPublicationLinkV1 {
-  return { sourceId: value.sourceId, title: value.title, href: starlightPublicationHrefV1(value.route, routePrefix, base) };
+function link(value: PublicationBreadcrumbV1, routePrefix: string, base: string, i18n?: PublicationI18nOptionsV1): StarlightPublicationLinkV1 {
+  return { sourceId: value.sourceId, title: value.title, href: starlightPublicationHrefV1(value.route, routePrefix, base, value.locale, i18n) };
 }
 
-function relatedLink(value: PublicationRelatedPageV1, routePrefix: string, base: string): StarlightPublicationRelatedLinkV1 {
+function relatedLink(value: PublicationRelatedPageV1, routePrefix: string, base: string, i18n?: PublicationI18nOptionsV1): StarlightPublicationRelatedLinkV1 {
   return {
-    ...link(value, routePrefix, base),
+    ...link(value, routePrefix, base, i18n),
     score: value.score,
     reasons: value.reasons,
   };
@@ -105,7 +120,12 @@ function sidebarEntry(
   base: string,
   landingLabel: string,
   expanded: boolean,
+  i18n?: PublicationI18nOptionsV1,
 ): StarlightPublicationSidebarEntryV1 {
+  // Starlight localizes its documented sidebar links for the current route.
+  // Passing a locale-prefixed href here would make the current locale appear
+  // twice on translated pages; ordinary publication chrome below uses the
+  // explicit locale-aware href path.
   const href = starlightPublicationHrefV1(item.route, routePrefix, base);
   if (item.children.length === 0) return { label: item.title, link: href };
   return {
@@ -113,7 +133,7 @@ function sidebarEntry(
     collapsed: !expanded,
     items: [
       { label: landingLabel, link: href },
-      ...item.children.map((child) => sidebarEntry(child, routePrefix, base, landingLabel, false)),
+      ...item.children.map((child) => sidebarEntry(child, routePrefix, base, landingLabel, false, i18n)),
     ],
   };
 }
@@ -122,14 +142,15 @@ function pageNavigation(
   page: PublicationPageNavigationV1,
   routePrefix: string,
   base: string,
+  i18n?: PublicationI18nOptionsV1,
 ): StarlightPublicationPageNavigationV1 {
   return Object.freeze({
     sourceId: page.sourceId,
-    breadcrumbs: Object.freeze(page.breadcrumbs.map((entry) => link(entry, routePrefix, base))),
+    breadcrumbs: Object.freeze(page.breadcrumbs.map((entry) => link(entry, routePrefix, base, i18n))),
     toc: page.toc,
-    ...(page.previous === undefined ? {} : { previous: link(page.previous, routePrefix, base) }),
-    ...(page.next === undefined ? {} : { next: link(page.next, routePrefix, base) }),
-    related: Object.freeze(page.related.map((entry) => relatedLink(entry, routePrefix, base))),
+    ...(page.previous === undefined ? {} : { previous: link(page.previous, routePrefix, base, i18n) }),
+    ...(page.next === undefined ? {} : { next: link(page.next, routePrefix, base, i18n) }),
+    related: Object.freeze(page.related.map((entry) => relatedLink(entry, routePrefix, base, i18n))),
   });
 }
 
@@ -138,6 +159,7 @@ function labelLanding(
   pages: ReadonlyMap<string, StarlightPublicationPageNavigationV1>,
   routePrefix: string,
   base: string,
+  i18n?: PublicationI18nOptionsV1,
 ): StarlightPublicationLabelLandingV1 {
   const members = label.sourceIds.map((sourceId) => {
     const page = pages.get(sourceId);
@@ -150,7 +172,7 @@ function labelLanding(
   return Object.freeze({
     label: label.label,
     slug: label.slug,
-    href: starlightPublicationHrefV1(label.route, routePrefix, base),
+    href: starlightPublicationHrefV1(label.route, routePrefix, base, undefined, i18n),
     pages: Object.freeze(members),
   });
 }
@@ -166,17 +188,17 @@ export function createStarlightPublicationNavigationV1(
   const landingLabel = requireLabel(options.landingLabel);
   const routePrefix = normalizePublicationRoutePrefixV1(options.routePrefix);
   const base = normalizePublicationRoutePrefixV1(options.base ?? "");
-  const pages = Object.freeze(options.navigation.pages.map((page) => pageNavigation(page, routePrefix, base)));
+  const pages = Object.freeze(options.navigation.pages.map((page) => pageNavigation(page, routePrefix, base, options.i18n)));
   const pagesBySourceId = new Map(pages.map((page) => [page.sourceId, page]));
   return Object.freeze({
     routePrefix,
     sidebar: Object.freeze(options.navigation.roots.map((root) =>
       // Starlight's documented sidebar input applies its configured base.
       // Other publication chrome uses fully base-aware href values above.
-      sidebarEntry(root, routePrefix, "", landingLabel, true),
+      sidebarEntry(root, routePrefix, "", landingLabel, true, options.i18n),
     )),
     pages,
-    labels: Object.freeze(options.navigation.labels.map((label) => labelLanding(label, pagesBySourceId, routePrefix, base))),
+    labels: Object.freeze(options.navigation.labels.map((label) => labelLanding(label, pagesBySourceId, routePrefix, base, options.i18n))),
   });
 }
 

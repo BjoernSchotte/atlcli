@@ -2,6 +2,7 @@ import {
   EXPORT_BLOCK_MODEL_SCHEMA_V1,
   parseExportBlockDocumentV1,
 } from "@atlcli/export-blocks";
+import { normalizePublicationLocaleV1 } from "./i18n.js";
 import {
   PUBLICATION_BUNDLE_SCHEMA_V1,
   PUBLICATION_EXPERIENCE_SCHEMA_V1,
@@ -805,7 +806,7 @@ function publicationDependency(value: unknown, path: string): void {
 function publicationPage(value: unknown, path: string): void {
   const candidate = object(value, path);
   keys(candidate, path, [
-    "schema", "sourceId", "sourceVersion", "title", "parentId", "position", "depth",
+    "schema", "sourceId", "sourceVersion", "title", "locale", "translationKey", "parentId", "position", "depth",
     "route", "blocks", "notes", "labels", "links", "assetIds", "renderDependencies",
     "pageDigest",
   ]);
@@ -813,6 +814,10 @@ function publicationPage(value: unknown, path: string): void {
   nonEmptyString(candidate.sourceId, `${path}.sourceId`);
   nonEmptyString(candidate.sourceVersion, `${path}.sourceVersion`);
   nonEmptyString(candidate.title, `${path}.title`);
+  optional(candidate, "locale", path, (value, valuePath) => {
+    normalizePublicationLocaleV1(nonEmptyString(value, valuePath), valuePath);
+  });
+  optional(candidate, "translationKey", path, nonEmptyString);
   optional(candidate, "parentId", path, nonEmptyString);
   safeInteger(candidate.position, `${path}.position`, 0);
   safeInteger(candidate.depth, `${path}.depth`, 0);

@@ -1625,7 +1625,7 @@ and presentation contracts are not Starlight-private.
 - [x] Generate canonical and alternate-language links, intentional robots
       policy, sitemap, OpenGraph/social metadata, allowlisted JSON-LD, and
       optional RSS/Atom from the shared route/locale planner.
-- [ ] Implement explicit locale metadata, localized routes/UI/search, language
+- [x] Implement explicit locale metadata, localized routes/UI/search, language
       fallback, correct `lang`/`dir`, RTL, and canonical/hreflang consistency.
 - [ ] Implement verified-original and bounded Astro-responsive image modes,
       original download links, local/system fonts, and no remote font runtime.
