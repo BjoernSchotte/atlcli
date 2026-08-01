@@ -3027,8 +3027,17 @@ fake-indexeddb close/reopen test for browser workspace, opaque refs, and a
 Markdown artifact. The IndexedDB-backed LangGraph saver and extension protocol
 wiring remain pending.
 
-- [ ] Ensure accepted turns are durable before execution begins.
-- [ ] Persist brief and graph revisions before plan approval or execution.
+- [x] Ensure accepted turns are durable before execution begins.
+- [x] Persist brief and graph revisions before plan approval or execution.
+
+T4 durable-start checkpoint (2026-08-01):
+`initializeResearchSessionTurnV1` is the shared execution gate. It records the
+accepted turn, brief, and an exact graph proposal before it can return a
+`running` session. An explicitly automatic plan is converted to a persisted
+proposal and then approved through its own journal event; a required plan
+remains durably `waiting_plan_approval` with no approval event. The first host
+integration must call this gate before credentials, workspace, provider, or
+agent construction.
 - [ ] Persist ready nodes before dispatch. Accept or quarantine a result with
       one aggregate revision-fenced journal/CAS operation covering graph
       revision, graph-node status and packet reference, task-attempt terminal

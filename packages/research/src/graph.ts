@@ -468,6 +468,8 @@ function approvalEnvelope(
 }
 
 export interface ComposeStandardResearchGraphOptionsV1 {
+  sessionId?: string;
+  turnId?: string;
   scope?: ResearchScopeV1;
   scopeBindings?: readonly ResearchScopeBindingV1[];
   limits?: ResearchLimitsV1;
@@ -489,8 +491,8 @@ export function createStandardResearchBriefV1(
     options.policy ?? DEFAULT_RESEARCH_ONE_SHOT_POLICY_V1,
   );
   return createResearchBriefV1({
-    sessionId: "research-session:standard",
-    turnId: "research-turn:standard",
+    sessionId: options.sessionId ?? "research-session:standard",
+    turnId: options.turnId ?? "research-turn:standard",
     objective: question,
     scope: options.scope ?? {
       siteOrigin: "https://example.atlassian.net",
@@ -509,6 +511,24 @@ export function createStandardResearchBriefV1(
     requestedReconciliation: policy.requestedReconciliation,
     ...(options.limits ? { limits: options.limits } : {}),
   });
+}
+
+/**
+ * Record an automatically approved graph as a durable proposal first, so the
+ * session journal has an exact plan snapshot before its host approval boundary.
+ */
+export function stageResearchGraphForDurableSessionV1(graph: ResearchGraphV1): ResearchGraphV1 {
+  validateResearchGraphV1(graph);
+  if (graph.status === "proposed") return structuredClone(graph);
+  const staged: ResearchGraphV1 = {
+    ...structuredClone(graph),
+    status: "proposed",
+    nodes: graph.nodes.map((node) => ({ ...node, status: "proposed", packetRef: undefined, stopReason: undefined })),
+    approvalEnvelope: { ...graph.approvalEnvelope, status: "proposed", approvedAt: undefined },
+    approvedAt: undefined,
+  };
+  validateResearchGraphV1(staged);
+  return staged;
 }
 
 /**

@@ -213,6 +213,47 @@ export declare function finalizeResearchReportV1(report: Omit<ResearchReportV1, 
 // export: formatResearchOneShotEventV1
 export declare function formatResearchOneShotEventV1(event: ResearchOneShotEventV1): string;
 
+// export: IndexedDbResearchSessionStoreV1
+export declare class IndexedDbResearchSessionStoreV1 implements ResearchSessionStoreV1 {
+    #private;
+    private constructor();
+    static open(options?: {
+        databaseName?: string;
+        factory?: IDBFactory;
+        blockedUpgradeTimeoutMs?: number;
+        failureInjection?: ResearchSessionStoreFailureInjectionV1;
+    }): Promise<IndexedDbResearchSessionStoreV1>;
+    close(): void;
+    create(session: ResearchSessionV1): Promise<ResearchSessionV1>;
+    read(sessionId: string): Promise<ResearchSessionV1 | undefined>;
+    list(input?: {
+        limit?: number;
+        cursor?: string;
+    }): Promise<{
+        sessions: ResearchSessionV1[];
+        nextCursor?: string;
+    }>;
+    commit(sessionId: string, update: ResearchSessionUpdateV1): Promise<ResearchSessionCommitV1>;
+    events(sessionId: string, input?: {
+        afterRevision?: number;
+        limit?: number;
+    }): Promise<ResearchSessionEventV1[]>;
+    checkpoints(sessionId: string, turnId: string): Promise<ResearchSessionCheckpointV1[]>;
+    graph(sessionId: string, turnId: string): Promise<ResearchGraphV1 | undefined>;
+    tasks(sessionId: string, turnId: string): Promise<ResearchTaskAttemptV1[]>;
+    packet(sessionId: string, packetRef: string): Promise<ResearchAcceptedPacketV1 | undefined>;
+    workspace(sessionId: string): Promise<ResearchWorkspace>;
+    replaceOpaqueSourceRefs(sessionId: string, refs: ResearchOpaqueSourceRefV1[]): Promise<void>;
+    opaqueSourceRefs(sessionId: string): Promise<ResearchOpaqueSourceRefV1[]>;
+    writeArtifact(sessionId: string, artifact: ResearchSessionArtifactV1, contents: string): Promise<void>;
+    artifact(sessionId: string, artifactId: string): Promise<{
+        metadata: ResearchSessionArtifactV1;
+        contents: string;
+    } | undefined>;
+    listArtifacts(sessionId: string): Promise<ResearchSessionArtifactV1[]>;
+    eraseDeleted(sessionId: string): Promise<boolean>;
+}
+
 // export: InMemoryResearchSessionStoreV1
 export declare class InMemoryResearchSessionStoreV1 implements ResearchSessionStoreV1 {
     #private;
@@ -733,6 +774,15 @@ export declare const RESEARCH_SESSION_CHECKPOINT_SCHEMA_V1: "atlcli.research-ses
 
 // export: RESEARCH_SESSION_EVENT_SCHEMA_V1
 export declare const RESEARCH_SESSION_EVENT_SCHEMA_V1: "atlcli.research-session-event/v1";
+
+// export: RESEARCH_SESSION_INDEXED_DB_BLOCKED_TIMEOUT_MS
+export declare const RESEARCH_SESSION_INDEXED_DB_BLOCKED_TIMEOUT_MS = 10000;
+
+// export: RESEARCH_SESSION_INDEXED_DB_NAME_V1
+export declare const RESEARCH_SESSION_INDEXED_DB_NAME_V1 = "atlcli-research-sessions";
+
+// export: RESEARCH_SESSION_INDEXED_DB_VERSION_V1
+export declare const RESEARCH_SESSION_INDEXED_DB_VERSION_V1 = 1;
 
 // export: RESEARCH_SESSION_SCHEMA_V1
 export declare const RESEARCH_SESSION_SCHEMA_V1: "atlcli.research-session/v1";
@@ -2143,7 +2193,7 @@ export interface ResearchSessionSteeringV1 {
 export interface ResearchSessionStoreConformanceFactoryV1 {
     create(options?: {
         failureInjection?: ResearchSessionStoreFailureInjectionV1;
-    }): ResearchSessionStoreV1;
+    }): ResearchSessionStoreV1 | Promise<ResearchSessionStoreV1>;
 }
 
 // export: ResearchSessionStoreConformanceResultV1
@@ -2810,6 +2860,47 @@ export declare function finalizeResearchReportV1(report: Omit<ResearchReportV1, 
 // export: formatResearchOneShotEventV1
 export declare function formatResearchOneShotEventV1(event: ResearchOneShotEventV1): string;
 
+// export: IndexedDbResearchSessionStoreV1
+export declare class IndexedDbResearchSessionStoreV1 implements ResearchSessionStoreV1 {
+    #private;
+    private constructor();
+    static open(options?: {
+        databaseName?: string;
+        factory?: IDBFactory;
+        blockedUpgradeTimeoutMs?: number;
+        failureInjection?: ResearchSessionStoreFailureInjectionV1;
+    }): Promise<IndexedDbResearchSessionStoreV1>;
+    close(): void;
+    create(session: ResearchSessionV1): Promise<ResearchSessionV1>;
+    read(sessionId: string): Promise<ResearchSessionV1 | undefined>;
+    list(input?: {
+        limit?: number;
+        cursor?: string;
+    }): Promise<{
+        sessions: ResearchSessionV1[];
+        nextCursor?: string;
+    }>;
+    commit(sessionId: string, update: ResearchSessionUpdateV1): Promise<ResearchSessionCommitV1>;
+    events(sessionId: string, input?: {
+        afterRevision?: number;
+        limit?: number;
+    }): Promise<ResearchSessionEventV1[]>;
+    checkpoints(sessionId: string, turnId: string): Promise<ResearchSessionCheckpointV1[]>;
+    graph(sessionId: string, turnId: string): Promise<ResearchGraphV1 | undefined>;
+    tasks(sessionId: string, turnId: string): Promise<ResearchTaskAttemptV1[]>;
+    packet(sessionId: string, packetRef: string): Promise<ResearchAcceptedPacketV1 | undefined>;
+    workspace(sessionId: string): Promise<ResearchWorkspace>;
+    replaceOpaqueSourceRefs(sessionId: string, refs: ResearchOpaqueSourceRefV1[]): Promise<void>;
+    opaqueSourceRefs(sessionId: string): Promise<ResearchOpaqueSourceRefV1[]>;
+    writeArtifact(sessionId: string, artifact: ResearchSessionArtifactV1, contents: string): Promise<void>;
+    artifact(sessionId: string, artifactId: string): Promise<{
+        metadata: ResearchSessionArtifactV1;
+        contents: string;
+    } | undefined>;
+    listArtifacts(sessionId: string): Promise<ResearchSessionArtifactV1[]>;
+    eraseDeleted(sessionId: string): Promise<boolean>;
+}
+
 // export: InMemoryResearchSessionStoreV1
 export declare class InMemoryResearchSessionStoreV1 implements ResearchSessionStoreV1 {
     #private;
@@ -3330,6 +3421,15 @@ export declare const RESEARCH_SESSION_CHECKPOINT_SCHEMA_V1: "atlcli.research-ses
 
 // export: RESEARCH_SESSION_EVENT_SCHEMA_V1
 export declare const RESEARCH_SESSION_EVENT_SCHEMA_V1: "atlcli.research-session-event/v1";
+
+// export: RESEARCH_SESSION_INDEXED_DB_BLOCKED_TIMEOUT_MS
+export declare const RESEARCH_SESSION_INDEXED_DB_BLOCKED_TIMEOUT_MS = 10000;
+
+// export: RESEARCH_SESSION_INDEXED_DB_NAME_V1
+export declare const RESEARCH_SESSION_INDEXED_DB_NAME_V1 = "atlcli-research-sessions";
+
+// export: RESEARCH_SESSION_INDEXED_DB_VERSION_V1
+export declare const RESEARCH_SESSION_INDEXED_DB_VERSION_V1 = 1;
 
 // export: RESEARCH_SESSION_SCHEMA_V1
 export declare const RESEARCH_SESSION_SCHEMA_V1: "atlcli.research-session/v1";
@@ -4740,7 +4840,7 @@ export interface ResearchSessionSteeringV1 {
 export interface ResearchSessionStoreConformanceFactoryV1 {
     create(options?: {
         failureInjection?: ResearchSessionStoreFailureInjectionV1;
-    }): ResearchSessionStoreV1;
+    }): ResearchSessionStoreV1 | Promise<ResearchSessionStoreV1>;
 }
 
 // export: ResearchSessionStoreConformanceResultV1
@@ -5405,6 +5505,47 @@ export declare function finalizeResearchReportV1(report: Omit<ResearchReportV1, 
 // export: formatResearchOneShotEventV1
 export declare function formatResearchOneShotEventV1(event: ResearchOneShotEventV1): string;
 
+// export: IndexedDbResearchSessionStoreV1
+export declare class IndexedDbResearchSessionStoreV1 implements ResearchSessionStoreV1 {
+    #private;
+    private constructor();
+    static open(options?: {
+        databaseName?: string;
+        factory?: IDBFactory;
+        blockedUpgradeTimeoutMs?: number;
+        failureInjection?: ResearchSessionStoreFailureInjectionV1;
+    }): Promise<IndexedDbResearchSessionStoreV1>;
+    close(): void;
+    create(session: ResearchSessionV1): Promise<ResearchSessionV1>;
+    read(sessionId: string): Promise<ResearchSessionV1 | undefined>;
+    list(input?: {
+        limit?: number;
+        cursor?: string;
+    }): Promise<{
+        sessions: ResearchSessionV1[];
+        nextCursor?: string;
+    }>;
+    commit(sessionId: string, update: ResearchSessionUpdateV1): Promise<ResearchSessionCommitV1>;
+    events(sessionId: string, input?: {
+        afterRevision?: number;
+        limit?: number;
+    }): Promise<ResearchSessionEventV1[]>;
+    checkpoints(sessionId: string, turnId: string): Promise<ResearchSessionCheckpointV1[]>;
+    graph(sessionId: string, turnId: string): Promise<ResearchGraphV1 | undefined>;
+    tasks(sessionId: string, turnId: string): Promise<ResearchTaskAttemptV1[]>;
+    packet(sessionId: string, packetRef: string): Promise<ResearchAcceptedPacketV1 | undefined>;
+    workspace(sessionId: string): Promise<ResearchWorkspace>;
+    replaceOpaqueSourceRefs(sessionId: string, refs: ResearchOpaqueSourceRefV1[]): Promise<void>;
+    opaqueSourceRefs(sessionId: string): Promise<ResearchOpaqueSourceRefV1[]>;
+    writeArtifact(sessionId: string, artifact: ResearchSessionArtifactV1, contents: string): Promise<void>;
+    artifact(sessionId: string, artifactId: string): Promise<{
+        metadata: ResearchSessionArtifactV1;
+        contents: string;
+    } | undefined>;
+    listArtifacts(sessionId: string): Promise<ResearchSessionArtifactV1[]>;
+    eraseDeleted(sessionId: string): Promise<boolean>;
+}
+
 // export: InMemoryResearchSessionStoreV1
 export declare class InMemoryResearchSessionStoreV1 implements ResearchSessionStoreV1 {
     #private;
@@ -5925,6 +6066,15 @@ export declare const RESEARCH_SESSION_CHECKPOINT_SCHEMA_V1: "atlcli.research-ses
 
 // export: RESEARCH_SESSION_EVENT_SCHEMA_V1
 export declare const RESEARCH_SESSION_EVENT_SCHEMA_V1: "atlcli.research-session-event/v1";
+
+// export: RESEARCH_SESSION_INDEXED_DB_BLOCKED_TIMEOUT_MS
+export declare const RESEARCH_SESSION_INDEXED_DB_BLOCKED_TIMEOUT_MS = 10000;
+
+// export: RESEARCH_SESSION_INDEXED_DB_NAME_V1
+export declare const RESEARCH_SESSION_INDEXED_DB_NAME_V1 = "atlcli-research-sessions";
+
+// export: RESEARCH_SESSION_INDEXED_DB_VERSION_V1
+export declare const RESEARCH_SESSION_INDEXED_DB_VERSION_V1 = 1;
 
 // export: RESEARCH_SESSION_SCHEMA_V1
 export declare const RESEARCH_SESSION_SCHEMA_V1: "atlcli.research-session/v1";
@@ -7335,7 +7485,7 @@ export interface ResearchSessionSteeringV1 {
 export interface ResearchSessionStoreConformanceFactoryV1 {
     create(options?: {
         failureInjection?: ResearchSessionStoreFailureInjectionV1;
-    }): ResearchSessionStoreV1;
+    }): ResearchSessionStoreV1 | Promise<ResearchSessionStoreV1>;
 }
 
 // export: ResearchSessionStoreConformanceResultV1
@@ -8149,6 +8299,47 @@ export declare function finalizeResearchReportV1(report: Omit<ResearchReportV1, 
 // export: formatResearchOneShotEventV1
 export declare function formatResearchOneShotEventV1(event: ResearchOneShotEventV1): string;
 
+// export: IndexedDbResearchSessionStoreV1
+export declare class IndexedDbResearchSessionStoreV1 implements ResearchSessionStoreV1 {
+    #private;
+    private constructor();
+    static open(options?: {
+        databaseName?: string;
+        factory?: IDBFactory;
+        blockedUpgradeTimeoutMs?: number;
+        failureInjection?: ResearchSessionStoreFailureInjectionV1;
+    }): Promise<IndexedDbResearchSessionStoreV1>;
+    close(): void;
+    create(session: ResearchSessionV1): Promise<ResearchSessionV1>;
+    read(sessionId: string): Promise<ResearchSessionV1 | undefined>;
+    list(input?: {
+        limit?: number;
+        cursor?: string;
+    }): Promise<{
+        sessions: ResearchSessionV1[];
+        nextCursor?: string;
+    }>;
+    commit(sessionId: string, update: ResearchSessionUpdateV1): Promise<ResearchSessionCommitV1>;
+    events(sessionId: string, input?: {
+        afterRevision?: number;
+        limit?: number;
+    }): Promise<ResearchSessionEventV1[]>;
+    checkpoints(sessionId: string, turnId: string): Promise<ResearchSessionCheckpointV1[]>;
+    graph(sessionId: string, turnId: string): Promise<ResearchGraphV1 | undefined>;
+    tasks(sessionId: string, turnId: string): Promise<ResearchTaskAttemptV1[]>;
+    packet(sessionId: string, packetRef: string): Promise<ResearchAcceptedPacketV1 | undefined>;
+    workspace(sessionId: string): Promise<ResearchWorkspace>;
+    replaceOpaqueSourceRefs(sessionId: string, refs: ResearchOpaqueSourceRefV1[]): Promise<void>;
+    opaqueSourceRefs(sessionId: string): Promise<ResearchOpaqueSourceRefV1[]>;
+    writeArtifact(sessionId: string, artifact: ResearchSessionArtifactV1, contents: string): Promise<void>;
+    artifact(sessionId: string, artifactId: string): Promise<{
+        metadata: ResearchSessionArtifactV1;
+        contents: string;
+    } | undefined>;
+    listArtifacts(sessionId: string): Promise<ResearchSessionArtifactV1[]>;
+    eraseDeleted(sessionId: string): Promise<boolean>;
+}
+
 // export: InMemoryResearchSessionStoreV1
 export declare class InMemoryResearchSessionStoreV1 implements ResearchSessionStoreV1 {
     #private;
@@ -8693,6 +8884,15 @@ export declare const RESEARCH_SESSION_CHECKPOINT_SCHEMA_V1: "atlcli.research-ses
 
 // export: RESEARCH_SESSION_EVENT_SCHEMA_V1
 export declare const RESEARCH_SESSION_EVENT_SCHEMA_V1: "atlcli.research-session-event/v1";
+
+// export: RESEARCH_SESSION_INDEXED_DB_BLOCKED_TIMEOUT_MS
+export declare const RESEARCH_SESSION_INDEXED_DB_BLOCKED_TIMEOUT_MS = 10000;
+
+// export: RESEARCH_SESSION_INDEXED_DB_NAME_V1
+export declare const RESEARCH_SESSION_INDEXED_DB_NAME_V1 = "atlcli-research-sessions";
+
+// export: RESEARCH_SESSION_INDEXED_DB_VERSION_V1
+export declare const RESEARCH_SESSION_INDEXED_DB_VERSION_V1 = 1;
 
 // export: RESEARCH_SESSION_SCHEMA_V1
 export declare const RESEARCH_SESSION_SCHEMA_V1: "atlcli.research-session/v1";
@@ -10153,7 +10353,7 @@ export interface ResearchSessionSteeringV1 {
 export interface ResearchSessionStoreConformanceFactoryV1 {
     create(options?: {
         failureInjection?: ResearchSessionStoreFailureInjectionV1;
-    }): ResearchSessionStoreV1;
+    }): ResearchSessionStoreV1 | Promise<ResearchSessionStoreV1>;
 }
 
 // export: ResearchSessionStoreConformanceResultV1
@@ -11964,6 +12164,47 @@ export declare function finalizeResearchReportV1(report: Omit<ResearchReportV1, 
 // export: formatResearchOneShotEventV1
 export declare function formatResearchOneShotEventV1(event: ResearchOneShotEventV1): string;
 
+// export: IndexedDbResearchSessionStoreV1
+export declare class IndexedDbResearchSessionStoreV1 implements ResearchSessionStoreV1 {
+    #private;
+    private constructor();
+    static open(options?: {
+        databaseName?: string;
+        factory?: IDBFactory;
+        blockedUpgradeTimeoutMs?: number;
+        failureInjection?: ResearchSessionStoreFailureInjectionV1;
+    }): Promise<IndexedDbResearchSessionStoreV1>;
+    close(): void;
+    create(session: ResearchSessionV1): Promise<ResearchSessionV1>;
+    read(sessionId: string): Promise<ResearchSessionV1 | undefined>;
+    list(input?: {
+        limit?: number;
+        cursor?: string;
+    }): Promise<{
+        sessions: ResearchSessionV1[];
+        nextCursor?: string;
+    }>;
+    commit(sessionId: string, update: ResearchSessionUpdateV1): Promise<ResearchSessionCommitV1>;
+    events(sessionId: string, input?: {
+        afterRevision?: number;
+        limit?: number;
+    }): Promise<ResearchSessionEventV1[]>;
+    checkpoints(sessionId: string, turnId: string): Promise<ResearchSessionCheckpointV1[]>;
+    graph(sessionId: string, turnId: string): Promise<ResearchGraphV1 | undefined>;
+    tasks(sessionId: string, turnId: string): Promise<ResearchTaskAttemptV1[]>;
+    packet(sessionId: string, packetRef: string): Promise<ResearchAcceptedPacketV1 | undefined>;
+    workspace(sessionId: string): Promise<ResearchWorkspace>;
+    replaceOpaqueSourceRefs(sessionId: string, refs: ResearchOpaqueSourceRefV1[]): Promise<void>;
+    opaqueSourceRefs(sessionId: string): Promise<ResearchOpaqueSourceRefV1[]>;
+    writeArtifact(sessionId: string, artifact: ResearchSessionArtifactV1, contents: string): Promise<void>;
+    artifact(sessionId: string, artifactId: string): Promise<{
+        metadata: ResearchSessionArtifactV1;
+        contents: string;
+    } | undefined>;
+    listArtifacts(sessionId: string): Promise<ResearchSessionArtifactV1[]>;
+    eraseDeleted(sessionId: string): Promise<boolean>;
+}
+
 // export: InMemoryResearchSessionStoreV1
 export declare class InMemoryResearchSessionStoreV1 implements ResearchSessionStoreV1 {
     #private;
@@ -12508,6 +12749,15 @@ export declare const RESEARCH_SESSION_CHECKPOINT_SCHEMA_V1: "atlcli.research-ses
 
 // export: RESEARCH_SESSION_EVENT_SCHEMA_V1
 export declare const RESEARCH_SESSION_EVENT_SCHEMA_V1: "atlcli.research-session-event/v1";
+
+// export: RESEARCH_SESSION_INDEXED_DB_BLOCKED_TIMEOUT_MS
+export declare const RESEARCH_SESSION_INDEXED_DB_BLOCKED_TIMEOUT_MS = 10000;
+
+// export: RESEARCH_SESSION_INDEXED_DB_NAME_V1
+export declare const RESEARCH_SESSION_INDEXED_DB_NAME_V1 = "atlcli-research-sessions";
+
+// export: RESEARCH_SESSION_INDEXED_DB_VERSION_V1
+export declare const RESEARCH_SESSION_INDEXED_DB_VERSION_V1 = 1;
 
 // export: RESEARCH_SESSION_SCHEMA_V1
 export declare const RESEARCH_SESSION_SCHEMA_V1: "atlcli.research-session/v1";
@@ -13968,7 +14218,7 @@ export interface ResearchSessionSteeringV1 {
 export interface ResearchSessionStoreConformanceFactoryV1 {
     create(options?: {
         failureInjection?: ResearchSessionStoreFailureInjectionV1;
-    }): ResearchSessionStoreV1;
+    }): ResearchSessionStoreV1 | Promise<ResearchSessionStoreV1>;
 }
 
 // export: ResearchSessionStoreConformanceResultV1
