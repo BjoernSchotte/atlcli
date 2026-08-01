@@ -147,3 +147,34 @@ test("the published page stays within the browser quality budgets", async ({ pag
   if (metrics.lcp > 0) expect(metrics.lcp).toBeLessThan(5000);
   expect(metrics.cls).toBeLessThan(0.25);
 });
+
+test("static content remains usable without JavaScript and stays inside the CSP/privacy boundary", async ({ browser }) => {
+  const visualOrigin = `http://127.0.0.1:${process.env.ATLCLI_WEB_PUBLISH_VISUAL_PORT ?? "4387"}`;
+  const context = await browser.newContext({
+    javaScriptEnabled: false,
+    viewport: { width: 1280, height: 800 },
+  });
+  const externalRequests: string[] = [];
+  await context.route("**/*", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.origin !== visualOrigin) {
+      externalRequests.push(url.href);
+      await route.abort();
+      return;
+    }
+    await route.continue();
+  });
+  const page = await context.newPage();
+  const response = await page.goto("/plain/", { waitUntil: "networkidle" });
+  expect(response?.headers()["content-security-policy"]).toContain("default-src 'self'");
+  await expect(page.locator('[data-atlcli-document]').first()).toBeVisible();
+  await expect(page.locator('[data-atlcli-block="table"]')).toBeVisible();
+  await expect(page.locator('[data-atlcli-block="image"]')).toBeVisible();
+  await expect.poll(() => page.evaluate(() => [...document.querySelectorAll("*")].some((element) =>
+    [...element.attributes].some((attribute) => attribute.name.toLowerCase().startsWith("on"))
+  ))).toBe(false);
+  const markup = await page.content();
+  expect(markup).not.toMatch(/(?:atlassian\.net|confluence|cloudId|tenant)/iu);
+  expect(externalRequests).toEqual([]);
+  await context.close();
+});
