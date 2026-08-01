@@ -121,7 +121,8 @@ function nextAnchorId(seed: string, used: Set<string>): string {
   return candidate;
 }
 
-function planAnchors(blocks: readonly ExportBlock[]): readonly PublicationAnchorV1[] {
+/** Plan stable, page-local heading and bookmark anchors from normalized blocks. */
+export function planPublicationAnchorsV1(blocks: readonly ExportBlock[]): readonly PublicationAnchorV1[] {
   const anchors: PublicationAnchorV1[] = [];
   const usedIds = new Set<string>();
   const sourceAnchors = new Set<string>();
@@ -219,7 +220,7 @@ export function planPublicationReferencesV1(
     if (existing !== undefined) fail("duplicate-route", `Route '${route}' belongs to both '${existing}' and '${page.sourceId}'`);
     pageById.set(page.sourceId, page);
     pageByRoute.set(route, page.sourceId);
-    anchorsByPage.set(page.sourceId, planAnchors(page.blocks));
+    anchorsByPage.set(page.sourceId, planPublicationAnchorsV1(page.blocks));
   }
 
   return {
