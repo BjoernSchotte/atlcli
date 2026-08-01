@@ -10,7 +10,7 @@
   "notes": [],
   "labels": [],
   "links": [],
-  "assetIds": [],
+  "assetIds": ["fixture-asset"],
   "renderDependencies": [],
   "pageDigest": "page-digest"
 }

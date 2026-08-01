@@ -34,14 +34,17 @@ test("Astro consumer harness loads structured pages and emits a private inventor
   expect(html).toContain('data-atlcli-source-id="guide"');
   expect(html).toContain("Structured blocks: 1");
   expect(html).not.toContain("bundle.json");
+  expect(await readFile(resolve(fixtureDirectory, "dist/assets/f0dad327e22e8cddc2e8057cf16d9b16ea6e36e87d31f46ee4d5943c69609c4f/fixture.txt"), "utf8"))
+    .toBe("fixture asset\n");
   const inventory = JSON.parse(
     await readFile(resolve(fixtureDirectory, "../evidence/build-inventory.json"), "utf8"),
   ) as { outputRoot: string; bundleDigest: string; pages: Array<{ sourceId: string; route: string; pathname: string }>; output: Array<{ path: string }> };
   expect(inventory.outputRoot).toBe("<private>");
   expect(inventory.bundleDigest).toBe("bundle-digest");
   expect(inventory.pages).toEqual([{ sourceId: "guide", route: "/guide/", pathname: "publish/guide/" }]);
-  expect(inventory.output).toHaveLength(1);
-  expect(inventory.output[0]).toMatchObject({ path: "publish/guide/index.html" });
+  expect(inventory.output).toHaveLength(2);
+  expect(inventory.output).toContainEqual(expect.objectContaining({ path: "publish/guide/index.html" }));
+  expect(inventory.output).toContainEqual(expect.objectContaining({ path: "assets/f0dad327e22e8cddc2e8057cf16d9b16ea6e36e87d31f46ee4d5943c69609c4f/fixture.txt" }));
 }, 30_000);
 
 test("packed integration builds a clean Astro project with fetch disabled", async () => {
@@ -90,6 +93,8 @@ test("packed integration builds a clean Astro project with fetch disabled", asyn
     const html = await readFile(join(consumerDirectory, "dist/publish/guide/index.html"), "utf8");
     expect(html).toContain("Structured blocks: 1");
     expect(html).not.toContain("bundle.json");
+    expect(await readFile(join(consumerDirectory, "dist/assets/f0dad327e22e8cddc2e8057cf16d9b16ea6e36e87d31f46ee4d5943c69609c4f/fixture.txt"), "utf8"))
+      .toBe("fixture asset\n");
   } finally {
     await rm(root, { recursive: true, force: true });
   }

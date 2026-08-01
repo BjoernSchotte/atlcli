@@ -13,7 +13,13 @@ const request = {
     bundleDigest: "bundle-digest",
     complete: true,
     pages: [{ sourceId: "guide", path: "pages/guide.json", pageDigest: "guide-page" }],
-    assets: [],
+    assets: [{
+      assetId: "fixture-asset",
+      path: "assets/f0dad327e22e8cddc2e8057cf16d9b16ea6e36e87d31f46ee4d5943c69609c4f/fixture.txt",
+      sha256: "f0dad327e22e8cddc2e8057cf16d9b16ea6e36e87d31f46ee4d5943c69609c4f",
+      byteLength: 14,
+      mediaType: "text/plain",
+    }],
   },
   project: {
     builder: {
@@ -59,6 +65,8 @@ test("builder runs the trusted Astro project and consumes only its fresh private
     }]);
     const html = await readFile(resolve(outputDirectory, "publish/guide/index.html"), "utf8");
     expect(html).toContain('data-atlcli-source-id="guide"');
+    expect(await readFile(resolve(outputDirectory, "assets/f0dad327e22e8cddc2e8057cf16d9b16ea6e36e87d31f46ee4d5943c69609c4f/fixture.txt"), "utf8"))
+      .toBe("fixture asset\n");
 
     await expect(builder([process.execPath, "-e", "process.exit(0)"])).rejects.toThrow("ENOENT");
   } finally {

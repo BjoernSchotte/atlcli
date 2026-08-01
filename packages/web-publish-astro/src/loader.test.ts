@@ -119,6 +119,7 @@ function bundle(overrides: Record<string, unknown> = {}): Record<string, unknown
         contentDigest: "content-digest",
         metadataDigest: "metadata-digest",
         assetMetadataDigest: "asset-metadata-digest",
+        macroDependencyDigest: "no-live-dependencies",
         state: "included",
       }],
     },
@@ -239,14 +240,43 @@ test("uses only static Astro hooks, detects collisions, and writes private inven
     });
     const value = JSON.parse(await readFile(manifest, "utf8")) as {
       outputRoot: string;
-      pages: string[];
+      pages: Array<{ sourceId: string; route: string; pathname: string }>;
       output: Array<{ path: string; byteLength: number; sha256: string }>;
       experience?: { id: string; version: string; digest: string };
     };
     expect(value.outputRoot).toBe("<private>");
     expect(value.experience).toEqual({ id: "fixture.experience", version: "1", digest: expect.stringMatching(/^[a-f0-9]{64}$/) });
-    expect(value.pages).toEqual(["/publish/guide"]);
+    expect(value.pages).toEqual([{ sourceId: "guide", route: "/guide/", pathname: "/publish/guide" }]);
     expect(value.output).toEqual([{ path: "index.html", byteLength: 18, sha256: expect.any(String) }]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("materializes verified bundle assets but never overwrites an Astro output collision", async () => {
+  const digest = "f0dad327e22e8cddc2e8057cf16d9b16ea6e36e87d31f46ee4d5943c69609c4f";
+  const relativeAssetPath = `assets/${digest}/fixture.txt`;
+  const { root, bundlePath } = await fixture(bundle({
+    assets: [{
+      assetId: "fixture-asset", path: relativeAssetPath, sha256: digest, byteLength: 14,
+      mediaType: "text/plain", disposition: "inline", downloadName: "fixture.txt",
+    }],
+  }));
+  const output = join(root, "dist");
+  const destination = join(output, relativeAssetPath);
+  try {
+    await mkdir(join(root, "assets", digest), { recursive: true });
+    await writeFile(join(root, relativeAssetPath), "fixture asset\n");
+    await mkdir(join(output, "assets", digest), { recursive: true });
+    await writeFile(destination, "handwritten output\n");
+    const integration = atlcliPublishingIntegration({
+      bundlePath, manifestPath: join(root, "private", "inventory.json"), routePrefix: "/publish",
+      expectedConfig: expectedConfig(root),
+    });
+    await expect(integration.hooks["astro:build:done"]!({
+      dir: pathToFileURL(`${output}/`), pages: [{ pathname: "/publish/guide" }],
+    })).rejects.toThrow("collides with existing Astro output");
+    expect(await readFile(destination, "utf8")).toBe("handwritten output\n");
   } finally {
     await rm(root, { recursive: true, force: true });
   }

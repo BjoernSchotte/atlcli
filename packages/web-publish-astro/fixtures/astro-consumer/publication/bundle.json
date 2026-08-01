@@ -26,6 +26,14 @@
   "rootIds": ["guide"],
   "pages": [{ "sourceId": "guide", "path": "pages/guide.json", "pageDigest": "page-digest" }],
   "routes": [{ "sourceId": "guide", "route": "/guide/", "state": "active", "assignedBy": "generated", "previousRoutes": [] }],
-  "assets": [],
+  "assets": [{
+    "assetId": "fixture-asset",
+    "path": "assets/f0dad327e22e8cddc2e8057cf16d9b16ea6e36e87d31f46ee4d5943c69609c4f/fixture.txt",
+    "sha256": "f0dad327e22e8cddc2e8057cf16d9b16ea6e36e87d31f46ee4d5943c69609c4f",
+    "byteLength": 14,
+    "mediaType": "text/plain",
+    "disposition": "inline",
+    "downloadName": "fixture.txt"
+  }],
   "issues": []
 }

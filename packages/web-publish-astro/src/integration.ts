@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
-import { mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
+import { constants as fsConstants, createReadStream } from "node:fs";
+import { copyFile, lstat, mkdir, readFile, readdir, rename, unlink, writeFile } from "node:fs/promises";
 import { dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -10,6 +11,7 @@ import {
   type PublicationExperienceDescriptorV1,
   type PublicationExperienceSelectionV1,
   type PublicationOutputProfileV1,
+  validatePublicationOutputPathV1,
 } from "@atlcli/web-publish";
 import { readPublicationBundlePagesV1, type AtlcliPublicationLoaderOptionsV1 } from "./loader.js";
 
@@ -244,6 +246,99 @@ async function inventory(root: string): Promise<readonly OutputFileV1[]> {
   }));
 }
 
+function assetPath(bundlePath: string, relativeAssetPath: string): string {
+  const root = resolve(dirname(bundlePath));
+  const normalized = validatePublicationOutputPathV1(relativeAssetPath);
+  const candidate = resolve(root, normalized);
+  const fromRoot = relative(root, candidate);
+  if (fromRoot === "" || fromRoot === ".." || fromRoot.startsWith("../")) {
+    throw new TypeError(`publication asset path escapes bundle directory: ${relativeAssetPath}`);
+  }
+  return candidate;
+}
+
+async function digestRegularFile(path: string, expectedByteLength: number): Promise<string> {
+  const before = await lstat(path);
+  if (before.isSymbolicLink() || !before.isFile()) throw new TypeError(`publication asset is not a regular file: ${path}`);
+  if (before.size !== expectedByteLength) throw new TypeError(`publication asset has an unexpected byte length: ${path}`);
+  const hash = createHash("sha256");
+  let byteLength = 0;
+  for await (const chunk of createReadStream(path)) {
+    byteLength += chunk.byteLength;
+    if (byteLength > expectedByteLength) {
+      throw new TypeError(`publication asset grew while it was read: ${path}`);
+    }
+    hash.update(chunk);
+  }
+  const after = await lstat(path);
+  if (
+    byteLength !== expectedByteLength ||
+    after.isSymbolicLink() || !after.isFile() || after.size !== before.size || after.mtimeMs !== before.mtimeMs
+  ) {
+    throw new TypeError(`publication asset changed while it was read: ${path}`);
+  }
+  return hash.digest("hex");
+}
+
+async function ensureOutputParents(outputRoot: string, path: string): Promise<void> {
+  const root = await lstat(outputRoot);
+  if (root.isSymbolicLink() || !root.isDirectory()) throw new TypeError("Astro output root must be a real directory");
+  let current = outputRoot;
+  for (const segment of validatePublicationOutputPathV1(path).split("/").slice(0, -1)) {
+    current = resolve(current, segment);
+    try {
+      const state = await lstat(current);
+      if (state.isSymbolicLink() || !state.isDirectory()) {
+        throw new TypeError(`publication asset output parent is not a real directory: ${current}`);
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      await mkdir(current);
+    }
+  }
+}
+
+/**
+ * Copy only verified content-addressed bundle assets into an Astro candidate.
+ * Existing output files are a collision, never an overwrite of project public
+ * data. On a failed batch, only files created by this invocation are removed.
+ */
+async function materializePublicationAssets(
+  bundlePath: string,
+  outputRoot: string,
+  assets: readonly { path: string; sha256: string; byteLength: number }[],
+): Promise<void> {
+  const written: string[] = [];
+  const seen = new Set<string>();
+  try {
+    for (const asset of assets) {
+      const relativeAssetPath = validatePublicationOutputPathV1(asset.path);
+      if (!seen.add(relativeAssetPath)) throw new TypeError(`duplicate publication asset output path: ${relativeAssetPath}`);
+      const source = assetPath(bundlePath, relativeAssetPath);
+      if (await digestRegularFile(source, asset.byteLength) !== asset.sha256) {
+        throw new TypeError(`publication asset digest does not match bundle entry: ${relativeAssetPath}`);
+      }
+      await ensureOutputParents(outputRoot, relativeAssetPath);
+      const destination = resolve(outputRoot, relativeAssetPath);
+      try {
+        await copyFile(source, destination, fsConstants.COPYFILE_EXCL);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "EEXIST") {
+          throw new TypeError(`publication asset output collides with existing Astro output: ${relativeAssetPath}`);
+        }
+        throw error;
+      }
+      written.push(destination);
+      if (await digestRegularFile(destination, asset.byteLength) !== asset.sha256) {
+        throw new TypeError(`copied publication asset digest does not match bundle entry: ${relativeAssetPath}`);
+      }
+    }
+  } catch (error) {
+    await Promise.all(written.map(async (path) => { await unlink(path).catch(() => undefined); }));
+    throw error;
+  }
+}
+
 async function writePrivateJson(path: string, value: unknown): Promise<void> {
   const destination = resolve(path);
   await mkdir(dirname(destination), { recursive: true });
@@ -348,6 +443,7 @@ export function atlcliPublishingIntegration(
         if (builtPages.length !== loaded.pages.length) {
           throw new Error("Astro did not build exactly one route for every publication page");
         }
+        await materializePublicationAssets(options.bundlePath, outputRoot, loaded.bundle.assets);
         await writePrivateJson(manifestPath, {
           schema: "atlcli.astro-build-inventory/1",
           bundlePath: "<private>",

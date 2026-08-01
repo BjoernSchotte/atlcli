@@ -1605,7 +1605,7 @@ and presentation contracts are not Starlight-private.
       do not expose Astro's experimental programmatic API publicly.
 - [x] Invoke the project-owned build executable/argv with `shell: false`, bounded
       environment, abort/timeout handling, and no inherited secrets by default.
-- [ ] Materialize generated assets/routes without overwriting handwritten
+- [x] Materialize generated assets/routes without overwriting handwritten
       project sources or `public/` files.
 - [ ] Build the three URL/base profiles from section 11.
 - [ ] Pin Pagefind, annotate canonical content/facets/metadata in trusted
