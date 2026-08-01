@@ -28,6 +28,10 @@ export async function buildPagefindIndexV1(options: BuildPagefindIndexOptionsV1)
     assertNoErrors(created.errors, "initialization");
     for (const sourcePath of options.pageOutputPaths) {
       const content = await readFile(join(options.outputDirectory, sourcePath), "utf8");
+      const bodies = content.match(/\bdata-pagefind-body\b/gu) ?? [];
+      if (bodies.length !== 1) {
+        throw new Error(`Pagefind requires exactly one trusted data-pagefind-body region in ${sourcePath}`);
+      }
       const result = await created.index.addHTMLFile({ sourcePath, content });
       assertNoErrors(result.errors, `indexing ${sourcePath}`);
     }

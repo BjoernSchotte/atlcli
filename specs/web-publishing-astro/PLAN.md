@@ -1608,7 +1608,7 @@ and presentation contracts are not Starlight-private.
 - [x] Materialize generated assets/routes without overwriting handwritten
       project sources or `public/` files.
 - [x] Build the three URL/base profiles from section 11.
-- [ ] Pin Pagefind, annotate canonical content/facets/metadata in trusted
+- [x] Pin Pagefind, annotate canonical content/facets/metadata in trusted
       components, and run the full static indexer after each Astro build.
 - [ ] Provide theme-neutral accessible modal and full-page search components
       with keyboard shortcut, worker/main-thread fallback, translated UI,
