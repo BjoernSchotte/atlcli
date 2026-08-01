@@ -2993,9 +2993,18 @@ session-plus-body-free-event commit, rejects a stale CAS retry without mutation,
 and injects failure immediately before journal publication to prove no partial
 snapshot or journal state leaks. SQLite/filesystem and IndexedDB adapters must
 run this unchanged suite when added.
-- [ ] Add a LangGraph checkpointer adapter implementing required checkpoint,
+- [x] Add a LangGraph checkpointer adapter implementing required checkpoint,
       pending-write, lookup, and history operations.
-- [ ] Derive stable `thread_id` from `sessionId`.
+- [x] Derive stable `thread_id` from `sessionId`.
+
+T4 LangGraph checkpoint checkpoint (2026-08-01):
+`ResearchSessionMemoryCheckpointerV1` implements the installed public
+`BaseCheckpointSaver`/`MemorySaver` contract for the T4 reference backend. It
+derives the stable, one-to-one `atlcli:research:<sessionId>` thread identifier,
+requires that thread on `put`, pending writes, lookup, history, and deletion,
+and rejects a foreign session config before storage access. The test corridor
+exercises each operation; physical store-backed checkpointers inherit the same
+scope fence when their adapters land.
 - [ ] Ensure accepted turns are durable before execution begins.
 - [ ] Persist brief and graph revisions before plan approval or execution.
 - [ ] Persist ready nodes before dispatch. Accept or quarantine a result with
