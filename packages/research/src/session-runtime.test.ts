@@ -5,16 +5,17 @@ import {
   type ResearchGraphProposalV1,
 } from "./graph.js";
 import {
+  appendResearchSessionTurnV1,
   initializeResearchSessionTurnV1,
   recoverResearchSessionForResumeV1,
 } from "./session-runtime.js";
 import { InMemoryResearchSessionStoreV1 } from "./session-store.js";
 import { createResearchSessionV1 } from "./session.js";
 
-function brief(approval: "automatic" | "required") {
+function brief(approval: "automatic" | "required", turnId = "research-turn:runtime-test") {
   return createResearchBriefV1({
     sessionId: "research-session:runtime-test",
-    turnId: "research-turn:runtime-test",
+    turnId,
     objective: "Find the related Jira work item.",
     scope: { siteOrigin: "https://example.atlassian.net", jiraProjectKeys: ["DEMO"], confluenceSpaceKeys: ["DOCS"] },
     asOf: "2026-08-01T15:00:00.000Z",
@@ -62,6 +63,48 @@ describe("durable research session execution gate", () => {
     });
     expect(result).toMatchObject({ status: "waiting_plan_approval", revision: 4 });
     expect((await store.events(result.sessionId)).map((event) => event.kind)).toEqual(["create_turn", "record_brief", "propose_graph"]);
+  });
+
+  test("appends an approved follow-up turn without replacing terminal turn history", async () => {
+    const firstBrief = brief("automatic");
+    const store = new InMemoryResearchSessionStoreV1();
+    const initialized = await initializeResearchSessionTurnV1({
+      store,
+      session: session(),
+      brief: firstBrief,
+      graph: composeResearchGraphV1(firstBrief),
+      approveAutomatically: true,
+      at: "2026-08-01T15:00:01.000Z",
+    });
+    const terminal = await store.commit(initialized.sessionId, {
+      kind: "fail",
+      reason: "Synthetic terminal first turn.",
+      expectedRevision: initialized.revision,
+      expectedLeaseEpoch: initialized.lease.epoch,
+      at: "2026-08-01T15:00:02.000Z",
+    });
+    const nextBrief = brief("automatic", "research-turn:runtime-follow-up");
+    const appended = await appendResearchSessionTurnV1({
+      store,
+      sessionId: terminal.session.sessionId,
+      brief: nextBrief,
+      graph: composeResearchGraphV1(nextBrief),
+      approveAutomatically: true,
+      at: "2026-08-01T15:00:03.000Z",
+    });
+    expect(appended).toMatchObject({
+      status: "running",
+      activeTurnId: "research-turn:runtime-follow-up",
+    });
+    expect(appended.turns).toHaveLength(2);
+    expect(appended.turns[0]).toMatchObject({
+      id: "research-turn:runtime-test",
+      failureReason: "Synthetic terminal first turn.",
+    });
+    expect(appended.turns[1]).toMatchObject({
+      id: "research-turn:runtime-follow-up",
+      graph: { status: "approved" },
+    });
   });
 
   test("commits the supervisor-selected subset with its journal event before task admission", async () => {

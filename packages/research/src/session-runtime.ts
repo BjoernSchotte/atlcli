@@ -16,6 +16,16 @@ export interface InitializeResearchSessionTurnInputV1 {
   at: string;
 }
 
+export interface AppendResearchSessionTurnInputV1 {
+  store: ResearchSessionStoreV1;
+  sessionId: string;
+  brief: ResearchBriefV1;
+  graph: ResearchGraphV1;
+  /** Host policy: an explicit automatic plan gets a separately journaled host approval. */
+  approveAutomatically: boolean;
+  at: string;
+}
+
 export interface RecoverResearchSessionForResumeInputV1 {
   store: ResearchSessionStoreV1;
   sessionId: string;
@@ -31,10 +41,33 @@ export interface RecoverResearchSessionForResumeInputV1 {
 export async function initializeResearchSessionTurnV1(
   input: InitializeResearchSessionTurnInputV1,
 ): Promise<ResearchSessionV1> {
-  if (input.brief.sessionId !== input.session.sessionId || input.brief.turnId === "" || input.graph.sessionId !== input.session.sessionId || input.graph.turnId !== input.brief.turnId) {
-    throw new Error("Durable research brief or graph does not match the created session.");
+  await input.store.create(input.session);
+  return appendResearchSessionTurnV1({
+    store: input.store,
+    sessionId: input.session.sessionId,
+    brief: input.brief,
+    graph: input.graph,
+    approveAutomatically: input.approveAutomatically,
+    at: input.at,
+  });
+}
+
+/**
+ * Append a fully durable turn to an existing session. The reducer continues to
+ * enforce lifecycle state; this helper centralizes the required persistence
+ * sequence before a host constructs a workspace, provider, or agent.
+ */
+export async function appendResearchSessionTurnV1(
+  input: AppendResearchSessionTurnInputV1,
+): Promise<ResearchSessionV1> {
+  if (input.brief.sessionId !== input.sessionId || input.brief.turnId === "" || input.graph.sessionId !== input.sessionId || input.graph.turnId !== input.brief.turnId) {
+    throw new Error("Durable research brief or graph does not match the existing session.");
   }
-  let current = await input.store.create(input.session);
+  let current = await input.store.read(input.sessionId);
+  if (!current) throw new Error("Research session was not found.");
+  if (current.retention.state === "deletion_requested" || current.retention.state === "deleted") {
+    throw new Error("Research session is pending deletion and cannot accept a new turn.");
+  }
   current = (await input.store.commit(current.sessionId, {
     kind: "create_turn",
     turnId: input.brief.turnId,

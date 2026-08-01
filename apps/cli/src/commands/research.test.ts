@@ -283,6 +283,55 @@ async function seedFailedSession(harness: CliHarness): Promise<ResearchSessionV1
   })).session;
 }
 
+async function seedTerminalResearchSession(harness: CliHarness): Promise<ResearchSessionV1> {
+  const sessionId = "research-session:new-turn-test";
+  const turnId = "research-turn:new-turn-first";
+  const policy = {
+    schema: "atlcli.research-one-shot-policy/v1" as const,
+    requestedEffort: "lookup" as const,
+    requestedPlanApproval: "automatic" as const,
+    scopeExpansionMode: "ask" as const,
+    requestedReconciliation: "off" as const,
+  };
+  const request = buildResearchRequest({
+    question: "Find the stored Jira and Confluence relationship.",
+    projectKeys: ["ATLCLI"],
+    spaceKeys: ["DOCSY"],
+    maxRunMinutes: 5,
+    keepSession: false,
+    planOnly: false,
+    policy,
+  }, profile);
+  const briefOutcome = harness.dependencies.prepareBrief({
+    request,
+    policy,
+    asOf: "2026-08-01T12:00:00.000Z",
+    sessionId,
+    turnId,
+  });
+  if (briefOutcome.kind !== "ready") throw new Error("Expected a terminal test brief.");
+  const initialized = await initializeResearchSessionTurnV1({
+    store: harness.durableStore,
+    session: createResearchSessionV1({
+      sessionId,
+      ownerId: "owner:prior-cli",
+      createdAt: "2026-08-01T12:00:00.000Z",
+      leaseExpiresAt: "2026-08-01T12:05:00.000Z",
+    }),
+    brief: briefOutcome.brief,
+    graph: composeResearchGraphV1(briefOutcome.brief),
+    approveAutomatically: true,
+    at: "2026-08-01T12:00:01.000Z",
+  });
+  return (await harness.durableStore.commit(sessionId, {
+    kind: "fail",
+    reason: "Synthetic terminal session for a new turn.",
+    expectedRevision: initialized.revision,
+    expectedLeaseEpoch: initialized.lease.epoch,
+    at: "2026-08-01T12:00:02.000Z",
+  })).session;
+}
+
 const temporaryRoots: string[] = [];
 afterEach(async () => {
   await Promise.all(temporaryRoots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
@@ -414,6 +463,41 @@ describe("research CLI one-shot contract", () => {
     });
   });
 
+  test("adds a new question only to a terminal session while preserving its approved scope and prior turn", async () => {
+    const harness = cliHarness();
+    const terminal = await seedTerminalResearchSession(harness);
+    let scopeResolutions = 0;
+    harness.dependencies.resolveScope = async () => {
+      scopeResolutions += 1;
+      throw new Error("A retained turn must not repeat scope resolution.");
+    };
+    await handleResearch(
+      ["What", "changed", "in", "the", "approved", "scope?"],
+      { session: terminal.sessionId },
+      { json: false },
+      harness.dependencies,
+    );
+    expect(scopeResolutions).toBe(0);
+    expect(harness.runInputs).toHaveLength(1);
+    expect(harness.runInputs[0]).toMatchObject({
+      request: {
+        question: "What changed in the approved scope?",
+        scope: { jiraProjectKeys: ["ATLCLI"], confluenceSpaceKeys: ["DOCSY"] },
+      },
+      durableSession: { sessionId: terminal.sessionId },
+    });
+    const persisted = await harness.durableStore.read(terminal.sessionId);
+    expect(persisted).toMatchObject({ status: "running", activeTurnId: expect.stringMatching(/^research-turn:/) });
+    expect(persisted?.turns).toHaveLength(2);
+    expect(persisted?.turns[0]?.brief?.objective).toBe("Find the stored Jira and Confluence relationship.");
+    expect(persisted?.turns[1]?.brief).toMatchObject({
+      objective: "What changed in the approved scope?",
+      scope: { jiraProjectKeys: ["ATLCLI"], confluenceSpaceKeys: ["DOCSY"] },
+    });
+    expect(harness.stderr.join("")).toContain(`session=${terminal.sessionId}`);
+    expect(harness.stderr.join("")).toContain("new_turn=true");
+  });
+
   test("validates bounded durable session command inputs before storage access", async () => {
     const harness = cliHarness();
     await expect(handleResearch(["sessions", "list"], { limit: "101" }, { json: true }, harness.dependencies))
@@ -509,6 +593,10 @@ describe("research CLI one-shot contract", () => {
       .toThrow("does not accept a new research question");
     expect(() => parseResearchCliInput([], { resume: "research-session:resume-test", project: "ATLCLI" }))
       .toThrow("cannot change persisted scope");
+    expect(parseResearchCliInput(["follow up"], { session: "research-session:resume-test" }))
+      .toMatchObject({ newTurnSessionId: "research-session:resume-test", question: "follow up" });
+    expect(() => parseResearchCliInput(["follow up"], { session: "research-session:resume-test", project: "ATLCLI" }))
+      .toThrow("preserves the existing scope");
     expect(parseResearchCliInput(["question"], { "plan-only": true }).planOnly).toBe(true);
     expect(parseResearchCliInput(["question"], {
       effort: "deep",

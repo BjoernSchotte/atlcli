@@ -50,6 +50,7 @@ import {
   type ResearchSessionStoreV1,
   type ResearchSessionV1,
   type ResearchWorkspace,
+  appendResearchSessionTurnV1,
   initializeResearchSessionTurnV1,
   recoverResearchSessionForResumeV1,
 } from "@atlcli/research/node";
@@ -77,6 +78,8 @@ export interface ResearchCliInput {
   planOnly: boolean;
   /** Resume is deliberately limited to a no-dispatch authentication wait in T4. */
   resumeSessionId?: string;
+  /** A new question against a terminal session's preserved scope and policy. */
+  newTurnSessionId?: string;
   policy: ResearchOneShotPolicyV1;
 }
 
@@ -99,6 +102,7 @@ const T2_RESEARCH_FLAGS = new Set([
   "keep-session",
   "plan-only",
   "resume",
+  "session",
   "json",
   "no-log",
   "help",
@@ -119,6 +123,7 @@ const T2_VALUE_FLAGS = [
   "scope-expansion",
   "reconciliation",
   "resume",
+  "session",
 ] as const;
 const T2_SINGLE_VALUE_FLAGS = T2_VALUE_FLAGS.filter(
   (key) => key !== "project" && key !== "space",
@@ -249,10 +254,6 @@ export function parseResearchCliInput(
   args: string[],
   flags: Record<string, string | boolean | string[]>,
 ): ResearchCliInput {
-  const unsupported = ["session"].filter((key) => hasFlag(flags, key));
-  if (unsupported.length > 0) {
-    throw new Error(`The following research flags are reserved for durable sessions: ${unsupported.map((key) => `--${key}`).join(", ")}`);
-  }
   const secretFlags = ["api-key", "apikey", "anthropic-key", "key"].filter((key) => hasFlag(flags, key));
   if (secretFlags.length > 0) {
     throw new Error("Anthropic API keys are never accepted as command-line flags. Set ANTHROPIC_API_KEY in the process environment.");
@@ -299,6 +300,30 @@ export function parseResearchCliInput(
       keepSession: hasFlag(flags, "keep-session"),
       planOnly: false,
       resumeSessionId,
+      policy: DEFAULT_RESEARCH_ONE_SHOT_POLICY_V1,
+    };
+  }
+  const newTurnSessionId = getFlag(flags, "session");
+  if (newTurnSessionId !== undefined) {
+    requireSessionId(newTurnSessionId);
+    const question = args.join(" ").trim();
+    if (!question) throw new Error("A new research question is required with --session.");
+    const incompatible = Object.keys(flags).filter((key) => ![
+      "session", "profile", "output", "keep-session", "json", "no-log", "help", "h",
+    ].includes(key));
+    if (incompatible.length > 0) {
+      throw new Error(`--session preserves the existing scope, policy, and deadline: ${incompatible.map((key) => `--${key}`).join(", ")}.`);
+    }
+    return {
+      question,
+      profile: getFlag(flags, "profile"),
+      projectKeys: [],
+      spaceKeys: [],
+      ...(getFlag(flags, "output") ? { outputPath: getFlag(flags, "output") } : {}),
+      maxRunMinutes: DEFAULT_MAX_RUN_MINUTES,
+      keepSession: hasFlag(flags, "keep-session"),
+      planOnly: false,
+      newTurnSessionId,
       policy: DEFAULT_RESEARCH_ONE_SHOT_POLICY_V1,
     };
   }
@@ -916,6 +941,125 @@ function requestFromStoredResearchBrief(brief: ResearchBriefV1): ResearchRequest
   };
 }
 
+function policyFromStoredResearchBrief(brief: ResearchBriefV1): ResearchOneShotPolicyV1 {
+  return {
+    schema: RESEARCH_ONE_SHOT_POLICY_SCHEMA_V1,
+    requestedEffort: brief.requestedEffort,
+    requestedPlanApproval: brief.requestedPlanApproval,
+    scopeExpansionMode: brief.scopeDiscoveryPolicy.expansionMode,
+    requestedReconciliation: brief.requestedReconciliation,
+  };
+}
+
+async function startNewResearchCliSessionTurn(
+  input: ResearchCliInput,
+  opts: OutputOptions,
+  dependencies: ResearchCliDependencies,
+): Promise<void> {
+  const sessionId = input.newTurnSessionId;
+  if (!sessionId) throw new Error("A durable research session ID is required for a new turn.");
+  const profile = await dependencies.resolveProfile(input.profile);
+  if (!profile) {
+    dependencies.fail(opts, 1, ERROR_CODES.AUTH, "No active profile found. Run `atlcli auth login` or select --profile.", { profile: input.profile });
+  }
+  const opened = await dependencies.openSessionStore();
+  let disposeWorkspace: (() => Promise<void>) | undefined;
+  try {
+    const stored = await requireStoredResearchSession(opened.store, sessionId);
+    if (!["complete", "cancelled", "failed"].includes(stored.status) ||
+        stored.retention.state === "deletion_requested" || stored.retention.state === "deleted") {
+      throw new Error("A new research turn requires a retained terminal session.");
+    }
+    const previousTurn = activeSessionTurn(stored);
+    if (!previousTurn?.brief) throw new Error("The retained research session has no prior brief to preserve.");
+    if (new URL(profile.baseUrl).origin !== previousTurn.brief.scope.siteOrigin) {
+      throw new Error("The selected profile belongs to a different Atlassian tenant than the retained research session.");
+    }
+    const turnId = dependencies.createDurableTurnId();
+    const request = normalizeResearchRequestV1({
+      ...requestFromStoredResearchBrief(previousTurn.brief),
+      question: input.question,
+    });
+    const briefOutcome = dependencies.prepareBrief({
+      request,
+      policy: policyFromStoredResearchBrief(previousTurn.brief),
+      asOf: new Date().toISOString(),
+      timezone: previousTurn.brief.timezone,
+      sessionId,
+      turnId,
+    });
+    if (briefOutcome.kind === "clarification_required") {
+      dependencies.writeStderr(
+        `[research] session=${sessionId} stop_reason=clarification-required brief_revision=${briefOutcome.clarification.briefRevision} questions=${briefOutcome.clarification.questions.length} assumptions=${briefOutcome.clarification.assumptionsRequiringDecision.length}\n`,
+      );
+      dependencies.fail(
+        opts,
+        2,
+        ERROR_CODES.VALIDATION,
+        "The new research turn requires clarification before it can be added to the retained session.",
+        { outcome: briefOutcome },
+      );
+    }
+    const researchGraph = composeResearchGraphV1(briefOutcome.brief, {
+      packetOutputSchema: RESEARCH_PACKET_BODY_SCHEMA_V2,
+    });
+    const appended = await appendResearchSessionTurnV1({
+      store: opened.store,
+      sessionId,
+      brief: briefOutcome.brief,
+      graph: researchGraph,
+      approveAutomatically: briefOutcome.brief.resolvedPlanApproval === "automatic",
+      at: new Date().toISOString(),
+    });
+    const appendedTurn = activeSessionTurn(appended);
+    if (!appendedTurn?.brief || !appendedTurn.graph || appendedTurn.id !== turnId) {
+      throw new Error("The retained research session did not persist its new turn.");
+    }
+    dependencies.writeStderr(
+      `[research] session=${sessionId} turn=${turnId} status=${appended.status} new_turn=true\n`,
+    );
+    if (appended.status === "waiting_plan_approval") {
+      dependencies.emitOutput(projectResearchSessionPlanV1(appended), opts);
+      return;
+    }
+    if (appended.status !== "running") throw new Error("The new durable research turn is not runnable.");
+    const apiKey = readApiKey(dependencies);
+    if (!apiKey) {
+      const waiting = await opened.store.commit(sessionId, {
+        kind: "wait_authentication",
+        expectedRevision: appended.revision,
+        expectedLeaseEpoch: appended.lease.epoch,
+        at: new Date().toISOString(),
+      });
+      dependencies.writeStderr(
+        `[research] session=${waiting.session.sessionId} status=${waiting.session.status} stop_reason=authentication-required\n`,
+      );
+      throw new Error("ANTHROPIC_API_KEY is missing. Set it in the process environment; it is never read from a CLI flag.");
+    }
+    const workspace = opened.workspace
+      ? await opened.workspace(sessionId)
+      : await dependencies.createWorkspace();
+    if (!opened.workspace) disposeWorkspace = () => (workspace as ResearchCliWorkspace).dispose();
+    await runEstablishedResearchCliSession({
+      input,
+      opts,
+      dependencies,
+      profile,
+      request,
+      workspace,
+      store: opened.store,
+      sessionId,
+      turnId,
+      researchGraph: appendedTurn.graph,
+      brief: appendedTurn.brief,
+      apiKey,
+    });
+  } finally {
+    if (!input.keepSession) await disposeWorkspace?.();
+    opened.close();
+  }
+}
+
 async function resumeAuthenticationWaitingResearchSession(
   input: ResearchCliInput,
   opts: OutputOptions,
@@ -1011,6 +1155,10 @@ export async function handleResearch(
   const input = parseResearchCliInput(args, flags);
   if (input.resumeSessionId) {
     await resumeAuthenticationWaitingResearchSession(input, opts, dependencies);
+    return;
+  }
+  if (input.newTurnSessionId) {
+    await startNewResearchCliSessionTurn(input, opts, dependencies);
     return;
   }
   const profile = await dependencies.resolveProfile(input.profile);
@@ -1195,6 +1343,7 @@ export async function handleResearch(
 export function researchHelp(): string {
   return `atlcli research <question>
 atlcli research --resume <session-id>
+atlcli research --session <session-id> <question>
 atlcli research sessions <list|show|plan|approve|reject-plan|delete>
 
 Run a bounded, read-only Jira + Confluence research question through DeepAgentsJS and QuickJS PTC.
@@ -1214,6 +1363,7 @@ Options:
   --reconciliation <m>    off|auto|required (default: auto)
   --plan-only             Persist and print the sanitized durable research plan; do not run research
   --resume <session-id>   Resume a no-dispatch durable authentication wait
+  --session <session-id>  Add a question to a terminal session using its retained scope and policy
   --output <path>        Atomically write the generated Markdown
   --keep-session         Print the retained session workspace path
   --json                 Emit the structured report as JSON
@@ -1230,6 +1380,7 @@ Durable session commands:
 ANTHROPIC_API_KEY must be supplied through the process environment.
 --plan-only persists the brief and graph before any key, workspace, provider, or model access.
 --resume preserves the accepted brief, graph, scope, and limits; task retry, steering, scope, and clarification commands arrive in later T4 checkpoints.
+--session preserves the terminal session's scope, policy, and deadline; it does not silently expand scope.
 Approving a durable plan persists its exact revision only; it starts no model research until durable task dispatch arrives.
 `;
 }
