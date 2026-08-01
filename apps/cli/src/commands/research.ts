@@ -27,6 +27,8 @@ import {
   RESEARCH_SCOPE_EXPANSION_MODES_V1,
   ResearchScopeCatalogBroker,
   ResearchRunBudget,
+  SqliteResearchSessionStoreV1,
+  createResearchSessionV1,
   createResearchKeyScopeSeedV1,
   createRestResearchProviders,
   createRestScopeCatalogProviders,
@@ -44,7 +46,9 @@ import {
   type ResearchReportV1,
   type ResearchScopePreflightOutcomeV1,
   type ResearchScopeSeedV1,
+  type ResearchSessionStoreV1,
   type ResearchWorkspace,
+  initializeResearchSessionTurnV1,
 } from "@atlcli/research/node";
 import {
   composeResearchGraphV1,
@@ -66,6 +70,7 @@ export interface ResearchCliInput {
   outputPath?: string;
   maxRunMinutes: number;
   keepSession: boolean;
+  planOnly: boolean;
   policy: ResearchOneShotPolicyV1;
 }
 
@@ -86,6 +91,7 @@ const T2_RESEARCH_FLAGS = new Set([
   "scope-expansion",
   "reconciliation",
   "keep-session",
+  "plan-only",
   "json",
   "no-log",
   "help",
@@ -109,7 +115,7 @@ const T2_VALUE_FLAGS = [
 const T2_SINGLE_VALUE_FLAGS = T2_VALUE_FLAGS.filter(
   (key) => key !== "project" && key !== "space",
 );
-const T2_BOOLEAN_FLAGS = ["keep-session", "json", "no-log", "help", "h"] as const;
+const T2_BOOLEAN_FLAGS = ["keep-session", "plan-only", "json", "no-log", "help", "h"] as const;
 
 export interface ResearchCliWorkspace extends ResearchWorkspace {
   readonly root: string;
@@ -140,6 +146,8 @@ export interface ResearchCliDependencies {
     policy: ResearchOneShotPolicyV1;
     asOf: string;
     timezone?: string;
+    sessionId?: string;
+    turnId?: string;
   }): ResearchBriefPreflightOutcomeV1;
   readApiKey(): string | undefined;
   createWorkspace(): Promise<ResearchCliWorkspace>;
@@ -147,6 +155,9 @@ export interface ResearchCliDependencies {
   writeAtomic(path: string, contents: string): Promise<void>;
   artifactPath(): string;
   createSessionId(): string;
+  createDurableSessionId(): string;
+  createDurableTurnId(): string;
+  openSessionStore(): Promise<{ store: ResearchSessionStoreV1; close(): void }>;
   writeStdout(contents: string): void;
   writeStderr(contents: string): void;
   emitOutput(data: unknown, opts: OutputOptions): void;
@@ -221,7 +232,6 @@ export function parseResearchCliInput(
   flags: Record<string, string | boolean | string[]>,
 ): ResearchCliInput {
   const unsupported = [
-    "plan-only",
     "session",
     "resume",
   ].filter((key) => hasFlag(flags, key));
@@ -306,6 +316,7 @@ export function parseResearchCliInput(
     ...(getFlag(flags, "output") ? { outputPath: getFlag(flags, "output") } : {}),
     maxRunMinutes,
     keepSession: hasFlag(flags, "keep-session"),
+    planOnly: hasFlag(flags, "plan-only"),
     policy,
   };
 }
@@ -408,6 +419,8 @@ export const defaultResearchCliDependencies: ResearchCliDependencies = {
   },
   prepareBrief(input) {
     return prepareResearchBriefPreflightV1(createStandardResearchBriefV1(input.request.question, {
+      ...(input.sessionId ? { sessionId: input.sessionId } : {}),
+      ...(input.turnId ? { turnId: input.turnId } : {}),
       scope: input.request.scope,
       scopeBindings: input.request.scopeSeeds?.map((seed) => seed.binding),
       limits: input.request.limits,
@@ -455,6 +468,17 @@ export const defaultResearchCliDependencies: ResearchCliDependencies = {
   writeAtomic: writeResearchMarkdownAtomic,
   artifactPath: () => researchArtifactPath(),
   createSessionId: () => `research-${randomUUID()}`,
+  createDurableSessionId: () => `research-session:${randomUUID()}`,
+  createDurableTurnId: () => `research-turn:${randomUUID()}`,
+  async openSessionStore() {
+    const root = join(homedir(), ".atlcli", "research-sessions");
+    await mkdir(root, { recursive: true, mode: 0o700 });
+    const store = new SqliteResearchSessionStoreV1({
+      databasePath: join(root, "catalog.sqlite"),
+      root,
+    });
+    return { store, close: () => store.close() };
+  },
   writeStdout: (contents) => process.stdout.write(contents),
   writeStderr: (contents) => process.stderr.write(contents),
   emitOutput: output,
@@ -501,11 +525,15 @@ export async function handleResearch(
     );
   }
   const request = scopeOutcome.request;
+  const durableSessionId = input.planOnly ? dependencies.createDurableSessionId() : undefined;
+  const durableTurnId = input.planOnly ? dependencies.createDurableTurnId() : undefined;
   const briefOutcome = dependencies.prepareBrief({
     request,
     policy: input.policy,
     asOf: new Date().toISOString(),
     timezone: input.timezone,
+    ...(durableSessionId ? { sessionId: durableSessionId } : {}),
+    ...(durableTurnId ? { turnId: durableTurnId } : {}),
   });
   if (briefOutcome.kind === "clarification_required") {
     const clarification = briefOutcome.clarification;
@@ -531,6 +559,56 @@ export async function handleResearch(
   dependencies.writeStderr(
     `[research] scope_bindings=${(request.scopeSeeds ?? []).map((seed) => `${seed.binding.product}:${seed.binding.key}:${seed.binding.source}:${seed.binding.authority}`).join(",") || "none"}\n`,
   );
+  if (input.planOnly) {
+    const opened = await dependencies.openSessionStore();
+    try {
+      const now = new Date().toISOString();
+      const session = await initializeResearchSessionTurnV1({
+        store: opened.store,
+        session: createResearchSessionV1({
+          sessionId: durableSessionId!,
+          ownerId: `owner:cli-${process.pid}`,
+          createdAt: now,
+          leaseExpiresAt: new Date(Date.parse(now) + request.limits.maxRunMs).toISOString(),
+        }),
+        brief: briefOutcome.brief,
+        graph: researchGraph,
+        approveAutomatically: briefOutcome.brief.resolvedPlanApproval === "automatic",
+        at: now,
+      });
+      const graph = session.turns.find((turn) => turn.id === durableTurnId)?.graph;
+      const plan = {
+        sessionId: session.sessionId,
+        sessionRevision: session.revision,
+        status: session.status,
+        brief: {
+          revision: briefOutcome.brief.revision,
+          objective: briefOutcome.brief.objective,
+          scope: briefOutcome.brief.scope,
+          scopeBindings: briefOutcome.brief.scopeBindings,
+          limits: briefOutcome.brief.limits,
+        },
+        graph: graph && {
+          revision: graph.revision,
+          status: graph.status,
+          roles: projectSelectedResearchRolesV1(graph),
+          nodes: graph.nodes.map((node) => ({
+            id: node.id,
+            roleId: node.roleId,
+            dependencies: node.dependencies,
+            grantedCapabilityIds: node.grantedCapabilityIds,
+            budget: node.budget,
+          })),
+          approvalEnvelope: graph.approvalEnvelope,
+        },
+      };
+      dependencies.writeStderr(`[research] session=${session.sessionId} status=${session.status} plan_only=true\n`);
+      dependencies.emitOutput(plan, opts);
+      return;
+    } finally {
+      opened.close();
+    }
+  }
   const approvalRequired = researchPlanApprovalRequiredV1(researchGraph);
   if (approvalRequired) {
     dependencies.writeStderr("[research] stop_reason=plan-approval-required\n");
@@ -644,12 +722,14 @@ Options:
   --plan-approval <mode>  automatic; omitted deep plans stop for review
   --scope-expansion <m>   strict|ask|exact-linked (default: ask)
   --reconciliation <m>    off|auto|required (default: auto)
+  --plan-only             Persist and print the sanitized durable research plan; do not run research
   --output <path>        Atomically write the generated Markdown
   --keep-session         Retain the temporary session workspace
   --json                 Emit the structured report as JSON
   --help                 Show this help
 
 ANTHROPIC_API_KEY must be supplied through the process environment.
-Required plan approval and durable session flags such as --resume arrive in T4.
+--plan-only persists the brief and graph before any key, workspace, provider, or model access.
+Session resume and revision-fenced plan/steering commands arrive in later T4 checkpoints.
 `;
 }

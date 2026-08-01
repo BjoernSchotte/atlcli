@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import {
   ResearchSessionMemoryCheckpointerV1,
+} from "./langgraph-checkpointer.js";
+import {
   researchCheckpointConfigV1,
   researchThreadIdForSessionV1,
-} from "./langgraph-checkpointer.js";
+} from "./checkpoint-identity.js";
 
 const sessionId = "research-session:checkpoint-test";
 

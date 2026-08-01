@@ -3038,6 +3038,16 @@ proposal and then approved through its own journal event; a required plan
 remains durably `waiting_plan_approval` with no approval event. The first host
 integration must call this gate before credentials, workspace, provider, or
 agent construction.
+
+T4 CLI plan checkpoint (2026-08-01): `atlcli research --plan-only` is the
+first host integration of that gate. It creates a SQLite-backed durable session
+and records the turn, brief, proposed graph, and (when allowed) approval before
+it reads an Anthropic key, creates a scratch workspace, constructs a provider,
+or invokes a model. It prints only the sanitized brief, scope bindings,
+approved/proposed graph, role grants, dependencies, budgets, and approval
+envelope. The CLI has no resume or plan-mutation command yet, so this is an
+inspectable durable-plan boundary rather than a falsely advertised durable run.
+
 - [ ] Persist ready nodes before dispatch. Accept or quarantine a result with
       one aggregate revision-fenced journal/CAS operation covering graph
       revision, graph-node status and packet reference, task-attempt terminal
@@ -3059,15 +3069,18 @@ agent construction.
 
 CLI:
 
-- [ ] Implement a Bun SQLite session catalog and checkpointer.
-- [ ] Use one real directory per retained session, with atomic manifest and
+- [x] Implement a Bun SQLite session catalog. The physical checkpointer remains
+      pending.
+- [x] Use one real directory per retained session, with atomic manifest and
       artifact writes.
 - [ ] Add `--session <id>` for a new turn and `--resume <id>` for interrupted
       execution.
 - [ ] Add non-interactive `research sessions list`, `show`, and `delete`
       operations with bounded output.
-- [ ] Add `--plan-only` plus revision-fenced `sessions plan`, `approve`,
-      `reject-plan`, `revise-plan`, `approve-scope`, `reject-scope`,
+- [x] Add `--plan-only`; it persists and emits the sanitized durable brief and
+      graph before any key, workspace, provider, or model access.
+- [ ] Add revision-fenced `sessions plan`, `approve`, `reject-plan`,
+      `revise-plan`, `approve-scope`, `reject-scope`,
       `clarify`, `steer`, `pause`, `resume`, and `cancel` commands from the CLI
       contract.
 - [ ] Show the sanitized brief, graph, selected roles, dependencies, budgets,

@@ -31,6 +31,6 @@ export * from "./task-ledger.js";
 export * from "./session.js";
 export * from "./session-store.js";
 export * from "./session-store-conformance.js";
-export * from "./langgraph-checkpointer.js";
+export * from "./checkpoint-identity.js";
 export * from "./indexeddb-session-store.js";
 export * from "./session-runtime.js";

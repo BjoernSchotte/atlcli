@@ -54,6 +54,8 @@ export declare function composeResearchGraphV1(brief: ResearchBriefV1, options?:
 
 // export: ComposeStandardResearchGraphOptionsV1
 export interface ComposeStandardResearchGraphOptionsV1 {
+    sessionId?: string;
+    turnId?: string;
     scope?: ResearchScopeV1;
     scopeBindings?: readonly ResearchScopeBindingV1[];
     limits?: ResearchLimitsV1;
@@ -253,6 +255,19 @@ export declare class IndexedDbResearchSessionStoreV1 implements ResearchSessionS
     listArtifacts(sessionId: string): Promise<ResearchSessionArtifactV1[]>;
     eraseDeleted(sessionId: string): Promise<boolean>;
 }
+
+// export: InitializeResearchSessionTurnInputV1
+export interface InitializeResearchSessionTurnInputV1 {
+    store: ResearchSessionStoreV1;
+    session: ResearchSessionV1;
+    brief: ResearchBriefV1;
+    graph: ResearchGraphV1;
+    approveAutomatically: boolean;
+    at: string;
+}
+
+// export: initializeResearchSessionTurnV1
+export declare function initializeResearchSessionTurnV1(input: InitializeResearchSessionTurnInputV1): Promise<ResearchSessionV1>;
 
 // export: InMemoryResearchSessionStoreV1
 export declare class InMemoryResearchSessionStoreV1 implements ResearchSessionStoreV1 {
@@ -969,7 +984,16 @@ export declare function researchCheckpointConfigV1(input: {
     sessionId: string;
     checkpointNamespace?: string;
     checkpointId?: string;
-}): RunnableConfig;
+}): ResearchCheckpointConfigV1;
+
+// export: ResearchCheckpointConfigV1
+export interface ResearchCheckpointConfigV1 {
+    readonly configurable: {
+        readonly thread_id: string;
+        readonly checkpoint_ns: string;
+        readonly checkpoint_id?: string;
+    };
+}
 
 // export: ResearchClarificationQuestionV1
 export interface ResearchClarificationQuestionV1 {
@@ -2161,17 +2185,6 @@ export interface ResearchSessionLeaseV1 {
     expiresAt: string;
 }
 
-// export: ResearchSessionMemoryCheckpointerV1
-export declare class ResearchSessionMemoryCheckpointerV1 extends MemorySaver {
-    #private;
-    constructor(sessionId: string);
-    getTuple(config: RunnableConfig): Promise<CheckpointTuple | undefined>;
-    list(config: RunnableConfig, options?: CheckpointListOptions): AsyncGenerator<CheckpointTuple>;
-    put(config: RunnableConfig, checkpoint: Checkpoint, metadata: CheckpointMetadata, _newVersions?: ChannelVersions): Promise<RunnableConfig>;
-    putWrites(config: RunnableConfig, writes: PendingWrite[], taskId: string): Promise<void>;
-    deleteThread(threadId: string): Promise<void>;
-}
-
 // export: ResearchSessionRetentionV1
 export interface ResearchSessionRetentionV1 {
     state: "active" | "retained" | "deletion_requested" | "deleted";
@@ -2614,6 +2627,9 @@ export declare function scopeSourcePrecedence(source: ResearchScopeSourceV1): nu
 
 // export: selectResearchScopeSeedsV1
 export declare function selectResearchScopeSeedsV1(seeds: readonly ResearchScopeSeedV1[]): ResearchScopeBindingV1[];
+
+// export: stageResearchGraphForDurableSessionV1
+export declare function stageResearchGraphForDurableSessionV1(graph: ResearchGraphV1): ResearchGraphV1;
 
 // export: validateResearchGraphV1
 export declare function validateResearchGraphV1(graph: ResearchGraphV1): void;
@@ -2710,6 +2726,8 @@ export declare function composeResearchGraphV1(brief: ResearchBriefV1, options?:
 
 // export: ComposeStandardResearchGraphOptionsV1
 export interface ComposeStandardResearchGraphOptionsV1 {
+    sessionId?: string;
+    turnId?: string;
     scope?: ResearchScopeV1;
     scopeBindings?: readonly ResearchScopeBindingV1[];
     limits?: ResearchLimitsV1;
@@ -2900,6 +2918,19 @@ export declare class IndexedDbResearchSessionStoreV1 implements ResearchSessionS
     listArtifacts(sessionId: string): Promise<ResearchSessionArtifactV1[]>;
     eraseDeleted(sessionId: string): Promise<boolean>;
 }
+
+// export: InitializeResearchSessionTurnInputV1
+export interface InitializeResearchSessionTurnInputV1 {
+    store: ResearchSessionStoreV1;
+    session: ResearchSessionV1;
+    brief: ResearchBriefV1;
+    graph: ResearchGraphV1;
+    approveAutomatically: boolean;
+    at: string;
+}
+
+// export: initializeResearchSessionTurnV1
+export declare function initializeResearchSessionTurnV1(input: InitializeResearchSessionTurnInputV1): Promise<ResearchSessionV1>;
 
 // export: InMemoryResearchSessionStoreV1
 export declare class InMemoryResearchSessionStoreV1 implements ResearchSessionStoreV1 {
@@ -3616,7 +3647,16 @@ export declare function researchCheckpointConfigV1(input: {
     sessionId: string;
     checkpointNamespace?: string;
     checkpointId?: string;
-}): RunnableConfig;
+}): ResearchCheckpointConfigV1;
+
+// export: ResearchCheckpointConfigV1
+export interface ResearchCheckpointConfigV1 {
+    readonly configurable: {
+        readonly thread_id: string;
+        readonly checkpoint_ns: string;
+        readonly checkpoint_id?: string;
+    };
+}
 
 // export: ResearchClarificationQuestionV1
 export interface ResearchClarificationQuestionV1 {
@@ -4806,17 +4846,6 @@ export interface ResearchSessionLeaseV1 {
     ownerId: string;
     heartbeatAt: string;
     expiresAt: string;
-}
-
-// export: ResearchSessionMemoryCheckpointerV1
-export declare class ResearchSessionMemoryCheckpointerV1 extends MemorySaver {
-    #private;
-    constructor(sessionId: string);
-    getTuple(config: RunnableConfig): Promise<CheckpointTuple | undefined>;
-    list(config: RunnableConfig, options?: CheckpointListOptions): AsyncGenerator<CheckpointTuple>;
-    put(config: RunnableConfig, checkpoint: Checkpoint, metadata: CheckpointMetadata, _newVersions?: ChannelVersions): Promise<RunnableConfig>;
-    putWrites(config: RunnableConfig, writes: PendingWrite[], taskId: string): Promise<void>;
-    deleteThread(threadId: string): Promise<void>;
 }
 
 // export: ResearchSessionRetentionV1
@@ -5251,6 +5280,9 @@ export declare function scopeSourcePrecedence(source: ResearchScopeSourceV1): nu
 // export: selectResearchScopeSeedsV1
 export declare function selectResearchScopeSeedsV1(seeds: readonly ResearchScopeSeedV1[]): ResearchScopeBindingV1[];
 
+// export: stageResearchGraphForDurableSessionV1
+export declare function stageResearchGraphForDurableSessionV1(graph: ResearchGraphV1): ResearchGraphV1;
+
 // export: validateResearchGraphV1
 export declare function validateResearchGraphV1(graph: ResearchGraphV1): void;
 
@@ -5346,6 +5378,8 @@ export declare function composeResearchGraphV1(brief: ResearchBriefV1, options?:
 
 // export: ComposeStandardResearchGraphOptionsV1
 export interface ComposeStandardResearchGraphOptionsV1 {
+    sessionId?: string;
+    turnId?: string;
     scope?: ResearchScopeV1;
     scopeBindings?: readonly ResearchScopeBindingV1[];
     limits?: ResearchLimitsV1;
@@ -5545,6 +5579,19 @@ export declare class IndexedDbResearchSessionStoreV1 implements ResearchSessionS
     listArtifacts(sessionId: string): Promise<ResearchSessionArtifactV1[]>;
     eraseDeleted(sessionId: string): Promise<boolean>;
 }
+
+// export: InitializeResearchSessionTurnInputV1
+export interface InitializeResearchSessionTurnInputV1 {
+    store: ResearchSessionStoreV1;
+    session: ResearchSessionV1;
+    brief: ResearchBriefV1;
+    graph: ResearchGraphV1;
+    approveAutomatically: boolean;
+    at: string;
+}
+
+// export: initializeResearchSessionTurnV1
+export declare function initializeResearchSessionTurnV1(input: InitializeResearchSessionTurnInputV1): Promise<ResearchSessionV1>;
 
 // export: InMemoryResearchSessionStoreV1
 export declare class InMemoryResearchSessionStoreV1 implements ResearchSessionStoreV1 {
@@ -6261,7 +6308,16 @@ export declare function researchCheckpointConfigV1(input: {
     sessionId: string;
     checkpointNamespace?: string;
     checkpointId?: string;
-}): RunnableConfig;
+}): ResearchCheckpointConfigV1;
+
+// export: ResearchCheckpointConfigV1
+export interface ResearchCheckpointConfigV1 {
+    readonly configurable: {
+        readonly thread_id: string;
+        readonly checkpoint_ns: string;
+        readonly checkpoint_id?: string;
+    };
+}
 
 // export: ResearchClarificationQuestionV1
 export interface ResearchClarificationQuestionV1 {
@@ -7451,17 +7507,6 @@ export interface ResearchSessionLeaseV1 {
     ownerId: string;
     heartbeatAt: string;
     expiresAt: string;
-}
-
-// export: ResearchSessionMemoryCheckpointerV1
-export declare class ResearchSessionMemoryCheckpointerV1 extends MemorySaver {
-    #private;
-    constructor(sessionId: string);
-    getTuple(config: RunnableConfig): Promise<CheckpointTuple | undefined>;
-    list(config: RunnableConfig, options?: CheckpointListOptions): AsyncGenerator<CheckpointTuple>;
-    put(config: RunnableConfig, checkpoint: Checkpoint, metadata: CheckpointMetadata, _newVersions?: ChannelVersions): Promise<RunnableConfig>;
-    putWrites(config: RunnableConfig, writes: PendingWrite[], taskId: string): Promise<void>;
-    deleteThread(threadId: string): Promise<void>;
 }
 
 // export: ResearchSessionRetentionV1
@@ -7906,6 +7951,9 @@ export declare function scopeSourcePrecedence(source: ResearchScopeSourceV1): nu
 
 // export: selectResearchScopeSeedsV1
 export declare function selectResearchScopeSeedsV1(seeds: readonly ResearchScopeSeedV1[]): ResearchScopeBindingV1[];
+
+// export: stageResearchGraphForDurableSessionV1
+export declare function stageResearchGraphForDurableSessionV1(graph: ResearchGraphV1): ResearchGraphV1;
 
 // export: validateResearchGraphV1
 export declare function validateResearchGraphV1(graph: ResearchGraphV1): void;
@@ -8011,6 +8059,8 @@ export declare function composeResearchGraphV1(brief: ResearchBriefV1, options?:
 
 // export: ComposeStandardResearchGraphOptionsV1
 export interface ComposeStandardResearchGraphOptionsV1 {
+    sessionId?: string;
+    turnId?: string;
     scope?: ResearchScopeV1;
     scopeBindings?: readonly ResearchScopeBindingV1[];
     limits?: ResearchLimitsV1;
@@ -8339,6 +8389,19 @@ export declare class IndexedDbResearchSessionStoreV1 implements ResearchSessionS
     listArtifacts(sessionId: string): Promise<ResearchSessionArtifactV1[]>;
     eraseDeleted(sessionId: string): Promise<boolean>;
 }
+
+// export: InitializeResearchSessionTurnInputV1
+export interface InitializeResearchSessionTurnInputV1 {
+    store: ResearchSessionStoreV1;
+    session: ResearchSessionV1;
+    brief: ResearchBriefV1;
+    graph: ResearchGraphV1;
+    approveAutomatically: boolean;
+    at: string;
+}
+
+// export: initializeResearchSessionTurnV1
+export declare function initializeResearchSessionTurnV1(input: InitializeResearchSessionTurnInputV1): Promise<ResearchSessionV1>;
 
 // export: InMemoryResearchSessionStoreV1
 export declare class InMemoryResearchSessionStoreV1 implements ResearchSessionStoreV1 {
@@ -9091,7 +9154,16 @@ export declare function researchCheckpointConfigV1(input: {
     sessionId: string;
     checkpointNamespace?: string;
     checkpointId?: string;
-}): RunnableConfig;
+}): ResearchCheckpointConfigV1;
+
+// export: ResearchCheckpointConfigV1
+export interface ResearchCheckpointConfigV1 {
+    readonly configurable: {
+        readonly thread_id: string;
+        readonly checkpoint_ns: string;
+        readonly checkpoint_id?: string;
+    };
+}
 
 // export: ResearchClarificationQuestionV1
 export interface ResearchClarificationQuestionV1 {
@@ -10321,17 +10393,6 @@ export interface ResearchSessionLeaseV1 {
     expiresAt: string;
 }
 
-// export: ResearchSessionMemoryCheckpointerV1
-export declare class ResearchSessionMemoryCheckpointerV1 extends MemorySaver {
-    #private;
-    constructor(sessionId: string);
-    getTuple(config: RunnableConfig): Promise<CheckpointTuple | undefined>;
-    list(config: RunnableConfig, options?: CheckpointListOptions): AsyncGenerator<CheckpointTuple>;
-    put(config: RunnableConfig, checkpoint: Checkpoint, metadata: CheckpointMetadata, _newVersions?: ChannelVersions): Promise<RunnableConfig>;
-    putWrites(config: RunnableConfig, writes: PendingWrite[], taskId: string): Promise<void>;
-    deleteThread(threadId: string): Promise<void>;
-}
-
 // export: ResearchSessionRetentionV1
 export interface ResearchSessionRetentionV1 {
     state: "active" | "retained" | "deletion_requested" | "deleted";
@@ -10825,6 +10886,9 @@ export declare function scopeSourcePrecedence(source: ResearchScopeSourceV1): nu
 
 // export: selectResearchScopeSeedsV1
 export declare function selectResearchScopeSeedsV1(seeds: readonly ResearchScopeSeedV1[]): ResearchScopeBindingV1[];
+
+// export: stageResearchGraphForDurableSessionV1
+export declare function stageResearchGraphForDurableSessionV1(graph: ResearchGraphV1): ResearchGraphV1;
 
 // export: validateResearchGraphV1
 export declare function validateResearchGraphV1(graph: ResearchGraphV1): void;
@@ -11536,6 +11600,8 @@ export declare function composeResearchGraphV1(brief: ResearchBriefV1, options?:
 
 // export: ComposeStandardResearchGraphOptionsV1
 export interface ComposeStandardResearchGraphOptionsV1 {
+    sessionId?: string;
+    turnId?: string;
     scope?: ResearchScopeV1;
     scopeBindings?: readonly ResearchScopeBindingV1[];
     limits?: ResearchLimitsV1;
@@ -11798,6 +11864,9 @@ export interface ResearchPlanApprovalRequiredV1 {
 // @deprecated ResearchReconciliationModeV1 — Use ResearchRequestedReconciliationV1 from the brief contract.
 export type ResearchReconciliationModeV1 = ResearchRequestedReconciliationV1;
 
+// export: stageResearchGraphForDurableSessionV1
+export declare function stageResearchGraphForDurableSessionV1(graph: ResearchGraphV1): ResearchGraphV1;
+
 // export: validateResearchGraphV1
 export declare function validateResearchGraphV1(graph: ResearchGraphV1): void;
 ```
@@ -11861,6 +11930,8 @@ export declare function composeResearchGraphV1(brief: ResearchBriefV1, options?:
 
 // export: ComposeStandardResearchGraphOptionsV1
 export interface ComposeStandardResearchGraphOptionsV1 {
+    sessionId?: string;
+    turnId?: string;
     scope?: ResearchScopeV1;
     scopeBindings?: readonly ResearchScopeBindingV1[];
     limits?: ResearchLimitsV1;
@@ -12204,6 +12275,19 @@ export declare class IndexedDbResearchSessionStoreV1 implements ResearchSessionS
     listArtifacts(sessionId: string): Promise<ResearchSessionArtifactV1[]>;
     eraseDeleted(sessionId: string): Promise<boolean>;
 }
+
+// export: InitializeResearchSessionTurnInputV1
+export interface InitializeResearchSessionTurnInputV1 {
+    store: ResearchSessionStoreV1;
+    session: ResearchSessionV1;
+    brief: ResearchBriefV1;
+    graph: ResearchGraphV1;
+    approveAutomatically: boolean;
+    at: string;
+}
+
+// export: initializeResearchSessionTurnV1
+export declare function initializeResearchSessionTurnV1(input: InitializeResearchSessionTurnInputV1): Promise<ResearchSessionV1>;
 
 // export: InMemoryResearchSessionStoreV1
 export declare class InMemoryResearchSessionStoreV1 implements ResearchSessionStoreV1 {
@@ -12956,7 +13040,16 @@ export declare function researchCheckpointConfigV1(input: {
     sessionId: string;
     checkpointNamespace?: string;
     checkpointId?: string;
-}): RunnableConfig;
+}): ResearchCheckpointConfigV1;
+
+// export: ResearchCheckpointConfigV1
+export interface ResearchCheckpointConfigV1 {
+    readonly configurable: {
+        readonly thread_id: string;
+        readonly checkpoint_ns: string;
+        readonly checkpoint_id?: string;
+    };
+}
 
 // export: ResearchClarificationQuestionV1
 export interface ResearchClarificationQuestionV1 {
@@ -14729,6 +14822,9 @@ export declare class SqliteResearchSessionStoreV1 implements ResearchSessionStor
     listArtifacts(sessionId: string): Promise<ResearchSessionArtifactV1[]>;
     eraseDeleted(sessionId: string): Promise<boolean>;
 }
+
+// export: stageResearchGraphForDurableSessionV1
+export declare function stageResearchGraphForDurableSessionV1(graph: ResearchGraphV1): ResearchGraphV1;
 
 // export: validateResearchGraphV1
 export declare function validateResearchGraphV1(graph: ResearchGraphV1): void;

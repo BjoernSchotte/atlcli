@@ -7,6 +7,7 @@ import {
   RESEARCH_BRIEF_PREFLIGHT_OUTCOME_SCHEMA_V1,
   RESEARCH_SCOPE_PREFLIGHT_OUTCOME_SCHEMA_V1,
   ResearchContractError,
+  InMemoryResearchSessionStoreV1,
   createMemoryResearchWorkspace,
   prepareResearchBriefPreflightV1,
   type ResearchReportV1,
@@ -90,8 +91,10 @@ function cliHarness(options: {
       mentions: [],
       resolutions: [],
     }),
-    prepareBrief: ({ request, policy, asOf, timezone }) =>
+    prepareBrief: ({ request, policy, asOf, timezone, sessionId, turnId }) =>
       prepareResearchBriefPreflightV1(createStandardResearchBriefV1(request.question, {
+        ...(sessionId ? { sessionId } : {}),
+        ...(turnId ? { turnId } : {}),
         scope: request.scope,
         scopeBindings: request.scopeSeeds?.map((seed) => seed.binding),
         limits: request.limits,
@@ -156,6 +159,12 @@ function cliHarness(options: {
     async writeAtomic(path, contents) { writes.set(path, contents); },
     artifactPath: () => "/external/artifact/report.md",
     createSessionId: () => "research-test-run",
+    createDurableSessionId: () => "research-session:cli-plan",
+    createDurableTurnId: () => "research-turn:cli-plan",
+    async openSessionStore() {
+      const store = new InMemoryResearchSessionStoreV1();
+      return { store, close: () => undefined };
+    },
     writeStdout: (contents) => { stdout.push(contents); },
     writeStderr: (contents) => { stderr.push(contents); },
     emitOutput: (data) => { stdout.push(`${JSON.stringify(data, null, 2)}\n`); },
@@ -192,6 +201,20 @@ afterEach(async () => {
 });
 
 describe("research CLI one-shot contract", () => {
+  test("persists a durable plan-only session before key, workspace, or agent construction", async () => {
+    const harness = cliHarness();
+    harness.dependencies.readApiKey = () => undefined;
+    await handleResearch(["Find", "related", "content"], { "plan-only": true }, { json: true }, harness.dependencies);
+    expect(harness.runInputs).toHaveLength(0);
+    expect(harness.workspaces).toHaveLength(0);
+    expect(JSON.parse(harness.stdout.join(""))).toMatchObject({
+      sessionId: "research-session:cli-plan",
+      status: "running",
+      graph: { status: "approved" },
+    });
+    expect(harness.stderr.join("")).toContain("plan_only=true");
+  });
+
   test("parses repeatable locked scope flags and the fixed-date question context", () => {
     const input = parseResearchCliInput(
       ["Which", "items", "are", "related?"],
@@ -268,9 +291,9 @@ describe("research CLI one-shot contract", () => {
     ]);
   });
 
-  test("accepts one-shot policy flags while keeping durable-session flags reserved", () => {
+  test("accepts one-shot policy flags, plan-only, and keeps resume reserved", () => {
     expect(() => parseResearchCliInput(["question"], { resume: "r1" })).toThrow("reserved for durable sessions");
-    expect(() => parseResearchCliInput(["question"], { "plan-only": true })).toThrow("--plan-only");
+    expect(parseResearchCliInput(["question"], { "plan-only": true }).planOnly).toBe(true);
     expect(parseResearchCliInput(["question"], {
       effort: "deep",
       "plan-approval": "automatic",
