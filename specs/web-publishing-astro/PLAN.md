@@ -1716,11 +1716,11 @@ orchestrates it without hiding the plan, bundle, build, or verification digest.
 
 ### T11 — Prove packages, consumers, hosts, and required CI
 
-- [ ] Add API/closure reports and deliberate public-0.x classifications.
-- [ ] Add browser-build entries only for genuinely isomorphic export-block and
+- [x] Add API/closure reports and deliberate public-0.x classifications.
+- [x] Add browser-build entries only for genuinely isomorphic export-block and
       web-publish cores; add negative gates that Astro/Node code cannot enter
       them.
-- [ ] Extend pack checks, publishable-dependency checks, Node consumer smoke,
+- [x] Extend pack checks, publishable-dependency checks, Node consumer smoke,
       Vite/browser consumer smoke, and add separate packed plain-Astro render-kit
       and full Starlight publishing consumers.
 - [ ] Pin official Astro `7.1.6` in the minimum fixture and test latest

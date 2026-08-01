@@ -211,6 +211,18 @@ command, manifest, and output-verifier tests pass, including explicit public /
 partial acknowledgement, field-path validation without private-value echo,
 symlink/extra-output rejection, and hostile-content/URL-marker rejection.
 
+The first T11 package-boundary lane is now proven. `bun run check:browser`
+passes all 29 isomorphic entrypoints, including `@atlcli/export-blocks` and
+the browser-safe `@atlcli/web-publish` core; Astro/Node publishing packages
+remain outside that browser graph. The publishable package set passes dist
+hygiene, private-workspace dependency, API-report, closure, and `bun pm pack`
+checks. The real opt-in consumer suite passes tarball, file-link, Node 22, and
+Vite/browser consumers with DOCX/PDF output. The standalone plain-Astro packed
+consumer and the full packed Starlight publishing consumer both install from
+local tarballs with network disabled and build from `dist` only. Workspace
+Astro packages now expose the development condition for in-repo consumers;
+pack stripping removes it and restores the manifest byte-for-byte.
+
 The unchanged DOCX/PDF/browser source boundary was re-proven with the existing
 `@atlcli/confluence` imports: 450 tests across ExportBlock conversion,
 composition, source resolution, DOCX browser runtime/serialization, and Typst

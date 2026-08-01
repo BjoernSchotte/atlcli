@@ -155,8 +155,9 @@ test("packed integration builds a clean Astro project with fetch disabled", asyn
   const consumerDirectory = join(root, "consumer");
   try {
     await run(["bun", "run", "build", "--filter=@atlcli/web-publish-astro"], workspaceRoot);
-    const [exportBlocks, webPublish, webPublishAstro] = await Promise.all([
+    const [exportBlocks, exportBlocksAstro, webPublish, webPublishAstro] = await Promise.all([
       packPackage("export-blocks", join(tarballDirectory, "export-blocks")),
+      packPackage("export-blocks-astro", join(tarballDirectory, "export-blocks-astro")),
       packPackage("web-publish", join(tarballDirectory, "web-publish")),
       packPackage("web-publish-astro", join(tarballDirectory, "web-publish-astro")),
     ]);
@@ -175,6 +176,7 @@ test("packed integration builds a clean Astro project with fetch disabled", asyn
       },
       overrides: {
         "@atlcli/export-blocks": `file:${exportBlocks}`,
+        "@atlcli/export-blocks-astro": `file:${exportBlocksAstro}`,
         "@atlcli/web-publish": `file:${webPublish}`,
       },
     }, null, 2));

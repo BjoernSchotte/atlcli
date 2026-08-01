@@ -181,7 +181,7 @@ async function writeBuiltGuide(output: string, body = "Guide"): Promise<void> {
   await mkdir(join(output, "publish", "guide"), { recursive: true });
   await writeFile(
     join(output, "publish", "guide", "index.html"),
-    `<main><article data-pagefind-body>${body}</article></main>`,
+    `<!doctype html><html lang="en"><body><main><article data-pagefind-body>${body}</article></main></body></html>`,
   );
 }
 
@@ -189,7 +189,7 @@ async function writeBuiltLabelLanding(output: string, slug: string): Promise<voi
   await mkdir(join(output, "publish", "topics", slug), { recursive: true });
   await writeFile(
     join(output, "publish", "topics", slug, "index.html"),
-    `<main><article data-pagefind-body>Topic: ${slug}</article></main>`,
+    `<!doctype html><html lang="en"><body><main><article data-pagefind-body>Topic: ${slug}</article></main></body></html>`,
   );
 }
 

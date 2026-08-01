@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
-import { readFile, rm, stat } from "node:fs/promises";
+import { cp, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { negotiatePublicationExperienceV1 } from "@atlcli/web-publish";
@@ -20,6 +21,14 @@ async function run(command: string[], cwd: string): Promise<string> {
   ]);
   expect(exitCode, stderr).toBe(0);
   return stdout;
+}
+
+async function packPackage(name: string, destination: string): Promise<string> {
+  const packageDirectory = resolve(workspaceRoot, "packages", name);
+  await run(["bun", "pm", "pack", "--destination", destination], packageDirectory);
+  const tarballs = (await readdir(destination)).filter((entry) => entry.endsWith(".tgz"));
+  expect(tarballs).toHaveLength(1);
+  return resolve(destination, tarballs[0]!);
 }
 
 test("a Starlight consumer presents ExportBlock document bodies with static search assets", async () => {
@@ -188,7 +197,8 @@ test("a trusted Starlight override changes heading presentation without changing
         return new Response("Not found", { status: 404 });
       }
     },
-  });
+});
+
   try {
     const pagefind = await import(`${pathToFileURL(resolve(pagefindDirectory, "pagefind.js")).href}?override-invariant=${Date.now()}`) as {
       createInstance(options: { basePath: string; noWorker: boolean }): {
@@ -207,3 +217,48 @@ test("a trusted Starlight override changes heading presentation without changing
     Object.defineProperty(globalThis, "fetch", { configurable: true, value: originalFetch });
   }
 }, 30_000);
+
+test("a packed Starlight consumer builds from the published package boundary without network access", async () => {
+  const root = await mkdtemp(resolve(tmpdir(), "atlcli-starlight-packed-"));
+  const tarballs = resolve(root, "tarballs");
+  const consumer = resolve(root, "consumer");
+  try {
+    await run(["bun", "run", "build", "--filter=@atlcli/export-blocks-astro", "--filter=@atlcli/web-publish-astro", "--filter=@atlcli/web-publish-starlight"], workspaceRoot);
+    const [exportBlocks, exportBlocksAstro, webPublish, webPublishAstro, webPublishStarlight] = await Promise.all([
+      packPackage("export-blocks", resolve(tarballs, "export-blocks")),
+      packPackage("export-blocks-astro", resolve(tarballs, "export-blocks-astro")),
+      packPackage("web-publish", resolve(tarballs, "web-publish")),
+      packPackage("web-publish-astro", resolve(tarballs, "web-publish-astro")),
+      packPackage("web-publish-starlight", resolve(tarballs, "web-publish-starlight")),
+    ]);
+    await cp(publishedConsumerFixture, consumer, { recursive: true });
+    await cp(resolve(packageRoot, "fixtures", "evidence"), resolve(root, "evidence"), { recursive: true });
+    await writeFile(resolve(consumer, "package.json"), JSON.stringify({
+      name: "atlcli-packed-starlight-consumer",
+      private: true,
+      type: "module",
+      scripts: { build: "astro build" },
+      dependencies: {
+        "@atlcli/web-publish": `file:${webPublish}`,
+        "@atlcli/web-publish-astro": `file:${webPublishAstro}`,
+        "@atlcli/web-publish-starlight": `file:${webPublishStarlight}`,
+        "@astrojs/starlight": "0.41.5",
+        astro: "7.1.6",
+      },
+      overrides: {
+        "@atlcli/export-blocks": `file:${exportBlocks}`,
+        "@atlcli/export-blocks-astro": `file:${exportBlocksAstro}`,
+        "@atlcli/web-publish": `file:${webPublish}`,
+        "@atlcli/web-publish-astro": `file:${webPublishAstro}`,
+      },
+    }, null, 2));
+    await run(["bun", "install", "--offline"], consumer);
+    await run(["bun", "run", "build"], consumer);
+    const html = await readFile(resolve(consumer, "dist/publish/guide/index.html"), "utf8");
+    expect(html).toContain("Bundle publishing guide");
+    expect(html).toContain('data-atlcli-starlight-slot="main-content"');
+    expect(await stat(resolve(consumer, "dist/pagefind/pagefind.js"))).toBeDefined();
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+}, 120_000);
