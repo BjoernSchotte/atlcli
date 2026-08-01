@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import type { ExportBlock, ExportPageNode } from "@atlcli/confluence";
-import { createRegistry, type MacroResolutionOptions, type MacroRenderer } from "@atlcli/export-macros";
+import {
+  createRegistry,
+  type MacroResolutionOptions,
+  type MacroRenderer,
+} from "@atlcli/export-macros";
+import { exportViewFallbackRenderer } from "@atlcli/export-macros/internal";
 import { resolveWebPageMacrosV1, type ResolvedWebMacroPageV1 } from "./web-macro-resolution.js";
 
 function page(
@@ -149,6 +154,59 @@ describe("resolveWebPageMacrosV1", () => {
     // The model does not become a second source payload; rendering consumes the
     // normalized blocks and cannot retrieve an opaque chart body from metadata.
     expect(JSON.stringify(resolved[0]?.renderModels)).not.toContain("raw-chart");
+  });
+
+  test("never retains raw export_view HTML in a serializable web page result", async () => {
+    const rawExportViewHtml = '<img src=x onerror="globalThis.pwned=1"><script>globalThis.pwned=1</script>';
+    const seenHtml: string[] = [];
+    const resolved = await resolveWebPageMacrosV1([
+      page("macro-page", [{
+        type: "unknown",
+        macroName: "third-party-widget",
+        macroId: "macro-42",
+        plainBody: rawExportViewHtml,
+      }]),
+    ], {
+      macros: {
+        registry: createRegistry([exportViewFallbackRenderer({
+          htmlToExportBlocks(html) {
+            seenHtml.push(html);
+            // The real host-owned decoder is the only place that receives the
+            // HTML. Its normalized result is all a publication page may keep.
+            return {
+              blocks: [{ type: "paragraph", content: [{ type: "text", text: "Safely converted widget" }] }],
+              notes: [],
+            };
+          },
+        })]),
+        contextFor(pageContext) {
+          return {
+            page: pageContext,
+            depth: 0,
+            visited: new Set(),
+            exportView: {
+              async renderMacroHtml(pageId, macroId) {
+                expect(pageId).toBe("macro-page");
+                expect(macroId).toBe("macro-42");
+                return rawExportViewHtml;
+              },
+            },
+          };
+        },
+      },
+      policy: { mode: "allow-frozen-live", liveFreshnessSeconds: 60 },
+      now: () => 2_000,
+    });
+
+    expect(seenHtml).toEqual([rawExportViewHtml]);
+    expect(resolved[0]?.blocks).toEqual([
+      { type: "paragraph", content: [{ type: "text", text: "Safely converted widget" }] },
+    ]);
+    const persistedPage = JSON.stringify(resolved[0]);
+    expect(persistedPage).not.toContain("onerror");
+    expect(persistedPage).not.toContain("<script>");
+    expect(persistedPage).not.toContain("macro-42");
+    expect(persistedPage).not.toContain("rawExportViewHtml");
   });
 
   test("reuses only a version-matching, explicitly fresh frozen live result", async () => {

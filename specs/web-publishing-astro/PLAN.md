@@ -1454,7 +1454,7 @@ digest; route identity survives rename/move; every internal reference resolves.
 - [x] Implement `live`, `no-live`, freshness, dependency, and frozen-provenance
       policies without leaking source data.
 - [ ] Prove raw `export_view` HTML never reaches bundle/output.
-- [ ] Add Cloud ADF and DC Storage fixture parity for web target behavior.
+- [x] Add Cloud ADF and DC Storage fixture parity for web target behavior.
 - [ ] STOP if one page can read another page's local context, existing target
       behavior changes, or raw/source-provided HTML is emitted.
 
