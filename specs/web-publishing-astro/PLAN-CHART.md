@@ -1,6 +1,7 @@
 # Chart macro parity — a real `ExportBlock` surface for Astro publishing
 
-- Status: **First-class static chart support implemented; bounded interaction and provider follow-ups remain explicitly scoped**
+- Status: **Implementation in progress — the typed surface and one XY-bar path
+  are proven; all-shapes semantic and host proof is not complete**
 - Parent plan: [`PLAN.md`](./PLAN.md)
 - Scope: Confluence Cloud ADF and Data Center/Server Storage Chart macros
 - First consumer: `@atlcli/export-blocks-astro` and the Starlight adapter
@@ -40,20 +41,24 @@ fallback with a visible diagnostic, but it is not the parity implementation.
 ## 1.1 Implementation status
 
 The shared contract, Cloud/DC normalization seams, dedicated macro registry
-renderer, static Astro chart block, DOCX/PDF SVG-plus-table projections, and the
-version-pinned TanStack `ExportBlock` adapter are implemented in the stacked
-follow-up PR. The adapter is deliberately bounded to categorical `bar` and
-provider-valid `xyBar` data; every other shape retains the complete static
-SVG/table path. The fixture no longer stores a page-level chart sidecar; the
-chart is in `blocks` in source order. Unit tests, the normal mayflower DOCX/PDF
-exports, the persisted mayflower provider fixture, and the end-to-end Astro
-publish verification have now been exercised. The all-shapes Cloud/DC fixture
-matrix and broader interaction/a11y matrix are covered by contract tests and a
-live Cloud provider proof. The maintained matrix is in
-[`CHART-SUPPORT-MATRIX.md`](./CHART-SUPPORT-MATRIX.md).
+renderer, Astro chart block, DOCX/PDF SVG-plus-table projections, and the
+version-pinned TanStack `ExportBlock` adapter exist in the stacked follow-up
+PR. This is a strong architectural baseline, but existence and shallow
+shape-dispatch tests are not all-shapes quality proof. The only visually
+verified provider path so far is one XY-bar chart through Astro, DOCX, and PDF.
 The live fixture deliberately contains one XY-bar macro: a same-page
 multi-macro experiment triggered provider-side Hibernate stale-state errors,
-so it is not used as evidence for the renderer contract.
+so it cannot prove the other eleven shapes.
+
+An evidence audit on 2026-08-01 reset overclaimed completion below. In
+particular, the document SVG renderer does not yet honor horizontal bar
+orientation, legend placement, subtitle, axis tick/angle/position semantics,
+pie labels, stepped XY geometry, or Gantt dependencies/progress. The Astro
+renderer has a richer stepped path but still lacks complete axes, negative and
+mixed-sign horizontal/stacked bar geometry, pie label semantics, and Gantt
+dependency edges. Existing all-shape tests mostly prove non-empty dispatch and
+table retention, not visual or semantic parity. The maintained evidence matrix
+is in [`CHART-SUPPORT-MATRIX.md`](./CHART-SUPPORT-MATRIX.md).
 
 ### Proven milestone evidence (2026-08-01)
 
@@ -72,16 +77,11 @@ so it is not used as evidence for the renderer contract.
   page contains `data-atlcli-chart-capability="tanstack-v0.3/bar"` and the
   browser hydrated it to `data-atlcli-chart-island="hydrated"` with a
   TanStack runtime chart. Generated output remains outside Git.
-- The all-shapes contract pass covers twelve Cloud ADF and twelve DC Storage
-  inputs, twelve static Astro discriminators, aligned tables, and twelve DOCX
-  plus twelve PDF SVG/table projections. Sparse point series are keyed by
-  their own X values in every table projection.
-- Browser checks cover the local island's keyboard-focusable SVG and runtime
-  chart, the persistent static table after hydration, a 390px mobile
-  viewport without horizontal page overflow, CSP-safe bundled output, and the
-  JavaScript-off static consumer build. Confluence's multi-macro attempt is
-  documented in `CHART-SUPPORT-MATRIX.md`; the live page is intentionally the
-  clean single XY-bar provider fixture.
+- Contract tests dispatch all twelve Cloud ADF and DC Storage spellings and
+  retain aligned tables, but are not yet accepted as visual all-shapes proof.
+- Browser checks prove the local XY-bar island, static table after hydration,
+  390px overflow behavior, CSP-safe bundled output, and JavaScript-off
+  fallback for that path. They do not yet prove all twelve shapes.
 
 ## 2. Why a shared block is required
 
@@ -130,11 +130,13 @@ renderable by an interactive library, it still remains statically supported.
 
 ### 3.2 Typed presentation/data semantics (P0/P1)
 
-- [x] Orientation: `vertical`/`horizontal` where meaningful.
-- [x] `threeD`, `stacked`, `showShapes`, and bounded `opacity`.
+- [ ] Orientation: `vertical`/`horizontal` where meaningful, with equivalent
+      Astro and document geometry.
+- [ ] `threeD`, `stacked`, `showShapes`, and bounded `opacity`; stacked and
+      mixed-sign geometry must be visually proven.
 - [x] Width/height with safe bounds and responsive overflow behavior.
 - [x] `dataDisplay`: hidden, before, or after the chart.
-- [x] Title, subtitle, x-axis label, y-axis label, and legend visibility.
+- [ ] Title, subtitle, x-axis label, y-axis label, and all legend positions.
 - [x] Table selection (`tables`) and column selection (`columns`).
 - [x] Data orientation: horizontal or vertical.
 - [ ] Locale/language/country and date format, with a deterministic fallback.
@@ -143,9 +145,9 @@ renderable by an interactive library, it still remains statically supported.
 - [x] `forgive` behavior as an explicit strict/lenient normalization decision;
       never silently discard malformed rows.
 - [x] Background, border, and series colors after palette validation.
-- [x] Axis bounds, tick units, label angles, category label position, and date
+- [ ] Axis bounds, tick units, label angles, category label position, and date
       tick position, with finite-value and range validation.
-- [x] Pie section label and section explode values.
+- [ ] Pie section label and section explode values in every static target.
 - [ ] Attachment source, attachment version/comment, and thumbnail intent as
       provenance/fallback metadata; attachment bytes are resolved through the
       existing asset pipeline and are never fetched by an Astro island.
@@ -302,7 +304,7 @@ only and must be safe to include in a public site manifest.
 
 - [x] Add a semantic `ChartBlock.astro` dispatch component to
       `@atlcli/export-blocks-astro`.
-- [x] Render accessible SVG/HTML for every chart kind, with title/description,
+- [ ] Render and visually prove accessible SVG/HTML for every chart kind, with title/description,
       keyboard-safe labels, no raw HTML injection, and responsive dimensions.
 - [x] Render an accessible data table before/after the visual when configured;
       when visual rendering is intentionally unavailable, render the table as
@@ -325,17 +327,17 @@ only and must be safe to include in a public site manifest.
       payload bytes.
 - [x] Fall back to the static visual/table for unsupported kinds, excessive
       data, CSP restrictions, or adapter errors.
-- [x] Complete the interaction matrix for tooltips, legends, resize behavior,
+- [ ] Complete the interaction matrix for tooltips, legends, resize behavior,
       keyboard access, and reduced motion. The provider-live proof demonstrates
       deterministic hydration and no Confluence data fetch; the static table
       remains present after island hydration.
 
 ## 8. DOCX/PDF compatibility
 
-- [x] Add chart handling to the DOCX export-block renderer: embed the shared
+- [ ] Add and visually prove all-shapes chart handling in the DOCX export-block renderer: embed the shared
       deterministic SVG visual (with a bounded PNG compatibility rendition)
       and retain an accessible tabular projection alongside it.
-- [x] Add chart handling to the PDF/Typst renderer: embed the shared SVG
+- [ ] Add and visually prove all-shapes chart handling in the PDF/Typst renderer: embed the shared SVG
       visual and retain the same accessible table fallback, with no unhandled
       `type:"chart"` branch.
 - [x] Preserve captions, source order, labels, and data values in both document
@@ -373,9 +375,9 @@ only and must be safe to include in a public site manifest.
 - [x] DC Storage fixtures cover all twelve kinds, legacy spellings, same-page
       table data, and malformed/partial input; attachment-backed data remains
       an explicit follow-up.
-- [x] Renderer tests assert source order, semantic labels, data-table values,
+- [ ] Renderer tests assert source order, semantic labels, data-table values,
       escaping, responsive attributes, and JavaScript-off output.
-- [x] DOCX/PDF tests assert no chart block is dropped, the shared SVG visual is
+- [ ] DOCX/PDF tests assert no chart block is dropped, the shared SVG visual is
       requested/embedded, and the aligned fallback data table is present.
 - [x] Security/property tests cover hostile labels, URLs, CSS colors, huge
       dimensions, NaN/Infinity, prototype keys, and oversized payloads.
@@ -406,7 +408,8 @@ listed in the capability registry.
 
 - [x] Build the packed/plain-Astro consumer and the Starlight consumer against
       the published package boundary; no workspace-private import paths.
-- [x] Complete browser checks for desktop/mobile layout, accessibility tree,
+- [ ] Complete in-app-browser checks for all-shapes desktop/mobile layout,
+      accessibility tree,
       keyboard navigation, reduced motion, CSP, and JavaScript disabled; the
       representative interactive XY-bar island is proven in the local build.
 - [x] Run the mayflower Cloud profile against the persistent, non-private
@@ -462,8 +465,9 @@ listed in the capability registry.
 
 ### T6 — Static Astro components
 
-- [x] Implement dispatch and static renderers for all twelve kinds.
-- [x] Implement data-table/Gantt fallbacks, theme tokens, and a11y behavior.
+- [ ] Implement and visually prove dispatch and static renderers for all twelve
+      kinds from shared, target-neutral geometry.
+- [ ] Implement and prove data-table/Gantt fallbacks, theme tokens, and a11y behavior.
 
 ### T7 — Interactive adapter(s)
 
@@ -473,8 +477,9 @@ listed in the capability registry.
 
 ### T8 — DOCX/PDF projections
 
-- [x] Implement chart rendering/table fallback in both document engines.
-- [x] Add no-regression fixtures for existing export surfaces.
+- [ ] Complete and visually prove chart rendering/table fallback for all shapes
+      in both document engines.
+- [ ] Add no-regression fixtures for existing export surfaces.
 
 ### T9 — Hardening and observability
 
@@ -485,7 +490,7 @@ listed in the capability registry.
 
 ### T10 — End-to-end proof and documentation
 
-- [x] Run the packed consumers, representative browser hydration check, Cloud
+- [ ] Run the packed consumers, all-shapes browser checks, Cloud
       DOCX/PDF export, and Cloud Astro publish verification; the broader browser
       matrix and optional DC E2E remain open.
 - [x] Publish a support matrix that distinguishes source support, static output,
@@ -498,9 +503,9 @@ The follow-up PR is complete only when all gates are checked:
 
 - [x] `ExportBlock` has a validated, source-neutral `type:"chart"` node; no
       page-level chart sidecar remains.
-- [x] All twelve documented Confluence chart kinds have Cloud/DC fixtures,
+- [ ] All twelve documented Confluence chart kinds have Cloud/DC fixtures,
       static Astro output, accessible data fallback, and DOCX/PDF projections.
-- [x] P0 parameter families and strict/lenient diagnostics are tested; every
+- [ ] P0 parameter families and strict/lenient diagnostics are tested; every
       unsupported option is visible and deterministic.
 - [ ] Existing non-chart DOCX/PDF and Astro pages pass regression tests.
 - [x] Interactive islands are closed, bounded, version-pinned, optional, and

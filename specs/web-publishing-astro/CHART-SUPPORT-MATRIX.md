@@ -5,20 +5,23 @@ This matrix is the implementation-level support contract for the first-class
 static publication, document export, and optional client interaction. A chart
 does not become unsupported merely because no client island is selected.
 
-| Shape | Cloud ADF | DC Storage | Astro static SVG/list | Accessible data table | DOCX/PDF | Client interaction |
+Status keys: ✅ proven for the stated surface; 🟡 implemented baseline but the
+world-class semantic/visual gate is still open; — intentionally static.
+
+| Shape | Cloud ADF normalization | DC Storage normalization | Astro static visual | Accessible data table | DOCX/PDF visual | Client interaction |
 | --- | --- | --- | --- | --- | --- | --- |
-| `pie` | ✅ | ✅ | ✅ SVG paths + legend | ✅ | ✅ SVG + table | Static fallback |
-| `bar` | ✅ | ✅ | ✅ vertical/horizontal/stacked bars | ✅ | ✅ SVG + table | ✅ TanStack `tanstack-v0.3/bar` when bounded |
-| `line` | ✅ | ✅ | ✅ polylines + point labels | ✅ | ✅ SVG + table | Static fallback |
-| `area` | ✅ | ✅ | ✅ line + filled area | ✅ | ✅ SVG + table | Static fallback |
-| `xyArea` | ✅ | ✅ | ✅ numeric/date x + filled area | ✅ | ✅ SVG + table | Static fallback |
-| `xyBar` | ✅ | ✅ | ✅ x/y bars | ✅ | ✅ SVG + table | ✅ TanStack `tanstack-v0.3/bar` when bounded |
-| `xyLine` | ✅ | ✅ | ✅ numeric/date x + lines | ✅ | ✅ SVG + table | Static fallback |
-| `xyStep` | ✅ | ✅ | ✅ stepped lines | ✅ | ✅ SVG + table | Static fallback |
-| `xyStepArea` | ✅ | ✅ | ✅ stepped filled area | ✅ | ✅ SVG + table | Static fallback |
-| `scatter` | ✅ | ✅ | ✅ point marks | ✅ | ✅ SVG + table | Static fallback |
-| `timeSeries` | ✅ | ✅ | ✅ ISO timestamp x + labels | ✅ | ✅ SVG + table | Static fallback |
-| `gantt` | ✅ | ✅ | ✅ semantic timeline/list | ✅ | ✅ SVG + table | Static fallback |
+| `pie` | ✅ fixture/adapter | ✅ fixture/adapter | 🟡 paths + legend; labels pending | ✅ | 🟡 SVG + table; visual proof pending | — |
+| `bar` | ✅ fixture/adapter | ✅ fixture/adapter | 🟡 vertical baseline; horizontal/mixed-sign pending | ✅ | 🟡 one vertical-style path only | ✅ bounded TanStack baseline |
+| `line` | ✅ fixture/adapter | ✅ fixture/adapter | 🟡 line baseline; full axes pending | ✅ | 🟡 SVG + table; visual proof pending | — |
+| `area` | ✅ fixture/adapter | ✅ fixture/adapter | 🟡 area baseline; mixed-sign baseline pending | ✅ | 🟡 SVG + table; visual proof pending | — |
+| `xyArea` | ✅ fixture/adapter | ✅ fixture/adapter | 🟡 numeric path; full axes pending | ✅ | 🟡 SVG + table; visual proof pending | — |
+| `xyBar` | ✅ fixture/adapter | ✅ fixture/adapter | ✅ one provider-valid positive series | ✅ | ✅ one provider-valid positive series | ✅ bounded TanStack baseline |
+| `xyLine` | ✅ fixture/adapter | ✅ fixture/adapter | 🟡 numeric path; full axes pending | ✅ | 🟡 SVG + table; visual proof pending | — |
+| `xyStep` | ✅ fixture/adapter | ✅ fixture/adapter | 🟡 Astro step baseline | ✅ | 🟡 document renderer is not stepped yet | — |
+| `xyStepArea` | ✅ fixture/adapter | ✅ fixture/adapter | 🟡 Astro stepped-area baseline | ✅ | 🟡 document renderer is not stepped yet | — |
+| `scatter` | ✅ fixture/adapter | ✅ fixture/adapter | 🟡 point baseline; full axes pending | ✅ | 🟡 SVG + table; visual proof pending | — |
+| `timeSeries` | ✅ fixture/adapter | ✅ fixture/adapter | 🟡 raw timestamp path; locale/timezone pending | ✅ | 🟡 locale/timezone and visual proof pending | — |
+| `gantt` | ✅ fixture/adapter | ✅ fixture/adapter | 🟡 timeline/list; dependency edges pending | ✅ | 🟡 progress/dependencies and visual proof pending | — |
 
 ## Shared guarantees
 
@@ -29,17 +32,17 @@ does not become unsupported merely because no client island is selected.
   approximations such as flattened 3D are represented by bounded diagnostic
   codes. Lenient charts remain visibly marked in Astro and continue through
   document table projections.
-- Every static chart has a title/description, a semantic visual, an aligned
-  data table, responsive overflow behavior, and keyboard-safe labels. The
-  TanStack island adds focus navigation, tooltips, ResizeObserver-based width
-  updates, and the static table remains available after hydration.
+- Every current static chart retains a title/description and aligned data
+  table. Complete semantic axes, option fidelity, responsive layout, and
+  keyboard/accessibility proof remain acceptance work except for the proven
+  XY-bar path.
 - DOCX and PDF use the same source order and union X keys for sparse point
   series, so a missing point in one series never shifts another series' value.
   Both targets call the shared dependency-free SVG renderer; DOCX additionally
   stores a bounded PNG compatibility rendition, while PDF keeps the chart as
-  vector content through Typst. Both document targets reserve a separated
-  title/legend header band and plot-edge padding. The semantic table is
-  retained in both files.
+  vector content through Typst. The one visually verified XY-bar path reserves
+  a separated title/legend header band and plot-edge padding. All-shapes visual
+  quality remains open. The semantic table is retained in both files.
 - The interactive adapter is intentionally closed and bounded: it accepts
   only categorical `bar` and provider-valid `xyBar` data, with explicit row,
   series, point, and payload limits. All other shapes remain JavaScript-off
@@ -60,7 +63,9 @@ does not become unsupported merely because no client island is selected.
   excluded from Git):
   `http://127.0.0.1:4391/publish/atlcli-chart-provider-live-20260801-195515/`
 
-The live provider page proves the pinned `tanstack-v0.3/bar` island. A live DC
+The live provider page proves one pinned `tanstack-v0.3/bar` XY-bar island and
+the corresponding polished DOCX/PDF projection. It does not prove the other
+eleven shapes. A live DC
 tenant is not available in this workspace; DC coverage is therefore fixture-
 and contract-proven rather than falsely reported as a provider E2E. A
 multi-macro Cloud fixture was also attempted and produced provider-side
