@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { cp, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { resolve } from "node:path";
+import { isAbsolute, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { adfToBlocks, storageToBlocks } from "@atlcli/confluence";
 import { defaultRegistry, resolveMacroBlocks } from "@atlcli/export-macros";
@@ -19,6 +19,11 @@ const workspaceRoot = resolve(packageRoot, "../..");
 const fixture = resolve(packageRoot, "fixtures/starlight");
 const plainExperienceFixture = resolve(packageRoot, "fixtures/plain-experience");
 const publishedConsumerFixture = resolve(packageRoot, "fixtures/published-consumer");
+
+function isWithinOutputRoot(outputDirectory: string, candidate: string): boolean {
+  const relativePath = relative(resolve(outputDirectory), resolve(candidate));
+  return relativePath !== ".." && !relativePath.startsWith(`..${sep}`) && !isAbsolute(relativePath);
+}
 
 async function run(command: string[], cwd: string): Promise<string> {
   const process = Bun.spawn(command, { cwd, stdout: "pipe", stderr: "pipe" });
@@ -214,7 +219,7 @@ test("a trusted Starlight override changes heading presentation without changing
       const url = input instanceof Request ? new URL(input.url) : new URL(input.toString());
       if (url.origin !== staticOrigin) throw new Error(`unexpected Pagefind network request: ${url.href}`);
       const file = resolve(outputDirectory, url.pathname.replace(/^\/+/, ""));
-      if (!file.startsWith(`${outputDirectory}/`)) throw new Error(`Pagefind read escaped output: ${file}`);
+      if (!isWithinOutputRoot(outputDirectory, file)) throw new Error(`Pagefind read escaped output: ${file}`);
       try {
         return new Response(await readFile(file), { status: 200 });
       } catch {
@@ -256,7 +261,7 @@ test("the generated Pagefind indexes cover excerpts, anchors, facets, languages,
       const url = input instanceof Request ? new URL(input.url) : new URL(input.toString());
       if (url.origin !== staticOrigin) throw new Error(`unexpected Pagefind network request: ${url.href}`);
       const file = resolve(outputDirectory, url.pathname.replace(/^\/+/, ""));
-      if (!file.startsWith(`${outputDirectory}/`)) throw new Error(`Pagefind read escaped output: ${file}`);
+      if (!isWithinOutputRoot(outputDirectory, file)) throw new Error(`Pagefind read escaped output: ${file}`);
       try {
         return new Response(await readFile(file), { status: 200 });
       } catch {

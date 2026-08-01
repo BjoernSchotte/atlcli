@@ -237,8 +237,22 @@ jobs:
         if: matrix.astro == 'latest-7'
         shell: bash
         run: |
-          bun add --cwd packages/web-publish-astro/fixtures/astro-consumer --no-save astro@7
-          bun add --cwd packages/web-publish-starlight/fixtures/published-consumer --no-save astro@7
+          node <<'NODE'
+          const fs = require('node:fs');
+          const paths = [
+            'packages/web-publish-astro/fixtures/astro-consumer/package.json',
+            'packages/web-publish-starlight/fixtures/published-consumer/package.json',
+          ];
+          for (const file of paths) {
+            const packageJson = JSON.parse(fs.readFileSync(file, 'utf8'));
+            packageJson.dependencies.astro = '^7.1.6';
+            fs.writeFileSync(file, `${JSON.stringify(packageJson, null, 2)}\n`);
+          }
+          NODE
+          # Resolve from the repository workspace so local workspace:* packages
+          # remain resolvable; running `bun add --cwd <fixture>` treats the
+          # fixture as an isolated workspace and fails before Astro is tested.
+          bun install --no-progress
 
       - name: Verify Astro version lane
         shell: bash

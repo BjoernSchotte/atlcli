@@ -1,12 +1,17 @@
 import { expect, test } from "bun:test";
 import { cp, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { join, resolve } from "node:path";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { tmpdir } from "node:os";
 import { pathToFileURL } from "node:url";
 
 const workspaceRoot = resolve(import.meta.dir, "../../..");
 const fixtureDirectory = resolve(import.meta.dir, "../fixtures/astro-consumer");
+
+function isWithinOutputRoot(outputDirectory: string, candidate: string): boolean {
+  const relativePath = relative(resolve(outputDirectory), resolve(candidate));
+  return relativePath !== ".." && !relativePath.startsWith(`..${sep}`) && !isAbsolute(relativePath);
+}
 
 async function run(
   command: string[],
@@ -190,7 +195,7 @@ test("the built Pagefind client searches the static index through its main-threa
       const url = input instanceof Request ? new URL(input.url) : new URL(input.toString());
       if (url.origin !== staticOrigin) throw new Error(`unexpected Pagefind network request: ${url.href}`);
       const file = resolve(outputDirectory, url.pathname.replace(/^\/+/, ""));
-      if (!file.startsWith(`${outputDirectory}/`)) throw new Error(`Pagefind read escaped output: ${file}`);
+      if (!isWithinOutputRoot(outputDirectory, file)) throw new Error(`Pagefind read escaped output: ${file}`);
       try {
         return new Response(await readFile(file), { status: 200 });
       } catch {
