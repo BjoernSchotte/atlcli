@@ -1298,7 +1298,7 @@ test("intercepts declarative dynamic-schema dispatches in a packed MV3 worker", 
   expect(response.result?.messages.some((message) => message.includes("deep-wiki"))).toBe(true);
 });
 
-test("resolves exact Jira keys and same-tenant project links through the packed background boundary", async () => {
+test("resolves exact Jira and Confluence keys through the packed background boundary", async () => {
   await installEventCapture(page);
   const keyOutcome = await resolveScopeInPackedBackground(
     page,
@@ -1308,6 +1308,10 @@ test("resolves exact Jira keys and same-tenant project links through the packed 
   const linkOutcome = await resolveScopeInPackedBackground(
     page,
     packedScopeRequest(`Research ${link}.`, { currentProjectKey: "FALLBACK" }),
+  );
+  const spaceOutcome = await resolveScopeInPackedBackground(
+    page,
+    packedScopeRequest("Research Confluence space KB.", { currentProjectKey: "FALLBACK" }),
   );
   const events = await harnessEvents(page);
 
@@ -1343,12 +1347,35 @@ test("resolves exact Jira keys and same-tenant project links through the packed 
       }],
     },
   });
+  expect(spaceOutcome).toMatchObject({
+    kind: "research:resolve-scope-result",
+    ok: true,
+    outcome: {
+      kind: "ready",
+      request: {
+        scope: { jiraProjectKeys: ["FALLBACK"], confluenceSpaceKeys: ["KB"] },
+      },
+      resolutions: [{
+        state: "resolved",
+        resolvedCandidateId: "research-scope-candidate:confluence-space-kb",
+        uniquenessProof: "exact_key_lookup",
+        requiresUserChoice: false,
+      }],
+    },
+  });
 
   const catalogFetches = events.filter((event) => event.kind === "scope-catalog-fetch");
   const referenceFetches = events.filter((event) => event.kind === "scope-reference-fetch");
-  expect(catalogFetches).toHaveLength(1);
-  expect(catalogFetches[0]?.url).toContain("/rest/api/3/project/search");
-  expect(catalogFetches[0]?.url).toContain("query=DEMO");
+  const projectCatalogFetches = catalogFetches.filter((event) =>
+    event.url?.includes("/rest/api/3/project/search")
+  );
+  const spaceCatalogFetches = catalogFetches.filter((event) =>
+    event.url?.includes("/wiki/api/v2/spaces")
+  );
+  expect(projectCatalogFetches).toHaveLength(1);
+  expect(projectCatalogFetches[0]?.url).toContain("query=DEMO");
+  expect(spaceCatalogFetches).toHaveLength(4);
+  expect(spaceCatalogFetches.filter((event) => event.url?.includes("keys=KB"))).toHaveLength(2);
   expect(referenceFetches).toHaveLength(1);
   expect(referenceFetches[0]?.url).toContain("/rest/api/3/project/DEMO");
   expect(events.some((event) => event.kind === "worker-start")).toBe(false);

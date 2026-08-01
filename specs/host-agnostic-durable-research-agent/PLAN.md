@@ -2890,12 +2890,14 @@ the Jira-only graph. The full packed cross-product path likewise begins with
 neither a manual nor current-context scope, resolves both `Jira project DEMO`
 and `Confluence space KB` through the bound background catalog, walks the
 current and archived Confluence phases with its exact-key filter, and then
-starts the worker. The existing packed ambiguity regression continues to prove
-that a duplicate natural-language name stops before key storage or agent work.
-This advances, but does not close, the full CLI/packed resolution-matrix gate
-above: the remaining name, alias, archive, access, pagination, precedence,
-context, cross-tenant, and prompt-injection parity cases still require their
-own host-boundary fixtures.
+starts the worker. The production CLI and direct packed-background boundaries
+also resolve `Confluence space KB` to the same exact-key binding while retaining
+the other product's lower-precedence default/current binding. The existing
+packed ambiguity regression continues to prove that a duplicate natural-language
+name stops before key storage or agent work. This advances, but does not close,
+the full CLI/packed resolution-matrix gate above: the remaining name, alias,
+archive, access, pagination, precedence, context, cross-tenant, and
+prompt-injection parity cases still require their own host-boundary fixtures.
 
 ### T4 — Add durable session, workspace, graph, and checkpoint stores
 
