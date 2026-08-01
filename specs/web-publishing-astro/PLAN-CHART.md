@@ -1,7 +1,7 @@
 # Chart macro parity — a real `ExportBlock` surface for Astro publishing
 
-- Status: **Implementation in progress — the typed surface and one XY-bar path
-  are proven; all-shapes semantic and host proof is not complete**
+- Status: **Implementation in progress — the typed surface and all-shapes
+  TanStack DOCX/PDF projection are proven; Astro and host proof remain open**
 - Parent plan: [`PLAN.md`](./PLAN.md)
 - Scope: Confluence Cloud ADF and Data Center/Server Storage Chart macros
 - First consumer: `@atlcli/export-blocks-astro` and the Starlight adapter
@@ -73,25 +73,32 @@ macro parameters never reach an HTML injection seam.
 The shared contract, Cloud/DC normalization seams, dedicated macro registry
 renderer, Astro chart block, DOCX/PDF SVG-plus-table projections, and the
 version-pinned TanStack `ExportBlock` adapter exist in the stacked follow-up
-PR. This is a strong architectural baseline, but existence and shallow
-shape-dispatch tests are not all-shapes quality proof. The only visually
-verified provider path so far is one XY-bar chart through Astro, DOCX, and PDF.
-The live fixture deliberately contains one XY-bar macro: a same-page
-multi-macro experiment triggered provider-side Hibernate stale-state errors,
-so it cannot prove the other eleven shapes.
+PR. The tenant-free acceptance corpus now visually proves all twelve chart
+kinds through the real DOCX and PDF engines. The provider-live path remains a
+separate one-XY-bar source proof: its fixture deliberately contains one macro
+because a same-page multi-macro experiment triggered provider-side Hibernate
+stale-state errors.
 
-An evidence audit on 2026-08-01 reset overclaimed completion below. In
-particular, the document SVG renderer does not yet honor horizontal bar
-orientation, legend placement, subtitle, axis tick/angle/position semantics,
-pie labels, stepped XY geometry, or Gantt dependencies/progress. The Astro
-renderer has a richer stepped path but still lacks complete axes, negative and
-mixed-sign horizontal/stacked bar geometry, pie label semantics, and Gantt
-dependency edges. Existing all-shape tests mostly prove non-empty dispatch and
-table retention, not visual or semantic parity. The maintained evidence matrix
-is in [`CHART-SUPPORT-MATRIX.md`](./CHART-SUPPORT-MATRIX.md).
+An evidence audit on 2026-08-01 reset earlier overclaims. The former
+atlcli-owned document geometry renderer has since been removed: DOCX and PDF
+now consume the same pinned TanStack scene/SVG adapter as the publishing
+surface. The document proof covers signed horizontal stacks, stepped paths,
+pie labels, locale-aware time-series labels, and Gantt progress/dependency
+edges. Astro still requires the corresponding all-shapes visual, responsive,
+interaction, and accessibility proof. The maintained evidence matrix is in
+[`CHART-SUPPORT-MATRIX.md`](./CHART-SUPPORT-MATRIX.md).
 
 ### Proven milestone evidence (2026-08-01)
 
+- A tenant-free, IO-free proof runs the shared twelve-shape corpus through the
+  real document export entry points. DOCX embeds the canonical standalone
+  TanStack SVG and a PNG compatibility rendition; PDF keeps the same SVG as
+  vector content. Both retain one aligned semantic table per chart.
+- Every generated page was rendered and visually inspected: 12/12 DOCX chart
+  pages and all 15 PDF pages (cover, contents, twelve charts, end page) pass
+  without clipped marks, title/legend collisions, duplicate tables, or broken
+  Gantt/pie/step/time-series geometry. Generated proof files stay outside Git;
+  `scripts/chart-rendered-proof.ts` makes the proof reproducible.
 - The normal mayflower DOCX path completed for the persistent provider fixture;
   the generated document contains the shared `chart.svg`, a PNG compatibility
   rendition, the chart title, marker, table headers, and all four values. A
@@ -364,10 +371,10 @@ only and must be safe to include in a public site manifest.
 
 ## 8. DOCX/PDF compatibility
 
-- [ ] Add and visually prove all-shapes chart handling in the DOCX export-block renderer: embed the shared
+- [x] Add and visually prove all-shapes chart handling in the DOCX export-block renderer: embed the shared
       deterministic SVG visual (with a bounded PNG compatibility rendition)
       and retain an accessible tabular projection alongside it.
-- [ ] Add and visually prove all-shapes chart handling in the PDF/Typst renderer: embed the shared SVG
+- [x] Add and visually prove all-shapes chart handling in the PDF/Typst renderer: embed the shared SVG
       visual and retain the same accessible table fallback, with no unhandled
       `type:"chart"` branch.
 - [x] Preserve captions, source order, labels, and data values in both document
@@ -411,7 +418,7 @@ only and must be safe to include in a public site manifest.
       an explicit follow-up.
 - [ ] Renderer tests assert source order, semantic labels, data-table values,
       escaping, responsive attributes, and JavaScript-off output.
-- [ ] DOCX/PDF tests assert no chart block is dropped, the shared SVG visual is
+- [x] DOCX/PDF tests assert no chart block is dropped, the shared SVG visual is
       requested/embedded, and the aligned fallback data table is present.
 - [x] Security/property tests cover hostile labels, URLs, CSS colors, huge
       dimensions, NaN/Infinity, prototype keys, and oversized payloads.
@@ -515,7 +522,7 @@ listed in the capability registry.
 
 ### T8 — DOCX/PDF projections
 
-- [ ] Replace the temporary atlcli-owned SVG geometry with the shared TanStack
+- [x] Replace the temporary atlcli-owned SVG geometry with the shared TanStack
       scene/SVG adapter, then visually prove all shapes in both document
       engines. PDF retains vector SVG; DOCX also retains a bounded PNG
       compatibility rendition.
@@ -545,6 +552,7 @@ The follow-up PR is complete only when all gates are checked:
       page-level chart sidecar remains.
 - [ ] All twelve documented Confluence chart kinds have Cloud/DC fixtures,
       static Astro output, accessible data fallback, and DOCX/PDF projections.
+      The DOCX/PDF portion is proven; the Astro visual/a11y gate remains open.
 - [ ] P0 parameter families and strict/lenient diagnostics are tested; every
       unsupported option is visible and deterministic.
 - [ ] Existing non-chart DOCX/PDF and Astro pages pass regression tests.

@@ -45,7 +45,10 @@ import {
   DEFAULT_CODE_THEME,
   type CodeThemeId,
 } from "@atlcli/code-highlight/registry";
-import { CHART_SVG_SIZE_V1, renderChartSvgV1 } from "@atlcli/export-blocks";
+import {
+  TANSTACK_CHART_SIZE_V1,
+  renderTanStackChartSvgV1,
+} from "@atlcli/export-charts-tanstack";
 import {
   highlightCodeWithRuntime,
   type CodeHighlightRuntime,
@@ -1037,11 +1040,11 @@ async function serializeBlock(
       // deterministic SVG projection through the existing svgBlip + PNG
       // fallback seam, then retain the table as the accessible data surface.
       const visual = ctx.images?.embedGeneratedSvg
-        ? await ctx.images.embedGeneratedSvg(renderChartSvgV1(block.chart), {
+        ? await ctx.images.embedGeneratedSvg(renderTanStackChartSvgV1(block.chart), {
             name: block.chart.title ?? "Chart",
             alt: block.chart.title ?? "Chart",
-            widthPx: CHART_SVG_SIZE_V1.width,
-            heightPx: CHART_SVG_SIZE_V1.height,
+            widthPx: TANSTACK_CHART_SIZE_V1.width,
+            heightPx: TANSTACK_CHART_SIZE_V1.height,
           })
         : undefined;
       let visualXml = "";

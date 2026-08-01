@@ -91,6 +91,7 @@
     "@atlcli/core": "workspace:*",
     "@atlcli/diagram": "workspace:*",
     "@atlcli/export-blocks": "workspace:*",
+    "@atlcli/export-charts-tanstack": "workspace:*",
     "@atlcli/export-macros": "workspace:*",
     "@atlcli/export-media": "workspace:*",
     "@resvg/resvg-wasm": "2.6.2",

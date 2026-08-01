@@ -7,7 +7,6 @@ import {
   type ChartKindV1,
   type ChartModelV1,
 } from "./charts.js";
-import { renderChartSvgV1 } from "./chart-svg.js";
 
 const source = { kind: "cloud-adf" as const, macroName: "chart" as const };
 
@@ -31,36 +30,6 @@ function model(kind: ChartKindV1): ChartModelV1 {
 }
 
 describe("ChartModelV1", () => {
-  test("renders every chart kind to a safe deterministic SVG visual", () => {
-    for (const kind of CHART_KINDS_V1) {
-      const svg = renderChartSvgV1(model(kind));
-      expect(svg).toStartWith("<svg ");
-      expect(svg).toContain('role="img"');
-      expect(svg).toContain("chart-title");
-      expect(svg).toContain(kind === "gantt" ? "Build" : ["xyArea", "xyBar", "xyLine", "xyStep", "xyStepArea", "scatter", "timeSeries"].includes(kind) ? "Points" : "Categories");
-      expect(svg).not.toContain("<script");
-    }
-  });
-
-  test("reserves a header band and plot padding for document-quality XY bars", () => {
-    const svg = renderChartSvgV1({
-      schema: "atlcli.chart/1",
-      kind: "xyBar",
-      title: "Layout",
-      source,
-      data: {
-        mode: "points",
-        series: [{ id: "s1", label: "Pages", points: [
-          { x: 1, y: 12 }, { x: 2, y: 25 }, { x: 3, y: 31 }, { x: 4, y: 44 },
-        ] }],
-      },
-    });
-    expect(svg).toContain('x="80" y="28"');
-    expect(svg).toContain('x="80" y="35" width="10"');
-    expect(svg).toContain('x="654.00"');
-    expect(svg).not.toContain('x="682.00"');
-  });
-
   test("validates every documented Confluence chart kind", () => {
     for (const kind of CHART_KINDS_V1) {
       expect(validateChartModelV1(model(kind)).kind).toBe(kind);

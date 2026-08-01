@@ -65,7 +65,9 @@ it("embeds the shared chart SVG visual before the accessible table when the host
     },
   }], { styleNames: noStyles, images });
   expect(svgs).toHaveLength(1);
-  expect(svgs[0]).toContain("<rect");
+  expect(svgs[0]).toContain('class="ts-chart"');
+  expect(svgs[0]).toContain("ts-chart__bar");
+  expect(svgs[0]).toContain('role="img"');
   expect(result.xml).toContain("data-chart-svg=\"true\"");
   expect(result.xml.indexOf("data-chart-svg")).toBeLessThan(result.xml.indexOf("<w:tbl"));
 });

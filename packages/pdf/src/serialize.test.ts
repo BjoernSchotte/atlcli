@@ -39,8 +39,33 @@ it("serializes a chart ExportBlock as an SVG visual plus deterministic data tabl
   expect(bundle.main).toContain("#table(columns: 2");
   expect(bundle.main).toContain('image("assets/chart-1-');
   expect(bundle.assets.some((asset) => asset.mediaType === "image/svg+xml" && asset.path.startsWith("assets/chart-"))).toBe(true);
+  const chartAsset = bundle.assets.find((asset) => asset.mediaType === "image/svg+xml" && asset.path.startsWith("assets/chart-"));
+  expect(chartAsset).toBeDefined();
+  const chartSvg = new TextDecoder().decode(chartAsset!.bytes);
+  expect(chartSvg).toContain('class="ts-chart"');
+  expect(chartSvg).toContain("ts-chart__bar");
+  expect(chartSvg).toContain('role="img"');
   expect(bundle.main).toContain('[#text("Revenue")]');
   expect(bundle.main).not.toContain(', #text("Revenue")');
+});
+
+it("keeps a captioned chart visual and semantic table in one figure", async () => {
+  const prepared = await preparePdfDocument([{
+    type: "chart",
+    chart: {
+      schema: "atlcli.chart/1",
+      kind: "bar",
+      title: "Revenue",
+      data: { mode: "categories", labels: ["Jan"], series: [{ id: "revenue", label: "Value", values: [10] }] },
+      source: { kind: "cloud-adf", macroName: "chart" },
+    },
+    caption: { kind: "figure", content: [{ type: "text", text: "Revenue proof" }] },
+  }], { resolve: async () => { throw new Error("unused"); } });
+  const bundle = serializePdfDocument(prepared, { metadata });
+  expect(bundle.main.match(/#table\(columns:/gu)).toHaveLength(1);
+  expect(bundle.main.match(/#figure\(/gu)).toHaveLength(1);
+  expect(bundle.main).toContain('#figure(block(width: 100%)[');
+  expect(bundle.main).toContain('#image("assets/chart-1-');
 });
 
 it("keeps sparse XY series aligned by their own x keys", async () => {

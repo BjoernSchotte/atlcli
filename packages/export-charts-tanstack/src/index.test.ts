@@ -74,6 +74,7 @@ test("compiles and renders all twelve normalized shapes through TanStack scenes"
     expect(scene.nodes.length).toBeGreaterThan(0);
     const svg = renderTanStackChartSvgV1(chart, { idPrefix: `proof-${kind}` });
     expect(svg).toStartWith("<svg");
+    expect(svg).toContain('xmlns="http://www.w3.org/2000/svg"');
     expect(svg).toContain('class="ts-chart"');
     expect(svg).toContain('role="img"');
     expect(svg).toContain(`Shape ${kind}`.replace("Shape pie", "Allocation").replace("Shape gantt", "Release plan"));
@@ -98,6 +99,25 @@ test("uses native TanStack marks for signed horizontal stacks, steps, pie labels
   const gantt = renderTanStackChartSvgV1(model("gantt"));
   expect(gantt).toContain("ts-chart__rect");
   expect(gantt).toContain("ts-chart__arrow");
+});
+
+test("pads continuous XY bar domains so grouped edge bars stay inside the scene", () => {
+  const base = model("xyBar");
+  if (base.data.mode !== "points") throw new Error("test fixture drift");
+  const chart: ChartModelV1 = {
+    ...base,
+    data: {
+      ...base.data,
+      series: [...base.data.series, {
+        id: "two",
+        label: "Two",
+        points: base.data.series[0]!.points.map((point) => ({ ...point, y: point.y / 2 })),
+      }],
+    },
+  };
+  const scene = createTanStackChartSceneV1(chart);
+  expect(scene.points.length).toBe(6);
+  expect(scene.points.every((point) => point.x >= 0 && point.x <= scene.width)).toBe(true);
 });
 
 test("reports explicit approximations instead of silently emulating unsupported presentation", () => {

@@ -1742,12 +1742,12 @@ function serializeBlock(
       const table = `#table(columns: ${columns}, stroke: rgb(${typstString(writer.catalogDesign.tokens.colors.tableStroke)}), ${cells.join(", ")})`;
       const title = block.chart.title ? `#par[${literalText(block.chart.title)}]\n` : "";
       const visual = block.visualAssetPath
-        ? `#figure(image(${typstString(block.visualAssetPath)}, width: 100%, alt: ${typstString(block.chart.title ?? "Chart") }))\n`
+        ? `#image(${typstString(block.visualAssetPath)}, width: 100%, alt: ${typstString(block.chart.title ?? "Chart") })\n`
         : "";
-      const caption = block.caption
-        ? `\n#figure(block(width: 100%)[${table}], ${captionFigureArgs(block.caption, writer)})`
-        : "";
-      value = title + visual + table + caption;
+      const figureBody = `block(width: 100%)[\n${visual}${table}\n]`;
+      value = title + (block.caption
+        ? `#figure(${figureBody}, ${captionFigureArgs(block.caption, writer)})`
+        : `#${figureBody}`);
       break;
     }
     case "divider":

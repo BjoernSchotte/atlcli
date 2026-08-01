@@ -133,6 +133,23 @@ function tickValues(extent: readonly [number, number], unit: number | undefined)
   return values.length > 1 ? values : undefined;
 }
 
+function paddedBarExtent(
+  values: readonly number[],
+  axis: ChartAxisV1 | undefined,
+  extent: readonly [number, number],
+): [number, number] {
+  const unique = [...new Set(values.filter(Number.isFinite))].sort((left, right) => left - right);
+  const gaps = unique.slice(1).map((value, index) => value - unique[index]!).filter((gap) => gap > 0);
+  const step = gaps.length > 0
+    ? Math.min(...gaps)
+    : Math.max(1, Math.abs(unique[0] ?? 0) * 0.2);
+  const padding = step * 0.55;
+  return [
+    finiteAxisValue(axis?.min) ?? extent[0] - padding,
+    finiteAxisValue(axis?.max) ?? extent[1] + padding,
+  ];
+}
+
 function utcFormatter(pattern: string | undefined): (value: Date) => string {
   return (value) => {
     const yyyy = String(value.getUTCFullYear()).padStart(4, "0");
@@ -248,7 +265,10 @@ function pointDefinition(chart: ChartModelV1): TanStackChartDefinitionV1 {
   const series = chart.data.mode === "points" ? chart.data.series.map((entry) => entry.label) : [];
   const isTime = chart.kind === "timeSeries";
   const numericX = rows.map((row) => row.x instanceof Date ? row.x.getTime() : row.x);
-  const xExtent = numericExtent(numericX, chart.axes?.x, false);
+  const baseXExtent = numericExtent(numericX, chart.axes?.x, false);
+  const xExtent = chart.kind === "xyBar"
+    ? paddedBarExtent(numericX, chart.axes?.x, baseXExtent)
+    : baseXExtent;
   const yExtent = numericExtent(rows.map((row) => row.value), chart.axes?.y, ["xyBar", "xyArea", "xyStepArea"].includes(chart.kind));
   const xScale = isTime ? scaleUtc().domain(xExtent.map((value) => new Date(value)) as [Date, Date]) : scaleLinear().domain(xExtent);
   const yScale = scaleLinear().domain(yExtent);
@@ -263,9 +283,12 @@ function pointDefinition(chart: ChartModelV1): TanStackChartDefinitionV1 {
         ? [areaY(rows, { ...common, x: "x", y: "value", y1: 0, curve, fillOpacity: Math.min(0.3, chart.opacity ?? 0.3) }), lineY(rows, { ...common, x: "x", y: "value", curve, points: chart.showShapes === true, strokeWidth: 2.5, strokeOpacity: chart.opacity })]
         : [lineY(rows, { ...common, x: "x", y: "value", curve, points: chart.showShapes !== false && (chart.showShapes === true || chart.kind === "xyLine" || isTime), strokeWidth: 2.5, strokeOpacity: chart.opacity })];
   const dateFormat = utcFormatter(chart.locale?.dateFormat);
+  const xTickValues = chart.kind === "xyBar" && chart.axes?.x?.tickUnit === undefined
+    ? [...new Set(numericX)].sort((left, right) => left - right)
+    : tickValues(xExtent, chart.axes?.x?.tickUnit);
   return defineClosedChart({
     marks,
-    x: { scale: xScale, grid: false, axis: { label: chart.xLabel, ...axisTickOptions(chart.axes?.x, isTime ? undefined : tickValues(xExtent, chart.axes?.x?.tickUnit), isTime ? (value: never) => dateFormat(value as Date) : undefined) } },
+    x: { scale: xScale, grid: false, axis: { label: chart.xLabel, ...axisTickOptions(chart.axes?.x, isTime ? undefined : xTickValues, isTime ? (value: never) => dateFormat(value as Date) : undefined) } },
     y: { scale: yScale, grid: true, axis: { label: chart.yLabel, ...axisTickOptions(chart.axes?.y, tickValues(yExtent, chart.axes?.y?.tickUnit)) } },
     color: legend(chart, series),
     theme: theme(chart),
@@ -358,10 +381,16 @@ export function renderTanStackChartSvgV1(input: ChartModelV1, options: RenderTan
   const chart = validateChartModelV1(input);
   const scene = createTanStackChartSceneV1(chart, options);
   const render = scene.gradients.length > 0 ? renderChartSvgWithResources : renderChartSvg;
-  return render(scene, {
+  const svg = render(scene, {
     ariaLabel: options.ariaLabel ?? chart.title ?? `${chart.kind} chart`,
     ariaDescription: options.ariaDescription ?? chart.subtitle ?? `${chart.kind} chart with normalized Confluence data`,
     idPrefix: options.idPrefix ?? `atlcli-${chart.kind}`,
     tabIndex: 0,
   });
+  // TanStack's DOM-free renderer emits an HTML-compatible `<svg>` root. The
+  // namespace is optional in HTML but mandatory for standalone consumers such
+  // as resvg, Word's svgBlip part, and strict XML tooling.
+  return svg.includes('xmlns="http://www.w3.org/2000/svg"')
+    ? svg
+    : svg.replace(/^<svg\b/u, '<svg xmlns="http://www.w3.org/2000/svg"');
 }
