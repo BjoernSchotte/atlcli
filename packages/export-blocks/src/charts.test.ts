@@ -46,6 +46,18 @@ describe("ChartModelV1", () => {
     })).toThrow("align");
   });
 
+  test("validates closed axis and presentation enums", () => {
+    expect(validateChartModelV1({
+      ...model("line"),
+      legend: "right",
+      axes: { x: { min: 0, max: 10, tickUnit: 5, categoryLabelPosition: "far" } },
+      display: { data: "after" },
+    }).axes?.x?.tickUnit).toBe(5);
+    expect(() => validateChartModelV1({ ...model("line"), axes: { x: { min: 10, max: 1 } } })).toThrow("max");
+    expect(() => validateChartModelV1({ ...model("line"), axes: { x: { tickUnit: 0 } } })).toThrow("positive");
+    expect(() => validateChartModelV1({ ...model("line"), legend: "outside" as never })).toThrow("legend");
+  });
+
   test("produces a stable digest for the validated model", () => {
     const value = model("line");
     expect(chartModelDigestV1(value)).toBe(chartModelDigestV1(structuredClone(value)));

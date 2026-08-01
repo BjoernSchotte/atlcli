@@ -29,9 +29,14 @@ Unknown or unsupported macros remain visible as a labelled fallback with a
 diagnostic. This is safer than silently dropping content and gives a future
 renderer a stable extension point.
 
-Chart and Mermaid names are recognized as requested semantic categories, but a
-source adapter is still required before a Confluence chart/Mermaid macro is
-fully supported end to end. Do not claim macro parity from the generic fallback.
+Chart macros now have a real source-neutral `ExportBlock` representation. The
+Cloud ADF and Data Center Storage decoders normalize the supported Chart macro
+data into the validated `atlcli.chart/1` model, preserving source order and
+diagnostics. Astro renders static semantic output for all twelve documented
+shape kinds, while DOCX/PDF use deterministic tabular projections. Attachment
+bytes still come through the normal asset pipeline; an unavailable attachment
+does not make an Astro component fetch Confluence at runtime. Mermaid remains a
+separate renderer capability and should not be inferred from chart support.
 
 ## Block overrides
 
@@ -50,11 +55,11 @@ the semantic `data-atlcli-*` hooks and safe fallback behavior.
 
 ## Charts
 
-`StaticChart.astro` emits an accessible SVG/table fallback. An opt-in
-`InteractiveChart.astro` island uses the pinned `@tanstack/charts` `0.3.1`
-adapter with bounded, frozen data. JavaScript failure or disablement leaves the
-static chart usable. The adapter is replaceable behind the chart renderer
-contract and is currently limited to the tested bar-chart profile.
+`ChartBlock.astro` emits an accessible SVG/table fallback for every normalized
+chart kind. JavaScript failure or disablement leaves the static chart usable.
+The optional `@tanstack/charts` `0.3.1` island remains a bounded enhancement
+behind an explicit capability registry; unsupported shapes and data sizes use
+the static representation.
 
 ## Related topics
 

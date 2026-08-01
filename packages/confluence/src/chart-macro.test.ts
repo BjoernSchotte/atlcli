@@ -47,4 +47,21 @@ describe("Confluence Chart macro normalization", () => {
       chart: { kind: "line", data: { mode: "categories", labels: ["Jan"], series: [{ values: [10] }] }, source: { kind: "cloud-adf" } },
     });
   });
+
+  test("normalizes presentation and axis parameters into the closed model", () => {
+    const result = storageToBlocks(storageChart("line", [
+      '<ac:parameter ac:name="subtitle">Adoption trend</ac:parameter>',
+      '<ac:parameter ac:name="domainAxisLower">0</ac:parameter>',
+      '<ac:parameter ac:name="domainAxisUpper">12</ac:parameter>',
+      '<ac:parameter ac:name="rangeAxisTickUnit">5</ac:parameter>',
+      '<ac:parameter ac:name="categoryLabelPosition">far</ac:parameter>',
+    ].join("")));
+    expect(result.blocks[0]).toMatchObject({
+      type: "chart",
+      chart: {
+        subtitle: "Adoption trend",
+        axes: { x: { min: 0, max: 12, categoryLabelPosition: "far" }, y: { tickUnit: 5 } },
+      },
+    });
+  });
 });

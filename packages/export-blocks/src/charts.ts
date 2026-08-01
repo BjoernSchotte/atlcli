@@ -280,6 +280,7 @@ function validateGanttData(data: Extract<ChartDataV1, { mode: "gantt" }>): void 
 
 function validateAxis(axis: ChartAxisV1 | undefined, label: string): void {
   if (!axis) return;
+  const positions = new Set<ChartAxisPositionV1>(["near", "center", "far"]);
   for (const [key, value] of Object.entries(axis)) {
     if (key === "min" || key === "max") {
       if (typeof value === "number") finite(value, `${label}.${key}`);
@@ -287,7 +288,20 @@ function validateAxis(axis: ChartAxisV1 | undefined, label: string): void {
       else throw new ChartValidationErrorV1(`${label}.${key} is invalid`);
     } else if (key === "tickUnit" || key === "labelAngle") {
       finite(value as number, `${label}.${key}`);
+      if (key === "tickUnit" && (value as number) <= 0) {
+        throw new ChartValidationErrorV1(`${label}.tickUnit must be positive`);
+      }
+      if (key === "labelAngle" && Math.abs(value as number) > 360) {
+        throw new ChartValidationErrorV1(`${label}.labelAngle is out of range`);
+      }
+    } else if (key === "categoryLabelPosition" || key === "dateTickPosition") {
+      if (typeof value !== "string" || !positions.has(value as ChartAxisPositionV1)) {
+        throw new ChartValidationErrorV1(`${label}.${key} is invalid`);
+      }
     }
+  }
+  if (typeof axis.min === "number" && typeof axis.max === "number" && axis.max < axis.min) {
+    throw new ChartValidationErrorV1(`${label}.max must not precede min`);
   }
 }
 
@@ -302,6 +316,23 @@ export function validateChartModelV1(model: ChartModelV1): ChartModelV1 {
   }
   if (model.opacity !== undefined && (finite(model.opacity, "opacity") < 0 || model.opacity > 1)) {
     throw new ChartValidationErrorV1("opacity must be between 0 and 1");
+  }
+  if (model.legend !== undefined && !["none", "top", "right", "bottom", "left"].includes(model.legend)) {
+    throw new ChartValidationErrorV1("legend position is invalid");
+  }
+  if (model.orientation !== undefined && !["vertical", "horizontal"].includes(model.orientation)) {
+    throw new ChartValidationErrorV1("chart orientation is invalid");
+  }
+  if (model.display?.data !== undefined && !["hidden", "before", "after"].includes(model.display.data)) {
+    throw new ChartValidationErrorV1("chart data display mode is invalid");
+  }
+  if (model.locale?.timePeriod !== undefined && ![
+    "millisecond", "second", "minute", "hour", "day", "week", "month", "quarter", "year",
+  ].includes(model.locale.timePeriod)) {
+    throw new ChartValidationErrorV1("chart time period is invalid");
+  }
+  if (model.pie?.sectionLabel !== undefined && !["name", "value", "percent", "name-value"].includes(model.pie.sectionLabel)) {
+    throw new ChartValidationErrorV1("pie section label is invalid");
   }
   if (model.display) {
     for (const [key, value] of Object.entries(model.display)) {

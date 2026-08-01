@@ -64,8 +64,6 @@ const sidebar = [
       blocks={page.blocks}
       context={{ locale: page.locale, resolvedAssets: page.resolvedAssets }}
       overrides={{ codeBlock: StarlightCode, paragraph: StarlightParagraph }}
-      chart={page.chart}
-      interactiveChart={page.id === "page-charts"}
     />
     {page.id === "page-home" && (
       <figure data-t0-responsive-image-proof>

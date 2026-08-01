@@ -3,6 +3,7 @@ import {
   validateChartModelV1,
   type ChartDataV1,
   type ChartDiagnosticV1,
+  type ChartAxisV1,
   type ChartKindV1,
   type ChartModelV1,
   type ChartSourceKindV1,
@@ -37,6 +38,33 @@ function numberParameter(params: readonly MacroParameter[], name: string): numbe
   if (value === undefined) return undefined;
   const number = Number(value.replace(",", "."));
   return Number.isFinite(number) ? number : undefined;
+}
+
+function axisPosition(value: string | undefined): ChartAxisV1["categoryLabelPosition"] {
+  const normalized = value?.trim().toLowerCase();
+  if (normalized === "near" || normalized === "center" || normalized === "far") return normalized;
+  return undefined;
+}
+
+function parseAxis(params: readonly MacroParameter[], axis: "x" | "y"): ChartAxisV1 | undefined {
+  const names = axis === "x"
+    ? { min: "domainaxislower", max: "domainaxisupper", tick: "domainaxistickunit", angle: "domainaxislabelangle" }
+    : { min: "rangeaxislower", max: "rangeaxisupper", tick: "rangeaxistickunit", angle: "rangeaxislabelangle" };
+  const min = numberParameter(params, names.min);
+  const max = numberParameter(params, names.max);
+  const tickUnit = numberParameter(params, names.tick);
+  const labelAngle = numberParameter(params, names.angle) ?? numberParameter(params, "labelangle");
+  const categoryLabelPosition = axis === "x" ? axisPosition(parameter(params, "categorylabelposition")) : undefined;
+  const dateTickPosition = axis === "x" ? axisPosition(parameter(params, "datetickposition")) : undefined;
+  if (min === undefined && max === undefined && tickUnit === undefined && labelAngle === undefined && categoryLabelPosition === undefined && dateTickPosition === undefined) return undefined;
+  return {
+    ...(min === undefined ? {} : { min }),
+    ...(max === undefined ? {} : { max }),
+    ...(tickUnit === undefined ? {} : { tickUnit }),
+    ...(labelAngle === undefined ? {} : { labelAngle }),
+    ...(categoryLabelPosition === undefined ? {} : { categoryLabelPosition }),
+    ...(dateTickPosition === undefined ? {} : { dateTickPosition }),
+  };
 }
 
 function textOfInline(nodes: readonly import("@atlcli/export-blocks").InlineNode[]): string {
@@ -264,7 +292,7 @@ export function normalizeChartMacro(
     schema: "atlcli.chart/1",
     kind,
     ...(parameter(params, "title") ? { title: parameter(params, "title") } : {}),
-    ...(parameter(params, "subtitle") || parameter(params, "subtitle") ? { subtitle: parameter(params, "subtitle") ?? parameter(params, "subtitle") } : {}),
+    ...(parameter(params, "subtitle") ? { subtitle: parameter(params, "subtitle") } : {}),
     ...(parameter(params, "xlabel") ? { xLabel: parameter(params, "xlabel") } : {}),
     ...(parameter(params, "ylabel") ? { yLabel: parameter(params, "ylabel") } : {}),
     ...(parameter(params, "legend") ? { legend: parameter(params, "legend") as ChartModelV1["legend"] } : {}),
@@ -282,6 +310,10 @@ export function normalizeChartMacro(
       ...(parameter(params, "bgcolor") ? { backgroundColor: parameter(params, "bgcolor") } : {}),
       ...(parameter(params, "bordercolor") ? { borderColor: parameter(params, "bordercolor") } : {}),
       ...(parameter(params, "colors") ? { colors: parameter(params, "colors")!.split(/[\s,]+/u).filter(Boolean) } : {}),
+    },
+    axes: {
+      ...(parseAxis(params, "x") ? { x: parseAxis(params, "x") } : {}),
+      ...(parseAxis(params, "y") ? { y: parseAxis(params, "y") } : {}),
     },
     locale: {
       ...(parameter(params, "language") ? { language: parameter(params, "language") } : {}),

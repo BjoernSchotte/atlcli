@@ -1,6 +1,6 @@
 # Chart macro parity — a real `ExportBlock` surface for Astro publishing
 
-- Status: **Planned; separate follow-up PR to the Astro publishing plan**
+- Status: **Implementation in progress; stacked follow-up PR**
 - Parent plan: [`PLAN.md`](./PLAN.md)
 - Scope: Confluence Cloud ADF and Data Center/Server Storage Chart macros
 - First consumer: `@atlcli/export-blocks-astro` and the Starlight adapter
@@ -34,6 +34,19 @@ accessible data table when a visual chart cannot be represented faithfully.
 This is semantic/data parity, not a promise to reproduce Confluence's PNG
 renderer pixel-for-pixel. An original chart image may remain a last-resort
 fallback with a visible diagnostic, but it is not the parity implementation.
+
+## 1.1 Implementation status
+
+The shared contract, Cloud/DC normalization seams, dedicated macro registry
+renderer, static Astro chart block, and DOCX/PDF table projections are now
+implemented in the stacked follow-up PR. Interactive TanStack output remains an
+optional enhancement: the new block model is fully useful with JavaScript
+disabled, while the existing pinned bar island still needs a new-model
+capability adapter before it can be called chart-parity complete. The fixture
+no longer stores a page-level chart sidecar; the chart is in `blocks` in source
+order. Unit tests and the normal mayflower DOCX/PDF export path have been
+exercised; the complete all-shapes Cloud/DC fixture matrix and live
+chart-specific provider proof remain follow-up gates.
 
 ## 2. Why a shared block is required
 
@@ -184,23 +197,23 @@ only and must be safe to include in a public site manifest.
 
 ### 4.2 Validation and limits
 
-- [ ] Add a runtime validator and a stable schema version.
-- [ ] Enforce finite numeric values, canonical dates, unique IDs, aligned
+- [x] Add a runtime validator and a stable schema version.
+- [x] Enforce finite numeric values, canonical dates, unique IDs, aligned
       category series, non-negative dimensions, and valid ranges.
 - [ ] Bound rows, series, points, tasks, string lengths, palette entries, and
       serialized model bytes. Limits must be configurable only within safe
       maxima and included in diagnostics.
 - [ ] Keep the existing interactive limits (`800` points / bounded payload) as
       an island policy, not as a reason to reject valid static charts.
-- [ ] Reject prototype-polluting keys and never deserialize executable values.
-- [ ] Give each normalized chart a deterministic model digest for caching and
+- [x] Reject prototype-polluting keys and never deserialize executable values.
+- [x] Give each normalized chart a deterministic model digest for caching and
       dependency tracking.
 
 ## 5. Source adapters and extraction
 
 ### 5.1 Cloud ADF adapter
 
-- [ ] Detect the Chart macro extension in the existing ADF macro/extension
+- [x] Detect the Chart macro extension in the existing ADF macro/extension
       normalization path.
 - [ ] Decode macro parameters into the closed `ChartModelV1` options above.
 - [ ] Extract chart data from macro-body tables, including multiple tables,
@@ -212,7 +225,7 @@ only and must be safe to include in a public site manifest.
 
 ### 5.2 Data Center/Server Storage adapter
 
-- [ ] Detect the Storage XHTML Chart macro and parse its parameter names and
+- [x] Detect the Storage XHTML Chart macro and parse its parameter names and
       macro-body tables without rendering arbitrary XHTML.
 - [ ] Support the same normalized shape matrix and diagnostics as Cloud; source
       differences belong in the adapter, not in Astro components.
@@ -235,16 +248,16 @@ only and must be safe to include in a public site manifest.
 
 ## 6. Macro registry and render-model integration
 
-- [ ] Add a dedicated Chart macro renderer to `@atlcli/export-macros`; do not
+- [x] Add a dedicated Chart macro renderer to `@atlcli/export-macros`; do not
       route charts through the catch-all `export_view` fallback.
-- [ ] Map Cloud/DC macro names to the same renderer and source adapter.
-- [ ] Emit one `ExportBlock` chart node in source order, including local ID,
+- [x] Map Cloud/DC macro names to the same renderer and source adapter.
+- [x] Emit one `ExportBlock` chart node in source order, including local ID,
       caption, provenance, diagnostics, and dependency metadata where allowed.
-- [ ] Remove the spike's page-level `chart` sidecar fixture and replace it with
+- [x] Remove the spike's page-level `chart` sidecar fixture and replace it with
       a chart entry in `blocks`.
-- [ ] Ensure unknown chart types remain visible as a typed diagnostic/fallback
+- [x] Ensure unknown chart types remain visible as a typed diagnostic/fallback
       block rather than being silently treated as a paragraph.
-- [ ] Update the macro capability registry and publishing support matrix so
+- [x] Update the macro capability registry and publishing support matrix so
       “chart” means an implemented source adapter, not merely a declared macro
       kind.
 
@@ -252,45 +265,45 @@ only and must be safe to include in a public site manifest.
 
 ### 7.1 Static output (required for every kind)
 
-- [ ] Add a semantic `ChartBlock.astro` dispatch component to
+- [x] Add a semantic `ChartBlock.astro` dispatch component to
       `@atlcli/export-blocks-astro`.
-- [ ] Render accessible SVG/HTML for every chart kind, with title/description,
+- [x] Render accessible SVG/HTML for every chart kind, with title/description,
       keyboard-safe labels, no raw HTML injection, and responsive dimensions.
-- [ ] Render an accessible data table before/after the visual when configured;
+- [x] Render an accessible data table before/after the visual when configured;
       when visual rendering is intentionally unavailable, render the table as
       the primary representation with an explicit status message.
-- [ ] Render Gantt tasks with a semantic table/list fallback even if a visual
+- [x] Render Gantt tasks with a semantic table/list fallback even if a visual
       timeline is unavailable.
-- [ ] Add Starlight theme composition without moving chart semantics into
+- [x] Add Starlight theme composition without moving chart semantics into
       Starlight-specific components.
-- [ ] Expose stable CSS custom properties/data attributes for theme adapters;
+- [x] Expose stable CSS custom properties/data attributes for theme adapters;
       do not make the normalized model depend on Starlight tokens.
 
 ### 7.2 Interactive output (bounded enhancement)
 
-- [ ] Keep static output as the default and JavaScript-off contract.
+- [x] Keep static output as the default and JavaScript-off contract.
 - [ ] Extend the closed interactive adapter registry only for shapes with an
       evidenced renderer contract; first candidate is the existing TanStack
       Charts `0.3.1` bar adapter.
 - [ ] Define explicit capability IDs for each interactive shape (for example,
       `tanstack-v0.3/bar`) and validate the model before island hydration.
-- [ ] Fall back to the static visual/table for unsupported kinds, excessive
+- [x] Fall back to the static visual/table for unsupported kinds, excessive
       data, CSP restrictions, or adapter errors.
 - [ ] Test tooltips, legends, resize behavior, keyboard access, reduced motion,
       and deterministic hydration. An island must never fetch Confluence data.
 
 ## 8. DOCX/PDF compatibility
 
-- [ ] Add chart handling to the DOCX export-block renderer: deterministic
+- [x] Add chart handling to the DOCX export-block renderer: deterministic
       static image/SVG projection where supported and an accessible tabular
       projection otherwise.
-- [ ] Add chart handling to the PDF/Typst renderer with the same fallback and
+- [x] Add chart handling to the PDF/Typst renderer with the same fallback and
       no unhandled `type:"chart"` branch.
-- [ ] Preserve captions, source order, labels, and data values in both document
+- [x] Preserve captions, source order, labels, and data values in both document
       projections.
 - [ ] Add regression fixtures proving existing DOCX/PDF exports remain byte- or
       structure-stable for pages without charts.
-- [ ] Document which visual options are intentionally approximated in DOCX/PDF
+- [x] Document which visual options are intentionally approximated in DOCX/PDF
       (for example, 3D perspective or interactive hover) while retaining the
       underlying data.
 
