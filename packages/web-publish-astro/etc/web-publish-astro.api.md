@@ -24,6 +24,22 @@ export interface AstroBuildCommandResultV1 {
     stderr: string;
 }
 
+// export: AstroBuildInventoryV1
+export interface AstroBuildInventoryV1 {
+    schema: "atlcli.astro-build-inventory/1";
+    bundleDigest: string;
+    pages: readonly {
+        sourceId: string;
+        route: string;
+        pathname: string;
+    }[];
+    output: readonly {
+        path: string;
+        sha256: string;
+        byteLength: number;
+    }[];
+}
+
 // export: AstroPublicationConfigExpectationV1
 export interface AstroPublicationConfigExpectationV1 {
     base: string;
@@ -106,6 +122,22 @@ export interface AtlcliPublishingIntegrationOptionsV1 extends AtlcliPublicationL
         tokenValidator: PublicationDesignTokenValidatorV1;
     };
 }
+
+// export: CreateAstroStaticManifestOptionsV1
+export interface CreateAstroStaticManifestOptionsV1 {
+    request: PublicationBuildRequestV1;
+    inventory: AstroBuildInventoryV1;
+    builderVersion: string;
+    astroVersion: string;
+    experience: {
+        id: string;
+        version: string;
+        digest: string;
+    };
+}
+
+// export: createAstroStaticPublicationManifestV1
+export declare function createAstroStaticPublicationManifestV1(options: CreateAstroStaticManifestOptionsV1): Promise<StaticPublicationManifestV1>;
 
 // export: LoadedPublicationBundleV1
 export interface LoadedPublicationBundleV1 {

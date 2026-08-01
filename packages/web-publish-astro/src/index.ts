@@ -23,3 +23,8 @@ export {
   type AstroBuildCommandResultV1,
   type RunAstroBuildCommandOptionsV1,
 } from "./build-command.js";
+export {
+  createAstroStaticPublicationManifestV1,
+  type AstroBuildInventoryV1,
+  type CreateAstroStaticManifestOptionsV1,
+} from "./manifest.js";
