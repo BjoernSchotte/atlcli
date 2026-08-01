@@ -2825,10 +2825,13 @@ Gate:
 - [x] CLI and packed browser produce schema-equivalent graphs, packets,
       reconciliation decisions, reports, and byte-identical Markdown for
       deterministic model/provider inputs.
-- [ ] Sentinel fixtures in CLI and packed MV3 prove that workers receive no
-      unrelated workspace data or hidden supervisor context, the reconciler
-      receives no child trajectories, and child traces/raw tool outputs never
-      enter the supervisor projection. Fail the gate if any sentinel appears.
+- [x] Sentinel fixtures in the Node/CLI runtime and packed MV3 prove that
+      workers receive no unrelated workspace data or hidden supervisor
+      context, the reconciler receives no child trajectories, and child
+      traces/raw tool outputs never enter the supervisor projection. Fail the
+      gate if any sentinel appears. The supervisor may retain its own generated
+      workflow in its private continuation, but it is never passed to a
+      specialist worker.
 - [x] The T0 dispatch adapter remains green under the real T3 scheduler,
       including disjoint per-node capability grants, dynamic response schemas,
       budgets, cancellation, and late-result quarantine. Any regression is a
@@ -2927,6 +2930,20 @@ content PTC. The existing Node/browser runtime parity test and dynamic
 subagent corridor passed 32 tests / 207 assertions; the Node 22.18.0 packed
 MV3 suite passed 15/15. The remaining T3 synthetic gate is the worker/context
 sentinel proof below.
+
+T3 isolation checkpoint (2026-08-01): the native task-dispatch adapter now
+keeps the authoritative accepted packet host-side while returning a compact,
+closed dependency record to QuickJS and each dependent task. A Node-host
+sentinel run writes an unrelated value into the actual injected workspace and
+places a hidden candidate objective only in the central-supervisor catalog;
+all three specialist inputs reject both markers and a deliberately injected
+raw child trajectory. The packed MV3 Background → Offscreen → dedicated-worker
+fixture executes the same graph with raw child packets and a supervisor-only
+workflow marker: five or more specialist-model inputs contain neither marker,
+and no model input contains the raw child trajectory. The reconciler's
+body-free packet-set assertion remains green. The dispatch/dynamic/host-parity
+corridor passed 44 tests / 279 assertions, typecheck and research privacy
+passed, and the Node 22.18.0 packed MV3 suite passed 16/16.
 
 ### T4 — Add durable session, workspace, graph, and checkpoint stores
 

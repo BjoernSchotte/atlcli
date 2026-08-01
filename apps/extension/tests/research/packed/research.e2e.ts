@@ -52,6 +52,11 @@ const RESEARCH_ANTHROPIC_SESSION_KEY = "research-anthropic-key-v1";
 const HOST_PARITY_EPOCH_MS = Date.parse("2026-08-01T12:00:00.000Z");
 const HOST_PARITY_QUESTION =
   "packed-host-parity: How does bounded synthetic Jira work relate to Confluence content?";
+const PACKED_SENTINEL_QUESTION =
+  "packed-sentinel: How does bounded synthetic Jira work relate to Confluence content without exposing hidden workflow state?";
+const HIDDEN_SUPERVISOR_CONTEXT_SENTINEL = "HIDDEN_SUPERVISOR_CONTEXT_SENTINEL";
+const RAW_CHILD_TRAJECTORY_SENTINEL = "RAW_CHILD_TRAJECTORY_SENTINEL";
+const UNRELATED_WORKSPACE_SENTINEL = "UNRELATED_WORKSPACE_SENTINEL";
 const HOST_PARITY_POLICY = {
   schema: "atlcli.research-one-shot-policy/v1",
   requestedEffort: "analysis",
@@ -69,6 +74,11 @@ const HOST_PARITY_PACKET = {
   gaps: [],
   proposedFollowUps: [],
   coverageLimits: ["Synthetic packed host-parity scenario."],
+};
+
+const PACKED_SENTINEL_PACKET = {
+  ...HOST_PARITY_PACKET,
+  answeredQuestion: RAW_CHILD_TRAJECTORY_SENTINEL,
 };
 
 const HOST_PARITY_CRITIQUE = {
@@ -373,6 +383,11 @@ const finalDraft = await task({
 finalDraft;
 `.trim();
 
+const PACKED_SENTINEL_WORKFLOW_CODE = `
+const hiddenSupervisorContext = ${JSON.stringify(HIDDEN_SUPERVISOR_CONTEXT_SENTINEL)};
+${PACKED_HOST_PARITY_WORKFLOW_CODE}
+`.trim();
+
 interface TargetInfo {
   targetId: string;
   type: string;
@@ -387,6 +402,7 @@ interface HarnessEvent {
   url?: string;
   method?: string;
   modelCall?: number;
+  modelRole?: string;
   apiKeyPresent?: boolean;
   toolNames?: string[];
   jql?: string;
@@ -401,6 +417,9 @@ interface HarnessEvent {
   researchEvent?: ResearchOneShotEventV1;
   report?: ResearchReportV1;
   value?: unknown;
+  hasHiddenSupervisorContext?: boolean;
+  hasRawChildTrajectory?: boolean;
+  hasUnrelatedWorkspaceData?: boolean;
 }
 
 function offscreenBootstrap(): string {
@@ -640,6 +659,7 @@ const workerId = crypto.randomUUID();
 let modelCalls = 0;
 let packedJiraOnlyRun = false;
 let packedHostParityRun = false;
+let packedSentinelRun = false;
 let supervisorWorkflowStarted = false;
 channel.postMessage({ kind: "worker-start", workerId });
 globalThis.addEventListener("error", (event) => {
@@ -736,13 +756,14 @@ function anthropicMessage(content, stopReason, call) {
     content,
     stop_reason: stopReason,
     stop_sequence: null,
-    ...(packedHostParityRun ? {} : { usage: { input_tokens: 20, output_tokens: 10 } }),
+    ...(packedHostParityRun || packedSentinelRun ? {} : { usage: { input_tokens: 20, output_tokens: 10 } }),
   });
 }
 
 const packedReportInput = ${JSON.stringify(PACKED_REPORT_INPUT)};
 const packedJiraOnlyReportInput = ${JSON.stringify(PACKED_JIRA_ONLY_REPORT_INPUT)};
 const packedHostParityPacket = ${JSON.stringify(HOST_PARITY_PACKET)};
+const packedSentinelPacket = ${JSON.stringify(PACKED_SENTINEL_PACKET)};
 const packedHostParityCritique = ${JSON.stringify(HOST_PARITY_CRITIQUE)};
 const packedHostParityDraft = ${JSON.stringify(HOST_PARITY_DRAFT)};
 const wikiPacket = {
@@ -842,6 +863,19 @@ globalThis.fetch = async (input, init) => {
     modelCalls += 1;
     const serializedMessages = JSON.stringify(body.messages ?? []);
     const serializedRequest = JSON.stringify(body);
+    const packedSentinelRequest = packedSentinelRun || serializedRequest.includes("packed-sentinel");
+    if (packedSentinelRequest) {
+      const specialist = serializedRequest.match(/You are the ([a-z-]+) specialist in a read-only Atlassian research workflow/);
+      channel.postMessage({
+        kind: "packed-sentinel-model-request",
+        workerId,
+        modelCall: modelCalls,
+        modelRole: specialist?.[1] ?? "supervisor",
+        hasHiddenSupervisorContext: serializedRequest.includes(${JSON.stringify(HIDDEN_SUPERVISOR_CONTEXT_SENTINEL)}),
+        hasRawChildTrajectory: serializedRequest.includes(${JSON.stringify(RAW_CHILD_TRAJECTORY_SENTINEL)}),
+        hasUnrelatedWorkspaceData: serializedRequest.includes(${JSON.stringify(UNRELATED_WORKSPACE_SENTINEL)}),
+      });
+    }
     const toolNames = Array.isArray(body.tools)
       ? body.tools.map((tool) => tool?.name).filter((name) => typeof name === "string")
       : [];
@@ -870,6 +904,9 @@ globalThis.fetch = async (input, init) => {
     const structured = (value) => {
       if (packedHostParityRun) {
         channel.postMessage({ kind: "packed-host-parity-structured", value });
+      }
+      if (packedSentinelRun) {
+        channel.postMessage({ kind: "packed-sentinel-structured", value });
       }
       if (body.output_config?.format?.type === "json_schema") {
         return anthropicMessage(
@@ -902,7 +939,9 @@ globalThis.fetch = async (input, init) => {
     };
 
     if (serializedRequest.includes("Host-admitted specialization research-node:wiki-research:")) {
-      if (packedHostParityRun) return structured(packedHostParityPacket);
+      if (packedHostParityRun || packedSentinelRun) {
+        return structured(packedSentinelRun ? packedSentinelPacket : packedHostParityPacket);
+      }
       if (!serializedMessages.includes("atlcli.ptc/wiki.page.get.output/v1")) {
         return anthropicMessage(
           [{
@@ -922,7 +961,9 @@ globalThis.fetch = async (input, init) => {
       serializedRequest.includes("Host-admitted specialization research-node:jira-research:") ||
       serializedRequest.includes("Host-admitted specialization research-node:jira-lookup:")
     ) {
-      if (packedHostParityRun) return structured(packedHostParityPacket);
+      if (packedHostParityRun || packedSentinelRun) {
+        return structured(packedSentinelRun ? packedSentinelPacket : packedHostParityPacket);
+      }
       if (!serializedMessages.includes("atlcli.ptc/jira.issue.get.output/v1")) {
         return anthropicMessage(
           [{
@@ -939,7 +980,7 @@ globalThis.fetch = async (input, init) => {
     }
 
     if (serializedRequest.includes("You are the reconciler specialist")) {
-      return structured(packedHostParityRun ? packedHostParityCritique : critique);
+      return structured(packedHostParityRun || packedSentinelRun ? packedHostParityCritique : critique);
     }
 
     if (serializedRequest.includes("Host-admitted specialization research-node:reconciliation-repair:")) {
@@ -947,11 +988,13 @@ globalThis.fetch = async (input, init) => {
     }
 
     if (serializedRequest.includes("You are the document-distiller specialist")) {
-      return structured(packedHostParityRun ? packedHostParityPacket : joinedPacket);
+      return structured(packedHostParityRun || packedSentinelRun
+        ? (packedSentinelRun ? packedSentinelPacket : packedHostParityPacket)
+        : joinedPacket);
     }
 
     if (serializedRequest.includes("You are the synthesizer specialist")) {
-      return structured(packedHostParityRun
+      return structured(packedHostParityRun || packedSentinelRun
         ? packedHostParityDraft
         : packedJiraOnlyRun ? packedJiraOnlyReportInput : packedReportInput);
     }
@@ -960,6 +1003,15 @@ globalThis.fetch = async (input, init) => {
       supervisorWorkflowStarted = true;
       packedJiraOnlyRun = serializedRequest.includes("packed-jira-only");
       packedHostParityRun = serializedRequest.includes("packed-host-parity");
+      packedSentinelRun = serializedRequest.includes("packed-sentinel");
+      if (packedSentinelRun) {
+        channel.postMessage({
+          kind: "packed-sentinel-workflow",
+          hasHiddenSupervisorContext: ${JSON.stringify(PACKED_SENTINEL_WORKFLOW_CODE)}.includes(${JSON.stringify(HIDDEN_SUPERVISOR_CONTEXT_SENTINEL)}),
+        hasRawChildTrajectory: ${JSON.stringify(PACKED_SENTINEL_WORKFLOW_CODE)}.includes(${JSON.stringify(RAW_CHILD_TRAJECTORY_SENTINEL)}),
+          hasUnrelatedWorkspaceData: ${JSON.stringify(PACKED_SENTINEL_WORKFLOW_CODE)}.includes(${JSON.stringify(UNRELATED_WORKSPACE_SENTINEL)}),
+        });
+      }
       return anthropicMessage(
         [{
           type: "tool_use",
@@ -968,6 +1020,8 @@ globalThis.fetch = async (input, init) => {
           input: {
             code: packedHostParityRun
               ? ${JSON.stringify(PACKED_HOST_PARITY_WORKFLOW_CODE)}
+              : packedSentinelRun
+                ? ${JSON.stringify(PACKED_SENTINEL_WORKFLOW_CODE)}
               : packedJiraOnlyRun
                 ? ${JSON.stringify(PACKED_JIRA_ONLY_WORKFLOW_CODE)}
                 : ${JSON.stringify(PACKED_WORKFLOW_CODE)},
@@ -982,7 +1036,7 @@ globalThis.fetch = async (input, init) => {
       providerSchema?.properties?.executiveSummary &&
       providerSchema?.properties?.relationships
     ) {
-      return structured(packedHostParityRun
+      return structured(packedHostParityRun || packedSentinelRun
         ? packedHostParityDraft
         : packedJiraOnlyRun ? packedJiraOnlyReportInput : packedReportInput);
     }
@@ -1007,7 +1061,7 @@ globalThis.fetch = async (input, init) => {
         type: "tool_use",
         id: "toolu_packed_report",
         name: structuredTool.name,
-        input: packedHostParityRun
+        input: packedHostParityRun || packedSentinelRun
           ? packedHostParityDraft
           : packedJiraOnlyRun ? packedJiraOnlyReportInput : packedReportInput,
       }],
@@ -1342,6 +1396,13 @@ function hostParityRequest(): ResearchRequestV1 {
   };
 }
 
+function packedSentinelRequest(): ResearchRequestV1 {
+  return {
+    ...hostParityRequest(),
+    question: PACKED_SENTINEL_QUESTION,
+  };
+}
+
 async function runNodeHostParityFixture(): Promise<{
   report: ResearchReportV1;
   events: ResearchOneShotEventV1[];
@@ -1643,6 +1704,62 @@ test("keeps the Node and packed MV3 graph, packets, reconciliation, report, and 
   await page.evaluate(async (key) => {
     await chrome.storage.session.remove(key);
   }, RESEARCH_ANTHROPIC_SESSION_KEY);
+});
+
+test("keeps raw child trajectories and hidden supervisor state out of packed MV3 specialist inputs", async () => {
+  await installEventCapture(page);
+  await page.evaluate(async ({ key, value }) => {
+    await chrome.storage.session.set({ [key]: value });
+  }, { key: RESEARCH_ANTHROPIC_SESSION_KEY, value: FAKE_KEY });
+
+  try {
+    const packed = await runPackedResearchInBackground(
+      page,
+      packedSentinelRequest(),
+      "packed-sentinel",
+    );
+    if (!packed.ok) {
+      throw new Error(JSON.stringify({ packed, events: await harnessEvents(page) }, null, 2));
+    }
+
+    const events = await harnessEvents(page);
+    expect(events).toContainEqual(expect.objectContaining({
+      kind: "packed-sentinel-workflow",
+      hasHiddenSupervisorContext: true,
+      hasRawChildTrajectory: false,
+      hasUnrelatedWorkspaceData: false,
+    }));
+    const modelRequests = events.filter((event) => event.kind === "packed-sentinel-model-request");
+    expect(modelRequests.length).toBeGreaterThanOrEqual(5);
+    expect(modelRequests).toEqual(expect.arrayContaining([
+      expect.objectContaining({ modelCall: 1 }),
+    ]));
+    const specialistRequests = modelRequests.filter((request) => request.modelRole !== "supervisor");
+    expect(specialistRequests.length).toBeGreaterThanOrEqual(5);
+    expect(modelRequests.some((request) => request.hasHiddenSupervisorContext)).toBe(true);
+    for (const request of specialistRequests) {
+      expect(request.hasHiddenSupervisorContext).toBe(false);
+    }
+    for (const request of modelRequests) {
+      expect(request.hasRawChildTrajectory).toBe(false);
+      expect(request.hasUnrelatedWorkspaceData).toBe(false);
+    }
+    const packets = events
+      .filter((event) => event.kind === "packed-sentinel-structured")
+      .map((event) => event.value)
+      .filter((value) => typeof value === "object" && value !== null &&
+        (value as { schema?: unknown }).schema === "atlcli.research-packet-body/v1");
+    expect(packets).toEqual([
+      PACKED_SENTINEL_PACKET,
+      PACKED_SENTINEL_PACKET,
+      PACKED_SENTINEL_PACKET,
+    ]);
+    expect(events.some((event) => event.kind === "worker-error")).toBe(false);
+  } finally {
+    await page.evaluate(async (key) => {
+      await chrome.storage.session.remove(key);
+    }, RESEARCH_ANTHROPIC_SESSION_KEY);
+  }
 });
 
 test("resolves exact keys and a unique Confluence alias through the packed background boundary", async () => {

@@ -222,6 +222,12 @@ export function createResearchDispatchInterceptionAdapter(options: {
     config: RunnableConfig,
   ): Promise<unknown>;
   projectResult?: (value: unknown) => unknown;
+  /**
+   * Host-owned projection returned to QuickJS and dependent tasks after packet
+   * acceptance. The authoritative accepted packet may retain more structured
+   * data, but child trajectories must never become downstream prompt context.
+   */
+  projectDependencyResult?: (taskId: string, acceptedResult: unknown) => unknown | undefined;
   acceptResult?: (taskId: string, result: unknown, rawResult: unknown) => void;
   onDiagnostic?: (diagnostic: ResearchDispatchDiagnosticV1) => void;
 }): ResearchDispatchInterceptionAdapter {
@@ -502,9 +508,11 @@ export function createResearchDispatchInterceptionAdapter(options: {
       emit({ taskId, status: "failed" });
       throw error;
     }
-    completedResults.set(taskId, structuredClone(projectedResult));
+    const projectedDependency = options.projectDependencyResult?.(taskId, projectedResult);
+    const dependencyResult = projectedDependency === undefined ? first.value : projectedDependency;
+    completedResults.set(taskId, structuredClone(dependencyResult));
     emit({ taskId, status: "completed", resultBytes });
-    return first.value;
+    return dependencyResult;
   };
 
   return {

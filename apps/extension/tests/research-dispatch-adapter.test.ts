@@ -453,6 +453,58 @@ describe("research-owned native task dispatch interception", () => {
       .rejects.toMatchObject({ code: "dependency-result-mismatch" });
   });
 
+  test("returns only the host-projected dependency record to the QuickJS caller", async () => {
+    const rawResult = {
+      taskId: "first",
+      answer: "RAW_CHILD_TRAJECTORY_SENTINEL",
+    };
+    const dependencyRecord = {
+      schema: "atlcli.research-dependency-packet/v1",
+      taskId: "first",
+      sourceIds: ["jira:DEMO-1"],
+    };
+    const adapter = createResearchDispatchInterceptionAdapter({
+      admissions: [
+        admission("first", [], { objective: "Research first" }),
+        admission("dependent", [], {
+          objective: "Research dependent",
+          dependsOnTaskIds: ["first"],
+        }),
+        admission("tampered", [], {
+          objective: "Research tampered",
+          dependsOnTaskIds: ["first"],
+        }),
+      ],
+      maxTasks: 3,
+      maxConcurrency: 1,
+      projectDependencyResult: (taskId, result) => taskId === "first"
+        ? dependencyRecord
+        : result,
+      async invokeUpstream(_input, config) {
+        const taskId = String(config.configurable?.[RESEARCH_TASK_ID_CONFIG_KEY]);
+        return taskId === "first" ? rawResult : { taskId, answer: "bounded" };
+      },
+    });
+    const invoke = (taskId: string, dependencyResults?: Array<{ taskId: string; result: unknown }>) =>
+      adapter.invoke({
+        description: encodeResearchTaskDescriptionV1({
+          taskId,
+          objective: `Research ${taskId}`,
+          ...(dependencyResults ? { dependencyResults } : {}),
+        }),
+        subagent_type: "focused-researcher",
+      }, {
+        configurable: { [DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY]: PACKET_SCHEMA },
+      });
+
+    await expect(invoke("first")).resolves.toEqual(dependencyRecord);
+    await expect(invoke("dependent", [{ taskId: "first", result: dependencyRecord }]))
+      .resolves.toEqual({ taskId: "dependent", answer: "bounded" });
+    expect(JSON.stringify(adapter.snapshot())).not.toContain("RAW_CHILD_TRAJECTORY_SENTINEL");
+    await expect(invoke("tampered", [{ taskId: "first", result: rawResult }]))
+      .rejects.toMatchObject({ code: "dependency-result-mismatch" });
+  });
+
   test("intercepts the actual declarative DeepAgents dynamic-responseSchema path", async () => {
     const result = await runDeclarativeDispatchCharacterization();
 
