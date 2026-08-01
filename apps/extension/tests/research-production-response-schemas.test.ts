@@ -13,8 +13,8 @@ describe("durable research production response schema feasibility", () => {
 
     expect(result.metrics).toEqual({
       ResearchPacketBodyV1: {
-        serializedBytes: 2_140,
-        propertyCount: 23,
+        serializedBytes: 2_494,
+        propertyCount: 27,
         nestingDepth: 4,
       },
       ResearchPacketBodyV2: {
@@ -23,8 +23,8 @@ describe("durable research production response schema feasibility", () => {
         nestingDepth: 4,
       },
       ReconciliationBodyV1: {
-        serializedBytes: 1_638,
-        propertyCount: 16,
+        serializedBytes: 1_859,
+        propertyCount: 18,
         nestingDepth: 5,
       },
     });

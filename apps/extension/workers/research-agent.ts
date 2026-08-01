@@ -41,7 +41,11 @@ globalThis.addEventListener("message", (event: MessageEvent<unknown>) => {
       };
       const budget = new ResearchRunBudget(request.limits);
       const providers = createRestResearchProviders(profile, request, budget);
-      const researchGraph = composeStandardResearchGraphV1(request.question);
+      const researchGraph = composeStandardResearchGraphV1(request.question, {
+        scope: request.scope,
+        limits: request.limits,
+        asOf: new Date().toISOString(),
+      });
       const workspace = createMemoryResearchWorkspace();
       const onProgress = (progress: ResearchProgressV1): void =>
         post({ kind: "research-worker:progress", runId, progress });

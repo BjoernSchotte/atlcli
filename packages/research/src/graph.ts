@@ -1,4 +1,8 @@
-import { ResearchContractError } from "./contracts.js";
+import {
+  ResearchContractError,
+  type ResearchLimitsV1,
+  type ResearchScopeV1,
+} from "./contracts.js";
 import {
   RESEARCH_BRIEF_SCHEMA_V1,
   createResearchBriefV1,
@@ -294,7 +298,15 @@ function composeSeeds(brief: ResearchBriefV1): NodeSeed[] {
     "relate", "related", "belong", "join", "link", "between", "correspond", "match",
     "mapping", "map", "funnel", "pipeline", "stage", "opportunit", "zuord", "gehören", "zusammenhang",
   ]);
-  const contradiction = hasAny(objective, ["verify", "explicit", "contradict", "conflict", "belegt", "widerspruch"]);
+  const contradiction = hasAny(objective, [
+    "verify contradiction",
+    "verify conflict",
+    "contradict",
+    "conflict",
+    "widerspruch",
+    "widerspricht",
+    "konflikt",
+  ]);
   const deep = brief.resolvedEffort === "deep";
   const seeds: NodeSeed[] = [];
 
@@ -307,7 +319,7 @@ function composeSeeds(brief: ResearchBriefV1): NodeSeed[] {
   }
 
   const researchIds = seeds.map((seed) => seed.id);
-  if (relation && (deep || contradiction)) {
+  if (relation) {
     seeds.push({ id: "research-node:cross-product-join", kind: "distill", executor: "subagent", roleId: "document-distiller", objective: "Join accepted Jira and Confluence packets without new reads.", requestedCapabilityIds: [], dependencies: [...researchIds], reasonCodes: ["cross_product_join"], priority: 80 });
   }
   const joinId = seeds.some((seed) => seed.id === "research-node:cross-product-join")
@@ -394,21 +406,37 @@ function approvalEnvelope(
   };
 }
 
-export function composeStandardResearchGraphV1(question: string): ResearchGraphV1 {
+export interface ComposeStandardResearchGraphOptionsV1 {
+  scope?: ResearchScopeV1;
+  limits?: ResearchLimitsV1;
+  asOf?: string;
+  timezone?: string;
+}
+
+/**
+ * Compose the one-shot graph used by both productive hosts. Callers must pass
+ * their normalized request scope and limits; the defaults remain only for
+ * deterministic characterization tests and backwards-compatible fixtures.
+ */
+export function composeStandardResearchGraphV1(
+  question: string,
+  options: ComposeStandardResearchGraphOptionsV1 = {},
+): ResearchGraphV1 {
   return composeResearchGraphV1(createResearchBriefV1({
     sessionId: "research-session:standard",
     turnId: "research-turn:standard",
     objective: question,
-    scope: {
+    scope: options.scope ?? {
       siteOrigin: "https://example.atlassian.net",
       jiraProjectKeys: ["DEMO"],
       confluenceSpaceKeys: ["DOCS"],
     },
-    asOf: "2026-01-01T00:00:00.000Z",
-    timezone: "UTC",
+    asOf: options.asOf ?? "2026-01-01T00:00:00.000Z",
+    timezone: options.timezone ?? "UTC",
     requestedEffort: "analysis",
     requestedPlanApproval: "automatic",
     requestedReconciliation: "auto",
+    ...(options.limits ? { limits: options.limits } : {}),
   }));
 }
 

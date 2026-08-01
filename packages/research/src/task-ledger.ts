@@ -78,6 +78,7 @@ export interface ResearchSubagentDispatchPort {
     availableSourceIds: readonly string[];
   }): ResearchAcceptedPacketV1;
   fail(taskId: string, graphRevision: number, at: string): ResearchTaskAttemptV1;
+  cancel(taskId: string, graphRevision: number, at: string): ResearchTaskAttemptV1;
   quarantine(taskId: string, graphRevision: number, at: string): ResearchTaskAttemptV1;
   attempt(taskId: string): ResearchTaskAttemptV1 | undefined;
   packet(packetRef: string): ResearchAcceptedPacketV1 | undefined;
@@ -177,6 +178,12 @@ export class InMemoryResearchSubagentDispatchPort implements ResearchSubagentDis
 
   fail(taskId: string, graphRevision: number, at: string): ResearchTaskAttemptV1 {
     const next = reduceResearchTaskAttemptV1(this.#current(taskId, graphRevision), { kind: "failed", at });
+    this.#attempts.set(taskId, next);
+    return clone(next);
+  }
+
+  cancel(taskId: string, graphRevision: number, at: string): ResearchTaskAttemptV1 {
+    const next = reduceResearchTaskAttemptV1(this.#current(taskId, graphRevision), { kind: "cancelled", at });
     this.#attempts.set(taskId, next);
     return clone(next);
   }

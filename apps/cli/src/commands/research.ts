@@ -322,7 +322,11 @@ export const defaultResearchCliDependencies: ResearchCliDependencies = {
       providers,
       budget,
       runId: input.sessionId,
-      researchGraph: composeStandardResearchGraphV1(input.request.question),
+      researchGraph: composeStandardResearchGraphV1(input.request.question, {
+        scope: input.request.scope,
+        limits: input.request.limits,
+        asOf: new Date().toISOString(),
+      }),
       workspace: input.workspace,
       options: {
         signal: input.signal,
@@ -391,15 +395,17 @@ export async function handleResearch(
           dependencies.writeStderr(`[research] calls=${event.completed}/${event.maximum}\n`);
         } else if (event.kind === "capability") {
           dependencies.writeStderr(
-            `[research] tool=${event.toolId} call=${event.callId} kind=${event.inputKind} status=${event.status}${event.itemCount === undefined ? "" : ` items=${event.itemCount}`}${event.termination === undefined ? "" : ` termination=${event.termination}`}${event.durationMs === undefined ? "" : ` duration_ms=${event.durationMs}`}${event.errorCode === undefined ? "" : ` error=${event.errorCode}`}\n`,
+            `[research] tool=${event.toolId} call=${event.callId} kind=${event.inputKind} status=${event.status}${event.itemCount === undefined ? "" : ` items=${event.itemCount}`}${event.termination === undefined ? "" : ` termination=${event.termination}`}${event.resultBytes === undefined ? "" : ` result_bytes=${event.resultBytes}`}${event.truncated === undefined ? "" : ` truncated=${event.truncated}`}${event.durationMs === undefined ? "" : ` duration_ms=${event.durationMs}`}${event.errorCode === undefined ? "" : ` error=${event.errorCode}`}\n`,
           );
         } else if (event.kind === "subagent") {
           dependencies.writeStderr(
             `[research] subagent=${event.roleId} task=${event.taskId} status=${event.status}${event.attempt === undefined ? "" : ` attempt=${event.attempt}`}${event.durationMs === undefined ? "" : ` duration_ms=${event.durationMs}`}${event.errorCode === undefined ? "" : ` error=${event.errorCode}`}\n`,
           );
+        } else if (event.kind === "task") {
+          dependencies.writeStderr(`[research] task=${event.taskId} status=${event.status}\n`);
         } else if (event.kind === "decision") {
           dependencies.writeStderr(
-            `[research] decision=${event.decisionId} status=${event.status} reason=${event.reasonCode}${event.taskId === undefined ? "" : ` task=${event.taskId}`}\n`,
+            `[research] decision=${event.decisionId} status=${event.status} reason=${event.reasonCode}${event.taskId === undefined ? "" : ` task=${event.taskId}`}${event.codeBytes === undefined ? "" : ` code_bytes=${event.codeBytes}`}${event.codeHash === undefined ? "" : ` code_hash=${event.codeHash}`}${event.errorCode === undefined ? "" : ` error=${event.errorCode}`}\n`,
           );
         } else if (event.kind === "artifact") {
           dependencies.writeStderr(`[research] workspace_artifact=${event.path}\n`);

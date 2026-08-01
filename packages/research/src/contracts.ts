@@ -253,6 +253,8 @@ export type ResearchEventV1 =
       itemCount?: number;
       complete?: boolean;
       termination?: string;
+      resultBytes?: number;
+      truncated?: boolean;
       durationMs?: number;
       errorCode?: string;
     }
@@ -264,6 +266,9 @@ export type ResearchEventV1 =
       status: "started" | "completed" | "failed";
       reasonCode: string;
       taskId?: string;
+      errorCode?: string;
+      codeBytes?: number;
+      codeHash?: string;
     }
   | { kind: "reconciliation"; seq: number; at: string; taskId: string; status: string }
   | { kind: "reconciliation_disposition"; seq: number; at: string; dispositionId: string; status: string }
@@ -283,7 +288,7 @@ export type ResearchEventV1 =
 
 export type ResearchOneShotEventV1 = Extract<
   ResearchEventV1,
-  { kind: "phase" | "progress" | "subagent" | "capability" | "decision" | "artifact" }
+  { kind: "phase" | "progress" | "task" | "subagent" | "capability" | "decision" | "artifact" }
 >;
 
 export type ResearchErrorCode =

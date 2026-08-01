@@ -36,6 +36,8 @@ export function formatResearchActivityEvent(event: ResearchOneShotEventV1): stri
       return `phase · ${event.phase}`;
     case "progress":
       return `budget · ${event.completed}/${event.maximum} calls`;
+    case "task":
+      return `task · ${event.taskId} · ${event.status}`;
     case "capability":
       return [
         `tool · ${event.toolId}`,
@@ -43,6 +45,8 @@ export function formatResearchActivityEvent(event: ResearchOneShotEventV1): stri
         event.status,
         event.itemCount === undefined ? "" : `${event.itemCount} items`,
         event.termination ?? "",
+        event.resultBytes === undefined ? "" : `${event.resultBytes} bytes`,
+        event.truncated === undefined ? "" : `truncated ${event.truncated}`,
         event.durationMs === undefined ? "" : `${event.durationMs} ms`,
         event.errorCode ?? "",
       ].filter(Boolean).join(" · ");
@@ -55,7 +59,14 @@ export function formatResearchActivityEvent(event: ResearchOneShotEventV1): stri
         event.errorCode ?? "",
       ].filter(Boolean).join(" · ");
     case "decision":
-      return `decision · ${event.reasonCode} · ${event.status}`;
+      return [
+        "decision",
+        event.reasonCode,
+        event.status,
+        event.codeBytes === undefined ? "" : `${event.codeBytes} code bytes`,
+        event.codeHash ?? "",
+        event.errorCode ?? "",
+      ].filter(Boolean).join(" · ");
     case "artifact":
       return `artifact · ${event.path}`;
   }
@@ -487,8 +498,8 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
           </div>
           {progress && <p role="status" className="m-0 text-xs text-muted-foreground">{progress}</p>}
           {activity.length > 0 && (
-            <section aria-live="polite" data-testid="research-activity">
-              <p className="m-0 mt-2 text-xs font-medium">{t("research.activity")}</p>
+            <details open aria-live="polite" data-testid="research-activity">
+              <summary className="mt-2 cursor-pointer text-xs font-medium">{t("research.activity")}</summary>
               <ol className="m-0 mt-1 max-h-64 space-y-1 overflow-auto pl-5 text-xs text-muted-foreground">
                 {activity.map((event) => (
                   <li key={event.seq} data-event-kind={event.kind}>
@@ -496,7 +507,7 @@ export function ResearchScreen({ ports, page }: ScreenProps): React.JSX.Element 
                   </li>
                 ))}
               </ol>
-            </section>
+            </details>
           )}
         </CardContent>
       </Card>

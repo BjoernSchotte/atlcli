@@ -12,11 +12,19 @@ export interface ResearchTaskDescriptionV1 {
   schema: typeof RESEARCH_TASK_DISPATCH_SCHEMA_V1;
   taskId: string;
   objective: string;
+  dependencyResults?: ResearchTaskDependencyResultV1[];
+}
+
+export interface ResearchTaskDependencyResultV1 {
+  taskId: string;
+  result: unknown;
 }
 
 export interface ResearchTaskAdmissionV1 {
   taskId: string;
   subagentType: string;
+  objective?: string;
+  dependsOnTaskIds?: readonly string[];
   grantedCapabilityIds: readonly string[];
   responseSchema: Record<string, unknown>;
   maxResultBytes: number;
@@ -35,9 +43,13 @@ export type ResearchDispatchErrorCodeV1 =
   | "response-schema-mismatch"
   | "task-budget-exceeded"
   | "task-already-dispatched"
+  | "dependency-not-ready"
+  | "dependency-result-mismatch"
   | "concurrency-exceeded"
   | "capability-denied"
   | "result-too-large"
+  | "structured-output-invalid"
+  | "subagent-provider-error"
   | "aborted"
   | "late-result";
 
@@ -79,6 +91,9 @@ export function encodeResearchTaskDescriptionV1(
     schema: RESEARCH_TASK_DISPATCH_SCHEMA_V1,
     taskId: value.taskId,
     objective: value.objective,
+    ...(value.dependencyResults?.length
+      ? { dependencyResults: value.dependencyResults }
+      : {}),
   } satisfies ResearchTaskDescriptionV1);
 }
 
@@ -106,6 +121,41 @@ function parseResearchTaskDescriptionV1(value: string): ResearchTaskDescriptionV
       "invalid-task-description",
       "Research task description is not a valid host-issued envelope.",
     );
+  }
+  const record = parsed as Record<string, unknown>;
+  if (Object.keys(record).some((key) =>
+    !["schema", "taskId", "objective", "dependencyResults"].includes(key)
+  )) {
+    throw new ResearchDispatchError(
+      "invalid-task-description",
+      "Research task description contains fields outside the host-issued envelope.",
+    );
+  }
+  if ((record.objective as string).length > 4_000) {
+    throw new ResearchDispatchError(
+      "invalid-task-description",
+      "Research task objective exceeds its host-owned limit.",
+    );
+  }
+  if (record.dependencyResults !== undefined) {
+    if (!Array.isArray(record.dependencyResults) || record.dependencyResults.length > 8) {
+      throw new ResearchDispatchError(
+        "invalid-task-description",
+        "Research task dependency results are invalid.",
+      );
+    }
+    const ids = new Set<string>();
+    for (const dependency of record.dependencyResults) {
+      if (!dependency || typeof dependency !== "object" || Array.isArray(dependency)) {
+        throw new ResearchDispatchError("invalid-task-description", "Research task dependency result is invalid.");
+      }
+      const entry = dependency as Record<string, unknown>;
+      if (Object.keys(entry).some((key) => key !== "taskId" && key !== "result") ||
+        typeof entry.taskId !== "string" || !entry.taskId || !("result" in entry) || ids.has(entry.taskId)) {
+        throw new ResearchDispatchError("invalid-task-description", "Research task dependency result is invalid.");
+      }
+      ids.add(entry.taskId);
+    }
   }
   return parsed as ResearchTaskDescriptionV1;
 }
@@ -159,6 +209,8 @@ export function createResearchDispatchInterceptionAdapter(options: {
     input: ResearchTaskToolInputV1,
     config: RunnableConfig,
   ): Promise<unknown>;
+  projectResult?: (value: unknown) => unknown;
+  acceptResult?: (taskId: string, result: unknown, rawResult: unknown) => void;
   onDiagnostic?: (diagnostic: ResearchDispatchDiagnosticV1) => void;
 }): ResearchDispatchInterceptionAdapter {
   if (options.maxTasks < 1) throw new Error("maxTasks must be at least 1.");
@@ -173,13 +225,33 @@ export function createResearchDispatchInterceptionAdapter(options: {
     }
     admissions.set(admission.taskId, admission);
   }
+  for (const admission of options.admissions) {
+    if (admission.objective !== undefined && (!admission.objective.trim() || admission.objective.length > 4_000)) {
+      throw new Error(`Invalid research task objective: ${admission.taskId}`);
+    }
+    const dependencies = admission.dependsOnTaskIds ?? [];
+    if (new Set(dependencies).size !== dependencies.length ||
+      dependencies.includes(admission.taskId) ||
+      dependencies.some((taskId) => !admissions.has(taskId))) {
+      throw new Error(`Invalid research task dependencies: ${admission.taskId}`);
+    }
+  }
 
   const taskStatuses = new Map<string, ResearchDispatchStatusV1>();
+  const completedResults = new Map<string, unknown>();
   let dispatchedTasks = 0;
   let activeInvocations = 0;
 
   const emit = (diagnostic: ResearchDispatchDiagnosticV1): void => {
-    if (diagnostic.taskId) taskStatuses.set(diagnostic.taskId, diagnostic.status);
+    if (diagnostic.taskId) {
+      const current = taskStatuses.get(diagnostic.taskId);
+      // A rejected duplicate or invalid transition is an observation, not a
+      // state transition of the already accepted attempt. Preserve terminal
+      // truth so dependency admission cannot be rolled back by a later call.
+      if (diagnostic.status !== "rejected" || current === undefined) {
+        taskStatuses.set(diagnostic.taskId, diagnostic.status);
+      }
+    }
     options.onDiagnostic?.(diagnostic);
   };
 
@@ -228,6 +300,39 @@ export function createResearchDispatchInterceptionAdapter(options: {
       `Research task is not admitted: ${taskId}`,
       taskId,
     );
+    if (admission.objective !== undefined && description.objective !== admission.objective) {
+      reject(
+        "invalid-task-description",
+        `Research task ${taskId} objective does not match its admitted graph node.`,
+        taskId,
+      );
+    }
+    const expectedDependencies = [...(admission.dependsOnTaskIds ?? [])];
+    const suppliedDependencies = description.dependencyResults ?? [];
+    if (expectedDependencies.some((dependencyTaskId) => taskStatuses.get(dependencyTaskId) !== "completed")) {
+      reject(
+        "dependency-not-ready",
+        `Research task ${taskId} has an incomplete dependency.`,
+        taskId,
+      );
+    }
+    if (suppliedDependencies.length !== expectedDependencies.length ||
+      suppliedDependencies.some((dependency) => !expectedDependencies.includes(dependency.taskId))) {
+      reject(
+        "dependency-result-mismatch",
+        `Research task ${taskId} did not supply the exact admitted dependency set.`,
+        taskId,
+      );
+    }
+    for (const dependency of suppliedDependencies) {
+      if (canonicalJson(dependency.result) !== canonicalJson(completedResults.get(dependency.taskId))) {
+        reject(
+          "dependency-result-mismatch",
+          `Research task ${taskId} supplied a modified dependency result.`,
+          taskId,
+        );
+      }
+    }
     if (input.subagent_type !== admission.subagentType) {
       reject(
         "subagent-type-mismatch",
@@ -332,7 +437,13 @@ export function createResearchDispatchInterceptionAdapter(options: {
       throw abortError();
     }
     if (first.kind === "error") {
-      emit({ taskId, status: "failed" });
+      emit({
+        taskId,
+        status: "failed",
+        code: first.error instanceof ResearchDispatchError
+          ? first.error.code
+          : "subagent-provider-error",
+      });
       throw first.error;
     }
     const resultBytes = serializedBytes(first.value);
@@ -343,6 +454,14 @@ export function createResearchDispatchInterceptionAdapter(options: {
         `Research task result exceeds ${admission.maxResultBytes} bytes (${resultBytes}).`,
       );
     }
+    const projectedResult = options.projectResult ? options.projectResult(first.value) : first.value;
+    try {
+      options.acceptResult?.(taskId, projectedResult, first.value);
+    } catch (error) {
+      emit({ taskId, status: "failed" });
+      throw error;
+    }
+    completedResults.set(taskId, structuredClone(projectedResult));
     emit({ taskId, status: "completed", resultBytes });
     return first.value;
   };

@@ -5,6 +5,10 @@
  * must reproduce their serialized JSON byte-for-byte when it introduces the
  * authoritative typed contracts.
  */
+import {
+  RESEARCH_PACKET_BODY_JSON_SCHEMA_V1,
+  RESEARCH_RECONCILIATION_BODY_JSON_SCHEMA_V1,
+} from "@atlcli/research";
 
 type JsonSchema = Record<string, unknown>;
 
@@ -57,59 +61,7 @@ const packetBaseProperties = (): Record<string, JsonSchema> => ({
   abstentionReason: boundedString(700),
 });
 
-export const RESEARCH_PACKET_BODY_SCHEMA_V1 = closedObject(
-  "ResearchPacketBodyV1",
-  {
-    schema: { const: "atlcli.research-packet-body/v1" },
-    ...packetBaseProperties(),
-    sourceIds: boundedStringArray(32),
-    findingCandidates: boundedObjectArray(
-      16,
-      closedObject(
-        "ResearchFindingCandidateV1",
-        {
-          id: boundedString(160),
-          classification: { type: "string", enum: ["fact", "inference"] },
-          summary: boundedString(800),
-          sourceIds: boundedStringArray(12),
-        },
-        ["id", "classification", "summary", "sourceIds"],
-      ),
-    ),
-    relationshipCandidates: boundedObjectArray(
-      12,
-      closedObject(
-        "ResearchRelationshipCandidateV1",
-        {
-          id: boundedString(160),
-          classification: { type: "string", enum: ["verified", "hypothesis"] },
-          jiraIssueKey: boundedString(100),
-          confluenceContentId: boundedString(200),
-          summary: boundedString(800),
-          sourceIds: boundedStringArray(12),
-        },
-        [
-          "id",
-          "classification",
-          "jiraIssueKey",
-          "confluenceContentId",
-          "summary",
-          "sourceIds",
-        ],
-      ),
-    ),
-  },
-  [
-    "schema",
-    "answeredQuestion",
-    "gaps",
-    "proposedFollowUps",
-    "coverageLimits",
-    "sourceIds",
-    "findingCandidates",
-    "relationshipCandidates",
-  ],
-);
+export const RESEARCH_PACKET_BODY_SCHEMA_V1 = RESEARCH_PACKET_BODY_JSON_SCHEMA_V1;
 
 export const RESEARCH_PACKET_BODY_SCHEMA_V2 = closedObject(
   "ResearchPacketBodyV2",
@@ -191,72 +143,7 @@ export const RESEARCH_PACKET_BODY_SCHEMA_V2 = closedObject(
   ],
 );
 
-export const RECONCILIATION_BODY_SCHEMA_V1 = closedObject(
-  "ReconciliationBodyV1",
-  {
-    schema: { const: "atlcli.reconciliation-body/v1" },
-    defects: boundedObjectArray(
-      16,
-      closedObject(
-        "ResearchReconciliationDefectV1",
-        {
-          id: boundedString(160),
-          severity: { type: "string", enum: ["blocking", "important", "minor"] },
-          target: closedObject(
-            "ResearchReconciliationTargetV1",
-            {
-              kind: {
-                type: "string",
-                enum: ["finding", "relationship", "claim", "section", "node", "coverage"],
-              },
-              id: boundedString(160),
-            },
-            ["kind", "id"],
-          ),
-          code: {
-            type: "string",
-            enum: [
-              "unsupported",
-              "contradicted",
-              "missing_coverage",
-              "overstated",
-              "instruction_mismatch",
-              "duplicate",
-              "stale",
-            ],
-          },
-          references: boundedObjectArray(
-            16,
-            closedObject(
-              "ResearchSupportRefV1",
-              {
-                kind: { type: "string", enum: ["source", "evidence"] },
-                id: boundedString(160),
-              },
-              ["kind", "id"],
-            ),
-          ),
-          explanation: boundedString(700),
-          suggestedAction: {
-            type: "string",
-            enum: ["accept", "revise", "downgrade", "add_follow_up", "abstain"],
-          },
-        },
-        [
-          "id",
-          "severity",
-          "target",
-          "code",
-          "references",
-          "explanation",
-          "suggestedAction",
-        ],
-      ),
-    ),
-    proposedFollowUps: boundedObjectArray(8, followUpSchema),
-  },
-  ["schema", "defects", "proposedFollowUps"],
-);
+export const RECONCILIATION_BODY_SCHEMA_V1 = RESEARCH_RECONCILIATION_BODY_JSON_SCHEMA_V1;
 
 export const PRODUCTION_RESPONSE_SCHEMA_FIXTURES = [
   {

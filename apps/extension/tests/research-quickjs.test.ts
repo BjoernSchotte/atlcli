@@ -8,7 +8,10 @@ import {
   normalizeResearchRequestV1,
 } from "../utils/research/contracts.js";
 import { ResearchCapabilityBroker } from "@atlcli/research";
-import { createResearchPtcTools } from "@atlcli/research/browser/agent";
+import {
+  createResearchPtcTools,
+  type ResearchPtcDiagnosticV1,
+} from "@atlcli/research/browser/agent";
 
 const toolNames = [
   "jira_issue_search",
@@ -83,7 +86,10 @@ describe("QuickJS research sandbox", () => {
       },
     });
     try {
-      const jiraSearch = createResearchPtcTools(broker).find(
+      const diagnostics: ResearchPtcDiagnosticV1[] = [];
+      const jiraSearch = createResearchPtcTools(broker, {
+        onDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
+      }).find(
         (candidate) => candidate.name === "jira_issue_search"
       );
       expect(jiraSearch).toBeDefined();
@@ -102,6 +108,11 @@ describe("QuickJS research sandbox", () => {
         )
       ) as { items: Array<{ issueKey: string }> };
       expect(continuation.items[0]?.issueKey).toBe("DEMO-2");
+      expect(diagnostics.filter((diagnostic) => diagnostic.outcome === "success")).toEqual([
+        expect.objectContaining({ inputKind: "search", itemCount: 1, resultBytes: expect.any(Number) }),
+        expect.objectContaining({ inputKind: "continuation", itemCount: 1, resultBytes: expect.any(Number) }),
+      ]);
+      expect(diagnostics.every((diagnostic) => !("result" in diagnostic))).toBe(true);
     } finally {
       broker.cancel();
     }

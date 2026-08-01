@@ -59,6 +59,8 @@ export interface ResearchPtcDiagnosticV1 {
   itemCount?: number;
   complete?: boolean;
   termination?: string;
+  resultBytes?: number;
+  truncated?: boolean;
   errorCode?: string;
   inputKeys?: string[];
   queryKeys?: string[];
@@ -66,6 +68,7 @@ export interface ResearchPtcDiagnosticV1 {
 
 export interface ResearchPtcToolOptions {
   onDiagnostic?: (diagnostic: ResearchPtcDiagnosticV1) => void;
+  onResult?: (tool: ResearchToolId, result: unknown) => void;
   now?: () => number;
 }
 
@@ -121,6 +124,8 @@ export function createResearchPtcTools(
         ...(nestedCursor ? { cursor: nestedCursor } : record),
         schema: RESEARCH_CAPABILITY_SCHEMAS[id].input,
       });
+      const serialized = jsonResult(result);
+      options.onResult?.(id, result);
       const page =
         typeof result === "object" && result !== null && "page" in result
           ? result.page
@@ -149,8 +154,18 @@ export function createResearchPtcTools(
         typeof page.termination === "string"
           ? { termination: page.termination }
           : {}),
+        resultBytes: new TextEncoder().encode(serialized).byteLength,
+        ...(typeof result === "object" &&
+        result !== null &&
+        "content" in result &&
+        typeof result.content === "object" &&
+        result.content !== null &&
+        "truncated" in result.content &&
+        typeof result.content.truncated === "boolean"
+          ? { truncated: result.content.truncated }
+          : {}),
       });
-      return jsonResult(result);
+      return serialized;
     } catch (error) {
       options.onDiagnostic?.({
         callId,

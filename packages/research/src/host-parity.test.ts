@@ -4,14 +4,20 @@ import {
   RESEARCH_ONE_SHOT_REQUEST_PATH_V1,
   RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1,
   createMemoryResearchWorkspace,
+  createResearchBriefV1,
+  encodeResearchTaskDescriptionV1,
   normalizeResearchRequestV1,
   type ResearchOneShotEventV1,
 } from "./index.js";
 import { runResearchAgent as runBrowserResearchAgent } from "./agent-runtime.browser.js";
 import { runResearchAgent as runNodeResearchAgent } from "./agent-runtime.node.js";
 import {
-  composeStandardResearchGraphV1,
+  composeResearchGraphV1,
 } from "./graph.js";
+import {
+  researchSubagentTypeForNodeV1,
+  researchTaskIdForNodeV1,
+} from "./dynamic-subagents.js";
 
 const request = normalizeResearchRequestV1({
   schema: "atlcli.research-request/v1",
@@ -24,7 +30,19 @@ const request = normalizeResearchRequestV1({
   wikiProvider: "rest",
 });
 
-const graph = composeStandardResearchGraphV1(request.question);
+const graph = composeResearchGraphV1(createResearchBriefV1({
+  sessionId: "research-session:host-parity",
+  turnId: "research-turn:host-parity",
+  objective: request.question,
+  scope: request.scope,
+  sourceClasses: ["jira", "confluence"],
+  asOf: "2026-07-31T12:00:00.000Z",
+  timezone: "UTC",
+  requestedEffort: "lookup",
+  requestedPlanApproval: "automatic",
+  requestedReconciliation: "off",
+}));
+const synthesizerNode = graph.nodes.find((node) => node.roleId === "synthesizer")!;
 
 const draft = {
   title: "Cross-host synthetic report",
@@ -35,10 +53,14 @@ const draft = {
 };
 
 function model() {
+  const description = encodeResearchTaskDescriptionV1({
+    taskId: researchTaskIdForNodeV1(graph, synthesizerNode),
+    objective: synthesizerNode.objective,
+  });
   const code = `
     const finalDraft = await task({
-      description: "Write the deterministic empty-evidence report.",
-      subagentType: "synthesizer",
+      description: ${JSON.stringify(description)},
+      subagentType: ${JSON.stringify(researchSubagentTypeForNodeV1(synthesizerNode))},
       responseSchema: ${JSON.stringify(RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1)}
     });
     finalDraft;

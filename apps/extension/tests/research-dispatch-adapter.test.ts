@@ -99,6 +99,10 @@ describe("research-owned native task dispatch interception", () => {
       expect(unknown.error?.message).toContain("not admitted");
       expect(calls).toEqual(["task-1"]);
       expect(adapter.snapshot().dispatchedTasks).toBe(1);
+      const duplicate = await session.eval(`${guestTask("task-1")}`, 5_000);
+      expect(duplicate.ok).toBe(false);
+      expect(duplicate.error?.message).toContain("already dispatched");
+      expect(adapter.snapshot().taskStatuses["task-1"]).toBe("completed");
     } finally {
       session.dispose();
     }
@@ -157,6 +161,32 @@ describe("research-owned native task dispatch interception", () => {
           code: "result-too-large",
         }),
       );
+    } finally {
+      session.dispose();
+    }
+  });
+
+  test("classifies upstream subagent failures without exposing provider details", async () => {
+    const diagnostics: ResearchDispatchDiagnosticV1[] = [];
+    const adapter = createResearchDispatchInterceptionAdapter({
+      admissions: [admission("provider-failure")],
+      maxTasks: 1,
+      maxConcurrency: 1,
+      async invokeUpstream() {
+        throw new Error("private provider response body");
+      },
+      onDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
+    });
+    const session = sessionFor(adapter);
+    try {
+      const result = await session.eval(`${guestTask("provider-failure")}`, 5_000);
+      expect(result.ok).toBe(false);
+      expect(diagnostics).toContainEqual({
+        taskId: "provider-failure",
+        status: "failed",
+        code: "subagent-provider-error",
+      });
+      expect(JSON.stringify(diagnostics)).not.toContain("private provider response body");
     } finally {
       session.dispose();
     }
@@ -255,6 +285,72 @@ describe("research-owned native task dispatch interception", () => {
     }
   });
 
+  test("admits a dependency only after completion and only with its unchanged typed result", async () => {
+    const firstResult = { taskId: "first", answer: "accepted packet" };
+    const adapter = createResearchDispatchInterceptionAdapter({
+      admissions: [
+        admission("first", [], { objective: "Research first" }),
+        admission("dependent", [], {
+          objective: "Research dependent",
+          dependsOnTaskIds: ["first"],
+        }),
+        admission("tampered", [], {
+          objective: "Research tampered",
+          dependsOnTaskIds: ["first"],
+        }),
+      ],
+      maxTasks: 3,
+      maxConcurrency: 1,
+      async invokeUpstream(_input, config) {
+        const taskId = String(config.configurable?.[RESEARCH_TASK_ID_CONFIG_KEY]);
+        return taskId === "first" ? firstResult : { taskId, answer: "bounded" };
+      },
+    });
+    const invoke = (taskId: string, dependencyResults?: Array<{ taskId: string; result: unknown }>) =>
+      adapter.invoke({
+        description: encodeResearchTaskDescriptionV1({
+          taskId,
+          objective: `Research ${taskId}`,
+          ...(dependencyResults ? { dependencyResults } : {}),
+        }),
+        subagent_type: "focused-researcher",
+      }, {
+        configurable: { [DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY]: PACKET_SCHEMA },
+      });
+
+    await expect(invoke("dependent", [{ taskId: "first", result: firstResult }]))
+      .rejects.toMatchObject({ code: "dependency-not-ready" });
+
+    const fresh = createResearchDispatchInterceptionAdapter({
+      admissions: [
+        admission("first", [], { objective: "Research first" }),
+        admission("dependent", [], { objective: "Research dependent", dependsOnTaskIds: ["first"] }),
+        admission("tampered", [], { objective: "Research tampered", dependsOnTaskIds: ["first"] }),
+      ],
+      maxTasks: 3,
+      maxConcurrency: 1,
+      async invokeUpstream(_input, config) {
+        const taskId = String(config.configurable?.[RESEARCH_TASK_ID_CONFIG_KEY]);
+        return taskId === "first" ? firstResult : { taskId, answer: "bounded" };
+      },
+    });
+    const invokeFresh = (taskId: string, dependencyResults?: Array<{ taskId: string; result: unknown }>) =>
+      fresh.invoke({
+        description: encodeResearchTaskDescriptionV1({
+          taskId,
+          objective: `Research ${taskId}`,
+          ...(dependencyResults ? { dependencyResults } : {}),
+        }),
+        subagent_type: "focused-researcher",
+      }, { configurable: { [DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY]: PACKET_SCHEMA } });
+
+    await expect(invokeFresh("first")).resolves.toEqual(firstResult);
+    await expect(invokeFresh("dependent", [{ taskId: "first", result: firstResult }]))
+      .resolves.toEqual({ taskId: "dependent", answer: "bounded" });
+    await expect(invokeFresh("tampered", [{ taskId: "first", result: { ...firstResult, answer: "changed" } }]))
+      .rejects.toMatchObject({ code: "dependency-result-mismatch" });
+  });
+
   test("intercepts the actual declarative DeepAgents dynamic-responseSchema path", async () => {
     const result = await runDeclarativeDispatchCharacterization();
 
@@ -273,8 +369,8 @@ describe("research-owned native task dispatch interception", () => {
     });
     expect(result.productionSchemas.metrics).toEqual({
       ResearchPacketBodyV1: {
-        serializedBytes: 2_140,
-        propertyCount: 23,
+        serializedBytes: 2_494,
+        propertyCount: 27,
         nestingDepth: 4,
       },
       ResearchPacketBodyV2: {
@@ -283,8 +379,8 @@ describe("research-owned native task dispatch interception", () => {
         nestingDepth: 4,
       },
       ReconciliationBodyV1: {
-        serializedBytes: 1_638,
-        propertyCount: 16,
+        serializedBytes: 1_859,
+        propertyCount: 18,
         nestingDepth: 5,
       },
     });

@@ -92,23 +92,57 @@ const PACKED_REPORT_INPUT = {
 };
 
 const PACKED_WORKFLOW_CODE = `
-const wiki = await task({
-  description: "Retrieve the bounded Confluence evidence packet.",
-  subagentType: "wiki-retrieval",
-  responseSchema: ${JSON.stringify(RESEARCH_WORKER_PACKET_SCHEMA_V1)}
-});
-const jira = await task({
-  description: "Retrieve the bounded Jira evidence packet using this Confluence context: " + JSON.stringify(wiki),
-  subagentType: "jira-retrieval",
+const [jira, wiki] = await Promise.all([
+  task({
+    description: JSON.stringify({ schema: "atlcli.research-task-dispatch/v1", taskId: "research-task:r1:jira-research:a1", objective: "Acquire detail-backed Jira evidence for the accepted objective." }),
+    subagentType: "focused-researcher-jira-research",
+    responseSchema: ${JSON.stringify(RESEARCH_WORKER_PACKET_SCHEMA_V1)}
+  }),
+  task({
+    description: JSON.stringify({ schema: "atlcli.research-task-dispatch/v1", taskId: "research-task:r1:wiki-research:a1", objective: "Acquire detail-backed Confluence evidence for the accepted objective." }),
+    subagentType: "focused-researcher-wiki-research",
+    responseSchema: ${JSON.stringify(RESEARCH_WORKER_PACKET_SCHEMA_V1)}
+  })
+]);
+const joined = await task({
+  description: JSON.stringify({
+    schema: "atlcli.research-task-dispatch/v1",
+    taskId: "research-task:r1:cross-product-join:a1",
+    objective: "Join accepted Jira and Confluence packets without new reads.",
+    dependencyResults: [
+      { taskId: "research-task:r1:jira-research:a1", result: jira },
+      { taskId: "research-task:r1:wiki-research:a1", result: wiki }
+    ]
+  }),
+  subagentType: "document-distiller-cross-product-join",
   responseSchema: ${JSON.stringify(RESEARCH_WORKER_PACKET_SCHEMA_V1)}
 });
 const critique = await task({
-  description: "Critique these packets: " + JSON.stringify({ wiki, jira }),
+  description: JSON.stringify({
+    schema: "atlcli.research-task-dispatch/v1",
+    taskId: "research-task:r1:reconciler:a1",
+    objective: "Critique accepted packets in fresh context and return typed defects.",
+    dependencyResults: [
+      { taskId: "research-task:r1:jira-research:a1", result: jira },
+      { taskId: "research-task:r1:wiki-research:a1", result: wiki },
+      { taskId: "research-task:r1:cross-product-join:a1", result: joined }
+    ]
+  }),
   subagentType: "reconciler",
   responseSchema: ${JSON.stringify(RESEARCH_CRITIQUE_SCHEMA_V1)}
 });
 const finalDraft = await task({
-  description: "Synthesize the accepted packets and critique: " + JSON.stringify({ wiki, jira, critique }),
+  description: JSON.stringify({
+    schema: "atlcli.research-task-dispatch/v1",
+    taskId: "research-task:r1:synthesizer:a1",
+    objective: "Write exactly one typed final report draft from accepted packets and dispositions.",
+    dependencyResults: [
+      { taskId: "research-task:r1:jira-research:a1", result: jira },
+      { taskId: "research-task:r1:wiki-research:a1", result: wiki },
+      { taskId: "research-task:r1:cross-product-join:a1", result: joined },
+      { taskId: "research-task:r1:reconciler:a1", result: critique }
+    ]
+  }),
   subagentType: "synthesizer",
   responseSchema: ${JSON.stringify(RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1)}
 });
@@ -329,28 +363,56 @@ function anthropicMessage(content, stopReason, call) {
 
 const packedReportInput = ${JSON.stringify(PACKED_REPORT_INPUT)};
 const wikiPacket = {
-  role: "wiki-retrieval",
-  summary: "The packed design page explicitly names DEMO-1.",
-  findings: [{
+  schema: "atlcli.research-packet-body/v1",
+  answeredQuestion: "The packed design page explicitly names DEMO-1.",
+  sourceIds: ["wiki:1001"],
+  findingCandidates: [{
+    id: "finding:wiki-explicit-link",
+    classification: "fact",
     summary: "The packed design page explicitly names DEMO-1.",
     sourceIds: ["wiki:1001"],
   }],
-  limitations: [],
+  relationshipCandidates: [],
+  gaps: [],
+  proposedFollowUps: [],
+  coverageLimits: [],
 };
 const jiraPacket = {
-  role: "jira-retrieval",
-  summary: "DEMO-1 links directly to the packed design page.",
-  findings: [{
+  schema: "atlcli.research-packet-body/v1",
+  answeredQuestion: "DEMO-1 links directly to the packed design page.",
+  sourceIds: ["jira:DEMO-1"],
+  findingCandidates: [{
+    id: "finding:jira-explicit-link",
+    classification: "fact",
     summary: "DEMO-1 links directly to the packed design page.",
     sourceIds: ["jira:DEMO-1"],
   }],
-  limitations: [],
+  relationshipCandidates: [],
+  gaps: [],
+  proposedFollowUps: [],
+  coverageLimits: [],
+};
+const joinedPacket = {
+  schema: "atlcli.research-packet-body/v1",
+  answeredQuestion: "DEMO-1 and the packed design page explicitly cross-reference each other.",
+  sourceIds: ["jira:DEMO-1", "wiki:1001"],
+  findingCandidates: [],
+  relationshipCandidates: [{
+    id: "relationship:demo-1-wiki-1001",
+    classification: "verified",
+    jiraIssueKey: "DEMO-1",
+    confluenceContentId: "1001",
+    summary: "DEMO-1 and the packed design page explicitly cross-reference each other.",
+    sourceIds: ["jira:DEMO-1", "wiki:1001"],
+  }],
+  gaps: [],
+  proposedFollowUps: [],
+  coverageLimits: [],
 };
 const critique = {
-  status: "satisfied",
-  assessment: "The explicit cross-link is supported by both retrieved details.",
+  schema: "atlcli.reconciliation-body/v1",
   defects: [],
-  suggestedRepairTasks: [],
+  proposedFollowUps: [],
 };
 
 const nativeFetch = globalThis.fetch.bind(globalThis);
@@ -420,7 +482,7 @@ globalThis.fetch = async (input, init) => {
       );
     };
 
-    if (serializedRequest.includes("You are the wiki-retrieval specialist")) {
+    if (serializedRequest.includes("Host-admitted specialization research-node:wiki-research:")) {
       if (!serializedMessages.includes("atlcli.ptc/wiki.page.get.output/v1")) {
         return anthropicMessage(
           [{
@@ -436,7 +498,7 @@ globalThis.fetch = async (input, init) => {
       return structured(wikiPacket);
     }
 
-    if (serializedRequest.includes("You are the jira-retrieval specialist")) {
+    if (serializedRequest.includes("Host-admitted specialization research-node:jira-research:")) {
       if (!serializedMessages.includes("atlcli.ptc/jira.issue.get.output/v1")) {
         return anthropicMessage(
           [{
@@ -454,6 +516,10 @@ globalThis.fetch = async (input, init) => {
 
     if (serializedRequest.includes("You are the reconciler specialist")) {
       return structured(critique);
+    }
+
+    if (serializedRequest.includes("You are the document-distiller specialist")) {
+      return structured(joinedPacket);
     }
 
     if (serializedRequest.includes("You are the synthesizer specialist")) {
@@ -902,8 +968,8 @@ test("intercepts declarative dynamic-schema dispatches in a packed MV3 worker", 
   });
   expect(response.result?.productionSchemas.metrics).toEqual({
     ResearchPacketBodyV1: {
-      serializedBytes: 2_140,
-      propertyCount: 23,
+      serializedBytes: 2_494,
+      propertyCount: 27,
       nestingDepth: 4,
     },
     ResearchPacketBodyV2: {
@@ -912,8 +978,8 @@ test("intercepts declarative dynamic-schema dispatches in a packed MV3 worker", 
       nestingDepth: 4,
     },
     ReconciliationBodyV1: {
-      serializedBytes: 1_638,
-      propertyCount: 16,
+      serializedBytes: 1_859,
+      propertyCount: 18,
       nestingDepth: 5,
     },
   });
@@ -1099,7 +1165,7 @@ test("runs bounded PTC in packed MV3, recreates workers, cancels, and renders sa
   expect(jiraSearches[0]?.jql).toContain('updated >= "2026-07-23"');
   expect(wikiSearches[0]?.cql).toContain('space in ("KB")');
   expect(wikiSearches[0]?.cql).toContain('lastmodified >= "2026-07-23"');
-  expect(fetches.filter((event) => event.apiKeyPresent)).toHaveLength(8);
+  expect(fetches.filter((event) => event.apiKeyPresent)).toHaveLength(9);
   expect(JSON.stringify(successEvents)).not.toContain(FAKE_KEY);
   expect(
     fetches.some((event) =>

@@ -9,7 +9,12 @@ import {
   type ResearchBriefV1,
   type ResearchGraphV1,
 } from "@atlcli/research/graph";
-import { ResearchCapabilityBroker, createResearchBriefV1 } from "@atlcli/research";
+import {
+  ResearchCapabilityBroker,
+  createResearchBriefV1,
+  encodeResearchTaskDescriptionV1,
+  type ResearchOneShotEventV1,
+} from "@atlcli/research";
 import {
   RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1,
 } from "@atlcli/research";
@@ -26,6 +31,8 @@ import {
   compileDynamicResearchSubagents,
   createBoundedResearchSubagentMiddleware,
   providerCompatibleResearchSchema,
+  researchSubagentTypeForNodeV1,
+  researchTaskIdForNodeV1,
   responseSchemaForResearchRole,
 } from "@atlcli/research/browser/agent";
 import {
@@ -103,6 +110,23 @@ function jiraAndSynthesisGraph(): ResearchGraphV1 {
   ));
 }
 
+function taskEnvelope(
+  graph: ResearchGraphV1,
+  nodeId: string,
+  dependencyResults?: Array<{ taskId: string; result: unknown }>,
+): { description: string; subagentType: string } {
+  const node = graph.nodes.find((candidate) => candidate.id === nodeId);
+  if (!node?.roleId) throw new Error(`Missing subagent node: ${nodeId}`);
+  return {
+    description: encodeResearchTaskDescriptionV1({
+      taskId: researchTaskIdForNodeV1(graph, node),
+      objective: node.objective,
+      ...(dependencyResults?.length ? { dependencyResults } : {}),
+    }),
+    subagentType: researchSubagentTypeForNodeV1(node),
+  };
+}
+
 test("derives a bounded LangGraph super-step allowance from the admitted workflow", () => {
   expect(researchRecursionLimitV1()).toBe(24);
   expect(researchRecursionLimitV1(synthesisOnlyGraph())).toBe(40);
@@ -110,6 +134,8 @@ test("derives a bounded LangGraph super-step allowance from the admitted workflo
 });
 
 test("repairs one synthesizer schema failure and fails fast after the bounded retry", async () => {
+  const graph = synthesisOnlyGraph();
+  const synthesisTask = taskEnvelope(graph, "research-node:synthesizer");
   const validDraft = JSON.stringify({
     title: "Repaired",
     executiveSummary: "No supported relationship was found.",
@@ -134,6 +160,7 @@ test("repairs one synthesizer schema failure and fails fast after the bounded re
   });
   const middleware = createBoundedResearchSubagentMiddleware(
     model,
+    graph,
     [{
       name: "synthesizer",
       description: "Synthetic synthesizer.",
@@ -155,8 +182,8 @@ test("repairs one synthesizer schema failure and fails fast after the bounded re
   const taskTool = middleware.tools?.[0];
   expect(taskTool).toBeDefined();
   await expect(taskTool!.invoke({
-    description: "Write the report.",
-    subagent_type: "synthesizer",
+    description: synthesisTask.description,
+    subagent_type: synthesisTask.subagentType,
   })).resolves.toBe(validDraft);
   expect(invokes).toBe(2);
   expect(diagnostics).toEqual(["started:1", "repairing:2", "completed:1"]);
@@ -174,6 +201,7 @@ test("repairs one synthesizer schema failure and fails fast after the bounded re
   });
   const failing = createBoundedResearchSubagentMiddleware(
     model,
+    graph,
     [{
       name: "synthesizer",
       description: "Synthetic synthesizer.",
@@ -189,14 +217,16 @@ test("repairs one synthesizer schema failure and fails fast after the bounded re
     { onFatal: (error) => { fatal = error; } },
   );
   await expect(failing.tools![0]!.invoke({
-    description: "Write the report.",
-    subagent_type: "synthesizer",
+    description: synthesisTask.description,
+    subagent_type: synthesisTask.subagentType,
   })).rejects.toThrow("structured output");
   expect(invokes).toBe(2);
   expect(fatal).toBeInstanceOf(Error);
 });
 
 test("repairs a provider-shaped synthesizer result rejected by the authoritative host schema", async () => {
+  const graph = synthesisOnlyGraph();
+  const synthesisTask = taskEnvelope(graph, "research-node:synthesizer");
   const diagnostics: string[] = [];
   let invokes = 0;
   const invalidDraft = JSON.stringify({
@@ -223,6 +253,7 @@ test("repairs a provider-shaped synthesizer result rejected by the authoritative
   });
   const middleware = createBoundedResearchSubagentMiddleware(
     model,
+    graph,
     [{
       name: "synthesizer",
       description: "Synthetic synthesizer.",
@@ -241,8 +272,8 @@ test("repairs a provider-shaped synthesizer result rejected by the authoritative
   );
 
   await expect(middleware.tools![0]!.invoke({
-    description: "Write the report.",
-    subagent_type: "synthesizer",
+    description: synthesisTask.description,
+    subagent_type: synthesisTask.subagentType,
   })).resolves.toBe(validDraft);
   expect(invokes).toBe(2);
   expect(diagnostics).toEqual(["started", "repairing", "completed"]);
@@ -308,26 +339,37 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     });
 
     expect(specs.map((spec) => spec.name)).toEqual([
-      "focused-researcher",
-      "document-distiller",
-      "coverage-moderator",
+      "focused-researcher-jira-research",
+      "focused-researcher-wiki-research",
+      "document-distiller-cross-product-join",
+      "coverage-moderator-coverage-moderation",
       "reconciler",
       "synthesizer",
     ]);
     expect(specs.every((spec) => spec.tools?.length === 0)).toBe(true);
     expect(specs[0]?.middleware).toHaveLength(1);
-    expect(specs[1]?.middleware).toHaveLength(0);
+    expect(specs[1]?.middleware).toHaveLength(1);
     expect(specs[2]?.middleware).toHaveLength(0);
     expect(specs[3]?.middleware).toHaveLength(0);
     expect(specs[4]?.middleware).toHaveLength(0);
+    expect(specs[5]?.middleware).toHaveLength(0);
     expect(specs.every((spec) => !("responseFormat" in spec))).toBe(true);
     expect(specs[0]?.systemPrompt).toContain("exactly two bounded stages");
     expect(specs[0]?.systemPrompt).toContain("Inspect every returned candidate summary");
     expect(specs[0]?.systemPrompt).toContain("Search summaries are screening evidence only");
     expect(specs[0]?.systemPrompt).toContain("at most 8 selected candidates");
-    expect(specs[0]?.systemPrompt).toContain("Make exactly one eval call");
     expect(specs[0]?.systemPrompt).toContain("tools.jiraIssueSearch");
-    expect(specs[4]?.systemPrompt).toContain("sole report author");
+    expect(specs[0]?.systemPrompt).toContain("<project-baseline>");
+    expect(specs[0]?.systemPrompt).toContain("at most four times total");
+    expect(specs[0]?.systemPrompt).toContain(
+      "both its Jira issue key and its Confluence content ID are non-empty identifiers",
+    );
+    expect(specs[0]?.systemPrompt).toContain(
+      "If either endpoint is unknown, do not emit a relationshipCandidate",
+    );
+    expect(specs[1]?.systemPrompt).toContain("Make exactly one eval call");
+    expect(specs[1]?.systemPrompt).toContain("tools.wikiSearch");
+    expect(specs[5]?.systemPrompt).toContain("sole report author");
   });
 
   test("preserves successful named-page searches when a later bounded query fails", () => {
@@ -344,7 +386,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       maxDetailItemsPerProduct: 4,
       maxPacketChars: 8_000,
     });
-    const focused = specs.find((spec) => spec.name === "focused-researcher");
+    const focused = specs.find((spec) => spec.name === "focused-researcher-wiki-research");
 
     expect(focused?.systemPrompt).toContain("partial-title-query-set");
     expect(focused?.systemPrompt).toContain("catch { failures += 1; }");
@@ -352,10 +394,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     expect(focused?.systemPrompt).toContain("queryText: group.text");
     expect(focused?.systemPrompt).toContain("const chosen = exact ?? matches[0]");
     expect(focused?.systemPrompt).toContain(
-      'const requiredQueryTexts = ["One","Two","Three","Four"];'
-    );
-    expect(focused?.systemPrompt).toContain(
-      "Do not omit, rewrite, or reorder requiredQueryTexts"
+      'const wantedTitles = ["One","Two","Three","Four"];'
     );
   });
 
@@ -471,26 +510,38 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
   test("instructs the supervisor to generate task-shaped parallel waves and delegate final authorship", () => {
     const prompt = buildDynamicSupervisorPrompt(crossProductGraph());
 
-    expect(prompt).toContain("Write the JavaScript yourself for this question");
-    expect(prompt).toContain("Promise.all groups of at most 3");
+    expect(prompt).toContain("Write the JavaScript yourself for this accepted graph");
+    expect(prompt).toContain("Promise.all may contain only nodes with the same topologicalWave and at most 3 entries");
+    expect(prompt).toContain("Execute topologicalWave values strictly in ascending order");
+    expect(prompt).toContain("never put a node in the same Promise.all as any direct or transitive dependency");
+    expect(prompt).toContain("nodeId=research-node:jira-research; topologicalWave=1");
+    expect(prompt).toContain("nodeId=research-node:cross-product-join; topologicalWave=2");
+    expect(prompt).toContain("nodeId=research-node:reconciler; topologicalWave=4");
+    expect(prompt).toContain("nodeId=research-node:synthesizer; topologicalWave=5");
+    expect(prompt).toContain("The only allowed envelope keys are schema, taskId, objective, and dependencyResults");
     expect(prompt).toContain("Execute only the host-admitted graph nodes");
-    expect(prompt).toContain("focused-researcher acquires Jira or Confluence evidence");
+    expect(prompt).toContain("two focused-researcher nodes are never interchangeable");
+    expect(prompt).toContain("atlcli.research-task-dispatch/v1");
     expect(prompt).toContain("Every task call must include its appropriate responseSchema");
     expect(prompt).toContain("exactly one fresh-context independent critic");
-    expect(prompt).toContain("Do not repeat focused-researcher nodes");
-    expect(prompt).toContain("exactly one synthesizer as the final task");
+    expect(prompt).toContain("Duplicate task IDs are rejected before model or provider work");
+    expect(prompt).toContain("Console APIs are intentionally unavailable");
+    expect(prompt).toContain("Never call console.log");
+    expect(prompt).toContain("exactly the listed synthesizer node as the final task");
     expect(prompt).toContain("copy that object unchanged");
     expect(prompt).toContain("do not execute a fixed all-roles pipeline");
     expect(prompt).not.toContain("paste verbatim");
     expect(prompt).not.toContain("Normative workflow program");
     expect(
-      ((RESEARCH_CRITIQUE_SCHEMA_V1.properties as Record<string, unknown>).suggestedRepairTasks as {
-        items: { properties: { subagentType: { enum: string[] } } };
-      }).items.properties.subagentType.enum,
-    ).toEqual(["document-distiller", "contradiction-verifier"]);
+      ((RESEARCH_CRITIQUE_SCHEMA_V1.properties as Record<string, unknown>).proposedFollowUps as {
+        items: { properties: { reasonCode: { enum: string[] } } };
+      }).items.properties.reasonCode.enum,
+    ).toEqual(["coverage_gap", "contradiction", "negative_claim", "stale_or_truncated"]);
   });
 
   test("uses one createDeepAgent invocation and native task dispatch for final synthesis", async () => {
+    const graph = synthesisOnlyGraph();
+    const synthesisTask = taskEnvelope(graph, "research-node:synthesizer");
     const draft = {
       title: "Synthetic workflow report",
       executiveSummary: "The bounded workflow completed without source findings.",
@@ -500,8 +551,8 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     };
     const code = `
       const finalDraft = await task({
-        description: "Write the final bounded report from an empty accepted packet set.",
-        subagentType: "synthesizer",
+        description: ${JSON.stringify(synthesisTask.description)},
+        subagentType: ${JSON.stringify(synthesisTask.subagentType)},
         responseSchema: ${JSON.stringify(RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1)}
       });
       finalDraft;
@@ -520,7 +571,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
         jira: { async searchPage() { return { items: [] }; }, async getIssue() { throw new Error("unused"); } },
         wiki: { async searchPage() { return { items: [] }; }, async getPage() { throw new Error("unused"); } },
       },
-      researchGraph: synthesisOnlyGraph(),
+      researchGraph: graph,
       runId: "dynamic-native-task-invocation",
       workspace,
       options: { onEvent: (event) => eventKinds.push(event.kind) },
@@ -540,7 +591,9 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       "phase", "progress",
       "phase", "progress",
       "decision",
-      "subagent", "subagent",
+      "decision",
+      "subagent", "task", "subagent",
+      "decision",
       "decision",
       "phase", "progress",
       "decision", "decision",
@@ -549,64 +602,288 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
     ]);
     expect(dynamicModel.callCount).toBe(3);
     expect(dynamicModel.calls[0]?.messages.some((message) => message.text.includes("Run this as a workflow"))).toBe(true);
-    expect(dynamicModel.calls[1]?.messages.some((message) => message.text.includes("empty accepted packet set"))).toBe(true);
+    expect(dynamicModel.calls[1]?.messages.some((message) => message.text.includes("Write exactly one typed final report draft"))).toBe(true);
     expect(dynamicModel.calls[1]?.messages.some((message) => message.text.includes("Run this as a workflow"))).toBe(false);
   });
 
-  test("coalesces duplicate singleton retrieval dispatches before model or provider work", async () => {
-    const packet = {
-      role: "coverage-moderator",
-      summary: "One bounded Jira packet.",
-      findings: [],
-      limitations: [],
-    };
+  test("rejects a second supervisor eval without repeating subagent work", async () => {
+    const graph = synthesisOnlyGraph();
+    const synthesisTask = taskEnvelope(graph, "research-node:synthesizer");
     const draft = {
-      title: "Coalesced workflow report",
-      executiveSummary: "Duplicate singleton dispatches used one acquisition result.",
+      title: "Single workflow only",
+      executiveSummary: "The first workflow returned a typed draft.",
       findings: [],
       relationships: [],
-      limitations: [],
+      limitations: ["Synthetic one-shot eval admission test."],
+    };
+    const firstWorkflow = `
+      await task({
+        description: ${JSON.stringify(synthesisTask.description)},
+        subagentType: ${JSON.stringify(synthesisTask.subagentType)},
+        responseSchema: ${JSON.stringify(RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1)}
+      });
+    `;
+    const dynamicModel = fakeModel()
+      .respondWithTools([{ name: "eval", args: { code: firstWorkflow } }])
+      .respondWithTools([{ name: "AtlcliResearchAgentDraftV1", args: draft }])
+      .respondWithTools([{ name: "eval", args: { code: "({ repeated: true });" } }]);
+    const decisions: ResearchOneShotEventV1[] = [];
+
+    await expect(runResearchAgent({
+      model: dynamicModel,
+      request,
+      providers: {
+        jira: { async searchPage() { return { items: [] }; }, async getIssue() { throw new Error("unused"); } },
+        wiki: { async searchPage() { return { items: [] }; }, async getPage() { throw new Error("unused"); } },
+      },
+      researchGraph: graph,
+      runId: "dynamic-second-supervisor-eval",
+      options: { onEvent: (event) => decisions.push(event) },
+    })).rejects.toThrow("another QuickJS workflow");
+
+    expect(decisions).toContainEqual(expect.objectContaining({
+      kind: "decision",
+      decisionId: "central-supervisor-eval:a2",
+      status: "failed",
+      reasonCode: "multiple-eval-attempt",
+      errorCode: "eval-retry-after-success",
+    }));
+    expect(dynamicModel.callCount).toBe(3);
+  });
+
+  test("permits one supervisor code repair before any subagent starts", async () => {
+    const graph = synthesisOnlyGraph();
+    const synthesisTask = taskEnvelope(graph, "research-node:synthesizer");
+    const draft = {
+      title: "Pre-dispatch repair",
+      executiveSummary: "The repaired workflow completed once.",
+      findings: [],
+      relationships: [],
+      limitations: ["Synthetic pre-dispatch repair test."],
+    };
+    const repairedWorkflow = `
+      const finalDraft = await task({
+        description: ${JSON.stringify(synthesisTask.description)},
+        subagentType: ${JSON.stringify(synthesisTask.subagentType)},
+        responseSchema: ${JSON.stringify(RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1)}
+      });
+      finalDraft;
+    `;
+    const dynamicModel = fakeModel()
+      .respondWithTools([{ name: "eval", args: { code: "throw new Error('synthetic compile failure');" } }])
+      .respondWithTools([{ name: "eval", args: { code: repairedWorkflow } }])
+      .respondWithTools([{ name: "AtlcliResearchAgentDraftV1", args: draft }])
+      .respondWithTools([{ name: "AtlcliResearchAgentDraftV1", args: draft }]);
+    const decisions: ResearchOneShotEventV1[] = [];
+
+    const report = await runResearchAgent({
+      model: dynamicModel,
+      request,
+      providers: {
+        jira: { async searchPage() { return { items: [] }; }, async getIssue() { throw new Error("unused"); } },
+        wiki: { async searchPage() { return { items: [] }; }, async getPage() { throw new Error("unused"); } },
+      },
+      researchGraph: graph,
+      runId: "dynamic-pre-dispatch-eval-repair",
+      options: { onEvent: (event) => decisions.push(event) },
+    });
+
+    expect(report.title).toBe(draft.title);
+    expect(decisions).toContainEqual(expect.objectContaining({
+      kind: "decision",
+      decisionId: "central-supervisor-eval:a1",
+      status: "failed",
+      reasonCode: "supervisor-eval-failed",
+    }));
+    expect(decisions).toContainEqual(expect.objectContaining({
+      kind: "decision",
+      decisionId: "central-supervisor-eval:a2",
+      status: "completed",
+      reasonCode: "pre-dispatch-eval-repaired",
+    }));
+    expect(dynamicModel.callCount).toBe(4);
+  });
+
+  test("admits every no-fault graph node once across parallel and dependent native task groups", async () => {
+    const graph = composeResearchGraphV1(graphBrief(
+      request.question,
+      ["jira", "confluence"],
+      "analysis",
+      "auto",
+    ));
+    const jira = graph.nodes.find((node) => node.id === "research-node:jira-research")!;
+    const wiki = graph.nodes.find((node) => node.id === "research-node:wiki-research")!;
+    const join = graph.nodes.find((node) => node.id === "research-node:cross-product-join")!;
+    const reconciler = graph.nodes.find((node) => node.id === "research-node:reconciler")!;
+    const synthesizer = graph.nodes.find((node) => node.id === "research-node:synthesizer")!;
+    const taskId = (node: typeof jira) => researchTaskIdForNodeV1(graph, node);
+    const subagentType = (node: typeof jira) => researchSubagentTypeForNodeV1(node);
+    const emptyPacket = (answeredQuestion: string) => ({
+      schema: "atlcli.research-packet-body/v1",
+      answeredQuestion,
+      sourceIds: [],
+      findingCandidates: [],
+      relationshipCandidates: [],
+      gaps: [],
+      proposedFollowUps: [],
+      coverageLimits: ["Synthetic no-source branch-coverage packet."],
+    });
+    const critique = {
+      schema: "atlcli.reconciliation-body/v1",
+      defects: [],
+      proposedFollowUps: [],
+    };
+    const draft = {
+      title: "Validated dynamic graph",
+      executiveSummary: "All admitted graph nodes completed once.",
+      findings: [],
+      relationships: [],
+      limitations: ["Synthetic no-source branch-coverage run."],
     };
     const code = `
       const packets = await Promise.all([
-        task({ description: "Run singleton coverage check A.", subagentType: "coverage-moderator", responseSchema: ${JSON.stringify(RESEARCH_ANALYSIS_PACKET_SCHEMA_V1)} }),
-        task({ description: "Run singleton coverage check B.", subagentType: "coverage-moderator", responseSchema: ${JSON.stringify(RESEARCH_ANALYSIS_PACKET_SCHEMA_V1)} })
+        task({
+          description: JSON.stringify({ schema: "atlcli.research-task-dispatch/v1", taskId: ${JSON.stringify(taskId(jira))}, objective: ${JSON.stringify(jira.objective)} }),
+          subagentType: ${JSON.stringify(subagentType(jira))},
+          responseSchema: ${JSON.stringify(RESEARCH_WORKER_PACKET_SCHEMA_V1)}
+        }),
+        task({
+          description: JSON.stringify({ schema: "atlcli.research-task-dispatch/v1", taskId: ${JSON.stringify(taskId(wiki))}, objective: ${JSON.stringify(wiki.objective)} }),
+          subagentType: ${JSON.stringify(subagentType(wiki))},
+          responseSchema: ${JSON.stringify(RESEARCH_WORKER_PACKET_SCHEMA_V1)}
+        })
       ]);
+      const joined = await task({
+        description: JSON.stringify({
+          schema: "atlcli.research-task-dispatch/v1",
+          taskId: ${JSON.stringify(taskId(join))},
+          objective: ${JSON.stringify(join.objective)},
+          dependencyResults: [
+            { taskId: ${JSON.stringify(taskId(jira))}, result: packets[0] },
+            { taskId: ${JSON.stringify(taskId(wiki))}, result: packets[1] }
+          ]
+        }),
+        subagentType: ${JSON.stringify(subagentType(join))},
+        responseSchema: ${JSON.stringify(RESEARCH_ANALYSIS_PACKET_SCHEMA_V1)}
+      });
+      const critique = await task({
+        description: JSON.stringify({
+          schema: "atlcli.research-task-dispatch/v1",
+          taskId: ${JSON.stringify(taskId(reconciler))},
+          objective: ${JSON.stringify(reconciler.objective)},
+          dependencyResults: [
+            { taskId: ${JSON.stringify(taskId(jira))}, result: packets[0] },
+            { taskId: ${JSON.stringify(taskId(wiki))}, result: packets[1] },
+            { taskId: ${JSON.stringify(taskId(join))}, result: joined }
+          ]
+        }),
+        subagentType: ${JSON.stringify(subagentType(reconciler))},
+        responseSchema: ${JSON.stringify(RESEARCH_CRITIQUE_SCHEMA_V1)}
+      });
       const finalDraft = await task({
-        description: "Synthesize " + JSON.stringify(packets),
-        subagentType: "synthesizer",
+        description: JSON.stringify({
+          schema: "atlcli.research-task-dispatch/v1",
+          taskId: ${JSON.stringify(taskId(synthesizer))},
+          objective: ${JSON.stringify(synthesizer.objective)},
+          dependencyResults: [
+            { taskId: ${JSON.stringify(taskId(jira))}, result: packets[0] },
+            { taskId: ${JSON.stringify(taskId(wiki))}, result: packets[1] },
+            { taskId: ${JSON.stringify(taskId(join))}, result: joined },
+            { taskId: ${JSON.stringify(taskId(reconciler))}, result: critique }
+          ]
+        }),
+        subagentType: ${JSON.stringify(subagentType(synthesizer))},
         responseSchema: ${JSON.stringify(RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1)}
       });
       finalDraft;
     `;
     const dynamicModel = fakeModel()
       .respondWithTools([{ name: "eval", args: { code } }])
-      .respondWithTools([{ name: "AtlcliResearchAnalysisPacketV1", args: packet }])
+      .respondWithTools([{ name: "ResearchPacketBodyV1", args: emptyPacket("Jira branch") }])
+      .respondWithTools([{ name: "ResearchPacketBodyV1", args: emptyPacket("Confluence branch") }])
+      .respondWithTools([{ name: "ResearchPacketBodyV1", args: emptyPacket("Joined branch") }])
+      .respondWithTools([{ name: "ReconciliationBodyV1", args: critique }])
       .respondWithTools([{ name: "AtlcliResearchAgentDraftV1", args: draft }])
       .respondWithTools([{ name: "AtlcliResearchAgentDraftV1", args: draft }]);
-    const diagnostics: string[] = [];
-
+    const events: ResearchOneShotEventV1[] = [];
     const report = await runResearchAgent({
       model: dynamicModel,
       request,
       providers: {
         jira: { async searchPage() { throw new Error("model skipped PTC"); }, async getIssue() { throw new Error("model skipped PTC"); } },
-        wiki: { async searchPage() { return { items: [] }; }, async getPage() { throw new Error("unused"); } },
+        wiki: { async searchPage() { throw new Error("model skipped PTC"); }, async getPage() { throw new Error("model skipped PTC"); } },
       },
-      researchGraph: crossProductGraph(),
-      runId: "dynamic-singleton-coalescing",
-      onSubagentDiagnostic: (diagnostic) => diagnostics.push(`${diagnostic.role}:${diagnostic.status}`),
+      researchGraph: graph,
+      runId: "dynamic-validated-frontier",
+      options: { onEvent: (event) => events.push(event) },
     });
 
     expect(report.title).toBe(draft.title);
-    expect(dynamicModel.callCount).toBe(4);
-    expect(dynamicModel.calls.filter((call) => call.messages.some((message) => message.text.includes("Run singleton coverage check")))).toHaveLength(1);
+    expect(dynamicModel.callCount).toBe(7);
+    expect(events.filter((event) => event.kind === "task" && event.status === "packet-accepted"))
+      .toHaveLength(5);
+    expect(events.filter((event) => event.kind === "subagent" && event.status === "started"))
+      .toHaveLength(5);
+    expect(events.filter((event) => event.kind === "subagent" && event.status === "completed"))
+      .toHaveLength(5);
+  });
+
+  test("rejects a duplicate graph-node dispatch before duplicate model work", async () => {
+    const graph = jiraAndSynthesisGraph();
+    const taskInput = taskEnvelope(graph, "research-node:jira-research");
+    const specs = compileDynamicResearchSubagents(graph, {
+      model,
+      broker,
+      question: request.question,
+      maxInterpreterMs: 5_000,
+      maxInterpreterMemoryBytes: 8_000_000,
+      maxPtcCalls: 8,
+      maxSearchPagesPerProduct: 2,
+      maxDetailItemsPerProduct: 5,
+      maxPacketChars: 8_000,
+    });
+    let invokes = 0;
+    const diagnostics: string[] = [];
+    const upstreamTask = tool(async () => {
+      invokes += 1;
+      return {
+        schema: "atlcli.research-packet-body/v1",
+        answeredQuestion: "Bounded Jira research.",
+        sourceIds: [],
+        findingCandidates: [],
+        relationshipCandidates: [],
+        gaps: [],
+        proposedFollowUps: [],
+        coverageLimits: ["Synthetic packet contains no source evidence."],
+      };
+    }, {
+      name: "task",
+      description: "Synthetic upstream task.",
+      schema: z.object({ description: z.string(), subagent_type: z.string() }),
+    });
+    const middleware = createBoundedResearchSubagentMiddleware(
+      model,
+      graph,
+      specs,
+      {
+        createSubAgentMiddleware: (() => ({ name: "subAgentMiddleware", tools: [upstreamTask] })) as never,
+      },
+      { onDiagnostic: (diagnostic) => diagnostics.push(`${diagnostic.role}:${diagnostic.status}`) },
+    );
+    const taskTool = middleware.tools![0]!;
+    await expect(taskTool.invoke({
+      description: taskInput.description,
+      subagent_type: taskInput.subagentType,
+    })).resolves.toBeDefined();
+    await expect(taskTool.invoke({
+      description: taskInput.description,
+      subagent_type: taskInput.subagentType,
+    })).rejects.toThrow("already dispatched");
+    expect(invokes).toBe(1);
     expect(diagnostics).toEqual([
-      "coverage-moderator:started",
-      "coverage-moderator:coalesced",
-      "coverage-moderator:completed",
-      "synthesizer:started",
-      "synthesizer:completed",
+      "focused-researcher:started",
+      "focused-researcher:completed",
+      "focused-researcher:rejected",
     ]);
   });
 
@@ -723,7 +1000,7 @@ describe("dynamic DeepAgentsJS subagent composition", () => {
       maxDetailItemsPerProduct: 5,
       maxPacketChars: 8_000,
     });
-    const jira = specs.find((spec) => spec.name === "focused-researcher");
+    const jira = specs.find((spec) => spec.name === "focused-researcher-jira-research");
 
     expect(jira?.systemPrompt).toContain("tools.jiraIssueSearch");
     expect(jira?.systemPrompt).not.toContain("tools.jiraIssueGet");

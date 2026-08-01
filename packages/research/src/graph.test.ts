@@ -8,6 +8,7 @@ import {
   type ResearchGraphV1,
 } from "./graph.js";
 import { createResearchBriefV1 } from "./brief.js";
+import { DEFAULT_RESEARCH_LIMITS_V1 } from "./contracts.js";
 
 const brief = (
   question: string,
@@ -39,10 +40,35 @@ describe("dynamic research graph composition", () => {
     );
     expect(projectSelectedResearchRolesV1(graph)).toEqual([
       "focused-researcher",
+      "document-distiller",
       "reconciler",
       "synthesizer",
     ]);
     expect(graph.nodes.filter((node) => node.roleId === "focused-researcher")).toHaveLength(2);
+  });
+
+  test("binds productive graph budgets and scope to the normalized host request", () => {
+    const graph = composeStandardResearchGraphV1(
+      "Which Confluence pages are related to Jira work items?",
+      {
+        scope: {
+          siteOrigin: "https://tenant.example",
+          jiraProjectKeys: ["SAFE"],
+          confluenceSpaceKeys: ["DOCS"],
+        },
+        limits: {
+          ...DEFAULT_RESEARCH_LIMITS_V1,
+          maxRunMs: 600_000,
+        },
+        asOf: "2026-07-31T12:00:00.000Z",
+      },
+    );
+
+    expect(graph.nodes.find((node) => node.roleId === "focused-researcher")?.budget.maxDurationMs).toBe(180_000);
+    expect(graph.approvalEnvelope.scopeFingerprint).not.toBe(
+      composeStandardResearchGraphV1("Which Confluence pages are related to Jira work items?")
+        .approvalEnvelope.scopeFingerprint,
+    );
   });
 
   test("selects structurally different nodes for lookup, Jira-only, and cross-product briefs", () => {
@@ -54,12 +80,14 @@ describe("dynamic research graph composition", () => {
     expect(projectSelectedResearchRolesV1(jiraOnly)).toEqual(["focused-researcher", "synthesizer"]);
     expect(projectSelectedResearchRolesV1(crossProduct)).toEqual([
       "focused-researcher",
+      "document-distiller",
       "reconciler",
       "synthesizer",
     ]);
     expect(crossProduct.nodes.find((node) => node.roleId === "synthesizer")?.dependencies).toEqual([
       "research-node:jira-research",
       "research-node:wiki-research",
+      "research-node:cross-product-join",
       "research-node:reconciler",
     ]);
   });
@@ -75,12 +103,12 @@ describe("dynamic research graph composition", () => {
     expect(graph.approvalEnvelope.allowedCapabilityIds).toEqual(["jira.issue.search"]);
   });
 
-  test("reserves dedicated joining, verification, and moderation for task-shaped briefs", () => {
+  test("selects dedicated joining, verification, and moderation for task-shaped briefs", () => {
     const standard = composeResearchGraphV1(brief(
       "How do these pages describe the funnel, and which DEMO work items correspond to each stage?",
       ["jira", "confluence"],
     ));
-    expect(projectSelectedResearchRolesV1(standard)).not.toContain("document-distiller");
+    expect(projectSelectedResearchRolesV1(standard)).toContain("document-distiller");
     const deep = composeResearchGraphV1(brief(
       "How do these pages describe the funnel, and which DEMO work items correspond to each stage?",
       ["jira", "confluence"],
@@ -99,6 +127,17 @@ describe("dynamic research graph composition", () => {
       ["jira", "confluence"],
     ));
     expect(projectSelectedResearchRolesV1(contradiction)).toContain("contradiction-verifier");
+
+    const explicitRelationship = composeResearchGraphV1(brief(
+      "Which Confluence pages are explicitly related to Jira tickets?",
+      ["jira", "confluence"],
+    ));
+    expect(projectSelectedResearchRolesV1(explicitRelationship)).toEqual([
+      "focused-researcher",
+      "document-distiller",
+      "reconciler",
+      "synthesizer",
+    ]);
   });
 
   test("derives every visible role decision from executable nodes", () => {

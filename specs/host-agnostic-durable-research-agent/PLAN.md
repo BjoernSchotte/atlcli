@@ -2506,7 +2506,7 @@ Shared:
 - [ ] Implement pure revision-fenced graph/task/packet reducers plus in-memory
       conformance and failure-injection tests in T3. T4 may aggregate and
       persist them but may not replace their transition semantics.
-- [ ] Execute the supervisor-authored ready frontier in exactly one bounded
+- [x] Execute the supervisor-authored ready frontier in exactly one bounded
       QuickJS eval using native `task()` and per-role `responseSchema`.
       Independent tasks must run in `Promise.all` groups and dependent groups
       must receive only compact typed predecessor results. The dispatch port
@@ -2514,7 +2514,7 @@ Shared:
 - [ ] Enforce at most three concurrent nodes, `maxResearchWaves = 2`,
       `maxReconciliationWaves = 1`, and host-side task count, result size, timeout,
       cancellation, late-result quarantine, token, byte, and cost limits.
-- [ ] Validate every model-returned body against the dispatch ledger's exact
+- [x] Validate every model-returned body against the dispatch ledger's exact
       schema, source/evidence references, scope, and size. Construct the
       accepted packet envelope from host-owned task ID, graph revision,
       attempt, role, grants, timestamps, and observed usage before the
@@ -2527,13 +2527,13 @@ Shared:
       accepted packets, coverage, and source references through the
       `v1-packet-set` reconciliation projection before any report prose is
       written. It cannot emit trusted Markdown or call another subagent.
-- [ ] After critique and any permitted repair group, dispatch exactly one
+- [x] After critique and any permitted repair group, dispatch exactly one
       fresh-context `synthesizer` with accepted packets, reconciliation
       dispositions, unresolved gaps, and the exact
       `ResearchAgentDraftV1` response schema. The supervisor accepts or rejects
       the typed draft and does not rewrite it; no second out-of-band agent or
       transcript extraction path is allowed.
-- [ ] Keep the existing V1 deterministic report finalizer authoritative. In
+- [x] Keep the existing V1 deterministic report finalizer authoritative. In
       this phase `ResearchPacketBodyV1` cites existing V1 `sourceId` values.
       T5 introduces `ResearchPacketBodyV2` with exact chunk spans and the V2
       claim ledger; it does not reinterpret V1 packet semantics.
@@ -2570,7 +2570,7 @@ CLI:
 
 Extension/browser:
 
-- [ ] Run the same graph compiler, role registry, packet validation, and
+- [x] Run the same graph compiler, role registry, packet validation, and
       reconciliation scenarios in a packed MV3 fake-provider test.
 - [ ] Add current-context and manually added scope chips plus the ambiguous
       candidate picker against the shared resolver. Prove that changing tabs
@@ -2596,9 +2596,9 @@ Gate:
       parallel `Promise.all` groups, dependency barriers, one parent eval,
       fresh critic context, exactly one final synthesizer, and zero transcript
       scraping or out-of-band synthesis agent.
-- [ ] T3's generated per-role response schemas are byte-identical to the
+- [x] T3's generated per-role response schemas are byte-identical to the
       exact schema-feasibility fixtures admitted in T0.
-- [ ] In a no-fault deterministic branch-coverage fixture, every validated
+- [x] In a no-fault deterministic branch-coverage fixture, every validated
       ready node dispatches once. Across retry/failure fixtures each logical
       node accepts at most one packet, and failed, outcome-unknown, or
       quarantined attempts are never silently treated as complete.
@@ -2639,10 +2639,19 @@ Gate:
       unrelated workspace data or hidden supervisor context, the reconciler
       receives no child trajectories, and child traces/raw tool outputs never
       enter the supervisor projection. Fail the gate if any sentinel appears.
-- [ ] The T0 dispatch adapter remains green under the real T3 scheduler,
+- [x] The T0 dispatch adapter remains green under the real T3 scheduler,
       including disjoint per-node capability grants, dynamic response schemas,
       budgets, cancellation, and late-result quarantine. Any regression is a
       STOP condition before T4.
+
+T3 checkpoint (2026-08-01): the approved read-only test-scope run completed in
+214,919 ms through one supervisor eval, two parallel acquisition tasks, one
+cross-product join, one fresh-context reconciler, and one final synthesizer.
+The host performed 8 bounded PTC/HTTP calls, accepted only non-truncated detail
+evidence, rendered the final Markdown deterministically, and emitted the same
+sanitized activity contract as the browser host. The focused 183-test suite,
+screen test, workspace typecheck, production build, privacy scan, browser
+isomorphism gate, and two-test packed MV3 suite passed before this checkpoint.
 
 ### T4 — Add durable session, workspace, graph, and checkpoint stores
 

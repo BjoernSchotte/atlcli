@@ -197,7 +197,11 @@ async function main(): Promise<void> {
     request,
     providers: syntheticProviders(),
     runId: `synthetic-live-${crypto.randomUUID()}`,
-    researchGraph: composeStandardResearchGraphV1(request.question),
+    researchGraph: composeStandardResearchGraphV1(request.question, {
+      scope: request.scope,
+      limits: request.limits,
+      asOf: new Date().toISOString(),
+    }),
     onPtcDiagnostic: (diagnostic) =>
       console.error(`[research-live] ptc=${JSON.stringify(diagnostic)}`),
     options: {
