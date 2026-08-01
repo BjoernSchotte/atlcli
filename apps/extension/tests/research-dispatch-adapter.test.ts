@@ -101,6 +101,76 @@ describe("research-owned native task dispatch interception", () => {
       .toThrow("immutable after dispatch observation");
   });
 
+  test("awaits durable admission before upstream work and durable result acceptance before publication", async () => {
+    const lifecycle: string[] = [];
+    const adapter = createResearchDispatchInterceptionAdapter({
+      admissions: [admission("durable-task")],
+      maxTasks: 1,
+      maxConcurrency: 1,
+      beforeInvoke: async ({ taskId }) => {
+        lifecycle.push(`admit:${taskId}`);
+        await Promise.resolve();
+        lifecycle.push(`started:${taskId}`);
+      },
+      async invokeUpstream(_input, config) {
+        lifecycle.push(`upstream:${String(config.configurable?.[RESEARCH_TASK_ID_CONFIG_KEY])}`);
+        return { taskId: "durable-task", answer: "accepted" };
+      },
+      acceptResult: async (taskId) => {
+        lifecycle.push(`accept:${taskId}`);
+        await Promise.resolve();
+        lifecycle.push(`committed:${taskId}`);
+      },
+    });
+
+    await expect(adapter.invoke({
+      description: encodeResearchTaskDescriptionV1({
+        taskId: "durable-task",
+        objective: "Research durable-task",
+      }),
+      subagent_type: "focused-researcher",
+    }, {
+      configurable: { [DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY]: PACKET_SCHEMA },
+    })).resolves.toEqual({ taskId: "durable-task", answer: "accepted" });
+
+    expect(lifecycle).toEqual([
+      "admit:durable-task",
+      "started:durable-task",
+      "upstream:durable-task",
+      "accept:durable-task",
+      "committed:durable-task",
+    ]);
+    expect(adapter.snapshot().taskStatuses["durable-task"]).toBe("completed");
+  });
+
+  test("does not start provider work when durable admission fails", async () => {
+    let upstreamCalls = 0;
+    const adapter = createResearchDispatchInterceptionAdapter({
+      admissions: [admission("journal-failure")],
+      maxTasks: 1,
+      maxConcurrency: 1,
+      beforeInvoke: () => {
+        throw new Error("durable store unavailable");
+      },
+      async invokeUpstream() {
+        upstreamCalls += 1;
+        return { taskId: "journal-failure", answer: "must not run" };
+      },
+    });
+
+    await expect(adapter.invoke({
+      description: encodeResearchTaskDescriptionV1({
+        taskId: "journal-failure",
+        objective: "Research journal-failure",
+      }),
+      subagent_type: "focused-researcher",
+    }, {
+      configurable: { [DEEPAGENTS_RESPONSE_FORMAT_CONFIG_KEY]: PACKET_SCHEMA },
+    })).rejects.toThrow("durable store unavailable");
+    expect(upstreamCalls).toBe(0);
+    expect(adapter.snapshot().taskStatuses["journal-failure"]).toBe("failed");
+  });
+
   test("validates replacement dependencies and locks after a rejected observation", async () => {
     const adapter = createResearchDispatchInterceptionAdapter({
       admissions: [admission("candidate")],
@@ -222,12 +292,16 @@ describe("research-owned native task dispatch interception", () => {
 
   test("classifies upstream subagent failures without exposing provider details", async () => {
     const diagnostics: ResearchDispatchDiagnosticV1[] = [];
+    const outcomes: string[] = [];
     const adapter = createResearchDispatchInterceptionAdapter({
       admissions: [admission("provider-failure")],
       maxTasks: 1,
       maxConcurrency: 1,
       async invokeUpstream() {
         throw new Error("private provider response body");
+      },
+      onUncommittedOutcome: ({ reason }) => {
+        outcomes.push(reason);
       },
       onDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
     });
@@ -241,6 +315,7 @@ describe("research-owned native task dispatch interception", () => {
         code: "subagent-provider-error",
       });
       expect(JSON.stringify(diagnostics)).not.toContain("private provider response body");
+      expect(outcomes).toEqual(["upstream-error"]);
     } finally {
       session.dispose();
     }
@@ -249,6 +324,8 @@ describe("research-owned native task dispatch interception", () => {
   test("propagates abort and quarantines a deliberately late result", async () => {
     const controller = new AbortController();
     const diagnostics: ResearchDispatchDiagnosticV1[] = [];
+    const outcomes: string[] = [];
+    const lateOutcomes: string[] = [];
     let upstreamSignalAborted = false;
     let release!: () => void;
     const late = new Promise<void>((resolve) => {
@@ -270,6 +347,12 @@ describe("research-owned native task dispatch interception", () => {
         await late;
         return { taskId: "late-task", answer: "too late" };
       },
+      onUncommittedOutcome: ({ reason }) => {
+        outcomes.push(reason);
+      },
+      onLateResult: ({ taskId }) => {
+        lateOutcomes.push(taskId);
+      },
       onDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
     });
     const session = sessionFor(adapter);
@@ -289,6 +372,8 @@ describe("research-owned native task dispatch interception", () => {
         "quarantined",
       ]);
       expect(adapter.snapshot().taskStatuses["late-task"]).toBe("quarantined");
+      expect(outcomes).toEqual(["aborted"]);
+      expect(lateOutcomes).toEqual(["late-task"]);
     } finally {
       session.dispose();
     }

@@ -52,6 +52,7 @@ export type ResearchDispatchErrorCodeV1 =
   | "result-too-large"
   | "structured-output-invalid"
   | "subagent-provider-error"
+  | "durable-journal-failed"
   | "aborted"
   | "timeout"
   | "late-result"
@@ -76,6 +77,20 @@ export interface ResearchDispatchSnapshotV1 {
   dispatchedTasks: number;
   activeInvocations: number;
   taskStatuses: Readonly<Record<string, ResearchDispatchStatusV1>>;
+}
+
+export type ResearchUncommittedOutcomeReasonV1 =
+  | "aborted"
+  | "upstream-error"
+  | "result-too-large"
+  | "result-commit-failed";
+
+export interface ResearchUncommittedDispatchOutcomeV1 {
+  taskId: string;
+  admission: ResearchTaskAdmissionV1;
+  reason: ResearchUncommittedOutcomeReasonV1;
+  error?: unknown;
+  resultBytes?: number;
 }
 
 export class ResearchDispatchError extends Error {
@@ -228,7 +243,23 @@ export function createResearchDispatchInterceptionAdapter(options: {
    * data, but child trajectories must never become downstream prompt context.
    */
   projectDependencyResult?: (taskId: string, acceptedResult: unknown) => unknown | undefined;
-  acceptResult?: (taskId: string, result: unknown, rawResult: unknown) => void;
+  /** Runs after static admission but before any upstream provider/model call. */
+  beforeInvoke?: (input: {
+    taskId: string;
+    admission: ResearchTaskAdmissionV1;
+  }) => void | Promise<void>;
+  /** Durable hosts persist the result before the local dependency projection is published. */
+  acceptResult?: (taskId: string, result: unknown, rawResult: unknown) => void | Promise<void>;
+  /** Records a started provider invocation whose terminal packet was not committed. */
+  onUncommittedOutcome?: (
+    outcome: ResearchUncommittedDispatchOutcomeV1,
+  ) => void | Promise<void>;
+  /** Receives an observed result after a local timeout/abort for quarantine. */
+  onLateResult?: (input: {
+    taskId: string;
+    admission: ResearchTaskAdmissionV1;
+    resultBytes?: number;
+  }) => void | Promise<void>;
   onDiagnostic?: (diagnostic: ResearchDispatchDiagnosticV1) => void;
 }): ResearchDispatchInterceptionAdapter {
   if (options.maxTasks < 1) throw new Error("maxTasks must be at least 1.");
@@ -265,6 +296,7 @@ export function createResearchDispatchInterceptionAdapter(options: {
   const completedResults = new Map<string, unknown>();
   let dispatchedTasks = 0;
   let activeInvocations = 0;
+  let pendingAdmissions = 0;
   let observedStatus = false;
 
   const emit = (diagnostic: ResearchDispatchDiagnosticV1): void => {
@@ -284,7 +316,7 @@ export function createResearchDispatchInterceptionAdapter(options: {
   const replaceAdmissions = (
     nextAdmissions: readonly ResearchTaskAdmissionV1[],
   ): void => {
-    if (observedStatus || dispatchedTasks > 0 || activeInvocations > 0) {
+    if (observedStatus || dispatchedTasks > 0 || activeInvocations > 0 || pendingAdmissions > 0) {
       throw new ResearchDispatchError(
         "admissions-locked",
         "Research task admissions are immutable after dispatch observation begins.",
@@ -395,14 +427,14 @@ export function createResearchDispatchInterceptionAdapter(options: {
         taskId,
       );
     }
-    if (dispatchedTasks >= options.maxTasks) {
+    if (dispatchedTasks + pendingAdmissions >= options.maxTasks) {
       reject(
         "task-budget-exceeded",
         `Research task budget exceeded (max=${options.maxTasks}).`,
         taskId,
       );
     }
-    if (activeInvocations >= options.maxConcurrency) {
+    if (activeInvocations + pendingAdmissions >= options.maxConcurrency) {
       reject(
         "concurrency-exceeded",
         `Research task concurrency exceeded (max=${options.maxConcurrency}).`,
@@ -413,9 +445,31 @@ export function createResearchDispatchInterceptionAdapter(options: {
       reject("aborted", "Research task dispatch was aborted before admission.", taskId);
     }
 
+    pendingAdmissions += 1;
+    try {
+      await options.beforeInvoke?.({ taskId, admission });
+    } catch (error) {
+      pendingAdmissions -= 1;
+      emit({ taskId, status: "failed", code: "durable-journal-failed" });
+      throw error;
+    }
+    pendingAdmissions -= 1;
+
     dispatchedTasks += 1;
     activeInvocations += 1;
     emit({ taskId, status: "started" });
+
+    const observeUncommitted = async (
+      reason: ResearchUncommittedOutcomeReasonV1,
+      input: { error?: unknown; resultBytes?: number } = {},
+    ): Promise<void> => {
+      await options.onUncommittedOutcome?.({
+        taskId,
+        admission,
+        reason,
+        ...input,
+      });
+    };
 
     const controller = new AbortController();
     let abortCode: "aborted" | "timeout" | undefined;
@@ -470,8 +524,14 @@ export function createResearchDispatchInterceptionAdapter(options: {
 
     if (first.kind === "aborted") {
       const code = abortCode ?? "aborted";
+      await observeUncommitted("aborted");
       emit({ taskId, status: "cancelled", code });
-      void upstreamOutcome.then((late) => {
+      void upstreamOutcome.then(async (late) => {
+        await options.onLateResult?.({
+          taskId,
+          admission,
+          ...(late.kind === "result" ? { resultBytes: serializedBytes(late.value) } : {}),
+        });
         emit({
           taskId,
           status: "quarantined",
@@ -484,6 +544,7 @@ export function createResearchDispatchInterceptionAdapter(options: {
       throw code === "timeout" ? timeoutError(admission.maxDurationMs) : abortError();
     }
     if (first.kind === "error") {
+      await observeUncommitted("upstream-error", { error: first.error });
       emit({
         taskId,
         status: "failed",
@@ -495,6 +556,7 @@ export function createResearchDispatchInterceptionAdapter(options: {
     }
     const resultBytes = serializedBytes(first.value);
     if (resultBytes > admission.maxResultBytes) {
+      await observeUncommitted("result-too-large", { resultBytes });
       emit({ taskId, status: "failed", code: "result-too-large", resultBytes });
       throw new ResearchDispatchError(
         "result-too-large",
@@ -503,8 +565,9 @@ export function createResearchDispatchInterceptionAdapter(options: {
     }
     const projectedResult = options.projectResult ? options.projectResult(first.value) : first.value;
     try {
-      options.acceptResult?.(taskId, projectedResult, first.value);
+      await options.acceptResult?.(taskId, projectedResult, first.value);
     } catch (error) {
+      await observeUncommitted("result-commit-failed", { error });
       emit({ taskId, status: "failed" });
       throw error;
     }
