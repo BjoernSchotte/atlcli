@@ -1,8 +1,8 @@
 # Chart macro parity — a real `ExportBlock` surface for Astro publishing
 
-- Status: **Implementation in progress — the typed surface and all-shapes
-  TanStack Astro/DOCX/PDF projection are proven; host and interaction proof
-  remain open**
+- Status: **Implementation in progress — the typed surface, all-shapes
+  TanStack Astro/DOCX/PDF projection, and CLI/browser/MV3 host paths are
+  proven; interaction and hardening work remain open**
 - Parent plan: [`PLAN.md`](./PLAN.md)
 - Scope: Confluence Cloud ADF and Data Center/Server Storage Chart macros
 - First consumer: `@atlcli/export-blocks-astro` and the Starlight adapter
@@ -113,6 +113,13 @@ matrix remain open. The maintained evidence matrix is in
   and both artifacts retain all 12 chart titles. This proof also caught and
   fixed the missing-asset-fetcher case: generated DOCX charts now require only
   the rasterizer, not an unrelated page-attachment fetcher.
+- The packed Chrome MV3 offscreen job pipeline consumes one synthetic Storage
+  page containing all twelve Chart macro spellings. Its retained DOCX artifact
+  has 12 TanStack SVG parts, 12 PNG compatibility parts, and all 12 titles; its
+  retained PDF is complete and has at least twelve chart pages. This executes
+  the productive queued resolvers, IndexedDB spools, canvas rasterizer, Typst
+  worker, retained artifact stores, and report stores rather than a test-only
+  renderer.
 - The normal mayflower DOCX path completed for the persistent provider fixture;
   the generated document contains the shared `chart.svg`, a PNG compatibility
   rendition, the chart title, marker, table headers, and all four values. A
@@ -558,11 +565,11 @@ listed in the capability registry.
 
 ### T10 — End-to-end proof and documentation
 
-- [ ] Run the packed consumers, all-shapes browser checks, Cloud
-      DOCX/PDF export, and Cloud Astro publish verification; the broader browser
-      matrix and optional DC E2E remain open. The ordinary-browser production
-      bundle is now proven for all twelve shapes in both document engines; the
-      packed MV3 extension job path remains the host-parity gate.
+- [x] Run the packed consumers, all-shapes ordinary-browser and packed-MV3
+      document checks, Cloud DOCX/PDF export, and Cloud Astro publish
+      verification. DC live E2E remains explicitly unavailable and is covered
+      by the source/contract fixtures; the optional client-interaction matrix
+      remains a separate acceptance gate above.
 - [x] Publish a support matrix that distinguishes source support, static output,
       interactive enhancement, and document projection.
 - [x] Update user-facing docs and keep generated output out of Git.

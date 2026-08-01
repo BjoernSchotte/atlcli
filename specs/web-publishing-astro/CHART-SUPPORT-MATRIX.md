@@ -77,6 +77,10 @@ world-class semantic/visual gate is still open; — intentionally static.
   `apps/browser-export-harness/src/chart-case.ts` and
   `apps/browser-export-harness/tests/exports.e2e.ts`; this inspects 12 SVG + 12
   PNG Word media parts and 12 SVG Typst assets before real browser compilation.
+- Packed Chrome MV3 offscreen job proof:
+  `apps/extension/tests/jobs/packed/job-recovery.e2e.ts` and
+  `job-store-probe.ts`; this retains and inspects a 12-shape DOCX (12 SVG + 12
+  PNG parts) and a complete multi-page PDF from the productive queued jobs.
 - Mayflower provider-live proof page (non-private fixture, generated output
   excluded from Git):
   `http://127.0.0.1:4391/publish/atlcli-chart-provider-live-20260801-195515/`
