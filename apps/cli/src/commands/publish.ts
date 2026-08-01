@@ -35,6 +35,7 @@ import {
   parsePublicationProjectV1,
   parseStaticPublicationManifestV1,
   type PublicationBundleV1,
+  type PublicationLinkReferenceV1,
   type PublicationPageV1,
   type PublicationProjectV1,
   type PublicationRouteRecordV1,
@@ -149,6 +150,21 @@ function pageNodes(nodes: readonly ExportNode[]): Extract<ExportNode, { kind: "p
   return nodes.filter((node): node is Extract<ExportNode, { kind: "page" }> => node.kind === "page");
 }
 
+/** Keep provider ordering metadata finite before it crosses the publication schema boundary. */
+export function normalizePublicationPositionV1(value: number | null, fallback: number): number {
+  return value !== null && Number.isFinite(value) ? value : fallback;
+}
+
+/** Keep links to pages outside the selected publication scope visible but non-dangling. */
+export function normalizePublicationLinksV1(
+  links: readonly PublicationLinkReferenceV1[],
+  inScopeSourceIds: ReadonlySet<string>,
+): readonly PublicationLinkReferenceV1[] {
+  return links.map((link) => link.kind === "page" && !inScopeSourceIds.has(link.sourceId)
+    ? { referenceId: link.referenceId, kind: "unresolved" as const, reason: "outside-scope" as const, label: "Out-of-scope Confluence link" }
+    : link);
+}
+
 function safeAssetId(pageId: string, source: ImageSource): string {
   return `asset-${createHash("sha256").update(canonicalPublicationJsonV1({ pageId, source })).digest("hex").slice(0, 32)}`;
 }
@@ -209,15 +225,17 @@ async function snapshotAndPages(
     outputProfile: project.builder.outputProfile,
   });
   const routeById = new Map(routePlan.routes.filter((route) => route.state === "active").map((route) => [route.sourceId, route.route]));
+  const inScopeSourceIds = new Set(nodes.map((node) => node.pageId));
   const snapshots: PublicationSourcePageSnapshotV1[] = [];
   const pages: PublicationPageV1[] = [];
   const requestMap = new Map<string, PublicationAssetRequestV1>();
   for (const [index, node] of nodes.entries()) {
+    const position = normalizePublicationPositionV1(node.position, index);
     const references = collectPageReferences(node.pageId, node.blocks);
     references.assets.forEach((request) => requestMap.set(request.assetId, request));
     const sourceVersion = String(node.meta.version ?? node.meta.observedVersion ?? "unknown");
     const contentDigest = await digestPublicationJsonV1({ blocks: node.blocks, notes: node.notes });
-    const metadataDigest = await digestPublicationJsonV1({ title: node.title, labels: node.meta.labels, parentId: node.parentId, position: node.position, depth: node.effectiveDepth });
+    const metadataDigest = await digestPublicationJsonV1({ title: node.title, labels: node.meta.labels, parentId: node.parentId, position, depth: node.effectiveDepth });
     const assetMetadataDigest = await digestPublicationJsonV1(references.assets);
     const macroDependencyDigest = await digestPublicationJsonV1({});
     snapshots.push({
@@ -225,7 +243,7 @@ async function snapshotAndPages(
       sourceVersion,
       representation: project.sourcePolicy.representation === "adf-primary" ? "atlas_doc_format" : "storage",
       ...(node.parentId === null ? {} : { parentId: node.parentId }),
-      position: node.position ?? index,
+      position,
       depth: node.effectiveDepth,
       title: node.title,
       contentDigest,
@@ -240,13 +258,13 @@ async function snapshotAndPages(
       sourceVersion,
       title: node.title,
       ...(node.parentId === null ? {} : { parentId: node.parentId }),
-      position: node.position ?? index,
+      position,
       depth: node.effectiveDepth,
       route: routeById.get(node.pageId)!,
       blocks: node.blocks,
       notes: node.notes,
       labels: [...node.meta.labels].sort(),
-      links: references.links,
+      links: normalizePublicationLinksV1(references.links, inScopeSourceIds),
       assetIds: references.assetIds,
       renderDependencies: [{ kind: "source-page" as const, key: node.pageId, version: sourceVersion, digest: contentDigest, live: false }],
       pageDigest: "pending",

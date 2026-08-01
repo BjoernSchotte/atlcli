@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { handlePublish, publishHelp } from "./publish.js";
+import { handlePublish, normalizePublicationLinksV1, normalizePublicationPositionV1, publishHelp } from "./publish.js";
 import { getCompletions } from "../completions.js";
 
 const project = {
@@ -59,6 +59,23 @@ test("publishing help documents the four-stage lifecycle and explicit safety fla
   expect(publishHelp()).toContain("plan      Acquire metadata");
   expect(publishHelp()).toContain("refresh   Acquire, validate");
   expect(publishHelp()).toContain("--confirm-public");
+});
+
+test("publication positions replace provider non-finite ordering values deterministically", () => {
+  expect(normalizePublicationPositionV1(3, 9)).toBe(3);
+  expect(normalizePublicationPositionV1(null, 9)).toBe(9);
+  expect(normalizePublicationPositionV1(Number.NaN, 9)).toBe(9);
+  expect(normalizePublicationPositionV1(Number.POSITIVE_INFINITY, 9)).toBe(9);
+});
+
+test("publication links outside the selected scope remain visible as unresolved references", () => {
+  expect(normalizePublicationLinksV1([
+    { referenceId: "inside", kind: "page", sourceId: "page-1" },
+    { referenceId: "outside", kind: "page", sourceId: "page-2", anchorId: "section" },
+  ], new Set(["page-1"]))).toEqual([
+    { referenceId: "inside", kind: "page", sourceId: "page-1" },
+    { referenceId: "outside", kind: "unresolved", reason: "outside-scope", label: "Out-of-scope Confluence link" },
+  ]);
 });
 
 test("publishing lifecycle is discoverable through shell completion", () => {
