@@ -16,3 +16,17 @@ render-kit context and delegates to `@atlcli/export-blocks-astro`; the project
 adds this package's stylesheet to Starlight's documented `customCss` option.
 The route data and page source remain Astro/ExportBlock based—MDX is not an
 interchange format or a required content layer.
+
+The supported experience includes responsive Starlight navigation, color modes,
+breadcrumbs, TOC, previous/next and related-page slots, locale/RTL output,
+Pagefind search with facets and keyboard handling, Expressive Code, SEO
+metadata, and optional provider-validated Confluence edit actions. Pagefind is
+static and built locally; analytics is off by default; PWA/service-worker
+output is deferred.
+
+Compatibility is Astro `>=7.1.6 <8` with the tested Starlight release declared
+by the package. The consumer project owns its theme and build command. Theme
+changes must preserve the neutral `ExportBlock[]` body, semantic hooks,
+JavaScript-off rendering, CSP, and accessibility gates. See the
+[experience adapter guide](/publishing/adapter-authoring/) for extension
+points and the [Starlight publishing guide](/publishing/) for operations.

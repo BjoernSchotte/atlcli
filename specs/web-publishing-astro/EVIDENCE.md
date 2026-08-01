@@ -277,6 +277,16 @@ Cloud-`editui`/Data-Center-`webui` tests cover present, missing, unsafe-origin,
 public-disclosure, and internal-visibility cases. No source ID, tenant URL,
 search term, query, fragment, cache, or replay payload is indexed or emitted.
 
+The documentation checkpoint passed on 2026-08-01. It adds the task-focused
+`/publishing/` guide, configuration, adapter authoring/migration, search and
+ranking, renderer/chart, security/privacy, operations/rollback, and
+troubleshooting pages, plus the standalone ExportBlock Astro reference. The
+Astro sidebar and package/README boundaries are updated without coupling the
+customer runtime to the docs site's theme. `bun run test scripts/docs-links.test.ts`
+passed 4 tests, `bun run docs:check` passed with zero diagnostics, and
+`bun run docs:build` generated all 87 documentation pages and a local Pagefind
+index.
+
 The T10 recovery matrix is now explicit. `builder.test.ts` proves that a
 corrupt fresh Astro inventory restores the previous output and private
 inventory byte-for-byte, and that a symlinked output target is rejected without

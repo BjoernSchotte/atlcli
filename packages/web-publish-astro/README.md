@@ -56,3 +56,22 @@ publication route/output registry before writing, and emit a new
 digest-bound manifest. It must not mutate an in-progress build or infer
 ownership from glob patterns. This package intentionally defines no service
 worker, web-app-manifest, Workbox, or other PWA output path.
+
+## Operator lifecycle
+
+The CLI composes this package after a complete immutable bundle exists:
+
+```text
+plan -> refresh -> build -> verify
+```
+
+`createAstroStaticPublicationBuilderV1()` runs the project-owned Astro build,
+creates a private `StaticPublicationManifestV1`, and stages output/inventory
+with recoverable sibling paths. `verifyAstroStaticPublicationOutputV1()` checks
+the exact output set, byte digests, links, anchors, assets, Pagefind/SEO files,
+CSP, analytics declaration, and edit-link origin. A successful build is a
+candidate; this package never reports remote deployment.
+
+See the [web publishing guide](/publishing/) and the
+[ExportBlock Astro reference](/reference/export-blocks-astro/) for the public
+configuration and component contract.

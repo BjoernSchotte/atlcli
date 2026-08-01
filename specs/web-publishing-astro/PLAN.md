@@ -1762,36 +1762,36 @@ Node-only publishing boundary independently.
 
 ### T12 — Documentation, real E2E, and delivery gates
 
-- [ ] Add a task-focused Web Publishing guide, configuration reference,
+- [x] Add a task-focused Web Publishing guide, configuration reference,
       experience-adapter authoring/migration guide, search/index/ranking guide,
       renderer/chart guide, security/privacy guide, operations/refresh/rollback
       guide, troubleshooting, examples, and related-topic links.
-- [ ] Add a standalone `@atlcli/export-blocks-astro` guide/API reference with a
+- [x] Add a standalone `@atlcli/export-blocks-astro` guide/API reference with a
       plain Astro minimal example, advanced override/token example, complete
       block support matrix, baseline-style contract, accessibility/security
       rules, and package-boundary explanation.
-- [ ] Document `ExportBlock[]` as the V1 public renderer input and the deferred
+- [x] Document `ExportBlock[]` as the V1 public renderer input and the deferred
       additive `ADF -> ExportBlock[]`/`AdfDocument` seam without implying direct
       raw-ADF support has shipped.
-- [ ] Document the supported Starlight experience and neutral adapter contract,
+- [x] Document the supported Starlight experience and neutral adapter contract,
       tokens/slots/capabilities, Pagefind facets/metadata/languages, search
       accessibility, index budgets, and future-experience boundary without
       claiming arbitrary Astro-theme compatibility.
-- [ ] Document navigation/related-page rules, SEO/sitemap/social/feed controls,
+- [x] Document navigation/related-page rules, SEO/sitemap/social/feed controls,
       i18n/RTL, responsive media/fonts, Expressive Code, prefetch/progressive
       transitions, and performance budgets.
-- [ ] Document explicitly that installable PWA/offline runtime is deferred and
+- [x] Document explicitly that installable PWA/offline runtime is deferred and
       describe only the versioned post-build augmentation seam for its future
       independent PR.
-- [ ] Document analytics as optional/off-by-default with its exact collected
+- [x] Document analytics as optional/off-by-default with its exact collected
       fields, DNT/CSP/endpoint configuration and operator legal responsibility;
       document edit-link visibility, fallback, origin validation, and public
       tenant disclosure.
-- [ ] Document static vs. island vs. live capability and state clearly that
+- [x] Document static vs. island vs. live capability and state clearly that
       deployment is deferred.
-- [ ] Document `.gitignore`, cache/bundle/build retention, reproducibility,
+- [x] Document `.gitignore`, cache/bundle/build retention, reproducibility,
       visibility/partial warnings, and safe cleanup.
-- [ ] Update CLI/package READMEs and docs-site navigation without reusing the
+- [x] Update CLI/package READMEs and docs-site navigation without reusing the
       docs site's Astro theme as customer runtime.
 - [ ] Run focused tests, full `bun run test`, `bun run typecheck`, build,
       API/closure, browser, pack/consumer, docs, Astro production harness,

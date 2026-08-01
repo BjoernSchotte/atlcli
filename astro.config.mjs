@@ -56,6 +56,20 @@ export default defineConfig({
           ],
         },
         {
+          label: 'Web Publishing',
+          collapsed: false,
+          items: [
+            { label: 'Publish with Astro', link: '/publishing/' },
+            { label: 'Configuration', link: '/publishing/configuration/' },
+            { label: 'Experience Adapter Authoring', link: '/publishing/adapter-authoring/' },
+            { label: 'Search and Indexing', link: '/publishing/search/' },
+            { label: 'Renderers and Charts', link: '/publishing/renderers/' },
+            { label: 'Security and Privacy', link: '/publishing/security/' },
+            { label: 'Operations and Rollback', link: '/publishing/operations/' },
+            { label: 'Troubleshooting', link: '/publishing/troubleshooting/' },
+          ],
+        },
+        {
           label: 'Jira',
           collapsed: false,
           items: [
@@ -116,6 +130,7 @@ export default defineConfig({
             { label: 'PDF Export Engine', link: '/reference/pdf-engine/' },
             { label: 'Export Jobs & Operations', link: '/reference/export-jobs/' },
             { label: 'Public Export API (v1)', link: '/reference/export-api/' },
+            { label: 'ExportBlock Astro Render Kit', link: '/reference/export-blocks-astro/' },
             { label: 'Consuming the Packages', link: '/reference/package-consumption/' },
             { label: 'Export Asset Contract', link: '/reference/asset-contract/' },
             { label: 'Package Versioning', link: '/reference/versioning/' },
