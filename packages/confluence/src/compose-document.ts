@@ -407,6 +407,8 @@ function registerPageAnchors(
         case "table":
           for (const row of block.rows) for (const cell of row.cells) walk(cell.content);
           break;
+        case "chart":
+          break;
         case "layout":
           for (const column of block.columns) walk(column.content);
           break;
@@ -698,6 +700,10 @@ function transformBlock(block: ExportBlock, ctx: EmitCtx): ExportBlock {
       };
     case "codeBlock":
       // Only the caption carries inline nodes (and thus rewritable links).
+      return block.caption !== undefined
+        ? { ...block, caption: transformCaption(block.caption, ctx) }
+        : block;
+    case "chart":
       return block.caption !== undefined
         ? { ...block, caption: transformCaption(block.caption, ctx) }
         : block;

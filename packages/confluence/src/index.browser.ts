@@ -33,6 +33,7 @@ export * from "./compose-document.js";
 export * from "./export-blocks.js";
 export * from "./datasource.js";
 export * from "./html-to-blocks.js";
+export * from "./chart-macro.js";
 export * from "./macro-extract.js";
 export * from "./export-progress.js";
 export * from "./export-scope.js";

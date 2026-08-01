@@ -11,6 +11,7 @@
 import {
   extractMacroBody,
   htmlToExportBlocks,
+  normalizeChartMacro,
   parsePageProperties,
   storageToBlocks,
   type ConfluenceClient,
@@ -44,6 +45,7 @@ export function createMacroRegistry(): MacroRendererRegistry {
     htmlToExportBlocks,
     parsePageProperties,
     extractMacroBody,
+    normalizeChartMacro,
   });
 }
 
