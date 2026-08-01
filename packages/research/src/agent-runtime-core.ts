@@ -115,19 +115,10 @@ export interface ResearchAgentRuntimeBindings {
   registerHarnessProfile: typeof import("deepagents/browser").registerHarnessProfile;
 }
 
-function topologicalResearchWavesV1(
-  graph: ResearchGraphV1,
-): Map<string, number> {
-  const nodesById = new Map(
-    graph.nodes
-      .filter(
-        (node) =>
-          node.executor === "subagent" &&
-          node.roleId &&
-          node.status !== "pruned",
-      )
-      .map((node) => [node.id, node]),
-  );
+function topologicalResearchWavesV1(graph: ResearchGraphV1): Map<string, number> {
+  const nodesById = new Map(graph.nodes
+    .filter((node) => node.executor === "subagent" && node.roleId && node.status !== "pruned")
+    .map((node) => [node.id, node]));
   const waves = new Map<string, number>();
   const visit = (nodeId: string): number => {
     const existing = waves.get(nodeId);
@@ -137,8 +128,7 @@ function topologicalResearchWavesV1(
     const dependencyWaves = node.dependencies
       .filter((dependency) => nodesById.has(dependency))
       .map(visit);
-    const wave =
-      dependencyWaves.length === 0 ? 1 : Math.max(...dependencyWaves) + 1;
+    const wave = dependencyWaves.length === 0 ? 1 : Math.max(...dependencyWaves) + 1;
     waves.set(nodeId, wave);
     return wave;
   };
@@ -170,13 +160,8 @@ export function researchRecursionLimitV1(graph?: ResearchGraphV1): number {
   );
 }
 
-export function buildLegacyResearchSystemPromptV1(
-  maxDetailItemsPerProduct: number,
-): string {
-  const detailLimit = Math.max(
-    1,
-    Math.min(Math.trunc(maxDetailItemsPerProduct), 50),
-  );
+export function buildLegacyResearchSystemPromptV1(maxDetailItemsPerProduct: number): string {
+  const detailLimit = Math.max(1, Math.min(Math.trunc(maxDetailItemsPerProduct), 50));
   return `You are a read-only Jira and Confluence research agent.
 
 The host already bound the exact Atlassian tenant, Jira project keys, Confluence space keys, date window, pagination and budgets. Never attempt to broaden that scope.
@@ -242,39 +227,29 @@ export function buildDynamicSupervisorPrompt(graph: ResearchGraphV1): string {
     graph.nodes.filter((node) => node.kind !== "repair").map((node) => node.id),
   );
   const mandatoryNodeIds = graph.nodes
-    .filter(
-      (node) =>
-        node.kind === "search" ||
-        node.kind === "resolve_scope" ||
-        node.roleId === "synthesizer" ||
-        (node.roleId === "reconciler" &&
-          graph.reconciliationPolicy.mode === "required"),
-    )
+    .filter((node) => node.kind === "search" || node.kind === "resolve_scope" ||
+      node.roleId === "synthesizer" ||
+      (node.roleId === "reconciler" && graph.reconciliationPolicy.mode === "required"))
     .map((node) => node.id);
   const catalog = graph.nodes
     .filter((node) => node.kind !== "repair")
-    .map((node) =>
-      [
-        `- candidateNodeId=${node.id}`,
-        `executor=${node.executor}`,
-        `roleId=${node.roleId ?? "none"}`,
-        `subagentType=${node.roleId ? researchSubagentTypeForNodeV1(node) : "none"}`,
-        `outputSchema=${node.outputSchema}`,
-        `objective=${JSON.stringify(node.objective)}`,
-        `grants=${node.grantedCapabilityIds.join(",") || "none"}`,
-        `suggestedDependencyNodeIds=${
-          node.dependencies
-            .filter((dependency) => proposedCatalogNodeIds.has(dependency))
-            .join(",") || "none"
-        }`,
-      ].join("; "),
-    )
+    .map((node) => [
+      `- candidateNodeId=${node.id}`,
+      `executor=${node.executor}`,
+      `roleId=${node.roleId ?? "none"}`,
+      `subagentType=${node.roleId ? researchSubagentTypeForNodeV1(node) : "none"}`,
+      `outputSchema=${node.outputSchema}`,
+      `objective=${JSON.stringify(node.objective)}`,
+      `grants=${node.grantedCapabilityIds.join(",") || "none"}`,
+      `suggestedDependencyNodeIds=${node.dependencies.filter((dependency) =>
+        proposedCatalogNodeIds.has(dependency)
+      ).join(",") || "none"}`,
+    ].join("; "))
     .join("\n");
   const responseSchemas = JSON.stringify({
     "atlcli.research-packet-body/v1": RESEARCH_WORKER_PACKET_SCHEMA_V1,
     "atlcli.research-packet-body/v2": RESEARCH_PACKET_MODEL_BODY_JSON_SCHEMA_V2,
-    "atlcli.research-packet-reference-model/v2":
-      RESEARCH_PACKET_REFERENCE_MODEL_JSON_SCHEMA_V2,
+    "atlcli.research-packet-reference-model/v2": RESEARCH_PACKET_REFERENCE_MODEL_JSON_SCHEMA_V2,
     "atlcli.reconciliation-body/v1": RESEARCH_CRITIQUE_SCHEMA_V1,
     "atlcli.research-agent-draft/v1": RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1,
   });
@@ -331,41 +306,36 @@ interface AcceptedResearchGraphTaskProjectionV1 {
   roleId: ResearchGraphRoleV1;
   subagentType: string;
   outputSchema: ResearchTaskOutputSchemaV1;
-  objective: string;
-  dependencyTaskIds: string[];
-  wave: number;
-  grantedCapabilityIds: string[];
+    objective: string;
+    dependencyTaskIds: string[];
+    wave: number;
+    grantedCapabilityIds: string[];
 }
 
 function projectAcceptedResearchGraphV1(
   graph: ResearchGraphV1,
 ): AcceptedResearchGraphProjectionV1 {
   const executableNodes = graph.nodes.filter(
-    (node) =>
-      node.executor === "subagent" && node.roleId && node.status !== "pruned",
+    (node) => node.executor === "subagent" && node.roleId && node.status !== "pruned",
   );
-  const taskIdByNodeId = new Map(
-    executableNodes.map((node) => [
-      node.id,
-      researchTaskIdForNodeV1(graph, node),
-    ]),
-  );
+  const taskIdByNodeId = new Map(executableNodes.map((node) => [
+    node.id,
+    researchTaskIdForNodeV1(graph, node),
+  ]));
   const waves = topologicalResearchWavesV1(graph);
-  const tasks = executableNodes.map(
-    (node): AcceptedResearchGraphTaskProjectionV1 => ({
-      nodeId: node.id,
-      taskId: researchTaskIdForNodeV1(graph, node),
-      roleId: node.roleId!,
-      subagentType: researchSubagentTypeForNodeV1(node),
-      outputSchema: node.outputSchema,
-      objective: node.objective,
-      dependencyTaskIds: node.dependencies
-        .map((dependency) => taskIdByNodeId.get(dependency))
-        .filter((taskId): taskId is string => taskId !== undefined),
-      wave: waves.get(node.id) ?? 1,
-      grantedCapabilityIds: [...node.grantedCapabilityIds],
-    }),
-  );
+  const tasks = executableNodes.map((node): AcceptedResearchGraphTaskProjectionV1 => ({
+    nodeId: node.id,
+    taskId: researchTaskIdForNodeV1(graph, node),
+    roleId: node.roleId!,
+    subagentType: researchSubagentTypeForNodeV1(node),
+    outputSchema: node.outputSchema,
+    objective: node.objective,
+    dependencyTaskIds: node.dependencies
+      .map((dependency) => taskIdByNodeId.get(dependency))
+      .filter((taskId): taskId is string => taskId !== undefined),
+    wave: waves.get(node.id) ?? 1,
+    grantedCapabilityIds: [...node.grantedCapabilityIds],
+  }));
   const synthesizerTask = tasks.find((task) => task.roleId === "synthesizer");
   const reconciliationTask = tasks.find((task) => task.roleId === "reconciler");
   if (!synthesizerTask) {
@@ -380,9 +350,7 @@ function projectAcceptedResearchGraphV1(
     graphRevision: graph.revision,
     maxParallelNodes: graph.maxParallelNodes,
     tasks: tasks.filter((task) => task.roleId !== "synthesizer"),
-    ...(reconciliationTask
-      ? { reconciliationTaskId: reconciliationTask.taskId }
-      : {}),
+    ...(reconciliationTask ? { reconciliationTaskId: reconciliationTask.taskId } : {}),
     synthesizerTask,
   };
 }
@@ -400,70 +368,45 @@ export function createResearchGraphProposalPtcTool(
       proposal: import("./graph.js").ResearchGraphProposalV1,
       graph: ResearchGraphV1,
     ) => void | Promise<void>;
-    onDiagnostic?: (
-      status: "started" | "completed" | "failed",
-      errorCode?: string,
-    ) => void;
+    onDiagnostic?: (status: "started" | "completed" | "failed", errorCode?: string) => void;
   } = {},
 ): DynamicStructuredTool {
-  const schema = z
-    .object({
-      basedOnBriefRevision: z.number().int().positive(),
-      basedOnGraphRevision: z.number().int().positive(),
-      nodes: z
-        .array(
-          z
-            .object({
-              nodeId: z.string().max(140),
-              dependencies: z.array(z.string().max(140)).max(9),
-              reasonCodes: z
-                .array(z.enum(RESEARCH_COMPOSITION_REASONS_V1))
-                .min(1)
-                .max(4),
-            })
-            .strict(),
-        )
-        .min(2)
-        .max(9),
-    })
-    .strict();
-  return tool(
-    async (proposal) => {
-      options.onDiagnostic?.("started");
-      try {
-        if (options.canPropose?.() === false) {
-          throw new ResearchContractError(
-            "invalid-request",
-            "The supervisor cannot change graph composition after task dispatch begins.",
-          );
-        }
-        const acceptedProposal = {
-          schema: "atlcli.research-graph-proposal/v1",
-          ...proposal,
-        } as const;
-        const accepted = acceptResearchGraphProposalV1(
-          catalogGraph,
-          acceptedProposal,
+  const schema = z.object({
+    basedOnBriefRevision: z.number().int().positive(),
+    basedOnGraphRevision: z.number().int().positive(),
+    nodes: z.array(z.object({
+      nodeId: z.string().max(140),
+      dependencies: z.array(z.string().max(140)).max(9),
+      reasonCodes: z.array(z.enum(RESEARCH_COMPOSITION_REASONS_V1)).min(1).max(4),
+    }).strict()).min(2).max(9),
+  }).strict();
+  return tool(async (proposal) => {
+    options.onDiagnostic?.("started");
+    try {
+      if (options.canPropose?.() === false) {
+        throw new ResearchContractError(
+          "invalid-request",
+          "The supervisor cannot change graph composition after task dispatch begins.",
         );
-        await options.onAcceptedProposal?.(acceptedProposal, accepted);
-        options.onAccepted?.(accepted);
-        options.onDiagnostic?.("completed");
-        return JSON.stringify(projectAcceptedResearchGraphV1(accepted));
-      } catch (error) {
-        options.onDiagnostic?.(
-          "failed",
-          error instanceof Error ? error.name : "unknown",
-        );
-        throw error;
       }
-    },
-    {
-      name: "research_graph_propose",
-      description:
-        "Propose one body-free task graph inside the approved host envelope before any research task starts.",
-      schema,
-    },
-  );
+      const acceptedProposal = {
+        schema: "atlcli.research-graph-proposal/v1",
+        ...proposal,
+      } as const;
+      const accepted = acceptResearchGraphProposalV1(catalogGraph, acceptedProposal);
+      await options.onAcceptedProposal?.(acceptedProposal, accepted);
+      options.onAccepted?.(accepted);
+      options.onDiagnostic?.("completed");
+      return JSON.stringify(projectAcceptedResearchGraphV1(accepted));
+    } catch (error) {
+      options.onDiagnostic?.("failed", error instanceof Error ? error.name : "unknown");
+      throw error;
+    }
+  }, {
+    name: "research_graph_propose",
+    description: "Propose one body-free task graph inside the approved host envelope before any research task starts.",
+    schema,
+  });
 }
 
 const RESEARCH_ACCEPTED_RECONCILIATION_SCHEMA_V1 =
@@ -486,25 +429,19 @@ function dispositionReasonMatchesDecision(
   reasonCode: ResearchReconciliationDispositionV1["reasonCode"],
 ): boolean {
   if (decision === "reject_defect") {
-    return (
-      reasonCode === "invalid_reference" ||
+    return reasonCode === "invalid_reference" ||
       reasonCode === "already_resolved" ||
-      reasonCode === "supported_by_evidence"
-    );
+      reasonCode === "supported_by_evidence";
   }
   if (decision === "no_change") {
-    return (
-      reasonCode === "already_resolved" ||
+    return reasonCode === "already_resolved" ||
       reasonCode === "supported_by_evidence" ||
       reasonCode === "insufficient_budget" ||
-      reasonCode === "outside_approval_envelope"
-    );
+      reasonCode === "outside_approval_envelope";
   }
-  return (
-    reasonCode === "material_defect" ||
+  return reasonCode === "material_defect" ||
     reasonCode === "insufficient_budget" ||
-    reasonCode === "outside_approval_envelope"
-  );
+    reasonCode === "outside_approval_envelope";
 }
 
 function followUpMatchesDefect(
@@ -512,18 +449,13 @@ function followUpMatchesDefect(
   followUp: ResearchFollowUpProposalV1,
 ): boolean {
   switch (defect.code) {
-    case "missing_coverage":
-      return followUp.reasonCode === "coverage_gap";
-    case "contradicted":
-      return followUp.reasonCode === "contradiction";
-    case "stale":
-      return followUp.reasonCode === "stale_or_truncated";
+    case "missing_coverage": return followUp.reasonCode === "coverage_gap";
+    case "contradicted": return followUp.reasonCode === "contradiction";
+    case "stale": return followUp.reasonCode === "stale_or_truncated";
     case "unsupported":
-    case "overstated":
-      return followUp.reasonCode === "negative_claim";
+    case "overstated": return followUp.reasonCode === "negative_claim";
     case "instruction_mismatch":
-    case "duplicate":
-      return false;
+    case "duplicate": return false;
   }
 }
 
@@ -537,9 +469,7 @@ export function createResearchReconciliationDispositionPtcTool(
   catalogGraph: ResearchGraphV1,
   options: {
     activeGraph: () => ResearchGraphV1 | undefined;
-    reconciliationPacket: (
-      taskId: string,
-    ) => ResearchAcceptedPacketV1 | undefined;
+    reconciliationPacket: (taskId: string) => ResearchAcceptedPacketV1 | undefined;
     isKnownTarget?: (
       defect: ResearchReconciliationDefectV1,
       packet: ResearchAcceptedPacketV1,
@@ -565,10 +495,7 @@ export function createResearchReconciliationDispositionPtcTool(
         status: "authorized" | "retained_without_execution";
       },
     ) => void | Promise<void>;
-    onDiagnostic?: (
-      status: "started" | "completed" | "failed",
-      errorCode?: string,
-    ) => void;
+    onDiagnostic?: (status: "started" | "completed" | "failed", errorCode?: string) => void;
   },
 ): DynamicStructuredTool {
   type DispositionInput = {
@@ -581,278 +508,207 @@ export function createResearchReconciliationDispositionPtcTool(
       reasonCode: ResearchReconciliationDispositionV1["reasonCode"];
     }>;
   };
-  const schema = z
-    .object({
-      basedOnGraphRevision: z.number().int().positive(),
-      reconciliationTaskId: z.string().min(1).max(200),
-      repairFollowUpId: z.string().min(1).max(160).optional(),
-      decisions: z
-        .array(
-          z
-            .object({
-              defectId: z.string().min(1).max(160),
-              decision: z.enum(RESEARCH_RECONCILIATION_DECISIONS_V1),
-              reasonCode: z.enum(RESEARCH_RECONCILIATION_REASON_CODES_V1),
-            })
-            .strict(),
-        )
-        .max(16),
-    })
-    .strict();
-  return tool(
-    async (rawInput) => {
-      const input = rawInput as DispositionInput;
-      options.onDiagnostic?.("started");
-      try {
-        if (options.canRecord?.() === false) {
-          throw new ResearchContractError(
-            "invalid-request",
-            "Reconciliation dispositions are immutable after synthesis starts or after one accepted set.",
-          );
-        }
-        const graph = options.activeGraph();
-        if (
-          !graph ||
-          graph.sessionId !== catalogGraph.sessionId ||
+  const schema = z.object({
+    basedOnGraphRevision: z.number().int().positive(),
+    reconciliationTaskId: z.string().min(1).max(200),
+    repairFollowUpId: z.string().min(1).max(160).optional(),
+    decisions: z.array(z.object({
+      defectId: z.string().min(1).max(160),
+      decision: z.enum(RESEARCH_RECONCILIATION_DECISIONS_V1),
+      reasonCode: z.enum(RESEARCH_RECONCILIATION_REASON_CODES_V1),
+    }).strict()).max(16),
+  }).strict();
+  return tool(async (rawInput) => {
+    const input = rawInput as DispositionInput;
+    options.onDiagnostic?.("started");
+    try {
+      if (options.canRecord?.() === false) {
+        throw new ResearchContractError(
+          "invalid-request",
+          "Reconciliation dispositions are immutable after synthesis starts or after one accepted set.",
+        );
+      }
+      const graph = options.activeGraph();
+      if (!graph || graph.sessionId !== catalogGraph.sessionId ||
           graph.turnId !== catalogGraph.turnId ||
           graph.revision !== catalogGraph.revision ||
-          input.basedOnGraphRevision !== graph.revision
-        ) {
-          throw new ResearchContractError(
-            "invalid-request",
-            "Reconciliation dispositions reference a stale or unaccepted graph.",
-          );
-        }
-        const reconciliationNode = graph.nodes.find(
-          (node) => node.roleId === "reconciler" && node.status !== "pruned",
+          input.basedOnGraphRevision !== graph.revision) {
+        throw new ResearchContractError(
+          "invalid-request",
+          "Reconciliation dispositions reference a stale or unaccepted graph.",
         );
-        if (
-          !reconciliationNode ||
-          researchTaskIdForNodeV1(graph, reconciliationNode) !==
-            input.reconciliationTaskId
-        ) {
-          throw new ResearchContractError(
-            "invalid-request",
-            "Reconciliation dispositions reference an unaccepted reconciliation task.",
-          );
-        }
-        const packet = options.reconciliationPacket(input.reconciliationTaskId);
-        if (
-          !packet ||
-          packet.graphRevision !== graph.revision ||
+      }
+      const reconciliationNode = graph.nodes.find((node) =>
+        node.roleId === "reconciler" && node.status !== "pruned"
+      );
+      if (!reconciliationNode ||
+          researchTaskIdForNodeV1(graph, reconciliationNode) !== input.reconciliationTaskId) {
+        throw new ResearchContractError(
+          "invalid-request",
+          "Reconciliation dispositions reference an unaccepted reconciliation task.",
+        );
+      }
+      const packet = options.reconciliationPacket(input.reconciliationTaskId);
+      if (!packet || packet.graphRevision !== graph.revision ||
           packet.roleId !== "reconciler" ||
           !("schema" in packet.body) ||
-          packet.body.schema !== RESEARCH_RECONCILIATION_BODY_SCHEMA_V1
-        ) {
-          throw new ResearchContractError(
-            "invalid-request",
-            "Reconciliation dispositions require one accepted reconciliation packet.",
-          );
-        }
-        const body = packet.body as ReconciliationBodyV1;
-        const decisionByDefectId = new Map(
-          input.decisions.map((decision) => [decision.defectId, decision]),
+          packet.body.schema !== RESEARCH_RECONCILIATION_BODY_SCHEMA_V1) {
+        throw new ResearchContractError(
+          "invalid-request",
+          "Reconciliation dispositions require one accepted reconciliation packet.",
         );
-        if (
-          decisionByDefectId.size !== input.decisions.length ||
+      }
+      const body = packet.body as ReconciliationBodyV1;
+      const decisionByDefectId = new Map(input.decisions.map((decision) => [
+        decision.defectId,
+        decision,
+      ]));
+      if (decisionByDefectId.size !== input.decisions.length ||
           body.defects.length !== input.decisions.length ||
           body.defects.some((defect) => !decisionByDefectId.has(defect.id)) ||
-          input.decisions.some(
-            (decision) =>
-              !body.defects.some((defect) => defect.id === decision.defectId),
-          )
-        ) {
-          throw new ResearchContractError(
-            "invalid-request",
-            "Every reconciliation defect requires exactly one disposition.",
-          );
-        }
-        const recordedAt = new Date(
-          options.now?.() ?? Date.now(),
-        ).toISOString();
-        const repairDecision =
-          input.repairFollowUpId === undefined
-            ? undefined
-            : input.decisions.find(
-                (decision) =>
-                  decision.decision === "add_follow_up" &&
-                  body.proposedFollowUps.some(
-                    (followUp) =>
-                      followUp.id === input.repairFollowUpId &&
-                      decision.defectId ===
-                        body.defects.find(
-                          (defect) => defect.id === decision.defectId,
-                        )?.id,
-                  ),
-              );
-        const repairFollowUp =
-          input.repairFollowUpId === undefined
-            ? undefined
-            : body.proposedFollowUps.find(
-                (followUp) => followUp.id === input.repairFollowUpId,
-              );
-        if (
-          input.repairFollowUpId !== undefined &&
-          (!repairDecision || !repairFollowUp)
-        ) {
-          throw new ResearchContractError(
-            "invalid-request",
-            "A repair request must reference one accepted add_follow_up decision and one exact critic follow-up ID.",
-          );
-        }
-        const repairDefect = repairDecision
-          ? body.defects.find((defect) => defect.id === repairDecision.defectId)
-          : undefined;
-        if (
-          repairDefect &&
-          repairFollowUp &&
-          !followUpMatchesDefect(repairDefect, repairFollowUp)
-        ) {
-          throw new ResearchContractError(
-            "invalid-request",
-            "The requested repair follow-up is incompatible with its reconciliation defect.",
-          );
-        }
-        const baseDispositions = body.defects.map((defect, index) => {
-          if (options.isKnownTarget?.(defect, packet) === false) {
-            throw new ResearchContractError(
-              "invalid-request",
-              `Reconciliation defect target is unknown: ${defect.id}`,
-            );
-          }
-          if (
-            defect.references.some(
-              (reference) =>
-                options.isKnownReference?.(reference, defect, packet) === false,
-            )
-          ) {
-            throw new ResearchContractError(
-              "invalid-request",
-              `Reconciliation defect references an unknown source or evidence record: ${defect.id}`,
-            );
-          }
-          const decision = decisionByDefectId.get(defect.id)!;
-          if (
-            !dispositionReasonMatchesDecision(
-              decision.decision,
-              decision.reasonCode,
-            )
-          ) {
-            throw new ResearchContractError(
-              "invalid-request",
-              `Reconciliation disposition reason is incompatible with its decision: ${defect.id}`,
-            );
-          }
-          if (
-            decision.decision === "add_follow_up" &&
-            defect.suggestedAction !== "add_follow_up" &&
-            body.proposedFollowUps.length === 0
-          ) {
-            throw new ResearchContractError(
-              "invalid-request",
-              `Reconciliation disposition has no bounded follow-up proposal: ${defect.id}`,
-            );
-          }
-          return parseResearchReconciliationDispositionV1({
-            schema: RESEARCH_RECONCILIATION_DISPOSITION_SCHEMA_V1,
-            id: `reconciliation-disposition:r${graph.revision}:${index + 1}`,
-            reconciliationPacketRef: packet.packetRef,
-            defectId: defect.id,
-            basedOnGraphRevision: graph.revision,
-            decision: decision.decision,
-            reasonCode: decision.reasonCode,
-            resultingClaimIds: [],
-            recordedAt,
-          });
-        });
-        const repairAuthorization =
-          repairDefect && repairFollowUp
-            ? options.authorizeRepair?.({
-                graph,
-                reconciliationTaskId: input.reconciliationTaskId,
-                defect: repairDefect,
-                followUp: repairFollowUp,
-              })
-            : undefined;
-        const dispositions =
-          repairAuthorization && repairDecision
-            ? baseDispositions.map((disposition) =>
-                disposition.defectId === repairDecision.defectId
-                  ? parseResearchReconciliationDispositionV1({
-                      ...disposition,
-                      resultingGraphRevision: graph.revision,
-                      resultingNodeId: repairAuthorization.nodeId,
-                    })
-                  : disposition,
-              )
-            : baseDispositions;
-        await options.onAccepted?.(
-          dispositions,
-          repairAuthorization,
-          input.repairFollowUpId === undefined
-            ? undefined
-            : {
-                followUpId: input.repairFollowUpId,
-                status: repairAuthorization
-                  ? "authorized"
-                  : "retained_without_execution",
-              },
+          input.decisions.some((decision) =>
+            !body.defects.some((defect) => defect.id === decision.defectId)
+          )) {
+        throw new ResearchContractError(
+          "invalid-request",
+          "Every reconciliation defect requires exactly one disposition.",
         );
-        options.onDiagnostic?.("completed");
-        return JSON.stringify({
-          schema: RESEARCH_ACCEPTED_RECONCILIATION_SCHEMA_V1,
-          graphRevision: graph.revision,
-          reconciliationTaskId: input.reconciliationTaskId,
-          dispositions,
-          repairStatus:
-            input.repairFollowUpId === undefined
-              ? "not_requested"
-              : repairAuthorization
-                ? "authorized"
-                : "retained_without_execution",
-          ...(repairAuthorization
-            ? {
-                repairTask: {
-                  schema: repairAuthorization.schema,
-                  taskId: repairAuthorization.taskId,
-                  nodeId: repairAuthorization.nodeId,
-                  roleId: repairAuthorization.roleId,
-                  subagentType: repairAuthorization.subagentType,
-                  objective: repairAuthorization.objective,
-                  dependencyTaskIds: repairAuthorization.dependencyTaskIds,
-                  grantedCapabilityIds:
-                    repairAuthorization.grantedCapabilityIds,
-                  followUpId: repairAuthorization.followUp.id,
-                },
-              }
-            : {}),
-        });
-      } catch (error) {
-        options.onDiagnostic?.(
-          "failed",
-          error instanceof Error ? error.name : "unknown",
-        );
-        throw error;
       }
-    },
-    {
-      name: "research_reconciliation_dispositions",
-      description:
-        "Record one host-validated supervisor disposition for every defect in the accepted reconciliation packet before synthesis.",
-      schema,
-    },
-  );
+      const recordedAt = new Date(options.now?.() ?? Date.now()).toISOString();
+      const repairDecision = input.repairFollowUpId === undefined
+        ? undefined
+        : input.decisions.find((decision) => decision.decision === "add_follow_up" &&
+          body.proposedFollowUps.some((followUp) =>
+            followUp.id === input.repairFollowUpId && decision.defectId ===
+              body.defects.find((defect) => defect.id === decision.defectId)?.id
+          ));
+      const repairFollowUp = input.repairFollowUpId === undefined
+        ? undefined
+        : body.proposedFollowUps.find((followUp) => followUp.id === input.repairFollowUpId);
+      if (input.repairFollowUpId !== undefined && (!repairDecision || !repairFollowUp)) {
+        throw new ResearchContractError(
+          "invalid-request",
+          "A repair request must reference one accepted add_follow_up decision and one exact critic follow-up ID.",
+        );
+      }
+      const repairDefect = repairDecision
+        ? body.defects.find((defect) => defect.id === repairDecision.defectId)
+        : undefined;
+      if (repairDefect && repairFollowUp && !followUpMatchesDefect(repairDefect, repairFollowUp)) {
+        throw new ResearchContractError(
+          "invalid-request",
+          "The requested repair follow-up is incompatible with its reconciliation defect.",
+        );
+      }
+      const baseDispositions = body.defects.map((defect, index) => {
+        if (options.isKnownTarget?.(defect, packet) === false) {
+          throw new ResearchContractError(
+            "invalid-request",
+            `Reconciliation defect target is unknown: ${defect.id}`,
+          );
+        }
+        if (defect.references.some((reference) =>
+          options.isKnownReference?.(reference, defect, packet) === false
+        )) {
+          throw new ResearchContractError(
+            "invalid-request",
+            `Reconciliation defect references an unknown source or evidence record: ${defect.id}`,
+          );
+        }
+        const decision = decisionByDefectId.get(defect.id)!;
+        if (!dispositionReasonMatchesDecision(decision.decision, decision.reasonCode)) {
+          throw new ResearchContractError(
+            "invalid-request",
+            `Reconciliation disposition reason is incompatible with its decision: ${defect.id}`,
+          );
+        }
+        if (decision.decision === "add_follow_up" &&
+            defect.suggestedAction !== "add_follow_up" &&
+            body.proposedFollowUps.length === 0) {
+          throw new ResearchContractError(
+            "invalid-request",
+            `Reconciliation disposition has no bounded follow-up proposal: ${defect.id}`,
+          );
+        }
+        return parseResearchReconciliationDispositionV1({
+          schema: RESEARCH_RECONCILIATION_DISPOSITION_SCHEMA_V1,
+          id: `reconciliation-disposition:r${graph.revision}:${index + 1}`,
+          reconciliationPacketRef: packet.packetRef,
+          defectId: defect.id,
+          basedOnGraphRevision: graph.revision,
+          decision: decision.decision,
+          reasonCode: decision.reasonCode,
+          resultingClaimIds: [],
+          recordedAt,
+        });
+      });
+      const repairAuthorization = repairDefect && repairFollowUp
+        ? options.authorizeRepair?.({
+            graph,
+            reconciliationTaskId: input.reconciliationTaskId,
+            defect: repairDefect,
+            followUp: repairFollowUp,
+          })
+        : undefined;
+      const dispositions = repairAuthorization && repairDecision
+        ? baseDispositions.map((disposition) => disposition.defectId === repairDecision.defectId
+            ? parseResearchReconciliationDispositionV1({
+                ...disposition,
+                resultingGraphRevision: graph.revision,
+                resultingNodeId: repairAuthorization.nodeId,
+              })
+            : disposition)
+        : baseDispositions;
+      await options.onAccepted?.(
+        dispositions,
+        repairAuthorization,
+        input.repairFollowUpId === undefined ? undefined : {
+          followUpId: input.repairFollowUpId,
+          status: repairAuthorization ? "authorized" : "retained_without_execution",
+        },
+      );
+      options.onDiagnostic?.("completed");
+      return JSON.stringify({
+        schema: RESEARCH_ACCEPTED_RECONCILIATION_SCHEMA_V1,
+        graphRevision: graph.revision,
+        reconciliationTaskId: input.reconciliationTaskId,
+        dispositions,
+        repairStatus: input.repairFollowUpId === undefined
+          ? "not_requested"
+          : repairAuthorization
+            ? "authorized"
+            : "retained_without_execution",
+        ...(repairAuthorization ? {
+          repairTask: {
+            schema: repairAuthorization.schema,
+            taskId: repairAuthorization.taskId,
+            nodeId: repairAuthorization.nodeId,
+            roleId: repairAuthorization.roleId,
+            subagentType: repairAuthorization.subagentType,
+            objective: repairAuthorization.objective,
+            dependencyTaskIds: repairAuthorization.dependencyTaskIds,
+            grantedCapabilityIds: repairAuthorization.grantedCapabilityIds,
+            followUpId: repairAuthorization.followUp.id,
+          },
+        } : {}),
+      });
+    } catch (error) {
+      options.onDiagnostic?.("failed", error instanceof Error ? error.name : "unknown");
+      throw error;
+    }
+  }, {
+    name: "research_reconciliation_dispositions",
+    description: "Record one host-validated supervisor disposition for every defect in the accepted reconciliation packet before synthesis.",
+    schema,
+  });
 }
 
 function createResearchSupervisorCodeInterpreterMiddleware(
   options: Parameters<typeof createCodeInterpreterMiddleware>[0],
 ) {
   const middleware = createCodeInterpreterMiddleware(options);
-  const evaluator = middleware.tools?.find(
-    (candidate) => candidate.name === (options?.toolName ?? "eval"),
-  );
-  if (!evaluator)
-    throw new Error("QuickJS did not provide the research eval tool.");
+  const evaluator = middleware.tools?.find((candidate) => candidate.name === (options?.toolName ?? "eval"));
+  if (!evaluator) throw new Error("QuickJS did not provide the research eval tool.");
   evaluator.description = [
     "Execute the single host-bounded research workflow in the QuickJS sandbox.",
     "This one code string must propose the graph, execute all accepted tasks, and return the synthesizer draft; a proposal-only eval is invalid.",
@@ -902,11 +758,9 @@ function quickJsFailureCode(result: unknown): string | undefined {
       const match = value.match(/(?:^|\n)(Error|[A-Za-z][A-Za-z0-9]*Error):/);
       return match?.[1]?.slice(0, 80);
     }
-    if (depth < 1 || !value || typeof value !== "object" || visited.has(value))
-      return undefined;
+    if (depth < 1 || !value || typeof value !== "object" || visited.has(value)) return undefined;
     visited.add(value);
-    if (ToolMessage.isInstance(value))
-      return findFailure(value.content, depth - 1);
+    if (ToolMessage.isInstance(value)) return findFailure(value.content, depth - 1);
     if (Array.isArray(value)) {
       for (let index = value.length - 1; index >= 0; index -= 1) {
         const failure = findFailure(value[index], depth - 1);
@@ -930,46 +784,38 @@ function quickJsFailureCode(result: unknown): string | undefined {
   return findFailure(result, 5);
 }
 
-export function createOneShotSupervisorEvalMiddleware(
-  options: {
-    canRetryAfterFailure?: () => boolean;
-    onDiagnostic?: (diagnostic: ResearchSupervisorEvalDiagnosticV1) => void;
-    onWorkflowCode?: (attempt: number, code: string) => void | Promise<void>;
-    onFatal?: (error: ResearchContractError) => void;
-  } = {},
-) {
+export function createOneShotSupervisorEvalMiddleware(options: {
+  canRetryAfterFailure?: () => boolean;
+  onDiagnostic?: (diagnostic: ResearchSupervisorEvalDiagnosticV1) => void;
+  onWorkflowCode?: (attempt: number, code: string) => void | Promise<void>;
+  onFatal?: (error: ResearchContractError) => void;
+} = {}) {
   let evalCalls = 0;
   let previousFailed = false;
   let successfulEvalCompleted = false;
   return createMiddleware({
     name: "ResearchOneShotSupervisorEvalMiddleware",
-    wrapModelCall: async (request, handler) =>
-      handler({
-        ...request,
-        // A completed one-shot workflow permanently revokes eval from later
-        // supervisor model turns. The structured response mechanism remains
-        // available so the parent can publish the synthesizer's typed object.
-        tools: successfulEvalCompleted
-          ? request.tools.filter((candidate) => candidate.name !== "eval")
-          : request.tools,
-      }),
+    wrapModelCall: async (request, handler) => handler({
+      ...request,
+      // A completed one-shot workflow permanently revokes eval from later
+      // supervisor model turns. The structured response mechanism remains
+      // available so the parent can publish the synthesizer's typed object.
+      tools: successfulEvalCompleted
+        ? request.tools.filter((candidate) => candidate.name !== "eval")
+        : request.tools,
+    }),
     wrapToolCall: async (request, handler) => {
       if (request.toolCall.name !== "eval") return handler(request);
       evalCalls += 1;
-      const code =
-        typeof request.toolCall.args === "object" &&
-        request.toolCall.args !== null &&
-        "code" in request.toolCall.args &&
-        typeof request.toolCall.args.code === "string"
-          ? request.toolCall.args.code
-          : "";
+      const code = typeof request.toolCall.args === "object" && request.toolCall.args !== null &&
+        "code" in request.toolCall.args && typeof request.toolCall.args.code === "string"
+        ? request.toolCall.args.code
+        : "";
       const codeBytes = new TextEncoder().encode(code).byteLength;
       const codeHash = workflowCodeHashV1(code);
       await options.onWorkflowCode?.(evalCalls, code);
-      const retryStillSideEffectFree =
-        options.canRetryAfterFailure?.() ?? false;
-      const repairAllowed =
-        evalCalls === 2 && previousFailed && retryStillSideEffectFree;
+      const retryStillSideEffectFree = options.canRetryAfterFailure?.() ?? false;
+      const repairAllowed = evalCalls === 2 && previousFailed && retryStillSideEffectFree;
       if (evalCalls > 1 && !repairAllowed) {
         const rejectionCode = previousFailed
           ? "eval-retry-after-task-start"
@@ -994,9 +840,7 @@ export function createOneShotSupervisorEvalMiddleware(
       options.onDiagnostic?.({
         attempt: evalCalls,
         status: "started",
-        reasonCode: repairAllowed
-          ? "pre-dispatch-eval-repair"
-          : "supervisor-eval",
+        reasonCode: repairAllowed ? "pre-dispatch-eval-repair" : "supervisor-eval",
         codeBytes,
         codeHash,
       });
@@ -1021,9 +865,7 @@ export function createOneShotSupervisorEvalMiddleware(
         options.onDiagnostic?.({
           attempt: evalCalls,
           status: "completed",
-          reasonCode: repairAllowed
-            ? "pre-dispatch-eval-repaired"
-            : "supervisor-eval-completed",
+          reasonCode: repairAllowed ? "pre-dispatch-eval-repaired" : "supervisor-eval-completed",
           codeBytes,
           codeHash,
         });
@@ -1052,10 +894,7 @@ function createAnthropicModel(
 ): ChatAnthropic {
   const normalized = apiKey.trim();
   if (!normalized) {
-    throw new ResearchContractError(
-      "missing-key",
-      "An Anthropic API key is required.",
-    );
+    throw new ResearchContractError("missing-key", "An Anthropic API key is required.");
   }
   return new ChatAnthropic({
     model: RESEARCH_MODEL_ID,
@@ -1149,16 +988,13 @@ async function runResearchAgentWithBindings(
   if (!input.model && !input.researchGraph) {
     throw new ResearchContractError(
       "invalid-request",
-      "A validated research graph is required for a production model run.",
+      "A validated research graph is required for a production model run."
     );
   }
   if (input.researchGraph) assertResearchGraphExecutableV1(input.researchGraph);
-  if (
-    input.durableSession &&
-    (!input.researchGraph ||
+  if (input.durableSession && (!input.researchGraph ||
       input.durableSession.sessionId !== input.researchGraph.sessionId ||
-      input.durableSession.turnId !== input.researchGraph.turnId)
-  ) {
+      input.durableSession.turnId !== input.researchGraph.turnId)) {
     throw new ResearchContractError(
       "invalid-request",
       "Durable research execution must use the matching approved graph envelope.",
@@ -1180,7 +1016,7 @@ async function runResearchAgentWithBindings(
   // authoritative private filesystem on every host.
   const workspace = input.durableSession
     ? await input.durableSession.store.workspace(input.durableSession.sessionId)
-    : (input.workspace ?? createMemoryResearchWorkspace());
+    : input.workspace ?? createMemoryResearchWorkspace();
   // DeepAgentsJS persists LangGraph state by configurable thread ID. A retry
   // attempt has a new run ID, but it must remain in the durable conversation's
   // session thread. Its checkpoints live in the host-neutral session
@@ -1190,10 +1026,7 @@ async function runResearchAgentWithBindings(
     ? researchThreadIdForSessionV1(input.durableSession.sessionId)
     : runId;
   const checkpointer = input.durableSession
-    ? new ResearchSessionWorkspaceCheckpointerV1(
-        input.durableSession.sessionId,
-        workspace,
-      )
+    ? new ResearchSessionWorkspaceCheckpointerV1(input.durableSession.sessionId, workspace)
     : undefined;
   let eventSequence = 0;
   let subagentTaskStarted = false;
@@ -1204,9 +1037,7 @@ async function runResearchAgentWithBindings(
   let acceptedResultBytes = 0;
   let acceptedGraph: ResearchGraphV1 | undefined;
   const acceptedPacketsByTaskId = new Map<string, ResearchAcceptedPacketV1>();
-  let reconciliationDispositions:
-    | ResearchReconciliationDispositionV1[]
-    | undefined;
+  let reconciliationDispositions: ResearchReconciliationDispositionV1[] | undefined;
   let repairAuthorization: ResearchRepairAuthorizationV1 | undefined;
   let acceptedRepairPacket: ResearchAcceptedPacketV1 | undefined;
   let researchWavesConsumed = 1;
@@ -1234,39 +1065,20 @@ async function runResearchAgentWithBindings(
       callId: diagnostic.callId,
       toolId: diagnostic.tool,
       inputKind: diagnostic.inputKind,
-      status:
-        diagnostic.outcome === "started"
-          ? "started"
-          : diagnostic.outcome === "success"
-            ? "completed"
-            : "failed",
-      ...(diagnostic.itemCount === undefined
-        ? {}
-        : { itemCount: diagnostic.itemCount }),
-      ...(diagnostic.complete === undefined
-        ? {}
-        : { complete: diagnostic.complete }),
-      ...(diagnostic.termination === undefined
-        ? {}
-        : { termination: diagnostic.termination }),
-      ...(diagnostic.resultBytes === undefined
-        ? {}
-        : { resultBytes: diagnostic.resultBytes }),
-      ...(diagnostic.truncated === undefined
-        ? {}
-        : { truncated: diagnostic.truncated }),
-      ...(diagnostic.durationMs === undefined
-        ? {}
-        : { durationMs: diagnostic.durationMs }),
-      ...(diagnostic.errorCode === undefined
-        ? {}
-        : { errorCode: diagnostic.errorCode }),
-      ...(diagnostic.inputKeys === undefined
-        ? {}
-        : { inputKeys: diagnostic.inputKeys }),
-      ...(diagnostic.queryKeys === undefined
-        ? {}
-        : { queryKeys: diagnostic.queryKeys }),
+      status: diagnostic.outcome === "started"
+        ? "started"
+        : diagnostic.outcome === "success"
+          ? "completed"
+          : "failed",
+      ...(diagnostic.itemCount === undefined ? {} : { itemCount: diagnostic.itemCount }),
+      ...(diagnostic.complete === undefined ? {} : { complete: diagnostic.complete }),
+      ...(diagnostic.termination === undefined ? {} : { termination: diagnostic.termination }),
+      ...(diagnostic.resultBytes === undefined ? {} : { resultBytes: diagnostic.resultBytes }),
+      ...(diagnostic.truncated === undefined ? {} : { truncated: diagnostic.truncated }),
+      ...(diagnostic.durationMs === undefined ? {} : { durationMs: diagnostic.durationMs }),
+      ...(diagnostic.errorCode === undefined ? {} : { errorCode: diagnostic.errorCode }),
+      ...(diagnostic.inputKeys === undefined ? {} : { inputKeys: diagnostic.inputKeys }),
+      ...(diagnostic.queryKeys === undefined ? {} : { queryKeys: diagnostic.queryKeys }),
     });
     if (diagnostic.outcome === "started") {
       observedCapabilityCalls += 1;
@@ -1278,9 +1090,7 @@ async function runResearchAgentWithBindings(
       });
     }
   };
-  const emitSubagentDiagnostic = (
-    diagnostic: ResearchSubagentDiagnosticV1,
-  ): void => {
+  const emitSubagentDiagnostic = (diagnostic: ResearchSubagentDiagnosticV1): void => {
     if (diagnostic.status === "started") subagentTaskStarted = true;
     if (diagnostic.status === "started" && diagnostic.role === "synthesizer") {
       synthesizerTaskStarted = true;
@@ -1291,15 +1101,9 @@ async function runResearchAgentWithBindings(
       taskId: diagnostic.taskId,
       roleId: diagnostic.role,
       status: diagnostic.status,
-      ...(diagnostic.attempt === undefined
-        ? {}
-        : { attempt: diagnostic.attempt }),
-      ...(diagnostic.durationMs === undefined
-        ? {}
-        : { durationMs: diagnostic.durationMs }),
-      ...(diagnostic.errorCode === undefined
-        ? {}
-        : { errorCode: diagnostic.errorCode }),
+      ...(diagnostic.attempt === undefined ? {} : { attempt: diagnostic.attempt }),
+      ...(diagnostic.durationMs === undefined ? {} : { durationMs: diagnostic.durationMs }),
+      ...(diagnostic.errorCode === undefined ? {} : { errorCode: diagnostic.errorCode }),
     });
     if (diagnostic.status === "repairing") {
       emitEvent({
@@ -1310,15 +1114,15 @@ async function runResearchAgentWithBindings(
         taskId: diagnostic.taskId,
       });
     }
-    if (
-      diagnostic.role === "reconciler" &&
+    if (diagnostic.role === "reconciler" &&
       diagnostic.status !== "repairing" &&
-      diagnostic.status !== "completed"
-    ) {
+      diagnostic.status !== "completed") {
       emitEvent({
         kind: "reconciliation",
         taskId: diagnostic.taskId,
-        status: diagnostic.status === "started" ? "started" : "failed",
+        status: diagnostic.status === "started"
+          ? "started"
+          : "failed",
       });
     }
   };
@@ -1328,17 +1132,11 @@ async function runResearchAgentWithBindings(
     emitTasks: boolean,
   ): void => {
     const executableNodes = graph.nodes.filter(
-      (node) =>
-        node.executor === "subagent" &&
-        node.kind !== "repair" &&
-        node.roleId &&
-        node.status !== "pruned",
+      (node) => node.executor === "subagent" && node.kind !== "repair" &&
+        node.roleId && node.status !== "pruned",
     );
     const taskIdByNodeId = new Map(
-      executableNodes.map((node) => [
-        node.id,
-        researchTaskIdForNodeV1(graph, node),
-      ]),
+      executableNodes.map((node) => [node.id, researchTaskIdForNodeV1(graph, node)]),
     );
     const waves = topologicalResearchWavesV1(graph);
     emitEvent({
@@ -1347,27 +1145,23 @@ async function runResearchAgentWithBindings(
       revision: graph.revision,
       status,
       resolvedEffort: graph.resolvedEffort,
-      selectedRoleIds: [
-        ...new Set(executableNodes.map((node) => node.roleId!)),
-      ],
+      selectedRoleIds: [...new Set(executableNodes.map((node) => node.roleId!))],
       nodeCount: executableNodes.length,
       waveCount: Math.max(0, ...waves.values()),
       maxParallelNodes: graph.maxParallelNodes,
     });
     if (!emitTasks) return;
-    executableNodes.forEach((node) =>
-      emitEvent({
-        kind: "task",
-        taskId: researchTaskIdForNodeV1(graph, node),
-        status: "planned",
-        roleId: node.roleId,
-        wave: waves.get(node.id) ?? 1,
-        dependencyTaskIds: node.dependencies
-          .map((dependency) => taskIdByNodeId.get(dependency))
-          .filter((taskId): taskId is string => taskId !== undefined),
-        grantedCapabilityIds: [...node.grantedCapabilityIds],
-      }),
-    );
+    executableNodes.forEach((node) => emitEvent({
+      kind: "task",
+      taskId: researchTaskIdForNodeV1(graph, node),
+      status: "planned",
+      roleId: node.roleId,
+      wave: waves.get(node.id) ?? 1,
+      dependencyTaskIds: node.dependencies
+        .map((dependency) => taskIdByNodeId.get(dependency))
+        .filter((taskId): taskId is string => taskId !== undefined),
+      grantedCapabilityIds: [...node.grantedCapabilityIds],
+    }));
   };
   if (input.researchGraph) {
     const graph = input.researchGraph;
@@ -1378,34 +1172,30 @@ async function runResearchAgentWithBindings(
     RESEARCH_ONE_SHOT_REQUEST_PATH_V1,
     JSON.stringify({ runId, request: input.request }, null, 2),
   );
-  const durableEvidence =
-    input.durableSession && input.brief?.scopeBindings.length
-      ? new WorkspaceResearchEvidenceStoreV1(workspace)
-      : undefined;
+  const durableEvidence = input.durableSession && input.brief?.scopeBindings.length
+    ? new WorkspaceResearchEvidenceStoreV1(workspace)
+    : undefined;
   const durableClaims = durableEvidence
     ? new WorkspaceResearchClaimLedgerV1(workspace, durableEvidence)
     : undefined;
-  const durableOutline =
-    durableEvidence && durableClaims && input.brief
-      ? new WorkspaceResearchOutlineStoreV1({
-          workspace,
-          evidenceStore: durableEvidence,
-          claimLedger: durableClaims,
-          coverageTargets: input.brief.coverageTargets,
-        })
-      : undefined;
+  const durableOutline = durableEvidence && durableClaims && input.brief
+    ? new WorkspaceResearchOutlineStoreV1({
+        workspace,
+        evidenceStore: durableEvidence,
+        claimLedger: durableClaims,
+        coverageTargets: input.brief.coverageTargets,
+      })
+    : undefined;
   const broker = new ResearchCapabilityBroker(input.request, input.providers, {
     ...(input.budget ? { budget: input.budget } : {}),
-    ...(durableEvidence && input.brief
-      ? {
-          evidence: {
-            store: durableEvidence,
-            ...(durableClaims ? { claimLedger: durableClaims } : {}),
-            scopeBindings: input.brief.scopeBindings,
-            capturedAt: () => new Date(now()).toISOString(),
-          },
-        }
-      : {}),
+    ...(durableEvidence && input.brief ? {
+      evidence: {
+        store: durableEvidence,
+        ...(durableClaims ? { claimLedger: durableClaims } : {}),
+        scopeBindings: input.brief.scopeBindings,
+        capturedAt: () => new Date(now()).toISOString(),
+      },
+    } : {}),
   });
   const tools = createResearchPtcTools(broker, {
     onDiagnostic: emitPtcDiagnostic,
@@ -1425,35 +1215,23 @@ async function runResearchAgentWithBindings(
 
   const model =
     input.model ??
-    createAnthropicModel(
-      input.apiKey ?? "",
-      input.request.limits.maxModelOutputTokens,
-    );
+    createAnthropicModel(input.apiKey ?? "", input.request.limits.maxModelOutputTokens);
   const modelsByRole = input.model
     ? undefined
     : createAnthropicSubagentModels(input.apiKey ?? "");
   const directDetailSourceIdsByNode = new Map<string, Set<string>>();
   const capabilityCallsByNode = new Map<string, number>();
   const availableSourceIdsForNode = (nodeId: string): string[] => {
-    const nodes = new Map(
-      (acceptedGraph ?? input.researchGraph)?.nodes.map((node) => [
-        node.id,
-        node,
-      ]) ?? [],
-    );
+    const nodes = new Map((acceptedGraph ?? input.researchGraph)?.nodes.map((node) => [node.id, node]) ?? []);
     const collected = new Set<string>();
     if (repairAuthorization?.nodeId === nodeId) {
-      repairAuthorization.followUp.sourceIds.forEach((sourceId) =>
-        collected.add(sourceId),
-      );
+      repairAuthorization.followUp.sourceIds.forEach((sourceId) => collected.add(sourceId));
     }
     const visited = new Set<string>();
     const visit = (candidateId: string): void => {
       if (visited.has(candidateId)) return;
       visited.add(candidateId);
-      directDetailSourceIdsByNode
-        .get(candidateId)
-        ?.forEach((sourceId) => collected.add(sourceId));
+      directDetailSourceIdsByNode.get(candidateId)?.forEach((sourceId) => collected.add(sourceId));
       nodes.get(candidateId)?.dependencies.forEach(visit);
     };
     visit(nodeId);
@@ -1478,14 +1256,10 @@ async function runResearchAgentWithBindings(
       for (const dependencyId of node.dependencies) {
         const dependencyNode = nodes.get(dependencyId);
         if (!dependencyNode) continue;
-        const packet = acceptedPacketsByTaskId.get(
-          researchTaskIdForNodeV1(graph, dependencyNode),
-        );
+        const packet = acceptedPacketsByTaskId.get(researchTaskIdForNodeV1(graph, dependencyNode));
         if (packet && isResearchPacketBodyV2(packet.body)) {
           packet.body.claims.forEach((claim) => collected.add(claim.claimId));
-          packet.body.referencedClaimIds.forEach((claimId) =>
-            collected.add(claimId),
-          );
+          packet.body.referencedClaimIds.forEach((claimId) => collected.add(claimId));
         }
         visitDependencies(dependencyId);
       }
@@ -1494,9 +1268,7 @@ async function runResearchAgentWithBindings(
     return [...collected].sort();
   };
   const projectV2PacketDependency = durableClaims
-    ? async (
-        packet: import("./workflow-contracts.js").ResearchPacketBodyV2,
-      ) => {
+    ? async (packet: import("./workflow-contracts.js").ResearchPacketBodyV2) => {
         const sourceIdsByEvidenceId = new Map<string, string>();
         for (const detail of broker.detailEvidenceLedger()) {
           if (!detail.evidenceId) continue;
@@ -1509,118 +1281,103 @@ async function runResearchAgentWithBindings(
           }
           sourceIdsByEvidenceId.set(detail.evidenceId, detail.source.id);
         }
-        const claimIds = [
-          ...new Set([
-            ...packet.claims.map((claim) => claim.claimId),
-            ...packet.referencedClaimIds,
-          ]),
-        ].sort();
+        const claimIds = [...new Set([
+          ...packet.claims.map((claim) => claim.claimId),
+          ...packet.referencedClaimIds,
+        ])].sort();
         const checkedAt = new Date(now()).toISOString();
-        const claims = await Promise.all(
-          claimIds.map(async (claimId) => {
-            const claim = await durableClaims.refresh(claimId, checkedAt);
-            if (!claim || claim.freshness !== "current") {
+        const claims = await Promise.all(claimIds.map(async (claimId) => {
+          const claim = await durableClaims.refresh(claimId, checkedAt);
+          if (!claim || claim.freshness !== "current") {
+            throw new ResearchContractError(
+              "invalid-report",
+              "A normalized V2 packet references a missing or non-current claim.",
+            );
+          }
+          const sourceIds = claim.evidenceIds.map((evidenceId) => {
+            const sourceId = sourceIdsByEvidenceId.get(evidenceId);
+            if (!sourceId) {
               throw new ResearchContractError(
                 "invalid-report",
-                "A normalized V2 packet references a missing or non-current claim.",
+                "A normalized V2 claim is outside the current runtime evidence.",
               );
             }
-            const sourceIds = claim.evidenceIds.map((evidenceId) => {
-              const sourceId = sourceIdsByEvidenceId.get(evidenceId);
-              if (!sourceId) {
-                throw new ResearchContractError(
-                  "invalid-report",
-                  "A normalized V2 claim is outside the current runtime evidence.",
-                );
-              }
-              return sourceId;
-            });
-            return {
-              claimId: claim.id,
-              classification: claim.classification,
-              statement: claim.statement,
-              freshness: claim.freshness,
-              evidenceIds: [...claim.evidenceIds],
-              sourceIds: [...new Set(sourceIds)].sort(),
-            };
-          }),
-        );
+            return sourceId;
+          });
+          return {
+            claimId: claim.id,
+            classification: claim.classification,
+            statement: claim.statement,
+            freshness: claim.freshness,
+            evidenceIds: [...claim.evidenceIds],
+            sourceIds: [...new Set(sourceIds)].sort(),
+          };
+        }));
         return {
           schema: "atlcli.research-dependency-packet/v2",
           packetSchema: packet.schema,
-          sourceIds: [
-            ...new Set(claims.flatMap((claim) => claim.sourceIds)),
-          ].sort(),
+          sourceIds: [...new Set(claims.flatMap((claim) => claim.sourceIds))].sort(),
           claims,
           contradictions: structuredClone(packet.contradictions),
           outlineProposals: structuredClone(packet.outlineProposals),
           gaps: structuredClone(packet.gaps),
           proposedFollowUps: structuredClone(packet.proposedFollowUps),
           coverageLimits: [...packet.coverageLimits],
-          ...(packet.abstentionReason
-            ? { abstentionReason: packet.abstentionReason }
-            : {}),
+          ...(packet.abstentionReason ? { abstentionReason: packet.abstentionReason } : {}),
         };
       }
     : undefined;
-  const normalizePacketV2 =
-    durableEvidence && durableClaims
-      ? async (inputForPacket: {
-          taskId: string;
-          node: ResearchGraphV1["nodes"][number];
-          modelBody: unknown;
-        }) => {
-          const allowedSourceIds = new Set(
-            availableSourceIdsForNode(inputForPacket.node.id),
-          );
-          const detailEvidence = broker
-            .detailEvidenceLedger()
-            .filter((detail) => allowedSourceIds.has(detail.source.id));
-          const packet = await normalizeResearchPacketModelBodyV2({
-            modelBody: inputForPacket.modelBody,
-            detailEvidence,
-            evidenceStore: durableEvidence,
-            claimLedger: durableClaims,
-            createdAt: new Date(now()).toISOString(),
-          });
-          return {
-            packet,
-            dependencyResult: await projectV2PacketDependency!(packet),
-          };
-        }
-      : undefined;
-  const normalizePacketReferenceV2 =
-    durableClaims && projectV2PacketDependency
-      ? async (inputForPacket: {
-          taskId: string;
-          node: ResearchGraphV1["nodes"][number];
-          modelBody: unknown;
-        }) => {
-          const packet = await normalizeResearchPacketReferenceModelBodyV2({
-            modelBody: inputForPacket.modelBody,
-            allowedClaimIds: availableClaimIdsForNode(inputForPacket.node.id),
-            claimLedger: durableClaims,
-            checkedAt: new Date(now()).toISOString(),
-          });
-          return {
-            packet,
-            dependencyResult: await projectV2PacketDependency(packet),
-          };
-        }
-      : undefined;
+  const normalizePacketV2 = durableEvidence && durableClaims
+    ? async (inputForPacket: {
+        taskId: string;
+        node: ResearchGraphV1["nodes"][number];
+        modelBody: unknown;
+      }) => {
+        const allowedSourceIds = new Set(availableSourceIdsForNode(inputForPacket.node.id));
+        const detailEvidence = broker.detailEvidenceLedger().filter((detail) =>
+          allowedSourceIds.has(detail.source.id),
+        );
+        const packet = await normalizeResearchPacketModelBodyV2({
+          modelBody: inputForPacket.modelBody,
+          detailEvidence,
+          evidenceStore: durableEvidence,
+          claimLedger: durableClaims,
+          createdAt: new Date(now()).toISOString(),
+        });
+        return {
+          packet,
+          dependencyResult: await projectV2PacketDependency!(packet),
+        };
+      }
+    : undefined;
+  const normalizePacketReferenceV2 = durableClaims && projectV2PacketDependency
+    ? async (inputForPacket: {
+        taskId: string;
+        node: ResearchGraphV1["nodes"][number];
+        modelBody: unknown;
+      }) => {
+        const packet = await normalizeResearchPacketReferenceModelBodyV2({
+          modelBody: inputForPacket.modelBody,
+          allowedClaimIds: availableClaimIdsForNode(inputForPacket.node.id),
+          claimLedger: durableClaims,
+          checkedAt: new Date(now()).toISOString(),
+        });
+        return {
+          packet,
+          dependencyResult: await projectV2PacketDependency(packet),
+        };
+      }
+    : undefined;
   const dynamicSubagents = input.researchGraph
     ? compileDynamicResearchSubagents(input.researchGraph, {
         model,
         ...(modelsByRole ? { modelsByRole } : {}),
-        ...(input.subagentModelsByNode
-          ? { modelsByNode: input.subagentModelsByNode }
-          : {}),
+        ...(input.subagentModelsByNode ? { modelsByNode: input.subagentModelsByNode } : {}),
         broker,
         ...(input.scopeCatalog ? { scopeCatalog: input.scopeCatalog } : {}),
         question: input.request.question,
         maxInterpreterMs: input.request.limits.maxInterpreterMs,
-        maxInterpreterMemoryBytes:
-          input.request.limits.maxInterpreterMemoryBytes,
+        maxInterpreterMemoryBytes: input.request.limits.maxInterpreterMemoryBytes,
         maxPtcCalls: input.request.limits.maxPtcCalls,
         maxSearchPagesPerProduct: input.request.limits.maxSearchPagesPerProduct,
         maxDetailItemsPerProduct: input.request.limits.maxDetailItemsPerProduct,
@@ -1628,26 +1385,15 @@ async function runResearchAgentWithBindings(
         onPtcDiagnostic: emitPtcDiagnostic,
         onNodePtcDiagnostic: (nodeId, diagnostic) => {
           if (diagnostic.outcome === "started") {
-            capabilityCallsByNode.set(
-              nodeId,
-              (capabilityCallsByNode.get(nodeId) ?? 0) + 1,
-            );
+            capabilityCallsByNode.set(nodeId, (capabilityCallsByNode.get(nodeId) ?? 0) + 1);
           }
         },
         onNodePtcResult: (nodeId, toolId, result) => {
           if (toolId !== "jira.issue.get" && toolId !== "wiki.page.get") return;
-          if (
-            !result ||
-            typeof result !== "object" ||
-            !("source" in result) ||
-            !result.source ||
-            typeof result.source !== "object" ||
-            !("sourceId" in result.source) ||
-            typeof result.source.sourceId !== "string"
-          )
-            return;
-          const sourceIds =
-            directDetailSourceIdsByNode.get(nodeId) ?? new Set<string>();
+          if (!result || typeof result !== "object" || !("source" in result) ||
+            !result.source || typeof result.source !== "object" || !("sourceId" in result.source) ||
+            typeof result.source.sourceId !== "string") return;
+          const sourceIds = directDetailSourceIdsByNode.get(nodeId) ?? new Set<string>();
           sourceIds.add(result.source.sourceId);
           directDetailSourceIdsByNode.set(nodeId, sourceIds);
         },
@@ -1659,248 +1405,207 @@ async function runResearchAgentWithBindings(
   const isDynamic = input.researchGraph !== undefined;
   let fatalWorkflowError: unknown;
   const boundedSubagentMiddleware = isDynamic
-    ? createBoundedResearchSubagentMiddleware(
-        model,
-        input.researchGraph!,
-        dynamicSubagents,
-        runtime,
-        {
-          structuredOutputStrategy: input.model ? "tool" : "provider",
-          now,
-          onFatal: (error) => {
-            fatalWorkflowError = error;
-            broker.cancel(error);
-          },
-          onDiagnostic: emitSubagentDiagnostic,
-          availableSourceIdsForNode,
-          capabilityCallsForNode: (nodeId) =>
-            capabilityCallsByNode.get(nodeId) ?? 0,
-          activeGraph: () => acceptedGraph,
-          ...(normalizePacketV2 ? { normalizePacketV2 } : {}),
-          ...(normalizePacketReferenceV2 ? { normalizePacketReferenceV2 } : {}),
-          ...(durableDispatchJournal ? { durableDispatchJournal } : {}),
-          reconciliationInputContext: () => {
-            const graph = acceptedGraph;
-            if (!graph) {
-              throw new ResearchContractError(
-                "invalid-report",
-                "Reconciliation requires one accepted research graph.",
-              );
-            }
-            const reconciliationNode = graph.nodes.find(
-              (node) =>
-                node.roleId === "reconciler" && node.status !== "pruned",
-            );
-            if (!reconciliationNode) {
-              throw new ResearchContractError(
-                "invalid-report",
-                "The accepted research graph has no reconciliation task.",
-              );
-            }
-            const acceptedPackets = reconciliationNode.dependencies.map(
-              (nodeId) => {
-                const dependencyNode = graph.nodes.find(
-                  (node) => node.id === nodeId,
-                );
-                if (!dependencyNode) {
-                  throw new ResearchContractError(
-                    "invalid-report",
-                    `Reconciliation dependency is absent from the accepted graph: ${nodeId}.`,
-                  );
-                }
-                const packet = acceptedPacketsByTaskId.get(
-                  researchTaskIdForNodeV1(graph, dependencyNode),
-                );
-                if (!packet) {
-                  throw new ResearchContractError(
-                    "invalid-report",
-                    `Reconciliation dependency has no accepted packet: ${nodeId}.`,
-                  );
-                }
-                return packet;
-              },
-            );
-            return projectResearchReconciliationInputV1({
-              briefRevision: graph.basedOnBriefRevision,
-              graphRevision: graph.revision,
-              coverageTargetIds:
-                reconciliationNode.completion.requiredCoverageTargetIds,
-              acceptedPackets,
-            });
-          },
-          synthesisReconciliationContext: () => {
-            const graph = acceptedGraph;
-            if (!graph) {
-              throw new ResearchContractError(
-                "invalid-report",
-                "Synthesis requires one accepted research graph.",
-              );
-            }
-            const reconciliationNode = graph.nodes.find(
-              (node) =>
-                node.roleId === "reconciler" && node.status !== "pruned",
-            );
-            if (!reconciliationNode) return { dispositions: [] };
-            const reconciliationTaskId = researchTaskIdForNodeV1(
-              graph,
-              reconciliationNode,
-            );
-            const packet = acceptedPacketsByTaskId.get(reconciliationTaskId);
-            if (!packet || reconciliationDispositions === undefined) {
-              throw new ResearchContractError(
-                "invalid-report",
-                "Synthesis is blocked until every reconciliation defect has a host-recorded disposition.",
-              );
-            }
-            if (repairAuthorization && !acceptedRepairPacket) {
-              throw new ResearchContractError(
-                "invalid-report",
-                "Synthesis is blocked until the authorized repair task has one accepted packet.",
-              );
-            }
-            return {
-              reconciliationPacketRef: packet.packetRef,
-              dispositions: reconciliationDispositions,
-              ...(acceptedRepairPacket
-                ? { repairPackets: [acceptedRepairPacket] }
-                : {}),
-            };
-          },
-          repairAuthorization: () =>
-            repairAuthorization
-              ? {
-                  taskId: repairAuthorization.taskId,
-                  nodeId: repairAuthorization.nodeId,
-                  reconciliationTaskId:
-                    repairAuthorization.dependencyTaskIds[0]!,
-                  followUp: repairAuthorization.followUp,
-                }
-              : undefined,
-          onAcceptedPacket: (packet) => {
-            acceptedPacketsByTaskId.set(packet.taskId, packet);
-            if (repairAuthorization?.taskId === packet.taskId) {
-              acceptedRepairPacket = packet;
-              emitEvent({
-                kind: "repair_group",
-                followUpId: repairAuthorization.followUp.id,
-                taskId: packet.taskId,
-                status: "completed",
-                reasonCode: "packet_accepted",
-              });
-            }
-            const body = packet.body;
-            const sourceCount =
-              "sourceIds" in body && Array.isArray(body.sourceIds)
-                ? body.sourceIds.length
-                : undefined;
-            const findingCount =
-              "findingCandidates" in body
-                ? body.findingCandidates.length
-                : "findings" in body
-                  ? body.findings.length
-                  : undefined;
-            const relationshipCount =
-              "relationshipCandidates" in body
-                ? body.relationshipCandidates.length
-                : "relationships" in body
-                  ? body.relationships.length
-                  : undefined;
-            const gapCount = "gaps" in body ? body.gaps.length : undefined;
-            const defectCount =
-              "defects" in body ? body.defects.length : undefined;
-            emitEvent({
-              kind: "task",
-              taskId: packet.taskId,
-              status: "packet-accepted",
-              ...(packet.roleId ? { roleId: packet.roleId } : {}),
-              resultBytes: packet.hostObservedUsage.resultBytes,
-              capabilityCalls: packet.hostObservedUsage.capabilityCalls,
-              inputTokens: packet.hostObservedUsage.inputTokens,
-              outputTokens: packet.hostObservedUsage.outputTokens,
-              ...(sourceCount === undefined ? {} : { sourceCount }),
-              ...(findingCount === undefined ? {} : { findingCount }),
-              ...(relationshipCount === undefined ? {} : { relationshipCount }),
-              ...(gapCount === undefined ? {} : { gapCount }),
-              ...(defectCount === undefined ? {} : { defectCount }),
-            });
-            acceptedInputTokens += packet.hostObservedUsage.inputTokens;
-            acceptedOutputTokens += packet.hostObservedUsage.outputTokens;
-            acceptedResultBytes += packet.hostObservedUsage.resultBytes;
-            emitEvent({
-              kind: "budget",
-              metric: "tokens",
-              consumed: acceptedInputTokens + acceptedOutputTokens,
-              maximum:
-                (acceptedGraph ?? input.researchGraph!).totalBudget
-                  .maxInputTokens +
-                (acceptedGraph ?? input.researchGraph!).totalBudget
-                  .maxOutputTokens,
-            });
-            emitEvent({
-              kind: "budget",
-              metric: "bytes",
-              consumed: acceptedResultBytes,
-              maximum: (acceptedGraph ?? input.researchGraph!).totalBudget
-                .maxResultBytes,
-            });
-            if (packet.roleId === "reconciler" && "defects" in body) {
-              emitEvent({
-                kind: "reconciliation",
-                taskId: packet.taskId,
-                status: "completed",
-                defectCount: body.defects.length,
-                proposedFollowUpCount: body.proposedFollowUps.length,
-              });
-            }
-          },
-          onRejectedStructuredResult: ({
-            taskId,
-            role,
-            candidate,
-            validatorIssue,
-          }) =>
-            workspace.writeFile(
-              `/scratch/rejected-${taskId.replaceAll(":", "-")}.json`,
-              JSON.stringify(
-                {
-                  schema: "atlcli.rejected-structured-result/v1",
-                  taskId,
-                  role,
-                  validatorIssue,
-                  candidate,
-                },
-                null,
-                2,
-              ),
-            ),
+      ? createBoundedResearchSubagentMiddleware(model, input.researchGraph!, dynamicSubagents, runtime, {
+        structuredOutputStrategy: input.model ? "tool" : "provider",
+        now,
+        onFatal: (error) => {
+          fatalWorkflowError = error;
+          broker.cancel(error);
         },
-      )
+        onDiagnostic: emitSubagentDiagnostic,
+        availableSourceIdsForNode,
+        capabilityCallsForNode: (nodeId) => capabilityCallsByNode.get(nodeId) ?? 0,
+        activeGraph: () => acceptedGraph,
+        ...(normalizePacketV2 ? { normalizePacketV2 } : {}),
+        ...(normalizePacketReferenceV2 ? { normalizePacketReferenceV2 } : {}),
+        ...(durableDispatchJournal ? { durableDispatchJournal } : {}),
+        reconciliationInputContext: () => {
+          const graph = acceptedGraph;
+          if (!graph) {
+            throw new ResearchContractError(
+              "invalid-report",
+              "Reconciliation requires one accepted research graph.",
+            );
+          }
+          const reconciliationNode = graph.nodes.find((node) =>
+            node.roleId === "reconciler" && node.status !== "pruned"
+          );
+          if (!reconciliationNode) {
+            throw new ResearchContractError(
+              "invalid-report",
+              "The accepted research graph has no reconciliation task.",
+            );
+          }
+          const acceptedPackets = reconciliationNode.dependencies.map((nodeId) => {
+            const dependencyNode = graph.nodes.find((node) => node.id === nodeId);
+            if (!dependencyNode) {
+              throw new ResearchContractError(
+                "invalid-report",
+                `Reconciliation dependency is absent from the accepted graph: ${nodeId}.`,
+              );
+            }
+            const packet = acceptedPacketsByTaskId.get(
+              researchTaskIdForNodeV1(graph, dependencyNode),
+            );
+            if (!packet) {
+              throw new ResearchContractError(
+                "invalid-report",
+                `Reconciliation dependency has no accepted packet: ${nodeId}.`,
+              );
+            }
+            return packet;
+          });
+          return projectResearchReconciliationInputV1({
+            briefRevision: graph.basedOnBriefRevision,
+            graphRevision: graph.revision,
+            coverageTargetIds: reconciliationNode.completion.requiredCoverageTargetIds,
+            acceptedPackets,
+          });
+        },
+        synthesisReconciliationContext: () => {
+          const graph = acceptedGraph;
+          if (!graph) {
+            throw new ResearchContractError(
+              "invalid-report",
+              "Synthesis requires one accepted research graph.",
+            );
+          }
+          const reconciliationNode = graph.nodes.find((node) =>
+            node.roleId === "reconciler" && node.status !== "pruned"
+          );
+          if (!reconciliationNode) return { dispositions: [] };
+          const reconciliationTaskId = researchTaskIdForNodeV1(graph, reconciliationNode);
+          const packet = acceptedPacketsByTaskId.get(reconciliationTaskId);
+          if (!packet || reconciliationDispositions === undefined) {
+            throw new ResearchContractError(
+              "invalid-report",
+              "Synthesis is blocked until every reconciliation defect has a host-recorded disposition.",
+            );
+          }
+          if (repairAuthorization && !acceptedRepairPacket) {
+            throw new ResearchContractError(
+              "invalid-report",
+              "Synthesis is blocked until the authorized repair task has one accepted packet.",
+            );
+          }
+          return {
+            reconciliationPacketRef: packet.packetRef,
+            dispositions: reconciliationDispositions,
+            ...(acceptedRepairPacket ? { repairPackets: [acceptedRepairPacket] } : {}),
+          };
+        },
+        repairAuthorization: () => repairAuthorization
+          ? {
+              taskId: repairAuthorization.taskId,
+              nodeId: repairAuthorization.nodeId,
+              reconciliationTaskId: repairAuthorization.dependencyTaskIds[0]!,
+              followUp: repairAuthorization.followUp,
+            }
+          : undefined,
+        onAcceptedPacket: (packet) => {
+          acceptedPacketsByTaskId.set(packet.taskId, packet);
+          if (repairAuthorization?.taskId === packet.taskId) {
+            acceptedRepairPacket = packet;
+            emitEvent({
+              kind: "repair_group",
+              followUpId: repairAuthorization.followUp.id,
+              taskId: packet.taskId,
+              status: "completed",
+              reasonCode: "packet_accepted",
+            });
+          }
+          const body = packet.body;
+          const sourceCount = "sourceIds" in body && Array.isArray(body.sourceIds)
+            ? body.sourceIds.length
+            : undefined;
+          const findingCount = "findingCandidates" in body
+            ? body.findingCandidates.length
+            : "findings" in body
+              ? body.findings.length
+              : undefined;
+          const relationshipCount = "relationshipCandidates" in body
+            ? body.relationshipCandidates.length
+            : "relationships" in body
+              ? body.relationships.length
+              : undefined;
+          const gapCount = "gaps" in body ? body.gaps.length : undefined;
+          const defectCount = "defects" in body ? body.defects.length : undefined;
+          emitEvent({
+            kind: "task",
+            taskId: packet.taskId,
+            status: "packet-accepted",
+            ...(packet.roleId ? { roleId: packet.roleId } : {}),
+            resultBytes: packet.hostObservedUsage.resultBytes,
+            capabilityCalls: packet.hostObservedUsage.capabilityCalls,
+            inputTokens: packet.hostObservedUsage.inputTokens,
+            outputTokens: packet.hostObservedUsage.outputTokens,
+            ...(sourceCount === undefined ? {} : { sourceCount }),
+            ...(findingCount === undefined ? {} : { findingCount }),
+            ...(relationshipCount === undefined ? {} : { relationshipCount }),
+            ...(gapCount === undefined ? {} : { gapCount }),
+            ...(defectCount === undefined ? {} : { defectCount }),
+          });
+          acceptedInputTokens += packet.hostObservedUsage.inputTokens;
+          acceptedOutputTokens += packet.hostObservedUsage.outputTokens;
+          acceptedResultBytes += packet.hostObservedUsage.resultBytes;
+          emitEvent({
+            kind: "budget",
+            metric: "tokens",
+            consumed: acceptedInputTokens + acceptedOutputTokens,
+            maximum: (acceptedGraph ?? input.researchGraph!).totalBudget.maxInputTokens +
+              (acceptedGraph ?? input.researchGraph!).totalBudget.maxOutputTokens,
+          });
+          emitEvent({
+            kind: "budget",
+            metric: "bytes",
+            consumed: acceptedResultBytes,
+            maximum: (acceptedGraph ?? input.researchGraph!).totalBudget.maxResultBytes,
+          });
+          if (packet.roleId === "reconciler" && "defects" in body) {
+            emitEvent({
+              kind: "reconciliation",
+              taskId: packet.taskId,
+              status: "completed",
+              defectCount: body.defects.length,
+              proposedFollowUpCount: body.proposedFollowUps.length,
+            });
+          }
+        },
+        onRejectedStructuredResult: ({ taskId, role, candidate, validatorIssue }) =>
+          workspace.writeFile(
+            `/scratch/rejected-${taskId.replaceAll(":", "-")}.json`,
+            JSON.stringify({
+              schema: "atlcli.rejected-structured-result/v1",
+              taskId,
+              role,
+              validatorIssue,
+              candidate,
+            }, null, 2),
+          ),
+      })
     : undefined;
   const graphProposalTool = isDynamic
     ? createResearchGraphProposalPtcTool(input.researchGraph!, {
         canPropose: () => !subagentTaskStarted,
         onAcceptedProposal: async (proposal) => {
           if (!durableDispatchJournal) return;
-          acceptedGraph =
-            await durableDispatchJournal.commitGraphSelection(proposal);
+          acceptedGraph = await durableDispatchJournal.commitGraphSelection(proposal);
         },
         onAccepted: (graph) => {
           acceptedGraph ??= graph;
           emitGraphPlan(acceptedGraph, "accepted", true);
         },
-        onDiagnostic: (status, errorCode) =>
-          emitEvent({
-            kind: "decision",
-            decisionId: "central-supervisor-graph-proposal",
-            status,
-            reasonCode:
-              status === "started"
-                ? "graph-proposal-submitted"
-                : status === "completed"
-                  ? "graph-proposal-accepted"
-                  : "graph-proposal-rejected",
-            ...(errorCode ? { errorCode } : {}),
-          }),
+        onDiagnostic: (status, errorCode) => emitEvent({
+          kind: "decision",
+          decisionId: "central-supervisor-graph-proposal",
+          status,
+          reasonCode: status === "started"
+            ? "graph-proposal-submitted"
+            : status === "completed"
+              ? "graph-proposal-accepted"
+              : "graph-proposal-rejected",
+          ...(errorCode ? { errorCode } : {}),
+        }),
       })
     : undefined;
   const reconciliationDispositionTool = isDynamic
@@ -1909,161 +1614,102 @@ async function runResearchAgentWithBindings(
         reconciliationPacket: (taskId) => acceptedPacketsByTaskId.get(taskId),
         isKnownTarget: (defect) => {
           if (defect.target.kind === "node") {
-            return Boolean(
-              acceptedGraph?.nodes.some((node) => node.id === defect.target.id),
-            );
+            return Boolean(acceptedGraph?.nodes.some((node) => node.id === defect.target.id));
           }
           if (defect.target.kind === "coverage") {
-            if (
-              acceptedGraph?.nodes.some(
-                (node) =>
-                  node.roleId === "reconciler" &&
-                  node.status !== "pruned" &&
-                  node.completion.requiredCoverageTargetIds.includes(
-                    defect.target.id,
-                  ),
+            if (acceptedGraph?.nodes.some((node) =>
+              node.roleId === "reconciler" &&
+              node.status !== "pruned" &&
+              node.completion.requiredCoverageTargetIds.includes(defect.target.id)
+            )) return true;
+            return [...acceptedPacketsByTaskId.values()].some((packet) =>
+              "gaps" in packet.body && packet.body.gaps.some((gap) =>
+                gap.id === defect.target.id || gap.targetId === defect.target.id
               )
-            )
-              return true;
-            return [...acceptedPacketsByTaskId.values()].some(
-              (packet) =>
-                "gaps" in packet.body &&
-                packet.body.gaps.some(
-                  (gap) =>
-                    gap.id === defect.target.id ||
-                    gap.targetId === defect.target.id,
-                ),
             );
           }
           if (defect.target.kind === "finding") {
-            return [...acceptedPacketsByTaskId.values()].some(
-              (packet) =>
-                "findingCandidates" in packet.body &&
-                packet.body.findingCandidates.some(
-                  (candidate) => candidate.id === defect.target.id,
-                ),
+            return [...acceptedPacketsByTaskId.values()].some((packet) =>
+              "findingCandidates" in packet.body &&
+              packet.body.findingCandidates.some((candidate) => candidate.id === defect.target.id)
             );
           }
           if (defect.target.kind === "relationship") {
-            return [...acceptedPacketsByTaskId.values()].some(
-              (packet) =>
-                "relationshipCandidates" in packet.body &&
-                packet.body.relationshipCandidates.some(
-                  (candidate) => candidate.id === defect.target.id,
-                ),
+            return [...acceptedPacketsByTaskId.values()].some((packet) =>
+              "relationshipCandidates" in packet.body &&
+              packet.body.relationshipCandidates.some((candidate) => candidate.id === defect.target.id)
             );
           }
           if (defect.target.kind === "claim") {
-            return [...acceptedPacketsByTaskId.values()].some(
-              (packet) =>
-                isResearchPacketBodyV2(packet.body) &&
-                (packet.body.claims.some(
-                  (claim) => claim.claimId === defect.target.id,
-                ) ||
-                  packet.body.referencedClaimIds.includes(defect.target.id)),
+            return [...acceptedPacketsByTaskId.values()].some((packet) =>
+              isResearchPacketBodyV2(packet.body) &&
+              (packet.body.claims.some((claim) => claim.claimId === defect.target.id) ||
+                packet.body.referencedClaimIds.includes(defect.target.id))
             );
           }
           if (defect.target.kind === "section") {
-            return [...acceptedPacketsByTaskId.values()].some(
-              (packet) =>
-                isResearchPacketBodyV2(packet.body) &&
-                packet.body.outlineProposals.some(
-                  (proposal) => proposal.sectionId === defect.target.id,
-                ),
+            return [...acceptedPacketsByTaskId.values()].some((packet) =>
+              isResearchPacketBodyV2(packet.body) &&
+              packet.body.outlineProposals.some((proposal) => proposal.sectionId === defect.target.id)
             );
           }
           return false;
         },
         isKnownReference: (reference) => {
           if (reference.kind === "source") {
-            return [...acceptedPacketsByTaskId.values()].some(
-              (packet) =>
-                isResearchPacketBodyV1(packet.body) &&
-                packet.body.sourceIds.includes(reference.id),
+            return [...acceptedPacketsByTaskId.values()].some((packet) =>
+              isResearchPacketBodyV1(packet.body) &&
+              packet.body.sourceIds.includes(reference.id)
             );
           }
-          return [...acceptedPacketsByTaskId.values()].some(
-            (packet) =>
-              isResearchPacketBodyV2(packet.body) &&
-              (packet.body.contradictions.some((contradiction) =>
-                contradiction.evidenceIds.includes(reference.id),
-              ) ||
-                packet.body.outlineProposals.some((proposal) =>
-                  proposal.evidenceIds.includes(reference.id),
-                )),
+          return [...acceptedPacketsByTaskId.values()].some((packet) =>
+            isResearchPacketBodyV2(packet.body) &&
+            (packet.body.contradictions.some((contradiction) =>
+                contradiction.evidenceIds.includes(reference.id)) ||
+              packet.body.outlineProposals.some((proposal) =>
+                proposal.evidenceIds.includes(reference.id)))
           );
         },
-        canRecord: () =>
-          !synthesizerTaskStarted && reconciliationDispositions === undefined,
-        authorizeRepair: ({
-          graph,
-          reconciliationTaskId,
-          defect,
-          followUp,
-        }) => {
-          const repairNode = input.researchGraph!.nodes.find(
-            (node) => node.kind === "repair",
-          );
-          if (
-            !repairNode ||
-            !repairNode.roleId ||
-            repairAuthorization ||
-            researchWavesConsumed >= graph.maxResearchWaves
-          )
-            return undefined;
+        canRecord: () => !synthesizerTaskStarted && reconciliationDispositions === undefined,
+        authorizeRepair: ({ graph, reconciliationTaskId, defect, followUp }) => {
+          const repairNode = input.researchGraph!.nodes.find((node) => node.kind === "repair");
+          if (!repairNode || !repairNode.roleId || repairAuthorization ||
+              researchWavesConsumed >= graph.maxResearchWaves) return undefined;
           const knownSourceIds = new Set(
             [...acceptedPacketsByTaskId.values()].flatMap((acceptedPacket) =>
-              "sourceIds" in acceptedPacket.body
-                ? acceptedPacket.body.sourceIds
-                : [],
+              "sourceIds" in acceptedPacket.body ? acceptedPacket.body.sourceIds : []
             ),
           );
-          if (
-            followUp.sourceIds.some((sourceId) => !knownSourceIds.has(sourceId))
-          ) {
+          if (followUp.sourceIds.some((sourceId) => !knownSourceIds.has(sourceId))) {
             throw new ResearchContractError(
               "invalid-request",
               `Reconciliation repair follow-up references an unknown source for defect ${defect.id}.`,
             );
           }
-          const policyMinimum =
-            graph.reconciliationPolicy.minimumRemainingBudget;
-          const ceiling =
-            input.researchGraph!.approvalEnvelope.totalBudgetCeiling;
+          const policyMinimum = graph.reconciliationPolicy.minimumRemainingBudget;
+          const ceiling = input.researchGraph!.approvalEnvelope.totalBudgetCeiling;
           const elapsedMs = Math.max(0, now() - startedAtMs);
           const brokerBudget = broker.budget.snapshot();
           const repairProducts = [
-            repairNode.grantedCapabilityIds.includes("jira.issue.search")
-              ? ("jira" as const)
-              : undefined,
-            repairNode.grantedCapabilityIds.includes("wiki.search")
-              ? ("confluence" as const)
-              : undefined,
-          ].filter(
-            (product): product is "jira" | "confluence" =>
-              product !== undefined,
-          );
+            repairNode.grantedCapabilityIds.includes("jira.issue.search") ? "jira" as const : undefined,
+            repairNode.grantedCapabilityIds.includes("wiki.search") ? "confluence" as const : undefined,
+          ].filter((product): product is "jira" | "confluence" => product !== undefined);
           const minimumRepairCalls = repairProducts.length * 2;
-          const hasProductReadBudget =
-            repairProducts.length > 0 &&
-            repairProducts.every(
-              (product) =>
-                broker.budget.canSearchAnotherPage(product) &&
-                broker.budget.canReadAnotherDetail(product),
-            );
+          const hasProductReadBudget = repairProducts.length > 0 && repairProducts.every((product) =>
+            broker.budget.canSearchAnotherPage(product) &&
+            broker.budget.canReadAnotherDetail(product)
+          );
           const hasRemainingBudget =
             hasProductReadBudget &&
-            brokerBudget.ptcRemaining >=
-              Math.max(policyMinimum.maxCapabilityCalls, minimumRepairCalls) &&
+            brokerBudget.ptcRemaining >= Math.max(
+              policyMinimum.maxCapabilityCalls,
+              minimumRepairCalls,
+            ) &&
             brokerBudget.httpAttemptsRemaining >= minimumRepairCalls &&
-            ceiling.maxInputTokens - acceptedInputTokens >=
-              policyMinimum.maxInputTokens &&
-            ceiling.maxOutputTokens - acceptedOutputTokens >=
-              policyMinimum.maxOutputTokens &&
-            ceiling.maxResultBytes - acceptedResultBytes >=
-              policyMinimum.maxResultBytes &&
-            input.request.limits.maxRunMs - elapsedMs >=
-              policyMinimum.maxDurationMs;
+            ceiling.maxInputTokens - acceptedInputTokens >= policyMinimum.maxInputTokens &&
+            ceiling.maxOutputTokens - acceptedOutputTokens >= policyMinimum.maxOutputTokens &&
+            ceiling.maxResultBytes - acceptedResultBytes >= policyMinimum.maxResultBytes &&
+            input.request.limits.maxRunMs - elapsedMs >= policyMinimum.maxDurationMs;
           if (!hasRemainingBudget) return undefined;
           researchWavesConsumed += 1;
           return {
@@ -2083,16 +1729,13 @@ async function runResearchAgentWithBindings(
           if (durableDispatchJournal) {
             const recorded = await durableDispatchJournal.recordReconciliation({
               dispositions,
-              ...(authorizedRepair
-                ? {
-                    repair: {
-                      nodeId: authorizedRepair.nodeId,
-                      reconciliationTaskId:
-                        authorizedRepair.dependencyTaskIds[0]!,
-                      followUpId: authorizedRepair.followUp.id,
-                    },
-                  }
-                : {}),
+              ...(authorizedRepair ? {
+                repair: {
+                  nodeId: authorizedRepair.nodeId,
+                  reconciliationTaskId: authorizedRepair.dependencyTaskIds[0]!,
+                  followUpId: authorizedRepair.followUp.id,
+                },
+              } : {}),
             });
             acceptedGraph = recorded.graph;
             reconciliationDispositions = recorded.dispositions;
@@ -2111,30 +1754,26 @@ async function runResearchAgentWithBindings(
                 : "wave_or_budget_exhausted",
             });
           }
-          dispositions.forEach((disposition) =>
-            emitEvent({
-              kind: "reconciliation_disposition",
-              dispositionId: disposition.id,
-              defectId: disposition.defectId,
-              decision: disposition.decision,
-              reasonCode: disposition.reasonCode,
-              status: "recorded",
-            }),
-          );
+          dispositions.forEach((disposition) => emitEvent({
+            kind: "reconciliation_disposition",
+            dispositionId: disposition.id,
+            defectId: disposition.defectId,
+            decision: disposition.decision,
+            reasonCode: disposition.reasonCode,
+            status: "recorded",
+          }));
         },
-        onDiagnostic: (status, errorCode) =>
-          emitEvent({
-            kind: "decision",
-            decisionId: "central-supervisor-reconciliation-dispositions",
-            status,
-            reasonCode:
-              status === "started"
-                ? "reconciliation-dispositions-submitted"
-                : status === "completed"
-                  ? "reconciliation-dispositions-accepted"
-                  : "reconciliation-dispositions-rejected",
-            ...(errorCode ? { errorCode } : {}),
-          }),
+        onDiagnostic: (status, errorCode) => emitEvent({
+          kind: "decision",
+          decisionId: "central-supervisor-reconciliation-dispositions",
+          status,
+          reasonCode: status === "started"
+            ? "reconciliation-dispositions-submitted"
+            : status === "completed"
+              ? "reconciliation-dispositions-accepted"
+              : "reconciliation-dispositions-rejected",
+          ...(errorCode ? { errorCode } : {}),
+        }),
       })
     : undefined;
   let structuredRepairAttempts = 0;
@@ -2149,9 +1788,7 @@ async function runResearchAgentWithBindings(
     subagents: [],
     systemPrompt: isDynamic
       ? buildDynamicSupervisorPrompt(input.researchGraph!)
-      : buildLegacyResearchSystemPromptV1(
-          input.request.limits.maxDetailItemsPerProduct,
-        ),
+      : buildLegacyResearchSystemPromptV1(input.request.limits.maxDetailItemsPerProduct),
     middleware: isDynamic
       ? [
           ...disabledHostMiddleware,
@@ -2162,30 +1799,19 @@ async function runResearchAgentWithBindings(
           // bounded research subagent middleware owns task admission instead.
           createOneShotSupervisorEvalMiddleware({
             canRetryAfterFailure: () => !subagentTaskStarted,
-            onWorkflowCode: (attempt, code) =>
-              workspace.writeFile(
-                `/scratch/supervisor-workflow-a${attempt}.js`,
-                code,
-              ),
-            onDiagnostic: (diagnostic) =>
-              emitEvent({
-                kind: "decision",
-                decisionId: `central-supervisor-eval:a${diagnostic.attempt}`,
-                status:
-                  diagnostic.status === "rejected"
-                    ? "failed"
-                    : diagnostic.status,
-                reasonCode: diagnostic.reasonCode,
-                ...(diagnostic.errorCode
-                  ? { errorCode: diagnostic.errorCode }
-                  : {}),
-                ...(diagnostic.codeBytes === undefined
-                  ? {}
-                  : { codeBytes: diagnostic.codeBytes }),
-                ...(diagnostic.codeHash === undefined
-                  ? {}
-                  : { codeHash: diagnostic.codeHash }),
-              }),
+            onWorkflowCode: (attempt, code) => workspace.writeFile(
+              `/scratch/supervisor-workflow-a${attempt}.js`,
+              code,
+            ),
+            onDiagnostic: (diagnostic) => emitEvent({
+              kind: "decision",
+              decisionId: `central-supervisor-eval:a${diagnostic.attempt}`,
+              status: diagnostic.status === "rejected" ? "failed" : diagnostic.status,
+              reasonCode: diagnostic.reasonCode,
+              ...(diagnostic.errorCode ? { errorCode: diagnostic.errorCode } : {}),
+              ...(diagnostic.codeBytes === undefined ? {} : { codeBytes: diagnostic.codeBytes }),
+              ...(diagnostic.codeHash === undefined ? {} : { codeHash: diagnostic.codeHash }),
+            }),
             onFatal: (error) => {
               fatalWorkflowError = error;
               broker.cancel(error);
@@ -2201,10 +1827,7 @@ async function runResearchAgentWithBindings(
             // eval remains independently bounded by maxInterpreterMs.
             executionTimeoutMs: input.request.limits.maxRunMs,
             maxPtcCalls: input.request.limits.maxPtcCalls,
-            maxResultChars: Math.min(
-              24_000,
-              input.request.limits.maxReportChars,
-            ),
+            maxResultChars: Math.min(24_000, input.request.limits.maxReportChars),
             captureConsole: false,
           }),
         ]
@@ -2218,10 +1841,7 @@ async function runResearchAgentWithBindings(
             maxStackSizeBytes: 320 * 1024,
             executionTimeoutMs: input.request.limits.maxInterpreterMs,
             maxPtcCalls: input.request.limits.maxPtcCalls,
-            maxResultChars: Math.min(
-              24_000,
-              input.request.limits.maxReportChars,
-            ),
+            maxResultChars: Math.min(24_000, input.request.limits.maxReportChars),
             captureConsole: false,
           }),
         ],
@@ -2234,9 +1854,7 @@ async function runResearchAgentWithBindings(
           },
           toolMessageContent: "Research draft accepted.",
         })
-      : providerStrategy(
-          providerCompatibleResearchSchema(RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1),
-        ),
+      : providerStrategy(providerCompatibleResearchSchema(RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1)),
   });
   let supervisorActive = false;
 
@@ -2267,7 +1885,7 @@ async function runResearchAgentWithBindings(
         configurable: { thread_id: checkpointThreadId },
         recursionLimit: researchRecursionLimitV1(input.researchGraph),
         signal: broker.signal,
-      },
+      }
     );
     if (isDynamic && !acceptedGraph) {
       throw new ResearchContractError(
@@ -2306,32 +1924,18 @@ async function runResearchAgentWithBindings(
       durationMs: Math.max(0, completedAtMs - startedAtMs),
       complete: completion.complete,
       counts,
-      ...(collectUsage(result.messages)
-        ? { usage: collectUsage(result.messages) }
-        : {}),
+      ...(collectUsage(result.messages) ? { usage: collectUsage(result.messages) } : {}),
       warnings: completion.warnings,
     };
     const acceptedV2Bodies = [...acceptedPacketsByTaskId.values()]
-      .map((packet) =>
-        isResearchPacketBodyV2(packet.body) ? packet.body : undefined,
-      )
+      .map((packet) => isResearchPacketBodyV2(packet.body) ? packet.body : undefined)
       .filter((body): body is ResearchPacketBodyV2 => body !== undefined);
-    const v2ClaimIds = [
-      ...new Set(
-        acceptedV2Bodies.flatMap((body) => [
-          ...body.claims.map((claim) => claim.claimId),
-          ...body.referencedClaimIds,
-        ]),
-      ),
-    ];
+    const v2ClaimIds = [...new Set(acceptedV2Bodies.flatMap((body) => [
+      ...body.claims.map((claim) => claim.claimId),
+      ...body.referencedClaimIds,
+    ]))];
     let outline: ResearchOutlineV1 | undefined;
-    if (
-      durableOutline &&
-      durableEvidence &&
-      durableClaims &&
-      input.brief &&
-      acceptedV2Bodies.length > 0
-    ) {
+    if (durableOutline && durableEvidence && durableClaims && input.brief && acceptedV2Bodies.length > 0) {
       const brief = input.brief;
       const previousOutline = await durableOutline.current();
       const proposed = await createResearchOutlineFromClaimsV1({
@@ -2343,23 +1947,20 @@ async function runResearchAgentWithBindings(
         createdAt: new Date(completedAtMs).toISOString(),
         ...(previousOutline ? { previousOutline } : {}),
       });
-      const plannerNode = acceptedGraph?.nodes.find(
-        (node) => node.roleId === "outline-planner" && node.status !== "pruned",
+      const plannerNode = acceptedGraph?.nodes.find((node) =>
+        node.roleId === "outline-planner" && node.status !== "pruned",
       );
       const plannerPacket = plannerNode
-        ? acceptedPacketsByTaskId.get(
-            researchTaskIdForNodeV1(acceptedGraph!, plannerNode),
-          )
+        ? acceptedPacketsByTaskId.get(researchTaskIdForNodeV1(acceptedGraph!, plannerNode))
         : undefined;
-      const resolvedOutline =
-        plannerPacket && isResearchPacketBodyV2(plannerPacket.body)
-          ? await resolveResearchOutlineProposalV1({
-              baseline: proposed,
-              proposals: plannerPacket.body.outlineProposals,
-              claimLedger: durableClaims,
-              checkedAt: new Date(completedAtMs).toISOString(),
-            })
-          : undefined;
+      const resolvedOutline = plannerPacket && isResearchPacketBodyV2(plannerPacket.body)
+        ? await resolveResearchOutlineProposalV1({
+            baseline: proposed,
+            proposals: plannerPacket.body.outlineProposals,
+            claimLedger: durableClaims,
+            checkedAt: new Date(completedAtMs).toISOString(),
+          })
+        : undefined;
       if (resolvedOutline) {
         emitEvent({
           kind: "decision",
@@ -2371,42 +1972,33 @@ async function runResearchAgentWithBindings(
       await durableOutline.put(resolvedOutline?.outline ?? proposed);
       outline = await durableOutline.validateCurrent();
       if (!outline) {
-        throw new ResearchContractError(
-          "invalid-report",
-          "A V2 report requires one validated evidence-linked outline.",
-        );
+        throw new ResearchContractError("invalid-report", "A V2 report requires one validated evidence-linked outline.");
       }
     }
-    const report =
-      durableEvidence && durableClaims && acceptedV2Bodies.length > 0
-        ? await finalizeResearchReportV2({
-            request: input.request,
-            evidenceStore: durableEvidence,
-            claimLedger: durableClaims,
-            claimIds: v2ClaimIds,
-            ...(outline ? { outline } : {}),
-            title: parseResearchAgentDraftV1(result.structuredResponse).title,
-            limitations: [
-              ...(input.brief
-                ? projectResearchProposedAssumptionLimitationsV1(input.brief)
-                : []),
-            ],
-            run,
-            checkedAt: new Date(completedAtMs).toISOString(),
-          })
-        : finalizeResearchAgentDraftV1({
-            draft: result.structuredResponse,
-            request: input.request,
-            sources: broker.sourceLedger(),
-            detailEvidence: broker.detailEvidenceLedger(),
-            ...(input.brief
-              ? {
-                  additionalLimitations:
-                    projectResearchProposedAssumptionLimitationsV1(input.brief),
-                }
-              : {}),
-            run,
-          });
+    const report = durableEvidence && durableClaims && acceptedV2Bodies.length > 0
+      ? await finalizeResearchReportV2({
+          request: input.request,
+          evidenceStore: durableEvidence,
+          claimLedger: durableClaims,
+          claimIds: v2ClaimIds,
+          ...(outline ? { outline } : {}),
+          title: parseResearchAgentDraftV1(result.structuredResponse).title,
+          limitations: [
+            ...(input.brief ? projectResearchProposedAssumptionLimitationsV1(input.brief) : []),
+          ],
+          run,
+          checkedAt: new Date(completedAtMs).toISOString(),
+        })
+      : finalizeResearchAgentDraftV1({
+          draft: result.structuredResponse,
+          request: input.request,
+          sources: broker.sourceLedger(),
+          detailEvidence: broker.detailEvidenceLedger(),
+          ...(input.brief
+            ? { additionalLimitations: projectResearchProposedAssumptionLimitationsV1(input.brief) }
+            : {}),
+          run,
+        });
     emitEvent({
       kind: "decision",
       decisionId: "deterministic-evidence-validation",
@@ -2422,26 +2014,19 @@ async function runResearchAgentWithBindings(
     if (report.markdown.length > input.request.limits.maxReportChars) {
       throw new ResearchContractError(
         "limit-exceeded",
-        "The rendered report exceeds the report character limit.",
+        "The rendered report exceeds the report character limit."
       );
     }
-    await workspace.writeFile(
-      RESEARCH_REPORT_ARTIFACT_PATH_V1,
-      report.markdown,
-    );
+    await workspace.writeFile(RESEARCH_REPORT_ARTIFACT_PATH_V1, report.markdown);
     if (input.durableSession) {
-      await input.durableSession.store.writeArtifact(
-        input.durableSession.sessionId,
-        {
-          schema: RESEARCH_SESSION_ARTIFACT_SCHEMA_V1,
-          id: `artifact:report:${input.durableSession.turnId}`,
-          path: RESEARCH_REPORT_ARTIFACT_PATH_V1,
-          contentType: "text/markdown",
-          bytes: new TextEncoder().encode(report.markdown).byteLength,
-          createdAt: new Date(completedAtMs).toISOString(),
-        },
-        report.markdown,
-      );
+      await input.durableSession.store.writeArtifact(input.durableSession.sessionId, {
+        schema: RESEARCH_SESSION_ARTIFACT_SCHEMA_V1,
+        id: `artifact:report:${input.durableSession.turnId}`,
+        path: RESEARCH_REPORT_ARTIFACT_PATH_V1,
+        contentType: "text/markdown",
+        bytes: new TextEncoder().encode(report.markdown).byteLength,
+        createdAt: new Date(completedAtMs).toISOString(),
+      }, report.markdown);
     }
     await durableDispatchJournal?.complete();
     emitEvent({ kind: "artifact", path: RESEARCH_REPORT_ARTIFACT_PATH_V1 });
@@ -2471,10 +2056,7 @@ async function runResearchAgentWithBindings(
       );
     }
     if (broker.signal.aborted) {
-      throw new ResearchContractError(
-        "cancelled",
-        "The research run was cancelled.",
-      );
+      throw new ResearchContractError("cancelled", "The research run was cancelled.");
     }
     throw error;
   } finally {

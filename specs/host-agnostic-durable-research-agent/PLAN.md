@@ -255,9 +255,9 @@ closed. It promises durable state and correct resumption.
   3. the extension's detected current Jira project or Confluence space;
   4. profile and global defaults;
   5. related scopes discovered during research.
-     A lower-precedence source never silently replaces a higher-precedence
-     binding. Explicit CLI and manually added UI bindings are `locked` unless the
-     user changes them.
+  A lower-precedence source never silently replaces a higher-precedence
+  binding. Explicit CLI and manually added UI bindings are `locked` unless the
+  user changes them.
 - A unique, exact, accessible key or normalized-name match may resolve
   automatically and remains visible in the brief. Duplicate names, multiple
   plausible aliases, an explicitly requested but unavailable scope, or
@@ -607,7 +607,11 @@ interface ResearchBriefAssumptionV1 {
 }
 
 type ResearchScopeProductV1 = "jira" | "confluence";
-type ResearchScopeEntityKindV1 = "project" | "space" | "issue" | "page";
+type ResearchScopeEntityKindV1 =
+  | "project"
+  | "space"
+  | "issue"
+  | "page";
 type ResearchScopeSourceV1 =
   | "cli_flag"
   | "ui_added"
@@ -622,7 +626,10 @@ type ResearchScopeAuthorityV1 =
   | "resolved"
   | "approved"
   | "locked";
-type ResearchScopeExpansionModeV1 = "strict" | "ask" | "exact-linked";
+type ResearchScopeExpansionModeV1 =
+  | "strict"
+  | "ask"
+  | "exact-linked";
 
 interface ResearchScopeMentionV1 {
   schema: "atlcli.research-scope-mention/v1";
@@ -678,7 +685,12 @@ interface ResearchScopeBindingV1 {
 interface ResearchScopeResolutionV1 {
   schema: "atlcli.research-scope-resolution/v1";
   mentionId: string;
-  state: "resolved" | "ambiguous" | "not_found" | "unavailable" | "incomplete";
+  state:
+    | "resolved"
+    | "ambiguous"
+    | "not_found"
+    | "unavailable"
+    | "incomplete";
   candidateIds: string[];
   resolvedCandidateId?: string;
   uniquenessProof?:
@@ -1081,12 +1093,7 @@ interface ResearchSubagentRoleV1 {
     | "reconciler"
     | "synthesizer";
   description: string;
-  phase:
-    | "acquisition"
-    | "analysis"
-    | "verification"
-    | "reconciliation"
-    | "synthesis";
+  phase: "acquisition" | "analysis" | "verification" | "reconciliation" | "synthesis";
   availableFromPhase: "T3" | "T5";
   allowedCapabilityIds: ResearchCapabilityId[];
   supportedOutputSchemas: ResearchTaskOutputSchemaV1[];
@@ -1517,9 +1524,9 @@ capabilities, budgets, and dependencies. Running work is cancelled where
 supported or allowed to finish into quarantine. Accepted evidence remains
 immutable; excluded evidence can be omitted from later synthesis but is not
 silently deleted. The diff covers brief revision, coverage fingerprint, node,
-role, capability, scope binding/provenance, scope-discovery policy, effort,
-budget, concurrency, wave, depth, and reconciliation-policy changes. Any
-change beyond
+  role, capability, scope binding/provenance, scope-discovery policy, effort,
+  budget, concurrency, wave, depth, and reconciliation-policy changes. Any
+  change beyond
 `ResearchApprovalEnvelopeV1` requires explicit approval; an in-envelope replan
 remains visible in revision history but may continue at the next durable
 checkpoint.
@@ -1532,21 +1539,14 @@ The shared workspace port operates only on normalized virtual paths:
 interface ResearchWorkspacePort {
   list(path: string): Promise<ResearchWorkspaceEntryV1[]>;
   readText(path: string, range?: ResearchTextRangeV1): Promise<string>;
-  writeText(
-    path: string,
-    text: string,
-    options: {
-      expectedRevision?: string;
-      createOnly?: boolean;
-    },
-  ): Promise<ResearchWorkspaceWriteV1>;
-  search(
-    pattern: string,
-    options: {
-      path: string;
-      maxMatches: number;
-    },
-  ): Promise<ResearchWorkspaceMatchV1[]>;
+  writeText(path: string, text: string, options: {
+    expectedRevision?: string;
+    createOnly?: boolean;
+  }): Promise<ResearchWorkspaceWriteV1>;
+  search(pattern: string, options: {
+    path: string;
+    maxMatches: number;
+  }): Promise<ResearchWorkspaceMatchV1[]>;
   removeTree(path: string): Promise<void>;
 }
 ```
@@ -1607,155 +1607,26 @@ Define a bounded ascending event stream shared by CLI and browser:
 type ResearchEventV1 =
   | { kind: "state"; seq: number; at: string; from: string; to: string }
   | { kind: "phase"; seq: number; at: string; phase: string }
-  | {
-      kind: "progress";
-      seq: number;
-      at: string;
-      graphRevision: number;
-      completed: number;
-      maximum: number;
-    }
+  | { kind: "progress"; seq: number; at: string; graphRevision: number; completed: number; maximum: number }
   | { kind: "brief"; seq: number; at: string; revision: number }
-  | {
-      kind: "clarification";
-      seq: number;
-      at: string;
-      briefRevision: number;
-      status: string;
-    }
-  | {
-      kind: "scope";
-      seq: number;
-      at: string;
-      briefRevision: number;
-      proposalId?: string;
-      status: string;
-    }
-  | {
-      kind: "plan";
-      seq: number;
-      at: string;
-      briefRevision: number;
-      revision: number;
-      status: string;
-      resolvedEffort: ResearchResolvedEffortV1;
-      selectedRoleIds: string[];
-      nodeCount: number;
-      waveCount: number;
-      maxParallelNodes: number;
-    }
+  | { kind: "clarification"; seq: number; at: string; briefRevision: number; status: string }
+  | { kind: "scope"; seq: number; at: string; briefRevision: number; proposalId?: string; status: string }
+  | { kind: "plan"; seq: number; at: string; briefRevision: number; revision: number; status: string; resolvedEffort: ResearchResolvedEffortV1; selectedRoleIds: string[]; nodeCount: number; waveCount: number; maxParallelNodes: number }
   | { kind: "plan_diff"; seq: number; at: string; from: number; to: number }
-  | {
-      kind: "control";
-      seq: number;
-      at: string;
-      action: string;
-      status: string;
-      revision: number;
-    }
-  | {
-      kind: "task";
-      seq: number;
-      at: string;
-      taskId: string;
-      status: string;
-      roleId?: string;
-      wave?: number;
-      dependencyTaskIds?: string[];
-      grantedCapabilityIds?: string[];
-      resultBytes?: number;
-      capabilityCalls?: number;
-      inputTokens?: number;
-      outputTokens?: number;
-      sourceCount?: number;
-      findingCount?: number;
-      relationshipCount?: number;
-      gapCount?: number;
-      defectCount?: number;
-    }
-  | {
-      kind: "subagent";
-      seq: number;
-      at: string;
-      taskId: string;
-      roleId: string;
-      status: string;
-      attempt?: number;
-      durationMs?: number;
-      errorCode?: string;
-    }
-  | {
-      kind: "capability";
-      seq: number;
-      at: string;
-      callId: string;
-      toolId: ResearchToolId;
-      inputKind: "search" | "continuation" | "detail";
-      status: "started" | "completed" | "failed";
-      itemCount?: number;
-      complete?: boolean;
-      termination?: string;
-      resultBytes?: number;
-      truncated?: boolean;
-      durationMs?: number;
-      errorCode?: string;
-      inputKeys?: string[];
-      queryKeys?: string[];
-    }
-  | {
-      kind: "decision";
-      seq: number;
-      at: string;
-      decisionId: string;
-      status: "started" | "completed" | "failed";
-      reasonCode: string;
-      taskId?: string;
-      errorCode?: string;
-      codeBytes?: number;
-      codeHash?: string;
-    }
-  | {
-      kind: "reconciliation";
-      seq: number;
-      at: string;
-      taskId: string;
-      status: string;
-      defectCount?: number;
-      proposedFollowUpCount?: number;
-    }
-  | {
-      kind: "reconciliation_disposition";
-      seq: number;
-      at: string;
-      dispositionId: string;
-      status: string;
-    }
-  | {
-      kind: "repair_group";
-      seq: number;
-      at: string;
-      followUpId: string;
-      taskId?: string;
-      status: string;
-      reasonCode: string;
-    }
-  | {
-      kind: "steering";
-      seq: number;
-      at: string;
-      revision: number;
-      status: string;
-    }
+  | { kind: "control"; seq: number; at: string; action: string; status: string; revision: number }
+  | { kind: "task"; seq: number; at: string; taskId: string; status: string; roleId?: string; wave?: number; dependencyTaskIds?: string[]; grantedCapabilityIds?: string[]; resultBytes?: number; capabilityCalls?: number; inputTokens?: number; outputTokens?: number; sourceCount?: number; findingCount?: number; relationshipCount?: number; gapCount?: number; defectCount?: number }
+  | { kind: "subagent"; seq: number; at: string; taskId: string; roleId: string; status: string; attempt?: number; durationMs?: number; errorCode?: string }
+  | { kind: "capability"; seq: number; at: string; callId: string; toolId: ResearchToolId; inputKind: "search" | "continuation" | "detail"; status: "started" | "completed" | "failed"; itemCount?: number; complete?: boolean; termination?: string; resultBytes?: number; truncated?: boolean; durationMs?: number; errorCode?: string; inputKeys?: string[]; queryKeys?: string[] }
+  | { kind: "decision"; seq: number; at: string; decisionId: string; status: "started" | "completed" | "failed"; reasonCode: string; taskId?: string; errorCode?: string; codeBytes?: number; codeHash?: string }
+  | { kind: "reconciliation"; seq: number; at: string; taskId: string; status: string; defectCount?: number; proposedFollowUpCount?: number }
+  | { kind: "reconciliation_disposition"; seq: number; at: string; dispositionId: string; status: string }
+  | { kind: "repair_group"; seq: number; at: string; followUpId: string; taskId?: string; status: string; reasonCode: string }
+  | { kind: "steering"; seq: number; at: string; revision: number; status: string }
   | {
       kind: "budget";
       seq: number;
       at: string;
-      metric:
-        | "capability_calls"
-        | "tokens"
-        | "bytes"
-        | "duration_ms"
-        | "cost_micros";
+      metric: "capability_calls" | "tokens" | "bytes" | "duration_ms" | "cost_micros";
       consumed: number;
       maximum: number;
     }
@@ -1850,20 +1721,20 @@ Required behavior:
 - durable control commands are non-interactive and revision-fenced:
   `research sessions plan <id>`,
   `research sessions clarify <id> --session-revision <s> --brief-revision <b>
---answer "<question-id>=<value>" --assumption "<assumption-id>=accept|reject"
---scope "<mention-id>=<candidate-id>"` with repeatable
+  --answer "<question-id>=<value>" --assumption "<assumption-id>=accept|reject"
+  --scope "<mention-id>=<candidate-id>"` with repeatable
   answer/assumption/scope flags,
   `research sessions approve <id> --session-revision <s> --graph-revision <g>`,
   `research sessions approve-scope <id> --session-revision <s>
---brief-revision <b> --graph-revision <g> --proposal <p>`,
+  --brief-revision <b> --graph-revision <g> --proposal <p>`,
   `research sessions reject-scope <id> --session-revision <s>
---brief-revision <b> --graph-revision <g> --proposal <p>`,
+  --brief-revision <b> --graph-revision <g> --proposal <p>`,
   `research sessions reject-plan <id> --session-revision <s>
---graph-revision <g> "<instruction>"`,
+  --graph-revision <g> "<instruction>"`,
   `research sessions revise-plan <id> --session-revision <s>
---graph-revision <g> "<instruction>"`,
+  --graph-revision <g> "<instruction>"`,
   `research sessions steer <id> --session-revision <s> --graph-revision <g>
-"<instruction>"`,
+  "<instruction>"`,
   `research sessions pause <id> --session-revision <s>`,
   `research sessions resume <id> --session-revision <s>`, and
   `research sessions cancel <id> --session-revision <s>`;
@@ -2054,7 +1925,7 @@ For the T3 MVP:
   trajectories or all tool outputs;
 - the supervisor writes task-shaped JavaScript that holds compact packets in
   interpreter variables and dispatches native `task({ description,
-subagentType, responseSchema })` calls. Independent tasks use `Promise.all`;
+  subagentType, responseSchema })` calls. Independent tasks use `Promise.all`;
   dependent groups run only after their inputs exist;
 - the host does not paste a fixed all-role program into the prompt. The
   task-enabled interpreter remains capability-scoped, one-eval bounded, and
@@ -2918,7 +2789,7 @@ Gate:
       path performs one catalog-only project lookup, writes no Anthropic key,
       and starts no agent worker. The shared runtime projects a non-blocking
       proposed assumption through deterministic finalization as `Proposed
-    assumption (not user-confirmed)` in the Markdown limitations; a dynamic
+      assumption (not user-confirmed)` in the Markdown limitations; a dynamic
       `createDeepAgent` execution confirms that projection reaches the report.
 - [x] Exact key/name, duplicate name, alias, archived-only, inaccessible,
       paginated, explicit-precedence, current-context, exact-link,
@@ -3236,7 +3107,6 @@ set, and—when authorized—activates that exact repair node, blocks synthesis,
 and persists the bounded follow-up authorization in one aggregate CAS/event.
 The repair therefore survives restart without exposing a free-form graph or
 provider capability to QuickJS.
-
 - [ ] Add durable wait states for clarification, plan approval, steering,
       rejected-plan revision, scope-expansion approval, pause, authentication,
       and quota; no wait state may require a living process.
@@ -3425,7 +3295,6 @@ derived coverage, truncation limits, conflict fencing, source-loss fencing, and
 interrupted current-pointer recovery; SQLite/filesystem and IndexedDB reopen
 tests recover the same current outline. The general conformance, quota,
 retention/deletion, V2 packet, and planner activation work remains pending.
-
 - [ ] Canonicalize entity identity independently of display URLs.
 - [ ] Hash projected content and record exact source version or `updatedAt`.
 - [ ] Store bounded source chunks once and reference them from checkpoints,
@@ -3480,7 +3349,6 @@ The dynamic `outline-planner` may propose only section structure after V2
 claims exist. The host rechecks every claim, derives all evidence and coverage,
 fills omitted claims/targets into a host section, and rejects malformed
 proposals before the resulting outline passes the same store validation.
-
 - [x] Build and revise `OutlineV1` from brief coverage targets, claim IDs,
       contradiction IDs, and evidence IDs. A section draft receives only its
       linked accepted evidence.
@@ -3844,27 +3712,27 @@ Cross-host release gates:
 
 ## Test matrix
 
-| Concern                    | Shared package                                                | CLI host                      | Extension/browser host                         |
-| -------------------------- | ------------------------------------------------------------- | ----------------------------- | ---------------------------------------------- |
-| Contracts and reducers     | Bun unit/property tests                                       | import smoke                  | browser import smoke                           |
-| Capability broker          | deterministic fake providers                                  | Node/Bun provider adapter     | packed worker adapter                          |
-| Scope discovery/resolution | precedence, ambiguity, pagination, policy, injection fixtures | flags/profile + live catalogs | context chips/picker + browser session         |
-| Scope expansion authority  | binding/envelope/revision races                               | approve/reject commands       | scope-specific approval journey                |
-| Brief and effort router    | schema/policy fixtures                                        | flag parsing                  | sidebar inputs                                 |
-| Dynamic composition        | graph/role fixtures                                           | one-shot MVP                  | packed MV3 MVP                                 |
-| Dispatch safety            | budget/cancel/late-result tests                               | killed process                | killed worker                                  |
-| Response schema admission  | exact pinned-runtime schemas                                  | Node QuickJS                  | packed MV3 QuickJS                             |
-| Packet/reconciliation      | body/envelope/defect fixtures                                 | metadata inspection           | formatted inspection                           |
-| Context isolation          | sentinel projection fixtures                                  | supervisor token/byte metrics | packed realm sentinels                         |
-| Workspace semantics        | conformance suite                                             | real temp directory           | fake-indexeddb + packed IDB                    |
-| Checkpoint semantics       | conformance/fault injection                                   | Bun SQLite                    | IndexedDB                                      |
-| Plan approval/steering     | reducer and revision races                                    | non-interactive commands      | sidebar journey                                |
-| Security boundary          | schema and redaction tests                                    | path/auth/log tests           | realm/CSP/session tests                        |
-| One-shot result            | shared scenario                                               | source + built CLI            | packed MV3                                     |
-| Real Atlassian data        | sanitized metrics                                             | `mayflower` profile           | Mayflower browser session                      |
-| Recovery                   | state-machine fixtures                                        | killed process                | killed worker/offscreen/service worker/browser |
-| Long session               | 250/1,000-turn + summary-lineage soak                         | retained real directory       | retained browser DB                            |
-| Presentation               | structured report/Markdown                                    | stdout/file/JSON              | formatted/raw/copy/download                    |
+| Concern | Shared package | CLI host | Extension/browser host |
+|---|---|---|---|
+| Contracts and reducers | Bun unit/property tests | import smoke | browser import smoke |
+| Capability broker | deterministic fake providers | Node/Bun provider adapter | packed worker adapter |
+| Scope discovery/resolution | precedence, ambiguity, pagination, policy, injection fixtures | flags/profile + live catalogs | context chips/picker + browser session |
+| Scope expansion authority | binding/envelope/revision races | approve/reject commands | scope-specific approval journey |
+| Brief and effort router | schema/policy fixtures | flag parsing | sidebar inputs |
+| Dynamic composition | graph/role fixtures | one-shot MVP | packed MV3 MVP |
+| Dispatch safety | budget/cancel/late-result tests | killed process | killed worker |
+| Response schema admission | exact pinned-runtime schemas | Node QuickJS | packed MV3 QuickJS |
+| Packet/reconciliation | body/envelope/defect fixtures | metadata inspection | formatted inspection |
+| Context isolation | sentinel projection fixtures | supervisor token/byte metrics | packed realm sentinels |
+| Workspace semantics | conformance suite | real temp directory | fake-indexeddb + packed IDB |
+| Checkpoint semantics | conformance/fault injection | Bun SQLite | IndexedDB |
+| Plan approval/steering | reducer and revision races | non-interactive commands | sidebar journey |
+| Security boundary | schema and redaction tests | path/auth/log tests | realm/CSP/session tests |
+| One-shot result | shared scenario | source + built CLI | packed MV3 |
+| Real Atlassian data | sanitized metrics | `mayflower` profile | Mayflower browser session |
+| Recovery | state-machine fixtures | killed process | killed worker/offscreen/service worker/browser |
+| Long session | 250/1,000-turn + summary-lineage soak | retained real directory | retained browser DB |
+| Presentation | structured report/Markdown | stdout/file/JSON | formatted/raw/copy/download |
 
 CLI live E2E is the default fast feedback loop because it avoids extension
 packing and browser lifecycle setup. The following remain browser-only proof
