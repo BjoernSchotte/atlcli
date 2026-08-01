@@ -61,6 +61,13 @@ test("Astro consumer harness loads structured pages and emits a private inventor
   expect(inventory.output).toContainEqual(expect.objectContaining({ path: "publish/guide/index.html" }));
   expect(inventory.output).toContainEqual(expect.objectContaining({ path: "assets/f0dad327e22e8cddc2e8057cf16d9b16ea6e36e87d31f46ee4d5943c69609c4f/fixture.txt" }));
   expect(inventory.output).toContainEqual(expect.objectContaining({ path: "pagefind/pagefind.js" }));
+  const runtimeText = await Promise.all(inventory.output
+    .filter((entry) => /\.(?:html|js|css)$/u.test(entry.path))
+    .map((entry) => readFile(resolve(fixtureDirectory, "dist", entry.path), "utf8")));
+  for (const text of runtimeText) {
+    expect(text).not.toContain("/_image");
+    expect(text).not.toMatch(/(?:atlassian\.net|confluence|cloudId|tenant)/iu);
+  }
 }, 30_000);
 
 test("Astro builds root, nested-directory, and nested-portable URL profiles", async () => {

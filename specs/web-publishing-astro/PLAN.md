@@ -1642,7 +1642,7 @@ and presentation contracts are not Starlight-private.
       builder, Astro,
       project/config/lockfile, experience, route/asset, Pagefind, SEO/i18n/media,
       and normalized output digests.
-- [ ] Prove a build with network disabled and no runtime `/_image` or private
+- [x] Prove a build with network disabled and no runtime `/_image` or private
       Confluence dependencies.
 - [ ] Prove cold/warm builds of one bundle yield equivalent semantic manifests.
 - [ ] STOP on mixed old/new output, source-derived build modules, ambient repo
