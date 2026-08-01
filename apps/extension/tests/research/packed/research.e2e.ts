@@ -7,6 +7,7 @@ import {
   type Page,
   type Worker,
 } from "@playwright/test";
+import { fakeModel } from "@langchain/core/testing";
 import {
   cpSync,
   existsSync,
@@ -24,9 +25,16 @@ import {
   DEFAULT_RESEARCH_LIMITS_V1,
   RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1,
   RESEARCH_REQUEST_SCHEMA_V1,
+  createMemoryResearchWorkspace,
+  createStandardResearchBriefV1,
+  normalizeResearchOneShotPolicyV1,
+  type ResearchOneShotEventV1,
+  type ResearchReportV1,
   type ResearchRequestV1,
   type ResearchScopePreflightOutcomeV1,
 } from "@atlcli/research";
+import { runResearchAgent as runNodeResearchAgent } from "@atlcli/research/node";
+import { composeResearchGraphV1 } from "@atlcli/research/graph";
 import { createResearchKeyScopeSeedV1 } from "@atlcli/research/scope-discovery";
 import {
   RESEARCH_ANALYSIS_PACKET_SCHEMA_V1,
@@ -41,6 +49,49 @@ const ATLASSIAN_PAGE = `${SITE_ORIGIN}/wiki/spaces/KB/pages/1001/Packed-research
 const CHANNEL_NAME = "atlcli-packed-research-v1";
 const FAKE_KEY = "sk-ant-packed-extension-test-only";
 const RESEARCH_ANTHROPIC_SESSION_KEY = "research-anthropic-key-v1";
+const HOST_PARITY_EPOCH_MS = Date.parse("2026-08-01T12:00:00.000Z");
+const HOST_PARITY_QUESTION =
+  "packed-host-parity: How does bounded synthetic Jira work relate to Confluence content?";
+const HOST_PARITY_POLICY = {
+  schema: "atlcli.research-one-shot-policy/v1",
+  requestedEffort: "analysis",
+  requestedPlanApproval: "automatic",
+  scopeExpansionMode: "ask",
+  requestedReconciliation: "auto",
+} as const;
+
+const HOST_PARITY_PACKET = {
+  schema: "atlcli.research-packet-body/v1",
+  answeredQuestion: "Synthetic host-parity packet contains no source evidence.",
+  sourceIds: [],
+  findingCandidates: [],
+  relationshipCandidates: [],
+  gaps: [],
+  proposedFollowUps: [],
+  coverageLimits: ["Synthetic packed host-parity scenario."],
+};
+
+const HOST_PARITY_CRITIQUE = {
+  schema: "atlcli.reconciliation-body/v1",
+  defects: [{
+    id: "defect:host-parity-coverage",
+    severity: "important",
+    target: { kind: "node", id: "research-node:cross-product-join" },
+    code: "missing_coverage",
+    references: [],
+    explanation: "The synthetic host-parity scenario contains no source evidence.",
+    suggestedAction: "abstain",
+  }],
+  proposedFollowUps: [],
+};
+
+const HOST_PARITY_DRAFT = {
+  title: "Cross-host synthetic report",
+  executiveSummary: "No source evidence was supplied to this parity run.",
+  findings: [],
+  relationships: [],
+  limitations: ["Synthetic host-parity scenario."],
+};
 
 const WIKI_ACQUISITION_CODE = `
 async function collect() {
@@ -238,6 +289,90 @@ const finalDraft = await task({
 finalDraft;
 `.trim();
 
+const PACKED_HOST_PARITY_WORKFLOW_CODE = `
+const acceptedGraph = JSON.parse(await tools.researchGraphPropose({
+  basedOnBriefRevision: 1,
+  basedOnGraphRevision: 1,
+  nodes: [
+    { nodeId: "research-node:jira-research", dependencies: [], reasonCodes: ["independent_branch"] },
+    { nodeId: "research-node:wiki-research", dependencies: [], reasonCodes: ["independent_branch"] },
+    { nodeId: "research-node:cross-product-join", dependencies: ["research-node:jira-research", "research-node:wiki-research"], reasonCodes: ["cross_product_join"] },
+    { nodeId: "research-node:reconciler", dependencies: ["research-node:jira-research", "research-node:wiki-research", "research-node:cross-product-join"], reasonCodes: ["coverage_gap"] },
+    { nodeId: "research-node:synthesizer", dependencies: ["research-node:jira-research", "research-node:wiki-research", "research-node:cross-product-join", "research-node:reconciler"], reasonCodes: ["user_requested"] }
+  ]
+}));
+if (acceptedGraph.schema !== "atlcli.accepted-research-graph/v1") {
+  throw new Error("Packed host-parity graph proposal was not accepted.");
+}
+const [jira, wiki] = await Promise.all([
+  task({
+    description: JSON.stringify({ schema: "atlcli.research-task-dispatch/v1", taskId: "research-task:r1:jira-research:a1", objective: "Acquire detail-backed Jira evidence for the accepted objective." }),
+    subagentType: "focused-researcher-jira-research",
+    responseSchema: ${JSON.stringify(RESEARCH_WORKER_PACKET_SCHEMA_V1)}
+  }),
+  task({
+    description: JSON.stringify({ schema: "atlcli.research-task-dispatch/v1", taskId: "research-task:r1:wiki-research:a1", objective: "Acquire detail-backed Confluence evidence for the accepted objective." }),
+    subagentType: "focused-researcher-wiki-research",
+    responseSchema: ${JSON.stringify(RESEARCH_WORKER_PACKET_SCHEMA_V1)}
+  })
+]);
+const joined = await task({
+  description: JSON.stringify({
+    schema: "atlcli.research-task-dispatch/v1",
+    taskId: "research-task:r1:cross-product-join:a1",
+    objective: "Join accepted Jira and Confluence packets without new reads.",
+    dependencyResults: [
+      { taskId: "research-task:r1:jira-research:a1", result: jira },
+      { taskId: "research-task:r1:wiki-research:a1", result: wiki }
+    ]
+  }),
+  subagentType: "document-distiller-cross-product-join",
+  responseSchema: ${JSON.stringify(RESEARCH_ANALYSIS_PACKET_SCHEMA_V1)}
+});
+const critique = await task({
+  description: JSON.stringify({
+    schema: "atlcli.research-task-dispatch/v1",
+    taskId: "research-task:r1:reconciler:a1",
+    objective: "Critique accepted packets in fresh context and return typed defects.",
+    dependencyResults: [
+      { taskId: "research-task:r1:jira-research:a1", result: jira },
+      { taskId: "research-task:r1:wiki-research:a1", result: wiki },
+      { taskId: "research-task:r1:cross-product-join:a1", result: joined }
+    ]
+  }),
+  subagentType: "reconciler",
+  responseSchema: ${JSON.stringify(RESEARCH_CRITIQUE_SCHEMA_V1)}
+});
+const acceptedDispositions = JSON.parse(await tools.researchReconciliationDispositions({
+  basedOnGraphRevision: 1,
+  reconciliationTaskId: "research-task:r1:reconciler:a1",
+  decisions: [{
+    defectId: "defect:host-parity-coverage",
+    decision: "abstain",
+    reasonCode: "material_defect"
+  }]
+}));
+if (acceptedDispositions.schema !== "atlcli.accepted-reconciliation/v1" || acceptedDispositions.repairTask) {
+  throw new Error("Packed host-parity reconciliation was not accepted.");
+}
+const finalDraft = await task({
+  description: JSON.stringify({
+    schema: "atlcli.research-task-dispatch/v1",
+    taskId: "research-task:r1:synthesizer:a1",
+    objective: "Write exactly one typed final report draft from accepted packets and dispositions.",
+    dependencyResults: [
+      { taskId: "research-task:r1:jira-research:a1", result: jira },
+      { taskId: "research-task:r1:wiki-research:a1", result: wiki },
+      { taskId: "research-task:r1:cross-product-join:a1", result: joined },
+      { taskId: "research-task:r1:reconciler:a1", result: critique }
+    ]
+  }),
+  subagentType: "synthesizer",
+  responseSchema: ${JSON.stringify(RESEARCH_AGENT_DRAFT_JSON_SCHEMA_V1)}
+});
+finalDraft;
+`.trim();
+
 interface TargetInfo {
   targetId: string;
   type: string;
@@ -263,6 +398,9 @@ interface HarnessEvent {
   status?: string;
   reasonCode?: string;
   errorCode?: string;
+  researchEvent?: ResearchOneShotEventV1;
+  report?: ResearchReportV1;
+  value?: unknown;
 }
 
 function offscreenBootstrap(): string {
@@ -335,11 +473,15 @@ function offscreenBootstrap(): string {
             messageKind: event.data?.kind,
             ...(event.data?.kind === "research-worker:event"
               ? {
+                  researchEvent,
                   eventKind: researchEvent?.kind,
                   status: researchEvent?.status,
                   reasonCode: researchEvent?.reasonCode,
                   errorCode: researchEvent?.errorCode,
                 }
+              : {}),
+            ...(event.data?.kind === "research-worker:complete"
+              ? { report: event.data?.report }
               : {}),
             ...(event.data?.kind === "research-worker:error"
               ? { code: event.data?.code, error: event.data?.error }
@@ -482,10 +624,22 @@ function backgroundBootstrap(): string {
 function workerFixture(): string {
   return String.raw`
 {
+const NativeDate = Date;
+const fixedNow = ${HOST_PARITY_EPOCH_MS};
+class PackedResearchFixedDate extends NativeDate {
+  constructor(...args) {
+    super(...(args.length > 0 ? args : [fixedNow]));
+  }
+  static now() {
+    return fixedNow;
+  }
+}
+globalThis.Date = PackedResearchFixedDate;
 const channel = new BroadcastChannel("atlcli-packed-research-v1");
 const workerId = crypto.randomUUID();
 let modelCalls = 0;
 let packedJiraOnlyRun = false;
+let packedHostParityRun = false;
 let supervisorWorkflowStarted = false;
 channel.postMessage({ kind: "worker-start", workerId });
 globalThis.addEventListener("error", (event) => {
@@ -582,12 +736,15 @@ function anthropicMessage(content, stopReason, call) {
     content,
     stop_reason: stopReason,
     stop_sequence: null,
-    usage: { input_tokens: 20, output_tokens: 10 },
+    ...(packedHostParityRun ? {} : { usage: { input_tokens: 20, output_tokens: 10 } }),
   });
 }
 
 const packedReportInput = ${JSON.stringify(PACKED_REPORT_INPUT)};
 const packedJiraOnlyReportInput = ${JSON.stringify(PACKED_JIRA_ONLY_REPORT_INPUT)};
+const packedHostParityPacket = ${JSON.stringify(HOST_PARITY_PACKET)};
+const packedHostParityCritique = ${JSON.stringify(HOST_PARITY_CRITIQUE)};
+const packedHostParityDraft = ${JSON.stringify(HOST_PARITY_DRAFT)};
 const wikiPacket = {
   schema: "atlcli.research-packet-body/v1",
   answeredQuestion: "The packed design page explicitly names DEMO-1.",
@@ -711,6 +868,9 @@ globalThis.fetch = async (input, init) => {
 
     const providerSchema = body.output_config?.format?.schema;
     const structured = (value) => {
+      if (packedHostParityRun) {
+        channel.postMessage({ kind: "packed-host-parity-structured", value });
+      }
       if (body.output_config?.format?.type === "json_schema") {
         return anthropicMessage(
           [{ type: "text", text: JSON.stringify(value) }],
@@ -742,6 +902,7 @@ globalThis.fetch = async (input, init) => {
     };
 
     if (serializedRequest.includes("Host-admitted specialization research-node:wiki-research:")) {
+      if (packedHostParityRun) return structured(packedHostParityPacket);
       if (!serializedMessages.includes("atlcli.ptc/wiki.page.get.output/v1")) {
         return anthropicMessage(
           [{
@@ -761,6 +922,7 @@ globalThis.fetch = async (input, init) => {
       serializedRequest.includes("Host-admitted specialization research-node:jira-research:") ||
       serializedRequest.includes("Host-admitted specialization research-node:jira-lookup:")
     ) {
+      if (packedHostParityRun) return structured(packedHostParityPacket);
       if (!serializedMessages.includes("atlcli.ptc/jira.issue.get.output/v1")) {
         return anthropicMessage(
           [{
@@ -777,7 +939,7 @@ globalThis.fetch = async (input, init) => {
     }
 
     if (serializedRequest.includes("You are the reconciler specialist")) {
-      return structured(critique);
+      return structured(packedHostParityRun ? packedHostParityCritique : critique);
     }
 
     if (serializedRequest.includes("Host-admitted specialization research-node:reconciliation-repair:")) {
@@ -785,25 +947,30 @@ globalThis.fetch = async (input, init) => {
     }
 
     if (serializedRequest.includes("You are the document-distiller specialist")) {
-      return structured(joinedPacket);
+      return structured(packedHostParityRun ? packedHostParityPacket : joinedPacket);
     }
 
     if (serializedRequest.includes("You are the synthesizer specialist")) {
-      return structured(packedJiraOnlyRun ? packedJiraOnlyReportInput : packedReportInput);
+      return structured(packedHostParityRun
+        ? packedHostParityDraft
+        : packedJiraOnlyRun ? packedJiraOnlyReportInput : packedReportInput);
     }
 
     if (!supervisorWorkflowStarted) {
       supervisorWorkflowStarted = true;
       packedJiraOnlyRun = serializedRequest.includes("packed-jira-only");
+      packedHostParityRun = serializedRequest.includes("packed-host-parity");
       return anthropicMessage(
         [{
           type: "tool_use",
           id: "toolu_packed_eval",
           name: "eval",
           input: {
-            code: packedJiraOnlyRun
-              ? ${JSON.stringify(PACKED_JIRA_ONLY_WORKFLOW_CODE)}
-              : ${JSON.stringify(PACKED_WORKFLOW_CODE)},
+            code: packedHostParityRun
+              ? ${JSON.stringify(PACKED_HOST_PARITY_WORKFLOW_CODE)}
+              : packedJiraOnlyRun
+                ? ${JSON.stringify(PACKED_JIRA_ONLY_WORKFLOW_CODE)}
+                : ${JSON.stringify(PACKED_WORKFLOW_CODE)},
           },
         }],
         "tool_use",
@@ -815,7 +982,9 @@ globalThis.fetch = async (input, init) => {
       providerSchema?.properties?.executiveSummary &&
       providerSchema?.properties?.relationships
     ) {
-      return structured(packedJiraOnlyRun ? packedJiraOnlyReportInput : packedReportInput);
+      return structured(packedHostParityRun
+        ? packedHostParityDraft
+        : packedJiraOnlyRun ? packedJiraOnlyReportInput : packedReportInput);
     }
 
     const structuredTool = Array.isArray(body.tools)
@@ -838,7 +1007,9 @@ globalThis.fetch = async (input, init) => {
         type: "tool_use",
         id: "toolu_packed_report",
         name: structuredTool.name,
-        input: packedJiraOnlyRun ? packedJiraOnlyReportInput : packedReportInput,
+        input: packedHostParityRun
+          ? packedHostParityDraft
+          : packedJiraOnlyRun ? packedJiraOnlyReportInput : packedReportInput,
       }],
       "tool_use",
       modelCalls,
@@ -1157,6 +1328,87 @@ async function resolveScopeInPackedBackground(
   }, request) as Promise<PackedScopeResponse>;
 }
 
+function hostParityRequest(): ResearchRequestV1 {
+  return {
+    schema: RESEARCH_REQUEST_SCHEMA_V1,
+    question: HOST_PARITY_QUESTION,
+    scope: {
+      siteOrigin: SITE_ORIGIN,
+      jiraProjectKeys: ["DEMO"],
+      confluenceSpaceKeys: ["KB"],
+    },
+    limits: { ...DEFAULT_RESEARCH_LIMITS_V1 },
+    wikiProvider: "rest",
+  };
+}
+
+async function runNodeHostParityFixture(): Promise<{
+  report: ResearchReportV1;
+  events: ResearchOneShotEventV1[];
+}> {
+  const request = hostParityRequest();
+  const policy = normalizeResearchOneShotPolicyV1(HOST_PARITY_POLICY);
+  const brief = createStandardResearchBriefV1(request.question, {
+    scope: request.scope,
+    limits: request.limits,
+    asOf: new Date(HOST_PARITY_EPOCH_MS).toISOString(),
+    policy,
+  });
+  const graph = composeResearchGraphV1(brief);
+  const model = fakeModel()
+    .respondWithTools([{ name: "eval", args: { code: PACKED_HOST_PARITY_WORKFLOW_CODE } }])
+    .respondWithTools([{ name: "ResearchPacketBodyV1", args: HOST_PARITY_PACKET }])
+    .respondWithTools([{ name: "ResearchPacketBodyV1", args: HOST_PARITY_PACKET }])
+    .respondWithTools([{ name: "ResearchPacketBodyV1", args: HOST_PARITY_PACKET }])
+    .respondWithTools([{ name: "ReconciliationBodyV1", args: HOST_PARITY_CRITIQUE }])
+    .respondWithTools([{ name: "AtlcliResearchAgentDraftV1", args: HOST_PARITY_DRAFT }])
+    .respondWithTools([{ name: "AtlcliResearchAgentDraftV1", args: HOST_PARITY_DRAFT }]);
+  const events: ResearchOneShotEventV1[] = [];
+  const report = await runNodeResearchAgent({
+    model,
+    request,
+    researchGraph: graph,
+    brief,
+    runId: "packed-host-parity",
+    now: () => HOST_PARITY_EPOCH_MS,
+    workspace: createMemoryResearchWorkspace(),
+    providers: {
+      jira: {
+        async searchPage() { throw new Error("Host-parity model must not perform Jira PTC."); },
+        async getIssue() { throw new Error("Host-parity model must not fetch Jira detail."); },
+      },
+      wiki: {
+        async searchPage() { throw new Error("Host-parity model must not perform Confluence PTC."); },
+        async getPage() { throw new Error("Host-parity model must not fetch Confluence detail."); },
+      },
+    },
+    options: { policy, onEvent: (event) => events.push(event) },
+  });
+  return { report, events };
+}
+
+type PackedRunResponse =
+  | { kind: "research:run-result"; runId: string; ok: true; report: ResearchReportV1 }
+  | { kind: "research:run-result"; runId: string; ok: false; code: string; error: string };
+
+async function runPackedResearchInBackground(
+  page: Page,
+  request: ResearchRequestV1,
+  runId: string,
+): Promise<PackedRunResponse> {
+  return page.evaluate(async ({ request, runId, policy }) => {
+    const window = await chrome.windows.getCurrent();
+    if (window.id === undefined) throw new Error("Packed side-panel window is unavailable.");
+    return chrome.runtime.sendMessage({
+      kind: "research:run",
+      runId,
+      windowId: window.id,
+      request,
+      policy,
+    });
+  }, { request, runId, policy: HOST_PARITY_POLICY }) as Promise<PackedRunResponse>;
+}
+
 let context: BrowserContext;
 let page: Page;
 let extensionId: string;
@@ -1345,6 +1597,52 @@ test("intercepts declarative dynamic-schema dispatches in a packed MV3 worker", 
   });
   expect(response.result?.messages.some((message) => message.includes("deep-jira"))).toBe(true);
   expect(response.result?.messages.some((message) => message.includes("deep-wiki"))).toBe(true);
+});
+
+test("keeps the Node and packed MV3 graph, packets, reconciliation, report, and Markdown byte-identical", async () => {
+  await installEventCapture(page);
+  await page.evaluate(async ({ key, value }) => {
+    await chrome.storage.session.set({ [key]: value });
+  }, { key: RESEARCH_ANTHROPIC_SESSION_KEY, value: FAKE_KEY });
+
+  const node = await runNodeHostParityFixture();
+  const packed = await runPackedResearchInBackground(
+    page,
+    hostParityRequest(),
+    "packed-host-parity",
+  );
+  if (!packed.ok) {
+    throw new Error(JSON.stringify({ packed, events: await harnessEvents(page) }, null, 2));
+  }
+
+  expect(packed.report).toEqual(node.report);
+  expect(new TextEncoder().encode(packed.report.markdown)).toEqual(
+    new TextEncoder().encode(node.report.markdown),
+  );
+
+  const events = await harnessEvents(page);
+  const packedEvents = events.flatMap((event) => event.researchEvent ? [event.researchEvent] : []);
+  expect(packedEvents).toEqual(node.events);
+  expect(events.find((event) => event.messageKind === "research-worker:complete")?.report)
+    .toEqual(node.report);
+
+  const structured = events
+    .filter((event) => event.kind === "packed-host-parity-structured")
+    .map((event) => event.value);
+  expect(structured.filter((value) =>
+    typeof value === "object" && value !== null &&
+    (value as { schema?: unknown }).schema === "atlcli.research-packet-body/v1",
+  )).toEqual([HOST_PARITY_PACKET, HOST_PARITY_PACKET, HOST_PARITY_PACKET]);
+  expect(structured).toContainEqual(HOST_PARITY_CRITIQUE);
+  expect(structured).toContainEqual(HOST_PARITY_DRAFT);
+  expect(events.some((event) => event.kind === "worker-error")).toBe(false);
+  expect(events.some((event) => event.kind === "fetch" && event.url?.includes("/rest/api/3/search/jql")))
+    .toBe(false);
+  expect(events.some((event) => event.kind === "fetch" && event.url?.includes("/wiki/rest/api/content/search")))
+    .toBe(false);
+  await page.evaluate(async (key) => {
+    await chrome.storage.session.remove(key);
+  }, RESEARCH_ANTHROPIC_SESSION_KEY);
 });
 
 test("resolves exact keys and a unique Confluence alias through the packed background boundary", async () => {

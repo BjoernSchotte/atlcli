@@ -2822,7 +2822,7 @@ Gate:
       preserve the deterministic S0 gates and improve S1's detail/source
       coverage. This is not a production-default decision; the private MVP
       and T9 evaluations remain authoritative for that decision.
-- [ ] CLI and packed browser produce schema-equivalent graphs, packets,
+- [x] CLI and packed browser produce schema-equivalent graphs, packets,
       reconciliation decisions, reports, and byte-identical Markdown for
       deterministic model/provider inputs.
 - [ ] Sentinel fixtures in CLI and packed MV3 prove that workers receive no
@@ -2914,6 +2914,19 @@ prompt-like catalog entry, and an unanchored phrase reaches neither catalog nor
 reference resolution. These catalog-only tests start no worker, so catalog
 results cannot widen the content scope. This closes the scope-resolution matrix
 gate above; graph/report parity and worker context-sentinel gates remain open.
+
+T3 packed-parity checkpoint (2026-08-01): a time-frozen, customer-free
+cross-product fixture now executes the same dynamically proposed two-branch
+graph, join, fresh reconciler, disposition and sole synthesizer through the
+Node runtime and the production-packed MV3 Background → Offscreen → dedicated
+worker path. The packed harness forwards only synthetic, body-free test values:
+both hosts produce the identical ordered event projection, three admitted
+packet bodies, one critique/disposition, complete structured report and
+byte-identical canonical Markdown. It also proves that the fixture performs no
+content PTC. The existing Node/browser runtime parity test and dynamic
+subagent corridor passed 32 tests / 207 assertions; the Node 22.18.0 packed
+MV3 suite passed 15/15. The remaining T3 synthetic gate is the worker/context
+sentinel proof below.
 
 ### T4 — Add durable session, workspace, graph, and checkpoint stores
 
