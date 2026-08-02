@@ -72,7 +72,7 @@ test("a network-disabled, packed plain-Astro consumer keeps overrides and static
     await run(["bun", "install", "--offline"], consumer);
     await run(["bun", "assert-packed.mjs"], consumer);
     const output = await run(["bun", "run", "--preload", "./block-network.mjs", "build"], consumer);
-    expect(output).toContain("1 page(s) built");
+    expect(output).toContain("2 page(s) built");
     const html = await readFile(join(consumer, "dist/index.html"), "utf8");
     expect(html).toContain("data-fixture-trusted-override");
     expect(html).toContain('data-atlcli-chart-island="enabled"');

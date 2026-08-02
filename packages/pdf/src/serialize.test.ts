@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import { createHash } from "node:crypto";
 import type { ExportBlock, ExportNode, ExportNote } from "@atlcli/confluence";
 import { CHART_KINDS_V1 } from "@atlcli/export-blocks";
 import {
@@ -20,6 +21,32 @@ const metadata = {
   region: "US",
   exportedAt: new Date("2026-07-16T12:00:00Z"),
 };
+
+const NON_CHART_REGRESSION_BLOCKS_V1: ExportBlock[] = [
+  { type: "heading", level: 2, content: [{ type: "text", text: "Stable guide" }] },
+  { type: "paragraph", content: [{ type: "text", text: "Existing exports must not enter the chart rendering path." }] },
+  {
+    type: "list", ordered: false, items: [
+      { content: [{ type: "paragraph", content: [{ type: "text", text: "First" }] }] },
+      { content: [{ type: "paragraph", content: [{ type: "text", text: "Second" }] }] },
+    ],
+  },
+  {
+    type: "table", rows: [{ cells: [
+      { header: true, colspan: 1, rowspan: 1, content: [{ type: "paragraph", content: [{ type: "text", text: "Key" }] }] },
+      { header: false, colspan: 1, rowspan: 1, content: [{ type: "paragraph", content: [{ type: "text", text: "Value" }] }] },
+    ] }],
+  },
+];
+
+it("pins a chart-free PDF Typst structure golden with no generated chart asset", async () => {
+  const prepared = await preparePdfDocument(NON_CHART_REGRESSION_BLOCKS_V1, {
+    resolve: async () => { throw new Error("non-chart fixture attempted an asset resolve"); },
+  });
+  const bundle = serializePdfDocument(prepared, { metadata });
+  expect(bundle.assets.some((asset) => asset.path.startsWith("assets/chart-"))).toBe(false);
+  expect(createHash("sha256").update(bundle.main).digest("hex")).toBe("19ac73191b15b7637c5b6da7de258eee2046e9ab7083b212f9e6f7fea3d5af91");
+});
 
 it("serializes a chart ExportBlock as an SVG visual plus deterministic data table", async () => {
   const prepared = await preparePdfDocument([{

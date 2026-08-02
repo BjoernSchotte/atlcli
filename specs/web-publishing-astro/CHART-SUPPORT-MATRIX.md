@@ -102,6 +102,9 @@ world-class semantic/visual gate is still open; — intentionally static.
 - DOCX/PDF all-shape and sparse-series projection tests:
   `packages/docx/src/serialize.test.ts` and
   `packages/pdf/src/serialize.test.ts`
+- Chart-free regression goldens pin the DOCX OOXML, PDF Typst source, and plain
+  Astro rendered-main digests; they also prove no chart SVG seam/asset/DOM is
+  reached. The older full DOCX pre-refactor golden remains part-for-part equal.
 - Reproducible tenant-free rendered document proof:
   `scripts/chart-rendered-proof.ts` (generated DOCX/PDF and rendered pages are
   intentionally excluded from Git)

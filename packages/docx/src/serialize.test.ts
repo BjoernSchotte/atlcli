@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import { createHash } from "node:crypto";
 import {
   CONFLUENCE_LEGACY_EMOJI_PROJECTIONS,
   composeChapters,
@@ -27,6 +28,40 @@ import { headingStyle, stylesXml } from "./fixtures.js";
 import { collectDocxCodeHighlightUsage } from "./code-highlighting.js";
 
 const noStyles = new Map<string, string>();
+
+const NON_CHART_REGRESSION_BLOCKS_V1: ExportBlock[] = [
+  { type: "heading", level: 2, content: [{ type: "text", text: "Stable guide" }] },
+  { type: "paragraph", content: [{ type: "text", text: "Existing exports must not enter the chart rendering path." }] },
+  {
+    type: "list", ordered: false, items: [
+      { content: [{ type: "paragraph", content: [{ type: "text", text: "First" }] }] },
+      { content: [{ type: "paragraph", content: [{ type: "text", text: "Second" }] }] },
+    ],
+  },
+  {
+    type: "table", rows: [{ cells: [
+      { header: true, colspan: 1, rowspan: 1, content: [{ type: "paragraph", content: [{ type: "text", text: "Key" }] }] },
+      { header: false, colspan: 1, rowspan: 1, content: [{ type: "paragraph", content: [{ type: "text", text: "Value" }] }] },
+    ] }],
+  },
+];
+
+it("pins a chart-free DOCX structure golden and never calls the chart SVG seam", async () => {
+  let generatedSvgCalls = 0;
+  const result = await serializeBlocks(NON_CHART_REGRESSION_BLOCKS_V1, {
+    styleNames: noStyles,
+    images: {
+      embed: async () => { throw new Error("non-chart fixture attempted an image embed"); },
+      embedGeneratedSvg: async () => {
+        generatedSvgCalls += 1;
+        throw new Error("non-chart fixture entered the generated SVG path");
+      },
+    },
+  });
+  expect(generatedSvgCalls).toBe(0);
+  expect(result.notes).toEqual([]);
+  expect(createHash("sha256").update(result.xml).digest("hex")).toBe("06e68599315fdb01080fa9cf08d851023b6d3514775ff3a3a5aa5824830fe48d");
+});
 
 it("serializes a chart ExportBlock as a deterministic accessible data table", async () => {
   const result = await serializeBlocks([{

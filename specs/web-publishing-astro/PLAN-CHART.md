@@ -451,8 +451,12 @@ only and must be safe to include in a public site manifest.
       `type:"chart"` branch.
 - [x] Preserve captions, source order, labels, and data values in both document
       projections.
-- [ ] Add regression fixtures proving existing DOCX/PDF exports remain byte- or
-      structure-stable for pages without charts.
+- [x] Add regression fixtures proving existing DOCX/PDF exports remain byte- or
+      structure-stable for pages without charts. DOCX pins the serialized OOXML
+      digest and proves the generated-SVG seam is never called; PDF pins the
+      generated Typst-source digest and proves no `assets/chart-*` entry exists.
+      The older full DOCX golden captured before chart support also remains
+      part-for-part identical.
 - [x] Document which visual options are intentionally approximated in DOCX/PDF
       (for example, 3D perspective or interactive hover) while retaining the
       underlying data.
@@ -628,7 +632,10 @@ listed in the capability registry.
       scene/SVG adapter, then visually prove all shapes in both document
       engines. PDF retains vector SVG; DOCX also retains a bounded PNG
       compatibility rendition.
-- [ ] Add no-regression fixtures for existing export surfaces.
+- [x] Add chart-free no-regression fixtures for DOCX, PDF, and plain Astro.
+      Their OOXML, Typst-source, and rendered-main digests are pinned; the
+      normal Astro build and in-app-browser DOM check prove no chart markup,
+      runtime, alert, or horizontal overflow appears.
 
 ### T9 — Hardening and observability
 
@@ -668,7 +675,9 @@ The follow-up PR is complete only when all gates are checked:
       static Astro output, accessible data fallback, and DOCX/PDF projections.
 - [ ] P0 parameter families and strict/lenient diagnostics are tested; every
       unsupported option is visible and deterministic.
-- [ ] Existing non-chart DOCX/PDF and Astro pages pass regression tests.
+- [x] Existing non-chart DOCX/PDF and Astro pages pass regression tests. This
+      includes the pre-refactor full DOCX golden, the PDF multi-page engine
+      golden, and the dedicated chart-free cross-surface digest fixtures.
 - [x] Interactive islands are closed, bounded, version-pinned, optional, and
       never required for content or accessibility.
 - [x] Cloud live proof is recorded; DC live proof is recorded or explicitly

@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
 import { resolve } from "node:path";
 
@@ -19,7 +20,7 @@ async function run(command: string[], cwd: string): Promise<string> {
 test("plain Astro consumer renders every normalized discriminator without raw HTML execution", async () => {
   await run(["bun", "run", "build", "--filter=@atlcli/export-blocks-astro"], resolve(packageRoot, "../.."));
   const output = await run(["bun", "run", "build"], fixture);
-  expect(output).toContain("1 page(s) built");
+  expect(output).toContain("2 page(s) built");
   const html = await readFile(resolve(fixture, "dist/index.html"), "utf8");
   for (const kind of [
     "heading", "paragraph", "smart-card", "code", "callout", "expand", "list", "layout",
@@ -106,9 +107,9 @@ test("plain Astro consumer renders every normalized discriminator without raw HT
   expect(asset).toBeDefined();
   expect((await stat(resolve(fixture, "dist/_astro", asset!))).size).toBeLessThanOrEqual(100 * 1024);
   expect(html).not.toContain("defineChart");
-  const stylesheet = html.match(/href="\/_astro\/([^\"]+\.css)"/)?.[1];
-  expect(stylesheet).toBeDefined();
-  const css = await readFile(resolve(fixture, "dist/_astro", stylesheet!), "utf8");
+  const stylesheets = [...html.matchAll(/href="\/_astro\/([^\"]+\.css)"/g)].map((match) => match[1]!);
+  expect(stylesheets.length).toBeGreaterThan(0);
+  const css = (await Promise.all(stylesheets.map((stylesheet) => readFile(resolve(fixture, "dist/_astro", stylesheet), "utf8")))).join("\n");
   expect(css).toContain("--atlcli-content-foreground:#172b4d");
   expect(css).toContain("[data-atlcli-chart-visual] svg{min-width:40rem}");
   expect(css).toContain("@media print");
@@ -127,4 +128,11 @@ test("plain Astro consumer renders every normalized discriminator without raw HT
     hostileValuesInert: !html.includes("javascript:alert(1)") && !html.includes("data:image/svg+xml"),
   };
   expect(semantic).toEqual({ ...golden, blockTypes: [...golden.blockTypes].sort() });
+
+  const nonChartHtml = await readFile(resolve(fixture, "dist/non-chart/index.html"), "utf8");
+  const nonChartMain = nonChartHtml.match(/<main data-atlcli-non-chart-golden>([^]*?)<\/main>/u)?.[1];
+  expect(nonChartMain).toBeDefined();
+  expect(nonChartMain).not.toContain("data-atlcli-block=\"chart\"");
+  expect(nonChartMain).not.toContain("data-atlcli-chart");
+  expect(createHash("sha256").update(nonChartMain!).digest("hex")).toBe("d5153537d4862aa0467964c5e825e0a98ccf216529525c72407a3e744407b3b0");
 }, 20_000);
